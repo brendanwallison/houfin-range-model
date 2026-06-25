@@ -270,7 +270,7 @@ def ingest_data():
     sim_struct = build_simulation_struct(
         land=jnp.array(land_mask),
         cell_size=cell_size_km,
-        mean_dispersal_distance=330.0, mean_local_dispersal_distance=330.0,
+        adult_mdd=100.0, juvenile_mdd=330.0,
         adult_shape=0.468, juvenile_shape=0.468, radii_splits=splits
     )
 

@@ -1,0 +1,88 @@
+import os
+import sys
+import glob
+import numpy as np
+import jax
+
+# --- Modular Imports ---
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../'))
+if project_root not in sys.path:
+    sys.path.append(project_root)
+
+from src.model.age_priors import build_model_2d
+from src.model.run_map import load_data_to_gpu
+from src.analysis.engine import load_params, reconstruct_latents
+from src.analysis.plots import (
+    plot_posterior_weights, 
+    plot_demographic_response_curves,
+    plot_temporal_epochs,
+    plot_continental_violins,
+    plot_keystone_r0,
+    create_animation
+)
+
+# --- Configuration ---
+PRECISION = 'float32'
+jax.config.update("jax_enable_x64", False)
+
+VI_RESULT_DIR = "/home/breallis/processed_data/model_results/age_vi_float32_run_15"
+INPUT_DIR = "/home/breallis/processed_data/model_inputs/numpyro_input"
+OUTPUT_DIR = os.path.join(VI_RESULT_DIR, "analysis_plots")
+CACHE_FILE = os.path.join(OUTPUT_DIR, "reconstructed_samples.npz")
+
+def run_full_svi_analysis():
+    print(f"--- Starting SVI Analysis Suite ---")
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
+
+    # 1. Load Environmental Data
+    data = load_data_to_gpu(INPUT_DIR, precision=PRECISION)
+    
+    # 2. Setup Labels
+    PATH_INTEGRATION_DIR = "/home/breallis/processed_data/datasets/latent_avian_path_diagnostics"
+    disp_files = glob.glob(os.path.join(PATH_INTEGRATION_DIR, "Z_disp_*.npz"))
+    if disp_files:
+        with np.load(disp_files[0]) as loader:
+            z_names = [str(lbl) for lbl in loader['labels']]
+    else:
+        z_names = [f"Feature_{i}" for i in range(data['Z_gathered'].shape[-1])]
+
+    # 3. Cache Logic: Load existing samples or generate new ones
+    if os.path.exists(CACHE_FILE):
+        print(f"-> Loading cached samples from {CACHE_FILE}...")
+        with np.load(CACHE_FILE) as loader:
+            samples = {k: loader[k] for k in loader.files}
+    else:
+        params, filename = load_params(VI_RESULT_DIR)
+        samples = reconstruct_latents(
+            build_model_2d, 
+            data, 
+            params, 
+            filename, 
+            num_samples=250
+        )
+        # Immediate save to prevent lost work
+        np.savez_compressed(CACHE_FILE, **samples)
+        print(f"-> Samples cached to disk.")
+
+    # 4. Generate the Visualization Suite
+    print("-> Plotting Weights and Demographic Responses...")
+    plot_posterior_weights(samples, z_names, OUTPUT_DIR)
+    
+    for i in range(3):
+        plot_demographic_response_curves(samples, data, z_names, i, OUTPUT_DIR)
+
+    print("-> Generating Spatial Maps (Epochs & Keystones)...")
+    plot_temporal_epochs(samples, data, z_names, OUTPUT_DIR)
+    plot_keystone_r0(samples, data, z_names, OUTPUT_DIR)
+
+    print("-> Generating Continental Distributions...")
+    plot_continental_violins(samples, data, z_names, OUTPUT_DIR)
+
+    print("-> Creating Population Evolution Animation...")
+    # Consider num_frames=data['time'] if create_animation is slow
+    create_animation(samples, data, OUTPUT_DIR)
+
+    print(f"\nAnalysis Complete. Results at: {OUTPUT_DIR}")
+
+if __name__ == "__main__":
+    run_full_svi_analysis()

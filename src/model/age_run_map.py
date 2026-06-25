@@ -25,7 +25,7 @@ from src.model.age_priors import build_model_2d
 
 # --- CONFIGURATION ---
 INPUT_DIR = "/home/breallis/processed_data/model_inputs/numpyro_input"
-OUTPUT_DIR = f"/home/breallis/processed_data/model_results/age_map_{PRECISION}_run_15"
+OUTPUT_DIR = f"/home/breallis/processed_data/model_results/age_map_{PRECISION}_run_16"
 
 def load_data_to_gpu(input_dir, precision='float32'):
     meta_path = os.path.join(input_dir, "metadata.pkl")

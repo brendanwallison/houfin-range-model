@@ -30,7 +30,7 @@ PRECISION = 'float32'
 jax.config.update("jax_enable_x64", True if PRECISION == 'float64' else False)
 
 INPUT_DIR = "/home/breallis/processed_data/model_inputs/numpyro_input"
-RESULT_DIR = f"/home/breallis/processed_data/model_results/age_map_{PRECISION}_run_14"
+RESULT_DIR = f"/home/breallis/processed_data/model_results/age_map_{PRECISION}_run_16"
 OUTPUT_PLOT_DIR = os.path.join(RESULT_DIR, "plots_analysis")
 os.makedirs(OUTPUT_PLOT_DIR, exist_ok=True)
 

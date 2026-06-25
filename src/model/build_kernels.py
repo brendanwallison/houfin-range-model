@@ -84,7 +84,7 @@ def get_dispersal_quantiles(mean_dist, shape_param, quantiles=[0.33, 0.66]):
 def make_radial_directional_kernels(
     Lx, Ly, 
     cell_size, 
-    base_kernel_grid,   # [NEW] The Master Gamma PDF
+    base_kernel_grid,   # [NEW] The Master PDF
     radii_splits, 
     smoothness_km=None
 ):
@@ -144,8 +144,8 @@ def make_radial_directional_kernels(
 def build_simulation_struct(
     land: jnp.ndarray,
     cell_size: float,
-    mean_dispersal_distance: float,
-    mean_local_dispersal_distance: float,
+    adult_mdd: float,
+    juvenile_mdd: float,
     adult_shape: float,
     juvenile_shape: float,
     radii_splits=None
@@ -164,7 +164,7 @@ def build_simulation_struct(
     r_dist = toroidal_distance_grid(Lx, Ly, cell_size)
     
     # 2. Adult (Isotropic)
-    adult_scale = get_gamma_scale(mean_dispersal_distance, adult_shape)
+    adult_scale = get_gamma_scale(adult_mdd, adult_shape)
     adult_kernel = jnp.exp(-(r_dist / adult_scale) ** adult_shape)
     adult_kernel /= jnp.sum(adult_kernel) # Normalize Master
     adult_fft_kernel = fft2(adult_kernel)
@@ -175,11 +175,11 @@ def build_simulation_struct(
     # 3. Juvenile (12 Cohorts)
     if radii_splits is None:
         radii_splits = [0.0] + get_dispersal_quantiles(
-            mean_local_dispersal_distance, juvenile_shape, [0.33, 0.66]
+            juvenile_mdd, juvenile_shape, [0.33, 0.66]
         ) + [1e9]
 
     # A. Generate Master Juvenile Kernel (Gamma)
-    juv_scale = get_gamma_scale(mean_local_dispersal_distance, juvenile_shape)
+    juv_scale = get_gamma_scale(juvenile_mdd, juvenile_shape)
     juv_master = jnp.exp(-(r_dist / juv_scale) ** juvenile_shape)
     juv_master /= jnp.sum(juv_master) # Normalize Master to 1.0
     

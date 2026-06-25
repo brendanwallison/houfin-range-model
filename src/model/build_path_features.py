@@ -2,8 +2,10 @@ import sys
 import os
 import time
 import argparse
+import math
 import jax
 import jax.numpy as jnp
+import scipy.fft as sfft
 import numpy as np
 import matplotlib.pyplot as plt
 import rasterio
@@ -11,7 +13,11 @@ from jax.numpy.fft import fft2, ifft2
 from tqdm import tqdm
 
 # --- Setup Paths ---
-project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+import sys
+import os
+
+# Go up two levels from src/model/ to the project root
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 if project_root not in sys.path:
     sys.path.append(project_root)
 
@@ -46,10 +52,11 @@ def resize_kernel_stack(kernel_stack, scale):
     shrunk = jax.image.resize(stack_centered, (K, new_H, new_W), method='bilinear')
     
     # 3. Pad (Restores original frame size, keeping blob in center)
-    pad_y = (Ly - new_H) // 2
-    pad_x = (Lx - new_W) // 2
-    pad_y_end = Ly - new_H - pad_y
-    pad_x_end = Lx - new_W - pad_x
+    # Defensive max(0, ...) protects against floating point issues when scale=1.0
+    pad_y = max(0, (Ly - new_H) // 2)
+    pad_x = max(0, (Lx - new_W) // 2)
+    pad_y_end = max(0, Ly - new_H - pad_y)
+    pad_x_end = max(0, Lx - new_W - pad_x)
     padded = jnp.pad(shrunk, ((0,0), (pad_y, pad_y_end), (pad_x, pad_x_end)))
     
     # 4. Unshift Mass to Corners (FFT Layout)
@@ -67,7 +74,11 @@ def convolve_step(Z_t, kernel_stack_fft):
     """Efficiently convolves a batch of Z features."""
     Ny, Nx, _ = Z_t.shape
     K, Ly, Lx = kernel_stack_fft.shape
-    Z_padded = jnp.pad(Z_t, ((0, Ly-Ny), (0, Lx-Nx), (0, 0)))
+    
+    pad_y = max(0, Ly - Ny)
+    pad_x = max(0, Lx - Nx)
+    Z_padded = jnp.pad(Z_t, ((0, pad_y), (0, pad_x), (0, 0)))
+    
     Z_fft = jnp.fft.fft2(Z_padded, axes=(0, 1)).transpose(2, 0, 1)
     
     # (Batch, 1, Ly, Lx) * (1, K, Ly, Lx)
@@ -81,7 +92,11 @@ def convolve_mask_step(mask, kernel_stack_fft):
     """Convolves binary land mask to find normalization weights."""
     Ny, Nx = mask.shape
     K, Ly, Lx = kernel_stack_fft.shape
-    mask_padded = jnp.pad(mask, ((0, Ly-Ny), (0, Lx-Nx)))
+    
+    pad_y = max(0, Ly - Ny)
+    pad_x = max(0, Lx - Nx)
+    mask_padded = jnp.pad(mask, ((0, pad_y), (0, pad_x)))
+    
     mask_fft = fft2(mask_padded)
     conv_fft = mask_fft[None, :, :] * kernel_stack_fft
     return jnp.real(ifft2(conv_fft, axes=(-2, -1)))[:, :Ny, :Nx]
@@ -239,7 +254,19 @@ def main(args):
     if Z_year.ndim == 3: Z_year = Z_year[None, ...]
         
     _, Ny, Nx, M = Z_year.shape
-    Ly, Lx = 2*Ny-1, 2*Nx-1
+    
+    # --- PAD FACTOR LOGIC ---
+    # Enforce minimum dimension of original image
+    target_Ly = max(Ny, int(math.ceil(Ny * args.pad_factor)))
+    target_Lx = max(Nx, int(math.ceil(Nx * args.pad_factor)))
+    
+    # Optimize dimensions for FFT speed using standard SciPy
+    Ly = sfft.next_fast_len(target_Ly)
+    Lx = sfft.next_fast_len(target_Lx)
+    
+    print(f"Original Dimensions: {Ny}x{Nx}")
+    print(f"Padded FFT Dimensions: {Ly}x{Lx} (Targeting {args.pad_factor}x factor)")
+    
     land_mask = jnp.array(land_mask_np, dtype=jnp.float32)
     
     # 4. BUILD KERNELS (UPDATED: Geometric Splits)
@@ -287,6 +314,7 @@ if __name__ == "__main__":
     parser.add_argument("--input_dir", type=str, default="/home/breallis/datasets/latent_avian_community_similarities")
     parser.add_argument("--output_dir", type=str, default="/home/breallis/processed_data/datasets/latent_avian_path_diagnostics")
     parser.add_argument("--steps", type=int, default=20) 
+    parser.add_argument("--pad_factor", type=float, default=1.5, help="Multiplicative factor for FFT padding (e.g., 2.0 for standard linear conv, 1.5 for optimized memory).")
     
     args = parser.parse_args()
     main(args)

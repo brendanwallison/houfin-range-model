@@ -8,9 +8,11 @@ def clip_safe(x, min_val=-10.0, max_val=10.0):
     return jnp.clip(x, min_val, max_val)
 
 def rightpad(A, Lx, Ly, pad_value=1e-9):
-    pad_matrix = jnp.ones((Ly, Lx)) * pad_value
-    pad_matrix = pad_matrix.at[:A.shape[0], :A.shape[1]].set(A)
-    return pad_matrix
+    # Calculate how much padding is needed on the bottom and right
+    pad_y = Ly - A.shape[0]
+    pad_x = Lx - A.shape[1]
+    # Pad only the right and bottom edges
+    return jnp.pad(A, ((0, pad_y), (0, pad_x)), constant_values=pad_value)
 
 def rightpad_convolution(pop, dispersal_kernel_pad):
     Ly, Lx = dispersal_kernel_pad.shape
@@ -25,9 +27,6 @@ def juvenile_dispersal_vectorized(
     juvenile_edge_correction_stack: jnp.ndarray, 
     eps: float = 1e-6
 ):
-    """
-    Performs dispersal with SOURCE-BASED edge correction.
-    """
     def single_kernel_prop(kernel_fft, land_fraction_map):
         boosted_source = juvenile_dispersers / (land_fraction_map + eps)
         settled = rightpad_convolution(boosted_source, kernel_fft)
@@ -49,36 +48,24 @@ def dispersal_step_age_structured(
     Q_grid,
     eps=1e-6
 ):
-    # Ensure valid inputs
     N_a = jnp.maximum(N_a, 0.0)
     N_j = jnp.maximum(N_j, 0.0)
     N_total = N_a + N_j
     
-    # -----------------------------
-    # 1. Total Dispersal Probability (Density Dependent)
-    # -----------------------------
     K_safe = jnp.maximum(K, eps)
     z_total = dispersal_logit_intercept + dispersal_logit_slope * (N_total / K_safe - target_fraction)
     z_total = clip_safe(z_total) 
     p_total = jnn.sigmoid(z_total)
     
-    # -----------------------------
-    # 2. Split and Disperse Pools
-    # -----------------------------
-    
-    # A. ADULTS (Short-range, no extra path mortality)
     adult_dispersers = N_a * p_total
     adult_stayers = N_a * (1.0 - p_total)
-    
     adult_boosted = adult_dispersers / (adult_edge_correction + eps)
     adult_arriving = rightpad_convolution(adult_boosted, adult_fft_kernel)
     
     N_a_post = adult_stayers + adult_arriving
     
-    # B. JUVENILES (Long-range, Q path mortality)
     juvenile_dispersers = N_j * p_total
     juvenile_stayers = N_j * (1.0 - p_total)
-    
     juvenile_arriving = juvenile_dispersal_vectorized(
         juvenile_dispersers,
         juvenile_fft_kernel_stack,
@@ -86,47 +73,28 @@ def dispersal_step_age_structured(
         juvenile_edge_correction_stack,
         eps
     )
-    
-    # # Note: Q is applied inside the vectorized function to movers.
-    # # Stayers don't pay path mortality.
-    # N_j_post = juvenile_stayers + juvenile_arriving
 
     return N_a_post, juvenile_stayers, juvenile_arriving
 
 def reproduction_age_structured(
-    N_a_post,
-    N_j_stayers,
-    N_j_arrivers,
-    S_a, S_j, F_max, K,
-    allee_gamma,
-    eps=1e-12
+    N_a_post, N_j_stayers, N_j_arrivers,
+    S_a, S_j, F_max, K, allee_gamma, eps=1e-12
     ):
-    # Total density after dispersal (both juvenile pools count)
     N_total_post = N_a_post + N_j_stayers + N_j_arrivers
     K_safe = jnp.maximum(K, eps)
 
-    # --- Density-Dependent Fecundity (Beverton-Holt) ---
-    # Uses Sj because stayers experience Sj before maturation
     c = (F_max * S_j) / (1.0 - S_a + eps) - 1.0
     c = jnp.maximum(c, 0.0)
 
     F_eff = F_max / (1.0 + c * (N_total_post / K_safe))
-
-    # --- Allee Effect ---
     allee_factor = 1.0 - jnp.exp(-allee_gamma * N_total_post)
     F_actual = F_eff * allee_factor
 
-    # --- Adult survival ---
     surviving_adults = N_a_post * S_a
+    surviving_stayers = N_j_stayers * S_j      
+    surviving_arrivers = N_j_arrivers          
 
-    # --- Juvenile survival ---
-    surviving_stayers = N_j_stayers * S_j      # stayers experience Sj
-    surviving_arrivers = N_j_arrivers          # dispersers already paid Q
-
-    # --- Adult pool update ---
     N_a_new = surviving_adults + surviving_stayers + surviving_arrivers
-
-    # --- Juvenile production ---
     N_j_new = surviving_adults * F_actual
 
     return N_a_new, N_j_new
@@ -146,27 +114,32 @@ def forward_sim_age_structured(
     Ny, Nx = land_mask.shape
     row, col = inv_location
     
-    # Split the initial total population equally between adults and juveniles
-    # (Or use the theoretical stable stage distribution if preferred)
     init_N_a = initpop_latent * 0.5
     init_N_j = initpop_latent * 0.5
     
+    # Pre-allocate zero grid for scattering to avoid repeated memory allocations
+    zero_grid = jnp.zeros((Ny, Nx))
+    
+    # Pre-allocate the Q-grid to avoid creating it inside the scan loop
+    K_kernels = Q_flat.shape[-1]
+    zero_Q_grid = jnp.zeros((K_kernels, Ny, Nx))
+
     def scatter_t(Sa_t, Sj_t, Fmax_t, K_t, Q_t):
-        Sa_g = jnp.zeros((Ny, Nx)).at[land_rows, land_cols].set(Sa_t)
-        Sj_g = jnp.zeros((Ny, Nx)).at[land_rows, land_cols].set(Sj_t)
-        Fmax_g = jnp.zeros((Ny, Nx)).at[land_rows, land_cols].set(Fmax_t)
-        K_g = jnp.zeros((Ny, Nx)).at[land_rows, land_cols].set(K_t)
+        Sa_g = zero_grid.at[land_rows, land_cols].set(Sa_t)
+        Sj_g = zero_grid.at[land_rows, land_cols].set(Sj_t)
+        Fmax_g = zero_grid.at[land_rows, land_cols].set(Fmax_t)
+        K_g = zero_grid.at[land_rows, land_cols].set(K_t)
         
-        K_kernels = Q_t.shape[-1]
-        Q_temp = jnp.zeros((Ny, Nx, K_kernels)).at[land_rows, land_cols, :].set(Q_t)
-        Q_g = Q_temp.transpose(2, 0, 1)
-        
+        # Scatter directly into the final (K_kernels, Ny, Nx) shape
+        Q_g = zero_Q_grid.at[:, land_rows, land_cols].set(Q_t.T)
+    
         return Sa_g, Sj_g, Fmax_g, K_g, Q_g
 
+    # The step function inside lax.scan
     def step(pools, t):
         N_a, N_j = pools
         
-        # 1. Invasion (Add to adults for simplicity, or split)
+        # 1. Invasion
         k = t - inv_timestep
         is_invading = (k >= 0) & (k < inv_pop.shape[0])
         val = jnp.where(is_invading, inv_pop[jnp.minimum(jnp.maximum(0, k), inv_pop.shape[0]-1)], 0.0)
@@ -186,24 +159,24 @@ def forward_sim_age_structured(
             Q_grid=Q_g, eps=1e-6
         )
         
-        # 4. Survival & Reproduction (Age-Structured Update)
+        # 4. Survival & Reproduction
         N_a_new, N_j_new = reproduction_age_structured(
-            N_a_post,
-            juvenile_stayers,
-            juvenile_arriving,
-            Sa_g, Sj_g, Fmax_g, K_g,
-            allee_gamma
+            N_a_post, juvenile_stayers, juvenile_arriving,
+            Sa_g, Sj_g, Fmax_g, K_g, allee_gamma
         )
             
         # 5. Mask & Final Clip
         N_a_new = jnp.maximum(N_a_new * land_mask, 0.0)
         N_j_new = jnp.maximum(N_j_new * land_mask, 0.0)
-        
         N_total_new = N_a_new + N_j_new
         
         return (N_a_new, N_j_new), N_total_new
 
-    # We carry the tuple of (N_a, N_j), but we only return the combined density for the loss function
-    _, total_densities = lax.scan(step, (init_N_a, init_N_j), jnp.arange(time))
+    # --- GRADIENT CHECKPOINTING ---
+    # This ensures that the memory for 60 years of spatial grids 
+    # is not stored in VRAM/RAM during the backprop.
+    checkpointed_step = jax.checkpoint(step)
+
+    _, total_densities = lax.scan(checkpointed_step, (init_N_a, init_N_j), jnp.arange(time))
     
     return total_densities

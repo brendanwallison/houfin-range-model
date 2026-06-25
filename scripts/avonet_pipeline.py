@@ -9,13 +9,13 @@ Filtering:
 Adds:
 - Urban tolerance distance (6 indices)
 - Equal weighting across morphology, phylogeny, and urban tolerance
+- eBird species code (SPECIES_CODE)
 """
 
 import os
 import numpy as np
 import pandas as pd
 import dendropy
-
 
 # ------------------------------------------------------------
 # Configuration
@@ -26,7 +26,7 @@ CROSSWALK_PATH = "/home/breallis/datasets/avonet/PhylogeneticData/BirdLife-BirdT
 PHYLO_PATH = "/home/breallis/datasets/avonet/PhylogeneticData/HackettStage1_0001_1000_MCCTreeTargetHeights.nex"
 
 URBAN_PATH = "/home/breallis/datasets/urban_avian/spp_urban_indices.csv"
-EBIRD_CROSSWALK_PATH = "/home/breallis/datasets/ebird_abundances/eBird_taxonomy_v2025.csv"
+EBIRD_CROSSWALK_PATH = "/home/breallis/datasets/ebird_weekly_2023_albers/eBird_taxonomy_v2025.csv"
 
 OUTPUT_FILTERED = "AVONET_Filtered_ByUrbanSpecies.csv"
 OUTPUT_COMPARISON = "AVONET_Comparison_WithPhylogeny_Urban.csv"
@@ -56,7 +56,6 @@ URBAN_COLS = [
     "Habitat.Use.NL",
 ]
 
-
 # ------------------------------------------------------------
 # Utilities
 # ------------------------------------------------------------
@@ -66,7 +65,6 @@ def normalize_name(x):
         return np.nan
     return x.strip().lower().replace("_", " ")
 
-
 def standardize(df, cols):
     df = df.copy()
     for c in cols:
@@ -74,7 +72,6 @@ def standardize(df, cols):
         sd = df[c].std()
         df[c] = 0.0 if sd == 0 or np.isnan(sd) else (df[c] - mu) / sd
     return df
-
 
 def euclidean_distance(df, focal_row, cols, prefix):
     X = df[cols].apply(pd.to_numeric, errors="coerce")
@@ -90,7 +87,6 @@ def euclidean_distance(df, focal_row, cols, prefix):
     out[f"{prefix}.Distance"] = dist
     return out.reindex(df.index)
 
-
 # ------------------------------------------------------------
 # Crosswalks
 # ------------------------------------------------------------
@@ -99,7 +95,6 @@ def load_crosswalk(path):
     cw = pd.read_csv(path)
     cw = cw.dropna(subset=["Species3"])
     return cw.drop_duplicates("Species1", keep="first")
-
 
 def derive_focal_phylo_label(bl, crosswalk):
     row = bl.loc[bl["Avibase.ID1"] == FOCAL_ID]
@@ -110,7 +105,6 @@ def derive_focal_phylo_label(bl, crosswalk):
     if sp3.empty:
         raise ValueError("Focal species not found in BirdTree crosswalk.")
     return sp3.iloc[0].replace(" ", "_")
-
 
 # ------------------------------------------------------------
 # Phylogeny
@@ -124,7 +118,6 @@ def compute_phylo_distances(tree, focal_label):
     focal = node.taxon
     return {t.label: pdm.distance(focal, t) for t in tree.taxon_namespace}
 
-
 # ------------------------------------------------------------
 # Main
 # ------------------------------------------------------------
@@ -135,7 +128,6 @@ def main():
     # --------------------------------------------------------
     # Load data
     # --------------------------------------------------------
-
     bl = pd.read_csv(BL_PATH, encoding="latin1")
     urban = pd.read_csv(URBAN_PATH)
     ebird = pd.read_csv(EBIRD_CROSSWALK_PATH)
@@ -143,13 +135,13 @@ def main():
     # --------------------------------------------------------
     # Define species universe via urban dataset
     # --------------------------------------------------------
-
     urban["species_code"] = urban["species_code"].str.lower()
     ebird["SPECIES_CODE"] = ebird["SPECIES_CODE"].str.lower()
 
     ebird["sci_norm"] = ebird["SCI_NAME"].apply(normalize_name)
     bl["sci_norm"] = bl["Species1"].apply(normalize_name)
 
+    # Merge ebird taxonomy info into urban dataset
     urban = urban.merge(
         ebird[["SPECIES_CODE", "sci_norm"]],
         left_on="species_code",
@@ -170,7 +162,6 @@ def main():
     # --------------------------------------------------------
     # Morphology
     # --------------------------------------------------------
-
     crosswalk = load_crosswalk(CROSSWALK_PATH)
     bl = bl.merge(crosswalk[["Species1", "Species3"]], on="Species1", how="left")
     bl["Species3_underscored"] = bl["Species3"].str.replace(" ", "_")
@@ -184,9 +175,9 @@ def main():
     # --------------------------------------------------------
     # Urban tolerance
     # --------------------------------------------------------
-
+    # We include "SPECIES_CODE" in the merge columns here
     bl = bl.merge(
-        urban[["sci_norm"] + URBAN_COLS],
+        urban[["sci_norm", "SPECIES_CODE"] + URBAN_COLS],
         on="sci_norm",
         how="left"
     )
@@ -201,7 +192,6 @@ def main():
     # --------------------------------------------------------
     # Phylogeny
     # --------------------------------------------------------
-
     focal_phylo = derive_focal_phylo_label(bl, crosswalk)
     tree = dendropy.Tree.get(
         path=PHYLO_PATH,
@@ -216,21 +206,18 @@ def main():
     # --------------------------------------------------------
     # Rank-based combination
     # --------------------------------------------------------
-
     rank_cols = ["Trait.Distance", "Urban.Distance", "Phylo.Distance"]
 
     for c in rank_cols:
-        # rank 1 = smallest distance = closest
         bl[f"{c}.Rank"] = bl[c].rank(method="average", ascending=True)
 
-    # Mean rank across axes
     bl["Mean.Rank"] = bl[[f"{c}.Rank" for c in rank_cols]].mean(axis=1)
 
     # Sort by mean rank
     bl = bl.sort_values("Mean.Rank")
     bl.to_csv(OUTPUT_COMPARISON, index=False)
 
-    print(f"Saved rank-based comparison table to {OUTPUT_COMPARISON}")
+    print(f"Saved rank-based comparison table (with eBird SPECIES_CODE) to {OUTPUT_COMPARISON}")
 
 if __name__ == "__main__":
     main()

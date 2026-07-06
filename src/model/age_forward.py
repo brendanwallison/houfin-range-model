@@ -76,31 +76,8 @@ def dispersal_step_age_structured(
 
     return N_a_post, juvenile_stayers, juvenile_arriving
 
-def reproduction_age_structured(
-    N_a_post, N_j_stayers, N_j_arrivers,
-    S_a, S_j, F_max, K, allee_gamma, eps=1e-12
-    ):
-    N_total_post = N_a_post + N_j_stayers + N_j_arrivers
-    K_safe = jnp.maximum(K, eps)
-
-    c = (F_max * S_j) / (1.0 - S_a + eps) - 1.0
-    c = jnp.maximum(c, 0.0)
-
-    F_eff = F_max / (1.0 + c * (N_total_post / K_safe))
-    allee_factor = 1.0 - jnp.exp(-allee_gamma * N_total_post)
-    F_actual = F_eff * allee_factor
-
-    surviving_adults = N_a_post * S_a
-    surviving_stayers = N_j_stayers * S_j      
-    surviving_arrivers = N_j_arrivers          
-
-    N_a_new = surviving_adults + surviving_stayers + surviving_arrivers
-    N_j_new = surviving_adults * F_actual
-
-    return N_a_new, N_j_new
-
 def forward_sim_age_structured(
-    Sa_flat, Sj_flat, Fmax_flat, K_flat, Q_flat, 
+    Sa_flat, Sj_flat, Fmax_flat, K_flat, c_flat, Q_flat,
     land_rows, land_cols,           
     land_mask,
     adult_fft_kernel, juvenile_fft_kernel_stack,
@@ -124,16 +101,18 @@ def forward_sim_age_structured(
     K_kernels = Q_flat.shape[-1]
     zero_Q_grid = jnp.zeros((K_kernels, Ny, Nx))
 
-    def scatter_t(Sa_t, Sj_t, Fmax_t, K_t, Q_t):
+    # Added c_t to the scatter function
+    def scatter_t(Sa_t, Sj_t, Fmax_t, K_t, c_t, Q_t):
         Sa_g = zero_grid.at[land_rows, land_cols].set(Sa_t)
         Sj_g = zero_grid.at[land_rows, land_cols].set(Sj_t)
         Fmax_g = zero_grid.at[land_rows, land_cols].set(Fmax_t)
         K_g = zero_grid.at[land_rows, land_cols].set(K_t)
+        c_g = zero_grid.at[land_rows, land_cols].set(c_t) # <-- Scattered to 2D
         
         # Scatter directly into the final (K_kernels, Ny, Nx) shape
         Q_g = zero_Q_grid.at[:, land_rows, land_cols].set(Q_t.T)
     
-        return Sa_g, Sj_g, Fmax_g, K_g, Q_g
+        return Sa_g, Sj_g, Fmax_g, K_g, c_g, Q_g
 
     # The step function inside lax.scan
     def step(pools, t):
@@ -143,11 +122,12 @@ def forward_sim_age_structured(
         k = t - inv_timestep
         is_invading = (k >= 0) & (k < inv_pop.shape[0])
         val = jnp.where(is_invading, inv_pop[jnp.minimum(jnp.maximum(0, k), inv_pop.shape[0]-1)], 0.0)
-        N_a = N_a.at[row, col].add(val)
+        N_a = N_a.at[row, col].add(val * 0.5)
+        N_j = N_j.at[row, col].add(val * 0.5)
 
-        # 2. Scatter Parameters
-        Sa_g, Sj_g, Fmax_g, K_g, Q_g = scatter_t(
-            Sa_flat[t], Sj_flat[t], Fmax_flat[t], K_flat[t], Q_flat[t]
+        # 2. Scatter Parameters (Updated to include c_flat index)
+        Sa_g, Sj_g, Fmax_g, K_g, c_g, Q_g = scatter_t(
+            Sa_flat[t], Sj_flat[t], Fmax_flat[t], K_flat[t], c_flat[t], Q_flat[t]
         )
 
         # 3. Dispersal
@@ -159,10 +139,10 @@ def forward_sim_age_structured(
             Q_grid=Q_g, eps=1e-6
         )
         
-        # 4. Survival & Reproduction
+        # 4. Survival & Reproduction (Updated reproduction call)
         N_a_new, N_j_new = reproduction_age_structured(
             N_a_post, juvenile_stayers, juvenile_arriving,
-            Sa_g, Sj_g, Fmax_g, K_g, allee_gamma
+            Sa_g, Sj_g, Fmax_g, K_g, c_g, allee_gamma
         )
             
         # 5. Mask & Final Clip
@@ -173,10 +153,29 @@ def forward_sim_age_structured(
         return (N_a_new, N_j_new), N_total_new
 
     # --- GRADIENT CHECKPOINTING ---
-    # This ensures that the memory for 60 years of spatial grids 
-    # is not stored in VRAM/RAM during the backprop.
     checkpointed_step = jax.checkpoint(step)
 
     _, total_densities = lax.scan(checkpointed_step, (init_N_a, init_N_j), jnp.arange(time))
     
     return total_densities
+
+def reproduction_age_structured(
+    N_a_post, N_j_stayers, N_j_arrivers,
+    S_a, S_j, F_max, K, c, allee_gamma, eps=1e-12 # <-- Accept pre-computed c
+    ):
+    N_total_post = N_a_post + N_j_stayers + N_j_arrivers
+    K_safe = jnp.maximum(K, eps)
+
+    # Completely removed the inline 'c = (F_max * S_j) / ...' logic block
+    F_eff = F_max / (1.0 + c * (N_total_post / K_safe))
+    allee_factor = 1.0 - jnp.exp(-allee_gamma * N_total_post)
+    F_actual = F_eff * allee_factor
+
+    surviving_adults = N_a_post * S_a
+    surviving_stayers = N_j_stayers * S_j      
+    surviving_arrivers = N_j_arrivers          
+
+    N_a_new = surviving_adults + surviving_stayers + surviving_arrivers
+    N_j_new = surviving_adults * F_actual
+
+    return N_a_new, N_j_new

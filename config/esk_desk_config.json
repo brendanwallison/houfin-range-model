@@ -1,0 +1,27 @@
+{
+  "paths": {
+    "data_dir": "/home/breallis/datasets",
+    "hist_dir": "/home/breallis/datasets/smoothed_prism_bui",
+    "ebird_folder": "/home/breallis/datasets/ebird_weekly_2023_albers",
+    "esk_output_dir": "/home/breallis/dev/range_limits_pymc/misc_outputs/ruzicka_sweep_global",
+    "desk_output_dir": "/home/breallis/dev/range_limits_pymc/misc_outputs/ruzicka_sweep_global/sigma_1.5/results"
+  },
+  "esk": {
+    "pattern": "*_abundance_median_2023-*.tif",
+    "sigmas": [0.0, 0.5, 1.0, 1.5],
+    "latent_dims": [8, 16, 32],
+    "n_landmarks": 18000
+  },
+  "desk": {
+    "epochs": 100,
+    "lr": 0.001,
+    "batch_size": 4096,
+    "weights": {
+      "stabilizing": 1.0,
+      "metric": 5.0,
+      "reconstruction": 0.1
+    },
+    "train_val_split": 0.8,
+    "z_dir": "/home/breallis/dev/range_limits_pymc/misc_outputs/ruzicka_sweep_global/sigma_1.5"
+  }
+}

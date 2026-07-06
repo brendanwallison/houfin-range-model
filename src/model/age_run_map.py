@@ -25,7 +25,7 @@ from src.model.age_priors import build_model_2d
 
 # --- CONFIGURATION ---
 INPUT_DIR = "/home/breallis/processed_data/model_inputs/numpyro_input"
-OUTPUT_DIR = f"/home/breallis/processed_data/model_results/age_map_{PRECISION}_run_16"
+OUTPUT_DIR = f"/home/breallis/processed_data/model_results/age_map_{PRECISION}_run_4"
 
 def load_data_to_gpu(input_dir, precision='float32'):
     meta_path = os.path.join(input_dir, "metadata.pkl")
@@ -78,7 +78,7 @@ def run_map():
 
     guide = AutoDelta(build_model_2d)
 
-    total_steps = 1000
+    total_steps = 900
     anneal_epochs = [0.1, 0.5, 1.0]
     steps_per_epoch = total_steps // len(anneal_epochs)
 

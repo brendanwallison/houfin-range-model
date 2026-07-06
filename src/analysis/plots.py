@@ -39,8 +39,8 @@ def plot_posterior_weights(samples, z_names, output_dir):
     fig, ax = plt.subplots(figsize=(10, 8))
 
     for label, data, color, marker, offset in [
-        ('Survival ($\beta_s$)', ws, 'dodgerblue', 'o', 0.15),
-        ('Reproduction ($\beta_r$)', wr, 'darkorange', 's', -0.15)
+        (r'Survival ($\beta_s$)', ws, 'dodgerblue', 'o', 0.15),
+        (r'Reproduction ($\beta_r$)', wr, 'darkorange', 's', -0.15)
     ]:
         mean, low, high = get_uncertainty_summaries(data)
         

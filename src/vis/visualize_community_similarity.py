@@ -20,7 +20,7 @@ if project_root not in sys.path:
     sys.path.append(project_root)
 
 from src.model.age_priors import build_model_2d 
-from src.model.run_map import load_data_to_gpu
+from src.model.age_run_map import load_data_to_gpu
 
 # --- CONFIGURATION ---
 PRECISION = 'float32' 

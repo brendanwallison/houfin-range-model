@@ -10,7 +10,7 @@ if project_root not in sys.path:
     sys.path.append(project_root)
 
 from src.model.age_priors import build_model_2d
-from src.model.run_map import load_data_to_gpu
+from src.model.age_run_map import load_data_to_gpu
 from src.analysis.engine import load_params, reconstruct_latents
 from src.analysis.plots import (
     plot_posterior_weights, 
@@ -37,14 +37,30 @@ def run_full_svi_analysis():
     # 1. Load Environmental Data
     data = load_data_to_gpu(INPUT_DIR, precision=PRECISION)
     
-    # 2. Setup Labels
+    # 2. Setup Labels safely matching the actual input data dimension
+    actual_M = data['Z_gathered'].shape[-1] # Evaluates to 16
+    
     PATH_INTEGRATION_DIR = "/home/breallis/processed_data/datasets/latent_avian_path_diagnostics"
     disp_files = glob.glob(os.path.join(PATH_INTEGRATION_DIR, "Z_disp_*.npz"))
+    
+    loaded_labels = []
     if disp_files:
         with np.load(disp_files[0]) as loader:
-            z_names = [str(lbl) for lbl in loader['labels']]
+            if 'labels' in loader:
+                loaded_labels = [str(lbl) for lbl in loader['labels']]
+
+    # Align loaded labels with actual dimension size
+    if len(loaded_labels) == actual_M:
+        z_names = loaded_labels
+    elif len(loaded_labels) < actual_M:
+        print(f"--> Warning: Found {len(loaded_labels)} cached labels, but data has {actual_M} features.")
+        print("--> Appending generic placeholders for missing labels.")
+        # Keep the 12 names you have, fill the remaining 4 with generic tokens
+        extra_needed = actual_M - len(loaded_labels)
+        z_names = loaded_labels + [f"Feature_{i + len(loaded_labels)}" for i in range(extra_needed)]
     else:
-        z_names = [f"Feature_{i}" for i in range(data['Z_gathered'].shape[-1])]
+        # If labels are somehow longer than current data, slice them down
+        z_names = loaded_labels[:actual_M]
 
     # 3. Cache Logic: Load existing samples or generate new ones
     if os.path.exists(CACHE_FILE):

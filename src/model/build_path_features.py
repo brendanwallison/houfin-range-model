@@ -228,93 +228,93 @@ def visualize_results(Z_disp, labels, land_mask, output_dir, year):
         plt.close(fig)
         print(f"Saved {save_path}")
 
-def main(args):
-    print(f"--- Processing Single Year: {args.year} ---")
+# def main(args):
+#     print(f"--- Processing Single Year: {args.year} ---")
     
-    # 1. FILE PATHS
-    z_filename = f"Z_latent_{args.year}.npy"
-    z_path = os.path.join(args.input_dir, z_filename)
-    tif_path = os.path.join(args.input_dir, "ocean_mask_4km.tif")
+#     # 1. FILE PATHS
+#     z_filename = f"Z_latent_{args.year}.npy"
+#     z_path = os.path.join(args.input_dir, z_filename)
+#     tif_path = os.path.join(args.input_dir, "ocean_mask_4km.tif")
     
-    # 2. LOAD LAND MASK & METADATA
-    if not os.path.exists(tif_path):
-        print(f"Error: Could not find mask file: {tif_path}")
-        return
+#     # 2. LOAD LAND MASK & METADATA
+#     if not os.path.exists(tif_path):
+#         print(f"Error: Could not find mask file: {tif_path}")
+#         return
 
-    land_mask_np, cell_size_km = load_land_mask_and_meta(tif_path)
-    print(f"Grid: {land_mask_np.shape} | Cell: {cell_size_km:.2f} km")
+#     land_mask_np, cell_size_km = load_land_mask_and_meta(tif_path)
+#     print(f"Grid: {land_mask_np.shape} | Cell: {cell_size_km:.2f} km")
 
-    # 3. LOAD Z DATA
-    if not os.path.exists(z_path):
-        print(f"Error: Could not find {z_path}")
-        return
+#     # 3. LOAD Z DATA
+#     if not os.path.exists(z_path):
+#         print(f"Error: Could not find {z_path}")
+#         return
 
-    print(f"Loading {z_filename}...")
-    Z_year = jnp.load(z_path)
-    if Z_year.ndim == 3: Z_year = Z_year[None, ...]
+#     print(f"Loading {z_filename}...")
+#     Z_year = jnp.load(z_path)
+#     if Z_year.ndim == 3: Z_year = Z_year[None, ...]
         
-    _, Ny, Nx, M = Z_year.shape
+#     _, Ny, Nx, M = Z_year.shape
     
-    # --- PAD FACTOR LOGIC ---
-    # Enforce minimum dimension of original image
-    target_Ly = max(Ny, int(math.ceil(Ny * args.pad_factor)))
-    target_Lx = max(Nx, int(math.ceil(Nx * args.pad_factor)))
+#     # --- PAD FACTOR LOGIC ---
+#     # Enforce minimum dimension of original image
+#     target_Ly = max(Ny, int(math.ceil(Ny * args.pad_factor)))
+#     target_Lx = max(Nx, int(math.ceil(Nx * args.pad_factor)))
     
-    # Optimize dimensions for FFT speed using standard SciPy
-    Ly = sfft.next_fast_len(target_Ly)
-    Lx = sfft.next_fast_len(target_Lx)
+#     # Optimize dimensions for FFT speed using standard SciPy
+#     Ly = sfft.next_fast_len(target_Ly)
+#     Lx = sfft.next_fast_len(target_Lx)
     
-    print(f"Original Dimensions: {Ny}x{Nx}")
-    print(f"Padded FFT Dimensions: {Ly}x{Lx} (Targeting {args.pad_factor}x factor)")
+#     print(f"Original Dimensions: {Ny}x{Nx}")
+#     print(f"Padded FFT Dimensions: {Ly}x{Lx} (Targeting {args.pad_factor}x factor)")
     
-    land_mask = jnp.array(land_mask_np, dtype=jnp.float32)
+#     land_mask = jnp.array(land_mask_np, dtype=jnp.float32)
     
-    # 4. BUILD KERNELS (UPDATED: Geometric Splits)
-    # Using 3 robust bins: ~150km, ~600km, 600km+
-    splits = get_log_spaced_splits(min_dist=30.0, max_dist=3000.0, n_bins=3)
+#     # 4. BUILD KERNELS (UPDATED: Geometric Splits)
+#     # Using 3 robust bins: ~150km, ~600km, 600km+
+#     splits = get_log_spaced_splits(min_dist=30.0, max_dist=3000.0, n_bins=3)
     
-    print(f"Using Geometric Splits (km): {[f'{x:.1f}' for x in splits]}")
+#     print(f"Using Geometric Splits (km): {[f'{x:.1f}' for x in splits]}")
     
-    kernel_stack, labels = make_radial_directional_kernels(
-        Lx, Ly, 
-        cell_size=cell_size_km, 
-        radii_splits=splits
-    )
+#     kernel_stack, labels = make_radial_directional_kernels(
+#         Lx, Ly, 
+#         cell_size=cell_size_km, 
+#         radii_splits=splits
+#     )
     
-    # 5. INTEGRATE (GPU)
-    print(f"Integrating on GPU (Steps={args.steps})...")
-    start = time.time()
+#     # 5. INTEGRATE (GPU)
+#     print(f"Integrating on GPU (Steps={args.steps})...")
+#     start = time.time()
     
-    Z_disp = integrate_paths(Z_year, kernel_stack, land_mask, steps=args.steps)
-    Z_disp.block_until_ready()
+#     Z_disp = integrate_paths(Z_year, kernel_stack, land_mask, steps=args.steps)
+#     Z_disp.block_until_ready()
     
-    print(f"Done in {time.time() - start:.2f}s")
+#     print(f"Done in {time.time() - start:.2f}s")
     
-    # 6. SAVE DATA
-    os.makedirs(args.output_dir, exist_ok=True)
-    out_name = f"Z_disp_{args.year}.npz"
-    save_path = os.path.join(args.output_dir, out_name)
+#     # 6. SAVE DATA
+#     os.makedirs(args.output_dir, exist_ok=True)
+#     out_name = f"Z_disp_{args.year}.npz"
+#     save_path = os.path.join(args.output_dir, out_name)
     
-    np.savez_compressed(
-        save_path, 
-        Z_disp=Z_disp, 
-        cell_size_km=cell_size_km,
-        labels=labels,
-        land_mask=land_mask_np
-    )
+#     np.savez_compressed(
+#         save_path, 
+#         Z_disp=Z_disp, 
+#         cell_size_km=cell_size_km,
+#         labels=labels,
+#         land_mask=land_mask_np
+#     )
     
-    print(f"Saved processed data to {save_path}")
+#     print(f"Saved processed data to {save_path}")
     
-    # 7. VISUALIZE
-    visualize_results(Z_disp, labels, land_mask_np, args.output_dir, args.year)
+#     # 7. VISUALIZE
+#     visualize_results(Z_disp, labels, land_mask_np, args.output_dir, args.year)
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--year", type=str, default="1990")
-    parser.add_argument("--input_dir", type=str, default="/home/breallis/datasets/latent_avian_community_similarities")
-    parser.add_argument("--output_dir", type=str, default="/home/breallis/processed_data/datasets/latent_avian_path_diagnostics")
-    parser.add_argument("--steps", type=int, default=20) 
-    parser.add_argument("--pad_factor", type=float, default=1.5, help="Multiplicative factor for FFT padding (e.g., 2.0 for standard linear conv, 1.5 for optimized memory).")
+# if __name__ == "__main__":
+#     parser = argparse.ArgumentParser()
+#     parser.add_argument("--year", type=str, default="1990")
+#     parser.add_argument("--input_dir", type=str, default="/home/breallis/datasets/latent_avian_community_similarities")
+#     parser.add_argument("--output_dir", type=str, default="/home/breallis/processed_data/datasets/latent_avian_path_diagnostics")
+#     parser.add_argument("--steps", type=int, default=20) 
+#     parser.add_argument("--pad_factor", type=float, default=1.5, help="Multiplicative factor for FFT padding (e.g., 2.0 for standard linear conv, 1.5 for optimized memory).")
     
-    args = parser.parse_args()
-    main(args)
+#     args = parser.parse_args()
+#     main(args)

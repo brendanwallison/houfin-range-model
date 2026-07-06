@@ -46,7 +46,7 @@ def sample_priors(anneal=1.0, M_features=None, N_basis=None, time=None):
     # 2. Distribute that budget dynamically 
     dynamic_scale = global_spatial_budget / jnp.sqrt(N_basis)
     
-    # 3. Apply the perfectly scaled L1 penalty
+    # 3. Apply the scaled L1 penalty
     priors['st_weights'] = numpyro.sample(
         "st_weights", 
         dist.Laplace(0.0, dynamic_scale).expand([N_basis])
@@ -63,7 +63,7 @@ def sample_priors(anneal=1.0, M_features=None, N_basis=None, time=None):
     # Enforce positive slopes: better habitat = higher survival/fecundity
     # Enforce Rule 5: Juvenile survival is more sensitive to environment than adult
     gamma_a_raw = numpyro.sample("gamma_a_raw", dist.Normal(0.0, 0.5 * anneal))
-    gamma_j_diff = numpyro.sample("gamma_j_diff", dist.HalfNormal(0.5))
+    gamma_j_diff = numpyro.sample("gamma_j_diff", dist.HalfNormal(0.5 * anneal))
     
     priors['gamma_a'] = jnn.softplus(gamma_a_raw)
     priors['gamma_j'] = priors['gamma_a'] + gamma_j_diff 
@@ -73,7 +73,7 @@ def sample_priors(anneal=1.0, M_features=None, N_basis=None, time=None):
     
     # Sample the physical threshold (N50: number of birds for 50% mate-finding prob)
     # Standard normal + softplus = mean of ~0.86
-    n50_raw = numpyro.sample("n50_raw", dist.Normal(-1.0, 1.0))
+    n50_raw = numpyro.sample("n50_raw", dist.Normal(-1.0, 1.0 * anneal))
     n50 = jnn.softplus(n50_raw)
 
     # Derive the searching efficiency on the RAW count scale
@@ -108,20 +108,7 @@ def build_model_2d(data, anneal=1.0):
     allee_gamma_scaled = priors['gamma_raw'] * data['pop_scalar']
     priors['allee_gamma'] = numpyro.deterministic("allee_gamma", allee_gamma_scaled)
 
-    # --- IDENTIFIABILITY CONSTRAINT: 50/50 STABLE AGE STRUCTURE ---
-    # Calculate global means based on intercepts
-    S_a_mean = jnn.sigmoid(priors['alpha_a'])
-    S_j_mean = jnn.sigmoid(priors['alpha_j'])
-    F_mean = jnn.softplus(priors['alpha_f'])
-
-    # Calculate theoretical stable age structure (dominant eigenvalue of Leslie matrix)
-    lambda_mean = (S_a_mean + jnp.sqrt(S_a_mean**2 + 4 * F_mean * S_j_mean)) / 2.0
-    juvenile_fraction = F_mean / (F_mean + lambda_mean)
-
-    # Soft constraint pulling the model's global baselines toward 50/50
-    numpyro.factor("age_structure_constraint", dist.Normal(0.5, 0.1).log_prob(juvenile_fraction))
-
-    # 2. Compute Biological Fields (2D Manifold -> Demographic Rates)
+    # 1. Compute Biological Fields (2D Manifold -> Demographic Rates)
     # Notice we now pass beta_s and beta_r instead of a single beta_h
     Sa_flat, Sj_flat, Fmax_flat, K_flat, Q_flat = project_and_scatter_age_structured(
         time, Ny, Nx, land_rows, land_cols,
@@ -140,10 +127,57 @@ def build_model_2d(data, anneal=1.0):
     numpyro.deterministic("Fmax_flat", Fmax_flat)
     numpyro.deterministic("K_flat", K_flat)
     numpyro.deterministic("Q_flat", Q_flat)
+
+    # --- POC IDENTIFIABILITY CONSTRAINT: SITE-LEVEL EQUILIBRIUM AT K ---
     
-    # 3. Forward Simulation
+    # 1. Calculate dynamic 'c' exactly as in the forward sim
+    # Using 1e-6 for the eps term to prevent division by zero
+    c_dynamic = (Fmax_flat * Sj_flat) / (1.0 - Sa_flat + 1e-6) - 1.0
+    c_dynamic = jnp.maximum(c_dynamic, 0.0)
+    
+    # 2. Evaluate Effective Fecundity at N = K (so N/K = 1.0)
+    F_eff_K = Fmax_flat / (1.0 + c_dynamic)
+    
+    # 3. Evaluate the Allee Factor at N = K
+    # priors['allee_gamma'] is already defined earlier in build_model_2d
+    allee_factor_K = 1.0 - jnp.exp(-priors['allee_gamma'] * K_flat)
+    
+    # 4. Calculate actual realized fecundity at Carrying Capacity
+    F_at_K = F_eff_K * allee_factor_K
+    
+    # 5. Calculate theoretical dominant eigenvalue of the Leslie matrix at K
+    lambda_K = (Sa_flat + jnp.sqrt(Sa_flat**2 + 4.0 * F_at_K * Sj_flat)) / 2.0
+    
+    # 6. Calculate the theoretical juvenile fraction at K
+    rho_K = F_at_K / (F_at_K + lambda_K)
+    
+    # # 7. Define the target mean and desired standard deviation (loosen via anneal if desired)
+    # mu_target = 0.5
+    # sigma_target = 0.2 * anneal  # Testing with a looser 0.2 baseline
+    # variance_target = jnp.square(sigma_target)
+
+    # # 8. Correctly convert to Beta shape parameters using mu_target explicitly
+    # # This factor ensures the math scales even if you shift your target mean later
+    # v_factor = (mu_target * (1.0 - mu_target) / variance_target) - 1.0
+    
+    # alpha_shape = jnp.maximum(mu_target * v_factor, 1.001)
+    # beta_shape = jnp.maximum((1.0 - mu_target) * v_factor, 1.001)
+    
+    # 9. Apply the bounded Beta prior across the grid
+    rho_K_safe = jnp.clip(rho_K, 1e-5, 1.0 - 1e-5)
+
+    # 1. Compute c natively
+    denominator_c = 1.0 - Sa_flat + 1e-6
+    c_flat = jnp.maximum((Fmax_flat * Sj_flat) / denominator_c - 1.0, 0.0)
+
+    # Existing age-structure target prior
+    numpyro.factor(
+        "poc_site_level_bounded_age_structure", 
+        dist.Beta(1.01, 1.01).log_prob(rho_K_safe).sum()
+    )
+
     densities = forward_sim_age_structured(
-        Sa_flat, Sj_flat, Fmax_flat, K_flat, Q_flat, 
+        Sa_flat, Sj_flat, Fmax_flat, K_flat, c_flat, Q_flat, 
         land_rows, land_cols,           
         data['land_mask'],
         data['adult_fft_kernel'], data['juvenile_fft_kernel_stack'],

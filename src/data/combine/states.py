@@ -5,55 +5,46 @@ import numpy as np
 import rasterio
 from tqdm import tqdm
 
+from src.config_utils import load_config
+
 # ============================================================
 # 1. BUI STREAMER (Multi-Band + Optional Interpolation)
 # ============================================================
 class BuiStreamer:
-    def __init__(self, bui_dir, start_year, end_year, alpha, interpolate=False):
+    def __init__(self, bui_dir, start_year, end_year, alpha, interpolate=False,
+                 res_km=4):
         self.bui_dir = bui_dir
         self.years = range(start_year, end_year + 1)
         self.alpha = alpha
         self.state = None
         self.interpolate = interpolate
-        self.bands = range(1, 8) # Bands 1 through 7
 
-        # Index available files by Year and Band
-        # Expected: 1810_BUI_4km_interp_band1.png
-        self.anchors = {} 
-        
-        print(f"[BUI] Scanning for multi-band files in {bui_dir}...")
-        pattern = re.compile(r".*(\d{4})_BUI_4km_interp_band(\d)\.png$")
-        
-        files = glob.glob(os.path.join(bui_dir, "*_BUI_4km_interp_band*.png"))
-        for f in files:
-            fname = os.path.basename(f)
-            match = pattern.match(fname)
-            if match:
-                y = int(match.group(1))
-                b = int(match.group(2))
-                if y not in self.anchors: self.anchors[y] = {}
-                self.anchors[y][b] = f
+        # Index the per-year multiband quantile GeoTIFFs written by
+        # src/data/preprocess/bui.py, e.g. "2020_BUI_4km.tif" (7 linear-space
+        # quantile bands). Replaces the old per-band viridis PNGs, which were
+        # read via src.read(1) — i.e. the RED CHANNEL of a colormap of
+        # x^0.25(quantile). These are the real quantile values; any power
+        # transform is deferred to model-input time downstream.
+        self.anchors = {}
+        print(f"[BUI] Scanning for {res_km}km quantile GeoTIFFs in {bui_dir}...")
+        pattern = re.compile(rf".*?(\d{{4}})_BUI_{res_km}km\.tif$")
+        for f in glob.glob(os.path.join(bui_dir, f"*_BUI_{res_km}km.tif")):
+            m = pattern.match(os.path.basename(f))
+            if m:
+                self.anchors[int(m.group(1))] = f
 
         self.sorted_years = sorted(self.anchors.keys())
         print(f"[BUI] Found {len(self.sorted_years)} anchor years.")
 
     def _load_year_stack(self, year):
-        """Loads bands 1-7 for a specific year. Returns (H, W, 7) or None."""
-        if year not in self.anchors:
+        """Load the 7-band quantile GeoTIFF for a year. Returns (H, W, 7) or None."""
+        fpath = self.anchors.get(year)
+        if fpath is None:
             return None
-        
-        # Ensure all 7 bands exist
-        year_files = self.anchors[year]
-        if len(year_files) != 7:
-            return None
-            
-        stack = []
         try:
-            for b in self.bands:
-                fpath = year_files[b]
-                with rasterio.open(fpath) as src:
-                    stack.append(src.read(1).astype(np.float32))
-            return np.stack(stack, axis=-1)
+            with rasterio.open(fpath) as src:
+                arr = src.read().astype(np.float32)  # (bands, H, W)
+            return np.transpose(arr, (1, 2, 0))       # -> (H, W, bands)
         except Exception as e:
             print(f"Error loading BUI {year}: {e}")
             return None
@@ -249,17 +240,17 @@ def run_simulation(prism_dir, bui_dir, out_dir, interpolate_bui=False):
     else:
         print("WARNING: No vectors sampled! Check data availability.")
 
-if __name__ == "__main__":
-    import sys
-    project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
-    if project_root not in sys.path:
-        sys.path.append(project_root)
-    from src.config_utils import load_config
-
+def main():
     DATA_DIR = load_config()["paths"]["data_dir"]
     run_simulation(
         prism_dir=f"{DATA_DIR}/prism_monthly_4km_albers",
-        bui_dir=f"{DATA_DIR}/HBUI/BUI_4km_interp",
+        # New: the per-year 7-band quantile GeoTIFFs from preprocess/bui.py
+        # (was the old BUI_4km_interp viridis PNG directory).
+        bui_dir=f"{DATA_DIR}/HBUI",
         out_dir=f"{DATA_DIR}/smoothed_prism_bui",
-        interpolate_bui=False 
+        interpolate_bui=False,
     )
+
+
+if __name__ == "__main__":
+    main()

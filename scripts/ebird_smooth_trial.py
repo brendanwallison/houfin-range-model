@@ -7,25 +7,32 @@ A pixel is valid iff:
 """
 
 import os
+import sys
 import numpy as np
 import rioxarray as rxr
 import matplotlib.pyplot as plt
 from scipy.ndimage import gaussian_filter1d
 from rasterio.windows import Window
 
+_repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if _repo_root not in sys.path:
+    sys.path.insert(0, _repo_root)
+from src.config_utils import load_data_config
+_DR = load_data_config()["datasets_root"]
+
 # ---------------------------------------------------------
 # CONFIGURATION
 # ---------------------------------------------------------
 
-EBIRD_DIR = "/home/breallis/datasets/ebird_weekly_2023_albers"
+EBIRD_DIR = f"{_DR}/ebird_weekly_2023_albers"
 SPECIES = ["amegfi", "whcspa", "houspa"]
 SIGMAS = [0.0, 1.0, 2.5, 4.0]
 POWER = 0.5
 
-PRISM_MONTHLY = "/home/breallis/datasets/prism_monthly_4km_albers"
-BUI_FILE = "/home/breallis/datasets/HBUI/BUI/2020_BUI_4km_interp.tif"
+PRISM_MONTHLY = f"{_DR}/prism_monthly_4km_albers"
+BUI_FILE = f"{_DR}/HBUI/BUI/2020_BUI_4km_interp.tif"
 
-OUTDIR = "/home/breallis/datasets/ebird_trial_outputs"
+OUTDIR = f"{_DR}/ebird_trial_outputs"
 os.makedirs(OUTDIR, exist_ok=True)
 
 SITES = {

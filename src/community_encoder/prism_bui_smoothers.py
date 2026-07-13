@@ -250,7 +250,13 @@ def run_simulation(prism_dir, bui_dir, out_dir, interpolate_bui=False):
         print("WARNING: No vectors sampled! Check data availability.")
 
 if __name__ == "__main__":
-    DATA_DIR = "/home/breallis/datasets"
+    import sys
+    project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
+    if project_root not in sys.path:
+        sys.path.append(project_root)
+    from src.config_utils import load_config
+
+    DATA_DIR = load_config()["paths"]["data_dir"]
     run_simulation(
         prism_dir=f"{DATA_DIR}/prism_monthly_4km_albers",
         bui_dir=f"{DATA_DIR}/HBUI/BUI_4km_interp",

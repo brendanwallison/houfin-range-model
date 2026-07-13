@@ -1,11 +1,17 @@
 import os
+import sys
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../'))
+if project_root not in sys.path:
+    sys.path.append(project_root)
+from src.config_utils import load_age_model_config
+
 # --- CONFIGURATION ---
 # Path to the output of ingest_bbs_data.py
-BBS_NPZ_PATH = "/home/breallis/datasets/bbs_2024_release/bbs_data_for_python.npz"
+BBS_NPZ_PATH = load_age_model_config()["bbs_npz"]
 OUTPUT_PLOT_PATH = "check_bbs_npz.png"
 
 def check_bbs_npz():

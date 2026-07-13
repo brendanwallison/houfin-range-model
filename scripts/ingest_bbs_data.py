@@ -1,4 +1,5 @@
 import os
+import sys
 import glob
 import numpy as np
 import pandas as pd
@@ -7,10 +8,16 @@ import rasterio.features
 from shapely.geometry import Point, MultiPoint
 import geopandas as gpd
 
+_repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if _repo_root not in sys.path:
+    sys.path.insert(0, _repo_root)
+from src.config_utils import load_data_config
+_DR = load_data_config()["datasets_root"]
+
 # -----------------------------------------------------------------------------
 # Configuration
 # -----------------------------------------------------------------------------
-BBS_PARENT_DIR = "/home/breallis/datasets/bbs_2024_release" 
+BBS_PARENT_DIR = f"{_DR}/bbs_2024_release"
 
 # 1. Weather Files
 WEATHER_FILES = [
@@ -28,7 +35,7 @@ ROUTE_FILES = [
 BBS_STATES_DIR = os.path.join(BBS_PARENT_DIR, "States")
 
 # 4. Mask Path
-MASK_PATH = "/home/breallis/datasets/land_mask/ocean_mask_4km.tif"
+MASK_PATH = f"{_DR}/land_mask/ocean_mask_4km.tif"
 
 # 5. Parameters
 HOUSE_FINCH_AOU = 5190
@@ -283,7 +290,7 @@ if __name__ == "__main__":
     # Save to NPZ
     # Note: We now save 'initpop_density' which is the FULL FLOAT GRID
     np.savez(
-        "/home/breallis/datasets/bbs_2024_release/bbs_data_for_python.npz",
+        f"{_DR}/bbs_2024_release/bbs_data_for_python.npz",
         Nx=nx,
         Ny=ny,
         land=land_mask.astype(int),

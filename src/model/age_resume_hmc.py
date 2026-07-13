@@ -30,20 +30,15 @@ if project_root not in sys.path:
     sys.path.append(project_root)
 
 from src.model.age_priors import build_model_2d
+from src.model.data_loading import load_data_to_gpu
+from src.config_utils import load_age_model_config
 
 
 # --- CONFIGURATION ---
-INPUT_DIR = "/home/breallis/processed_data/model_inputs/numpyro_input"
-
-MAP_DIR = (
-    f"/home/breallis/processed_data/model_results/"
-    f"age_map_{PRECISION}_run_16"
-)
-
-OUTPUT_DIR = (
-    f"/home/breallis/processed_data/model_results/"
-    f"age_hmc_{PRECISION}_from_map"
-)
+_cfg = load_age_model_config()
+INPUT_DIR = _cfg["input_dir"]
+MAP_DIR = os.path.join(_cfg["results_dir"], _cfg["run_names"]["resume_hmc_from_map"].format(precision=PRECISION))
+OUTPUT_DIR = os.path.join(_cfg["results_dir"], _cfg["run_names"]["resume_hmc_out"].format(precision=PRECISION))
 
 
 # -----------------------------
@@ -66,78 +61,6 @@ class HMCDiagnostics:
         print(f"[HMC] iter={self.i} dt={dt:.2f}s")
 
         return step_result
-
-
-def load_data_to_gpu(input_dir, precision='float32'):
-
-    meta_path = os.path.join(input_dir, "metadata.pkl")
-
-    with open(meta_path, 'rb') as f:
-        meta = pickle.load(f)
-
-    f_type_cpu = np.float32 if precision == 'float32' else np.float64
-    f_type_gpu = jnp.float32 if precision == 'float32' else jnp.float64
-    i_type_gpu = jnp.int32 if precision == 'float32' else jnp.int64
-
-    streaming_keys = {
-        'Z_gathered',
-        'Z_disp_gathered',
-        'st_basis'
-    }
-
-    z_shape = (
-        meta['time'],
-        meta['N_land'],
-        meta['M']
-    )
-
-    z_mem = np.memmap(
-        os.path.join(input_dir, meta['z_gathered_path']),
-        dtype='float32',
-        mode='r',
-        shape=z_shape
-    )
-
-    z_disp_shape = (
-        meta['time'],
-        meta['N_land'],
-        meta['K'],
-        meta['M']
-    )
-
-    z_disp_mem = np.memmap(
-        os.path.join(input_dir, meta['z_disp_gathered_path']),
-        dtype='float32',
-        mode='r',
-        shape=z_disp_shape
-    )
-
-    meta['Z_gathered'] = np.array(z_mem).astype(f_type_cpu)
-    meta['Z_disp_gathered'] = np.array(z_disp_mem).astype(f_type_cpu)
-
-    print(f"Iterating through metadata and casting to {precision}...")
-
-    for key, value in meta.items():
-
-        if isinstance(value, np.ndarray):
-
-            if key in streaming_keys:
-                meta[key] = value.astype(f_type_cpu)
-            else:
-                if np.issubdtype(value.dtype, np.floating):
-                    meta[key] = jnp.array(value).astype(f_type_gpu)
-                elif np.issubdtype(value.dtype, np.integer):
-                    meta[key] = jnp.array(value).astype(i_type_gpu)
-                else:
-                    meta[key] = jnp.array(value)
-
-    if (
-        precision == 'float32'
-        and meta.get('pseudo_zero', 0) < 1e-7
-    ):
-        meta['pseudo_zero'] = 1e-7
-
-    return meta
 
 
 def build_map_initialization(noise_scale=0.01):

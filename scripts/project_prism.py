@@ -13,6 +13,7 @@ Features:
 """
 
 import os
+import sys
 import glob
 import numpy as np
 import xarray as xr
@@ -21,15 +22,21 @@ import rasterio
 from rasterio.crs import CRS
 import matplotlib.pyplot as plt
 
+_repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if _repo_root not in sys.path:
+    sys.path.insert(0, _repo_root)
+from src.config_utils import load_data_config
+_DR = load_data_config()["datasets_root"]
+
 # -----------------------------
 # Configuration
 # -----------------------------
-PRISM_DIR = "/home/breallis/datasets/prism_monthly_4km"
-BUI_REF = "/home/breallis/datasets/HBUI/BUI/2020_BUI_4km.tif"
-OCEAN_MASK = "/home/breallis/datasets/land_mask/ocean_mask_4km.tif"
+PRISM_DIR = f"{_DR}/prism_monthly_4km"
+BUI_REF = f"{_DR}/HBUI/BUI/2020_BUI_4km.tif"
+OCEAN_MASK = f"{_DR}/land_mask/ocean_mask_4km.tif"
 
 PNG_POWER = 0.25
-OUT_DIR = "/home/breallis/datasets/prism_monthly_4km_albers"
+OUT_DIR = f"{_DR}/prism_monthly_4km_albers"
 
 EXPECTED_CRS = CRS.from_epsg(4269)  # NAD83 geographic
 SENTINELS = [-9999, -999, -99]      # common sentinel values

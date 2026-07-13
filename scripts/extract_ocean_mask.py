@@ -13,18 +13,26 @@ Logic:
 Also generates a PNG quick-look using a categorical colormap.
 """
 
+import os
+import sys
 import rasterio
 import numpy as np
 import matplotlib.pyplot as plt
 
+_repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if _repo_root not in sys.path:
+    sys.path.insert(0, _repo_root)
+from src.config_utils import load_data_config
+_DR = load_data_config()["datasets_root"]
+
 # Path to any aggregated BUI 4 km file
-BUI_4KM_PATH = "/home/breallis/datasets/HBUI/BUI/2020_BUI_4km.tif"
+BUI_4KM_PATH = f"{_DR}/HBUI/BUI/2020_BUI_4km.tif"
 
 # Output mask path
-OUT_MASK = "/home/breallis/datasets/land_mask/ocean_mask_4km.tif"
+OUT_MASK = f"{_DR}/land_mask/ocean_mask_4km.tif"
 
 # PNG quick-look path
-OUT_PNG = "/home/breallis/datasets/land_mask/ocean_mask_4km.png"
+OUT_PNG = f"{_DR}/land_mask/ocean_mask_4km.png"
 
 
 def save_mask_png(mask, out_path):

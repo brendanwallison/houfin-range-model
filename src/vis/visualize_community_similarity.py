@@ -19,16 +19,18 @@ project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../')
 if project_root not in sys.path:
     sys.path.append(project_root)
 
-from src.model.age_priors import build_model_2d 
-from src.model.age_run_map import load_data_to_gpu
+from src.model.age_priors import build_model_2d
+from src.model.data_loading import load_data_to_gpu
+from src.config_utils import load_age_model_config
 
 # --- CONFIGURATION ---
-PRECISION = 'float32' 
+PRECISION = 'float32'
 jax.config.update("jax_enable_x64", True if PRECISION == 'float64' else False)
 
-INPUT_DIR = "/home/breallis/processed_data/model_inputs/numpyro_input"
-RESULT_DIR = f"/home/breallis/processed_data/model_results/age_map_{PRECISION}_run_14"
-EBIRD_DIR = "/home/breallis/datasets/ebird_weekly_2023_albers"
+_cfg = load_age_model_config()
+INPUT_DIR = _cfg["input_dir"]
+RESULT_DIR = os.path.join(_cfg["results_dir"], _cfg["run_names"]["vis_community"].format(precision=PRECISION))
+EBIRD_DIR = _cfg["ebird_dir"]
 
 OUTPUT_PLOT_DIR = os.path.join(RESULT_DIR, "plots_community_mimicry")
 os.makedirs(OUTPUT_PLOT_DIR, exist_ok=True)
@@ -450,9 +452,9 @@ def plot_community_cosine_similarities(sim, Z_native, pseudo_abundance_matrix, p
 # Main Execution
 # ============================================================
 if __name__ == "__main__":
-    RUZICKA_DIR = "/home/breallis/dev/range_limits_pymc/misc_outputs/ruzicka_sweep_global/sigma_1.0" 
+    RUZICKA_DIR = _cfg["community_bridge"]["ruzicka_dir"]
     TAXONOMY_FILE = os.path.join(EBIRD_DIR, "eBird_taxonomy_v2025.csv")
-    AVONET_CSV_PATH = "/home/breallis/dev/range_limits_pymc/misc_outputs/AVONET_Comparison_WithPhylogeny_Urban.csv" # Update to full absolute path if needed
+    AVONET_CSV_PATH = _cfg["community_bridge"]["avonet_csv"]
     
     print("1. Loading Model Data and MAP Parameters...")
     data = load_data_to_gpu(INPUT_DIR, precision=PRECISION)

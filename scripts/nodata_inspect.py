@@ -1,9 +1,17 @@
 #!/usr/bin/env python3
 
+import os
+import sys
 import rasterio
 import numpy as np
 import xarray as xr
 from pathlib import Path
+
+_repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if _repo_root not in sys.path:
+    sys.path.insert(0, _repo_root)
+from src.config_utils import load_data_config
+_DR = load_data_config()["datasets_root"]
 
 # ------------------------------------------------------------
 # NetCDF (PRISM) nodata inspection
@@ -178,6 +186,6 @@ if __name__ == "__main__":
     # inspect_folder("/home/breallis/datasets/ebird_abundances", "*.tif", limit=3)
 
     # BUI example
-    inspect_folder("/home/breallis/datasets/HBUI/BUI", "*.tif", limit=3)
+    inspect_folder(f"{_DR}/HBUI/BUI", "*.tif", limit=3)
 
     print("\nEdit the paths in the __main__ block to inspect your datasets.\n")

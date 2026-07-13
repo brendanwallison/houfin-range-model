@@ -21,8 +21,17 @@ PNG generation:
 # ======================= DEFAULTS ============================
 # ============================================================
 
-BUI_DIR = "/home/breallis/datasets/HBUI/BUI"
-WATER_MASK_PATH = "/home/breallis/datasets/land_mask/watermask_2025_in_bui_space.tif"
+import os
+import sys
+
+_repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if _repo_root not in sys.path:
+    sys.path.insert(0, _repo_root)
+from src.config_utils import load_data_config
+_DR = load_data_config()["datasets_root"]
+
+BUI_DIR = f"{_DR}/HBUI/BUI"
+WATER_MASK_PATH = f"{_DR}/land_mask/watermask_2025_in_bui_space.tif"
 
 BLOCK_SIZE = 16  # 4 km = 16 × 250 m pixels
 

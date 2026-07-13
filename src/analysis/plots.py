@@ -102,7 +102,8 @@ def plot_demographic_response_curves(samples, data, z_names, target_idx, output_
     
     S_a = jnn.sigmoid(_m('alpha_a') + gamma_a * H_s)
     S_j = jnn.sigmoid(_m('alpha_j') + gamma_j * H_s)
-    F_max = np.exp(_m('alpha_f') + gamma_f * H_r)
+    # Must match the model's link function (age_fields.py uses softplus, not exp).
+    F_max = jnn.softplus(_m('alpha_f') + gamma_f * H_r)
 
     fig, ax1 = plt.subplots(figsize=(8, 6))
     ax1.plot(z_sweep, S_a, color='navy', lw=2, label='$S_a$')

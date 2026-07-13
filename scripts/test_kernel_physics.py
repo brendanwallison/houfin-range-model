@@ -14,6 +14,10 @@ project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 if project_root not in sys.path:
     sys.path.append(project_root)
 
+from src.config_utils import load_data_config
+_DR = load_data_config()["datasets_root"]
+_PR = load_data_config()["processed_root"]
+
 from src.model.build_kernels import build_simulation_struct, get_gamma_scale
 
 def get_log_spaced_splits(min_dist, max_dist, n_bins):
@@ -221,8 +225,8 @@ def main(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--input_dir", type=str, default="/home/breallis/datasets/latent_avian_community_similarities")
-    parser.add_argument("--output_dir", type=str, default="/home/breallis/processed_data/datasets/latent_avian_path_diagnostics")
+    parser.add_argument("--input_dir", type=str, default=f"{_DR}/latent_avian_community_similarities")
+    parser.add_argument("--output_dir", type=str, default=f"{_PR}/datasets/latent_avian_path_diagnostics")
     
     parser.add_argument("--mean_dispersal_km", type=float, default=330.0)
     parser.add_argument("--shape_param", type=float, default=0.468)

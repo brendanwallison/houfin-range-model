@@ -72,22 +72,50 @@ def load_mask_for_z(z_dir, ebird_dir, ebird_pattern="*_abundance_median_*.tif"):
     return union_mask
 
 def smoothed_hellinger_transform(ebird_flat, n_weeks, sigma):
+    """Temporal smoothing + Hellinger (row-normalized sqrt) transform."""
     N, D = ebird_flat.shape
     n_species = D // n_weeks
     data_3d = ebird_flat.reshape(N, n_species, n_weeks)
-    
+
     # Fill NaNs with 0 before smoothing
     data_3d = np.nan_to_num(data_3d, nan=0.0)
-    
+
     if sigma > 1e-5:
         data_smoothed = gaussian_filter1d(data_3d, sigma=sigma, axis=-1, mode='wrap')
     else:
         data_smoothed = data_3d
-        
+
     data_flat = data_smoothed.reshape(N, -1)
     row_sums = data_flat.sum(axis=1, keepdims=True)
-    row_sums[row_sums < 1e-9] = 1.0 
+    row_sums[row_sums < 1e-9] = 1.0
     return np.sqrt(data_flat / row_sums)
+
+
+def smooth_abundances_only(ebird_flat, n_weeks, sigma):
+    """Gaussian temporal smoothing along weeks, no normalization.
+
+    This is the preprocessing matching the Ruzicka-similarity pipeline
+    (raw, non-negative abundances rather than Hellinger-normalized ones).
+    """
+    N, D = ebird_flat.shape
+    n_species = D // n_weeks
+    data_3d = ebird_flat.reshape(N, n_species, n_weeks)
+    data_3d = np.nan_to_num(data_3d, nan=0.0)
+
+    if sigma > 1e-5:
+        data_smoothed = gaussian_filter1d(data_3d, sigma=sigma, axis=-1, mode='wrap')
+    else:
+        data_smoothed = data_3d
+
+    data_smoothed = np.maximum(data_smoothed, 0.0)
+    return data_smoothed.reshape(N, -1)
+
+
+# Preprocessing transforms selectable at the command line.
+TRANSFORMS = {
+    "ruzicka": smooth_abundances_only,
+    "hellinger": smoothed_hellinger_transform,
+}
 
 # ============================================================
 # 2. LATENT AUDITOR (With Detailed CSV Summary)
@@ -380,14 +408,31 @@ class GeoCovarianceProbe:
 # 4. EXECUTION BLOCK
 # ============================================================
 if __name__ == "__main__":
-    # --- CONFIGURATION ---
-    DATA_DIR = "/home/breallis/datasets/ebird_weekly_2023_albers"
-    
-    # POINT THIS TO WHERE YOUR PREDICTION IS SAVED
-    Z_DIR = "/home/breallis/dev/range_limits_pymc/misc_outputs/rbf_stochastic"
-    Z_PATH = os.path.join(Z_DIR, "Z_stochastic.npy")
-    OUT_DIR = "/home/breallis/dev/range_limits_pymc/misc_outputs/rbf_stochastic"
-    SIGMA = 0.5
+    import argparse
+    import sys
+
+    project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
+    if project_root not in sys.path:
+        sys.path.append(project_root)
+    from src.config_utils import load_config
+
+    parser = argparse.ArgumentParser(description="Interpret the ESK/DESK latent space.")
+    parser.add_argument("--transform", choices=list(TRANSFORMS), default="ruzicka",
+                        help="Preprocessing transform for the eBird abundance vectors.")
+    parser.add_argument("--sigma", type=float, default=0.5, help="Temporal smoothing sigma.")
+    parser.add_argument("--z-dir", default=None, help="Override the latent (Z) directory.")
+    parser.add_argument("--out-dir", default=None, help="Override the output directory.")
+    args = parser.parse_args()
+
+    # --- CONFIGURATION (from esk_desk_config.json, overridable via flags) ---
+    cfg = load_config()
+    DATA_DIR = cfg["paths"]["ebird_folder"]
+    Z_DIR = args.z_dir or cfg["desk"]["z_dir"]
+    Z_PATH = os.path.join(Z_DIR, "Z.npy")
+    OUT_DIR = args.out_dir or os.path.join(Z_DIR, "latent_audit")
+    SIGMA = args.sigma
+    transform_fn = TRANSFORMS[args.transform]
+    os.makedirs(OUT_DIR, exist_ok=True)
 
     if not os.path.exists(Z_PATH):
         raise FileNotFoundError(f"Z matrix not found at {Z_PATH}")
@@ -396,7 +441,7 @@ if __name__ == "__main__":
 
     # 1. Load the Strict Mask
     valid_mask = load_mask_for_z(Z_DIR, DATA_DIR, "*_abundance_median_2023-*.tif")
-    
+
     # 2. Check Alignment
     N_pixels = np.sum(valid_mask)
     if N_pixels != Z.shape[0]:
@@ -409,9 +454,9 @@ if __name__ == "__main__":
 
     print("Creating aligned feature matrix...")
     # CRITICAL: We flatten the stack using the Z-mask
-    ebird_flat_raw = ebird_stack[valid_mask] 
-    ebird_smooth = smoothed_hellinger_transform(ebird_flat_raw, meta['n_weeks'], sigma=SIGMA)
-    
+    ebird_flat_raw = ebird_stack[valid_mask]
+    ebird_smooth = transform_fn(ebird_flat_raw, meta['n_weeks'], sigma=SIGMA)
+
     # 4. Run Interpretation
     latent_auditor = LatentAuditor(Z, ebird_smooth, meta, valid_mask, H, W, OUT_DIR)
     latent_auditor.run_all() # Generates detailed CSV

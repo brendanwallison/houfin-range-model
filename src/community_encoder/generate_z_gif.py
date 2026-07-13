@@ -1,13 +1,19 @@
 import os
+import sys
 import glob
 import numpy as np
 import matplotlib.pyplot as plt
 from tqdm import tqdm
 import imageio.v2 as imageio
 
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
+if project_root not in sys.path:
+    sys.path.append(project_root)
+from src.config_utils import load_config
+
 def generate_rgb_timeseries():
     # --- CONFIG ---
-    Z_DIR = "/home/breallis/dev/range_limits_pymc/misc_outputs/ruzicka_sweep_global/sigma_1.5/results/spacetime_cube"
+    Z_DIR = load_config()["latent_cube"]["output_dir"]
     OUT_DIR = os.path.join(Z_DIR, "rgb_visualization")
     os.makedirs(OUT_DIR, exist_ok=True)
     

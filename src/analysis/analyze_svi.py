@@ -10,7 +10,7 @@ if project_root not in sys.path:
     sys.path.append(project_root)
 
 from src.model.age_priors import build_model_2d
-from src.model.age_run_map import load_data_to_gpu
+from src.model.data_loading import load_data_to_gpu
 from src.analysis.engine import load_params, reconstruct_latents
 from src.analysis.plots import (
     plot_posterior_weights, 
@@ -25,8 +25,10 @@ from src.analysis.plots import (
 PRECISION = 'float32'
 jax.config.update("jax_enable_x64", False)
 
-VI_RESULT_DIR = "/home/breallis/processed_data/model_results/age_vi_float32_run_15"
-INPUT_DIR = "/home/breallis/processed_data/model_inputs/numpyro_input"
+from src.config_utils import load_age_model_config
+_cfg = load_age_model_config()
+VI_RESULT_DIR = os.path.join(_cfg["results_dir"], _cfg["run_names"]["resume_svi_out"].format(precision=PRECISION))
+INPUT_DIR = _cfg["input_dir"]
 OUTPUT_DIR = os.path.join(VI_RESULT_DIR, "analysis_plots")
 CACHE_FILE = os.path.join(OUTPUT_DIR, "reconstructed_samples.npz")
 
@@ -40,7 +42,7 @@ def run_full_svi_analysis():
     # 2. Setup Labels safely matching the actual input data dimension
     actual_M = data['Z_gathered'].shape[-1] # Evaluates to 16
     
-    PATH_INTEGRATION_DIR = "/home/breallis/processed_data/datasets/latent_avian_path_diagnostics"
+    PATH_INTEGRATION_DIR = _cfg["path_diagnostics_dir"]
     disp_files = glob.glob(os.path.join(PATH_INTEGRATION_DIR, "Z_disp_*.npz"))
     
     loaded_labels = []

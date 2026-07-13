@@ -1,12 +1,18 @@
 import os
+import sys
 import pickle
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../'))
+if project_root not in sys.path:
+    sys.path.append(project_root)
+from src.config_utils import load_age_model_config
+
 # --- CONFIGURATION ---
 # Path to the OUTPUT of ingest_model_data.py
-INPUT_DIR = "/home/breallis/processed_data/model_inputs/numpyro_input"
+INPUT_DIR = load_age_model_config()["input_dir"]
 METADATA_PATH = os.path.join(INPUT_DIR, "metadata.pkl")
 OUTPUT_PLOT_PATH = "check_ingested_data.png"
 

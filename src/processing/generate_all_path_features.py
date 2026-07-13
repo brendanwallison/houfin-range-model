@@ -235,10 +235,13 @@ def main(args):
     print(f"Output directory: {args.output_dir}")
 
 if __name__ == "__main__":
+    from src.config_utils import load_age_model_config
+    _pf = load_age_model_config()["path_features"]
+
     parser = argparse.ArgumentParser()
     parser.add_argument("--year", type=str, default="all", help="Year to process (e.g. '1990' or 'all')")
-    parser.add_argument("--input_dir", type=str, default="/home/breallis/datasets/latent_avian_community_similarities")
-    parser.add_argument("--output_dir", type=str, default="/home/breallis/processed_data/datasets/latent_avian_paths")
+    parser.add_argument("--input_dir", type=str, default=_pf["input_dir"])
+    parser.add_argument("--output_dir", type=str, default=_pf["output_dir"])
     parser.add_argument("--steps", type=int, default=20, help="Number of integration steps")
     parser.add_argument("--viz", action='store_true', default=True, help="Generate PNG visualizations")
     

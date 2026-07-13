@@ -15,18 +15,20 @@ import optax
 PRECISION = 'float32'
 jax.config.update("jax_enable_x64", True if PRECISION == 'float64' else False)
 
-# Output directory for the VI results
-RESULT_DIR = f"/home/breallis/processed_data/model_results/age_vi_{PRECISION}_run_15"
-# Source directory of your converged Adam/L-BFGS MAP run
-PREVIOUS_MAP_DIR = f"/home/breallis/processed_data/model_results/age_map_{PRECISION}_run_13"
-INPUT_DIR = "/home/breallis/processed_data/model_inputs/numpyro_input"
-
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../'))
 if project_root not in sys.path:
     sys.path.append(project_root)
 
 from src.model.age_priors import build_model_2d
-from src.model.age_run_map import load_data_to_gpu
+from src.model.data_loading import load_data_to_gpu
+from src.config_utils import load_age_model_config
+
+_cfg = load_age_model_config()
+INPUT_DIR = _cfg["input_dir"]
+# Output directory for the VI results
+RESULT_DIR = os.path.join(_cfg["results_dir"], _cfg["run_names"]["resume_svi_out"].format(precision=PRECISION))
+# Source directory of the converged MAP run this warm-starts from
+PREVIOUS_MAP_DIR = os.path.join(_cfg["results_dir"], _cfg["run_names"]["resume_svi_from_map"].format(precision=PRECISION))
 
 def run_vi_resume():
     print(f"--- Resuming MAP as Variational Inference Initializer ---")

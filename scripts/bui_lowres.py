@@ -1,15 +1,23 @@
+import os
+import sys
 import argparse
 import numpy as np
 import rasterio
 import matplotlib.pyplot as plt
 
+_repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if _repo_root not in sys.path:
+    sys.path.insert(0, _repo_root)
+from src.config_utils import load_data_config
+_DR = load_data_config()["datasets_root"]
+
 
 # ---------------------------------------------------------
 # Hardcoded defaults (used when no CLI args are provided)
 # ---------------------------------------------------------
-DEFAULT_BUI_PATH = "/home/breallis/datasets/HBUI/BUI/2020_BUI.tif"
+DEFAULT_BUI_PATH = f"{_DR}/HBUI/BUI/2020_BUI.tif"
 DEFAULT_FACTOR = 16          # 16 → ~4 km
-DEFAULT_PNG_PATH = "/home/breallis/datasets/HBUI/bui_2020_lowres_powerdot1.png"
+DEFAULT_PNG_PATH = f"{_DR}/HBUI/bui_2020_lowres_powerdot1.png"
 DEFAULT_LOGSCALE = False     # default: linear scale
 DEFAULT_POWER = 0.1         # None = no power transform
 

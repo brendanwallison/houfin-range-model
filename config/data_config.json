@@ -1,4 +1,7 @@
 {
   "datasets_root": "/home/breallis/datasets",
-  "processed_root": "/home/breallis/processed_data"
+  "processed_root": "/home/breallis/processed_data",
+  "ebird_version_year": 2023,
+  "ebird_raw_subdir": "ebird_weekly_2023",
+  "species_list": "/home/breallis/datasets/avonet/reference_community_ranked.csv"
 }

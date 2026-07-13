@@ -8,16 +8,16 @@ version = "0.1.0"
 description = "Age-structured, spatially-explicit model of house-finch range expansion, fit with NumPyro/JAX."
 readme = "README.md"
 requires-python = ">=3.12"
+# Core: data acquisition, preprocessing, geospatial I/O, analysis, plotting.
+# No GPU / deep-learning deps live here, so this set installs on any platform
+# (macOS included) and is enough to run the entire data pipeline locally
+# (download_ebird, avonet_pipeline, project_*, ingest, plotting).
 dependencies = [
     "dendropy>=5.0.8",
     "geopandas>=1.1.2",
     "imageio>=2.37.2",
-    "jax[cuda11-cudnn82,cuda13]>=0.8.1",
-    "jaxlib[cuda11-cudnn82]>=0.8.1",
     "matplotlib>=3.10.8",
     "numpy>=2.3.5",
-    "numpyro>=0.19.0",
-    "optax>=0.2.7",
     "pandas>=2.3.3",
     "rasterio>=1.4.4",
     "requests>=2.32.5",
@@ -25,7 +25,26 @@ dependencies = [
     "scipy>=1.16.3",
     "seaborn>=0.13.2",
     "shapely>=2.1.2",
+    "tqdm>=4.67",
+    "xarray>=2025.12",
+]
+
+[project.optional-dependencies]
+# The Bayesian age-structured model (NumPyro/JAX) and community-encoder
+# training/ESK (PyTorch). CPU-capable but heavy; needed only to fit or train,
+# not for the data pipeline.  Install with:  pip install -e ".[model]"
+model = [
+    "jax>=0.8.1",
+    "numpyro>=0.19.0",
+    "optax>=0.2.7",
     "torch>=2.9.1",
+]
+# GPU acceleration on the Linux workstation. The CUDA extra is Linux-only and
+# is the reason the model deps cannot install on macOS; keep it opt-in and
+# tailor the CUDA version to the box (developed against CUDA 13).
+#   pip install -e ".[model,gpu]"
+gpu = [
+    "jax[cuda13]>=0.8.1",
 ]
 
 [tool.setuptools]

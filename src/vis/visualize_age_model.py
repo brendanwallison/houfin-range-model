@@ -23,14 +23,16 @@ if project_root not in sys.path:
 
 from src.model.age_priors import build_model_2d 
 from src.model.age_forward import dispersal_step_age_structured, reproduction_age_structured
-from src.model.age_run_map import load_data_to_gpu
+from src.model.data_loading import load_data_to_gpu
+from src.config_utils import load_age_model_config
 
 # --- CONFIGURATION ---
-PRECISION = 'float32' 
+PRECISION = 'float32'
 jax.config.update("jax_enable_x64", True if PRECISION == 'float64' else False)
 
-INPUT_DIR = "/home/breallis/processed_data/model_inputs/numpyro_input"
-RESULT_DIR = f"/home/breallis/processed_data/model_results/age_map_{PRECISION}_run_3"
+_cfg = load_age_model_config()
+INPUT_DIR = _cfg["input_dir"]
+RESULT_DIR = os.path.join(_cfg["results_dir"], _cfg["run_names"]["vis_map"].format(precision=PRECISION))
 OUTPUT_PLOT_DIR = os.path.join(RESULT_DIR, "plots_analysis")
 os.makedirs(OUTPUT_PLOT_DIR, exist_ok=True)
 
@@ -1220,7 +1222,7 @@ def plot_results():
     with open(os.path.join(RESULT_DIR, "map_params.pkl"), 'rb') as f: params = pickle.load(f)
 
     # --- Load Kernel Labels ---
-    PATH_INTEGRATION_DIR = "/home/breallis/processed_data/datasets/latent_avian_path_diagnostics"
+    PATH_INTEGRATION_DIR = _cfg["path_diagnostics_dir"]
     disp_files = glob.glob(os.path.join(PATH_INTEGRATION_DIR, "Z_disp_*.npz"))
     
     if not disp_files:

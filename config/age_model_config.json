@@ -1,0 +1,31 @@
+{
+  "input_dir": "/home/breallis/processed_data/model_inputs/numpyro_input",
+  "raw_z_dir": "/home/breallis/processed_data/datasets/latent_avian_paths",
+  "bbs_npz": "/home/breallis/datasets/bbs_2024_release/bbs_data_for_python.npz",
+  "ocean_mask": "/home/breallis/datasets/latent_avian_community_similarities/ocean_mask_4km.tif",
+  "ebird_dir": "/home/breallis/datasets/ebird_weekly_2023_albers",
+  "results_dir": "/home/breallis/processed_data/model_results",
+  "path_features": {
+    "input_dir": "/home/breallis/datasets/latent_avian_community_similarities",
+    "output_dir": "/home/breallis/processed_data/datasets/latent_avian_paths"
+  },
+  "path_diagnostics_dir": "/home/breallis/processed_data/datasets/latent_avian_path_diagnostics",
+  "community_bridge": {
+    "ruzicka_dir": "/home/breallis/dev/range_limits_pymc/misc_outputs/ruzicka_sweep_global/sigma_1.0",
+    "avonet_csv": "/home/breallis/dev/range_limits_pymc/misc_outputs/AVONET_Comparison_WithPhylogeny_Urban.csv"
+  },
+  "run_names": {
+    "map": "age_map_{precision}_run_4",
+    "svi": "age_vi_{precision}_run_5",
+    "hmc": "age_hmc_{precision}_trial_3",
+    "hmc_svi_source": "age_vi_{precision}_run_2",
+    "resume_svi_out": "age_vi_{precision}_run_15",
+    "resume_svi_from_map": "age_map_{precision}_run_13",
+    "resume_hmc_out": "age_hmc_{precision}_from_map",
+    "resume_hmc_from_map": "age_map_{precision}_run_16",
+    "vis_map": "age_map_{precision}_run_3",
+    "vis_svi": "age_vi_{precision}_run_5",
+    "vis_hmc": "age_hmc_{precision}_trial_3",
+    "vis_community": "age_map_{precision}_run_14"
+  }
+}

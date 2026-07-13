@@ -297,8 +297,15 @@ def train_sanity_check(train, val, input_dim, latent_dim,
 # 6. Main
 # ============================================================
 if __name__ == "__main__":
-    DATA_DIR = "/home/breallis/datasets"
-    Z_PATH = "/home/breallis/dev/range_limits_pymc/misc_outputs/rbf_stochastic/Z_stochastic.npy"
+    import sys
+    project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
+    if project_root not in sys.path:
+        sys.path.append(project_root)
+    from src.config_utils import load_config
+
+    _cfg = load_config()
+    DATA_DIR = _cfg["paths"]["data_dir"]
+    Z_PATH = os.path.join(_cfg["desk"]["z_dir"], "Z.npy")
     
     # 1. Load Raw Abundance Stack
     print("--- 1. Loading Abundance Data ---")

@@ -1,13 +1,20 @@
 import os
+import sys
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 from scipy.stats import pearsonr
 
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
+if project_root not in sys.path:
+    sys.path.append(project_root)
+from src.config_utils import load_config
+
 def correlate_climate_drivers_robust():
     # --- CONFIG ---
-    DATA_DIR = "/home/breallis/datasets"
-    Z_DIR = "/home/breallis/dev/range_limits_pymc/misc_outputs/ruzicka_sweep_global/sigma_1.5/results/spacetime_cube"
+    _cfg = load_config()
+    DATA_DIR = _cfg["latent_cube"]["data_dir"]
+    Z_DIR = _cfg["latent_cube"]["output_dir"]
     OUT_DIR = os.path.join(Z_DIR, "analysis_plots_raw")
     
     # Locate State Files

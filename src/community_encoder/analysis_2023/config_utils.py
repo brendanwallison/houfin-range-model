@@ -1,17 +1,12 @@
-import json
-from pathlib import Path
-from typing import Any, Dict, Optional, Union
+"""Backward-compatible shim. The canonical loader now lives in ``src/config_utils.py``.
 
+Community-encoder entrypoints put ``src/`` on ``sys.path`` (so the module is
+importable as ``config_utils``); the age-model pipeline puts the repo root on
+``sys.path`` (so it is ``src.config_utils``). Support both.
+"""
+try:
+    from src.config_utils import load_config, resolve_repo_root
+except ModuleNotFoundError:
+    from config_utils import load_config, resolve_repo_root
 
-def load_config(config_path: Optional[Union[str, Path]] = None) -> Dict[str, Any]:
-    if config_path is None:
-        config_path = Path(__file__).resolve().parents[3] / "config" / "esk_desk_config.json"
-    else:
-        config_path = Path(config_path)
-
-    with config_path.open("r", encoding="utf-8") as handle:
-        return json.load(handle)
-
-
-def resolve_repo_root() -> Path:
-    return Path(__file__).resolve().parents[3]
+__all__ = ["load_config", "resolve_repo_root"]

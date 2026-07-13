@@ -15,12 +15,14 @@ if project_root not in sys.path:
 
 import jax.numpy as jnp
 from src.model.build_kernels import build_simulation_struct
+from src.config_utils import load_age_model_config
 
 # --- CONFIGURATION ---
-RAW_Z_DIR = "/home/breallis/processed_data/datasets/latent_avian_paths"
-BBS_DATA_NPZ = "/home/breallis/datasets/bbs_2024_release/bbs_data_for_python.npz"
-MASK_FILE = "/home/breallis/datasets/latent_avian_community_similarities/ocean_mask_4km.tif"
-OUTPUT_DIR = "/home/breallis/processed_data/model_inputs/numpyro_input"
+_cfg = load_age_model_config()
+RAW_Z_DIR = _cfg["raw_z_dir"]
+BBS_DATA_NPZ = _cfg["bbs_npz"]
+MASK_FILE = _cfg["ocean_mask"]
+OUTPUT_DIR = _cfg["input_dir"]
 
 # --- PARAMETERS ---
 AGG_FACTOR = 4          

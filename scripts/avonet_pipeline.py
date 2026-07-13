@@ -13,20 +13,27 @@ Adds:
 """
 
 import os
+import sys
 import numpy as np
 import pandas as pd
 import dendropy
+
+_repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if _repo_root not in sys.path:
+    sys.path.insert(0, _repo_root)
+from src.config_utils import load_data_config
+_DR = load_data_config()["datasets_root"]
 
 # ------------------------------------------------------------
 # Configuration
 # ------------------------------------------------------------
 
-BL_PATH = "/home/breallis/datasets/avonet/TraitData/AVONET1_BirdLife.csv"
-CROSSWALK_PATH = "/home/breallis/datasets/avonet/PhylogeneticData/BirdLife-BirdTree crosswalk.csv"
-PHYLO_PATH = "/home/breallis/datasets/avonet/PhylogeneticData/HackettStage1_0001_1000_MCCTreeTargetHeights.nex"
+BL_PATH = f"{_DR}/avonet/TraitData/AVONET1_BirdLife.csv"
+CROSSWALK_PATH = f"{_DR}/avonet/PhylogeneticData/BirdLife-BirdTree crosswalk.csv"
+PHYLO_PATH = f"{_DR}/avonet/PhylogeneticData/HackettStage1_0001_1000_MCCTreeTargetHeights.nex"
 
-URBAN_PATH = "/home/breallis/datasets/urban_avian/spp_urban_indices.csv"
-EBIRD_CROSSWALK_PATH = "/home/breallis/datasets/ebird_weekly_2023_albers/eBird_taxonomy_v2025.csv"
+URBAN_PATH = f"{_DR}/urban_avian/spp_urban_indices.csv"
+EBIRD_CROSSWALK_PATH = f"{_DR}/ebird_weekly_2023_albers/eBird_taxonomy_v2025.csv"
 
 OUTPUT_FILTERED = "AVONET_Filtered_ByUrbanSpecies.csv"
 OUTPUT_COMPARISON = "AVONET_Comparison_WithPhylogeny_Urban.csv"

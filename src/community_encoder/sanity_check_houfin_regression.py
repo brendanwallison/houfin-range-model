@@ -11,22 +11,25 @@ Outputs:
 - observed_log1p.png
 """
 
+import os
+import sys
+
 import numpy as np
 import rasterio
 import matplotlib.pyplot as plt
 
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
+if project_root not in sys.path:
+    sys.path.append(project_root)
+from src.config_utils import load_config
+
 # ============================================================
-# 1. Paths
+# 1. Directories (from single_year_analysis block of the config)
 # ============================================================
 
-import os
-
-# ============================================================
-# 1. Directories
-# ============================================================
-
-result_dir = "/home/breallis/dev/range_limits_pymc/misc_outputs/ruzicka_sweep_global/sigma_0.5"
-out_dir = "/home/breallis/dev/range_limits_pymc/misc_outputs/ruzicka_sweep_global/sigma_0.5/blr"
+_sya = load_config()["single_year_analysis"]
+result_dir = os.path.dirname(_sya["esk_feature_path"])
+out_dir = os.path.join(result_dir, "blr")
 
 os.makedirs(out_dir, exist_ok=True)
 
@@ -34,9 +37,9 @@ os.makedirs(out_dir, exist_ok=True)
 # 2. Input paths
 # ============================================================
 
-Z_PATH = os.path.join(result_dir, "Z.npy")                   # (N_valid, D)
-MASK_PATH = os.path.join(result_dir, "valid_mask.npy")       # (H, W) boolean
-EBIRD_TIF = os.path.join(result_dir, "houfin_abundance_seasonal_year_round_mean_2023_bui4km.tif") # (H, W)
+Z_PATH = _sya["esk_feature_path"]      # (N_valid, D)
+MASK_PATH = _sya["mask_path"]          # (H, W) boolean
+EBIRD_TIF = _sya["response_path"]      # (H, W)
 
 # ============================================================
 # 3. Output paths

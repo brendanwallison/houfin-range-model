@@ -1,9 +1,17 @@
+import os
+import sys
 import rasterio
 from rasterio.warp import reproject, Resampling
 import numpy as np
 import matplotlib.pyplot as plt
 
-def reproject_water_mask(mask_path, bui_path, out_path="/home/breallis/datasets/land_mask/watermask_reproj.tif"):
+_repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if _repo_root not in sys.path:
+    sys.path.insert(0, _repo_root)
+from src.config_utils import load_data_config
+_DR = load_data_config()["datasets_root"]
+
+def reproject_water_mask(mask_path, bui_path, out_path=f"{_DR}/land_mask/watermask_reproj.tif"):
     """
     Reproject the water mask (EPSG:4326) into the BUI CRS/grid.
     Saves the reprojected mask as a GeoTIFF and returns the array.
@@ -134,13 +142,13 @@ def visualize_mask(mask_array, png_path="watermask_reproj.png"):
     plt.close()
 
 if __name__ == "__main__":
-    mask_path = "/home/breallis/datasets/land_mask/watermask_2025.nc"
-    bui_path = "/home/breallis/datasets/HBUI/BUI/2020_BUI.tif"
+    mask_path = f"{_DR}/land_mask/watermask_2025.nc"
+    bui_path = f"{_DR}/HBUI/BUI/2020_BUI.tif"
 
     mask_reproj = reproject_water_mask(
         mask_path=mask_path,
         bui_path=bui_path,
-        out_path="/home/breallis/datasets/land_mask/watermask_2025_in_bui_space.tif"
+        out_path=f"{_DR}/land_mask/watermask_2025_in_bui_space.tif"
     )
 
     visualize_mask(mask_reproj, png_path="watermask_reproj.png")

@@ -26,51 +26,13 @@ if project_root not in sys.path:
 
 from src.model.age_priors import build_model_2d
 from src.model.age_forward import dispersal_step_age_structured, reproduction_age_structured
+from src.model.data_loading import load_data
+from src.config_utils import load_age_model_config
 
 # --- CONFIGURATION ---
-INPUT_DIR = "/home/breallis/processed_data/model_inputs/numpyro_input"
-OUTPUT_DIR = f"/home/breallis/processed_data/model_results/age_hmc_{PRECISION}_trial_3"
-
-def load_data(input_dir, target_device, precision='float32'):
-    meta_path = os.path.join(input_dir, "metadata.pkl")
-    with open(meta_path, 'rb') as f:
-        meta = pickle.load(f)
-    
-    f_type_cpu = np.float32 if precision == 'float32' else np.float64
-    f_type_target = jnp.float32 if precision == 'float32' else jnp.float64
-    i_type_target = jnp.int32 if precision == 'float32' else jnp.int64
-
-    streaming_keys = {'Z_gathered', 'Z_disp_gathered', 'st_basis'}
-
-    z_shape = (meta['time'], meta['N_land'], meta['M'])
-    z_mem = np.memmap(os.path.join(input_dir, meta['z_gathered_path']), 
-                      dtype='float32', mode='r', shape=z_shape)
-    
-    z_disp_shape = (meta['time'], meta['N_land'], meta['K'], meta['M'])
-    z_disp_mem = np.memmap(os.path.join(input_dir, meta['z_disp_gathered_path']), 
-                           dtype='float32', mode='r', shape=z_disp_shape)
-    
-    meta['Z_gathered'] = np.array(z_mem).astype(f_type_cpu)
-    meta['Z_disp_gathered'] = np.array(z_disp_mem).astype(f_type_cpu)
-
-    print(f"Iterating through metadata and casting to {precision} on device: {target_device}...")
-    for key, value in meta.items():
-        if isinstance(value, np.ndarray):
-            if key in streaming_keys:
-                meta[key] = value.astype(f_type_cpu)
-            else:
-                with jax.default_device(target_device):
-                    if np.issubdtype(value.dtype, np.floating):
-                        meta[key] = jnp.array(value).astype(f_type_target)
-                    elif np.issubdtype(value.dtype, np.integer):
-                        meta[key] = jnp.array(value).astype(i_type_target)
-                    else:
-                        meta[key] = jnp.array(value)
-
-    if precision == 'float32' and meta.get('pseudo_zero', 0) < 1e-7:
-        meta['pseudo_zero'] = 1e-7
-
-    return meta
+_cfg = load_age_model_config()
+INPUT_DIR = _cfg["input_dir"]
+OUTPUT_DIR = os.path.join(_cfg["results_dir"], _cfg["run_names"]["hmc"].format(precision=PRECISION))
 
 def run_hmc_trial():
     print(f"--- Starting {PRECISION.upper()} HMC Trial (NeuTra Reparameterized) ---")
@@ -81,7 +43,11 @@ def run_hmc_trial():
     data_dict = load_data(INPUT_DIR, gpu_device, precision=PRECISION)
     
     # 2. Load the SVI Parameters
-    svi_params_path = f"/home/breallis/processed_data/model_results/age_vi_{PRECISION}_run_2/svi_params.pkl"
+    svi_params_path = os.path.join(
+        _cfg["results_dir"],
+        _cfg["run_names"]["hmc_svi_source"].format(precision=PRECISION),
+        "svi_params.pkl",
+    )
     if not os.path.exists(svi_params_path):
         raise FileNotFoundError(f"Could not find SVI params at {svi_params_path}. Run SVI script first.")
     

@@ -1,7 +1,15 @@
+import os
+import sys
 import rasterio
 from pathlib import Path
 
-folder = Path("/home/breallis/datasets/ebird_abundances")
+_repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if _repo_root not in sys.path:
+    sys.path.insert(0, _repo_root)
+from src.config_utils import load_data_config
+_DR = load_data_config()["datasets_root"]
+
+folder = Path(f"{_DR}/ebird_abundances")
 
 meta = []
 

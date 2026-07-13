@@ -1,8 +1,17 @@
+import os
+import sys
+
 import rasterio
 from rasterio.warp import transform
 from rasterio.crs import CRS
 
-mask_path = "/home/breallis/datasets/land_mask/watermask_2025.nc"
+_repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if _repo_root not in sys.path:
+    sys.path.insert(0, _repo_root)
+from src.config_utils import load_data_config
+_DR = load_data_config()["datasets_root"]
+
+mask_path = f"{_DR}/land_mask/watermask_2025.nc"
 
 with rasterio.open(mask_path) as src:
     # Override CRS manually (the file has no CRS metadata)

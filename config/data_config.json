@@ -3,5 +3,10 @@
   "processed_root": "/home/breallis/processed_data",
   "ebird_version_year": 2023,
   "ebird_raw_subdir": "ebird_weekly_2023",
-  "species_list": "/home/breallis/datasets/avonet/reference_community_ranked.csv"
+  "species_list": "/home/breallis/datasets/avonet/reference_community_ranked.csv",
+  "grid": {
+    "target_res_m": 4000,
+    "ref_raster": "/home/breallis/datasets/HBUI/BUI/2020_BUI_4km.tif",
+    "_comment": "Single source of truth for the model grid. target_res_m is the tunable resolution knob; ref_raster defines the CRS/transform/extent every product is aligned to. Per-product block factors are derived at runtime from each source raster's native resolution (see src/processing/regrid.py). Change target_res_m here to re-derive the whole pipeline at a different resolution."
+  }
 }

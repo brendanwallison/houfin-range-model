@@ -10,13 +10,15 @@ from jax.numpy.fft import fft2, ifft2
 from scipy.special import gammainc  # Needed for theoretical mass calculation
 
 # --- Setup Paths ---
-project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 if project_root not in sys.path:
     sys.path.append(project_root)
 
 from src.config_utils import load_data_config
-_DR = load_data_config()["datasets_root"]
-_PR = load_data_config()["processed_root"]
+_CFG = load_data_config()
+_DR = _CFG["datasets_root"]
+_PR = _CFG["processed_root"]
+_RES_KM = _CFG["grid"]["target_res_m"] // 1000
 
 from src.model.build_kernels import build_simulation_struct, get_gamma_scale
 
@@ -126,7 +128,7 @@ def main(args):
     print(f"--- Testing Kernel Physics ---")
     
     # 1. Load Geometry
-    tif_path = os.path.join(args.input_dir, "ocean_mask_4km.tif")
+    tif_path = os.path.join(args.input_dir, f"ocean_mask_{_RES_KM}km.tif")
     if not os.path.exists(tif_path):
         print(f"Error: Missing {tif_path}")
         return

@@ -6,7 +6,7 @@ import matplotlib.animation as animation
 from scipy.ndimage import gaussian_filter
 from matplotlib.lines import Line2D
 
-_repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+_repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 if _repo_root not in sys.path:
     sys.path.insert(0, _repo_root)
 from src.config_utils import load_data_config

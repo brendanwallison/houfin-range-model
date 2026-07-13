@@ -12,13 +12,15 @@ from jax.numpy.fft import fft2, ifft2
 from tqdm import tqdm
 
 # --- Setup Paths ---
-project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 if project_root not in sys.path:
     sys.path.append(project_root)
 
 from src.config_utils import load_data_config
-_DR = load_data_config()["datasets_root"]
-_PR = load_data_config()["processed_root"]
+_CFG = load_data_config()
+_DR = _CFG["datasets_root"]
+_PR = _CFG["processed_root"]
+_RES_KM = _CFG["grid"]["target_res_m"] // 1000
 
 # 1. Import Kernels
 from src.model.build_kernels import make_radial_directional_kernels
@@ -153,7 +155,7 @@ def main(args):
     # 1. FILE PATHS
     z_filename = f"Z_latent_{args.year}.npy"
     z_path = os.path.join(args.input_dir, z_filename)
-    tif_path = os.path.join(args.input_dir, "ocean_mask_4km.tif")
+    tif_path = os.path.join(args.input_dir, f"ocean_mask_{_RES_KM}km.tif")
     
     # 2. LOAD LAND MASK & METADATA
     if not os.path.exists(tif_path):

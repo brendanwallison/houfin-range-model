@@ -8,5 +8,14 @@
     "target_res_m": 4000,
     "ref_raster": "/home/breallis/datasets/HBUI/BUI/2020_BUI_4km.tif",
     "_comment": "Single source of truth for the model grid. target_res_m is the tunable resolution knob; ref_raster defines the CRS/transform/extent every product is aligned to. Per-product block factors are derived at runtime from each source raster's native resolution (see src/processing/regrid.py). Change target_res_m here to re-derive the whole pipeline at a different resolution."
+  },
+  "dataverse": {
+    "server": "https://dataverse.harvard.edu",
+    "datasets": {
+      "bui": "doi:10.7910/DVN/CSLOJP"
+    },
+    "out_subdirs": {
+      "bui": "HBUI"
+    }
   }
 }

@@ -2,7 +2,7 @@
 .vscode/
 config/secrets.json
 checkpoints/
-data/
+/data/
 figures/
 notebooks/
 prism_monthly_4km/

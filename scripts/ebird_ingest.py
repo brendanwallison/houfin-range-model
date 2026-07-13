@@ -7,9 +7,12 @@ _repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if _repo_root not in sys.path:
     sys.path.insert(0, _repo_root)
 from src.config_utils import load_data_config
-_DR = load_data_config()["datasets_root"]
+_CFG = load_data_config()
+_DR = _CFG["datasets_root"]
 
-folder = Path(f"{_DR}/ebird_abundances")
+# Metadata sanity-check over the raw downloaded eBird rasters (same dir the
+# downloader writes to and project_ebird reads from).
+folder = Path(f"{_DR}/{_CFG.get('ebird_raw_subdir', 'ebird_weekly_2023')}")
 
 meta = []
 

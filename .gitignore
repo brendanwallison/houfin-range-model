@@ -1,5 +1,6 @@
 .venv/
 .vscode/
+config/secrets.json
 checkpoints/
 data/
 figures/
@@ -10,4 +11,5 @@ sanity_maps/
 misc_outputs/
 latent_audit_results/
 __pycache__/
+*.egg-info/
 old/

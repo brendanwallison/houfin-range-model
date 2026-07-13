@@ -22,7 +22,8 @@ _repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if _repo_root not in sys.path:
     sys.path.insert(0, _repo_root)
 from src.config_utils import load_data_config
-_DR = load_data_config()["datasets_root"]
+_CFG = load_data_config()
+_DR = _CFG["datasets_root"]
 
 # ------------------------------------------------------------
 # Configuration
@@ -35,8 +36,15 @@ PHYLO_PATH = f"{_DR}/avonet/PhylogeneticData/HackettStage1_0001_1000_MCCTreeTarg
 URBAN_PATH = f"{_DR}/urban_avian/spp_urban_indices.csv"
 EBIRD_CROSSWALK_PATH = f"{_DR}/ebird_weekly_2023_albers/eBird_taxonomy_v2025.csv"
 
-OUTPUT_FILTERED = "AVONET_Filtered_ByUrbanSpecies.csv"
-OUTPUT_COMPARISON = "AVONET_Comparison_WithPhylogeny_Urban.csv"
+# The clean, ordered species list the eBird downloader consumes; the two wide
+# analysis tables land alongside it. All config-driven (previously written to
+# the current working directory).
+SPECIES_LIST_PATH = _CFG.get(
+    "species_list", f"{_DR}/avonet/reference_community_ranked.csv"
+)
+_OUT_DIR = os.path.dirname(SPECIES_LIST_PATH) or "."
+OUTPUT_FILTERED = os.path.join(_OUT_DIR, "AVONET_Filtered_ByUrbanSpecies.csv")
+OUTPUT_COMPARISON = os.path.join(_OUT_DIR, "AVONET_Comparison_WithPhylogeny_Urban.csv")
 
 FOCAL_ID = "AVIBASE-89431E9F"
 
@@ -222,9 +230,24 @@ def main():
 
     # Sort by mean rank
     bl = bl.sort_values("Mean.Rank")
+    os.makedirs(_OUT_DIR, exist_ok=True)
     bl.to_csv(OUTPUT_COMPARISON, index=False)
 
     print(f"Saved rank-based comparison table (with eBird SPECIES_CODE) to {OUTPUT_COMPARISON}")
+
+    # --------------------------------------------------------
+    # Clean species list for the eBird downloader
+    # --------------------------------------------------------
+    # Minimal, ordered artifact: species_code + mean_rank, most-similar first.
+    # Selection (top-N / threshold) is deliberately left to download time, so
+    # the full ranked list is written here rather than a pre-cut subset.
+    species_list = (
+        bl[["SPECIES_CODE", "Mean.Rank"]]
+        .dropna(subset=["SPECIES_CODE"])
+        .rename(columns={"SPECIES_CODE": "species_code", "Mean.Rank": "mean_rank"})
+    )
+    species_list.to_csv(SPECIES_LIST_PATH, index=False)
+    print(f"Saved {len(species_list)} ranked species codes to {SPECIES_LIST_PATH}")
 
 if __name__ == "__main__":
     main()

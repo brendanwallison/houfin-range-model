@@ -86,6 +86,13 @@ def build_spacetime_cube(config: Optional[Union[Dict[str, Any], str, os.PathLike
     cube_cfg = config.get("latent_cube", {})
     desk_cfg = config.get("desk", {})
 
+    # Gap-fill radius in km -> pixels at the model grid, so the fill footprint
+    # is resolution-independent (was a hardcoded 25 px = 100 km at 4 km, but
+    # 400 km at 16 km).
+    from src.config_utils import load_data_config
+    _res_km = load_data_config()["grid"]["target_res_m"] // 1000
+    radius_px = int(round(cube_cfg.get("radius_km", 100) / _res_km))
+
     data_dir = cube_cfg.get("data_dir") or paths.get("data_dir", "/home/breallis/datasets")
     hist_dir = cube_cfg.get("hist_dir") or paths.get("hist_dir", "/home/breallis/datasets/smoothed_prism_bui")
     if os.path.basename(hist_dir) != "yearly_states" and os.path.isdir(os.path.join(hist_dir, "yearly_states")):
@@ -95,7 +102,7 @@ def build_spacetime_cube(config: Optional[Union[Dict[str, Any], str, os.PathLike
     model_path = cube_cfg.get("model_path") or os.path.join(paths.get("desk_output_dir", ""), "env_model_semisup.pth")
     z_ref_path = cube_cfg.get("z_ref_path") or os.path.join(z_dir, "Z.npy")
     mask_ref_path = cube_cfg.get("mask_ref_path") or os.path.join(z_dir, "valid_mask.npy")
-    water_mask_path = cube_cfg.get("water_mask_path") or os.path.join(data_dir, "land_mask", "ocean_mask_4km.tif")
+    water_mask_path = cube_cfg.get("water_mask_path") or os.path.join(data_dir, "land_mask", f"ocean_mask_{_res_km}km.tif")
     output_dir = cube_cfg.get("output_dir") or os.path.join(paths.get("desk_output_dir", ""), "spacetime_cube")
 
     os.makedirs(output_dir, exist_ok=True)
@@ -164,7 +171,7 @@ def build_spacetime_cube(config: Optional[Union[Dict[str, Any], str, os.PathLike
             z_year,
             valid_pixels,
             land_mask,
-            radius_px=cube_cfg.get("radius_px", 25),
+            radius_px=radius_px,
         )
         z_s2, mask_s2 = fill_gaps_stage2_static(z_s1, mask_s1, land_mask, z_static_grid, z_static_valid)
         z_final = fill_gaps_stage3_nearest(z_s2, mask_s2, land_mask)

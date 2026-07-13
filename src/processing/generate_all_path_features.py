@@ -140,7 +140,10 @@ def main(args):
     print(f"--- Starting Full Path Integration Pipeline ---")
     
     # 1. SETUP & FIND FILES
-    tif_path = os.path.join(args.input_dir, "ocean_mask_4km.tif")
+    # Mask at the model grid (matches the Z_latent cube it path-integrates).
+    from src.config_utils import load_data_config
+    res_km = load_data_config()["grid"]["target_res_m"] // 1000
+    tif_path = os.path.join(args.input_dir, f"ocean_mask_{res_km}km.tif")
     if not os.path.exists(tif_path):
         print(f"Error: Mask file not found: {tif_path}")
         return

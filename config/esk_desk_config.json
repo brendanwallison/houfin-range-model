@@ -31,7 +31,7 @@
     "model_path": "/home/breallis/dev/range_limits_pymc/misc_outputs/ruzicka_sweep_global/sigma_1.5/results/env_model_semisup.pth",
     "z_ref_path": "/home/breallis/dev/range_limits_pymc/misc_outputs/ruzicka_sweep_global/sigma_1.5/Z.npy",
     "mask_ref_path": "/home/breallis/dev/range_limits_pymc/misc_outputs/ruzicka_sweep_global/sigma_1.5/valid_mask.npy",
-    "water_mask_path": "/home/breallis/datasets/land_mask/ocean_mask_4km.tif",
+    "water_mask_path": "/home/breallis/datasets/land_mask/ocean_mask_16km.tif",
     "output_dir": "/home/breallis/dev/range_limits_pymc/misc_outputs/ruzicka_sweep_global/sigma_1.5/results/spacetime_cube",
     "state_pattern": "state_*.npz",
     "radius_px": 25

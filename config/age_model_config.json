@@ -2,7 +2,7 @@
   "input_dir": "/home/breallis/processed_data/model_inputs/numpyro_input",
   "raw_z_dir": "/home/breallis/processed_data/datasets/latent_avian_paths",
   "bbs_npz": "/home/breallis/datasets/bbs_2024_release/bbs_data_for_python.npz",
-  "ocean_mask": "/home/breallis/datasets/latent_avian_community_similarities/ocean_mask_4km.tif",
+  "ocean_mask": "/home/breallis/datasets/latent_avian_community_similarities/ocean_mask_16km.tif",
   "ebird_dir": "/home/breallis/datasets/ebird_weekly_2023_albers",
   "results_dir": "/home/breallis/processed_data/model_results",
   "path_features": {

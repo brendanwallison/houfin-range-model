@@ -8,7 +8,9 @@ from shapely.geometry import Point, MultiPoint
 import geopandas as gpd
 
 from src.config_utils import load_data_config
-_DR = load_data_config()["datasets_root"]
+_CFG = load_data_config()
+_DR = _CFG["datasets_root"]
+_RES_KM = _CFG["grid"]["target_res_m"] // 1000
 
 # -----------------------------------------------------------------------------
 # Configuration
@@ -30,8 +32,9 @@ ROUTE_FILES = [
 # 3. States Directory
 BBS_STATES_DIR = os.path.join(BBS_PARENT_DIR, "States")
 
-# 4. Mask Path
-MASK_PATH = f"{_DR}/land_mask/ocean_mask_4km.tif"
+# 4. Mask Path (model grid). Observations, land mask and the init-density map
+# are all built on this grid, so it must match Z (grid.target_res_m).
+MASK_PATH = f"{_DR}/land_mask/ocean_mask_{_RES_KM}km.tif"
 
 # 5. Parameters
 HOUSE_FINCH_AOU = 5190

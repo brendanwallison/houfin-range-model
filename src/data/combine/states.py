@@ -6,6 +6,7 @@ import rasterio
 from tqdm import tqdm
 
 from src.config_utils import load_config, load_data_config
+from src.processing import regrid
 
 # ============================================================
 # 1. BUI STREAMER (Multi-Band + Optional Interpolation)
@@ -96,28 +97,42 @@ class BuiStreamer:
 # 2. PRISM STREAMER (Strict Variables + Bio-Year)
 # ============================================================
 class PrismStreamer:
-    def __init__(self, prism_dir, start_year, end_year, alpha):
+    def __init__(self, prism_dir, start_year, end_year, alpha, target_res_m=None):
         self.prism_dir = prism_dir
         self.years = range(start_year, end_year + 1)
         self.alpha = alpha
         self.state = None
-        
+
         self.VARS = ['ppt', 'tdmean', 'tmax', 'tmean', 'tmin', 'vpdmax', 'vpdmin']
         self.file_template = "prism_{var}_us_25m_{date}_bui4km.tif"
 
+        # Aggregate the 4 km PRISM rasters to the model grid on load (linear
+        # mean -- climate aggregates linearly; the encoder standardizes later),
+        # mirroring the eBird aggregation in ESK so PRISM and BUI states share
+        # the 16 km grid. block is derived on first read from the raster's res.
+        self.target_res_m = target_res_m
+        self.block = None
+
     def _load_month_stack(self, yyyymm):
-        """Loads all 7 variables for a specific month."""
+        """Loads all 7 variables for a specific month, aggregated to the grid."""
         stack = []
         for var in self.VARS:
             fname = self.file_template.format(var=var, date=yyyymm)
             fpath = os.path.join(self.prism_dir, fname)
-            
+
             if not os.path.exists(fpath):
                 raise FileNotFoundError(f"Missing required PRISM file: {fname}")
-                
+
             with rasterio.open(fpath) as src:
-                stack.append(src.read(1).astype(np.float32))
-        
+                band = src.read(1).astype(np.float64)
+                if self.block is None:
+                    native = abs(src.transform.a)
+                    self.block = (regrid.block_factor(native, self.target_res_m)
+                                  if self.target_res_m else 1)
+            if self.block > 1:
+                band = regrid.block_reduce(band, self.block, how="mean")
+            stack.append(band.astype(np.float32))
+
         return np.stack(stack, axis=-1)
 
     def _get_bio_year_stack(self, target_year):
@@ -173,24 +188,30 @@ def run_simulation(prism_dir, bui_dir, out_dir, interpolate_bui=False, res_km=No
     ALPHA = 1.0 - np.exp(-1.0 / EMA_TAU)
     SAMPLES_PER_YEAR = 20000
     
-    # 1. Setup Mask
+    if res_km is None:
+        res_km = load_data_config()["grid"]["target_res_m"] // 1000  # single source of truth
+    target_res_m = res_km * 1000
+
+    # 1. Setup Mask (at the model grid, matching the aggregated PRISM state)
     ref_files = glob.glob(os.path.join(prism_dir, "prism_ppt_*.tif"))
     if not ref_files:
         raise FileNotFoundError("Could not find any PRISM files for mask generation.")
     ref_path = ref_files[0]
-        
+
     print(f"Using reference file for mask: {os.path.basename(ref_path)}")
     with rasterio.open(ref_path) as src:
-        ref_data = src.read(1)
-        valid_y, valid_x = np.where(ref_data > -1000)
-        valid_coords = list(zip(valid_y, valid_x))
-    
-    print(f"Valid Land Pixels: {len(valid_coords)}")
-    
-    # 2. Initialize Generators
-    if res_km is None:
-        res_km = load_data_config()["grid"]["target_res_m"] // 1000  # single source of truth
-    gen_prism = PrismStreamer(prism_dir, START_YEAR, END_YEAR, ALPHA)
+        ref_data = src.read(1).astype(np.float64)
+        block = regrid.block_factor(abs(src.transform.a), target_res_m)
+    if block > 1:  # aggregate to the model grid so sample indices match the state
+        ref_data = regrid.block_reduce(ref_data, block, how="mean")
+    valid_y, valid_x = np.where(ref_data > -1000)
+    valid_coords = list(zip(valid_y, valid_x))
+
+    print(f"Valid Land Pixels (at {res_km} km): {len(valid_coords)}")
+
+    # 2. Initialize Generators (both aggregate their inputs to the model grid)
+    gen_prism = PrismStreamer(prism_dir, START_YEAR, END_YEAR, ALPHA,
+                              target_res_m=target_res_m)
     gen_bui = BuiStreamer(bui_dir, START_YEAR, END_YEAR, ALPHA,
                           interpolate=interpolate_bui, res_km=res_km)
     

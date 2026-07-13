@@ -5,9 +5,9 @@
   "ebird_raw_subdir": "ebird_weekly_2023",
   "species_list": "/home/breallis/datasets/avonet/reference_community_ranked.csv",
   "grid": {
-    "target_res_m": 4000,
+    "target_res_m": 16000,
     "ref_raster": "/home/breallis/datasets/HBUI/BUI/2020_BUI_4km.tif",
-    "_comment": "Single source of truth for the model grid. target_res_m is the tunable resolution knob; ref_raster defines the CRS/transform/extent every product is aligned to. Per-product block factors are derived at runtime from each source raster's native resolution (see src/processing/regrid.py). Change target_res_m here to re-derive the whole pipeline at a different resolution."
+    "_comment": "Single source of truth for the model grid. target_res_m is THE model resolution (16 km); it replaces the old two-stage 4 km + AGG_FACTOR=4 downsample. Every product is aggregated to this resolution from its own native resolution via linear block aggregation, and nonlinear steps (Ruzicka kernel/PCA for Z, BUI quantiles, transforms) are applied at this resolution -- so Z is built at 16 km, never pooled. ref_raster defines the CRS/transform/extent (the base 4 km grid); the model grid is that grid block-aggregated to target_res_m. Per-product block factors are derived at runtime from each source raster's native resolution (see src/processing/regrid.py)."
   },
   "dataverse": {
     "server": "https://dataverse.harvard.edu",

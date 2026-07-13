@@ -5,7 +5,7 @@ import numpy as np
 import rasterio
 from tqdm import tqdm
 
-from src.config_utils import load_config
+from src.config_utils import load_config, load_data_config
 
 # ============================================================
 # 1. BUI STREAMER (Multi-Band + Optional Interpolation)
@@ -160,7 +160,7 @@ class PrismStreamer:
 # ============================================================
 # 3. SYNCHRONIZED EXECUTION
 # ============================================================
-def run_simulation(prism_dir, bui_dir, out_dir, interpolate_bui=False):
+def run_simulation(prism_dir, bui_dir, out_dir, interpolate_bui=False, res_km=None):
     os.makedirs(out_dir, exist_ok=True)
     states_out_dir = os.path.join(out_dir, "yearly_states")
     os.makedirs(states_out_dir, exist_ok=True)
@@ -188,8 +188,11 @@ def run_simulation(prism_dir, bui_dir, out_dir, interpolate_bui=False):
     print(f"Valid Land Pixels: {len(valid_coords)}")
     
     # 2. Initialize Generators
+    if res_km is None:
+        res_km = load_data_config()["grid"]["target_res_m"] // 1000  # single source of truth
     gen_prism = PrismStreamer(prism_dir, START_YEAR, END_YEAR, ALPHA)
-    gen_bui = BuiStreamer(bui_dir, START_YEAR, END_YEAR, ALPHA, interpolate=interpolate_bui)
+    gen_bui = BuiStreamer(bui_dir, START_YEAR, END_YEAR, ALPHA,
+                          interpolate=interpolate_bui, res_km=res_km)
     
     all_vectors = []
     

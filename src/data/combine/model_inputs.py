@@ -1,17 +1,10 @@
-import sys
 import os
 import glob
 import pickle
-import warnings
 import numpy as np
 import pandas as pd
 import rasterio
 from rasterio.warp import transform as project_coords
-
-# --- Setup Paths ---
-project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-if project_root not in sys.path:
-    sys.path.append(project_root)
 
 import jax.numpy as jnp
 from src.model.build_kernels import build_simulation_struct
@@ -25,8 +18,11 @@ MASK_FILE = _cfg["ocean_mask"]
 OUTPUT_DIR = _cfg["input_dir"]
 
 # --- PARAMETERS ---
-AGG_FACTOR = 4          
-N_PCA_COMPONENTS = 16    
+# No AGG_FACTOR: every input (Z/Z_disp, BBS grid, mask) is already produced at
+# the model grid (grid.target_res_m, see data_config.json). This stage consumes
+# them as-is and is resolution-agnostic. The old code built Z at 4 km and
+# mean-pooled it 4x4 here, which is meaningless for a kernel-PCA embedding.
+N_PCA_COMPONENTS = 16
 START_YEAR = 1900
 END_YEAR = 2023
 
@@ -72,19 +68,6 @@ def generate_spatiotemporal_basis(Ny, Nx, Time, land_rows, land_cols, n_freq_spa
     return st_basis
 
 
-def downsample_grid(array, factor, method='mean'):
-    Ny, Nx = array.shape[:2]
-    new_ny = Ny // factor
-    new_nx = Nx // factor
-    trimmed = array[:new_ny*factor, :new_nx*factor]
-    new_shape = (new_ny, factor, new_nx, factor) + trimmed.shape[2:]
-    reshaped = trimmed.reshape(new_shape)
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore", category=RuntimeWarning)
-        if method == 'mean': return np.nanmean(reshaped, axis=(1, 3))
-        elif method == 'max': return np.nanmax(reshaped, axis=(1, 3))
-        else: raise ValueError("Unknown method")
-
 def get_log_spaced_splits(min_dist, max_dist, n_bins):
     start = np.log10(max(min_dist, 1.0))
     end = np.log10(max_dist)
@@ -116,7 +99,7 @@ def get_grid_location(tif_path, lat, lon):
 # Main Execution
 # -----------------------------------------------------------------------------
 def ingest_data():
-    print(f"--- Starting Data Ingestion (Agg={AGG_FACTOR}, PCA={N_PCA_COMPONENTS}) ---")
+    print(f"--- Starting Data Ingestion (grid-native, PCA={N_PCA_COMPONENTS}) ---")
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     
     # 1. Load Raw Data (Fine Grid)
@@ -124,25 +107,13 @@ def ingest_data():
         raise FileNotFoundError(f"BBS data not found: {BBS_DATA_NPZ}")
         
     bbs_data = np.load(BBS_DATA_NPZ)
-    raw_land_mask = bbs_data['land'].astype(np.float32)
-    raw_ocean_bool = (raw_land_mask < 0.5)
-    raw_init_density = bbs_data['initpop_density'] # This exists now!
+    land_mask = (bbs_data['land'].astype(np.float32) > 0.5).astype(int)
+    initpop_map = bbs_data['initpop_density'] * land_mask  # already at grid res
 
-    # 2. Downsample Geometry (Target Grid)
-    print("  Downsampling Grid and Initialization Map...")
-    land_mask = downsample_grid(raw_land_mask, AGG_FACTOR, method='max')
-    land_mask = (land_mask > 0).astype(int)
-    
-    # Downsample Init Map using MAX to preserve the 0.5/0.05 values
-    # If we used mean, the density would dilute.
-    initpop_map = downsample_grid(raw_init_density, AGG_FACTOR, method='max')
-    # Mask out any init that fell into the ocean during downsampling
-    initpop_map = initpop_map * land_mask
-    
     Ny, Nx = land_mask.shape
     land_rows, land_cols = np.where(land_mask)
     N_land = len(land_rows)
-    print(f"  New Grid: {Ny}x{Nx}, Land Pixels: {N_land}")
+    print(f"  Grid: {Ny}x{Nx}, Land Pixels: {N_land}")
 
     # 3. Process Observations
     print("  Processing Observations...")
@@ -156,9 +127,9 @@ def ingest_data():
     real_indices = slice(n_pseudo_orig, None)
     pseudo_indices = slice(0, n_pseudo_orig)
     
-    # -- Real Data --
-    r_rows_coarse = orig_rows[real_indices] // AGG_FACTOR
-    r_cols_coarse = orig_cols[real_indices] // AGG_FACTOR
+    # -- Real Data (already at grid resolution) --
+    r_rows_coarse = orig_rows[real_indices]
+    r_cols_coarse = orig_cols[real_indices]
     r_years = orig_years[real_indices]
     r_counts = orig_counts[real_indices]
     
@@ -169,13 +140,10 @@ def ingest_data():
     sampling_density = len(unique_real_locs) / N_land
     
     # b. Get Unique Coarse Locations of Pseudo Data
-    p_rows_fine = orig_rows[pseudo_indices]
-    p_cols_fine = orig_cols[pseudo_indices]
+    p_rows_coarse = orig_rows[pseudo_indices]
+    p_cols_coarse = orig_cols[pseudo_indices]
     p_years_fine = orig_years[pseudo_indices]
-    
-    p_rows_coarse = p_rows_fine // AGG_FACTOR
-    p_cols_coarse = p_cols_fine // AGG_FACTOR
-    
+
     pseudo_locs = np.vstack((p_rows_coarse, p_cols_coarse)).T
     unique_pseudo_locs = np.unique(pseudo_locs, axis=0)
     
@@ -240,17 +208,14 @@ def ingest_data():
     z_disp_path = os.path.join(OUTPUT_DIR, "Z_disp_gathered.dat")
     Z_disp_gathered = np.memmap(z_disp_path, dtype='float32', mode='w+', shape=(Time, N_land, K, M))
 
-    print("  Streaming Z Data...")
+    print("  Streaming Z Data (already at grid resolution; no pooling)...")
     for t, year in enumerate(model_years):
         data = np.load(file_map[year])
-        raw_z = data['Z_raw'][0]; raw_z[raw_ocean_bool] = np.nan
-        raw_disp = data['Z_disp'][0].transpose(0, 1, 3, 2); raw_disp[raw_ocean_bool] = np.nan
-        
-        coarse_z = np.nan_to_num(downsample_grid(raw_z, AGG_FACTOR, 'mean'))
-        coarse_disp = np.nan_to_num(downsample_grid(raw_disp, AGG_FACTOR, 'mean'))
-        
-        Z_gathered[t] = coarse_z[land_rows, land_cols, :M]
-        Z_disp_gathered[t] = coarse_disp[land_rows, land_cols, :, :M]
+        z = np.nan_to_num(data['Z_raw'][0])
+        disp = np.nan_to_num(data['Z_disp'][0].transpose(0, 1, 3, 2))
+
+        Z_gathered[t] = z[land_rows, land_cols, :M]
+        Z_disp_gathered[t] = disp[land_rows, land_cols, :, :M]
         if t % 5 == 0: print(f"    Processed {year}...", end='\r')
 
     Z_gathered.flush(); Z_disp_gathered.flush()
@@ -264,8 +229,9 @@ def ingest_data():
     print(f"  Basis Footprint: {st_basis.nbytes / 1e6:.2f} MB")
 
     # 6. Build Kernels
-    raw_cell_size = load_land_metadata(MASK_FILE)
-    cell_size_km = raw_cell_size * AGG_FACTOR
+    # MASK_FILE must be the model-grid (16 km) mask so cell size / invasion
+    # location are on the same grid as Z and the observations.
+    cell_size_km = load_land_metadata(MASK_FILE)
     print(f"  Cell Size: {cell_size_km:.2f} km")
     
     splits = get_log_spaced_splits(min_dist=50.0, max_dist=1500.0, n_bins=3)
@@ -276,9 +242,7 @@ def ingest_data():
         adult_shape=0.468, juvenile_shape=0.468, radii_splits=splits
     )
 
-    raw_inv_row, raw_inv_col = get_grid_location(MASK_FILE, INV_LAT, INV_LON)
-    inv_row = raw_inv_row // AGG_FACTOR
-    inv_col = raw_inv_col // AGG_FACTOR
+    inv_row, inv_col = get_grid_location(MASK_FILE, INV_LAT, INV_LON)
 
     valid_obs_mask = (obs_year >= start_year_model) & (obs_year <= end_year_model)
     final_obs_time_idx = obs_year[valid_obs_mask] - start_year_model
@@ -310,5 +274,9 @@ def ingest_data():
     with open(meta_path, 'wb') as f: pickle.dump(model_metadata, f)
     print("Success. Data ingested to disk.")
 
-if __name__ == "__main__":
+def main():
     ingest_data()
+
+
+if __name__ == "__main__":
+    main()

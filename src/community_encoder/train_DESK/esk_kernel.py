@@ -12,12 +12,22 @@ import torch
 from scipy.ndimage import gaussian_filter1d
 
 from .config_utils import load_config
+from src.config_utils import load_data_config
+from src.processing import regrid
 
 
-def load_tifs_structured(folder, pattern="*_abundance_median_*.tif"):
+def load_tifs_structured(folder, pattern="*_abundance_median_*.tif", target_res_m=None):
     """
     Parses filenames to enforce strict (Species, Time) ordering.
     Returns: stack (H, W, S*T), meta dict.
+
+    If ``target_res_m`` is given and coarser than the rasters' native
+    resolution, each raster is linearly (mean) aggregated to the model grid on
+    read. Relative abundance aggregates linearly, so this is the correct order:
+    aggregate abundance first, then build the (nonlinear) Ruzicka kernel + PCA
+    at the target resolution -- giving Z directly at the model grid rather than
+    mean-pooling the finished embedding downstream (which is meaningless for a
+    kernel-PCA latent). Also shrinks the in-memory stack by block^2.
     """
     files = sorted(glob.glob(os.path.join(folder, pattern)))
     if not files:
@@ -51,16 +61,32 @@ def load_tifs_structured(folder, pattern="*_abundance_median_*.tif"):
 
     with rasterio.open(ordered_paths[0]) as src:
         H, W = src.shape
+        native_res = abs(src.transform.a)
 
-    print(f"Loading {len(ordered_paths)} rasters ({n_species} sp x {n_weeks} wks)...")
+    block = 1
+    if target_res_m is not None:
+        block = regrid.block_factor(native_res, target_res_m)
+    if block > 1:
+        H, W = H // block, W // block
+        print(f"Aggregating {len(ordered_paths)} rasters {native_res:.0f}m -> "
+              f"{target_res_m}m (block {block}) as they load ({n_species} sp x {n_weeks} wks)...")
+    else:
+        print(f"Loading {len(ordered_paths)} rasters at native {native_res:.0f}m "
+              f"({n_species} sp x {n_weeks} wks)...")
 
     full_stack = np.zeros((H, W, len(ordered_paths)), dtype=np.float32)
 
     for i, p in enumerate(ordered_paths):
         with rasterio.open(p) as src:
-            full_stack[:, :, i] = src.read(1)
+            band = src.read(1).astype(np.float64)
+            if src.nodata is not None:
+                band[band == src.nodata] = np.nan
+        if block > 1:
+            band = regrid.block_reduce(band, block, how="mean")  # linear, NaN-aware
+        full_stack[:, :, i] = band.astype(np.float32)
 
-    return full_stack, {"n_species": n_species, "n_weeks": n_weeks}
+    return full_stack, {"n_species": n_species, "n_weeks": n_weeks,
+                        "native_res_m": native_res, "block": block}
 
 
 def smooth_abundances(ebird_flat, n_weeks, sigma):
@@ -244,7 +270,14 @@ def run_esk_experiment(config=None):
     paths = config["paths"]
     esk_cfg = config["esk"]
 
-    ebird_stack, meta = load_tifs_structured(paths["ebird_folder"], esk_cfg.get("pattern", "*_abundance_median_2023-*.tif"))
+    # Build Z at the model grid: aggregate abundance to grid.target_res_m before
+    # the Ruzicka kernel/PCA (C3 — no downstream pooling of the embedding).
+    target_res_m = load_data_config()["grid"]["target_res_m"]
+    ebird_stack, meta = load_tifs_structured(
+        paths["ebird_folder"],
+        esk_cfg.get("pattern", "*_abundance_median_2023-*.tif"),
+        target_res_m=target_res_m,
+    )
 
     H, W, D = ebird_stack.shape
     valid_mask = np.any(~np.isnan(ebird_stack), axis=-1)

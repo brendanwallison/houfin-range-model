@@ -16,6 +16,13 @@
     "ref_raster": "/home/breallis/datasets/HBUI/BUI/2020_BUI_4km.tif",
     "_comment": "Single source of truth for the model grid. target_res_m is THE model resolution (16 km); it replaces the old two-stage 4 km + AGG_FACTOR=4 downsample. Every product is aggregated to this resolution from its own native resolution via linear block aggregation, and nonlinear steps (Ruzicka kernel/PCA for Z, BUI quantiles, transforms) are applied at this resolution -- so Z is built at 16 km, never pooled. ref_raster defines the CRS/transform/extent (the base 4 km grid); the model grid is that grid block-aggregated to target_res_m. Per-product block factors are derived at runtime from each source raster's native resolution (see src/processing/regrid.py)."
   },
+  "coastline": {
+    "_comment": "De-dilated coastline (src/data/preprocess/land_mask.py). land_source is a continental land/water polygon (Natural Earth 10m land, covering Canada/Mexico) rasterized fine_factor x finer than the model grid, block-averaged to a per-cell land fraction, and thresholded at land_fraction_tau (>=tau => land). snap_radius_cells gates observation snapping (near-coast obs snap to land within this radius; farther => dropped). A land_source without a leading / resolves under datasets_root.",
+    "land_source": "land_source/ne_10m_land.shp",
+    "land_fraction_tau": 0.5,
+    "fine_factor": 25,
+    "snap_radius_cells": 1
+  },
   "dataverse": {
     "server": "https://dataverse.harvard.edu",
     "datasets": {

@@ -59,11 +59,39 @@ def load_age_model_config(
     return load_config(config_path, default_name=AGE_MODEL_CONFIG, env_var=AGE_MODEL_ENV)
 
 
+def _deep_merge(base: Dict[str, Any], overlay: Dict[str, Any]) -> Dict[str, Any]:
+    """Recursively overlay ``overlay`` onto a copy of ``base`` (dicts merge, leaves replace)."""
+    out = dict(base)
+    for key, val in overlay.items():
+        if isinstance(val, dict) and isinstance(out.get(key), dict):
+            out[key] = _deep_merge(out[key], val)
+        else:
+            out[key] = val
+    return out
+
+
 def load_data_config(
     config_path: Optional[Union[str, Path]] = None,
 ) -> Dict[str, Any]:
-    """Convenience wrapper for the raw/processed dataset roots (one-off ETL)."""
-    return load_config(config_path, default_name=DATA_CONFIG, env_var=DATA_ENV)
+    """Load the data-pipeline config, with an optional overlay deep-merged on top.
+
+    The repo default ``config/data_config.json`` is always the base (so every
+    product block is present). If ``config_path`` or ``$DATA_CONFIG`` points at a
+    *different* file, it is treated as a small **override layer** (e.g. a local
+    run's ``datasets_root`` / ``grid`` / ``timeline``) and deep-merged onto the
+    base, rather than replacing it wholesale.
+    """
+    base_path = config_dir() / DATA_CONFIG
+    with base_path.open("r", encoding="utf-8") as handle:
+        base = json.load(handle)
+
+    overlay_path = config_path or os.environ.get(DATA_ENV)
+    if overlay_path:
+        overlay_path = Path(overlay_path).expanduser()
+        if overlay_path.resolve() != base_path.resolve():
+            with overlay_path.open("r", encoding="utf-8") as handle:
+                base = _deep_merge(base, json.load(handle))
+    return base
 
 
 def load_secrets(

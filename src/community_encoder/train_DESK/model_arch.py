@@ -1,5 +1,11 @@
 """DESK autoencoder architecture, shared by the trainer (``desk_training``) and
 the spacetime-cube builder (``build_final_z_cube``).
+
+Each input stream (climate, land use, soil, ...) gets its own encoder branch;
+the branch codes are concatenated, mixed to the latent Z, and a single decoder
+reconstructs the concatenated inputs. ``MultiStreamAutoencoder`` takes an
+arbitrary list of per-stream input dims; ``MultiInputAutoencoder`` is the
+2-stream (prism, bui) special case kept for backward compatibility.
 """
 import torch
 import torch.nn.functional as F
@@ -7,6 +13,8 @@ from torch import nn
 
 
 class BMLPBlock(nn.Module):
+    """Residual pre-LayerNorm MLP block: x + fc2(drop(gelu(fc1(LN(x)))))."""
+
     def __init__(self, m, k=4, dropout=0.5):
         super().__init__()
         self.ln = nn.LayerNorm(m)
@@ -22,29 +30,46 @@ class BMLPBlock(nn.Module):
         return x + z
 
 
-class MultiInputAutoencoder(nn.Module):
-    def __init__(self, prism_dim, bui_dim, latent_dim):
-        super().__init__()
-        h = max(128, latent_dim * 4)
+class MultiStreamAutoencoder(nn.Module):
+    """N-stream autoencoder: one encoder branch per input, shared latent + decoder.
 
-        self.prism_enc = nn.Sequential(
-            nn.Linear(prism_dim, h), nn.GELU(),
-            BMLPBlock(h), BMLPBlock(h),
-        )
-        self.bui_enc = nn.Sequential(
-            nn.Linear(bui_dim, h), nn.GELU(),
-            BMLPBlock(h), BMLPBlock(h),
-        )
+    ``dims`` is the per-stream input width (e.g. [climate, landuse, soil]).
+    ``forward(*streams)`` takes one tensor per stream (same order as ``dims``)
+    and returns ``(z_pred, reconstruction)``, where the reconstruction is the
+    concatenation of all streams (order = ``dims``); split it with ``self.dims``.
+    """
+
+    def __init__(self, dims, latent_dim):
+        super().__init__()
+        self.dims = list(dims)
+        n = len(self.dims)
+        h = max(128, latent_dim * 4)
+        self.encoders = nn.ModuleList([
+            nn.Sequential(nn.Linear(d, h), nn.GELU(), BMLPBlock(h), BMLPBlock(h))
+            for d in self.dims
+        ])
         self.mixer = nn.Sequential(
-            nn.Linear(2 * h, 2 * h), nn.GELU(),
-            nn.Linear(2 * h, latent_dim),
+            nn.Linear(n * h, n * h), nn.GELU(),
+            nn.Linear(n * h, latent_dim),
         )
         self.decoder = nn.Sequential(
-            nn.Linear(latent_dim, 2 * h), nn.GELU(),
-            nn.Linear(2 * h, prism_dim + bui_dim),
+            nn.Linear(latent_dim, n * h), nn.GELU(),
+            nn.Linear(n * h, sum(self.dims)),
         )
 
-    def forward(self, prism, bui):
-        h = torch.cat([self.prism_enc(prism), self.bui_enc(bui)], dim=1)
+    def forward(self, *streams):
+        if len(streams) != len(self.encoders):
+            raise ValueError(f"expected {len(self.encoders)} streams, got {len(streams)}")
+        h = torch.cat([enc(s) for enc, s in zip(self.encoders, streams)], dim=1)
         z_pred = self.mixer(h)
         return z_pred, self.decoder(z_pred)
+
+
+class MultiInputAutoencoder(MultiStreamAutoencoder):
+    """Backward-compatible 2-stream (prism, bui) autoencoder."""
+
+    def __init__(self, prism_dim, bui_dim, latent_dim):
+        super().__init__([prism_dim, bui_dim], latent_dim)
+
+    def forward(self, prism, bui):
+        return super().forward(prism, bui)

@@ -9,22 +9,22 @@ from rasterio.warp import transform as project_coords
 import jax.numpy as jnp
 from src.model.build_kernels import build_simulation_struct
 from src.config_utils import load_age_model_config
+from src.temporal import assert_contiguous, invasion_timestep, load_timeline, year_to_index
 
-# --- CONFIGURATION ---
 _cfg = load_age_model_config()
 RAW_Z_DIR = _cfg["raw_z_dir"]
 BBS_DATA_NPZ = _cfg["bbs_npz"]
 MASK_FILE = _cfg["ocean_mask"]
 OUTPUT_DIR = _cfg["input_dir"]
 
-# --- PARAMETERS ---
 # No AGG_FACTOR: every input (Z/Z_disp, BBS grid, mask) is already produced at
 # the model grid (grid.target_res_m, see data_config.json). This stage consumes
 # them as-is and is resolution-agnostic. The old code built Z at 4 km and
 # mean-pooled it 4x4 here, which is meaningless for a kernel-PCA embedding.
+# The timeline (first/end year, invasion) comes from src/temporal.py; the
+# realized model years are read from the Z_disp files on disk and reconciled
+# against it (see ingest_data). Nothing here hardcodes a start/end year.
 N_PCA_COMPONENTS = 16
-START_YEAR = 1900
-END_YEAR = 2023
 
 # --- SPATIOTEMPORAL BASIS SETTINGS ---
 N_FREQ_SPACE = 4  # ~600km regional resolution
@@ -194,10 +194,13 @@ def ingest_data():
     z_files = sorted(glob.glob(os.path.join(RAW_Z_DIR, "Z_disp_*.npz")))
     file_map = {int(os.path.basename(f).split('_')[2].split('.')[0]): f for f in z_files}
     sorted_years = sorted(file_map.keys())
+    assert_contiguous(sorted_years)  # the year->index mapping requires no gaps
     start_year_model, end_year_model = min(sorted_years), max(sorted_years)
     model_years = np.array(sorted_years)
     Time = len(model_years)
-    print(f"  Timeline: {start_year_model}-{end_year_model} ({Time} years)")
+    _tl = load_timeline()
+    print(f"  Timeline: {start_year_model}-{end_year_model} ({Time} years); "
+          f"config timeline {_tl['first_year']}-{_tl['end_year']}")
 
     peek = np.load(file_map[start_year_model])
     M = min(peek['Z_raw'].shape[-1], N_PCA_COMPONENTS)
@@ -244,8 +247,11 @@ def ingest_data():
 
     inv_row, inv_col = get_grid_location(MASK_FILE, INV_LAT, INV_LON)
 
-    valid_obs_mask = (obs_year >= start_year_model) & (obs_year <= end_year_model)
-    final_obs_time_idx = obs_year[valid_obs_mask] - start_year_model
+    # Keep obs whose year is actually in the model timeline, then map year->index
+    # via a gap-safe lookup (not year - start subtraction). See src/temporal.py.
+    year_set = set(int(y) for y in model_years)
+    valid_obs_mask = np.array([int(y) in year_set for y in obs_year])
+    final_obs_time_idx = year_to_index(list(model_years), obs_year[valid_obs_mask])
     
     model_metadata = {
         "Ny": Ny, "Nx": Nx,
@@ -266,7 +272,9 @@ def ingest_data():
         "observed_results": np.array(observed_results[valid_obs_mask]),
         "initpop_latent": initpop_map,
         "pseudo_zero": 1e-12, "pop_scalar": 210.0,
-        "inv_location": (inv_row, inv_col), "inv_timestep": 40, "inv_window": 10
+        "inv_location": (inv_row, inv_col),
+        "inv_timestep": invasion_timestep(_tl, first_year=start_year_model),
+        "inv_window": 10
     }
     
     meta_path = os.path.join(OUTPUT_DIR, "metadata.pkl")

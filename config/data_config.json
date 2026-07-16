@@ -41,12 +41,9 @@
     "out_subdir": "soilgrids_5000m"
   },
   "hyde": {
-    "_comment": "CONFIRM base_url: HYDE 3.3 baseline (5 arc-min). Utrecht Yoda (public.yoda.uu.nl) has Anubis bot-protection; set to the confirmed direct location or a mirror. file_template may be '{var}_{year}AD.asc' or a per-year '.zip'. vars: popd=density, urbc=urban pop, rurc=rural pop.",
-    "base_url": "",
-    "file_template": "{var}_{year}AD.asc",
-    "variables": ["popd", "urbc", "rurc"],
-    "start_year": 1901,
-    "end_year": 2023,
-    "out_subdir": "hyde33"
+    "_comment": "HYDE 3.5 baseline netCDF (5 arc-min global, one file per variable spanning all time points). Confirmed accessible over plain HTTP at geo.public.data.uu.nl (not the bot-protected public.yoda.uu.nl). Add urban_area.nc etc. to files if needed.",
+    "base_url": "https://geo.public.data.uu.nl/vault-hyde/hyde35_c9_apr2025%5B1749214444%5D/original/gbc2025_7apr_base/NetCDF",
+    "files": ["population_density.nc", "urban_population.nc", "rural_population.nc"],
+    "out_subdir": "hyde35"
   }
 }

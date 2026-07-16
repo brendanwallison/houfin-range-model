@@ -1,3 +1,16 @@
+"""ESK: build the habitat-similarity ground truth Z from eBird via Ruzicka kernel-PCA.
+
+The first stage of the community encoder. For the one richly-sampled eBird year,
+it treats each land cell's weekly per-species abundance vector as a point,
+computes a Ruzicka (generalized-Jaccard) similarity kernel between cells, and
+takes its kernel-PCA -- a Nystrom landmark approximation makes the full pairwise
+kernel tractable. The result, swept over temporal-smoothing bandwidths and latent
+dimensions, is ``Z.npy`` + ``valid_mask.npy``: the "real" habitat-similarity
+space that DESK (``desk_training``) later learns to predict from covariates alone.
+
+Abundance rasters are aggregated to the model grid by reprojection as they load
+(:func:`load_tifs_structured`), so Z is built directly at the model resolution.
+"""
 import json
 import os
 import glob

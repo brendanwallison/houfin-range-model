@@ -1,20 +1,36 @@
+"""Age-structured forward population simulation (JAX / lax.scan).
+
+One model year advances the two age classes — adults ``N_a`` and juveniles
+``N_j`` — through invasion seeding, density-dependent dispersal (FFT convolution
+with the precomputed kernels), and survival + Beverton-Holt / Allee
+reproduction. The whole time loop is a gradient-checkpointed ``lax.scan`` so it
+can be differentiated through under NumPyro without storing every year's
+activations. Returns total density (adults + juveniles) per year on the grid.
+"""
 import jax.numpy as jnp
 import jax.nn as jnn
 from jax import lax
 import jax
 
-# --- SAFETY HELPERS ---
+
 def clip_safe(x, min_val=-10.0, max_val=10.0):
+    """Clip to a safe logit range so sigmoids don't saturate to 0/1 (NaN grads)."""
     return jnp.clip(x, min_val, max_val)
 
+
 def rightpad(A, Lx, Ly, pad_value=1e-9):
-    # Calculate how much padding is needed on the bottom and right
+    """Pad ``A`` to (Ly, Lx) on the bottom/right edges only (for linear FFT conv)."""
     pad_y = Ly - A.shape[0]
     pad_x = Lx - A.shape[1]
-    # Pad only the right and bottom edges
     return jnp.pad(A, ((0, pad_y), (0, pad_x)), constant_values=pad_value)
 
+
 def rightpad_convolution(pop, dispersal_kernel_pad):
+    """Convolve a population grid with a (pre-FFT'd, padded) dispersal kernel.
+
+    Right-pads ``pop`` to the kernel's padded size so the circular FFT product
+    is a *linear* convolution, then crops back to the original grid shape.
+    """
     Ly, Lx = dispersal_kernel_pad.shape
     pop_pad = rightpad(pop, Lx, Ly, 1e-9)
     conv = jnp.fft.ifft2(jnp.fft.fft2(pop_pad) * dispersal_kernel_pad)
@@ -24,9 +40,17 @@ def juvenile_dispersal_vectorized(
     juvenile_dispersers: jnp.ndarray,       
     juvenile_fft_kernels: jnp.ndarray,      
     Q: jnp.ndarray,                         
-    juvenile_edge_correction_stack: jnp.ndarray, 
+    juvenile_edge_correction_stack: jnp.ndarray,
     eps: float = 1e-6
 ):
+    """Disperse juveniles through the directional/radial kernel stack.
+
+    Each kernel is applied to the (edge-corrected) disperser field, the arrivals
+    are scaled by the per-kernel journey-survival ``Q``, and the surviving
+    settlers are summed across kernels. The edge correction divides out the
+    fraction of each kernel's footprint that lay over land, so probability mass
+    isn't lost to ocean/off-grid cells.
+    """
     def single_kernel_prop(kernel_fft, land_fraction_map):
         boosted_source = juvenile_dispersers / (land_fraction_map + eps)
         settled = rightpad_convolution(boosted_source, kernel_fft)
@@ -48,6 +72,13 @@ def dispersal_step_age_structured(
     Q_grid,
     eps=1e-6
 ):
+    """One dispersal step for both age classes, with density-dependent departure.
+
+    Departure probability rises logistically with local density relative to K
+    (``dispersal_logit_*``, ``target_fraction``). Adults use the single isotropic
+    kernel; juveniles use the directional/radial stack with journey survival.
+    Returns (adults after dispersal, juvenile stayers, juvenile arrivals).
+    """
     N_a = jnp.maximum(N_a, 0.0)
     N_j = jnp.maximum(N_j, 0.0)
     N_total = N_a + N_j
@@ -88,6 +119,15 @@ def forward_sim_age_structured(
     allee_gamma,
     pseudo_zero, target_fraction=0.8
 ):
+    """Run the age-structured simulation for ``time`` years; return total density.
+
+    Seeds the population from ``initpop_latent`` (split 50/50 adult/juvenile),
+    injects the invasion pulse ``inv_pop`` at ``inv_location`` starting at
+    ``inv_timestep``, and scans year by year: invasion → scatter per-cell rates
+    to the grid → dispersal → survival+reproduction → land-mask. The step is
+    ``jax.checkpoint``-wrapped to bound memory when differentiating the scan.
+    Output shape: (time, Ny, Nx).
+    """
     Ny, Nx = land_mask.shape
     row, col = inv_location
     
@@ -152,7 +192,6 @@ def forward_sim_age_structured(
         
         return (N_a_new, N_j_new), N_total_new
 
-    # --- GRADIENT CHECKPOINTING ---
     checkpointed_step = jax.checkpoint(step)
 
     _, total_densities = lax.scan(checkpointed_step, (init_N_a, init_N_j), jnp.arange(time))
@@ -163,6 +202,14 @@ def reproduction_age_structured(
     N_a_post, N_j_stayers, N_j_arrivers,
     S_a, S_j, F_max, K, c, allee_gamma, eps=1e-12 # <-- Accept pre-computed c
     ):
+    """Advance one year of survival + reproduction to next-year (N_a, N_j).
+
+    Fecundity is Beverton-Holt density-dependent (``c`` precomputed from the
+    local Leslie matrix) and multiplied by a mate-finding Allee factor
+    ``1 - exp(-allee_gamma * N)``. Adults = surviving adults + surviving
+    juveniles (stayers × S_j + arrivers, already journey-survived); new
+    juveniles = adults × realized fecundity.
+    """
     N_total_post = N_a_post + N_j_stayers + N_j_arrivers
     K_safe = jnp.maximum(K, eps)
 

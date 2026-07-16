@@ -1,12 +1,22 @@
+"""Map the community-encoder latent Z to per-cell demographic rate fields.
+
+Each year, the latent vector Z (and its path-integrated form Z_disp) is
+projected through learned weights into two habitat manifolds — survival H_s and
+reproduction H_r — plus a spatiotemporal random-effect term, then passed through
+link functions to per-cell adult/juvenile survival (S_a, S_j), max fecundity
+(F_max), carrying capacity (K), and journey survival (Q). Runs as a
+checkpointed ``lax.scan`` over years to bound memory when differentiated.
+"""
 import jax.numpy as jnp
 import jax.nn as jnn
 from jax import lax, checkpoint
 
+
 def project_and_scatter_age_structured(
-    time, Ny, Nx, 
+    time, Ny, Nx,
     land_rows, land_cols,
     Z_gathered, Z_disp_gathered,
-    st_basis, st_weights, 
+    st_basis, st_weights,
     beta_s,           # 1D feature weights for Survival Suitability (Shape: M)
     beta_r,           # 1D feature weights for Reproductive Suitability (Shape: M)
     alpha_a, gamma_a, # Adult survival intercept & slope
@@ -14,8 +24,15 @@ def project_and_scatter_age_structured(
     alpha_f, gamma_f, # Max fecundity intercept & slope
     alpha_k, gamma_k  # Carrying capacity intercept & slope
 ):
-    # We use checkpointing to tell JAX: "Don't store the huge intermediate 
-    # activations of this function for the backward pass. Re-compute them."
+    """Project Z → (S_a, S_j, F_max, K, Q) for every year, on the land cells.
+
+    Survival/journey rates use a sigmoid link on the survival manifold H_s;
+    fecundity and capacity use softplus on the reproduction manifold H_r. Q (in-
+    transit survival) reuses the juvenile survival intercept/slope on the path-
+    integrated habitat H_s_disp. Each returned array is (time, N_land[, K]).
+    """
+    # Checkpoint: don't store this function's large intermediates for the
+    # backward pass; recompute them instead.
     @checkpoint
     def process_year(carry, t_idx):
         # 1. Pull slices from CPU RAM -> GPU VRAM

@@ -1,3 +1,13 @@
+"""Apply the trained DESK model to every year to build the Z spacetime cube.
+
+Runs the fitted DESK autoencoder's encoder over each year's smoothed covariate
+state (climate/land-use/soil), producing ``Z_latent_{year}.npy`` for the whole
+timeline -- the habitat-quality cube the population model consumes. Missing or
+edge cells are filled in three passes: spatial interpolation within a radius,
+backfill from the static ESK ground-truth where available, then nearest-neighbor
+cleanup (``fill_gaps_stage1/2/3``). CRS/mask/normalization anchor come from the
+data + encoder configs.
+"""
 import glob
 import os
 from typing import Any, Dict, Optional, Union
@@ -77,6 +87,14 @@ def fill_gaps_stage3_nearest(z_cube, valid_mask, land_mask):
 
 
 def build_spacetime_cube(config: Optional[Union[Dict[str, Any], str, os.PathLike]] = None):
+    """Encode every year's covariate state with the trained DESK model into Z.
+
+    Loads the fitted DESK network + per-stream normalization stats, encodes each
+    year's ``state_{year}.npz`` to its latent Z on the model grid, runs the
+    three-stage gap fill, and writes ``Z_latent_{year}.npy`` (plus the valid
+    mask). ``config`` is the encoder config (dict or path); defaults to the repo
+    config.
+    """
     if config is None:
         config = load_config()
     elif isinstance(config, (str, os.PathLike)):
@@ -185,6 +203,7 @@ def build_spacetime_cube(config: Optional[Union[Dict[str, Any], str, os.PathLike
 
 
 def main():
+    """CLI entry: build the Z cube using the config at $ESK_DESK_CONFIG (or default)."""
     config_path = os.environ.get("ESK_DESK_CONFIG")
     build_spacetime_cube(config_path)
 

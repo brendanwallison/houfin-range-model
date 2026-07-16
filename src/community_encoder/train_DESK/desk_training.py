@@ -1,3 +1,16 @@
+"""Train DESK: a semi-supervised autoencoder predicting ESK's Z from covariates.
+
+DESK ("Dynamic ESK") learns to reconstruct the ESK kernel-PCA latent Z -- the
+habitat-similarity "ground truth", available only for the eBird year (2023) --
+from covariates that exist for every year, so Z can be extrapolated across the
+whole timeline. Trained with three losses: a stabilizing MSE against the ESK Z
+where it is known, a metric loss preserving Ruzicka-similarity relationships, and
+an autoencoder reconstruction loss over both labeled and unlabeled years.
+
+The current wiring reads the 2-stream PRISM/BUI ``state_{year}`` (the deprecated
+pipeline); the encoder itself is generalized to N streams (``MultiStreamAutoencoder``)
+for the continental climate/land-use/soil states written by combine/streams.py.
+"""
 import os
 from datetime import datetime
 
@@ -110,6 +123,13 @@ def true_kernel_loss(z_pred, x_raw, num_pairs=4096):
 
 
 def train_model_semisup(train_ds, val_ds, hist_ds, dims, epochs=50, lr=1e-3, batch_size=4096, weights=None):
+    """Train the DESK autoencoder semi-supervised; return the fitted model.
+
+    ``train_ds``/``val_ds`` supply labeled pixels (covariates + ESK Z target +
+    eBird), ``hist_ds`` supplies unlabeled historical-year covariates for the
+    reconstruction loss. ``dims`` gives per-branch input/latent widths; ``weights``
+    balances the stabilizing/metric/reconstruction loss terms.
+    """
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
     if weights is None:
@@ -188,6 +208,12 @@ def train_model_semisup(train_ds, val_ds, hist_ds, dims, epochs=50, lr=1e-3, bat
 
 
 def prepare_supervised_tensors(prism_stack, bui_stack, ebird_stack, z_old_flat, old_mask, out_dir):
+    """Flatten covariate/eBird/Z stacks to per-pixel tensors on a shared valid mask.
+
+    Intersects the finite-data masks of the covariate streams, eBird, and the ESK
+    Z, then returns aligned flattened arrays (per-stream covariates, ESK Z target,
+    eBird) plus the final valid mask -- the supervised training rows.
+    """
     H, W, _ = prism_stack.shape
 
     strict_data_mask = compute_strict_mask(ebird_stack, prism_stack, bui_stack)
@@ -211,6 +237,13 @@ def prepare_supervised_tensors(prism_stack, bui_stack, ebird_stack, z_old_flat, 
 
 
 def run_desk_experiment(config=None):
+    """Driver: load states + ESK Z, prepare tensors, train DESK, save the model.
+
+    Reads the smoothed yearly covariate state and the ESK Z/valid-mask, builds the
+    supervised + historical datasets, trains via :func:`train_model_semisup`, and
+    writes the fitted network to the DESK output dir. ``config`` is the encoder
+    config (dict/path; defaults to the repo config).
+    """
     if config is None:
         config = load_config()
     elif isinstance(config, (str, os.PathLike)):

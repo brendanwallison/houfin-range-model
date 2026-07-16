@@ -271,6 +271,14 @@ def visualize_nystrom_component(Z_k, cmap="viridis", fade_continuous=True, iqr_f
 
 
 def run_esk_experiment(config=None):
+    """Build the ESK ground-truth Z: Ruzicka kernel-PCA over eBird abundance.
+
+    Loads the weekly per-species eBird rasters (reprojected to the model grid),
+    computes the Nystrom-approximated Ruzicka-similarity kernel-PCA latent over a
+    sweep of temporal-smoothing bandwidths and latent dimensions, and writes
+    ``Z.npy`` + ``valid_mask.npy`` (plus diagnostics). ``config`` is the encoder
+    config (dict/path; defaults to the repo config).
+    """
     if config is None:
         config = load_config()
     elif isinstance(config, (str, os.PathLike)):

@@ -1,318 +1,304 @@
-import os
+"""Build the model-ready BBS observation set (House Finch counts + absences).
+
+Reads the USGS Breeding Bird Survey release (US/Canada) and the separate Mexico
+unprocessed release, maps routes onto the model grid, and writes
+``bbs_data_for_python.npz`` (observations, a core/margin initialization density,
+and pre-invasion pseudo-zeros).
+
+Two provenance tiers, distinguished by a per-observation ``quality_tier``:
+
+* **standard** (tier 0) — US/Canada. Screened to protocol-conforming runs:
+  ``RunType != 0`` (0 = failed protocol / unsuitable weather) and
+  ``RPID == 101`` (standard roadside survey). Pseudo-zeros are tier 0 too.
+* **mx_unprocessed** (tier 1) — Mexico 2008-2018. This release has *no*
+  RunType/RPID quality screening, so it is included **unscreened**; the model
+  down-weights it via the quality covariate (see age_priors) rather than a
+  protocol filter here. Every Mexican run contributes a real presence or a real
+  absence — fixing the old bug where Mexican counts were never read and their
+  routes leaked in as phantom zeros.
+
+The timeline (first/end year, the pre-invasion pseudo-zero window) comes from
+the canonical contract in src/temporal.py; nothing here hardcodes a year.
+"""
 import glob
+import os
+
+import geopandas as gpd
 import numpy as np
 import pandas as pd
 import rasterio
 import rasterio.features
-from shapely.geometry import Point, MultiPoint
-import geopandas as gpd
+from shapely.geometry import MultiPoint
 
 from src.config_utils import load_data_config
+from src.temporal import load_timeline
+
 _CFG = load_data_config()
 _DR = _CFG["datasets_root"]
 _RES_KM = _CFG["grid"]["target_res_m"] // 1000
+_OUT = _CFG.get("sciencebase", {}).get("out_subdirs", {})
+_TL = load_timeline()
 
-# -----------------------------------------------------------------------------
-# Configuration
-# -----------------------------------------------------------------------------
-BBS_PARENT_DIR = f"{_DR}/bbs_2024_release"
-
-# 1. Weather Files
-WEATHER_FILES = [
-    os.path.join(BBS_PARENT_DIR, "Weather.csv"),
-    os.path.join(BBS_PARENT_DIR, "Weather_Mexico.csv")
-]
-
-# 2. Route Files
-ROUTE_FILES = [
-    os.path.join(BBS_PARENT_DIR, "Routes.csv"),
-    os.path.join(BBS_PARENT_DIR, "Routes_Mexico.csv")
-]
-
-# 3. States Directory
+# US/Canada release (newest ScienceBase release) and Mexico unprocessed release.
+BBS_PARENT_DIR = f"{_DR}/{_OUT.get('bbs', 'bbs_2026_release')}"
 BBS_STATES_DIR = os.path.join(BBS_PARENT_DIR, "States")
+WEATHER_FILE = os.path.join(BBS_PARENT_DIR, "Weather.csv")   # US+Canada, has RunType/RPID
+ROUTES_FILE = os.path.join(BBS_PARENT_DIR, "Routes.csv")     # lat/lon
+MEXICO_DIR = f"{_DR}/{_OUT.get('bbs_mexico', 'bbs_mexico_unprocessed')}"
 
-# 4. Mask Path (model grid). Observations, land mask and the init-density map
-# are all built on this grid, so it must match Z (grid.target_res_m).
+# Model-grid ocean mask (must match Z at grid.target_res_m).
 MASK_PATH = f"{_DR}/land_mask/ocean_mask_{_RES_KM}km.tif"
 
-# 5. Parameters
 HOUSE_FINCH_AOU = 5190
-RPID_FILTER = 101
-START_YEAR = 1900
-END_YEAR = 2023
-PSEUDO_ZERO_END_YEAR = 1939
-BUFFER_DISTANCE_METERS = 1000 * 1000  # 1000 km buffer
+RPID_STANDARD = 101
+START_YEAR = _TL["first_year"]                 # 1902
+END_YEAR = _TL["end_year"]                      # 2025
+PSEUDO_ZERO_END_YEAR = _TL["invasion_year"] - 1  # last pre-invasion year (1939)
+BUFFER_DISTANCE_METERS = 1000 * 1000            # 1000 km "uninvaded east" buffer
+NATIVE_RANGE_MAX_YEAR = 1970                    # pre-1970 obs define the native range
 
-# -----------------------------------------------------------------------------
-# 1. Load Reference Grid
-# -----------------------------------------------------------------------------
+QUALITY_STANDARD = 0
+QUALITY_MX_UNPROCESSED = 1
+
+
 def load_grid_reference(mask_path):
+    """Load the model grid from the ocean mask (TIF: 1=ocean, 0=land)."""
     with rasterio.open(mask_path) as src:
         data = src.read(1)
-        # Python: True=Land, False=Ocean (inverse of TIF 1=Ocean)
         ocean_mask = (data == 1)
-        land_mask = (data == 0)
-        transform = src.transform
-        crs = src.crs
+        land_mask = (data == 0)  # Python convention: True = land
+        transform, crs = src.transform, src.crs
         ny, nx = data.shape
-        
     print(f"Grid loaded: {ny}x{nx}, CRS: {crs}")
     return land_mask, ocean_mask, transform, crs, nx, ny
 
-# -----------------------------------------------------------------------------
-# 2. Load and Filter BBS Data
-# -----------------------------------------------------------------------------
-def load_bbs_data(states_dir, weather_files):
-    print(f"Loading BBS data from {states_dir}...")
-    
-    if not os.path.exists(states_dir):
-        raise FileNotFoundError(f"States directory not found: {states_dir}")
 
-    # --- A. Load State Counts ---
-    state_files = glob.glob(os.path.join(states_dir, "*.csv"))
-    cols = ["CountryNum", "StateNum", "Route", "RPID", "Year", "AOU", "SpeciesTotal"]
-    
-    df_list = []
-    for f in state_files:
+def load_usca_observations():
+    """US/Canada House-Finch counts + true absences, screened to protocol runs.
+
+    Returns a frame with CountryNum/StateNum/Route/Year/SpeciesTotal and
+    ``quality_tier = 0``. Absences arise where a QC-passing run recorded no
+    House Finch (left join → fill 0).
+    """
+    if not os.path.isdir(BBS_STATES_DIR):
+        raise FileNotFoundError(f"BBS States dir not found: {BBS_STATES_DIR}")
+
+    count_cols = ["CountryNum", "StateNum", "Route", "RPID", "Year", "AOU", "SpeciesTotal"]
+    frames = []
+    for f in glob.glob(os.path.join(BBS_STATES_DIR, "*.csv")):
         try:
-            temp = pd.read_csv(f, usecols=cols)
-            df_list.append(temp)
+            frames.append(pd.read_csv(f, usecols=count_cols))
         except Exception as e:
-            print(f"  Skipping file {f} due to error: {e}")
-            continue 
-            
-    if not df_list:
-        raise ValueError("No valid BBS State CSVs could be loaded.")
-        
-    bbs_full = pd.concat(df_list, ignore_index=True)
-    
-    for c in cols: bbs_full[c] = pd.to_numeric(bbs_full[c], errors='coerce')
-    bbs_full.dropna(subset=["CountryNum", "StateNum", "Route", "RPID", "Year", "AOU"], inplace=True)
-    int_cols = ["CountryNum", "StateNum", "Route", "RPID", "Year", "AOU"]
-    bbs_full[int_cols] = bbs_full[int_cols].astype(int)
+            print(f"  Skipping state file {os.path.basename(f)}: {e}")
+    if not frames:
+        raise ValueError(f"No readable state count CSVs in {BBS_STATES_DIR}")
+    counts = pd.concat(frames, ignore_index=True)
+    for c in count_cols:
+        counts[c] = pd.to_numeric(counts[c], errors="coerce")
+    counts = counts.dropna(subset=count_cols[:-1]).astype({c: int for c in count_cols[:-1]})
 
-    # --- B. Load Weather (QC) ---
-    print("Loading Weather/QC files...")
-    weather_list = []
+    # Weather = quality table. RunType != 0 (0 = failed protocol/bad weather),
+    # RPID == 101 (standard survey). Read explicitly (no silent except).
     w_cols = ["CountryNum", "StateNum", "Route", "RPID", "Year", "RunType"]
-    
-    for f in weather_files:
-        if os.path.exists(f):
-            try:
-                temp_w = pd.read_csv(f, usecols=w_cols)
-                weather_list.append(temp_w)
-            except: pass
+    qc = pd.read_csv(WEATHER_FILE, usecols=w_cols)
+    for c in w_cols:
+        qc[c] = pd.to_numeric(qc[c], errors="coerce")
+    qc = qc.dropna().astype(int)
+    qc = qc[(qc["RunType"] != 0) & (qc["RPID"] == RPID_STANDARD)]
+    counts = counts[counts["RPID"] == RPID_STANDARD]
 
-    qc_routes = pd.concat(weather_list, ignore_index=True)
-    for c in w_cols: qc_routes[c] = pd.to_numeric(qc_routes[c], errors='coerce')
-    qc_routes.dropna(inplace=True)
-    qc_routes[w_cols] = qc_routes[w_cols].astype(int)
+    keys = ["CountryNum", "StateNum", "Route", "RPID", "Year"]
+    finch = counts[counts["AOU"] == HOUSE_FINCH_AOU]
+    merged = qc.merge(finch, on=keys, how="left")
+    merged["SpeciesTotal"] = merged["SpeciesTotal"].fillna(0).astype(int)
+    merged["quality_tier"] = QUALITY_STANDARD
+    print(f"  US/Canada: {len(merged)} route-years (standard tier).")
+    return merged[["CountryNum", "StateNum", "Route", "Year", "SpeciesTotal", "quality_tier"]]
 
-    # Filter QC and RPID
-    qc_routes = qc_routes[(qc_routes['RunType'] == 1) & (qc_routes['RPID'] == RPID_FILTER)]
-    bbs_full = bbs_full[bbs_full['RPID'] == RPID_FILTER]
 
-    # --- C. Merge ---
-    join_keys = ["CountryNum", "StateNum", "Route", "RPID", "Year"]
-    finch_obs = bbs_full[bbs_full['AOU'] == HOUSE_FINCH_AOU].copy()
-    
-    merged = pd.merge(qc_routes, finch_obs, on=join_keys, how="left")
-    merged['SpeciesTotal'] = merged['SpeciesTotal'].fillna(0).astype(int)
-    merged = merged[(merged['Year'] >= START_YEAR) & (merged['Year'] <= END_YEAR)]
-    
-    print(f"  Final Merged Data: {len(merged)} rows.")
-    return merged
+def _mexico_year(run_data):
+    """Year per Mexico run: from a Year column, else parsed from RunDate (M/D/YYYY)."""
+    if "Year" in run_data:
+        return pd.to_numeric(run_data["Year"], errors="coerce")
+    return pd.to_datetime(run_data["RunDate"], errors="coerce").dt.year
 
-# -----------------------------------------------------------------------------
-# 3. Spatial Processing
-# -----------------------------------------------------------------------------
-def map_routes_to_grid(df, route_files_list, grid_transform, grid_crs, nx, ny, land_mask):
-    print("Mapping routes to grid...")
-    
-    route_dfs = []
-    for r_file in route_files_list:
-        if os.path.exists(r_file):
-            try: route_dfs.append(pd.read_csv(r_file))
-            except UnicodeDecodeError: route_dfs.append(pd.read_csv(r_file, encoding="latin1"))
 
-    routes_geo = pd.concat(route_dfs, ignore_index=True)
-    
-    # Create Geometry
+def _mexico_count(species):
+    """House-Finch count per Mexico record, robust to schema (SpeciesTotal or Stop sum)."""
+    if "SpeciesTotal" in species:
+        return pd.to_numeric(species["SpeciesTotal"], errors="coerce")
+    stops = [c for c in species.columns if c.lower().startswith("stop") and c[4:].isdigit()]
+    if stops:
+        return species[stops].apply(pd.to_numeric, errors="coerce").sum(axis=1)
+    for alt in ("Count", "Total", "SpeciesCount"):
+        if alt in species:
+            return pd.to_numeric(species[alt], errors="coerce")
+    raise ValueError(f"Cannot find a count column in Mexico SpeciesData "
+                     f"(have {list(species.columns)}); verify the schema.")
+
+
+def load_mexico_observations():
+    """Mexico House-Finch counts + true absences, UNSCREENED (tier 1).
+
+    RouteData.csv = runs (RunDate→year; no RunType), RouteDetails.csv = lat/lon,
+    SpeciesData.csv = counts. Returns None (with a warning) if the counts file is
+    absent — the USGS release currently serves it as 0 bytes, so this activates
+    once a valid copy is present in MEXICO_DIR. Schema is inferred from the
+    standard BBS layout and should be verified against the real file.
+    """
+    species_path = os.path.join(MEXICO_DIR, "SpeciesData.csv")
+    run_path = os.path.join(MEXICO_DIR, "RouteData.csv")
+    if not (os.path.exists(species_path) and os.path.getsize(species_path) > 0):
+        print(f"[warn] Mexico counts missing/empty ({species_path}); skipping Mexico. "
+              "(USGS currently serves SpeciesData.csv as 0 bytes — drop a valid copy here.)")
+        return None
+    if not os.path.exists(run_path):
+        print(f"[warn] Mexico {run_path} missing; skipping Mexico.")
+        return None
+
+    keys = ["CountryNum", "StateNum", "Route"]
+    runs = pd.read_csv(run_path)
+    runs["Year"] = _mexico_year(runs)
+    runs = runs.dropna(subset=keys + ["Year"]).astype({**{k: int for k in keys}, "Year": int})
+    runs = runs[keys + ["Year"]].drop_duplicates()
+
+    species = pd.read_csv(species_path)
+    species["AOU"] = pd.to_numeric(species.get("AOU"), errors="coerce")
+    species["count"] = _mexico_count(species)
+    species["Year"] = _mexico_year(species) if ("Year" in species or "RunDate" in species) else np.nan
+    finch = species[species["AOU"] == HOUSE_FINCH_AOU].copy()
+    finch = finch.dropna(subset=keys).astype({k: int for k in keys})
+
+    # Every Mexican run → presence or real absence (unscreened).
+    merged = runs.merge(
+        finch[keys + (["Year"] if finch["Year"].notna().any() else []) + ["count"]],
+        on=keys + (["Year"] if finch["Year"].notna().any() else []), how="left",
+    )
+    merged["SpeciesTotal"] = merged["count"].fillna(0).astype(int)
+    merged["quality_tier"] = QUALITY_MX_UNPROCESSED
+    print(f"  Mexico: {len(merged)} route-years (mx_unprocessed tier).")
+    return merged[["CountryNum", "StateNum", "Route", "Year", "SpeciesTotal", "quality_tier"]]
+
+
+def load_routes():
+    """Combined route lat/lon from US/Canada Routes.csv + Mexico RouteDetails.csv."""
+    frames = []
+    for path in (ROUTES_FILE, os.path.join(MEXICO_DIR, "RouteDetails.csv")):
+        if not os.path.exists(path):
+            continue
+        try:
+            frames.append(pd.read_csv(path))
+        except UnicodeDecodeError:
+            frames.append(pd.read_csv(path, encoding="latin1"))
+    if not frames:
+        raise FileNotFoundError("No route files found (Routes.csv / RouteDetails.csv).")
+    routes = pd.concat(frames, ignore_index=True)
+    return routes[["CountryNum", "StateNum", "Route", "Latitude", "Longitude"]]
+
+
+def map_routes_to_grid(obs, routes, grid_transform, grid_crs, nx, ny, land_mask):
+    """Attach (row, col) to each observation via its route lat/lon, keeping land cells."""
     gdf = gpd.GeoDataFrame(
-        routes_geo, 
-        geometry=gpd.points_from_xy(routes_geo['Longitude'], routes_geo['Latitude']),
-        crs="EPSG:4326" 
-    )
-    
-    # Reproject to Model Grid CRS (Meters)
-    gdf_proj = gdf.to_crs(grid_crs)
-    
-    coords = np.array([(p.x, p.y) for p in gdf_proj.geometry])
+        routes, geometry=gpd.points_from_xy(routes["Longitude"], routes["Latitude"]),
+        crs="EPSG:4326",
+    ).to_crs(grid_crs)
+    coords = np.array([(p.x, p.y) for p in gdf.geometry])
     rows, cols = rasterio.transform.rowcol(grid_transform, coords[:, 0], coords[:, 1])
-    
-    gdf_proj['row'] = rows
-    gdf_proj['col'] = cols
-    
-    valid_indices = (gdf_proj['row'] >= 0) & (gdf_proj['row'] < ny) & (gdf_proj['col'] >= 0) & (gdf_proj['col'] < nx)
-    gdf_valid = gdf_proj[valid_indices].copy()
-    
-    is_land = land_mask[gdf_valid['row'].values, gdf_valid['col'].values]
-    gdf_final = gdf_valid[is_land].copy()
-    
-    join_keys = ["CountryNum", "StateNum", "Route"]
-    df[join_keys] = df[join_keys].astype(int)
-    gdf_final[join_keys] = gdf_final[join_keys].astype(int)
+    gdf["row"], gdf["col"] = rows, cols
 
-    final_df = pd.merge(df, gdf_final[join_keys + ['row', 'col', 'geometry']], on=join_keys, how='inner')
-    return final_df
+    inb = (gdf["row"] >= 0) & (gdf["row"] < ny) & (gdf["col"] >= 0) & (gdf["col"] < nx)
+    gdf = gdf[inb].copy()
+    gdf = gdf[land_mask[gdf["row"].values, gdf["col"].values]].copy()
 
-# -----------------------------------------------------------------------------
-# 4. CORE VS MARGIN GENERATION
-# -----------------------------------------------------------------------------
+    keys = ["CountryNum", "StateNum", "Route"]
+    obs[keys] = obs[keys].astype(int)
+    gdf[keys] = gdf[keys].astype(int)
+    return obs.merge(gdf[keys + ["row", "col", "geometry"]], on=keys, how="inner")
+
+
 def generate_core_margin_initialization(obs_df, ny, nx, transform, land_mask):
-    """
-    1. Identifies Native Range (Pre-1970).
-    2. Defines Core (75th percentile) and Margin (All points).
-    3. Creates a DENSITY MAP (0.5 Core, 0.05 Margin).
-    4. Buffers Margin by 1000km to find Uninvaded East.
-    5. Generates Pseudo-Zeros for Uninvaded East.
-    """
-    print("Generating Core/Margin Map and Pseudo-Zeros...")
-    
-    western_limit_col = int(nx * 0.66)
-    
-    # 1. Native Range Data
-    hist_obs = obs_df[
-        (obs_df['Year'] <= 1970) & 
-        (obs_df['SpeciesTotal'] > 0) &
-        (obs_df['col'] < western_limit_col) 
-    ].copy()
-    
-    if hist_obs.empty:
-        raise ValueError("No observations found before 1970 in the West.")
+    """Native-range init density + pre-invasion pseudo-zeros.
 
-    unique_locs = hist_obs.drop_duplicates(subset=['row', 'col'])
-    
-    # --- 2. HULL GENERATION ---
-    # Margin (All Points)
-    points_all = unique_locs['geometry'].tolist()
-    hull_margin = MultiPoint(points_all).convex_hull
-    
-    # Core (High Density)
-    threshold = unique_locs['SpeciesTotal'].quantile(0.75)
-    print(f"  Core Threshold (75th percentile): {threshold:.1f}")
-    
-    core_locs = unique_locs[unique_locs['SpeciesTotal'] > threshold]
-    points_core = core_locs['geometry'].tolist()
-    hull_core = MultiPoint(points_core).convex_hull
-    
-    # --- 3. RASTERIZATION ---
-    # We use the 'transform' to map Geometry (Meters) -> Pixels
-    
-    # Margin Mask
-    mask_margin = rasterio.features.rasterize(
-        [(hull_margin, 1)], out_shape=(ny, nx), transform=transform, default_value=0, dtype=np.uint8
-    )
-    mask_margin = (mask_margin == 1) & land_mask
-    
-    # Core Mask
-    mask_core = rasterio.features.rasterize(
-        [(hull_core, 1)], out_shape=(ny, nx), transform=transform, default_value=0, dtype=np.uint8
-    )
-    mask_core = (mask_core == 1) & land_mask
-    
-    # Density Map Construction
+    1. Native range = pre-1970 presences in the western two-thirds of the grid.
+    2. Margin hull = all native points; core hull = points above the 75th count
+       percentile.
+    3. Density map: margin cells = 0.001, core cells = 0.1 (core overwrites margin).
+    4. Buffer the native hull by 1000 km → the uninvaded east.
+    5. Emit a zero count at every uninvaded cell for each pre-invasion year.
+    """
+    print("Generating core/margin map and pseudo-zeros...")
+    western_limit_col = int(nx * 0.66)
+    hist = obs_df[(obs_df["Year"] <= NATIVE_RANGE_MAX_YEAR)
+                  & (obs_df["SpeciesTotal"] > 0)
+                  & (obs_df["col"] < western_limit_col)].copy()
+    if hist.empty:
+        raise ValueError("No pre-1970 western presences to seed the native range.")
+
+    locs = hist.drop_duplicates(subset=["row", "col"])
+    hull_margin = MultiPoint(locs["geometry"].tolist()).convex_hull
+    threshold = locs["SpeciesTotal"].quantile(0.75)
+    print(f"  Core threshold (75th pct): {threshold:.1f}")
+    hull_core = MultiPoint(
+        locs[locs["SpeciesTotal"] > threshold]["geometry"].tolist()).convex_hull
+
+    def _rasterize(geom):
+        return rasterio.features.rasterize(
+            [(geom, 1)], out_shape=(ny, nx), transform=transform,
+            default_value=0, dtype=np.uint8) == 1
+
+    mask_margin = _rasterize(hull_margin) & land_mask
+    mask_core = _rasterize(hull_core) & land_mask
     initpop_density = np.zeros((ny, nx), dtype=np.float32)
     initpop_density[mask_margin] = 0.001
-    initpop_density[mask_core] = 0.1  # Overwrites margin
-    
-    print(f"  Init Map created. Core Pixels: {np.sum(mask_core)}, Margin Pixels: {np.sum(mask_margin)}")
+    initpop_density[mask_core] = 0.1
+    print(f"  Init map: core={mask_core.sum()} margin={mask_margin.sum()} cells.")
 
-    # --- 4. BUFFERING (Uninvaded East) ---
-    print(f"  Buffering Native Range by {BUFFER_DISTANCE_METERS/1000:.0f} km...")
-    hull_buffer = hull_margin.buffer(BUFFER_DISTANCE_METERS)
-    
-    inside_buffer_mask = rasterio.features.rasterize(
-        [(hull_buffer, 1)], out_shape=(ny, nx), transform=transform, default_value=0, dtype=np.uint8
-    )
-    # Uninvaded = Land AND Not in Buffer
-    uninvaded_mask = land_mask & (inside_buffer_mask == 0)
-    
-    # --- 5. PSEUDO-ZEROS ---
-    ui_rows, ui_cols = np.where(uninvaded_mask)
-    n_ui = len(ui_rows)
-    print(f"  Found {n_ui} uninvaded pixels for pseudo-zeros.")
-    
-    pseudo_rows, pseudo_cols, pseudo_years = [], [], []
-    for year in range(START_YEAR, PSEUDO_ZERO_END_YEAR + 1):
-        pseudo_rows.append(ui_rows)
-        pseudo_cols.append(ui_cols)
-        pseudo_years.append(np.full(n_ui, year))
-        
-    if pseudo_rows:
-        p_rows = np.concatenate(pseudo_rows)
-        p_cols = np.concatenate(pseudo_cols)
-        p_years = np.concatenate(pseudo_years)
-        p_counts = np.zeros_like(p_years)
-    else:
-        p_rows, p_cols, p_years, p_counts = [], [], [], []
-        
+    uninvaded = land_mask & ~_rasterize(hull_margin.buffer(BUFFER_DISTANCE_METERS))
+    ui_rows, ui_cols = np.where(uninvaded)
+    print(f"  {len(ui_rows)} uninvaded cells → pseudo-zeros {START_YEAR}-{PSEUDO_ZERO_END_YEAR}.")
+
+    years = range(START_YEAR, PSEUDO_ZERO_END_YEAR + 1)
+    p_rows = np.concatenate([ui_rows for _ in years]) if ui_rows.size else np.array([], int)
+    p_cols = np.concatenate([ui_cols for _ in years]) if ui_cols.size else np.array([], int)
+    p_years = np.concatenate([np.full(len(ui_rows), y) for y in years]) if ui_rows.size else np.array([], int)
+    p_counts = np.zeros_like(p_years)
     return initpop_density, p_rows, p_cols, p_years, p_counts
 
-# -----------------------------------------------------------------------------
-# Main Execution
-# -----------------------------------------------------------------------------
+
 def main():
     land_mask, ocean_mask, transform, crs, nx, ny = load_grid_reference(MASK_PATH)
-    
-    bbs_df = load_bbs_data(BBS_STATES_DIR, WEATHER_FILES)
-    
-    bbs_mapped = map_routes_to_grid(bbs_df, ROUTE_FILES, transform, crs, nx, ny, land_mask)
 
-    # Use the new logic
-    init_density_map, p_rows, p_cols, p_years, p_counts = generate_core_margin_initialization(
-        bbs_mapped, ny, nx, transform, land_mask
-    )
+    frames = [load_usca_observations()]
+    mexico = load_mexico_observations()
+    if mexico is not None:
+        frames.append(mexico)
+    obs = pd.concat(frames, ignore_index=True)
+    obs = obs[(obs["Year"] >= START_YEAR) & (obs["Year"] <= END_YEAR)]
 
-    real_rows = bbs_mapped['row'].values
-    real_cols = bbs_mapped['col'].values
-    real_years = bbs_mapped['Year'].values
-    real_counts = bbs_mapped['SpeciesTotal'].values
+    mapped = map_routes_to_grid(obs, load_routes(), transform, crs, nx, ny, land_mask)
 
-    # Concatenate
-    final_rows = np.concatenate([p_rows, real_rows])
-    final_cols = np.concatenate([p_cols, real_cols])
-    final_years = np.concatenate([p_years, real_years])
-    final_counts = np.concatenate([p_counts, real_counts])
+    init_density, p_rows, p_cols, p_years, p_counts = generate_core_margin_initialization(
+        mapped, ny, nx, transform, land_mask)
+    p_quality = np.full(len(p_years), QUALITY_STANDARD, dtype=int)  # derived absences
 
-    # Save to NPZ
-    # Note: We now save 'initpop_density' which is the FULL FLOAT GRID
+    out_path = os.path.join(BBS_PARENT_DIR, "bbs_data_for_python.npz")
     np.savez(
-        f"{_DR}/bbs_2024_release/bbs_data_for_python.npz",
-        Nx=nx,
-        Ny=ny,
-        land=land_mask.astype(int),
-        ocean=ocean_mask.astype(int),
-        obs_rows=final_rows.astype(int),
-        obs_cols=final_cols.astype(int),
-        obs_year=final_years.astype(int),
-        observed_results=final_counts.astype(int),
-        
-        # New: Save the full density map
-        initpop_density=init_density_map,
-        
-        # Legacy: Save indices of non-zero (union of core/margin) for backward compat
-        initpop_rows=np.where(init_density_map > 0)[0],
-        initpop_cols=np.where(init_density_map > 0)[1],
-        
-        N_obs=len(real_counts),
-        N_pseudo=len(p_counts),
+        out_path,
+        Nx=nx, Ny=ny,
+        land=land_mask.astype(int), ocean=ocean_mask.astype(int),
+        obs_rows=np.concatenate([p_rows, mapped["row"].values]).astype(int),
+        obs_cols=np.concatenate([p_cols, mapped["col"].values]).astype(int),
+        obs_year=np.concatenate([p_years, mapped["Year"].values]).astype(int),
+        observed_results=np.concatenate([p_counts, mapped["SpeciesTotal"].values]).astype(int),
+        obs_quality=np.concatenate([p_quality, mapped["quality_tier"].values]).astype(int),
+        initpop_density=init_density,
+        initpop_rows=np.where(init_density > 0)[0],
+        initpop_cols=np.where(init_density > 0)[1],
+        N_obs=len(mapped), N_pseudo=len(p_counts),
         unit_distance=1000.0,
-        time=END_YEAR - START_YEAR + 1
+        time=END_YEAR - START_YEAR + 1,
     )
-
-    print("Done. Saved bbs_data_for_python.npz")
+    print(f"Done. Saved {out_path}")
 
 
 if __name__ == "__main__":

@@ -112,6 +112,19 @@ def block_reduce(arr: np.ndarray, block: int, how: str = "mean") -> np.ndarray:
     raise ValueError(f"unknown reduction '{how}'")
 
 
+def block_quantiles(arr: np.ndarray, block: int, quantiles) -> np.ndarray:
+    """Exact per-cell quantiles of the finest-res values: (n_quantiles, ny_t, nx_t).
+
+    NaN-aware (nodata subpixels ignored; all-NaN cell -> NaN). This is the
+    deferral-correct way to summarize a within-cell distribution at target
+    resolution (used for BUI quantile bands and DEM elevation quantiles).
+    """
+    vals = _blocks(arr, block)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", RuntimeWarning)  # all-NaN cell -> NaN
+        return np.nanquantile(vals, np.asarray(quantiles), axis=2)
+
+
 def defer_pointwise(
     arr: np.ndarray,
     block: int,

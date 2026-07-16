@@ -1,3 +1,10 @@
+"""Diagnostics on the temporal evolution of the latent Z cubes (1900-2024).
+
+Reads per-year ``Z_latent_<year>.npy`` cubes (H, W, D) produced by the community
+encoder (Z = ESK/DESK latent habitat space) and saves plots of the continental
+community trajectory (Z0 vs Z1), latitudinal Hovmoller diagrams, and the
+1900->2024 turnover-magnitude map.
+"""
 import os
 import sys
 import glob
@@ -11,6 +18,12 @@ if project_root not in sys.path:
 from src.config_utils import load_config
 
 def analyze_raw_z_evolution():
+    """Load yearly Z cubes, compute global/latitudinal means, and save plots.
+
+    Writes a phase-space trajectory (Z0 vs Z1), Hovmoller (per-latitude) diagrams
+    for the first 3 latent dims, and a 1900-vs-2024 change-magnitude map to
+    ``<Z_DIR>/analysis_plots_raw``.
+    """
     # --- CONFIG ---
     Z_DIR = load_config()["latent_cube"]["output_dir"]
     OUT_DIR = os.path.join(Z_DIR, "analysis_plots_raw")

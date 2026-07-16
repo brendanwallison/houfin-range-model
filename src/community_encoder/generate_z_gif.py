@@ -1,3 +1,9 @@
+"""Render the latent Z cubes as an RGB time-series animation.
+
+Maps the first three latent dimensions of the ESK/DESK habitat space to R/G/B and
+animates yearly ``Z_latent_<year>.npy`` cubes to visualize community-state drift
+over time.
+"""
 import os
 import sys
 import glob
@@ -12,6 +18,12 @@ if project_root not in sys.path:
 from src.config_utils import load_config
 
 def generate_rgb_timeseries():
+    """Two-pass RGB render of the first 3 Z dims across all years, plus a GIF.
+
+    Pass 1 computes robust (2nd/98th percentile) per-channel contrast bounds;
+    pass 2 scales each year to RGB, saves ``frame_<year>.png``, and compiles them
+    into ``evolution_z_rgb.gif`` under ``<Z_DIR>/rgb_visualization``.
+    """
     # --- CONFIG ---
     Z_DIR = load_config()["latent_cube"]["output_dir"]
     OUT_DIR = os.path.join(Z_DIR, "rgb_visualization")

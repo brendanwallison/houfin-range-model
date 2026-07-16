@@ -140,6 +140,7 @@ resid_map = reconstruct(residuals)
 # 8. Plot helper
 
 def save_png(data, fname, title, cmap="viridis", vmin=None, vmax=None):
+    """Save ``data`` as a titled, colorbar'd, axis-off PNG (dpi=200) to ``fname``."""
     plt.figure(figsize=(8, 6))
     im = plt.imshow(data, cmap=cmap, origin="upper", vmin=vmin, vmax=vmax)
     plt.colorbar(im)

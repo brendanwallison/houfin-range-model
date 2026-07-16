@@ -1,3 +1,10 @@
+"""Diagnostic correlating climate change with latent community turnover.
+
+Compares 1900 vs 2024: community turnover (||dZ|| in the ESK/DESK latent space)
+against temperature and precipitation deltas, mapping both and reporting Pearson
+correlations. Oriented at the deprecated CONUS PRISM state files (channels 0-11
+PPT, 36-47 Tmean); the pipeline has since moved to continental climr climate.
+"""
 import os
 import sys
 import numpy as np
@@ -11,6 +18,12 @@ if project_root not in sys.path:
 from src.config_utils import load_config
 
 def correlate_climate_drivers_robust():
+    """Correlate 1900->2024 climate deltas with community turnover and save maps.
+
+    Loads yearly Z cubes and PRISM state files, computes dTemperature/
+    dPrecipitation and ||dZ||, masks to finite pixels, reports Pearson r for each
+    driver, and writes ``drivers_climate_vs_turnover_robust.png``.
+    """
     # --- CONFIG ---
     _cfg = load_config()
     DATA_DIR = _cfg["latent_cube"]["data_dir"]

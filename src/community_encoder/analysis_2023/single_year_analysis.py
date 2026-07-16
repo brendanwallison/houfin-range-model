@@ -1,3 +1,9 @@
+"""Single-year (2023) regression of a response raster on the latent Z.
+
+Fits a response field (e.g. House Finch relative abundance) from the ESK/DESK
+latent habitat space via closed-form Bayesian linear regression, saving
+fit/residual diagnostics.
+"""
 import os
 from typing import Any, Dict, Optional, Union
 
@@ -16,6 +22,11 @@ from .config_utils import load_config
 
 
 def run_bayesian_regression(z: np.ndarray, y: np.ndarray, out_dir: str) -> Dict[str, float]:
+    """Closed-form Bayesian (ridge) regression of ``y`` on latent ``z``.
+
+    Fits the posterior-mean weights, saves ``regression_fit.png`` (predicted-vs-
+    observed + residual histogram) to ``out_dir``, and returns {rmse, r2}.
+    """
     alpha = 1.0
     sigma2 = np.var(y) * 0.1 + 1e-6
 
@@ -44,6 +55,12 @@ def run_bayesian_regression(z: np.ndarray, y: np.ndarray, out_dir: str) -> Dict[
 
 
 def run_single_year_analysis(config: Optional[Union[Dict[str, Any], str, os.PathLike]] = None) -> Dict[str, Any]:
+    """Load Z under the mask, align a response raster, and run the regression.
+
+    Resolves paths from the ``single_year_analysis``/``paths`` config, keeps
+    finite aligned rows, and calls :func:`run_bayesian_regression`. Returns
+    {out_dir, rmse, r2}.
+    """
     if config is None:
         config = load_config()
     elif isinstance(config, (str, os.PathLike)):

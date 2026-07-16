@@ -1,3 +1,10 @@
+"""Sanity check: can a small autoencoder recover Z from eBird abundance?
+
+Trains an MLP autoencoder to predict the ESK latent Z from Hellinger-transformed
+eBird abundance vectors, verifying that Z is learnable from biology (a DESK-style
+proof of concept, but using eBird input rather than environmental covariates).
+Runs as a script and prints per-epoch fidelity diagnostics.
+"""
 import os
 import glob
 import re
@@ -87,6 +94,11 @@ def load_z_matrix(path, H, W, valid_mask):
 # 2. Dataset
 
 class AbundanceDataset(Dataset):
+    """Torch Dataset of (abundance feature, Z target) rows over valid pixels.
+
+    Splits the grid into row/col blocks (80/20 train/val by block) and keeps rows
+    with non-zero features and non-zero Z.
+    """
     def __init__(self, abundance_features, z_target, block_rows=8, block_cols=8, split="train"):
         H, W, C = abundance_features.shape
         blocks = []
@@ -131,6 +143,7 @@ class AbundanceDataset(Dataset):
 # 3. Model Architecture (Simple Encoder)
 
 class BMLPBlock(nn.Module):
+    """Residual pre-norm MLP block (LayerNorm -> Linear -> GELU -> dropout -> Linear)."""
     def __init__(self, m, k=4, dropout=0.5):
         super().__init__()
         self.ln = nn.LayerNorm(m)
@@ -139,6 +152,7 @@ class BMLPBlock(nn.Module):
         self.drop = nn.Dropout(dropout)
 
     def forward(self, x):
+        """Return ``x + MLP(LayerNorm(x))``."""
         z = self.ln(x)
         z = F.gelu(self.fc1(z))
         z = self.drop(z)
@@ -146,6 +160,7 @@ class BMLPBlock(nn.Module):
         return x + z
 
 class AbundanceAutoencoder(nn.Module):
+    """Autoencoder mapping abundance vectors to an L2-normalized latent Z and back."""
     def __init__(self, input_dim, latent_dim):
         super().__init__()
         # 1300 inputs -> compress to Latent
@@ -167,6 +182,7 @@ class AbundanceAutoencoder(nn.Module):
         )
 
     def forward(self, x):
+        """Encode x to a unit-norm latent and decode; returns (z_norm, reconstruction)."""
         z_raw = self.encoder(x)
         # Enforce hypersphere to match Z target
         z_norm = F.normalize(z_raw, dim=1)
@@ -176,9 +192,11 @@ class AbundanceAutoencoder(nn.Module):
 # 4. Losses & Diagnostics
 
 def reconstruction_loss(recon, target):
+    """MSE between reconstructed and target abundance."""
     return F.mse_loss(recon, target)
 
 def metric_proxy_loss(z_pred, z_target):
+    """MSE between predicted and target latent Z."""
     return F.mse_loss(z_pred, z_target)
 
 # ... [Previous imports and classes remain the same] ...
@@ -236,7 +254,12 @@ def compute_kernel_diagnostics(z_pred, z_target, raw_features, max_pairs=1024):
 
 def train_sanity_check(train, val, input_dim, latent_dim,
                        batch_size=4096, epochs=50, lr=1e-3):
-    
+    """Train the autoencoder and print per-epoch Z-fidelity/kernel diagnostics.
+
+    Optimizes latent MSE + 0.1*reconstruction MSE (Adam, ReduceLROnPlateau) and,
+    each epoch, reports validation Z-MSE, cosine similarity, kernel RMSE vs Z and
+    vs raw biology, and effective rank.
+    """
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Sanity Check: Mapping {input_dim} features -> {latent_dim} Z-dims")
     

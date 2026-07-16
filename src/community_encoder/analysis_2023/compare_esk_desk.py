@@ -1,3 +1,9 @@
+"""Diagnostic comparing the ESK and DESK latent spaces for a single year.
+
+ESK is the kernel-PCA embedding of eBird community similarity (Z); DESK is the
+autoencoder that predicts Z from environmental covariates. This scatters and
+histograms the two Z matrices to check how closely DESK reproduces ESK.
+"""
 import os
 from typing import Any, Dict, Optional, Union
 
@@ -9,6 +15,12 @@ from .config_utils import load_config
 
 
 def compare_esk_desk(config: Optional[Union[Dict[str, Any], str, os.PathLike]] = None) -> Dict[str, Any]:
+    """Load ESK and DESK Z under the shared mask, compare, and save a figure.
+
+    Resolves paths from the ``single_year_analysis`` config block, keeps rows
+    finite in both, correlates dim 0, and writes ``esk_desk_comparison.png``
+    (dim-0 scatter + pointwise-distance histogram). Returns {out_dir, corr_dim0}.
+    """
     if config is None:
         config = load_config()
     elif isinstance(config, (str, os.PathLike)):

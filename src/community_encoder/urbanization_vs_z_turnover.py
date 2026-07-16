@@ -1,3 +1,10 @@
+"""Diagnostic correlating urban intensification with latent community turnover.
+
+Compares 1900 vs 2024: community turnover (||dZ|| in the ESK/DESK latent space)
+against the change in the power-transformed (x**0.1) built-up index. Oriented at
+the deprecated BUI state files; the continental pipeline now uses LUH-3/HYDE land
+use rather than CONUS BUI.
+"""
 import os
 import sys
 import numpy as np
@@ -11,6 +18,12 @@ if project_root not in sys.path:
 from src.config_utils import load_config
 
 def overlay_urban_vs_turnover():
+    """Correlate 1900->2024 urban change with community turnover and save plots.
+
+    Loads yearly Z cubes and BUI state files, computes ||dZ|| and the magnitude of
+    change in x**0.1-transformed BUI, reports Pearson r, and writes side-by-side
+    maps and a 2-D density scatter to ``<Z_DIR>/analysis_plots_raw``.
+    """
     # --- CONFIGURATION ---
     _cfg = load_config()
     DATA_DIR = _cfg["latent_cube"]["data_dir"]

@@ -1,3 +1,10 @@
+"""Interpretability audit of the ESK/DESK latent space (Z) for a single year.
+
+Correlates each latent dimension against the smoothed eBird abundance vectors to
+attribute species/phenology drivers (:class:`LatentAuditor`), and probes the
+spatial geometry of Z -- iso-similarity, community variogram, local volatility
+(:class:`GeoCovarianceProbe`). Runs as a script; writes heatmaps, maps, and a CSV.
+"""
 import os
 import glob
 import re
@@ -11,6 +18,12 @@ from scipy.ndimage import gaussian_filter1d
 
 # 1. DATA LOADING
 def load_tifs_structured(folder, pattern="*_abundance_median_*.tif"):
+    """Load abundance GeoTIFFs matching ``pattern`` into an (H, W, C) stack.
+
+    Parses species and date from each filename, orders channels by
+    (species, date), and returns the stack plus meta
+    {n_species, n_weeks, species_list}.
+    """
     files = sorted(glob.glob(os.path.join(folder, pattern)))
     if not files:
         raise ValueError(f"No files found in {folder} matching {pattern}")
@@ -117,6 +130,7 @@ TRANSFORMS = {
 
 # 2. LATENT AUDITOR (With Detailed CSV Summary)
 class LatentAuditor:
+    """Correlate latent dims with eBird abundance to attribute species/phenology drivers."""
     def __init__(self, Z, ebird_smooth, meta, valid_mask, H, W, out_dir):
         self.Z = Z
         self.ebird = ebird_smooth
@@ -164,6 +178,7 @@ class LatentAuditor:
         self.loadings_3d = self.loadings.reshape(self.K, self.n_sp, self.n_w)
 
     def audit_phenology(self):
+        """Save a latent-dim x week heatmap of mean |loading| (seasonal activity)."""
         print(" -> Generating Phenology Heatmap...")
         temporal_pulse = np.abs(self.loadings_3d).mean(axis=1)
         vmax = np.percentile(temporal_pulse, 99) if temporal_pulse.max() > 0 else 1.0
@@ -177,6 +192,7 @@ class LatentAuditor:
         plt.close()
 
     def audit_taxonomy(self):
+        """Save a species x latent-dim heatmap of mean |loading| (taxonomic importance)."""
         print(" -> Generating Taxonomic Heatmap...")
         taxa_importance = np.abs(self.loadings_3d).mean(axis=2)
         vmax = np.percentile(taxa_importance, 99) if taxa_importance.max() > 0 else 1.0
@@ -191,6 +207,7 @@ class LatentAuditor:
         plt.close()
 
     def audit_guild_structure(self):
+        """Save a clustered species-species correlation map of latent habitat affinity."""
         print(" -> Generating Guild Structure...")
         habitat_affinity = self.loadings_3d.mean(axis=2).T 
         species_corr = np.corrcoef(habitat_affinity)
@@ -212,6 +229,7 @@ class LatentAuditor:
             print(f"WARNING: Clustering failed. {e}")
 
     def audit_ecological_seasons(self):
+        """Save a week-to-week correlation heatmap of latent temporal state."""
         print(" -> Generating Ecological Seasons...")
         temporal_state = self.loadings_3d.mean(axis=1).T
         week_corr = np.corrcoef(temporal_state)
@@ -229,6 +247,7 @@ class LatentAuditor:
             print(f"WARNING: Time plot failed. {e}")
 
     def audit_spatial(self):
+        """Save spatial maps of the first (up to 12) latent dimensions."""
         print(" -> Generating Spatial Maps...")
         n_map = min(self.K, 12)
         rows = 4
@@ -248,6 +267,7 @@ class LatentAuditor:
         plt.close()
 
     def run_all(self):
+        """Run every audit and write the per-dimension driver/avoider/peak-week CSV."""
         self.audit_phenology()
         self.audit_taxonomy()
         self.audit_guild_structure()
@@ -305,6 +325,7 @@ class LatentAuditor:
 
 # 3. GEOGRAPHIC COVARIANCE PROBE
 class GeoCovarianceProbe:
+    """Probe the spatial geometry of Z: iso-similarity, variogram, and volatility."""
     def __init__(self, Z, valid_mask, H, W, out_dir):
         self.Z = Z
         self.mask = valid_mask
@@ -321,6 +342,7 @@ class GeoCovarianceProbe:
         print(f"Probe Init: {len(self.valid_indices)} finite Z-vectors.")
 
     def plot_iso_similarity(self, focal_points_idx=None):
+        """Map kernel similarity (Z . z_ref) to focal pixels (random 4 if none); save figure."""
         print(" -> Generating Iso-Similarity Maps...")
         if len(self.valid_indices) == 0: return
 
@@ -350,6 +372,9 @@ class GeoCovarianceProbe:
         plt.close()
 
     def plot_variogram(self, max_dist=200, n_samples=5000):
+        """Hexbin ecological distance (1 - Z . Z) vs physical pixel distance over
+        ``n_samples`` random pairs; save figure. ``max_dist`` is currently unused.
+        """
         print(" -> Generating Community Variogram...")
         if len(self.valid_indices) < 2: return
 
@@ -372,6 +397,7 @@ class GeoCovarianceProbe:
         plt.close()
 
     def plot_local_volatility(self):
+        """Map the local spatial gradient magnitude of Z (RMS over dims); save figure."""
         print(" -> Generating Ecological Volatility Map...")
         volatility_map = np.zeros((self.H, self.W))
         K = self.Z.shape[1]
@@ -393,6 +419,7 @@ class GeoCovarianceProbe:
         plt.close()
 
     def run_all(self):
+        """Run all three geographic probes (iso-similarity, variogram, volatility)."""
         self.plot_iso_similarity()
         self.plot_variogram()
         self.plot_local_volatility()

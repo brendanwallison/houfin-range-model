@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
 
 """
-Reproject weekly eBird relative abundance GeoTIFFs onto the canonical 4 km BUI grid.
+Reproject weekly eBird relative abundance GeoTIFFs onto the model reference grid.
 
 For each input .tif file:
     - Read the single-band abundance raster
     - Enforce CRS = EPSG:8857 (from file metadata you provided)
-    - Reproject to the BUI 4 km grid using rioxarray.reproject_match
-    - Apply the 4 km ocean mask (1=ocean, 0=land)
-    - Save a single-band GeoTIFF aligned with BUI
+    - Reproject onto the model grid (``grid.ref_raster``) via reproject_match
+      with ``average`` -- the linear areal aggregate straight from eBird's
+      ~2.96 km native cells to the model grid (any ratio, CRS resolved too)
+    - Apply the model-grid ocean mask (1=ocean, 0=land)
+    - Save a single-band GeoTIFF aligned with the model grid
     - Save a PNG quick-look
 """
 
@@ -21,18 +23,19 @@ import rasterio
 import matplotlib.pyplot as plt
 
 from src.config_utils import load_data_config
+from src.processing import regrid
 _CFG = load_data_config()
 _DR = _CFG["datasets_root"]
 
 # Paths (config-driven)
 # Input is the raw eBird dir the downloader writes to; output is the same name
-# with an "_albers" suffix (the reprojected grid the encoder's ebird_folder
-# points at). Single source of truth via data_config's ebird_raw_subdir.
+# with a "_grid" suffix (the reprojected model grid the encoder's ebird_folder
+# points at). Single source of truth via data_config's ebird_raw_subdir + grid.
 _EBIRD_SUBDIR = _CFG.get("ebird_raw_subdir", "ebird_weekly_2023")
+_RES_KM = _CFG["grid"]["target_res_m"] // 1000
 EBIRD_DIR = f"{_DR}/{_EBIRD_SUBDIR}"
-OUT_DIR = f"{_DR}/{_EBIRD_SUBDIR}_albers"
-BUI_REF = f"{_DR}/HBUI/BUI/2020_BUI_4km.tif"
-OCEAN_MASK = f"{_DR}/land_mask/ocean_mask_4km.tif"
+OUT_DIR = f"{_DR}/{_EBIRD_SUBDIR}_grid"
+OCEAN_MASK = f"{_DR}/land_mask/ocean_mask_{_RES_KM}km.tif"
 
 PNG_POWER = 0.25
 
@@ -53,10 +56,10 @@ def main():
 
     os.makedirs(OUT_DIR, exist_ok=True)
 
-    # Load reference BUI grid
-    bui_ref = rxr.open_rasterio(BUI_REF)
+    # Load the model reference grid (CRS/transform/extent at grid.target_res_m)
+    ref = regrid.load_ref(_CFG)
 
-    # Load 4 km ocean mask
+    # Load the model-grid ocean mask (1=ocean, 0=land)
     with rasterio.open(OCEAN_MASK) as src:
         ocean_mask = src.read(1)
 
@@ -65,8 +68,8 @@ def main():
 
     for tif_path in tif_files:
         fname = os.path.basename(tif_path)
-        out_tif = os.path.join(OUT_DIR, fname.replace(".tif", "_bui4km.tif"))
-        out_png = os.path.join(OUT_DIR, fname.replace(".tif", "_bui4km.png"))
+        out_tif = os.path.join(OUT_DIR, fname.replace(".tif", "_grid.tif"))
+        out_png = os.path.join(OUT_DIR, fname.replace(".tif", "_grid.png"))
 
         if os.path.exists(out_tif):
             print(f"Skipping existing: {out_tif}")
@@ -90,12 +93,9 @@ def main():
         # Ensure nodata is nan
         da = da.rio.write_nodata(float("nan"), inplace=False)
 
-        # Reproject to BUI 4 km grid
-        da_reproj = da.rio.reproject_match(
-            bui_ref,
-            resampling="bilinear",
-            nodata=float("nan"),
-        )
+        # Reproject onto the model grid (any native:target ratio; average is the
+        # linear areal aggregate -- correct for relative abundance).
+        da_reproj = regrid.reproject_to_ref(da, ref, resampling="average")
 
         # Apply ocean mask
         if da_reproj.shape[-2:] != ocean_mask.shape:

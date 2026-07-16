@@ -17,13 +17,13 @@ The remainder of this document explains, for each part of the codebase, *why* it
 
 ## 1. Tech stack — why these tools
 
-**Why NumPyro/JAX rather than PyMC.** The project began as a PyMC model (its very first commit), but PyMC's autodiff and array machinery were not well suited to the FFT-based spatial convolutions and long forward-simulation loops the model eventually needed, so it migrated wholesale to **NumPyro on top of JAX** — a grep across `src/` and `scripts/` turns up zero `import pymc` statements anywhere. The package was historically named `range-limits-pymc` and carried a `pymc==5.26.1` dependency; both were leftovers from that earlier version and have since been removed (the package is now `houfin-range-model`, and the unused `pymc` and `scikit-learn` dependencies were dropped).
+**Why JAX.** The age-structured model's forward simulation is a decades-long, pixel-by-pixel time loop involving Fourier-transform dispersal kernels; JAX's `lax.scan`, `jax.checkpoint` (gradient checkpointing, needed because the unrolled simulation would otherwise be too memory-hungry to differentiate through), and native GPU execution make this tractable. The code assumes a CUDA GPU is available — it explicitly requests `jax.devices("gpu")[0]`, sets CUDA allocator environment variables, and manually manages device memory (deleting intermediate posterior samples, memory-mapping large arrays to disk) to avoid exhausting VRAM. The model fits comfortably on GPUs with 24GB VRAM or higher.
 
-**Why JAX specifically.** The age-structured model's forward simulation is a decades-long, pixel-by-pixel time loop involving Fourier-transform dispersal kernels; JAX's `lax.scan`, `jax.checkpoint` (gradient checkpointing, needed because the unrolled simulation would otherwise be too memory-hungry to differentiate through), and native GPU execution make this tractable. The code assumes a CUDA GPU is available — it explicitly requests `jax.devices("gpu")[0]`, sets CUDA allocator environment variables, and manually manages device memory (deleting intermediate posterior samples, memory-mapping large arrays to disk) to avoid exhausting VRAM. This is workstation-tuned code, not designed to run comfortably on a laptop CPU.
+**Why PyTorch.** The community-encoder's second stage (DESK, below) is a from-scratch multi-branch autoencoder. It's written in PyTorch rather than JAX simply because it's a much more conventional supervised deep-learning task (train an MLP against a fixed target) with no need for JAX's custom-derivative machinery.
 
-**Why PyTorch shows up too.** The community-encoder's second stage (DESK, below) is a from-scratch multi-branch autoencoder. It's written in PyTorch rather than JAX simply because it's a much more conventional supervised deep-learning task (train an MLP against a fixed target) with no need for JAX's custom-derivative machinery — a case of using the right tool for a self-contained sub-problem rather than forcing everything into one framework.
+**Other libraries:**
+There are a number of dependencies for various individual scripts, but some of the more important ones are
 
-**Other libraries, and what they're actually for:**
 | Library | Where | Why |
 |---|---|---|
 | `rasterio` / `rioxarray` | throughout `scripts/` | reading, reprojecting, and aligning every raster data source (PRISM climate, eBird abundance, urbanization index, ocean mask) onto one common 4 km Albers grid |

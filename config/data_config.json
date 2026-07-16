@@ -12,9 +12,9 @@
     "bio_year_start_month": 8
   },
   "grid": {
-    "target_res_m": 16000,
-    "ref_raster": "/home/breallis/datasets/HBUI/BUI/2020_BUI_4km.tif",
-    "_comment": "Single source of truth for the model grid. target_res_m is THE model resolution (16 km); it replaces the old two-stage 4 km + AGG_FACTOR=4 downsample. Every product is aggregated to this resolution from its own native resolution via linear block aggregation, and nonlinear steps (Ruzicka kernel/PCA for Z, BUI quantiles, transforms) are applied at this resolution -- so Z is built at 16 km, never pooled. ref_raster defines the CRS/transform/extent (the base 4 km grid); the model grid is that grid block-aggregated to target_res_m. Per-product block factors are derived at runtime from each source raster's native resolution (see src/processing/regrid.py)."
+    "target_res_m": 25000,
+    "ref_raster": "/home/breallis/datasets/ref_grid_25km.tif",
+    "_comment": "Single source of truth for the model grid. target_res_m is THE model resolution (25 km), the LUH-3 native 0.25deg basis reprojected to equal-area Albers (ESRI:102039); the continental products (climate/climr, LUH-3, HYDE, SoilGrids, DEM, eBird) are aggregated to it. ref_raster is a pure-geometry raster at this resolution over the fixed study-area box; build it once with `python -m src.data.preprocess.build_ref_grid --base-raster <any raster covering the box>` (see that module). Because 25 km is NOT an integer multiple of the 4 km / ~2.96 km inputs, aggregation is via reproject_match `average` onto ref_raster (regrid.reproject_to_ref), not integer block_reduce; nonlinear steps (Ruzicka kernel/PCA for Z, quantiles, transforms) are applied at this resolution -- so Z is built at 25 km, never pooled. The old 16 km / 4 km BUI-grid pipeline is preserved under src/data/deprecated/."
   },
   "coastline": {
     "_comment": "De-dilated coastline (src/data/preprocess/land_mask.py). land_source is a continental land/water polygon (Natural Earth 10m land, covering Canada/Mexico) rasterized fine_factor x finer than the model grid, block-averaged to a per-cell land fraction, and thresholded at land_fraction_tau (>=tau => land). snap_radius_cells gates observation snapping (near-coast obs snap to land within this radius; farther => dropped). A land_source without a leading / resolves under datasets_root.",

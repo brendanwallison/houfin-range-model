@@ -77,7 +77,14 @@ def main():
         # Load eBird raster
         da = rxr.open_rasterio(tif_path, masked=True)
 
-        # Enforce CRS = EPSG:8857
+        # Validate, then enforce, the assumed CRS. eBird S&T weekly rasters are
+        # EPSG:8857; if a raster declares a *different* CRS, that's a data-format
+        # surprise we want to fail on rather than silently overwrite.
+        existing = da.rio.crs
+        if existing is not None and existing.to_epsg() != 8857:
+            raise ValueError(
+                f"{os.path.basename(tif_path)} declares CRS {existing} != assumed "
+                f"{EBIRD_CRS}; verify the eBird product before overwriting.")
         da = da.rio.write_crs(EBIRD_CRS, inplace=False)
 
         # Ensure nodata is nan

@@ -33,5 +33,11 @@
     "out_subdirs": {
       "luh3": "LUH3"
     }
+  },
+  "soilgrids": {
+    "base_url": "https://files.isric.org/soilgrids/latest/data_aggregated/5000m",
+    "properties": ["sand", "silt", "clay", "phh2o", "soc", "bdod", "cec", "nitrogen"],
+    "depths": ["0-5cm", "30-60cm"],
+    "out_subdir": "soilgrids_5000m"
   }
 }

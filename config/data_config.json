@@ -39,5 +39,14 @@
     "properties": ["sand", "silt", "clay", "phh2o", "soc", "bdod", "cec", "nitrogen"],
     "depths": ["0-5cm", "30-60cm"],
     "out_subdir": "soilgrids_5000m"
+  },
+  "hyde": {
+    "_comment": "CONFIRM base_url: HYDE 3.3 baseline (5 arc-min). Utrecht Yoda (public.yoda.uu.nl) has Anubis bot-protection; set to the confirmed direct location or a mirror. file_template may be '{var}_{year}AD.asc' or a per-year '.zip'. vars: popd=density, urbc=urban pop, rurc=rural pop.",
+    "base_url": "",
+    "file_template": "{var}_{year}AD.asc",
+    "variables": ["popd", "urbc", "rurc"],
+    "start_year": 1901,
+    "end_year": 2023,
+    "out_subdir": "hyde33"
   }
 }

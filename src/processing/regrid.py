@@ -222,6 +222,32 @@ def native_res_m(raster_path: str) -> float:
         return abs(src.transform.a)
 
 
+def load_ref(cfg: Optional[dict] = None):
+    """Open the model-grid reference raster (``grid.ref_raster``) as a DataArray.
+
+    Defines the CRS/transform/extent every reprojected product aligns to.
+    """
+    import rioxarray  # noqa: F401  (registers the .rio accessor)
+    from src.config_utils import load_data_config
+
+    if cfg is None:
+        cfg = load_data_config()
+    return rioxarray.open_rasterio(cfg["grid"]["ref_raster"])
+
+
+def reproject_to_ref(da, ref, resampling: str = "average"):
+    """Resample a rioxarray DataArray onto the model grid via ``reproject_match``.
+
+    Handles arbitrary native:target ratios (unlike the integer ``block_reduce``).
+    Use ``average`` for continuous fields (the linear areal aggregate — apply any
+    nonlinear transform afterward, at target resolution), ``nearest``/``mode``
+    for categorical masks, ``sum`` where a count must be conserved.
+    """
+    from rasterio.enums import Resampling
+
+    return da.rio.reproject_match(ref, resampling=Resampling[resampling])
+
+
 def block_factor_for(raster_path: str, cfg: Optional[dict] = None) -> int:
     """Block factor to take one source raster from its native res to the target grid."""
     spec = load_grid_spec(cfg)

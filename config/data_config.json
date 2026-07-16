@@ -17,5 +17,21 @@
     "out_subdirs": {
       "bui": "HBUI"
     }
+  },
+  "zenodo": {
+    "server": "https://zenodo.org",
+    "datasets": {
+      "luh3": {
+        "record": "19261724",
+        "_comment": "LUH-3 v1.2 CMIP7 Historical (850-2024, 0.25deg). states + management only; transitions (17GB, flows not states) skipped.",
+        "files": [
+          "multiple-states_input4MIPs_landState_CMIP_UofMD-landState-3-1-2_gn_0850-2024.nc",
+          "multiple-management_input4MIPs_landState_CMIP_UofMD-landState-3-1-2_gn_0850-2024.nc"
+        ]
+      }
+    },
+    "out_subdirs": {
+      "luh3": "LUH3"
+    }
   }
 }

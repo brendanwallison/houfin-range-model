@@ -411,9 +411,7 @@ def plot_directional_asymmetry(data, Sa_grid, Sj_grid, Fmax_grid, Q_grid, labels
     bins = sorted(list(set([l.split('_', 2)[-1] for l in labels])))
     
     for dist_bin in bins:
-        # ---------------------------------------------------------
         # 1. EAST vs WEST (Originating from WEST vs Originating from EAST)
-        # ---------------------------------------------------------
         kernel_to_east = f"to_EAST_{dist_bin}"
         kernel_to_west = f"to_WEST_{dist_bin}"
         
@@ -449,9 +447,7 @@ def plot_directional_asymmetry(data, Sa_grid, Sj_grid, Fmax_grid, Q_grid, labels
             plt.savefig(os.path.join(comp_dir, f"cost_delta_from_W_E_{dist_bin}.png"), dpi=200)
             plt.close()
 
-        # ---------------------------------------------------------
         # 2. NORTH vs SOUTH (Originating from SOUTH vs Originating from NORTH)
-        # ---------------------------------------------------------
         kernel_to_north = f"to_NORTH_{dist_bin}"
         kernel_to_south = f"to_SOUTH_{dist_bin}"
         
@@ -848,9 +844,7 @@ def plot_age_structure_dynamics_map(Na_grid, Nj_grid, years, map_params, output_
     """
     print("Visualizing Shifting MAP Age Structure (Realized vs. Theoretical Potential)...")
     
-    # -------------------------------------------------------------------------
     # 1. CALCULATE CONSTRAINED THEORETICAL REGIME FROM MAP POINT ESTIMATES
-    # -------------------------------------------------------------------------
     # Reconstruct global vital rates from the optimized MAP parameters
     # Using basic math matching the inverse links (sigmoid and softplus)
     def sigmoid(x): return 1.0 / (1.0 + np.exp(-x))
@@ -871,9 +865,7 @@ def plot_age_structure_dynamics_map(Na_grid, Nj_grid, years, map_params, output_
     lambda_K = (Sa_base + np.sqrt(Sa_base**2 + 4.0 * F_at_K * Sj_base)) / 2.0
     global_rho_theoretical = F_at_K / (F_at_K + lambda_K)
 
-    # -------------------------------------------------------------------------
     # PLOT 1: CONTINENTAL TREND
-    # -------------------------------------------------------------------------
     total_Na = np.sum(Na_grid, axis=(1, 2))
     total_Nj = np.sum(Nj_grid, axis=(1, 2))
     total_pop = total_Na + total_Nj + 1e-9
@@ -893,9 +885,7 @@ def plot_age_structure_dynamics_map(Na_grid, Nj_grid, years, map_params, output_
     plt.savefig(os.path.join(output_dir, "trend_age_structure.png"), dpi=200)
     plt.close()
 
-    # -------------------------------------------------------------------------
     # PLOT 2: SPATIOTEMPORAL SNAPSHOTS
-    # -------------------------------------------------------------------------
     snapshots = [1970, 1990, 2010, 2020]
     fig, axes = plt.subplots(2, 2, figsize=(16, 12))
     
@@ -961,9 +951,7 @@ def analyze_source_sink_mortality(data, Sa_grid, Sj_grid, Fmax_grid, Q_grid, out
     R0_first_masked = np.ma.masked_where(land_mask == 0, R0_first_10)
     R0_last_masked  = np.ma.masked_where(land_mask == 0, R0_last_10)
 
-    # =========================================================================
     # PANEL 1: CONTINUOUS UNCONSTRAINED R0 MAPS
-    # =========================================================================
     # Full Timeline Baseline
     plt.figure(figsize=(11, 8))
     vmin_val, vmax_val = 0.1, max(5.0, float(np.ma.max(R0_full_masked)))
@@ -1005,9 +993,7 @@ def analyze_source_sink_mortality(data, Sa_grid, Sj_grid, Fmax_grid, Q_grid, out
     plt.savefig(os.path.join(output_dir, "analysis_source_sink_continuous_panels.png"), dpi=200, bbox_inches='tight')
     plt.close()
 
-    # =========================================================================
     # PANEL 2: BINARY SOURCE-SINK MAPS
-    # =========================================================================
     binary_full  = (R0_full_masked > 1.0).astype(float)
     binary_first = (R0_first_masked > 1.0).astype(float)
     binary_last  = (R0_last_masked > 1.0).astype(float)
@@ -1057,9 +1043,7 @@ def analyze_source_sink_mortality(data, Sa_grid, Sj_grid, Fmax_grid, Q_grid, out
     plt.savefig(os.path.join(output_dir, "analysis_source_sink_binary_panels.png"), dpi=200, bbox_inches='tight')
     plt.close()
 
-    # =========================================================================
     # PANEL 3: TERNARY MARGINAL HABITAT MAPS
-    # =========================================================================
     upper_thresh, lower_thresh = 1.1, 0.9
     cmap_ternary = mcolors.ListedColormap(['#d73027', '#e0e0e0', '#4575b4'])
     legend_elements_ternary = [
@@ -1112,9 +1096,7 @@ def analyze_source_sink_mortality(data, Sa_grid, Sj_grid, Fmax_grid, Q_grid, out
     plt.savefig(os.path.join(output_dir, "analysis_source_sink_ternary_panels.png"), dpi=200, bbox_inches='tight')
     plt.close()
 
-    # =========================================================================
     # ORIGINAL DISPERSAL RISK CALCULATION (UNCHANGED)
-    # =========================================================================
     print("Calculating true path-integrated outgoing risk...")
     if Q_grid.ndim == 4:
         Q_spatial = np.mean(Q_grid, axis=0)
@@ -1232,7 +1214,6 @@ def plot_results():
     else:
         with np.load(disp_files[0]) as loader:
             labels = [str(lbl) for lbl in loader['labels']]
-    # --------------------------
 
     # 1. Standard Run
     sim = reconstruct_simulation(data, params)
@@ -1293,7 +1274,6 @@ def plot_results():
 
     # 2. Call the suite.
     characterize_Z_dependence_suite(sim, data, OUTPUT_PLOT_DIR)
-    # ----------------------
     
     create_animation(density_cf_diag, obs_grid, years, OUTPUT_PLOT_DIR, data['land_mask'], "evolution_counterfactual_diagnostic_logscale.mp4", logscale=True)
     create_animation(density_cf_diag, obs_grid, years, OUTPUT_PLOT_DIR, data['land_mask'], "evolution_counterfactual_diagnostic.mp4")

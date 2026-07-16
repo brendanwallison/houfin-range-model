@@ -53,9 +53,7 @@ TOKEN_ENV = "DATAVERSE_TOKEN"
 TOKEN_SECRET = "dataverse_token"
 
 
-# ------------------------------------------
 # Auth
-# ------------------------------------------
 
 def resolve_token(cli_token=None):
     """Optional API token; None is fine for public datasets."""
@@ -66,9 +64,7 @@ def _headers(token):
     return {"X-Dataverse-key": token} if token else {}
 
 
-# ------------------------------------------
 # Metadata / listing
-# ------------------------------------------
 
 def list_files(doi: str, server: str = DEFAULT_SERVER, token=None) -> list:
     """Return file records for a dataset: id, filename, size, md5, restricted."""
@@ -102,9 +98,7 @@ def list_files(doi: str, server: str = DEFAULT_SERVER, token=None) -> list:
     raise RuntimeError(f"Could not list dataset '{doi}'.")
 
 
-# ------------------------------------------
 # Download
-# ------------------------------------------
 
 def _md5(path: Path, chunk=1 << 20) -> str:
     h = hashlib.md5()
@@ -228,9 +222,7 @@ def download_dataset(
     return n_fail
 
 
-# ------------------------------------------
 # CLI
-# ------------------------------------------
 
 def _resolve_doi(args, dv_cfg):
     if args.doi:

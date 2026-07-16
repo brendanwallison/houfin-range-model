@@ -23,9 +23,7 @@ if project_root not in sys.path:
     sys.path.append(project_root)
 from src.config_utils import load_config
 
-# ============================================================
 # 1. Directories (from single_year_analysis block of the config)
-# ============================================================
 
 _sya = load_config()["single_year_analysis"]
 result_dir = os.path.dirname(_sya["esk_feature_path"])
@@ -33,17 +31,13 @@ out_dir = os.path.join(result_dir, "blr")
 
 os.makedirs(out_dir, exist_ok=True)
 
-# ============================================================
 # 2. Input paths
-# ============================================================
 
 Z_PATH = _sya["esk_feature_path"]      # (N_valid, D)
 MASK_PATH = _sya["mask_path"]          # (H, W) boolean
 EBIRD_TIF = _sya["response_path"]      # (H, W)
 
-# ============================================================
 # 3. Output paths
-# ============================================================
 
 OUT_MEAN = os.path.join(out_dir, "posterior_mean.png")
 OUT_SD = os.path.join(out_dir, "posterior_sd.png")
@@ -52,9 +46,7 @@ OUT_MEAN_LOG = os.path.join(out_dir, "posterior_mean_log1p.png")
 OUT_OBS_LOG = os.path.join(out_dir, "observed_log1p.png")
 
 
-# ============================================================
 # 2. Load data
-# ============================================================
 
 Z = np.load(Z_PATH)                          # (N_comm, D)
 valid_mask = np.load(MASK_PATH).astype(bool)
@@ -65,10 +57,8 @@ with rasterio.open(EBIRD_TIF) as src:
 H, W = y_map.shape
 N_comm, D = Z.shape
 
-# ============================================================
 # 3. Extract observed y at community-valid pixels
 #    and intersect with observation validity
-# ============================================================
 
 # Flatten spatial layers
 mask_flat = valid_mask.ravel()
@@ -94,9 +84,7 @@ valid_idx = (valid_idx[0][obs_ok], valid_idx[1][obs_ok])
 
 N_final = y.shape[0]
 
-# ============================================================
 # 4. Validity checks (strict but correct)
-# ============================================================
 
 assert Z.shape[0] == y.shape[0], \
     f"Z rows ({Z.shape[0]}) != y rows ({y.shape[0]})"
@@ -107,9 +95,7 @@ assert np.isfinite(y).all(), "y contains non-finite values"
 print(f"Loaded {N_final} aligned pixels (from {N_comm}), latent dim = {D}")
 
 
-# ============================================================
 # 5. Bayesian linear regression (closed form)
-# ============================================================
 
 # Hyperparameters
 alpha = 1.0      # prior precision on weights
@@ -122,9 +108,7 @@ A_inv = np.linalg.inv(A)
 # Posterior mean
 w_mean = A_inv @ (Z.T @ y) / sigma2
 
-# ============================================================
 # 6. Posterior predictive moments
-# ============================================================
 
 # Predictive mean
 y_pred_mean = Z @ w_mean
@@ -138,9 +122,7 @@ y_pred_sd = np.sqrt(y_pred_var)
 # Residuals
 residuals = y - y_pred_mean
 
-# ============================================================
 # 7. Reconstruct full rasters
-# ============================================================
 
 def reconstruct(values, fill=np.nan):
     """
@@ -155,9 +137,7 @@ mean_map = reconstruct(y_pred_mean)
 sd_map = reconstruct(y_pred_sd)
 resid_map = reconstruct(residuals)
 
-# ============================================================
 # 8. Plot helper
-# ============================================================
 
 def save_png(data, fname, title, cmap="viridis", vmin=None, vmax=None):
     plt.figure(figsize=(8, 6))
@@ -170,9 +150,7 @@ def save_png(data, fname, title, cmap="viridis", vmin=None, vmax=None):
     plt.close()
     print(f"Saved {fname}")
 
-# ============================================================
 # 9. Save PNGs
-# ============================================================
 
 save_png(mean_map, OUT_MEAN,
          "Posterior Mean – House Finch Abundance")
@@ -191,9 +169,7 @@ save_png(np.log1p(mean_map), OUT_MEAN_LOG,
 save_png(np.log1p(y_map), OUT_OBS_LOG,
          "Observed Abundance (log1p scale)")
 
-# ============================================================
 # 10. Final diagnostics
-# ============================================================
 
 rmse = np.sqrt(np.mean(residuals ** 2))
 r2 = 1.0 - np.var(residuals) / np.var(y)

@@ -8,9 +8,7 @@ import xarray as xr
 
 from src.config_utils import load_data_config
 
-# ------------------------------------------
 # Config
-# ------------------------------------------
 BASE_URL = "https://services.nacse.org/prism/data/get/us/4km"
 # Raw monthly PRISM download location (NetCDF), config-driven so it is portable
 # and lands beside the other raw products under datasets_root.
@@ -24,9 +22,7 @@ MAX_RETRIES = 5
 BACKOFF = 5  # seconds
 MAX_WORKERS = 3  # safer for NACSE
 
-# ------------------------------------------
 # Helper Functions
-# ------------------------------------------
 
 def generate_month_list(start_year, end_year):
     out = []
@@ -88,9 +84,7 @@ def download_task(variable, yyyymm):
     ok = stream_download(url, dest)
     return (variable, yyyymm, "ok" if ok else "fail")
 
-# ------------------------------------------
 # Verification Logic
-# ------------------------------------------
 
 def verify_file(variable, yyyymm):
     """Return True if file exists and is valid NetCDF."""
@@ -127,9 +121,7 @@ def scan_all():
 
     return missing, corrupt
 
-# ------------------------------------------
 # Main
-# ------------------------------------------
 
 def main():
     parser = argparse.ArgumentParser()
@@ -141,9 +133,7 @@ def main():
                         help="Re-download missing or corrupt files.")
     args = parser.parse_args()
 
-    # -------------------------
     # SCAN ONLY
-    # -------------------------
     if args.scan_only:
         missing, corrupt = scan_all()
         print("\n=== Missing Files ===")
@@ -157,9 +147,7 @@ def main():
         print(f"Total corrupt: {len(corrupt)}")
         exit(0)
 
-    # -------------------------
     # VERIFY
-    # -------------------------
     if args.verify:
         missing, corrupt = scan_all()
         print("\n=== Missing Files ===")
@@ -173,9 +161,7 @@ def main():
         print(f"Total corrupt: {len(corrupt)}")
         exit(0)
 
-    # -------------------------
     # RESUME
-    # -------------------------
     if args.resume:
         missing, corrupt = scan_all()
         todo = missing + corrupt
@@ -211,9 +197,7 @@ def main():
 
         exit(0)
 
-    # -------------------------
     # DEFAULT: FULL DOWNLOAD
-    # -------------------------
     months = generate_month_list(START_YEAR, END_YEAR)
     total_tasks = len(VARIABLES) * len(months)
 

@@ -44,9 +44,7 @@ def plot_comprehensive_age_structure(Na_grid_mean, Nj_grid_mean, years,
     """
     print("Processing Comprehensive Age Structure Diagnostics (Trajectories & Spatial Manifolds)...")
     
-    # -------------------------------------------------------------------------
     # 1. COMPUTE TRAJECTORY METRICS (Realized vs Theoretical over time)
-    # -------------------------------------------------------------------------
     # Realized metrics from actual simulated bird allocations
     total_Na = np.sum(Na_grid_mean, axis=(1, 2))
     total_Nj = np.sum(Nj_grid_mean, axis=(1, 2))
@@ -84,9 +82,7 @@ def plot_comprehensive_age_structure(Na_grid_mean, Nj_grid_mean, years,
         # Store the full 2D map slice
         all_rho_K_maps[t, :, :] = rho_t_fixed = np.where(land_mask, rho_K_t, np.nan)
 
-    # -------------------------------------------------------------------------
     # PLOT 1: Trajectory Comparison Trendline
-    # -------------------------------------------------------------------------
     plt.figure(figsize=(10, 6))
     plt.plot(years, global_rho_realized, color='forestgreen', linewidth=2, 
              label="Realized (Actual Population)")
@@ -102,18 +98,14 @@ def plot_comprehensive_age_structure(Na_grid_mean, Nj_grid_mean, years,
     plt.savefig(os.path.join(output_dir, "trend_age_structure_comparison.png"), dpi=200)
     plt.close()
 
-    # -------------------------------------------------------------------------
     # 2. COMPUTE SPATIAL MANIFOLD (Temporal average of recent years)
-    # -------------------------------------------------------------------------
     window_clamped = min(recent_years_window, T_sliced)
     rho_K_recent_slices = all_rho_K_maps[-window_clamped:, :, :]
     
     # Take the temporal average across the 3D stack, preserving 2D spatial dimensions
     rho_K_map = np.nanmean(rho_K_recent_slices, axis=0)
 
-    # -------------------------------------------------------------------------
     # PLOT 2: 2D Geographic Heatmap
-    # -------------------------------------------------------------------------
     plt.figure(figsize=(12, 8))
     im = plt.imshow(rho_K_map, cmap='RdYlBu', vmin=0.3, vmax=0.7)
     

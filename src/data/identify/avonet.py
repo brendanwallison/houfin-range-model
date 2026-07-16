@@ -21,9 +21,7 @@ from src.config_utils import load_data_config
 _CFG = load_data_config()
 _DR = _CFG["datasets_root"]
 
-# ------------------------------------------------------------
 # Configuration
-# ------------------------------------------------------------
 
 BL_PATH = f"{_DR}/avonet/TraitData/AVONET1_BirdLife.csv"
 CROSSWALK_PATH = f"{_DR}/avonet/PhylogeneticData/BirdLife-BirdTree crosswalk.csv"
@@ -67,9 +65,7 @@ URBAN_COLS = [
     "Habitat.Use.NL",
 ]
 
-# ------------------------------------------------------------
 # Utilities
-# ------------------------------------------------------------
 
 def normalize_name(x):
     if pd.isna(x):
@@ -98,9 +94,7 @@ def euclidean_distance(df, focal_row, cols, prefix):
     out[f"{prefix}.Distance"] = dist
     return out.reindex(df.index)
 
-# ------------------------------------------------------------
 # Crosswalks
-# ------------------------------------------------------------
 
 def load_crosswalk(path):
     cw = pd.read_csv(path)
@@ -117,9 +111,7 @@ def derive_focal_phylo_label(bl, crosswalk):
         raise ValueError("Focal species not found in BirdTree crosswalk.")
     return sp3.iloc[0].replace(" ", "_")
 
-# ------------------------------------------------------------
 # Phylogeny
-# ------------------------------------------------------------
 
 def compute_phylo_distances(tree, focal_label):
     pdm = tree.phylogenetic_distance_matrix()
@@ -129,23 +121,17 @@ def compute_phylo_distances(tree, focal_label):
     focal = node.taxon
     return {t.label: pdm.distance(focal, t) for t in tree.taxon_namespace}
 
-# ------------------------------------------------------------
 # Main
-# ------------------------------------------------------------
 
 def main():
     print("Working directory:", os.getcwd())
 
-    # --------------------------------------------------------
     # Load data
-    # --------------------------------------------------------
     bl = pd.read_csv(BL_PATH, encoding="latin1")
     urban = pd.read_csv(URBAN_PATH)
     ebird = pd.read_csv(EBIRD_CROSSWALK_PATH)
 
-    # --------------------------------------------------------
     # Define species universe via urban dataset
-    # --------------------------------------------------------
     urban["species_code"] = urban["species_code"].str.lower()
     ebird["SPECIES_CODE"] = ebird["SPECIES_CODE"].str.lower()
 
@@ -170,9 +156,7 @@ def main():
 
     bl.to_csv(OUTPUT_FILTERED, index=False)
 
-    # --------------------------------------------------------
     # Morphology
-    # --------------------------------------------------------
     crosswalk = load_crosswalk(CROSSWALK_PATH)
     bl = bl.merge(crosswalk[["Species1", "Species3"]], on="Species1", how="left")
     bl["Species3_underscored"] = bl["Species3"].str.replace(" ", "_")
@@ -183,9 +167,7 @@ def main():
     morph_block = euclidean_distance(bl_morph, focal_row, TRAIT_COLS, "Trait")
     bl = pd.concat([bl, morph_block], axis=1)
 
-    # --------------------------------------------------------
     # Urban tolerance
-    # --------------------------------------------------------
     # We include "SPECIES_CODE" in the merge columns here
     bl = bl.merge(
         urban[["sci_norm", "SPECIES_CODE"] + URBAN_COLS],
@@ -200,9 +182,7 @@ def main():
     urban_block = euclidean_distance(bl, focal_urban, URBAN_COLS, "Urban")
     bl = pd.concat([bl, urban_block], axis=1)
 
-    # --------------------------------------------------------
     # Phylogeny
-    # --------------------------------------------------------
     focal_phylo = derive_focal_phylo_label(bl, crosswalk)
     tree = dendropy.Tree.get(
         path=PHYLO_PATH,
@@ -214,9 +194,7 @@ def main():
     bl["Phylo.Distance"] = bl["Species3_underscored"].map(phylo_dist)
     bl = bl.dropna(subset=["Phylo.Distance"])
 
-    # --------------------------------------------------------
     # Rank-based combination
-    # --------------------------------------------------------
     rank_cols = ["Trait.Distance", "Urban.Distance", "Phylo.Distance"]
 
     for c in rank_cols:
@@ -231,9 +209,7 @@ def main():
 
     print(f"Saved rank-based comparison table (with eBird SPECIES_CODE) to {OUTPUT_COMPARISON}")
 
-    # --------------------------------------------------------
     # Clean species list for the eBird downloader
-    # --------------------------------------------------------
     # Minimal, ordered artifact: species_code + mean_rank, most-similar first.
     # Selection (top-N / threshold) is deliberately left to download time, so
     # the full ranked list is written here rather than a pre-cut subset.

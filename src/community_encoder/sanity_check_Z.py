@@ -11,9 +11,7 @@ from torch.utils.data import Dataset, DataLoader
 from scipy.ndimage import gaussian_filter1d
 from datetime import datetime
 
-# ============================================================
 # 1. Data Utilities (Adapted for eBird Input)
-# ============================================================
 
 def load_ebird_stack(folder, pattern):
     """
@@ -86,9 +84,7 @@ def load_z_matrix(path, H, W, valid_mask):
     Z_full[valid_mask] = Z_flat
     return Z_full
 
-# ============================================================
 # 2. Dataset
-# ============================================================
 
 class AbundanceDataset(Dataset):
     def __init__(self, abundance_features, z_target, block_rows=8, block_cols=8, split="train"):
@@ -132,9 +128,7 @@ class AbundanceDataset(Dataset):
     def __getitem__(self, idx):
         return self.features[idx], self.z_target[idx]
 
-# ============================================================
 # 3. Model Architecture (Simple Encoder)
-# ============================================================
 
 class BMLPBlock(nn.Module):
     def __init__(self, m, k=4, dropout=0.5):
@@ -179,9 +173,7 @@ class AbundanceAutoencoder(nn.Module):
         recon = self.decoder(z_norm)
         return z_norm, recon
 
-# ============================================================
 # 4. Losses & Diagnostics
-# ============================================================
 
 def reconstruction_loss(recon, target):
     return F.mse_loss(recon, target)
@@ -191,13 +183,9 @@ def metric_proxy_loss(z_pred, z_target):
 
 # ... [Previous imports and classes remain the same] ...
 
-# ============================================================
 # 4. Diagnostics (Restored)
-# ============================================================
 
-# ============================================================
 # 4. Diagnostics (Updated for End-to-End Check)
-# ============================================================
 
 @torch.no_grad()
 def compute_kernel_diagnostics(z_pred, z_target, raw_features, max_pairs=1024):
@@ -244,9 +232,7 @@ def compute_kernel_diagnostics(z_pred, z_target, raw_features, max_pairs=1024):
         "rank": eff_rank.item(),
     }
 
-# ============================================================
 # 5. Training Loop (Updated)
-# ============================================================
 
 def train_sanity_check(train, val, input_dim, latent_dim,
                        batch_size=4096, epochs=50, lr=1e-3):
@@ -293,9 +279,7 @@ def train_sanity_check(train, val, input_dim, latent_dim,
             f"Rank: {diag['rank']:.2f}"
         )
 
-# ============================================================
 # 6. Main
-# ============================================================
 if __name__ == "__main__":
     import sys
     project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))

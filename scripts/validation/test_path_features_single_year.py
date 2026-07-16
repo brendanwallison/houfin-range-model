@@ -28,9 +28,7 @@ from src.model.build_kernels import make_radial_directional_kernels
 # 2. Import Path Integration
 from src.model.build_path_features import integrate_paths
 
-# =========================================================
 # Helper Functions
-# =========================================================
 
 def get_log_spaced_splits(min_dist, max_dist, n_bins):
     """

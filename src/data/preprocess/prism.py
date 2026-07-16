@@ -24,9 +24,7 @@ import matplotlib.pyplot as plt
 from src.config_utils import load_data_config
 _DR = load_data_config()["datasets_root"]
 
-# -----------------------------
 # Configuration
-# -----------------------------
 PRISM_DIR = f"{_DR}/prism_monthly_4km"
 BUI_REF = f"{_DR}/HBUI/BUI/2020_BUI_4km.tif"
 OCEAN_MASK = f"{_DR}/land_mask/ocean_mask_4km.tif"
@@ -37,9 +35,7 @@ EXPECTED_CRS = CRS.from_epsg(4269)  # NAD83 geographic
 SENTINELS = [-9999, -999, -99]      # common sentinel values
 
 
-# -----------------------------
 # Utility functions
-# -----------------------------
 def check_prism_crs(ds, nc_path):
     """Accept any CRS that is NAD83 geographic."""
     if "crs" in ds.data_vars:
@@ -61,9 +57,7 @@ def save_png(array, out_path, cmap="viridis"):
     plt.imsave(out_path, arr, cmap=cmap)
 
 
-# -----------------------------
 # Main processing
-# -----------------------------
 def main():
     os.makedirs(OUT_DIR, exist_ok=True)
 
@@ -88,9 +82,7 @@ def main():
 
         print(f"Processing {fname}")
 
-        # -----------------------------
         # Open NetCDF and select Band1
-        # -----------------------------
         ds = xr.open_dataset(nc_path)
         if "Band1" not in ds.data_vars:
             raise ValueError(f"'Band1' not found in {nc_path}")
@@ -113,18 +105,14 @@ def main():
         file_crs = check_prism_crs(ds, nc_path)
         da = da.rio.write_crs(file_crs, inplace=False)
 
-        # -----------------------------
         # Reproject to BUI 4 km grid
-        # -----------------------------
         da_reproj = da.rio.reproject_match(bui_ref)
 
         # Convert common sentinel values to NaN
         for s in SENTINELS:
             da_reproj = da_reproj.where(da_reproj != s, np.nan)
 
-        # -----------------------------
         # Apply ocean mask robustly
-        # -----------------------------
         data = da_reproj.values.astype("float32")
 
         if data.shape[-2:] != ocean_mask.shape:
@@ -144,9 +132,7 @@ def main():
         # Assign cleaned values back to DataArray
         da_reproj.values = data
 
-        # -----------------------------
         # Safety check
-        # -----------------------------
         neg_mask = (data < -1000) & ~np.isnan(data)
         if np.any(neg_mask):
             raise ValueError(
@@ -154,14 +140,10 @@ def main():
                 f"min={np.nanmin(data)}, example={data[neg_mask][0]}"
             )
 
-        # -----------------------------
         # Save GeoTIFF
-        # -----------------------------
         da_reproj.rio.to_raster(out_tif)
 
-        # -----------------------------
         # Save PNG quick-look (band 0 for 3D, or 2D array)
-        # -----------------------------
         save_png(data[0] if data.ndim == 3 else data, out_png)
 
         print(f"Saved → {out_tif}")

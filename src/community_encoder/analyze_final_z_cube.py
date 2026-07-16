@@ -61,9 +61,7 @@ def analyze_raw_z_evolution():
 
     global_means = np.array(global_means) # (T, 3)
     
-    # =========================================================
     # 2. PLOT: PHASE SPACE TRAJECTORY (Z0 vs Z1)
-    # =========================================================
     # "Is the community state drifting directionally?"
     print("Generating Phase Space Trajectory (Z0 vs Z1)...")
     plt.figure(figsize=(10, 8))
@@ -89,9 +87,7 @@ def analyze_raw_z_evolution():
     plt.savefig(os.path.join(OUT_DIR, "trajectory_z0_z1.png"), dpi=300)
     plt.close()
 
-    # =========================================================
     # 3. PLOT: HOVMOLLER DIAGRAMS (Z0, Z1, Z2)
-    # =========================================================
     # "Are communities migrating North?"
     print("Generating Latitudinal Hovmöller Diagrams...")
     
@@ -122,9 +118,7 @@ def analyze_raw_z_evolution():
     plt.savefig(os.path.join(OUT_DIR, "hovmoller_latitudinal_raw.png"), dpi=300)
     plt.close()
     
-    # =========================================================
     # 4. PLOT: ANOMALY (DELTA) MAPS
-    # =========================================================
     # "How different is 2024 from 1900?"
     # We just plot the Delta for Z0 to see where the biggest changes happened.
     print("Generating Total Change Map (2024 - 1900)...")

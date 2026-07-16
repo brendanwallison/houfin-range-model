@@ -12,9 +12,7 @@ from src.config_utils import load_data_config
 _DR = load_data_config()["datasets_root"]
 
 
-# ---------------------------------------------------------
 # Hardcoded defaults (used when no CLI args are provided)
-# ---------------------------------------------------------
 DEFAULT_BUI_PATH = f"{_DR}/HBUI/BUI/2020_BUI.tif"
 DEFAULT_FACTOR = 16          # 16 → ~4 km
 DEFAULT_PNG_PATH = f"{_DR}/HBUI/bui_2020_lowres_powerdot1.png"
@@ -44,9 +42,7 @@ def visualize_bui_lowres(bui_path, factor=16, png_path="bui_lowres.png",
     # Compute block means ignoring NaNs
     bui_lowres = np.nanmean(blocks, axis=(1, 3))
 
-    # ---------------------------------------------------------
     # Power-law transform (takes precedence over log)
-    # ---------------------------------------------------------
     if power is not None:
         if not (0 < power <= 1):
             raise ValueError("Power exponent must be between 0 and 1.")
@@ -58,9 +54,7 @@ def visualize_bui_lowres(bui_path, factor=16, png_path="bui_lowres.png",
 
         bui_lowres = bui_pow
 
-    # ---------------------------------------------------------
     # Log10 transform (only if power is not used)
-    # ---------------------------------------------------------
     elif logscale:
         positive = bui_lowres > 0
         bui_log = np.full_like(bui_lowres, np.nan, dtype="float32")
@@ -68,9 +62,7 @@ def visualize_bui_lowres(bui_path, factor=16, png_path="bui_lowres.png",
         # zeros and NaNs remain NaN
         bui_lowres = bui_log
 
-    # ---------------------------------------------------------
     # Visualization
-    # ---------------------------------------------------------
     plt.figure(figsize=(10, 6))
     plt.imshow(bui_lowres, cmap="viridis", interpolation="nearest")
 
@@ -94,9 +86,7 @@ def visualize_bui_lowres(bui_path, factor=16, png_path="bui_lowres.png",
     return bui_lowres
 
 
-# ---------------------------------------------------------
 # Main block
-# ---------------------------------------------------------
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Downsample a BUI raster and save a PNG visualization."

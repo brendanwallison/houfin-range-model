@@ -45,9 +45,7 @@ TOKEN_ENV = "ZENODO_TOKEN"
 TOKEN_SECRET = "zenodo_token"
 
 
-# ------------------------------------------
 # Auth
-# ------------------------------------------
 
 def resolve_token(cli_token=None):
     """Optional API token; None is fine for public records."""
@@ -58,9 +56,7 @@ def _params(token):
     return {"access_token": token} if token else {}
 
 
-# ------------------------------------------
 # Metadata / listing
-# ------------------------------------------
 
 def list_files(record: str, server: str = DEFAULT_SERVER, token=None) -> list:
     """Return file records for a Zenodo record: key, size, md5, url."""
@@ -89,9 +85,7 @@ def list_files(record: str, server: str = DEFAULT_SERVER, token=None) -> list:
     raise RuntimeError(f"Could not list Zenodo record '{record}'.")
 
 
-# ------------------------------------------
 # Download
-# ------------------------------------------
 
 def _md5(path: Path, chunk=1 << 20) -> str:
     h = hashlib.md5()
@@ -176,9 +170,7 @@ def download_record(record, out_dir, server=DEFAULT_SERVER, token=None,
     return n_fail
 
 
-# ------------------------------------------
 # CLI
-# ------------------------------------------
 
 def _resolve(args, zcfg):
     """Return (record_id, include_files, out_subdir) from --dataset or --record."""

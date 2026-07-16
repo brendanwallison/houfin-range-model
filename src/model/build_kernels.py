@@ -3,9 +3,7 @@ import jax.nn
 from jax.numpy.fft import fft2, ifft2
 from scipy.special import gamma, gammaincinv
 
-# =========================================================
 # 1. CORE GEOMETRY & MATH
-# =========================================================
 
 def toroidal_distance_grid(Lx: int, Ly: int, cell_size: float) -> jnp.ndarray:
     if (Lx % 2 == 0) or (Ly % 2 == 0):
@@ -77,9 +75,7 @@ def get_dispersal_quantiles(mean_dist, shape_param, quantiles=[0.33, 0.66]):
         radii.append(r)
     return radii
 
-# =========================================================
 # 2. KERNEL BUILDERS (The Factories)
-# =========================================================
 
 def make_radial_directional_kernels(
     Lx, Ly, 

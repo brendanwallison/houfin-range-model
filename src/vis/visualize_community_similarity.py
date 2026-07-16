@@ -35,12 +35,8 @@ EBIRD_DIR = _cfg["ebird_dir"]
 OUTPUT_PLOT_DIR = os.path.join(RESULT_DIR, "plots_community_mimicry")
 os.makedirs(OUTPUT_PLOT_DIR, exist_ok=True)
 
-# ============================================================
 # 1. Model Reconstruction
-# ============================================================
-# ============================================================
 # 1. Model Reconstruction
-# ============================================================
 def reconstruct_simulation(data, params):
     print("Reconstructing latent fields from MAP estimates...")
     from src.model.age_priors import build_model_2d 
@@ -65,9 +61,7 @@ def reconstruct_simulation(data, params):
     return {k: v[0] for k, v in samples.items()}
 
 
-# ============================================================
 # 2. Robust Data Loader (With Taxonomy Mapping)
-# ============================================================
 def load_tifs_structured(folder, taxonomy_csv=None, pattern="*_abundance_median_*.tif"):
     files = sorted(glob.glob(os.path.join(folder, pattern)))
     if not files:
@@ -133,9 +127,7 @@ def load_tifs_structured(folder, taxonomy_csv=None, pattern="*_abundance_median_
         "pseudo_names": pseudo_names 
     }
 
-# ============================================================
 # 3. Visualization
-# ============================================================
 def plot_prior_vs_learned_mechanisms(sim_s_annual, sim_r_annual, R0_annual, unique_species, avonet_csv_path, output_dir):
     import pandas as pd
     import seaborn as sns
@@ -448,9 +440,7 @@ def plot_community_cosine_similarities(sim, Z_native, pseudo_abundance_matrix, p
     else:
         print("Skipping AVONET integration: CSV path not provided or file not found.")
 
-# ============================================================
 # Main Execution
-# ============================================================
 if __name__ == "__main__":
     RUZICKA_DIR = _cfg["community_bridge"]["ruzicka_dir"]
     TAXONOMY_FILE = os.path.join(EBIRD_DIR, "eBird_taxonomy_v2025.csv")

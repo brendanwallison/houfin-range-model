@@ -8,9 +8,7 @@ from tqdm import tqdm
 from src.config_utils import load_config, load_data_config
 from src.processing import regrid
 
-# ============================================================
 # 1. BUI STREAMER (Multi-Band + Optional Interpolation)
-# ============================================================
 class BuiStreamer:
     def __init__(self, bui_dir, start_year, end_year, alpha, interpolate=False,
                  res_km=4):
@@ -93,9 +91,7 @@ class BuiStreamer:
                 
             yield year, self.state
 
-# ============================================================
 # 2. PRISM STREAMER (Strict Variables + Bio-Year)
-# ============================================================
 class PrismStreamer:
     def __init__(self, prism_dir, start_year, end_year, alpha, target_res_m=None):
         self.prism_dir = prism_dir
@@ -172,9 +168,7 @@ class PrismStreamer:
                 
             yield year, self.state
 
-# ============================================================
 # 3. SYNCHRONIZED EXECUTION
-# ============================================================
 def run_simulation(prism_dir, bui_dir, out_dir, interpolate_bui=False, res_km=None):
     os.makedirs(out_dir, exist_ok=True)
     states_out_dir = os.path.join(out_dir, "yearly_states")

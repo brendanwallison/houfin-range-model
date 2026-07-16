@@ -13,9 +13,7 @@ if _repo_root not in sys.path:
 from src.config_utils import load_data_config
 _DR = load_data_config()["datasets_root"]
 
-# ------------------------------------------------------------
 # NetCDF (PRISM) nodata inspection
-# ------------------------------------------------------------
 
 def inspect_netcdf_nodata(nc_path, var_name=None):
     """
@@ -102,9 +100,7 @@ def inspect_netcdf_numeric_detail(nc_path, var_name="Band1"):
 
     ds.close()
 
-# ------------------------------------------------------------
 # GeoTIFF (eBird, BUI) nodata inspection
-# ------------------------------------------------------------
 
 def inspect_geotiff_nodata(tif_path):
     """
@@ -149,9 +145,7 @@ def inspect_geotiff_nodata(tif_path):
             print("No valid pixels found.")
 
 
-# ------------------------------------------------------------
 # Folder helper
-# ------------------------------------------------------------
 
 def inspect_folder(path, pattern="*.tif", limit=3):
     """
@@ -171,9 +165,7 @@ def inspect_folder(path, pattern="*.tif", limit=3):
             print(f"Skipping unsupported file: {f}")
 
 
-# ------------------------------------------------------------
 # Example usage (edit paths as needed)
-# ------------------------------------------------------------
 if __name__ == "__main__":
     print("\n--- Example usage ---")
 

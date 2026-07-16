@@ -13,7 +13,6 @@ from numpyro.handlers import reparam, block
 
 # --- SINGLE POINT OF CONTROL ---
 PRECISION = 'float32' 
-# -------------------------------
 
 jax.config.update("jax_enable_x64", True if PRECISION == 'float64' else False)
 

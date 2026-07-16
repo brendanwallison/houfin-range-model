@@ -95,9 +95,7 @@ def get_grid_location(tif_path, lat, lon):
         row, col = src.index(x, y)
         return int(row), int(col)
 
-# -----------------------------------------------------------------------------
 # Main Execution
-# -----------------------------------------------------------------------------
 def ingest_data():
     print(f"--- Starting Data Ingestion (grid-native, PCA={N_PCA_COMPONENTS}) ---")
     os.makedirs(OUTPUT_DIR, exist_ok=True)

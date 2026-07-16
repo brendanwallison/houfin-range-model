@@ -9,9 +9,7 @@ import rasterio
 from datetime import datetime
 from scipy.ndimage import gaussian_filter1d
 
-# ============================================================
 # 1. DATA LOADING
-# ============================================================
 def load_tifs_structured(folder, pattern="*_abundance_median_*.tif"):
     files = sorted(glob.glob(os.path.join(folder, pattern)))
     if not files:
@@ -117,9 +115,7 @@ TRANSFORMS = {
     "hellinger": smoothed_hellinger_transform,
 }
 
-# ============================================================
 # 2. LATENT AUDITOR (With Detailed CSV Summary)
-# ============================================================
 class LatentAuditor:
     def __init__(self, Z, ebird_smooth, meta, valid_mask, H, W, out_dir):
         self.Z = Z
@@ -307,9 +303,7 @@ class LatentAuditor:
         df_summary.to_csv(out_path, index=False)
         print(f"Detailed Audit Complete. Results saved to: {out_path}")
 
-# ============================================================
 # 3. GEOGRAPHIC COVARIANCE PROBE
-# ============================================================
 class GeoCovarianceProbe:
     def __init__(self, Z, valid_mask, H, W, out_dir):
         self.Z = Z
@@ -404,9 +398,7 @@ class GeoCovarianceProbe:
         self.plot_local_volatility()
         print(f"GeoCovariance Audit Complete.")
 
-# ============================================================
 # 4. EXECUTION BLOCK
-# ============================================================
 if __name__ == "__main__":
     import argparse
     import sys

@@ -24,9 +24,7 @@ from src.config_utils import load_data_config
 _CFG = load_data_config()
 _DR = _CFG["datasets_root"]
 
-# -----------------------------
 # Paths (config-driven)
-# -----------------------------
 # Input is the raw eBird dir the downloader writes to; output is the same name
 # with an "_albers" suffix (the reprojected grid the encoder's ebird_folder
 # points at). Single source of truth via data_config's ebird_raw_subdir.
@@ -55,20 +53,14 @@ def main():
 
     os.makedirs(OUT_DIR, exist_ok=True)
 
-    # -----------------------------
     # Load reference BUI grid
-    # -----------------------------
     bui_ref = rxr.open_rasterio(BUI_REF)
 
-    # -----------------------------
     # Load 4 km ocean mask
-    # -----------------------------
     with rasterio.open(OCEAN_MASK) as src:
         ocean_mask = src.read(1)
 
-    # -----------------------------
     # Process all eBird .tif files
-    # -----------------------------
     tif_files = sorted(glob.glob(os.path.join(EBIRD_DIR, "*.tif")))
 
     for tif_path in tif_files:
@@ -82,9 +74,7 @@ def main():
 
         print(f"Processing {fname}")
 
-        # -----------------------------
         # Load eBird raster
-        # -----------------------------
         da = rxr.open_rasterio(tif_path, masked=True)
 
         # Enforce CRS = EPSG:8857
@@ -93,18 +83,14 @@ def main():
         # Ensure nodata is nan
         da = da.rio.write_nodata(float("nan"), inplace=False)
 
-        # -----------------------------
         # Reproject to BUI 4 km grid
-        # -----------------------------
         da_reproj = da.rio.reproject_match(
             bui_ref,
             resampling="bilinear",
             nodata=float("nan"),
         )
 
-        # -----------------------------
         # Apply ocean mask
-        # -----------------------------
         if da_reproj.shape[-2:] != ocean_mask.shape:
             raise ValueError(
                 f"Shape mismatch after reprojection for {tif_path}: "
@@ -116,14 +102,10 @@ def main():
         data[0][ocean_mask == 1] = np.nan
         da_reproj = da_reproj.copy(data=data)
 
-        # -----------------------------
         # Save GeoTIFF
-        # -----------------------------
         da_reproj.rio.to_raster(out_tif)
 
-        # -----------------------------
         # Save PNG quick-look
-        # -----------------------------
         save_png(data[0], out_png)
 
         print(f"Saved → {out_tif}")

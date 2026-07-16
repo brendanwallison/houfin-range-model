@@ -13,7 +13,6 @@ from tqdm import tqdm
 
 # --- SINGLE POINT OF CONTROL ---
 PRECISION = 'float32' # Options: 'float32' or 'float64'
-# -------------------------------
 
 jax.config.update("jax_enable_x64", True if PRECISION == 'float64' else False)
 

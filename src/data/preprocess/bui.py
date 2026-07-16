@@ -41,9 +41,7 @@ QUANTILES = [0.05, 0.25, 0.50, 0.75, 0.90, 0.97, 0.99]
 _YEAR_RE = re.compile(r"(\d{4})_BUI\.tif$")
 
 
-# ---------------------------------------------------------------------------
 # Discovery
-# ---------------------------------------------------------------------------
 
 def discover_bui_rasters(bui_dir: str) -> list:
     """Return [(year, path)] for raw ``NNNN_BUI.tif`` rasters, recursively.
@@ -62,9 +60,7 @@ def discover_bui_rasters(bui_dir: str) -> list:
     return sorted(hits)
 
 
-# ---------------------------------------------------------------------------
 # Aggregation (finest-resolution -> target grid)
-# ---------------------------------------------------------------------------
 
 def _read_land(path: str, watermask: np.ndarray = None):
     """Read band 1 as float, nodata/water -> NaN. Returns (arr, profile)."""
@@ -111,9 +107,7 @@ def write_quantile_geotiff(bands, transform, profile, out_path):
             dst.write(bands[k], k + 1)
 
 
-# ---------------------------------------------------------------------------
 # Temporal interpolation (on additive histograms, NOT on quantiles)
-# ---------------------------------------------------------------------------
 
 def interpolate_values(vals0, vals1, y0, y1, year):
     """Linear-in-time interpolation of the raw within-cell 250 m values.
@@ -131,9 +125,7 @@ def interpolate_values(vals0, vals1, y0, y1, year):
     return (1.0 - w) * vals0 + w * vals1
 
 
-# ---------------------------------------------------------------------------
 # CLI
-# ---------------------------------------------------------------------------
 
 def _load_watermask(cfg):
     path = cfg.get("bui_watermask")

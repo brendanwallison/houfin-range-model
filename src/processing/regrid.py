@@ -37,9 +37,7 @@ from typing import Callable, Optional
 import numpy as np
 
 
-# ---------------------------------------------------------------------------
 # Block geometry
-# ---------------------------------------------------------------------------
 
 def block_factor(native_res_m: float, target_res_m: float) -> int:
     """Integer number of native cells per target cell along one axis.
@@ -90,9 +88,7 @@ def _blocks(arr: np.ndarray, block: int) -> np.ndarray:
     )
 
 
-# ---------------------------------------------------------------------------
 # Linear aggregation (commutes with resolution change)
-# ---------------------------------------------------------------------------
 
 def block_reduce(arr: np.ndarray, block: int, how: str = "mean") -> np.ndarray:
     """NaN-aware block reduction to the coarser grid.
@@ -131,9 +127,7 @@ def defer_pointwise(
     return func(block_reduce(arr, block, how=how))
 
 
-# ---------------------------------------------------------------------------
 # Deferred quantiles via additive per-cell histograms
-# ---------------------------------------------------------------------------
 
 def block_histogram(arr: np.ndarray, block: int, edges: np.ndarray) -> np.ndarray:
     """Per-target-cell histogram of the native values (NaNs dropped).
@@ -193,9 +187,7 @@ def quantile_from_histogram(
     return out
 
 
-# ---------------------------------------------------------------------------
 # Config / raster glue (dependencies imported lazily)
-# ---------------------------------------------------------------------------
 
 def load_grid_spec(cfg: Optional[dict] = None) -> dict:
     """Return the ``grid`` block from data_config (``target_res_m``, ``ref_raster``)."""

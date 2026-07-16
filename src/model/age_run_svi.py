@@ -17,7 +17,6 @@ import matplotlib.pyplot as plt
 
 # --- SINGLE POINT OF CONTROL ---
 PRECISION = 'float32' 
-# -------------------------------
 
 jax.config.update("jax_enable_x64", True if PRECISION == 'float64' else False)
 

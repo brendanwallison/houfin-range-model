@@ -53,9 +53,7 @@ from tqdm import tqdm
 
 from src.config_utils import get_secret, load_data_config
 
-# ------------------------------------------
 # Config / constants
-# ------------------------------------------
 LIST_URL = "https://st-download.ebird.org/v1/list-obj/{year}/{species}?key={key}"
 FETCH_URL = "https://st-download.ebird.org/v1/fetch?objKey={objkey}&key={key}"
 
@@ -78,9 +76,7 @@ def _weekly_median_pattern(species: str, year: int) -> re.Pattern:
     )
 
 
-# ------------------------------------------
 # API access
-# ------------------------------------------
 
 def resolve_key(cli_key=None) -> str:
     key = cli_key or get_secret(EBIRD_SECRET_NAME, env_var=EBIRD_KEY_ENV)
@@ -138,9 +134,7 @@ def stream_download(url: str, dest: Path) -> bool:
     return False
 
 
-# ------------------------------------------
 # Species selection
-# ------------------------------------------
 
 def read_species_list(path: Path) -> list:
     """Read ordered eBird species codes from a CSV or JSON list artifact.
@@ -191,9 +185,7 @@ def resolve_species(args, cfg) -> list:
     return out
 
 
-# ------------------------------------------
 # Task planning
-# ------------------------------------------
 
 def plan_tasks(species_codes, year, key, out_dir, limit=None):
     """Return (species, objkey, dest) tuples for the selected weekly rasters."""
@@ -226,9 +218,7 @@ def download_one(objkey, dest, key):
     return (dest.name, "ok" if ok else "fail")
 
 
-# ------------------------------------------
 # Main
-# ------------------------------------------
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)

@@ -14,7 +14,6 @@ from numpyro.infer.initialization import init_to_value
 
 # --- SINGLE POINT OF CONTROL ---
 PRECISION = 'float32'
-# -------------------------------
 
 jax.config.update(
     "jax_enable_x64",
@@ -41,9 +40,7 @@ MAP_DIR = os.path.join(_cfg["results_dir"], _cfg["run_names"]["resume_hmc_from_m
 OUTPUT_DIR = os.path.join(_cfg["results_dir"], _cfg["run_names"]["resume_hmc_out"].format(precision=PRECISION))
 
 
-# -----------------------------
 # OPTIONAL DIAGNOSTICS (non-invasive)
-# -----------------------------
 class HMCDiagnostics:
     def __init__(self):
         self.t0 = time.time()
@@ -90,9 +87,7 @@ def build_map_initialization(noise_scale=0.01):
     return noisy_init
 
 
-# -----------------------------
 # MAIN RUN (UNCHANGED SIGNATURE)
-# -----------------------------
 def run_hmc():
 
     print(

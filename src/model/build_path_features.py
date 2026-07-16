@@ -24,9 +24,7 @@ if project_root not in sys.path:
 # Only import the kernel builder, we define the splits locally
 from src.model.build_kernels import make_radial_directional_kernels
 
-# =========================================================
 # PART 1: The "Scaling Trick" (Path Integration)
-# =========================================================
 
 def resize_kernel_stack(kernel_stack, scale):
     """
@@ -143,9 +141,7 @@ def integrate_paths(Z, kernel_stack, land_mask, steps=10, feature_batch_size=4):
     Z_disp_final = jnp.transpose(Z_disp_acc / steps, (0, 3, 4, 1, 2))
     return Z_disp_final
 
-# =========================================================
 # PART 2: Helper Functions
-# =========================================================
 
 def get_log_spaced_splits(min_dist, max_dist, n_bins):
     """Generates geometric splits."""

@@ -23,7 +23,7 @@ invasion
     fires in calendar 1940 regardless of where the timeline starts.
 end_year
     The newest BBS field-season year (2026 release → 2025). Covariates that lag
-    (e.g. HYDE ending 2023) are EMA/persistence-carried to end_year.
+    (e.g. LUH-3 ending 2024) are EMA/persistence-carried to end_year.
 """
 from typing import Dict, List, Sequence, Union
 

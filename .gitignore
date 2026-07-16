@@ -13,3 +13,4 @@ latent_audit_results/
 __pycache__/
 *.egg-info/
 old/
+hpc/lonestar6.md

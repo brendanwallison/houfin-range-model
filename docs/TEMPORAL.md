@@ -49,7 +49,7 @@ regardless of where the timeline starts (1902 → index 38; the old 1900 start �
 ## End of the timeline
 
 `end_year` is the newest BBS field-season year. Covariates that end earlier
-(e.g. HYDE 3.5 ends 2023) are carried forward to `end_year` by the existing EMA /
+(e.g. LUH-3 ends 2024) are carried forward to `end_year` by the existing EMA /
 persistence — human population and land use change slowly, so this is
 defensible; it is documented, not silent.
 

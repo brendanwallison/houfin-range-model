@@ -45,5 +45,21 @@
     "base_url": "https://geo.public.data.uu.nl/vault-hyde/hyde35_c9_apr2025%5B1749214444%5D/original/gbc2025_7apr_base/NetCDF",
     "files": ["population_density.nc", "urban_population.nc", "rural_population.nc"],
     "out_subdir": "hyde35"
+  },
+  "sciencebase": {
+    "_comment": "USGS BBS releases via ScienceBase item file API. bbs = newest US/Canada release (2026 Release, 1966-2025). bbs_mexico = 2008-2018 UNPROCESSED (DOI 10.5066/P9L4KBDC); lacks RunType/RPID, incorporated with a quality covariate.",
+    "datasets": {
+      "bbs": {
+        "item": "6a0b0b0ab66b0188da36aedd",
+        "files": ["States.zip", "Routes.csv", "Weather.csv", "SpeciesList.csv", "RunType.pdf"]
+      },
+      "bbs_mexico": {
+        "item": "5f32af1082cee144fb313837"
+      }
+    },
+    "out_subdirs": {
+      "bbs": "bbs_2026_release",
+      "bbs_mexico": "bbs_mexico_unprocessed"
+    }
   }
 }

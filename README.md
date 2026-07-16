@@ -26,12 +26,12 @@ There are a number of dependencies for various individual scripts, but some of t
 
 | Library | Where | Why |
 |---|---|---|
-| `rasterio` / `rioxarray` | throughout `scripts/` | reading, reprojecting, and aligning every raster data source (PRISM climate, eBird abundance, urbanization index, ocean mask) onto one common 4 km Albers grid |
+| `rasterio` / `rioxarray` | throughout `scripts/` | reading, reprojecting, and aligning every raster data source (climate, eBird abundance, land use, soil, land mask) onto one common 25 km equal-area Albers grid |
 | `geopandas` / `shapely` | `scripts/ingest_bbs_data.py` | BBS route geometry and convex-hull native-range boundaries |
 | `dendropy` | `scripts/avonet_pipeline.py` | parsing a bird phylogeny (Hackett tree) to compute phylogenetic distance from other species to the house finch |
 | `optax` | `src/model/age_run_*.py` | JAX-native optimizers (AdamW, cosine decay, gradient clipping) for SVI/MAP fitting |
 
-**Why there's no CLI or notebooks checked in.** Most scripts are run directly rather than through a CLI framework — this is characteristic of an active research codebase where parameters change from run to run faster than a CLI abstraction would be worth building. Filesystem paths, however, are no longer hand-edited per script: they now come from three JSON files under `config/` (see §4), loaded through the shared helper `src/config_utils.py`. A `notebooks/` directory is `.gitignore`d, implying exploratory notebooks exist locally but were deliberately kept out of version control. `main.py` at the repository root is an unused placeholder stub.
+**Why there's no CLI or notebooks checked in.** Most scripts are run directly rather than through a CLI framework, as is comming for active research codebases. Filesystem paths come from three JSON files under `config/` (see §4), loaded through the shared helper `src/config_utils.py`. `main.py` at the repository root is an unused placeholder stub.
 
 ---
 
@@ -47,9 +47,9 @@ There are a number of dependencies for various individual scripts, but some of t
   eBird abundance ──┤  ESK: kernel-PCA on species similarity    │
    (2023 only)      │       → Z.npy  (one year, ground truth)   │
                     │                                            │
-  PRISM climate  ───┤  DESK: autoencoder predicts Z from        │
-  + urbanization    │        climate/urbanization alone         │
-                    │       → Z_latent_{year}.npy, 1900-2024     │
+  climate,land use ─┤  DESK: autoencoder predicts Z from        │
+  soil (all years)  │        climate/land-use/soil alone        │
+                    │       → Z_latent_{year}.npy, 1902-2025     │
                     └──────────────────┬────────────────────────┘
                                        │  Z (habitat-quality latent vector,
                                        │    every pixel, every year)
@@ -71,17 +71,17 @@ The **why** behind this split: habitat-quality estimation and population-dynamic
 
 ### 2.2 `src/community_encoder/` — building a history of habitat quality
 
-**Why a two-stage design (ESK then DESK) rather than one model.** eBird's species-abundance data — the richest available signal of *which pixels are ecologically similar* — is essentially only usable for recent years (2023 in this project); there's no way to run the same analysis on 1900 because the underlying observational data doesn't exist that far back. Climate and urbanization data, by contrast, exist (or can be reconstructed) for the entire 20th century. The two-stage design exploits this: build a trustworthy "ground truth" of habitat similarity where the rich data exists (2023), then train a *second, simpler* model that learns to reconstruct that same latent space from only the climate/urbanization variables that are available for every year — and use that second model to extrapolate backwards in time.
+**Why a two-stage design (ESK then DESK) rather than one model.** eBird's species-abundance data — the richest available signal of *which pixels are ecologically similar* — is essentially only usable for recent years (2023 in this project); there's no way to run the same analysis on 1900 because the underlying observational data doesn't exist that far back. Climate, land-use, and soil data, by contrast, exist (or can be reconstructed) for the entire 20th century. The two-stage design exploits this: build a trustworthy "ground truth" of habitat similarity where the rich data exists (2023), then train a *second, simpler* model that learns to reconstruct that same latent space from only the climate/land-use/soil variables that are available for every year — and use that second model to extrapolate backwards in time.
 
 - **ESK** (`src/community_encoder/train_DESK/esk_kernel.py`) is not a neural network — it's a **kernel PCA** computed on a **Ruzicka similarity kernel** (a generalized Jaccard / Bray–Curtis-style similarity) between every pair of pixels' weekly, per-species eBird abundance vectors. Why Ruzicka: it's a similarity measure well suited to sparse, non-negative abundance data, which is exactly what per-species eBird rasters look like. Because computing a full pairwise kernel over every land pixel is computationally infeasible, the code uses a **Nyström landmark approximation**: it samples a subset of "landmark" pixels (18,000, per `config/esk_desk_config.json`), builds the exact kernel among just those, eigendecomposes it, and projects every other pixel onto the resulting eigenvectors. The result, swept over several temporal-smoothing bandwidths (`sigmas`) and target dimensionalities (`latent_dims` = 8/16/32), is `Z.npy` — a single year's latent habitat-similarity space, along with a `valid_mask.npy` marking which pixels have usable data.
-- **DESK** ("Dynamic ESK", `src/community_encoder/train_DESK/desk_training.py`) is a genuine PyTorch model: a `MultiInputAutoencoder` with two encoder branches (one for PRISM climate variables, one for the urbanization/BUI raster), merged and compressed into a latent vector, then decoded back into both inputs. It's trained with three loss terms, matching the `weights` block in `config/esk_desk_config.json`:
+- **DESK** ("Dynamic ESK", `src/community_encoder/train_DESK/desk_training.py`) is a genuine PyTorch model: a `MultiStreamAutoencoder` with one encoder branch per covariate stream (climate, land use, soil), merged and compressed into a latent vector, then decoded back into the concatenated inputs. (The class generalizes the earlier two-branch `MultiInputAutoencoder`, which remains a special case for the deprecated PRISM/BUI pipeline.) It's trained with three loss terms, matching the `weights` block in `config/esk_desk_config.json`:
   - **stabilizing** — mean-squared error against ESK's 2023 ground-truth `Z`, so the learned latent space actually matches the "real" similarity structure where it's known;
   - **metric** — a metric-learning loss over random pixel pairs that preserves Ruzicka-similarity relationships, so pixels that are ecologically similar stay close in latent space even away from the labeled year;
-  - **reconstruction** — standard autoencoder reconstruction loss on the climate/urbanization inputs, computed on both the labeled year and on unlabeled historical years, which is what lets the model be trained semi-supervised across the full 1900–2024 span rather than only on 2023.
+  - **reconstruction** — standard autoencoder reconstruction loss on the climate/land-use/soil inputs, computed on both the labeled year and on unlabeled historical years, which is what lets the model be trained semi-supervised across the full 1902–2025 span rather than only on 2023.
   
-  Why this matters: once trained, DESK needs only climate and urbanization rasters — available for any year — to produce a `Z`-like vector, sidestepping the fact that eBird data doesn't exist for most of the time period the range-expansion model needs to cover.
-- `prism_bui_smoothers.py` is the ETL step feeding DESK: it loads monthly PRISM climate GeoTIFFs (7 variables) and multi-band urbanization ("BUI") rasters, applies a 10-year exponential moving average (to represent gradually-changing climate/land-use rather than noisy year-to-year fluctuation), and writes one `state_{year}_bio_ema10.npz` file per year.
-- `build_final_z_cube.py` applies the trained DESK model to every year's smoothed state, producing the final artifact of this subsystem: `Z_latent_{year}.npy` for 1900–2024 — the "spacetime cube" of habitat quality that the population model consumes. Missing or edge-case pixels are filled in three passes (spatial interpolation, backfilling from the static ESK ground truth where available, then nearest-neighbor cleanup).
+  Why this matters: once trained, DESK needs only climate, land-use, and soil rasters — available for any year — to produce a `Z`-like vector, sidestepping the fact that eBird data doesn't exist for most of the time period the range-expansion model needs to cover.
+- `src/data/combine/streams.py` is the ETL step feeding DESK: a config-driven registry of covariate streamers (a monthly bio-year **climate** stream; a **land-use** stream stacking LUH-3 + HYDE per-year rasters with nearest-year fill; a static **soil** stream) that iterate in lockstep, apply a 10-year exponential moving average (to represent gradually-changing conditions rather than noisy year-to-year fluctuation), and write one `state_{year}.npz` (one named array per stream) plus a training-vector bag. (The old hardcoded PRISM+BUI two-stream ETL is preserved under `src/data/deprecated/combine/states.py`.)
+- `build_final_z_cube.py` applies the trained DESK model to every year's smoothed state, producing the final artifact of this subsystem: `Z_latent_{year}.npy` for 1902–2025 — the "spacetime cube" of habitat quality that the population model consumes. Missing or edge-case pixels are filled in three passes (spatial interpolation, backfilling from the static ESK ground truth where available, then nearest-neighbor cleanup).
 - The remaining files in this directory (`analyze_final_z_cube.py`, `climate_vs_z_turnover.py`, `urbanization_vs_z_turnover.py`, `latent_interpreter.py`, `generate_z_gif.py`, `sanity_check_Z.py`, `sanity_check_houfin_regression.py`) are diagnostics — they answer "does this latent space actually make ecological sense?" The most important of these, `sanity_check_houfin_regression.py`, fits a closed-form Bayesian linear regression of observed house-finch abundance on `Z` — the project's basic sanity check that the learned latent space is at all predictive of the species this whole project is trying to model. `latent_interpreter.py` is the richest interpretive tool (phenology, per-species loadings, spatial variograms); it previously existed as two near-identical copies (a Hellinger-transform variant and a Ruzicka variant), now consolidated into one module with a `--transform ruzicka|hellinger` flag.
 - `analysis_2023/` is a newer, config-driven rewrite of the same house-finch-regression/comparison logic, and is explicitly an in-progress consolidation (visible in the git history as "Incomplete reorganization of ESK/DESK visualization"). All active scripts in this subsystem now read their paths from `config/esk_desk_config.json` (via `src/config_utils.py`) rather than hardcoding them.
 
@@ -163,16 +163,20 @@ Most of `src/vis/` is diagnostic plotting for one subsystem or the other (`check
 
 ### 4.1 External data sources and how they enter the pipeline
 
+The pipeline uses **continental** environmental products (covering Canada/Mexico, not just CONUS) at **25 km** equal-area Albers resolution. The earlier CONUS-only PRISM + HISDAC-US BUI products are preserved but deprecated (see `src/data/deprecated/`).
+
 | Source | What it is | Raw format | Entry script | Downstream form |
 |---|---|---|---|---|
-| PRISM | monthly gridded US climate (precipitation, temperature, vapor pressure deficit) | NetCDF | `scripts/download_prism.py` → `scripts/project_prism.py` | reprojected 4 km GeoTIFF → yearly EMA `.npz` state (`prism_bui_smoothers.py`) |
-| eBird | weekly per-species abundance-median rasters | GeoTIFF | `scripts/project_ebird` | reprojected 4 km GeoTIFF, consumed directly by ESK |
-| BBS (Breeding Bird Survey) | route-level bird count survey data | CSV (`Weather.csv`, `Routes.csv`, per-state counts) | `scripts/ingest_bbs_data.py` | `bbs_data_for_python.npz` (gridded counts + native-range/pseudo-zero absence records) |
+| ClimateNA (via `climr`) | monthly downscaled continental climate (temp/precip + derived), 1901–present | computed in R (`climr`) at 3 sub-cell elevation levels | `scripts/climate_climr.py` (+ `preprocess/elevation.py`) | climate directly on the 25 km grid → yearly bio-year EMA `.npz` (**climate** stream) |
+| eBird | weekly per-species abundance-median rasters | GeoTIFF, EPSG:8857 (~2.96 km) | `scripts/download_ebird.py` → `preprocess/ebird.py` | reprojected onto the 25 km grid, consumed directly by ESK |
+| LUH-3 | annual land-use state (12 fractions) + management layers (global 0.25°) | netCDF | `scripts/download_zenodo.py` → `preprocess/luh3.py` | per-variable 25 km GeoTIFFs → yearly EMA `.npz` (**land-use** stream) |
+| HYDE 3.5 | annual population density + urban/rural counts (global 5′) | netCDF | `scripts/download_hyde.py` → `preprocess/hyde.py` | per-year 25 km GeoTIFFs (density=average, counts=sum) → land-use stream |
+| SoilGrids | static soil properties × depths (global 5 km, Goode Homolosine) | COG | `scripts/download_soilgrids.py` → `preprocess/soilgrids.py` | static 25 km GeoTIFFs (**soil** stream) |
+| BBS (Breeding Bird Survey) | route-level counts: US/Canada (screened) + Mexico (unprocessed) | CSV (ScienceBase) | `scripts/download_bbs.py` → `preprocess/bbs.py` | `bbs_data_for_python.npz` (gridded counts + per-obs quality covariate) |
 | AVONET + phylogeny | bird morphological traits + Hackett-tree phylogeny | CSV + Nexus | `scripts/avonet_pipeline.py` | merged/filtered CSVs of trait/phylogenetic distance to house finch |
-| Urbanization ("BUI") | multi-band human land-use intensity index | raster (PNG-style multi-band) | `scripts/aggregate_and_interpolate_bui.py`, `bui_lowres.py` | folded into yearly EMA `.npz` state alongside PRISM |
-| Ocean/water mask | land/water boundary | derived from BUI nodata, and separately a raw global watermask | `scripts/extract_ocean_mask.py`, `scripts/watermask_project.py` | `ocean_mask_4km.tif`, used throughout as the canonical land mask |
+| Coastline / land mask | continental land/water boundary | Natural Earth 10 m land polygon | `preprocess/land_mask.py` | `ocean_mask_25km.tif` (de-dilated land-fraction threshold; replaces the old BUI-nodata mask) |
 
-All of these are aligned onto a **common 4 km Albers-projection grid** via `rioxarray.reproject_match` — a deliberate design choice so that every subsequent pipeline stage can treat "pixel index" as a stable, shared coordinate system across all data sources and years.
+All of these are aligned onto a **common 25 km equal-area Albers grid** (`grid.ref_raster`) via `rioxarray.reproject_match` — a deliberate design choice so that every subsequent pipeline stage can treat "pixel index" as a stable, shared coordinate system across all data sources and years. Because 25 km is not an integer multiple of the native resolutions, aggregation is by area-weighted reprojection (`regrid.reproject_to_ref`), not integer block-averaging.
 
 ### 4.2 Format progression through the pipeline
 

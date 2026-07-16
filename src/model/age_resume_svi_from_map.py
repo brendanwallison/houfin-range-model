@@ -1,3 +1,9 @@
+"""Run SVI starting from a saved MAP initialization.
+
+Loads a MAP checkpoint (``age_run_map``) and initializes the SVI guide from it,
+so variational inference refines a posterior around the MAP mode instead of
+optimizing from scratch. Writes the fitted guide/params. GPU-oriented.
+"""
 import os
 import pickle
 import sys

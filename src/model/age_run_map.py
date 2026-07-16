@@ -1,3 +1,10 @@
+"""Fit the age-structured model by MAP (maximum-a-posteriori) optimization.
+
+Runs NumPyro's ``AutoDelta`` / gradient optimization over ``build_model_2d`` to
+get a point estimate, typically as a fast first pass and as the initialization
+for SVI (``age_resume_svi_from_map``) or HMC (``age_resume_hmc``). Writes the MAP
+parameters to a pickle checkpoint. GPU-oriented; see the README for memory notes.
+"""
 import sys
 import os
 import pickle

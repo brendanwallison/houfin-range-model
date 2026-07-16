@@ -1,3 +1,10 @@
+"""Fit the age-structured model by SVI (stochastic variational inference).
+
+Optimizes a variational guide over ``build_model_2d`` for an approximate
+posterior (uncertainty, not just a point estimate as in MAP). Includes
+memory-frugal forward-sim helpers so the decades-long simulation fits in VRAM.
+Writes the fitted guide/params to a checkpoint. GPU-oriented.
+"""
 import sys
 import os
 import pickle

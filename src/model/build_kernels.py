@@ -1,3 +1,23 @@
+"""FFT-based dispersal kernels for the age-structured forward simulation.
+
+Dispersal each timestep is a convolution of the population field with a
+distance-decay kernel. Convolutions are done in the Fourier domain (``fft2`` /
+``ifft2``) because the kernel spans the whole grid and a direct convolution
+would be O(N^2) per step. Kernels are the 2-D radial **generalized Gaussian**
+``exp(-(r/scale)^shape)`` (shape<2 = fat-tailed, longer-distance dispersal);
+``scale`` is set from the mean dispersal distance via gamma-function moments
+(:func:`get_gamma_scale`).
+
+Two populations disperse differently: adults isotropically (one kernel), and
+juveniles anisotropically -- the juvenile master kernel is split into directional
+x radial **wedges** (:func:`make_radial_directional_kernels`) via a partition of
+unity, so the wedges sum back to the master kernel (mass-conserving; no
+per-wedge renormalization). Because the grid is finite, each kernel also gets an
+**edge correction**: the fraction of its mass that lands on valid habitat
+(:func:`edge_correction_from_fft`), which the forward step divides by so mass
+isn't lost off-grid or into water. All grids use odd padded dimensions and a
+toroidal (wrap-around) distance convention required by the FFT.
+"""
 import jax.numpy as jnp
 import jax.nn
 from jax.numpy.fft import fft2, ifft2
@@ -6,6 +26,13 @@ from scipy.special import gamma, gammaincinv
 # 1. CORE GEOMETRY & MATH
 
 def toroidal_distance_grid(Lx: int, Ly: int, cell_size: float) -> jnp.ndarray:
+    """Distance (in km) from the origin to every cell, wrapped toroidally.
+
+    Uses the FFT wrap-around convention: index 0 is the origin and distances
+    increase then mirror back toward the far edge, so a kernel built on this grid
+    convolves correctly under ``fft2``. ``Lx``/``Ly`` must be odd (symmetric
+    wrap); ``cell_size`` scales grid steps to kilometres.
+    """
     if (Lx % 2 == 0) or (Ly % 2 == 0):
         raise ValueError("Lx and Ly must be odd")
 
@@ -18,6 +45,13 @@ def toroidal_distance_grid(Lx: int, Ly: int, cell_size: float) -> jnp.ndarray:
     return jnp.sqrt(x_steps**2 + y_steps**2) * cell_size
 
 def angular_weights_toroidal(Lx: int, Ly: int):
+    """Per-cell directional weights (N/S/E/W) for splitting a kernel into wedges.
+
+    Returns a dict of four smooth angular tapers (raised-cosine over +/-pi/2 about
+    each cardinal direction) on the toroidal grid; together they form a partition
+    of unity over direction, so multiplying a radial kernel by each and summing
+    recovers the original. The origin cell is weight 1 in every direction.
+    """
     y_idx, x_idx = jnp.meshgrid(jnp.arange(Ly), jnp.arange(Lx), indexing="ij")
     
     # Centered coordinates for toroidal FFT conventions
@@ -61,9 +95,21 @@ def edge_correction_from_fft(fft_land, fft_kernel, land_mask, Ny, Nx, eps=1e-12)
     return fraction_land
 
 def get_gamma_scale(mean_dist, shape):
+    """Kernel ``scale`` giving a 2-D radial generalized Gaussian the target mean.
+
+    For ``exp(-(r/scale)^shape)`` weighted by area (2-D radial), the mean radial
+    distance is ``scale * Gamma(3/shape)/Gamma(2/shape)``; invert that so the
+    kernel's mean dispersal distance equals ``mean_dist``.
+    """
     return mean_dist * gamma(2.0 / shape) / gamma(3.0 / shape)
 
 def get_dispersal_quantiles(mean_dist, shape_param, quantiles=[0.33, 0.66]):
+    """Radii enclosing given fractions of the 2-D radial kernel's dispersal mass.
+
+    Inverts the radial CDF (regularized incomplete gamma) of the generalized
+    Gaussian with the given mean/shape. Used to split the juvenile kernel into
+    roughly equal-mass radial bins (default terciles) for the directional wedges.
+    """
     g2 = gamma(2.0 / shape_param)
     g3 = gamma(3.0 / shape_param)
     scale = mean_dist / (g3 / g2)

@@ -1,3 +1,10 @@
+"""Run HMC/NUTS starting from a saved MAP initialization.
+
+Loads a MAP checkpoint (``age_run_map``), builds NUTS initial values from it, and
+samples the posterior of ``build_model_2d`` -- warm-starting from the MAP mode so
+sampling mixes far faster than from a cold start. Emits posterior samples plus
+convergence diagnostics. GPU-oriented.
+"""
 import sys
 import os
 import pickle

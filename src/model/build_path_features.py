@@ -1,3 +1,12 @@
+"""Precompute path-integrated dispersal features (Z_disp) from the Z cube.
+
+For each year, convolves the habitat-quality latent (Z) with the dispersal
+kernels (``build_kernels``) so the forward simulation can read a ready-made
+"where dispersers arriving here came from" summary per cell instead of
+recomputing FFT convolutions inside the fit loop. Writes ``Z_disp_{year}.npz``
+on the model grid; consumed downstream by ``ingest_model_data`` /
+``generate_all_path_features`` and the age-structured model.
+"""
 import sys
 import os
 import time
@@ -153,6 +162,12 @@ def get_log_spaced_splits(min_dist, max_dist, n_bins):
     return splits
 
 def load_land_mask_and_meta(tif_path):
+    """Load the ocean-mask raster as a land mask (1=land, 0=ocean) + cell size (km).
+
+    Infers ``cell_size_km`` from the raster resolution/CRS units (metres ->
+    /1000; degrees -> ~111 km/deg with a warning), normalizes nodata to ocean,
+    and inverts the stored ocean convention to a land mask.
+    """
     with rasterio.open(tif_path) as src:
         ocean_data = src.read(1)
         res_x = src.res[0]

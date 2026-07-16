@@ -20,6 +20,15 @@ def preprocess(in_dir, out_dir, ref):
     tiles = sorted(glob.glob(os.path.join(in_dir, "*_mean_5000.tif")))
     for tif in tiles:
         da = rioxarray.open_rasterio(tif, masked=True)
+        # SoilGrids COGs are interrupted Goode Homolosine (ESRI:54052). Assert it
+        # so a source in a different projection fails loudly rather than being
+        # silently misaligned by reproject_match (which trusts the source CRS).
+        crs = da.rio.crs
+        wkt = crs.to_wkt() if crs else ""
+        if "Homolosine" not in wkt and (crs is None or crs.to_epsg() != 54052):
+            raise ValueError(
+                f"{os.path.basename(tif)} CRS {crs} is not the expected SoilGrids "
+                f"Goode Homolosine (ESRI:54052); verify the product before reprojecting.")
         out = regrid.reproject_to_ref(da, ref, resampling="average")
         out.rio.to_raster(os.path.join(out_dir, os.path.basename(tif).replace("_5000.tif", "_grid.tif")))
     print(f"SoilGrids: reprojected {len(tiles)} tiles -> {out_dir}")

@@ -1,3 +1,13 @@
+"""Priors and the NumPyro model for the age-structured range-expansion model.
+
+:func:`build_model_2d` is the full probabilistic model: it samples parameters
+(:func:`sample_priors`), maps the latent habitat manifold (Z) to spatial
+demographic-rate fields (survival/fecundity/carrying capacity, via
+``age_fields``), runs the age-structured dispersal forward simulation
+(``age_forward``), and scores BBS counts under a negative-binomial (NB2)
+observation model. ``anneal`` scales prior widths for tempered
+warm-up/optimization. See docs/TEMPORAL.md for the invasion-timestep convention.
+"""
 import jax.numpy as jnp
 import jax.nn as jnn
 import numpyro
@@ -7,6 +17,14 @@ from src.model.age_fields import project_and_scatter_age_structured
 from src.model.age_forward import forward_sim_age_structured
 
 def sample_priors(anneal=1.0, M_features=None, N_basis=None, time=None):
+    """Sample every model parameter and return them in a dict.
+
+    Covers the correlated 2-D habitat-manifold weights (survival vs
+    reproduction, with an explicit correlation ``rho``), the spatiotemporal
+    basis weights, dispersal/demography rate parameters, and the Allee term.
+    ``anneal`` widens/narrows prior scales for tempered fitting; ``M_features``,
+    ``N_basis``, ``time`` size the manifold/basis/temporal dimensions.
+    """
     priors = {}
     
     # --- 1. CORRELATED 2D HABITAT MANIFOLD WEIGHTS ---
@@ -90,6 +108,17 @@ def sample_priors(anneal=1.0, M_features=None, N_basis=None, time=None):
 
 
 def build_model_2d(data, anneal=1.0):
+    """The NumPyro model: priors -> demographic fields -> forward sim -> NB2 likelihood.
+
+    ``data`` bundles the model-ready arrays (grid dims, land indices, the gathered
+    Z / dispersal-feature memmaps, spatiotemporal basis, BBS observations and
+    their per-observation quality tier, and scaling constants). Samples priors,
+    projects Z to per-cell/per-year survival, fecundity, and carrying-capacity
+    fields, runs the age-structured forward simulation from the invasion year,
+    and scores BBS counts with a negative-binomial (NB2) likelihood whose
+    concentration is down-weighted for lower-quality (unscreened Mexico)
+    observations. ``anneal`` tempers the priors.
+    """
     Nx, Ny = data['Nx'], data['Ny']
     time = data['time']
     land_rows, land_cols = data['land_rows'], data['land_cols']

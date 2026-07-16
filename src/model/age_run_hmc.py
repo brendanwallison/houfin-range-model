@@ -1,3 +1,11 @@
+"""Fit the age-structured model by HMC/NUTS sampling (full posterior).
+
+The most expensive but most complete inference path: draws posterior samples
+from ``build_model_2d`` with NUTS. Uses a NeuTra reparameterization and
+memory-safe tricks (hiding/transforming large deterministic arrays in chunks) so
+the long forward simulation is tractable to sample. GPU-oriented; usually
+initialized from a MAP fit (see ``age_resume_hmc``).
+"""
 import sys
 import os
 import pickle

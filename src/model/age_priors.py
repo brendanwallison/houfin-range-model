@@ -198,13 +198,26 @@ def build_model_2d(data, anneal=1.0):
     densities_obs = jnp.maximum(densities[t_idx, rows, cols] * data["pop_scalar"], 1e-6)
     
     numpyro.deterministic("expected_obs", densities_obs)
-    # You will need to define a concentration (overdispersion) parameter first
-    # A common prior for this is an Exponential or HalfNormal
+    # NB2 overdispersion: var = mean + mean^2 / concentration, so a LOWER
+    # concentration = more overdispersion = a weaker likelihood constraint.
     concentration = numpyro.sample("concentration", dist.Exponential(1.0))
 
-    # Replace Poisson with NegativeBinomial2
+    # Observation-quality down-weighting. obs_quality is a per-observation tier
+    # (0 = standard US/Canada + pseudo-zeros; 1 = Mexico unprocessed, which has
+    # no RunType/RPID screening). Mexico obs get concentration * q_mult with
+    # q_mult in (0,1), i.e. more overdispersion, so unprocessed data informs the
+    # fit but is never treated as more reliable than screened data. The bound
+    # (0,1) is the principled constraint; the data set the magnitude. This is a
+    # no-op when only tier-0 observations are present (q_mult ** 0 == 1).
+    obs_quality = data.get("obs_quality")
+    if obs_quality is not None and int(jnp.max(obs_quality)) > int(jnp.min(obs_quality)):
+        q_mult = numpyro.sample("quality_conc_mult", dist.Beta(2.0, 2.0))
+        conc_obs = concentration * jnp.power(q_mult, obs_quality)
+    else:
+        conc_obs = concentration
+
     numpyro.sample(
-        "obs", 
-        dist.NegativeBinomial2(mean=densities_obs, concentration=concentration), 
+        "obs",
+        dist.NegativeBinomial2(mean=densities_obs, concentration=conc_obs),
         obs=data["observed_results"]
     )

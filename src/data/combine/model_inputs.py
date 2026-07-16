@@ -122,16 +122,21 @@ def ingest_data():
     orig_years = bbs_data['obs_year']
     orig_counts = bbs_data['observed_results']
     n_pseudo_orig = int(bbs_data['N_pseudo'])
-    
+    # Per-observation quality tier (0 = standard, 1 = mx_unprocessed). Older BBS
+    # npz files predate this field -> default everything to standard.
+    orig_quality = (bbs_data['obs_quality'] if 'obs_quality' in bbs_data.files
+                    else np.zeros_like(orig_rows))
+
     # Split Real vs Pseudo
     real_indices = slice(n_pseudo_orig, None)
     pseudo_indices = slice(0, n_pseudo_orig)
-    
+
     # -- Real Data (already at grid resolution) --
     r_rows_coarse = orig_rows[real_indices]
     r_cols_coarse = orig_cols[real_indices]
     r_years = orig_years[real_indices]
     r_counts = orig_counts[real_indices]
+    r_quality = orig_quality[real_indices]
     
     # -- Pseudo Data Subsampling --
     # a. Calculate Density of Real Data
@@ -174,19 +179,22 @@ def ingest_data():
     final_p_cols = np.concatenate(final_p_cols)
     final_p_years = np.concatenate(final_p_years)
     final_p_counts = np.zeros_like(final_p_years)
+    final_p_quality = np.zeros_like(final_p_years)  # pseudo-zeros are standard tier
 
     # -- Merge --
     obs_rows = np.concatenate([final_p_rows, r_rows_coarse])
     obs_cols = np.concatenate([final_p_cols, r_cols_coarse])
     obs_year = np.concatenate([final_p_years, r_years])
     observed_results = np.concatenate([final_p_counts, r_counts])
-    
+    obs_quality = np.concatenate([final_p_quality, r_quality])
+
     # Bounds Check
     valid_locs = (obs_rows < Ny) & (obs_cols < Nx)
     obs_rows = obs_rows[valid_locs]
     obs_cols = obs_cols[valid_locs]
     obs_year = obs_year[valid_locs]
     observed_results = observed_results[valid_locs]
+    obs_quality = obs_quality[valid_locs]
     
     print(f"  Final Observations: {len(observed_results)}")
 
@@ -270,6 +278,7 @@ def ingest_data():
         "obs_rows": np.array(obs_rows[valid_obs_mask]),
         "obs_cols": np.array(obs_cols[valid_obs_mask]),
         "observed_results": np.array(observed_results[valid_obs_mask]),
+        "obs_quality": np.array(obs_quality[valid_obs_mask]),
         "initpop_latent": initpop_map,
         "pseudo_zero": 1e-12, "pop_scalar": 210.0,
         "inv_location": (inv_row, inv_col),

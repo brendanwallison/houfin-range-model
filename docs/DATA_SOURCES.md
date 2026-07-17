@@ -15,8 +15,11 @@ the model grid (equal-area Albers at `grid.target_res_m`; see
 | **SoilGrids** (aggregated) | ISRIC HTTP (`soilgrids.py`) | COG GeoTIFF | 5000 m | **Goode Homolosine** ESRI:54052 | **static** | sand/silt/clay/phh2o/soc/bdod/cec/nitrogen × 2 depths | reproject **average** → Albers |
 | **BBS US/Canada** | ScienceBase item `6a0b…` (`acquire/bbs.py`) | CSV (+ States.zip) | point routes | WGS84 (lat/lon) | annual, 1966–**2025** | House-Finch counts; `RunType`/`RPID` QC | rasterize to Albers land cells |
 | **BBS Mexico** (unprocessed) | ScienceBase item `5f32…`, DOI 10.5066/P9L4KBDC | CSV | point routes | WGS84 (lat/lon) | annual, 2008–2018 | counts (`SpeciesData`), runs (`RouteData`), loc (`RouteDetails`) | rasterize; **no RunType/RPID** → quality covariate |
-| **DEM** (elevation) | TBD (GMTED2010 / MERIT) | GeoTIFF | ~1 km | TBD | static | elevation → p10/p50/p90 per cell | block-quantile → Albers |
-| **Land/water** | Natural Earth / GSHHG | vector | fine | WGS84 | static | coastline → land fraction | threshold τ → land mask |
+| **DEM** (elevation) | NOAA ETOPO 2022 HTTP (`dem.py`) | GeoTIFF | 60″ (~1.85 km) | WGS84 geographic | static | surface elevation → p10/p50/p90 per cell | reproject→fine sub-grid, block-quantile → Albers |
+| **Land/water** | Natural Earth 10 m (`download_all.sh`) | vector (shapefile) | fine | WGS84 | static | coastline → land fraction | threshold τ → land mask |
+| **AVONET + phylogeny** | figshare `16586228` `ELEData.zip` (`acquire/avonet.py`) | CSV + Nexus tree | species | — | static | traits, BirdLife/BirdTree crosswalk, Hackett MCC phylogeny | trait/phylo distance to house finch |
+| **eBird taxonomy** | eBird API `ref/taxonomy/ebird` (`acquire/avonet.py`) | CSV | species | — | per taxonomy release | SPECIES_CODE ↔ scientific name crosswalk | join key for AVONET/urban |
+| **Urban tolerance** | **manual** (`urban_avian/spp_urban_indices.csv`) | CSV | species | — | static | urban-tolerance indices | defines the species universe; no clean programmatic source |
 
 ## Aggregation method by native:target ratio
 

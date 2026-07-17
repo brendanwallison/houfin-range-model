@@ -28,7 +28,8 @@ CROSSWALK_PATH = f"{_DR}/avonet/PhylogeneticData/BirdLife-BirdTree crosswalk.csv
 PHYLO_PATH = f"{_DR}/avonet/PhylogeneticData/HackettStage1_0001_1000_MCCTreeTargetHeights.nex"
 
 URBAN_PATH = f"{_DR}/urban_avian/spp_urban_indices.csv"
-EBIRD_CROSSWALK_PATH = f"{_DR}/ebird_weekly_2023_albers/eBird_taxonomy_v2025.csv"
+# eBird taxonomy crosswalk, fetched by acquire/avonet.py from the eBird API.
+EBIRD_CROSSWALK_PATH = f"{_DR}/avonet/eBird_taxonomy.csv"
 
 # The clean, ordered species list the eBird downloader consumes; the two wide
 # analysis tables land alongside it. All config-driven (previously written to
@@ -130,6 +131,10 @@ def main():
     bl = pd.read_csv(BL_PATH, encoding="latin1")
     urban = pd.read_csv(URBAN_PATH)
     ebird = pd.read_csv(EBIRD_CROSSWALK_PATH)
+    # The eBird API taxonomy names the column SCIENTIFIC_NAME; older Cornell CSVs
+    # used SCI_NAME. Normalize so downstream code can rely on SCI_NAME.
+    if "SCI_NAME" not in ebird.columns and "SCIENTIFIC_NAME" in ebird.columns:
+        ebird = ebird.rename(columns={"SCIENTIFIC_NAME": "SCI_NAME"})
 
     # Define species universe via urban dataset
     urban["species_code"] = urban["species_code"].str.lower()

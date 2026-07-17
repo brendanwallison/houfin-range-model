@@ -38,8 +38,16 @@ if [ ! -f "$NE_DIR/ne_10m_land.shp" ]; then
     ( cd "$NE_DIR" && unzip -o ne_10m_land.zip )
 fi
 
-echo "== AVONET + phylogeny (reference community) =="
-python scripts/avonet_pipeline.py
+echo "== AVONET (traits + crosswalk + phylogeny) + eBird taxonomy =="
+python scripts/download_avonet.py
+# The reference species list is then built by scripts/avonet_pipeline.py, which
+# ALSO needs urban_avian/spp_urban_indices.csv (a separate manual supplement --
+# stage it under $HOUFIN_DATA/urban_avian first). See docs/TACC.md.
+if [ -f "$HOUFIN_DATA/urban_avian/spp_urban_indices.csv" ]; then
+    python scripts/avonet_pipeline.py
+else
+    echo "  [skip] avonet_pipeline: stage urban_avian/spp_urban_indices.csv first"
+fi
 
 echo "== Warm the climr reference cache (online; needed for the offline batch step) =="
 module load Rstats/4.0.3 RstatsPackages 2>/dev/null || true

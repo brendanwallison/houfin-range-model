@@ -27,6 +27,14 @@
     "fine_factor": 25,
     "snap_radius_cells": 1
   },
+  "avonet": {
+    "_comment": "AVONET traits + BirdLife/BirdTree crosswalk + precomputed Hackett MCC phylogeny (.nex) from the public figshare article (ELEData.zip, found by name via the figshare v2 API), extracted under {datasets_root}/avonet. eBird taxonomy crosswalk from the eBird API (ref/taxonomy/ebird, no key; the Cornell web CSV is Cloudflare-walled). The urban-tolerance table urban_avian/spp_urban_indices.csv is a SEPARATE supplement staged manually.",
+    "figshare_article": "16586228",
+    "figshare_file": "ELEData.zip",
+    "extract_subdirs": ["TraitData", "PhylogeneticData"],
+    "ebird_taxonomy_url": "https://api.ebird.org/v2/ref/taxonomy/ebird",
+    "out_subdir": "avonet"
+  },
   "dem": {
     "_comment": "Global DEM for the climate elevation-quantile step (preprocess/elevation.py -> climr). Default: NOAA NCEI ETOPO 2022 60-arc-second (~1.85 km) surface elevation, a single global GeoTIFF over public HTTPS (no auth). Swap `url` for a finer DEM (e.g. GMTED2010 7.5-arc-second) if desired; elevation.py is source-agnostic.",
     "url": "https://www.ngdc.noaa.gov/mgg/global/relief/ETOPO2022/data/60s/60s_surface_elev_gtif/ETOPO_2022_v1_60s_N90W180_surface.tif",

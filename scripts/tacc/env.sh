@@ -35,12 +35,22 @@ mkdir -p "$HOUFIN_DATA" "$HOUFIN_PROCESSED" "$HOUFIN_CLIMR_CACHE"
 # userspace R at $WORK/houfin/renv via micromamba + conda-forge (LS6 has no
 # conda/mamba module; see docs/TACC.md). Auto-detect that env if present; otherwise
 # fall back to PATH Rscript. Override by exporting HOUFIN_RSCRIPT before sourcing.
+HOUFIN_RENV="$WORK/houfin/renv"
 if [ -z "${HOUFIN_RSCRIPT:-}" ]; then
-    if [ -x "$WORK/houfin/renv/bin/Rscript" ]; then
-        export HOUFIN_RSCRIPT="$WORK/houfin/renv/bin/Rscript"
+    if [ -x "$HOUFIN_RENV/bin/Rscript" ]; then
+        export HOUFIN_RSCRIPT="$HOUFIN_RENV/bin/Rscript"
     else
         export HOUFIN_RSCRIPT="Rscript"
     fi
+fi
+
+# The renv Rscript is invoked directly (not via `micromamba activate`), so the
+# PROJ/GDAL data dirs that activation would set are missing -> terra/sf can't find
+# proj.db ("proj_create: ... problem with the PROJ installation") and reprojections
+# misbehave. Point them at the env's data dirs so the climate step gets a working PROJ.
+if [ -d "$HOUFIN_RENV/share/proj" ]; then
+    export PROJ_DATA="$HOUFIN_RENV/share/proj"
+    export GDAL_DATA="$HOUFIN_RENV/share/gdal"
 fi
 
 # Activate the Python environment (uv-managed venv on $WORK).

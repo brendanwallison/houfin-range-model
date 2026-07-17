@@ -83,6 +83,10 @@ $WORK/houfin/renv/bin/Rscript -e 'suppressMessages(library(climr)); cat("climr O
 > `scripts/tacc/env.sh`. That var auto-detects the micromamba env at
 > `$WORK/houfin/renv/bin/Rscript` and otherwise falls back to PATH `Rscript`; to use
 > a different R, `export HOUFIN_RSCRIPT=/path/to/Rscript` before sourcing env.sh.
+> Because that Rscript is invoked directly (not via `micromamba activate`), env.sh
+> also exports `PROJ_DATA`/`GDAL_DATA` pointing at the env's `share/` dirs — without
+> them terra/sf can't find `proj.db` ("problem with the PROJ installation") and
+> reprojections misbehave.
 > Why not TACC's `Rstats/4.0.3` module: its R is too old for climr's dependency
 > tree (dplyr/tidyr/ggplot2/scales now need R >= 4.1, so they resolve as "not
 > available" on 4.0.3), and the generic `RstatsPackages` companion module that

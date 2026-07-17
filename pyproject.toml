@@ -40,12 +40,14 @@ model = [
     "optax>=0.2.7",
     "torch>=2.9.1",
 ]
-# GPU acceleration on the Linux workstation. The CUDA extra is Linux-only and
-# is the reason the model deps cannot install on macOS; keep it opt-in and
-# tailor the CUDA version to the box (developed against CUDA 13).
-#   pip install -e ".[model,gpu]"
+# GPU acceleration on Linux. The CUDA extra is Linux-only and is the reason the
+# model deps cannot install on macOS; keep it opt-in. Pinned to CUDA 12 to match
+# HPC targets (e.g. TACC Lonestar6 A100 nodes, CUDA-12 drivers); the CUDA-13
+# wheels need a newer NVIDIA driver (r580+) than those nodes carry. torch's
+# default Linux wheel is already a CUDA-12 build, so only JAX needs the extra.
+#   uv sync --extra model --extra gpu   (or  pip install -e ".[model,gpu]")
 gpu = [
-    "jax[cuda13]>=0.8.1",
+    "jax[cuda12]>=0.8.1",
 ]
 
 [tool.setuptools]

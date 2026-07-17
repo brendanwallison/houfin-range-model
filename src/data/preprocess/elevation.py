@@ -10,11 +10,36 @@ so this runs once.
 """
 import numpy as np
 import rasterio
+from rasterio.warp import Resampling, reproject
 from rasterio.warp import transform as warp_transform
 
 from src.processing import regrid
 
 ELEV_QUANTILES = (0.10, 0.50, 0.90)
+DEFAULT_FINE_FACTOR = 14  # ref cells subdivided this many times before quantiling
+
+
+def dem_to_fine_grid(dem_path, ref_transform, ref_crs, H, W, fine_factor):
+    """Reproject any DEM onto a grid aligned to the ref, ``fine_factor`` x finer.
+
+    Returns a (H*fine_factor, W*fine_factor) array in the ref CRS whose blocks
+    nest exactly into the model cells, so ``block_quantiles(..., fine_factor)``
+    gives per-model-cell elevation quantiles. Handles a geographic or projected
+    DEM at any resolution (unlike integer ``block_factor``, which requires the
+    source to be an integer sub-multiple of the target already).
+    """
+    ff = int(fine_factor)
+    fine_transform = ref_transform * rasterio.Affine.scale(1.0 / ff, 1.0 / ff)
+    fine = np.full((H * ff, W * ff), np.nan, dtype="float64")
+    with rasterio.open(dem_path) as src:
+        reproject(
+            source=rasterio.band(src, 1), destination=fine,
+            src_transform=src.transform, src_crs=src.crs,
+            dst_transform=fine_transform, dst_crs=ref_crs,
+            src_nodata=src.nodata, dst_nodata=np.nan,
+            resampling=Resampling.average,
+        )
+    return fine, ff
 
 
 def elevation_quantiles(dem, block, quantiles=ELEV_QUANTILES):
@@ -45,48 +70,58 @@ def cell_centroids_wgs84(transform, nrows, ncols, src_crs):
     }
 
 
-def _read_dem(path):
-    with rasterio.open(path) as src:
-        arr = src.read(1).astype("float64")
-        if src.nodata is not None:
-            arr[arr == src.nodata] = np.nan
-        return arr, src.transform, src.crs, abs(src.transform.a)
-
-
 def main():
     """Write the 3 elevation-quantile rasters + the centroid table (config-driven).
 
-    Requires a fine DEM already reprojected/aligned to the model Albers grid
-    (integer block factor to grid.target_res_m). This is a data-box step; the
-    pure helpers above are unit-tested without data.
+    Consumes ANY DEM (geographic or projected, any resolution): it is reprojected
+    onto a fine sub-grid of the model ref grid, then quantiled per model cell. The
+    DEM defaults to the ``dem`` block downloaded by acquire/dem.py; ``fine_factor``
+    from the ``elevation`` config. This is a data-box step; the pure helpers above
+    are unit-tested without data.
     """
     import argparse
     import csv
+    import glob
     import os
 
     from src.config_utils import load_data_config
 
+    cfg = load_data_config()
+    ecfg = cfg.get("elevation", {})
+    dcfg = cfg.get("dem", {})
+
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--dem", required=True, help="Fine DEM aligned to the model grid (GeoTIFF).")
-    ap.add_argument("--out-dir", required=True)
+    ap.add_argument("--dem", help="DEM GeoTIFF (default: the acquire/dem.py download).")
+    ap.add_argument("--out-dir", help="Default: {datasets_root}/elevation.")
+    ap.add_argument("--fine-factor", type=int)
     args = ap.parse_args()
 
-    cfg = load_data_config()
-    target = cfg["grid"]["target_res_m"]
-    dem, transform, crs, native = _read_dem(args.dem)
-    block = regrid.block_factor(native, target)
-    q = elevation_quantiles(dem, block)              # (3, ny_t, nx_t)
-    target_transform = transform * rasterio.Affine.scale(block, block)
+    dem_path = args.dem
+    if not dem_path:  # default to the downloaded DEM under datasets_root/<dem.out_subdir>
+        dem_dir = os.path.join(cfg["datasets_root"], dcfg.get("out_subdir", "dem"))
+        found = sorted(glob.glob(os.path.join(dem_dir, "*.tif")))
+        if not found:
+            raise SystemExit(f"no DEM in {dem_dir}; run scripts/download_dem.py or pass --dem")
+        dem_path = found[0]
+    out_dir = args.out_dir or os.path.join(cfg["datasets_root"], "elevation")
+    fine_factor = args.fine_factor or ecfg.get("fine_factor", DEFAULT_FINE_FACTOR)
 
-    os.makedirs(args.out_dir, exist_ok=True)
+    with rasterio.open(cfg["grid"]["ref_raster"]) as ref:
+        ref_transform, crs, H, W = ref.transform, ref.crs, ref.height, ref.width
+
+    fine, block = dem_to_fine_grid(dem_path, ref_transform, crs, H, W, fine_factor)
+    q = elevation_quantiles(fine, block)             # (3, H, W)
+    target_transform = ref_transform
+
+    os.makedirs(out_dir, exist_ok=True)
     prof = dict(driver="GTiff", height=q.shape[1], width=q.shape[2], count=1,
                 dtype="float32", crs=crs, transform=target_transform, nodata=np.nan)
     for name, band in zip(("q10", "q50", "q90"), q):
-        with rasterio.open(os.path.join(args.out_dir, f"elev_{name}.tif"), "w", **prof) as dst:
+        with rasterio.open(os.path.join(out_dir, f"elev_{name}.tif"), "w", **prof) as dst:
             dst.write(band.astype("float32"), 1)
 
     cen = cell_centroids_wgs84(target_transform, q.shape[1], q.shape[2], crs)
-    with open(os.path.join(args.out_dir, "cell_centroids.csv"), "w", newline="") as fh:
+    with open(os.path.join(out_dir, "cell_centroids.csv"), "w", newline="") as fh:
         w = csv.writer(fh)
         w.writerow(["id", "row", "col", "long", "lat", "elev_q10", "elev_q50", "elev_q90"])
         flat = [b.ravel() for b in q]
@@ -94,7 +129,7 @@ def main():
             w.writerow([cen["id"][i], cen["row"][i], cen["col"][i],
                         cen["long"][i], cen["lat"][i],
                         flat[0][i], flat[1][i], flat[2][i]])
-    print(f"Wrote 3 elevation quantile rasters + cell_centroids.csv to {args.out_dir}")
+    print(f"Wrote 3 elevation quantile rasters + cell_centroids.csv to {out_dir}")
 
 
 if __name__ == "__main__":

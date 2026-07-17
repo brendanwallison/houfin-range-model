@@ -24,6 +24,15 @@
     "fine_factor": 25,
     "snap_radius_cells": 1
   },
+  "dem": {
+    "_comment": "Global DEM for the climate elevation-quantile step (preprocess/elevation.py -> climr). Default: NOAA NCEI ETOPO 2022 60-arc-second (~1.85 km) surface elevation, a single global GeoTIFF over public HTTPS (no auth). Swap `url` for a finer DEM (e.g. GMTED2010 7.5-arc-second) if desired; elevation.py is source-agnostic.",
+    "url": "https://www.ngdc.noaa.gov/mgg/global/relief/ETOPO2022/data/60s/60s_surface_elev_gtif/ETOPO_2022_v1_60s_N90W180_surface.tif",
+    "out_subdir": "dem"
+  },
+  "elevation": {
+    "_comment": "preprocess/elevation.py reprojects the DEM onto a sub-grid fine_factor x finer than the model grid, then takes per-cell p10/p50/p90 elevation. fine_factor should be >= target_res/DEM_native so no DEM detail is lost (25 km / ~1.85 km ETOPO ~= 13.5 -> 14).",
+    "fine_factor": 14
+  },
   "dataverse": {
     "server": "https://dataverse.harvard.edu",
     "datasets": {

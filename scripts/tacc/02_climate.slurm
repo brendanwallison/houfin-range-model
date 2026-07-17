@@ -24,13 +24,15 @@ set -euo pipefail
 
 source "$SLURM_SUBMIT_DIR/scripts/tacc/env.sh"
 module load python/3.12.11 2>/dev/null || true
-module load Rstats/4.0.3 RstatsPackages 2>/dev/null || true   # or a mamba R env; see docs/TACC.md
-export R_LIBS_USER="${R_LIBS_USER:-$WORK/houfin/Rlib}"
+# R comes from $HOUFIN_RSCRIPT (set in env.sh: the mamba newer-R env if present,
+# else PATH Rscript). climr needs a newer R than TACC's Rstats/4.0.3; see docs/TACC.md.
+echo "using Rscript: $HOUFIN_RSCRIPT"
 date
 
 /usr/bin/time -v python scripts/climate_climr.py \
     --centroids "$HOUFIN_DATA/elevation/cell_centroids.csv" \
-    --out "$HOUFIN_DATA/climate"
+    --out "$HOUFIN_DATA/climate" \
+    --rscript "$HOUFIN_RSCRIPT"
 
 python scripts/validate_products.py --stage climate --paths "$HOUFIN_DATA/climate"
 echo "=== climate complete -> $HOUFIN_DATA/climate ; manifest in $HOUFIN_PROCESSED/validation/ ==="

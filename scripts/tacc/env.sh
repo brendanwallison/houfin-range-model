@@ -29,6 +29,18 @@ export HOUFIN_CLIMR_CACHE="$WORK/houfin/climr_cache"
 
 mkdir -p "$HOUFIN_DATA" "$HOUFIN_PROCESSED" "$HOUFIN_CLIMR_CACHE"
 
+# R interpreter for the climr climate step. climr needs a newer R than TACC's
+# Rstats/4.0.3, so setup builds a userspace R at $WORK/houfin/renv via mamba (see
+# docs/TACC.md). Auto-detect that env if present; otherwise fall back to whatever
+# Rscript is on PATH. Override by exporting HOUFIN_RSCRIPT before sourcing.
+if [ -z "${HOUFIN_RSCRIPT:-}" ]; then
+    if [ -x "$WORK/houfin/renv/bin/Rscript" ]; then
+        export HOUFIN_RSCRIPT="$WORK/houfin/renv/bin/Rscript"
+    else
+        export HOUFIN_RSCRIPT="Rscript"
+    fi
+fi
+
 # Activate the Python environment (uv-managed venv on $WORK).
 if [ -f "$HOUFIN_VENV/bin/activate" ]; then
     source "$HOUFIN_VENV/bin/activate"

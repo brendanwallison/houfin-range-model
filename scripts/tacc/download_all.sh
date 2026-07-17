@@ -44,9 +44,10 @@ if [ ! -f "$NE_DIR/ne_10m_land.shp" ]; then
 fi
 
 echo "== Warm the climr reference cache (online; needed for the offline batch step) =="
-module load Rstats/4.0.3 RstatsPackages 2>/dev/null || true
-# A tiny climr run downloads + caches the reference surfaces. If climr is not yet
-# installed, see docs/TACC.md (install climr + data.table into R_LIBS_USER first).
-Rscript -e 'if (requireNamespace("climr", quietly=TRUE)) { library(climr); climr::downscale(data.frame(id=1, lon=-98, lat=39, elev=300), obs_years=2020) ; cat("climr cache warmed\n") } else cat("climr not installed yet\n")' || true
+# Uses $HOUFIN_RSCRIPT (set in env.sh: the mamba newer-R env if present, else PATH
+# Rscript). A tiny climr run downloads + caches the reference surfaces. If climr
+# isn't installed yet, see docs/TACC.md (install it into the userspace R first).
+echo "using Rscript: $HOUFIN_RSCRIPT"
+"$HOUFIN_RSCRIPT" -e 'if (requireNamespace("climr", quietly=TRUE)) { library(climr); climr::downscale(data.frame(id=1, lon=-98, lat=39, elev=300), obs_years=2020) ; cat("climr cache warmed\n") } else cat("climr not installed yet\n")' || true
 
 echo "== downloads complete -> $HOUFIN_DATA =="

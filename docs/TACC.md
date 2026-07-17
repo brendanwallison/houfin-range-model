@@ -21,37 +21,51 @@ module load python/3.12.11
 
 # Clone onto $WORK (persistent).
 mkdir -p $WORK/houfin && cd $WORK/houfin
-git clone <repo-url> houfin-range-model && cd houfin-range-model
+git clone https://github.com/brendanwallison/houfin-range-model.git houfin-range-model && cd houfin-range-model
 
 # Python env with uv (base deps are enough for data processing — no GPU).
 curl -LsSf https://astral.sh/uv/install.sh | sh          # userspace uv
-uv venv $WORK/houfin/venv --python 3.12
-source $WORK/houfin/venv/bin/activate
-uv pip install -e .                                        # base deps only
 
-# Edit the three marked values (allocation, repo path, venv path):
+# Throttle uv's threads/concurrency. The LS6 login node has 128 cores, so uv's
+# default thread pool trips the per-user process/memory limit (# "failed to initialize global rayon pool ... Resource temporarily unavailable").
+export RAYON_NUM_THREADS=4
+export UV_CONCURRENT_DOWNLOADS=4
+export UV_CONCURRENT_BUILDS=2
+export UV_CONCURRENT_INSTALLS=4
+
+uv venv $WORK/houfin/venv --python 3.12        # venv must exist before env.sh can activate it
+
+# Edit the three marked values (allocation, repo path, venv path), then source it:
+# env.sh activates the venv, sets HOUFIN_DATA/PROCESSED, and cd's to the repo.
+export EDITOR=nano
 $EDITOR scripts/tacc/env.sh
-source scripts/tacc/env.sh                                 # sets HOUFIN_DATA/PROCESSED
+source scripts/tacc/env.sh
+
+uv pip install -e .                            # installs into the now-active venv (base deps only)
 
 # Secrets: eBird key (required for the eBird download).
 cp config/secrets.example.json config/secrets.json && $EDITOR config/secrets.json
 # ...or: export EBIRD_KEY="..."
 
-# R for the climate step (climr):
-module load Rstats/4.0.3 RstatsPackages
-export R_LIBS_USER=$WORK/houfin/Rlib && mkdir -p $R_LIBS_USER
-Rscript -e 'install.packages(c("climr","data.table"), repos="https://cloud.r-project.org")'
+# R for the climate step (climr). climr needs a NEWER R than TACC's Rstats/4.0.3
+# (confirmed: CRAN reports climr "not available for this version of R" under 4.0.3),
+# so build a userspace R with mamba. env.sh auto-detects $WORK/houfin/renv/bin/Rscript.
+module load mamba 2>/dev/null || true                    # if this errors: module spider mamba
+mamba create -y -p $WORK/houfin/renv -c conda-forge r-base r-data.table
+$WORK/houfin/renv/bin/Rscript -e 'install.packages("climr", repos="https://cloud.r-project.org")'
+# If CRAN still reports climr unavailable, it's distributed via R-universe instead:
+#   $WORK/houfin/renv/bin/Rscript -e 'install.packages("climr", repos=c("https://bcgov.r-universe.dev","https://cloud.r-project.org"))'
+$WORK/houfin/renv/bin/Rscript -e 'suppressMessages(library(climr)); cat("climr OK\n")'
 ```
 
-> **R-version risk.** `climr` may require a newer R than TACC's `Rstats/4.0.3`. If
-> the install above fails, use a userspace newer R via mamba and point the climate
-> step at it:
-> ```bash
-> module load mamba 2>/dev/null || true
-> mamba create -y -p $WORK/houfin/renv -c conda-forge r-base r-data.table
-> $WORK/houfin/renv/bin/Rscript -e 'install.packages("climr", repos="https://cloud.r-project.org")'
-> # then run the climate step with:  python scripts/climate_climr.py --rscript $WORK/houfin/renv/bin/Rscript ...
-> ```
+> **R / climr wiring.** climr requires a modern R, so both the batch climate step
+> (`02_climate.slurm`) and the login-node cache-warm (in `download_all.sh`) read
+> `$HOUFIN_RSCRIPT`, set in `scripts/tacc/env.sh`. That var auto-detects the mamba
+> env at `$WORK/houfin/renv/bin/Rscript` and otherwise falls back to PATH `Rscript`;
+> to use a different R, `export HOUFIN_RSCRIPT=/path/to/Rscript` before sourcing
+> env.sh. Two Lonestar6 gotchas the old instructions tripped on: TACC's
+> `Rstats/4.0.3` is too old for climr, and the generic `RstatsPackages` companion
+> module isn't deployed on LS6 (`module spider` can't find it) — don't rely on either.
 
 **Reference species list.** The eBird download reads `species_list`
 (`${HOUFIN_DATA}/avonet/reference_community_ranked.csv`), produced by

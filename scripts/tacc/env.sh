@@ -7,7 +7,7 @@
 # ---------------------------------------------------------------------------
 
 # --- EDIT ME -------------------------------------------------------------
-export TACC_ALLOCATION="REPLACE_WITH_PROJECT"        # sbatch -A ...
+export TACC_ALLOCATION="DEB23008"                    # sbatch -A ...
 export HOUFIN_REPO="$WORK/houfin/houfin-range-model"  # where you `git clone`d
 export HOUFIN_VENV="$WORK/houfin/venv"                # uv-created venv
 # -------------------------------------------------------------------------

@@ -83,14 +83,36 @@ def is_valid(path: Path) -> bool:
 
 
 def stream_download(url, dest: Path) -> bool:
+    """Streaming download with resume. On a dropped connection the partial is
+    KEPT and the next attempt continues from where it left off via an HTTP Range
+    request (ScienceBase throttles ~30 kB/s and drops large transfers, so a
+    restart-from-zero retry may never finish). Handles the server honoring the
+    range (206 -> append), ignoring it (200 -> restart), or reporting the file
+    already complete (416)."""
+    tmp = dest.with_suffix(dest.suffix + ".part")
     for attempt in range(1, MAX_RETRIES + 1):
         try:
-            tmp = dest.with_suffix(dest.suffix + ".part")
-            with requests.get(url, headers=_headers(), stream=True, timeout=600) as r:
+            have = tmp.stat().st_size if tmp.exists() else 0
+            headers = dict(_headers())
+            if have:
+                headers["Range"] = f"bytes={have}-"
+            with requests.get(url, headers=headers, stream=True, timeout=600) as r:
+                if have and r.status_code == 416:      # already have the whole file
+                    if is_valid(tmp):
+                        tmp.replace(dest)
+                        return True
+                    tmp.unlink(missing_ok=True)         # bad partial; force a clean retry
+                    raise ValueError("stale partial; restarting")
+                resuming = have and r.status_code == 206
+                if not resuming:                        # server ignored Range -> start over
+                    have = 0
                 r.raise_for_status()
-                total = int(r.headers.get("Content-Length", 0)) or None
-                with open(tmp, "wb") as fh, tqdm(
-                    total=total, unit="B", unit_scale=True, desc=dest.name, leave=False
+                mode = "ab" if resuming else "wb"
+                clen = int(r.headers.get("Content-Length", 0)) or None
+                total = (have + clen) if (clen and resuming) else clen
+                with open(tmp, mode) as fh, tqdm(
+                    total=total, initial=have, unit="B", unit_scale=True,
+                    desc=dest.name, leave=False
                 ) as bar:
                     for chunk in r.iter_content(chunk_size=1 << 16):
                         if chunk:
@@ -101,11 +123,10 @@ def stream_download(url, dest: Path) -> bool:
             tmp.replace(dest)
             return True
         except Exception as e:
-            print(f"[WARN] {dest.name}: attempt {attempt} failed: {e}")
-            tmp = dest.with_suffix(dest.suffix + ".part")
-            if tmp.exists():
-                tmp.unlink()
-            time.sleep(BACKOFF * attempt)
+            have = tmp.stat().st_size if tmp.exists() else 0
+            print(f"[WARN] {dest.name}: attempt {attempt} failed: {e} "
+                  f"(keeping {have} B for resume)")
+            time.sleep(BACKOFF * attempt)             # NOTE: partial kept, not deleted
     return False
 
 

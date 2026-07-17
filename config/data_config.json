@@ -89,10 +89,12 @@
     "datasets": {
       "bbs": {
         "item": "6a0b0b0ab66b0188da36aedd",
+        "whole_item": true,
         "files": ["States.zip", "Routes.csv", "Weather.csv", "SpeciesList.csv", "RunType.pdf"]
       },
       "bbs_mexico": {
-        "item": "5f32af1082cee144fb313837"
+        "item": "5f32af1082cee144fb313837",
+        "whole_item": true
       }
     },
     "out_subdirs": {

@@ -56,12 +56,19 @@ cp config/secrets.example.json config/secrets.json && $EDITOR config/secrets.jso
 # conda/mamba module, so bootstrap the static micromamba binary and pull R 4.3+ plus
 # the compiled deps prebuilt from conda-forge. env.sh auto-detects
 # $WORK/houfin/renv/bin/Rscript.
-mkdir -p $WORK/houfin
 curl -Ls https://micro.mamba.pm/api/micromamba/linux-64/latest | tar -xj -C $WORK/houfin bin/micromamba
 export MAMBA_ROOT_PREFIX=$WORK/houfin/micromamba
-# Prebuilt compiled deps from conda-forge (drop any r-* name micromamba can't find
-# and let remotes pull it from CRAN below):
-$WORK/houfin/bin/micromamba create -y -p $WORK/houfin/renv -c conda-forge \
+# LS6 login-node limits: micromamba defaults its download/extract thread pools to the
+# core count (128), tripping the per-user thread+memory cap — either EAGAIN ("Resource
+# temporarily unavailable") while downloading or std::bad_alloc/segfault (with garbled
+# package names) while extracting. Serialize the heavy phases and pin to a few cores.
+# If a run dies mid-way, run `micromamba clean --all --yes` first to drop any corrupted
+# cached tarballs, then retry.
+$WORK/houfin/bin/micromamba config set extract_threads 1
+$WORK/houfin/bin/micromamba config set download_threads 2
+# Prebuilt compiled deps from conda-forge (drop any r-* name micromamba can't find and
+# let remotes pull it from CRAN below). taskset caps the thread pools:
+taskset -c 0-3 $WORK/houfin/bin/micromamba create -y -p $WORK/houfin/renv -c conda-forge \
     r-base r-remotes r-data.table r-terra r-sf r-rpostgres \
     r-dplyr r-tidyr r-stringi r-curl r-uuid r-ggplot2 r-plotly
 # climr from GitHub; remotes fills the remaining pure-R deps from CRAN. upgrade=never

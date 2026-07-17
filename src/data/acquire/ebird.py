@@ -12,8 +12,11 @@ open knob):
     --species CODE [CODE ...]   explicit 6-letter eBird codes (bypasses the list)
     --species-list PATH         CSV/JSON with a ``species_code`` column
                                 (default: ``species_list`` in data_config.json)
-    --top-n N                   take the first N rows of the list, which
+    --top-n N                   take the first N species from the list, which
                                 ``avonet_pipeline.py`` writes pre-ranked
+    --require-weekly            walk the ranked list skipping species that have
+                                no weekly rasters, so --top-n N yields exactly N
+                                species that actually have weekly data
 
 Output (no reprojection — ``scripts/project_ebird`` remains the regrid step)::
 
@@ -35,8 +38,8 @@ Examples
     python scripts/download_ebird.py --species houfin --limit 2 \
         --out-dir /tmp/ebird_test
 
-    # Full download of the top-100 ranked reference community.
-    python scripts/download_ebird.py --top-n 100
+    # Full download of exactly the top-100 ranked species that have weekly data.
+    python scripts/download_ebird.py --top-n 100 --require-weekly
 """
 import argparse
 import json
@@ -59,7 +62,7 @@ FETCH_URL = "https://st-download.ebird.org/v1/fetch?objKey={objkey}&key={key}"
 
 MAX_RETRIES = 5
 BACKOFF = 5  # seconds, linear
-MAX_WORKERS = 3
+MAX_WORKERS = 4  # eBird S&T is I/O-bound; modest concurrency, don't hammer the API
 MIN_TIF_BYTES = 10_000  # anything smaller is almost certainly an error page
 
 EBIRD_KEY_ENV = "EBIRD_KEY"
@@ -174,7 +177,9 @@ def resolve_species(args, cfg) -> list:
                 "'species_list' in data_config.json."
             )
         codes = read_species_list(list_path)
-    if args.top_n is not None:
+    # With --require-weekly the top-N cut happens during planning (after skipping
+    # species that lack weekly rasters), so keep the full ranked list here.
+    if args.top_n is not None and not args.require_weekly:
         codes = codes[: args.top_n]
     # De-duplicate while preserving order.
     seen, out = set(), []
@@ -187,18 +192,36 @@ def resolve_species(args, cfg) -> list:
 
 # Task planning
 
-def plan_tasks(species_codes, year, key, out_dir, limit=None):
-    """Return (species, objkey, dest) tuples for the selected weekly rasters."""
-    tasks = []
+def plan_tasks(species_codes, year, key, out_dir, limit=None, target=None):
+    """Plan the weekly-raster downloads.
+
+    Returns ``(tasks, selected, skipped)`` where ``tasks`` is a list of
+    ``(species, objkey, dest)``, ``selected`` the species that had weekly rasters,
+    and ``skipped`` those that had none.
+
+    When ``target`` is set, walk ``species_codes`` in order and keep only species
+    that have weekly rasters, stopping once ``target`` species are collected — so
+    species with no weekly data are skipped and the target is filled by backfilling
+    further down the (ranked) list, yielding exactly ``target`` species when the
+    list is long enough. With ``target=None`` every code is planned as-is (a
+    missing-weekly species is logged but not backfilled).
+    """
+    tasks, selected, skipped = [], [], []
     for sp in species_codes:
+        if target is not None and len(selected) >= target:
+            break
         objkeys = list_weekly_objkeys(sp, year, key)
         if limit is not None:
             objkeys = objkeys[:limit]
         if not objkeys:
-            print(f"[WARN] no weekly abundance-median objects found for '{sp}'.")
+            skipped.append(sp)
+            suffix = "; skipping (backfilling to target)" if target is not None else ""
+            print(f"[WARN] no weekly abundance-median objects found for '{sp}'{suffix}.")
+            continue
+        selected.append(sp)
         for ok in objkeys:
             tasks.append((sp, ok, out_dir / os.path.basename(ok)))
-    return tasks
+    return tasks, selected, skipped
 
 
 def is_valid_tif(path: Path) -> bool:
@@ -229,6 +252,9 @@ def main():
                      help="CSV/JSON list with a species_code column (default: config).")
     sel.add_argument("--top-n", type=int, metavar="N",
                      help="Use only the first N species from the (ranked) list.")
+    sel.add_argument("--require-weekly", action="store_true",
+                     help="Skip species with no weekly rasters and backfill down the "
+                          "ranked list, so --top-n N yields exactly N weekly-complete species.")
 
     parser.add_argument("--list", metavar="SPECIES", dest="list_species",
                         help="Print weekly object keys for one species and exit (no download).")
@@ -270,10 +296,18 @@ def main():
     out_dir.mkdir(parents=True, exist_ok=True)
 
     species_codes = resolve_species(args, cfg)
-    print(f"Selected {len(species_codes)} species; version year {year}; -> {out_dir}")
+    print(f"{len(species_codes)} candidate species; version year {year}; -> {out_dir}")
 
-    tasks = plan_tasks(species_codes, year, key, out_dir, limit=args.limit)
-    print(f"Planned {len(tasks)} weekly rasters.")
+    target = args.top_n if args.require_weekly else None
+    tasks, selected, skipped = plan_tasks(
+        species_codes, year, key, out_dir, limit=args.limit, target=target)
+    print(f"Planned {len(tasks)} weekly rasters across {len(selected)} species.")
+    if args.require_weekly:
+        print(f"Kept {len(selected)} species with weekly data; skipped {len(skipped)} without"
+              + (f": {', '.join(skipped)}" if skipped else "."))
+        if args.top_n is not None and len(selected) < args.top_n:
+            print(f"[WARN] only {len(selected)} weekly-complete species available "
+                  f"(< requested {args.top_n}); ranked list exhausted.")
 
     if args.scan_only:
         missing = [d for _, _, d in tasks if not is_valid_tif(d)]

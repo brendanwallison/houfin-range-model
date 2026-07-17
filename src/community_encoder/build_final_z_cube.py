@@ -111,8 +111,10 @@ def build_spacetime_cube(config: Optional[Union[Dict[str, Any], str, os.PathLike
     _res_km = load_data_config()["grid"]["target_res_m"] // 1000
     radius_px = int(round(cube_cfg.get("radius_km", 100) / _res_km))
 
-    data_dir = cube_cfg.get("data_dir") or paths.get("data_dir", "/home/breallis/datasets")
-    hist_dir = cube_cfg.get("hist_dir") or paths.get("hist_dir", "/home/breallis/datasets/smoothed_prism_bui")
+    data_dir = cube_cfg.get("data_dir") or paths.get("data_dir") or load_data_config()["datasets_root"]
+    hist_dir = cube_cfg.get("hist_dir") or paths.get("hist_dir")
+    if not hist_dir:
+        raise KeyError("latent_cube.hist_dir (or paths.hist_dir) must be set in esk_desk_config")
     if os.path.basename(hist_dir) != "yearly_states" and os.path.isdir(os.path.join(hist_dir, "yearly_states")):
         hist_dir = os.path.join(hist_dir, "yearly_states")
 

@@ -32,24 +32,68 @@ def config_dir() -> Path:
     return resolve_repo_root() / "config"
 
 
+# Portable dataset roots. Configs reference paths as ``${HOUFIN_DATA}/...`` and
+# ``${HOUFIN_PROCESSED}/...``; these expand at load time. For local dev they
+# default to ``<repo>/data`` and ``<repo>/data/processed`` (CWD-independent); on
+# an HPC, export HOUFIN_DATA/HOUFIN_PROCESSED (e.g. under $SCRATCH/$WORK) to
+# relocate everything without editing the committed configs.
+DATA_ROOT_ENV = "HOUFIN_DATA"
+PROCESSED_ROOT_ENV = "HOUFIN_PROCESSED"
+
+
+def _ensure_roots() -> None:
+    """Default the dataset-root env vars (if unset) to repo-relative dirs."""
+    root = resolve_repo_root()
+    os.environ.setdefault(DATA_ROOT_ENV, str(root / "data"))
+    os.environ.setdefault(PROCESSED_ROOT_ENV, str(root / "data" / "processed"))
+
+
+def _expandvars(obj: Any) -> Any:
+    """Recursively ``os.path.expandvars`` every string in a nested config value.
+
+    Strings without ``$`` pass through unchanged, so plain absolute paths still
+    work; ``${HOUFIN_DATA}``/``$SCRATCH``/etc. expand from the environment.
+    """
+    if isinstance(obj, str):
+        return os.path.expandvars(obj)
+    if isinstance(obj, dict):
+        return {k: _expandvars(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_expandvars(v) for v in obj]
+    return obj
+
+
+def _load_json(path: Path) -> Dict[str, Any]:
+    with path.open("r", encoding="utf-8") as handle:
+        return json.load(handle)
+
+
 def load_config(
     config_path: Optional[Union[str, Path]] = None,
     *,
     default_name: str = ESK_DESK_CONFIG,
     env_var: Optional[str] = ESK_DESK_ENV,
 ) -> Dict[str, Any]:
-    """Load a pipeline config as a dict.
+    """Load a pipeline config as a dict, portably.
 
-    Resolution order: explicit ``config_path`` > ``$env_var`` > repo default.
+    The repo default under ``config/`` is always the base. If ``config_path`` or
+    ``$env_var`` points at a *different* file, it is treated as a small override
+    layer and **deep-merged** on top (partial overrides — same mechanism for all
+    three pipeline configs). Finally, ``${VAR}`` references in every string value
+    are expanded from the environment (see :func:`_ensure_roots`).
     """
-    if config_path is None and env_var:
-        config_path = os.environ.get(env_var)
-    if config_path is None:
-        config_path = config_dir() / default_name
-    config_path = Path(config_path).expanduser()
+    _ensure_roots()
+    base_path = config_dir() / default_name
+    merged = _load_json(base_path)
 
-    with config_path.open("r", encoding="utf-8") as handle:
-        return json.load(handle)
+    overlay_path = config_path if config_path is not None else (
+        os.environ.get(env_var) if env_var else None)
+    if overlay_path:
+        overlay_path = Path(overlay_path).expanduser()
+        if overlay_path.resolve() != base_path.resolve():
+            merged = _deep_merge(merged, _load_json(overlay_path))
+
+    return _expandvars(merged)
 
 
 def load_age_model_config(
@@ -73,25 +117,15 @@ def _deep_merge(base: Dict[str, Any], overlay: Dict[str, Any]) -> Dict[str, Any]
 def load_data_config(
     config_path: Optional[Union[str, Path]] = None,
 ) -> Dict[str, Any]:
-    """Load the data-pipeline config, with an optional overlay deep-merged on top.
+    """Load the data-pipeline config (repo default base + optional deep-merged overlay).
 
     The repo default ``config/data_config.json`` is always the base (so every
     product block is present). If ``config_path`` or ``$DATA_CONFIG`` points at a
-    *different* file, it is treated as a small **override layer** (e.g. a local
-    run's ``datasets_root`` / ``grid`` / ``timeline``) and deep-merged onto the
-    base, rather than replacing it wholesale.
+    *different* file, it is treated as a small **override layer** (e.g. a run's
+    ``datasets_root`` / ``grid`` / ``timeline``) and deep-merged onto the base.
+    ``${VAR}`` references (``${HOUFIN_DATA}`` etc.) are expanded from the env.
     """
-    base_path = config_dir() / DATA_CONFIG
-    with base_path.open("r", encoding="utf-8") as handle:
-        base = json.load(handle)
-
-    overlay_path = config_path or os.environ.get(DATA_ENV)
-    if overlay_path:
-        overlay_path = Path(overlay_path).expanduser()
-        if overlay_path.resolve() != base_path.resolve():
-            with overlay_path.open("r", encoding="utf-8") as handle:
-                base = _deep_merge(base, json.load(handle))
-    return base
+    return load_config(config_path, default_name=DATA_CONFIG, env_var=DATA_ENV)
 
 
 def load_secrets(

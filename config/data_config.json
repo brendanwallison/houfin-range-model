@@ -1,9 +1,10 @@
 {
-  "datasets_root": "/home/breallis/datasets",
-  "processed_root": "/home/breallis/processed_data",
+  "_paths_comment": "All paths are portable: ${HOUFIN_DATA} (raw + processed 25 km products) and ${HOUFIN_PROCESSED} (model inputs/results) expand at load time (src/config_utils.py). They default to <repo>/data and <repo>/data/processed for local dev; on an HPC export HOUFIN_DATA/HOUFIN_PROCESSED (e.g. under $SCRATCH/$WORK). $SCRATCH etc. may also be referenced directly.",
+  "datasets_root": "${HOUFIN_DATA}",
+  "processed_root": "${HOUFIN_PROCESSED}",
   "ebird_version_year": 2023,
   "ebird_raw_subdir": "ebird_weekly_2023",
-  "species_list": "/home/breallis/datasets/avonet/reference_community_ranked.csv",
+  "species_list": "${HOUFIN_DATA}/avonet/reference_community_ranked.csv",
   "timeline": {
     "_comment": "Single source of truth for the model timeline (see src/temporal.py, docs/TEMPORAL.md). Model year T = climate bio-year Aug(T-1)->Jul(T), aligned to the ~June BBS count. first_year=1902 (first FULL bio-year, since climate obs start Jan 1901); end_year=2025 (newest BBS: 2026 release, 1966-2025 field seasons); invasion_year=1940 (NYC release; inv_timestep is DERIVED as invasion_year-first_year, never hardcoded). Land use/soil use the calendar-year-T state; only climate uses the bio-year window. Lagging covariates (e.g. LUH-3 ends 2024) are EMA-carried to end_year.",
     "first_year": 1902,
@@ -13,7 +14,7 @@
   },
   "grid": {
     "target_res_m": 25000,
-    "ref_raster": "/home/breallis/datasets/ref_grid_25km.tif",
+    "ref_raster": "${HOUFIN_DATA}/ref_grid_25km.tif",
     "_comment": "Single source of truth for the model grid. target_res_m is THE model resolution (25 km), the LUH-3 native 0.25deg basis reprojected to equal-area Albers (ESRI:102039); the continental products (climate/climr, LUH-3, HYDE, SoilGrids, DEM, eBird) are aggregated to it. ref_raster is a pure-geometry raster at this resolution over the fixed study-area box; build it once with `python -m src.data.preprocess.build_ref_grid --base-raster <any raster covering the box>` (see that module). Because 25 km is NOT an integer multiple of the 4 km / ~2.96 km inputs, aggregation is via reproject_match `average` onto ref_raster (regrid.reproject_to_ref), not integer block_reduce; nonlinear steps (Ruzicka kernel/PCA for Z, quantiles, transforms) are applied at this resolution -- so Z is built at 25 km, never pooled. The old 16 km / 4 km BUI-grid pipeline is preserved under src/data/deprecated/."
   },
   "coastline": {

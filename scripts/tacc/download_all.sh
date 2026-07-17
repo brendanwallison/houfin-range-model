@@ -10,7 +10,12 @@
 set -euo pipefail
 source "$(dirname "$0")/env.sh"
 
-echo "== eBird (needs EBIRD_KEY / secrets.json) =="
+echo "== AVONET (traits+crosswalk+phylogeny) + eBird taxonomy + urban tolerance =="
+python scripts/download_avonet.py
+echo "== Build the ranked reference species list (feeds the eBird download) =="
+python scripts/avonet_pipeline.py
+
+echo "== eBird (needs EBIRD_KEY / secrets.json; reads the species list above) =="
 python scripts/download_ebird.py
 
 echo "== BBS (US/Canada + Mexico) =="
@@ -36,17 +41,6 @@ if [ ! -f "$NE_DIR/ne_10m_land.shp" ]; then
     curl -fSL -o "$NE_DIR/ne_10m_land.zip" \
         "https://naciscdn.org/naturalearth/10m/physical/ne_10m_land.zip"
     ( cd "$NE_DIR" && unzip -o ne_10m_land.zip )
-fi
-
-echo "== AVONET (traits + crosswalk + phylogeny) + eBird taxonomy =="
-python scripts/download_avonet.py
-# The reference species list is then built by scripts/avonet_pipeline.py, which
-# ALSO needs urban_avian/spp_urban_indices.csv (a separate manual supplement --
-# stage it under $HOUFIN_DATA/urban_avian first). See docs/TACC.md.
-if [ -f "$HOUFIN_DATA/urban_avian/spp_urban_indices.csv" ]; then
-    python scripts/avonet_pipeline.py
-else
-    echo "  [skip] avonet_pipeline: stage urban_avian/spp_urban_indices.csv first"
 fi
 
 echo "== Warm the climr reference cache (online; needed for the offline batch step) =="

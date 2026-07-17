@@ -19,7 +19,7 @@ the model grid (equal-area Albers at `grid.target_res_m`; see
 | **Land/water** | Natural Earth 10 m (`download_all.sh`) | vector (shapefile) | fine | WGS84 | static | coastline → land fraction | threshold τ → land mask |
 | **AVONET + phylogeny** | figshare `16586228` `ELEData.zip` (`acquire/avonet.py`) | CSV + Nexus tree | species | — | static | traits, BirdLife/BirdTree crosswalk, Hackett MCC phylogeny | trait/phylo distance to house finch |
 | **eBird taxonomy** | eBird API `ref/taxonomy/ebird` (`acquire/avonet.py`) | CSV | species | — | per taxonomy release | SPECIES_CODE ↔ scientific name crosswalk | join key for AVONET/urban |
-| **Urban tolerance** | **manual** (`urban_avian/spp_urban_indices.csv`) | CSV | species | — | static | urban-tolerance indices | defines the species universe; no clean programmatic source |
+| **Urban tolerance** | figshare `19182503` (`acquire/avonet.py`) | CSV | species | — | static | 6 urban-association/night-light indices | defines the species universe; reference-community ranking |
 
 ## Aggregation method by native:target ratio
 

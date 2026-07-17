@@ -12,9 +12,9 @@ The eBird taxonomy crosswalk comes from the **eBird API**
 (``ref/taxonomy/ebird?fmt=csv``, no key required) rather than the Cornell web CSV,
 which sits behind a Cloudflare JS challenge that blocks scripted download.
 
-NOT fetched here: the urban-tolerance table
-(``urban_avian/spp_urban_indices.csv``), a separate paper supplement with no clean
-programmatic source -- stage it manually (see docs/DATA_SOURCES.md).
+The urban-tolerance table (``urban_avian/spp_urban_indices.csv``) is a separate
+public figshare article (Estimates of species-level urban tolerance in North
+American birds) and is fetched the same way.
 
 Same house style as the other downloaders: streaming, retries, atomic write,
 idempotent skip.
@@ -41,6 +41,9 @@ DEFAULT_ARTICLE = "16586228"          # AVONET, Tobias et al. 2022 (public)
 DEFAULT_FILE = "ELEData.zip"
 DEFAULT_SUBDIRS = ["TraitData", "PhylogeneticData"]
 DEFAULT_EBIRD_TAX = "https://api.ebird.org/v2/ref/taxonomy/ebird"
+DEFAULT_URBAN_ARTICLE = "19182503"    # urban tolerance, Neate-Clegg et al. (public)
+DEFAULT_URBAN_FILE = "spp_urban_indices.csv"
+DEFAULT_URBAN_SUBDIR = "urban_avian"
 MAX_RETRIES = 5
 BACKOFF = 5
 UA = "houfin-range-model/1.0 (+https://github.com/brendanwallison/houfin-range-model)"
@@ -100,6 +103,16 @@ def download_and_extract_avonet(article, fname, subdirs, out_dir: Path, session)
     return n
 
 
+def download_urban_indices(article, fname, dest: Path, session):
+    """Download the urban-tolerance table (a small figshare CSV) to ``dest``."""
+    url, size = figshare_file_url(article, fname, session)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    tmp = dest.with_suffix(dest.suffix + ".part")
+    tmp.write_bytes(_get(url, session).content)
+    tmp.replace(dest)
+    print(f"  urban tolerance ({(size or 0)/1e6:.2f} MB) -> {dest}")
+
+
 def download_ebird_taxonomy(url, dest: Path, session):
     """Fetch the eBird taxonomy CSV (species category) from the eBird API."""
     dest.parent.mkdir(parents=True, exist_ok=True)
@@ -125,21 +138,26 @@ def main():
     fname = acfg.get("figshare_file", DEFAULT_FILE)
     subdirs = acfg.get("extract_subdirs", DEFAULT_SUBDIRS)
     ebird_url = acfg.get("ebird_taxonomy_url", DEFAULT_EBIRD_TAX)
-    out_dir = Path(args.out_dir) if args.out_dir else \
-        Path(cfg["datasets_root"]) / acfg.get("out_subdir", "avonet")
+    urban_article = acfg.get("urban_figshare_article", DEFAULT_URBAN_ARTICLE)
+    urban_file = acfg.get("urban_file", DEFAULT_URBAN_FILE)
+    dr = Path(cfg["datasets_root"])
+    out_dir = Path(args.out_dir) if args.out_dir else dr / acfg.get("out_subdir", "avonet")
+    urban_dest = dr / acfg.get("urban_out_subdir", DEFAULT_URBAN_SUBDIR) / urban_file
 
     session = _session()
     if args.list_only:
         url, size = figshare_file_url(article, fname, session)
+        u_url, u_size = figshare_file_url(urban_article, urban_file, session)
         print(f"AVONET figshare article {article}: {fname} ({(size or 0)/1e6:.1f} MB)\n  {url}")
         print(f"eBird taxonomy: {ebird_url}?fmt=csv&cat=species")
-        print(f"out_dir: {out_dir}  (extract: {subdirs})")
-        print("NOTE: urban_avian/spp_urban_indices.csv is a separate manual input.")
+        print(f"Urban tolerance figshare article {urban_article}: {urban_file} ({(u_size or 0)/1e6:.2f} MB)\n  {u_url}")
+        print(f"out_dir: {out_dir}  (extract: {subdirs}); urban -> {urban_dest}")
         return
 
     out_dir.mkdir(parents=True, exist_ok=True)
     download_and_extract_avonet(article, fname, subdirs, out_dir, session)
     download_ebird_taxonomy(ebird_url, out_dir / "eBird_taxonomy.csv", session)
+    download_urban_indices(urban_article, urban_file, urban_dest, session)
     print("done.")
 
 

@@ -55,15 +55,12 @@ Rscript -e 'install.packages(c("climr","data.table"), repos="https://cloud.r-pro
 
 **Reference species list.** The eBird download reads `species_list`
 (`${HOUFIN_DATA}/avonet/reference_community_ranked.csv`), produced by
-`scripts/avonet_pipeline.py`. Its inputs are now mostly automated:
-`scripts/download_avonet.py` fetches AVONET traits + the BirdLife/BirdTree
-crosswalk + the precomputed Hackett phylogeny (public figshare `ELEData.zip`) and
-the eBird taxonomy (eBird API). The **one remaining manual input** is the
-urban-tolerance table `urban_avian/spp_urban_indices.csv` (a separate paper
-supplement with no clean programmatic source) — stage it under
-`$HOUFIN_DATA/urban_avian`, then `avonet_pipeline.py` runs and writes the species
-list **before** the eBird download. (`download_all.sh` skips the pipeline with a
-notice if that file is absent.)
+`scripts/avonet_pipeline.py`. All of its inputs are automated by
+`scripts/download_avonet.py`: AVONET traits + the BirdLife/BirdTree crosswalk +
+the precomputed Hackett phylogeny (public figshare `ELEData.zip`), the eBird
+taxonomy (eBird API), and the urban-tolerance indices (public figshare). So
+`download_all.sh` runs AVONET → the ranked species list → the eBird download in
+order, no manual staging.
 
 ## 2. Download raw data (login node — NOT sbatch)
 

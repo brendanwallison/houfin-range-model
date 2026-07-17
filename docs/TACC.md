@@ -47,25 +47,40 @@ uv pip install -e .                            # installs into the now-active ve
 cp config/secrets.example.json config/secrets.json && $EDITOR config/secrets.json
 # ...or: export EBIRD_KEY="..."
 
-# R for the climate step (climr). climr needs a NEWER R than TACC's Rstats/4.0.3
-# (confirmed: CRAN reports climr "not available for this version of R" under 4.0.3),
-# so build a userspace R with mamba. env.sh auto-detects $WORK/houfin/renv/bin/Rscript.
-module load mamba 2>/dev/null || true                    # if this errors: module spider mamba
-mamba create -y -p $WORK/houfin/renv -c conda-forge r-base r-data.table
-$WORK/houfin/renv/bin/Rscript -e 'install.packages("climr", repos="https://cloud.r-project.org")'
-# If CRAN still reports climr unavailable, it's distributed via R-universe instead:
-#   $WORK/houfin/renv/bin/Rscript -e 'install.packages("climr", repos=c("https://bcgov.r-universe.dev","https://cloud.r-project.org"))'
+# R for the climate step (climr). Two reasons TACC's Rstats/4.0.3 module can't do
+# this (both verified by trying it): (1) climr's CRAN dependency tree (dplyr, tidyr,
+# ggplot2, scales, glue, fs, purrr, ...) now requires R >= 4.1, so on R 4.0.3 those
+# come back "not available" and the install dead-ends; (2) climr is GitHub-only
+# (bcgov/climr, not on CRAN) and its native deps (terra, sf, RPostgres) need
+# GDAL/GEOS/PROJ + libpq. Fix both with a userspace modern R: Lonestar6 has no
+# conda/mamba module, so bootstrap the static micromamba binary and pull R 4.3+ plus
+# the compiled deps prebuilt from conda-forge. env.sh auto-detects
+# $WORK/houfin/renv/bin/Rscript.
+mkdir -p $WORK/houfin
+curl -Ls https://micro.mamba.pm/api/micromamba/linux-64/latest | tar -xj -C $WORK/houfin bin/micromamba
+export MAMBA_ROOT_PREFIX=$WORK/houfin/micromamba
+# Prebuilt compiled deps from conda-forge (drop any r-* name micromamba can't find
+# and let remotes pull it from CRAN below):
+$WORK/houfin/bin/micromamba create -y -p $WORK/houfin/renv -c conda-forge \
+    r-base r-remotes r-data.table r-terra r-sf r-rpostgres \
+    r-dplyr r-tidyr r-stringi r-curl r-uuid r-ggplot2 r-plotly
+# climr from GitHub; remotes fills the remaining pure-R deps from CRAN. upgrade=never
+# keeps the conda-forge binaries rather than rebuilding them from source. If you hit
+# a GitHub API rate limit, export GITHUB_PAT=<token> first.
+$WORK/houfin/renv/bin/Rscript -e 'options(download.file.method="libcurl"); remotes::install_github("bcgov/climr", upgrade="never")'
 $WORK/houfin/renv/bin/Rscript -e 'suppressMessages(library(climr)); cat("climr OK\n")'
 ```
 
-> **R / climr wiring.** climr requires a modern R, so both the batch climate step
-> (`02_climate.slurm`) and the login-node cache-warm (in `download_all.sh`) read
-> `$HOUFIN_RSCRIPT`, set in `scripts/tacc/env.sh`. That var auto-detects the mamba
-> env at `$WORK/houfin/renv/bin/Rscript` and otherwise falls back to PATH `Rscript`;
-> to use a different R, `export HOUFIN_RSCRIPT=/path/to/Rscript` before sourcing
-> env.sh. Two Lonestar6 gotchas the old instructions tripped on: TACC's
-> `Rstats/4.0.3` is too old for climr, and the generic `RstatsPackages` companion
-> module isn't deployed on LS6 (`module spider` can't find it) — don't rely on either.
+> **R / climr wiring.** Both the batch climate step (`02_climate.slurm`) and the
+> login-node cache-warm (in `download_all.sh`) read `$HOUFIN_RSCRIPT`, set in
+> `scripts/tacc/env.sh`. That var auto-detects the micromamba env at
+> `$WORK/houfin/renv/bin/Rscript` and otherwise falls back to PATH `Rscript`; to use
+> a different R, `export HOUFIN_RSCRIPT=/path/to/Rscript` before sourcing env.sh.
+> Why not TACC's `Rstats/4.0.3` module: its R is too old for climr's dependency
+> tree (dplyr/tidyr/ggplot2/scales now need R >= 4.1, so they resolve as "not
+> available" on 4.0.3), and the generic `RstatsPackages` companion module that
+> would supply prebuilt packages isn't deployed on LS6 (`module spider` can't find
+> it). The self-contained conda-forge env above sidesteps both.
 
 **Reference species list.** The eBird download reads `species_list`
 (`${HOUFIN_DATA}/avonet/reference_community_ranked.csv`), produced by

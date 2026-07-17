@@ -7,9 +7,9 @@
 #     sbatch -d afterok:<prep_jobid> scripts/tacc/02_climate.slurm
 #
 # climr over ~21k centroids x 3 elevations x (1902..2025) monthly is heavy; this
-# is the long/uncertain stage. See docs/TACC.md for the R install, the R-version
-# risk (TACC Rstats/4.0.3 vs a mamba newer-R fallback), and masking centroids to
-# land to cut the point count.
+# is the long/uncertain stage. See docs/TACC.md for the climr/R install (GitHub-only
+# package whose dep tree needs R >= 4.1, so it runs from a micromamba conda-forge
+# env, not TACC's Rstats/4.0.3) and masking centroids to land to cut the point count.
 #----------------------------------------------------------------------
 #SBATCH -J houfin_climate
 #SBATCH -o houfin_climate.o%j
@@ -24,8 +24,8 @@ set -euo pipefail
 
 source "$SLURM_SUBMIT_DIR/scripts/tacc/env.sh"
 module load python/3.12.11 2>/dev/null || true
-# R comes from $HOUFIN_RSCRIPT (set in env.sh: the mamba newer-R env if present,
-# else PATH Rscript). climr needs a newer R than TACC's Rstats/4.0.3; see docs/TACC.md.
+# R comes from $HOUFIN_RSCRIPT (set in env.sh: the micromamba conda-forge env if
+# present, else PATH Rscript). climr is GitHub-only with heavy native deps; see docs/TACC.md.
 echo "using Rscript: $HOUFIN_RSCRIPT"
 date
 

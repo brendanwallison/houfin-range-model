@@ -29,10 +29,12 @@ export HOUFIN_CLIMR_CACHE="$WORK/houfin/climr_cache"
 
 mkdir -p "$HOUFIN_DATA" "$HOUFIN_PROCESSED" "$HOUFIN_CLIMR_CACHE"
 
-# R interpreter for the climr climate step. climr needs a newer R than TACC's
-# Rstats/4.0.3, so setup builds a userspace R at $WORK/houfin/renv via mamba (see
-# docs/TACC.md). Auto-detect that env if present; otherwise fall back to whatever
-# Rscript is on PATH. Override by exporting HOUFIN_RSCRIPT before sourcing.
+# R interpreter for the climr climate step. TACC's Rstats/4.0.3 is too old for
+# climr's CRAN dep tree (dplyr/tidyr/ggplot2/... need R >= 4.1) and climr is
+# GitHub-only with native deps (terra/sf/RPostgres), so setup builds a modern
+# userspace R at $WORK/houfin/renv via micromamba + conda-forge (LS6 has no
+# conda/mamba module; see docs/TACC.md). Auto-detect that env if present; otherwise
+# fall back to PATH Rscript. Override by exporting HOUFIN_RSCRIPT before sourcing.
 if [ -z "${HOUFIN_RSCRIPT:-}" ]; then
     if [ -x "$WORK/houfin/renv/bin/Rscript" ]; then
         export HOUFIN_RSCRIPT="$WORK/houfin/renv/bin/Rscript"

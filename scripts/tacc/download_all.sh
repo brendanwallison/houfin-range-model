@@ -16,7 +16,7 @@ echo "== Build the ranked reference species list (feeds the eBird download) =="
 python scripts/avonet_pipeline.py
 
 echo "== eBird (needs EBIRD_KEY / secrets.json; reads the species list above) =="
-python scripts/download_ebird.py
+python scripts/download_ebird.py --top-n 100      # top-100 ranked reference community
 
 echo "== BBS (US/Canada + Mexico) =="
 python scripts/download_bbs.py --dataset bbs --extract

@@ -58,19 +58,19 @@ cp config/secrets.example.json config/secrets.json && $EDITOR config/secrets.jso
 # $WORK/houfin/renv/bin/Rscript.
 curl -Ls https://micro.mamba.pm/api/micromamba/linux-64/latest | tar -xj -C $WORK/houfin bin/micromamba
 export MAMBA_ROOT_PREFIX=$WORK/houfin/micromamba
-# LS6 login-node limits: micromamba defaults its download/extract thread pools to the
-# core count (128), tripping the per-user thread+memory cap — either EAGAIN ("Resource
-# temporarily unavailable") while downloading or std::bad_alloc/segfault (with garbled
-# package names) while extracting. Serialize the heavy phases and pin to a few cores.
-# If a run dies mid-way, run `micromamba clean --all --yes` first to drop any corrupted
-# cached tarballs, then retry.
-$WORK/houfin/bin/micromamba config set extract_threads 1
-$WORK/houfin/bin/micromamba config set download_threads 2
-# Prebuilt compiled deps from conda-forge (drop any r-* name micromamba can't find and
-# let remotes pull it from CRAN below). taskset caps the thread pools:
-taskset -c 0-3 $WORK/houfin/bin/micromamba create -y -p $WORK/houfin/renv -c conda-forge \
-    r-base r-remotes r-data.table r-terra r-sf r-rpostgres \
-    r-dplyr r-tidyr r-stringi r-curl r-uuid r-ggplot2 r-plotly
+# LS6 login-node gotcha: `ulimit -u` is hard-capped at 300 processes/user, and a
+# one-shot create of all ~225 packages spawns more workers than that -> the create
+# dies with "Resource temporarily unavailable" (EAGAIN) or a std::bad_alloc/segfault
+# with garbled package names. `taskset`/thread-config knobs do NOT fix it. What works
+# is splitting the install into smaller transactions (each well under 300 packages),
+# with MAMBA_DOWNLOAD_THREADS=1 and taskset for good measure. If a run dies mid-way,
+# `micromamba clean --all --yes` first to drop any corrupted cached tarballs.
+export MAMBA_DOWNLOAD_THREADS=1
+MM="taskset -c 0-3 $WORK/houfin/bin/micromamba"
+$MM create  -y -p $WORK/houfin/renv -c conda-forge r-base           # base R + libs closure
+$MM install -y -p $WORK/houfin/renv -c conda-forge r-terra r-sf r-rpostgres
+$MM install -y -p $WORK/houfin/renv -c conda-forge r-remotes r-data.table r-dplyr r-tidyr \
+    r-stringi r-curl r-uuid r-ggplot2 r-plotly     # drop any r-* name that won't resolve
 # climr from GitHub; remotes fills the remaining pure-R deps from CRAN. upgrade=never
 # keeps the conda-forge binaries rather than rebuilding them from source. If you hit
 # a GitHub API rate limit, export GITHUB_PAT=<token> first.

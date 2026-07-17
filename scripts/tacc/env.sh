@@ -34,9 +34,12 @@ mkdir -p "$HOUFIN_DATA" "$HOUFIN_PROCESSED" "$HOUFIN_CLIMR_CACHE"
 # GitHub-only with native deps (terra/sf/RPostgres), so setup builds a modern
 # userspace R at $WORK/houfin/renv via micromamba + conda-forge (LS6 has no
 # conda/mamba module; see docs/TACC.md). Auto-detect that env if present; otherwise
-# fall back to PATH Rscript. Override by exporting HOUFIN_RSCRIPT before sourcing.
+# fall back to PATH Rscript. Re-detect on every source UNLESS HOUFIN_RSCRIPT already
+# points at an executable: this honors a deliberate override (a full path) while
+# self-correcting the case where an early source — during one-time setup, before the
+# renv is built — pins the "Rscript" fallback that a bare -z guard would then keep.
 HOUFIN_RENV="$WORK/houfin/renv"
-if [ -z "${HOUFIN_RSCRIPT:-}" ]; then
+if [ ! -x "${HOUFIN_RSCRIPT:-}" ]; then
     if [ -x "$HOUFIN_RENV/bin/Rscript" ]; then
         export HOUFIN_RSCRIPT="$HOUFIN_RENV/bin/Rscript"
     else

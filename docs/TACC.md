@@ -76,6 +76,11 @@ $MM install -y -p $WORK/houfin/renv -c conda-forge r-remotes r-data.table r-dply
 # a GitHub API rate limit, export GITHUB_PAT=<token> first.
 $WORK/houfin/renv/bin/Rscript -e 'options(download.file.method="libcurl"); remotes::install_github("bcgov/climr", upgrade="never")'
 $WORK/houfin/renv/bin/Rscript -e 'suppressMessages(library(climr)); cat("climr OK\n")'
+
+# The env.sh you sourced back in step 1 ran before this renv existed, so its
+# HOUFIN_RSCRIPT/PROJ_DATA point at the fallback. Re-source it now (env.sh re-detects
+# the renv) so the current shell uses it:
+source scripts/tacc/env.sh
 ```
 
 > **R / climr wiring.** Both the batch climate step (`02_climate.slurm`) and the

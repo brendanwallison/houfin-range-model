@@ -15,6 +15,9 @@
   "grid": {
     "target_res_m": 25000,
     "ref_raster": "${HOUFIN_DATA}/ref_grid_25km.tif",
+    "box_bounds": [-2356398.8, 269249.3, 2258351.2, 3172999.3],
+    "box_crs": "ESRI:102039",
+    "_box_comment": "Fixed study-area extent (left, bottom, right, top) in box_crs, the original HISDAC-US CONUS-Albers box the project keeps. build_ref_grid defaults to these when given no --base-raster/--bounds, so the canonical ref grid builds standalone on any machine (no deprecated BUI download needed). 185x117 cells at 25 km.",
     "_comment": "Single source of truth for the model grid. target_res_m is THE model resolution (25 km), the LUH-3 native 0.25deg basis reprojected to equal-area Albers (ESRI:102039); the continental products (climate/climr, LUH-3, HYDE, SoilGrids, DEM, eBird) are aggregated to it. ref_raster is a pure-geometry raster at this resolution over the fixed study-area box; build it once with `python -m src.data.preprocess.build_ref_grid --base-raster <any raster covering the box>` (see that module). Because 25 km is NOT an integer multiple of the 4 km / ~2.96 km inputs, aggregation is via reproject_match `average` onto ref_raster (regrid.reproject_to_ref), not integer block_reduce; nonlinear steps (Ruzicka kernel/PCA for Z, quantiles, transforms) are applied at this resolution -- so Z is built at 25 km, never pooled. The old 16 km / 4 km BUI-grid pipeline is preserved under src/data/deprecated/."
   },
   "coastline": {

@@ -53,8 +53,12 @@ def main():
             bounds, crs = tuple(src.bounds), src.crs
     elif args.bounds and args.crs:
         bounds, crs = tuple(args.bounds), rasterio.crs.CRS.from_string(args.crs)
+    elif cfg["grid"].get("box_bounds") and cfg["grid"].get("box_crs"):
+        # Default: the fixed study-area box from config -> builds standalone.
+        bounds = tuple(cfg["grid"]["box_bounds"])
+        crs = rasterio.crs.CRS.from_string(cfg["grid"]["box_crs"])
     else:
-        raise SystemExit("provide --base-raster, or --bounds with --crs")
+        raise SystemExit("provide --base-raster, or --bounds with --crs, or set grid.box_bounds/box_crs")
     build_ref_grid(bounds, crs, res_m, out)
 
 

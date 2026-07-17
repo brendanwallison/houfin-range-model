@@ -115,12 +115,35 @@ def derive_focal_phylo_label(bl, crosswalk):
 # Phylogeny
 
 def compute_phylo_distances(tree, focal_label):
-    pdm = tree.phylogenetic_distance_matrix()
+    """Patristic distance from the focal tip to every taxon: single-source, O(n).
+
+    We only need distances *to the focal species*, so we traverse the tree as an
+    undirected graph outward from the focal node, summing edge lengths -- one
+    O(n) pass. (The previous ``tree.phylogenetic_distance_matrix()`` computed the
+    full O(n^2) all-pairs matrix, ~44M distances for this tree, then discarded
+    every row but the focal's.)
+    """
+    from collections import deque
+
     node = tree.find_node_with_taxon_label(focal_label)
     if node is None:
         raise ValueError("Focal species not found in phylogeny.")
-    focal = node.taxon
-    return {t.label: pdm.distance(focal, t) for t in tree.taxon_namespace}
+
+    dist = {}
+    seen = {node}
+    queue = deque([(node, 0.0)])
+    while queue:
+        cur, d = queue.popleft()
+        if cur.taxon is not None:
+            dist[cur.taxon.label] = d
+        neighbors = [(cur.parent_node, cur.edge.length)]  # edge to parent
+        neighbors += [(c, c.edge.length) for c in cur.child_nodes()]  # edges to children
+        for nb, length in neighbors:
+            if nb is None or nb in seen:
+                continue
+            seen.add(nb)
+            queue.append((nb, d + (length or 0.0)))
+    return dist
 
 # Main
 
@@ -183,9 +206,14 @@ def main():
     bl = bl.dropna(subset=URBAN_COLS).copy()
     bl = standardize(bl, URBAN_COLS)
 
-    focal_urban = bl.loc[bl["Avibase.ID1"] == FOCAL_ID].iloc[0]
-    urban_block = euclidean_distance(bl, focal_urban, URBAN_COLS, "Urban")
-    bl = pd.concat([bl, urban_block], axis=1)
+    # A single urban-tolerance score (mean of the standardized indices; higher =
+    # more urban-tolerant), then EXTREMENESS from the median so that BOTH the most
+    # and the least urban-tolerant species score well -- not only those similar to
+    # the urban-tolerant house finch. This axis is deliberately focal-independent:
+    # "Urban.Distance" here is distance from the median tolerance, so the tails of
+    # the gradient rank best (see the rank block below).
+    bl["Urban.Tolerance"] = bl[URBAN_COLS].mean(axis=1)
+    bl["Urban.Distance"] = (bl["Urban.Tolerance"] - bl["Urban.Tolerance"].median()).abs()
 
     # Phylogeny
     focal_phylo = derive_focal_phylo_label(bl, crosswalk)
@@ -199,11 +227,15 @@ def main():
     bl["Phylo.Distance"] = bl["Species3_underscored"].map(phylo_dist)
     bl = bl.dropna(subset=["Phylo.Distance"])
 
-    # Rank-based combination
+    # Rank-based combination. Morphology + phylogeny reward PROXIMITY to the focal
+    # (ascending: smaller distance = better rank). Urban tolerance rewards
+    # EXTREMENESS (descending: larger distance-from-median = better rank), so the
+    # community spans both the most and least urban-tolerant species.
     rank_cols = ["Trait.Distance", "Urban.Distance", "Phylo.Distance"]
 
-    for c in rank_cols:
+    for c in ["Trait.Distance", "Phylo.Distance"]:
         bl[f"{c}.Rank"] = bl[c].rank(method="average", ascending=True)
+    bl["Urban.Distance.Rank"] = bl["Urban.Distance"].rank(method="average", ascending=False)
 
     bl["Mean.Rank"] = bl[[f"{c}.Rank" for c in rank_cols]].mean(axis=1)
 

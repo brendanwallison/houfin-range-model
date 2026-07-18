@@ -18,6 +18,11 @@ suppressMessages({
   library(data.table)
 })
 
+# One thread per process: the Python driver runs many chunk processes in parallel,
+# so each must stay single-threaded (data.table defaults to all cores) to avoid
+# oversubscribing the node. OMP/BLAS threads are pinned to 1 via the environment.
+setDTthreads(1L)
+
 args <- commandArgs(trailingOnly = TRUE)
 if (length(args) < 4) stop("usage: climate_climr.R <centroids.csv> <out_dir> <start_year> <end_year>")
 centroids_csv <- args[[1]]; out_dir <- args[[2]]

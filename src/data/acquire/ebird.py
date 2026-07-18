@@ -64,6 +64,7 @@ MAX_RETRIES = 5
 BACKOFF = 5  # seconds, linear
 MAX_WORKERS = 4  # eBird S&T is I/O-bound; modest concurrency, don't hammer the API
 MIN_TIF_BYTES = 10_000  # anything smaller is almost certainly an error page
+EXPECTED_WEEKS = 52  # eBird S&T weekly abundance = 52 weekly surfaces per year
 
 EBIRD_KEY_ENV = "EBIRD_KEY"
 EBIRD_SECRET_NAME = "ebird_key"
@@ -192,31 +193,39 @@ def resolve_species(args, cfg) -> list:
 
 # Task planning
 
-def plan_tasks(species_codes, year, key, out_dir, limit=None, target=None):
+def plan_tasks(species_codes, year, key, out_dir, limit=None, target=None,
+               weeks_required=1):
     """Plan the weekly-raster downloads.
 
     Returns ``(tasks, selected, skipped)`` where ``tasks`` is a list of
-    ``(species, objkey, dest)``, ``selected`` the species that had weekly rasters,
-    and ``skipped`` those that had none.
+    ``(species, objkey, dest)``, ``selected`` the species accepted, and ``skipped``
+    those rejected (with too few weekly rasters).
 
-    When ``target`` is set, walk ``species_codes`` in order and keep only species
-    that have weekly rasters, stopping once ``target`` species are collected — so
-    species with no weekly data are skipped and the target is filled by backfilling
-    further down the (ranked) list, yielding exactly ``target`` species when the
-    list is long enough. With ``target=None`` every code is planned as-is (a
-    missing-weekly species is logged but not backfilled).
+    A species is accepted only if eBird serves it at least ``weeks_required``
+    weekly abundance-median rasters. This matters for the reference community: the
+    downstream encoder needs a rectangular species x week grid, so a species with a
+    *partial* year (e.g. 40 of 52 weeks) is as unusable as one with none — set
+    ``weeks_required`` to the full week count (52) to demand complete coverage.
+
+    When ``target`` is set, walk ``species_codes`` in order and keep only accepted
+    species, stopping once ``target`` are collected — rejected species are skipped
+    and the target is backfilled further down the (ranked) list, yielding exactly
+    ``target`` complete species when the list is long enough. With ``target=None``
+    every code is planned as-is (an under-covered species is logged, not backfilled).
     """
     tasks, selected, skipped = [], [], []
     for sp in species_codes:
         if target is not None and len(selected) >= target:
             break
         objkeys = list_weekly_objkeys(sp, year, key)
+        n_avail = len(objkeys)            # completeness judged on availability...
         if limit is not None:
-            objkeys = objkeys[:limit]
-        if not objkeys:
+            objkeys = objkeys[:limit]     # ...limit only trims what's fetched (test knob)
+        if n_avail < weeks_required:
             skipped.append(sp)
             suffix = "; skipping (backfilling to target)" if target is not None else ""
-            print(f"[WARN] no weekly abundance-median objects found for '{sp}'{suffix}.")
+            print(f"[WARN] '{sp}' has {n_avail} weekly abundance-median rasters "
+                  f"(< required {weeks_required}){suffix}.")
             continue
         selected.append(sp)
         for ok in objkeys:
@@ -253,8 +262,12 @@ def main():
     sel.add_argument("--top-n", type=int, metavar="N",
                      help="Use only the first N species from the (ranked) list.")
     sel.add_argument("--require-weekly", action="store_true",
-                     help="Skip species with no weekly rasters and backfill down the "
-                          "ranked list, so --top-n N yields exactly N weekly-complete species.")
+                     help="Require the FULL weekly set (--weeks-required, default 52) and "
+                          "backfill down the ranked list, so --top-n N yields exactly N "
+                          "species with complete weekly coverage (not merely 'some' weeks).")
+    sel.add_argument("--weeks-required", type=int, default=EXPECTED_WEEKS, metavar="W",
+                     help=f"Weekly rasters a species must have to count as complete "
+                          f"(default {EXPECTED_WEEKS}); only applies with --require-weekly.")
 
     parser.add_argument("--list", metavar="SPECIES", dest="list_species",
                         help="Print weekly object keys for one species and exit (no download).")
@@ -299,12 +312,14 @@ def main():
     print(f"{len(species_codes)} candidate species; version year {year}; -> {out_dir}")
 
     target = args.top_n if args.require_weekly else None
+    weeks_required = args.weeks_required if args.require_weekly else 1
     tasks, selected, skipped = plan_tasks(
-        species_codes, year, key, out_dir, limit=args.limit, target=target)
+        species_codes, year, key, out_dir, limit=args.limit, target=target,
+        weeks_required=weeks_required)
     print(f"Planned {len(tasks)} weekly rasters across {len(selected)} species.")
     if args.require_weekly:
-        print(f"Kept {len(selected)} species with weekly data; skipped {len(skipped)} without"
-              + (f": {', '.join(skipped)}" if skipped else "."))
+        print(f"Kept {len(selected)} species with >= {weeks_required} weekly rasters; "
+              f"skipped {len(skipped)} without" + (f": {', '.join(skipped)}" if skipped else "."))
         if args.top_n is not None and len(selected) < args.top_n:
             print(f"[WARN] only {len(selected)} weekly-complete species available "
                   f"(< requested {args.top_n}); ranked list exhausted.")

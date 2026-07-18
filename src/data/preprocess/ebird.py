@@ -20,7 +20,10 @@ handles). Worker count comes from ``HOUFIN_PREPROCESS_WORKERS`` (else
 """
 
 import os
+import re
+import csv
 import glob
+import collections
 import multiprocessing as mp
 
 import numpy as np
@@ -51,6 +54,55 @@ PNG_POWER = 0.25
 
 # CRS for eBird rasters (from file metadata)
 EBIRD_CRS = "EPSG:8857"
+
+# eBird S&T weekly abundance = 52 weekly surfaces/year. Species with fewer weeks
+# present are incomplete and can't enter the encoder's rectangular species x week
+# grid, so the reference community is the top-N *complete* species by rank.
+EXPECTED_WEEKS = int(_CFG.get("ebird_weeks", 52))
+# Reference-community size. The raw dir may hold leftovers from earlier (uncapped)
+# downloads; selection here is authoritative regardless of what's on disk.
+EBIRD_TOPN = int(os.environ.get("HOUFIN_EBIRD_TOPN", _CFG.get("ebird_topn", 100)))
+
+_SP_RE = re.compile(r"([a-z0-9]+)_abundance_median")
+
+
+def _species_of(path):
+    """eBird species code parsed from a raster filename, or None."""
+    m = _SP_RE.match(os.path.basename(path))
+    return m.group(1) if m else None
+
+
+def _read_ranked():
+    """Ranked species codes (best-first) from the config species_list CSV."""
+    path = _CFG.get("species_list")
+    if not path or not os.path.exists(path):
+        return []
+    with open(path, newline="") as fh:
+        return [row["species_code"].strip()
+                for row in csv.DictReader(fh) if row.get("species_code")]
+
+
+def select_reference_community(tif_files, n_target):
+    """Choose the reprojection set: top-``n_target`` *complete* species by rank.
+
+    Groups the present rasters by species, keeps only species with the full
+    EXPECTED_WEEKS coverage, and takes the first ``n_target`` of those in ranked
+    order. Ignores incomplete species and any leftover extras from earlier
+    downloads. Returns (selected_files, kept_species).
+    """
+    per = collections.defaultdict(list)
+    for f in tif_files:
+        sp = _species_of(f)
+        if sp:
+            per[sp].append(f)
+    complete = {sp for sp, fs in per.items() if len(fs) >= EXPECTED_WEEKS}
+    ranked = _read_ranked()
+    kept = [sp for sp in ranked if sp in complete][:n_target]
+    if not ranked:
+        # No ranked list: fall back to all complete species (order-stable).
+        kept = sorted(complete)[:n_target] if n_target else sorted(complete)
+    files = sorted(f for sp in kept for f in per[sp])
+    return files, kept, per, complete
 
 # Per-worker read-only state (loaded once per process by _init_worker).
 _WREF = None
@@ -139,13 +191,26 @@ def _worker_count(n_items):
 
 def main():
     os.makedirs(OUT_DIR, exist_ok=True)
-    tif_files = sorted(glob.glob(os.path.join(EBIRD_DIR, "*.tif")))
-    if not tif_files:
+    all_tifs = sorted(glob.glob(os.path.join(EBIRD_DIR, "*.tif")))
+    if not all_tifs:
         raise SystemExit(f"No eBird .tif files found in {EBIRD_DIR}")
 
+    # Authoritative selection: top-N complete species by rank. Ignores incomplete
+    # species and leftover extras from earlier (uncapped) downloads, so the grid
+    # output the encoder reads is a clean rectangular species x week set.
+    tif_files, kept, per, complete = select_reference_community(all_tifs, EBIRD_TOPN)
+    print(f"eBird: {len(per)} species present ({len(complete)} complete @ "
+          f"{EXPECTED_WEEKS} wk); selected top-{EBIRD_TOPN} by rank -> {len(kept)} "
+          f"species, {len(tif_files)} rasters -> {OUT_DIR}", flush=True)
+    if not tif_files:
+        raise SystemExit("No complete eBird species to reproject "
+                         "(check species_list and per-species week counts).")
+    if len(kept) < EBIRD_TOPN:
+        print(f"[WARN] only {len(kept)} complete species available (< target {EBIRD_TOPN}).",
+              flush=True)
+
     workers = _worker_count(len(tif_files))
-    print(f"eBird reproject: {len(tif_files)} rasters, {workers} workers -> {OUT_DIR}",
-          flush=True)
+    print(f"eBird reproject: {len(tif_files)} rasters, {workers} workers", flush=True)
 
     counts = {"ok": 0, "exists": 0}
     if workers == 1:

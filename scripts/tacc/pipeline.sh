@@ -1,15 +1,21 @@
 #!/bin/bash
 #----------------------------------------------------------------------
-# Full off/validate pipeline as selectable stages, sized for the 2-hour dev queue.
-# Sourced/run by 00_pipeline.slurm; also runnable standalone on a login node for
-# partial runs. Select stages with STAGES (space-separated, in order); default is
-# the whole chain. Skip already-done stages, e.g. re-run only the encoder:
-#     STAGES="ebird_cache esk desk cube validate" bash scripts/tacc/pipeline.sh
+# Shared stage library for the houfin pipeline. Two distinct kinds of stage:
 #
-# bbs_mode: the bbs/amplitude/validate stages are only meaningful for
-# bbs_mode=validate (default). For bbs_mode=off, drop them:
-#     STAGES="preprocess climate climate_grid states ebird_cache esk desk cube"
-# (enrich adds run_spacetime_esk + a time-aware DESK — not yet wired.)
+#   PREPROCESSING (CPU, torch-free) -- one dev/normal-queue job (00_preprocess_all):
+#     preprocess climate climate_grid states ebird_cache bbs amplitude
+#     This is the default STAGES and produces every input the encoder needs.
+#
+#   ENCODER (needs torch; ESK/DESK are heavy -> GPU) -- separate job(s)
+#   (20_encoder), submitted after preprocessing and typically ONE AT A TIME so
+#   ESK and DESK can be sized/queued independently:
+#     esk desk cube validate
+#
+# Select stages with STAGES (space-separated, in order). Runnable standalone on a
+# login node for a quick partial stage. bbs/amplitude/validate are for
+# bbs_mode=validate (default); for bbs_mode=off drop them (enrich not yet wired).
+#     STAGES=esk  bash scripts/tacc/pipeline.sh          # just ESK
+#     STAGES="climate_grid states ebird_cache" bash scripts/tacc/pipeline.sh
 #----------------------------------------------------------------------
 set -euo pipefail
 
@@ -63,7 +69,9 @@ stage_cube      () { run cube      python scripts/run_encoder.py cube; }
 stage_validate  () { run validate  python scripts/run_encoder.py validate; }
 stage_viz       () { run viz       python scripts/viz/quicklook_grids.py --climate; }
 
-STAGES="${STAGES:-preprocess climate climate_grid states ebird_cache bbs amplitude esk desk cube validate}"
+# Default = the CPU preprocessing chain only. Encoder stages (esk/desk/cube/
+# validate) are opt-in via STAGES from the GPU encoder job.
+STAGES="${STAGES:-preprocess climate climate_grid states ebird_cache bbs amplitude}"
 echo "STAGES: $STAGES"
 for s in $STAGES; do
     if ! declare -F "stage_$s" >/dev/null; then echo "unknown stage: $s"; exit 2; fi

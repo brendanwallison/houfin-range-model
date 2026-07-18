@@ -15,7 +15,7 @@ import os
 import numpy as np
 
 from src.config_utils import load_config, load_data_config
-from src.community_encoder.train_DESK.esk_kernel import load_tifs_structured
+from src.community_encoder.train_DESK.ebird_io import load_tifs_structured  # torch-free
 
 
 def _cache_path(config):

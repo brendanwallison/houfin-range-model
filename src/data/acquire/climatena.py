@@ -38,6 +38,12 @@ from src.temporal import load_timeline
 _R_SCRIPT = os.path.join(os.path.dirname(__file__), "climate_climr.R")
 LEVELS = ("q10", "q50", "q90")
 
+# climr's observed-climate (CRU TS / GPCC) extent. downscale() errors if obs_years
+# fall outside this; bump these (or override via data_config "climate") when climr
+# ships a newer observed dataset.
+CLIMR_OBS_MIN_YEAR = 1901
+CLIMR_OBS_MAX_YEAR = 2024
+
 
 def build_command(centroids_csv, out_dir, start_year, end_year, rscript="Rscript"):
     """Construct the Rscript command (kept pure/testable, separate from execution)."""
@@ -118,8 +124,23 @@ def main():
     ap.add_argument("--dry-run", action="store_true", help="print the command and exit")
     args = ap.parse_args()
 
-    tl = load_timeline(load_data_config())
+    cfg = load_data_config()
+    tl = load_timeline(cfg)
     start, end = tl["first_year"], tl["end_year"]
+
+    # Clamp to climr's observed extent: the model timeline may run past it
+    # (end_year 2025 vs climr's 2024), and downscale() rejects out-of-range
+    # obs_years. The combine streamer EMA-carries covariates that lag end_year,
+    # so a climate series ending a year short of the timeline is by design.
+    ccfg = cfg.get("climate", {})
+    obs_min = int(ccfg.get("climr_obs_min_year", CLIMR_OBS_MIN_YEAR))
+    obs_max = int(ccfg.get("climr_obs_max_year", CLIMR_OBS_MAX_YEAR))
+    cstart, cend = max(start, obs_min), min(end, obs_max)
+    if (cstart, cend) != (start, end):
+        print(f"[note] clamping climate obs_years {start}:{end} -> {cstart}:{cend} "
+              f"(climr obs extent {obs_min}:{obs_max}; later years EMA-carried downstream)",
+              flush=True)
+    start, end = cstart, cend
 
     if args.dry_run:
         print("climr command (serial form):",

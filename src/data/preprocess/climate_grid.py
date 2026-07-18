@@ -64,30 +64,52 @@ def main():
     cen = pd.read_csv(centroids, usecols=["id", "row", "col"])
     tmpl, ny, nx = _ref_template()
 
+    total_written = 0
     for lvl in levels:
         csv = os.path.join(climate_dir, f"climate_{lvl}.csv")
         if not os.path.exists(csv):
             print(f"[skip {lvl}] missing {csv}", flush=True)
             continue
         df = pd.read_csv(csv)
+        # PERIOD must be an integer year for the bio-year join; coerce + report so a
+        # non-year encoding (or a range mismatch with the model timeline) is visible.
+        raw_periods = df["PERIOD"].astype(str).unique()[:8]
+        df["PERIOD"] = pd.to_numeric(df["PERIOD"], errors="coerce").astype("Int64")
+        df = df.dropna(subset=["PERIOD"])
+        if df.empty:
+            raise SystemExit(f"[{lvl}] no numeric PERIOD years after coercion; "
+                             f"raw PERIOD values look like {list(raw_periods)}")
+        df["PERIOD"] = df["PERIOD"].astype(int)
         groups = parse_month_columns(df.columns)
         bases = list(groups)
-        print(f"[{lvl}] {len(bases)} base vars {bases} x {len(years)} bio-years", flush=True)
+        pmin, pmax, pn = int(df["PERIOD"].min()), int(df["PERIOD"].max()), df["PERIOD"].nunique()
+        print(f"[{lvl}] PERIOD {pmin}..{pmax} ({pn} yrs); {len(bases)} base vars {bases}; "
+              f"model bio-years {years[0]}..{years[-1]}", flush=True)
+        wrote = 0
         for yr in tqdm(years, desc=f"climate {lvl}", mininterval=2):
-            # Resume: skip a year whose rasters all already exist.
             paths = {b: os.path.join(out, f"{b}_{lvl}_{yr}_grid.tif") for b in bases}
             if all(os.path.exists(p) for p in paths.values()):
+                wrote += 1
                 continue
             agg = bioyear_aggregate(df, yr, start_month, month_groups=groups)
             if agg.empty:
-                continue  # bio-year straddles a data gap (e.g. before obs start)
+                continue  # bio-year straddles a data gap (before obs start / after obs end)
             agg = agg.reset_index()
             for base in bases:
                 grid = grid_from_centroids(agg, cen, ny, nx, value_col=base)
                 da = tmpl.copy(data=grid)
                 da.rio.write_nodata(np.nan, inplace=True)
                 da.rio.to_raster(paths[base])
-    print(f"Done -> {out}", flush=True)
+            wrote += 1
+        print(f"[{lvl}] wrote/kept {wrote}/{len(years)} bio-years", flush=True)
+        total_written += wrote
+    if total_written == 0:
+        raise SystemExit(
+            "climate_grid produced NO rasters: every bio-year aggregation was empty. "
+            "This means the CSV PERIOD years do not overlap the model bio-years "
+            f"({years[0]}..{years[-1]}) as consecutive (T-1, T) pairs. Check the "
+            "PERIOD range printed above against the model timeline.")
+    print(f"Done ({total_written} level-years) -> {out}", flush=True)
 
 
 if __name__ == "__main__":

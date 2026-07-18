@@ -17,7 +17,7 @@
 #SBATCH -p normal
 #SBATCH -N 1
 #SBATCH -n 1
-#SBATCH -t 24:00:00
+#SBATCH -t 12:00:00
 #SBATCH --mail-type=all
 ##SBATCH -A REPLACE_WITH_PROJECT
 set -euo pipefail

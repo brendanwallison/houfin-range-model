@@ -21,13 +21,26 @@ set -euo pipefail
 
 source "$SLURM_SUBMIT_DIR/scripts/tacc/env.sh"
 module load python/3.12.11 2>/dev/null || true
+module load remora 2>/dev/null || true        # periodic CPU/mem/IO sampling per stage
 [ -n "${TACC_ALLOCATION:-}" ] && echo "allocation: $TACC_ALLOCATION"
 module list 2>&1 || true; date
+
+# The reproject stages parallelize across the whole node (one multiprocessing
+# program per node -- -N 1 -n 1 is correct; the program uses all cores). Cap RAM
+# conservatively; raise toward $SLURM_CPUS_ON_NODE (128 on a normal node) once
+# remora shows memory headroom.
+export HOUFIN_PREPROCESS_WORKERS="${HOUFIN_PREPROCESS_WORKERS:-48}"
+
+# Monitor: remora samples resource use over time (live, in remora_<jobid>/);
+# fall back to /usr/bin/time -v (end-of-stage summary only) if remora is absent.
+MON="/usr/bin/time -v"
+command -v remora >/dev/null 2>&1 && MON="remora"
+echo "resource monitor: $MON ; eBird workers: $HOUFIN_PREPROCESS_WORKERS"
 
 run () {  # run() <stage-name> <paths-to-validate> -- <command...>
     local stage="$1"; local vpaths="$2"; shift 3
     echo "=== [$stage] $* ==="
-    /usr/bin/time -v "$@" 2>&1 || { echo "STAGE FAILED: $stage"; exit 1; }
+    $MON "$@" 2>&1 || { echo "STAGE FAILED: $stage"; exit 1; }
     python scripts/validate_products.py --stage "$stage" --paths $vpaths
 }
 

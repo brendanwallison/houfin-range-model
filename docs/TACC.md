@@ -130,7 +130,13 @@ squeue -u $USER
   HYDE → SoilGrids → elevation → BBS ingest, validating each stage.
 - `02_climate.slurm`: `climr` downscaling (loads R; reads the warmed cache). The
   heavy/uncertain stage — see the R notes above; if it needs splitting, run it on
-  a login node or chain shorter jobs.
+  a login node or chain shorter jobs. **The downscaler must name an observed
+  dataset (`obs_ts_dataset=cru.gpcc`) or climr returns only the 1961–1990
+  reference normal, not the annual series** — so the real per-year run is far
+  heavier than a normals-only run and belongs on `normal` (12h), not dev. Warm the
+  **cru.gpcc** obs surfaces into the climr cache on a login node first (a small
+  centroid subset, full year range) since compute nodes have no internet; then
+  delete any stale `$HOUFIN_DATA/climate` (incl. `_chunks`) before regenerating.
 
 Each stage writes a JSON manifest to `$HOUFIN_PROCESSED/validation/<stage>.json`.
 

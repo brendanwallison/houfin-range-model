@@ -45,9 +45,15 @@ CLIMR_OBS_MIN_YEAR = 1901
 CLIMR_OBS_MAX_YEAR = 2024
 
 
-def build_command(centroids_csv, out_dir, start_year, end_year, rscript="Rscript"):
-    """Construct the Rscript command (kept pure/testable, separate from execution)."""
-    return [rscript, _R_SCRIPT, centroids_csv, out_dir, str(start_year), str(end_year)]
+def build_command(centroids_csv, out_dir, start_year, end_year, rscript="Rscript",
+                  obs_ts_dataset="cru.gpcc"):
+    """Construct the Rscript command (kept pure/testable, separate from execution).
+
+    ``obs_ts_dataset`` names climr's observed time-series source (default
+    ``cru.gpcc``); without it climr returns only the 1961-1990 reference normal.
+    """
+    return [rscript, _R_SCRIPT, centroids_csv, out_dir, str(start_year), str(end_year),
+            obs_ts_dataset]
 
 
 def worker_count(n_items, cap=32):

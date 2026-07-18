@@ -7,7 +7,12 @@ time slice onto the model grid one at a time (so peak RAM is a single global
 slice, not the whole stack). Product-specific choices — which variables, average
 vs sum, output naming — stay in the callers.
 """
+import os
+import multiprocessing as mp
+
 import numpy as np
+import rioxarray  # noqa: F401  (registers the .rio accessor used in workers)
+from tqdm import tqdm
 
 Y_NAMES = {"lat", "latitude", "y"}
 X_NAMES = {"lon", "longitude", "x"}
@@ -81,3 +86,106 @@ def reproject_time_slices(da, ref, resampling, year_lo, year_hi, out_dir, name_f
         out.rio.to_raster(os.path.join(out_dir, name_fn(yr)))
         written.append(yr)
     return written
+
+
+# --- Parallel reprojection -----------------------------------------------------
+# Each worker opens its OWN netCDF handle (HDF5 handles are not fork-safe, so a
+# shared open dataset must never cross a fork). Work is one (file, variable, year)
+# slice per task; the pool fans them across the node with a live progress bar.
+
+_WORKER_REF = None
+
+
+def worker_count(n_items, cap=48):
+    """Parallel workers: HOUFIN_PREPROCESS_WORKERS, else SLURM/cpu count, capped.
+
+    Capped (default 48) to bound peak RAM (each worker holds one global slice +
+    reprojection buffers); never exceed the number of work items.
+    """
+    env = os.environ.get("HOUFIN_PREPROCESS_WORKERS")
+    if env:
+        n = int(env)
+    else:
+        slurm = os.environ.get("SLURM_CPUS_ON_NODE")
+        n = int(slurm) if slurm else (os.cpu_count() or 1)
+        n = min(n, cap)
+    return max(1, min(n, n_items or 1))
+
+
+def _worker_init(cfg):
+    global _WORKER_REF
+    os.environ.setdefault("GDAL_NUM_THREADS", "1")  # no per-worker warp threads
+    from src.processing import regrid
+    _WORKER_REF = regrid.load_ref(cfg)
+
+
+def _reproject_one(item):
+    """Reproject one (file, var, time-index) slice; opens its own netCDF handle.
+
+    Skips (and reports) if the output already exists, so an interrupted run
+    resumes instead of redoing completed slices.
+    """
+    import xarray as xr
+    from src.processing import regrid
+    if os.path.exists(item["out_path"]):
+        return "exists"
+    with xr.open_dataset(item["nc_path"], decode_times=True) as ds:
+        sl = ds[item["var"]].isel({item["tdim"]: item["tindex"]})
+        sl = normalize_lon(sl, item["xdim"])
+        sl = (sl.rio.set_spatial_dims(x_dim=item["xdim"], y_dim=item["ydim"])
+                .rio.write_crs("EPSG:4326"))
+        out = regrid.reproject_to_ref(sl, _WORKER_REF, resampling=item["resampling"])
+        out.rio.to_raster(item["out_path"])
+    return "ok"
+
+
+def enumerate_slices(nc_path, variables, resampling, year_lo, year_hi, out_dir, name_fn):
+    """Metadata-only scan of one netCDF -> list of reproject work items (no data read).
+
+    ``name_fn(var, year) -> filename``. ``resampling`` applies to every variable in
+    this file, so callers pass the product-correct method (``average`` for intensive
+    fields like fractions/densities, ``sum`` for extensive counts).
+    """
+    import xarray as xr
+    items = []
+    with xr.open_dataset(nc_path, decode_times=True) as ds:
+        varlist = variables or detect_3d_vars(ds)
+        for var in varlist:
+            if var not in ds.data_vars:
+                raise KeyError(f"{var} not in {nc_path} (have {list(ds.data_vars)})")
+            da = ds[var]
+            ydim, xdim = spatial_dims(da)
+            tdim = time_dim(da, ydim, xdim)
+            for i, yr in enumerate(years_of(da[tdim])):
+                yr = int(yr)
+                if year_lo <= yr <= year_hi:
+                    items.append(dict(
+                        nc_path=nc_path, var=var, tdim=tdim, tindex=i,
+                        xdim=xdim, ydim=ydim, year=yr, resampling=resampling,
+                        out_path=os.path.join(out_dir, name_fn(var, yr))))
+    return items
+
+
+def reproject_parallel(items, cfg, workers=None, desc="reproject"):
+    """Reproject all work items across a process pool, with a tqdm progress bar.
+
+    Returns (n_reprojected, n_already_present). Fork-safe: each worker opens its
+    own netCDF handle in ``_reproject_one``.
+    """
+    if not items:
+        print(f"{desc}: nothing to do (all present, or no in-range years).", flush=True)
+        return 0, 0
+    workers = workers or worker_count(len(items))
+    counts = {"ok": 0, "exists": 0}
+    print(f"{desc}: {len(items)} slices, {workers} workers", flush=True)
+    if workers == 1:
+        _worker_init(cfg)
+        for it in tqdm(items, desc=desc, mininterval=5):
+            counts[_reproject_one(it)] += 1
+    else:
+        with mp.Pool(processes=workers, initializer=_worker_init, initargs=(cfg,)) as pool:
+            for status in tqdm(pool.imap_unordered(_reproject_one, items, chunksize=8),
+                               total=len(items), desc=desc, mininterval=5):
+                counts[status] += 1
+    print(f"{desc}: reprojected={counts['ok']} already-present={counts['exists']}", flush=True)
+    return counts["ok"], counts["exists"]

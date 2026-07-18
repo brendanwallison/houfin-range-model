@@ -22,7 +22,8 @@ from torch import nn
 from tqdm import tqdm
 
 from community_encoder.train_DESK.config_utils import load_config
-from community_encoder.train_DESK.model_arch import BMLPBlock, MultiInputAutoencoder
+from community_encoder.train_DESK import covariate_io as cio
+from community_encoder.train_DESK.model_arch import MultiStreamAutoencoder
 
 
 def fill_gaps_stage1_spatial(z_cube, valid_mask, land_mask, radius_px=25):
@@ -143,22 +144,20 @@ def build_spacetime_cube(config: Optional[Union[Dict[str, Any], str, os.PathLike
     z_static_grid[z_ref_mask] = z_ref_flat
     z_static_valid = ~np.isnan(z_static_grid).any(axis=-1)
 
-    print("Loading 2023 state to derive normalization stats...")
-    state_2023 = np.load(os.path.join(hist_dir, "state_2023_bio_ema10.npz"))
-    p_temp = state_2023["prism"]
-    b_temp = state_2023["bui"]
+    # Normalization + architecture come from the trainer's desk_meta.npz — one
+    # source of truth, so the cube standardizes exactly as training did.
+    import json as _json
+    meta_path = cube_cfg.get("desk_meta") or os.path.join(paths.get("desk_output_dir", ""), "desk_meta.npz")
+    dm = np.load(meta_path, allow_pickle=True)
+    mu, sd = dm["mu"].astype(np.float32), dm["sd"].astype(np.float32)
+    stream_dims = [int(d) for d in dm["stream_dims"]]
+    latent_dim = int(dm["latent_dim"])
+    schema = _json.loads(str(dm["schema"]))
+    if latent_dim != z_dim:
+        raise ValueError(f"desk_meta latent_dim {latent_dim} != ESK z_dim {z_dim}")
 
-    mask_intersect = (~np.isnan(p_temp).any(-1)) & (~np.isnan(b_temp).any(-1)) & z_ref_mask
-    p_flat = p_temp[mask_intersect]
-    b_flat = b_temp[mask_intersect]
-
-    p_mu = p_flat.mean(0).astype(np.float32)
-    p_sd = p_flat.std(0).astype(np.float32)
-    b_mu = (b_flat**0.1).mean(0).astype(np.float32)
-    b_sd = (b_flat**0.1).std(0).astype(np.float32)
-
-    print(f"Loading model from {model_path}...")
-    model = MultiInputAutoencoder(prism_dim=p_temp.shape[2], bui_dim=b_temp.shape[2], latent_dim=z_dim).to(device)
+    print(f"Loading N-stream model ({stream_dims}) from {model_path}...")
+    model = MultiStreamAutoencoder(stream_dims, latent_dim).to(device)
     model.load_state_dict(torch.load(model_path, map_location=device))
     model.eval()
 
@@ -167,24 +166,17 @@ def build_spacetime_cube(config: Optional[Union[Dict[str, Any], str, os.PathLike
         raise FileNotFoundError(f"No state files found in {hist_dir}")
 
     for fpath in tqdm(year_files, desc="Processing Years"):
-        fname = os.path.basename(fpath)
-        year = int(fname.split("_")[1])
+        year = int(os.path.basename(fpath).split("_")[1].split(".")[0])   # state_{year}.npz
 
-        data = np.load(fpath)
-        p_raw = data["prism"]
-        b_raw = data["bui"]
-
-        valid_pixels = (~np.isnan(p_raw).any(-1)) & (~np.isnan(b_raw).any(-1))
+        cov = cio.load_state_stack(year, hist_dir, schema)   # (H, W, C), transforms applied
+        valid_pixels = ~np.isnan(cov).any(-1)
         z_year = np.full((H, W, z_dim), np.nan, dtype=np.float32)
 
         if valid_pixels.sum() > 0:
-            p_in = torch.tensor(p_raw[valid_pixels], dtype=torch.float32)
-            b_in = torch.tensor(b_raw[valid_pixels], dtype=torch.float32)
-            p_in = (p_in - p_mu) / (p_sd + 1e-6)
-            b_in = (b_in**0.1 - b_mu) / (b_sd + 1e-6)
-
+            cov_n = cio.apply_norm(cov[valid_pixels], mu, sd)
+            streams = cio.split_streams(torch.tensor(cov_n, dtype=torch.float32), schema)
             with torch.no_grad():
-                z_out, _ = model(p_in.to(device), b_in.to(device))
+                z_out, _ = model(*[s.to(device) for s in streams])
             z_year[valid_pixels] = z_out.cpu().numpy()
 
         z_s1, mask_s1 = fill_gaps_stage1_spatial(

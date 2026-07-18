@@ -112,9 +112,24 @@ def test_spacetime_numerics():
     print("spacetime numerics OK")
 
 
+def test_validate_metrics():
+    from src.community_encoder.train_DESK import validate_spacetime as V
+    X = np.array([[1., 2, 3], [2., 4, 6], [0., 1, 0]])
+    S = V.ruzicka_similarity_matrix(X)
+    assert np.allclose(np.diag(S), 1.0) and abs(S[0, 1] - 0.5) < 1e-9  # x vs 2x
+    rng = np.random.default_rng(0)
+    Z = rng.standard_normal((30, 5)); K = Z @ Z.T
+    assert abs(V.linear_cka(K, K) - 1.0) < 1e-9
+    assert abs(V.linear_cka(K, (2 * Z) @ (2 * Z).T) - 1.0) < 1e-9      # scale-invariant
+    Kr = rng.standard_normal((30, 30)); Kr = Kr @ Kr.T
+    assert V.linear_cka(K, Kr) < 0.9 and abs(V.mantel_r(K, K) - 1.0) < 1e-9
+    print("validate metrics OK")
+
+
 if __name__ == "__main__":
     test_climate_bioyear_and_grid()
     test_crosswalk_core()
     test_bbs_community_aggregation()
     test_spacetime_numerics()
+    test_validate_metrics()
     print("\nALL BBS-SPACETIME CHECKS PASSED")

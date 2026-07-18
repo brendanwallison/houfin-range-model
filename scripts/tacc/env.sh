@@ -56,6 +56,12 @@ if [ -d "$HOUFIN_RENV/share/proj" ]; then
     export GDAL_DATA="$HOUFIN_RENV/share/gdal"
 fi
 
+# The venv's interpreter links against the python/3.12.11 module's libpython, so
+# load the module before activating (harmless if already loaded, e.g. in SLURM
+# jobs) -- otherwise `python` in an interactive shell fails with
+# "libpython3.12.so.1.0: cannot open shared object file".
+module load python/3.12.11 2>/dev/null || true
+
 # Activate the Python environment (uv-managed venv on $WORK).
 if [ -f "$HOUFIN_VENV/bin/activate" ]; then
     source "$HOUFIN_VENV/bin/activate"

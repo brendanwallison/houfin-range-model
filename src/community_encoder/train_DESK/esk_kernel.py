@@ -107,8 +107,13 @@ def load_tifs_structured(folder, pattern="*_abundance_median_*.tif", target_res_
                     band[band == src.nodata] = np.nan
         full_stack[:, :, i] = band.astype(np.float32)
 
+    # Species block order = sorted unique species (matches df_sorted column blocks),
+    # so downstream code (e.g. the BBS amplitude modulation) can align per-species
+    # scalars to the right 52-week block.
+    species = sorted(df["species"].unique().tolist())
     return full_stack, {"n_species": n_species, "n_weeks": n_weeks,
-                        "native_res_m": native_res, "target_res_m": target_res_m}
+                        "native_res_m": native_res, "target_res_m": target_res_m,
+                        "species": species}
 
 
 def smooth_abundances(ebird_flat, n_weeks, sigma):
@@ -301,13 +306,10 @@ def run_esk_experiment(config=None):
     esk_cfg = config["esk"]
 
     # Build Z at the model grid: aggregate abundance to grid.target_res_m before
-    # the Ruzicka kernel/PCA (C3 — no downstream pooling of the embedding).
-    target_res_m = load_data_config()["grid"]["target_res_m"]
-    ebird_stack, meta = load_tifs_structured(
-        paths["ebird_folder"],
-        esk_cfg.get("pattern", "*_abundance_median_2023-*.tif"),
-        target_res_m=target_res_m,
-    )
+    # the Ruzicka kernel/PCA (C3 — no downstream pooling of the embedding). Use the
+    # shared cache (reproject once; NaN preserved) rather than re-reprojecting here.
+    from src.community_encoder.train_DESK.ebird_cache import load_ebird_stack
+    ebird_stack, meta = load_ebird_stack(config)
 
     H, W, D = ebird_stack.shape
     valid_mask = np.any(~np.isnan(ebird_stack), axis=-1)

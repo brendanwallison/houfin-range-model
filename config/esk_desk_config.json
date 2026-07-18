@@ -7,11 +7,42 @@
     "esk_output_dir": "${HOUFIN_PROCESSED}/encoder/esk",
     "desk_output_dir": "${HOUFIN_PROCESSED}/encoder/desk"
   },
+  "states": {
+    "warmup": 20,
+    "streams": [
+      {"name": "climate",   "type": "per_variable", "grid_dir": "${HOUFIN_DATA}/climate_grid",   "ema_tau": 10},
+      {"name": "landuse",   "type": "per_variable", "grid_dir": "${HOUFIN_DATA}/luh3_grid",       "ema_tau": 10},
+      {"name": "hyde",      "type": "per_variable", "grid_dir": "${HOUFIN_DATA}/hyde35_grid",     "ema_tau": 10},
+      {"name": "soil",      "type": "static",       "grid_dir": "${HOUFIN_DATA}/soilgrids_grid"},
+      {"name": "elevation", "type": "static",       "grid_dir": "${HOUFIN_DATA}/elevation", "suffix": ".tif"}
+    ]
+  },
   "esk": {
     "pattern": "*_abundance_median_2023-*.tif",
     "sigmas": [0.0, 0.5, 1.0, 1.5],
     "latent_dims": [8, 16, 32],
     "n_landmarks": 18000
+  },
+  "bbs_mode": "validate",
+  "bbs": {
+    "_comment": "BBS spatiotemporal community integration. mode 'off'|'validate'|'enrich' via top-level-adjacent bbs_mode above.",
+    "community_top_n": 100,
+    "species_list": "${HOUFIN_DATA}/bbs_2026_release/SpeciesList.csv",
+    "crosswalk_path": "${HOUFIN_DATA}/bbs/aou_ebird_crosswalk.csv",
+    "community_matrix": "${HOUFIN_DATA}/bbs/community_matrix.npz",
+    "smooth_sigma_s": 1.5,
+    "smooth_sigma_t": 3.0,
+    "anomaly_pseudocount": 0.5,
+    "anomaly_shrink_k": 2.0,
+    "anomaly_cap_log": 2.302585,
+    "anomaly_ref_years": [2014, 2023],
+    "support_floor": 0.25,
+    "point_year_stride": 5,
+    "w_hist": 1.0,
+    "z_dir": "${HOUFIN_PROCESSED}/encoder/esk_spacetime",
+    "latent_dim": 32,
+    "n_landmarks": 30000,
+    "ebird_stack_cache": "${HOUFIN_PROCESSED}/encoder/ebird_stack.npz"
   },
   "desk": {
     "epochs": 100,

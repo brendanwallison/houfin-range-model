@@ -73,12 +73,21 @@ def load_grid_reference(mask_path):
     return land_mask, ocean_mask, transform, crs, nx, ny
 
 
-def load_usca_observations():
-    """US/Canada House-Finch counts + true absences, screened to protocol runs.
+def load_usca_observations(aou_filter=HOUSE_FINCH_AOU, return_coverage=False):
+    """US/Canada counts screened to protocol runs (RunType!=0 & RPID==101).
 
-    Returns a frame with CountryNum/StateNum/Route/Year/SpeciesTotal and
-    ``quality_tier = 0``. Absences arise where a QC-passing run recorded no
-    House Finch (left join → fill 0).
+    ``aou_filter`` selects the species:
+    - an AOU (default ``HOUSE_FINCH_AOU``) → that species' counts + true absences,
+      i.e. every QC-passing run gets a row (left join → fill 0). Columns
+      CountryNum/StateNum/Route/Year/SpeciesTotal/quality_tier. (Original behavior.)
+    - ``None`` → **all species**, recorded (present) rows only, with the ``AOU``
+      column kept, restricted to QC-passing route-years. Community absences are
+      recovered downstream against the per-cell coverage, so we don't materialize
+      the full species×run zero matrix here.
+
+    With ``return_coverage=True`` also return the QC-passing route-year coverage
+    frame (CountryNum/StateNum/Route/Year), i.e. which surveys happened — the
+    denominator for effort weighting and absence in the community ingest.
     """
     if not os.path.isdir(BBS_STATES_DIR):
         raise FileNotFoundError(f"BBS States dir not found: {BBS_STATES_DIR}")
@@ -108,12 +117,24 @@ def load_usca_observations():
     counts = counts[counts["RPID"] == RPID_STANDARD]
 
     keys = ["CountryNum", "StateNum", "Route", "RPID", "Year"]
-    finch = counts[counts["AOU"] == HOUSE_FINCH_AOU]
-    merged = qc.merge(finch, on=keys, how="left")
-    merged["SpeciesTotal"] = merged["SpeciesTotal"].fillna(0).astype(int)
-    merged["quality_tier"] = QUALITY_STANDARD
-    print(f"  US/Canada: {len(merged)} route-years (standard tier).")
-    return merged[["CountryNum", "StateNum", "Route", "Year", "SpeciesTotal", "quality_tier"]]
+    if aou_filter is None:
+        obs = counts.merge(qc[keys], on=keys, how="inner")   # only surveyed route-years
+        obs["SpeciesTotal"] = pd.to_numeric(obs["SpeciesTotal"], errors="coerce").fillna(0).astype(int)
+        obs["quality_tier"] = QUALITY_STANDARD
+        out = obs[["CountryNum", "StateNum", "Route", "Year", "AOU", "SpeciesTotal", "quality_tier"]]
+        print(f"  US/Canada: {len(out)} species-route-years (all species, standard tier).")
+    else:
+        target = counts[counts["AOU"] == aou_filter]
+        merged = qc.merge(target, on=keys, how="left")
+        merged["SpeciesTotal"] = merged["SpeciesTotal"].fillna(0).astype(int)
+        merged["quality_tier"] = QUALITY_STANDARD
+        out = merged[["CountryNum", "StateNum", "Route", "Year", "SpeciesTotal", "quality_tier"]]
+        print(f"  US/Canada: {len(out)} route-years (AOU {aou_filter}, standard tier).")
+
+    if return_coverage:
+        cov = qc[["CountryNum", "StateNum", "Route", "Year"]].drop_duplicates().reset_index(drop=True)
+        return out, cov
+    return out
 
 
 def _mexico_year(run_data):

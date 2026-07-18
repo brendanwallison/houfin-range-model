@@ -17,6 +17,7 @@ its continental replacement (climr output) plugs in here as another streamer onc
 that acquire step has produced grid rasters.
 """
 import glob
+import json
 import os
 import re
 
@@ -148,7 +149,9 @@ def run_states(specs, out_dir, start_year, end_year, mask, sample_start,
     ``mask`` is a boolean (H, W) land mask (True = sample here). Each per-year npz
     holds one array per stream (named by ``spec['name']``); the training bag
     concatenates per-stream pixel vectors, and an offsets dict records each
-    stream's channel slice. Returns (bag, offsets).
+    stream's channel slice. A ``state_schema.json`` sidecar persists those offsets
+    (+ per-stream dims/variables) so consumers can split ``history_vectors.npy``
+    and normalize per stream without re-deriving the layout. Returns (bag, offsets).
     """
     os.makedirs(out_dir, exist_ok=True)
     states_dir = os.path.join(out_dir, "yearly_states")
@@ -189,6 +192,28 @@ def run_states(specs, out_dir, start_year, end_year, mask, sample_start,
 
         np.savez_compressed(os.path.join(states_dir, f"state_{year}.npz"),
                             **{name: states[name] for name in names})
+
+    if offsets is not None:
+        spec_by_name = {s.get("name", s["type"]): s for s in specs}
+        schema = {
+            "streams": [
+                {
+                    "name": name,
+                    "start": int(offsets[name][0]),
+                    "end": int(offsets[name][1]),
+                    "dim": int(offsets[name][1] - offsets[name][0]),
+                    "type": spec_by_name[name]["type"],
+                    "variables": list(spec_by_name[name].get("variables", [])),
+                }
+                for name in names
+            ],
+            "total_dim": int(offsets[names[-1]][1]),
+            "start_year": int(start_year),
+            "end_year": int(end_year),
+            "sample_start": int(sample_start),
+        }
+        with open(os.path.join(out_dir, "state_schema.json"), "w") as fh:
+            json.dump(schema, fh, indent=2)
 
     if bag:
         full = np.concatenate(bag, axis=0).astype(np.float32)

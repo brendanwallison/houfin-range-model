@@ -72,18 +72,18 @@ def render_climate_level(task):
     id->row,col map from cell_centroids.csv, and renders a PNG per (var, year)."""
     lvl, csv_path, cen_path, years, vars_req, out_dir, max_dim, cmap = task
     import pandas as pd
+    from src.data.combine.climate_io import grid_from_centroids
     cen = pd.read_csv(cen_path, usecols=["id", "row", "col"])
     ny, nx = int(cen["row"].max()) + 1, int(cen["col"].max()) + 1
     df = pd.read_csv(csv_path)
-    df = df[df["PERIOD"].isin(years)].merge(cen, on="id")
+    df = df[df["PERIOD"].isin(years)]
     allvars = [c for c in df.columns if c not in ("id", "PERIOD", "row", "col")]
     varlist = allvars if vars_req in (None, "all") else [v for v in vars_req if v in allvars]
     made = 0
     for var in varlist:
         for yr in years:
             sub = df[df["PERIOD"] == yr]
-            grid = np.full((ny, nx), np.nan, dtype="float32")
-            grid[sub["row"].to_numpy(), sub["col"].to_numpy()] = sub[var].to_numpy()
+            grid = grid_from_centroids(sub, cen, ny, nx, value_col=var)
             if _arr_to_png(grid, os.path.join(out_dir, f"climate_{lvl}", f"{var}_{yr}.png"),
                            max_dim, cmap):
                 made += 1

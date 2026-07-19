@@ -13,6 +13,7 @@ climate). Everything renders in parallel. Then tar the folder and scp it.
 """
 import argparse
 import glob
+import json
 import os
 from concurrent.futures import ProcessPoolExecutor
 
@@ -90,6 +91,29 @@ def render_climate_level(task):
     return lvl, made, len(varlist)
 
 
+def render_states(task):
+    """Render sampled channels of one (year, stream) state grid to thumbnails.
+
+    ``state_{year}.npz`` holds one ``(H, W, C)`` array per stream; we render a
+    sample of channels per stream, labeled by the schema's variable names when
+    available. These are the ACTUAL per-year encoder inputs (climate/luh3/hyde EMA
+    + soil/elevation static), so this validates what DESK sees, post-assembly."""
+    npz_path, year, stream, channels, varnames, out_dir, max_dim, cmap = task
+    with np.load(npz_path) as z:
+        if stream not in z.files:
+            return stream, year, 0
+        arr = z[stream]                                  # (H, W, C)
+    made = 0
+    for ch in channels:
+        if ch >= arr.shape[2]:
+            continue
+        label = varnames[ch] if ch < len(varnames) else f"ch{ch}"
+        if _arr_to_png(arr[:, :, ch], os.path.join(out_dir, f"states_{stream}", f"{label}_{year}.png"),
+                       max_dim, cmap):
+            made += 1
+    return stream, year, made
+
+
 def default_groups(dr):
     """Standard 25 km raster products (eBird already writes _grid.png).
 
@@ -122,6 +146,13 @@ def main():
     ap.add_argument("--climate-levels", default="q50", help="comma list of climate levels (default q50)")
     ap.add_argument("--climate-years", type=int, default=6, help="evenly-sampled years to render")
     ap.add_argument("--climate-vars", default="all", help="comma list of climate variables, or 'all'")
+    ap.add_argument("--states", action="store_true",
+                    help="also render per-year encoder state grids (state_{year}.npz)")
+    ap.add_argument("--states-dir", default=None,
+                    help="states dir (default: config paths.hist_dir); reads yearly_states/ + state_schema.json")
+    ap.add_argument("--states-years", type=int, default=6, help="evenly-sampled state years to render")
+    ap.add_argument("--states-channels", type=int, default=4,
+                    help="evenly-sampled channels per stream to render")
     args = ap.parse_args()
 
     cfg = load_data_config()
@@ -172,6 +203,33 @@ def main():
             with ProcessPoolExecutor(max_workers=min(len(ctasks), args.workers)) as ex:
                 for lvl, made, nv in ex.map(render_climate_level, ctasks):
                     print(f"climate {lvl}: {made} PNGs ({nv} vars x {len(years)} yrs)", flush=True)
+
+    # ---- per-year encoder states (the actual DESK inputs) ----
+    if args.states:
+        from src.config_utils import load_config
+        hist_dir = args.states_dir or load_config().get("paths", {}).get("hist_dir")
+        ydir = os.path.join(hist_dir, "yearly_states") if hist_dir else None
+        schema_path = os.path.join(hist_dir, "state_schema.json") if hist_dir else None
+        npzs = sorted(glob.glob(os.path.join(ydir, "state_*.npz"))) if ydir else []
+        if not (npzs and schema_path and os.path.exists(schema_path)):
+            print(f"[skip states] need {ydir}/state_*.npz and {schema_path} "
+                  f"(run build_states first)", flush=True)
+        else:
+            with open(schema_path) as fh:
+                streams = json.load(fh)["streams"]        # [{name, dim, variables, ...}]
+            def _yr(p): return int(os.path.splitext(os.path.basename(p))[0].split("_")[1])
+            chosen = _even_sample(npzs, args.states_years)
+            stasks = []
+            for p in chosen:
+                for st in streams:
+                    chans = _even_sample(list(range(st["dim"])), args.states_channels)
+                    stasks.append((p, _yr(p), st["name"], chans, st.get("variables", []),
+                                   out, args.max_dim, args.cmap))
+            print(f"states: {len(chosen)} yrs x {len(streams)} streams "
+                  f"x <={args.states_channels} chans -> {len(stasks)} tasks", flush=True)
+            with ProcessPoolExecutor(max_workers=args.workers) as ex:
+                tot = sum(made for _, _, made in ex.map(render_states, stasks))
+            print(f"states: {tot} PNGs -> {out}", flush=True)
 
     parent, base = os.path.dirname(out), os.path.basename(out)
     print(f"\nBundle + scp:\n"

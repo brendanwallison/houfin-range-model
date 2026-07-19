@@ -52,6 +52,7 @@ def main():
 
     cfg = load_data_config()
     dr = cfg["datasets_root"]
+    obs_ts = cfg.get("climate", {}).get("obs_ts_dataset", "cru.gpcc")
     climate_dir = args.climate_dir or os.path.join(dr, "climate")
     centroids = args.centroids or os.path.join(dr, "elevation", "cell_centroids.csv")
     out = args.out or os.path.join(dr, "climate_grid")
@@ -71,6 +72,11 @@ def main():
             print(f"[skip {lvl}] missing {csv}", flush=True)
             continue
         df = pd.read_csv(csv)
+        # climr adds a DATASET column when obs_ts_dataset is set; if several were
+        # requested, keep only our source so ids stay unique per PERIOD.
+        if "DATASET" in df.columns and df["DATASET"].nunique() > 1:
+            df = df[df["DATASET"] == obs_ts]
+            print(f"[{lvl}] filtered DATASET -> {obs_ts} ({len(df)} rows)", flush=True)
         # PERIOD must be an integer year for the bio-year join; coerce + report so a
         # non-year encoding (or a range mismatch with the model timeline) is visible.
         raw_periods = df["PERIOD"].astype(str).unique()[:8]

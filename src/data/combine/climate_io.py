@@ -37,7 +37,7 @@ def _is_sum_base(base: str) -> bool:
     return base.lower().startswith(_SUM_PREFIXES)
 
 
-def parse_month_columns(columns, non_var=("id", "PERIOD", "row", "col")):
+def parse_month_columns(columns, non_var=("id", "PERIOD", "row", "col", "DATASET")):
     """Group monthly columns by base variable.
 
     Returns ``{base: {month:int -> column_name}}`` for every column that parses as

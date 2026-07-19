@@ -28,9 +28,8 @@ import math
 import os
 import subprocess
 import sys
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-
-from tqdm import tqdm
 
 from src.config_utils import load_data_config
 from src.temporal import load_timeline
@@ -177,16 +176,25 @@ def main():
 
     counts = {"ok": 0, "exists": 0}
     failures = []
+    t0 = time.time()
     with ThreadPoolExecutor(max_workers=workers) as ex:
         futs = [ex.submit(_run_chunk, cc, co, start, end, args.rscript, env)
                 for cc, co in zip(chunk_csvs, chunk_outs)]
-        for fut in tqdm(as_completed(futs), total=len(futs), desc="climate", mininterval=10):
+        n = len(futs)
+        # Explicit per-chunk completion lines (flushed) — a tqdm bar renders poorly
+        # in a non-TTY SLURM log and only ticks at whole-chunk granularity anyway.
+        # Per-chunk R downscaling detail is in _chunks/chunk_*.log.
+        for done, fut in enumerate(as_completed(futs), 1):
             cc, rc, log, status = fut.result()
             if rc != 0:
                 failures.append((cc, log))
                 print(f"[ERROR] chunk {os.path.basename(cc)} failed (rc={rc}); see {log}", flush=True)
             else:
                 counts[status] += 1
+            el = time.time() - t0
+            eta = el / done * (n - done)
+            print(f"[climate] {done}/{n} chunks (ran={counts['ok']} cached={counts['exists']} "
+                  f"failed={len(failures)}) | {el:.0f}s elapsed, ~{eta:.0f}s left", flush=True)
 
     if failures:
         _, log0 = failures[0]

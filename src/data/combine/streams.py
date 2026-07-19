@@ -22,7 +22,7 @@ import json
 import multiprocessing
 import os
 import re
-from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 
 import numpy as np
 import rasterio
@@ -55,6 +55,23 @@ def _write_state_npz(path, arrays):
     """Compress + write one year's per-stream arrays (runs in a worker process)."""
     np.savez_compressed(path, **arrays)
     return path
+
+
+def _prewarm_reads(paths, workers):
+    """Read all unique rasters concurrently to warm the ``_read_grid`` cache.
+
+    The per-year EMA loop is sequential and reads ~10k small GeoTIFFs from Lustre;
+    done serially that is the whole runtime (single core, ~30-50 ms per open). A
+    thread pool parallelizes the opens (rasterio releases the GIL during read), so
+    the subsequent sequential loop hits a warm cache and the reads no longer bound
+    the wall clock."""
+    paths = list(paths)
+    if not paths or workers <= 1:
+        for p in paths:
+            _read_grid(p)
+        return
+    with ThreadPoolExecutor(max_workers=workers) as ex:
+        list(ex.map(_read_grid, paths))
 
 
 class _EmaStreamer:
@@ -120,6 +137,16 @@ class PerVariableYearStreamer(_EmaStreamer):
             bands.append(_read_grid(path))
         return np.stack(bands, axis=-1)
 
+    def prefetch_paths(self, years):
+        """Every distinct raster this streamer will read over ``years`` (after
+        nearest-year fill) -- for parallel cache pre-warming."""
+        out = set()
+        for var in self.variables:
+            yrs = self.avail[var]
+            for y in years:
+                out.add(yrs.get(y) or yrs[self._nearest_year(yrs.keys(), y)])
+        return out
+
 
 class StaticStreamer:
     """Time-invariant stream: stack rasters once, yield the same state every year."""
@@ -161,7 +188,7 @@ def build_streamer(spec, start_year, end_year):
 
 
 def run_states(specs, out_dir, start_year, end_year, mask, sample_start,
-               samples_per_year=20000, rng=None, write_workers=None):
+               samples_per_year=20000, rng=None, write_workers=None, read_workers=None):
     """Lockstep-iterate all streams; write per-year npz + a training-vector bag.
 
     ``mask`` is a boolean (H, W) land mask (True = sample here). Each per-year npz
@@ -182,12 +209,27 @@ def run_states(specs, out_dir, start_year, end_year, mask, sample_start,
     os.makedirs(states_dir, exist_ok=True)
     rng = rng or np.random.default_rng()
     write_workers = write_workers if write_workers is not None else min(os.cpu_count() or 1, 8)
+    # Reads are I/O-bound (Lustre small-file opens), so oversubscribe cores.
+    read_workers = read_workers if read_workers is not None else min((os.cpu_count() or 1) * 2, 32)
 
     names = [s.get("name", s["type"]) for s in specs]
     streamers = [build_streamer(s, start_year, end_year) for s in specs]
     valid_rows, valid_cols = np.where(mask)
     n_valid = len(valid_rows)
-    print(f"[states] {n_valid} valid cells; streams: {names}; write_workers={write_workers}")
+    print(f"[states] {n_valid} valid cells; streams: {names}; "
+          f"read_workers={read_workers} write_workers={write_workers}")
+
+    # Warm the read cache in parallel before the sequential EMA loop, so ~10k small
+    # Lustre opens don't serialize on one core (the dominant cost otherwise).
+    all_years = range(start_year, end_year + 1)
+    prefetch = set()
+    for s in streamers:
+        if hasattr(s, "prefetch_paths"):
+            prefetch |= s.prefetch_paths(all_years)
+    if prefetch:
+        print(f"[states] pre-reading {len(prefetch)} unique rasters ({read_workers} threads)...",
+              flush=True)
+        _prewarm_reads(prefetch, read_workers)
 
     # fork: no open rasterio handles or threads in the parent at pool creation
     # (reads use `with rasterio.open`), and fork avoids re-importing __main__.

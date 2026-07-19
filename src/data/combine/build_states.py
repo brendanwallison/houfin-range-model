@@ -86,6 +86,8 @@ def main():
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--write-workers", type=int, default=None,
                     help="processes compressing per-year npz in parallel (default ~cpu, cap 8; 1=serial)")
+    ap.add_argument("--read-workers", type=int, default=None,
+                    help="threads pre-reading rasters (I/O-bound; default 2*cpu, cap 32; 1=serial)")
     args = ap.parse_args()
 
     cfg = load_config()
@@ -112,6 +114,7 @@ def main():
         samples_per_year=args.samples_per_year,
         rng=np.random.default_rng(args.seed),
         write_workers=args.write_workers,
+        read_workers=args.read_workers,
     )
     print(f"[build_states] done -> {out}/yearly_states + state_schema.json", flush=True)
 

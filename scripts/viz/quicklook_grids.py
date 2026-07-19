@@ -15,6 +15,7 @@ import argparse
 import glob
 import json
 import os
+import re
 from concurrent.futures import ProcessPoolExecutor
 
 import numpy as np
@@ -33,6 +34,40 @@ def _even_sample(items, k):
         return items
     idx = sorted(set(np.linspace(0, len(items) - 1, k).round().astype(int)))
     return [items[i] for i in idx]
+
+
+_YEAR_RE = re.compile(r"_(\d{4})(?=_grid\.tif$|\.tif$)")
+
+
+def _key_year(path):
+    """Split a grid filename into (variable-identity, year). ``{var}_{year}_grid.tif``
+    and ``{var}_{lvl}_{year}_grid.tif`` -> key without the year token; static (no
+    4-digit year) -> (basename, None)."""
+    b = os.path.basename(path)
+    m = _YEAR_RE.search(b)
+    if not m:
+        return b, None
+    return b[:m.start()] + b[m.end():], int(m.group(1))
+
+
+def _stratified_select(files, years_per_var, max_vars=None):
+    """Rational quicklook subset: group by VARIABLE identity, then keep an evenly-
+    spaced few YEARS per variable (first..last), so the output is a legible
+    variable x year matrix instead of a flat blind sample mixing everything.
+    ``max_vars`` optionally caps how many distinct variables (evenly across the
+    sorted set). Static rasters (no year) are one-per-variable and always kept."""
+    groups = {}
+    for f in files:
+        key, yr = _key_year(f)
+        groups.setdefault(key, []).append((yr if yr is not None else -1, f))
+    keys = sorted(groups)
+    if max_vars:
+        keys = _even_sample(keys, max_vars)
+    chosen = []
+    for k in keys:
+        fs = [f for _, f in sorted(groups[k])]
+        chosen.extend(fs if len(fs) <= years_per_var else _even_sample(fs, years_per_var))
+    return chosen
 
 
 def _arr_to_png(arr, png, max_dim=300, cmap="viridis"):
@@ -136,7 +171,10 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--out", default=None, help="output dir (default: $HOUFIN_PROCESSED/quicklooks)")
-    ap.add_argument("--sample", type=int, default=48, help="max rasters per dataset (evenly sampled)")
+    ap.add_argument("--years-per-var", type=int, default=3,
+                    help="years to render per variable (evenly spaced first..last); the rational default")
+    ap.add_argument("--max-vars", type=int, default=None,
+                    help="cap distinct variables per dataset (evenly across the sorted set)")
     ap.add_argument("--all", action="store_true", help="render every raster (can be thousands)")
     ap.add_argument("--max-dim", type=int, default=300, help="thumbnail max dimension in px")
     ap.add_argument("--cmap", default="viridis")
@@ -168,11 +206,13 @@ def main():
     for ds, files in groups.items():
         if not files:
             continue
-        chosen = files if args.all else _even_sample(files, args.sample)
+        chosen = files if args.all else _stratified_select(files, args.years_per_var, args.max_vars)
         for f in chosen:
             name = os.path.splitext(os.path.basename(f))[0]
             tasks.append((f, os.path.join(out, ds, name + ".png"), args.max_dim, args.cmap))
-        print(f"{ds}: {len(chosen)}/{len(files)} rasters", flush=True)
+        nvars = len({_key_year(f)[0] for f in files})
+        print(f"{ds}: {len(chosen)}/{len(files)} rasters ({nvars} vars x <={args.years_per_var} yrs)",
+              flush=True)
 
     if tasks:
         print(f"rendering {len(tasks)} raster thumbnails, {args.workers} workers -> {out}", flush=True)

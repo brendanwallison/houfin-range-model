@@ -35,6 +35,7 @@ from src.config_utils import load_data_config
 from src.temporal import load_timeline
 
 _R_SCRIPT = os.path.join(os.path.dirname(__file__), "climate_climr.R")
+_WARM_SCRIPT = os.path.join(os.path.dirname(__file__), "warm_climr_cache.R")
 LEVELS = ("q10", "q50", "q90")
 
 # climr's observed-climate (CRU TS / GPCC) extent. downscale() errors if obs_years
@@ -144,7 +145,7 @@ def _aggregate_chunk(chunk_out, chunk_csv):
 
 
 def _run_chunk(chunk_csv, chunk_out, start, end, rscript, env, subgrid=False, nthread=1,
-               db_option="local"):
+               db_option="local", obs_ts_dataset="cru.gpcc"):
     """Run one chunk's Rscript; skip if its 3 level CSVs already exist (resume).
 
     In subgrid mode the R step writes per-sub-point ``climate_points.csv`` (one
@@ -156,7 +157,8 @@ def _run_chunk(chunk_csv, chunk_out, start, end, rscript, env, subgrid=False, nt
     log = chunk_csv[:-4] + ".log"
     with open(log, "w") as lf:
         rc = subprocess.run(build_command(chunk_csv, chunk_out, start, end, rscript,
-                                          nthread=nthread, db_option=db_option),
+                                          obs_ts_dataset=obs_ts_dataset, nthread=nthread,
+                                          db_option=db_option),
                             stdout=lf, stderr=subprocess.STDOUT, env=env).returncode
         if rc == 0 and subgrid:
             try:
@@ -214,6 +216,9 @@ def main():
                     help="climr nthread WITHIN each process (default: node cpus / workers; "
                          "HOUFIN_CLIMATE_THREADS) — the parallelism knob that actually scales here.")
     ap.add_argument("--dry-run", action="store_true", help="print the command and exit")
+    ap.add_argument("--warm-cache", action="store_true",
+                    help="download+cache climr refmap + obs rasters (low memory, run on a "
+                         "networked LOGIN node), then exit; compute nodes read the cache offline")
     args = ap.parse_args()
 
     cfg = load_data_config()
@@ -225,6 +230,7 @@ def main():
     # obs_years. The combine streamer EMA-carries covariates that lag end_year,
     # so a climate series ending a year short of the timeline is by design.
     ccfg = cfg.get("climate", {})
+    obs_ts_dataset = ccfg.get("obs_ts_dataset", "cru.gpcc")
     obs_min = int(ccfg.get("climr_obs_min_year", CLIMR_OBS_MIN_YEAR))
     obs_max = int(ccfg.get("climr_obs_max_year", CLIMR_OBS_MAX_YEAR))
     cstart, cend = max(start, obs_min), min(end, obs_max)
@@ -233,6 +239,15 @@ def main():
               f"(climr obs extent {obs_min}:{obs_max}; later years EMA-carried downstream)",
               flush=True)
     start, end = cstart, cend
+
+    # Cache-warming: download the refmap + obs rasters into the climr cache (low
+    # memory) on a networked login node, then exit. Uses cell_centroids for the
+    # bounding box (its extent covers the region; the actual points don't matter).
+    if args.warm_cache:
+        wc = args.centroids or os.path.join(cfg["datasets_root"], "elevation", "cell_centroids.csv")
+        cmd = [args.rscript, _WARM_SCRIPT, wc, obs_ts_dataset, str(start), str(end)]
+        print("[warm-cache]", " ".join(cmd), flush=True)
+        sys.exit(subprocess.run(cmd).returncode)
 
     # Mode: 'subgrid' (default) samples a grid x grid mesh of true-elevation points
     # per cell and takes spatial quantiles; 'elev_quantile' is the centroid-at-three-
@@ -292,7 +307,7 @@ def main():
     t0 = time.time()
     with ThreadPoolExecutor(max_workers=len(chunk_csvs)) as ex:
         futs = [ex.submit(_run_chunk, cc, co, start, end, args.rscript, env, subgrid,
-                          nthread, db_option)
+                          nthread, db_option, obs_ts_dataset)
                 for cc, co in zip(chunk_csvs, chunk_outs)]
         n = len(futs)
         # Explicit per-chunk completion lines (flushed) — a tqdm bar renders poorly

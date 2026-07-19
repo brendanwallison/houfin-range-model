@@ -34,6 +34,9 @@ def main():
     out_dir = os.path.join(dr, "luh3_grid")
     os.makedirs(out_dir, exist_ok=True)
     var_map = ldef.get("variables", {})  # optional per-file variable allow-list
+    exclude = ldef.get("exclude", [])    # variables to DROP (e.g. layers identically 0 over NA)
+    if exclude:
+        print(f"[luh3] excluding {len(exclude)} variables: {exclude}")
 
     # Enumerate every (file, variable, in-range year) slice; all intensive -> average.
     items = []
@@ -44,7 +47,7 @@ def main():
             continue
         items += ncg.enumerate_slices(
             nc_path, var_map.get(fname), "average", year_lo, year_hi, out_dir,
-            name_fn=lambda v, yr: f"{v}_{yr}_grid.tif")
+            name_fn=lambda v, yr: f"{v}_{yr}_grid.tif", exclude=exclude)
 
     ncg.reproject_parallel(items, cfg, desc="luh3")
 

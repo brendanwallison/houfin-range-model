@@ -139,17 +139,21 @@ def _reproject_one(item):
     return "ok"
 
 
-def enumerate_slices(nc_path, variables, resampling, year_lo, year_hi, out_dir, name_fn):
+def enumerate_slices(nc_path, variables, resampling, year_lo, year_hi, out_dir, name_fn,
+                     exclude=None):
     """Metadata-only scan of one netCDF -> list of reproject work items (no data read).
 
     ``name_fn(var, year) -> filename``. ``resampling`` applies to every variable in
     this file, so callers pass the product-correct method (``average`` for intensive
-    fields like fractions/densities, ``sum`` for extensive counts).
+    fields like fractions/densities, ``sum`` for extensive counts). ``variables`` is
+    an optional allow-list (None -> every 3-D var); ``exclude`` then drops names from
+    that set (e.g. LUH-3 management layers that are identically zero over the region).
     """
     import xarray as xr
     items = []
+    excl = set(exclude or ())
     with xr.open_dataset(nc_path, decode_times=True) as ds:
-        varlist = variables or detect_3d_vars(ds)
+        varlist = [v for v in (variables or detect_3d_vars(ds)) if v not in excl]
         for var in varlist:
             if var not in ds.data_vars:
                 raise KeyError(f"{var} not in {nc_path} (have {list(ds.data_vars)})")

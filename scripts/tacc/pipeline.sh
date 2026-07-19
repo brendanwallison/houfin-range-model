@@ -81,7 +81,8 @@ stage_climate () {
     run climate python scripts/climate_climr.py --out "$DATA/climate" --rscript "$HOUFIN_RSCRIPT"
 }
 stage_climate_grid () { run climate_grid python -m src.data.preprocess.climate_grid; }
-stage_states       () { run states       python -m src.data.combine.build_states; }
+stage_states       () { run states       python -m src.data.combine.build_states \
+                            ${HOUFIN_STATES_WORKERS:+--write-workers "$HOUFIN_STATES_WORKERS"}; }
 stage_ebird_cache  () { run ebird_cache  python scripts/run_encoder.py ebird-cache; }
 stage_bbs () {
     run bbs_crosswalk python -m src.data.identify.bbs_crosswalk \

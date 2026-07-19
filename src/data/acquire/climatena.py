@@ -226,19 +226,17 @@ def main():
     tl = load_timeline(cfg)
     start, end = tl["first_year"], tl["end_year"]
 
-    # Clamp to climr's observed extent: the model timeline may run past it
-    # (end_year 2025 vs climr's 2024), and downscale() rejects out-of-range
-    # obs_years. The combine streamer EMA-carries covariates that lag end_year,
-    # so a climate series ending a year short of the timeline is by design.
+    # The first model bio-year is Aug(first_year-1) -> Jul(first_year), so it needs
+    # the calendar year BEFORE first_year. Request first_year-1 .. end_year, clamped
+    # to climr's observed extent (downscale() rejects out-of-range obs_years; the
+    # combine streamer EMA-carries covariates past obs_max).
     ccfg = cfg.get("climate", {})
     obs_ts_dataset = ccfg.get("obs_ts_dataset", "cru.gpcc")
     obs_min = int(ccfg.get("climr_obs_min_year", CLIMR_OBS_MIN_YEAR))
     obs_max = int(ccfg.get("climr_obs_max_year", CLIMR_OBS_MAX_YEAR))
-    cstart, cend = max(start, obs_min), min(end, obs_max)
-    if (cstart, cend) != (start, end):
-        print(f"[note] clamping climate obs_years {start}:{end} -> {cstart}:{cend} "
-              f"(climr obs extent {obs_min}:{obs_max}; later years EMA-carried downstream)",
-              flush=True)
+    cstart, cend = max(start - 1, obs_min), min(end, obs_max)
+    print(f"[climate] obs_years {cstart}:{cend} (first_year-1={start - 1} for the "
+          f"bio-year lookback; climr extent {obs_min}:{obs_max})", flush=True)
     start, end = cstart, cend
 
     # Cache-warming: download the refmap + obs rasters into the climr cache (low

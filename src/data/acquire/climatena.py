@@ -271,13 +271,13 @@ def main():
     cpus = int(os.environ.get("SLURM_CPUS_ON_NODE") or os.cpu_count() or 1)
     nproc = max(1, args.workers or int(os.environ.get("HOUFIN_CLIMATE_WORKERS") or 1))
     nthread = args.threads or int(os.environ.get("HOUFIN_CLIMATE_THREADS") or max(1, cpus // nproc))
+    nthread = max(1, min(nthread, 128))   # cap: don't over-fork on a 256-thread/login node
 
-    # Let climr thread within each process (do NOT pin to 1 — that was the old
-    # many-process design that fought over the DB); cap at nthread so nproc
-    # processes don't oversubscribe the node.
+    # Pin BLAS/OpenMP to 1: climr's parallelism is its OWN nthread arg + data.table
+    # (setDTthreads in R), not BLAS. Pointing OpenBLAS at nthread just wastes memory
+    # and OOMs on shared/login nodes ("OpenBLAS: Memory allocation ... giving up").
     env = dict(os.environ)
-    env.update(OMP_NUM_THREADS=str(nthread), OPENBLAS_NUM_THREADS=str(nthread),
-               MKL_NUM_THREADS=str(nthread))
+    env.update(OMP_NUM_THREADS="1", OPENBLAS_NUM_THREADS="1", MKL_NUM_THREADS="1")
 
     chunk_dir = os.path.join(args.out, "_chunks")
     split = _split_centroids_by_parent if subgrid else _split_centroids

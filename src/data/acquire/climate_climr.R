@@ -39,20 +39,12 @@ cen <- fread(centroids_csv)
 years <- start_year:end_year
 monthly_vars <- list_vars("Monthly")   # 12 months x base vars (Tmin/Tmax/Tave/PPT + derived)
 
-# Downscale with climr's in-process threading. Pass nthread; if this climr's
-# high-level downscale() wrapper doesn't expose it (only the *_core functions do
-# in the docs), fall back without it (data.table setDTthreads still threads).
+# climr 0.2.2 downscale() takes `...` and forwards it to downscale_(db_)core, which
+# accept nthread (in-process parallelism over the point table). setDTthreads above
+# threads climr's internal data.table ops too.
 run_downscale <- function(xyz) {
-  tryCatch(
-    downscale(xyz, obs_years = years, obs_ts_dataset = obs_ts_dataset,
-              vars = monthly_vars, return_refperiod = FALSE, nthread = nthread),
-    error = function(e) {
-      if (grepl("nthread", conditionMessage(e), fixed = TRUE)) {
-        message("note: downscale() has no nthread arg; using data.table threads only")
-        downscale(xyz, obs_years = years, obs_ts_dataset = obs_ts_dataset,
-                  vars = monthly_vars, return_refperiod = FALSE)
-      } else stop(e)
-    })
+  downscale(xyz, obs_years = years, obs_ts_dataset = obs_ts_dataset,
+            vars = monthly_vars, return_refperiod = FALSE, nthread = nthread)
 }
 
 if ("elev" %in% names(cen)) {

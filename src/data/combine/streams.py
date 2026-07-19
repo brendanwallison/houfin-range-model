@@ -16,10 +16,13 @@ The monthly bio-year climate stream still lives in states.py (PrismStreamer);
 its continental replacement (climr output) plugs in here as another streamer once
 that acquire step has produced grid rasters.
 """
+import functools
 import glob
 import json
+import multiprocessing
 import os
 import re
+from concurrent.futures import ProcessPoolExecutor
 
 import numpy as np
 import rasterio
@@ -32,11 +35,26 @@ def ema_alpha(tau):
     return 1.0 - np.exp(-1.0 / tau)
 
 
+@functools.lru_cache(maxsize=None)
 def _read_grid(path):
-    """Read a single-band grid raster as (H, W) float32 with nodata -> NaN."""
+    """Read a single-band grid raster as (H, W) float32 with nodata -> NaN.
+
+    Cached: nearest-year fill re-requests the SAME file across many years (every
+    warmup year maps to the earliest available; decadal products repeat within a
+    decade), so without caching one raster is re-read from Lustre dozens of times.
+    The array is returned read-only (shared cache entry) -- callers np.stack/EMA
+    into fresh arrays and never mutate it in place."""
     with rasterio.open(path) as src:
         arr = src.read(1, masked=True).astype(np.float32)
-    return arr.filled(np.nan)
+    out = arr.filled(np.nan)
+    out.flags.writeable = False
+    return out
+
+
+def _write_state_npz(path, arrays):
+    """Compress + write one year's per-stream arrays (runs in a worker process)."""
+    np.savez_compressed(path, **arrays)
+    return path
 
 
 class _EmaStreamer:
@@ -143,7 +161,7 @@ def build_streamer(spec, start_year, end_year):
 
 
 def run_states(specs, out_dir, start_year, end_year, mask, sample_start,
-               samples_per_year=20000, rng=None):
+               samples_per_year=20000, rng=None, write_workers=None):
     """Lockstep-iterate all streams; write per-year npz + a training-vector bag.
 
     ``mask`` is a boolean (H, W) land mask (True = sample here). Each per-year npz
@@ -152,46 +170,78 @@ def run_states(specs, out_dir, start_year, end_year, mask, sample_start,
     stream's channel slice. A ``state_schema.json`` sidecar persists those offsets
     (+ per-stream dims/variables) so consumers can split ``history_vectors.npy``
     and normalize per stream without re-deriving the layout. Returns (bag, offsets).
+
+    The EMA is sequential (cheap arithmetic), but the two costs -- reading rasters
+    (cached; see ``_read_grid``) and the per-year zlib compression -- are not: the
+    per-year ``savez_compressed`` runs in a ``write_workers`` process pool while the
+    main loop keeps computing the next year, overlapping compute with compression.
+    ``write_workers`` defaults to ~cpu count (capped 8); pass 1 to write serially.
     """
     os.makedirs(out_dir, exist_ok=True)
     states_dir = os.path.join(out_dir, "yearly_states")
     os.makedirs(states_dir, exist_ok=True)
     rng = rng or np.random.default_rng()
+    write_workers = write_workers if write_workers is not None else min(os.cpu_count() or 1, 8)
 
     names = [s.get("name", s["type"]) for s in specs]
     streamers = [build_streamer(s, start_year, end_year) for s in specs]
     valid_rows, valid_cols = np.where(mask)
     n_valid = len(valid_rows)
-    print(f"[states] {n_valid} valid cells; streams: {names}")
+    print(f"[states] {n_valid} valid cells; streams: {names}; write_workers={write_workers}")
+
+    # fork: no open rasterio handles or threads in the parent at pool creation
+    # (reads use `with rasterio.open`), and fork avoids re-importing __main__.
+    ex = (ProcessPoolExecutor(max_workers=write_workers,
+                              mp_context=multiprocessing.get_context("fork"))
+          if write_workers > 1 else None)
+    pending = []                                         # bounded in-flight write futures
+
+    def _submit_write(year, arrays):
+        path = os.path.join(states_dir, f"state_{year}.npz")
+        if ex is None:
+            _write_state_npz(path, arrays)
+            return
+        pending.append(ex.submit(_write_state_npz, path, arrays))
+        while len(pending) >= 2 * write_workers:         # backpressure: cap memory in flight
+            pending.pop(0).result()
 
     bag, offsets = [], None
-    for tick in zip(*streamers):
-        years = {y for y, _ in tick}
-        assert len(years) == 1, f"stream desync: {years}"
-        year = years.pop()
-        states = {name: s for name, (_, s) in zip(names, tick)}
-        if any(s is None for s in states.values()) or year < sample_start:
-            continue
+    try:
+        for tick in zip(*streamers):
+            years = {y for y, _ in tick}
+            assert len(years) == 1, f"stream desync: {years}"
+            year = years.pop()
+            states = {name: s for name, (_, s) in zip(names, tick)}
+            if any(s is None for s in states.values()) or year < sample_start:
+                continue
 
-        # Deterministic per-year sample of valid cells.
-        k = min(samples_per_year, n_valid)
-        idx = rng.choice(n_valid, k, replace=False)
-        r, c = valid_rows[idx], valid_cols[idx]
+            # Deterministic per-year sample of valid cells.
+            k = min(samples_per_year, n_valid)
+            idx = rng.choice(n_valid, k, replace=False)
+            r, c = valid_rows[idx], valid_cols[idx]
 
-        vecs, offs, pos = [], {}, 0
-        for name in names:
-            v = states[name][r, c]                       # (k, C)
-            offs[name] = (pos, pos + v.shape[1])
-            pos += v.shape[1]
-            vecs.append(v)
-        combined = np.concatenate(vecs, axis=1)
-        keep = ~np.isnan(combined).any(axis=1)           # strict NaN filter
-        if keep.any():
-            bag.append(combined[keep])
-        offsets = offs
+            vecs, offs, pos = [], {}, 0
+            for name in names:
+                v = states[name][r, c]                   # (k, C)
+                offs[name] = (pos, pos + v.shape[1])
+                pos += v.shape[1]
+                vecs.append(v)
+            combined = np.concatenate(vecs, axis=1)
+            keep = ~np.isnan(combined).any(axis=1)       # strict NaN filter
+            if keep.any():
+                bag.append(combined[keep])
+            offsets = offs
 
-        np.savez_compressed(os.path.join(states_dir, f"state_{year}.npz"),
-                            **{name: states[name] for name in names})
+            # A per-year EMA array is a fresh object (reassigned, never mutated), and
+            # static arrays are read-only, so it is safe to hand them to a worker
+            # while the loop advances.
+            _submit_write(year, {name: states[name] for name in names})
+
+        for f in pending:                                # drain remaining writes
+            f.result()
+    finally:
+        if ex is not None:
+            ex.shutdown()
 
     if offsets is not None:
         spec_by_name = {s.get("name", s["type"]): s for s in specs}

@@ -84,6 +84,8 @@ def main():
     ap.add_argument("--warmup", type=int, default=None, help="EMA burn-in years before first_year")
     ap.add_argument("--samples-per-year", type=int, default=20000)
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--write-workers", type=int, default=None,
+                    help="processes compressing per-year npz in parallel (default ~cpu, cap 8; 1=serial)")
     args = ap.parse_args()
 
     cfg = load_config()
@@ -109,6 +111,7 @@ def main():
         mask=land_mask, sample_start=first_year,
         samples_per_year=args.samples_per_year,
         rng=np.random.default_rng(args.seed),
+        write_workers=args.write_workers,
     )
     print(f"[build_states] done -> {out}/yearly_states + state_schema.json", flush=True)
 

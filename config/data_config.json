@@ -51,6 +51,7 @@
     "_comment": "climr downscaling. mode 'subgrid' (default): a grid x grid mesh of true-elevation sub-points per cell -> real spatial+elevation quantiles (captures horizontal gradients). mode 'elev_quantile': centroid at three elevation quantiles (elevation-only, cheaper). obs_ts_dataset feeds the annual observed series; obs year range clamps to climr's extent.",
     "mode": "subgrid",
     "subgrid": {"grid": 5},
+    "tiles": 8,
     "obs_ts_dataset": "cru.gpcc",
     "db_option": "local",
     "climr_obs_min_year": 1901,

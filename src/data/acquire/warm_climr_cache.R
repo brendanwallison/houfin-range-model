@@ -1,15 +1,16 @@
 #!/usr/bin/env Rscript
-# Download + cache climr's reference map and observed time-series rasters for the
-# region's bounding box, WITHOUT downscaling. Run on a networked node (login).
+# Download + cache climr's reference map and observed time-series rasters, TILED by
+# geographic blocks, so no single tile's raster merge exceeds memory. Run on a
+# networked node (login).
 #
-# Why not just run downscale() to warm the cache: downscale(db_option="local")
-# loads/merges the continent-scale 800m reference raster into memory, which OOMs a
-# memory-capped login node ("std::bad_alloc"). The input_*() functions only fetch
-# the raster files into the cache (terra keeps them disk-backed), so this stays
-# low-memory. Compute nodes then read the warmed cache offline via
-# downscale(db_option="local"), where the 251 GB of RAM handles the processing.
+# Why tiled: even input_refmap() merges the requested bounding box's reference tiles
+# into one raster in memory, so a continent-scale bbox OOMs a memory-capped login
+# node ("std::bad_alloc"). Warming one small tile at a time (freed each iteration)
+# keeps peak memory low. The tiling MUST match climatena.py's _split_centroids_spatial
+# (same centroids + tiles-per-axis) so the cached bounding boxes match what the
+# compute node requests offline via downscale(db_option="local").
 #
-# Usage: warm_climr_cache.R <centroids.csv> <obs_ts_dataset> <start_year> <end_year>
+# Usage: warm_climr_cache.R <centroids.csv> <obs_ts_dataset> <start_year> <end_year> [tiles_per_axis]
 suppressMessages({
   library(climr)
   library(terra)
@@ -17,20 +18,29 @@ suppressMessages({
 })
 
 args <- commandArgs(trailingOnly = TRUE)
-if (length(args) < 4) stop("usage: warm_climr_cache.R <centroids.csv> <obs_ts_dataset> <start_year> <end_year>")
+if (length(args) < 4) stop("usage: warm_climr_cache.R <centroids.csv> <obs_ts_dataset> <start_year> <end_year> [tiles_per_axis]")
 centroids_csv <- args[[1]]
 obs_ts_dataset <- args[[2]]
 start_year <- as.integer(args[[3]]); end_year <- as.integer(args[[4]])
+tiles_per_axis <- if (length(args) >= 5) as.integer(args[[5]]) else 8L
 
 cen <- fread(centroids_csv)
 elev_col <- if ("elev" %in% names(cen)) "elev" else "elev_q50"
-xyz <- data.frame(lon = cen$long, lat = cen$lat, elev = cen[[elev_col]], id = cen$id)
-bb <- get_bb(xyz)
 
-message(sprintf("Caching refmap_climr for bbox (%d points define the extent)...", nrow(xyz)))
-invisible(input_refmap(bb, reference = "refmap_climr"))
+# Same tiling as climatena.py: tile = (row %/% th) * tiles + (col %/% tw).
+nrow_ <- max(cen$row) + 1L; ncol_ <- max(cen$col) + 1L
+th <- as.integer(ceiling(nrow_ / tiles_per_axis)); tw <- as.integer(ceiling(ncol_ / tiles_per_axis))
+cen[, tile := (row %/% th) * tiles_per_axis + (col %/% tw)]
+tile_ids <- sort(unique(cen$tile))
+message(sprintf("Warming %d geographic tiles (refmap + %s %d-%d)...",
+                length(tile_ids), obs_ts_dataset, start_year, end_year))
 
-message(sprintf("Caching obs time series %s for %d-%d...", obs_ts_dataset, start_year, end_year))
-invisible(input_obs_ts(dataset = obs_ts_dataset, bbox = bb, years = start_year:end_year, cache = TRUE))
-
-message("climr cache warmed (refmap + ", obs_ts_dataset, "). Compute nodes can now run offline.")
+for (i in seq_along(tile_ids)) {
+  sub <- cen[tile == tile_ids[i]]
+  xyz <- data.frame(lon = sub$long, lat = sub$lat, elev = sub[[elev_col]], id = sub$id)
+  bb <- get_bb(xyz)
+  invisible(input_refmap(bb, reference = "refmap_climr"))
+  invisible(input_obs_ts(dataset = obs_ts_dataset, bbox = bb, years = start_year:end_year, cache = TRUE))
+  message(sprintf("  tile %d/%d cached (%d points)", i, length(tile_ids), nrow(sub)))
+}
+message("climr cache warmed (tiled): refmap + ", obs_ts_dataset, ". Compute reads it offline.")

@@ -98,21 +98,23 @@ def _split_centroids(centroids_csv, n_chunks, chunk_dir):
     return paths
 
 
-def _split_centroids_by_parent(centroids_csv, n_chunks, chunk_dir):
-    """Subgrid split: partition by ``parent_id`` so all of a cell's sub-points land
-    in one chunk (spatial quantiles are computed per parent within a chunk). Returns
-    chunk CSV paths."""
+def _split_centroids_spatial(centroids_csv, tiles_per_axis, chunk_dir):
+    """Split into GEOGRAPHIC tiles (row/col blocks) so each chunk's bounding box —
+    and thus the reference raster climr must load/merge for it — is small enough to
+    fit memory. Scattered count-based chunks each span the whole region (OOM); a
+    tile is a contiguous block. Sub-points of a cell share (row,col) so they stay in
+    one tile (parent-intact for the subgrid aggregation). Returns chunk CSV paths."""
     import pandas as pd
-    df = pd.read_csv(centroids_csv).sort_values("parent_id")
-    parents = df["parent_id"].unique()
-    n_chunks = max(1, min(n_chunks, len(parents)))
-    size = math.ceil(len(parents) / n_chunks)
+    df = pd.read_csv(centroids_csv)
+    nrow, ncol = int(df["row"].max()) + 1, int(df["col"].max()) + 1
+    th = max(1, math.ceil(nrow / tiles_per_axis))
+    tw = max(1, math.ceil(ncol / tiles_per_axis))
+    tile = (df["row"] // th) * tiles_per_axis + (df["col"] // tw)
     os.makedirs(chunk_dir, exist_ok=True)
     paths = []
-    for i in range((len(parents) + size - 1) // size):
-        keep = set(parents[i * size:(i + 1) * size])
+    for i, (_, sub) in enumerate(df.groupby(tile)):
         p = os.path.join(chunk_dir, f"chunk_{i:03d}.csv")
-        df[df["parent_id"].isin(keep)].to_csv(p, index=False)
+        sub.to_csv(p, index=False)
         paths.append(p)
     return paths
 
@@ -239,75 +241,67 @@ def main():
           f"bio-year lookback; climr extent {obs_min}:{obs_max})", flush=True)
     start, end = cstart, cend
 
-    # Cache-warming: download the refmap + obs rasters into the climr cache (low
-    # memory) on a networked login node, then exit. Uses cell_centroids for the
-    # bounding box (its extent covers the region; the actual points don't matter).
+    # Resolve mode + the centroids file (build the sub-cell mesh if absent). WARM and
+    # PROCESS use the SAME centroids + tiling so the per-tile bounding boxes climr
+    # caches on the login node match what compute reads offline.
+    mode = ccfg.get("mode", "subgrid")
+    subgrid_mode = (mode == "subgrid")            # picks the DEFAULT centroids file
+    db_option = ccfg.get("db_option", "local")   # 'local' = download+cache+process offline
+    tiles_per_axis = int(ccfg.get("tiles", 8))   # geographic tiles = ceil to <=tiles^2 chunks
+    elev_dir = os.path.join(cfg["datasets_root"], "elevation")
+    centroids = args.centroids or os.path.join(
+        elev_dir, "subcell_centroids.csv" if subgrid_mode else "cell_centroids.csv")
+    if subgrid_mode and not args.centroids and not os.path.exists(centroids):
+        _ensure_subcell_centroids(cfg, centroids, int(ccfg.get("subgrid", {}).get("grid", 5)))
+    if not os.path.exists(centroids):
+        raise SystemExit(f"centroids file not found: {centroids} (run preprocess/elevation.py first)")
+
+    # Cache-warming (networked LOGIN node): download refmap + obs rasters into the
+    # climr cache, TILED so no single merge exceeds the node's memory, then exit.
+    # Same centroids + tiling as processing => cached bounding boxes match.
     if args.warm_cache:
-        wc = args.centroids or os.path.join(cfg["datasets_root"], "elevation", "cell_centroids.csv")
-        cmd = [args.rscript, _WARM_SCRIPT, wc, obs_ts_dataset, str(start), str(end)]
+        cmd = [args.rscript, _WARM_SCRIPT, centroids, obs_ts_dataset, str(start), str(end),
+               str(tiles_per_axis)]
         print("[warm-cache]", " ".join(cmd), flush=True)
         sys.exit(subprocess.run(cmd).returncode)
 
     if not args.out:
         raise SystemExit("--out is required (except with --warm-cache)")
-
-    # Mode: 'subgrid' (default) samples a grid x grid mesh of true-elevation points
-    # per cell and takes spatial quantiles; 'elev_quantile' is the centroid-at-three-
-    # elevations fallback. Resolve the centroids file (build the sub-cell mesh if absent).
-    mode = ccfg.get("mode", "subgrid")
-    subgrid_mode = (mode == "subgrid")            # picks the DEFAULT centroids file
-    db_option = ccfg.get("db_option", "local")   # 'local' = download+cache+process offline
-    elev_dir = os.path.join(cfg["datasets_root"], "elevation")
-    centroids = args.centroids or os.path.join(
-        elev_dir, "subcell_centroids.csv" if subgrid_mode else "cell_centroids.csv")
-
     if args.dry_run:
-        print(f"mode={mode} db_option={db_option}; climr command (serial form):",
+        print(f"mode={mode} db_option={db_option} tiles={tiles_per_axis}^2; climr command:",
               " ".join(build_command(centroids, args.out, start, end, args.rscript,
-                                     db_option=db_option)))
+                                     obs_ts_dataset=obs_ts_dataset, db_option=db_option)))
         return
-    # Only auto-generate the default sub-cell mesh; an explicit --centroids is used as-is.
-    if subgrid_mode and not args.centroids and not os.path.exists(centroids):
-        _ensure_subcell_centroids(cfg, centroids, int(ccfg.get("subgrid", {}).get("grid", 5)))
-    if not os.path.exists(centroids):
-        raise SystemExit(f"centroids file not found: {centroids} (run preprocess/elevation.py first)")
     os.makedirs(args.out, exist_ok=True)
 
-    # The actual path follows the FILE's columns (matches climate_climr.R's self-detection):
-    # a sub-cell file has parent_id -> spatial-quantile aggregation; a cell file (elev_q*) does not.
-    # So a warm-up run with cell_centroids works regardless of mode.
+    # Path follows the FILE's columns (matches climate_climr.R): a sub-cell file has
+    # parent_id -> spatial-quantile aggregation; a cell file (elev_q*) does not.
     with open(centroids) as fh:
         header = fh.readline().strip().split(",")
         n_cen = sum(1 for _ in fh)
     subgrid = "parent_id" in header
 
-    # climr's DuckDB backend serializes across PROCESSES (they contend on one DB
-    # lock), so parallelize with its in-process ``nthread`` (one DB handle, threads
-    # split the points) and keep only a few processes for memory headroom.
-    # total threads ~= cpus = nproc * nthread.
+    # Parallelism: geographic tiles are the chunks (each a small bbox -> fits memory
+    # and gives per-tile resume). nproc processes run tiles concurrently; nthread is
+    # climr's in-process threading within each. BLAS pinned to 1 (see warm note).
     cpus = int(os.environ.get("SLURM_CPUS_ON_NODE") or os.cpu_count() or 1)
-    nproc = max(1, args.workers or int(os.environ.get("HOUFIN_CLIMATE_WORKERS") or 1))
+    nproc = max(1, args.workers or int(os.environ.get("HOUFIN_CLIMATE_WORKERS") or 4))
     nthread = args.threads or int(os.environ.get("HOUFIN_CLIMATE_THREADS") or max(1, cpus // nproc))
-    nthread = max(1, min(nthread, 128))   # cap: don't over-fork on a 256-thread/login node
-
-    # Pin BLAS/OpenMP to 1: climr's parallelism is its OWN nthread arg + data.table
-    # (setDTthreads in R), not BLAS. Pointing OpenBLAS at nthread just wastes memory
-    # and OOMs on shared/login nodes ("OpenBLAS: Memory allocation ... giving up").
+    nthread = max(1, min(nthread, 128))
     env = dict(os.environ)
     env.update(OMP_NUM_THREADS="1", OPENBLAS_NUM_THREADS="1", MKL_NUM_THREADS="1")
 
     chunk_dir = os.path.join(args.out, "_chunks")
-    split = _split_centroids_by_parent if subgrid else _split_centroids
-    chunk_csvs = split(centroids, nproc, chunk_dir)
+    chunk_csvs = _split_centroids_spatial(centroids, tiles_per_axis, chunk_dir)
     chunk_outs = [os.path.join(chunk_dir, f"out_{i:03d}") for i in range(len(chunk_csvs))]
     unit = "sub-points (spatial quantiles)" if subgrid else "centroids x 3 elev levels"
-    print(f"climr [{mode}]: {n_cen} {unit} -> {len(chunk_csvs)} process-chunk(s) x "
-          f"{nthread} climr threads -> {args.out}", flush=True)
+    print(f"climr [{mode}]: {n_cen} {unit} -> {len(chunk_csvs)} geographic tiles, "
+          f"{nproc} proc x {nthread} threads -> {args.out}", flush=True)
 
     counts = {"ok": 0, "exists": 0}
     failures = []
     t0 = time.time()
-    with ThreadPoolExecutor(max_workers=len(chunk_csvs)) as ex:
+    with ThreadPoolExecutor(max_workers=min(nproc, len(chunk_csvs))) as ex:
         futs = [ex.submit(_run_chunk, cc, co, start, end, args.rscript, env, subgrid,
                           nthread, db_option, obs_ts_dataset)
                 for cc, co in zip(chunk_csvs, chunk_outs)]

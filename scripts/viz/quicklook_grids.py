@@ -16,6 +16,7 @@ import glob
 import json
 import os
 import re
+import sys
 from concurrent.futures import ProcessPoolExecutor
 
 import numpy as np
@@ -23,6 +24,12 @@ import matplotlib
 matplotlib.use("Agg")  # headless
 import matplotlib.pyplot as plt
 from tqdm import tqdm
+
+# Run as a script from scripts/viz/, so the repo root isn't on sys.path by default
+# ("No module named 'src'"). Add it before importing src (matches scripts/climate_climr.py).
+_REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+if _REPO not in sys.path:
+    sys.path.insert(0, _REPO)
 
 from src.config_utils import load_data_config
 

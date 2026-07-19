@@ -260,8 +260,6 @@ def main():
     # climr cache, TILED so no single merge exceeds the node's memory, then exit.
     # Same centroids + tiling as processing => cached bounding boxes match.
     if args.warm_cache:
-        cmd = [args.rscript, _WARM_SCRIPT, centroids, obs_ts_dataset, str(start), str(end),
-               str(tiles_per_axis)]
         # Login nodes cap processes/threads (ulimit -u ~300) and memory: pin every
         # thread pool to 1 (GDAL's included -> avoids CPLCreateJoinableThread EAGAIN)
         # and cap GDAL's block cache. The warm script also avoids terra::writeRaster
@@ -271,8 +269,29 @@ def main():
         wenv.update(GDAL_NUM_THREADS="1", GDAL_CACHEMAX="256", OMP_NUM_THREADS="1",
                     OPENBLAS_NUM_THREADS="1", MKL_NUM_THREADS="1",
                     VECLIB_MAXIMUM_THREADS="1", NUMEXPR_NUM_THREADS="1")
-        print("[warm-cache]", " ".join(cmd), flush=True)
-        sys.exit(subprocess.run(cmd, env=wenv).returncode)
+        # PROCESS ISOLATION: even without the refmap re-encode, one long-lived R
+        # process leaks GDAL joinable threads across tiles (input_obs_ts writeRaster)
+        # until ulimit -u is exhausted (~tile 30). So spawn a FRESH R process per
+        # geographic tile -- each warms one tile and exits, reaping its threads.
+        # Tiles are resumable (cached refmap/obs are skipped), so a crashed tile just
+        # re-runs. Empty tiles exit fast. tile value range is [0, tiles^2).
+        n_tiles = tiles_per_axis * tiles_per_axis
+        base = [args.rscript, _WARM_SCRIPT, centroids, obs_ts_dataset, str(start),
+                str(end), str(tiles_per_axis)]
+        print(f"[warm-cache] {n_tiles} tiles, one R process each (process-isolated)",
+              flush=True)
+        failed = []
+        for ti in range(n_tiles):
+            rc = subprocess.run(base + [str(ti)], env=wenv).returncode
+            if rc != 0:
+                print(f"[warm-cache] tile {ti} FAILED (rc={rc})", flush=True)
+                failed.append(ti)
+        if failed:
+            print(f"[warm-cache] {len(failed)} tile(s) failed: {failed} -- "
+                  f"re-run to resume (cached tiles skip).", flush=True)
+            sys.exit(1)
+        print("[warm-cache] all tiles warmed; compute reads the cache offline.", flush=True)
+        sys.exit(0)
 
     if not args.out:
         raise SystemExit("--out is required (except with --warm-cache)")

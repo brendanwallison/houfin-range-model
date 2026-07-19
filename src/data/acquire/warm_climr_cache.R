@@ -20,7 +20,15 @@
 # tiles-per-axis) so the cached tile bounding boxes cover what compute requests
 # offline via downscale(db_option="local").
 #
-# Usage: warm_climr_cache.R <centroids.csv> <obs_ts_dataset> <start_year> <end_year> [tiles_per_axis]
+# Even with the refmap re-encode gone, running all 64 tiles in ONE long-lived R
+# process still crashes the login node: GDAL joinable threads from each tile's
+# input_obs_ts() writeRaster accumulate (not reaped) until the per-user thread cap
+# (ulimit -u ~300) is hit, ~tile 30. Fix: PROCESS ISOLATION -- the Python driver
+# (--warm-cache) invokes this script once PER TILE (passing [tile_index]); each
+# process warms one tile and exits, so the OS reaps its threads and none pile up.
+# With no tile_index this loops all tiles (fine on a resourced node / locally).
+#
+# Usage: warm_climr_cache.R <centroids.csv> <obs_ts_dataset> <start_year> <end_year> [tiles_per_axis] [tile_index]
 suppressMessages({
   library(climr)
   library(terra)
@@ -65,11 +73,12 @@ cache_refmap_light <- function(bb) {
 }
 
 args <- commandArgs(trailingOnly = TRUE)
-if (length(args) < 4) stop("usage: warm_climr_cache.R <centroids.csv> <obs_ts_dataset> <start_year> <end_year> [tiles_per_axis]")
+if (length(args) < 4) stop("usage: warm_climr_cache.R <centroids.csv> <obs_ts_dataset> <start_year> <end_year> [tiles_per_axis] [tile_index]")
 centroids_csv <- args[[1]]
 obs_ts_dataset <- args[[2]]
 start_year <- as.integer(args[[3]]); end_year <- as.integer(args[[4]])
 tiles_per_axis <- if (length(args) >= 5) as.integer(args[[5]]) else 8L
+tile_index <- if (length(args) >= 6) as.integer(args[[6]]) else NA_integer_  # NA = loop all tiles
 
 cen <- fread(centroids_csv)
 elev_col <- if ("elev" %in% names(cen)) "elev" else "elev_q50"
@@ -78,17 +87,28 @@ elev_col <- if ("elev" %in% names(cen)) "elev" else "elev_q50"
 nrow_ <- max(cen$row) + 1L; ncol_ <- max(cen$col) + 1L
 th <- as.integer(ceiling(nrow_ / tiles_per_axis)); tw <- as.integer(ceiling(ncol_ / tiles_per_axis))
 cen[, tile := (row %/% th) * tiles_per_axis + (col %/% tw)]
-tile_ids <- sort(unique(cen$tile))
-message(sprintf("Warming %d geographic tiles (copy refmap + %s %d-%d)...",
-                length(tile_ids), obs_ts_dataset, start_year, end_year))
 
-for (i in seq_along(tile_ids)) {
-  sub <- cen[tile == tile_ids[i]]
+warm_one_tile <- function(sub, label) {
   xyz <- data.frame(lon = sub$long, lat = sub$lat, elev = sub[[elev_col]], id = sub$id)
   bb <- get_bb(xyz)
   cache_refmap_light(bb)                                                 # refmap: copy + header rename
   invisible(input_obs_ts(dataset = obs_ts_dataset, bbox = bb,
                          years = start_year:end_year, cache = TRUE))      # coarse obs (small write)
-  message(sprintf("  tile %d/%d cached (%d points)", i, length(tile_ids), nrow(sub)))
+  message(sprintf("  %s cached (%d points)", label, nrow(sub)))
 }
-message("climr cache warmed (tiled: copy refmap + ", obs_ts_dataset, "). Compute reads it offline.")
+
+if (!is.na(tile_index)) {
+  # PROCESS-ISOLATED: warm exactly this geographic tile, then exit (threads reaped).
+  sub <- cen[tile == tile_index]
+  if (nrow(sub) == 0L) { message(sprintf("  tile %d empty; skip", tile_index)); quit(status = 0) }
+  warm_one_tile(sub, sprintf("tile %d", tile_index))
+} else {
+  # Single-process loop (resourced node / local): warm every non-empty tile.
+  tile_ids <- sort(unique(cen$tile))
+  message(sprintf("Warming %d geographic tiles (copy refmap + %s %d-%d)...",
+                  length(tile_ids), obs_ts_dataset, start_year, end_year))
+  for (i in seq_along(tile_ids)) {
+    warm_one_tile(cen[tile == tile_ids[i]], sprintf("tile %d/%d", i, length(tile_ids)))
+  }
+  message("climr cache warmed (tiled: copy refmap + ", obs_ts_dataset, "). Compute reads it offline.")
+}

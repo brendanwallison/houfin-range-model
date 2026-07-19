@@ -66,8 +66,14 @@ cache_refmap_light <- function(bb) {
   if (!file.copy(tmp, dest)) stop("failed to copy refmap clip into cache: ", dest)
   r <- rast(dest); names(r)[73] <- "dem2_WNA"
   update(r, names = TRUE)                                    # header-only rename, in place
-  e <- ext(rast(dest))
-  fwrite(data.table(uid = uid, ymax = e[4], ymin = e[3], xmax = e[2], xmin = e[1]),
+  # Record the REQUESTED bbox, not ext() of the clip. climr clips to the DATA
+  # extent, so an edge/coastal tile (DEM says land but climr's refmap is nodata
+  # there) gets ext() < the requested bbox -> input_refmap decides "not fully
+  # cached" and tries to fetch the rest, which crashes offline (pgGetTerra "Empty
+  # tile - not enough data"). The process side requests exactly this bbox, so
+  # recording it guarantees an offline cache hit; sub-points outside the refmap's
+  # real data read back as NaN (correct for no-data regions; masked downstream).
+  fwrite(data.table(uid = uid, ymax = bb[4], ymin = bb[3], xmax = bb[2], xmin = bb[1]),
          file = meta_f, append = TRUE)
   invisible(NULL)
 }

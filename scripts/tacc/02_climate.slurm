@@ -40,9 +40,16 @@ date
 
 # Centroids default from climate.mode (subgrid -> subcell_centroids.csv, auto-built;
 # elev_quantile -> cell_centroids.csv).
+# Parallelism: each geographic tile is a short-lived R process (no thread pile-up on
+# compute), so use many. Default 16 of the node's 128 cores -> nthread auto = 128/16
+# = 8 per chunk. Bump HOUFIN_CLIMATE_WORKERS toward 32 if RAM headroom allows (watch
+# remora_<jobid>/). The default of 4 badly underutilizes a compute node.
+: "${HOUFIN_CLIMATE_WORKERS:=16}"
+echo "climate workers: $HOUFIN_CLIMATE_WORKERS (nthread auto = cores/workers)"
 $MON python scripts/climate_climr.py \
     --out "$HOUFIN_DATA/climate" \
-    --rscript "$HOUFIN_RSCRIPT"
+    --rscript "$HOUFIN_RSCRIPT" \
+    --workers "$HOUFIN_CLIMATE_WORKERS"
 
 python scripts/validate_products.py --stage climate --paths "$HOUFIN_DATA/climate"
 

@@ -45,14 +45,17 @@ CLIMR_OBS_MAX_YEAR = 2024
 
 
 def build_command(centroids_csv, out_dir, start_year, end_year, rscript="Rscript",
-                  obs_ts_dataset="cru.gpcc"):
+                  obs_ts_dataset="cru.gpcc", nthread=1):
     """Construct the Rscript command (kept pure/testable, separate from execution).
 
     ``obs_ts_dataset`` names climr's observed time-series source (default
     ``cru.gpcc``); without it climr returns only the 1961-1990 reference normal.
+    ``nthread`` is climr's *in-process* parallelism over the point table — the
+    right knob here (one DB handle, threads split the points) rather than many
+    single-threaded processes contending on the shared climr DuckDB.
     """
     return [rscript, _R_SCRIPT, centroids_csv, out_dir, str(start_year), str(end_year),
-            obs_ts_dataset]
+            obs_ts_dataset, str(int(nthread))]
 
 
 def worker_count(n_items, cap=96):
@@ -139,7 +142,7 @@ def _aggregate_chunk(chunk_out, chunk_csv):
         df.to_csv(os.path.join(chunk_out, f"climate_{lvl}.csv"), index=False)
 
 
-def _run_chunk(chunk_csv, chunk_out, start, end, rscript, env, subgrid=False):
+def _run_chunk(chunk_csv, chunk_out, start, end, rscript, env, subgrid=False, nthread=1):
     """Run one chunk's Rscript; skip if its 3 level CSVs already exist (resume).
 
     In subgrid mode the R step writes per-sub-point ``climate_points.csv`` (one
@@ -150,7 +153,8 @@ def _run_chunk(chunk_csv, chunk_out, start, end, rscript, env, subgrid=False):
         return chunk_csv, 0, None, "exists"
     log = chunk_csv[:-4] + ".log"
     with open(log, "w") as lf:
-        rc = subprocess.run(build_command(chunk_csv, chunk_out, start, end, rscript),
+        rc = subprocess.run(build_command(chunk_csv, chunk_out, start, end, rscript,
+                                          nthread=nthread),
                             stdout=lf, stderr=subprocess.STDOUT, env=env).returncode
         if rc == 0 and subgrid:
             try:
@@ -202,7 +206,11 @@ def main():
     ap.add_argument("--out", required=True, help="output dir for climate_{q10,q50,q90}.csv")
     ap.add_argument("--rscript", default="Rscript")
     ap.add_argument("--workers", type=int, default=None,
-                    help="parallel R processes over centroid chunks (default: SLURM/cpu count, capped)")
+                    help="R PROCESSES over centroid chunks (default 1; HOUFIN_CLIMATE_WORKERS). "
+                         "climr's DuckDB serializes across processes, so keep this small.")
+    ap.add_argument("--threads", type=int, default=None,
+                    help="climr nthread WITHIN each process (default: node cpus / workers; "
+                         "HOUFIN_CLIMATE_THREADS) — the parallelism knob that actually scales here.")
     ap.add_argument("--dry-run", action="store_true", help="print the command and exit")
     args = ap.parse_args()
 
@@ -245,30 +253,35 @@ def main():
 
     with open(centroids) as fh:
         n_cen = max(0, sum(1 for _ in fh) - 1)
-    workers = args.workers or worker_count(n_cen)
 
-    # Pin each R process to one thread so N chunks use N cores without oversubscribing.
+    # climr's DuckDB backend serializes across PROCESSES (they contend on one DB
+    # lock), so parallelize with its in-process ``nthread`` (one DB handle, threads
+    # split the points) and keep only a few processes for memory headroom.
+    # total threads ~= cpus = nproc * nthread.
+    cpus = int(os.environ.get("SLURM_CPUS_ON_NODE") or os.cpu_count() or 1)
+    nproc = max(1, args.workers or int(os.environ.get("HOUFIN_CLIMATE_WORKERS") or 1))
+    nthread = args.threads or int(os.environ.get("HOUFIN_CLIMATE_THREADS") or max(1, cpus // nproc))
+
+    # Let climr thread within each process (do NOT pin to 1 — that was the old
+    # many-process design that fought over the DB); cap at nthread so nproc
+    # processes don't oversubscribe the node.
     env = dict(os.environ)
-    env.update(OMP_NUM_THREADS="1", OPENBLAS_NUM_THREADS="1", MKL_NUM_THREADS="1")
-
-    if workers <= 1 and not subgrid:
-        print(f"climr: {n_cen} centroids, serial (1 process)", flush=True)
-        sys.exit(subprocess.run(build_command(centroids, args.out, start, end, args.rscript),
-                                env=env).returncode)
+    env.update(OMP_NUM_THREADS=str(nthread), OPENBLAS_NUM_THREADS=str(nthread),
+               MKL_NUM_THREADS=str(nthread))
 
     chunk_dir = os.path.join(args.out, "_chunks")
     split = _split_centroids_by_parent if subgrid else _split_centroids
-    chunk_csvs = split(centroids, workers, chunk_dir)
+    chunk_csvs = split(centroids, nproc, chunk_dir)
     chunk_outs = [os.path.join(chunk_dir, f"out_{i:03d}") for i in range(len(chunk_csvs))]
     unit = "sub-points (spatial quantiles)" if subgrid else "centroids x 3 elev levels"
-    print(f"climr [{mode}]: {n_cen} {unit} -> {len(chunk_csvs)} chunks, "
-          f"{workers} parallel R processes -> {args.out}", flush=True)
+    print(f"climr [{mode}]: {n_cen} {unit} -> {len(chunk_csvs)} process-chunk(s) x "
+          f"{nthread} climr threads -> {args.out}", flush=True)
 
     counts = {"ok": 0, "exists": 0}
     failures = []
     t0 = time.time()
-    with ThreadPoolExecutor(max_workers=workers) as ex:
-        futs = [ex.submit(_run_chunk, cc, co, start, end, args.rscript, env, subgrid)
+    with ThreadPoolExecutor(max_workers=len(chunk_csvs)) as ex:
+        futs = [ex.submit(_run_chunk, cc, co, start, end, args.rscript, env, subgrid, nthread)
                 for cc, co in zip(chunk_csvs, chunk_outs)]
         n = len(futs)
         # Explicit per-chunk completion lines (flushed) — a tqdm bar renders poorly

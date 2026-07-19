@@ -146,6 +146,13 @@ squeue -u $USER
   or resubmit dev (chunks resume). Lower `climate.subgrid.grid` (e.g. 3) for a dev
   fit, or set `climate.mode: "elev_quantile"` for the cheap path. **Switching mode
   requires clearing `$HOUFIN_DATA/climate`** (stale chunks mismatch).
+- **Climate parallelism = threads, not processes.** climr's DuckDB backend
+  serializes across processes (many single-threaded R procs just fight over one DB
+  lock — CPU sits idle in `S` state), so we parallelize *within* one process via
+  climr's `nthread`. Defaults: `HOUFIN_CLIMATE_WORKERS`=1 process,
+  `HOUFIN_CLIMATE_THREADS`=node cpus (fills the node with threads, one DB handle).
+  Raise `WORKERS` only if one process runs low on memory (threads then split as
+  `cpus/workers`). Do **not** set `WORKERS` high — that reproduces the lock contention.
 
 Each stage writes a JSON manifest to `$HOUFIN_PROCESSED/validation/<stage>.json`.
 

@@ -238,25 +238,31 @@ def main():
     # per cell and takes spatial quantiles; 'elev_quantile' is the centroid-at-three-
     # elevations fallback. Resolve the centroids file (build the sub-cell mesh if absent).
     mode = ccfg.get("mode", "subgrid")
-    subgrid = (mode == "subgrid")
+    subgrid_mode = (mode == "subgrid")            # picks the DEFAULT centroids file
     db_option = ccfg.get("db_option", "local")   # 'local' = download+cache+process offline
     elev_dir = os.path.join(cfg["datasets_root"], "elevation")
     centroids = args.centroids or os.path.join(
-        elev_dir, "subcell_centroids.csv" if subgrid else "cell_centroids.csv")
+        elev_dir, "subcell_centroids.csv" if subgrid_mode else "cell_centroids.csv")
 
     if args.dry_run:
         print(f"mode={mode} db_option={db_option}; climr command (serial form):",
               " ".join(build_command(centroids, args.out, start, end, args.rscript,
                                      db_option=db_option)))
         return
-    if subgrid and not os.path.exists(centroids):
+    # Only auto-generate the default sub-cell mesh; an explicit --centroids is used as-is.
+    if subgrid_mode and not args.centroids and not os.path.exists(centroids):
         _ensure_subcell_centroids(cfg, centroids, int(ccfg.get("subgrid", {}).get("grid", 5)))
     if not os.path.exists(centroids):
         raise SystemExit(f"centroids file not found: {centroids} (run preprocess/elevation.py first)")
     os.makedirs(args.out, exist_ok=True)
 
+    # The actual path follows the FILE's columns (matches climate_climr.R's self-detection):
+    # a sub-cell file has parent_id -> spatial-quantile aggregation; a cell file (elev_q*) does not.
+    # So a warm-up run with cell_centroids works regardless of mode.
     with open(centroids) as fh:
-        n_cen = max(0, sum(1 for _ in fh) - 1)
+        header = fh.readline().strip().split(",")
+        n_cen = sum(1 for _ in fh)
+    subgrid = "parent_id" in header
 
     # climr's DuckDB backend serializes across PROCESSES (they contend on one DB
     # lock), so parallelize with its in-process ``nthread`` (one DB handle, threads

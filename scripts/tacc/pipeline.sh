@@ -29,9 +29,27 @@ export PYTHONPATH="$REPO:$REPO/src:${PYTHONPATH:-}"
 export HOUFIN_PREPROCESS_WORKERS="${HOUFIN_PREPROCESS_WORKERS:-48}"
 export HOUFIN_CLIMATE_WORKERS="${HOUFIN_CLIMATE_WORKERS:-32}"
 
+# Quiet REMORA's defaults that are irrelevant on a CPU node and flood the log:
+# GPU/CUDA monitoring (no GPU here) and the Lustre/network collectors (this node
+# type doesn't expose /proc/fs/lustre, so they spam "No such file"). Unknown vars
+# are harmless (ignored). CPU + memory sampling stay on.
+export REMORA_CUDA=0 REMORA_GPU=0 REMORA_LUSTRE=0 REMORA_NETWORK=0
 MON="/usr/bin/time -v"; command -v remora >/dev/null 2>&1 && MON="remora"
 DATA="$HOUFIN_DATA"
 echo "resource monitor: $MON ; Rscript: ${HOUFIN_RSCRIPT:-Rscript}"
+
+# Guaranteed memory visibility in the job log regardless of REMORA: print node-wide
+# memory + load every MEM_HEARTBEAT_SEC (default 120s). REMORA still writes its full
+# time series to remora_<jobid>/ and its Max-Memory summary at job end.
+mem_heartbeat () {
+    while true; do
+        sleep "${MEM_HEARTBEAT_SEC:-120}"
+        echo "[mem $(date +%H:%M:%S)] $(free -g 2>/dev/null | awk '/Mem:/{print "used "$3"/"$2"G"}')" \
+             "load:$(cut -d' ' -f1-3 /proc/loadavg 2>/dev/null)"
+    done
+}
+mem_heartbeat & _HB_PID=$!
+trap 'kill "$_HB_PID" 2>/dev/null || true' EXIT
 
 run () {  # run <stage-label> <command...>
     local s="$1"; shift

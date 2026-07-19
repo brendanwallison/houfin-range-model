@@ -51,6 +51,11 @@ run luh3       "$HOUFIN_DATA/luh3_grid"          -- python -m src.data.preproces
 run hyde       "$HOUFIN_DATA/hyde35_grid"        -- python -m src.data.preprocess.hyde
 run soilgrids  "$HOUFIN_DATA/soilgrids_grid"     -- python -m src.data.preprocess.soilgrids
 run elevation  "$HOUFIN_DATA/elevation"          -- python -m src.data.preprocess.elevation
+# Sub-cell centroids for the subgrid climate path: a grid x grid mesh per model
+# cell at true DEM lon/lat+elev, ocean-masked (25 km parent + fine Natural-Earth
+# sub-point mask). Built here so the (masked) point set exists before 02_climate
+# warms/downscales against it. Needs the DEM + ref grid + land_mask above.
+run subcell    "$HOUFIN_DATA/elevation/subcell_centroids.csv" -- python -m src.data.preprocess.subcell_centroids
 run bbs        "$HOUFIN_DATA/bbs_2026_release/bbs_data_for_python.npz" -- python scripts/ingest_bbs_data.py
 
 echo "=== preprocessing complete. Manifests: $HOUFIN_PROCESSED/validation/ ==="

@@ -137,6 +137,12 @@ squeue -u $USER
   **cru.gpcc** obs surfaces into the climr cache on a login node first (a small
   centroid subset, full year range) since compute nodes have no internet; then
   delete any stale `$HOUFIN_DATA/climate` (incl. `_chunks`) before regenerating.
+- **`db_option=local` is mandatory offline.** climr's default `db_option="auto"`
+  runs the observed time-series on its **remote database server** (→ `Database
+  connection issue` on an internet-less compute node). We set `climate.db_option:
+  "local"` so climr downloads + caches the anomaly rasters and downscales *locally*.
+  The login-node warm-up must therefore run in the same `local` mode (it does, via
+  this config) so it populates the local raster cache the compute node reads.
 - **Climate `mode` (`data_config.json:climate.mode`).** Default **`subgrid`**: a
   `grid`×`grid` mesh (default 5×5 = 25) of true-elevation sub-points per cell,
   downscaled and reduced to per-cell *spatial* q10/q50/q90 — capturing horizontal

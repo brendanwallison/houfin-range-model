@@ -52,6 +52,7 @@
     "mode": "subgrid",
     "subgrid": {"grid": 5},
     "obs_ts_dataset": "cru.gpcc",
+    "db_option": "local",
     "climr_obs_min_year": 1901,
     "climr_obs_max_year": 2024
   },

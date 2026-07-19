@@ -33,6 +33,12 @@ obs_ts_dataset <- if (length(args) >= 5) args[[5]] else "cru.gpcc"
 # shared DB. data.table matches nthread; oversubscription is bounded by the driver.
 nthread <- if (length(args) >= 6) as.integer(args[[6]]) else 1L
 setDTthreads(nthread)
+# db_option="local": climr downloads+caches the anomaly rasters and processes
+# LOCALLY. The default "auto" runs time-series on climr's REMOTE database server,
+# which an internet-less compute node can't reach ("Database connection issue").
+# With "local" + cache=TRUE, warm the cache once on a networked node, then compute
+# nodes read it offline.
+db_option <- if (length(args) >= 7) args[[7]] else "local"
 dir.create(out_dir, showWarnings = FALSE, recursive = TRUE)
 
 cen <- fread(centroids_csv)
@@ -44,7 +50,8 @@ monthly_vars <- list_vars("Monthly")   # 12 months x base vars (Tmin/Tmax/Tave/P
 # threads climr's internal data.table ops too.
 run_downscale <- function(xyz) {
   downscale(xyz, obs_years = years, obs_ts_dataset = obs_ts_dataset,
-            vars = monthly_vars, return_refperiod = FALSE, nthread = nthread)
+            vars = monthly_vars, return_refperiod = FALSE,
+            db_option = db_option, cache = TRUE, nthread = nthread)
 }
 
 if ("elev" %in% names(cen)) {

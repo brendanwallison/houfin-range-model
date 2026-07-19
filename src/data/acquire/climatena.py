@@ -45,17 +45,18 @@ CLIMR_OBS_MAX_YEAR = 2024
 
 
 def build_command(centroids_csv, out_dir, start_year, end_year, rscript="Rscript",
-                  obs_ts_dataset="cru.gpcc", nthread=1):
+                  obs_ts_dataset="cru.gpcc", nthread=1, db_option="local"):
     """Construct the Rscript command (kept pure/testable, separate from execution).
 
     ``obs_ts_dataset`` names climr's observed time-series source (default
     ``cru.gpcc``); without it climr returns only the 1961-1990 reference normal.
-    ``nthread`` is climr's *in-process* parallelism over the point table — the
-    right knob here (one DB handle, threads split the points) rather than many
-    single-threaded processes contending on the shared climr DuckDB.
+    ``nthread`` is climr's in-process parallelism over the point table.
+    ``db_option="local"`` makes climr download+cache the anomaly rasters and process
+    LOCALLY — the default ``auto`` runs time-series on climr's remote DB server,
+    which an internet-less compute node can't reach.
     """
     return [rscript, _R_SCRIPT, centroids_csv, out_dir, str(start_year), str(end_year),
-            obs_ts_dataset, str(int(nthread))]
+            obs_ts_dataset, str(int(nthread)), db_option]
 
 
 def worker_count(n_items, cap=96):
@@ -142,7 +143,8 @@ def _aggregate_chunk(chunk_out, chunk_csv):
         df.to_csv(os.path.join(chunk_out, f"climate_{lvl}.csv"), index=False)
 
 
-def _run_chunk(chunk_csv, chunk_out, start, end, rscript, env, subgrid=False, nthread=1):
+def _run_chunk(chunk_csv, chunk_out, start, end, rscript, env, subgrid=False, nthread=1,
+               db_option="local"):
     """Run one chunk's Rscript; skip if its 3 level CSVs already exist (resume).
 
     In subgrid mode the R step writes per-sub-point ``climate_points.csv`` (one
@@ -154,7 +156,7 @@ def _run_chunk(chunk_csv, chunk_out, start, end, rscript, env, subgrid=False, nt
     log = chunk_csv[:-4] + ".log"
     with open(log, "w") as lf:
         rc = subprocess.run(build_command(chunk_csv, chunk_out, start, end, rscript,
-                                          nthread=nthread),
+                                          nthread=nthread, db_option=db_option),
                             stdout=lf, stderr=subprocess.STDOUT, env=env).returncode
         if rc == 0 and subgrid:
             try:
@@ -237,13 +239,15 @@ def main():
     # elevations fallback. Resolve the centroids file (build the sub-cell mesh if absent).
     mode = ccfg.get("mode", "subgrid")
     subgrid = (mode == "subgrid")
+    db_option = ccfg.get("db_option", "local")   # 'local' = download+cache+process offline
     elev_dir = os.path.join(cfg["datasets_root"], "elevation")
     centroids = args.centroids or os.path.join(
         elev_dir, "subcell_centroids.csv" if subgrid else "cell_centroids.csv")
 
     if args.dry_run:
-        print(f"mode={mode}; climr command (serial form):",
-              " ".join(build_command(centroids, args.out, start, end, args.rscript)))
+        print(f"mode={mode} db_option={db_option}; climr command (serial form):",
+              " ".join(build_command(centroids, args.out, start, end, args.rscript,
+                                     db_option=db_option)))
         return
     if subgrid and not os.path.exists(centroids):
         _ensure_subcell_centroids(cfg, centroids, int(ccfg.get("subgrid", {}).get("grid", 5)))
@@ -281,7 +285,8 @@ def main():
     failures = []
     t0 = time.time()
     with ThreadPoolExecutor(max_workers=len(chunk_csvs)) as ex:
-        futs = [ex.submit(_run_chunk, cc, co, start, end, args.rscript, env, subgrid, nthread)
+        futs = [ex.submit(_run_chunk, cc, co, start, end, args.rscript, env, subgrid,
+                          nthread, db_option)
                 for cc, co in zip(chunk_csvs, chunk_outs)]
         n = len(futs)
         # Explicit per-chunk completion lines (flushed) — a tqdm bar renders poorly

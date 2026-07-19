@@ -262,8 +262,15 @@ def main():
     if args.warm_cache:
         cmd = [args.rscript, _WARM_SCRIPT, centroids, obs_ts_dataset, str(start), str(end),
                str(tiles_per_axis)]
+        # Login nodes cap processes/threads (ulimit -u ~300) and memory: pin every
+        # thread pool to 1 (GDAL's included -> avoids CPLCreateJoinableThread EAGAIN)
+        # and cap GDAL's block cache. terra memory is capped in the R script.
+        wenv = dict(os.environ)
+        wenv.update(GDAL_NUM_THREADS="1", GDAL_CACHEMAX="256", OMP_NUM_THREADS="1",
+                    OPENBLAS_NUM_THREADS="1", MKL_NUM_THREADS="1",
+                    VECLIB_MAXIMUM_THREADS="1", NUMEXPR_NUM_THREADS="1")
         print("[warm-cache]", " ".join(cmd), flush=True)
-        sys.exit(subprocess.run(cmd).returncode)
+        sys.exit(subprocess.run(cmd, env=wenv).returncode)
 
     if not args.out:
         raise SystemExit("--out is required (except with --warm-cache)")

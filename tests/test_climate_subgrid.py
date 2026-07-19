@@ -31,11 +31,20 @@ def test_subcell_mesh():
         with rasterio.open(dem, "w", **prof) as dst:
             dst.write(arr, 1)
         cols = build_subcell_centroids(dem, ref_tr, "EPSG:3857", H, W, grid=g)
-    assert cols["id"].size == H * g * W * g - 1                 # one dropped
-    assert (cols["parent_id"] == (cols["row"] * W + cols["col"])).all()  # id convention
-    import collections
-    cnt = collections.Counter(cols["parent_id"].tolist())
-    assert max(cnt.values()) <= g * g and np.isfinite(cols["elev"]).all()
+        assert cols["id"].size == H * g * W * g - 1             # one dropped
+        assert (cols["parent_id"] == (cols["row"] * W + cols["col"])).all()  # id convention
+        import collections
+        cnt = collections.Counter(cols["parent_id"].tolist())
+        assert max(cnt.values()) <= g * g and np.isfinite(cols["elev"]).all()
+
+        # Land mask (True=land): mark one cell ocean -> ALL its sub-points dropped,
+        # even though the DEM gives them finite elevation.
+        land_mask = np.ones((H, W), dtype=bool)
+        land_mask[1, 2] = False                                 # ocean cell -> parent_id 1*W+2 = 5
+        masked = build_subcell_centroids(dem, ref_tr, "EPSG:3857", H, W, grid=g,
+                                         land_mask=land_mask)
+        assert 5 not in set(masked["parent_id"].tolist())       # ocean cell fully dropped
+        assert masked["id"].size == cols["id"].size - g * g     # exactly its g*g sub-points gone
     print("subcell mesh OK")
 
 

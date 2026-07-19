@@ -23,12 +23,20 @@ from src.data.preprocess.elevation import dem_to_fine_grid
 DEFAULT_GRID = 5   # grid x grid sub-points per model cell (5x5 = 25)
 
 
-def build_subcell_centroids(dem_path, ref_transform, crs, H, W, grid=DEFAULT_GRID):
+def build_subcell_centroids(dem_path, ref_transform, crs, H, W, grid=DEFAULT_GRID,
+                            land_mask=None):
     """Sub-point table for a ``grid``x``grid`` mesh per model cell (NaN-elev dropped).
 
     Returns a dict of flat arrays ``id, parent_id, row, col, long, lat, elev``.
     ``parent_id = parent_row*W + parent_col`` matches ``cell_centroids.csv`` ids, so
     quantile aggregation in the climate step keys straight onto the model grid.
+
+    ``land_mask`` (optional ``(H, W)`` boolean, True = land) drops every sub-point
+    whose parent cell is not land. The finite-elevation filter alone is NOT enough:
+    the DEM assigns ocean a finite value (0 / bathymetry), so ocean sub-points
+    survive it, inflating the point count and producing tiles that climr's refmap
+    can't cover (offshore -> "Empty tile - not enough data"). Masking by the model's
+    ocean mask removes them at the source.
     """
     fine, g = dem_to_fine_grid(dem_path, ref_transform, crs, H, W, grid)  # (H*g, W*g)
     fine_transform = ref_transform * rasterio.Affine.scale(1.0 / g, 1.0 / g)
@@ -40,7 +48,11 @@ def build_subcell_centroids(dem_path, ref_transform, crs, H, W, grid=DEFAULT_GRI
     lon, lat = warp_transform(crs, "EPSG:4326", xs, ys)
     p_row, p_col = fr // g, fc // g
     parent = p_row * W + p_col
-    keep = np.isfinite(elev)                       # drop ocean / DEM nodata sub-points
+    keep = np.isfinite(elev)                       # drop DEM nodata sub-points
+    if land_mask is not None:                      # drop ocean sub-points (parent cell not land)
+        if land_mask.shape != (H, W):
+            raise ValueError(f"land_mask shape {land_mask.shape} != grid ({H}, {W})")
+        keep &= land_mask[p_row, p_col]
     return {
         "id": np.arange(fr.size)[keep],
         "parent_id": parent[keep],
@@ -70,6 +82,7 @@ def main():
     import os
 
     from src.config_utils import load_data_config
+    from src.data.preprocess.bbs import load_grid_reference
 
     cfg = load_data_config()
     ccfg = cfg.get("climate", {}).get("subgrid", {})
@@ -78,6 +91,8 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--dem", help="DEM GeoTIFF (default: the acquire/dem.py download).")
     ap.add_argument("--out", help="Default: {datasets_root}/elevation/subcell_centroids.csv")
+    ap.add_argument("--mask", help="Ocean mask TIF (1=ocean,0=land). Default: config "
+                                   "latent_cube.water_mask_path or land_mask/ocean_mask_25km.tif")
     ap.add_argument("--grid", type=int, default=int(ccfg.get("grid", DEFAULT_GRID)))
     args = ap.parse_args()
 
@@ -90,12 +105,25 @@ def main():
         dem_path = found[0]
     out = args.out or os.path.join(cfg["datasets_root"], "elevation", "subcell_centroids.csv")
 
+    # Model ocean mask (same grid): drop ocean sub-points at the source. Falls back
+    # to elevation-only if the mask is absent (with a loud warning).
+    mask_path = args.mask or cfg.get("latent_cube", {}).get("water_mask_path") \
+        or os.path.join(cfg["datasets_root"], "land_mask", "ocean_mask_25km.tif")
+    land_mask = None
+    if os.path.exists(mask_path):
+        land_mask, _, _, _, _, _ = load_grid_reference(mask_path)
+    else:
+        print(f"[subcell] WARNING: ocean mask not found at {mask_path}; keeping all "
+              f"finite-elevation sub-points (ocean points will NaN out in climate).")
+
     with rasterio.open(cfg["grid"]["ref_raster"]) as ref:
-        cols = build_subcell_centroids(dem_path, ref.transform, ref.crs, ref.height, ref.width, args.grid)
+        cols = build_subcell_centroids(dem_path, ref.transform, ref.crs, ref.height,
+                                       ref.width, args.grid, land_mask=land_mask)
     write_csv(out, cols)
     n_parent = np.unique(cols["parent_id"]).size
+    masked = " (land-masked)" if land_mask is not None else ""
     print(f"Wrote {cols['id'].size} sub-points ({args.grid}x{args.grid}/cell) over "
-          f"{n_parent} cells -> {out}")
+          f"{n_parent} cells{masked} -> {out}")
 
 
 if __name__ == "__main__":

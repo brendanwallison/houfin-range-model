@@ -192,12 +192,22 @@ def _ensure_subcell_centroids(cfg, out_csv, grid):
     import glob
     import rasterio
     from src.data.preprocess.subcell_centroids import build_subcell_centroids, write_csv
+    from src.data.preprocess.bbs import load_grid_reference
     dem_dir = os.path.join(cfg["datasets_root"], cfg.get("dem", {}).get("out_subdir", "dem"))
     found = sorted(glob.glob(os.path.join(dem_dir, "*.tif")))
     if not found:
         raise SystemExit(f"subgrid climate needs a DEM in {dem_dir} (run scripts/download_dem.py)")
+    # Drop ocean sub-points via the model ocean mask (same grid); elevation alone
+    # keeps them (DEM gives ocean a finite value) and they can't be downscaled.
+    mask_path = cfg.get("latent_cube", {}).get("water_mask_path") \
+        or os.path.join(cfg["datasets_root"], "land_mask", "ocean_mask_25km.tif")
+    land_mask = load_grid_reference(mask_path)[0] if os.path.exists(mask_path) else None
+    if land_mask is None:
+        print(f"[subgrid] WARNING: ocean mask not found at {mask_path}; keeping all "
+              f"finite-elevation sub-points.", flush=True)
     with rasterio.open(cfg["grid"]["ref_raster"]) as ref:
-        cols = build_subcell_centroids(found[0], ref.transform, ref.crs, ref.height, ref.width, grid)
+        cols = build_subcell_centroids(found[0], ref.transform, ref.crs, ref.height,
+                                       ref.width, grid, land_mask=land_mask)
     write_csv(out_csv, cols)
     print(f"[subgrid] generated {cols['id'].size} sub-points ({grid}x{grid}/cell) -> {out_csv}",
           flush=True)

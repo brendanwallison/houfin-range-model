@@ -56,7 +56,11 @@ trap 'kill "$_HB_PID" 2>/dev/null || true' EXIT
 run () {  # run <stage-label> <command...>
     local s="$1"; shift
     echo "======== [$s] $* ========"; date
-    $MON "$@" 2>&1 || { echo "STAGE FAILED: $s"; exit 1; }
+    # Drop REMORA's Lustre/lnet probe spam (this node type lacks those /proc paths).
+    # The inner `|| true` guards the grep-emptied edge; pipefail still surfaces a
+    # real command failure (rightmost non-zero) to the outer `||`.
+    $MON "$@" 2>&1 | { grep --line-buffered -vE 'proc/(fs/lustre|sys/lnet)' || true; } \
+        || { echo "STAGE FAILED: $s"; exit 1; }
 }
 
 stage_preprocess () {

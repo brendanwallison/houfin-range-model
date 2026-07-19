@@ -9,12 +9,13 @@ from matplotlib.lines import Line2D
 _repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 if _repo_root not in sys.path:
     sys.path.insert(0, _repo_root)
-from src.config_utils import load_data_config
-_DR = load_data_config()["datasets_root"]
+from src.config_utils import load_age_model_config
+_NPZ = load_age_model_config()["bbs_npz"]              # canonical path (tracks the configured BBS release)
+_BBS_DIR = os.path.dirname(_NPZ)
 
 def create_smoothed_gif(
-    npz_path=f"{_DR}/bbs_2024_release/bbs_data_for_python.npz",
-    output_file=f"{_DR}/bbs_2024_release/spread_smoothed.gif",
+    npz_path=_NPZ,
+    output_file=f"{_BBS_DIR}/spread_smoothed.gif",
     sigma=2.0,         # Spatial smoothing (Gaussian sigma in pixels)
     window_radius=2    # Temporal smoothing (+/- years. 2 = 5-year window)
 ):

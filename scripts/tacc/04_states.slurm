@@ -1,12 +1,14 @@
 #!/bin/bash
 #----------------------------------------------------------------------
-# CPU pre-encoder assembly: build the per-year N-stream covariate states and the
-# eBird stack cache -- the inputs the GPU encoder (20_encoder) consumes. Torch-free
-# and CPU-only, but heavier than a login node should carry: build_states reads
-# ~130 years of grids and compresses one npz per year IN PARALLEL (fork pool), so
-# it runs on a compute node, not the login node. Depends on 01_preprocess +
-# 02_climate outputs (climate_grid/, luh3_grid/, hyde35_grid/, soilgrids/,
-# elevation/, ebird stack). Submit via submit_states.sh (injects -A).
+# CPU pre-encoder assembly (all torch-free): per-year N-stream covariate states,
+# the reprojected eBird stack, the gridded BBS per-species community_matrix
+# (crosswalk + community), and the amplitude cube (x = E * BBS-anomaly) -- every
+# input the GPU encoder (20_encoder) consumes, so that job is purely GPU
+# esk->desk->cube->validate. CPU-only but heavier than a login node should carry
+# (build_states reads ~130 years of grids and compresses one npz per year in a fork
+# pool), so it runs on a compute node. Depends on 01_preprocess + 02_climate outputs
+# (climate_grid/, luh3_grid/, hyde35_grid/, soilgrids/, elevation/) and the raw BBS
+# release. Submit via submit_states.sh (injects -A).
 #----------------------------------------------------------------------
 #SBATCH -J houfin_states
 #SBATCH -o houfin_states.o%j
@@ -40,8 +42,14 @@ export HOUFIN_STATES_WORKERS="${HOUFIN_STATES_WORKERS:-16}"
 echo "states write workers: $HOUFIN_STATES_WORKERS"
 date
 
-export STAGES="${STAGES:-states ebird_cache}"
+# All CPU / torch-free pre-encoder assembly, in dependency order:
+#   states       -> per-year N-stream covariate states + schema
+#   ebird_cache  -> reprojected eBird stack E (needed by amplitude)
+#   bbs          -> AOU<->eBird crosswalk + gridded per-species community_matrix
+#   amplitude    -> x = E * BBS-anomaly point cube (needs ebird_cache + bbs)
+# The GPU job (20_encoder) stays purely esk -> desk -> cube -> validate.
+export STAGES="${STAGES:-states ebird_cache bbs amplitude}"
 bash "$SLURM_SUBMIT_DIR/scripts/tacc/pipeline.sh"
 
-echo "=== 04_states complete ($STAGES) -> yearly_states/ + state_schema.json + ebird stack ==="
+echo "=== 04_states complete ($STAGES) -> states + eBird stack + community_matrix + amplitude cube ==="
 date

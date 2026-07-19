@@ -5,8 +5,8 @@ Logic lives in ``src/data/preprocess/bbs.py`` (grids the raw BBS release into
 model-ready observation records + core/margin initialization). Equivalent:
 ``python -m src.data.preprocess.bbs``.
 
-Note: this is the *preprocess* step and assumes the raw BBS 2024 release CSVs
-already sit under ``{datasets_root}/bbs_2024_release``. A programmatic BBS
+Note: this is the *preprocess* step and assumes the raw BBS 2026 release CSVs
+already sit under ``{datasets_root}/bbs_2026_release``. A programmatic BBS
 *acquire* step (USGS ScienceBase download) is still a roadmap item.
 """
 import os

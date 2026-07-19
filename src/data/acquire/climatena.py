@@ -55,11 +55,14 @@ def build_command(centroids_csv, out_dir, start_year, end_year, rscript="Rscript
             obs_ts_dataset]
 
 
-def worker_count(n_items, cap=32):
+def worker_count(n_items, cap=96):
     """Parallel R processes: HOUFIN_CLIMATE_WORKERS, else SLURM/cpu count, capped.
 
-    Capped (default 32) because each chunk is a full R+climr process (heavier RAM
-    than a thread); raise HOUFIN_CLIMATE_WORKERS once remora shows headroom.
+    Each chunk is a full R+climr process, but measured usage is light (~0.7 GB
+    physical/worker on LS6), so the cap is 96 (≈86 GB at that rate, well under a
+    238 GB node) to actually fill a 128-core node — a 48-worker run used only
+    ~37% of cores. Override with HOUFIN_CLIMATE_WORKERS (up/down) as memory/IO
+    headroom dictates; ``min(n, n_items)`` still bounds it by the chunk count.
     """
     env = os.environ.get("HOUFIN_CLIMATE_WORKERS")
     if env:

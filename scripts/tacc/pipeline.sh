@@ -27,7 +27,9 @@ cd "$REPO"
 # resolve; run_encoder.py also sets this, but export it for the -m data stages too.
 export PYTHONPATH="$REPO:$REPO/src:${PYTHONPATH:-}"
 export HOUFIN_PREPROCESS_WORKERS="${HOUFIN_PREPROCESS_WORKERS:-48}"
-export HOUFIN_CLIMATE_WORKERS="${HOUFIN_CLIMATE_WORKERS:-32}"
+# Leave HOUFIN_CLIMATE_WORKERS unset unless the caller set it, so climatena.py's
+# worker_count fills the node (SLURM cpus, capped 96) instead of a forced 32.
+export HOUFIN_CLIMATE_WORKERS="${HOUFIN_CLIMATE_WORKERS:-}"
 
 # Quiet REMORA's defaults that are irrelevant on a CPU node and flood the log:
 # GPU/CUDA monitoring (no GPU here) and the Lustre/network collectors (this node

@@ -264,7 +264,9 @@ def main():
                str(tiles_per_axis)]
         # Login nodes cap processes/threads (ulimit -u ~300) and memory: pin every
         # thread pool to 1 (GDAL's included -> avoids CPLCreateJoinableThread EAGAIN)
-        # and cap GDAL's block cache. terra memory is capped in the R script.
+        # and cap GDAL's block cache. The warm script also avoids terra::writeRaster
+        # for the refmap (verbatim copy + header-only band rename) so no heavy 73-band
+        # decode/re-encode runs here -- that write is what crashed the login cgroup.
         wenv = dict(os.environ)
         wenv.update(GDAL_NUM_THREADS="1", GDAL_CACHEMAX="256", OMP_NUM_THREADS="1",
                     OPENBLAS_NUM_THREADS="1", MKL_NUM_THREADS="1",

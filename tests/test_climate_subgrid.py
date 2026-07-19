@@ -45,6 +45,15 @@ def test_subcell_mesh():
                                          land_mask=land_mask)
         assert 5 not in set(masked["parent_id"].tolist())       # ocean cell fully dropped
         assert masked["id"].size == cols["id"].size - g * g     # exactly its g*g sub-points gone
+
+        # Fine sub-point mask: a single water sub-point inside an otherwise-land cell
+        # is dropped, while its cell survives (coastal within-cell resolution).
+        fine_land = np.ones((H * g, W * g), dtype="uint8")
+        fine_land[1, 1] = 0                                     # one water sub-point in cell (0,0)
+        finem = build_subcell_centroids(dem, ref_tr, "EPSG:3857", H, W, grid=g,
+                                        fine_land=fine_land)
+        assert finem["id"].size == cols["id"].size - 1          # exactly that sub-point gone
+        assert 0 in set(finem["parent_id"].tolist())            # its cell still present
     print("subcell mesh OK")
 
 

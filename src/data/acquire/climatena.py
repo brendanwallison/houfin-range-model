@@ -191,23 +191,34 @@ def _ensure_subcell_centroids(cfg, out_csv, grid):
     """Generate the sub-cell mesh from the DEM + ref grid if it isn't present yet."""
     import glob
     import rasterio
-    from src.data.preprocess.subcell_centroids import build_subcell_centroids, write_csv
+    from src.data.preprocess.subcell_centroids import (build_subcell_centroids, write_csv,
+                                                        rasterize_land_fine)
     from src.data.preprocess.bbs import load_grid_reference
     dem_dir = os.path.join(cfg["datasets_root"], cfg.get("dem", {}).get("out_subdir", "dem"))
     found = sorted(glob.glob(os.path.join(dem_dir, "*.tif")))
     if not found:
         raise SystemExit(f"subgrid climate needs a DEM in {dem_dir} (run scripts/download_dem.py)")
-    # Drop ocean sub-points via the model ocean mask (same grid); elevation alone
-    # keeps them (DEM gives ocean a finite value) and they can't be downscaled.
+    # Drop ocean sub-points (elevation alone keeps them: the DEM gives ocean a finite
+    # value). Two filters: 25 km parent ocean mask (grid alignment) + a fine sub-point
+    # land mask from the same Natural Earth polygon (coastal water points).
     mask_path = cfg.get("latent_cube", {}).get("water_mask_path") \
         or os.path.join(cfg["datasets_root"], "land_mask", "ocean_mask_25km.tif")
     land_mask = load_grid_reference(mask_path)[0] if os.path.exists(mask_path) else None
     if land_mask is None:
-        print(f"[subgrid] WARNING: ocean mask not found at {mask_path}; keeping all "
-              f"finite-elevation sub-points.", flush=True)
+        print(f"[subgrid] WARNING: 25 km ocean mask not found at {mask_path}.", flush=True)
+    land_source = cfg.get("coastline", {}).get("land_source")
+    if land_source and not os.path.isabs(land_source):
+        land_source = os.path.join(cfg["datasets_root"], land_source)
     with rasterio.open(cfg["grid"]["ref_raster"]) as ref:
+        fine_land = None
+        if land_source and os.path.exists(land_source):
+            fine_land = rasterize_land_fine(land_source, ref.crs, ref.transform,
+                                            ref.height, ref.width, grid)
+        else:
+            print(f"[subgrid] WARNING: land polygon not found ({land_source}); "
+                  f"no fine sub-point ocean mask.", flush=True)
         cols = build_subcell_centroids(found[0], ref.transform, ref.crs, ref.height,
-                                       ref.width, grid, land_mask=land_mask)
+                                       ref.width, grid, land_mask=land_mask, fine_land=fine_land)
     write_csv(out_csv, cols)
     print(f"[subgrid] generated {cols['id'].size} sub-points ({grid}x{grid}/cell) -> {out_csv}",
           flush=True)

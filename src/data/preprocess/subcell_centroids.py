@@ -23,20 +23,41 @@ from src.data.preprocess.elevation import dem_to_fine_grid
 DEFAULT_GRID = 5   # grid x grid sub-points per model cell (5x5 = 25)
 
 
+def rasterize_land_fine(land_source, crs, ref_transform, H, W, grid=DEFAULT_GRID):
+    """Binary (1=land, 0=water) grid at the SUB-POINT resolution ``(H*grid, W*grid)``,
+    rasterized from the same land polygon the 25 km ocean mask uses (Natural Earth).
+
+    This is the *high-resolution* land test the 25 km parent mask can't do: it drops
+    water sub-points INSIDE a coastal cell that the 25 km mask calls land -- exactly
+    the within-cell coastal structure the subgrid method exists to resolve.
+    """
+    import geopandas as gpd
+    import rasterio.features
+    fine_transform = ref_transform * rasterio.Affine.scale(1.0 / grid, 1.0 / grid)
+    gdf = gpd.read_file(land_source).to_crs(crs)
+    return rasterio.features.rasterize(
+        ((geom, 1) for geom in gdf.geometry),
+        out_shape=(H * grid, W * grid), transform=fine_transform, fill=0, dtype="uint8")
+
+
 def build_subcell_centroids(dem_path, ref_transform, crs, H, W, grid=DEFAULT_GRID,
-                            land_mask=None):
+                            land_mask=None, fine_land=None):
     """Sub-point table for a ``grid``x``grid`` mesh per model cell (NaN-elev dropped).
 
     Returns a dict of flat arrays ``id, parent_id, row, col, long, lat, elev``.
     ``parent_id = parent_row*W + parent_col`` matches ``cell_centroids.csv`` ids, so
     quantile aggregation in the climate step keys straight onto the model grid.
 
-    ``land_mask`` (optional ``(H, W)`` boolean, True = land) drops every sub-point
-    whose parent cell is not land. The finite-elevation filter alone is NOT enough:
+    Two optional ocean filters (the finite-elevation filter alone is NOT enough --
     the DEM assigns ocean a finite value (0 / bathymetry), so ocean sub-points
-    survive it, inflating the point count and producing tiles that climr's refmap
-    can't cover (offshore -> "Empty tile - not enough data"). Masking by the model's
-    ocean mask removes them at the source.
+    survive it, inflating the point count and producing tiles climr's refmap can't
+    cover -> offshore "Empty tile - not enough data"):
+    - ``land_mask`` (``(H, W)`` bool, True = land): drops sub-points whose PARENT
+      25 km cell is not land -> aligns the point set to the modeled grid (removes
+      fully-offshore cells).
+    - ``fine_land`` (``(H*grid, W*grid)`` 0/1, from :func:`rasterize_land_fine`):
+      drops each sub-point whose OWN fine location is water -> removes coastal
+      water sub-points a 'land' 25 km cell would otherwise keep.
     """
     fine, g = dem_to_fine_grid(dem_path, ref_transform, crs, H, W, grid)  # (H*g, W*g)
     fine_transform = ref_transform * rasterio.Affine.scale(1.0 / g, 1.0 / g)
@@ -49,10 +70,14 @@ def build_subcell_centroids(dem_path, ref_transform, crs, H, W, grid=DEFAULT_GRI
     p_row, p_col = fr // g, fc // g
     parent = p_row * W + p_col
     keep = np.isfinite(elev)                       # drop DEM nodata sub-points
-    if land_mask is not None:                      # drop ocean sub-points (parent cell not land)
+    if land_mask is not None:                      # drop sub-points in non-land 25 km cells
         if land_mask.shape != (H, W):
             raise ValueError(f"land_mask shape {land_mask.shape} != grid ({H}, {W})")
         keep &= land_mask[p_row, p_col]
+    if fine_land is not None:                      # drop water sub-points at fine resolution
+        if fine_land.shape != (H * g, W * g):
+            raise ValueError(f"fine_land shape {fine_land.shape} != fine grid ({H * g}, {W * g})")
+        keep &= (fine_land[fr, fc] > 0)
     return {
         "id": np.arange(fr.size)[keep],
         "parent_id": parent[keep],
@@ -91,8 +116,10 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--dem", help="DEM GeoTIFF (default: the acquire/dem.py download).")
     ap.add_argument("--out", help="Default: {datasets_root}/elevation/subcell_centroids.csv")
-    ap.add_argument("--mask", help="Ocean mask TIF (1=ocean,0=land). Default: config "
+    ap.add_argument("--mask", help="25 km ocean mask TIF (1=ocean,0=land). Default: config "
                                    "latent_cube.water_mask_path or land_mask/ocean_mask_25km.tif")
+    ap.add_argument("--land-source", dest="land_source",
+                    help="Land polygon for the fine sub-point mask (default: coastline.land_source)")
     ap.add_argument("--grid", type=int, default=int(ccfg.get("grid", DEFAULT_GRID)))
     args = ap.parse_args()
 
@@ -105,23 +132,37 @@ def main():
         dem_path = found[0]
     out = args.out or os.path.join(cfg["datasets_root"], "elevation", "subcell_centroids.csv")
 
-    # Model ocean mask (same grid): drop ocean sub-points at the source. Falls back
-    # to elevation-only if the mask is absent (with a loud warning).
+    # Ocean filters: (1) 25 km parent mask aligns to the modeled grid; (2) fine land
+    # mask (same Natural Earth polygon as the 25 km mask, rasterized at the sub-point
+    # grid) drops coastal water sub-points. Both fall back gracefully if absent.
     mask_path = args.mask or cfg.get("latent_cube", {}).get("water_mask_path") \
         or os.path.join(cfg["datasets_root"], "land_mask", "ocean_mask_25km.tif")
     land_mask = None
     if os.path.exists(mask_path):
         land_mask, _, _, _, _, _ = load_grid_reference(mask_path)
     else:
-        print(f"[subcell] WARNING: ocean mask not found at {mask_path}; keeping all "
-              f"finite-elevation sub-points (ocean points will NaN out in climate).")
+        print(f"[subcell] WARNING: 25 km ocean mask not found at {mask_path}.")
+
+    land_source = args.land_source or cfg.get("coastline", {}).get("land_source")
+    if land_source and not os.path.isabs(land_source):
+        land_source = os.path.join(cfg["datasets_root"], land_source)
 
     with rasterio.open(cfg["grid"]["ref_raster"]) as ref:
+        fine_land = None
+        if land_source and os.path.exists(land_source):
+            fine_land = rasterize_land_fine(land_source, ref.crs, ref.transform,
+                                            ref.height, ref.width, args.grid)
+        else:
+            print(f"[subcell] WARNING: land polygon not found ({land_source}); "
+                  f"no fine sub-point ocean mask (coastal water points will NaN out).")
         cols = build_subcell_centroids(dem_path, ref.transform, ref.crs, ref.height,
-                                       ref.width, args.grid, land_mask=land_mask)
+                                       ref.width, args.grid, land_mask=land_mask,
+                                       fine_land=fine_land)
     write_csv(out, cols)
     n_parent = np.unique(cols["parent_id"]).size
-    masked = " (land-masked)" if land_mask is not None else ""
+    tags = ",".join(t for t, on in [("25km", land_mask is not None),
+                                     ("fine", fine_land is not None)] if on)
+    masked = f" (land-masked: {tags})" if tags else ""
     print(f"Wrote {cols['id'].size} sub-points ({args.grid}x{args.grid}/cell) over "
           f"{n_parent} cells{masked} -> {out}")
 

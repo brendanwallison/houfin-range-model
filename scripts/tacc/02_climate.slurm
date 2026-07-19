@@ -45,5 +45,10 @@ $MON python scripts/climate_climr.py \
     --rscript "$HOUFIN_RSCRIPT"
 
 python scripts/validate_products.py --stage climate --paths "$HOUFIN_DATA/climate"
-echo "=== climate complete -> $HOUFIN_DATA/climate ; manifest in $HOUFIN_PROCESSED/validation/ ==="
+
+# Rasterize the per-sub-point CSVs to per-year BIO-year grids on the model grid
+# (climate_grid/{var}_{lvl}_{year}_grid.tif). Offline, cheap; hard-fails on zero
+# rasters. This is the form the encoder's covariate states consume (plan A1).
+python -m src.data.preprocess.climate_grid
+echo "=== climate complete -> $HOUFIN_DATA/climate (CSVs) + climate_grid/ (per-year tifs) ; manifest in $HOUFIN_PROCESSED/validation/ ==="
 date

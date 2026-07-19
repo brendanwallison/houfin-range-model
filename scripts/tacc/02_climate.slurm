@@ -38,8 +38,9 @@ command -v remora >/dev/null 2>&1 && MON="remora"
 echo "resource monitor: $MON"
 date
 
+# Centroids default from climate.mode (subgrid -> subcell_centroids.csv, auto-built;
+# elev_quantile -> cell_centroids.csv).
 $MON python scripts/climate_climr.py \
-    --centroids "$HOUFIN_DATA/elevation/cell_centroids.csv" \
     --out "$HOUFIN_DATA/climate" \
     --rscript "$HOUFIN_RSCRIPT"
 

@@ -70,9 +70,9 @@ stage_preprocess () {
     run bbs_finch  python scripts/ingest_bbs_data.py
 }
 stage_climate () {
-    run climate python scripts/climate_climr.py \
-        --centroids "$DATA/elevation/cell_centroids.csv" --out "$DATA/climate" \
-        --rscript "$HOUFIN_RSCRIPT"
+    # Centroids default from climate.mode (subgrid -> subcell_centroids.csv, auto-built
+    # from the DEM; elev_quantile -> cell_centroids.csv). No --centroids here.
+    run climate python scripts/climate_climr.py --out "$DATA/climate" --rscript "$HOUFIN_RSCRIPT"
 }
 stage_climate_grid () { run climate_grid python -m src.data.preprocess.climate_grid; }
 stage_states       () { run states       python -m src.data.combine.build_states; }

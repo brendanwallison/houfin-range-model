@@ -47,6 +47,14 @@
     "_comment": "preprocess/elevation.py reprojects the DEM onto a sub-grid fine_factor x finer than the model grid, then takes per-cell p10/p50/p90 elevation. fine_factor should be >= target_res/DEM_native so no DEM detail is lost (25 km / ~1.85 km ETOPO ~= 13.5 -> 14).",
     "fine_factor": 14
   },
+  "climate": {
+    "_comment": "climr downscaling. mode 'subgrid' (default): a grid x grid mesh of true-elevation sub-points per cell -> real spatial+elevation quantiles (captures horizontal gradients). mode 'elev_quantile': centroid at three elevation quantiles (elevation-only, cheaper). obs_ts_dataset feeds the annual observed series; obs year range clamps to climr's extent.",
+    "mode": "subgrid",
+    "subgrid": {"grid": 5},
+    "obs_ts_dataset": "cru.gpcc",
+    "climr_obs_min_year": 1901,
+    "climr_obs_max_year": 2024
+  },
   "dataverse": {
     "server": "https://dataverse.harvard.edu",
     "datasets": {

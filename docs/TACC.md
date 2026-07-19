@@ -137,6 +137,15 @@ squeue -u $USER
   **cru.gpcc** obs surfaces into the climr cache on a login node first (a small
   centroid subset, full year range) since compute nodes have no internet; then
   delete any stale `$HOUFIN_DATA/climate` (incl. `_chunks`) before regenerating.
+- **Climate `mode` (`data_config.json:climate.mode`).** Default **`subgrid`**: a
+  `grid`×`grid` mesh (default 5×5 = 25) of true-elevation sub-points per cell,
+  downscaled and reduced to per-cell *spatial* q10/q50/q90 — capturing horizontal
+  gradients (coast, rain shadow), not just elevation. It auto-builds
+  `subcell_centroids.csv` from the DEM. Costs ~grid²/3 × the `elev_quantile`
+  fallback (centroid at 3 elevation quantiles), so 5×5 is heavier — lean on `normal`
+  or resubmit dev (chunks resume). Lower `climate.subgrid.grid` (e.g. 3) for a dev
+  fit, or set `climate.mode: "elev_quantile"` for the cheap path. **Switching mode
+  requires clearing `$HOUFIN_DATA/climate`** (stale chunks mismatch).
 
 Each stage writes a JSON manifest to `$HOUFIN_PROCESSED/validation/<stage>.json`.
 

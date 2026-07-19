@@ -93,8 +93,58 @@ def _split_centroids(centroids_csv, n_chunks, chunk_dir):
     return paths
 
 
-def _run_chunk(chunk_csv, chunk_out, start, end, rscript, env):
-    """Run one chunk's Rscript; skip if its 3 level CSVs already exist (resume)."""
+def _split_centroids_by_parent(centroids_csv, n_chunks, chunk_dir):
+    """Subgrid split: partition by ``parent_id`` so all of a cell's sub-points land
+    in one chunk (spatial quantiles are computed per parent within a chunk). Returns
+    chunk CSV paths."""
+    import pandas as pd
+    df = pd.read_csv(centroids_csv).sort_values("parent_id")
+    parents = df["parent_id"].unique()
+    n_chunks = max(1, min(n_chunks, len(parents)))
+    size = math.ceil(len(parents) / n_chunks)
+    os.makedirs(chunk_dir, exist_ok=True)
+    paths = []
+    for i in range((len(parents) + size - 1) // size):
+        keep = set(parents[i * size:(i + 1) * size])
+        p = os.path.join(chunk_dir, f"chunk_{i:03d}.csv")
+        df[df["parent_id"].isin(keep)].to_csv(p, index=False)
+        paths.append(p)
+    return paths
+
+
+def quantile_aggregate(points, id_parent, quantiles=(0.10, 0.50, 0.90), levels=LEVELS):
+    """Spatial quantiles of downscaled climate per (parent cell, PERIOD) — pure.
+
+    ``points``: per-sub-point downscale output (``id, PERIOD, <vars>[, DATASET]``).
+    ``id_parent``: ``id -> parent_id`` map. Returns ``{level: DataFrame(id=parent,
+    PERIOD, <vars>)}`` where each level is the corresponding within-cell quantile —
+    the same schema the centroid path emits, so downstream is unchanged.
+    """
+    df = points.merge(id_parent, on="id", how="inner")
+    varcols = [c for c in points.columns if c not in ("id", "PERIOD", "DATASET", "parent_id")]
+    grouped = df.groupby(["parent_id", "PERIOD"])[varcols]
+    out = {}
+    for q, lvl in zip(quantiles, levels):
+        qd = grouped.quantile(q).reset_index().rename(columns={"parent_id": "id"})
+        out[lvl] = qd
+    return out
+
+
+def _aggregate_chunk(chunk_out, chunk_csv):
+    """Aggregate a subgrid chunk's per-sub-point output into the 3 level CSVs."""
+    import pandas as pd
+    pts = pd.read_csv(os.path.join(chunk_out, "climate_points.csv"))
+    cen = pd.read_csv(chunk_csv, usecols=["id", "parent_id"])
+    for lvl, df in quantile_aggregate(pts, cen).items():
+        df.to_csv(os.path.join(chunk_out, f"climate_{lvl}.csv"), index=False)
+
+
+def _run_chunk(chunk_csv, chunk_out, start, end, rscript, env, subgrid=False):
+    """Run one chunk's Rscript; skip if its 3 level CSVs already exist (resume).
+
+    In subgrid mode the R step writes per-sub-point ``climate_points.csv`` (one
+    downscale at true elevations); we then quantile-aggregate it to the 3 level CSVs.
+    """
     os.makedirs(chunk_out, exist_ok=True)
     if all(os.path.exists(os.path.join(chunk_out, f"climate_{lvl}.csv")) for lvl in LEVELS):
         return chunk_csv, 0, None, "exists"
@@ -102,6 +152,12 @@ def _run_chunk(chunk_csv, chunk_out, start, end, rscript, env):
     with open(log, "w") as lf:
         rc = subprocess.run(build_command(chunk_csv, chunk_out, start, end, rscript),
                             stdout=lf, stderr=subprocess.STDOUT, env=env).returncode
+        if rc == 0 and subgrid:
+            try:
+                _aggregate_chunk(chunk_out, chunk_csv)
+            except Exception as e:  # noqa: BLE001  surface as a chunk failure
+                lf.write(f"\n[aggregate] FAILED: {type(e).__name__}: {e}\n")
+                rc = 1
     return chunk_csv, rc, log, "ok"
 
 
@@ -121,10 +177,28 @@ def _concat_levels(chunk_outs, out_dir):
         print(f"concatenated {len(parts)} chunks -> {dest}", flush=True)
 
 
+def _ensure_subcell_centroids(cfg, out_csv, grid):
+    """Generate the sub-cell mesh from the DEM + ref grid if it isn't present yet."""
+    import glob
+    import rasterio
+    from src.data.preprocess.subcell_centroids import build_subcell_centroids, write_csv
+    dem_dir = os.path.join(cfg["datasets_root"], cfg.get("dem", {}).get("out_subdir", "dem"))
+    found = sorted(glob.glob(os.path.join(dem_dir, "*.tif")))
+    if not found:
+        raise SystemExit(f"subgrid climate needs a DEM in {dem_dir} (run scripts/download_dem.py)")
+    with rasterio.open(cfg["grid"]["ref_raster"]) as ref:
+        cols = build_subcell_centroids(found[0], ref.transform, ref.crs, ref.height, ref.width, grid)
+    write_csv(out_csv, cols)
+    print(f"[subgrid] generated {cols['id'].size} sub-points ({grid}x{grid}/cell) -> {out_csv}",
+          flush=True)
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--centroids", required=True, help="cell_centroids.csv from preprocess/elevation.py")
+    ap.add_argument("--centroids", default=None,
+                    help="centroids CSV; default from climate.mode "
+                         "(subcell_centroids.csv for subgrid, else cell_centroids.csv)")
     ap.add_argument("--out", required=True, help="output dir for climate_{q10,q50,q90}.csv")
     ap.add_argument("--rscript", default="Rscript")
     ap.add_argument("--workers", type=int, default=None,
@@ -150,15 +224,26 @@ def main():
               flush=True)
     start, end = cstart, cend
 
+    # Mode: 'subgrid' (default) samples a grid x grid mesh of true-elevation points
+    # per cell and takes spatial quantiles; 'elev_quantile' is the centroid-at-three-
+    # elevations fallback. Resolve the centroids file (build the sub-cell mesh if absent).
+    mode = ccfg.get("mode", "subgrid")
+    subgrid = (mode == "subgrid")
+    elev_dir = os.path.join(cfg["datasets_root"], "elevation")
+    centroids = args.centroids or os.path.join(
+        elev_dir, "subcell_centroids.csv" if subgrid else "cell_centroids.csv")
+
     if args.dry_run:
-        print("climr command (serial form):",
-              " ".join(build_command(args.centroids, args.out, start, end, args.rscript)))
+        print(f"mode={mode}; climr command (serial form):",
+              " ".join(build_command(centroids, args.out, start, end, args.rscript)))
         return
-    if not os.path.exists(args.centroids):
-        raise SystemExit(f"centroids file not found: {args.centroids} (run preprocess/elevation.py first)")
+    if subgrid and not os.path.exists(centroids):
+        _ensure_subcell_centroids(cfg, centroids, int(ccfg.get("subgrid", {}).get("grid", 5)))
+    if not os.path.exists(centroids):
+        raise SystemExit(f"centroids file not found: {centroids} (run preprocess/elevation.py first)")
     os.makedirs(args.out, exist_ok=True)
 
-    with open(args.centroids) as fh:
+    with open(centroids) as fh:
         n_cen = max(0, sum(1 for _ in fh) - 1)
     workers = args.workers or worker_count(n_cen)
 
@@ -166,22 +251,24 @@ def main():
     env = dict(os.environ)
     env.update(OMP_NUM_THREADS="1", OPENBLAS_NUM_THREADS="1", MKL_NUM_THREADS="1")
 
-    if workers <= 1:
+    if workers <= 1 and not subgrid:
         print(f"climr: {n_cen} centroids, serial (1 process)", flush=True)
-        sys.exit(subprocess.run(build_command(args.centroids, args.out, start, end, args.rscript),
+        sys.exit(subprocess.run(build_command(centroids, args.out, start, end, args.rscript),
                                 env=env).returncode)
 
     chunk_dir = os.path.join(args.out, "_chunks")
-    chunk_csvs = _split_centroids(args.centroids, workers, chunk_dir)
+    split = _split_centroids_by_parent if subgrid else _split_centroids
+    chunk_csvs = split(centroids, workers, chunk_dir)
     chunk_outs = [os.path.join(chunk_dir, f"out_{i:03d}") for i in range(len(chunk_csvs))]
-    print(f"climr: {n_cen} centroids -> {len(chunk_csvs)} chunks x {len(LEVELS)} levels, "
+    unit = "sub-points (spatial quantiles)" if subgrid else "centroids x 3 elev levels"
+    print(f"climr [{mode}]: {n_cen} {unit} -> {len(chunk_csvs)} chunks, "
           f"{workers} parallel R processes -> {args.out}", flush=True)
 
     counts = {"ok": 0, "exists": 0}
     failures = []
     t0 = time.time()
     with ThreadPoolExecutor(max_workers=workers) as ex:
-        futs = [ex.submit(_run_chunk, cc, co, start, end, args.rscript, env)
+        futs = [ex.submit(_run_chunk, cc, co, start, end, args.rscript, env, subgrid)
                 for cc, co in zip(chunk_csvs, chunk_outs)]
         n = len(futs)
         # Explicit per-chunk completion lines (flushed) — a tqdm bar renders poorly

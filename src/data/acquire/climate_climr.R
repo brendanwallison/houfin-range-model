@@ -38,16 +38,30 @@ cen <- fread(centroids_csv)
 years <- start_year:end_year
 monthly_vars <- list_vars("Monthly")   # 12 months x base vars (Tmin/Tmax/Tave/PPT + derived)
 
-for (lvl in c("q10", "q50", "q90")) {
-  message(sprintf("Downscaling elevation level %s (%d cells, %d years, obs_ts=%s)...",
-                  lvl, nrow(cen), length(years), obs_ts_dataset))
-  xyz <- data.frame(
-    lon  = cen$long, lat = cen$lat,
-    elev = cen[[paste0("elev_", lvl)]],
-    id   = cen$id
-  )
+if ("elev" %in% names(cen)) {
+  # SUBGRID mode: one true-elevation point per sub-point. Downscale all of them
+  # once and write the per-sub-point series; the Python driver takes spatial
+  # quantiles per parent cell (real horizontal + elevation variability).
+  message(sprintf("Subgrid: downscaling %d sub-points (%d years, obs_ts=%s)...",
+                  nrow(cen), length(years), obs_ts_dataset))
+  xyz <- data.frame(lon = cen$long, lat = cen$lat, elev = cen$elev, id = cen$id)
   ds <- downscale(xyz, obs_years = years, obs_ts_dataset = obs_ts_dataset,
                   vars = monthly_vars, return_refperiod = FALSE)
-  fwrite(ds, file.path(out_dir, sprintf("climate_%s.csv", lvl)))
+  fwrite(ds, file.path(out_dir, "climate_points.csv"))
+  message("Done. Wrote climate_points.csv (per sub-point) to ", out_dir)
+} else {
+  # ELEV_QUANTILE mode: centroid at three representative elevations per cell.
+  for (lvl in c("q10", "q50", "q90")) {
+    message(sprintf("Downscaling elevation level %s (%d cells, %d years, obs_ts=%s)...",
+                    lvl, nrow(cen), length(years), obs_ts_dataset))
+    xyz <- data.frame(
+      lon  = cen$long, lat = cen$lat,
+      elev = cen[[paste0("elev_", lvl)]],
+      id   = cen$id
+    )
+    ds <- downscale(xyz, obs_years = years, obs_ts_dataset = obs_ts_dataset,
+                    vars = monthly_vars, return_refperiod = FALSE)
+    fwrite(ds, file.path(out_dir, sprintf("climate_%s.csv", lvl)))
+  }
+  message("Done. Wrote climate_{q10,q50,q90}.csv to ", out_dir)
 }
-message("Done. Wrote climate_{q10,q50,q90}.csv to ", out_dir)

@@ -91,14 +91,20 @@ def render_climate_level(task):
 
 
 def default_groups(dr):
-    """Standard 25 km raster products (eBird already writes _grid.png; climate is CSV)."""
+    """Standard 25 km raster products (eBird already writes _grid.png).
+
+    ``climate_grid`` = the bio-year-aggregated per-year climate rasters the encoder
+    actually consumes (rendered here as the faithful downstream product); the
+    ``--climate`` flag additionally re-grids the raw per-centroid CSVs.
+    """
     return {
-        "ref_grid":  [p for p in [os.path.join(dr, "ref_grid_25km.tif")] if os.path.exists(p)],
-        "land_mask": sorted(glob.glob(os.path.join(dr, "land_mask", "*.tif"))),
-        "luh3":      sorted(glob.glob(os.path.join(dr, "luh3_grid", "*.tif"))),
-        "hyde":      sorted(glob.glob(os.path.join(dr, "hyde35_grid", "*.tif"))),
-        "soilgrids": sorted(glob.glob(os.path.join(dr, "soilgrids_grid", "**", "*.tif"), recursive=True)),
-        "elevation": sorted(glob.glob(os.path.join(dr, "elevation", "**", "*.tif"), recursive=True)),
+        "ref_grid":     [p for p in [os.path.join(dr, "ref_grid_25km.tif")] if os.path.exists(p)],
+        "land_mask":    sorted(glob.glob(os.path.join(dr, "land_mask", "*.tif"))),
+        "luh3":         sorted(glob.glob(os.path.join(dr, "luh3_grid", "*.tif"))),
+        "hyde":         sorted(glob.glob(os.path.join(dr, "hyde35_grid", "*.tif"))),
+        "soilgrids":    sorted(glob.glob(os.path.join(dr, "soilgrids_grid", "**", "*.tif"), recursive=True)),
+        "elevation":    sorted(glob.glob(os.path.join(dr, "elevation", "**", "*.tif"), recursive=True)),
+        "climate_grid": sorted(glob.glob(os.path.join(dr, "climate_grid", "*.tif"))),
     }
 
 

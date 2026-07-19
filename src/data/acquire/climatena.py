@@ -207,7 +207,8 @@ def main():
     ap.add_argument("--centroids", default=None,
                     help="centroids CSV; default from climate.mode "
                          "(subcell_centroids.csv for subgrid, else cell_centroids.csv)")
-    ap.add_argument("--out", required=True, help="output dir for climate_{q10,q50,q90}.csv")
+    ap.add_argument("--out", default=None, help="output dir for climate_{q10,q50,q90}.csv "
+                    "(not needed with --warm-cache)")
     ap.add_argument("--rscript", default="Rscript")
     ap.add_argument("--workers", type=int, default=None,
                     help="R PROCESSES over centroid chunks (default 1; HOUFIN_CLIMATE_WORKERS). "
@@ -248,6 +249,9 @@ def main():
         cmd = [args.rscript, _WARM_SCRIPT, wc, obs_ts_dataset, str(start), str(end)]
         print("[warm-cache]", " ".join(cmd), flush=True)
         sys.exit(subprocess.run(cmd).returncode)
+
+    if not args.out:
+        raise SystemExit("--out is required (except with --warm-cache)")
 
     # Mode: 'subgrid' (default) samples a grid x grid mesh of true-elevation points
     # per cell and takes spatial quantiles; 'elev_quantile' is the centroid-at-three-

@@ -75,6 +75,13 @@
         "files": [
           "multiple-states_input4MIPs_landState_CMIP_UofMD-landState-3-1-2_gn_0850-2024.nc",
           "multiple-management_input4MIPs_landState_CMIP_UofMD-landState-3-1-2_gn_0850-2024.nc"
+        ],
+        "_exclude_comment": "Uninformative management layers dropped from the covariate set: forest plantations (pltns, all-zero in LUH-3 V1), 1st/2nd-generation biofuel crop fractions (cpbf1_*, cpbf2_*), plantation biofuel (pltns_bfuel), and wood-harvest carbon split (rndwd/fulwd/combf). All ~0 over North America.",
+        "exclude": [
+          "pltns", "pltns_bfuel",
+          "cpbf1_c3ann", "cpbf1_c4ann", "cpbf1_c3per", "cpbf1_c4per", "cpbf1_c3nfx",
+          "cpbf2_c3ann", "cpbf2_c4ann", "cpbf2_c3per", "cpbf2_c4per", "cpbf2_c3nfx",
+          "rndwd", "fulwd", "combf"
         ]
       }
     },

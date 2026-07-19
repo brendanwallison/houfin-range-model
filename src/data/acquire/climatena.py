@@ -29,7 +29,8 @@ import os
 import subprocess
 import sys
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
+import multiprocessing
+from concurrent.futures import FIRST_COMPLETED, ProcessPoolExecutor, wait
 
 from src.config_utils import load_data_config
 from src.temporal import load_timeline
@@ -350,25 +351,46 @@ def main():
     counts = {"ok": 0, "exists": 0}
     failures = []
     t0 = time.time()
-    with ThreadPoolExecutor(max_workers=min(nproc, len(chunk_csvs))) as ex:
+    # PROCESSES, not threads: each chunk does an R subprocess (GIL-free) THEN a
+    # pandas groupby-quantile aggregation (subgrid) which is GIL-BOUND. In a thread
+    # pool the aggregations serialize on the GIL -- once the R phase ends, 16 threads
+    # crawl through quantiles on ~2 cores while the node idles and all chunk frames
+    # pile up in one process (observed: 53 GB, 98% idle). Separate processes run the
+    # aggregations truly in parallel and spread the memory. 'fork' is safe here: at
+    # pool creation the parent holds no GDAL/terra state or threads (terra lives only
+    # in the R subprocess), and fork avoids re-importing __main__ (no recursion).
+    mp_ctx = multiprocessing.get_context("fork")
+    with ProcessPoolExecutor(max_workers=min(nproc, len(chunk_csvs)), mp_context=mp_ctx) as ex:
         futs = [ex.submit(_run_chunk, cc, co, start, end, args.rscript, env, subgrid,
                           nthread, db_option, obs_ts_dataset)
                 for cc, co in zip(chunk_csvs, chunk_outs)]
         n = len(futs)
         # Explicit per-chunk completion lines (flushed) — a tqdm bar renders poorly
         # in a non-TTY SLURM log and only ticks at whole-chunk granularity anyway.
-        # Per-chunk R downscaling detail is in _chunks/chunk_*.log.
-        for done, fut in enumerate(as_completed(futs), 1):
-            cc, rc, log, status = fut.result()
-            if rc != 0:
-                failures.append((cc, log))
-                print(f"[ERROR] chunk {os.path.basename(cc)} failed (rc={rc}); see {log}", flush=True)
-            else:
-                counts[status] += 1
-            el = time.time() - t0
-            eta = el / done * (n - done)
-            print(f"[climate] {done}/{n} chunks (ran={counts['ok']} cached={counts['exists']} "
-                  f"failed={len(failures)}) | {el:.0f}s elapsed, ~{eta:.0f}s left", flush=True)
+        # Per-chunk R downscaling detail is in _chunks/chunk_*.log. A whole wave of
+        # chunks can run for minutes with no completion, so also emit a HEARTBEAT
+        # every ~60s during quiet stretches (wait() returns empty on timeout) — a
+        # long silence otherwise looks like a stall.
+        pending = set(futs); done = 0
+        while pending:
+            finished, pending = wait(pending, timeout=60, return_when=FIRST_COMPLETED)
+            if not finished:                       # timeout, nothing new -> heartbeat
+                el = time.time() - t0
+                print(f"[climate] ...running: {done}/{n} done, {len(pending)} in flight, "
+                      f"{el:.0f}s elapsed", flush=True)
+                continue
+            for fut in finished:
+                done += 1
+                cc, rc, log, status = fut.result()
+                if rc != 0:
+                    failures.append((cc, log))
+                    print(f"[ERROR] chunk {os.path.basename(cc)} failed (rc={rc}); see {log}", flush=True)
+                else:
+                    counts[status] += 1
+                el = time.time() - t0
+                eta = el / done * (n - done)
+                print(f"[climate] {done}/{n} chunks (ran={counts['ok']} cached={counts['exists']} "
+                      f"failed={len(failures)}) | {el:.0f}s elapsed, ~{eta:.0f}s left", flush=True)
 
     if failures:
         _, log0 = failures[0]

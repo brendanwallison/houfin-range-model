@@ -42,6 +42,12 @@ db_option <- if (length(args) >= 7) args[[7]] else "local"
 dir.create(out_dir, showWarnings = FALSE, recursive = TRUE)
 
 cen <- fread(centroids_csv)
+# Cap climr's parallelism at the point count. climr splits the point table across
+# nthread worker nodes, so a tile with FEWER points than threads leaves empty nodes
+# that die with "[ext] invalid extent" (a small coastal/edge tile -- few land
+# sub-points after masking -- meeting a high nthread). >=1 point per node.
+nthread <- max(1L, min(nthread, nrow(cen)))
+setDTthreads(nthread)
 years <- start_year:end_year
 monthly_vars <- list_vars("Monthly")   # 12 months x base vars (Tmin/Tmax/Tave/PPT + derived)
 

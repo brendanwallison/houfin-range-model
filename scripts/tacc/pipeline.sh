@@ -31,7 +31,7 @@ export HOUFIN_PREPROCESS_WORKERS="${HOUFIN_PREPROCESS_WORKERS:-48}"
 # the warm cache). HOUFIN_CLIMATE_WORKERS = concurrent tile processes (climatena.py
 # default 4; 02_climate.slurm sets 16, cap ~96 to fill a node -- raise it, don't keep
 # it at 1); HOUFIN_CLIMATE_THREADS = climr threads/process (default node cpus/workers).
-export HOUFIN_CLIMATE_WORKERS="${HOUFIN_CLIMATE_WORKERS:-}"
+export HOUFIN_CLIMATE_WORKERS="${HOUFIN_CLIMATE_WORKERS:-16}"   # 16 tiles x nthread 8 on a 128-core node
 export HOUFIN_CLIMATE_THREADS="${HOUFIN_CLIMATE_THREADS:-}"
 
 # Quiet REMORA's defaults that are irrelevant on a CPU node and flood the log:

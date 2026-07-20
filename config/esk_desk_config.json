@@ -21,7 +21,7 @@
     "pattern": "*_abundance_median_2023-*.tif",
     "sigmas": [0.0, 0.5, 1.0, 1.5],
     "latent_dims": [8, 16, 32],
-    "n_landmarks": 18000
+    "n_landmarks": 25000
   },
   "bbs_mode": "validate",
   "bbs": {

@@ -79,11 +79,16 @@ trap 'kill "$_HB_PID" 2>/dev/null || true' EXIT
 run () {  # run <stage-label> <command...>
     local s="$1"; shift
     echo "======== [$s] $* ========"; date
-    # Drop REMORA's Lustre/lnet probe spam (this node type lacks those /proc paths).
-    # The inner `|| true` guards the grep-emptied edge; pipefail still surfaces a
-    # real command failure (rightmost non-zero) to the outer `||`.
-    $MON "$@" 2>&1 | { grep --line-buffered -vE 'proc/(fs/lustre|sys/lnet)' || true; } \
-        || { echo "STAGE FAILED: $s"; exit 1; }
+    # REMORA (the monitor) returns 0 regardless of what it wrapped, so its exit code
+    # cannot be trusted to detect a stage failure -- a crashed stage would read as
+    # success. Capture the REAL command exit status via an inner shell that writes $?
+    # to a file, so a partial/crashed stage fails loudly no matter what MON reports.
+    # The trailing grep only cleans REMORA's Lustre/lnet probe spam from the log.
+    local _rc; _rc="$(mktemp)"
+    $MON bash -c 'set -o pipefail; "$@"; echo $? > "$0"' "$_rc" "$@" \
+        2>&1 | { grep --line-buffered -vE 'proc/(fs/lustre|sys/lnet)' || true; }
+    local _code; _code="$(cat "$_rc" 2>/dev/null || echo 1)"; rm -f "$_rc"
+    [ "$_code" = 0 ] || { echo "STAGE FAILED: $s (exit $_code)"; exit 1; }
     if [ -n "${HOUFIN_VALIDATE:-}" ]; then
         local vp; vp="$(_vpath "$s")"
         if [ -n "$vp" ]; then

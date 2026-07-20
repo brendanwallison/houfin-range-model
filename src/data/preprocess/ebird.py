@@ -131,6 +131,12 @@ def _init_worker():
     """
     global _WREF, _WOCEAN
     os.environ.setdefault("GDAL_NUM_THREADS", "1")
+    # Bound the GDAL block cache PER WORKER. Default is 5% of node RAM per process
+    # (~12 GB on a 238 GB node); N fork workers each claim that independently, so at
+    # high worker counts the cache ceiling alone exceeds node RAM and reprojection
+    # OOMs (a tiny allocation fails because the cache already consumed everything).
+    # 512 MB/worker is ample for these single-band warps; 48 workers => ~24 GB cache.
+    os.environ.setdefault("GDAL_CACHEMAX", "512MB")
     _WREF = regrid.load_ref(_CFG)
     with rasterio.open(OCEAN_MASK) as src:
         _WOCEAN = src.read(1)

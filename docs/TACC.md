@@ -158,10 +158,10 @@ stage (JSON manifest per product in `$HOUFIN_PROCESSED/validation/<stage>.json`)
 The sub-cell centroids (`elevation/subcell_centroids.csv`, ocean-masked) are what
 the climr warm and the climate stage tile over, so they must exist before either.
 
-> The old `submit.sh` chains `01_preprocess` → `02_climate` via `afterok`. That is
-> only valid on an **already-warm** cache — on a cold cache the login-node warm
-> (§3a) must run between them, so use the explicit `submit_preprocess.sh` →
-> `warm_climr.sh` → `submit_climate.sh` order instead.
+> The login-node climr warm (§3a) must run **between** preprocess and climate, so
+> there is no auto-chain of `01 → 02` — use the explicit `submit_preprocess.sh` →
+> `warm_climr.sh` → `submit_climate.sh` order (the climate wrappers refuse to queue
+> on a cold cache).
 
 ## 3a. Warm the climr cache (login node — the one online step after preprocessing)
 

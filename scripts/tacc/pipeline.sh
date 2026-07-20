@@ -43,6 +43,26 @@ MON="/usr/bin/time -v"; command -v remora >/dev/null 2>&1 && MON="remora"
 DATA="$HOUFIN_DATA"
 echo "resource monitor: $MON ; Rscript: ${HOUFIN_RSCRIPT:-Rscript}"
 
+# Per-stage product path(s) for OPTIONAL validation (a case, not an assoc array, so
+# it runs on any bash). Only stages with an entry are validated, and only when
+# HOUFIN_VALIDATE is set (the split 01_preprocess/02_climate jobs set it; the
+# 00/04/20 wrappers don't). This is the single source of truth for both the stage
+# sequences AND their validation targets.
+_vpath () {
+    case "$1" in
+        ref_grid)  echo "$DATA/ref_grid_25km.tif" ;;
+        land_mask) echo "$DATA/land_mask" ;;
+        ebird)     echo "$DATA/ebird_weekly_2023_grid" ;;
+        luh3)      echo "$DATA/luh3_grid" ;;
+        hyde)      echo "$DATA/hyde35_grid" ;;
+        soilgrids) echo "$DATA/soilgrids_grid" ;;
+        elevation) echo "$DATA/elevation" ;;
+        subcell)   echo "$DATA/elevation/subcell_centroids.csv" ;;
+        bbs_finch) echo "$DATA/bbs_2026_release/bbs_data_for_python.npz" ;;
+        climate)   echo "$DATA/climate" ;;
+    esac
+}
+
 # Guaranteed memory visibility in the job log regardless of REMORA: print node-wide
 # memory + load every MEM_HEARTBEAT_SEC (default 120s). REMORA still writes its full
 # time series to remora_<jobid>/ and its Max-Memory summary at job end.
@@ -64,6 +84,13 @@ run () {  # run <stage-label> <command...>
     # real command failure (rightmost non-zero) to the outer `||`.
     $MON "$@" 2>&1 | { grep --line-buffered -vE 'proc/(fs/lustre|sys/lnet)' || true; } \
         || { echo "STAGE FAILED: $s"; exit 1; }
+    if [ -n "${HOUFIN_VALIDATE:-}" ]; then
+        local vp; vp="$(_vpath "$s")"
+        if [ -n "$vp" ]; then
+            python scripts/validate_products.py --stage "$s" --paths $vp \
+                || { echo "VALIDATION FAILED: $s"; exit 1; }
+        fi
+    fi
 }
 
 stage_preprocess () {

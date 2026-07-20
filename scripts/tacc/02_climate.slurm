@@ -24,38 +24,17 @@ set -euo pipefail
 
 source "$SLURM_SUBMIT_DIR/scripts/tacc/env.sh"
 module load python/3.12.11 2>/dev/null || true
-module load remora 2>/dev/null || true        # periodic CPU/mem/IO sampling over time
-# R comes from $HOUFIN_RSCRIPT (set in env.sh: the micromamba conda-forge env if
-# present, else PATH Rscript). climr is GitHub-only with heavy native deps; see docs/TACC.md.
-echo "using Rscript: $HOUFIN_RSCRIPT"
+module load remora 2>/dev/null || true
+[ -n "${TACC_ALLOCATION:-}" ] && echo "allocation: $TACC_ALLOCATION"
+echo "using Rscript: ${HOUFIN_RSCRIPT:-Rscript}"; date
 
-# Monitor: remora samples resource use over time (live, in remora_<jobid>/). The
-# parallel climr driver spawns many R chunk processes; remora samples node-wide, so
-# it captures them all -- use it to confirm the cores are busy and gauge RAM headroom
-# for HOUFIN_CLIMATE_WORKERS. Falls back to /usr/bin/time -v (end-only) without remora.
-MON="/usr/bin/time -v"
-command -v remora >/dev/null 2>&1 && MON="remora"
-echo "resource monitor: $MON"
-date
-
-# Centroids default from climate.mode (subgrid -> subcell_centroids.csv, auto-built;
-# elev_quantile -> cell_centroids.csv).
-# Parallelism: each geographic tile is a short-lived R process (no thread pile-up on
-# compute), so use many. Default 16 of the node's 128 cores -> nthread auto = 128/16
-# = 8 per chunk. Bump HOUFIN_CLIMATE_WORKERS toward 32 if RAM headroom allows (watch
-# remora_<jobid>/). The default of 4 badly underutilizes a compute node.
-: "${HOUFIN_CLIMATE_WORKERS:=16}"
-echo "climate workers: $HOUFIN_CLIMATE_WORKERS (nthread auto = cores/workers)"
-$MON python scripts/climate_climr.py \
-    --out "$HOUFIN_DATA/climate" \
-    --rscript "$HOUFIN_RSCRIPT" \
-    --workers "$HOUFIN_CLIMATE_WORKERS"
-
-python scripts/validate_products.py --stage climate --paths "$HOUFIN_DATA/climate"
-
-# Rasterize the per-sub-point CSVs to per-year BIO-year grids on the model grid
-# (climate_grid/{var}_{lvl}_{year}_grid.tif). Offline, cheap; hard-fails on zero
-# rasters. This is the form the encoder's covariate states consume (plan A1).
-python -m src.data.preprocess.climate_grid
-echo "=== climate complete -> $HOUFIN_DATA/climate (CSVs) + climate_grid/ (per-year tifs) ; manifest in $HOUFIN_PROCESSED/validation/ ==="
-date
+# Thin wrapper over pipeline.sh. Runs the offline climate downscale (reads the warm
+# climr cache; climate_climr.py fails fast if the cache is cold) + validation +
+# climate_grid rasterization. Each geographic tile is a short-lived R process, so use
+# many: HOUFIN_CLIMATE_WORKERS default 16 (of 128 cores; nthread auto = cores/workers),
+# bump toward 32 with RAM headroom. This needs a WARM cache -- submit_climate.sh
+# refuses on a cold one; a bare sbatch here hits the in-job preflight.
+export HOUFIN_CLIMATE_WORKERS="${HOUFIN_CLIMATE_WORKERS:-16}"
+export HOUFIN_VALIDATE=1
+export STAGES="${STAGES:-climate climate_grid}"
+bash "$SLURM_SUBMIT_DIR/scripts/tacc/pipeline.sh"

@@ -126,10 +126,46 @@ def test_validate_metrics():
     print("validate metrics OK")
 
 
+def test_temporal_metrics():
+    """Turnover-magnitude agreement + spatiotemporal analog-direction (both basis-invariant)."""
+    from src.community_encoder.train_DESK import validate_spacetime as V
+    rng = np.random.default_rng(0)
+    rec = 2020
+
+    # ruzicka_rect matches the elementwise definition
+    A = np.array([[1., 2, 0], [0, 1, 1]]); B = np.array([[1., 1, 1], [2, 0, 0]])
+    man = np.array([[np.minimum(A[i], B[j]).sum() / np.maximum(A[i], B[j]).sum()
+                     for j in range(2)] for i in range(2)])
+    assert np.allclose(V.ruzicka_rect(A, B), man, atol=1e-6)
+
+    # turnover: hist blends further from recent per site -> monotone turnover, both agree
+    base, other = np.eye(8)[0], np.eye(8)[4]
+    Xs, pidx = [], []
+    for k in range(5):
+        f = k / 4.0
+        Xs += [base.copy(), (1 - f) * base + f * other]
+        pidx += [[k, 0, rec], [k, 0, 1990]]
+    Xs = np.array(Xs); t = V.temporal_turnover_agreement(Xs.copy(), Xs, np.array(pidx), rec)
+    order = [(int(r), int(c)) for r, c in zip(t["rows"], t["cols"])]
+    tp = t["turnover_pred"]
+    assert t["spearman_turnover"] > 0.9
+    assert tp[order.index((0, 0))] == min(tp) and tp[order.index((4, 0))] == max(tp)
+
+    # analog: hist community matches a present cell due NORTH -> displacement +y, models agree
+    south, north = np.eye(6)[0], np.eye(6)[3]
+    X2 = np.array([south, north] + [north] * 4)
+    pidx2 = np.array([[0, 0, rec], [0, 1, rec], [0, 0, 1980], [1, 0, 1980], [2, 0, 1980], [3, 0, 1980]])
+    xy = np.array([[0., 0.], [0., 100.], [0., 0.], [10., 0.], [20., 0.], [30., 0.]])
+    a = V.analog_displacement(X2.copy(), X2, pidx2, xy, rec, rng, n_hist=10, n_present=10, topk=1)
+    assert (a["d_obs"][:, 1] > 50).all() and a["mean_cos_displacement"] > 0.99
+    print("temporal metrics (turnover + analog direction) OK")
+
+
 if __name__ == "__main__":
     test_climate_bioyear_and_grid()
     test_crosswalk_core()
     test_bbs_community_aggregation()
     test_spacetime_numerics()
     test_validate_metrics()
+    test_temporal_metrics()
     print("\nALL BBS-SPACETIME CHECKS PASSED")

@@ -92,29 +92,32 @@ def ruzicka_rect(A, B):
     return np.where((denom + L1) > 0, (denom - L1) / (denom + L1), 1.0)
 
 
-def temporal_turnover_agreement(Z, X, pidx, recent_year, early_year=1995, window=5):
-    """Per-site community turnover over a FIXED window (``early_year`` → recent), pred vs obs.
+def temporal_turnover_agreement(Z, X, pidx, recent_year, min_gap=5):
+    """Per-site community turnover (earliest supported point → recent), pred vs obs.
 
     turnover = 1 − self-similarity over time (``⟨z(s,t0),z(s,rec)⟩`` for pred,
     ``Ruzicka(x(s,t0),x(s,rec))`` for obs) — basis-invariant. Spearman of the two
     per-site turnover fields answers "do the models agree on WHERE communities changed
     most" (magnitude, direction-agnostic). Returns the fields + rho.
 
-    Each site is anchored to its historical point nearest ``early_year`` (within
-    ``±window`` yr), matched to its recent point — a COMMON window across sites, so
-    turnover magnitudes are comparable (per-cell *earliest* would confound magnitude
-    with window length, and tie coverage to the sparse early-BBS footprint).
+    Each cell is anchored to its **earliest** historical point (≥ ``min_gap`` yr before
+    recent) matched to its recent point — maximizing coverage across every supported
+    cell (the smoothed BBS field backs far more cells than any narrow year window). Both
+    ``pred`` and ``obs`` use the SAME (early, recent) year pair per cell, so a varying
+    span shifts them together and barely biases their rank correlation; ``hist_year`` is
+    returned so magnitude-vs-span can still be inspected.
     """
     rows, cols, yrs = pidx[:, 0], pidx[:, 1], pidx[:, 2]
     rec = yrs == recent_year
     rec_ix = {(int(r), int(c)): int(i) for r, c, i in
               zip(rows[rec], cols[rec], np.where(rec)[0])}
-    best = {}                                    # (r,c) -> (|year-early|, idx): nearest to early_year
+    best = {}                                    # (r,c) -> (year, idx): EARLIEST historical point
     for i in np.where(~rec)[0]:
         key = (int(rows[i]), int(cols[i]))
-        dy = abs(int(yrs[i]) - int(early_year))
-        if dy <= window and key in rec_ix and (key not in best or dy < best[key][0]):
-            best[key] = (dy, int(i))
+        y = int(yrs[i])
+        if key in rec_ix and (int(recent_year) - y) >= min_gap \
+                and (key not in best or y < best[key][0]):
+            best[key] = (y, int(i))
     keys = list(best)
     if len(keys) < 4:
         return {"n_sites": len(keys), "note": "too few paired sites"}
@@ -243,6 +246,21 @@ def run_validate(config=None, n_pairs=20000, cka_sample=800, seed=0):
     X, pidx, Z = X[ok], pidx[ok], Z[ok]
     years = pidx[:, 2]
 
+    # No-change null: reuse each cell's RECENT (recent_year) latent/observation for every
+    # year ("assume the community never changed"). Recent anchor points cover every
+    # eBird-valid cell, so map each point to its own cell's recent row. The gap between
+    # DESK and this null is the only interpretable readout: most of the observed structure
+    # is the persistent SPATIAL pattern, which the null already reproduces, so a high raw
+    # CKA means little without it.
+    rec_key = {}
+    for k in np.where(years == recent_year)[0]:
+        rec_key[(int(pidx[k, 0]), int(pidx[k, 1]))] = k
+    to_rec = np.array([rec_key.get((int(pidx[k, 0]), int(pidx[k, 1])), -1)
+                       for k in range(len(pidx))])
+    has_rec = to_rec >= 0
+    Zrec = np.full_like(Z, np.nan); Zrec[has_rec] = Z[to_rec[has_rec]]
+    Xrec = np.full_like(X, np.nan); Xrec[has_rec] = X[to_rec[has_rec]]
+
     def _bucket_report(mask, label):
         idx = np.where(mask)[0]
         if idx.size < 4:
@@ -253,9 +271,27 @@ def run_validate(config=None, n_pairs=20000, cka_sample=800, seed=0):
         samp = rng.choice(idx, min(cka_sample, idx.size), replace=False)
         Kz = Z[samp] @ Z[samp].T
         Lx = ruzicka_similarity_matrix(X[samp])
-        return {"period": label, "n": int(idx.size),
-                "mse": float(np.mean((sp - so) ** 2)), "pearson": r,
-                "cka": linear_cka(Kz, Lx), "mantel": mantel_r(Kz, Lx)}
+        out = {"period": label, "n": int(idx.size),
+               "mse": float(np.mean((sp - so) ** 2)), "pearson": r,
+               "cka": linear_cka(Kz, Lx), "mantel": mantel_r(Kz, Lx)}
+        # Baselines, on the cells that have a recent anchor (all historical cells do), all
+        # over ONE common subset so the gap is apples-to-apples:
+        #   cka_nochange   -- no-change null prediction vs THIS period's observed structure
+        #   cka_gain       -- DESK CKA minus null CKA (same subset): value added over "no change"
+        #   cka_obs_change -- observed(period) vs observed(recent): ~1 => communities barely
+        #                     changed, so there was little temporal signal to capture at all
+        samp_r = samp[has_rec[samp]]
+        if samp_r.size >= 4:
+            Kz_h = Z[samp_r] @ Z[samp_r].T
+            Lx_h = ruzicka_similarity_matrix(X[samp_r])
+            Lx_r = ruzicka_similarity_matrix(Xrec[samp_r])
+            Kz_null = Zrec[samp_r] @ Zrec[samp_r].T
+            cka_null = linear_cka(Kz_null, Lx_h)
+            out["cka_nochange"] = cka_null
+            out["mantel_nochange"] = mantel_r(Kz_null, Lx_h)
+            out["cka_gain"] = linear_cka(Kz_h, Lx_h) - cka_null
+            out["cka_obs_change"] = linear_cka(Lx_h, Lx_r)
+        return out
 
     report = {"recent_control": _bucket_report(years == recent_year, f"recent({recent_year})")}
     hist_years = sorted(set(int(y) for y in years if y != recent_year))
@@ -271,8 +307,7 @@ def run_validate(config=None, n_pairs=20000, cka_sample=800, seed=0):
     ref_raster = load_data_config()["grid"]["ref_raster"]
     xy = cell_xy(pidx[:, 0], pidx[:, 1], ref_raster)
     turn = temporal_turnover_agreement(Z, X, pidx, recent_year,
-                                       early_year=int(bc.get("turnover_early_year", 1995)),
-                                       window=int(bc.get("turnover_window", 5)))
+                                       min_gap=int(bc.get("turnover_min_gap", 5)))
     analog = analog_displacement(Z, X, pidx, xy, recent_year, rng)
     report["temporal_turnover"] = {k: v for k, v in turn.items()
                                    if k in ("n_sites", "spearman_turnover", "note")}
@@ -297,11 +332,14 @@ def run_validate(config=None, n_pairs=20000, cka_sample=800, seed=0):
         analog_hist_year=analog.get("hist_year", np.array([])),
         ref_raster=np.array(ref_raster))
 
-    print("[validate] eBird-only vs BBS structure (higher CKA/Mantel/Pearson = extrapolation holds):")
+    print("[validate] eBird-only DESK vs BBS. cka=DESK, null=no-change, gain=DESK-null "
+          "(the value added), obs_chg=observed-vs-recent (~1 => little real change to capture):")
     for k, v in report.items():
         if "cka" in v:
-            print(f"  {v['period']:<16} n={v['n']:<7} pearson={v['pearson']:+.3f} "
-                  f"cka={v['cka']:.3f} mantel={v['mantel']:+.3f} mse={v['mse']:.4f}")
+            extra = (f" | null={v['cka_nochange']:.3f} gain={v['cka_gain']:+.3f} "
+                     f"obs_chg={v['cka_obs_change']:.3f}") if "cka_nochange" in v else ""
+            print(f"  {v['period']:<16} n={v['n']:<7} cka={v['cka']:.3f} "
+                  f"mantel={v['mantel']:+.3f}{extra}")
     if "spearman_turnover" in report["temporal_turnover"]:
         print(f"[validate] temporal turnover agreement (Spearman, {turn['n_sites']} sites): "
               f"{report['temporal_turnover']['spearman_turnover']:+.3f}")

@@ -13,6 +13,13 @@ TIME="${TIME:-02:00:00}"
 A=""
 [ -n "${TACC_ALLOCATION:-}" ] && [ "$TACC_ALLOCATION" != "REPLACE_WITH_PROJECT" ] && A="-A $TACC_ALLOCATION"
 
+# This one-shot includes the offline climate stage (unless STAGES excludes it), which
+# needs a warm cache. Refuse to queue on a cold cache -- do the ordered cold-start
+# instead: submit_preprocess.sh -> warm_climr.sh (login) -> then this.
+if [ -z "${STAGES:-}" ] || printf '%s' " ${STAGES} " | grep -q ' climate '; then
+    bash "$(dirname "$0")/check_climr_cache.sh" || exit 1
+fi
+
 submit () { sbatch "$@" 2>&1 | grep -Eo '^[0-9]+$' | tail -1; }
 jid=$(submit $A -p "$QUEUE" -t "$TIME" --export=ALL --parsable scripts/tacc/00_preprocess_all.slurm)
 [ -n "$jid" ] || { echo "submit failed (no job id captured)"; exit 1; }

@@ -17,6 +17,9 @@ TIME="${TIME:-02:00:00}"
 A=""
 [ -n "${TACC_ALLOCATION:-}" ] && [ "$TACC_ALLOCATION" != "REPLACE_WITH_PROJECT" ] && A="-A $TACC_ALLOCATION"
 
+# Refuse to queue a cold-cache offline climate job (see check_climr_cache.sh).
+bash "$(dirname "$0")/check_climr_cache.sh" || exit 1
+
 # TACC's sbatch wrapper prints a welcome/verify banner to stdout even with
 # --parsable; grab just the numeric job id (see submit.sh).
 submit () { sbatch "$@" 2>&1 | grep -Eo '^[0-9]+$' | tail -1; }

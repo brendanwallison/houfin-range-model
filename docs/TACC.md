@@ -204,7 +204,10 @@ QUEUE=normal TIME=12:00:00 bash scripts/tacc/submit_climate.sh
 ```
 
 `02_climate.slurm` runs the offline `climr` downscale (reads the warm cache), then
-rasterizes to per-year bio-year grids (`climate_grid`). Notes:
+rasterizes to per-year bio-year grids (`climate_grid`). `submit_climate.sh` (and the
+`00_preprocess_all` one-shot) **refuse to queue on a cold cache**
+(`check_climr_cache.sh`) and point you at `warm_climr.sh`, so a doomed offline job is
+never submitted; the stage also re-checks in-job before doing any work. Notes:
 
 - **Name an observed dataset.** `obs_ts_dataset=cru.gpcc` (config) — without it climr
   returns only the 1961–1990 reference normal, not the annual series.

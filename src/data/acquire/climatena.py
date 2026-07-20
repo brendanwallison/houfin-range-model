@@ -39,6 +39,30 @@ _R_SCRIPT = os.path.join(os.path.dirname(__file__), "climate_climr.R")
 _WARM_SCRIPT = os.path.join(os.path.dirname(__file__), "warm_climr_cache.R")
 LEVELS = ("q10", "q50", "q90")
 
+
+def _climr_cache_dir():
+    """climr's cache root = tools::R_user_dir('climr','cache'), which honors
+    R_USER_CACHE_DIR (env.sh points it at persistent $WORK) and appends R/climr."""
+    base = os.environ.get("R_USER_CACHE_DIR")
+    root = base if base else os.path.join(os.path.expanduser("~"), ".cache")
+    return os.path.join(root, "R", "climr")
+
+
+def _assert_climr_cache_warm():
+    """Exit fast + actionably if the climr reference cache is cold. The offline
+    (db_option=local) downscale can't download; warming is a login-node step."""
+    meta = os.path.join(_climr_cache_dir(), "reference", "refmap_climr", "meta_data.csv")
+    if os.path.exists(meta) and os.path.getsize(meta) > 0:
+        return
+    raise SystemExit(
+        f"[climate] climr cache is COLD -- no reference map at\n"
+        f"    {meta}\n"
+        f"  The offline downscale (db_option=local) cannot download it (compute nodes\n"
+        f"  have no internet). Warm it ONCE on a LOGIN node, then re-run this stage:\n"
+        f"    bash scripts/tacc/warm_climr.sh\n"
+        f"  (cache root from R_USER_CACHE_DIR="
+        f"{os.environ.get('R_USER_CACHE_DIR', '<unset -> ~/.cache>')})")
+
 # climr's observed-climate (CRU TS / GPCC) extent. downscale() errors if obs_years
 # fall outside this; bump these (or override via data_config "climate") when climr
 # ships a newer observed dataset.
@@ -322,6 +346,11 @@ def main():
               " ".join(build_command(centroids, args.out, start, end, args.rscript,
                                      obs_ts_dataset=obs_ts_dataset, db_option=db_option)))
         return
+    # Fail fast BEFORE spawning any work if the offline path has no cache to read:
+    # the compute node can't download, and the warm is a login-node step. Turns an
+    # obscure deep climr crash into an immediate, actionable message.
+    if db_option == "local":
+        _assert_climr_cache_warm()
     os.makedirs(args.out, exist_ok=True)
 
     # Path follows the FILE's columns (matches climate_climr.R): a sub-cell file has

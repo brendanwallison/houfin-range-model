@@ -110,8 +110,8 @@
       },
       "bbs_mexico": {
         "item": "5f32af1082cee144fb313837",
-        "_comment": "Per-file (NOT whole_item): the ?allowAll=true bundle ships a 0-byte SpeciesData.csv, but the individual file is the real 1.6 MB. Pin the three the ingest needs.",
-        "files": ["SpeciesData.csv", "RouteData.csv", "RouteDetails.csv"]
+        "_comment": "whole_item (archive), NOT per-file. SpeciesData.csv is BROKEN upstream on ScienceBase: the record claims 1.6 MB + an MD5, but the per-file downloadUri 404s and every archive ships it as 0 bytes (verified 2026-07). Per-file download therefore exits nonzero on the 404 and would abort download_all.sh; the whole-item archive downloads cleanly (exit 0) with an empty SpeciesData, so the ingest just skips Mexico (non-fatal). Drop a valid SpeciesData.csv in bbs_mexico_unprocessed/ to enable Mexico if you obtain one elsewhere.",
+        "whole_item": true
       }
     },
     "out_subdirs": {

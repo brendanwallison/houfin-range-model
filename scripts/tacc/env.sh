@@ -23,9 +23,15 @@ export HOUFIN_PROCESSED="$WORK/houfin/processed"
 # eBird API key (or put it in config/secrets.json as {"ebird_key": "..."}).
 # export EBIRD_KEY="..."
 
-# climr writes its reference cache here; keep it on a shared FS so batch nodes
-# (which have no internet) can read the cache warmed on the login node.
+# climr writes its reference cache here; keep it on a shared, PERSISTENT FS ($WORK,
+# not the 10-day-purged $SCRATCH) so batch nodes (no internet) read the cache warmed
+# on the login node, and so it survives the purge -- warm ONCE and every later run is
+# warm (this is what makes the one-shot 00_preprocess_all achievable on re-runs).
+# climr resolves its cache via tools::R_user_dir("climr","cache"), which reads
+# R_USER_CACHE_DIR; export it or climr silently falls back to $HOME/.cache (small
+# quota, wrong FS). It appends /R/climr under this root.
 export HOUFIN_CLIMR_CACHE="$WORK/houfin/climr_cache"
+export R_USER_CACHE_DIR="$HOUFIN_CLIMR_CACHE"
 
 mkdir -p "$HOUFIN_DATA" "$HOUFIN_PROCESSED" "$HOUFIN_CLIMR_CACHE"
 

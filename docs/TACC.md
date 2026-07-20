@@ -182,6 +182,12 @@ tile — including coastal/edge tiles where the refmap is partly nodata. It down
 the **cru.gpcc** observed surfaces for the full year range and is **resumable**
 (re-running fetches only missing tiles).
 
+The cache lives on **persistent `$WORK`** (`R_USER_CACHE_DIR=$HOUFIN_CLIMR_CACHE`,
+set in `env.sh`), **not** the 10-day-purged `$SCRATCH`. So this is effectively a
+**one-time** step: it survives the purge, is shared to the compute nodes, and every
+later run — including the `00_preprocess_all` one-shot (§3d) — reads it warm. You
+only re-warm if you delete the cache or climr ships new reference data.
+
 - **`db_option=local` is mandatory offline.** climr's default `db_option="auto"`
   runs the observed time-series on its **remote database server** (→ `Database
   connection issue` on an internet-less compute node). Config sets

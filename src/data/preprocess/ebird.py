@@ -77,9 +77,13 @@ def _read_ranked():
     path = _CFG.get("species_list")
     if not path or not os.path.exists(path):
         return []
+    focal = str(_CFG.get("focal_species_code") or "").strip().lower()
     with open(path, newline="") as fh:
-        return [row["species_code"].strip()
-                for row in csv.DictReader(fh) if row.get("species_code")]
+        codes = [row["species_code"].strip()
+                 for row in csv.DictReader(fh) if row.get("species_code")]
+    # Defense-in-depth: never let the focal (transfer target, e.g. House Finch) into
+    # the community even if a stale ranked list still contains it (avonet drops it too).
+    return [c for c in codes if c.lower() != focal] if focal else codes
 
 
 def select_reference_community(tif_files, n_target):

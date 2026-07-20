@@ -250,13 +250,24 @@ def main():
     # Minimal, ordered artifact: species_code + mean_rank, most-similar first.
     # Selection (top-N / threshold) is deliberately left to download time, so
     # the full ranked list is written here rather than a pre-cut subset.
+    #
+    # CRITICAL: DROP THE FOCAL SPECIES (House Finch). It is the transfer TARGET of the
+    # downstream statistical model, which uses the community-derived Z as a covariate.
+    # If the focal were in the community, Z would encode House Finch's own distribution
+    # and predicting House Finch from it would be circular (leakage). The focal ranks
+    # ~1 (distance 0 to itself), so it MUST be excluded here; the community is the
+    # nearest-N species EXCLUDING the focal.
+    n_before = int(bl["SPECIES_CODE"].notna().sum())
+    keep = bl["Avibase.ID1"] != FOCAL_ID
     species_list = (
-        bl[["SPECIES_CODE", "Mean.Rank"]]
+        bl.loc[keep, ["SPECIES_CODE", "Mean.Rank"]]
         .dropna(subset=["SPECIES_CODE"])
         .rename(columns={"SPECIES_CODE": "species_code", "Mean.Rank": "mean_rank"})
     )
+    dropped = n_before - len(species_list)
     species_list.to_csv(SPECIES_LIST_PATH, index=False)
-    print(f"Saved {len(species_list)} ranked species codes to {SPECIES_LIST_PATH}")
+    print(f"Saved {len(species_list)} ranked species codes to {SPECIES_LIST_PATH} "
+          f"(excluded {dropped} focal-species row(s) -- House Finch is the transfer target).")
 
 if __name__ == "__main__":
     main()

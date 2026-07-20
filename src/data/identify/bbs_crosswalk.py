@@ -61,11 +61,21 @@ def load_ebird_taxonomy(path):
     return tax[["species_code", "sci_norm"]].dropna(subset=["sci_norm"])
 
 
-def read_community_codes(ranked_path, top_n=None):
-    """Top-``top_n`` eBird ``species_code`` (best mean_rank first) from the ranked CSV."""
+def read_community_codes(ranked_path, top_n=None, exclude=None):
+    """Top-``top_n`` eBird ``species_code`` (best mean_rank first) from the ranked CSV.
+
+    ``exclude`` defaults to the config focal species (the transfer target) so the BBS
+    community can never include it, even from a stale ranked list (defense-in-depth;
+    avonet already drops it at the source).
+    """
+    if exclude is None:
+        from src.config_utils import load_data_config
+        f = str(load_data_config().get("focal_species_code") or "").strip().lower()
+        exclude = {f} if f else set()
+    excl = {str(e).lower() for e in exclude}
     df = pd.read_csv(ranked_path)
     df = df.dropna(subset=["species_code"]).sort_values("mean_rank")
-    codes = df["species_code"].astype(str).str.lower().tolist()
+    codes = [c for c in df["species_code"].astype(str).str.lower().tolist() if c not in excl]
     return codes[:top_n] if top_n else codes
 
 

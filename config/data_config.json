@@ -5,6 +5,8 @@
   "ebird_version_year": 2023,
   "ebird_raw_subdir": "ebird_weekly_2023",
   "species_list": "${HOUFIN_DATA}/avonet/reference_community_ranked.csv",
+  "_focal_comment": "The transfer TARGET of the downstream statistical model. avonet.py already excludes it from reference_community_ranked.csv; this is the defense-in-depth code that the eBird selection + BBS crosswalk also filter, so a stale ranked list can never leak House Finch into the community Z.",
+  "focal_species_code": "houfin",
   "timeline": {
     "_comment": "Single source of truth for the model timeline (see src/temporal.py, docs/TEMPORAL.md). Model year T = climate bio-year Aug(T-1)->Jul(T), aligned to the ~June BBS count. first_year=1902 (first FULL bio-year, since climate obs start Jan 1901); end_year=2025 (newest BBS: 2026 release, 1966-2025 field seasons); invasion_year=1940 (NYC release; inv_timestep is DERIVED as invasion_year-first_year, never hardcoded). Land use/soil use the calendar-year-T state; only climate uses the bio-year window. Lagging covariates (e.g. LUH-3 ends 2024) are EMA-carried to end_year.",
     "first_year": 1902,

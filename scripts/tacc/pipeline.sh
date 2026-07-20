@@ -93,16 +93,20 @@ run () {  # run <stage-label> <command...>
     fi
 }
 
+# Individual preprocess sub-stages, each independently selectable via STAGES (e.g.
+# STAGES=ebird to re-project just eBird on a compute node). stage_preprocess chains them.
+stage_ref_grid  () { run ref_grid   python -m src.data.preprocess.build_ref_grid; }
+stage_land_mask () { run land_mask  python -m src.data.preprocess.land_mask; }
+stage_ebird     () { run ebird      python scripts/project_ebird; }
+stage_luh3      () { run luh3       python -m src.data.preprocess.luh3; }
+stage_hyde      () { run hyde       python -m src.data.preprocess.hyde; }
+stage_soilgrids () { run soilgrids  python -m src.data.preprocess.soilgrids; }
+stage_elevation () { run elevation  python -m src.data.preprocess.elevation; }
+stage_subcell   () { run subcell    python -m src.data.preprocess.subcell_centroids; }
+stage_bbs_finch () { run bbs_finch  python scripts/ingest_bbs_data.py; }
 stage_preprocess () {
-    run ref_grid   python -m src.data.preprocess.build_ref_grid
-    run land_mask  python -m src.data.preprocess.land_mask
-    run ebird      python scripts/project_ebird
-    run luh3       python -m src.data.preprocess.luh3
-    run hyde       python -m src.data.preprocess.hyde
-    run soilgrids  python -m src.data.preprocess.soilgrids
-    run elevation  python -m src.data.preprocess.elevation
-    run subcell    python -m src.data.preprocess.subcell_centroids
-    run bbs_finch  python scripts/ingest_bbs_data.py
+    stage_ref_grid; stage_land_mask; stage_ebird; stage_luh3; stage_hyde
+    stage_soilgrids; stage_elevation; stage_subcell; stage_bbs_finch
 }
 stage_climate () {
     # Centroids default from climate.mode (subgrid -> subcell_centroids.csv, auto-built

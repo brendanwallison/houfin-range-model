@@ -6,6 +6,14 @@
 # EDIT the three marked values for your account, then leave the rest.
 # ---------------------------------------------------------------------------
 
+# Throttle uv/Cargo's rayon thread pool + concurrency. The LS6 login node's per-user
+# process/memory cap makes uv's defaults trip "failed to initialize global rayon pool
+# ... Resource temporarily unavailable" during installs. Harmless elsewhere.
+export RAYON_NUM_THREADS="${RAYON_NUM_THREADS:-4}"
+export UV_CONCURRENT_DOWNLOADS="${UV_CONCURRENT_DOWNLOADS:-4}"
+export UV_CONCURRENT_BUILDS="${UV_CONCURRENT_BUILDS:-2}"
+export UV_CONCURRENT_INSTALLS="${UV_CONCURRENT_INSTALLS:-4}"
+
 # --- EDIT ME -------------------------------------------------------------
 export TACC_ALLOCATION="DEB23008"                    # sbatch -A ...
 export HOUFIN_REPO="$WORK/houfin/houfin-range-model"  # where you `git clone`d

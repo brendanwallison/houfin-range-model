@@ -82,7 +82,16 @@ def compute_optimal_latent_z_ruzicka(ebird_flat, n_species, n_weeks, latent_dim,
     K_mm_total = torch.zeros_like(numerator)
     K_mm_total[mask] = numerator[mask] / denominator[mask]
 
-    L, U = torch.linalg.eigh(K_mm_total.cpu())
+    # Eigendecompose on the GPU (cuSOLVER) when it fits -- far faster than CPU LAPACK
+    # and identical precision (K_mm is float32 either way). Fall back to CPU only if
+    # the eigenvector workspace OOMs (e.g. a small card at finer resolution / larger N);
+    # at 25 km (N ~16.5k) the matrix is ~1 GB and fits an A100 with room to spare.
+    try:
+        L, U = torch.linalg.eigh(K_mm_total)
+    except (torch.cuda.OutOfMemoryError, RuntimeError):
+        if device == "cuda":
+            torch.cuda.empty_cache()
+        L, U = torch.linalg.eigh(K_mm_total.cpu())
 
     idx_sort = torch.argsort(L, descending=True)[:latent_dim]
     L = L[idx_sort]

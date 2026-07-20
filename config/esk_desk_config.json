@@ -54,7 +54,8 @@
       "reconstruction": 0.1
     },
     "train_val_split": 0.8,
-    "z_dir": "${HOUFIN_PROCESSED}/encoder/esk/sigma_1.5"
+    "z_dir": "${HOUFIN_PROCESSED}/encoder/esk/sigma_1.5",
+    "latent_dim": 16
   },
   "latent_cube": {
     "data_dir": "${HOUFIN_DATA}",

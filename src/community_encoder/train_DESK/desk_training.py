@@ -192,6 +192,13 @@ def run_desk_experiment(config=None):
         z_flat = np.load(os.path.join(z_dir, "Z.npy"))
     except FileNotFoundError as exc:
         raise FileNotFoundError(f"ESK Z.npy/valid_mask.npy not in {z_dir}") from exc
+    # ESK saves Z at the max swept latent_dim. Optionally truncate to desk.latent_dim:
+    # kernel-PCA columns are eigenvalue-ordered, so Z[:, :k] IS the exact dim-k
+    # embedding (no ESK re-run needed). Unset -> use all columns.
+    ld = desk_cfg.get("latent_dim")
+    if ld and z_flat.shape[1] > int(ld):
+        print(f"[desk] truncating ESK Z {z_flat.shape[1]} -> {int(ld)} dims (top eigen-components)")
+        z_flat = z_flat[:, :int(ld)]
 
     cov, z, x, _ = prepare_supervised(cov_stack, ebird_stack, z_flat, z_mask, out_dir)
     mu, sd = cio.fit_norm(cov)

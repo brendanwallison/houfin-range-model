@@ -139,11 +139,6 @@ def build_spacetime_cube(config: Optional[Union[Dict[str, Any], str, os.PathLike
     z_ref_flat = np.load(z_ref_path)
     z_ref_mask = np.load(mask_ref_path)
 
-    z_dim = z_ref_flat.shape[1]
-    z_static_grid = np.full((H, W, z_dim), np.nan, dtype=np.float32)
-    z_static_grid[z_ref_mask] = z_ref_flat
-    z_static_valid = ~np.isnan(z_static_grid).any(axis=-1)
-
     # Normalization + architecture come from the trainer's desk_meta.npz — one
     # source of truth, so the cube standardizes exactly as training did.
     import json as _json
@@ -153,8 +148,17 @@ def build_spacetime_cube(config: Optional[Union[Dict[str, Any], str, os.PathLike
     stream_dims = [int(d) for d in dm["stream_dims"]]
     latent_dim = int(dm["latent_dim"])
     schema = _json.loads(str(dm["schema"]))
-    if latent_dim != z_dim:
-        raise ValueError(f"desk_meta latent_dim {latent_dim} != ESK z_dim {z_dim}")
+
+    # DESK may have trained on a truncation of the ESK Z (desk.latent_dim); the ESK
+    # reference is saved at the max swept dim. Match the model: kernel-PCA columns are
+    # eigenvalue-ordered, so Z[:, :latent_dim] is the exact top-latent_dim embedding.
+    if z_ref_flat.shape[1] < latent_dim:
+        raise ValueError(f"ESK z_ref has {z_ref_flat.shape[1]} dims < desk_meta latent_dim {latent_dim}")
+    z_ref_flat = z_ref_flat[:, :latent_dim]
+    z_dim = latent_dim
+    z_static_grid = np.full((H, W, z_dim), np.nan, dtype=np.float32)
+    z_static_grid[z_ref_mask] = z_ref_flat
+    z_static_valid = ~np.isnan(z_static_grid).any(axis=-1)
 
     print(f"Loading N-stream model ({stream_dims}) from {model_path}...")
     model = MultiStreamAutoencoder(stream_dims, latent_dim).to(device)

@@ -152,13 +152,22 @@ def quantile_aggregate(points, id_parent, quantiles=(0.10, 0.50, 0.90), levels=L
     PERIOD, <vars>)}`` where each level is the corresponding within-cell quantile —
     the same schema the centroid path emits, so downstream is unchanged.
     """
+    import warnings
+    from pandas.errors import PerformanceWarning
     df = points.merge(id_parent, on="id", how="inner")
     varcols = [c for c in points.columns if c not in ("id", "PERIOD", "DATASET", "parent_id")]
     grouped = df.groupby(["parent_id", "PERIOD"])[varcols]
+    # All quantiles in ONE pass (not one groupby.quantile per level). climr emits ~200
+    # columns, so pandas builds the quantile frame column-by-column and warns "DataFrame
+    # is highly fragmented" (a PerformanceWarning -- harmless, internal); suppress it, and
+    # the per-level .copy() hands back a de-fragmented frame.
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", PerformanceWarning)
+        allq = grouped.quantile(list(quantiles))       # rows: (parent_id, PERIOD, quantile)
     out = {}
     for q, lvl in zip(quantiles, levels):
-        qd = grouped.quantile(q).reset_index().rename(columns={"parent_id": "id"})
-        out[lvl] = qd
+        out[lvl] = (allq.xs(q, level=-1).reset_index()
+                    .rename(columns={"parent_id": "id"}).copy())
     return out
 
 

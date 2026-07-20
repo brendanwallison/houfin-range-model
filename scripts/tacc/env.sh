@@ -13,6 +13,11 @@ export RAYON_NUM_THREADS="${RAYON_NUM_THREADS:-4}"
 export UV_CONCURRENT_DOWNLOADS="${UV_CONCURRENT_DOWNLOADS:-4}"
 export UV_CONCURRENT_BUILDS="${UV_CONCURRENT_BUILDS:-2}"
 export UV_CONCURRENT_INSTALLS="${UV_CONCURRENT_INSTALLS:-4}"
+# uv's cache defaults to $HOME/.cache (10 GB quota -> "Disk quota exceeded" on a
+# multi-GB CUDA torch install) and, being on a different FS than the $WORK venv,
+# forces slow full-copy installs. Put it on $WORK: big quota + same FS as the venv
+# (hardlinks work).
+export UV_CACHE_DIR="${UV_CACHE_DIR:-$WORK/houfin/uv_cache}"
 
 # --- EDIT ME -------------------------------------------------------------
 export TACC_ALLOCATION="DEB23008"                    # sbatch -A ...
@@ -41,7 +46,7 @@ export HOUFIN_PROCESSED="$WORK/houfin/processed"
 export HOUFIN_CLIMR_CACHE="$WORK/houfin/climr_cache"
 export R_USER_CACHE_DIR="$HOUFIN_CLIMR_CACHE"
 
-mkdir -p "$HOUFIN_DATA" "$HOUFIN_PROCESSED" "$HOUFIN_CLIMR_CACHE"
+mkdir -p "$HOUFIN_DATA" "$HOUFIN_PROCESSED" "$HOUFIN_CLIMR_CACHE" "$UV_CACHE_DIR"
 
 # R interpreter for the climr climate step. TACC's Rstats/4.0.3 is too old for
 # climr's CRAN dep tree (dplyr/tidyr/ggplot2/... need R >= 4.1) and climr is

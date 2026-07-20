@@ -218,6 +218,10 @@ def build_amplitude_points(config=None):
                    "n_recent": int(rec_r.size), "n_hist": int(n_hist),
                    "species": meta["species"], "recent_year": recent_year,
                    "matched_species": [c for _, c in matched]}, fh, indent=2)
+    # Smoothed effort field (species-independent support = Σ K·coverage per year·cell):
+    # the diagnostic for "where does BBS actually back the estimate" (validate viz).
+    np.savez_compressed(os.path.join(out_dir, "support_field.npz"),
+                        support=support.astype("float32"), years=years)
     print(f"[spacetime] X {X.shape}: {rec_r.size} recent + {n_hist} historical points "
           f"({len(matched)} BBS-modulated species) -> {out_dir}")
     return out_dir

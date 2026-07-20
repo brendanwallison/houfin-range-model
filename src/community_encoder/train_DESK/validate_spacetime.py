@@ -92,23 +92,29 @@ def ruzicka_rect(A, B):
     return np.where((denom + L1) > 0, (denom - L1) / (denom + L1), 1.0)
 
 
-def temporal_turnover_agreement(Z, X, pidx, recent_year):
-    """Per-site community turnover (earliest historical year → recent), pred vs obs.
+def temporal_turnover_agreement(Z, X, pidx, recent_year, early_year=1995, window=5):
+    """Per-site community turnover over a FIXED window (``early_year`` → recent), pred vs obs.
 
     turnover = 1 − self-similarity over time (``⟨z(s,t0),z(s,rec)⟩`` for pred,
     ``Ruzicka(x(s,t0),x(s,rec))`` for obs) — basis-invariant. Spearman of the two
     per-site turnover fields answers "do the models agree on WHERE communities changed
     most" (magnitude, direction-agnostic). Returns the fields + rho.
+
+    Each site is anchored to its historical point nearest ``early_year`` (within
+    ``±window`` yr), matched to its recent point — a COMMON window across sites, so
+    turnover magnitudes are comparable (per-cell *earliest* would confound magnitude
+    with window length, and tie coverage to the sparse early-BBS footprint).
     """
     rows, cols, yrs = pidx[:, 0], pidx[:, 1], pidx[:, 2]
     rec = yrs == recent_year
     rec_ix = {(int(r), int(c)): int(i) for r, c, i in
               zip(rows[rec], cols[rec], np.where(rec)[0])}
-    best = {}                                    # (r,c) -> (earliest_year, idx)
+    best = {}                                    # (r,c) -> (|year-early|, idx): nearest to early_year
     for i in np.where(~rec)[0]:
         key = (int(rows[i]), int(cols[i]))
-        if key in rec_ix and (key not in best or yrs[i] < best[key][0]):
-            best[key] = (int(yrs[i]), int(i))
+        dy = abs(int(yrs[i]) - int(early_year))
+        if dy <= window and key in rec_ix and (key not in best or dy < best[key][0]):
+            best[key] = (dy, int(i))
     keys = list(best)
     if len(keys) < 4:
         return {"n_sites": len(keys), "note": "too few paired sites"}
@@ -259,7 +265,9 @@ def run_validate(config=None, n_pairs=20000, cka_sample=800, seed=0):
     from src.config_utils import load_data_config
     ref_raster = load_data_config()["grid"]["ref_raster"]
     xy = cell_xy(pidx[:, 0], pidx[:, 1], ref_raster)
-    turn = temporal_turnover_agreement(Z, X, pidx, recent_year)
+    turn = temporal_turnover_agreement(Z, X, pidx, recent_year,
+                                       early_year=int(bc.get("turnover_early_year", 1995)),
+                                       window=int(bc.get("turnover_window", 5)))
     analog = analog_displacement(Z, X, pidx, xy, recent_year, rng)
     report["temporal_turnover"] = {k: v for k, v in turn.items()
                                    if k in ("n_sites", "spearman_turnover", "note")}

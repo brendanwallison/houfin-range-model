@@ -55,25 +55,64 @@ def _turnover_maps(z, ref_raster, out_dir, cmap):
     print(f"[viz] turnover maps -> {p}")
 
 
-def _analog_arrows(z, out_dir, max_arrows, seed=0):
+def _analog_arrows(z, out_dir, nbins=18, min_per_bin=3):
+    """Binned mean-displacement field (one arrow per coarse bin) — legible where a raw
+    per-point quiver is not. DESK (blue) vs BBS (red) mean analog direction per bin."""
     xy, dp, do = z["xy_hist"], z["d_pred"], z["d_obs"]
     if xy.shape[0] == 0:
         print("[viz] no analog data; skipping arrows")
         return
-    rng = np.random.default_rng(seed)
-    idx = rng.choice(xy.shape[0], min(max_arrows, xy.shape[0]), replace=False)
+    xmin, xmax = xy[:, 0].min(), xy[:, 0].max()
+    ymin, ymax = xy[:, 1].min(), xy[:, 1].max()
+    bx = np.clip(((xy[:, 0] - xmin) / (xmax - xmin + 1e-9) * nbins).astype(int), 0, nbins - 1)
+    by = np.clip(((xy[:, 1] - ymin) / (ymax - ymin + 1e-9) * nbins).astype(int), 0, nbins - 1)
+    cx, cy, up, vp, uo, vo = [], [], [], [], [], []
+    for ix in range(nbins):
+        for iy in range(nbins):
+            m = (bx == ix) & (by == iy)
+            if m.sum() < min_per_bin:
+                continue
+            cx.append(xmin + (ix + 0.5) / nbins * (xmax - xmin))
+            cy.append(ymin + (iy + 0.5) / nbins * (ymax - ymin))
+            up.append(dp[m, 0].mean()); vp.append(dp[m, 1].mean())
+            uo.append(do[m, 0].mean()); vo.append(do[m, 1].mean())
+    if not cx:
+        print("[viz] no bins meet min_per_bin; skipping arrows")
+        return
     fig, ax = plt.subplots(figsize=(9, 9))
-    ax.quiver(xy[idx, 0], xy[idx, 1], dp[idx, 0], dp[idx, 1], color="tab:blue",
-              angles="xy", scale_units="xy", scale=1, width=0.003, alpha=0.7, label="DESK")
-    ax.quiver(xy[idx, 0], xy[idx, 1], do[idx, 0], do[idx, 1], color="tab:red",
-              angles="xy", scale_units="xy", scale=1, width=0.003, alpha=0.7, label="BBS")
+    ax.quiver(cx, cy, up, vp, color="tab:blue", angles="xy", scale_units="xy", scale=1,
+              width=0.004, label="DESK (bin mean)")
+    ax.quiver(cx, cy, uo, vo, color="tab:red", angles="xy", scale_units="xy", scale=1,
+              width=0.004, label="BBS (bin mean)")
     ax.set_aspect("equal"); ax.legend(loc="upper right")
-    ax.set_title("Analog displacement: which present-day community a past site resembles\n"
-                 "(Albers x=E–W, y=N–S; up = north)")
+    ax.set_title("Analog displacement (binned mean): which present-day community a past\n"
+                 "site resembles — DESK vs BBS. Albers x=E–W, y=N–S; up = north.")
     ax.set_xlabel("easting (m)"); ax.set_ylabel("northing (m)")
     fig.tight_layout()
     p = os.path.join(out_dir, "analog_arrows.png"); fig.savefig(p, dpi=110); plt.close(fig)
-    print(f"[viz] analog arrows -> {p}")
+    print(f"[viz] analog arrows ({len(cx)} bins) -> {p}")
+
+
+def _support_maps(support_npz, out_dir, cmap):
+    """BBS smoothed-effort (support) maps — early / mid / recent year + max-over-years.
+    Shows where BBS actually backs the estimate (answers 'is the blank real?')."""
+    if not os.path.exists(support_npz):
+        print(f"[viz] no support field at {support_npz}; skipping support maps")
+        return
+    s = np.load(support_npz)
+    sup, years = s["support"], s["years"]
+    T = sup.shape[0]
+    idx = sorted({0, T // 2, T - 1})
+    vmax = float(np.nanpercentile(sup, 99)) or 1.0
+    fig, ax = plt.subplots(1, len(idx) + 1, figsize=(5 * (len(idx) + 1), 5))
+    for a, i in zip(ax, idx):
+        im = a.imshow(sup[i], cmap=cmap, vmin=0, vmax=vmax)
+        a.set_title(f"support {int(years[i])}"); a.axis("off"); fig.colorbar(im, ax=a, fraction=0.046)
+    im = ax[-1].imshow(sup.max(0), cmap=cmap, vmin=0, vmax=vmax)
+    ax[-1].set_title("support max over years"); ax[-1].axis("off"); fig.colorbar(im, ax=ax[-1], fraction=0.046)
+    fig.tight_layout()
+    p = os.path.join(out_dir, "support_maps.png"); fig.savefig(p, dpi=110); plt.close(fig)
+    print(f"[viz] support maps -> {p}")
 
 
 def main():
@@ -81,7 +120,7 @@ def main():
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--npz", default=None, help="validate_spacetime.npz (default: desk_output_dir)")
     ap.add_argument("--out", default=None, help="output dir (default: desk_output_dir/validate_viz)")
-    ap.add_argument("--max-arrows", type=int, default=250)
+    ap.add_argument("--nbins", type=int, default=18, help="analog arrow grid bins per axis")
     ap.add_argument("--cmap", default="magma")
     args = ap.parse_args()
 
@@ -94,7 +133,10 @@ def main():
     os.makedirs(out_dir, exist_ok=True)
 
     _turnover_maps(z, ref_raster, out_dir, args.cmap)
-    _analog_arrows(z, out_dir, args.max_arrows)
+    _analog_arrows(z, out_dir, nbins=args.nbins)
+    # support field lives with the amplitude point set (bbs.z_dir)
+    support_npz = os.path.join(cfg["bbs"]["z_dir"], "support_field.npz")
+    _support_maps(support_npz, out_dir, args.cmap)
     print(f"[viz] done -> {out_dir} (scp the PNGs)")
 
 

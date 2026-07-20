@@ -39,6 +39,8 @@
     "anomaly_ref_years": [2014, 2023],
     "support_floor": 0.25,
     "point_year_stride": 5,
+    "turnover_early_year": 1995,
+    "turnover_window": 5,
     "w_hist": 1.0,
     "z_dir": "${HOUFIN_PROCESSED}/encoder/esk_spacetime",
     "latent_dim": 32,

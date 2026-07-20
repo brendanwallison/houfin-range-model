@@ -27,9 +27,10 @@ cd "$REPO"
 # resolve; run_encoder.py also sets this, but export it for the -m data stages too.
 export PYTHONPATH="$REPO:$REPO/src:${PYTHONPATH:-}"
 export HOUFIN_PREPROCESS_WORKERS="${HOUFIN_PREPROCESS_WORKERS:-48}"
-# climr is parallelized WITHIN one process via nthread (its DuckDB serializes across
-# processes). HOUFIN_CLIMATE_WORKERS = R processes (default 1), HOUFIN_CLIMATE_THREADS
-# = climr threads/process (default node cpus / workers). Pass through if the caller set them.
+# Climate runs one R process PER GEOGRAPHIC TILE via a process pool (offline, reading
+# the warm cache). HOUFIN_CLIMATE_WORKERS = concurrent tile processes (climatena.py
+# default 4; 02_climate.slurm sets 16, cap ~96 to fill a node -- raise it, don't keep
+# it at 1); HOUFIN_CLIMATE_THREADS = climr threads/process (default node cpus/workers).
 export HOUFIN_CLIMATE_WORKERS="${HOUFIN_CLIMATE_WORKERS:-}"
 export HOUFIN_CLIMATE_THREADS="${HOUFIN_CLIMATE_THREADS:-}"
 
@@ -73,6 +74,7 @@ stage_preprocess () {
     run hyde       python -m src.data.preprocess.hyde
     run soilgrids  python -m src.data.preprocess.soilgrids
     run elevation  python -m src.data.preprocess.elevation
+    run subcell    python -m src.data.preprocess.subcell_centroids
     run bbs_finch  python scripts/ingest_bbs_data.py
 }
 stage_climate () {
@@ -85,6 +87,10 @@ stage_states       () { run states       python -m src.data.combine.build_states
                             ${HOUFIN_STATES_WORKERS:+--write-workers "$HOUFIN_STATES_WORKERS"}; }
 stage_ebird_cache  () { run ebird_cache  python scripts/run_encoder.py ebird-cache; }
 stage_bbs () {
+    # bbs_crosswalk writes a standalone AOU<->eBird crosswalk CSV + match diagnostics;
+    # bbs_community is self-sufficient (recomputes the crosswalk in-process) and writes
+    # the gridded community_matrix the amplitude cube consumes. The crosswalk stage is
+    # kept for its printed match report; its CSV is diagnostic (not read downstream).
     run bbs_crosswalk python -m src.data.identify.bbs_crosswalk \
         --bbs-species "$DATA/bbs_2026_release/SpeciesList.csv"
     run bbs_community python -m src.data.preprocess.bbs_community

@@ -43,11 +43,13 @@ if [ ! -f "$NE_DIR/ne_10m_land.shp" ]; then
     ( cd "$NE_DIR" && unzip -o ne_10m_land.zip )
 fi
 
-echo "== Warm the climr reference cache (online; needed for the offline batch step) =="
-# Uses $HOUFIN_RSCRIPT (set in env.sh: the micromamba conda-forge env if present,
-# else PATH Rscript). A tiny climr run downloads + caches the reference surfaces. If
-# climr isn't installed yet, see docs/TACC.md (install it into the userspace R first).
+echo "== climr CONNECTIVITY CHECK (one point; NOT the study-region warm) =="
+# This only verifies climr is installed and its server is reachable from the login
+# node. It does NOT warm the study-region cache -- that is a separate step,
+# scripts/tacc/warm_climr.sh, run AFTER preprocessing (it needs the sub-cell
+# centroids). See docs/TACC.md. Uses $HOUFIN_RSCRIPT (set in env.sh).
 echo "using Rscript: $HOUFIN_RSCRIPT"
-"$HOUFIN_RSCRIPT" -e 'if (requireNamespace("climr", quietly=TRUE)) { library(climr); climr::downscale(data.frame(id=1, lon=-98, lat=39, elev=300), obs_years=2020) ; cat("climr cache warmed\n") } else cat("climr not installed yet\n")' || true
+"$HOUFIN_RSCRIPT" -e 'if (requireNamespace("climr", quietly=TRUE)) { library(climr); climr::downscale(data.frame(id=1, lon=-98, lat=39, elev=300), obs_years=2020) ; cat("climr reachable\n") } else cat("climr not installed yet\n")' || true
 
 echo "== downloads complete -> $HOUFIN_DATA =="
+echo "== NEXT: preprocess (submit_preprocess.sh) -> warm cache (warm_climr.sh, login) -> climate + assemble =="

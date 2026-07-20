@@ -6,8 +6,8 @@ model-ready observation records + core/margin initialization). Equivalent:
 ``python -m src.data.preprocess.bbs``.
 
 Note: this is the *preprocess* step and assumes the raw BBS 2026 release CSVs
-already sit under ``{datasets_root}/bbs_2026_release``. A programmatic BBS
-*acquire* step (USGS ScienceBase download) is still a roadmap item.
+already sit under ``{datasets_root}/bbs_2026_release`` -- fetched by the *acquire*
+step ``scripts/download_bbs.py`` (wired into ``download_all.sh``).
 """
 import os
 import sys

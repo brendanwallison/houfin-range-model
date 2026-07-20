@@ -1,7 +1,9 @@
 #!/bin/bash
 # Submit ONLY the climate job (02_climate.slurm), standalone (no afterok on a
 # preprocess job) -- assumes preprocess outputs already exist on disk, in
-# particular $HOUFIN_DATA/elevation/cell_centroids.csv and a warmed climr cache.
+# particular the elevation centroids ($HOUFIN_DATA/elevation/subcell_centroids.csv in
+# the default subgrid mode, else cell_centroids.csv) and a warmed climr cache
+# (scripts/tacc/warm_climr.sh, run on a login node after preprocessing).
 # Defaults to the 2-hour `development` queue for a fast smoke test; override
 # QUEUE/TIME for the full run. CLI -p/-t override the script's #SBATCH.
 #     bash scripts/tacc/submit_climate.sh                          # development, 2h

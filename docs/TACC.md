@@ -1,8 +1,9 @@
 # Running the data-processing pipeline on TACC Lonestar6
 
-This covers the **data-processing milestone**: download every source and build all
-25 km products (including `climr` climate), saving intermediates for later
-DESK-training / model-fit milestones. Those later (GPU) stages are **deferred**.
+This runs the pipeline end-to-end: download every source, build all 25 km products
+(including `climr` climate), assemble the encoder inputs, and train the DESK
+community encoder through the `validate` step. The GPU encoder is a separate job
+(§3c).
 
 The repo is portable: all config paths are `${HOUFIN_DATA}` / `${HOUFIN_PROCESSED}`
 references that expand from the environment (`src/config_utils.py`). You set two
@@ -12,6 +13,28 @@ Key Lonestar6 facts: login nodes have internet, **compute nodes do not**;
 `$SCRATCH` is large but **purged after 10 days**; `$WORK` (1 TB) persists. So:
 **downloads run on a login node; preprocessing runs as SLURM jobs; confirmed
 products get promoted `$SCRATCH` → `$WORK`.**
+
+### End-to-end order (what runs where)
+
+`climr` needs internet, so the one subtlety is that a **login-node cache warm sits
+between preprocessing and the climate stage** (the warm reads the sub-cell centroids
+that preprocessing builds; the offline climate stage then reads the warmed cache).
+Every submit wrapper injects the `-A` allocation, so use them (a bare `sbatch` fails
+on multi-project accounts).
+
+| # | Step | Where | Command |
+|---|------|-------|---------|
+| 1 | one-time setup | login | §1 |
+| 2 | download raw data | login | `bash scripts/tacc/download_all.sh` |
+| 3 | preprocess → 25 km grids (+ sub-cell centroids) | compute | `bash scripts/tacc/submit_preprocess.sh` |
+| 4 | **warm the climr cache** | **login** | `bash scripts/tacc/warm_climr.sh` |
+| 5 | climate downscale + grids | compute | `bash scripts/tacc/submit_climate.sh` |
+| 6 | assemble encoder inputs (states, eBird cache, BBS, amplitude) | compute | `bash scripts/tacc/submit_states.sh` |
+| 7 | GPU encoder (ESK → DESK → cube → validate) | GPU | `bash scripts/tacc/submit_encoder.sh` |
+| 8 | visual-QC quicklooks | compute | `bash scripts/tacc/submit_visualize.sh` |
+
+Steps 3+5+6 can instead be **one** dev-queue job on a warm cache (`00_preprocess_all`,
+§3b). The only hard ordering is 2 → 3 → 4 → 5.
 
 ## 1. One-time setup (login node)
 
@@ -84,7 +107,7 @@ source scripts/tacc/env.sh
 ```
 
 > **R / climr wiring.** Both the batch climate step (`02_climate.slurm`) and the
-> login-node cache-warm (in `download_all.sh`) read `$HOUFIN_RSCRIPT`, set in
+> login-node cache-warm (`scripts/tacc/warm_climr.sh`) read `$HOUFIN_RSCRIPT`, set in
 > `scripts/tacc/env.sh`. That var auto-detects the micromamba env at
 > `$WORK/houfin/renv/bin/Rscript` and otherwise falls back to PATH `Rscript`; to use
 > a different R, `export HOUFIN_RSCRIPT=/path/to/Rscript` before sourcing env.sh.
@@ -116,57 +139,105 @@ tail -f download.log
 ```
 
 Fetches eBird, BBS (+Mexico), LUH-3 (~8 GB), HYDE, SoilGrids, DEM (ETOPO ~0.5 GB),
-Natural Earth land, and **warms the `climr` reference cache** (the batch node can't,
-having no internet). All idempotent — safe to re-run. Lands under `$HOUFIN_DATA`.
+and Natural Earth land. It ends with a one-point **climr connectivity check** (is
+climr installed + its server reachable?) — **not** the study-region cache warm,
+which is a separate login-node step *after* preprocessing (§3a, `warm_climr.sh`),
+because it needs the sub-cell centroids preprocessing builds. All idempotent — safe
+to re-run. Lands under `$HOUFIN_DATA`.
 
-## 3. Preprocess to 25 km (SLURM)
+## 3. Preprocess to 25 km grids (SLURM, compute)
 
 ```bash
-bash scripts/tacc/submit.sh      # submits 01_preprocess, then 02_climate (afterok)
+bash scripts/tacc/submit_preprocess.sh     # 01_preprocess (dev, 2h); injects -A
 squeue -u $USER
 ```
 
-- `01_preprocess.slurm` (CPU, RAM-light): ref grid → land mask → eBird → LUH-3 →
-  HYDE → SoilGrids → elevation → BBS ingest, validating each stage.
-- `02_climate.slurm`: `climr` downscaling (loads R; reads the warmed cache). The
-  heavy/uncertain stage — see the R notes above; if it needs splitting, run it on
-  a login node or chain shorter jobs. **The downscaler must name an observed
-  dataset (`obs_ts_dataset=cru.gpcc`) or climr returns only the 1961–1990
-  reference normal, not the annual series** — so the real per-year run is far
-  heavier than a normals-only run and belongs on `normal` (12h), not dev. Warm the
-  **cru.gpcc** obs surfaces into the climr cache on a login node first (a small
-  centroid subset, full year range) since compute nodes have no internet; then
-  delete any stale `$HOUFIN_DATA/climate` (incl. `_chunks`) before regenerating.
+`01_preprocess.slurm` (CPU, RAM-light): ref grid → land mask → eBird → LUH-3 →
+HYDE → SoilGrids → elevation → **sub-cell centroids** → BBS ingest, validating each
+stage (JSON manifest per product in `$HOUFIN_PROCESSED/validation/<stage>.json`).
+The sub-cell centroids (`elevation/subcell_centroids.csv`, ocean-masked) are what
+the climr warm and the climate stage tile over, so they must exist before either.
+
+> The old `submit.sh` chains `01_preprocess` → `02_climate` via `afterok`. That is
+> only valid on an **already-warm** cache — on a cold cache the login-node warm
+> (§3a) must run between them, so use the explicit `submit_preprocess.sh` →
+> `warm_climr.sh` → `submit_climate.sh` order instead.
+
+## 3a. Warm the climr cache (login node — the one online step after preprocessing)
+
+```bash
+source scripts/tacc/env.sh
+bash scripts/tacc/warm_climr.sh            # python scripts/climate_climr.py --warm-cache
+```
+
+Compute nodes have no internet, so the offline climate stage can only read an
+already-warmed cache. `warm_climr.sh` warms the **whole study region**, one R
+process **per geographic tile** (`climate.tiles`² tiles; default 8 → up to 64) — a
+fresh process per tile because a single long-lived R process leaks GDAL threads
+until the login node's `ulimit -u` (~300) kills it. Per tile it caches the reference
+map by a **verbatim file copy + a header-only band rename** (`terra::update`, not
+`pre_cache()`/`writeRaster`, which the login cgroup can't afford) and records the
+**requested** bbox (not the clip's data extent) so the offline read hits at every
+tile — including coastal/edge tiles where the refmap is partly nodata. It downloads
+the **cru.gpcc** observed surfaces for the full year range and is **resumable**
+(re-running fetches only missing tiles).
+
 - **`db_option=local` is mandatory offline.** climr's default `db_option="auto"`
   runs the observed time-series on its **remote database server** (→ `Database
-  connection issue` on an internet-less compute node). We set `climate.db_option:
-  "local"` so climr downloads + caches the anomaly rasters and downscales *locally*.
-  The login-node warm-up must therefore run in the same `local` mode (it does, via
-  this config) so it populates the local raster cache the compute node reads.
-- **Climate `mode` (`data_config.json:climate.mode`).** Default **`subgrid`**: a
-  `grid`×`grid` mesh (default 5×5 = 25) of true-elevation sub-points per cell,
-  downscaled and reduced to per-cell *spatial* q10/q50/q90 — capturing horizontal
-  gradients (coast, rain shadow), not just elevation. It auto-builds
-  `subcell_centroids.csv` from the DEM. Costs ~grid²/3 × the `elev_quantile`
-  fallback (centroid at 3 elevation quantiles), so 5×5 is heavier — lean on `normal`
-  or resubmit dev (chunks resume). Lower `climate.subgrid.grid` (e.g. 3) for a dev
-  fit, or set `climate.mode: "elev_quantile"` for the cheap path. **Switching mode
-  requires clearing `$HOUFIN_DATA/climate`** (stale chunks mismatch).
-- **Climate parallelism = threads, not processes.** climr's DuckDB backend
-  serializes across processes (many single-threaded R procs just fight over one DB
-  lock — CPU sits idle in `S` state), so we parallelize *within* one process via
-  climr's `nthread`. Defaults: `HOUFIN_CLIMATE_WORKERS`=1 process,
-  `HOUFIN_CLIMATE_THREADS`=node cpus (fills the node with threads, one DB handle).
-  Raise `WORKERS` only if one process runs low on memory (threads then split as
-  `cpus/workers`). Do **not** set `WORKERS` high — that reproduces the lock contention.
+  connection issue` on an internet-less compute node). Config sets
+  `climate.db_option: "local"` so climr downloads+caches locally; the warm uses the
+  same mode + the **same centroids and `climate.tiles` tiling** as the compute
+  stage, so the cached tile bboxes match what compute requests.
 
-Each stage writes a JSON manifest to `$HOUFIN_PROCESSED/validation/<stage>.json`.
+## 3b. Climate downscale + grids (SLURM, compute)
 
-## 3b. All preprocessing in one CPU job
+```bash
+bash scripts/tacc/submit_climate.sh                              # dev, offline
+# full range on the normal queue if needed:
+QUEUE=normal TIME=12:00:00 bash scripts/tacc/submit_climate.sh
+```
 
-All preprocessing (CPU, torch-free) collectively fits the 2-hour `development`
-queue. `scripts/tacc/pipeline.sh` defines the chain as selectable stages and
-`00_preprocess_all.slurm` runs it:
+`02_climate.slurm` runs the offline `climr` downscale (reads the warm cache), then
+rasterizes to per-year bio-year grids (`climate_grid`). Notes:
+
+- **Name an observed dataset.** `obs_ts_dataset=cru.gpcc` (config) — without it climr
+  returns only the 1961–1990 reference normal, not the annual series.
+- **Climate parallelism = PROCESSES per tile (raise the worker count).** Each
+  geographic tile runs offline in its own R process via a process pool (no shared-DB
+  contention now that reads come from the cache). `HOUFIN_CLIMATE_WORKERS` is the
+  number of concurrent tile processes — `climatena.py` default 4, `02_climate.slurm`
+  sets **16**, cap ~96 to fill a 128-core node. **Raise it** (`HOUFIN_CLIMATE_WORKERS=32`)
+  to use the node; the old advice to keep it at 1 no longer applies. `HOUFIN_CLIMATE_THREADS`
+  = climr threads per process (default `cpus/workers`).
+- **Climate `mode`.** Default **`subgrid`** (`data_config.json:climate.mode`): a
+  `grid`×`grid` mesh (`climate.subgrid.grid`, default 5×5) of true-elevation
+  sub-points per cell → per-cell *spatial* q10/q50/q90 (captures coast/rain-shadow
+  gradients, not just elevation). Set `climate.mode: "elev_quantile"` for the cheaper
+  centroid-at-3-elevations path. **Switching mode requires clearing
+  `$HOUFIN_DATA/climate`** (incl. `_chunks` — stale chunks mismatch).
+- `climate.tiles` (default 8) sets the geographic tiling shared by warm + process;
+  `climr_obs_min_year`/`climr_obs_max_year` (1901/2024) bound the obs range, with a
+  `first_year-1` bio-year lookback clamp.
+
+## 3c. Assemble encoder inputs (SLURM, compute)
+
+```bash
+bash scripts/tacc/submit_states.sh         # 04_states (dev); injects -A
+```
+
+`04_states.slurm` runs the CPU / torch-free pre-encoder assembly —
+`states` (per-year N-stream `state_{year}.npz` + `state_schema.json`),
+`ebird_cache` (reprojected eBird stack `E`), `bbs` (AOU↔eBird crosswalk + gridded
+`community_matrix`), and `amplitude` (the `x = E·anomaly` point cube) — so the GPU
+job is purely the encoder. `HOUFIN_STATES_WORKERS` (default 16) sets the parallel
+per-year npz compression writers; `build_states` also pre-reads rasters in parallel
+and pins native thread pools, so it uses the node cleanly.
+
+## 3d. Or: all preprocessing in one CPU job (warm-cache re-runs)
+
+On an **already-warm** climr cache, §3 + §3b + §3c collectively fit the 2-hour
+`development` queue as a single job. `scripts/tacc/pipeline.sh` defines the chain as
+selectable stages and `00_preprocess_all.slurm` runs it:
 
 ```bash
 git -C $WORK/houfin/houfin-range-model fetch && git checkout bbs-spacetime-desk
@@ -186,11 +257,12 @@ STAGES="climate_grid states ebird_cache bbs amplitude" \
   bash scripts/tacc/submit_preprocess_all.sh
 ```
 
-For `bbs_mode=off` (eBird-only, no BBS) drop `bbs amplitude`. Cold `climr` is the
-only stage that can exceed 2h — if its cache isn't warm, run it once on `normal`
-first (`QUEUE=normal TIME=06:00:00 STAGES=climate bash scripts/tacc/submit_preprocess_all.sh`),
-then the rest on dev. (The split `01_preprocess`/`02_climate` scripts remain for
-normal-queue / partial runs.)
+For `bbs_mode=off` (eBird-only, no BBS) drop `bbs amplitude`. **This one-shot
+assumes the climr cache is already warm** (§3a) — the `climate` stage is offline and
+cannot warm it. On a warm cache the whole chain (incl. climate ~minutes with a
+raised worker count) fits dev 2h. Cold start: run §3 → §3a (login warm) → then this
+one-shot with `STAGES` starting at `climate`, or just use the split
+`submit_preprocess.sh`/`submit_climate.sh`/`submit_states.sh` scripts.
 
 **Clean up before a fresh run.** The encoder was rewired from the deprecated
 2-stream PRISM/BUI states to N-stream `state_{year}.npz` + `state_schema.json`, so
@@ -204,7 +276,7 @@ rm -rf $HOUFIN_PROCESSED/encoder     # regenerated downstream
 Confirm the BBS release has `bbs_2026_release/{SpeciesList.csv,Weather.csv,
 Routes.csv,States/*.csv}` (SpeciesList.csv drives the AOU↔eBird crosswalk).
 
-## 3c. Encoder (ESK → DESK → cube → validate) — separate GPU job
+## 3e. Encoder (ESK → DESK → cube → validate) — separate GPU job
 
 The encoder is **not** preprocessing: ESK (Nyström kernel-PCA) and DESK
 (autoencoder training) use torch and are the heavy stages, so they run on a GPU
@@ -227,6 +299,27 @@ works but slower — `cube`/`validate` are light). The repo's `gpu` extra pins
 `jax[cuda12]` for the population model, *not* torch, so confirm torch is in the
 venv first (`20_encoder.slurm` checks and aborts if not). `enrich` mode (folding
 BBS into training) is not yet wired — decide based on the `validate` report.
+
+## 3f. Visual-QC quicklooks (SLURM, compute)
+
+Render the 25 km products to thumbnail PNGs and tar them for `scp` — a fast visual
+sanity check at any point after the grids/states exist:
+
+```bash
+bash scripts/tacc/submit_visualize.sh --years-per-var 3 --workers 48   # rasters incl climate_grid
+bash scripts/tacc/submit_visualize.sh --states --workers 48            # per-year encoder state grids
+```
+
+`03_visualize.slurm` (development queue) runs `quicklook_grids.py`, which stratifies
+by variable and renders a few evenly-spaced years each (a legible variable × year
+set, not thousands). Output: `$HOUFIN_PROCESSED/quicklooks.tgz`. `--states` renders
+the assembled `state_{year}.npz` channels (the actual encoder inputs); `--climate`
+additionally re-grids the raw per-centroid CSVs (redundant with the `climate_grid`
+tifs the raster path already shows). Pull it back:
+
+```bash
+scp <user>@ls6.tacc.utexas.edu:'$WORK/houfin/processed/quicklooks.tgz' .
+```
 
 ## 4. Validate + retrieve for analysis
 
@@ -259,8 +352,12 @@ hyde35_grid,soilgrids_grid,elevation,climate,bbs_2026_release/bbs_data_for_pytho
 
 Raw downloads can stay on `$SCRATCH` (re-downloadable) or be archived to `$WORK`/Ranch.
 
-## Deferred (later milestones)
-DESK training, Z-cube, path features, and the model fit (GPU: `gpu-a100` /
-`gpu-h100`; install with `uv pip install -e ".[model,gpu]"` — the `gpu` extra is
-pinned to `jax[cuda12]` for these nodes). Wiring `streams.run_states` and the
-`climr`-CSV → gridded-climate step + climate streamer also belong to that phase.
+## Deferred (later milestone)
+The **population-model fit** — the NumPyro negative-binomial range model that
+consumes the per-year Z cube (`Z_latent_{year}.npy`) plus the route-level BBS counts
+(`bbs_data_for_python.npz`) — is the remaining downstream stage (GPU: `gpu-a100` /
+`gpu-h100`; install with `uv pip install -e ".[model,gpu]"` — the `gpu` extra pins
+`jax[cuda12]`). The encoder half (states/`run_states`, the `climr`→gridded-climate
+step, ESK/DESK, cube, and `validate`) is now wired and covered above; `enrich` mode
+(folding BBS into DESK training) is the one encoder path still to wire, gated on the
+`validate` report.

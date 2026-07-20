@@ -197,7 +197,11 @@ def build_amplitude_points(config=None):
     for k in range(n_hist):
         X_hist[k] = apply_amplitude(E_flat[hist_lin[k]], anomaly_pts[k], n_weeks)
 
-    X = np.concatenate([X_recent, X_hist], axis=0).astype("float32")
+    # Zero-fill eBird NaN, exactly as ESK (esk_kernel: np.nan_to_num) and DESK's x_raw
+    # do -- NaN = no eBird data for that species-week => 0 abundance. Without this the
+    # recent anchors (raw E) carry NaN, which breaks Ruzicka on the recent/present
+    # points (NaN recent_control, and contaminated turnover/analog metrics).
+    X = np.nan_to_num(np.concatenate([X_recent, X_hist], axis=0)).astype("float32")
     pidx = np.concatenate([
         np.stack([rec_r, rec_c, np.full(rec_r.size, recent_year)], axis=1),
         np.stack([hr, hc, years[ht]], axis=1),

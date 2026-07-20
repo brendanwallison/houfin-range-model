@@ -110,7 +110,8 @@
       },
       "bbs_mexico": {
         "item": "5f32af1082cee144fb313837",
-        "whole_item": true
+        "_comment": "Per-file (NOT whole_item): the ?allowAll=true bundle ships a 0-byte SpeciesData.csv, but the individual file is the real 1.6 MB. Pin the three the ingest needs.",
+        "files": ["SpeciesData.csv", "RouteData.csv", "RouteDetails.csv"]
       }
     },
     "out_subdirs": {

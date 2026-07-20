@@ -75,3 +75,17 @@ def apply_norm(cov, mu, sd):
 def split_streams(x, schema):
     """Split a ``(..., C)`` array/tensor into per-stream ``(..., dim)`` pieces."""
     return [x[..., int(s["start"]):int(s["end"])] for s in schema["streams"]]
+
+
+def norm_grid(cov_stack, mu, sd):
+    """Standardize a ``(H, W, C)`` covariate grid on its finite cells.
+
+    Grid-native forward (spatial conv) needs the *whole* grid, not a gather of
+    valid pixels, so invalid (any-NaN) cells are zero-filled -- 0 == the post-norm
+    channel mean, a neutral value the masked conv also excludes. Returns
+    ``(covn (H,W,C) float32, mask (H,W) bool)`` where ``mask`` marks finite cells.
+    """
+    mask = ~np.isnan(cov_stack).any(axis=-1)
+    covn = np.zeros(cov_stack.shape, dtype="float32")
+    covn[mask] = apply_norm(cov_stack[mask].astype("float32"), mu, sd)
+    return covn, mask

@@ -12,7 +12,7 @@
     "streams": [
       {"name": "climate",   "type": "per_variable", "grid_dir": "${HOUFIN_DATA}/climate_grid",   "ema_tau": 10},
       {"name": "landuse",   "type": "per_variable", "grid_dir": "${HOUFIN_DATA}/luh3_grid",       "ema_tau": 10},
-      {"name": "hyde",      "type": "per_variable", "grid_dir": "${HOUFIN_DATA}/hyde35_grid",     "ema_tau": 10},
+      {"name": "hyde",      "type": "per_variable", "grid_dir": "${HOUFIN_DATA}/hyde35_grid",     "ema_tau": 10, "transform": {"type": "log1p"}},
       {"name": "soil",      "type": "static",       "grid_dir": "${HOUFIN_DATA}/soilgrids_grid"},
       {"name": "elevation", "type": "static",       "grid_dir": "${HOUFIN_DATA}/elevation", "suffix": ".tif"}
     ]
@@ -57,6 +57,9 @@
       "reconstruction": 0.1
     },
     "train_val_split": 0.8,
+    "batch_years": 8,
+    "_spatial_conv_comment": "Tight residual masked (partial) conv on the latent grid: injects neighbourhood context a point-wise encoder cannot learn. gamma inits 0 so training starts as the exact point-wise, ESK-aligned model. kernel=3 => 3x3 (one 25km ring).",
+    "spatial_conv": {"enabled": true, "kernel": 3},
     "z_dir": "${HOUFIN_PROCESSED}/encoder/esk/sigma_1.0",
     "latent_dim": 16
   },

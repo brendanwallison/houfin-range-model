@@ -147,6 +147,7 @@ def build_spacetime_cube(config: Optional[Union[Dict[str, Any], str, os.PathLike
     mu, sd = dm["mu"].astype(np.float32), dm["sd"].astype(np.float32)
     stream_dims = [int(d) for d in dm["stream_dims"]]
     latent_dim = int(dm["latent_dim"])
+    spatial_kernel = int(dm["spatial_kernel"]) if "spatial_kernel" in dm else 0
     schema = _json.loads(str(dm["schema"]))
 
     # DESK may have trained on a truncation of the ESK Z (desk.latent_dim); the ESK
@@ -160,8 +161,8 @@ def build_spacetime_cube(config: Optional[Union[Dict[str, Any], str, os.PathLike
     z_static_grid[z_ref_mask] = z_ref_flat
     z_static_valid = ~np.isnan(z_static_grid).any(axis=-1)
 
-    print(f"Loading N-stream model ({stream_dims}) from {model_path}...")
-    model = MultiStreamAutoencoder(stream_dims, latent_dim).to(device)
+    print(f"Loading N-stream model ({stream_dims}, spatial_kernel={spatial_kernel}) from {model_path}...")
+    model = MultiStreamAutoencoder(stream_dims, latent_dim, spatial_kernel).to(device)
     model.load_state_dict(torch.load(model_path, map_location=device))
     model.eval()
 
@@ -173,15 +174,17 @@ def build_spacetime_cube(config: Optional[Union[Dict[str, Any], str, os.PathLike
         year = int(os.path.basename(fpath).split("_")[1].split(".")[0])   # state_{year}.npz
 
         cov = cio.load_state_stack(year, hist_dir, schema)   # (H, W, C), transforms applied
-        valid_pixels = ~np.isnan(cov).any(-1)
+        # Grid-native forward: the spatial residual conv needs the whole grid, so
+        # normalize in place (invalid cells zero-filled + masked) rather than gather.
+        covn, valid_pixels = cio.norm_grid(cov, mu, sd)
         z_year = np.full((H, W, z_dim), np.nan, dtype=np.float32)
 
         if valid_pixels.sum() > 0:
-            cov_n = cio.apply_norm(cov[valid_pixels], mu, sd)
-            streams = cio.split_streams(torch.tensor(cov_n, dtype=torch.float32), schema)
+            xg = torch.tensor(covn[None], dtype=torch.float32, device=device)
+            mg = torch.tensor(valid_pixels[None], device=device)
             with torch.no_grad():
-                z_out, _ = model(*[s.to(device) for s in streams])
-            z_year[valid_pixels] = z_out.cpu().numpy()
+                z_out, _ = model(xg, mg)                       # (1, H, W, L)
+            z_year[valid_pixels] = z_out[0].cpu().numpy()[valid_pixels]
 
         z_s1, mask_s1 = fill_gaps_stage1_spatial(
             z_year,

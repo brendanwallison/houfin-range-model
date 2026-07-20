@@ -189,7 +189,9 @@ def _load_model(config):
     from .model_arch import MultiStreamAutoencoder
     dm = np.load(os.path.join(config["paths"]["desk_output_dir"], "desk_meta.npz"), allow_pickle=True)
     schema = json.loads(str(dm["schema"]))
-    model = MultiStreamAutoencoder([int(d) for d in dm["stream_dims"]], int(dm["latent_dim"]))
+    spatial_kernel = int(dm["spatial_kernel"]) if "spatial_kernel" in dm else 0
+    model = MultiStreamAutoencoder([int(d) for d in dm["stream_dims"]], int(dm["latent_dim"]),
+                                   spatial_kernel)
     model.load_state_dict(torch.load(
         os.path.join(config["paths"]["desk_output_dir"], "env_model_semisup.pth"),
         map_location="cpu"))
@@ -208,16 +210,19 @@ def encode_points(config, point_index):
     states_dir = os.path.join(config["paths"]["hist_dir"], "yearly_states")
     rows, cols, years = point_index[:, 0], point_index[:, 1], point_index[:, 2]
     Z = np.full((len(point_index), latent), np.nan, dtype="float32")
+    # Grid-native: encode each year's WHOLE grid (so the spatial residual conv sees
+    # neighbours -- the same function the cube applies) and gather the points from it.
     for y in np.unique(years):
         sel = np.where(years == y)[0]
-        cov = cio.load_state_stack(int(y), states_dir, schema)[rows[sel], cols[sel]]
-        finite = ~np.isnan(cov).any(1)
-        if finite.any():
-            cn = cio.apply_norm(cov[finite], mu, sd)
-            streams = cio.split_streams(torch.tensor(cn, dtype=torch.float32), schema)
-            with torch.no_grad():
-                zz, _ = model(*streams)
-            Z[sel[finite]] = zz.numpy()
+        covn, valid = cio.norm_grid(cio.load_state_stack(int(y), states_dir, schema), mu, sd)
+        xg = torch.tensor(covn[None], dtype=torch.float32)
+        mg = torch.tensor(valid[None])
+        with torch.no_grad():
+            zz, _ = model(xg, mg)                        # (1, H, W, L)
+        zc = zz[0].numpy()
+        for k in sel:
+            if valid[rows[k], cols[k]]:
+                Z[k] = zc[rows[k], cols[k]]
     return Z, ~np.isnan(Z).any(1)
 
 

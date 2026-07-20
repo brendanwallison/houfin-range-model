@@ -134,6 +134,69 @@ def temporal_turnover_agreement(Z, X, pidx, recent_year, min_gap=5):
             "turnover_pred": tp.astype("float32"), "turnover_obs": to.astype("float32")}
 
 
+def partial_spearman(tp, to, covars):
+    """Spearman(tp, to) after linearly removing ``covars`` (on ranks) from both fields.
+
+    The raw turnover Spearman is inflated by anything that drives BOTH fields together --
+    chiefly the per-site time-span (deeper history => larger pred AND obs turnover) and any
+    broad shared spatial trend. Regressing those out (on ranks) and correlating the
+    residuals isolates whether DESK predicts the *fine-scale* pattern of change beyond
+    those trivial shared drivers. Returns NaN if degenerate.
+    """
+    from scipy.stats import rankdata, spearmanr
+    n = len(tp)
+    if n < 8:
+        return float("nan")
+    A = np.column_stack([np.ones(n)] + [rankdata(c) for c in covars])
+
+    def _resid(y):
+        yr = rankdata(y).astype(float)
+        beta, *_ = np.linalg.lstsq(A, yr, rcond=None)
+        return yr - A @ beta
+
+    r = spearmanr(_resid(tp), _resid(to)).correlation
+    return float(r) if r == r else float("nan")
+
+
+def directional_change_agreement(Z, X, pidx, recent_year, rng, n_anchor=400, min_gap=5):
+    """Direction (not magnitude) of each site's community change, basis-invariant.
+
+    Turnover magnitude is direction-blind: a cell can change by the same amount toward
+    opposite assemblages. Here, for each site with an early+recent point, we build its
+    similarity PROFILE to a fixed anchor set (recent communities) at both times; the CHANGE
+    in that profile -- 'which communities it moved toward/away from' -- is basis-invariant
+    (similarities to fixed anchors, not the rotation-arbitrary z). The per-site COSINE
+    between DESK's change vector (``⟨z,anchor⟩``) and BBS's (``Ruzicka(x,anchor)``) cancels
+    magnitude and measures pure direction: ~0 = random/no directional skill, >0 = moves the
+    right way, <0 = wrong way. ``frac_same_dir`` = share with cosine>0 (null 0.5).
+    """
+    rows, cols, yrs = pidx[:, 0], pidx[:, 1], pidx[:, 2]
+    rec = np.where(yrs == recent_year)[0]
+    if rec.size < 8:
+        return {"note": "too few recent anchors", "n_sites": 0}
+    anchors = rng.choice(rec, min(n_anchor, rec.size), replace=False)
+    Za, Xa = Z[anchors], X[anchors]
+    rec_ix = {(int(r), int(c)): int(i) for r, c, i in zip(rows[rec], cols[rec], rec)}
+    best = {}
+    for i in np.where(yrs != recent_year)[0]:
+        key = (int(rows[i]), int(cols[i])); y = int(yrs[i])
+        if key in rec_ix and (int(recent_year) - y) >= min_gap \
+                and (key not in best or y < best[key][0]):
+            best[key] = (y, int(i))
+    keys = list(best)
+    if len(keys) < 8:
+        return {"note": "too few paired sites", "n_sites": len(keys)}
+    hi = np.array([best[k][1] for k in keys]); ri = np.array([rec_ix[k] for k in keys])
+    dp = (Z[ri] @ Za.T) - (Z[hi] @ Za.T)                 # predicted profile CHANGE (n, n_anchor)
+    do = ruzicka_rect(X[ri], Xa) - ruzicka_rect(X[hi], Xa)   # observed profile CHANGE
+    num = (dp * do).sum(1)
+    den = np.linalg.norm(dp, axis=1) * np.linalg.norm(do, axis=1)
+    cos = num / np.where(den > 0, den, 1.0)
+    return {"n_sites": len(keys), "mean_dir_cos": float(np.mean(cos)),
+            "median_dir_cos": float(np.median(cos)), "frac_same_dir": float(np.mean(cos > 0)),
+            "rows": rows[hi], "cols": cols[hi], "hist_year": yrs[hi], "dir_cos": cos.astype("float32")}
+
+
 def analog_displacement(Z, X, pidx, xy, recent_year, rng, n_hist=1500, n_present=4000, topk=15):
     """Direction each historical site's community "points" toward among present cells.
 
@@ -309,8 +372,28 @@ def run_validate(config=None, n_pairs=20000, cka_sample=800, seed=0):
     turn = temporal_turnover_agreement(Z, X, pidx, recent_year,
                                        min_gap=int(bc.get("turnover_min_gap", 5)))
     analog = analog_displacement(Z, X, pidx, xy, recent_year, rng)
+    dirchg = directional_change_agreement(Z, X, pidx, recent_year, rng)
+    report["directional_change"] = {k: v for k, v in dirchg.items()
+                                     if k in ("n_sites", "mean_dir_cos", "median_dir_cos",
+                                              "frac_same_dir", "note")}
+    report["directional_change"]["_note"] = ("DIRECTION of community change (magnitude-"
+        "canceling), unlike turnover which is magnitude-only. mean_dir_cos ~0 => no "
+        "directional skill; frac_same_dir null=0.5.")
     report["temporal_turnover"] = {k: v for k, v in turn.items()
                                    if k in ("n_sites", "spearman_turnover", "note")}
+    report["temporal_turnover"]["_magnitude_only_note"] = ("turnover is MAGNITUDE-only "
+        "(how much a community changed, not toward what) -- see directional_change for "
+        "direction; interpret this only alongside it.")
+    # Partial Spearman: control for per-site time-span + broad spatial trend, which inflate
+    # the raw value (both pred & obs turnover rise with time-depth and share spatial trends).
+    if "turnover_pred" in turn and turn["turnover_pred"].size >= 8:
+        txy = cell_xy(turn["rows"], turn["cols"], ref_raster)
+        span = (int(recent_year) - turn["hist_year"]).astype(float)
+        report["temporal_turnover"]["spearman_turnover_partial"] = partial_spearman(
+            turn["turnover_pred"], turn["turnover_obs"], [span, txy[:, 0], txy[:, 1]])
+        report["temporal_turnover"]["_partial_note"] = (
+            "spearman_turnover_partial removes per-site span + broad space from both fields; "
+            "if it collapses toward 0 the raw value was mostly the shared time-depth artifact.")
     report["analog"] = {k: v for k, v in analog.items()
                         if k in ("n_hist", "n_present", "topk", "mean_cos_displacement",
                                  "corr_disp_EW", "corr_disp_NS", "mean_profile_corr", "note")}
@@ -340,9 +423,17 @@ def run_validate(config=None, n_pairs=20000, cka_sample=800, seed=0):
                      f"obs_chg={v['cka_obs_change']:.3f}") if "cka_nochange" in v else ""
             print(f"  {v['period']:<16} n={v['n']:<7} cka={v['cka']:.3f} "
                   f"mantel={v['mantel']:+.3f}{extra}")
+    dc = report.get("directional_change", {})
+    if "mean_dir_cos" in dc:
+        print(f"[validate] DIRECTION of change ({dc['n_sites']} sites): mean cos={dc['mean_dir_cos']:+.3f} "
+              f"median={dc['median_dir_cos']:+.3f} | frac moving right way={dc['frac_same_dir']:.3f} "
+              f"(null 0.5)  <- does it move the RIGHT way")
     if "spearman_turnover" in report["temporal_turnover"]:
-        print(f"[validate] temporal turnover agreement (Spearman, {turn['n_sites']} sites): "
-              f"{report['temporal_turnover']['spearman_turnover']:+.3f}")
+        tt = report["temporal_turnover"]
+        part = tt.get("spearman_turnover_partial", float("nan"))
+        print(f"[validate] turnover MAGNITUDE Spearman ({turn['n_sites']} sites): "
+              f"raw={tt['spearman_turnover']:+.3f} | partial(span+space removed)={part:+.3f} "
+              f"(magnitude-only; read with direction above)")
     if "mean_cos_displacement" in report["analog"]:
         a = report["analog"]
         print(f"[validate] analog displacement ({a['n_hist']} hist pts): "

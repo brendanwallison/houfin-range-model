@@ -154,7 +154,17 @@ def build_amplitude_points(config=None):
                                    bc["smooth_sigma_t"], bc["smooth_sigma_s"])
     ref_years = list(range(int(bc["anomaly_ref_years"][0]), int(bc["anomaly_ref_years"][1]) + 1))
     recent_year = int(bc["anomaly_ref_years"][1])
-    floor = float(bc["support_floor"])
+    # RELATIVE support floor: a fraction of the max smoothed support. An absolute floor is
+    # not invariant to smooth_sigma_s -- wider spatial smoothing dilutes the per-cell
+    # magnitude, so a fixed 0.25 silently over-cut coverage to a small core once sigma_s
+    # was widened to 5. Fraction-of-max tracks the field's own scale. Falls back to the old
+    # absolute key if support_floor_frac is absent.
+    if "support_floor_frac" in bc:
+        smax = float(np.nanmax(support)) if np.isfinite(support).any() else 1.0
+        floor = float(bc["support_floor_frac"]) * smax
+        print(f"[spacetime] support floor = {bc['support_floor_frac']} x max({smax:.4f}) = {floor:.5f}")
+    else:
+        floor = float(bc["support_floor"])
 
     # Historical point coords: supported cells at subsampled years (excl. the recent anchor year).
     stride = int(bc.get("point_year_stride", 1))

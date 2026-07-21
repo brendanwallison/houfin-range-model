@@ -35,6 +35,17 @@ def route_grid_map(routes, transform, crs, nx, ny, land_mask):
     return mapped[_KEYS + ["row", "col"]].drop_duplicates()
 
 
+def ebird_stack_species(ebird_folder):
+    """eBird ``species_code``s actually projected into the stack (parsed from the grid
+    tif filenames ``{code}_abundance_median_*_grid.tif``). This is the authoritative
+    community for amplitude modulation -- the BBS community must match it, not re-derive
+    top-N-by-rank from the ranked CSV (which diverges by ~17 species)."""
+    import glob
+    codes = {os.path.basename(f).split("_abundance_median")[0]
+             for f in glob.glob(os.path.join(ebird_folder, "*_abundance_median_*_grid.tif"))}
+    return sorted(codes)
+
+
 def build_community_matrix(obs_all, coverage, crosswalk, route_cells):
     """Aggregate to per-(cell,year,species) mean counts + per-(cell,year) coverage (pure).
 
@@ -102,13 +113,21 @@ def main():
     dr = load_data_config()["datasets_root"]
     cfg = load_config()
     bcfg = cfg.get("bbs", {})
-    top_n = args.top_n if args.top_n is not None else bcfg.get("community_top_n")
     bbs_species = args.bbs_species or bcfg.get("species_list") \
         or os.path.join(bbs.BBS_PARENT_DIR, "SpeciesList.csv")
 
+    # Authoritative community = the species the eBird stack actually projected (top-N
+    # COMPLETE). Crosswalk BBS to EXACTLY those, so every BBS-community species has an eBird
+    # block to modulate (matched == community). Re-deriving top-N-by-rank here diverged from
+    # the eBird stack by ~17 species -- freezing common movers (starling, mockingbird, ...).
+    ebird_codes = ebird_stack_species(cfg["paths"]["ebird_folder"])
+    if not ebird_codes:
+        raise SystemExit(f"no projected eBird grids in {cfg['paths']['ebird_folder']}; "
+                         "run the ebird stage before bbs_community")
     crosswalk, _ = build_crosswalk(
         bbs_species, os.path.join(dr, "avonet", "eBird_taxonomy.csv"),
-        os.path.join(dr, "avonet", "reference_community_ranked.csv"), top_n)
+        os.path.join(dr, "avonet", "reference_community_ranked.csv"),
+        community_codes=ebird_codes)
     species_codes = list(dict.fromkeys(crosswalk["species_code"]))  # community order
 
     obs_all, coverage = bbs.load_usca_observations(aou_filter=None, return_coverage=True)

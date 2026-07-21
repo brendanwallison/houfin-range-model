@@ -439,9 +439,17 @@ def run_validate(config=None, n_pairs=20000, cka_sample=800, seed=0):
         "mean_dir_cos_null (permuted-site baseline); frac_same_dir null=0.5.")
     report["temporal_turnover"] = {k: v for k, v in turn.items()
                                    if k in ("n_sites", "spearman_turnover", "note")}
+    # Magnitudes, to compare against the raw-BBS ceiling (scripts/viz/raw_bbs_turnover.py):
+    # obs = observed AMPLITUDE turnover (1 - Ruzicka on E*anomaly); if this is far below the
+    # raw-BBS turnover, the amplitude construction (fixed shape + cap/shrink + frozen species)
+    # is flattening real change. pred = the model's own turnover (over-predicts if >> obs).
+    if "turnover_obs" in turn and turn["turnover_obs"].size:
+        report["temporal_turnover"]["median_turnover_obs_amplitude"] = float(np.median(turn["turnover_obs"]))
+        report["temporal_turnover"]["median_turnover_pred"] = float(np.median(turn["turnover_pred"]))
     report["temporal_turnover"]["_magnitude_only_note"] = ("turnover is MAGNITUDE-only "
         "(how much a community changed, not toward what) -- see directional_change for "
-        "direction; interpret this only alongside it.")
+        "direction. Compare median_turnover_obs_amplitude to the raw-BBS ceiling to see how "
+        "much the amplitude construction flattens real change.")
     # Partial Spearman: control for per-site time-span + broad spatial trend, which inflate
     # the raw value (both pred & obs turnover rise with time-depth and share spatial trends).
     if "turnover_pred" in turn and turn["turnover_pred"].size >= 8:

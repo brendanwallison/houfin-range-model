@@ -107,11 +107,19 @@ def crosswalk(bbs_norm, ebird_tax, community_codes):
     return m[["aou", "species_code", "sci_norm"]].drop_duplicates().reset_index(drop=True), diag
 
 
-def build_crosswalk(bbs_species_path, ebird_taxonomy_path, ranked_path, top_n=None):
-    """Load inputs, run the crosswalk, print diagnostics; return ``(matched, diag)``."""
+def build_crosswalk(bbs_species_path, ebird_taxonomy_path, ranked_path, top_n=None,
+                    community_codes=None):
+    """Load inputs, run the crosswalk, print diagnostics; return ``(matched, diag)``.
+
+    ``community_codes`` (if given) overrides the ranked-CSV top-N selection -- pass the
+    eBird stack's actual species so the BBS community matches the eBird blocks the
+    amplitude step modulates (top-N-by-rank and top-N-complete diverge otherwise, freezing
+    common species). Falls back to ``read_community_codes(ranked_path, top_n)``.
+    """
     bbs_norm = normalize_bbs_species(_read_species_table(bbs_species_path))
     ebird_tax = load_ebird_taxonomy(ebird_taxonomy_path)
-    community = read_community_codes(ranked_path, top_n)
+    community = community_codes if community_codes is not None else \
+        read_community_codes(ranked_path, top_n)
     matched, diag = crosswalk(bbs_norm, ebird_tax, community)
     print(f"[crosswalk] matched {diag['n_matched']}/{diag['n_community']} community "
           f"species ({diag['n_aou_rows']} AOU rows); {diag['n_unmatched']} unmatched.")

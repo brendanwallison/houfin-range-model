@@ -36,7 +36,7 @@ _REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 if _REPO not in sys.path:
     sys.path.insert(0, _REPO)
 from src.config_utils import load_config
-from src.community_encoder.train_DESK.spacetime_community import _scatter_dense
+from src.community_encoder.train_DESK.spacetime_community import _scatter_dense, _cov_at
 
 
 def _ruzicka_rows(a, b):
@@ -76,12 +76,16 @@ def turnover_by_level(cm, T, H, W, yr_ix, early_idx, recent_idx, cellset, levels
     early = {lv: np.zeros((n, S)) for lv in levels}
     recent = {lv: np.zeros((n, S)) for lv in levels}
     mean_t = np.array([yr_ix[int(y)] for y in cm["year"]])
+    # Effort per observation row (once), so obs = mean_count * effort and the NW field
+    # = smooth(mean*effort)/smooth(effort) is the effort-weighted mean -- exactly as the
+    # pipeline builds it (build_amplitude_points).
+    eff_all = _cov_at(cm, np.ones(len(cm["row"]), bool))
     for sp in range(S):
         sel = cm["species_index"] == sp
         if not sel.any():
             continue
-        obs = _scatter_dense(cm["mean_count"][sel].astype(float), cm["row"][sel],
-                             cm["col"][sel], mean_t[sel], T, H, W)   # mean abundance placed on grid
+        obs = _scatter_dense(cm["mean_count"][sel].astype(float) * eff_all[sel], cm["row"][sel],
+                             cm["col"][sel], mean_t[sel], T, H, W)   # mean*effort on grid
         for lv in levels:
             o = gaussian_filter(obs, (lv[0], lv[1], lv[1]), mode="constant")
             we, wr = sm_w[lv]

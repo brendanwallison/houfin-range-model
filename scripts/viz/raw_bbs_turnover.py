@@ -162,7 +162,8 @@ def main():
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
         fig, ax = plt.subplots(figsize=(8, 5))
-        ax.boxplot([turns[lv] for lv in levels], labels=[str(lv) for lv in levels], showfliers=False)
+        ax.boxplot([turns[lv] for lv in levels], showfliers=False)
+        ax.set_xticklabels([str(lv) for lv in levels], rotation=15)
         ax.set_ylabel("per-cell community turnover (1 - Ruzicka)")
         ax.set_xlabel("(sigma_t, sigma_s)  -- (0,0)=raw, rightmost two = pipeline sigma_s")
         ax.set_title(f"BBS community turnover vs smoothing ({len(cellset)} raw-supported cells)\n"

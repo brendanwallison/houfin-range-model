@@ -48,7 +48,9 @@
     "ebird_stack_cache": "${HOUFIN_PROCESSED}/encoder/ebird_stack.npz"
   },
   "desk": {
-    "epochs": 100,
+    "_train_comment": "epochs is an UPPER BOUND; early stopping on held-out Stab(val) (patience) restores the best weights, so a long budget is safe. 100 epochs left every loss still descending (undertrained). batch_years = reconstruction grids/step (supervised+enrich terms are full-batch each step regardless); raised since VRAM is barely used.",
+    "epochs": 500,
+    "patience": 50,
     "lr": 0.001,
     "batch_size": 4096,
     "weights": {
@@ -57,7 +59,7 @@
       "reconstruction": 0.1
     },
     "train_val_split": 0.8,
-    "batch_years": 8,
+    "batch_years": 32,
     "_spatial_conv_comment": "Tight residual masked (partial) conv on the latent grid: injects neighbourhood context a point-wise encoder cannot learn. gamma inits 0 so training starts as the exact point-wise, ESK-aligned model. kernel=3 => 3x3 (one 25km ring).",
     "spatial_conv": {"enabled": true, "kernel": 3},
     "_enrich_comment": "enrich (bbs_mode='enrich'): supervise DESK at historical (cell,year) points against the BBS-amplitude community projected into the eBird ESK basis (z_obs). ebird_loss_fraction=0.8 => modern eBird contributes 80% of the stabilizing loss regardless of the ~10:1 BBS point-count advantage (eBird is the reliable anchor). holdout_frac of eBird cells are held out entirely for honest z-space reconstruction eval.",

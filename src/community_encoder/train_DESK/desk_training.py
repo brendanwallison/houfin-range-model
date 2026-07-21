@@ -96,7 +96,7 @@ def _load_hist_grids(states_dir, schema, mu, sd, exclude_year):
 def train_model_semisup(covn2023, mask_cov, mask_sup_tr, mask_sup_val, z_ref, x_raw_grid,
                         hist_grids, hist_masks, stream_dims, latent_dim, spatial_kernel=3,
                         epochs=100, lr=1e-3, batch_years=8, weights=None, seed=0,
-                        enrich=None, ebird_frac=0.8):
+                        enrich=None, ebird_frac=0.8, patience=50, min_delta=1e-4):
     """Train the N-stream grid DESK autoencoder semi-supervised; return the fitted model.
 
     ``enrich`` (or None): tuple ``(pt_covn, pt_covmask, pt_zobs, pt_tgt)`` of per-historical-
@@ -128,7 +128,9 @@ def train_model_semisup(covn2023, mask_cov, mask_sup_tr, mask_sup_val, z_ref, x_
 
     n_hist = 0 if hist_grids is None else hist_grids.shape[0]
     g = torch.Generator().manual_seed(seed)
-    print(f"--- Training grid DESK (spatial_kernel={spatial_kernel}, {n_hist} hist years) ---")
+    best_val, best_state, bad = float("inf"), None, 0     # early stopping on held-out Stab(val)
+    print(f"--- Training grid DESK (spatial_kernel={spatial_kernel}, {n_hist} hist years, "
+          f"max {epochs} ep, patience {patience}) ---")
 
     for ep in range(1, epochs + 1):
         model.train()
@@ -182,6 +184,18 @@ def train_model_semisup(covn2023, mask_cov, mask_sup_tr, mask_sup_val, z_ref, x_
             sh = f" | StabHist {total_sh / max(steps,1):.4f}" if en is not None else ""
             print(f"Ep {ep:03d} | Stab(val) {stab_val:.4f} | True(val) {true_val:.4f} | "
                   f"Rec(H) {total_rh / max(steps,1):.4f}{sh} | Cos {cos:.3f} | gamma {gpar:+.4f}")
+
+        # Early stopping on held-out Stab(val); keep the best weights so a long budget is safe.
+        if stab_val < best_val - min_delta:
+            best_val, bad = stab_val, 0
+            best_state = {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}
+        else:
+            bad += 1
+            if bad >= patience:
+                print(f"[desk] early stop at ep {ep} (best Stab(val) {best_val:.4f})")
+                break
+    if best_state is not None:
+        model.load_state_dict({k: v.to(device) for k, v in best_state.items()})
     return model
 
 
@@ -306,7 +320,8 @@ def run_desk_experiment(config=None):
         epochs=desk_cfg.get("epochs", 100), lr=desk_cfg.get("lr", 1e-3),
         batch_years=desk_cfg.get("batch_years", 8),
         weights=desk_cfg.get("weights"),
-        enrich=enrich_data, ebird_frac=ebird_frac)
+        enrich=enrich_data, ebird_frac=ebird_frac,
+        patience=desk_cfg.get("patience", 50))
 
     torch.save(model.state_dict(), os.path.join(out_dir, "env_model_semisup.pth"))
     np.savez(os.path.join(out_dir, "desk_meta.npz"),

@@ -393,14 +393,27 @@ def zspace_reconstruction(config, pidx, X, Z_desk, recent_year, to_rec, has_rec)
         pass
     if hist.sum() < 4:
         return {"n": int(hist.sum()), "note": "too few historical points"}
-    return {"n": int(hist.sum()),
-            "median_err_desk": float(np.median(err_desk[hist])),
-            "median_err_nochange": float(np.median(err_nc[hist])),
-            "frac_desk_beats_nochange": float(np.mean(err_desk[hist] < err_nc[hist])),
-            "recent_basis_residual": resid,
-            "rows": pidx[hist, 0], "cols": pidx[hist, 1],
-            "err_desk": err_desk[hist].astype("float32"),
-            "err_nochange": err_nc[hist].astype("float32")}
+    ed, en = err_desk[hist], err_nc[hist]
+    out = {"n": int(hist.sum()),
+           "median_err_desk": float(np.median(ed)),
+           "median_err_nochange": float(np.median(en)),
+           "frac_desk_beats_nochange": float(np.mean(ed < en)),
+           "recent_basis_residual": resid,
+           "rows": pidx[hist, 0], "cols": pidx[hist, 1],
+           "err_desk": ed.astype("float32"), "err_nochange": en.astype("float32")}
+    # If enrich saved a spatial holdout, split the value-add into held-out (honest, unseen
+    # cells) vs train -- held-out frac_desk_beats_nochange is the number that grades enrich.
+    ho_path = os.path.join(config["paths"]["desk_output_dir"], "holdout_cells.npy")
+    if os.path.exists(ho_path):
+        ho = np.load(ho_path)
+        is_ho = ho[pidx[hist, 0], pidx[hist, 1]]
+        for lab, m in (("heldout", is_ho), ("train", ~is_ho)):
+            if m.sum() >= 4:
+                out[f"n_{lab}"] = int(m.sum())
+                out[f"frac_desk_beats_nochange_{lab}"] = float(np.mean(ed[m] < en[m]))
+                out[f"median_err_desk_{lab}"] = float(np.median(ed[m]))
+                out[f"median_err_nochange_{lab}"] = float(np.median(en[m]))
+    return out
 
 
 def run_validate(config=None, n_pairs=20000, cka_sample=800, seed=0):
@@ -546,7 +559,10 @@ def run_validate(config=None, n_pairs=20000, cka_sample=800, seed=0):
     if recon is not None:
         report["zspace_reconstruction"] = {k: v for k, v in recon.items()
             if k in ("n", "median_err_desk", "median_err_nochange", "frac_desk_beats_nochange",
-                     "recent_basis_residual", "note")}
+                     "recent_basis_residual", "note", "n_heldout", "frac_desk_beats_nochange_heldout",
+                     "median_err_desk_heldout", "median_err_nochange_heldout", "n_train",
+                     "frac_desk_beats_nochange_train", "median_err_desk_train",
+                     "median_err_nochange_train")}
         report["zspace_reconstruction"]["_note"] = ("PER-CELL reconstruction in the pinned ESK "
             "z-basis: err_desk = ||z_DESK - z_obs||, err_nochange = ||z_obs(2023) - z_obs||. "
             "frac_desk_beats_nochange > 0.5 => DESK reconstructs the past community better than "
@@ -603,8 +619,11 @@ def run_validate(config=None, n_pairs=20000, cka_sample=800, seed=0):
     if "median_err_desk" in rc:
         print(f"[validate] Z-SPACE reconstruction ({rc['n']} hist pts): err DESK={rc['median_err_desk']:.4f} "
               f"vs no-change={rc['median_err_nochange']:.4f} | DESK beats no-change in "
-              f"{rc['frac_desk_beats_nochange']:.1%} of cells | basis residual={rc['recent_basis_residual']:.2e} "
-              f"(~0 = basis matches)  <- is DESK a per-cell value-add for reconstruction")
+              f"{rc['frac_desk_beats_nochange']:.1%} of cells | basis residual={rc['recent_basis_residual']:.2e}")
+        if "frac_desk_beats_nochange_heldout" in rc:
+            print(f"           HELD-OUT cells ({rc['n_heldout']}): DESK beats no-change in "
+                  f"{rc['frac_desk_beats_nochange_heldout']:.1%}  <- the honest enrich grade "
+                  f"(err DESK={rc['median_err_desk_heldout']:.4f} vs {rc['median_err_nochange_heldout']:.4f})")
     print(f"[validate] report -> {out} ; viz arrays -> {viz}")
     return report
 

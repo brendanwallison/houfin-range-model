@@ -168,6 +168,31 @@ def project_into_z(x_flat, landmarks, proj_mat, device="cuda", batch_size=5000):
     return Z
 
 
+def project_amplitude_to_z(X, z_dir, latent_dim, batch=20000):
+    """Project amplitude community vectors ``X`` into the SAVED ESK basis in ``z_dir``.
+
+    Loads ``esk_landmarks.npy``/``esk_projmat.npy``/``meta.json`` (written by
+    ``run_esk_experiment``), applies the SAME weekly smoothing the ESK used, and projects
+    batched -> ``(N, latent_dim)``. Single source of truth for z_obs, shared by the enrich
+    trainer (supervised targets) and validate (reconstruction eval), so targets and eval
+    are guaranteed to live in the identical pinned basis. Returns None if no projection saved.
+    """
+    import json as _json
+    lmp, pmp = os.path.join(z_dir, "esk_landmarks.npy"), os.path.join(z_dir, "esk_projmat.npy")
+    if not (os.path.exists(lmp) and os.path.exists(pmp)):
+        return None
+    landmarks, projmat = np.load(lmp), np.load(pmp)
+    meta = _json.load(open(os.path.join(z_dir, "meta.json")))
+    sigma, n_weeks = float(meta.get("sigma", 0.0)), int(meta["n_weeks"])
+    N = X.shape[0]
+    z = np.zeros((N, latent_dim), dtype="float32")
+    for s in range(0, N, batch):
+        e = min(s + batch, N)
+        xb = smooth_abundances(X[s:e], n_weeks, sigma) if sigma > 0 else X[s:e]
+        z[s:e] = project_into_z(xb, landmarks, projmat)[:, :latent_dim]
+    return z
+
+
 def compute_kernel_diagnostics_ruzicka(z, ebird_flat, n_species, n_weeks, max_samples=500):
     """
     Computes RMSE between the Nyström approximation (ZZ^T) and the

@@ -95,8 +95,15 @@ def _load_hist_grids(states_dir, schema, mu, sd, exclude_year):
 
 def train_model_semisup(covn2023, mask_cov, mask_sup_tr, mask_sup_val, z_ref, x_raw_grid,
                         hist_grids, hist_masks, stream_dims, latent_dim, spatial_kernel=3,
-                        epochs=100, lr=1e-3, batch_years=8, weights=None, seed=0):
-    """Train the N-stream grid DESK autoencoder semi-supervised; return the fitted model."""
+                        epochs=100, lr=1e-3, batch_years=8, weights=None, seed=0,
+                        enrich=None, ebird_frac=0.8):
+    """Train the N-stream grid DESK autoencoder semi-supervised; return the fitted model.
+
+    ``enrich`` (or None): tuple ``(pt_covn, pt_covmask, pt_zobs, pt_tgt)`` of per-historical-
+    year grids/targets. When given, the stabilizing loss becomes eBird-heavy weighted:
+    ``ebird_frac``·(recent eBird MSE) + (1-``ebird_frac``)·(historical BBS z_obs MSE), so the
+    reliable modern eBird dominates regardless of the ~10:1 BBS point-count advantage.
+    """
     device = "cuda" if torch.cuda.is_available() else "cpu"
     weights = weights or {"stabilizing": 1.0, "metric": 5.0, "reconstruction": 0.1}
 
@@ -113,6 +120,12 @@ def train_model_semisup(covn2023, mask_cov, mask_sup_tr, mask_sup_val, z_ref, x_
     m_val = torch.as_tensor(mask_sup_val, device=device).bool()
     m_cov2023 = torch.as_tensor(mask_cov, device=device).bool()
 
+    en = None
+    if enrich is not None:
+        pc, pm, pz, pt = enrich
+        en = (torch.tensor(pc, device=device), torch.as_tensor(pm, device=device),
+              torch.tensor(pz, device=device), torch.as_tensor(pt, device=device).bool())
+
     n_hist = 0 if hist_grids is None else hist_grids.shape[0]
     g = torch.Generator().manual_seed(seed)
     print(f"--- Training grid DESK (spatial_kernel={spatial_kernel}, {n_hist} hist years) ---")
@@ -120,7 +133,7 @@ def train_model_semisup(covn2023, mask_cov, mask_sup_tr, mask_sup_val, z_ref, x_
     for ep in range(1, epochs + 1):
         model.train()
         order = torch.randperm(n_hist, generator=g) if n_hist else torch.zeros(1, dtype=torch.long)
-        total_rh, steps = 0.0, 0
+        total_rh, total_sh, steps = 0.0, 0.0, 0
         for b0 in range(0, max(n_hist, 1), batch_years):
             steps += 1
             opt.zero_grad()
@@ -131,6 +144,14 @@ def train_model_semisup(covn2023, mask_cov, mask_sup_tr, mask_sup_val, z_ref, x_
             loss_stab = torch.mean(torch.sum((z_flat[m_tr] - z_ref_t[m_tr]) ** 2, dim=1))
             loss_true = true_kernel_loss(z_flat[m_tr], x_t[m_tr])
             loss_recon_s = F.mse_loss(recon2023[0][m_cov2023], cov2023[0][m_cov2023])
+
+            # Enrich: eBird-heavy-weighted historical supervision against z_obs targets.
+            loss_stab_hist = torch.zeros((), device=device)
+            if en is not None:
+                z_pt, _ = model(en[0], en[1])                    # (n_py,H,W,L)
+                sq = torch.sum((z_pt[en[3]] - en[2][en[3]]) ** 2, dim=1)
+                loss_stab_hist = sq.mean() if sq.numel() else loss_stab_hist
+                loss_stab = ebird_frac * loss_stab + (1.0 - ebird_frac) * loss_stab_hist
 
             # Reconstruction on a batch of unlabelled year grids.
             if n_hist:
@@ -147,6 +168,7 @@ def train_model_semisup(covn2023, mask_cov, mask_sup_tr, mask_sup_val, z_ref, x_
             loss.backward()
             opt.step()
             total_rh += loss_recon_h.item()
+            total_sh += loss_stab_hist.item()
 
         model.eval()
         with torch.no_grad():
@@ -157,8 +179,9 @@ def train_model_semisup(covn2023, mask_cov, mask_sup_tr, mask_sup_val, z_ref, x_
             true_val = true_kernel_loss(zf[m_val], x_t[m_val]).item()
             gpar = float(model.gamma.detach()) if spatial_kernel > 0 else 0.0
             scheduler.step(stab_val)
+            sh = f" | StabHist {total_sh / max(steps,1):.4f}" if en is not None else ""
             print(f"Ep {ep:03d} | Stab(val) {stab_val:.4f} | True(val) {true_val:.4f} | "
-                  f"Rec(H) {total_rh / max(steps,1):.4f} | Cos {cos:.3f} | gamma {gpar:+.4f}")
+                  f"Rec(H) {total_rh / max(steps,1):.4f}{sh} | Cos {cos:.3f} | gamma {gpar:+.4f}")
     return model
 
 
@@ -175,11 +198,44 @@ def prepare_supervised(cov_stack, ebird_stack, z_flat, z_mask, mu, sd, out_dir):
     return covn, mask_cov, mask_sup, z_grid, x_grid
 
 
+def _prepare_enrich(config, states_dir, schema, mu, sd, z_dir, latent_dim, holdout, label_year):
+    """Build the enrich supervised targets: project the BBS-amplitude communities into the
+    SAME eBird-2023 ESK basis DESK uses (z_obs), then per historical point-year assemble a
+    covariate grid, a z_obs target grid, and a target mask (point cells, cov-valid, NOT
+    held-out). eBird defines the basis; BBS only says where historical cells land in it.
+    """
+    from .esk_kernel import project_amplitude_to_z
+    zt = config["bbs"]["z_dir"]
+    X = np.load(os.path.join(zt, "X_points.npy"))
+    pidx = np.load(os.path.join(zt, "point_index.npy"))
+    z_obs = project_amplitude_to_z(X, z_dir, latent_dim)
+    if z_obs is None:
+        raise FileNotFoundError(
+            f"enrich needs the saved ESK projection in {z_dir} (esk_landmarks/projmat); re-run esk")
+    rows, cols, yrs = pidx[:, 0], pidx[:, 1], pidx[:, 2]
+    hist_years = sorted({int(y) for y in yrs if int(y) != label_year})
+    covn, covm, zobs_g, tgt = [], [], [], []
+    for y in hist_years:
+        cn, m = cio.norm_grid(cio.load_state_stack(y, states_dir, schema), mu, sd)
+        H, W = m.shape
+        sel = np.where(yrs == y)[0]
+        zg = np.zeros((H, W, latent_dim), dtype="float32"); tm = np.zeros((H, W), bool)
+        zg[rows[sel], cols[sel]] = z_obs[sel]; tm[rows[sel], cols[sel]] = True
+        tm &= m & (~holdout)
+        covn.append(cn); covm.append(m); zobs_g.append(zg); tgt.append(tm)
+    n_tgt = int(sum(t.sum() for t in tgt))
+    print(f"[enrich] {len(hist_years)} historical target years, {n_tgt} supervised BBS points "
+          f"({int(holdout.sum())} cells held out for eval)")
+    return (np.stack(covn), np.stack(covm), np.stack(zobs_g), np.stack(tgt))
+
+
 def run_desk_experiment(config=None):
     """Driver: load N-stream states + ESK Z, prepare grids, train DESK, save model+meta.
 
-    Trains the ``off``/``validate`` model (eBird 2023 spatial ESK Z target, single
-    labeled year). The ``enrich`` multi-year path is added by ``spacetime_enrich``.
+    ``off``/``validate``: eBird 2023 spatial ESK Z target (single labelled year). ``enrich``:
+    additionally supervise DESK at historical (cell,year) points against the BBS-amplitude
+    communities projected into the eBird ESK basis (z_obs), weighted eBird-heavy, with a
+    spatial cell holdout for honest evaluation.
     """
     config = load_config(config) if not isinstance(config, dict) else config
     paths, desk_cfg = config["paths"], config["desk"]
@@ -217,7 +273,28 @@ def run_desk_experiment(config=None):
     covn, mask_cov, mask_sup, z_grid, x_grid = prepare_supervised(
         cov_stack, ebird_stack, z_flat, z_mask, mu, sd, out_dir)
     mask_cov_t = torch.tensor(mask_cov)
-    m_tr, m_val = _split_mask(mask_sup, desk_cfg.get("train_val_split", 0.8))
+
+    # Mode: 'enrich' adds eBird-heavy-weighted historical supervision + a spatial cell holdout;
+    # 'off'/'validate' train eBird-2023-only (the current single-labelled-year behaviour).
+    bbs_mode = config.get("bbs_mode", "validate")
+    enrich_data, ebird_frac = None, 0.8
+    holdout = np.zeros_like(mask_sup)
+    if bbs_mode == "enrich":
+        en_cfg = desk_cfg.get("enrich", {})
+        ebird_frac = float(en_cfg.get("ebird_loss_fraction", 0.8))
+        ebird_valid = np.any(~np.isnan(ebird_stack), axis=-1)          # holdout over eBird cells
+        ys, xs = np.where(ebird_valid)
+        rng = np.random.default_rng(int(en_cfg.get("seed", 0)))
+        ho = rng.random(len(ys)) < float(en_cfg.get("holdout_frac", 0.2))
+        holdout[ys[ho], xs[ho]] = True
+        m_tr, m_val = mask_sup & (~holdout), mask_sup & holdout          # eval on held-out cells
+        enrich_data = _prepare_enrich(config, states_dir, schema, mu, sd, z_dir,
+                                      z_grid.shape[2], holdout, label_year)
+        np.save(os.path.join(out_dir, "holdout_cells.npy"), holdout)
+        print(f"[desk] ENRICH mode: ebird_loss_fraction={ebird_frac}, "
+              f"{int(holdout.sum())} cells held out")
+    else:
+        m_tr, m_val = _split_mask(mask_sup, desk_cfg.get("train_val_split", 0.8))
 
     hist_grids, hist_masks, _ = _load_hist_grids(states_dir, schema, mu, sd, label_year)
 
@@ -228,14 +305,17 @@ def run_desk_experiment(config=None):
         spatial_kernel=spatial_kernel,
         epochs=desk_cfg.get("epochs", 100), lr=desk_cfg.get("lr", 1e-3),
         batch_years=desk_cfg.get("batch_years", 8),
-        weights=desk_cfg.get("weights"))
+        weights=desk_cfg.get("weights"),
+        enrich=enrich_data, ebird_frac=ebird_frac)
 
     torch.save(model.state_dict(), os.path.join(out_dir, "env_model_semisup.pth"))
     np.savez(os.path.join(out_dir, "desk_meta.npz"),
              mu=mu, sd=sd, stream_dims=np.array(stream_dims, int),
              latent_dim=z_grid.shape[2], label_year=label_year,
-             spatial_kernel=spatial_kernel, schema=json.dumps(schema))
-    print(f"[desk] saved model + desk_meta.npz -> {out_dir} (spatial_kernel={spatial_kernel})")
+             spatial_kernel=spatial_kernel, bbs_mode=bbs_mode,
+             ebird_frac=ebird_frac, schema=json.dumps(schema))
+    print(f"[desk] saved model + desk_meta.npz -> {out_dir} "
+          f"(spatial_kernel={spatial_kernel}, mode={bbs_mode})")
 
 
 if __name__ == "__main__":

@@ -9,6 +9,9 @@
 # Throttle uv/Cargo's rayon thread pool + concurrency. The LS6 login node's per-user
 # process/memory cap makes uv's defaults trip "failed to initialize global rayon pool
 # ... Resource temporarily unavailable" during installs. Harmless elsewhere.
+# Reduce CUDA fragmentation OOMs on the DESK grid trainer (many whole-grid forwards per
+# step); lets PyTorch grow segments instead of failing on a fragmented pool.
+export PYTORCH_CUDA_ALLOC_CONF="${PYTORCH_CUDA_ALLOC_CONF:-expandable_segments:True}"
 export RAYON_NUM_THREADS="${RAYON_NUM_THREADS:-4}"
 export UV_CONCURRENT_DOWNLOADS="${UV_CONCURRENT_DOWNLOADS:-4}"
 export UV_CONCURRENT_BUILDS="${UV_CONCURRENT_BUILDS:-2}"

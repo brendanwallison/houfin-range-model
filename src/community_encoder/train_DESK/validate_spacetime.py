@@ -342,6 +342,67 @@ def encode_points(config, point_index):
     return Z, ~np.isnan(Z).any(1)
 
 
+def zspace_reconstruction(config, pidx, X, Z_desk, recent_year, to_rec, has_rec):
+    """Per-cell reconstruction in Z-SPACE: is DESK's predicted z closer to the observed
+    community's z than the no-change (2023) z is?
+
+    Projects each observed amplitude community ``x(cell,year)`` into the SAME pinned ESK
+    basis DESK was trained against (``project_into_z`` with the saved landmarks/proj_mat,
+    matching the ESK's weekly smoothing), giving ``z_obs``. Then per historical point:
+        err_desk     = || z_DESK(cell,year) - z_obs(cell,year) ||
+        err_nochange = || z_obs(cell,recent) - z_obs(cell,year) ||   (assume it looked like 2023)
+    DESK is a per-cell value-add where err_desk < err_nochange. Coordinates are comparable
+    because both live in the one concrete ESK basis (no rotation freedom). Returns None if
+    the ESK projection wasn't saved (i.e. ESK predates this feature -- re-run esk).
+    """
+    import json as _json
+    from .esk_kernel import project_into_z, smooth_abundances
+    zdir = config["desk"]["z_dir"]
+    lmp, pmp = os.path.join(zdir, "esk_landmarks.npy"), os.path.join(zdir, "esk_projmat.npy")
+    if not (os.path.exists(lmp) and os.path.exists(pmp)):
+        return None
+    landmarks, projmat = np.load(lmp), np.load(pmp)
+    esk_meta = _json.load(open(os.path.join(zdir, "meta.json")))
+    sigma, n_weeks, ld = float(esk_meta.get("sigma", 0.0)), int(esk_meta["n_weeks"]), Z_desk.shape[1]
+
+    # Smooth (matching the ESK) + project into the basis, batched to bound memory.
+    N = X.shape[0]
+    z_obs = np.zeros((N, ld), dtype="float32")
+    for s in range(0, N, 20000):
+        e = min(s + 20000, N)
+        xb = smooth_abundances(X[s:e], n_weeks, sigma) if sigma > 0 else X[s:e]
+        z_obs[s:e] = project_into_z(xb, landmarks, projmat)[:, :ld]
+
+    z_nc = np.full_like(z_obs, np.nan)
+    z_nc[has_rec] = z_obs[to_rec[has_rec]]
+    err_desk = np.linalg.norm(Z_desk - z_obs, axis=1)
+    err_nc = np.linalg.norm(z_nc - z_obs, axis=1)
+    hist = (pidx[:, 2] != recent_year) & has_rec
+    # Validity: at recent points, z_obs must reproduce the ESK Z (same projection, same
+    # smoothed E) -- confirms the basis truly matches. Compare to the saved ESK Z.
+    resid = float("nan")
+    try:
+        vm = np.load(os.path.join(zdir, "valid_mask.npy"))
+        ez = np.load(os.path.join(zdir, "Z.npy"))[:, :ld]
+        cell_row = {(int(r), int(c)): i for i, (r, c) in enumerate(np.argwhere(vm))}
+        rec = np.where(pidx[:, 2] == recent_year)[0]
+        d = [np.linalg.norm(z_obs[k] - ez[cell_row[(int(pidx[k, 0]), int(pidx[k, 1]))]])
+             for k in rec if (int(pidx[k, 0]), int(pidx[k, 1])) in cell_row]
+        resid = float(np.median(d)) if d else float("nan")
+    except Exception:
+        pass
+    if hist.sum() < 4:
+        return {"n": int(hist.sum()), "note": "too few historical points"}
+    return {"n": int(hist.sum()),
+            "median_err_desk": float(np.median(err_desk[hist])),
+            "median_err_nochange": float(np.median(err_nc[hist])),
+            "frac_desk_beats_nochange": float(np.mean(err_desk[hist] < err_nc[hist])),
+            "recent_basis_residual": resid,
+            "rows": pidx[hist, 0], "cols": pidx[hist, 1],
+            "err_desk": err_desk[hist].astype("float32"),
+            "err_nochange": err_nc[hist].astype("float32")}
+
+
 def run_validate(config=None, n_pairs=20000, cka_sample=800, seed=0):
     """Compare eBird-only DESK predictions to BBS structure per period; write a report."""
     from .config_utils import load_config
@@ -431,6 +492,7 @@ def run_validate(config=None, n_pairs=20000, cka_sample=800, seed=0):
                                        min_gap=int(bc.get("turnover_min_gap", 5)))
     analog = analog_displacement(Z, X, pidx, xy, recent_year, rng)
     dirchg = directional_change_agreement(Z, X, pidx, recent_year, rng)
+    recon = zspace_reconstruction(config, pidx, X, Z, recent_year, to_rec, has_rec)
     report["directional_change"] = {k: v for k, v in dirchg.items()
                                      if k in ("n_sites", "mean_dir_cos", "median_dir_cos",
                                               "frac_same_dir", "mean_dir_cos_null", "note")}
@@ -481,6 +543,16 @@ def run_validate(config=None, n_pairs=20000, cka_sample=800, seed=0):
     else:
         report["analog"] = {k: v for k, v in analog.items() if k == "note"}
 
+    if recon is not None:
+        report["zspace_reconstruction"] = {k: v for k, v in recon.items()
+            if k in ("n", "median_err_desk", "median_err_nochange", "frac_desk_beats_nochange",
+                     "recent_basis_residual", "note")}
+        report["zspace_reconstruction"]["_note"] = ("PER-CELL reconstruction in the pinned ESK "
+            "z-basis: err_desk = ||z_DESK - z_obs||, err_nochange = ||z_obs(2023) - z_obs||. "
+            "frac_desk_beats_nochange > 0.5 => DESK reconstructs the past community better than "
+            "assuming 2023. recent_basis_residual ~0 confirms the basis matches (z_obs reproduces "
+            "the ESK Z at recent points).")
+
     out_dir = config["paths"]["desk_output_dir"]
     out = os.path.join(out_dir, "validate_report.json")
     os.makedirs(out_dir, exist_ok=True)
@@ -496,6 +568,10 @@ def run_validate(config=None, n_pairs=20000, cka_sample=800, seed=0):
         d_pred=analog.get("d_pred", np.zeros((0, 2))), d_obs=analog.get("d_obs", np.zeros((0, 2))),
         xy_hist=analog.get("xy_hist", np.zeros((0, 2))),
         analog_hist_year=analog.get("hist_year", np.array([])),
+        recon_rows=(recon or {}).get("rows", np.array([])),
+        recon_cols=(recon or {}).get("cols", np.array([])),
+        recon_err_desk=(recon or {}).get("err_desk", np.array([])),
+        recon_err_nochange=(recon or {}).get("err_nochange", np.array([])),
         ref_raster=np.array(ref_raster))
 
     print("[validate] SPATIAL structure recovery per period. gain = CKA(DESK) - CKA(no-change "
@@ -523,6 +599,12 @@ def run_validate(config=None, n_pairs=20000, cka_sample=800, seed=0):
         print(f"[validate] analog displacement ({a['n_hist']} pts): cos={a['mean_cos_displacement']:+.3f} "
               f"vs null={a['mean_cos_displacement_null']:+.3f} | EW(partial)={a['corr_disp_EW_partial']:+.3f} "
               f"NS(partial)={a['corr_disp_NS_partial']:+.3f}")
+    rc = report.get("zspace_reconstruction", {})
+    if "median_err_desk" in rc:
+        print(f"[validate] Z-SPACE reconstruction ({rc['n']} hist pts): err DESK={rc['median_err_desk']:.4f} "
+              f"vs no-change={rc['median_err_nochange']:.4f} | DESK beats no-change in "
+              f"{rc['frac_desk_beats_nochange']:.1%} of cells | basis residual={rc['recent_basis_residual']:.2e} "
+              f"(~0 = basis matches)  <- is DESK a per-cell value-add for reconstruction")
     print(f"[validate] report -> {out} ; viz arrays -> {viz}")
     return report
 

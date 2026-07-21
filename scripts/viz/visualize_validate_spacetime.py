@@ -115,6 +115,41 @@ def _support_maps(support_npz, out_dir, cmap):
     print(f"[viz] support maps -> {p}")
 
 
+def _reconstruction_maps(z, ref_raster, out_dir, cmap):
+    """Z-space per-cell reconstruction error: DESK vs no-change, and their difference.
+    Positive difference (no-change err - DESK err) => DESK reconstructs that cell better."""
+    rows = z["recon_rows"] if "recon_rows" in z else np.array([])
+    if rows.size == 0:
+        print("[viz] no reconstruction data (re-run esk to save the projection); skipping")
+        return
+    cols, ed, en = z["recon_cols"], z["recon_err_desk"], z["recon_err_nochange"]
+    H, W = _grid_shape(ref_raster)
+    lin = rows.astype(int) * W + cols.astype(int)
+
+    def _cell_mean(vals):
+        s = np.bincount(lin, weights=vals, minlength=H * W)
+        c = np.bincount(lin, minlength=H * W).astype(float)
+        g = np.full(H * W, np.nan); m = c > 0; g[m] = s[m] / c[m]
+        return g.reshape(H, W)
+
+    gd, gn = _cell_mean(ed), _cell_mean(en)
+    diff = gn - gd                                   # >0 => DESK error smaller => DESK better
+    vmax = float(np.nanpercentile(np.r_[ed, en], 98)) or 1.0
+    fin = np.isfinite(diff)
+    vd = float(np.nanpercentile(np.abs(diff[fin]), 98)) if fin.any() else 1.0
+    fig, ax = plt.subplots(1, 3, figsize=(15, 5))
+    for a, g, t in zip(ax[:2], [gd, gn], ["DESK reconstruction error", "no-change error"]):
+        im = a.imshow(g, cmap=cmap, vmin=0, vmax=vmax); a.set_title(t); a.axis("off")
+        fig.colorbar(im, ax=a, fraction=0.046)
+    im = ax[2].imshow(diff, cmap="RdBu", vmin=-vd, vmax=vd)
+    ax[2].set_title("no-change − DESK  (blue = DESK better)"); ax[2].axis("off")
+    fig.colorbar(im, ax=ax[2], fraction=0.046)
+    fig.tight_layout()
+    p = os.path.join(out_dir, "reconstruction_maps.png"); fig.savefig(p, dpi=110); plt.close(fig)
+    win = float(np.mean(ed < en))
+    print(f"[viz] reconstruction maps -> {p}  (DESK beats no-change at {win:.1%} of points)")
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -133,6 +168,7 @@ def main():
     os.makedirs(out_dir, exist_ok=True)
 
     _turnover_maps(z, ref_raster, out_dir, args.cmap)
+    _reconstruction_maps(z, ref_raster, out_dir, args.cmap)
     _analog_arrows(z, out_dir, nbins=args.nbins)
     # support field lives with the amplitude point set (bbs.z_dir)
     support_npz = os.path.join(cfg["bbs"]["z_dir"], "support_field.npz")

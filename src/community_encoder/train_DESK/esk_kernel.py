@@ -50,16 +50,24 @@ def smooth_abundances(ebird_flat, n_weeks, sigma):
     return data_smoothed.reshape(N, -1)
 
 
-def compute_optimal_latent_z_ruzicka(ebird_flat, n_species, n_weeks, latent_dim, n_landmarks=10000, device="cuda"):
+def compute_optimal_latent_z_ruzicka(ebird_flat, n_species, n_weeks, latent_dim, n_landmarks=10000,
+                                     device="cuda", seed=0, return_proj=False):
     """
     Computes Mercer features using the GLOBAL Ruzicka Kernel (Generalized Jaccard).
+
+    ``seed`` makes the landmark draw reproducible (at 25 km N < n_landmarks so ALL pixels
+    are landmarks anyway -- exact). ``return_proj`` additionally returns the landmark rows
+    and the projection matrix so the SAME basis can later project out-of-sample vectors
+    (e.g. observed BBS-amplitude communities) via ``project_into_z`` -- the pinned basis
+    that makes z_DESK and z_obs directly comparable.
     """
     N, D = ebird_flat.shape
     if device == "cuda" and not torch.cuda.is_available():
         print("CUDA not available, falling back to CPU.")
         device = "cpu"
 
-    idx_lm = np.random.choice(N, min(N, n_landmarks), replace=False)
+    rng = np.random.default_rng(seed)
+    idx_lm = rng.choice(N, min(N, n_landmarks), replace=False)
     X_lm_np = ebird_flat[idx_lm]
     M = X_lm_np.shape[0]
 
@@ -127,7 +135,37 @@ def compute_optimal_latent_z_ruzicka(ebird_flat, n_species, n_weeks, latent_dim,
             z_batch = K_batch_lm @ proj_mat
             Z_opt[start:end] = z_batch.cpu().numpy()
 
+    if return_proj:
+        return Z_opt, X_lm_np.astype(np.float32), proj_mat.detach().cpu().numpy().astype(np.float32)
     return Z_opt
+
+
+def project_into_z(x_flat, landmarks, proj_mat, device="cuda", batch_size=5000):
+    """Project rows of ``x_flat`` into a SAVED ESK basis: ``z = Ruzicka(x, landmarks) @ proj_mat``.
+
+    ``landmarks`` (M, D) and ``proj_mat`` (M, latent) come from a prior
+    ``compute_optimal_latent_z_ruzicka(..., return_proj=True)``. Mirrors that function's own
+    in-sample projection exactly, so out-of-sample vectors (e.g. observed BBS-amplitude
+    communities) land in the SAME pinned basis as z_DESK -- the whole point of comparing in
+    z-space. Projecting the original training rows reproduces their Z (validity check).
+    """
+    if device == "cuda" and not torch.cuda.is_available():
+        device = "cpu"
+    T_lm = torch.tensor(np.asarray(landmarks), device=device, dtype=torch.float32)
+    P = torch.tensor(np.asarray(proj_mat), device=device, dtype=torch.float32)
+    sum_lm = T_lm.sum(dim=1, keepdim=True)
+    N, L = x_flat.shape[0], P.shape[1]
+    Z = np.zeros((N, L), dtype=np.float32)
+    with torch.no_grad():
+        for s in range(0, N, batch_size):
+            e = min(s + batch_size, N)
+            Tb = torch.tensor(np.asarray(x_flat[s:e]), device=device, dtype=torch.float32)
+            l1 = torch.cdist(Tb, T_lm, p=1)
+            sp = Tb.sum(1, keepdim=True) + sum_lm.T
+            num = 0.5 * (sp - l1); den = 0.5 * (sp + l1)
+            K = torch.zeros_like(num); m = den > 1e-6; K[m] = num[m] / den[m]
+            Z[s:e] = (K @ P).cpu().numpy()
+    return Z
 
 
 def compute_kernel_diagnostics_ruzicka(z, ebird_flat, n_species, n_weeks, max_samples=500):
@@ -260,12 +298,14 @@ def run_esk_experiment(config=None):
         max_dim = max(latent_dims)
 
         try:
-            Z_max = compute_optimal_latent_z_ruzicka(
+            Z_max, esk_landmarks, esk_projmat = compute_optimal_latent_z_ruzicka(
                 X_smooth,
                 meta["n_species"],
                 meta["n_weeks"],
                 max_dim,
                 n_landmarks=n_landmarks,
+                seed=esk_cfg.get("seed", 0),
+                return_proj=True,
             )
 
             for dim in sorted(latent_dims):
@@ -293,6 +333,11 @@ def run_esk_experiment(config=None):
 
                     np.save(os.path.join(sigma_dir, "Z.npy"), Z_slice)
                     np.save(os.path.join(sigma_dir, "valid_mask.npy"), valid_mask)
+                    # Save the projection so observed communities can be mapped into THIS
+                    # exact basis later (z-space reconstruction metric). Landmarks are the
+                    # sigma-smoothed rows; project new x with the same smoothing.
+                    np.save(os.path.join(sigma_dir, "esk_landmarks.npy"), esk_landmarks)
+                    np.save(os.path.join(sigma_dir, "esk_projmat.npy"), esk_projmat)
 
                     meta_out = {
                         "sigma": sig,

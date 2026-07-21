@@ -149,7 +149,8 @@ stage_viz       () { run viz       python scripts/viz/quicklook_grids.py --clima
 STAGES="${STAGES:-preprocess climate climate_grid states ebird_cache bbs amplitude}"
 echo "STAGES: $STAGES"
 for s in $STAGES; do
-    if ! declare -F "stage_$s" >/dev/null; then echo "unknown stage: $s"; exit 2; fi
-    "stage_$s"
+    fn="stage_${s//-/_}"      # accept either 'spacetime-esk' or 'spacetime_esk' (bash fn names can't have '-')
+    if ! declare -F "$fn" >/dev/null; then echo "unknown stage: $s"; exit 2; fi
+    "$fn"
 done
 echo "======== pipeline complete ($STAGES) ========"; date

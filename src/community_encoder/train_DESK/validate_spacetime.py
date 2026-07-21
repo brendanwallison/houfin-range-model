@@ -68,6 +68,46 @@ def pair_sims(Z, X, pairs):
     return sim_pred, sim_obs
 
 
+def distinct_pairs(m, n, rng):
+    """``n`` random index pairs into ``[0,m)`` with ``i != j`` (no self-pairs, which would
+    inject artificial similarity=1). Returns two index arrays (length <= n)."""
+    i = rng.integers(0, m, n)
+    j = rng.integers(0, m, n)
+    keep = i != j
+    return i[keep], j[keep]
+
+
+def _partial_corr(a, b, C):
+    """Pearson correlation of ``a`` and ``b`` after linearly removing covariates ``C``
+    (a (k,) list/array of columns) from both. Isolates the association not explained by C."""
+    a = np.asarray(a, float); b = np.asarray(b, float)
+    A = np.column_stack([np.ones(len(a))] + [np.asarray(c, float) for c in C])
+    ra = a - A @ np.linalg.lstsq(A, a, rcond=None)[0]
+    rb = b - A @ np.linalg.lstsq(A, b, rcond=None)[0]
+    if ra.std() == 0 or rb.std() == 0:
+        return float("nan")
+    return float(np.corrcoef(ra, rb)[0, 1])
+
+
+def _cka_gain_ci(Kh, Lh, Kn, rng, n_boot=200, frac=0.7):
+    """Subsampling CIs for CKA(DESK,obs) and the gain CKA(DESK)-CKA(no-change) on a fixed
+    precomputed Gram triple. Subsamples (without replacement) so small periods show honest
+    uncertainty and duplicate-row artifacts of with-replacement bootstrap are avoided.
+    Returns ((cka_lo,cka_hi), (gain_lo,gain_hi))."""
+    m = Kh.shape[0]
+    sub = max(8, int(frac * m))
+    if m < 12:
+        return (float("nan"), float("nan")), (float("nan"), float("nan"))
+    ck = np.empty(n_boot); gn = np.empty(n_boot)
+    for b in range(n_boot):
+        s = rng.choice(m, sub, replace=False)
+        ix = np.ix_(s, s); Lhs = Lh[ix]
+        ck[b] = linear_cka(Kh[ix], Lhs)
+        gn[b] = ck[b] - linear_cka(Kn[ix], Lhs)
+    return (float(np.percentile(ck, 2.5)), float(np.percentile(ck, 97.5))), \
+           (float(np.percentile(gn, 2.5)), float(np.percentile(gn, 97.5)))
+
+
 # --------------------- spatiotemporal (temporal-nuance) metrics ---------------------
 # All basis-invariant: they compare SIMILARITIES (<z,z> vs Ruzicka) or GEOGRAPHIC
 # quantities, never the rotation-arbitrary embedding coordinates.
@@ -123,7 +163,11 @@ def temporal_turnover_agreement(Z, X, pidx, recent_year, min_gap=5):
         return {"n_sites": len(keys), "note": "too few paired sites"}
     hi = np.array([best[k][1] for k in keys])
     ri = np.array([rec_ix[k] for k in keys])
-    sim_pred = (Z[hi] * Z[ri]).sum(1)
+    # COSINE self-similarity for the predicted side: a raw dot would fold in the model's
+    # global ⟨z,z⟩ calibration drift (self-similarity != 1), which would show up as spurious
+    # turnover. Cosine measures the angular change only. Observed side is Ruzicka (bounded).
+    zi, zr = Z[hi], Z[ri]
+    sim_pred = (zi * zr).sum(1) / (np.linalg.norm(zi, axis=1) * np.linalg.norm(zr, axis=1) + 1e-12)
     mn = np.minimum(X[hi], X[ri]).sum(1); mx = np.maximum(X[hi], X[ri]).sum(1)
     sim_obs = np.where(mx > 0, mn / mx, 1.0)
     tp, to = 1.0 - sim_pred, 1.0 - sim_obs
@@ -189,11 +233,17 @@ def directional_change_agreement(Z, X, pidx, recent_year, rng, n_anchor=400, min
     hi = np.array([best[k][1] for k in keys]); ri = np.array([rec_ix[k] for k in keys])
     dp = (Z[ri] @ Za.T) - (Z[hi] @ Za.T)                 # predicted profile CHANGE (n, n_anchor)
     do = ruzicka_rect(X[ri], Xa) - ruzicka_rect(X[hi], Xa)   # observed profile CHANGE
-    num = (dp * do).sum(1)
-    den = np.linalg.norm(dp, axis=1) * np.linalg.norm(do, axis=1)
-    cos = num / np.where(den > 0, den, 1.0)
+    npv = np.linalg.norm(dp, axis=1); nov = np.linalg.norm(do, axis=1)
+    cos = (dp * do).sum(1) / np.where(npv * nov > 0, npv * nov, 1.0)
+    # Empirical null: pair each site's PREDICTED change with a RANDOM other site's OBSERVED
+    # change. Mean cos ~0 confirms the metric's baseline; the real mean_dir_cos is meaningful
+    # only relative to this (both share the anchor geometry, so the null absorbs it).
+    perm = rng.permutation(len(keys))
+    dop = do[perm]; nop = nov[perm]
+    cos_null = (dp * dop).sum(1) / np.where(npv * nop > 0, npv * nop, 1.0)
     return {"n_sites": len(keys), "mean_dir_cos": float(np.mean(cos)),
             "median_dir_cos": float(np.median(cos)), "frac_same_dir": float(np.mean(cos > 0)),
+            "mean_dir_cos_null": float(np.mean(cos_null)),
             "rows": rows[hi], "cols": cols[hi], "hist_year": yrs[hi], "dir_cos": cos.astype("float32")}
 
 
@@ -328,32 +378,40 @@ def run_validate(config=None, n_pairs=20000, cka_sample=800, seed=0):
         idx = np.where(mask)[0]
         if idx.size < 4:
             return {"period": label, "n": int(idx.size), "note": "too few points"}
-        pr = np.stack([rng.choice(idx, n_pairs), rng.choice(idx, n_pairs)])
-        sp, so = pair_sims(Z, X, pr)
-        r = float(np.corrcoef(sp, so)[0, 1]) if sp.std() > 0 and so.std() > 0 else 0.0
-        samp = rng.choice(idx, min(cka_sample, idx.size), replace=False)
+        # Cross-sectional (spatial) structure recovery for this period. DISTINCT pairs only
+        # (self-pairs would inject similarity=1). CKA is scale-invariant structure; MSE is a
+        # secondary calibration check on the raw dot vs Ruzicka.
+        m = min(cka_sample, idx.size)
+        samp = rng.choice(idx, m, replace=False)
+        pi, pj = distinct_pairs(m, n_pairs, rng)
+        sp, so = pair_sims(Z[samp], X[samp], (pi, pj))
         Kz = Z[samp] @ Z[samp].T
         Lx = ruzicka_similarity_matrix(X[samp])
-        out = {"period": label, "n": int(idx.size),
-               "mse": float(np.mean((sp - so) ** 2)), "pearson": r,
+        out = {"period": label, "n": int(idx.size), "n_sampled": int(m),
+               "mse": float(np.mean((sp - so) ** 2)),
                "cka": linear_cka(Kz, Lx), "mantel": mantel_r(Kz, Lx)}
-        # Baselines, on the cells that have a recent anchor (all historical cells do), all
-        # over ONE common subset so the gap is apples-to-apples:
-        #   cka_nochange   -- no-change null prediction vs THIS period's observed structure
-        #   cka_gain       -- DESK CKA minus null CKA (same subset): value added over "no change"
-        #   cka_obs_change -- observed(period) vs observed(recent): ~1 => communities barely
-        #                     changed, so there was little temporal signal to capture at all
+        # Baselines on the recent-anchored subset (all historical cells qualify), one common
+        # subset so the gap is apples-to-apples:
+        #   cka_nochange   -- no-change null (each cell's recent latent) vs THIS period observed
+        #   cka_gain (+CI) -- DESK CKA minus null CKA: the value added over "assume no change".
+        #                     CI from subsampling; gain CI overlapping 0 => no real added value.
+        #   cka_obs_change -- observed(period) vs observed(recent). NOTE: inflated toward 1 by the
+        #                     fixed-2023 intra-annual shape, so it is an UPPER BOUND on how much
+        #                     structural change is even representable, not the true change.
         samp_r = samp[has_rec[samp]]
-        if samp_r.size >= 4:
+        if samp_r.size >= 12:
             Kz_h = Z[samp_r] @ Z[samp_r].T
             Lx_h = ruzicka_similarity_matrix(X[samp_r])
             Lx_r = ruzicka_similarity_matrix(Xrec[samp_r])
             Kz_null = Zrec[samp_r] @ Zrec[samp_r].T
+            cka_desk = linear_cka(Kz_h, Lx_h)
             cka_null = linear_cka(Kz_null, Lx_h)
+            (cka_lo, cka_hi), (gain_lo, gain_hi) = _cka_gain_ci(Kz_h, Lx_h, Kz_null, rng)
             out["cka_nochange"] = cka_null
-            out["mantel_nochange"] = mantel_r(Kz_null, Lx_h)
-            out["cka_gain"] = linear_cka(Kz_h, Lx_h) - cka_null
-            out["cka_obs_change"] = linear_cka(Lx_h, Lx_r)
+            out["cka_gain"] = cka_desk - cka_null
+            out["cka_gain_ci95"] = [gain_lo, gain_hi]
+            out["cka_ci95"] = [cka_lo, cka_hi]
+            out["cka_obs_change_upperbound"] = linear_cka(Lx_h, Lx_r)
         return out
 
     report = {"recent_control": _bucket_report(years == recent_year, f"recent({recent_year})")}
@@ -375,10 +433,10 @@ def run_validate(config=None, n_pairs=20000, cka_sample=800, seed=0):
     dirchg = directional_change_agreement(Z, X, pidx, recent_year, rng)
     report["directional_change"] = {k: v for k, v in dirchg.items()
                                      if k in ("n_sites", "mean_dir_cos", "median_dir_cos",
-                                              "frac_same_dir", "note")}
+                                              "frac_same_dir", "mean_dir_cos_null", "note")}
     report["directional_change"]["_note"] = ("DIRECTION of community change (magnitude-"
-        "canceling), unlike turnover which is magnitude-only. mean_dir_cos ~0 => no "
-        "directional skill; frac_same_dir null=0.5.")
+        "canceling), unlike turnover which is magnitude-only. Read mean_dir_cos RELATIVE to "
+        "mean_dir_cos_null (permuted-site baseline); frac_same_dir null=0.5.")
     report["temporal_turnover"] = {k: v for k, v in turn.items()
                                    if k in ("n_sites", "spearman_turnover", "note")}
     report["temporal_turnover"]["_magnitude_only_note"] = ("turnover is MAGNITUDE-only "
@@ -394,9 +452,26 @@ def run_validate(config=None, n_pairs=20000, cka_sample=800, seed=0):
         report["temporal_turnover"]["_partial_note"] = (
             "spearman_turnover_partial removes per-site span + broad space from both fields; "
             "if it collapses toward 0 the raw value was mostly the shared time-depth artifact.")
-    report["analog"] = {k: v for k, v in analog.items()
-                        if k in ("n_hist", "n_present", "topk", "mean_cos_displacement",
-                                 "corr_disp_EW", "corr_disp_NS", "mean_profile_corr", "note")}
+    if "d_pred" in analog:
+        dp_a, do_a, xyh = analog["d_pred"], analog["d_obs"], analog["xy_hist"]
+        cx, cy = xyh[:, 0], xyh[:, 1]
+        nrm = np.linalg.norm(dp_a, axis=1) * np.linalg.norm(do_a, axis=1) + 1e-12
+        cos_a = (dp_a * do_a).sum(1) / nrm
+        perm = rng.permutation(len(dp_a))
+        nrm_n = np.linalg.norm(dp_a, axis=1) * np.linalg.norm(do_a[perm], axis=1) + 1e-12
+        cos_a_null = (dp_a * do_a[perm]).sum(1) / nrm_n
+        report["analog"] = {
+            "n_hist": analog["n_hist"], "n_present": analog["n_present"], "topk": analog["topk"],
+            "mean_cos_displacement": float(np.mean(cos_a)),
+            "mean_cos_displacement_null": float(np.mean(cos_a_null)),
+            "corr_disp_EW_partial": _partial_corr(dp_a[:, 0], do_a[:, 0], [cx, cy]),
+            "corr_disp_NS_partial": _partial_corr(dp_a[:, 1], do_a[:, 1], [cx, cy]),
+            "_note": ("displacement cosine read vs its permutation null; EW/NS correlations have "
+                      "site position partialled out (raw versions were inflated by domain "
+                      "geometry -- edge sites' analogs point inward for both models). "
+                      "profile_corr dropped: it re-measured the static spatial structure.")}
+    else:
+        report["analog"] = {k: v for k, v in analog.items() if k == "note"}
 
     out_dir = config["paths"]["desk_output_dir"]
     out = os.path.join(out_dir, "validate_report.json")
@@ -415,30 +490,31 @@ def run_validate(config=None, n_pairs=20000, cka_sample=800, seed=0):
         analog_hist_year=analog.get("hist_year", np.array([])),
         ref_raster=np.array(ref_raster))
 
-    print("[validate] eBird-only DESK vs BBS. cka=DESK, null=no-change, gain=DESK-null "
-          "(the value added), obs_chg=observed-vs-recent (~1 => little real change to capture):")
+    print("[validate] SPATIAL structure recovery per period. gain = CKA(DESK) - CKA(no-change "
+          "null); gain CI overlapping 0 => DESK adds nothing over 'assume no change':")
     for k, v in report.items():
         if "cka" in v:
-            extra = (f" | null={v['cka_nochange']:.3f} gain={v['cka_gain']:+.3f} "
-                     f"obs_chg={v['cka_obs_change']:.3f}") if "cka_nochange" in v else ""
-            print(f"  {v['period']:<16} n={v['n']:<7} cka={v['cka']:.3f} "
-                  f"mantel={v['mantel']:+.3f}{extra}")
+            if "cka_gain" in v:
+                gl, gh = v["cka_gain_ci95"]
+                extra = f" | gain={v['cka_gain']:+.3f} [95% {gl:+.3f},{gh:+.3f}]"
+            else:
+                extra = ""
+            print(f"  {v['period']:<16} n={v['n']:<7} cka={v['cka']:.3f}{extra}")
     dc = report.get("directional_change", {})
     if "mean_dir_cos" in dc:
         print(f"[validate] DIRECTION of change ({dc['n_sites']} sites): mean cos={dc['mean_dir_cos']:+.3f} "
-              f"median={dc['median_dir_cos']:+.3f} | frac moving right way={dc['frac_same_dir']:.3f} "
-              f"(null 0.5)  <- does it move the RIGHT way")
+              f"vs null={dc.get('mean_dir_cos_null', float('nan')):+.3f} | frac right way="
+              f"{dc['frac_same_dir']:.3f} (null 0.5)")
     if "spearman_turnover" in report["temporal_turnover"]:
         tt = report["temporal_turnover"]
         part = tt.get("spearman_turnover_partial", float("nan"))
-        print(f"[validate] turnover MAGNITUDE Spearman ({turn['n_sites']} sites): "
-              f"raw={tt['spearman_turnover']:+.3f} | partial(span+space removed)={part:+.3f} "
-              f"(magnitude-only; read with direction above)")
-    if "mean_cos_displacement" in report["analog"]:
-        a = report["analog"]
-        print(f"[validate] analog displacement ({a['n_hist']} hist pts): "
-              f"mean cos={a['mean_cos_displacement']:+.3f} | dir corr E-W={a['corr_disp_EW']:+.3f} "
-              f"N-S={a['corr_disp_NS']:+.3f} | profile corr={a['mean_profile_corr']:+.3f}")
+        print(f"[validate] turnover MAGNITUDE Spearman ({turn['n_sites']} sites, cosine self-sim): "
+              f"raw={tt['spearman_turnover']:+.3f} | partial(span+space out)={part:+.3f}")
+    a = report.get("analog", {})
+    if "mean_cos_displacement" in a:
+        print(f"[validate] analog displacement ({a['n_hist']} pts): cos={a['mean_cos_displacement']:+.3f} "
+              f"vs null={a['mean_cos_displacement_null']:+.3f} | EW(partial)={a['corr_disp_EW_partial']:+.3f} "
+              f"NS(partial)={a['corr_disp_NS_partial']:+.3f}")
     print(f"[validate] report -> {out} ; viz arrays -> {viz}")
     return report
 

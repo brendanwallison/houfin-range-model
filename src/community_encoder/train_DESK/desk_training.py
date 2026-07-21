@@ -183,7 +183,8 @@ def train_model_semisup(covn2023, mask_cov, mask_sup_tr, mask_sup_val, z_ref, x_
             scheduler.step(stab_val)
             sh = f" | StabHist {total_sh / max(steps,1):.4f}" if en is not None else ""
             print(f"Ep {ep:03d} | Stab(val) {stab_val:.4f} | True(val) {true_val:.4f} | "
-                  f"Rec(H) {total_rh / max(steps,1):.4f}{sh} | Cos {cos:.3f} | gamma {gpar:+.4f}")
+                  f"Rec(H) {total_rh / max(steps,1):.4f}{sh} | Cos {cos:.3f} | gamma {gpar:+.4f}",
+                  flush=True)
 
         # Early stopping on held-out Stab(val); keep the best weights so a long budget is safe.
         if stab_val < best_val - min_delta:

@@ -34,11 +34,16 @@ export HOUFIN_PREPROCESS_WORKERS="${HOUFIN_PREPROCESS_WORKERS:-48}"
 export HOUFIN_CLIMATE_WORKERS="${HOUFIN_CLIMATE_WORKERS:-16}"   # 16 tiles x nthread 8 on a 128-core node
 export HOUFIN_CLIMATE_THREADS="${HOUFIN_CLIMATE_THREADS:-}"
 
-# Quiet REMORA's defaults that are irrelevant on a CPU node and flood the log:
-# GPU/CUDA monitoring (no GPU here) and the Lustre/network collectors (this node
-# type doesn't expose /proc/fs/lustre, so they spam "No such file"). Unknown vars
-# are harmless (ignored). CPU + memory sampling stay on.
-export REMORA_CUDA=0 REMORA_GPU=0 REMORA_LUSTRE=0 REMORA_NETWORK=0
+# REMORA collectors. Enable GPU/CUDA monitoring only when a GPU is actually present
+# (the encoder job on gpu-a100-dev -- where we want util data); keep it off on the CPU
+# preprocess nodes, where it's irrelevant and floods the log. Lustre/network stay off
+# (this node type doesn't expose /proc/fs/lustre, so they spam "No such file").
+if command -v nvidia-smi >/dev/null 2>&1 && nvidia-smi >/dev/null 2>&1; then
+    export REMORA_CUDA=1 REMORA_GPU=1
+else
+    export REMORA_CUDA=0 REMORA_GPU=0
+fi
+export REMORA_LUSTRE=0 REMORA_NETWORK=0
 MON="/usr/bin/time -v"; command -v remora >/dev/null 2>&1 && MON="remora"
 DATA="$HOUFIN_DATA"
 echo "resource monitor: $MON ; Rscript: ${HOUFIN_RSCRIPT:-Rscript}"

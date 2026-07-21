@@ -96,13 +96,21 @@ def _load_hist_grids(states_dir, schema, mu, sd, exclude_year):
 def train_model_semisup(covn2023, mask_cov, mask_sup_tr, mask_sup_val, z_ref, x_raw_grid,
                         hist_grids, hist_masks, stream_dims, latent_dim, spatial_kernel=3,
                         epochs=100, lr=1e-3, batch_years=8, weights=None, seed=0,
-                        enrich=None, ebird_frac=0.8, patience=50, min_delta=1e-4):
+                        enrich=None, ebird_frac=0.8, direction=None, dir_weights=None,
+                        patience=50, min_delta=1e-4):
     """Train the N-stream grid DESK autoencoder semi-supervised; return the fitted model.
 
     ``enrich`` (or None): tuple ``(pt_covn, pt_covmask, pt_zobs, pt_tgt)`` of per-historical-
     year grids/targets. When given, the stabilizing loss becomes eBird-heavy weighted:
-    ``ebird_frac``·(recent eBird MSE) + (1-``ebird_frac``)·(historical BBS z_obs MSE), so the
-    reliable modern eBird dominates regardless of the ~10:1 BBS point-count advantage.
+    ``ebird_frac``·(recent eBird MSE) + (1-``ebird_frac``)·``w_absolute``·(historical BBS z_obs
+    MSE), so reliable modern eBird dominates.
+
+    ``direction`` (or None): per-cell direction-of-change targets (from
+    ``_prepare_direction_targets``). When given, adds an up-weighted **cosine** alignment of
+    the per-cell change vector ``Δ = z(2023) − weighted-mean(z over preceding years)`` (pred vs
+    obs, magnitude-free) + a tiny **one-sided magnitude floor** ``relu(‖Δ_obs‖ − ‖Δ_pred‖)``
+    (punishes under-shoot only), both reliability-weighted. ``dir_weights`` = {direction,
+    magnitude_floor, absolute}.
     """
     device = "cuda" if torch.cuda.is_available() else "cpu"
     weights = weights or {"stabilizing": 1.0, "metric": 5.0, "reconstruction": 0.1}
@@ -126,6 +134,23 @@ def train_model_semisup(covn2023, mask_cov, mask_sup_tr, mask_sup_val, z_ref, x_
         en = (torch.tensor(pc, device=device), torch.as_tensor(pm, device=device),
               torch.tensor(pz, device=device), torch.as_tensor(pt, device=device).bool())
 
+    dw = dir_weights or {}
+    w_dir = float(dw.get("direction", 0.0)); w_mag = float(dw.get("magnitude_floor", 0.0))
+    w_abs = float(dw.get("absolute", 1.0))
+    dr = None
+    if direction is not None:
+        dr = {"rows": torch.as_tensor(direction["rows"], device=device).long(),
+              "cols": torch.as_tensor(direction["cols"], device=device).long(),
+              "dobs": torch.as_tensor(direction["dobs"], device=device).float(),
+              "dobs_norm": torch.as_tensor(direction["dobs_norm"], device=device).float(),
+              "rel": torch.as_tensor(direction["rel"], device=device).float(),
+              "pre_cell": torch.as_tensor(direction["pre_cell"], device=device).long(),
+              "pre_grid": torch.as_tensor(direction["pre_grid"], device=device).long(),
+              "pre_row": torch.as_tensor(direction["pre_row"], device=device).long(),
+              "pre_col": torch.as_tensor(direction["pre_col"], device=device).long(),
+              "pre_w": torch.as_tensor(direction["pre_w"], device=device).float()}
+        n_dir = dr["rows"].shape[0]
+
     n_hist = 0 if hist_grids is None else hist_grids.shape[0]
     g = torch.Generator().manual_seed(seed)
     best_val, best_state, bad = float("inf"), None, 0     # early stopping on held-out Stab(val)
@@ -135,7 +160,7 @@ def train_model_semisup(covn2023, mask_cov, mask_sup_tr, mask_sup_val, z_ref, x_
     for ep in range(1, epochs + 1):
         model.train()
         order = torch.randperm(n_hist, generator=g) if n_hist else torch.zeros(1, dtype=torch.long)
-        total_rh, total_sh, steps = 0.0, 0.0, 0
+        total_rh, total_sh, total_dir, steps = 0.0, 0.0, 0.0, 0
         for b0 in range(0, max(n_hist, 1), batch_years):
             steps += 1
             opt.zero_grad()
@@ -147,13 +172,29 @@ def train_model_semisup(covn2023, mask_cov, mask_sup_tr, mask_sup_val, z_ref, x_
             loss_true = true_kernel_loss(z_flat[m_tr], x_t[m_tr])
             loss_recon_s = F.mse_loss(recon2023[0][m_cov2023], cov2023[0][m_cov2023])
 
-            # Enrich: eBird-heavy-weighted historical supervision against z_obs targets.
+            # Enrich: eBird-heavy-weighted historical supervision (absolute z_obs, down-weighted)
+            # + direction-of-change (cosine, up-weighted) + one-sided magnitude floor (tiny).
             loss_stab_hist = torch.zeros((), device=device)
+            loss_dir = torch.zeros((), device=device)
+            loss_mag = torch.zeros((), device=device)
             if en is not None:
                 z_pt, _ = model(en[0], en[1])                    # (n_py,H,W,L)
                 sq = torch.sum((z_pt[en[3]] - en[2][en[3]]) ** 2, dim=1)
                 loss_stab_hist = sq.mean() if sq.numel() else loss_stab_hist
-                loss_stab = ebird_frac * loss_stab + (1.0 - ebird_frac) * loss_stab_hist
+                loss_stab = ebird_frac * loss_stab + (1.0 - ebird_frac) * w_abs * loss_stab_hist
+
+                if dr is not None:
+                    L = z_pt.shape[-1]
+                    zp_ref = z_flat[dr["rows"], dr["cols"]]                       # (n_dir, L)
+                    gathered = z_pt[dr["pre_grid"], dr["pre_row"], dr["pre_col"]] # (n_pre, L)
+                    accum = torch.zeros(n_dir, L, device=device)
+                    wsum = torch.zeros(n_dir, 1, device=device)
+                    accum.index_add_(0, dr["pre_cell"], gathered * dr["pre_w"][:, None])
+                    wsum.index_add_(0, dr["pre_cell"], dr["pre_w"][:, None])
+                    dpred = zp_ref - accum / wsum.clamp_min(1e-8)                 # Δ_pred
+                    rel = dr["rel"]; rsum = rel.sum().clamp_min(1e-8)
+                    loss_dir = (rel * (1.0 - F.cosine_similarity(dpred, dr["dobs"], dim=1))).sum() / rsum
+                    loss_mag = (rel * torch.relu(dr["dobs_norm"] - dpred.norm(dim=1))).sum() / rsum
 
             # Reconstruction on a batch of unlabelled year grids.
             if n_hist:
@@ -166,11 +207,13 @@ def train_model_semisup(covn2023, mask_cov, mask_sup_tr, mask_sup_val, z_ref, x_
 
             loss = (weights["stabilizing"] * loss_stab
                     + weights["metric"] * loss_true
-                    + weights["reconstruction"] * (loss_recon_s + loss_recon_h))
+                    + weights["reconstruction"] * (loss_recon_s + loss_recon_h)
+                    + w_dir * loss_dir + w_mag * loss_mag)
             loss.backward()
             opt.step()
             total_rh += loss_recon_h.item()
             total_sh += loss_stab_hist.item()
+            total_dir += loss_dir.item()
 
         model.eval()
         with torch.no_grad():
@@ -182,8 +225,9 @@ def train_model_semisup(covn2023, mask_cov, mask_sup_tr, mask_sup_val, z_ref, x_
             gpar = float(model.gamma.detach()) if spatial_kernel > 0 else 0.0
             scheduler.step(stab_val)
             sh = f" | StabHist {total_sh / max(steps,1):.4f}" if en is not None else ""
+            dd = f" | Dir {total_dir / max(steps,1):.4f}" if dr is not None else ""
             print(f"Ep {ep:03d} | Stab(val) {stab_val:.4f} | True(val) {true_val:.4f} | "
-                  f"Rec(H) {total_rh / max(steps,1):.4f}{sh} | Cos {cos:.3f} | gamma {gpar:+.4f}",
+                  f"Rec(H) {total_rh / max(steps,1):.4f}{sh}{dd} | Cos {cos:.3f} | gamma {gpar:+.4f}",
                   flush=True)
 
         # Early stopping on held-out Stab(val); keep the best weights so a long budget is safe.
@@ -241,7 +285,75 @@ def _prepare_enrich(config, states_dir, schema, mu, sd, z_dir, latent_dim, holdo
     n_tgt = int(sum(t.sum() for t in tgt))
     print(f"[enrich] {len(hist_years)} historical target years, {n_tgt} supervised BBS points "
           f"({int(holdout.sum())} cells held out for eval)")
-    return (np.stack(covn), np.stack(covm), np.stack(zobs_g), np.stack(tgt))
+    return (np.stack(covn), np.stack(covm), np.stack(zobs_g), np.stack(tgt)), hist_years
+
+
+def _weighted_median_cols(V, w):
+    """Component-wise effort-weighted median of ``V`` (k, L) with weights ``w`` (k,) -> (L,).
+    Robust central estimate of a cell's preceding-year z (BBS is noisy, per assumption 1)."""
+    order = np.argsort(V, axis=0)
+    Vs = np.take_along_axis(V, order, axis=0)
+    Ws = np.asarray(w, float)[order]
+    cum = np.cumsum(Ws, axis=0)
+    idx = (cum >= 0.5 * cum[-1]).argmax(axis=0)
+    return Vs[idx, np.arange(V.shape[1])]
+
+
+def _prepare_direction_targets(config, z_dir, latent_dim, holdout, hist_years, recent_year,
+                               reference_start, baseline_scale):
+    """Per-cell direction-of-change target in the (joint) ESK basis.
+
+    For each train cell with a 2023 anchor + >=1 preceding point (year < reference_start):
+    ``Δ_obs = z_ref(2023 anchor) - weighted_median(preceding z_obs)``. Reliability
+    ``r = clip((reference_start - effort-weighted preceding TCOM) / baseline_scale, 0, 1)``
+    down-weights short/recent baselines. Returns the per-cell targets plus a flat map that
+    lets the trainer aggregate the PREDICTED preceding mean by scatter-add over the same
+    historical point-year grids (aligned to ``hist_years``), with the same effort weights.
+    """
+    from .esk_kernel import project_amplitude_to_z
+    zt = config["bbs"]["z_dir"]
+    X = np.load(os.path.join(zt, "X_points.npy"))
+    pidx = np.load(os.path.join(zt, "point_index.npy"))
+    z_obs = project_amplitude_to_z(X, z_dir, latent_dim)
+    sf = np.load(os.path.join(zt, "support_field.npz"))
+    sup, syears = sf["support"], [int(y) for y in sf["years"]]
+    yr_ix = {y: i for i, y in enumerate(syears)}
+    rows, cols, yrs = pidx[:, 0], pidx[:, 1], pidx[:, 2]
+    hist_pos = {int(y): k for k, y in enumerate(hist_years)}
+
+    rec = np.where(yrs == recent_year)[0]
+    rec_map = {(int(rows[i]), int(cols[i])): int(i) for i in rec}
+    pre = {}                                     # (r,c) -> list of (point_idx, year, weight)
+    for i in np.where(yrs < reference_start)[0]:
+        r, c, y = int(rows[i]), int(cols[i]), int(yrs[i])
+        if (r, c) in rec_map and not holdout[r, c] and y in hist_pos and y in yr_ix:
+            pre.setdefault((r, c), []).append((i, y, float(sup[yr_ix[y], r, c])))
+
+    dir_r, dir_c, dobs, rel = [], [], [], []
+    p_cell, p_grid, p_r, p_c, p_w = [], [], [], [], []
+    for cpos, (r, c) in enumerate(k for k in pre if pre[k]):
+        pts = pre[(r, c)]
+        V = z_obs[[p[0] for p in pts]]
+        W = np.array([p[2] for p in pts], float)
+        Wn = W if W.sum() > 0 else np.ones_like(W)
+        zpre = _weighted_median_cols(V, Wn)
+        dobs.append(z_obs[rec_map[(r, c)]] - zpre)
+        tcom = float(np.sum(Wn * np.array([p[1] for p in pts])) / Wn.sum())
+        rel.append(min(1.0, max(0.0, (reference_start - tcom) / baseline_scale)))
+        dir_r.append(r); dir_c.append(c)
+        for (i, y, w) in pts:
+            p_cell.append(cpos); p_grid.append(hist_pos[y]); p_r.append(r); p_c.append(c)
+            p_w.append(w if W.sum() > 0 else 1.0)
+    dobs = np.array(dobs, dtype="float32")
+    print(f"[enrich-dir] {len(dir_r)} direction cells, {len(p_cell)} preceding points "
+          f"(reference_start={reference_start}, baseline_scale={baseline_scale})")
+    return dict(
+        rows=np.array(dir_r, int), cols=np.array(dir_c, int), dobs=dobs,
+        dobs_norm=np.linalg.norm(dobs, axis=1).astype("float32"),
+        rel=np.array(rel, dtype="float32"),
+        pre_cell=np.array(p_cell, int), pre_grid=np.array(p_grid, int),
+        pre_row=np.array(p_r, int), pre_col=np.array(p_c, int),
+        pre_w=np.array(p_w, dtype="float32"))
 
 
 def run_desk_experiment(config=None):
@@ -292,7 +404,8 @@ def run_desk_experiment(config=None):
     # Mode: 'enrich' adds eBird-heavy-weighted historical supervision + a spatial cell holdout;
     # 'off'/'validate' train eBird-2023-only (the current single-labelled-year behaviour).
     bbs_mode = config.get("bbs_mode", "validate")
-    enrich_data, ebird_frac = None, 0.8
+    enrich_data, direction, ebird_frac = None, None, 0.8
+    dir_weights = {}
     holdout = np.zeros_like(mask_sup)
     if bbs_mode == "enrich":
         en_cfg = desk_cfg.get("enrich", {})
@@ -303,10 +416,16 @@ def run_desk_experiment(config=None):
         ho = rng.random(len(ys)) < float(en_cfg.get("holdout_frac", 0.2))
         holdout[ys[ho], xs[ho]] = True
         m_tr, m_val = mask_sup & (~holdout), mask_sup & holdout          # eval on held-out cells
-        enrich_data = _prepare_enrich(config, states_dir, schema, mu, sd, z_dir,
-                                      z_grid.shape[2], holdout, label_year)
+        enrich_data, hist_years = _prepare_enrich(config, states_dir, schema, mu, sd, z_dir,
+                                                  z_grid.shape[2], holdout, label_year)
+        direction = _prepare_direction_targets(
+            config, z_dir, z_grid.shape[2], holdout, hist_years, label_year,
+            int(en_cfg.get("reference_start", 2014)), float(en_cfg.get("baseline_scale", 20.0)))
+        dir_weights = {"direction": float(en_cfg.get("w_direction", 2.0)),
+                       "magnitude_floor": float(en_cfg.get("w_magnitude_floor", 0.05)),
+                       "absolute": float(en_cfg.get("w_absolute", 1.0))}
         np.save(os.path.join(out_dir, "holdout_cells.npy"), holdout)
-        print(f"[desk] ENRICH mode: ebird_loss_fraction={ebird_frac}, "
+        print(f"[desk] ENRICH mode: ebird_loss_fraction={ebird_frac}, weights={dir_weights}, "
               f"{int(holdout.sum())} cells held out")
     else:
         m_tr, m_val = _split_mask(mask_sup, desk_cfg.get("train_val_split", 0.8))
@@ -322,6 +441,7 @@ def run_desk_experiment(config=None):
         batch_years=desk_cfg.get("batch_years", 8),
         weights=desk_cfg.get("weights"),
         enrich=enrich_data, ebird_frac=ebird_frac,
+        direction=direction, dir_weights=dir_weights,
         patience=desk_cfg.get("patience", 50))
 
     torch.save(model.state_dict(), os.path.join(out_dir, "env_model_semisup.pth"))

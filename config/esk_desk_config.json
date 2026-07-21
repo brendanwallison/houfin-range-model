@@ -21,7 +21,10 @@
     "pattern": "*_abundance_median_2023-*.tif",
     "sigmas": [0.0, 0.5, 1.0, 1.5],
     "latent_dims": [8, 16, 32],
-    "n_landmarks": 25000
+    "n_landmarks": 25000,
+    "seed": 0,
+    "_spacetime_comment": "Joint spatiotemporal ESK (bbs_mode=enrich, run_spacetime_esk): kernel-PCA over eBird-recent + BBS-historical amplitude points with recent_frac of landmarks forced onto recent eBird cells (keeps modern spatial structure dominant while the basis gains historical change directions). Writes esk/spacetime/{Z.npy recent grid, valid_mask, esk_landmarks, esk_projmat, meta.json}.",
+    "spacetime": {"sigma": 1.0, "latent_dim": 32, "recent_frac": 0.5}
   },
   "bbs_mode": "enrich",
   "bbs": {
@@ -51,7 +54,7 @@
     "_train_comment": "epochs is an UPPER BOUND; early stopping on held-out Stab(val) (patience) restores the best weights, so a long budget is safe. 100 epochs left every loss still descending (undertrained) -> raised to 500. batch_years = reconstruction grids/step; enrich ALSO forwards the 2023 grid + all ~11 point-year grids every step (full-batch supervised), so GPU mem ~ (12+batch_years) whole grids through a 512-wide MLP with gradients. 8 fits a 40GB A100; 32 OOMs. Bigger batch_years buys ~nothing here (supervised term is already full-batch) -- the win is epochs, not batch.",
     "epochs": 500,
     "patience": 50,
-    "lr": 0.001,
+    "lr": 0.0015,
     "batch_size": 4096,
     "weights": {
       "stabilizing": 1.0,
@@ -63,17 +66,20 @@
     "_spatial_conv_comment": "Tight residual masked (partial) conv on the latent grid: injects neighbourhood context a point-wise encoder cannot learn. gamma inits 0 so training starts as the exact point-wise, ESK-aligned model. kernel=3 => 3x3 (one 25km ring).",
     "spatial_conv": {"enabled": true, "kernel": 3},
     "_enrich_comment": "enrich (bbs_mode='enrich'): supervise DESK at historical (cell,year) points against the BBS-amplitude community projected into the eBird ESK basis (z_obs). ebird_loss_fraction=0.8 => modern eBird contributes 80% of the stabilizing loss regardless of the ~10:1 BBS point-count advantage (eBird is the reliable anchor). holdout_frac of eBird cells are held out entirely for honest z-space reconstruction eval.",
-    "enrich": {"ebird_loss_fraction": 0.8, "holdout_frac": 0.2, "seed": 0},
-    "z_dir": "${HOUFIN_PROCESSED}/encoder/esk/sigma_1.0",
-    "latent_dim": 16
+    "enrich": {"ebird_loss_fraction": 0.8, "holdout_frac": 0.2, "seed": 0,
+               "w_direction": 2.0, "w_magnitude_floor": 0.05, "w_absolute": 1.0,
+               "reference_start": 2014, "baseline_scale": 20.0},
+    "_zdir_comment": "enrich uses the JOINT spatiotemporal ESK basis (esk/spacetime), not the eBird-only sigma_1.0 basis, so Z can represent historical change directions. latent_dim 32 = full joint basis (expressiveness). For bbs_mode=validate/off, point z_dir back at esk/sigma_1.0 and latent_dim 16.",
+    "z_dir": "${HOUFIN_PROCESSED}/encoder/esk/spacetime",
+    "latent_dim": 32
   },
   "latent_cube": {
     "data_dir": "${HOUFIN_DATA}",
     "hist_dir": "${HOUFIN_PROCESSED}/encoder/states/yearly_states",
-    "z_dir": "${HOUFIN_PROCESSED}/encoder/esk/sigma_1.0",
+    "z_dir": "${HOUFIN_PROCESSED}/encoder/esk/spacetime",
     "model_path": "${HOUFIN_PROCESSED}/encoder/desk/env_model_semisup.pth",
-    "z_ref_path": "${HOUFIN_PROCESSED}/encoder/esk/sigma_1.0/Z.npy",
-    "mask_ref_path": "${HOUFIN_PROCESSED}/encoder/esk/sigma_1.0/valid_mask.npy",
+    "z_ref_path": "${HOUFIN_PROCESSED}/encoder/esk/spacetime/Z.npy",
+    "mask_ref_path": "${HOUFIN_PROCESSED}/encoder/esk/spacetime/valid_mask.npy",
     "water_mask_path": "${HOUFIN_DATA}/land_mask/ocean_mask_25km.tif",
     "output_dir": "${HOUFIN_PROCESSED}/encoder/cube",
     "state_pattern": "state_*.npz",

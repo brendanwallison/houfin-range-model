@@ -138,6 +138,7 @@ stage_bbs () {
 }
 stage_amplitude () { run amplitude python scripts/run_encoder.py amplitude; }
 stage_esk       () { run esk       python scripts/run_encoder.py esk; }
+stage_spacetime_esk () { run spacetime_esk python scripts/run_encoder.py spacetime-esk; }
 stage_desk      () { run desk      python scripts/run_encoder.py desk; }
 stage_cube      () { run cube      python scripts/run_encoder.py cube; }
 stage_validate  () { run validate  python scripts/run_encoder.py validate; }

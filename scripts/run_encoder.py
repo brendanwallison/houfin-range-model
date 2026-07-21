@@ -30,6 +30,9 @@ def main():
     elif cmd == "esk":
         from src.community_encoder.train_DESK.esk_kernel import run_esk_experiment
         run_esk_experiment()
+    elif cmd == "spacetime-esk":
+        from src.community_encoder.train_DESK.esk_kernel import run_spacetime_esk
+        run_spacetime_esk()
     elif cmd == "desk":
         from src.community_encoder.train_DESK.desk_training import run_desk_experiment
         run_desk_experiment()
@@ -41,7 +44,7 @@ def main():
         run_validate()
     else:
         sys.exit(f"unknown encoder stage: {cmd!r} "
-                 "(ebird-cache|amplitude|esk|desk|cube|validate)")
+                 "(ebird-cache|amplitude|esk|spacetime-esk|desk|cube|validate)")
 
 
 if __name__ == "__main__":

@@ -81,6 +81,69 @@ def stratified_landmarks(strata, n_landmarks, rng, recent_label=0, recent_frac=0
     return rng.permutation(np.concatenate(picks)) if picks else rng.permutation(N)
 
 
+def diverse_landmarks(X, point_index, n_landmarks, rng, spatial_bins=8,
+                      abundance_bins=4):
+    """Scalable diversity-aware landmark sampling over space, time, and abundance.
+
+    Every occupied ``(decade, spatial tile, abundance quantile)`` stratum receives
+    one landmark first; the rest of the budget is a uniform sample of the remaining
+    population.  Thus rare parts of the manifold cannot disappear entirely, while
+    most landmarks retain the population weighting of ordinary random Nyström.
+
+    This is O(N) in the number of points, unlike k-means++/farthest-point selection,
+    whose O(N*M*D) cost is prohibitive for roughly one million points and 16k centers.
+    ``point_index`` is ``(row, col, year)``.
+    """
+    X = np.asarray(X)
+    pidx = np.asarray(point_index)
+    N = len(X)
+    m = min(int(n_landmarks), N)
+    if m >= N:
+        return rng.permutation(N)
+    if pidx.shape != (N, 3):
+        raise ValueError(f"point_index must have shape ({N}, 3), got {pidx.shape}")
+
+    row, col, year = pidx[:, 0], pidx[:, 1], pidx[:, 2]
+    # Equal-width spatial tiles on the occupied extent (robust to nonzero origins).
+    def _bins(v):
+        span = max(float(np.max(v) - np.min(v) + 1), 1.0)
+        return np.minimum(((v - np.min(v)) * spatial_bins / span).astype(int),
+                          spatial_bins - 1)
+    rb, cb = _bins(row), _bins(col)
+    decade = (year.astype(int) // 10) * 10
+
+    # Quantiles of log total abundance capture empty/sparse through abundant
+    # communities without allowing a few extreme totals to dominate the bins.
+    mag = np.log1p(np.maximum(X, 0).sum(axis=1))
+    edges = np.unique(np.quantile(mag, np.linspace(0, 1, abundance_bins + 1)))
+    ab = np.searchsorted(edges[1:-1], mag, side="right")
+
+    keys = np.stack((decade, rb, cb, ab), axis=1)
+    _, inverse = np.unique(keys, axis=0, return_inverse=True)
+    # One sort + split keeps grouping O(N log N); repeatedly scanning all N rows
+    # once per stratum would be costly at the roughly one-million-point scale.
+    order = np.argsort(inverse, kind="stable")
+    cuts = np.flatnonzero(np.diff(inverse[order])) + 1
+    groups = np.split(order, cuts)
+
+    # If the budget is smaller than the number of strata, choose strata weighted
+    # by their population, then one member from each. Normally 16k >> n_strata.
+    if m < len(groups):
+        sizes = np.asarray([len(g) for g in groups], dtype=float)
+        chosen_groups = rng.choice(len(groups), m, replace=False, p=sizes / sizes.sum())
+    else:
+        chosen_groups = np.arange(len(groups))
+    anchors = np.asarray([rng.choice(groups[g]) for g in chosen_groups], dtype=int)
+
+    remaining_n = m - len(anchors)
+    if remaining_n:
+        available = np.ones(N, dtype=bool)
+        available[anchors] = False
+        fill = rng.choice(np.flatnonzero(available), remaining_n, replace=False)
+        anchors = np.concatenate((anchors, fill))
+    return rng.permutation(anchors)
+
+
 def compute_optimal_latent_z_ruzicka(ebird_flat, n_species, n_weeks, latent_dim, n_landmarks=10000,
                                      device="cuda", seed=0, return_proj=False, landmark_idx=None):
     """
@@ -97,6 +160,13 @@ def compute_optimal_latent_z_ruzicka(ebird_flat, n_species, n_weeks, latent_dim,
     if device == "cuda" and not torch.cuda.is_available():
         print("CUDA not available, falling back to CPU.")
         device = "cpu"
+    if device == "cuda":
+        torch.cuda.reset_peak_memory_stats()
+        props = torch.cuda.get_device_properties(torch.cuda.current_device())
+        print(f"[kernel-device] requested=cuda device={props.name} "
+              f"total_vram={props.total_memory / 2**30:.1f} GiB")
+    else:
+        print("[kernel-device] requested=cpu eigensolver=cpu projection=cpu")
 
     rng = np.random.default_rng(seed)
     if landmark_idx is not None:
@@ -125,16 +195,34 @@ def compute_optimal_latent_z_ruzicka(ebird_flat, n_species, n_weeks, latent_dim,
     K_mm_total = torch.zeros_like(numerator)
     K_mm_total[mask] = numerator[mask] / denominator[mask]
 
+    # Release O(M^2) construction temporaries before cuSOLVER requests its own
+    # workspace. Keeping them alive was both wasteful and made fallback more likely.
+    del l1_dist, sum_plus_sum, numerator, denominator, mask
+    if device == "cuda":
+        print(f"[kernel-device] kernel_matrix={M}x{M} "
+              f"allocated={torch.cuda.memory_allocated() / 2**30:.2f} GiB "
+              f"reserved={torch.cuda.memory_reserved() / 2**30:.2f} GiB")
+        torch.cuda.empty_cache()
+
     # Eigendecompose on the GPU (cuSOLVER) when it fits -- far faster than CPU LAPACK
     # and identical precision (K_mm is float32 either way). Fall back to CPU only if
     # the eigenvector workspace OOMs (e.g. a small card at finer resolution / larger N);
     # at 25 km (N ~16.5k) the matrix is ~1 GB and fits an A100 with room to spare.
     try:
         L, U = torch.linalg.eigh(K_mm_total)
-    except (torch.cuda.OutOfMemoryError, RuntimeError):
+        eig_device = K_mm_total.device.type
+    except (torch.cuda.OutOfMemoryError, RuntimeError) as exc:
+        print(f"[kernel-device] GPU eigensolver failed ({type(exc).__name__}: {exc}); "
+              "falling back to CPU LAPACK", flush=True)
         if device == "cuda":
+            K_cpu = K_mm_total.cpu()
+            del K_mm_total
             torch.cuda.empty_cache()
-        L, U = torch.linalg.eigh(K_mm_total.cpu())
+        else:
+            K_cpu = K_mm_total
+        L, U = torch.linalg.eigh(K_cpu)
+        eig_device = "cpu"
+    print(f"[kernel-device] eigensolver={eig_device}", flush=True)
 
     idx_sort = torch.argsort(L, descending=True)[:latent_dim]
     L = L[idx_sort]
@@ -171,6 +259,9 @@ def compute_optimal_latent_z_ruzicka(ebird_flat, n_species, n_weeks, latent_dim,
             Z_opt[start:end] = z_batch.cpu().numpy()
 
     if return_proj:
+        if device == "cuda":
+            print(f"[kernel-device] peak_allocated={torch.cuda.max_memory_allocated() / 2**30:.2f} GiB "
+                  f"peak_reserved={torch.cuda.max_memory_reserved() / 2**30:.2f} GiB")
         return Z_opt, X_lm_np.astype(np.float32), proj_mat.detach().cpu().numpy().astype(np.float32)
     return Z_opt
 
@@ -488,14 +579,20 @@ def run_spacetime_esk(config=None):
     strata = np.where(yrs == recent_year, 0, ((yrs // 10) * 10).astype(int))   # 0=recent, else decade
     rng = np.random.default_rng(seed)
     N = X.shape[0]
-    if landmark_mode == "stratified":
+    population_recent_frac = float(np.mean(strata == 0))
+    if landmark_mode == "diverse":
+        lm_idx = diverse_landmarks(X, pidx, n_landmarks, rng,
+                                   spatial_bins=int(sc.get("spatial_bins", 8)),
+                                   abundance_bins=int(sc.get("abundance_bins", 4)))
+    elif landmark_mode == "stratified":
         # proportional-by-stratum: recent gets ONLY its natural share (no upweighting)
         lm_idx = stratified_landmarks(strata, n_landmarks, rng, recent_label=0,
-                                      recent_frac=float((strata == 0).mean()))
-    else:                                                          # 'random' (default): uniform over all points
+                                      recent_frac=population_recent_frac)
+    else:                                                          # random: uniform over all points
         lm_idx = rng.permutation(N)[:min(N, n_landmarks)]
-    print(f"[st-esk] {len(lm_idx)} landmarks ({landmark_mode}); recent share {np.mean(strata[lm_idx] == 0):.2f} "
-          f"(population {np.mean(strata == 0):.2f})")
+    landmark_recent_frac = float(np.mean(strata[lm_idx] == 0))
+    print(f"[st-esk] {len(lm_idx)} landmarks ({landmark_mode}); recent share {landmark_recent_frac:.2f} "
+          f"(population {population_recent_frac:.2f})")
 
     Zj, lm, pm = compute_optimal_latent_z_ruzicka(
         X, n_species, n_weeks, latent_dim, n_landmarks=n_landmarks, seed=seed,
@@ -523,8 +620,13 @@ def run_spacetime_esk(config=None):
     np.save(os.path.join(out_dir, "esk_projmat.npy"), pm)
     with open(os.path.join(out_dir, "meta.json"), "w", encoding="utf-8") as fh:
         json.dump({"sigma": sigma, "latent_dim": latent_dim, "n_species": n_species,
-                   "n_weeks": n_weeks, "kernel": "joint_ruzicka_stratified",
-                   "recent_frac": recent_frac, "recent_year": recent_year,
+                   "n_weeks": n_weeks, "kernel": "joint_ruzicka",
+                   "landmark_mode": landmark_mode,
+                   # Keep recent_frac for compatibility, but define it explicitly as
+                   # the realized landmark share rather than a removed config variable.
+                   "recent_frac": landmark_recent_frac,
+                   "population_recent_frac": population_recent_frac,
+                   "recent_year": recent_year,
                    "n_landmarks": int(len(lm_idx))}, fh, indent=2)
     print(f"[st-esk] saved joint basis -> {out_dir} (recent Z {Z_flat.shape}, latent_dim {latent_dim})")
     return out_dir

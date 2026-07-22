@@ -24,8 +24,8 @@
     "latent_dims": [8, 16, 32],
     "n_landmarks": 25000,
     "seed": 0,
-    "_spacetime_comment": "Joint spatiotemporal ESK (bbs_mode=trend, run_spacetime_esk): Ruzicka kernel-PCA over the trend-based annual community points (2023 anchor + backward-reconstructed years 1966-2023). landmark_mode='random' draws landmarks uniformly over all (cell,year) points -- the basis spans the whole spatiotemporal manifold with NO upweighting of any time/place. 'stratified' = proportional-by-decade (still no recent boost). sigma=0.0: annual points (n_weeks=1), no weekly axis. Writes esk/spacetime/{Z.npy recent grid, valid_mask, esk_landmarks, esk_projmat, meta.json}.",
-    "spacetime": {"sigma": 0.0, "latent_dim": 32, "landmark_mode": "random", "recent_frac": 0.5}
+    "_spacetime_comment": "Joint spatiotemporal ESK (bbs_mode=trend, run_spacetime_esk): Ruzicka kernel-PCA over the trend-based annual community points. landmark_mode='diverse' guarantees coverage of occupied decade x spatial-tile x abundance-quantile strata, then fills the remaining budget uniformly so rare manifold regions are represented without discarding population weighting. spatial_bins is per axis. 'random' remains a uniform ablation; 'stratified' is proportional by decade. sigma=0.0: annual points (n_weeks=1), no weekly axis. Writes esk/spacetime/{Z.npy recent grid, valid_mask, esk_landmarks, esk_projmat, meta.json}.",
+    "spacetime": {"sigma": 0.0, "latent_dim": 32, "landmark_mode": "diverse", "spatial_bins": 8, "abundance_bins": 4}
   },
   "bbs_mode": "trend",
   "_trend_comment": "Trend-product spatiotemporal community target (trend_community.build_trend_points). Applies published %/yr trends to the 2023 eBird annual anchor, blending eBird recent (2012-2022) and BBS long-term (1966-2022) rates with a smooth handoff, integrated backward to first_year. Paths (bbs_trend_grid, ebird_trend_grid, community_trend_list) fall back to data_config; ebird_weekly_grid falls back to paths.ebird_folder.",

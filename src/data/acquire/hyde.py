@@ -29,6 +29,7 @@ Examples
 import argparse
 import os
 import sys
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
@@ -47,6 +48,12 @@ BACKOFF = 5
 MAX_WORKERS = 3
 MIN_BYTES = 100_000
 
+# The netCDF4/HDF5 stack used by xarray is not reliably thread-safe on TACC.  The
+# downloader's worker pool may validate several already-present (or newly downloaded)
+# files at once, which can make the native library abort with "double free" or segfault.
+# Keep the network transfers concurrent, but admit only one thread to HDF5 at a time.
+_NC_VALIDATION_LOCK = threading.Lock()
+
 
 def is_valid_nc(path: Path) -> bool:
     if not path.exists() or path.stat().st_size < MIN_BYTES:
@@ -63,7 +70,9 @@ def is_valid_nc(path: Path) -> bool:
     if not (magic[:3] == b"CDF" or magic == b"\x89HDF"):
         return False
     try:
-        xr.open_dataset(path).close()
+        with _NC_VALIDATION_LOCK:
+            with xr.open_dataset(path):
+                pass
         return True
     except Exception:
         return False

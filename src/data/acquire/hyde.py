@@ -51,6 +51,17 @@ MIN_BYTES = 100_000
 def is_valid_nc(path: Path) -> bool:
     if not path.exists() or path.stat().st_size < MIN_BYTES:
         return False
+    # Check the file signature BEFORE handing the path to HDF5: a truncated/corrupt .nc
+    # (e.g. a killed download) can crash the native HDF5 reader with a SEGFAULT, which is
+    # not a Python exception the try/except can catch. NetCDF classic starts with "CDF";
+    # netCDF-4/HDF5 starts with the "\x89HDF" magic. Anything else -> treat as invalid.
+    try:
+        with open(path, "rb") as fh:
+            magic = fh.read(4)
+    except OSError:
+        return False
+    if not (magic[:3] == b"CDF" or magic == b"\x89HDF"):
+        return False
     try:
         xr.open_dataset(path).close()
         return True

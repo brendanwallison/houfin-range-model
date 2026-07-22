@@ -15,6 +15,11 @@ export PYTORCH_CUDA_ALLOC_CONF="${PYTORCH_CUDA_ALLOC_CONF:-expandable_segments:T
 # Flush python stdout live so per-epoch training lines appear in the log immediately
 # (block-buffered stdout to a file otherwise hides progress for minutes -- looks stalled).
 export PYTHONUNBUFFERED="${PYTHONUNBUFFERED:-1}"
+# HDF5 file locking segfaults/hangs when the file lives on Lustre ($SCRATCH/$WORK), which
+# is where every .nc (HYDE, LUH-3) sits. Disabling it is the standard TACC guard and lets
+# xarray/netCDF4 open these files safely (a locking crash is a native segfault Python can't
+# catch). Harmless off-Lustre.
+export HDF5_USE_FILE_LOCKING="${HDF5_USE_FILE_LOCKING:-FALSE}"
 export RAYON_NUM_THREADS="${RAYON_NUM_THREADS:-4}"
 export UV_CONCURRENT_DOWNLOADS="${UV_CONCURRENT_DOWNLOADS:-4}"
 export UV_CONCURRENT_BUILDS="${UV_CONCURRENT_BUILDS:-2}"

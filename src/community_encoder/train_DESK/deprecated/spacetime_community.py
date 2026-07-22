@@ -1,4 +1,13 @@
-"""Amplitude-modulated spatiotemporal community vectors for the ESK kernel.
+"""DEPRECATED (superseded by train_DESK/trend_community.py).
+
+Amplitude-modulated spatiotemporal community vectors for the ESK kernel.
+
+Kept for reference/comparison only -- NOT on the live pipeline. The fixed-2023-shape
+amplitude construction hit an expressiveness ceiling (joint-ESK effective rank ~8-9);
+the trend-product path (``trend_community.build_trend_points``) replaces it, applying
+published BBS + eBird %/yr trends to the modern eBird raster for a spanning Z basis.
+
+Original docstring follows.
 
 Implements the approved construction (see the plan + memory
 ``desk-bbs-spatiotemporal-design``):

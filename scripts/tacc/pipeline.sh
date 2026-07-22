@@ -3,17 +3,19 @@
 # Shared stage library for the houfin pipeline. Two distinct kinds of stage:
 #
 #   PREPROCESSING (CPU, torch-free) -- one dev/normal-queue job (00_preprocess_all):
-#     preprocess climate climate_grid states ebird_cache bbs amplitude
-#     This is the default STAGES and produces every input the encoder needs.
+#     preprocess climate climate_grid states ebird_cache bbs_trend ebird_trend trend_points
+#     This is the default STAGES and produces every input the encoder needs. The trend
+#     community must already be selected on a LOGIN node (download_all.sh runs
+#     select_trend_community -> community_trend.csv; it needs the eBird trends REST listing).
 #
 #   ENCODER (needs torch; ESK/DESK are heavy -> GPU) -- separate job(s)
 #   (20_encoder), submitted after preprocessing and typically ONE AT A TIME so
 #   ESK and DESK can be sized/queued independently:
-#     esk desk cube validate
+#     spacetime-esk desk cube validate
 #
 # Select stages with STAGES (space-separated, in order). Runnable standalone on a
-# login node for a quick partial stage. bbs/amplitude/validate are for
-# bbs_mode=validate (default); for bbs_mode=off drop them (enrich not yet wired).
+# login node for a quick partial stage. bbs_trend/ebird_trend/trend_points are the
+# bbs_mode=trend community path; for bbs_mode=off drop them.
 #     STAGES=esk  bash scripts/tacc/pipeline.sh          # just ESK
 #     STAGES="climate_grid states ebird_cache" bash scripts/tacc/pipeline.sh
 #----------------------------------------------------------------------
@@ -55,7 +57,7 @@ echo "resource monitor: $MON ; Rscript: ${HOUFIN_RSCRIPT:-Rscript}"
 # sequences AND their validation targets.
 _vpath () {
     case "$1" in
-        ref_grid)  echo "$DATA/ref_grid_25km.tif" ;;
+        ref_grid)  echo "$DATA/ref_grid_27km.tif" ;;
         land_mask) echo "$DATA/land_mask" ;;
         ebird)     echo "$DATA/ebird_weekly_2023_grid" ;;
         luh3)      echo "$DATA/luh3_grid" ;;
@@ -136,7 +138,13 @@ stage_bbs () {
         --bbs-species "$DATA/bbs_2026_release/SpeciesList.csv"
     run bbs_community python -m src.data.preprocess.bbs_community
 }
-stage_amplitude () { run amplitude python scripts/run_encoder.py amplitude; }
+# Trend-product community path (replaces the deprecated amplitude path). select_community
+# needs the eBird trends REST listing (internet) so it runs on a LOGIN node (download_all.sh),
+# NOT here; the align + point-build steps below are CPU preprocessing on a compute node.
+stage_bbs_trend        () { run bbs_trend        python -m src.data.preprocess.bbs_trend; }
+stage_ebird_trend      () { run ebird_trend      python -m src.data.preprocess.ebird_trend; }
+stage_select_community () { run select_community python -m src.data.identify.select_trend_community; }
+stage_trend_points     () { run trend_points     python scripts/run_encoder.py trend-points; }
 stage_esk       () { run esk       python scripts/run_encoder.py esk; }
 stage_spacetime_esk () { run spacetime_esk python scripts/run_encoder.py spacetime-esk; }
 stage_desk      () { run desk      python scripts/run_encoder.py desk; }
@@ -146,7 +154,7 @@ stage_viz       () { run viz       python scripts/viz/quicklook_grids.py --clima
 
 # Default = the CPU preprocessing chain only. Encoder stages (esk/desk/cube/
 # validate) are opt-in via STAGES from the GPU encoder job.
-STAGES="${STAGES:-preprocess climate climate_grid states ebird_cache bbs amplitude}"
+STAGES="${STAGES:-preprocess climate climate_grid states ebird_cache bbs_trend ebird_trend trend_points}"
 echo "STAGES: $STAGES"
 for s in $STAGES; do
     fn="stage_${s//-/_}"      # accept either 'spacetime-esk' or 'spacetime_esk' (bash fn names can't have '-')

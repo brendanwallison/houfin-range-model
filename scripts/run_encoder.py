@@ -8,7 +8,7 @@ top-level root (+ a ``src.config_utils`` loader). Putting both the repo root and
 stage is meant to run as its own process (the TACC pipeline calls this once per
 stage), so the two roots never collide within one interpreter.
 
-    python scripts/run_encoder.py {ebird-cache|amplitude|esk|desk|cube|validate}
+    python scripts/run_encoder.py {ebird-cache|trend-points|esk|spacetime-esk|desk|cube|validate}
 """
 import os
 import sys
@@ -24,9 +24,9 @@ def main():
     if cmd == "ebird-cache":
         from src.community_encoder.train_DESK.ebird_cache import build_ebird_cache
         build_ebird_cache()
-    elif cmd == "amplitude":
-        from src.community_encoder.train_DESK.spacetime_community import build_amplitude_points
-        build_amplitude_points()
+    elif cmd == "trend-points":
+        from src.community_encoder.train_DESK.trend_community import build_trend_points
+        build_trend_points()
     elif cmd == "esk":
         from src.community_encoder.train_DESK.esk_kernel import run_esk_experiment
         run_esk_experiment()
@@ -44,7 +44,7 @@ def main():
         run_validate()
     else:
         sys.exit(f"unknown encoder stage: {cmd!r} "
-                 "(ebird-cache|amplitude|esk|spacetime-esk|desk|cube|validate)")
+                 "(ebird-cache|trend-points|esk|spacetime-esk|desk|cube|validate)")
 
 
 if __name__ == "__main__":

@@ -116,8 +116,8 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--dem", help="DEM GeoTIFF (default: the acquire/dem.py download).")
     ap.add_argument("--out", help="Default: {datasets_root}/elevation/subcell_centroids.csv")
-    ap.add_argument("--mask", help="25 km ocean mask TIF (1=ocean,0=land). Default: config "
-                                   "latent_cube.water_mask_path or land_mask/ocean_mask_25km.tif")
+    ap.add_argument("--mask", help="Parent ocean mask TIF (1=ocean,0=land). Default: config "
+                                   "latent_cube.water_mask_path or land_mask/ocean_mask_{res}km.tif")
     ap.add_argument("--land-source", dest="land_source",
                     help="Land polygon for the fine sub-point mask (default: coastline.land_source)")
     ap.add_argument("--grid", type=int, default=int(ccfg.get("grid", DEFAULT_GRID)))
@@ -135,13 +135,14 @@ def main():
     # Ocean filters: (1) 25 km parent mask aligns to the modeled grid; (2) fine land
     # mask (same Natural Earth polygon as the 25 km mask, rasterized at the sub-point
     # grid) drops coastal water sub-points. Both fall back gracefully if absent.
+    res_km = cfg["grid"]["target_res_m"] // 1000
     mask_path = args.mask or cfg.get("latent_cube", {}).get("water_mask_path") \
-        or os.path.join(cfg["datasets_root"], "land_mask", "ocean_mask_25km.tif")
+        or os.path.join(cfg["datasets_root"], "land_mask", f"ocean_mask_{res_km}km.tif")
     land_mask = None
     if os.path.exists(mask_path):
         land_mask, _, _, _, _, _ = load_grid_reference(mask_path)
     else:
-        print(f"[subcell] WARNING: 25 km ocean mask not found at {mask_path}.")
+        print(f"[subcell] WARNING: parent ocean mask not found at {mask_path}.")
 
     land_source = args.land_source or cfg.get("coastline", {}).get("land_source")
     if land_source and not os.path.isabs(land_source):

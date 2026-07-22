@@ -23,12 +23,21 @@
     "latent_dims": [8, 16, 32],
     "n_landmarks": 25000,
     "seed": 0,
-    "_spacetime_comment": "Joint spatiotemporal ESK (bbs_mode=enrich, run_spacetime_esk): kernel-PCA over eBird-recent + BBS-historical amplitude points with recent_frac of landmarks forced onto recent eBird cells (keeps modern spatial structure dominant while the basis gains historical change directions). Writes esk/spacetime/{Z.npy recent grid, valid_mask, esk_landmarks, esk_projmat, meta.json}.",
-    "spacetime": {"sigma": 1.0, "latent_dim": 32, "recent_frac": 0.5}
+    "_spacetime_comment": "Joint spatiotemporal ESK (bbs_mode=trend, run_spacetime_esk): Ruzicka kernel-PCA over the trend-based annual community points (2023 anchor + backward-reconstructed historical years) with recent_frac of landmarks forced onto the recent-anchor cells (keeps modern spatial structure dominant while the basis spans historical trend directions). sigma=0.0: the points are annual (n_weeks=1), so there is no weekly axis to smooth. Writes esk/spacetime/{Z.npy recent grid, valid_mask, esk_landmarks, esk_projmat, meta.json}.",
+    "spacetime": {"sigma": 0.0, "latent_dim": 32, "recent_frac": 0.5}
   },
-  "bbs_mode": "enrich",
+  "bbs_mode": "trend",
+  "_trend_comment": "Trend-product spatiotemporal community target (trend_community.build_trend_points). Applies published %/yr trends to the 2023 eBird annual anchor, blending eBird recent (2012-2022) and BBS long-term (1966-2022) rates with a smooth handoff, integrated backward to first_year. Paths (bbs_trend_grid, ebird_trend_grid, community_trend_list) fall back to data_config; ebird_weekly_grid falls back to paths.ebird_folder.",
+  "trend": {
+    "anchor_year": 2023,
+    "first_year": 1966,
+    "point_year_stride": 3,
+    "handoff_crossover": 2010.0,
+    "handoff_width": 1.5,
+    "rate_clip_pct": 15.0
+  },
   "bbs": {
-    "_comment": "BBS spatiotemporal community integration. mode 'off'|'validate'|'enrich' via top-level-adjacent bbs_mode above.",
+    "_comment": "Community + ESK point settings. bbs_mode 'off'|'validate'|'trend' via the top-level bbs_mode above. community_top_n, z_dir (where trend_community writes the ESK point files) and n_landmarks are the live keys under bbs_mode=trend; the smoothing/anomaly knobs below belong to the deprecated amplitude path.",
     "community_top_n": 100,
     "species_list": "${HOUFIN_DATA}/bbs_2026_release/SpeciesList.csv",
     "crosswalk_path": "${HOUFIN_DATA}/bbs/aou_ebird_crosswalk.csv",
@@ -47,7 +56,8 @@
     "w_hist": 1.0,
     "z_dir": "${HOUFIN_PROCESSED}/encoder/esk_spacetime",
     "latent_dim": 32,
-    "n_landmarks": 30000,
+    "_n_landmarks_comment": "Landmark budget for the joint-ESK Nystrom eigendecomposition. 16000 (was 30000): the 30k x 30k eigh OOM'd the A100 and fell back to CPU (~44 min). 16000^2 float64 ~= 2 GB fits the GPU with headroom.",
+    "n_landmarks": 16000,
     "ebird_stack_cache": "${HOUFIN_PROCESSED}/encoder/ebird_stack.npz"
   },
   "desk": {
@@ -65,6 +75,8 @@
     "batch_years": 8,
     "_spatial_conv_comment": "Tight residual masked (partial) conv on the latent grid: injects neighbourhood context a point-wise encoder cannot learn. gamma inits 0 so training starts as the exact point-wise, ESK-aligned model. kernel=3 => 3x3 (one 25km ring).",
     "spatial_conv": {"enabled": true, "kernel": 3},
+    "_trend_comment": "bbs_mode=trend: DESK is supervised directly against the trend-based spatiotemporal z-target (recent 2023 anchor + backward-reconstructed historical points, all projected into the joint ESK basis), pooling every (cell,year) point with EQUAL weight (uniform_stab) -- no eBird up-weighting, no direction/magnitude split. holdout_frac of eBird cells are withheld entirely for honest z-space reconstruction eval.",
+    "trend": {"holdout_frac": 0.2, "seed": 0},
     "_enrich_comment": "enrich (bbs_mode='enrich'): supervise DESK at historical (cell,year) points against the BBS-amplitude community projected into the eBird ESK basis (z_obs). ebird_loss_fraction=0.8 => modern eBird contributes 80% of the stabilizing loss regardless of the ~10:1 BBS point-count advantage (eBird is the reliable anchor). holdout_frac of eBird cells are held out entirely for honest z-space reconstruction eval.",
     "enrich": {"ebird_loss_fraction": 0.8, "holdout_frac": 0.2, "seed": 0,
                "w_direction": 2.0, "w_magnitude_floor": 0.05, "w_absolute": 1.0,
@@ -80,10 +92,11 @@
     "model_path": "${HOUFIN_PROCESSED}/encoder/desk/env_model_semisup.pth",
     "z_ref_path": "${HOUFIN_PROCESSED}/encoder/esk/spacetime/Z.npy",
     "mask_ref_path": "${HOUFIN_PROCESSED}/encoder/esk/spacetime/valid_mask.npy",
-    "water_mask_path": "${HOUFIN_DATA}/land_mask/ocean_mask_25km.tif",
+    "water_mask_path": "${HOUFIN_DATA}/land_mask/ocean_mask_27km.tif",
     "output_dir": "${HOUFIN_PROCESSED}/encoder/cube",
     "state_pattern": "state_*.npz",
-    "radius_px": 25
+    "_radius_comment": "Gap-fill footprint in KM; build_final_z_cube converts to pixels at the model grid (radius_km/res_km), so it is resolution-independent. 100 km -> ~4 px at 27 km.",
+    "radius_km": 100
   },
   "single_year_analysis": {
     "esk_feature_path": "${HOUFIN_PROCESSED}/encoder/esk/sigma_0.5/Z.npy",

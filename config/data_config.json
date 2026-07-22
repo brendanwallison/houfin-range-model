@@ -4,7 +4,17 @@
   "processed_root": "${HOUFIN_PROCESSED}",
   "ebird_version_year": 2023,
   "ebird_raw_subdir": "ebird_weekly_2023",
+  "ebird_trends_version_year": 2022,
+  "ebird_trends_subdir": "ebird_trends_2022",
+  "trends": {
+    "_comment": "Gridded trend products aligned to the model grid by preprocess/bbs_trend.py and preprocess/ebird_trend.py (both keyed to community_trend_list). BBS: long-term %/yr per cell (nearest clip/pad, zero resampling -- ref grid is on the BBS lattice). eBird: abd_ppy (%/yr) + abd (mid-window rel. abundance) per cell, centroids projected from WGS84 and binned. Consumed by community_encoder/train_DESK/trend_community.py.",
+    "bbs_trend_grid": "${HOUFIN_DATA}/trends/bbs_trend_grid.npz",
+    "ebird_trend_grid": "${HOUFIN_DATA}/trends/ebird_trend_grid.npz"
+  },
+  "_ebird_trends_comment": "eBird Status & Trends 'trends' product, fetched from the SAME REST API + key as the weekly abundance (acquire/ebird.py --trends), NOT the ebirdst R package. Trends live under version year 2022 (2023 has none); objkey {year}/{sp}/trends/{sp}_{season}_ebird-trends_{year}.parquet, the season token discovered per-species from the listing. Tabular (one row per 27 km cell): abd_ppy (%/yr trend), abd_trend (cumulative %), abd (mid-window relative abundance), WGS84 lon/lat centroids, window 2012-2022.",
   "species_list": "${HOUFIN_DATA}/avonet/reference_community_ranked.csv",
+  "community_trend_list": "${HOUFIN_DATA}/avonet/community_trend.csv",
+  "_community_trend_comment": "Written by identify/select_trend_community.py: the top-N (bbs.community_top_n) House-Finch-similar species present in BOTH trend products (BBS tr{AOU}.tif AND eBird has-trends), House Finch excluded. Columns species_code, aou, season, sci_norm, mean_rank. Drives the trend downloads + the trend->annual community cube. Differs from the weekly community.",
   "_focal_comment": "The transfer TARGET of the downstream statistical model. avonet.py already excludes it from reference_community_ranked.csv; this is the defense-in-depth code that the eBird selection + BBS crosswalk also filter, so a stale ranked list can never leak House Finch into the community Z.",
   "focal_species_code": "houfin",
   "timeline": {
@@ -15,12 +25,12 @@
     "bio_year_start_month": 8
   },
   "grid": {
-    "target_res_m": 25000,
-    "ref_raster": "${HOUFIN_DATA}/ref_grid_25km.tif",
-    "box_bounds": [-2356398.8, 269249.3, 2258351.2, 3172999.3],
-    "box_crs": "ESRI:102039",
-    "_box_comment": "Fixed study-area extent (left, bottom, right, top) in box_crs, the original HISDAC-US CONUS-Albers box the project keeps. build_ref_grid defaults to these when given no --base-raster/--bounds, so the canonical ref grid builds standalone on any machine (no deprecated BUI download needed). 185x117 cells at 25 km.",
-    "_comment": "Single source of truth for the model grid. target_res_m is THE model resolution (25 km), the LUH-3 native 0.25deg basis reprojected to equal-area Albers (ESRI:102039); the continental products (climate/climr, LUH-3, HYDE, SoilGrids, DEM, eBird) are aggregated to it. ref_raster is a pure-geometry raster at this resolution over the fixed study-area box; build it once with `python -m src.data.preprocess.build_ref_grid --base-raster <any raster covering the box>` (see that module). Because 25 km is NOT an integer multiple of the 4 km / ~2.96 km inputs, aggregation is via reproject_match `average` onto ref_raster (regrid.reproject_to_ref), not integer block_reduce; nonlinear steps (Ruzicka kernel/PCA for Z, quantiles, transforms) are applied at this resolution -- so Z is built at 25 km, never pooled. The old 16 km / 4 km BUI-grid pipeline is preserved under src/data/deprecated/."
+    "target_res_m": 27000,
+    "ref_raster": "${HOUFIN_DATA}/ref_grid_27km.tif",
+    "box_bounds": [-2976931.1039, -1523184.5953, 3071068.8961, 2067815.4047],
+    "box_crs": "ESRI:102003",
+    "_box_comment": "Fixed study-area extent (left, bottom, right, top) in box_crs = USA Contiguous Albers NAD83 (ESRI:102003), the native CRS of the USGS BBS mapping rasters (trend/abundance, 27 km). The box is the lon/lat region [-125..-66, 24..53] (CONUS + southern Canada; AK, far-northern Canada and most of Mexico clipped out) reprojected to 102003, with its ORIGIN SNAPPED to the BBS 27 km lattice (residues x=20068.8961, y=15815.4047 mod 27000) so BBS trend rasters land on this grid with ZERO resampling (clip/pad only). 133 rows x 224 cols at 27 km. build_ref_grid defaults to these when given no --base-raster/--bounds, so the canonical ref grid builds standalone on any machine.",
+    "_comment": "Single source of truth for the model grid. target_res_m is THE model resolution (27 km), matching the native resolution of the trend products this pipeline targets (USGS BBS mapping rasters, 27 km ESRI:102003; eBird Status & Trends, 27 km). Continental products (climate/climr, LUH-3, HYDE, SoilGrids, DEM, eBird abundance) are aggregated onto ref_raster via regrid.reproject_to_ref `average`; the BBS trend rasters share this CRS+lattice and align by nearest clip/pad (no resampling of the ground truth). Nonlinear steps (Ruzicka kernel/PCA for Z, quantiles, transforms) are applied at this resolution -- Z is built at 27 km, never pooled. The prior 25 km ESRI:102039 CONUS box lives in git history; the older 16 km / 4 km BUI-grid pipeline is preserved under src/data/deprecated/."
   },
   "coastline": {
     "_comment": "De-dilated coastline (src/data/preprocess/land_mask.py). land_source is a continental land/water polygon (Natural Earth 10m land, covering Canada/Mexico) rasterized fine_factor x finer than the model grid, block-averaged to a per-cell land fraction, and thresholded at land_fraction_tau (>=tau => land). snap_radius_cells gates observation snapping (near-coast obs snap to land within this radius; farther => dropped). A land_source without a leading / resolves under datasets_root.",
@@ -46,8 +56,8 @@
     "out_subdir": "dem"
   },
   "elevation": {
-    "_comment": "preprocess/elevation.py reprojects the DEM onto a sub-grid fine_factor x finer than the model grid, then takes per-cell p10/p50/p90 elevation. fine_factor should be >= target_res/DEM_native so no DEM detail is lost (25 km / ~1.85 km ETOPO ~= 13.5 -> 14).",
-    "fine_factor": 14
+    "_comment": "preprocess/elevation.py reprojects the DEM onto a sub-grid fine_factor x finer than the model grid, then takes per-cell p10/p50/p90 elevation. fine_factor should be >= target_res/DEM_native so no DEM detail is lost (27 km / ~1.85 km ETOPO ~= 14.6 -> 15).",
+    "fine_factor": 15
   },
   "climate": {
     "_comment": "climr downscaling. mode 'subgrid' (default): a grid x grid mesh of true-elevation sub-points per cell -> real spatial+elevation quantiles (captures horizontal gradients). mode 'elev_quantile': centroid at three elevation quantiles (elevation-only, cheaper). obs_ts_dataset feeds the annual observed series; obs year range clamps to climr's extent.",
@@ -114,11 +124,17 @@
         "item": "5f32af1082cee144fb313837",
         "_comment": "whole_item (archive), NOT per-file. SpeciesData.csv is BROKEN upstream on ScienceBase: the record claims 1.6 MB + an MD5, but the per-file downloadUri 404s and every archive ships it as 0 bytes (verified 2026-07). Per-file download therefore exits nonzero on the 404 and would abort download_all.sh; the whole-item archive downloads cleanly (exit 0) with an empty SpeciesData, so the ingest just skips Mexico (non-fatal). Drop a valid SpeciesData.csv in bbs_mexico_unprocessed/ to enable Mexico if you obtain one elsewhere.",
         "whole_item": true
+      },
+      "bbs_trends": {
+        "item": "67507ae5d34ea60e89434c2e",
+        "_comment": "USGS BBS Mapping products 1966-2022 (DOI 10.5066/P1DPJPSI): per-species trend rasters tr{AOU}.tif = long-term geometric-mean %/yr population change 1966-2022, 27 km ESRI:102003 (NAD83 Albers), 516 species, 5-digit AOU code in the filename. Only the trend raster zip is pulled (abundance rasters unused -- the pipeline applies trends to the MODERN eBird raster, not BBS abundance). Run download with --extract to unpack tr*.tif. Values have heavy tails at sparse-coverage range margins (inverse-distance interpolation); the trend->abundance step winsorizes the rate.",
+        "files": ["Trend maps raster tif files.zip"]
       }
     },
     "out_subdirs": {
       "bbs": "bbs_2026_release",
-      "bbs_mexico": "bbs_mexico_unprocessed"
+      "bbs_mexico": "bbs_mexico_unprocessed",
+      "bbs_trends": "bbs_trend_maps"
     }
   }
 }

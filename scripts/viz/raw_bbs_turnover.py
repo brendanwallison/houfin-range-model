@@ -36,7 +36,7 @@ _REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 if _REPO not in sys.path:
     sys.path.insert(0, _REPO)
 from src.config_utils import load_config
-from src.community_encoder.train_DESK.spacetime_community import _scatter_dense, _cov_at
+from src.community_encoder.train_DESK.deprecated.spacetime_community import _scatter_dense, _cov_at
 
 
 def _ruzicka_rows(a, b):

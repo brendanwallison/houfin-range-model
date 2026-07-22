@@ -97,7 +97,7 @@ def train_model_semisup(covn2023, mask_cov, mask_sup_tr, mask_sup_val, z_ref, x_
                         hist_grids, hist_masks, stream_dims, latent_dim, spatial_kernel=3,
                         epochs=100, lr=1e-3, batch_years=8, weights=None, seed=0,
                         enrich=None, ebird_frac=0.8, direction=None, dir_weights=None,
-                        patience=50, min_delta=1e-4):
+                        uniform_stab=False, patience=50, min_delta=1e-4):
     """Train the N-stream grid DESK autoencoder semi-supervised; return the fitted model.
 
     ``enrich`` (or None): tuple ``(pt_covn, pt_covmask, pt_zobs, pt_tgt)`` of per-historical-
@@ -168,7 +168,8 @@ def train_model_semisup(covn2023, mask_cov, mask_sup_tr, mask_sup_val, z_ref, x_
             # Supervised losses on the labelled (2023) grid.
             z2023, recon2023 = model(cov2023, m_cov)     # (1,H,W,L), (1,H,W,C)
             z_flat = z2023[0]
-            loss_stab = torch.mean(torch.sum((z_flat[m_tr] - z_ref_t[m_tr]) ** 2, dim=1))
+            sq_rec = torch.sum((z_flat[m_tr] - z_ref_t[m_tr]) ** 2, dim=1)   # per recent-cell
+            loss_stab = sq_rec.mean()
             loss_true = true_kernel_loss(z_flat[m_tr], x_t[m_tr])
             loss_recon_s = F.mse_loss(recon2023[0][m_cov2023], cov2023[0][m_cov2023])
 
@@ -181,7 +182,14 @@ def train_model_semisup(covn2023, mask_cov, mask_sup_tr, mask_sup_val, z_ref, x_
                 z_pt, _ = model(en[0], en[1])                    # (n_py,H,W,L)
                 sq = torch.sum((z_pt[en[3]] - en[2][en[3]]) ** 2, dim=1)
                 loss_stab_hist = sq.mean() if sq.numel() else loss_stab_hist
-                loss_stab = ebird_frac * loss_stab + (1.0 - ebird_frac) * w_abs * loss_stab_hist
+                if uniform_stab:
+                    # Trend mode: pool the recent-anchor cells and ALL historical points,
+                    # weighting every (cell,year) equally ("evenly prioritizing all
+                    # locations and times") -- no eBird up-weighting, no direction split.
+                    denom = int(sq_rec.numel() + sq.numel())
+                    loss_stab = (sq_rec.sum() + sq.sum()) / max(denom, 1)
+                else:
+                    loss_stab = ebird_frac * loss_stab + (1.0 - ebird_frac) * w_abs * loss_stab_hist
 
                 if dr is not None:
                     L = z_pt.shape[-1]
@@ -301,7 +309,9 @@ def _weighted_median_cols(V, w):
 
 def _prepare_direction_targets(config, z_dir, latent_dim, holdout, hist_years, recent_year,
                                reference_start, baseline_scale):
-    """Per-cell direction-of-change target in the (joint) ESK basis.
+    """DEPRECATED (amplitude/enrich path only; the trend path supervises z directly).
+
+    Per-cell direction-of-change target in the (joint) ESK basis.
 
     For each train cell with a 2023 anchor + >=1 preceding point (year < reference_start):
     ``Δ_obs = z_ref(2023 anchor) - weighted_median(preceding z_obs)``. Reliability
@@ -375,7 +385,17 @@ def run_desk_experiment(config=None):
     spatial_kernel = int(desk_cfg.get("spatial_conv", {}).get("kernel", 3)) \
         if desk_cfg.get("spatial_conv", {}).get("enabled", True) else 0
 
-    ebird_stack, _ = load_ebird_stack(config)
+    ebird_stack, eb_meta = load_ebird_stack(config)
+    bbs_mode = config.get("bbs_mode", "validate")
+    if bbs_mode == "trend":
+        # The trend ESK basis is built on ANNUAL community vectors (n_weeks=1), so the 2023
+        # metric/kernel loss must align to the annual Ruzicka, not the weekly stack: collapse
+        # the weekly eBird stack to a per-species annual mean (matches trend_community's anchor).
+        nw = int(eb_meta.get("n_weeks", 1))
+        if nw > 1:
+            H, W, D = ebird_stack.shape
+            ebird_stack = np.nanmean(ebird_stack.reshape(H, W, D // nw, nw), axis=3).astype("float32")
+            print(f"[desk] trend mode: collapsed weekly eBird stack to annual ({D // nw} species)")
     cov_stack = cio.load_state_stack(label_year, states_dir, schema)
 
     z_dir = desk_cfg["z_dir"]
@@ -401,13 +421,33 @@ def run_desk_experiment(config=None):
         cov_stack, ebird_stack, z_flat, z_mask, mu, sd, out_dir)
     mask_cov_t = torch.tensor(mask_cov)
 
-    # Mode: 'enrich' adds eBird-heavy-weighted historical supervision + a spatial cell holdout;
-    # 'off'/'validate' train eBird-2023-only (the current single-labelled-year behaviour).
-    bbs_mode = config.get("bbs_mode", "validate")
+    # Mode: 'trend' supervises DESK directly + uniformly against the trend-based
+    # spatiotemporal z-target (recent anchor + backward-reconstructed historical points);
+    # 'enrich' (deprecated amplitude path) up-weighted recent eBird + a direction-of-change
+    # split; 'off'/'validate' train eBird-2023-only. bbs_mode was read above.
     enrich_data, direction, ebird_frac = None, None, 0.8
     dir_weights = {}
+    uniform_stab = False
     holdout = np.zeros_like(mask_sup)
-    if bbs_mode == "enrich":
+    if bbs_mode == "trend":
+        tr_cfg = desk_cfg.get("trend", {})
+        ebird_valid = np.any(~np.isnan(ebird_stack), axis=-1)          # spatial cell holdout
+        ys, xs = np.where(ebird_valid)
+        rng = np.random.default_rng(int(tr_cfg.get("seed", 0)))
+        ho = rng.random(len(ys)) < float(tr_cfg.get("holdout_frac", 0.2))
+        holdout[ys[ho], xs[ho]] = True
+        m_tr, m_val = mask_sup & (~holdout), mask_sup & holdout          # eval on held-out cells
+        # _prepare_enrich projects the trend points (year<2023) into the joint ESK basis
+        # (z_obs) and assembles per-year target grids -- reused as-is, direction disabled.
+        enrich_data, hist_years = _prepare_enrich(config, states_dir, schema, mu, sd, z_dir,
+                                                  z_grid.shape[2], holdout, label_year)
+        direction = None
+        dir_weights = {"absolute": 1.0}
+        uniform_stab = True
+        np.save(os.path.join(out_dir, "holdout_cells.npy"), holdout)
+        print(f"[desk] TREND mode: direct uniform z-target over recent + historical points; "
+              f"{int(holdout.sum())} cells held out for eval")
+    elif bbs_mode == "enrich":
         en_cfg = desk_cfg.get("enrich", {})
         ebird_frac = float(en_cfg.get("ebird_loss_fraction", 0.8))
         ebird_valid = np.any(~np.isnan(ebird_stack), axis=-1)          # holdout over eBird cells
@@ -441,7 +481,7 @@ def run_desk_experiment(config=None):
         batch_years=desk_cfg.get("batch_years", 8),
         weights=desk_cfg.get("weights"),
         enrich=enrich_data, ebird_frac=ebird_frac,
-        direction=direction, dir_weights=dir_weights,
+        direction=direction, dir_weights=dir_weights, uniform_stab=uniform_stab,
         patience=desk_cfg.get("patience", 50))
 
     torch.save(model.state_dict(), os.path.join(out_dir, "env_model_semisup.pth"))

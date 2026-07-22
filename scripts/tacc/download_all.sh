@@ -12,15 +12,26 @@ source "$(dirname "$0")/env.sh"
 
 echo "== AVONET (traits+crosswalk+phylogeny) + eBird taxonomy + urban tolerance =="
 python scripts/download_avonet.py
-echo "== Build the ranked reference species list (feeds the eBird download) =="
+echo "== Build the ranked reference species list (feeds community selection) =="
 python scripts/avonet_pipeline.py
 
-echo "== eBird (needs EBIRD_KEY / secrets.json; reads the species list above) =="
-python scripts/download_ebird.py --top-n 100 --require-weekly --workers 4   # exactly 100 weekly-complete ranked species
-
-echo "== BBS (US/Canada + Mexico) =="
+echo "== BBS (US/Canada + Mexico) + BBS trend maps =="
 python scripts/download_bbs.py --dataset bbs --extract
 python scripts/download_bbs.py --dataset bbs_mexico
+python scripts/download_bbs.py --dataset bbs_trends --extract   # 516 tr{AOU}.tif (%/yr, 27 km ESRI:102003)
+
+echo "== Select the trend community: top-N HF-similar present in BOTH trend products =="
+# Needs the ranked list + BBS SpeciesList & trend rasters (above) + the eBird trends REST
+# listing (EBIRD_KEY). Writes community_trend.csv, which drives the eBird downloads below.
+python -m src.data.identify.select_trend_community
+
+echo "== eBird (needs EBIRD_KEY / secrets.json; reads community_trend.csv) =="
+COMMUNITY="$HOUFIN_DATA/avonet/community_trend.csv"
+# Weekly abundance for the 2023 annual anchor (--require-weekly => complete 52-week species
+# only, so the stack is rectangular; trends species have a status product, so this is ~all).
+python scripts/download_ebird.py --species-list "$COMMUNITY" --require-weekly --workers 4
+# Status & Trends 'trends' parquets (%/yr + cumulative %) for the same community.
+python scripts/download_ebird.py --trends --species-list "$COMMUNITY" --workers 4
 
 echo "== LUH-3 (Zenodo, ~8 GB) =="
 python scripts/download_zenodo.py --dataset luh3

@@ -235,11 +235,12 @@ def _ensure_subcell_centroids(cfg, out_csv, grid):
     # Drop ocean sub-points (elevation alone keeps them: the DEM gives ocean a finite
     # value). Two filters: 25 km parent ocean mask (grid alignment) + a fine sub-point
     # land mask from the same Natural Earth polygon (coastal water points).
+    res_km = cfg["grid"]["target_res_m"] // 1000
     mask_path = cfg.get("latent_cube", {}).get("water_mask_path") \
-        or os.path.join(cfg["datasets_root"], "land_mask", "ocean_mask_25km.tif")
+        or os.path.join(cfg["datasets_root"], "land_mask", f"ocean_mask_{res_km}km.tif")
     land_mask = load_grid_reference(mask_path)[0] if os.path.exists(mask_path) else None
     if land_mask is None:
-        print(f"[subgrid] WARNING: 25 km ocean mask not found at {mask_path}.", flush=True)
+        print(f"[subgrid] WARNING: parent ocean mask not found at {mask_path}.", flush=True)
     land_source = cfg.get("coastline", {}).get("land_source")
     if land_source and not os.path.isabs(land_source):
         land_source = os.path.join(cfg["datasets_root"], land_source)

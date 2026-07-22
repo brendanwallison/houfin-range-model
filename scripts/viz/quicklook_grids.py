@@ -164,7 +164,7 @@ def default_groups(dr):
     ``--climate`` flag additionally re-grids the raw per-centroid CSVs.
     """
     return {
-        "ref_grid":     [p for p in [os.path.join(dr, "ref_grid_25km.tif")] if os.path.exists(p)],
+        "ref_grid":     sorted(glob.glob(os.path.join(dr, "ref_grid_*km.tif"))),
         "land_mask":    sorted(glob.glob(os.path.join(dr, "land_mask", "*.tif"))),
         "luh3":         sorted(glob.glob(os.path.join(dr, "luh3_grid", "*.tif"))),
         "hyde":         sorted(glob.glob(os.path.join(dr, "hyde35_grid", "*.tif"))),

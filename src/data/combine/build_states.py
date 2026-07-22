@@ -101,8 +101,9 @@ def main():
     tl = load_timeline()
     first_year, end_year = tl["first_year"], tl["end_year"]
 
+    res_km = cfg["grid"]["target_res_m"] // 1000
     mask_path = cfg.get("latent_cube", {}).get("water_mask_path") \
-        or os.path.join(dr, "land_mask", "ocean_mask_25km.tif")
+        or os.path.join(dr, "land_mask", f"ocean_mask_{res_km}km.tif")
     land_mask, _, _, _, nx, ny = load_grid_reference(mask_path)
 
     print(f"[build_states] {len(specs)} streams -> {out}; "

@@ -3,7 +3,7 @@
   "input_dir": "${HOUFIN_PROCESSED}/model_inputs/numpyro_input",
   "raw_z_dir": "${HOUFIN_PROCESSED}/latent_avian_paths",
   "bbs_npz": "${HOUFIN_DATA}/bbs_2026_release/bbs_data_for_python.npz",
-  "ocean_mask": "${HOUFIN_DATA}/land_mask/ocean_mask_25km.tif",
+  "ocean_mask": "${HOUFIN_DATA}/land_mask/ocean_mask_27km.tif",
   "ebird_dir": "${HOUFIN_DATA}/ebird_weekly_2023_grid",
   "results_dir": "${HOUFIN_PROCESSED}/model_results",
   "path_features": {

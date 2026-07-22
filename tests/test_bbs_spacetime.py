@@ -15,7 +15,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 from src.data.combine import climate_io as CIO
 from src.data.identify import bbs_crosswalk as XW
 from src.data.preprocess import bbs_community as BC
-from src.community_encoder.train_DESK import spacetime_community as SC
+from src.community_encoder.train_DESK.deprecated import spacetime_community as SC
 
 
 def test_climate_bioyear_and_grid():

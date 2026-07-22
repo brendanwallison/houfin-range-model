@@ -142,6 +142,7 @@ stage_bbs () {
 # needs the eBird trends REST listing (internet) so it runs on a LOGIN node (download_all.sh),
 # NOT here; the align + point-build steps below are CPU preprocessing on a compute node.
 stage_bbs_trend        () { run bbs_trend        python -m src.data.preprocess.bbs_trend; }
+stage_bbs_abund        () { run bbs_abund        python -m src.data.preprocess.bbs_abund; }
 stage_ebird_trend      () { run ebird_trend      python -m src.data.preprocess.ebird_trend; }
 stage_select_community () { run select_community python -m src.data.identify.select_trend_community; }
 stage_trend_points     () { run trend_points     python scripts/run_encoder.py trend-points; }
@@ -154,7 +155,7 @@ stage_viz       () { run viz       python scripts/viz/quicklook_grids.py --clima
 
 # Default = the CPU preprocessing chain only. Encoder stages (esk/desk/cube/
 # validate) are opt-in via STAGES from the GPU encoder job.
-STAGES="${STAGES:-preprocess climate climate_grid states ebird_cache bbs_trend ebird_trend trend_points}"
+STAGES="${STAGES:-preprocess climate climate_grid states ebird_cache bbs_trend bbs_abund ebird_trend trend_points}"
 echo "STAGES: $STAGES"
 for s in $STAGES; do
     fn="stage_${s//-/_}"      # accept either 'spacetime-esk' or 'spacetime_esk' (bash fn names can't have '-')

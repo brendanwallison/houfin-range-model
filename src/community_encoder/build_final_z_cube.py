@@ -170,22 +170,41 @@ def build_spacetime_cube(config: Optional[Union[Dict[str, Any], str, os.PathLike
     if not year_files:
         raise FileNotFoundError(f"No state files found in {hist_dir}")
 
-    for fpath in tqdm(year_files, desc="Processing Years"):
+    # Pass 1: forward every year (temporal order) to per-year raw Z + valid mask.
+    years, z_raws, valids = [], [], []
+    for fpath in tqdm(year_files, desc="Encoding Years"):
         year = int(os.path.basename(fpath).split("_")[1].split(".")[0])   # state_{year}.npz
-
         cov = cio.load_state_stack(year, hist_dir, schema)   # (H, W, C), transforms applied
         # Grid-native forward: the spatial residual conv needs the whole grid, so
         # normalize in place (invalid cells zero-filled + masked) rather than gather.
         covn, valid_pixels = cio.norm_grid(cov, mu, sd)
         z_year = np.full((H, W, z_dim), np.nan, dtype=np.float32)
-
         if valid_pixels.sum() > 0:
             xg = torch.tensor(covn[None], dtype=torch.float32, device=device)
             mg = torch.tensor(valid_pixels[None], device=device)
             with torch.no_grad():
                 z_out, _ = model(xg, mg)                       # (1, H, W, L)
             z_year[valid_pixels] = z_out[0].cpu().numpy()[valid_pixels]
+        years.append(year); z_raws.append(z_year); valids.append(valid_pixels)
 
+    # Learned output-EMA: apply the same causal EMA over the year axis that DESK trained
+    # with (demographic lag), so the cube is the decadal z_ema, not the raw per-year Z.
+    # half-life read from desk_meta; NaN pixels persist the prior EMA (don't poison it).
+    hl = float(dm["ema_half_life"]) if "ema_half_life" in dm else float("nan")
+    ema_on = bool(dm["output_ema"]) if "output_ema" in dm else False
+    if ema_on and np.isfinite(hl):
+        a = 1.0 - 2.0 ** (-1.0 / hl)
+        print(f"Applying learned output-EMA over {len(years)} years (half-life={hl:.2f} yr, alpha={a:.3f})...")
+        z_ema = np.full((H, W, z_dim), np.nan, dtype=np.float32)
+        for i in range(len(z_raws)):
+            raw = z_raws[i]
+            fresh = valids[i][..., None]                       # (H,W,1)
+            seeded = ~np.isnan(z_ema).any(axis=-1)             # pixels with a running EMA
+            blend = np.where(seeded[..., None], a * raw + (1.0 - a) * z_ema, raw)
+            z_ema = np.where(fresh, blend, z_ema)              # invalid-this-year -> persist prior
+            z_raws[i] = z_ema.copy()
+
+    for year, z_year, valid_pixels in tqdm(list(zip(years, z_raws, valids)), desc="Filling Years"):
         z_s1, mask_s1 = fill_gaps_stage1_spatial(
             z_year,
             valid_pixels,

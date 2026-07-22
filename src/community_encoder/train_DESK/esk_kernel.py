@@ -471,7 +471,7 @@ def run_spacetime_esk(config=None):
     bc, esk_cfg, paths = config["bbs"], config["esk"], config["paths"]
     sc = esk_cfg.get("spacetime", {})
     sigma = float(sc.get("sigma", 1.0)); latent_dim = int(sc.get("latent_dim", 32))
-    recent_frac = float(sc.get("recent_frac", 0.5))
+    landmark_mode = str(sc.get("landmark_mode", "random"))
     n_landmarks = int(bc.get("n_landmarks", 30000)); seed = int(esk_cfg.get("seed", 0))
 
     zt = bc["z_dir"]
@@ -487,8 +487,14 @@ def run_spacetime_esk(config=None):
     yrs = pidx[:, 2]
     strata = np.where(yrs == recent_year, 0, ((yrs // 10) * 10).astype(int))   # 0=recent, else decade
     rng = np.random.default_rng(seed)
-    lm_idx = stratified_landmarks(strata, n_landmarks, rng, recent_label=0, recent_frac=recent_frac)
-    print(f"[st-esk] {len(lm_idx)} landmarks; recent share {np.mean(strata[lm_idx] == 0):.2f} "
+    N = X.shape[0]
+    if landmark_mode == "stratified":
+        # proportional-by-stratum: recent gets ONLY its natural share (no upweighting)
+        lm_idx = stratified_landmarks(strata, n_landmarks, rng, recent_label=0,
+                                      recent_frac=float((strata == 0).mean()))
+    else:                                                          # 'random' (default): uniform over all points
+        lm_idx = rng.permutation(N)[:min(N, n_landmarks)]
+    print(f"[st-esk] {len(lm_idx)} landmarks ({landmark_mode}); recent share {np.mean(strata[lm_idx] == 0):.2f} "
           f"(population {np.mean(strata == 0):.2f})")
 
     Zj, lm, pm = compute_optimal_latent_z_ruzicka(

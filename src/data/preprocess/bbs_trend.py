@@ -27,15 +27,16 @@ from src.config_utils import load_data_config
 from src.processing import regrid
 
 
-def align_trend_raster(aou, trend_dir, ref):
-    """Reproject one ``tr{AOU}.tif`` onto the ref grid; return (H, W) float32 or None.
+def align_bbs_raster(aou, bbs_dir, ref, prefix="tr"):
+    """Reproject one ``{prefix}{AOU}.tif`` onto the ref grid; return (H, W) float32 or None.
 
-    NaN outside the species' mapped range. ``nearest`` because the grids share
-    CRS + lattice, so this copies source cells exactly (no interpolation).
+    ``prefix`` = ``tr`` (trend, %/yr) or ``ra`` (abundance, birds/route). NaN outside
+    the species' mapped range. ``nearest`` because the grids share CRS + lattice, so
+    this copies source cells exactly (no interpolation).
     """
     import rioxarray  # noqa: F401 (registers .rio)
 
-    path = os.path.join(trend_dir, f"tr{int(aou):05d}.tif")
+    path = os.path.join(bbs_dir, f"{prefix}{int(aou):05d}.tif")
     if not os.path.exists(path):
         return None
     da = rioxarray.open_rasterio(path, masked=True).squeeze("band", drop=True)
@@ -43,33 +44,39 @@ def align_trend_raster(aou, trend_dir, ref):
     return np.asarray(out.values, dtype="float32")
 
 
-def build(community_csv, trend_dir, out_path):
+def build(community_csv, bbs_dir, out_path, prefix="tr", field="rate"):
+    """Align every community species' ``{prefix}{AOU}.tif`` to the ref grid -> .npz.
+
+    ``field`` names the stacked array in the output (``rate`` for trend %/yr, ``abund``
+    for abundance birds/route), so trend and abundance share this builder.
+    """
     comm = pd.read_csv(community_csv)
     ref = regrid.load_ref()
     H, W = int(ref.sizes["y"]), int(ref.sizes["x"])
 
-    rates, codes, aous, missing = [], [], [], []
+    arrs, codes, aous, missing = [], [], [], []
     for _, r in comm.iterrows():
         code, aou = str(r["species_code"]), int(r["aou"])
-        arr = align_trend_raster(aou, trend_dir, ref)
+        arr = align_bbs_raster(aou, bbs_dir, ref, prefix=prefix)
         if arr is None:
             missing.append((code, aou))
             continue
-        rates.append(arr)
+        arrs.append(arr)
         codes.append(code)
         aous.append(aou)
-    if not rates:
-        raise SystemExit(f"no BBS trend rasters found in {trend_dir} for {len(comm)} community species")
+    if not arrs:
+        raise SystemExit(f"no BBS {prefix}*.tif rasters found in {bbs_dir} for {len(comm)} species")
 
-    rate = np.stack(rates).astype("float32")          # (n_species, H, W)
-    valid = np.isfinite(rate).any(axis=0)             # cells covered by >=1 species
+    stacked = np.stack(arrs).astype("float32")        # (n_species, H, W)
+    valid = np.isfinite(stacked).any(axis=0)          # cells covered by >=1 species
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
-    np.savez(out_path, rate=rate, species_code=np.array(codes),
+    np.savez(out_path, **{field: stacked}, species_code=np.array(codes),
              aou=np.array(aous, dtype=int), valid=valid)
-    print(f"[bbs_trend] {len(codes)} species aligned to {H}x{W} grid "
+    tag = "bbs_trend" if prefix == "tr" else "bbs_abund"
+    print(f"[{tag}] {len(codes)} species aligned to {H}x{W} grid "
           f"({int(valid.sum())} covered cells); {len(missing)} missing rasters"
           + (f": {missing}" if missing else "."))
-    print(f"[bbs_trend] wrote -> {out_path}")
+    print(f"[{tag}] wrote -> {out_path}")
     return out_path
 
 

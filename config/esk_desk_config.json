@@ -9,10 +9,11 @@
   },
   "states": {
     "warmup": 20,
+    "_ema_comment": "ema_tau is a LIGHT backward-EMA time constant (~2 yr, half-life ~1.4 yr) applied at state-build time -- just denoises annual weather so the per-year covariate grid is a near-instantaneous suitability signal. The DECADAL demographic lag is NOT here; it lives on the DESK OUTPUT (learned output-EMA, desk.output_ema). Was 10 (~7-yr half-life); reduced so z_raw fluxes and the two lags stay identifiable.",
     "streams": [
-      {"name": "climate",   "type": "per_variable", "grid_dir": "${HOUFIN_DATA}/climate_grid",   "ema_tau": 10},
-      {"name": "landuse",   "type": "per_variable", "grid_dir": "${HOUFIN_DATA}/luh3_grid",       "ema_tau": 10},
-      {"name": "hyde",      "type": "per_variable", "grid_dir": "${HOUFIN_DATA}/hyde35_grid",     "ema_tau": 10, "transform": {"type": "log1p"}},
+      {"name": "climate",   "type": "per_variable", "grid_dir": "${HOUFIN_DATA}/climate_grid",   "ema_tau": 2},
+      {"name": "landuse",   "type": "per_variable", "grid_dir": "${HOUFIN_DATA}/luh3_grid",       "ema_tau": 2},
+      {"name": "hyde",      "type": "per_variable", "grid_dir": "${HOUFIN_DATA}/hyde35_grid",     "ema_tau": 2, "transform": {"type": "log1p"}},
       {"name": "soil",      "type": "static",       "grid_dir": "${HOUFIN_DATA}/soilgrids_grid"},
       {"name": "elevation", "type": "static",       "grid_dir": "${HOUFIN_DATA}/elevation", "suffix": ".tif"}
     ]
@@ -23,18 +24,27 @@
     "latent_dims": [8, 16, 32],
     "n_landmarks": 25000,
     "seed": 0,
-    "_spacetime_comment": "Joint spatiotemporal ESK (bbs_mode=trend, run_spacetime_esk): Ruzicka kernel-PCA over the trend-based annual community points (2023 anchor + backward-reconstructed historical years) with recent_frac of landmarks forced onto the recent-anchor cells (keeps modern spatial structure dominant while the basis spans historical trend directions). sigma=0.0: the points are annual (n_weeks=1), so there is no weekly axis to smooth. Writes esk/spacetime/{Z.npy recent grid, valid_mask, esk_landmarks, esk_projmat, meta.json}.",
-    "spacetime": {"sigma": 0.0, "latent_dim": 32, "recent_frac": 0.5}
+    "_spacetime_comment": "Joint spatiotemporal ESK (bbs_mode=trend, run_spacetime_esk): Ruzicka kernel-PCA over the trend-based annual community points (2023 anchor + backward-reconstructed years 1966-2023). landmark_mode='random' draws landmarks uniformly over all (cell,year) points -- the basis spans the whole spatiotemporal manifold with NO upweighting of any time/place. 'stratified' = proportional-by-decade (still no recent boost). sigma=0.0: annual points (n_weeks=1), no weekly axis. Writes esk/spacetime/{Z.npy recent grid, valid_mask, esk_landmarks, esk_projmat, meta.json}.",
+    "spacetime": {"sigma": 0.0, "latent_dim": 32, "landmark_mode": "random", "recent_frac": 0.5}
   },
   "bbs_mode": "trend",
   "_trend_comment": "Trend-product spatiotemporal community target (trend_community.build_trend_points). Applies published %/yr trends to the 2023 eBird annual anchor, blending eBird recent (2012-2022) and BBS long-term (1966-2022) rates with a smooth handoff, integrated backward to first_year. Paths (bbs_trend_grid, ebird_trend_grid, community_trend_list) fall back to data_config; ebird_weekly_grid falls back to paths.ebird_folder.",
   "trend": {
     "anchor_year": 2023,
     "first_year": 1966,
-    "point_year_stride": 3,
+    "_stride_comment": "point_year_stride=1: emit EVERY year 1966-2023, so the ESK basis input and the DESK per-year targets are fully spatiotemporal (not just endpoints). ESK landmark subsampling keeps the Nystrom eigh bounded.",
+    "point_year_stride": 1,
     "handoff_crossover": 2010.0,
     "handoff_width": 1.5,
-    "rate_clip_pct": 15.0
+    "_cap_comment": "TWO overlapping soft caps on the backward change (both C1-smooth tanh: identity below the knee, saturating toward the max). (1) RELATIVE/fold cap on log(N/E): soft_knee_fold=10 -> soft_max_fold=100; protects rare-base cells. (2) ABSOLUTE cap on (N-E) in per-species units = multiples of the species' p99 present abundance (its 'best-habitat' ceiling): abs_soft_knee_mult=0.3 (change up to ~1/3 of the ceiling passes) -> abs_soft_max_mult=1.0 (change saturates near the ceiling, i.e. at most ~worst-cell -> best-cell). Neither is community-relative. smooth_sigma_cells>0 adds a post-cap masked Gaussian on log-abundance (in cells) so a capped extreme can't poison neighbours (0 = off).",
+    "soft_knee_fold": 10.0,
+    "soft_max_fold": 100.0,
+    "abs_soft_cap": true,
+    "abs_soft_knee_mult": 0.3,
+    "abs_soft_max_mult": 1.0,
+    "smooth_sigma_cells": 1.0,
+    "_coverage_comment": "Per-cell, per-year coverage gate: emit a historical (cell,year) community point only if >= min_coverage of the cell's occupying species have a trend informing that year (eBird when the blend leans recent, BBS when deep). Prevents false-stability points where most species would be held constant (~23% of cells have <50% deep BBS coverage). The recent anchor year is always kept.",
+    "min_coverage": 0.5
   },
   "bbs": {
     "_comment": "Community + ESK point settings. bbs_mode 'off'|'validate'|'trend' via the top-level bbs_mode above. community_top_n, z_dir (where trend_community writes the ESK point files) and n_landmarks are the live keys under bbs_mode=trend; the smoothing/anomaly knobs below belong to the deprecated amplitude path.",
@@ -75,8 +85,10 @@
     "batch_years": 8,
     "_spatial_conv_comment": "Tight residual masked (partial) conv on the latent grid: injects neighbourhood context a point-wise encoder cannot learn. gamma inits 0 so training starts as the exact point-wise, ESK-aligned model. kernel=3 => 3x3 (one 25km ring).",
     "spatial_conv": {"enabled": true, "kernel": 3},
-    "_trend_comment": "bbs_mode=trend: DESK is supervised directly against the trend-based spatiotemporal z-target (recent 2023 anchor + backward-reconstructed historical points, all projected into the joint ESK basis), pooling every (cell,year) point with EQUAL weight (uniform_stab) -- no eBird up-weighting, no direction/magnitude split. holdout_frac of eBird cells are withheld entirely for honest z-space reconstruction eval.",
+    "_trend_comment": "bbs_mode=trend: DESK predicts per-year z_raw from (lightly-smoothed) covariates, applies a LEARNED causal output-EMA over the year axis (output_ema) to get z_ema, and supervises z_ema against the trend-based spatiotemporal z-target -- every (cell,year) point EQUAL weight (uniform_stab). The output-EMA models demographic lag: the year-Y community is a leaky integral of past suitability, so per-year predictions flux with the environment while the supervised decadal estimate is a stable mixture of recent years. holdout_frac of eBird cells withheld for honest z-space eval.",
     "trend": {"holdout_frac": 0.2, "seed": 0},
+    "_output_ema_comment": "Learned causal EMA over the year axis on the PREDICTED z (not the inputs). half_life learned in half_life_bounds (yr) via a sigmoid reparam; alpha=1-2^(-1/half_life); z_ema(Y)=alpha*z_raw(Y)+(1-alpha)*z_ema(Y-1), scanned forward from warmup_start. Years < 1966 are unsupervised but seed the EMA. Per-year gradient checkpointing keeps the ~84-year window in A100 memory. The learned half_life is saved to desk_meta and reused by build_final_z_cube.",
+    "output_ema": {"enabled": true, "half_life_bounds": [1.0, 40.0], "warmup_start": 1940, "init_half_life": 8.0},
     "_enrich_comment": "enrich (bbs_mode='enrich'): supervise DESK at historical (cell,year) points against the BBS-amplitude community projected into the eBird ESK basis (z_obs). ebird_loss_fraction=0.8 => modern eBird contributes 80% of the stabilizing loss regardless of the ~10:1 BBS point-count advantage (eBird is the reliable anchor). holdout_frac of eBird cells are held out entirely for honest z-space reconstruction eval.",
     "enrich": {"ebird_loss_fraction": 0.8, "holdout_frac": 0.2, "seed": 0,
                "w_direction": 2.0, "w_magnitude_floor": 0.05, "w_absolute": 1.0,

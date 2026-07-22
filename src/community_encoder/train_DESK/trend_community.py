@@ -68,42 +68,114 @@ def blended_rate(bbs_rate, ebird_ppy, w):
     return r
 
 
-def backward_trajectory(anchor, bbs_rate, ebird_ppy, sample_years, anchor_year,
-                        first_year, crossover, width, clip_pct):
-    """Compound the blended rate backward from the anchor. Returns ``(years, N)``.
+def soft_clip(x, knee, asymptote):
+    """Soft version of a hard cap: identity for ``|x|<=knee``, saturating toward
+    ``+/-asymptote`` beyond it.
 
-    ``anchor``/``bbs_rate``/``ebird_ppy`` share shape ``(...,)`` (e.g. ``(S, M)``).
-    Integration is on the ANNUAL lattice ``first_year..anchor_year`` (so the
-    trajectory is stride-independent), sampled at ``sample_years``. The rate at a
-    year is winsorized to ``[-clip_pct, clip_pct]``; where NEITHER product covers a
-    (species,cell) the rate is 0 (abundance held constant). ``N`` is
-    ``(len(years), *anchor.shape)`` with ``N[anchor_year] == anchor``.
+    Below the knee the value is untransformed; above it, a tanh eases it smoothly to
+    the asymptote (C1-continuous at the knee -- both pieces have unit slope there),
+    so it never exceeds ``asymptote``. Unlike a hard clip it has no kink and unlike a
+    global tanh it leaves ordinary change alone. Applied to the cumulative LOG
+    abundance change, so ``knee``/``asymptote`` are in log-fold units
+    (e.g. ln 10 -> untransformed to ~10x; ln 100 -> capped near 100x).
     """
-    anchor = np.asarray(anchor, dtype="float64")
-    bbs = np.clip(bbs_rate, -clip_pct, clip_pct)      # NaN-preserving
-    eb = np.clip(ebird_ppy, -clip_pct, clip_pct)
-    want = {int(y) for y in sample_years}
+    x = np.asarray(x, dtype="float64")
+    knee = np.asarray(knee, dtype="float64")
+    span = np.maximum(np.asarray(asymptote, dtype="float64") - knee, 1e-9)   # scalar or per-species
+    a = np.abs(x)
+    out = np.where(a > knee, knee + span * np.tanh((a - knee) / span), a)
+    return np.sign(x) * out
 
+
+def backward_trajectory(anchor, bbs_rate, ebird_ppy, bbs_abund, k, sample_years, anchor_year,
+                        first_year, crossover, width, soft_knee, soft_asymptote,
+                        abs_knee=None, abs_asy=None):
+    """Method-B reconstruction: a log-space blend of two closed-form trajectories.
+
+    ``anchor`` (E, eBird present), ``bbs_rate``/``ebird_ppy`` (%/yr), ``bbs_abund`` (B,
+    BBS present abundance) share shape ``(S, M)``; ``k`` is the per-species eBird<-BBS
+    unit scale ``(S, 1)``. For each sampled year the abundance is
+
+        log N(Y) = w(Y)·[log E + dy·r_e]  +  (1-w(Y))·[log(k·B) + dy·r_b],   dy = Y - present
+
+    where ``r_e``/``r_b`` are the eBird/BBS annual log-rates and ``w`` ramps from ~1
+    (recent -> eBird's own trajectory) to ~0 (deep -> BBS's ABSOLUTE past ``k·B/f``, so
+    the deep spatial pattern follows BBS, not eBird's modern map). Missing eBird -> its
+    rate is 0 (held); missing BBS -> that cell falls back to the eBird trajectory. Two
+    overlapping soft caps then bound the change: a RELATIVE (fold) cap on ``log(N/E)``
+    (``soft_knee``/``soft_asymptote``, log units) and, if given, an ABSOLUTE cap on
+    ``N-E`` (``abs_knee``/``abs_asy``, per species) -- the first protects rare-base
+    cells, the second abundant-base cells. Species absent now (E<=0) stay 0.
+    ``N`` is ``(len(years), S, M)`` with ``N[anchor_year] == anchor`` exactly.
+    """
+    E = np.asarray(anchor, dtype="float64")
+    B = np.asarray(bbs_abund, dtype="float64")
+    k = np.asarray(k, dtype="float64")
+    re = np.log1p(np.clip(ebird_ppy, -99.0, None) / 100.0)       # NaN where eBird absent
+    rb = np.log1p(np.clip(bbs_rate, -99.0, None) / 100.0)        # NaN where BBS rate absent
+    has_e = np.isfinite(re)
+    has_b = np.isfinite(rb) & np.isfinite(B) & (B > 0)
+    posE = E > 0
+    logE = np.where(posE, np.log(np.where(posE, E, 1.0)), 0.0)
+    logkB = np.where(has_b, np.log(k * np.where(has_b, B, 1.0)), 0.0)
+    re0 = np.where(has_e, re, 0.0)
+
+    p = int(anchor_year)
     out = {}
-    if anchor_year in want:
-        out[anchor_year] = anchor.copy()
-    cumlog = np.zeros_like(anchor)                    # sum_{k>Y..anchor} ln(1+r_k/100)
-    for Y in range(int(anchor_year) - 1, int(first_year) - 1, -1):
-        r = blended_rate(bbs, eb, blend_weight(Y + 1, crossover, width))   # step Y+1 -> Y
-        r = np.where(np.isfinite(r), r, 0.0)
-        cumlog = cumlog + np.log1p(r / 100.0)
-        if Y in want:
-            out[Y] = anchor * np.exp(-cumlog)
+    for Y in sorted({int(y) for y in sample_years}):
+        if Y == p:
+            out[Y] = np.where(posE, E, 0.0)                      # anchor exact
+            continue
+        dy = Y - p
+        ebird_term = logE + dy * re0
+        bbs_term = np.where(has_b, logkB + dy * rb, ebird_term)  # fall back to eBird if no BBS
+        w = blend_weight(Y, crossover, width)
+        logN = w * ebird_term + (1.0 - w) * bbs_term
+        lr = soft_clip(logN - logE, soft_knee, soft_asymptote)   # cap 1: relative (fold) change
+        Ny = np.where(posE, E * np.exp(lr), 0.0)
+        if abs_knee is not None:                                 # cap 2: absolute change (overlapping)
+            d = soft_clip(Ny - E, abs_knee, abs_asy)
+            Ny = np.where(posE, np.clip(E + d, 0.0, None), 0.0)
+        out[Y] = Ny
     years = sorted(out)
     return years, np.stack([out[y] for y in years]).astype("float32")
 
 
-def assemble_points(anchor, bbs_rate, ebird_ppy, valid, years_cfg):
+def _smooth_log_years(N, rr, cc, H, W, sigma):
+    """Masked Gaussian smooth of log1p(N) per (year, species), applied on the grid.
+
+    Smooths the KERNEL-space quantity (log-abundance) so per-cell interpolation noise
+    doesn't survive into the community vectors; masked (Nadaraya-Watson) so nodata
+    can't bleed in. Run AFTER the soft caps, so a capped extreme can't poison its
+    neighbours. Returns N with the same shape.
+    """
+    from scipy.ndimage import gaussian_filter
+    T, S, M = N.shape
+    m = np.zeros((H, W)); m[rr, cc] = 1.0
+    md = gaussian_filter(m, sigma, mode="constant")
+    out = N.copy()
+    for t in range(T):
+        for s in range(S):
+            g = np.zeros((H, W)); g[rr, cc] = np.log1p(np.clip(N[t, s], 0, None))
+            sm = gaussian_filter(g, sigma, mode="constant")
+            with np.errstate(invalid="ignore", divide="ignore"):
+                lg = np.where(md > 1e-9, sm / md, 0.0)
+            out[t, s] = np.expm1(lg[rr, cc])
+    return out
+
+
+def assemble_points(anchor, bbs_rate, ebird_ppy, bbs_abund, k, valid, years_cfg, log1p=True,
+                    abs_knee=None, abs_asy=None, smooth_sigma=0.0):
     """Build ``(X, point_index, meta_years)`` from grid arrays. Pure.
 
-    ``anchor``/``bbs_rate``/``ebird_ppy`` are ``(S, H, W)`` (NaN where absent).
-    ``valid`` is ``(H, W)`` bool (community support = the anchor's footprint).
-    ``years_cfg`` = dict(anchor_year, first_year, stride, crossover, width, clip_pct).
+    ``anchor`` (eBird present), ``bbs_rate``/``ebird_ppy`` (%/yr) and ``bbs_abund``
+    (BBS present abundance) are ``(S, H, W)`` (NaN where absent); ``k`` is the
+    per-species eBird<-BBS scale ``(S,)``. ``valid`` is ``(H, W)`` bool (community
+    support = the anchor's footprint). ``years_cfg`` = dict(anchor_year, first_year,
+    stride, crossover, width, soft_knee, soft_asymptote, min_coverage). ``abs_knee``/
+    ``abs_asy`` (per species, optional) add the absolute-change soft cap;
+    ``smooth_sigma`` (cells, optional) applies a post-cap masked Gaussian to the
+    log-abundance. ``log1p`` emits ``log1p(abundance)`` community vectors.
 
     Returns ``X`` ``(N, S)`` float32 (recent anchor rows first, then each strided
     historical year), ``pidx`` ``(N,3)`` int32 row/col/year, and the year list.
@@ -114,21 +186,48 @@ def assemble_points(anchor, bbs_rate, ebird_ppy, valid, years_cfg):
     a = np.stack([anchor[s][rr, cc] for s in range(S)])       # (S, M)
     b = np.stack([bbs_rate[s][rr, cc] for s in range(S)])
     e = np.stack([ebird_ppy[s][rr, cc] for s in range(S)])
+    ba = np.stack([bbs_abund[s][rr, cc] for s in range(S)])
+    kk = np.asarray(k, dtype="float64").reshape(S, 1)
+    ak = None if abs_knee is None else np.asarray(abs_knee, dtype="float64").reshape(S, 1)
+    aa = None if abs_asy is None else np.asarray(abs_asy, dtype="float64").reshape(S, 1)
 
     ay, fy = int(years_cfg["anchor_year"]), int(years_cfg["first_year"])
     stride = int(years_cfg["stride"])
     sample_years = [ay] + [y for y in range(ay - 1, fy - 1, -1) if (ay - y) % stride == 0]
-    years, N = backward_trajectory(a, b, e, sample_years, ay, fy,
+    years, N = backward_trajectory(a, b, e, ba, kk, sample_years, ay, fy,
                                    years_cfg["crossover"], years_cfg["width"],
-                                   years_cfg["clip_pct"])          # (T, S, M)
+                                   years_cfg["soft_knee"], years_cfg["soft_asymptote"],
+                                   abs_knee=ak, abs_asy=aa)             # (T, S, M)
+    if smooth_sigma and smooth_sigma > 0:
+        N = _smooth_log_years(N, rr, cc, H, W, float(smooth_sigma))
     # Recent year first (ESK strata key on recent_year), then the rest ascending.
+    # Coverage gate: a historical (cell,year) community vector is only meaningful if enough
+    # of the cell's occupying species have a trend that actually informs that year (eBird when
+    # the blend leans recent, BBS when it leans deep). Species without one are held constant,
+    # so a low-coverage cell would report false stability -- drop those points. The recent
+    # anchor year is always kept (it's the observed community).
+    min_cov = float(years_cfg.get("min_coverage", 0.0))
+    occ = a > 0                                                   # (S, M) modern occupancy
+    n_occ = np.clip(occ.sum(0), 1, None)
+    has_e, has_b = np.isfinite(e), np.isfinite(b)
+    cross, wid = years_cfg["crossover"], years_cfg["width"]
+
     order = [years.index(ay)] + [i for i, y in enumerate(years) if y != ay]
     blocks_X, blocks_idx = [], []
     for i in order:
         y = years[i]
-        blocks_X.append(N[i].T)                                   # (M, S)
-        blocks_idx.append(np.stack([rr, cc, np.full(M, y)], axis=1))
-    X = np.nan_to_num(np.concatenate(blocks_X, axis=0)).astype("float32")
+        if y == ay or min_cov <= 0:
+            keep = np.ones(M, dtype=bool)
+        else:
+            w = blend_weight(y, cross, wid)                       # recent->eBird, deep->BBS
+            contrib = (has_e & (w > 0.05)) | (has_b & ((1.0 - w) > 0.05))
+            keep = ((contrib & occ).sum(0) / n_occ) >= min_cov
+        blocks_X.append(N[i][:, keep].T)                          # (n_keep, S)
+        blocks_idx.append(np.stack([rr[keep], cc[keep], np.full(int(keep.sum()), y)], axis=1))
+    X = np.nan_to_num(np.concatenate(blocks_X, axis=0))
+    if log1p:
+        X = np.log1p(np.clip(X, 0.0, None))               # log-abundance community vectors
+    X = X.astype("float32")
     pidx = np.concatenate(blocks_idx, axis=0).astype(np.int32)
     return X, pidx, [years[i] for i in order]
 
@@ -178,6 +277,23 @@ def _annual_anchor(weekly_dir, codes):
     return anchor
 
 
+def _species_scale(anchor, bbs_abund):
+    """Per-species eBird<-BBS unit scale ``k = median(E/B)`` over cells where both > 0.
+
+    Calibrates the units conversion from the present-day overlap so the method-B deep
+    target ``k·B/f`` is on eBird's scale. Falls back to 1.0 where there is too little
+    overlap to estimate. Returns ``(S,)``.
+    """
+    S = anchor.shape[0]
+    k = np.ones(S, dtype="float64")
+    for s in range(S):
+        E, B = anchor[s], bbs_abund[s]
+        m = np.isfinite(E) & (E > 0) & np.isfinite(B) & (B > 0)
+        if int(m.sum()) >= 10:
+            k[s] = float(np.median(E[m] / B[m]))
+    return k
+
+
 def build_trend_points(config=None):
     """Assemble the trend-based ESK point matrix and emit the ESK input files."""
     import pandas as pd
@@ -199,9 +315,12 @@ def build_trend_points(config=None):
         raise SystemExit("set trend.ebird_weekly_grid (or paths.ebird_folder) to the "
                          "projected 2023 eBird weekly grid dir for the anchor.")
 
+    ba_path = tc.get("bbs_abund_grid") or dcfg["trends"]["bbs_abund_grid"]
     bbs_rate, miss_b = _load_trend_grid(bbs_path, codes, "rate")
     ebird_ppy, miss_e = _load_trend_grid(eb_path, codes, "abd_ppy")
+    bbs_abund, miss_ba = _load_trend_grid(ba_path, codes, "abund")       # method-B deep scale
     anchor = _annual_anchor(weekly_dir, codes)                          # (S, H, W)
+    k = _species_scale(anchor, bbs_abund)                               # (S,) eBird<-BBS unit scale
 
     valid = np.any(np.isfinite(anchor), axis=0)                         # anchor footprint
     years_cfg = {
@@ -210,9 +329,24 @@ def build_trend_points(config=None):
         "stride": int(tc.get("point_year_stride", 3)),
         "crossover": float(tc.get("handoff_crossover", 2010.0)),
         "width": float(tc.get("handoff_width", 1.5)),
-        "clip_pct": float(tc.get("rate_clip_pct", 15.0)),
+        "soft_knee": float(np.log(tc.get("soft_knee_fold", 10.0))),
+        "soft_asymptote": float(np.log(tc.get("soft_max_fold", 100.0))),
+        "min_coverage": float(tc.get("min_coverage", 0.5)),
     }
-    X, pidx, years = assemble_points(anchor, bbs_rate, ebird_ppy, valid, years_cfg)
+    log1p = bool(tc.get("ruzicka_log1p", True))
+    # Absolute-change soft cap: per-species knee/asymptote = multiples of that species'
+    # present-abundance scale (p90 over occupied cells). Complements the relative cap.
+    abs_knee = abs_asy = None
+    if bool(tc.get("abs_soft_cap", True)):
+        ref = np.array([float(np.nanpercentile(anchor[i][anchor[i] > 0], 99))   # best-habitat ceiling
+                        if np.isfinite(anchor[i]).any() and (anchor[i] > 0).any() else 1.0
+                        for i in range(S)])
+        abs_knee = ref * float(tc.get("abs_soft_knee_mult", 0.3))
+        abs_asy = ref * float(tc.get("abs_soft_max_mult", 1.0))
+    smooth_sigma = float(tc.get("smooth_sigma_cells", 0.0))
+    X, pidx, years = assemble_points(anchor, bbs_rate, ebird_ppy, bbs_abund, k, valid,
+                                     years_cfg, log1p=log1p, abs_knee=abs_knee, abs_asy=abs_asy,
+                                     smooth_sigma=smooth_sigma)
     n_recent = int(valid.sum())
 
     out_dir = bc["z_dir"]
@@ -223,8 +357,10 @@ def build_trend_points(config=None):
         json.dump({"n_species": S, "n_weeks": 1,
                    "n_recent": n_recent, "n_hist": int(X.shape[0] - n_recent),
                    "species": codes, "recent_year": years_cfg["anchor_year"],
-                   "years": years, "handoff": years_cfg,
-                   "missing_bbs": miss_b, "missing_ebird": miss_e}, fh, indent=2)
+                   "years": years, "handoff": years_cfg, "ruzicka_log1p": log1p,
+                   "deep_target": "bbs_absolute", "k_median": float(np.median(k)),
+                   "missing_bbs": miss_b, "missing_ebird": miss_e,
+                   "missing_bbs_abund": miss_ba}, fh, indent=2)
     print(f"[trend] X {X.shape}: {n_recent} recent (year {years_cfg['anchor_year']}) + "
           f"{X.shape[0]-n_recent} historical over {len(years)-1} back-years "
           f"(stride {years_cfg['stride']}, {years[-1]}..{years_cfg['anchor_year']}); "

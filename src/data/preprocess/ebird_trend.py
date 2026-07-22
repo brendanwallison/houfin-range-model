@@ -35,30 +35,41 @@ def _find_parquet(trends_dir, code):
     return sorted(hits)[0] if hits else None
 
 
-def rasterize_parquet(path, ref_crs, transform, H, W, value_cols=("abd_ppy", "abd")):
-    """Bin a trends parquet's per-cell rows onto the model grid (mean within cell)."""
+def rasterize_parquet(path, ref_crs, transform, H, W, value_cols=("abd_ppy", "abd"),
+                      cutoff_frac=1.1):
+    """Resample a trends parquet's per-cell values onto the model grid.
+
+    Standard nearest-neighbour gridding: project the eBird cell centroids into the
+    ref CRS, assign every model cell the value of the nearest centroid (a Voronoi
+    fill, so no interior holes), then mask model cells whose nearest centroid is
+    farther than ``cutoff_frac`` cell-widths away (so the species' support boundary
+    is preserved and the grid isn't extrapolated across empty space). This replaces
+    the earlier containment-binning, whose sinusoidal->Albers cell mismatch left a
+    scatter of empty cells inside each range.
+    """
     from rasterio.warp import transform as warp_transform
+    from scipy.interpolate import griddata
+    from scipy.spatial import cKDTree
 
     df = pd.read_parquet(path, columns=["longitude", "latitude", "start_year", "end_year",
                                         *value_cols])
     xs, ys = warp_transform("EPSG:4326", ref_crs, df["longitude"].tolist(), df["latitude"].tolist())
-    cols, rows = (~transform) * (np.asarray(xs), np.asarray(ys))  # world -> fractional pixel
-    col = np.floor(cols).astype(int)
-    row = np.floor(rows).astype(int)
-    inb = (row >= 0) & (row < H) & (col >= 0) & (col < W)
+    pts = np.column_stack([np.asarray(xs), np.asarray(ys)])
+
+    res = abs(transform.a)
+    gx = transform.c + transform.a * (np.arange(W) + 0.5)       # cell-centre x per col
+    gy = transform.f + transform.e * (np.arange(H) + 0.5)       # cell-centre y per row
+    GX, GY = np.meshgrid(gx, gy)
+    gpts = np.column_stack([GX.ravel(), GY.ravel()])
+    dist, _ = cKDTree(pts).query(gpts)
+    inrange = (dist <= cutoff_frac * res).reshape(H, W)         # mask beyond the data extent
 
     grids = {}
     for vc in value_cols:
         v = df[vc].to_numpy(dtype="float64")
-        m = inb & np.isfinite(v)
-        acc = np.zeros((H, W), "float64")
-        cnt = np.zeros((H, W), "float64")
-        np.add.at(acc, (row[m], col[m]), v[m])
-        np.add.at(cnt, (row[m], col[m]), 1.0)
-        g = np.full((H, W), np.nan, "float32")
-        nz = cnt > 0
-        g[nz] = (acc[nz] / cnt[nz]).astype("float32")
-        grids[vc] = g
+        ok = np.isfinite(v)
+        gi = griddata(pts[ok], v[ok], (GX, GY), method="nearest")
+        grids[vc] = np.where(inrange, gi, np.nan).astype("float32")
     yr = (int(df["start_year"].iloc[0]) if len(df) else 0,
           int(df["end_year"].iloc[0]) if len(df) else 0)
     return grids, yr

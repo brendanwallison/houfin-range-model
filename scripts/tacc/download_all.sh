@@ -18,7 +18,8 @@ python scripts/avonet_pipeline.py
 echo "== BBS (US/Canada + Mexico) + BBS trend maps =="
 python scripts/download_bbs.py --dataset bbs --extract
 python scripts/download_bbs.py --dataset bbs_mexico
-python scripts/download_bbs.py --dataset bbs_trends --extract   # 516 tr{AOU}.tif (%/yr, 27 km ESRI:102003)
+python scripts/download_bbs.py --dataset bbs_trends --extract    # 516 tr{AOU}.tif (%/yr, 27 km ESRI:102003)
+python scripts/download_bbs.py --dataset bbs_abundance --extract  # 520 ra{AOU}.tif (birds/route) -- method-B deep scale
 
 echo "== Select the trend community: top-N HF-similar present in BOTH trend products =="
 # Needs the ranked list + BBS SpeciesList & trend rasters (above) + the eBird trends REST

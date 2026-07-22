@@ -366,6 +366,158 @@ def _prepare_direction_targets(config, z_dir, latent_dim, holdout, hist_years, r
         pre_w=np.array(p_w, dtype="float32"))
 
 
+# --- Output-EMA path (bbs_mode=trend): demographic lag on the predicted Z --------
+
+class OutputEMA(torch.nn.Module):
+    """Learned causal EMA over the leading (year) axis of a ``(T, ...)`` tensor.
+
+    Models demographic lag as a leaky integral of past predictions: ``z_ema[0]=z_raw[0]``,
+    ``z_ema[t]=a*z_raw[t]+(1-a)*z_ema[t-1]`` with ``a = 1 - 2^{-1/h}`` for a learned
+    half-life ``h`` (years). ``h`` is bounded to ``[hl_min, hl_max]`` via a sigmoid reparam,
+    so it stays a plausible community response timescale and can't run away.
+    """
+
+    def __init__(self, hl_min=1.0, hl_max=40.0, init_hl=8.0):
+        super().__init__()
+        self.hl_min, self.hl_max = float(hl_min), float(hl_max)
+        f = min(max((init_hl - hl_min) / (hl_max - hl_min), 1e-3), 1 - 1e-3)
+        self.theta = torch.nn.Parameter(torch.tensor(float(np.log(f / (1 - f)))))
+
+    def half_life(self):
+        return self.hl_min + (self.hl_max - self.hl_min) * torch.sigmoid(self.theta)
+
+    def alpha(self):
+        return 1.0 - torch.pow(torch.tensor(2.0, device=self.theta.device), -1.0 / self.half_life())
+
+    def forward(self, z):                                   # z: (T, ...) in temporal order
+        a = self.alpha()
+        out = [z[0]]
+        for t in range(1, z.shape[0]):
+            out.append(a * z[t] + (1.0 - a) * out[-1])
+        return torch.stack(out, 0)
+
+
+def _prepare_trend_targets(config, z_dir, latent_dim, holdout):
+    """Per-year ESK-basis targets for EVERY supervised year, from the trend points.
+
+    Projects ``X_points`` into the joint ESK basis (z_obs) and scatters each point into
+    its year's grid; returns ``{year: (zg (H,W,L), tm_tr (H,W), tm_val (H,W))}`` where the
+    train/val split is the spatial ``holdout`` (val = held-out cells). Includes 2023.
+    """
+    from .esk_kernel import project_amplitude_to_z
+    zt = config["bbs"]["z_dir"]
+    X = np.load(os.path.join(zt, "X_points.npy"))
+    pidx = np.load(os.path.join(zt, "point_index.npy"))
+    z_obs = project_amplitude_to_z(X, z_dir, latent_dim)
+    if z_obs is None:
+        raise FileNotFoundError(f"trend targets need the ESK projection in {z_dir}; re-run spacetime-esk")
+    rows, cols, yrs = pidx[:, 0], pidx[:, 1], pidx[:, 2]
+    H, W = holdout.shape
+    out = {}
+    for y in sorted({int(v) for v in yrs}):
+        sel = np.where(yrs == y)[0]
+        zg = np.zeros((H, W, latent_dim), dtype="float32")
+        present = np.zeros((H, W), bool)
+        zg[rows[sel], cols[sel]] = z_obs[sel]
+        present[rows[sel], cols[sel]] = True
+        out[y] = (zg, present & (~holdout), present & holdout)
+    return out
+
+
+def _load_year_window(states_dir, schema, mu, sd, years):
+    """Ordered covariate window: normalized grids for ``years`` -> (T,H,W,C), (T,H,W), kept_years."""
+    covn, masks, kept = [], [], []
+    for y in years:
+        try:
+            cov = cio.load_state_stack(y, states_dir, schema)
+        except FileNotFoundError:
+            continue
+        cn, m = cio.norm_grid(cov, mu, sd)
+        covn.append(cn); masks.append(m); kept.append(int(y))
+    return np.stack(covn), np.stack(masks), kept
+
+
+def train_model_ema(cov_window, mask_window, window_years, targets, x2023, m2023_tr, m2023_val,
+                    stream_dims, latent_dim, ema_cfg, spatial_kernel=3, epochs=500, lr=1e-3,
+                    weights=None, seed=0, patience=50, min_delta=1e-4):
+    """Train DESK with a learned output-EMA (bbs_mode=trend).
+
+    Forwards the ordered year window (per-year gradient checkpointing), applies the
+    learned causal EMA over the year axis, and supervises ``z_ema`` against the per-year
+    trend targets (uniform over all supervised (cell,year), train = non-held-out cells).
+    Plus the 2023 Ruzicka metric loss and an autoencoder reconstruction over the window.
+    Returns ``(model, ema)``.
+    """
+    from torch.utils.checkpoint import checkpoint
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    weights = weights or {"stabilizing": 1.0, "metric": 5.0, "reconstruction": 0.1}
+    torch.manual_seed(seed)
+
+    model = MultiStreamAutoencoder(stream_dims, latent_dim, spatial_kernel).to(device)
+    ema = OutputEMA(ema_cfg.get("half_life_bounds", [1.0, 40.0])[0],
+                    ema_cfg.get("half_life_bounds", [1.0, 40.0])[1],
+                    ema_cfg.get("init_half_life", 8.0)).to(device)
+    opt = torch.optim.Adam(list(model.parameters()) + list(ema.parameters()), lr=lr)
+    sched = torch.optim.lr_scheduler.ReduceLROnPlateau(opt, mode="min", factor=0.5, patience=5)
+
+    cov = torch.tensor(cov_window, device=device)                 # (T,H,W,C)
+    msk = torch.as_tensor(mask_window, device=device).bool()      # (T,H,W)
+    yi = {y: i for i, y in enumerate(window_years)}
+    x2023_t = torch.tensor(x2023, device=device)                  # (H,W, S) annual eBird
+    m_tr = torch.as_tensor(m2023_tr, device=device).bool(); m_val = torch.as_tensor(m2023_val, device=device).bool()
+    # supervised year targets that fall inside the forwarded window
+    tgt = {y: (torch.tensor(zg, device=device),
+               torch.as_tensor(tr, device=device).bool(), torch.as_tensor(va, device=device).bool())
+           for y, (zg, tr, va) in targets.items() if y in yi}
+    y2023 = int(max(tgt))                                         # anchor year index in the window
+
+    best_val, best = float("inf"), None
+    print(f"--- Training DESK+outputEMA ({len(window_years)}yr window {window_years[0]}..{window_years[-1]}, "
+          f"{len(tgt)} supervised years, max {epochs} ep) ---")
+    for ep in range(1, epochs + 1):
+        model.train(); opt.zero_grad()
+        z_raw, recon_loss = [], 0.0
+        for t in range(cov.shape[0]):                            # per-year forward (checkpointed)
+            zt, rt = checkpoint(model, cov[t:t + 1], msk[t:t + 1], use_reentrant=False)
+            z_raw.append(zt[0])
+            recon_loss = recon_loss + F.mse_loss(rt[0][msk[t]], cov[t][msk[t]])
+        recon_loss = recon_loss / cov.shape[0]
+        z_ema = ema(torch.stack(z_raw, 0))                       # (T,H,W,L)
+
+        # uniform stabilizing loss over all supervised (cell,year), train cells only
+        sq_sum, n = torch.zeros((), device=device), 0
+        for y, (zg, tr, _va) in tgt.items():
+            zz = z_ema[yi[y]]
+            s = torch.sum((zz[tr] - zg[tr]) ** 2, dim=1)
+            sq_sum = sq_sum + s.sum(); n += int(tr.sum())
+        loss_stab = sq_sum / max(n, 1)
+        z_anchor = z_ema[yi[y2023]]
+        loss_true = true_kernel_loss(z_anchor[m_tr], x2023_t[m_tr])
+        loss = (weights["stabilizing"] * loss_stab + weights["metric"] * loss_true
+                + weights["reconstruction"] * recon_loss)
+        loss.backward(); opt.step()
+
+        model.eval()
+        with torch.no_grad():
+            # cheap val: re-forward is expensive, so eval the anchor-year held-out cells from this step's z_ema
+            vs = torch.sum((z_anchor[m_val] - tgt[y2023][0][m_val]) ** 2, dim=1).mean().item() if m_val.any() else 0.0
+            sched.step(vs)
+            print(f"Ep {ep:03d} | Stab {loss_stab.item():.4f} | True {loss_true.item():.4f} | "
+                  f"Rec {recon_loss.item():.4f} | Val(anchor) {vs:.4f} | half-life {ema.half_life().item():.1f}y", flush=True)
+        if vs < best_val - min_delta:
+            best_val, bad = vs, 0
+            best = ({k: v.detach().cpu().clone() for k, v in model.state_dict().items()},
+                    {k: v.detach().cpu().clone() for k, v in ema.state_dict().items()})
+        else:
+            bad = bad + 1 if ep > 1 else 0
+            if bad >= patience:
+                print(f"[desk] early stop at ep {ep} (best Val {best_val:.4f})"); break
+    if best is not None:
+        model.load_state_dict({k: v.to(device) for k, v in best[0].items()})
+        ema.load_state_dict({k: v.to(device) for k, v in best[1].items()})
+    return model, ema
+
+
 def run_desk_experiment(config=None):
     """Driver: load N-stream states + ESK Z, prepare grids, train DESK, save model+meta.
 
@@ -388,14 +540,21 @@ def run_desk_experiment(config=None):
     ebird_stack, eb_meta = load_ebird_stack(config)
     bbs_mode = config.get("bbs_mode", "validate")
     if bbs_mode == "trend":
-        # The trend ESK basis is built on ANNUAL community vectors (n_weeks=1), so the 2023
-        # metric/kernel loss must align to the annual Ruzicka, not the weekly stack: collapse
-        # the weekly eBird stack to a per-species annual mean (matches trend_community's anchor).
+        # The trend ESK basis is built on ANNUAL, log1p community vectors, so the 2023
+        # metric/kernel loss must align to the SAME space: collapse the weekly eBird stack to
+        # a per-species annual mean, then log1p it (matching trend_community's emitted points).
         nw = int(eb_meta.get("n_weeks", 1))
         if nw > 1:
             H, W, D = ebird_stack.shape
             ebird_stack = np.nanmean(ebird_stack.reshape(H, W, D // nw, nw), axis=3).astype("float32")
-            print(f"[desk] trend mode: collapsed weekly eBird stack to annual ({D // nw} species)")
+        pm_path = os.path.join(config["bbs"]["z_dir"], "points_meta.json")
+        log1p_kernel = True
+        if os.path.exists(pm_path):
+            log1p_kernel = bool(json.load(open(pm_path)).get("ruzicka_log1p", True))
+        if log1p_kernel:
+            ebird_stack = np.log1p(np.clip(ebird_stack, 0.0, None)).astype("float32")
+        print(f"[desk] trend mode: annual eBird community for the Ružicka metric "
+              f"(log1p={log1p_kernel})")
     cov_stack = cio.load_state_stack(label_year, states_dir, schema)
 
     z_dir = desk_cfg["z_dir"]
@@ -470,26 +629,48 @@ def run_desk_experiment(config=None):
     else:
         m_tr, m_val = _split_mask(mask_sup, desk_cfg.get("train_val_split", 0.8))
 
-    hist_grids, hist_masks, _ = _load_hist_grids(states_dir, schema, mu, sd, label_year)
-
     stream_dims = cio.stream_dims(schema)
-    model = train_model_semisup(
-        torch.tensor(covn), mask_cov_t, m_tr, m_val, z_grid, x_grid,
-        hist_grids, hist_masks, stream_dims, latent_dim=z_grid.shape[2],
-        spatial_kernel=spatial_kernel,
-        epochs=desk_cfg.get("epochs", 100), lr=desk_cfg.get("lr", 1e-3),
-        batch_years=desk_cfg.get("batch_years", 8),
-        weights=desk_cfg.get("weights"),
-        enrich=enrich_data, ebird_frac=ebird_frac,
-        direction=direction, dir_weights=dir_weights, uniform_stab=uniform_stab,
-        patience=desk_cfg.get("patience", 50))
+    ema_cfg = desk_cfg.get("output_ema", {})
+    ema_half_life = None
+    if bbs_mode == "trend" and ema_cfg.get("enabled", False):
+        # Output-EMA objective: forward the ordered year window, apply a learned causal
+        # EMA over the year axis to the predicted Z (demographic lag), and supervise the
+        # EMA'd z_ema against the per-year trend targets. Replaces the direct per-year target.
+        warmup_start = int(ema_cfg.get("warmup_start", 1940))
+        window_years = list(range(warmup_start, label_year + 1))
+        cov_win, mask_win, kept = _load_year_window(states_dir, schema, mu, sd, window_years)
+        targets = _prepare_trend_targets(config, z_dir, z_grid.shape[2], holdout)
+        model, ema = train_model_ema(
+            cov_win, mask_win, kept, targets, x_grid, m_tr, m_val,
+            stream_dims, latent_dim=z_grid.shape[2], ema_cfg=ema_cfg,
+            spatial_kernel=spatial_kernel,
+            epochs=desk_cfg.get("epochs", 500), lr=desk_cfg.get("lr", 1e-3),
+            weights=desk_cfg.get("weights"), patience=desk_cfg.get("patience", 50))
+        ema_half_life = float(ema.half_life().item())
+        torch.save(ema.state_dict(), os.path.join(out_dir, "output_ema.pth"))
+        print(f"[desk] output-EMA learned half-life = {ema_half_life:.2f} yr")
+    else:
+        hist_grids, hist_masks, _ = _load_hist_grids(states_dir, schema, mu, sd, label_year)
+        model = train_model_semisup(
+            torch.tensor(covn), mask_cov_t, m_tr, m_val, z_grid, x_grid,
+            hist_grids, hist_masks, stream_dims, latent_dim=z_grid.shape[2],
+            spatial_kernel=spatial_kernel,
+            epochs=desk_cfg.get("epochs", 100), lr=desk_cfg.get("lr", 1e-3),
+            batch_years=desk_cfg.get("batch_years", 8),
+            weights=desk_cfg.get("weights"),
+            enrich=enrich_data, ebird_frac=ebird_frac,
+            direction=direction, dir_weights=dir_weights, uniform_stab=uniform_stab,
+            patience=desk_cfg.get("patience", 50))
 
     torch.save(model.state_dict(), os.path.join(out_dir, "env_model_semisup.pth"))
     np.savez(os.path.join(out_dir, "desk_meta.npz"),
              mu=mu, sd=sd, stream_dims=np.array(stream_dims, int),
              latent_dim=z_grid.shape[2], label_year=label_year,
              spatial_kernel=spatial_kernel, bbs_mode=bbs_mode,
-             ebird_frac=ebird_frac, schema=json.dumps(schema))
+             ebird_frac=ebird_frac, schema=json.dumps(schema),
+             output_ema=bool(ema_cfg.get("enabled", False)),
+             ema_half_life=(ema_half_life if ema_half_life is not None else np.nan),
+             ema_warmup_start=int(ema_cfg.get("warmup_start", 1940)))
     print(f"[desk] saved model + desk_meta.npz -> {out_dir} "
           f"(spatial_kernel={spatial_kernel}, mode={bbs_mode})")
 

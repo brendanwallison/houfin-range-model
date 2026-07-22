@@ -537,25 +537,27 @@ def run_desk_experiment(config=None):
     spatial_kernel = int(desk_cfg.get("spatial_conv", {}).get("kernel", 3)) \
         if desk_cfg.get("spatial_conv", {}).get("enabled", True) else 0
 
-    ebird_stack, eb_meta = load_ebird_stack(config)
     bbs_mode = config.get("bbs_mode", "validate")
-    if bbs_mode == "trend":
-        # The trend ESK basis is built on ANNUAL, log1p community vectors, so the 2023
-        # metric/kernel loss must align to the SAME space: collapse the weekly eBird stack to
-        # a per-species annual mean, then log1p it (matching trend_community's emitted points).
-        nw = int(eb_meta.get("n_weeks", 1))
-        if nw > 1:
-            H, W, D = ebird_stack.shape
-            ebird_stack = np.nanmean(ebird_stack.reshape(H, W, D // nw, nw), axis=3).astype("float32")
-        pm_path = os.path.join(config["bbs"]["z_dir"], "points_meta.json")
-        log1p_kernel = True
-        if os.path.exists(pm_path):
-            log1p_kernel = bool(json.load(open(pm_path)).get("ruzicka_log1p", True))
-        if log1p_kernel:
-            ebird_stack = np.log1p(np.clip(ebird_stack, 0.0, None)).astype("float32")
-        print(f"[desk] trend mode: annual eBird community for the Ružicka metric "
-              f"(log1p={log1p_kernel})")
     cov_stack = cio.load_state_stack(label_year, states_dir, schema)
+    if bbs_mode == "trend":
+        # The Ružicka metric anchor is the reconstructed reference-year (anchor_year)
+        # community -- the EXACT vectors that seeded the ESK basis (log1p abundance,
+        # anchor-mode-agnostic). Scatter X_points' anchor-year rows into an (H,W,S) grid,
+        # so DESK depends on no weekly eBird product (trends-abd anchor needs none).
+        ztz = config["bbs"]["z_dir"]
+        Xp = np.load(os.path.join(ztz, "X_points.npy"))
+        pip = np.load(os.path.join(ztz, "point_index.npy"))
+        pm = json.load(open(os.path.join(ztz, "points_meta.json")))
+        ay, S = int(pm["recent_year"]), int(pm["n_species"])
+        H, W = cov_stack.shape[:2]
+        sel = pip[:, 2] == ay
+        ebird_stack = np.full((H, W, S), np.nan, dtype="float32")
+        ebird_stack[pip[sel, 0], pip[sel, 1]] = Xp[sel]                # already log1p in X_points
+        log1p_kernel = bool(pm.get("ruzicka_log1p", True))
+        print(f"[desk] trend mode: Ružicka metric anchored on the reconstructed year-{ay} "
+              f"community from X_points (anchor_mode={pm.get('anchor_mode')}, log1p={log1p_kernel})")
+    else:
+        ebird_stack, _ = load_ebird_stack(config)
 
     z_dir = desk_cfg["z_dir"]
     try:

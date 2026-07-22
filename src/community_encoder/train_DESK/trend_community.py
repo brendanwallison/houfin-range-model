@@ -1,26 +1,39 @@
 """Trend-product spatiotemporal community vectors for the ESK kernel.
 
 Replaces the amplitude-modulation construction (``spacetime_community``, now
-deprecated). Instead of a fixed 2023 shape modulated by a BBS anomaly, the
-historical community is reconstructed by applying **published trend products**
-to the modern eBird raster:
+deprecated). Instead of a fixed shape modulated by a BBS anomaly, the historical
+community is reconstructed by applying **published trend products** to an anchor
+abundance raster, via **method B (log-space target blend)**. Per year ``Y``,
+``dy = Y - R`` (``R`` = reference year, 2025), both trend rates are **percent-per-year**
+(eBird ``abd_ppy`` and BBS ``tr{AOU}`` are BOTH %/yr -- eBird's *cumulative* number
+is a separate column, ``abd_trend``, which we do NOT use):
 
-    N(cell, sp, Y) = N_2023(cell, sp) * prod_{y=Y+1..2023} (1 + r(cell, sp, y)/100)^-1
+    log N(Y) = w(Y)*[log E + dy*ln(1+r_e/100)]           # eBird recent branch
+             + (1-w(Y))*[log(k*B) + dy*ln(1+r_b/100)]     # BBS deep branch
 
-where ``N_2023`` is the 2023 eBird annual relative-abundance anchor and the
-per-year percent rate is a **smooth blend** of the two trend products,
+``w(Y)`` is a smooth logistic handoff (eBird-dominant near ``R`` -> BBS-dominant deep),
+so the trajectory is continuous (no hinge). The deep limit ``k*B`` ties the historical
+spatial pattern to BBS's *absolute* abundance and can never go negative (no false
+absences). ``k = median(E/B)`` per species (eBird<-BBS unit scale).
 
-    r(cell, sp, Y) = w(Y) * ebird_ppy(cell, sp) + (1 - w(Y)) * bbs_rate(cell, sp)
+**Anchor (``anchor_mode``, default ``trends-abd``).** The reference-year abundance ``E``:
+  - ``trends-abd``: the trends product's own midpoint reference ``abd`` (relative
+    abundance at ``(start_year+end_year)/2``, ~2017 for a 2012-2022 window),
+    forward-extrapolated to ``R`` along the eBird per-year rate,
+    ``E = abd * (1+r_e/100)^(R-mid)``. This keeps ``E`` and ``r_e`` on the SAME product
+    and cells (no coverage mismatch), and needs no weekly status download. Substituting
+    ``E`` back, the eBird branch is just ``abd`` compounded from its own midpoint to
+    ``Y`` -- anchoring at ``R`` is bookkeeping, no double-counting.
+  - ``weekly`` (legacy): the 2023 eBird annual mean of the weekly status rasters. Higher
+    resolution but a *different* eBird product than trends, so a trend species may lack a
+    complete weekly stack -> requires the ``--require-weekly`` download.
 
-heavily weighted to the eBird recent trend in its temporal domain (w(Y) -> 1 near
-present) handing off smoothly to the BBS long-term trend for older years (w -> 0).
-Blending the *rate* (not the endpoints) makes the trajectory continuous -- no
-hinge. The BBS rate is winsorized (its inverse-distance interpolation has heavy
-tails at sparse-coverage range margins); eBird's model-based rate is already tight.
-
-The two products are near-orthogonal at the cell level (different temporal
+The two rate products are near-orthogonal at the cell level (different temporal
 domains: BBS 1966-2022 vs eBird 2012-2022), so this genuinely spans more of the
-community-change space than either alone -- the point of the redesign.
+community-change space than either alone -- the point of the redesign. Two overlapping
+soft caps (relative fold + absolute at the species' p99 best-habitat abundance) + log1p
+Ružicka space + a coverage gate keep the reconstruction well-behaved (see ``soft_clip``,
+``assemble_points``).
 
 The numerical core (``blend_weight``, ``blended_rate``, ``backward_trajectory``,
 ``assemble_points``) is pure (arrays in, arrays out) so it unit-tests without any
@@ -254,11 +267,35 @@ def _load_trend_grid(path, codes, field):
     return out, missing
 
 
+def _trends_abd_anchor(eb_path, codes, ebird_ppy, ref_year):
+    """trends-abd anchor: the midpoint ``abd`` forward-extrapolated to ``ref_year``.
+
+    ``E = abd * (1 + abd_ppy/100)^(ref_year - mid)`` per species, ``mid`` the trend
+    window midpoint ``(start_year+end_year)/2`` (from the parquet, ~2017). Both ``abd``
+    and ``abd_ppy`` live on the SAME trends cells, so ``E`` and the eBird rate never
+    disagree on coverage and no weekly status download is needed. Returns ``(S, H, W)``;
+    NaN where the species is absent from the trends grid. ``ebird_ppy`` is already
+    reindexed to ``codes`` order (the caller's ``abd_ppy`` grid).
+    """
+    abd, _ = _load_trend_grid(eb_path, codes, "abd")                    # (S, H, W)
+    z = np.load(eb_path, allow_pickle=True)
+    gc = {str(c): i for i, c in enumerate(z["species_code"])}
+    sy, ey = z["start_year"], z["end_year"]
+    E = np.full_like(abd, np.nan)
+    for s, c in enumerate(codes):
+        if c not in gc:
+            continue
+        mid = 0.5 * (float(sy[gc[c]]) + float(ey[gc[c]]))
+        E[s] = abd[s] * np.power(1.0 + ebird_ppy[s] / 100.0, float(ref_year) - mid)
+    return E.astype("float32")
+
+
 def _annual_anchor(weekly_dir, codes):
     """2023 eBird annual mean relative abundance per community species -> (S, H, W).
 
-    Reads the projected weekly grids (already at the model grid) and averages over
-    weeks. Errors listing any community species missing weekly abundance.
+    Legacy ``anchor_mode=weekly`` path. Reads the projected weekly grids (already at
+    the model grid) and averages over weeks. Errors listing any community species
+    missing weekly abundance. The default anchor is now ``_trends_abd_anchor``.
     """
     from src.community_encoder.train_DESK.ebird_io import load_tifs_structured
 
@@ -310,21 +347,29 @@ def build_trend_points(config=None):
 
     bbs_path = tc.get("bbs_trend_grid") or dcfg["trends"]["bbs_trend_grid"]
     eb_path = tc.get("ebird_trend_grid") or dcfg["trends"]["ebird_trend_grid"]
-    weekly_dir = tc.get("ebird_weekly_grid") or config.get("paths", {}).get("ebird_folder")
-    if not weekly_dir:
-        raise SystemExit("set trend.ebird_weekly_grid (or paths.ebird_folder) to the "
-                         "projected 2023 eBird weekly grid dir for the anchor.")
+    anchor_mode = str(tc.get("anchor_mode", "trends-abd"))
+    ref_year = int(tc.get("anchor_year", 2025))
 
     ba_path = tc.get("bbs_abund_grid") or dcfg["trends"]["bbs_abund_grid"]
     bbs_rate, miss_b = _load_trend_grid(bbs_path, codes, "rate")
     ebird_ppy, miss_e = _load_trend_grid(eb_path, codes, "abd_ppy")
     bbs_abund, miss_ba = _load_trend_grid(ba_path, codes, "abund")       # method-B deep scale
-    anchor = _annual_anchor(weekly_dir, codes)                          # (S, H, W)
+    # Anchor E at the reference year. Default trends-abd (abd forward-extrapolated to
+    # ref_year along abd_ppy -- same product/cells as the rate); legacy weekly = 2023
+    # annual mean of the eBird status rasters (a different product, needs weekly grids).
+    if anchor_mode == "weekly":
+        weekly_dir = tc.get("ebird_weekly_grid") or config.get("paths", {}).get("ebird_folder")
+        if not weekly_dir:
+            raise SystemExit("anchor_mode=weekly needs trend.ebird_weekly_grid (or "
+                             "paths.ebird_folder) -> the projected eBird weekly grid dir.")
+        anchor = _annual_anchor(weekly_dir, codes)                      # (S, H, W)
+    else:
+        anchor = _trends_abd_anchor(eb_path, codes, ebird_ppy, ref_year)  # (S, H, W)
     k = _species_scale(anchor, bbs_abund)                               # (S,) eBird<-BBS unit scale
 
     valid = np.any(np.isfinite(anchor), axis=0)                         # anchor footprint
     years_cfg = {
-        "anchor_year": int(tc.get("anchor_year", 2023)),
+        "anchor_year": ref_year,
         "first_year": int(tc.get("first_year", 1966)),
         "stride": int(tc.get("point_year_stride", 3)),
         "crossover": float(tc.get("handoff_crossover", 2010.0)),
@@ -358,7 +403,8 @@ def build_trend_points(config=None):
                    "n_recent": n_recent, "n_hist": int(X.shape[0] - n_recent),
                    "species": codes, "recent_year": years_cfg["anchor_year"],
                    "years": years, "handoff": years_cfg, "ruzicka_log1p": log1p,
-                   "deep_target": "bbs_absolute", "k_median": float(np.median(k)),
+                   "anchor_mode": anchor_mode, "deep_target": "bbs_absolute",
+                   "k_median": float(np.median(k)),
                    "missing_bbs": miss_b, "missing_ebird": miss_e,
                    "missing_bbs_abund": miss_ba}, fh, indent=2)
     print(f"[trend] X {X.shape}: {n_recent} recent (year {years_cfg['anchor_year']}) + "

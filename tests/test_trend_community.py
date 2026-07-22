@@ -3,7 +3,8 @@ compounding, and point assembly (the pure numerical core)."""
 import numpy as np
 
 from src.community_encoder.train_DESK.trend_community import (
-    assemble_points, backward_trajectory, blend_weight, blended_rate, soft_clip,
+    _trends_abd_anchor, assemble_points, backward_trajectory, blend_weight,
+    blended_rate, soft_clip,
 )
 
 # A no-op cap (knee/asymptote far above any test magnitude) for exact-compounding checks.
@@ -135,3 +136,43 @@ def test_load_trend_grid_reindex(tmp_path):
     assert np.isnan(out[1]).all()                           # zzz absent -> NaN
     assert np.allclose(out[2], rate[0])                     # aaa
     assert missing == ["zzz"]
+
+
+def test_trends_abd_anchor_forward_extrapolation(tmp_path):
+    """E = abd * (1 + abd_ppy/100)^(ref_year - midyear), per species; midyear=(start+end)/2.
+
+    Confirms the trends-abd anchor forward-extrapolates the midpoint reference to the
+    reference year along the eBird per-year rate (both %/yr), and that absent species stay NaN.
+    """
+    codes = ["aaa", "bbb", "ccc"]                       # ccc absent from the grid
+    grid_codes = np.array(["aaa", "bbb"])
+    abd = np.array([[[2.0, 4.0]], [[10.0, 0.0]]], dtype="float32")     # (2, 1, 2)
+    abd_ppy = np.array([[[3.0, 3.0]], [[-5.0, -5.0]]], dtype="float32")
+    start_year = np.array([2012, 2012]); end_year = np.array([2022, 2022])   # mid = 2017
+    p = str(tmp_path / "ebird_trend_grid.npz")
+    np.savez(p, abd=abd, abd_ppy=abd_ppy, species_code=grid_codes,
+             start_year=start_year, end_year=end_year,
+             valid=np.ones((1, 2), bool))
+
+    # caller passes abd_ppy reindexed to `codes` (ccc -> NaN row)
+    ppy_reindexed = np.array([abd_ppy[0], abd_ppy[1], np.full((1, 2), np.nan)], dtype="float32")
+    E = _trends_abd_anchor(p, codes, ppy_reindexed, ref_year=2025)
+
+    dy = 2025 - 2017                                    # 8 years
+    assert np.allclose(E[0], abd[0] * (1 + 3.0 / 100) ** dy)       # growing species
+    assert np.allclose(E[1], abd[1] * (1 - 5.0 / 100) ** dy)       # declining species
+    assert np.isnan(E[2]).all()                                    # absent species -> NaN
+    assert E.shape == (3, 1, 2)
+
+
+def test_trends_abd_anchor_ref_equals_midpoint_is_identity(tmp_path):
+    """At ref_year == midpoint the anchor is exactly abd (extrapolation exponent = 0)."""
+    codes = ["x"]
+    abd = np.array([[[7.0, 12.0]]], dtype="float32")
+    ppy = np.array([[[9.0, -4.0]]], dtype="float32")
+    p = str(tmp_path / "eb.npz")
+    np.savez(p, abd=abd, abd_ppy=ppy, species_code=np.array(["x"]),
+             start_year=np.array([2012]), end_year=np.array([2022]),   # mid = 2017
+             valid=np.ones((1, 2), bool))
+    E = _trends_abd_anchor(p, codes, ppy, ref_year=2017)
+    assert np.allclose(E[0], abd[0])                                   # no shift at the midpoint

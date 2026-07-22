@@ -3,10 +3,16 @@
 # Shared stage library for the houfin pipeline. Two distinct kinds of stage:
 #
 #   PREPROCESSING (CPU, torch-free) -- one dev/normal-queue job (00_preprocess_all):
-#     preprocess climate climate_grid states ebird_cache bbs_trend ebird_trend trend_points
-#     This is the default STAGES and produces every input the encoder needs. The trend
-#     community must already be selected on a LOGIN node (download_all.sh runs
-#     select_trend_community -> community_trend.csv; it needs the eBird trends REST listing).
+#     preprocess climate climate_grid states bbs_trend bbs_abund ebird_trend trend_points
+#     This is the default STAGES and produces every input the encoder needs for the
+#     default trend.anchor_mode=trends-abd path. The trend community must already be
+#     selected on a LOGIN node (download_all.sh runs select_trend_community ->
+#     community_trend.csv; it needs the eBird trends REST listing).
+#     The WEEKLY eBird stages ('ebird' = project_ebird, 'ebird_cache') are OPT-IN: they are
+#     only needed for the legacy trend.anchor_mode=weekly anchor and for bbs_mode=off/validate.
+#     trends-abd reconstructs from the trends 'abd' raster (ebird_trend stage), so neither
+#     the weekly download nor these two stages are required. Add "ebird ebird_cache" to
+#     STAGES to run them.
 #
 #   ENCODER (needs torch; ESK/DESK are heavy -> GPU) -- separate job(s)
 #   (20_encoder), submitted after preprocessing and typically ONE AT A TIME so
@@ -117,7 +123,9 @@ stage_elevation () { run elevation  python -m src.data.preprocess.elevation; }
 stage_subcell   () { run subcell    python -m src.data.preprocess.subcell_centroids; }
 stage_bbs_finch () { run bbs_finch  python scripts/ingest_bbs_data.py; }
 stage_preprocess () {
-    stage_ref_grid; stage_land_mask; stage_ebird; stage_luh3; stage_hyde
+    # NOTE: 'ebird' (project_ebird, weekly status grids) is NOT in this bundle -- it is
+    # opt-in (weekly anchor / off / validate only). Run it explicitly: STAGES="... ebird ...".
+    stage_ref_grid; stage_land_mask; stage_luh3; stage_hyde
     stage_soilgrids; stage_elevation; stage_subcell; stage_bbs_finch
 }
 stage_climate () {
@@ -155,7 +163,7 @@ stage_viz       () { run viz       python scripts/viz/quicklook_grids.py --clima
 
 # Default = the CPU preprocessing chain only. Encoder stages (esk/desk/cube/
 # validate) are opt-in via STAGES from the GPU encoder job.
-STAGES="${STAGES:-preprocess climate climate_grid states ebird_cache bbs_trend bbs_abund ebird_trend trend_points}"
+STAGES="${STAGES:-preprocess climate climate_grid states bbs_trend bbs_abund ebird_trend trend_points}"
 echo "STAGES: $STAGES"
 for s in $STAGES; do
     fn="stage_${s//-/_}"      # accept either 'spacetime-esk' or 'spacetime_esk' (bash fn names can't have '-')

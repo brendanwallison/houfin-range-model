@@ -28,11 +28,14 @@ python -m src.data.identify.select_trend_community
 
 echo "== eBird (needs EBIRD_KEY / secrets.json; reads community_trend.csv) =="
 COMMUNITY="$HOUFIN_DATA/avonet/community_trend.csv"
-# Weekly abundance for the 2023 annual anchor (--require-weekly => complete 52-week species
-# only, so the stack is rectangular; trends species have a status product, so this is ~all).
-python scripts/download_ebird.py --species-list "$COMMUNITY" --require-weekly --workers 4
-# Status & Trends 'trends' parquets (%/yr + cumulative %) for the same community.
+# Status & Trends 'trends' parquets (abd_ppy %/yr + abd midpoint reference) for the community.
+# REQUIRED: the default trend anchor (trend.anchor_mode=trends-abd) reconstructs from `abd`
+# forward-extrapolated to the reference year, so the parquets are the only eBird product needed.
 python scripts/download_ebird.py --trends --species-list "$COMMUNITY" --workers 4
+# Weekly status abundance: OPTIONAL, only for the LEGACY trend.anchor_mode=weekly anchor (and
+# for bbs_mode=off/validate). trends-abd needs none, and --require-weekly's 52-week gate drops
+# species that have a trend but no complete weekly stack. Uncomment to use the weekly anchor:
+# python scripts/download_ebird.py --species-list "$COMMUNITY" --require-weekly --workers 4
 
 echo "== LUH-3 (Zenodo, ~8 GB) =="
 python scripts/download_zenodo.py --dataset luh3

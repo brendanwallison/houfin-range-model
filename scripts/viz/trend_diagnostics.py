@@ -8,10 +8,13 @@ grids for local iteration.
 
 Figures
 -------
-  reconstruction : one species carried back in time (present=eBird, deep=BBS k·B/f)
+  reconstruction : one species carried back in time (anchor=eBird abd->ref, deep=BBS k·B/f)
   turnover       : recent vs deep community turnover (1 - log1p Ružicka), with gating
-  stability      : 1966-vs-2023 community similarity (no blow-up / false absence)
+  stability      : deep-vs-anchor-year community similarity (no blow-up / false absence)
   vector_field   : community-analog shift vectors (deep + recent) -- see below
+
+Anchor: --anchor-mode trends-abd (default) forward-extrapolates the trends midpoint `abd`
+to --anchor-year (2025), matching the pipeline; 'weekly' is the legacy eBird weekly mean.
 
 Community-analog shift field (per origin cell p, times t_hist -> t_mod):
   baseline COG  C_base = softmax_k over q of R(x[p,hist], x[q,hist]) · L_q
@@ -75,9 +78,10 @@ def load_reconstruction(args):
     ebird_ppy = _load_trend_grid(et, codes, "abd_ppy")[0]
     bbs_abund = _load_trend_grid(ba, codes, "abund")[0]
 
-    if args.anchor_mode == "trends-abd":                      # local proxy (no weekly grids)
-        anchor = _load_trend_grid(et, codes, "abd")[0]
-    else:                                                     # real anchor: 2023 eBird annual
+    if args.anchor_mode == "trends-abd":                      # default: abd -> anchor_year (matches pipeline)
+        from src.community_encoder.train_DESK.trend_community import _trends_abd_anchor
+        anchor = _trends_abd_anchor(et, codes, ebird_ppy, args.anchor_year)
+    else:                                                     # legacy: eBird weekly annual mean
         from src.community_encoder.train_DESK.trend_community import _annual_anchor
         weekly = args.ebird_weekly or cfg.get("paths", {}).get("ebird_folder")
         anchor = _annual_anchor(weekly, codes)
@@ -453,7 +457,8 @@ def _community_sim(R, years, N):
 
 
 def fig_similarity_grid(R, years, grid, out, caps=(0.5, 1.0, 2.0), sigmas=(0.0, 1.0, 3.0)):
-    """3×3 community-similarity maps (1966 vs 2023) over cap × σ — stability-figure style."""
+    """3×3 community-similarity maps (deep vs anchor year) over cap × σ — stability-figure style."""
+    dy, ay = R["deep_year"], R["anchor_year"]
     nr, nc = len(sigmas), len(caps); m = (R["flat_anchor"] > 0).sum(0) >= 3
     fig, axes = plt.subplots(nr, nc, figsize=(4 * nc, 3.3 * nr)); im = None
     for i, sg in enumerate(sigmas):
@@ -466,13 +471,14 @@ def fig_similarity_grid(R, years, grid, out, caps=(0.5, 1.0, 2.0), sigmas=(0.0, 
             if jx == 0:
                 ax.text(-0.06, 0.5, f"σ = {sg:g}", transform=ax.transAxes, rotation=90,
                         va="center", fontsize=11, weight="bold")
-    fig.colorbar(im, ax=axes.ravel().tolist(), fraction=.02, label="Ružicka(1966, 2023)")
-    fig.suptitle("Community similarity 1966 vs 2023 over cap × σ", fontsize=13)
+    fig.colorbar(im, ax=axes.ravel().tolist(), fraction=.02, label=f"Ružicka({dy}, {ay})")
+    fig.suptitle(f"Community similarity {dy} vs {ay} over cap × σ", fontsize=13)
     fig.savefig(out, dpi=110, bbox_inches="tight"); plt.close(fig)
 
 
 def fig_histogram_grid(R, years, grid, out, caps=(0.5, 1.0, 2.0), sigmas=(0.0, 1.0, 3.0)):
-    """3×3 per-cell Ružicka(1966,2023) histograms over cap × σ — stability-figure style."""
+    """3×3 per-cell Ružicka(deep, anchor) histograms over cap × σ — stability-figure style."""
+    dy, ay = R["deep_year"], R["anchor_year"]
     nr, nc = len(sigmas), len(caps); m = (R["flat_anchor"] > 0).sum(0) >= 3
     fig, axes = plt.subplots(nr, nc, figsize=(4 * nc, 3.0 * nr), sharex=True)
     for i, sg in enumerate(sigmas):
@@ -485,7 +491,7 @@ def fig_histogram_grid(R, years, grid, out, caps=(0.5, 1.0, 2.0), sigmas=(0.0, 1
                 ax.set_ylabel(f"σ = {sg:g}", fontsize=11, weight="bold")
             if i == nr - 1:
                 ax.set_xlabel("per-cell Ružicka")
-    fig.suptitle("Per-cell Ružicka(1966, 2023) distribution over cap × σ", fontsize=13)
+    fig.suptitle(f"Per-cell Ružicka({dy}, {ay}) distribution over cap × σ", fontsize=13)
     fig.tight_layout(); fig.savefig(out, dpi=110); plt.close(fig)
 
 
@@ -519,10 +525,11 @@ def main():
     ap.add_argument("--ebird-trend", default="ebird_trend_grid.npz")
     ap.add_argument("--bbs-abund", default="bbs_abund_grid.npz")
     ap.add_argument("--community", default=None)
-    ap.add_argument("--anchor-mode", choices=["weekly", "trends-abd"], default="weekly",
-                    help="'weekly' = real 2023 eBird annual anchor; 'trends-abd' = trends-abd proxy (local).")
+    ap.add_argument("--anchor-mode", choices=["weekly", "trends-abd"], default="trends-abd",
+                    help="'trends-abd' (default, matches pipeline) = abd forward-extrapolated to "
+                         "--anchor-year; 'weekly' = legacy eBird weekly annual mean.")
     ap.add_argument("--ebird-weekly", default=None, help="Projected weekly grid dir (weekly anchor mode).")
-    ap.add_argument("--anchor-year", type=int, default=2023)
+    ap.add_argument("--anchor-year", type=int, default=2025)
     ap.add_argument("--recent-year", type=int, default=2011, help="eBird/BBS handoff split (turnover + shift field).")
     ap.add_argument("--mid-year", type=int, default=2013, help="eBird-driven reconstruction panel year (in the eBird window).")
     ap.add_argument("--deep-year", type=int, default=1966)
@@ -563,8 +570,8 @@ def main():
             ("stability.png", "Deep community similarity — stable, no collapse."),
             ("sensitivity.png", f"Sensitivity line plots — absolute-cap fraction + smoothing (species: {', '.join(sens_sps)}).")]
     figs += [(f"grid_{gs}.png", f"{gs}: deep reconstruction over cap × σ, + modern eBird + Δ.") for gs in grid_sps]
-    figs += [("similarity_grid.png", "Community similarity 1966 vs 2023 over cap × σ."),
-             ("histogram_grid.png", "Per-cell Ružicka(1966,2023) histograms over cap × σ.")]
+    figs += [("similarity_grid.png", f"Community similarity {args.deep_year} vs {args.anchor_year} over cap × σ."),
+             ("histogram_grid.png", f"Per-cell Ružicka({args.deep_year}, {args.anchor_year}) histograms over cap × σ.")]
     p = build_html(args.out, figs, f"{len(R['codes'])} species; anchor {args.anchor_year}, "
                    f"recent {args.recent_year}, mid {args.mid_year}, deep {args.deep_year}; "
                    f"shift-field k={args.k}, radius {args.radius_km} km, coarsen {args.coarsen}×; "

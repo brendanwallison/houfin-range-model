@@ -30,9 +30,11 @@
   "bbs_mode": "trend",
   "_trend_comment": "Trend-product spatiotemporal community target (trend_community.build_trend_points). Applies published %/yr trends to the 2023 eBird annual anchor, blending eBird recent (2012-2022) and BBS long-term (1966-2022) rates with a smooth handoff, integrated backward to first_year. Paths (bbs_trend_grid, ebird_trend_grid, community_trend_list) fall back to data_config; ebird_weekly_grid falls back to paths.ebird_folder.",
   "trend": {
-    "anchor_year": 2023,
+    "_anchor_comment": "anchor_mode=trends-abd (default): the reference-year abundance E is the eBird trends product's own midpoint reference `abd` (rel-abundance at (start_year+end_year)/2, ~2017), forward-extrapolated to anchor_year along abd_ppy: E = abd*(1+abd_ppy/100)^(anchor_year-mid). Same product+cells as the rate (no coverage mismatch); needs NO weekly eBird download. anchor_mode=weekly is the legacy path (2023 annual mean of the weekly status rasters; needs the projected weekly grid + --require-weekly download). anchor_year=2025 is the reference year (end of the covariate timeline); reconstruction compounds backward from it. Both abd_ppy (eBird) and tr{AOU} (BBS) are percent-PER-YEAR.",
+    "anchor_mode": "trends-abd",
+    "anchor_year": 2025,
     "first_year": 1966,
-    "_stride_comment": "point_year_stride=1: emit EVERY year 1966-2023, so the ESK basis input and the DESK per-year targets are fully spatiotemporal (not just endpoints). ESK landmark subsampling keeps the Nystrom eigh bounded.",
+    "_stride_comment": "point_year_stride=1: emit EVERY year 1966-2025, so the ESK basis input and the DESK per-year targets are fully spatiotemporal (not just endpoints). ESK landmark subsampling keeps the Nystrom eigh bounded.",
     "point_year_stride": 1,
     "handoff_crossover": 2010.0,
     "handoff_width": 1.5,
@@ -71,6 +73,8 @@
     "ebird_stack_cache": "${HOUFIN_PROCESSED}/encoder/ebird_stack.npz"
   },
   "desk": {
+    "_label_year_comment": "label_year = the anchor/reference year (matches trend.anchor_year). The Ružicka metric is anchored on the reconstructed year-label_year community, and the output-EMA window runs [output_ema.warmup_start .. label_year].",
+    "label_year": 2025,
     "_train_comment": "epochs is an UPPER BOUND; early stopping on held-out Stab(val) (patience) restores the best weights, so a long budget is safe. 100 epochs left every loss still descending (undertrained) -> raised to 500. batch_years = reconstruction grids/step; enrich ALSO forwards the 2023 grid + all ~11 point-year grids every step (full-batch supervised), so GPU mem ~ (12+batch_years) whole grids through a 512-wide MLP with gradients. 8 fits a 40GB A100; 32 OOMs. Bigger batch_years buys ~nothing here (supervised term is already full-batch) -- the win is epochs, not batch.",
     "epochs": 500,
     "patience": 50,

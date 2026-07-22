@@ -1,12 +1,15 @@
 #!/bin/bash
 #----------------------------------------------------------------------
-# ALL preprocessing (CPU, torch-free) in one development-queue job:
-#   preprocess -> climate -> climate_grid -> states -> ebird_cache -> bbs -> amplitude
-# Produces every input the encoder needs (N-stream states, eBird cache, BBS
-# community matrix, amplitude-modulated point set). Stage logic lives in
-# pipeline.sh; select a subset via STAGES. Submit with:
+# ALL preprocessing (CPU, torch-free) in one development-queue job (trend path):
+#   preprocess -> climate -> climate_grid -> states -> bbs_trend -> bbs_abund
+#   -> ebird_trend -> trend_points
+# Produces every input the encoder needs for bbs_mode=trend with the default
+# trend.anchor_mode=trends-abd (N-stream states + aligned BBS/eBird trend grids +
+# the reconstructed trend point set). Stage logic lives in pipeline.sh; select a
+# subset via STAGES. The weekly eBird stages ('ebird', 'ebird_cache') are opt-in
+# (legacy weekly anchor / bbs_mode=off/validate only). Submit with:
 #     bash scripts/tacc/submit_preprocess_all.sh
-#     STAGES="climate_grid states ebird_cache bbs amplitude" sbatch --export=ALL scripts/tacc/00_preprocess_all.slurm
+#     STAGES="states ebird_trend trend_points" sbatch --export=ALL scripts/tacc/00_preprocess_all.slurm
 #
 # This supersedes running 01_preprocess + 02_climate separately (those stay for
 # normal-queue / partial runs). ESK/DESK are a SEPARATE (GPU) job — see
@@ -30,8 +33,9 @@ module load remora 2>/dev/null || true
 [ -n "${TACC_ALLOCATION:-}" ] && echo "allocation: $TACC_ALLOCATION"
 date
 
-# Default to the preprocessing chain unless the submitter overrode STAGES.
-export STAGES="${STAGES:-preprocess climate climate_grid states ebird_cache bbs amplitude}"
+# Default to the trend preprocessing chain unless the submitter overrode STAGES
+# (matches pipeline.sh's default; the weekly eBird stages are opt-in).
+export STAGES="${STAGES:-preprocess climate climate_grid states bbs_trend bbs_abund ebird_trend trend_points}"
 bash "$SLURM_SUBMIT_DIR/scripts/tacc/pipeline.sh"
 
 echo "=== 00_preprocess_all complete ==="

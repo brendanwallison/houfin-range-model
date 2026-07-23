@@ -457,8 +457,14 @@ def train_model_ema(cov_window, mask_window, window_years, targets, x2023, m2023
     ema = OutputEMA(ema_cfg.get("half_life_bounds", [1.0, 40.0])[0],
                     ema_cfg.get("half_life_bounds", [1.0, 40.0])[1],
                     ema_cfg.get("init_half_life", 8.0)).to(device)
-    opt = torch.optim.Adam(list(model.parameters()) + list(ema.parameters()), lr=lr)
+    params = list(model.parameters()) + list(ema.parameters())
+    opt = torch.optim.Adam(params, lr=lr)
     sched = torch.optim.lr_scheduler.ReduceLROnPlateau(opt, mode="min", factor=0.5, patience=5)
+    # Early training is unstable (the metric loss can transiently spike), so clip the global
+    # grad norm to bound the step (mirrors the MAP runner's clip_by_global_norm) and don't let
+    # the volatile first few epochs set the "best" checkpoint (else a near-init epoch can win).
+    grad_clip = float(ema_cfg.get("grad_clip", 1.0))
+    es_warmup = int(ema_cfg.get("earlystop_warmup", 5))
 
     cov = torch.tensor(cov_window, device=device)                 # (T,H,W,C)
     msk = torch.as_tensor(mask_window, device=device).bool()      # (T,H,W)
@@ -471,9 +477,9 @@ def train_model_ema(cov_window, mask_window, window_years, targets, x2023, m2023
            for y, (zg, tr, va) in targets.items() if y in yi}
     y2023 = int(max(tgt))                                         # anchor year index in the window
 
-    best_val, best = float("inf"), None
+    best_val, best, bad = float("inf"), None, 0
     print(f"--- Training DESK+outputEMA ({len(window_years)}yr window {window_years[0]}..{window_years[-1]}, "
-          f"{len(tgt)} supervised years, max {epochs} ep) ---")
+          f"{len(tgt)} supervised years, max {epochs} ep; grad_clip={grad_clip}, es_warmup={es_warmup}) ---")
     for ep in range(1, epochs + 1):
         model.train(); opt.zero_grad()
         z_raw, recon_loss = [], 0.0
@@ -495,21 +501,38 @@ def train_model_ema(cov_window, mask_window, window_years, targets, x2023, m2023
         loss_true = true_kernel_loss(z_anchor[m_tr], x2023_t[m_tr])
         loss = (weights["stabilizing"] * loss_stab + weights["metric"] * loss_true
                 + weights["reconstruction"] * recon_loss)
-        loss.backward(); opt.step()
+        loss.backward()
+        if grad_clip > 0:
+            torch.nn.utils.clip_grad_norm_(params, grad_clip)
+        opt.step()
 
         model.eval()
         with torch.no_grad():
-            # cheap val: re-forward is expensive, so eval the anchor-year held-out cells from this step's z_ema
-            vs = torch.sum((z_anchor[m_val] - tgt[y2023][0][m_val]) ** 2, dim=1).mean().item() if m_val.any() else 0.0
+            # Held-out-cell Z-MSE pooled over ALL supervised years -- matches the uniform
+            # all-years training objective (not just the easy anchor year), and averaging over
+            # many cells/years stabilizes the signal. (A clean eval re-forward of the whole EMA
+            # window is expensive, so this reuses the step's z_ema; still the right coverage.)
+            vsq, vn = 0.0, 0
+            for y, (zg, _tr, va) in tgt.items():
+                if bool(va.any()):
+                    d = z_ema[yi[y]][va] - zg[va]
+                    vsq += float(torch.sum(d * d)); vn += int(va.sum())
+            va_anchor = tgt[y2023][2]
+            vs = vsq / max(vn, 1)
+            vs_anchor = (float(torch.sum((z_anchor[va_anchor] - tgt[y2023][0][va_anchor]) ** 2))
+                         / max(int(va_anchor.sum()), 1)) if bool(va_anchor.any()) else float("nan")
             sched.step(vs)
             print(f"Ep {ep:03d} | Stab {loss_stab.item():.4f} | True {loss_true.item():.4f} | "
-                  f"Rec {recon_loss.item():.4f} | Val(anchor) {vs:.4f} | half-life {ema.half_life().item():.1f}y", flush=True)
+                  f"Rec {recon_loss.item():.4f} | Val(all-yr) {vs:.4f} | Val(2025) {vs_anchor:.4f} | "
+                  f"half-life {ema.half_life().item():.1f}y", flush=True)
+        if ep <= es_warmup:
+            continue                       # don't let the volatile warmup epochs set 'best'
         if vs < best_val - min_delta:
             best_val, bad = vs, 0
             best = ({k: v.detach().cpu().clone() for k, v in model.state_dict().items()},
                     {k: v.detach().cpu().clone() for k, v in ema.state_dict().items()})
         else:
-            bad = bad + 1 if ep > 1 else 0
+            bad += 1
             if bad >= patience:
                 print(f"[desk] early stop at ep {ep} (best Val {best_val:.4f})"); break
     if best is not None:

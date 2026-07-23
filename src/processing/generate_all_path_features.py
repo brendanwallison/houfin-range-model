@@ -17,8 +17,8 @@ project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 if project_root not in sys.path:
     sys.path.append(project_root)
 
-# 1. Import Kernels
-from src.model.build_kernels import make_radial_directional_kernels
+# 1. Import Kernels (shared juvenile-kernel builder: same family the forward sim disperses with)
+from src.model.build_kernels import make_juvenile_kernel_stack
 
 # 2. Import Path Integration (Ensure resize_kernel_stack is fixed in here!)
 from src.model.build_path_features import integrate_paths
@@ -192,11 +192,9 @@ def main(args):
     splits = get_log_spaced_splits(min_dist=50.0, max_dist=1500.0, n_bins=3)
     print(f"Using Geometric Splits (km): {[f'{x:.1f}' for x in splits]}")
     
-    kernel_stack, labels = make_radial_directional_kernels(
-        Lx, Ly, 
-        cell_size=cell_size_km, 
-        radii_splits=splits
-    )
+    # Build the juvenile kernel stack through the SAME helper the forward simulation uses,
+    # so the base dispersal PDF + splits match and Q[p,k] pairs with the right flux kernel.
+    kernel_stack, labels = make_juvenile_kernel_stack(Lx, Ly, cell_size_km, splits)
     # Force compilation on a dummy input to avoid recompiling inside the loop
     print("Pre-compiling JAX kernels...")
     dummy_Z = jnp.zeros((1, Ny, Nx, 1)) # Small dummy

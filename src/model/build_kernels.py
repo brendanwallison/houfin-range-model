@@ -163,24 +163,49 @@ def make_radial_directional_kernels(
         for i in range(len(radii_splits) - 1):
             r_min_val = radii_splits[i]
             r_max_val = radii_splits[i+1]
-            
+
             # 1. Calculate the Partition of Unity Mask
             # (Which fraction of space belongs to this bin?)
             mask_radial = radial_cdfs[i] - radial_cdfs[i+1]
             mask_combined = w_dir * mask_radial
-            
+
             # 2. Apply Mask to Base PDF (Scenario B)
             # This preserves the probability mass of the donut.
             k = base_kernel_grid * mask_combined
-            
+
             # [REMOVED] Normalization Step
             # total = jnp.sum(k)
             # k = k / total
-            
+
             kernels.append(k)
             labels.append(f"{d}_{r_min_val:.0f}-{r_max_val:.0f}")
 
     return jnp.stack(kernels, axis=0), labels
+
+
+# --- Juvenile dispersal kernel: SINGLE SOURCE OF TRUTH -----------------------------------
+# The forward simulation (build_simulation_struct) MOVES juveniles with this kernel stack,
+# and the path-feature builder (generate_all_path_features) gathers origin/path habitat with
+# the SAME stack -> the per-kernel journey survival Q[p,k] is only meaningful if both use an
+# identical kernel family (base PDF + radii_splits + cell_size). Build both through this one
+# function so they cannot drift. Mean dispersal distance / shape live here as the sole source.
+JUVENILE_MDD_KM = 330.0
+JUVENILE_SHAPE = 0.468
+
+
+def make_juvenile_kernel_stack(Lx, Ly, cell_size, radii_splits,
+                               mean_dist=JUVENILE_MDD_KM, shape=JUVENILE_SHAPE):
+    """Directional x radial juvenile dispersal kernels: the master PDF split into wedges.
+
+    Builds the normalized 2-D radial generalized-Gaussian master ``exp(-(r/scale)^shape)``
+    (``scale`` set from ``mean_dist`` via gamma moments) and splits it via
+    :func:`make_radial_directional_kernels`. Returns ``(stack (K,Ly,Lx), labels)``.
+    """
+    r_dist = toroidal_distance_grid(Lx, Ly, cell_size)
+    scale = get_gamma_scale(mean_dist, shape)
+    master = jnp.exp(-(r_dist / scale) ** shape)
+    master = master / jnp.sum(master)
+    return make_radial_directional_kernels(Lx, Ly, cell_size, master, radii_splits)
 
 
 def build_simulation_struct(
@@ -220,17 +245,10 @@ def build_simulation_struct(
             juvenile_mdd, juvenile_shape, [0.33, 0.66]
         ) + [1e9]
 
-    # A. Generate Master Juvenile Kernel (Gamma)
-    juv_scale = get_gamma_scale(juvenile_mdd, juvenile_shape)
-    juv_master = jnp.exp(-(r_dist / juv_scale) ** juvenile_shape)
-    juv_master /= jnp.sum(juv_master) # Normalize Master to 1.0
-    
-    # B. Split into Weighted Kernels
-    juv_kernels, labels = make_radial_directional_kernels(
-        Lx, Ly, cell_size, 
-        juv_master, # Pass the PDF!
-        radii_splits
-    )
+    # A+B. Master juvenile PDF split into directional x radial wedges, via the shared builder
+    # so the Z_disp path features use the IDENTICAL kernel family (same base PDF + splits).
+    juv_kernels, labels = make_juvenile_kernel_stack(
+        Lx, Ly, cell_size, radii_splits, mean_dist=juvenile_mdd, shape=juvenile_shape)
     
     fft_list = []
     edge_list = []

@@ -8,7 +8,7 @@ import rasterio
 from rasterio.warp import transform as project_coords
 
 import jax.numpy as jnp
-from src.model.build_kernels import build_simulation_struct
+from src.model.build_kernels import JUVENILE_MDD_KM, JUVENILE_SHAPE, build_simulation_struct
 from src.config_utils import load_age_model_config
 from src.temporal import assert_contiguous, invasion_timestep, load_timeline, year_to_index
 
@@ -342,8 +342,8 @@ def ingest_data():
     sim_struct = build_simulation_struct(
         land=jnp.array(land_mask),
         cell_size=cell_size_km,
-        adult_mdd=100.0, juvenile_mdd=330.0,
-        adult_shape=0.468, juvenile_shape=0.468, radii_splits=splits
+        adult_mdd=100.0, juvenile_mdd=JUVENILE_MDD_KM,
+        adult_shape=0.468, juvenile_shape=JUVENILE_SHAPE, radii_splits=splits
     )
 
     inv_row, inv_col = get_grid_location(MASK_FILE, INV_LAT, INV_LON)

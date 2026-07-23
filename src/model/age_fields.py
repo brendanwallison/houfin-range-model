@@ -49,6 +49,14 @@ def project_and_scatter_age_structured(
         
         # 3. Path-Integrated Survival Suitability
         # z_disp_t is (N_land, K_kernels, M) -> dot with beta_s (M,) gives (N_land, K_kernels)
+        # NOTE (Ružička contract): the "Z.Z^T ~= uncentered Ružička kernel + isotropic prior
+        # => GP with the Ružička kernel" identity holds EXACTLY only for the LOCAL block
+        # (H_s_local/H_r_local, raw Z). z_disp = A.Z is a land-normalized spatial convolution
+        # of Z, so z_disp.z_disp^T ~= A.K_ružicka.A^T -- a spatially-SMOOTHED kernel, not
+        # Ružička itself. Reusing beta_s here is deliberate (journey survival is tied to
+        # juvenile LOCAL survival, step 5 below), but the exact GP-kernel interpretation is
+        # only approximate on the dispersal block. See kernel_contract note in model_inputs.py
+        # and the "dispersal-block prior" future-work item.
         H_s_disp = jnp.dot(z_disp_t, beta_s)
         
         # 4. Map H_s and H_r to Demographic Rates using Intercepts and Slopes

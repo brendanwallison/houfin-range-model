@@ -2,13 +2,14 @@
 #----------------------------------------------------------------------
 # Community-encoder stages (SEPARATE from preprocessing; run AFTER
 # 00_preprocess_all has produced states + eBird cache + amplitude points):
-#     esk -> desk -> cube -> validate
+#     esk -> desk -> cube -> validate -> encoder-viz (optional diagnostics)
 # ESK (Nystrom kernel-PCA) and DESK (autoencoder training) both use torch and are
 # the heavy stages, hence a GPU queue. They are often best submitted ONE AT A TIME
 # so each can be sized/queued on its own — pass STAGES:
 #     STAGES=esk      sbatch --export=ALL scripts/tacc/20_encoder.slurm
 #     STAGES=desk     sbatch --export=ALL scripts/tacc/20_encoder.slurm
 #     STAGES="cube validate" sbatch --export=ALL scripts/tacc/20_encoder.slurm   # light; CPU is fine
+#     STAGES=encoder-viz sbatch --export=ALL scripts/tacc/20_encoder.slurm
 # or all four at once (the default).
 #
 # ENV NOTE: this needs torch importable (GPU: a CUDA torch build; CPU also works,

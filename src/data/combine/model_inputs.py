@@ -88,6 +88,50 @@ def load_land_metadata(tif_path):
             cell_size_km = res_x * 111.0
     return cell_size_km
 
+
+def load_ocean_land_mask(tif_path):
+    """Land boolean grid (True = land) from an ocean-mask raster (water encoded nonzero).
+
+    Matches the convention used by bbs.py / build_final_z_cube.py (``land = raster == 0``),
+    so the age-model mask and the BBS npz's embedded land mask can be compared cell-for-cell.
+    """
+    with rasterio.open(tif_path) as src:
+        return src.read(1) == 0
+
+
+# --- Ingestion guards (see plan E1/E2/E3): turn silent grid/timeline mismatches, created by
+# the 25->27 km / year-span migration, into loud failures. Pure so they unit-test directly. ---
+
+def require_same_grid(name, got_hw, expected_hw):
+    """Raise unless a product's (H,W) matches the BBS/model grid; else silent misalignment."""
+    if tuple(got_hw) != tuple(expected_hw):
+        raise ValueError(f"{name} grid {tuple(got_hw)} != BBS/model grid {tuple(expected_hw)}; "
+                         f"regenerate {name} and the BBS npz at the same grid "
+                         f"(grid.target_res_m in data_config.json).")
+
+
+def require_mask_match(mask_land, bbs_land, path):
+    """Raise unless the age-model ocean mask's land cells equal the BBS npz's land mask."""
+    mask_land = np.asarray(mask_land, bool); bbs_land = np.asarray(bbs_land, bool)
+    if mask_land.shape != bbs_land.shape:
+        raise ValueError(f"ocean_mask {path} shape {mask_land.shape} != BBS land grid "
+                         f"{bbs_land.shape}; regenerate the BBS npz and mask at the same grid.")
+    if not np.array_equal(mask_land, bbs_land):
+        n_diff = int(np.sum(mask_land != bbs_land))
+        raise ValueError(f"ocean_mask {path} land cells differ from the BBS npz land mask "
+                         f"({n_diff} cells); they must be the identical grid.")
+
+
+def require_pseudo_zero_coverage(start_year, first_year, invasion_year, end_year):
+    """Raise if the cube starts after the last pre-invasion year, which would silently
+    drop ALL pseudo-zero absence slices [first_year, invasion_year-1] the BBS model needs."""
+    if start_year > invasion_year - 1:
+        raise ValueError(
+            f"Z cube starts at {start_year}, after the last pre-invasion year "
+            f"{invasion_year - 1}: all pseudo-zero absence slices "
+            f"({first_year}-{invasion_year - 1}) would be dropped. Rebuild states + cube "
+            f"over the full timeline ({first_year}-{end_year}).")
+
 def get_grid_location(tif_path, lat, lon):
     with rasterio.open(tif_path) as src:
         if src.crs != 'EPSG:4326':
@@ -131,6 +175,12 @@ def ingest_data():
     land_rows, land_cols = np.where(land_mask)
     N_land = len(land_rows)
     print(f"  Grid: {Ny}x{Nx}, Land Pixels: {N_land}")
+
+    # Guard (E2): the age-model ocean mask (used for cell-size km + invasion location) and
+    # the BBS npz's embedded land mask (used for Ny/Nx + land indexing) must be the SAME grid
+    # -- both derive from ocean_mask_{res}km.tif. A stale/mismatched mask (e.g. a leftover
+    # 25 km file) would compute cell size + the invasion cell on a different lattice, silently.
+    require_mask_match(load_ocean_land_mask(MASK_FILE), land_mask, MASK_FILE)
 
     # 3. Process Observations
     print("  Processing Observations...")
@@ -227,7 +277,19 @@ def ingest_data():
     print(f"  Timeline: {start_year_model}-{end_year_model} ({Time} years); "
           f"config timeline {_tl['first_year']}-{_tl['end_year']}")
 
+    # Guard (E3): the BBS model's pre-invasion pseudo-zeros live in [first_year, invasion-1].
+    # Obs are filtered to years present in the cube (below), so if the cube starts after the
+    # last pre-invasion year, ALL pseudo-zeros are silently dropped -- gutting the pre-invasion
+    # absence signal. Require the cube to cover the pre-invasion span.
+    _inv_year, _first_year = int(_tl["invasion_year"]), int(_tl["first_year"])
+    require_pseudo_zero_coverage(start_year_model, _first_year, _inv_year, int(_tl["end_year"]))
+
     peek = np.load(file_map[start_year_model])
+    # Guard (E1): the Z cube and the BBS/model grid must share the exact lattice -- the cube
+    # is gathered onto BBS-derived (land_rows, land_cols), so a shape mismatch (e.g. a stale
+    # 25 km BBS npz vs a fresh 27 km cube) would IndexError or silently gather wrong cells.
+    require_same_grid("Z cube", peek['Z_raw'].shape[1:3], (Ny, Nx))
+    require_same_grid("Z_disp", peek['Z_disp'].shape[1:3], (Ny, Nx))
     available_M = int(peek['Z_raw'].shape[-1])
     if available_M < MODEL_LATENT_DIM:
         raise ValueError(f"Z cube has {available_M} features but age-model latent_dim="
@@ -290,6 +352,10 @@ def ingest_data():
     # via a gap-safe lookup (not year - start subtraction). See src/temporal.py.
     year_set = set(int(y) for y in model_years)
     valid_obs_mask = np.array([int(y) in year_set for y in obs_year])
+    _n_drop = int((~valid_obs_mask).sum())
+    _n_drop_pre = int(np.sum(obs_year[~valid_obs_mask] < _inv_year)) if _n_drop else 0
+    print(f"  Obs kept {int(valid_obs_mask.sum())}/{len(obs_year)}; dropped {_n_drop} "
+          f"outside cube span ({_n_drop_pre} pre-invasion).")
     final_obs_time_idx = year_to_index(list(model_years), obs_year[valid_obs_mask])
     
     model_metadata = {
@@ -298,6 +364,11 @@ def ingest_data():
         "land_rows": np.array(land_rows), "land_cols": np.array(land_cols),
         "time": Time, "years": model_years,
         "M": M, "K": K, "N_land": N_land,
+        # The Ružička/uncentered/isotropic contract holds EXACTLY for the raw-Z (local)
+        # block: Z.Z^T ~= uncentered Ružička => an isotropic coefficient prior induces a GP
+        # with the Ružička kernel. It is propagated over the Z_disp dispersal block too, but
+        # z_disp = A.Z is a smoothed convolution, so z_disp.z_disp^T ~= A.K.A^T (a smoothed
+        # kernel), not Ružička -- the identity is only approximate there. See age_fields.py.
         "z_kernel_contract": {
             "kernel": KERNEL_CONTRACT.get("kernel", "ruzicka"),
             "centered": bool(KERNEL_CONTRACT.get("centered", False)),
@@ -305,6 +376,7 @@ def ingest_data():
             "latent_dim": M,
             "source_latent_dim": available_M,
             "truncation": "top_eigenfeatures" if M < available_M else "none",
+            "disp_kernel_note": "exact for raw-Z (local); z_disp=A.Z is a smoothed A.K.A^T",
         },
         "st_basis": st_basis, 
         "N_basis": N_basis,

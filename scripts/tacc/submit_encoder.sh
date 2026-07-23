@@ -4,6 +4,7 @@
 #     STAGES=esk  bash scripts/tacc/submit_encoder.sh
 #     STAGES=desk TIME=04:00:00 bash scripts/tacc/submit_encoder.sh
 #     bash scripts/tacc/submit_encoder.sh                     # all four (esk desk cube validate)
+#     STAGES=encoder-viz bash scripts/tacc/submit_encoder.sh   # post-fit comparison suite
 #     QUEUE=gpu-h100 bash scripts/tacc/submit_encoder.sh
 set -euo pipefail
 source "$(dirname "$0")/env.sh"

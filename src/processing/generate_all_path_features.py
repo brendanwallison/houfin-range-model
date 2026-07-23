@@ -204,6 +204,11 @@ def main(args):
     print("Compilation complete.\n")
 
     # 3. PROCESSING LOOP
+    # The contract (uncentered Ružička, isotropic prior) is copied through verbatim from the
+    # cube. It describes the RAW Z (Z_raw), where Z.Z^T ~= Ružička exactly. The Z_disp features
+    # written below are a land-normalized spatial convolution A.Z, so z_disp.z_disp^T ~= A.K.A^T
+    # (a smoothed kernel) -- the Ružička identity is only approximate on the dispersal block.
+    # Downstream (age_fields.py) reuses beta_s there by design. See disp_kernel_note.
     os.makedirs(args.output_dir, exist_ok=True)
     with open(os.path.join(args.output_dir, "kernel_contract.json"), "w", encoding="utf-8") as fh:
         json.dump(cube_meta, fh, indent=2)

@@ -17,7 +17,7 @@
 #   ENCODER (needs torch; ESK/DESK are heavy -> GPU) -- separate job(s)
 #   (20_encoder), submitted after preprocessing and typically ONE AT A TIME so
 #   ESK and DESK can be sized/queued independently:
-#     spacetime-esk desk cube validate
+#     spacetime-esk desk cube validate encoder-viz
 #
 # Select stages with STAGES (space-separated, in order). Runnable standalone on a
 # login node for a quick partial stage. bbs_trend/ebird_trend/trend_points are the
@@ -159,6 +159,7 @@ stage_spacetime_esk () { run spacetime_esk python scripts/run_encoder.py spaceti
 stage_desk      () { run desk      python scripts/run_encoder.py desk; }
 stage_cube      () { run cube      python scripts/run_encoder.py cube; }
 stage_validate  () { run validate  python scripts/run_encoder.py validate; }
+stage_encoder_viz () { run encoder_viz python scripts/viz/encoder_diagnostics.py; }
 stage_viz       () { run viz       python scripts/viz/quicklook_grids.py --climate; }
 
 # Default = the CPU preprocessing chain only. Encoder stages (esk/desk/cube/

@@ -23,7 +23,8 @@ from src.data.preprocess.elevation import dem_to_fine_grid
 DEFAULT_GRID = 5   # grid x grid sub-points per model cell (5x5 = 25)
 
 
-def rasterize_land_fine(land_source, crs, ref_transform, H, W, grid=DEFAULT_GRID):
+def rasterize_land_fine(land_source, crs, ref_transform, H, W, grid=DEFAULT_GRID,
+                        lake_source=None):
     """Binary (1=land, 0=water) grid at the SUB-POINT resolution ``(H*grid, W*grid)``,
     rasterized from the same land polygon the 25 km ocean mask uses (Natural Earth).
 
@@ -35,9 +36,16 @@ def rasterize_land_fine(land_source, crs, ref_transform, H, W, grid=DEFAULT_GRID
     import rasterio.features
     fine_transform = ref_transform * rasterio.Affine.scale(1.0 / grid, 1.0 / grid)
     gdf = gpd.read_file(land_source).to_crs(crs)
-    return rasterio.features.rasterize(
+    fine_land = rasterio.features.rasterize(
         ((geom, 1) for geom in gdf.geometry),
         out_shape=(H * grid, W * grid), transform=fine_transform, fill=0, dtype="uint8")
+    if lake_source:
+        lakes = gpd.read_file(lake_source).to_crs(crs)
+        fine_lakes = rasterio.features.rasterize(
+            ((geom, 1) for geom in lakes.geometry),
+            out_shape=(H * grid, W * grid), transform=fine_transform, fill=0, dtype="uint8")
+        fine_land[fine_lakes > 0] = 0
+    return fine_land
 
 
 def build_subcell_centroids(dem_path, ref_transform, crs, H, W, grid=DEFAULT_GRID,
@@ -120,6 +128,8 @@ def main():
                                    "latent_cube.water_mask_path or land_mask/ocean_mask_{res}km.tif")
     ap.add_argument("--land-source", dest="land_source",
                     help="Land polygon for the fine sub-point mask (default: coastline.land_source)")
+    ap.add_argument("--lake-source", dest="lake_source",
+                    help="Polygonal lakes removed from fine land (default: coastline.lake_source)")
     ap.add_argument("--grid", type=int, default=int(ccfg.get("grid", DEFAULT_GRID)))
     args = ap.parse_args()
 
@@ -147,12 +157,16 @@ def main():
     land_source = args.land_source or cfg.get("coastline", {}).get("land_source")
     if land_source and not os.path.isabs(land_source):
         land_source = os.path.join(cfg["datasets_root"], land_source)
+    lake_source = args.lake_source if args.lake_source is not None else cfg.get("coastline", {}).get("lake_source")
+    if lake_source and not os.path.isabs(lake_source):
+        lake_source = os.path.join(cfg["datasets_root"], lake_source)
 
     with rasterio.open(cfg["grid"]["ref_raster"]) as ref:
         fine_land = None
         if land_source and os.path.exists(land_source):
             fine_land = rasterize_land_fine(land_source, ref.crs, ref.transform,
-                                            ref.height, ref.width, args.grid)
+                                            ref.height, ref.width, args.grid,
+                                            lake_source=lake_source)
         else:
             print(f"[subcell] WARNING: land polygon not found ({land_source}); "
                   f"no fine sub-point ocean mask (coastal water points will NaN out).")

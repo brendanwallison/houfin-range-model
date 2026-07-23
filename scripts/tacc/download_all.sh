@@ -49,13 +49,19 @@ python scripts/download_soilgrids.py
 echo "== DEM (ETOPO 2022, ~0.5 GB) =="
 python scripts/download_dem.py
 
-echo "== Natural Earth 10 m land (coastline source for the land mask) =="
+echo "== Natural Earth 10 m land + polygonal lakes (terrestrial-mask sources) =="
 NE_DIR="$HOUFIN_DATA/land_source"
 if [ ! -f "$NE_DIR/ne_10m_land.shp" ]; then
     mkdir -p "$NE_DIR"
     curl -fSL -o "$NE_DIR/ne_10m_land.zip" \
         "https://naciscdn.org/naturalearth/10m/physical/ne_10m_land.zip"
     ( cd "$NE_DIR" && unzip -o ne_10m_land.zip )
+fi
+if [ ! -f "$NE_DIR/ne_10m_lakes.shp" ]; then
+    mkdir -p "$NE_DIR"
+    curl -fSL -o "$NE_DIR/ne_10m_lakes.zip" \
+        "https://naciscdn.org/naturalearth/10m/physical/ne_10m_lakes.zip"
+    ( cd "$NE_DIR" && unzip -o ne_10m_lakes.zip )
 fi
 
 echo "== climr CONNECTIVITY CHECK (one point; NOT the study-region warm) =="

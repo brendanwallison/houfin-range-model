@@ -1,4 +1,4 @@
-"""De-dilated coastline: land-fraction land mask + gated observation snapping.
+"""Terrestrial mask: land minus polygonal inland water, plus observation snapping.
 
 Replaces the old rule (ocean iff *all* BUI quantile bands were NaN), which made
 any model-grid cell containing even one land subpixel "land" — dilating the
@@ -31,6 +31,20 @@ def compute_land_fraction(fine_land, block):
     return regrid.block_reduce(np.asarray(fine_land, dtype=float), block, how="mean")
 
 
+def subtract_lakes(fine_land, fine_lakes):
+    """Remove polygonal lake water from a fine terrestrial mask.
+
+    The lake input is deliberately polygonal, not river-line hydrography. Its
+    effect is area-weighted at model resolution, so narrow features cannot turn
+    into artificially wide water corridors.
+    """
+    land = np.asarray(fine_land, dtype="uint8")
+    lakes = np.asarray(fine_lakes, dtype=bool)
+    if land.shape != lakes.shape:
+        raise ValueError(f"fine land shape {land.shape} != fine lakes shape {lakes.shape}")
+    return np.where(lakes, 0, land).astype("uint8", copy=False)
+
+
 def land_mask_from_fraction(frac, tau=0.5):
     """Boolean model-grid land mask: a cell is land iff land_fraction >= tau."""
     return np.asarray(frac) >= tau
@@ -59,7 +73,7 @@ def snap_to_nearest_land(rows, cols, land_mask, max_cells=1):
 
 
 def build_land_mask(land_source, ref_path, out_path, tau=DEFAULT_TAU,
-                    fine_factor=DEFAULT_FINE_FACTOR):
+                    fine_factor=DEFAULT_FINE_FACTOR, lake_source=None):
     """Rasterize a continental land polygon → per-cell land fraction → land mask.
 
     Rasterizes ``land_source`` (a land/water polygon, e.g. Natural Earth) onto a
@@ -85,6 +99,13 @@ def build_land_mask(land_source, ref_path, out_path, tau=DEFAULT_TAU,
         ((geom, 1) for geom in gdf.geometry),
         out_shape=(H * ff, W * ff), transform=fine_transform, fill=0, dtype="uint8",
     )
+    if lake_source:
+        lakes = gpd.read_file(lake_source).to_crs(crs)
+        fine_lakes = rasterio.features.rasterize(
+            ((geom, 1) for geom in lakes.geometry),
+            out_shape=(H * ff, W * ff), transform=fine_transform, fill=0, dtype="uint8",
+        )
+        fine_land = subtract_lakes(fine_land, fine_lakes)
     frac = compute_land_fraction(fine_land, ff)
     ocean = (~land_mask_from_fraction(frac, tau)).astype("uint8")  # 1=ocean, 0=land
 
@@ -93,7 +114,8 @@ def build_land_mask(land_source, ref_path, out_path, tau=DEFAULT_TAU,
     with rasterio.open(out_path, "w", **profile) as dst:
         dst.write(ocean, 1)
     n_land = int((ocean == 0).sum())
-    print(f"Land mask: {n_land}/{ocean.size} land cells (tau={tau}, fine={ff}x) -> {out_path}")
+    lake_note = f", lakes={lake_source}" if lake_source else ""
+    print(f"Land mask: {n_land}/{ocean.size} terrestrial cells (tau={tau}, fine={ff}x{lake_note}) -> {out_path}")
     return out_path
 
 
@@ -105,6 +127,7 @@ def main():
 
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--land-source", help="Land polygon (default: coastline.land_source).")
+    ap.add_argument("--lake-source", help="Polygonal inland-water layer (default: coastline.lake_source).")
     ap.add_argument("--ref", help="Ref grid raster (default: grid.ref_raster).")
     ap.add_argument("--out", help="Output mask (default: {datasets_root}/land_mask/ocean_mask_{res}km.tif).")
     ap.add_argument("--tau", type=float)
@@ -119,12 +142,20 @@ def main():
         raise SystemExit("no land source (set coastline.land_source or --land-source)")
     if not os.path.isabs(land_source):  # relative paths resolve under datasets_root
         land_source = os.path.join(cfg["datasets_root"], land_source)
+    lake_source = args.lake_source if args.lake_source is not None else ccfg.get("lake_source")
+    if lake_source and not os.path.isabs(lake_source):
+        lake_source = os.path.join(cfg["datasets_root"], lake_source)
+    if lake_source and not os.path.exists(lake_source):
+        raise SystemExit(
+            f"lake polygon not found: {lake_source}. Run scripts/tacc/download_all.sh "
+            "or pass --lake-source; refusing to build a coastline-only terrestrial mask.")
     ref = args.ref or cfg["grid"]["ref_raster"]
     out = args.out or os.path.join(cfg["datasets_root"], "land_mask", f"ocean_mask_{res_km}km.tif")
     os.makedirs(os.path.dirname(out), exist_ok=True)
     build_land_mask(land_source, ref, out,
                     tau=args.tau or ccfg.get("land_fraction_tau", DEFAULT_TAU),
-                    fine_factor=args.fine_factor or ccfg.get("fine_factor", DEFAULT_FINE_FACTOR))
+                    fine_factor=args.fine_factor or ccfg.get("fine_factor", DEFAULT_FINE_FACTOR),
+                    lake_source=lake_source)
 
 
 if __name__ == "__main__":

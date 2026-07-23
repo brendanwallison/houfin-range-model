@@ -23,6 +23,16 @@ def test_land_fraction_and_threshold_de_dilates():
     assert lm.land_mask_from_fraction(frac, tau=0.3)[0, 0] == True
 
 
+def test_polygonal_lakes_are_area_weighted_before_threshold():
+    land = np.ones((4, 8), dtype=np.uint8)
+    lakes = np.zeros_like(land)
+    lakes[:, 0] = 1                  # narrow feature: 25% of first target cell
+    lakes[:, 4:8] = 1                # full second target cell
+    frac = lm.compute_land_fraction(lm.subtract_lakes(land, lakes), block=4)
+    assert np.allclose(frac, [[0.75, 0.0]])
+    assert np.array_equal(lm.land_mask_from_fraction(frac, tau=0.5), [[True, False]])
+
+
 def test_snap_gated_by_radius():
     # Land on the left half; ocean on the right.
     land = np.zeros((1, 10), dtype=bool)
@@ -46,6 +56,8 @@ def test_snap_gated_by_radius():
 if __name__ == "__main__":
     test_land_fraction_and_threshold_de_dilates()
     print("[land-fraction] block-mean fraction + tau threshold de-dilates OK")
+    test_polygonal_lakes_are_area_weighted_before_threshold()
+    print("[lakes] polygonal water is area-weighted; narrow features do not inflate OK")
     test_snap_gated_by_radius()
     print("[snap] on-land kept, near-coast snapped, offshore dropped, radius honored OK")
     print("\nALL LAND-MASK / COASTLINE CHECKS PASSED")

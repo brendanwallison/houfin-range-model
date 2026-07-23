@@ -244,11 +244,15 @@ def _ensure_subcell_centroids(cfg, out_csv, grid):
     land_source = cfg.get("coastline", {}).get("land_source")
     if land_source and not os.path.isabs(land_source):
         land_source = os.path.join(cfg["datasets_root"], land_source)
+    lake_source = cfg.get("coastline", {}).get("lake_source")
+    if lake_source and not os.path.isabs(lake_source):
+        lake_source = os.path.join(cfg["datasets_root"], lake_source)
     with rasterio.open(cfg["grid"]["ref_raster"]) as ref:
         fine_land = None
         if land_source and os.path.exists(land_source):
             fine_land = rasterize_land_fine(land_source, ref.crs, ref.transform,
-                                            ref.height, ref.width, grid)
+                                            ref.height, ref.width, grid,
+                                            lake_source=lake_source)
         else:
             print(f"[subgrid] WARNING: land polygon not found ({land_source}); "
                   f"no fine sub-point ocean mask.", flush=True)

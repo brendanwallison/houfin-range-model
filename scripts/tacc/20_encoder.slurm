@@ -43,15 +43,20 @@ _needs_gpu=0
 case " $STAGES " in
     *" esk "*|*" desk "*|*" spacetime-esk "*|*" spacetime_esk "*) _needs_gpu=1 ;;
 esac
-python -c "import torch; print('torch', torch.__version__, 'cuda', torch.cuda.is_available())" || \
-    { echo "torch not importable — install it in the venv"; exit 1; }
+# Import check must NOT touch CUDA (torch.cuda.is_available() can hard-fail on nodes with
+# no/partial driver). Print the real traceback on failure instead of a generic message.
+if ! python -c "import torch; print('torch', torch.__version__)"; then
+    echo "torch import failed on $(hostname); real error below:"
+    python -c "import torch" || true
+    exit 1
+fi
 if [ "$_needs_gpu" = 1 ]; then
-    python -c "import torch; assert torch.cuda.is_available(), 'no PyTorch CUDA device'" || \
-        { echo "ESK/DESK need a GPU but none is visible — use a full gpu-a100 node (or request a GPU)"; exit 1; }
+    python -c "import torch; print('cuda', torch.cuda.is_available()); assert torch.cuda.is_available(), 'no PyTorch CUDA device'" || \
+        { echo "ESK/DESK need a GPU but none is visible — use a full gpu-a100 node"; exit 1; }
     start_gpu_monitor "$SLURM_SUBMIT_DIR/gpu_encoder_${SLURM_JOB_ID}.csv" 30
     trap stop_gpu_monitor EXIT
 else
-    echo "[encoder] STAGES='$STAGES' are CPU-capable; not requiring a CUDA device."
+    echo "[encoder] STAGES='$STAGES' are CPU-capable; not requiring (or touching) a CUDA device."
 fi
 date
 

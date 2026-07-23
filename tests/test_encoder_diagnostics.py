@@ -7,8 +7,11 @@ from scripts.viz.encoder_diagnostics import (
     plot_component_atlas,
     plot_component_fidelity,
     plot_kernel_curve,
+    plot_similarity_atlas,
+    plot_similarity_calibration,
     plot_structure,
     plot_turnover,
+    plot_turnover_agreement,
     structure_retention,
 )
 
@@ -53,6 +56,11 @@ def test_kernel_curve_and_turnover_are_well_formed():
     r, c, fused, esk, desk = paired_turnover(x, z, z.copy(), rows, cols, years, 2000, 2010)
     assert len(r) == len(c) == len(fused) == 12
     assert np.allclose(esk, desk)
+    # ESK represents the uncentered Ružička kernel with a dot product.  A cosine
+    # would be a different kernel and must not be used for this comparison.
+    a = np.arange(12)
+    b = np.arange(24, 36)
+    assert np.allclose(esk, 1.0 - np.sum(z[a] * z[b], axis=1))
 
 
 def test_all_diagnostic_figures_render(tmp_path):
@@ -67,10 +75,15 @@ def test_all_diagnostic_figures_render(tmp_path):
     outputs = [
         tmp_path / "components.png", tmp_path / "structure.png",
         tmp_path / "kernel.png", tmp_path / "turnover.png", tmp_path / "atlas.png",
+        tmp_path / "calibration.png", tmp_path / "similarity_atlas.png",
+        tmp_path / "turnover_agreement.png",
     ]
     plot_component_fidelity(comp, outputs[0])
     plot_structure(retention, outputs[1])
     plot_kernel_curve(curve, outputs[2])
     plot_turnover(data, 3, 4, 2000, 2010, outputs[3])
     plot_component_atlas(data, 3, 4, 2010, [1, 2, 3], outputs[4])
+    plot_similarity_calibration(x, z, desk, outputs[5], seed=1, n_pairs=500)
+    plot_similarity_atlas(data, 3, 4, 2010, outputs[6])
+    plot_turnover_agreement(data, 2000, 2010, outputs[7])
     assert all(path.stat().st_size > 10_000 for path in outputs)

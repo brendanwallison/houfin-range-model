@@ -15,9 +15,13 @@ Outputs
     Fused Ružička similarity reconstruction as progressively more Z dimensions
     are retained; reveals a natural truncation point or high-dimension failure.
 ``turnover_maps.png``
-    Deep-to-recent turnover in fused community, ESK, DESK, and DESK residual.
+    Deep-to-recent turnover in fused community, ESK, DESK, and DESK residual,
+    all measured as one minus the same Ružička-kernel quantity.
 ``component_atlas_<year>.png``
     ESK, DESK, and residual maps for representative low/high components.
+``presentation_*.png``
+    Three standalone, plain-language figures: kernel calibration, geographic
+    community-similarity maps, and temporal-turnover agreement.
 ``metrics.json`` / ``component_metrics.csv``
     Machine-readable values behind every plot.
 
@@ -135,6 +139,11 @@ def _ruzicka_pairs(X, i, j):
     return np.divide(mn, mx, out=np.zeros_like(mn), where=mx > 0)
 
 
+def _feature_kernel_pairs(Z, i, j):
+    """Approximate Ružička similarities represented by uncentered ESK features."""
+    return np.sum(Z[i] * Z[j], axis=1)
+
+
 def kernel_dimension_curve(X, Z_esk, Z_desk, dims, seed=0, n_pairs=50000):
     """Pairwise fused-kernel reconstruction as latent dimensions accumulate."""
     rng = np.random.default_rng(seed); N = len(X)
@@ -143,8 +152,8 @@ def kernel_dimension_curve(X, Z_esk, Z_desk, dims, seed=0, n_pairs=50000):
     obs = _ruzicka_pairs(X, i, j); scale = max(float(np.sqrt(np.mean(obs ** 2))), 1e-12)
     out = []
     for k in dims:
-        pe = np.sum(Z_esk[i, :k] * Z_esk[j, :k], axis=1)
-        pdesk = np.sum(Z_desk[i, :k] * Z_desk[j, :k], axis=1)
+        pe = _feature_kernel_pairs(Z_esk[:, :k], i, j)
+        pdesk = _feature_kernel_pairs(Z_desk[:, :k], i, j)
         out.append({
             "dimension": int(k),
             "esk_rmse_norm": float(np.sqrt(np.mean((pe - obs) ** 2)) / scale),
@@ -155,19 +164,20 @@ def kernel_dimension_curve(X, Z_esk, Z_desk, dims, seed=0, n_pairs=50000):
     return pd.DataFrame(out)
 
 
-def _cosine_rows(A, B):
-    return np.sum(A * B, axis=1) / np.maximum(np.linalg.norm(A, axis=1) *
-                                               np.linalg.norm(B, axis=1), 1e-12)
-
-
 def paired_turnover(X, Ze, Zd, rows, cols, years, deep, recent):
+    """Matched deep-to-recent turnover under the common Ružička kernel.
+
+    ESK/DESK are trained so ``Z @ Z.T`` approximates the *uncentered* Ružička
+    similarity.  Cosine-normalizing Z would instead change the kernel and make
+    its turnover incomparable with ``1 - Ruzicka(X0, X1)``.
+    """
     ix = {(int(y), int(r), int(c)): i for i, (r, c, y) in enumerate(zip(rows, cols, years))}
     cells = sorted({(int(r), int(c)) for r, c, y in zip(rows, cols, years)
                     if int(y) == deep and (recent, int(r), int(c)) in ix})
     a = np.array([ix[(deep, r, c)] for r, c in cells]); b = np.array([ix[(recent, r, c)] for r, c in cells])
     fused = 1.0 - _ruzicka_pairs(X, a, b)
-    esk = 1.0 - _cosine_rows(Ze[a], Ze[b])
-    desk = 1.0 - _cosine_rows(Zd[a], Zd[b])
+    esk = 1.0 - _feature_kernel_pairs(Ze, a, b)
+    desk = 1.0 - _feature_kernel_pairs(Zd, a, b)
     return np.array([r for r, _ in cells]), np.array([c for _, c in cells]), fused, esk, desk
 
 
@@ -304,6 +314,94 @@ def plot_turnover(data, H, W, deep, recent, out):
     fig.tight_layout(); fig.savefig(out, dpi=140); plt.close(fig)
 
 
+def _normalized_rmse(pred, obs):
+    return float(np.sqrt(np.mean((pred - obs) ** 2)) /
+                 max(float(np.sqrt(np.mean(obs ** 2))), 1e-12))
+
+
+def plot_similarity_calibration(X, Z_esk, Z_desk, out, seed=0, n_pairs=30000):
+    """Presentation figure: are encoded similarities calibrated to communities?"""
+    rng = np.random.default_rng(seed)
+    n = len(X)
+    i, j = rng.integers(0, n, (2, min(n_pairs, max(n * 2, 1))))
+    keep = i != j; i, j = i[keep], j[keep]
+    observed = _ruzicka_pairs(X, i, j)
+    predicted = [_feature_kernel_pairs(Z_esk, i, j), _feature_kernel_pairs(Z_desk, i, j)]
+    labels = ["ESK target", "DESK prediction from covariates"]
+    fig, ax = plt.subplots(1, 2, figsize=(11, 4.8), sharex=True, sharey=True)
+    lo = min(0.0, *(float(np.nanpercentile(x, .5)) for x in predicted))
+    hi = max(1.0, *(float(np.nanpercentile(x, 99.5)) for x in predicted))
+    for a, pred, label in zip(ax, predicted, labels):
+        a.hexbin(observed, pred, gridsize=42, mincnt=1, cmap="viridis", linewidths=0)
+        a.plot([lo, hi], [lo, hi], color="white", lw=1.3, alpha=.9)
+        a.set(title=label, xlabel="Fused-community Ružička similarity", xlim=(lo, hi), ylim=(lo, hi))
+        a.text(.03, .96, f"r = {_corr(observed, pred):.3f}\nnormalized RMSE = {_normalized_rmse(pred, observed):.3f}",
+               transform=a.transAxes, va="top", color="white",
+               bbox={"facecolor": "black", "alpha": .55, "pad": 3, "edgecolor": "none"})
+    ax[0].set_ylabel("Similarity represented by Z · Z′")
+    fig.suptitle(f"Community similarity learned by ESK and predicted by DESK ({len(observed):,} pairs)")
+    fig.tight_layout(); fig.savefig(out, dpi=160); plt.close(fig)
+
+
+def _spatially_spread_anchors(rows, cols, n=3):
+    """Choose reproducible occupied cells spread across the available grid."""
+    unique = np.unique(np.column_stack([rows, cols]), axis=0)
+    rscale = max(float(np.ptp(unique[:, 0])), 1.0); cscale = max(float(np.ptp(unique[:, 1])), 1.0)
+    targets = np.array([[.20, .22], [.52, .55], [.80, .76]])[:n]
+    scaled = np.column_stack([(unique[:, 0] - unique[:, 0].min()) / rscale,
+                              (unique[:, 1] - unique[:, 1].min()) / cscale])
+    chosen = []
+    for target in targets:
+        order = np.argsort(np.sum((scaled - target) ** 2, axis=1))
+        chosen.append(next((tuple(unique[k]) for k in order if tuple(unique[k]) not in chosen),
+                           tuple(unique[order[0]])))
+    return chosen
+
+
+def plot_similarity_atlas(data, H, W, year, out):
+    """Presentation maps of three reference communities and their analogues."""
+    sel = data["years"] == year
+    X, E, D = data["X"][sel], data["Z_esk"][sel], data["Z_desk"][sel]
+    rows, cols = data["rows"][sel], data["cols"][sel]
+    anchors = _spatially_spread_anchors(rows, cols)
+    fig, ax = plt.subplots(3, len(anchors), figsize=(4.1 * len(anchors), 10), squeeze=False)
+    for col_i, (ar, ac) in enumerate(anchors):
+        anchor = np.flatnonzero((rows == ar) & (cols == ac))[0]
+        ii = np.full(len(rows), anchor, dtype=int); jj = np.arange(len(rows))
+        fields = [_ruzicka_pairs(X, ii, jj), _feature_kernel_pairs(E, ii, jj),
+                  _feature_kernel_pairs(D, ii, jj)]
+        for row_i, (field, label) in enumerate(zip(fields, ["Fused community", "ESK target", "DESK prediction"])):
+            image = ax[row_i, col_i].imshow(_grid(H, W, rows, cols, field), cmap="viridis", vmin=0, vmax=1)
+            ax[row_i, col_i].plot(ac, ar, marker="*", ms=9, mfc="white", mec="black", mew=.7)
+            ax[row_i, col_i].axis("off")
+            if col_i == 0:
+                ax[row_i, col_i].set_ylabel(label)
+            if row_i == 0:
+                ax[row_i, col_i].set_title(f"Reference community {col_i + 1}")
+            fig.colorbar(image, ax=ax[row_i, col_i], fraction=.04, pad=.02)
+    fig.suptitle(f"Geographic analogues of three reference communities — {year}\nstar = reference cell; colours = Ružička similarity")
+    fig.tight_layout(); fig.savefig(out, dpi=160); plt.close(fig)
+
+
+def plot_turnover_agreement(data, deep, recent, out):
+    """Presentation figure: true versus represented deep-to-recent turnover."""
+    _, _, observed, esk, desk = paired_turnover(data["X"], data["Z_esk"], data["Z_desk"],
+                                                 data["rows"], data["cols"], data["years"], deep, recent)
+    fig, ax = plt.subplots(1, 2, figsize=(10.5, 4.8), sharex=True, sharey=True)
+    lo = min(0.0, float(np.nanpercentile(np.r_[esk, desk], .5)))
+    hi = max(1.0, float(np.nanpercentile(np.r_[observed, esk, desk], 99.5)))
+    for a, pred, label in zip(ax, [esk, desk], ["ESK target", "DESK prediction"]):
+        a.hexbin(observed, pred, gridsize=42, mincnt=1, cmap="magma", linewidths=0)
+        a.plot([lo, hi], [lo, hi], color="white", lw=1.3, alpha=.9)
+        a.set(title=label, xlabel="Fused-community turnover", xlim=(lo, hi), ylim=(lo, hi))
+        a.text(.03, .96, f"r = {_corr(observed, pred):.3f}\nnormalized RMSE = {_normalized_rmse(pred, observed):.3f}",
+               transform=a.transAxes, va="top", color="white",
+               bbox={"facecolor": "black", "alpha": .55, "pad": 3, "edgecolor": "none"})
+    ax[0].set_ylabel("Turnover represented by 1 − Z · Z′")
+    fig.suptitle(f"Temporal community turnover: {deep} → {recent} ({len(observed):,} matched cells)")
+    fig.tight_layout(); fig.savefig(out, dpi=160); plt.close(fig)
+
+
 def plot_component_atlas(data, H, W, year, dims, out):
     sel = data["years"] == year; r, c = data["rows"][sel], data["cols"][sel]
     E, D = data["Z_esk"][sel], data["Z_desk"][sel]
@@ -358,6 +456,10 @@ def main():
     plot_structure(ret, out / "structure_retention.png")
     plot_kernel_curve(curve, out / "kernel_by_dimension.png")
     plot_turnover(data, H, W, available[0], available[-1], out / "turnover_maps.png")
+    plot_similarity_calibration(eval_data["X"], eval_data["Z_esk"], eval_data["Z_desk"],
+                                out / "presentation_similarity_calibration.png", args.seed)
+    plot_similarity_atlas(data, H, W, available[-1], out / "presentation_similarity_atlas.png")
+    plot_turnover_agreement(data, available[0], available[-1], out / "presentation_turnover_agreement.png")
     atlas_dims = sorted({1, 2, 8, 16, 32, 48, maxdim})
     for year in (available[0], available[-1]):
         plot_component_atlas(data, H, W, year, atlas_dims, out / f"component_atlas_{year}.png")
@@ -371,6 +473,12 @@ def main():
                       for k, v in ret.items()},
         "component_metrics": comp.to_dict(orient="records"),
         "kernel_dimension_curve": curve.to_dict(orient="records"),
+        "turnover_contract": {
+            "fused": "1 - Ruzicka(X_deep, X_recent)",
+            "esk": "1 - Z_esk(deep) dot Z_esk(recent)",
+            "desk": "1 - Z_desk(deep) dot Z_desk(recent)",
+            "note": "All three quantities use the same uncentered Ružička-kernel geometry; cosine-normalized Z is intentionally not used.",
+        },
         "suggested_truncation": {
             "criterion": "minimum held-out DESK-to-fused normalized kernel RMSE",
             "dimension": int(curve.loc[curve.desk_rmse_norm.idxmin(), "dimension"]),

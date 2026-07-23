@@ -201,8 +201,21 @@ def load_comparison(cfg, selected_years, out_dir, recompute=False):
 
     cube = Path(cfg["latent_cube"]["output_dir"])
     Z_desk = np.empty_like(Z_esk)
+    r_max, c_max = int(pidx[:, 0].max()), int(pidx[:, 1].max())
     for year in sorted(set(pidx[:, 2])):
         g = np.load(cube / f"Z_latent_{int(year)}.npy", mmap_mode="r")
+        # The cube and the ESK points must be on the SAME grid + latent width. A stale cube
+        # (e.g. a pre-27km/25km build, or a narrower latent_dim) would IndexError cryptically
+        # or silently misalign, so fail loudly with what to rebuild.
+        if g.shape[0] <= r_max or g.shape[1] <= c_max:
+            raise ValueError(
+                f"DESK cube {cube.name}/Z_latent_{int(year)}.npy grid {tuple(g.shape[:2])} is "
+                f"smaller than the ESK point grid (needs > {r_max}x{c_max}). The cube is stale / "
+                f"on a different grid than the ESK basis — rebuild desk->cube at the current grid.")
+        if g.shape[2] < Z_esk.shape[1]:
+            raise ValueError(
+                f"DESK cube latent_dim {g.shape[2]} < ESK basis {Z_esk.shape[1]}; rebuild "
+                f"spacetime-esk -> desk -> cube at a matching latent_dim.")
         sel = pidx[:, 2] == year
         Z_desk[sel] = g[pidx[sel, 0], pidx[sel, 1], :Z_esk.shape[1]]
     holdout_path = Path(cfg["paths"]["desk_output_dir"]) / "holdout_cells.npy"

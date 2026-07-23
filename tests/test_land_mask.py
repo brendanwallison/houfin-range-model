@@ -33,6 +33,15 @@ def test_polygonal_lakes_are_area_weighted_before_threshold():
     assert np.array_equal(lm.land_mask_from_fraction(frac, tau=0.5), [[True, False]])
 
 
+def test_lake_subtraction_rejects_mismatched_fine_grids():
+    try:
+        lm.subtract_lakes(np.ones((2, 2)), np.ones((2, 3)))
+    except ValueError as e:
+        assert "shape" in str(e)
+    else:
+        raise AssertionError("mismatched fine grids must fail")
+
+
 def test_snap_gated_by_radius():
     # Land on the left half; ocean on the right.
     land = np.zeros((1, 10), dtype=bool)

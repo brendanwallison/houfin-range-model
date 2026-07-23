@@ -45,6 +45,25 @@ def subtract_lakes(fine_land, fine_lakes):
     return np.where(lakes, 0, land).astype("uint8", copy=False)
 
 
+def rasterize_country_exclusions(source, iso_a3, crs, shape, transform):
+    """Rasterize selected Natural Earth admin-0 polygons as model exclusions."""
+    import geopandas as gpd
+    import rasterio.features
+
+    codes = {str(x).upper() for x in iso_a3}
+    gdf = gpd.read_file(source).to_crs(crs)
+    code_col = next((c for c in ("ADM0_A3", "ISO_A3", "SOV_A3") if c in gdf.columns), None)
+    if code_col is None:
+        raise ValueError(f"{source} has no recognized ISO-A3 column")
+    selected = gdf[gdf[code_col].astype(str).str.upper().isin(codes)]
+    missing = codes - set(selected[code_col].astype(str).str.upper())
+    if missing:
+        raise ValueError(f"{source} has no polygons for requested ISO-A3 codes: {sorted(missing)}")
+    return rasterio.features.rasterize(
+        ((geom, 1) for geom in selected.geometry), out_shape=shape,
+        transform=transform, fill=0, dtype="uint8")
+
+
 def land_mask_from_fraction(frac, tau=0.5):
     """Boolean model-grid land mask: a cell is land iff land_fraction >= tau."""
     return np.asarray(frac) >= tau
@@ -73,7 +92,8 @@ def snap_to_nearest_land(rows, cols, land_mask, max_cells=1):
 
 
 def build_land_mask(land_source, ref_path, out_path, tau=DEFAULT_TAU,
-                    fine_factor=DEFAULT_FINE_FACTOR, lake_source=None):
+                    fine_factor=DEFAULT_FINE_FACTOR, lake_source=None,
+                    exclusion_source=None, exclude_iso_a3=()):
     """Rasterize a continental land polygon → per-cell land fraction → land mask.
 
     Rasterizes ``land_source`` (a land/water polygon, e.g. Natural Earth) onto a
@@ -106,6 +126,10 @@ def build_land_mask(land_source, ref_path, out_path, tau=DEFAULT_TAU,
             out_shape=(H * ff, W * ff), transform=fine_transform, fill=0, dtype="uint8",
         )
         fine_land = subtract_lakes(fine_land, fine_lakes)
+    if exclusion_source and exclude_iso_a3:
+        fine_excluded = rasterize_country_exclusions(
+            exclusion_source, exclude_iso_a3, crs, fine_land.shape, fine_transform)
+        fine_land[fine_excluded > 0] = 0
     frac = compute_land_fraction(fine_land, ff)
     ocean = (~land_mask_from_fraction(frac, tau)).astype("uint8")  # 1=ocean, 0=land
 
@@ -115,7 +139,8 @@ def build_land_mask(land_source, ref_path, out_path, tau=DEFAULT_TAU,
         dst.write(ocean, 1)
     n_land = int((ocean == 0).sum())
     lake_note = f", lakes={lake_source}" if lake_source else ""
-    print(f"Land mask: {n_land}/{ocean.size} terrestrial cells (tau={tau}, fine={ff}x{lake_note}) -> {out_path}")
+    exclude_note = f", excludes={','.join(exclude_iso_a3)}" if exclude_iso_a3 else ""
+    print(f"Land mask: {n_land}/{ocean.size} terrestrial cells (tau={tau}, fine={ff}x{lake_note}{exclude_note}) -> {out_path}")
     return out_path
 
 
@@ -128,6 +153,8 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--land-source", help="Land polygon (default: coastline.land_source).")
     ap.add_argument("--lake-source", help="Polygonal inland-water layer (default: coastline.lake_source).")
+    ap.add_argument("--exclusion-source", help="Admin-0 polygons used for study-domain exclusions.")
+    ap.add_argument("--exclude-iso-a3", help="Comma-separated ISO-A3 territories excluded from this model mask.")
     ap.add_argument("--ref", help="Ref grid raster (default: grid.ref_raster).")
     ap.add_argument("--out", help="Output mask (default: {datasets_root}/land_mask/ocean_mask_{res}km.tif).")
     ap.add_argument("--tau", type=float)
@@ -149,13 +176,22 @@ def main():
         raise SystemExit(
             f"lake polygon not found: {lake_source}. Run scripts/tacc/download_all.sh "
             "or pass --lake-source; refusing to build a coastline-only terrestrial mask.")
+    exclusion_source = args.exclusion_source if args.exclusion_source is not None else ccfg.get("study_exclusion_source")
+    if exclusion_source and not os.path.isabs(exclusion_source):
+        exclusion_source = os.path.join(cfg["datasets_root"], exclusion_source)
+    exclude_iso_a3 = ([x.strip().upper() for x in args.exclude_iso_a3.split(",") if x.strip()]
+                      if args.exclude_iso_a3 is not None
+                      else list(ccfg.get("study_exclude_iso_a3", [])))
+    if exclude_iso_a3 and (not exclusion_source or not os.path.exists(exclusion_source)):
+        raise SystemExit(f"study exclusion polygons not found: {exclusion_source}")
     ref = args.ref or cfg["grid"]["ref_raster"]
     out = args.out or os.path.join(cfg["datasets_root"], "land_mask", f"ocean_mask_{res_km}km.tif")
     os.makedirs(os.path.dirname(out), exist_ok=True)
     build_land_mask(land_source, ref, out,
                     tau=args.tau or ccfg.get("land_fraction_tau", DEFAULT_TAU),
                     fine_factor=args.fine_factor or ccfg.get("fine_factor", DEFAULT_FINE_FACTOR),
-                    lake_source=lake_source)
+                    lake_source=lake_source, exclusion_source=exclusion_source,
+                    exclude_iso_a3=exclude_iso_a3)
 
 
 if __name__ == "__main__":

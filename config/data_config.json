@@ -34,9 +34,11 @@
     "_comment": "Single source of truth for the model grid. target_res_m is THE model resolution (27 km), matching the native resolution of the trend products this pipeline targets (USGS BBS mapping rasters, 27 km ESRI:102003; eBird Status & Trends, 27 km). Continental products (climate/climr, LUH-3, HYDE, SoilGrids, DEM, eBird abundance) are aggregated onto ref_raster via regrid.reproject_to_ref `average`; the BBS trend rasters share this CRS+lattice and align by nearest clip/pad (no resampling of the ground truth). Nonlinear steps (Ruzicka kernel/PCA for Z, quantiles, transforms) are applied at this resolution -- Z is built at 27 km, never pooled. The prior 25 km ESRI:102039 CONUS box lives in git history; the older 16 km / 4 km BUI-grid pipeline is preserved under src/data/deprecated/."
   },
   "coastline": {
-    "_comment": "Terrestrial mask (src/data/preprocess/land_mask.py). Natural Earth 10m polygonal lakes are subtracted from the continental land layer on a fine grid before aggregation, so Great Lakes are water while narrow rivers are never expanded. The terrestrial fraction is thresholded at land_fraction_tau (>=tau => model land). This is water masking only; out-of-scope terrestrial regions need a separate study-domain mask.",
+    "_comment": "Terrestrial model mask (src/data/preprocess/land_mask.py). Natural Earth 10m polygonal lakes are subtracted from continental land on a fine grid before aggregation, so Great Lakes are water while narrow rivers are never expanded. The configured study exclusions deliberately encode Cuba/Bahamas as off-domain water for this model; Mexico is not excluded here. The terrestrial fraction is thresholded at land_fraction_tau (>=tau => model land).",
     "land_source": "land_source/ne_10m_land.shp",
     "lake_source": "land_source/ne_10m_lakes.shp",
+    "study_exclusion_source": "land_source/ne_10m_admin_0_countries.shp",
+    "study_exclude_iso_a3": ["CUB", "BHS"],
     "land_fraction_tau": 0.5,
     "fine_factor": 25,
     "snap_radius_cells": 1

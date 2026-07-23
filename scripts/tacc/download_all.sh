@@ -63,6 +63,12 @@ if [ ! -f "$NE_DIR/ne_10m_lakes.shp" ]; then
         "https://naciscdn.org/naturalearth/10m/physical/ne_10m_lakes.zip"
     ( cd "$NE_DIR" && unzip -o ne_10m_lakes.zip )
 fi
+if [ ! -f "$NE_DIR/ne_10m_admin_0_countries.shp" ]; then
+    mkdir -p "$NE_DIR"
+    curl -fSL -o "$NE_DIR/ne_10m_admin_0_countries.zip" \
+        "https://naciscdn.org/naturalearth/10m/cultural/ne_10m_admin_0_countries.zip"
+    ( cd "$NE_DIR" && unzip -o ne_10m_admin_0_countries.zip )
+fi
 
 echo "== climr CONNECTIVITY CHECK (one point; NOT the study-region warm) =="
 # This only verifies climr is installed and its server is reachable from the login

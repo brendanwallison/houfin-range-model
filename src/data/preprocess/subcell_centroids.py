@@ -24,7 +24,7 @@ DEFAULT_GRID = 5   # grid x grid sub-points per model cell (5x5 = 25)
 
 
 def rasterize_land_fine(land_source, crs, ref_transform, H, W, grid=DEFAULT_GRID,
-                        lake_source=None):
+                        lake_source=None, exclusion_source=None, exclude_iso_a3=()):
     """Binary (1=land, 0=water) grid at the SUB-POINT resolution ``(H*grid, W*grid)``,
     rasterized from the same land polygon the 25 km ocean mask uses (Natural Earth).
 
@@ -45,6 +45,11 @@ def rasterize_land_fine(land_source, crs, ref_transform, H, W, grid=DEFAULT_GRID
             ((geom, 1) for geom in lakes.geometry),
             out_shape=(H * grid, W * grid), transform=fine_transform, fill=0, dtype="uint8")
         fine_land[fine_lakes > 0] = 0
+    if exclusion_source and exclude_iso_a3:
+        from src.data.preprocess.land_mask import rasterize_country_exclusions
+        fine_excluded = rasterize_country_exclusions(
+            exclusion_source, exclude_iso_a3, crs, fine_land.shape, fine_transform)
+        fine_land[fine_excluded > 0] = 0
     return fine_land
 
 
@@ -130,6 +135,8 @@ def main():
                     help="Land polygon for the fine sub-point mask (default: coastline.land_source)")
     ap.add_argument("--lake-source", dest="lake_source",
                     help="Polygonal lakes removed from fine land (default: coastline.lake_source)")
+    ap.add_argument("--exclusion-source", help="Admin-0 polygons for configured study exclusions")
+    ap.add_argument("--exclude-iso-a3", help="Comma-separated ISO-A3 study exclusions")
     ap.add_argument("--grid", type=int, default=int(ccfg.get("grid", DEFAULT_GRID)))
     args = ap.parse_args()
 
@@ -160,13 +167,21 @@ def main():
     lake_source = args.lake_source if args.lake_source is not None else cfg.get("coastline", {}).get("lake_source")
     if lake_source and not os.path.isabs(lake_source):
         lake_source = os.path.join(cfg["datasets_root"], lake_source)
+    exclusion_source = args.exclusion_source if args.exclusion_source is not None else cfg.get("coastline", {}).get("study_exclusion_source")
+    if exclusion_source and not os.path.isabs(exclusion_source):
+        exclusion_source = os.path.join(cfg["datasets_root"], exclusion_source)
+    exclude_iso_a3 = ([x.strip().upper() for x in args.exclude_iso_a3.split(",") if x.strip()]
+                      if args.exclude_iso_a3 is not None
+                      else list(cfg.get("coastline", {}).get("study_exclude_iso_a3", [])))
 
     with rasterio.open(cfg["grid"]["ref_raster"]) as ref:
         fine_land = None
         if land_source and os.path.exists(land_source):
             fine_land = rasterize_land_fine(land_source, ref.crs, ref.transform,
                                             ref.height, ref.width, args.grid,
-                                            lake_source=lake_source)
+                                            lake_source=lake_source,
+                                            exclusion_source=exclusion_source,
+                                            exclude_iso_a3=exclude_iso_a3)
         else:
             print(f"[subcell] WARNING: land polygon not found ({land_source}); "
                   f"no fine sub-point ocean mask (coastal water points will NaN out).")

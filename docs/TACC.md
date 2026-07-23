@@ -33,7 +33,8 @@ on multi-project accounts).
 | 7 | GPU encoder (ESK → DESK → cube → validate) | GPU | `bash scripts/tacc/submit_encoder.sh` |
 | 8 | build `Z_disp` + transactional model inputs | GPU | `bash scripts/tacc/submit_model_prep.sh` |
 | 9 | MAP statistical model | GPU | `bash scripts/tacc/submit_map.sh` |
-| 10 | visual-QC quicklooks | compute | `bash scripts/tacc/submit_visualize.sh` |
+| 10 | post-MAP ecological conclusions | GPU | `bash scripts/tacc/submit_map_viz.sh` |
+| 11 | visual-QC quicklooks | compute | `bash scripts/tacc/submit_visualize.sh` |
 
 Steps 3+5+6 can instead be **one** dev-queue job on a warm cache (`00_preprocess_all`,
 §3b). The only hard ordering is 2 → 3 → 4 → 5.
@@ -345,6 +346,25 @@ Compare `vram_used_mib` with `vram_total_mib`; rising `user_process_rss_kib` or
 falling host `MemAvailable`/`SwapFree` at saturated VRAM reveals host-memory
 pressure. MAP logs also print JAX allocator in-use/peak/limit counters at input
 load and every checkpoint, while `/usr/bin/time -v` reports peak process RSS.
+
+## 3h. Post-MAP ecological conclusions
+
+After a MAP checkpoint finishes, reconstruct the fitted fields and make the
+modern fundamental-niche and trajectory figures on a GPU node:
+
+```bash
+bash scripts/tacc/submit_map_viz.sh
+HOUFIN_MAP_PROFILE=quick90 bash scripts/tacc/submit_map_viz.sh
+```
+
+The profile must match the MAP run. Outputs are written under that run's
+`map_diagnostics/` directory: a modern/early intrinsic-growth and transition
+map, the full niche trajectory, demographic-rate maps, BBS fit diagnostics, and
+`metrics.json`. The fundamental-niche map is the post-establishment,
+density-independent local dominant eigenvalue under the forward model's census
+order; it intentionally excludes dispersal, occupancy, density limitation, and
+the Allee constraint. The latter is reported separately rather than silently
+changing the niche definition.
 
 ## 3g. Visual-QC quicklooks (SLURM, compute)
 

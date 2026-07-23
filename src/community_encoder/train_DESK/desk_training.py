@@ -477,6 +477,19 @@ def train_model_ema(cov_window, mask_window, window_years, targets, x2023, m2023
            for y, (zg, tr, va) in targets.items() if y in yi}
     y2023 = int(max(tgt))                                         # anchor year index in the window
 
+    # No-skill baselines on the held-out cells (pooled over all supervised years): the Z-MSE
+    # of predicting the global mean vector, and of predicting zero. Val(all-yr) must fall well
+    # below these to have any skill; Val/baseline is the fraction of held-out Z variance left
+    # unexplained (targets have ||Z||^2 ~ 1 since Z.Z^T ~= Ružicka with unit self-similarity).
+    with torch.no_grad():
+        held = [zg[va] for _, (zg, _t, va) in tgt.items() if bool(va.any())]
+        if held:
+            allv = torch.cat(held, 0)
+            base_mean = float(torch.mean(torch.sum((allv - allv.mean(0, keepdim=True)) ** 2, dim=1)))
+            base_zero = float(torch.mean(torch.sum(allv ** 2, dim=1)))
+            print(f"[desk] Val(all-yr) no-skill baselines: predict-mean={base_mean:.4f}, "
+                  f"predict-zero={base_zero:.4f} -- a trained model must fall WELL below these", flush=True)
+
     best_val, best, bad = float("inf"), None, 0
     print(f"--- Training DESK+outputEMA ({len(window_years)}yr window {window_years[0]}..{window_years[-1]}, "
           f"{len(tgt)} supervised years, max {epochs} ep; grad_clip={grad_clip}, es_warmup={es_warmup}) ---")

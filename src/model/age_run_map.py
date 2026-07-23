@@ -40,22 +40,38 @@ from src.model.runtime_diagnostics import memory_snapshot, require_gpu
 
 _cfg = load_age_model_config()
 _map_cfg = _cfg["map"]
+MAP_PROFILE = os.environ.get("HOUFIN_MAP_PROFILE", "standard")
+if MAP_PROFILE == "standard":
+    _active_map_cfg = _map_cfg
+else:
+    try:
+        _active_map_cfg = _map_cfg["profiles"][MAP_PROFILE]
+    except KeyError as exc:
+        choices = ", ".join(["standard", *_map_cfg.get("profiles", {}).keys()])
+        raise ValueError(
+            f"Unknown HOUFIN_MAP_PROFILE={MAP_PROFILE!r}; choose one of: {choices}"
+        ) from exc
 os.environ.setdefault(
     "HOUFIN_MODEL_INPUT_RESIDENCY",
     _cfg.get("runtime", {}).get("input_residency", "device"),
 )
 INPUT_DIR = _cfg["input_dir"]
-OUTPUT_DIR = os.path.join(
-    _cfg["results_dir"], _cfg["run_names"]["map"].format(precision=PRECISION)
+_run_name = _cfg["run_names"]["map"].format(precision=PRECISION)
+# Optimization profiles are separate experiments, never checkpoints that a
+# standard production run could accidentally resume.
+if MAP_PROFILE != "standard":
+    _run_name = f"{_run_name}_{MAP_PROFILE}"
+OUTPUT_DIR = os.path.join(_cfg["results_dir"], _run_name)
+TOTAL_STEPS = int(
+    os.environ.get("HOUFIN_MAP_STEPS", _active_map_cfg.get("target_steps", 900))
 )
-TOTAL_STEPS = int(os.environ.get("HOUFIN_MAP_STEPS", 900))
 CKPT_EVERY = int(os.environ.get("HOUFIN_MAP_CKPT_EVERY", 100))
 PRIOR_RELAXATION = tuple(
-    (int(step), float(scale)) for step, scale in _map_cfg["prior_relaxation"]
+    (int(step), float(scale)) for step, scale in _active_map_cfg["prior_relaxation"]
 )
-LR_DECAY_STEPS = int(_map_cfg["lr_decay_steps"])
-INIT_LR = float(_map_cfg["init_lr"])
-WEIGHT_DECAY = float(_map_cfg.get("weight_decay", 0.0))
+LR_DECAY_STEPS = int(_active_map_cfg["lr_decay_steps"])
+INIT_LR = float(_active_map_cfg.get("init_lr", _map_cfg["init_lr"]))
+WEIGHT_DECAY = float(_active_map_cfg.get("weight_decay", _map_cfg.get("weight_decay", 0.0)))
 CKPT_PATH = os.path.join(OUTPUT_DIR, "map_checkpoint.pkl")
 PARAMS_PATH = os.path.join(OUTPUT_DIR, "map_params.pkl")
 
@@ -116,6 +132,7 @@ def _run_fingerprint() -> tuple[str, dict]:
         Path(__file__).with_name("data_loading.py"),
     ]
     payload = {
+        "map_profile": MAP_PROFILE,
         "precision": PRECISION,
         "age_model_config": _cfg,
         "prior_relaxation": PRIOR_RELAXATION,
@@ -183,7 +200,7 @@ def run_map():
     device = require_gpu("age-model MAP")
     fingerprint, fingerprint_payload = _run_fingerprint()
     print(
-        f"--- Starting {PRECISION.upper()} MAP: target={TOTAL_STEPS}, "
+        f"--- Starting {PRECISION.upper()} MAP ({MAP_PROFILE}): target={TOTAL_STEPS}, "
         f"checkpoint_every={CKPT_EVERY}, prior_relaxation={PRIOR_RELAXATION}, "
         f"lr_decay_steps={LR_DECAY_STEPS}, weight_decay={WEIGHT_DECAY} ---"
     )

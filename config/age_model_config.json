@@ -46,7 +46,15 @@
     "prior_relaxation": [[0, 0.1], [300, 0.5], [600, 1.0]],
     "lr_decay_steps": 900,
     "init_lr": 0.01,
-    "weight_decay": 0.0
+    "weight_decay": 0.0,
+    "profiles": {
+      "quick90": {
+        "_comment": "Fresh 90-minute development diagnostic: 100 tight, 150 intermediate, and 250 nominal-prior steps. This changes optimization only, not the final MAP objective.",
+        "prior_relaxation": [[0, 0.1], [100, 0.5], [250, 1.0]],
+        "lr_decay_steps": 500,
+        "target_steps": 500
+      }
+    }
   },
   "runtime": {
     "_comment": "Production JAX jobs require a GPU and explicitly place model inputs in VRAM. HOUFIN_MODEL_INPUT_RESIDENCY=host is experimental: lax.scan is not a true differentiable host-streaming mechanism. SLURM wrappers record nvidia-smi VRAM/utilization plus host MemAvailable/SwapFree every 30 seconds.",

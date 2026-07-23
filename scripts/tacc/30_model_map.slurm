@@ -39,12 +39,11 @@ start_gpu_monitor "$SLURM_SUBMIT_DIR/gpu_map_${SLURM_JOB_ID}.csv" 30
 trap stop_gpu_monitor EXIT
 date
 
-# Checkpoint cadence + total steps are read from the env by age_run_map (defaults
-# 900 steps / ckpt every 100). Leave a safety margin under the 2 h wall so the final
-# checkpoint always flushes.
-export HOUFIN_MAP_STEPS="${HOUFIN_MAP_STEPS:-900}"
+# Checkpoint cadence is set here.  The step target is deliberately left to
+# age_run_map: standard defaults to 900, while an explicit MAP profile (such as
+# quick90) supplies its own target.  An explicit HOUFIN_MAP_STEPS still wins.
 export HOUFIN_MAP_CKPT_EVERY="${HOUFIN_MAP_CKPT_EVERY:-100}"
 /usr/bin/time -v python -m src.model.age_run_map
 
-echo "=== 30_model_map complete (steps=$HOUFIN_MAP_STEPS) ==="
+echo "=== 30_model_map complete (steps=${HOUFIN_MAP_STEPS:-profile default}) ==="
 date

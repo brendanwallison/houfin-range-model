@@ -28,11 +28,14 @@
 set -euo pipefail
 
 source "$SLURM_SUBMIT_DIR/scripts/tacc/env.sh"
+source "$SLURM_SUBMIT_DIR/scripts/tacc/gpu_monitor.sh"
 module load python/3.12.11 2>/dev/null || true
 module load remora 2>/dev/null || true
 [ -n "${TACC_ALLOCATION:-}" ] && echo "allocation: $TACC_ALLOCATION"
-python -c "import torch; print('torch', torch.__version__, 'cuda', torch.cuda.is_available())" || \
+python -c "import torch; print('torch', torch.__version__, 'cuda', torch.cuda.is_available()); assert torch.cuda.is_available(), 'no PyTorch CUDA device'" || \
     { echo "torch not importable — install it in the venv before running the encoder"; exit 1; }
+start_gpu_monitor "$SLURM_SUBMIT_DIR/gpu_encoder_${SLURM_JOB_ID}.csv" 30
+trap stop_gpu_monitor EXIT
 date
 
 export STAGES="${STAGES:-esk desk cube validate}"

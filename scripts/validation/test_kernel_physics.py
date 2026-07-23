@@ -14,22 +14,14 @@ project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..
 if project_root not in sys.path:
     sys.path.append(project_root)
 
-from src.config_utils import load_data_config
+from src.config_utils import load_age_model_config, load_data_config
 _CFG = load_data_config()
 _DR = _CFG["datasets_root"]
 _PR = _CFG["processed_root"]
 _RES_KM = _CFG["grid"]["target_res_m"] // 1000
 
-from src.model.build_kernels import build_simulation_struct, get_gamma_scale
-
-def get_log_spaced_splits(min_dist, max_dist, n_bins):
-    """Creates splits that are equidistant in log-space."""
-    start = np.log10(max(min_dist, 1.0))
-    end = np.log10(max_dist)
-    log_points = np.logspace(start, end, n_bins + 1)
-    splits = [0.0] + list(log_points[1:])
-    splits[-1] = 1e9 
-    return splits
+from src.data.masks import read_land_mask
+from src.model.build_kernels import build_simulation_struct, dispersal_spec, get_gamma_scale
 
 def print_mass_distribution(splits, mean_dist, shape):
     """
@@ -83,10 +75,7 @@ def load_land_metadata(tif_path):
         else:
             cell_size_km = res_x
             
-        ocean_data = src.read(1)
-        if src.nodata is not None:
-             ocean_data = np.where(ocean_data == src.nodata, 0, ocean_data)
-        land_mask = 1.0 - (ocean_data > 0).astype(np.float32)
+        land_mask = read_land_mask(tif_path).astype(np.float32)
         
     return land_mask, cell_size_km
 
@@ -128,7 +117,9 @@ def main(args):
     print(f"--- Testing Kernel Physics ---")
     
     # 1. Load Geometry
-    tif_path = os.path.join(args.input_dir, f"ocean_mask_{_RES_KM}km.tif")
+    age_cfg = load_age_model_config()
+    spec = dispersal_spec(age_cfg)
+    tif_path = age_cfg["ocean_mask"]
     if not os.path.exists(tif_path):
         print(f"Error: Missing {tif_path}")
         return
@@ -139,22 +130,22 @@ def main(args):
     
     land_mask = jnp.array(land_mask_np)
 
-    # 2. Define Splits
-    # Using 4 Geometric Splits
-    splits = get_log_spaced_splits(min_dist=30.0, max_dist=2000.0, n_bins=4)
+    splits = spec["juvenile_radial_splits_km"]
     
     # --- DIAGNOSTIC ADDED HERE ---
-    print_mass_distribution(splits, args.mean_dispersal_km, args.shape_param)
+    print_mass_distribution(
+        splits, spec["juvenile_mdd_km"], spec["juvenile_shape"]
+    )
     
     # 3. Build Kernels
     print("Building Simulation Struct...")
     sim_data = build_simulation_struct(
         land=land_mask,
         cell_size=cell_size_km,
-        mean_dispersal_distance=args.mean_dispersal_km,
-        mean_local_dispersal_distance=args.mean_dispersal_km,
-        adult_shape=args.shape_param,
-        juvenile_shape=args.shape_param,
+        adult_mdd=spec["adult_mdd_km"],
+        juvenile_mdd=spec["juvenile_mdd_km"],
+        adult_shape=spec["adult_shape"],
+        juvenile_shape=spec["juvenile_shape"],
         radii_splits=splits
     )
     
@@ -193,7 +184,9 @@ def main(args):
     pop_results = []
     
     for k in range(len(labels)):
-        pop_w_edge = pop_before * edge_corrections[k]
+        # Forward-model convention: divide each source cohort by the fraction
+        # of its normalized cohort shape that can land on valid habitat.
+        pop_w_edge = pop_before / (edge_corrections[k] + 1e-6)
         pop_padded = jnp.pad(pop_w_edge, ((0, Ly - Ny), (0, Lx - Nx)))
         
         fft_pop = fft2(pop_padded) 
@@ -229,9 +222,6 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--input_dir", type=str, default=f"{_DR}/latent_avian_community_similarities")
     parser.add_argument("--output_dir", type=str, default=f"{_PR}/datasets/latent_avian_path_diagnostics")
-    
-    parser.add_argument("--mean_dispersal_km", type=float, default=330.0)
-    parser.add_argument("--shape_param", type=float, default=0.468)
     
     args = parser.parse_args()
     main(args)

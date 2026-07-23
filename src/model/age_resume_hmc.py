@@ -36,7 +36,11 @@ if project_root not in sys.path:
     sys.path.append(project_root)
 
 from src.model.age_priors import build_model_2d
-from src.model.data_loading import load_data_to_gpu
+from src.model.data_loading import load_data
+from src.model.checkpoints import (
+    auto_delta_params_to_latents, load_map_params, save_pickle_atomic,
+)
+from src.model.runtime_diagnostics import memory_snapshot, require_gpu
 from src.config_utils import load_age_model_config
 
 
@@ -67,20 +71,17 @@ class HMCDiagnostics:
         return step_result
 
 
-def build_map_initialization(noise_scale=0.01):
+def build_map_initialization(noise_scale=0.0):
 
-    map_path = os.path.join(MAP_DIR, "map_params.pkl")
-
-    with open(map_path, "rb") as f:
-        raw_map_params = pickle.load(f)
+    raw_map_params, map_checkpoint = load_map_params(MAP_DIR)
+    print(f"Loaded verified MAP checkpoint at step {map_checkpoint['step']}")
 
     rng = jax.random.PRNGKey(123)
 
     noisy_init = {}
+    map_latents = auto_delta_params_to_latents(raw_map_params)
 
-    for i, (name, value) in enumerate(raw_map_params.items()):
-
-        site_name = name.replace("auto_", "")
+    for i, (site_name, value) in enumerate(map_latents.items()):
         key = jax.random.fold_in(rng, i)
 
         noise = noise_scale * jax.random.normal(
@@ -101,14 +102,13 @@ def run_hmc():
         f"--- Starting {PRECISION.upper()} HMC from MAP Initialization ---"
     )
 
-    data_dict = load_data_to_gpu(
-        INPUT_DIR,
-        precision=PRECISION
-    )
+    gpu_device = require_gpu("MAP-initialized HMC")
+    data_dict = load_data(INPUT_DIR, gpu_device, precision=PRECISION)
+    memory_snapshot("resume-hmc-inputs-loaded", gpu_device)
 
-    init_values = build_map_initialization(
-        noise_scale=0.01
-    )
+    # Use the verified constrained MAP values exactly. Naively adding Gaussian
+    # noise here can violate positive/bounded supports before HMC even starts.
+    init_values = build_map_initialization(noise_scale=0.0)
 
     init_strategy = init_to_value(values=init_values)
 
@@ -143,7 +143,7 @@ def run_hmc():
     mcmc.run(
         rng_key,
         data=data_dict,
-        anneal=1.0,
+        prior_scale=1.0,
     )
 
     elapsed = time.time() - start
@@ -162,14 +162,11 @@ def run_hmc():
         print(f"\nAverage leapfrog steps: {avg_steps:.2f}")
 
     samples = mcmc.get_samples()
+    memory_snapshot("resume-hmc-sampled", gpu_device)
 
     os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-    with open(
-        os.path.join(OUTPUT_DIR, "samples.pkl"),
-        "wb"
-    ) as f:
-        pickle.dump(samples, f)
+    save_pickle_atomic(samples, os.path.join(OUTPUT_DIR, "samples.pkl"))
 
     print(f"\nSaved samples to:\n{OUTPUT_DIR}")
 

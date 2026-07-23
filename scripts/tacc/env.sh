@@ -37,7 +37,7 @@ export HOUFIN_VENV="$WORK/houfin/venv"                # uv-created venv
 # -------------------------------------------------------------------------
 
 # Portable dataset roots consumed by config/*.json (src/config_utils.py expands
-# ${HOUFIN_DATA}/${HOUFIN_PROCESSED}). Raw + processed 25 km products go on
+# ${HOUFIN_DATA}/${HOUFIN_PROCESSED}). Raw + processed 27 km products go on
 # $SCRATCH (fast, large, PURGED after 10 days); manifests + persistent outputs on
 # $WORK. Promote confirmed processed products to $WORK before the purge (see
 # docs/TACC.md).

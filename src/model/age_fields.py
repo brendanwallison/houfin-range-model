@@ -28,8 +28,9 @@ def project_and_scatter_age_structured(
 
     Survival/journey rates use a sigmoid link on the survival manifold H_s;
     fecundity and capacity use softplus on the reproduction manifold H_r. Q (in-
-    transit survival) reuses the juvenile survival intercept/slope on the path-
-    integrated habitat H_s_disp. Each returned array is (time, N_land[, K]).
+    cohort survival) reuses the juvenile survival intercept/slope on the
+    land-conditioned neighborhood/path habitat H_s_disp. Each returned array is
+    (time, N_land[, K]).
     """
     # Checkpoint: don't store this function's large intermediates for the
     # backward pass; recompute them instead.

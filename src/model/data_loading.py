@@ -2,9 +2,10 @@
 
 Consolidates the ``load_data`` / ``load_data_to_gpu`` copies that previously
 lived in ``age_run_map``, ``age_run_svi``, ``age_run_hmc`` and
-``age_resume_hmc``. The heavy ``Z_gathered`` / ``Z_disp_gathered`` arrays are
-kept in host RAM (streamed from memmap); everything else is cast and placed on
-the compute device.
+``age_resume_hmc``. Heavy inputs default to explicit device residency. A
+JIT-compiled differentiable ``lax.scan`` cannot truly stream NumPy slices from
+host memory; calling these arrays "streaming" previously obscured XLA's copies.
+Set ``HOUFIN_MODEL_INPUT_RESIDENCY=host`` only as an experimental mode.
 """
 import os
 import pickle
@@ -13,15 +14,14 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-# Arrays intentionally kept in host RAM rather than resident on the device.
-STREAMING_KEYS = {"Z_gathered", "Z_disp_gathered", "st_basis"}
+LARGE_INPUT_KEYS = {"Z_gathered", "Z_disp_gathered", "st_basis"}
 
 
 def load_data(input_dir, target_device=None, precision="float32", verbose=True):
     """Load model inputs, casting to ``precision`` and placing device arrays.
 
-    If ``target_device`` is given, non-streaming arrays are materialized on that
-    device; otherwise they land on JAX's default device.
+    If ``target_device`` is given, arrays are materialized on it unless explicit
+    experimental host residency is requested.
     """
     meta_path = os.path.join(input_dir, "metadata.pkl")
     with open(meta_path, "rb") as f:
@@ -43,8 +43,11 @@ def load_data(input_dir, target_device=None, precision="float32", verbose=True):
         dtype="float32", mode="r", shape=z_disp_shape,
     )
 
-    meta["Z_gathered"] = np.array(z_mem).astype(f_type_cpu)
-    meta["Z_disp_gathered"] = np.array(z_disp_mem).astype(f_type_cpu)
+    meta["Z_gathered"] = np.asarray(z_mem, dtype=f_type_cpu)
+    meta["Z_disp_gathered"] = np.asarray(z_disp_mem, dtype=f_type_cpu)
+    residency = os.environ.get("HOUFIN_MODEL_INPUT_RESIDENCY", "device").lower()
+    if residency not in {"device", "host"}:
+        raise ValueError("HOUFIN_MODEL_INPUT_RESIDENCY must be 'device' or 'host'")
 
     if verbose:
         print(f"Iterating through metadata and casting to {precision} on device: {target_device}...")
@@ -58,25 +61,26 @@ def load_data(input_dir, target_device=None, precision="float32", verbose=True):
 
     for key, value in meta.items():
         if isinstance(value, np.ndarray):
-            if key in STREAMING_KEYS:
+            if key in LARGE_INPUT_KEYS and residency == "host":
                 meta[key] = value.astype(f_type_cpu)
                 if verbose:
-                    print(f"  [CPU] {key}: {meta[key].nbytes / 1e9:.2f} GB")
+                    print(f"  [HOST, experimental] {key}: {meta[key].nbytes / 1e9:.2f} GB")
             else:
                 if target_device is not None:
-                    with jax.default_device(target_device):
-                        meta[key] = _to_device(value)
+                    meta[key] = jax.device_put(_to_device(value), target_device)
                 else:
                     meta[key] = _to_device(value)
                 if verbose:
-                    print(f"  [GPU] {key}: {meta[key].nbytes / 1e6:.1f} MB")
-
-    if precision == "float32" and meta.get("pseudo_zero", 0) < 1e-7:
-        meta["pseudo_zero"] = 1e-7
+                    print(f"  [DEVICE] {key}: {meta[key].nbytes / 1e6:.1f} MB")
 
     if verbose:
-        vram_gb = sum(x.nbytes for x in meta.values() if isinstance(x, jnp.ndarray)) / 1e9
-        print(f"--- Total Resident VRAM: {vram_gb:.2f} GB ---")
+        device_bytes = sum(
+            x.nbytes for x in meta.values()
+            if hasattr(x, "device") and not isinstance(x, np.ndarray)
+        )
+        host_bytes = sum(x.nbytes for x in meta.values() if isinstance(x, np.ndarray))
+        print(f"--- Explicit input residency: device={device_bytes / 1e9:.2f} GB, "
+              f"host={host_bytes / 1e9:.2f} GB (mode={residency}) ---")
 
     return meta
 

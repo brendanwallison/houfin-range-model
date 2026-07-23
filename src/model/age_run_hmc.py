@@ -34,6 +34,8 @@ if project_root not in sys.path:
 from src.model.age_priors import build_model_2d
 from src.model.age_forward import dispersal_step_age_structured, reproduction_age_structured
 from src.model.data_loading import load_data
+from src.model.checkpoints import save_pickle_atomic
+from src.model.runtime_diagnostics import memory_snapshot, require_gpu
 from src.config_utils import load_age_model_config
 
 # --- CONFIGURATION ---
@@ -46,8 +48,9 @@ def run_hmc_trial():
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     
     # 1. Load Data
-    gpu_device = jax.devices("gpu")[0]
+    gpu_device = require_gpu("age-model NeuTra HMC")
     data_dict = load_data(INPUT_DIR, gpu_device, precision=PRECISION)
+    memory_snapshot("hmc-inputs-loaded", gpu_device)
     
     # 2. Load the SVI Parameters
     svi_params_path = os.path.join(
@@ -68,7 +71,7 @@ def run_hmc_trial():
     from numpyro.infer import SVI, Trace_ELBO
     import optax
     mock_svi = SVI(build_model_2d, guide, optax.adam(1e-3), loss=Trace_ELBO())
-    _ = mock_svi.init(jax.random.PRNGKey(999), data=data_dict, anneal=1.0)
+    _ = mock_svi.init(jax.random.PRNGKey(999), data=data_dict, prior_scale=1.0)
 
     # NOW wrap the initialized guide in NeuTraReparam
     neutra = NeuTraReparam(guide, svi_params)
@@ -112,10 +115,10 @@ def run_hmc_trial():
         progress_bar=True
     )
 
-    # 6. Execute HMC (Explicitly passing anneal=1.0 to match your model signature)
+    # 6. Execute HMC under the nominal (fully relaxed) priors.
     rng_key = jax.random.PRNGKey(84)
     print(f"\nStarting NUTS sampling: {num_warmup} warmup, {num_samples} samples...")
-    mcmc.run(rng_key, data=data_dict, anneal=1.0)
+    mcmc.run(rng_key, data=data_dict, prior_scale=1.0)
     
     # 7. Transform the samples back to their original ecological space
     print("\nTransforming warped samples back to original parameter space...")
@@ -152,11 +155,11 @@ def run_hmc_trial():
 
     # Execute the chunked transformation
     original_samples = transform_in_chunks(warped_latents, chunk_size=10)
+    memory_snapshot("hmc-samples-transformed", gpu_device)
 
     # 8. Save the test traces
     trace_path = os.path.join(OUTPUT_DIR, "hmc_trial_samples.pkl")
-    with open(trace_path, 'wb') as f:
-        pickle.dump(original_samples, f)
+    save_pickle_atomic(original_samples, trace_path)
         
     print(f"Trial complete. Transformed samples saved to {trace_path}.")
     mcmc.print_summary()

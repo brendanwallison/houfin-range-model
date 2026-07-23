@@ -22,6 +22,7 @@ if project_root not in sys.path:
 from src.model.age_priors import build_model_2d
 from src.model.data_loading import load_data_to_gpu
 from src.config_utils import load_age_model_config
+from src.model.checkpoints import load_map_params
 
 # --- CONFIGURATION ---
 PRECISION = 'float32'
@@ -448,8 +449,8 @@ if __name__ == "__main__":
     
     print("1. Loading Model Data and MAP Parameters...")
     data = load_data_to_gpu(INPUT_DIR, precision=PRECISION)
-    with open(os.path.join(RESULT_DIR, "map_params.pkl"), 'rb') as f: 
-        params = pickle.load(f)
+    params, map_checkpoint = load_map_params(RESULT_DIR)
+    print(f"Loaded verified MAP checkpoint at step {map_checkpoint['step']}")
 
     # Reconstruct just what we need to get the MAP w_env
     sim = reconstruct_simulation(data, params)

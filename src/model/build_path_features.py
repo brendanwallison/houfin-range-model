@@ -1,11 +1,10 @@
 """Precompute path-integrated dispersal features (Z_disp) from the Z cube.
 
-For each year, convolves the habitat-quality latent (Z) with the dispersal
-kernels (``build_kernels``) so the forward simulation can read a ready-made
-"where dispersers arriving here came from" summary per cell instead of
-recomputing FFT convolutions inside the fit loop. Writes ``Z_disp_{year}.npz``
-on the model grid; consumed downstream by ``ingest_model_data`` /
-``generate_all_path_features`` and the age-structured model.
+For each year, applies the directional/radial dispersal cohorts to latent Z.
+At each fractional displacement, normalized convolution excludes ocean/nodata
+and conditions on the remaining land support. Averaging those fractions yields
+a land-conditioned neighborhood/path summary, not a literal water-crossing
+hazard. Writes ``Z_disp_{year}.npz`` for the age-structured model.
 """
 import sys
 import os
@@ -109,7 +108,7 @@ def convolve_mask_step(mask, kernel_stack_fft):
     return jnp.real(ifft2(conv_fft, axes=(-2, -1)))[:, :Ny, :Nx]
 
 def integrate_paths(Z, kernel_stack, land_mask, steps=10, feature_batch_size=4):
-    """Computes path-dependent features using Normalized Convolution."""
+    """Compute land-conditioned cohort features by normalized convolution."""
     print(f"Path Integration: Z={Z.shape}, Kernels={kernel_stack.shape}, Steps={steps}")
     
     Time, Ny, Nx, M = Z.shape
@@ -133,7 +132,8 @@ def integrate_paths(Z, kernel_stack, land_mask, steps=10, feature_batch_size=4):
         
         # B. Compute Normalizer (Denominator: How much land was traversed?)
         land_weight = convolve_mask_step(land_mask, scaled_kernels_fft)
-        land_weight = jnp.maximum(land_weight, 1e-6)
+        has_land_support = land_weight > 1e-10
+        safe_land_weight = jnp.where(has_land_support, land_weight, 1.0)
         
         for t in range(Time):
             for i in range(0, M, feature_batch_size):
@@ -143,7 +143,11 @@ def integrate_paths(Z, kernel_stack, land_mask, steps=10, feature_batch_size=4):
                 num_slice = convolve_step(z_slice, scaled_kernels_fft)
                 
                 # Normalization (Numerator / Denominator)
-                avg_feat_slice = num_slice / land_weight[None, :, :, :]
+                avg_feat_slice = jnp.where(
+                    has_land_support[None, :, :, :],
+                    num_slice / safe_land_weight[None, :, :, :],
+                    0.0,
+                )
                 
                 Z_disp_acc = Z_disp_acc.at[t, i : i + feature_batch_size].add(avg_feat_slice)
             

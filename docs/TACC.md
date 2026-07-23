@@ -1,6 +1,6 @@
 # Running the data-processing pipeline on TACC Lonestar6
 
-This runs the pipeline end-to-end: download every source, build all 25 km products
+This runs the pipeline end-to-end: download every source, build all 27 km products
 (including `climr` climate), assemble the encoder inputs, and train the DESK
 community encoder through the `validate` step. The GPU encoder is a separate job
 (§3c).
@@ -26,12 +26,14 @@ on multi-project accounts).
 |---|------|-------|---------|
 | 1 | one-time setup | login | §1 |
 | 2 | download raw data | login | `bash scripts/tacc/download_all.sh` |
-| 3 | preprocess → 25 km grids (+ sub-cell centroids) | compute | `bash scripts/tacc/submit_preprocess.sh` |
+| 3 | preprocess → 27 km grids (+ sub-cell centroids) | compute | `bash scripts/tacc/submit_preprocess.sh` |
 | 4 | **warm the climr cache** | **login** | `bash scripts/tacc/warm_climr.sh` |
 | 5 | climate downscale + grids | compute | `bash scripts/tacc/submit_climate.sh` |
 | 6 | assemble encoder inputs (states, eBird cache, BBS, amplitude) | compute | `bash scripts/tacc/submit_states.sh` |
 | 7 | GPU encoder (ESK → DESK → cube → validate) | GPU | `bash scripts/tacc/submit_encoder.sh` |
-| 8 | visual-QC quicklooks | compute | `bash scripts/tacc/submit_visualize.sh` |
+| 8 | build `Z_disp` + transactional model inputs | GPU | `bash scripts/tacc/submit_model_prep.sh` |
+| 9 | MAP statistical model | GPU | `bash scripts/tacc/submit_map.sh` |
+| 10 | visual-QC quicklooks | compute | `bash scripts/tacc/submit_visualize.sh` |
 
 Steps 3+5+6 can instead be **one** dev-queue job on a warm cache (`00_preprocess_all`,
 §3b). The only hard ordering is 2 → 3 → 4 → 5.
@@ -309,7 +311,42 @@ works but slower — `cube`/`validate` are light). The repo's `gpu` extra pins
 venv first (`20_encoder.slurm` checks and aborts if not). `enrich` mode (folding
 BBS into training) is not yet wired — decide based on the `validate` report.
 
-## 3f. Visual-QC quicklooks (SLURM, compute)
+## 3f. Post-DESK model preparation and MAP
+
+After `cube` finishes, build the land-conditioned juvenile neighborhood features
+and ingest the complete canonical 1902–2025 timeline:
+
+```bash
+bash scripts/tacc/submit_model_prep.sh
+```
+
+This runs `path-features` then `model-ingest`. The former writes raw instantaneous
+`Z`, `Z_disp`, kernel/mask/timeline provenance, and a build ID into every yearly
+file. The latter verifies every build ID and contract before atomically publishing
+versioned memmaps through `metadata.pkl`. The statistical model explicitly keeps
+the configured top 16 of the 64 source eigenfeatures by default; changing
+`age_model_config.json:latent_dim` is the supported VRAM tradeoff.
+
+Then submit MAP:
+
+```bash
+bash scripts/tacc/submit_map.sh
+HOUFIN_MAP_STEPS=1800 RESUBMITS=3 bash scripts/tacc/submit_map.sh
+```
+
+MAP checkpoints contain the exact optimizer state, parameters, loss history,
+input/code/config fingerprint, fixed absolute prior-continuation schedule, and
+device-memory snapshot. A changed model/input/config refuses resume; set
+`HOUFIN_MAP_FRESH=1` only for a deliberate new run.
+
+All three GPU wrappers fail on CPU fallback and write 30-second telemetry files
+(`gpu_encoder_<job>.csv`, `gpu_modelprep_<job>.csv`, `gpu_map_<job>.csv`).
+Compare `vram_used_mib` with `vram_total_mib`; rising `user_process_rss_kib` or
+falling host `MemAvailable`/`SwapFree` at saturated VRAM reveals host-memory
+pressure. MAP logs also print JAX allocator in-use/peak/limit counters at input
+load and every checkpoint, while `/usr/bin/time -v` reports peak process RSS.
+
+## 3g. Visual-QC quicklooks (SLURM, compute)
 
 Render the 25 km products to thumbnail PNGs and tar them for `scp` — a fast visual
 sanity check at any point after the grids/states exist:
@@ -361,12 +398,7 @@ hyde35_grid,soilgrids_grid,elevation,climate,bbs_2026_release/bbs_data_for_pytho
 
 Raw downloads can stay on `$SCRATCH` (re-downloadable) or be archived to `$WORK`/Ranch.
 
-## Deferred (later milestone)
-The **population-model fit** — the NumPyro negative-binomial range model that
-consumes the per-year Z cube (`Z_latent_{year}.npy`) plus the route-level BBS counts
-(`bbs_data_for_python.npz`) — is the remaining downstream stage (GPU: `gpu-a100` /
-`gpu-h100`; install with `uv pip install -e ".[model,gpu]"` — the `gpu` extra pins
-`jax[cuda12]`). The encoder half (states/`run_states`, the `climr`→gridded-climate
-step, ESK/DESK, cube, and `validate`) is now wired and covered above; `enrich` mode
-(folding BBS into DESK training) is the one encoder path still to wire, gated on the
-`validate` report.
+## Deferred
+
+Posterior SVI/HMC remain more expensive follow-ons to the wired MAP path. `enrich`
+mode (folding BBS into DESK training) is also still gated on the validation report.

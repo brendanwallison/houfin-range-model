@@ -96,7 +96,7 @@ def rebuild_spatial_grids(raw_samples, data_dict):
     def fast_forward_sim(single_sample):
         seeded_model = seed(build_model_2d, jax.random.PRNGKey(0))
         substituted = substitute(seeded_model, data=single_sample)
-        model_trace = trace(substituted).get_trace(data=data_dict, anneal=1.0)
+        model_trace = trace(substituted).get_trace(data=data_dict, prior_scale=1.0)
         return {
             'simulated_density': model_trace['simulated_density']['value'],
             'Sa_flat': model_trace['Sa_flat']['value'],
@@ -120,7 +120,8 @@ def rebuild_spatial_grids(raw_samples, data_dict):
             N_a, N_j = pools
             k = t - data_dict['inv_timestep']
             val = jnp.where((k >= 0) & (k < inv_pop.shape[0]), inv_pop[jnp.clip(k, 0, inv_pop.shape[0]-1)], 0.0)
-            N_a = N_a.at[row, col].add(val)
+            N_a = N_a.at[row, col].add(val * 0.5)
+            N_j = N_j.at[row, col].add(val * 0.5)
             Sa_g = jnp.zeros((Ny, Nx)).at[data_dict['land_rows'], data_dict['land_cols']].set(sim_output['Sa_flat'][t])
             Sj_g = jnp.zeros((Ny, Nx)).at[data_dict['land_rows'], data_dict['land_cols']].set(sim_output['Sj_flat'][t])
             Fmax_g = jnp.zeros((Ny, Nx)).at[data_dict['land_rows'], data_dict['land_cols']].set(sim_output['Fmax_flat'][t])
@@ -129,15 +130,18 @@ def rebuild_spatial_grids(raw_samples, data_dict):
             Q_g = jnp.zeros((Ny, Nx, Q_t.shape[-1])).at[data_dict['land_rows'], data_dict['land_cols'], :].set(Q_t).transpose(2, 0, 1)
 
             N_a_post, j_stayers, j_arriving = dispersal_step_age_structured(
-                N_a, N_j, K_g, disp_log_int, disp_log_slope, 0.8,
+                N_a, N_j, K_g,
+                disp_log_int + single_sample["dispersal_random"][t],
+                disp_log_slope, data_dict["dispersal_target_fraction"],
                 data_dict['adult_edge_correction'], data_dict['juvenile_edge_correction_stack'],
                 data_dict['adult_fft_kernel'], data_dict['juvenile_fft_kernel_stack'], Q_g, 1e-6
             )
             N_a_new, N_j_new = reproduction_age_structured(
                 N_a_post, j_stayers, j_arriving, Sa_g, Sj_g, Fmax_g, K_g, allee_gamma
             )
-            return (jnp.maximum(N_a_new * data_dict['land_mask'], 0.0), 
-                    jnp.maximum(N_j_new * data_dict['land_mask'], 0.0)), (N_a_new, N_j_new)
+            N_a_new = jnp.maximum(N_a_new * data_dict['land_mask'], 0.0)
+            N_j_new = jnp.maximum(N_j_new * data_dict['land_mask'], 0.0)
+            return (N_a_new, N_j_new), (N_a_new, N_j_new)
 
         _, (Na_grid, Nj_grid) = lax.scan(step, (data_dict['initpop_latent'] * 0.5, data_dict['initpop_latent'] * 0.5), jnp.arange(time))
         return {'Na_flat': Na_grid[:, data_dict['land_rows'], data_dict['land_cols']], 

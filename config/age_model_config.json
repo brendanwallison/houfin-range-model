@@ -14,6 +14,45 @@
     "feature_prior": "isotropic",
     "_comment": "The encoder supplies an uncentered 64-D Nyström feature map; model ingestion explicitly retains the first latent_dim=16 eigenfeatures by default to fit VRAM. Conditional on each w_scale, iid coefficients over those retained features imply Cov[H(x),H(x')|w_scale] = w_scale^2 Z_r(x)·Z_r(x'), the configured rank-r approximation to the original Ružička kernel. Truncation must be config-driven and recorded, never silent."
   },
+  "dispersal": {
+    "_comment": "Single source of truth shared by Z_disp preparation and the forward model. The three explicit radial cohorts preserve the current 0-155, 155-483 and 483+-km behavior; do not duplicate these boundaries in code.",
+    "adult_mdd_km": 100.0,
+    "adult_shape": 0.468,
+    "juvenile_mdd_km": 330.0,
+    "juvenile_shape": 0.468,
+    "juvenile_radial_splits_km": [0.0, 155.36162529769288, 482.7446923028151, 1000000000.0],
+    "path_integration_steps": 20,
+    "path_operator": "land_conditioned_neighborhood",
+    "_path_comment": "Z_disp is intentionally a land-conditioned neighborhood/path summary: at each fractional displacement, water/nodata is excluded and the remaining land contribution is normalized. It is not a literal trajectory hazard through water."
+  },
+  "age_structure_prior": {
+    "_comment": "Resolution-invariant weak local-age-structure regularizer. We average log Beta density over land cell-years, then multiply by effective_sites, instead of treating every grid cell/year as an independent prior observation. This is a distributional belief about a representative local cell, not a prior on the domain-wide mean.",
+    "alpha": 1.01,
+    "beta": 1.01,
+    "effective_sites": 100.0
+  },
+  "population_model": {
+    "_comment": "Mechanistic/data-scale constants persisted into model-input metadata; no hidden grid or invasion constants in ingestion code.",
+    "population_scale_birds_per_relative_unit": 210.0,
+    "invasion_lat": 40.6106,
+    "invasion_lon": -73.4445,
+    "invasion_window_years": 10,
+    "dispersal_target_capacity_fraction": 0.8,
+    "st_basis_space_frequencies": 4,
+    "st_basis_time_frequencies": 8
+  },
+  "map": {
+    "_comment": "Continuation begins under tight priors and progressively relaxes them at absolute optimizer steps. Boundaries are independent of TOTAL_STEPS so extending/resuming a run cannot move backward. lr_decay_steps is likewise fixed across extensions.",
+    "prior_relaxation": [[0, 0.1], [300, 0.5], [600, 1.0]],
+    "lr_decay_steps": 900,
+    "init_lr": 0.01,
+    "weight_decay": 0.0
+  },
+  "runtime": {
+    "_comment": "Production JAX jobs require a GPU and explicitly place model inputs in VRAM. HOUFIN_MODEL_INPUT_RESIDENCY=host is experimental: lax.scan is not a true differentiable host-streaming mechanism. SLURM wrappers record nvidia-smi VRAM/utilization plus host MemAvailable/SwapFree every 30 seconds.",
+    "input_residency": "device",
+    "gpu_telemetry_seconds": 30
+  },
   "path_features": {
     "input_dir": "${HOUFIN_PROCESSED}/encoder/cube",
     "output_dir": "${HOUFIN_PROCESSED}/latent_avian_paths"
@@ -29,12 +68,12 @@
     "hmc": "age_hmc_{precision}_trial_3",
     "hmc_svi_source": "age_vi_{precision}_run_2",
     "resume_svi_out": "age_vi_{precision}_run_15",
-    "resume_svi_from_map": "age_map_{precision}_run_13",
+    "resume_svi_from_map": "age_map_{precision}_run_4",
     "resume_hmc_out": "age_hmc_{precision}_from_map",
-    "resume_hmc_from_map": "age_map_{precision}_run_16",
-    "vis_map": "age_map_{precision}_run_3",
+    "resume_hmc_from_map": "age_map_{precision}_run_4",
+    "vis_map": "age_map_{precision}_run_4",
     "vis_svi": "age_vi_{precision}_run_5",
     "vis_hmc": "age_hmc_{precision}_trial_3",
-    "vis_community": "age_map_{precision}_run_14"
+    "vis_community": "age_map_{precision}_run_4"
   }
 }

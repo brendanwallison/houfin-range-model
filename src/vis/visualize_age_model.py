@@ -23,6 +23,7 @@ if project_root not in sys.path:
 
 from src.model.age_priors import build_model_2d 
 from src.model.age_forward import dispersal_step_age_structured, reproduction_age_structured
+from src.model.checkpoints import load_map_params
 from src.model.data_loading import load_data_to_gpu
 from src.config_utils import load_age_model_config
 
@@ -660,7 +661,8 @@ def rebuild_age_pools(sim, data, params):
         # 3. Compute spatial dispersal routing maps
         N_a_post, juvenile_stayers, juvenile_arriving = dispersal_step_age_structured(
             N_a, N_j, K_g, 
-            dispersal_logit_intercept, dispersal_logit_slope, 0.8,
+            dispersal_logit_intercept + sim["dispersal_random"][t],
+            dispersal_logit_slope, data["dispersal_target_fraction"],
             adult_edge_correction, juvenile_edge_correction_stack,
             adult_fft_kernel, juvenile_fft_kernel_stack,
             Q_grid=Q_g, eps=1e-6
@@ -1201,7 +1203,8 @@ def diagnose_st_weights(sim, data, output_dir):
 
 def plot_results():
     data = load_data_to_gpu(INPUT_DIR, precision=PRECISION)
-    with open(os.path.join(RESULT_DIR, "map_params.pkl"), 'rb') as f: params = pickle.load(f)
+    params, map_checkpoint = load_map_params(RESULT_DIR)
+    print(f"Loaded verified MAP checkpoint at step {map_checkpoint['step']}")
 
     # --- Load Kernel Labels ---
     PATH_INTEGRATION_DIR = _cfg["path_diagnostics_dir"]

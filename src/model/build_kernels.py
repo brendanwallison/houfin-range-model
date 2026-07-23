@@ -50,7 +50,8 @@ def angular_weights_toroidal(Lx: int, Ly: int):
     Returns a dict of four smooth angular tapers (raised-cosine over +/-pi/2 about
     each cardinal direction) on the toroidal grid; together they form a partition
     of unity over direction, so multiplying a radial kernel by each and summing
-    recovers the original. The origin cell is weight 1 in every direction.
+    recovers the original. Direction is undefined at the origin, so its mass is
+    divided equally among the four cohorts.
     """
     y_idx, x_idx = jnp.meshgrid(jnp.arange(Ly), jnp.arange(Lx), indexing="ij")
     
@@ -73,7 +74,7 @@ def angular_weights_toroidal(Lx: int, Ly: int):
         diff = jnp.mod(angles - target_angle + jnp.pi, 2*jnp.pi) - jnp.pi
         taper = jnp.clip(diff, -width/2, width/2) 
         weight = 0.5 * (1 + jnp.cos(jnp.pi * taper / (width/2)))
-        weight = jnp.where((dx == 0) & (dy == 0), 1.0, weight)
+        weight = jnp.where((dx == 0) & (dy == 0), 0.25, weight)
         w_dict[d] = weight
 
     return w_dict
@@ -193,6 +194,41 @@ JUVENILE_MDD_KM = 330.0
 JUVENILE_SHAPE = 0.468
 
 
+def dispersal_spec(config):
+    """Return the validated, config-owned movement/path-feature specification."""
+    d = config.get("dispersal") or {}
+    required = (
+        "adult_mdd_km", "adult_shape", "juvenile_mdd_km", "juvenile_shape",
+        "juvenile_radial_splits_km", "path_integration_steps", "path_operator",
+    )
+    missing = [key for key in required if key not in d]
+    if missing:
+        raise KeyError(f"age-model dispersal config missing {missing}")
+    splits = [float(x) for x in d["juvenile_radial_splits_km"]]
+    if len(splits) < 2 or splits[0] != 0.0 or splits[-1] < 1e8:
+        raise ValueError(f"juvenile_radial_splits_km must span [0, infinity], got {splits}")
+    if any(b <= a for a, b in zip(splits[:-1], splits[1:])):
+        raise ValueError(f"juvenile_radial_splits_km must increase strictly, got {splits}")
+    if str(d["path_operator"]) != "land_conditioned_neighborhood":
+        raise ValueError(
+            "only path_operator='land_conditioned_neighborhood' is implemented"
+        )
+    if int(d["path_integration_steps"]) < 1:
+        raise ValueError("path_integration_steps must be positive")
+    for key in ("adult_mdd_km", "adult_shape", "juvenile_mdd_km", "juvenile_shape"):
+        if float(d[key]) <= 0:
+            raise ValueError(f"{key} must be positive")
+    return {
+        "adult_mdd_km": float(d["adult_mdd_km"]),
+        "adult_shape": float(d["adult_shape"]),
+        "juvenile_mdd_km": float(d["juvenile_mdd_km"]),
+        "juvenile_shape": float(d["juvenile_shape"]),
+        "juvenile_radial_splits_km": splits,
+        "path_integration_steps": int(d["path_integration_steps"]),
+        "path_operator": str(d["path_operator"]),
+    }
+
+
 def make_juvenile_kernel_stack(Lx, Ly, cell_size, radii_splits,
                                mean_dist=JUVENILE_MDD_KM, shape=JUVENILE_SHAPE):
     """Directional x radial juvenile dispersal kernels: the master PDF split into wedges.
@@ -205,7 +241,14 @@ def make_juvenile_kernel_stack(Lx, Ly, cell_size, radii_splits,
     scale = get_gamma_scale(mean_dist, shape)
     master = jnp.exp(-(r_dist / scale) ** shape)
     master = master / jnp.sum(master)
-    return make_radial_directional_kernels(Lx, Ly, cell_size, master, radii_splits)
+    stack, labels = make_radial_directional_kernels(
+        Lx, Ly, cell_size, master, radii_splits)
+    # This is a physical probability decomposition. Fail immediately if a future
+    # angular/radial refactor stops being a partition of unity.
+    total = jnp.sum(stack)
+    if not bool(jnp.isclose(total, 1.0, rtol=2e-5, atol=2e-6)):
+        raise ValueError(f"juvenile kernel stack is not mass-conserving (sum={float(total):.8f})")
+    return stack, labels
 
 
 def build_simulation_struct(

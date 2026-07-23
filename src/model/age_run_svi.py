@@ -34,6 +34,8 @@ if project_root not in sys.path:
 from src.model.age_priors import build_model_2d
 from src.model.age_forward import dispersal_step_age_structured, reproduction_age_structured
 from src.model.data_loading import load_data
+from src.model.checkpoints import save_pickle_atomic
+from src.model.runtime_diagnostics import memory_snapshot, require_gpu
 from src.config_utils import load_age_model_config
 
 # --- CONFIGURATION ---
@@ -47,8 +49,9 @@ def run_vi():
     params_path = os.path.join(OUTPUT_DIR, "svi_params.pkl")
     
     # We will use the GPU for all math
-    gpu_device = jax.devices("gpu")[0]
+    gpu_device = require_gpu("age-model SVI")
     data_dict = load_data(INPUT_DIR, gpu_device, precision=PRECISION)
+    memory_snapshot("svi-inputs-loaded", gpu_device)
     
     # --- RESUME DETECTOR ---
     if os.path.exists(params_path):
@@ -60,8 +63,8 @@ def run_vi():
         # rank=20 captures the top 20 principal axes of variation across the parameter space
         guide = AutoLowRankMultivariateNormal(build_model_2d, rank=20)
         total_steps = 600
-        anneal_epochs = [0.1, 0.5, 1.0]
-        steps_per_epoch = total_steps // len(anneal_epochs)
+        prior_scales = [0.1, 0.5, 1.0]
+        steps_per_epoch = total_steps // len(prior_scales)
         scheduler = optax.cosine_decay_schedule(init_value=0.01, decay_steps=total_steps, alpha=0.1)
         optimizer = numpyro.optim.optax_to_numpyro(
             optax.chain(optax.clip_by_global_norm(1.0), optax.adamw(learning_rate=scheduler, weight_decay=1e-4, eps=1e-7))
@@ -70,17 +73,16 @@ def run_vi():
         
         print("Compiling model & variational guide on GPU...")
         rng_key = jax.random.PRNGKey(41)
-        svi_state = svi.init(rng_key, data=data_dict, anneal=anneal_epochs[0])
+        svi_state = svi.init(rng_key, data=data_dict, prior_scale=prior_scales[0])
 
-        for anneal_level in anneal_epochs:
-            pbar = tqdm(range(steps_per_epoch), desc=f"Epoch (Anneal={anneal_level})")
+        for prior_scale in prior_scales:
+            pbar = tqdm(range(steps_per_epoch), desc=f"Epoch (prior_scale={prior_scale})")
             for i in pbar:
-                svi_state, loss = svi.update(svi_state, data=data_dict, anneal=anneal_level)
+                svi_state, loss = svi.update(svi_state, data=data_dict, prior_scale=prior_scale)
                 if i % 10 == 0: pbar.set_postfix({"loss": f"{float(loss):.4f}"})
         
         params = svi.get_params(svi_state)
-        with open(params_path, 'wb') as f:
-            pickle.dump(params, f)
+        save_pickle_atomic(params, params_path)
         print("Training Complete. Params saved.")
 
     # --- WELFORD'S EXACT VARIANCE ENGINE (HYBRID) ---
@@ -94,13 +96,13 @@ def run_vi():
 
     # Initialize guide structure internally on the active device
     mock_svi = SVI(build_model_2d, guide, optax.adam(1e-3), loss=Trace_ELBO())
-    _ = mock_svi.init(jax.random.PRNGKey(999), data=data_dict, anneal=1.0)
+    _ = mock_svi.init(jax.random.PRNGKey(999), data=data_dict, prior_scale=1.0)
     
     @jax.jit
     def fast_forward_sim(single_sample):
         seeded_model = seed(build_model_2d, jax.random.PRNGKey(0))
         substituted = substitute(seeded_model, data=single_sample)
-        model_trace = trace(substituted).get_trace(data=data_dict, anneal=1.0)
+        model_trace = trace(substituted).get_trace(data=data_dict, prior_scale=1.0)
         return {
             'simulated_density': model_trace['simulated_density']['value'],
             'Sa_flat': model_trace['Sa_flat']['value'],
@@ -124,7 +126,8 @@ def run_vi():
             N_a, N_j = pools
             k = t - data_dict['inv_timestep']
             val = jnp.where((k >= 0) & (k < inv_pop.shape[0]), inv_pop[jnp.clip(k, 0, inv_pop.shape[0]-1)], 0.0)
-            N_a = N_a.at[row, col].add(val)
+            N_a = N_a.at[row, col].add(val * 0.5)
+            N_j = N_j.at[row, col].add(val * 0.5)
             Sa_g = jnp.zeros((Ny, Nx)).at[data_dict['land_rows'], data_dict['land_cols']].set(sim_output['Sa_flat'][t])
             Sj_g = jnp.zeros((Ny, Nx)).at[data_dict['land_rows'], data_dict['land_cols']].set(sim_output['Sj_flat'][t])
             Fmax_g = jnp.zeros((Ny, Nx)).at[data_dict['land_rows'], data_dict['land_cols']].set(sim_output['Fmax_flat'][t])
@@ -133,15 +136,18 @@ def run_vi():
             Q_g = jnp.zeros((Ny, Nx, Q_t.shape[-1])).at[data_dict['land_rows'], data_dict['land_cols'], :].set(Q_t).transpose(2, 0, 1)
 
             N_a_post, j_stayers, j_arriving = dispersal_step_age_structured(
-                N_a, N_j, K_g, disp_log_int, disp_log_slope, 0.8,
+                N_a, N_j, K_g,
+                disp_log_int + single_sample["dispersal_random"][t],
+                disp_log_slope, data_dict["dispersal_target_fraction"],
                 data_dict['adult_edge_correction'], data_dict['juvenile_edge_correction_stack'],
                 data_dict['adult_fft_kernel'], data_dict['juvenile_fft_kernel_stack'], Q_g, 1e-6
             )
             N_a_new, N_j_new = reproduction_age_structured(
                 N_a_post, j_stayers, j_arriving, Sa_g, Sj_g, Fmax_g, K_g, allee_gamma
             )
-            return (jnp.maximum(N_a_new * data_dict['land_mask'], 0.0), 
-                    jnp.maximum(N_j_new * data_dict['land_mask'], 0.0)), (N_a_new, N_j_new)
+            N_a_new = jnp.maximum(N_a_new * data_dict['land_mask'], 0.0)
+            N_j_new = jnp.maximum(N_j_new * data_dict['land_mask'], 0.0)
+            return (N_a_new, N_j_new), (N_a_new, N_j_new)
 
         _, (Na_grid, Nj_grid) = lax.scan(step, (data_dict['initpop_latent'] * 0.5, data_dict['initpop_latent'] * 0.5), jnp.arange(time))
         return {'Na_flat': Na_grid[:, data_dict['land_rows'], data_dict['land_cols']], 
@@ -165,6 +171,8 @@ def run_vi():
         # 1. Stream exactly ONE sample parameter profile onto GPU
         sampling_key, subkey = jax.random.split(sampling_key)
         sample_gpu = guide.sample_posterior(subkey, params, sample_shape=())
+        if i % 50 == 0:
+            memory_snapshot(f"svi-posterior-{i}", gpu_device)
         
         # 2. Run forward simulators on GPU
         sim_output_gpu = fast_forward_sim(sample_gpu)

@@ -1,6 +1,8 @@
 import os
 import glob
 import json
+import hashlib
+import uuid
 import pickle
 import numpy as np
 import pandas as pd
@@ -8,9 +10,10 @@ import rasterio
 from rasterio.warp import transform as project_coords
 
 import jax.numpy as jnp
-from src.model.build_kernels import JUVENILE_MDD_KM, JUVENILE_SHAPE, build_simulation_struct
+from src.model.build_kernels import build_simulation_struct, dispersal_spec
 from src.config_utils import load_age_model_config
-from src.temporal import assert_contiguous, invasion_timestep, load_timeline, year_to_index
+from src.data.masks import read_land_mask
+from src.temporal import assert_contiguous, invasion_timestep, load_timeline, model_years, year_to_index
 
 _cfg = load_age_model_config()
 RAW_Z_DIR = _cfg["raw_z_dir"]
@@ -28,14 +31,12 @@ OUTPUT_DIR = _cfg["input_dir"]
 MODEL_LATENT_DIM = int(_cfg.get("latent_dim", 64))
 SOURCE_LATENT_DIM = int(_cfg.get("source_latent_dim", MODEL_LATENT_DIM))
 KERNEL_CONTRACT = dict(_cfg.get("kernel_contract", {}))
+DISPERSAL_SPEC = dispersal_spec(_cfg)
+POPULATION_SPEC = dict(_cfg["population_model"])
 
 # --- SPATIOTEMPORAL BASIS SETTINGS ---
-N_FREQ_SPACE = 4  # ~600km regional resolution
-N_FREQ_TIME = 8   # ~15-year decadal resolution
-
-# --- INVASION PARAMETERS ---
-INV_LAT = 40.6106
-INV_LON = -73.4445
+N_FREQ_SPACE = int(POPULATION_SPEC["st_basis_space_frequencies"])
+N_FREQ_TIME = int(POPULATION_SPEC["st_basis_time_frequencies"])
 
 def generate_spatiotemporal_basis(Ny, Nx, Time, land_rows, land_cols, n_freq_space=4, n_freq_time=8):
     """
@@ -71,14 +72,6 @@ def generate_spatiotemporal_basis(Ny, Nx, Time, land_rows, land_cols, n_freq_spa
     return st_basis
 
 
-def get_log_spaced_splits(min_dist, max_dist, n_bins):
-    start = np.log10(max(min_dist, 1.0))
-    end = np.log10(max_dist)
-    log_points = np.logspace(start, end, n_bins + 1)
-    splits = [0.0] + list(log_points[1:])
-    splits[-1] = 1e9 
-    return splits
-
 def load_land_metadata(tif_path):
     with rasterio.open(tif_path) as src:
         res_x = src.res[0]
@@ -95,8 +88,15 @@ def load_ocean_land_mask(tif_path):
     Matches the convention used by bbs.py / build_final_z_cube.py (``land = raster == 0``),
     so the age-model mask and the BBS npz's embedded land mask can be compared cell-for-cell.
     """
-    with rasterio.open(tif_path) as src:
-        return src.read(1) == 0
+    return read_land_mask(tif_path)
+
+
+def _sha256(path):
+    h = hashlib.sha256()
+    with open(path, "rb") as fh:
+        for block in iter(lambda: fh.read(1024 * 1024), b""):
+            h.update(block)
+    return h.hexdigest()
 
 
 # --- Ingestion guards (see plan E1/E2/E3): turn silent grid/timeline mismatches, created by
@@ -148,11 +148,12 @@ def ingest_data():
           f"kernel={KERNEL_CONTRACT.get('kernel', 'unspecified')}, "
           f"centered={KERNEL_CONTRACT.get('centered', 'unspecified')}) ---")
     os.makedirs(OUTPUT_DIR, exist_ok=True)
-    contract_path = os.path.join(RAW_Z_DIR, "kernel_contract.json")
-    if not os.path.exists(contract_path):
-        raise FileNotFoundError(f"path features lack kernel contract: {contract_path}")
-    with open(contract_path, encoding="utf-8") as fh:
-        source_contract = json.load(fh)
+    path_meta_path = os.path.join(RAW_Z_DIR, "path_feature_meta.json")
+    if not os.path.exists(path_meta_path):
+        raise FileNotFoundError(f"path features lack complete provenance: {path_meta_path}")
+    with open(path_meta_path, encoding="utf-8") as fh:
+        path_meta = json.load(fh)
+    source_contract = path_meta.get("kernel_contract") or {}
     expected_contract = {
         "kernel": KERNEL_CONTRACT.get("kernel", "ruzicka"),
         "centered": bool(KERNEL_CONTRACT.get("centered", False)),
@@ -162,6 +163,19 @@ def ingest_data():
         if source_contract.get(key) != expected:
             raise ValueError(f"path-feature contract {key}={source_contract.get(key)!r} "
                              f"!= age-model expectation {expected!r}")
+    if source_contract.get("temporal_output") != "raw_instantaneous":
+        raise ValueError("age model requires instantaneous raw DESK Z; rebuild the cube/path "
+                         f"features (got temporal_output={source_contract.get('temporal_output')!r})")
+    if path_meta.get("dispersal") != DISPERSAL_SPEC:
+        raise ValueError("path-feature dispersal specification differs from age_model_config; "
+                         "regenerate Z_disp before ingestion")
+    if int(path_meta.get("integration_steps", -1)) != DISPERSAL_SPEC["path_integration_steps"]:
+        raise ValueError("path-feature integration step count differs from age_model_config")
+    if path_meta.get("mask_sha256") != _sha256(MASK_FILE):
+        raise ValueError("path features were generated with a different ocean/land mask")
+    if abs(float(path_meta.get("kernel_mass", np.nan)) - 1.0) > 2e-5:
+        raise ValueError(f"path-feature juvenile kernel is not mass-conserving: "
+                         f"{path_meta.get('kernel_mass')}")
     
     # 1. Load Raw Data (Fine Grid)
     if not os.path.exists(BBS_DATA_NPZ):
@@ -256,7 +270,7 @@ def ingest_data():
     obs_quality = np.concatenate([final_p_quality, r_quality])
 
     # Bounds Check
-    valid_locs = (obs_rows < Ny) & (obs_cols < Nx)
+    valid_locs = (obs_rows >= 0) & (obs_rows < Ny) & (obs_cols >= 0) & (obs_cols < Nx)
     obs_rows = obs_rows[valid_locs]
     obs_cols = obs_cols[valid_locs]
     obs_year = obs_year[valid_locs]
@@ -269,13 +283,24 @@ def ingest_data():
     z_files = sorted(glob.glob(os.path.join(RAW_Z_DIR, "Z_disp_*.npz")))
     file_map = {int(os.path.basename(f).split('_')[2].split('.')[0]): f for f in z_files}
     sorted_years = sorted(file_map.keys())
+    if not sorted_years:
+        raise FileNotFoundError(f"no Z_disp_*.npz files in {RAW_Z_DIR}")
     assert_contiguous(sorted_years)  # the year->index mapping requires no gaps
     start_year_model, end_year_model = min(sorted_years), max(sorted_years)
-    model_years = np.array(sorted_years)
-    Time = len(model_years)
+    realized_years = np.array(sorted_years)
+    Time = len(realized_years)
     _tl = load_timeline()
     print(f"  Timeline: {start_year_model}-{end_year_model} ({Time} years); "
           f"config timeline {_tl['first_year']}-{_tl['end_year']}")
+    expected_years = model_years(_tl)
+    if sorted_years != expected_years:
+        missing = sorted(set(expected_years) - set(sorted_years))
+        extra = sorted(set(sorted_years) - set(expected_years))
+        raise ValueError(f"production model inputs require the complete canonical timeline "
+                         f"{expected_years[0]}-{expected_years[-1]}; "
+                         f"missing={missing[:10]}, extra={extra[:10]}")
+    if [int(y) for y in path_meta.get("years", [])] != expected_years:
+        raise ValueError("path_feature_meta years do not match the canonical timeline")
 
     # Guard (E3): the BBS model's pre-invasion pseudo-zeros live in [first_year, invasion-1].
     # Obs are filtered to years present in the cube (below), so if the cube starts after the
@@ -302,19 +327,43 @@ def ingest_data():
         print(f"  Explicit configured truncation: top {M}/{available_M} uncentered "
               "Ružička eigenfeatures (age_model_config.latent_dim)")
     K = peek['Z_disp'].shape[-1]
+    expected_labels = [str(x) for x in path_meta.get("kernel_labels", [])]
+    expected_build_id = path_meta.get("build_id")
+    if not expected_build_id:
+        raise ValueError("path-feature metadata lacks a transactional build_id")
+    if K != int(path_meta.get("kernel_count", -1)) or len(expected_labels) != K:
+        raise ValueError("path-feature kernel count/labels are inconsistent")
     
-    z_gather_path = os.path.join(OUTPUT_DIR, "Z_gathered.dat")
+    ingest_id = uuid.uuid4().hex
+    z_gather_name = f"Z_gathered_{ingest_id}.dat"
+    z_disp_name = f"Z_disp_gathered_{ingest_id}.dat"
+    z_gather_path = os.path.join(OUTPUT_DIR, z_gather_name)
     Z_gathered = np.memmap(z_gather_path, dtype='float32', mode='w+', shape=(Time, N_land, M))
-    z_disp_path = os.path.join(OUTPUT_DIR, "Z_disp_gathered.dat")
+    z_disp_path = os.path.join(OUTPUT_DIR, z_disp_name)
     Z_disp_gathered = np.memmap(z_disp_path, dtype='float32', mode='w+', shape=(Time, N_land, K, M))
 
     print("  Streaming Z Data (already at grid resolution; no pooling)...")
-    for t, year in enumerate(model_years):
+    for t, year in enumerate(realized_years):
         data = np.load(file_map[year])
-        if (data['Z_raw'].shape[-1] != SOURCE_LATENT_DIM or
-                data['Z_disp'].shape[-2] != SOURCE_LATENT_DIM):
+        expected_raw_shape = (1, Ny, Nx, SOURCE_LATENT_DIM)
+        expected_disp_shape = (1, Ny, Nx, SOURCE_LATENT_DIM, K)
+        if (tuple(data['Z_raw'].shape) != expected_raw_shape or
+                tuple(data['Z_disp'].shape) != expected_disp_shape):
             raise ValueError(f"{file_map[year]} violates source_latent_dim={SOURCE_LATENT_DIM}: "
                              f"Z_raw {data['Z_raw'].shape}, Z_disp {data['Z_disp'].shape}")
+        labels = [str(x) for x in data["labels"].tolist()]
+        if labels != expected_labels:
+            raise ValueError(f"{file_map[year]} kernel labels/order differ from path metadata")
+        if str(data["build_id"].item()) != expected_build_id:
+            raise ValueError(f"{file_map[year]} belongs to an incomplete/different path build")
+        if not np.array_equal(np.asarray(data["land_mask"]) > 0.5, land_mask > 0):
+            raise ValueError(f"{file_map[year]} land mask differs from BBS/model grid")
+        if not np.isclose(float(data["cell_size_km"]), float(path_meta["cell_size_km"])):
+            raise ValueError(f"{file_map[year]} cell size differs from path metadata")
+        raw_land = data["Z_raw"][0][land_mask > 0]
+        disp_land = data["Z_disp"][0][land_mask > 0]
+        if not np.isfinite(raw_land).all() or not np.isfinite(disp_land).all():
+            raise ValueError(f"{file_map[year]} contains non-finite Z values on land")
         z = np.nan_to_num(data['Z_raw'][0])
         disp = np.nan_to_num(data['Z_disp'][0].transpose(0, 1, 3, 2))
 
@@ -333,36 +382,44 @@ def ingest_data():
     print(f"  Basis Footprint: {st_basis.nbytes / 1e6:.2f} MB")
 
     # 6. Build Kernels
-    # MASK_FILE must be the model-grid (16 km) mask so cell size / invasion
+    # MASK_FILE must be the canonical 27 km model-grid mask so cell size / invasion
     # location are on the same grid as Z and the observations.
     cell_size_km = load_land_metadata(MASK_FILE)
     print(f"  Cell Size: {cell_size_km:.2f} km")
     
-    splits = get_log_spaced_splits(min_dist=50.0, max_dist=1500.0, n_bins=3)
     sim_struct = build_simulation_struct(
         land=jnp.array(land_mask),
         cell_size=cell_size_km,
-        adult_mdd=100.0, juvenile_mdd=JUVENILE_MDD_KM,
-        adult_shape=0.468, juvenile_shape=JUVENILE_SHAPE, radii_splits=splits
+        adult_mdd=DISPERSAL_SPEC["adult_mdd_km"],
+        juvenile_mdd=DISPERSAL_SPEC["juvenile_mdd_km"],
+        adult_shape=DISPERSAL_SPEC["adult_shape"],
+        juvenile_shape=DISPERSAL_SPEC["juvenile_shape"],
+        radii_splits=DISPERSAL_SPEC["juvenile_radial_splits_km"],
     )
+    if [str(x) for x in sim_struct["labels"]] != expected_labels:
+        raise ValueError("forward-model juvenile kernel labels differ from Z_disp labels")
 
-    inv_row, inv_col = get_grid_location(MASK_FILE, INV_LAT, INV_LON)
+    inv_row, inv_col = get_grid_location(
+        MASK_FILE,
+        float(POPULATION_SPEC["invasion_lat"]),
+        float(POPULATION_SPEC["invasion_lon"]),
+    )
 
     # Keep obs whose year is actually in the model timeline, then map year->index
     # via a gap-safe lookup (not year - start subtraction). See src/temporal.py.
-    year_set = set(int(y) for y in model_years)
+    year_set = set(int(y) for y in realized_years)
     valid_obs_mask = np.array([int(y) in year_set for y in obs_year])
     _n_drop = int((~valid_obs_mask).sum())
     _n_drop_pre = int(np.sum(obs_year[~valid_obs_mask] < _inv_year)) if _n_drop else 0
     print(f"  Obs kept {int(valid_obs_mask.sum())}/{len(obs_year)}; dropped {_n_drop} "
           f"outside cube span ({_n_drop_pre} pre-invasion).")
-    final_obs_time_idx = year_to_index(list(model_years), obs_year[valid_obs_mask])
+    final_obs_time_idx = year_to_index(list(realized_years), obs_year[valid_obs_mask])
     
     model_metadata = {
         "Ny": Ny, "Nx": Nx,
         "land_mask": np.array(land_mask).astype(int),
         "land_rows": np.array(land_rows), "land_cols": np.array(land_cols),
-        "time": Time, "years": model_years,
+        "time": Time, "years": realized_years,
         "M": M, "K": K, "N_land": N_land,
         # The Ružička/uncentered/isotropic contract holds EXACTLY for the raw-Z (local)
         # block: Z.Z^T ~= uncentered Ružička => an isotropic coefficient prior induces a GP
@@ -380,26 +437,40 @@ def ingest_data():
         },
         "st_basis": st_basis, 
         "N_basis": N_basis,
-        "z_gathered_path": "Z_gathered.dat", "z_disp_gathered_path": "Z_disp_gathered.dat",
+        "ingest_id": ingest_id,
+        "z_gathered_path": z_gather_name, "z_disp_gathered_path": z_disp_name,
         "adult_fft_kernel": np.array(sim_struct['adult_fft_kernel']),
         "juvenile_fft_kernel_stack": np.array(sim_struct['juvenile_fft_kernel_stack']),
         "adult_edge_correction": np.array(sim_struct['adult_edge_correction']),
         "juvenile_edge_correction_stack": np.array(sim_struct['juvenile_edge_correction_stack']),
+        "juvenile_kernel_labels": expected_labels,
+        "dispersal_spec": DISPERSAL_SPEC,
+        "path_feature_meta": path_meta,
+        "age_structure_prior": dict(_cfg["age_structure_prior"]),
+        "population_model_spec": POPULATION_SPEC,
         "obs_time_indices": np.array(final_obs_time_idx),
         "obs_rows": np.array(obs_rows[valid_obs_mask]),
         "obs_cols": np.array(obs_cols[valid_obs_mask]),
         "observed_results": np.array(observed_results[valid_obs_mask]),
         "obs_quality": np.array(obs_quality[valid_obs_mask]),
         "initpop_latent": initpop_map,
-        "pseudo_zero": 1e-12, "pop_scalar": 210.0,
+        "pop_scalar": float(POPULATION_SPEC["population_scale_birds_per_relative_unit"]),
         "inv_location": (inv_row, inv_col),
         "inv_timestep": invasion_timestep(_tl, first_year=start_year_model),
-        "inv_window": 10
+        "inv_window": int(POPULATION_SPEC["invasion_window_years"]),
+        "dispersal_target_fraction": float(
+            POPULATION_SPEC["dispersal_target_capacity_fraction"]
+        ),
     }
     
     meta_path = os.path.join(OUTPUT_DIR, "metadata.pkl")
     print(f"Saving metadata to {meta_path}...")
-    with open(meta_path, 'wb') as f: pickle.dump(model_metadata, f)
+    tmp_meta_path = meta_path + ".tmp"
+    with open(tmp_meta_path, "wb") as f:
+        pickle.dump(model_metadata, f)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(tmp_meta_path, meta_path)
     print("Success. Data ingested to disk.")
 
 def main():

@@ -88,7 +88,8 @@ def build_land_mask(land_source, ref_path, out_path, tau=DEFAULT_TAU,
     frac = compute_land_fraction(fine_land, ff)
     ocean = (~land_mask_from_fraction(frac, tau)).astype("uint8")  # 1=ocean, 0=land
 
-    profile.update(count=1, dtype="uint8", nodata=0)
+    # 0 is a real semantic value (land), so it must never also be nodata.
+    profile.update(count=1, dtype="uint8", nodata=255)
     with rasterio.open(out_path, "w", **profile) as dst:
         dst.write(ocean, 1)
     n_land = int((ocean == 0).sum())

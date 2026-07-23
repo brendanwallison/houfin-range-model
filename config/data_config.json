@@ -1,5 +1,5 @@
 {
-  "_paths_comment": "All paths are portable: ${HOUFIN_DATA} (raw + processed 25 km products) and ${HOUFIN_PROCESSED} (model inputs/results) expand at load time (src/config_utils.py). They default to <repo>/data and <repo>/data/processed for local dev; on an HPC export HOUFIN_DATA/HOUFIN_PROCESSED (e.g. under $SCRATCH/$WORK). $SCRATCH etc. may also be referenced directly.",
+  "_paths_comment": "All paths are portable: ${HOUFIN_DATA} (raw + processed 27 km products) and ${HOUFIN_PROCESSED} (model inputs/results) expand at load time (src/config_utils.py). They default to <repo>/data and <repo>/data/processed for local dev; on HPC export HOUFIN_DATA/HOUFIN_PROCESSED.",
   "datasets_root": "${HOUFIN_DATA}",
   "processed_root": "${HOUFIN_PROCESSED}",
   "ebird_version_year": 2023,

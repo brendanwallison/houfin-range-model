@@ -27,7 +27,9 @@ echo "submitted 30_model_map ($QUEUE, $TIME): $jid"
 # and resumes from the checkpoint. Gives you N+1 back-to-back 2 h windows unattended.
 prev="$jid"
 for _ in $(seq 1 "$RESUBMITS"); do
-    nxt=$(submit $A -p "$QUEUE" -t "$TIME" --export=ALL --parsable \
+    # A deliberate HOUFIN_MAP_FRESH=1 applies only to the first job. Chained
+    # windows must resume the checkpoint that first job creates.
+    nxt=$(submit $A -p "$QUEUE" -t "$TIME" --export=ALL,HOUFIN_MAP_FRESH=0 --parsable \
                  --dependency=afterany:"$prev" scripts/tacc/30_model_map.slurm)
     [ -n "$nxt" ] || { echo "chained submit failed"; exit 1; }
     echo "  chained resume job (afterany:$prev): $nxt"

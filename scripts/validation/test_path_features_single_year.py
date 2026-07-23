@@ -16,36 +16,24 @@ project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..
 if project_root not in sys.path:
     sys.path.append(project_root)
 
-from src.config_utils import load_data_config
+from src.config_utils import load_age_model_config, load_data_config
 _CFG = load_data_config()
 _DR = _CFG["datasets_root"]
 _PR = _CFG["processed_root"]
 _RES_KM = _CFG["grid"]["target_res_m"] // 1000
 
 # 1. Import Kernels
-from src.model.build_kernels import make_radial_directional_kernels
+from src.data.masks import read_land_mask
+from src.model.build_kernels import dispersal_spec, make_juvenile_kernel_stack
 
 # 2. Import Path Integration
 from src.model.build_path_features import integrate_paths
 
 # Helper Functions
 
-def get_log_spaced_splits(min_dist, max_dist, n_bins):
-    """
-    Generates geometric splits to ensure distinct spatial scales.
-    Bin 1: Local | Bin 2: Regional | Bin 3: Continental
-    """
-    start = np.log10(max(min_dist, 1.0))
-    end = np.log10(max_dist)
-    log_points = np.logspace(start, end, n_bins + 1)
-    splits = [0.0] + list(log_points[1:])
-    splits[-1] = 1e9 
-    return splits
-
 def load_land_mask_and_meta(tif_path):
     """Loads TIF, returns Land Mask (1=Land, 0=Water) and Cell Size (km)."""
     with rasterio.open(tif_path) as src:
-        ocean_data = src.read(1)
         res_x = src.res[0]
         units = src.crs.linear_units if src.crs else None
         
@@ -60,11 +48,7 @@ def load_land_mask_and_meta(tif_path):
         else:
             cell_size_km = res_x
             
-        if src.nodata is not None:
-             ocean_data = np.where(ocean_data == src.nodata, 0, ocean_data)
-        
-        # Invert: Input 1=Ocean -> Output 1=Land
-        land_mask = 1.0 - (ocean_data > 0).astype(np.float32)
+        land_mask = read_land_mask(tif_path).astype(np.float32)
         
     return land_mask, cell_size_km
 
@@ -153,7 +137,9 @@ def main(args):
     # 1. FILE PATHS
     z_filename = f"Z_latent_{args.year}.npy"
     z_path = os.path.join(args.input_dir, z_filename)
-    tif_path = os.path.join(args.input_dir, f"ocean_mask_{_RES_KM}km.tif")
+    age_cfg = load_age_model_config()
+    spec = dispersal_spec(age_cfg)
+    tif_path = age_cfg["ocean_mask"]
     
     # 2. LOAD LAND MASK & METADATA
     if not os.path.exists(tif_path):
@@ -176,15 +162,13 @@ def main(args):
     Ly, Lx = 2*Ny-1, 2*Nx-1
     land_mask = jnp.array(land_mask_np, dtype=jnp.float32)
     
-    # 4. BUILD KERNELS (Geometric Splits)
-    splits = get_log_spaced_splits(min_dist=50.0, max_dist=1500.0, n_bins=3)
+    splits = spec["juvenile_radial_splits_km"]
+    print(f"Using configured splits (km): {[f'{x:.1f}' for x in splits]}")
     
-    print(f"Using Geometric Splits (km): {[f'{x:.1f}' for x in splits]}")
-    
-    kernel_stack, labels = make_radial_directional_kernels(
-        Lx, Ly, 
-        cell_size=cell_size_km, 
-        radii_splits=splits
+    kernel_stack, labels = make_juvenile_kernel_stack(
+        Lx, Ly, cell_size_km, splits,
+        mean_dist=spec["juvenile_mdd_km"],
+        shape=spec["juvenile_shape"],
     )
     
     # 5. INTEGRATE (GPU)
@@ -220,7 +204,9 @@ if __name__ == "__main__":
     parser.add_argument("--year", type=str, default="1990")
     parser.add_argument("--input_dir", type=str, default=f"{_DR}/latent_avian_community_similarities")
     parser.add_argument("--output_dir", type=str, default=f"{_PR}/datasets/latent_avian_path_diagnostics")
-    parser.add_argument("--steps", type=int, default=20) 
+    parser.add_argument("--steps", type=int, default=None)
     
     args = parser.parse_args()
+    if args.steps is None:
+        args.steps = dispersal_spec(load_age_model_config())["path_integration_steps"]
     main(args)

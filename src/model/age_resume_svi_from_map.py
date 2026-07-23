@@ -16,6 +16,7 @@ from numpyro.infer.autoguide import AutoLowRankMultivariateNormal
 from numpyro.infer.initialization import init_to_value
 import matplotlib.pyplot as plt
 import optax
+import numpy as np
 
 # --- Configuration ---
 PRECISION = 'float32'
@@ -26,7 +27,11 @@ if project_root not in sys.path:
     sys.path.append(project_root)
 
 from src.model.age_priors import build_model_2d
-from src.model.data_loading import load_data_to_gpu
+from src.model.data_loading import load_data
+from src.model.checkpoints import (
+    auto_delta_params_to_latents, load_map_params, save_pickle_atomic,
+)
+from src.model.runtime_diagnostics import memory_snapshot, require_gpu
 from src.config_utils import load_age_model_config
 
 _cfg = load_age_model_config()
@@ -40,14 +45,16 @@ def run_vi_resume():
     print(f"--- Resuming MAP as Variational Inference Initializer ---")
     
     # 1. Load Data
-    data_dict = load_data_to_gpu(INPUT_DIR, precision=PRECISION)
+    gpu_device = require_gpu("MAP-initialized SVI")
+    data_dict = load_data(INPUT_DIR, gpu_device, precision=PRECISION)
+    memory_snapshot("resume-svi-inputs-loaded", gpu_device)
     
     # 2. Load the Previous MAP Parameters
-    with open(os.path.join(PREVIOUS_MAP_DIR, "map_params.pkl"), 'rb') as f:
-        map_params = pickle.load(f)
+    map_params, map_checkpoint = load_map_params(PREVIOUS_MAP_DIR)
+    print(f"Loaded verified MAP checkpoint at step {map_checkpoint['step']}")
 
     # Convert MAP params to latent-site dict
-    map_latents = {k.replace("_auto_loc", ""): v for k, v in map_params.items()}
+    map_latents = auto_delta_params_to_latents(map_params)
 
     # 3. Setup Model & Guide
     model = build_model_2d
@@ -66,8 +73,7 @@ def run_vi_resume():
 
     # 4. Setup Optimizer
     total_steps = 5000
-    anneal_epochs = [1.0]
-    steps_per_epoch = total_steps // len(anneal_epochs)
+    steps_per_epoch = total_steps
 
     scheduler = optax.cosine_decay_schedule(init_value=5e-4, decay_steps=total_steps, alpha=0.1)
     optimizer = numpyro.optim.optax_to_numpyro(
@@ -76,50 +82,70 @@ def run_vi_resume():
 
     svi = SVI(model, guide, optimizer, loss=Trace_ELBO(num_particles=1))
 
-    # --- Initialization ---
-    print("Initializing VI from MAP coordinates...")
-    rng_key = jax.random.PRNGKey(0)
-    svi_state = svi.init(rng_key, data=data_dict, anneal=1.0)
-
-    # 6. Run Training (Anneal fixed at 1.0)
-    all_losses = []
-    steps_per_block = 100 # Adjusted based on your last run
-    num_blocks = total_steps // steps_per_block 
-    
-    # CRITICAL: Create the directory before the loop starts
+    # --- Initialization / exact optimizer resume ---
     os.makedirs(RESULT_DIR, exist_ok=True)
-    
-    print(f"--- Starting VI Training | Total Steps: {total_steps} | Anneal: 1.0 ---")
+    checkpoint_path = os.path.join(RESULT_DIR, "vi_checkpoint.pkl")
+    if os.path.exists(checkpoint_path):
+        with open(checkpoint_path, "rb") as fh:
+            checkpoint = pickle.load(fh)
+        if checkpoint.get("map_fingerprint") != map_checkpoint["fingerprint"]:
+            raise RuntimeError("VI checkpoint was initialized from a different MAP run")
+        if int(checkpoint.get("total_steps", -1)) != total_steps:
+            raise RuntimeError("VI total_steps changed; start a fresh output run")
+        svi_state = checkpoint["svi_state"]
+        start_step = int(checkpoint["step"])
+        loss_history = list(np.asarray(checkpoint["losses"]))
+        print(f"Resuming exact VI optimizer state at {start_step}/{total_steps}")
+    else:
+        print("Initializing VI from MAP coordinates...")
+        svi_state = svi.init(
+            jax.random.PRNGKey(0), data=data_dict, prior_scale=1.0
+        )
+        start_step, loss_history = 0, []
 
-    for b in range(num_blocks):
+    # 6. Run training under nominal priors.
+    steps_per_block = 100 # Adjusted based on your last run
+    if start_step % steps_per_block:
+        raise RuntimeError("VI checkpoint step is not aligned to block size")
+    print(f"--- Starting VI Training | Total Steps: {total_steps} | prior_scale=1.0 ---")
+
+    for block_start in range(start_step, total_steps, steps_per_block):
         def body_fn(state, _):
-            return svi.update(state, data=data_dict, anneal=1.0)
+            return svi.update(state, data=data_dict, prior_scale=1.0)
 
-        svi_state, block_losses = jax.lax.scan(body_fn, svi_state, jnp.arange(steps_per_block))
-        all_losses.append(block_losses)
+        block_size = min(steps_per_block, total_steps - block_start)
+        svi_state, block_losses = jax.lax.scan(
+            body_fn, svi_state, jnp.arange(block_size)
+        )
+        loss_history.extend(np.asarray(block_losses).tolist())
         
         # --- PROGRESS REPORT ---
-        current_step = (b + 1) * steps_per_block
+        current_step = block_start + block_size
         mean_elbo = jnp.mean(block_losses)
         
         current_params = svi.get_params(svi_state)
         avg_sigma = jnp.mean(jnp.exp(current_params['auto_scale']))
         
-        print(f"Block {b+1:02d}/{num_blocks} | Step: {current_step:05d} | ELBO: {mean_elbo:.4f} | Avg Sigma: {avg_sigma:.4f}")
+        print(f"Step: {current_step:05d}/{total_steps} | ELBO: {mean_elbo:.4f} | Avg Sigma: {avg_sigma:.4f}")
 
-        # Save safety checkpoint every 500 steps
-        if current_step % 500 == 0:
-            ckpt_path = os.path.join(RESULT_DIR, f"vi_params_step_{current_step}.pkl")
-            with open(ckpt_path, 'wb') as f:
-                pickle.dump(current_params, f)
+        # Save the optimizer state, not merely a parameter snapshot.
+        save_pickle_atomic(
+            {"format_version": 2, "svi_state": svi_state,
+             "params": current_params, "step": current_step,
+             "losses": np.asarray(loss_history), "total_steps": total_steps,
+             "map_fingerprint": map_checkpoint["fingerprint"]},
+            checkpoint_path,
+        )
+        memory_snapshot(f"resume-svi-{current_step}", gpu_device)
 
     # 7. Final Handoff and Save
     final_params = svi.get_params(svi_state)
-    losses = jnp.concatenate(all_losses)
-    
-    os.makedirs(RESULT_DIR, exist_ok=True)
-    with open(os.path.join(RESULT_DIR, "vi_posterior_params.pkl"), 'wb') as f:
-        pickle.dump(final_params, f)
+    losses = np.asarray(loss_history)
+    save_pickle_atomic(
+        {"format_version": 1, "params": final_params, "step": total_steps,
+         "map_fingerprint": map_checkpoint["fingerprint"]},
+        os.path.join(RESULT_DIR, "vi_posterior_params.pkl"),
+    )
     
     print(f"VI Resume complete. Final Loss: {losses[-1]:.4f}")
 

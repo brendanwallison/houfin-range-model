@@ -233,9 +233,18 @@ def run_states(specs, out_dir, start_year, end_year, mask, sample_start,
 
     # fork: no open rasterio handles or threads in the parent at pool creation
     # (reads use `with rasterio.open`), and fork avoids re-importing __main__.
-    ex = (ProcessPoolExecutor(max_workers=write_workers,
-                              mp_context=multiprocessing.get_context("fork"))
-          if write_workers > 1 else None)
+    ex = None
+    if write_workers > 1:
+        try:
+            ex = ProcessPoolExecutor(
+                max_workers=write_workers,
+                mp_context=multiprocessing.get_context("fork"),
+            )
+        except (NotImplementedError, PermissionError, OSError) as exc:
+            # Restricted macOS/container environments may deny POSIX semaphore
+            # discovery. Compression is an optimization, not a correctness
+            # requirement, so degrade explicitly to serial writes.
+            print(f"[states] process writer unavailable ({exc}); writing serially")
     pending = []                                         # bounded in-flight write futures
 
     def _submit_write(year, arrays):

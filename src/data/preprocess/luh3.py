@@ -22,6 +22,21 @@ from src.temporal import load_timeline
 WARMUP_YEARS = 20
 
 
+def preprocess_file(nc_path, out_dir, ref, year_lo, year_hi, variables=None):
+    """Serial single-file entry point used by tests and small local runs."""
+    import xarray as xr
+
+    os.makedirs(out_dir, exist_ok=True)
+    written = {}
+    with xr.open_dataset(nc_path, decode_times=True) as ds:
+        for var in variables or ncg.detect_3d_vars(ds):
+            written[var] = ncg.reproject_time_slices(
+                ds[var], ref, "average", year_lo, year_hi, out_dir,
+                name_fn=lambda year, var=var: f"{var}_{year}_grid.tif",
+            )
+    return written
+
+
 def main():
     cfg = load_data_config()
     dr = cfg["datasets_root"]

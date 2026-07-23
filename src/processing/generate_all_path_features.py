@@ -4,6 +4,8 @@ import time
 import argparse
 import glob
 import json
+import hashlib
+import uuid
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -18,29 +20,21 @@ if project_root not in sys.path:
     sys.path.append(project_root)
 
 # 1. Import Kernels (shared juvenile-kernel builder: same family the forward sim disperses with)
-from src.model.build_kernels import make_juvenile_kernel_stack
+from src.model.build_kernels import (
+    dispersal_spec, make_juvenile_kernel_stack, toroidal_distance_grid,
+)
+from src.data.masks import read_land_mask
+from src.temporal import load_timeline, model_years
 
 # 2. Import Path Integration (Ensure resize_kernel_stack is fixed in here!)
 from src.model.build_path_features import integrate_paths
 
 # Helper Functions
 
-def get_log_spaced_splits(min_dist, max_dist, n_bins):
-    """
-    Generates geometric splits to ensure distinct spatial scales.
-    Bin 1: Local | Bin 2: Regional | Bin 3: Continental
-    """
-    start = np.log10(max(min_dist, 1.0))
-    end = np.log10(max_dist)
-    log_points = np.logspace(start, end, n_bins + 1)
-    splits = [0.0] + list(log_points[1:])
-    splits[-1] = 1e9 
-    return splits
-
 def load_land_mask_and_meta(tif_path):
     """Loads TIF, returns Land Mask (1=Land, 0=Water) and Cell Size (km)."""
+    land_mask, mask_meta = read_land_mask(tif_path, return_meta=True)
     with rasterio.open(tif_path) as src:
-        ocean_data = src.read(1)
         res_x = src.res[0]
         units = src.crs.linear_units if src.crs else None
         
@@ -55,13 +49,15 @@ def load_land_mask_and_meta(tif_path):
         else:
             cell_size_km = res_x
             
-        if src.nodata is not None:
-             ocean_data = np.where(ocean_data == src.nodata, 0, ocean_data)
-        
-        # Invert: Input 1=Ocean -> Output 1=Land
-        land_mask = 1.0 - (ocean_data > 0).astype(np.float32)
-        
-    return land_mask, cell_size_km
+    return land_mask.astype(np.float32), cell_size_km, mask_meta
+
+
+def _sha256(path):
+    h = hashlib.sha256()
+    with open(path, "rb") as fh:
+        for block in iter(lambda: fh.read(1024 * 1024), b""):
+            h.update(block)
+    return h.hexdigest()
 
 def visualize_results(Z_disp, Z_raw, labels, land_mask, output_dir, year):
     """
@@ -149,10 +145,12 @@ def main(args):
     # 1. SETUP & FIND FILES
     # Mask at the model grid (matches the Z_latent cube it path-integrates).
     from src.config_utils import load_age_model_config
-    tif_path = load_age_model_config()["ocean_mask"]
+    age_cfg = load_age_model_config()
+    disp_spec = dispersal_spec(age_cfg)
+    tif_path = age_cfg["ocean_mask"]
     if not os.path.exists(tif_path):
-        print(f"Error: Mask file not found: {tif_path}")
-        return
+        raise FileNotFoundError(f"mask file not found: {tif_path}")
+    build_id = uuid.uuid4().hex
 
     # Find years
     if args.year == 'all':
@@ -167,38 +165,51 @@ def main(args):
                     years.append(y)
             except:
                 continue
-        years = sorted(years)
+        years = sorted(years, key=int)
         print(f"Found {len(years)} years to process: {years}")
     else:
         years = [args.year]
 
     if not years:
-        print("No files found matching Z_latent_*.npy")
-        return
+        raise FileNotFoundError(f"No files found matching {args.input_dir}/Z_latent_*.npy")
+    expected_years = [str(y) for y in model_years(load_timeline())]
+    if args.year == "all" and years != expected_years:
+        missing = sorted(set(expected_years) - set(years))
+        extra = sorted(set(years) - set(expected_years))
+        raise ValueError(f"cube timeline must be exactly {expected_years[0]}-{expected_years[-1]}; "
+                         f"missing={missing[:10]}, extra={extra[:10]}")
+    cube_years = [str(int(y)) for y in cube_meta.get("years", [])]
+    if args.year == "all" and cube_years != expected_years:
+        raise ValueError(f"cube_meta years do not match the canonical timeline "
+                         f"{expected_years[0]}-{expected_years[-1]}")
 
     # 2. LOAD STATIC DATA (Geometry & Kernels) - Run Once!
     print("\n--- Initializing Geometry & Kernels (Shared) ---")
-    land_mask_np, cell_size_km = load_land_mask_and_meta(tif_path)
+    land_mask_np, cell_size_km, mask_meta = load_land_mask_and_meta(tif_path)
     print(f"Grid: {land_mask_np.shape} | Cell: {cell_size_km:.2f} km")
     
     Ny, Nx = land_mask_np.shape
     Ly, Lx = 2*Ny-1, 2*Nx-1
     land_mask = jnp.array(land_mask_np, dtype=jnp.float32)
 
-    # Define Splits (Geometric / Log-Spaced)
-    # Bin 1: 0-50km (Local)
-    # Bin 2: 50-275km (Regional)
-    # Bin 3: 275-1500km (Continental)
-    splits = get_log_spaced_splits(min_dist=50.0, max_dist=1500.0, n_bins=3)
-    print(f"Using Geometric Splits (km): {[f'{x:.1f}' for x in splits]}")
+    splits = disp_spec["juvenile_radial_splits_km"]
+    print(f"Using configured radial splits (km): {[f'{x:.1f}' for x in splits]}")
     
     # Build the juvenile kernel stack through the SAME helper the forward simulation uses,
     # so the base dispersal PDF + splits match and Q[p,k] pairs with the right flux kernel.
-    kernel_stack, labels = make_juvenile_kernel_stack(Lx, Ly, cell_size_km, splits)
+    kernel_stack, labels = make_juvenile_kernel_stack(
+        Lx, Ly, cell_size_km, splits,
+        mean_dist=disp_spec["juvenile_mdd_km"],
+        shape=disp_spec["juvenile_shape"],
+    )
+    kernel_mass = float(jnp.sum(kernel_stack))
+    r_grid = toroidal_distance_grid(Lx, Ly, cell_size_km)
+    realized_mdd = float(jnp.sum(jnp.sum(kernel_stack, axis=0) * r_grid) / kernel_mass)
+    print(f"Juvenile stack: mass={kernel_mass:.8f}, realized discrete MDD={realized_mdd:.2f} km")
     # Force compilation on a dummy input to avoid recompiling inside the loop
     print("Pre-compiling JAX kernels...")
     dummy_Z = jnp.zeros((1, Ny, Nx, 1)) # Small dummy
-    _ = integrate_paths(dummy_Z, kernel_stack, land_mask, steps=2) 
+    integrate_paths(dummy_Z, kernel_stack, land_mask, steps=2).block_until_ready()
     print("Compilation complete.\n")
 
     # 3. PROCESSING LOOP
@@ -208,8 +219,6 @@ def main(args):
     # (a smoothed kernel) -- the Ružička identity is only approximate on the dispersal block.
     # Downstream (age_fields.py) reuses beta_s there by design. See disp_kernel_note.
     os.makedirs(args.output_dir, exist_ok=True)
-    with open(os.path.join(args.output_dir, "kernel_contract.json"), "w", encoding="utf-8") as fh:
-        json.dump(cube_meta, fh, indent=2)
     
     total_start = time.time()
     
@@ -225,28 +234,66 @@ def main(args):
         # A. Load Z
         Z_year = jnp.load(z_path)
         if Z_year.ndim == 3: Z_year = Z_year[None, ...]
+        if tuple(Z_year.shape[1:3]) != (Ny, Nx):
+            raise ValueError(f"{z_path} grid {tuple(Z_year.shape[1:3])} != mask grid {(Ny, Nx)}")
         if int(Z_year.shape[-1]) != int(cube_meta["latent_dim"]):
             raise ValueError(f"{z_path} width {Z_year.shape[-1]} != cube contract "
                              f"{cube_meta['latent_dim']}")
         
         # B. Integrate
         # Note: kernel_stack and land_mask are reused from memory!
+        if not bool(jnp.isfinite(Z_year[0][land_mask_np > 0.5]).all()):
+            raise ValueError(f"{z_path} contains non-finite values on land")
         Z_disp = integrate_paths(Z_year, kernel_stack, land_mask, steps=args.steps)
         Z_disp.block_until_ready()
         
         # C. Save
-        np.savez_compressed(
-            save_path, 
-            Z_disp=Z_disp, 
-            Z_raw=Z_year, 
-            cell_size_km=cell_size_km,
-            labels=labels,
-            land_mask=land_mask_np
-        )
+        tmp_path = save_path + ".tmp"
+        with open(tmp_path, "wb") as fh:
+            np.savez_compressed(
+                fh,
+                Z_disp=np.asarray(Z_disp),
+                Z_raw=np.asarray(Z_year),
+                cell_size_km=cell_size_km,
+                labels=labels,
+                land_mask=land_mask_np,
+                build_id=build_id,
+            )
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.replace(tmp_path, save_path)
         
         # D. Visualize (First 3 features)
         if args.viz:
             visualize_results(Z_disp, Z_year, labels, land_mask_np, args.output_dir, year)
+
+    path_meta = {
+        "schema_version": 1,
+        "build_id": build_id,
+        "kernel_contract": cube_meta,
+        "years": [int(y) for y in years],
+        "grid_shape": [Ny, Nx],
+        "cell_size_km": cell_size_km,
+        "mask_path": tif_path,
+        "mask_sha256": _sha256(tif_path),
+        "mask_semantics": "0=land,1=ocean",
+        "mask_crs": mask_meta["crs"],
+        "mask_transform": list(mask_meta["transform"]),
+        "source_latent_dim": int(cube_meta["latent_dim"]),
+        "kernel_labels": labels,
+        "kernel_count": len(labels),
+        "dispersal": disp_spec,
+        "integration_steps": int(args.steps),
+        "kernel_mass": kernel_mass,
+        "realized_discrete_mdd_km": realized_mdd,
+    }
+    meta_path = os.path.join(args.output_dir, "path_feature_meta.json")
+    tmp_meta_path = meta_path + ".tmp"
+    with open(tmp_meta_path, "w", encoding="utf-8") as fh:
+        json.dump(path_meta, fh, indent=2)
+        fh.flush()
+        os.fsync(fh.fileno())
+    os.replace(tmp_meta_path, meta_path)
 
     print(f"\nAll done! Total time: {(time.time() - total_start)/60:.2f} minutes.")
     print(f"Output directory: {args.output_dir}")
@@ -259,8 +306,10 @@ if __name__ == "__main__":
     parser.add_argument("--year", type=str, default="all", help="Year to process (e.g. '1990' or 'all')")
     parser.add_argument("--input_dir", type=str, default=_pf["input_dir"])
     parser.add_argument("--output_dir", type=str, default=_pf["output_dir"])
-    parser.add_argument("--steps", type=int, default=20, help="Number of integration steps")
-    parser.add_argument("--viz", action='store_true', default=True, help="Generate PNG visualizations")
+    parser.add_argument("--steps", type=int, default=None, help="Integration steps (default: config)")
+    parser.add_argument("--viz", action="store_true", help="Generate PNG visualizations")
     
     args = parser.parse_args()
+    if args.steps is None:
+        args.steps = dispersal_spec(load_age_model_config())["path_integration_steps"]
     main(args)

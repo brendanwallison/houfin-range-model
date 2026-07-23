@@ -2,7 +2,7 @@
 #----------------------------------------------------------------------
 # MAP fit of the age-structured model (NumPyro AutoDelta / SVI point estimate).
 # GPU job. Reads the ingested inputs at age_model_config.input_dir
-# (numpyro_input/: metadata.pkl + Z_gathered.dat + Z_disp_gathered.dat) and writes
+# (numpyro_input/: metadata.pkl + its versioned Z/Z_disp memmaps) and writes
 # to results_dir/<run_names.map>/.
 #
 # CHECKPOINTED: age_run_map writes map_checkpoint.pkl every HOUFIN_MAP_CKPT_EVERY
@@ -28,12 +28,15 @@
 set -euo pipefail
 
 source "$SLURM_SUBMIT_DIR/scripts/tacc/env.sh"
+source "$SLURM_SUBMIT_DIR/scripts/tacc/gpu_monitor.sh"
 module load python/3.12.11 2>/dev/null || true
 [ -n "${TACC_ALLOCATION:-}" ] && echo "allocation: $TACC_ALLOCATION"
 export PYTHONPATH="$SLURM_SUBMIT_DIR:$SLURM_SUBMIT_DIR/src:${PYTHONPATH:-}"
-# JAX (NumPyro) job -- confirm a GPU build is importable before burning queue time.
-python -c "import jax; print('jax', jax.__version__, 'devices', jax.devices())" || \
-    { echo "jax not importable — install a GPU jax build in the venv first"; exit 1; }
+# Fail instead of silently falling back to CPU. Persist 30-second GPU/host-memory
+# telemetry; /usr/bin/time adds peak process RSS to the SLURM log.
+gpu_preflight "age-model MAP"
+start_gpu_monitor "$SLURM_SUBMIT_DIR/gpu_map_${SLURM_JOB_ID}.csv" 30
+trap stop_gpu_monitor EXIT
 date
 
 # Checkpoint cadence + total steps are read from the env by age_run_map (defaults
@@ -41,7 +44,7 @@ date
 # checkpoint always flushes.
 export HOUFIN_MAP_STEPS="${HOUFIN_MAP_STEPS:-900}"
 export HOUFIN_MAP_CKPT_EVERY="${HOUFIN_MAP_CKPT_EVERY:-100}"
-python -m src.model.age_run_map
+/usr/bin/time -v python -m src.model.age_run_map
 
 echo "=== 30_model_map complete (steps=$HOUFIN_MAP_STEPS) ==="
 date

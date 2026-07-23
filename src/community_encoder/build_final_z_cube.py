@@ -24,6 +24,7 @@ from tqdm import tqdm
 from community_encoder.train_DESK.config_utils import load_config
 from community_encoder.train_DESK import covariate_io as cio
 from community_encoder.train_DESK.model_arch import MultiStreamAutoencoder
+from src.data.masks import read_land_mask
 
 
 def fill_gaps_stage1_spatial(z_cube, valid_mask, land_mask, radius_px=25):
@@ -107,7 +108,7 @@ def build_spacetime_cube(config: Optional[Union[Dict[str, Any], str, os.PathLike
 
     # Gap-fill radius in km -> pixels at the model grid, so the fill footprint
     # is resolution-independent (was a hardcoded 25 px = 100 km at 4 km, but
-    # 400 km at 16 km).
+    # roughly 675 km at the current 27 km grid).
     from src.config_utils import load_data_config
     _res_km = load_data_config()["grid"]["target_res_m"] // 1000
     radius_px = int(round(cube_cfg.get("radius_km", 100) / _res_km))
@@ -131,10 +132,8 @@ def build_spacetime_cube(config: Optional[Union[Dict[str, Any], str, os.PathLike
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
     print("Loading masks and reference data...")
-    with rasterio.open(water_mask_path) as src:
-        water_data = src.read(1)
-        land_mask = (water_data == 0).astype(bool)
-        H, W = land_mask.shape
+    land_mask = read_land_mask(water_mask_path)
+    H, W = land_mask.shape
 
     z_ref_flat = np.load(z_ref_path)
     z_ref_mask = np.load(mask_ref_path)
@@ -192,22 +191,14 @@ def build_spacetime_cube(config: Optional[Union[Dict[str, Any], str, os.PathLike
             z_year[valid_pixels] = z_out[0].cpu().numpy()[valid_pixels]
         years.append(year); z_raws.append(z_year); valids.append(valid_pixels)
 
-    # Learned output-EMA: apply the same causal EMA over the year axis that DESK trained
-    # with (demographic lag), so the cube is the decadal z_ema, not the raw per-year Z.
-    # half-life read from desk_meta; NaN pixels persist the prior EMA (don't poison it).
+    # DESK trains a raw instantaneous encoder whose output-EMA is used only to match
+    # lagged community targets during training. The mechanistic population model below
+    # this cube already supplies demographic lag, so export z_raw here; applying the EMA
+    # again would double-count lagged response.
     hl = float(dm["ema_half_life"]) if "ema_half_life" in dm else float("nan")
     ema_on = bool(dm["output_ema"]) if "output_ema" in dm else False
-    if ema_on and np.isfinite(hl):
-        a = 1.0 - 2.0 ** (-1.0 / hl)
-        print(f"Applying learned output-EMA over {len(years)} years (half-life={hl:.2f} yr, alpha={a:.3f})...")
-        z_ema = np.full((H, W, z_dim), np.nan, dtype=np.float32)
-        for i in range(len(z_raws)):
-            raw = z_raws[i]
-            fresh = valids[i][..., None]                       # (H,W,1)
-            seeded = ~np.isnan(z_ema).any(axis=-1)             # pixels with a running EMA
-            blend = np.where(seeded[..., None], a * raw + (1.0 - a) * z_ema, raw)
-            z_ema = np.where(fresh, blend, z_ema)              # invalid-this-year -> persist prior
-            z_raws[i] = z_ema.copy()
+    if ema_on:
+        print(f"Exporting instantaneous z_raw (training EMA half-life={hl:.2f} yr is not applied).")
 
     for year, z_year, valid_pixels in tqdm(list(zip(years, z_raws, valids)), desc="Filling Years"):
         z_s1, mask_s1 = fill_gaps_stage1_spatial(
@@ -228,6 +219,9 @@ def build_spacetime_cube(config: Optional[Union[Dict[str, Any], str, os.PathLike
             "kernel": kernel, "centered": centered, "latent_dim": latent_dim,
             "kernel_contract": "Z(x) dot Z(x') ~= uncentered Ruzicka(x,x')",
             "years": years,
+            "temporal_output": "raw_instantaneous",
+            "training_output_ema": ema_on,
+            "training_ema_half_life": hl if np.isfinite(hl) else None,
         }, fh, indent=2)
 
     print("Spatiotemporal Cube Generation Complete.")

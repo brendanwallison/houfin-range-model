@@ -117,7 +117,7 @@ def forward_sim_age_structured(
     time, inv_location, inv_timestep,
     dispersal_logit_intercept, dispersal_logit_slope,
     allee_gamma,
-    pseudo_zero, target_fraction=0.8
+    target_fraction=0.8
 ):
     """Run the age-structured simulation for ``time`` years; return total density.
 
@@ -173,7 +173,8 @@ def forward_sim_age_structured(
         # 3. Dispersal
         N_a_post, juvenile_stayers, juvenile_arriving = dispersal_step_age_structured(
             N_a, N_j, K_g, 
-            dispersal_logit_intercept, dispersal_logit_slope, target_fraction,
+            dispersal_logit_intercept + dispersal_random[t],
+            dispersal_logit_slope, target_fraction,
             adult_edge_correction, juvenile_edge_correction_stack,
             adult_fft_kernel, juvenile_fft_kernel_stack,
             Q_grid=Q_g, eps=1e-6
@@ -206,9 +207,9 @@ def reproduction_age_structured(
 
     Fecundity is Beverton-Holt density-dependent (``c`` precomputed from the
     local Leslie matrix) and multiplied by a mate-finding Allee factor
-    ``1 - exp(-allee_gamma * N)``. Adults = surviving adults + surviving
-    juveniles (stayers × S_j + arrivers, already journey-survived); new
-    juveniles = adults × realized fecundity.
+    ``1 - exp(-allee_gamma * N)``. The local linearized matrix is
+    ``[[S_a, S_j], [F*S_a, 0]]``: adults are surviving adults plus surviving
+    juveniles, and the surviving adults produce the next juvenile cohort.
     """
     N_total_post = N_a_post + N_j_stayers + N_j_arrivers
     K_safe = jnp.maximum(K, eps)

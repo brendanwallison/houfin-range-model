@@ -16,6 +16,25 @@ import numpyro.distributions as dist
 from src.model.age_fields import project_and_scatter_age_structured
 from src.model.age_forward import forward_sim_age_structured
 
+
+def validate_environment_kernel_contract(data):
+    """Reject model inputs that would not represent the intended GP feature map."""
+    contract = data.get("z_kernel_contract")
+    if not contract:
+        raise ValueError("model inputs lack z_kernel_contract; rerun scripts/ingest_model_data.py")
+    if contract.get("kernel") != "ruzicka" or bool(contract.get("centered", True)):
+        raise ValueError(f"age model requires uncentered Ružička Z features, got {contract}")
+    if contract.get("feature_prior") != "isotropic":
+        raise ValueError(f"age model GP recovery requires an isotropic feature prior, got {contract}")
+    actual = int(data["Z_gathered"].shape[-1])
+    if int(contract.get("latent_dim", -1)) != actual:
+        raise ValueError(f"kernel contract latent_dim={contract.get('latent_dim')} != Z width {actual}")
+    source = int(contract.get("source_latent_dim", actual))
+    truncation = contract.get("truncation", "none")
+    if source < actual or (source > actual and truncation != "top_eigenfeatures"):
+        raise ValueError(f"invalid configured kernel truncation: {contract}")
+    return contract
+
 def sample_priors(anneal=1.0, M_features=None, N_basis=None, time=None):
     """Sample every model parameter and return them in a dict.
 
@@ -43,8 +62,13 @@ def sample_priors(anneal=1.0, M_features=None, N_basis=None, time=None):
     # Save L_corr as a deterministic site so your visualization script doesn't break
     L_corr = numpyro.deterministic("L_corr", L_corr_matrix)
     
-    # 3. Scale the correlation matrix by the variance
+    # 3. Scale the response correlation matrix. Crucially, the same 2x2 prior is
+    # repeated IID over feature dimensions by the plate below: conditional on
+    # w_scale, Cov[Z(x)@beta_s, Z(x')@beta_s] = w_scale[0]^2 Z(x)@Z(x'), and
+    # likewise for reproduction. This isotropy is what recovers the scaled
+    # uncentered Ružička GP kernel represented by Z.
     w_scale = numpyro.sample("w_scale", dist.HalfNormal(0.5).expand([2]))
+    numpyro.deterministic("environment_kernel_variance", w_scale ** 2)
     L_cov = w_scale[..., None] * L_corr
     
     # 4. Draw the correlated weights for all M features
@@ -119,6 +143,7 @@ def build_model_2d(data, anneal=1.0):
     concentration is down-weighted for lower-quality (unscreened Mexico)
     observations. ``anneal`` tempers the priors.
     """
+    validate_environment_kernel_contract(data)
     Nx, Ny = data['Nx'], data['Ny']
     time = data['time']
     land_rows, land_cols = data['land_rows'], data['land_cols']

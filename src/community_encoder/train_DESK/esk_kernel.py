@@ -309,6 +309,9 @@ def project_amplitude_to_z(X, z_dir, latent_dim, batch=20000):
         return None
     landmarks, projmat = np.load(lmp), np.load(pmp)
     meta = _json.load(open(os.path.join(z_dir, "meta.json")))
+    if bool(meta.get("centered", False)):
+        raise ValueError("centered ESK projection metadata is not supported by the "
+                         "uncentered Ružička GP contract")
     sigma, n_weeks = float(meta.get("sigma", 0.0)), int(meta["n_weeks"])
     N = X.shape[0]
     z = np.zeros((N, latent_dim), dtype="float32")
@@ -319,15 +322,59 @@ def project_amplitude_to_z(X, z_dir, latent_dim, batch=20000):
     return z
 
 
-def compute_kernel_diagnostics_ruzicka(z, ebird_flat, n_species, n_weeks, max_samples=500):
+def _center_kernel(K):
+    """Double-center a square kernel without materializing the dense H matrix."""
+    row = K.mean(dim=1, keepdim=True)
+    return K - row - row.T + K.mean()
+
+
+def _kernel_effective_rank(K):
+    """Participation-ratio rank of a symmetric PSD kernel."""
+    vals = torch.linalg.eigvalsh(K)
+    vals = torch.clamp(vals, min=0)
+    return ((vals.sum() ** 2) / (torch.sum(vals ** 2) + 1e-12)).item()
+
+
+def _kernel_error_breakdown(K_true, K_approx, rank):
+    """Rank and error diagnostics under one centering convention.
+
+    ``truncation_only`` is the optimal rank-r approximation error of the exact
+    sampled kernel. ``landmark_at_rank`` compares the Nyström rank-r kernel with
+    that exact optimum. ``combined`` compares Nyström directly with the target.
+    The errors are separately informative but are not additive.
     """
-    Computes RMSE between the Nyström approximation (ZZ^T) and the
-    Exact GLOBAL Ruzicka Kernel (K_true).
+    vals, vecs = torch.linalg.eigh(K_true)
+    order = torch.argsort(vals, descending=True)
+    vals = torch.clamp(vals[order][:rank], min=0)
+    vecs = vecs[:, order[:rank]]
+    K_best = (vecs * vals) @ vecs.T
+    scale = torch.sqrt(torch.mean(K_true ** 2)).clamp_min(1e-8)
+
+    def nrmse(A, B):
+        return (torch.sqrt(torch.mean((A - B) ** 2)) / scale).item()
+
+    return {
+        "exact_effective_rank": _kernel_effective_rank(K_true),
+        "approx_effective_rank": _kernel_effective_rank(K_approx),
+        "truncation_only_rmse_norm": nrmse(K_best, K_true),
+        "landmark_at_rank_rmse_norm": nrmse(K_approx, K_best),
+        "combined_rmse_norm": nrmse(K_approx, K_true),
+    }
+
+
+def compute_kernel_diagnostics_ruzicka(z, ebird_flat, n_species, n_weeks,
+                                       max_samples=800, seed=0):
+    """Compare exact Ružička and Nyström kernels on one fixed sample.
+
+    Reports centered *and* uncentered ranks to prevent a centering convention
+    from being mistaken for target collapse. Production remains uncentered; the
+    centered values are diagnostics only. Error reporting separates the exact
+    rank-r truncation floor from the landmark/eigenpair discrepancy at rank r.
     """
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     N = z.shape[0]
-    idx = np.random.choice(N, min(N, max_samples), replace=False)
+    idx = np.random.default_rng(seed).choice(N, min(N, max_samples), replace=False)
 
     z_s = torch.tensor(z[idx], device=device, dtype=torch.float32)
     X_s = torch.tensor(ebird_flat[idx], device=device, dtype=torch.float32)
@@ -345,18 +392,17 @@ def compute_kernel_diagnostics_ruzicka(z, ebird_flat, n_species, n_weeks, max_sa
     K_true = torch.zeros_like(num)
     K_true[mask] = num[mask] / den[mask]
 
-    diff = K_approx - K_true
-    rmse = torch.sqrt(torch.mean(diff**2)).item()
-    k_scale = torch.sqrt(torch.mean(K_true**2)).item()
-
-    svals = torch.linalg.svd(z_s, full_matrices=False)[1]
-    svals_sq = svals**2
-    eff_rank_Z = (svals_sq.sum()**2) / torch.sum(svals_sq**2)
-
+    rank = int(z_s.shape[1])
+    unc = _kernel_error_breakdown(K_true, K_approx, rank)
+    cen = _kernel_error_breakdown(_center_kernel(K_true), _center_kernel(K_approx), rank)
+    rmse = torch.sqrt(torch.mean((K_approx - K_true) ** 2)).item()
     return {
+        "sample_size": int(len(idx)), "sample_seed": int(seed), "rank": rank,
+        "uncentered": unc, "centered": cen,
+        # Backward-compatible aliases, explicitly for the production convention.
+        "effective_rank": unc["approx_effective_rank"],
         "rmse": rmse,
-        "rmse_norm": rmse / (k_scale + 1e-8),
-        "effective_rank": eff_rank_Z.item(),
+        "rmse_norm": unc["combined_rmse_norm"],
     }
 
 
@@ -495,7 +541,9 @@ def run_esk_experiment(config=None):
                         "latent_dim": dim,
                         "n_species": meta["n_species"],
                         "n_weeks": meta["n_weeks"],
-                        "kernel": "global_ruzicka",
+                        "kernel": "ruzicka",
+                        "centered": False,
+                        "kernel_contract": "Z(x) dot Z(x') ~= uncentered Ruzicka(x,x')",
                     }
                     with open(os.path.join(sigma_dir, "meta.json"), "w", encoding="utf-8") as f:
                         json.dump(meta_out, f, indent=2)
@@ -597,9 +645,22 @@ def run_spacetime_esk(config=None):
     Zj, lm, pm = compute_optimal_latent_z_ruzicka(
         X, n_species, n_weeks, latent_dim, n_landmarks=n_landmarks, seed=seed,
         return_proj=True, landmark_idx=lm_idx)
-    diag = compute_kernel_diagnostics_ruzicka(Zj, X, n_species, n_weeks)
-    print(f"[st-esk] joint kernel: effective_rank={diag['effective_rank']:.1f} "
-          f"rmse_norm={diag['rmse_norm']:.4f} (vs eBird-only ESK diagnostics for comparison)")
+    diag = compute_kernel_diagnostics_ruzicka(
+        Zj, X, n_species, n_weeks,
+        max_samples=int(sc.get("diagnostic_sample", 800)), seed=seed)
+    du, dc = diag["uncentered"], diag["centered"]
+    print(f"[st-esk] fixed-sample diagnostics (n={diag['sample_size']}, seed={seed}, "
+          f"retained_rank={latent_dim}; production=UNCENTERED):")
+    print(f"  uncentered exact_rank={du['exact_effective_rank']:.1f} "
+          f"approx_rank={du['approx_effective_rank']:.1f} "
+          f"trunc={du['truncation_only_rmse_norm']:.4f} "
+          f"landmark@rank={du['landmark_at_rank_rmse_norm']:.4f} "
+          f"combined={du['combined_rmse_norm']:.4f}")
+    print(f"  centered(diagnostic only) exact_rank={dc['exact_effective_rank']:.1f} "
+          f"approx_rank={dc['approx_effective_rank']:.1f} "
+          f"trunc={dc['truncation_only_rmse_norm']:.4f} "
+          f"landmark@rank={dc['landmark_at_rank_rmse_norm']:.4f} "
+          f"combined={dc['combined_rmse_norm']:.4f}")
 
     # Recent (2023) embedding onto the grid, in the eBird-ESK Z.npy layout (Z[valid_mask]).
     import rasterio
@@ -620,13 +681,14 @@ def run_spacetime_esk(config=None):
     np.save(os.path.join(out_dir, "esk_projmat.npy"), pm)
     with open(os.path.join(out_dir, "meta.json"), "w", encoding="utf-8") as fh:
         json.dump({"sigma": sigma, "latent_dim": latent_dim, "n_species": n_species,
-                   "n_weeks": n_weeks, "kernel": "joint_ruzicka",
+                   "n_weeks": n_weeks, "kernel": "ruzicka", "centered": False,
+                   "kernel_contract": "Z(x) dot Z(x') ~= uncentered Ruzicka(x,x')",
                    "landmark_mode": landmark_mode,
                    # Keep recent_frac for compatibility, but define it explicitly as
                    # the realized landmark share rather than a removed config variable.
                    "recent_frac": landmark_recent_frac,
                    "population_recent_frac": population_recent_frac,
-                   "recent_year": recent_year,
+                   "recent_year": recent_year, "diagnostics": diag,
                    "n_landmarks": int(len(lm_idx))}, fh, indent=2)
     print(f"[st-esk] saved joint basis -> {out_dir} (recent Z {Z_flat.shape}, latent_dim {latent_dim})")
     return out_dir

@@ -40,7 +40,7 @@ def run_full_svi_analysis():
     data = load_data_to_gpu(INPUT_DIR, precision=PRECISION)
     
     # 2. Setup Labels safely matching the actual input data dimension
-    actual_M = data['Z_gathered'].shape[-1] # Evaluates to 16
+    actual_M = data['Z_gathered'].shape[-1]  # Configured model width (default 16 of source 64)
     
     PATH_INTEGRATION_DIR = _cfg["path_diagnostics_dir"]
     disp_files = glob.glob(os.path.join(PATH_INTEGRATION_DIR, "Z_disp_*.npz"))

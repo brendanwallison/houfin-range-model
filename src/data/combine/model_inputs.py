@@ -1,5 +1,6 @@
 import os
 import glob
+import json
 import pickle
 import numpy as np
 import pandas as pd
@@ -24,7 +25,9 @@ OUTPUT_DIR = _cfg["input_dir"]
 # The timeline (first/end year, invasion) comes from src/temporal.py; the
 # realized model years are read from the Z_disp files on disk and reconciled
 # against it (see ingest_data). Nothing here hardcodes a start/end year.
-N_PCA_COMPONENTS = 16
+MODEL_LATENT_DIM = int(_cfg.get("latent_dim", 64))
+SOURCE_LATENT_DIM = int(_cfg.get("source_latent_dim", MODEL_LATENT_DIM))
+KERNEL_CONTRACT = dict(_cfg.get("kernel_contract", {}))
 
 # --- SPATIOTEMPORAL BASIS SETTINGS ---
 N_FREQ_SPACE = 4  # ~600km regional resolution
@@ -97,8 +100,24 @@ def get_grid_location(tif_path, lat, lon):
 
 # Main Execution
 def ingest_data():
-    print(f"--- Starting Data Ingestion (grid-native, PCA={N_PCA_COMPONENTS}) ---")
+    print(f"--- Starting Data Ingestion (grid-native, latent_dim={MODEL_LATENT_DIM}, "
+          f"kernel={KERNEL_CONTRACT.get('kernel', 'unspecified')}, "
+          f"centered={KERNEL_CONTRACT.get('centered', 'unspecified')}) ---")
     os.makedirs(OUTPUT_DIR, exist_ok=True)
+    contract_path = os.path.join(RAW_Z_DIR, "kernel_contract.json")
+    if not os.path.exists(contract_path):
+        raise FileNotFoundError(f"path features lack kernel contract: {contract_path}")
+    with open(contract_path, encoding="utf-8") as fh:
+        source_contract = json.load(fh)
+    expected_contract = {
+        "kernel": KERNEL_CONTRACT.get("kernel", "ruzicka"),
+        "centered": bool(KERNEL_CONTRACT.get("centered", False)),
+        "latent_dim": SOURCE_LATENT_DIM,
+    }
+    for key, expected in expected_contract.items():
+        if source_contract.get(key) != expected:
+            raise ValueError(f"path-feature contract {key}={source_contract.get(key)!r} "
+                             f"!= age-model expectation {expected!r}")
     
     # 1. Load Raw Data (Fine Grid)
     if not os.path.exists(BBS_DATA_NPZ):
@@ -209,7 +228,17 @@ def ingest_data():
           f"config timeline {_tl['first_year']}-{_tl['end_year']}")
 
     peek = np.load(file_map[start_year_model])
-    M = min(peek['Z_raw'].shape[-1], N_PCA_COMPONENTS)
+    available_M = int(peek['Z_raw'].shape[-1])
+    if available_M < MODEL_LATENT_DIM:
+        raise ValueError(f"Z cube has {available_M} features but age-model latent_dim="
+                         f"{MODEL_LATENT_DIM}; rerun ESK -> DESK -> cube at the contracted width")
+    M = MODEL_LATENT_DIM
+    if available_M != SOURCE_LATENT_DIM:
+        raise ValueError(f"path features provide {available_M} dimensions but "
+                         f"age_model_config.source_latent_dim={SOURCE_LATENT_DIM}")
+    if M < available_M:
+        print(f"  Explicit configured truncation: top {M}/{available_M} uncentered "
+              "Ružička eigenfeatures (age_model_config.latent_dim)")
     K = peek['Z_disp'].shape[-1]
     
     z_gather_path = os.path.join(OUTPUT_DIR, "Z_gathered.dat")
@@ -220,6 +249,10 @@ def ingest_data():
     print("  Streaming Z Data (already at grid resolution; no pooling)...")
     for t, year in enumerate(model_years):
         data = np.load(file_map[year])
+        if (data['Z_raw'].shape[-1] != SOURCE_LATENT_DIM or
+                data['Z_disp'].shape[-2] != SOURCE_LATENT_DIM):
+            raise ValueError(f"{file_map[year]} violates source_latent_dim={SOURCE_LATENT_DIM}: "
+                             f"Z_raw {data['Z_raw'].shape}, Z_disp {data['Z_disp'].shape}")
         z = np.nan_to_num(data['Z_raw'][0])
         disp = np.nan_to_num(data['Z_disp'][0].transpose(0, 1, 3, 2))
 
@@ -265,6 +298,14 @@ def ingest_data():
         "land_rows": np.array(land_rows), "land_cols": np.array(land_cols),
         "time": Time, "years": model_years,
         "M": M, "K": K, "N_land": N_land,
+        "z_kernel_contract": {
+            "kernel": KERNEL_CONTRACT.get("kernel", "ruzicka"),
+            "centered": bool(KERNEL_CONTRACT.get("centered", False)),
+            "feature_prior": KERNEL_CONTRACT.get("feature_prior", "isotropic"),
+            "latent_dim": M,
+            "source_latent_dim": available_M,
+            "truncation": "top_eigenfeatures" if M < available_M else "none",
+        },
         "st_basis": st_basis, 
         "N_basis": N_basis,
         "z_gathered_path": "Z_gathered.dat", "z_disp_gathered_path": "Z_disp_gathered.dat",

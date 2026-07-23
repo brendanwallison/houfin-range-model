@@ -149,6 +149,11 @@ def build_spacetime_cube(config: Optional[Union[Dict[str, Any], str, os.PathLike
     latent_dim = int(dm["latent_dim"])
     spatial_kernel = int(dm["spatial_kernel"]) if "spatial_kernel" in dm else 0
     schema = _json.loads(str(dm["schema"]))
+    kernel = str(dm["kernel"]) if "kernel" in dm else ""
+    centered = bool(dm["centered"]) if "centered" in dm else True
+    if kernel != "ruzicka" or centered:
+        raise ValueError(f"cube requires uncentered Ružička DESK metadata; "
+                         f"got kernel={kernel!r}, centered={centered}")
 
     # DESK may have trained on a truncation of the ESK Z (desk.latent_dim); the ESK
     # reference is saved at the max swept dim. Match the model: kernel-PCA columns are
@@ -217,6 +222,13 @@ def build_spacetime_cube(config: Optional[Union[Dict[str, Any], str, os.PathLike
 
         out_name = f"Z_latent_{year}.npy"
         np.save(os.path.join(output_dir, out_name), z_final.astype(np.float32))
+
+    with open(os.path.join(output_dir, "cube_meta.json"), "w", encoding="utf-8") as fh:
+        _json.dump({
+            "kernel": kernel, "centered": centered, "latent_dim": latent_dim,
+            "kernel_contract": "Z(x) dot Z(x') ~= uncentered Ruzicka(x,x')",
+            "years": years,
+        }, fh, indent=2)
 
     print("Spatiotemporal Cube Generation Complete.")
     return output_dir

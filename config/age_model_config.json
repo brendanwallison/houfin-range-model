@@ -6,13 +6,21 @@
   "ocean_mask": "${HOUFIN_DATA}/land_mask/ocean_mask_27km.tif",
   "ebird_dir": "${HOUFIN_DATA}/ebird_weekly_2023_grid",
   "results_dir": "${HOUFIN_PROCESSED}/model_results",
+  "latent_dim": 16,
+  "source_latent_dim": 64,
+  "kernel_contract": {
+    "kernel": "ruzicka",
+    "centered": false,
+    "feature_prior": "isotropic",
+    "_comment": "The encoder supplies an uncentered 64-D Nyström feature map; model ingestion explicitly retains the first latent_dim=16 eigenfeatures by default to fit VRAM. Conditional on each w_scale, iid coefficients over those retained features imply Cov[H(x),H(x')|w_scale] = w_scale^2 Z_r(x)·Z_r(x'), the configured rank-r approximation to the original Ružička kernel. Truncation must be config-driven and recorded, never silent."
+  },
   "path_features": {
     "input_dir": "${HOUFIN_PROCESSED}/encoder/cube",
     "output_dir": "${HOUFIN_PROCESSED}/latent_avian_paths"
   },
   "path_diagnostics_dir": "${HOUFIN_PROCESSED}/latent_avian_path_diagnostics",
   "community_bridge": {
-    "ruzicka_dir": "${HOUFIN_PROCESSED}/encoder/esk/sigma_1.0",
+    "ruzicka_dir": "${HOUFIN_PROCESSED}/encoder/esk/spacetime",
     "avonet_csv": "${HOUFIN_DATA}/avonet/AVONET_Comparison_WithPhylogeny_Urban.csv"
   },
   "run_names": {

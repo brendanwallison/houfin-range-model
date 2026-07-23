@@ -3,6 +3,7 @@ import os
 import time
 import argparse
 import glob
+import json
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -136,12 +137,19 @@ def visualize_results(Z_disp, Z_raw, labels, land_mask, output_dir, year):
 
 def main(args):
     print(f"--- Starting Full Path Integration Pipeline ---")
+
+    cube_meta_path = os.path.join(args.input_dir, "cube_meta.json")
+    if not os.path.exists(cube_meta_path):
+        raise FileNotFoundError(f"missing cube kernel contract: {cube_meta_path}")
+    with open(cube_meta_path, encoding="utf-8") as fh:
+        cube_meta = json.load(fh)
+    if cube_meta.get("kernel") != "ruzicka" or bool(cube_meta.get("centered", True)):
+        raise ValueError(f"path integration requires uncentered Ružička Z; got {cube_meta}")
     
     # 1. SETUP & FIND FILES
     # Mask at the model grid (matches the Z_latent cube it path-integrates).
-    from src.config_utils import load_data_config
-    res_km = load_data_config()["grid"]["target_res_m"] // 1000
-    tif_path = os.path.join(args.input_dir, f"ocean_mask_{res_km}km.tif")
+    from src.config_utils import load_age_model_config
+    tif_path = load_age_model_config()["ocean_mask"]
     if not os.path.exists(tif_path):
         print(f"Error: Mask file not found: {tif_path}")
         return
@@ -197,6 +205,8 @@ def main(args):
 
     # 3. PROCESSING LOOP
     os.makedirs(args.output_dir, exist_ok=True)
+    with open(os.path.join(args.output_dir, "kernel_contract.json"), "w", encoding="utf-8") as fh:
+        json.dump(cube_meta, fh, indent=2)
     
     total_start = time.time()
     
@@ -212,6 +222,9 @@ def main(args):
         # A. Load Z
         Z_year = jnp.load(z_path)
         if Z_year.ndim == 3: Z_year = Z_year[None, ...]
+        if int(Z_year.shape[-1]) != int(cube_meta["latent_dim"]):
+            raise ValueError(f"{z_path} width {Z_year.shape[-1]} != cube contract "
+                             f"{cube_meta['latent_dim']}")
         
         # B. Integrate
         # Note: kernel_stack and land_mask are reused from memory!

@@ -361,6 +361,13 @@ def zspace_reconstruction(config, pidx, X, Z_desk, recent_year, to_rec, has_rec)
     lmp, pmp = os.path.join(zdir, "esk_landmarks.npy"), os.path.join(zdir, "esk_projmat.npy")
     if not (os.path.exists(lmp) and os.path.exists(pmp)):
         return None
+    meta_path = os.path.join(zdir, "meta.json")
+    if not os.path.exists(meta_path):
+        raise FileNotFoundError(f"missing ESK kernel contract: {meta_path}")
+    with open(meta_path, encoding="utf-8") as fh:
+        basis_meta = json.load(fh)
+    if basis_meta.get("kernel") != "ruzicka" or bool(basis_meta.get("centered", True)):
+        raise ValueError(f"validation requires uncentered Ružička ESK basis; got {basis_meta}")
     landmarks, projmat = np.load(lmp), np.load(pmp)
     esk_meta = _json.load(open(os.path.join(zdir, "meta.json")))
     sigma, n_weeks, ld = float(esk_meta.get("sigma", 0.0)), int(esk_meta["n_weeks"]), Z_desk.shape[1]

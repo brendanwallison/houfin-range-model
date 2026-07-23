@@ -563,12 +563,18 @@ def run_desk_experiment(config=None):
     try:
         z_mask = np.load(os.path.join(z_dir, "valid_mask.npy"))
         z_flat = np.load(os.path.join(z_dir, "Z.npy"))
+        with open(os.path.join(z_dir, "meta.json"), encoding="utf-8") as fh:
+            z_meta = json.load(fh)
     except FileNotFoundError as exc:
-        raise FileNotFoundError(f"ESK Z.npy/valid_mask.npy not in {z_dir}") from exc
+        raise FileNotFoundError(f"ESK Z.npy/valid_mask.npy/meta.json not in {z_dir}") from exc
+    if z_meta.get("kernel") != "ruzicka" or bool(z_meta.get("centered", True)):
+        raise ValueError(f"DESK requires the uncentered Ružička ESK contract; got {z_meta}")
     # ESK saves Z at the max swept latent_dim. Optionally truncate to desk.latent_dim:
     # kernel-PCA columns are eigenvalue-ordered, so Z[:, :k] IS the exact dim-k
     # embedding (no ESK re-run needed). Unset -> use all columns.
     ld = desk_cfg.get("latent_dim")
+    if ld and z_flat.shape[1] < int(ld):
+        raise ValueError(f"ESK Z has {z_flat.shape[1]} dimensions, fewer than desk.latent_dim={ld}")
     if ld and z_flat.shape[1] > int(ld):
         print(f"[desk] truncating ESK Z {z_flat.shape[1]} -> {int(ld)} dims (top eigen-components)")
         z_flat = z_flat[:, :int(ld)]
@@ -672,7 +678,9 @@ def run_desk_experiment(config=None):
              ebird_frac=ebird_frac, schema=json.dumps(schema),
              output_ema=bool(ema_cfg.get("enabled", False)),
              ema_half_life=(ema_half_life if ema_half_life is not None else np.nan),
-             ema_warmup_start=int(ema_cfg.get("warmup_start", 1940)))
+             ema_warmup_start=int(ema_cfg.get("warmup_start", 1940)),
+             kernel=str(z_meta["kernel"]), centered=bool(z_meta["centered"]),
+             kernel_contract=str(z_meta.get("kernel_contract", "")))
     print(f"[desk] saved model + desk_meta.npz -> {out_dir} "
           f"(spatial_kernel={spatial_kernel}, mode={bbs_mode})")
 

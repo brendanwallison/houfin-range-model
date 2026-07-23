@@ -21,11 +21,11 @@
   "esk": {
     "pattern": "*_abundance_median_2023-*.tif",
     "sigmas": [0.0, 0.5, 1.0, 1.5],
-    "latent_dims": [8, 16, 32],
+    "latent_dims": [8, 16, 32, 64],
     "n_landmarks": 25000,
     "seed": 0,
-    "_spacetime_comment": "Joint spatiotemporal ESK (bbs_mode=trend, run_spacetime_esk): Ruzicka kernel-PCA over the trend-based annual community points. landmark_mode='diverse' guarantees coverage of occupied decade x spatial-tile x abundance-quantile strata, then fills the remaining budget uniformly so rare manifold regions are represented without discarding population weighting. spatial_bins is per axis. 'random' remains a uniform ablation; 'stratified' is proportional by decade. sigma=0.0: annual points (n_weeks=1), no weekly axis. Writes esk/spacetime/{Z.npy recent grid, valid_mask, esk_landmarks, esk_projmat, meta.json}.",
-    "spacetime": {"sigma": 0.0, "latent_dim": 32, "landmark_mode": "diverse", "spatial_bins": 8, "abundance_bins": 4}
+    "_spacetime_comment": "Joint spatiotemporal ESK (bbs_mode=trend, run_spacetime_esk): uncentered Ružicka Nyström features over the trend-based annual community points. Uncentered is intentional: with an isotropic Bayesian coefficient prior downstream, Z(x)·Z(x') approximates the original Ružicka GP kernel rather than a reference-distribution-centered kernel. 64 dimensions address the measured rank-truncation error; 16k uniform-random landmarks already make landmark error small. sigma=0 because trend points have n_weeks=1. 'diverse' and 'stratified' remain available ablations, not production defaults. Writes esk/spacetime/{Z.npy, valid_mask, esk_landmarks, esk_projmat, meta.json}.",
+    "spacetime": {"sigma": 0.0, "latent_dim": 64, "landmark_mode": "random", "diagnostic_sample": 800}
   },
   "bbs_mode": "trend",
   "_trend_comment": "Trend-product spatiotemporal community target (trend_community.build_trend_points). Applies published %/yr trends to the 2023 eBird annual anchor, blending eBird recent (2012-2022) and BBS long-term (1966-2022) rates with a smooth handoff, integrated backward to first_year. Paths (bbs_trend_grid, ebird_trend_grid, community_trend_list) fall back to data_config; ebird_weekly_grid falls back to paths.ebird_folder.",
@@ -67,8 +67,8 @@
     "turnover_min_gap": 5,
     "w_hist": 1.0,
     "z_dir": "${HOUFIN_PROCESSED}/encoder/esk_spacetime",
-    "latent_dim": 32,
-    "_n_landmarks_comment": "Landmark budget for the joint-ESK Nystrom eigendecomposition. 16000 (was 30000): the 30k x 30k eigh OOM'd the A100 and fell back to CPU (~44 min). 16000^2 float64 ~= 2 GB fits the GPU with headroom.",
+    "latent_dim": 64,
+    "_n_landmarks_comment": "Landmark budget for the joint-ESK Nyström eigendecomposition. 16k is supported by the measured error decomposition (landmark error much smaller than rank truncation). The 16000x16000 float32 kernel itself is ~1.0 GB; construction temporaries and eigensolver workspace require several times that. GPU/CPU fallback and peak memory are logged explicitly.",
     "n_landmarks": 16000,
     "ebird_stack_cache": "${HOUFIN_PROCESSED}/encoder/ebird_stack.npz"
   },
@@ -97,9 +97,9 @@
     "enrich": {"ebird_loss_fraction": 0.8, "holdout_frac": 0.2, "seed": 0,
                "w_direction": 2.0, "w_magnitude_floor": 0.05, "w_absolute": 1.0,
                "reference_start": 2014, "baseline_scale": 20.0},
-    "_zdir_comment": "enrich uses the JOINT spatiotemporal ESK basis (esk/spacetime), not the eBird-only sigma_1.0 basis, so Z can represent historical change directions. latent_dim 32 = full joint basis (expressiveness). For bbs_mode=validate/off, point z_dir back at esk/sigma_1.0 and latent_dim 16.",
+    "_zdir_comment": "Trend/enrich uses the JOINT uncentered spatiotemporal ESK basis (esk/spacetime). latent_dim=64 is the production GP feature width; it must match esk.spacetime.latent_dim and the downstream age-model latent_dim. For bbs_mode=validate/off, point z_dir back at the desired eBird-only basis and set a matching width.",
     "z_dir": "${HOUFIN_PROCESSED}/encoder/esk/spacetime",
-    "latent_dim": 32
+    "latent_dim": 64
   },
   "latent_cube": {
     "data_dir": "${HOUFIN_DATA}",

@@ -42,10 +42,12 @@ model = [
     "torch>=2.9.1",
 ]
 # GPU acceleration on Linux. The CUDA extra is Linux-only and is the reason the
-# model deps cannot install on macOS; keep it opt-in. Pinned to CUDA 12 to match
-# HPC targets (e.g. TACC Lonestar6 A100 nodes, CUDA-12 drivers); the CUDA-13
-# wheels need a newer NVIDIA driver (r580+) than those nodes carry. torch's
-# default Linux wheel is already a CUDA-12 build, so only JAX needs the extra.
+# model deps cannot install on macOS; keep it opt-in. CUDA 12 is REQUIRED on our HPC
+# target: TACC Lonestar6 A100 nodes carry CUDA-12 drivers, and the CUDA-13 wheels need
+# a newer NVIDIA driver (r580+) than those nodes have. JAX is pinned to CUDA 12 via
+# jax[cuda12] here; torch is pinned to the PyTorch CUDA-12.8 index in [tool.uv.sources]
+# below -- its PyPI default wheel moved to CUDA 13 as of torch 2.13, so leaving torch
+# unpinned lets a fresh resolve drift to cu13 and break on LS6.
 #   uv sync --extra model --extra gpu   (or  pip install -e ".[model,gpu]")
 gpu = [
     "jax[cuda12]>=0.8.1",
@@ -60,3 +62,15 @@ package-dir = {"" = "src"}
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+# Force torch to the PyTorch CUDA-12.8 wheels on Linux so a fresh resolve (uv lock /
+# uv pip install) can't drift to torch's CUDA-13 default wheel, which won't run on the
+# TACC Lonestar6 CUDA-12 driver. On non-Linux (macOS dev) torch falls back to the PyPI
+# CPU wheel. Regenerate uv.lock after editing (`uv lock`), then `uv sync` on the target.
+[[tool.uv.index]]
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true
+
+[tool.uv.sources]
+torch = [{ index = "pytorch-cu128", marker = "sys_platform == 'linux'" }]

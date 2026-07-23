@@ -19,7 +19,7 @@
 #SBATCH -J houfin_encoder
 #SBATCH -o houfin_encoder.o%j
 #SBATCH -e houfin_encoder.e%j
-#SBATCH -p gpu-a100
+#SBATCH -p gpu-a100-dev
 #SBATCH -N 1
 #SBATCH -n 1
 #SBATCH -t 02:00:00
@@ -32,13 +32,29 @@ source "$SLURM_SUBMIT_DIR/scripts/tacc/gpu_monitor.sh"
 module load python/3.12.11 2>/dev/null || true
 module load remora 2>/dev/null || true
 [ -n "${TACC_ALLOCATION:-}" ] && echo "allocation: $TACC_ALLOCATION"
-python -c "import torch; print('torch', torch.__version__, 'cuda', torch.cuda.is_available()); assert torch.cuda.is_available(), 'no PyTorch CUDA device'" || \
-    { echo "torch not importable — install it in the venv before running the encoder"; exit 1; }
-start_gpu_monitor "$SLURM_SUBMIT_DIR/gpu_encoder_${SLURM_JOB_ID}.csv" 30
-trap stop_gpu_monitor EXIT
+export STAGES="${STAGES:-esk desk cube validate}"
+
+# torch preflight. ESK/DESK are heavy and need a GPU; cube/validate/encoder-viz are
+# CPU-fine (they just project/plot), so only REQUIRE a CUDA device for the heavy stages.
+# This lets the light stages run on shared/CPU queues (development, gpu-a100-small) where
+# no GPU is bound. Import is always required; the misleading "not importable" once masked a
+# failing `assert cuda.is_available()` on GPU-less nodes.
+_needs_gpu=0
+case " $STAGES " in
+    *" esk "*|*" desk "*|*" spacetime-esk "*|*" spacetime_esk "*) _needs_gpu=1 ;;
+esac
+python -c "import torch; print('torch', torch.__version__, 'cuda', torch.cuda.is_available())" || \
+    { echo "torch not importable — install it in the venv"; exit 1; }
+if [ "$_needs_gpu" = 1 ]; then
+    python -c "import torch; assert torch.cuda.is_available(), 'no PyTorch CUDA device'" || \
+        { echo "ESK/DESK need a GPU but none is visible — use a full gpu-a100 node (or request a GPU)"; exit 1; }
+    start_gpu_monitor "$SLURM_SUBMIT_DIR/gpu_encoder_${SLURM_JOB_ID}.csv" 30
+    trap stop_gpu_monitor EXIT
+else
+    echo "[encoder] STAGES='$STAGES' are CPU-capable; not requiring a CUDA device."
+fi
 date
 
-export STAGES="${STAGES:-esk desk cube validate}"
 bash "$SLURM_SUBMIT_DIR/scripts/tacc/pipeline.sh"
 
 echo "=== 20_encoder complete ($STAGES) ==="

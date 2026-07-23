@@ -470,7 +470,17 @@ def run_esk_experiment(config=None):
     ebird_stack, meta = load_ebird_stack(config)
 
     H, W, D = ebird_stack.shape
-    valid_mask = np.any(~np.isnan(ebird_stack), axis=-1)
+    from src.config_utils import load_data_config
+    from src.data.masks import read_land_mask
+    dcfg = load_data_config()
+    res_km = dcfg["grid"]["target_res_m"] // 1000
+    mask_path = config.get("latent_cube", {}).get(
+        "water_mask_path", os.path.join(dcfg["datasets_root"], "land_mask",
+                                         f"ocean_mask_{res_km}km.tif"))
+    land = read_land_mask(mask_path)
+    if land.shape != (H, W):
+        raise ValueError(f"terrestrial mask {land.shape} != eBird grid {(H, W)}")
+    valid_mask = np.any(~np.isnan(ebird_stack), axis=-1) & land
     valid_flat = valid_mask.flatten()
     ebird_flat_raw = np.nan_to_num(ebird_stack).reshape(-1, D)[valid_flat]
 

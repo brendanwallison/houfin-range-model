@@ -367,7 +367,18 @@ def build_trend_points(config=None):
         anchor = _trends_abd_anchor(eb_path, codes, ebird_ppy, ref_year)  # (S, H, W)
     k = _species_scale(anchor, bbs_abund)                               # (S,) eBird<-BBS unit scale
 
-    valid = np.any(np.isfinite(anchor), axis=0)                         # anchor footprint
+    # The community target is terrestrial by construction.  eBird/BBS products
+    # can report values over lake/coastal cells, but those must not become ESK
+    # points when the mechanistic model masks them as water/off-domain.
+    from src.data.masks import read_land_mask
+    res_km = dcfg["grid"]["target_res_m"] // 1000
+    mask_path = config.get("latent_cube", {}).get(
+        "water_mask_path", os.path.join(dcfg["datasets_root"], "land_mask",
+                                         f"ocean_mask_{res_km}km.tif"))
+    land = read_land_mask(mask_path)
+    if land.shape != anchor.shape[-2:]:
+        raise ValueError(f"terrestrial mask {land.shape} != trend grid {anchor.shape[-2:]}")
+    valid = np.any(np.isfinite(anchor), axis=0) & land                  # terrestrial anchor footprint
     years_cfg = {
         "anchor_year": ref_year,
         "first_year": int(tc.get("first_year", 1966)),

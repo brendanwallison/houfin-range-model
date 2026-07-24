@@ -7,8 +7,8 @@ from src.community_encoder.train_DESK.trend_community import (
     blended_rate, soft_clip,
 )
 
-# A no-op cap (knee/asymptote far above any test magnitude) for exact-compounding checks.
-_NOCAP = (np.log(1e6), np.log(1e9))
+# A no-op cap (asymptote far above any test magnitude) for exact-compounding checks.
+_NOCAP = (1e9,)
 
 
 def test_blend_weight_monotone_and_bounds():
@@ -55,22 +55,22 @@ def test_backward_method_b_soft_cap():
     # Steep BBS decline on a nonzero base blows up deep; soft cap bounds the fold near asymptote.
     E = np.array([5.0]); rate_b = np.array([-20.0]); rate_e = np.array([0.0])
     B = np.array([5.0]); k = np.array([1.0])
-    kn, asy = np.log(10.0), np.log(100.0)
+    asy = np.log(100.0)
     yrs, N = backward_trajectory(E, rate_b, rate_e, B, k, [1966, 2023], 2023, 1966,
-                                 2010.0, 1.5, kn, asy)
+                                 2010.0, 1.5, asy)
     fold = N[yrs.index(1966), 0] / 5.0                      # decline -> past larger
-    assert 10.0 < fold <= 100.0 * (1 + 1e-6)
+    assert 1.0 < fold <= 100.0 * (1 + 1e-6)
 
 
-def test_soft_clip_identity_then_saturates():
-    kn, asy = np.log(10.0), np.log(100.0)
-    assert np.isclose(soft_clip(np.log(5.0), kn, asy), np.log(5.0))   # 5x < knee -> untouched
-    assert np.isclose(soft_clip(1.0, kn, asy), 1.0)
-    x = np.log(40.0)                                          # 40x: past the 10x knee
-    assert kn < soft_clip(x, kn, asy) < x                     # compressed, but not below the knee
-    assert soft_clip(50.0, kn, asy) <= asy + 1e-9            # never exceeds the asymptote
-    assert np.isclose(soft_clip(1e9, kn, asy), asy)          # saturates to the asymptote
-    assert np.isclose(soft_clip(-2.0, kn, asy), -soft_clip(2.0, kn, asy))  # odd symmetry
+def test_soft_clip_is_globally_smooth_and_saturates():
+    asy = 4.0
+    # p=2 softsign: no exactly-linear region, but unit slope at zero.
+    assert soft_clip(1.0, asy, p=2.0) < 1.0
+    eps = 1e-6
+    slope0 = (soft_clip(eps, asy, p=2.0) - soft_clip(-eps, asy, p=2.0)) / (2 * eps)
+    assert np.isclose(slope0, 1.0, rtol=1e-10)
+    assert soft_clip(1e9, asy, p=2.0) <= asy + 1e-9
+    assert np.isclose(soft_clip(-2.0, asy), -soft_clip(2.0, asy))  # odd symmetry
 
 
 def test_assemble_points_shapes_and_recent_first():
@@ -83,7 +83,7 @@ def test_assemble_points_shapes_and_recent_first():
     valid = np.any(np.isfinite(anchor), axis=0)
     M = int(valid.sum())                                    # 5 valid cells
     cfg = dict(anchor_year=2023, first_year=2019, stride=2, crossover=2010.0, width=1.5,
-               soft_knee=np.log(1e6), soft_asymptote=np.log(1e9))
+               soft_asymptote=1e9, soft_cap_p=2.0)
     X, pidx, years = assemble_points(anchor, bbs, eb, ba, k, valid, cfg, log1p=False)
     # sample years: 2023 (recent) + 2021, 2019 (stride 2) -> 3 year-blocks
     assert years[0] == 2023                                 # recent first
@@ -112,7 +112,7 @@ def test_coverage_gate_drops_sparse_history():
     ba = np.ones((S, H, W)); k = np.ones(S)
     valid = np.ones((H, W), bool)
     base = dict(anchor_year=2023, first_year=1923, stride=100, crossover=2010.0, width=1.5,
-                soft_knee=np.log(1e6), soft_asymptote=np.log(1e9))
+                soft_asymptote=1e9, soft_cap_p=2.0)
 
     _, pidx, years = assemble_points(anchor, bbs, eb, ba, k, valid, {**base, "min_coverage": 0.75}, log1p=False)
     assert set(years) == {2023, 1923}

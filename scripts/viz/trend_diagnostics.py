@@ -98,19 +98,19 @@ def load_reconstruction(args):
     L = np.column_stack([t.c + t.a * (cc + 0.5), t.f + t.e * (rr + 0.5)])  # cell centres, metres
 
     # Match the pipeline reconstruction: both soft caps + optional post-cap smoothing.
-    abs_knee = abs_asy = None
+    abs_asy = None
     if bool(tc.get("abs_soft_cap", True)):
-        ref = np.array([float(np.nanpercentile(anchor[i][anchor[i] > 0], 99))   # best-habitat ceiling
+        q = float(tc.get("abs_reference_quantile", 95.0))
+        ref = np.array([float(np.nanpercentile(anchor[i][anchor[i] > 0], q))
                         if (np.isfinite(anchor[i]) & (anchor[i] > 0)).any() else 1.0 for i in range(S)])
-        abs_knee = (ref * float(tc.get("abs_soft_knee_mult", 0.3))).reshape(S, 1)
         abs_asy = (ref * float(tc.get("abs_soft_max_mult", 1.0))).reshape(S, 1)
     years = sorted({args.anchor_year, args.recent_year, args.deep_year, args.mid_year})
     _, N = backward_trajectory(
         flat(anchor), flat(bbs_rate), flat(ebird_ppy), flat(bbs_abund), k.reshape(S, 1),
         years, args.anchor_year, args.deep_year,
         float(tc.get("handoff_crossover", 2010.0)), float(tc.get("handoff_width", 1.5)),
-        float(np.log(tc.get("soft_knee_fold", 10.0))), float(np.log(tc.get("soft_max_fold", 100.0))),
-        abs_knee=abs_knee, abs_asy=abs_asy)
+        float(np.log(tc.get("soft_max_fold", 100.0))), float(tc.get("soft_cap_p", 2.0)),
+        abs_asy=abs_asy)
     sigma = float(tc.get("smooth_sigma_cells", 0.0))
     if sigma > 0:
         from src.community_encoder.train_DESK.trend_community import _smooth_log_years
@@ -121,9 +121,9 @@ def load_reconstruction(args):
                 transform=t, N=N, years=years, yidx=yidx, flat_anchor=flat(anchor),
                 crossover=float(tc.get("handoff_crossover", 2010.0)),
                 width=float(tc.get("handoff_width", 1.5)),
-                soft_knee=float(np.log(tc.get("soft_knee_fold", 10.0))),
                 soft_asymptote=float(np.log(tc.get("soft_max_fold", 100.0))),
-                abs_knee_mult=float(tc.get("abs_soft_knee_mult", 0.3)))
+                soft_cap_p=float(tc.get("soft_cap_p", 2.0)),
+                abs_reference_quantile=q)
 
 
 def _to_grid(R, vec):
@@ -327,7 +327,7 @@ def fig_vector_field(R, out, coarsen, radius_km, kexp):
 
 
 def _recon_params(R, years, abs_max_mult, sigma):
-    """Reconstruct with a given absolute-cap fraction (× p99) and smoothing σ.
+    """Reconstruct with a given absolute-cap fraction (× occupied-cell p95) and smoothing σ.
 
     ``abs_max_mult=None`` disables the absolute cap. The relative/fold cap is held at
     its config value (this sweep isolates the absolute cap + smoothing).
@@ -335,16 +335,15 @@ def _recon_params(R, years, abs_max_mult, sigma):
     S = len(R["codes"]); rr, cc, H, W = R["rr"], R["cc"], R["H"], R["W"]
     anchor = R["anchor"]
     fl = lambda A: np.stack([A[i][rr, cc] for i in range(S)])
-    ak = aa = None
+    aa = None
     if abs_max_mult is not None:
-        ref = np.array([float(np.nanpercentile(anchor[i][anchor[i] > 0], 99))   # best-habitat ceiling
+        ref = np.array([float(np.nanpercentile(anchor[i][anchor[i] > 0], R["abs_reference_quantile"]))
                         if (np.isfinite(anchor[i]) & (anchor[i] > 0)).any() else 1.0 for i in range(S)])
-        ak = (ref * R["abs_knee_mult"]).reshape(S, 1)
         aa = (ref * abs_max_mult).reshape(S, 1)
     _, N = backward_trajectory(fl(anchor), fl(R["bbs_rate"]), fl(R["ebird_ppy"]), fl(R["bbs_abund"]),
                                R["k"].reshape(S, 1), years, R["anchor_year"], R["deep_year"],
-                               R["crossover"], R["width"], R["soft_knee"], R["soft_asymptote"],
-                               abs_knee=ak, abs_asy=aa)
+                               R["crossover"], R["width"], R["soft_asymptote"], R["soft_cap_p"],
+                               abs_asy=aa)
     if sigma > 0:
         N = _smooth_log_years(N, rr, cc, H, W, sigma)
     return N

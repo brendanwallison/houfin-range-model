@@ -31,7 +31,7 @@ absences). ``k = median(E/B)`` per species (eBird<-BBS unit scale).
 The two rate products are near-orthogonal at the cell level (different temporal
 domains: BBS 1966-2022 vs eBird 2012-2022), so this genuinely spans more of the
 community-change space than either alone -- the point of the redesign. Two overlapping
-soft caps (relative fold + absolute at the species' p99 best-habitat abundance) + log1p
+soft caps (relative fold + absolute at the species' p95 occupied-cell abundance) + log1p
 Ružicka space + a coverage gate keep the reconstruction well-behaved (see ``soft_clip``,
 ``assemble_points``).
 
@@ -81,28 +81,25 @@ def blended_rate(bbs_rate, ebird_ppy, w):
     return r
 
 
-def soft_clip(x, knee, asymptote):
-    """Soft version of a hard cap: identity for ``|x|<=knee``, saturating toward
-    ``+/-asymptote`` beyond it.
+def soft_clip(x, asymptote, p=2.0):
+    """Globally smooth, odd saturation toward ``+/-asymptote``.
 
-    Below the knee the value is untransformed; above it, a tanh eases it smoothly to
-    the asymptote (C1-continuous at the knee -- both pieces have unit slope there),
-    so it never exceeds ``asymptote``. Unlike a hard clip it has no kink and unlike a
-    global tanh it leaves ordinary change alone. Applied to the cumulative LOG
-    abundance change, so ``knee``/``asymptote`` are in log-fold units
-    (e.g. ln 10 -> untransformed to ~10x; ln 100 -> capped near 100x).
+    ``x / (1 + (|x| / asymptote)**p)**(1/p)`` has unit slope at zero and
+    smoothly approaches the configured bound without a linear-to-cap elbow.
+    ``p=2`` is the usual smooth softsign form; larger ``p`` sharpens the transition.
     """
     x = np.asarray(x, dtype="float64")
-    knee = np.asarray(knee, dtype="float64")
-    span = np.maximum(np.asarray(asymptote, dtype="float64") - knee, 1e-9)   # scalar or per-species
-    a = np.abs(x)
-    out = np.where(a > knee, knee + span * np.tanh((a - knee) / span), a)
-    return np.sign(x) * out
+    asymptote = np.asarray(asymptote, dtype="float64")
+    if np.any(asymptote <= 0):
+        raise ValueError("soft-cap asymptote must be positive")
+    if p < 1:
+        raise ValueError("soft-cap p must be at least 1")
+    return x / np.power(1.0 + np.power(np.abs(x) / asymptote, p), 1.0 / p)
 
 
 def backward_trajectory(anchor, bbs_rate, ebird_ppy, bbs_abund, k, sample_years, anchor_year,
-                        first_year, crossover, width, soft_knee, soft_asymptote,
-                        abs_knee=None, abs_asy=None):
+                        first_year, crossover, width, soft_asymptote, soft_cap_p=2.0,
+                        abs_asy=None):
     """Method-B reconstruction: a log-space blend of two closed-form trajectories.
 
     ``anchor`` (E, eBird present), ``bbs_rate``/``ebird_ppy`` (%/yr), ``bbs_abund`` (B,
@@ -115,9 +112,9 @@ def backward_trajectory(anchor, bbs_rate, ebird_ppy, bbs_abund, k, sample_years,
     (recent -> eBird's own trajectory) to ~0 (deep -> BBS's ABSOLUTE past ``k·B/f``, so
     the deep spatial pattern follows BBS, not eBird's modern map). Missing eBird -> its
     rate is 0 (held); missing BBS -> that cell falls back to the eBird trajectory. Two
-    overlapping soft caps then bound the change: a RELATIVE (fold) cap on ``log(N/E)``
-    (``soft_knee``/``soft_asymptote``, log units) and, if given, an ABSOLUTE cap on
-    ``N-E`` (``abs_knee``/``abs_asy``, per species) -- the first protects rare-base
+    overlapping globally smooth soft caps then bound the change: a RELATIVE (fold) cap
+    on ``log(N/E)`` (``soft_asymptote``, log units) and, if given, an ABSOLUTE cap on
+    ``N-E`` (``abs_asy``, per species) -- the first protects rare-base
     cells, the second abundant-base cells. Species absent now (E<=0) stay 0.
     ``N`` is ``(len(years), S, M)`` with ``N[anchor_year] == anchor`` exactly.
     """
@@ -144,10 +141,10 @@ def backward_trajectory(anchor, bbs_rate, ebird_ppy, bbs_abund, k, sample_years,
         bbs_term = np.where(has_b, logkB + dy * rb, ebird_term)  # fall back to eBird if no BBS
         w = blend_weight(Y, crossover, width)
         logN = w * ebird_term + (1.0 - w) * bbs_term
-        lr = soft_clip(logN - logE, soft_knee, soft_asymptote)   # cap 1: relative (fold) change
+        lr = soft_clip(logN - logE, soft_asymptote, soft_cap_p)  # cap 1: relative (fold) change
         Ny = np.where(posE, E * np.exp(lr), 0.0)
-        if abs_knee is not None:                                 # cap 2: absolute change (overlapping)
-            d = soft_clip(Ny - E, abs_knee, abs_asy)
+        if abs_asy is not None:                                  # cap 2: absolute change (overlapping)
+            d = soft_clip(Ny - E, abs_asy, soft_cap_p)
             Ny = np.where(posE, np.clip(E + d, 0.0, None), 0.0)
         out[Y] = Ny
     years = sorted(out)
@@ -178,15 +175,15 @@ def _smooth_log_years(N, rr, cc, H, W, sigma):
 
 
 def assemble_points(anchor, bbs_rate, ebird_ppy, bbs_abund, k, valid, years_cfg, log1p=True,
-                    abs_knee=None, abs_asy=None, smooth_sigma=0.0):
+                    abs_asy=None, smooth_sigma=0.0):
     """Build ``(X, point_index, meta_years)`` from grid arrays. Pure.
 
     ``anchor`` (eBird present), ``bbs_rate``/``ebird_ppy`` (%/yr) and ``bbs_abund``
     (BBS present abundance) are ``(S, H, W)`` (NaN where absent); ``k`` is the
     per-species eBird<-BBS scale ``(S,)``. ``valid`` is ``(H, W)`` bool (community
     support = the anchor's footprint). ``years_cfg`` = dict(anchor_year, first_year,
-    stride, crossover, width, soft_knee, soft_asymptote, min_coverage). ``abs_knee``/
-    ``abs_asy`` (per species, optional) add the absolute-change soft cap;
+    stride, crossover, width, soft_asymptote, soft_cap_p, min_coverage). ``abs_asy``
+    (per species, optional) adds the absolute-change soft cap;
     ``smooth_sigma`` (cells, optional) applies a post-cap masked Gaussian to the
     log-abundance. ``log1p`` emits ``log1p(abundance)`` community vectors.
 
@@ -201,7 +198,6 @@ def assemble_points(anchor, bbs_rate, ebird_ppy, bbs_abund, k, valid, years_cfg,
     e = np.stack([ebird_ppy[s][rr, cc] for s in range(S)])
     ba = np.stack([bbs_abund[s][rr, cc] for s in range(S)])
     kk = np.asarray(k, dtype="float64").reshape(S, 1)
-    ak = None if abs_knee is None else np.asarray(abs_knee, dtype="float64").reshape(S, 1)
     aa = None if abs_asy is None else np.asarray(abs_asy, dtype="float64").reshape(S, 1)
 
     ay, fy = int(years_cfg["anchor_year"]), int(years_cfg["first_year"])
@@ -209,8 +205,8 @@ def assemble_points(anchor, bbs_rate, ebird_ppy, bbs_abund, k, valid, years_cfg,
     sample_years = [ay] + [y for y in range(ay - 1, fy - 1, -1) if (ay - y) % stride == 0]
     years, N = backward_trajectory(a, b, e, ba, kk, sample_years, ay, fy,
                                    years_cfg["crossover"], years_cfg["width"],
-                                   years_cfg["soft_knee"], years_cfg["soft_asymptote"],
-                                   abs_knee=ak, abs_asy=aa)             # (T, S, M)
+                                   years_cfg["soft_asymptote"], years_cfg.get("soft_cap_p", 2.0),
+                                   abs_asy=aa)                           # (T, S, M)
     if smooth_sigma and smooth_sigma > 0:
         N = _smooth_log_years(N, rr, cc, H, W, float(smooth_sigma))
     # Recent year first (ESK strata key on recent_year), then the rest ascending.
@@ -385,23 +381,23 @@ def build_trend_points(config=None):
         "stride": int(tc.get("point_year_stride", 3)),
         "crossover": float(tc.get("handoff_crossover", 2010.0)),
         "width": float(tc.get("handoff_width", 1.5)),
-        "soft_knee": float(np.log(tc.get("soft_knee_fold", 10.0))),
         "soft_asymptote": float(np.log(tc.get("soft_max_fold", 100.0))),
+        "soft_cap_p": float(tc.get("soft_cap_p", 2.0)),
         "min_coverage": float(tc.get("min_coverage", 0.5)),
     }
     log1p = bool(tc.get("ruzicka_log1p", True))
-    # Absolute-change soft cap: per-species knee/asymptote = multiples of that species'
-    # present-abundance scale (p90 over occupied cells). Complements the relative cap.
-    abs_knee = abs_asy = None
+    # Absolute-change cap: its per-species asymptote is a multiple of the
+    # occupied-cell abundance scale. It complements the relative cap.
+    abs_asy = None
     if bool(tc.get("abs_soft_cap", True)):
-        ref = np.array([float(np.nanpercentile(anchor[i][anchor[i] > 0], 99))   # best-habitat ceiling
+        q = float(tc.get("abs_reference_quantile", 95.0))
+        ref = np.array([float(np.nanpercentile(anchor[i][anchor[i] > 0], q))
                         if np.isfinite(anchor[i]).any() and (anchor[i] > 0).any() else 1.0
                         for i in range(S)])
-        abs_knee = ref * float(tc.get("abs_soft_knee_mult", 0.3))
         abs_asy = ref * float(tc.get("abs_soft_max_mult", 1.0))
     smooth_sigma = float(tc.get("smooth_sigma_cells", 0.0))
     X, pidx, years = assemble_points(anchor, bbs_rate, ebird_ppy, bbs_abund, k, valid,
-                                     years_cfg, log1p=log1p, abs_knee=abs_knee, abs_asy=abs_asy,
+                                     years_cfg, log1p=log1p, abs_asy=abs_asy,
                                      smooth_sigma=smooth_sigma)
     n_recent = int(valid.sum())
 

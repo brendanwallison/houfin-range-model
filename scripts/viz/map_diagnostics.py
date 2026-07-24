@@ -12,6 +12,20 @@ It excludes dispersal, realized occupancy, density limitation, and the Allee
 factor.  Those are important for realized range expansion, but including them
 would make this a realized-distribution map rather than a fundamental-niche
 map.  The Allee threshold is instead reported as a separate fitted mechanism.
+Caveat: the habitat manifolds (``H_s_local``/``H_r_local``) also include a
+smooth spatiotemporal random-effect term (``z_smooth``) alongside the
+environmental covariates, so this is not a strictly covariate-only niche --
+a minor, known modeling choice (see ``age_fields.py``), not a bug. Sa/Sj/Fmax
+themselves are not approximated for this purpose: they are the exact fitted
+per-cell fields the full model uses (via ``reconstruct_map`` below), with only
+the dispersal (``Q``) and density-dependence/Allee (``K``, ``c``,
+``allee_gamma``) fields dropped from the niche calculation itself.
+
+``07_realized_source_sink.png`` is the deliberate REALIZED counterpart --
+same Sa/Sj/Fmax but WITH density-dependence and the Allee effect -- so the
+two can be compared directly; see ``src/vis/age_model_math.py`` for the
+shared, samples-axis-agnostic math both draw on (also the seam for a future
+MCMC-sample version of this script).
 
 Outputs are written under the selected MAP run directory in ``map_diagnostics/``.
 """
@@ -43,27 +57,15 @@ from src.model.age_priors import build_model_2d
 from src.model.checkpoints import auto_delta_params_to_latents, load_map_params
 from src.model.data_loading import load_data
 from src.model.runtime_diagnostics import memory_snapshot, require_gpu
+from src.vis.age_model_math import (
+    add_timeline_markers, local_growth_lambda, realized_equilibrium,
+    response_curve_fields, scatter_to_grid, window_mean,
+)
 
-
-def local_growth_lambda(Sa, Sj, F):
-    """Dominant local eigenvalue for the forward model's census order.
-
-    Adults survive before reproducing, hence the fecundity entry is ``F*Sa``.
-    This differs from the older ``F*Sj/(1-Sa)`` surrogate.
-    """
-    Sa, Sj, F = np.asarray(Sa), np.asarray(Sj), np.asarray(F)
-    return (Sa + np.sqrt(np.maximum(Sa ** 2 + 4.0 * F * Sa * Sj, 0.0))) / 2.0
-
-
-def _grid(flat, rows, cols, shape):
-    grid = np.full((flat.shape[0], *shape), np.nan, dtype="float32")
-    grid[:, rows, cols] = flat
-    return grid
-
-
-def _window_mean(values, n):
-    n = min(n, values.shape[0])
-    return np.nanmean(values[-n:], axis=0), np.nanmean(values[:n], axis=0), n
+# Back-compat local aliases (this file's plot functions historically used
+# these private names; kept so the diffs below stay small).
+_grid = scatter_to_grid
+_window_mean = window_mean
 
 
 def _run_dir(cfg, profile, precision):
@@ -78,11 +80,14 @@ def reconstruct_map(data, params):
     latents = auto_delta_params_to_latents(params)
     posterior = {name: jnp.expand_dims(value, 0) for name, value in latents.items()}
     needed = ["simulated_density", "Sa_flat", "Sj_flat", "Fmax_flat", "K_flat",
-              "Q_flat", "expected_obs", "allee_gamma", "n50_raw", "w_env", "rho"]
+              "Q_flat", "expected_obs", "allee_gamma", "n50_raw", "w_env", "rho",
+              "st_weights"]
     predictive = Predictive(build_model_2d, posterior_samples=posterior, return_sites=needed)
     result = predictive(jax.random.PRNGKey(104), data=data, prior_scale=1.0)
     result = jax.block_until_ready(result)
-    return {name: np.asarray(value[0]) for name, value in result.items()}
+    sim = {name: np.asarray(value[0]) for name, value in result.items()}
+    sim["latents"] = latents
+    return sim
 
 
 def plot_modern_niche(lam, years, rows, cols, shape, out, window):
@@ -110,8 +115,12 @@ def plot_modern_niche(lam, years, rows, cols, shape, out, window):
     im = ax[1, 0].imshow(change, cmap="RdBu_r", vmin=-delta_lim, vmax=delta_lim)
     ax[1, 0].set_title("Change in intrinsic growth (modern − early)")
     fig.colorbar(im, ax=ax[1, 0], fraction=.046, label="Δλ")
-    cmap = mcolors.ListedColormap(["#bdbdbd", "#2c7fb8", "#d7301f", "#238443"])
-    im = ax[1, 1].imshow(transition, cmap=cmap, vmin=-1, vmax=2)
+    # Transition codes are -1=lost, 0=persistently unsuitable, 1=gained,
+    # 2=persistently suitable. Use explicit bins: imshow's default continuous
+    # scaling silently mapped code 0 to the second (blue) colour before.
+    cmap = mcolors.ListedColormap(["#d7301f", "#bdbdbd", "#2c7fb8", "#238443"])
+    norm = mcolors.BoundaryNorm([-1.5, -0.5, 0.5, 1.5, 2.5], cmap.N)
+    im = ax[1, 1].imshow(transition, cmap=cmap, norm=norm)
     ax[1, 1].set_title("Fundamental-niche transition")
     ax[1, 1].legend(handles=[
         plt.Rectangle((0, 0), 1, 1, color="#bdbdbd", label="Persistently λ ≤ 1"),
@@ -146,7 +155,9 @@ def plot_niche_trajectory(lam, years, rows, cols, ref_raster, out):
     ax0b.set_ylabel("Mean λ")
     ax[1].plot(years, centroid_lat, color="#2c7fb8", lw=2)
     ax[1].set(xlabel="Year", ylabel="Mean latitude (°N)", title="Centroid of land with λ > 1")
-    for a in ax: a.grid(alpha=.25)
+    for a in ax:
+        a.grid(alpha=.25)
+        add_timeline_markers(a)
     fig.tight_layout(); fig.savefig(out, dpi=180); plt.close(fig)
     return fraction, mean_lambda, centroid_lat
 
@@ -183,10 +194,192 @@ def plot_fit_diagnostics(sim, data, years, out):
     ax[1].plot(years, pred_mean, label="Fitted mean", color="#d95f0e", lw=1.8)
     ax[1].set(xlabel="Year", ylabel="Mean BBS count", title="Observed versus fitted annual mean")
     ax[1].legend(); ax[1].grid(alpha=.25)
+    add_timeline_markers(ax[1])
     fig.tight_layout(); fig.savefig(out, dpi=180); plt.close(fig)
     residual = np.log1p(predicted) - np.log1p(observed)
     return {"n_observations": int(len(observed)), "log1p_rmse": float(np.sqrt(np.mean(residual ** 2))),
             "log1p_correlation": float(np.corrcoef(np.log1p(observed), np.log1p(predicted))[0, 1])}
+
+
+def plot_response_curves(sim, out, top_n=6):
+    """Sweep the top-|weight| Z features and plot Sa/Sj/Fmax/K response curves.
+
+    Corrects a stale bug in the deprecated ``visualize_age_model.py`` (which
+    used ``exp`` instead of ``softplus`` for Fmax) and adds the K response
+    curve that script never plotted. See ``age_model_math.response_curve_fields``.
+    """
+    latents = sim["latents"]
+    w_env = np.asarray(latents["w_env"])
+    importance = np.abs(w_env).sum(axis=1)
+    top_idx = np.argsort(importance)[::-1][:min(top_n, w_env.shape[0])]
+    z_sweep = np.linspace(-3.0, 3.0, 60)
+
+    ncols = 3
+    nrows = int(np.ceil(len(top_idx) / ncols))
+    fig, axes = plt.subplots(nrows, ncols, figsize=(4.3 * ncols, 3.6 * nrows), squeeze=False)
+    for axis, idx in zip(axes.flat, top_idx):
+        curves = response_curve_fields(latents, z_sweep, int(idx))
+        axis.plot(z_sweep, curves["Sa"], color="navy", lw=1.8)
+        axis.plot(z_sweep, curves["Sj"], color="royalblue", lw=1.8, linestyle="--")
+        axis.set_ylim(0, 1)
+        axis.set_title(f"Z_{idx}  (|w_env|={importance[idx]:.2f})", fontsize=9)
+        axis2 = axis.twinx()
+        axis2.plot(z_sweep, curves["Fmax"], color="darkorange", lw=1.6)
+        axis2.plot(z_sweep, curves["K"], color="seagreen", lw=1.6, linestyle=":")
+    for axis in axes.flat[len(top_idx):]:
+        axis.axis("off")
+
+    handles = [
+        plt.Line2D([], [], color="navy", label="Adult survival (Sa)"),
+        plt.Line2D([], [], color="royalblue", linestyle="--", label="Juvenile survival (Sj)"),
+        plt.Line2D([], [], color="darkorange", label="Fecundity ceiling (Fmax)"),
+        plt.Line2D([], [], color="seagreen", linestyle=":", label="Carrying capacity (K)"),
+    ]
+    fig.legend(handles=handles, loc="lower center", ncol=4, fontsize=8, frameon=False,
+               bbox_to_anchor=(0.5, -0.02))
+    fig.suptitle("Demographic response curves (top Z features by |w_env|)")
+    fig.tight_layout(rect=(0, 0.05, 1, 0.95))
+    fig.savefig(out, dpi=180); plt.close(fig)
+    return {"response_curve_top_features": [int(i) for i in top_idx]}
+
+
+def plot_environmental_drivers_limits(data, sim, years, rows, cols, shape, out, window):
+    """Which Z feature contributes most to the survival/reproduction manifold, per cell."""
+    latents = sim["latents"]
+    w_env = np.asarray(latents["w_env"])
+    beta_s, beta_r = w_env[:, 0], w_env[:, 1]
+    # Z_gathered is (time, N_land, M) and typically device-resident; slice the
+    # window BEFORE pulling to host so a full-array transfer is never needed.
+    Z_full = data["Z_gathered"]
+    n = min(window, Z_full.shape[0])
+    Z = np.asarray(Z_full[-n:])
+    Z_early = np.asarray(Z_full[:n])
+
+    def dominant_feature(Z_window, beta):
+        contrib_mean = (Z_window * beta[None, None, :]).mean(axis=0)  # (N_land, M)
+        return np.argmax(contrib_mean, axis=1).astype("float32")
+
+    panels = [
+        (dominant_feature(Z, beta_s), f"Survival driver ({years[-1] - n + 1}–{years[-1]})"),
+        (dominant_feature(Z, beta_r), f"Reproduction driver ({years[-1] - n + 1}–{years[-1]})"),
+        (dominant_feature(Z_early, beta_s), f"Survival driver ({years[0]}–{years[0] + n - 1})"),
+        (dominant_feature(Z_early, beta_r), f"Reproduction driver ({years[0]}–{years[0] + n - 1})"),
+    ]
+    M = w_env.shape[0]
+    cmap = plt.get_cmap("tab20", M)
+    fig, ax = plt.subplots(2, 2, figsize=(12, 9))
+    im = None
+    for axis, (idx_flat, title) in zip(ax.flat, panels):
+        grid = _grid(idx_flat[None], rows, cols, shape)[0]
+        im = axis.imshow(grid, cmap=cmap, vmin=-0.5, vmax=M - 0.5)
+        axis.set_title(title, fontsize=10); axis.axis("off")
+    cbar = fig.colorbar(im, ax=ax, fraction=.025, ticks=range(M))
+    cbar.set_label("Z feature index")
+    fig.suptitle("Dominant environmental driver by cell (modern vs. early)")
+    fig.savefig(out, dpi=180); plt.close(fig)
+
+
+def plot_realized_source_sink(sim, lam_fundamental, years, rows, cols, shape, out, window):
+    """Realized (density-dependent + Allee) counterpart to the fundamental-niche map.
+
+    Contrasts directly against ``01_modern_fundamental_niche.png``: same
+    Sa/Sj/Fmax, but with K and the Allee effect included, so
+    ``lambda_realized <= lambda_fundamental`` everywhere.
+    """
+    _, _, lam_realized, _ = realized_equilibrium(
+        sim["Sa_flat"], sim["Sj_flat"], sim["Fmax_flat"], sim["K_flat"], sim["allee_gamma"]
+    )
+    modern, _, n = _window_mean(lam_realized, window)
+    modern_g = _grid(modern[None], rows, cols, shape)[0]
+    fund_modern, _, _ = _window_mean(lam_fundamental, window)
+    fund_g = _grid(fund_modern[None], rows, cols, shape)[0]
+
+    fig, ax = plt.subplots(1, 3, figsize=(15, 5))
+    binary = np.where(np.isfinite(modern_g), (modern_g > 1.0).astype(float), np.nan)
+    ax[0].imshow(binary, cmap=mcolors.ListedColormap(["#d73027", "#4575b4"]), vmin=0, vmax=1)
+    ax[0].set_title(f"Realized source/sink ({years[-n]}–{years[-1]})")
+    ax[0].legend(handles=[
+        plt.Rectangle((0, 0), 1, 1, color="#4575b4", label="Source (λ_realized > 1)"),
+        plt.Rectangle((0, 0), 1, 1, color="#d73027", label="Sink (λ_realized ≤ 1)"),
+    ], loc="lower left", fontsize=7, frameon=True)
+
+    lo, hi = np.nanpercentile(modern_g, [2, 98]); lo, hi = min(lo, 1.0), max(hi, 1.0)
+    im = ax[1].imshow(modern_g, cmap="RdYlBu_r", vmin=lo, vmax=hi)
+    ax[1].contour(modern_g, [1.0], colors="black", linewidths=1.0)
+    ax[1].set_title("Realized λ (density-dependent + Allee)")
+    fig.colorbar(im, ax=ax[1], fraction=.046, label="λ_realized")
+
+    gap = fund_g - modern_g
+    lim = max(float(np.nanpercentile(np.abs(gap[np.isfinite(gap)]), 98)), .02)
+    im2 = ax[2].imshow(gap, cmap="magma", vmin=0, vmax=lim)
+    ax[2].set_title("Gap: fundamental − realized λ")
+    fig.colorbar(im2, ax=ax[2], fraction=.046, label="Δλ (≥ 0)")
+
+    for a in ax:
+        a.axis("off")
+    fig.suptitle("Realized demographic potential (density-dependence + Allee included)")
+    fig.tight_layout(); fig.savefig(out, dpi=180); plt.close(fig)
+    return {"realized_modern_mean_lambda": float(np.mean(modern)),
+            "realized_modern_source_fraction": float(np.mean(modern > 1.0))}
+
+
+def plot_spatial_residuals(sim, data, shape, out):
+    """Mean per-route log-scale residual (fitted − observed), scattered to the grid."""
+    observed = np.asarray(data["observed_results"])
+    predicted = np.asarray(sim["expected_obs"])
+    obs_rows, obs_cols = np.asarray(data["obs_rows"]), np.asarray(data["obs_cols"])
+    residual = np.log1p(predicted) - np.log1p(observed)
+
+    grid_sum = np.zeros(shape, dtype="float64")
+    grid_cnt = np.zeros(shape, dtype="int32")
+    np.add.at(grid_sum, (obs_rows, obs_cols), residual)
+    np.add.at(grid_cnt, (obs_rows, obs_cols), 1)
+    grid_mean = np.where(grid_cnt > 0, grid_sum / np.maximum(grid_cnt, 1), np.nan)
+
+    lim = max(float(np.nanpercentile(np.abs(grid_mean[np.isfinite(grid_mean)]), 98)), .05)
+    fig, ax = plt.subplots(figsize=(9, 7))
+    im = ax.imshow(grid_mean, cmap="RdBu_r", vmin=-lim, vmax=lim)
+    ax.set_title("Mean log-scale residual per route (log(1+fitted) − log(1+observed))")
+    ax.axis("off")
+    fig.colorbar(im, ax=ax, fraction=.04, label="Residual (log1p scale)")
+    fig.tight_layout(); fig.savefig(out, dpi=180); plt.close(fig)
+
+
+def plot_spatiotemporal_diagnostics(data, sim, out, window):
+    """'Escape hatch' check: is spatiotemporal noise or environment driving H_s?
+
+    High spatiotemporal-noise variance share would mean the smooth
+    random-effect term is substituting for genuine environmental signal.
+    """
+    st_weights = np.asarray(sim["st_weights"])
+    st_basis_full = data["st_basis"]  # (N_basis, time, N_land), device-resident
+    Z_full = data["Z_gathered"]       # (time, N_land, M), device-resident
+    beta_s = np.asarray(sim["latents"]["w_env"])[:, 0]
+
+    n = min(window, st_basis_full.shape[1], Z_full.shape[0])
+    st_basis = np.asarray(st_basis_full[:, -n:, :])  # slice before host transfer
+    Z = np.asarray(Z_full[-n:])
+    z_smooth = np.einsum("btl,b->tl", st_basis, st_weights)
+    H_s_env = Z @ beta_s
+
+    var_env, var_smooth = float(np.var(H_s_env)), float(np.var(z_smooth))
+    total = var_env + var_smooth + 1e-12
+    share_env, share_smooth = var_env / total, var_smooth / total
+
+    fig, ax = plt.subplots(1, 2, figsize=(11, 4.5))
+    ax[0].hist(st_weights, bins=40, color="#6a51a3")
+    ax[0].axvline(0, color="black", lw=.8)
+    ax[0].set(title="Spatiotemporal basis weights (st_weights)", xlabel="Weight", ylabel="Count")
+
+    ax[1].bar(["Environment\n(Z·β_s)", "Spatiotemporal\nnoise (z_smooth)"],
+              [share_env, share_smooth], color=["#238443", "#969696"])
+    ax[1].set(ylabel="Share of survival-manifold variance", ylim=(0, 1),
+              title=f"Variance decomposition (last {n} yr)")
+    for i, v in enumerate([share_env, share_smooth]):
+        ax[1].text(i, v + .02, f"{v:.0%}", ha="center")
+    fig.tight_layout(); fig.savefig(out, dpi=180); plt.close(fig)
+    return {"survival_manifold_variance_share_environment": share_env,
+            "survival_manifold_variance_share_spatiotemporal": share_smooth}
 
 
 def main():
@@ -220,6 +413,14 @@ def main():
         lam, years, rows, cols, dcfg["grid"]["ref_raster"], out / "02_niche_trajectory.png")
     plot_modern_rate_maps(sim, years, rows, cols, shape, out / "03_modern_demographic_rates.png", args.window_years)
     fit_metrics = plot_fit_diagnostics(sim, data, years, out / "04_map_fit_diagnostics.png")
+    response_metrics = plot_response_curves(sim, out / "05_demographic_response_curves.png")
+    plot_environmental_drivers_limits(data, sim, years, rows, cols, shape,
+                                       out / "06_environmental_drivers_limits.png", args.window_years)
+    source_sink_metrics = plot_realized_source_sink(
+        sim, lam, years, rows, cols, shape, out / "07_realized_source_sink.png", args.window_years)
+    plot_spatial_residuals(sim, data, shape, out / "08_spatial_residuals.png")
+    st_metrics = plot_spatiotemporal_diagnostics(data, sim, out / "09_spatiotemporal_weight_diagnostics.png",
+                                                  args.window_years)
     n50_raw = float(np.asarray(sim["n50_raw"])); n50 = float(np.logaddexp(0.0, n50_raw))
     transition_land = np.isfinite(transition)
     metrics = {
@@ -232,6 +433,9 @@ def main():
         "lost_suitable_fraction": float(np.mean(transition[transition_land] == -1)),
         "final_suitable_centroid_latitude": float(centroid_lat[-1]),
         "allee_n50_bbs_count": n50, "fit": fit_metrics,
+        "realized_source_sink": source_sink_metrics,
+        "spatiotemporal_diagnostics": st_metrics,
+        **response_metrics,
     }
     with open(out / "metrics.json", "w", encoding="utf-8") as fh:
         json.dump(metrics, fh, indent=2)

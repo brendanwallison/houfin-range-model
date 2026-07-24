@@ -24,6 +24,11 @@ invasion
 end_year
     The newest BBS field-season year (2026 release → 2025). Covariates that lag
     (e.g. LUH-3 ending 2024) are EMA/persistence-carried to end_year.
+bbs_start_year
+    The first BBS field season (1966): the model timeline runs from
+    ``first_year`` (1902), but there is zero observational constraint before
+    this year. Purely a visualization/reporting reference point -- it never
+    gates or trims the model timeline itself.
 """
 from typing import Dict, List, Sequence, Union
 
@@ -35,6 +40,7 @@ DEFAULTS = {
     "first_year": 1902,
     "end_year": 2025,
     "invasion_year": 1940,
+    "bbs_start_year": 1966,
     "bio_year_start_month": 8,  # August
 }
 

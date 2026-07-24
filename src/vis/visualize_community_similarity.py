@@ -314,6 +314,17 @@ def plot_community_cosine_similarities(sim, Z_native, pseudo_abundance_matrix, p
         plt.close()
 
     # Demographic R0 Projection (using true spatial means)
+    #
+    # NOTE: this is an intentionally simpler proxy for community/trait
+    # similarity analysis, not the range model's niche metric -- it is NOT
+    # meant to match scripts/viz/map_diagnostics.py's canonical
+    # dominant-eigenvalue formula (local_growth_lambda /
+    # src.vis.age_model_math.local_growth_lambda), which uses the correct
+    # census-order algebra dominant_eigenvalue([[Sa,Sj],[F*Sa,0]]). Also note
+    # F_max here uses `exp`, whereas the current age_fields.py model link is
+    # `softplus` -- a known, harmless divergence for this file's purpose, but
+    # don't copy this formula elsewhere without checking which link/algebra
+    # you actually want.
     def calc_R0_from_centroid(W_matrix):
         H_s = W_matrix @ bs
         H_r = W_matrix @ br

@@ -116,33 +116,48 @@ def sample_priors(prior_scale=1.0, M_features=None, N_basis=None, time=None):
     priors['beta_s'] = w_env[:, 0]  # Survival Suitability Weights
     priors['beta_r'] = w_env[:, 1]  # Reproductive Suitability Weights
     
-    # 1D spectral weights for the K-only spatiotemporal correction (see
-    # age_fields.py's _K_CORRECTION_OFFSET / project_and_scatter_age_structured).
-    # This is NOT a smoothing term on Z/H_s/H_r -- it is a genuinely latent,
-    # zero-mean multiplicative correction to carrying capacity, meant to soak
-    # up dynamics (e.g. mycoplasmal conjunctivitis) this Z-driven covariate
-    # structure has no way to see. A Normal (not Laplace) prior is used
-    # deliberately: symmetric around zero, so "no correction" is the natural
-    # center of the prior rather than a boundary the base K has to fight
-    # against. (An earlier design bounded this to reduction-only via a
-    # one-sided sigmoid link: by Jensen's inequality a concave link's
-    # expectation under ANY zero-mean perturbation sits below its own
-    # zero-perturbation value, and that shortfall is data-dependent -- larger
-    # wherever the term is actually used -- so alpha_k would be pulled upward
-    # to compensate, contaminating the very spatial/temporal pattern this term
-    # is meant to isolate. softplus is convex everywhere, so it has the same
-    # Jensen shortfall in the OTHER direction, but that shortfall depends only
-    # on the prior scale, not on data/location/time, so alpha_k absorbs it as
-    # a harmless flat constant instead.) The budget is distributed across
-    # N_basis coefficients so total per-cell-year correction variance stays
-    # roughly budget^2/2 regardless of how finely N_basis is set.
-    global_k_correction_budget = 2.0 * prior_scale  # deliberately loose (was 0.001 under the old Laplace/Z-smoothing design)
-    dynamic_scale = global_k_correction_budget / jnp.sqrt(N_basis)
+    # --- 1b. MYCOPLASMAL-CONJUNCTIVITIS DEPRESSION OF K ---
+    # See age_fields.py's module docstring for the full formulation and for why
+    # the earlier Jensen argument against a one-sided link no longer applies. The
+    # depression is gate(x,t) * softplus(disease_mu + st_basis . st_weights),
+    # subtracted inside K's softplus, so this term can only lower K.
+    #
+    # st_weights carry the spatiotemporal SHAPE of the epidemic's severity, no
+    # longer its onset pattern (the arrival map's gate does that). Their prior
+    # stays zero-mean Normal and the budget is still distributed across N_basis
+    # coefficients, so total per-cell-year variance is roughly budget^2/2
+    # regardless of how finely N_basis is set.
+    disease_severity_budget = 2.0 * prior_scale
+    dynamic_scale = disease_severity_budget / jnp.sqrt(N_basis)
     priors['st_weights'] = numpyro.sample(
         "st_weights",
         dist.Normal(0.0, dynamic_scale).expand([N_basis])
     )
-    
+
+    # Baseline severity. Centered at -1 so the median depression is
+    # softplus(-1) ~ 0.31 on K's pre-softplus scale -- i.e. "the disease barely
+    # mattered" is cheap under the prior and has to be argued out of the data,
+    # not assumed. This is the only constant alpha_k must absorb (flat in space
+    # and time), which is exactly the property the gate buys us.
+    priors['disease_mu'] = numpyro.sample("disease_mu", dist.Normal(-1.0, 1.0 * prior_scale))
+
+    # Onset gate slack, shared continentally. The arrival surface is a smoothed
+    # reconstruction from the documented spread history, so it carries a
+    # systematic bias of order a year (its kernel smoother in particular shrinks
+    # the 1994 mid-Atlantic and 2006 California extremes inward). A single
+    # learned lag absorbs that bias; tau sets how abruptly severity switches on
+    # once the front arrives, with the prior favoring ~1-2 years -- fast enough
+    # to be an epidemic front, slow enough not to be a step discontinuity the
+    # optimizer cannot move through.
+    priors['disease_lag'] = numpyro.sample("disease_lag", dist.Normal(0.0, 2.0 * prior_scale))
+    priors['disease_tau'] = numpyro.deterministic(
+        "disease_tau",
+        # floored: a vanishing tau makes the gate a step function, whose gradient
+        # w.r.t. lag vanishes everywhere the front is not exactly at t.
+        jnn.softplus(numpyro.sample("disease_tau_raw",
+                                    dist.Normal(0.5, 0.5 * prior_scale))) + 0.25,
+    )
+
     # --- 2. DEMOGRAPHIC INTERCEPTS (Alphas) ---
     # Adult survival baseline > Juvenile survival baseline
     priors['alpha_a'] = numpyro.sample("alpha_a", dist.Normal(0.5, 0.5 * prior_scale)) # ~60%
@@ -217,7 +232,9 @@ def build_model_2d(data, prior_scale=1.0):
     Sa_flat, Sj_flat, Fmax_flat, K_flat, Q_flat = project_and_scatter_age_structured(
         time, Ny, Nx, land_rows, land_cols,
         data['Z_gathered'], data['Z_disp_gathered'],
-        data['st_basis'], priors['st_weights'], data['inv_timestep'],
+        data['st_basis'], priors['st_weights'], data['disease_timestep'],
+        data['disease_onset'], priors['disease_lag'], priors['disease_tau'],
+        priors['disease_mu'],
         priors['beta_s'], priors['beta_r'],
         priors['alpha_a'], priors['gamma_a'],
         priors['alpha_j'], priors['gamma_j'],

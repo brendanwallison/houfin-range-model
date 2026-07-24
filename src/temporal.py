@@ -41,6 +41,7 @@ DEFAULTS = {
     "end_year": 2025,
     "invasion_year": 1940,
     "bbs_start_year": 1966,
+    "disease_start_year": 1993,
     "bio_year_start_month": 8,  # August
 }
 
@@ -108,3 +109,19 @@ def invasion_timestep(tl: dict = None, first_year: int = None) -> int:
     tl = tl or load_timeline()
     fy = tl["first_year"] if first_year is None else int(first_year)
     return tl["invasion_year"] - fy
+
+
+def disease_timestep(tl: dict = None, first_year: int = None) -> int:
+    """Model index at which the mycoplasmal-conjunctivitis window opens.
+
+    ``disease_start_year`` (1993) is the winter the poultry strain first appeared
+    in wild House Finches in the mid-Atlantic. The K-depression term (see
+    ``src/model/age_fields.py``) is identically zero before this index, and its
+    spatiotemporal basis is built over ``disease_start_year..end_year`` only --
+    a much shorter window than the old invasion-year..end_year span, which is
+    both cheaper in VRAM and the only interval where the term has anything to
+    explain. Derived, never hardcoded, exactly like ``invasion_timestep``.
+    """
+    tl = tl or load_timeline()
+    fy = tl["first_year"] if first_year is None else int(first_year)
+    return tl["disease_start_year"] - fy

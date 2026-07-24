@@ -15,8 +15,8 @@ map.  The Allee threshold is instead reported as a separate fitted mechanism.
 The habitat manifolds (``H_s_local``/``H_r_local``, and hence Sa/Sj/Fmax) are
 now purely covariate-driven (Z.beta only) -- an earlier design mixed a shared
 smooth spatiotemporal term into both manifolds, but that has been replaced by
-a K-only latent multiplicative correction (see ``age_fields.py``'s
-``_K_CORRECTION_OFFSET``), so this niche quantity no longer carries even the
+an onset-gated, sign-constrained disease depression of K alone (see
+``age_fields.py``), so this niche quantity no longer carries even the
 minor non-covariate caveat that used to apply. Sa/Sj/Fmax themselves are not
 approximated for this purpose: they are the exact fitted per-cell fields the
 full model uses (via ``reconstruct_map`` below), with only the dispersal
@@ -25,8 +25,8 @@ dropped from the niche calculation itself.
 
 ``07_realized_source_sink.png`` is the deliberate REALIZED counterpart --
 same Sa/Sj/Fmax but WITH density-dependence, the Allee effect, AND the K-only
-latent correction (meant to capture disease-shaped dynamics with no covariate
-of their own) -- so the two can be compared directly; see
+disease depression (mycoplasmal conjunctivitis, which has no covariate of its
+own) -- so the two can be compared directly; see
 ``src/vis/age_model_math.py`` for the shared, samples-axis-agnostic math both
 draw on (also the seam for a future MCMC-sample version of this script).
 
@@ -38,6 +38,14 @@ pools, which does carry that history); a gap between them, especially near a
 still-advancing range edge, is the expected signature of non-equilibrium age
 structure at an invasion front. Na_grid/Nj_grid cost nothing extra during
 MAP/SVI optimization -- see forward_sim_age_structured's docstring for why.
+
+``13_niche_change_since_invasion.png`` and
+``14_environmental_drivers_since_invasion.png`` repeat figures 01 and 06 with the
+baseline window anchored at ``invasion_year`` (1940) instead of the start of the
+model timeline (1902). The 1902 baseline is "before anything happened," but it is
+also 38 years of climate change removed from the release, so change measured
+against it is not change the invasion experienced; the 1940-anchored pair is the
+one to read for invasion-relative statements. ``metrics.json`` carries both.
 
 ``11_invasion_progression.png`` (small-multiple maps) and
 ``12_invasion_animation.mp4`` (side-by-side simulated-vs-observed animation,
@@ -73,14 +81,14 @@ from rasterio.warp import transform as crs_transform
 from numpyro.infer import Predictive
 
 from src.config_utils import load_age_model_config, load_data_config
-from src.model.age_fields import _K_CORRECTION_OFFSET
+from src.temporal import load_timeline
 from src.model.age_priors import build_model_2d
 from src.model.checkpoints import auto_delta_params_to_latents, load_map_params
 from src.model.data_loading import load_data
 from src.model.runtime_diagnostics import memory_snapshot, require_gpu
 from src.vis.age_model_math import (
-    add_timeline_markers, local_growth_lambda, realized_equilibrium,
-    response_curve_fields, scatter_to_grid, window_mean,
+    add_timeline_markers, baseline_window_mean, local_growth_lambda,
+    realized_equilibrium, response_curve_fields, scatter_to_grid, window_mean,
 )
 
 # Back-compat local aliases (this file's plot functions historically used
@@ -102,7 +110,8 @@ def reconstruct_map(data, params):
     posterior = {name: jnp.expand_dims(value, 0) for name, value in latents.items()}
     needed = ["simulated_density", "Sa_flat", "Sj_flat", "Fmax_flat", "K_flat",
               "Q_flat", "expected_obs", "allee_gamma", "n50_raw", "w_env", "rho",
-              "st_weights", "Na_grid", "Nj_grid"]
+              "st_weights", "disease_lag", "disease_tau", "disease_mu",
+              "Na_grid", "Nj_grid"]
     predictive = Predictive(build_model_2d, posterior_samples=posterior, return_sites=needed)
     result = predictive(jax.random.PRNGKey(104), data=data, prior_scale=1.0)
     result = jax.block_until_ready(result)
@@ -111,8 +120,18 @@ def reconstruct_map(data, params):
     return sim
 
 
-def plot_modern_niche(lam, years, rows, cols, shape, out, window):
-    modern, early, n = _window_mean(lam, window)
+def plot_modern_niche(lam, years, rows, cols, shape, out, window, ref_year=None):
+    """Modern vs baseline fundamental niche, and the transition between them.
+
+    ``ref_year=None`` anchors the baseline at the start of the model timeline
+    (1902). Pass ``invasion_year`` to anchor it at the release instead -- the
+    1902 baseline also carries 38 years of climate change that has nothing to do
+    with the invasion, so the two figures answer genuinely different questions
+    and are both produced (see ``baseline_window_mean``).
+    """
+    modern, _, n = _window_mean(lam, window)
+    early, n_base, base_span = baseline_window_mean(lam, years, window, ref_year)
+    n = min(n, n_base)
     modern_g, early_g = _grid(modern[None], rows, cols, shape)[0], _grid(early[None], rows, cols, shape)[0]
     change = modern_g - early_g
     early_ok, modern_ok = early_g > 1.0, modern_g > 1.0
@@ -131,10 +150,10 @@ def plot_modern_niche(lam, years, rows, cols, shape, out, window):
     fig.colorbar(im, ax=ax[0, 0], fraction=.046, label="Post-establishment λ")
     im = ax[0, 1].imshow(early_g, cmap="viridis", vmin=lo, vmax=hi)
     ax[0, 1].contour(early_g, [1.0], colors="white", linewidths=1.0)
-    ax[0, 1].set_title(f"Early intrinsic growth λ ({years[0]}–{years[n - 1]} mean)")
+    ax[0, 1].set_title(f"Baseline intrinsic growth λ ({base_span[0]}–{base_span[1]} mean)")
     fig.colorbar(im, ax=ax[0, 1], fraction=.046, label="Post-establishment λ")
     im = ax[1, 0].imshow(change, cmap="RdBu_r", vmin=-delta_lim, vmax=delta_lim)
-    ax[1, 0].set_title("Change in intrinsic growth (modern − early)")
+    ax[1, 0].set_title(f"Change in intrinsic growth (modern − {base_span[0]}–{base_span[1]})")
     fig.colorbar(im, ax=ax[1, 0], fraction=.046, label="Δλ")
     # Transition codes are -1=lost, 0=persistently unsuitable, 1=gained,
     # 2=persistently suitable. Use explicit bins: imshow's default continuous
@@ -151,7 +170,9 @@ def plot_modern_niche(lam, years, rows, cols, shape, out, window):
     ], loc="lower left", fontsize=8, frameon=True)
     for a in ax.flat:
         a.axis("off")
-    fig.suptitle("House Finch fundamental niche: local demographic potential", y=.98)
+    baseline_label = "timeline start" if ref_year is None else f"invasion ({base_span[0]})"
+    fig.suptitle(f"House Finch fundamental niche: local demographic potential "
+                 f"(baseline = {baseline_label})", y=.98)
     fig.tight_layout(); fig.savefig(out, dpi=180); plt.close(fig)
     return modern, early, transition
 
@@ -264,8 +285,14 @@ def plot_response_curves(sim, out, top_n=6):
     return {"response_curve_top_features": [int(i) for i in top_idx]}
 
 
-def plot_environmental_drivers_limits(data, sim, years, rows, cols, shape, out, window):
-    """Which Z feature contributes most to the survival/reproduction manifold, per cell."""
+def plot_environmental_drivers_limits(data, sim, years, rows, cols, shape, out, window,
+                                      ref_year=None):
+    """Which Z feature contributes most to the survival/reproduction manifold, per cell.
+
+    ``ref_year`` anchors the baseline pair of panels, exactly as in
+    ``plot_modern_niche``: None = timeline start (1902), or the invasion year to
+    ask what the drivers looked like when the species actually arrived.
+    """
     latents = sim["latents"]
     w_env = np.asarray(latents["w_env"])
     beta_s, beta_r = w_env[:, 0], w_env[:, 1]
@@ -274,7 +301,12 @@ def plot_environmental_drivers_limits(data, sim, years, rows, cols, shape, out, 
     Z_full = data["Z_gathered"]
     n = min(window, Z_full.shape[0])
     Z = np.asarray(Z_full[-n:])
-    Z_early = np.asarray(Z_full[:n])
+    # Slice the baseline window on device too, for the same reason.
+    years_arr = np.asarray(years)
+    i0 = 0 if ref_year is None else int(np.flatnonzero(years_arr == int(ref_year))[0])
+    n_base = min(n, Z_full.shape[0] - i0)
+    Z_early = np.asarray(Z_full[i0:i0 + n_base])
+    base_span = (int(years_arr[i0]), int(years_arr[i0 + n_base - 1]))
 
     def dominant_feature(Z_window, beta):
         contrib_mean = (Z_window * beta[None, None, :]).mean(axis=0)  # (N_land, M)
@@ -283,8 +315,8 @@ def plot_environmental_drivers_limits(data, sim, years, rows, cols, shape, out, 
     panels = [
         (dominant_feature(Z, beta_s), f"Survival driver ({years[-1] - n + 1}–{years[-1]})"),
         (dominant_feature(Z, beta_r), f"Reproduction driver ({years[-1] - n + 1}–{years[-1]})"),
-        (dominant_feature(Z_early, beta_s), f"Survival driver ({years[0]}–{years[0] + n - 1})"),
-        (dominant_feature(Z_early, beta_r), f"Reproduction driver ({years[0]}–{years[0] + n - 1})"),
+        (dominant_feature(Z_early, beta_s), f"Survival driver ({base_span[0]}–{base_span[1]})"),
+        (dominant_feature(Z_early, beta_r), f"Reproduction driver ({base_span[0]}–{base_span[1]})"),
     ]
     M = w_env.shape[0]
     cmap = plt.get_cmap("tab20", M)
@@ -296,7 +328,8 @@ def plot_environmental_drivers_limits(data, sim, years, rows, cols, shape, out, 
         axis.set_title(title, fontsize=10); axis.axis("off")
     cbar = fig.colorbar(im, ax=ax, fraction=.025, ticks=range(M))
     cbar.set_label("Z feature index")
-    fig.suptitle("Dominant environmental driver by cell (modern vs. early)")
+    fig.suptitle(f"Dominant environmental driver by cell "
+                 f"(modern vs. {base_span[0]}–{base_span[1]} baseline)")
     fig.savefig(out, dpi=180); plt.close(fig)
 
 
@@ -367,40 +400,69 @@ def plot_spatial_residuals(sim, data, shape, out):
 
 
 def plot_spatiotemporal_diagnostics(data, sim, out, window):
-    """'Escape hatch' check: how much is the K-only latent correction actually doing?
+    """'Escape hatch' check: how much is the disease depression of K actually doing?
 
-    st_basis/st_weights no longer touch H_s/H_r (an earlier design mixed a
-    shared spatiotemporal term into both manifolds; that's been replaced by a
-    K-only multiplicative correction, see age_fields.py's
-    _K_CORRECTION_OFFSET). A runaway correction (multiplier far from 1 nearly
-    everywhere) would mean this "latent disease dynamics" term is substituting
-    for genuine covariate signal rather than capturing something real and
-    localized; this plots the weight distribution and the actual per-cell
-    correction values over a trailing window against that 1.0 no-effect line.
+    st_basis/st_weights no longer touch H_s/H_r (an earlier design mixed a shared
+    spatiotemporal term into both manifolds), and no longer form a free
+    multiplicative correction either: they now carry the SEVERITY of an
+    onset-gated, sign-constrained depression subtracted inside K's softplus (see
+    age_fields.py). The term can only lower K, so the failure mode to watch for is
+    no longer "multiplier far from 1" but "large depression nearly everywhere,
+    including in cells the front reached late" -- that would mean the term is
+    substituting for genuine covariate signal instead of capturing the epizootic.
+    Plotted on K's pre-softplus scale, where the depression is subtracted.
     """
     st_weights = np.asarray(sim["st_weights"])
-    st_basis_full = data["st_basis"]  # (N_basis, time_post_invasion, N_land), device-resident
+    st_basis_full = data["st_basis"]  # (N_basis, time_epizootic, N_land), device-resident
+    onset = np.asarray(data["disease_onset"])          # timestep units
+    dis_t0 = int(data["disease_timestep"])
+    lag = float(np.asarray(sim["disease_lag"]))
+    tau = float(np.asarray(sim["disease_tau"])) if "disease_tau" in sim else \
+        float(np.log1p(np.exp(np.asarray(sim["disease_tau_raw"])))) + 0.25
+    mu = float(np.asarray(sim["disease_mu"]))
 
     n = min(window, st_basis_full.shape[1])
     st_basis = np.asarray(st_basis_full[:, -n:, :])  # slice before host transfer
-    k_smooth = np.einsum("bnl,b->nl", st_basis, st_weights)
-    k_multiplier = np.log1p(np.exp(-np.abs(_K_CORRECTION_OFFSET + k_smooth))) + \
-        np.maximum(_K_CORRECTION_OFFSET + k_smooth, 0.0)  # numerically-stable softplus
+    basis_offset = dis_t0 + st_basis_full.shape[1] - n  # absolute timestep of window start
+    lin = mu + np.einsum("bnl,b->nl", st_basis, st_weights)
+    magnitude = np.log1p(np.exp(-np.abs(lin))) + np.maximum(lin, 0.0)  # stable softplus
+    t_abs = basis_offset + np.arange(n)[:, None]
+    gate = 1.0 / (1.0 + np.exp(-(t_abs - onset[None, :] - lag) / tau))
+    depression = gate * magnitude
 
-    fig, ax = plt.subplots(1, 2, figsize=(11, 4.5))
+    fig, ax = plt.subplots(1, 3, figsize=(16, 4.5))
     ax[0].hist(st_weights, bins=40, color="#6a51a3")
     ax[0].axvline(0, color="black", lw=.8)
-    ax[0].set(title="K-correction basis weights (st_weights)", xlabel="Weight", ylabel="Count")
+    ax[0].set(title="Disease severity basis weights (st_weights)",
+              xlabel="Weight", ylabel="Count")
 
-    ax[1].hist(k_multiplier.ravel(), bins=60, color="#238443")
-    ax[1].axvline(1.0, color="black", lw=1.2, linestyle="--", label="no effect")
-    ax[1].set(title=f"K multiplier, last {n} yr (median={np.median(k_multiplier):.2f})",
-              xlabel="K multiplier (1.0 = no correction)", ylabel="Cell-years")
+    ax[1].hist(depression.ravel(), bins=60, color="#238443")
+    ax[1].axvline(0.0, color="black", lw=1.2, linestyle="--", label="no effect")
+    ax[1].set(title=f"K depression, last {n} yr (median={np.median(depression):.2f})",
+              xlabel="Depression (K pre-softplus units; 0 = none)", ylabel="Cell-years")
     ax[1].legend()
+
+    # Gate sanity: mean depression against years since the front arrived. Should
+    # be ~0 to the left of 0 and rise through it; a flat curve means the arrival
+    # map is not actually structuring the term.
+    since = (t_abs - onset[None, :]).ravel()
+    bins = np.arange(-15, 21)
+    which = np.digitize(since, bins) - 1
+    prof = np.array([depression.ravel()[which == i].mean() if (which == i).any() else np.nan
+                     for i in range(len(bins) - 1)])
+    ax[2].plot(bins[:-1], prof, color="#cc4c02")
+    ax[2].axvline(0, color="black", lw=.8)
+    ax[2].set(title=f"Onset profile (lag={lag:+.1f} yr, tau={tau:.2f} yr)",
+              xlabel="Years since modeled arrival", ylabel="Mean depression")
+
     fig.tight_layout(); fig.savefig(out, dpi=180); plt.close(fig)
-    return {"k_correction_median_multiplier": float(np.median(k_multiplier)),
-            "k_correction_p05_multiplier": float(np.percentile(k_multiplier, 5)),
-            "k_correction_p95_multiplier": float(np.percentile(k_multiplier, 95))}
+    return {"disease_depression_median": float(np.median(depression)),
+            "disease_depression_p95": float(np.percentile(depression, 95)),
+            "disease_depression_pre_front_mean": float(
+                np.nanmean(depression.ravel()[since < -5]) if (since < -5).any() else 0.0),
+            "disease_lag_years": lag,
+            "disease_tau_years": tau,
+            "disease_mu": mu}
 
 
 def plot_age_structure(sim, years, rows, cols, shape, land_mask, out, window):
@@ -540,6 +602,15 @@ def main():
     lam = local_growth_lambda(sim["Sa_flat"], sim["Sj_flat"], sim["Fmax_flat"])
     modern, early, transition = plot_modern_niche(lam, years, rows, cols, shape,
                                                    out / "01_modern_fundamental_niche.png", args.window_years)
+    # Invasion-anchored counterparts (13/14). The default baseline is the start of
+    # the model timeline (1902), which mixes 38 years of pre-invasion climate
+    # change into every "change since the beginning" statement; anchoring at 1940
+    # instead measures change relative to what the species actually met on
+    # arrival. Both are kept because they answer different questions.
+    inv_year = int(load_timeline(dcfg)["invasion_year"])
+    _, early_inv, transition_inv = plot_modern_niche(
+        lam, years, rows, cols, shape, out / "13_niche_change_since_invasion.png",
+        args.window_years, ref_year=inv_year)
     fraction, mean_lambda, centroid_lat = plot_niche_trajectory(
         lam, years, rows, cols, dcfg["grid"]["ref_raster"], out / "02_niche_trajectory.png")
     plot_modern_rate_maps(sim, years, rows, cols, shape, out / "03_modern_demographic_rates.png", args.window_years)
@@ -547,6 +618,9 @@ def main():
     response_metrics = plot_response_curves(sim, out / "05_demographic_response_curves.png")
     plot_environmental_drivers_limits(data, sim, years, rows, cols, shape,
                                        out / "06_environmental_drivers_limits.png", args.window_years)
+    plot_environmental_drivers_limits(data, sim, years, rows, cols, shape,
+                                       out / "14_environmental_drivers_since_invasion.png",
+                                       args.window_years, ref_year=inv_year)
     source_sink_metrics = plot_realized_source_sink(
         sim, lam, years, rows, cols, shape, out / "07_realized_source_sink.png", args.window_years)
     plot_spatial_residuals(sim, data, shape, out / "08_spatial_residuals.png")
@@ -567,6 +641,14 @@ def main():
         "modern_suitable_fraction": float(np.mean(modern > 1.0)), "early_suitable_fraction": float(np.mean(early > 1.0)),
         "gained_suitable_fraction": float(np.mean(transition[transition_land] == 1)),
         "lost_suitable_fraction": float(np.mean(transition[transition_land] == -1)),
+        # Same quantities against the invasion-year baseline (figures 13/14).
+        "invasion_baseline_year": inv_year,
+        "invasion_baseline_mean_lambda": float(np.mean(early_inv)),
+        "invasion_baseline_suitable_fraction": float(np.mean(early_inv > 1.0)),
+        "gained_suitable_fraction_since_invasion": float(
+            np.mean(transition_inv[np.isfinite(transition_inv)] == 1)),
+        "lost_suitable_fraction_since_invasion": float(
+            np.mean(transition_inv[np.isfinite(transition_inv)] == -1)),
         "final_suitable_centroid_latitude": float(centroid_lat[-1]),
         "allee_n50_bbs_count": n50, "fit": fit_metrics,
         "realized_source_sink": source_sink_metrics,

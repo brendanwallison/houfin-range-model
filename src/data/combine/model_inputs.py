@@ -13,12 +13,14 @@ import jax.numpy as jnp
 from src.model.build_kernels import build_simulation_struct, dispersal_spec
 from src.config_utils import load_age_model_config
 from src.data.masks import read_land_mask
-from src.temporal import assert_contiguous, invasion_timestep, load_timeline, model_years, year_to_index
+from src.temporal import (assert_contiguous, disease_timestep, invasion_timestep,
+                          load_timeline, model_years, year_to_index)
 
 _cfg = load_age_model_config()
 RAW_Z_DIR = _cfg["raw_z_dir"]
 BBS_DATA_NPZ = _cfg["bbs_npz"]
 MASK_FILE = _cfg["ocean_mask"]
+DISEASE_ARRIVAL_MAP = _cfg["disease_arrival_map"]
 OUTPUT_DIR = _cfg["input_dir"]
 
 # No AGG_FACTOR: every input (Z/Z_disp, BBS grid, mask) is already produced at
@@ -45,12 +47,12 @@ def generate_spatiotemporal_basis(Ny, Nx, Time, land_rows, land_cols, n_freq_spa
     Time: n_freq_time=8 captures decadal cycles.
 
     ``Time`` here is whatever span the caller passes -- it is NOT necessarily
-    the full model timeline. The K-correction basis (see age_fields.py /
-    ingest_data below) is deliberately built over only the post-invasion
-    window (invasion_year..end_year), both to bound VRAM (this array's size
-    is O(N_basis * Time * N_land)) and because a correction meant to capture
-    disease dynamics has nothing to explain before the species even arrives.
-    The frequency-to-resolution mapping (e.g. "n_freq_time=20 -> ~4.3yr
+    the full model timeline. The disease-depression basis (see age_fields.py /
+    ingest_data below) is built over only the epizootic window
+    (disease_start_year..end_year, ~33 years), both to bound VRAM (this array's
+    size is O(N_basis * Time * N_land)) and because a term representing
+    mycoplasmal conjunctivitis has nothing to explain before 1993. The
+    frequency-to-resolution mapping (e.g. "n_freq_time=7 -> ~4.7yr
     half-wavelength") is relative to whatever ``Time`` span is actually passed.
     """
     print(f"  Constructing 3D Basis: Space={n_freq_space}, Time={n_freq_time}...")
@@ -79,6 +81,36 @@ def generate_spatiotemporal_basis(Ny, Nx, Time, land_rows, land_cols, n_freq_spa
     
     st_basis = np.stack(basis_list, axis=0) # (N_basis, Time, N_land)
     return st_basis
+
+
+def load_disease_onset(tif_path, Ny, Nx, land_rows, land_cols, first_year):
+    """Per-land-cell disease arrival, as a (fractional) MODEL TIMESTEP index.
+
+    Reads the arrival-year surface produced by
+    ``scripts/build_disease_arrival_map.py`` and converts calendar years to
+    timestep units by subtracting ``first_year`` -- the model timeline is
+    contiguous (``assert_contiguous``), so this is the same mapping
+    ``year_to_index`` performs, extended to the fractional values kernel
+    smoothing produces. The forward model's onset gate compares this directly
+    against ``t_idx``, so the conversion must happen here and exactly once.
+
+    The raster must be cell-for-cell on the model grid; a shape mismatch raises
+    rather than being resampled, so a stale map from an older grid resolution
+    cannot silently misalign the epidemic front by hundreds of km.
+    """
+    with rasterio.open(tif_path) as src:
+        if (src.height, src.width) != (Ny, Nx):
+            raise ValueError(f"{tif_path} is {src.height}x{src.width}, model grid is "
+                             f"{Ny}x{Nx}; rebuild it with scripts/build_disease_arrival_map.py")
+        arrival = src.read(1).astype(np.float64)
+        nodata = src.nodata
+    if nodata is not None:
+        arrival = np.where(arrival == nodata, np.nan, arrival)
+    onset = arrival[land_rows, land_cols] - float(first_year)
+    if not np.isfinite(onset).all():
+        raise ValueError(f"{tif_path} has nodata on {int((~np.isfinite(onset)).sum())} "
+                         f"land cells; the arrival surface must cover all land")
+    return onset.astype(np.float32)
 
 
 def load_land_metadata(tif_path):
@@ -383,18 +415,28 @@ def ingest_data():
     Z_gathered.flush(); Z_disp_gathered.flush()
     print("\n  Data Streaming Complete.")
 
-    # 5. Generate 3D Spatiotemporal Basis (K-correction only; post-invasion window
-    # only, both to bound VRAM and because there is nothing for it to correct
-    # before the species arrives -- see generate_spatiotemporal_basis's docstring
-    # and age_fields.py's use of inv_timestep to bypass it for earlier timesteps).
-    inv_timestep_for_basis = invasion_timestep(_tl, first_year=start_year_model)
-    Time_basis_active = Time - inv_timestep_for_basis
+    # 5. Generate 3D Spatiotemporal Basis (disease depression of K only; epizootic
+    # window only, both to bound VRAM and because there is nothing for it to
+    # explain before 1993 -- see generate_spatiotemporal_basis's docstring and
+    # age_fields.py's use of disease_timestep to bypass it for earlier timesteps).
+    dis_timestep_for_basis = disease_timestep(_tl, first_year=start_year_model)
+    if dis_timestep_for_basis < 0 or dis_timestep_for_basis >= Time:
+        raise ValueError(f"disease_start_year {_tl['disease_start_year']} lies outside the "
+                         f"realized timeline {start_year_model}..{start_year_model + Time - 1}")
+    Time_basis_active = Time - dis_timestep_for_basis
     st_basis = generate_spatiotemporal_basis(Ny, Nx, Time_basis_active, land_rows, land_cols,
                                              n_freq_space=N_FREQ_SPACE,
                                              n_freq_time=N_FREQ_TIME)
     N_basis = st_basis.shape[0]
     print(f"  Basis Footprint: {st_basis.nbytes / 1e6:.2f} MB "
-          f"(post-invasion window: {Time_basis_active}/{Time} years)")
+          f"(epizootic window: {Time_basis_active}/{Time} years)")
+
+    # 5b. Exogenous onset gate for that depression (see load_disease_onset).
+    disease_onset = load_disease_onset(DISEASE_ARRIVAL_MAP, Ny, Nx,
+                                       land_rows, land_cols, start_year_model)
+    print(f"  Disease onset: arrival years "
+          f"{disease_onset.min() + start_year_model:.1f}-"
+          f"{disease_onset.max() + start_year_model:.1f} over {N_land} land cells")
 
     # 6. Build Kernels
     # MASK_FILE must be the canonical 27 km model-grid mask so cell size / invasion
@@ -450,8 +492,12 @@ def ingest_data():
             "truncation": "top_eigenfeatures" if M < available_M else "none",
             "disp_kernel_note": "exact for raw-Z (local); z_disp=A.Z is a smoothed A.K.A^T",
         },
-        "st_basis": st_basis, 
+        "st_basis": st_basis,
         "N_basis": N_basis,
+        # Epizootic window start, and the per-land-cell arrival gate over it.
+        "disease_timestep": dis_timestep_for_basis,
+        "disease_onset": disease_onset,
+        "disease_arrival_map": DISEASE_ARRIVAL_MAP,
         "ingest_id": ingest_id,
         "z_gathered_path": z_gather_name, "z_disp_gathered_path": z_disp_name,
         "adult_fft_kernel": np.array(sim_struct['adult_fft_kernel']),
@@ -471,10 +517,10 @@ def ingest_data():
         "initpop_latent": initpop_map,
         "pop_scalar": float(POPULATION_SPEC["population_scale_birds_per_relative_unit"]),
         "inv_location": (inv_row, inv_col),
-        # Reused as the K-correction basis's active-window start (see step 5
-        # above / age_fields.py) -- both are "when does the species/its
-        # disease dynamics first become relevant" by construction.
-        "inv_timestep": inv_timestep_for_basis,
+        # The invasion pulse only. This was previously reused as the K-correction
+        # basis's window start; the disease term now has its own, later window
+        # (``disease_timestep`` above), so the two are no longer coupled.
+        "inv_timestep": invasion_timestep(_tl, first_year=start_year_model),
         "inv_window": int(POPULATION_SPEC["invasion_window_years"]),
         "dispersal_target_fraction": float(
             POPULATION_SPEC["dispersal_target_capacity_fraction"]

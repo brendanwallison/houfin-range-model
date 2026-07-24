@@ -4,6 +4,8 @@
   "raw_z_dir": "${HOUFIN_PROCESSED}/latent_avian_paths",
   "bbs_npz": "${HOUFIN_DATA}/bbs_2026_release/bbs_data_for_python.npz",
   "ocean_mask": "${HOUFIN_DATA}/land_mask/ocean_mask_27km.tif",
+  "_disease_arrival_map_comment": "Per-pixel first-affected-breeding-season for House Finch mycoplasmal conjunctivitis, on the model grid. Built by scripts/build_disease_arrival_map.py from the documented 1994-2006 spread history (there is no published raster). Consumed by model_inputs.py as the onset gate for the K depression -- see src/model/age_fields.py.",
+  "disease_arrival_map": "${HOUFIN_PROCESSED}/disease/disease_arrival_year_27km.tif",
   "ebird_dir": "${HOUFIN_DATA}/ebird_weekly_2023_grid",
   "results_dir": "${HOUFIN_PROCESSED}/model_results",
   "latent_dim": 16,
@@ -38,9 +40,9 @@
     "invasion_lon": -73.4445,
     "invasion_window_years": 10,
     "dispersal_target_capacity_fraction": 0.8,
-    "_st_basis_comment": "Spatiotemporal basis for the K (carrying-capacity) correction only (see age_fields.py); the basis's time axis covers invasion_year..end_year only (not the full model timeline), so these frequencies are relative to that ~86-year active window, not the full 1902-2025 span. space=6 -> ~1000km half-wavelength (regional/multi-state clusters, matching observed disease prevalence clustering); time=20 -> ~4.3yr half-wavelength (resolves an epidemic rise-and-decline). Picked to fit comfortably in a 40GB A100 (see docs/ or chat history for the VRAM derivation) -- N_basis=(space+1)^2*(time+1)-1.",
-    "st_basis_space_frequencies": 6,
-    "st_basis_time_frequencies": 20
+    "_st_basis_comment": "Spatiotemporal basis for the disease depression of K only (see age_fields.py); the basis's time axis covers disease_start_year(1993)..end_year, a ~33-year window, so these frequencies are relative to that window and NOT to the full 1902-2025 span (it previously covered invasion_year..end_year, ~86 years). The basis now carries only the epidemic's severity SHAPE -- onset is handled exogenously by the arrival-map gate -- so the budget is rebalanced toward space: space=12 -> ~500km half-wavelength (was 6 -> ~1000km), time=7 -> ~4.7yr half-wavelength (was 20 -> ~4.3yr over the longer window, i.e. temporal resolution is essentially unchanged). N_basis=(space+1)^2*(time+1)-1 = 1351 (was 1028), but the window is 33yr rather than 86, so st_basis VRAM is ~0.50x its previous footprint despite the higher coefficient count.",
+    "st_basis_space_frequencies": 12,
+    "st_basis_time_frequencies": 7
   },
   "map": {
     "_comment": "Continuation begins under tight priors and progressively relaxes them at absolute optimizer steps. The standard/full run uses 300 tight + 300 intermediate + 1200 nominal-prior steps (1800 total). Boundaries are independent of TOTAL_STEPS so extending/resuming a run cannot move backward. lr_decay_steps is likewise fixed across extensions; after step 900 optimization continues at the schedule's minimum learning rate.",
@@ -73,7 +75,8 @@
     "avonet_csv": "${HOUFIN_DATA}/avonet/AVONET_Comparison_WithPhylogeny_Urban.csv"
   },
   "run_names": {
-    "map": "age_map_{precision}_run_5",
+    "_comment": "run_6 is the first fit under the onset-gated disease depression of K (arrival-map gate, sign-constrained, 1993-2025 basis window, N_basis=1351). It is NOT resume-compatible with run_5: st_weights changed length and disease_mu/disease_lag/disease_tau_raw are new latent sites. Bumped rather than reused so run_5's checkpoint and diagnostics stay on disk for comparison. vis_map/vis_community are pointed at run_6 too (they lagged at run_4 before).",
+    "map": "age_map_{precision}_run_6",
     "svi": "age_vi_{precision}_run_5",
     "hmc": "age_hmc_{precision}_trial_3",
     "hmc_svi_source": "age_vi_{precision}_run_2",
@@ -81,9 +84,9 @@
     "resume_svi_from_map": "age_map_{precision}_run_4",
     "resume_hmc_out": "age_hmc_{precision}_from_map",
     "resume_hmc_from_map": "age_map_{precision}_run_4",
-    "vis_map": "age_map_{precision}_run_4",
+    "vis_map": "age_map_{precision}_run_6",
     "vis_svi": "age_vi_{precision}_run_5",
     "vis_hmc": "age_hmc_{precision}_trial_3",
-    "vis_community": "age_map_{precision}_run_4"
+    "vis_community": "age_map_{precision}_run_6"
   }
 }

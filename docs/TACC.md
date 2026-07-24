@@ -328,6 +328,19 @@ versioned memmaps through `metadata.pkl`. The statistical model explicitly keeps
 the configured top 16 of the 64 source eigenfeatures by default; changing
 `age_model_config.json:latent_dim` is the supported VRAM tradeoff.
 
+**Before the first `model-ingest` of the disease-gated model**, the arrival-year
+raster must exist at `age_model_config.json:disease_arrival_map`
+(`$HOUFIN_PROCESSED/disease/disease_arrival_year_27km.tif`). It is a pure-CPU,
+seconds-long build from a hardcoded anchor table, so just run it on the login
+node against the canonical 27 km mask:
+
+```bash
+python scripts/build_disease_arrival_map.py --grid "$HOUFIN_DATA/land_mask/ocean_mask_27km.tif"
+```
+
+`model-ingest` hard-fails if the raster's shape does not match the model grid, so
+a stale map from another resolution cannot silently misplace the epidemic front.
+
 **Re-running just `model-ingest`** (e.g. after a `population_model.st_basis_*`
 frequency change, with `Z`/`Z_disp` unchanged): this stage is numpy/memmap I/O
 plus a one-time kernel-array build, not real GPU compute, and

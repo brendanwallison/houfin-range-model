@@ -123,6 +123,36 @@ def window_mean(values, n):
     return np.nanmean(values[-n:], axis=0), np.nanmean(values[:n], axis=0), n
 
 
+def baseline_window_mean(values, years, n, ref_year=None):
+    """Mean of the ``n``-year window STARTING at ``ref_year``, plus its year span.
+
+    ``window_mean``'s leading window is anchored at the start of the model
+    timeline (1902), which is a defensible "before anything happened" baseline
+    but a poor one for questions about the invasion itself: the 1902 climate is
+    also 38 years of climate change away from the release. Anchoring the
+    baseline at ``invasion_year`` instead measures change relative to the
+    conditions the species actually encountered when it arrived.
+
+    ``ref_year=None`` reproduces ``window_mean``'s leading window exactly. A
+    ref_year past the end of the timeline raises rather than silently sliding
+    the window backward. Returns ``(mean, n_used, (first_year, last_year))``.
+    """
+    years = np.asarray(years)
+    if ref_year is None:
+        i0 = 0
+    else:
+        matches = np.flatnonzero(years == int(ref_year))
+        if not matches.size:
+            raise ValueError(f"ref_year {ref_year} is not in the model timeline "
+                             f"{years[0]}-{years[-1]}")
+        i0 = int(matches[0])
+    n = int(min(n, values.shape[0] - i0))
+    if n < 1:
+        raise ValueError(f"no timeline left after ref_year {ref_year}")
+    return (np.nanmean(values[i0:i0 + n], axis=0), n,
+            (int(years[i0]), int(years[i0 + n - 1])))
+
+
 def add_timeline_markers(ax, tl=None, show_invasion=True, show_bbs_start=True, **line_kwargs):
     """Draw reference vertical lines for the invasion year and BBS data start.
 

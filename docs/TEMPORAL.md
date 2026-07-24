@@ -46,6 +46,17 @@ the count year. All streams are then EMA-smoothed (τ = 10 yr) across model year
 regardless of where the timeline starts (1902 → index 38; the old 1900 start →
 40). It is never hardcoded.
 
+## Epizootic window
+
+`disease_start_year = 1993` is the winter mycoplasmal conjunctivitis first
+appeared in wild House Finches in the mid-Atlantic. `disease_timestep` is derived
+from it exactly as `inv_timestep` is from `invasion_year`
+(`temporal.disease_timestep`). It bounds the K-depression term in
+`src/model/age_fields.py`: that term is identically zero before this index, and
+its spatiotemporal basis is built over `disease_start_year … end_year` only. The
+per-pixel *arrival* year within that window is exogenous, not fitted — see
+`scripts/build_disease_arrival_map.py`.
+
 ## End of the timeline
 
 `end_year` is the newest BBS field-season year. Covariates that end earlier
@@ -56,9 +67,11 @@ defensible; it is documented, not silent.
 ## Where it is enforced
 
 - `src/temporal.py` — `load_timeline`, `model_years`, `bio_year_months`,
-  `year_to_index` (gap-safe), `assert_contiguous`, `invasion_timestep`.
+  `year_to_index` (gap-safe), `assert_contiguous`, `invasion_timestep`,
+  `disease_timestep`.
 - `src/data/combine/states.py` — builds the bio-year climate stack and the
   yearly states over `first_year … end_year`.
 - `src/data/combine/model_inputs.py` — maps BBS `obs_year → t` via
-  `year_to_index`; derives `inv_timestep`; asserts the year axis is contiguous.
+  `year_to_index`; derives `inv_timestep` and `disease_timestep`; asserts the
+  year axis is contiguous.
 - `src/data/preprocess/bbs.py` — clips observations to `first_year … end_year`.

@@ -1162,21 +1162,27 @@ def plot_spatial_residuals(obs_grid, density, output_dir, land_mask):
 def diagnose_st_weights(sim, data, output_dir):
     print("Diagnosing Spatio-Temporal Regularization (Spatial Confounding)...")
     st_weights = sim['st_weights']
-    
+
     beta_s = sim['w_env'][:, 0]
-    
+
     fig, axes = plt.subplots(1, 2, figsize=(14, 6))
-    
+
     axes[0].hist(st_weights, bins=50, color='purple', edgecolor='black', log=True)
     axes[0].set_title("Distribution of Spatio-Temporal Weights\n(Healthy = Massive spike at 0)")
     axes[0].set_xlabel("Learned Weight Value")
     axes[0].set_ylabel("Frequency (Log Scale)")
-    
+
+    # st_basis's time axis covers the epizootic window only (disease_timestep..end),
+    # so a model-timeline index has to be shifted into it. Take the midpoint of
+    # that window rather than of the full timeline, which would index the wrong
+    # year -- or fall outside the array entirely.
     t_idx = data['time'] // 2
-    
-    z_t = np.array(data['Z_gathered'][t_idx]) 
-    st_basis_t = np.array(data['st_basis'][:, t_idx, :]) 
-    
+    basis_idx = int(np.clip(t_idx - int(data['disease_timestep']),
+                            0, data['st_basis'].shape[1] - 1))
+
+    z_t = np.array(data['Z_gathered'][t_idx])
+    st_basis_t = np.array(data['st_basis'][:, basis_idx, :])
+
     H_env = np.dot(z_t, beta_s)                     
     H_st = np.dot(st_basis_t.T, st_weights)         
     
@@ -1237,8 +1243,15 @@ def plot_results():
     if inv_key in params_diagnostic:
         params_diagnostic[inv_key] = jnp.full_like(params_diagnostic[inv_key], -100.0)
         
+    # Switch the disease depression of K off entirely: zeroing st_weights alone
+    # only removes its spatiotemporal SHAPE, leaving the baseline severity
+    # softplus(disease_mu) in place, so drive disease_mu to where softplus ~ 0 too.
     params_diagnostic['st_weights_auto_loc'] = jnp.zeros_like(params_diagnostic['st_weights_auto_loc'])
-    
+    if 'disease_mu_auto_loc' in params_diagnostic:
+        params_diagnostic['disease_mu_auto_loc'] = jnp.full_like(
+            params_diagnostic['disease_mu_auto_loc'], -30.0)
+
+
     sim_diagnostic = reconstruct_simulation(data, params_diagnostic)
     
     Ny, Nx = data['Ny'], data['Nx']

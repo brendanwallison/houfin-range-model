@@ -32,6 +32,7 @@ points is cached under the output directory.
     python scripts/viz/encoder_diagnostics.py --years 1966,1980,1995,2012,2020,2025
 """
 import argparse
+import hashlib
 import json
 import os
 import sys
@@ -50,6 +51,8 @@ import rasterio
 
 from src.config_utils import load_config, load_data_config
 from src.community_encoder.train_DESK.esk_kernel import project_into_z, smooth_abundances
+
+CACHE_SCHEMA = 2
 
 
 def _corr(a, b):
@@ -181,14 +184,47 @@ def paired_turnover(X, Ze, Zd, rows, cols, years, deep, recent):
     return np.array([r for r, _ in cells]), np.array([c for _, c in cells]), fused, esk, desk
 
 
+def _comparison_signature(cfg, selected_years):
+    """Cheap provenance fingerprint for every file represented in the cache."""
+    point_dir = Path(cfg["bbs"]["z_dir"])
+    zdir = Path(cfg["desk"]["z_dir"])
+    cube = Path(cfg["latent_cube"]["output_dir"])
+    holdout = Path(cfg["paths"]["desk_output_dir"]) / "holdout_cells.npy"
+    paths = [
+        point_dir / "X_points.npy",
+        point_dir / "point_index.npy",
+        point_dir / "points_meta.json",
+        zdir / "meta.json",
+        zdir / "esk_landmarks.npy",
+        zdir / "esk_projmat.npy",
+        *[cube / f"Z_latent_{int(year)}.npy" for year in sorted(selected_years)],
+    ]
+    if holdout.exists():
+        paths.append(holdout)
+
+    records = []
+    for path in paths:
+        stat = path.stat()  # fail clearly if a requested upstream product is missing
+        records.append((str(path.resolve()), int(stat.st_size), int(stat.st_mtime_ns)))
+    payload = json.dumps(
+        {"schema": CACHE_SCHEMA, "years": sorted(selected_years), "files": records},
+        sort_keys=True, separators=(",", ":"),
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
 def load_comparison(cfg, selected_years, out_dir, recompute=False):
     cache = out_dir / "comparison_points.npz"
+    signature = _comparison_signature(cfg, selected_years)
     if cache.exists() and not recompute:
         z = np.load(cache)
         cached_years = sorted(set(z["years"].astype(int).tolist()))
-        if cached_years == sorted(selected_years) and "is_eval" in z.files:
+        cached_signature = str(z["cache_signature"].item()) if "cache_signature" in z.files else None
+        if (cached_years == sorted(selected_years) and "is_eval" in z.files
+                and cached_signature == signature):
             print(f"[encoder-viz] using cached ESK projections -> {cache}")
-            return {k: z[k] for k in z.files}
+            return {k: z[k] for k in z.files if k != "cache_signature"}
+        print(f"[encoder-viz] cache is stale; rebuilding -> {cache}")
 
     point_dir = Path(cfg["bbs"]["z_dir"])
     X_all = np.load(point_dir / "X_points.npy", mmap_mode="r")
@@ -239,7 +275,7 @@ def load_comparison(cfg, selected_years, out_dir, recompute=False):
     ok = np.isfinite(Z_esk).all(1) & np.isfinite(Z_desk).all(1) & np.isfinite(X).all(1)
     payload = dict(X=X[ok], rows=pidx[ok, 0], cols=pidx[ok, 1], years=pidx[ok, 2],
                    Z_esk=Z_esk[ok], Z_desk=Z_desk[ok], is_eval=is_eval[ok])
-    np.savez_compressed(cache, **payload)
+    np.savez_compressed(cache, **payload, cache_signature=np.asarray(signature))
     print(f"[encoder-viz] cached {ok.sum():,} matched points -> {cache}")
     return payload
 

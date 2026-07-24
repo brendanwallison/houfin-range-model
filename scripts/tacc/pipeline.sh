@@ -165,7 +165,11 @@ stage_spacetime_esk () { run spacetime_esk python scripts/run_encoder.py spaceti
 stage_desk      () { run desk      python scripts/run_encoder.py desk; }
 stage_cube      () { run cube      python scripts/run_encoder.py cube; }
 stage_validate  () { run validate  python scripts/run_encoder.py validate; }
-stage_encoder_viz () { run encoder_viz python scripts/viz/encoder_diagnostics.py; }
+stage_encoder_viz () {
+    # Always reconstruct the comparison arrays in a submitted diagnostics run.
+    # Direct invocations may reuse the provenance-checked cache.
+    run encoder_viz python scripts/viz/encoder_diagnostics.py --recompute-projection
+}
 stage_path_features () { run path_features python src/processing/generate_all_path_features.py; }
 stage_model_ingest () { run model_ingest python scripts/ingest_model_data.py; }
 stage_viz       () { run viz       python scripts/viz/quicklook_grids.py --climate; }

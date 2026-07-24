@@ -57,6 +57,12 @@ Run: uv run python scripts/build_disease_arrival_map.py
 import argparse
 import csv
 import os
+import sys
+from pathlib import Path
+
+_REPO = Path(__file__).resolve().parents[1]
+if str(_REPO) not in sys.path:
+    sys.path.insert(0, str(_REPO))
 
 import numpy as np
 import rasterio
@@ -165,8 +171,10 @@ def main():
     cfg = load_age_model_config()
     grid_path = args.grid or cfg["ocean_mask"]
     if not os.path.exists(grid_path):
-        fallback = os.path.join(load_data_config().get("data_dir", "data"), "ref_grid_27km.tif")
-        fallback = fallback if os.path.exists(fallback) else "data/ref_grid_27km.tif"
+        fallback = os.path.join(load_data_config().get("data_dir", str(_REPO / "data")),
+                                "ref_grid_27km.tif")
+        if not os.path.exists(fallback):
+            fallback = str(_REPO / "data" / "ref_grid_27km.tif")  # repo-relative, not cwd-relative
         print(f"  {grid_path} unavailable; falling back to {fallback}")
         grid_path = fallback
 

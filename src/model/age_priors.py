@@ -14,8 +14,14 @@ import jax.nn as jnn
 import numpyro
 import numpyro.distributions as dist
 
+from src.config_utils import load_age_model_config
 from src.model.age_fields import project_and_scatter_age_structured
 from src.model.age_forward import forward_sim_age_structured
+
+# Strength of the disease depression of K, read from config so it can be retuned
+# without editing model code (the fit is sensitive to it and it is the knob most
+# likely to be revisited between runs). See sample_priors for the semantics.
+_DISEASE_PRIOR = dict(load_age_model_config()["population_model"]["disease_prior"])
 
 
 def validate_environment_kernel_contract(data):
@@ -127,19 +133,28 @@ def sample_priors(prior_scale=1.0, M_features=None, N_basis=None, time=None):
     # stays zero-mean Normal and the budget is still distributed across N_basis
     # coefficients, so total per-cell-year variance is roughly budget^2/2
     # regardless of how finely N_basis is set.
-    disease_severity_budget = 2.0 * prior_scale
+    disease_severity_budget = float(_DISEASE_PRIOR["severity_budget"]) * prior_scale
     dynamic_scale = disease_severity_budget / jnp.sqrt(N_basis)
     priors['st_weights'] = numpyro.sample(
         "st_weights",
         dist.Normal(0.0, dynamic_scale).expand([N_basis])
     )
 
-    # Baseline severity. Centered at -1 so the median depression is
-    # softplus(-1) ~ 0.31 on K's pre-softplus scale -- i.e. "the disease barely
-    # mattered" is cheap under the prior and has to be argued out of the data,
-    # not assumed. This is the only constant alpha_k must absorb (flat in space
-    # and time), which is exactly the property the gate buys us.
-    priors['disease_mu'] = numpyro.sample("disease_mu", dist.Normal(-1.0, 1.0 * prior_scale))
+    # Baseline severity, on K's PRE-softplus scale (the depression is subtracted
+    # from softplus's argument). The prior median depression is
+    # softplus(mu_loc): mu_loc=-1 gives ~0.31, mu_loc=-2 gives ~0.13, mu_loc=-3
+    # gives ~0.05. For a cell whose baseline argument is ~1.0 (K ~ 1.31), those
+    # are roughly a 16%, 8%, and 3% reduction in K respectively -- so mu_loc is
+    # the knob for "how strong is the disease effect allowed to be by default,"
+    # and mu_scale for how far the data may push it. Keeping "the disease barely
+    # mattered" cheap under the prior means a real effect has to be argued out of
+    # the data rather than assumed. This is the only constant alpha_k must absorb
+    # (flat in space and time), which is the property the gate buys us.
+    priors['disease_mu'] = numpyro.sample(
+        "disease_mu",
+        dist.Normal(float(_DISEASE_PRIOR["mu_loc"]),
+                    float(_DISEASE_PRIOR["mu_scale"]) * prior_scale),
+    )
 
     # Onset gate slack, shared continentally. The arrival surface is a smoothed
     # reconstruction from the documented spread history, so it carries a

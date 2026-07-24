@@ -116,17 +116,31 @@ def sample_priors(prior_scale=1.0, M_features=None, N_basis=None, time=None):
     priors['beta_s'] = w_env[:, 0]  # Survival Suitability Weights
     priors['beta_r'] = w_env[:, 1]  # Reproductive Suitability Weights
     
-    # 1D spectral weights (Spatio-temporal random effects)
-    # 1. Define the global budget for spatial noise (e.g., 0.1 allows for moderate regional tweaks)
-    global_spatial_budget = 0.001 * prior_scale
-    
-    # 2. Distribute that budget dynamically 
-    dynamic_scale = global_spatial_budget / jnp.sqrt(N_basis)
-    
-    # 3. Apply the scaled L1 penalty
+    # 1D spectral weights for the K-only spatiotemporal correction (see
+    # age_fields.py's _K_CORRECTION_OFFSET / project_and_scatter_age_structured).
+    # This is NOT a smoothing term on Z/H_s/H_r -- it is a genuinely latent,
+    # zero-mean multiplicative correction to carrying capacity, meant to soak
+    # up dynamics (e.g. mycoplasmal conjunctivitis) this Z-driven covariate
+    # structure has no way to see. A Normal (not Laplace) prior is used
+    # deliberately: symmetric around zero, so "no correction" is the natural
+    # center of the prior rather than a boundary the base K has to fight
+    # against. (An earlier design bounded this to reduction-only via a
+    # one-sided sigmoid link: by Jensen's inequality a concave link's
+    # expectation under ANY zero-mean perturbation sits below its own
+    # zero-perturbation value, and that shortfall is data-dependent -- larger
+    # wherever the term is actually used -- so alpha_k would be pulled upward
+    # to compensate, contaminating the very spatial/temporal pattern this term
+    # is meant to isolate. softplus is convex everywhere, so it has the same
+    # Jensen shortfall in the OTHER direction, but that shortfall depends only
+    # on the prior scale, not on data/location/time, so alpha_k absorbs it as
+    # a harmless flat constant instead.) The budget is distributed across
+    # N_basis coefficients so total per-cell-year correction variance stays
+    # roughly budget^2/2 regardless of how finely N_basis is set.
+    global_k_correction_budget = 2.0 * prior_scale  # deliberately loose (was 0.001 under the old Laplace/Z-smoothing design)
+    dynamic_scale = global_k_correction_budget / jnp.sqrt(N_basis)
     priors['st_weights'] = numpyro.sample(
-        "st_weights", 
-        dist.Laplace(0.0, dynamic_scale).expand([N_basis])
+        "st_weights",
+        dist.Normal(0.0, dynamic_scale).expand([N_basis])
     )
     
     # --- 2. DEMOGRAPHIC INTERCEPTS (Alphas) ---
@@ -202,8 +216,8 @@ def build_model_2d(data, prior_scale=1.0):
     # Notice we now pass beta_s and beta_r instead of a single beta_h
     Sa_flat, Sj_flat, Fmax_flat, K_flat, Q_flat = project_and_scatter_age_structured(
         time, Ny, Nx, land_rows, land_cols,
-        data['Z_gathered'], data['Z_disp_gathered'], 
-        data['st_basis'], priors['st_weights'], 
+        data['Z_gathered'], data['Z_disp_gathered'],
+        data['st_basis'], priors['st_weights'], data['inv_timestep'],
         priors['beta_s'], priors['beta_r'],
         priors['alpha_a'], priors['gamma_a'],
         priors['alpha_j'], priors['gamma_j'],

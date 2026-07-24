@@ -71,7 +71,15 @@ def response_curve_fields(latents, z_sweep, target_idx):
     softplus for Fmax/K. This is a deliberate correctness fix versus the
     deprecated ``src/vis/visualize_age_model.py``, whose own local response-
     curve code used ``exp`` for Fmax (stale -- the already-corrected version
-    lives in ``src/vis/_age_vis_common.py``).
+    lives in ``src/vis/_age_vis_common.py``). H_s/H_r here are purely
+    covariate-driven (Z.beta only), which now matches age_fields.py exactly --
+    an earlier model design mixed a shared spatiotemporal term into H_s/H_r
+    that this synthetic single-point sweep never included; that term has
+    since been removed from the real model too (replaced by a K-only latent
+    correction, see age_fields.py's _K_CORRECTION_OFFSET), so this sweep is no
+    longer an approximation on that front. The K curve returned here is the
+    BASE carrying capacity (before that K-only correction), since a synthetic
+    single Z point has no associated spatiotemporal-basis value to plug in.
     """
     w_env = np.asarray(latents["w_env"])  # (M, 2): [:, 0]=beta_s, [:, 1]=beta_r
     beta_s, beta_r = w_env[:, 0], w_env[:, 1]

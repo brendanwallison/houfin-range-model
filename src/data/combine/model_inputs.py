@@ -43,6 +43,15 @@ def generate_spatiotemporal_basis(Ny, Nx, Time, land_rows, land_cols, n_freq_spa
     Generates a 3D Spectral Basis (Cosine series).
     Space: n_freq_space=4 captures regional patterns.
     Time: n_freq_time=8 captures decadal cycles.
+
+    ``Time`` here is whatever span the caller passes -- it is NOT necessarily
+    the full model timeline. The K-correction basis (see age_fields.py /
+    ingest_data below) is deliberately built over only the post-invasion
+    window (invasion_year..end_year), both to bound VRAM (this array's size
+    is O(N_basis * Time * N_land)) and because a correction meant to capture
+    disease dynamics has nothing to explain before the species even arrives.
+    The frequency-to-resolution mapping (e.g. "n_freq_time=20 -> ~4.3yr
+    half-wavelength") is relative to whatever ``Time`` span is actually passed.
     """
     print(f"  Constructing 3D Basis: Space={n_freq_space}, Time={n_freq_time}...")
     
@@ -374,12 +383,18 @@ def ingest_data():
     Z_gathered.flush(); Z_disp_gathered.flush()
     print("\n  Data Streaming Complete.")
 
-    # 5. Generate 3D Spatiotemporal Basis
-    st_basis = generate_spatiotemporal_basis(Ny, Nx, Time, land_rows, land_cols, 
-                                             n_freq_space=N_FREQ_SPACE, 
+    # 5. Generate 3D Spatiotemporal Basis (K-correction only; post-invasion window
+    # only, both to bound VRAM and because there is nothing for it to correct
+    # before the species arrives -- see generate_spatiotemporal_basis's docstring
+    # and age_fields.py's use of inv_timestep to bypass it for earlier timesteps).
+    inv_timestep_for_basis = invasion_timestep(_tl, first_year=start_year_model)
+    Time_basis_active = Time - inv_timestep_for_basis
+    st_basis = generate_spatiotemporal_basis(Ny, Nx, Time_basis_active, land_rows, land_cols,
+                                             n_freq_space=N_FREQ_SPACE,
                                              n_freq_time=N_FREQ_TIME)
     N_basis = st_basis.shape[0]
-    print(f"  Basis Footprint: {st_basis.nbytes / 1e6:.2f} MB")
+    print(f"  Basis Footprint: {st_basis.nbytes / 1e6:.2f} MB "
+          f"(post-invasion window: {Time_basis_active}/{Time} years)")
 
     # 6. Build Kernels
     # MASK_FILE must be the canonical 27 km model-grid mask so cell size / invasion
@@ -456,7 +471,10 @@ def ingest_data():
         "initpop_latent": initpop_map,
         "pop_scalar": float(POPULATION_SPEC["population_scale_birds_per_relative_unit"]),
         "inv_location": (inv_row, inv_col),
-        "inv_timestep": invasion_timestep(_tl, first_year=start_year_model),
+        # Reused as the K-correction basis's active-window start (see step 5
+        # above / age_fields.py) -- both are "when does the species/its
+        # disease dynamics first become relevant" by construction.
+        "inv_timestep": inv_timestep_for_basis,
         "inv_window": int(POPULATION_SPEC["invasion_window_years"]),
         "dispersal_target_fraction": float(
             POPULATION_SPEC["dispersal_target_capacity_fraction"]

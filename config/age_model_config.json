@@ -38,8 +38,9 @@
     "invasion_lon": -73.4445,
     "invasion_window_years": 10,
     "dispersal_target_capacity_fraction": 0.8,
-    "st_basis_space_frequencies": 4,
-    "st_basis_time_frequencies": 8
+    "_st_basis_comment": "Spatiotemporal basis for the K (carrying-capacity) correction only (see age_fields.py); the basis's time axis covers invasion_year..end_year only (not the full model timeline), so these frequencies are relative to that ~86-year active window, not the full 1902-2025 span. space=6 -> ~1000km half-wavelength (regional/multi-state clusters, matching observed disease prevalence clustering); time=20 -> ~4.3yr half-wavelength (resolves an epidemic rise-and-decline). Picked to fit comfortably in a 40GB A100 (see docs/ or chat history for the VRAM derivation) -- N_basis=(space+1)^2*(time+1)-1.",
+    "st_basis_space_frequencies": 6,
+    "st_basis_time_frequencies": 20
   },
   "map": {
     "_comment": "Continuation begins under tight priors and progressively relaxes them at absolute optimizer steps. The standard/full run uses 300 tight + 300 intermediate + 1200 nominal-prior steps (1800 total). Boundaries are independent of TOTAL_STEPS so extending/resuming a run cannot move backward. lr_decay_steps is likewise fixed across extensions; after step 900 optimization continues at the schedule's minimum learning rate.",

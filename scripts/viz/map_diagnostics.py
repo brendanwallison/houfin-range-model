@@ -12,20 +12,23 @@ It excludes dispersal, realized occupancy, density limitation, and the Allee
 factor.  Those are important for realized range expansion, but including them
 would make this a realized-distribution map rather than a fundamental-niche
 map.  The Allee threshold is instead reported as a separate fitted mechanism.
-Caveat: the habitat manifolds (``H_s_local``/``H_r_local``) also include a
-smooth spatiotemporal random-effect term (``z_smooth``) alongside the
-environmental covariates, so this is not a strictly covariate-only niche --
-a minor, known modeling choice (see ``age_fields.py``), not a bug. Sa/Sj/Fmax
-themselves are not approximated for this purpose: they are the exact fitted
-per-cell fields the full model uses (via ``reconstruct_map`` below), with only
-the dispersal (``Q``) and density-dependence/Allee (``K``, ``c``,
-``allee_gamma``) fields dropped from the niche calculation itself.
+The habitat manifolds (``H_s_local``/``H_r_local``, and hence Sa/Sj/Fmax) are
+now purely covariate-driven (Z.beta only) -- an earlier design mixed a shared
+smooth spatiotemporal term into both manifolds, but that has been replaced by
+a K-only latent multiplicative correction (see ``age_fields.py``'s
+``_K_CORRECTION_OFFSET``), so this niche quantity no longer carries even the
+minor non-covariate caveat that used to apply. Sa/Sj/Fmax themselves are not
+approximated for this purpose: they are the exact fitted per-cell fields the
+full model uses (via ``reconstruct_map`` below), with only the dispersal
+(``Q``) and density-dependence/Allee (``K``, ``c``, ``allee_gamma``) fields
+dropped from the niche calculation itself.
 
 ``07_realized_source_sink.png`` is the deliberate REALIZED counterpart --
-same Sa/Sj/Fmax but WITH density-dependence and the Allee effect -- so the
-two can be compared directly; see ``src/vis/age_model_math.py`` for the
-shared, samples-axis-agnostic math both draw on (also the seam for a future
-MCMC-sample version of this script).
+same Sa/Sj/Fmax but WITH density-dependence, the Allee effect, AND the K-only
+latent correction (meant to capture disease-shaped dynamics with no covariate
+of their own) -- so the two can be compared directly; see
+``src/vis/age_model_math.py`` for the shared, samples-axis-agnostic math both
+draw on (also the seam for a future MCMC-sample version of this script).
 
 Outputs are written under the selected MAP run directory in ``map_diagnostics/``.
 """
@@ -53,6 +56,7 @@ from rasterio.warp import transform as crs_transform
 from numpyro.infer import Predictive
 
 from src.config_utils import load_age_model_config, load_data_config
+from src.model.age_fields import _K_CORRECTION_OFFSET
 from src.model.age_priors import build_model_2d
 from src.model.checkpoints import auto_delta_params_to_latents, load_map_params
 from src.model.data_loading import load_data
@@ -346,40 +350,40 @@ def plot_spatial_residuals(sim, data, shape, out):
 
 
 def plot_spatiotemporal_diagnostics(data, sim, out, window):
-    """'Escape hatch' check: is spatiotemporal noise or environment driving H_s?
+    """'Escape hatch' check: how much is the K-only latent correction actually doing?
 
-    High spatiotemporal-noise variance share would mean the smooth
-    random-effect term is substituting for genuine environmental signal.
+    st_basis/st_weights no longer touch H_s/H_r (an earlier design mixed a
+    shared spatiotemporal term into both manifolds; that's been replaced by a
+    K-only multiplicative correction, see age_fields.py's
+    _K_CORRECTION_OFFSET). A runaway correction (multiplier far from 1 nearly
+    everywhere) would mean this "latent disease dynamics" term is substituting
+    for genuine covariate signal rather than capturing something real and
+    localized; this plots the weight distribution and the actual per-cell
+    correction values over a trailing window against that 1.0 no-effect line.
     """
     st_weights = np.asarray(sim["st_weights"])
-    st_basis_full = data["st_basis"]  # (N_basis, time, N_land), device-resident
-    Z_full = data["Z_gathered"]       # (time, N_land, M), device-resident
-    beta_s = np.asarray(sim["latents"]["w_env"])[:, 0]
+    st_basis_full = data["st_basis"]  # (N_basis, time_post_invasion, N_land), device-resident
 
-    n = min(window, st_basis_full.shape[1], Z_full.shape[0])
+    n = min(window, st_basis_full.shape[1])
     st_basis = np.asarray(st_basis_full[:, -n:, :])  # slice before host transfer
-    Z = np.asarray(Z_full[-n:])
-    z_smooth = np.einsum("btl,b->tl", st_basis, st_weights)
-    H_s_env = Z @ beta_s
-
-    var_env, var_smooth = float(np.var(H_s_env)), float(np.var(z_smooth))
-    total = var_env + var_smooth + 1e-12
-    share_env, share_smooth = var_env / total, var_smooth / total
+    k_smooth = np.einsum("bnl,b->nl", st_basis, st_weights)
+    k_multiplier = np.log1p(np.exp(-np.abs(_K_CORRECTION_OFFSET + k_smooth))) + \
+        np.maximum(_K_CORRECTION_OFFSET + k_smooth, 0.0)  # numerically-stable softplus
 
     fig, ax = plt.subplots(1, 2, figsize=(11, 4.5))
     ax[0].hist(st_weights, bins=40, color="#6a51a3")
     ax[0].axvline(0, color="black", lw=.8)
-    ax[0].set(title="Spatiotemporal basis weights (st_weights)", xlabel="Weight", ylabel="Count")
+    ax[0].set(title="K-correction basis weights (st_weights)", xlabel="Weight", ylabel="Count")
 
-    ax[1].bar(["Environment\n(Z·β_s)", "Spatiotemporal\nnoise (z_smooth)"],
-              [share_env, share_smooth], color=["#238443", "#969696"])
-    ax[1].set(ylabel="Share of survival-manifold variance", ylim=(0, 1),
-              title=f"Variance decomposition (last {n} yr)")
-    for i, v in enumerate([share_env, share_smooth]):
-        ax[1].text(i, v + .02, f"{v:.0%}", ha="center")
+    ax[1].hist(k_multiplier.ravel(), bins=60, color="#238443")
+    ax[1].axvline(1.0, color="black", lw=1.2, linestyle="--", label="no effect")
+    ax[1].set(title=f"K multiplier, last {n} yr (median={np.median(k_multiplier):.2f})",
+              xlabel="K multiplier (1.0 = no correction)", ylabel="Cell-years")
+    ax[1].legend()
     fig.tight_layout(); fig.savefig(out, dpi=180); plt.close(fig)
-    return {"survival_manifold_variance_share_environment": share_env,
-            "survival_manifold_variance_share_spatiotemporal": share_smooth}
+    return {"k_correction_median_multiplier": float(np.median(k_multiplier)),
+            "k_correction_p05_multiplier": float(np.percentile(k_multiplier, 5)),
+            "k_correction_p95_multiplier": float(np.percentile(k_multiplier, 95))}
 
 
 def main():

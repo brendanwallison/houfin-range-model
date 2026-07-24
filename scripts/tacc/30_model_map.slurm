@@ -13,8 +13,8 @@
 # PREREQS (must exist first): the DESK cube -> path features (Z_disp) -> BBS npz ->
 # scripts/ingest_model_data.py. This job does NOT build them.
 #
-#   bash scripts/tacc/submit_map.sh                       # gpu-a100-dev, 2 h
-#   HOUFIN_MAP_STEPS=1800 RESUBMITS=3 bash scripts/tacc/submit_map.sh
+#   HOUFIN_MAP_PROFILE=quick90 bash scripts/tacc/submit_map.sh
+#   RESUBMITS=1 bash scripts/tacc/submit_map.sh            # standard/full, 1800 steps
 #----------------------------------------------------------------------
 #SBATCH -J houfin_map
 #SBATCH -o houfin_map.o%j
@@ -39,9 +39,9 @@ start_gpu_monitor "$SLURM_SUBMIT_DIR/gpu_map_${SLURM_JOB_ID}.csv" 30
 trap stop_gpu_monitor EXIT
 date
 
-# Checkpoint cadence is set here.  The step target is deliberately left to
-# age_run_map: standard defaults to 900, while an explicit MAP profile (such as
-# quick90) supplies its own target.  An explicit HOUFIN_MAP_STEPS still wins.
+# Checkpoint cadence is set here. The step target is deliberately left to
+# age_run_map: standard/full defaults to 1800 and quick90 to 900. An explicit
+# HOUFIN_MAP_STEPS still wins.
 export HOUFIN_MAP_CKPT_EVERY="${HOUFIN_MAP_CKPT_EVERY:-100}"
 /usr/bin/time -v python -m src.model.age_run_map
 

@@ -331,14 +331,19 @@ the configured top 16 of the 64 source eigenfeatures by default; changing
 Then submit MAP:
 
 ```bash
-bash scripts/tacc/submit_map.sh
-HOUFIN_MAP_STEPS=1800 RESUBMITS=3 bash scripts/tacc/submit_map.sh
+# Quick development fit: 100 tight + 150 intermediate + 650 nominal-prior steps
+HOUFIN_MAP_PROFILE=quick90 bash scripts/tacc/submit_map.sh
+
+# Standard/full fit: 300 tight + 300 intermediate + 1200 nominal-prior steps
+RESUBMITS=1 bash scripts/tacc/submit_map.sh
 ```
 
 MAP checkpoints contain the exact optimizer state, parameters, loss history,
 input/code/config fingerprint, fixed absolute prior-continuation schedule, and
 device-memory snapshot. A changed model/input/config refuses resume; set
-`HOUFIN_MAP_FRESH=1` only for a deliberate new run.
+`HOUFIN_MAP_FRESH=1` only for a deliberate new run. `HOUFIN_MAP_STEPS` may still
+override either profile's target without moving its absolute prior-continuation
+or learning-rate boundaries.
 
 All three GPU wrappers fail on CPU fallback and write 30-second telemetry files
 (`gpu_encoder_<job>.csv`, `gpu_modelprep_<job>.csv`, `gpu_map_<job>.csv`).

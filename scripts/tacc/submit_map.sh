@@ -4,9 +4,9 @@
 # by hand after a wall-clock kill, or set RESUBMITS>0 to auto-chain dependent jobs
 # that each resume from the last checkpoint until the fit finishes.
 #
-#     bash scripts/tacc/submit_map.sh                          # one job, gpu-a100-dev, 2 h
-#     RESUBMITS=3 bash scripts/tacc/submit_map.sh              # 4 chained 2 h windows (resume each)
-#     HOUFIN_MAP_STEPS=1800 bash scripts/tacc/submit_map.sh    # longer fit (needs >1 window)
+#     HOUFIN_MAP_PROFILE=quick90 bash scripts/tacc/submit_map.sh  # ~90 min, 2 h allocation
+#     RESUBMITS=1 bash scripts/tacc/submit_map.sh              # standard/full: 1800 steps
+#     HOUFIN_MAP_STEPS=2400 RESUBMITS=2 bash scripts/tacc/submit_map.sh  # explicit extension
 #     QUEUE=gpu-a100 TIME=06:00:00 bash scripts/tacc/submit_map.sh   # normal GPU queue instead
 set -euo pipefail
 source "$(dirname "$0")/env.sh"

@@ -42,17 +42,18 @@
     "st_basis_time_frequencies": 8
   },
   "map": {
-    "_comment": "Continuation begins under tight priors and progressively relaxes them at absolute optimizer steps. Boundaries are independent of TOTAL_STEPS so extending/resuming a run cannot move backward. lr_decay_steps is likewise fixed across extensions.",
+    "_comment": "Continuation begins under tight priors and progressively relaxes them at absolute optimizer steps. The standard/full run uses 300 tight + 300 intermediate + 1200 nominal-prior steps (1800 total). Boundaries are independent of TOTAL_STEPS so extending/resuming a run cannot move backward. lr_decay_steps is likewise fixed across extensions; after step 900 optimization continues at the schedule's minimum learning rate.",
     "prior_relaxation": [[0, 0.1], [300, 0.5], [600, 1.0]],
     "lr_decay_steps": 900,
+    "target_steps": 1800,
     "init_lr": 0.01,
     "weight_decay": 0.0,
     "profiles": {
       "quick90": {
-        "_comment": "Fresh 90-minute development diagnostic: 100 tight, 150 intermediate, and 250 nominal-prior steps. This changes optimization only, not the final MAP objective.",
+        "_comment": "Fresh 90-minute development fit matching the successful accidental extension: 100 tight, 150 intermediate, and 650 nominal-prior steps (900 total). The learning-rate decay reaches its minimum at step 500 and stays there for the final 400 steps. This changes optimization only, not the final MAP objective.",
         "prior_relaxation": [[0, 0.1], [100, 0.5], [250, 1.0]],
         "lr_decay_steps": 500,
-        "target_steps": 500
+        "target_steps": 900
       }
     }
   },
@@ -71,7 +72,7 @@
     "avonet_csv": "${HOUFIN_DATA}/avonet/AVONET_Comparison_WithPhylogeny_Urban.csv"
   },
   "run_names": {
-    "map": "age_map_{precision}_run_4",
+    "map": "age_map_{precision}_run_5",
     "svi": "age_vi_{precision}_run_5",
     "hmc": "age_hmc_{precision}_trial_3",
     "hmc_svi_source": "age_vi_{precision}_run_2",

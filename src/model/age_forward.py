@@ -119,14 +119,21 @@ def forward_sim_age_structured(
     allee_gamma,
     target_fraction=0.8
 ):
-    """Run the age-structured simulation for ``time`` years; return total density.
+    """Run the age-structured simulation for ``time`` years.
 
     Seeds the population from ``initpop_latent`` (split 50/50 adult/juvenile),
     injects the invasion pulse ``inv_pop`` at ``inv_location`` starting at
     ``inv_timestep``, and scans year by year: invasion → scatter per-cell rates
     to the grid → dispersal → survival+reproduction → land-mask. The step is
     ``jax.checkpoint``-wrapped to bound memory when differentiating the scan.
-    Output shape: (time, Ny, Nx).
+
+    Returns ``(total_densities, Na_densities, Nj_densities)``, each shape
+    (time, Ny, Nx). The age-split outputs cost nothing extra during MAP/SVI
+    optimization -- XLA's dead-code elimination strips them whenever the
+    caller only uses the total (as ``build_model_2d``'s likelihood does); they
+    only get materialized when explicitly requested via
+    ``Predictive(..., return_sites=[...])`` for post-hoc age-structure
+    diagnostics (see scripts/viz/map_diagnostics.py).
     """
     Ny, Nx = land_mask.shape
     row, col = inv_location
@@ -190,14 +197,16 @@ def forward_sim_age_structured(
         N_a_new = jnp.maximum(N_a_new * land_mask, 0.0)
         N_j_new = jnp.maximum(N_j_new * land_mask, 0.0)
         N_total_new = N_a_new + N_j_new
-        
-        return (N_a_new, N_j_new), N_total_new
+
+        return (N_a_new, N_j_new), (N_total_new, N_a_new, N_j_new)
 
     checkpointed_step = jax.checkpoint(step)
 
-    _, total_densities = lax.scan(checkpointed_step, (init_N_a, init_N_j), jnp.arange(time))
-    
-    return total_densities
+    _, (total_densities, Na_densities, Nj_densities) = lax.scan(
+        checkpointed_step, (init_N_a, init_N_j), jnp.arange(time)
+    )
+
+    return total_densities, Na_densities, Nj_densities
 
 def reproduction_age_structured(
     N_a_post, N_j_stayers, N_j_arrivers,

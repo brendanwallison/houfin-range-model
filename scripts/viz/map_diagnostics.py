@@ -30,6 +30,22 @@ of their own) -- so the two can be compared directly; see
 ``src/vis/age_model_math.py`` for the shared, samples-axis-agnostic math both
 draw on (also the seam for a future MCMC-sample version of this script).
 
+``10_age_structure.png`` compares theoretical equilibrium age structure
+(local rho implied by the fitted vital rates, assuming the system has
+settled -- no invasion-front/transient history) against REALIZED age
+structure (Nj/(Na+Nj) from the actual forward-simulated Na_grid/Nj_grid age
+pools, which does carry that history); a gap between them, especially near a
+still-advancing range edge, is the expected signature of non-equilibrium age
+structure at an invasion front. Na_grid/Nj_grid cost nothing extra during
+MAP/SVI optimization -- see forward_sim_age_structured's docstring for why.
+
+``11_invasion_progression.png`` (small-multiple maps) and
+``12_invasion_animation.mp4`` (side-by-side simulated-vs-observed animation,
+GIF fallback if FFMpeg is unavailable) visualize the spread of the modeled
+invasion over the full timeline using ``simulated_density`` -- reconstructed
+by ``reconstruct_map`` like everything else here, but previously never
+plotted despite being the model's most direct depiction of "an invasion."
+
 Outputs are written under the selected MAP run directory in ``map_diagnostics/``.
 """
 from __future__ import annotations
@@ -48,6 +64,7 @@ import jax
 import jax.numpy as jnp
 import matplotlib
 matplotlib.use("Agg")
+import matplotlib.animation as animation
 import matplotlib.colors as mcolors
 import matplotlib.pyplot as plt
 import numpy as np
@@ -85,7 +102,7 @@ def reconstruct_map(data, params):
     posterior = {name: jnp.expand_dims(value, 0) for name, value in latents.items()}
     needed = ["simulated_density", "Sa_flat", "Sj_flat", "Fmax_flat", "K_flat",
               "Q_flat", "expected_obs", "allee_gamma", "n50_raw", "w_env", "rho",
-              "st_weights"]
+              "st_weights", "Na_grid", "Nj_grid"]
     predictive = Predictive(build_model_2d, posterior_samples=posterior, return_sites=needed)
     result = predictive(jax.random.PRNGKey(104), data=data, prior_scale=1.0)
     result = jax.block_until_ready(result)
@@ -386,6 +403,116 @@ def plot_spatiotemporal_diagnostics(data, sim, out, window):
             "k_correction_p95_multiplier": float(np.percentile(k_multiplier, 95))}
 
 
+def plot_age_structure(sim, years, rows, cols, shape, land_mask, out, window):
+    """Theoretical (equilibrium) vs realized juvenile-fraction maps.
+
+    Theoretical: rho from age_model_math.realized_equilibrium -- the LOCAL,
+    density-dependent+Allee equilibrium juvenile fraction implied by the
+    fitted Sa/Sj/Fmax/K/allee_gamma at each cell/year, assuming the system has
+    settled there (no transient/dispersal history). Realized: the ACTUAL
+    simulated Nj/(Na+Nj) from the forward age-structured dynamics (Na_grid/
+    Nj_grid), which does carry transient/invasion-front history. A gap
+    between the two -- especially near a still-advancing range edge -- is the
+    expected signature of non-equilibrium age structure at the invasion front.
+    """
+    _, _, _, rho_theory = realized_equilibrium(
+        sim["Sa_flat"], sim["Sj_flat"], sim["Fmax_flat"], sim["K_flat"], sim["allee_gamma"]
+    )
+    rho_theory_grid = _grid(rho_theory, rows, cols, shape)  # (time, Ny, Nx)
+
+    land = land_mask.astype(bool)
+    Na_grid, Nj_grid = sim["Na_grid"], sim["Nj_grid"]
+    with np.errstate(invalid="ignore", divide="ignore"):
+        rho_realized_grid = Nj_grid / np.maximum(Na_grid + Nj_grid, 1e-9)
+    rho_realized_grid = np.where(land[None], rho_realized_grid, np.nan)
+    rho_theory_grid = np.where(land[None], rho_theory_grid, np.nan)
+
+    modern_theory, _, n = _window_mean(rho_theory_grid, window)
+    modern_realized, _, _ = _window_mean(rho_realized_grid, window)
+    gap = modern_realized - modern_theory
+
+    fig, ax = plt.subplots(1, 3, figsize=(15, 5))
+    im0 = ax[0].imshow(modern_theory, cmap="viridis", vmin=0, vmax=1)
+    ax[0].set_title("Theoretical equilibrium ρ")
+    fig.colorbar(im0, ax=ax[0], fraction=.046, label="Juvenile fraction ρ")
+    im1 = ax[1].imshow(modern_realized, cmap="viridis", vmin=0, vmax=1)
+    ax[1].set_title("Realized ρ (simulated Nj/(Na+Nj))")
+    fig.colorbar(im1, ax=ax[1], fraction=.046, label="Juvenile fraction ρ")
+    lim = max(float(np.nanpercentile(np.abs(gap[np.isfinite(gap)]), 98)), .02)
+    im2 = ax[2].imshow(gap, cmap="RdBu_r", vmin=-lim, vmax=lim)
+    ax[2].set_title("Gap: realized − theoretical")
+    fig.colorbar(im2, ax=ax[2], fraction=.046, label="Δρ")
+    for a in ax:
+        a.axis("off")
+    fig.suptitle(f"Age structure ({years[-n]}–{years[-1]} mean)")
+    fig.tight_layout(); fig.savefig(out, dpi=180); plt.close(fig)
+    return {"modern_mean_theoretical_juvenile_fraction": float(np.nanmean(modern_theory)),
+            "modern_mean_realized_juvenile_fraction": float(np.nanmean(modern_realized))}
+
+
+def plot_invasion_progression(sim, years, land_mask, out, n_panels=6):
+    """Small multiples of total simulated density across the invasion era."""
+    density = np.where(land_mask.astype(bool)[None], sim["simulated_density"], np.nan)
+    log_density = np.log1p(density)
+
+    idx = np.linspace(0, len(years) - 1, n_panels).round().astype(int)
+    vmax = float(np.nanpercentile(log_density[idx], 99))
+
+    ncols = 3
+    nrows = int(np.ceil(len(idx) / ncols))
+    fig, axes = plt.subplots(nrows, ncols, figsize=(4.3 * ncols, 3.6 * nrows), squeeze=False)
+    im = None
+    for axis, i in zip(axes.flat, idx):
+        im = axis.imshow(log_density[i], cmap="magma", vmin=0, vmax=vmax)
+        axis.set_title(str(years[i]), fontsize=10)
+        axis.axis("off")
+    for axis in axes.flat[len(idx):]:
+        axis.axis("off")
+    fig.colorbar(im, ax=axes, fraction=.025, label="log(1 + simulated density)")
+    fig.suptitle("Invasion progression: simulated density over time")
+    fig.savefig(out, dpi=180); plt.close(fig)
+
+
+def create_invasion_animation(sim, data, years, land_mask, out):
+    """Animated side-by-side: simulated density vs. observed BBS counts, all years.
+
+    Falls back from mp4 (FFMpeg) to GIF (pillow) if FFMpeg isn't available on
+    the run environment -- mirrors src/vis/_age_vis_common.py's create_animation.
+    """
+    shape = land_mask.shape
+    obs_grid = np.full((len(years), *shape), np.nan)
+    obs_rows = np.asarray(data["obs_rows"])
+    obs_cols = np.asarray(data["obs_cols"])
+    obs_t = np.asarray(data["obs_time_indices"])
+    obs_grid[obs_t, obs_rows, obs_cols] = np.asarray(data["observed_results"])
+
+    density = np.where(land_mask.astype(bool)[None], sim["simulated_density"], np.nan)
+    vmax_sim = float(np.nanpercentile(density, 99))
+    vmax_obs = float(np.nanpercentile(obs_grid[np.isfinite(obs_grid)], 99))
+
+    fig, (ax_sim, ax_obs) = plt.subplots(1, 2, figsize=(13, 6))
+    im_sim = ax_sim.imshow(density[0], cmap="magma", vmin=0, vmax=vmax_sim)
+    ax_sim.set_title("Simulated density"); ax_sim.axis("off")
+    im_obs = ax_obs.imshow(obs_grid[0], cmap="magma", vmin=0, vmax=vmax_obs)
+    ax_obs.set_title("Observed BBS counts"); ax_obs.axis("off")
+    title = fig.suptitle(f"Year {years[0]}", fontsize=14, fontweight="bold")
+
+    def update(frame):
+        title.set_text(f"Year {years[frame]}")
+        im_sim.set_data(density[frame])
+        im_obs.set_data(obs_grid[frame])
+        return im_sim, im_obs, title
+
+    ani = animation.FuncAnimation(fig, update, frames=len(years), interval=120, blit=False)
+    try:
+        ani.save(str(out), writer=animation.FFMpegWriter(fps=8, bitrate=1800))
+    except Exception as exc:
+        gif_out = str(out).rsplit(".", 1)[0] + ".gif"
+        print(f"[map-viz] FFMpeg unavailable ({exc}); falling back to GIF: {gif_out}")
+        ani.save(gif_out, writer="pillow", fps=8)
+    plt.close(fig)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--profile", default=os.environ.get("HOUFIN_MAP_PROFILE", "standard"))
@@ -425,6 +552,11 @@ def main():
     plot_spatial_residuals(sim, data, shape, out / "08_spatial_residuals.png")
     st_metrics = plot_spatiotemporal_diagnostics(data, sim, out / "09_spatiotemporal_weight_diagnostics.png",
                                                   args.window_years)
+    land_mask_arr = np.asarray(data["land_mask"])
+    age_structure_metrics = plot_age_structure(
+        sim, years, rows, cols, shape, land_mask_arr, out / "10_age_structure.png", args.window_years)
+    plot_invasion_progression(sim, years, land_mask_arr, out / "11_invasion_progression.png")
+    create_invasion_animation(sim, data, years, land_mask_arr, out / "12_invasion_animation.mp4")
     n50_raw = float(np.asarray(sim["n50_raw"])); n50 = float(np.logaddexp(0.0, n50_raw))
     transition_land = np.isfinite(transition)
     metrics = {
@@ -439,6 +571,7 @@ def main():
         "allee_n50_bbs_count": n50, "fit": fit_metrics,
         "realized_source_sink": source_sink_metrics,
         "spatiotemporal_diagnostics": st_metrics,
+        "age_structure": age_structure_metrics,
         **response_metrics,
     }
     with open(out / "metrics.json", "w", encoding="utf-8") as fh:

@@ -255,9 +255,9 @@ def build_model_2d(data, prior_scale=1.0):
         ),
     )
 
-    densities = forward_sim_age_structured(
-        Sa_flat, Sj_flat, Fmax_flat, K_flat, c_flat, Q_flat, 
-        land_rows, land_cols,           
+    densities, Na_grid, Nj_grid = forward_sim_age_structured(
+        Sa_flat, Sj_flat, Fmax_flat, K_flat, c_flat, Q_flat,
+        land_rows, land_cols,
         data['land_mask'],
         data['adult_fft_kernel'], data['juvenile_fft_kernel_stack'],
         data['adult_edge_correction'], data['juvenile_edge_correction_stack'],
@@ -269,6 +269,13 @@ def build_model_2d(data, prior_scale=1.0):
     )
 
     numpyro.deterministic("simulated_density", densities)
+    # Realized age-class pools (adults/juveniles separately, full grid, all
+    # years) -- for the post-hoc "realized age structure" diagnostic. Not on
+    # the likelihood path; DCE'd away during actual MAP/SVI optimization (see
+    # forward_sim_age_structured's docstring), only materialized when
+    # requested via Predictive(return_sites=[...]).
+    numpyro.deterministic("Na_grid", Na_grid)
+    numpyro.deterministic("Nj_grid", Nj_grid)
 
     # 4. Likelihood
     t_idx, rows, cols = data["obs_time_indices"], data["obs_rows"], data["obs_cols"]

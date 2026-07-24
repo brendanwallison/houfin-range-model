@@ -328,6 +328,21 @@ versioned memmaps through `metadata.pkl`. The statistical model explicitly keeps
 the configured top 16 of the 64 source eigenfeatures by default; changing
 `age_model_config.json:latent_dim` is the supported VRAM tradeoff.
 
+**Re-running just `model-ingest`** (e.g. after a `population_model.st_basis_*`
+frequency change, with `Z`/`Z_disp` unchanged): this stage is numpy/memmap I/O
+plus a one-time kernel-array build, not real GPU compute, and
+`25_model_prep.slurm` only gates on a GPU when `path-features` is actually
+selected -- so it can run on a lightweight non-GPU queue instead of waiting in
+the GPU queue:
+
+```bash
+STAGES=model-ingest QUEUE=vm-small bash scripts/tacc/submit_model_prep.sh
+```
+
+Any resulting `metadata.pkl`/`st_basis` shape change (e.g. `N_basis`) means
+the next MAP run cannot resume an old checkpoint -- it will refuse and tell
+you to pass `HOUFIN_MAP_FRESH=1` for a deliberate fresh fit.
+
 Then submit MAP:
 
 ```bash

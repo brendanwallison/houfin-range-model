@@ -134,8 +134,14 @@ stage_climate () {
     run climate python scripts/climate_climr.py --out "$DATA/climate" --rscript "$HOUFIN_RSCRIPT"
 }
 stage_climate_grid () { run climate_grid python -m src.data.preprocess.climate_grid; }
-stage_states       () { run states       python -m src.data.combine.build_states \
-                            ${HOUFIN_STATES_WORKERS:+--write-workers "$HOUFIN_STATES_WORKERS"}; }
+stage_states () {
+    # vm-small / shared nodes can trade wall time for lower transient I/O and
+    # compression memory: HOUFIN_STATES_READ_WORKERS=4 HOUFIN_STATES_WORKERS=1.
+    local args=()
+    [ -n "${HOUFIN_STATES_READ_WORKERS:-}" ] && args+=(--read-workers "$HOUFIN_STATES_READ_WORKERS")
+    [ -n "${HOUFIN_STATES_WORKERS:-}" ] && args+=(--write-workers "$HOUFIN_STATES_WORKERS")
+    run states python -m src.data.combine.build_states "${args[@]}"
+}
 stage_ebird_cache  () { run ebird_cache  python scripts/run_encoder.py ebird-cache; }
 stage_bbs () {
     # bbs_crosswalk writes a standalone AOU<->eBird crosswalk CSV + match diagnostics;

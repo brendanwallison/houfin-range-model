@@ -8,7 +8,7 @@
   "disease_arrival_map": "${HOUFIN_PROCESSED}/disease/disease_arrival_year_27km.tif",
   "ebird_dir": "${HOUFIN_DATA}/ebird_weekly_2023_grid",
   "results_dir": "${HOUFIN_PROCESSED}/model_results",
-  "latent_dim": 16,
+  "latent_dim": 24,
   "source_latent_dim": 64,
   "kernel_contract": {
     "kernel": "ruzicka",

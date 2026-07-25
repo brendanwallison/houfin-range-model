@@ -19,8 +19,13 @@ def calculate_demographics(Sa_flat, Sj_flat, Fmax_flat, K_flat=None, pop_scalar=
     }
     
     if K_flat is not None:
-        stats["K"] = K_flat * pop_scalar
-        
+        # In EXPECTED BBS ROUTE COUNTS, not birds: pop_scalar converts model density
+        # to the mean of a 50-stop roadside route count. See the _scale_comment in
+        # config/age_model_config.json.
+        stats["K_route_counts"] = K_flat * pop_scalar
+        stats["K"] = stats["K_route_counts"]  # back-compat alias for existing readers
+
+
     return stats
 
 def calculate_pioneer_fitness(R0_grid, Q_grid):

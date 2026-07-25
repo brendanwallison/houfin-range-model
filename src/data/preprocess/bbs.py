@@ -243,7 +243,15 @@ def generate_core_margin_initialization(obs_df, ny, nx, transform, land_mask):
     1. Native range = pre-1970 presences in the western two-thirds of the grid.
     2. Margin hull = all native points; core hull = points above the 75th count
        percentile.
-    3. Density map: margin cells = 0.001, core cells = 0.1 (core overwrites margin).
+    3. Seed map, in EXPECTED BBS ROUTE COUNTS, derived from the observed counts in
+       those hulls (core overwrites margin). Previously hardcoded 0.1 / 0.001 in
+       *relative density* units, which was wrong twice over: the values had no
+       derivation, and relative units are gauge-dependent, so the seed silently
+       changed meaning whenever pop_scalar changed. At the old gauge of 210 the core
+       seed meant 21 counts against an observed native core of ~61, i.e. the 1966
+       native range was seeded at a third of its actual abundance -- and against a
+       fitted capacity of ~10 counts it was simultaneously 2x ABOVE capacity.
+       Emitting counts and converting once, in model_inputs, fixes both.
     4. Buffer the native hull by 1000 km → the uninvaded east.
     5. Emit a zero count at every uninvaded cell for each pre-invasion year.
     """
@@ -269,10 +277,21 @@ def generate_core_margin_initialization(obs_df, ny, nx, transform, land_mask):
 
     mask_margin = _rasterize(hull_margin) & land_mask
     mask_core = _rasterize(hull_core) & land_mask
-    initpop_density = np.zeros((ny, nx), dtype=np.float32)
-    initpop_density[mask_margin] = 0.001
-    initpop_density[mask_core] = 0.1
-    print(f"  Init map: core={mask_core.sum()} margin={mask_margin.sum()} cells.")
+
+    # Seed levels FROM THE DATA, in route counts: the median observed count in the
+    # cells each hull was built from. A native range at equilibrium should start at
+    # roughly its observed abundance, which is exactly what these medians are.
+    per_cell = locs.groupby(["row", "col"])["SpeciesTotal"].mean()
+    core_cells = locs[locs["SpeciesTotal"] > threshold].groupby(["row", "col"])["SpeciesTotal"].mean()
+    core_counts = float(np.median(core_cells)) if len(core_cells) else float(threshold)
+    margin_counts = float(np.median(per_cell)) if len(per_cell) else 1.0
+    # The margin is the sparse fringe, so it must not exceed the core.
+    margin_counts = min(margin_counts, core_counts)
+    initpop_counts = np.zeros((ny, nx), dtype=np.float32)
+    initpop_counts[mask_margin] = margin_counts
+    initpop_counts[mask_core] = core_counts
+    print(f"  Init map: core={mask_core.sum()} cells @ {core_counts:.1f} route counts, "
+          f"margin={mask_margin.sum()} cells @ {margin_counts:.1f} route counts.")
 
     uninvaded = land_mask & ~_rasterize(hull_margin.buffer(BUFFER_DISTANCE_METERS))
     ui_rows, ui_cols = np.where(uninvaded)
@@ -283,7 +302,7 @@ def generate_core_margin_initialization(obs_df, ny, nx, transform, land_mask):
     p_cols = np.concatenate([ui_cols for _ in years]) if ui_cols.size else np.array([], int)
     p_years = np.concatenate([np.full(len(ui_rows), y) for y in years]) if ui_rows.size else np.array([], int)
     p_counts = np.zeros_like(p_years)
-    return initpop_density, p_rows, p_cols, p_years, p_counts
+    return initpop_counts, p_rows, p_cols, p_years, p_counts
 
 
 def main():
@@ -298,7 +317,7 @@ def main():
 
     mapped = map_routes_to_grid(obs, load_routes(), transform, crs, nx, ny, land_mask)
 
-    init_density, p_rows, p_cols, p_years, p_counts = generate_core_margin_initialization(
+    init_counts, p_rows, p_cols, p_years, p_counts = generate_core_margin_initialization(
         mapped, ny, nx, transform, land_mask)
     p_quality = np.full(len(p_years), QUALITY_STANDARD, dtype=int)  # derived absences
 
@@ -312,9 +331,12 @@ def main():
         obs_year=np.concatenate([p_years, mapped["Year"].values]).astype(int),
         observed_results=np.concatenate([p_counts, mapped["SpeciesTotal"].values]).astype(int),
         obs_quality=np.concatenate([p_quality, mapped["quality_tier"].values]).astype(int),
-        initpop_density=init_density,
-        initpop_rows=np.where(init_density > 0)[0],
-        initpop_cols=np.where(init_density > 0)[1],
+        # In ROUTE COUNTS; model_inputs divides by the gauge (see its
+        # initpop_latent block). The old key name said "density", which was
+        # gauge-dependent and undocumented.
+        initpop_route_counts=init_counts,
+        initpop_rows=np.where(init_counts > 0)[0],
+        initpop_cols=np.where(init_counts > 0)[1],
         N_obs=len(mapped), N_pseudo=len(p_counts),
         unit_distance=1000.0,
         time=END_YEAR - START_YEAR + 1,

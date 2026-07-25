@@ -7,6 +7,22 @@ functions to per-cell adult/juvenile survival (S_a, S_j), max fecundity (F_max),
 carrying capacity (K), and journey survival (Q). Runs as a checkpointed
 ``lax.scan`` over years to bound memory when differentiated.
 
+K's link is BOUNDED IN LOG-FOLD TERMS:
+
+    K_base = k_level * exp(L*tanh(gamma_k*H_k/L) + trend),  L = log(max_fold)
+
+``k_level`` is the continental capacity level, sampled directly in expected BBS
+route counts and converted through the gauge (see ``age_priors.counts_to_relative``),
+and no cell may sit more than ``max_fold`` above or below it. The previous form,
+``softplus(alpha_k + gamma_k*H_k)``, was unbounded in log space, and since K sits
+where softplus is effectively ``exp()``, a large negative ``gamma_k*H_k`` drove K to
+~0 regionally. At sd(H_k)=4 -- reachable with 24 latent dims -- that prior already
+admitted a 941-fold spatial range with a low end of 0.006. Crucially that is a
+COVARIATE-route annihilation, so no constraint on the disease term could prevent it;
+this is the third distinct route to the same pathology and the bound closes the
+class rather than the instance. Combining all routes (covariates x disease ceiling
+0.5 x trend) the absolute floor is ~9% of continental capacity: low, never zero.
+
 H_k is new. K previously reused H_r, making it a strictly monotone function of
 F_max, so the disease term below was the ONLY way the two could differ spatially
 -- and it duly saturated absorbing that disagreement. The three manifolds share a
@@ -29,14 +45,21 @@ The effect is a STRUCTURED hypothesis, not a free field:
 
     K = K_base * (1 - severity(x) * gate(x,t) * (1 - recovery(t - arrival)))
 
-    severity(x) = ceiling * sigmoid(mu_sev + b_late*arrival_decades(x) + sev_basis(x).w_sev)
+    severity(x) = ceiling * modifier(x) * K_base^n / (K_base^n + K_half^n)   # density-dependent
+    modifier(x) = min(1, 2*sigmoid(mu_sev + b_late*arrival_decades(x) + sev_basis(x).w_sev))
     gate(x,t)   = sigmoid((t - arrival(x) - lag0 - lag_basis(x).w_lag) / tau)
     recovery(a) = rec * (1 - exp(-a / tau_rec)),  a = years since local arrival
 
-where ``severity`` is capped at a configured ``ceiling`` (0.5).
+Severity is DENSITY-DEPENDENT (a Hill function of local capacity, both shape
+parameters fitted) and capped at a configured ``ceiling`` (0.5). Epidemics need
+hosts, so sparse populations are barely affected -- which also stops the Allee
+effect from turning a small absolute capacity loss into a local extinction exactly
+where that is least justified. The ceiling is load-bearing for identifiability: K
+must stay monotone in K_base, which holds at 0.5 and fails by 0.7.
 
 Each piece states a claim: once the front passes a cell, some FRACTION of local
-carrying capacity is removed (at most the ceiling); the arrival map's timing is
+carrying capacity is removed, scaled by how dense that population can get and
+capped at the ceiling; the arrival map's timing is
 coarse, so the front's position is fitted with continental and regional slack; the
 hit is not permanent, because exposure builds resilience, so it decays toward
 ``severity*(1-rec)`` over ``tau_rec`` years; and populations reached later were
@@ -75,38 +98,68 @@ exact; see ``model_inputs.generate_spatial_basis``.
 
 On Jensen's inequality: an earlier revision rejected a one-sided link because a
 concave link's expectation under a zero-mean perturbation sits below its
-zero-perturbation value by a DATA-DEPENDENT amount, pulling alpha_k upward and
-contaminating the pattern the term was meant to isolate. It does not bind here:
-the gate is exogenous, so pre-arrival cells and all of 1902-1993 recover
-``K_base`` exactly, which pins ``alpha_k`` on data the disease term cannot touch.
+zero-perturbation value by a DATA-DEPENDENT amount, pulling the capacity level
+upward and contaminating the pattern the term was meant to isolate. It does not bind
+here: the gate is exogenous, so pre-arrival cells and all of 1902-1993 recover
+``K_base`` exactly, which pins ``k_level`` on data the disease term cannot touch.
 """
 import jax.numpy as jnp
 import jax.nn as jnn
 from jax import lax, checkpoint
 
 
-def disease_severity(disease):
+def disease_severity(disease, K_base):
     """Per-cell PEAK fraction of carrying capacity the epizootic removes.
 
-    Bounded in ``(0, ceiling)``. ``sigmoid`` is what makes it a fraction at all --
-    no draw of any parameter can remove more than all of K, and none can ADD
-    capacity -- and ``ceiling`` is a HARD cap on how much of K a disease is
-    permitted to explain. The cap is not decoration: with a prior median of 50% and
-    no cap, the fit drove severity to 93% in the east and 73% in the west with zero
-    recovery, every parameter pinned 3-4.5 prior SDs into its tail. At 178k
-    observations the likelihood gradient dwarfs any prior, so only a structural
-    bound holds. Saturation AT the ceiling is now a DIAGNOSTIC: it means spatial or
-    temporal misfit is still being routed here rather than to the covariates.
+    DENSITY-DEPENDENT, via a Hill function of local capacity::
 
-    Time-independent, and deliberately coarse in space (~24 land-centered cosine
-    coefficients). ``b_late`` on centered arrival year (in decades) carries "later
-    front arrival implies a milder hit" -- the western-genetic-diversity
-    hypothesis -- as one interpretable coefficient.
+        severity = ceiling * modifier(x) * K_base^n / (K_base^n + K_half^n)
+
+    Epidemics need hosts. Mass-action transmission makes R0 scale with host
+    density, and below a threshold density the pathogen cannot persist -- so
+    severity goes to 0 as ``K_base -> 0`` and saturates at the ceiling in dense
+    populations. This matters beyond realism: the model carries an Allee effect, so
+    a small ABSOLUTE reduction in an already-small K can push a sparse population
+    to local extinction. A density-independent severity therefore does its most
+    violent damage exactly where it is least biologically justified.
+
+    Both shape parameters are FITTED, so the shape is learned rather than
+    asserted: ``k_half`` is the density at half-maximum severity and ``n`` the
+    steepness (n~1 smooth saturation, n~3 a sharp invasion threshold).
+
+    ``modifier(x)`` retains the smooth regional field and the arrival-order
+    coefficient, as a multiplicative adjustment in (0, 1] around the
+    density-driven value. ``b_late`` is now strongly collinear with the density
+    term (the east is both early-arriving and dense) and is priored tightly for
+    that reason; it is kept because arrival order and genetic diversity are
+    genuinely distinct from density, so a strong fitted ``b_late`` ALONGSIDE the
+    density term would be informative rather than redundant.
+
+    The ``ceiling`` is load-bearing for identifiability, not just plausibility:
+    ``K = K_base * (1 - severity(K_base))`` must be monotone in ``K_base``, else
+    two habitat qualities map to one realized capacity. At 0.5 that holds for every
+    n tested; at 0.7 it fails.
+
+    Severity keys off ``K_base``, the potential density, rather than realized N --
+    partly because all demographic fields are precomputed before the forward
+    simulation runs, so N does not exist yet, and partly because epidemic
+    establishment depends on sustained density rather than a single year's count.
     """
-    logit = (disease["mu_sev"]
-             + disease["b_late"] * disease["onset_decades"]
-             + jnp.dot(disease["sev_basis"].T, disease["w_sev"]))
-    return disease["ceiling"] * jnn.sigmoid(logit)
+    # Regional/arrival-order modifier, a plain sigmoid in (0, 1). NOT clipped: an
+    # earlier version used min(1, 2*sigmoid(.)) so that a zero logit meant "no
+    # modification", but that put a zero-gradient boundary exactly where mu_sev's
+    # prior is centered, and the clip also broke the land-centered field's
+    # guarantee that it cannot shift the continental level. With a plain sigmoid the
+    # ceiling stays a strict upper bound (severity <= ceiling * density_term), the
+    # field remains level-neutral in logit space, and mu_sev's prior is instead
+    # centered on the modifier value we actually believe.
+    modifier = jnn.sigmoid(
+        disease["mu_sev"]
+        + disease["b_late"] * disease["onset_decades"]
+        + jnp.dot(disease["sev_basis"].T, disease["w_sev"]))
+    n = disease["hill_n"]
+    density_term = K_base ** n / (K_base ** n + disease["k_half"] ** n)
+    return disease["ceiling"] * modifier * density_term
 
 
 def disease_onset_timestep(disease):
@@ -123,7 +176,7 @@ def disease_onset_timestep(disease):
             + jnp.dot(disease["lag_basis"].T, disease["w_lag"]))
 
 
-def disease_k_fraction(disease, t_idx, onset_t=None, severity=None):
+def disease_k_fraction(disease, t_idx, K_base, onset_t=None, severity=None):
     """Fraction of K removed at ``t_idx``: severity * gate * (1 - recovery).
 
     Strictly in [0, 1), so ``K = K_base * (1 - fraction)`` can be driven toward
@@ -137,7 +190,7 @@ def disease_k_fraction(disease, t_idx, onset_t=None, severity=None):
     double-count.
     """
     onset_t = disease_onset_timestep(disease) if onset_t is None else onset_t
-    severity = disease_severity(disease) if severity is None else severity
+    severity = disease_severity(disease, K_base) if severity is None else severity
     gate = jnn.sigmoid((t_idx - onset_t) / disease["tau"])
     age = jnp.maximum(t_idx - onset_t, 0.0)
     recovered = disease["rec"] * (-jnp.expm1(-age / disease["tau_rec"]))
@@ -154,10 +207,11 @@ def project_and_scatter_age_structured(
     beta_k,           # 1D feature weights for Carrying Capacity (Shape: M)
     k_trend_basis,    # (n_trend, time) time-centered cosines, continental
     w_k_trend,        # (n_trend,) weights on that trend
+    k_log_fold_limit, # max |log-fold| deviation of local K from the continental level
     alpha_a, gamma_a, # Adult survival intercept & slope
     alpha_j, gamma_j, # Juvenile survival intercept & slope
     alpha_f, gamma_f, # Max fecundity intercept & slope
-    alpha_k, gamma_k  # Carrying capacity intercept & slope
+    k_level, gamma_k  # Carrying capacity continental LEVEL (density units) & slope
 ):
     """Project Z → (S_a, S_j, F_max, K, Q) for every year, on the land cells.
 
@@ -165,16 +219,18 @@ def project_and_scatter_age_structured(
     fecundity and capacity use softplus on the reproduction manifold H_r. Q (in-
     cohort survival) reuses the juvenile survival intercept/slope on the
     land-conditioned neighborhood/path habitat H_s_disp. Each returned array is
-    (time, N_land[, K]).
+    (time, N_land[, K]). ``Kbase_flat`` is capacity BEFORE the disease effect --
+    returned because severity is a function of it, so any exact diagnostic of the
+    disease term needs the undepressed value rather than the depressed one.
 
     ``disease`` bundles the epizootic term's inputs and parameters (see
     ``disease_k_fraction``). Timesteps before ``disease_timestep`` get K_base
-    unmodified -- exactly, not approximately -- which is what pins ``alpha_k`` on
+    unmodified -- exactly, not approximately -- which is what pins ``k_level`` on
     the 1966-1993 BBS record the disease term cannot reach.
     """
-    # The disease severity and onset fields do not depend on t, so compute them
-    # once outside the scan rather than 124 times inside it.
-    severity = disease_severity(disease)
+    # The onset field does not depend on t, so compute it once rather than 124
+    # times inside the scan. Severity now depends on K_base, which varies by year
+    # through the continental trend, so it is computed per year.
     onset_t = disease_onset_timestep(disease)
 
     # Checkpoint: don't store this function's large intermediates for the
@@ -213,11 +269,23 @@ def project_and_scatter_age_structured(
 
         # Reproduction listens to H_r
         F_max_val = jnn.softplus(alpha_f + gamma_f * H_r_local)
+
         # Continental, spatially uniform capacity drift. Time-centered basis, so
-        # alpha_k still owns the level; this exists so "modern K below 1970s K" has
-        # somewhere to go other than the disease term.
+        # k_level still owns the level; this exists so "modern K below 1970s K" has
+        # somewhere to go other than the disease term. Its prior is deliberately
+        # near-zero -- it is a safety valve, not a mechanism.
         k_trend_t = jnp.dot(jnp.take(k_trend_basis, t_idx, axis=1), w_k_trend)
-        K_base_val = jnn.softplus(alpha_k + gamma_k * H_k_local + k_trend_t)
+
+        # Baseline K with a BOUNDED log-scale dynamic range. k_level is the
+        # continental level (sampled directly in route-count units, then converted
+        # through the gauge -- see age_priors.counts_to_relative); tanh caps how far
+        # any cell may deviate from it, in fold units, no matter what gamma_k or H_k
+        # do. The previous form, softplus(alpha_k + gamma_k*H_k), was unbounded in log
+        # space -- and since K sits where softplus is effectively exp(), a large
+        # negative gamma_k*H_k drove K to ~0 regionally. That is a covariate-route
+        # collapse, so no constraint on the DISEASE term could prevent it.
+        k_dev = k_log_fold_limit * jnp.tanh(gamma_k * H_k_local / k_log_fold_limit)
+        K_base_val = k_level * jnp.exp(k_dev + k_trend_t)
 
         # 4b. Disease effect on K only: a bounded MULTIPLICATIVE rescale (see the
         # module docstring for why the earlier additive-inside-softplus form
@@ -225,7 +293,7 @@ def project_and_scatter_age_structured(
         # fields are time-independent, so they are hoisted out of the scan.
         k_fraction = jnp.where(
             t_idx >= disease_timestep,
-            disease_k_fraction(disease, t_idx, onset_t=onset_t, severity=severity),
+            disease_k_fraction(disease, t_idx, K_base_val, onset_t=onset_t),
             0.0,
         )
         K_val = K_base_val * (1.0 - k_fraction)
@@ -234,10 +302,15 @@ def project_and_scatter_age_structured(
         # This perfectly links movement mortality to local survival mortality
         Q_val = jnn.sigmoid(alpha_j + gamma_j * H_s_disp)
 
-        return None, (S_a_val, S_j_val, F_max_val, K_val, Q_val)
+        # K_base_val is returned as well: severity is a function of it, so exact
+        # diagnostics (and the severity map) need the UNDEPRESSED capacity. Using
+        # the depressed K would be circular. Costs one more (time, N_land) float32
+        # array, ~8 MB at production size.
+        return None, (S_a_val, S_j_val, F_max_val, K_val, Q_val, K_base_val)
 
     # We scan over the range of time indices
     t_indices = jnp.arange(time)
-    _, (Sa_flat, Sj_flat, Fmax_flat, K_flat, Q_flat) = lax.scan(process_year, None, t_indices)
+    _, (Sa_flat, Sj_flat, Fmax_flat, K_flat, Q_flat, Kbase_flat) = lax.scan(
+        process_year, None, t_indices)
 
-    return Sa_flat, Sj_flat, Fmax_flat, K_flat, Q_flat
+    return Sa_flat, Sj_flat, Fmax_flat, K_flat, Q_flat, Kbase_flat

@@ -27,6 +27,29 @@ _POP_SPEC = load_age_model_config()["population_model"]
 _DISEASE_PRIOR = dict(_POP_SPEC["disease_prior"])
 _MANIFOLD_PRIOR = dict(_POP_SPEC["manifold_prior"])
 _K_TREND = dict(_POP_SPEC["k_trend"])
+# Max |log-fold| deviation of local K from the continental level. See the
+# _k_range_comment in config and the K_base_val block in age_fields.py.
+_K_LOG_FOLD_LIMIT = math.log(float(_POP_SPEC["k_range"]["max_fold_deviation"]))
+_CAPACITY_LEVEL = dict(_POP_SPEC["capacity_level_prior"])
+_INVASION_PULSE = dict(_POP_SPEC["invasion_pulse_prior"])
+# THE GAUGE. Every absolute-scale prior is declared in expected BBS ROUTE COUNTS in
+# config and divided by this at exactly one boundary, so changing the gauge cannot
+# change any prior's meaning. (n50 already followed this convention; the capacity
+# level, the Hill threshold, initpop and the invasion pulse now do too.) The old
+# name said "birds", which it never was -- a BBS count is a 50-stop roadside index.
+_POP_SCALAR = float(_POP_SPEC.get("population_scale_route_counts_per_relative_unit",
+                                  _POP_SPEC.get("population_scale_birds_per_relative_unit")))
+
+
+def counts_to_relative(route_counts):
+    """Convert an expected-BBS-route-count quantity to model density units.
+
+    The single boundary where the gauge is applied. See the _scale_comment in
+    config/age_model_config.json: the likelihood is exactly invariant to the gauge,
+    so any prior stated in relative units is silently gauge-dependent and will
+    change meaning when the gauge changes. State priors in counts; convert here.
+    """
+    return route_counts / _POP_SCALAR
 
 
 def validate_environment_kernel_contract(data):
@@ -233,6 +256,40 @@ def sample_priors(prior_scale=1.0, M_features=None, time=None,
     priors['disease_w_lag'] = numpyro.sample(
         "disease_w_lag", dist.Normal(0.0, lag_scale).expand([N_lag_basis])
     )
+    # DENSITY DEPENDENCE of severity: the Hill threshold and steepness, both fitted,
+    # so the shape is learned. k_half is a DENSITY, hence declared in route counts and
+    # converted through the gauge like every other absolute-scale quantity.
+    priors['disease_k_half'] = numpyro.deterministic(
+        "disease_k_half",
+        counts_to_relative(jnp.exp(numpyro.sample(
+            "disease_log_k_half_counts",
+            dist.Normal(jnp.log(float(_p["k_half_median_route_counts"])),
+                        float(_p["k_half_log_sd"]) * prior_scale)))),
+    )
+    numpyro.deterministic("disease_k_half_route_counts",
+                          priors['disease_k_half'] * _POP_SCALAR)
+    # Steepness. n ~ 1 is smooth saturation (mass-action-ish); n ~ 3 a sharp
+    # invasion threshold. BOUNDED, and the bound is DERIVED rather than guessed:
+    # K = K_base*(1 - ceiling*hill(K_base)) must be monotone in K_base or two
+    # habitat qualities map to one realized capacity. At the worst point
+    # (K_base = k_half) the slope is 1 - ceiling*(1/2 + n/4), giving n < 4/ceiling - 2
+    # (= 6.0 at ceiling 0.5). That closed form is slightly OPTIMISTIC because the
+    # true worst point sits a little below k_half -- numerically n=5.9 already goes
+    # non-monotone (slope -0.009) at ceiling 0.5 -- so an 0.85 margin is applied.
+    # Enforcing this structurally means the ceiling and the steepness cannot drift
+    # into an unidentifiable combination: raising the ceiling automatically tightens
+    # the allowed steepness, which a LogNormal prior would happily ignore.
+    _n_max = 0.85 * (4.0 / float(_p["severity_ceiling"]) - 2.0)
+    _n_min = 0.5
+    _n_med = float(_p["hill_n_median"])
+    _n_raw_loc = math.log((_n_med - _n_min) / (_n_max - _n_med))
+    priors['disease_hill_n'] = numpyro.deterministic(
+        "disease_hill_n",
+        _n_min + (_n_max - _n_min) * jnn.sigmoid(numpyro.sample(
+            "disease_hill_n_raw",
+            dist.Normal(_n_raw_loc, float(_p["hill_n_log_sd"]) * 2.0 * prior_scale))),
+    )
+
     priors['disease_tau'] = numpyro.deterministic(
         "disease_tau",
         # Onset sharpness. Floored because a vanishing tau makes the gate a step
@@ -270,7 +327,24 @@ def sample_priors(prior_scale=1.0, M_features=None, time=None,
     priors['alpha_a'] = numpyro.sample("alpha_a", dist.Normal(0.5, 0.5 * prior_scale)) # ~60%
     priors['alpha_j'] = numpyro.sample("alpha_j", dist.Normal(-0.5, 0.5 * prior_scale)) # ~40%
     priors['alpha_f'] = numpyro.sample("alpha_f", dist.Normal(2.0, 0.5 * prior_scale))  # Fecundity
-    priors['alpha_k'] = numpyro.sample("alpha_k", dist.Normal(0.5, 0.5 * prior_scale))  # Capacity
+    # CAPACITY LEVEL, declared in expected BBS route counts (see counts_to_relative).
+    # This replaces alpha_k ~ Normal(0.5, 0.5), which was stated in relative units and
+    # therefore asserted -- unnoticed -- that every cell's capacity equalled ~97% of
+    # the highest route counts ever recorded. The data want ~2 counts, so that prior
+    # sat 7 SDs from the fit, and every term able to lower K (disease severity, the
+    # H_k deviation, the continental trend) got recruited as a level reducer and
+    # saturated. Centered on the typical OCCUPIED cell: median 2.1 counts, geometric
+    # mean 1.87 (they agree, so the anchor is robust). LogNormal because a positive
+    # scale wants a multiplicative prior. Empty cells are expected to be empty for
+    # NICHE reasons (lambda < 1 via survival/fecundity), not low capacity.
+    priors['k_level'] = numpyro.deterministic(
+        "k_level",
+        counts_to_relative(jnp.exp(numpyro.sample(
+            "log_k_level_counts",
+            dist.Normal(jnp.log(float(_CAPACITY_LEVEL["median_route_counts"])),
+                        float(_CAPACITY_LEVEL["log_sd"]) * prior_scale)))),
+    )
+    numpyro.deterministic("k_level_route_counts", priors['k_level'] * _POP_SCALAR)
     
     # --- 3. DEMOGRAPHIC SLOPES (Gammas) ---
     # Enforce positive slopes: better habitat = higher survival/fecundity
@@ -342,16 +416,21 @@ def build_model_2d(data, prior_scale=1.0):
         "w_lag": priors['disease_w_lag'],
         "tau": priors['disease_tau'],
         "ceiling": float(_DISEASE_PRIOR["severity_ceiling"]),
+        "k_half": priors['disease_k_half'],
+        "hill_n": priors['disease_hill_n'],
         "rec": priors['disease_rec'],
         "tau_rec": priors['disease_tau_rec'],
     }
-    # Per-cell peak severity, saved for diagnostics: this map IS the model's
-    # falsifiable claim about the epizootic (east ~50%, west lower).
-    numpyro.deterministic("disease_severity_map", disease_severity(disease))
 
-    inv_pop = jnn.softplus(numpyro.sample(
-        "inv_eta", dist.Normal(-2.0, 1.0 * prior_scale), sample_shape=(data['inv_window'],)
-    ))
+    # The 1940 release, in route counts converted through the gauge (see
+    # counts_to_relative). Previously softplus(Normal(-2,1)) in relative units, which
+    # at the old gauge meant a founding population of ~27 route counts -- larger than
+    # a typical modern occupied cell, for a release of a few dozen cage birds.
+    inv_pop = numpyro.deterministic("inv_pop_relative", counts_to_relative(jnp.exp(
+        numpyro.sample("log_inv_pulse_counts",
+                       dist.Normal(jnp.log(float(_INVASION_PULSE["median_route_counts"])),
+                                   float(_INVASION_PULSE["log_sd"]) * prior_scale),
+                       sample_shape=(data['inv_window'],)))))
     
     # Convert to the relative [0, 1] scale by multiplying by pop_scalar
     # Since N_relative = N_raw / pop_scalar, 
@@ -361,16 +440,16 @@ def build_model_2d(data, prior_scale=1.0):
 
     # 1. Compute Biological Fields (2D Manifold -> Demographic Rates)
     # Notice we now pass beta_s and beta_r instead of a single beta_h
-    Sa_flat, Sj_flat, Fmax_flat, K_flat, Q_flat = project_and_scatter_age_structured(
+    Sa_flat, Sj_flat, Fmax_flat, K_flat, Q_flat, Kbase_flat = project_and_scatter_age_structured(
         time, Ny, Nx, land_rows, land_cols,
         data['Z_gathered'], data['Z_disp_gathered'],
         data['disease_timestep'], disease,
         priors['beta_s'], priors['beta_r'], priors['beta_k'],
-        data['k_trend_basis'], priors['w_k_trend'],
+        data['k_trend_basis'], priors['w_k_trend'], _K_LOG_FOLD_LIMIT,
         priors['alpha_a'], priors['gamma_a'],
         priors['alpha_j'], priors['gamma_j'],
         priors['alpha_f'], priors['gamma_f'],
-        priors['alpha_k'], priors['gamma_k']
+        priors['k_level'], priors['gamma_k']
     )
         
     # Save fields for viz
@@ -378,6 +457,13 @@ def build_model_2d(data, prior_scale=1.0):
     numpyro.deterministic("Sj_flat", Sj_flat)
     numpyro.deterministic("Fmax_flat", Fmax_flat)
     numpyro.deterministic("K_flat", K_flat)
+    numpyro.deterministic("K_base_flat", Kbase_flat)
+    # Per-cell peak severity at MODERN capacity -- the model's falsifiable claim
+    # about the epizootic. Density-dependent, so it must be evaluated against the
+    # undepressed K_base (using the depressed K would be circular), and at a
+    # specific year since K_base drifts with the continental trend.
+    numpyro.deterministic("disease_severity_map",
+                          disease_severity(disease, Kbase_flat[-1]))
     numpyro.deterministic("Q_flat", Q_flat)
 
     # --- POC IDENTIFIABILITY CONSTRAINT: SITE-LEVEL EQUILIBRIUM AT K ---

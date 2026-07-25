@@ -118,7 +118,8 @@ def reconstruct_map(data, params):
     needed = ["simulated_density", "Sa_flat", "Sj_flat", "Fmax_flat", "K_flat",
               "Q_flat", "expected_obs", "allee_gamma", "n50_raw", "w_env", "rho",
               "env_corr_repro_capacity", "env_corr_survival_capacity",
-              "manifold_loadings", "w_k_trend",
+              "manifold_loadings", "w_k_trend", "k_level", "k_level_route_counts",
+              "disease_k_half_route_counts", "disease_hill_n",
               "disease_severity_map", "disease_mu_sev", "disease_b_late",
               "disease_w_lag", "disease_lag0", "disease_tau", "disease_rec",
               "disease_tau_rec", "Na_grid", "Nj_grid"]
@@ -462,6 +463,31 @@ def plot_spatial_residuals(sim, data, shape, out):
     fig.tight_layout(); fig.savefig(out, dpi=180); plt.close(fig)
 
 
+def _k_range_metrics(sim):
+    """Is K pressed against its bounded dynamic range?
+
+    K = softplus(alpha_k) * exp(L*tanh(...) + trend) * (1 - disease). The tanh bound
+    stops covariate-route annihilation, but saturation against it is a diagnostic in
+    exactly the way a saturated disease ceiling is: it says the likelihood wants K
+    lower than the model permits, and the reason deserves finding rather than
+    accommodating.
+    """
+    cfg = load_age_model_config()["population_model"]
+    max_fold = float(cfg["k_range"]["max_fold_deviation"])
+    K = np.asarray(sim["K_flat"])
+    modern = K[-10:].mean(axis=0)
+    level = float(np.median(modern))
+    floor = level / max_fold
+    return {"max_fold_deviation": max_fold,
+            "modern_median_K": level,
+            "modern_min_K": float(modern.min()),
+            "modern_max_K": float(modern.max()),
+            "modern_fold_range": float(modern.max() / max(modern.min(), 1e-12)),
+            # Fraction of land within 10% of the permitted floor.
+            "fraction_near_floor": float((modern < floor * 1.1).mean()),
+            "fraction_near_ceiling": float((modern > level * max_fold * 0.9).mean())}
+
+
 def _k_trend_metrics(data, sim):
     """Report the continental K trend against its own (deliberately tight) prior.
 
@@ -567,7 +593,18 @@ def plot_disease_diagnostics(data, sim, years, rows, cols, shape, out, window):
     fig.tight_layout(); fig.savefig(out, dpi=180); plt.close(fig)
 
     pre_front = flat[since < -5]
+    ceiling = float(load_age_model_config()["population_model"]
+                    ["disease_prior"]["severity_ceiling"])
     return {"disease_severity_median": float(np.median(sev)),
+            # Saturation against the ceiling is the "is this still absorbing misfit?"
+            # readout. With density dependence in place, severity should reach the
+            # ceiling only in the densest cells, if anywhere.
+            "disease_severity_fraction_at_ceiling": float((sev > 0.95 * ceiling).mean()),
+            "disease_severity_ceiling": ceiling,
+            # The learned shape of the density dependence.
+            "disease_k_half_route_counts": float(np.asarray(sim["disease_k_half_route_counts"])),
+            "disease_hill_n": float(np.asarray(sim["disease_hill_n"])),
+            "capacity_level_route_counts": float(np.asarray(sim["k_level_route_counts"])),
             "disease_severity_ceiling": ceiling,
             # THE diagnostic: cells pinned at the ceiling mean misfit is still being
             # routed to the disease term rather than to H_k or the K trend.
@@ -793,6 +830,10 @@ def main():
         # prior. Reported as the multiplier on K (exp of the trend, since K sits
         # near softplus's exponential regime) at each end of the timeline.
         "k_trend": _k_trend_metrics(data, sim),
+        # K's bounded dynamic range. If a large share of land sits at the floor, the
+        # covariates are pushing capacity as low as the bound permits -- the same
+        # pathology as a saturated disease ceiling, one route over.
+        "k_range": _k_range_metrics(sim),
         "realized_source_sink": source_sink_metrics,
         "disease": disease_metrics,
         "age_structure": age_structure_metrics,

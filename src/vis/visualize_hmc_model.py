@@ -111,7 +111,9 @@ def rebuild_spatial_grids(raw_samples, data_dict):
     def fast_rebuild_ages(sim_output, single_sample):
         time, Ny, Nx = data_dict['time'], data_dict['Ny'], data_dict['Nx']
         row, col = data_dict['inv_location']
-        inv_pop = jnn.softplus(single_sample['inv_eta'])
+        inv_pop = (jnp.exp(single_sample['log_inv_pulse_counts'])
+                   if 'log_inv_pulse_counts' in single_sample
+                   else jnn.softplus(single_sample['inv_eta']))  # legacy
         disp_log_int = single_sample['dispersal_logit_intercept']
         disp_log_slope = single_sample['dispersal_logit_slope']
         allee_gamma = sim_output['allee_gamma']

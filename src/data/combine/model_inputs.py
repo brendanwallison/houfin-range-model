@@ -259,7 +259,28 @@ def ingest_data():
         
     bbs_data = np.load(BBS_DATA_NPZ)
     land_mask = (bbs_data['land'].astype(np.float32) > 0.5).astype(int)
-    initpop_map = bbs_data['initpop_density'] * land_mask  # already at grid res
+    # Seed map arrives in EXPECTED BBS ROUTE COUNTS (derived from the observed
+    # pre-1970 native-range counts, see bbs.generate_core_margin_initialization) and
+    # is converted to density here -- the single gauge boundary. Older npz files
+    # carry initpop_density in relative units already; accept them unconverted.
+    _pop_scalar = float(POPULATION_SPEC.get(
+        "population_scale_route_counts_per_relative_unit",
+        POPULATION_SPEC.get("population_scale_birds_per_relative_unit")))
+    if 'initpop_route_counts' in bbs_data:
+        initpop_map = (bbs_data['initpop_route_counts'] / _pop_scalar) * land_mask
+        print(f"  Init seed: max {bbs_data['initpop_route_counts'].max():.1f} route counts "
+              f"-> {initpop_map.max():.4f} density (gauge {_pop_scalar:g})")
+        _lvl = float(POPULATION_SPEC["capacity_level_prior"]["median_route_counts"])
+        _core = float(bbs_data['initpop_route_counts'].max())
+        if _core > _lvl * 30.0:
+            raise ValueError(
+                f"initpop core seed {_core:.1f} counts exceeds 30x the capacity-level "
+                f"prior median ({_lvl:.1f}) -- the native range would start far above "
+                f"any reachable carrying capacity. Reconcile capacity_level_prior "
+                f"with the observed native-range abundance.")
+    else:
+        initpop_map = bbs_data['initpop_density'] * land_mask
+        print("  [compat] initpop read as relative density from a legacy npz")  # already at grid res
 
     Ny, Nx = land_mask.shape
     land_rows, land_cols = np.where(land_mask)
@@ -570,7 +591,13 @@ def ingest_data():
         "observed_results": np.array(observed_results[valid_obs_mask]),
         "obs_quality": np.array(obs_quality[valid_obs_mask]),
         "initpop_latent": initpop_map,
-        "pop_scalar": float(POPULATION_SPEC["population_scale_birds_per_relative_unit"]),
+        # THE GAUGE (expected BBS route counts per relative density unit). Renamed
+        # from ..._birds_per_relative_unit, which it never was -- a BBS count is a
+        # 50-stop roadside index, not an absolute population. Old key accepted as a
+        # fallback so existing metadata still loads.
+        "pop_scalar": float(POPULATION_SPEC.get(
+            "population_scale_route_counts_per_relative_unit",
+            POPULATION_SPEC.get("population_scale_birds_per_relative_unit"))),
         "inv_location": (inv_row, inv_col),
         # The invasion pulse only. This was previously reused as the K-correction
         # basis's window start; the disease term now has its own, later window

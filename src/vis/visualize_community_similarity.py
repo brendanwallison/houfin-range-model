@@ -50,7 +50,7 @@ def reconstruct_simulation(data, params):
     
     # We now need the demographic parameters to calculate R0
     return_sites = [
-        "w_env", "alpha_a", "alpha_j", "alpha_f", "alpha_k",
+        "w_env", "alpha_a", "alpha_j", "alpha_f", "k_level",
         "gamma_a_raw", "gamma_j_diff", "gamma_f_raw", "gamma_k_raw",
         "allee_gamma", "n50_raw"
     ]

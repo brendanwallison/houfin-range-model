@@ -12,6 +12,8 @@ sample-based visualizers.
 Consumed today by ``scripts/viz/map_diagnostics.py``.
 """
 import numpy as np
+
+from src.config_utils import load_age_model_config
 import jax.numpy as jnp
 
 from src.model.age_priors import equilibrium_age_quantities
@@ -100,7 +102,19 @@ def response_curve_fields(latents, z_sweep, target_idx):
     alpha_a = float(latents["alpha_a"])
     alpha_j = float(latents["alpha_j"])
     alpha_f = float(latents["alpha_f"])
-    alpha_k = float(latents["alpha_k"])
+    # K's link changed: its LEVEL is now sampled in route counts (log_k_level_counts,
+    # converted through the gauge) and the covariate deviation is tanh-bounded in
+    # log-fold terms, rather than softplus(alpha_k + gamma_k*H_k). Fall back to the
+    # old latent name so a pre-run_11 checkpoint still plots.
+    pop = float(load_age_model_config()["population_model"].get(
+        "population_scale_route_counts_per_relative_unit",
+        load_age_model_config()["population_model"].get(
+            "population_scale_birds_per_relative_unit", 1.0)))
+    fold = float(load_age_model_config()["population_model"]["k_range"]["max_fold_deviation"])
+    if "log_k_level_counts" in latents:
+        k_level = float(np.exp(latents["log_k_level_counts"])) / pop
+    else:
+        k_level = float(softplus(latents["alpha_k"]))  # legacy checkpoint
     gamma_a = float(softplus(latents["gamma_a_raw"]))
     gamma_j = gamma_a + float(latents["gamma_j_diff"])
     gamma_f = float(softplus(latents["gamma_f_raw"]))
@@ -110,7 +124,10 @@ def response_curve_fields(latents, z_sweep, target_idx):
         "Sa": sigmoid(alpha_a + gamma_a * H_s),
         "Sj": sigmoid(alpha_j + gamma_j * H_s),
         "Fmax": softplus(alpha_f + gamma_f * H_r),
-        "K": softplus(alpha_k + gamma_k * H_k),
+        # Matches age_fields exactly: level * exp(L*tanh(gamma_k*H_k/L)). The
+        # disease effect is omitted -- it is a function of location and year, so a
+        # synthetic single-Z sweep has no well-defined value for it.
+        "K": k_level * np.exp(np.log(fold) * np.tanh(gamma_k * H_k / np.log(fold))),
     }
 
 

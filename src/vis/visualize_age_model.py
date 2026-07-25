@@ -541,7 +541,7 @@ def reconstruct_simulation(data, params):
         "disease_severity_map", "w_env", "L_corr", "dispersal_random",
         "dispersal_logit_intercept", "dispersal_logit_slope",
         "n50_raw", "allee_gamma",
-        "alpha_a", "alpha_j", "alpha_f", "alpha_k",
+        "alpha_a", "alpha_j", "alpha_f", "k_level", "k_level_route_counts",
         "gamma_a_raw", "gamma_j_diff", "gamma_f_raw",
         "rho", "w_scale", "L_corr", "inv_pop",  # <-- Explicitly tracking the generated inv_pop matrix
         "env_corr_repro_capacity", "env_corr_survival_capacity", "manifold_loadings"
@@ -629,12 +629,15 @@ def rebuild_age_pools(sim, data, params):
     
     # --- FIXED: Pull the invasion vector directly from the provided params dictionary ---
     import jax.nn
-    if 'inv_eta_auto_loc' in params:
-        inv_eta_val = params['inv_eta_auto_loc']
+    # The invasion pulse is now sampled in ROUTE COUNTS (log_inv_pulse_counts) and
+    # converted through the gauge, so there is no softplus and no `inv_eta`. Fall
+    # back to the old site+link for pre-run_11 checkpoints.
+    if 'log_inv_pulse_counts_auto_loc' in params:
+        inv_pop_vector = jnp.squeeze(jnp.exp(params['log_inv_pulse_counts_auto_loc']))
+        inv_eta_val = None
     else:
-        inv_eta_val = params['inv_eta']
-        
-    inv_pop_vector = jnp.squeeze(jax.nn.softplus(inv_eta_val))
+        inv_eta_val = params.get('inv_eta_auto_loc', params.get('inv_eta'))
+        inv_pop_vector = jnp.squeeze(jax.nn.softplus(inv_eta_val))
 
     # Pre-allocate the spatial Q-grid container
     K_kernels = Q_flat.shape[-1]

@@ -57,6 +57,8 @@
     "target_steps": 1800,
     "init_lr": 0.01,
     "weight_decay": 0.0,
+    "_log_every_comment": "Steps between '[map] step ...' progress lines on stdout (the SLURM .o log). tqdm also carries the loss, but it writes a single carriage-return-rewritten line to stderr, so a running fit's loss trajectory is otherwise invisible in the log. Override per-run with HOUFIN_MAP_LOG_EVERY; 0 disables. A profile may set its own value.",
+    "log_every_steps": 25,
     "profiles": {
       "quick90": {
         "_comment": "Fresh 90-minute development fit matching the successful accidental extension: 100 tight, 150 intermediate, and 650 nominal-prior steps (900 total). The learning-rate decay reaches its minimum at step 500 and stays there for the final 400 steps. This changes optimization only, not the final MAP objective.",

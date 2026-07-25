@@ -66,6 +66,13 @@ TOTAL_STEPS = int(
     os.environ.get("HOUFIN_MAP_STEPS", _active_map_cfg.get("target_steps", 900))
 )
 CKPT_EVERY = int(os.environ.get("HOUFIN_MAP_CKPT_EVERY", 100))
+# How often to print a progress line to stdout. tqdm's postfix carries the loss
+# too, but it writes to stderr and rewrites one line via carriage returns, which
+# under SLURM means the loss trajectory is effectively invisible in the .o log.
+# This is the line you actually watch a running fit with; 0 disables it.
+LOG_EVERY = int(os.environ.get("HOUFIN_MAP_LOG_EVERY",
+                               _active_map_cfg.get("log_every_steps",
+                                                   _map_cfg.get("log_every_steps", 25))))
 PRIOR_RELAXATION = tuple(
     (int(step), float(scale)) for step, scale in _active_map_cfg["prior_relaxation"]
 )
@@ -267,6 +274,8 @@ def run_map():
         total=TOTAL_STEPS,
         desc="MAP",
     )
+    loop_start = time.time()
+    steps_this_job = 0
     for global_step in pbar:
         prior_scale = _prior_scale_for_step(global_step)
         next_state, loss = svi.update(
@@ -280,10 +289,37 @@ def run_map():
             raise FloatingPointError(f"non-finite MAP loss at step {global_step}: {loss_val}")
         svi_state = next_state
         losses.append(loss_val)
+        steps_this_job += 1
         if global_step % 10 == 0:
             pbar.set_postfix(
                 {"prior_scale": prior_scale, "loss": f"{loss_val:.4f}"}
             )
+        if LOG_EVERY and ((global_step + 1) % LOG_EVERY == 0
+                          or global_step == start_step
+                          or global_step + 1 == TOTAL_STEPS):
+            # Report the mean over the interval as well as the instantaneous
+            # loss: single-step values are noisy enough that a trend is hard to
+            # read from them, and the mean is what tells you whether the fit is
+            # still descending. Rate/ETA come from THIS job's steps only, so a
+            # resumed run doesn't average in the previous window's throughput.
+            recent = losses[-min(LOG_EVERY, steps_this_job):]
+            elapsed = time.time() - loop_start
+            # The first few steps' elapsed time is dominated by XLA compilation,
+            # so a rate/ETA derived from them is wildly pessimistic. Report the
+            # loss immediately (that is the point of the first line) but withhold
+            # throughput until enough steps have run to mean anything.
+            if steps_this_job >= 5 and elapsed > 0:
+                rate = steps_this_job / elapsed
+                eta_min = (TOTAL_STEPS - (global_step + 1)) / rate / 60
+                pace = f"{rate:.2f} step/s eta={eta_min:.0f} min"
+            else:
+                pace = "(rate pending; first steps include JIT compile)"
+            print(f"[map] step {global_step + 1}/{TOTAL_STEPS} "
+                  f"loss={loss_val:.4f} mean{len(recent)}={np.mean(recent):.4f} "
+                  f"prior_scale={prior_scale:g} lr={float(scheduler(global_step)):.2e} "
+                  f"{pace}",
+                  flush=True)  # flush: SLURM buffers stdout, so an unflushed
+                               # line only appears when the job ends
         if (global_step + 1) % CKPT_EVERY == 0 or global_step + 1 == TOTAL_STEPS:
             _write_artifacts(
                 svi, svi_state, losses, fingerprint, fingerprint_payload, device

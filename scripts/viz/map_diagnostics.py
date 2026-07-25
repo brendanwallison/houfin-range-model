@@ -23,6 +23,13 @@ full model uses (via ``reconstruct_map`` below), with only the dispersal
 (``Q``) and density-dependence/Allee (``K``, ``c``, ``allee_gamma``) fields
 dropped from the niche calculation itself.
 
+``07_source_sink_fields.npz`` (and a georeferenced ``.tif`` beside it) persists the
+grids figure 07 draws -- modern realized lambda, modern fundamental lambda, modern
+K, the source mask, and the averaging window's year span. These used to exist only
+as pixels in the PNG, so nothing could compare source/sink structure between runs
+(e.g. across a dispersal-distance sweep) or re-plot it without a GPU and a full
+model reconstruction.
+
 ``07_realized_source_sink.png`` is the deliberate REALIZED counterpart --
 same Sa/Sj/Fmax but WITH density-dependence, the Allee effect, AND the K-only
 disease depression (mycoplasmal conjunctivitis, which has no covariate of its
@@ -333,12 +340,58 @@ def plot_environmental_drivers_limits(data, sim, years, rows, cols, shape, out, 
     fig.savefig(out, dpi=180); plt.close(fig)
 
 
-def plot_realized_source_sink(sim, lam_fundamental, years, rows, cols, shape, out, window):
+def _write_source_sink_fields(npz_path, lam_realized, lam_fundamental, K_modern,
+                              year_first, year_last, n_years, ref_raster=None):
+    """Persist the modern source/sink grids as .npz (+ a GeoTIFF beside it).
+
+    Kept deliberately small (a handful of MB): the three window-mean grids that
+    ``07_realized_source_sink.png`` draws, plus the window's year span so a
+    consumer can verify two runs were averaged over the same years before
+    differencing them. The GeoTIFF is georeferenced from the same
+    ``grid.ref_raster`` the trajectory plot uses, so the field drops straight into
+    GIS; band order matches ``band_names``.
+    """
+    npz_path = Path(npz_path)
+    np.savez_compressed(
+        npz_path,
+        lam_realized_modern=lam_realized.astype("float32"),
+        lam_fundamental_modern=lam_fundamental.astype("float32"),
+        K_modern=K_modern.astype("float32"),
+        source_mask=np.where(np.isfinite(lam_realized), lam_realized > 1.0, False),
+        window_years=np.array([int(year_first), int(year_last)]),
+        window_n=np.int32(n_years),
+    )
+    if ref_raster is None:
+        return
+    bands = [lam_realized, lam_fundamental, K_modern]
+    with rasterio.open(ref_raster) as src:
+        transform, crs = src.transform, src.crs
+        if (src.height, src.width) != lam_realized.shape:
+            print(f"[map-viz] ref raster {src.height}x{src.width} != field "
+                  f"{lam_realized.shape}; skipped GeoTIFF")
+            return
+    with rasterio.open(npz_path.with_suffix(".tif"), "w", driver="GTiff",
+                       height=lam_realized.shape[0], width=lam_realized.shape[1],
+                       count=len(bands), dtype="float32", crs=crs, transform=transform,
+                       nodata=np.float32(np.nan), compress="deflate") as dst:
+        for i, band in enumerate(bands, start=1):
+            dst.write(band.astype("float32"), i)
+        dst.update_tags(band_names="lam_realized_modern,lam_fundamental_modern,K_modern",
+                        window=f"{int(year_first)}-{int(year_last)}")
+
+
+def plot_realized_source_sink(sim, lam_fundamental, years, rows, cols, shape, out, window,
+                              fields_out=None, ref_raster=None):
     """Realized (density-dependent + Allee) counterpart to the fundamental-niche map.
 
     Contrasts directly against ``01_modern_fundamental_niche.png``: same
     Sa/Sj/Fmax, but with K and the Allee effect included, so
     ``lambda_realized <= lambda_fundamental`` everywhere.
+
+    ``fields_out`` additionally persists the underlying grids (see
+    ``_write_source_sink_fields``). Without it these rasters exist only as pixels
+    in the PNG, so nothing downstream -- a dispersal sweep comparing runs, or any
+    re-plot -- can get at them without a GPU and a full model reconstruction.
     """
     _, _, lam_realized, _ = realized_equilibrium(
         sim["Sa_flat"], sim["Sj_flat"], sim["Fmax_flat"], sim["K_flat"], sim["allee_gamma"]
@@ -347,6 +400,13 @@ def plot_realized_source_sink(sim, lam_fundamental, years, rows, cols, shape, ou
     modern_g = _grid(modern[None], rows, cols, shape)[0]
     fund_modern, _, _ = _window_mean(lam_fundamental, window)
     fund_g = _grid(fund_modern[None], rows, cols, shape)[0]
+    if fields_out is not None:
+        K_modern, _, _ = _window_mean(np.asarray(sim["K_flat"]), window)
+        _write_source_sink_fields(
+            fields_out, modern_g, fund_g,
+            _grid(K_modern[None], rows, cols, shape)[0],
+            years[-n], years[-1], n, ref_raster,
+        )
 
     fig, ax = plt.subplots(1, 3, figsize=(15, 5))
     binary = np.where(np.isfinite(modern_g), (modern_g > 1.0).astype(float), np.nan)
@@ -622,7 +682,8 @@ def main():
                                        out / "14_environmental_drivers_since_invasion.png",
                                        args.window_years, ref_year=inv_year)
     source_sink_metrics = plot_realized_source_sink(
-        sim, lam, years, rows, cols, shape, out / "07_realized_source_sink.png", args.window_years)
+        sim, lam, years, rows, cols, shape, out / "07_realized_source_sink.png", args.window_years,
+        fields_out=out / "07_source_sink_fields.npz", ref_raster=dcfg["grid"]["ref_raster"])
     plot_spatial_residuals(sim, data, shape, out / "08_spatial_residuals.png")
     st_metrics = plot_spatiotemporal_diagnostics(data, sim, out / "09_spatiotemporal_weight_diagnostics.png",
                                                   args.window_years)

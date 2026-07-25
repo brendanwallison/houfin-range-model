@@ -18,6 +18,9 @@ per-wedge renormalization). Because the grid is finite, each kernel also gets an
 isn't lost off-grid or into water. All grids use odd padded dimensions and a
 toroidal (wrap-around) distance convention required by the FFT.
 """
+import math
+import warnings
+
 import jax.numpy as jnp
 import jax.nn
 from jax.numpy.fft import fft2, ifft2
@@ -194,8 +197,75 @@ JUVENILE_MDD_KM = 330.0
 JUVENILE_SHAPE = 0.468
 
 
+def _validate_splits(splits, origin):
+    """Shared validator for pinned and derived radial splits."""
+    if len(splits) < 2 or splits[0] != 0.0 or splits[-1] < 1e8:
+        raise ValueError(f"{origin} must span [0, infinity], got {splits}")
+    if any(b <= a for a, b in zip(splits[:-1], splits[1:])):
+        raise ValueError(f"{origin} must increase strictly, got {splits}")
+    if not all(math.isfinite(x) for x in splits[:-1]):
+        raise ValueError(f"{origin} contains a non-finite interior boundary: {splits}")
+    return splits
+
+
+def resolve_radial_splits(juvenile_mdd_km, juvenile_shape, spec_value, quantiles=None):
+    """Resolve ``juvenile_radial_splits_km`` to concrete km boundaries.
+
+    Two accepted forms:
+
+    * a **list** -- an explicit pin, validated and returned unchanged. Values are
+      NOT rounded: the committed baseline's literals (155.36162529769288,
+      482.7446923028151) must survive byte-for-byte, because
+      ``model_inputs.py``'s ingest guard compares the resolved dispersal dict to
+      the one recorded in an existing ``path_feature_meta.json`` for exact
+      equality, and rounding them would invalidate the ~11 GB Z_disp cube built
+      under them.
+    * the string ``"derive"`` (or ``None``) -- equal-mass radial bands for THIS
+      mdd, i.e. quantiles of the kernel itself. The hardcoded baseline splits are
+      log-spaced edges from a deleted helper and do not move with mdd, so the
+      three cohorts' mass shares swing wildly across a dispersal sweep (67/28/4%
+      at 150 km vs 32/41/27% at 400 km). Deriving them keeps the radial
+      discretization comparable across mdd instead of confounding it.
+
+    Derived values are rounded to 6 dp (~1 mm, physically irrelevant against
+    27 km cells) so that path-features and ingest -- separate SLURM jobs,
+    possibly different nodes -- cannot disagree in ``gammaincinv``'s last bit and
+    trip that same equality guard.
+    """
+    if isinstance(spec_value, (list, tuple)):
+        return _validate_splits([float(x) for x in spec_value],
+                                "juvenile_radial_splits_km")
+    if spec_value is None or (isinstance(spec_value, str) and spec_value == "derive"):
+        qs = [0.33, 0.66] if quantiles is None else [float(q) for q in quantiles]
+        if not qs or any(not (0.0 < q < 1.0) for q in qs):
+            raise ValueError(f"juvenile_radial_split_quantiles must lie in (0,1), got {qs}")
+        if any(b <= a for a, b in zip(qs[:-1], qs[1:])):
+            raise ValueError(f"juvenile_radial_split_quantiles must increase strictly, got {qs}")
+        radii = get_dispersal_quantiles(juvenile_mdd_km, juvenile_shape, qs)
+        if any((not math.isfinite(r)) or r <= 0.0 for r in radii):
+            raise ValueError(
+                f"derived radial splits are not finite and positive for "
+                f"mdd={juvenile_mdd_km}, shape={juvenile_shape}: {radii}"
+            )
+        splits = [0.0] + [round(float(r), 6) for r in radii] + [1e9]
+        return _validate_splits(splits, "derived juvenile_radial_splits_km")
+    raise ValueError(
+        "juvenile_radial_splits_km must be a list of km boundaries or the string "
+        f'"derive" (equal-mass bands for the configured mdd); got {spec_value!r}'
+    )
+
+
 def dispersal_spec(config):
-    """Return the validated, config-owned movement/path-feature specification."""
+    """Return the validated, config-owned movement/path-feature specification.
+
+    This is the SINGLE place radial splits become numbers. Both consumers --
+    ``generate_all_path_features`` (which builds Z_disp) and ``model_inputs``
+    (which builds the forward model's kernels) -- call this on the same config,
+    and ingest compares the two resolved dicts for exact equality, so resolution
+    must be deterministic and must live here alone. Do not add keys to the
+    returned dict: every existing ``path_feature_meta.json`` records it verbatim,
+    so a new key invalidates all previously built path features.
+    """
     d = config.get("dispersal") or {}
     required = (
         "adult_mdd_km", "adult_shape", "juvenile_mdd_km", "juvenile_shape",
@@ -204,11 +274,11 @@ def dispersal_spec(config):
     missing = [key for key in required if key not in d]
     if missing:
         raise KeyError(f"age-model dispersal config missing {missing}")
-    splits = [float(x) for x in d["juvenile_radial_splits_km"]]
-    if len(splits) < 2 or splits[0] != 0.0 or splits[-1] < 1e8:
-        raise ValueError(f"juvenile_radial_splits_km must span [0, infinity], got {splits}")
-    if any(b <= a for a, b in zip(splits[:-1], splits[1:])):
-        raise ValueError(f"juvenile_radial_splits_km must increase strictly, got {splits}")
+    splits = resolve_radial_splits(
+        float(d["juvenile_mdd_km"]), float(d["juvenile_shape"]),
+        d["juvenile_radial_splits_km"],
+        d.get("juvenile_radial_split_quantiles"),
+    )
     if str(d["path_operator"]) != "land_conditioned_neighborhood":
         raise ValueError(
             "only path_operator='land_conditioned_neighborhood' is implemented"
@@ -230,13 +300,33 @@ def dispersal_spec(config):
 
 
 def make_juvenile_kernel_stack(Lx, Ly, cell_size, radii_splits,
-                               mean_dist=JUVENILE_MDD_KM, shape=JUVENILE_SHAPE):
+                               mean_dist, shape):
     """Directional x radial juvenile dispersal kernels: the master PDF split into wedges.
 
     Builds the normalized 2-D radial generalized-Gaussian master ``exp(-(r/scale)^shape)``
     (``scale`` set from ``mean_dist`` via gamma moments) and splits it via
     :func:`make_radial_directional_kernels`. Returns ``(stack (K,Ly,Lx), labels)``.
+
+    ``mean_dist``/``shape`` are required rather than defaulting to the module
+    constants: a silent 330 km default would mask a config or sweep overlay that
+    meant to set something else.
     """
+    # Resolution guard for small mdd. The radial boundaries are soft sigmoids of
+    # width ~2*cell_size (see make_radial_directional_kernels), so a first split
+    # comparable to that width means the innermost cohort's mass leaks heavily
+    # into the next band and the "0-r" label is nominal. Warn rather than raise:
+    # a dispersal sweep deliberately visits short distances, and the caller may
+    # legitimately accept a partly-resolved inner cohort.
+    smoothness_km = 2.0 * cell_size
+    if len(radii_splits) > 2 and 0.0 < radii_splits[1] < smoothness_km:
+        warnings.warn(
+            f"innermost radial split {radii_splits[1]:.1f} km is below the "
+            f"boundary smoothing width {smoothness_km:.1f} km (2 x {cell_size:.1f} km "
+            f"cells) at mean_dist={mean_dist:.0f} km: the inner cohort is only "
+            f"partly resolved and overlaps the next band",
+            RuntimeWarning, stacklevel=2,
+        )
+
     r_dist = toroidal_distance_grid(Lx, Ly, cell_size)
     scale = get_gamma_scale(mean_dist, shape)
     master = jnp.exp(-(r_dist / scale) ** shape)
@@ -258,11 +348,25 @@ def build_simulation_struct(
     juvenile_mdd: float,
     adult_shape: float,
     juvenile_shape: float,
-    radii_splits=None
+    radii_splits
 ):
     """
     Builds simulation structure with mass-conservative weighted kernels.
+
+    ``radii_splits`` is REQUIRED and must come from
+    ``dispersal_spec(config)["juvenile_radial_splits_km"]``. This used to accept
+    None and derive terciles itself, but a second derivation site is exactly the
+    drift this module's juvenile-kernel note warns about: the path-feature
+    builder and the forward model must use an identical kernel family, and that
+    is only guaranteed if both take their splits from the one resolver.
     """
+    if radii_splits is None:
+        raise ValueError(
+            "radii_splits is required; pass "
+            "dispersal_spec(config)['juvenile_radial_splits_km'] (which resolves "
+            'an explicit list or the "derive" sentinel) rather than relying on a '
+            "second, independent derivation here"
+        )
     Ny, Nx = land.shape
     Lx, Ly = 2 * Nx - 1, 2 * Ny - 1
     land_mask = land.astype(bool)
@@ -283,11 +387,6 @@ def build_simulation_struct(
     adult_edge_correction = edge_correction_from_fft(fft_land, adult_fft_kernel, land_mask, Ny, Nx)
 
     # 3. Juvenile (12 Cohorts)
-    if radii_splits is None:
-        radii_splits = [0.0] + get_dispersal_quantiles(
-            juvenile_mdd, juvenile_shape, [0.33, 0.66]
-        ) + [1e9]
-
     # A+B. Master juvenile PDF split into directional x radial wedges, via the shared builder
     # so the Z_disp path features use the IDENTICAL kernel family (same base PDF + splits).
     juv_kernels, labels = make_juvenile_kernel_stack(

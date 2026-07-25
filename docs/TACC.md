@@ -380,6 +380,53 @@ falling host `MemAvailable`/`SwapFree` at saturated VRAM reveals host-memory
 pressure. MAP logs also print JAX allocator in-use/peak/limit counters at input
 load and every checkpoint, while `/usr/bin/time -v` reports peak process RSS.
 
+## 3g-bis. Juvenile dispersal sensitivity sweep
+
+`juvenile_mdd_km` (330 km) is a literature value, not something the fit estimates.
+To measure how much the results depend on it:
+
+```bash
+# 1. inspect what would be submitted (writes overlays + manifest, submits nothing)
+DRY_RUN=1 bash scripts/tacc/submit_juv_mdd_sweep.sh
+
+# 2. launch: one prep -> MAP -> viz chain per dispersal distance
+MDD_POINTS="200 250 300 330 350" DRY_RUN=0 bash scripts/tacc/submit_juv_mdd_sweep.sh
+
+# 3. compare (CPU, seconds, works on a partial sweep)
+python scripts/viz/juv_mdd_sweep_summary.py \
+    --manifest $HOUFIN_PROCESSED/sweeps/juv_mdd/sweep_manifest.json
+```
+
+Each point gets an **overlay config** (`$HOUFIN_PROCESSED/sweeps/juv_mdd/mdd<N>/config.json`)
+passed to every stage via `AGE_MODEL_CONFIG`, which `src/config_utils.py` deep-merges
+over the committed config. The overlay is what isolates a point's outputs --
+`path_features.output_dir`, `raw_z_dir`, `input_dir`, and `run_names.map`. **Do not
+try to isolate a point with `HOUFIN_PROCESSED`**: `env.sh` re-exports it
+unconditionally in every job, so a submit-time value is silently discarded and
+every point would write to the same directory, overwriting the production Z_disp
+cube and `metadata.pkl`.
+
+Sweep points set `"juvenile_radial_splits_km": "derive"`, which resolves the radial
+band edges to equal-mass quantiles of *that point's* kernel. The committed baseline
+keeps its pinned list (frozen log-spaced edges from a deleted helper, which do not
+move with mdd -- see the config comment); deriving them is what keeps the radial
+discretization from co-varying with the dispersal distance being tested. Note the
+330 km sweep point therefore differs from the existing production run, and needs
+its own path-features build.
+
+Changing `juvenile_mdd_km` changes `Z_disp`, so each point needs the full
+`path-features` + `model-ingest` prep (~11 GB of `Z_disp_{year}.npz` plus ~2.7 GB of
+gathered memmaps per point) before its fit. Cheap single-point rehearsal first:
+
+```bash
+AGE_MODEL_CONFIG=$HOUFIN_PROCESSED/sweeps/juv_mdd/mdd200/config.json \
+    python scripts/validation/test_kernel_physics.py          # kernel mass + band masses, CPU
+```
+
+After the first prep job lands, confirm the production directories were untouched
+(`ls -l` their mtimes) -- a missing overlay key is the one failure mode that
+silently corrupts the baseline.
+
 ## 3h. Post-MAP ecological conclusions
 
 After a MAP checkpoint finishes, reconstruct the fitted fields and make the

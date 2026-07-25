@@ -156,14 +156,15 @@ def integrate_paths(Z, kernel_stack, land_mask, steps=10, feature_batch_size=4):
 
 # PART 2: Helper Functions
 
-def get_log_spaced_splits(min_dist, max_dist, n_bins):
-    """Generates geometric splits."""
-    start = np.log10(max(min_dist, 1.0))
-    end = np.log10(max_dist)
-    log_points = np.logspace(start, end, n_bins + 1)
-    splits = [0.0] + list(log_points[1:])
-    splits[-1] = 1e9 
-    return splits
+# NOTE: a get_log_spaced_splits(min_dist, max_dist, n_bins) helper used to live here.
+# It is the origin of the config's pinned juvenile_radial_splits_km
+# ([0, 155.36162529769288, 482.7446923028151, 1e9] = log-spaced edges from 50 to
+# 1500 km in 3 bins), which is why those values are NOT quantiles of the 330 km
+# kernel and do not move with juvenile_mdd_km. It had no callers and is deleted
+# rather than left as a second, tempting source of split values: splits are now
+# resolved in exactly one place, build_kernels.dispersal_spec, which supports both
+# an explicit pin and mdd-derived equal-mass bands.
+
 
 def load_land_mask_and_meta(tif_path):
     """Load the ocean-mask raster as a land mask (1=land, 0=ocean) + cell size (km).

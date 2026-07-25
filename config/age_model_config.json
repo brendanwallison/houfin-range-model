@@ -17,7 +17,8 @@
     "_comment": "The encoder supplies an uncentered 64-D Nyström feature map; model ingestion explicitly retains the first latent_dim=16 eigenfeatures by default to fit VRAM. Conditional on each w_scale, iid coefficients over those retained features imply Cov[H(x),H(x')|w_scale] = w_scale^2 Z_r(x)·Z_r(x'), the configured rank-r approximation to the original Ružička kernel. Truncation must be config-driven and recorded, never silent."
   },
   "dispersal": {
-    "_comment": "Single source of truth shared by Z_disp preparation and the forward model. The three explicit radial cohorts preserve the current 0-155, 155-483 and 483+-km behavior; do not duplicate these boundaries in code.",
+    "_comment": "Single source of truth shared by Z_disp preparation and the forward model; resolved in exactly one place, build_kernels.dispersal_spec. Do not duplicate these boundaries in code.",
+    "_radial_splits_comment": "juvenile_radial_splits_km accepts either an explicit list of km boundaries (must start at 0.0 and end >=1e8) or the string \"derive\", which computes equal-mass radial bands (quantiles, default terciles, overridable via juvenile_radial_split_quantiles) for whatever juvenile_mdd_km is set. The pinned list below is NOT a set of quantiles of the 330 km kernel: it is log-spaced band edges from 50 to 1500 km, produced by a get_log_spaced_splits(50,1500,3) helper that no longer exists, and it does NOT move with juvenile_mdd_km -- at mdd=150 the three cohorts hold 67/28/4% of the dispersal mass, at 400 they hold 32/41/27%. It is retained here only for artifact compatibility: the 124-year Z_disp cube on TACC was built under these exact literals, and ingest compares the resolved dispersal dict for exact equality. New work (and every dispersal sweep point) should use \"derive\".",
     "adult_mdd_km": 100.0,
     "adult_shape": 0.468,
     "juvenile_mdd_km": 330.0,

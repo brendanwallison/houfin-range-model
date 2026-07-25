@@ -14,7 +14,11 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-LARGE_INPUT_KEYS = {"Z_gathered", "Z_disp_gathered", "st_basis"}
+# st_basis used to belong here: the old generic spatiotemporal disease basis was
+# (967, 33, N_land) ~ 2 GiB. The structured disease term (src/model/age_fields.py)
+# uses two time-independent spatial bases of a few MB, so only the Z arrays are
+# large now.
+LARGE_INPUT_KEYS = {"Z_gathered", "Z_disp_gathered"}
 
 
 def load_data(input_dir, target_device=None, precision="float32", verbose=True):

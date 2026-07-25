@@ -117,8 +117,9 @@ def reconstruct_map(data, params):
     posterior = {name: jnp.expand_dims(value, 0) for name, value in latents.items()}
     needed = ["simulated_density", "Sa_flat", "Sj_flat", "Fmax_flat", "K_flat",
               "Q_flat", "expected_obs", "allee_gamma", "n50_raw", "w_env", "rho",
-              "st_weights", "disease_lag", "disease_tau", "disease_mu",
-              "Na_grid", "Nj_grid"]
+              "disease_severity_map", "disease_mu_sev", "disease_b_late",
+              "disease_w_lag", "disease_lag0", "disease_tau", "disease_rec",
+              "disease_tau_rec", "Na_grid", "Nj_grid"]
     predictive = Predictive(build_model_2d, posterior_samples=posterior, return_sites=needed)
     result = predictive(jax.random.PRNGKey(104), data=data, prior_scale=1.0)
     result = jax.block_until_ready(result)
@@ -459,70 +460,96 @@ def plot_spatial_residuals(sim, data, shape, out):
     fig.tight_layout(); fig.savefig(out, dpi=180); plt.close(fig)
 
 
-def plot_spatiotemporal_diagnostics(data, sim, out, window):
-    """'Escape hatch' check: how much is the disease depression of K actually doing?
+def plot_disease_diagnostics(data, sim, years, rows, cols, shape, out, window):
+    """Is the disease term describing an epizootic, or absorbing spatial misfit?
 
-    st_basis/st_weights no longer touch H_s/H_r (an earlier design mixed a shared
-    spatiotemporal term into both manifolds), and no longer form a free
-    multiplicative correction either: they now carry the SEVERITY of an
-    onset-gated, sign-constrained depression subtracted inside K's softplus (see
-    age_fields.py). The term can only lower K, so the failure mode to watch for is
-    no longer "multiplier far from 1" but "large depression nearly everywhere,
-    including in cells the front reached late" -- that would mean the term is
-    substituting for genuine covariate signal instead of capturing the epizootic.
-    Plotted on K's pre-softplus scale, where the depression is subtracted.
+    The term is K = K_base * (1 - severity(x) * gate(x,t) * (1 - recovery)); see
+    age_fields.py. Its predecessor was a generic 967-coefficient spatiotemporal
+    field subtracted from K's pre-softplus argument, which annihilated eastern K
+    (softplus is effectively exp there, so an additive penalty was an unbounded
+    multiplicative one) and, being the model's only non-covariate spatial degree of
+    freedom, soaked up every kind of spatial mismatch.
+
+    Three panels, each checking one thing the structured form claims:
+
+    1. **The severity map** -- the falsifiable claim. The hypothesis is ~50% of
+       capacity removed in the east and less in the west (more genetic diversity).
+       If this comes out uniform, or saturated near 1, the term is still doing
+       non-disease work.
+    2. **The onset profile** -- mean removed fraction against years since the
+       modeled arrival. Must be ~0 left of zero and rise through it; flat means the
+       arrival map is not actually structuring the term.
+    3. **The recovery trajectory** -- removed fraction over calendar years for
+       early- vs late-arriving thirds of the range, which is where "slowly
+       increasing resilience" is visible (or absent).
     """
-    st_weights = np.asarray(sim["st_weights"])
-    st_basis_full = data["st_basis"]  # (N_basis, time_epizootic, N_land), device-resident
-    onset = np.asarray(data["disease_onset"])          # timestep units
+    sev = np.asarray(sim["disease_severity_map"])          # (N_land,) peak fraction
+    onset = np.asarray(data["disease_onset"])              # timestep units
     dis_t0 = int(data["disease_timestep"])
-    lag = float(np.asarray(sim["disease_lag"]))
-    tau = float(np.asarray(sim["disease_tau"])) if "disease_tau" in sim else \
-        float(np.log1p(np.exp(np.asarray(sim["disease_tau_raw"])))) + 0.25
-    mu = float(np.asarray(sim["disease_mu"]))
+    lag0 = float(np.asarray(sim["disease_lag0"]))
+    tau = float(np.asarray(sim["disease_tau"]))
+    rec = float(np.asarray(sim["disease_rec"]))
+    tau_rec = float(np.asarray(sim["disease_tau_rec"]))
+    w_lag = np.asarray(sim["disease_w_lag"])
+    onset_t = onset + lag0 + np.asarray(data["disease_lag_basis"]).T @ w_lag
 
-    n = min(window, st_basis_full.shape[1])
-    st_basis = np.asarray(st_basis_full[:, -n:, :])  # slice before host transfer
-    basis_offset = dis_t0 + st_basis_full.shape[1] - n  # absolute timestep of window start
-    lin = mu + np.einsum("bnl,b->nl", st_basis, st_weights)
-    magnitude = np.log1p(np.exp(-np.abs(lin))) + np.maximum(lin, 0.0)  # stable softplus
-    t_abs = basis_offset + np.arange(n)[:, None]
-    gate = 1.0 / (1.0 + np.exp(-(t_abs - onset[None, :] - lag) / tau))
-    depression = gate * magnitude
+    # Reproduce the model's fraction over the whole epizootic window on the host.
+    t_abs = np.arange(dis_t0, len(years))[:, None]
+    gate = 1.0 / (1.0 + np.exp(-(t_abs - onset_t[None, :]) / tau))
+    age = np.maximum(t_abs - onset_t[None, :], 0.0)
+    frac = sev[None, :] * gate * (1.0 - rec * (-np.expm1(-age / tau_rec)))
 
-    fig, ax = plt.subplots(1, 3, figsize=(16, 4.5))
-    ax[0].hist(st_weights, bins=40, color="#6a51a3")
-    ax[0].axvline(0, color="black", lw=.8)
-    ax[0].set(title="Disease severity basis weights (st_weights)",
-              xlabel="Weight", ylabel="Count")
+    fig, ax = plt.subplots(1, 3, figsize=(17, 4.8))
 
-    ax[1].hist(depression.ravel(), bins=60, color="#238443")
-    ax[1].axvline(0.0, color="black", lw=1.2, linestyle="--", label="no effect")
-    ax[1].set(title=f"K depression, last {n} yr (median={np.median(depression):.2f})",
-              xlabel="Depression (K pre-softplus units; 0 = none)", ylabel="Cell-years")
-    ax[1].legend()
+    sev_grid = _grid(sev[None], rows, cols, shape)[0]
+    im = ax[0].imshow(sev_grid, cmap="inferno_r", vmin=0.0, vmax=1.0)
+    ax[0].set(title=f"Peak severity: fraction of K removed\n"
+                    f"(median {np.median(sev):.0%}, range {sev.min():.0%}-{sev.max():.0%})")
+    ax[0].axis("off")
+    fig.colorbar(im, ax=ax[0], fraction=.046, label="Fraction of K removed at peak")
 
-    # Gate sanity: mean depression against years since the front arrived. Should
-    # be ~0 to the left of 0 and rise through it; a flat curve means the arrival
-    # map is not actually structuring the term.
-    since = (t_abs - onset[None, :]).ravel()
-    bins = np.arange(-15, 21)
+    since = (t_abs - onset_t[None, :]).ravel()
+    bins = np.arange(-15, 26)
     which = np.digitize(since, bins) - 1
-    prof = np.array([depression.ravel()[which == i].mean() if (which == i).any() else np.nan
+    flat = frac.ravel()
+    prof = np.array([flat[which == i].mean() if (which == i).any() else np.nan
                      for i in range(len(bins) - 1)])
-    ax[2].plot(bins[:-1], prof, color="#cc4c02")
-    ax[2].axvline(0, color="black", lw=.8)
-    ax[2].set(title=f"Onset profile (lag={lag:+.1f} yr, tau={tau:.2f} yr)",
-              xlabel="Years since modeled arrival", ylabel="Mean depression")
+    ax[1].plot(bins[:-1], prof, color="#cc4c02", lw=2)
+    ax[1].axvline(0, color="black", lw=.8)
+    ax[1].axhline(0, color="0.7", lw=.8)
+    ax[1].set(title=f"Onset profile (lag0={lag0:+.1f} yr, tau={tau:.2f} yr)",
+              xlabel="Years since modeled arrival", ylabel="Mean fraction of K removed")
+
+    # Early vs late thirds of the arrival distribution: recovery should show up as
+    # a decline after each group's own onset, and the late group should be milder
+    # if the western-diversity hypothesis holds.
+    q1, q2 = np.percentile(onset, [33, 67])
+    groups = [("earliest-arriving third", onset <= q1, "#08519c"),
+              ("latest-arriving third", onset >= q2, "#a50f15")]
+    cal = np.asarray(years)[dis_t0:]
+    for label, mask, color in groups:
+        if mask.any():
+            ax[2].plot(cal, frac[:, mask].mean(axis=1), color=color, lw=2, label=label)
+    ax[2].set(title=f"Recovery (rec={rec:.0%} of the hit, tau_rec={tau_rec:.0f} yr)",
+              xlabel="Year", ylabel="Mean fraction of K removed")
+    ax[2].legend(fontsize=8)
 
     fig.tight_layout(); fig.savefig(out, dpi=180); plt.close(fig)
-    return {"disease_depression_median": float(np.median(depression)),
-            "disease_depression_p95": float(np.percentile(depression, 95)),
-            "disease_depression_pre_front_mean": float(
-                np.nanmean(depression.ravel()[since < -5]) if (since < -5).any() else 0.0),
-            "disease_lag_years": lag,
+
+    pre_front = flat[since < -5]
+    return {"disease_severity_median": float(np.median(sev)),
+            "disease_severity_p05": float(np.percentile(sev, 5)),
+            "disease_severity_p95": float(np.percentile(sev, 95)),
+            "disease_fraction_median_modern": float(np.median(frac[-min(window, frac.shape[0]):])),
+            # Must stay ~0: nonzero means the exogenous gate has been defeated and
+            # the term is acting where the front had not yet arrived.
+            "disease_fraction_pre_front_mean": float(pre_front.mean()) if pre_front.size else 0.0,
+            "disease_severity_mu_logit": float(np.asarray(sim["disease_mu_sev"])),
+            "disease_late_arrival_coef": float(np.asarray(sim["disease_b_late"])),
+            "disease_lag0_years": lag0,
             "disease_tau_years": tau,
-            "disease_mu": mu}
+            "disease_recovered_fraction": rec,
+            "disease_recovery_tau_years": tau_rec}
 
 
 def plot_age_structure(sim, years, rows, cols, shape, land_mask, out, window):
@@ -685,8 +712,9 @@ def main():
         sim, lam, years, rows, cols, shape, out / "07_realized_source_sink.png", args.window_years,
         fields_out=out / "07_source_sink_fields.npz", ref_raster=dcfg["grid"]["ref_raster"])
     plot_spatial_residuals(sim, data, shape, out / "08_spatial_residuals.png")
-    st_metrics = plot_spatiotemporal_diagnostics(data, sim, out / "09_spatiotemporal_weight_diagnostics.png",
-                                                  args.window_years)
+    disease_metrics = plot_disease_diagnostics(
+        data, sim, years, rows, cols, shape, out / "09_disease_diagnostics.png",
+        args.window_years)
     land_mask_arr = np.asarray(data["land_mask"])
     age_structure_metrics = plot_age_structure(
         sim, years, rows, cols, shape, land_mask_arr, out / "10_age_structure.png", args.window_years)
@@ -713,7 +741,7 @@ def main():
         "final_suitable_centroid_latitude": float(centroid_lat[-1]),
         "allee_n50_bbs_count": n50, "fit": fit_metrics,
         "realized_source_sink": source_sink_metrics,
-        "spatiotemporal_diagnostics": st_metrics,
+        "disease": disease_metrics,
         "age_structure": age_structure_metrics,
         **response_metrics,
     }

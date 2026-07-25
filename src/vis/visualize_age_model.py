@@ -538,7 +538,7 @@ def reconstruct_simulation(data, params):
     
     return_sites = [
         "simulated_density", "Sa_flat", "Sj_flat", "Fmax_flat", "K_flat", "Q_flat", "expected_obs",
-        "st_weights", "w_env", "L_corr", "dispersal_random",
+        "disease_severity_map", "w_env", "L_corr", "dispersal_random",
         "dispersal_logit_intercept", "dispersal_logit_slope",
         "n50_raw", "allee_gamma",
         "alpha_a", "alpha_j", "alpha_f", "alpha_k",
@@ -1159,50 +1159,43 @@ def plot_spatial_residuals(obs_grid, density, output_dir, land_mask):
     plt.savefig(os.path.join(output_dir, "diagnostics_spatial_residuals.png"), dpi=200)
     plt.close()
 
-def diagnose_st_weights(sim, data, output_dir):
-    print("Diagnosing Spatio-Temporal Regularization (Spatial Confounding)...")
-    st_weights = sim['st_weights']
+def diagnose_disease_severity(sim, data, output_dir):
+    """How much of K is the epizootic term removing, and where?
 
-    beta_s = sim['w_env'][:, 0]
+    Replaces an older "spatio-temporal noise vs environmental signal" panel that
+    compared the standard deviation of a generic spatiotemporal field against
+    Z.beta_s. That comparison no longer means anything: the disease term is not a
+    perturbation of the habitat manifold, it is a bounded fraction of carrying
+    capacity with its own structure (severity x onset x recovery, see
+    age_fields.py). The question worth asking now is whether the fitted severity
+    map looks like an epizootic -- regional, ~50% in the east, milder in the late-
+    arriving west -- or like a general-purpose spatial correction.
+    """
+    print("Diagnosing disease severity (fraction of K removed)...")
+    sev = np.asarray(sim['disease_severity_map'])
+    onset_years = np.asarray(data['disease_onset']) + int(np.asarray(data['years'])[0])
 
     fig, axes = plt.subplots(1, 2, figsize=(14, 6))
 
-    axes[0].hist(st_weights, bins=50, color='purple', edgecolor='black', log=True)
-    axes[0].set_title("Distribution of Spatio-Temporal Weights\n(Healthy = Massive spike at 0)")
-    axes[0].set_xlabel("Learned Weight Value")
-    axes[0].set_ylabel("Frequency (Log Scale)")
+    axes[0].hist(sev, bins=50, color='darkred', edgecolor='black')
+    axes[0].axvline(np.median(sev), color='black', lw=1.2, linestyle='--',
+                    label=f'median {np.median(sev):.0%}')
+    axes[0].set_title("Peak fraction of K removed by disease\n(bounded in (0,1) by construction)")
+    axes[0].set_xlabel("Fraction of carrying capacity removed")
+    axes[0].set_ylabel("Land cells")
+    axes[0].legend()
 
-    # st_basis's time axis covers the epizootic window only (disease_timestep..end),
-    # so a model-timeline index has to be shifted into it. Take the midpoint of
-    # that window rather than of the full timeline, which would index the wrong
-    # year -- or fall outside the array entirely.
-    t_idx = data['time'] // 2
-    basis_idx = int(np.clip(t_idx - int(data['disease_timestep']),
-                            0, data['st_basis'].shape[1] - 1))
+    # Severity against arrival year is the direct test of "later-arriving
+    # populations were hit less hard" (the western genetic-diversity hypothesis),
+    # which the model carries as the single coefficient disease_b_late.
+    axes[1].scatter(onset_years, sev, s=3, alpha=.25, color='#08519c')
+    axes[1].set_title(f"Severity vs modeled arrival year\n"
+                      f"(b_late = {float(np.asarray(sim['disease_b_late'])):+.2f} per decade)")
+    axes[1].set_xlabel("Modeled arrival year")
+    axes[1].set_ylabel("Fraction of K removed at peak")
 
-    z_t = np.array(data['Z_gathered'][t_idx])
-    st_basis_t = np.array(data['st_basis'][:, basis_idx, :])
-
-    H_env = np.dot(z_t, beta_s)                     
-    H_st = np.dot(st_basis_t.T, st_weights)         
-    
-    std_env = np.std(H_env)
-    std_st = np.std(H_st)
-    
-    bars = axes[1].bar(
-        ['Environmental Features\n(Climate & Land)', 'Spatio-Temporal Noise\n(The Escape Hatch)'], 
-        [std_env, std_st], 
-        color=['forestgreen', 'gray']
-    )
-    axes[1].set_title("Variance Contribution to Latent Manifold")
-    axes[1].set_ylabel("Standard Deviation of Spatial Field")
-    
-    ratio = std_st / (std_env + 1e-9)
-    axes[1].text(0.5, max(std_env, std_st) * 0.9, f"Noise-to-Signal Ratio: {ratio:.2f}x", 
-                 ha='center', va='top', fontsize=12, bbox=dict(facecolor='white', alpha=0.9))
-                 
     plt.tight_layout()
-    plt.savefig(os.path.join(output_dir, "diagnostics_st_weights_impact.png"), dpi=200)
+    plt.savefig(os.path.join(output_dir, "diagnostics_disease_severity.png"), dpi=200)
     plt.close()
 
 # --- MAIN ---
@@ -1243,13 +1236,16 @@ def plot_results():
     if inv_key in params_diagnostic:
         params_diagnostic[inv_key] = jnp.full_like(params_diagnostic[inv_key], -100.0)
         
-    # Switch the disease depression of K off entirely: zeroing st_weights alone
-    # only removes its spatiotemporal SHAPE, leaving the baseline severity
-    # softplus(disease_mu) in place, so drive disease_mu to where softplus ~ 0 too.
-    params_diagnostic['st_weights_auto_loc'] = jnp.zeros_like(params_diagnostic['st_weights_auto_loc'])
-    if 'disease_mu_auto_loc' in params_diagnostic:
-        params_diagnostic['disease_mu_auto_loc'] = jnp.full_like(
-            params_diagnostic['disease_mu_auto_loc'], -30.0)
+    # Switch the disease effect on K off entirely. Severity is sigmoid(mu_sev +
+    # ...), so driving mu_sev very negative takes the removed fraction to ~0
+    # everywhere; zeroing the regional field alone would leave the continental
+    # severity level in place.
+    if 'disease_mu_sev_auto_loc' in params_diagnostic:
+        params_diagnostic['disease_mu_sev_auto_loc'] = jnp.full_like(
+            params_diagnostic['disease_mu_sev_auto_loc'], -30.0)
+    for _k in ('disease_w_sev_auto_loc', 'disease_b_late_auto_loc'):
+        if _k in params_diagnostic:
+            params_diagnostic[_k] = jnp.zeros_like(params_diagnostic[_k])
 
 
     sim_diagnostic = reconstruct_simulation(data, params_diagnostic)
@@ -1296,7 +1292,7 @@ def plot_results():
     create_animation(density, obs_grid, years, OUTPUT_PLOT_DIR, data['land_mask'])
     create_animation(density_cf, obs_grid, years, OUTPUT_PLOT_DIR, data['land_mask'], "evolution_counterfactual.mp4")
 
-    diagnose_st_weights(sim, data, OUTPUT_PLOT_DIR)
+    diagnose_disease_severity(sim, data, OUTPUT_PLOT_DIR)
     plot_demographic_timeseries(data, years[start_idx:], Sa_grid[start_idx:], Sj_grid[start_idx:], Fmax_grid[start_idx:], K_grid[start_idx:], OUTPUT_PLOT_DIR)
     plot_habitat_shift_map(data, Sa_grid[start_idx:], Sj_grid[start_idx:], Fmax_grid[start_idx:], OUTPUT_PLOT_DIR)
 

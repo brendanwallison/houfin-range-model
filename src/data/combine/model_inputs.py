@@ -36,51 +36,58 @@ KERNEL_CONTRACT = dict(_cfg.get("kernel_contract", {}))
 DISPERSAL_SPEC = dispersal_spec(_cfg)
 POPULATION_SPEC = dict(_cfg["population_model"])
 
-# --- SPATIOTEMPORAL BASIS SETTINGS ---
-N_FREQ_SPACE = int(POPULATION_SPEC["st_basis_space_frequencies"])
-N_FREQ_TIME = int(POPULATION_SPEC["st_basis_time_frequencies"])
+# --- DISEASE-TERM SPATIAL BASIS SETTINGS ---
+# These replace the old st_basis_space/time_frequencies. The disease effect on K is
+# no longer a generic spatiotemporal field (967 free cosine coefficients over
+# space x time, which annihilated eastern K by absorbing every kind of spatial
+# misfit); it is now a structured severity x onset x recovery form whose only
+# spatially varying pieces are two SMOOTH, TIME-INDEPENDENT fields. See
+# src/model/age_fields.py.
+DISEASE_PRIOR_SPEC = dict(POPULATION_SPEC["disease_prior"])
+N_FREQ_SEVERITY = int(DISEASE_PRIOR_SPEC["severity_space_frequencies"])
+N_FREQ_LAG = int(DISEASE_PRIOR_SPEC["lag_space_frequencies"])
 
-def generate_spatiotemporal_basis(Ny, Nx, Time, land_rows, land_cols, n_freq_space=4, n_freq_time=8):
-    """
-    Generates a 3D Spectral Basis (Cosine series).
-    Space: n_freq_space=4 captures regional patterns.
-    Time: n_freq_time=8 captures decadal cycles.
 
-    ``Time`` here is whatever span the caller passes -- it is NOT necessarily
-    the full model timeline. The disease-depression basis (see age_fields.py /
-    ingest_data below) is built over only the epizootic window
-    (disease_start_year..end_year, ~33 years), both to bound VRAM (this array's
-    size is O(N_basis * Time * N_land)) and because a term representing
-    mycoplasmal conjunctivitis has nothing to explain before 1993. The
-    frequency-to-resolution mapping (e.g. "n_freq_time=7 -> ~4.7yr
-    half-wavelength") is relative to whatever ``Time`` span is actually passed.
+def generate_spatial_basis(Ny, Nx, land_rows, land_cols, n_freq, label=""):
+    """Smooth 2-D cosine basis on the land cells, centered over land.
+
+    Returns ``(n_basis, N_land)`` with ``n_basis = (n_freq+1)^2 - 1`` (the global
+    constant is dropped). Used for the disease term's two spatial fields:
+    severity and onset lag.
+
+    **Each function is centered over land cells.** The cosines are orthogonal over
+    the full rectangular grid, but land is an irregular subset of it, so their
+    land-restricted means are NOT zero -- an uncentered basis lets its
+    coefficients shift the field's continental LEVEL, which then trades off
+    against the scalar that is supposed to own that level (``disease_mu_sev`` for
+    severity, ``disease_lag0`` for timing). Centering makes the split exact: the
+    scalars carry the level, the coefficients carry only regional deviation from
+    it, so both are reportable.
+
+    There is deliberately NO time axis. The old basis was
+    ``O(n_basis * Time * N_land)`` and cost ~2 GiB of VRAM; these are a few MB.
+    Anything the disease effect does in time now goes through the structured
+    onset gate and recovery curve, not through free coefficients.
     """
-    print(f"  Constructing 3D Basis: Space={n_freq_space}, Time={n_freq_time}...")
-    
-    # Create normalized coordinate grids [0, 1]
-    t_coord = np.linspace(0, 1, Time)[:, None] # (Time, 1)
-    y_coord = np.linspace(0, 1, Ny)[land_rows] # (N_land,)
-    x_coord = np.linspace(0, 1, Nx)[land_cols] # (N_land,)
-    
+    print(f"  Constructing spatial basis{label}: n_freq={n_freq} "
+          f"-> {(n_freq + 1) ** 2 - 1} functions...")
+    y_coord = np.linspace(0, 1, Ny)[land_rows]  # (N_land,)
+    x_coord = np.linspace(0, 1, Nx)[land_cols]  # (N_land,)
+
     basis_list = []
-    
-    for k in range(n_freq_time + 1):
-        t_wave = np.cos(k * np.pi * t_coord) # (Time, 1)
-        
-        for i in range(n_freq_space + 1):
-            for j in range(n_freq_space + 1):
-                if i == 0 and j == 0 and k == 0:
-                    continue # Skip the constant offset
-                
-                # Spatial component
-                s_wave = np.cos(i * np.pi * y_coord) * np.cos(j * np.pi * x_coord) # (N_land,)
-                
-                # Outer product creates (Time, N_land) volume
-                st_volume = (t_wave * s_wave[None, :]).astype(np.float32)
-                basis_list.append(st_volume)
-    
-    st_basis = np.stack(basis_list, axis=0) # (N_basis, Time, N_land)
-    return st_basis
+    for i in range(n_freq + 1):
+        for j in range(n_freq + 1):
+            if i == 0 and j == 0:
+                continue  # the constant is owned by the level scalar
+            wave = np.cos(i * np.pi * y_coord) * np.cos(j * np.pi * x_coord)
+            basis_list.append((wave - wave.mean()).astype(np.float32))
+
+    basis = np.stack(basis_list, axis=0)  # (n_basis, N_land)
+    land_means = np.abs(basis.mean(axis=1))
+    if not (land_means < 1e-5).all():
+        raise ValueError(f"spatial basis{label} is not land-centered "
+                         f"(max |land mean| = {land_means.max():.2e})")
+    return basis
 
 
 def load_disease_onset(tif_path, Ny, Nx, land_rows, land_cols, first_year):
@@ -415,28 +422,34 @@ def ingest_data():
     Z_gathered.flush(); Z_disp_gathered.flush()
     print("\n  Data Streaming Complete.")
 
-    # 5. Generate 3D Spatiotemporal Basis (disease depression of K only; epizootic
-    # window only, both to bound VRAM and because there is nothing for it to
-    # explain before 1993 -- see generate_spatiotemporal_basis's docstring and
-    # age_fields.py's use of disease_timestep to bypass it for earlier timesteps).
-    dis_timestep_for_basis = disease_timestep(_tl, first_year=start_year_model)
-    if dis_timestep_for_basis < 0 or dis_timestep_for_basis >= Time:
+    # 5. Disease term inputs (see src/model/age_fields.py). The effect on K is
+    # severity(x) * onset_gate(x,t) * (1 - recovery(t - arrival)); the only
+    # spatially varying free pieces are two smooth, time-independent fields, so
+    # what used to be a 2 GiB spatiotemporal array is now a few MB.
+    dis_timestep = disease_timestep(_tl, first_year=start_year_model)
+    if dis_timestep < 0 or dis_timestep >= Time:
         raise ValueError(f"disease_start_year {_tl['disease_start_year']} lies outside the "
                          f"realized timeline {start_year_model}..{start_year_model + Time - 1}")
-    Time_basis_active = Time - dis_timestep_for_basis
-    st_basis = generate_spatiotemporal_basis(Ny, Nx, Time_basis_active, land_rows, land_cols,
-                                             n_freq_space=N_FREQ_SPACE,
-                                             n_freq_time=N_FREQ_TIME)
-    N_basis = st_basis.shape[0]
-    print(f"  Basis Footprint: {st_basis.nbytes / 1e6:.2f} MB "
-          f"(epizootic window: {Time_basis_active}/{Time} years)")
+    disease_sev_basis = generate_spatial_basis(Ny, Nx, land_rows, land_cols,
+                                               N_FREQ_SEVERITY, label=" (severity)")
+    disease_lag_basis = generate_spatial_basis(Ny, Nx, land_rows, land_cols,
+                                               N_FREQ_LAG, label=" (onset lag)")
+    print(f"  Disease basis footprint: "
+          f"{(disease_sev_basis.nbytes + disease_lag_basis.nbytes) / 1e6:.2f} MB "
+          f"({disease_sev_basis.shape[0]} severity + {disease_lag_basis.shape[0]} lag "
+          f"coefficients; epizootic window starts at index {dis_timestep})")
 
-    # 5b. Exogenous onset gate for that depression (see load_disease_onset).
+    # 5b. Exogenous arrival map -> the onset gate (see load_disease_onset).
     disease_onset = load_disease_onset(DISEASE_ARRIVAL_MAP, Ny, Nx,
                                        land_rows, land_cols, start_year_model)
     print(f"  Disease onset: arrival years "
           f"{disease_onset.min() + start_year_model:.1f}-"
           f"{disease_onset.max() + start_year_model:.1f} over {N_land} land cells")
+    # Arrival year centered and scaled to DECADES, so the severity model can carry
+    # "populations reached later were hit less hard" (more genetic diversity in the
+    # west) as a single coefficient instead of spending spatial-field capacity on a
+    # pattern that is essentially the arrival gradient itself.
+    disease_onset_decades = ((disease_onset - disease_onset.mean()) / 10.0).astype(np.float32)
 
     # 6. Build Kernels
     # MASK_FILE must be the canonical 27 km model-grid mask so cell size / invasion
@@ -492,12 +505,18 @@ def ingest_data():
             "truncation": "top_eigenfeatures" if M < available_M else "none",
             "disp_kernel_note": "exact for raw-Z (local); z_disp=A.Z is a smoothed A.K.A^T",
         },
-        "st_basis": st_basis,
-        "N_basis": N_basis,
-        # Epizootic window start, and the per-land-cell arrival gate over it.
-        "disease_timestep": dis_timestep_for_basis,
+        # Disease term: two smooth land-centered spatial bases, the exogenous
+        # arrival map (timestep units) and its decade-scaled version, and the
+        # window start before which the term is identically zero.
+        "disease_sev_basis": disease_sev_basis,
+        "disease_lag_basis": disease_lag_basis,
+        "N_sev_basis": int(disease_sev_basis.shape[0]),
+        "N_lag_basis": int(disease_lag_basis.shape[0]),
+        "disease_timestep": dis_timestep,
         "disease_onset": disease_onset,
+        "disease_onset_decades": disease_onset_decades,
         "disease_arrival_map": DISEASE_ARRIVAL_MAP,
+        "disease_prior_spec": DISEASE_PRIOR_SPEC,
         "ingest_id": ingest_id,
         "z_gathered_path": z_gather_name, "z_disp_gathered_path": z_disp_name,
         "adult_fft_kernel": np.array(sim_struct['adult_fft_kernel']),

@@ -41,15 +41,26 @@
     "invasion_lon": -73.4445,
     "invasion_window_years": 10,
     "dispersal_target_capacity_fraction": 0.8,
-    "_disease_prior_comment": "Strength of the disease depression of K (src/model/age_priors.py; formulation in src/model/age_fields.py). The depression is subtracted from K's PRE-softplus argument, so these are in that unit, not a percentage. mu_loc sets the prior median depression via softplus(mu_loc): -1 -> 0.31, -2 -> 0.13, -3 -> 0.05, which for a cell whose baseline argument is ~1.0 is roughly a 16%, 8%, or 3% reduction in K. mu_scale is how far the data may push that baseline; severity_budget is the total spatiotemporal spread the st_weights basis may add on top (distributed as budget/sqrt(N_basis) per coefficient, so per-cell-year variance is ~budget^2/2 regardless of N_basis). Tightened from the initial mu_loc=-1/mu_scale=1.0/budget=2.0 because that let the term take too much of the fit even in post-arrival cells. All three are multiplied by prior_scale during continuation.",
+    "_disease_prior_comment": "The mycoplasmal-conjunctivitis effect on carrying capacity, as a STRUCTURED hypothesis: K = K_base * (1 - severity(x) * onset_gate(x,t) * (1 - recovery(t - arrival))). See src/model/age_fields.py for the formulation and src/model/age_priors.py for the priors. This replaces a generic 967-coefficient spatiotemporal cosine field (the old st_basis_space/time_frequencies) which was subtracted from K's PRE-softplus argument. That design failed two ways: (1) fitted K sits where softplus is effectively exp(), so an additive penalty was an unbounded MULTIPLICATIVE one -- a depression of 3.5 removed 97% of K -- and it annihilated carrying capacity across the entire eastern US rather than rescaling it; (2) being the model's only non-covariate spatial degree of freedom, with K ~multiplicative on predicted abundance, it absorbed every kind of spatial misfit rather than disease alone. The structured form is bounded by construction (a fraction in (0,1) can never zero K out), uses ~55 free parameters instead of 967, and every parameter states a testable claim. Frequencies are per-AXIS over the grid extent: severity/lag space=4 -> ~900km half-wavelength N-S, ~1500km E-W, i.e. deliberately coarse regional structure (east vs west vs plains), not habitat-scale detail.",
     "disease_prior": {
-      "mu_loc": -2.0,
+      "severity_space_frequencies": 4,
+      "lag_space_frequencies": 4,
+      "_mu_comment": "Logit of the PEAK fraction of K removed once the front has passed. mu_loc=0 -> prior median 50% removal (the documented eastern decline), mu_scale=0.5 -> 90% CI roughly [31%, 69%].",
+      "mu_loc": 0.0,
       "mu_scale": 0.5,
-      "severity_budget": 0.75
-    },
-    "_st_basis_comment": "Spatiotemporal basis for the disease depression of K only (see age_fields.py); the basis's time axis covers disease_start_year(1993)..end_year, a ~33-year window, so these frequencies are relative to that window and NOT to the full 1902-2025 span (it previously covered invasion_year..end_year, ~86 years). The basis now carries only the epidemic's severity SHAPE -- onset is handled exogenously by the arrival-map gate. Frequencies are per-AXIS over the grid extent, so the resolution is anisotropic: space=10 -> ~360km half-wavelength N-S, ~605km E-W (12 gave ~300/~504km; the original 6 gave ~600/~1008km). time=7 -> ~4.7yr half-wavelength (was 20 -> ~4.3yr over the longer window, i.e. temporal resolution is essentially unchanged). N_basis=(space+1)^2*(time+1)-1 = 967, and over the 33yr window st_basis is ~2.05 GiB at N_land=17209 (vs 2.86 at space=12, and ~8 GiB under the old 86yr/space=6 design).",
-    "st_basis_space_frequencies": 10,
-    "st_basis_time_frequencies": 7
+      "_field_comment": "sev_field_budget is the total regional deviation the severity field may add on the logit scale (distributed as budget/sqrt(n) per coefficient); 0.5 comfortably reaches west ~25-30% vs east ~60%. lag0_scale/lag_field_budget are YEARS of onset-timing slack, continental and regional respectively -- the arrival map is a hand-built smoothed reconstruction, so its timing is coarse both overall and regionally.",
+      "sev_field_budget": 0.5,
+      "lag0_scale": 2.0,
+      "lag_field_budget": 1.5,
+      "_late_comment": "Severity coefficient on centered arrival year, per DECADE. Negative means populations reached later were hit less hard (the western-genetic-diversity hypothesis). One coefficient encodes the mechanism directly instead of spending spatial-field capacity on what is essentially the arrival gradient.",
+      "late_arrival_loc": -0.15,
+      "late_arrival_scale": 0.3,
+      "_recovery_comment": "Slowly increasing resilience after local arrival: the hit decays toward severity*(1-recovery_fraction) with an e-folding time of recovery_tau years. recovery_logit_loc=-0.5 -> prior median ~38% of the hit eventually recovered, spanning 0 to ~90%.",
+      "recovery_logit_loc": -0.5,
+      "recovery_logit_scale": 1.0,
+      "recovery_tau_median_years": 12.0,
+      "recovery_tau_log_scale": 0.5
+    }
   },
   "map": {
     "_comment": "Continuation begins under tight priors and progressively relaxes them at absolute optimizer steps. The standard/full run uses 300 tight + 300 intermediate + 1200 nominal-prior steps (1800 total). Boundaries are independent of TOTAL_STEPS so extending/resuming a run cannot move backward. lr_decay_steps is likewise fixed across extensions; after step 900 optimization continues at the schedule's minimum learning rate.",

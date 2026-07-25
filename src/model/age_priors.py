@@ -15,7 +15,7 @@ import numpyro
 import numpyro.distributions as dist
 
 from src.config_utils import load_age_model_config
-from src.model.age_fields import project_and_scatter_age_structured
+from src.model.age_fields import disease_severity, project_and_scatter_age_structured
 from src.model.age_forward import forward_sim_age_structured
 
 # Strength of the disease depression of K, read from config so it can be retuned
@@ -69,14 +69,16 @@ def equilibrium_age_quantities(Sa, Sj, Fmax, K, allee_gamma):
     return c, F_at_K, lam, rho
 
 
-def sample_priors(prior_scale=1.0, M_features=None, N_basis=None, time=None):
+def sample_priors(prior_scale=1.0, M_features=None, time=None,
+                  N_sev_basis=None, N_lag_basis=None):
     """Sample every model parameter and return them in a dict.
 
     Covers the correlated 2-D habitat-manifold weights (survival vs
-    reproduction, with an explicit correlation ``rho``), the spatiotemporal
-    basis weights, dispersal/demography rate parameters, and the Allee term.
-    ``prior_scale`` multiplies scale parameters for continuation fitting;
-    ``M_features``, ``N_basis``, ``time`` size the dimensions.
+    reproduction, with an explicit correlation ``rho``), the structured
+    mycoplasmal-conjunctivitis effect on K, dispersal/demography rate parameters,
+    and the Allee term. ``prior_scale`` multiplies scale parameters for
+    continuation fitting; ``M_features``, ``time``, and the two disease basis
+    sizes set the dimensions.
     """
     priors = {}
     
@@ -122,55 +124,80 @@ def sample_priors(prior_scale=1.0, M_features=None, N_basis=None, time=None):
     priors['beta_s'] = w_env[:, 0]  # Survival Suitability Weights
     priors['beta_r'] = w_env[:, 1]  # Reproductive Suitability Weights
     
-    # --- 1b. MYCOPLASMAL-CONJUNCTIVITIS DEPRESSION OF K ---
-    # See age_fields.py's module docstring for the full formulation and for why
-    # the earlier Jensen argument against a one-sided link no longer applies. The
-    # depression is gate(x,t) * softplus(disease_mu + st_basis . st_weights),
-    # subtracted inside K's softplus, so this term can only lower K.
-    #
-    # st_weights carry the spatiotemporal SHAPE of the epidemic's severity, no
-    # longer its onset pattern (the arrival map's gate does that). Their prior
-    # stays zero-mean Normal and the budget is still distributed across N_basis
-    # coefficients, so total per-cell-year variance is roughly budget^2/2
-    # regardless of how finely N_basis is set.
-    disease_severity_budget = float(_DISEASE_PRIOR["severity_budget"]) * prior_scale
-    dynamic_scale = disease_severity_budget / jnp.sqrt(N_basis)
-    priors['st_weights'] = numpyro.sample(
-        "st_weights",
-        dist.Normal(0.0, dynamic_scale).expand([N_basis])
+    # --- 1b. MYCOPLASMAL-CONJUNCTIVITIS EFFECT ON K ---
+    # K = K_base * (1 - severity(x) * gate(x,t) * (1 - recovery(t - arrival))).
+    # See age_fields.py's module docstring for the formulation and for why the
+    # previous generic spatiotemporal field annihilated eastern K. Every parameter
+    # below states a claim about the epizootic that someone could dispute; that is
+    # the point of the structure. All scales carry prior_scale for continuation.
+    _p = _DISEASE_PRIOR
+
+    # SEVERITY: logit of the peak fraction of K removed once the front passes.
+    # mu_loc=0 -> prior median 50% removal, matching the documented eastern
+    # decline; mu_scale=0.5 -> 90% CI ~ [31%, 69%].
+    priors['disease_mu_sev'] = numpyro.sample(
+        "disease_mu_sev",
+        dist.Normal(float(_p["mu_loc"]), float(_p["mu_scale"]) * prior_scale),
+    )
+    # Later-arriving populations plausibly hit less hard (more genetic diversity in
+    # the west). One coefficient on centered arrival year, per decade -- cheaper
+    # and far more interpretable than asking the spatial field to rediscover a
+    # pattern that is essentially the arrival gradient.
+    priors['disease_b_late'] = numpyro.sample(
+        "disease_b_late",
+        dist.Normal(float(_p["late_arrival_loc"]),
+                    float(_p["late_arrival_scale"]) * prior_scale),
+    )
+    # Regional severity deviation. Land-centered basis (see
+    # model_inputs.generate_spatial_basis), so these can only redistribute around
+    # disease_mu_sev, never shift its level -- which is what keeps the continental
+    # severity reportable and stops it trading against alpha_k.
+    sev_scale = float(_p["sev_field_budget"]) * prior_scale / jnp.sqrt(N_sev_basis)
+    priors['disease_w_sev'] = numpyro.sample(
+        "disease_w_sev", dist.Normal(0.0, sev_scale).expand([N_sev_basis])
     )
 
-    # Baseline severity, on K's PRE-softplus scale (the depression is subtracted
-    # from softplus's argument). The prior median depression is
-    # softplus(mu_loc): mu_loc=-1 gives ~0.31, mu_loc=-2 gives ~0.13, mu_loc=-3
-    # gives ~0.05. For a cell whose baseline argument is ~1.0 (K ~ 1.31), those
-    # are roughly a 16%, 8%, and 3% reduction in K respectively -- so mu_loc is
-    # the knob for "how strong is the disease effect allowed to be by default,"
-    # and mu_scale for how far the data may push it. Keeping "the disease barely
-    # mattered" cheap under the prior means a real effect has to be argued out of
-    # the data rather than assumed. This is the only constant alpha_k must absorb
-    # (flat in space and time), which is the property the gate buys us.
-    priors['disease_mu'] = numpyro.sample(
-        "disease_mu",
-        dist.Normal(float(_DISEASE_PRIOR["mu_loc"]),
-                    float(_DISEASE_PRIOR["mu_scale"]) * prior_scale),
+    # ONSET TIMING SLACK. The arrival surface is a smoothed reconstruction from the
+    # documented spread history, coarse both continentally (its kernel smoother
+    # shrinks the 1994 mid-Atlantic and 2006 California extremes inward) and
+    # regionally. Fitting the slack keeps that imprecision from being absorbed as
+    # wrong severity instead.
+    priors['disease_lag0'] = numpyro.sample(
+        "disease_lag0", dist.Normal(0.0, float(_p["lag0_scale"]) * prior_scale))
+    lag_scale = float(_p["lag_field_budget"]) * prior_scale / jnp.sqrt(N_lag_basis)
+    priors['disease_w_lag'] = numpyro.sample(
+        "disease_w_lag", dist.Normal(0.0, lag_scale).expand([N_lag_basis])
     )
-
-    # Onset gate slack, shared continentally. The arrival surface is a smoothed
-    # reconstruction from the documented spread history, so it carries a
-    # systematic bias of order a year (its kernel smoother in particular shrinks
-    # the 1994 mid-Atlantic and 2006 California extremes inward). A single
-    # learned lag absorbs that bias; tau sets how abruptly severity switches on
-    # once the front arrives, with the prior favoring ~1-2 years -- fast enough
-    # to be an epidemic front, slow enough not to be a step discontinuity the
-    # optimizer cannot move through.
-    priors['disease_lag'] = numpyro.sample("disease_lag", dist.Normal(0.0, 2.0 * prior_scale))
     priors['disease_tau'] = numpyro.deterministic(
         "disease_tau",
-        # floored: a vanishing tau makes the gate a step function, whose gradient
-        # w.r.t. lag vanishes everywhere the front is not exactly at t.
+        # Onset sharpness. Floored because a vanishing tau makes the gate a step
+        # function, whose gradient w.r.t. the lag terms vanishes everywhere the
+        # front is not exactly at t. Also absorbs per-cell timing scatter that the
+        # smooth regional lag field cannot resolve, by widening the front.
         jnn.softplus(numpyro.sample("disease_tau_raw",
                                     dist.Normal(0.5, 0.5 * prior_scale))) + 0.25,
+    )
+
+    # RECOVERY: slowly increasing resilience after local arrival (exposure, not
+    # necessarily evolution). The hit relaxes from its peak toward
+    # severity*(1-rec) with an e-folding time tau_rec. rec's prior median is ~38%
+    # recovered, spanning 0 to ~90%, so "no recovery at all" stays cheap.
+    priors['disease_rec'] = numpyro.deterministic(
+        "disease_rec",
+        jnn.sigmoid(numpyro.sample(
+            "disease_rec_raw",
+            dist.Normal(float(_p["recovery_logit_loc"]),
+                        float(_p["recovery_logit_scale"]) * prior_scale))),
+    )
+    priors['disease_tau_rec'] = numpyro.deterministic(
+        "disease_tau_rec",
+        # LogNormal keeps the timescale positive and multiplicatively symmetric:
+        # "about 12 years, plausibly 5 to 30" rather than an additive window that
+        # could stray nonpositive.
+        jnp.exp(numpyro.sample(
+            "disease_log_tau_rec",
+            dist.Normal(jnp.log(float(_p["recovery_tau_median_years"])),
+                        float(_p["recovery_tau_log_scale"]) * prior_scale))),
     )
 
     # --- 2. DEMOGRAPHIC INTERCEPTS (Alphas) ---
@@ -230,8 +257,32 @@ def build_model_2d(data, prior_scale=1.0):
     M = data['Z_gathered'].shape[-1]
     
     # 1. Sample Parameters
-    priors = sample_priors(prior_scale, M, data['N_basis'], time)
-    
+    priors = sample_priors(prior_scale, M, time,
+                           N_sev_basis=data['N_sev_basis'],
+                           N_lag_basis=data['N_lag_basis'])
+
+    # Bundle the disease term's data and parameters. Grouping them keeps
+    # project_and_scatter_age_structured's signature from growing another eight
+    # positional arguments, and lets the field helpers in age_fields.py be called
+    # directly by diagnostics with the same structure.
+    disease = {
+        "sev_basis": data['disease_sev_basis'],
+        "lag_basis": data['disease_lag_basis'],
+        "onset": data['disease_onset'],
+        "onset_decades": data['disease_onset_decades'],
+        "mu_sev": priors['disease_mu_sev'],
+        "b_late": priors['disease_b_late'],
+        "w_sev": priors['disease_w_sev'],
+        "lag0": priors['disease_lag0'],
+        "w_lag": priors['disease_w_lag'],
+        "tau": priors['disease_tau'],
+        "rec": priors['disease_rec'],
+        "tau_rec": priors['disease_tau_rec'],
+    }
+    # Per-cell peak severity, saved for diagnostics: this map IS the model's
+    # falsifiable claim about the epizootic (east ~50%, west lower).
+    numpyro.deterministic("disease_severity_map", disease_severity(disease))
+
     inv_pop = jnn.softplus(numpyro.sample(
         "inv_eta", dist.Normal(-2.0, 1.0 * prior_scale), sample_shape=(data['inv_window'],)
     ))
@@ -247,9 +298,7 @@ def build_model_2d(data, prior_scale=1.0):
     Sa_flat, Sj_flat, Fmax_flat, K_flat, Q_flat = project_and_scatter_age_structured(
         time, Ny, Nx, land_rows, land_cols,
         data['Z_gathered'], data['Z_disp_gathered'],
-        data['st_basis'], priors['st_weights'], data['disease_timestep'],
-        data['disease_onset'], priors['disease_lag'], priors['disease_tau'],
-        priors['disease_mu'],
+        data['disease_timestep'], disease,
         priors['beta_s'], priors['beta_r'],
         priors['alpha_a'], priors['gamma_a'],
         priors['alpha_j'], priors['gamma_j'],

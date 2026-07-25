@@ -109,9 +109,9 @@
     "profiles": {
       "quick90": {
         "_comment": "Fresh 90-minute development fit matching the successful accidental extension: 100 tight, 150 intermediate, and 650 nominal-prior steps (900 total). The learning-rate decay reaches its minimum at step 500 and stays there for the final 400 steps. This changes optimization only, not the final MAP objective.",
-        "prior_relaxation": [[0, 0.1], [100, 0.5], [250, 1.0]],
-        "lr_decay_steps": 500,
-        "target_steps": 900
+        "prior_relaxation": [[0, 0.1], [100, 0.5], [200, 1.0]],
+        "lr_decay_steps": 300,
+        "target_steps": 400
       }
     }
   },

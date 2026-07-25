@@ -1,10 +1,11 @@
 #!/bin/bash
 # Sensitivity sweep over juvenile mean dispersal distance.
 #
-# For each MDD point this submits a three-job chain -- path-features + ingest
-# (25_model_prep) -> MAP fit (30_model_map) -> diagnostics (31_model_viz) -- with
-# every stage pointed at a per-point OVERLAY CONFIG. Points are independent
-# chains, so the scheduler overlaps them.
+# For each MDD point this submits a two-job chain -- path-features + ingest
+# (25_model_prep) -> MAP fit (30_model_map) -- with every stage pointed at a
+# per-point OVERLAY CONFIG. Points are independent chains, so the scheduler
+# overlaps them. Diagnostics for ALL points then run in a SINGLE trailing job
+# (32_sweep_viz), which also writes the cross-point summary.
 #
 #   DRY_RUN=1 bash scripts/tacc/submit_juv_mdd_sweep.sh    # default: write overlays, print sbatch lines
 #   DRY_RUN=0 bash scripts/tacc/submit_juv_mdd_sweep.sh    # actually submit
@@ -32,11 +33,18 @@ SWEEP_NAME="${SWEEP_NAME:-juv_mdd}"
 SWEEP_ROOT="${SWEEP_ROOT:-$HOUFIN_PROCESSED/sweeps/$SWEEP_NAME}"
 PROFILE="${HOUFIN_MAP_PROFILE:-quick90}"
 PRECISION="${HOUFIN_MODEL_PRECISION:-float32}"
-PREP_QUEUE="${PREP_QUEUE:-gpu-a100}"
+# Everything stays on gpu-a100-small: every job is -N 1 -n 1 on ONE GPU, and a
+# gpu-a100 node carries 3 A100s at 3 SU/hr, so putting a single-GPU job there pays
+# double for a third of a node. small is 1.5 SU/hr and less contended.
+# It caps submitted jobs per user at 12, which is why diagnostics for ALL points
+# run in ONE job (32_sweep_viz.slurm) instead of one per point: 5 preps + 5 fits +
+# 1 viz = 11 jobs for a 5-point sweep. Per-point viz would be 15 and overflow onto
+# the main queue.
+PREP_QUEUE="${PREP_QUEUE:-gpu-a100-small}"
 PREP_TIME="${PREP_TIME:-02:00:00}"
-MAP_QUEUE="${MAP_QUEUE:-gpu-a100}"
+MAP_QUEUE="${MAP_QUEUE:-gpu-a100-small}"
 MAP_TIME="${MAP_TIME:-02:00:00}"
-VIZ_QUEUE="${VIZ_QUEUE:-gpu-a100}"
+VIZ_QUEUE="${VIZ_QUEUE:-gpu-a100-small}"
 VIZ_TIME="${VIZ_TIME:-02:00:00}"
 MAP_RESUBMITS="${MAP_RESUBMITS:-0}"
 MAX_CONCURRENT_POINTS="${MAX_CONCURRENT_POINTS:-3}"
@@ -105,7 +113,10 @@ echo "=== writing overlays ==="
 import copy, datetime, json, os, sys
 
 from src.config_utils import load_age_model_config
-from src.model.build_kernels import dispersal_spec
+# src.model.dispersal_spec, NOT src.model.build_kernels: this runs on a LOGIN NODE,
+# and build_kernels imports JAX, whose CPU-backend init aborts there
+# (make_cpu_client). Same single resolver, no JAX.
+from src.model.dispersal_spec import dispersal_spec
 
 root, name, profile, precision, sha, base_raw_z, base_input = sys.argv[1:8]
 points = [float(x) for x in sys.argv[8:]]
@@ -182,6 +193,7 @@ for p in m['points']:
 
 i=0
 declare -a PREP_IDS=()
+declare -a MAP_IDS=()
 for row in "${POINT_ROWS[@]}"; do
     tag="${row%%$'\t'*}"
     overlay="${row#*$'\t'}"
@@ -206,17 +218,14 @@ for row in "${POINT_ROWS[@]}"; do
     # stale or absent inputs.
     map_args=($A -p "$MAP_QUEUE" -t "$MAP_TIME" -J "${tag}_map"
               --export=ALL --parsable scripts/tacc/30_model_map.slurm)
-    viz_args=($A -p "$VIZ_QUEUE" -t "$VIZ_TIME" -J "${tag}_viz"
-              --export=ALL --parsable scripts/tacc/31_model_viz.slurm)
 
     if [ "$DRY_RUN" = "1" ]; then
         echo "  [$tag] AGE_MODEL_CONFIG=$overlay STAGES='path-features model-ingest' \\"
         echo "         sbatch ${prep_args[*]}"
         echo "  [$tag] HOUFIN_MAP_PROFILE=$PROFILE HOUFIN_MAP_FRESH=1 \\"
         echo "         sbatch --dependency=afterok:<prep> ${map_args[*]}"
-        echo "  [$tag] HOUFIN_MAP_PROFILE=$PROFILE \\"
-        echo "         sbatch --dependency=afterok:<map> ${viz_args[*]}"
         PREP_IDS+=("dry$i")
+        MAP_IDS+=("dry_map$i")
     else
         prep=$(AGE_MODEL_CONFIG="$overlay" STAGES="path-features model-ingest" \
                submit "${prep_args[@]}")
@@ -232,13 +241,29 @@ for row in "${POINT_ROWS[@]}"; do
                    submit --dependency=afterany:"$last" "${map_args[@]}")
             [ -n "$last" ] || { echo "ERROR: chained map submit failed for $tag"; exit 1; }
         done
-        viz=$(AGE_MODEL_CONFIG="$overlay" HOUFIN_MAP_PROFILE="$PROFILE" \
-              submit --dependency=afterok:"$last" "${viz_args[@]}")
-        echo "  [$tag] prep=$prep map=$map viz=$viz"
+        echo "  [$tag] prep=$prep map=$map"
         PREP_IDS+=("$prep")
+        MAP_IDS+=("$last")
     fi
     i=$((i + 1))
 done
+
+# ONE diagnostics job for the whole sweep (see 32_sweep_viz.slurm): it loops over
+# every point's overlay, then writes the cross-point summary. afterok on ALL fits
+# would skip diagnostics entirely if a single point failed, so gate with afterany
+# and let the per-point loop and the summary mark stragglers excluded.
+viz_dep="$(IFS=:; echo "afterany:${MAP_IDS[*]}")"
+viz_args=($A -p "$VIZ_QUEUE" -t "$VIZ_TIME" -J "sweep_viz"
+          --export=ALL --parsable scripts/tacc/32_sweep_viz.slurm)
+if [ "$DRY_RUN" = "1" ]; then
+    echo "  [all]    SWEEP_MANIFEST=$MANIFEST HOUFIN_MAP_PROFILE=$PROFILE \\"
+    echo "           sbatch --dependency=$viz_dep ${viz_args[*]}"
+else
+    viz=$(SWEEP_MANIFEST="$MANIFEST" HOUFIN_MAP_PROFILE="$PROFILE" \
+          submit --dependency="$viz_dep" "${viz_args[@]}")
+    [ -n "$viz" ] || { echo "ERROR: sweep viz submit failed"; exit 1; }
+    echo "  [all]    viz=$viz (all points + summary, after all fits)"
+fi
 
 echo
 echo "manifest: $MANIFEST"

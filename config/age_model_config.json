@@ -42,9 +42,24 @@
     "invasion_window_years": 10,
     "dispersal_target_capacity_fraction": 0.8,
     "_disease_prior_comment": "The mycoplasmal-conjunctivitis effect on carrying capacity, as a STRUCTURED hypothesis: K = K_base * (1 - severity(x) * onset_gate(x,t) * (1 - recovery(t - arrival))). See src/model/age_fields.py for the formulation and src/model/age_priors.py for the priors. This replaces a generic 967-coefficient spatiotemporal cosine field (the old st_basis_space/time_frequencies) which was subtracted from K's PRE-softplus argument. That design failed two ways: (1) fitted K sits where softplus is effectively exp(), so an additive penalty was an unbounded MULTIPLICATIVE one -- a depression of 3.5 removed 97% of K -- and it annihilated carrying capacity across the entire eastern US rather than rescaling it; (2) being the model's only non-covariate spatial degree of freedom, with K ~multiplicative on predicted abundance, it absorbed every kind of spatial misfit rather than disease alone. The structured form is bounded by construction (a fraction in (0,1) can never zero K out), uses ~55 free parameters instead of 967, and every parameter states a testable claim. Frequencies are per-AXIS over the grid extent: severity/lag space=4 -> ~900km half-wavelength N-S, ~1500km E-W, i.e. deliberately coarse regional structure (east vs west vs plains), not habitat-scale detail.",
+    "_manifold_comment": "Correlated weights for the THREE demographic manifolds: H_s (survival, drives Sa/Sj/Q), H_r (reproduction, drives Fmax), H_k (capacity, drives K). K used to reuse H_r outright, i.e. an implicit correlation of exactly 1.0, which meant K's spatial pattern could differ from Fmax's ONLY through the disease term -- so every real disagreement between 'where reproduction is good' and 'where birds are abundant' had to be spelled 'disease', and the disease term saturated. Parameterized as one shared habitat-quality factor: beta_j = s_j * (h_j*f + sqrt(1-h_j^2)*eps_j) with f, eps iid across features. That makes Var(beta_j) = s_j^2 and Corr(j,k) = h_j*h_k EXACTLY, positive-definite for free -- no Cholesky guard whose clipping would corrupt gradients, and LKJ is unusable here because its concentration parameter pushes toward ZERO correlation, the opposite of the belief. Fecundity and capacity are both productivity/resource axes, so their prior correlation is set ABOVE survival's with either: target 0.85 vs 0.70. loading_logit_scale=0.6 makes that ordering hold with ~94% prior probability while leaving the survival-fecundity 5-95% CI at [0.48, 0.83], comparable to the old rho ~ TruncatedNormal(0.7, 0.2).",
+    "manifold_prior": {
+      "target_corr_survival_repro": 0.70,
+      "target_corr_repro_capacity": 0.85,
+      "target_corr_survival_capacity": 0.70,
+      "loading_logit_scale": 0.6,
+      "weight_scale": 0.5
+    },
+    "_k_trend_comment": "Continental (spatially uniform) smooth time trend on K's pre-softplus argument, time-centered so alpha_k keeps the level. THIS IS A SAFETY VALVE AND A FAILURE DIAGNOSTIC, NOT A MODELED MECHANISM. It exists only because the model otherwise has NO temporal degree of freedom for capacity except the disease term, so 'modern K must be lower than 1970s K' could ONLY be expressed as disease -- and the disease term saturated at 93% severity trying. The prior is therefore very strongly concentrated on zero: budget=0.05 puts the implied K multiplier within 2.3% of 1.0 at the prior median, 7% at the 95th percentile, and 13.5% at the 99.9th (K sits near softplus's exponential regime, so multiplier ~ exp(trend)). READ IT AS: if the fitted trend moves K by more than ~10-15%, or sits more than ~3 prior SDs out (reported as k_trend.max_prior_sd_multiple in metrics.json), the model is failing to explain a real temporal signal through its mechanisms and that is the finding -- do NOT loosen this budget to accommodate it. budget=0.3 was tried first and was far too permissive: it allowed a 44% capacity swing at the 95th percentile, which makes it a working part of the model rather than an alarm. Also deliberately spatially UNIFORM with only 3 cosines over 124 years, so it cannot compete with the disease term's spatial pattern or manufacture year-to-year wiggle. It IS partially confounded with the disease severity level; what separates them is that disease onset follows the arrival map (east ~1994, west ~2005) while this trend is simultaneous everywhere.",
+    "k_trend": {
+      "n_basis": 3,
+      "budget": 0.05
+    },
     "disease_prior": {
       "severity_space_frequencies": 4,
       "lag_space_frequencies": 4,
+      "_ceiling_comment": "HARD ceiling on the fraction of K the epizootic may remove: severity = severity_ceiling * sigmoid(...). Without it the fit drove severity to 93% in the east and 73% in the west with zero recovery, every parameter pinned 3-4.5 prior SDs out -- far past the documented ~50-60% eastern decline. A prior median cannot stop that (the likelihood gradient dwarfs the prior at 178k observations); only a structural bound can. Saturation AT the ceiling is now the diagnostic that misfit is going here rather than to the covariates.",
+      "severity_ceiling": 0.5,
       "_mu_comment": "Logit of the PEAK fraction of K removed once the front has passed. mu_loc=0 -> prior median 50% removal (the documented eastern decline), mu_scale=0.5 -> 90% CI roughly [31%, 69%].",
       "mu_loc": 0.0,
       "mu_scale": 0.5,
@@ -95,8 +110,8 @@
     "avonet_csv": "${HOUFIN_DATA}/avonet/AVONET_Comparison_WithPhylogeny_Urban.csv"
   },
   "run_names": {
-    "_comment": "run_9: first fit with the STRUCTURED disease effect on K (severity x onset x recovery, bounded multiplicative) replacing the generic 967-coefficient spatiotemporal field that annihilated eastern carrying capacity. Also latent_dim 24. Not resume-compatible with run_8: st_weights/disease_mu/disease_lag are gone and eight new disease sites replace them.",
-    "map": "age_map_{precision}_run_9",
+    "_comment": "run_10: three fixes together, because run_9 showed each alone leaves another outlet to saturate. run_9 (structured disease term) still pinned severity at 93% east / 73% west with zero recovery, every parameter 3-4.5 prior SDs out, at the same fit quality as run_8 -- the term was still the only channel for (a) the spatial K-vs-Fmax difference and (b) the temporal capacity step. So: a HARD 0.5 severity ceiling, K gets its own correlated manifold H_k (Corr(Fmax,K)~0.85 > Corr(Fmax,survival)~0.70), and a continental time trend on K. Not resume-compatible with run_9: w_env is (M,3), rho/w_scale are now deterministic, and manifold_*/w_k_trend sites are new.",
+    "map": "age_map_{precision}_run_10",
     "svi": "age_vi_{precision}_run_5",
     "hmc": "age_hmc_{precision}_trial_3",
     "hmc_svi_source": "age_vi_{precision}_run_2",
@@ -104,7 +119,7 @@
     "resume_svi_from_map": "age_map_{precision}_run_4",
     "resume_hmc_out": "age_hmc_{precision}_from_map",
     "resume_hmc_from_map": "age_map_{precision}_run_4",
-    "vis_map": "age_map_{precision}_run_9",
+    "vis_map": "age_map_{precision}_run_10",
     "vis_svi": "age_vi_{precision}_run_5",
     "vis_hmc": "age_hmc_{precision}_trial_3",
     "vis_community": "age_map_{precision}_run_6"

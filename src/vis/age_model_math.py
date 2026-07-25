@@ -77,19 +77,25 @@ def response_curve_fields(latents, z_sweep, target_idx):
     this synthetic single-point sweep never included, and that term is long gone
     from the real model too.
 
-    The K curve is BASE carrying capacity, before the mycoplasmal-conjunctivitis
-    effect. That effect is ``K_base * (1 - severity(x)*gate(x,t)*(1-recovery))``,
+    K reads its own manifold ``H_k = Z.beta_k`` (``w_env[:, 2]``), not H_r; a
+    2-column ``w_env`` from an older checkpoint falls back to beta_r with the old
+    meaning. The K curve is BASE carrying capacity, before the continental time
+    trend and before the mycoplasmal-conjunctivitis effect. That effect is ``K_base * (1 - severity(x)*gate(x,t)*(1-recovery))``,
     all three factors being functions of location and year, so a synthetic single
     Z point has no well-defined value for it. Read the fitted severity map in
     ``09_disease_diagnostics.png`` for that piece; a curve here that looks high
     versus the fitted K field is expected in post-arrival regions, not a bug.
     """
-    w_env = np.asarray(latents["w_env"])  # (M, 2): [:, 0]=beta_s, [:, 1]=beta_r
+    w_env = np.asarray(latents["w_env"])  # (M, 3): beta_s, beta_r, beta_k
     beta_s, beta_r = w_env[:, 0], w_env[:, 1]
+    # Capacity has its OWN manifold now; reusing beta_r here would silently plot a
+    # curve the model does not use.
+    beta_k = w_env[:, 2] if w_env.shape[1] > 2 else beta_r
 
     z_sweep = np.asarray(z_sweep)
     H_s = z_sweep * beta_s[target_idx]
     H_r = z_sweep * beta_r[target_idx]
+    H_k = z_sweep * beta_k[target_idx]
 
     alpha_a = float(latents["alpha_a"])
     alpha_j = float(latents["alpha_j"])
@@ -104,7 +110,7 @@ def response_curve_fields(latents, z_sweep, target_idx):
         "Sa": sigmoid(alpha_a + gamma_a * H_s),
         "Sj": sigmoid(alpha_j + gamma_j * H_s),
         "Fmax": softplus(alpha_f + gamma_f * H_r),
-        "K": softplus(alpha_k + gamma_k * H_r),
+        "K": softplus(alpha_k + gamma_k * H_k),
     }
 
 

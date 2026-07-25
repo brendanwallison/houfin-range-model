@@ -46,6 +46,8 @@ POPULATION_SPEC = dict(_cfg["population_model"])
 DISEASE_PRIOR_SPEC = dict(POPULATION_SPEC["disease_prior"])
 N_FREQ_SEVERITY = int(DISEASE_PRIOR_SPEC["severity_space_frequencies"])
 N_FREQ_LAG = int(DISEASE_PRIOR_SPEC["lag_space_frequencies"])
+# Continental time trend on K (see generate_k_trend_basis).
+K_TREND_SPEC = dict(POPULATION_SPEC["k_trend"])
 
 
 def generate_spatial_basis(Ny, Nx, land_rows, land_cols, n_freq, label=""):
@@ -87,6 +89,32 @@ def generate_spatial_basis(Ny, Nx, land_rows, land_cols, n_freq, label=""):
     if not (land_means < 1e-5).all():
         raise ValueError(f"spatial basis{label} is not land-centered "
                          f"(max |land mean| = {land_means.max():.2e})")
+    return basis
+
+
+def generate_k_trend_basis(Time, n_basis):
+    """Continental (spatially uniform) smooth time basis for K, centered over time.
+
+    Returns ``(n_basis, Time)``: ``cos(m*pi*t)`` for ``m = 1..n_basis`` over the FULL
+    model timeline, each centered so its temporal mean is zero. Centering is what
+    keeps ``alpha_k`` the owner of K's level -- these coefficients can only say how
+    capacity drifted, not where it sits.
+
+    Why this exists: K's only temporal degree of freedom used to be the disease term,
+    so "modern capacity is below 1970s capacity" -- which BBS demands, and which has
+    causes besides conjunctivitis -- could only be expressed as disease, and the
+    disease term saturated trying. Kept to a handful of basis functions and NO
+    spatial dependence on purpose: it must not be able to compete with the disease
+    term's spatial pattern or manufacture year-to-year wiggle.
+    """
+    t = np.linspace(0.0, 1.0, Time)
+    rows = []
+    for m in range(1, int(n_basis) + 1):
+        wave = np.cos(m * np.pi * t)
+        rows.append((wave - wave.mean()).astype(np.float32))
+    basis = np.stack(rows, axis=0)
+    if not (np.abs(basis.mean(axis=1)) < 1e-5).all():
+        raise ValueError("K trend basis is not time-centered")
     return basis
 
 
@@ -451,6 +479,12 @@ def ingest_data():
     # pattern that is essentially the arrival gradient itself.
     disease_onset_decades = ((disease_onset - disease_onset.mean()) / 10.0).astype(np.float32)
 
+    # 5c. Continental time basis for K's drift, over the FULL timeline (unlike the
+    # disease term, capacity drift is not tied to the epizootic window).
+    k_trend_basis = generate_k_trend_basis(Time, K_TREND_SPEC["n_basis"])
+    print(f"  K trend basis: {k_trend_basis.shape[0]} time-centered cosines over "
+          f"{Time} years ({k_trend_basis.nbytes / 1e3:.1f} kB)")
+
     # 6. Build Kernels
     # MASK_FILE must be the canonical 27 km model-grid mask so cell size / invasion
     # location are on the same grid as Z and the observations.
@@ -517,6 +551,8 @@ def ingest_data():
         "disease_onset_decades": disease_onset_decades,
         "disease_arrival_map": DISEASE_ARRIVAL_MAP,
         "disease_prior_spec": DISEASE_PRIOR_SPEC,
+        "k_trend_basis": k_trend_basis,
+        "k_trend_spec": K_TREND_SPEC,
         "ingest_id": ingest_id,
         "z_gathered_path": z_gather_name, "z_disp_gathered_path": z_disp_name,
         "adult_fft_kernel": np.array(sim_struct['adult_fft_kernel']),

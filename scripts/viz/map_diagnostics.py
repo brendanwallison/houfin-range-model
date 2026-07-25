@@ -117,6 +117,8 @@ def reconstruct_map(data, params):
     posterior = {name: jnp.expand_dims(value, 0) for name, value in latents.items()}
     needed = ["simulated_density", "Sa_flat", "Sj_flat", "Fmax_flat", "K_flat",
               "Q_flat", "expected_obs", "allee_gamma", "n50_raw", "w_env", "rho",
+              "env_corr_repro_capacity", "env_corr_survival_capacity",
+              "manifold_loadings", "w_k_trend",
               "disease_severity_map", "disease_mu_sev", "disease_b_late",
               "disease_w_lag", "disease_lag0", "disease_tau", "disease_rec",
               "disease_tau_rec", "Na_grid", "Nj_grid"]
@@ -460,6 +462,30 @@ def plot_spatial_residuals(sim, data, shape, out):
     fig.tight_layout(); fig.savefig(out, dpi=180); plt.close(fig)
 
 
+def _k_trend_metrics(data, sim):
+    """Report the continental K trend against its own (deliberately tight) prior.
+
+    The point of the prior-SD multiple is that the safety valve reads itself: no
+    one has to remember what the budget was to know whether the term has been
+    pushed somewhere it should not go.
+    """
+    w = np.asarray(sim["w_k_trend"])
+    basis = np.asarray(data["k_trend_basis"])
+    spec = load_age_model_config()["population_model"]["k_trend"]
+    prior_sd = float(spec["budget"]) / np.sqrt(int(spec["n_basis"]))
+    trend = basis.T @ w                      # (time,) on K's pre-softplus scale
+    mult = np.exp(trend)
+    z = float(np.abs(w).max() / prior_sd)
+    return {"weights": [float(x) for x in w],
+            "prior_sd_per_weight": prior_sd,
+            "max_prior_sd_multiple": z,
+            "k_multiplier_first_year": float(mult[0]),
+            "k_multiplier_last_year": float(mult[-1]),
+            "k_multiplier_max_deviation": float(np.abs(mult - 1.0).max()),
+            # True = a real temporal signal is going unexplained by the mechanisms.
+            "safety_valve_tripped": bool(z > 3.0 or np.abs(mult - 1.0).max() > 0.15)}
+
+
 def plot_disease_diagnostics(data, sim, years, rows, cols, shape, out, window):
     """Is the disease term describing an epizootic, or absorbing spatial misfit?
 
@@ -484,6 +510,8 @@ def plot_disease_diagnostics(data, sim, years, rows, cols, shape, out, window):
        increasing resilience" is visible (or absent).
     """
     sev = np.asarray(sim["disease_severity_map"])          # (N_land,) peak fraction
+    ceiling = float(load_age_model_config()["population_model"]
+                    ["disease_prior"]["severity_ceiling"])
     onset = np.asarray(data["disease_onset"])              # timestep units
     dis_t0 = int(data["disease_timestep"])
     lag0 = float(np.asarray(sim["disease_lag0"]))
@@ -502,9 +530,11 @@ def plot_disease_diagnostics(data, sim, years, rows, cols, shape, out, window):
     fig, ax = plt.subplots(1, 3, figsize=(17, 4.8))
 
     sev_grid = _grid(sev[None], rows, cols, shape)[0]
-    im = ax[0].imshow(sev_grid, cmap="inferno_r", vmin=0.0, vmax=1.0)
+    at_ceiling = float((sev > 0.99 * ceiling).mean())
+    im = ax[0].imshow(sev_grid, cmap="inferno_r", vmin=0.0, vmax=ceiling)
     ax[0].set(title=f"Peak severity: fraction of K removed\n"
-                    f"(median {np.median(sev):.0%}, range {sev.min():.0%}-{sev.max():.0%})")
+                    f"(median {np.median(sev):.0%}, range {sev.min():.0%}-{sev.max():.0%}; "
+                    f"{at_ceiling:.0%} at the {ceiling:.0%} ceiling)")
     ax[0].axis("off")
     fig.colorbar(im, ax=ax[0], fraction=.046, label="Fraction of K removed at peak")
 
@@ -538,6 +568,10 @@ def plot_disease_diagnostics(data, sim, years, rows, cols, shape, out, window):
 
     pre_front = flat[since < -5]
     return {"disease_severity_median": float(np.median(sev)),
+            "disease_severity_ceiling": ceiling,
+            # THE diagnostic: cells pinned at the ceiling mean misfit is still being
+            # routed to the disease term rather than to H_k or the K trend.
+            "disease_severity_fraction_at_ceiling": at_ceiling,
             "disease_severity_p05": float(np.percentile(sev, 5)),
             "disease_severity_p95": float(np.percentile(sev, 95)),
             "disease_fraction_median_modern": float(np.median(frac[-min(window, frac.shape[0]):])),
@@ -740,6 +774,25 @@ def main():
             np.mean(transition_inv[np.isfinite(transition_inv)] == -1)),
         "final_suitable_centroid_latitude": float(centroid_lat[-1]),
         "allee_n50_bbs_count": n50, "fit": fit_metrics,
+        # The three manifolds' fitted coupling. K having its own manifold is what
+        # lets covariates -- rather than the disease term -- explain why capacity's
+        # spatial pattern differs from fecundity's; these say how much it used that
+        # freedom. Prior medians: F-S 0.70, F-K 0.85, S-K 0.70.
+        "manifold": {
+            "corr_survival_repro": float(np.asarray(sim["rho"])),
+            "corr_repro_capacity": float(np.asarray(sim["env_corr_repro_capacity"])),
+            "corr_survival_capacity": float(np.asarray(sim["env_corr_survival_capacity"])),
+            "loadings": [float(x) for x in np.asarray(sim["manifold_loadings"])],
+        },
+        # Continental capacity drift. This term is a SAFETY VALVE, not a modeled
+        # mechanism -- its prior is strongly concentrated on zero. A fitted trend
+        # that moves K by more than ~10-15%, or that sits more than ~3 prior SDs
+        # out, means a real temporal signal is not being explained by any mechanism
+        # in the model. That is a finding about the model, not a result to report,
+        # and the response is to find the missing mechanism rather than loosen the
+        # prior. Reported as the multiplier on K (exp of the trend, since K sits
+        # near softplus's exponential regime) at each end of the timeline.
+        "k_trend": _k_trend_metrics(data, sim),
         "realized_source_sink": source_sink_metrics,
         "disease": disease_metrics,
         "age_structure": age_structure_metrics,

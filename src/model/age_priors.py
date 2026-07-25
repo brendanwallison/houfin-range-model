@@ -9,6 +9,8 @@ observation model. ``prior_scale`` implements prior continuation: values below
 one deliberately tighten scale priors during early optimization. See
 docs/TEMPORAL.md for the invasion-timestep convention.
 """
+import math
+
 import jax.numpy as jnp
 import jax.nn as jnn
 import numpyro
@@ -18,10 +20,13 @@ from src.config_utils import load_age_model_config
 from src.model.age_fields import disease_severity, project_and_scatter_age_structured
 from src.model.age_forward import forward_sim_age_structured
 
-# Strength of the disease depression of K, read from config so it can be retuned
-# without editing model code (the fit is sensitive to it and it is the knob most
-# likely to be revisited between runs). See sample_priors for the semantics.
-_DISEASE_PRIOR = dict(load_age_model_config()["population_model"]["disease_prior"])
+# Prior settings read from config so they can be retuned without editing model
+# code -- these are the knobs most likely to be revisited between runs. See
+# sample_priors for the semantics of each.
+_POP_SPEC = load_age_model_config()["population_model"]
+_DISEASE_PRIOR = dict(_POP_SPEC["disease_prior"])
+_MANIFOLD_PRIOR = dict(_POP_SPEC["manifold_prior"])
+_K_TREND = dict(_POP_SPEC["k_trend"])
 
 
 def validate_environment_kernel_contract(data):
@@ -73,8 +78,9 @@ def sample_priors(prior_scale=1.0, M_features=None, time=None,
                   N_sev_basis=None, N_lag_basis=None):
     """Sample every model parameter and return them in a dict.
 
-    Covers the correlated 2-D habitat-manifold weights (survival vs
-    reproduction, with an explicit correlation ``rho``), the structured
+    Covers the correlated 3-manifold habitat weights (survival, reproduction,
+    capacity, via a one-factor prior with deliberately ordered correlations), the
+    continental time trend on K, the structured
     mycoplasmal-conjunctivitis effect on K, dispersal/demography rate parameters,
     and the Allee term. ``prior_scale`` multiplies scale parameters for
     continuation fitting; ``M_features``, ``time``, and the two disease basis
@@ -82,48 +88,107 @@ def sample_priors(prior_scale=1.0, M_features=None, time=None,
     """
     priors = {}
     
-    # --- 1. CORRELATED 2D HABITAT MANIFOLD WEIGHTS ---
-    
-    # 1. Sample rho explicitly with a strong positive prior (e.g., centered at +0.7).
-    # We bound it strictly between -0.99 and 0.99 to prevent NaN errors in the Cholesky math.
-    rho = numpyro.sample(
-        "rho",
-        dist.TruncatedNormal(
-            loc=0.7, scale=0.2 * prior_scale, low=-0.99, high=0.99
-        ),
+    # --- 1. CORRELATED 3-MANIFOLD HABITAT WEIGHTS (survival, reproduction, capacity) ---
+    # H_s = Z.beta_s drives Sa/Sj/Q, H_r = Z.beta_r drives Fmax, H_k = Z.beta_k drives K.
+    # K previously reused beta_r outright -- an implicit correlation of exactly 1.0 --
+    # so K's spatial pattern could differ from Fmax's only via the disease term. That
+    # forced every real disagreement between "where reproduction is good" and "where
+    # birds are abundant" to be spelled "disease", and the disease term duly
+    # saturated. Giving K its own weights makes that disagreement a covariate
+    # statement, still prior-coupled to the others.
+    #
+    # ONE-FACTOR parameterization: beta_j = s_j * (h_j*f + sqrt(1-h_j^2)*eps_j), with
+    # f and eps drawn IID ACROSS FEATURES. Then Var(beta_j) = s_j^2 and
+    # Corr(beta_j, beta_k) = h_j*h_k, both EXACTLY, and the implied 3x3 covariance is
+    # positive-definite for any parameter values -- no Cholesky positive-definiteness
+    # guard whose clipping would corrupt gradients. (LKJCholesky is not usable here:
+    # its concentration > 1 concentrates near the IDENTITY correlation, i.e. near
+    # zero correlation, the opposite of the prior belief.) The iid-across-features
+    # structure is what preserves the uncentered-Ružička GP contract -- see
+    # validate_environment_kernel_contract -- exactly as the old 2-output version did.
+    _m = _MANIFOLD_PRIOR
+    # Solve the target correlations for the three factor loadings: given
+    # Corr(j,k) = h_j*h_k, h_r^2 = (rho_sr*rho_rk)/rho_sk and the rest follow.
+    _rho_sr = float(_m["target_corr_survival_repro"])
+    _rho_rk = float(_m["target_corr_repro_capacity"])
+    _rho_sk = float(_m["target_corr_survival_capacity"])
+    _h_r = math.sqrt(_rho_sr * _rho_rk / _rho_sk)
+    _h_med = jnp.array([_rho_sr / _h_r, _h_r, _rho_rk / _h_r])  # (survival, repro, capacity)
+    _logit_h = jnp.log(_h_med / (1.0 - _h_med))
+
+    # Loadings on the shared habitat-quality factor. Capacity's prior median loading
+    # exceeds survival's, which is exactly what puts Corr(Fmax, K) above
+    # Corr(Fmax, survival) -- fecundity and capacity are both productivity/resource
+    # axes. A logit-normal keeps h in (0,1) so no correlation can leave [-1,1].
+    h_load = numpyro.deterministic(
+        "manifold_loadings",
+        jnn.sigmoid(numpyro.sample(
+            "manifold_loading_raw",
+            dist.Normal(_logit_h, float(_m["loading_logit_scale"]) * prior_scale))),
     )
-    
-    # 2. Manually construct the Cholesky factor of a 2x2 correlation matrix
-    # The Cholesky decomposition of [[1, rho], [rho, 1]] is analytically:
-    L_corr_matrix = jnp.array([
-        [1.0, 0.0],
-        [rho, jnp.sqrt(1.0 - rho**2)]
-    ])
-    
-    # Save L_corr as a deterministic site so your visualization script doesn't break
-    L_corr = numpyro.deterministic("L_corr", L_corr_matrix)
-    
-    # 3. Scale the response correlation matrix. Crucially, the same 2x2 prior is
-    # repeated IID over feature dimensions by the plate below: conditional on
-    # w_scale, Cov[Z(x)@beta_s, Z(x')@beta_s] = w_scale[0]^2 Z(x)@Z(x'), and
-    # likewise for reproduction. This isotropy is what recovers the scaled
-    # uncentered Ružička GP kernel represented by Z.
-    w_scale = numpyro.sample(
-        "w_scale", dist.HalfNormal(0.5 * prior_scale).expand([2])
+    # Total weight scale per manifold: this is the old w_scale, kept under that name
+    # so existing viz keeps working, and it is still what sets the GP kernel variance.
+    w_scale = numpyro.deterministic(
+        "w_scale",
+        jnn.softplus(numpyro.sample(
+            "w_scale_raw",
+            dist.Normal(float(_m["weight_scale"]), 0.3 * prior_scale).expand([3]))),
     )
     numpyro.deterministic("environment_kernel_variance", w_scale ** 2)
-    L_cov = w_scale[..., None] * L_corr
-    
-    # 4. Draw the correlated weights for all M features
-    with numpyro.plate("env_features", M_features):
-        w_env = numpyro.sample(
-            "w_env", 
-            dist.MultivariateNormal(loc=jnp.zeros(2), scale_tril=L_cov)
-        )
-        
+
+    # dim=-2 so the feature plate takes the ROW axis and leaves the rightmost axis
+    # for the three manifolds; f_shared then comes out (M, 1) and broadcasts against
+    # the (M, 3) idiosyncratic draws.
+    with numpyro.plate("env_features", M_features, dim=-2):
+        # Shared factor and per-manifold idiosyncratic parts, iid over features.
+        f_shared = numpyro.sample("manifold_factor", dist.Normal(0.0, 1.0))
+        eps_idio = numpyro.sample("manifold_idio", dist.Normal(0.0, 1.0).expand([3]))
+
+    w_env = numpyro.deterministic(
+        "w_env",
+        w_scale[None, :] * (h_load[None, :] * f_shared
+                            + jnp.sqrt(1.0 - h_load[None, :] ** 2) * eps_idio),
+    )
+
+    # Report the implied correlations (and a 3x3 Cholesky under the historical
+    # L_corr name) so diagnostics can read what the fit actually concluded about
+    # how tightly the three manifolds move together.
+    corr = h_load[:, None] * h_load[None, :]
+    corr = corr + jnp.diag(1.0 - jnp.diag(corr))
+    numpyro.deterministic("L_corr", jnp.linalg.cholesky(corr))
+    numpyro.deterministic("rho", corr[0, 1])  # survival-reproduction, the old `rho`
+    numpyro.deterministic("env_corr_repro_capacity", corr[1, 2])
+    numpyro.deterministic("env_corr_survival_capacity", corr[0, 2])
+
     priors['beta_s'] = w_env[:, 0]  # Survival Suitability Weights
     priors['beta_r'] = w_env[:, 1]  # Reproductive Suitability Weights
-    
+    priors['beta_k'] = w_env[:, 2]  # Carrying-Capacity Weights
+
+    # --- 1a. CONTINENTAL TIME TREND ON K: A SAFETY VALVE, NOT A MECHANISM ---
+    # This is not a modeled process and is not meant to carry signal. It exists only
+    # because the model otherwise has NO temporal degree of freedom for capacity
+    # besides the disease term, so "modern K below 1970s K" could only be expressed
+    # as disease -- and the disease term saturated at 93% severity trying. The prior
+    # is therefore very strongly concentrated on ZERO: the default budget keeps the
+    # implied K multiplier within ~2% of 1.0 at the median and ~7% at the 95th
+    # percentile.
+    #
+    # A fitted trend that escapes that range is a FAILURE SIGNAL: it means a real
+    # temporal signal is not being explained by any mechanism in the model. The
+    # correct response is to find the missing mechanism, NOT to loosen this budget.
+    # scripts/viz/map_diagnostics.py reports k_trend.max_prior_sd_multiple so this
+    # can be read off directly.
+    #
+    # Spatially UNIFORM by construction, with only a few time-centered cosines, so it
+    # cannot compete with the disease term's spatial pattern or manufacture
+    # year-to-year wiggle.
+    k_trend_budget = float(_K_TREND["budget"]) * prior_scale
+    n_k_trend = int(_K_TREND["n_basis"])
+    priors['w_k_trend'] = numpyro.sample(
+        "w_k_trend",
+        dist.Normal(0.0, k_trend_budget / jnp.sqrt(n_k_trend)).expand([n_k_trend]),
+    )
+
     # --- 1b. MYCOPLASMAL-CONJUNCTIVITIS EFFECT ON K ---
     # K = K_base * (1 - severity(x) * gate(x,t) * (1 - recovery(t - arrival))).
     # See age_fields.py's module docstring for the formulation and for why the
@@ -276,6 +341,7 @@ def build_model_2d(data, prior_scale=1.0):
         "lag0": priors['disease_lag0'],
         "w_lag": priors['disease_w_lag'],
         "tau": priors['disease_tau'],
+        "ceiling": float(_DISEASE_PRIOR["severity_ceiling"]),
         "rec": priors['disease_rec'],
         "tau_rec": priors['disease_tau_rec'],
     }
@@ -299,7 +365,8 @@ def build_model_2d(data, prior_scale=1.0):
         time, Ny, Nx, land_rows, land_cols,
         data['Z_gathered'], data['Z_disp_gathered'],
         data['disease_timestep'], disease,
-        priors['beta_s'], priors['beta_r'],
+        priors['beta_s'], priors['beta_r'], priors['beta_k'],
+        data['k_trend_basis'], priors['w_k_trend'],
         priors['alpha_a'], priors['gamma_a'],
         priors['alpha_j'], priors['gamma_j'],
         priors['alpha_f'], priors['gamma_f'],

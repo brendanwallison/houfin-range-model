@@ -37,7 +37,7 @@ def _basis(n_freq=3, n_land=N_LAND, seed_val=0):
 
 
 def _disease(mu_sev=0.0, b_late=0.0, rec=0.4, tau_rec=12.0, tau=1.5,
-             lag0=0.0, w_scale=0.0, seed_val=0):
+             lag0=0.0, w_scale=0.0, seed_val=0, ceiling=1.0):
     sev_b, lag_b = _basis(3, seed_val=seed_val), _basis(3, seed_val=seed_val)
     rng = np.random.default_rng(seed_val + 1)
     onset = jnp.array(np.linspace(92.0, 105.0, N_LAND))  # arrival, timestep units
@@ -51,6 +51,9 @@ def _disease(mu_sev=0.0, b_late=0.0, rec=0.4, tau_rec=12.0, tau=1.5,
         "lag0": lag0,
         "w_lag": jnp.array(rng.normal(0, w_scale, lag_b.shape[0])),
         "tau": tau, "rec": rec, "tau_rec": tau_rec,
+        # ceiling=1.0 in most tests so the sigmoid's own bound is what gets
+        # exercised; the configured production ceiling is asserted separately.
+        "ceiling": ceiling,
     }
 
 
@@ -183,7 +186,7 @@ def test_basis_field_cannot_shift_the_continental_level():
     """A pure field perturbation leaves the mean logit unchanged."""
     base = _disease(w_scale=0.0)
     perturbed = _disease(w_scale=1.0)
-    logit = lambda s: np.log(s / (1.0 - s))
+    logit = lambda s: np.log(s / (1.0 - s))  # ceiling is 1.0 in these fixtures
     m0 = logit(np.asarray(disease_severity(base))).mean()
     m1 = logit(np.asarray(disease_severity(perturbed))).mean()
     assert abs(m1 - m0) < 1e-4
@@ -213,7 +216,8 @@ def test_prior_median_peak_severity_is_about_fifty_percent():
     """
     draws = _prior_draws(2000)
     # Severity at a cell with average arrival year and zero field contribution.
-    sev = np.array([1.0 / (1.0 + np.exp(-d["disease_mu_sev"])) for d in draws])
+    ceiling = float(load_age_model_config()["population_model"]["disease_prior"]["severity_ceiling"])
+    sev = np.array([ceiling / (1.0 + np.exp(-d["disease_mu_sev"])) for d in draws]) / ceiling
     assert 0.45 < np.median(sev) < 0.55
     lo, hi = np.percentile(sev, [5, 95])
     assert 0.25 < lo < 0.40, f"5th percentile {lo:.2f} outside the documented ~0.31"
@@ -255,7 +259,12 @@ def test_k_field_is_rescaled_never_annihilated_end_to_end():
     Z = jnp.array(rng.normal(size=(T, N_LAND, M)))
     Zd = jnp.array(rng.normal(size=(T, N_LAND, K_kern, M)))
     idx = jnp.arange(N_LAND)
-    rates = (jnp.ones(M) * .1, jnp.ones(M) * .1, 0.5, 0.3, -0.5, 0.4, 2.0, 0.3, 0.5, 0.3)
+    # beta_s, beta_r, beta_k (capacity has its own manifold), then the continental
+    # K trend basis + weights, then the alpha/gamma pairs.
+    k_trend = jnp.array(np.cos(np.pi * np.linspace(0, 1, T))[None, :] - 0.0)
+    rates = (jnp.ones(M) * .1, jnp.ones(M) * .1, jnp.ones(M) * .1,
+             k_trend, jnp.zeros(1),
+             0.5, 0.3, -0.5, 0.4, 2.0, 0.3, 0.5, 0.3)
 
     d = _disease(mu_sev=0.3, b_late=-0.3, rec=0.4, w_scale=0.3)
     K_dis = np.asarray(project(T, 40, 60, idx, idx, Z, Zd, DIS_T0, d, *rates)[3])
@@ -282,6 +291,7 @@ def test_prior_predictive_fraction_never_annihilates_capacity():
                   "lag0": p["disease_lag0"], "w_lag": jnp.array(p["disease_w_lag"]),
                   "tau": p["disease_tau"], "rec": p["disease_rec"],
                   "tau_rec": p["disease_tau_rec"],
-                  "sev_basis": jnp.array(sev_b), "lag_basis": jnp.array(lag_b)})
+                  "sev_basis": jnp.array(sev_b), "lag_basis": jnp.array(lag_b),
+                  "ceiling": 1.0})
         worst = max(worst, float(np.asarray(disease_k_fraction(d, 123.0)).max()))
     assert worst < 0.95, f"prior admits a {worst:.0%} capacity wipeout"

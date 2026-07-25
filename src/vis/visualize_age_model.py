@@ -543,7 +543,8 @@ def reconstruct_simulation(data, params):
         "n50_raw", "allee_gamma",
         "alpha_a", "alpha_j", "alpha_f", "alpha_k",
         "gamma_a_raw", "gamma_j_diff", "gamma_f_raw",
-        "rho", "w_scale", "L_corr", "inv_pop"  # <-- Explicitly tracking the generated inv_pop matrix
+        "rho", "w_scale", "L_corr", "inv_pop",  # <-- Explicitly tracking the generated inv_pop matrix
+        "env_corr_repro_capacity", "env_corr_survival_capacity", "manifold_loadings"
     ]
 
     # Map the AutoDelta '_auto_loc' parameters back to the base model's un-suffixed sample names
@@ -1275,6 +1276,7 @@ def plot_results():
     # 1. Cleanly map the exact point estimates for the environmental profiles
     sim['beta_s'] = sim['w_env'][:, 0]
     sim['beta_r'] = sim['w_env'][:, 1]
+    sim['beta_k'] = sim['w_env'][:, 2]
     allee_gamma_learned = float(sim['allee_gamma'])
     print(f"--- Model Diagnostic: Learned Scaled Allee Gamma is {allee_gamma_learned:.4f} ---")
     

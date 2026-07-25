@@ -1,11 +1,23 @@
 """Map the community-encoder latent Z to per-cell demographic rate fields.
 
 Each year, the latent vector Z (and its path-integrated form Z_disp) is
-projected through learned weights into two habitat manifolds — survival H_s
-and reproduction H_r — then passed through link functions to per-cell
-adult/juvenile survival (S_a, S_j), max fecundity (F_max), carrying capacity
-(K), and journey survival (Q). Runs as a checkpointed ``lax.scan`` over years
-to bound memory when differentiated.
+projected through learned weights into three correlated habitat manifolds --
+survival H_s, reproduction H_r, and capacity H_k -- then passed through link
+functions to per-cell adult/juvenile survival (S_a, S_j), max fecundity (F_max),
+carrying capacity (K), and journey survival (Q). Runs as a checkpointed
+``lax.scan`` over years to bound memory when differentiated.
+
+H_k is new. K previously reused H_r, making it a strictly monotone function of
+F_max, so the disease term below was the ONLY way the two could differ spatially
+-- and it duly saturated absorbing that disagreement. The three manifolds share a
+one-factor prior whose correlations are ordered on purpose: Corr(F_max, K) ~ 0.85
+sits above Corr(F_max, survival) ~ 0.70, since fecundity and capacity are both
+productivity/resource axes. See ``age_priors.sample_priors``.
+
+K also carries a continental, spatially uniform time trend (a few time-centered
+cosines). Without it the model had no way at all to say "modern capacity is below
+1970s capacity" -- which BBS demands, and which has non-disease causes -- except by
+calling it disease.
 
 K additionally receives a mycoplasmal-conjunctivitis effect -- the 1994-
 continental epizootic, which has no covariate of its own in this model (step 4b in
@@ -17,12 +29,14 @@ The effect is a STRUCTURED hypothesis, not a free field:
 
     K = K_base * (1 - severity(x) * gate(x,t) * (1 - recovery(t - arrival)))
 
-    severity(x) = sigmoid(mu_sev + b_late*arrival_decades(x) + sev_basis(x).w_sev)
+    severity(x) = ceiling * sigmoid(mu_sev + b_late*arrival_decades(x) + sev_basis(x).w_sev)
     gate(x,t)   = sigmoid((t - arrival(x) - lag0 - lag_basis(x).w_lag) / tau)
     recovery(a) = rec * (1 - exp(-a / tau_rec)),  a = years since local arrival
 
+where ``severity`` is capped at a configured ``ceiling`` (0.5).
+
 Each piece states a claim: once the front passes a cell, some FRACTION of local
-carrying capacity is removed (prior median 50%); the arrival map's timing is
+carrying capacity is removed (at most the ceiling); the arrival map's timing is
 coarse, so the front's position is fitted with continental and regional slack; the
 hit is not permanent, because exposure builds resilience, so it decays toward
 ``severity*(1-rec)`` over ``tau_rec`` years; and populations reached later were
@@ -46,6 +60,13 @@ built from 967 free cosine coefficients over space x time. Two failures:
    misfit, disease-shaped or not. Constraining its SHAPE is what makes it a
    disease term rather than a spatial escape hatch.
 
+Structure alone was not enough, though. The first structured fit still pinned
+severity at 93% east / 73% west with zero recovery, every parameter 3-4.5 prior SDs
+into its tail -- because the term was still the only channel for two things it
+should not own: the spatial K-vs-Fmax difference (now H_k's job) and the temporal
+capacity step (now the continental trend's job). Hence the ceiling, H_k, and the
+trend together; each alone leaves the other outlets to saturate.
+
 The remaining spatial freedom is two deliberately coarse, land-centered cosine
 fields (~24 coefficients each, ~1000 km scale) that can only redistribute
 severity and timing regionally -- the continental levels belong to ``mu_sev`` and
@@ -59,22 +80,23 @@ contaminating the pattern the term was meant to isolate. It does not bind here:
 the gate is exogenous, so pre-arrival cells and all of 1902-1993 recover
 ``K_base`` exactly, which pins ``alpha_k`` on data the disease term cannot touch.
 """
-import math
-
-import jax.numpy as jnp
-import jax.nn as jnn
-from jax import lax, checkpoint
 import jax.numpy as jnp
 import jax.nn as jnn
 from jax import lax, checkpoint
 
 
 def disease_severity(disease):
-    """Per-cell PEAK fraction of carrying capacity the epizootic removes, in (0,1).
+    """Per-cell PEAK fraction of carrying capacity the epizootic removes.
 
-    ``sigmoid`` is what bounds it: no draw of any parameter can remove more than
-    all of K, and none can ADD capacity, so the term is sign-constrained and
-    annihilation-proof by construction rather than by prior tuning.
+    Bounded in ``(0, ceiling)``. ``sigmoid`` is what makes it a fraction at all --
+    no draw of any parameter can remove more than all of K, and none can ADD
+    capacity -- and ``ceiling`` is a HARD cap on how much of K a disease is
+    permitted to explain. The cap is not decoration: with a prior median of 50% and
+    no cap, the fit drove severity to 93% in the east and 73% in the west with zero
+    recovery, every parameter pinned 3-4.5 prior SDs into its tail. At 178k
+    observations the likelihood gradient dwarfs any prior, so only a structural
+    bound holds. Saturation AT the ceiling is now a DIAGNOSTIC: it means spatial or
+    temporal misfit is still being routed here rather than to the covariates.
 
     Time-independent, and deliberately coarse in space (~24 land-centered cosine
     coefficients). ``b_late`` on centered arrival year (in decades) carries "later
@@ -84,7 +106,7 @@ def disease_severity(disease):
     logit = (disease["mu_sev"]
              + disease["b_late"] * disease["onset_decades"]
              + jnp.dot(disease["sev_basis"].T, disease["w_sev"]))
-    return jnn.sigmoid(logit)
+    return disease["ceiling"] * jnn.sigmoid(logit)
 
 
 def disease_onset_timestep(disease):
@@ -129,6 +151,9 @@ def project_and_scatter_age_structured(
     disease_timestep, disease,
     beta_s,           # 1D feature weights for Survival Suitability (Shape: M)
     beta_r,           # 1D feature weights for Reproductive Suitability (Shape: M)
+    beta_k,           # 1D feature weights for Carrying Capacity (Shape: M)
+    k_trend_basis,    # (n_trend, time) time-centered cosines, continental
+    w_k_trend,        # (n_trend,) weights on that trend
     alpha_a, gamma_a, # Adult survival intercept & slope
     alpha_j, gamma_j, # Juvenile survival intercept & slope
     alpha_f, gamma_f, # Max fecundity intercept & slope
@@ -160,10 +185,14 @@ def project_and_scatter_age_structured(
         z_t = jnp.take(Z_gathered, t_idx, axis=0)
         z_disp_t = jnp.take(Z_disp_gathered, t_idx, axis=0)
 
-        # 2. Compute the 2D Correlated Habitat Manifolds (H_s and H_r) --
+        # 2. Compute the 3 Correlated Habitat Manifolds (H_s, H_r, H_k) --
         # purely covariate-driven (Z.beta), no spatiotemporal term mixed in.
         H_s_local = jnp.dot(z_t, beta_s)
         H_r_local = jnp.dot(z_t, beta_r)
+        # Capacity reads its OWN manifold. It used to reuse H_r, making K a strictly
+        # monotone function of Fmax, so the disease term was the only way their
+        # spatial patterns could differ -- see the module docstring.
+        H_k_local = jnp.dot(z_t, beta_k)
 
         # 3. Path-Integrated Survival Suitability
         # z_disp_t is (N_land, K_kernels, M) -> dot with beta_s (M,) gives (N_land, K_kernels)
@@ -184,7 +213,11 @@ def project_and_scatter_age_structured(
 
         # Reproduction listens to H_r
         F_max_val = jnn.softplus(alpha_f + gamma_f * H_r_local)
-        K_base_val = jnn.softplus(alpha_k + gamma_k * H_r_local)
+        # Continental, spatially uniform capacity drift. Time-centered basis, so
+        # alpha_k still owns the level; this exists so "modern K below 1970s K" has
+        # somewhere to go other than the disease term.
+        k_trend_t = jnp.dot(jnp.take(k_trend_basis, t_idx, axis=1), w_k_trend)
+        K_base_val = jnn.softplus(alpha_k + gamma_k * H_k_local + k_trend_t)
 
         # 4b. Disease effect on K only: a bounded MULTIPLICATIVE rescale (see the
         # module docstring for why the earlier additive-inside-softplus form

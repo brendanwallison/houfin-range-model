@@ -56,10 +56,19 @@ PY="${HOUFIN_VENV}/bin/python"
 # failure worth catching should be caught here.
 echo "=== preflight ==="
 GIT_SHA="$(git rev-parse HEAD)"
-if [ -n "$(git status --porcelain)" ] && [ "$ALLOW_DIRTY" != "1" ]; then
-    echo "ERROR: working tree is dirty. The MAP fingerprint hashes source files, so"
-    echo "editing them mid-sweep makes points incomparable and blocks chained resumes."
-    echo "Commit/stash first, or set ALLOW_DIRTY=1 if you know the edits are inert."
+# Only TRACKED changes under the code/config paths count. A plain
+# `git status --porcelain` also lists untracked files, and SLURM drops job logs
+# (houfin_*.o*) plus 30-second telemetry (gpu_*.csv) straight into this directory,
+# which would make every post-run tree look dirty. What actually matters is that
+# _run_fingerprint hashes source files, so editing one mid-sweep makes points
+# incomparable and blocks chained resumes.
+DIRTY="$(git status --porcelain --untracked-files=no -- src scripts tests config)"
+if [ -n "$DIRTY" ] && [ "$ALLOW_DIRTY" != "1" ]; then
+    echo "ERROR: tracked source/config changes are uncommitted:"
+    echo "$DIRTY"
+    echo "The MAP fingerprint hashes source files, so editing them mid-sweep makes"
+    echo "points incomparable and blocks chained resumes. Commit/stash first, or set"
+    echo "ALLOW_DIRTY=1 if you know the edits are inert."
     exit 1
 fi
 echo "git sha: $GIT_SHA"

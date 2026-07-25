@@ -16,3 +16,10 @@ old/
 hpc/lonestar6.md
 .DS_Store
 docs/img
+
+# SLURM writes job logs and 30-second GPU/host telemetry into the submit dir (the
+# repo). They are run artifacts, not source -- and while untracked they made
+# "is the tree clean?" checks (e.g. submit_juv_mdd_sweep.sh's preflight) fire.
+houfin_*.o*
+houfin_*.e*
+gpu_*.csv

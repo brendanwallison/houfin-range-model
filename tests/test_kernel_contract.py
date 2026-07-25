@@ -85,7 +85,8 @@ def test_contract_rejects_centered_or_truncated_features():
 
 def test_environment_weight_prior_is_iid_across_features():
     tr = handlers.trace(handlers.seed(sample_priors, 3)).get_trace(
-        prior_scale=1.0, M_features=64, N_basis=2, time=2)
+        prior_scale=1.0, M_features=64, time=2,
+        N_sev_basis=2, N_lag_basis=2)
     w_dist = tr["w_env"]["fn"]
     # The feature plate expands one shared bivariate distribution to 64 IID
     # coordinates; it does not introduce feature-specific scales/covariances.

@@ -341,8 +341,8 @@ python scripts/build_disease_arrival_map.py --grid "$HOUFIN_DATA/land_mask/ocean
 `model-ingest` hard-fails if the raster's shape does not match the model grid, so
 a stale map from another resolution cannot silently misplace the epidemic front.
 
-**Re-running just `model-ingest`** (e.g. after a `population_model.st_basis_*`
-frequency change, with `Z`/`Z_disp` unchanged): this stage is numpy/memmap I/O
+**Re-running just `model-ingest`** (e.g. after a
+`population_model.disease_prior.*_space_frequencies` change, with `Z`/`Z_disp` unchanged): this stage is numpy/memmap I/O
 plus a one-time kernel-array build, not real GPU compute, and
 `25_model_prep.slurm` only gates on a GPU when `path-features` is actually
 selected -- so it can run on a lightweight non-GPU queue instead of waiting in
@@ -352,7 +352,7 @@ the GPU queue:
 STAGES=model-ingest QUEUE=vm-small bash scripts/tacc/submit_model_prep.sh
 ```
 
-Any resulting `metadata.pkl`/`st_basis` shape change (e.g. `N_basis`) means
+Any resulting `metadata.pkl` shape change (e.g. `N_sev_basis`) means
 the next MAP run cannot resume an old checkpoint -- it will refuse and tell
 you to pass `HOUFIN_MAP_FRESH=1` for a deliberate fresh fit.
 

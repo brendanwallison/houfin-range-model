@@ -3,12 +3,14 @@ conjunctivitis, on the 27 km model grid.
 
 Why this exists
 ---------------
-The age-structured model has no covariate for the 1994- epizootic, so its effect
-on carrying capacity is currently absorbed by a free spatiotemporal basis
-(``st_basis``/``st_weights``, see src/model/age_fields.py). That basis is active
-from the invasion year onward and is free to *raise* K as well as lower it, so it
-overfits. To constrain it we need an exogenous answer to "when, if ever, had the
-disease reached this pixel?" -- which is what this script produces.
+The age-structured model has no covariate for the 1994- epizootic. Its effect on
+carrying capacity is modeled structurally -- severity(x) x onset_gate(x,t) x
+(1 - recovery) -- and the onset gate needs an exogenous answer to "when, if ever,
+did the disease reach this pixel?", which is what this script produces. Supplying
+that timing from outside the fit is what keeps the term a disease term: without it
+the model would have to discover the wavefront from abundance data alone, and a
+free spatiotemporal field asked to do that instead annihilated eastern carrying
+capacity (see src/model/age_fields.py).
 
 Where the numbers come from
 ---------------------------

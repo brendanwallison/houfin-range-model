@@ -143,8 +143,8 @@ def load_point(entry, results_dir, cell_km=27.0):
                 .get("realized_modern_mean_lambda"),
             "realized_modern_source_fraction": (m.get("realized_source_sink") or {})
                 .get("realized_modern_source_fraction"),
-            "disease_depression_median": (m.get("spatiotemporal_diagnostics") or {})
-                .get("disease_depression_median"),
+            "disease_severity_median": (m.get("disease") or {})
+                .get("disease_severity_median"),
         })
     elif rec["excluded_reason"] is None:
         rec["excluded_reason"] = "no metrics.json"

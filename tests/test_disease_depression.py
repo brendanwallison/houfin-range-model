@@ -238,6 +238,39 @@ def test_prior_scale_tightens_the_disease_priors():
     assert tight.std() < 0.3 * wide.std()
 
 
+def test_k_field_is_rescaled_never_annihilated_end_to_end():
+    """The whole field function: K vs the same run with the disease switched off.
+
+    This is the regression test for the actual production failure. The previous
+    formulation subtracted an unbounded penalty from K's pre-softplus argument, and
+    because fitted K sits where softplus is effectively exp(), that multiplied K by
+    exp(-d) -- driving eastern carrying capacity to ~3% of baseline. Here the same
+    comparison must show a bounded rescale, exact equality before the epizootic
+    window, and no cell ever raised above baseline.
+    """
+    from src.model.age_fields import project_and_scatter_age_structured as project
+
+    T, M, K_kern = 124, 3, 2
+    rng = np.random.default_rng(0)
+    Z = jnp.array(rng.normal(size=(T, N_LAND, M)))
+    Zd = jnp.array(rng.normal(size=(T, N_LAND, K_kern, M)))
+    idx = jnp.arange(N_LAND)
+    rates = (jnp.ones(M) * .1, jnp.ones(M) * .1, 0.5, 0.3, -0.5, 0.4, 2.0, 0.3, 0.5, 0.3)
+
+    d = _disease(mu_sev=0.3, b_late=-0.3, rec=0.4, w_scale=0.3)
+    K_dis = np.asarray(project(T, 40, 60, idx, idx, Z, Zd, DIS_T0, d, *rates)[3])
+    # mu_sev very negative => severity ~ 0 => K_base
+    K_off = np.asarray(project(T, 40, 60, idx, idx, Z, Zd, DIS_T0,
+                               dict(d, mu_sev=-30.0), *rates)[3])
+
+    assert np.array_equal(K_dis[:DIS_T0], K_off[:DIS_T0]), \
+        "pre-1993 K must be untouched EXACTLY -- this is what pins alpha_k"
+    assert (K_dis <= K_off + 1e-9).all(), "the disease term must never raise K"
+    ratio = K_dis / K_off
+    assert ratio.min() > 0.05, f"K annihilated (min ratio {ratio.min():.3f})"
+    assert (K_dis > 0).all() and np.isfinite(K_dis).all()
+
+
 def test_prior_predictive_fraction_never_annihilates_capacity():
     """End-to-end: no prior draw can remove more than ~90% of K."""
     sev_b, lag_b = _basis(4), _basis(4)

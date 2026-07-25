@@ -46,8 +46,8 @@
       "mu_scale": 0.5,
       "severity_budget": 0.75
     },
-    "_st_basis_comment": "Spatiotemporal basis for the disease depression of K only (see age_fields.py); the basis's time axis covers disease_start_year(1993)..end_year, a ~33-year window, so these frequencies are relative to that window and NOT to the full 1902-2025 span (it previously covered invasion_year..end_year, ~86 years). The basis now carries only the epidemic's severity SHAPE -- onset is handled exogenously by the arrival-map gate -- so the budget is rebalanced toward space: space=12 -> ~500km half-wavelength (was 6 -> ~1000km), time=7 -> ~4.7yr half-wavelength (was 20 -> ~4.3yr over the longer window, i.e. temporal resolution is essentially unchanged). N_basis=(space+1)^2*(time+1)-1 = 1351 (was 1028), but the window is 33yr rather than 86, so st_basis VRAM is ~0.50x its previous footprint despite the higher coefficient count.",
-    "st_basis_space_frequencies": 12,
+    "_st_basis_comment": "Spatiotemporal basis for the disease depression of K only (see age_fields.py); the basis's time axis covers disease_start_year(1993)..end_year, a ~33-year window, so these frequencies are relative to that window and NOT to the full 1902-2025 span (it previously covered invasion_year..end_year, ~86 years). The basis now carries only the epidemic's severity SHAPE -- onset is handled exogenously by the arrival-map gate. Frequencies are per-AXIS over the grid extent, so the resolution is anisotropic: space=10 -> ~360km half-wavelength N-S, ~605km E-W (12 gave ~300/~504km; the original 6 gave ~600/~1008km). time=7 -> ~4.7yr half-wavelength (was 20 -> ~4.3yr over the longer window, i.e. temporal resolution is essentially unchanged). N_basis=(space+1)^2*(time+1)-1 = 967, and over the 33yr window st_basis is ~2.05 GiB at N_land=17209 (vs 2.86 at space=12, and ~8 GiB under the old 86yr/space=6 design).",
+    "st_basis_space_frequencies": 10,
     "st_basis_time_frequencies": 7
   },
   "map": {

@@ -41,7 +41,10 @@ def test_latent_width_and_gp_contract_agree_across_configs():
     age = load_age_model_config()
     width = encoder["esk"]["spacetime"]["latent_dim"]
     assert width == encoder["desk"]["latent_dim"] == age["source_latent_dim"] == 64
-    assert age["latent_dim"] == 16
+    # latent_dim is the supported, config-driven VRAM tradeoff (16 -> 24 -> 64 are
+    # all legitimate), so assert the CONTRACT -- a positive top-eigenfeature
+    # truncation of the 64-D source -- rather than any one chosen width.
+    assert 0 < age["latent_dim"] <= age["source_latent_dim"]
     assert encoder["esk"]["spacetime"]["landmark_mode"] == "random"
     assert age["kernel_contract"]["kernel"] == "ruzicka"
     assert age["kernel_contract"]["centered"] is False

@@ -81,8 +81,8 @@
     "avonet_csv": "${HOUFIN_DATA}/avonet/AVONET_Comparison_WithPhylogeny_Urban.csv"
   },
   "run_names": {
-    "_comment": "run_7 tightens up the prior on disease strength",
-    "map": "age_map_{precision}_run_7",
+    "_comment": "run_8 higher latent dim",
+    "map": "age_map_{precision}_run_8",
     "svi": "age_vi_{precision}_run_5",
     "hmc": "age_hmc_{precision}_trial_3",
     "hmc_svi_source": "age_vi_{precision}_run_2",
@@ -90,7 +90,7 @@
     "resume_svi_from_map": "age_map_{precision}_run_4",
     "resume_hmc_out": "age_hmc_{precision}_from_map",
     "resume_hmc_from_map": "age_map_{precision}_run_4",
-    "vis_map": "age_map_{precision}_run_7",
+    "vis_map": "age_map_{precision}_run_8",
     "vis_svi": "age_vi_{precision}_run_5",
     "vis_hmc": "age_hmc_{precision}_trial_3",
     "vis_community": "age_map_{precision}_run_6"

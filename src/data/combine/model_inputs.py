@@ -487,11 +487,23 @@ def ingest_data():
     print(f"  Disease onset: arrival years "
           f"{disease_onset.min() + start_year_model:.1f}-"
           f"{disease_onset.max() + start_year_model:.1f} over {N_land} land cells")
-    # Arrival year centered and scaled to DECADES, so the severity model can carry
-    # "populations reached later were hit less hard" (more genetic diversity in the
-    # west) as a single coefficient instead of spending spatial-field capacity on a
-    # pattern that is essentially the arrival gradient itself.
-    disease_onset_decades = ((disease_onset - disease_onset.mean()) / 10.0).astype(np.float32)
+    # Arrival timestep anchored at the EPIDEMIC'S OWN historical start
+    # (disease_start_year, 1993 -- the winter the poultry strain first appeared),
+    # scaled to DECADES: "how many decades after the epidemic began did the front
+    # reach this cell". This is a PATHOGEN-ATTENUATION / host-adaptation hypothesis --
+    # Mycoplasma gallisepticum in House Finches is documented to have hit hardest in
+    # its first years and to have grown milder since, as pathogen and host
+    # co-evolved -- so a cell reached later encountered an already-weaker epidemic,
+    # for a reason that has nothing to do with THAT cell's own population genetics.
+    # Anchored at dis_timestep rather than centered on the across-cell mean arrival
+    # time: the mean is an arbitrary statistical reference (it shifts if the arrival
+    # map or grid extent changes) and, because the front moves west, is
+    # near-synonymous with a west/east geography split -- exactly the DISTINCT
+    # native-lineage claim now carried by its own covariate (see
+    # age_priors.disease_b_native / native_shape). Anchoring at the true 1993 start
+    # keeps this term a calendar-time trend, not a second copy of that geography
+    # split under a different name.
+    disease_onset_decades = ((disease_onset - dis_timestep) / 10.0).astype(np.float32)
 
     # 5c. Continental time basis for K's drift, over the FULL timeline (unlike the
     # disease term, capacity drift is not tied to the epizootic window).

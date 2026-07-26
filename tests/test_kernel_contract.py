@@ -232,9 +232,10 @@ def test_seeds_start_below_carrying_capacity_by_construction():
     on and step 0 of the fit scores badly. As a fraction that is unrepresentable.
 
     The native seed is a fraction of LOCAL K_base at t=0 (so it tracks the capacity
-    the covariates imply for those specific cells); the invasion pulse is a fraction
-    of the continental level, which is equivalent at initialization and is a release
-    event rather than an equilibrium.
+    the covariates imply for those specific cells) and equals 1.0, because a range at
+    equilibrium sits at its capacity; the invasion pulse is a fraction of the
+    continental level, which is equivalent at initialization and is a release event
+    rather than an equilibrium.
     """
     pop = load_age_model_config()["population_model"]
     core_frac = float(pop["initpop_seed"]["core_fraction_of_local_capacity"])
@@ -243,11 +244,15 @@ def test_seeds_start_below_carrying_capacity_by_construction():
 
     assert 0.0 < core_frac <= 1.0, "the native seed must not exceed local capacity"
     assert 0.0 < pulse_frac < 1.0, "the invasion pulse must start below capacity"
-    # Seeding at the dispersal target means the native range starts migration-neutral
-    # rather than either dumping emigrants or acting as an implausible vacuum.
-    assert abs(core_frac - target) < 1e-9, (
-        f"core seed fraction {core_frac} should equal "
-        f"dispersal_target_capacity_fraction {target}")
+    # The native range starts AT capacity (1.0), which is above the emigration logit's
+    # centre, so it is a net exporter in year one -- see the config's _initpop_comment
+    # for why that is deliberate. The contract is the ORDERING (a range at equilibrium
+    # is at least as dense as the dispersal target), not equality: an earlier version
+    # pinned core_frac == target to make the seed migration-neutral.
+    assert core_frac >= target, (
+        f"core seed fraction {core_frac} should be at least "
+        f"dispersal_target_capacity_fraction {target}: a native range at equilibrium "
+        f"is not a net importer")
 
     # No absolute or continental-level seed key may return: either needs manual
     # rechecking whenever the capacity level moves.

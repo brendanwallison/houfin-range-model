@@ -57,7 +57,15 @@ RPID_STANDARD = 101
 START_YEAR = _TL["first_year"]                 # 1902
 END_YEAR = _TL["end_year"]                      # 2025
 PSEUDO_ZERO_END_YEAR = _TL["invasion_year"] - 1  # last pre-invasion year (1939)
-BUFFER_DISTANCE_METERS = 1000 * 1000            # 1000 km "uninvaded east" buffer
+# Halo around the native hull inside which no pre-invasion zero is asserted. It was
+# 1000 km, which is wider than the Great Plains themselves: measured from a CONVEX hull
+# that already reaches the western Plains, a 1000 km halo left the entire barrier and
+# a good part of the Midwest with NO pre-1940 constraint at all, so a westward-origin
+# front could occupy the Plains from 1902 free of charge. 700 km still clears the
+# native range's real fringe (the hull is a lower bound on it) while putting the
+# barrier itself back inside the zero-constrained region, which is where the evidence
+# for a low-permeability Plains has to come from.
+BUFFER_DISTANCE_METERS = 700 * 1000             # 700 km "uninvaded east" halo
 NATIVE_RANGE_MAX_YEAR = 1970                    # pre-1970 obs define the native range
 
 QUALITY_STANDARD = 0
@@ -255,7 +263,7 @@ def generate_core_margin_initialization(obs_df, ny, nx, transform, land_mask):
        native range was seeded at a third of its actual abundance -- and against a
        fitted capacity of ~10 counts it was simultaneously 2x ABOVE capacity.
        Emitting counts and converting once, in model_inputs, fixes both.
-    4. Buffer the native hull by 1000 km → the uninvaded east.
+    4. Buffer the native hull by BUFFER_DISTANCE_METERS (700 km) → the uninvaded east.
     5. Emit a zero count at every uninvaded cell for each pre-invasion year.
     """
     print("Generating core/margin map and pseudo-zeros...")
@@ -281,42 +289,42 @@ def generate_core_margin_initialization(obs_df, ny, nx, transform, land_mask):
     mask_margin = _rasterize(hull_margin) & land_mask
     mask_core = _rasterize(hull_core) & land_mask
 
-    # A DIMENSIONLESS shape: core = 1, margin = the observed margin:core count ratio.
-    # The absolute scale is applied in the model as a fraction of the fitted capacity
-    # level (see age_priors), because an absolute seed cannot stay coherent with a
-    # capacity level that moves -- which it did, by 97x, and the seed was not
-    # rechecked. A RATIO is immune: it is free of both the gauge and the level.
+    # A DIMENSIONLESS shape: core = 1, margin = initpop_seed.margin_fraction_of_core.
+    # The absolute scale is applied in the model as a fraction of LOCAL K_base (see
+    # age_priors), because an absolute seed cannot stay coherent with a capacity level
+    # that moves -- which it did, by 97x, and the seed was not rechecked. A fraction is
+    # immune: it is free of both the gauge and the level.
     #
-    # The ratio is measured over the cells that actually fall in each RASTERIZED HULL
-    # REGION, not from chosen quantiles of the native distribution. That matters
-    # because the core hull is the CONVEX hull of the >75th-percentile points, so it
-    # also swallows sparse cells sitting inside it -- its observed median is 28.6
-    # counts against a 38.0 threshold. Quantile-picking cannot know that: an earlier
-    # version used q25/q50 = 0.32 purely because those quantiles were to hand, which
-    # matched neither mask. Measured properly the regions give 4.00 / 28.62 = 0.14.
+    # WHY THE MARGIN FRACTION IS NO LONGER MEASURED FROM THE COUNTS. Earlier versions
+    # derived it from observed abundance -- q25/q50 = 0.32, then 4.00/28.62 = 0.14 over
+    # the rasterized hull regions. Both DOUBLE-COUNT the habitat gradient: fringe cells
+    # hold fewer birds largely because the fringe is poorer habitat, and K_base already
+    # says so, so multiplying an observed abundance ratio ON TOP of local K penalizes
+    # the same cells twice. It also has a specific bad consequence for the barrier
+    # question: at initialization H_k ~ 0, so every native cell has K = k_level and the
+    # ratio is applied undiluted -- at 0.14 the Plains-facing eastern MARGIN, which is
+    # exactly the front that would push into the barrier, starts at N/K - 0.8 = -0.66 on
+    # the emigration logit and spends its first decades filling up instead of pushing.
+    # A near-vacuum front is then an alternative pathway to "no crossing" that costs the
+    # fit nothing, which is precisely the distortion this rebalance is trying to remove.
+    #
+    # 0.5 is deliberately a round number and not an estimate: historic 1902 abundances
+    # are unknown (pre-1970 BBS counts are a proxy for WHERE the native range was, not
+    # how dense it was), so this is safety margin -- a fringe genuinely sparser than the
+    # core, but not so sparse that emptiness substitutes for a barrier. The observed
+    # quantiles are still printed so the assumption can be re-examined.
     per_cell = locs.groupby(["row", "col"])["SpeciesTotal"].mean()
-    idx = np.array(list(per_cell.index))
-    if len(idx):
-        rr, cc = idx[:, 0], idx[:, 1]
-        core_obs = per_cell.values[mask_core[rr, cc]]
-        margin_obs = per_cell.values[mask_margin[rr, cc] & ~mask_core[rr, cc]]
+    if len(per_cell):
         qs = np.percentile(per_cell, [10, 25, 50, 75, 90])
         print("  Native occupied-cell counts q10/q25/q50/q75/q90: "
               + "/".join(f"{q:.1f}" for q in qs))
-        if len(core_obs) and len(margin_obs):
-            margin_ratio = float(np.clip(
-                np.median(margin_obs) / max(np.median(core_obs), 1e-9), 0.01, 1.0))
-            print(f"  Hull regions: core median {np.median(core_obs):.1f} counts "
-                  f"(n={len(core_obs)}), margin-only {np.median(margin_obs):.1f} "
-                  f"(n={len(margin_obs)})")
-        else:
-            margin_ratio = 0.15
-            print("  [warn] a hull region has no observed cells; margin ratio defaulted")
-    else:
-        margin_ratio = 0.15
+    _seed_cfg = load_age_model_config()["population_model"]["initpop_seed"]
+    margin_ratio = float(_seed_cfg["margin_fraction_of_core"])
+    if not 0.0 < margin_ratio <= 1.0:
+        raise ValueError(f"margin_fraction_of_core must be in (0, 1]; got {margin_ratio}")
     core_counts, margin_counts = 1.0, margin_ratio
     print(f"  Init SHAPE (dimensionless): core=1.0, margin={margin_ratio:.2f} "
-          f"(measured over the hull regions themselves)")
+          f"(initpop_seed.margin_fraction_of_core)")
 
     initpop_counts = np.zeros((ny, nx), dtype=np.float32)
     initpop_counts[mask_margin] = margin_counts

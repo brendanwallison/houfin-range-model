@@ -49,7 +49,8 @@ The effect is a STRUCTURED hypothesis, not a free field:
     K = K_base * (1 - severity(x) * gate(x,t) * (1 - recovery(t - arrival)))
 
     severity(x) = ceiling * modifier(x) * K_base^n / (K_base^n + K_half^n)   # density-dependent
-    modifier(x) = min(1, 2*sigmoid(mu_sev + b_late*arrival_decades(x) + sev_basis(x).w_sev))
+    modifier(x) = sigmoid(mu_sev + b_late*decades_since_epidemic_start(x)
+                          + b_native*native_shape(x) + sev_basis(x).w_sev)
     gate(x,t)   = sigmoid((t - arrival(x) - lag0 - lag_basis(x).w_lag) / tau)
     recovery(a) = rec * (1 - exp(-a / tau_rec)),  a = years since local arrival
 
@@ -65,9 +66,36 @@ carrying capacity is removed, scaled by how dense that population can get and
 capped at the ceiling; the arrival map's timing is
 coarse, so the front's position is fitted with continental and regional slack; the
 hit is not permanent, because exposure builds resilience, so it decays toward
-``severity*(1-rec)`` over ``tau_rec`` years; and populations reached later were
-plausibly hit less hard (more genetic diversity in the west), carried by the
-single coefficient ``b_late`` on arrival year.
+``severity*(1-rec)`` over ``tau_rec`` years; and TWO further, mechanistically
+distinct claims each get their own coefficient rather than being folded into one:
+
+* ``b_late`` on ``onset_decades`` -- decades since the epidemic's OWN historical
+  start (``disease_start_year``, 1993), not since any individual cell's local
+  arrival. Mycoplasmal conjunctivitis in House Finches is documented to have hit
+  hardest in its first years and grown milder since, as pathogen and host
+  co-evolved (attenuation/adaptation over the epidemic's own history): a cell
+  reached by the front a decade after 1993 met an already-weaker epidemic than a
+  cell reached in 1993 itself, for a reason that has nothing to do with THAT
+  cell's population genetics. This is a CALENDAR-TIME trend, the same for every
+  cell reached in a given decade regardless of where it sits.
+* ``b_native`` on ``native_shape`` -- the SAME dimensionless core/margin map used
+  to seed 1902 abundance (``bbs.generate_core_margin_initialization``): "was this
+  cell part of the pre-1940 native range." The west coast lineage is genetically
+  diverse (the ancestral range) rather than a single-founder 1940 introduction,
+  and was documented to collapse far less than the east's -- a POPULATION-ORIGIN
+  claim, independent of when the front happened to arrive. SIGN-CONSTRAINED to
+  <= 0 (``-softplus(raw)``): native lineage may only suppress severity, never
+  amplify it, since we have no comparable evidence that introduced lineage should
+  be hit HARDER than a geography/timing/density-matched native cell, only that
+  native lineage was hit less.
+
+The two are collinear by construction (the west is both native AND late-arriving,
+since the front happens to move west) -- that is expected, not a bug, for the
+same reason ``b_late``/density collinearity below is expected: they are distinct
+mechanisms that happen to share a geography, not the same mechanism twice. Do NOT
+read ``b_late`` as a west/east proxy -- anchoring it at ``disease_start_year``
+rather than the across-cell mean arrival time is what keeps it a calendar-time
+claim instead of a second copy of ``native_shape`` under a different name.
 
 **Why this replaced a generic spatiotemporal basis.** The previous design
 subtracted an unbounded ``d >= 0`` from K's pre-softplus argument, with ``d``
@@ -130,13 +158,20 @@ def disease_severity(disease, K_base):
     asserted: ``k_half`` is the density at half-maximum severity and ``n`` the
     steepness (n~1 smooth saturation, n~3 a sharp invasion threshold).
 
-    ``modifier(x)`` retains the smooth regional field and the arrival-order
-    coefficient, as a multiplicative adjustment in (0, 1] around the
-    density-driven value. ``b_late`` is now strongly collinear with the density
-    term (the east is both early-arriving and dense) and is priored tightly for
-    that reason; it is kept because arrival order and genetic diversity are
-    genuinely distinct from density, so a strong fitted ``b_late`` ALONGSIDE the
-    density term would be informative rather than redundant.
+    ``modifier(x)`` retains the smooth regional field, the epidemic-attenuation
+    coefficient, and the native-lineage coefficient, as a multiplicative
+    adjustment in (0, 1] around the density-driven value. ``b_late`` (on decades
+    since ``disease_start_year``, NOT since a cell's own local arrival -- a
+    calendar-time pathogen-attenuation/host-adaptation trend, see the module
+    docstring) is now strongly collinear with the density term (the east is both
+    early-arriving and dense) and is priored tightly for that reason; it is kept
+    because epidemic-history timing and density are genuinely distinct
+    mechanisms, so a strong fitted ``b_late`` ALONGSIDE the density term would be
+    informative rather than redundant. ``b_native`` is collinear with BOTH --
+    the west is native, late-arriving, and sparse -- but states a mechanistically
+    distinct claim again (population origin/genetic diversity, not epidemic
+    timing or density) and is the only one of the three constrained in SIGN:
+    native lineage can only lower severity (see the module docstring).
 
     The ``ceiling`` is load-bearing for identifiability, not just plausibility:
     ``K = K_base * (1 - severity(K_base))`` must be monotone in ``K_base``, else
@@ -159,6 +194,7 @@ def disease_severity(disease, K_base):
     modifier = jnn.sigmoid(
         disease["mu_sev"]
         + disease["b_late"] * disease["onset_decades"]
+        + disease["b_native"] * disease["native_shape"]
         + jnp.dot(disease["sev_basis"].T, disease["w_sev"]))
     n = disease["hill_n"]
     density_term = K_base ** n / (K_base ** n + disease["k_half"] ** n)

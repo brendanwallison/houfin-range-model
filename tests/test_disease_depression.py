@@ -40,18 +40,21 @@ def _basis(n_freq=3, n_land=N_LAND, seed_val=0):
     return generate_spatial_basis(40, 60, rows, cols, n_freq)
 
 
-def _disease(mu_sev=0.0, b_late=0.0, rec=0.4, tau_rec=12.0, tau=1.5,
-             lag0=0.0, w_scale=0.0, seed_val=0, ceiling=1.0,
+def _disease(mu_sev=0.0, b_late=0.0, b_native=0.0, native_shape=None, rec=0.4,
+             tau_rec=12.0, tau=1.5, lag0=0.0, w_scale=0.0, seed_val=0, ceiling=1.0,
              k_half=0.4, hill_n=1.5):
     sev_b, lag_b = _basis(3, seed_val=seed_val), _basis(3, seed_val=seed_val)
     rng = np.random.default_rng(seed_val + 1)
     onset = jnp.array(np.linspace(92.0, 105.0, N_LAND))  # arrival, timestep units
+    if native_shape is None:
+        native_shape = jnp.zeros(N_LAND)  # default: no native lineage anywhere
     return {
         "sev_basis": jnp.array(sev_b),
         "lag_basis": jnp.array(lag_b),
         "onset": onset,
         "onset_decades": (onset - onset.mean()) / 10.0,
-        "mu_sev": mu_sev, "b_late": b_late,
+        "native_shape": native_shape,
+        "mu_sev": mu_sev, "b_late": b_late, "b_native": b_native,
         "w_sev": jnp.array(rng.normal(0, w_scale, sev_b.shape[0])),
         "lag0": lag0,
         "w_lag": jnp.array(rng.normal(0, w_scale, lag_b.shape[0])),
@@ -164,7 +167,9 @@ def test_recovery_is_monotone_after_arrival():
 # ------------------------------------------------------- the late-arrival term
 
 def test_late_arrival_coefficient_makes_later_populations_milder():
-    """The western-genetic-diversity hypothesis, as one coefficient."""
+    """The epidemic-attenuation hypothesis: milder for cells reached later in the
+    epidemic's own history (production anchors this at disease_start_year, not at
+    any cell's local arrival or at population genetics -- see age_fields.py)."""
     d = _disease(b_late=-0.5, w_scale=0.0)
     sev = np.asarray(disease_severity(d, K_BASE))
     onset = np.asarray(d["onset"])
@@ -174,6 +179,40 @@ def test_late_arrival_coefficient_makes_later_populations_milder():
     d_pos = _disease(b_late=+0.5, w_scale=0.0)
     sev_pos = np.asarray(disease_severity(d_pos, K_BASE))[order]
     assert sev_pos[-1] > sev_pos[0]
+
+
+# ------------------------------------------------------ native-lineage term
+
+def test_native_lineage_suppresses_severity_where_shape_is_high():
+    """The distinct, origin-based western-genetic-diversity claim.
+
+    native_shape marks the pre-1940 native range (1 in the core, a fraction at
+    the fringe, 0 elsewhere) independent of when the epizootic front actually
+    reached a cell -- distinct from the timing-based b_late coefficient above.
+    """
+    shape = jnp.array(np.linspace(0.0, 1.0, N_LAND))  # 0 (introduced) .. 1 (native core)
+    d = _disease(b_native=-0.7, native_shape=shape, w_scale=0.0)
+    sev = np.asarray(disease_severity(d, K_BASE))
+    order = np.argsort(np.asarray(shape))
+    # Higher native_shape -> lower severity, monotonically (constant K_base, no
+    # other spatial term active).
+    assert np.all(np.diff(sev[order]) <= 1e-9)
+    assert sev[order][-1] < sev[order][0]
+
+
+def test_native_lineage_prior_is_sign_constrained_to_suppress_only():
+    """b_native = -softplus(raw) can never be positive, for any raw draw.
+
+    This is the structural claim: native lineage may only suppress severity,
+    never amplify it. A free-signed coefficient here would let the fit call the
+    east's collapse "amplification by non-native lineage" -- a claim the config
+    documents no evidence for -- instead of "less suppression than the west".
+    """
+    with seed(rng_seed=0):
+        tr = trace(sample_priors).get_trace(prior_scale=1.0, M_features=4, time=10,
+                                            N_sev_basis=9, N_lag_basis=9)
+    b_native = float(tr["disease_b_native"]["value"])
+    assert b_native <= 0.0
 
 
 # --------------------------------------------------------- basis conditioning
@@ -365,10 +404,11 @@ def test_realized_capacity_stays_monotone_in_baseline_capacity(hill_n):
     n_cells = 4000
     Kb = np.linspace(1e-3, 20.0, n_cells)
     d = _disease(k_half=0.4, hill_n=hill_n, w_scale=0.0, mu_sev=20.0, ceiling=ceiling)
-    # Size the (unused, zero-weight) field to the sweep so shapes broadcast.
+    # Size the (unused, zero-weight) fields to the sweep so shapes broadcast.
     d["sev_basis"] = jnp.zeros((1, n_cells))
     d["w_sev"] = jnp.zeros(1)
     d["onset_decades"] = jnp.zeros(n_cells)
+    d["native_shape"] = jnp.zeros(n_cells)
     K = jnp.asarray(Kb) * (1.0 - disease_severity(d, jnp.asarray(Kb)))
     assert np.all(np.diff(np.asarray(K)) > 0), \
         f"K(K_base) is non-monotone at n={hill_n}, ceiling={ceiling}"

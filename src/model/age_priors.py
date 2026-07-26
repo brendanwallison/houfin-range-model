@@ -268,14 +268,40 @@ def sample_priors(prior_scale=1.0, M_features=None, time=None,
         "disease_mu_sev",
         dist.Normal(float(_p["mu_loc"]), float(_p["mu_scale"]) * prior_scale),
     )
-    # Later-arriving populations plausibly hit less hard (more genetic diversity in
-    # the west). One coefficient on centered arrival year, per decade -- cheaper
-    # and far more interpretable than asking the spatial field to rediscover a
-    # pattern that is essentially the arrival gradient.
+    # EPIDEMIC-ATTENUATION: cells reached later in the epidemic's own history
+    # (decades after disease_start_year=1993, NOT decades after that cell's own
+    # local arrival -- see model_inputs' disease_onset_decades) were plausibly hit
+    # less hard, because the documented pattern for mycoplasmal conjunctivitis is
+    # pathogen/host co-evolution making it progressively milder since 1993 -- a
+    # calendar-time trend, not a claim about any cell's own population genetics
+    # (that is disease_b_native below). One coefficient per decade -- cheaper and
+    # far more interpretable than asking the spatial field to rediscover a pattern
+    # that is essentially the epidemic's own age.
     priors['disease_b_late'] = numpyro.sample(
         "disease_b_late",
         dist.Normal(float(_p["late_arrival_loc"]),
                     float(_p["late_arrival_scale"]) * prior_scale),
+    )
+    # NATIVE-LINEAGE resistance: the west coast population is genetically diverse
+    # (the ancestral range), unlike the east's single-founder 1940 introduction, and
+    # was documented to collapse far less under the epizootic. This is a DISTINCT
+    # claim from b_late above -- population origin, not arrival timing -- carried by
+    # its own coefficient on native_shape (the same core/margin map used to seed 1902
+    # abundance: 1 in the native core, margin_fraction_of_core at the fringe, 0
+    # elsewhere). SIGN-CONSTRAINED via -softplus(raw) <= 0: native lineage may only
+    # SUPPRESS severity, never amplify it -- the documented asymmetry is one-
+    # directional (west spared, not "east extra hit"), and constraining the sign is
+    # what turns "the west did less badly" from a pattern the fit might or might not
+    # find into a structural, falsifiable claim (see age_fields.py's module
+    # docstring). raw_loc=0 puts the prior median suppression at softplus(0)=0.69
+    # logit units in the native core, comparable in scale to the modifier's other
+    # terms; raw_scale=0.7 lets the fit push that from near 0 to a strong effect.
+    priors['disease_b_native'] = numpyro.deterministic(
+        "disease_b_native",
+        -jnn.softplus(numpyro.sample(
+            "disease_b_native_raw",
+            dist.Normal(float(_p["native_resistance_raw_loc"]),
+                        float(_p["native_resistance_raw_scale"]) * prior_scale))),
     )
     # Regional severity deviation. Land-centered basis (see
     # model_inputs.generate_spatial_basis), so these can only redistribute around
@@ -481,6 +507,13 @@ def build_model_2d(data, prior_scale=1.0):
                            N_sev_basis=data['N_sev_basis'],
                            N_lag_basis=data['N_lag_basis'])
 
+    # Native-lineage shape: the SAME dimensionless core/margin map used to seed 1902
+    # abundance (see age_priors' initpop comment and bbs.generate_core_margin_init),
+    # reused here as the covariate for disease_b_native. Computed once, before the
+    # disease dict, and reused again below for the initpop seed so the two uses can
+    # never drift onto different arrays.
+    native_shape = data['initpop_latent'][land_rows, land_cols]
+
     # Bundle the disease term's data and parameters. Grouping them keeps
     # project_and_scatter_age_structured's signature from growing another eight
     # positional arguments, and lets the field helpers in age_fields.py be called
@@ -490,8 +523,10 @@ def build_model_2d(data, prior_scale=1.0):
         "lag_basis": data['disease_lag_basis'],
         "onset": data['disease_onset'],
         "onset_decades": data['disease_onset_decades'],
+        "native_shape": native_shape,
         "mu_sev": priors['disease_mu_sev'],
         "b_late": priors['disease_b_late'],
+        "b_native": priors['disease_b_native'],
         "w_sev": priors['disease_w_sev'],
         "lag0": priors['disease_lag0'],
         "w_lag": priors['disease_w_lag'],
@@ -541,8 +576,10 @@ def build_model_2d(data, prior_scale=1.0):
     numpyro.deterministic("K_base_flat", Kbase_flat)
 
     # NATIVE-RANGE SEED, as a fraction of LOCAL capacity in the first model year.
-    # data['initpop_latent'] is a dimensionless SHAPE (core=1, margin=the observed
-    # margin:core ratio) marking WHERE the 1902 native range was; the amplitude comes
+    # data['initpop_latent'] is a dimensionless SHAPE (core=1, margin=
+    # initpop_seed.margin_fraction_of_core) marking WHERE the 1902 native range was --
+    # the contrast is assumed, not measured, because an observed abundance ratio
+    # double-counts the habitat gradient K_base already carries; the amplitude comes
     # from K_base itself, so the seed automatically tracks whatever capacity the
     # covariates imply for those cells.
     #
@@ -559,11 +596,16 @@ def build_model_2d(data, prior_scale=1.0):
     # modest fraction of it, and at the optimum it scales with the fitted capacity of
     # those specific cells.
     #
-    # 0.8 is deliberately dispersal_target_capacity_fraction: that is the N/K at which
-    # the emigration logit is centered, so the native range starts migration-neutral
-    # rather than either dumping emigrants or being an implausible vacuum.
-    _seed_shape = data['initpop_latent'][land_rows, land_cols]
-    _seed_flat = (_seed_shape * Kbase_flat[0]
+    # The fraction is 1.0: a native range at equilibrium since long before 1902 starts
+    # AT its capacity, not below it. Since dispersal_target_capacity_fraction is 0.8,
+    # that puts the seed at N/K - 0.8 = +0.2 on the emigration logit, i.e. the native
+    # range is a NET EXPORTER from year one. Deliberate: the thing to be explained is
+    # that an exporting western population still did not cross the Great Plains for
+    # eighty years, so the barrier has to be paid for by the pre-invasion pseudo-zeros
+    # (bbs.py) and the covariates, not by a native range too weak to push.
+    # Reuse native_shape (computed above, before the disease dict) rather than
+    # re-slicing initpop_latent -- one array, two uses, so they cannot drift apart.
+    _seed_flat = (native_shape * Kbase_flat[0]
                   * float(_INITPOP_SEED["core_fraction_of_local_capacity"]))
     initpop_seeded = numpyro.deterministic(
         "initpop_seeded",

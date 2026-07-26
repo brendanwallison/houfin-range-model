@@ -41,12 +41,169 @@ def realized_equilibrium(Sa, Sj, Fmax, K, allee_gamma):
     Allee factor -- it is the REALIZED counterpart, always <= the fundamental
     niche's lambda for the same Sa/Sj/Fmax (K and the Allee effect only ever
     shrink, never expand, the demographically viable area).
+
+    DO NOT THRESHOLD ``lambda_realized`` AT 1 to classify source vs sink. ``c`` is
+    solved so lambda = 1 at N = K, so this returns exactly 1 wherever the Allee
+    factor saturates -- the bound above is an equality there, not slack. Which side
+    of 1 such a cell lands on is decided by the ``1e-6`` guard in ``1 - Sa + 1e-6``,
+    not by demography. Use :func:`allee_viability` for that classification. What
+    ``lambda_realized`` legitimately measures is the SHORTFALL below 1: the
+    fractional growth-rate cost the Allee effect imposes at carrying capacity.
     """
     c, F_at_K, lam, rho = equilibrium_age_quantities(
         jnp.asarray(Sa), jnp.asarray(Sj), jnp.asarray(Fmax),
         jnp.asarray(K), jnp.asarray(allee_gamma),
     )
     return np.asarray(c), np.asarray(F_at_K), np.asarray(lam), np.asarray(rho)
+
+
+def allee_viability(Sa, Sj, Fmax, K, allee_gamma, n_grid=512):
+    """Does a positive equilibrium exist? The Allee sanity check on the niche.
+
+    THE QUESTION. ``local_growth_lambda`` gives the FUNDAMENTAL niche: is habitat
+    good enough to grow, ignoring density. But a cell can pass that test and still
+    be uninhabitable because K is so small the population never escapes the
+    mate-finding Allee regime. This function answers "given this K, can the cell
+    sustain a population at ANY density?"
+
+    THE DERIVATION, entirely from the forward model's own one-year update
+    (``age_forward.reproduction_age_structured``). Realized fecundity at density N:
+
+        F(N) = Fmax / (1 + c*N/K) * (1 - exp(-allee_gamma*N))
+               \\_____crowding____/   \\______mate finding______/
+
+    Freezing N makes the update linear with projection matrix
+    ``[[Sa, Sj], [F(N)*Sa, 0]]`` (the census order documented in
+    ``local_growth_lambda``), whose characteristic polynomial is
+    ``p(lam) = lam^2 - Sa*lam - F(N)*Sa*Sj``. It opens upward with a single
+    positive root, so that root exceeds 1 exactly when ``p(1) < 0``:
+
+        lambda(N) > 1   <=>   F(N) > (1 - Sa) / (Sa * Sj)  ==  F_replacement
+
+    which is just R0 > 1: an adult lives ``1/(1-Sa)`` expected years, makes F
+    juveniles a year, each recruiting with probability Sj, so lifetime recruits
+    per adult is ``F*Sa*Sj/(1-Sa)``.
+
+    F(N) is NON-MONOTONIC -- rising in N through mate finding, falling through
+    crowding -- so it peaks at an interior density. The cell is viable iff even
+    its best density clears replacement:
+
+        viable   <=>   max_N F(N) > F_replacement
+
+    That is the saddle-node (fold) condition: above it there are two equilibria,
+    an unstable Allee threshold N_crit and a stable one near K; at it they collide
+    and annihilate; below it the population declines from every starting density,
+    however many birds arrive. When K is large the Allee factor saturates (scale
+    ``1/allee_gamma``) long before crowding bites, so ``max F ~ Fmax`` and any
+    fundamentally-suitable cell is viable. As K shrinks toward ``1/allee_gamma``
+    the brake engages while mate finding is still poor, ``max F`` never reaches
+    replacement, and the cell is Allee-dead despite ``lambda_fundamental > 1``.
+
+    WHY NOT EVALUATE AT N = K, as ``realized_equilibrium`` does. ``c`` is defined
+    by ``Fmax/(1+c) = F_replacement`` (see ``equilibrium_age_quantities``), i.e.
+    it is solved so lambda = 1 at N = K. So ``lambda(K) == 1`` identically, up to
+    the ``1e-6`` guard in ``1 - Sa + 1e-6``, and thresholding it at 1 classifies
+    on that regularizer rather than on biology: it demanded the Allee suppression
+    at K fall below ~2.5e-6, putting the contour at K ~ 3.7 route counts when the
+    true fold sits near 0.5-1.2. This criterion has no such free constant.
+
+    Returns a dict of arrays broadcast to the inputs' shape: ``viable``,
+    ``F_peak``, ``N_peak``, ``F_replacement``, ``suppression_at_K``
+    (``1 - allee_factor(K)``, i.e. the fractional fecundity cost of the Allee
+    effect at carrying capacity -- how close the cell sits to the edge),
+    ``fundamental_viable`` (``c > 0``, the density-free test, for contrast), and
+    the two equilibria bracketing the viable interval:
+
+    * ``N_crit`` -- the LOWER root of ``F(N) = F_replacement``. Unstable: below it
+      the population declines to zero, above it grows toward ``N_star``. This is
+      the Allee threshold a propagule must exceed to establish, so it is the
+      denominator of any propagule-pressure or invasion-pinning calculation.
+    * ``N_star`` -- the UPPER root. Stable, and slightly BELOW K rather than at it,
+      because ``F(K) = F_replacement * allee(K)`` and ``allee(K) < 1``.
+
+    Both are NaN where the cell is not viable (no roots exist -- the fold). They
+    are read off the same scan by locating the sign changes of ``F - F_repl`` and
+    interpolating linearly in ``log N``, so their accuracy is the grid's ~1.4%
+    spacing in N; that is far finer than the uncertainty in K itself.
+
+    The maximization is a log-spaced scan of ``N/K`` over six decades rather than
+    a root-find: the stationarity condition is transcendental, the scan is
+    vectorized and allocation-bounded, and the fold is a smooth maximum so modest
+    grid error cannot flip a cell that is not already within a hair of the
+    boundary. Costs ``n_grid`` floats per cell -- call it on window-MEAN fields,
+    not on the full (time, cell) stack.
+    """
+    Sa, Sj, Fmax, K = (np.asarray(x, dtype=float) for x in (Sa, Sj, Fmax, K))
+    allee_gamma = np.asarray(allee_gamma, dtype=float)
+    Sa, Sj, Fmax, K, allee_gamma = np.broadcast_arrays(Sa, Sj, Fmax, K, allee_gamma)
+
+    F_repl = (1.0 - Sa) / (Sa * Sj)
+    # Same c as the fitted model, including the 1e-6 guard: it belongs in the
+    # forward simulation (it protects Sa -> 1) and must stay bit-identical here.
+    # It just no longer decides a class boundary.
+    c = np.maximum((Fmax * Sa * Sj) / (1.0 - Sa + 1e-6) - 1.0, 0.0)
+
+    with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
+        # N = u*K, u log-spaced over [1e-5, 10]. The peak lies in (0, ~K]: for
+        # K >> 1/gamma it sits where crowding starts to bite, for K <~ 1/gamma at
+        # a fraction of K. Six decades covers both without a per-cell grid.
+        u = np.logspace(-5.0, 1.0, int(n_grid)).reshape((-1,) + (1,) * Sa.ndim)
+        N = u * K
+        F = Fmax / (1.0 + c * u) * (-np.expm1(-allee_gamma * N))
+        F = np.where(np.isfinite(F), F, -np.inf)
+        k_peak = np.argmax(F, axis=0)
+        F_peak = np.take_along_axis(F, k_peak[None], axis=0)[0]
+        N_peak = np.take_along_axis(N, k_peak[None], axis=0)[0]
+        suppression = np.exp(-allee_gamma * K)
+
+    fundamental_viable = c > 0.0
+    # A cell with c == 0 fails replacement at ANY density (F <= Fmax <= F_repl),
+    # so the scan already excludes it; the explicit conjunction just documents that
+    # viability is fundamental suitability AND Allee escape, never Allee alone.
+    viable = fundamental_viable & (F_peak > F_repl) & (K > 0.0)
+    n_crit, n_star = _bracket_roots(N, F, F_repl, viable)
+    return {"viable": viable, "F_peak": F_peak, "N_peak": N_peak,
+            "F_replacement": F_repl, "suppression_at_K": suppression,
+            "fundamental_viable": fundamental_viable,
+            "N_crit": n_crit, "N_star": n_star}
+
+
+def _bracket_roots(N, F, F_repl, viable):
+    """Lower/upper roots of ``F(N) = F_repl`` from the scan, by sign change.
+
+    ``F`` is ``(n_grid, ...)`` evaluated at densities ``N`` on a log grid, and is
+    unimodal in the grid index (rising through mate-finding, falling through
+    crowding), so ``g = F - F_repl`` has at most two sign changes: up at ``N_crit``
+    and down at ``N_star``. Interpolating linearly in ``log N`` rather than ``N``
+    matches the grid's own spacing, so the error is set by the grid, not by
+    curvature over a wide interval.
+    """
+    g = F - F_repl
+    pos = g > 0.0
+    # argmax on a boolean gives the FIRST True (and 0 if none, screened by `viable`).
+    first = np.argmax(pos, axis=0)
+    last = pos.shape[0] - 1 - np.argmax(pos[::-1], axis=0)
+
+    def _interp(hi_idx, lo_idx):
+        """Root between grid points lo_idx (g<0) and hi_idx (g>0), in log N."""
+        hi = np.clip(hi_idx, 0, g.shape[0] - 1)
+        lo = np.clip(lo_idx, 0, g.shape[0] - 1)
+        g_hi = np.take_along_axis(g, hi[None], axis=0)[0]
+        g_lo = np.take_along_axis(g, lo[None], axis=0)[0]
+        n_hi = np.take_along_axis(N, hi[None], axis=0)[0]
+        n_lo = np.take_along_axis(N, lo[None], axis=0)[0]
+        denom = g_hi - g_lo
+        # Degenerate bracket (equal g, or the root sits at the grid edge so there is
+        # no straddling pair): fall back to the in-bracket endpoint rather than 0/0.
+        w = np.where(np.abs(denom) > 0.0, -g_lo / np.where(denom == 0.0, 1.0, denom), 0.0)
+        w = np.clip(w, 0.0, 1.0)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            log_n = np.log(n_lo) + w * (np.log(n_hi) - np.log(n_lo))
+        return np.exp(log_n)
+
+    n_crit = np.where(viable & (first > 0), _interp(first, first - 1), np.nan)
+    n_star = np.where(viable & (last < g.shape[0] - 1), _interp(last, last + 1), np.nan)
+    return n_crit, n_star
 
 
 def sigmoid(x):

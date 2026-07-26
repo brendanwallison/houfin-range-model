@@ -52,9 +52,7 @@ import sys
 import geopandas as gpd
 import matplotlib.pyplot as plt
 import numpy as np
-import pandas as pd
 import rioxarray  # noqa: F401  (registers the .rio accessor)
-from rasterio.features import rasterize
 from shapely.geometry import box as shapely_box
 from shapely.ops import unary_union
 
@@ -64,6 +62,14 @@ if REPO_ROOT not in sys.path:
 
 from src.config_utils import load_data_config
 from src.processing import regrid
+# Canonical implementations now live in src/data/preprocess/great_plains.py so the
+# barrier-crossing diagnostic and these figures cannot drift apart. Re-bound to the
+# original private names because scripts/viz/hypothesis_scenarios.py imports this
+# module as `base` and calls base._clean_great_plains_geom / base._row_wise_gp_zones.
+from src.data.preprocess.great_plains import (  # noqa: E402
+    clean_great_plains_geom as _clean_great_plains_geom,
+    row_wise_gp_zones as _row_wise_gp_zones,
+)
 
 ABUNDANCE_TIF = os.path.join(
     REPO_ROOT, "data", "ebird_abundance", "houfin_abundance_seasonal_mean_27km_2023.tif"
@@ -121,68 +127,6 @@ def _plot_abundance(log_abund, raster_extent, box_bounds, out_png, great_plains=
     fig.savefig(out_png, dpi=200, bbox_inches="tight")
     plt.close(fig)
     print(f"Wrote {out_png}")
-
-
-def _row_wise_gp_zones(great_plains_geom, transform, ny, nx, box_bounds):
-    """West-of-GP / inside-GP / east-of-GP masks, computed per grid ROW.
-
-    The Great Plains ecoregion is a north-south band that tilts across
-    latitude, so a single global x threshold misclassifies cells (e.g. the
-    Pacific Northwest is "west" but shares x-coordinates with the eastern
-    edge of the band further south). Per row, intersect the polygon with a
-    thin horizontal strip at that row's latitude and take the west/east
-    extent of that intersection; rows the polygon doesn't reach (north/south
-    of its extent) inherit the nearest row that does.
-    """
-    box_minx, _, box_maxx, _ = box_bounds
-    row_h = abs(transform.e)
-    west_edge = np.full(ny, np.nan)
-    east_edge = np.full(ny, np.nan)
-    for i in range(ny):
-        y_top = transform.f + i * transform.e
-        y_bot = y_top + transform.e
-        strip = shapely_box(box_minx, min(y_top, y_bot), box_maxx, max(y_top, y_bot))
-        inter = great_plains_geom.intersection(strip)
-        if not inter.is_empty:
-            minx, _, maxx, _ = inter.bounds
-            west_edge[i] = minx
-            east_edge[i] = maxx
-    west_edge = pd.Series(west_edge).ffill().bfill().to_numpy()
-    east_edge = pd.Series(east_edge).ffill().bfill().to_numpy()
-
-    x_centers = transform.c + (np.arange(nx) + 0.5) * transform.a
-    inside_gp = rasterize(
-        [(great_plains_geom, 1)], out_shape=(ny, nx), transform=transform,
-        fill=0, dtype="uint8",
-    ).astype(bool)
-    west_mask = (x_centers[None, :] < west_edge[:, None]) & ~inside_gp
-    east_mask = (x_centers[None, :] > east_edge[:, None]) & ~inside_gp
-    return inside_gp, west_mask, east_mask, west_edge, east_edge
-
-
-def _clean_great_plains_geom(geom, tol):
-    """Smooth the Great Plains polygon: fill small interior holes/notches,
-    drop small spikes/disjoint fragments (at a scale of `tol` meters), and
-    keep only the single largest contiguous polygon.
-
-    The EPA/CEC shapefile is digitized at a much finer resolution than the
-    27 km model grid, so its boundary has small enclaves and thin
-    protrusions that (a) look noisy as a hairline overlay and (b) leave
-    slivers un-zeroed right at the eastern edge when used for the zone
-    masks/clips below. A morphological closing (dilate then erode) fills
-    holes/notches up to size `tol`; a following opening (erode then dilate)
-    removes islands/spikes up to size `tol`. What survives that can still
-    include real, non-trivial disjunct patches of the ecoregion (e.g. a
-    ~6,800 km^2 outlier near San Antonio, TX) -- bigger than `tol`, so the
-    opening doesn't remove it -- which is why the main polygon is picked out
-    explicitly rather than relying on tolerance alone. Net effect: just the
-    single main north-south band, sub-`tol` detail smoothed away.
-    """
-    closed = geom.buffer(tol).buffer(-tol)
-    opened = closed.buffer(-tol).buffer(tol)
-    if opened.geom_type == "MultiPolygon":
-        opened = max(opened.geoms, key=lambda g: g.area)
-    return opened
 
 
 def _east_of_gp_geom(east_edge, transform, ny, box_maxx):

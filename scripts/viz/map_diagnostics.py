@@ -24,11 +24,15 @@ full model uses (via ``reconstruct_map`` below), with only the dispersal
 dropped from the niche calculation itself.
 
 ``07_source_sink_fields.npz`` (and a georeferenced ``.tif`` beside it) persists the
-grids figure 07 draws -- modern realized lambda, modern fundamental lambda, modern
-K, the source mask, and the averaging window's year span. These used to exist only
-as pixels in the PNG, so nothing could compare source/sink structure between runs
-(e.g. across a dispersal-distance sweep) or re-plot it without a GPU and a full
-model reconstruction.
+grids figure 07 draws -- modern lambda at N=K, modern fundamental lambda, modern
+K, the viability mask, the Allee suppression at K, and the averaging window's year
+span. These used to exist only as pixels in the PNG, so nothing could compare
+viability structure between runs (e.g. across a dispersal-distance sweep) or
+re-plot it without a GPU and a full model reconstruction.
+
+``source_mask`` in that file is the FOLD criterion -- a positive equilibrium exists
+-- not ``lambda > 1``; see ``age_model_math.allee_viability`` for the derivation and
+``_write_source_sink_fields`` for why the key name was kept.
 
 ``07_realized_source_sink.png`` is the deliberate REALIZED counterpart --
 same Sa/Sj/Fmax but WITH density-dependence, the Allee effect, AND the K-only
@@ -36,6 +40,28 @@ disease depression (mycoplasmal conjunctivitis, which has no covariate of its
 own) -- so the two can be compared directly; see
 ``src/vis/age_model_math.py`` for the shared, samples-axis-agnostic math both
 draw on (also the seam for a future MCMC-sample version of this script).
+
+``15_counterfactual_no_invasion.png`` / ``16_counterfactual_animation`` re-run the
+forward model at the SAME MAP point with the 1940 NYC release deleted
+(``inv_pop -> 0``), so the difference is attributable to the release alone. Two
+counterfactual arms are simulated because one cannot answer both questions: the
+epizootic is held fixed for the attribution map (only ``inv_pop`` differs, so the
+difference is cleanly signed) and removed for the coherent "no release" world (no
+dense eastern population means no 1994 outbreak). Differencing against the
+no-epizootic arm alone would confound two interventions with opposite signs on
+density. Both arms are gradient-free forward passes, which is also why none of this
+touches a file ``age_run_map._run_fingerprint`` hashes. See
+``simulate_no_invasion_counterfactual`` for the full argument and the extrapolation
+caveat.
+
+``17_barrier_crossing.png`` is the directed cost of crossing the Great Plains, both
+ways, from the linearized annual operator restricted to the barrier -- see
+``src/vis/barrier_crossing`` for the derivation. It is OPTIONAL: it needs a zone
+raster built by ``scripts/build_great_plains_mask.py`` from an ecoregion shapefile
+that is not in git and not in ``download_all.sh``, so ``plot_barrier_crossing``
+returns None and says why when the raster is absent, and ``metrics.json`` carries
+``barrier_crossing: null``. A missing optional input must never cost a whole
+diagnostics run.
 
 ``10_age_structure.png`` compares theoretical equilibrium age structure
 (local rho implied by the fitted vital rates, assuming the system has
@@ -90,12 +116,18 @@ from numpyro.infer import Predictive
 from src.config_utils import load_age_model_config, load_data_config
 from src.temporal import load_timeline
 from src.model.age_priors import build_model_2d
+from src.model.age_forward import forward_sim_age_structured
 from src.model.checkpoints import auto_delta_params_to_latents, load_map_params
 from src.model.data_loading import load_data
 from src.model.runtime_diagnostics import memory_snapshot, require_gpu
+from src.data.preprocess.great_plains import read_zone_raster
 from src.vis.age_model_math import (
-    add_timeline_markers, baseline_window_mean, local_growth_lambda,
+    add_timeline_markers, allee_viability, baseline_window_mean, local_growth_lambda,
     realized_equilibrium, response_curve_fields, scatter_to_grid, window_mean,
+)
+from src.vis.barrier_crossing import (
+    DIRECTIONS, crossing_gain, directional_q_contrast, edge_correction_summary,
+    low_density_departure_probability, modern_dispersal_fields, propagule_pressure,
 )
 
 # Back-compat local aliases (this file's plot functions historically used
@@ -120,6 +152,10 @@ def reconstruct_map(data, params):
               "env_corr_repro_capacity", "env_corr_survival_capacity",
               "manifold_loadings", "w_k_trend", "k_level", "k_level_route_counts",
               "gamma_a", "gamma_j", "gamma_f", "gamma_k",
+              # Needed to re-run the forward simulator for the no-invasion
+              # counterfactual (figures 15/16): the t=0 native seed, the 1940 pulse
+              # to zero out, and the pre-disease capacity.
+              "initpop_seeded", "inv_pop_relative", "K_base_flat",
               "disease_k_half_route_counts", "disease_hill_n",
               "disease_severity_map", "disease_mu_sev", "disease_b_late",
               "disease_w_lag", "disease_lag0", "disease_tau", "disease_rec",
@@ -358,7 +394,8 @@ def plot_environmental_drivers_limits(data, sim, years, rows, cols, shape, out, 
 
 
 def _write_source_sink_fields(npz_path, lam_realized, lam_fundamental, K_modern,
-                              year_first, year_last, n_years, ref_raster=None):
+                              year_first, year_last, n_years, ref_raster=None,
+                              viable=None, allee_suppression=None, fundamental_viable=None):
     """Persist the modern source/sink grids as .npz (+ a GeoTIFF beside it).
 
     Kept deliberately small (a handful of MB): the three window-mean grids that
@@ -369,14 +406,32 @@ def _write_source_sink_fields(npz_path, lam_realized, lam_fundamental, K_modern,
     GIS; band order matches ``band_names``.
     """
     npz_path = Path(npz_path)
+    # source_mask is the FOLD criterion (age_model_math.allee_viability), not
+    # lam_realized > 1. The key name is unchanged because consumers key on it
+    # (scripts/viz/juv_mdd_sweep_summary.py), but the semantics changed: it used to
+    # threshold lambda at N = K, which c pins at exactly 1, so the old classification
+    # turned on the 1e-6 guard inside c rather than on demography. equilibrium_exists
+    # is the same array under a name that says what it means.
+    finite = np.isfinite(lam_realized)
+    mask = np.where(finite, viable, False) if viable is not None else \
+        np.where(finite, lam_realized > 1.0, False)
+    extra = {}
+    if allee_suppression is not None:
+        extra["allee_suppression_at_K"] = allee_suppression.astype("float32")
+    if fundamental_viable is not None:
+        # Cells the fundamental niche calls suitable but that cannot hold a
+        # population at any density -- the sanity check this figure exists for.
+        extra["allee_dead_mask"] = np.where(finite, fundamental_viable & ~mask, False)
     np.savez_compressed(
         npz_path,
         lam_realized_modern=lam_realized.astype("float32"),
         lam_fundamental_modern=lam_fundamental.astype("float32"),
         K_modern=K_modern.astype("float32"),
-        source_mask=np.where(np.isfinite(lam_realized), lam_realized > 1.0, False),
+        source_mask=mask,
+        equilibrium_exists=mask,
         window_years=np.array([int(year_first), int(year_last)]),
         window_n=np.int32(n_years),
+        **extra,
     )
     if ref_raster is None:
         return
@@ -397,6 +452,32 @@ def _write_source_sink_fields(npz_path, lam_realized, lam_fundamental, K_modern,
                         window=f"{int(year_first)}-{int(year_last)}")
 
 
+def modern_viability(sim, window, k_key="K_flat"):
+    """Window-mean K and the fold-criterion viability for the modern window.
+
+    One definition, shared by figure 07 (which classifies on it) and figure 15
+    (which asks which viable cells the counterfactual never reaches), so the two
+    can never disagree about what "viable" means.
+
+    Viability is evaluated on the window-MEAN environment rather than per-year and
+    then averaged: the scan in ``allee_viability`` costs n_grid floats per cell, so
+    the full (time, cell) stack would be ~100x the memory for a question about the
+    modern window. Consistent with how every other "modern" field is built here.
+
+    ``k_key`` selects the capacity: ``K_flat`` (as fitted, disease included) for the
+    actual world, ``K_base_flat`` for the no-epizootic counterfactual. Viability is a
+    function of K, so a counterfactual world with no disease has its own -- larger --
+    viable area, and asking "which viable cells went unreached" only makes sense
+    against the viability of the world being simulated.
+    """
+    K_modern, _, _ = _window_mean(np.asarray(sim[k_key]), window)
+    Sa_m, _, _ = _window_mean(np.asarray(sim["Sa_flat"]), window)
+    Sj_m, _, _ = _window_mean(np.asarray(sim["Sj_flat"]), window)
+    Fmax_m, _, _ = _window_mean(np.asarray(sim["Fmax_flat"]), window)
+    return K_modern, allee_viability(Sa_m, Sj_m, Fmax_m, K_modern,
+                                     np.asarray(sim["allee_gamma"]))
+
+
 def plot_realized_source_sink(sim, lam_fundamental, years, rows, cols, shape, out, window,
                               fields_out=None, ref_raster=None):
     """Realized (density-dependent + Allee) counterpart to the fundamental-niche map.
@@ -409,6 +490,21 @@ def plot_realized_source_sink(sim, lam_fundamental, years, rows, cols, shape, ou
     ``_write_source_sink_fields``). Without it these rasters exist only as pixels
     in the PNG, so nothing downstream -- a dispersal sweep comparing runs, or any
     re-plot -- can get at them without a GPU and a full model reconstruction.
+
+    CLASSIFICATION. The binary panel is the FOLD criterion
+    (``age_model_math.allee_viability``): does a positive equilibrium exist at all,
+    i.e. does ``max_N F(N)`` clear replacement? It is NOT ``lambda_realized > 1``.
+    ``c`` is solved so lambda = 1 at N = K, so that test is degenerate -- it
+    classified on the ``1e-6`` guard inside ``c``, which put the contour at
+    K ~ 3.7 route counts against a true fold near 0.5-1.2, and it condemned the
+    typical occupied cell (fitted level ~2.1 counts) as sink. The third class,
+    "Allee-dead", is what the figure exists to expose: fundamentally suitable
+    habitat that still cannot hold a population because K sits in the mate-finding
+    regime.
+
+    ``lambda_realized`` is still drawn as a continuous field -- it is a meaningful
+    quantity (growth rate AT carrying capacity, so <= 1 by construction, with the
+    shortfall measuring the Allee cost) as long as it is not thresholded at 1.
     """
     _, _, lam_realized, _ = realized_equilibrium(
         sim["Sa_flat"], sim["Sj_flat"], sim["Fmax_flat"], sim["K_flat"], sim["allee_gamma"]
@@ -417,28 +513,43 @@ def plot_realized_source_sink(sim, lam_fundamental, years, rows, cols, shape, ou
     modern_g = _grid(modern[None], rows, cols, shape)[0]
     fund_modern, _, _ = _window_mean(lam_fundamental, window)
     fund_g = _grid(fund_modern[None], rows, cols, shape)[0]
+
+    K_modern, viab = modern_viability(sim, window)
+    viable_g = _grid(viab["viable"].astype(float)[None], rows, cols, shape)[0]
+    fund_ok_g = _grid(viab["fundamental_viable"].astype(float)[None], rows, cols, shape)[0]
+    supp_g = _grid(viab["suppression_at_K"][None], rows, cols, shape)[0]
     if fields_out is not None:
-        K_modern, _, _ = _window_mean(np.asarray(sim["K_flat"]), window)
         _write_source_sink_fields(
             fields_out, modern_g, fund_g,
             _grid(K_modern[None], rows, cols, shape)[0],
             years[-n], years[-1], n, ref_raster,
+            viable=viable_g > 0.5, allee_suppression=supp_g,
+            fundamental_viable=fund_ok_g > 0.5,
         )
 
     fig, ax = plt.subplots(1, 3, figsize=(15, 5))
-    binary = np.where(np.isfinite(modern_g), (modern_g > 1.0).astype(float), np.nan)
-    ax[0].imshow(binary, cmap=mcolors.ListedColormap(["#d73027", "#4575b4"]), vmin=0, vmax=1)
-    ax[0].set_title(f"Realized source/sink ({years[-n]}–{years[-1]})")
+    # 0 = unsuitable (fails replacement at any density), 1 = Allee-dead (suitable
+    # but K too small for a positive equilibrium), 2 = viable source.
+    klass = np.where(viable_g > 0.5, 2.0, np.where(fund_ok_g > 0.5, 1.0, 0.0))
+    klass = np.where(np.isfinite(modern_g), klass, np.nan)
+    ax[0].imshow(klass, cmap=mcolors.ListedColormap(["#d73027", "#fdae61", "#4575b4"]),
+                 norm=mcolors.BoundaryNorm([-0.5, 0.5, 1.5, 2.5], 3))
+    n_dead = float(np.nansum(klass == 1.0)); n_fund = float(np.nansum(klass >= 1.0))
+    ax[0].set_title(f"Viability ({years[-n]}–{years[-1]})\n"
+                    f"{n_dead / max(n_fund, 1):.1%} of suitable habitat is Allee-dead")
     ax[0].legend(handles=[
-        plt.Rectangle((0, 0), 1, 1, color="#4575b4", label="Source (λ_realized > 1)"),
-        plt.Rectangle((0, 0), 1, 1, color="#d73027", label="Sink (λ_realized ≤ 1)"),
+        plt.Rectangle((0, 0), 1, 1, color="#4575b4", label="Viable source (max$_N$ λ > 1)"),
+        plt.Rectangle((0, 0), 1, 1, color="#fdae61", label="Allee-dead (λ_fund > 1, K too small)"),
+        plt.Rectangle((0, 0), 1, 1, color="#d73027", label="Unsuitable (λ_fund ≤ 1)"),
     ], loc="lower left", fontsize=7, frameon=True)
 
     lo, hi = np.nanpercentile(modern_g, [2, 98]); lo, hi = min(lo, 1.0), max(hi, 1.0)
     im = ax[1].imshow(modern_g, cmap="RdYlBu_r", vmin=lo, vmax=hi)
     ax[1].contour(modern_g, [1.0], colors="black", linewidths=1.0)
-    ax[1].set_title("Realized λ (density-dependent + Allee)")
-    fig.colorbar(im, ax=ax[1], fraction=.046, label="λ_realized")
+    # NOT thresholded at 1 -- see the docstring. c pins this at 1 wherever the Allee
+    # factor saturates, so the informative content is the shortfall below 1.
+    ax[1].set_title("λ at carrying capacity (N = K)\nshortfall below 1 = Allee cost")
+    fig.colorbar(im, ax=ax[1], fraction=.046, label="λ(N=K)")
 
     gap = fund_g - modern_g
     lim = max(float(np.nanpercentile(np.abs(gap[np.isfinite(gap)]), 98)), .02)
@@ -450,8 +561,17 @@ def plot_realized_source_sink(sim, lam_fundamental, years, rows, cols, shape, ou
         a.axis("off")
     fig.suptitle("Realized demographic potential (density-dependence + Allee included)")
     fig.tight_layout(); fig.savefig(out, dpi=180); plt.close(fig)
+    # realized_modern_source_fraction keeps its name (juv_mdd_sweep_summary.py reads
+    # it) but is now the fold criterion rather than mean(lam > 1), which was an
+    # artifact of the 1e-6 guard in c. allee_dead_fraction is the number the figure
+    # exists to report: how much fundamentally-suitable habitat K rules out.
+    fund_ok = viab["fundamental_viable"]
     return {"realized_modern_mean_lambda": float(np.mean(modern)),
-            "realized_modern_source_fraction": float(np.mean(modern > 1.0))}
+            "realized_modern_source_fraction": float(np.mean(viab["viable"])),
+            "allee_dead_fraction_of_suitable": float(
+                np.mean(fund_ok & ~viab["viable"]) / max(float(np.mean(fund_ok)), 1e-12)),
+            "median_allee_suppression_at_K": float(np.median(viab["suppression_at_K"])),
+            "lambda_at_K_source_fraction_deprecated": float(np.mean(modern > 1.0))}
 
 
 def plot_spatial_residuals(sim, data, shape, out):
@@ -706,6 +826,442 @@ def plot_invasion_progression(sim, years, land_mask, out, n_panels=6):
     fig.savefig(out, dpi=180); plt.close(fig)
 
 
+def plot_barrier_crossing(sim, data, cfg, dcfg, years, rows, cols, shape, out, window):
+    """Directed cost of crossing the Great Plains, both ways.
+
+    Returns a metrics dict, or None (having printed why) when the prerequisites are
+    missing. This figure is deliberately OPTIONAL: it needs a zone raster built from
+    an ecoregion shapefile that is not in git and not in download_all.sh, so on a
+    machine without it the rest of the diagnostics must still complete. A missing
+    input here must never cost a whole run -- the failure mode that lost a five-point
+    sweep once already.
+
+    See ``src/vis/barrier_crossing`` for the derivation. Six panels:
+    the raw ``Q`` east/west contrast; the two accumulated-flux corridors (where
+    crossing actually happens); the per-year arrival profiles; and the propagule
+    pressure ``P = arrivals / N_crit`` each way, whose ``P = 1`` contour is the
+    invasion-pinning boundary.
+    """
+    zones_path = (dcfg.get("regions") or {}).get("great_plains_zones")
+    if not zones_path or not Path(zones_path).exists():
+        print(f"[map-viz] skipping barrier crossing: no zone raster at {zones_path}. "
+              "Build it with scripts/build_great_plains_mask.py where the ecoregion "
+              "shapefile lives, then copy it over.")
+        return None
+    meta_path = Path(cfg["raw_z_dir"]) / "path_feature_meta.json"
+    if not meta_path.exists():
+        print(f"[map-viz] skipping barrier crossing: no {meta_path} (need kernel labels)")
+        return None
+    labels = json.loads(meta_path.read_text()).get("kernel_labels")
+    if not labels:
+        print(f"[map-viz] skipping barrier crossing: no kernel_labels in {meta_path}")
+        return None
+
+    zones = read_zone_raster(zones_path, expected_shape=shape)
+    fields = modern_dispersal_fields(sim, data, window, rows, cols, shape)
+    p0 = low_density_departure_probability(
+        sim["latents"], float(data["dispersal_target_fraction"]), window)
+    edge = edge_correction_summary(data, zones, fields["land"])
+    contrast = directional_q_contrast(fields, labels)
+    gains = {d: crossing_gain(fields, data, zones, d, p0) for d in DIRECTIONS}
+    allee_gamma = np.asarray(sim["allee_gamma"])
+    pressure = {d: propagule_pressure(g["arrivals_field"], fields, rows, cols, shape,
+                                      allee_gamma)[0]
+                for d, g in gains.items()}
+
+    barrier = zones["barrier"] & fields["land"].astype(bool)
+    edges = _barrier_outline(barrier)
+    fig, ax = plt.subplots(2, 3, figsize=(16.5, 9.0))
+
+    dq = np.where(fields["land"].astype(bool), contrast["q_west_minus_east"], np.nan)
+    lim = float(np.nanpercentile(np.abs(dq), 98)) or 1e-3
+    im = ax[0, 0].imshow(dq, cmap="PiYG", vmin=-lim, vmax=lim)
+    ax[0, 0].set_title("Journey survival asymmetry\nmean Q(to WEST) − Q(to EAST)", fontsize=10)
+    fig.colorbar(im, ax=ax[0, 0], fraction=.04, label="ΔQ  (green = westward cheaper)")
+
+    for col, d in enumerate(("east_to_west", "west_to_east"), start=1):
+        g = gains[d]
+        c = np.where(barrier, g["corridor"], np.nan)
+        pos = c[np.isfinite(c) & (c > 0)]
+        norm = mcolors.LogNorm(vmin=max(pos.min(), pos.max() * 1e-4), vmax=pos.max()) \
+            if pos.size else None
+        im = ax[0, col].imshow(c, cmap="magma", norm=norm)
+        gt = "∞" if not np.isfinite(g["G_total"]) else f"{g['G_total']:.3g}"
+        ax[0, col].set_title(f"Crossing corridor: {d.replace('_', ' ')}\n"
+                             f"G(124 yr)={g['G_horizon']:.3g}  G(∞)={gt}  ρ={g['rho']:.3f}",
+                             fontsize=10)
+        fig.colorbar(im, ax=ax[0, col], fraction=.04, label="cumulative lineage density")
+
+    for a in (ax[0, 0], ax[0, 1], ax[0, 2]):
+        a.contour(edges, [0.5], colors="cyan", linewidths=.6)
+        a.set_xticks([]); a.set_yticks([])
+
+    axp = ax[1, 0]
+    for d, color in (("east_to_west", "#54278f"), ("west_to_east", "#e08214")):
+        g = gains[d]
+        # NORMALIZED by the mass entering the barrier, so the area under the curve
+        # really is G and the visual ordering matches the reported numbers. Plotting
+        # absolute arrivals would rank the directions by source size instead.
+        p = (np.asarray(g["per_year_arrivals"])[:g["horizon_years"]]
+             / g["total_entering_barrier"])
+        axp.semilogy(np.arange(1, p.size + 1), np.maximum(p, 1e-300), color=color,
+                     label=f"{d.replace('_', ' ')}  (G={g['G_horizon']:.3g})")
+    axp.set(xlabel="Years after entering the barrier",
+            ylabel="Arrivals per unit entering the barrier",
+            title="Arrival timing\n(area under each curve = G)")
+    axp.legend(fontsize=8)
+
+    for col, d in enumerate(("east_to_west", "west_to_east"), start=1):
+        p = np.where(fields["land"].astype(bool), pressure[d], np.nan)
+        finite = p[np.isfinite(p) & (p > 0)]
+        norm = mcolors.LogNorm(vmin=max(finite.min(), finite.max() * 1e-6),
+                               vmax=max(finite.max(), 1.0)) if finite.size else None
+        im = ax[1, col].imshow(p, cmap="viridis", norm=norm)
+        # P = 1 is the pinning boundary: one year's immigration alone clears N_crit.
+        ax[1, col].contour(np.nan_to_num(p, nan=0.0), [1.0], colors="red", linewidths=.8)
+        frac, n_considered = _establishing_fraction(p)
+        med = _finite_median(p)
+        ax[1, col].set_title(f"Propagule pressure: {d.replace('_', ' ')}\n"
+                             f"P≥1 on {frac:.1%} of {n_considered} reached cells; "
+                             f"median P={med:.2g}", fontsize=9)
+        ax[1, col].contour(edges, [0.5], colors="cyan", linewidths=.6)
+        ax[1, col].set_xticks([]); ax[1, col].set_yticks([])
+        fig.colorbar(im, ax=ax[1, col], fraction=.04, label="P (red contour = 1)")
+
+    fig.suptitle("Directed cost of crossing the Great Plains "
+                 f"(Allee-optimistic upper bound; p₀={p0:.3f})", y=.99, fontsize=13)
+    fig.tight_layout(); fig.savefig(out, dpi=170, bbox_inches="tight"); plt.close(fig)
+
+    ew, we = gains["east_to_west"], gains["west_to_east"]
+    ratio = (ew["G_horizon"] / we["G_horizon"]) if we["G_horizon"] > 0 else float("nan")
+    metrics = {
+        "_comment": ("Linearized annual operator restricted to the Great Plains "
+                     "corridor; see src/vis/barrier_crossing. The Allee factor is set "
+                     "to 1, so these are UPPER bounds: crossing that fails here fails "
+                     "in the real model. G_horizon (124 yr) is the comparable metric; "
+                     "G_total is infinite when the barrier self-sustains."),
+        "p0_low_density_departure": p0,
+        "horizon_years": ew["horizon_years"],
+        "G_horizon_east_to_west": ew["G_horizon"],
+        "G_horizon_west_to_east": we["G_horizon"],
+        "asymmetry_ratio_ew_over_we": ratio,
+        "G_total_east_to_west": ew["G_total"],
+        "G_total_west_to_east": we["G_total"],
+        # rho is a property of the barrier-restricted operator alone, so the two
+        # directions must agree; the gap is a convergence diagnostic, not a result.
+        "rho_barrier": 0.5 * (ew["rho"] + we["rho"]),
+        "rho_direction_discrepancy": abs(ew["rho"] - we["rho"]),
+        "barrier_self_sustaining": bool(ew["barrier_self_sustaining"]),
+        "years_to_half_of_G_east_to_west": ew["years_to_half_of_G"],
+        "years_to_half_of_G_west_to_east": we["years_to_half_of_G"],
+        # Fraction of REACHED, VIABLE far-side cells clearing N_crit -- see
+        # _establishing_fraction for why the denominator is not simply "land".
+        "establishing_fraction_east_to_west": _establishing_fraction(
+            pressure["east_to_west"])[0],
+        "establishing_fraction_west_to_east": _establishing_fraction(
+            pressure["west_to_east"])[0],
+        "reached_viable_cells_east_to_west": _establishing_fraction(
+            pressure["east_to_west"])[1],
+        "reached_viable_cells_west_to_east": _establishing_fraction(
+            pressure["west_to_east"])[1],
+        "median_propagule_pressure_east_to_west": _finite_median(pressure["east_to_west"]),
+        "median_propagule_pressure_west_to_east": _finite_median(pressure["west_to_east"]),
+        "mean_q_to_east_in_barrier": float(contrast["q_to_east"][barrier].mean()),
+        "mean_q_to_west_in_barrier": float(contrast["q_to_west"][barrier].mean()),
+        **edge,
+    }
+    return metrics
+
+
+def _barrier_outline(barrier):
+    """Float field that contours to the barrier boundary (for overlay outlines)."""
+    return barrier.astype(float)
+
+
+def _finite_median(pressure):
+    """Median propagule pressure over reached, viable cells; NaN if there are none.
+
+    Reported alongside the establishing fraction because a fraction of 0 is
+    ambiguous: it can mean "arrivals fall just short everywhere" or "arrivals are
+    orders of magnitude short". The median says which.
+    """
+    v = pressure[np.isfinite(pressure) & (pressure > 0.0)]
+    return float(np.median(v)) if v.size else float("nan")
+
+
+def _establishing_fraction(pressure):
+    """Share of REACHED, VIABLE far-side cells where propagule pressure clears N_crit.
+
+    The denominator matters and is easy to get wrong. ``pressure >= 1.0`` on the raw
+    field would be averaged over the whole grid, where NaN (cell not viable, so no
+    N_crit exists) silently compares False and is pooled with 0 (cell outside the
+    target zone, so it receives nothing) and with genuine sub-threshold arrivals.
+    Those are three different statements. Restricting to finite AND strictly positive
+    pressure asks the one question worth asking: of the viable far-side habitat that
+    receives any immigration at all, how much receives enough to establish.
+    """
+    considered = np.isfinite(pressure) & (pressure > 0.0)
+    n = int(considered.sum())
+    if n == 0:
+        return float("nan"), 0
+    return float((pressure[considered] >= 1.0).mean()), n
+
+
+def simulate_no_invasion_counterfactual(sim, data, drop_disease=True):
+    """Re-run the forward model with the 1940 release deleted.
+
+    The intervention is exactly one array: ``inv_pop -> 0``. Everything else --
+    fitted Sa/Sj/Fmax, the dispersal kernels, the per-year dispersal random effect,
+    the native-range seed at t=0 -- is the MAP point unchanged, so the difference
+    between this and ``sim["simulated_density"]`` is attributable to the release
+    alone. No refit and no gradient: ``forward_sim_age_structured`` is a pure
+    function of its arguments, which is also why this touches nothing that
+    ``age_run_map._run_fingerprint`` hashes.
+
+    The counterfactual is NOT "the East stays empty". The native western population
+    is seeded in 1902 as usual and disperses for the full timeline, so what this
+    measures is how far the species would have got on its own -- the release's
+    contribution is the difference, not the whole eastern range.
+
+    ``drop_disease=True`` substitutes ``K_base_flat`` for ``K_flat``, i.e. removes
+    the mycoplasmal-conjunctivitis depression. That is the causally coherent choice:
+    the 1994 epizootic swept the dense eastern population the release created, so a
+    world without the release is a world without that epizootic. Keeping ``K_flat``
+    instead would have westward-spreading birds arrive to find capacity suppressed
+    in the East by an outbreak that never happened, which suppresses the very
+    colonization the counterfactual is trying to measure. The continental ``k_trend``
+    stays in either case -- it is not disease.
+
+    CAVEAT worth carrying into any figure caption: essentially all of the
+    information about spread rate in the likelihood comes from the observed eastern
+    invasion. The counterfactual's westward-spread dynamics are therefore an
+    extrapolation of parameters fitted elsewhere, not a validated prediction.
+    """
+    K_cf = sim["K_base_flat"] if drop_disease else sim["K_flat"]
+    latents = sim["latents"]
+    # c does NOT depend on K (c = Fmax*Sa*Sj/(1-Sa) - 1), so it is identical in both
+    # worlds even when K_base is substituted; recompute rather than plumb it through.
+    c_flat, _, _, _ = realized_equilibrium(
+        sim["Sa_flat"], sim["Sj_flat"], sim["Fmax_flat"], K_cf, sim["allee_gamma"])
+    inv_pop_zero = jnp.zeros_like(jnp.asarray(sim["inv_pop_relative"]))
+    density, Na, Nj = forward_sim_age_structured(
+        jnp.asarray(sim["Sa_flat"]), jnp.asarray(sim["Sj_flat"]),
+        jnp.asarray(sim["Fmax_flat"]), jnp.asarray(K_cf), jnp.asarray(c_flat),
+        jnp.asarray(sim["Q_flat"]),
+        data["land_rows"], data["land_cols"], data["land_mask"],
+        data["adult_fft_kernel"], data["juvenile_fft_kernel_stack"],
+        data["adult_edge_correction"], data["juvenile_edge_correction_stack"],
+        jnp.asarray(sim["initpop_seeded"]), jnp.asarray(latents["dispersal_random"]),
+        inv_pop_zero,
+        int(data["time"]), data["inv_location"], data["inv_timestep"],
+        float(np.asarray(latents["dispersal_logit_intercept"])),
+        float(np.asarray(latents["dispersal_logit_slope"])),
+        jnp.asarray(sim["allee_gamma"]),
+        target_fraction=data["dispersal_target_fraction"],
+    )
+    return np.asarray(jax.block_until_ready(density))
+
+
+def plot_counterfactual_attribution(sim, cf_release_only, cf_no_disease, viab_cf,
+                                    years, rows, cols, shape, land_mask, out, window,
+                                    pop_scalar=1.0):
+    """What the 1940 release caused: attribution, and the range it bought.
+
+    THREE SIMULATIONS, because one counterfactual cannot answer both questions:
+
+    * **A** = actual (release + epizootic) -- ``sim["simulated_density"]``
+    * **B** = no release, epizootic KEPT (``cf_release_only``)
+    * **C** = no release, no epizootic (``cf_no_disease``)
+
+    Attribution uses **A vs B**, the minimal intervention: only ``inv_pop`` differs,
+    so ``(A - B)/A`` is the share of today's density caused by the release alone.
+    Differencing A against C instead would confound two interventions with OPPOSING
+    signs on density -- deleting the release removes birds, removing the epizootic
+    adds capacity -- so they partially cancel and the map can even go negative. That
+    is not a subtle bias: on a synthetic test C carried 25% MORE population than A.
+
+    C is the causally coherent "world where the release never happened" (no dense
+    eastern population means no 1994 epizootic), so it supplies the counterfactual
+    density map, the unreached-range overlay, and the animation. Both B and C appear
+    in the time series so the two effects can be read apart.
+
+    Panels: (1) modern density A, (2) modern density C, (3) attribution (A vs B),
+    (4) viable range unreached in C, (5) occupied area over time, (6) total
+    population over time with the release year marked.
+
+    Attribution is computed on window means and only where A exceeds
+    ``occupancy_floor``; elsewhere the ratio is 0/0 and is left NaN rather than
+    rendered as a spurious 0 or 1. ``viab_cf`` must be the viability of C's world
+    (i.e. built from ``K_base_flat``) -- see :func:`modern_viability`.
+    """
+    mask = land_mask.astype(bool)
+    # Arithmetic on the RAW arrays: the simulator already multiplies by land_mask
+    # every step, so ocean cells are exactly 0 and need no NaN. Masking first would
+    # make every ocean column an all-NaN slice and have nanmean warn on all of them.
+    # NaN is introduced only for display, below.
+    act, rel, cfa = (np.asarray(x) for x in
+                     (sim["simulated_density"], cf_release_only, cf_no_disease))
+    act_m, _, n = _window_mean(act, window)
+    cf_m, _, _ = _window_mean(cfa, window)
+    rel_m, _, _ = _window_mean(rel, window)
+    act_m, cf_m, rel_m = (np.where(mask, x, np.nan) for x in (act_m, cf_m, rel_m))
+
+    # Occupancy floor in DENSITY units from a route-count threshold: 0.05 expected
+    # counts is well under a single bird on a single route, so it separates "present"
+    # from numerical dust without asserting anything about detectability.
+    floor = 0.05 / float(pop_scalar)
+    occupied_act, occupied_cf = act_m > floor, cf_m > floor
+    with np.errstate(invalid="ignore", divide="ignore"):
+        # A vs B: the release is the ONLY difference, so this is signed the way the
+        # title claims. Small negatives are possible where the extra eastern birds
+        # redistribute dispersers away from a cell; they are clipped, and the share
+        # clipped is reported so the clip can never hide a systematic sign problem.
+        attrib_raw = np.where(occupied_act, (act_m - rel_m) / act_m, np.nan)
+    finite_attrib = np.isfinite(attrib_raw)
+    n_fin = max(float(finite_attrib.sum()), 1.0)
+    # Tolerance, not zero. Where the release changes nothing (the West, or a fully
+    # saturated landscape) the difference is float noise and lands either side of 0
+    # at random -- counting those as "negative" would flag a sign problem in exactly
+    # the case where the honest answer is "no effect". 1e-3 = the counterfactual
+    # exceeding actual by more than 0.1% of actual, which noise does not reach.
+    clipped_frac = float(np.sum(attrib_raw[finite_attrib] < -1e-3)) / n_fin
+    attrib = np.clip(attrib_raw, 0.0, 1.0)
+
+    viable_g = _grid(viab_cf["viable"].astype(float)[None], rows, cols, shape)[0]
+    viable = np.isfinite(viable_g) & (viable_g > 0.5)
+    unreached = viable & ~occupied_cf          # viable, but empty without the release
+
+    fig = plt.figure(figsize=(16.5, 9.5))
+    gs = fig.add_gridspec(2, 3, height_ratios=[1.35, 1.0], hspace=.18, wspace=.12)
+    log_act, log_cf = np.log1p(act_m * pop_scalar), np.log1p(cf_m * pop_scalar)
+    # Every reduction here must survive an ALL-NaN / all-zero input. A degenerate or
+    # very early checkpoint can simulate a fully extinct landscape, and an unguarded
+    # nanpercentile/nanmedian raises -- which would kill the whole diagnostic run
+    # (and, in a sweep, every point's metrics.json) over a cosmetic colour limit.
+    pooled = np.concatenate([log_act[np.isfinite(log_act)], log_cf[np.isfinite(log_cf)]])
+    vmax = float(np.nanpercentile(pooled, 99.5)) if pooled.size else 1.0
+    vmax = vmax if vmax > 0 else 1.0
+
+    ax = fig.add_subplot(gs[0, 0])
+    im = ax.imshow(log_act, cmap="magma", vmin=0, vmax=vmax)
+    ax.set_title(f"Actual ({years[-n]}–{years[-1]})", fontsize=10); ax.axis("off")
+    fig.colorbar(im, ax=ax, fraction=.035, label="log(1 + route counts)")
+
+    ax = fig.add_subplot(gs[0, 1])
+    ax.imshow(log_cf, cmap="magma", vmin=0, vmax=vmax)
+    ax.set_title("Counterfactual: no release, no epizootic", fontsize=10); ax.axis("off")
+
+    ax = fig.add_subplot(gs[0, 2])
+    im = ax.imshow(attrib, cmap="viridis", vmin=0, vmax=1)
+    ax.contour(np.nan_to_num(attrib, nan=0.0), [0.5], colors="white", linewidths=.7)
+    ax.set_title("Attribution to the release alone\n(actual − no-release) / actual, "
+                 "epizootic held fixed", fontsize=10); ax.axis("off")
+    fig.colorbar(im, ax=ax, fraction=.035, label="fraction of density from the release")
+
+    ax = fig.add_subplot(gs[1, 0])
+    layers = np.full(shape, np.nan)
+    layers[mask] = 0.0
+    layers[viable & occupied_cf] = 1.0
+    layers[unreached] = 2.0
+    ax.imshow(layers, cmap=mcolors.ListedColormap(["#f0f0f0", "#4575b4", "#e08214"]),
+              norm=mcolors.BoundaryNorm([-.5, .5, 1.5, 2.5], 3))
+    frac = float(np.sum(unreached)) / max(float(np.sum(viable)), 1.0)
+    ax.set_title(f"Viable range unreached without the release\n{frac:.1%} of viable habitat",
+                 fontsize=10); ax.axis("off")
+    ax.legend(handles=[
+        plt.Rectangle((0, 0), 1, 1, color="#e08214", label="viable, unoccupied in counterfactual"),
+        plt.Rectangle((0, 0), 1, 1, color="#4575b4", label="viable, reached anyway"),
+        plt.Rectangle((0, 0), 1, 1, color="#f0f0f0", label="not viable"),
+    ], loc="lower left", fontsize=6.5, frameon=True)
+
+    n_land = float(mask.sum())
+    series = (("actual", act, "#54278f", "-"),
+              ("no release, epizootic kept", rel, "#2166ac", ":"),
+              ("no release, no epizootic", cfa, "#e08214", "--"))
+    ax = fig.add_subplot(gs[1, 1])
+    for label, arr, color, ls in series:
+        ax.plot(years, (arr > floor).sum(axis=(1, 2)) / n_land, color=color, ls=ls, label=label)
+    ax.set(xlabel="Year", ylabel="Fraction of land occupied", title="Occupied area")
+    add_timeline_markers(ax); ax.legend(fontsize=7)
+
+    ax = fig.add_subplot(gs[1, 2])
+    for label, arr, color, ls in series:
+        ax.plot(years, np.nansum(arr, axis=(1, 2)) * pop_scalar, color=color, ls=ls, label=label)
+    ax.set(xlabel="Year", ylabel="Σ density (route-count units)", title="Total population",
+           yscale="log")
+    add_timeline_markers(ax); ax.legend(fontsize=7)
+
+    fig.suptitle("Counterfactual history: the 1940 NYC release deleted, everything else "
+                 "at the fitted MAP point", y=.99, fontsize=13)
+    fig.savefig(out, dpi=170, bbox_inches="tight"); plt.close(fig)
+
+    tot_act = float(np.nansum(act_m))
+    tot_cf = float(np.nansum(cf_m))
+    tot_rel = float(np.nansum(rel_m))
+    return {
+        "_comment": ("Three arms: A = actual, B = no release with the epizootic kept, "
+                     "C = no release and no epizootic. Attribution is A vs B (the "
+                     "release is the only difference); C is the coherent 'no release' "
+                     "world and drives the maps and the animation."),
+        "occupancy_floor_route_counts": 0.05,
+        "modern_total_density_actual": tot_act * float(pop_scalar),
+        "modern_total_density_no_release_disease_kept": tot_rel * float(pop_scalar),
+        "modern_total_density_no_release_no_disease": tot_cf * float(pop_scalar),
+        # A vs B: the release's own contribution to modern population.
+        "fraction_of_modern_population_from_release": (
+            (tot_act - tot_rel) / tot_act if tot_act > 0 else float("nan")),
+        # C vs B: how much the epizootic itself costs, inside the counterfactual.
+        "epizootic_cost_fraction_in_counterfactual": (
+            (tot_cf - tot_rel) / tot_cf if tot_cf > 0 else float("nan")),
+        "modern_occupied_fraction_actual": float(occupied_act.sum()) / n_land,
+        "modern_occupied_fraction_no_release": float(occupied_cf.sum()) / n_land,
+        "viable_fraction_unreached_without_release": frac,
+        "median_attribution_where_occupied": (
+            float(np.median(attrib[np.isfinite(attrib)])) if finite_attrib.any()
+            else float("nan")),
+        # If this is not small, the A-vs-B difference is not cleanly signed and the
+        # attribution map should not be read as a causal share.
+        "attribution_negative_fraction_clipped": clipped_frac,
+        # Distinguishes "the release did nothing" (max ~ 0) from "the release did
+        # something the median cell didn't see" (max ~ 1, median ~ 0).
+        "max_attribution": (float(np.max(attrib[np.isfinite(attrib)]))
+                            if finite_attrib.any() else float("nan")),
+    }
+
+
+def create_counterfactual_animation(sim, cf_density, years, land_mask, out):
+    """Animated actual vs no-release density, side by side on one shared scale."""
+    mask = land_mask.astype(bool)
+    act = np.where(mask[None], np.asarray(sim["simulated_density"]), np.nan)
+    cfa = np.where(mask[None], cf_density, np.nan)
+    # ONE scale for both panels: independent scaling would make an empty
+    # counterfactual look as populated as the actual invasion.
+    vmax = float(np.nanpercentile(np.log1p(act[np.isfinite(act)]), 99.5))
+    la, lc = np.log1p(act), np.log1p(cfa)
+
+    fig, (ax_a, ax_c) = plt.subplots(1, 2, figsize=(13, 6))
+    im_a = ax_a.imshow(la[0], cmap="magma", vmin=0, vmax=vmax)
+    ax_a.set_title("Actual"); ax_a.axis("off")
+    im_c = ax_c.imshow(lc[0], cmap="magma", vmin=0, vmax=vmax)
+    ax_c.set_title("Counterfactual: no 1940 release"); ax_c.axis("off")
+    fig.colorbar(im_a, ax=[ax_a, ax_c], fraction=.025, label="log(1 + density)")
+    title = fig.suptitle(f"Year {years[0]}", fontsize=14, fontweight="bold")
+
+    def update(frame):
+        title.set_text(f"Year {years[frame]}")
+        im_a.set_data(la[frame]); im_c.set_data(lc[frame])
+        return im_a, im_c, title
+
+    ani = animation.FuncAnimation(fig, update, frames=len(years), interval=120, blit=False)
+    try:
+        ani.save(str(out), writer=animation.FFMpegWriter(fps=8, bitrate=1800))
+    except Exception as exc:
+        gif_out = str(out).rsplit(".", 1)[0] + ".gif"
+        print(f"[map-viz] FFMpeg unavailable ({exc}); falling back to GIF: {gif_out}")
+        ani.save(gif_out, writer="pillow", fps=8)
+    plt.close(fig)
+
+
 def create_invasion_animation(sim, data, years, land_mask, out):
     """Animated side-by-side: simulated density vs. observed BBS counts, all years.
 
@@ -804,6 +1360,28 @@ def main():
         sim, years, rows, cols, shape, land_mask_arr, out / "10_age_structure.png", args.window_years)
     plot_invasion_progression(sim, years, land_mask_arr, out / "11_invasion_progression.png")
     create_invasion_animation(sim, data, years, land_mask_arr, out / "12_invasion_animation.mp4")
+    # No-invasion counterfactual (15/16). TWO extra forward passes at the same MAP
+    # point: one with the epizootic held fixed (isolates the release, so attribution
+    # is cleanly signed) and one with it removed (the causally coherent world, since
+    # no dense eastern population means no 1994 epizootic). Both are gradient-free
+    # and refit-free, so they run unconditionally.
+    cf_release_only = simulate_no_invasion_counterfactual(sim, data, drop_disease=False)
+    cf_no_disease = simulate_no_invasion_counterfactual(sim, data, drop_disease=True)
+    memory_snapshot("map-viz-counterfactual", device)
+    # Viability of the counterfactual's own world: no epizootic means K_base, hence a
+    # larger viable area than the actual world's.
+    _, viab_cf = modern_viability(sim, args.window_years, k_key="K_base_flat")
+    counterfactual_metrics = plot_counterfactual_attribution(
+        sim, cf_release_only, cf_no_disease, viab_cf, years, rows, cols, shape,
+        land_mask_arr, out / "15_counterfactual_no_invasion.png", args.window_years,
+        pop_scalar=float(np.asarray(data["pop_scalar"])))
+    create_counterfactual_animation(sim, cf_no_disease, years, land_mask_arr,
+                                    out / "16_counterfactual_animation.mp4")
+    # Optional: needs the Great Plains zone raster, which is built from a shapefile
+    # that is not in git. Returns None and explains itself when unavailable.
+    barrier_metrics = plot_barrier_crossing(
+        sim, data, cfg, dcfg, years, rows, cols, shape,
+        out / "17_barrier_crossing.png", args.window_years)
     n50_raw = float(np.asarray(sim["n50_raw"])); n50 = float(np.logaddexp(0.0, n50_raw))
     transition_land = np.isfinite(transition)
     metrics = {
@@ -848,6 +1426,10 @@ def main():
         # pathology as a saturated disease ceiling, one route over.
         "k_range": _k_range_metrics(sim),
         "realized_source_sink": source_sink_metrics,
+        "counterfactual_no_invasion": counterfactual_metrics,
+        # None when the Great Plains zone raster is absent; the key is always present
+        # so a consumer can distinguish "not computed" from "computed as zero".
+        "barrier_crossing": barrier_metrics,
         "disease": disease_metrics,
         "age_structure": age_structure_metrics,
         **response_metrics,

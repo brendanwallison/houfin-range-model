@@ -6,12 +6,22 @@ this is CPU-only and takes seconds. Input is the manifest written by
 ``scripts/tacc/submit_juv_mdd_sweep.sh``; points whose fit is missing or
 incomparable are marked excluded rather than silently plotted.
 
-The primary comparison is the **realized source/sink raster** (from each run's
+The primary comparison is the **viability raster** (``source_mask`` in each run's
 ``map_diagnostics/07_source_sink_fields.npz``): small multiples across mdd, signed
 lambda differences against a reference point, maps of cells that flip
-source<->sink, and a pairwise classification-agreement matrix. That last number is
-the compact answer to "how much does the source/sink conclusion actually move with
+viable<->non-viable, and a pairwise classification-agreement matrix. That last
+number is the compact answer to "how much does the conclusion actually move with
 dispersal distance."
+
+``source_mask`` is the FOLD criterion -- a positive equilibrium exists, i.e.
+``max_N F(N) > (1-Sa)/(Sa*Sj)`` -- not ``lambda > 1``; see
+``src/vis/age_model_math.allee_viability``. The ``lam_realized_modern`` field the
+difference panels use is lambda AT N = K, which ``c`` pins at 1 wherever the Allee
+factor saturates, so read those panels as differences in Allee cost, not in growth
+rate. Runs whose npz predates that change carry a ``source_mask`` thresholded on
+``lambda > 1``, whose boundary was set by a 1e-6 regularizer and is not comparable
+to a current one -- the git-sha check in ``cross_check`` is what stops the two from
+being mixed.
 
 Fit quality is reported alongside to spot outliers, NOT to rank points:
 
@@ -146,6 +156,22 @@ def load_point(entry, results_dir, cell_km=27.0):
             "disease_severity_median": (m.get("disease") or {})
                 .get("disease_severity_median"),
         })
+        # Great Plains crossing. `barrier_crossing` is null when the zone raster was
+        # unavailable at diagnostics time, so every key here can legitimately be None
+        # and the plotting side must tolerate an all-None column rather than assume
+        # the sweep was run with it enabled.
+        bc = m.get("barrier_crossing") or {}
+        rec.update({
+            "G_horizon_east_to_west": bc.get("G_horizon_east_to_west"),
+            "G_horizon_west_to_east": bc.get("G_horizon_west_to_east"),
+            "crossing_asymmetry_ratio": bc.get("asymmetry_ratio_ew_over_we"),
+            "rho_barrier": bc.get("rho_barrier"),
+            "barrier_self_sustaining": bc.get("barrier_self_sustaining"),
+            "median_propagule_pressure_east_to_west":
+                bc.get("median_propagule_pressure_east_to_west"),
+            "mean_juvenile_edge_correction_in_barrier":
+                bc.get("mean_juvenile_edge_correction_in_barrier"),
+        })
     elif rec["excluded_reason"] is None:
         rec["excluded_reason"] = "no metrics.json"
     return rec
@@ -221,9 +247,11 @@ def plot_source_sink(usable, ref_point, out):
     ax[1, 0].set_ylabel("Realized λ", fontsize=9)
     ax[2, 0].set_ylabel(f"Δλ vs {ref_km}", fontsize=9)
     ax[3, 0].set_ylabel(f"Class flips vs {ref_km}", fontsize=9)
+    # source_mask is the fold criterion (a positive equilibrium exists), not λ>1 --
+    # see map_diagnostics._write_source_sink_fields and age_model_math.allee_viability.
     ax[0, 0].legend(handles=[
-        plt.Rectangle((0, 0), 1, 1, color="#4575b4", label="Source (λ>1)"),
-        plt.Rectangle((0, 0), 1, 1, color="#d73027", label="Sink (λ≤1)"),
+        plt.Rectangle((0, 0), 1, 1, color="#4575b4", label="Viable (max$_N$ λ > 1)"),
+        plt.Rectangle((0, 0), 1, 1, color="#d73027", label="Non-viable"),
     ], loc="lower left", fontsize=6, frameon=True)
     ax[3, 0].legend(handles=[
         plt.Rectangle((0, 0), 1, 1, color="#4575b4", label="became source"),
@@ -246,10 +274,61 @@ def agreement_matrix(usable):
     return mat
 
 
+def _plot_barrier_crossing_vs_mdd(ax_g, ax_r, usable, mdd):
+    """Great Plains crossing gain and its asymmetry against juvenile MDD.
+
+    THE POINT OF THE WHOLE MEASURE. Kernel mass in the long-distance band is a
+    different object at every sweep point and so cannot be compared across them;
+    ``G`` is in units of expected descendants and internally re-optimizes between
+    "one long jump" and "many short hops that reproduce inside the Plains", so it
+    can. If ``G`` moves with MDD while the ASYMMETRY RATIO stays flat, the
+    directional conclusion is robust to the dispersal hyperparameter even though the
+    absolute crossing rate is not -- which is the result the sweep exists to
+    establish.
+
+    Points where the diagnostic did not run (no zone raster) are absent rather than
+    zero; both axes annotate themselves and return early instead of drawing an empty
+    frame that could read as "no crossing".
+    """
+    gew = np.array([p.get("G_horizon_east_to_west") or np.nan for p in usable], dtype=float)
+    gwe = np.array([p.get("G_horizon_west_to_east") or np.nan for p in usable], dtype=float)
+    ratio = np.array([p.get("crossing_asymmetry_ratio") or np.nan for p in usable], dtype=float)
+    rho = np.array([p.get("rho_barrier") or np.nan for p in usable], dtype=float)
+    if not np.isfinite(gew).any():
+        for a, msg in ((ax_g, "no barrier_crossing metrics\n(zone raster absent)"),
+                       (ax_r, "")):
+            a.text(.5, .5, msg, ha="center", va="center", fontsize=9, transform=a.transAxes)
+            a.set_xticks([]); a.set_yticks([])
+        return
+
+    ax_g.plot(mdd, gew, marker="o", color="#54278f", label="east → west")
+    ax_g.plot(mdd, gwe, marker="s", color="#e08214", label="west → east")
+    ax_g.set(xlabel="Juvenile mean dispersal distance (km)",
+             ylabel="G (descendants per founder, 124 yr)",
+             title="Great Plains crossing gain", yscale="log")
+    ax_g.legend(fontsize=8)
+
+    ax_r.plot(mdd, ratio, marker="o", color="#238443")
+    ax_r.axhline(1.0, color="0.6", ls="--", lw=.8)
+    ax_r.set(xlabel="Juvenile mean dispersal distance (km)",
+             ylabel="G(E→W) / G(W→E)", title="Crossing asymmetry\n(flat = robust to MDD)")
+    twin = ax_r.twinx()
+    # rho on the same panel because it is the validity condition for G(inf): at rho>=1
+    # the barrier self-sustains and the infinite-horizon gain diverges.
+    twin.plot(mdd, rho, marker="^", ls=":", color="#2166ac", label="ρ(barrier)")
+    twin.axhline(1.0, color="#2166ac", ls=":", lw=.6)
+    twin.set_ylabel("ρ(barrier)", color="#2166ac")
+    twin.tick_params(axis="y", labelcolor="#2166ac")
+    if np.nanmax(ratio) - np.nanmin(ratio) < 0.1 * np.nanmean(ratio):
+        # Placed high in the axes: the rho series occupies the lower band.
+        ax_r.text(.5, .93, "ratio varies <10% across MDD", ha="center", fontsize=7.5,
+                  color="#238443", transform=ax_r.transAxes)
+
+
 def plot_fit_metrics(usable, mat, out):
     labels = [f"{p['juvenile_mdd_km']:.0f}" for p in usable]
     mdd = [p["juvenile_mdd_km"] for p in usable]
-    fig, ax = plt.subplots(2, 2, figsize=(12.5, 8.5))
+    fig, ax = plt.subplots(2, 3, figsize=(18.0, 8.5))
 
     loss = [p.get("final_loss", np.nan) for p in usable]
     # Error bars are the last-100-step spread: a lower bound on optimizer noise,
@@ -288,7 +367,10 @@ def plot_fit_metrics(usable, mat, out):
                               fontsize=7, color="white" if mat[i, j] < 0.9 else "black")
     fig.colorbar(im, ax=ax[1, 1], fraction=.046, label="Fraction of land cells agreeing")
 
-    fig.suptitle("Juvenile dispersal sensitivity: fit quality and kernel realization", y=.99)
+    _plot_barrier_crossing_vs_mdd(ax[0, 2], ax[1, 2], usable, mdd)
+
+    fig.suptitle("Juvenile dispersal sensitivity: fit quality, kernel realization, "
+                 "and Great Plains crossing", y=.99)
     fig.tight_layout(); fig.savefig(out, dpi=180); plt.close(fig)
 
 

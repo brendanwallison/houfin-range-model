@@ -88,6 +88,12 @@ def response_curve_fields(latents, z_sweep, target_idx):
     ``09_disease_diagnostics.png`` for that piece; a curve here that looks high
     versus the fitted K field is expected in post-arrival regions, not a bug.
     """
+    if "w_env" not in latents:
+        raise KeyError(
+            "response_curve_fields needs 'w_env', which is a numpyro.deterministic "
+            "under the one-factor manifold prior -- auto_delta_params_to_latents "
+            "returns only SAMPLED sites, so the caller must fold the deterministic "
+            "value in (see map_diagnostics.reconstruct_map)")
     w_env = np.asarray(latents["w_env"])  # (M, 3): beta_s, beta_r, beta_k
     beta_s, beta_r = w_env[:, 0], w_env[:, 1]
     # Capacity has its OWN manifold now; reusing beta_r here would silently plot a
@@ -111,10 +117,12 @@ def response_curve_fields(latents, z_sweep, target_idx):
         load_age_model_config()["population_model"].get(
             "population_scale_birds_per_relative_unit", 1.0)))
     fold = float(load_age_model_config()["population_model"]["k_range"]["max_fold_deviation"])
-    if "log_k_level_counts" in latents:
+    if "k_level" in latents:                      # deterministic, already in density
+        k_level = float(np.asarray(latents["k_level"]))
+    elif "log_k_level_counts" in latents:          # raw sampled site
         k_level = float(np.exp(latents["log_k_level_counts"])) / pop
     else:
-        k_level = float(softplus(latents["alpha_k"]))  # legacy checkpoint
+        k_level = float(softplus(latents["alpha_k"]))  # pre-run_11 checkpoint
     gamma_a = float(softplus(latents["gamma_a_raw"]))
     gamma_j = gamma_a + float(latents["gamma_j_diff"])
     gamma_f = float(softplus(latents["gamma_f_raw"]))

@@ -183,3 +183,35 @@ def test_k_trend_prior_is_concentrated_on_zero():
     assert np.median(dev) < 0.05, "prior median K drift should be a few percent"
     assert np.percentile(dev, 95) < 0.10, "95% of prior draws must stay under 10%"
     assert np.percentile(dev, 99.9) < 0.20, "even the far tail must not reach 20%"
+
+
+def test_deterministic_sites_the_viz_depends_on_exist():
+    """Sites the diagnostics read must actually be emitted by the model.
+
+    This test exists because a real failure slipped through: `w_env` was changed
+    from a SAMPLED site to a numpyro.deterministic (it is now built from the
+    one-factor manifold prior), but `map_diagnostics` read it out of
+    `auto_delta_params_to_latents`, which returns sampled sites ONLY. The viz job
+    ran for a minute on a GPU and then died with KeyError: 'w_env'. Unit-testing the
+    site inventory is far cheaper than discovering it from a SLURM error file.
+    """
+    tr = _trace_priors()
+    deterministic = {k for k, v in tr.items() if v["type"] == "deterministic"}
+    sampled = {k for k, v in tr.items() if v["type"] == "sample"}
+
+    # Read by scripts/viz/map_diagnostics.py and src/vis/age_model_math.py.
+    for name in ("w_env", "k_level", "k_level_route_counts", "w_scale", "L_corr",
+                 "rho", "env_corr_repro_capacity", "env_corr_survival_capacity",
+                 "manifold_loadings", "disease_tau", "disease_rec",
+                 "disease_tau_rec", "disease_k_half_route_counts", "disease_hill_n"):
+        assert name in deterministic, f"{name} is no longer a deterministic site"
+
+    # Read as raw latents (i.e. must stay SAMPLED, or checkpoint restore breaks).
+    for name in ("alpha_a", "alpha_j", "alpha_f", "gamma_a_raw", "gamma_j_diff",
+                 "gamma_f_raw", "gamma_k_raw", "log_k_level_counts", "n50_raw",
+                 "disease_mu_sev", "disease_b_late", "disease_w_sev",
+                 "disease_lag0", "disease_w_lag", "w_k_trend"):
+        assert name in sampled, f"{name} is no longer a sampled site"
+
+    # w_env must be (M, 3): survival, reproduction, capacity.
+    assert np.asarray(tr["w_env"]["value"]).shape[1] == 3

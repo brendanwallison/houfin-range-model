@@ -119,6 +119,7 @@ def reconstruct_map(data, params):
               "Q_flat", "expected_obs", "allee_gamma", "n50_raw", "w_env", "rho",
               "env_corr_repro_capacity", "env_corr_survival_capacity",
               "manifold_loadings", "w_k_trend", "k_level", "k_level_route_counts",
+              "gamma_a", "gamma_j", "gamma_f", "gamma_k",
               "disease_k_half_route_counts", "disease_hill_n",
               "disease_severity_map", "disease_mu_sev", "disease_b_late",
               "disease_w_lag", "disease_lag0", "disease_tau", "disease_rec",
@@ -127,13 +128,17 @@ def reconstruct_map(data, params):
     result = predictive(jax.random.PRNGKey(104), data=data, prior_scale=1.0)
     result = jax.block_until_ready(result)
     sim = {name: np.asarray(value[0]) for name, value in result.items()}
-    # auto_delta_params_to_latents returns only SAMPLED sites, but w_env and k_level
-    # are numpyro.deterministic under the one-factor manifold prior (w_env is built
-    # from manifold_factor/manifold_idio/loadings, and k_level is softplus(alpha_k)).
-    # Fold the deterministic values in so plotting
+    # auto_delta_params_to_latents returns only SAMPLED sites, but several things the
+    # response curves need are numpyro.deterministic: w_env is built from
+    # manifold_factor/manifold_idio/loadings, k_level is softplus(alpha_k), and the
+    # gamma_* slopes are constants fixed at 1 (their amplitude moved into w_scale).
+    # The gammas are the reason this list must be kept in sync with what
+    # age_model_math reads -- omitting them raised KeyError('gamma_a_raw') from
+    # response_curve_fields, which killed diagnostics BEFORE the source/sink fields
+    # and metrics.json were written. Fold the deterministic values in so plotting
     # code has a single place to look and cannot silently read a stale name.
     sim["latents"] = dict(latents)
-    for name in ("w_env", "k_level"):
+    for name in ("w_env", "k_level", "gamma_a", "gamma_j", "gamma_f", "gamma_k"):
         if name in sim:
             sim["latents"][name] = sim[name]
     return sim

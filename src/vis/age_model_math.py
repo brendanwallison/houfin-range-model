@@ -58,6 +58,21 @@ def softplus(x):
     return np.log1p(np.exp(-np.abs(x))) + np.maximum(x, 0.0)
 
 
+def _gamma_slope(latents, name, raw_name):
+    """One demographic slope, tolerant of both the current and the pre-d7db319 names.
+
+    Current model: ``name`` is a deterministic equal to 1.0. Older checkpoints:
+    ``raw_name`` was a sampled site read through softplus. Neither present (a
+    caller that folded in no deterministics at all) falls back to the fixed 1.0
+    rather than raising, because the value is not actually in question.
+    """
+    if name in latents:
+        return float(np.asarray(latents[name]))
+    if raw_name in latents:
+        return float(softplus(latents[raw_name]))
+    return 1.0
+
+
 def response_curve_fields(latents, z_sweep, target_idx):
     """Sweep one Z feature and return Sa/Sj/Fmax/K response curves.
 
@@ -129,10 +144,17 @@ def response_curve_fields(latents, z_sweep, target_idx):
         k_level = float(softplus(latents["alpha_k"]))  # pre-run_11 checkpoint
     from src.model.age_priors import _ALPHA_K_LOC
     alpha_k = float(latents.get("alpha_k", _ALPHA_K_LOC))
-    gamma_a = float(softplus(latents["gamma_a_raw"]))
-    gamma_j = gamma_a + float(latents["gamma_j_diff"])
-    gamma_f = float(softplus(latents["gamma_f_raw"]))
-    gamma_k = float(softplus(latents["gamma_k_raw"]))
+    # The demographic slopes are dimensionless and FIXED AT 1 (their amplitude moved
+    # into w_scale to remove three flat ridges -- see age_priors.py). They are emitted
+    # as numpyro.deterministic under the friendly names, plus *_raw constants equal to
+    # softplus^-1(1) for older readers. Deterministic sites are absent from
+    # auto_delta_params_to_latents, so the caller must fold them in (see
+    # map_diagnostics.reconstruct_map); the fallbacks below keep pre-d7db319
+    # checkpoints, where the *_raw names were genuinely sampled, plotting correctly.
+    gamma_a = _gamma_slope(latents, "gamma_a", "gamma_a_raw")
+    gamma_j = gamma_a + float(latents["gamma_j_diff"])  # sampled; always present
+    gamma_f = _gamma_slope(latents, "gamma_f", "gamma_f_raw")
+    gamma_k = _gamma_slope(latents, "gamma_k", "gamma_k_raw")
 
     return {
         "Sa": sigmoid(alpha_a + gamma_a * H_s),

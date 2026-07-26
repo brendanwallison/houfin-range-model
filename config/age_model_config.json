@@ -135,8 +135,8 @@
     "avonet_csv": "${HOUFIN_DATA}/avonet/AVONET_Comparison_WithPhylogeny_Urban.csv"
   },
   "run_names": {
-    "_comment": "run_11: the K SCALE fix. alpha_k ~ Normal(0.5,0.5) was stated in relative density units and therefore asserted, unnoticed, that every cell capacity equalled ~97% of the highest BBS route counts ever recorded; the data want ~2 counts, so it sat 7 prior SDs from the fit and every term able to lower K (disease severity, the H_k deviation, the continental trend) got recruited as a level reducer and saturated -- which is why capping each in turn only moved the pressure. Now: gauge = q95 of modern per-cell mean counts (20, was ~the max at 210); EVERY absolute-scale prior is declared in ROUTE COUNTS and converted at one boundary (counts_to_relative); the capacity level is LogNormal on 2.1 counts (the typical occupied cell); initpop and the invasion pulse are derived from observed counts instead of magic literals; severity is DENSITY-DEPENDENT via a fitted Hill function, so sparse populations are spared and the Allee effect can no longer turn a small absolute loss into a local extinction; and the Hill steepness bound is DERIVED from the severity ceiling so the pair cannot become unidentifiable. Requires re-running bbs_finch AND model-ingest.",
-    "map": "age_map_{precision}_run_11",
+    "_comment": "run_12: Simplified K, smaller init pop",
+    "map": "age_map_{precision}_run_12",
     "svi": "age_vi_{precision}_run_5",
     "hmc": "age_hmc_{precision}_trial_3",
     "hmc_svi_source": "age_vi_{precision}_run_2",
@@ -144,7 +144,7 @@
     "resume_svi_from_map": "age_map_{precision}_run_4",
     "resume_hmc_out": "age_hmc_{precision}_from_map",
     "resume_hmc_from_map": "age_map_{precision}_run_4",
-    "vis_map": "age_map_{precision}_run_11",
+    "vis_map": "age_map_{precision}_run_12",
     "vis_svi": "age_vi_{precision}_run_5",
     "vis_hmc": "age_hmc_{precision}_trial_3",
     "vis_community": "age_map_{precision}_run_6"

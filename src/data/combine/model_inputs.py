@@ -259,28 +259,21 @@ def ingest_data():
         
     bbs_data = np.load(BBS_DATA_NPZ)
     land_mask = (bbs_data['land'].astype(np.float32) > 0.5).astype(int)
-    # Seed map arrives in EXPECTED BBS ROUTE COUNTS (derived from the observed
-    # pre-1970 native-range counts, see bbs.generate_core_margin_initialization) and
-    # is converted to density here -- the single gauge boundary. Older npz files
-    # carry initpop_density in relative units already; accept them unconverted.
-    _pop_scalar = float(POPULATION_SPEC.get(
-        "population_scale_route_counts_per_relative_unit",
-        POPULATION_SPEC.get("population_scale_birds_per_relative_unit")))
-    if 'initpop_route_counts' in bbs_data:
-        initpop_map = (bbs_data['initpop_route_counts'] / _pop_scalar) * land_mask
-        print(f"  Init seed: max {bbs_data['initpop_route_counts'].max():.1f} route counts "
-              f"-> {initpop_map.max():.4f} density (gauge {_pop_scalar:g})")
-        _lvl = float(POPULATION_SPEC["capacity_level_prior"]["median_route_counts"])
-        _core = float(bbs_data['initpop_route_counts'].max())
-        if _core > _lvl * 30.0:
-            raise ValueError(
-                f"initpop core seed {_core:.1f} counts exceeds 30x the capacity-level "
-                f"prior median ({_lvl:.1f}) -- the native range would start far above "
-                f"any reachable carrying capacity. Reconcile capacity_level_prior "
-                f"with the observed native-range abundance.")
+    # Seed map is a DIMENSIONLESS shape (core=1, margin=observed ratio); the model
+    # scales it by the fitted capacity level times a configured fraction, so the seed
+    # is always a known fraction of capacity. Older npz files carry absolute values
+    # (initpop_route_counts, or initpop_density in relative units) -- normalize those
+    # to a shape so a legacy file still runs, since only the pattern is used now.
+    if 'initpop_shape' in bbs_data:
+        initpop_map = bbs_data['initpop_shape'] * land_mask
     else:
-        initpop_map = bbs_data['initpop_density'] * land_mask
-        print("  [compat] initpop read as relative density from a legacy npz")  # already at grid res
+        legacy = bbs_data['initpop_route_counts'] if 'initpop_route_counts' in bbs_data \
+            else bbs_data['initpop_density']
+        peak = float(np.max(legacy)) or 1.0
+        initpop_map = (legacy / peak) * land_mask
+        print(f"  [compat] legacy initpop normalized to a shape (peak was {peak:g})")
+    print(f"  Init shape: core {initpop_map.max():.2f}, "
+          f"nonzero cells {int((initpop_map > 0).sum())}")  # already at grid res
 
     Ny, Nx = land_mask.shape
     land_rows, land_cols = np.where(land_mask)

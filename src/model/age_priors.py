@@ -29,6 +29,8 @@ _MANIFOLD_PRIOR = dict(_POP_SPEC["manifold_prior"])
 _K_TREND = dict(_POP_SPEC["k_trend"])
 _CAPACITY_LEVEL = dict(_POP_SPEC["capacity_level_prior"])
 _INVASION_PULSE = dict(_POP_SPEC["invasion_pulse_prior"])
+_INITPOP_SEED = dict(_POP_SPEC["initpop_seed"])
+_ALLEE_PRIOR = dict(_POP_SPEC["allee_prior"])
 # THE GAUGE. Every absolute-scale prior is declared in expected BBS ROUTE COUNTS in
 # config and divided by this at exactly one boundary, so changing the gauge cannot
 # change any prior's meaning. (n50 already followed this convention; the capacity
@@ -355,10 +357,21 @@ def sample_priors(prior_scale=1.0, M_features=None, time=None,
     priors['gamma_f'] = jnn.softplus(numpyro.sample("gamma_f_raw", dist.Normal(0.0, 1.0 * prior_scale)))
     priors['gamma_k'] = jnn.softplus(numpyro.sample("gamma_k_raw", dist.Normal(0.0, 1.0 * prior_scale)))
     
-    # N50 is expressed on the BBS-route count scale. A single detected bird can
-    # proxy for an established local population, so this deliberately places the
-    # transition near the first observable presence rather than tens of detections.
-    n50_raw = numpyro.sample("n50_raw", dist.Normal(-1.0, 1.0 * prior_scale))
+    # N50 is expressed on the BBS-ROUTE COUNT scale, which makes it gauge-invariant:
+    # allee_gamma*N reduces to ln2*C/n50 with C the expected route count, so the Allee
+    # behaviour does not move when population_scale_route_counts_per_relative_unit
+    # changes. This was already true before the run_11 scale work and is the pattern
+    # every other absolute-scale prior was rewritten to follow.
+    #
+    # Rationale for the location: by the time a route regularly yields one bird there
+    # is an established local population, so the brake should be essentially overcome.
+    # loc -1.5 -> median n50 0.20 counts -> 97% released at one bird, 82% at half a
+    # bird. (It was -1.0 -> 0.31 counts -> 89% at one bird, a touch strong.) The prior
+    # WIDTH is deliberately unchanged, so the slow tail still permits ~59% release at
+    # one bird; narrowing the scale, not shifting the mean, is what would exclude that.
+    n50_raw = numpyro.sample(
+        "n50_raw", dist.Normal(float(_ALLEE_PRIOR["n50_raw_loc"]),
+                               float(_ALLEE_PRIOR["n50_raw_scale"]) * prior_scale))
     n50 = jnn.softplus(n50_raw)
 
     # Derive the searching efficiency on the RAW count scale
@@ -419,15 +432,25 @@ def build_model_2d(data, prior_scale=1.0):
         "tau_rec": priors['disease_tau_rec'],
     }
 
-    # The 1940 release, in route counts converted through the gauge (see
-    # counts_to_relative). Previously softplus(Normal(-2,1)) in relative units, which
-    # at the old gauge meant a founding population of ~27 route counts -- larger than
-    # a typical modern occupied cell, for a release of a few dozen cage birds.
-    inv_pop = numpyro.deterministic("inv_pop_relative", counts_to_relative(jnp.exp(
-        numpyro.sample("log_inv_pulse_counts",
-                       dist.Normal(jnp.log(float(_INVASION_PULSE["median_route_counts"])),
+    # The 1940 release, as a FRACTION OF THE FITTED CAPACITY LEVEL. Absolute pulses
+    # (route counts, or relative density before that) silently change meaning whenever
+    # the capacity level moves, and the level moved by 97x without the seeds being
+    # rechecked -- which is what made the fit start badly.
+    # The native-range seed: a dimensionless shape from the data, scaled to a known
+    # FRACTION of the fitted capacity level. Guarantees the population starts below
+    # capacity whatever the level turns out to be, instead of the density brake
+    # slamming on at t=0 (which is what a 9.5-count seed did against a 2.1-count
+    # level: 4.5x capacity, crashed immediately, bad loss at step 0).
+    initpop_seeded = numpyro.deterministic(
+        "initpop_seeded",
+        data['initpop_latent'] * priors['k_level']
+        * float(_INITPOP_SEED["core_fraction_of_capacity"]))
+
+    inv_pop = numpyro.deterministic("inv_pop_relative", priors['k_level'] * jnp.exp(
+        numpyro.sample("log_inv_pulse_fraction",
+                       dist.Normal(jnp.log(float(_INVASION_PULSE["median_fraction_of_capacity"])),
                                    float(_INVASION_PULSE["log_sd"]) * prior_scale),
-                       sample_shape=(data['inv_window'],)))))
+                       sample_shape=(data['inv_window'],))))
     
     # Convert to the relative [0, 1] scale by multiplying by pop_scalar
     # Since N_relative = N_raw / pop_scalar, 
@@ -492,7 +515,7 @@ def build_model_2d(data, prior_scale=1.0):
         data['land_mask'],
         data['adult_fft_kernel'], data['juvenile_fft_kernel_stack'],
         data['adult_edge_correction'], data['juvenile_edge_correction_stack'],
-        data['initpop_latent'], priors['dispersal_random'], inv_pop,
+        initpop_seeded, priors['dispersal_random'], inv_pop,
         time, data['inv_location'], data['inv_timestep'],
         priors['dispersal_logit_intercept'], priors['dispersal_logit_slope'],
         priors['allee_gamma'],

@@ -217,25 +217,29 @@ def test_deterministic_sites_the_viz_depends_on_exist():
     assert np.asarray(tr["w_env"]["value"]).shape[1] == 3
 
 
-def test_initpop_seed_is_coherent_with_the_capacity_prior():
-    """The native-range seed must not start above reachable carrying capacity.
+def test_seeds_start_below_carrying_capacity_by_construction():
+    """The native seed and the invasion pulse must be fractions of capacity, not counts.
 
-    A seed above capacity crashes the population in the first timesteps, and the
-    failure is silent -- it looks like a bad fit, not a bad initial condition. An
-    earlier version seeded the core at 61 route counts (the q90 of the native
-    distribution, applied uniformly across a convex hull) against a capacity level of
-    2.1 and a 30x fold bound, i.e. 97% of the maximum achievable K.
+    An absolute seed has to be re-checked against the capacity level every time that
+    level moves -- and when the level fell 97x (from an implied ~205 route counts to
+    2.1), the seeds were not rechecked. A 9.5-count seed against a 2.1-count level
+    starts the native range at 4.5x its own carrying capacity: the density brake slams
+    on at t=0, the population crashes, and the fit opens at a much worse loss. Stated
+    as a FRACTION the pathology is unrepresentable, which is the point.
     """
     pop = load_age_model_config()["population_model"]
-    core = float(pop["initpop_seed"]["core_route_counts"])
-    margin = float(pop["initpop_seed"]["margin_route_counts"])
-    level = float(pop["capacity_level_prior"]["median_route_counts"])
-    fold = float(pop["k_range"]["max_fold_deviation"])
+    core_frac = float(pop["initpop_seed"]["core_fraction_of_capacity"])
+    pulse_frac = float(pop["invasion_pulse_prior"]["median_fraction_of_capacity"])
 
-    assert margin <= core, "the sparse fringe cannot exceed the core"
-    # Above the level is fine and expected (a native range sits at equilibrium in
-    # its best habitat), but it must stay well inside what K can actually reach.
-    assert core < 0.5 * level * fold, (
-        f"core seed {core} counts is more than half the maximum reachable K "
-        f"({level * fold:.0f} counts); cells would start near or above capacity")
-    assert core > level * 0.5, f"core seed {core} is implausibly far below the level"
+    assert 0.0 < core_frac < 1.0, "the native seed must start BELOW capacity"
+    assert 0.0 < pulse_frac < 1.0, "the invasion pulse must start BELOW capacity"
+    # An invasion model should grow into capacity, not start at it. Both values
+    # reproduce the ratios the pre-run_11 model used, which behaved.
+    assert core_frac <= 0.5, f"core seed at {core_frac:.0%} of capacity is too high"
+    assert pulse_frac <= 0.5, f"pulse at {pulse_frac:.0%} of capacity is too high"
+
+    # No absolute-scale seed keys may survive: their presence means someone
+    # reintroduced a value that silently needs rechecking against the level.
+    for stale in ("core_route_counts", "margin_route_counts"):
+        assert stale not in pop["initpop_seed"], f"{stale} is level-dependent"
+    assert "median_route_counts" not in pop["invasion_pulse_prior"]

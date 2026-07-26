@@ -281,23 +281,22 @@ def generate_core_margin_initialization(obs_df, ny, nx, transform, land_mask):
     mask_margin = _rasterize(hull_margin) & land_mask
     mask_core = _rasterize(hull_core) & land_mask
 
-    # Seed levels in ROUTE COUNTS, from config (see its _initpop_comment). Config
-    # rather than derived-in-place because the right quantile is a judgement call:
-    # deriving the core from the >75th-percentile hull cells gave 61 counts, the q90
-    # of the native distribution, applied uniformly across a convex hull full of
-    # sparser cells -- so high that most core cells started above their own capacity.
-    # The empirical quantiles are printed below so the config can be re-checked.
-    _seed = load_age_model_config()["population_model"]["initpop_seed"]
-    core_counts = float(_seed["core_route_counts"])
-    margin_counts = min(float(_seed["margin_route_counts"]), core_counts)
+    # A DIMENSIONLESS shape: core = 1, margin = the observed margin:core count ratio.
+    # The absolute scale is applied in the model as a fraction of the fitted capacity
+    # level (see age_priors), because an absolute seed cannot stay coherent with a
+    # capacity level that moves -- which it did, by 97x, and the seed was not
+    # rechecked. A RATIO is immune: it is free of both the gauge and the level.
     per_cell = locs.groupby(["row", "col"])["SpeciesTotal"].mean()
     if len(per_cell):
         qs = np.percentile(per_cell, [10, 25, 50, 75, 90])
         print("  Native occupied-cell counts q10/q25/q50/q75/q90: "
               + "/".join(f"{q:.1f}" for q in qs))
-        if core_counts > np.percentile(per_cell, 75):
-            print(f"  [warn] core seed {core_counts:.1f} exceeds the native q75 "
-                  f"({qs[3]:.1f}); cells may start above their carrying capacity")
+        margin_ratio = float(np.clip(qs[1] / max(qs[2], 1e-9), 0.01, 1.0))
+    else:
+        margin_ratio = 0.3
+    core_counts, margin_counts = 1.0, margin_ratio
+    print(f"  Init SHAPE (dimensionless): core=1.0, margin={margin_ratio:.2f} "
+          f"(observed native q25:q50)")
     initpop_counts = np.zeros((ny, nx), dtype=np.float32)
     initpop_counts[mask_margin] = margin_counts
     initpop_counts[mask_core] = core_counts
@@ -342,10 +341,12 @@ def main():
         obs_year=np.concatenate([p_years, mapped["Year"].values]).astype(int),
         observed_results=np.concatenate([p_counts, mapped["SpeciesTotal"].values]).astype(int),
         obs_quality=np.concatenate([p_quality, mapped["quality_tier"].values]).astype(int),
-        # In ROUTE COUNTS; model_inputs divides by the gauge (see its
-        # initpop_latent block). The old key name said "density", which was
-        # gauge-dependent and undocumented.
-        initpop_route_counts=init_counts,
+        # DIMENSIONLESS shape (core=1, margin=observed ratio). The model scales it by
+        # the fitted capacity level x initpop_seed.core_fraction_of_capacity, so the
+        # seed is always a known fraction of capacity whatever the level turns out to
+        # be. Earlier keys initpop_density (gauge-dependent) and initpop_route_counts
+        # (level-dependent) both had to be rechecked whenever those moved.
+        initpop_shape=init_counts,
         initpop_rows=np.where(init_counts > 0)[0],
         initpop_cols=np.where(init_counts > 0)[1],
         N_obs=len(mapped), N_pseudo=len(p_counts),

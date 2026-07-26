@@ -129,8 +129,8 @@ def reconstruct_map(data, params):
     sim = {name: np.asarray(value[0]) for name, value in result.items()}
     # auto_delta_params_to_latents returns only SAMPLED sites, but w_env and k_level
     # are numpyro.deterministic under the one-factor manifold prior (w_env is built
-    # from manifold_factor/manifold_idio/loadings, and K's level is sampled in route
-    # counts as log_k_level_counts). Fold the deterministic values in so plotting
+    # from manifold_factor/manifold_idio/loadings, and k_level is softplus(alpha_k)).
+    # Fold the deterministic values in so plotting
     # code has a single place to look and cannot silently read a stale name.
     sim["latents"] = dict(latents)
     for name in ("w_env", "k_level"):

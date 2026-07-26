@@ -213,7 +213,7 @@ def project_and_scatter_age_structured(
     alpha_a, gamma_a, # Adult survival intercept & slope
     alpha_j, gamma_j, # Juvenile survival intercept & slope
     alpha_f, gamma_f, # Max fecundity intercept & slope
-    k_level, gamma_k  # Carrying capacity continental LEVEL (density units) & slope
+    alpha_k, gamma_k  # Carrying capacity intercept (inside softplus) & slope
 ):
     """Project Z → (S_a, S_j, F_max, K, Q) for every year, on the land cells.
 
@@ -278,23 +278,23 @@ def project_and_scatter_age_structured(
         # near-zero -- it is a safety valve, not a mechanism.
         k_trend_t = jnp.dot(jnp.take(k_trend_basis, t_idx, axis=1), w_k_trend)
 
-        # Baseline K, log-linear:
-        #     log K_base = log(k_level) + gamma_k*H_k + trend
-        # i.e. a log link on capacity. Multiplicative because capacity genuinely
-        # varies over orders of magnitude (observed per-cell means span 0.1 to 226
-        # route counts, log sd 1.72), and k_level -- sampled in route counts and
-        # converted by the gauge -- is the continental level.
+        # Baseline K with a SOFTPLUS link, in route counts, converted by the gauge:
+        #     K_counts = softplus(alpha_k + gamma_k*H_k + trend)
+        # This is a CONTROLLED TEST against the exp form,
+        #     K = k_level * exp(gamma_k*H_k + trend),
+        # with alpha_k's prior location solved so the post-transformation prior MEAN of
+        # capacity is identical (2.8920 route counts). Only the link changed.
         #
-        # An earlier version wrapped the covariate term in L*tanh(./L) to clamp the
-        # log-fold deviation. That was defensive scaffolding from when K kept
-        # collapsing to ~0: the real cause was alpha_k's prior sitting 7 SDs from the
-        # data (it asserted a capacity of ~205 route counts), so every term able to
-        # lower K -- including this one -- was recruited as a level reducer. With the
-        # level prior stated correctly in route counts, that pressure is gone and the
-        # clamp is unnecessary complication. The realized fold range is REPORTED
-        # instead (metrics.json:k_range), so a collapse would be visible rather than
-        # hidden by a clamp.
-        K_base_val = k_level * jnp.exp(gamma_k * H_k_local + k_trend_t)
+        # The two differ in more than tail weight: under softplus gamma_k*H_k is
+        # ADDITIVE IN ROUTE COUNTS, so K's spatial spread is no longer multiplicative
+        # and the covariate term cannot reproduce the log-normal shape of the observed
+        # occupied-cell distribution (log sd 1.72, spanning 0.1 to 226 counts). Softplus
+        # also has the property that made the ORIGINAL failure so hard to see: where its
+        # argument is negative it behaves like exp(), so a term subtracted from it acts
+        # multiplicatively and without a floor. That is not a problem here -- nothing is
+        # subtracted from this argument any more -- but it is why K sat in the
+        # exponential regime for the first several runs.
+        K_base_val = jnn.softplus(alpha_k + gamma_k * H_k_local + k_trend_t)
 
         # 4b. Disease effect on K only: a bounded MULTIPLICATIVE rescale (see the
         # module docstring for why the earlier additive-inside-softplus form

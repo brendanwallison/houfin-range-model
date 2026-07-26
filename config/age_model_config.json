@@ -59,16 +59,20 @@
       "log_sd": 1.0
     },
     "capacity_level_prior": {
-      "median_route_counts": 2.1,
-      "log_sd": 0.8
+      "_link_comment": "SOFTPLUS link applied in DENSITY space -- the space the simulation actually works in: K = softplus(alpha_k + gamma_k*H_k + trend), no gauge conversion around it. The previous run used exp: K = k_level * exp(gamma_k*H_k + trend). Only the transformation changed. WHY DENSITY SPACE: softplus does not commute with scaling (softplus(x)/c != softplus(x/c)) whereas exp does (exp(x)/c = exp(x - log c)), so a softplus link has to be pinned to a space, and density is the one the forward simulation uses. Applying it in route-count space instead would put the argument near +2.8, softplus's LINEAR regime, making the link's shape depend on population_scale_route_counts_per_relative_unit. WHAT IT BUYS: at typical densities the argument is near -2.1, deep enough in softplus's exponential regime that it closely tracks exp, but it is progressively sub-exponential as density rises -- softplus/exp is 0.98 at 1 route count, 0.93 at 2.9 (the typical occupied cell), 0.86 at 7, 0.74 at 16 (q90 of occupied cells), 0.28 at 73 (q99). So it weakly regularizes the long upper tail of abundance without any hard bound, which is the point. Note it is a graded shrinkage everywhere, not identity-then-threshold. HISTORICAL NOTE: the original model was also softplus in density space, but with pop_scalar at 210 the argument sat between -3 and 0, so the link was effectively exp -- which is why a penalty SUBTRACTED from that argument acted multiplicatively and without a floor, and annihilated eastern carrying capacity.",
+      "_calibration_comment": "target_level_mean_route_counts is the belief, declared in route counts so it survives a change of pop_scalar; alpha_k's prior LOCATION is solved numerically at import (age_priors._solve_softplus_loc) so that E[softplus(alpha_k)] * pop_scalar equals it. Set to 2.8920 to match the previous run's level mean exactly: exp(log 2.1 + 0.8^2/2). alpha_k_scale is unchanged at 0.8, and because Normal-on-the-argument IS LogNormal in the exponential regime, the level VARIANCE comes out nearly matched too (sd 2.30 vs 2.74 route counts) rather than collapsing as it would in count space.",
+      "target_level_mean_route_counts": 2.8920,
+      "alpha_k_scale": 0.8
     },
     "_manifold_comment": "Correlated weights for the THREE demographic manifolds: H_s (survival, drives Sa/Sj/Q), H_r (reproduction, drives Fmax), H_k (capacity, drives K). K used to reuse H_r outright, i.e. an implicit correlation of exactly 1.0, which meant K's spatial pattern could differ from Fmax's ONLY through the disease term -- so every real disagreement between 'where reproduction is good' and 'where birds are abundant' had to be spelled 'disease', and the disease term saturated. Parameterized as one shared habitat-quality factor: beta_j = s_j * (h_j*f + sqrt(1-h_j^2)*eps_j) with f, eps iid across features. That makes Var(beta_j) = s_j^2 and Corr(j,k) = h_j*h_k EXACTLY, positive-definite for free -- no Cholesky guard whose clipping would corrupt gradients, and LKJ is unusable here because its concentration parameter pushes toward ZERO correlation, the opposite of the belief. Fecundity and capacity are both productivity/resource axes, so their prior correlation is set ABOVE survival's with either: target 0.85 vs 0.70. loading_logit_scale=0.6 makes that ordering hold with ~94% prior probability while leaving the survival-fecundity 5-95% CI at [0.48, 0.83], comparable to the old rho ~ TruncatedNormal(0.7, 0.2).",
+    "_amplitude_comment": "GP AMPLITUDE, one per manifold, ordered [survival, reproduction, capacity]: w_scale_j = softplus(Normal(amplitude_loc_j, amplitude_scale_j)), and Var(beta_j) = w_scale_j^2, so conditional on it H_j is a GP with kernel w_scale_j^2 * Z(x).Z(x'). The lengthscale is fixed inside the Ružička features; this is the magnitude parameter that pairs with it. It is now the SOLE amplitude: the per-rate slopes gamma_f and gamma_k are fixed at 1, and survival's gamma_a at 1 with gamma_j = 1 + gamma_j_diff. Previously BOTH w_scale and gamma multiplied the same field, so only their product entered the likelihood -- an exact flat ridge for reproduction and capacity (each the sole user of its manifold) and a ridge in the overall scale for survival. Three flat directions, which cost little in MAP but wreck step-size adaptation in HMC. How it arose: gamma was an ordinary GLM slope and w_scale the scale of the correlated weight draws, both from the original model; the later Ružička/Mercer contract work retro-interpreted w_scale as the kernel amplitude without noticing gamma was already doing that downstream. Correlation is untouched by any of this -- Corr(beta_j,beta_k) = h_j*h_k, and correlation is invariant to positive scaling -- so the ordered targets below still hold exactly. CALIBRATION: the locs/scales reproduce the amplitude prior the gamma*w_scale PRODUCT used to imply, per field, matched on the 5th/95th percentiles: survival 0.69 [0.33, 1.25], reproduction 0.70 [0.17, 1.86], capacity 0.69 [0.17, 1.85]. They differ per field because the old slope priors differed (gamma_a scale 0.5 vs gamma_f/gamma_k scale 1.0), which is retained deliberately: survival's amplitude is the better constrained of the three. Deliberately softplus(Normal) and NOT lognormal -- lognormal's tails are ~2x heavier at the 99.9th percentile for reproduction and capacity, and that is what destabilizes this model under HMC.",
     "manifold_prior": {
       "target_corr_survival_repro": 0.70,
       "target_corr_repro_capacity": 0.85,
       "target_corr_survival_capacity": 0.70,
       "loading_logit_scale": 0.6,
-      "weight_scale": 0.5
+      "amplitude_loc": [-0.0134, 0.0025, -0.0034],
+      "amplitude_scale": [0.5628, 1.0263, 1.0227]
     },
     "_k_range_comment": "REPORTING threshold only -- no longer an active constraint. K is log-linear (log K_base = log(k_level) + gamma_k*H_k + trend), so the covariate term is an unbounded log-fold deviation, exactly as in any log-link GLM. A tanh clamp at this fold value was briefly in place while K kept collapsing to ~0; the real cause was alpha_k's prior sitting 7 SDs from the data (see _capacity_level_comment), and with the level stated correctly in route counts the clamp is unnecessary complication. Retained purely as the threshold metrics.json:k_range compares the REALIZED spatial fold range against, so a collapse is visible rather than hidden by a clamp. 30x is +/-2 log SD of the observed occupied-cell spread (log sd 1.72), i.e. what the data actually show; a realized range far beyond it means something is wrong.",
     "k_range": {
@@ -139,8 +143,8 @@
     "avonet_csv": "${HOUFIN_DATA}/avonet/AVONET_Comparison_WithPhylogeny_Urban.csv"
   },
   "run_names": {
-    "_comment": "run_13: minor tweaks",
-    "map": "age_map_{precision}_run_13",
+    "_comment": "run_14: CONTROLLED TEST of the capacity link ONLY -- softplus instead of exp. alpha_k ~ Normal(2.814974, 0.8), the location solved so the post-transformation prior MEAN of the capacity level equals the previous run's 2.8920 route counts exactly; the variance falls to 7.4% and is deliberately not corrected for. Everything else is unchanged: gauge 20, all absolute-scale priors declared in route counts, density-dependent Hill severity, initpop as a fraction of LOCAL K_base at t=0, near-zero continental trend valve, ordered manifold correlations, allee n50_raw_loc -1.5.",
+    "map": "age_map_{precision}_run_14",
     "svi": "age_vi_{precision}_run_5",
     "hmc": "age_hmc_{precision}_trial_3",
     "hmc_svi_source": "age_vi_{precision}_run_2",
@@ -148,7 +152,7 @@
     "resume_svi_from_map": "age_map_{precision}_run_4",
     "resume_hmc_out": "age_hmc_{precision}_from_map",
     "resume_hmc_from_map": "age_map_{precision}_run_4",
-    "vis_map": "age_map_{precision}_run_13",
+    "vis_map": "age_map_{precision}_run_14",
     "vis_svi": "age_vi_{precision}_run_5",
     "vis_hmc": "age_hmc_{precision}_trial_3",
     "vis_community": "age_map_{precision}_run_6"

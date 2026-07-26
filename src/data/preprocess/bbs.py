@@ -363,10 +363,11 @@ def main():
         observed_results=np.concatenate([p_counts, mapped["SpeciesTotal"].values]).astype(int),
         obs_quality=np.concatenate([p_quality, mapped["quality_tier"].values]).astype(int),
         # DIMENSIONLESS shape (core=1, margin=observed ratio). The model scales it by
-        # the fitted capacity level x initpop_seed.core_fraction_of_capacity, so the
-        # seed is always a known fraction of capacity whatever the level turns out to
-        # be. Earlier keys initpop_density (gauge-dependent) and initpop_route_counts
-        # (level-dependent) both had to be rechecked whenever those moved.
+        # LOCAL K_base at t=0 x initpop_seed.core_fraction_of_local_capacity, so the
+        # seed is always a known fraction of the capacity those specific cells can
+        # support. Earlier keys initpop_density (gauge-dependent) and
+        # initpop_route_counts (level-dependent) both had to be rechecked by hand
+        # whenever the gauge or the capacity level moved -- and were not.
         initpop_shape=init_counts,
         initpop_rows=np.where(init_counts > 0)[0],
         initpop_cols=np.where(init_counts > 0)[1],

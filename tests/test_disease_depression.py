@@ -285,7 +285,8 @@ def test_k_field_is_rescaled_never_annihilated_end_to_end():
     k_trend = jnp.array(np.cos(np.pi * np.linspace(0, 1, T))[None, :] - 0.0)
     rates = (jnp.ones(M) * .1, jnp.ones(M) * .1, jnp.ones(M) * .1,
              k_trend, jnp.zeros(1),
-             0.5, 0.3, -0.5, 0.4, 2.0, 0.3, 0.5, 0.3)
+             0.5, 0.3, -0.5, 0.4, 2.0, 0.3,
+             -2.128295, 0.3)   # alpha_k (density space), gamma_k
 
     d = _disease(mu_sev=0.3, b_late=-0.3, rec=0.4, w_scale=0.3)
     K_dis = np.asarray(project(T, 40, 60, idx, idx, Z, Zd, DIS_T0, d, *rates)[3])
@@ -432,12 +433,15 @@ def test_capacity_level_prior_is_declared_in_route_counts():
     Empirically (BBS >2000, per-cell means, occupied cells): median 2.12 counts,
     geometric mean 1.87. Empty cells are expected to be empty because lambda < 1,
     not because capacity is low there.
+
+    Asserted on the POST-TRANSFORMATION level so the test survives a change of
+    link: under exp the raw value is a log-median, under softplus a near-linear
+    intercept, and only the transformed quantity is comparable across the two.
     """
     cfg = load_age_model_config()["population_model"]["capacity_level_prior"]
-    median = float(cfg["median_route_counts"])
-    assert 1.0 < median < 8.0, f"level prior median {median} counts is implausible"
-    # ... and it must exceed the initpop core seed, or the 1966 native range starts
-    # ABOVE carrying capacity. That incoherence went unnoticed for three runs.
-    gauge = float(load_age_model_config()["population_model"]
-                  .get("population_scale_route_counts_per_relative_unit", 20.0))
-    assert median / gauge > 0.0
+    sp = lambda x: np.log1p(np.exp(-abs(x))) + max(x, 0.0)
+    if "target_level_mean_route_counts" in cfg:       # softplus link, density space
+        level = float(cfg["target_level_mean_route_counts"])
+    else:                                             # exp / LogNormal link
+        level = float(cfg["median_route_counts"])
+    assert 1.0 < level < 8.0, f"level prior {level:.2f} counts is implausible"

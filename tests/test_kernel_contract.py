@@ -200,15 +200,19 @@ def test_deterministic_sites_the_viz_depends_on_exist():
     sampled = {k for k, v in tr.items() if v["type"] == "sample"}
 
     # Read by scripts/viz/map_diagnostics.py and src/vis/age_model_math.py.
-    for name in ("w_env", "k_level", "k_level_route_counts", "w_scale", "L_corr",
+    # gamma_*_raw moved from SAMPLED to DETERMINISTIC when the slopes were fixed at 1
+    # (the amplitude they carried now lives in w_scale). They are still emitted, as
+    # softplus^-1(1), so existing readers that apply softplus keep working.
+    for name in ("gamma_a_raw", "gamma_f_raw", "gamma_k_raw", "gamma_a", "gamma_j",
+                 "gamma_f", "gamma_k",
+                 "w_env", "k_level", "k_level_route_counts", "w_scale", "L_corr",
                  "rho", "env_corr_repro_capacity", "env_corr_survival_capacity",
                  "manifold_loadings", "disease_tau", "disease_rec",
                  "disease_tau_rec", "disease_k_half_route_counts", "disease_hill_n"):
         assert name in deterministic, f"{name} is no longer a deterministic site"
 
     # Read as raw latents (i.e. must stay SAMPLED, or checkpoint restore breaks).
-    for name in ("alpha_a", "alpha_j", "alpha_f", "gamma_a_raw", "gamma_j_diff",
-                 "gamma_f_raw", "gamma_k_raw", "log_k_level_counts", "n50_raw",
+    for name in ("alpha_a", "alpha_j", "alpha_f", "gamma_j_diff", "alpha_k", "n50_raw",
                  "disease_mu_sev", "disease_b_late", "disease_w_sev",
                  "disease_lag0", "disease_w_lag", "w_k_trend"):
         assert name in sampled, f"{name} is no longer a sampled site"

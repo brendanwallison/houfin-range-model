@@ -13,6 +13,7 @@ import math
 
 import jax.numpy as jnp
 import jax.nn as jnn
+import numpy as np
 import numpyro
 import numpyro.distributions as dist
 
@@ -40,6 +41,28 @@ _POP_SCALAR = float(_POP_SPEC.get("population_scale_route_counts_per_relative_un
                                   _POP_SPEC.get("population_scale_birds_per_relative_unit")))
 
 
+def _solve_softplus_loc(target_route_counts, scale, pop_scalar):
+    """Prior location for a softplus-linked quantity, calibrated in ROUTE COUNTS.
+
+    Returns ``loc`` such that ``E[softplus(Normal(loc, scale))] * pop_scalar`` equals
+    ``target_route_counts``. Solved numerically (Gauss-Hermite + bisection) because
+    softplus has no closed-form mean under a normal.
+
+    This is how a softplus link keeps the "declare beliefs in route counts" rule:
+    softplus does not commute with scaling, so unlike exp it cannot simply absorb the
+    gauge as a shift. Stating the target in counts and solving for the raw location
+    means changing pop_scalar re-derives the location instead of silently changing
+    what the prior asserts.
+    """
+    from scipy.optimize import brentq
+    z, w = np.polynomial.hermite_e.hermegauss(201)
+    w = w / w.sum()
+    sp = lambda x: np.log1p(np.exp(-np.abs(x))) + np.maximum(x, 0.0)
+    target_density = float(target_route_counts) / float(pop_scalar)
+    return float(brentq(lambda m: float(np.sum(w * sp(m + scale * z))) - target_density,
+                        -30.0, 10.0, xtol=1e-13))
+
+
 def counts_to_relative(route_counts):
     """Convert an expected-BBS-route-count quantity to model density units.
 
@@ -49,6 +72,14 @@ def counts_to_relative(route_counts):
     change meaning when the gauge changes. State priors in counts; convert here.
     """
     return route_counts / _POP_SCALAR
+
+
+# alpha_k's prior location, solved so the level's MEAN matches the configured target
+# in route counts. Computed at import (microseconds) rather than hardcoded, so it
+# tracks pop_scalar and alpha_k_scale automatically.
+_ALPHA_K_LOC = _solve_softplus_loc(
+    _CAPACITY_LEVEL["target_level_mean_route_counts"],
+    float(_CAPACITY_LEVEL["alpha_k_scale"]), _POP_SCALAR)
 
 
 def validate_environment_kernel_contract(data):
@@ -148,14 +179,25 @@ def sample_priors(prior_scale=1.0, M_features=None, time=None,
             "manifold_loading_raw",
             dist.Normal(_logit_h, float(_m["loading_logit_scale"]) * prior_scale))),
     )
-    # Total weight scale per manifold: this is the old w_scale, kept under that name
-    # so existing viz keeps working, and it is still what sets the GP kernel variance.
+    # GP AMPLITUDE, one per manifold, and now the SOLE amplitude: the per-rate slopes
+    # are fixed at 1 (see the gamma block below), because w_scale and gamma multiplied
+    # the same field and only their product entered the likelihood -- three exactly
+    # flat ridge directions, harmless-ish under MAP but ruinous for HMC step-size
+    # adaptation. Per-field locs/scales are calibrated to reproduce the amplitude prior
+    # that the gamma*w_scale product used to imply, matched on the 5th/95th percentiles
+    # (see the _amplitude_comment in config). They differ by field on purpose.
+    #
+    # softplus(Normal), NOT lognormal: lognormal's tails are ~2x heavier at the 99.9th
+    # percentile here, and those tails are what destabilize this model under HMC.
     w_scale = numpyro.deterministic(
         "w_scale",
         jnn.softplus(numpyro.sample(
             "w_scale_raw",
-            dist.Normal(float(_m["weight_scale"]), 0.3 * prior_scale).expand([3]))),
+            dist.Normal(jnp.asarray(_m["amplitude_loc"], dtype=float),
+                        jnp.asarray(_m["amplitude_scale"], dtype=float) * prior_scale))),
     )
+    # Now truthful: with the slopes fixed at 1 this IS the amplitude of Sa's, Fmax's
+    # and K's latent fields. Sj alone carries an extra (1 + gamma_j_diff) factor.
     numpyro.deterministic("environment_kernel_variance", w_scale ** 2)
 
     # dim=-2 so the feature plate takes the ROW axis and leaves the rightmost axis
@@ -327,35 +369,64 @@ def sample_priors(prior_scale=1.0, M_features=None, time=None,
     priors['alpha_j'] = numpyro.sample("alpha_j", dist.Normal(-0.5, 0.5 * prior_scale)) # ~40%
     priors['alpha_f'] = numpyro.sample("alpha_f", dist.Normal(2.0, 0.5 * prior_scale))  # Fecundity
     # CAPACITY LEVEL, declared in expected BBS route counts (see counts_to_relative).
-    # This replaces alpha_k ~ Normal(0.5, 0.5), which was stated in relative units and
-    # therefore asserted -- unnoticed -- that every cell's capacity equalled ~97% of
-    # the highest route counts ever recorded. The data want ~2 counts, so that prior
-    # sat 7 SDs from the fit, and every term able to lower K (disease severity, the
-    # H_k deviation, the continental trend) got recruited as a level reducer and
-    # saturated. Centered on the typical OCCUPIED cell: median 2.1 counts, geometric
-    # mean 1.87 (they agree, so the anchor is robust). LogNormal because a positive
-    # scale wants a multiplicative prior. Empty cells are expected to be empty for
-    # NICHE reasons (lambda < 1 via survival/fecundity), not low capacity.
+    # SOFTPLUS link (controlled test): K_counts = softplus(alpha_k + gamma_k*H_k +
+    # trend). The previous run used exp with a LogNormal level; alpha_k_loc here was
+    # solved so the POST-TRANSFORMATION prior mean of the capacity level is identical
+    # -- E[softplus(N(2.814974, 0.8))] = 2.8920 counts = exp(log 2.1 + 0.8^2/2) -- with
+    # the raw scale left at 0.8, so the prior variance falls to 7.4% of the LogNormal's.
+    # That reduction is expected and deliberately uncorrected.
+    #
+    # Reminder of what this prior replaced and why it matters: alpha_k used to be
+    # stated in relative DENSITY units, where it asserted a capacity of ~205 route
+    # counts (~97% of the highest counts ever recorded) against a data-implied ~2, so
+    # it sat 7 prior SDs from the fit and every term able to lower K -- disease
+    # severity, the H_k deviation, the continental trend -- was recruited as a level
+    # reducer and saturated. Route counts, not density units, is the load-bearing part.
+    priors['alpha_k'] = numpyro.sample(
+        "alpha_k", dist.Normal(_ALPHA_K_LOC,
+                               float(_CAPACITY_LEVEL["alpha_k_scale"]) * prior_scale))
+    # Capacity at H_k = 0: the analogue of the exp form's separable level, kept under
+    # the same names so the diagnostics and response curves read unchanged. Under
+    # softplus it is not separable from the covariate term, so this is "capacity where
+    # the covariates are neutral" rather than a multiplicative level.
     priors['k_level'] = numpyro.deterministic(
-        "k_level",
-        counts_to_relative(jnp.exp(numpyro.sample(
-            "log_k_level_counts",
-            dist.Normal(jnp.log(float(_CAPACITY_LEVEL["median_route_counts"])),
-                        float(_CAPACITY_LEVEL["log_sd"]) * prior_scale)))),
-    )
+        "k_level", jnn.softplus(priors['alpha_k']))
     numpyro.deterministic("k_level_route_counts", priors['k_level'] * _POP_SCALAR)
     
-    # --- 3. DEMOGRAPHIC SLOPES (Gammas) ---
-    # Enforce positive slopes: better habitat = higher survival/fecundity
-    # Enforce Rule 5: Juvenile survival is more sensitive to environment than adult
-    gamma_a_raw = numpyro.sample("gamma_a_raw", dist.Normal(0.0, 0.5 * prior_scale))
+    # --- 3. DEMOGRAPHIC SENSITIVITIES (Gammas) ---
+    # Positive by construction: better habitat = higher survival/fecundity.
+    #
+    # These are now DIMENSIONLESS and fixed at 1, because the amplitude they used to
+    # carry lives in w_scale (see the amplitude block above). gamma_j * w_scale and
+    # gamma_f * w_scale etc. only ever entered the likelihood as products, so keeping
+    # both left three exactly flat ridge directions -- tolerable under MAP, ruinous for
+    # HMC step-size adaptation.
+    priors['gamma_a'] = 1.0
+    # Rule 5 preserved: juveniles are MORE environment-sensitive than adults. Sa/Sj/Q
+    # share one manifold, so this CONTRAST is identified even though the overall scale
+    # is not -- it is now a dimensionless excess over 1 rather than an additive offset
+    # on an unidentified scale.
     gamma_j_diff = numpyro.sample("gamma_j_diff", dist.HalfNormal(0.5 * prior_scale))
+    priors['gamma_j'] = 1.0 + gamma_j_diff
     
-    priors['gamma_a'] = jnn.softplus(gamma_a_raw)
-    priors['gamma_j'] = priors['gamma_a'] + gamma_j_diff 
-    
-    priors['gamma_f'] = jnn.softplus(numpyro.sample("gamma_f_raw", dist.Normal(0.0, 1.0 * prior_scale)))
-    priors['gamma_k'] = jnn.softplus(numpyro.sample("gamma_k_raw", dist.Normal(0.0, 1.0 * prior_scale)))
+    # Fmax and K are each the SOLE user of their manifold, so gamma * w_scale was an
+    # exactly flat ridge. Fixed at 1; the amplitude is w_scale[1] and w_scale[2].
+    priors['gamma_f'] = 1.0
+    priors['gamma_k'] = 1.0
+
+    # The slopes are reported two ways. The friendly names are for new code; the
+    # *_raw names are emitted as DETERMINISTIC constants equal to softplus^-1(1) =
+    # log(e-1), so the several existing readers that compute softplus(gamma_f_raw) --
+    # analysis/plots.py, _age_vis_common.py, visualize_age_model.py,
+    # visualize_community_similarity.py -- keep returning the correct value (1.0)
+    # without edits. Likewise softplus(gamma_a_raw) + gamma_j_diff still gives the
+    # correct gamma_j = 1 + gamma_j_diff.
+    _SOFTPLUS_INV_ONE = math.log(math.e - 1.0)
+    for _name in ("gamma_a_raw", "gamma_f_raw", "gamma_k_raw"):
+        numpyro.deterministic(_name, jnp.asarray(_SOFTPLUS_INV_ONE))
+    for _name, _val in (("gamma_a", priors['gamma_a']), ("gamma_j", priors['gamma_j']),
+                        ("gamma_f", priors['gamma_f']), ("gamma_k", priors['gamma_k'])):
+        numpyro.deterministic(_name, jnp.asarray(_val, dtype=float))
     
     # N50 is expressed on the BBS-ROUTE COUNT scale, which makes it gauge-invariant:
     # allee_gamma*N reduces to ln2*C/n50 with C the expected route count, so the Allee
@@ -459,7 +530,7 @@ def build_model_2d(data, prior_scale=1.0):
         priors['alpha_a'], priors['gamma_a'],
         priors['alpha_j'], priors['gamma_j'],
         priors['alpha_f'], priors['gamma_f'],
-        priors['k_level'], priors['gamma_k']
+        priors['alpha_k'], priors['gamma_k']
     )
         
     # Save fields for viz

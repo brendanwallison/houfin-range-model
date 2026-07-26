@@ -108,21 +108,27 @@ def response_curve_fields(latents, z_sweep, target_idx):
     alpha_a = float(latents["alpha_a"])
     alpha_j = float(latents["alpha_j"])
     alpha_f = float(latents["alpha_f"])
-    # K's link changed: its LEVEL is now sampled in route counts (log_k_level_counts,
-    # converted through the gauge) and the covariate deviation is tanh-bounded in
-    # log-fold terms, rather than softplus(alpha_k + gamma_k*H_k). Fall back to the
-    # old latent name so a pre-run_11 checkpoint still plots.
+    # K = softplus(alpha_k + gamma_k*H_k + trend) in DENSITY space. Earlier revisions
+    # used a log link with the level sampled in route counts (log_k_level_counts), and
+    # before that softplus over an unbounded argument; both names are accepted so an
+    # older checkpoint still plots.
     pop = float(load_age_model_config()["population_model"].get(
         "population_scale_route_counts_per_relative_unit",
         load_age_model_config()["population_model"].get(
             "population_scale_birds_per_relative_unit", 1.0)))
-    fold = float(load_age_model_config()["population_model"]["k_range"]["max_fold_deviation"])
+    # Intercept on the softplus link's own scale (route counts), inverted from the
+    # reported level when only the transformed value is available.
+    _lvl_cfg = load_age_model_config()["population_model"]["capacity_level_prior"]
     if "k_level" in latents:                      # deterministic, already in density
         k_level = float(np.asarray(latents["k_level"]))
-    elif "log_k_level_counts" in latents:          # raw sampled site
+    elif "alpha_k" in latents:                     # softplus link, DENSITY space
+        k_level = float(softplus(latents["alpha_k"]))
+    elif "log_k_level_counts" in latents:          # exp link (previous run)
         k_level = float(np.exp(latents["log_k_level_counts"])) / pop
     else:
         k_level = float(softplus(latents["alpha_k"]))  # pre-run_11 checkpoint
+    from src.model.age_priors import _ALPHA_K_LOC
+    alpha_k = float(latents.get("alpha_k", _ALPHA_K_LOC))
     gamma_a = float(softplus(latents["gamma_a_raw"]))
     gamma_j = gamma_a + float(latents["gamma_j_diff"])
     gamma_f = float(softplus(latents["gamma_f_raw"]))
@@ -132,10 +138,10 @@ def response_curve_fields(latents, z_sweep, target_idx):
         "Sa": sigmoid(alpha_a + gamma_a * H_s),
         "Sj": sigmoid(alpha_j + gamma_j * H_s),
         "Fmax": softplus(alpha_f + gamma_f * H_r),
-        # Matches age_fields exactly: level * exp(L*tanh(gamma_k*H_k/L)). The
+        # Matches age_fields: softplus(alpha_k + gamma_k*H_k) in DENSITY space. The
         # disease effect is omitted -- it is a function of location and year, so a
-        # synthetic single-Z sweep has no well-defined value for it.
-        "K": k_level * np.exp(np.log(fold) * np.tanh(gamma_k * H_k / np.log(fold))),
+        # synthetic single-Z sweep has no value for it.
+        "K": softplus(alpha_k + gamma_k * H_k),
     }
 
 

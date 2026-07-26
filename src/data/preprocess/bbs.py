@@ -286,17 +286,38 @@ def generate_core_margin_initialization(obs_df, ny, nx, transform, land_mask):
     # level (see age_priors), because an absolute seed cannot stay coherent with a
     # capacity level that moves -- which it did, by 97x, and the seed was not
     # rechecked. A RATIO is immune: it is free of both the gauge and the level.
+    #
+    # The ratio is measured over the cells that actually fall in each RASTERIZED HULL
+    # REGION, not from chosen quantiles of the native distribution. That matters
+    # because the core hull is the CONVEX hull of the >75th-percentile points, so it
+    # also swallows sparse cells sitting inside it -- its observed median is 28.6
+    # counts against a 38.0 threshold. Quantile-picking cannot know that: an earlier
+    # version used q25/q50 = 0.32 purely because those quantiles were to hand, which
+    # matched neither mask. Measured properly the regions give 4.00 / 28.62 = 0.14.
     per_cell = locs.groupby(["row", "col"])["SpeciesTotal"].mean()
-    if len(per_cell):
+    idx = np.array(list(per_cell.index))
+    if len(idx):
+        rr, cc = idx[:, 0], idx[:, 1]
+        core_obs = per_cell.values[mask_core[rr, cc]]
+        margin_obs = per_cell.values[mask_margin[rr, cc] & ~mask_core[rr, cc]]
         qs = np.percentile(per_cell, [10, 25, 50, 75, 90])
         print("  Native occupied-cell counts q10/q25/q50/q75/q90: "
               + "/".join(f"{q:.1f}" for q in qs))
-        margin_ratio = float(np.clip(qs[1] / max(qs[2], 1e-9), 0.01, 1.0))
+        if len(core_obs) and len(margin_obs):
+            margin_ratio = float(np.clip(
+                np.median(margin_obs) / max(np.median(core_obs), 1e-9), 0.01, 1.0))
+            print(f"  Hull regions: core median {np.median(core_obs):.1f} counts "
+                  f"(n={len(core_obs)}), margin-only {np.median(margin_obs):.1f} "
+                  f"(n={len(margin_obs)})")
+        else:
+            margin_ratio = 0.15
+            print("  [warn] a hull region has no observed cells; margin ratio defaulted")
     else:
-        margin_ratio = 0.3
+        margin_ratio = 0.15
     core_counts, margin_counts = 1.0, margin_ratio
     print(f"  Init SHAPE (dimensionless): core=1.0, margin={margin_ratio:.2f} "
-          f"(observed native q25:q50)")
+          f"(measured over the hull regions themselves)")
+
     initpop_counts = np.zeros((ny, nx), dtype=np.float32)
     initpop_counts[mask_margin] = margin_counts
     initpop_counts[mask_core] = core_counts

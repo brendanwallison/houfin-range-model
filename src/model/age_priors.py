@@ -436,16 +436,6 @@ def build_model_2d(data, prior_scale=1.0):
     # (route counts, or relative density before that) silently change meaning whenever
     # the capacity level moves, and the level moved by 97x without the seeds being
     # rechecked -- which is what made the fit start badly.
-    # The native-range seed: a dimensionless shape from the data, scaled to a known
-    # FRACTION of the fitted capacity level. Guarantees the population starts below
-    # capacity whatever the level turns out to be, instead of the density brake
-    # slamming on at t=0 (which is what a 9.5-count seed did against a 2.1-count
-    # level: 4.5x capacity, crashed immediately, bad loss at step 0).
-    initpop_seeded = numpyro.deterministic(
-        "initpop_seeded",
-        data['initpop_latent'] * priors['k_level']
-        * float(_INITPOP_SEED["core_fraction_of_capacity"]))
-
     inv_pop = numpyro.deterministic("inv_pop_relative", priors['k_level'] * jnp.exp(
         numpyro.sample("log_inv_pulse_fraction",
                        dist.Normal(jnp.log(float(_INVASION_PULSE["median_fraction_of_capacity"])),
@@ -478,6 +468,35 @@ def build_model_2d(data, prior_scale=1.0):
     numpyro.deterministic("Fmax_flat", Fmax_flat)
     numpyro.deterministic("K_flat", K_flat)
     numpyro.deterministic("K_base_flat", Kbase_flat)
+
+    # NATIVE-RANGE SEED, as a fraction of LOCAL capacity in the first model year.
+    # data['initpop_latent'] is a dimensionless SHAPE (core=1, margin=the observed
+    # margin:core ratio) marking WHERE the 1902 native range was; the amplitude comes
+    # from K_base itself, so the seed automatically tracks whatever capacity the
+    # covariates imply for those cells.
+    #
+    # Why not an absolute value, and why not a fraction of the CONTINENTAL level:
+    # both were tried today and both were wrong, in opposite directions, for the same
+    # reason -- they compared the seed to the wrong K. An absolute 9.5 route counts is
+    # ~33% of local capacity in the native core (observed 28.6 counts) and perfectly
+    # sensible for a native range at equilibrium, but at INITIALIZATION AutoDelta sets
+    # beta_k near its prior median so H_k ~ 0 and every cell has K = k_level = 2.1
+    # counts: the seed is then 4.5x capacity, the density brake slams on, and step 0
+    # of the fit scores badly. Rescaling to 10% of the CONTINENTAL level fixed step 0
+    # but left the native core starting at <1% of its own local capacity. A fraction
+    # of LOCAL K is correct at both ends: at step 0 local K = k_level so the seed is a
+    # modest fraction of it, and at the optimum it scales with the fitted capacity of
+    # those specific cells.
+    #
+    # 0.8 is deliberately dispersal_target_capacity_fraction: that is the N/K at which
+    # the emigration logit is centered, so the native range starts migration-neutral
+    # rather than either dumping emigrants or being an implausible vacuum.
+    _seed_shape = data['initpop_latent'][land_rows, land_cols]
+    _seed_flat = (_seed_shape * Kbase_flat[0]
+                  * float(_INITPOP_SEED["core_fraction_of_local_capacity"]))
+    initpop_seeded = numpyro.deterministic(
+        "initpop_seeded",
+        jnp.zeros((Ny, Nx)).at[land_rows, land_cols].set(_seed_flat))
     # Per-cell peak severity at MODERN capacity -- the model's falsifiable claim
     # about the epizootic. Density-dependent, so it must be evaluated against the
     # undepressed K_base (using the depressed K would be circular), and at a

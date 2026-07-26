@@ -218,28 +218,36 @@ def test_deterministic_sites_the_viz_depends_on_exist():
 
 
 def test_seeds_start_below_carrying_capacity_by_construction():
-    """The native seed and the invasion pulse must be fractions of capacity, not counts.
+    """The native seed and the invasion pulse must be fractions of capacity.
 
-    An absolute seed has to be re-checked against the capacity level every time that
-    level moves -- and when the level fell 97x (from an implied ~205 route counts to
-    2.1), the seeds were not rechecked. A 9.5-count seed against a 2.1-count level
-    starts the native range at 4.5x its own carrying capacity: the density brake slams
-    on at t=0, the population crashes, and the fit opens at a much worse loss. Stated
-    as a FRACTION the pathology is unrepresentable, which is the point.
+    Absolute values have to be re-checked against the capacity level every time it
+    moves, and when the level fell 97x they were not. 9.5 route counts is ~33% of
+    LOCAL capacity in the native core and entirely sensible -- but at initialization
+    AutoDelta puts beta_k at its prior median, so H_k ~ 0, every cell has
+    K = k_level = 2.1 counts, and the seed is 4.5x capacity: the density brake slams
+    on and step 0 of the fit scores badly. As a fraction that is unrepresentable.
+
+    The native seed is a fraction of LOCAL K_base at t=0 (so it tracks the capacity
+    the covariates imply for those specific cells); the invasion pulse is a fraction
+    of the continental level, which is equivalent at initialization and is a release
+    event rather than an equilibrium.
     """
     pop = load_age_model_config()["population_model"]
-    core_frac = float(pop["initpop_seed"]["core_fraction_of_capacity"])
+    core_frac = float(pop["initpop_seed"]["core_fraction_of_local_capacity"])
     pulse_frac = float(pop["invasion_pulse_prior"]["median_fraction_of_capacity"])
+    target = float(pop["dispersal_target_capacity_fraction"])
 
-    assert 0.0 < core_frac < 1.0, "the native seed must start BELOW capacity"
-    assert 0.0 < pulse_frac < 1.0, "the invasion pulse must start BELOW capacity"
-    # An invasion model should grow into capacity, not start at it. Both values
-    # reproduce the ratios the pre-run_11 model used, which behaved.
-    assert core_frac <= 0.5, f"core seed at {core_frac:.0%} of capacity is too high"
-    assert pulse_frac <= 0.5, f"pulse at {pulse_frac:.0%} of capacity is too high"
+    assert 0.0 < core_frac <= 1.0, "the native seed must not exceed local capacity"
+    assert 0.0 < pulse_frac < 1.0, "the invasion pulse must start below capacity"
+    # Seeding at the dispersal target means the native range starts migration-neutral
+    # rather than either dumping emigrants or acting as an implausible vacuum.
+    assert abs(core_frac - target) < 1e-9, (
+        f"core seed fraction {core_frac} should equal "
+        f"dispersal_target_capacity_fraction {target}")
 
-    # No absolute-scale seed keys may survive: their presence means someone
-    # reintroduced a value that silently needs rechecking against the level.
-    for stale in ("core_route_counts", "margin_route_counts"):
+    # No absolute or continental-level seed key may return: either needs manual
+    # rechecking whenever the capacity level moves.
+    for stale in ("core_route_counts", "margin_route_counts",
+                  "core_fraction_of_capacity"):
         assert stale not in pop["initpop_seed"], f"{stale} is level-dependent"
     assert "median_route_counts" not in pop["invasion_pulse_prior"]

@@ -30,7 +30,10 @@ import rasterio
 import rasterio.features
 from shapely.geometry import MultiPoint
 
-from src.config_utils import load_data_config
+# The seed levels live in the age-model config beside the gauge they are expressed
+# against (route counts), not in data_config -- keeping them next to
+# population_scale_route_counts_per_relative_unit is what stops the two drifting.
+from src.config_utils import load_age_model_config, load_data_config
 from src.temporal import load_timeline
 
 _CFG = load_data_config()
@@ -278,15 +281,23 @@ def generate_core_margin_initialization(obs_df, ny, nx, transform, land_mask):
     mask_margin = _rasterize(hull_margin) & land_mask
     mask_core = _rasterize(hull_core) & land_mask
 
-    # Seed levels FROM THE DATA, in route counts: the median observed count in the
-    # cells each hull was built from. A native range at equilibrium should start at
-    # roughly its observed abundance, which is exactly what these medians are.
+    # Seed levels in ROUTE COUNTS, from config (see its _initpop_comment). Config
+    # rather than derived-in-place because the right quantile is a judgement call:
+    # deriving the core from the >75th-percentile hull cells gave 61 counts, the q90
+    # of the native distribution, applied uniformly across a convex hull full of
+    # sparser cells -- so high that most core cells started above their own capacity.
+    # The empirical quantiles are printed below so the config can be re-checked.
+    _seed = load_age_model_config()["population_model"]["initpop_seed"]
+    core_counts = float(_seed["core_route_counts"])
+    margin_counts = min(float(_seed["margin_route_counts"]), core_counts)
     per_cell = locs.groupby(["row", "col"])["SpeciesTotal"].mean()
-    core_cells = locs[locs["SpeciesTotal"] > threshold].groupby(["row", "col"])["SpeciesTotal"].mean()
-    core_counts = float(np.median(core_cells)) if len(core_cells) else float(threshold)
-    margin_counts = float(np.median(per_cell)) if len(per_cell) else 1.0
-    # The margin is the sparse fringe, so it must not exceed the core.
-    margin_counts = min(margin_counts, core_counts)
+    if len(per_cell):
+        qs = np.percentile(per_cell, [10, 25, 50, 75, 90])
+        print("  Native occupied-cell counts q10/q25/q50/q75/q90: "
+              + "/".join(f"{q:.1f}" for q in qs))
+        if core_counts > np.percentile(per_cell, 75):
+            print(f"  [warn] core seed {core_counts:.1f} exceeds the native q75 "
+                  f"({qs[3]:.1f}); cells may start above their carrying capacity")
     initpop_counts = np.zeros((ny, nx), dtype=np.float32)
     initpop_counts[mask_margin] = margin_counts
     initpop_counts[mask_core] = core_counts

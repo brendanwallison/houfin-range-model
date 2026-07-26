@@ -7,21 +7,24 @@ functions to per-cell adult/juvenile survival (S_a, S_j), max fecundity (F_max),
 carrying capacity (K), and journey survival (Q). Runs as a checkpointed
 ``lax.scan`` over years to bound memory when differentiated.
 
-K's link is BOUNDED IN LOG-FOLD TERMS:
+K uses a LOG LINK:
 
-    K_base = k_level * exp(L*tanh(gamma_k*H_k/L) + trend),  L = log(max_fold)
+    log K_base = log(k_level) + gamma_k*H_k + trend
 
-``k_level`` is the continental capacity level, sampled directly in expected BBS
-route counts and converted through the gauge (see ``age_priors.counts_to_relative``),
-and no cell may sit more than ``max_fold`` above or below it. The previous form,
-``softplus(alpha_k + gamma_k*H_k)``, was unbounded in log space, and since K sits
-where softplus is effectively ``exp()``, a large negative ``gamma_k*H_k`` drove K to
-~0 regionally. At sd(H_k)=4 -- reachable with 24 latent dims -- that prior already
-admitted a 941-fold spatial range with a low end of 0.006. Crucially that is a
-COVARIATE-route annihilation, so no constraint on the disease term could prevent it;
-this is the third distinct route to the same pathology and the bound closes the
-class rather than the instance. Combining all routes (covariates x disease ceiling
-0.5 x trend) the absolute floor is ~9% of continental capacity: low, never zero.
+``k_level`` is the continental capacity level, sampled in expected BBS route counts
+and converted through the gauge (see ``age_priors.counts_to_relative``); the
+covariate term is a log-fold deviation from it. Multiplicative because capacity
+genuinely spans orders of magnitude -- observed per-cell mean counts run 0.1 to 226,
+log sd 1.72.
+
+The previous form was ``softplus(alpha_k + gamma_k*H_k)``, whose real defect was not
+the link but ``alpha_k``'s prior: stated in relative density units, it asserted a
+capacity of ~205 route counts (~97% of the highest counts ever recorded) when the
+data want ~2, so it sat 7 prior SDs from the fit. Since K sits where softplus is
+effectively ``exp()``, and every term able to lower K was being recruited to fight
+that prior, K collapsed regionally -- through the disease term, then through this
+covariate term, then wherever else was available. Stating the level correctly is
+what fixed it; a tanh clamp on this term (briefly present) treated the symptom.
 
 H_k is new. K previously reused H_r, making it a strictly monotone function of
 F_max, so the disease term below was the ONLY way the two could differ spatially
@@ -207,7 +210,6 @@ def project_and_scatter_age_structured(
     beta_k,           # 1D feature weights for Carrying Capacity (Shape: M)
     k_trend_basis,    # (n_trend, time) time-centered cosines, continental
     w_k_trend,        # (n_trend,) weights on that trend
-    k_log_fold_limit, # max |log-fold| deviation of local K from the continental level
     alpha_a, gamma_a, # Adult survival intercept & slope
     alpha_j, gamma_j, # Juvenile survival intercept & slope
     alpha_f, gamma_f, # Max fecundity intercept & slope
@@ -276,16 +278,23 @@ def project_and_scatter_age_structured(
         # near-zero -- it is a safety valve, not a mechanism.
         k_trend_t = jnp.dot(jnp.take(k_trend_basis, t_idx, axis=1), w_k_trend)
 
-        # Baseline K with a BOUNDED log-scale dynamic range. k_level is the
-        # continental level (sampled directly in route-count units, then converted
-        # through the gauge -- see age_priors.counts_to_relative); tanh caps how far
-        # any cell may deviate from it, in fold units, no matter what gamma_k or H_k
-        # do. The previous form, softplus(alpha_k + gamma_k*H_k), was unbounded in log
-        # space -- and since K sits where softplus is effectively exp(), a large
-        # negative gamma_k*H_k drove K to ~0 regionally. That is a covariate-route
-        # collapse, so no constraint on the DISEASE term could prevent it.
-        k_dev = k_log_fold_limit * jnp.tanh(gamma_k * H_k_local / k_log_fold_limit)
-        K_base_val = k_level * jnp.exp(k_dev + k_trend_t)
+        # Baseline K, log-linear:
+        #     log K_base = log(k_level) + gamma_k*H_k + trend
+        # i.e. a log link on capacity. Multiplicative because capacity genuinely
+        # varies over orders of magnitude (observed per-cell means span 0.1 to 226
+        # route counts, log sd 1.72), and k_level -- sampled in route counts and
+        # converted by the gauge -- is the continental level.
+        #
+        # An earlier version wrapped the covariate term in L*tanh(./L) to clamp the
+        # log-fold deviation. That was defensive scaffolding from when K kept
+        # collapsing to ~0: the real cause was alpha_k's prior sitting 7 SDs from the
+        # data (it asserted a capacity of ~205 route counts), so every term able to
+        # lower K -- including this one -- was recruited as a level reducer. With the
+        # level prior stated correctly in route counts, that pressure is gone and the
+        # clamp is unnecessary complication. The realized fold range is REPORTED
+        # instead (metrics.json:k_range), so a collapse would be visible rather than
+        # hidden by a clamp.
+        K_base_val = k_level * jnp.exp(gamma_k * H_k_local + k_trend_t)
 
         # 4b. Disease effect on K only: a bounded MULTIPLICATIVE rescale (see the
         # module docstring for why the earlier additive-inside-softplus form

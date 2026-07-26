@@ -27,9 +27,6 @@ _POP_SPEC = load_age_model_config()["population_model"]
 _DISEASE_PRIOR = dict(_POP_SPEC["disease_prior"])
 _MANIFOLD_PRIOR = dict(_POP_SPEC["manifold_prior"])
 _K_TREND = dict(_POP_SPEC["k_trend"])
-# Max |log-fold| deviation of local K from the continental level. See the
-# _k_range_comment in config and the K_base_val block in age_fields.py.
-_K_LOG_FOLD_LIMIT = math.log(float(_POP_SPEC["k_range"]["max_fold_deviation"]))
 _CAPACITY_LEVEL = dict(_POP_SPEC["capacity_level_prior"])
 _INVASION_PULSE = dict(_POP_SPEC["invasion_pulse_prior"])
 # THE GAUGE. Every absolute-scale prior is declared in expected BBS ROUTE COUNTS in
@@ -445,7 +442,7 @@ def build_model_2d(data, prior_scale=1.0):
         data['Z_gathered'], data['Z_disp_gathered'],
         data['disease_timestep'], disease,
         priors['beta_s'], priors['beta_r'], priors['beta_k'],
-        data['k_trend_basis'], priors['w_k_trend'], _K_LOG_FOLD_LIMIT,
+        data['k_trend_basis'], priors['w_k_trend'],
         priors['alpha_a'], priors['gamma_a'],
         priors['alpha_j'], priors['gamma_j'],
         priors['alpha_f'], priors['gamma_f'],

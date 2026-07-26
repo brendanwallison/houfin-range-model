@@ -23,7 +23,6 @@ from src.model.age_fields import (
     disease_onset_timestep,
     disease_severity,
 )
-from src.model.age_priors import _K_LOG_FOLD_LIMIT as K_LOG_FOLD_LIMIT
 from src.model.age_priors import sample_priors
 
 N_LAND = 60
@@ -285,7 +284,7 @@ def test_k_field_is_rescaled_never_annihilated_end_to_end():
     # K trend basis + weights, then the alpha/gamma pairs.
     k_trend = jnp.array(np.cos(np.pi * np.linspace(0, 1, T))[None, :] - 0.0)
     rates = (jnp.ones(M) * .1, jnp.ones(M) * .1, jnp.ones(M) * .1,
-             k_trend, jnp.zeros(1), K_LOG_FOLD_LIMIT,
+             k_trend, jnp.zeros(1),
              0.5, 0.3, -0.5, 0.4, 2.0, 0.3, 0.5, 0.3)
 
     d = _disease(mu_sev=0.3, b_late=-0.3, rec=0.4, w_scale=0.3)

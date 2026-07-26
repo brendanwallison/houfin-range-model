@@ -215,3 +215,27 @@ def test_deterministic_sites_the_viz_depends_on_exist():
 
     # w_env must be (M, 3): survival, reproduction, capacity.
     assert np.asarray(tr["w_env"]["value"]).shape[1] == 3
+
+
+def test_initpop_seed_is_coherent_with_the_capacity_prior():
+    """The native-range seed must not start above reachable carrying capacity.
+
+    A seed above capacity crashes the population in the first timesteps, and the
+    failure is silent -- it looks like a bad fit, not a bad initial condition. An
+    earlier version seeded the core at 61 route counts (the q90 of the native
+    distribution, applied uniformly across a convex hull) against a capacity level of
+    2.1 and a 30x fold bound, i.e. 97% of the maximum achievable K.
+    """
+    pop = load_age_model_config()["population_model"]
+    core = float(pop["initpop_seed"]["core_route_counts"])
+    margin = float(pop["initpop_seed"]["margin_route_counts"])
+    level = float(pop["capacity_level_prior"]["median_route_counts"])
+    fold = float(pop["k_range"]["max_fold_deviation"])
+
+    assert margin <= core, "the sparse fringe cannot exceed the core"
+    # Above the level is fine and expected (a native range sits at equilibrium in
+    # its best habitat), but it must stay well inside what K can actually reach.
+    assert core < 0.5 * level * fold, (
+        f"core seed {core} counts is more than half the maximum reachable K "
+        f"({level * fold:.0f} counts); cells would start near or above capacity")
+    assert core > level * 0.5, f"core seed {core} is implausibly far below the level"

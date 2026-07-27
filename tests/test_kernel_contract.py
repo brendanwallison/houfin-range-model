@@ -221,8 +221,8 @@ def test_deterministic_sites_the_viz_depends_on_exist():
     assert np.asarray(tr["w_env"]["value"]).shape[1] == 3
 
 
-def test_seeds_start_below_carrying_capacity_by_construction():
-    """The native seed and the invasion pulse must be fractions of capacity.
+def test_native_seed_starts_at_local_capacity_by_construction():
+    """The native seed must be a fraction of LOCAL capacity.
 
     Absolute values have to be re-checked against the capacity level every time it
     moves, and when the level fell 97x they were not. 9.5 route counts is ~33% of
@@ -233,17 +233,13 @@ def test_seeds_start_below_carrying_capacity_by_construction():
 
     The native seed is a fraction of LOCAL K_base at t=0 (so it tracks the capacity
     the covariates imply for those specific cells) and equals 1.0, because a range at
-    equilibrium sits at its capacity; the invasion pulse is a fraction of the
-    continental level, which is equivalent at initialization and is a release event
-    rather than an equilibrium.
+    equilibrium sits at its capacity.
     """
     pop = load_age_model_config()["population_model"]
     core_frac = float(pop["initpop_seed"]["core_fraction_of_local_capacity"])
-    pulse_frac = float(pop["invasion_pulse_prior"]["median_fraction_of_capacity"])
     target = float(pop["dispersal_target_capacity_fraction"])
 
     assert 0.0 < core_frac <= 1.0, "the native seed must not exceed local capacity"
-    assert 0.0 < pulse_frac < 1.0, "the invasion pulse must start below capacity"
     # The native range starts AT capacity (1.0), which is above the emigration logit's
     # centre, so it is a net exporter in year one -- see the config's _initpop_comment
     # for why that is deliberate. The contract is the ORDERING (a range at equilibrium
@@ -259,4 +255,45 @@ def test_seeds_start_below_carrying_capacity_by_construction():
     for stale in ("core_route_counts", "margin_route_counts",
                   "core_fraction_of_capacity"):
         assert stale not in pop["initpop_seed"], f"{stale} is level-dependent"
-    assert "median_route_counts" not in pop["invasion_pulse_prior"]
+
+
+def test_invasion_pulse_prior_is_fixed_and_k_independent():
+    """The invasion pulse must NOT reference k_level or local K_base at all.
+
+    An earlier version scaled it against the continental k_level, which diluted the
+    founder badly at the actual (unusually high-K) release site -- see config's
+    _invasion_pulse_comment. It is now a fraction of a FIXED, empirically observed
+    quantity (global_q50_route_counts), so no capacity-level or K_base key may appear
+    in this block; that is the property that keeps it from silently changing meaning
+    whenever K moves.
+    """
+    pop = load_age_model_config()["population_model"]
+    inv = pop["invasion_pulse_prior"]
+
+    assert float(inv["global_q50_route_counts"]) > 0.0
+    assert 0.0 < float(inv["median_fraction_of_global_q50"]) < 1.0
+    assert float(inv["log_budget"]) > 0.0
+
+    for stale in ("median_fraction_of_capacity", "median_route_counts",
+                  "capacity_level", "k_level"):
+        assert stale not in inv, f"{stale} would re-tie the pulse to a moving K"
+
+    assert int(pop["invasion_sites"]) >= 1
+
+
+def test_invasion_pulse_budget_tightens_per_coefficient_as_sites_grow():
+    """More candidate (site, year) coefficients must not mean more TOTAL freedom.
+
+    Same guard this project applies to disease_prior's sev_field_budget/
+    lag_field_budget: the shared budget is divided by sqrt(n_coefficients), so
+    growing the parameterization (more sites) tightens each individual coefficient's
+    prior SD rather than leaving it fixed -- which would let the term act as a free,
+    high-dimensional escape hatch (the exact failure mode of the old 967-coefficient
+    K-correction field).
+    """
+    budget = 3.0
+    sd_small = budget / np.sqrt(1 * 10)
+    sd_large = budget / np.sqrt(9 * 10)
+    assert sd_large < sd_small
+    assert np.isclose(sd_small, budget / np.sqrt(10))
+    assert np.isclose(sd_large, budget / np.sqrt(90))

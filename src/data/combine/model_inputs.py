@@ -218,6 +218,27 @@ def get_grid_location(tif_path, lat, lon):
         row, col = src.index(x, y)
         return int(row), int(col)
 
+
+def nearest_land_cells(row, col, land_rows, land_cols, n):
+    """The ``n`` LAND cells nearest ``(row, col)``, by plain grid distance.
+
+    The historical record documents only ONE known sighting (Jones Beach, Long
+    Island) for the 1940 release -- not that it was the only release site, and not
+    that the exact coordinate is even a land cell in this grid's resolution (a
+    27 km cell centered near a barrier island can easily fall on open water). Rather
+    than hand-pick nearby coordinates (unverifiable without the exact production
+    land mask) or trust the literal coordinate to land on a valid cell, search the
+    REAL land mask actually used by the rest of ingestion: since ``land_rows``/
+    ``land_cols`` already contains land cells only, the nearest ``n`` of them can
+    never be invalid, which sidesteps the question of whether the exact Jones Beach
+    pixel is land without needing to answer it separately.
+
+    Returns an (n, 2) int array of (row, col) pairs, nearest first.
+    """
+    d2 = (land_rows.astype(np.int64) - row) ** 2 + (land_cols.astype(np.int64) - col) ** 2
+    nearest = np.argsort(d2)[:n]
+    return np.stack([land_rows[nearest], land_cols[nearest]], axis=1).astype(np.int64)
+
 # Main Execution
 def ingest_data():
     print(f"--- Starting Data Ingestion (grid-native, latent_dim={MODEL_LATENT_DIM}, "
@@ -534,6 +555,13 @@ def ingest_data():
         float(POPULATION_SPEC["invasion_lat"]),
         float(POPULATION_SPEC["invasion_lon"]),
     )
+    # Candidate release sites: the nearest N land cells to the documented sighting,
+    # not just its literal coordinate -- see nearest_land_cells's docstring.
+    n_invasion_sites = int(POPULATION_SPEC["invasion_sites"])
+    inv_locations = nearest_land_cells(inv_row, inv_col, land_rows, land_cols,
+                                       n_invasion_sites)
+    print(f"  Invasion candidate sites ({n_invasion_sites}): "
+          + ", ".join(f"({r},{c})" for r, c in inv_locations))
 
     # Keep obs whose year is actually in the model timeline, then map year->index
     # via a gap-safe lookup (not year - start subtraction). See src/temporal.py.
@@ -603,7 +631,9 @@ def ingest_data():
         "pop_scalar": float(POPULATION_SPEC.get(
             "population_scale_route_counts_per_relative_unit",
             POPULATION_SPEC.get("population_scale_birds_per_relative_unit"))),
-        "inv_location": (inv_row, inv_col),
+        # (n_sites, 2) row/col pairs -- see nearest_land_cells. Plural because the
+        # sighting record does not establish a single release site.
+        "inv_locations": inv_locations,
         # The invasion pulse only. This was previously reused as the K-correction
         # basis's window start; the disease term now has its own, later window
         # (``disease_timestep`` above), so the two are no longer coupled.

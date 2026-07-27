@@ -133,13 +133,16 @@ def _counterfactual_fixture(T=40, Ny=14, Nx=20, disp_int=0.5, k_mult=8.0):
     kd = kb.copy(); kd[:, x > 0.55] *= 0.55
     q = np.ones((T, n, nk))
     seed = np.zeros((Ny, Nx)); seed[Ny // 2 - 2:Ny // 2 + 2, 2:5] = 0.08
-    inv = np.zeros(8) + 0.05
+    # Two candidate release sites (not one), each with its own 8-year pulse vector --
+    # matches the production (n_sites, n_years) shape.
+    inv_locations = np.array([[Ny // 2, Nx - 4], [Ny // 2 + 1, Nx - 4]])
+    inv = np.zeros((2, 8)) + 0.05
     data = dict(land_rows=jnp.asarray(rows), land_cols=jnp.asarray(cols),
                 land_mask=jnp.asarray(land), adult_fft_kernel=ss["adult_fft_kernel"],
                 juvenile_fft_kernel_stack=ss["juvenile_fft_kernel_stack"],
                 adult_edge_correction=ss["adult_edge_correction"],
                 juvenile_edge_correction_stack=ss["juvenile_edge_correction_stack"],
-                time=T, inv_location=(Ny // 2, Nx - 4), inv_timestep=18,
+                time=T, inv_locations=inv_locations, inv_timestep=18,
                 dispersal_target_fraction=0.8, pop_scalar=pop)
     lat = dict(dispersal_random=np.zeros(T), dispersal_logit_intercept=disp_int,
                dispersal_logit_slope=4.0)
@@ -152,7 +155,7 @@ def _counterfactual_fixture(T=40, Ny=14, Nx=20, disp_int=0.5, k_mult=8.0):
         data["land_rows"], data["land_cols"], data["land_mask"],
         data["adult_fft_kernel"], data["juvenile_fft_kernel_stack"],
         data["adult_edge_correction"], data["juvenile_edge_correction_stack"],
-        jnp.asarray(seed), jnp.zeros(T), jnp.asarray(inv), T, data["inv_location"],
+        jnp.asarray(seed), jnp.zeros(T), jnp.asarray(inv), T, data["inv_locations"],
         data["inv_timestep"], disp_int, 4.0, jnp.asarray(g), target_fraction=0.8)
     sim["simulated_density"] = np.asarray(act)
     return sim, data, rows, cols, (Ny, Nx), np.asarray(land), T, pop

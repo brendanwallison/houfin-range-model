@@ -114,7 +114,7 @@ def forward_sim_age_structured(
     adult_fft_kernel, juvenile_fft_kernel_stack,
     adult_edge_correction, juvenile_edge_correction_stack,
     initpop_latent, dispersal_random, inv_pop,
-    time, inv_location, inv_timestep,
+    time, inv_locations, inv_timestep,
     dispersal_logit_intercept, dispersal_logit_slope,
     allee_gamma,
     target_fraction=0.8
@@ -122,10 +122,19 @@ def forward_sim_age_structured(
     """Run the age-structured simulation for ``time`` years.
 
     Seeds the population from ``initpop_latent`` (split 50/50 adult/juvenile),
-    injects the invasion pulse ``inv_pop`` at ``inv_location`` starting at
+    injects the invasion pulse ``inv_pop`` (shape ``(n_sites, n_years)``) at each of
+    ``inv_locations`` (shape ``(n_sites, 2)``, row/col pairs) starting at
     ``inv_timestep``, and scans year by year: invasion → scatter per-cell rates
     to the grid → dispersal → survival+reproduction → land-mask. The step is
     ``jax.checkpoint``-wrapped to bound memory when differentiating the scan.
+
+    Multiple candidate sites (rather than one fixed release cell) exist because the
+    historical record only documents ONE known sighting (Jones Beach, Long Island) --
+    not that it was the only release -- so the model is given several nearby
+    candidate cells and a per-(site, year) pulse, letting the fit allocate mass
+    across sites and across years rather than assuming both in advance. A JAX
+    scatter-add (``.at[rows, cols].add(...)``) naturally handles any number of sites
+    in one vectorized op, including the ``n_sites=1`` case this replaces.
 
     Returns ``(total_densities, Na_densities, Nj_densities)``, each shape
     (time, Ny, Nx). The age-split outputs cost nothing extra during MAP/SVI
@@ -136,8 +145,9 @@ def forward_sim_age_structured(
     diagnostics (see scripts/viz/map_diagnostics.py).
     """
     Ny, Nx = land_mask.shape
-    row, col = inv_location
-    
+    inv_locations = jnp.asarray(inv_locations)
+    inv_rows, inv_cols = inv_locations[:, 0], inv_locations[:, 1]
+
     init_N_a = initpop_latent * 0.5
     init_N_j = initpop_latent * 0.5
     
@@ -165,12 +175,14 @@ def forward_sim_age_structured(
     def step(pools, t):
         N_a, N_j = pools
         
-        # 1. Invasion
+        # 1. Invasion: one pulse value per site, this year, scattered to every
+        # candidate site cell at once (a no-op add of 0 at every site outside the
+        # window/inv_pop's year range).
         k = t - inv_timestep
-        is_invading = (k >= 0) & (k < inv_pop.shape[0])
-        val = jnp.where(is_invading, inv_pop[jnp.minimum(jnp.maximum(0, k), inv_pop.shape[0]-1)], 0.0)
-        N_a = N_a.at[row, col].add(val * 0.5)
-        N_j = N_j.at[row, col].add(val * 0.5)
+        is_invading = (k >= 0) & (k < inv_pop.shape[1])
+        val = jnp.where(is_invading, inv_pop[:, jnp.minimum(jnp.maximum(0, k), inv_pop.shape[1]-1)], 0.0)
+        N_a = N_a.at[inv_rows, inv_cols].add(val * 0.5)
+        N_j = N_j.at[inv_rows, inv_cols].add(val * 0.5)
 
         # 2. Scatter Parameters (Updated to include c_flat index)
         Sa_g, Sj_g, Fmax_g, K_g, c_g, Q_g = scatter_t(

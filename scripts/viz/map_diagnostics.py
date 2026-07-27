@@ -1053,7 +1053,7 @@ def simulate_no_invasion_counterfactual(sim, data, drop_disease=True):
         data["adult_edge_correction"], data["juvenile_edge_correction_stack"],
         jnp.asarray(sim["initpop_seeded"]), jnp.asarray(latents["dispersal_random"]),
         inv_pop_zero,
-        int(data["time"]), data["inv_location"], data["inv_timestep"],
+        int(data["time"]), data["inv_locations"], data["inv_timestep"],
         float(np.asarray(latents["dispersal_logit_intercept"])),
         float(np.asarray(latents["dispersal_logit_slope"])),
         jnp.asarray(sim["allee_gamma"]),

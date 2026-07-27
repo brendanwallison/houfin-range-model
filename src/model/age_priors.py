@@ -538,16 +538,30 @@ def build_model_2d(data, prior_scale=1.0):
         "tau_rec": priors['disease_tau_rec'],
     }
 
-    # The 1940 release, as a FRACTION OF THE FITTED CAPACITY LEVEL. Absolute pulses
-    # (route counts, or relative density before that) silently change meaning whenever
-    # the capacity level moves, and the level moved by 97x without the seeds being
-    # rechecked -- which is what made the fit start badly.
-    inv_pop = numpyro.deterministic("inv_pop_relative", priors['k_level'] * jnp.exp(
+    # The 1940 release(s), as a fraction of a FIXED, EMPIRICALLY OBSERVED, K-
+    # INDEPENDENT reference (global_q50_route_counts) -- deliberately NOT k_level or
+    # local K_base, either of which ties a historical release event's size to a
+    # fitted, moving quantity and (as a fraction of the CONTINENTAL level) badly
+    # diluted the founder at the actual release site, which sits at ~90-95th
+    # percentile local capacity. See config's _invasion_pulse_comment.
+    #
+    # One coefficient per (candidate site, year): data['inv_locations'] is
+    # (n_sites, 2), so log_inv_pulse_fraction is (n_sites, inv_window) -- the fit can
+    # allocate mass across sites and across years rather than assuming both. The
+    # shared prior's SD shrinks as sqrt(n_sites*inv_window) grows (same pattern as
+    # disease_prior's sev_field_budget/sqrt(N_sev_basis)), so adding candidate sites
+    # cannot inflate the term's total flexibility -- see config's
+    # _invasion_budget_comment.
+    _n_inv_sites = data['inv_locations'].shape[0]
+    _inv_log_sd = (float(_INVASION_PULSE["log_budget"])
+                  / jnp.sqrt(_n_inv_sites * data['inv_window'])) * prior_scale
+    _q50_density = float(_INVASION_PULSE["global_q50_route_counts"]) / _POP_SCALAR
+    inv_pop = numpyro.deterministic("inv_pop_relative", _q50_density * jnp.exp(
         numpyro.sample("log_inv_pulse_fraction",
-                       dist.Normal(jnp.log(float(_INVASION_PULSE["median_fraction_of_capacity"])),
-                                   float(_INVASION_PULSE["log_sd"]) * prior_scale),
-                       sample_shape=(data['inv_window'],))))
-    
+                       dist.Normal(jnp.log(float(_INVASION_PULSE["median_fraction_of_global_q50"])),
+                                   _inv_log_sd),
+                       sample_shape=(_n_inv_sites, data['inv_window']))))
+
     # Convert to the relative [0, 1] scale by multiplying by pop_scalar
     # Since N_relative = N_raw / pop_scalar, 
     # then gamma_relative = gamma_raw * pop_scalar
@@ -648,7 +662,7 @@ def build_model_2d(data, prior_scale=1.0):
         data['adult_fft_kernel'], data['juvenile_fft_kernel_stack'],
         data['adult_edge_correction'], data['juvenile_edge_correction_stack'],
         initpop_seeded, priors['dispersal_random'], inv_pop,
-        time, data['inv_location'], data['inv_timestep'],
+        time, data['inv_locations'], data['inv_timestep'],
         priors['dispersal_logit_intercept'], priors['dispersal_logit_slope'],
         priors['allee_gamma'],
         target_fraction=data["dispersal_target_fraction"],

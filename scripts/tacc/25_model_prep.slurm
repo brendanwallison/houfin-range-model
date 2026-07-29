@@ -5,7 +5,7 @@
 #SBATCH -J houfin_modelprep
 #SBATCH -o houfin_modelprep.o%j
 #SBATCH -e houfin_modelprep.e%j
-#SBATCH -p gpu-a100
+#SBATCH -p gpu-a100-small
 #SBATCH -N 1
 #SBATCH -n 1
 #SBATCH -t 02:00:00

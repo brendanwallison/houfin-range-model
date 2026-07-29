@@ -9,7 +9,7 @@
 set -euo pipefail
 source "$(dirname "$0")/env.sh"
 
-QUEUE="${QUEUE:-gpu-a100}"
+QUEUE="${QUEUE:-gpu-a100-small}"
 TIME="${TIME:-02:00:00}"
 A=""
 [ -n "${TACC_ALLOCATION:-}" ] && [ "$TACC_ALLOCATION" != "REPLACE_WITH_PROJECT" ] && A="-A $TACC_ALLOCATION"

@@ -361,6 +361,33 @@ STAGES="cube validate" bash scripts/tacc/submit_encoder.sh   # light; CPU is fin
 # or all four at once:  bash scripts/tacc/submit_encoder.sh
 ```
 
+### GPU queue default: `gpu-a100-small`
+
+Every GPU job in this repo (`20_encoder`, `25_model_prep`, `30_model_map`,
+`31_model_viz`, `32_sweep_viz`) is `-N 1 -n 1` and **single-device** — torch uses a
+plain `.to(device)` and JAX takes `jax.devices()[0]`; nothing uses
+`DataParallel`/`pmap`/sharding. A `gpu-a100` node carries **3** A100s and bills
+**3 SU/hr**, so putting a one-GPU job there pays double to leave two GPUs idle.
+`gpu-a100-small` is one A100 at **1.5 SU/hr** with the same 48 h limit, and is the
+default in both the `#SBATCH -p` directives and every `submit_*.sh` wrapper.
+
+Per-GPU memory is the same 40 GB on either queue — the figure `desk.batch_years` was
+tuned against ("8 fits a 40GB A100"). The `-small` nodes are *virtual*, with fewer
+cores and possibly less **host** RAM, which is the one real risk: DESK stages its
+whole year window through host memory before the device copy, and that array grew
+with the monthly climate channels. A **host** OOM (not a CUDA OOM) is the signal to
+override rather than to cut `batch_years`:
+
+```bash
+STAGES=desk QUEUE=gpu-a100 TIME=04:00:00 bash scripts/tacc/submit_encoder.sh
+```
+
+Note `gpu-a100-small` caps at **3 running / 12 submitted** jobs per user (vs 8/32 on
+`gpu-a100`) — this is what `32_sweep_viz.slurm` already sizes its fan-out against.
+Also: the `TIME` defaults are still `02:00:00`, inherited from when these jobs sat on
+the 2 h `gpu-a100-dev` queue. `-small` allows 48 h, so pass `TIME` explicitly for a
+long DESK run (`epochs: 500`, `patience: 50`) rather than assuming 2 h is enough.
+
 `validate` writes `$HOUFIN_PROCESSED/encoder/desk/validate_report.json` —
 CKA/Mantel/Pearson per period, i.e. how far back the eBird-only model's implicit
 predictions reproduce the BBS spatiotemporal structure.

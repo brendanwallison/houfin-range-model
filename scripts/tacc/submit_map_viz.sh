@@ -5,7 +5,7 @@
 set -euo pipefail
 source "$(dirname "$0")/env.sh"
 
-QUEUE="${QUEUE:-gpu-a100-dev}"
+QUEUE="${QUEUE:-gpu-a100-small}"
 TIME="${TIME:-02:00:00}"
 PROFILE="${HOUFIN_MAP_PROFILE:-standard}"
 A=""

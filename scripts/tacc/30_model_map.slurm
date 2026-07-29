@@ -19,7 +19,7 @@
 #SBATCH -J houfin_map
 #SBATCH -o houfin_map.o%j
 #SBATCH -e houfin_map.e%j
-#SBATCH -p gpu-a100-dev
+#SBATCH -p gpu-a100-small
 #SBATCH -N 1
 #SBATCH -n 1
 #SBATCH -t 02:00:00

@@ -5,7 +5,7 @@
 #SBATCH -J houfin_mapviz
 #SBATCH -o houfin_mapviz.o%j
 #SBATCH -e houfin_mapviz.e%j
-#SBATCH -p gpu-a100-dev
+#SBATCH -p gpu-a100-small
 #SBATCH -N 1
 #SBATCH -n 1
 #SBATCH -t 02:00:00

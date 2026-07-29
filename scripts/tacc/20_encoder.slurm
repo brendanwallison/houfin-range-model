@@ -12,6 +12,14 @@
 #     STAGES=encoder-viz sbatch --export=ALL scripts/tacc/20_encoder.slurm
 # or all four at once (the default).
 #
+# QUEUE: gpu-a100-small (1 A100 40GB, 1.5 SU/hr, 48 h cap). Every stage here is
+# -N 1 -n 1 and single-device (plain .to(device); no DataParallel/pmap), so the
+# 3-A100 gpu-a100 node would bill 3 SU/hr to leave two GPUs idle. Per-GPU memory is
+# the same 40 GB either way -- the figure desk.batch_years was tuned against. The
+# -small nodes are virtual with fewer CORES and possibly less HOST RAM, which is the
+# one real risk: DESK stages its whole year window through host memory before the
+# device copy. A host (not CUDA) OOM is the signal to use QUEUE=gpu-a100.
+#
 # ENV NOTE: this needs torch importable (GPU: a CUDA torch build; CPU also works,
 # just slower — cube/validate are light). The repo's `gpu` extra pins jax for the
 # population model, NOT torch, so confirm torch is installed in the venv first.
@@ -19,7 +27,7 @@
 #SBATCH -J houfin_encoder
 #SBATCH -o houfin_encoder.o%j
 #SBATCH -e houfin_encoder.e%j
-#SBATCH -p gpu-a100-dev
+#SBATCH -p gpu-a100-small
 #SBATCH -N 1
 #SBATCH -n 1
 #SBATCH -t 02:00:00
@@ -52,7 +60,7 @@ if ! python -c "import torch; print('torch', torch.__version__)"; then
 fi
 if [ "$_needs_gpu" = 1 ]; then
     python -c "import torch; print('cuda', torch.cuda.is_available()); assert torch.cuda.is_available(), 'no PyTorch CUDA device'" || \
-        { echo "ESK/DESK need a GPU but none is visible — use a full gpu-a100 node"; exit 1; }
+        { echo "ESK/DESK need a GPU but none is visible — use a GPU queue (gpu-a100-small)"; exit 1; }
     start_gpu_monitor "$SLURM_SUBMIT_DIR/gpu_encoder_${SLURM_JOB_ID}.csv" 30
     trap stop_gpu_monitor EXIT
 else

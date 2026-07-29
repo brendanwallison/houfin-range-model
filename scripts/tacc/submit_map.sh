@@ -1,17 +1,20 @@
 #!/bin/bash
-# Submit the age-model MAP job (30_model_map.slurm) to a GPU queue. Defaults to the
-# 2 h dev queue. Because age_run_map checkpoints + resumes, you can either resubmit
+# Submit the age-model MAP job (30_model_map.slurm) to a GPU queue. Defaults to
+# gpu-a100-small: this job is -N 1 -n 1 on ONE GPU, and a gpu-a100 node carries 3
+# A100s at 3 SU/hr, so a single-GPU job there pays double for two idle GPUs.
+# Because age_run_map checkpoints + resumes, you can either resubmit
 # by hand after a wall-clock kill, or set RESUBMITS>0 to auto-chain dependent jobs
 # that each resume from the last checkpoint until the fit finishes.
 #
 #     HOUFIN_MAP_PROFILE=quick90 bash scripts/tacc/submit_map.sh  # ~90 min, 2 h allocation
 #     RESUBMITS=1 bash scripts/tacc/submit_map.sh              # standard/full: 1800 steps
 #     HOUFIN_MAP_STEPS=2400 RESUBMITS=2 bash scripts/tacc/submit_map.sh  # explicit extension
-#     QUEUE=gpu-a100 TIME=06:00:00 bash scripts/tacc/submit_map.sh   # normal GPU queue instead
+#     TIME=06:00:00 bash scripts/tacc/submit_map.sh                # -small caps at 48 h
+#     QUEUE=gpu-a100 bash scripts/tacc/submit_map.sh               # 3-GPU node (2x the SUs)
 set -euo pipefail
 source "$(dirname "$0")/env.sh"
 
-QUEUE="${QUEUE:-gpu-a100-dev}"        # 2 h dev queue
+QUEUE="${QUEUE:-gpu-a100-small}"   # 1 GPU, 1.5 SU/hr, 48 h cap
 TIME="${TIME:-02:00:00}"
 RESUBMITS="${RESUBMITS:-0}"           # extra jobs chained after the first (each resumes)
 A=""

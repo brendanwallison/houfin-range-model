@@ -72,13 +72,17 @@ still-advancing range edge, is the expected signature of non-equilibrium age
 structure at an invasion front. Na_grid/Nj_grid cost nothing extra during
 MAP/SVI optimization -- see forward_sim_age_structured's docstring for why.
 
-``13_niche_change_since_invasion.png`` and
-``14_environmental_drivers_since_invasion.png`` repeat figures 01 and 06 with the
-baseline window anchored at ``invasion_year`` (1940) instead of the start of the
-model timeline (1902). The 1902 baseline is "before anything happened," but it is
-also 38 years of climate change removed from the release, so change measured
+``01b_niche_change_since_invasion.png`` and
+``06b_environmental_drivers_since_invasion.png`` repeat 01a and 06a with the
+baseline era anchored at the release (1940-1955) instead of the start of the
+model timeline (1902-1915). The 1902 baseline is "before anything happened," but it
+is also 38 years of climate change removed from the release, so change measured
 against it is not change the invasion experienced; the 1940-anchored pair is the
 one to read for invasion-relative statements. ``metrics.json`` carries both.
+
+The ``a``/``b`` suffixes exist so each pair sorts ADJACENT in the output listing:
+they are the same figure differing only in baseline era, and numbering them 01/13
+and 06/14 put twelve unrelated figures between the two halves of one comparison.
 
 ``11_invasion_progression.png`` (small-multiple maps) and
 ``12_invasion_animation.mp4`` (side-by-side simulated-vs-observed animation,
@@ -107,6 +111,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.animation as animation
 import matplotlib.colors as mcolors
+import matplotlib.image as mimage
 import matplotlib.patheffects as pe
 import matplotlib.pyplot as plt
 import numpy as np
@@ -136,6 +141,69 @@ from src.vis.barrier_crossing import (
 # Back-compat local alias (this file's plot functions historically used this
 # private name; kept so the diffs below stay small).
 _grid = scatter_to_grid
+
+
+def _map_grid(nrows, ncols, shape, panel_w=3.4, header=0.55, right_pad=0.0,
+              cbar_frac=0.0):
+    """A map-panel grid sized to the RASTER's aspect, packed tightly.
+
+    ``imshow`` fixes the image's aspect, so whenever the AXES box is taller than
+    ``width * ny/nx`` the surplus becomes dead space inside the axes -- padding
+    that no outer layout engine can reclaim, because as far as it is concerned
+    the axes is fully occupied. Sizing the figure from the grid's own aspect
+    (133x224 => 0.59) removes it at the source.
+
+    ``cbar_frac`` is the share of each panel's width that a per-panel colorbar
+    consumes: constrained_layout takes the colorbar out of the panel, so the map
+    is drawn in the REMAINDER and the height must be computed from that
+    remainder, not from ``panel_w``. Getting this wrong is what left a tall white
+    band above and below every map in the first pass. Pass 0.0 when the figure
+    has no per-panel colorbar (use ``right_pad`` instead for one shared bar).
+    """
+    ny, nx = shape
+    image_w = panel_w * (1.0 - cbar_frac)
+    fig, ax = plt.subplots(nrows, ncols, squeeze=False, layout="constrained",
+                           figsize=(panel_w * ncols + right_pad,
+                                    image_w * (ny / nx) * nrows + header))
+    # Tighter than the constrained_layout defaults: these panels share a frame and
+    # a colour scale, so the gaps between them carry no information.
+    fig.get_layout_engine().set(w_pad=0.02, h_pad=0.02, wspace=0.01, hspace=0.03)
+    return fig, ax
+
+
+def _snap_map_height(fig, iters=4, tol=0.02):
+    """Shrink the figure until each map row's allocated cell matches its image.
+
+    ``_map_grid`` predicts the height a row needs, but the prediction depends on
+    how much width the colorbars actually take, which is only known once the
+    figure is laid out. Whatever surplus remains shows up as a grid cell taller
+    than the image drawn in it -- the axes then shrinks to the image (aspect is
+    fixed) and the COLORBAR, sized to the cell, ends up taller than the map. That
+    is the "colorbar taller than the figure" waste, and it cannot be cropped away
+    afterwards because it sits between panels.
+
+    Measuring ``get_position(original=True)`` (the allocated cell) against
+    ``get_position(original=False)`` (the box after aspect was applied) recovers
+    the surplus directly, so this removes it by construction instead of by tuning
+    a per-figure fudge factor. Iterates because shrinking the figure slightly
+    changes the colorbars' relative width.
+    """
+    for _ in range(iters):
+        fig.canvas.draw()
+        per_row = {}
+        for a in fig.axes:
+            if not any(isinstance(c, mimage.AxesImage) for c in a.get_children()):
+                continue
+            alloc, drawn = a.get_position(original=True), a.get_position(original=False)
+            # Group by the row's allocated top edge; panels in a row share a cell
+            # height, and the TALLEST image in the row is what constrains the shrink.
+            key = round(alloc.y1, 3)
+            surplus = (alloc.height - drawn.height) * fig.get_figheight()
+            per_row[key] = min(per_row.get(key, surplus), surplus)
+        total = sum(v for v in per_row.values() if v > 0)
+        if total <= tol:
+            return
+        fig.set_size_inches(fig.get_figwidth(), fig.get_figheight() - total)
 
 
 def _run_dir(cfg, profile, precision):
@@ -204,7 +272,7 @@ def plot_modern_niche(lam, years, rows, cols, shape, out, modern_era, baseline_e
     lo, hi = np.nanpercentile(np.r_[early_g[np.isfinite(early_g)], modern_g[np.isfinite(modern_g)]], [2, 98])
     lo, hi = min(lo, 1.0), max(hi, 1.0)
     delta_lim = max(float(np.nanpercentile(np.abs(change), 98)), .02)
-    fig, ax = plt.subplots(2, 2, figsize=(13, 10))
+    fig, ax = _map_grid(2, 2, shape, panel_w=5.4, header=1.05, cbar_frac=0.17)
     im = ax[0, 0].imshow(modern_g, cmap="viridis", vmin=lo, vmax=hi)
     ax[0, 0].contour(modern_g, [1.0], colors="white", linewidths=1.0)
     ax[0, 0].set_title(f"Modern intrinsic growth λ ({modern_span[0]}–{modern_span[1]} mean)")
@@ -233,8 +301,9 @@ def plot_modern_niche(lam, years, rows, cols, shape, out, modern_era, baseline_e
     for a in ax.flat:
         a.axis("off")
     fig.suptitle(f"House Finch fundamental niche: local demographic potential "
-                 f"({modern_span[0]}–{modern_span[1]} vs {base_span[0]}–{base_span[1]})", y=.98)
-    fig.tight_layout(); fig.savefig(out, dpi=180); plt.close(fig)
+                 f"({modern_span[0]}–{modern_span[1]} vs {base_span[0]}–{base_span[1]})")
+    _snap_map_height(fig)
+    fig.savefig(out, dpi=180, bbox_inches="tight"); plt.close(fig)
     return modern, early, transition
 
 
@@ -287,7 +356,7 @@ def plot_modern_rate_maps(sim, years, rows, cols, shape, out, era):
               ("Juvenile survival", sim["Sj_flat"], "viridis", None),
               ("Fecundity ceiling", sim["Fmax_flat"], "magma", "juveniles adult⁻¹ yr⁻¹"),
               ("Carrying capacity", sim["K_flat"], "magma", "relative units")]
-    fig, ax = plt.subplots(2, 2, figsize=(11, 9))
+    fig, ax = _map_grid(2, 2, shape, panel_w=5.0, header=0.85, cbar_frac=0.17)
     for axis, (label, field, cmap, unit) in zip(ax.flat, fields):
         avg, span, _ = era_mean(field, years, era)
         grid = _grid(avg[None], rows, cols, shape)[0]
@@ -296,7 +365,8 @@ def plot_modern_rate_maps(sim, years, rows, cols, shape, out, era):
         axis.set_title(label); axis.axis("off")
         fig.colorbar(image, ax=axis, fraction=.046, label=unit)
     fig.suptitle(f"House Finch Vital Rates ({span[0]}–{span[1]} mean)")
-    fig.tight_layout(); fig.savefig(out, dpi=180); plt.close(fig)
+    _snap_map_height(fig)
+    fig.savefig(out, dpi=180, bbox_inches="tight"); plt.close(fig)
 
 
 def plot_fit_diagnostics(sim, data, years, out):
@@ -490,7 +560,7 @@ def plot_z_feature_attribution(data, sim, years, rows, cols, shape, out,
     """Top Z features in each era, how they moved, and what that did to λ.
 
     Figures 06/14 say WHICH feature dominates a cell but not whether it changed;
-    figure 01 says λ changed but not why. This joins the two: one row per top
+    figure 01a says λ changed but not why. This joins the two: one row per top
     feature, columns ``[baseline Z] [modern Z] [ΔZ] [Δλ attributable to ΔZ]``.
 
     THE λ COLUMN IS A SINGLE-FEATURE COUNTERFACTUAL, not a decomposition. For
@@ -506,7 +576,7 @@ def plot_z_feature_attribution(data, sim, years, rows, cols, shape, out,
     λ jointly and no single-feature attribution is trustworthy on its own.
 
     Both λ fields here are rebuilt from ERA-MEAN Z, so they differ slightly from
-    the era mean of the per-year λ in figure 01 (Jensen's inequality); the
+    the era mean of the per-year λ in figure 01a (Jensen's inequality); the
     comparison within this figure is self-consistent, which is what it is for.
     """
     p = demographic_params(sim["latents"])
@@ -540,7 +610,7 @@ def plot_z_feature_attribution(data, sim, years, rows, cols, shape, out,
 
     zlim = float(np.nanpercentile(np.abs(np.r_[Z_base[:, top_idx], Z_mod[:, top_idx]]), 98)) or 1.0
     nrows = len(top_idx)
-    fig, axes = plt.subplots(nrows, 4, figsize=(17.5, 4.05 * nrows), squeeze=False)
+    fig, axes = _map_grid(nrows, 4, shape, panel_w=4.7, header=1.45, cbar_frac=0.19)
     for r, m in enumerate(top_idx):
         dz_lim = max(float(np.nanpercentile(np.abs(dZ[:, m]), 98)), 1e-6)
         dl = per_feature[m]
@@ -571,7 +641,7 @@ def plot_z_feature_attribution(data, sim, years, rows, cols, shape, out,
         f"single-feature counterfactuals; nonlinear links mean these do NOT sum to the "
         f"total (mean |Δλ| total = {tot:.3g}, unattributed interaction residual = {res:.3g})",
         fontsize=11)
-    fig.tight_layout(rect=(0, 0, 1, 0.95))
+    _snap_map_height(fig)
     fig.savefig(out, dpi=170); plt.close(fig)
     return {
         "baseline_era": list(base_span), "modern_era": list(modern_span),
@@ -616,7 +686,7 @@ def plot_environmental_drivers_limits(data, sim, years, rows, cols, shape, out,
     ]
     M = w_env.shape[0]
     cmap = plt.get_cmap("tab20", M)
-    fig, ax = plt.subplots(2, 2, figsize=(12, 9))
+    fig, ax = _map_grid(2, 2, shape, panel_w=4.6, header=0.75, right_pad=1.1)
     im = None
     for axis, (idx_flat, title) in zip(ax.flat, panels):
         grid = _grid(idx_flat[None], rows, cols, shape)[0]
@@ -630,7 +700,8 @@ def plot_environmental_drivers_limits(data, sim, years, rows, cols, shape, out,
     cbar.set_label("Dominant Z feature")
     fig.suptitle(f"Dominant environmental driver by cell "
                  f"({modern_span[0]}–{modern_span[1]} vs {base_span[0]}–{base_span[1]})")
-    fig.savefig(out, dpi=180); plt.close(fig)
+    _snap_map_height(fig)
+    fig.savefig(out, dpi=180, bbox_inches="tight"); plt.close(fig)
 
 
 def _write_source_sink_fields(npz_path, lam_realized, lam_fundamental, K_modern,
@@ -773,7 +844,7 @@ def plot_realized_source_sink(sim, lam_fundamental, years, rows, cols, shape, ou
                               fields_out=None, ref_raster=None):
     """Realized (density-dependent + Allee) counterpart to the fundamental-niche map.
 
-    Contrasts directly against ``01_modern_fundamental_niche.png``: same
+    Contrasts directly against ``01a_niche_change_since_1902.png``: same
     Sa/Sj/Fmax, but with K and the Allee effect included, so
     ``lambda_realized <= lambda_fundamental`` everywhere.
 
@@ -818,7 +889,8 @@ def plot_realized_source_sink(sim, lam_fundamental, years, rows, cols, shape, ou
             fundamental_viable=fund_ok_g > 0.5,
         )
 
-    fig, ax = plt.subplots(1, 3, figsize=(15, 5))
+    fig, ax = _map_grid(1, 3, shape, panel_w=5.0, header=1.30, cbar_frac=0.17)
+    ax = ax[0]
     # 0 = unsuitable (fails replacement at any density), 1 = Allee-dead (suitable
     # but K too small for a positive equilibrium), 2 = viable source.
     klass = np.where(viable_g > 0.5, 2.0, np.where(fund_ok_g > 0.5, 1.0, 0.0))
@@ -855,12 +927,13 @@ def plot_realized_source_sink(sim, lam_fundamental, years, rows, cols, shape, ou
     fig.suptitle("Realized demographic potential (density-dependence + Allee included)")
     # Say which figure this is the counterpart to, and which panel is which band of
     # the GeoTIFF written beside it -- the .tif was previously unlabelled anywhere.
-    fig.text(0.5, 0.005,
-             "Fundamental λ (no density-dependence, no Allee) is figure 01. Panels (b) and (c) "
-             "are bands 1–2 of 07_source_sink_fields.tif; the classification in (a) lives only in "
-             "the .npz (source_mask). See 07_source_sink_fields.md.",
-             ha="center", va="bottom", fontsize=7.5, color="0.35")
-    fig.tight_layout(rect=(0, 0.035, 1, 1)); fig.savefig(out, dpi=180); plt.close(fig)
+    fig.supxlabel(
+        "Fundamental λ (no density-dependence, no Allee) is figure 01a. Panels (b) and (c) "
+        "are bands 1–2 of 07_source_sink_fields.tif; the classification in (a) lives only in "
+        "the .npz (source_mask). See 07_source_sink_fields.md.",
+        fontsize=7.5, color="0.35")
+    _snap_map_height(fig)
+    fig.savefig(out, dpi=180, bbox_inches="tight"); plt.close(fig)
     # realized_modern_source_fraction keeps its name (juv_mdd_sweep_summary.py reads
     # it) but is now the fold criterion rather than mean(lam > 1), which was an
     # artifact of the 1e-6 guard in c. allee_dead_fraction is the number the figure
@@ -888,12 +961,14 @@ def plot_spatial_residuals(sim, data, shape, out):
     grid_mean = np.where(grid_cnt > 0, grid_sum / np.maximum(grid_cnt, 1), np.nan)
 
     lim = max(float(np.nanpercentile(np.abs(grid_mean[np.isfinite(grid_mean)]), 98)), .05)
-    fig, ax = plt.subplots(figsize=(9, 7))
+    fig, ax_grid = _map_grid(1, 1, shape, panel_w=10.0, header=0.6, cbar_frac=0.10)
+    ax = ax_grid[0, 0]
     im = ax.imshow(grid_mean, cmap="RdBu_r", vmin=-lim, vmax=lim)
     ax.set_title("Mean log-scale residual per route (log(1+fitted) − log(1+observed))")
     ax.axis("off")
     fig.colorbar(im, ax=ax, fraction=.04, label="Residual (log1p scale)")
-    fig.tight_layout(); fig.savefig(out, dpi=180); plt.close(fig)
+    _snap_map_height(fig)
+    fig.savefig(out, dpi=180, bbox_inches="tight"); plt.close(fig)
 
 
 def _k_range_metrics(sim):
@@ -1089,7 +1164,8 @@ def plot_age_structure(sim, years, rows, cols, shape, land_mask, out, era):
     modern_realized, _, _ = era_mean(rho_realized_grid, years, era)
     gap = modern_realized - modern_theory
 
-    fig, ax = plt.subplots(1, 3, figsize=(15, 5))
+    fig, ax = _map_grid(1, 3, shape, panel_w=5.0, header=0.85, cbar_frac=0.17)
+    ax = ax[0]
     im0 = ax[0].imshow(modern_theory, cmap="viridis", vmin=0, vmax=1)
     ax[0].set_title("Theoretical equilibrium ρ")
     fig.colorbar(im0, ax=ax[0], fraction=.046, label="Juvenile fraction ρ")
@@ -1103,7 +1179,8 @@ def plot_age_structure(sim, years, rows, cols, shape, land_mask, out, era):
     for a in ax:
         a.axis("off")
     fig.suptitle(f"Age structure ({span[0]}–{span[1]} mean)")
-    fig.tight_layout(); fig.savefig(out, dpi=180); plt.close(fig)
+    _snap_map_height(fig)
+    fig.savefig(out, dpi=180, bbox_inches="tight"); plt.close(fig)
     return {"modern_mean_theoretical_juvenile_fraction": float(np.nanmean(modern_theory)),
             "modern_mean_realized_juvenile_fraction": float(np.nanmean(modern_realized))}
 
@@ -1126,7 +1203,7 @@ def plot_invasion_progression(sim, years, land_mask, out, n_panels=6, logscale=T
 
     ncols = 3
     nrows = int(np.ceil(len(idx) / ncols))
-    fig, axes = plt.subplots(nrows, ncols, figsize=(4.3 * ncols, 3.6 * nrows), squeeze=False)
+    fig, axes = _map_grid(nrows, ncols, field.shape[1:], panel_w=4.0, header=0.7, right_pad=0.9)
     im = None
     for axis, i in zip(axes.flat, idx):
         im = axis.imshow(field[i], cmap="magma", vmin=0, vmax=vmax)
@@ -1137,7 +1214,8 @@ def plot_invasion_progression(sim, years, land_mask, out, n_panels=6, logscale=T
     fig.colorbar(im, ax=axes, fraction=.025, label=label)
     fig.suptitle(f"Invasion progression: simulated density over time "
                  f"({'log1p' if logscale else 'linear'} scale)")
-    fig.savefig(out, dpi=180); plt.close(fig)
+    _snap_map_height(fig)
+    fig.savefig(out, dpi=180, bbox_inches="tight"); plt.close(fig)
 
 
 def plot_barrier_crossing(sim, data, cfg, dcfg, years, rows, cols, shape, out, era):
@@ -1827,7 +1905,8 @@ def create_counterfactual_animation(sim, cf_density, years, land_mask, out, logs
     vmax = float(np.nanpercentile(la[np.isfinite(la)], 99.5))
     vmax = vmax if vmax > 0 else 1.0
 
-    fig, (ax_a, ax_c) = plt.subplots(1, 2, figsize=(13, 6))
+    fig, _axg = _map_grid(1, 2, la.shape[1:], panel_w=6.0, header=0.85, right_pad=1.0)
+    ax_a, ax_c = _axg[0]
     im_a = ax_a.imshow(la[0], cmap="magma", vmin=0, vmax=vmax)
     ax_a.set_title("Actual"); ax_a.axis("off")
     im_c = ax_c.imshow(lc[0], cmap="magma", vmin=0, vmax=vmax)
@@ -1868,7 +1947,8 @@ def create_invasion_animation(sim, data, years, land_mask, out, logscale=False):
     vmax_sim = float(np.nanpercentile(density, 99)) or 1.0
     vmax_obs = float(np.nanpercentile(obs_grid[np.isfinite(obs_grid)], 99)) or 1.0
 
-    fig, (ax_sim, ax_obs) = plt.subplots(1, 2, figsize=(13, 6))
+    fig, _axg = _map_grid(1, 2, density.shape[1:], panel_w=6.0, header=0.85, cbar_frac=0.15)
+    ax_sim, ax_obs = _axg[0]
     im_sim = ax_sim.imshow(density[0], cmap="magma", vmin=0, vmax=vmax_sim)
     ax_sim.set_title("Simulated density"); ax_sim.axis("off")
     fig.colorbar(im_sim, ax=ax_sim, fraction=.035, label=sim_label)
@@ -1926,16 +2006,16 @@ def main():
 
     lam = local_growth_lambda(sim["Sa_flat"], sim["Sj_flat"], sim["Fmax_flat"])
     modern, early, transition = plot_modern_niche(
-        lam, years, rows, cols, shape, out / "01_modern_fundamental_niche.png",
+        lam, years, rows, cols, shape, out / "01a_niche_change_since_1902.png",
         modern_era, early_era)
-    # Invasion-anchored counterparts (13/14). The "early" baseline is the start of
+    # Invasion-anchored counterparts (01b/06b). The "early" baseline is the start of
     # the model timeline (1902-1915), which mixes ~38 years of pre-invasion climate
     # change into every "change since the beginning" statement; anchoring at
     # 1940-1955 instead measures change relative to what the species actually met on
     # arrival. Both are kept because they answer different questions.
     inv_year = int(load_timeline(dcfg)["invasion_year"])
     _, early_inv, transition_inv = plot_modern_niche(
-        lam, years, rows, cols, shape, out / "13_niche_change_since_invasion.png",
+        lam, years, rows, cols, shape, out / "01b_niche_change_since_invasion.png",
         modern_era, invasion_era)
     fraction, mean_lambda, centroid_lat = plot_niche_trajectory(
         lam, years, rows, cols, dcfg["grid"]["ref_raster"], out / "02_niche_trajectory.png")
@@ -1955,10 +2035,10 @@ def main():
         data, sim, years, rows, cols, shape, out / "05d_z_attribution_since_1902.png",
         modern_era, early_era, names=z_names)
     plot_environmental_drivers_limits(data, sim, years, rows, cols, shape,
-                                       out / "06_environmental_drivers_limits.png",
+                                       out / "06a_environmental_drivers_since_1902.png",
                                        modern_era, early_era, names=z_names)
     plot_environmental_drivers_limits(data, sim, years, rows, cols, shape,
-                                       out / "14_environmental_drivers_since_invasion.png",
+                                       out / "06b_environmental_drivers_since_invasion.png",
                                        modern_era, invasion_era, names=z_names)
     source_sink_metrics = plot_realized_source_sink(
         sim, lam, years, rows, cols, shape, out / "07_realized_source_sink.png", modern_era,
@@ -2029,7 +2109,7 @@ def main():
         "modern_suitable_fraction": float(np.mean(modern > 1.0)), "early_suitable_fraction": float(np.mean(early > 1.0)),
         "gained_suitable_fraction": float(np.mean(transition[transition_land] == 1)),
         "lost_suitable_fraction": float(np.mean(transition[transition_land] == -1)),
-        # Same quantities against the invasion-year baseline (figures 13/14).
+        # Same quantities against the invasion-year baseline (figures 01b/06b).
         "invasion_baseline_year": inv_year,
         "invasion_baseline_mean_lambda": float(np.mean(early_inv)),
         "invasion_baseline_suitable_fraction": float(np.mean(early_inv > 1.0)),

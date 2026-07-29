@@ -171,6 +171,14 @@ def load_point(entry, results_dir, cell_km=27.0):
                 bc.get("median_propagule_pressure_east_to_west"),
             "mean_juvenile_edge_correction_in_barrier":
                 bc.get("mean_juvenile_edge_correction_in_barrier"),
+            # Always populated, even when G/P are suppressed at rho >= 1 -- these are
+            # the raw fitted Q contrast and the corridor-shape check, neither of which
+            # depends on the diverging sum.
+            "mean_q_to_east_in_barrier": bc.get("mean_q_to_east_in_barrier"),
+            "mean_q_to_west_in_barrier": bc.get("mean_q_to_west_in_barrier"),
+            "corridor_shape_asymmetry_max_log2":
+                bc.get("corridor_shape_asymmetry_max_log2"),
+            "barrier_crossing_verdict": bc.get("barrier_crossing_verdict"),
         })
     elif rec["excluded_reason"] is None:
         rec["excluded_reason"] = "no metrics.json"
@@ -197,11 +205,38 @@ def cross_check(points):
     return points
 
 
-def plot_source_sink(usable, ref_point, out):
-    """Small multiples + differences against the reference point."""
+#: Row keys ``plot_source_sink`` can draw, in canonical order.
+SOURCE_SINK_ROWS = ("class", "lambda", "dlambda", "flip")
+
+
+def plot_source_sink(usable, ref_point, out, rows=SOURCE_SINK_ROWS):
+    """Small multiples + differences against the reference point.
+
+    ``rows`` selects which of :data:`SOURCE_SINK_ROWS` to draw, so the same
+    computation can produce both the full four-row diagnostic and a compact
+    decision-only version (``("class", "flip")``): the classification itself and
+    which cells the dispersal hyperparameter flips. The continuous rows are the
+    ones that invite over-reading -- a large Δλ far from λ=1 changes no
+    conclusion -- so the compact pair is often the honest summary.
+    """
     ref = next((p for p in usable if p["point"] == ref_point), usable[-1])
     n = len(usable)
-    fig, ax = plt.subplots(4, n, figsize=(3.1 * n, 10.8), squeeze=False)
+    rows = tuple(r for r in SOURCE_SINK_ROWS if r in rows)
+    if not rows:
+        raise ValueError(f"rows must name at least one of {SOURCE_SINK_ROWS}")
+    r_of = {name: i for i, name in enumerate(rows)}
+    # Size the figure to the RASTER's aspect rather than a fixed per-row height.
+    # imshow preserves aspect, so a row taller than the map just pads it with dead
+    # space above and below -- which is what left large gaps between rows.
+    ny, nx = usable[0]["_lam_realized"].shape
+    panel_w = 3.1
+    panel_h = panel_w * (ny / nx)
+    # Header room for the per-column titles and the suptitle, plus a strip for the
+    # flip row's per-panel xlabel when it is drawn.
+    extra = 0.85 + (0.30 if "flip" in r_of else 0.0)
+    fig, ax = plt.subplots(len(rows), n,
+                           figsize=(panel_w * n, panel_h * len(rows) + extra),
+                           squeeze=False)
     lam_all = np.concatenate([p["_lam_realized"][np.isfinite(p["_lam_realized"])]
                               for p in usable])
     lo, hi = np.nanpercentile(lam_all, [2, 98])
@@ -214,51 +249,75 @@ def plot_source_sink(usable, ref_point, out):
     ss_cmap = mcolors.ListedColormap(["#d73027", "#4575b4"])
     flip_cmap = mcolors.ListedColormap(["#d73027", "#f7f7f7", "#4575b4"])
     flip_norm = mcolors.BoundaryNorm([-1.5, -0.5, 0.5, 1.5], flip_cmap.N)
+    im1 = im2 = None
 
     for j, p in enumerate(usable):
         lam, mask = p["_lam_realized"], p["_source_mask"]
         binary = np.where(np.isfinite(lam), mask.astype(float), np.nan)
-        ax[0, j].imshow(binary, cmap=ss_cmap, vmin=0, vmax=1)
-        ax[0, j].set_title(f"{p['juvenile_mdd_km']:.0f} km\nsource {np.nanmean(binary):.1%}",
-                           fontsize=9)
-        im1 = ax[1, j].imshow(lam, cmap="RdYlBu_r", vmin=lo, vmax=hi)
-        ax[1, j].contour(np.nan_to_num(lam, nan=0.0), [1.0], colors="black", linewidths=0.6)
-
-        im2 = ax[2, j].imshow(diffs[j], cmap="PuOr_r", vmin=-dlim, vmax=dlim)
+        if "class" in r_of:
+            a = ax[r_of["class"], j]
+            a.imshow(binary, cmap=ss_cmap, vmin=0, vmax=1)
+            a.set_title(f"{p['juvenile_mdd_km']:.0f} km\nsource {np.nanmean(binary):.1%}",
+                        fontsize=9)
+        if "lambda" in r_of:
+            a = ax[r_of["lambda"], j]
+            im1 = a.imshow(lam, cmap="RdYlBu_r", vmin=lo, vmax=hi)
+            a.contour(np.nan_to_num(lam, nan=0.0), [1.0], colors="black", linewidths=0.6)
+        if "dlambda" in r_of:
+            im2 = ax[r_of["dlambda"], j].imshow(diffs[j], cmap="PuOr_r", vmin=-dlim, vmax=dlim)
 
         # Magnitude (Δλ) and decision change (flip) answer different questions: a
         # large Δλ well away from λ=1 changes no conclusion, while a tiny one at the
-        # boundary flips a cell from source to sink. Show both.
+        # boundary flips a cell from source to sink. The flip counts are recorded
+        # even when the flip row is not drawn, so the CSV never depends on layout.
         flip = np.where(np.isfinite(lam),
                         mask.astype(int) - ref["_source_mask"].astype(int), np.nan)
         gained = int(np.nansum(flip > 0)); lost = int(np.nansum(flip < 0))
         p["cells_gained_source_vs_ref"], p["cells_lost_source_vs_ref"] = gained, lost
         p["cells_flipped_vs_ref"] = gained + lost
-        ax[3, j].imshow(flip, cmap=flip_cmap, norm=flip_norm)
-        ax[3, j].set_xlabel(f"+{gained} / −{lost} source cells", fontsize=8)
+        if "flip" in r_of:
+            a = ax[r_of["flip"], j]
+            a.imshow(flip, cmap=flip_cmap, norm=flip_norm)
+            a.set_xlabel(f"+{gained} / −{lost} source cells", fontsize=8)
+            if "class" not in r_of:
+                a.set_title(f"{p['juvenile_mdd_km']:.0f} km", fontsize=9)
         if j == n - 1:
-            fig.colorbar(im1, ax=ax[1, :].tolist(), fraction=.02, label="λ_realized")
-            fig.colorbar(im2, ax=ax[2, :].tolist(), fraction=.02, label="Δλ_realized")
+            if im1 is not None:
+                fig.colorbar(im1, ax=ax[r_of["lambda"], :].tolist(), fraction=.02,
+                             label="λ_realized")
+            if im2 is not None:
+                fig.colorbar(im2, ax=ax[r_of["dlambda"], :].tolist(), fraction=.02,
+                             label="Δλ_realized")
 
     for a in ax.flat:
         a.set_xticks([]); a.set_yticks([])
     ref_km = f"{ref['juvenile_mdd_km']:.0f} km"
-    ax[0, 0].set_ylabel("Source / sink", fontsize=9)
-    ax[1, 0].set_ylabel("Realized λ", fontsize=9)
-    ax[2, 0].set_ylabel(f"Δλ vs {ref_km}", fontsize=9)
-    ax[3, 0].set_ylabel(f"Class flips vs {ref_km}", fontsize=9)
+    labels = {"class": "Source / sink", "lambda": "Realized λ",
+              "dlambda": f"Δλ vs {ref_km}", "flip": f"Class flips vs {ref_km}"}
+    for name, i in r_of.items():
+        ax[i, 0].set_ylabel(labels[name], fontsize=9)
     # source_mask is the fold criterion (a positive equilibrium exists), not λ>1 --
     # see map_diagnostics._write_source_sink_fields and age_model_math.allee_viability.
-    ax[0, 0].legend(handles=[
-        plt.Rectangle((0, 0), 1, 1, color="#4575b4", label="Viable (max$_N$ λ > 1)"),
-        plt.Rectangle((0, 0), 1, 1, color="#d73027", label="Non-viable"),
-    ], loc="lower left", fontsize=6, frameon=True)
-    ax[3, 0].legend(handles=[
-        plt.Rectangle((0, 0), 1, 1, color="#4575b4", label="became source"),
-        plt.Rectangle((0, 0), 1, 1, color="#d73027", label="became sink"),
-    ], loc="lower left", fontsize=6, frameon=True)
-    fig.suptitle("Realized source/sink structure across juvenile mean dispersal distance", y=.99)
-    fig.savefig(out, dpi=170, bbox_inches="tight"); plt.close(fig)
+    if "class" in r_of:
+        ax[r_of["class"], 0].legend(handles=[
+            plt.Rectangle((0, 0), 1, 1, color="#4575b4", label="Viable (max$_N$ λ > 1)"),
+            plt.Rectangle((0, 0), 1, 1, color="#d73027", label="Non-viable"),
+        ], loc="lower left", fontsize=6, frameon=True)
+    if "flip" in r_of:
+        ax[r_of["flip"], 0].legend(handles=[
+            plt.Rectangle((0, 0), 1, 1, color="#4575b4", label="became source"),
+            plt.Rectangle((0, 0), 1, 1, color="#d73027", label="became sink"),
+        ], loc="lower left", fontsize=6, frameon=True)
+    fig.suptitle("Realized source/sink structure across juvenile mean dispersal distance", y=.995)
+    # Tight inter-panel spacing: these are maps on a shared frame, so the gaps carry
+    # no information and only cost legibility when projected. Set explicitly rather
+    # than via tight_layout, which re-pads around titles and colorbars.
+    fig.subplots_adjust(left=.035, right=.985 if im1 is None and im2 is None else .93,
+                        top=1.0 - (0.62 / fig.get_figheight()),
+                        bottom=0.10 if "flip" in r_of else 0.02,
+                        wspace=.02, hspace=.06)
+    fig.savefig(out, dpi=170)
+    plt.close(fig)
     return ref
 
 
@@ -286,19 +345,44 @@ def _plot_barrier_crossing_vs_mdd(ax_g, ax_r, usable, mdd):
     absolute crossing rate is not -- which is the result the sweep exists to
     establish.
 
-    Points where the diagnostic did not run (no zone raster) are absent rather than
-    zero; both axes annotate themselves and return early instead of drawing an empty
-    frame that could read as "no crossing".
+    TWO WAYS ``G`` CAN BE ABSENT, and they must not be reported the same way:
+
+    * the diagnostic never ran (no zone raster) -- nothing at all is available;
+    * it ran and found ``rho >= 1``, so the Neumann series diverges and
+      ``map_diagnostics`` deliberately reports ``G`` as null. Here ``rho`` IS
+      available and is the headline result, and the directional signal survives in
+      the raw ``Q`` contrast. Falling back to "zone raster absent" in this case
+      would both misstate the cause and discard the sweep's actual finding.
     """
     gew = np.array([p.get("G_horizon_east_to_west") or np.nan for p in usable], dtype=float)
     gwe = np.array([p.get("G_horizon_west_to_east") or np.nan for p in usable], dtype=float)
     ratio = np.array([p.get("crossing_asymmetry_ratio") or np.nan for p in usable], dtype=float)
     rho = np.array([p.get("rho_barrier") or np.nan for p in usable], dtype=float)
-    if not np.isfinite(gew).any():
+    dq = np.array([(p.get("mean_q_to_west_in_barrier") or np.nan)
+                   - (p.get("mean_q_to_east_in_barrier") or np.nan) for p in usable],
+                  dtype=float)
+    if not np.isfinite(gew).any() and not np.isfinite(rho).any():
         for a, msg in ((ax_g, "no barrier_crossing metrics\n(zone raster absent)"),
                        (ax_r, "")):
             a.text(.5, .5, msg, ha="center", va="center", fontsize=9, transform=a.transAxes)
             a.set_xticks([]); a.set_yticks([])
+        return
+
+    if not np.isfinite(gew).any():
+        # Supercritical at every point: plot what is defined (rho) and what still
+        # carries direction (the raw Q contrast), and say why G is missing.
+        ax_g.plot(mdd, rho, marker="^", color="#2166ac")
+        ax_g.axhline(1.0, color="#d73027", ls="--", lw=1.0)
+        ax_g.set(xlabel="Juvenile mean dispersal distance (km)", ylabel="ρ(barrier)",
+                 title="Barrier spectral radius\nG undefined: ρ ≥ 1 at every point")
+        ax_g.text(.5, .06, "ρ ≥ 1 ⇒ the linearized barrier self-sustains,\n"
+                           "so the crossing gain diverges and is not reported",
+                  ha="center", fontsize=7.5, color="0.35", transform=ax_g.transAxes)
+        ax_r.plot(mdd, dq, marker="o", color="#4d9221")
+        ax_r.axhline(0.0, color="0.6", ls="--", lw=.8)
+        ax_r.set(xlabel="Juvenile mean dispersal distance (km)",
+                 ylabel="mean Q(→W) − Q(→E) in barrier",
+                 title="Journey-survival asymmetry\n(the directional signal that survives ρ ≥ 1)")
         return
 
     ax_g.plot(mdd, gew, marker="o", color="#54278f", label="east → west")
@@ -416,6 +500,10 @@ def main():
 
     if usable:
         ref = plot_source_sink(usable, ref_point, out / "juv_mdd_source_sink.png")
+        # Decision-only companion: the classification and what the dispersal
+        # hyperparameter actually changes about it, without the continuous rows.
+        plot_source_sink(usable, ref_point, out / "juv_mdd_source_sink_flips.png",
+                         rows=("class", "flip"))
         mat = agreement_matrix(usable)
         plot_fit_metrics(usable, mat, out / "juv_mdd_fit_metrics.png")
         off = mat[~np.eye(len(usable), dtype=bool)]
@@ -443,7 +531,7 @@ def main():
         w = csv.DictWriter(fh, fieldnames=cols); w.writeheader()
         for p in points:
             w.writerow({k: p.get(k) for k in cols})
-    figs = " and 2 figures" if usable else " (no figures -- no usable points)"
+    figs = " and 3 figures" if usable else " (no figures -- no usable points)"
     print(f"\nwrote {out}/sweep_summary.csv, sweep_summary.json{figs}")
 
 

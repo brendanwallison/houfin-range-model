@@ -69,7 +69,7 @@ import numpy as np
 import jax.numpy as jnp
 
 from src.model.age_forward import juvenile_dispersal_vectorized, rightpad_convolution
-from src.vis.age_model_math import allee_viability, window_mean
+from src.vis.age_model_math import allee_viability, era_mean, era_span
 
 # Direction -> (source zone, target zone) in the west|barrier|east partition.
 DIRECTIONS = {"east_to_west": ("east", "west"), "west_to_east": ("west", "east")}
@@ -80,7 +80,7 @@ DIRECTIONS = {"east_to_west": ("east", "west"), "west_to_east": ("west", "east")
 _RATIO_SIGNAL_FLOOR = 1e-7
 
 
-def low_density_departure_probability(latents, target_fraction, window=None):
+def low_density_departure_probability(latents, target_fraction, years=None, era=None):
     """``p0 = sigmoid(beta0 + mean(r_t) - beta1 * tau)``, a scalar.
 
     The model's departure probability is
@@ -88,39 +88,44 @@ def low_density_departure_probability(latents, target_fraction, window=None):
     (``age_forward.dispersal_step_age_structured``). At an invasion front ``N/K -> 0``,
     so the density term collapses to ``-beta1*tau`` and ``p0`` is the same number
     everywhere -- it is not a field. ``r_t`` (``dispersal_random``) has prior scale
-    0.001 so it is negligible; its mean over the analysis window is used rather than
-    any single year, to avoid a year choice mattering.
+    0.001 so it is negligible; its mean over the analysis era is used rather than
+    any single year, to avoid a year choice mattering. Omit ``years``/``era`` to
+    average over the whole timeline.
     """
     beta0 = float(np.asarray(latents["dispersal_logit_intercept"]))
     beta1 = float(np.asarray(latents["dispersal_logit_slope"]))
     r = np.asarray(latents["dispersal_random"], dtype=float)
-    r_bar = float(np.mean(r[-window:] if window else r)) if r.size else 0.0
+    if r.size and years is not None and era is not None:
+        i0, i1, _ = era_span(era, years)
+        r_bar = float(np.mean(r[i0:i1]))
+    else:
+        r_bar = float(np.mean(r)) if r.size else 0.0
     z = beta0 + r_bar - beta1 * float(target_fraction)
     return float(1.0 / (1.0 + np.exp(-np.clip(z, -10.0, 10.0))))
 
 
-def modern_dispersal_fields(sim, data, window, rows, cols, shape):
-    """Window-mean grids the operator needs, plus the state it starts from.
+def modern_dispersal_fields(sim, data, years, era, rows, cols, shape):
+    """Era-mean grids the operator needs, plus the state it starts from.
 
-    Everything is reduced to the modern window first, matching how every other
+    Everything is reduced to the modern era first, matching how every other
     "modern" field in the diagnostics is built, and scattered to the full grid
     because the FFT operator works on grids, not on the land-cell vector.
     """
     def grid(flat_t):
-        m, _, _ = window_mean(np.asarray(flat_t), window)
+        m, _, _ = era_mean(np.asarray(flat_t), years, era)
         g = np.zeros(shape, dtype="float64")
         g[rows, cols] = m
         return g
 
     def grid_stack(flat_t):
-        """(time, N_land, K) -> (K, Ny, Nx) window mean."""
-        m, _, _ = window_mean(np.asarray(flat_t), window)   # (N_land, K)
+        """(time, N_land, K) -> (K, Ny, Nx) era mean."""
+        m, _, _ = era_mean(np.asarray(flat_t), years, era)   # (N_land, K)
         g = np.zeros((m.shape[-1], *shape), dtype="float64")
         g[:, rows, cols] = m.T
         return g
 
-    a_m, _, _ = window_mean(np.asarray(sim["Na_grid"]), window)
-    j_m, _, _ = window_mean(np.asarray(sim["Nj_grid"]), window)
+    a_m, _, _ = era_mean(np.asarray(sim["Na_grid"]), years, era)
+    j_m, _, _ = era_mean(np.asarray(sim["Nj_grid"]), years, era)
     return {
         "Sa": grid(sim["Sa_flat"]), "Sj": grid(sim["Sj_flat"]),
         "Fmax": grid(sim["Fmax_flat"]), "K": grid(sim["K_flat"]),
@@ -231,6 +236,32 @@ def crossing_gain(fields, data, zones, direction, p0, horizon_years=124,
     converges to the spectral radius for a non-negative operator. If it does not fall
     below 1, ``G`` is returned as inf with ``converged=False``: the barrier contains
     self-sustaining habitat and the Neumann series genuinely diverges.
+
+    WHY THE TWO CORRIDORS CAN LOOK IDENTICAL -- read this before interpreting them.
+    ``target`` and ``barrier`` are disjoint zones, so ``a_next * barrier`` below
+    already absorbs arrivals: the recursion is ``v_{k+1} = P_barrier A v_k`` with a
+    genuinely absorbing ``A_P``. But ``A_P`` contains no reference to ``target`` at
+    all, so it is THE SAME OPERATOR for both directions -- correctly so; the cost of
+    moving through the barrier does not depend on which way you eventually exit.
+    Direction enters only through the injected mass ``b`` and through which exit is
+    counted as an arrival. Hence ``corridor = sum_k A_P^k b``: one operator, two
+    initial conditions. Whether that leaves any directional SHAPE depends entirely on
+    ``rho``, and the two regimes are covered by tests:
+
+    * ``rho < 1`` -- the sum is dominated by its EARLY terms, the memory of ``b``
+      survives, and the corridors genuinely differ (test TVD > 0.05).
+    * ``rho >= 1`` -- the sum is dominated by its LATE terms, which are ``A_P``'s
+      dominant eigenvector regardless of ``b``. Both corridors converge onto that one
+      eigenvector and differ only by a SCALAR (test TVD < 0.02). This is the fitted
+      case, and it is why the two panels looked identical: per-panel normalization
+      then divided out the only surviving difference.
+
+    So in the supercritical regime directional information lives in ``G``, in
+    ``per_year_arrivals`` and in ``directional_q_contrast`` / ``q_asymmetry_attribution``
+    -- NOT in the corridor shape. ``corridor_horizon`` accumulates the transient only,
+    which is where any directional signal is concentrated; the plot normalizes both
+    corridors and maps their ratio so the presence or absence of it is visible rather
+    than assumed.
     """
     if direction not in DIRECTIONS:
         raise ValueError(f"direction must be one of {sorted(DIRECTIONS)}, got {direction!r}")
@@ -259,6 +290,7 @@ def crossing_gain(fields, data, zones, direction, p0, horizon_years=124,
     arrivals_field = np.zeros_like(b)          # all years
     arrivals_field_horizon = np.zeros_like(b)  # within horizon_years
     corridor = np.zeros_like(b)
+    corridor_horizon = np.zeros_like(b)        # transient only -- see the docstring
     per_year = []
     ratios = []
     a, j = b.copy(), np.zeros_like(b)
@@ -271,6 +303,7 @@ def crossing_gain(fields, data, zones, direction, p0, horizon_years=124,
         arrivals_field += arrived
         if year < horizon_years:
             arrivals_field_horizon += arrived
+            corridor_horizon += a
         per_year.append(float(arrived.sum()))
         a, j = a_next * barrier, j_next * barrier
         cur = float(a.sum() + j.sum())
@@ -307,6 +340,7 @@ def crossing_gain(fields, data, zones, direction, p0, horizon_years=124,
             "rho": rho, "converged": converged, "horizon_years": int(horizon_years),
             "total_entering_barrier": total_in, "per_year_arrivals": per_year,
             "arrivals_field": arrivals_field_horizon, "corridor": corridor,
+            "corridor_horizon": corridor_horizon,
             "n_years": len(per_year), "years_to_half_of_G": half,
             "barrier_self_sustaining": self_sustaining}
 
@@ -392,3 +426,97 @@ def directional_q_contrast(fields, labels, window_unused=None):
     q_east, q_west = q[east].mean(axis=0), q[west].mean(axis=0)
     return {"q_to_east": q_east, "q_to_west": q_west, "q_west_minus_east": q_west - q_east,
             "east_cohorts": east, "west_cohorts": west}
+
+
+def _band_key(label):
+    """Radial band suffix of a kernel label (``to_WEST_155-483`` -> ``155-483``)."""
+    parts = str(label).split("_")
+    return parts[-1] if len(parts) >= 3 else str(label)
+
+
+def q_asymmetry_attribution(fields, data, sim, zones, labels, rows, cols, shape,
+                            years=None, era=None, top_n=6):
+    """Why westward journeys cost more: per radial band, and per Z feature.
+
+    ``directional_q_contrast`` pools all three radial bands into one number, which
+    cannot say whether the asymmetry is a short-hop or a long-jump phenomenon --
+    and the bands (0-155, 155-483, 483+ km) are exactly the spatial scales the
+    juvenile-MDD sweep moves. This resolves the contrast by band, then attributes
+    it to the covariates that produce it.
+
+    ATTRIBUTION. ``Q_k(x) = sigmoid(alpha_j + gamma_j * (Z_disp[x,:,k] . beta_s))``,
+    so the entire E/W contrast comes from ``Z_disp`` differing between the east-
+    and west-pointing wedges of the same cell. Per feature ``m`` and band ``b`` the
+    contribution to the pre-sigmoid contrast is exactly
+    ``mean_x (Z_disp[x,m,W_b] - Z_disp[x,m,E_b]) * beta_s[m]``, which is additive
+    and therefore a genuine decomposition (the sigmoid is applied afterwards, so
+    only the RANKING is exact on the probability scale, not the magnitudes).
+
+    GEOMETRY CONTROL. The wedges partition the kernel without per-wedge
+    renormalization, so a west-pointing wedge that runs off the domain integrates a
+    different amount of landscape than its east-pointing twin, and that alone would
+    produce a contrast with no habitat gradient behind it. The edge-correction stack
+    ``f_j`` measures exactly that -- the share of each wedge's kernel mass landing on
+    valid domain -- so the E/W contrast IN ``f_j`` is a direct, fitted-data measure of
+    the geometric component. Reported per band beside the ``Q`` contrast: if the two
+    track each other, the asymmetry is geometry; if ``Q``'s contrast survives where
+    ``f_j``'s is ~0, it is habitat.
+    """
+    labels = [str(x) for x in labels]
+    east = [i for i, s in enumerate(labels) if s.startswith("to_EAST")]
+    west = [i for i, s in enumerate(labels) if s.startswith("to_WEST")]
+    if not east or not west:
+        raise ValueError(f"no to_EAST/to_WEST cohorts in labels: {labels}")
+    # Pair east/west cohorts by radial band so a contrast is never taken across
+    # different distance classes.
+    by_band = {}
+    for i in east:
+        by_band.setdefault(_band_key(labels[i]), {})["east"] = i
+    for i in west:
+        by_band.setdefault(_band_key(labels[i]), {})["west"] = i
+    bands = [(k, v["east"], v["west"]) for k, v in by_band.items()
+             if "east" in v and "west" in v]
+    # Sort by the band's lower edge so the panels read short-hop -> long-jump.
+    def _lo(key):
+        try:
+            return float(str(key).split("-")[0])
+        except ValueError:
+            return float("inf")
+    bands.sort(key=lambda t: _lo(t[0]))
+
+    barrier = zones["barrier"] & fields["land"].astype(bool)
+    q = fields["Q"]
+    # Edge correction is (K_kernels, Ny, Nx) -- the geometry control, see the docstring.
+    f_j = np.asarray(data["juvenile_edge_correction_stack"])
+    per_band = [{"band": k,
+                 "q_to_east": q[ie], "q_to_west": q[iw], "delta": q[iw] - q[ie],
+                 "mean_q_to_east": float(q[ie][barrier].mean()),
+                 "mean_q_to_west": float(q[iw][barrier].mean()),
+                 "mean_delta": float((q[iw] - q[ie])[barrier].mean()),
+                 "mean_edge_corr_delta": float((f_j[iw] - f_j[ie])[barrier].mean())}
+                for k, ie, iw in bands]
+
+    # Z_disp_gathered is (time, N_land, K_kernels, M) -- kernel axis BEFORE feature
+    # axis (see age_fields.py:280-301). Era-reduce it exactly as Q was reduced.
+    z_disp = np.asarray(data["Z_disp_gathered"]) if "Z_disp_gathered" in data else None
+    beta_s = np.asarray(sim["latents"]["w_env"])[:, 0]
+    features = []
+    if z_disp is not None:
+        if z_disp.ndim == 4:
+            if years is not None and era is not None:
+                i0, i1, _ = era_span(era, years)
+                z_disp = z_disp[i0:i1].mean(axis=0)
+            else:
+                z_disp = z_disp.mean(axis=0)      # (N_land, K, M)
+        # Restrict to barrier cells, in the same flat land ordering as rows/cols.
+        zb = z_disp[barrier[rows, cols]]          # (n_barrier, K, M)
+        # Additive on the PRE-SIGMOID scale, which is where the decomposition is exact.
+        contrib = {k: (zb[:, iw, :] - zb[:, ie, :]).mean(axis=0) * beta_s
+                   for k, ie, iw in bands}
+        total = np.sum(list(contrib.values()), axis=0)
+        order = np.argsort(np.abs(total))[::-1]
+        features = [{"index": int(m), "total": float(total[m]),
+                     "by_band": {k: float(contrib[k][m]) for k, _, _ in bands}}
+                    for m in order[:top_n]]
+
+    return {"bands": per_band, "features": features, "beta_s": beta_s}

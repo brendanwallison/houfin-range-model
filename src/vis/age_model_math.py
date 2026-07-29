@@ -13,7 +13,6 @@ Consumed today by ``scripts/viz/map_diagnostics.py``.
 """
 import numpy as np
 
-from src.config_utils import load_age_model_config
 import jax.numpy as jnp
 
 from src.model.age_priors import equilibrium_age_quantities
@@ -230,6 +229,79 @@ def _gamma_slope(latents, name, raw_name):
     return 1.0
 
 
+def demographic_params(latents):
+    """Unpack the fitted link parameters shared by every synthetic-Z diagnostic.
+
+    Returns a dict with ``beta_s``/``beta_r``/``beta_k`` (the three ``w_env``
+    columns), the four ``alpha_*`` intercepts and the four ``gamma_*`` slopes,
+    all on the links' own scales, ready to feed ``sigmoid``/``softplus`` exactly
+    as ``age_fields.py`` does.
+
+    Split out of :func:`response_curve_fields` so the Z-feature attribution maps
+    share one copy of the checkpoint-compatibility logic (the K link changed
+    twice, and the gamma slopes moved from sampled to deterministic); two copies
+    would drift and silently plot a curve the model does not use.
+    """
+    if "w_env" not in latents:
+        raise KeyError(
+            "demographic_params needs 'w_env', which is a numpyro.deterministic "
+            "under the one-factor manifold prior -- auto_delta_params_to_latents "
+            "returns only SAMPLED sites, so the caller must fold the deterministic "
+            "value in (see map_diagnostics.reconstruct_map)")
+    w_env = np.asarray(latents["w_env"])  # (M, 3): beta_s, beta_r, beta_k
+    beta_s, beta_r = w_env[:, 0], w_env[:, 1]
+    # Capacity has its OWN manifold now; reusing beta_r here would silently plot a
+    # curve the model does not use. Two-column checkpoints predate the split.
+    beta_k = w_env[:, 2] if w_env.shape[1] > 2 else beta_r
+
+    # K = softplus(alpha_k + gamma_k*H_k + trend) in DENSITY space. Earlier revisions
+    # used a log link with the level sampled in route counts (log_k_level_counts);
+    # those checkpoints have no alpha_k, so fall back to the prior location rather
+    # than inverting a level that the softplus link no longer uses.
+    from src.model.age_priors import _ALPHA_K_LOC
+    alpha_k = float(latents.get("alpha_k", _ALPHA_K_LOC))
+    # The demographic slopes are dimensionless and FIXED AT 1 (their amplitude moved
+    # into w_scale to remove three flat ridges -- see age_priors.py). They are emitted
+    # as numpyro.deterministic under the friendly names, plus *_raw constants equal to
+    # softplus^-1(1) for older readers. Deterministic sites are absent from
+    # auto_delta_params_to_latents, so the caller must fold them in (see
+    # map_diagnostics.reconstruct_map); the fallbacks below keep pre-d7db319
+    # checkpoints, where the *_raw names were genuinely sampled, plotting correctly.
+    gamma_a = _gamma_slope(latents, "gamma_a", "gamma_a_raw")
+    return {
+        "w_env": w_env,
+        "beta_s": beta_s, "beta_r": beta_r, "beta_k": beta_k,
+        "alpha_a": float(latents["alpha_a"]),
+        "alpha_j": float(latents["alpha_j"]),
+        "alpha_f": float(latents["alpha_f"]),
+        "alpha_k": alpha_k,
+        "gamma_a": gamma_a,
+        "gamma_j": gamma_a + float(latents["gamma_j_diff"]),  # sampled; always present
+        "gamma_f": _gamma_slope(latents, "gamma_f", "gamma_f_raw"),
+        "gamma_k": _gamma_slope(latents, "gamma_k", "gamma_k_raw"),
+    }
+
+
+def rates_from_manifolds(p, H_s, H_r, H_k=None):
+    """Apply the model's link functions to already-projected manifold values.
+
+    ``p`` is a :func:`demographic_params` dict; ``H_s``/``H_r``/``H_k`` are
+    ``Z . beta_*`` for survival, reproduction and capacity. Links mirror
+    ``age_fields.py`` exactly: sigmoid for Sa/Sj, softplus for Fmax/K. K is BASE
+    capacity -- before the continental time trend and before the mycoplasmal-
+    conjunctivitis effect, which are functions of location and year and so have
+    no value for a synthetic Z point.
+    """
+    out = {
+        "Sa": sigmoid(p["alpha_a"] + p["gamma_a"] * H_s),
+        "Sj": sigmoid(p["alpha_j"] + p["gamma_j"] * H_s),
+        "Fmax": softplus(p["alpha_f"] + p["gamma_f"] * H_r),
+    }
+    if H_k is not None:
+        out["K"] = softplus(p["alpha_k"] + p["gamma_k"] * H_k)
+    return out
+
+
 def response_curve_fields(latents, z_sweep, target_idx):
     """Sweep one Z feature and return Sa/Sj/Fmax/K response curves.
 
@@ -260,68 +332,14 @@ def response_curve_fields(latents, z_sweep, target_idx):
     ``09_disease_diagnostics.png`` for that piece; a curve here that looks high
     versus the fitted K field is expected in post-arrival regions, not a bug.
     """
-    if "w_env" not in latents:
-        raise KeyError(
-            "response_curve_fields needs 'w_env', which is a numpyro.deterministic "
-            "under the one-factor manifold prior -- auto_delta_params_to_latents "
-            "returns only SAMPLED sites, so the caller must fold the deterministic "
-            "value in (see map_diagnostics.reconstruct_map)")
-    w_env = np.asarray(latents["w_env"])  # (M, 3): beta_s, beta_r, beta_k
-    beta_s, beta_r = w_env[:, 0], w_env[:, 1]
-    # Capacity has its OWN manifold now; reusing beta_r here would silently plot a
-    # curve the model does not use.
-    beta_k = w_env[:, 2] if w_env.shape[1] > 2 else beta_r
-
+    p = demographic_params(latents)
     z_sweep = np.asarray(z_sweep)
-    H_s = z_sweep * beta_s[target_idx]
-    H_r = z_sweep * beta_r[target_idx]
-    H_k = z_sweep * beta_k[target_idx]
-
-    alpha_a = float(latents["alpha_a"])
-    alpha_j = float(latents["alpha_j"])
-    alpha_f = float(latents["alpha_f"])
-    # K = softplus(alpha_k + gamma_k*H_k + trend) in DENSITY space. Earlier revisions
-    # used a log link with the level sampled in route counts (log_k_level_counts), and
-    # before that softplus over an unbounded argument; both names are accepted so an
-    # older checkpoint still plots.
-    pop = float(load_age_model_config()["population_model"].get(
-        "population_scale_route_counts_per_relative_unit",
-        load_age_model_config()["population_model"].get(
-            "population_scale_birds_per_relative_unit", 1.0)))
-    # Intercept on the softplus link's own scale (route counts), inverted from the
-    # reported level when only the transformed value is available.
-    _lvl_cfg = load_age_model_config()["population_model"]["capacity_level_prior"]
-    if "k_level" in latents:                      # deterministic, already in density
-        k_level = float(np.asarray(latents["k_level"]))
-    elif "alpha_k" in latents:                     # softplus link, DENSITY space
-        k_level = float(softplus(latents["alpha_k"]))
-    elif "log_k_level_counts" in latents:          # exp link (previous run)
-        k_level = float(np.exp(latents["log_k_level_counts"])) / pop
-    else:
-        k_level = float(softplus(latents["alpha_k"]))  # pre-run_11 checkpoint
-    from src.model.age_priors import _ALPHA_K_LOC
-    alpha_k = float(latents.get("alpha_k", _ALPHA_K_LOC))
-    # The demographic slopes are dimensionless and FIXED AT 1 (their amplitude moved
-    # into w_scale to remove three flat ridges -- see age_priors.py). They are emitted
-    # as numpyro.deterministic under the friendly names, plus *_raw constants equal to
-    # softplus^-1(1) for older readers. Deterministic sites are absent from
-    # auto_delta_params_to_latents, so the caller must fold them in (see
-    # map_diagnostics.reconstruct_map); the fallbacks below keep pre-d7db319
-    # checkpoints, where the *_raw names were genuinely sampled, plotting correctly.
-    gamma_a = _gamma_slope(latents, "gamma_a", "gamma_a_raw")
-    gamma_j = gamma_a + float(latents["gamma_j_diff"])  # sampled; always present
-    gamma_f = _gamma_slope(latents, "gamma_f", "gamma_f_raw")
-    gamma_k = _gamma_slope(latents, "gamma_k", "gamma_k_raw")
-
-    return {
-        "Sa": sigmoid(alpha_a + gamma_a * H_s),
-        "Sj": sigmoid(alpha_j + gamma_j * H_s),
-        "Fmax": softplus(alpha_f + gamma_f * H_r),
-        # Matches age_fields: softplus(alpha_k + gamma_k*H_k) in DENSITY space. The
-        # disease effect is omitted -- it is a function of location and year, so a
-        # synthetic single-Z sweep has no value for it.
-        "K": softplus(alpha_k + gamma_k * H_k),
-    }
+    return rates_from_manifolds(
+        p,
+        H_s=z_sweep * p["beta_s"][target_idx],
+        H_r=z_sweep * p["beta_r"][target_idx],
+        H_k=z_sweep * p["beta_k"][target_idx],
+    )
 
 
 def scatter_to_grid(flat, rows, cols, shape):
@@ -370,6 +388,73 @@ def baseline_window_mean(values, years, n, ref_year=None):
         raise ValueError(f"no timeline left after ref_year {ref_year}")
     return (np.nanmean(values[i0:i0 + n], axis=0), n,
             (int(years[i0]), int(years[i0 + n - 1])))
+
+
+# Named comparison eras, as inclusive (first_year, last_year) spans. Diagnostics
+# that contrast "now" against "before" should name an era rather than take a
+# trailing-N window: a trailing window silently moves when the timeline is
+# extended, and the leading window ("timeline start") answers a different
+# question from "at the release". These three are the spans the figures actually
+# compare -- 1902-1915 is pre-release baseline climate, 1940-1955 is the
+# conditions the species met when it arrived, 2010-2025 is the modern period.
+ERAS = {
+    "early": (1902, 1915),
+    "invasion": (1940, 1955),
+    "modern": (2010, 2025),
+}
+
+
+def era_span(era, years):
+    """Resolve an era name (or an explicit ``(first, last)`` pair) to indices.
+
+    Returns ``(i0, i1_exclusive, (first_year, last_year))`` clipped to the
+    available timeline. Raises if the era does not overlap ``years`` at all --
+    silently returning an empty or slid window would put a wrong year range in a
+    figure title, which is exactly the failure this replaces.
+    """
+    lo, hi = ERAS[era] if isinstance(era, str) else tuple(int(v) for v in era)
+    years = np.asarray(years)
+    idx = np.flatnonzero((years >= lo) & (years <= hi))
+    if not idx.size:
+        raise ValueError(
+            f"era {era!r} ({lo}-{hi}) does not overlap the model timeline "
+            f"{int(years[0])}-{int(years[-1])}")
+    i0, i1 = int(idx[0]), int(idx[-1]) + 1
+    return i0, i1, (int(years[i0]), int(years[i1 - 1]))
+
+
+def era_mean(values, years, era):
+    """Mean of a ``(time, ...)`` array over the inclusive year span of ``era``.
+
+    The era-named sibling of :func:`baseline_window_mean`. Returns
+    ``(mean, (first_year, last_year), n_used)`` where the span is the ACTUAL
+    clipped span, so callers can title a figure with what was really averaged
+    rather than with what they asked for.
+    """
+    i0, i1, span = era_span(era, years)
+    return np.nanmean(np.asarray(values)[i0:i1], axis=0), span, i1 - i0
+
+
+def eras_from_window(years, window):
+    """Rebuild era-like spans from a legacy trailing-``window`` size.
+
+    Preserves the pre-era ``--window-years`` behaviour as an override: "modern"
+    becomes the trailing ``window`` years, and each historical era becomes a
+    ``window``-year span anchored at its own start year (which is what
+    ``baseline_window_mean(ref_year=...)`` did). Returns a dict shaped like
+    :data:`ERAS`, suitable for passing straight back in as an explicit span.
+    """
+    years = np.asarray(years)
+    window = int(window)
+    out = {}
+    for name, (lo, _) in ERAS.items():
+        if name == "modern":
+            out[name] = (int(years[max(0, len(years) - window)]), int(years[-1]))
+            continue
+        i0 = int(np.flatnonzero(years >= lo)[0])
+        i1 = min(i0 + window, len(years)) - 1
+        out[name] = (int(years[i0]), int(years[i1]))
+    return out
 
 
 def add_timeline_markers(ax, tl=None, show_invasion=True, show_bbs_start=True, **line_kwargs):

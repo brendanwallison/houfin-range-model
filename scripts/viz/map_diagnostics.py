@@ -107,6 +107,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.animation as animation
 import matplotlib.colors as mcolors
+import matplotlib.patheffects as pe
 import matplotlib.pyplot as plt
 import numpy as np
 import rasterio
@@ -122,18 +123,19 @@ from src.model.data_loading import load_data
 from src.model.runtime_diagnostics import memory_snapshot, require_gpu
 from src.data.preprocess.great_plains import read_zone_raster
 from src.vis.age_model_math import (
-    add_timeline_markers, allee_viability, baseline_window_mean, local_growth_lambda,
-    realized_equilibrium, response_curve_fields, scatter_to_grid, window_mean,
+    ERAS, add_timeline_markers, allee_viability, demographic_params, era_mean, era_span,
+    eras_from_window, local_growth_lambda, rates_from_manifolds, realized_equilibrium,
+    response_curve_fields, scatter_to_grid,
 )
 from src.vis.barrier_crossing import (
     DIRECTIONS, crossing_gain, directional_q_contrast, edge_correction_summary,
     low_density_departure_probability, modern_dispersal_fields, propagule_pressure,
+    q_asymmetry_attribution,
 )
 
-# Back-compat local aliases (this file's plot functions historically used
-# these private names; kept so the diffs below stay small).
+# Back-compat local alias (this file's plot functions historically used this
+# private name; kept so the diffs below stay small).
 _grid = scatter_to_grid
-_window_mean = window_mean
 
 
 def _run_dir(cfg, profile, precision):
@@ -180,18 +182,17 @@ def reconstruct_map(data, params):
     return sim
 
 
-def plot_modern_niche(lam, years, rows, cols, shape, out, window, ref_year=None):
+def plot_modern_niche(lam, years, rows, cols, shape, out, modern_era, baseline_era):
     """Modern vs baseline fundamental niche, and the transition between them.
 
-    ``ref_year=None`` anchors the baseline at the start of the model timeline
-    (1902). Pass ``invasion_year`` to anchor it at the release instead -- the
-    1902 baseline also carries 38 years of climate change that has nothing to do
-    with the invasion, so the two figures answer genuinely different questions
-    and are both produced (see ``baseline_window_mean``).
+    ``baseline_era="early"`` (1902-1915) anchors the comparison at the start of
+    the model timeline. ``"invasion"`` (1940-1955) anchors it at the release
+    instead -- the 1902 baseline also carries 38 years of climate change that has
+    nothing to do with the invasion, so the two figures answer genuinely
+    different questions and are both produced (see ``age_model_math.ERAS``).
     """
-    modern, _, n = _window_mean(lam, window)
-    early, n_base, base_span = baseline_window_mean(lam, years, window, ref_year)
-    n = min(n, n_base)
+    modern, modern_span, _ = era_mean(lam, years, modern_era)
+    early, base_span, _ = era_mean(lam, years, baseline_era)
     modern_g, early_g = _grid(modern[None], rows, cols, shape)[0], _grid(early[None], rows, cols, shape)[0]
     change = modern_g - early_g
     early_ok, modern_ok = early_g > 1.0, modern_g > 1.0
@@ -206,14 +207,15 @@ def plot_modern_niche(lam, years, rows, cols, shape, out, window, ref_year=None)
     fig, ax = plt.subplots(2, 2, figsize=(13, 10))
     im = ax[0, 0].imshow(modern_g, cmap="viridis", vmin=lo, vmax=hi)
     ax[0, 0].contour(modern_g, [1.0], colors="white", linewidths=1.0)
-    ax[0, 0].set_title(f"Modern intrinsic growth λ ({years[-n]}–{years[-1]} mean)")
+    ax[0, 0].set_title(f"Modern intrinsic growth λ ({modern_span[0]}–{modern_span[1]} mean)")
     fig.colorbar(im, ax=ax[0, 0], fraction=.046, label="Post-establishment λ")
     im = ax[0, 1].imshow(early_g, cmap="viridis", vmin=lo, vmax=hi)
     ax[0, 1].contour(early_g, [1.0], colors="white", linewidths=1.0)
     ax[0, 1].set_title(f"Baseline intrinsic growth λ ({base_span[0]}–{base_span[1]} mean)")
     fig.colorbar(im, ax=ax[0, 1], fraction=.046, label="Post-establishment λ")
     im = ax[1, 0].imshow(change, cmap="RdBu_r", vmin=-delta_lim, vmax=delta_lim)
-    ax[1, 0].set_title(f"Change in intrinsic growth (modern − {base_span[0]}–{base_span[1]})")
+    ax[1, 0].set_title(f"Change in intrinsic growth ({modern_span[0]}–{modern_span[1]} "
+                       f"− {base_span[0]}–{base_span[1]})")
     fig.colorbar(im, ax=ax[1, 0], fraction=.046, label="Δλ")
     # Transition codes are -1=lost, 0=persistently unsuitable, 1=gained,
     # 2=persistently suitable. Use explicit bins: imshow's default continuous
@@ -230,9 +232,8 @@ def plot_modern_niche(lam, years, rows, cols, shape, out, window, ref_year=None)
     ], loc="lower left", fontsize=8, frameon=True)
     for a in ax.flat:
         a.axis("off")
-    baseline_label = "timeline start" if ref_year is None else f"invasion ({base_span[0]})"
     fig.suptitle(f"House Finch fundamental niche: local demographic potential "
-                 f"(baseline = {baseline_label})", y=.98)
+                 f"({modern_span[0]}–{modern_span[1]} vs {base_span[0]}–{base_span[1]})", y=.98)
     fig.tight_layout(); fig.savefig(out, dpi=180); plt.close(fig)
     return modern, early, transition
 
@@ -251,12 +252,26 @@ def plot_niche_trajectory(lam, years, rows, cols, ref_raster, out):
             _, lat = crs_transform(src.crs, "EPSG:4326", list(x), list(y))
             centroid_lat[t] = np.mean(lat)
     fig, ax = plt.subplots(2, 1, figsize=(11, 7), sharex=True)
-    ax[0].plot(years, fraction * 100, color="#238443", lw=2, label="Land cells with λ > 1")
+    ax[0].plot(years, fraction * 100, color="#238443", lw=2,
+               label="Suitable land (% of cells with λ > 1)")
     ax[0].set(ylabel="Suitable land (%)", title="Trajectory of local demographic potential")
-    ax0b = ax[0].twinx(); ax0b.plot(years, mean_lambda, color="#54278f", lw=1.8, label="Mean λ")
+    ax0b = ax[0].twinx()
+    ax0b.plot(years, mean_lambda, color="#54278f", lw=1.8, label="Mean λ over all land")
     ax0b.set_ylabel("Mean λ")
-    ax[1].plot(years, centroid_lat, color="#2c7fb8", lw=2)
+    ax[1].plot(years, centroid_lat, color="#2c7fb8", lw=2,
+               label="Mean latitude of cells with λ > 1")
     ax[1].set(xlabel="Year", ylabel="Mean latitude (°N)", title="Centroid of land with λ > 1")
+    # The top panel's two lines live on DIFFERENT axes, so neither axis's own
+    # legend() would name both. Colour each axis to match its line as well, so the
+    # left/right scales are unambiguous even before reading the legend.
+    ax[0].yaxis.label.set_color("#238443")
+    ax[0].tick_params(axis="y", colors="#238443")
+    ax0b.yaxis.label.set_color("#54278f")
+    ax0b.tick_params(axis="y", colors="#54278f")
+    top_lines = ax[0].get_lines() + ax0b.get_lines()
+    ax[0].legend(top_lines, [ln.get_label() for ln in top_lines],
+                 loc="upper left", fontsize=8, frameon=False)
+    ax[1].legend(loc="upper left", fontsize=8, frameon=False)
     for a in ax:
         a.grid(alpha=.25)
         add_timeline_markers(a)
@@ -264,20 +279,23 @@ def plot_niche_trajectory(lam, years, rows, cols, ref_raster, out):
     return fraction, mean_lambda, centroid_lat
 
 
-def plot_modern_rate_maps(sim, years, rows, cols, shape, out, window):
+def plot_modern_rate_maps(sim, years, rows, cols, shape, out, era):
+    # ``unit`` is the ONLY source of a colorbar label. It used to fall back to the
+    # panel title, which printed the same words twice per panel; a colorbar whose
+    # quantity is already named by the title above it needs no label at all.
     fields = [("Adult survival", sim["Sa_flat"], "viridis", None),
               ("Juvenile survival", sim["Sj_flat"], "viridis", None),
-              ("Fecundity ceiling", sim["Fmax_flat"], "magma", None),
+              ("Fecundity ceiling", sim["Fmax_flat"], "magma", "juveniles adult⁻¹ yr⁻¹"),
               ("Carrying capacity", sim["K_flat"], "magma", "relative units")]
     fig, ax = plt.subplots(2, 2, figsize=(11, 9))
     for axis, (label, field, cmap, unit) in zip(ax.flat, fields):
-        avg, _, n = _window_mean(field, window)
+        avg, span, _ = era_mean(field, years, era)
         grid = _grid(avg[None], rows, cols, shape)[0]
         lo, hi = np.nanpercentile(grid, [2, 98])
         image = axis.imshow(grid, cmap=cmap, vmin=lo, vmax=hi)
         axis.set_title(label); axis.axis("off")
-        fig.colorbar(image, ax=axis, fraction=.046, label=unit or label)
-    fig.suptitle(f"Demographic ingredients of the modern niche ({years[-n]}–{years[-1]} mean)")
+        fig.colorbar(image, ax=axis, fraction=.046, label=unit)
+    fig.suptitle(f"House Finch Vital Rates ({span[0]}–{span[1]} mean)")
     fig.tight_layout(); fig.savefig(out, dpi=180); plt.close(fig)
 
 
@@ -286,10 +304,46 @@ def plot_fit_diagnostics(sim, data, years, out):
     predicted = np.asarray(sim["expected_obs"])
     t = np.asarray(data["obs_time_indices"])
     fig, ax = plt.subplots(1, 2, figsize=(11, 4.8))
-    hb = ax[0].hexbin(np.log1p(observed), np.log1p(predicted), gridsize=50, mincnt=1, cmap="viridis")
-    lim = max(ax[0].get_xlim()[1], ax[0].get_ylim()[1]); ax[0].plot([0, lim], [0, lim], color="white", lw=1)
-    ax[0].set(xlabel="log(1 + observed BBS count)", ylabel="log(1 + fitted mean)", title="Observation-scale calibration")
-    fig.colorbar(hb, ax=ax[0], label="Routes")
+    lo, lp = np.log1p(observed), np.log1p(predicted)
+    # LOG counts. Route-years pile up near zero by orders of magnitude, so a linear
+    # count scale renders the whole informative range as one flat colour and the
+    # panel reads as an undifferentiated blob.
+    hb = ax[0].hexbin(lo, lp, gridsize=(60, 45), bins="log", mincnt=1,
+                      cmap="magma", linewidths=0)
+    lim = float(max(np.nanmax(lo), np.nanmax(lp))) * 1.02
+    ax[0].plot([0, lim], [0, lim], color="0.35", lw=1, ls="--", zorder=3)
+    # The thing the panel actually exists to show: conditional bias. Median fitted
+    # value per decile of observed, so systematic over/under-prediction is legible
+    # independently of how many route-years sit in each bin.
+    edges = np.unique(np.nanpercentile(lo, np.linspace(0, 100, 11)))
+    if edges.size > 2:
+        which = np.clip(np.digitize(lo, edges[1:-1]), 0, edges.size - 2)
+        ctr, med, q1, q3 = [], [], [], []
+        for b in range(edges.size - 1):
+            sel = lp[which == b]
+            if sel.size < 5:
+                continue
+            ctr.append(0.5 * (edges[b] + edges[b + 1]))
+            med.append(np.median(sel)); q1.append(np.percentile(sel, 25)); q3.append(np.percentile(sel, 75))
+        if ctr:
+            # Cyan, not white: magma's dense end is pale, and a white line vanished
+            # into exactly the region with the most data.
+            ax[0].fill_between(ctr, q1, q3, color="#00d9ff", alpha=.22, zorder=4)
+            ax[0].plot(ctr, med, color="#00d9ff", lw=2.0, marker="o", ms=3.5, zorder=5,
+                       path_effects=[pe.Stroke(linewidth=3.6, foreground="#08306b"), pe.Normal()],
+                       label="Median fitted per observed decile (IQR band)")
+            ax[0].legend(loc="upper left", fontsize=7, framealpha=.8, facecolor="white",
+                         edgecolor="0.7", labelcolor="0.15")
+    ax[0].set(xlabel="log(1 + observed BBS count)", ylabel="log(1 + fitted mean)",
+              title="Observation-scale calibration", xlim=(0, lim), ylim=(0, lim))
+    ax[0].set_aspect("equal")
+    _resid = np.log1p(predicted) - np.log1p(observed)
+    ax[0].annotate(f"RMSE={np.sqrt(np.mean(_resid ** 2)):.3f}\n"
+                   f"r={np.corrcoef(lo, lp)[0, 1]:.3f}\nn={len(observed):,}",
+                   xy=(.97, .03), xycoords="axes fraction", ha="right", va="bottom",
+                   fontsize=7.5, color="0.15",
+                   bbox=dict(fc="white", ec="0.7", alpha=.75, boxstyle="round,pad=0.3"))
+    fig.colorbar(hb, ax=ax[0], label="Route-years per hex (log scale)")
     obs_mean = np.array([observed[t == i].mean() if np.any(t == i) else np.nan for i in range(len(years))])
     pred_mean = np.array([predicted[t == i].mean() if np.any(t == i) else np.nan for i in range(len(years))])
     ax[1].plot(years, obs_mean, label="Observed", color="#252525", lw=1.8)
@@ -303,7 +357,7 @@ def plot_fit_diagnostics(sim, data, years, out):
             "log1p_correlation": float(np.corrcoef(np.log1p(observed), np.log1p(predicted))[0, 1])}
 
 
-def plot_response_curves(sim, out, top_n=6):
+def plot_response_curves(sim, out, top_n=6, names=None):
     """Sweep the top-|weight| Z features and plot Sa/Sj/Fmax/K response curves.
 
     Corrects a stale bug in the deprecated ``visualize_age_model.py`` (which
@@ -314,20 +368,29 @@ def plot_response_curves(sim, out, top_n=6):
     w_env = np.asarray(latents["w_env"])
     importance = np.abs(w_env).sum(axis=1)
     top_idx = np.argsort(importance)[::-1][:min(top_n, w_env.shape[0])]
+    names = list(names) if names is not None else [f"Z_{i}" for i in range(w_env.shape[0])]
     z_sweep = np.linspace(-3.0, 3.0, 60)
 
     ncols = 3
     nrows = int(np.ceil(len(top_idx) / ncols))
     fig, axes = plt.subplots(nrows, ncols, figsize=(4.3 * ncols, 3.6 * nrows), squeeze=False)
-    for axis, idx in zip(axes.flat, top_idx):
+    for pos, (axis, idx) in enumerate(zip(axes.flat, top_idx)):
         curves = response_curve_fields(latents, z_sweep, int(idx))
         axis.plot(z_sweep, curves["Sa"], color="navy", lw=1.8)
         axis.plot(z_sweep, curves["Sj"], color="royalblue", lw=1.8, linestyle="--")
         axis.set_ylim(0, 1)
-        axis.set_title(f"Z_{idx}  (|w_env|={importance[idx]:.2f})", fontsize=9)
+        axis.set_title(f"{names[idx]}  (|w_env|={importance[idx]:.2f})", fontsize=9)
         axis2 = axis.twinx()
         axis2.plot(z_sweep, curves["Fmax"], color="darkorange", lw=1.6)
         axis2.plot(z_sweep, curves["K"], color="seagreen", lw=1.6, linestyle=":")
+        # Label the axes once per edge rather than on every panel: the twin axis
+        # carried no label at all, so the right-hand scale was unreadable.
+        if pos % ncols == 0:
+            axis.set_ylabel("survival probability", fontsize=8)
+        if pos % ncols == ncols - 1:
+            axis2.set_ylabel("Fmax / K (relative units)", fontsize=8)
+        if pos >= len(top_idx) - ncols:
+            axis.set_xlabel("Z feature value (SD)", fontsize=8)
     for axis in axes.flat[len(top_idx):]:
         axis.axis("off")
 
@@ -337,44 +400,217 @@ def plot_response_curves(sim, out, top_n=6):
         plt.Line2D([], [], color="darkorange", label="Fecundity ceiling (Fmax)"),
         plt.Line2D([], [], color="seagreen", linestyle=":", label="Carrying capacity (K)"),
     ]
+    # A NEGATIVE bbox_to_anchor puts the legend outside the figure, and tight_layout
+    # (which does not account for fig.legend) then cropped it away. Reserve the strip
+    # explicitly with subplots_adjust and anchor the legend inside it instead.
     fig.legend(handles=handles, loc="lower center", ncol=4, fontsize=8, frameon=False,
-               bbox_to_anchor=(0.5, -0.02))
+               bbox_to_anchor=(0.5, 0.012))
     fig.suptitle("Demographic response curves (top Z features by |w_env|)")
-    fig.tight_layout(rect=(0, 0.05, 1, 0.95))
-    fig.savefig(out, dpi=180); plt.close(fig)
+    fig.tight_layout(rect=(0, 0.06, 1, 0.95))
+    fig.subplots_adjust(bottom=max(0.10, 0.34 / nrows))
+    fig.savefig(out, dpi=180, bbox_inches="tight"); plt.close(fig)
     return {"response_curve_top_features": [int(i) for i in top_idx]}
 
 
-def plot_environmental_drivers_limits(data, sim, years, rows, cols, shape, out, window,
-                                      ref_year=None):
+def z_feature_names(cfg, n_features):
+    """Human-readable Z feature labels, or ``Z_0..Z_{M-1}`` when unavailable.
+
+    Labels live alongside the path-integrated dispersal covariates
+    (``Z_disp_*.npz``, key ``labels``), which is the same source
+    ``analysis/analyze_svi.py`` reads. Padded/truncated to ``n_features`` rather
+    than raising: a label mismatch must never cost a figure.
+    """
+    names = []
+    try:
+        disp = sorted(Path(cfg["path_diagnostics_dir"]).glob("Z_disp_*.npz"))
+        if disp:
+            with np.load(disp[0], allow_pickle=True) as loader:
+                if "labels" in loader:
+                    names = [str(x) for x in loader["labels"]]
+    except (KeyError, OSError, ValueError):
+        names = []
+    names = list(names[:n_features])
+    names += [f"Z_{i}" for i in range(len(names), n_features)]
+    return names
+
+
+def plot_w_env_ranking(sim, out, names=None):
+    """Signed environmental weights per Z feature, ranked by total magnitude.
+
+    Figure 05 shows the SHAPE of each top feature's response but never its sign
+    or its standing relative to the others; ``|w_env|`` appears only as a number
+    in a panel title. This is the ranking itself: every feature, all three
+    manifolds, signed, on one axis.
+
+    ``w_env`` columns are ``beta_s`` (survival), ``beta_r`` (reproduction) and
+    ``beta_k`` (capacity). Because the links are monotone increasing (sigmoid,
+    softplus), the SIGN here is the sign of the effect on the corresponding vital
+    rate -- positive beta_s means more of this feature raises survival.
+    """
+    w_env = np.asarray(sim["latents"]["w_env"])
+    M = w_env.shape[0]
+    beta = {"Survival (β_s)": w_env[:, 0], "Reproduction (β_r)": w_env[:, 1],
+            "Capacity (β_k)": w_env[:, 2] if w_env.shape[1] > 2 else w_env[:, 1]}
+    names = list(names) if names is not None else [f"Z_{i}" for i in range(M)]
+    importance = np.abs(w_env).sum(axis=1)
+    order = np.argsort(importance)          # ascending: barh draws bottom-up
+    colors = {"Survival (β_s)": "#2166ac", "Reproduction (β_r)": "#d95f0e",
+              "Capacity (β_k)": "#238443"}
+
+    y = np.arange(M)
+    height = 0.26
+    fig, ax = plt.subplots(figsize=(9.5, max(4.0, 0.42 * M + 1.6)))
+    for k, (label, values) in enumerate(beta.items()):
+        ax.barh(y + (k - 1) * height, values[order], height=height,
+                color=colors[label], label=label, edgecolor="none")
+    ax.axvline(0, color="0.25", lw=1)
+    ax.set_yticks(y)
+    ax.set_yticklabels([f"{names[i]}  ({importance[i]:.2f})" for i in order], fontsize=8)
+    ax.set_xlabel("Fitted weight (signed; manifold units)")
+    ax.set_title("Environmental weights by Z feature\n"
+                 "sorted by Σ|w_env|, shown in parentheses; positive = raises that rate")
+    ax.legend(fontsize=8, frameon=False, loc="lower right")
+    ax.grid(axis="x", alpha=.25)
+    fig.tight_layout(); fig.savefig(out, dpi=180); plt.close(fig)
+    return {"w_env_ranking": [
+        {"index": int(i), "name": names[i], "abs_total": float(importance[i]),
+         "beta_s": float(w_env[i, 0]), "beta_r": float(w_env[i, 1]),
+         "beta_k": float(beta["Capacity (β_k)"][i])}
+        for i in order[::-1]]}
+
+
+def _lambda_from_manifolds(p, H_s, H_r):
+    """Fundamental λ implied by survival/reproduction manifold values."""
+    r = rates_from_manifolds(p, H_s, H_r)
+    return local_growth_lambda(r["Sa"], r["Sj"], r["Fmax"])
+
+
+def plot_z_feature_attribution(data, sim, years, rows, cols, shape, out,
+                               modern_era, baseline_era, top_n=3, names=None):
+    """Top Z features in each era, how they moved, and what that did to λ.
+
+    Figures 06/14 say WHICH feature dominates a cell but not whether it changed;
+    figure 01 says λ changed but not why. This joins the two: one row per top
+    feature, columns ``[baseline Z] [modern Z] [ΔZ] [Δλ attributable to ΔZ]``.
+
+    THE λ COLUMN IS A SINGLE-FEATURE COUNTERFACTUAL, not a decomposition. For
+    feature m it moves ONLY that feature from its baseline to its modern value,
+    holding every other feature at baseline, and re-evaluates the model's own
+    links::
+
+        H_s = Z_base . beta_s + (Z_m^modern - Z_m^base) * beta_s[m]
+
+    Because sigmoid/softplus are nonlinear, the per-feature Δλ do NOT sum to the
+    total Δλ -- interactions live in the residual, which is reported in
+    ``metrics.json`` rather than hidden. A large residual means the features move
+    λ jointly and no single-feature attribution is trustworthy on its own.
+
+    Both λ fields here are rebuilt from ERA-MEAN Z, so they differ slightly from
+    the era mean of the per-year λ in figure 01 (Jensen's inequality); the
+    comparison within this figure is self-consistent, which is what it is for.
+    """
+    p = demographic_params(sim["latents"])
+    beta_s, beta_r = p["beta_s"], p["beta_r"]
+    i0, i1, modern_span = era_span(modern_era, years)
+    b0, b1, base_span = era_span(baseline_era, years)
+    Z_full = data["Z_gathered"]
+    Z_mod = np.asarray(Z_full[i0:i1]).mean(axis=0)     # (N_land, M)
+    Z_base = np.asarray(Z_full[b0:b1]).mean(axis=0)
+    dZ = Z_mod - Z_base
+
+    H_s_base, H_r_base = Z_base @ beta_s, Z_base @ beta_r
+    lam_base = _lambda_from_manifolds(p, H_s_base, H_r_base)
+    lam_mod = _lambda_from_manifolds(p, Z_mod @ beta_s, Z_mod @ beta_r)
+
+    def attributed(m):
+        return _lambda_from_manifolds(
+            p, H_s_base + dZ[:, m] * beta_s[m], H_r_base + dZ[:, m] * beta_r[m]) - lam_base
+
+    M = Z_mod.shape[1]
+    names = list(names) if names is not None else [f"Z_{i}" for i in range(M)]
+    # Rank by how much this feature actually MOVED λ here, not by |w_env|: a
+    # heavily-weighted feature that never changed explains none of the change.
+    per_feature = [attributed(m) for m in range(M)]
+    moved = np.array([np.nanmean(np.abs(a)) for a in per_feature])
+    top_idx = np.argsort(moved)[::-1][:min(top_n, M)]
+    residual = (lam_mod - lam_base) - np.sum(per_feature, axis=0)
+
+    def g(flat):
+        return _grid(np.asarray(flat)[None], rows, cols, shape)[0]
+
+    zlim = float(np.nanpercentile(np.abs(np.r_[Z_base[:, top_idx], Z_mod[:, top_idx]]), 98)) or 1.0
+    nrows = len(top_idx)
+    fig, axes = plt.subplots(nrows, 4, figsize=(17.5, 4.05 * nrows), squeeze=False)
+    for r, m in enumerate(top_idx):
+        dz_lim = max(float(np.nanpercentile(np.abs(dZ[:, m]), 98)), 1e-6)
+        dl = per_feature[m]
+        dl_lim = max(float(np.nanpercentile(np.abs(dl), 98)), 1e-6)
+        panels = [
+            (g(Z_base[:, m]), "RdYlBu_r", -zlim, zlim,
+             f"{names[m]}: {base_span[0]}–{base_span[1]}", "Z (SD)"),
+            (g(Z_mod[:, m]), "RdYlBu_r", -zlim, zlim,
+             f"{names[m]}: {modern_span[0]}–{modern_span[1]}", "Z (SD)"),
+            (g(dZ[:, m]), "RdBu_r", -dz_lim, dz_lim, f"Δ{names[m]} (modern − baseline)", "ΔZ (SD)"),
+            (g(dl), "RdBu_r", -dl_lim, dl_lim,
+             f"Δλ attributable to Δ{names[m]}\n(this feature moved alone)", "Δλ"),
+        ]
+        for c, (grid, cmap, lo, hi, title, cbl) in enumerate(panels):
+            ax = axes[r, c]
+            im = ax.imshow(grid, cmap=cmap, vmin=lo, vmax=hi)
+            ax.set_title(title, fontsize=9); ax.axis("off")
+            fig.colorbar(im, ax=ax, fraction=.042, label=cbl)
+        axes[r, 3].set_title(
+            axes[r, 3].get_title() + f"\nmean |Δλ| = {moved[m]:.3g}, "
+            f"β_s={beta_s[m]:+.2f} β_r={beta_r[m]:+.2f}", fontsize=8.5)
+
+    tot = float(np.nanmean(np.abs(lam_mod - lam_base)))
+    res = float(np.nanmean(np.abs(residual)))
+    fig.suptitle(
+        f"Z-feature attribution of niche change, {base_span[0]}–{base_span[1]} → "
+        f"{modern_span[0]}–{modern_span[1]}\n"
+        f"single-feature counterfactuals; nonlinear links mean these do NOT sum to the "
+        f"total (mean |Δλ| total = {tot:.3g}, unattributed interaction residual = {res:.3g})",
+        fontsize=11)
+    fig.tight_layout(rect=(0, 0, 1, 0.95))
+    fig.savefig(out, dpi=170); plt.close(fig)
+    return {
+        "baseline_era": list(base_span), "modern_era": list(modern_span),
+        "top_features": [{"index": int(m), "name": names[m],
+                          "mean_abs_delta_lambda": float(moved[m])} for m in top_idx],
+        "mean_abs_total_delta_lambda": tot,
+        # Interaction term the single-feature counterfactuals cannot capture. Large
+        # relative to the total => read the per-feature maps as indicative only.
+        "mean_abs_unattributed_residual": res,
+        "residual_fraction_of_total": float(res / tot) if tot > 0 else float("nan"),
+    }
+
+
+def plot_environmental_drivers_limits(data, sim, years, rows, cols, shape, out,
+                                      modern_era, baseline_era, names=None):
     """Which Z feature contributes most to the survival/reproduction manifold, per cell.
 
-    ``ref_year`` anchors the baseline pair of panels, exactly as in
-    ``plot_modern_niche``: None = timeline start (1902), or the invasion year to
-    ask what the drivers looked like when the species actually arrived.
+    ``baseline_era`` anchors the lower pair of panels, exactly as in
+    ``plot_modern_niche``: "early" (1902-1915) or "invasion" (1940-1955), to ask
+    what the drivers looked like when the species actually arrived.
     """
     latents = sim["latents"]
     w_env = np.asarray(latents["w_env"])
     beta_s, beta_r = w_env[:, 0], w_env[:, 1]
-    # Z_gathered is (time, N_land, M) and typically device-resident; slice the
-    # window BEFORE pulling to host so a full-array transfer is never needed.
+    # Z_gathered is (time, N_land, M) and typically device-resident; slice each era
+    # BEFORE pulling to host so a full-array transfer is never needed.
     Z_full = data["Z_gathered"]
-    n = min(window, Z_full.shape[0])
-    Z = np.asarray(Z_full[-n:])
-    # Slice the baseline window on device too, for the same reason.
-    years_arr = np.asarray(years)
-    i0 = 0 if ref_year is None else int(np.flatnonzero(years_arr == int(ref_year))[0])
-    n_base = min(n, Z_full.shape[0] - i0)
-    Z_early = np.asarray(Z_full[i0:i0 + n_base])
-    base_span = (int(years_arr[i0]), int(years_arr[i0 + n_base - 1]))
+    i0, i1, modern_span = era_span(modern_era, years)
+    b0, b1, base_span = era_span(baseline_era, years)
+    Z = np.asarray(Z_full[i0:i1])
+    Z_early = np.asarray(Z_full[b0:b1])
 
     def dominant_feature(Z_window, beta):
         contrib_mean = (Z_window * beta[None, None, :]).mean(axis=0)  # (N_land, M)
         return np.argmax(contrib_mean, axis=1).astype("float32")
 
     panels = [
-        (dominant_feature(Z, beta_s), f"Survival driver ({years[-1] - n + 1}–{years[-1]})"),
-        (dominant_feature(Z, beta_r), f"Reproduction driver ({years[-1] - n + 1}–{years[-1]})"),
+        (dominant_feature(Z, beta_s), f"Survival driver ({modern_span[0]}–{modern_span[1]})"),
+        (dominant_feature(Z, beta_r), f"Reproduction driver ({modern_span[0]}–{modern_span[1]})"),
         (dominant_feature(Z_early, beta_s), f"Survival driver ({base_span[0]}–{base_span[1]})"),
         (dominant_feature(Z_early, beta_r), f"Reproduction driver ({base_span[0]}–{base_span[1]})"),
     ]
@@ -387,9 +623,13 @@ def plot_environmental_drivers_limits(data, sim, years, rows, cols, shape, out, 
         im = axis.imshow(grid, cmap=cmap, vmin=-0.5, vmax=M - 0.5)
         axis.set_title(title, fontsize=10); axis.axis("off")
     cbar = fig.colorbar(im, ax=ax, fraction=.025, ticks=range(M))
-    cbar.set_label("Z feature index")
+    # Name the categories. A bare index forced the reader to cross-reference 05b
+    # to learn what any colour on this map actually means.
+    if names is not None:
+        cbar.ax.set_yticklabels(list(names)[:M], fontsize=7)
+    cbar.set_label("Dominant Z feature")
     fig.suptitle(f"Dominant environmental driver by cell "
-                 f"(modern vs. {base_span[0]}–{base_span[1]} baseline)")
+                 f"({modern_span[0]}–{modern_span[1]} vs {base_span[0]}–{base_span[1]})")
     fig.savefig(out, dpi=180); plt.close(fig)
 
 
@@ -435,7 +675,19 @@ def _write_source_sink_fields(npz_path, lam_realized, lam_fundamental, K_modern,
     )
     if ref_raster is None:
         return
-    bands = [lam_realized, lam_fundamental, K_modern]
+    bands = [("lam_realized_modern", lam_realized,
+              "Growth rate at carrying capacity, lambda(N=K), era mean. "
+              "DO NOT THRESHOLD AT 1: c is solved so lambda=1 at N=K, so this is "
+              "pinned at 1 wherever the Allee factor saturates. The informative "
+              "content is the SHORTFALL below 1 (the Allee cost). For source/sink "
+              "classification use the fold criterion in the sibling .npz."),
+             ("lam_fundamental_modern", lam_fundamental,
+              "Fundamental-niche lambda: density-independent, dispersal-free, "
+              "Allee-free dominant eigenvalue of [[Sa, Sj], [Fmax*Sa, 0]], era mean. "
+              "This one IS meaningfully thresholded at 1."),
+             ("K_modern", K_modern,
+              "Carrying capacity in relative units (route counts / pop_scalar), era "
+              "mean, disease effect INCLUDED.")]
     with rasterio.open(ref_raster) as src:
         transform, crs = src.transform, src.crs
         if (src.height, src.width) != lam_realized.shape:
@@ -446,14 +698,53 @@ def _write_source_sink_fields(npz_path, lam_realized, lam_fundamental, K_modern,
                        height=lam_realized.shape[0], width=lam_realized.shape[1],
                        count=len(bands), dtype="float32", crs=crs, transform=transform,
                        nodata=np.float32(np.nan), compress="deflate") as dst:
-        for i, band in enumerate(bands, start=1):
+        for i, (name, band, description) in enumerate(bands, start=1):
             dst.write(band.astype("float32"), i)
-        dst.update_tags(band_names="lam_realized_modern,lam_fundamental_modern,K_modern",
+            # set_band_description is what QGIS/gdalinfo actually show in the band
+            # list. Without it the only clue to band order was a dataset-level
+            # band_names tag that no GIS surfaces, so the file was unreadable.
+            dst.set_band_description(i, name)
+            dst.update_tags(i, name=name, description=description)
+        dst.update_tags(band_names=",".join(n for n, _, _ in bands),
+                        era=f"{int(year_first)}-{int(year_last)}",
+                        era_n_years=str(int(n_years)),
+                        # Kept for readers written against the old tag name.
                         window=f"{int(year_first)}-{int(year_last)}")
+    _write_source_sink_readme(npz_path, bands, year_first, year_last, n_years)
 
 
-def modern_viability(sim, window, k_key="K_flat"):
-    """Window-mean K and the fold-criterion viability for the modern window.
+def _write_source_sink_readme(npz_path, bands, year_first, year_last, n_years):
+    """Markdown sidecar naming the bands, the era, and the classification rule.
+
+    The GeoTIFF's own band descriptions cover a GIS session; this covers the case
+    someone finds the file on disk months later and needs to know which lambda is
+    which and why one of them must not be thresholded at 1.
+    """
+    npz_path = Path(npz_path)
+    lines = [f"# {npz_path.stem}", "",
+             f"Era averaged: **{int(year_first)}-{int(year_last)}** ({int(n_years)} years).",
+             "", f"Written by `scripts/viz/map_diagnostics.py` alongside "
+             f"`{npz_path.stem.replace('_fields', '')}_realized_source_sink.png`.", "",
+             "## GeoTIFF bands", ""]
+    for i, (name, _, description) in enumerate(bands, start=1):
+        lines += [f"{i}. **`{name}`** — {description}", ""]
+    lines += [
+        "## Only in the sibling `.npz`", "",
+        "- `source_mask` / `equilibrium_exists` — the **fold criterion** "
+        "(`age_model_math.allee_viability`): does a positive equilibrium exist at "
+        "all, i.e. does `max_N F(N)` clear replacement? This, NOT a threshold on "
+        "band 1, is the source/sink classification.",
+        "- `allee_dead_mask` — fundamentally suitable (band 2 > 1) but no positive "
+        "equilibrium: K sits in the mate-finding regime.",
+        "- `allee_suppression_at_K` — `1 - allee_factor(K)`, how close a cell is to "
+        "the fold.", "",
+        "NaN is nodata throughout; CRS and transform are copied from "
+        "`grid.ref_raster`.", ""]
+    npz_path.with_suffix(".md").write_text("\n".join(lines), encoding="utf-8")
+
+
+def modern_viability(sim, years, era, k_key="K_flat"):
+    """Era-mean K and the fold-criterion viability for the modern era.
 
     One definition, shared by figure 07 (which classifies on it) and figure 15
     (which asks which viable cells the counterfactual never reaches), so the two
@@ -470,15 +761,15 @@ def modern_viability(sim, window, k_key="K_flat"):
     viable area, and asking "which viable cells went unreached" only makes sense
     against the viability of the world being simulated.
     """
-    K_modern, _, _ = _window_mean(np.asarray(sim[k_key]), window)
-    Sa_m, _, _ = _window_mean(np.asarray(sim["Sa_flat"]), window)
-    Sj_m, _, _ = _window_mean(np.asarray(sim["Sj_flat"]), window)
-    Fmax_m, _, _ = _window_mean(np.asarray(sim["Fmax_flat"]), window)
+    K_modern, _, _ = era_mean(np.asarray(sim[k_key]), years, era)
+    Sa_m, _, _ = era_mean(np.asarray(sim["Sa_flat"]), years, era)
+    Sj_m, _, _ = era_mean(np.asarray(sim["Sj_flat"]), years, era)
+    Fmax_m, _, _ = era_mean(np.asarray(sim["Fmax_flat"]), years, era)
     return K_modern, allee_viability(Sa_m, Sj_m, Fmax_m, K_modern,
                                      np.asarray(sim["allee_gamma"]))
 
 
-def plot_realized_source_sink(sim, lam_fundamental, years, rows, cols, shape, out, window,
+def plot_realized_source_sink(sim, lam_fundamental, years, rows, cols, shape, out, era,
                               fields_out=None, ref_raster=None):
     """Realized (density-dependent + Allee) counterpart to the fundamental-niche map.
 
@@ -509,12 +800,12 @@ def plot_realized_source_sink(sim, lam_fundamental, years, rows, cols, shape, ou
     _, _, lam_realized, _ = realized_equilibrium(
         sim["Sa_flat"], sim["Sj_flat"], sim["Fmax_flat"], sim["K_flat"], sim["allee_gamma"]
     )
-    modern, _, n = _window_mean(lam_realized, window)
+    modern, span, n = era_mean(lam_realized, years, era)
     modern_g = _grid(modern[None], rows, cols, shape)[0]
-    fund_modern, _, _ = _window_mean(lam_fundamental, window)
+    fund_modern, _, _ = era_mean(lam_fundamental, years, era)
     fund_g = _grid(fund_modern[None], rows, cols, shape)[0]
 
-    K_modern, viab = modern_viability(sim, window)
+    K_modern, viab = modern_viability(sim, years, era)
     viable_g = _grid(viab["viable"].astype(float)[None], rows, cols, shape)[0]
     fund_ok_g = _grid(viab["fundamental_viable"].astype(float)[None], rows, cols, shape)[0]
     supp_g = _grid(viab["suppression_at_K"][None], rows, cols, shape)[0]
@@ -522,7 +813,7 @@ def plot_realized_source_sink(sim, lam_fundamental, years, rows, cols, shape, ou
         _write_source_sink_fields(
             fields_out, modern_g, fund_g,
             _grid(K_modern[None], rows, cols, shape)[0],
-            years[-n], years[-1], n, ref_raster,
+            span[0], span[1], n, ref_raster,
             viable=viable_g > 0.5, allee_suppression=supp_g,
             fundamental_viable=fund_ok_g > 0.5,
         )
@@ -535,12 +826,14 @@ def plot_realized_source_sink(sim, lam_fundamental, years, rows, cols, shape, ou
     ax[0].imshow(klass, cmap=mcolors.ListedColormap(["#d73027", "#fdae61", "#4575b4"]),
                  norm=mcolors.BoundaryNorm([-0.5, 0.5, 1.5, 2.5], 3))
     n_dead = float(np.nansum(klass == 1.0)); n_fund = float(np.nansum(klass >= 1.0))
-    ax[0].set_title(f"Viability ({years[-n]}–{years[-1]})\n"
+    ax[0].set_title(f"Viability, fold criterion ({span[0]}–{span[1]})\n"
                     f"{n_dead / max(n_fund, 1):.1%} of suitable habitat is Allee-dead")
     ax[0].legend(handles=[
-        plt.Rectangle((0, 0), 1, 1, color="#4575b4", label="Viable source (max$_N$ λ > 1)"),
-        plt.Rectangle((0, 0), 1, 1, color="#fdae61", label="Allee-dead (λ_fund > 1, K too small)"),
-        plt.Rectangle((0, 0), 1, 1, color="#d73027", label="Unsuitable (λ_fund ≤ 1)"),
+        plt.Rectangle((0, 0), 1, 1, color="#4575b4",
+                      label="Viable source: max$_N$ F(N) clears replacement"),
+        plt.Rectangle((0, 0), 1, 1, color="#fdae61",
+                      label="Allee-dead: λ$_{fund}$ > 1 but no positive equilibrium"),
+        plt.Rectangle((0, 0), 1, 1, color="#d73027", label="Unsuitable: λ$_{fund}$ ≤ 1"),
     ], loc="lower left", fontsize=7, frameon=True)
 
     lo, hi = np.nanpercentile(modern_g, [2, 98]); lo, hi = min(lo, 1.0), max(hi, 1.0)
@@ -560,7 +853,14 @@ def plot_realized_source_sink(sim, lam_fundamental, years, rows, cols, shape, ou
     for a in ax:
         a.axis("off")
     fig.suptitle("Realized demographic potential (density-dependence + Allee included)")
-    fig.tight_layout(); fig.savefig(out, dpi=180); plt.close(fig)
+    # Say which figure this is the counterpart to, and which panel is which band of
+    # the GeoTIFF written beside it -- the .tif was previously unlabelled anywhere.
+    fig.text(0.5, 0.005,
+             "Fundamental λ (no density-dependence, no Allee) is figure 01. Panels (b) and (c) "
+             "are bands 1–2 of 07_source_sink_fields.tif; the classification in (a) lives only in "
+             "the .npz (source_mask). See 07_source_sink_fields.md.",
+             ha="center", va="bottom", fontsize=7.5, color="0.35")
+    fig.tight_layout(rect=(0, 0.035, 1, 1)); fig.savefig(out, dpi=180); plt.close(fig)
     # realized_modern_source_fraction keeps its name (juv_mdd_sweep_summary.py reads
     # it) but is now the fold criterion rather than mean(lam > 1), which was an
     # artifact of the 1e-6 guard in c. allee_dead_fraction is the number the figure
@@ -645,7 +945,7 @@ def _k_trend_metrics(data, sim):
             "safety_valve_tripped": bool(z > 3.0 or np.abs(mult - 1.0).max() > 0.15)}
 
 
-def plot_disease_diagnostics(data, sim, years, rows, cols, shape, out, window):
+def plot_disease_diagnostics(data, sim, years, rows, cols, shape, out, era):
     """Is the disease term describing an epizootic, or absorbing spatial misfit?
 
     The term is K = K_base * (1 - severity(x) * gate(x,t) * (1 - recovery)); see
@@ -680,6 +980,7 @@ def plot_disease_diagnostics(data, sim, years, rows, cols, shape, out, window):
     w_lag = np.asarray(sim["disease_w_lag"])
     onset_t = onset + lag0 + np.asarray(data["disease_lag_basis"]).T @ w_lag
 
+    _era_i0, _era_i1, _ = era_span(era, years)
     # Reproduce the model's fraction over the whole epizootic window on the host.
     t_abs = np.arange(dis_t0, len(years))[:, None]
     gate = 1.0 / (1.0 + np.exp(-(t_abs - onset_t[None, :]) / tau))
@@ -744,7 +1045,11 @@ def plot_disease_diagnostics(data, sim, years, rows, cols, shape, out, window):
             "disease_severity_fraction_at_ceiling": at_ceiling,
             "disease_severity_p05": float(np.percentile(sev, 5)),
             "disease_severity_p95": float(np.percentile(sev, 95)),
-            "disease_fraction_median_modern": float(np.median(frac[-min(window, frac.shape[0]):])),
+            # frac's rows are absolute timesteps dis_t0..T-1, so the era window has to
+            # be shifted by dis_t0 before indexing it (clipped, since an era that
+            # starts before the epizootic has no rows here).
+            "disease_fraction_median_modern": float(np.median(
+                frac[max(_era_i0 - dis_t0, 0):max(_era_i1 - dis_t0, 1)])),
             # Must stay ~0: nonzero means the exogenous gate has been defeated and
             # the term is acting where the front had not yet arrived.
             "disease_fraction_pre_front_mean": float(pre_front.mean()) if pre_front.size else 0.0,
@@ -756,7 +1061,7 @@ def plot_disease_diagnostics(data, sim, years, rows, cols, shape, out, window):
             "disease_recovery_tau_years": tau_rec}
 
 
-def plot_age_structure(sim, years, rows, cols, shape, land_mask, out, window):
+def plot_age_structure(sim, years, rows, cols, shape, land_mask, out, era):
     """Theoretical (equilibrium) vs realized juvenile-fraction maps.
 
     Theoretical: rho from age_model_math.realized_equilibrium -- the LOCAL,
@@ -780,8 +1085,8 @@ def plot_age_structure(sim, years, rows, cols, shape, land_mask, out, window):
     rho_realized_grid = np.where(land[None], rho_realized_grid, np.nan)
     rho_theory_grid = np.where(land[None], rho_theory_grid, np.nan)
 
-    modern_theory, _, n = _window_mean(rho_theory_grid, window)
-    modern_realized, _, _ = _window_mean(rho_realized_grid, window)
+    modern_theory, span, _ = era_mean(rho_theory_grid, years, era)
+    modern_realized, _, _ = era_mean(rho_realized_grid, years, era)
     gap = modern_realized - modern_theory
 
     fig, ax = plt.subplots(1, 3, figsize=(15, 5))
@@ -797,36 +1102,45 @@ def plot_age_structure(sim, years, rows, cols, shape, land_mask, out, window):
     fig.colorbar(im2, ax=ax[2], fraction=.046, label="Δρ")
     for a in ax:
         a.axis("off")
-    fig.suptitle(f"Age structure ({years[-n]}–{years[-1]} mean)")
+    fig.suptitle(f"Age structure ({span[0]}–{span[1]} mean)")
     fig.tight_layout(); fig.savefig(out, dpi=180); plt.close(fig)
     return {"modern_mean_theoretical_juvenile_fraction": float(np.nanmean(modern_theory)),
             "modern_mean_realized_juvenile_fraction": float(np.nanmean(modern_realized))}
 
 
-def plot_invasion_progression(sim, years, land_mask, out, n_panels=6):
-    """Small multiples of total simulated density across the invasion era."""
+def plot_invasion_progression(sim, years, land_mask, out, n_panels=6, logscale=True):
+    """Small multiples of total simulated density across the invasion era.
+
+    ``logscale`` picks log1p (which is what makes the low-density invasion FRONT
+    visible at all -- on a linear scale the saturated eastern core takes the whole
+    colour range) or raw density (which is what makes the core's magnitude
+    readable). Both are emitted; neither answers the other's question.
+    """
     density = np.where(land_mask.astype(bool)[None], sim["simulated_density"], np.nan)
-    log_density = np.log1p(density)
+    field = np.log1p(density) if logscale else density
+    label = "log(1 + simulated density)" if logscale else "simulated density"
 
     idx = np.linspace(0, len(years) - 1, n_panels).round().astype(int)
-    vmax = float(np.nanpercentile(log_density[idx], 99))
+    vmax = float(np.nanpercentile(field[idx], 99))
+    vmax = vmax if vmax > 0 else 1.0
 
     ncols = 3
     nrows = int(np.ceil(len(idx) / ncols))
     fig, axes = plt.subplots(nrows, ncols, figsize=(4.3 * ncols, 3.6 * nrows), squeeze=False)
     im = None
     for axis, i in zip(axes.flat, idx):
-        im = axis.imshow(log_density[i], cmap="magma", vmin=0, vmax=vmax)
+        im = axis.imshow(field[i], cmap="magma", vmin=0, vmax=vmax)
         axis.set_title(str(years[i]), fontsize=10)
         axis.axis("off")
     for axis in axes.flat[len(idx):]:
         axis.axis("off")
-    fig.colorbar(im, ax=axes, fraction=.025, label="log(1 + simulated density)")
-    fig.suptitle("Invasion progression: simulated density over time")
+    fig.colorbar(im, ax=axes, fraction=.025, label=label)
+    fig.suptitle(f"Invasion progression: simulated density over time "
+                 f"({'log1p' if logscale else 'linear'} scale)")
     fig.savefig(out, dpi=180); plt.close(fig)
 
 
-def plot_barrier_crossing(sim, data, cfg, dcfg, years, rows, cols, shape, out, window):
+def plot_barrier_crossing(sim, data, cfg, dcfg, years, rows, cols, shape, out, era):
     """Directed cost of crossing the Great Plains, both ways.
 
     Returns a metrics dict, or None (having printed why) when the prerequisites are
@@ -836,11 +1150,26 @@ def plot_barrier_crossing(sim, data, cfg, dcfg, years, rows, cols, shape, out, w
     input here must never cost a whole run -- the failure mode that lost a five-point
     sweep once already.
 
-    See ``src/vis/barrier_crossing`` for the derivation. Six panels:
-    the raw ``Q`` east/west contrast; the two accumulated-flux corridors (where
-    crossing actually happens); the per-year arrival profiles; and the propagule
-    pressure ``P = arrivals / N_crit`` each way, whose ``P = 1`` contour is the
-    invasion-pinning boundary.
+    See ``src/vis/barrier_crossing`` for the derivation. Eight panels: the raw ``Q``
+    east/west contrast; the two accumulated-flux corridors on a SHARED scale plus
+    their ratio; the per-year arrival profiles; the propagule pressure
+    ``P = arrivals / N_crit`` each way; and a verdict panel.
+
+    TWO THINGS THIS FIGURE MUST NOT OVERSTATE, both consequences of ``rho(A_P)``:
+
+    * The corridors are ``sum_k A_P^k b`` for one shared ``A_P`` and two initial
+      conditions (see ``crossing_gain``'s docstring). Unless ``rho`` is small they
+      converge to the same dominant eigenvector and differ only by a scalar -- which
+      a per-panel LogNorm would divide out, making two identical-looking panels of a
+      quantity that genuinely carries no directional shape information. They are
+      drawn on a SHARED norm here, and the ratio panel is the honest place to look
+      for directional structure.
+    * When ``rho >= 1`` the barrier self-sustains under the Allee-optimistic
+      linearization, ``G`` diverges and ``P = arrivals / N_crit`` runs away to ~1e10,
+      so "P >= 1 on 100% of cells" is arithmetic, not biology, and the ``P = 1``
+      contour cannot exist anywhere on the map. In that regime the ``G``/``P`` numbers
+      are suppressed in favour of the verdict, and ``metrics.json`` reports ``None``
+      rather than a number that reads as a result.
     """
     zones_path = (dcfg.get("regions") or {}).get("great_plains_zones")
     if not zones_path or not Path(zones_path).exists():
@@ -858,9 +1187,9 @@ def plot_barrier_crossing(sim, data, cfg, dcfg, years, rows, cols, shape, out, w
         return None
 
     zones = read_zone_raster(zones_path, expected_shape=shape)
-    fields = modern_dispersal_fields(sim, data, window, rows, cols, shape)
+    fields = modern_dispersal_fields(sim, data, years, era, rows, cols, shape)
     p0 = low_density_departure_probability(
-        sim["latents"], float(data["dispersal_target_fraction"]), window)
+        sim["latents"], float(data["dispersal_target_fraction"]), years, era)
     edge = edge_correction_summary(data, zones, fields["land"])
     contrast = directional_q_contrast(fields, labels)
     gains = {d: crossing_gain(fields, data, zones, d, p0) for d in DIRECTIONS}
@@ -871,7 +1200,16 @@ def plot_barrier_crossing(sim, data, cfg, dcfg, years, rows, cols, shape, out, w
 
     barrier = zones["barrier"] & fields["land"].astype(bool)
     edges = _barrier_outline(barrier)
-    fig, ax = plt.subplots(2, 3, figsize=(16.5, 9.0))
+    ew, we = gains["east_to_west"], gains["west_to_east"]
+    # rho belongs to the barrier-restricted operator alone, so the two directions
+    # agree; this is the single number that decides whether G and P mean anything.
+    rho = 0.5 * (ew["rho"] + we["rho"])
+    supercritical = bool(ew["barrier_self_sustaining"] or we["barrier_self_sustaining"]
+                         or rho >= 1.0)
+
+    # constrained_layout: the shared colorbar spanning two axes is not
+    # tight_layout-compatible (it warns that results may be incorrect).
+    fig, ax = plt.subplots(2, 4, figsize=(21.0, 9.2), layout="constrained")
 
     dq = np.where(fields["land"].astype(bool), contrast["q_west_minus_east"], np.nan)
     lim = float(np.nanpercentile(np.abs(dq), 98)) or 1e-3
@@ -879,20 +1217,44 @@ def plot_barrier_crossing(sim, data, cfg, dcfg, years, rows, cols, shape, out, w
     ax[0, 0].set_title("Journey survival asymmetry\nmean Q(to WEST) − Q(to EAST)", fontsize=10)
     fig.colorbar(im, ax=ax[0, 0], fraction=.04, label="ΔQ  (green = westward cheaper)")
 
+    # SHARED norm across both corridors. Per-panel limits divide out the scalar that
+    # is the only difference between them once the transient dies, which is precisely
+    # how two panels of one eigenvector came to look like two independent results.
+    corridors = {d: np.where(barrier, gains[d]["corridor_horizon"], np.nan) for d in DIRECTIONS}
+    allpos = np.concatenate([c[np.isfinite(c) & (c > 0)].ravel() for c in corridors.values()])
+    shared = mcolors.LogNorm(vmin=max(allpos.min(), allpos.max() * 1e-4),
+                             vmax=allpos.max()) if allpos.size else None
     for col, d in enumerate(("east_to_west", "west_to_east"), start=1):
         g = gains[d]
-        c = np.where(barrier, g["corridor"], np.nan)
-        pos = c[np.isfinite(c) & (c > 0)]
-        norm = mcolors.LogNorm(vmin=max(pos.min(), pos.max() * 1e-4), vmax=pos.max()) \
-            if pos.size else None
-        im = ax[0, col].imshow(c, cmap="magma", norm=norm)
+        im = ax[0, col].imshow(corridors[d], cmap="magma", norm=shared)
         gt = "∞" if not np.isfinite(g["G_total"]) else f"{g['G_total']:.3g}"
-        ax[0, col].set_title(f"Crossing corridor: {d.replace('_', ' ')}\n"
-                             f"G(124 yr)={g['G_horizon']:.3g}  G(∞)={gt}  ρ={g['rho']:.3f}",
-                             fontsize=10)
-        fig.colorbar(im, ax=ax[0, col], fraction=.04, label="cumulative lineage density")
+        gline = "G suppressed (ρ ≥ 1)" if supercritical else \
+            f"G(124 yr)={g['G_horizon']:.3g}  G(∞)={gt}"
+        ax[0, col].set_title(f"Crossing corridor: {d.replace('_', ' ')}\n{gline}", fontsize=10)
+    # ONE colorbar for the pair -- they share a norm, so two would just assert twice
+    # that the scales are the same while implying they were set independently.
+    fig.colorbar(im, ax=[ax[0, 1], ax[0, 2]], fraction=.028,
+                 label="cumulative lineage density (shared scale)")
 
-    for a in (ax[0, 0], ax[0, 1], ax[0, 2]):
+    # The only map that can show directional structure: both corridors normalized to
+    # unit mass, then their ratio. Flat zero here means the two directions genuinely
+    # traverse the barrier the same way and only the SCALE differs.
+    def _unit(c):
+        tot = np.nansum(c)
+        return c / tot if tot > 0 else c
+    with np.errstate(divide="ignore", invalid="ignore"):
+        ratio = np.log2(_unit(corridors["east_to_west"]) / _unit(corridors["west_to_east"]))
+    ratio = np.where(np.isfinite(ratio), ratio, np.nan)
+    rlim = float(np.nanpercentile(np.abs(ratio), 98)) if np.isfinite(ratio).any() else 1.0
+    rlim = max(rlim, 1e-3)
+    im = ax[0, 3].imshow(ratio, cmap="RdBu_r", vmin=-rlim, vmax=rlim)
+    spread = float(np.nanmax(np.abs(ratio))) if np.isfinite(ratio).any() else 0.0
+    ax[0, 3].set_title("Corridor shape asymmetry\n"
+                       f"log₂(E→W / W→E), mass-normalized (max |Δ| = {spread:.2g})",
+                       fontsize=10)
+    fig.colorbar(im, ax=ax[0, 3], fraction=.04, label="log₂ ratio (0 = same route)")
+
+    for a in ax[0, :]:
         a.contour(edges, [0.5], colors="cyan", linewidths=.6)
         a.set_xticks([]); a.set_yticks([])
 
@@ -904,73 +1266,274 @@ def plot_barrier_crossing(sim, data, cfg, dcfg, years, rows, cols, shape, out, w
         # absolute arrivals would rank the directions by source size instead.
         p = (np.asarray(g["per_year_arrivals"])[:g["horizon_years"]]
              / g["total_entering_barrier"])
-        axp.semilogy(np.arange(1, p.size + 1), np.maximum(p, 1e-300), color=color,
-                     label=f"{d.replace('_', ' ')}  (G={g['G_horizon']:.3g})")
+        # G is not quoted when it diverges -- a legend entry reading "G=2e+09" is the
+        # same overstatement the panel titles were fixed for.
+        lbl = d.replace("_", " ") if supercritical else \
+            f"{d.replace('_', ' ')}  (G={g['G_horizon']:.3g})"
+        axp.semilogy(np.arange(1, p.size + 1), np.maximum(p, 1e-300), color=color, label=lbl)
     axp.set(xlabel="Years after entering the barrier",
             ylabel="Arrivals per unit entering the barrier",
-            title="Arrival timing\n(area under each curve = G)")
+            title="Arrival timing\n" + ("rising curve = diverging sum (ρ ≥ 1)"
+                                        if supercritical else "area under each curve = G"))
     axp.legend(fontsize=8)
 
     for col, d in enumerate(("east_to_west", "west_to_east"), start=1):
+        a = ax[1, col]
         p = np.where(fields["land"].astype(bool), pressure[d], np.nan)
-        finite = p[np.isfinite(p) & (p > 0)]
-        norm = mcolors.LogNorm(vmin=max(finite.min(), finite.max() * 1e-6),
-                               vmax=max(finite.max(), 1.0)) if finite.size else None
-        im = ax[1, col].imshow(p, cmap="viridis", norm=norm)
-        # P = 1 is the pinning boundary: one year's immigration alone clears N_crit.
-        ax[1, col].contour(np.nan_to_num(p, nan=0.0), [1.0], colors="red", linewidths=.8)
         frac, n_considered = _establishing_fraction(p)
         med = _finite_median(p)
-        ax[1, col].set_title(f"Propagule pressure: {d.replace('_', ' ')}\n"
-                             f"P≥1 on {frac:.1%} of {n_considered} reached cells; "
-                             f"median P={med:.2g}", fontsize=9)
-        ax[1, col].contour(edges, [0.5], colors="cyan", linewidths=.6)
-        ax[1, col].set_xticks([]); ax[1, col].set_yticks([])
-        fig.colorbar(im, ax=ax[1, col], fraction=.04, label="P (red contour = 1)")
+        if supercritical:
+            # Do NOT draw it. With rho >= 1 the numerator is ~1e16 and P saturates
+            # everywhere; a viridis map under a P=1 contour that cannot exist reads
+            # as a spatial result when it is an artifact of the linearization.
+            a.imshow(np.where(np.isfinite(p), 0.0, np.nan), cmap="Greys", vmin=0, vmax=1)
+            a.text(.5, .5, "Propagule pressure not reported\n\n"
+                           "ρ ≥ 1: the linearized barrier self-sustains,\n"
+                           f"so arrivals diverge (median P ≈ {med:.1g})\n"
+                           "and the P = 1 contour cannot exist.",
+                   transform=a.transAxes, ha="center", va="center", fontsize=8.5,
+                   color="0.25")
+            a.set_title(f"Propagule pressure: {d.replace('_', ' ')} — suppressed", fontsize=9)
+        else:
+            finite = p[np.isfinite(p) & (p > 0)]
+            norm = mcolors.LogNorm(vmin=max(finite.min(), finite.max() * 1e-6),
+                                   vmax=max(finite.max(), 1.0)) if finite.size else None
+            im = a.imshow(p, cmap="viridis", norm=norm)
+            # P = 1 is the pinning boundary: one year's immigration clears N_crit.
+            a.contour(np.nan_to_num(p, nan=0.0), [1.0], colors="red", linewidths=.8)
+            a.set_title(f"Propagule pressure: {d.replace('_', ' ')}\n"
+                        f"P≥1 on {frac:.1%} of {n_considered} reached cells; "
+                        f"median P={med:.2g}", fontsize=9)
+            fig.colorbar(im, ax=a, fraction=.04, label="P (red contour = 1)")
+        a.contour(edges, [0.5], colors="cyan", linewidths=.6)
+        a.set_xticks([]); a.set_yticks([])
+
+    # Verdict panel: rho decides how the rest of the figure may be read, so it gets
+    # stated rather than left to be inferred from an infinity in metrics.json.
+    av = ax[1, 3]
+    av.axis("off")
+    if supercritical:
+        verdict = (f"ρ(A_P) = {rho:.3f}  ≥ 1\n\n"
+                   "The Great Plains contain self-sustaining habitat under the\n"
+                   "Allee-optimistic linearization (Allee factor forced to 1,\n"
+                   "crowding removed). The Neumann series diverges, so G is\n"
+                   "infinite and P saturates — neither is reported.\n\n"
+                   "This IS the result: under the optimistic bound there is no\n"
+                   "barrier at all, so the observed barrier must be an Allee/K\n"
+                   "phenomenon rather than a habitat-quality one.\n\n"
+                   "Directional signal still lives in ΔQ (top left) and in the\n"
+                   "corridor-shape ratio (top right), neither of which depends\n"
+                   "on the diverging sum.")
+        box = dict(fc="#fff4e6", ec="#e08214", boxstyle="round,pad=0.6")
+    else:
+        verdict = (f"ρ(A_P) = {rho:.3f}  < 1\n\n"
+                   "Lineages confined to the barrier die out, so the barrier is a\n"
+                   "genuine barrier and G is finite and comparable.\n\n"
+                   f"G(124 yr) E→W = {ew['G_horizon']:.3g}\n"
+                   f"G(124 yr) W→E = {we['G_horizon']:.3g}\n"
+                   f"asymmetry E/W ÷ W/E = "
+                   f"{ew['G_horizon'] / we['G_horizon']:.3g}\n\n"
+                   "G is an UPPER bound: crossing that fails here fails in the\n"
+                   "real model.")
+        box = dict(fc="#eef6ff", ec="#2166ac", boxstyle="round,pad=0.6")
+    av.text(0.02, 0.98, verdict, transform=av.transAxes, ha="left", va="top",
+            fontsize=8.5, family="monospace", bbox=box)
+    av.set_title("Verdict", fontsize=10)
 
     fig.suptitle("Directed cost of crossing the Great Plains "
-                 f"(Allee-optimistic upper bound; p₀={p0:.3f})", y=.99, fontsize=13)
-    fig.tight_layout(); fig.savefig(out, dpi=170, bbox_inches="tight"); plt.close(fig)
+                 f"(Allee-optimistic upper bound; p₀={p0:.3f}; ρ={rho:.3f})", fontsize=13)
+    fig.savefig(out, dpi=170); plt.close(fig)
 
     ew, we = gains["east_to_west"], gains["west_to_east"]
     ratio = (ew["G_horizon"] / we["G_horizon"]) if we["G_horizon"] > 0 else float("nan")
+
+    def _suppress(value):
+        """None when the operator is supercritical, else the number.
+
+        Under rho >= 1 these quantities are divergent-series artifacts, not results.
+        Emitting them as JSON Infinity (or as 1e11 / 1.0) made a sweep summary read
+        them as measurements; None forces a consumer to handle "not defined here".
+        """
+        return None if supercritical else value
+
+    verdict = ("barrier_self_sustaining: rho >= 1 under the Allee-optimistic "
+               "linearization, so the Neumann series diverges. G and propagule "
+               "pressure are NOT DEFINED in this regime and are reported as null. "
+               "The reportable conclusion is that the Great Plains are not a "
+               "habitat-quality barrier under the optimistic bound, so the observed "
+               "barrier is an Allee/K phenomenon. Directional signal lives in "
+               "q_asymmetry and in corridor_shape_asymmetry_max_log2."
+               if supercritical else
+               "subcritical: rho < 1, lineages confined to the barrier die out, so G "
+               "is finite and comparable across sweep points.")
     metrics = {
         "_comment": ("Linearized annual operator restricted to the Great Plains "
                      "corridor; see src/vis/barrier_crossing. The Allee factor is set "
                      "to 1, so these are UPPER bounds: crossing that fails here fails "
-                     "in the real model. G_horizon (124 yr) is the comparable metric; "
-                     "G_total is infinite when the barrier self-sustains."),
+                     "in the real model. G_horizon (124 yr) is the comparable metric."),
+        "barrier_crossing_verdict": verdict,
         "p0_low_density_departure": p0,
         "horizon_years": ew["horizon_years"],
-        "G_horizon_east_to_west": ew["G_horizon"],
-        "G_horizon_west_to_east": we["G_horizon"],
-        "asymmetry_ratio_ew_over_we": ratio,
-        "G_total_east_to_west": ew["G_total"],
-        "G_total_west_to_east": we["G_total"],
+        "G_horizon_east_to_west": _suppress(ew["G_horizon"]),
+        "G_horizon_west_to_east": _suppress(we["G_horizon"]),
+        "asymmetry_ratio_ew_over_we": _suppress(ratio),
+        # G_total is +inf whenever the barrier self-sustains, which is not JSON;
+        # _suppress already nulls exactly that case.
+        "G_total_east_to_west": _suppress(ew["G_total"]),
+        "G_total_west_to_east": _suppress(we["G_total"]),
         # rho is a property of the barrier-restricted operator alone, so the two
         # directions must agree; the gap is a convergence diagnostic, not a result.
-        "rho_barrier": 0.5 * (ew["rho"] + we["rho"]),
+        # This one is ALWAYS reported -- it is the headline result when >= 1.
+        "rho_barrier": rho,
         "rho_direction_discrepancy": abs(ew["rho"] - we["rho"]),
-        "barrier_self_sustaining": bool(ew["barrier_self_sustaining"]),
-        "years_to_half_of_G_east_to_west": ew["years_to_half_of_G"],
-        "years_to_half_of_G_west_to_east": we["years_to_half_of_G"],
+        "barrier_self_sustaining": supercritical,
+        "years_to_half_of_G_east_to_west": _suppress(ew["years_to_half_of_G"]),
+        "years_to_half_of_G_west_to_east": _suppress(we["years_to_half_of_G"]),
         # Fraction of REACHED, VIABLE far-side cells clearing N_crit -- see
         # _establishing_fraction for why the denominator is not simply "land".
-        "establishing_fraction_east_to_west": _establishing_fraction(
-            pressure["east_to_west"])[0],
-        "establishing_fraction_west_to_east": _establishing_fraction(
-            pressure["west_to_east"])[0],
+        "establishing_fraction_east_to_west": _suppress(_establishing_fraction(
+            pressure["east_to_west"])[0]),
+        "establishing_fraction_west_to_east": _suppress(_establishing_fraction(
+            pressure["west_to_east"])[0]),
         "reached_viable_cells_east_to_west": _establishing_fraction(
             pressure["east_to_west"])[1],
         "reached_viable_cells_west_to_east": _establishing_fraction(
             pressure["west_to_east"])[1],
-        "median_propagule_pressure_east_to_west": _finite_median(pressure["east_to_west"]),
-        "median_propagule_pressure_west_to_east": _finite_median(pressure["west_to_east"]),
+        "median_propagule_pressure_east_to_west": _suppress(
+            _finite_median(pressure["east_to_west"])),
+        "median_propagule_pressure_west_to_east": _suppress(
+            _finite_median(pressure["west_to_east"])),
         "mean_q_to_east_in_barrier": float(contrast["q_to_east"][barrier].mean()),
         "mean_q_to_west_in_barrier": float(contrast["q_to_west"][barrier].mean()),
+        # How differently the two directions actually route through the barrier.
+        # ~0 means the corridors are one eigenvector and only their SCALE differs.
+        "corridor_shape_asymmetry_max_log2": float(spread),
         **edge,
     }
     return metrics
+
+
+def _pretty_band(key):
+    """``331-1000000000`` -> ``331+ km``; the 1e9 upper edge is an open-ended sentinel."""
+    text = str(key)
+    if "-" not in text:
+        return text
+    lo, hi = text.split("-", 1)
+    try:
+        if float(hi) >= 1e8:
+            return f"{float(lo):.0f}+ km"
+        return f"{float(lo):.0f}\u2013{float(hi):.0f} km"
+    except ValueError:
+        return text
+
+
+def plot_q_asymmetry_attribution(sim, data, cfg, dcfg, years, rows, cols, shape, out,
+                                 era, names=None):
+    """Why westward journeys cost more -- resolved by dispersal distance and covariate.
+
+    Figure 17's ΔQ panel pools all three radial bands into one map, so it cannot say
+    whether the asymmetry is a short-hop or a long-jump phenomenon -- and the bands
+    (0-155, 155-483, 483+ km) are exactly the scales the juvenile-MDD sweep moves.
+    Top row: per-band ΔQ maps. Bottom left: the barrier-mean contrast per band, with
+    the edge-correction contrast beside it as the GEOMETRY CONTROL (if ΔQ tracks
+    Δf_j, the asymmetry is the domain boundary, not habitat). Bottom right: the Z
+    features driving it, decomposed on the pre-sigmoid scale where the split is exact.
+
+    Optional in exactly the same way as figure 17, and for the same missing inputs.
+    """
+    zones_path = (dcfg.get("regions") or {}).get("great_plains_zones")
+    meta_path = Path(cfg["raw_z_dir"]) / "path_feature_meta.json"
+    if not zones_path or not Path(zones_path).exists() or not meta_path.exists():
+        return None
+    labels = json.loads(meta_path.read_text()).get("kernel_labels")
+    if not labels:
+        return None
+
+    zones = read_zone_raster(zones_path, expected_shape=shape)
+    fields = modern_dispersal_fields(sim, data, years, era, rows, cols, shape)
+    attr = q_asymmetry_attribution(fields, data, sim, zones, labels, rows, cols, shape,
+                                   years=years, era=era)
+    bands = attr["bands"]
+    if not bands:
+        return None
+    barrier = zones["barrier"] & fields["land"].astype(bool)
+    edges = _barrier_outline(barrier)
+    land = fields["land"].astype(bool)
+
+    n = len(bands)
+    # constrained_layout, not tight_layout: the top row's per-axes colorbars are not
+    # tight_layout-compatible and it warned that results might be incorrect.
+    fig = plt.figure(figsize=(4.6 * max(n, 3), 8.8), layout="constrained")
+    gs = fig.add_gridspec(2, max(n, 3), height_ratios=[1.25, 1.0])
+
+    lim = max(float(np.nanpercentile(np.abs(np.stack(
+        [np.where(land, b["delta"], np.nan) for b in bands])), 98)), 1e-4)
+    band_axes = []
+    for i, b in enumerate(bands):
+        a = fig.add_subplot(gs[0, i])
+        im = a.imshow(np.where(land, b["delta"], np.nan), cmap="PiYG", vmin=-lim, vmax=lim)
+        a.contour(edges, [0.5], colors="cyan", linewidths=.6)
+        a.set_title(f"{_pretty_band(b['band'])} band\n"
+                    f"ΔQ = {b['mean_delta']:+.4f} in barrier", fontsize=10)
+        a.set_xticks([]); a.set_yticks([])
+        band_axes.append(a)
+    # One colorbar: all three panels share vmin/vmax, so per-panel bars would imply
+    # independently-scaled maps that must not be compared.
+    fig.colorbar(im, ax=band_axes, fraction=.03, label="Q(→W) − Q(→E), shared scale")
+
+    # Per-band contrast beside its geometry control.
+    axb = fig.add_subplot(gs[1, 0])
+    y = np.arange(n)
+    axb.barh(y + .19, [b["mean_delta"] for b in bands], height=.36,
+             color="#4d9221", label="ΔQ (journey survival)")
+    axb.barh(y - .19, [b["mean_edge_corr_delta"] for b in bands], height=.36,
+             color="#999999", label="Δf_j (edge correction) — geometry control")
+    axb.axvline(0, color="0.25", lw=1)
+    axb.set_yticks(y)
+    axb.set_yticklabels([_pretty_band(b["band"]) for b in bands], fontsize=8)
+    axb.set_xlabel("westward − eastward (barrier mean)")
+    axb.set_title("Asymmetry by dispersal distance\nvs. the wedge-geometry control", fontsize=10)
+    axb.legend(fontsize=7, frameon=False, loc="best")
+    axb.grid(axis="x", alpha=.25)
+
+    axf = fig.add_subplot(gs[1, 1:])
+    feats = attr["features"]
+    if feats:
+        nm = list(names) if names is not None else [f"Z_{i}" for i in range(len(attr["beta_s"]))]
+        yy = np.arange(len(feats))[::-1]
+        band_keys = [b["band"] for b in bands]
+        cmap = plt.get_cmap("viridis", max(len(band_keys), 2))
+        left_pos = np.zeros(len(feats)); left_neg = np.zeros(len(feats))
+        for bi, key in enumerate(band_keys):
+            vals = np.array([f["by_band"][key] for f in feats])
+            base = np.where(vals >= 0, left_pos, left_neg)
+            axf.barh(yy, vals, left=base, height=.62, color=cmap(bi),
+                     label=_pretty_band(key))
+            left_pos = left_pos + np.maximum(vals, 0)
+            left_neg = left_neg + np.minimum(vals, 0)
+        axf.axvline(0, color="0.25", lw=1)
+        axf.set_yticks(yy)
+        axf.set_yticklabels([f"{nm[f['index']]}" for f in feats], fontsize=8)
+        axf.set_xlabel("contribution to the pre-sigmoid W−E contrast  "
+                       "(mean ΔZ_disp × β_s), stacked by band")
+        axf.set_title("Which covariates make westward journeys costlier", fontsize=10)
+        axf.legend(fontsize=7, frameon=False, ncol=len(band_keys))
+        axf.grid(axis="x", alpha=.25)
+    else:
+        axf.axis("off")
+        axf.text(.5, .5, "Z_disp_gathered not available;\nper-feature attribution skipped",
+                 ha="center", va="center", fontsize=10, color="0.4")
+
+    fig.suptitle("Journey-survival asymmetry across the Great Plains: "
+                 "by dispersal distance and by covariate", fontsize=13)
+    fig.savefig(out, dpi=170); plt.close(fig)
+    return {
+        "bands": [{k: v for k, v in b.items()
+                   if k not in ("q_to_east", "q_to_west", "delta")} for b in bands],
+        "top_features": [
+            {"name": (list(names)[f["index"]] if names is not None else f"Z_{f['index']}"),
+             **f} for f in feats],
+    }
 
 
 def _barrier_outline(barrier):
@@ -1063,8 +1626,8 @@ def simulate_no_invasion_counterfactual(sim, data, drop_disease=True):
 
 
 def plot_counterfactual_attribution(sim, cf_release_only, cf_no_disease, viab_cf,
-                                    years, rows, cols, shape, land_mask, out, window,
-                                    pop_scalar=1.0):
+                                    years, rows, cols, shape, land_mask, out, era,
+                                    pop_scalar=1.0, logscale=True):
     """What the 1940 release caused: attribution, and the range it bought.
 
     THREE SIMULATIONS, because one counterfactual cannot answer both questions:
@@ -1089,7 +1652,7 @@ def plot_counterfactual_attribution(sim, cf_release_only, cf_no_disease, viab_cf
     (4) viable range unreached in C, (5) occupied area over time, (6) total
     population over time with the release year marked.
 
-    Attribution is computed on window means and only where A exceeds
+    Attribution is computed on era means and only where A exceeds
     ``occupancy_floor``; elsewhere the ratio is 0/0 and is left NaN rather than
     rendered as a spurious 0 or 1. ``viab_cf`` must be the viability of C's world
     (i.e. built from ``K_base_flat``) -- see :func:`modern_viability`.
@@ -1101,9 +1664,9 @@ def plot_counterfactual_attribution(sim, cf_release_only, cf_no_disease, viab_cf
     # NaN is introduced only for display, below.
     act, rel, cfa = (np.asarray(x) for x in
                      (sim["simulated_density"], cf_release_only, cf_no_disease))
-    act_m, _, n = _window_mean(act, window)
-    cf_m, _, _ = _window_mean(cfa, window)
-    rel_m, _, _ = _window_mean(rel, window)
+    act_m, span, _ = era_mean(act, years, era)
+    cf_m, _, _ = era_mean(cfa, years, era)
+    rel_m, _, _ = era_mean(rel, years, era)
     act_m, cf_m, rel_m = (np.where(mask, x, np.nan) for x in (act_m, cf_m, rel_m))
 
     # Occupancy floor in DENSITY units from a route-count threshold: 0.05 expected
@@ -1133,7 +1696,9 @@ def plot_counterfactual_attribution(sim, cf_release_only, cf_no_disease, viab_cf
 
     fig = plt.figure(figsize=(16.5, 9.5))
     gs = fig.add_gridspec(2, 3, height_ratios=[1.35, 1.0], hspace=.18, wspace=.12)
-    log_act, log_cf = np.log1p(act_m * pop_scalar), np.log1p(cf_m * pop_scalar)
+    tf, _, scale_name = _abundance_scale(logscale)
+    log_act, log_cf = tf(act_m * pop_scalar), tf(cf_m * pop_scalar)
+    density_label = "log(1 + route counts)" if logscale else "route counts"
     # Every reduction here must survive an ALL-NaN / all-zero input. A degenerate or
     # very early checkpoint can simulate a fully extinct landscape, and an unguarded
     # nanpercentile/nanmedian raises -- which would kill the whole diagnostic run
@@ -1144,8 +1709,8 @@ def plot_counterfactual_attribution(sim, cf_release_only, cf_no_disease, viab_cf
 
     ax = fig.add_subplot(gs[0, 0])
     im = ax.imshow(log_act, cmap="magma", vmin=0, vmax=vmax)
-    ax.set_title(f"Actual ({years[-n]}–{years[-1]})", fontsize=10); ax.axis("off")
-    fig.colorbar(im, ax=ax, fraction=.035, label="log(1 + route counts)")
+    ax.set_title(f"Actual ({span[0]}–{span[1]}, {scale_name} scale)", fontsize=10); ax.axis("off")
+    fig.colorbar(im, ax=ax, fraction=.035, label=density_label)
 
     ax = fig.add_subplot(gs[0, 1])
     ax.imshow(log_cf, cmap="magma", vmin=0, vmax=vmax)
@@ -1229,44 +1794,64 @@ def plot_counterfactual_attribution(sim, cf_release_only, cf_no_disease, viab_cf
     }
 
 
-def create_counterfactual_animation(sim, cf_density, years, land_mask, out):
+def _save_animation(ani, out, fps=8):
+    """Write mp4 via FFMpeg, falling back to GIF via pillow.
+
+    FFMpeg is absent on some run environments (and on TACC compute nodes), and an
+    animation is never worth losing the rest of a diagnostics run over.
+    """
+    try:
+        ani.save(str(out), writer=animation.FFMpegWriter(fps=fps, bitrate=1800))
+    except Exception as exc:
+        gif_out = str(out).rsplit(".", 1)[0] + ".gif"
+        print(f"[map-viz] FFMpeg unavailable ({exc}); falling back to GIF: {gif_out}")
+        ani.save(gif_out, writer="pillow", fps=fps)
+
+
+def _abundance_scale(logscale):
+    """``(transform, colorbar label, scale name)`` for an abundance display."""
+    if logscale:
+        return np.log1p, "log(1 + density)", "log1p"
+    return (lambda x: x), "density (route counts)", "linear"
+
+
+def create_counterfactual_animation(sim, cf_density, years, land_mask, out, logscale=True):
     """Animated actual vs no-release density, side by side on one shared scale."""
     mask = land_mask.astype(bool)
     act = np.where(mask[None], np.asarray(sim["simulated_density"]), np.nan)
     cfa = np.where(mask[None], cf_density, np.nan)
+    tf, cbar_label, scale_name = _abundance_scale(logscale)
+    la, lc = tf(act), tf(cfa)
     # ONE scale for both panels: independent scaling would make an empty
     # counterfactual look as populated as the actual invasion.
-    vmax = float(np.nanpercentile(np.log1p(act[np.isfinite(act)]), 99.5))
-    la, lc = np.log1p(act), np.log1p(cfa)
+    vmax = float(np.nanpercentile(la[np.isfinite(la)], 99.5))
+    vmax = vmax if vmax > 0 else 1.0
 
     fig, (ax_a, ax_c) = plt.subplots(1, 2, figsize=(13, 6))
     im_a = ax_a.imshow(la[0], cmap="magma", vmin=0, vmax=vmax)
     ax_a.set_title("Actual"); ax_a.axis("off")
     im_c = ax_c.imshow(lc[0], cmap="magma", vmin=0, vmax=vmax)
     ax_c.set_title("Counterfactual: no 1940 release"); ax_c.axis("off")
-    fig.colorbar(im_a, ax=[ax_a, ax_c], fraction=.025, label="log(1 + density)")
-    title = fig.suptitle(f"Year {years[0]}", fontsize=14, fontweight="bold")
+    fig.colorbar(im_a, ax=[ax_a, ax_c], fraction=.025, label=cbar_label)
+    title = fig.suptitle(f"Year {years[0]}  ({scale_name} scale)", fontsize=14, fontweight="bold")
 
     def update(frame):
-        title.set_text(f"Year {years[frame]}")
+        title.set_text(f"Year {years[frame]}  ({scale_name} scale)")
         im_a.set_data(la[frame]); im_c.set_data(lc[frame])
         return im_a, im_c, title
 
     ani = animation.FuncAnimation(fig, update, frames=len(years), interval=120, blit=False)
-    try:
-        ani.save(str(out), writer=animation.FFMpegWriter(fps=8, bitrate=1800))
-    except Exception as exc:
-        gif_out = str(out).rsplit(".", 1)[0] + ".gif"
-        print(f"[map-viz] FFMpeg unavailable ({exc}); falling back to GIF: {gif_out}")
-        ani.save(gif_out, writer="pillow", fps=8)
+    _save_animation(ani, out)
     plt.close(fig)
 
 
-def create_invasion_animation(sim, data, years, land_mask, out):
+def create_invasion_animation(sim, data, years, land_mask, out, logscale=False):
     """Animated side-by-side: simulated density vs. observed BBS counts, all years.
 
-    Falls back from mp4 (FFMpeg) to GIF (pillow) if FFMpeg isn't available on
-    the run environment -- mirrors src/vis/_age_vis_common.py's create_animation.
+    ``logscale`` emits the log1p counterpart, on which the advancing low-density
+    front is visible; the linear version keeps the core's magnitude readable.
+    Simulated and observed keep INDEPENDENT scales here (unlike the counterfactual
+    animation) because they are in different units.
     """
     shape = land_mask.shape
     obs_grid = np.full((len(years), *shape), np.nan)
@@ -1276,29 +1861,30 @@ def create_invasion_animation(sim, data, years, land_mask, out):
     obs_grid[obs_t, obs_rows, obs_cols] = np.asarray(data["observed_results"])
 
     density = np.where(land_mask.astype(bool)[None], sim["simulated_density"], np.nan)
-    vmax_sim = float(np.nanpercentile(density, 99))
-    vmax_obs = float(np.nanpercentile(obs_grid[np.isfinite(obs_grid)], 99))
+    tf, _, scale_name = _abundance_scale(logscale)
+    density, obs_grid = tf(density), tf(obs_grid)
+    sim_label = "log(1 + simulated density)" if logscale else "simulated density"
+    obs_label = "log(1 + observed count)" if logscale else "observed BBS count"
+    vmax_sim = float(np.nanpercentile(density, 99)) or 1.0
+    vmax_obs = float(np.nanpercentile(obs_grid[np.isfinite(obs_grid)], 99)) or 1.0
 
     fig, (ax_sim, ax_obs) = plt.subplots(1, 2, figsize=(13, 6))
     im_sim = ax_sim.imshow(density[0], cmap="magma", vmin=0, vmax=vmax_sim)
     ax_sim.set_title("Simulated density"); ax_sim.axis("off")
+    fig.colorbar(im_sim, ax=ax_sim, fraction=.035, label=sim_label)
     im_obs = ax_obs.imshow(obs_grid[0], cmap="magma", vmin=0, vmax=vmax_obs)
     ax_obs.set_title("Observed BBS counts"); ax_obs.axis("off")
-    title = fig.suptitle(f"Year {years[0]}", fontsize=14, fontweight="bold")
+    fig.colorbar(im_obs, ax=ax_obs, fraction=.035, label=obs_label)
+    title = fig.suptitle(f"Year {years[0]}  ({scale_name} scale)", fontsize=14, fontweight="bold")
 
     def update(frame):
-        title.set_text(f"Year {years[frame]}")
+        title.set_text(f"Year {years[frame]}  ({scale_name} scale)")
         im_sim.set_data(density[frame])
         im_obs.set_data(obs_grid[frame])
         return im_sim, im_obs, title
 
     ani = animation.FuncAnimation(fig, update, frames=len(years), interval=120, blit=False)
-    try:
-        ani.save(str(out), writer=animation.FFMpegWriter(fps=8, bitrate=1800))
-    except Exception as exc:
-        gif_out = str(out).rsplit(".", 1)[0] + ".gif"
-        print(f"[map-viz] FFMpeg unavailable ({exc}); falling back to GIF: {gif_out}")
-        ani.save(gif_out, writer="pillow", fps=8)
+    _save_animation(ani, out)
     plt.close(fig)
 
 
@@ -1306,10 +1892,14 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--profile", default=os.environ.get("HOUFIN_MAP_PROFILE", "standard"))
     parser.add_argument("--precision", default=os.environ.get("HOUFIN_MODEL_PRECISION", "float32"), choices=["float32", "float64"])
-    parser.add_argument("--window-years", type=int, default=10)
+    # Era-named windows are the default (age_model_math.ERAS): modern 2010-2025 vs
+    # early 1902-1915 or invasion 1940-1955. --window-years is an OVERRIDE that
+    # restores the old trailing-N behaviour, for reproducing a pre-era run.
+    parser.add_argument("--window-years", type=int, default=None,
+                        help="override the named eras with trailing/anchored N-year windows")
     parser.add_argument("--out", default=None)
     args = parser.parse_args()
-    if args.window_years < 1:
+    if args.window_years is not None and args.window_years < 1:
         raise ValueError("--window-years must be positive")
 
     cfg, dcfg = load_age_model_config(), load_data_config()
@@ -1326,40 +1916,71 @@ def main():
     rows, cols = np.asarray(data["land_rows"]), np.asarray(data["land_cols"])
     years = np.asarray(data["years"])
     shape = tuple(np.asarray(data["land_mask"]).shape)
+    # Resolve the three comparison eras ONCE, so every figure, the metrics file and
+    # the sweep summary all describe the same spans. --window-years rebuilds
+    # era-shaped spans from a trailing/anchored N-year window instead.
+    eras = eras_from_window(years, args.window_years) if args.window_years else dict(ERAS)
+    era_spans = {name: era_span(span, years)[2] for name, span in eras.items()}
+    print("[map-viz] eras: " + ", ".join(f"{k}={v[0]}-{v[1]}" for k, v in era_spans.items()))
+    modern_era, early_era, invasion_era = eras["modern"], eras["early"], eras["invasion"]
+
     lam = local_growth_lambda(sim["Sa_flat"], sim["Sj_flat"], sim["Fmax_flat"])
-    modern, early, transition = plot_modern_niche(lam, years, rows, cols, shape,
-                                                   out / "01_modern_fundamental_niche.png", args.window_years)
-    # Invasion-anchored counterparts (13/14). The default baseline is the start of
-    # the model timeline (1902), which mixes 38 years of pre-invasion climate
-    # change into every "change since the beginning" statement; anchoring at 1940
-    # instead measures change relative to what the species actually met on
+    modern, early, transition = plot_modern_niche(
+        lam, years, rows, cols, shape, out / "01_modern_fundamental_niche.png",
+        modern_era, early_era)
+    # Invasion-anchored counterparts (13/14). The "early" baseline is the start of
+    # the model timeline (1902-1915), which mixes ~38 years of pre-invasion climate
+    # change into every "change since the beginning" statement; anchoring at
+    # 1940-1955 instead measures change relative to what the species actually met on
     # arrival. Both are kept because they answer different questions.
     inv_year = int(load_timeline(dcfg)["invasion_year"])
     _, early_inv, transition_inv = plot_modern_niche(
         lam, years, rows, cols, shape, out / "13_niche_change_since_invasion.png",
-        args.window_years, ref_year=inv_year)
+        modern_era, invasion_era)
     fraction, mean_lambda, centroid_lat = plot_niche_trajectory(
         lam, years, rows, cols, dcfg["grid"]["ref_raster"], out / "02_niche_trajectory.png")
-    plot_modern_rate_maps(sim, years, rows, cols, shape, out / "03_modern_demographic_rates.png", args.window_years)
+    plot_modern_rate_maps(sim, years, rows, cols, shape,
+                          out / "03_modern_demographic_rates.png", modern_era)
     fit_metrics = plot_fit_diagnostics(sim, data, years, out / "04_map_fit_diagnostics.png")
-    response_metrics = plot_response_curves(sim, out / "05_demographic_response_curves.png")
+    z_names = z_feature_names(cfg, np.asarray(sim["latents"]["w_env"]).shape[0])
+    response_metrics = plot_response_curves(
+        sim, out / "05_demographic_response_curves.png", names=z_names)
+    ranking_metrics = plot_w_env_ranking(sim, out / "05b_w_env_ranking.png", names=z_names)
+    # Which Z features moved, and what their movement did to lambda -- the "why"
+    # behind figures 01/13. Two baselines, matching the 01/13 pair.
+    z_attr_invasion = plot_z_feature_attribution(
+        data, sim, years, rows, cols, shape, out / "05c_z_attribution_since_invasion.png",
+        modern_era, invasion_era, names=z_names)
+    z_attr_early = plot_z_feature_attribution(
+        data, sim, years, rows, cols, shape, out / "05d_z_attribution_since_1902.png",
+        modern_era, early_era, names=z_names)
     plot_environmental_drivers_limits(data, sim, years, rows, cols, shape,
-                                       out / "06_environmental_drivers_limits.png", args.window_years)
+                                       out / "06_environmental_drivers_limits.png",
+                                       modern_era, early_era, names=z_names)
     plot_environmental_drivers_limits(data, sim, years, rows, cols, shape,
                                        out / "14_environmental_drivers_since_invasion.png",
-                                       args.window_years, ref_year=inv_year)
+                                       modern_era, invasion_era, names=z_names)
     source_sink_metrics = plot_realized_source_sink(
-        sim, lam, years, rows, cols, shape, out / "07_realized_source_sink.png", args.window_years,
+        sim, lam, years, rows, cols, shape, out / "07_realized_source_sink.png", modern_era,
         fields_out=out / "07_source_sink_fields.npz", ref_raster=dcfg["grid"]["ref_raster"])
     plot_spatial_residuals(sim, data, shape, out / "08_spatial_residuals.png")
     disease_metrics = plot_disease_diagnostics(
         data, sim, years, rows, cols, shape, out / "09_disease_diagnostics.png",
-        args.window_years)
+        modern_era)
     land_mask_arr = np.asarray(data["land_mask"])
     age_structure_metrics = plot_age_structure(
-        sim, years, rows, cols, shape, land_mask_arr, out / "10_age_structure.png", args.window_years)
-    plot_invasion_progression(sim, years, land_mask_arr, out / "11_invasion_progression.png")
-    create_invasion_animation(sim, data, years, land_mask_arr, out / "12_invasion_animation.mp4")
+        sim, years, rows, cols, shape, land_mask_arr, out / "10_age_structure.png", modern_era)
+    # Every abundance display is emitted on BOTH scales. log1p is the only one on
+    # which the low-density invasion front is visible at all; linear is the only one
+    # on which the saturated core's magnitude is readable. Neither substitutes.
+    plot_invasion_progression(sim, years, land_mask_arr,
+                              out / "11_invasion_progression.png", logscale=True)
+    plot_invasion_progression(sim, years, land_mask_arr,
+                              out / "11_invasion_progression_linear.png", logscale=False)
+    create_invasion_animation(sim, data, years, land_mask_arr,
+                              out / "12_invasion_animation.mp4", logscale=False)
+    create_invasion_animation(sim, data, years, land_mask_arr,
+                              out / "12_invasion_animation_log1p.mp4", logscale=True)
     # No-invasion counterfactual (15/16). TWO extra forward passes at the same MAP
     # point: one with the epizootic held fixed (isolates the release, so attribution
     # is cleanly signed) and one with it removed (the causally coherent world, since
@@ -1370,23 +1991,39 @@ def main():
     memory_snapshot("map-viz-counterfactual", device)
     # Viability of the counterfactual's own world: no epizootic means K_base, hence a
     # larger viable area than the actual world's.
-    _, viab_cf = modern_viability(sim, args.window_years, k_key="K_base_flat")
+    _, viab_cf = modern_viability(sim, years, modern_era, k_key="K_base_flat")
     counterfactual_metrics = plot_counterfactual_attribution(
         sim, cf_release_only, cf_no_disease, viab_cf, years, rows, cols, shape,
-        land_mask_arr, out / "15_counterfactual_no_invasion.png", args.window_years,
-        pop_scalar=float(np.asarray(data["pop_scalar"])))
+        land_mask_arr, out / "15_counterfactual_no_invasion.png", modern_era,
+        pop_scalar=float(np.asarray(data["pop_scalar"])), logscale=True)
+    plot_counterfactual_attribution(
+        sim, cf_release_only, cf_no_disease, viab_cf, years, rows, cols, shape,
+        land_mask_arr, out / "15_counterfactual_no_invasion_linear.png", modern_era,
+        pop_scalar=float(np.asarray(data["pop_scalar"])), logscale=False)
     create_counterfactual_animation(sim, cf_no_disease, years, land_mask_arr,
-                                    out / "16_counterfactual_animation.mp4")
+                                    out / "16_counterfactual_animation.mp4", logscale=True)
+    create_counterfactual_animation(sim, cf_no_disease, years, land_mask_arr,
+                                    out / "16_counterfactual_animation_linear.mp4",
+                                    logscale=False)
     # Optional: needs the Great Plains zone raster, which is built from a shapefile
     # that is not in git. Returns None and explains itself when unavailable.
     barrier_metrics = plot_barrier_crossing(
         sim, data, cfg, dcfg, years, rows, cols, shape,
-        out / "17_barrier_crossing.png", args.window_years)
+        out / "17_barrier_crossing.png", modern_era)
+    # Companion to 17: resolves the pooled Q contrast by dispersal distance and by
+    # covariate, and is the only directional result that survives rho >= 1.
+    q_asym_metrics = plot_q_asymmetry_attribution(
+        sim, data, cfg, dcfg, years, rows, cols, shape,
+        out / "17b_q_asymmetry_attribution.png", modern_era, names=z_names)
     n50_raw = float(np.asarray(sim["n50_raw"])); n50 = float(np.logaddexp(0.0, n50_raw))
     transition_land = np.isfinite(transition)
     metrics = {
         "profile": args.profile, "checkpoint_step": int(checkpoint["step"]),
-        "years": [int(years[0]), int(years[-1])], "window_years": args.window_years,
+        "years": [int(years[0]), int(years[-1])],
+        # The spans every "modern"/"baseline" number below was actually averaged
+        # over -- named eras by default, or reconstructed from --window-years.
+        "eras": {k: list(v) for k, v in era_spans.items()},
+        "window_years_override": args.window_years,
         "fundamental_niche_definition": "post-establishment, density-independent local dominant eigenvalue of [[Sa, Sj], [Fmax*Sa, 0]]; excludes dispersal, density limitation, realized occupancy, and Allee limitation",
         "modern_mean_lambda": float(np.mean(modern)), "early_mean_lambda": float(np.mean(early)),
         "modern_suitable_fraction": float(np.mean(modern > 1.0)), "early_suitable_fraction": float(np.mean(early > 1.0)),
@@ -1430,8 +2067,16 @@ def main():
         # None when the Great Plains zone raster is absent; the key is always present
         # so a consumer can distinguish "not computed" from "computed as zero".
         "barrier_crossing": barrier_metrics,
+        # Per-band / per-covariate breakdown of the journey-survival asymmetry.
+        # None on the same missing inputs that skip barrier_crossing.
+        "q_asymmetry": q_asym_metrics,
         "disease": disease_metrics,
         "age_structure": age_structure_metrics,
+        # Which Z features carry the fitted environmental signal (05b), and which of
+        # them actually moved lambda between eras (05c/05d).
+        "z_attribution_since_invasion": z_attr_invasion,
+        "z_attribution_since_early": z_attr_early,
+        **ranking_metrics,
         **response_metrics,
     }
     with open(out / "metrics.json", "w", encoding="utf-8") as fh:

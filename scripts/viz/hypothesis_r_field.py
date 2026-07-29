@@ -44,7 +44,7 @@ import sys
 import matplotlib.pyplot as plt
 import numpy as np
 import rioxarray  # noqa: F401  (registers the .rio accessor)
-from matplotlib.colors import ListedColormap, TwoSlopeNorm
+from matplotlib.colors import LinearSegmentedColormap, ListedColormap, TwoSlopeNorm
 from rasterio.features import rasterize
 from scipy.ndimage import gaussian_filter
 from shapely.geometry import box as shapely_box
@@ -199,9 +199,9 @@ def _r_norm(frames, land):
     return TwoSlopeNorm(vmin=lo, vcenter=0.0, vmax=hi)
 
 
-R_CMAP = "RdBu_r"
 SINK_COLOR = "#2c7bb6"
-SOURCE_COLOR = "#d7301f"
+SOURCE_COLOR = "#f2c40c"
+R_CMAP = LinearSegmentedColormap.from_list("YlBu_r", [SINK_COLOR, "#f7f7f7", SOURCE_COLOR])
 BINARY_CMAP = ListedColormap([SINK_COLOR, SOURCE_COLOR])
 
 

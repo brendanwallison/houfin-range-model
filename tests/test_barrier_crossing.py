@@ -234,3 +234,98 @@ def test_edge_correction_summary_reports_share_not_just_extremes():
     assert 0.0 <= s["frac_juvenile_edge_correction_below_half"] <= 1.0
     assert 0.0 < s["mean_juvenile_edge_correction_in_barrier"] <= 1.0
     assert 0.0 < s["mean_adult_edge_correction_in_barrier"] <= 1.0
+
+
+# ------------------------------------------- corridor shape vs. directional signal
+
+def _corridor_shape_tvd(fields, data, zones, **kw):
+    """Total-variation distance between the two mass-normalized corridors."""
+    g = {d: crossing_gain(fields, data, zones, d, p0=0.23, use_edge_correction=False, **kw)
+         for d in ("east_to_west", "west_to_east")}
+    barrier = zones["barrier"] & fields["land"].astype(bool)
+    unit = []
+    for d in ("east_to_west", "west_to_east"):
+        c = np.where(barrier, g[d]["corridor"], 0.0)
+        unit.append(c / c.sum())
+    return 0.5 * float(np.abs(unit[0] - unit[1]).sum()), g
+
+
+def test_subcritical_barrier_keeps_directional_corridor_shape():
+    """When rho < 1 the transient dominates, so the two corridors really do differ.
+
+    The corridors are ``sum_k A_P^k b`` for one shared ``A_P`` and two initial
+    conditions. While the series is dominated by its EARLY terms the memory of ``b``
+    survives, and the corridor is a genuine directional map.
+    """
+    fields, data, zones, _, _ = _fixture(q_east=0.40, q_west=0.70, fmax_barrier=0.8)
+    tvd, g = _corridor_shape_tvd(fields, data, zones)
+    assert g["east_to_west"]["rho"] < 1.0
+    assert tvd > 0.05, "a subcritical barrier should retain directional corridor shape"
+
+
+def test_supercritical_barrier_collapses_both_corridors_onto_one_eigenvector():
+    """When rho >= 1 the corridors converge to the SAME shape, differing by a scalar.
+
+    This is the defect the figure was misreporting: with a self-sustaining barrier
+    ``sum_k A_P^k b`` is dominated by its LATE terms, which are the dominant
+    eigenvector of ``A_P`` regardless of ``b``. Two independent per-panel LogNorms
+    then divided out the only surviving difference (the scale), so the figure showed
+    two identical-looking panels of one eigenvector and invited a directional reading
+    of something carrying no directional shape at all.
+    """
+    fields, data, zones, _, _ = _fixture(q_east=0.40, q_west=0.70, fmax_barrier=3.0)
+    tvd, g = _corridor_shape_tvd(fields, data, zones)
+    assert g["east_to_west"]["rho"] >= 1.0, "fixture is not supercritical"
+    assert g["east_to_west"]["barrier_self_sustaining"]
+    assert tvd < 0.02, (
+        f"supercritical corridors should collapse onto one eigenvector, TVD={tvd:.4f}")
+
+
+def test_directional_signal_survives_in_G_even_when_shapes_match():
+    """Shape agreement must NOT be mistaken for "no asymmetry": G still separates."""
+    fields, data, zones, _, _ = _fixture(q_east=0.40, q_west=0.70)
+    g = {d: crossing_gain(fields, data, zones, d, p0=0.23, use_edge_correction=False)
+         for d in ("east_to_west", "west_to_east")}
+    ew, we = g["east_to_west"]["G_horizon"], g["west_to_east"]["G_horizon"]
+    assert abs(ew - we) / max(ew, we) > 1e-3
+
+
+def test_corridor_horizon_is_a_prefix_of_the_full_corridor():
+    """corridor_horizon accumulates the transient only, so it is <= corridor."""
+    fields, data, zones, _, _ = _fixture()
+    g = crossing_gain(fields, data, zones, "east_to_west", p0=0.23,
+                      use_edge_correction=False, horizon_years=5)
+    assert np.all(g["corridor_horizon"] <= g["corridor"] + 1e-12)
+    assert g["corridor_horizon"].sum() > 0.0
+
+
+# ------------------------------------------------------- Q asymmetry attribution
+
+def test_q_asymmetry_attribution_resolves_bands_and_signs():
+    """Per-band contrast must carry the sign of the injected Q difference."""
+    from src.vis.barrier_crossing import q_asymmetry_attribution
+
+    fields, data, zones, labels, _ = _fixture(q_east=0.40, q_west=0.70)
+    rows, cols = np.nonzero(np.asarray(fields["land"]))
+    sim = {"latents": {"w_env": np.zeros((3, 3))}}
+    attr = q_asymmetry_attribution(fields, data, sim, zones, labels, rows, cols,
+                                   fields["land"].shape)
+    assert attr["bands"], "no east/west band pairs were resolved from the labels"
+    # Q(to WEST) - Q(to EAST) = 0.70 - 0.40 in every band, by construction.
+    for b in attr["bands"]:
+        assert np.isclose(b["mean_delta"], 0.30, atol=1e-6), b
+    # One entry per radial band, and they are ordered short-hop -> long-jump.
+    lows = [float(str(b["band"]).split("-")[0]) for b in attr["bands"]]
+    assert lows == sorted(lows)
+
+
+def test_q_asymmetry_attribution_is_flat_when_Q_has_no_direction():
+    from src.vis.barrier_crossing import q_asymmetry_attribution
+
+    fields, data, zones, labels, _ = _fixture(q_east=0.55, q_west=0.55)
+    rows, cols = np.nonzero(np.asarray(fields["land"]))
+    sim = {"latents": {"w_env": np.zeros((3, 3))}}
+    attr = q_asymmetry_attribution(fields, data, sim, zones, labels, rows, cols,
+                                   fields["land"].shape)
+    for b in attr["bands"]:
+        assert abs(b["mean_delta"]) < 1e-9

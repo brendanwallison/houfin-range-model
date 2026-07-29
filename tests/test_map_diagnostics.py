@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 from scripts.viz.map_diagnostics import allee_viability, local_growth_lambda
 from scripts.viz.map_diagnostics import plot_fit_diagnostics, plot_modern_niche, plot_modern_rate_maps
@@ -194,11 +195,13 @@ def test_counterfactual_figure_and_metrics_survive_an_extinct_landscape():
     sim, data, rows, cols, shape, land, T, pop = _counterfactual_fixture()
     zero = np.zeros_like(sim["simulated_density"])
     sim = {**sim, "simulated_density": zero}
-    _, viab = modern_viability(sim, 10, k_key="K_base_flat")
+    years = np.arange(1902, 1902 + T)
+    era = (int(years[-10]), int(years[-1]))
+    _, viab = modern_viability(sim, years, era, k_key="K_base_flat")
     out = Path(tempfile.mkdtemp()) / "15.png"
     m = plot_counterfactual_attribution(sim, zero.copy(), zero.copy(), viab,
-                                        np.arange(1902, 1902 + T), rows, cols, shape,
-                                        land, out, 10, pop_scalar=pop)
+                                        years, rows, cols, shape,
+                                        land, out, era, pop_scalar=pop)
     assert out.exists()
     assert np.isnan(m["median_attribution_where_occupied"])
     assert np.isnan(m["max_attribution"])
@@ -215,11 +218,124 @@ def test_core_map_diagnostic_figures_render(tmp_path):
     sim = {"Sa_flat": sa, "Sj_flat": sj, "Fmax_flat": fmax, "K_flat": np.full_like(sa, 2.0),
            "expected_obs": np.array([1.0, 2.0, 3.0, 4.0])}
     lam = local_growth_lambda(sa, sj, fmax)
-    _, _, transition = plot_modern_niche(lam, years, rows, cols, (2, 2), tmp_path / "niche.png", 2)
+    _, _, transition = plot_modern_niche(lam, years, rows, cols, (2, 2),
+                                         tmp_path / "niche.png", (2005, 2010), (2000, 2005))
     assert np.isfinite(transition).all()
-    plot_modern_rate_maps(sim, years, rows, cols, (2, 2), tmp_path / "rates.png", 2)
+    plot_modern_rate_maps(sim, years, rows, cols, (2, 2), tmp_path / "rates.png", (2005, 2010))
     fit = plot_fit_diagnostics(sim, {"observed_results": np.array([1., 2., 3., 4.]),
                                      "obs_time_indices": np.array([0, 1, 1, 2])}, years,
                                tmp_path / "fit.png")
     assert fit["n_observations"] == 4
     assert all((tmp_path / name).stat().st_size > 10_000 for name in ("niche.png", "rates.png", "fit.png"))
+
+
+# ------------------------------------------------------------------------ eras
+
+def test_named_eras_resolve_to_the_intended_spans():
+    """The three comparison eras are the spans the figures claim in their titles."""
+    from src.vis.age_model_math import ERAS, era_mean, era_span
+
+    years = np.arange(1902, 2026)
+    assert era_span("early", years)[2] == (1902, 1915)
+    assert era_span("invasion", years)[2] == (1940, 1955)
+    assert era_span("modern", years)[2] == (2010, 2025)
+    # era_mean averages exactly those rows and reports the span it really used.
+    v = np.arange(len(years), dtype=float)[:, None]
+    for name, (lo, hi) in ERAS.items():
+        mean, span, n = era_mean(v, years, name)
+        assert span == (lo, hi) and n == hi - lo + 1
+        assert np.isclose(mean[0], np.mean(np.arange(lo - 1902, hi - 1902 + 1)))
+
+
+def test_era_clips_to_the_timeline_and_refuses_a_disjoint_span():
+    from src.vis.age_model_math import era_span
+
+    short = np.arange(1902, 1950)
+    # "modern" does not exist on a truncated timeline; silently sliding the window
+    # would put a false year range in a figure title.
+    with pytest.raises(ValueError, match="does not overlap"):
+        era_span("modern", short)
+    # A partially-covered era clips, and reports the CLIPPED span.
+    assert era_span("invasion", short)[2] == (1940, 1949)
+
+
+def test_window_years_override_reproduces_the_pre_era_windows():
+    """--window-years must still give the trailing/anchored windows it used to."""
+    from src.vis.age_model_math import eras_from_window
+
+    years = np.arange(1902, 2026)
+    got = eras_from_window(years, 10)
+    assert got["modern"] == (2016, 2025)      # trailing 10
+    assert got["early"] == (1902, 1911)       # leading 10
+    assert got["invasion"] == (1940, 1949)    # 10 anchored at the release
+
+
+# ----------------------------------------------- single-feature lambda attribution
+
+def _attribution_fixture(beta_s, beta_r, T=40, N=12):
+    """Z with a per-feature linear trend, so every feature has a known delta."""
+    M = len(beta_s)
+    years = np.arange(1990, 1990 + T)
+    ramp = np.linspace(0.0, 1.0, T)[:, None, None]
+    base = np.linspace(-1.0, 1.0, N)[None, :, None] * np.ones((1, 1, M))
+    Z = base + ramp * np.arange(1, M + 1)[None, None, :] * 0.1
+    latents = {"w_env": np.stack([beta_s, beta_r, np.zeros(M)], axis=1),
+               "alpha_a": 0.3, "alpha_j": -0.4, "alpha_f": 0.2, "alpha_k": 0.1,
+               "gamma_a": 1.0, "gamma_j_diff": 0.1, "gamma_f": 1.0, "gamma_k": 1.0}
+    rows, cols = np.arange(N), np.zeros(N, dtype=int)
+    return ({"Z_gathered": Z}, {"latents": latents}, years, rows, cols, (N, 1))
+
+
+def test_zero_weight_feature_is_attributed_exactly_zero_delta_lambda(tmp_path):
+    """A feature the model does not use cannot be credited with moving lambda."""
+    from scripts.viz.map_diagnostics import plot_z_feature_attribution
+
+    beta_s = np.array([0.8, 0.0, -0.5])
+    beta_r = np.array([0.3, 0.0, 0.6])       # feature 1 is unused on BOTH manifolds
+    data, sim, years, rows, cols, shape = _attribution_fixture(beta_s, beta_r)
+    m = plot_z_feature_attribution(data, sim, years, rows, cols, shape,
+                                   tmp_path / "05c.png", (2020, 2029), (1990, 1999),
+                                   top_n=3)
+    by_name = {f["name"]: f["mean_abs_delta_lambda"] for f in m["top_features"]}
+    assert by_name["Z_1"] == 0.0
+    assert by_name["Z_0"] > 0.0 and by_name["Z_2"] > 0.0
+
+
+def test_single_active_feature_attribution_equals_the_total_change(tmp_path):
+    """With only one feature carrying weight there is no interaction to leak into."""
+    from scripts.viz.map_diagnostics import plot_z_feature_attribution
+
+    beta_s = np.array([0.0, 0.7, 0.0])
+    beta_r = np.array([0.0, 0.4, 0.0])
+    data, sim, years, rows, cols, shape = _attribution_fixture(beta_s, beta_r)
+    m = plot_z_feature_attribution(data, sim, years, rows, cols, shape,
+                                   tmp_path / "05c.png", (2020, 2029), (1990, 1999),
+                                   top_n=3)
+    # The decomposition is exact here, so the unattributed residual must vanish.
+    assert m["mean_abs_unattributed_residual"] < 1e-12
+    assert m["mean_abs_total_delta_lambda"] > 0.0
+    assert m["top_features"][0]["name"] == "Z_1"
+
+
+def test_attribution_reports_a_nonzero_residual_when_features_interact(tmp_path):
+    """Nonlinear links mean per-feature deltas do NOT sum to the total; say so."""
+    from scripts.viz.map_diagnostics import plot_z_feature_attribution
+
+    beta_s = np.array([1.2, -1.1, 0.9])
+    beta_r = np.array([0.9, 1.0, -1.2])
+    data, sim, years, rows, cols, shape = _attribution_fixture(beta_s, beta_r)
+    m = plot_z_feature_attribution(data, sim, years, rows, cols, shape,
+                                   tmp_path / "05c.png", (2020, 2029), (1990, 1999))
+    assert m["mean_abs_unattributed_residual"] > 0.0
+    assert 0.0 < m["residual_fraction_of_total"] < 1.0
+
+
+def test_w_env_ranking_orders_by_total_magnitude_and_keeps_signs(tmp_path):
+    from scripts.viz.map_diagnostics import plot_w_env_ranking
+
+    w = np.array([[0.1, -0.1, 0.0], [-2.0, 1.0, 0.5], [0.4, 0.4, -0.4]])
+    m = plot_w_env_ranking({"latents": {"w_env": w}}, tmp_path / "05b.png")
+    ranking = m["w_env_ranking"]
+    assert [r["index"] for r in ranking] == [1, 2, 0]     # descending sum|w|
+    assert ranking[0]["beta_s"] == -2.0                   # sign preserved
+    assert (tmp_path / "05b.png").stat().st_size > 10_000

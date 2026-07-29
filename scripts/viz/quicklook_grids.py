@@ -170,6 +170,9 @@ def default_groups(dr):
         "hyde":         sorted(glob.glob(os.path.join(dr, "hyde35_grid", "*.tif"))),
         "soilgrids":    sorted(glob.glob(os.path.join(dr, "soilgrids_grid", "**", "*.tif"), recursive=True)),
         "elevation":    sorted(glob.glob(os.path.join(dr, "elevation", "**", "*.tif"), recursive=True)),
+        # Monthly scheme (climate_grid_monthly) is the live one; the legacy annual
+        # climate_grid/ is still listed so old thumbnails stay reproducible if it exists.
+        "climate_grid_monthly": sorted(glob.glob(os.path.join(dr, "climate_grid_monthly", "*.tif"))),
         "climate_grid": sorted(glob.glob(os.path.join(dr, "climate_grid", "*.tif"))),
     }
 

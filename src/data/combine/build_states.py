@@ -26,10 +26,32 @@ from src.temporal import load_timeline
 _YEAR_TIF = re.compile(r"^(?P<var>.+)_(?P<year>\d{4})_grid\.tif$")
 
 
+def load_grid_manifest(grid_dir):
+    """A grid dir's ``manifest.json`` (authoritative channel order), or None.
+
+    Only ``climate_grid_monthly`` writes one; LUH-3/HYDE dirs have none and fall
+    back to sorted-glob discovery.
+    """
+    path = os.path.join(grid_dir, "manifest.json")
+    if not os.path.exists(path):
+        return None
+    import json
+    with open(path) as fh:
+        return json.load(fh)
+
+
 def discover_variables(grid_dir, level=None):
     """Distinct ``{var}`` tokens from ``{var}_{year}_grid.tif`` files in a dir.
 
     With ``level`` set (climate q10/q50/q90), keep only vars ending ``_{level}``.
+
+    When the dir carries a ``manifest.json``, its ``variables`` list is the
+    authoritative ORDER and is validated against what is actually on disk. This
+    matters because channel identity is otherwise positional: the returned order
+    becomes the channel order in ``state_*.npz``, and the per-channel ``mu``/``sd``
+    saved in ``desk_meta.npz`` are indexed by that position. A stray or missing
+    raster would silently renumber every channel after it, applying the wrong
+    normalization to the wrong variable with no error raised anywhere.
     """
     vars_found = set()
     for f in glob.glob(os.path.join(grid_dir, "*_????_grid.tif")):
@@ -38,6 +60,22 @@ def discover_variables(grid_dir, level=None):
             vars_found.add(m.group("var"))
     if level:
         vars_found = {v for v in vars_found if v.endswith(f"_{level}")}
+
+    manifest = load_grid_manifest(grid_dir)
+    if manifest and manifest.get("variables"):
+        expected = [v for v in manifest["variables"]
+                    if not level or v.endswith(f"_{level}")]
+        missing = sorted(set(expected) - vars_found)
+        extra = sorted(vars_found - set(expected))
+        if missing or extra:
+            raise SystemExit(
+                f"{grid_dir} disagrees with its manifest.json"
+                + (f"\n  missing from disk ({len(missing)}): {missing[:8]}" if missing else "")
+                + (f"\n  not in manifest ({len(extra)}): {extra[:8]}" if extra else "")
+                + "\nChannel order is positional and feeds the saved mu/sd, so this "
+                  "is refused rather than silently reindexed. Re-run "
+                  "src.data.preprocess.climate_grid, or remove the stray rasters.")
+        return expected
     return sorted(vars_found)
 
 
@@ -88,6 +126,9 @@ def main():
                     help="processes compressing per-year npz in parallel (default ~cpu, cap 8; 1=serial)")
     ap.add_argument("--read-workers", type=int, default=None,
                     help="threads pre-reading rasters (I/O-bound; default 2*cpu, cap 32; 1=serial)")
+    ap.add_argument("--read-chunk-years", type=int, default=8,
+                    help="years pre-read per batch; caps resident rasters (default 8). "
+                         "Lower on tight memory, raise for fewer prefetch stalls")
     args = ap.parse_args()
 
     cfg = load_config()
@@ -110,6 +151,21 @@ def main():
 
     print(f"[build_states] {len(specs)} streams -> {out}; "
           f"years {first_year - warmup}..{end_year} (sample from {first_year})", flush=True)
+    # Log each stream's resolved width and channel-order endpoints. Channel count
+    # is a silent breaking change for any saved mu/sd or trained checkpoint, so it
+    # must be visible in the job log rather than only inside state_schema.json.
+    total_dim = 0
+    for spec in specs:
+        if spec["type"] == "per_variable":
+            v = spec["variables"]
+            total_dim += len(v)
+            print(f"[build_states]   {spec['name']:9s} {len(v):4d} ch  "
+                  f"[{v[0]} .. {v[-1]}]", flush=True)
+        else:
+            n = len(spec["paths"])
+            total_dim += n
+            print(f"[build_states]   {spec['name']:9s} {n:4d} ch  (static)", flush=True)
+    print(f"[build_states]   {'TOTAL':9s} {total_dim:4d} ch", flush=True)
     streams.run_states(
         specs, out_dir=out,
         start_year=first_year - warmup, end_year=end_year,
@@ -118,6 +174,7 @@ def main():
         rng=np.random.default_rng(args.seed),
         write_workers=args.write_workers,
         read_workers=args.read_workers,
+        read_chunk_years=args.read_chunk_years,
     )
     print(f"[build_states] done -> {out}/yearly_states + state_schema.json", flush=True)
 

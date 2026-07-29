@@ -33,11 +33,41 @@ Because observed climate (climr / CRU TS + GPCC) begins **January 1901**, the
 first year with a *complete* bio-year is **1902** (Aug 1901 → Jul 1902). That
 is why `first_year = 1902` even though data acquisition starts in 1901.
 
+### The 12 months stay 12 channels
+
+The bio-year window is **not** averaged into an annual value. Each base variable
+enters the model as **12 separate channels**, one per month position in the
+window — `{base}_b{kk}m{MM}`, where `b01` is `bio_year_start_month` (August) and
+`m{MM}` names the calendar month it resolves to. So `Tmax_b01m08` is August of
+T−1 and `Tmax_b12m07` is July of T.
+
+Ordering by *window position* rather than calendar month is deliberate: channel
+index then means "months since the window start", and `b01..b12` also sorts
+lexicographically into window order (which matters because sorted variable order
+*is* the channel order). Calendar ordering would put Jan–Jul, the window's late
+months, before Aug–Dec, its early ones.
+
+Until mid-2026 this pipeline instead collapsed the window to one number per base
+(mean for temperatures, total for fluxes). That erased every within-year
+contrast: two cells with equal annual means but opposite seasonality were
+identical to the model, so a seasonality- or winter-severity-driven range limit
+could not be represented at all. The collapse survives only as
+`climate_io.bioyear_aggregate` for QC; the pipeline uses
+`climate_io.bioyear_monthly`.
+
+Elevation quantiles are asymmetric to keep the channel count in hand: every base
+gets `q50`, and only `Tmin`/`Tmax`/`Tave` also get `q10`/`q90`, since within-cell
+relief moves a temperature via the lapse rate far more than it moves a flux.
+Authoritative channel order lives in `climate_grid_monthly/manifest.json`.
+
 ## Land use / soil = calendar-year-T state
 
 LUH-3 and HYDE are the **annual land state as of calendar year T** (soil is
 static). Only climate uses the bio-year window; land use is contemporaneous with
-the count year. All streams are then EMA-smoothed (τ = 10 yr) across model years.
+the count year. All streams are then EMA-smoothed across model years (τ = 2 yr,
+per `states.streams[].ema_tau`). The EMA runs **per channel along the year
+axis**, so a monthly climate channel is smoothed against the same month of
+previous years and never against its neighbouring months.
 
 ## Invasion
 

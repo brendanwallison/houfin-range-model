@@ -137,9 +137,17 @@ stage_climate_grid () { run climate_grid python -m src.data.preprocess.climate_g
 stage_states () {
     # vm-small / shared nodes can trade wall time for lower transient I/O and
     # compression memory: HOUFIN_STATES_READ_WORKERS=4 HOUFIN_STATES_WORKERS=1.
+    #
+    # MEMORY, since monthly climate: the training bag is
+    # samples_per_year x n_years x n_channels float32, accumulated as a list and
+    # then np.concatenate'd (so peak is ~2x the final array). At ~250 channels the
+    # 20k default is ~3 GB final / ~6 GB peak. Lower it via
+    # HOUFIN_STATES_SAMPLES (6000 is ample: the bag only fits per-channel mu/sd
+    # and the reconstruction term, not the spatial model).
     local args=()
     [ -n "${HOUFIN_STATES_READ_WORKERS:-}" ] && args+=(--read-workers "$HOUFIN_STATES_READ_WORKERS")
     [ -n "${HOUFIN_STATES_WORKERS:-}" ] && args+=(--write-workers "$HOUFIN_STATES_WORKERS")
+    [ -n "${HOUFIN_STATES_SAMPLES:-}" ] && args+=(--samples-per-year "$HOUFIN_STATES_SAMPLES")
     run states python -m src.data.combine.build_states "${args[@]}"
 }
 stage_ebird_cache  () { run ebird_cache  python scripts/run_encoder.py ebird-cache; }

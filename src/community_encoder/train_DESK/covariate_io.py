@@ -44,10 +44,55 @@ def stream_dims(schema):
     return [int(s["dim"]) for s in schema["streams"]]
 
 
+def assert_schema_compatible(saved, live, context=""):
+    """Verify an on-disk state layout matches the one a model was fitted against.
+
+    ``mu``/``sd`` and the encoder's input widths are positional, so a states dir
+    rebuilt with different channels is not interchangeable with a checkpoint even
+    when the total width happens to match. Compares stream names, widths, and —
+    when both sides recorded them — the variable name lists, so a *reordering*
+    that preserves ``dim`` is caught too. That case is otherwise completely
+    silent: every array shape agrees while each channel gets another channel's
+    normalization.
+    """
+    where = f" ({context})" if context else ""
+    s_names = [s["name"] for s in saved["streams"]]
+    l_names = [s["name"] for s in live["streams"]]
+    if s_names != l_names:
+        raise SystemExit(f"state schema mismatch{where}: streams {s_names} (model) "
+                         f"vs {l_names} (on disk)")
+    for ss, ls in zip(saved["streams"], live["streams"]):
+        if int(ss["dim"]) != int(ls["dim"]):
+            raise SystemExit(
+                f"state schema mismatch{where}: stream {ss['name']!r} is "
+                f"{ss['dim']} ch in the model but {ls['dim']} ch on disk. The "
+                f"saved mu/sd and encoder input width are positional — rebuild "
+                f"states and retrain rather than mixing them.")
+        sv, lv = list(ss.get("variables") or []), list(ls.get("variables") or [])
+        if sv and lv and sv != lv:
+            diff = next((i for i, (a, b) in enumerate(zip(sv, lv)) if a != b), None)
+            raise SystemExit(
+                f"state schema mismatch{where}: stream {ss['name']!r} has the same "
+                f"width but a different channel ORDER (first difference at index "
+                f"{diff}: model {sv[diff]!r} vs disk {lv[diff]!r}). Normalization "
+                f"is positional, so this would silently apply the wrong stats.")
+
+
 def load_state_stack(year, states_dir, schema):
     """Load one year's state as ``(H, W, C)`` (streams concatenated, transforms applied)."""
     z = np.load(os.path.join(states_dir, f"state_{year}.npz"))
-    bands = [_transform(z[s["name"]].astype("float32"), s) for s in schema["streams"]]
+    bands = []
+    for s in schema["streams"]:
+        arr = z[s["name"]]
+        # Cheap explicit guard: without it a width mismatch only surfaces later as
+        # a broadcast error inside apply_norm, which reads as a normalization bug
+        # rather than a stale-states one.
+        if arr.shape[-1] != int(s["dim"]):
+            raise SystemExit(
+                f"state_{year}.npz stream {s['name']!r} has {arr.shape[-1]} channels "
+                f"but the schema says {s['dim']}. The states dir and the schema are "
+                f"out of sync — rebuild states (src.data.combine.build_states).")
+        bands.append(_transform(arr.astype("float32"), s))
     return np.concatenate(bands, axis=-1)
 
 

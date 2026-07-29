@@ -41,6 +41,97 @@ def test_climate_bioyear_and_grid():
     print("climate bio-year + grid OK")
 
 
+def test_climate_month_parsing():
+    """Bases containing digits must parse — climr's degree-day names do.
+
+    The original ``[A-Za-z]``-only base class silently dropped every DD variable
+    before aggregation, despite ``_SUM_PREFIXES`` listing "dd" for them.
+    """
+    cols = ["id", "PERIOD", "DATASET"]
+    bases = ["Tmax", "PPT", "DD_0", "DD5", "DD_18", "DD18", "NFFD", "Eref", "CMD"]
+    for b in bases:
+        cols += [f"{b}_{m:02d}" for m in range(1, 13)]
+    groups = CIO.parse_month_columns(cols, warn=False)
+    assert set(groups) == set(bases), set(bases) - set(groups)
+    assert groups["DD_18"][12] == "DD_18_12"        # split at the LAST digit group
+    assert groups["DD18"][1] == "DD18_01"
+    # every DD spelling is treated as a flux (summed) by the legacy annual path
+    assert all(CIO._is_sum_base(b) for b in ("DD_0", "DD5", "DD_18", "DD18"))
+
+    # incomplete bases are dropped, but only complete ones are returned
+    partial = CIO.parse_month_columns(["id", "Tmax01", "Tmax02"], warn=False)
+    assert partial == {}
+    # a bare numeric column is not a variable
+    assert CIO.parse_month_columns(["id", "01"], warn=False) == {}
+    # two spellings of the same (base, month) must not silently overwrite
+    try:
+        CIO.parse_month_columns(["id", "Tmax01", "Tmax_01"], warn=False)
+        raise AssertionError("expected ValueError on duplicate (base, month)")
+    except ValueError:
+        pass
+    # annual/seasonal columns are nameable rather than invisible
+    assert CIO.annual_columns(cols + ["MAT"], month_groups=groups) == ["MAT"]
+    print("climate month-column parsing OK")
+
+
+def test_climate_bioyear_monthly():
+    """The monthly path keeps values verbatim and in bio-year window order."""
+    rows = []
+    for pid in (10, 20):
+        for yr in (2000, 2001):
+            r = {"id": pid, "PERIOD": yr}
+            for m in range(1, 13):
+                r[f"Tmax{m:02d}"] = yr * 100 + m
+                r[f"PPT_{m:02d}"] = float(m)
+            rows.append(r)
+    df = pd.DataFrame(rows)
+
+    names = CIO.bioyear_month_columns("Tmax", 8)
+    assert names[0] == "Tmax_b01m08" and names[-1] == "Tmax_b12m07"
+    assert len(names) == 12 and len(set(names)) == 12
+    # b01..b12 sorts lexicographically into window order -- discover_variables
+    # relies on this, so channel index == months since the window start.
+    assert names == sorted(names)
+
+    mon = CIO.bioyear_monthly(df, 2001, start_month=8)
+    assert mon.shape == (2, 24)
+    # FIDELITY: b01m08 is August of T-1; b12m07 is July of T. No aggregation.
+    assert mon.loc[10, "Tmax_b01m08"] == 2000 * 100 + 8
+    assert mon.loc[10, "Tmax_b12m07"] == 2001 * 100 + 7
+    assert mon.loc[10, "PPT_b06m01"] == 1.0        # Jan of T sits at position 6
+
+    # REGRESSION: the legacy annual value is exactly the mean/sum of these
+    # columns, proving the shared ``_bioyear_frame`` refactor changed nothing.
+    agg = CIO.bioyear_aggregate(df, 2001, start_month=8)
+    tmax_cols = CIO.bioyear_month_columns("Tmax", 8)
+    ppt_cols = CIO.bioyear_month_columns("PPT", 8)
+    assert np.allclose(agg["Tmax"], mon[tmax_cols].mean(axis=1))
+    assert np.allclose(agg["PPT"], mon[ppt_cols].sum(axis=1))
+
+    # gap-straddling year -> empty on BOTH paths, with columns still declared
+    empty = CIO.bioyear_monthly(df, 2000, start_month=8)
+    assert len(empty) == 0 and len(empty.columns) == 24
+    print("climate bio-year monthly OK")
+
+
+def test_climate_grid_levels():
+    """q10/q90 are temperature-only; q50 carries every base."""
+    from src.data.preprocess import climate_grid as CG
+
+    all_lv = ["q10", "q50", "q90"]
+    for temp in ("Tmax", "Tmin", "Tave", "tave"):
+        assert CG.levels_for_base(temp, all_lv) == all_lv
+    for flux in ("PPT", "DD_18", "NFFD", "CMD"):
+        assert CG.levels_for_base(flux, all_lv) == ["q50"]
+    # an explicit --levels subset still constrains temperatures
+    assert CG.levels_for_base("Tmax", ["q50"]) == ["q50"]
+    assert CG.levels_for_base("PPT", ["q10", "q90"]) == []
+    # the v2 token guard must accept new tokens and reject v1 annual ones
+    assert CG._V2_TOKEN.search("Tmax_b01m08_q50")
+    assert not CG._V2_TOKEN.search("Tmax_q50")
+    print("climate grid level assignment OK")
+
+
 def test_crosswalk_core():
     tax = pd.DataFrame({"SPECIES_CODE": ["houfin", "amegfi", "xxxxxx"],
                         "SCIENTIFIC_NAME": ["Haemorhous mexicanus", "Spinus tristis", "Foo bar"]})
@@ -163,6 +254,9 @@ def test_temporal_metrics():
 
 if __name__ == "__main__":
     test_climate_bioyear_and_grid()
+    test_climate_month_parsing()
+    test_climate_bioyear_monthly()
+    test_climate_grid_levels()
     test_crosswalk_core()
     test_bbs_community_aggregation()
     test_spacetime_numerics()

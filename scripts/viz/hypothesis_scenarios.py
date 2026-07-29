@@ -4,10 +4,10 @@
 Three named zones -- West (native range), East (introduced range), Great
 Plains (the historical gap between them) -- each get one of 4 categories:
 
-    0  not niche, unoccupied   (background -- everywhere else)
-    1  niche,     unoccupied
-    2  niche,     occupied
-    3  not niche, occupied     (the diagnostic category: occupied territory
+    0  unoccupied sink     (background -- everywhere else)
+    1  unoccupied source
+    2  occupied source
+    3  occupied sink       (the diagnostic category: occupied territory
                                 the niche model says shouldn't be suitable --
                                 evidence of a niche SHIFT rather than lagged
                                 colonization of already-suitable habitat)
@@ -39,7 +39,7 @@ Two additional constraints on the schematic, both enforced in `_load_zone_geoms`
     full stop, regardless of what a scenario's zone-level category would
     otherwise claim. A scenario can mark a zone niche and/or occupied, but
     only the part of that zone inside the observed range keeps that
-    category; the rest drops to category 0 (not niche, unoccupied). Since
+    category; the rest drops to category 0 (unoccupied sink). Since
     the Great Plains zone is frequently entirely outside the range in the
     pre-invasion panels (and partially outside it even post-invasion), it
     would otherwise be visually indistinguishable from the background --
@@ -81,10 +81,10 @@ import overlay_great_plains_ebird as base  # noqa: E402  (path set up above)
 OUT_DIR = os.path.join(REPO_ROOT, "docs", "img")
 
 CATEGORY_LABELS = {
-    0: "not niche, unoccupied",
-    1: "niche, unoccupied",
-    2: "niche, occupied",
-    3: "not niche, occupied",
+    0: "Unoccupied sink",
+    1: "Unoccupied source",
+    2: "Occupied source",
+    3: "Occupied sink",
 }
 
 SCENARIOS = [
@@ -182,7 +182,7 @@ def _shapely_to_path(poly):
 
 # A scenario's category claim (niche and/or occupied) only holds inside the
 # real eBird range polygon -- the most expansive record of where the species
-# is/has been. Outside it, both axes collapse to "not niche, unoccupied"
+# is/has been. Outside it, both axes collapse to "unoccupied sink"
 # (category 0): niche claims aren't validated there, and occupancy obviously
 # isn't either. Category 0 itself needs no capping (it's already the "outside
 # the range" default).
@@ -276,10 +276,10 @@ def _render_scheme(zones, box_bounds, land_geom, range_geom, style_fn, out_png, 
 # 2x2 category structure.
 def _style_bivariate(cat):
     return {
-        0: ("#e6e6e6", "none", None, "solid", 1.0),   # not niche, unoccupied: pale gray
-        1: ("#a6cee3", "none", None, "solid", 1.0),   # niche, unoccupied: pale blue
-        2: ("#08519c", "none", None, "solid", 1.0),   # niche, occupied: dark blue
-        3: ("#d7301f", "none", None, "solid", 1.0),   # not niche, occupied: dark red
+        0: ("#e6e6e6", "none", None, "solid", 1.0),   # unoccupied sink: pale gray
+        1: ("#a6cee3", "none", None, "solid", 1.0),   # unoccupied source: pale blue
+        2: ("#08519c", "none", None, "solid", 1.0),   # occupied source: dark blue
+        3: ("#d7301f", "none", None, "solid", 1.0),   # occupied sink: dark red
     }[cat]
 
 
@@ -296,7 +296,7 @@ def _style_flat(cat):
 
 # Scheme C: color + symbol mixture #1 -- color encodes niche (gray=not
 # niche, green=niche); hatching encodes occupied (none=unoccupied,
-# diagonal=occupied). The diagnostic cell (not niche, occupied) reads as
+# diagonal=occupied). The diagnostic cell (occupied sink) reads as
 # "hatching on the wrong color."
 def _style_color_hatch(cat):
     return {
@@ -309,7 +309,7 @@ def _style_color_hatch(cat):
 
 # Scheme D: color + symbol mixture #2 -- color encodes occupied (white=
 # unoccupied, purple=occupied); border style encodes niche (dashed=not
-# niche, solid=niche). The diagnostic cell (not niche, occupied) reads as
+# niche, solid=niche). The diagnostic cell (occupied sink) reads as
 # "purple fill with a dashed outline."
 def _style_color_outline(cat):
     return {
@@ -332,7 +332,7 @@ PRE_CATEGORIES = SCENARIOS[0][2]
 H0_POST_CATEGORIES = SCENARIOS[1][2]
 H1_POST_CATEGORIES = SCENARIOS[3][2]
 ARROW_ACTIONS = {
-    "H0": "invasion +\nsink -> source conversion",
+    "H0": "invasion +\nsink → source conversion",
     "H1": "invasion only",
 }
 
@@ -392,31 +392,72 @@ def _render_scheme_branching(zones, box_bounds, land_geom, range_geom, style_fn,
     h1_mid_y = (posts_y0_in + post_h_in / 2) / fig_h
 
     # Straight arrows (no arc bulge) so the H0/H1 action labels can sit at a
-    # simple, predictable offset above/below the line without the curve
-    # wandering into the text -- a curved arc's peak height isn't constant,
-    # which is what made the earlier version collide with the caption text.
+    # simple, predictable offset from the line without the curve wandering into
+    # the text -- a curved arc's peak height isn't constant, which is what made
+    # an earlier version collide with the caption text.
+    #
+    # Each arrow spans nearly the whole pre->post gap (ARROW_END_PAD is a small
+    # breathing gap, not a real inset) and aims at a point pulled back toward
+    # the pre-invasion panel's height rather than at the post panel's vertical
+    # centre: ARROW_RISE < 1 shallows the climb/descent, which both reads as a
+    # branch rather than a sharp fork and leaves the shaft long enough to hang
+    # the labels off. Geometry lives in INCHES so angles and offsets are
+    # visually true (figure fractions are skewed by the figure's aspect ratio).
+    ARROW_END_PAD = 0.05        # inches of clear space at each end
+    ARROW_RISE = 0.72           # fraction of the full panel-to-panel rise
+    start_in = (pre_right_x * fig_w + ARROW_END_PAD, pre_mid_y * fig_h)
+
+    def _end_in(y_mid_frac):
+        y_full_in = y_mid_frac * fig_h
+        y_in = start_in[1] + ARROW_RISE * (y_full_in - start_in[1])
+        return (post_left_x * fig_w - ARROW_END_PAD, y_in)
+
     arrow_kwargs = dict(transform=fig.transFigure, arrowstyle="-|>",
                          mutation_scale=22, linewidth=1.8, color="black")
-    fig.add_artist(mpatches.FancyArrowPatch(
-        (pre_right_x + 0.015, pre_mid_y), (post_left_x - 0.015, h0_mid_y), **arrow_kwargs
-    ))
-    fig.add_artist(mpatches.FancyArrowPatch(
-        (pre_right_x + 0.015, pre_mid_y), (post_left_x - 0.015, h1_mid_y), **arrow_kwargs
-    ))
-    # Each arrow gets a bold H0/H1 tag plus a smaller caption naming the
-    # actual ecological change on that branch (see ARROW_ACTIONS) -- "H0"/
-    # "H1" alone name the hypothesis, not what changed to produce it.
-    arrow_label_x = (pre_right_x + post_left_x) / 2
-    h0_line_y = (pre_mid_y + h0_mid_y) / 2
-    h1_line_y = (pre_mid_y + h1_mid_y) / 2
-    fig.text(arrow_label_x, h0_line_y + 0.075, "H0",
-              fontsize=14, fontweight="bold", ha="center", va="center")
-    fig.text(arrow_label_x, h0_line_y + 0.035, ARROW_ACTIONS["H0"],
-              fontsize=9.5, ha="center", va="center", linespacing=1.4)
-    fig.text(arrow_label_x, h1_line_y - 0.035, "H1",
-              fontsize=14, fontweight="bold", ha="center", va="center")
-    fig.text(arrow_label_x, h1_line_y - 0.075, ARROW_ACTIONS["H1"],
-              fontsize=9.5, ha="center", va="center", linespacing=1.4)
+
+    # Each arrow gets a bold H0/H1 tag plus a smaller caption naming the actual
+    # ecological change on that branch (see ARROW_ACTIONS) -- "H0"/"H1" alone
+    # name the hypothesis, not what changed to produce it.
+    #
+    # Labels sit at LABEL_T along the shaft (biased toward the arrowhead, where
+    # the two branches have separated and the eye already is) and are offset
+    # PERPENDICULAR to that shaft, not straight up/down: on a diagonal arrow a
+    # purely vertical nudge leaves the far end of a multi-line caption sitting
+    # right on the line, which is how "sink -> source conversion" ended up
+    # struck through. Tag nearer the shaft, caption further out along the same
+    # normal.
+    LABEL_T = 0.72
+    TAG_OFFSET = 0.40      # inches from the shaft to the H0/H1 tag, along the normal
+    CAPTION_GAP = 0.34     # inches from the tag to its caption, straight up/down
+
+    def _draw_branch(y_mid_frac, tag, caption, side):
+        end = _end_in(y_mid_frac)
+        fig.add_artist(mpatches.FancyArrowPatch(
+            (start_in[0] / fig_w, start_in[1] / fig_h),
+            (end[0] / fig_w, end[1] / fig_h), **arrow_kwargs
+        ))
+        dx_in, dy_in = end[0] - start_in[0], end[1] - start_in[1]
+        norm = (dx_in ** 2 + dy_in ** 2) ** 0.5
+        # Left normal (-dy, dx) points up-left for the rising H0 arrow; `side`
+        # flips it for the falling H1 arrow so both labels land on the outside.
+        nx_in, ny_in = side * -dy_in / norm, side * dx_in / norm
+        anchor_x_in = start_in[0] + LABEL_T * dx_in
+        anchor_y_in = start_in[1] + LABEL_T * dy_in
+
+        # The tag is offset along the normal; the caption then stacks STRAIGHT
+        # UP/DOWN from the tag (same x), so the two read as one centered block
+        # instead of a pair drifting apart along a diagonal. Safe now that the
+        # shallower, longer arrows leave vertical room at LABEL_T -- with the
+        # old steep shafts, a vertical stack here is what struck the caption.
+        tag_x_in = anchor_x_in + nx_in * TAG_OFFSET
+        tag_y_in = anchor_y_in + ny_in * TAG_OFFSET
+        fig.text(tag_x_in / fig_w, tag_y_in / fig_h, tag,
+                 fontsize=14, fontweight="bold", ha="center", va="center")
+        fig.text(tag_x_in / fig_w, (tag_y_in + side * CAPTION_GAP) / fig_h, caption,
+                 fontsize=9.5, ha="center", va="center", linespacing=1.4)
+
+    _draw_branch(h0_mid_y, "H0", ARROW_ACTIONS["H0"], side=1)
+    _draw_branch(h1_mid_y, "H1", ARROW_ACTIONS["H1"], side=-1)
 
     handles = []
     for cat in range(4):

@@ -35,20 +35,37 @@ def ema_alpha(tau):
     return 1.0 - np.exp(-1.0 / tau)
 
 
-@functools.lru_cache(maxsize=None)
-def _read_grid(path):
+def _read_grid_uncached(path):
     """Read a single-band grid raster as (H, W) float32 with nodata -> NaN.
 
-    Cached: nearest-year fill re-requests the SAME file across many years (every
-    warmup year maps to the earliest available; decadal products repeat within a
-    decade), so without caching one raster is re-read from Lustre dozens of times.
-    The array is returned read-only (shared cache entry) -- callers np.stack/EMA
-    into fresh arrays and never mutate it in place."""
+    The array is returned read-only (it is a shared cache entry) -- callers
+    np.stack/EMA into fresh arrays and never mutate it in place."""
     with rasterio.open(path) as src:
         arr = src.read(1, masked=True).astype(np.float32)
     out = arr.filled(np.nan)
     out.flags.writeable = False
     return out
+
+
+# Cached because nearest-year fill re-requests the SAME file across many years
+# (every warmup year maps to the earliest available; decadal products repeat
+# within a decade), so uncached one raster is re-read from Lustre dozens of times.
+#
+# BOUNDED, unlike the original ``maxsize=None``: with monthly climate the covariate
+# set is ~250 channels x ~124 years ~= 31k rasters, and an unbounded cache holding
+# every one of them for the whole run is several GB of resident memory that is
+# never reclaimed. An LRU keeps exactly the working set the nearest-year fill
+# actually reuses (a small neighbourhood of years), which is why bounding it costs
+# no re-reads in practice. ``run_states`` sizes it to the live year-chunk.
+_READ_CACHE_DEFAULT = 2048
+_read_grid = functools.lru_cache(maxsize=_READ_CACHE_DEFAULT)(_read_grid_uncached)
+
+
+def set_read_cache_size(maxsize):
+    """Resize the raster read cache (drops anything currently cached)."""
+    global _read_grid
+    _read_grid = functools.lru_cache(maxsize=int(maxsize))(_read_grid_uncached)
+    return _read_grid
 
 
 def _write_state_npz(path, arrays):
@@ -188,7 +205,8 @@ def build_streamer(spec, start_year, end_year):
 
 
 def run_states(specs, out_dir, start_year, end_year, mask, sample_start,
-               samples_per_year=20000, rng=None, write_workers=None, read_workers=None):
+               samples_per_year=20000, rng=None, write_workers=None, read_workers=None,
+               read_chunk_years=8):
     """Lockstep-iterate all streams; write per-year npz + a training-vector bag.
 
     ``mask`` is a boolean (H, W) land mask (True = sample here). Each per-year npz
@@ -219,17 +237,42 @@ def run_states(specs, out_dir, start_year, end_year, mask, sample_start,
     print(f"[states] {n_valid} valid cells; streams: {names}; "
           f"read_workers={read_workers} write_workers={write_workers}")
 
-    # Warm the read cache in parallel before the sequential EMA loop, so ~10k small
+    # Warm the read cache in parallel ahead of the sequential EMA loop, so the small
     # Lustre opens don't serialize on one core (the dominant cost otherwise).
-    all_years = range(start_year, end_year + 1)
-    prefetch = set()
-    for s in streamers:
-        if hasattr(s, "prefetch_paths"):
-            prefetch |= s.prefetch_paths(all_years)
-    if prefetch:
-        print(f"[states] pre-reading {len(prefetch)} unique rasters ({read_workers} threads)...",
-              flush=True)
-        _prewarm_reads(prefetch, read_workers)
+    #
+    # Warmed in YEAR CHUNKS rather than all at once: with monthly climate the run
+    # touches ~31k rasters, and pre-reading every one of them up front pins several
+    # GB in the read cache for the whole run before the first year is even written.
+    # A chunk is warmed just before the loop reaches it and ages out of the LRU
+    # behind it, so the resident set stays ~one chunk regardless of timeline length.
+    all_years = list(range(start_year, end_year + 1))
+    prefetchers = [s for s in streamers if hasattr(s, "prefetch_paths")]
+    chunks = [all_years[i:i + read_chunk_years]
+              for i in range(0, len(all_years), read_chunk_years)]
+    _cache_sized = [False]
+
+    def _prewarm_chunk(chunk):
+        if not prefetchers or not chunk:
+            return
+        paths = set()
+        for s in prefetchers:
+            paths |= s.prefetch_paths(chunk)
+        if not paths:
+            return
+        if not _cache_sized[0]:
+            # Hold ~2 chunks: the live one plus the tail of the previous, which is
+            # what nearest-year fill reaches back into.
+            set_read_cache_size(max(_READ_CACHE_DEFAULT, 2 * len(paths)))
+            _cache_sized[0] = True
+            print(f"[states] read cache sized for {len(paths)} rasters/chunk "
+                  f"({read_chunk_years}-year chunks)", flush=True)
+        print(f"[states] pre-reading {len(paths)} rasters for years "
+              f"{chunk[0]}..{chunk[-1]} ({read_workers} threads)...", flush=True)
+        _prewarm_reads(paths, read_workers)
+
+    if chunks:
+        _prewarm_chunk(chunks[0])
+    next_chunk = 1
 
     # fork: no open rasterio handles or threads in the parent at pool creation
     # (reads use `with rasterio.open`), and fork avoids re-importing __main__.
@@ -262,6 +305,16 @@ def run_states(specs, out_dir, start_year, end_year, mask, sample_start,
             years = {y for y, _ in tick}
             assert len(years) == 1, f"stream desync: {years}"
             year = years.pop()
+
+            # Warm the NEXT chunk while finishing the current one. This has to run
+            # a year ahead: zip() computes the next tick (and so reads its rasters)
+            # before the loop body runs, so warming on arrival would always be one
+            # year too late. Placed before the `continue` below so warmup years,
+            # which produce no state, still advance the prefetch.
+            if next_chunk < len(chunks) and year >= chunks[next_chunk][0] - 1:
+                _prewarm_chunk(chunks[next_chunk])
+                next_chunk += 1
+
             states = {name: s for name, (_, s) in zip(names, tick)}
             if any(s is None for s in states.values()) or year < sample_start:
                 continue

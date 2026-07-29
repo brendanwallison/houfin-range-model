@@ -174,6 +174,12 @@ def build_spacetime_cube(config: Optional[Union[Dict[str, Any], str, os.PathLike
     if not year_files:
         raise FileNotFoundError(f"No state files found in {hist_dir}")
 
+    # The schema above came from desk_meta.npz (what the model was TRAINED on); the
+    # states about to be encoded are whatever is on disk now. mu/sd are positional,
+    # so a states rebuild with different channels must fail loudly here.
+    cio.assert_schema_compatible(schema, cio.load_schema(hist_dir),
+                                 context="build_final_z_cube")
+
     # Pass 1: forward every year (temporal order) to per-year raw Z + valid mask.
     years, z_raws, valids = [], [], []
     for fpath in tqdm(year_files, desc="Encoding Years"):

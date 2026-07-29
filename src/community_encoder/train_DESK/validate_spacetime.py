@@ -324,6 +324,10 @@ def encode_points(config, point_index):
     from . import covariate_io as cio
     model, mu, sd, schema, latent = _load_model(config)
     states_dir = os.path.join(config["paths"]["hist_dir"], "yearly_states")
+    # The model's mu/sd and input widths are positional; refuse to encode against a
+    # states dir that was rebuilt with a different channel set or order.
+    cio.assert_schema_compatible(schema, cio.load_schema(states_dir),
+                                 context="validate_spacetime")
     rows, cols, years = point_index[:, 0], point_index[:, 1], point_index[:, 2]
     Z = np.full((len(point_index), latent), np.nan, dtype="float32")
     # Grid-native: encode each year's WHOLE grid (so the spatial residual conv sees

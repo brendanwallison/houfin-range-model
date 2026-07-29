@@ -7,7 +7,7 @@
 # esk->desk->cube->validate. CPU-only but heavier than a login node should carry
 # (build_states reads ~130 years of grids and compresses one npz per year in a fork
 # pool), so it runs on a compute node. Depends on 01_preprocess + 02_climate outputs
-# (climate_grid/, luh3_grid/, hyde35_grid/, soilgrids/, elevation/) and the raw BBS
+# (climate_grid_monthly/, luh3_grid/, hyde35_grid/, soilgrids/, elevation/) and the raw BBS
 # release. Submit via submit_states.sh (injects -A).
 #----------------------------------------------------------------------
 #SBATCH -J houfin_states

@@ -207,7 +207,8 @@ QUEUE=normal TIME=12:00:00 bash scripts/tacc/submit_climate.sh
 ```
 
 `02_climate.slurm` runs the offline `climr` downscale (reads the warm cache), then
-rasterizes to per-year bio-year grids (`climate_grid`). `submit_climate.sh` (and the
+rasterizes to per-year bio-year grids (`climate_grid_monthly`, 12 monthly channels per
+base variable — see [TEMPORAL.md](TEMPORAL.md)). `submit_climate.sh` (and the
 `00_preprocess_all` one-shot) **refuse to queue on a cold cache**
 (`check_climr_cache.sh`) and point you at `warm_climr.sh`, so a doomed offline job is
 never submitted; the stage also re-checks in-job before doing any work. Notes:
@@ -268,6 +269,64 @@ present, just build the new artifacts:
 STAGES="climate_grid states ebird_cache bbs amplitude" \
   bash scripts/tacc/submit_preprocess_all.sh
 ```
+
+### Migrating to monthly climate channels (scheme `monthly_bioyear_v2`)
+
+Climate now enters the model as 12 channels per base variable instead of one annual
+mean/total, so the covariate width changes and every artifact keyed to channel
+position is invalidated: the per-channel `mu`/`sd` in `desk_meta.npz`, the trained
+`env_model_semisup.pth` input layer, and `history_vectors.npy`. **ESK is unaffected**
+— it builds the target Z from community data and never reads covariate states — so
+only `desk → cube → validate` need re-running, not the whole encoder chain.
+
+The monthly CSVs on disk are unchanged, so **nothing needs re-downloading or
+re-downscaling**; only rasterization and everything downstream of it re-runs.
+
+```bash
+# 1. Rasterize monthly channels into the NEW dir (climate_grid_monthly).
+#    Reads $HOUFIN_DATA/climate/climate_{q10,q50,q90}.csv -- already on disk.
+STAGES=climate_grid bash scripts/tacc/submit_preprocess_all.sh
+
+#    Confirm the base list now includes the degree-day variables (the old regex
+#    silently dropped them) and note the channel count:
+grep -E "base vars|channels" houfin_preall.o<jobid>
+cat $HOUFIN_DATA/climate_grid_monthly/manifest.json | head -20
+
+# 2. Rebuild states into a FRESH hist_dir -- stale state_*.npz have the old width
+#    and build_final_z_cube globs the whole directory.
+mv $HOUFIN_PROCESSED/encoder/states $HOUFIN_PROCESSED/encoder/states_annual_v1
+STAGES=states bash scripts/tacc/submit_states.sh
+#    Log now prints the resolved width per stream; check TOTAL against step 1.
+grep "build_states" houfin_states.o<jobid>
+
+# 3. Retrain DESK, then rebuild the cube and validate. Do NOT reuse the old
+#    desk_meta.npz -- its mu/sd are positional and now meaningless.
+mv $HOUFIN_PROCESSED/encoder/desk $HOUFIN_PROCESSED/encoder/desk_annual_v1
+STAGES=desk TIME=04:00:00 bash scripts/tacc/submit_encoder.sh
+STAGES="cube validate" bash scripts/tacc/submit_encoder.sh
+```
+
+Two knobs will likely need lowering at the new width — both are memory, not
+correctness:
+
+- **`desk.batch_years`** (`esk_desk_config.json`). The trainer holds the whole
+  warmup→label year window on device; that grows with channel count, and the config's
+  own note says "8 fits a 40GB A100; 32 OOMs". If DESK OOMs, halve it first.
+- **`HOUFIN_STATES_SAMPLES`** for step 2. The training bag is
+  `samples_per_year × n_years × n_channels` float32, accumulated as a list then
+  concatenated (~2× peak). At ~250 channels the 20k default is ~3 GB final / ~6 GB
+  peak; `HOUFIN_STATES_SAMPLES=6000` is ample, since the bag only fits per-channel
+  `mu`/`sd` and the reconstruction term.
+
+Guards that will stop you rather than let a mismatch through: `climate_grid` refuses
+to write into a directory holding old annual rasters or one whose `manifest.json`
+records a different bio-year phase; `build_states` refuses a grid dir that disagrees
+with its manifest; and `cube`/`validate` refuse states whose schema does not match
+the trained checkpoint (including a same-width channel *reorder*, which would
+otherwise silently misnormalize every channel).
+
+Keep `states_annual_v1` / `desk_annual_v1` until the new run validates — they are the
+only way back to the annual-climate results for comparison.
 
 For `bbs_mode=off` (eBird-only, no BBS) drop `bbs amplitude`. **This one-shot
 assumes the climr cache is already warm** (§3a) — the `climate` stage is offline and

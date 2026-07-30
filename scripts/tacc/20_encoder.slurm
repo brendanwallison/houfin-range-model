@@ -62,7 +62,10 @@ if [ "$_needs_gpu" = 1 ]; then
     python -c "import torch; print('cuda', torch.cuda.is_available()); assert torch.cuda.is_available(), 'no PyTorch CUDA device'" || \
         { echo "ESK/DESK need a GPU but none is visible — use a GPU queue (gpu-a100-small)"; exit 1; }
     start_gpu_monitor "$SLURM_SUBMIT_DIR/gpu_encoder_${SLURM_JOB_ID}.csv" 30
-    trap stop_gpu_monitor EXIT
+    # TERM/INT as well as EXIT: an untrapped SIGTERM (which is how SLURM ends a job that hits its
+    # wall clock) kills the shell via the default disposition WITHOUT running the EXIT trap, so
+    # the monitor was only ever shut down cleanly on a normal exit.
+    trap stop_gpu_monitor EXIT TERM INT
 else
     echo "[encoder] STAGES='$STAGES' are CPU-capable; not requiring (or touching) a CUDA device."
 fi

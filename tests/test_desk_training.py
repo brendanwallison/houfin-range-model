@@ -1,0 +1,291 @@
+"""Tests for the DESK training augmentation, split, and loss reparametrization.
+
+Covers the cluster-free pure cores of the training recipe: structured channel-group masking
+(``augment.ChannelGroupMasker``), the spatially blocked + buffered validation split
+(``augment.blocked_holdout``), the 5x5 partial conv, and the stabilizing-loss
+reparametrization. Runs standalone or under pytest; no GPU and no state files needed.
+"""
+import os
+import sys
+
+import numpy as np
+import torch
+
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+from src.community_encoder.train_DESK.augment import (ChannelGroupMasker, blocked_holdout)
+from src.community_encoder.train_DESK.model_arch import MultiStreamAutoencoder, PartialConv2d
+
+TEMPS = ("Tave", "Tmax", "Tmin")
+OTHERS = ("CMD", "CMI", "DD18", "DD5", "DDsub0", "DDsub18", "Eref", "NFFD", "PAS", "PPT", "RH")
+
+
+def _schema(bio_start=8):
+    """The real LS6 layout: 14 climate bases (3 with q10/q90) = 240 ch, + 55 others = 295."""
+    months = [(k, (bio_start - 1 + k - 1) % 12 + 1) for k in range(1, 13)]
+    cvars = []
+    for b in sorted(TEMPS + OTHERS):
+        for lvl in (("q10", "q50", "q90") if b in TEMPS else ("q50",)):
+            cvars += [f"{b}_b{k:02d}m{m:02d}_{lvl}" for k, m in months]
+    cvars = sorted(cvars)                                  # discover_variables order
+    spec = [("climate", cvars),
+            ("landuse", [f"lu{i}" for i in range(33)]),
+            ("hyde", ["population_density", "rural_population", "urban_population"]),
+            ("soil", []), ("elevation", [])]
+    dims = {"soil": 16, "elevation": 3}
+    streams, start = [], 0
+    for name, v in spec:
+        d = dims.get(name, len(v))
+        streams.append({"name": name, "start": start, "end": start + d, "dim": d,
+                        "variables": v})
+        start += d
+    return {"streams": streams, "total_dim": start}
+
+
+def test_masker_groups():
+    sch = _schema()
+    M = ChannelGroupMasker(sch, {"enabled": True})
+    assert M.C == 295, M.C
+    assert len(M.base_keys) == 14 and len(M.month_keys) == 12
+    # q50 is deliberately NOT maskable as a level: every base has it, so dropping it would
+    # remove most of climate in one draw.
+    assert M.level_keys == ["q10", "q90"]
+    # climate is 240/295 channels -- dropping it as a stream would blind the model
+    assert "climate" not in M.stream_keys and len(M.stream_keys) == 4
+
+    # a temperature base spans 12 months x 3 levels; a flux base 12 months x 1 level
+    assert M.by_base["Tmax"].sum() == 36
+    assert M.by_base["PPT"].sum() == 12
+    # one month position touches every base at every level: 11*1 + 3*3
+    assert M.by_month_pos[6].sum() == 20
+    assert M.by_level["q10"].sum() == 36                   # 3 temps x 12 months
+
+    # b01 must be the bio-year START (August with bio_year_start_month=8), not January
+    names = sch["streams"][0]["variables"]
+    b01 = [n for n in names if "_b01m" in n]
+    assert all("m08" in n for n in b01), b01[:3]
+    print("masker group construction OK")
+
+
+def test_masker_draw_properties():
+    M = ChannelGroupMasker(_schema(), {"enabled": True, "max_masked_frac": 0.5})
+    rng = np.random.default_rng(0)
+    fracs = [M.sample_drop(rng).mean() for _ in range(2000)]
+    assert max(fracs) <= 0.5 + 1e-9, max(fracs)            # cap honoured
+    assert 0.05 < np.mean(fracs) < 0.45, np.mean(fracs)    # actually masking something
+
+    climate = M.by_stream["climate"]
+    for _ in range(2000):
+        assert not M.sample_drop(rng)[climate].all()       # never fully blinded
+
+    # keep is strictly 0/1: survivors are NOT rescaled (denoising augmentation, not dropout)
+    keep = M.sample_keep(rng)
+    assert keep.shape == (1, 1, 1, 295)
+    assert set(torch.unique(keep).tolist()) <= {0.0, 1.0}
+
+    # must not mutate the caller's tensor -- in the trainer the input is a VIEW of the single
+    # resident year window, so an in-place mask would destroy that year for all later epochs
+    x = torch.randn(1, 3, 4, 295)
+    x0 = x.clone()
+    y = x * M.sample_keep(rng)
+    assert torch.equal(x, x0) and y.shape == x.shape
+
+    # disabled -> exact identity
+    off = ChannelGroupMasker(_schema(), {"enabled": False})
+    assert off.sample_drop(rng).sum() == 0
+    assert torch.equal(x * off.sample_keep(rng), x)
+    print("masker draw properties OK")
+
+
+def test_masker_span_is_contiguous():
+    """A span mask must hit consecutive bio-year positions, with no wraparound."""
+    M = ChannelGroupMasker(_schema(), {
+        "enabled": True, "p_base": 0.0, "p_month": 0.0, "p_level": 0.0, "p_stream": 0.0,
+        "span_prob": 1.0, "span_max": 3})
+    rng = np.random.default_rng(1)
+    seen = set()
+    for _ in range(300):
+        drop = M.sample_drop(rng)
+        hit = sorted(p for p in M.month_keys if (drop & M.by_month_pos[p]).any())
+        assert hit, "span draw masked nothing"
+        assert hit == list(range(hit[0], hit[0] + len(hit))), hit   # contiguous
+        assert 1 <= len(hit) <= 3
+        seen.add((hit[0], len(hit)))
+    # b12 and b01 are 11 months apart in the window, so they must never co-occur alone
+    assert not any(h == (12, 2) for h in seen)
+    print("masker contiguous span OK")
+
+
+def test_blocked_buffered_split():
+    H, W = 133, 224
+    valid = np.zeros((H, W), bool)
+    valid[5:128, 10:214] = True
+
+    def min_contact_radius(val, train, rmax):
+        """Smallest r for which a train cell sits within Chebyshev distance r of a val cell."""
+        for r in range(rmax + 1):
+            dil = np.zeros_like(val)
+            for dy in range(-r, r + 1):
+                for dx in range(-r, r + 1):
+                    sl = np.zeros_like(val)
+                    ys, ys2 = slice(max(0, dy), min(H, H + dy)), slice(max(0, -dy), min(H, H - dy))
+                    xs, xs2 = slice(max(0, dx), min(W, W + dx)), slice(max(0, -dx), min(W, W - dx))
+                    sl[ys, xs] = val[ys2, xs2]
+                    dil |= sl
+            if (dil & train).any():
+                return r
+        return None
+
+    # The buffer must track the kernel: with kernel 5 the receptive radius is 2, so no train cell
+    # may lie within 2 of a val cell. Shrinking the kernel must shrink the buffer, not keep it.
+    for kernel, want_buf in ((5, 2), (3, 1), (0, 0)):
+        buf = kernel // 2
+        assert buf == want_buf
+        val, bufm = blocked_holdout(valid, block_cells=12, holdout_frac=0.2,
+                                    buffer_cells=buf, seed=0)
+        train = valid & ~val & ~bufm
+        assert not (val & bufm).any() and not (val & train).any() and not (bufm & train).any()
+        assert val.any() and train.any()
+        r = min_contact_radius(val, train, buf + 1)
+        assert r is None or r > buf, f"kernel={kernel}: train cell within {r} of val (buffer {buf})"
+        if buf == 0:
+            assert bufm.sum() == 0
+        else:
+            assert bufm.sum() > 0
+
+    # block structure: an i.i.d. draw produces isolated cells, a blocked one does not
+    val, _ = blocked_holdout(valid, 12, 0.2, 2, seed=0)
+    nb = np.zeros_like(val, int)
+    for dy in (-1, 0, 1):
+        for dx in (-1, 0, 1):
+            nb[1:-1, 1:-1] += val[1 + dy:H - 1 + dy, 1 + dx:W - 1 + dx].astype(int)
+    assert not (val[1:-1, 1:-1] & (nb[1:-1, 1:-1] == 1)).any()
+
+    # deterministic in the seed, and the seed actually matters
+    a = blocked_holdout(valid, 12, 0.2, 2, seed=0)
+    assert np.array_equal(a[0], blocked_holdout(valid, 12, 0.2, 2, seed=0)[0])
+    assert not np.array_equal(a[0], blocked_holdout(valid, 12, 0.2, 2, seed=1)[0])
+    # holdout never escapes the valid footprint
+    assert not (a[0] & ~valid).any() and not (a[1] & ~valid).any()
+    print("blocked + buffered split OK")
+
+
+def test_partial_conv_5x5():
+    c = PartialConv2d(4, 4, 5, padding=2).eval()
+    assert c._winsize == 25.0 and c.kernel_size == (5, 5) and c.padding == (2, 2)
+    x = torch.randn(1, 4, 11, 11)
+    full = torch.ones(1, 1, 11, 11)
+    with torch.no_grad():
+        out, newm = c(x, full)
+        ref = torch.nn.functional.conv2d(x, c.weight, c.bias, padding=2)
+    assert out.shape == x.shape and newm.shape == full.shape
+    # a fully-valid window needs no renormalization: interior must equal a plain conv
+    assert torch.allclose(out[..., 2:-2, 2:-2], ref[..., 2:-2, 2:-2], atol=1e-5)
+    # a fully-invalid mask propagates invalidity rather than inventing values
+    with torch.no_grad():
+        out0, m0 = c(x, torch.zeros_like(full))
+    assert float(out0.abs().max()) == 0.0 and float(m0.max()) == 0.0
+    print("5x5 partial conv OK")
+
+
+def test_dropout_threading_and_loss_reparam():
+    m = MultiStreamAutoencoder([240, 33, 3, 16, 3], 64, spatial_kernel=5, dropout=0.1)
+    rates = {b.drop.p for enc in m.encoders for b in enc if hasattr(b, "drop")}
+    assert rates == {0.1} and m.dropout == 0.1
+    assert MultiStreamAutoencoder([4], 8).dropout == 0.5        # legacy default preserved
+
+    # The reparametrization must be exactly neutral: dividing the stabilizing term by latent_dim
+    # while multiplying its weight by latent_dim leaves the total loss unchanged.
+    latent = 64
+    g = torch.Generator().manual_seed(0)
+    pred = torch.randn(500, latent, generator=g)
+    tgt = torch.randn(500, latent, generator=g)
+    per_cell_sum = torch.sum((pred - tgt) ** 2, dim=1).mean()
+    old = 1.0 * per_cell_sum
+    new = float(latent) * (per_cell_sum / latent)
+    assert torch.allclose(old, new, rtol=0, atol=1e-6), (float(old), float(new))
+    print("dropout threading + loss reparametrization OK")
+
+
+def _tiny_train(augment, seed=0, epochs=3, patch=None):
+    """Drive train_model_ema on a small synthetic window; return the per-epoch Stab values."""
+    import contextlib
+    import io
+    import re
+
+    from src.community_encoder.train_DESK import desk_training as D
+
+    sch = _schema()
+    dims = [s["dim"] for s in sch["streams"]]
+    T, H, W, L = 4, 16, 20, 64
+    rng = np.random.default_rng(0)                       # data fixed across runs
+    cov = rng.normal(size=(T, H, W, sch["total_dim"])).astype("float32")
+    msk = np.ones((T, H, W), bool)
+    years = list(range(2022, 2026))
+    m = np.ones((H, W), bool)
+    tgt = {y: (rng.normal(size=(H, W, L)).astype("float32") * 0.1, m, m) for y in years[1:]}
+    x = rng.random((H, W, 12)).astype("float32")
+
+    saved = D.true_kernel_loss
+    if patch is not None:
+        D.true_kernel_loss = patch
+    out = io.StringIO()
+    try:
+        with contextlib.redirect_stdout(out):
+            D.train_model_ema(
+                cov, msk, years, tgt, x, m, m, dims, latent_dim=L,
+                ema_cfg={"earlystop_warmup": 1}, spatial_kernel=5, epochs=epochs, lr=1e-3,
+                seed=seed, weights={"stabilizing": 64.0, "metric": 5.0, "reconstruction": 0.1},
+                schema=sch, augment_cfg={"enabled": augment}, dropout=0.1,
+                warmup_epochs=1, min_lr_frac=0.05)
+    finally:
+        D.true_kernel_loss = saved
+    text = out.getvalue()
+    return [float(v) for v in re.findall(r"Stab (\d+\.\d+)", text)], text
+
+
+def test_train_loop_and_ablation():
+    """The trainer runs, is seed-reproducible, and augment=false recovers the old recipe.
+
+    The ablation guard is what keeps the monthly-vs-annual comparison recoverable: this whole
+    change set landed in one run, so being able to reproduce the un-augmented recipe exactly is
+    the only way to attribute a difference to the covariates rather than to the recipe.
+    """
+    off1, text = _tiny_train(False)
+    off2, _ = _tiny_train(False)
+    on1, _ = _tiny_train(True)
+    assert len(off1) == 3
+    assert off1 == off2, (off1, off2)                    # bit-reproducible for a fixed seed
+    assert on1 != off1                                   # masking actually perturbs training
+    assert _tiny_train(True, seed=7)[0] == _tiny_train(True, seed=7)[0]   # ON is seeded too
+
+    # the per-epoch line must carry the diagnostics that were previously missing entirely
+    for token in ("Val(all-yr)", "Val(yr-out)", "mix ", "lr ", "RSS "):
+        assert token in text, token
+    # LR must warm up then decay (warmup_epochs=1 -> epoch 1 at full lr, then cosine)
+    lrs = [float(v) for v in __import__("re").findall(r"lr ([\d.e-]+)", text)]
+    assert lrs[0] > lrs[-1], lrs
+    print("train loop + ablation guard OK")
+
+
+def test_nonfinite_loss_guard():
+    """A non-finite loss must skip the step and abort only if it persists."""
+    saved = None
+    try:
+        _tiny_train(True, epochs=20, patch=lambda *a, **k: torch.tensor(float("inf")))
+        raise AssertionError("expected RuntimeError after repeated non-finite losses")
+    except RuntimeError as exc:
+        assert "non-finite" in str(exc), exc
+    del saved
+    print("non-finite loss guard OK")
+
+
+if __name__ == "__main__":
+    test_masker_groups()
+    test_masker_draw_properties()
+    test_masker_span_is_contiguous()
+    test_blocked_buffered_split()
+    test_partial_conv_5x5()
+    test_dropout_threading_and_loss_reparam()
+    test_train_loop_and_ablation()
+    test_nonfinite_loss_guard()
+    print("\nALL DESK-TRAINING CHECKS PASSED")

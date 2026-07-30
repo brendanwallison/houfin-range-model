@@ -87,15 +87,24 @@ class MultiStreamAutoencoder(nn.Module):
     sum is the channel count ``C`` of the input grid, split internally in ``dims``
     order. ``spatial_kernel`` > 0 enables the residual masked conv (0 disables it,
     recovering the pure point-wise model).
+
+    ``dropout`` is the rate inside every ``BMLPBlock`` (the only stochastic
+    regularizer in the network). It is a constructor argument rather than the block
+    default because the right value depends on what other regularization is active:
+    with input channel-group masking (``augment.py``) supplying most of the noise, a
+    much lower rate is appropriate than without it.
     """
 
-    def __init__(self, dims, latent_dim, spatial_kernel=3):
+    def __init__(self, dims, latent_dim, spatial_kernel=3, dropout=0.5):
         super().__init__()
         self.dims = list(dims)
+        self.dropout = float(dropout)
         n = len(self.dims)
         h = max(128, latent_dim * 4)
         self.encoders = nn.ModuleList([
-            nn.Sequential(nn.Linear(d, h), nn.GELU(), BMLPBlock(h), BMLPBlock(h))
+            nn.Sequential(nn.Linear(d, h), nn.GELU(),
+                          BMLPBlock(h, dropout=self.dropout),
+                          BMLPBlock(h, dropout=self.dropout))
             for d in self.dims
         ])
         self.mixer = nn.Sequential(
@@ -149,5 +158,5 @@ class MultiStreamAutoencoder(nn.Module):
 class MultiInputAutoencoder(MultiStreamAutoencoder):
     """Backward-compatible 2-stream (prism, bui) constructor shim (no live caller)."""
 
-    def __init__(self, prism_dim, bui_dim, latent_dim, spatial_kernel=3):
-        super().__init__([prism_dim, bui_dim], latent_dim, spatial_kernel)
+    def __init__(self, prism_dim, bui_dim, latent_dim, spatial_kernel=3, dropout=0.5):
+        super().__init__([prism_dim, bui_dim], latent_dim, spatial_kernel, dropout)

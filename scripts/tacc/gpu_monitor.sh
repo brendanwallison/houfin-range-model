@@ -23,8 +23,20 @@ gpu_preflight () {
 start_gpu_monitor () {
     GPU_MONITOR_LOG="${1:?monitor log path required}"
     local interval="${2:-30}"
+    # Fail LOUDLY rather than writing a header-only CSV for the whole job. The existing
+    # nvidia-smi check lives in gpu_preflight, which nothing calls (and is JAX-based, so it is
+    # the wrong preflight for the torch encoder anyway).
+    if ! command -v nvidia-smi >/dev/null 2>&1; then
+        echo "[gpu] WARNING: no nvidia-smi on $(hostname) -- telemetry DISABLED (not a GPU node?)" >&2
+        GPU_MONITOR_PID=""
+        export GPU_MONITOR_LOG GPU_MONITOR_PID
+        return 0
+    fi
+    # `user_all_rss_kib` is the sum over EVERY process this user has on the node, not the
+    # trainer's -- named honestly so nobody reads it as the job's footprint. The trainer logs its
+    # own RSS and torch's peak VRAM per epoch (desk_training), which is the figure to trust.
     {
-        echo "timestamp,gpu_index,util_gpu_pct,util_mem_pct,vram_used_mib,vram_total_mib,temp_c,power_w,user_process_rss_kib,host_mem_available_kib,host_swap_free_kib"
+        echo "timestamp,gpu_index,util_gpu_pct,util_mem_pct,vram_used_mib,vram_total_mib,temp_c,power_w,user_all_rss_kib,host_mem_available_kib,host_swap_free_kib"
         while true; do
             local stamp user_rss host_avail swap_free
             stamp="$(date --iso-8601=seconds)"
@@ -39,7 +51,9 @@ start_gpu_monitor () {
                 done
             sleep "$interval"
         done
-    } > "$GPU_MONITOR_LOG" 2>&1 &
+    # stdout -> the CSV, stderr -> the JOB LOG. Previously `2>&1` folded stderr into the CSV, so
+    # a mid-run nvidia-smi failure was buried among the data rows instead of being visible.
+    } > "$GPU_MONITOR_LOG" &
     GPU_MONITOR_PID=$!
     export GPU_MONITOR_LOG GPU_MONITOR_PID
     echo "[gpu] telemetry every ${interval}s -> $GPU_MONITOR_LOG (pid $GPU_MONITOR_PID)"

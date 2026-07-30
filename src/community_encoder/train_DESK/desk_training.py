@@ -19,14 +19,19 @@ N-stream: reads ``state_{year}.npz`` (climate/land-use/HYDE/soil/elevation) via
 ``state_schema.json`` (``covariate_io``). The ``enrich`` mode's multi-year
 supervised points are added in ``spacetime_enrich``.
 """
+import contextlib
 import glob
 import json
 import os
+import resource
+import sys
+import time
 
 import numpy as np
 import torch
 import torch.nn.functional as F
 
+from .augment import ChannelGroupMasker, blocked_holdout
 from .config_utils import load_config
 from . import covariate_io as cio
 from .ebird_cache import load_ebird_stack
@@ -97,7 +102,8 @@ def train_model_semisup(covn2023, mask_cov, mask_sup_tr, mask_sup_val, z_ref, x_
                         hist_grids, hist_masks, stream_dims, latent_dim, spatial_kernel=3,
                         epochs=100, lr=1e-3, batch_years=8, weights=None, seed=0,
                         enrich=None, ebird_frac=0.8, direction=None, dir_weights=None,
-                        uniform_stab=False, patience=50, min_delta=1e-4):
+                        uniform_stab=False, patience=50, min_delta=1e-4, dropout=0.5,
+                        weight_decay=0.0):
     """Train the N-stream grid DESK autoencoder semi-supervised; return the fitted model.
 
     ``enrich`` (or None): tuple ``(pt_covn, pt_covmask, pt_zobs, pt_tgt)`` of per-historical-
@@ -114,9 +120,14 @@ def train_model_semisup(covn2023, mask_cov, mask_sup_tr, mask_sup_val, z_ref, x_
     """
     device = "cuda" if torch.cuda.is_available() else "cpu"
     weights = weights or {"stabilizing": 1.0, "metric": 5.0, "reconstruction": 0.1}
+    # This path had no seeding at all: model init, dropout masks, and the metric loss's pair
+    # sampling all drew from the unseeded global RNG, so two "identical" runs differed.
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
 
-    model = MultiStreamAutoencoder(stream_dims, latent_dim, spatial_kernel).to(device)
-    opt = torch.optim.Adam(model.parameters(), lr=lr)
+    model = MultiStreamAutoencoder(stream_dims, latent_dim, spatial_kernel, dropout).to(device)
+    opt = torch.optim.AdamW(_param_groups([model], weight_decay), lr=lr)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(opt, mode="min", factor=0.5, patience=5)
 
     # Supervised (labelled) year grid: forwarded every step (small; dropout varies it).
@@ -437,9 +448,63 @@ def _load_year_window(states_dir, schema, mu, sd, years):
     return np.stack(covn), np.stack(masks), kept
 
 
+# ru_maxrss is KILOBYTES on Linux but BYTES on macOS, so a single divisor prints a plausible-
+# looking number that is wrong by 1024x on one of them. Resolve the unit once, here.
+_RSS_TO_GIB = 1024 ** 3 if sys.platform == "darwin" else 1024 ** 2
+
+
+def _max_rss_gib():
+    return resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / _RSS_TO_GIB
+
+
+def _param_groups(modules, weight_decay):
+    """Split parameters into decay / no-decay groups.
+
+    Weight decay on LayerNorm gains, biases, and standalone scalars (``gamma``, the EMA's
+    ``theta``) shrinks calibration parameters toward zero for no benefit -- ``gamma`` gates the
+    spatial residual and ``theta`` sets the learned half-life, so decaying them is an implicit
+    prior nobody asked for. Standard transformer practice, applied here for the same reason.
+    """
+    decay, no_decay = [], []
+    for mod in modules:
+        for name, p in mod.named_parameters():
+            if not p.requires_grad:
+                continue
+            if p.ndim <= 1 or name.endswith("bias") or "ln" in name or name in ("gamma", "theta"):
+                no_decay.append(p)
+            else:
+                decay.append(p)
+    return [{"params": decay, "weight_decay": float(weight_decay)},
+            {"params": no_decay, "weight_decay": 0.0}]
+
+
+def _warmup_cosine(epochs, warmup, min_frac):
+    """LR multiplier: linear warmup then cosine decay to ``min_frac``.
+
+    The EMA trainer takes ONE optimizer step per epoch (the sequential year scan forces a
+    full-window step), so with ``epochs=500`` the whole run is <=500 updates and the schedule is
+    naturally expressed in epochs. Replaces ReduceLROnPlateau, whose patience of 5 against an
+    early-stop patience of 50 could halve the LR ~9 times chasing noise in the val metric.
+    """
+    warmup = max(0, int(warmup))
+    total = max(1, int(epochs))
+
+    def fn(ep):                      # ep is 0-based step count
+        if warmup and ep < warmup:
+            return (ep + 1) / warmup
+        prog = (ep - warmup) / max(1, total - warmup)
+        prog = min(1.0, max(0.0, prog))
+        return min_frac + (1.0 - min_frac) * 0.5 * (1.0 + np.cos(np.pi * prog))
+
+    return fn
+
+
 def train_model_ema(cov_window, mask_window, window_years, targets, x2023, m2023_tr, m2023_val,
                     stream_dims, latent_dim, ema_cfg, spatial_kernel=3, epochs=500, lr=1e-3,
-                    weights=None, seed=0, patience=50, min_delta=1e-4):
+                    weights=None, seed=0, patience=50, min_delta=1e-4,
+                    schema=None, augment_cfg=None, dropout=0.5, weight_decay=0.0,
+                    warmup_epochs=0, min_lr_frac=1.0, amp=False, eval_every=1,
+                    holdout_year_targets=None):
     """Train DESK with a learned output-EMA (bbs_mode=trend).
 
     Forwards the ordered year window (per-year gradient checkpointing), applies the
@@ -447,24 +512,47 @@ def train_model_ema(cov_window, mask_window, window_years, targets, x2023, m2023
     trend targets (uniform over all supervised (cell,year), train = non-held-out cells).
     Plus the 2023 Ruzicka metric loss and an autoencoder reconstruction over the window.
     Returns ``(model, ema)``.
+
+    With ``augment_cfg`` enabled this becomes a **denoising** autoencoder: each year's forward
+    sees a channel-group-masked input while the reconstruction target stays the clean grid, so
+    the encoder must infer masked variables/months from the rest rather than copying them.
     """
     from torch.utils.checkpoint import checkpoint
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    weights = weights or {"stabilizing": 1.0, "metric": 5.0, "reconstruction": 0.1}
+    weights = weights or {"stabilizing": 64.0, "metric": 5.0, "reconstruction": 0.1}
+    # Seed every RNG the run touches, not just torch's CPU generator: model init, dropout masks,
+    # the metric loss's pair sampling, and the augmentation draws must all be reproducible for a
+    # config change to be attributable to the config rather than to the seed.
     torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
+    np.random.seed(seed)
+    aug_rng = np.random.default_rng(seed)
 
-    model = MultiStreamAutoencoder(stream_dims, latent_dim, spatial_kernel).to(device)
+    model = MultiStreamAutoencoder(stream_dims, latent_dim, spatial_kernel, dropout).to(device)
     ema = OutputEMA(ema_cfg.get("half_life_bounds", [1.0, 40.0])[0],
                     ema_cfg.get("half_life_bounds", [1.0, 40.0])[1],
                     ema_cfg.get("init_half_life", 8.0)).to(device)
     params = list(model.parameters()) + list(ema.parameters())
-    opt = torch.optim.Adam(params, lr=lr)
-    sched = torch.optim.lr_scheduler.ReduceLROnPlateau(opt, mode="min", factor=0.5, patience=5)
+    opt = torch.optim.AdamW(_param_groups([model, ema], weight_decay), lr=lr)
+    sched = torch.optim.lr_scheduler.LambdaLR(
+        opt, _warmup_cosine(epochs, warmup_epochs, min_lr_frac))
     # Early training is unstable (the metric loss can transiently spike), so clip the global
     # grad norm to bound the step (mirrors the MAP runner's clip_by_global_norm) and don't let
     # the volatile first few epochs set the "best" checkpoint (else a near-init epoch can win).
     grad_clip = float(ema_cfg.get("grad_clip", 1.0))
     es_warmup = int(ema_cfg.get("earlystop_warmup", 5))
+
+    masker = None
+    if schema is not None and (augment_cfg or {}).get("enabled"):
+        masker = ChannelGroupMasker(schema, augment_cfg, total_dim=int(sum(stream_dims)))
+        print(f"[desk] input masking: {masker.describe()}", flush=True)
+    # bf16 needs no GradScaler (same exponent range as fp32); it is applied ONLY to the per-year
+    # forward. The EMA scan and every loss stay fp32 -- 86 sequential bf16 accumulations in the
+    # causal recurrence would visibly drift, and the losses are small differences of large sums.
+    use_amp = bool(amp) and device == "cuda"
+    autocast = (lambda: torch.autocast("cuda", dtype=torch.bfloat16)) if use_amp \
+        else contextlib.nullcontext
 
     cov = torch.tensor(cov_window, device=device)                 # (T,H,W,C)
     msk = torch.as_tensor(mask_window, device=device).bool()      # (T,H,W)
@@ -490,54 +578,118 @@ def train_model_ema(cov_window, mask_window, window_years, targets, x2023, m2023
             print(f"[desk] Val(all-yr) no-skill baselines: predict-mean={base_mean:.4f}, "
                   f"predict-zero={base_zero:.4f} -- a trained model must fall WELL below these", flush=True)
 
-    best_val, best, bad = float("inf"), None, 0
-    print(f"--- Training DESK+outputEMA ({len(window_years)}yr window {window_years[0]}..{window_years[-1]}, "
-          f"{len(tgt)} supervised years, max {epochs} ep; grad_clip={grad_clip}, es_warmup={es_warmup}) ---")
-    for ep in range(1, epochs + 1):
-        model.train(); opt.zero_grad()
-        z_raw, recon_loss = [], 0.0
-        for t in range(cov.shape[0]):                            # per-year forward (checkpointed)
-            zt, rt = checkpoint(model, cov[t:t + 1], msk[t:t + 1], use_reentrant=False)
-            z_raw.append(zt[0])
-            recon_loss = recon_loss + F.mse_loss(rt[0][msk[t]], cov[t][msk[t]])
-        recon_loss = recon_loss / cov.shape[0]
-        z_ema = ema(torch.stack(z_raw, 0))                       # (T,H,W,L)
+    def _forward_window(train_mode, mask_inputs):
+        """Forward the whole year window -> (z_ema, recon_loss).
 
-        # uniform stabilizing loss over all supervised (cell,year), train cells only
+        ``train_mode`` toggles dropout; ``mask_inputs`` toggles the augmentation. The eval call
+        passes (False, False) so the selection metric is measured on the deterministic, unmasked
+        model -- see the note at the eval site.
+        """
+        model.train(train_mode)
+        z_raw, rl = [], torch.zeros((), device=device)
+        for t in range(cov.shape[0]):
+            xt = cov[t:t + 1]
+            if mask_inputs and masker is not None:
+                # New tensor: cov[t:t+1] is a VIEW of the single resident (T,H,W,C) window, so an
+                # in-place mask would permanently destroy that year for every later epoch.
+                xt = xt * masker.sample_keep(aug_rng, device=device)
+            with autocast():
+                if train_mode:
+                    zt, rt = checkpoint(model, xt, msk[t:t + 1], use_reentrant=False)
+                else:
+                    zt, rt = model(xt, msk[t:t + 1])
+            z_raw.append(zt[0].float())                          # fp32 before the EMA scan
+            # Target is the CLEAN grid even when the input was masked -> denoising objective.
+            rl = rl + F.mse_loss(rt[0][msk[t]].float(), cov[t][msk[t]])
+        return ema(torch.stack(z_raw, 0)), rl / cov.shape[0]
+
+    def _z_mse(z_all, sel):
+        """Mean per-cell summed-over-latent Z error on the cells selected by ``sel[y]``."""
+        sq, cnt = 0.0, 0
+        for y, (zg, m) in sel.items():
+            if bool(m.any()):
+                d = (z_all[yi[y]][m] - zg[m]).detach()
+                sq += float(torch.sum(d * d)); cnt += int(m.sum())
+        return sq / max(cnt, 1), cnt
+
+    val_sel = {y: (zg, va) for y, (zg, _tr, va) in tgt.items()}
+    best_val, best, bad, nonfinite = float("inf"), None, 0, 0
+    print(f"--- Training DESK+outputEMA ({len(window_years)}yr window {window_years[0]}..{window_years[-1]}, "
+          f"{len(tgt)} supervised years, max {epochs} ep; grad_clip={grad_clip}, es_warmup={es_warmup}, "
+          f"amp={use_amp}, dropout={dropout}, wd={weight_decay}) ---")
+    for ep in range(1, epochs + 1):
+        t_ep = time.perf_counter()
+        if device == "cuda":
+            torch.cuda.reset_peak_memory_stats()
+        opt.zero_grad()
+        z_ema, recon_loss = _forward_window(train_mode=True, mask_inputs=True)
+
+        # uniform stabilizing loss over all supervised (cell,year), train cells only.
+        # Divided by latent_dim so the term is a per-ELEMENT mean like the other two; the
+        # config's stabilizing weight absorbs the factor (1.0 -> latent_dim), leaving the total
+        # loss numerically unchanged while making the three weights directly comparable.
         sq_sum, n = torch.zeros((), device=device), 0
         for y, (zg, tr, _va) in tgt.items():
             zz = z_ema[yi[y]]
             s = torch.sum((zz[tr] - zg[tr]) ** 2, dim=1)
             sq_sum = sq_sum + s.sum(); n += int(tr.sum())
-        loss_stab = sq_sum / max(n, 1)
+        loss_stab = sq_sum / max(n, 1) / latent_dim
         z_anchor = z_ema[yi[y2023]]
         loss_true = true_kernel_loss(z_anchor[m_tr], x2023_t[m_tr])
-        loss = (weights["stabilizing"] * loss_stab + weights["metric"] * loss_true
-                + weights["reconstruction"] * recon_loss)
+        w_stab = weights["stabilizing"] * loss_stab
+        w_true = weights["metric"] * loss_true
+        w_rec = weights["reconstruction"] * recon_loss
+        loss = w_stab + w_true + w_rec
+
+        # A non-finite loss here would silently poison every weight via the optimizer step, and
+        # several terms mean() over masks that can in principle be empty. Skip the step, keep
+        # going, and abort only if it persists -- one bad epoch is recoverable, a stuck run is not.
+        if not torch.isfinite(loss):
+            nonfinite += 1
+            print(f"Ep {ep:03d} | NON-FINITE loss (stab={loss_stab.item():.4g} "
+                  f"true={loss_true.item():.4g} rec={recon_loss.item():.4g}) -- step skipped "
+                  f"({nonfinite} consecutive)", flush=True)
+            opt.zero_grad(set_to_none=True)
+            if nonfinite >= 5:
+                raise RuntimeError("DESK loss non-finite for 5 consecutive epochs; aborting")
+            continue
+        nonfinite = 0
+
         loss.backward()
         if grad_clip > 0:
             torch.nn.utils.clip_grad_norm_(params, grad_clip)
         opt.step()
+        sched.step()
 
-        model.eval()
-        with torch.no_grad():
-            # Held-out-cell Z-MSE pooled over ALL supervised years -- matches the uniform
-            # all-years training objective (not just the easy anchor year), and averaging over
-            # many cells/years stabilizes the signal. (A clean eval re-forward of the whole EMA
-            # window is expensive, so this reuses the step's z_ema; still the right coverage.)
-            vsq, vn = 0.0, 0
-            for y, (zg, _tr, va) in tgt.items():
-                if bool(va.any()):
-                    d = z_ema[yi[y]][va] - zg[va]
-                    vsq += float(torch.sum(d * d)); vn += int(va.sum())
-            va_anchor = tgt[y2023][2]
-            vs = vsq / max(vn, 1)
-            vs_anchor = (float(torch.sum((z_anchor[va_anchor] - tgt[y2023][0][va_anchor]) ** 2))
-                         / max(int(va_anchor.sum()), 1)) if bool(va_anchor.any()) else float("nan")
-            sched.step(vs)
-            print(f"Ep {ep:03d} | Stab {loss_stab.item():.4f} | True {loss_true.item():.4f} | "
-                  f"Rec {recon_loss.item():.4f} | Val(all-yr) {vs:.4f} | Val(2025) {vs_anchor:.4f} | "
-                  f"half-life {ema.half_life().item():.1f}y", flush=True)
+        # Held-out-cell Z-MSE pooled over ALL supervised years -- matches the uniform all-years
+        # training objective (not just the easy anchor year), and averaging over many cells/years
+        # stabilizes the signal.
+        #
+        # This is a CLEAN re-forward: dropout off and input masking off. Reusing the training
+        # step's z_ema (as this did before) measured a dropout-corrupted, input-masked model, so
+        # early stopping, the LR schedule, and the reported Val were all reading noise. No grad
+        # and no checkpoint recompute makes the extra pass much cheaper than the training one;
+        # eval_every amortizes it further if needed.
+        if ep % max(1, int(eval_every)) == 0 or ep == epochs:
+            with torch.no_grad():
+                z_eval, _ = _forward_window(train_mode=False, mask_inputs=False)
+                vs, vn = _z_mse(z_eval, val_sel)
+                va_anchor = tgt[y2023][2]
+                vs_anchor = (float(torch.sum((z_eval[yi[y2023]][va_anchor]
+                                              - tgt[y2023][0][va_anchor]) ** 2))
+                             / max(int(va_anchor.sum()), 1)) if bool(va_anchor.any()) else float("nan")
+                vs_time = (_z_mse(z_eval, holdout_year_targets)[0]
+                           if holdout_year_targets else float("nan"))
+        dt = time.perf_counter() - t_ep
+        rss = _max_rss_gib()
+        vram = (f" | VRAM {torch.cuda.max_memory_allocated() / 2**30:.2f}/"
+                f"{torch.cuda.memory_reserved() / 2**30:.2f}G" if device == "cuda" else "")
+        tot = float(loss.item()) or 1.0
+        print(f"Ep {ep:03d} | Stab {loss_stab.item():.4f} | True {loss_true.item():.4f} | "
+              f"Rec {recon_loss.item():.4f} | Val(all-yr) {vs:.4f} | Val(2025) {vs_anchor:.4f} | "
+              f"Val(yr-out) {vs_time:.4f} | half-life {ema.half_life().item():.1f}y | "
+              f"mix {w_stab.item()/tot:.2f}/{w_true.item()/tot:.2f}/{w_rec.item()/tot:.2f} | "
+              f"lr {opt.param_groups[0]['lr']:.2e} | {dt:.1f}s{vram} | RSS {rss:.1f}G", flush=True)
         if ep <= es_warmup:
             continue                       # don't let the volatile warmup epochs set 'best'
         if vs < best_val - min_delta:
@@ -615,10 +767,39 @@ def run_desk_experiment(config=None):
         print(f"[desk] truncating ESK Z {z_flat.shape[1]} -> {int(ld)} dims (top eigen-components)")
         z_flat = z_flat[:, :int(ld)]
 
-    # Normalization stats: fit on the supervised (labelled) pixels, exactly as before,
-    # then applied to every grid (labelled + historical) and frozen for the cube.
     mask_sup0 = compute_valid_mask(ebird_stack, cov_stack, z_mask)
-    mu, sd = cio.fit_norm(cov_stack[mask_sup0].astype("float32"))
+
+    # Spatial holdout is drawn BEFORE the normalization fit: mu/sd computed over held-out cells
+    # too would leak the evaluation distribution into every training input (and into the frozen
+    # stats the cube reuses). Blocks + a buffer, both defined here so the fit can exclude them.
+    holdout = np.zeros_like(mask_sup0)
+    buffer_cells_mask = np.zeros_like(mask_sup0)
+    if bbs_mode in ("trend", "enrich"):
+        _cfg = desk_cfg.get("trend" if bbs_mode == "trend" else "enrich", {})
+        ebird_valid = np.any(~np.isnan(ebird_stack), axis=-1)
+        # Buffer width is DERIVED from the conv kernel, never configured separately: a prediction
+        # at a val cell reads cells up to kernel//2 away, so a narrower buffer would let val
+        # receptive fields overlap training cells and quietly flatter the metric.
+        buf = spatial_kernel // 2
+        block = int(_cfg.get("block_cells", 12))
+        if block <= 1 and buf == 0:
+            rng = np.random.default_rng(int(_cfg.get("seed", 0)))       # legacy i.i.d. draw
+            ys, xs = np.where(ebird_valid)
+            ho = rng.random(len(ys)) < float(_cfg.get("holdout_frac", 0.2))
+            holdout[ys[ho], xs[ho]] = True
+        else:
+            holdout, buffer_cells_mask = blocked_holdout(
+                ebird_valid, block_cells=block, holdout_frac=float(_cfg.get("holdout_frac", 0.2)),
+                buffer_cells=buf, seed=int(_cfg.get("seed", 0)))
+        print(f"[desk] split: {block}x{block}-cell blocks, buffer {buf} cells (from "
+              f"spatial_kernel={spatial_kernel}) -> {int(holdout.sum())} val, "
+              f"{int(buffer_cells_mask.sum())} buffer cells", flush=True)
+
+    # Normalization stats: fit on the supervised TRAINING pixels only (buffer cells are excluded
+    # as well -- not evaluation data, but not clean training data either), then applied to every
+    # grid (labelled + historical) and frozen for the cube.
+    fit_mask = mask_sup0 & (~holdout) & (~buffer_cells_mask)
+    mu, sd = cio.fit_norm(cov_stack[fit_mask].astype("float32"))
 
     covn, mask_cov, mask_sup, z_grid, x_grid = prepare_supervised(
         cov_stack, ebird_stack, z_flat, z_mask, mu, sd, out_dir)
@@ -631,15 +812,12 @@ def run_desk_experiment(config=None):
     enrich_data, direction, ebird_frac = None, None, 0.8
     dir_weights = {}
     uniform_stab = False
-    holdout = np.zeros_like(mask_sup)
     if bbs_mode == "trend":
         tr_cfg = desk_cfg.get("trend", {})
-        ebird_valid = np.any(~np.isnan(ebird_stack), axis=-1)          # spatial cell holdout
-        ys, xs = np.where(ebird_valid)
-        rng = np.random.default_rng(int(tr_cfg.get("seed", 0)))
-        ho = rng.random(len(ys)) < float(tr_cfg.get("holdout_frac", 0.2))
-        holdout[ys[ho], xs[ho]] = True
-        m_tr, m_val = mask_sup & (~holdout), mask_sup & holdout          # eval on held-out cells
+        # holdout/buffer were drawn above (before the normalization fit). Training excludes BOTH;
+        # evaluation uses the holdout only, so buffer cells appear in neither.
+        m_tr = mask_sup & (~holdout) & (~buffer_cells_mask)
+        m_val = mask_sup & holdout
         # _prepare_enrich projects the trend points (year<2023) into the joint ESK basis
         # (z_obs) and assembles per-year target grids -- reused as-is, direction disabled.
         enrich_data, hist_years = _prepare_enrich(config, states_dir, schema, mu, sd, z_dir,
@@ -648,17 +826,15 @@ def run_desk_experiment(config=None):
         dir_weights = {"absolute": 1.0}
         uniform_stab = True
         np.save(os.path.join(out_dir, "holdout_cells.npy"), holdout)
+        np.save(os.path.join(out_dir, "buffer_cells.npy"), buffer_cells_mask)
         print(f"[desk] TREND mode: direct uniform z-target over recent + historical points; "
-              f"{int(holdout.sum())} cells held out for eval")
+              f"{int(holdout.sum())} cells held out for eval, "
+              f"{int(buffer_cells_mask.sum())} buffered out of training")
     elif bbs_mode == "enrich":
         en_cfg = desk_cfg.get("enrich", {})
         ebird_frac = float(en_cfg.get("ebird_loss_fraction", 0.8))
-        ebird_valid = np.any(~np.isnan(ebird_stack), axis=-1)          # holdout over eBird cells
-        ys, xs = np.where(ebird_valid)
-        rng = np.random.default_rng(int(en_cfg.get("seed", 0)))
-        ho = rng.random(len(ys)) < float(en_cfg.get("holdout_frac", 0.2))
-        holdout[ys[ho], xs[ho]] = True
-        m_tr, m_val = mask_sup & (~holdout), mask_sup & holdout          # eval on held-out cells
+        m_tr = mask_sup & (~holdout) & (~buffer_cells_mask)
+        m_val = mask_sup & holdout
         enrich_data, hist_years = _prepare_enrich(config, states_dir, schema, mu, sd, z_dir,
                                                   z_grid.shape[2], holdout, label_year)
         direction = _prepare_direction_targets(
@@ -668,6 +844,7 @@ def run_desk_experiment(config=None):
                        "magnitude_floor": float(en_cfg.get("w_magnitude_floor", 0.05)),
                        "absolute": float(en_cfg.get("w_absolute", 1.0))}
         np.save(os.path.join(out_dir, "holdout_cells.npy"), holdout)
+        np.save(os.path.join(out_dir, "buffer_cells.npy"), buffer_cells_mask)
         print(f"[desk] ENRICH mode: ebird_loss_fraction={ebird_frac}, weights={dir_weights}, "
               f"{int(holdout.sum())} cells held out")
     else:
@@ -684,12 +861,37 @@ def run_desk_experiment(config=None):
         window_years = list(range(warmup_start, label_year + 1))
         cov_win, mask_win, kept = _load_year_window(states_dir, schema, mu, sd, window_years)
         targets = _prepare_trend_targets(config, z_dir, z_grid.shape[2], holdout)
+
+        # Temporal holdout: withhold a contiguous span of supervised years from the objective and
+        # score them separately. The spatial split says nothing about extrapolation THROUGH TIME,
+        # which is what DESK exists to do. The anchor (label_year) is never withheld -- it carries
+        # the eBird metric loss. Diagnostic only; model selection stays on the spatial metric so
+        # there is exactly one selection signal.
+        ho_years = [int(y) for y in (tr_cfg.get("holdout_years") or []) if int(y) != label_year]
+        year_val = {}
+        for y in ho_years:
+            if y in targets:
+                zg, tr_m, va_m = targets[y]
+                year_val[y] = (zg, tr_m | va_m)            # score every supervised cell that year
+                targets[y] = (zg, np.zeros_like(tr_m), va_m)   # ...and train on none of it
+        if year_val:
+            print(f"[desk] temporal holdout years (diagnostic, excluded from the objective): "
+                  f"{sorted(year_val)}", flush=True)
+
         model, ema = train_model_ema(
             cov_win, mask_win, kept, targets, x_grid, m_tr, m_val,
             stream_dims, latent_dim=z_grid.shape[2], ema_cfg=ema_cfg,
             spatial_kernel=spatial_kernel,
             epochs=desk_cfg.get("epochs", 500), lr=desk_cfg.get("lr", 1e-3),
-            weights=desk_cfg.get("weights"), patience=desk_cfg.get("patience", 50))
+            weights=desk_cfg.get("weights"), patience=desk_cfg.get("patience", 50),
+            schema=schema, augment_cfg=config.get("augment"),
+            dropout=float(desk_cfg.get("dropout", 0.5)),
+            weight_decay=float(desk_cfg.get("weight_decay", 0.0)),
+            warmup_epochs=int(desk_cfg.get("warmup_epochs", 0)),
+            min_lr_frac=float(desk_cfg.get("min_lr_frac", 1.0)),
+            amp=bool(desk_cfg.get("amp", False)),
+            eval_every=int(desk_cfg.get("eval_every", 1)),
+            holdout_year_targets=year_val or None)
         ema_half_life = float(ema.half_life().item())
         torch.save(ema.state_dict(), os.path.join(out_dir, "output_ema.pth"))
         print(f"[desk] output-EMA learned half-life = {ema_half_life:.2f} yr")
@@ -704,13 +906,21 @@ def run_desk_experiment(config=None):
             weights=desk_cfg.get("weights"),
             enrich=enrich_data, ebird_frac=ebird_frac,
             direction=direction, dir_weights=dir_weights, uniform_stab=uniform_stab,
-            patience=desk_cfg.get("patience", 50))
+            patience=desk_cfg.get("patience", 50),
+            dropout=float(desk_cfg.get("dropout", 0.5)),
+            weight_decay=float(desk_cfg.get("weight_decay", 0.0)))
 
     torch.save(model.state_dict(), os.path.join(out_dir, "env_model_semisup.pth"))
     np.savez(os.path.join(out_dir, "desk_meta.npz"),
              mu=mu, sd=sd, stream_dims=np.array(stream_dims, int),
              latent_dim=z_grid.shape[2], label_year=label_year,
              spatial_kernel=spatial_kernel, bbs_mode=bbs_mode,
+             # Provenance for the regularization/augmentation recipe. dropout does not change
+             # state_dict keys (so checkpoints stay loadable either way), but without recording
+             # it a run cannot be reproduced or compared against another.
+             dropout=float(desk_cfg.get("dropout", 0.5)),
+             augment=json.dumps(config.get("augment") or {}),
+             holdout_cells=int(holdout.sum()), buffer_cells=int(buffer_cells_mask.sum()),
              ebird_frac=ebird_frac, schema=json.dumps(schema),
              output_ema=bool(ema_cfg.get("enabled", False)),
              ema_half_life=(ema_half_life if ema_half_life is not None else np.nan),

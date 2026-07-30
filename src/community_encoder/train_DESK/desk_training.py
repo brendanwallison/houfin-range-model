@@ -103,7 +103,7 @@ def train_model_semisup(covn2023, mask_cov, mask_sup_tr, mask_sup_val, z_ref, x_
                         epochs=100, lr=1e-3, batch_years=8, weights=None, seed=0,
                         enrich=None, ebird_frac=0.8, direction=None, dir_weights=None,
                         uniform_stab=False, patience=50, min_delta=1e-4, dropout=0.5,
-                        weight_decay=0.0):
+                        weight_decay=0.0, hidden_width=None, mlp_expansion=4):
     """Train the N-stream grid DESK autoencoder semi-supervised; return the fitted model.
 
     ``enrich`` (or None): tuple ``(pt_covn, pt_covmask, pt_zobs, pt_tgt)`` of per-historical-
@@ -126,7 +126,8 @@ def train_model_semisup(covn2023, mask_cov, mask_sup_tr, mask_sup_val, z_ref, x_
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(seed)
 
-    model = MultiStreamAutoencoder(stream_dims, latent_dim, spatial_kernel, dropout).to(device)
+    model = MultiStreamAutoencoder(stream_dims, latent_dim, spatial_kernel, dropout,
+                                   hidden_width, mlp_expansion).to(device)
     opt = torch.optim.AdamW(_param_groups([model], weight_decay), lr=lr)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(opt, mode="min", factor=0.5, patience=5)
 
@@ -457,6 +458,54 @@ def _max_rss_gib():
     return resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / _RSS_TO_GIB
 
 
+def spatial_interp_baseline(tgt, k=8, power=2.0):
+    """Predict held-out cells by inverse-distance interpolation of the TARGETS themselves.
+
+    The existing no-skill baselines (predict-mean, predict-zero) ignore geography, but Z is
+    strongly spatially autocorrelated, so a model that merely interpolates its neighbours
+    already scores well. This is the honest reference for a spatially BLOCKED holdout: it uses
+    no covariates and no learning, only "the answer at nearby training cells". If the trained
+    model's val error is not clearly below this, the covariates are adding nothing beyond
+    spatial smoothness, and further capacity or regularization work is pointless.
+
+    The blocked split plus its buffer put every val cell at least ``kernel//2 + 1`` cells from
+    any training cell, so this baseline is genuinely extrapolating into the block interior --
+    which is exactly the task the model faces.
+
+    Returns ``(nearest_mse, idw_mse)`` on the same per-cell summed scale as ``_z_mse``.
+    """
+    from scipy.spatial import cKDTree
+
+    years = sorted(tgt)
+    if not years:
+        return float("nan"), float("nan")
+    # The train/val masks are identical across years, so build the neighbour index once.
+    _, tr0, va0 = tgt[years[0]]
+    tr_np = tr0.detach().cpu().numpy() if hasattr(tr0, "detach") else np.asarray(tr0)
+    va_np = va0.detach().cpu().numpy() if hasattr(va0, "detach") else np.asarray(va0)
+    tr_rc = np.argwhere(tr_np)
+    va_rc = np.argwhere(va_np)
+    if len(tr_rc) < k or len(va_rc) == 0:
+        return float("nan"), float("nan")
+    dist, idx = cKDTree(tr_rc).query(va_rc, k=k)
+    w = 1.0 / np.maximum(dist, 1e-6) ** power
+    w /= w.sum(axis=1, keepdims=True)
+
+    sq_n = sq_i = 0.0
+    cnt = 0
+    for y in years:
+        zg, _tr, _va = tgt[y]
+        z = zg.detach().cpu().numpy() if hasattr(zg, "detach") else np.asarray(zg)
+        src = z[tr_rc[:, 0], tr_rc[:, 1]]                 # (n_train, L)
+        truth = z[va_rc[:, 0], va_rc[:, 1]]               # (n_val, L)
+        pred_n = src[idx[:, 0]]                           # nearest training cell
+        pred_i = np.einsum("nk,nkl->nl", w, src[idx])     # inverse-distance weighted
+        sq_n += float(((pred_n - truth) ** 2).sum())
+        sq_i += float(((pred_i - truth) ** 2).sum())
+        cnt += len(va_rc)
+    return sq_n / max(cnt, 1), sq_i / max(cnt, 1)
+
+
 def _param_groups(modules, weight_decay):
     """Split parameters into decay / no-decay groups.
 
@@ -504,7 +553,7 @@ def train_model_ema(cov_window, mask_window, window_years, targets, x2023, m2023
                     weights=None, seed=0, patience=50, min_delta=1e-4,
                     schema=None, augment_cfg=None, dropout=0.5, weight_decay=0.0,
                     warmup_epochs=0, min_lr_frac=1.0, amp=False, eval_every=1,
-                    holdout_year_targets=None):
+                    holdout_year_targets=None, hidden_width=None, mlp_expansion=4):
     """Train DESK with a learned output-EMA (bbs_mode=trend).
 
     Forwards the ordered year window (per-year gradient checkpointing), applies the
@@ -529,7 +578,8 @@ def train_model_ema(cov_window, mask_window, window_years, targets, x2023, m2023
     np.random.seed(seed)
     aug_rng = np.random.default_rng(seed)
 
-    model = MultiStreamAutoencoder(stream_dims, latent_dim, spatial_kernel, dropout).to(device)
+    model = MultiStreamAutoencoder(stream_dims, latent_dim, spatial_kernel, dropout,
+                                   hidden_width, mlp_expansion).to(device)
     ema = OutputEMA(ema_cfg.get("half_life_bounds", [1.0, 40.0])[0],
                     ema_cfg.get("half_life_bounds", [1.0, 40.0])[1],
                     ema_cfg.get("init_half_life", 8.0)).to(device)
@@ -577,6 +627,16 @@ def train_model_ema(cov_window, mask_window, window_years, targets, x2023, m2023
             base_zero = float(torch.mean(torch.sum(allv ** 2, dim=1)))
             print(f"[desk] Val(all-yr) no-skill baselines: predict-mean={base_mean:.4f}, "
                   f"predict-zero={base_zero:.4f} -- a trained model must fall WELL below these", flush=True)
+    # The baseline that actually matters for a spatially blocked holdout: interpolate the
+    # targets from neighbouring TRAINING cells, no covariates and no learning. Val must sit
+    # clearly below this or the covariates are adding nothing over spatial smoothness.
+    try:
+        b_near, b_idw = spatial_interp_baseline(tgt)
+        print(f"[desk] spatial-interpolation baselines (no model, no covariates): "
+              f"nearest-train-cell={b_near:.4f}, inverse-distance-8={b_idw:.4f} "
+              f"-- Val must beat these to justify the covariates", flush=True)
+    except Exception as exc:                       # diagnostic only; never block training
+        print(f"[desk] spatial-interpolation baseline unavailable ({exc})", flush=True)
 
     def _forward_window(train_mode, mask_inputs, want_raw=False):
         """Forward the whole year window -> ``(z_ema, recon_loss[, z_raw])``.
@@ -594,7 +654,8 @@ def train_model_ema(cov_window, mask_window, window_years, targets, x2023, m2023
             if mask_inputs and masker is not None:
                 # New tensor: cov[t:t+1] is a VIEW of the single resident (T,H,W,C) window, so an
                 # in-place mask would permanently destroy that year for every later epoch.
-                xt = xt * masker.sample_keep(aug_rng, device=device)
+                xt = xt * masker.sample_keep(aug_rng, device=device,
+                                             hw=(cov.shape[1], cov.shape[2]))
             with autocast():
                 if train_mode:
                     zt, rt = checkpoint(model, xt, msk[t:t + 1], use_reentrant=False)
@@ -618,6 +679,15 @@ def train_model_ema(cov_window, mask_window, window_years, targets, x2023, m2023
 
     def _rotation(z_all, m):
         """Median ``1 - cos`` between the deepest and anchor year, predicted and target.
+
+        Call this on ``z_ema``, the SUPERVISED quantity, so a ratio of 1.0 means "the model
+        reproduces its target's temporal change". Scoring the pre-EMA ``z_raw`` against the
+        same target is wrong and inverts the metric: the EMA attenuates, so ``z_raw`` must
+        *over*-rotate for ``z_ema`` to match -- at the learned ~9 yr half-life by about 1.27x
+        over a 59-year span. A model improving at its actual objective would push a raw-based
+        ratio past 1.0, which would read as over-prediction. ``z_raw`` is still reported
+        separately because the cube exports it and the population model consumes it, but it is
+        NOT a ratio-to-one.
 
         This is the quantity the science rests on and the trainer has never logged. A per-cell
         MSE cannot expose it: Z is dominated by the static spatial pattern (the no-change null
@@ -646,6 +716,11 @@ def train_model_ema(cov_window, mask_window, window_years, targets, x2023, m2023
         return med(zp0, zp1), med(zt0, zt1)
 
     val_sel = {y: (zg, va) for y, (zg, _tr, va) in tgt.items()}
+    # Train-cell selection on the SAME footing as val, evaluated on the clean forward. Without
+    # it the only train-side number is `Stab`, which is (a) measured under dropout+masking and
+    # so overstates the error, and (b) divided by latent_dim while Val is not -- two different
+    # scales for the same quantity in one log line.
+    tr_sel = {y: (zg, tr) for y, (zg, tr, _va) in tgt.items()}
     y_deep = min(tgt) if len(tgt) > 1 else None          # deepest supervised year in the window
     # Cells supervised in BOTH the deep and anchor year, split train/val -- the rotation
     # diagnostic needs the same cell present at both ends to measure its change.
@@ -724,9 +799,13 @@ def train_model_ema(cov_window, mask_window, window_years, targets, x2023, m2023
                              / max(int(va_anchor.sum()), 1)) if bool(va_anchor.any()) else float("nan")
                 vs_time = (_z_mse(z_eval, holdout_year_targets)[0]
                            if holdout_year_targets else float("nan"))
-                # Rotation on RAW z (what the cube and validate export), train and val.
-                rotP, rotT = _rotation(z_raw_eval, rot_tr)
-                rotPv, rotTv = _rotation(z_raw_eval, rot_va)
+                ts, _ = _z_mse(z_eval, tr_sel)          # clean-train MSE, same scale as vs
+                # Rotation on the SUPERVISED z_ema (ratio-to-one is meaningful), plus the raw
+                # pre-EMA rotation for information since that is what the cube exports.
+                rotP, rotT = _rotation(z_eval, rot_tr)
+                rotPv, rotTv = _rotation(z_eval, rot_va)
+                rawP, _ = _rotation(z_raw_eval, rot_tr)
+                rawPv, _ = _rotation(z_raw_eval, rot_va)
         dt = time.perf_counter() - t_ep
         rss = _max_rss_gib()
         vram = (f" | VRAM {torch.cuda.max_memory_allocated() / 2**30:.2f}/"
@@ -735,12 +814,19 @@ def train_model_ema(cov_window, mask_window, window_years, targets, x2023, m2023
         # rot: predicted vs target temporal rotation, and their ratio. The ratio is the headline
         # number -- 1.0 means DESK reproduces the observed amount of community change; the
         # measured value on the 27 km grid was ~0.29 (interior), i.e. a 3.4x under-prediction.
-        rr = (rotP / rotT) if (rotT and np.isfinite(rotT) and rotT > 1e-9) else float("nan")
-        rrv = (rotPv / rotTv) if (rotTv and np.isfinite(rotTv) and rotTv > 1e-9) else float("nan")
+        def _ratio(p, t):
+            return (p / t) if (t and np.isfinite(t) and t > 1e-9) else float("nan")
+        # rot: how much of the TARGET's temporal change the supervised z_ema reproduces. 1.00 is
+        # the goal. (raw ...) is the pre-EMA rotation, which must exceed the target -- it is
+        # informational, not a ratio-to-one.
+        rr, rrv = _ratio(rotP, rotT), _ratio(rotPv, rotTv)
+        rawr, rawrv = _ratio(rawP, rotT), _ratio(rawPv, rotTv)
+        gap = (vs / ts) if ts > 1e-12 else float("nan")
         print(f"Ep {ep:03d} | Stab {loss_stab.item():.4f} | True {loss_true.item():.4f} | "
-              f"Rec {recon_loss.item():.4f} | Val(all-yr) {vs:.4f} | Val(2025) {vs_anchor:.4f} | "
-              f"Val(yr-out) {vs_time:.4f} | rot tr {rotP:.3f}/{rotT:.3f}={rr:.2f} "
-              f"va {rotPv:.3f}/{rotTv:.3f}={rrv:.2f} | half-life {ema.half_life().item():.1f}y | "
+              f"Rec {recon_loss.item():.4f} | mse tr {ts:.4f} va {vs:.4f} gap {gap:.1f}x | "
+              f"Val(2025) {vs_anchor:.4f} | Val(yr-out) {vs_time:.4f} | "
+              f"rot tr {rr:.2f} va {rrv:.2f} (raw {rawr:.2f}/{rawrv:.2f}) | "
+              f"half-life {ema.half_life().item():.1f}y | "
               f"mix {w_stab.item()/tot:.2f}/{w_true.item()/tot:.2f}/{w_rec.item()/tot:.2f} | "
               f"lr {opt.param_groups[0]['lr']:.2e} | {dt:.1f}s{vram} | RSS {rss:.1f}G", flush=True)
         if ep <= es_warmup:
@@ -775,6 +861,8 @@ def run_desk_experiment(config=None):
     states_dir = os.path.join(paths["hist_dir"], "yearly_states")
     schema = cio.load_schema(states_dir)
     label_year = int(desk_cfg.get("label_year", 2023))
+    hidden_width = desk_cfg.get("hidden_width") or None
+    mlp_expansion = int(desk_cfg.get("mlp_expansion", 4))
     spatial_kernel = int(desk_cfg.get("spatial_conv", {}).get("kernel", 3)) \
         if desk_cfg.get("spatial_conv", {}).get("enabled", True) else 0
 
@@ -944,7 +1032,8 @@ def run_desk_experiment(config=None):
             min_lr_frac=float(desk_cfg.get("min_lr_frac", 1.0)),
             amp=bool(desk_cfg.get("amp", False)),
             eval_every=int(desk_cfg.get("eval_every", 1)),
-            holdout_year_targets=year_val or None)
+            holdout_year_targets=year_val or None,
+            hidden_width=hidden_width, mlp_expansion=mlp_expansion)
         ema_half_life = float(ema.half_life().item())
         torch.save(ema.state_dict(), os.path.join(out_dir, "output_ema.pth"))
         print(f"[desk] output-EMA learned half-life = {ema_half_life:.2f} yr")
@@ -961,7 +1050,8 @@ def run_desk_experiment(config=None):
             direction=direction, dir_weights=dir_weights, uniform_stab=uniform_stab,
             patience=desk_cfg.get("patience", 50),
             dropout=float(desk_cfg.get("dropout", 0.5)),
-            weight_decay=float(desk_cfg.get("weight_decay", 0.0)))
+            weight_decay=float(desk_cfg.get("weight_decay", 0.0)),
+            hidden_width=hidden_width, mlp_expansion=mlp_expansion)
 
     torch.save(model.state_dict(), os.path.join(out_dir, "env_model_semisup.pth"))
     np.savez(os.path.join(out_dir, "desk_meta.npz"),
@@ -972,6 +1062,10 @@ def run_desk_experiment(config=None):
              # state_dict keys (so checkpoints stay loadable either way), but without recording
              # it a run cannot be reproduced or compared against another.
              dropout=float(desk_cfg.get("dropout", 0.5)),
+             # hidden_width/mlp_expansion change state_dict SHAPES: without persisting them
+             # the cube would rebuild a differently-sized net and fail to load these weights.
+             hidden_width=int(model.hidden_width),
+             mlp_expansion=int(model.mlp_expansion),
              augment=json.dumps(config.get("augment") or {}),
              holdout_cells=int(holdout.sum()), buffer_cells=int(buffer_cells_mask.sum()),
              ebird_frac=ebird_frac, schema=json.dumps(schema),

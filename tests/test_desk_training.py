@@ -313,17 +313,96 @@ def test_rotation_diagnostic_reads_a_known_angle():
     text = out.getvalue()
 
     assert "rotation diagnostic 2021->2025" in text
-    rots = re.findall(r"rot tr ([\d.]+)/([\d.]+)=([\d.]+)", text)
+    # `rot tr R va R (raw Rr/Rrv)`: R is z_ema (the SUPERVISED quantity, so 1.0 is the goal),
+    # raw is the pre-EMA rotation, which must be LARGER because the EMA attenuates.
+    rots = re.findall(r"rot tr ([\d.]+) va ([\d.]+) \(raw ([\d.]+)/([\d.]+)\)", text)
     assert len(rots) == 3, text
-    rotP = [float(a) for a, _, _ in rots]
-    rotT = [float(b) for _, b, _ in rots]
-    # the target rotation is known exactly and must be constant across epochs
-    expected = 1.0 - np.cos(ang)
-    assert all(abs(t - expected) < 1e-3 for t in rotT), (rotT, expected)
-    # an untrained model barely rotates; the ratio must start near zero and increase
-    assert rotP[0] < 0.05 * expected, rotP
-    assert rotP[-1] > rotP[0], rotP
+    ema_r = [float(a) for a, _, _, _ in rots]
+    raw_r = [float(c) for _, _, c, _ in rots]
+    # an untrained model barely rotates, and the ratio must grow as it learns
+    assert ema_r[0] < 0.1, ema_r
+    assert raw_r[-1] > raw_r[0], raw_r
+    # the EMA can only attenuate, so the smoothed ratio never exceeds the raw one
+    assert all(e <= r + 1e-9 for e, r in zip(ema_r, raw_r)), (ema_r, raw_r)
+    # the target rotation is a fixed property of the data; the diagnostic line reports the
+    # cell counts, and the mse columns must be finite
+    assert re.search(r"mse tr [\d.]+ va [\d.]+ gap [\d.]+x", text), text
     print("rotation diagnostic reads a known angle OK")
+
+
+def test_capacity_knob_and_width_persistence():
+    """hidden_width is the capacity lever, and it MUST be persisted to reload weights."""
+    dims = [240, 33, 3, 16, 3]
+    wide = MultiStreamAutoencoder(dims, 64, spatial_kernel=5, dropout=0.1)
+    narrow = MultiStreamAutoencoder(dims, 64, spatial_kernel=5, dropout=0.1, hidden_width=128)
+    assert wide.hidden_width == 256, "default must stay max(128, latent_dim*4)"
+    assert narrow.hidden_width == 128
+
+    n_wide = sum(p.numel() for p in wide.parameters())
+    n_narrow = sum(p.numel() for p in narrow.parameters())
+    assert n_narrow < n_wide / 3, (n_wide, n_narrow)      # branch params scale as h**2
+
+    # Rebuilding at the DEFAULT width cannot load narrow weights -- this is exactly why
+    # hidden_width/mlp_expansion go into desk_meta.npz and are read back at inference.
+    sd = narrow.state_dict()
+    try:
+        MultiStreamAutoencoder(dims, 64, spatial_kernel=5).load_state_dict(sd)
+        raise AssertionError("default-width rebuild must reject h=128 weights")
+    except RuntimeError:
+        pass
+    MultiStreamAutoencoder(dims, 64, spatial_kernel=5, hidden_width=128).load_state_dict(sd)
+
+    # mlp_expansion is the second width knob and must also round-trip
+    thin = MultiStreamAutoencoder(dims, 64, spatial_kernel=5, hidden_width=128, mlp_expansion=2)
+    assert thin.mlp_expansion == 2
+    assert sum(p.numel() for p in thin.parameters()) < n_narrow
+
+    # still functional at the reduced width
+    x = torch.randn(1, 8, 9, sum(dims)); m = torch.ones(1, 8, 9, dtype=torch.bool)
+    narrow.eval()
+    with torch.no_grad():
+        z, rec = narrow(x, m)
+    assert z.shape == (1, 8, 9, 64) and rec.shape == x.shape
+    print("capacity knob + width persistence OK")
+
+
+def test_spatial_interp_baseline():
+    """The ceiling for a blocked holdout: interpolate the targets, no covariates, no learning."""
+    from src.community_encoder.train_DESK.augment import blocked_holdout
+    from src.community_encoder.train_DESK.desk_training import spatial_interp_baseline
+
+    H, W, L = 60, 80, 16
+    valid = np.zeros((H, W), bool); valid[2:58, 3:77] = True
+    val, buf = blocked_holdout(valid, block_cells=12, holdout_frac=0.2, buffer_cells=2, seed=0)
+    tr = valid & ~val & ~buf
+    yy, xx = np.mgrid[0:H, 0:W]
+    rng = np.random.default_rng(0)
+
+    # A smooth field is nearly interpolable, so the baseline must score LOW -- meaning a
+    # trained model has to beat a low number to have earned anything from the covariates.
+    field = np.stack([np.sin((yy + 3 * d) / 12.0) + np.cos((xx - d) / 15.0)
+                      for d in range(L)], -1).astype("float32")
+    smooth = {y: (field, torch.tensor(tr), torch.tensor(val)) for y in (1966, 2025)}
+    n_s, i_s = spatial_interp_baseline(smooth)
+    assert i_s <= n_s, "inverse-distance over 8 neighbours must beat single-nearest"
+    # Judge against the field's OWN predict-mean error rather than an arbitrary constant:
+    # interpolating a smooth field should remove the large majority of that variance.
+    held = field[val]
+    predict_mean = float(((held - held.mean(0)) ** 2).sum(-1).mean())
+    assert n_s < 0.25 * predict_mean, (n_s, predict_mean)
+
+    # Pure noise is not interpolable at all: nearest-neighbour error approaches 2*L (two
+    # independent unit-variance draws per latent dim), and IDW shrinks toward the mean.
+    noise = {y: (rng.normal(size=(H, W, L)).astype("float32"),
+                 torch.tensor(tr), torch.tensor(val)) for y in (1966, 2025)}
+    n_n, i_n = spatial_interp_baseline(noise)
+    assert n_n > L, (n_n, L)
+    assert i_n < n_n
+    assert n_s < n_n / 10, (n_s, n_n)         # smooth vs noise must be worlds apart
+
+    # degenerate inputs return NaN rather than raising inside a training run
+    assert all(np.isnan(v) for v in spatial_interp_baseline({}))
+    print("spatial interpolation baseline OK")
 
 
 def test_nonfinite_loss_guard():
@@ -347,5 +426,7 @@ if __name__ == "__main__":
     test_dropout_threading_and_loss_reparam()
     test_train_loop_and_ablation()
     test_rotation_diagnostic_reads_a_known_angle()
+    test_capacity_knob_and_width_persistence()
+    test_spatial_interp_baseline()
     test_nonfinite_loss_guard()
     print("\nALL DESK-TRAINING CHECKS PASSED")

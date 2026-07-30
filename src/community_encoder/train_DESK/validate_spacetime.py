@@ -175,7 +175,17 @@ def temporal_turnover_agreement(Z, X, pidx, recent_year, min_gap=5):
     rho = float(spearmanr(tp, to).correlation)
     return {"n_sites": len(keys), "spearman_turnover": rho,
             "rows": rows[hi], "cols": cols[hi], "hist_year": yrs[hi],
-            "turnover_pred": tp.astype("float32"), "turnover_obs": to.astype("float32")}
+            "turnover_pred": tp.astype("float32"), "turnover_obs": to.astype("float32"),
+            # The two sides are on DIFFERENT scales and their ratio is meaningless. pred is
+            # 1-cosine (length-invariant); obs is 1-Ruzicka, which corresponds to a DOT and so
+            # carries the representation's magnitude. Because the ESK target's ||z||^2 is ~0.67
+            # rather than the contract's 1.0, ~80% of `obs` is that norm deficit and only ~20%
+            # is rotation -- so pred/obs looks like a 3x under-prediction when a like-for-like
+            # comparison shows none. Use spearman_turnover (rank, scale-free) for agreement, and
+            # compare pred only against another cosine quantity.
+            "_scale_warning": ("turnover_pred is 1-cos (length-invariant); turnover_obs is "
+                               "1-Ruzicka (magnitude-bearing). Their RATIO is not "
+                               "interpretable; only their rank agreement is.")}
 
 
 def partial_spearman(tp, to, covars):
@@ -306,8 +316,12 @@ def _load_model(config):
     dm = np.load(os.path.join(config["paths"]["desk_output_dir"], "desk_meta.npz"), allow_pickle=True)
     schema = json.loads(str(dm["schema"]))
     spatial_kernel = int(dm["spatial_kernel"]) if "spatial_kernel" in dm else 0
-    model = MultiStreamAutoencoder([int(d) for d in dm["stream_dims"]], int(dm["latent_dim"]),
-                                   spatial_kernel)
+    # Width is a property of the TRAINED net, not a config choice here: it sets state_dict
+    # shapes, so rebuilding at the config's current width would fail to load older weights.
+    model = MultiStreamAutoencoder(
+        [int(d) for d in dm["stream_dims"]], int(dm["latent_dim"]), spatial_kernel,
+        hidden_width=(int(dm["hidden_width"]) if "hidden_width" in dm else None),
+        mlp_expansion=(int(dm["mlp_expansion"]) if "mlp_expansion" in dm else 4))
     model.load_state_dict(torch.load(
         os.path.join(config["paths"]["desk_output_dir"], "env_model_semisup.pth"),
         map_location="cpu"))

@@ -19,6 +19,13 @@ Axes (all config-gated, sampled independently per call):
                 and are strongly correlated with ``q50``
 - ``p_stream``  a whole stream (landuse / hyde / soil / elevation)
 
+``tile_cells`` controls the SPATIAL granularity of all of the above. At 0 (the default) one draw
+is shared by the whole grid, which gives temporal diversity but none spatially -- every cell sees
+the same variables missing, so nothing teaches the encoder that different regions must cope with
+losing different variables. That matters because the holdout is spatially blocked, so spatial
+generalization is precisely what is being measured. Set it to a block size in cells for
+independent draws per tile.
+
 Three rules that are easy to get wrong:
 
 1. **No ``1/(1-p)`` rescaling.** This is masked-input augmentation (denoising-autoencoder /
@@ -65,6 +72,9 @@ class ChannelGroupMasker:
         self.p_level = float(cfg.get("p_level", 0.10))
         self.p_stream = float(cfg.get("p_stream", 0.10))
         self.max_masked_frac = float(cfg.get("max_masked_frac", 0.5))
+        # 0 = one mask for the whole grid (no spatial diversity); >0 = independent draws per
+        # tile_cells x tile_cells block, so different regions practise on different subsets.
+        self.tile_cells = int(cfg.get("tile_cells", 0))
 
         streams = schema["streams"]
         self.C = int(total_dim if total_dim is not None else schema.get(
@@ -99,7 +109,8 @@ class ChannelGroupMasker:
         """One-line summary for the training log (so a misparsed schema is visible)."""
         return (f"ChannelGroupMasker(C={self.C}, bases={len(self.base_keys)}, "
                 f"month_pos={len(self.month_keys)}, levels={self.level_keys}, "
-                f"streams={self.stream_keys}, enabled={self.enabled})")
+                f"streams={self.stream_keys}, tile_cells={self.tile_cells}, "
+                f"enabled={self.enabled})")
 
     def _draw(self, rng):
         """One raw draw -> boolean (C,) 'drop' array, before the max-fraction guard."""
@@ -139,14 +150,40 @@ class ChannelGroupMasker:
                 return drop
         return np.zeros(self.C, dtype=bool)
 
-    def sample_keep(self, rng, device=None, dtype=torch.float32):
-        """``(1,1,1,C)`` tensor of 1.0/0.0 to broadcast-multiply into a ``(B,H,W,C)`` grid.
+    def sample_keep(self, rng, device=None, dtype=torch.float32, hw=None):
+        """0/1 keep mask to broadcast-multiply into a ``(B,H,W,C)`` grid.
+
+        ``hw=None`` (or ``tile_cells<=0``) returns ``(1,1,1,C)``: ONE draw shared by every cell.
+        ``hw=(H,W)`` returns ``(1,H,W,C)`` assembled from ``tile_cells`` x ``tile_cells`` spatial
+        tiles, each drawing its own channel groups.
+
+        This distinction matters for SPATIAL generalization, which is exactly what the blocked
+        holdout measures. A grid-wide mask gives temporal diversity (a fresh draw per
+        year-forward) but *no spatial diversity*: every cell sees the same variables missing, so
+        nothing teaches the encoder that different regions must cope with losing different
+        variables. Tiled masking makes each region practise on its own subset.
+
+        Tiles rather than independent per-cell draws because the covariates are spatially
+        autocorrelated and the latent conv pools a 5x5 neighbourhood -- per-cell noise would
+        largely average out within a receptive field instead of removing information.
 
         Strictly 0/1 -- survivors are NOT rescaled (see the module docstring).
         """
-        keep = ~self.sample_drop(rng)
+        if hw is None or self.tile_cells <= 0:
+            keep = ~self.sample_drop(rng)
+            t = torch.as_tensor(keep.astype("float32"), dtype=dtype, device=device)
+            return t.view(1, 1, 1, self.C)
+
+        H, W = int(hw[0]), int(hw[1])
+        b = int(self.tile_cells)
+        nby, nbx = (H + b - 1) // b, (W + b - 1) // b
+        tiles = np.empty((nby, nbx, self.C), dtype=bool)
+        for iy in range(nby):
+            for ix in range(nbx):
+                tiles[iy, ix] = ~self.sample_drop(rng)
+        keep = np.repeat(np.repeat(tiles, b, axis=0), b, axis=1)[:H, :W]
         t = torch.as_tensor(keep.astype("float32"), dtype=dtype, device=device)
-        return t.view(1, 1, 1, self.C)
+        return t.view(1, H, W, self.C)
 
 
 def blocked_holdout(valid, block_cells, holdout_frac, buffer_cells, seed=0):

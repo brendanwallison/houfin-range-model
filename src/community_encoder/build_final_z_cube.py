@@ -154,6 +154,9 @@ def build_spacetime_cube(config: Optional[Union[Dict[str, Any], str, os.PathLike
     stream_dims = [int(d) for d in dm["stream_dims"]]
     latent_dim = int(dm["latent_dim"])
     spatial_kernel = int(dm["spatial_kernel"]) if "spatial_kernel" in dm else 0
+    # Architecture width is a trained property, not a config choice at inference time.
+    hidden_width = int(dm["hidden_width"]) if "hidden_width" in dm else None
+    mlp_expansion = int(dm["mlp_expansion"]) if "mlp_expansion" in dm else 4
     schema = _json.loads(str(dm["schema"]))
     kernel = str(dm["kernel"]) if "kernel" in dm else ""
     centered = bool(dm["centered"]) if "centered" in dm else True
@@ -173,7 +176,9 @@ def build_spacetime_cube(config: Optional[Union[Dict[str, Any], str, os.PathLike
     z_static_valid = ~np.isnan(z_static_grid).any(axis=-1)
 
     print(f"Loading N-stream model ({stream_dims}, spatial_kernel={spatial_kernel}) from {model_path}...")
-    model = MultiStreamAutoencoder(stream_dims, latent_dim, spatial_kernel).to(device)
+    model = MultiStreamAutoencoder(stream_dims, latent_dim, spatial_kernel,
+                                   hidden_width=hidden_width,
+                                   mlp_expansion=mlp_expansion).to(device)
     model.load_state_dict(torch.load(model_path, map_location=device))
     model.eval()
 

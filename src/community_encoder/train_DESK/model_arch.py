@@ -93,18 +93,32 @@ class MultiStreamAutoencoder(nn.Module):
     default because the right value depends on what other regularization is active:
     with input channel-group masking (``augment.py``) supplying most of the noise, a
     much lower rate is appropriate than without it.
+
+    ``hidden_width`` (``h``) is the per-branch width; ``None`` keeps the historical
+    ``max(128, latent_dim*4)``. It is the main CAPACITY knob: branch parameters scale
+    as ``h**2`` (each ``BMLPBlock`` is ``h -> h*mlp_expansion -> h``), so halving it
+    quarters them. That matters because generalization here is measured along the
+    SPATIAL axis -- the holdout is blocked by cell -- and there are only ~12k training
+    cells against ~7.6M parameters at ``h=256``, i.e. ~620 parameters per cell.
+
+    NOTE ``hidden_width`` and ``mlp_expansion`` change ``state_dict`` shapes, so both are
+    persisted in ``desk_meta.npz`` and must be read back wherever the model is rebuilt
+    for inference (``build_final_z_cube``, ``validate_spacetime``).
     """
 
-    def __init__(self, dims, latent_dim, spatial_kernel=3, dropout=0.5):
+    def __init__(self, dims, latent_dim, spatial_kernel=3, dropout=0.5,
+                 hidden_width=None, mlp_expansion=4):
         super().__init__()
         self.dims = list(dims)
         self.dropout = float(dropout)
         n = len(self.dims)
-        h = max(128, latent_dim * 4)
+        h = int(hidden_width) if hidden_width else max(128, latent_dim * 4)
+        self.hidden_width = h
+        self.mlp_expansion = int(mlp_expansion)
         self.encoders = nn.ModuleList([
             nn.Sequential(nn.Linear(d, h), nn.GELU(),
-                          BMLPBlock(h, dropout=self.dropout),
-                          BMLPBlock(h, dropout=self.dropout))
+                          BMLPBlock(h, k=self.mlp_expansion, dropout=self.dropout),
+                          BMLPBlock(h, k=self.mlp_expansion, dropout=self.dropout))
             for d in self.dims
         ])
         self.mixer = nn.Sequential(
@@ -158,5 +172,7 @@ class MultiStreamAutoencoder(nn.Module):
 class MultiInputAutoencoder(MultiStreamAutoencoder):
     """Backward-compatible 2-stream (prism, bui) constructor shim (no live caller)."""
 
-    def __init__(self, prism_dim, bui_dim, latent_dim, spatial_kernel=3, dropout=0.5):
-        super().__init__([prism_dim, bui_dim], latent_dim, spatial_kernel, dropout)
+    def __init__(self, prism_dim, bui_dim, latent_dim, spatial_kernel=3, dropout=0.5,
+                 hidden_width=None, mlp_expansion=4):
+        super().__init__([prism_dim, bui_dim], latent_dim, spatial_kernel, dropout,
+                         hidden_width, mlp_expansion)

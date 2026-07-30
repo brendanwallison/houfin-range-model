@@ -458,6 +458,20 @@ def _max_rss_gib():
     return resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / _RSS_TO_GIB
 
 
+def median_dir_cos(dp, dt):
+    """Median per-row cosine between two sets of change vectors ``(n, L)``.
+
+    Module-level so it can be tested against known angles: ``_dir_cos`` inside the trainer is a
+    closure over the year indices and cannot be called directly. Rows whose either vector is
+    degenerate are skipped rather than contributing a spurious value.
+    """
+    den = dp.norm(dim=1) * dt.norm(dim=1)
+    ok = den > 1e-12
+    if not bool(ok.any()):
+        return float("nan")
+    return float(torch.median(torch.sum(dp * dt, dim=1)[ok] / den[ok]))
+
+
 def spatial_interp_baseline(tgt, k=8, power=2.0):
     """Predict held-out cells by inverse-distance interpolation of the TARGETS themselves.
 
@@ -731,22 +745,60 @@ def train_model_ema(cov_window, mask_window, window_years, targets, x2023, m2023
         zt0, zt1 = tgt[y_deep][0][m], tgt[y2023][0][m]
         return med(zp0, zp1), med(zt0, zt1)
 
+    def _dir_cos(z_all, m, perm):
+        """Median cosine between the PREDICTED and TARGET change vectors, and a permuted null.
+
+        ``_rotation`` measures only how far z swings; two models can match its magnitude while
+        moving in opposite directions. This measures the direction: the angle between
+        ``z_pred(anchor) - z_pred(deep)`` and the same difference on the targets, per cell.
+
+        The pair is what makes either interpretable. For an MSE objective the optimal magnitude
+        of a prediction whose direction cosine is ``rho`` is exactly ``rho`` times the truth's
+        (minimizing ``||a*u - t||^2`` gives ``a = ||t||*rho``), and since ``1 - cos ~ theta^2/2``
+        the calibrated relationship is ``rot ~ dcos^2``. So ``dcos`` is the ceiling on a
+        well-calibrated ``rot``: below it the model under-rotates, above it the model is moving
+        further than its direction accuracy justifies, which raises error rather than lowering it.
+
+        ``perm`` is a FIXED cell permutation, so the null is a stable reference across epochs
+        rather than fresh noise: it pairs each predicted change with a different cell's target
+        change, giving the cosine attainable with no per-cell information.
+        """
+        if y_deep is None or not bool(m.any()):
+            return float("nan"), float("nan")
+        dp = (z_all[yi[y2023]][m] - z_all[yi[y_deep]][m]).detach()
+        dt = tgt[y2023][0][m] - tgt[y_deep][0][m]
+
+        return median_dir_cos(dp, dt), median_dir_cos(dp, dt[perm])
+
     val_sel = {y: (zg, va) for y, (zg, _tr, va) in tgt.items()}
     # Train-cell selection on the SAME footing as val, evaluated on the clean forward. Without
     # it the only train-side number is `Stab`, which is (a) measured under dropout+masking and
     # so overstates the error, and (b) divided by latent_dim while Val is not -- two different
     # scales for the same quantity in one log line.
     tr_sel = {y: (zg, tr) for y, (zg, tr, _va) in tgt.items()}
-    y_deep = min(tgt) if len(tgt) > 1 else None          # deepest supervised year in the window
-    # Cells supervised in BOTH the deep and anchor year, split train/val -- the rotation
-    # diagnostic needs the same cell present at both ends to measure its change.
+    # Deepest year that still has TRAINING coverage -- not simply min(tgt). A temporally
+    # held-out year stays in `tgt` with an all-False train mask (that is how it is withheld
+    # from the objective), so anchoring on min(tgt) would make `rot_tr` empty and the rotation
+    # and direction columns would silently go dark exactly when a temporal holdout is added.
+    _cand = [y for y in sorted(tgt) if y != y2023 and bool(tgt[y][1].any())]
+    y_deep = _cand[0] if _cand else None
+    # Cells supervised in BOTH the deep and anchor year, split train/val -- the diagnostic
+    # needs the same cell present at both ends to measure its change.
     if y_deep is not None:
         rot_tr = tgt[y_deep][1] & tgt[y2023][1]
         rot_va = tgt[y_deep][2] & tgt[y2023][2]
-        print(f"[desk] rotation diagnostic {y_deep}->{y2023}: "
+        # Fixed permutations so the direction null is a stable reference, not per-epoch noise.
+        g_null = torch.Generator(device="cpu").manual_seed(seed)
+        perm_tr = torch.randperm(int(rot_tr.sum()), generator=g_null).to(device)
+        perm_va = torch.randperm(int(rot_va.sum()), generator=g_null).to(device)
+        if int(min(tgt)) != y_deep:
+            print(f"[desk] rotation anchor moved to {y_deep} (min supervised year "
+                  f"{int(min(tgt))} has no training cells -- temporal holdout)", flush=True)
+        print(f"[desk] rotation/direction diagnostic {y_deep}->{y2023}: "
               f"{int(rot_tr.sum())} train / {int(rot_va.sum())} val cells", flush=True)
     else:
         rot_tr = rot_va = torch.zeros(1, dtype=torch.bool, device=device)
+        perm_tr = perm_va = torch.zeros(0, dtype=torch.long, device=device)
     best_val, best, bad, nonfinite = float("inf"), None, 0, 0
     print(f"--- Training DESK+outputEMA ({len(window_years)}yr window {window_years[0]}..{window_years[-1]}, "
           f"{len(tgt)} supervised years, max {epochs} ep; grad_clip={grad_clip}, es_warmup={es_warmup}, "
@@ -822,6 +874,9 @@ def train_model_ema(cov_window, mask_window, window_years, targets, x2023, m2023
                 rotPv, rotTv = _rotation(z_eval, rot_va)
                 rawP, _ = _rotation(z_raw_eval, rot_tr)
                 rawPv, _ = _rotation(z_raw_eval, rot_va)
+                # Direction of change, with a fixed-permutation null. rot is magnitude only.
+                dcT, dcTn = _dir_cos(z_eval, rot_tr, perm_tr)
+                dcV, dcVn = _dir_cos(z_eval, rot_va, perm_va)
         dt = time.perf_counter() - t_ep
         rss = _max_rss_gib()
         vram = (f" | VRAM {torch.cuda.max_memory_allocated() / 2**30:.2f}/"
@@ -842,6 +897,7 @@ def train_model_ema(cov_window, mask_window, window_years, targets, x2023, m2023
               f"Rec {recon_loss.item():.4f} | mse tr {ts:.4f} va {vs:.4f} gap {gap:.1f}x | "
               f"Val(2025) {vs_anchor:.4f} | Val(yr-out) {vs_time:.4f} | "
               f"rot tr {rr:.2f} va {rrv:.2f} (raw {rawr:.2f}/{rawrv:.2f}) | "
+              f"dcos tr {dcT:.2f} va {dcV:.2f} null {dcTn:+.2f}/{dcVn:+.2f} | "
               f"half-life {ema.half_life().item():.1f}y | "
               f"mix {w_stab.item()/tot:.2f}/{w_true.item()/tot:.2f}/{w_rec.item()/tot:.2f} | "
               f"lr {opt.param_groups[0]['lr']:.2e} | {dt:.1f}s{vram} | RSS {rss:.1f}G", flush=True)

@@ -312,7 +312,7 @@ def test_rotation_diagnostic_reads_a_known_angle():
             warmup_epochs=1, min_lr_frac=0.05)
     text = out.getvalue()
 
-    assert "rotation diagnostic 2021->2025" in text
+    assert "rotation/direction diagnostic 2021->2025" in text
     # `rot tr R va R (raw Rr/Rrv)`: R is z_ema (the SUPERVISED quantity, so 1.0 is the goal),
     # raw is the pre-EMA rotation, which must be LARGER because the EMA attenuates.
     rots = re.findall(r"rot tr ([\d.]+) va ([\d.]+) \(raw ([\d.]+)/([\d.]+)\)", text)
@@ -327,6 +327,8 @@ def test_rotation_diagnostic_reads_a_known_angle():
     # the target rotation is a fixed property of the data; the diagnostic line reports the
     # cell counts, and the mse columns must be finite
     assert re.search(r"mse tr [\d.]+ va [\d.]+ gap [\d.]+x", text), text
+    # the direction column and its permuted null must both be present every epoch
+    assert len(re.findall(r"dcos tr [\d.-]+ va [\d.-]+ null [+-][\d.]+/[+-][\d.]+", text)) == 3, text
     print("rotation diagnostic reads a known angle OK")
 
 
@@ -438,6 +440,38 @@ def _np_or(a):
     return a.detach().cpu().numpy() if hasattr(a, "detach") else np.asarray(a)
 
 
+def test_direction_cosine_recovers_known_angles():
+    """`dcos` must measure DIRECTION and ignore magnitude.
+
+    `rot` alone is a magnitude ratio: two models can match it while moving in opposite
+    directions, which is why an untrained model scores ~0.9 on it (a random projection inherits
+    the covariates' own rotation). The pair is what is interpretable -- for an MSE objective the
+    optimal magnitude of a prediction whose direction cosine is rho is exactly rho, and since
+    1-cos ~ theta^2/2 the calibrated relation is rot ~ dcos^2.
+    """
+    from src.community_encoder.train_DESK.desk_training import median_dir_cos
+
+    g = torch.Generator().manual_seed(0)
+    n, L = 4000, 64
+    dt = torch.randn(n, L, generator=g); dt /= dt.norm(dim=1, keepdim=True)
+    perp = torch.randn(n, L, generator=g)
+    perp -= (perp * dt).sum(1, keepdim=True) * dt
+    perp /= perp.norm(dim=1, keepdim=True)
+
+    for deg in (0, 30, 60, 90, 120, 180):
+        a = np.deg2rad(deg)
+        # random per-row magnitudes: a DIRECTION metric must be blind to them
+        dp = (np.cos(a) * dt + np.sin(a) * perp) * torch.rand(n, 1, generator=g) * 5
+        assert abs(median_dir_cos(dp, dt) - np.cos(a)) < 1e-3, deg
+
+    assert abs(median_dir_cos(dt * 100.0, dt) - 1.0) < 1e-5      # scale-invariant
+    # degenerate rows must be skipped, not silently scored as 0
+    mixed = torch.cat([dt[:10] * 0.0, dt[10:]])
+    assert abs(median_dir_cos(mixed, dt) - 1.0) < 1e-5
+    assert np.isnan(median_dir_cos(dt * 0.0, dt))                 # all-degenerate -> NaN
+    print("direction cosine recovers known angles OK")
+
+
 def test_nonfinite_loss_guard():
     """A non-finite loss must skip the step and abort only if it persists."""
     saved = None
@@ -461,5 +495,6 @@ if __name__ == "__main__":
     test_rotation_diagnostic_reads_a_known_angle()
     test_capacity_knob_and_width_persistence()
     test_spatial_interp_baseline()
+    test_direction_cosine_recovers_known_angles()
     test_nonfinite_loss_guard()
     print("\nALL DESK-TRAINING CHECKS PASSED")

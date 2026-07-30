@@ -16,6 +16,7 @@ agreement flags where ``enrich`` is warranted.
 """
 import json
 import os
+import time
 
 import numpy as np
 
@@ -322,11 +323,17 @@ def _load_model(config):
         [int(d) for d in dm["stream_dims"]], int(dm["latent_dim"]), spatial_kernel,
         hidden_width=(int(dm["hidden_width"]) if "hidden_width" in dm else None),
         mlp_expansion=(int(dm["mlp_expansion"]) if "mlp_expansion" in dm else 4))
+    # Put the net on the accelerator. This path used to load with map_location="cpu" and never
+    # call .to(device), so all 60 whole-grid forwards ran on CPU (~480 ms each, ~87% of this
+    # path's measured cost) on a job submitted to a GPU queue. The CPU fallback is retained so
+    # the stage still runs on a login node.
+    device = "cuda" if torch.cuda.is_available() else "cpu"
     model.load_state_dict(torch.load(
         os.path.join(config["paths"]["desk_output_dir"], "env_model_semisup.pth"),
-        map_location="cpu"))
-    model.eval()
-    return model, dm["mu"].astype("float32"), dm["sd"].astype("float32"), schema, int(dm["latent_dim"])
+        map_location=device))
+    model.to(device).eval()
+    return (model, dm["mu"].astype("float32"), dm["sd"].astype("float32"), schema,
+            int(dm["latent_dim"]), device)
 
 
 def encode_points(config, point_index):
@@ -336,7 +343,7 @@ def encode_points(config, point_index):
     """
     import torch
     from . import covariate_io as cio
-    model, mu, sd, schema, latent = _load_model(config)
+    model, mu, sd, schema, latent, device = _load_model(config)
     states_dir = os.path.join(config["paths"]["hist_dir"], "yearly_states")
     # The model's mu/sd and input widths are positional; refuse to encode against a
     # states dir that was rebuilt with a different channel set or order.
@@ -349,11 +356,11 @@ def encode_points(config, point_index):
     for y in np.unique(years):
         sel = np.where(years == y)[0]
         covn, valid = cio.norm_grid(cio.load_state_stack(int(y), states_dir, schema), mu, sd)
-        xg = torch.tensor(covn[None], dtype=torch.float32)
-        mg = torch.tensor(valid[None])
+        xg = torch.tensor(covn[None], dtype=torch.float32, device=device)
+        mg = torch.tensor(valid[None], device=device)
         with torch.no_grad():
             zz, _ = model(xg, mg)                        # (1, H, W, L)
-        zc = zz[0].numpy()
+        zc = zz[0].float().cpu().numpy()
         for k in sel:
             if valid[rows[k], cols[k]]:
                 Z[k] = zc[rows[k], cols[k]]
@@ -390,13 +397,19 @@ def zspace_reconstruction(config, pidx, X, Z_desk, recent_year, to_rec, has_rec)
     esk_meta = _json.load(open(os.path.join(zdir, "meta.json")))
     sigma, n_weeks, ld = float(esk_meta.get("sigma", 0.0)), int(esk_meta["n_weeks"]), Z_desk.shape[1]
 
-    # Smooth (matching the ESK) + project into the basis, batched to bound memory.
+    # Smooth (matching the ESK) + project into the basis, batched to bound memory. The basis is
+    # uploaded ONCE: this loop previously re-transferred the landmark and projection matrices to
+    # the device on every outer batch (~45 times for 890k points).
+    import torch as _torch
+    _dev = "cuda" if _torch.cuda.is_available() else "cpu"
+    _lm = _torch.tensor(np.asarray(landmarks), device=_dev, dtype=_torch.float32)
+    _pm = _torch.tensor(np.asarray(projmat), device=_dev, dtype=_torch.float32)
     N = X.shape[0]
     z_obs = np.zeros((N, ld), dtype="float32")
     for s in range(0, N, 20000):
         e = min(s + 20000, N)
         xb = smooth_abundances(X[s:e], n_weeks, sigma) if sigma > 0 else X[s:e]
-        z_obs[s:e] = project_into_z(xb, landmarks, projmat)[:, :ld]
+        z_obs[s:e] = project_into_z(xb, _lm, _pm, device=_dev)[:, :ld]
 
     z_nc = np.full_like(z_obs, np.nan)
     z_nc[has_rec] = z_obs[to_rec[has_rec]]
@@ -454,7 +467,20 @@ def run_validate(config=None, n_pairs=20000, cka_sample=800, seed=0):
     meta = json.load(open(os.path.join(zt, "points_meta.json")))
     recent_year = int(meta["recent_year"])
 
+    # Phase timing. Four separate attempts to explain this stage's runtime by benchmarking
+    # individual functions were all wrong, so measure it in situ instead of reasoning about it.
+    _t0 = time.perf_counter()
+    _marks = []
+
+    def _phase(name):
+        nonlocal _t0
+        now = time.perf_counter()
+        _marks.append((name, now - _t0))
+        print(f"[validate:timing] {name:<26} {now - _t0:7.1f} s", flush=True)
+        _t0 = now
+
     Z, ok = encode_points(config, pidx)
+    _phase("encode_points")
     # Every metric below is computed ONLY on these points. `encode_points` fills Z solely
     # where `norm_grid`'s all-channels-finite mask holds, so points over cells the covariates
     # do not cover are dropped here rather than scored -- this path reads the STATES, never
@@ -540,6 +566,7 @@ def run_validate(config=None, n_pairs=20000, cka_sample=800, seed=0):
             report[f"{d0}s"] = _bucket_report((years >= d0) & (years < d0 + 10)
                                               & (years != recent_year), f"{d0}s")
     report["all_historical"] = _bucket_report(years != recent_year, "all_historical")
+    _phase("bucket reports")
 
     # --- temporal-nuance metrics (turnover magnitude + spatiotemporal analog direction) ---
     from src.config_utils import load_data_config
@@ -547,9 +574,13 @@ def run_validate(config=None, n_pairs=20000, cka_sample=800, seed=0):
     xy = cell_xy(pidx[:, 0], pidx[:, 1], ref_raster)
     turn = temporal_turnover_agreement(Z, X, pidx, recent_year,
                                        min_gap=int(bc.get("turnover_min_gap", 5)))
+    _phase("turnover")
     analog = analog_displacement(Z, X, pidx, xy, recent_year, rng)
+    _phase("analog")
     dirchg = directional_change_agreement(Z, X, pidx, recent_year, rng)
+    _phase("directional change")
     recon = zspace_reconstruction(config, pidx, X, Z, recent_year, to_rec, has_rec)
+    _phase("zspace recon (projection)")
     report["directional_change"] = {k: v for k, v in dirchg.items()
                                      if k in ("n_sites", "mean_dir_cos", "median_dir_cos",
                                               "frac_same_dir", "mean_dir_cos_null", "note")}
@@ -668,6 +699,9 @@ def run_validate(config=None, n_pairs=20000, cka_sample=800, seed=0):
             print(f"           HELD-OUT cells ({rc['n_heldout']}): DESK beats no-change in "
                   f"{rc['frac_desk_beats_nochange_heldout']:.1%}  <- the honest enrich grade "
                   f"(err DESK={rc['median_err_desk_heldout']:.4f} vs {rc['median_err_nochange_heldout']:.4f})")
+    _phase("write outputs")
+    print("[validate:timing] total " + "  ".join(f"{n}={t:.0f}s" for n, t in _marks)
+          + f"  => {sum(t for _, t in _marks):.0f}s", flush=True)
     print(f"[validate] report -> {out} ; viz arrays -> {viz}")
     return report
 

@@ -266,7 +266,7 @@ def compute_optimal_latent_z_ruzicka(ebird_flat, n_species, n_weeks, latent_dim,
     return Z_opt
 
 
-def project_into_z(x_flat, landmarks, proj_mat, device="cuda", batch_size=5000):
+def project_into_z(x_flat, landmarks, proj_mat, device="cuda", batch_size=None):
     """Project rows of ``x_flat`` into a SAVED ESK basis: ``z = Ruzicka(x, landmarks) @ proj_mat``.
 
     ``landmarks`` (M, D) and ``proj_mat`` (M, latent) come from a prior
@@ -277,8 +277,19 @@ def project_into_z(x_flat, landmarks, proj_mat, device="cuda", batch_size=5000):
     """
     if device == "cuda" and not torch.cuda.is_available():
         device = "cpu"
-    T_lm = torch.tensor(np.asarray(landmarks), device=device, dtype=torch.float32)
-    P = torch.tensor(np.asarray(proj_mat), device=device, dtype=torch.float32)
+    # The heavy step is cdist(Tb, T_lm, p=1) -> a (batch, M) matrix, and about five such
+    # tensors are live at once. At M=25k that is ~477 MB each per 5k rows, so 5k used ~6% of a
+    # 40 GB card while 20k uses ~24%. cdist(p=1) is bandwidth-bound (no matmul to accelerate),
+    # so a larger batch mainly cuts kernel-launch overhead rather than total work. On CPU the
+    # same tensors come out of host RAM, so the small batch stays the default there.
+    if batch_size is None:
+        batch_size = 20000 if device == "cuda" else 5000
+    # Accept already-uploaded tensors so a caller looping over outer batches does not re-transfer
+    # the landmark and projection matrices on every call (project_amplitude_to_z did, ~45 times).
+    T_lm = (landmarks if torch.is_tensor(landmarks)
+            else torch.tensor(np.asarray(landmarks), device=device, dtype=torch.float32))
+    P = (proj_mat if torch.is_tensor(proj_mat)
+         else torch.tensor(np.asarray(proj_mat), device=device, dtype=torch.float32))
     sum_lm = T_lm.sum(dim=1, keepdim=True)
     N, L = x_flat.shape[0], P.shape[1]
     Z = np.zeros((N, L), dtype=np.float32)
@@ -315,10 +326,14 @@ def project_amplitude_to_z(X, z_dir, latent_dim, batch=20000):
     sigma, n_weeks = float(meta.get("sigma", 0.0)), int(meta["n_weeks"])
     N = X.shape[0]
     z = np.zeros((N, latent_dim), dtype="float32")
+    # Upload the basis ONCE. Previously each outer batch re-transferred both matrices.
+    dev = "cuda" if torch.cuda.is_available() else "cpu"
+    T_lm = torch.tensor(np.asarray(landmarks), device=dev, dtype=torch.float32)
+    P = torch.tensor(np.asarray(projmat), device=dev, dtype=torch.float32)
     for s in range(0, N, batch):
         e = min(s + batch, N)
         xb = smooth_abundances(X[s:e], n_weeks, sigma) if sigma > 0 else X[s:e]
-        z[s:e] = project_into_z(xb, landmarks, projmat)[:, :latent_dim]
+        z[s:e] = project_into_z(xb, T_lm, P, device=dev)[:, :latent_dim]
     return z
 
 

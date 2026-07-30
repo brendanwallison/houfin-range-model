@@ -61,13 +61,23 @@ fi
 if [ "$_needs_gpu" = 1 ]; then
     python -c "import torch; print('cuda', torch.cuda.is_available()); assert torch.cuda.is_available(), 'no PyTorch CUDA device'" || \
         { echo "ESK/DESK need a GPU but none is visible — use a GPU queue (gpu-a100-small)"; exit 1; }
+else
+    # cube and validate are not REQUIRED to have a GPU (they must still run on a login node for
+    # debugging), but they do use one heavily: cube runs 124 whole-grid forwards and validate 60,
+    # plus the Nystrom projection of ~890k points. So report what they got instead of staying
+    # silent -- a silent CPU fallback here is a ~15x slowdown with no signal in the log.
+    python -c "import torch; print('[encoder] cuda available:', torch.cuda.is_available())" || true
+fi
+# Telemetry for EVERY stage on a GPU queue, not just the heavy ones. Gating this on _needs_gpu
+# meant STAGES="cube validate" produced no gpu_encoder_*.csv at all, so utilisation and VRAM for
+# those stages could only be guessed at -- and remora's own GPU numbers are unreliable here
+# (it reported 0.94 MB for cube and 15.46 MB for a desk run measured at 13.77 GB).
+if command -v nvidia-smi >/dev/null 2>&1; then
     start_gpu_monitor "$SLURM_SUBMIT_DIR/gpu_encoder_${SLURM_JOB_ID}.csv" 30
     # TERM/INT as well as EXIT: an untrapped SIGTERM (which is how SLURM ends a job that hits its
     # wall clock) kills the shell via the default disposition WITHOUT running the EXIT trap, so
     # the monitor was only ever shut down cleanly on a normal exit.
     trap stop_gpu_monitor EXIT TERM INT
-else
-    echo "[encoder] STAGES='$STAGES' are CPU-capable; not requiring (or touching) a CUDA device."
 fi
 date
 

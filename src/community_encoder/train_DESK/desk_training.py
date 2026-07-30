@@ -473,37 +473,53 @@ def spatial_interp_baseline(tgt, k=8, power=2.0):
     which is exactly the task the model faces.
 
     Returns ``(nearest_mse, idw_mse)`` on the same per-cell summed scale as ``_z_mse``.
+
+    The per-year masks matter and must not be shortcut. ``_prepare_trend_targets`` builds each
+    year's grid as ``np.zeros`` and marks only the cells with a trend point that year, so a cell
+    absent in year Y holds a **zero**, not a NaN, and the train/val masks are ``present &
+    (~holdout)`` / ``present & holdout`` -- i.e. per-year, not constant. An earlier version of
+    this function reused the first year's masks throughout, which scored interpolation against
+    zero-filled targets and fed zero-filled sources into the interpolation, on a different cell
+    population and a different denominator from ``_z_mse``. That made the baseline
+    incomparable with the model's val. So: rebuild the neighbour index per distinct mask and
+    accumulate with the per-year counts, mirroring ``_z_mse`` exactly.
     """
     from scipy.spatial import cKDTree
 
     years = sorted(tgt)
     if not years:
         return float("nan"), float("nan")
-    # The train/val masks are identical across years, so build the neighbour index once.
-    _, tr0, va0 = tgt[years[0]]
-    tr_np = tr0.detach().cpu().numpy() if hasattr(tr0, "detach") else np.asarray(tr0)
-    va_np = va0.detach().cpu().numpy() if hasattr(va0, "detach") else np.asarray(va0)
-    tr_rc = np.argwhere(tr_np)
-    va_rc = np.argwhere(va_np)
-    if len(tr_rc) < k or len(va_rc) == 0:
-        return float("nan"), float("nan")
-    dist, idx = cKDTree(tr_rc).query(va_rc, k=k)
-    w = 1.0 / np.maximum(dist, 1e-6) ** power
-    w /= w.sum(axis=1, keepdims=True)
+
+    def _np(a):
+        return a.detach().cpu().numpy() if hasattr(a, "detach") else np.asarray(a)
 
     sq_n = sq_i = 0.0
     cnt = 0
+    cache = {}
     for y in years:
-        zg, _tr, _va = tgt[y]
-        z = zg.detach().cpu().numpy() if hasattr(zg, "detach") else np.asarray(zg)
-        src = z[tr_rc[:, 0], tr_rc[:, 1]]                 # (n_train, L)
-        truth = z[va_rc[:, 0], va_rc[:, 1]]               # (n_val, L)
-        pred_n = src[idx[:, 0]]                           # nearest training cell
-        pred_i = np.einsum("nk,nkl->nl", w, src[idx])     # inverse-distance weighted
+        zg, tr_m, va_m = tgt[y]
+        tr_np, va_np = _np(tr_m), _np(va_m)
+        if not va_np.any() or tr_np.sum() < k:
+            continue                                       # same skip as _z_mse's m.any()
+        key = (tr_np.tobytes(), va_np.tobytes())           # masks repeat across many years
+        if key not in cache:
+            tr_rc, va_rc = np.argwhere(tr_np), np.argwhere(va_np)
+            dist, idx = cKDTree(tr_rc).query(va_rc, k=k)
+            w = 1.0 / np.maximum(dist, 1e-6) ** power
+            cache[key] = (tr_rc, va_rc, idx, w / w.sum(axis=1, keepdims=True))
+        tr_rc, va_rc, idx, w = cache[key]
+
+        z = _np(zg)
+        src = z[tr_rc[:, 0], tr_rc[:, 1]]                  # (n_train, L), this year's values
+        truth = z[va_rc[:, 0], va_rc[:, 1]]                # (n_val, L)
+        pred_n = src[idx[:, 0]]                            # nearest training cell
+        pred_i = np.einsum("nk,nkl->nl", w, src[idx])      # inverse-distance weighted
         sq_n += float(((pred_n - truth) ** 2).sum())
         sq_i += float(((pred_i - truth) ** 2).sum())
         cnt += len(va_rc)
-    return sq_n / max(cnt, 1), sq_i / max(cnt, 1)
+    if cnt == 0:
+        return float("nan"), float("nan")
+    return sq_n / cnt, sq_i / cnt
 
 
 def _param_groups(modules, weight_decay):

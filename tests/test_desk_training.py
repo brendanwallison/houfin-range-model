@@ -402,7 +402,40 @@ def test_spatial_interp_baseline():
 
     # degenerate inputs return NaN rather than raising inside a training run
     assert all(np.isnan(v) for v in spatial_interp_baseline({}))
+
+    # PER-YEAR masks with zero-filled absent cells. _prepare_trend_targets builds each year as
+    # np.zeros and marks only that year's points, so a cell absent in year Y holds 0.0. A
+    # baseline that reused one year's masks would score interpolation against those zeros and
+    # feed them in as sources -- a different population and denominator from _z_mse. Here year
+    # 2025 covers everything while 1966 covers only the top half; the answer must depend only
+    # on genuinely-present cells, so it must equal the same call with the zeros left untouched
+    # outside each year's own mask.
+    # Coverage must SHRINK from the first year onward, otherwise reusing the first year's mask
+    # would coincidentally stay inside every later year's mask and the bug would hide.
+    half = np.zeros((H, W), bool); half[:H // 2, :] = True
+    f2 = field.copy()
+    varying = {}
+    for y, cov_mask in ((1966, np.ones((H, W), bool)), (2025, half)):
+        z = np.where(cov_mask[..., None], f2, 0.0).astype("float32")   # absent -> 0.0
+        varying[y] = (z, torch.tensor(tr & cov_mask), torch.tensor(val & cov_mask))
+    n_v, i_v = spatial_interp_baseline(varying)
+    assert np.isfinite(n_v) and np.isfinite(i_v)
+    assert i_v <= n_v
+    # The zero-fill must not leak in: poisoning the absent region with a huge value cannot
+    # change the result, because those cells are outside every year's mask.
+    poisoned = {}
+    for y, (z, t_m, v_m) in varying.items():
+        zp = z.copy()
+        outside = ~(_np_or(t_m) | _np_or(v_m))
+        zp[outside] = 1e3
+        poisoned[y] = (zp, t_m, v_m)
+    n_p, i_p = spatial_interp_baseline(poisoned)
+    assert abs(n_p - n_v) < 1e-6 and abs(i_p - i_v) < 1e-6, (n_v, n_p, i_v, i_p)
     print("spatial interpolation baseline OK")
+
+
+def _np_or(a):
+    return a.detach().cpu().numpy() if hasattr(a, "detach") else np.asarray(a)
 
 
 def test_nonfinite_loss_guard():

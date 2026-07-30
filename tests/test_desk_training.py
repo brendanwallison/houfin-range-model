@@ -267,6 +267,65 @@ def test_train_loop_and_ablation():
     print("train loop + ablation guard OK")
 
 
+def test_rotation_diagnostic_reads_a_known_angle():
+    """`rotT` must equal the target's true rotation, and `rotP` must start near zero.
+
+    Built against ground truth: targets are constructed by rotating a fixed unit vector by a
+    known angle between the deep and anchor year, so `1 - cos` is known exactly. This is the
+    instrument that was missing -- a per-cell MSE cannot expose a temporal-amplitude deficit,
+    because Z is dominated by the static spatial pattern and MSE's optimum for a
+    poorly-predicted component is a shrunk one.
+    """
+    import contextlib
+    import io
+    import re
+
+    from src.community_encoder.train_DESK import desk_training as D
+
+    sch = _schema()
+    dims = [s["dim"] for s in sch["streams"]]
+    T, H, W, L = 6, 20, 26, 64
+    rng = np.random.default_rng(0)
+    cov = rng.normal(size=(T, H, W, sch["total_dim"])).astype("float32")
+    msk = np.ones((T, H, W), bool)
+    years = list(range(2020, 2026))
+    m = np.ones((H, W), bool)
+
+    ang = np.deg2rad(50.0)
+    base = rng.normal(size=(H, W, L)).astype("float32")
+    base /= np.linalg.norm(base, axis=-1, keepdims=True)
+    perp = rng.normal(size=(H, W, L)).astype("float32")
+    perp -= (perp * base).sum(-1, keepdims=True) * base
+    perp /= np.linalg.norm(perp, axis=-1, keepdims=True)
+    tgt = {}
+    for i, y in enumerate(years[1:]):
+        a = ang * (i / max(len(years) - 2, 1))
+        tgt[y] = ((np.cos(a) * base + np.sin(a) * perp).astype("float32"), m, m)
+
+    out = io.StringIO()
+    with contextlib.redirect_stdout(out):
+        D.train_model_ema(
+            cov, msk, years, tgt, rng.random((H, W, 12)).astype("float32"), m, m, dims,
+            latent_dim=L, ema_cfg={"earlystop_warmup": 1}, spatial_kernel=5, epochs=3, lr=1e-3,
+            weights={"stabilizing": 64.0, "metric": 5.0, "reconstruction": 0.1},
+            schema=sch, augment_cfg={"enabled": True}, dropout=0.1,
+            warmup_epochs=1, min_lr_frac=0.05)
+    text = out.getvalue()
+
+    assert "rotation diagnostic 2021->2025" in text
+    rots = re.findall(r"rot tr ([\d.]+)/([\d.]+)=([\d.]+)", text)
+    assert len(rots) == 3, text
+    rotP = [float(a) for a, _, _ in rots]
+    rotT = [float(b) for _, b, _ in rots]
+    # the target rotation is known exactly and must be constant across epochs
+    expected = 1.0 - np.cos(ang)
+    assert all(abs(t - expected) < 1e-3 for t in rotT), (rotT, expected)
+    # an untrained model barely rotates; the ratio must start near zero and increase
+    assert rotP[0] < 0.05 * expected, rotP
+    assert rotP[-1] > rotP[0], rotP
+    print("rotation diagnostic reads a known angle OK")
+
+
 def test_nonfinite_loss_guard():
     """A non-finite loss must skip the step and abort only if it persists."""
     saved = None
@@ -287,5 +346,6 @@ if __name__ == "__main__":
     test_partial_conv_5x5()
     test_dropout_threading_and_loss_reparam()
     test_train_loop_and_ablation()
+    test_rotation_diagnostic_reads_a_known_angle()
     test_nonfinite_loss_guard()
     print("\nALL DESK-TRAINING CHECKS PASSED")

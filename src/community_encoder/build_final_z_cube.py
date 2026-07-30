@@ -26,34 +26,6 @@ from community_encoder.train_DESK import covariate_io as cio
 from community_encoder.train_DESK.model_arch import MultiStreamAutoencoder
 from src.data.masks import read_land_mask
 
-# Per-cell provenance codes written to ``Z_fill_stage_{year}.npy`` (uint8).
-# ``FILL_PREDICTED`` is the only class that is actual model output; it doubles as the
-# per-year valid mask (``stage == FILL_PREDICTED``).
-FILL_PREDICTED = 0     # DESK forward on finite covariates
-FILL_SPATIAL = 1       # stage 1: linear interpolation from THIS year's valid cells
-FILL_STATIC = 2        # stage 2: the year-INVARIANT static ESK field -> no temporal signal
-FILL_NEAREST = 3       # stage 3: nearest from THIS year's valid cells
-FILL_NODATA = 255      # ocean / off-grid (Z is NaN)
-FILL_LABELS = {FILL_PREDICTED: "predicted", FILL_SPATIAL: "spatial",
-               FILL_STATIC: "static", FILL_NEAREST: "nearest", FILL_NODATA: "nodata"}
-
-
-def fill_provenance(land_mask, valid_pixels, mask_s1, mask_s2):
-    """Per-cell fill provenance from the masks the three fill stages already return.
-
-    Each stage reports the validity it achieved, so the classes are exact differences
-    rather than a re-derivation: what stage 1 added over the model's own cells, what
-    stage 2 added over stage 1, and whatever land remained for stage 3. The four land
-    classes partition ``land_mask`` exactly; everything else is ``FILL_NODATA``.
-    """
-    stage = np.full(land_mask.shape, FILL_NODATA, dtype=np.uint8)
-    stage[land_mask & (~mask_s2)] = FILL_NEAREST
-    stage[land_mask & mask_s2 & (~mask_s1)] = FILL_STATIC
-    stage[land_mask & mask_s1 & (~valid_pixels)] = FILL_SPATIAL
-    stage[land_mask & valid_pixels] = FILL_PREDICTED
-    return stage
-
-
 def fill_gaps_stage1_spatial(z_cube, valid_mask, land_mask, radius_px=25):
     """Fill land gaps within a local radius using linear interpolation."""
     dist_map = distance_transform_edt(~valid_mask)
@@ -120,18 +92,17 @@ def build_spacetime_cube(config: Optional[Union[Dict[str, Any], str, os.PathLike
 
     Loads the fitted DESK network + per-stream normalization stats, encodes each
     year's ``state_{year}.npz`` to its latent Z on the model grid, runs the
-    three-stage gap fill, and writes ``Z_latent_{year}.npy`` plus
-    ``Z_fill_stage_{year}.npy`` (uint8 provenance, see ``FILL_*`` below).
-    ``config`` is the encoder config (dict or path); defaults to the repo config.
+    three-stage gap fill, and writes ``Z_latent_{year}.npy``. ``config`` is the
+    encoder config (dict or path); defaults to the repo config.
 
-    **Read the provenance before interpreting the cube.** Only ``FILL_PREDICTED``
-    cells are model output; the covariate footprint is much smaller than the land
-    mask (validity is all-or-nothing over ~295 channels), and the rest is filled.
-    ``FILL_STATIC`` cells in particular get a *year-invariant* reference field, so
-    their Z is bit-identical across years and any temporal statistic on them is
-    degenerate -- e.g. turnover ``1 - Z.Z'`` collapses to ``1 - ||Z||^2`` ~= 0.
-    That artifact is why this file is written: it was previously indistinguishable
-    from a real prediction of "no community change".
+    On the current 27 km grid the gap fill is a no-op: every covariate stream covers
+    100% of the 17,209 land cells, so ``valid_pixels`` equals the land mask and all
+    three stages find nothing to fill (verify with
+    ``scripts/diagnose_state_footprint.py``). The stages remain as insurance for a
+    future stream with a narrower footprint -- note that validity is all-or-nothing
+    across ~295 channels, so one such stream would invalidate whole regions, and
+    stage 2's *year-invariant* static backfill would then make temporal statistics
+    degenerate on them.
     """
     if config is None:
         config = load_config()
@@ -242,7 +213,7 @@ def build_spacetime_cube(config: Optional[Union[Dict[str, Any], str, os.PathLike
     if ema_on:
         print(f"Exporting instantaneous z_raw (training EMA half-life={hl:.2f} yr is not applied).")
 
-    fill_counts = {}
+    n_filled = 0
     for year, z_year, valid_pixels in tqdm(list(zip(years, z_raws, valids)), desc="Filling Years"):
         z_s1, mask_s1 = fill_gaps_stage1_spatial(
             z_year,
@@ -256,28 +227,24 @@ def build_spacetime_cube(config: Optional[Union[Dict[str, Any], str, os.PathLike
 
         out_name = f"Z_latent_{year}.npy"
         np.save(os.path.join(output_dir, out_name), z_final.astype(np.float32))
+        n_filled += int((land_mask & ~valid_pixels).sum())
 
-        # Provenance: without it a gap-filled cell is indistinguishable from a
-        # prediction, and stage-2 cells silently read as "no community change".
-        stage = fill_provenance(land_mask, valid_pixels, mask_s1, mask_s2)
-        np.save(os.path.join(output_dir, f"Z_fill_stage_{year}.npy"), stage)
-        counts = {name: int((stage == code).sum()) for code, name in FILL_LABELS.items()}
-        fill_counts[int(year)] = counts
-        n_land = int(land_mask.sum())
-        print(f"   -> {year} provenance: predicted {counts['predicted']}/{n_land} "
-              f"({100 * counts['predicted'] / max(n_land, 1):.1f}%), spatial {counts['spatial']}, "
-              f"static {counts['static']} (year-invariant), nearest {counts['nearest']}", flush=True)
+    # Expected to be 0 on the current grid. A non-zero total means some covariate
+    # stream no longer covers the whole land mask, and the cells it lost are being
+    # gap-filled -- stage 2's backfill is year-invariant, so temporal statistics
+    # (turnover, cka_gain) would be silently degenerate there. Run
+    # scripts/diagnose_state_footprint.py to find the offending stream.
+    if n_filled:
+        print(f"[cube] WARNING {n_filled} cell-years were gap-filled rather than predicted "
+              f"({n_filled / max(len(years), 1):.0f}/yr). Covariate coverage has shrunk; "
+              f"see scripts/diagnose_state_footprint.py", flush=True)
 
     with open(os.path.join(output_dir, "cube_meta.json"), "w", encoding="utf-8") as fh:
         _json.dump({
             "kernel": kernel, "centered": centered, "latent_dim": latent_dim,
             "kernel_contract": "Z(x) dot Z(x') ~= uncentered Ruzicka(x,x')",
             "years": years,
-            "fill_stage_codes": {str(k): v for k, v in FILL_LABELS.items()},
-            "fill_counts_by_year": fill_counts,
-            "fill_note": ("only 'predicted' cells are model output; 'static' cells carry a "
-                          "year-invariant reference field, so temporal statistics on them are "
-                          "degenerate (turnover 1-Z.Z' collapses to ~0)"),
+            "gapfilled_cell_years": n_filled,
             "temporal_output": "raw_instantaneous",
             "training_output_ema": ema_on,
             "training_ema_half_life": hl if np.isfinite(hl) else None,

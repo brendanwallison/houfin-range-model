@@ -41,15 +41,37 @@ def _turnover_maps(z, ref_raster, out_dir, cmap):
     def _grid(vals):
         g = np.full((H, W), np.nan, np.float32); g[rows, cols] = vals; return g
     gp, go = _grid(z["turnover_pred"]), _grid(z["turnover_obs"])
-    fin = np.isfinite(np.r_[z["turnover_pred"], z["turnover_obs"]])
-    vmax = float(np.nanpercentile(np.r_[z["turnover_pred"], z["turnover_obs"]][fin], 98)) if fin.any() else 1.0
+    tp, to = z["turnover_pred"], z["turnover_obs"]
+    fin = np.isfinite(tp) & np.isfinite(to)
+
+    # PER-PANEL scaling. A single shared vmax was drawn from the pooled pred+obs
+    # distributions, and obs is ~3.5x larger (medians 0.38 vs 0.11) -- so it set the
+    # scale, the predicted panel rendered at ~20% of full range, and ~24% of it fell
+    # near-black regardless of content. That read as "no change predicted" when it
+    # meant "much less change predicted", and it cost an entire investigation. Each
+    # panel now gets its own scale and its median is annotated, so a systematic
+    # amplitude gap is legible as a number instead of hidden in the colour mapping.
+    diff = gp - go
+    dfin = np.isfinite(diff)
+    vd = float(np.nanpercentile(np.abs(diff[dfin]), 98)) if dfin.any() else 1.0
+    panels = [
+        (gp, "DESK turnover (predicted)", cmap, 0.0,
+         float(np.nanpercentile(tp[fin], 98)) if fin.any() else 1.0, np.median(tp[fin]) if fin.any() else np.nan),
+        (go, "BBS turnover (observed)", cmap, 0.0,
+         float(np.nanpercentile(to[fin], 98)) if fin.any() else 1.0, np.median(to[fin]) if fin.any() else np.nan),
+        (diff, "pred − obs", "RdBu_r", -vd, vd,
+         np.median(diff[dfin]) if dfin.any() else np.nan),
+    ]
     fig, ax = plt.subplots(1, 3, figsize=(15, 5))
-    for a, g, t in zip(ax, [gp, go, gp - go],
-                       ["DESK turnover (predicted)", "BBS turnover (observed)", "pred − obs"]):
-        cm = cmap if t != "pred − obs" else "RdBu_r"
-        vm = vmax if t != "pred − obs" else np.nanpercentile(np.abs(gp - go)[np.isfinite(gp - go)], 98)
-        im = a.imshow(g, cmap=cm, vmin=(0 if t != "pred − obs" else -vm), vmax=vm)
-        a.set_title(t); a.axis("off"); fig.colorbar(im, ax=a, fraction=0.046)
+    for a, (g, t, cm, lo, hi, med) in zip(ax, panels):
+        im = a.imshow(g, cmap=cm, vmin=lo, vmax=hi)
+        a.set_title(f"{t}\nmedian {med:.3f}   scale 0–{hi:.3f}" if lo == 0.0
+                    else f"{t}\nmedian {med:+.3f}   scale ±{hi:.3f}", fontsize=10)
+        a.axis("off"); fig.colorbar(im, ax=a, fraction=0.046)
+    if fin.any():
+        ratio = float(np.median(tp[fin]) / max(np.median(to[fin]), 1e-12))
+        fig.suptitle(f"Predicted turnover is {1/max(ratio,1e-12):.1f}x smaller than observed "
+                     f"(median ratio {ratio:.3f}) — panels are scaled INDEPENDENTLY", fontsize=11)
     fig.tight_layout()
     p = os.path.join(out_dir, "turnover_maps.png"); fig.savefig(p, dpi=110); plt.close(fig)
     print(f"[viz] turnover maps -> {p}")

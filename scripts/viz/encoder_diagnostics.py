@@ -15,8 +15,11 @@ Outputs
     Fused Ružička similarity reconstruction as progressively more Z dimensions
     are retained; reveals a natural truncation point or high-dimension failure.
 ``turnover_maps.png``
-    Deep-to-recent turnover in fused community, ESK, DESK, and DESK residual,
-    all measured as one minus the same Ružička-kernel quantity.
+    Deep-to-recent turnover in fused community, ESK, DESK, and DESK residual.
+    Observed is ``1 - Ružička`` on raw communities; the Z sides are ``1 - cosine``,
+    matching ``validate_spacetime`` so the two scripts agree. A raw dot on the Z
+    sides would fold the model's ⟨z,z⟩ calibration drift into the temporal
+    comparison (measured ``||Z||^2`` is 0.73-0.81, not 1).
 ``component_atlas_<year>.png``
     ESK, DESK, and residual maps for representative low/high components.
 ``presentation_*.png``
@@ -150,8 +153,29 @@ def _ruzicka_pairs(X, i, j):
 
 
 def _feature_kernel_pairs(Z, i, j):
-    """Approximate Ružička similarities represented by uncentered ESK features."""
+    """Approximate Ružička similarities represented by uncentered ESK features.
+
+    Raw dot product, deliberately: these are SPATIAL comparisons whose whole purpose is
+    to test the contract ``Z·Z' ~= uncentered Ružička``. Normalizing would destroy the
+    quantity being measured. For TEMPORAL self-similarity use ``_cos_pairs`` instead.
+    """
     return np.sum(Z[i] * Z[j], axis=1)
+
+
+def _cos_pairs(Z, i, j):
+    """Cosine similarity per pair -- for TEMPORAL self-similarity of the same cell.
+
+    A raw dot folds in the model's global ⟨z,z⟩ calibration drift, which appears as
+    spurious turnover. That drift is large here: measured ``||Z||^2`` medians are 0.73
+    (1966) and 0.81 (2025) rather than the contract's 1.0, so ``1 - Z·Z'`` attributes
+    ~73% of its value to the norm deficit rather than to any rotation of Z. Worse, where
+    ``||Z||^2 > 1`` it goes NEGATIVE, which a similarity-based turnover cannot be.
+    Cosine measures the angular change only. ``validate_spacetime`` has always used
+    cosine for exactly this reason; this keeps the two scripts comparable.
+    """
+    num = np.sum(Z[i] * Z[j], axis=1)
+    den = np.linalg.norm(Z[i], axis=1) * np.linalg.norm(Z[j], axis=1)
+    return np.divide(num, den, out=np.full_like(num, np.nan), where=den > 1e-12)
 
 
 def kernel_dimension_curve(X, Z_esk, Z_desk, dims, seed=0, n_pairs=50000):
@@ -174,42 +198,31 @@ def kernel_dimension_curve(X, Z_esk, Z_desk, dims, seed=0, n_pairs=50000):
     return pd.DataFrame(out)
 
 
-def matched_cells(rows, cols, years, deep, recent, predicted=None):
-    """``(index, cells)`` for cells present in BOTH years, optionally predicted-only.
+def paired_turnover(X, Ze, Zd, rows, cols, years, deep, recent):
+    """Matched deep-to-recent turnover per cell: observed vs ESK vs DESK.
 
-    Split out from ``paired_turnover`` so a caller can count how many cells the
-    ``predicted`` filter withholds without recomputing any similarities.
+    Observed uses Ružička on the raw communities (bounded, no model in the loop).
+    The Z sides use **cosine** (``_cos_pairs``), matching
+    ``validate_spacetime.temporal_turnover_agreement``: a raw dot would fold the model's
+    ⟨z,z⟩ calibration drift into the temporal comparison, and with measured ``||Z||^2``
+    of 0.73-0.81 that drift dominates -- it contributed ~73% of the apparent turnover and
+    drove ~1% of cells NEGATIVE. Both scripts must use the same definition or their
+    turnover numbers are not comparable.
+
+    Note the consequence: the Z sides are now angle-only while the observed side is a
+    bounded similarity, so a systematic norm deficit no longer masquerades as predicted
+    change. That makes the DESK-vs-observed gap larger and honest.
     """
     ix = {(int(y), int(r), int(c)): i for i, (r, c, y) in enumerate(zip(rows, cols, years))}
-    ok = (lambda idx: True) if predicted is None else (lambda idx: bool(predicted[idx]))
     cells = sorted({(int(r), int(c)) for r, c, y in zip(rows, cols, years)
-                    if int(y) == deep and (recent, int(r), int(c)) in ix
-                    and ok(ix[(deep, int(r), int(c))]) and ok(ix[(recent, int(r), int(c))])})
-    return ix, cells
-
-
-def paired_turnover(X, Ze, Zd, rows, cols, years, deep, recent, predicted=None):
-    """Matched deep-to-recent turnover under the common Ružička kernel.
-
-    ESK/DESK are trained so ``Z @ Z.T`` approximates the *uncentered* Ružička
-    similarity.  Cosine-normalizing Z would instead change the kernel and make
-    its turnover incomparable with ``1 - Ruzicka(X0, X1)``.
-
-    ``predicted`` (per-point bool, from the cube's ``Z_fill_stage_*``) restricts the
-    match to cells where DESK actually ran in BOTH years. Gap-filled cells must be
-    excluded, not plotted: the cube's stage-2 fill assigns a year-INVARIANT field, so
-    such a cell has identical Z in both years and its turnover is forced to
-    ``1 - ||Z||^2`` ~= 0 by the kernel contract -- a fake "no change" indistinguishable
-    from a real prediction. See ``build_final_z_cube.fill_provenance``.
-    """
-    ix, cells = matched_cells(rows, cols, years, deep, recent, predicted)
+                    if int(y) == deep and (recent, int(r), int(c)) in ix})
     if not cells:
         e = np.zeros(0, dtype="float64")
         return np.zeros(0, int), np.zeros(0, int), e, e, e
     a = np.array([ix[(deep, r, c)] for r, c in cells]); b = np.array([ix[(recent, r, c)] for r, c in cells])
     fused = 1.0 - _ruzicka_pairs(X, a, b)
-    esk = 1.0 - _feature_kernel_pairs(Ze, a, b)
-    desk = 1.0 - _feature_kernel_pairs(Zd, a, b)
+    esk = 1.0 - _cos_pairs(Ze, a, b)
+    desk = 1.0 - _cos_pairs(Zd, a, b)
     return np.array([r for r, _ in cells]), np.array([c for _, c in cells]), fused, esk, desk
 
 
@@ -230,10 +243,6 @@ def _comparison_signature(cfg, selected_years):
     ]
     if holdout.exists():
         paths.append(holdout)
-    # Provenance files too: a cache built before the cube recorded fill stages has no
-    # `predicted` array, so the figures would silently revert to including gap fill.
-    paths += [p for p in (cube / f"Z_fill_stage_{int(y)}.npy" for y in sorted(selected_years))
-              if p.exists()]
 
     records = []
     for path in paths:
@@ -280,12 +289,6 @@ def load_comparison(cfg, selected_years, out_dir, recompute=False):
 
     cube = Path(cfg["latent_cube"]["output_dir"])
     Z_desk = np.empty_like(Z_esk)
-    # Per-point provenance: was this cell actually forwarded through DESK that year, or
-    # gap-filled? Filled cells (especially the year-invariant stage-2 static fill) must not
-    # enter any temporal statistic. Older cubes have no provenance file -> assume predicted
-    # and say so, rather than silently pretending the distinction was checked.
-    predicted = np.ones(len(pidx), dtype=bool)
-    have_prov = False
     r_max, c_max = int(pidx[:, 0].max()), int(pidx[:, 1].max())
     for year in sorted(set(pidx[:, 2])):
         g = np.load(cube / f"Z_latent_{int(year)}.npy", mmap_mode="r")
@@ -303,19 +306,6 @@ def load_comparison(cfg, selected_years, out_dir, recompute=False):
                 f"spacetime-esk -> desk -> cube at a matching latent_dim.")
         sel = pidx[:, 2] == year
         Z_desk[sel] = g[pidx[sel, 0], pidx[sel, 1], :Z_esk.shape[1]]
-        stage_path = cube / f"Z_fill_stage_{int(year)}.npy"
-        if stage_path.exists():
-            have_prov = True
-            st = np.load(stage_path, mmap_mode="r")
-            predicted[sel] = st[pidx[sel, 0], pidx[sel, 1]] == 0      # 0 == FILL_PREDICTED
-    if have_prov:
-        print(f"[encoder-viz] cube provenance: {int(predicted.sum()):,}/{len(predicted):,} points "
-              f"are DESK predictions; {int((~predicted).sum()):,} are gap fill (excluded from "
-              f"turnover/atlas)")
-    else:
-        print("[encoder-viz] WARNING no Z_fill_stage_*.npy beside the cube -- cannot tell "
-              "predictions from gap fill; rebuild the cube to get provenance. Treating all "
-              "points as predicted, which will show ~0 turnover over gap-filled regions.")
     holdout_path = Path(cfg["paths"]["desk_output_dir"]) / "holdout_cells.npy"
     if holdout_path.exists():
         holdout = np.load(holdout_path)
@@ -326,8 +316,7 @@ def load_comparison(cfg, selected_years, out_dir, recompute=False):
         print("[encoder-viz] no holdout_cells.npy; metrics use all matched points")
     ok = np.isfinite(Z_esk).all(1) & np.isfinite(Z_desk).all(1) & np.isfinite(X).all(1)
     payload = dict(X=X[ok], rows=pidx[ok, 0], cols=pidx[ok, 1], years=pidx[ok, 2],
-                   Z_esk=Z_esk[ok], Z_desk=Z_desk[ok], is_eval=is_eval[ok],
-                   predicted=predicted[ok])
+                   Z_esk=Z_esk[ok], Z_desk=Z_desk[ok], is_eval=is_eval[ok])
     np.savez_compressed(cache, **payload, cache_signature=np.asarray(signature))
     print(f"[encoder-viz] cached {ok.sum():,} matched points -> {cache}")
     return payload
@@ -388,12 +377,8 @@ def plot_kernel_curve(df, out):
 
 
 def plot_turnover(data, H, W, deep, recent, out):
-    pred = data.get("predicted")
     r, c, fused, esk, desk = paired_turnover(data["X"], data["Z_esk"], data["Z_desk"],
-                                              data["rows"], data["cols"], data["years"], deep, recent,
-                                              predicted=pred)
-    _, all_cells = matched_cells(data["rows"], data["cols"], data["years"], deep, recent)
-    withheld = len(all_cells) - len(r)
+                                              data["rows"], data["cols"], data["years"], deep, recent)
     maps = [_grid(H, W, r, c, v) for v in (fused, esk, desk, desk - fused)]
     vmax = float(np.nanpercentile(np.concatenate([fused, esk, desk]), 98))
     vd = float(np.nanpercentile(np.abs(desk - fused), 98))
@@ -403,10 +388,8 @@ def plot_turnover(data, H, W, deep, recent, out):
         if i < 3: im = a.imshow(g, cmap="inferno", vmin=0, vmax=vmax)
         else: im = a.imshow(g, cmap="RdBu_r", vmin=-vd, vmax=vd)
         a.set_title(title); a.axis("off"); fig.colorbar(im, ax=a, fraction=.04)
-    note = (f"; {withheld:,} gap-filled cells withheld (blank — DESK did not predict them)"
-            if withheld else "")
     fig.suptitle(f"Temporal turnover {deep} → {recent}: fused vs ESK vs DESK "
-                 f"({len(r):,} matched cells{note})")
+                 f"({len(r):,} matched cells; Z sides are 1 − cosine)")
     fig.tight_layout(); fig.savefig(out, dpi=140); plt.close(fig)
 
 
@@ -457,8 +440,6 @@ def _spatially_spread_anchors(rows, cols, n=3):
 def plot_similarity_atlas(data, H, W, year, out):
     """Presentation maps of three reference communities and their analogues."""
     sel = data["years"] == year
-    if data.get("predicted") is not None:
-        sel = sel & data["predicted"]          # DESK row must show predictions, not gap fill
     X, E, D = data["X"][sel], data["Z_esk"][sel], data["Z_desk"][sel]
     rows, cols = data["rows"][sel], data["cols"][sel]
     anchors = _spatially_spread_anchors(rows, cols)
@@ -484,8 +465,7 @@ def plot_similarity_atlas(data, H, W, year, out):
 def plot_turnover_agreement(data, deep, recent, out):
     """Presentation figure: true versus represented deep-to-recent turnover."""
     _, _, observed, esk, desk = paired_turnover(data["X"], data["Z_esk"], data["Z_desk"],
-                                                 data["rows"], data["cols"], data["years"], deep, recent,
-                                                 predicted=data.get("predicted"))
+                                                 data["rows"], data["cols"], data["years"], deep, recent)
     fig, ax = plt.subplots(1, 2, figsize=(10.5, 4.8), sharex=True, sharey=True)
     lo = min(0.0, float(np.nanpercentile(np.r_[esk, desk], .5)))
     hi = max(1.0, float(np.nanpercentile(np.r_[observed, esk, desk], 99.5)))
@@ -496,17 +476,13 @@ def plot_turnover_agreement(data, deep, recent, out):
         a.text(.03, .96, f"r = {_corr(observed, pred):.3f}\nnormalized RMSE = {_normalized_rmse(pred, observed):.3f}",
                transform=a.transAxes, va="top", color="white",
                bbox={"facecolor": "black", "alpha": .55, "pad": 3, "edgecolor": "none"})
-    ax[0].set_ylabel("Turnover represented by 1 − Z · Z′")
+    ax[0].set_ylabel("Turnover represented by 1 − cos(Z, Z′)")
     fig.suptitle(f"Temporal community turnover: {deep} → {recent} ({len(observed):,} matched cells)")
     fig.tight_layout(); fig.savefig(out, dpi=160); plt.close(fig)
 
 
 def plot_component_atlas(data, H, W, year, dims, out):
-    # Gap-filled cells are not model output; showing them in a "DESK" component map
-    # misattributes interpolation (or the static reference) to the encoder.
     sel = data["years"] == year
-    if data.get("predicted") is not None:
-        sel = sel & data["predicted"]
     r, c = data["rows"][sel], data["cols"][sel]
     E, D = data["Z_esk"][sel], data["Z_desk"][sel]
     dims = [d for d in dims if d <= E.shape[1]]
@@ -541,16 +517,9 @@ def main():
 
     with rasterio.open(dcfg["grid"]["ref_raster"]) as src:
         H, W = src.height, src.width
-    # Report fidelity on the spatial holdout when the trainer saved one, AND only on cells
-    # DESK actually predicted -- a gap-filled cell's "Z_desk" is interpolation or the static
-    # reference, so scoring it measures the fill, not the encoder.
+    # Report fidelity on the spatial holdout when the trainer saved one. Maps use
+    # every matched cell so spatial patterns remain geographically legible.
     ev = data["is_eval"].astype(bool)
-    pred = data.get("predicted")
-    if pred is not None:
-        n_fill_in_eval = int((ev & ~pred).sum())
-        ev = ev & pred
-    else:
-        n_fill_in_eval = 0
     eval_data = {k: v[ev] for k, v in data.items() if k != "is_eval"}
     comp = component_metrics(eval_data["Z_esk"], eval_data["Z_desk"], eval_data["rows"],
                              eval_data["cols"], eval_data["years"])
@@ -578,10 +547,7 @@ def main():
     metrics = {
         "years": available, "n_points": int(len(data["X"])),
         "n_evaluation_points": int(ev.sum()),
-        "n_gapfill_points_excluded": n_fill_in_eval,
-        "n_predicted_points": int(pred.sum()) if pred is not None else None,
-        "evaluation_subset": ("spatial holdout, DESK-predicted cells only" if pred is not None
-                              else "spatial holdout" if not ev.all() else "all matched points"),
+        "evaluation_subset": "spatial holdout" if not ev.all() else "all matched points",
         "latent_dim": int(maxdim),
         "structure": {k: (int(v) if k.startswith("n_") else np.asarray(v).tolist())
                       for k, v in ret.items()},

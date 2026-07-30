@@ -578,12 +578,14 @@ def train_model_ema(cov_window, mask_window, window_years, targets, x2023, m2023
             print(f"[desk] Val(all-yr) no-skill baselines: predict-mean={base_mean:.4f}, "
                   f"predict-zero={base_zero:.4f} -- a trained model must fall WELL below these", flush=True)
 
-    def _forward_window(train_mode, mask_inputs):
-        """Forward the whole year window -> (z_ema, recon_loss).
+    def _forward_window(train_mode, mask_inputs, want_raw=False):
+        """Forward the whole year window -> ``(z_ema, recon_loss[, z_raw])``.
 
         ``train_mode`` toggles dropout; ``mask_inputs`` toggles the augmentation. The eval call
         passes (False, False) so the selection metric is measured on the deterministic, unmasked
-        model -- see the note at the eval site.
+        model -- see the note at the eval site. ``want_raw`` also returns the pre-EMA stack, which
+        is what the rotation diagnostic needs (the cube and ``validate_spacetime.encode_points``
+        both export raw z, so raw is what every reported turnover number measures).
         """
         model.train(train_mode)
         z_raw, rl = [], torch.zeros((), device=device)
@@ -601,7 +603,9 @@ def train_model_ema(cov_window, mask_window, window_years, targets, x2023, m2023
             z_raw.append(zt[0].float())                          # fp32 before the EMA scan
             # Target is the CLEAN grid even when the input was masked -> denoising objective.
             rl = rl + F.mse_loss(rt[0][msk[t]].float(), cov[t][msk[t]])
-        return ema(torch.stack(z_raw, 0)), rl / cov.shape[0]
+        stack = torch.stack(z_raw, 0)
+        out = (ema(stack), rl / cov.shape[0])
+        return out + (stack,) if want_raw else out
 
     def _z_mse(z_all, sel):
         """Mean per-cell summed-over-latent Z error on the cells selected by ``sel[y]``."""
@@ -612,7 +616,46 @@ def train_model_ema(cov_window, mask_window, window_years, targets, x2023, m2023
                 sq += float(torch.sum(d * d)); cnt += int(m.sum())
         return sq / max(cnt, 1), cnt
 
+    def _rotation(z_all, m):
+        """Median ``1 - cos`` between the deepest and anchor year, predicted and target.
+
+        This is the quantity the science rests on and the trainer has never logged. A per-cell
+        MSE cannot expose it: Z is dominated by the static spatial pattern (the no-change null
+        reproduces ~94% of the structure), so the loss can look healthy while the *temporal*
+        component is systematically shrunk -- MSE's optimum for a poorly-predicted component IS a
+        shrunk one. ``rotP/rotT`` makes that shrinkage a number watched every epoch instead of a
+        surprise in a figure.
+
+        Cosine, not dot, matching ``validate_spacetime.temporal_turnover_agreement``: the raw dot
+        folds in ⟨z,z⟩ calibration drift (measured ``||Z||^2`` ~ 0.73) and would report that drift
+        as turnover.
+        """
+        if y_deep is None or not bool(m.any()):
+            return float("nan"), float("nan")
+
+        def med(a, b):
+            num = torch.sum(a * b, dim=1)
+            den = a.norm(dim=1) * b.norm(dim=1)
+            ok = den > 1e-12
+            if not bool(ok.any()):
+                return float("nan")
+            return float(torch.median(1.0 - num[ok] / den[ok]))
+
+        zp0, zp1 = z_all[yi[y_deep]][m].detach(), z_all[yi[y2023]][m].detach()
+        zt0, zt1 = tgt[y_deep][0][m], tgt[y2023][0][m]
+        return med(zp0, zp1), med(zt0, zt1)
+
     val_sel = {y: (zg, va) for y, (zg, _tr, va) in tgt.items()}
+    y_deep = min(tgt) if len(tgt) > 1 else None          # deepest supervised year in the window
+    # Cells supervised in BOTH the deep and anchor year, split train/val -- the rotation
+    # diagnostic needs the same cell present at both ends to measure its change.
+    if y_deep is not None:
+        rot_tr = tgt[y_deep][1] & tgt[y2023][1]
+        rot_va = tgt[y_deep][2] & tgt[y2023][2]
+        print(f"[desk] rotation diagnostic {y_deep}->{y2023}: "
+              f"{int(rot_tr.sum())} train / {int(rot_va.sum())} val cells", flush=True)
+    else:
+        rot_tr = rot_va = torch.zeros(1, dtype=torch.bool, device=device)
     best_val, best, bad, nonfinite = float("inf"), None, 0, 0
     print(f"--- Training DESK+outputEMA ({len(window_years)}yr window {window_years[0]}..{window_years[-1]}, "
           f"{len(tgt)} supervised years, max {epochs} ep; grad_clip={grad_clip}, es_warmup={es_warmup}, "
@@ -672,7 +715,8 @@ def train_model_ema(cov_window, mask_window, window_years, targets, x2023, m2023
         # eval_every amortizes it further if needed.
         if ep % max(1, int(eval_every)) == 0 or ep == epochs:
             with torch.no_grad():
-                z_eval, _ = _forward_window(train_mode=False, mask_inputs=False)
+                z_eval, _, z_raw_eval = _forward_window(train_mode=False, mask_inputs=False,
+                                                        want_raw=True)
                 vs, vn = _z_mse(z_eval, val_sel)
                 va_anchor = tgt[y2023][2]
                 vs_anchor = (float(torch.sum((z_eval[yi[y2023]][va_anchor]
@@ -680,14 +724,23 @@ def train_model_ema(cov_window, mask_window, window_years, targets, x2023, m2023
                              / max(int(va_anchor.sum()), 1)) if bool(va_anchor.any()) else float("nan")
                 vs_time = (_z_mse(z_eval, holdout_year_targets)[0]
                            if holdout_year_targets else float("nan"))
+                # Rotation on RAW z (what the cube and validate export), train and val.
+                rotP, rotT = _rotation(z_raw_eval, rot_tr)
+                rotPv, rotTv = _rotation(z_raw_eval, rot_va)
         dt = time.perf_counter() - t_ep
         rss = _max_rss_gib()
         vram = (f" | VRAM {torch.cuda.max_memory_allocated() / 2**30:.2f}/"
                 f"{torch.cuda.memory_reserved() / 2**30:.2f}G" if device == "cuda" else "")
         tot = float(loss.item()) or 1.0
+        # rot: predicted vs target temporal rotation, and their ratio. The ratio is the headline
+        # number -- 1.0 means DESK reproduces the observed amount of community change; the
+        # measured value on the 27 km grid was ~0.29 (interior), i.e. a 3.4x under-prediction.
+        rr = (rotP / rotT) if (rotT and np.isfinite(rotT) and rotT > 1e-9) else float("nan")
+        rrv = (rotPv / rotTv) if (rotTv and np.isfinite(rotTv) and rotTv > 1e-9) else float("nan")
         print(f"Ep {ep:03d} | Stab {loss_stab.item():.4f} | True {loss_true.item():.4f} | "
               f"Rec {recon_loss.item():.4f} | Val(all-yr) {vs:.4f} | Val(2025) {vs_anchor:.4f} | "
-              f"Val(yr-out) {vs_time:.4f} | half-life {ema.half_life().item():.1f}y | "
+              f"Val(yr-out) {vs_time:.4f} | rot tr {rotP:.3f}/{rotT:.3f}={rr:.2f} "
+              f"va {rotPv:.3f}/{rotTv:.3f}={rrv:.2f} | half-life {ema.half_life().item():.1f}y | "
               f"mix {w_stab.item()/tot:.2f}/{w_true.item()/tot:.2f}/{w_rec.item()/tot:.2f} | "
               f"lr {opt.param_groups[0]['lr']:.2e} | {dt:.1f}s{vram} | RSS {rss:.1f}G", flush=True)
         if ep <= es_warmup:

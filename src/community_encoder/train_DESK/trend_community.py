@@ -97,6 +97,24 @@ def soft_clip(x, asymptote, p=2.0):
     return x / np.power(1.0 + np.power(np.abs(x) / asymptote, p), 1.0 / p)
 
 
+def has_bbs(bbs_rate, bbs_abund):
+    """Can the BBS branch of the reconstruction actually be used for this (species, cell)?
+
+    Both a rate AND a positive present abundance are required: the deep BBS term is
+    ``log(k*B) + dy*r_b``, which is undefined without ``B > 0``. Used by BOTH
+    ``backward_trajectory`` (which species get a BBS trajectory) and ``assemble_points``'
+    coverage gate (which cells have enough informed species to emit a point).
+
+    They must agree. When the gate tested only ``isfinite(rate)``, a (species, cell) with a
+    BBS rate but no BBS abundance counted as "covered" toward ``min_coverage`` while the
+    trajectory silently fell back to the eBird term -- and with no eBird rate either that
+    means held constant. Such a cell emitted a point whose deep and recent community vectors
+    were bit-identical, giving Ružička exactly 1.0 and observed turnover exactly 0.0: a
+    fabricated "no change" indistinguishable from a real one.
+    """
+    return np.isfinite(bbs_rate) & np.isfinite(bbs_abund) & (bbs_abund > 0)
+
+
 def backward_trajectory(anchor, bbs_rate, ebird_ppy, bbs_abund, k, sample_years, anchor_year,
                         first_year, crossover, width, soft_asymptote, soft_cap_p=2.0,
                         abs_asy=None):
@@ -124,7 +142,7 @@ def backward_trajectory(anchor, bbs_rate, ebird_ppy, bbs_abund, k, sample_years,
     re = np.log1p(np.clip(ebird_ppy, -99.0, None) / 100.0)       # NaN where eBird absent
     rb = np.log1p(np.clip(bbs_rate, -99.0, None) / 100.0)        # NaN where BBS rate absent
     has_e = np.isfinite(re)
-    has_b = np.isfinite(rb) & np.isfinite(B) & (B > 0)
+    has_b = has_bbs(bbs_rate, B)
     posE = E > 0
     logE = np.where(posE, np.log(np.where(posE, E, 1.0)), 0.0)
     logkB = np.where(has_b, np.log(k * np.where(has_b, B, 1.0)), 0.0)
@@ -218,7 +236,11 @@ def assemble_points(anchor, bbs_rate, ebird_ppy, bbs_abund, k, valid, years_cfg,
     min_cov = float(years_cfg.get("min_coverage", 0.0))
     occ = a > 0                                                   # (S, M) modern occupancy
     n_occ = np.clip(occ.sum(0), 1, None)
-    has_e, has_b = np.isfinite(e), np.isfinite(b)
+    # Same predicate the trajectory uses (``has_bbs``), so "covered" cannot mean something
+    # the reconstruction then declines to use. A rate without a positive abundance is NOT
+    # coverage: that species would be held constant, which is exactly the false stability
+    # this gate exists to reject.
+    has_e, has_b = np.isfinite(e), has_bbs(b, ba)
     cross, wid = years_cfg["crossover"], years_cfg["width"]
 
     order = [years.index(ay)] + [i for i, y in enumerate(years) if y != ay]

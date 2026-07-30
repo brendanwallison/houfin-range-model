@@ -441,6 +441,16 @@ def run_validate(config=None, n_pairs=20000, cka_sample=800, seed=0):
     recent_year = int(meta["recent_year"])
 
     Z, ok = encode_points(config, pidx)
+    # Every metric below is computed ONLY on these points. `encode_points` fills Z solely
+    # where `norm_grid`'s all-channels-finite mask holds, so points over cells the covariates
+    # do not cover are dropped here rather than scored -- this path reads the STATES, never
+    # the gap-filled Z cube, so the cube's year-invariant stage-2 fill cannot leak in. The
+    # dropped count is reported because it is large (the covariate footprint is much smaller
+    # than the land mask) and it bounds what these metrics can claim to cover.
+    n_points_total, n_encoded = int(len(ok)), int(ok.sum())
+    print(f"[validate] encoded {n_encoded}/{n_points_total} points; "
+          f"{n_points_total - n_encoded} dropped for non-finite covariates "
+          f"(outside the covariate footprint)", flush=True)
     X, pidx, Z = X[ok], pidx[ok], Z[ok]
     years = pidx[:, 2]
 
@@ -499,7 +509,16 @@ def run_validate(config=None, n_pairs=20000, cka_sample=800, seed=0):
             out["cka_obs_change_upperbound"] = linear_cka(Lx_h, Lx_r)
         return out
 
-    report = {"recent_control": _bucket_report(years == recent_year, f"recent({recent_year})")}
+    report = {
+        "point_coverage": {
+            "n_points_total": n_points_total, "n_encoded": n_encoded,
+            "n_dropped_nonfinite_covariates": n_points_total - n_encoded,
+            "_note": ("metrics cover only encoded points -- those inside the covariate "
+                      "footprint. This path encodes from state_*.npz, never from the "
+                      "gap-filled Z cube, so no fill enters these numbers."),
+        },
+        "recent_control": _bucket_report(years == recent_year, f"recent({recent_year})"),
+    }
     hist_years = sorted(set(int(y) for y in years if y != recent_year))
     if hist_years:
         lo, hi = min(hist_years), max(hist_years)

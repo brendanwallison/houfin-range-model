@@ -66,7 +66,7 @@ def densify_community(row, col, year, species_index, mean_count,
                       cov_row, cov_col, cov_year, n_species):
     """Long-form BBS community triples → dense per-surveyed-cell-year matrix (pure).
 
-    ``community_matrix.npz`` stores PRESENT species only; absences are implicit. The
+    ``build_community_matrix`` emits PRESENT species only; absences are implicit. The
     authoritative row set is therefore the COVERAGE table (``cov_*``), not the presence
     triples: a surveyed cell-year where a species went unrecorded is a genuine zero, and a
     surveyed cell-year where *nothing* was recorded is a real all-zero row, not a missing one.
@@ -109,30 +109,6 @@ def log1p_community(X):
     not the same quantity.
     """
     return np.log1p(np.clip(np.asarray(X, "float64"), 0.0, None)).astype("float32")
-
-
-def align_species(X, species, trained):
-    """Restrict the observed community to the species DESK was actually trained on (pure).
-
-    The two paths define DIFFERENT communities, and this bit me: ``community_matrix.npz`` takes
-    its species from the eBird WEEKLY stack tifs (``bbs_community.ebird_stack_species``), while
-    the live trend path takes them from ``community_trend_list`` (``community_trend.csv``) and
-    records that list in ``points_meta.json["species"]``. Grading DESK on turnover in species it
-    never modelled adds noise to "truth" that DESK cannot possibly predict, which understates it.
-
-    Returns ``(X_kept, kept_codes, stats)``. Column order follows ``trained`` so the result is
-    aligned to DESK's own community ordering rather than the npz's.
-    """
-    species = [str(s) for s in species]
-    trained = [str(s) for s in trained]
-    ix = {s: i for i, s in enumerate(species)}
-    kept = [s for s in trained if s in ix]
-    cols = [ix[s] for s in kept]
-    stats = {"n_observed_species": len(species), "n_trained_species": len(trained),
-             "n_shared_species": len(kept),
-             "observed_only": sorted(set(species) - set(trained))[:20],
-             "trained_only": sorted(set(trained) - set(species))[:20]}
-    return np.asarray(X)[:, cols], kept, stats
 
 
 def modern_reference_rows(keys, modern_window=MODERN_WINDOW):
@@ -236,26 +212,62 @@ def stratified_sample(keys, n_sample, rng, windows=(MODERN_WINDOW, EARLY_WINDOW)
 # ----------------------------- IO / driver -----------------------------
 
 def load_observed(config):
-    """Load + densify the BBS community matrix → ``(X_log, keys, meta)``."""
-    path = config["bbs"]["community_matrix"]
-    if not os.path.exists(path):
-        raise FileNotFoundError(
-            f"BBS community matrix not found at {path}. Build it as a SLURM job:\n"
-            "    STAGES=bbs sbatch --export=ALL scripts/tacc/04_states.slurm\n"
-            "Do NOT run `python -m src.data.preprocess.bbs_community` on a login node: it reads "
-            "every States/*.csv in the BBS release and merges millions of route-year-species rows, "
-            "which is exactly the CPU/RAM profile TACC kills login-node processes for. That module "
-            "owns the route->cell aggregation; do not reimplement it here.")
-    d = np.load(path, allow_pickle=True)
-    species = [str(s) for s in d["species_codes"]]
-    X_raw, keys, dropped = densify_community(
-        d["row"], d["col"], d["year"], d["species_index"], d["mean_count"],
-        d["cov_row"], d["cov_col"], d["cov_year"], len(species))
+    """Build the observed route-level community from RAW BBS → ``(X_log, keys, meta)``.
 
-    # points_meta.json carries BOTH the log1p flag and the species list DESK actually trained on.
-    # Neither is in the ESK meta.json. Assert rather than assume: a raw-count basis would make a
-    # log1p similarity structure the wrong quantity, and a mismatched species set would grade DESK
-    # on turnover it was never given the inputs to predict.
+    The community is ``community_trend_list`` (``community_trend.csv``) -- the same list
+    ``trend_community.build_trend_points`` uses -- so truth is defined over exactly the community
+    DESK trains on. Nothing here is reimplemented: the route QC filter, AOU->species_code
+    crosswalk, route->cell mapping and per-cell-year averaging are all the existing functions,
+    with the community passed in via ``build_crosswalk(community_codes=...)``.
+
+    Reads no precomputed community artifact: it goes straight from the raw BBS release, so there
+    is no separate build step and no stale intermediate to fall out of sync with the trend
+    community.
+    """
+    from src.config_utils import load_data_config
+    from src.data.identify.bbs_crosswalk import build_crosswalk
+    from src.data.preprocess import bbs
+    from src.data.preprocess.bbs_community import build_community_matrix, route_grid_map
+    import pandas as pd
+
+    dcfg = load_data_config()
+    tc = config.get("trend", {}) or {}
+    community_csv = tc.get("community_trend_list") or dcfg["community_trend_list"]
+    codes = [str(c) for c in pd.read_csv(community_csv)["species_code"].tolist()]
+    if not codes:
+        raise ValueError(f"no species_code rows in {community_csv}")
+
+    dr = dcfg["datasets_root"]
+    bbs_species = config.get("bbs", {}).get("species_list") or \
+        os.path.join(bbs.BBS_PARENT_DIR, "SpeciesList.csv")
+    crosswalk, _ = build_crosswalk(
+        bbs_species, os.path.join(dr, "avonet", "eBird_taxonomy.csv"),
+        os.path.join(dr, "avonet", "reference_community_ranked.csv"),
+        community_codes=codes)                      # <- DESK's community, not the weekly stack
+    species = list(dict.fromkeys(crosswalk["species_code"]))
+    if len(species) < 3:
+        raise ValueError(
+            f"only {len(species)} of {len(codes)} community_trend species crosswalked to a BBS "
+            f"AOU (from {bbs_species}); cannot build a route-level community")
+
+    obs_all, coverage = bbs.load_usca_observations(aou_filter=None, return_coverage=True)
+    routes = bbs.load_routes()
+    land_mask, _, transform, crs, nx, ny = bbs.load_grid_reference(bbs.MASK_PATH)
+    route_cells = route_grid_map(routes, transform, crs, nx, ny, land_mask)
+    mean_df, cov_df = build_community_matrix(obs_all, coverage, crosswalk, route_cells)
+
+    code_ix = {c: i for i, c in enumerate(species)}
+    mean_df = mean_df[mean_df["species_code"].isin(code_ix)]
+    X_raw, keys, dropped = densify_community(
+        mean_df["row"].to_numpy(), mean_df["col"].to_numpy(), mean_df["year"].to_numpy(),
+        mean_df["species_code"].map(code_ix).to_numpy(), mean_df["mean_count"].to_numpy(),
+        cov_df["row"].to_numpy(), cov_df["col"].to_numpy(), cov_df["year"].to_numpy(),
+        len(species))
+
+    # points_meta.json records the log1p flag and the species DESK trained on. Neither is in the
+    # ESK meta.json. Cross-check rather than assume: a raw-count basis would make a log1p
+    # similarity structure the wrong quantity, and a species set that does not match
+    # community_trend.csv means this module and the trainer disagree about the community.
     zt = config.get("bbs", {}).get("z_dir", "")
     pm_path = os.path.join(zt, "points_meta.json") if zt else ""
     log1p_flag, trained = True, None
@@ -263,39 +275,33 @@ def load_observed(config):
         with open(pm_path, "r", encoding="utf-8") as fh:
             pm = json.load(fh)
         log1p_flag = bool(pm.get("ruzicka_log1p", True))
-        trained = pm.get("species")
+        trained = [str(s) for s in (pm.get("species") or [])]
         if not log1p_flag:
             raise ValueError(
                 f"{pm_path} reports ruzicka_log1p=false; the ESK basis was fit on RAW counts. "
                 "Comparing a log1p similarity structure against it is not like-for-like.")
     else:
         print(f"[bbs-routes] WARNING: no points_meta.json at {pm_path or '<bbs.z_dir unset>'}; "
-              "assuming ruzicka_log1p=true and NOT restricting the species set")
+              "assuming ruzicka_log1p=true and skipping the species cross-check")
 
-    sp_stats = {"species_aligned": False, "n_observed_species": len(species)}
+    sp = {"n_community_trend": len(codes), "n_bbs_matched": len(species)}
     if trained:
-        X_raw, species, sp_stats = align_species(X_raw, species, trained)
-        sp_stats["species_aligned"] = True
-        print(f"[bbs-routes] species: {sp_stats['n_shared_species']} shared of "
-              f"{sp_stats['n_observed_species']} observed / {sp_stats['n_trained_species']} trained")
-        if sp_stats["n_shared_species"] < 3:
-            raise ValueError(
-                f"only {sp_stats['n_shared_species']} species shared between "
-                f"{path} (from the eBird weekly stack) and the trained community in {pm_path} "
-                "(community_trend.csv). These are built from different species lists -- rebuild "
-                "the community matrix against the current community before validating.")
-        if sp_stats["n_shared_species"] < 0.5 * sp_stats["n_trained_species"]:
-            print(f"[bbs-routes] WARNING: only "
-                  f"{sp_stats['n_shared_species']}/{sp_stats['n_trained_species']} of DESK's "
-                  "community is observable in the BBS matrix; the comparison covers a minority "
-                  "of what DESK models")
+        # Both sides now derive from community_trend.csv, so a shortfall here is only species BBS
+        # cannot survey -- not a definitional mismatch. A LARGE shortfall means the trained points
+        # were built from a different community list and the comparison is not like-for-like.
+        shared = [s for s in species if s in set(trained)]
+        sp.update({"n_trained": len(trained), "n_shared_with_trained": len(shared)})
+        print(f"[bbs-routes] community: {len(codes)} community_trend -> {len(species)} BBS-matched; "
+              f"{len(shared)}/{len(trained)} of the trained community observable")
+        if len(shared) < 0.5 * len(species):
+            print(f"[bbs-routes] WARNING: only {len(shared)}/{len(species)} BBS-matched species "
+                  f"appear in {pm_path}; verify the trained points used {community_csv}")
     else:
-        print("[bbs-routes] WARNING: points_meta.json has no 'species'; grading against the FULL "
-              "observed community, which may include species DESK never modelled")
+        print(f"[bbs-routes] community: {len(codes)} community_trend -> {len(species)} BBS-matched")
 
     meta = {"n_species": len(species), "n_surveyed_cell_years": int(keys.shape[0]),
             "presence_triples_outside_coverage": int(dropped),
-            "ruzicka_log1p": log1p_flag, **sp_stats,
+            "ruzicka_log1p": log1p_flag, "community_csv": community_csv, **sp,
             "year_range": [int(keys[:, 2].min()), int(keys[:, 2].max())] if keys.size else []}
     return log1p_community(X_raw), keys, meta
 

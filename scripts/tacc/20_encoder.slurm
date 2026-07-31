@@ -5,7 +5,8 @@
 #     esk -> desk -> cube -> validate -> encoder-viz (optional diagnostics)
 # ESK (Nystrom kernel-PCA) and DESK (autoencoder training) both use torch and are
 # the heavy stages, hence a GPU queue. They are often best submitted ONE AT A TIME
-# so each can be sized/queued on its own — pass STAGES:
+# so each can be sized/queued on its own — pass STAGES.
+#
 # SUBMIT VIA THE WRAPPER, NOT BARE sbatch. This account has multiple projects (DEB23007,
 # DEB23008), the `#SBATCH -A` line below is deliberately disabled, and SLURM rejects a job with
 # no allocation ("which project you would like to charge against ... FAILED"). Only
@@ -20,9 +21,8 @@
 #
 # bbs-route-validate grades DESK against a no-change null on genuinely SURVEYED cell-years
 # (raw BBS route counts), unlike `validate` which grades against the IDW-interpolated BBS trend
-# surface. It needs the community matrix built first, itself a batch job:
-#     STAGES=bbs bash scripts/tacc/submit_states.sh
-# or all four at once (the default).
+# surface. It reads the raw BBS release directly and builds its community from
+# community_trend.csv, so it needs no preprocessing stage beyond a trained DESK checkpoint.
 #
 # QUEUE: gpu-a100-small (1 A100 40GB, 1.5 SU/hr, 48 h cap). Every stage here is
 # -N 1 -n 1 and single-device (plain .to(device); no DataParallel/pmap), so the

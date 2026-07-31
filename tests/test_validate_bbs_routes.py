@@ -8,7 +8,7 @@ constant-per-cell DESK must score ~0 and a DESK carrying real temporal informati
 import numpy as np
 
 from src.community_encoder.train_DESK.validate_bbs_routes import (
-    align_species, bucket_metrics, cosine_gram, densify_community, log1p_community,
+    bucket_metrics, cosine_gram, densify_community, log1p_community,
     modern_reference_rows, stratified_sample)
 from src.community_encoder.train_DESK.validate_spacetime import ruzicka_rect
 
@@ -52,29 +52,6 @@ def test_densify_deduplicates_coverage_rows():
         row=[0], col=[0], year=[2000], species_index=[0], mean_count=[4.0],
         cov_row=[0, 0], cov_col=[0, 0], cov_year=[2000, 2000], n_species=1)
     assert keys.shape == (1, 3) and X.shape == (1, 1) and X[0, 0] == 4.0
-
-
-def test_align_species_restricts_to_the_trained_community_in_trained_order():
-    # community_matrix.npz species come from the eBird WEEKLY stack; DESK's come from
-    # community_trend.csv. They differ, so truth must be cut down to the intersection -- and
-    # ordered by the TRAINED list, not the npz's, so the columns mean what DESK means.
-    X = np.array([[1.0, 2.0, 3.0, 4.0]], dtype="float32")
-    observed = ["spA", "spB", "spC", "spD"]
-    trained = ["spD", "spB", "spZ"]                # spZ unobservable, spA/spC not modelled
-
-    Xk, kept, st = align_species(X, observed, trained)
-    assert kept == ["spD", "spB"]                  # trained order, intersection only
-    assert Xk.tolist() == [[4.0, 2.0]]             # columns follow kept
-    assert st["n_shared_species"] == 2
-    assert st["n_observed_species"] == 4 and st["n_trained_species"] == 3
-    assert "spA" in st["observed_only"] and "spZ" in st["trained_only"]
-
-
-def test_align_species_is_identity_when_the_lists_match():
-    X = np.array([[1.0, 2.0]], dtype="float32")
-    Xk, kept, st = align_species(X, ["a", "b"], ["a", "b"])
-    assert kept == ["a", "b"] and Xk.tolist() == X.tolist()
-    assert st["observed_only"] == [] and st["trained_only"] == []
 
 
 def test_log1p_clips_negatives():
@@ -227,49 +204,42 @@ def test_stratified_sample_returns_all_rows_when_under_budget():
 # ----------------------------- driver wiring -----------------------------
 
 def test_run_end_to_end_gates_cells_and_buckets(tmp_path, monkeypatch):
-    """Exercises run()'s gate → reindex → sample → bucket wiring on a synthetic npz.
+    """Exercises run()'s gate -> reindex -> sample -> bucket wiring on a synthetic community.
 
-    The pure functions above are unit-tested; this covers the parts only the driver does --
-    notably remapping ``nc_src`` into the post-gate row indices, which is silent if wrong (it
-    would pair rows with the wrong cell's modern vector and quietly deflate the gain).
+    Stubs load_observed (which reads the full raw BBS release) and desk_z_ema (which needs a
+    trained checkpoint). What is covered here is only what the driver itself does -- notably
+    remapping ``nc_src`` into the post-gate row indices, which is silent if wrong: it would pair
+    rows with the wrong cell's modern vector and quietly deflate the gain.
     """
     from src.community_encoder.train_DESK import validate_bbs_routes as V
 
     n_species, years = 6, [1970, 1975, 2000, 2012, 2020]
     rng = np.random.default_rng(0)
-    row, col, yr, si, mc, cr, cc, cy = [], [], [], [], [], [], [], []
-    for r in range(20):
+    keys, rows = [], []
+    for c in range(20):
         # cell 19 is surveyed ONLY in the early window -> no modern reference -> fully gated out
-        for y in ([1970, 1975] if r == 19 else years):
-            cr.append(r); cc.append(r); cy.append(y)
-            for s in range(n_species):
-                v = float(rng.random() * 5 + (y - 1970) * 0.05 * (s + 1))
-                if v > 0.4:
-                    row.append(r); col.append(r); yr.append(y); si.append(s); mc.append(v)
+        for y in ([1970, 1975] if c == 19 else years):
+            keys.append([c, c, y])
+            rows.append(rng.random(n_species) * 5 + (y - 1970) * 0.05)
+    keys = np.array(keys, dtype="int32")
+    X_log = log1p_community(np.array(rows))
 
-    cm = tmp_path / "community_matrix.npz"
-    np.savez_compressed(
-        cm, row=np.array(row, np.int32), col=np.array(col, np.int32), year=np.array(yr, np.int32),
-        species_index=np.array(si, np.int32), mean_count=np.array(mc, np.float32),
-        cov_row=np.array(cr, np.int32), cov_col=np.array(cc, np.int32),
-        cov_year=np.array(cy, np.int32), cov_n=np.ones(len(cr), np.int32),
-        species_codes=np.array([f"sp{i}" for i in range(n_species)], dtype=object),
-        dims=np.array([25, 25], np.int32))
     desk = tmp_path / "desk"
     desk.mkdir()
     ho = np.zeros((25, 25), bool)
     ho[::3] = True                                             # ~1/3 of cells held out
     np.save(desk / "holdout_cells.npy", ho)
+    cfg = {"bbs": {"z_dir": str(tmp_path)}, "paths": {"desk_output_dir": str(desk)}}
 
-    cfg = {"bbs": {"community_matrix": str(cm), "z_dir": str(tmp_path)},
-           "paths": {"desk_output_dir": str(desk)}}
+    monkeypatch.setattr(V, "load_observed", lambda config: (
+        X_log, keys, {"n_species": n_species, "n_surveyed_cell_years": int(keys.shape[0]),
+                      "year_range": [1970, 2020]}))
 
-    # Stub DESK: z is a linear map of the TRUE community, so it genuinely tracks time and the
-    # gain must come out positive. Keyed by (cell, year) so the stub cannot accidentally leak
-    # information the real encoder would not have.
-    X_log, keys, _ = V.load_observed(cfg)
+    # Stub DESK: z is a linear map of the TRUE community, so it genuinely tracks time and the gain
+    # must come out positive. Keyed by (cell, year) so the stub cannot leak information the real
+    # encoder would not have.
     lut = {(int(r), int(c), int(y)): i for i, (r, c, y) in enumerate(keys)}
-    A = np.random.default_rng(1).standard_normal((X_log.shape[1], 5))
+    A = np.random.default_rng(1).standard_normal((n_species, 5))
 
     def fake_z(config, k):
         Z = np.stack([X_log[lut[(int(r), int(c), int(y))]] @ A for r, c, y in k])
@@ -282,7 +252,6 @@ def test_run_end_to_end_gates_cells_and_buckets(tmp_path, monkeypatch):
     assert rep["site_gate"]["cells_total"] == 20
     assert rep["site_gate"]["cells_dropped_no_modern"] == 1     # exactly cell 19
     assert rep["site_gate"]["cells_kept"] == 19
-    # every split x window bucket present, and the truth-tracking stub beats the frozen null
     for name in ("pooled/all", "train/all", "heldout/all",
                  "pooled/modern", "pooled/early", "heldout/early"):
         assert name in rep["buckets"], name

@@ -14,8 +14,10 @@ primary.
 import numpy as np
 
 from src.community_encoder.train_DESK.validate_bbs_routes import (
-    bucket_metrics, cosine_gram, densify_community, dot_gram, kernel_error, log1p_community,
-    modern_reference_rows, stratified_sample)
+    EPOCH_EARLY, EPOCH_MODERN, bucket_metrics, cosine_gram, densify_community, dot_gram,
+    epoch_gate, epoch_mean_observed, epoch_mean_z, epoch_neighborhood_analysis, kernel_error,
+    knn_neighbours, log1p_community, modern_reference_rows, quantile_distance_bins,
+    stratified_sample, _pairwise_dot_neighbours, _pairwise_ruzicka_neighbours)
 from src.community_encoder.train_DESK.validate_spacetime import ruzicka_rect
 
 
@@ -213,6 +215,64 @@ def test_kernel_error_detects_a_norm_deficit_that_cka_ignores():
     assert abs(linear_cka(S_true, S_short) - 1.0) < 1e-9          # ...and CKA is blind to it
 
 
+def test_r2_floor_is_predicting_the_mean():
+    # r2 must be 0 for the know-nothing model (same average similarity for every pair) and 1 for a
+    # perfect one. Without that anchor an RMSE of 0.11 is uninterpretable -- it is only meaningful
+    # relative to sd(S_true), which IS the know-nothing model's RMSE.
+    rng = np.random.default_rng(11)
+    S = rng.random((40, 40)); S = (S + S.T) / 2
+    t = S[np.triu_indices_from(S, k=1)]
+
+    S_mean = np.full_like(S, t.mean())                        # predict the mean everywhere
+    e_mean = kernel_error(S, S_mean)
+    assert abs(e_mean["r2"]) < 1e-9                           # exactly the floor
+    assert abs(e_mean["rmse"] - t.std()) < 1e-9               # and its rmse IS sd(S_true)
+
+    e_perfect = kernel_error(S, S)
+    assert abs(e_perfect["r2"] - 1.0) < 1e-12
+    assert e_perfect["rmse"] == 0.0
+
+
+def test_r2_matches_the_closed_form_and_the_measured_run():
+    # r2 = 1 - (rmse/sd)^2. Pinned against the real run: sd 0.1615, rmse_desk 0.1085 -> 0.549,
+    # rmse_nochange 0.1212 -> 0.437. If this identity ever changes, every reported r2 shifts.
+    for rmse, sd, want in ((0.1085, 0.1615, 0.549), (0.1212, 0.1615, 0.437)):
+        assert abs((1.0 - (rmse / sd) ** 2) - want) < 5e-4
+
+
+def test_error_variance_removed_is_the_squared_rmse_ratio():
+    # "DESK removes X% of the null's error variance" must be 1 - (rmse_desk/rmse_nc)^2, and must
+    # equal the r2_gain divided by nothing -- i.e. r2_gain is that reduction expressed as a share
+    # of TOTAL variance. Both framings have to stay consistent or the write-up contradicts itself.
+    rng = np.random.default_rng(12)
+    S = rng.random((60, 60)); S = (S + S.T) / 2
+    noise_d = rng.normal(0, 0.05, S.shape); noise_d = (noise_d + noise_d.T) / 2
+    noise_n = rng.normal(0, 0.09, S.shape); noise_n = (noise_n + noise_n.T) / 2
+
+    m = bucket_metrics(S, S + noise_d, S + noise_n)
+    ratio = m["rmse_desk"] / m["rmse_nochange"]
+    assert abs(m["error_variance_removed"] - (1 - ratio ** 2)) < 1e-12
+    assert abs(m["rmse_skill"] - (1 - ratio)) < 1e-12
+    # r2_gain == (rmse_nc^2 - rmse_desk^2) / sd^2
+    expect = (m["rmse_nochange"] ** 2 - m["rmse_desk"] ** 2) / m["observed_sd"] ** 2
+    assert abs(m["r2_gain"] - expect) < 1e-9
+
+
+def test_calibration_loss_is_pearson_sq_minus_r2():
+    # A prediction that ranks pairs perfectly but is offset by a constant has pearson^2 = 1 and
+    # r2 < 1; the gap is exactly the calibration loss. This is the 0.78-vs-0.55 discrepancy in the
+    # real run, and it must be reported rather than hidden by quoting only the correlation.
+    rng = np.random.default_rng(13)
+    S = rng.random((50, 50)); S = (S + S.T) / 2
+    e = kernel_error(S, S + 0.05)                             # perfect ranking, constant offset
+    assert abs(e["pearson_r"] - 1.0) < 1e-9
+    assert e["r2"] < 1.0
+    assert abs(e["bias"] - 0.05) < 1e-9
+    m = bucket_metrics(S, S + 0.05, S + 0.09)
+    assert abs(m["calibration_loss_desk"] - (m["pearson_desk"] ** 2 - m["r2_desk"])) < 1e-12
+    assert m["calibration_loss_desk"] > 0                     # ranking better than accuracy
+
+
 def test_cosine_gram_is_scale_invariant_and_unit_diagonal():
     rng = np.random.default_rng(3)
     Z = rng.standard_normal((6, 4))
@@ -295,7 +355,8 @@ def test_run_end_to_end_gates_cells_and_buckets(tmp_path, monkeypatch):
             keys.append([c, c, y])
             rows.append(rng.random(n_species) * 5 + (y - 1970) * 0.05)
     keys = np.array(keys, dtype="int32")
-    X_log = log1p_community(np.array(rows))
+    X_arr = np.array(rows)
+    X_log = log1p_community(X_arr)
 
     desk = tmp_path / "desk"
     desk.mkdir()
@@ -306,7 +367,7 @@ def test_run_end_to_end_gates_cells_and_buckets(tmp_path, monkeypatch):
 
     monkeypatch.setattr(V, "load_observed", lambda config: (
         X_log, keys, {"n_species": n_species, "n_surveyed_cell_years": int(keys.shape[0]),
-                      "year_range": [1970, 2020]}))
+                      "year_range": [1970, 2020]}, X_arr))
 
     # Stub DESK: z is a linear map of the TRUE community, so it genuinely tracks time and the gain
     # must come out positive. Keyed by (cell, year) so the stub cannot leak information the real
@@ -331,3 +392,173 @@ def test_run_end_to_end_gates_cells_and_buckets(tmp_path, monkeypatch):
     assert rep["buckets"]["pooled/all"]["cka_gain"] > 0, rep["buckets"]["pooled/all"]
     assert (desk / "bbs_route_validation.json").exists()
     assert (desk / "bbs_route_validation.npz").exists()
+
+
+# ------------------- epoch x local-neighbourhood analysis -------------------
+
+def test_epoch_gate_counts_distinct_years_not_route_years():
+    # Cell (0,0): 3 distinct years in each epoch -> KEPT.
+    # Cell (1,1): plenty of rows but all in ONE calendar year per epoch -> REJECTED. This is the
+    # whole point of the gate: 5 routes run in 1972 say nothing about the other 20 years, so the
+    # epoch mean would not be the noise-averaged estimate the analysis assumes.
+    keys = np.array(
+        [[0, 0, 1970], [0, 0, 1978], [0, 0, 1985], [0, 0, 2008], [0, 0, 2015], [0, 0, 2022]]
+        + [[1, 1, 1972]] * 5 + [[1, 1, 2010]] * 5, dtype="int32")
+    cells, e_rows, m_rows, stats = epoch_gate(keys)
+
+    assert cells.tolist() == [[0, 0]]
+    assert stats["cells_kept"] == 1 and stats["cells_seen"] == 2
+    assert len(e_rows[0]) == 3 and len(m_rows[0]) == 3
+    # rows point at the right epoch
+    assert sorted(keys[e_rows[0], 2].tolist()) == [1970, 1978, 1985]
+    assert sorted(keys[m_rows[0], 2].tolist()) == [2008, 2015, 2022]
+
+
+def test_epoch_gate_requires_both_windows_and_is_boundary_inclusive():
+    # Epoch bounds inclusive on both ends: 1966/1986 and 2005/2025 must all count.
+    keys = np.array([[0, 0, 1966], [0, 0, 1976], [0, 0, 1986],
+                     [0, 0, 2005], [0, 0, 2015], [0, 0, 2025],
+                     [2, 2, 1966], [2, 2, 1976], [2, 2, 1986]],   # early only -> rejected
+                    dtype="int32")
+    cells, _, _, stats = epoch_gate(keys)
+    assert cells.tolist() == [[0, 0]]
+    assert stats["cells_failed_modern_only"] == 1
+    assert stats["early_window"] == list(EPOCH_EARLY)
+    assert stats["modern_window"] == list(EPOCH_MODERN)
+
+
+def test_epoch_gate_excludes_years_outside_both_windows():
+    # 1990-2004 falls between the epochs and must count toward neither.
+    keys = np.array([[0, 0, 1990], [0, 0, 1995], [0, 0, 2000],
+                     [0, 0, 2010], [0, 0, 2015], [0, 0, 2020]], dtype="int32")
+    cells, _, _, _ = epoch_gate(keys)
+    assert cells.shape[0] == 0                       # no early-epoch years at all
+
+
+def test_epoch_mean_averages_raw_counts_then_log1p():
+    # log1p is concave, so mean(log1p(x)) < log1p(mean(x)) whenever abundance varies. The epoch
+    # summary must be "the average community", i.e. average the COUNTS then transform once.
+    X_raw = np.array([[0.0, 100.0], [100.0, 0.0]])    # large spread -> the gap is obvious
+    got = epoch_mean_observed(X_raw, [[0, 1]])
+    assert np.allclose(got, np.log1p([[50.0, 50.0]]))
+
+    mean_of_log1p = np.log1p(X_raw).mean(axis=0)
+    assert (got[0] > mean_of_log1p).all()            # concavity: transform-last is strictly larger
+
+
+def test_epoch_mean_z_averages_the_vectors():
+    Z = np.array([[1.0, 3.0], [3.0, 5.0], [10.0, 10.0]], dtype="float32")
+    got = epoch_mean_z(Z, [[0, 1], [2]])
+    assert np.allclose(got[0], [2.0, 4.0]) and np.allclose(got[1], [10.0, 10.0])
+
+
+def test_knn_on_a_line_of_cells_at_grid_spacing():
+    # 27 km spacing: neighbour 1 of the focal cell must be the adjacent cell at exactly 27 km,
+    # distances must come back in METRES, and the self hit must never appear.
+    xy = np.stack([np.arange(8) * 27000.0, np.zeros(8)], 1)
+    idx, dist = knn_neighbours(xy, k=3)
+    assert idx.shape == (8, 3) and dist.shape == (8, 3)
+    assert idx[0].tolist() == [1, 2, 3]
+    assert np.allclose(dist[0], [27000.0, 54000.0, 81000.0])
+    for r in range(8):
+        assert r not in idx[r].tolist()               # self excluded wherever it sorted
+
+
+def test_knn_returns_all_available_when_fewer_than_k():
+    # Asking for 99 neighbours from 4 cells must yield 3, not an error.
+    xy = np.stack([np.arange(4) * 27000.0, np.zeros(4)], 1)
+    idx, dist = knn_neighbours(xy, k=99)
+    assert idx.shape == (4, 3)
+    assert np.isfinite(dist).all()
+
+
+def test_batched_neighbour_ruzicka_matches_the_reference_implementation():
+    # The fast path computes only the focal-to-neighbour entries; it must agree with the
+    # full-matrix ruzicka_rect on exactly those entries. fp32 on the GPU path, hence 1e-5.
+    rng = np.random.default_rng(3)
+    A, B = rng.random((30, 9)), rng.random((30, 9))
+    idx = np.stack([rng.permutation(30)[:6] for _ in range(30)])
+
+    fast = _pairwise_ruzicka_neighbours(A, B, idx)
+    ref = ruzicka_rect(A, B)
+    slow = np.stack([ref[i, idx[i]] for i in range(30)])
+    assert np.abs(fast - slow).max() < 1e-5
+
+    d_fast = _pairwise_dot_neighbours(A, B, idx)
+    d_slow = np.stack([(A[i] * B[idx[i]]).sum(1) for i in range(30)])
+    assert np.abs(d_fast - d_slow).max() < 1e-5
+
+
+def test_quantile_bins_are_equal_n_and_survive_degenerate_input():
+    d = np.concatenate([np.full(100, 30000.0), np.linspace(4e5, 2e6, 100)])
+    edges, labels = quantile_distance_bins(d, n_bins=4)
+    counts = np.bincount(np.clip(np.digitize(d, edges) - 1, 0, len(labels) - 1),
+                         minlength=len(labels))
+    assert counts.sum() == d.size
+    assert counts.max() <= 3 * max(counts.min(), 1)   # roughly balanced, not all in one bin
+    # all-identical distances must collapse to one bin rather than raise
+    e2, l2 = quantile_distance_bins(np.full(50, 12345.0), n_bins=10)
+    assert len(l2) == 1
+
+
+def _epoch_fixture(n=40, n_species=7, latent=5, seed=0):
+    """Cells on a line whose community drifts, with DESK z a linear map of the truth."""
+    rng = np.random.default_rng(seed)
+    Xe = rng.random((n, n_species)) * 5.0
+    Xm = Xe + rng.random((n, n_species)) * 2.0        # genuine change
+    A = rng.standard_normal((n_species, latent))
+    xy = np.stack([np.arange(n) * 27000.0, np.zeros(n)], 1)
+    return log1p_community(Xe), log1p_community(Xm), A, xy
+
+
+def test_spatial_modern_skill_is_exactly_zero_the_builtin_null_test():
+    # spatial_modern grades Zm.Zm against a null that IS Zm.Zm. Its skill must be exactly 0.
+    # This is the analysis's own null test: if it ever moves, the harness mis-pairs its inputs
+    # and no other row in the table can be trusted.
+    Xe, Xm, A, xy = _epoch_fixture()
+    rep, per_cell = epoch_neighborhood_analysis(Xe, Xm, Xe @ A, Xm @ A, xy, k=9, n_bins=3)
+
+    for split, per_bin in rep["types"]["spatial_modern"].items():
+        for bname, mm in per_bin.items():
+            if "skipped" in mm:
+                continue
+            assert mm["rmse_skill"] == 0.0, (split, bname, mm)
+            assert mm["rmse_desk"] == mm["rmse_null"], (split, bname, mm)
+            assert mm["r2_gain"] == 0.0, (split, bname, mm)
+    assert np.allclose(per_cell["spatial_modern_skill"], 0.0)
+
+
+def test_epoch_analysis_shape_and_that_a_tracking_desk_beats_the_null():
+    Xe, Xm, A, xy = _epoch_fixture()
+    rep, per_cell = epoch_neighborhood_analysis(Xe, Xm, Xe @ A, Xm @ A, xy, k=9, n_bins=3)
+
+    assert set(rep["types"]) == {"spatial_early", "spatial_modern", "cross_time", "self_change"}
+    assert rep["config"]["k"] == 9 and rep["config"]["n_focal_cells"] == 40
+    # a DESK that tracks the truth must beat the frozen-modern null where time matters
+    assert rep["types"]["spatial_early"]["pooled"]["all_distances"]["rmse_skill"] > 0
+    assert rep["types"]["self_change"]["pooled"]["all_distances"]["n_pairs"] == 40
+    # per-cell fields are present and one value per focal cell, for mapping
+    for key in ("spatial_early_skill", "cross_time_skill", "self_change_obs", "neighbour_dist_m"):
+        assert key in per_cell
+    assert per_cell["spatial_early_skill"].shape == (40,)
+    assert per_cell["neighbour_dist_m"].shape == (40, 9)
+
+
+def test_epoch_analysis_splits_by_holdout_when_given_a_mask():
+    Xe, Xm, A, xy = _epoch_fixture()
+    ho = np.zeros(40, bool); ho[::2] = True
+    rep, _ = epoch_neighborhood_analysis(Xe, Xm, Xe @ A, Xm @ A, xy, k=9, n_bins=3, is_heldout=ho)
+    assert set(rep["types"]["cross_time"]) == {"pooled", "train", "heldout"}
+    n_ho = rep["types"]["self_change"]["heldout"]["all_distances"]["n_pairs"]
+    assert n_ho == 20
+
+
+def test_epoch_mean_z_is_nan_aware():
+    # A cell-year outside the covariate footprint comes back NaN from encode_points. One such year
+    # must not wipe out the epoch mean; a cell with NO finite year must yield NaN so the caller's
+    # finite filter drops it rather than silently averaging garbage.
+    Z = np.array([[1.0, 1.0], [np.nan, np.nan], [3.0, 3.0],
+                  [np.nan, np.nan], [np.nan, np.nan]], dtype="float32")
+    got = epoch_mean_z(Z, [[0, 1, 2], [3, 4]])
+    assert np.allclose(got[0], [2.0, 2.0])            # NaN year ignored, not propagated
+    assert np.isnan(got[1]).all()                     # nothing finite -> NaN, caught downstream

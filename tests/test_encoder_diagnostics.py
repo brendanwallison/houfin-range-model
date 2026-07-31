@@ -55,12 +55,25 @@ def test_kernel_curve_and_turnover_are_well_formed():
 
     r, c, fused, esk, desk = paired_turnover(x, z, z.copy(), rows, cols, years, 2000, 2010)
     assert len(r) == len(c) == len(fused) == 12
-    assert np.allclose(esk, desk)
-    # ESK represents the uncentered Ružička kernel with a dot product.  A cosine
-    # would be a different kernel and must not be used for this comparison.
+    # equal_nan: the fixture's first pair is empty-vs-empty, where Ružička Σmax == 0 leaves
+    # turnover genuinely UNDEFINED. `_ruzicka_pairs` returns NaN there by design rather than
+    # reporting maximal turnover for a pair that carries no information, so identical arrays
+    # still compare unequal without this flag.
+    assert np.allclose(esk, desk, equal_nan=True)
+    assert np.isnan(esk[0]) and np.isnan(desk[0])              # the undefined pair stays undefined
+    assert np.isfinite(esk[1:]).all()                          # and nothing else is NaN
+    # The Z sides use COSINE, not a raw dot. The raw dot is the right kernel for SPATIAL
+    # cross-cell comparison (it is the uncentered Ružička contract), but this is temporal
+    # self-similarity of one cell, where a raw dot folds in the model's ⟨z,z⟩ calibration drift:
+    # measured ||Z||² is 0.73-0.81, so ~73% of `1 - Z·Z'` would be norm deficit rather than
+    # rotation, and cells with ||Z||² > 1 would go negative. `validate_spacetime` has always used
+    # cosine here, and the two scripts must agree or their turnover numbers aren't comparable.
     a = np.arange(12)
     b = np.arange(24, 36)
-    assert np.allclose(esk, 1.0 - np.sum(z[a] * z[b], axis=1))
+    num = np.sum(z[a] * z[b], axis=1)
+    den = np.linalg.norm(z[a], axis=1) * np.linalg.norm(z[b], axis=1)
+    expected = 1.0 - np.divide(num, den, out=np.full_like(num, np.nan), where=den > 1e-12)
+    assert np.allclose(esk, expected, equal_nan=True)
 
 
 def test_all_diagnostic_figures_render(tmp_path):

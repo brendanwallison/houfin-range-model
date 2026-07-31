@@ -7,7 +7,7 @@ checks the numpy cube-side EMA (NaN-persisting) matches the torch scan on clean 
 import numpy as np
 import torch
 
-from src.community_encoder.train_DESK.desk_training import OutputEMA
+from src.community_encoder.train_DESK.desk_training import OutputEMA, apply_output_ema
 
 
 def test_half_life_reparam_in_bounds():
@@ -63,23 +63,44 @@ def test_scan_is_differentiable_wrt_half_life():
     assert ema.theta.grad.abs().item() > 0                    # half-life actually moves the loss
 
 
-def test_numpy_cube_ema_matches_torch():
-    # The cube applies the EMA in numpy (NaN-persist); on all-valid data it must
-    # match the torch scan exactly.
+def test_numpy_ema_matches_torch():
+    # apply_output_ema is the inference-side twin of the torch scan (validate_bbs_routes
+    # grades z_ema, since that is what the trainer supervised). On all-valid data the two
+    # must agree exactly -- this is the assertion that keeps them from drifting apart.
     h = 7.0
-    a = 1.0 - 2.0 ** (-1.0 / h)
     T, H, W, L = 15, 3, 3, 4
     rng = np.random.default_rng(0)
-    raws = [rng.standard_normal((H, W, L)).astype("float32") for _ in range(T)]
+    raws = np.stack([rng.standard_normal((H, W, L)).astype("float32") for _ in range(T)])
 
-    z_ema = np.full((H, W, L), np.nan, dtype=np.float32)
-    cube = []
-    for raw in raws:
-        seeded = ~np.isnan(z_ema).any(axis=-1)
-        blend = np.where(seeded[..., None], a * raw + (1.0 - a) * z_ema, raw)
-        z_ema = blend
-        cube.append(z_ema.copy())
-    cube = np.stack(cube)                                      # (T,H,W,L)
+    np_out = apply_output_ema(raws, h)
+    torch_out = OutputEMA(1.0, 40.0, h)(torch.tensor(raws)).detach().numpy()
+    assert np.allclose(np_out, torch_out, atol=1e-5)
 
-    torch_out = OutputEMA(1.0, 40.0, h)(torch.tensor(np.stack(raws))).detach().numpy()
-    assert np.allclose(cube, torch_out, atol=1e-5)
+
+def test_numpy_ema_persists_state_through_invalid_years():
+    # An invalid year must PERSIST the prior EMA, not overwrite it with the raw value and
+    # not poison it with NaN. Without this, a single gap year would corrupt every later
+    # year at that location.
+    h = 5.0
+    a = 1.0 - 2.0 ** (-1.0 / h)
+    raw = np.array([[1.0], [99.0], [1.0]], dtype="float32")     # (T=3, L=1)
+    valid = np.array([True, False, True])
+
+    out = apply_output_ema(raw, h, valid=valid)
+    assert out[0, 0] == 1.0                                     # first observed seeds the state
+    assert out[1, 0] == 1.0                                     # invalid year ignored entirely
+    assert abs(out[2, 0] - (a * 1.0 + (1.0 - a) * 1.0)) < 1e-6  # blends against the PERSISTED 1.0
+
+    # The invalid value must never reach the output, even transiently.
+    assert not np.isclose(out, 99.0).any()
+    assert np.isfinite(out).all()
+
+
+def test_numpy_ema_first_observed_year_seeds_state():
+    # A location whose early years are all invalid must initialize from its first OBSERVED
+    # value (z_ema = z_raw there), not stay NaN forever.
+    raw = np.array([[5.0], [5.0], [7.0]], dtype="float32")
+    valid = np.array([False, False, True])
+    out = apply_output_ema(raw, 5.0, valid=valid)
+    assert np.isnan(out[0, 0]) and np.isnan(out[1, 0])          # nothing observed yet
+    assert out[2, 0] == 7.0                                     # seeds, does not blend

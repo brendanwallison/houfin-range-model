@@ -409,6 +409,46 @@ class OutputEMA(torch.nn.Module):
         return torch.stack(out, 0)
 
 
+def apply_output_ema(z_raw, half_life, valid=None):
+    """Numpy twin of :class:`OutputEMA.forward` for INFERENCE over a year axis.
+
+    ``z_raw`` is ``(T, ..., L)`` in ascending-year order; returns the same shape holding
+    ``z_ema[t]``. This must stay numerically identical to the torch scan on all-valid input —
+    ``tests/test_output_ema.py`` asserts exactly that, since the trainer supervises ``z_ema``
+    while every downstream export is raw, so anything grading DESK against an observed
+    community has to reconstruct ``z_ema`` here rather than compare the wrong quantity.
+
+    ``valid`` (``(T, ...)`` bool, optional) marks which entries are observed each step. An
+    invalid entry **persists** the prior EMA state instead of overwriting it with NaN: without
+    that, one gap-year poisons the running state for every later year at that location. With
+    ``valid=None`` every entry is treated as observed.
+
+    The scan is causal and cannot be applied to an isolated ``(cell, year)`` — the caller must
+    supply a contiguous ascending series starting at the burn-in year (``ema_warmup_start``).
+    """
+    z_raw = np.asarray(z_raw, dtype="float32")
+    if z_raw.ndim < 2:
+        raise ValueError(f"z_raw must be (T, ..., L); got shape {z_raw.shape}")
+    hl = float(half_life)
+    if not np.isfinite(hl) or hl <= 0:
+        raise ValueError(f"half_life must be finite and positive; got {half_life}")
+    a = 1.0 - 2.0 ** (-1.0 / hl)
+    state = np.full(z_raw.shape[1:], np.nan, dtype="float32")
+    out = np.empty_like(z_raw)
+    for t in range(z_raw.shape[0]):
+        raw = z_raw[t]
+        # A location is "seeded" once it has any running EMA; before that its first observed
+        # value initializes the state (z_ema[0] = z_raw[0]) rather than blending against NaN.
+        seeded = ~np.isnan(state).any(axis=-1)
+        blend = np.where(seeded[..., None], a * raw + (1.0 - a) * state, raw)
+        if valid is None:
+            state = blend
+        else:
+            state = np.where(np.asarray(valid[t], bool)[..., None], blend, state)
+        out[t] = state
+    return out
+
+
 def _prepare_trend_targets(config, z_dir, latent_dim, holdout):
     """Per-year ESK-basis targets for EVERY supervised year, from the trend points.
 

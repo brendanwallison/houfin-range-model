@@ -216,9 +216,12 @@ def load_observed(config):
     path = config["bbs"]["community_matrix"]
     if not os.path.exists(path):
         raise FileNotFoundError(
-            f"BBS community matrix not found at {path}. Build it with:\n"
-            "    python -m src.data.preprocess.bbs_community\n"
-            "(that module owns the route->cell aggregation; do not reimplement it here)")
+            f"BBS community matrix not found at {path}. Build it as a SLURM job:\n"
+            "    STAGES=bbs sbatch --export=ALL scripts/tacc/04_states.slurm\n"
+            "Do NOT run `python -m src.data.preprocess.bbs_community` on a login node: it reads "
+            "every States/*.csv in the BBS release and merges millions of route-year-species rows, "
+            "which is exactly the CPU/RAM profile TACC kills login-node processes for. That module "
+            "owns the route->cell aggregation; do not reimplement it here.")
     d = np.load(path, allow_pickle=True)
     species = [str(s) for s in d["species_codes"]]
     X_raw, keys, dropped = densify_community(

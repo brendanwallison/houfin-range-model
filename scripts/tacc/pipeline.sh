@@ -173,6 +173,10 @@ stage_spacetime_esk () { run spacetime_esk python scripts/run_encoder.py spaceti
 stage_desk      () { run desk      python scripts/run_encoder.py desk; }
 stage_cube      () { run cube      python scripts/run_encoder.py cube; }
 stage_validate  () { run validate  python scripts/run_encoder.py validate; }
+# Route-level BBS validation. Separate from `validate` because it answers a different question:
+# `validate` grades against the IDW-interpolated BBS trend surface, this grades against raw route
+# counts at surveyed cell-years only, where reproducing an interpolator cannot win. GPU queue.
+stage_bbs_route_validate () { run bbs_route_validate python scripts/run_encoder.py bbs-route-validate; }
 stage_encoder_viz () {
     # Always reconstruct the comparison arrays in a submitted diagnostics run.
     # Direct invocations may reuse the provenance-checked cache.

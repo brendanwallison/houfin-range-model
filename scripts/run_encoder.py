@@ -8,7 +8,8 @@ top-level root (+ a ``src.config_utils`` loader). Putting both the repo root and
 stage is meant to run as its own process (the TACC pipeline calls this once per
 stage), so the two roots never collide within one interpreter.
 
-    python scripts/run_encoder.py {ebird-cache|trend-points|esk|spacetime-esk|desk|cube|validate}
+    python scripts/run_encoder.py
+        {ebird-cache|trend-points|esk|spacetime-esk|desk|cube|validate|bbs-route-validate}
 """
 import os
 import sys
@@ -42,9 +43,15 @@ def main():
     elif cmd == "validate":
         from src.community_encoder.train_DESK.validate_spacetime import run_validate
         run_validate()
+    elif cmd == "bbs-route-validate":
+        # Route-level BBS validation: grades DESK against a no-change null on GENUINELY
+        # SURVEYED cell-years, escaping the IDW-interpolated target every other metric uses.
+        # Needs a GPU queue (one whole-grid forward per year of the EMA warmup span).
+        from src.community_encoder.train_DESK.validate_bbs_routes import run
+        run()
     else:
-        sys.exit(f"unknown encoder stage: {cmd!r} "
-                 "(ebird-cache|trend-points|esk|spacetime-esk|desk|cube|validate)")
+        sys.exit(f"unknown encoder stage: {cmd!r} (ebird-cache|trend-points|esk|"
+                 "spacetime-esk|desk|cube|validate|bbs-route-validate)")
 
 
 if __name__ == "__main__":

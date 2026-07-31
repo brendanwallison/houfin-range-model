@@ -9,7 +9,12 @@
 #     STAGES=esk      sbatch --export=ALL scripts/tacc/20_encoder.slurm
 #     STAGES=desk     sbatch --export=ALL scripts/tacc/20_encoder.slurm
 #     STAGES="cube validate" sbatch --export=ALL scripts/tacc/20_encoder.slurm   # light; CPU is fine
+#     STAGES=bbs-route-validate sbatch --export=ALL scripts/tacc/20_encoder.slurm
 #     STAGES=encoder-viz sbatch --export=ALL scripts/tacc/20_encoder.slurm
+#
+# bbs-route-validate grades DESK against a no-change null on genuinely SURVEYED cell-years
+# (raw BBS route counts), unlike `validate` which grades against the IDW-interpolated BBS trend
+# surface. It needs the community matrix from the `bbs` stage of 04_states.slurm first.
 # or all four at once (the default).
 #
 # QUEUE: gpu-a100-small (1 A100 40GB, 1.5 SU/hr, 48 h cap). Every stage here is

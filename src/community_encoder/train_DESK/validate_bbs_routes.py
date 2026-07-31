@@ -949,7 +949,13 @@ def run(config=None, n_sample=4000, seed=0):
     # ---- epoch analysis prep, done BEFORE the pooled site gate so it sees every surveyed row.
     # Its gate (>=3 distinct years in both epochs) is stricter and different from the pooled one,
     # so the two must be derived independently from the full row set.
-    ep_cells, ep_e_rows, ep_m_rows, ep_stats = epoch_gate(keys)
+    #
+    # KEEP THE UNFILTERED KEYS. The pooled site gate below rebinds `keys = keys[keep]`, so the row
+    # indices in ep_e_rows/ep_m_rows -- which index the FULL array -- would silently point into the
+    # wrong rows afterwards (and did: IndexError at 110878 vs size 110839). X_raw_all is already
+    # unfiltered, so the epoch analysis must be handed keys_all to match it.
+    keys_all = keys
+    ep_cells, ep_e_rows, ep_m_rows, ep_stats = epoch_gate(keys_all)
     print(f"[bbs-routes] epoch gate: {ep_stats['cells_kept']}/{ep_stats['cells_seen']} cells have "
           f">={MIN_EPOCH_YEARS} distinct surveyed years in BOTH "
           f"{EPOCH_EARLY[0]}-{EPOCH_EARLY[1]} and {EPOCH_MODERN[0]}-{EPOCH_MODERN[1]} "
@@ -1002,7 +1008,7 @@ def run(config=None, n_sample=4000, seed=0):
     ep_rows_flat = np.array([i for rows in (ep_e_rows + ep_m_rows) for i in rows], dtype="int64")
     need = [keys_s, keys_nc]
     if ep_rows_flat.size:
-        need.append(keys[ep_rows_flat])
+        need.append(keys_all[ep_rows_flat])          # keys_all: epoch rows index the FULL array
         # The all_years DESK variant needs z at EVERY year of each epoch, not just surveyed ones.
         # Free: desk_z_ema already encodes every requested cell across every year of the span, so
         # these extra keys add gathers, not forwards.
@@ -1089,7 +1095,7 @@ def run(config=None, n_sample=4000, seed=0):
                         S_nc_obs=S_nc_obs.astype("float32"), is_heldout=is_ho)
 
     # ---- epoch x local-neighbourhood analysis (separate outputs, same encode pass)
-    ep_report = _run_epoch_analysis(config, keys, X_raw_all, ep_cells, ep_e_rows, ep_m_rows,
+    ep_report = _run_epoch_analysis(config, keys_all, X_raw_all, ep_cells, ep_e_rows, ep_m_rows,
                                     ep_stats, _gather, zmeta, out_dir)
 
     b0 = next((v for v in report["buckets"].values() if "observed_sd" in v), None)

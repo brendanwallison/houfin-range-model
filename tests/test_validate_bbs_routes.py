@@ -562,3 +562,72 @@ def test_epoch_mean_z_is_nan_aware():
     got = epoch_mean_z(Z, [[0, 1, 2], [3, 4]])
     assert np.allclose(got[0], [2.0, 2.0])            # NaN year ignored, not propagated
     assert np.isnan(got[1]).all()                     # nothing finite -> NaN, caught downstream
+
+
+def test_run_epoch_rows_survive_the_pooled_site_gate(tmp_path, monkeypatch):
+    """Regression: the epoch row indices must index the UNFILTERED keys.
+
+    The pooled site gate rebinds ``keys = keys[keep]``, so epoch row indices computed against the
+    full array pointed into the wrong rows afterwards -- and crashed with
+    ``IndexError: index 110878 is out of bounds for axis 0 with size 110839`` on the real data.
+
+    The earlier driver test could not catch this: its synthetic years do not pass the epoch gate,
+    so ``ep_rows_flat`` was empty and the offending line never ran. This fixture deliberately
+    combines BOTH conditions -- cells that pass the epoch gate, AND cells the site gate drops, so
+    the two index spaces genuinely differ.
+    """
+    from src.community_encoder.train_DESK import validate_bbs_routes as V
+
+    n_species = 5
+    rng = np.random.default_rng(0)
+    keys, rows = [], []
+    # ORDER MATTERS. The site-gate-dropped cells must come FIRST so that filtering SHIFTS the
+    # indices of the surviving rows. With the dropped cells last, filtering only truncates the
+    # tail, the epoch indices still resolve, and the bug hides -- a first version of this test
+    # made exactly that mistake and passed against the buggy code.
+    #
+    # cells 0-4: early-only, so the SITE gate drops all 15 of their rows.
+    for c in range(5):
+        for y in (1968, 1975, 1982):
+            keys.append([0, c, y]); rows.append(rng.random(n_species) * 5)
+    # cells 5-14: pass BOTH gates (3+ distinct years per window, and a modern survey). Their rows
+    # start at original index 15 but at filtered index 0.
+    for c in range(5, 15):
+        for y in (1968, 1975, 1982, 2008, 2015, 2022):
+            keys.append([0, c, y]); rows.append(rng.random(n_species) * 5)
+    keys = np.array(keys, dtype="int32")
+    X_arr = np.array(rows)
+    X_log = log1p_community(X_arr)
+
+    desk = tmp_path / "desk"; desk.mkdir()
+    np.save(desk / "holdout_cells.npy", np.zeros((4, 20), bool))
+    cfg = {"bbs": {"z_dir": str(tmp_path)}, "paths": {"desk_output_dir": str(desk)}}
+
+    monkeypatch.setattr(V, "load_observed", lambda config: (
+        X_log, keys, {"n_species": n_species, "n_surveyed_cell_years": int(keys.shape[0]),
+                      "year_range": [1968, 2022]}, X_arr))
+    A = rng.standard_normal((n_species, 4))
+    monkeypatch.setattr(V, "desk_z_ema", lambda config, k: (
+        np.stack([np.log1p(np.full(n_species, 1.0 + int(y) % 7)) @ A for _, _, y in k]
+                 ).astype("float32"),
+        {"output_ema_applied": True, "ema_half_life": 10.0, "ema_warmup_start": 1940,
+         "encode_years": [1940, 2022]}))
+    # load_data_config is imported INSIDE _run_epoch_analysis, so patch it at its source module
+    import src.config_utils as CU
+    monkeypatch.setattr(CU, "load_data_config", lambda *a, **kw: {"grid": {"ref_raster": "x"}})
+    import src.community_encoder.train_DESK.validate_spacetime as VS
+    monkeypatch.setattr(VS, "cell_xy", lambda r, c, ref: np.stack(
+        [np.asarray(c, float) * 27000.0, np.asarray(r, float) * 27000.0], axis=1))
+
+    rep = V.run(config=cfg, n_sample=100, seed=0)
+
+    # the site gate must actually have dropped rows (else the test proves nothing)
+    assert rep["site_gate"]["rows_kept"] < rep["site_gate"]["rows_total"]
+    assert rep["site_gate"]["cells_dropped_no_modern"] == 5
+    assert rep["site_gate"]["rows_total"] - rep["site_gate"]["rows_kept"] == 15
+    # and the epoch analysis must have run over the 10 qualifying cells without an IndexError
+    import json
+    ep = json.load(open(desk / "bbs_epoch_neighborhood.json"))
+    assert ep["gate"]["cells_kept"] == 10
+    assert ep["config"]["n_focal_cells"] == 10
+    assert ep["types"]["spatial_modern"]["pooled"]["all_distances"]["rmse_skill"] == 0.0

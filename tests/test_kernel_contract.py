@@ -89,29 +89,30 @@ def _trace_priors(seed=3, M=64):
 
 
 def test_environment_weight_prior_is_iid_across_features():
-    """The GP contract: iid across features with a shared 3x3 output covariance.
+    """The GP contract: iid across features with a shared 4x4 output covariance.
 
-    ``w_env`` is now a one-factor construction (beta_j = s_j*(h_j*f + sqrt(1-h_j^2)*eps_j))
-    rather than a direct MultivariateNormal draw, so this asserts the property the
-    Ružička identity actually needs -- the per-feature plate introduces no
-    feature-specific scale or covariance -- instead of inspecting a distribution
-    object that no longer exists.
+    ``w_env`` is a RANK-2 angular construction --
+    ``beta_j = s_j*(a_j*f1 + b_j*f2 + sqrt(1-a_j^2-b_j^2)*eps_j)`` -- rather than a direct
+    MultivariateNormal draw, so this asserts the property the Ružička identity actually needs:
+    the per-feature plate introduces no feature-specific scale or covariance. Adding a second
+    FACTOR preserves that; a covariance over FEATURES would have destroyed it.
     """
     tr = _trace_priors()
     for site in ("manifold_factor", "manifold_idio"):
         d = tr[site]["fn"]
         # Feature plate sits at dim=-2, so the feature axis is the row axis and the
-        # three manifolds occupy the rightmost axis.
+        # four manifolds occupy the rightmost axis.
         assert d.batch_shape[0] == 64, f"{site} is not iid over the 64 features"
-    assert np.asarray(tr["manifold_factor"]["value"]).shape == (64, 1)
-    assert np.asarray(tr["manifold_idio"]["value"]).shape == (64, 3)
-    assert np.asarray(tr["w_env"]["value"]).shape == (64, 3)
+    assert np.asarray(tr["manifold_factor"]["value"]).shape == (64, 2)   # TWO factors
+    assert np.asarray(tr["manifold_idio"]["value"]).shape == (64, 4)
+    assert np.asarray(tr["w_env"]["value"]).shape == (64, 4)
 
-    # Every feature must share ONE output covariance: Cov_jk = s_j*s_k*h_j*h_k
+    # Every feature must share ONE output covariance: Cov_jk = s_j*s_k*(L L^T)_jk
     # off-diagonal, s_j^2 on the diagonal.
     s = np.asarray(tr["w_scale"]["value"])
-    h = np.asarray(tr["manifold_loadings"]["value"])
-    corr = np.outer(h, h)
+    L_load = np.asarray(tr["manifold_loadings"]["value"])
+    assert L_load.shape == (4, 2)
+    corr = L_load @ L_load.T
     np.fill_diagonal(corr, 1.0)
     cov = corr * np.outer(s, s)
     assert np.all(np.linalg.eigvalsh(cov) > 0), "implied output covariance is not PD"
@@ -119,6 +120,70 @@ def test_environment_weight_prior_is_iid_across_features():
     assert np.allclose(L @ L.T, corr, atol=1e-5)
     np.testing.assert_allclose(np.asarray(tr["environment_kernel_variance"]["value"]),
                                s ** 2, rtol=1e-6)
+    # Communality must stay in (0,1) so sqrt(1 - r^2) is real -- what makes the
+    # construction PD without any Cholesky guard.
+    r = np.asarray(tr["manifold_communality"]["value"])
+    assert r.shape == (4,) and np.all((r > 0) & (r < 1))
+
+
+def test_beta_variance_equals_w_scale_squared_at_rank_two():
+    """Var(beta_j) == w_scale_j^2 exactly -- the assertion that catches a broken GP identity.
+
+    ``H_j = Z.beta_j`` is a GP with kernel ``w_scale_j^2 * Z(x).Z(x')`` ONLY if beta_j is iid
+    over features with variance exactly w_scale_j^2. The rank-2 construction achieves that
+    because ``r^2 + (1 - r^2) = 1`` for any communality. Checked at large M so the sample
+    variance is actually informative -- at M=64 its own sd is ~0.18 and would hide a real error.
+    """
+    tr = _trace_priors(seed=3, M=40000)
+    w = np.asarray(tr["w_env"]["value"])
+    s = np.asarray(tr["w_scale"]["value"])
+    np.testing.assert_allclose(w.var(axis=0) / s ** 2, np.ones(4), atol=0.03)
+
+    # and the empirical cross-field correlation must match the analytic L L^T
+    L_load = np.asarray(tr["manifold_loadings"]["value"])
+    analytic = L_load @ L_load.T
+    np.fill_diagonal(analytic, 1.0)
+    assert np.abs(np.corrcoef(w.T) - analytic).max() < 0.02
+    # iid over features: adjacent feature rows must be uncorrelated
+    assert abs(np.corrcoef(w[:-1, 0], w[1:, 0])[0, 1]) < 0.02
+
+
+def test_juvenile_survival_couples_to_adult_survival_as_tightly_as_capacity_to_fecundity():
+    """The pair structure this rank-2 extension exists to create.
+
+    Juvenile survival used to BE adult survival (same manifold, scalar shift and scale only), so
+    there was no correlation to state. It now has its own weights, prior-coupled to adult
+    survival at the same target as fecundity-capacity (0.85), and both pairs coupled to each
+    other more weakly (0.70).
+
+    RANK 1 COULD NOT DO THIS. With Corr(j,k) = h_j*h_k the tetrad identity
+    rho(Sa,Sj)*rho(F,K) == rho(Sa,F)*rho(Sj,K) is forced; at rho(F,K)=0.85 and cross 0.70 it
+    caps rho(Sa,Sj) at 0.576 (and demanding 0.85 needs a loading of 1.12, i.e. an imaginary
+    idiosyncratic weight). This test is what would fail if anyone collapsed it back to one factor.
+    """
+    sj, fk, cross = [], [], []
+    for s in range(300):
+        tr = _trace_priors(seed=s, M=8)
+        L_load = np.asarray(tr["manifold_loadings"]["value"])
+        C = L_load @ L_load.T
+        sj.append(C[0, 3])          # adult vs juvenile survival
+        fk.append(C[1, 2])          # fecundity vs capacity
+        cross.append(C[0, 1])       # adult survival vs fecundity (across groups)
+        # the dedicated site must agree with the matrix
+        assert abs(float(np.asarray(tr["env_corr_survival_adult_juv"]["value"])) - C[0, 3]) < 1e-5
+    sj, fk, cross = np.array(sj), np.array(fk), np.array(cross)
+
+    assert 0.78 < np.median(sj) < 0.90, np.median(sj)
+    assert 0.78 < np.median(fk) < 0.90, np.median(fk)
+    assert 0.60 < np.median(cross) < 0.78, np.median(cross)
+    # both pairs must sit ABOVE the cross-group coupling -- a strong belief, not a constraint
+    assert (sj > cross).mean() > 0.85
+    assert (fk > cross).mean() > 0.85
+    # within-pair is also LESS uncertain than cross-group, for free: cos is flat at zero
+    # angular separation, so a single angle_scale produces both properties.
+    assert sj.std() < cross.std()
+    # rank-1 would have forced the tetrad identity; rank-2 must break it
+    assert abs(np.median(sj) * np.median(fk) - np.median(cross) ** 2) > 0.15
 
 
 def test_capacity_couples_to_fecundity_more_tightly_than_survival_does():
@@ -137,7 +202,7 @@ def test_capacity_couples_to_fecundity_more_tightly_than_survival_does():
         rho_rk.append(float(np.asarray(tr["env_corr_repro_capacity"]["value"])))
         rho_sk.append(float(np.asarray(tr["env_corr_survival_capacity"]["value"])))
     rho_sr, rho_rk = np.array(rho_sr), np.array(rho_rk)
-    # Config targets 0.70 / 0.85; allow slack for the logit-normal's skew.
+    # Config targets 0.70 cross-group / 0.85 within-pair; slack for the logit-normal's skew.
     assert 0.60 < np.median(rho_sr) < 0.78
     assert 0.78 < np.median(rho_rk) < 0.90
     assert np.median(rho_rk) > np.median(rho_sr) + 0.08
@@ -207,18 +272,22 @@ def test_deterministic_sites_the_viz_depends_on_exist():
                  "gamma_f", "gamma_k",
                  "w_env", "k_level", "k_level_route_counts", "w_scale", "L_corr",
                  "rho", "env_corr_repro_capacity", "env_corr_survival_capacity",
-                 "manifold_loadings", "disease_tau", "disease_rec",
+                 "manifold_loadings", "manifold_communality",
+                 "env_corr_survival_adult_juv", "gamma_j_diff",
+                 "disease_tau", "disease_rec",
                  "disease_tau_rec", "disease_k_half_route_counts", "disease_hill_n"):
         assert name in deterministic, f"{name} is no longer a deterministic site"
 
     # Read as raw latents (i.e. must stay SAMPLED, or checkpoint restore breaks).
-    for name in ("alpha_a", "alpha_j", "alpha_f", "gamma_j_diff", "alpha_k", "n50_raw",
+    for name in ("alpha_a", "alpha_j", "alpha_f", "alpha_k", "n50_raw",
                  "disease_mu_sev", "disease_b_late", "disease_w_sev",
                  "disease_lag0", "disease_w_lag", "w_k_trend"):
         assert name in sampled, f"{name} is no longer a sampled site"
 
-    # w_env must be (M, 3): survival, reproduction, capacity.
-    assert np.asarray(tr["w_env"]["value"]).shape[1] == 3
+    # w_env must be (M, 4): survival_adult, reproduction, capacity, survival_juv. Juvenile
+    # survival is APPENDED, not inserted -- eight viz/analysis modules index columns 0..2
+    # positionally, so inserting would silently relabel reproduction and capacity.
+    assert np.asarray(tr["w_env"]["value"]).shape[1] == 4
 
 
 def test_native_seed_starts_at_local_capacity_by_construction():
@@ -297,3 +366,86 @@ def test_invasion_pulse_budget_tightens_per_coefficient_as_sites_grow():
     assert sd_large < sd_small
     assert np.isclose(sd_small, budget / np.sqrt(10))
     assert np.isclose(sd_large, budget / np.sqrt(90))
+
+
+def test_juvenile_survival_and_Q_read_beta_sj_not_beta_s():
+    """S_j and Q must respond to beta_sj and be INVARIANT to beta_s.
+
+    This is the assertion that proves the untying happened. Before this change S_j was
+    ``sigmoid(alpha_j + gamma_j * Z.beta_s)`` -- literally adult survival's field with a scalar
+    shift and scale -- and Q was the same field on the dispersal block. If anyone reverts
+    age_fields to read H_s_local for S_j, the correlation prior in age_priors would still look
+    right while juvenile survival silently had zero spatial degrees of freedom again. Only a
+    perturbation test catches that.
+    """
+    import jax.numpy as jnp
+    from src.model.age_fields import project_and_scatter_age_structured as project
+    from tests.test_disease_depression import N_LAND, _disease
+
+    T, M, N, K_kern = 3, 4, N_LAND, 2
+    rng = np.random.default_rng(0)
+    Z = jnp.array(rng.normal(size=(T, N, M)))
+    Zd = jnp.array(rng.normal(size=(T, N, K_kern, M)))
+    idx = jnp.arange(N)
+    k_trend = jnp.array(np.cos(np.pi * np.linspace(0, 1, T))[None, :])
+    b = jnp.ones(M) * 0.1
+
+    def run(beta_s, beta_sj):
+        # signature: (time, Ny, Nx, land_rows, land_cols, Z, Z_disp, disease_timestep, disease,
+        #             beta_s, beta_r, beta_k, beta_sj, k_trend_basis, w_k_trend, alpha/gamma...)
+        return project(T, 40, 60, idx, idx, Z, Zd, T + 1, _disease(mu_sev=-30.0),
+                       beta_s, b, b, beta_sj,
+                       k_trend, jnp.zeros(1),
+                       0.5, 1.0, -0.5, 1.0, 2.0, 1.0, -2.128295, 1.0)
+
+    Sa0, Sj0, F0, K0, Q0, _ = run(b, b)
+    # perturbing beta_sj must move S_j and Q, and leave S_a / Fmax / K untouched
+    Sa1, Sj1, F1, K1, Q1, _ = run(b, b * 3.0)
+    assert not np.allclose(Sj0, Sj1), "S_j does not respond to beta_sj -- still tied to beta_s?"
+    assert not np.allclose(Q0, Q1), "Q does not respond to beta_sj"
+    np.testing.assert_allclose(np.asarray(Sa0), np.asarray(Sa1), rtol=1e-6)
+    np.testing.assert_allclose(np.asarray(F0), np.asarray(F1), rtol=1e-6)
+    np.testing.assert_allclose(np.asarray(K0), np.asarray(K1), rtol=1e-6)
+
+    # perturbing beta_s must move S_a and leave S_j / Q untouched -- the converse, and the
+    # direction that actually failed before this change.
+    Sa2, Sj2, F2, K2, Q2, _ = run(b * 3.0, b)
+    assert not np.allclose(Sa0, Sa2), "S_a does not respond to beta_s"
+    np.testing.assert_allclose(np.asarray(Sj0), np.asarray(Sj2), rtol=1e-6)
+    np.testing.assert_allclose(np.asarray(Q0), np.asarray(Q2), rtol=1e-6)
+
+
+def test_juvenile_survival_field_is_not_a_monotone_transform_of_adult():
+    """Prior-predictive: S_j maps must no longer be a deterministic function of S_a.
+
+    Under the old parameterization S_j = sigmoid(alpha_j + gamma_j*H_s) and
+    S_a = sigmoid(alpha_a + gamma_a*H_s) shared H_s, so S_j was an exact monotone transform of
+    S_a and their Spearman correlation across cells was identically 1.0 for every draw. With
+    separate manifolds it must fall below 1 while staying high (the prior still couples them).
+    """
+    import jax.numpy as jnp
+    from scipy.stats import spearmanr
+    from src.model.age_fields import project_and_scatter_age_structured as project
+    from tests.test_disease_depression import N_LAND, _disease
+
+    T, M, N, K_kern = 2, 24, N_LAND, 2
+    rng = np.random.default_rng(1)
+    Z = jnp.array(rng.normal(size=(T, N, M)))
+    Zd = jnp.array(rng.normal(size=(T, N, K_kern, M)))
+    idx = jnp.arange(N)
+    k_trend = jnp.array(np.cos(np.pi * np.linspace(0, 1, T))[None, :])
+
+    rhos = []
+    for s in range(20):
+        tr = _trace_priors(seed=s, M=M)
+        w = np.asarray(tr["w_env"]["value"])
+        Sa, Sj, _, _, _, _ = project(
+            T, 40, 60, idx, idx, Z, Zd, T + 1, _disease(mu_sev=-30.0),
+            jnp.array(w[:, 0]), jnp.array(w[:, 1]), jnp.array(w[:, 2]), jnp.array(w[:, 3]),
+            k_trend, jnp.zeros(1),
+            0.5, 1.0, -0.5, 1.0, 2.0, 1.0, -2.128295, 1.0)
+        rhos.append(spearmanr(np.asarray(Sa[0]), np.asarray(Sj[0])).statistic)
+    rhos = np.array(rhos)
+    assert (np.abs(rhos) < 0.999).all(), f"S_j still a monotone transform of S_a: {rhos}"
+    # but the prior coupling should keep them broadly aligned rather than independent
+    assert np.median(np.abs(rhos)) > 0.4, f"S_j and S_a decoupled too far: {np.median(rhos)}"

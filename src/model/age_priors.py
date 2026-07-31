@@ -131,8 +131,9 @@ def sample_priors(prior_scale=1.0, M_features=None, time=None,
                   N_sev_basis=None, N_lag_basis=None):
     """Sample every model parameter and return them in a dict.
 
-    Covers the correlated 3-manifold habitat weights (survival, reproduction,
-    capacity, via a one-factor prior with deliberately ordered correlations), the
+    Covers the correlated 4-manifold habitat weights (adult survival, reproduction,
+    capacity, juvenile survival, via a rank-2 angular prior with deliberately ordered
+    correlations -- two tightly-coupled pairs, weaker coupling across them), the
     continental time trend on K, the structured
     mycoplasmal-conjunctivitis effect on K, dispersal/demography rate parameters,
     and the Allee term. ``prior_scale`` multiplies scale parameters for
@@ -141,8 +142,10 @@ def sample_priors(prior_scale=1.0, M_features=None, time=None,
     """
     priors = {}
     
-    # --- 1. CORRELATED 3-MANIFOLD HABITAT WEIGHTS (survival, reproduction, capacity) ---
-    # H_s = Z.beta_s drives Sa/Sj/Q, H_r = Z.beta_r drives Fmax, H_k = Z.beta_k drives K.
+    # --- 1. CORRELATED 4-MANIFOLD HABITAT WEIGHTS ---
+    # [survival_adult, reproduction, capacity, survival_juv]
+    # H_s = Z.beta_s drives Sa, H_sj = Z.beta_sj drives Sj and Q, H_r drives Fmax,
+    # H_k drives K.
     # K previously reused beta_r outright -- an implicit correlation of exactly 1.0 --
     # so K's spatial pattern could differ from Fmax's only via the disease term. That
     # forced every real disagreement between "where reproduction is good" and "where
@@ -160,25 +163,44 @@ def sample_priors(prior_scale=1.0, M_features=None, time=None,
     # structure is what preserves the uncentered-Ružička GP contract -- see
     # validate_environment_kernel_contract -- exactly as the old 2-output version did.
     _m = _MANIFOLD_PRIOR
-    # Solve the target correlations for the three factor loadings: given
-    # Corr(j,k) = h_j*h_k, h_r^2 = (rho_sr*rho_rk)/rho_sk and the rest follow.
-    _rho_sr = float(_m["target_corr_survival_repro"])
-    _rho_rk = float(_m["target_corr_repro_capacity"])
-    _rho_sk = float(_m["target_corr_survival_capacity"])
-    _h_r = math.sqrt(_rho_sr * _rho_rk / _rho_sk)
-    _h_med = jnp.array([_rho_sr / _h_r, _h_r, _rho_rk / _h_r])  # (survival, repro, capacity)
-    _logit_h = jnp.log(_h_med / (1.0 - _h_med))
+    # RANK-2 ANGULAR solve. Column order is
+    #     [survival_adult, reproduction, capacity, survival_juv]
+    # -- survival_juv is APPENDED, not inserted at 1. Eight viz/analysis modules index w_env
+    # positionally (w_env[:,1] == "reproduction", w_env[:,2] == "capacity"); inserting would have
+    # relabelled both with no error raised anywhere.
+    #
+    # Two groups {survival_adult, survival_juv} and {reproduction, capacity} sit at +/- phi/2.
+    # With r_j the communality and th_j the angle, Corr(j,k) = r_j*r_k*cos(th_j - th_k), so
+    #   within a group (th_j == th_k):  Corr = r_j*r_k          -> r = sqrt(rho_within)
+    #   across groups:                  Corr = r^2*cos(phi)     -> cos(phi) = rho_cross/rho_within
+    # A single angle_scale then makes within-pair correlation LESS prior-uncertain than
+    # cross-group automatically, because cos is flat at zero separation -- which is exactly the
+    # requested structure ("tight within pair, weaker but informative across") from one knob.
+    _rho_within = 0.5 * (float(_m["target_corr_survival_adult_juv"])
+                         + float(_m["target_corr_repro_capacity"]))
+    _rho_cross = float(_m["target_corr_cross_group"])
+    _r_med = math.sqrt(_rho_within)
+    _phi = math.acos(min(max(_rho_cross / _rho_within, -1.0), 1.0))
+    _logit_r = math.log(_r_med / (1.0 - _r_med))
+    _th_med = jnp.array([-_phi / 2, _phi / 2, _phi / 2, -_phi / 2])  # Sa, F, K, Sj
 
-    # Loadings on the shared habitat-quality factor. Capacity's prior median loading
-    # exceeds survival's, which is exactly what puts Corr(Fmax, K) above
-    # Corr(Fmax, survival) -- fecundity and capacity are both productivity/resource
-    # axes. A logit-normal keeps h in (0,1) so no correlation can leave [-1,1].
-    h_load = numpyro.deterministic(
-        "manifold_loadings",
+    # Communality per field, logit-normal so r stays in (0,1) and no correlation can leave
+    # [-1,1] and the idiosyncratic weight sqrt(1-r^2) stays real.
+    r_load = numpyro.deterministic(
+        "manifold_communality",
         jnn.sigmoid(numpyro.sample(
-            "manifold_loading_raw",
-            dist.Normal(_logit_h, float(_m["loading_logit_scale"]) * prior_scale))),
+            "manifold_communality_raw",
+            dist.Normal(_logit_r, float(_m["communality_logit_scale"]) * prior_scale)
+            .expand([4]))),
     )
+    th_load = numpyro.sample(
+        "manifold_angle",
+        dist.Normal(_th_med, float(_m["angle_scale"]) * prior_scale))
+    # (4, 2) factor loadings. Emitted under the historical `manifold_loadings` name, now a
+    # matrix rather than a vector -- map_diagnostics writes it to JSON as a flat list.
+    L_load = numpyro.deterministic(
+        "manifold_loadings",
+        jnp.stack([r_load * jnp.cos(th_load), r_load * jnp.sin(th_load)], axis=-1))
     # GP AMPLITUDE, one per manifold, and now the SOLE amplitude: the per-rate slopes
     # are fixed at 1 (see the gamma block below), because w_scale and gamma multiplied
     # the same field and only their product entered the likelihood -- three exactly
@@ -196,37 +218,44 @@ def sample_priors(prior_scale=1.0, M_features=None, time=None,
             dist.Normal(jnp.asarray(_m["amplitude_loc"], dtype=float),
                         jnp.asarray(_m["amplitude_scale"], dtype=float) * prior_scale))),
     )
-    # Now truthful: with the slopes fixed at 1 this IS the amplitude of Sa's, Fmax's
-    # and K's latent fields. Sj alone carries an extra (1 + gamma_j_diff) factor.
+    # Now truthful for ALL FOUR fields: every per-rate slope is fixed at 1 (gamma_j included --
+    # see the gamma block), so this IS the amplitude of each latent field.
     numpyro.deterministic("environment_kernel_variance", w_scale ** 2)
 
-    # dim=-2 so the feature plate takes the ROW axis and leaves the rightmost axis
-    # for the three manifolds; f_shared then comes out (M, 1) and broadcasts against
-    # the (M, 3) idiosyncratic draws.
+    # dim=-2 so the feature plate takes the ROW axis and leaves the rightmost axis for the
+    # manifolds; the factors come out (M, 2) and the idiosyncratic draws (M, 4).
+    #
+    # IID ACROSS FEATURES is the load-bearing property, unchanged from the rank-1 version: with
+    # f1, f2 and eps all iid over features, beta_j[m] is iid over m with variance w_scale_j^2
+    # exactly (r^2 + (1-r^2) = 1), so H_j = Z.beta_j is still a GP with kernel
+    # w_scale_j^2 * Z(x).Z(x') and validate_environment_kernel_contract's isotropic-feature
+    # requirement still holds. A full covariance over FEATURES would have broken it; adding a
+    # second FACTOR does not.
     with numpyro.plate("env_features", M_features, dim=-2):
-        # Shared factor and per-manifold idiosyncratic parts, iid over features.
-        f_shared = numpyro.sample("manifold_factor", dist.Normal(0.0, 1.0))
-        eps_idio = numpyro.sample("manifold_idio", dist.Normal(0.0, 1.0).expand([3]))
+        f_shared = numpyro.sample("manifold_factor", dist.Normal(0.0, 1.0).expand([2]))
+        eps_idio = numpyro.sample("manifold_idio", dist.Normal(0.0, 1.0).expand([4]))
 
     w_env = numpyro.deterministic(
         "w_env",
-        w_scale[None, :] * (h_load[None, :] * f_shared
-                            + jnp.sqrt(1.0 - h_load[None, :] ** 2) * eps_idio),
+        w_scale[None, :] * (f_shared @ L_load.T
+                            + jnp.sqrt(1.0 - (L_load ** 2).sum(-1))[None, :] * eps_idio),
     )
 
-    # Report the implied correlations (and a 3x3 Cholesky under the historical
-    # L_corr name) so diagnostics can read what the fit actually concluded about
-    # how tightly the three manifolds move together.
-    corr = h_load[:, None] * h_load[None, :]
+    # Report the implied correlations (and a 4x4 Cholesky under the historical L_corr name) so
+    # diagnostics can read what the fit concluded about how tightly the manifolds move together.
+    corr = L_load @ L_load.T
     corr = corr + jnp.diag(1.0 - jnp.diag(corr))
     numpyro.deterministic("L_corr", jnp.linalg.cholesky(corr))
     numpyro.deterministic("rho", corr[0, 1])  # survival-reproduction, the old `rho`
     numpyro.deterministic("env_corr_repro_capacity", corr[1, 2])
     numpyro.deterministic("env_corr_survival_capacity", corr[0, 2])
+    # The new one: adult vs juvenile survival, the pair this rank-2 extension exists to couple.
+    numpyro.deterministic("env_corr_survival_adult_juv", corr[0, 3])
 
-    priors['beta_s'] = w_env[:, 0]  # Survival Suitability Weights
-    priors['beta_r'] = w_env[:, 1]  # Reproductive Suitability Weights
-    priors['beta_k'] = w_env[:, 2]  # Carrying-Capacity Weights
+    priors['beta_s'] = w_env[:, 0]   # Adult survival suitability weights
+    priors['beta_r'] = w_env[:, 1]   # Reproductive suitability weights
+    priors['beta_k'] = w_env[:, 2]   # Carrying-capacity weights
+    priors['beta_sj'] = w_env[:, 3]  # Juvenile survival -- its OWN manifold (drives Sj and Q)
 
     # --- 1a. CONTINENTAL TIME TREND ON K: A SAFETY VALVE, NOT A MECHANISM ---
     # This is not a modeled process and is not meant to carry signal. It exists only
@@ -428,13 +457,19 @@ def sample_priors(prior_scale=1.0, M_features=None, time=None,
     # both left three exactly flat ridge directions -- tolerable under MAP, ruinous for
     # HMC step-size adaptation.
     priors['gamma_a'] = 1.0
-    # Rule 5 preserved: juveniles are MORE environment-sensitive than adults. Sa/Sj/Q
-    # share one manifold, so this CONTRAST is identified even though the overall scale
-    # is not -- it is now a dimensionless excess over 1 rather than an additive offset
-    # on an unidentified scale.
-    gamma_j_diff = numpyro.sample("gamma_j_diff", dist.HalfNormal(0.5 * prior_scale))
-    priors['gamma_j'] = 1.0 + gamma_j_diff
-    
+    # gamma_j is now fixed at 1 as well, and gamma_j_diff is GONE as a free parameter.
+    #
+    # It survived as long as it did because Sa/Sj/Q shared ONE manifold: with a single beta_s,
+    # the juvenile/adult sensitivity CONTRAST was identified even though the overall scale was
+    # not. Now that Sj has its own beta_sj carrying w_scale[3], the product
+    # gamma_j * w_scale[3] multiplies one unit-variance latent and is exactly the flat ridge
+    # described above -- the same pathology that fixed the other three at 1.
+    #
+    # "Juveniles are MORE environment-sensitive than adults" (rule 5) is preserved, moved to the
+    # place where it IS identified: amplitude_loc[3] is calibrated so w_scale[3] reproduces
+    # w_scale[0] * E[1 + HalfNormal(0.5)], i.e. the amplitude the old product implied.
+    priors['gamma_j'] = 1.0
+
     # Fmax and K are each the SOLE user of their manifold, so gamma * w_scale was an
     # exactly flat ridge. Fixed at 1; the amplitude is w_scale[1] and w_scale[2].
     priors['gamma_f'] = 1.0
@@ -445,11 +480,16 @@ def sample_priors(prior_scale=1.0, M_features=None, time=None,
     # log(e-1), so the several existing readers that compute softplus(gamma_f_raw) --
     # analysis/plots.py, _age_vis_common.py, visualize_age_model.py,
     # visualize_community_similarity.py -- keep returning the correct value (1.0)
-    # without edits. Likewise softplus(gamma_a_raw) + gamma_j_diff still gives the
-    # correct gamma_j = 1 + gamma_j_diff.
+    # without edits.
+    #
+    # gamma_j_diff makes the same SAMPLED -> DETERMINISTIC migration, emitted as 0.0. Seven
+    # modules compute `gamma_j = gamma_a + gamma_j_diff`; with gamma_a = softplus(gamma_a_raw) = 1
+    # they now get 1.0 + 0.0 = 1.0, which is exactly right, with no edits needed. Emitting it is
+    # cheaper and safer than deleting it and breaking all seven with a KeyError.
     _SOFTPLUS_INV_ONE = math.log(math.e - 1.0)
     for _name in ("gamma_a_raw", "gamma_f_raw", "gamma_k_raw"):
         numpyro.deterministic(_name, jnp.asarray(_SOFTPLUS_INV_ONE))
+    numpyro.deterministic("gamma_j_diff", jnp.asarray(0.0))
     for _name, _val in (("gamma_a", priors['gamma_a']), ("gamma_j", priors['gamma_j']),
                         ("gamma_f", priors['gamma_f']), ("gamma_k", priors['gamma_k'])):
         numpyro.deterministic(_name, jnp.asarray(_val, dtype=float))
@@ -574,7 +614,7 @@ def build_model_2d(data, prior_scale=1.0):
         time, Ny, Nx, land_rows, land_cols,
         data['Z_gathered'], data['Z_disp_gathered'],
         data['disease_timestep'], disease,
-        priors['beta_s'], priors['beta_r'], priors['beta_k'],
+        priors['beta_s'], priors['beta_r'], priors['beta_k'], priors['beta_sj'],
         data['k_trend_basis'], priors['w_k_trend'],
         priors['alpha_a'], priors['gamma_a'],
         priors['alpha_j'], priors['gamma_j'],

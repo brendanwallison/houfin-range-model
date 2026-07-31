@@ -244,6 +244,7 @@ def project_and_scatter_age_structured(
     beta_s,           # 1D feature weights for Survival Suitability (Shape: M)
     beta_r,           # 1D feature weights for Reproductive Suitability (Shape: M)
     beta_k,           # 1D feature weights for Carrying Capacity (Shape: M)
+    beta_sj,          # 1D feature weights for JUVENILE Survival Suitability (Shape: M)
     k_trend_basis,    # (n_trend, time) time-centered cosines, continental
     w_k_trend,        # (n_trend,) weights on that trend
     alpha_a, gamma_a, # Adult survival intercept & slope
@@ -279,10 +280,16 @@ def project_and_scatter_age_structured(
         z_t = jnp.take(Z_gathered, t_idx, axis=0)
         z_disp_t = jnp.take(Z_disp_gathered, t_idx, axis=0)
 
-        # 2. Compute the 3 Correlated Habitat Manifolds (H_s, H_r, H_k) --
+        # 2. Compute the 4 Correlated Habitat Manifolds (H_s, H_sj, H_r, H_k) --
         # purely covariate-driven (Z.beta), no spatiotemporal term mixed in.
         H_s_local = jnp.dot(z_t, beta_s)
         H_r_local = jnp.dot(z_t, beta_r)
+        # Juvenile survival reads its OWN manifold. It used to reuse H_s_local with only a
+        # scalar shift (alpha_j) and scale (gamma_j), so "where juveniles survive" could not
+        # differ in PATTERN from "where adults survive" -- zero independent spatial degrees of
+        # freedom. The two are still tightly coupled, but now through a PRIOR on their
+        # correlation (rank-2 manifold prior, target 0.85) rather than by identity.
+        H_sj_local = jnp.dot(z_t, beta_sj)
         # Capacity reads its OWN manifold. It used to reuse H_r, making K a strictly
         # monotone function of Fmax, so the disease term was the only way their
         # spatial patterns could differ -- see the module docstring.
@@ -294,16 +301,17 @@ def project_and_scatter_age_structured(
         # => GP with the Ružička kernel" identity holds EXACTLY only for the LOCAL block
         # (H_s_local/H_r_local, raw Z). z_disp = A.Z is a land-normalized spatial convolution
         # of Z, so z_disp.z_disp^T ~= A.K_ružicka.A^T -- a spatially-SMOOTHED kernel, not
-        # Ružička itself. Reusing beta_s here is deliberate (journey survival is tied to
-        # juvenile LOCAL survival, step 5 below), but the exact GP-kernel interpretation is
-        # only approximate on the dispersal block. See kernel_contract note in model_inputs.py
-        # and the "dispersal-block prior" future-work item.
-        H_s_disp = jnp.dot(z_disp_t, beta_s)
+        # Ružička itself. Journey survival is tied to juvenile LOCAL survival (step 5 below),
+        # so this uses beta_sj -- it previously used beta_s only because no juvenile manifold
+        # existed. The exact GP-kernel interpretation remains only approximate on the dispersal
+        # block. See kernel_contract note in model_inputs.py and the "dispersal-block prior"
+        # future-work item.
+        H_sj_disp = jnp.dot(z_disp_t, beta_sj)
 
         # 4. Map H_s and H_r to Demographic Rates using Intercepts and Slopes
         # Survival listens to H_s
         S_a_val = jnn.sigmoid(alpha_a + gamma_a * H_s_local)
-        S_j_val = jnn.sigmoid(alpha_j + gamma_j * H_s_local)
+        S_j_val = jnn.sigmoid(alpha_j + gamma_j * H_sj_local)
 
         # Reproduction listens to H_r
         F_max_val = jnn.softplus(alpha_f + gamma_f * H_r_local)
@@ -343,9 +351,10 @@ def project_and_scatter_age_structured(
         )
         K_val = K_base_val * (1.0 - k_fraction)
 
-        # 5. Map Path Habitat (H_s) to Journey Survival (Q) using juvenile rules
-        # This perfectly links movement mortality to local survival mortality
-        Q_val = jnn.sigmoid(alpha_j + gamma_j * H_s_disp)
+        # 5. Map path habitat to Journey Survival (Q) using the JUVENILE manifold and rules.
+        # This links movement mortality to juvenile local survival mortality -- the same field
+        # S_j reads, so Q and S_j can no longer be driven by different spatial patterns.
+        Q_val = jnn.sigmoid(alpha_j + gamma_j * H_sj_disp)
 
         # K_base_val is returned as well: severity is a function of it, so exact
         # diagnostics (and the severity map) need the UNDEPRESSED capacity. Using

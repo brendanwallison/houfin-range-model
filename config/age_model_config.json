@@ -14,7 +14,7 @@
     "kernel": "ruzicka",
     "centered": false,
     "feature_prior": "isotropic",
-    "_comment": "The encoder supplies an uncentered 64-D Nyström feature map; model ingestion explicitly retains the first latent_dim=16 eigenfeatures by default to fit VRAM. Conditional on each w_scale, iid coefficients over those retained features imply Cov[H(x),H(x')|w_scale] = w_scale^2 Z_r(x)·Z_r(x'), the configured rank-r approximation to the original Ružička kernel. Truncation must be config-driven and recorded, never silent."
+    "_comment": "The encoder supplies an uncentered 64-D Nystr\u00f6m feature map; model ingestion explicitly retains the first latent_dim=16 eigenfeatures by default to fit VRAM. Conditional on each w_scale, iid coefficients over those retained features imply Cov[H(x),H(x')|w_scale] = w_scale^2 Z_r(x)\u00b7Z_r(x'), the configured rank-r approximation to the original Ru\u017ei\u010dka kernel. Truncation must be config-driven and recorded, never silent."
   },
   "dispersal": {
     "_comment": "Single source of truth shared by Z_disp preparation and the forward model; resolved in exactly one place, build_kernels.dispersal_spec. Do not duplicate these boundaries in code.",
@@ -23,7 +23,12 @@
     "adult_shape": 0.468,
     "juvenile_mdd_km": 330.0,
     "juvenile_shape": 0.468,
-    "juvenile_radial_splits_km": [0.0, 155.36162529769288, 482.7446923028151, 1000000000.0],
+    "juvenile_radial_splits_km": [
+      0.0,
+      155.36162529769288,
+      482.7446923028151,
+      1000000000.0
+    ],
     "path_integration_steps": 20,
     "path_operator": "land_conditioned_neighborhood",
     "_path_comment": "Z_disp is intentionally a land-conditioned neighborhood/path summary: at each fractional displacement, water/nodata is excluded and the remaining land contribution is normalized. It is not a literal trajectory hazard through water."
@@ -66,18 +71,29 @@
     "capacity_level_prior": {
       "_link_comment": "SOFTPLUS link applied in DENSITY space -- the space the simulation actually works in: K = softplus(alpha_k + gamma_k*H_k + trend), no gauge conversion around it. The previous run used exp: K = k_level * exp(gamma_k*H_k + trend). Only the transformation changed. WHY DENSITY SPACE: softplus does not commute with scaling (softplus(x)/c != softplus(x/c)) whereas exp does (exp(x)/c = exp(x - log c)), so a softplus link has to be pinned to a space, and density is the one the forward simulation uses. Applying it in route-count space instead would put the argument near +2.8, softplus's LINEAR regime, making the link's shape depend on population_scale_route_counts_per_relative_unit. WHAT IT BUYS: at typical densities the argument is near -2.1, deep enough in softplus's exponential regime that it closely tracks exp, but it is progressively sub-exponential as density rises -- softplus/exp is 0.98 at 1 route count, 0.93 at 2.9 (the typical occupied cell), 0.86 at 7, 0.74 at 16 (q90 of occupied cells), 0.28 at 73 (q99). So it weakly regularizes the long upper tail of abundance without any hard bound, which is the point. Note it is a graded shrinkage everywhere, not identity-then-threshold. HISTORICAL NOTE: the original model was also softplus in density space, but with pop_scalar at 210 the argument sat between -3 and 0, so the link was effectively exp -- which is why a penalty SUBTRACTED from that argument acted multiplicatively and without a floor, and annihilated eastern carrying capacity.",
       "_calibration_comment": "target_level_mean_route_counts is the belief, declared in route counts so it survives a change of pop_scalar; alpha_k's prior LOCATION is solved numerically at import (age_priors._solve_softplus_loc) so that E[softplus(alpha_k)] * pop_scalar equals it. Set to 2.8920 to match the previous run's level mean exactly: exp(log 2.1 + 0.8^2/2). alpha_k_scale is unchanged at 0.8, and because Normal-on-the-argument IS LogNormal in the exponential regime, the level VARIANCE comes out nearly matched too (sd 2.30 vs 2.74 route counts) rather than collapsing as it would in count space.",
-      "target_level_mean_route_counts": 2.8920,
+      "target_level_mean_route_counts": 2.892,
       "alpha_k_scale": 0.8
     },
-    "_manifold_comment": "Correlated weights for the THREE demographic manifolds: H_s (survival, drives Sa/Sj/Q), H_r (reproduction, drives Fmax), H_k (capacity, drives K). K used to reuse H_r outright, i.e. an implicit correlation of exactly 1.0, which meant K's spatial pattern could differ from Fmax's ONLY through the disease term -- so every real disagreement between 'where reproduction is good' and 'where birds are abundant' had to be spelled 'disease', and the disease term saturated. Parameterized as one shared habitat-quality factor: beta_j = s_j * (h_j*f + sqrt(1-h_j^2)*eps_j) with f, eps iid across features. That makes Var(beta_j) = s_j^2 and Corr(j,k) = h_j*h_k EXACTLY, positive-definite for free -- no Cholesky guard whose clipping would corrupt gradients, and LKJ is unusable here because its concentration parameter pushes toward ZERO correlation, the opposite of the belief. Fecundity and capacity are both productivity/resource axes, so their prior correlation is set ABOVE survival's with either: target 0.85 vs 0.70. loading_logit_scale=0.6 makes that ordering hold with ~94% prior probability while leaving the survival-fecundity 5-95% CI at [0.48, 0.83], comparable to the old rho ~ TruncatedNormal(0.7, 0.2).",
-    "_amplitude_comment": "GP AMPLITUDE, one per manifold, ordered [survival, reproduction, capacity]: w_scale_j = softplus(Normal(amplitude_loc_j, amplitude_scale_j)), and Var(beta_j) = w_scale_j^2, so conditional on it H_j is a GP with kernel w_scale_j^2 * Z(x).Z(x'). The lengthscale is fixed inside the Ružička features; this is the magnitude parameter that pairs with it. It is now the SOLE amplitude: the per-rate slopes gamma_f and gamma_k are fixed at 1, and survival's gamma_a at 1 with gamma_j = 1 + gamma_j_diff. Previously BOTH w_scale and gamma multiplied the same field, so only their product entered the likelihood -- an exact flat ridge for reproduction and capacity (each the sole user of its manifold) and a ridge in the overall scale for survival. Three flat directions, which cost little in MAP but wreck step-size adaptation in HMC. How it arose: gamma was an ordinary GLM slope and w_scale the scale of the correlated weight draws, both from the original model; the later Ružička/Mercer contract work retro-interpreted w_scale as the kernel amplitude without noticing gamma was already doing that downstream. Correlation is untouched by any of this -- Corr(beta_j,beta_k) = h_j*h_k, and correlation is invariant to positive scaling -- so the ordered targets below still hold exactly. CALIBRATION: the locs/scales reproduce the amplitude prior the gamma*w_scale PRODUCT used to imply, per field, matched on the 5th/95th percentiles: survival 0.69 [0.33, 1.25], reproduction 0.70 [0.17, 1.86], capacity 0.69 [0.17, 1.85]. They differ per field because the old slope priors differed (gamma_a scale 0.5 vs gamma_f/gamma_k scale 1.0), which is retained deliberately: survival's amplitude is the better constrained of the three. Deliberately softplus(Normal) and NOT lognormal -- lognormal's tails are ~2x heavier at the 99.9th percentile for reproduction and capacity, and that is what destabilizes this model under HMC.",
+    "_manifold_comment": "Correlated weights for FOUR demographic manifolds, ordered [survival_adult, reproduction, capacity, survival_juv] -- survival_juv is APPENDED, not inserted, so the existing w_env[:,0..2] meaning is preserved for the eight viz/analysis modules that index those columns positionally (inserting at 1 would have silently relabelled reproduction as juvenile survival with no error anywhere): H_s drives Sa, H_sj drives Sj and Q, H_r drives Fmax, H_k drives K. Juvenile survival previously had ZERO independent spatial degrees of freedom -- it read Sa's manifold with only a scalar shift (alpha_j) and scale (gamma_j), so 'where juveniles survive' could not differ in PATTERN from 'where adults survive' at all. It now has its own weights, prior-coupled to adult survival as tightly as fecundity is to capacity. RANK-2 ANGULAR parameterization: r_j = sigmoid(r_raw_j) is a communality in (0,1), th_j an angle, and beta_j = s_j * (r_j*cos(th_j)*f1 + r_j*sin(th_j)*f2 + sqrt(1-r_j^2)*eps_j) with f1, f2, eps iid ACROSS FEATURES. Then Var(beta_j) = s_j^2 and Corr(j,k) = r_j*r_k*cos(th_j - th_k), both EXACTLY, positive-definite for free. WHY RANK 2 AND NOT THE OLD ONE-FACTOR FORM: rank 1 gives Corr(j,k) = h_j*h_k, so four fields' six correlations are set by four loadings and the tetrad identity rho(Sa,Sj)*rho(F,K) = rho(Sa,F)*rho(Sj,K) is FORCED. With rho(F,K)=0.85 and cross-group 0.70 that caps rho(Sa,Sj) at 0.576; demanding 0.85 needs a loading of 1.120, making sqrt(1-h^2) imaginary. Two tightly-coupled pairs with weaker between-pair coupling is inherently rank 2. LKJ remains unusable (concentration > 1 concentrates near the IDENTITY, i.e. near zero correlation, the opposite of the belief), and a full covariance over FEATURES would break the iid-across-features structure the uncentered-Ruzicka GP contract depends on -- see validate_environment_kernel_contract. TIGHTNESS: the two groups sit at +/- phi/2, and cos is FLAT at zero separation, so within-pair correlation is automatically less prior-uncertain than cross-group -- exactly the intent, from a single angle_scale. Calibrated at communality_logit_scale=0.35, angle_scale=0.15: Sa-Sj and F-K median 0.83, 5-95% [0.75, 0.88], sd 0.043; cross-group median 0.69, 5-95% [0.49, 0.83], sd 0.105 -- the cross-group CI deliberately reproduces what the old loading_logit_scale=0.6 implied ([0.48, 0.83]), so only the within-pair belief tightened. P(within > cross) = 0.93 for the Sa-Sj vs Sa-F pair; min eigenvalue over 5000 prior draws 0.067, always PD.",
+    "_amplitude_comment": "GP AMPLITUDE, one per manifold, ordered [survival_adult, reproduction, capacity, survival_juv]: w_scale_j = softplus(Normal(amplitude_loc_j, amplitude_scale_j)), and Var(beta_j) = w_scale_j^2, so conditional on it H_j is a GP with kernel w_scale_j^2 * Z(x).Z(x'). The lengthscale is fixed inside the Ruzicka features; this is the magnitude parameter that pairs with it. It is the SOLE amplitude: ALL FOUR per-rate slopes (gamma_a, gamma_j, gamma_f, gamma_k) are now fixed at 1. gamma_j was the last survivor (1 + gamma_j_diff, HalfNormal(0.5)) and is removed here: once Sj has its own beta_sj carrying w_scale[1], the product gamma_j*w_scale[1] multiplies one unit-variance latent and is an exactly flat ridge -- the same pathology already cited for the other three, harmless-ish under MAP but ruinous for HMC step-size adaptation. The 'juveniles are MORE environment-sensitive than adults' belief moves here, where it is identified: amplitude_loc[3] = 0.4778 gives softplus(0.4778) = 0.960 = softplus(amplitude_loc[0]) * E[1 + HalfNormal(0.5)] = 0.687 * 1.399, i.e. it reproduces the juvenile amplitude the old gamma_j*w_scale product implied rather than silently changing that belief. Sj reuses survival's amplitude_scale (0.5628) for the same reason. The other three locs/scales are unchanged and reproduce the old gamma*w_scale product per field, matched on the 5th/95th percentiles: survival 0.69 [0.33, 1.25], reproduction 0.70 [0.17, 1.86], capacity 0.69 [0.17, 1.85]. They differ per field because the old slope priors differed (gamma_a scale 0.5 vs gamma_f/gamma_k scale 1.0), retained deliberately: survival's amplitude is the better constrained. Correlation is untouched by any of this -- correlation is invariant to positive scaling -- so the targets above hold exactly. Deliberately softplus(Normal) and NOT lognormal: lognormal's tails are ~2x heavier at the 99.9th percentile for reproduction and capacity, and that is what destabilizes this model under HMC.",
     "manifold_prior": {
-      "target_corr_survival_repro": 0.70,
+      "target_corr_survival_adult_juv": 0.85,
       "target_corr_repro_capacity": 0.85,
-      "target_corr_survival_capacity": 0.70,
-      "loading_logit_scale": 0.6,
-      "amplitude_loc": [-0.0134, 0.0025, -0.0034],
-      "amplitude_scale": [0.5628, 1.0263, 1.0227]
+      "target_corr_cross_group": 0.7,
+      "communality_logit_scale": 0.35,
+      "angle_scale": 0.15,
+      "amplitude_loc": [
+        -0.0134,
+        0.0025,
+        -0.0034,
+        0.4778
+      ],
+      "amplitude_scale": [
+        0.5628,
+        1.0263,
+        1.0227,
+        0.5628
+      ]
     },
     "_k_range_comment": "REPORTING threshold only -- no longer an active constraint. K is log-linear (log K_base = log(k_level) + gamma_k*H_k + trend), so the covariate term is an unbounded log-fold deviation, exactly as in any log-link GLM. A tanh clamp at this fold value was briefly in place while K kept collapsing to ~0; the real cause was alpha_k's prior sitting 7 SDs from the data (see _capacity_level_comment), and with the level stated correctly in route counts the clamp is unnecessary complication. Retained purely as the threshold metrics.json:k_range compares the REALIZED spatial fold range against, so a collapse is visible rather than hidden by a clamp. 30x is +/-2 log SD of the observed occupied-cell spread (log sd 1.72), i.e. what the data actually show; a realized range far beyond it means something is wrong.",
     "k_range": {
@@ -120,7 +136,20 @@
   },
   "map": {
     "_comment": "Continuation begins under tight priors and progressively relaxes them at absolute optimizer steps. The standard/full run uses 300 tight + 300 intermediate + 1200 nominal-prior steps (1800 total). Boundaries are independent of TOTAL_STEPS so extending/resuming a run cannot move backward. lr_decay_steps is likewise fixed across extensions; after step 900 optimization continues at the schedule's minimum learning rate.",
-    "prior_relaxation": [[0, 0.1], [300, 0.5], [600, 1.0]],
+    "prior_relaxation": [
+      [
+        0,
+        0.1
+      ],
+      [
+        300,
+        0.5
+      ],
+      [
+        600,
+        1.0
+      ]
+    ],
     "lr_decay_steps": 900,
     "target_steps": 1800,
     "init_lr": 0.01,
@@ -130,7 +159,20 @@
     "profiles": {
       "quick90": {
         "_comment": "Fresh 90-minute development fit matching the successful accidental extension: 100 tight, 150 intermediate, and 650 nominal-prior steps (900 total). The learning-rate decay reaches its minimum at step 500 and stays there for the final 400 steps. This changes optimization only, not the final MAP objective.",
-        "prior_relaxation": [[0, 0.1], [100, 0.5], [200, 1.0]],
+        "prior_relaxation": [
+          [
+            0,
+            0.1
+          ],
+          [
+            100,
+            0.5
+          ],
+          [
+            200,
+            1.0
+          ]
+        ],
         "lr_decay_steps": 300,
         "target_steps": 400
       }

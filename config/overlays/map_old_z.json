@@ -1,0 +1,27 @@
+{
+  "_comment": [
+    "A/B point 1 of 2: NEW stat model (rank-2 manifold prior, juvenile survival untied) against",
+    "the OLD DESK Z inputs. Pair with map_new_z.json to separate the stat-model change from the",
+    "DESK change -- the only difference between the two overlays is input_dir.",
+    "",
+    "PREREQUISITE, and it is time-sensitive: `model-ingest` overwrites metadata.pkl in place and",
+    "`STAGES=cube` overwrites encoder/cube in place. Copy the CURRENT (old-DESK) inputs aside",
+    "BEFORE re-running either:",
+    "    cp -a $HOUFIN_PROCESSED/model_inputs/numpyro_input \\",
+    "          $HOUFIN_PROCESSED/model_inputs/numpyro_input_old_z",
+    "That directory is self-contained: metadata.pkl stores z_gathered_path as a BARE FILENAME",
+    "(Z_gathered_<ingest_id>.dat) which data_loading.py resolves as os.path.join(input_dir, ...),",
+    "so a copied directory needs no path rewriting.",
+    "",
+    "run_names.map is distinct from the default, so this writes to its own results dir. That is",
+    "why HOUFIN_MAP_FRESH=1 is NOT needed: age_run_map only compares fingerprints when a",
+    "checkpoint already exists at CKPT_PATH (`if os.path.exists(CKPT_PATH) and not fresh`), and a",
+    "fresh run name has none."
+  ],
+  "input_dir": "${HOUFIN_PROCESSED}/model_inputs/numpyro_input_old_z",
+  "run_names": {
+    "_comment": "run_16: rank-2 juvenile-survival prior, OLD DESK Z (A/B control)",
+    "map": "age_map_{precision}_run_16_old_z",
+    "vis_map": "age_map_{precision}_run_16_old_z"
+  }
+}

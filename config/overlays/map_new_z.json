@@ -1,0 +1,21 @@
+{
+  "_comment": [
+    "A/B point 2 of 2: NEW stat model against the NEW DESK Z inputs (monthly climate + the",
+    "retrained encoder). Identical to map_old_z.json except input_dir, which is the default",
+    "location that `model-ingest` writes.",
+    "",
+    "Requires the rebuilt chain: STAGES=cube -> submit_model_prep.sh (path-features,",
+    "model-ingest). Nothing hashes the DESK checkpoint into cube_meta.json, so if those are",
+    "skipped this silently fits the OLD encoder and the A/B is vacuous -- both points would be",
+    "the same run.",
+    "",
+    "Keep every other knob identical to the old_z point (same HOUFIN_MAP_PROFILE, same",
+    "precision), or the comparison confounds the Z change with a fitting-budget change."
+  ],
+  "input_dir": "${HOUFIN_PROCESSED}/model_inputs/numpyro_input",
+  "run_names": {
+    "_comment": "run_17: rank-2 juvenile-survival prior, NEW DESK Z (A/B treatment)",
+    "map": "age_map_{precision}_run_17_new_z",
+    "vis_map": "age_map_{precision}_run_17_new_z"
+  }
+}

@@ -512,26 +512,34 @@ def plot_w_env_ranking(sim, out, names=None):
     in a panel title. This is the ranking itself: every feature, all three
     manifolds, signed, on one axis.
 
-    ``w_env`` columns are ``beta_s`` (survival), ``beta_r`` (reproduction) and
-    ``beta_k`` (capacity). Because the links are monotone increasing (sigmoid,
-    softplus), the SIGN here is the sign of the effect on the corresponding vital
-    rate -- positive beta_s means more of this feature raises survival.
+    ``w_env`` columns are ``beta_s`` (adult survival), ``beta_r`` (reproduction),
+    ``beta_k`` (capacity) and ``beta_sj`` (juvenile survival, APPENDED 4th column under the
+    rank-2 manifold prior; absent in older checkpoints). Because the links are monotone
+    increasing (sigmoid, softplus), the SIGN here is the sign of the effect on the
+    corresponding vital rate -- positive beta_s means more of this feature raises survival.
     """
     w_env = np.asarray(sim["latents"]["w_env"])
     M = w_env.shape[0]
-    beta = {"Survival (β_s)": w_env[:, 0], "Reproduction (β_r)": w_env[:, 1],
+    beta = {"Adult survival (β_s)": w_env[:, 0], "Reproduction (β_r)": w_env[:, 1],
             "Capacity (β_k)": w_env[:, 2] if w_env.shape[1] > 2 else w_env[:, 1]}
+    # Juvenile survival is the APPENDED 4th column; absent in pre-rank-2 checkpoints.
+    if w_env.shape[1] > 3:
+        beta["Juvenile survival (β_sj)"] = w_env[:, 3]
     names = list(names) if names is not None else [f"Z_{i}" for i in range(M)]
     importance = np.abs(w_env).sum(axis=1)
     order = np.argsort(importance)          # ascending: barh draws bottom-up
-    colors = {"Survival (β_s)": "#2166ac", "Reproduction (β_r)": "#d95f0e",
-              "Capacity (β_k)": "#238443"}
+    colors = {"Adult survival (β_s)": "#2166ac", "Reproduction (β_r)": "#d95f0e",
+              "Capacity (β_k)": "#238443", "Juvenile survival (β_sj)": "#6a51a3"}
 
     y = np.arange(M)
-    height = 0.26
+    # Bar group height and offset both derive from len(beta): it is 3 for a pre-rank-2
+    # checkpoint and 4 once juvenile survival has its own column, and a hardcoded (k - 1)
+    # offset silently mis-centred the group in the 4-bar case.
+    n_bars = len(beta)
+    height = 0.78 / n_bars
     fig, ax = plt.subplots(figsize=(9.5, max(4.0, 0.42 * M + 1.6)))
     for k, (label, values) in enumerate(beta.items()):
-        ax.barh(y + (k - 1) * height, values[order], height=height,
+        ax.barh(y + (k - (n_bars - 1) / 2.0) * height, values[order], height=height,
                 color=colors[label], label=label, edgecolor="none")
     ax.axvline(0, color="0.25", lw=1)
     ax.set_yticks(y)
@@ -545,6 +553,7 @@ def plot_w_env_ranking(sim, out, names=None):
     return {"w_env_ranking": [
         {"index": int(i), "name": names[i], "abs_total": float(importance[i]),
          "beta_s": float(w_env[i, 0]), "beta_r": float(w_env[i, 1]),
+         "beta_sj": float(w_env[i, 3]) if w_env.shape[1] > 3 else None,
          "beta_k": float(beta["Capacity (β_k)"][i])}
         for i in order[::-1]]}
 
@@ -2122,12 +2131,18 @@ def main():
         # The three manifolds' fitted coupling. K having its own manifold is what
         # lets covariates -- rather than the disease term -- explain why capacity's
         # spatial pattern differs from fecundity's; these say how much it used that
-        # freedom. Prior medians: F-S 0.70, F-K 0.85, S-K 0.70.
+        # freedom. Prior medians: within-pair (Sa-Sj, F-K) 0.85, cross-group 0.70.
+        # `loadings` is now the (4, 2) rank-2 factor matrix, not a 4-vector -- flattened
+        # rowwise via .ravel(), since float() on a (2,) row raises TypeError.
         "manifold": {
             "corr_survival_repro": float(np.asarray(sim["rho"])),
             "corr_repro_capacity": float(np.asarray(sim["env_corr_repro_capacity"])),
             "corr_survival_capacity": float(np.asarray(sim["env_corr_survival_capacity"])),
-            "loadings": [float(x) for x in np.asarray(sim["manifold_loadings"])],
+            "corr_survival_adult_juv": (
+                float(np.asarray(sim["env_corr_survival_adult_juv"]))
+                if "env_corr_survival_adult_juv" in sim else None),
+            "loadings": [float(x) for x in np.asarray(sim["manifold_loadings"]).ravel()],
+            "loadings_shape": list(np.asarray(sim["manifold_loadings"]).shape),
         },
         # Continental capacity drift. This term is a SAFETY VALVE, not a modeled
         # mechanism -- its prior is strongly concentrated on zero. A fitted trend

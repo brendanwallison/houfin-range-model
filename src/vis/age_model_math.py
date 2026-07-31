@@ -253,6 +253,9 @@ def demographic_params(latents):
     # Capacity has its OWN manifold now; reusing beta_r here would silently plot a
     # curve the model does not use. Two-column checkpoints predate the split.
     beta_k = w_env[:, 2] if w_env.shape[1] > 2 else beta_r
+    # Juvenile survival is the APPENDED 4th column (rank-2 manifold prior). Older
+    # checkpoints have 3 columns, where Sj shared beta_s outright -- fall back to that.
+    beta_sj = w_env[:, 3] if w_env.shape[1] > 3 else beta_s
 
     # K = softplus(alpha_k + gamma_k*H_k + trend) in DENSITY space. Earlier revisions
     # used a log link with the level sampled in route counts (log_k_level_counts);
@@ -269,6 +272,7 @@ def demographic_params(latents):
     # checkpoints, where the *_raw names were genuinely sampled, plotting correctly.
     gamma_a = _gamma_slope(latents, "gamma_a", "gamma_a_raw")
     return {
+        "beta_sj": beta_sj,
         "w_env": w_env,
         "beta_s": beta_s, "beta_r": beta_r, "beta_k": beta_k,
         "alpha_a": float(latents["alpha_a"]),

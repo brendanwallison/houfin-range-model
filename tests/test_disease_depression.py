@@ -319,10 +319,10 @@ def test_k_field_is_rescaled_never_annihilated_end_to_end():
     Z = jnp.array(rng.normal(size=(T, N_LAND, M)))
     Zd = jnp.array(rng.normal(size=(T, N_LAND, K_kern, M)))
     idx = jnp.arange(N_LAND)
-    # beta_s, beta_r, beta_k (capacity has its own manifold), then the continental
-    # K trend basis + weights, then the alpha/gamma pairs.
+    # beta_s, beta_r, beta_k, beta_sj -- capacity AND juvenile survival each have their own
+    # manifold now -- then the continental K trend basis + weights, then the alpha/gamma pairs.
     k_trend = jnp.array(np.cos(np.pi * np.linspace(0, 1, T))[None, :] - 0.0)
-    rates = (jnp.ones(M) * .1, jnp.ones(M) * .1, jnp.ones(M) * .1,
+    rates = (jnp.ones(M) * .1, jnp.ones(M) * .1, jnp.ones(M) * .1, jnp.ones(M) * .1,
              k_trend, jnp.zeros(1),
              0.5, 0.3, -0.5, 0.4, 2.0, 0.3,
              -2.128295, 0.3)   # alpha_k (density space), gamma_k

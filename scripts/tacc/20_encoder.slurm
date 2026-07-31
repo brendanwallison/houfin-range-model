@@ -6,15 +6,22 @@
 # ESK (Nystrom kernel-PCA) and DESK (autoencoder training) both use torch and are
 # the heavy stages, hence a GPU queue. They are often best submitted ONE AT A TIME
 # so each can be sized/queued on its own — pass STAGES:
-#     STAGES=esk      sbatch --export=ALL scripts/tacc/20_encoder.slurm
-#     STAGES=desk     sbatch --export=ALL scripts/tacc/20_encoder.slurm
-#     STAGES="cube validate" sbatch --export=ALL scripts/tacc/20_encoder.slurm   # light; CPU is fine
-#     STAGES=bbs-route-validate sbatch --export=ALL scripts/tacc/20_encoder.slurm
-#     STAGES=encoder-viz sbatch --export=ALL scripts/tacc/20_encoder.slurm
+# SUBMIT VIA THE WRAPPER, NOT BARE sbatch. This account has multiple projects (DEB23007,
+# DEB23008), the `#SBATCH -A` line below is deliberately disabled, and SLURM rejects a job with
+# no allocation ("which project you would like to charge against ... FAILED"). Only
+# submit_encoder.sh injects `-A $TACC_ALLOCATION` from env.sh:
+#     STAGES=esk      bash scripts/tacc/submit_encoder.sh
+#     STAGES=desk     TIME=04:00:00 bash scripts/tacc/submit_encoder.sh
+#     STAGES="cube validate"    bash scripts/tacc/submit_encoder.sh
+#     STAGES=bbs-route-validate bash scripts/tacc/submit_encoder.sh
+#     STAGES=encoder-viz        bash scripts/tacc/submit_encoder.sh
+# (A bare `sbatch -A DEB23008 -p gpu-a100-small ... 20_encoder.slurm` also works, but the
+# wrapper is the supported path -- it also sets QUEUE/TIME defaults and echoes the log name.)
 #
 # bbs-route-validate grades DESK against a no-change null on genuinely SURVEYED cell-years
 # (raw BBS route counts), unlike `validate` which grades against the IDW-interpolated BBS trend
-# surface. It needs the community matrix from the `bbs` stage of 04_states.slurm first.
+# surface. It needs the community matrix built first, itself a batch job:
+#     STAGES=bbs bash scripts/tacc/submit_states.sh
 # or all four at once (the default).
 #
 # QUEUE: gpu-a100-small (1 A100 40GB, 1.5 SU/hr, 48 h cap). Every stage here is

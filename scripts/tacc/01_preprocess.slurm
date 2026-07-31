@@ -4,7 +4,10 @@
 # Reads raw data staged by download_all.sh under $HOUFIN_DATA; writes 25 km
 # products under $HOUFIN_DATA and a per-stage JSON manifest under
 # $HOUFIN_PROCESSED/validation. Submit AFTER downloads finish:
-#     sbatch scripts/tacc/01_preprocess.slurm
+#     bash scripts/tacc/submit_preprocess.sh
+# (Use the wrapper, not bare sbatch: this account has multiple projects and the `#SBATCH -A` line
+# below is disabled, so a bare submit is rejected for having no allocation. Only the wrapper
+# injects `-A $TACC_ALLOCATION` from env.sh.)
 # These stages are RAM-light (< ~1 GB each, validated locally); vm-small also
 # works and is cheaper. LUH-3 is the long pole (many var-years).
 #----------------------------------------------------------------------

@@ -9,7 +9,10 @@
 # subset via STAGES. The weekly eBird stages ('ebird', 'ebird_cache') are opt-in
 # (legacy weekly anchor / bbs_mode=off/validate only). Submit with:
 #     bash scripts/tacc/submit_preprocess_all.sh
-#     STAGES="states ebird_trend trend_points" sbatch --export=ALL scripts/tacc/00_preprocess_all.slurm
+#     STAGES="states ebird_trend trend_points" bash scripts/tacc/submit_preprocess_all.sh
+# Use the wrapper, not bare sbatch: this account has multiple projects and the `#SBATCH -A` line
+# below is disabled, so a bare submit is rejected for having no allocation. Only the wrapper
+# injects `-A $TACC_ALLOCATION` from env.sh.
 #
 # This supersedes running 01_preprocess + 02_climate separately (those stay for
 # normal-queue / partial runs). ESK/DESK are a SEPARATE (GPU) job — see

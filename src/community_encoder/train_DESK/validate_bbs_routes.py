@@ -175,38 +175,58 @@ def bucket_metrics(S_true, S_desk, S_nc, S_nc_obs=None):
     return out
 
 
-def stratified_sample(keys, n_sample, rng, windows=(MODERN_WINDOW, EARLY_WINDOW)):
-    """Sample row indices, guaranteeing each named window gets a share (pure).
+def stratified_sample(keys, n_sample, rng, windows=(MODERN_WINDOW, EARLY_WINDOW), is_heldout=None):
+    """Sample row indices, giving each (year-window x holdout) cell a guaranteed share (pure).
 
-    A uniform sample would be swamped by the modern decades (BBS coverage grows ~monotonically),
-    leaving the early window too thin to report. Splits the budget evenly across the windows plus
-    one "other" stratum, then backfills from the remainder if a stratum is short.
+    Two separate imbalances make a uniform sample useless here, and BOTH have to be corrected or
+    the decisive bucket is estimated from a handful of rows:
+
+    - BBS coverage grows roughly monotonically, so a uniform sample is swamped by the modern
+      decades and the early window ends up too thin to report.
+    - Held-out cells are a small fraction of rows (measured: ~7%), so they land in the sample by
+      luck. In the first run this left ``heldout/early`` with 94 rows and ``heldout/modern`` with
+      73 -- and held-out is the ONLY split that answers whether the model generalizes, so the
+      table's most important cells were its least reliable.
+
+    Crossing the two axes fixes the second: strata are (modern, early, other) x (train, heldout),
+    each drawing an equal share of the budget, with short strata backfilled from the remainder.
+    Because the similarity matrices are n^2, raising ``n_sample`` is a quadratic-cost way to buy
+    held-out rows; stratifying buys them for free.
+
+    ``is_heldout`` (``(N,)`` bool, optional) omitted reduces this to year-window stratification.
     """
     keys = np.asarray(keys)
     n = keys.shape[0]
     if n <= n_sample:
         return np.arange(n)
     yrs = keys[:, 2]
-    strata, claimed = [], np.zeros(n, bool)
+
+    year_strata, claimed = [], np.zeros(n, bool)
     for lo, hi in windows:
         m = (yrs >= lo) & (yrs <= hi) & ~claimed
-        strata.append(np.where(m)[0])
+        year_strata.append(m)
         claimed |= m
-    strata.append(np.where(~claimed)[0])
+    year_strata.append(~claimed)
+
+    if is_heldout is None:
+        splits = [np.ones(n, bool)]
+    else:
+        ho = np.asarray(is_heldout, bool)
+        splits = [~ho, ho]
+    strata = [np.where(y & s)[0] for y in year_strata for s in splits]
+    strata = [ix for ix in strata if ix.size]
+    if not strata:
+        return np.arange(min(n, n_sample))
 
     per = max(1, n_sample // len(strata))
-    picked = []
-    for idx in strata:
-        take = min(per, idx.size)
-        if take:
-            picked.append(rng.choice(idx, size=take, replace=False))
-    out = np.concatenate(picked) if picked else np.zeros(0, "int64")
+    picked = [rng.choice(ix, size=min(per, ix.size), replace=False) for ix in strata]
+    out = np.concatenate(picked)
     if out.size < n_sample:                                  # backfill from whatever is left
         rest = np.setdiff1d(np.arange(n), out, assume_unique=False)
         if rest.size:
             extra = rng.choice(rest, size=min(n_sample - out.size, rest.size), replace=False)
             out = np.concatenate([out, extra])
-    return np.sort(out)
+    return np.sort(np.unique(out))
 
 
 # ----------------------------- IO / driver -----------------------------
@@ -384,11 +404,28 @@ def run(config=None, n_sample=4000, seed=0):
     if keys.shape[0] < 3:
         raise SystemExit("[bbs-routes] fewer than 3 rows survive the site gate; nothing to compare")
 
-    sel = stratified_sample(keys, int(n_sample), rng)
+    # Holdout must be resolved BEFORE sampling so it can be a stratum. Held-out cells are a small
+    # minority of rows, and held-out is the only split that answers whether the model generalizes,
+    # so leaving it to chance makes the table's most important cells its least reliable.
+    ho_path = os.path.join(config["paths"]["desk_output_dir"], "holdout_cells.npy")
+    has_ho = os.path.exists(ho_path)
+    if has_ho:
+        ho_grid = np.load(ho_path)
+        is_ho_all = ho_grid[keys[:, 0], keys[:, 1]]
+        print(f"[bbs-routes] holdout mask: {int(is_ho_all.sum())}/{len(is_ho_all)} rows "
+              f"({100.0 * is_ho_all.mean():.1f}%) are held-out cells")
+    else:
+        print(f"[bbs-routes] WARNING: no {ho_path}; train/heldout split unavailable, "
+              "reporting pooled only (every prior metric was pooled at ~83% training points)")
+        is_ho_all = None
+
+    sel = stratified_sample(keys, int(n_sample), rng, is_heldout=is_ho_all)
     X_s, keys_s, nc_s = X_log[sel], keys[sel], nc_src[sel]
     keys_nc = keys[nc_s]                                     # each row's MODERN (cell, year)
     X_nc_s = X_log[nc_s]                                     # for the observed-space diagnostic
-    print(f"[bbs-routes] sampled {len(sel)} rows for the {len(sel)}x{len(sel)} matrices")
+    is_ho = is_ho_all[sel] if is_ho_all is not None else np.zeros(len(sel), bool)
+    print(f"[bbs-routes] sampled {len(sel)} rows ({int(is_ho.sum())} held-out) "
+          f"for the {len(sel)}x{len(sel)} matrices")
 
     # Encode the sampled rows AND their modern references together: same cells, same year span,
     # so this is still one whole-grid forward per year. A sampled row's modern reference is
@@ -404,7 +441,7 @@ def run(config=None, n_sample=4000, seed=0):
     if not finite.all():
         print(f"[bbs-routes] dropping {int((~finite).sum())} rows with non-finite DESK z")
         X_s, keys_s, X_nc_s = X_s[finite], keys_s[finite], X_nc_s[finite]
-        Z_s, Z_nc = Z_s[finite], Z_nc[finite]
+        Z_s, Z_nc, is_ho = Z_s[finite], Z_nc[finite], is_ho[finite]
 
     S_true = ruzicka_rect(X_s, X_s)
     S_desk, S_nc = cosine_gram(Z_s), cosine_gram(Z_nc)       # SAME functional -> temporal only
@@ -416,16 +453,6 @@ def run(config=None, n_sample=4000, seed=0):
     med_off = float(np.median(S_true[iu])) if iu[0].size else float("nan")
     print(f"[bbs-routes] median off-diagonal observed similarity {med_off:.4f} "
           f"(near 1.0 => underpowered)")
-
-    ho_path = os.path.join(config["paths"]["desk_output_dir"], "holdout_cells.npy")
-    has_ho = os.path.exists(ho_path)
-    if has_ho:
-        ho = np.load(ho_path)
-        is_ho = ho[keys_s[:, 0], keys_s[:, 1]]
-    else:
-        print(f"[bbs-routes] WARNING: no {ho_path}; train/heldout split unavailable, "
-              "reporting pooled only (every prior metric was pooled at ~83% training points)")
-        is_ho = np.zeros(keys_s.shape[0], bool)
 
     yrs = keys_s[:, 2]
     windows = {"all": np.ones(len(yrs), bool),

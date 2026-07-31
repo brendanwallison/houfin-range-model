@@ -195,6 +195,37 @@ def test_stratified_sample_reaches_the_sparse_early_window():
     assert len(np.unique(sel)) == len(sel)                     # no duplicated rows
 
 
+def test_stratified_sample_guarantees_heldout_rows():
+    # Reproduces the imbalance from the first real run: held-out cells were ~7% of rows, so a
+    # year-only stratification left heldout/early with 94 rows and heldout/modern with 73 -- the
+    # decisive buckets were the least reliable. Crossing holdout with the year window must lift
+    # the held-out share far above its 7% base rate at the same budget.
+    rng_keys = np.random.default_rng(7)
+    n = 4000
+    yrs = rng_keys.choice([1970, 1975, 2015, 2020], size=n, p=[0.1, 0.1, 0.4, 0.4])
+    keys = np.stack([np.arange(n) % 200, np.arange(n) % 200, yrs], axis=1).astype("int32")
+    is_ho = rng_keys.random(n) < 0.07                          # ~7%, as measured
+
+    sel_year = stratified_sample(keys, 400, np.random.default_rng(0))
+    sel_both = stratified_sample(keys, 400, np.random.default_rng(0), is_heldout=is_ho)
+
+    ho_year, ho_both = is_ho[sel_year].sum(), is_ho[sel_both].sum()
+    assert ho_both > 3 * ho_year, (ho_year, ho_both)
+    # and the early window is still protected on the held-out side specifically
+    early_ho = ((keys[sel_both, 2] <= 1980) & is_ho[sel_both]).sum()
+    assert early_ho > 0
+    assert len(np.unique(sel_both)) == len(sel_both)            # no duplicated rows
+
+
+def test_stratified_sample_without_holdout_matches_year_only_behavior():
+    # Omitting is_heldout must reduce to the previous behavior, so the sparse early window is
+    # still protected when no holdout mask exists on disk.
+    keys = np.array([[0, 0, 1970]] * 6 + [[1, 1, 2015]] * 300, dtype="int32")
+    sel = stratified_sample(keys, n_sample=30, rng=np.random.default_rng(0))
+    yrs = keys[sel, 2]
+    assert (yrs == 1970).sum() == 6 and (yrs == 2015).sum() > 0
+
+
 def test_stratified_sample_returns_all_rows_when_under_budget():
     keys = np.array([[0, 0, 1970], [1, 1, 2015]], dtype="int32")
     sel = stratified_sample(keys, n_sample=100, rng=np.random.default_rng(0))

@@ -14,18 +14,28 @@ WHAT IT MEASURES. One question: does DESK beat a no-change null at reproducing o
 community turnover at surveyed sites -- overall, and separately in a modern and an early window.
 
     S_true = Ruzicka(log1p observed community)          <- raw BBS, routes averaged per cell-year
-    S_desk = cosine Gram of DESK z_ema
-    S_nc   = cosine Gram of DESK z_ema at each cell's MODERN year, copied to all its years
-    cka_gain = CKA(S_true, S_desk) - CKA(S_true, S_nc)
+    S_desk = Z_ema @ Z_ema.T                            <- the DOT product: the kernel contract
+    S_nc   = same dot, but DESK's z at each cell's MODERN year copied to all its years
 
-BOTH MODEL-SIDE MATRICES USE THE SAME FUNCTIONAL (cosine on DESK z), so the ONLY difference
-between them is temporal variation. That is deliberate and load-bearing. An earlier version built
-the null as Ruzicka on the observed modern community; because truth is also Ruzicka, that null was
-scored in truth's own metric while DESK was scored in cosine, and the difference of the two
-similarity FUNCTIONALS swamped the temporal signal (measured: a temporally-neutral model scored
--0.28 purely from the metric mismatch). The observed-space null is still reported, as
-``cka_nochange_observed``, but it is a separate diagnostic and is NOT differenced against
-``cka_desk``.
+    PRIMARY   rmse_skill = 1 - rmse(S_desk, S_true) / rmse(S_nc, S_true)
+    SECONDARY cka_gain   = CKA(S_true, S_desk) - CKA(S_true, S_nc)
+
+WHY THE DOT PRODUCT. ESK/DESK promise ``Z(x) dot Z(x') ~= uncentered Ruzicka(x, x')`` (recorded as
+``kernel_contract`` in every ESK/cube meta), and ``desk_training.true_kernel_loss`` is the MSE
+between that dot product and the Ruzicka similarity of the raw communities. The dot product is
+therefore both the model's stated output and the quantity it was optimized for. Because the
+contract makes the two directly comparable rather than merely correlated, they can be compared
+ELEMENTWISE -- which is strictly more informative than CKA, and catches a norm-calibration error
+that CKA is provably blind to (see tests). Cosine is reported as a secondary column only, to
+separate an angular failure from a ||z|| scaling failure.
+
+BOTH MODEL-SIDE MATRICES USE THE SAME FUNCTIONAL, so the ONLY difference between them is temporal
+variation. That is load-bearing. An earlier version built the null as Ruzicka on the observed
+modern community; because truth is also Ruzicka, that null was scored in truth's own metric while
+DESK was not, and the difference between the two similarity functions swamped the temporal signal
+(measured: a temporally-neutral model scored -0.28 purely from the mismatch). The observed-space
+null is still reported, as ``cka_nochange_observed`` / ``rmse_nochange_observed``, but only as the
+achievable-ceiling reference -- never differenced against the DESK columns.
 
 THE GAIN IS THE READOUT, NOT ABSOLUTE CKA. A mixed similarity matrix is dominated by
 between-cell (spatial) structure -- the same reason ``Val`` MSE says little about temporal skill.
@@ -33,12 +43,21 @@ The no-change null has ZERO temporal variation by construction, so differencing 
 isolates exactly the temporal component. A large ``cka_desk`` with ``cka_gain <= 0`` means DESK
 reproduced the map and nothing about change.
 
-WHY SIMILARITY SPACE AND NOT Z SPACE. Ruzicka is invariant when *both* arguments are rescaled,
-but the ESK landmarks are frozen at grid-product magnitude, so ``K(route, landmark)`` is not.
-Projecting route counts into ``esk/spacetime`` would require inventing a per-species BBS->eBird
-scale factor, and if it were off that artifact would dominate the result. Comparing similarity
-STRUCTURES via ``linear_cka``/``mantel_r`` is rotation-invariant and scale-robust and introduces
-no new estimated quantity.
+WHY SIMILARITY SPACE AND NOT Z SPACE. The ESK landmarks are frozen at grid-product magnitude, so
+projecting route counts into ``esk/spacetime`` would require inventing a per-species BBS->eBird
+scale factor, and if it were off that artifact would dominate. Comparing similarities needs no
+such factor and no new estimated quantity.
+
+READ ``rmse_skill``, NOT the absolute ``rmse_desk``. Bare Ruzicka is invariant when both arguments
+are rescaled, but ``log1p`` is NOT (``log1p(c*x) != c*log1p(x)``), so the absolute count scale does
+survive into ``S_true``. Training applied log1p to grid-scale abundances; this applies it to
+per-route mean counts, and those magnitudes differ. That inflates ``rmse_desk`` and ``bias_desk``
+by an unknown offset, so their ABSOLUTE values are diagnostic only.
+
+``rmse_skill`` is unaffected: it is a ratio of two errors measured against the SAME ``S_true``, so
+whatever the units mismatch does, it does to DESK and the null alike. Same for ``cka_gain``. The
+comparison between the two models is sound; the calibration of either one against observed
+Ruzicka in absolute terms is not.
 
     python -m src.community_encoder.train_DESK.validate_bbs_routes
 """
@@ -139,12 +158,30 @@ def modern_reference_rows(keys, modern_window=MODERN_WINDOW):
     return nc_src, nc_src >= 0
 
 
-def cosine_gram(Z):
-    """Row-normalized ``Z @ Z.T`` → ``(n, n)`` cosine similarity.
+def dot_gram(Z):
+    """``Z @ Z.T`` → ``(n, n)``. THE prediction, per the kernel contract.
 
-    Cosine, not raw dot: measured ``||Z||^2`` is 0.73-0.81 rather than the kernel contract's
-    1.0, so a raw dot would attribute most of the apparent structure to that norm deficit. This
-    is the same convention ``temporal_turnover_agreement`` uses for temporal comparisons.
+    ESK/DESK promise ``Z(x) dot Z(x') ~= uncentered Ruzicka(x, x')`` (recorded as
+    ``kernel_contract`` in every ESK/cube meta), and ``desk_training.true_kernel_loss`` is
+    literally the MSE between this dot product and the Ruzicka similarity of the raw communities.
+    So the dot product is what the model was optimized to produce and what must be graded.
+
+    Using cosine here instead would discard the vector norms, which are part of the prediction --
+    the contract fixes the SCALE, not just the direction. Cosine is the right choice for
+    per-cell TURNOVER (``1 - similarity``), where a norm deficit masquerades as change; it is the
+    wrong choice for asking whether the kernel reproduces observed similarity.
+    """
+    Z = np.asarray(Z, "float64")
+    return Z @ Z.T
+
+
+def cosine_gram(Z):
+    """Row-normalized ``Z @ Z.T`` -- SECONDARY diagnostic only, not the graded quantity.
+
+    Reported alongside the dot product because the norm deficit is real and measured (``||Z||^2``
+    medians 0.73-0.81 rather than the contract's 1.0). If the dot-product result is poor while
+    cosine is good, the failure is calibration of ``||Z||``; if both are poor, it is the angular
+    structure. Keeping both separates those two explanations.
     """
     Z = np.asarray(Z, "float64")
     nrm = np.linalg.norm(Z, axis=1, keepdims=True)
@@ -152,26 +189,61 @@ def cosine_gram(Z):
     return Zn @ Zn.T
 
 
-def bucket_metrics(S_true, S_desk, S_nc, S_nc_obs=None):
-    """CKA + Mantel of DESK and the no-change null against truth, plus the gains (pure).
+def _offdiag(S):
+    """Upper-triangle off-diagonal entries. The diagonal is self-similarity (trivially 1 for
+    Ruzicka and ``||z||^2`` for the dot) and would flatter both models identically."""
+    return np.asarray(S)[np.triu_indices_from(np.asarray(S), k=1)]
 
-    ``S_desk`` and ``S_nc`` must be built with the SAME similarity functional (both cosine on
-    DESK z) so their difference isolates temporal variation. ``S_nc_obs`` is the optional
-    observed-space null (Ruzicka on the modern observed community); it is reported but never
-    differenced against ``cka_desk``, because truth is also Ruzicka and that comparison would be
-    scoring the two models with different functionals.
+
+def kernel_error(S_true, S_pred):
+    """Elementwise agreement between a predicted kernel and observed Ruzicka (pure).
+
+    Only meaningful for the DOT product, where the contract says the two should be EQUAL rather
+    than merely correlated -- so this is a direct calibration check that CKA cannot give. Returns
+    RMSE, mean signed bias (negative = predicting too little similarity) and Pearson r.
+    """
+    t, p = _offdiag(S_true), _offdiag(S_pred)
+    d = p - t
+    r = float(np.corrcoef(t, p)[0, 1]) if t.size > 1 and t.std() > 0 and p.std() > 0 else 0.0
+    return {"rmse": float(np.sqrt(np.mean(d ** 2))), "bias": float(np.mean(d)), "pearson_r": r}
+
+
+def bucket_metrics(S_true, S_desk, S_nc, S_nc_obs=None, S_desk_cos=None, S_nc_cos=None):
+    """Grade DESK's kernel against observed Ruzicka, versus the frozen-modern null (pure).
+
+    ``S_desk``/``S_nc`` are DOT-product Grams -- the quantity the contract and the training loss
+    are both stated in. ``S_desk`` and ``S_nc`` must use the same functional as each other so
+    their difference isolates temporal variation.
+
+    PRIMARY metric is ``rmse_skill``: how much of the null's kernel error DESK removes, on the
+    same scale as the similarities themselves. This is available only because the contract makes
+    dot and Ruzicka directly comparable; CKA can only say the two structures covary.
+
+    ``S_nc_obs`` (Ruzicka on the modern observed community) is reported as the achievable-ceiling
+    reference. ``S_desk_cos``/``S_nc_cos`` are the cosine variants -- secondary, for separating a
+    norm-calibration failure from an angular one.
     """
     cka_d, cka_n = linear_cka(S_true, S_desk), linear_cka(S_true, S_nc)
     man_d, man_n = mantel_r(S_true, S_desk), mantel_r(S_true, S_nc)
+    e_d, e_n = kernel_error(S_true, S_desk), kernel_error(S_true, S_nc)
     out = {
+        "n_rows": int(np.asarray(S_true).shape[0]),
+        # --- primary: elementwise kernel agreement (dot product vs Ruzicka) ---
+        "rmse_desk": e_d["rmse"], "rmse_nochange": e_n["rmse"],
+        "rmse_skill": (1.0 - e_d["rmse"] / e_n["rmse"]) if e_n["rmse"] > 0 else 0.0,
+        "bias_desk": e_d["bias"], "bias_nochange": e_n["bias"],
+        "pearson_desk": e_d["pearson_r"], "pearson_nochange": e_n["pearson_r"],
+        # --- secondary: structure-only agreement ---
         "cka_desk": cka_d, "cka_nochange": cka_n, "cka_gain": cka_d - cka_n,
         "mantel_desk": man_d, "mantel_nochange": man_n, "mantel_gain": man_d - man_n,
-        "n_rows": int(np.asarray(S_true).shape[0]),
     }
     if S_nc_obs is not None:
-        # Diagnostic only -- same-functional as truth, so not comparable to cka_desk.
         out["cka_nochange_observed"] = linear_cka(S_true, S_nc_obs)
-        out["mantel_nochange_observed"] = mantel_r(S_true, S_nc_obs)
+        out["rmse_nochange_observed"] = kernel_error(S_true, S_nc_obs)["rmse"]
+    if S_desk_cos is not None and S_nc_cos is not None:
+        ck_d, ck_n = linear_cka(S_true, S_desk_cos), linear_cka(S_true, S_nc_cos)
+        out.update({"cka_desk_cosine": ck_d, "cka_nochange_cosine": ck_n,
+                    "cka_gain_cosine": ck_d - ck_n})
     return out
 
 
@@ -444,8 +516,17 @@ def run(config=None, n_sample=4000, seed=0):
         Z_s, Z_nc, is_ho = Z_s[finite], Z_nc[finite], is_ho[finite]
 
     S_true = ruzicka_rect(X_s, X_s)
-    S_desk, S_nc = cosine_gram(Z_s), cosine_gram(Z_nc)       # SAME functional -> temporal only
-    S_nc_obs = ruzicka_rect(X_nc_s, X_nc_s)                  # diagnostic, different functional
+    S_desk, S_nc = dot_gram(Z_s), dot_gram(Z_nc)             # THE contract: dot ~= Ruzicka
+    S_desk_cos, S_nc_cos = cosine_gram(Z_s), cosine_gram(Z_nc)   # secondary, norm-free
+    S_nc_obs = ruzicka_rect(X_nc_s, X_nc_s)                  # achievable-ceiling reference
+
+    # Is the kernel contract even holding on this data? ||z||^2 should be ~1 and the dot should
+    # land on the same [0,1] scale as Ruzicka. A large gap here means the headline RMSE is
+    # dominated by calibration, and the cosine columns are the ones to read.
+    z2 = float(np.median((Z_s ** 2).sum(1)))
+    print(f"[bbs-routes] contract check: median ||z||^2 = {z2:.4f} (contract 1.0); "
+          f"median dot = {np.median(_offdiag(S_desk)):.4f} vs observed Ruzicka "
+          f"{np.median(_offdiag(S_true)):.4f}")
 
     # Underpowered-comparison guard: if observed communities are all near-identical there is no
     # turnover to predict and every CKA will be ~1 regardless of model quality.
@@ -481,7 +562,8 @@ def run(config=None, n_sample=4000, seed=0):
             ix = np.where(m)[0]
             g = np.ix_(ix, ix)
             report["buckets"][f"{sname}/{wname}"] = bucket_metrics(
-                S_true[g], S_desk[g], S_nc[g], S_nc_obs=S_nc_obs[g])
+                S_true[g], S_desk[g], S_nc[g], S_nc_obs=S_nc_obs[g],
+                S_desk_cos=S_desk_cos[g], S_nc_cos=S_nc_cos[g])
 
     out_dir = config["paths"]["desk_output_dir"]
     os.makedirs(out_dir, exist_ok=True)
@@ -493,16 +575,28 @@ def run(config=None, n_sample=4000, seed=0):
                         S_desk=S_desk.astype("float32"), S_nc=S_nc.astype("float32"),
                         S_nc_obs=S_nc_obs.astype("float32"), is_heldout=is_ho)
 
-    print(f"\n{'bucket':<18}{'n':>7}{'cka_desk':>11}{'cka_nc':>10}{'cka_gain':>11}{'mantel_gain':>13}")
+    print(f"\nPRIMARY -- dot product vs observed Ruzicka (the kernel contract, and the quantity "
+          f"true_kernel_loss trains on):")
+    print(f"{'bucket':<18}{'n':>7}{'rmse_desk':>11}{'rmse_nc':>10}{'skill':>9}"
+          f"{'bias_desk':>11}{'r_desk':>9}{'r_nc':>8}")
     for k, v in report["buckets"].items():
         if "skipped" in v:
             print(f"{k:<18}{v['n_rows']:>7}  skipped ({v['skipped']})")
         else:
-            print(f"{k:<18}{v['n_rows']:>7}{v['cka_desk']:>11.4f}{v['cka_nochange']:>10.4f}"
-                  f"{v['cka_gain']:>+11.4f}{v['mantel_gain']:>+13.4f}")
+            print(f"{k:<18}{v['n_rows']:>7}{v['rmse_desk']:>11.4f}{v['rmse_nochange']:>10.4f}"
+                  f"{v['rmse_skill']:>+9.3f}{v['bias_desk']:>+11.4f}"
+                  f"{v['pearson_desk']:>9.3f}{v['pearson_nochange']:>8.3f}")
+    print(f"\nSECONDARY -- structure-only (CKA/Mantel), and the norm-free cosine variant:")
+    print(f"{'bucket':<18}{'n':>7}{'cka_gain':>11}{'mantel_gain':>13}{'cka_gain_cos':>14}")
+    for k, v in report["buckets"].items():
+        if "skipped" not in v:
+            print(f"{k:<18}{v['n_rows']:>7}{v['cka_gain']:>+11.4f}{v['mantel_gain']:>+13.4f}"
+                  f"{v.get('cka_gain_cosine', float('nan')):>+14.4f}")
     print(f"\n[bbs-routes] report -> {out}")
-    print("[bbs-routes] cka_gain > 0 means DESK beats no-change on GENUINELY OBSERVED data; "
-          "<= 0 is a real negative result, not a bug.")
+    print("[bbs-routes] rmse_skill > 0 means DESK's kernel is closer to observed Ruzicka than the "
+          "frozen-modern null is, on GENUINELY OBSERVED data. <= 0 is a real negative result.")
+    print("[bbs-routes] If rmse_skill is poor but cka_gain_cos is healthy, the failure is ||z|| "
+          "calibration, not the angular structure -- check the contract line above.")
     return report
 
 

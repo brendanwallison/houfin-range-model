@@ -1,14 +1,20 @@
-"""Route-level BBS validation: densification, the no-change gate, and the metric's SIGN.
+"""Route-level BBS validation: densification, the no-change gate, and the metrics' SIGN.
 
-The sign tests are the important ones. This validation's whole claim is that
-``cka_gain = CKA(true, desk) - CKA(true, nochange)`` isolates temporal skill, so a
-constant-per-cell DESK must score ~0 and a DESK carrying real temporal information must score
-> 0. If those two ever stop holding, the headline number means nothing.
+The sign tests are the important ones. The claim is that differencing DESK against a
+frozen-modern null isolates temporal skill: a model with no temporal information must score ~0,
+and one carrying real temporal information must score > 0. If those stop holding, the headline
+number means nothing.
+
+The graded quantity is the DOT product ``Z @ Z.T``, per the kernel contract
+(``Z(x) dot Z(x') ~= uncentered Ruzicka``) that ``desk_training.true_kernel_loss`` trains on --
+NOT cosine, which discards the ||z|| calibration the contract fixes. One test here shows CKA is
+provably blind to a pure norm deficit that the elementwise rmse catches, which is why rmse is
+primary.
 """
 import numpy as np
 
 from src.community_encoder.train_DESK.validate_bbs_routes import (
-    bucket_metrics, cosine_gram, densify_community, log1p_community,
+    bucket_metrics, cosine_gram, densify_community, dot_gram, kernel_error, log1p_community,
     modern_reference_rows, stratified_sample)
 from src.community_encoder.train_DESK.validate_spacetime import ruzicka_rect
 
@@ -119,10 +125,12 @@ def test_a_temporally_neutral_desk_scores_exactly_zero_gain():
     assert keep.all()
 
     Z_nc = X[nc_src] @ np.random.default_rng(2).standard_normal((X.shape[1], 6))
-    S_nc = cosine_gram(Z_nc)
+    S_nc = dot_gram(Z_nc)
     m = bucket_metrics(ruzicka_rect(X, X), S_nc, S_nc)
     assert m["cka_gain"] == 0.0, m
     assert m["mantel_gain"] == 0.0, m
+    assert m["rmse_skill"] == 0.0, m               # identical kernels -> no error reduction
+    assert m["rmse_desk"] == m["rmse_nochange"], m
 
 
 def test_cka_gain_is_positive_only_when_temporal_information_is_added():
@@ -132,18 +140,18 @@ def test_cka_gain_is_positive_only_when_temporal_information_is_added():
     #   Z_nc   = X_nc @ A  -> the null: modern community, frozen
     #   Z_good = X    @ A  -> same map, but tracks the true year-by-year community
     #
-    # Both are scored with cosine_gram, matching how run() builds them. Scoring the null with
-    # Ruzicka instead (truth's own functional) made a temporally-neutral model read -0.28, which
-    # is the confound this arrangement removes.
+    # Both are scored with dot_gram, matching how run() builds them. Scoring the null with
+    # Ruzicka instead (truth's own function) made a temporally-neutral model read -0.28, which is
+    # the confound this arrangement removes.
     keys, X = _synthetic()
     nc_src, keep = modern_reference_rows(keys, modern_window=(2010, 2025))
     assert keep.all()
 
     A = np.random.default_rng(2).standard_normal((X.shape[1], 6))
     S_true = ruzicka_rect(X, X)
-    S_nc = cosine_gram(X[nc_src] @ A)
+    S_nc = dot_gram(X[nc_src] @ A)
 
-    m = bucket_metrics(S_true, cosine_gram(X @ A), S_nc)
+    m = bucket_metrics(S_true, dot_gram(X @ A), S_nc)
     assert m["cka_gain"] > 0.0, m
     assert m["cka_desk"] > m["cka_nochange"], m
 
@@ -157,10 +165,13 @@ def test_observed_space_null_is_reported_but_not_differenced():
     A = np.random.default_rng(4).standard_normal((X.shape[1], 6))
     S_true = ruzicka_rect(X, X)
 
-    m = bucket_metrics(S_true, cosine_gram(X @ A), cosine_gram(X_nc @ A),
-                       S_nc_obs=ruzicka_rect(X_nc, X_nc))
-    assert "cka_nochange_observed" in m and "mantel_nochange_observed" in m
+    m = bucket_metrics(S_true, dot_gram(X @ A), dot_gram(X_nc @ A),
+                       S_nc_obs=ruzicka_rect(X_nc, X_nc),
+                       S_desk_cos=cosine_gram(X @ A), S_nc_cos=cosine_gram(X_nc @ A))
+    assert "cka_nochange_observed" in m and "rmse_nochange_observed" in m
     assert m["cka_gain"] == m["cka_desk"] - m["cka_nochange"]      # unaffected by the diagnostic
+    # the cosine variant is reported SEPARATELY and must not overwrite the dot-product headline
+    assert "cka_gain_cosine" in m and m["cka_gain_cosine"] != m["cka_gain"]
 
 
 def test_cka_of_truth_against_itself_is_one():
@@ -169,6 +180,37 @@ def test_cka_of_truth_against_itself_is_one():
     m = bucket_metrics(S, S, S)
     assert abs(m["cka_desk"] - 1.0) < 1e-8
     assert abs(m["cka_gain"]) < 1e-8                           # identical inputs -> no gain
+
+
+def test_dot_gram_is_the_contract_and_keeps_scale():
+    # The contract is Z.Z' ~= Ruzicka, so the dot product must preserve ||z|| -- scaling Z MUST
+    # change the result. That sensitivity is the point: it is what makes rmse against Ruzicka a
+    # calibration check rather than a structure-only comparison.
+    rng = np.random.default_rng(3)
+    Z = rng.standard_normal((6, 4))
+    assert np.allclose(dot_gram(Z), Z @ Z.T)
+    assert not np.allclose(dot_gram(Z), dot_gram(Z * 2.0))
+    assert np.allclose(np.diag(dot_gram(Z)), (Z ** 2).sum(1))     # diagonal is ||z||^2
+
+
+def test_kernel_error_detects_a_norm_deficit_that_cka_ignores():
+    # A model whose z is correct in direction but systematically too short reproduces the
+    # STRUCTURE perfectly (CKA ~ 1) while its dot products are all too small. Only the
+    # elementwise comparison sees that, which is why rmse is the primary metric.
+    # Z must be NON-NEGATIVE for this to mean anything: Ruzicka is in [0,1], so the real dots are
+    # positive and shrinking ||z|| lowers them. With Gaussian z the off-diagonal dots straddle
+    # zero, shrinking moves them toward zero from both sides, and the mean bias cancels to ~0.
+    rng = np.random.default_rng(5)
+    Z = rng.random((30, 5))
+    S_true = dot_gram(Z)
+    S_short = dot_gram(Z * 0.85)                                  # 28% low in dot space
+
+    e = kernel_error(S_true, S_short)
+    assert e["bias"] < 0                                          # predicts too little similarity
+    assert e["rmse"] > 0
+    assert abs(e["pearson_r"] - 1.0) < 1e-9                       # perfectly correlated...
+    from src.community_encoder.train_DESK.validate_spacetime import linear_cka
+    assert abs(linear_cka(S_true, S_short) - 1.0) < 1e-9          # ...and CKA is blind to it
 
 
 def test_cosine_gram_is_scale_invariant_and_unit_diagonal():

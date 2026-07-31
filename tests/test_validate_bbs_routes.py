@@ -8,7 +8,7 @@ constant-per-cell DESK must score ~0 and a DESK carrying real temporal informati
 import numpy as np
 
 from src.community_encoder.train_DESK.validate_bbs_routes import (
-    bucket_metrics, cosine_gram, densify_community, log1p_community,
+    align_species, bucket_metrics, cosine_gram, densify_community, log1p_community,
     modern_reference_rows, stratified_sample)
 from src.community_encoder.train_DESK.validate_spacetime import ruzicka_rect
 
@@ -52,6 +52,29 @@ def test_densify_deduplicates_coverage_rows():
         row=[0], col=[0], year=[2000], species_index=[0], mean_count=[4.0],
         cov_row=[0, 0], cov_col=[0, 0], cov_year=[2000, 2000], n_species=1)
     assert keys.shape == (1, 3) and X.shape == (1, 1) and X[0, 0] == 4.0
+
+
+def test_align_species_restricts_to_the_trained_community_in_trained_order():
+    # community_matrix.npz species come from the eBird WEEKLY stack; DESK's come from
+    # community_trend.csv. They differ, so truth must be cut down to the intersection -- and
+    # ordered by the TRAINED list, not the npz's, so the columns mean what DESK means.
+    X = np.array([[1.0, 2.0, 3.0, 4.0]], dtype="float32")
+    observed = ["spA", "spB", "spC", "spD"]
+    trained = ["spD", "spB", "spZ"]                # spZ unobservable, spA/spC not modelled
+
+    Xk, kept, st = align_species(X, observed, trained)
+    assert kept == ["spD", "spB"]                  # trained order, intersection only
+    assert Xk.tolist() == [[4.0, 2.0]]             # columns follow kept
+    assert st["n_shared_species"] == 2
+    assert st["n_observed_species"] == 4 and st["n_trained_species"] == 3
+    assert "spA" in st["observed_only"] and "spZ" in st["trained_only"]
+
+
+def test_align_species_is_identity_when_the_lists_match():
+    X = np.array([[1.0, 2.0]], dtype="float32")
+    Xk, kept, st = align_species(X, ["a", "b"], ["a", "b"])
+    assert kept == ["a", "b"] and Xk.tolist() == X.tolist()
+    assert st["observed_only"] == [] and st["trained_only"] == []
 
 
 def test_log1p_clips_negatives():

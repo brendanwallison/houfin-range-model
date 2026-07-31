@@ -111,6 +111,30 @@ def log1p_community(X):
     return np.log1p(np.clip(np.asarray(X, "float64"), 0.0, None)).astype("float32")
 
 
+def align_species(X, species, trained):
+    """Restrict the observed community to the species DESK was actually trained on (pure).
+
+    The two paths define DIFFERENT communities, and this bit me: ``community_matrix.npz`` takes
+    its species from the eBird WEEKLY stack tifs (``bbs_community.ebird_stack_species``), while
+    the live trend path takes them from ``community_trend_list`` (``community_trend.csv``) and
+    records that list in ``points_meta.json["species"]``. Grading DESK on turnover in species it
+    never modelled adds noise to "truth" that DESK cannot possibly predict, which understates it.
+
+    Returns ``(X_kept, kept_codes, stats)``. Column order follows ``trained`` so the result is
+    aligned to DESK's own community ordering rather than the npz's.
+    """
+    species = [str(s) for s in species]
+    trained = [str(s) for s in trained]
+    ix = {s: i for i, s in enumerate(species)}
+    kept = [s for s in trained if s in ix]
+    cols = [ix[s] for s in kept]
+    stats = {"n_observed_species": len(species), "n_trained_species": len(trained),
+             "n_shared_species": len(kept),
+             "observed_only": sorted(set(species) - set(trained))[:20],
+             "trained_only": sorted(set(trained) - set(species))[:20]}
+    return np.asarray(X)[:, cols], kept, stats
+
+
 def modern_reference_rows(keys, modern_window=MODERN_WINDOW):
     """Map each cell to its most recent surveyed row inside ``modern_window`` (pure).
 
@@ -228,25 +252,50 @@ def load_observed(config):
         d["row"], d["col"], d["year"], d["species_index"], d["mean_count"],
         d["cov_row"], d["cov_col"], d["cov_year"], len(species))
 
-    # The log1p flag lives in points_meta.json, NOT the ESK meta.json. Assert rather than
-    # assume: if training used raw counts, log1p here would silently compare a different space.
+    # points_meta.json carries BOTH the log1p flag and the species list DESK actually trained on.
+    # Neither is in the ESK meta.json. Assert rather than assume: a raw-count basis would make a
+    # log1p similarity structure the wrong quantity, and a mismatched species set would grade DESK
+    # on turnover it was never given the inputs to predict.
     zt = config.get("bbs", {}).get("z_dir", "")
     pm_path = os.path.join(zt, "points_meta.json") if zt else ""
-    log1p_flag = True
+    log1p_flag, trained = True, None
     if pm_path and os.path.exists(pm_path):
         with open(pm_path, "r", encoding="utf-8") as fh:
-            log1p_flag = bool(json.load(fh).get("ruzicka_log1p", True))
+            pm = json.load(fh)
+        log1p_flag = bool(pm.get("ruzicka_log1p", True))
+        trained = pm.get("species")
         if not log1p_flag:
             raise ValueError(
                 f"{pm_path} reports ruzicka_log1p=false; the ESK basis was fit on RAW counts. "
                 "Comparing a log1p similarity structure against it is not like-for-like.")
     else:
         print(f"[bbs-routes] WARNING: no points_meta.json at {pm_path or '<bbs.z_dir unset>'}; "
-              "assuming ruzicka_log1p=true (the trend_community default)")
+              "assuming ruzicka_log1p=true and NOT restricting the species set")
+
+    sp_stats = {"species_aligned": False, "n_observed_species": len(species)}
+    if trained:
+        X_raw, species, sp_stats = align_species(X_raw, species, trained)
+        sp_stats["species_aligned"] = True
+        print(f"[bbs-routes] species: {sp_stats['n_shared_species']} shared of "
+              f"{sp_stats['n_observed_species']} observed / {sp_stats['n_trained_species']} trained")
+        if sp_stats["n_shared_species"] < 3:
+            raise ValueError(
+                f"only {sp_stats['n_shared_species']} species shared between "
+                f"{path} (from the eBird weekly stack) and the trained community in {pm_path} "
+                "(community_trend.csv). These are built from different species lists -- rebuild "
+                "the community matrix against the current community before validating.")
+        if sp_stats["n_shared_species"] < 0.5 * sp_stats["n_trained_species"]:
+            print(f"[bbs-routes] WARNING: only "
+                  f"{sp_stats['n_shared_species']}/{sp_stats['n_trained_species']} of DESK's "
+                  "community is observable in the BBS matrix; the comparison covers a minority "
+                  "of what DESK models")
+    else:
+        print("[bbs-routes] WARNING: points_meta.json has no 'species'; grading against the FULL "
+              "observed community, which may include species DESK never modelled")
 
     meta = {"n_species": len(species), "n_surveyed_cell_years": int(keys.shape[0]),
             "presence_triples_outside_coverage": int(dropped),
-            "ruzicka_log1p": log1p_flag,
+            "ruzicka_log1p": log1p_flag, **sp_stats,
             "year_range": [int(keys[:, 2].min()), int(keys[:, 2].max())] if keys.size else []}
     return log1p_community(X_raw), keys, meta
 

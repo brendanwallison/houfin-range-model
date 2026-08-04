@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 
 import numpy as np
@@ -339,3 +340,71 @@ def test_w_env_ranking_orders_by_total_magnitude_and_keeps_signs(tmp_path):
     assert [r["index"] for r in ranking] == [1, 2, 0]     # descending sum|w|
     assert ranking[0]["beta_s"] == -2.0                   # sign preserved
     assert (tmp_path / "05b.png").stat().st_size > 10_000
+
+
+def test_viz_reader_path_survives_sampled_to_deterministic_migrations():
+    """map_diagnostics' latents dict must satisfy everything age_model_math reads.
+
+    This exact failure has now happened TWICE in production, both times killing the diagnostics
+    job after figure 04 and before metrics.json:
+
+      1. `gamma_a_raw` moved sampled -> deterministic when the slopes were fixed at 1
+         -> KeyError('gamma_a_raw') from response_curve_fields
+      2. `gamma_j_diff` moved sampled -> deterministic when juvenile survival got its own
+         manifold -> KeyError('gamma_j_diff') from the same call, at age_model_math.py:283
+
+    The cause both times: `auto_delta_params_to_latents` returns SAMPLED sites ONLY, and
+    map_diagnostics folds a HARDCODED list of deterministic names back in. A site that migrates
+    without being added to that list vanishes from the dict.
+
+    Unit-testing the site inventory (test_kernel_contract) is not enough -- it checks that sites
+    EXIST, not that the viz's reconstruction of `latents` contains what its readers need. This
+    builds the dict exactly as map_diagnostics does, from the real model, and drives the real
+    readers through it.
+    """
+    import jax
+    from numpyro import handlers
+    from src.model.age_priors import sample_priors
+    from src.vis.age_model_math import demographic_params, response_curve_fields
+
+    M = 24
+    tr = handlers.trace(handlers.seed(sample_priors, jax.random.PRNGKey(0))).get_trace(
+        prior_scale=1.0, M_features=M, time=6, N_sev_basis=6, N_lag_basis=6)
+    sampled = {k: np.asarray(v["value"]) for k, v in tr.items() if v["type"] == "sample"}
+    determ = {k: np.asarray(v["value"]) for k, v in tr.items() if v["type"] == "deterministic"}
+
+    # gamma_j_diff must NOT be sampled any more -- if it is, this test is checking nothing.
+    assert "gamma_j_diff" not in sampled and "gamma_j_diff" in determ
+
+    # Reproduce map_diagnostics.reconstruct_map's construction, reading its actual fold-in list
+    # out of the source so the test cannot drift from the code it is guarding.
+    src = (Path(__file__).resolve().parents[1]
+           / "scripts" / "viz" / "map_diagnostics.py").read_text()
+    block = src.split('sim["latents"] = dict(latents)')[1].split(")")[0]
+    fold_in = re.findall(r'"([a-zA-Z_0-9]+)"', block)
+    assert "gamma_j_diff" in fold_in, "the fold-in list no longer covers gamma_j_diff"
+
+    latents = dict(sampled)
+    for name in fold_in:
+        if name in determ:
+            latents[name] = determ[name]
+
+    # The two readers that died in production.
+    p = demographic_params(latents)
+    assert p["gamma_a"] == 1.0 and p["gamma_j"] == 1.0
+    assert np.shape(p["beta_sj"]) == (M,)
+    assert not np.allclose(p["beta_s"], p["beta_sj"]), "beta_sj must be its own vector"
+
+    # And independently of the fold-in list: demographic_params must work when gamma_j_diff is
+    # absent ENTIRELY, reading the deterministic `gamma_j` site instead. Two fixes were applied
+    # for this bug (the fold-in list AND this fallback) and each alone is sufficient, so without
+    # this case the fold-in fix silently masks a regression in the fallback.
+    no_diff = {k: v for k, v in latents.items() if k != "gamma_j_diff"}
+    assert p["gamma_j"] == demographic_params(no_diff)["gamma_j"] == 1.0
+
+    curves = response_curve_fields(latents, np.linspace(-3.0, 3.0, 20), 0)
+    assert set(curves) >= {"Sa", "Sj", "Fmax", "K"}
+    for key in ("Sa", "Sj", "Fmax", "K"):
+        assert np.isfinite(curves[key]).all(), key
+    # Sa and Sj must now be DIFFERENT curves -- they were the same field before the untying.
+    assert not np.allclose(curves["Sa"], curves["Sj"])

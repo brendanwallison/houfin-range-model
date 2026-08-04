@@ -280,7 +280,14 @@ def demographic_params(latents):
         "alpha_f": float(latents["alpha_f"]),
         "alpha_k": alpha_k,
         "gamma_a": gamma_a,
-        "gamma_j": gamma_a + float(latents["gamma_j_diff"]),  # sampled; always present
+        # gamma_j: prefer the DETERMINISTIC `gamma_j` site, which is the quantity itself.
+        # gamma_j_diff used to be sampled ("always present"), but it became a deterministic 0.0
+        # when juvenile survival got its own manifold and gamma_j was fixed at 1 -- and
+        # auto_delta_params_to_latents returns SAMPLED sites only, so reading gamma_j_diff here
+        # raised KeyError and killed map_diagnostics after figure 04, before metrics.json. Fall
+        # back to the old reconstruction so pre-rank-2 checkpoints still load.
+        "gamma_j": (float(np.asarray(latents["gamma_j"])) if "gamma_j" in latents
+                    else gamma_a + float(latents["gamma_j_diff"])),
         "gamma_f": _gamma_slope(latents, "gamma_f", "gamma_f_raw"),
         "gamma_k": _gamma_slope(latents, "gamma_k", "gamma_k_raw"),
     }

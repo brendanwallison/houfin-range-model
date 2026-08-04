@@ -243,8 +243,14 @@ def reconstruct_map(data, params):
     # response_curve_fields, which killed diagnostics BEFORE the source/sink fields
     # and metrics.json were written. Fold the deterministic values in so plotting
     # code has a single place to look and cannot silently read a stale name.
+    #
+    # It happened a SECOND time with gamma_j_diff, which moved sampled -> deterministic when
+    # juvenile survival got its own manifold. Any name that makes that migration has to be added
+    # here, or every reader pulling it out of this dict gets a KeyError.
     sim["latents"] = dict(latents)
-    for name in ("w_env", "k_level", "gamma_a", "gamma_j", "gamma_f", "gamma_k"):
+    for name in ("w_env", "k_level", "gamma_a", "gamma_j", "gamma_f", "gamma_k",
+                 "gamma_j_diff", "manifold_loadings", "manifold_communality",
+                 "env_corr_survival_adult_juv"):
         if name in sim:
             sim["latents"][name] = sim[name]
     return sim

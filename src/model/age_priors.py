@@ -494,18 +494,16 @@ def sample_priors(prior_scale=1.0, M_features=None, time=None,
                         ("gamma_f", priors['gamma_f']), ("gamma_k", priors['gamma_k'])):
         numpyro.deterministic(_name, jnp.asarray(_val, dtype=float))
     
-    # N50 is expressed on the BBS-ROUTE COUNT scale, which makes it gauge-invariant:
-    # allee_gamma*N reduces to ln2*C/n50 with C the expected route count, so the Allee
-    # behaviour does not move when population_scale_route_counts_per_relative_unit
-    # changes. This was already true before the run_11 scale work and is the pattern
-    # every other absolute-scale prior was rewritten to follow.
+    # n50 is on the BBS ROUTE-COUNT scale and needs no conversion: allee_gamma*N reduces
+    # to ln2*C/n50, a function of the observed count alone, so pop_scalar cannot change
+    # what this prior asserts.
     #
-    # Rationale for the location: by the time a route regularly yields one bird there
-    # is an established local population, so the brake should be essentially overcome.
-    # loc -1.5 -> median n50 0.20 counts -> 97% released at one bird, 82% at half a
-    # bird. (It was -1.0 -> 0.31 counts -> 89% at one bird, a touch strong.) The prior
-    # WIDTH is deliberately unchanged, so the slow tail still permits ~59% release at
-    # one bird; narrowing the scale, not shifting the mean, is what would exclude that.
+    # Intent: a route that consistently yields one bird is a colonized cell, and that bird
+    # stands for a local community rather than a lone individual, so mate-finding should
+    # not be limiting there. At loc -2.0 (median n50 0.127 counts) the retained fecundity
+    # is 42% at 0.1 counts, 94% at 0.5, and 99.6% at one bird -- the brake acts only on
+    # genuinely sparse cells. See the _allee_comment in config for the two things this
+    # controls downstream (the Allee-dead area in figure 07, and barrier-crossing cost).
     n50_raw = numpyro.sample(
         "n50_raw", dist.Normal(float(_ALLEE_PRIOR["n50_raw_loc"]),
                                float(_ALLEE_PRIOR["n50_raw_scale"]) * prior_scale))

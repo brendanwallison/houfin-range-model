@@ -987,13 +987,30 @@ def plot_spatial_residuals(sim, data, shape, out):
 
 
 def _k_range_metrics(sim):
-    """Is K pressed against its bounded dynamic range?
+    """How far does K spread, and did its LEVEL or its SPATIAL TERM move?
 
-    K = softplus(alpha_k) * exp(L*tanh(...) + trend) * (1 - disease). The tanh bound
-    stops covariate-route annihilation, but saturation against it is a diagnostic in
-    exactly the way a saturated disease ceiling is: it says the likelihood wants K
-    lower than the model permits, and the reason deserves finding rather than
-    accommodating.
+    ``K = softplus(alpha_k + gamma_k*H_k + trend) * (1 - disease_fraction)``. Nothing bounds
+    K from below -- ``k_range.max_fold_deviation`` is a reporting threshold only, and the tanh
+    clamp that once enforced it is gone -- so K can reach zero through softplus's exponential
+    regime at no cost in ``H_k``.
+
+    That matters because a cell with near-zero K is not merely sparse: it can fall below the
+    Allee fold and hold no population at all, while still looking suitable on the fundamental
+    niche map. So a collapsed K is a way to explain absence WITHOUT lowering survival or
+    fecundity, and the capacity level prior was written on the opposite assumption -- that empty
+    cells are empty because lambda < 1.
+
+    ``alpha_k`` applies to every cell, so it constrains the AVERAGE capacity but not which cells
+    sit below it; ``H_k`` decides that. The two therefore leave different signatures, and these
+    numbers separate them:
+
+    * ``modern_median_K`` far below the configured target (2.892 route counts) -> the LEVEL fell.
+      The knob is ``capacity_level_prior.alpha_k_scale``.
+    * ``modern_median_K`` on target but ``modern_fold_range`` very large -> the level held and the
+      SPATIAL term is carving cells down. The knob is ``manifold_prior.amplitude_scale`` for the
+      capacity column; check the fitted ``w_scale`` against its prior median.
+
+    Read alongside ``metrics.json:manifold`` and figure 07's Allee-dead area.
     """
     cfg = load_age_model_config()["population_model"]
     max_fold = float(cfg["k_range"]["max_fold_deviation"])
@@ -1006,7 +1023,10 @@ def _k_range_metrics(sim):
             "modern_min_K": float(modern.min()),
             "modern_max_K": float(modern.max()),
             "modern_fold_range": float(modern.max() / max(modern.min(), 1e-12)),
-            # Fraction of land within 10% of the permitted floor.
+            # "floor"/"ceiling" are the REPORTING thresholds max_fold_deviation implies, not
+            # enforced bounds -- K can go past both. Read them as "how much land sits at the
+            # extremes of the range the data support", where a large fraction_near_floor is the
+            # spatial-collapse signature described above.
             "fraction_near_floor": float((modern < floor * 1.1).mean()),
             "fraction_near_ceiling": float((modern > level * max_fold * 0.9).mean())}
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """Recompute the BBS abundance anchors that two priors depend on.
 
-WHY THIS EXISTS. ``capacity_level_prior.target_level_mean_route_counts`` (2.892) and
+WHY THIS EXISTS. ``capacity_level_prior.target_level_median_route_counts`` (2.6183) and
 ``invasion_pulse_prior.global_q50_route_counts`` (0.64) both trace to an occupied-cell and an
 all-cell median from an earlier quantile pass over the BBS data. That pass is not in the repo --
 the numbers appear only in config comments, and the config itself says to "RECONFIRM 0.64 by
@@ -28,9 +28,9 @@ Three populations are reported, because "all cells" is ambiguous and the choice 
                          "surveyed and empty" with "never looked", so it is the lowest of the
                          three and the one to treat with most suspicion.
 
-The 2.892 in config is not a median: ``_solve_softplus_loc`` matches a prior MEAN, and 2.892 is
-the occupied median mapped through the lognormal mean/median ratio at ``alpha_k_scale`` = 0.8,
-i.e. ``median * exp(0.8**2 / 2)``. That conversion is printed so the comparison is like-for-like.
+``capacity_level_prior`` takes the occupied median directly: alpha_k's location is
+``softplus^-1(target / pop_scalar)``, so the prior median equals the configured number exactly.
+Compare the ``occupied q50`` below against it with no conversion.
 
     python scripts/diagnostics/bbs_abundance_quantiles.py
     python scripts/diagnostics/bbs_abundance_quantiles.py --modern-start 2000 --min-positive-years 3
@@ -174,10 +174,10 @@ def main():
     occ_med = res["occupied"].get("q50")
     print(f"\nAgainst the two live priors:")
     if occ_med:
-        scale = 0.8                                       # capacity_level_prior.alpha_k_scale
-        print(f"  capacity_level_prior.target_level_mean_route_counts = 2.892 in config")
-        print(f"    occupied median {occ_med:.4f} -> lognormal mean at alpha_k_scale={scale}: "
-              f"{occ_med * math.exp(scale ** 2 / 2):.4f}")
+        cl = cfg["population_model"]["capacity_level_prior"]
+        cur = cl.get("target_level_median_route_counts")
+        print(f"  capacity_level_prior.target_level_median_route_counts = {cur} in config")
+        print(f"    occupied median here: {occ_med:.4f}  (matched directly, no conversion)")
         lsd = res["occupied"].get("log_sd_positive")
         if lsd:
             print(f"    occupied log sd {lsd:.4f}  (config comment cites 1.72)")

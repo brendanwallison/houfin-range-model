@@ -480,8 +480,8 @@ def test_capacity_level_prior_is_declared_in_route_counts():
     """
     cfg = load_age_model_config()["population_model"]["capacity_level_prior"]
     sp = lambda x: np.log1p(np.exp(-abs(x))) + max(x, 0.0)
-    if "target_level_mean_route_counts" in cfg:       # softplus link, density space
-        level = float(cfg["target_level_mean_route_counts"])
+    if "target_level_median_route_counts" in cfg:     # softplus link, density space
+        level = float(cfg["target_level_median_route_counts"])
     else:                                             # exp / LogNormal link
         level = float(cfg["median_route_counts"])
     assert 1.0 < level < 8.0, f"level prior {level:.2f} counts is implausible"

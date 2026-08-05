@@ -41,26 +41,27 @@ _POP_SCALAR = float(_POP_SPEC.get("population_scale_route_counts_per_relative_un
                                   _POP_SPEC.get("population_scale_birds_per_relative_unit")))
 
 
-def _solve_softplus_loc(target_route_counts, scale, pop_scalar):
-    """Prior location for a softplus-linked quantity, calibrated in ROUTE COUNTS.
+def _softplus_loc_for_median(target_route_counts, pop_scalar):
+    """Prior location for a softplus-linked quantity, calibrated on its MEDIAN in ROUTE COUNTS.
 
-    Returns ``loc`` such that ``E[softplus(Normal(loc, scale))] * pop_scalar`` equals
-    ``target_route_counts``. Solved numerically (Gauss-Hermite + bisection) because
-    softplus has no closed-form mean under a normal.
+    softplus is monotone, so median(softplus(X)) == softplus(median(X)) exactly for any scale.
+    The location is therefore closed-form -- softplus^-1(target / pop_scalar) -- with no
+    quadrature and no dependence on alpha_k_scale.
 
-    This is how a softplus link keeps the "declare beliefs in route counts" rule:
-    softplus does not commute with scaling, so unlike exp it cannot simply absorb the
-    gauge as a shift. Stating the target in counts and solving for the raw location
-    means changing pop_scalar re-derives the location instead of silently changing
-    what the prior asserts.
+    Median, not mean: the empirical anchor is the median occupied cell (see
+    scripts/diagnostics/bbs_abundance_quantiles.py), and matching a mean instead required
+    converting through a lognormal ratio that softplus only approximates -- which landed the
+    realized median 8.6% above the measured value. Matching the median directly is exact.
+
+    Stating the target in counts and solving for the raw location is what keeps the "declare
+    beliefs in route counts" rule: softplus does not commute with scaling, so unlike exp it
+    cannot absorb the gauge as a shift, and changing pop_scalar re-derives the location rather
+    than silently changing what the prior asserts.
     """
-    from scipy.optimize import brentq
-    z, w = np.polynomial.hermite_e.hermegauss(201)
-    w = w / w.sum()
-    sp = lambda x: np.log1p(np.exp(-np.abs(x))) + np.maximum(x, 0.0)
-    target_density = float(target_route_counts) / float(pop_scalar)
-    return float(brentq(lambda m: float(np.sum(w * sp(m + scale * z))) - target_density,
-                        -30.0, 10.0, xtol=1e-13))
+    density = float(target_route_counts) / float(pop_scalar)
+    if density <= 0:
+        raise ValueError(f"target must be positive; got {target_route_counts}")
+    return float(np.log(np.expm1(density)))
 
 
 def counts_to_relative(route_counts):
@@ -74,12 +75,10 @@ def counts_to_relative(route_counts):
     return route_counts / _POP_SCALAR
 
 
-# alpha_k's prior location, solved so the level's MEAN matches the configured target
-# in route counts. Computed at import (microseconds) rather than hardcoded, so it
-# tracks pop_scalar and alpha_k_scale automatically.
-_ALPHA_K_LOC = _solve_softplus_loc(
-    _CAPACITY_LEVEL["target_level_mean_route_counts"],
-    float(_CAPACITY_LEVEL["alpha_k_scale"]), _POP_SCALAR)
+# alpha_k's prior location, solved so the level's MEDIAN matches the configured target in
+# route counts. Closed form, evaluated at import, so it tracks pop_scalar automatically.
+_ALPHA_K_LOC = _softplus_loc_for_median(
+    _CAPACITY_LEVEL["target_level_median_route_counts"], _POP_SCALAR)
 
 
 def validate_environment_kernel_contract(data):

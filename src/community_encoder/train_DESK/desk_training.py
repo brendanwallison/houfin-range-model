@@ -1062,6 +1062,15 @@ def run_desk_experiment(config=None):
     # spatiotemporal z-target (recent anchor + backward-reconstructed historical points);
     # 'enrich' (deprecated amplitude path) up-weighted recent eBird + a direction-of-change
     # split; 'off'/'validate' train eBird-2023-only. bbs_mode was read above.
+    #
+    # Which trainer runs is decided here rather than at the call site, because the two need
+    # DIFFERENT targets and building the wrong one is not free: train_model_ema assembles its
+    # own per-year targets from _prepare_trend_targets, while train_model_semisup needs the
+    # _prepare_enrich grids. Deciding late meant the trend path built BOTH -- a second full
+    # Nystrom projection of every point plus a re-read of every state_{year}.npz, ~1 GiB
+    # stacked and then dropped, on every production run.
+    ema_cfg = desk_cfg.get("output_ema", {})
+    use_output_ema = bbs_mode == "trend" and bool(ema_cfg.get("enabled", False))
     enrich_data, direction, ebird_frac = None, None, 0.8
     dir_weights = {}
     uniform_stab = False
@@ -1071,10 +1080,11 @@ def run_desk_experiment(config=None):
         # evaluation uses the holdout only, so buffer cells appear in neither.
         m_tr = mask_sup & (~holdout) & (~buffer_cells_mask)
         m_val = mask_sup & holdout
-        # _prepare_enrich projects the trend points (year<2023) into the joint ESK basis
-        # (z_obs) and assembles per-year target grids -- reused as-is, direction disabled.
-        enrich_data, hist_years = _prepare_enrich(config, states_dir, schema, mu, sd, z_dir,
-                                                  z_grid.shape[2], holdout, label_year)
+        if not use_output_ema:
+            # train_model_semisup path only: project the trend points (year < label_year) into
+            # the joint ESK basis (z_obs) and assemble per-year target grids.
+            enrich_data, hist_years = _prepare_enrich(config, states_dir, schema, mu, sd, z_dir,
+                                                      z_grid.shape[2], holdout, label_year)
         direction = None
         dir_weights = {"absolute": 1.0}
         uniform_stab = True
@@ -1104,9 +1114,8 @@ def run_desk_experiment(config=None):
         m_tr, m_val = _split_mask(mask_sup, desk_cfg.get("train_val_split", 0.8))
 
     stream_dims = cio.stream_dims(schema)
-    ema_cfg = desk_cfg.get("output_ema", {})
     ema_half_life = None
-    if bbs_mode == "trend" and ema_cfg.get("enabled", False):
+    if use_output_ema:
         # Output-EMA objective: forward the ordered year window, apply a learned causal
         # EMA over the year axis to the predicted Z (demographic lag), and supervise the
         # EMA'd z_ema against the per-year trend targets. Replaces the direct per-year target.

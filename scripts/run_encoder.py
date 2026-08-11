@@ -9,7 +9,8 @@ stage is meant to run as its own process (the TACC pipeline calls this once per
 stage), so the two roots never collide within one interpreter.
 
     python scripts/run_encoder.py
-        {ebird-cache|trend-points|esk|spacetime-esk|desk|cube|validate|bbs-route-validate}
+        {ebird-cache|trend-points|esk|spacetime-esk|desk|cube|validate|
+         bbs-route-validate|single-year-analysis}
 """
 import os
 import sys
@@ -43,6 +44,11 @@ def main():
     elif cmd == "validate":
         from src.community_encoder.train_DESK.validate_spacetime import run_validate
         run_validate()
+    elif cmd == "single-year-analysis":
+        from community_encoder.analysis_2023.single_year_analysis import run_single_year_analysis
+        from community_encoder.analysis_2023.compare_esk_desk import compare_esk_desk
+        run_single_year_analysis()
+        compare_esk_desk()
     elif cmd == "bbs-route-validate":
         # Route-level BBS validation: grades DESK against a no-change null on GENUINELY
         # SURVEYED cell-years, escaping the IDW-interpolated target every other metric uses.
@@ -51,7 +57,8 @@ def main():
         run()
     else:
         sys.exit(f"unknown encoder stage: {cmd!r} (ebird-cache|trend-points|esk|"
-                 "spacetime-esk|desk|cube|validate|bbs-route-validate)")
+                 "spacetime-esk|desk|cube|validate|bbs-route-validate|"
+                 "single-year-analysis)")
 
 
 if __name__ == "__main__":

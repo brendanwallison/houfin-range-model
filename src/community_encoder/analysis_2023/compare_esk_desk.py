@@ -11,7 +11,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from .analysis_utils import build_output_dir, load_latent_matrix, load_mask, save_image
-from .config_utils import load_config
+from src.config_utils import load_config
 
 
 def compare_esk_desk(config: Optional[Union[Dict[str, Any], str, os.PathLike]] = None) -> Dict[str, Any]:

@@ -18,7 +18,7 @@ from .analysis_utils import (
     load_response_raster,
     save_image,
 )
-from .config_utils import load_config
+from src.config_utils import load_config
 
 
 def run_bayesian_regression(z: np.ndarray, y: np.ndarray, out_dir: str) -> Dict[str, float]:

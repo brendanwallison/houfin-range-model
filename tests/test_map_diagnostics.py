@@ -408,3 +408,37 @@ def test_viz_reader_path_survives_sampled_to_deterministic_migrations():
         assert np.isfinite(curves[key]).all(), key
     # Sa and Sj must now be DIFFERENT curves -- they were the same field before the untying.
     assert not np.allclose(curves["Sa"], curves["Sj"])
+
+
+def test_sj_reads_its_own_manifold_not_the_adult_one():
+    """Sj must respond to H_sj and be independent of H_s.
+
+    The model is ``S_j = sigmoid(alpha_j + gamma_j * H_sj_local)`` with
+    ``H_sj_local = z . beta_sj`` (age_fields.py). age_model_math.rates_from_manifolds
+    fed it ``H_s`` instead, so every Sj curve (figure 05) and every lambda in the
+    Z-feature attribution (figures 06a/06b/14 and metrics.json) came from the ADULT
+    survival weights.
+
+    The pre-existing `Sa != Sj` assertion above does NOT catch this: alpha_a != alpha_j,
+    so the two curves differ by their intercepts even when both read H_s. This pins the
+    dependency itself -- vary H_sj alone and Sj must move; vary H_s alone and it must not.
+    """
+    from src.vis.age_model_math import rates_from_manifolds
+
+    p = {"alpha_a": 0.3, "alpha_j": -0.4, "alpha_f": 0.2, "alpha_k": 1.0,
+         "gamma_a": 1.0, "gamma_j": 1.0, "gamma_f": 1.0, "gamma_k": 1.0}
+    H = np.linspace(-2.0, 2.0, 7)
+    zero = np.zeros_like(H)
+
+    sj_varies = rates_from_manifolds(p, H_s=zero, H_sj=H, H_r=zero)["Sj"]
+    sj_frozen = rates_from_manifolds(p, H_s=H, H_sj=zero, H_r=zero)["Sj"]
+    assert not np.allclose(sj_varies, sj_varies[0]), "Sj must depend on H_sj"
+    assert np.allclose(sj_frozen, sj_frozen[0]), "Sj must NOT depend on H_s"
+
+    # Sa is the mirror image: driven by H_s, blind to H_sj.
+    sa = rates_from_manifolds(p, H_s=zero, H_sj=H, H_r=zero)["Sa"]
+    assert np.allclose(sa, sa[0]), "Sa must NOT depend on H_sj"
+
+    # H_sj is required, so the old call signature cannot silently resurface.
+    with pytest.raises(TypeError):
+        rates_from_manifolds(p, zero, zero)

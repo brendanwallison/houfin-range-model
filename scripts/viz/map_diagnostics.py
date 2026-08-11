@@ -564,9 +564,14 @@ def plot_w_env_ranking(sim, out, names=None):
         for i in order[::-1]]}
 
 
-def _lambda_from_manifolds(p, H_s, H_r):
-    """Fundamental λ implied by survival/reproduction manifold values."""
-    r = rates_from_manifolds(p, H_s, H_r)
+def _lambda_from_manifolds(p, H_s, H_sj, H_r):
+    """Fundamental λ implied by adult-survival, juvenile-survival and reproduction manifolds.
+
+    λ depends on Sj, and Sj reads ``beta_sj`` -- its own w_env column since the rank-2
+    manifold prior. Passing only H_s/H_r here (as this did) evaluated every λ in this
+    figure from the ADULT survival weights.
+    """
+    r = rates_from_manifolds(p, H_s, H_sj, H_r)
     return local_growth_lambda(r["Sa"], r["Sj"], r["Fmax"])
 
 
@@ -595,7 +600,7 @@ def plot_z_feature_attribution(data, sim, years, rows, cols, shape, out,
     comparison within this figure is self-consistent, which is what it is for.
     """
     p = demographic_params(sim["latents"])
-    beta_s, beta_r = p["beta_s"], p["beta_r"]
+    beta_s, beta_r, beta_sj = p["beta_s"], p["beta_r"], p["beta_sj"]
     i0, i1, modern_span = era_span(modern_era, years)
     b0, b1, base_span = era_span(baseline_era, years)
     Z_full = data["Z_gathered"]
@@ -603,13 +608,19 @@ def plot_z_feature_attribution(data, sim, years, rows, cols, shape, out,
     Z_base = np.asarray(Z_full[b0:b1]).mean(axis=0)
     dZ = Z_mod - Z_base
 
-    H_s_base, H_r_base = Z_base @ beta_s, Z_base @ beta_r
-    lam_base = _lambda_from_manifolds(p, H_s_base, H_r_base)
-    lam_mod = _lambda_from_manifolds(p, Z_mod @ beta_s, Z_mod @ beta_r)
+    H_s_base, H_sj_base, H_r_base = Z_base @ beta_s, Z_base @ beta_sj, Z_base @ beta_r
+    lam_base = _lambda_from_manifolds(p, H_s_base, H_sj_base, H_r_base)
+    lam_mod = _lambda_from_manifolds(p, Z_mod @ beta_s, Z_mod @ beta_sj, Z_mod @ beta_r)
 
     def attributed(m):
+        # Feature m enters ALL THREE manifolds, so the single-feature counterfactual must
+        # move all three. Moving only beta_s/beta_r held juvenile survival at its baseline
+        # while claiming to vary feature m, which understated every attribution.
         return _lambda_from_manifolds(
-            p, H_s_base + dZ[:, m] * beta_s[m], H_r_base + dZ[:, m] * beta_r[m]) - lam_base
+            p,
+            H_s_base + dZ[:, m] * beta_s[m],
+            H_sj_base + dZ[:, m] * beta_sj[m],
+            H_r_base + dZ[:, m] * beta_r[m]) - lam_base
 
     M = Z_mod.shape[1]
     names = list(names) if names is not None else [f"Z_{i}" for i in range(M)]

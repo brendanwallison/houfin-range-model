@@ -232,10 +232,10 @@ def _gamma_slope(latents, name, raw_name):
 def demographic_params(latents):
     """Unpack the fitted link parameters shared by every synthetic-Z diagnostic.
 
-    Returns a dict with ``beta_s``/``beta_r``/``beta_k`` (the three ``w_env``
-    columns), the four ``alpha_*`` intercepts and the four ``gamma_*`` slopes,
-    all on the links' own scales, ready to feed ``sigmoid``/``softplus`` exactly
-    as ``age_fields.py`` does.
+    Returns a dict with ``beta_s``/``beta_r``/``beta_k``/``beta_sj`` (the four
+    ``w_env`` columns), the four ``alpha_*`` intercepts and the four ``gamma_*``
+    slopes, all on the links' own scales, ready to feed ``sigmoid``/``softplus``
+    exactly as ``age_fields.py`` does.
 
     Split out of :func:`response_curve_fields` so the Z-feature attribution maps
     share one copy of the checkpoint-compatibility logic (the K link changed
@@ -245,10 +245,10 @@ def demographic_params(latents):
     if "w_env" not in latents:
         raise KeyError(
             "demographic_params needs 'w_env', which is a numpyro.deterministic "
-            "under the one-factor manifold prior -- auto_delta_params_to_latents "
+            "under the rank-2 manifold prior -- auto_delta_params_to_latents "
             "returns only SAMPLED sites, so the caller must fold the deterministic "
             "value in (see map_diagnostics.reconstruct_map)")
-    w_env = np.asarray(latents["w_env"])  # (M, 3): beta_s, beta_r, beta_k
+    w_env = np.asarray(latents["w_env"])  # (M, 4): beta_s, beta_r, beta_k, beta_sj
     beta_s, beta_r = w_env[:, 0], w_env[:, 1]
     # Capacity has its OWN manifold now; reusing beta_r here would silently plot a
     # curve the model does not use. Two-column checkpoints predate the split.
@@ -293,19 +293,27 @@ def demographic_params(latents):
     }
 
 
-def rates_from_manifolds(p, H_s, H_r, H_k=None):
+def rates_from_manifolds(p, H_s, H_sj, H_r, H_k=None):
     """Apply the model's link functions to already-projected manifold values.
 
-    ``p`` is a :func:`demographic_params` dict; ``H_s``/``H_r``/``H_k`` are
-    ``Z . beta_*`` for survival, reproduction and capacity. Links mirror
-    ``age_fields.py`` exactly: sigmoid for Sa/Sj, softplus for Fmax/K. K is BASE
-    capacity -- before the continental time trend and before the mycoplasmal-
-    conjunctivitis effect, which are functions of location and year and so have
-    no value for a synthetic Z point.
+    ``p`` is a :func:`demographic_params` dict; ``H_s``/``H_sj``/``H_r``/``H_k``
+    are ``Z . beta_*`` for adult survival, JUVENILE survival, reproduction and
+    capacity. Links mirror ``age_fields.py`` exactly: sigmoid for Sa/Sj, softplus
+    for Fmax/K. K is BASE capacity -- before the continental time trend and before
+    the mycoplasmal-conjunctivitis effect, which are functions of location and year
+    and so have no value for a synthetic Z point.
+
+    ``H_sj`` is REQUIRED, deliberately. Juvenile survival reads its own manifold
+    (``age_fields.py`` S_j_val = sigmoid(alpha_j + gamma_j * H_sj_local), where
+    H_sj_local = z . beta_sj); this function previously fed it ``H_s``, so every
+    Sj curve and every lambda in the attribution maps came from the ADULT weights.
+    beta_s and beta_sj are prior-correlated at ~0.83 but are not equal, so the
+    error was plausible-looking rather than obvious. A default would let the same
+    mistake back in silently.
     """
     out = {
         "Sa": sigmoid(p["alpha_a"] + p["gamma_a"] * H_s),
-        "Sj": sigmoid(p["alpha_j"] + p["gamma_j"] * H_s),
+        "Sj": sigmoid(p["alpha_j"] + p["gamma_j"] * H_sj),
         "Fmax": softplus(p["alpha_f"] + p["gamma_f"] * H_r),
     }
     if H_k is not None:
@@ -334,9 +342,11 @@ def response_curve_fields(latents, z_sweep, target_idx):
     this synthetic single-point sweep never included, and that term is long gone
     from the real model too.
 
-    K reads its own manifold ``H_k = Z.beta_k`` (``w_env[:, 2]``), not H_r; a
-    2-column ``w_env`` from an older checkpoint falls back to beta_r with the old
-    meaning. The K curve is BASE carrying capacity, before the continental time
+    Each rate reads its OWN manifold: Sa from ``beta_s`` (``w_env[:, 0]``), Fmax
+    from ``beta_r`` (``[:, 1]``), K from ``beta_k`` (``[:, 2]``), and Sj from
+    ``beta_sj`` (``[:, 3]``). Narrower ``w_env`` from an older checkpoint falls
+    back to the column that rate used to share. The K curve is BASE carrying
+    capacity, before the continental time
     trend and before the mycoplasmal-conjunctivitis effect. That effect is ``K_base * (1 - severity(x)*gate(x,t)*(1-recovery))``,
     all three factors being functions of location and year, so a synthetic single
     Z point has no well-defined value for it. Read the fitted severity map in
@@ -348,6 +358,7 @@ def response_curve_fields(latents, z_sweep, target_idx):
     return rates_from_manifolds(
         p,
         H_s=z_sweep * p["beta_s"][target_idx],
+        H_sj=z_sweep * p["beta_sj"][target_idx],
         H_r=z_sweep * p["beta_r"][target_idx],
         H_k=z_sweep * p["beta_k"][target_idx],
     )

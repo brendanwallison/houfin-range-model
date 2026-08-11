@@ -195,7 +195,13 @@ def build_streamer(spec, start_year, end_year):
     stype = spec["type"]
     name = spec.get("name", stype)
     if stype == "per_variable":
-        alpha = ema_alpha(spec.get("ema_tau", 10.0))
+        # ema_tau is required, not defaulted. The old default of 10.0 was the pre-2026 value;
+        # the config now sets 2 on every EMA stream ("Was 10 (~7-yr half-life); reduced so
+        # z_raw fluxes and the two lags stay identifiable"), so a spec that omitted it would
+        # be smoothed seven times harder than intended, silently.
+        if "ema_tau" not in spec:
+            raise KeyError(f"stream {name!r} (per_variable) must set ema_tau in states.streams")
+        alpha = ema_alpha(spec["ema_tau"])
         return PerVariableYearStreamer(spec["grid_dir"], spec["variables"],
                                        start_year, end_year, alpha, name=name)
     if stype == "static":

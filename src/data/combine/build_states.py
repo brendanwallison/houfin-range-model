@@ -99,22 +99,6 @@ def resolve_spec(spec):
     return spec
 
 
-def default_specs(dr):
-    """Fallback stream specs keyed to the standard preprocess output dirs."""
-    return [
-        {"name": "climate", "type": "per_variable",
-         "grid_dir": os.path.join(dr, "climate_grid"), "ema_tau": 10},
-        {"name": "landuse", "type": "per_variable",
-         "grid_dir": os.path.join(dr, "luh3_grid"), "ema_tau": 10},
-        {"name": "hyde", "type": "per_variable",
-         "grid_dir": os.path.join(dr, "hyde35_grid"), "ema_tau": 10},
-        {"name": "soil", "type": "static",
-         "grid_dir": os.path.join(dr, "soilgrids_grid")},
-        {"name": "elevation", "type": "static",
-         "grid_dir": os.path.join(dr, "elevation"), "suffix": ".tif"},
-    ]
-
-
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -135,7 +119,19 @@ def main():
     dcfg = load_data_config()
     dr = dcfg["datasets_root"]
     scfg = cfg.get("states", {})
-    specs = [resolve_spec(s) for s in (scfg.get("streams") or default_specs(dr))]
+    # states.streams is REQUIRED, with no built-in fallback. There used to be a
+    # default_specs() here, and it had gone stale in the two ways that matter most: it
+    # named climate_grid (the annual scheme-v1 dir that climate_grid.assert_no_legacy_rasters
+    # now refuses to write into) instead of climate_grid_monthly, and it set ema_tau=10 where
+    # the config sets 2. A stale fallback for the covariate set is the one kind of residue
+    # that produces wrong NUMBERS rather than an error, so it fails loudly instead.
+    if not scfg.get("streams"):
+        raise SystemExit(
+            "states.streams is missing from the ESK/DESK config. It is the authoritative "
+            "covariate-stream registry (name/type/grid_dir/ema_tau per stream); there is no "
+            "default, because a default that drifts from the config would silently build a "
+            "different covariate set than the one the encoder was normalized against.")
+    specs = [resolve_spec(s) for s in scfg["streams"]]
     warmup = args.warmup if args.warmup is not None else int(scfg.get("warmup", 20))
     out = args.out or cfg["paths"]["hist_dir"]
 

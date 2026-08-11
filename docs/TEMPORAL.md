@@ -99,8 +99,8 @@ defensible; it is documented, not silent.
 - `src/temporal.py` — `load_timeline`, `model_years`, `bio_year_months`,
   `year_to_index` (gap-safe), `assert_contiguous`, `invasion_timestep`,
   `disease_timestep`.
-- `src/data/combine/states.py` — builds the bio-year climate stack and the
-  yearly states over `first_year … end_year`.
+- `src/data/combine/build_states.py` (+ `combine/streams.py`) — builds the
+  bio-year climate stack and the yearly states over `first_year … end_year`.
 - `src/data/combine/model_inputs.py` — maps BBS `obs_year → t` via
   `year_to_index`; derives `inv_timestep` and `disease_timestep`; asserts the
   year axis is contiguous.

@@ -2,7 +2,7 @@
 
 Downloads the **weekly relative-abundance-median** GeoTIFFs consumed by the
 community encoder, for a configurable set of species, hitting the S&T REST API
-directly. Mirrors the house style of ``scripts/download_prism.py`` (streaming
+directly. Mirrors the house style of the other acquire clients (streaming
 download, retries + backoff, thread pool, tqdm, idempotent skip, and
 ``--scan-only`` / ``--verify`` / ``--resume`` modes).
 

@@ -32,7 +32,7 @@ import time
 import multiprocessing
 from concurrent.futures import FIRST_COMPLETED, ProcessPoolExecutor, wait
 
-from src.config_utils import load_data_config
+from src.config_utils import load_config, load_data_config
 from src.temporal import load_timeline
 
 _R_SCRIPT = os.path.join(os.path.dirname(__file__), "climate_climr.R")
@@ -233,10 +233,11 @@ def _ensure_subcell_centroids(cfg, out_csv, grid):
     if not found:
         raise SystemExit(f"subgrid climate needs a DEM in {dem_dir} (run scripts/download_dem.py)")
     # Drop ocean sub-points (elevation alone keeps them: the DEM gives ocean a finite
-    # value). Two filters: 25 km parent ocean mask (grid alignment) + a fine sub-point
+    # value). Two filters: the parent-grid ocean mask (grid alignment) + a fine sub-point
     # land mask from the same Natural Earth polygon (coastal water points).
+    # latent_cube lives in the ESK/DESK config, not data_config -- see subcell_centroids.
     res_km = cfg["grid"]["target_res_m"] // 1000
-    mask_path = cfg.get("latent_cube", {}).get("water_mask_path") \
+    mask_path = load_config().get("latent_cube", {}).get("water_mask_path") \
         or os.path.join(cfg["datasets_root"], "land_mask", f"ocean_mask_{res_km}km.tif")
     land_mask = load_grid_reference(mask_path)[0] if os.path.exists(mask_path) else None
     if land_mask is None:

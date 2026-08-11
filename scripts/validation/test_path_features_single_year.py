@@ -202,8 +202,8 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--year", type=str, default="1990")
-    parser.add_argument("--input_dir", type=str, default=f"{_DR}/latent_avian_community_similarities")
-    parser.add_argument("--output_dir", type=str, default=f"{_PR}/datasets/latent_avian_path_diagnostics")
+    parser.add_argument("--input_dir", type=str, default=f"{_PR}/encoder/cube")
+    parser.add_argument("--output_dir", type=str, default=f"{_PR}/latent_avian_path_diagnostics")
     parser.add_argument("--steps", type=int, default=None)
     
     args = parser.parse_args()

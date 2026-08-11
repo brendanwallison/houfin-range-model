@@ -178,11 +178,16 @@ def compute_optimal_latent_z_ruzicka(ebird_flat, n_species, n_weeks, latent_dim,
 
     print(f"Computing Exact Global Kernel on {M} landmarks (Dim={D})...")
 
+    # Raise, don't `return None`. This predates return_proj=True, so the None flowed into a
+    # 3-tuple unpack at the caller (run_spacetime_esk) and a genuine OOM surfaced as
+    # "TypeError: cannot unpack non-iterable NoneType", burying the one message that says
+    # what to do about it.
     try:
         T_lm = torch.tensor(X_lm_np, device=device, dtype=torch.float32)
-    except RuntimeError:
-        print("VRAM limit warning: Landmarks too large. Reduce n_landmarks.")
-        return None
+    except RuntimeError as exc:
+        raise RuntimeError(
+            f"out of memory uploading {M} x {D} landmarks to {device} "
+            f"({M * D * 4 / 2**30:.1f} GiB as float32). Reduce bbs.n_landmarks.") from exc
 
     sum_lm = T_lm.sum(dim=1, keepdim=True)
     l1_dist = torch.cdist(T_lm, T_lm, p=1)

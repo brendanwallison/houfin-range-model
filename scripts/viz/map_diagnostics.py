@@ -488,26 +488,27 @@ def plot_response_curves(sim, out, top_n=6, names=None):
     return {"response_curve_top_features": [int(i) for i in top_idx]}
 
 
-def z_feature_names(cfg, n_features):
-    """Human-readable Z feature labels, or ``Z_0..Z_{M-1}`` when unavailable.
+def z_feature_names(n_features):
+    """Axis labels for the Z features: ``Z_0..Z_{M-1}``.
 
-    Labels live alongside the path-integrated dispersal covariates
-    (``Z_disp_*.npz``, key ``labels``), which is the same source
-    ``analysis/analyze_svi.py`` reads. Padded/truncated to ``n_features`` rather
-    than raising: a label mismatch must never cost a figure.
+    There is no human-readable name to be had. Z is the ESK's uncentered Ružička
+    Nyström eigenbasis, so a feature is an eigenvector index and nothing more; the
+    interpretive tooling reads loadings, not names.
+
+    This used to glob ``Z_disp_*.npz`` in ``path_diagnostics_dir`` for a ``labels``
+    key, which was wrong twice over, and silently:
+
+      * that is not where the active pipeline writes them --
+        ``generate_all_path_features.py`` writes ``Z_disp_*.npz`` into
+        ``path_features.output_dir`` -- so the glob always came up empty and every
+        figure fell through to exactly the labels produced here, with the
+        ``except (KeyError, OSError, ValueError)`` hiding it; and
+      * ``labels`` in that file is the DISPERSAL-KERNEL label list
+        (``to_NORTH_0-155``, ..., length K=12, see ``generate_all_path_features.py:258``),
+        not Z-feature names. Had the glob ever hit, figures would have carried
+        cohort names on a Z-feature axis, truncated to the first 12.
     """
-    names = []
-    try:
-        disp = sorted(Path(cfg["path_diagnostics_dir"]).glob("Z_disp_*.npz"))
-        if disp:
-            with np.load(disp[0], allow_pickle=True) as loader:
-                if "labels" in loader:
-                    names = [str(x) for x in loader["labels"]]
-    except (KeyError, OSError, ValueError):
-        names = []
-    names = list(names[:n_features])
-    names += [f"Z_{i}" for i in range(len(names), n_features)]
-    return names
+    return [f"Z_{i}" for i in range(n_features)]
 
 
 def plot_w_env_ranking(sim, out, names=None):
@@ -2068,7 +2069,7 @@ def main():
     plot_modern_rate_maps(sim, years, rows, cols, shape,
                           out / "03_modern_demographic_rates.png", modern_era)
     fit_metrics = plot_fit_diagnostics(sim, data, years, out / "04_map_fit_diagnostics.png")
-    z_names = z_feature_names(cfg, np.asarray(sim["latents"]["w_env"]).shape[0])
+    z_names = z_feature_names(np.asarray(sim["latents"]["w_env"]).shape[0])
     response_metrics = plot_response_curves(
         sim, out / "05_demographic_response_curves.png", names=z_names)
     ranking_metrics = plot_w_env_ranking(sim, out / "05b_w_env_ranking.png", names=z_names)

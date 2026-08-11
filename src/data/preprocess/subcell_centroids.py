@@ -119,7 +119,7 @@ def main():
     import glob
     import os
 
-    from src.config_utils import load_data_config
+    from src.config_utils import load_config, load_data_config
     from src.data.preprocess.bbs import load_grid_reference
 
     cfg = load_data_config()
@@ -149,11 +149,16 @@ def main():
         dem_path = found[0]
     out = args.out or os.path.join(cfg["datasets_root"], "elevation", "subcell_centroids.csv")
 
-    # Ocean filters: (1) 25 km parent mask aligns to the modeled grid; (2) fine land
-    # mask (same Natural Earth polygon as the 25 km mask, rasterized at the sub-point
-    # grid) drops coastal water sub-points. Both fall back gracefully if absent.
+    # Ocean filters: (1) the parent-grid mask aligns to the modeled grid; (2) a fine land
+    # mask (same Natural Earth polygon, rasterized at the sub-point grid) drops coastal
+    # water sub-points. Both fall back gracefully if absent.
+    #
+    # latent_cube.water_mask_path lives in the ESK/DESK config, not data_config, so reading
+    # it off `cfg` here always yielded None and the override silently applied to
+    # build_states (which uses load_config) but not to this stage. load_config to make the
+    # three mask resolutions agree.
     res_km = cfg["grid"]["target_res_m"] // 1000
-    mask_path = args.mask or cfg.get("latent_cube", {}).get("water_mask_path") \
+    mask_path = args.mask or load_config().get("latent_cube", {}).get("water_mask_path") \
         or os.path.join(cfg["datasets_root"], "land_mask", f"ocean_mask_{res_km}km.tif")
     land_mask = None
     if os.path.exists(mask_path):

@@ -22,7 +22,7 @@
 # Select stages with STAGES (space-separated, in order). Runnable standalone on a
 # login node for a quick partial stage. bbs_trend/ebird_trend/trend_points are the
 # bbs_mode=trend community path; for bbs_mode=off drop them.
-#     STAGES=esk  bash scripts/tacc/pipeline.sh          # just ESK
+#     STAGES=spacetime-esk bash scripts/tacc/pipeline.sh   # just the joint ESK
 #     STAGES="climate_grid states ebird_cache" bash scripts/tacc/pipeline.sh
 #----------------------------------------------------------------------
 set -euo pipefail

@@ -21,8 +21,8 @@ nonlinear quantile applied last, so interpolated years yield true quantiles of
 the time-interpolated surface — not interpolated quantiles.
 
 Run:
-    python scripts/aggregate_and_interpolate_bui.py            # snapshots only
-    python scripts/aggregate_and_interpolate_bui.py --interpolate  # + yearly
+    python scripts/deprecated/aggregate_and_interpolate_bui.py            # snapshots only
+    python scripts/deprecated/aggregate_and_interpolate_bui.py --interpolate  # + yearly
 """
 import argparse
 import glob

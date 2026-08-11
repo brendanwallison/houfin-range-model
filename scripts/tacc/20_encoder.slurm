@@ -1,8 +1,8 @@
 #!/bin/bash
 #----------------------------------------------------------------------
 # Community-encoder stages (SEPARATE from preprocessing; run AFTER
-# 00_preprocess_all has produced states + eBird cache + amplitude points):
-#     esk -> desk -> cube -> validate -> encoder-viz (optional diagnostics)
+# 00_preprocess_all has produced states + the trend point set):
+#     spacetime-esk -> desk -> cube -> validate -> encoder-viz (optional diagnostics)
 # ESK (Nystrom kernel-PCA) and DESK (autoencoder training) both use torch and are
 # the heavy stages, hence a GPU queue. They are often best submitted ONE AT A TIME
 # so each can be sized/queued on its own — pass STAGES.
@@ -11,7 +11,7 @@
 # DEB23008), the `#SBATCH -A` line below is deliberately disabled, and SLURM rejects a job with
 # no allocation ("which project you would like to charge against ... FAILED"). Only
 # submit_encoder.sh injects `-A $TACC_ALLOCATION` from env.sh:
-#     STAGES=esk      bash scripts/tacc/submit_encoder.sh
+#     STAGES=spacetime-esk bash scripts/tacc/submit_encoder.sh
 #     STAGES=desk     TIME=04:00:00 bash scripts/tacc/submit_encoder.sh
 #     STAGES="cube validate"    bash scripts/tacc/submit_encoder.sh
 #     STAGES=bbs-route-validate bash scripts/tacc/submit_encoder.sh
@@ -52,7 +52,7 @@ source "$SLURM_SUBMIT_DIR/scripts/tacc/gpu_monitor.sh"
 module load python/3.12.11 2>/dev/null || true
 module load remora 2>/dev/null || true
 [ -n "${TACC_ALLOCATION:-}" ] && echo "allocation: $TACC_ALLOCATION"
-export STAGES="${STAGES:-esk desk cube validate}"
+export STAGES="${STAGES:-spacetime-esk desk cube validate}"
 
 # torch preflight. ESK/DESK are heavy and need a GPU; cube/validate/encoder-viz are
 # CPU-fine (they just project/plot), so only REQUIRE a CUDA device for the heavy stages.

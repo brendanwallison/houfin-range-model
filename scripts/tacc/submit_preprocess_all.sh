@@ -3,7 +3,7 @@
 # Pass a STAGES subset through the environment; override QUEUE/TIME for a longer run
 # (e.g. cold climr on `normal`).
 #     bash scripts/tacc/submit_preprocess_all.sh                                    # dev, 2h, full preprocessing
-#     STAGES="climate_grid states ebird_cache bbs amplitude" bash scripts/tacc/submit_preprocess_all.sh
+#     STAGES="climate_grid states bbs_trend bbs_abund ebird_trend trend_points" bash scripts/tacc/submit_preprocess_all.sh
 #     QUEUE=normal TIME=06:00:00 STAGES=climate bash scripts/tacc/submit_preprocess_all.sh
 set -euo pipefail
 source "$(dirname "$0")/env.sh"

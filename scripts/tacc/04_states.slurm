@@ -44,12 +44,13 @@ date
 
 # All CPU / torch-free pre-encoder assembly, in dependency order:
 #   states       -> per-year N-stream covariate states + schema
-#   ebird_cache  -> reprojected eBird stack E (needed by amplitude)
-#   bbs          -> AOU<->eBird crosswalk + gridded per-species community_matrix
-#   amplitude    -> x = E * BBS-anomaly point cube (needs ebird_cache + bbs)
-# The GPU job (20_encoder) stays purely esk -> desk -> cube -> validate.
-export STAGES="${STAGES:-states ebird_cache bbs amplitude}"
+#   bbs_trend    -> USGS BBS trend rasters aligned to the ref grid
+#   bbs_abund    -> USGS BBS abundance rasters aligned to the ref grid
+#   ebird_trend  -> eBird S&T trends parquet gridded (supplies the trends-abd anchor)
+#   trend_points -> X_points/point_index: the community point set the ESK consumes
+# The GPU job (20_encoder) stays purely spacetime-esk -> desk -> cube -> validate.
+export STAGES="${STAGES:-states bbs_trend bbs_abund ebird_trend trend_points}"
 bash "$SLURM_SUBMIT_DIR/scripts/tacc/pipeline.sh"
 
-echo "=== 04_states complete ($STAGES) -> states + eBird stack + community_matrix + amplitude cube ==="
+echo "=== 04_states complete ($STAGES) -> states + aligned trend rasters + trend point set ==="
 date

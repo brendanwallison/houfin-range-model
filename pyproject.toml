@@ -57,6 +57,13 @@ dev = [
     "pytest>=8.0",
 ]
 
+# The whole suite is data-free: a bare `pytest` runs to completion on a laptop with no
+# ${HOUFIN_DATA}/${HOUFIN_PROCESSED} tree. testpaths pins the surface to tests/ so
+# collection cannot drift into scripts/, where argparse CLIs named test_*.py would be
+# imported (executing their module-level config load) while contributing no test items.
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
 [tool.setuptools]
 package-dir = {"" = "src"}
 

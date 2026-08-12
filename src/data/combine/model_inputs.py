@@ -282,17 +282,8 @@ def ingest_data():
     land_mask = (bbs_data['land'].astype(np.float32) > 0.5).astype(int)
     # Seed map is a DIMENSIONLESS shape (core=1, margin=observed ratio); the model
     # scales it by the fitted capacity level times a configured fraction, so the seed
-    # is always a known fraction of capacity. Older npz files carry absolute values
-    # (initpop_route_counts, or initpop_density in relative units) -- normalize those
-    # to a shape so a legacy file still runs, since only the pattern is used now.
-    if 'initpop_shape' in bbs_data:
-        initpop_map = bbs_data['initpop_shape'] * land_mask
-    else:
-        legacy = bbs_data['initpop_route_counts'] if 'initpop_route_counts' in bbs_data \
-            else bbs_data['initpop_density']
-        peak = float(np.max(legacy)) or 1.0
-        initpop_map = (legacy / peak) * land_mask
-        print(f"  [compat] legacy initpop normalized to a shape (peak was {peak:g})")
+    # is always a known fraction of capacity.
+    initpop_map = bbs_data['initpop_shape'] * land_mask
     print(f"  Init shape: core {initpop_map.max():.2f}, "
           f"nonzero cells {int((initpop_map > 0).sum())}")  # already at grid res
 
@@ -314,10 +305,10 @@ def ingest_data():
     orig_years = bbs_data['obs_year']
     orig_counts = bbs_data['observed_results']
     n_pseudo_orig = int(bbs_data['N_pseudo'])
-    # Per-observation quality tier (0 = standard, 1 = mx_unprocessed). Older BBS
-    # npz files predate this field -> default everything to standard.
-    orig_quality = (bbs_data['obs_quality'] if 'obs_quality' in bbs_data.files
-                    else np.zeros_like(orig_rows))
+    # Per-observation quality tier (0 = standard US/Canada, 1 = mx_unprocessed). Always
+    # written by bbs.py; NOT defaulted, because silently zeroing it would erase the Mexico
+    # tier and quietly disable the NB2 quality down-weighting in age_priors.
+    orig_quality = bbs_data['obs_quality']
 
     # Split Real vs Pseudo
     real_indices = slice(n_pseudo_orig, None)
@@ -626,11 +617,8 @@ def ingest_data():
         "initpop_latent": initpop_map,
         # THE GAUGE (expected BBS route counts per relative density unit). Renamed
         # from ..._birds_per_relative_unit, which it never was -- a BBS count is a
-        # 50-stop roadside index, not an absolute population. Old key accepted as a
-        # fallback so existing metadata still loads.
-        "pop_scalar": float(POPULATION_SPEC.get(
-            "population_scale_route_counts_per_relative_unit",
-            POPULATION_SPEC.get("population_scale_birds_per_relative_unit"))),
+        # 50-stop roadside index, not an absolute population.
+        "pop_scalar": float(POPULATION_SPEC["population_scale_route_counts_per_relative_unit"]),
         # (n_sites, 2) row/col pairs -- see nearest_land_cells. Plural because the
         # sighting record does not establish a single release site.
         "inv_locations": inv_locations,

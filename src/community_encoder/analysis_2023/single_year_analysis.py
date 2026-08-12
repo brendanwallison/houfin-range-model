@@ -71,7 +71,6 @@ def run_single_year_analysis(config: Optional[Union[Dict[str, Any], str, os.Path
 
     z_path = (
         analysis_cfg.get("esk_feature_path")
-        or analysis_cfg.get("esk_z_path")
         or os.path.join(paths.get("esk_output_dir", ""), "Z.npy")
     )
     mask_path = analysis_cfg.get("mask_path") or os.path.join(paths.get("esk_output_dir", ""), "valid_mask.npy")

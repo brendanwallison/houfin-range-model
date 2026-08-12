@@ -111,7 +111,6 @@ def build_spacetime_cube(config: Optional[Union[Dict[str, Any], str, os.PathLike
 
     paths = config.get("paths", {})
     cube_cfg = config.get("latent_cube", {})
-    desk_cfg = config.get("desk", {})
 
     # Gap-fill radius in km -> pixels at the model grid, so the fill footprint
     # is resolution-independent (was a hardcoded 25 px = 100 km at 4 km, but
@@ -120,19 +119,26 @@ def build_spacetime_cube(config: Optional[Union[Dict[str, Any], str, os.PathLike
     _res_km = load_data_config()["grid"]["target_res_m"] // 1000
     radius_px = int(round(cube_cfg.get("radius_km", 100) / _res_km))
 
-    data_dir = cube_cfg.get("data_dir") or paths.get("data_dir") or load_data_config()["datasets_root"]
-    hist_dir = cube_cfg.get("hist_dir") or paths.get("hist_dir")
-    if not hist_dir:
-        raise KeyError("latent_cube.hist_dir (or paths.hist_dir) must be set in esk_desk_config")
-    if os.path.basename(hist_dir) != "yearly_states" and os.path.isdir(os.path.join(hist_dir, "yearly_states")):
-        hist_dir = os.path.join(hist_dir, "yearly_states")
+    # Every path is REQUIRED from latent_cube, with no fallback chain. There used to be one --
+    # `cube_cfg.get(k) or desk_cfg.get(k) or paths.get(k) or <derived>`, up to five deep -- and it
+    # was the mechanism by which the THREE independent copies of the ESK-basis path (latent_cube.
+    # z_dir, latent_cube.z_ref_path/mask_ref_path, desk.z_dir) could silently disagree: a chain
+    # that resolves is indistinguishable from a chain that resolves to the wrong thing. All eight
+    # keys are explicitly set in the committed config, so the fallbacks only ever hid a typo.
+    def _req(key):
+        v = cube_cfg.get(key)
+        if not v:
+            raise KeyError(f"latent_cube.{key} must be set in esk_desk_config.json")
+        return v
 
-    z_dir = cube_cfg.get("z_dir") or desk_cfg.get("z_dir") or paths.get("desk_output_dir", "")
-    model_path = cube_cfg.get("model_path") or os.path.join(paths.get("desk_output_dir", ""), "env_model_semisup.pth")
-    z_ref_path = cube_cfg.get("z_ref_path") or os.path.join(z_dir, "Z.npy")
-    mask_ref_path = cube_cfg.get("mask_ref_path") or os.path.join(z_dir, "valid_mask.npy")
-    water_mask_path = cube_cfg.get("water_mask_path") or os.path.join(data_dir, "land_mask", f"ocean_mask_{_res_km}km.tif")
-    output_dir = cube_cfg.get("output_dir") or os.path.join(paths.get("desk_output_dir", ""), "spacetime_cube")
+    data_dir = _req("data_dir")
+    hist_dir = _req("hist_dir")
+    z_dir = _req("z_dir")
+    model_path = _req("model_path")
+    z_ref_path = _req("z_ref_path")
+    mask_ref_path = _req("mask_ref_path")
+    water_mask_path = _req("water_mask_path")
+    output_dir = _req("output_dir")
 
     os.makedirs(output_dir, exist_ok=True)
 
@@ -148,7 +154,7 @@ def build_spacetime_cube(config: Optional[Union[Dict[str, Any], str, os.PathLike
     # Normalization + architecture come from the trainer's desk_meta.npz — one
     # source of truth, so the cube standardizes exactly as training did.
     import json as _json
-    meta_path = cube_cfg.get("desk_meta") or os.path.join(paths.get("desk_output_dir", ""), "desk_meta.npz")
+    meta_path = os.path.join(paths["desk_output_dir"], "desk_meta.npz")
     dm = np.load(meta_path, allow_pickle=True)
     mu, sd = dm["mu"].astype(np.float32), dm["sd"].astype(np.float32)
     stream_dims = [int(d) for d in dm["stream_dims"]]

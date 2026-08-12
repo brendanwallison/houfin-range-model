@@ -377,15 +377,17 @@ def zspace_reconstruction(config, pidx, X, Z_desk, recent_year, to_rec, has_rec)
         err_desk     = || z_DESK(cell,year) - z_obs(cell,year) ||
         err_nochange = || z_obs(cell,recent) - z_obs(cell,year) ||   (assume it looked like 2023)
     DESK is a per-cell value-add where err_desk < err_nochange. Coordinates are comparable
-    because both live in the one concrete ESK basis (no rotation freedom). Returns None if
-    the ESK projection wasn't saved (i.e. ESK predates this feature -- re-run esk).
+    because both live in the one concrete ESK basis (no rotation freedom).
     """
     import json as _json
     from .esk_kernel import project_into_z, smooth_abundances
     zdir = config["desk"]["z_dir"]
     lmp, pmp = os.path.join(zdir, "esk_landmarks.npy"), os.path.join(zdir, "esk_projmat.npy")
-    if not (os.path.exists(lmp) and os.path.exists(pmp)):
-        return None
+    # run_spacetime_esk always writes both, so a miss is a broken or partial ESK run, not an
+    # older artifact. Returning None here instead made every recon_* output silently empty.
+    for pth in (lmp, pmp):
+        if not os.path.exists(pth):
+            raise FileNotFoundError(f"ESK projection missing: {pth}; re-run the spacetime-esk stage")
     meta_path = os.path.join(zdir, "meta.json")
     if not os.path.exists(meta_path):
         raise FileNotFoundError(f"missing ESK kernel contract: {meta_path}")
@@ -659,10 +661,10 @@ def run_validate(config=None, n_pairs=20000, cka_sample=800, seed=0):
         d_pred=analog.get("d_pred", np.zeros((0, 2))), d_obs=analog.get("d_obs", np.zeros((0, 2))),
         xy_hist=analog.get("xy_hist", np.zeros((0, 2))),
         analog_hist_year=analog.get("hist_year", np.array([])),
-        recon_rows=(recon or {}).get("rows", np.array([])),
-        recon_cols=(recon or {}).get("cols", np.array([])),
-        recon_err_desk=(recon or {}).get("err_desk", np.array([])),
-        recon_err_nochange=(recon or {}).get("err_nochange", np.array([])),
+        recon_rows=recon["rows"],
+        recon_cols=recon["cols"],
+        recon_err_desk=recon["err_desk"],
+        recon_err_nochange=recon["err_nochange"],
         ref_raster=np.array(ref_raster))
 
     print("[validate] SPATIAL structure recovery per period. gain = CKA(DESK) - CKA(no-change "

@@ -7,7 +7,6 @@ Stored raster values are always ``0 = land`` and ``1 = ocean``. New rasters use
 """
 from __future__ import annotations
 
-import warnings
 
 import numpy as np
 import rasterio
@@ -25,12 +24,6 @@ def read_land_mask(path, *, return_meta=False):
             "res": tuple(float(x) for x in src.res),
             "nodata": nodata,
         }
-    if nodata in (0, 1):
-        warnings.warn(
-            f"{path} has legacy nodata={nodata}, which aliases a semantic mask value; "
-            "raw 0=land/1=ocean values are being used. Regenerate the mask to write nodata=255.",
-            RuntimeWarning, stacklevel=2,
-        )
     valid_values = set(np.unique(raw).tolist())
     allowed = {0, 1}
     if nodata is not None and nodata not in (0, 1):

@@ -30,12 +30,12 @@ def compare_esk_desk(config: Optional[Union[Dict[str, Any], str, os.PathLike]] =
     out_dir = analysis_cfg.get("comparison_output_dir") or build_output_dir(analysis_cfg.get("output_dir") or "", "esk_desk_comparison")
     os.makedirs(out_dir, exist_ok=True)
 
-    esk_path = analysis_cfg.get("esk_feature_path") or analysis_cfg.get("esk_z_path")
-    desk_path = analysis_cfg.get("desk_feature_path") or analysis_cfg.get("desk_z_path")
+    esk_path = analysis_cfg.get("esk_feature_path")
+    desk_path = analysis_cfg.get("desk_feature_path")
     mask_path = analysis_cfg.get("mask_path")
 
     if not esk_path or not desk_path or not mask_path:
-        raise ValueError("esk_feature_path/esk_z_path, desk_feature_path/desk_z_path, and mask_path must be set for comparison")
+        raise ValueError("single_year_analysis needs esk_feature_path, desk_feature_path and mask_path")
 
     mask = load_mask(mask_path)
     esk = load_latent_matrix(esk_path, mask=mask)

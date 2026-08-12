@@ -46,8 +46,7 @@
     "study_exclusion_source": "land_source/ne_10m_admin_0_countries.shp",
     "study_exclude_iso_a3": ["CUB", "BHS"],
     "land_fraction_tau": 0.5,
-    "fine_factor": 25,
-    "snap_radius_cells": 1
+    "fine_factor": 25
   },
   "avonet": {
     "_comment": "Reference-community identification inputs, all auto-fetched by acquire/avonet.py. AVONET traits + BirdLife/BirdTree crosswalk + precomputed Hackett MCC phylogeny (.nex) from figshare ELEData.zip (found by name via the figshare v2 API) -> {datasets_root}/avonet. eBird taxonomy from the eBird API (ref/taxonomy/ebird, no key; the Cornell web CSV is Cloudflare-walled). Urban-tolerance indices from a separate public figshare article -> {datasets_root}/urban_avian.",

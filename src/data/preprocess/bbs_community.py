@@ -1,6 +1,6 @@
 """Ingest BBS community counts onto the model grid (per species × cell × year).
 
-Feeds the amplitude-modulation step (``spacetime_community``). Uses the all-species
+Uses the all-species
 BBS load (``bbs.load_usca_observations(aou_filter=None)``) + QC coverage, maps AOU →
 eBird ``species_code`` via the crosswalk (summing lumps), maps routes to grid cells,
 and produces, per ``(cell, year)``:

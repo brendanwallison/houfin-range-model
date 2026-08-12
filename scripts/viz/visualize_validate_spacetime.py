@@ -115,28 +115,6 @@ def _analog_arrows(z, out_dir, nbins=18, min_per_bin=3):
     print(f"[viz] analog arrows ({len(cx)} bins) -> {p}")
 
 
-def _support_maps(support_npz, out_dir, cmap):
-    """BBS smoothed-effort (support) maps — early / mid / recent year + max-over-years.
-    Shows where BBS actually backs the estimate (answers 'is the blank real?')."""
-    if not os.path.exists(support_npz):
-        print(f"[viz] no support field at {support_npz}; skipping support maps")
-        return
-    s = np.load(support_npz)
-    sup, years = s["support"], s["years"]
-    T = sup.shape[0]
-    idx = sorted({0, T // 2, T - 1})
-    vmax = float(np.nanpercentile(sup, 99)) or 1.0
-    fig, ax = plt.subplots(1, len(idx) + 1, figsize=(5 * (len(idx) + 1), 5))
-    for a, i in zip(ax, idx):
-        im = a.imshow(sup[i], cmap=cmap, vmin=0, vmax=vmax)
-        a.set_title(f"support {int(years[i])}"); a.axis("off"); fig.colorbar(im, ax=a, fraction=0.046)
-    im = ax[-1].imshow(sup.max(0), cmap=cmap, vmin=0, vmax=vmax)
-    ax[-1].set_title("support max over years"); ax[-1].axis("off"); fig.colorbar(im, ax=ax[-1], fraction=0.046)
-    fig.tight_layout()
-    p = os.path.join(out_dir, "support_maps.png"); fig.savefig(p, dpi=110); plt.close(fig)
-    print(f"[viz] support maps -> {p}")
-
-
 def _reconstruction_maps(z, ref_raster, out_dir, cmap):
     """Z-space per-cell reconstruction error: DESK vs no-change, and their difference.
     Positive difference (no-change err - DESK err) => DESK reconstructs that cell better."""
@@ -192,9 +170,6 @@ def main():
     _turnover_maps(z, ref_raster, out_dir, args.cmap)
     _reconstruction_maps(z, ref_raster, out_dir, args.cmap)
     _analog_arrows(z, out_dir, nbins=args.nbins)
-    # support field lives with the amplitude point set (bbs.z_dir)
-    support_npz = os.path.join(cfg["bbs"]["z_dir"], "support_field.npz")
-    _support_maps(support_npz, out_dir, args.cmap)
     print(f"[viz] done -> {out_dir} (scp the PNGs)")
 
 

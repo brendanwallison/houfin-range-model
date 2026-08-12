@@ -163,7 +163,7 @@ def _prepare_trend_targets(config, z_dir, latent_dim, holdout):
     train/val split is the spatial ``holdout`` (val = held-out cells). Includes 2023.
     """
     from .esk_kernel import project_points_to_z
-    zt = config["bbs"]["z_dir"]
+    zt = config["trend"]["points_dir"]
     X = np.load(os.path.join(zt, "X_points.npy"))
     pidx = np.load(os.path.join(zt, "point_index.npy"))
     z_obs = project_points_to_z(X, z_dir, latent_dim)
@@ -693,7 +693,7 @@ def run_desk_experiment(config=None):
     # the EXACT vectors that seeded the ESK basis (log1p abundance, anchor-mode-agnostic).
     # Scatter X_points' anchor-year rows into an (H,W,S) grid, so DESK depends on no weekly
     # eBird product (the trends-abd anchor needs none).
-    ztz = config["bbs"]["z_dir"]
+    ztz = config["trend"]["points_dir"]
     Xp = np.load(os.path.join(ztz, "X_points.npy"))
     pip = np.load(os.path.join(ztz, "point_index.npy"))
     pm = json.load(open(os.path.join(ztz, "points_meta.json")))

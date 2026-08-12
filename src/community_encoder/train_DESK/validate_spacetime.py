@@ -468,7 +468,7 @@ def run_validate(config=None, n_pairs=20000, cka_sample=800, seed=0):
     bc = config["bbs"]
     rng = np.random.default_rng(seed)
 
-    zt = bc["z_dir"]                              # point set from build_trend_points
+    zt = config["trend"]["points_dir"]            # point set from build_trend_points
     X = np.load(os.path.join(zt, "X_points.npy"))
     pidx = np.load(os.path.join(zt, "point_index.npy"))
     meta = json.load(open(os.path.join(zt, "points_meta.json")))

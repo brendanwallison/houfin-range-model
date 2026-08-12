@@ -355,7 +355,6 @@ def build_trend_points(config=None):
     config = load_config(config) if not isinstance(config, dict) else config
     dcfg = load_data_config()
     tc = config.get("trend", {})
-    bc = config["bbs"]
 
     community_csv = tc.get("community_trend_list") or dcfg["community_trend_list"]
     codes = [str(c) for c in pd.read_csv(community_csv)["species_code"].tolist()]
@@ -421,7 +420,7 @@ def build_trend_points(config=None):
                                      smooth_sigma=smooth_sigma)
     n_recent = int(valid.sum())
 
-    out_dir = bc["z_dir"]
+    out_dir = tc["points_dir"]
     os.makedirs(out_dir, exist_ok=True)
     np.save(os.path.join(out_dir, "X_points.npy"), X)
     np.save(os.path.join(out_dir, "point_index.npy"), pidx)

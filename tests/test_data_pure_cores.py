@@ -1,9 +1,8 @@
-"""Tests for the BBS spatiotemporal-community pipeline pure cores.
+"""Pure-core tests for the data layer's numerically-sensitive, cluster-free pieces.
 
-Covers the numerically-sensitive, cluster-free pieces: climate bio-year
-aggregation + gridding (A1), the AOU↔eBird crosswalk join (B1), the BBS
-community aggregation (B2), and the spatiotemporal smoother / robust anomaly /
-amplitude modulation (B3). Runs standalone or under pytest.
+Covers climate bio-year aggregation + gridding, the AOU-to-eBird crosswalk join, the
+BBS community aggregation, and the spacetime validation metrics. Runs standalone or
+under pytest, with no data tree.
 """
 import os
 import sys
@@ -15,7 +14,6 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 from src.data.combine import climate_io as CIO
 from src.data.identify import bbs_crosswalk as XW
 from src.data.preprocess import bbs_community as BC
-from src.community_encoder.train_DESK.deprecated import spacetime_community as SC
 
 
 def test_climate_bioyear_and_grid():
@@ -165,42 +163,6 @@ def test_bbs_community_aggregation():
     # cell (0,0) 2000: (3+5)+(7+0) = 15 summed / 2 covered route-years = 7.5
     assert abs(float(mean_df.iloc[0]["mean_count"]) - 7.5) < 1e-6
     print("BBS community aggregation OK")
-
-
-def test_spacetime_numerics():
-    T, H, W = 10, 5, 5
-    years = list(range(1990, 2000))
-    mean = np.ones((T, H, W))
-    for t, y in enumerate(years):
-        if y >= 1997:
-            mean[t, 2, 2] = 3.0
-    eff = np.ones((T, H, W))
-    field, support = SC.gaussian_nw_field(mean * eff, eff, 0.4, 0.4, 1e-3)
-    ref = SC.reference_field(field, years, [1990, 1991, 1992])
-    anom = SC.robust_anomaly(field, support, ref, pseudocount=0.5,
-                             cap=np.log(10), support_floor=1e-3, shrink_k=1.0)
-    i98 = years.index(1998)
-    assert anom[i98, 2, 2] > 1.3 and anom[i98, 2, 2] > anom[i98, 0, 0] + 0.3
-    assert abs(anom[i98, 0, 0] - 1.0) < 0.25
-    # zero support -> exactly no-change
-    eff2 = eff.copy(); eff2[:, 0, 0] = 0.0
-    f2, s2 = SC.gaussian_nw_field(mean * eff2, eff2, 0.01, 0.01, 1e-3)
-    a2 = SC.robust_anomaly(f2, s2, SC.reference_field(f2, years, [1990, 1991, 1992]),
-                           pseudocount=0.5, support_floor=1e-3)
-    assert abs(a2[i98, 0, 0] - 1.0) < 1e-9
-    # cap
-    m3 = np.ones((T, H, W))
-    for t, y in enumerate(years):
-        if y >= 1997:
-            m3[t, 2, 2] = 1000.0
-    f3, s3 = SC.gaussian_nw_field(m3, eff, 0.01, 0.01, 1e-3)
-    a3 = SC.robust_anomaly(f3, s3, SC.reference_field(f3, years, [1990, 1991, 1992]),
-                           pseudocount=0.5, cap=np.log(10), support_floor=1e-3, shrink_k=0.0)
-    assert a3[i98, 2, 2] <= 10 + 1e-6 and a3[i98, 2, 2] > 9
-    # amplitude modulation, species-blocked
-    x = SC.apply_amplitude(np.arange(12.0), [2.0, 1.0, 0.0], 4)
-    assert np.allclose(x[0:4], np.arange(4) * 2) and np.allclose(x[8:12], 0)
-    print("spacetime numerics OK")
 
 
 def test_validate_metrics():

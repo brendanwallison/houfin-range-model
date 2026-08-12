@@ -36,7 +36,6 @@ _REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 if _REPO not in sys.path:
     sys.path.insert(0, _REPO)
 from src.config_utils import load_config
-from src.community_encoder.train_DESK.deprecated.spacetime_community import _scatter_dense, _cov_at
 
 
 def _ruzicka_rows(a, b):
@@ -44,6 +43,23 @@ def _ruzicka_rows(a, b):
     mn = np.minimum(a, b).sum(1)
     mx = np.maximum(a, b).sum(1)
     return np.where(mx > 0, mn / mx, 1.0)
+
+
+def _scatter_dense(values, rows, cols, t_idx, T, H, W):
+    """Long-form (value, row, col, t_idx) -> dense (T, H, W) grid (0 elsewhere)."""
+    g = np.zeros((T, H, W), dtype="float64")
+    g[t_idx, rows, cols] = values
+    return g
+
+
+def _cov_at(cm, sel):
+    """Effort (cov_n) for each selected mean-count row, matched on (row, col, year)."""
+    import pandas as pd
+    cov = pd.DataFrame({"row": cm["cov_row"], "col": cm["cov_col"],
+                        "year": cm["cov_year"], "n": cm["cov_n"]})
+    q = pd.DataFrame({"row": cm["row"][sel], "col": cm["col"][sel], "year": cm["year"][sel]})
+    merged = q.merge(cov, on=["row", "col", "year"], how="left")
+    return merged["n"].fillna(1).to_numpy(dtype=float)
 
 
 def _grid_shape(config):

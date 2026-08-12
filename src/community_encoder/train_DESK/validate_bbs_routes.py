@@ -723,7 +723,7 @@ def load_observed(config):
     # ESK meta.json. Cross-check rather than assume: a raw-count basis would make a log1p
     # similarity structure the wrong quantity, and a species set that does not match
     # community_trend.csv means this module and the trainer disagree about the community.
-    zt = config.get("bbs", {}).get("z_dir", "")
+    zt = config.get("trend", {}).get("points_dir", "")
     pm_path = os.path.join(zt, "points_meta.json") if zt else ""
     log1p_flag, trained = True, None
     if pm_path and os.path.exists(pm_path):
@@ -736,7 +736,7 @@ def load_observed(config):
                 f"{pm_path} reports ruzicka_log1p=false; the ESK basis was fit on RAW counts. "
                 "Comparing a log1p similarity structure against it is not like-for-like.")
     else:
-        print(f"[bbs-routes] WARNING: no points_meta.json at {pm_path or '<bbs.z_dir unset>'}; "
+        print(f"[bbs-routes] WARNING: no points_meta.json at {pm_path or '<trend.points_dir unset>'}; "
               "assuming ruzicka_log1p=true and skipping the species cross-check")
 
     sp = {"n_community_trend": len(codes), "n_bbs_matched": len(species)}

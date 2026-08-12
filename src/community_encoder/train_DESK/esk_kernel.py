@@ -191,7 +191,7 @@ def compute_optimal_latent_z_ruzicka(ebird_flat, n_species, n_weeks, latent_dim,
     except RuntimeError as exc:
         raise RuntimeError(
             f"out of memory uploading {M} x {D} landmarks to {device} "
-            f"({M * D * 4 / 2**30:.1f} GiB as float32). Reduce bbs.n_landmarks.") from exc
+            f"({M * D * 4 / 2**30:.1f} GiB as float32). Reduce esk.spacetime.n_landmarks.") from exc
 
     sum_lm = T_lm.sum(dim=1, keepdim=True)
     l1_dist = torch.cdist(T_lm, T_lm, p=1)
@@ -643,13 +643,13 @@ def run_spacetime_esk(config=None):
         config = load_config()
     elif isinstance(config, (str, os.PathLike)):
         config = load_config(config)
-    bc, esk_cfg, paths = config["bbs"], config["esk"], config["paths"]
+    esk_cfg, paths = config["esk"], config["paths"]
     sc = esk_cfg.get("spacetime", {})
     sigma = float(sc.get("sigma", 1.0)); latent_dim = int(sc.get("latent_dim", 32))
     landmark_mode = str(sc.get("landmark_mode", "random"))
-    n_landmarks = int(bc.get("n_landmarks", 30000)); seed = int(esk_cfg.get("seed", 0))
+    n_landmarks = int(sc["n_landmarks"]); seed = int(esk_cfg.get("seed", 0))
 
-    zt = bc["z_dir"]
+    zt = config["trend"]["points_dir"]
     X = np.nan_to_num(np.load(os.path.join(zt, "X_points.npy"))).astype("float32")
     pidx = np.load(os.path.join(zt, "point_index.npy"))
     with open(os.path.join(zt, "points_meta.json")) as fh:

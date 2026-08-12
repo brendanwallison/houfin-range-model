@@ -363,7 +363,7 @@ def test_run_end_to_end_gates_cells_and_buckets(tmp_path, monkeypatch):
     ho = np.zeros((25, 25), bool)
     ho[::3] = True                                             # ~1/3 of cells held out
     np.save(desk / "holdout_cells.npy", ho)
-    cfg = {"bbs": {"z_dir": str(tmp_path)}, "paths": {"desk_output_dir": str(desk)}}
+    cfg = {"trend": {"points_dir": str(tmp_path)}, "paths": {"desk_output_dir": str(desk)}}
 
     monkeypatch.setattr(V, "load_observed", lambda config: (
         X_log, keys, {"n_species": n_species, "n_surveyed_cell_years": int(keys.shape[0]),
@@ -601,7 +601,7 @@ def test_run_epoch_rows_survive_the_pooled_site_gate(tmp_path, monkeypatch):
 
     desk = tmp_path / "desk"; desk.mkdir()
     np.save(desk / "holdout_cells.npy", np.zeros((4, 20), bool))
-    cfg = {"bbs": {"z_dir": str(tmp_path)}, "paths": {"desk_output_dir": str(desk)}}
+    cfg = {"trend": {"points_dir": str(tmp_path)}, "paths": {"desk_output_dir": str(desk)}}
 
     monkeypatch.setattr(V, "load_observed", lambda config: (
         X_log, keys, {"n_species": n_species, "n_surveyed_cell_years": int(keys.shape[0]),

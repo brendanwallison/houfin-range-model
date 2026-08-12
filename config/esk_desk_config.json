@@ -26,7 +26,9 @@
     "n_landmarks": 25000,
     "seed": 0,
     "_spacetime_comment": "Joint spatiotemporal ESK (run_spacetime_esk): uncentered Ružicka Nyström features over the trend-based annual community points. Uncentered is intentional: with an isotropic Bayesian coefficient prior downstream, Z(x)·Z(x') approximates the original Ružicka GP kernel rather than a reference-distribution-centered kernel. 64 dimensions address the measured rank-truncation error; 16k uniform-random landmarks already make landmark error small. sigma=0 because trend points have n_weeks=1. 'diverse' and 'stratified' remain available ablations, not production defaults. Writes esk/spacetime/{Z.npy, valid_mask, esk_landmarks, esk_projmat, meta.json}.",
-    "spacetime": {"sigma": 0.0, "latent_dim": 64, "landmark_mode": "random", "diagnostic_sample": 800}
+    "_n_landmarks_comment": "esk.spacetime.n_landmarks (16000) is the PRODUCTION landmark budget, supported by the measured error decomposition: at 16k the landmark/eigenpair term is small next to the rank-truncation floor. The separate esk.n_landmarks (25000) belongs to the opt-in eBird-only sweep. It used to live under bbs.n_landmarks, which made the production value hard to find and put it two blocks away from the comment explaining it.",
+    "spacetime": {"sigma": 0.0, "latent_dim": 64, "landmark_mode": "random",
+                  "n_landmarks": 16000, "diagnostic_sample": 800}
   },
   "_augment_comment": "Structured channel-group masking of the DESK covariate input (see src/community_encoder/train_DESK/augment.py). Masks whole GROUPS, not independent channels: the ~295 channels are 14 climate bases x 12 bio-year months x 1-3 elevation quantiles, so a channel's neighbours (adjacent month, other quantile) are near-duplicates and i.i.d. dropout is trivially inpainted. Masking to 0 is exact mean-imputation because covariates are standardized and invalid cells are already zero-filled post-standardization. Survivors are NOT rescaled (this is denoising/MAE augmentation, not unit dropout) and the reconstruction target stays the CLEAN grid, which makes DESK a denoising autoencoder. A fresh mask is drawn per year-forward, so one optimizer step averages ~86 independent draws. p_base drops one base variable across all its months AND levels; p_month drops one bio-year month position across all bases; span_prob/span_max drop a CONTIGUOUS run of months (harder to inpaint than i.i.d. ones, and the bio-year is a window so there is no wraparound); p_level drops the temperature-only q10/q90; p_stream drops a whole stream but NEVER climate (240/295 channels -- that would blind the model). max_masked_frac redraws any degenerate sample. Set enabled=false to recover the un-augmented recipe.",
   "augment": {
@@ -49,6 +51,8 @@
     "first_year": 1966,
     "_stride_comment": "point_year_stride=1: emit EVERY year 1966-2025, so the ESK basis input and the DESK per-year targets are fully spatiotemporal (not just endpoints). ESK landmark subsampling keeps the Nystrom eigh bounded.",
     "point_year_stride": 1,
+    "_points_dir_comment": "Where build_trend_points writes the ESK INPUT point set (X_points.npy, point_index.npy, points_meta.json). Distinct from desk.z_dir, which is the ESK OUTPUT basis (esk/spacetime). Those two used to be bbs.z_dir and desk.z_dir -- one character apart, holding opposite things.",
+    "points_dir": "${HOUFIN_PROCESSED}/encoder/esk_spacetime",
     "handoff_crossover": 2010.0,
     "handoff_width": 1.5,
     "_cap_comment": "TWO overlapping globally smooth p-softsign caps on the backward change: C_p(x; A)=x/(1+(|x|/A)^p)^(1/p). Both use p=2: unit slope at zero and smooth saturation, with no knee/elbow. (1) RELATIVE/fold cap on log(N/E), asymptoting at soft_max_fold=100; protects rare-base cells. (2) ABSOLUTE cap on (N-E), asymptoting at abs_soft_max_mult times each species' p95 occupied-cell present abundance; limits a worst-cell -> good-habitat jump. Neither is community-relative. smooth_sigma_cells>0 adds a post-cap masked Gaussian on log-abundance (in cells) so a capped extreme cannot poison neighbours (0 = off).",
@@ -62,7 +66,7 @@
     "min_coverage": 0.5
   },
   "bbs": {
-    "_comment": "Community + ESK point settings. community_top_n, z_dir (where trend_community writes the ESK point files), n_landmarks and turnover_min_gap are the live keys. The smoothing/anomaly knobs below are NOT read by the pipeline: their only reader is the raw-BBS turnover diagnostic, scripts/viz/raw_bbs_turnover.py.",
+    "_comment": "BBS community settings. LIVE on the pipeline: community_top_n and species_list (community selection, read by identify/*), turnover_min_gap (the validate stage) and ebird_stack_cache (the opt-in ebird-cache stage). The community_matrix path and the smoothing/anomaly knobs below are read ONLY by the raw-BBS turnover diagnostic, scripts/viz/raw_bbs_turnover.py -- they are not pipeline inputs. The ESK point set moved to trend.points_dir and the production landmark budget to esk.spacetime.n_landmarks; both used to live here, which is why the production values were hard to find.",
     "community_top_n": 100,
     "species_list": "${HOUFIN_DATA}/bbs_2026_release/SpeciesList.csv",
     "community_matrix": "${HOUFIN_DATA}/bbs/community_matrix.npz",
@@ -77,9 +81,6 @@
     "support_floor_frac": 0.01,
     "point_year_stride": 5,
     "turnover_min_gap": 5,
-    "z_dir": "${HOUFIN_PROCESSED}/encoder/esk_spacetime",
-    "_n_landmarks_comment": "Landmark budget for the joint-ESK Nyström eigendecomposition. 16k is supported by the measured error decomposition (landmark error much smaller than rank truncation). The 16000x16000 float32 kernel itself is ~1.0 GB; construction temporaries and eigensolver workspace require several times that. GPU/CPU fallback and peak memory are logged explicitly.",
-    "n_landmarks": 16000,
     "ebird_stack_cache": "${HOUFIN_PROCESSED}/encoder/ebird_stack.npz"
   },
   "desk": {

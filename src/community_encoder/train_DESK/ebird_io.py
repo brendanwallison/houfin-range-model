@@ -1,7 +1,7 @@
 """Torch-free loader for the eBird weekly community stack.
 
 Kept separate from ``esk_kernel`` (which imports torch) so the CPU data-prep
-stages — ``ebird_cache`` and the amplitude-modulation builder — can reproject the
+stage ``ebird_cache`` can reproject the
 eBird rasters without pulling in torch. ``esk_kernel`` re-exports
 ``load_tifs_structured`` for backward compatibility.
 """
@@ -31,7 +31,7 @@ def load_tifs_structured(folder, pattern="*_abundance_median_*.tif", target_res_
     the finished embedding downstream (meaningless for a kernel-PCA latent).
 
     Reproject (not integer ``block_reduce``) is used so this works for any
-    native:target ratio -- eBird's ~2.96 km cells do not divide the 25 km grid
+    native:target ratio -- eBird's ~2.96 km cells do not divide the 27 km grid
     evenly -- and so the eBird CRS (EPSG:8857) is resolved onto the Albers grid
     in the same step, going straight from finest native resolution to the model
     grid without an intermediate fixed-resolution reprojection.
@@ -96,7 +96,7 @@ def load_tifs_structured(folder, pattern="*_abundance_median_*.tif", target_res_
         full_stack[:, :, i] = band.astype(np.float32)
 
     # Species block order = sorted unique species (matches df_sorted column blocks),
-    # so downstream code (e.g. the BBS amplitude modulation) can align per-species
+    # so downstream code can align per-species
     # scalars to the right 52-week block.
     species = sorted(df["species"].unique().tolist())
     return full_stack, {"n_species": n_species, "n_weeks": n_weeks,

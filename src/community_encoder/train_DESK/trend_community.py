@@ -1,8 +1,6 @@
 """Trend-product spatiotemporal community vectors for the ESK kernel.
 
-Replaces the amplitude-modulation construction (``spacetime_community``, now
-deprecated). Instead of a fixed shape modulated by a BBS anomaly, the historical
-community is reconstructed by applying **published trend products** to an anchor
+The historical community is reconstructed by applying **published trend products** to an anchor
 abundance raster, via **method B (log-space target blend)**. Per year ``Y``,
 ``dy = Y - R`` (``R`` = reference year, 2025), both trend rates are **percent-per-year**
 (eBird ``abd_ppy`` and BBS ``tr{AOU}`` are BOTH %/yr -- eBird's *cumulative* number

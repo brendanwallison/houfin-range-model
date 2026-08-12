@@ -1,15 +1,20 @@
-"""ESK: build the habitat-similarity ground truth Z from eBird via Ruzicka kernel-PCA.
+"""ESK: the Ruzicka kernel-PCA that builds the habitat-similarity basis Z.
 
-The first stage of the community encoder. For the one richly-sampled eBird year,
-it treats each land cell's weekly per-species abundance vector as a point,
-computes a Ruzicka (generalized-Jaccard) similarity kernel between cells, and
-takes its kernel-PCA -- a Nystrom landmark approximation makes the full pairwise
-kernel tractable. The result, swept over temporal-smoothing bandwidths and latent
-dimensions, is ``Z.npy`` + ``valid_mask.npy``: the "real" habitat-similarity
-space that DESK (``desk_training``) later learns to predict from covariates alone.
+Treats each point's per-species abundance vector as a row, computes a Ruzicka
+(generalized-Jaccard) similarity kernel between rows, and takes its kernel-PCA -- a
+Nystrom landmark approximation makes the full pairwise kernel tractable. The saved
+basis (``esk_landmarks`` + ``esk_projmat``) is what lets any later community vector be
+projected into the SAME coordinates, which is what makes z_DESK and z_obs comparable.
 
-Abundance rasters are aggregated to the model grid by reprojection as they load
-(:func:`load_tifs_structured`), so Z is built directly at the model resolution.
+Two drivers live here:
+
+- :func:`run_spacetime_esk` is PRODUCTION. Its rows are the trend-reconstructed annual
+  community points (``X_points``, ``n_weeks=1``), so the basis spans historical change
+  as well as modern spatial structure. Writes ``esk/spacetime/``.
+- :func:`run_esk_experiment` is the older eBird-only sweep over temporal-smoothing
+  bandwidths and latent dimensions, on one richly-sampled eBird year's weekly vectors.
+  It is opt-in (the ``esk`` stage) and writes ``esk/sigma_{s}/``; nothing on the default
+  pipeline consumes its output.
 """
 import json
 import os
@@ -149,8 +154,7 @@ def compute_optimal_latent_z_ruzicka(ebird_flat, n_species, n_weeks, latent_dim,
     """
     Computes Mercer features using the GLOBAL Ruzicka Kernel (Generalized Jaccard).
 
-    ``seed`` makes the landmark draw reproducible (at 25 km N < n_landmarks so ALL pixels
-    are landmarks anyway -- exact). ``landmark_idx`` (if given) uses a caller-chosen landmark
+    ``seed`` makes the landmark draw reproducible. ``landmark_idx`` (if given) uses a caller-chosen landmark
     set (e.g. ``stratified_landmarks`` for the joint spatiotemporal ESK) instead of a random
     draw. ``return_proj`` additionally returns the landmark rows and the projection matrix so
     the SAME basis can later project out-of-sample vectors via ``project_into_z`` -- the
@@ -212,7 +216,7 @@ def compute_optimal_latent_z_ruzicka(ebird_flat, n_species, n_weeks, latent_dim,
     # Eigendecompose on the GPU (cuSOLVER) when it fits -- far faster than CPU LAPACK
     # and identical precision (K_mm is float32 either way). Fall back to CPU only if
     # the eigenvector workspace OOMs (e.g. a small card at finer resolution / larger N);
-    # at 25 km (N ~16.5k) the matrix is ~1 GB and fits an A100 with room to spare.
+    # at 16k landmarks the matrix is ~1 GB and fits an A100 with room to spare.
     try:
         L, U = torch.linalg.eigh(K_mm_total)
         eig_device = K_mm_total.device.type
@@ -276,7 +280,7 @@ def project_into_z(x_flat, landmarks, proj_mat, device="cuda", batch_size=None):
 
     ``landmarks`` (M, D) and ``proj_mat`` (M, latent) come from a prior
     ``compute_optimal_latent_z_ruzicka(..., return_proj=True)``. Mirrors that function's own
-    in-sample projection exactly, so out-of-sample vectors (e.g. observed BBS-amplitude
+    in-sample projection exactly, so out-of-sample vectors (e.g. observed community
     communities) land in the SAME pinned basis as z_DESK -- the whole point of comparing in
     z-space. Projecting the original training rows reproduces their Z (validity check).
     """
@@ -290,7 +294,7 @@ def project_into_z(x_flat, landmarks, proj_mat, device="cuda", batch_size=None):
     if batch_size is None:
         batch_size = 20000 if device == "cuda" else 5000
     # Accept already-uploaded tensors so a caller looping over outer batches does not re-transfer
-    # the landmark and projection matrices on every call (project_amplitude_to_z did, ~45 times).
+    # the landmark and projection matrices on every call (project_points_to_z did, ~45 times).
     T_lm = (landmarks if torch.is_tensor(landmarks)
             else torch.tensor(np.asarray(landmarks), device=device, dtype=torch.float32))
     P = (proj_mat if torch.is_tensor(proj_mat)
@@ -310,12 +314,12 @@ def project_into_z(x_flat, landmarks, proj_mat, device="cuda", batch_size=None):
     return Z
 
 
-def project_amplitude_to_z(X, z_dir, latent_dim, batch=20000):
-    """Project amplitude community vectors ``X`` into the SAVED ESK basis in ``z_dir``.
+def project_points_to_z(X, z_dir, latent_dim, batch=20000):
+    """Project community vectors ``X`` into the SAVED ESK basis in ``z_dir``.
 
     Loads ``esk_landmarks.npy``/``esk_projmat.npy``/``meta.json`` (written by
     ``run_esk_experiment``), applies the SAME weekly smoothing the ESK used, and projects
-    batched -> ``(N, latent_dim)``. Single source of truth for z_obs, shared by the enrich
+    batched -> ``(N, latent_dim)``. Single source of truth for z_obs, shared by the
     trainer (supervised targets) and validate (reconstruction eval), so targets and eval
     are guaranteed to live in the identical pinned basis. Returns None if no projection saved.
     """
@@ -623,14 +627,16 @@ def run_esk_experiment(config=None):
 
 
 def run_spacetime_esk(config=None):
-    """Joint spatiotemporal ESK (``bbs_mode=enrich``): Ruzicka kernel-PCA over the eBird-recent
-    + BBS-historical amplitude points, with **recent-heavy stratified landmarks**, so the basis
-    spans historical CHANGE directions while the modern eBird spatial structure stays dominant.
+    """The production ESK: Ruzicka kernel-PCA over the trend-reconstructed annual community
+    points (``X_points``, one vector per surveyed-or-reconstructed ``(cell, year)``,
+    ``n_weeks=1``), so the basis spans historical CHANGE directions as well as modern spatial
+    structure. Landmarks are a UNIFORM RANDOM draw by default
+    (``esk.spacetime.landmark_mode``); ``stratified`` and ``diverse`` are available ablations.
 
-    Writes the SAME layout the eBird ESK writes -- ``Z.npy`` (recent 2023 embedding on the grid,
+    Writes the SAME layout the eBird-only ESK writes -- ``Z.npy`` (anchor-year embedding on the grid,
     ``Z[valid_mask]`` order), ``valid_mask.npy``, ``esk_landmarks``/``esk_projmat`` (the joint
     projection), ``meta.json`` -- into ``esk/spacetime``, so DESK / validate / cube consume it
-    unchanged, just pointed here. z_obs for any point is then ``project_amplitude_to_z`` through
+    unchanged, just pointed here. z_obs for any point is then ``project_points_to_z`` through
     this joint projection (= its joint-ESK embedding).
     """
     if config is None:

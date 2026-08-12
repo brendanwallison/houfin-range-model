@@ -162,11 +162,11 @@ def _prepare_trend_targets(config, z_dir, latent_dim, holdout):
     its year's grid; returns ``{year: (zg (H,W,L), tm_tr (H,W), tm_val (H,W))}`` where the
     train/val split is the spatial ``holdout`` (val = held-out cells). Includes 2023.
     """
-    from .esk_kernel import project_amplitude_to_z
+    from .esk_kernel import project_points_to_z
     zt = config["bbs"]["z_dir"]
     X = np.load(os.path.join(zt, "X_points.npy"))
     pidx = np.load(os.path.join(zt, "point_index.npy"))
-    z_obs = project_amplitude_to_z(X, z_dir, latent_dim)
+    z_obs = project_points_to_z(X, z_dir, latent_dim)
     if z_obs is None:
         raise FileNotFoundError(f"trend targets need the ESK projection in {z_dir}; re-run spacetime-esk")
     rows, cols, yrs = pidx[:, 0], pidx[:, 1], pidx[:, 2]

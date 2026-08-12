@@ -1,18 +1,23 @@
-"""Validate: does the eBird-only DESK already predict BBS spatiotemporal structure?
+"""Validate: do DESK's predicted similarities reproduce the target's spatiotemporal structure?
 
-The headline test of ``bbs_mode='validate'``. The eBird-only-trained DESK gives a
-predicted latent ``z(s,t)`` from that point's own-year covariates. At **held-out
-historical** ``(cell, year)`` points (which the model never trained on) we ask
-whether its predicted **similarities** reproduce the BBS-observed community
-similarities — comparing at the **kernel level** (``⟨z_i,z_j⟩`` vs
-``Ruzicka(x_i,x_j)``), never raw coordinates, because Z is basis/rotation-arbitrary.
-Both live on the same eBird-unit Ruzicka scale (``x = E·anomaly`` is in eBird units,
-and ``true_kernel_loss`` calibrated ``⟨z,z⟩`` to eBird Ruzicka), so the comparison is
-fair. Reported per period with MSE + basis-invariant CKA/Mantel.
+DESK gives a predicted latent ``z(s,t)`` from that point's own-year covariates. At
+**held-out** ``(cell, year)`` points we ask whether its predicted **similarities**
+reproduce the target community similarities -- comparing at the **kernel level**
+(``⟨z_i,z_j⟩`` vs ``Ruzicka(x_i,x_j)``), never raw coordinates, because Z is
+basis/rotation-arbitrary. Both live on the same Ruzicka scale (``X_points`` are the
+log1p community vectors that seeded the basis, and ``true_kernel_loss`` calibrated
+``⟨z,z⟩`` to exactly that), so the comparison is fair. Reported per period with MSE +
+basis-invariant CKA/Mantel.
 
-Strong agreement (esp. degrading gracefully, not randomly, back in time) ⇒ the
-spatial→spatiotemporal extrapolation holds and no BBS-in-training is needed; weak
-agreement flags where ``enrich`` is warranted.
+Strong agreement, especially degrading gracefully rather than randomly back in time,
+means the spatial-to-spatiotemporal extrapolation holds.
+
+SCOPE, and the reason ``validate_bbs_routes`` also exists: the target here is the
+trend reconstruction, which is built from USGS's published inverse-distance BBS
+surface. So this grades DESK against an interpolated quantity, and an interpolation
+baseline can win it for structural reasons. ``validate_bbs_routes`` grades the same
+model against RAW route counts at genuinely surveyed cell-years, where reproducing an
+interpolator cannot help. Read them together.
 """
 import json
 import os
@@ -371,7 +376,7 @@ def zspace_reconstruction(config, pidx, X, Z_desk, recent_year, to_rec, has_rec)
     """Per-cell reconstruction in Z-SPACE: is DESK's predicted z closer to the observed
     community's z than the no-change (2023) z is?
 
-    Projects each observed amplitude community ``x(cell,year)`` into the SAME pinned ESK
+    Projects each observed community ``x(cell,year)`` into the SAME pinned ESK
     basis DESK was trained against (``project_into_z`` with the saved landmarks/proj_mat,
     matching the ESK's weekly smoothing), giving ``z_obs``. Then per historical point:
         err_desk     = || z_DESK(cell,year) - z_obs(cell,year) ||
@@ -441,8 +446,8 @@ def zspace_reconstruction(config, pidx, X, Z_desk, recent_year, to_rec, has_rec)
            "recent_basis_residual": resid,
            "rows": pidx[hist, 0], "cols": pidx[hist, 1],
            "err_desk": ed.astype("float32"), "err_nochange": en.astype("float32")}
-    # If enrich saved a spatial holdout, split the value-add into held-out (honest, unseen
-    # cells) vs train -- held-out frac_desk_beats_nochange is the number that grades enrich.
+    # DESK saves a spatial holdout; split the value-add into held-out (honest, unseen
+    # cells) vs train -- held-out frac_desk_beats_nochange is the number that counts.
     ho_path = os.path.join(config["paths"]["desk_output_dir"], "holdout_cells.npy")
     if os.path.exists(ho_path):
         ho = np.load(ho_path)
@@ -463,7 +468,7 @@ def run_validate(config=None, n_pairs=20000, cka_sample=800, seed=0):
     bc = config["bbs"]
     rng = np.random.default_rng(seed)
 
-    zt = bc["z_dir"]                              # spacetime point set from build_amplitude_points
+    zt = bc["z_dir"]                              # point set from build_trend_points
     X = np.load(os.path.join(zt, "X_points.npy"))
     pidx = np.load(os.path.join(zt, "point_index.npy"))
     meta = json.load(open(os.path.join(zt, "points_meta.json")))
@@ -593,15 +598,16 @@ def run_validate(config=None, n_pairs=20000, cka_sample=800, seed=0):
                                    if k in ("n_sites", "spearman_turnover", "note")}
     # Magnitudes, to compare against the raw-BBS ceiling (scripts/viz/raw_bbs_turnover.py):
     # obs = observed AMPLITUDE turnover (1 - Ruzicka on E*anomaly); if this is far below the
-    # raw-BBS turnover, the amplitude construction (fixed shape + cap/shrink + frozen species)
+    # raw-BBS turnover, the trend reconstruction (soft caps + coverage gate)
     # is flattening real change. pred = the model's own turnover (over-predicts if >> obs).
     if "turnover_obs" in turn and turn["turnover_obs"].size:
-        report["temporal_turnover"]["median_turnover_obs_amplitude"] = float(np.median(turn["turnover_obs"]))
+        report["temporal_turnover"]["median_turnover_obs_target"] = float(np.median(turn["turnover_obs"]))
         report["temporal_turnover"]["median_turnover_pred"] = float(np.median(turn["turnover_pred"]))
     report["temporal_turnover"]["_magnitude_only_note"] = ("turnover is MAGNITUDE-only "
         "(how much a community changed, not toward what) -- see directional_change for "
-        "direction. Compare median_turnover_obs_amplitude to the raw-BBS ceiling to see how "
-        "much the amplitude construction flattens real change.")
+        "direction. Compare median_turnover_obs_target to the raw-BBS ceiling "
+        "(scripts/viz/raw_bbs_turnover.py) to see how much the trend reconstruction "
+        "flattens real change.")
     # Partial Spearman: control for per-site time-span + broad spatial trend, which inflate
     # the raw value (both pred & obs turnover rise with time-depth and share spatial trends).
     if "turnover_pred" in turn and turn["turnover_pred"].size >= 8:
@@ -699,7 +705,7 @@ def run_validate(config=None, n_pairs=20000, cka_sample=800, seed=0):
               f"{rc['frac_desk_beats_nochange']:.1%} of cells | basis residual={rc['recent_basis_residual']:.2e}")
         if "frac_desk_beats_nochange_heldout" in rc:
             print(f"           HELD-OUT cells ({rc['n_heldout']}): DESK beats no-change in "
-                  f"{rc['frac_desk_beats_nochange_heldout']:.1%}  <- the honest enrich grade "
+                  f"{rc['frac_desk_beats_nochange_heldout']:.1%}  <- the honest held-out grade "
                   f"(err DESK={rc['median_err_desk_heldout']:.4f} vs {rc['median_err_nochange_heldout']:.4f})")
     _phase("write outputs")
     print("[validate:timing] total " + "  ".join(f"{n}={t:.0f}s" for n, t in _marks)

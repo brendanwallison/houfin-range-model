@@ -47,14 +47,6 @@ lexicographically into window order (which matters because sorted variable order
 *is* the channel order). Calendar ordering would put Jan–Jul, the window's late
 months, before Aug–Dec, its early ones.
 
-Until mid-2026 this pipeline instead collapsed the window to one number per base
-(mean for temperatures, total for fluxes). That erased every within-year
-contrast: two cells with equal annual means but opposite seasonality were
-identical to the model, so a seasonality- or winter-severity-driven range limit
-could not be represented at all. The collapse survives only as
-`climate_io.bioyear_aggregate` for QC; the pipeline uses
-`climate_io.bioyear_monthly`.
-
 Elevation quantiles are asymmetric to keep the channel count in hand: every base
 gets `q50`, and only `Tmin`/`Tmax`/`Tave` also get `q10`/`q90`, since within-cell
 relief moves a temperature via the lapse rate far more than it moves a flux.

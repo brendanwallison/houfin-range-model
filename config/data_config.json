@@ -131,7 +131,7 @@
       },
       "bbs_mexico": {
         "item": "5f32af1082cee144fb313837",
-        "_comment": "whole_item (archive), NOT per-file. SpeciesData.csv is BROKEN upstream on ScienceBase: the record claims 1.6 MB + an MD5, but the per-file downloadUri 404s and every archive ships it as 0 bytes (verified 2026-07). Per-file download therefore exits nonzero on the 404 and would abort download_all.sh; the whole-item archive downloads cleanly (exit 0) with an empty SpeciesData, so the ingest just skips Mexico (non-fatal). Drop a valid SpeciesData.csv in bbs_mexico_unprocessed/ to enable Mexico if you obtain one elsewhere.",
+        "_comment": "whole_item (archive), NOT per-file: the per-file downloadUri for SpeciesData.csv 404s, which exits nonzero and would abort download_all.sh, while the whole-item archive downloads cleanly. SpeciesData.csv shipped as 0 bytes through mid-2026 and the ingest skipped Mexico non-fatally (bbs.load_mexico_observations returns None when it is missing or empty); it now downloads correctly, so Mexico rows enter as quality_tier 1. NOTE what that switches on: obs_quality is no longer constant, so the NB2 quality down-weighting in age_priors (guarded on max(obs_quality) > min(obs_quality)) begins sampling quality_conc_mult -- the model gains a parameter, and MAP results and the run fingerprint change accordingly.",
         "whole_item": true
       },
       "bbs_trends": {

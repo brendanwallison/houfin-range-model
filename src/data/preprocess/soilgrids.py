@@ -2,7 +2,7 @@
 
 SoilGrids COGs are in interrupted Goode Homolosine (ESRI:54052), so they must be
 reprojected — not block-aggregated — to the model Albers grid; `reproject_match`
-with ``average`` is the linear areal aggregate (5 km → ~25 km). Soil is
+with ``average`` is the linear areal aggregate (5 km → ~27 km). Soil is
 time-invariant, so this runs once, one output raster per property×depth.
 """
 import glob

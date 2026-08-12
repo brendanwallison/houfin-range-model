@@ -1,7 +1,6 @@
 """Config-driven covariate streamers for building yearly encoder states.
 
-Generalizes the old hardcoded PRISM+BUI pair (see states.py) into a registry of
-named streams, each yielding ``(year, state)`` in lockstep so the combine step
+A registry of named streams, each yielding ``(year, state)`` in lockstep so the combine step
 can assemble any covariate set. Two generic streamers cover the new products:
 
 - ``PerVariableYearStreamer`` — a set of variables each stored as
@@ -12,9 +11,11 @@ can assemble any covariate set. Two generic streamers cover the new products:
 - ``StaticStreamer`` — time-invariant rasters (SoilGrids); stacks them once and
   yields the same state every year (no EMA). This is the soil stream.
 
-The monthly bio-year climate stream still lives in states.py (PrismStreamer);
-its continental replacement (climr output) plugs in here as another streamer once
-that acquire step has produced grid rasters.
+The monthly bio-year climate stream is one of these streamers like any other:
+``states.streams`` names ``climate_grid_monthly`` and it is read through the same
+``per_variable`` path as land use and HYDE. The registry is stream-agnostic, which is
+how a covariate is added or removed -- ``states.streams`` is authoritative and has no
+code-side default.
 """
 import functools
 import glob
@@ -95,8 +96,7 @@ class _EmaStreamer:
     """Base: iterate model years, EMA-smoothing whatever ``_year_state`` returns.
 
     ``_year_state(year)`` returns the raw (H, W, C) stack for that year or None
-    (no data yet). The EMA state carries forward across None years, exactly like
-    the original PRISM/BUI streamers.
+    (no data yet). The EMA state carries forward across None years.
     """
 
     def __init__(self, start_year, end_year, alpha):

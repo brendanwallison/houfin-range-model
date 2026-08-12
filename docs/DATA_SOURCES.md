@@ -8,7 +8,10 @@ the model grid (equal-area Albers at `grid.target_res_m`; see
 
 | Product | Access (acquire) | Format | Native res | Native CRS | Cadence | Covariates kept | → Target |
 |---|---|---|---|---|---|---|---|
-| **eBird S&T** | REST API (`ebird.py`) | GeoTIFF, 1-band | ~2.96 km | EPSG:8857 (Equal Earth) | weekly, 2023 | `abundance_median` per species×week | reproject **average** → Albers grid |
+| **eBird S&T** | REST API (`ebird.py`) | GeoTIFF, 1-band | ~2.96 km | EPSG:8857 (Equal Earth) | weekly, 2023 (**opt-in**: only the legacy `trend.anchor_mode=weekly`) | `abundance_median` per species×week | reproject **average** → Albers grid |
+| **eBird S&T *trends*** | same REST API, `--trends` (`ebird.py`) | Parquet (tabular, one row per cell) | 27 km | WGS84 centroids | 2012–2022 window | `abd_ppy` (%/yr) and `abd` (mid-window rel. abundance, **the production anchor**) | nearest/Voronoi → Albers grid (`ebird_trend.py`) |
+| **BBS trend maps** | ScienceBase `67507ae5…`, DOI 10.5066/P1DPJPSI (`acquire/bbs.py`) | GeoTIFF `tr{AOU}.tif` | 27 km | **ESRI:102003** | 1966–2022 long-term | geometric-mean %/yr population change | **nearest clip/pad, zero resampling** — the ref grid is snapped to this lattice (`bbs_trend.py`) |
+| **BBS abundance maps** | same item (`bbs_abundance`) | GeoTIFF `ra{AOU}.tif` | 27 km | ESRI:102003 | 2018–2022 mean | relative abundance (birds/route) | nearest clip/pad (`bbs_abund.py`) |
 | **Climate (ClimateNA via `climr`)** | R `climr` over a DEM (`climatena.py`→`climate_climr.R`) | computed (GeoTIFF out) | downscaled to query pts | lon/lat in, Albers out | monthly, 1901→`end_year` | Tmin/Tmax/Tave/PPT (+ derived incl. DD\*/NFFD/CMD/Eref); **all 12 months kept as separate channels** (see TEMPORAL.md), ×3 elevation quantiles for temperatures / q50 only otherwise | built directly on Albers grid |
 | **LUH-3** (v1.2 CMIP7 hist.) | Zenodo `19261724` (`zenodo.py`) | netCDF4 | 0.25° (~28 km) | WGS84 geographic | annual, 850–2024 | `states` (12 land-use fractions) + `management` | reproject → Albers (~1:1) |
 | **HYDE 3.5** (baseline, apr2025) | Utrecht vault HTTP (`hyde.py`) | netCDF (per var) | 5′ (~9.3 km) | WGS84 geographic | annual time points near-present, to 2025 | popd, urban pop, rural pop | reproject **average** (density) / **sum** (counts) → Albers |
@@ -26,10 +29,12 @@ the model grid (equal-area Albers at `grid.target_res_m`; see
 The model grid (27 km, `grid.target_res_m = 27000`) is **not** an integer multiple of every native resolution,
 so the aggregation method is chosen per product:
 
-- **Integer ratio + quantiles needed** → `regrid.block_reduce` / block-quantile
-  (BUI 250 m→27 km ≈ 108; DEM 1 km→27 km = 27).
+- **Integer ratio + quantiles needed** → `regrid.block_reduce` / block-quantile.
+  The DEM takes this path: ETOPO 60″ (~1.85 km) is first reprojected to a
+  `elevation.fine_factor = 15` sub-grid of the model grid, then block-quantiled, so the
+  block factor is exact by construction rather than by luck of the native resolution.
 - **Non-integer or ~1:1** → `rioxarray.reproject_match` with `Resampling.average`
-  for continuous fields (eBird 4 km/~2.96 km, HYDE ~9.3 km, SoilGrids 5 km→27 km,
+  for continuous fields (eBird ~2.96 km, HYDE ~9.3 km, SoilGrids 5 km→27 km,
   LUH-3 0.25° ~1:1), `Resampling.nearest`/`mode` for categorical masks.
 
 Rationale: `block_reduce` requires an integer block factor; `reproject_match`
@@ -42,7 +47,6 @@ These were previously hardcoded/unchecked; the code now asserts them and fails
 loudly on mismatch rather than silently mis-ingesting:
 
 - eBird raster CRS actually equals EPSG:8857 (not blindly `write_crs`).
-- PRISM/legacy netCDF variable name + CRS.
 - SoilGrids native CRS is Goode Homolosine (must be reprojected, not assumed
   Albers).
 - Ocean/land mask band count.

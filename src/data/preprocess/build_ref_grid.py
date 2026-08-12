@@ -40,7 +40,7 @@ def main():
     ap.add_argument("--base-raster", help="Raster whose bounds/CRS define the study-area box.")
     ap.add_argument("--bounds", nargs=4, type=float, metavar=("L", "B", "R", "T"),
                     help="Explicit bounds (with --crs) instead of --base-raster.")
-    ap.add_argument("--crs", help="CRS for --bounds (e.g. ESRI:102039).")
+    ap.add_argument("--crs", help="CRS for --bounds (e.g. ESRI:102003).")
     ap.add_argument("--out", help="Output ref raster (default: grid.ref_raster).")
     args = ap.parse_args()
 

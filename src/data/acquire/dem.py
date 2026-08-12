@@ -6,7 +6,7 @@ elevation (``preprocess/elevation.py``). This client fetches that DEM.
 
 Default source: NOAA NCEI **ETOPO 2022** 60-arc-second (~1.85 km) *surface*
 elevation, a single global GeoTIFF over public HTTPS (no auth). ~1.85 km gives
-~180 sub-cells per 25 km cell — ample for elevation quantiles. Swap ``dem.url``
+~180 sub-cells per model cell — ample for elevation quantiles. Swap ``dem.url``
 in data_config for a finer DEM (e.g. GMTED2010 7.5-arc-second) if desired.
 
 Same house style as the other downloaders: streaming, retries, atomic write,

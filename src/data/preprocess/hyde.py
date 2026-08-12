@@ -4,7 +4,7 @@ HYDE ships one global 5-arc-min netCDF per variable (population_density.nc,
 urban_population.nc, rural_population.nc), each spanning all HYDE time points.
 Density is intensive (people/km^2 -> reproject **average**); the urban/rural
 *population* layers are extensive counts (people/cell -> reproject **sum**, so
-totals are conserved 5' -> 25 km). Aggregation per file is inferred from the
+totals are conserved 5' -> 27 km). Aggregation per file is inferred from the
 name ("density" -> average, else sum) and overridable via ``hyde.aggregation``.
 
 Only time points within the model timeline (minus a short warm-up) are written;

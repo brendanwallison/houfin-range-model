@@ -29,8 +29,8 @@ on multi-project accounts).
 | 3 | preprocess → 27 km grids (+ sub-cell centroids) | compute | `bash scripts/tacc/submit_preprocess.sh` |
 | 4 | **warm the climr cache** | **login** | `bash scripts/tacc/warm_climr.sh` |
 | 5 | climate downscale + grids | compute | `bash scripts/tacc/submit_climate.sh` |
-| 6 | assemble encoder inputs (states, eBird cache, BBS, amplitude) | compute | `bash scripts/tacc/submit_states.sh` |
-| 7 | GPU encoder (ESK → DESK → cube → validate) | GPU | `bash scripts/tacc/submit_encoder.sh` |
+| 6 | assemble encoder inputs (states, trend rasters, trend points) | compute | `bash scripts/tacc/submit_states.sh` |
+| 7 | GPU encoder (spacetime-esk → DESK → cube → validate) | GPU | `bash scripts/tacc/submit_encoder.sh` |
 | 8 | build `Z_disp` + transactional model inputs | GPU | `bash scripts/tacc/submit_model_prep.sh` |
 | 9 | MAP statistical model | GPU | `bash scripts/tacc/submit_map.sh` |
 | 10 | post-MAP ecological conclusions | GPU | `bash scripts/tacc/submit_map_viz.sh` |
@@ -148,7 +148,7 @@ which is a separate login-node step *after* preprocessing (§3a, `warm_climr.sh`
 because it needs the sub-cell centroids preprocessing builds. All idempotent — safe
 to re-run. Lands under `$HOUFIN_DATA`.
 
-## 3. Preprocess to 25 km grids (SLURM, compute)
+## 3. Preprocess to model-grid (27 km) products (SLURM, compute)
 
 ```bash
 bash scripts/tacc/submit_preprocess.sh     # 01_preprocess (dev, 2h); injects -A
@@ -241,7 +241,7 @@ bash scripts/tacc/submit_states.sh         # 04_states (dev); injects -A
 `04_states.slurm` runs the CPU / torch-free pre-encoder assembly —
 `states` (per-year N-stream `state_{year}.npz` + `state_schema.json`),
 `ebird_cache` (reprojected eBird stack `E`), `bbs` (AOU↔eBird crosswalk + gridded
-`community_matrix`), and `amplitude` (the `x = E·anomaly` point cube) — so the GPU
+`community_matrix`), and `trend_points` (the ESK point set) — so the GPU
 job is purely the encoder. `HOUFIN_STATES_WORKERS` (default 16) sets the parallel
 per-year npz compression writers; `build_states` also pre-reads rasters in parallel
 and pins native thread pools, so it uses the node cleanly.
@@ -258,15 +258,16 @@ bash scripts/tacc/submit_preprocess_all.sh     # dev, 2h
 squeue -u $USER ; tail -f houfin_preall.o<jobid>
 ```
 
-Stages: `preprocess → climate → climate_grid → states → ebird_cache → bbs →
-amplitude`. This produces everything the encoder needs — N-stream
-`state_{year}.npz` (+ `state_schema.json`), the eBird stack cache, the BBS
-community matrix, and the amplitude-modulated point set. Select a subset with
+Stages: `preprocess → climate → climate_grid → states → bbs_trend → bbs_abund →
+ebird_trend → trend_points`. This produces everything the encoder needs — N-stream
+`state_{year}.npz` (+ `state_schema.json`), the BBS trend and abundance rasters and the
+eBird trends grid aligned to the model grid, and the `X_points`/`point_index` community
+point set the ESK consumes. Select a subset with
 `STAGES` (skip what already ran); e.g. if the old preprocess + climate outputs are
 present, just build the new artifacts:
 
 ```bash
-STAGES="climate_grid states ebird_cache bbs amplitude" \
+STAGES="climate_grid states bbs_trend bbs_abund ebird_trend trend_points" \
   bash scripts/tacc/submit_preprocess_all.sh
 ```
 
@@ -328,7 +329,7 @@ otherwise silently misnormalize every channel).
 Keep `states_annual_v1` / `desk_annual_v1` until the new run validates — they are the
 only way back to the annual-climate results for comparison.
 
-For `bbs_mode=off` (eBird-only, no BBS) drop `bbs amplitude`. **This one-shot
+**This one-shot
 assumes the climr cache is already warm** (§3a) — the `climate` stage is offline and
 cannot warm it. On a warm cache the whole chain (incl. climate ~minutes with a
 raised worker count) fits dev 2h. Cold start: run §3 → §3a (login warm) → then this
@@ -341,13 +342,13 @@ clear stale encoder artifacts so nothing mixes formats:
 
 ```bash
 rm -rf $HOUFIN_PROCESSED/encoder     # regenerated downstream
-# raw downloads + 25 km products under $HOUFIN_DATA are kept (preprocess reuses them)
+# raw downloads + 27 km products under $HOUFIN_DATA are kept (preprocess reuses them)
 ```
 
 Confirm the BBS release has `bbs_2026_release/{SpeciesList.csv,Weather.csv,
 Routes.csv,States/*.csv}` (SpeciesList.csv drives the AOU↔eBird crosswalk).
 
-## 3e. Encoder (ESK → DESK → cube → validate) — separate GPU job
+## 3e. Encoder (spacetime-esk → DESK → cube → validate) — separate GPU job
 
 The encoder is **not** preprocessing: ESK (Nyström kernel-PCA) and DESK
 (autoencoder training) use torch and are the heavy stages, so they run on a GPU
@@ -355,7 +356,7 @@ queue, separately, and typically **one at a time** so each is sized/queued on it
 own. Run after preprocessing:
 
 ```bash
-STAGES=esk  bash scripts/tacc/submit_encoder.sh        # eBird-only ESK Z (GPU)
+STAGES=spacetime-esk bash scripts/tacc/submit_encoder.sh   # joint ESK basis (GPU)
 STAGES=desk bash scripts/tacc/submit_encoder.sh        # train env→Z (GPU)
 STAGES="cube validate" bash scripts/tacc/submit_encoder.sh   # light; CPU is fine too
 # or all four at once:  bash scripts/tacc/submit_encoder.sh
@@ -534,7 +535,7 @@ changing the niche definition.
 
 ## 3g. Visual-QC quicklooks (SLURM, compute)
 
-Render the 25 km products to thumbnail PNGs and tar them for `scp` — a fast visual
+Render the 27 km products to thumbnail PNGs and tar them for `scp` — a fast visual
 sanity check at any point after the grids/states exist:
 
 ```bash
@@ -577,7 +578,7 @@ to `$WORK` (use `cp`, not `mv`, so striping applies):
 
 ```bash
 mkdir -p $WORK/houfin/processed/products
-cp -r $HOUFIN_DATA/{ref_grid_25km.tif,land_mask,ebird_weekly_2023_grid,luh3_grid,\
+cp -r $HOUFIN_DATA/{ref_grid_27km.tif,land_mask,climate_grid_monthly,luh3_grid,\
 hyde35_grid,soilgrids_grid,elevation,climate,bbs_2026_release/bbs_data_for_python.npz} \
    $WORK/houfin/processed/products/
 ```

@@ -4,7 +4,7 @@ Downloads the aggregated 5000 m COG GeoTIFFs from ISRIC over anonymous HTTP:
     {base}/{prop}/{prop}_{depth}_mean_5000.tif
 (e.g. .../5000m/phh2o/phh2o_0-5cm_mean_5000.tif). These are the mean of each
 property per depth. Soil is treated as time-invariant, so this runs once; the
-preprocess step reprojects/aggregates the tiles to the 25 km model grid.
+preprocess step reprojects/aggregates the tiles to the model grid.
 
 Property/depth sets come from data_config.json (`soilgrids`), overridable on
 the CLI. Same house style as the other downloaders: streaming, retries, tqdm,

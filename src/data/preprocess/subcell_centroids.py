@@ -1,6 +1,6 @@
 """Sub-cell centroids for a more principled climate quantile (optional path).
 
-The default climate path (elevation.py + climate_climr.py) samples each 25 km cell
+The default climate path (elevation.py + climate_climr.py) samples each model cell
 once at its centroid, at three elevation quantiles — capturing *elevation-only*
 sub-grid variability at a fixed lon/lat. This module instead lays a ``grid``x``grid``
 mesh of points inside each model cell, each at its TRUE fine-DEM lon/lat + mean
@@ -10,7 +10,7 @@ climate within each cell (computed in the climate step), capturing horizontal
 gradients (coast, rain shadow, latitude) the centroid-at-3-elevations method misses.
 
 Emits ``subcell_centroids.csv``: one row per sub-point
-``id, parent_id, row, col, long, lat, elev`` — ``parent_id`` is the 25 km cell id
+``id, parent_id, row, col, long, lat, elev`` — ``parent_id`` is the model-grid cell id
 (``row*W + col``, matching ``cell_centroids.csv``), ``id`` a unique sub-point id.
 Gated by ``climate.subgrid`` in data_config; the climate step auto-generates it.
 """
@@ -26,10 +26,10 @@ DEFAULT_GRID = 5   # grid x grid sub-points per model cell (5x5 = 25)
 def rasterize_land_fine(land_source, crs, ref_transform, H, W, grid=DEFAULT_GRID,
                         lake_source=None, exclusion_source=None, exclude_iso_a3=()):
     """Binary (1=land, 0=water) grid at the SUB-POINT resolution ``(H*grid, W*grid)``,
-    rasterized from the same land polygon the 25 km ocean mask uses (Natural Earth).
+    rasterized from the same land polygon the ocean mask uses (Natural Earth).
 
-    This is the *high-resolution* land test the 25 km parent mask can't do: it drops
-    water sub-points INSIDE a coastal cell that the 25 km mask calls land -- exactly
+    This is the *high-resolution* land test the parent mask can't do: it drops
+    water sub-points INSIDE a coastal cell that the parent mask calls land -- exactly
     the within-cell coastal structure the subgrid method exists to resolve.
     """
     import geopandas as gpd
@@ -66,11 +66,11 @@ def build_subcell_centroids(dem_path, ref_transform, crs, H, W, grid=DEFAULT_GRI
     survive it, inflating the point count and producing tiles climr's refmap can't
     cover -> offshore "Empty tile - not enough data"):
     - ``land_mask`` (``(H, W)`` bool, True = land): drops sub-points whose PARENT
-      25 km cell is not land -> aligns the point set to the modeled grid (removes
+      parent cell is not land -> aligns the point set to the modeled grid (removes
       fully-offshore cells).
     - ``fine_land`` (``(H*grid, W*grid)`` 0/1, from :func:`rasterize_land_fine`):
       drops each sub-point whose OWN fine location is water -> removes coastal
-      water sub-points a 'land' 25 km cell would otherwise keep.
+      water sub-points a 'land' parent cell would otherwise keep.
     """
     fine, g = dem_to_fine_grid(dem_path, ref_transform, crs, H, W, grid)  # (H*g, W*g)
     fine_transform = ref_transform * rasterio.Affine.scale(1.0 / g, 1.0 / g)
@@ -83,7 +83,7 @@ def build_subcell_centroids(dem_path, ref_transform, crs, H, W, grid=DEFAULT_GRI
     p_row, p_col = fr // g, fc // g
     parent = p_row * W + p_col
     keep = np.isfinite(elev)                       # drop DEM nodata sub-points
-    if land_mask is not None:                      # drop sub-points in non-land 25 km cells
+    if land_mask is not None:                      # drop sub-points in non-land parent cells
         if land_mask.shape != (H, W):
             raise ValueError(f"land_mask shape {land_mask.shape} != grid ({H}, {W})")
         keep &= land_mask[p_row, p_col]
@@ -195,7 +195,7 @@ def main():
                                        fine_land=fine_land)
     write_csv(out, cols)
     n_parent = np.unique(cols["parent_id"]).size
-    tags = ",".join(t for t, on in [("25km", land_mask is not None),
+    tags = ",".join(t for t, on in [("parentmask", land_mask is not None),
                                      ("fine", fine_land is not None)] if on)
     masked = f" (land-masked: {tags})" if tags else ""
     print(f"Wrote {cols['id'].size} sub-points ({args.grid}x{args.grid}/cell) over "

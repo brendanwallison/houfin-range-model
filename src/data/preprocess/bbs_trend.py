@@ -8,9 +8,9 @@ clip/pad with zero resampling** of the ground truth. Cells outside a species'
 mapped range are NaN.
 
 The cell value is the long-term (1966-2022) geometric-mean **percent-per-year**
-population change; it is NOT winsorized here (that stays faithful) -- the
-trend->abundance step (train_DESK/trend_community.py) clips the heavy tails that
-inverse-distance interpolation produces at sparse-coverage range margins.
+population change, copied verbatim. The heavy tails that USGS's inverse-distance
+surface produces at sparse-coverage range margins are handled downstream, by the
+soft caps in ``train_DESK/trend_community.py``, not here.
 
 Output ``trends.bbs_trend_grid`` (.npz): ``rate`` (n_species, H, W) float32,
 ``species_code`` (n_species,), ``aou`` (n_species,), ``valid`` (H, W) bool.

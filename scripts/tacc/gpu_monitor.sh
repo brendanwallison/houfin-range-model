@@ -23,9 +23,10 @@ gpu_preflight () {
 start_gpu_monitor () {
     GPU_MONITOR_LOG="${1:?monitor log path required}"
     local interval="${2:-30}"
-    # Fail LOUDLY rather than writing a header-only CSV for the whole job. The existing
-    # nvidia-smi check lives in gpu_preflight, which nothing calls (and is JAX-based, so it is
-    # the wrong preflight for the torch encoder anyway).
+    # Fail LOUDLY rather than writing a header-only CSV for the whole job. The one-shot
+    # nvidia-smi check lives in gpu_preflight (called by 20_encoder, 25_model_prep,
+    # 30_model_map and 31_model_viz), but that one is JAX-based, so it is the wrong
+    # preflight for the torch encoder -- hence this separate check.
     if ! command -v nvidia-smi >/dev/null 2>&1; then
         echo "[gpu] WARNING: no nvidia-smi on $(hostname) -- telemetry DISABLED (not a GPU node?)" >&2
         GPU_MONITOR_PID=""

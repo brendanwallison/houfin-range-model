@@ -9,7 +9,7 @@ public data vault, which serves them over plain anonymous HTTP:
 
 Confirmed accessible (unlike public.yoda.uu.nl, which is behind Anubis
 bot-protection). CC BY 3.0. The preprocess step subsets these to the model
-year range + bounding box and aggregates 5 arc-min → 25 km.
+year range + bounding box and aggregates 5 arc-min → 27 km.
 
 Population variables (the three chosen human-density streams):
     population_density.nc  (popd)   urban_population.nc  (urbc)

@@ -1,7 +1,7 @@
 """One-shot cache of the reprojected eBird community stack (``E``).
 
 ``load_tifs_structured`` reprojects every eBird weekly raster onto the model grid
-on *every* ESK/DESK/amplitude call — the same expensive work repeated by ~4
+on *every* call — the same expensive work repeated by several
 consumers. This caches the reprojected ``(H, W, S*T)`` stack once (NaN preserved —
 masking downstream relies on it) plus its metadata, and offers a drop-in
 ``load_ebird_stack`` returning the same ``(stack, meta)`` contract (cache hit → load;

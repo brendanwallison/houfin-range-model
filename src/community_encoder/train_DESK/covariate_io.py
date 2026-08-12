@@ -1,14 +1,16 @@
 """Shared N-stream covariate IO for the DESK encoder (trainer, validate, cube).
 
-Replaces the hardcoded 2-stream PRISM/BUI reads. Loads per-year
-``state_{year}.npz`` (one array per stream) using the ``state_schema.json`` sidecar
-written by ``streams.run_states`` for the channel layout, applies optional
-per-stream transforms (from the ``states`` config), and provides the split into
-per-stream tensors that ``MultiStreamAutoencoder.forward(*streams)`` expects.
+Loads per-year ``state_{year}.npz`` (one array per stream) using the ``state_schema.json``
+sidecar written by ``streams.run_states`` for the channel layout, applies optional
+per-stream transforms (from the ``states`` config), and provides the split into per-stream
+tensors that ``MultiStreamAutoencoder.forward(*streams)`` expects.
 
-Per-channel normalization stats are computed once (on the labeled snapshot) and
-reused verbatim for the history bag and every per-year state at cube time, so the
-whole pipeline shares one normalization.
+Per-channel normalization stats are fit ONCE, on the supervised training pixels only
+(holdout and buffer cells excluded, so the evaluation distribution cannot leak into the
+inputs), then reused verbatim for every per-year state at cube time -- one normalization
+for the whole pipeline. That reuse is why ``assert_schema_compatible`` matters: mu/sd are
+POSITIONAL, so a channel reorder that preserves the total width would misnormalize every
+channel with no other symptom.
 """
 import json
 import os

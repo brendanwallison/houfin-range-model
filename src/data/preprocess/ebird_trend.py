@@ -2,15 +2,17 @@
 
 Each species' trends parquet has one row per native 27 km cell with WGS84
 ``longitude``/``latitude`` centroids and per-cell trend estimates. We project the
-centroids to the ref-grid CRS, bin each row to a model cell, and average within a
-cell (eBird's 27 km sinusoidal grid maps ~1:1 onto the 27 km Albers grid). Two
+centroids to the ref-grid CRS and fill each model cell from its NEAREST centroid
+(Voronoi via griddata, masked beyond ``cutoff_frac`` cell widths -- this replaced an
+earlier containment-binning that left a 3.4% scatter of interior holes). Two
 fields are gridded per species:
 
   ``abd_ppy``  -- percent-per-year trend in relative abundance (the recent-domain
                   rate blended with the BBS long-term rate in trend_community.py)
-  ``abd``      -- relative abundance at the middle of the trend window (a
-                  diagnostic / optional reference; the modern anchor is the 2023
-                  eBird abundance raster, not this).
+  ``abd``      -- relative abundance at the middle of the trend window. This IS the
+                  production anchor: under the default ``trend.anchor_mode=trends-abd``,
+                  ``trend_community._trends_abd_anchor`` forward-extrapolates it along
+                  ``abd_ppy`` to the reference year.
 
 Output ``trends.ebird_trend_grid`` (.npz): ``abd_ppy`` (n_species, H, W) float32,
 ``abd`` (n_species, H, W) float32, ``species_code`` (n_species,), ``valid`` (H, W)

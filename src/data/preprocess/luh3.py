@@ -4,7 +4,7 @@ LUH-3 states/management files are global 0.25 deg annual netCDF stacks with many
 data variables (states: 12 land-use fractions primf/primn/secdf/.../pastr/range;
 management: crop/fertilizer/irrigation/wood-harvest layers). Every variable is an
 intensive per-cell fraction or rate (no categorical/class layers), so all reproject
-with **average** (the areal aggregate 0.25 deg -> 25 km, ~1:1, where average ~= sum
+with **average** (the areal aggregate 0.25 deg -> 27 km, ~1:1, where average ~= sum
 per cell anyway). "Use every LUH-3 covariate": all 3-D variables in each file are
 written, one GeoTIFF per variable per in-range year (``{var}_{year}_grid.tif``).
 

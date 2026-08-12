@@ -1,16 +1,16 @@
-"""Terrestrial mask: land minus polygonal inland water, plus observation snapping.
+"""Terrestrial mask: land minus polygonal inland water.
 
-Replaces the old rule (ocean iff *all* BUI quantile bands were NaN), which made
-any model-grid cell containing even one land subpixel "land" — dilating the
-coast. Here a cell is land iff at least ``tau`` of its finest-resolution
-subpixels are land, computed from a **continental** land/water source so
-Canadian/Mexican land inside the bounding box is real land (not nodata).
+A cell is land iff at least ``tau`` of its finest-resolution subpixels are land,
+computed from a **continental** land/water source so Canadian/Mexican land inside the
+bounding box is real land, not nodata.
 
-De-dilating can strand coastal observations on newly-ocean cells, so
-observations are **snapped** to the nearest land cell within a small radius;
-anything farther (genuinely offshore, e.g. a pelagic eBird smear) is dropped
-rather than pulled in. Snapping reuses ``scipy.ndimage.distance_transform_edt``,
-the same primitive the cube gap-fill uses.
+Writes ``ocean_mask_{res}km.tif`` (1 = ocean, 0 = land, nodata 255) -- the single
+terrestrial mask every downstream stage reads.
+
+Note what the pipeline does with observations that this de-dilation strands on a
+newly-ocean cell: it DROPS them (``bbs.map_routes_to_grid`` keeps only routes whose
+cell is land). ``snap_to_nearest_land`` below implements the alternative -- pull them
+to the nearest land cell within a radius -- but has no production caller.
 """
 import numpy as np
 from scipy.ndimage import distance_transform_edt

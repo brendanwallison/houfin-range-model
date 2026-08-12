@@ -13,6 +13,15 @@ The two subsystems are connected at exactly one point: the age-structured model 
 
 The remainder of this document explains, for each part of the codebase, *why* it's built the way it is, and only then *how* — working from the big picture down to specific files and functions.
 
+Four companion documents carry the detail that does not belong in a repository overview:
+
+| Document | What it covers |
+|---|---|
+| [`docs/TEMPORAL.md`](docs/TEMPORAL.md) | The canonical model timeline — one definition of "a year", the bio-year climate window, and where it is enforced |
+| [`docs/DATA_SOURCES.md`](docs/DATA_SOURCES.md) | Every external product: access route, native resolution and CRS, cadence, and how it is aggregated onto the model grid |
+| [`docs/PRIORS.md`](docs/PRIORS.md) | The derivation behind each prior and parameterization in `age_model_config.json` |
+| [`docs/TACC.md`](docs/TACC.md) | The HPC runbook: queues, stage-by-stage submission, and the climr cache |
+
 ---
 
 ## 1. Tech stack — why these tools
@@ -187,13 +196,11 @@ Raw rasters (`.tif`/`.nc`) → yearly smoothed states (`.npz`) → community-enc
 
 Filesystem paths are centralized in three JSON files under `config/`, all loaded through the shared helper `src/config_utils.py` (which also honors an environment-variable override per file):
 
-- **`esk_desk_config.json`** — the community-encoder subsystem: eBird/PRISM/BUI input locations, ESK sweep settings (`sigmas`, `latent_dims`, `n_landmarks`), DESK training hyperparameters and loss weights, the spacetime-cube (`latent_cube`) locations, and the `single_year_analysis` comparison paths. Consumed via `$ESK_DESK_CONFIG`.
-- **`age_model_config.json`** — the age-structured model: model-input/result paths, explicit 24-of-64 latent truncation, the shared adult/juvenile dispersal specification, local age-structure power prior, MAP continuation/LR schedule, and runtime residency policy. Consumed via `$AGE_MODEL_CONFIG`.
-- **`data_config.json`** — just `datasets_root` and `processed_root`, the two machine-specific prefixes the one-off ETL scripts compose their paths from. Consumed via `$DATA_CONFIG`.
+- **`esk_desk_config.json`** — the community-encoder subsystem: the `states.streams` covariate registry (authoritative, no code-side default), the trend-target settings (`trend`), the joint-ESK settings (`esk.spacetime`), DESK training hyperparameters and loss weights, the spacetime-cube (`latent_cube`) locations, and the `single_year_analysis` comparison paths. The `esk.sigmas`/`latent_dims`/`n_landmarks` keys belong to the opt-in eBird-only sweep, not the production basis. Consumed via `$ESK_DESK_CONFIG`.
+- **`age_model_config.json`** — the age-structured model: model-input/result paths, explicit 24-of-64 latent truncation, the shared adult/juvenile dispersal specification, every prior, local age-structure power prior, MAP continuation/LR schedule, and runtime residency policy. Each knob carries a one-line description; the derivations behind the priors are in [`docs/PRIORS.md`](docs/PRIORS.md). Consumed via `$AGE_MODEL_CONFIG`. **Note it is fingerprinted**: `age_run_map` hashes this whole file, comments included, so any edit invalidates MAP-checkpoint resume.
+- **`data_config.json`** — the data layer's source of truth: `datasets_root`/`processed_root`, the model `grid` (resolution, CRS, the bounds snapped to the BBS 27 km lattice), the `timeline`, and the per-product acquisition settings (`sciencebase`, `zenodo`, `hyde`, `soilgrids`, `dem`, `coastline`, `trends`, `avonet`, `regions`). Consumed via `$DATA_CONFIG`.
 
 To run on a different machine, set `HOUFIN_DATA` and `HOUFIN_PROCESSED` (or the config-file override variables); no script edits are needed.
-
-One deliberate subtlety: in `esk_desk_config.json`, the `single_year_analysis` block compares ESK features computed at `sigma_0.5` against DESK-cube features at `sigma_1.5`. This is **intentional** — the ESK sanity-check pipeline runs at 0.5 while the spacetime cube is built at 1.5, and `compare_esk_desk.py` deliberately cross-compares the two — not a copy-paste error.
 
 ### 4.4 Remaining gap: no sample data ships with the repository
 

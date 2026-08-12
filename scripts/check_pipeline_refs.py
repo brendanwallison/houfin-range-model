@@ -17,6 +17,11 @@ Two checks that no test covered, each of which had already let a real defect shi
 2. **Nothing references a module that no longer exists.** Deleting a module is only safe
    if no launcher, config, doc, or test still names it.
 
+3. **Every `docs/PRIORS.md#anchor` in a config points at a real heading, and every heading
+   is pointed at.** The long prior derivations live in that file with a one-line pointer in
+   `age_model_config.json`; a pointer that 404s silently is worse than no pointer, and an
+   orphaned section is prose nothing can find.
+
     python scripts/check_pipeline_refs.py
 """
 import re
@@ -90,6 +95,20 @@ def dangling_module_refs():
     return bad
 
 
+def priors_anchor_mismatches():
+    """(missing, orphaned) between config `docs/PRIORS.md#anchor` refs and its `##` headings."""
+    doc = REPO / "docs" / "PRIORS.md"
+    if not doc.exists():
+        return [], []
+    refs = set()
+    for cfg in sorted((REPO / "config").rglob("*.json")):
+        refs |= set(re.findall(r"docs/PRIORS\.md#([a-z0-9-]+)", cfg.read_text()))
+    headings = re.findall(r"^## (.+)$", doc.read_text(), re.MULTILINE)
+    # GitHub anchor slug: lowercase, non-alphanumerics collapsed to hyphens.
+    have = {re.sub(r"[^a-z0-9]+", "-", h.lower()).strip("-") for h in headings}
+    return sorted(refs - have), sorted(have - refs)
+
+
 def main():
     failures = 0
     known, n_stages = defined_stages()
@@ -111,6 +130,18 @@ def main():
             print(f"  {f}:{i}: {t}")
     else:
         print("ok: every `python -m ...` / `python ....py` target exists")
+
+    missing_anchors, orphan_sections = priors_anchor_mismatches()
+    if missing_anchors or orphan_sections:
+        failures += 1
+        if missing_anchors:
+            print(f"FAIL: config points at {len(missing_anchors)} docs/PRIORS.md anchor(s) that "
+                  f"have no heading: {missing_anchors}")
+        if orphan_sections:
+            print(f"FAIL: {len(orphan_sections)} docs/PRIORS.md section(s) nothing points at: "
+                  f"{orphan_sections}")
+    else:
+        print("ok: docs/PRIORS.md anchors and config pointers agree")
 
     return 1 if failures else 0
 

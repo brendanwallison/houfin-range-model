@@ -113,7 +113,7 @@
     "trend": {"holdout_frac": 0.1, "seed": 0, "block_cells": 6, "holdout_years": []},
     "_output_ema_comment": "Learned causal EMA over the year axis on PREDICTED z during supervision. half_life is learned in half_life_bounds and saved to desk_meta for provenance/diagnostics. build_final_z_cube intentionally exports z_raw without reapplying this EMA because the population model supplies lagged demographic response.",
     "output_ema": {"half_life_bounds": [1.0, 40.0], "warmup_start": 1940, "init_half_life": 10.0},
-    "_zdir_comment": "The JOINT uncentered spatiotemporal ESK basis (esk/spacetime). latent_dim=64 is the production GP feature width; it must match esk.spacetime.latent_dim and the age model's source_latent_dim -- the age model's own latent_dim is a further truncation of that, not the same number.",
+    "_zdir_comment": "The JOINT uncentered spatiotemporal ESK basis (esk/spacetime). latent_dim=64 is the production GP feature width; it must match esk.spacetime.latent_dim and the age model's source_latent_dim. The age model's own latent_dim (24) is a further truncation of that, not the same number.",
     "z_dir": "${HOUFIN_PROCESSED}/encoder/esk/spacetime",
     "latent_dim": 64
   },

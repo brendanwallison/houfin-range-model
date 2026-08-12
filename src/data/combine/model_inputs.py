@@ -37,12 +37,10 @@ DISPERSAL_SPEC = dispersal_spec(_cfg)
 POPULATION_SPEC = dict(_cfg["population_model"])
 
 # --- DISEASE-TERM SPATIAL BASIS SETTINGS ---
-# These replace the old st_basis_space/time_frequencies. The disease effect on K is
-# no longer a generic spatiotemporal field (967 free cosine coefficients over
-# space x time, which annihilated eastern K by absorbing every kind of spatial
-# misfit); it is now a structured severity x onset x recovery form whose only
-# spatially varying pieces are two SMOOTH, TIME-INDEPENDENT fields. See
-# src/model/age_fields.py.
+# The disease effect on K is a structured severity x onset x recovery form whose only
+# spatially varying pieces are two SMOOTH, TIME-INDEPENDENT fields -- deliberately not a
+# free spatiotemporal field, which would absorb every kind of spatial misfit. See
+# src/model/age_fields.py and config.population_model._disease_prior_comment.
 DISEASE_PRIOR_SPEC = dict(POPULATION_SPEC["disease_prior"])
 N_FREQ_SEVERITY = int(DISEASE_PRIOR_SPEC["severity_space_frequencies"])
 N_FREQ_LAG = int(DISEASE_PRIOR_SPEC["lag_space_frequencies"])

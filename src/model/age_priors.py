@@ -152,15 +152,13 @@ def sample_priors(prior_scale=1.0, M_features=None, time=None,
     # saturated. Giving K its own weights makes that disagreement a covariate
     # statement, still prior-coupled to the others.
     #
-    # ONE-FACTOR parameterization: beta_j = s_j * (h_j*f + sqrt(1-h_j^2)*eps_j), with
-    # f and eps drawn IID ACROSS FEATURES. Then Var(beta_j) = s_j^2 and
-    # Corr(beta_j, beta_k) = h_j*h_k, both EXACTLY, and the implied 3x3 covariance is
-    # positive-definite for any parameter values -- no Cholesky positive-definiteness
-    # guard whose clipping would corrupt gradients. (LKJCholesky is not usable here:
-    # its concentration > 1 concentrates near the IDENTITY correlation, i.e. near
-    # zero correlation, the opposite of the prior belief.) The iid-across-features
-    # structure is what preserves the uncentered-Ružička GP contract -- see
-    # validate_environment_kernel_contract -- exactly as the old 2-output version did.
+    # Two properties the construction must have, and does: the implied covariance is
+    # positive-definite for ANY parameter values, so there is no Cholesky guard whose
+    # clipping would corrupt gradients (LKJCholesky is not usable here -- its
+    # concentration > 1 concentrates near the IDENTITY correlation, i.e. near zero
+    # correlation, the opposite of the prior belief); and the factors are drawn IID
+    # ACROSS FEATURES, which is what preserves the uncentered-Ružička GP contract. See
+    # validate_environment_kernel_contract.
     _m = _MANIFOLD_PRIOR
     # RANK-2 ANGULAR solve. Column order is
     #     [survival_adult, reproduction, capacity, survival_juv]
@@ -289,9 +287,13 @@ def sample_priors(prior_scale=1.0, M_features=None, time=None,
     # the point of the structure. All scales carry prior_scale for continuation.
     _p = _DISEASE_PRIOR
 
-    # SEVERITY: logit of the peak fraction of K removed once the front passes.
-    # mu_loc=0 -> prior median 50% removal, matching the documented eastern
-    # decline; mu_scale=0.5 -> 90% CI ~ [31%, 69%].
+    # SEVERITY: logit of the MODIFIER on density-dependent severity, not of the removed
+    # fraction itself -- severity = severity_ceiling * sigmoid(mu + ...) * hill(K_base).
+    # mu_loc = logit(0.8) = 1.386 puts the prior median modifier at 0.8, i.e. a median
+    # severity of 0.8 * 0.5 = 40% in the densest populations; mu_scale=0.5 gives a 90% CI
+    # on the modifier of ~[0.62, 0.91] -> severity [31%, 46%]. See the config's
+    # disease_prior._mu_comment for why that brackets the documented eastern decline from
+    # slightly below, leaving the ceiling a strict bound rather than the expected value.
     priors['disease_mu_sev'] = numpyro.sample(
         "disease_mu_sev",
         dist.Normal(float(_p["mu_loc"]), float(_p["mu_scale"]) * prior_scale),
@@ -423,12 +425,10 @@ def sample_priors(prior_scale=1.0, M_features=None, time=None,
     priors['alpha_j'] = numpyro.sample("alpha_j", dist.Normal(-0.5, 0.5 * prior_scale)) # ~40%
     priors['alpha_f'] = numpyro.sample("alpha_f", dist.Normal(2.0, 0.5 * prior_scale))  # Fecundity
     # CAPACITY LEVEL, declared in expected BBS route counts (see counts_to_relative).
-    # SOFTPLUS link (controlled test): K_counts = softplus(alpha_k + gamma_k*H_k +
-    # trend). The previous run used exp with a LogNormal level; alpha_k_loc here was
-    # solved so the POST-TRANSFORMATION prior mean of the capacity level is identical
-    # -- E[softplus(N(2.814974, 0.8))] = 2.8920 counts = exp(log 2.1 + 0.8^2/2) -- with
-    # the raw scale left at 0.8, so the prior variance falls to 7.4% of the LogNormal's.
-    # That reduction is expected and deliberately uncorrected.
+    # SOFTPLUS link: K_counts = softplus(alpha_k + gamma_k*H_k + trend). alpha_k_loc is
+    # solved by _softplus_loc_for_median so the POST-TRANSFORMATION prior MEDIAN of the
+    # capacity level equals the measured 2.6183 route counts. The median, not the mean:
+    # a mean target landed the realized median 8.6% high (config _link_comment).
     #
     # Reminder of what this prior replaced and why it matters: alpha_k used to be
     # stated in relative DENSITY units, where it asserted a capacity of ~205 route
@@ -474,17 +474,17 @@ def sample_priors(prior_scale=1.0, M_features=None, time=None,
     priors['gamma_f'] = 1.0
     priors['gamma_k'] = 1.0
 
-    # The slopes are reported two ways. The friendly names are for new code; the
-    # *_raw names are emitted as DETERMINISTIC constants equal to softplus^-1(1) =
-    # log(e-1), so the several existing readers that compute softplus(gamma_f_raw) --
-    # analysis/plots.py, _age_vis_common.py, visualize_age_model.py,
-    # visualize_community_similarity.py -- keep returning the correct value (1.0)
-    # without edits.
+    # The slopes are reported two ways. The friendly names are for new code; the *_raw
+    # names are emitted as DETERMINISTIC constants equal to softplus^-1(1) = log(e-1), and
+    # gamma_j_diff as 0.0, so a reader that computes softplus(gamma_f_raw) or
+    # gamma_a + gamma_j_diff still gets exactly 1.0.
     #
-    # gamma_j_diff makes the same SAMPLED -> DETERMINISTIC migration, emitted as 0.0. Seven
-    # modules compute `gamma_j = gamma_a + gamma_j_diff`; with gamma_a = softplus(gamma_a_raw) = 1
-    # they now get 1.0 + 0.0 = 1.0, which is exactly right, with no edits needed. Emitting it is
-    # cheaper and safer than deleting it and breaking all seven with a KeyError.
+    # DO NOT DELETE THESE. The live consumer is vis/age_model_math._gamma_slope, reached
+    # through the hardcoded fold-in list in scripts/viz/map_diagnostics.py:251-253 --
+    # auto_delta_params_to_latents returns SAMPLED sites only, so a deterministic that is
+    # not in that list vanishes from the latents dict. Removing these broke diagnostics
+    # twice in production (KeyError after figure 04, before metrics.json), which is why
+    # tests/test_kernel_contract.py and tests/test_map_diagnostics.py now pin them.
     _SOFTPLUS_INV_ONE = math.log(math.e - 1.0)
     for _name in ("gamma_a_raw", "gamma_f_raw", "gamma_k_raw"):
         numpyro.deterministic(_name, jnp.asarray(_SOFTPLUS_INV_ONE))
@@ -529,9 +529,10 @@ def build_model_2d(data, prior_scale=1.0):
     their per-observation quality tier, and scaling constants). Samples priors,
     projects Z to per-cell/per-year survival, fecundity, and carrying-capacity
     fields, runs the age-structured forward simulation from the invasion year,
-    and scores BBS counts with a negative-binomial (NB2) likelihood whose
-    concentration is down-weighted for lower-quality (unscreened Mexico)
-    observations. ``prior_scale`` controls tight-to-nominal prior continuation.
+    and scores BBS counts with a negative-binomial (NB2) likelihood. Its concentration
+    is down-weighted for lower-quality (unscreened Mexico) observations, but only when
+    more than one quality tier is actually present -- with US/Canada alone the term is
+    identically off. ``prior_scale`` controls tight-to-nominal prior continuation.
     """
     validate_environment_kernel_contract(data)
     Nx, Ny = data['Nx'], data['Ny']

@@ -235,7 +235,6 @@ def reproduction_age_structured(
     N_total_post = N_a_post + N_j_stayers + N_j_arrivers
     K_safe = jnp.maximum(K, eps)
 
-    # Completely removed the inline 'c = (F_max * S_j) / ...' logic block
     F_eff = F_max / (1.0 + c * (N_total_post / K_safe))
     allee_factor = 1.0 - jnp.exp(-allee_gamma * N_total_post)
     F_actual = F_eff * allee_factor

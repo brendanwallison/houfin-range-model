@@ -1,11 +1,10 @@
 """Shared loader for the age-structured model's numpyro inputs.
 
-Consolidates the ``load_data`` / ``load_data_to_gpu`` copies that previously
-lived in ``age_run_map``, ``age_run_svi``, ``age_run_hmc`` and
-``age_resume_hmc``. Heavy inputs default to explicit device residency. A
-JIT-compiled differentiable ``lax.scan`` cannot truly stream NumPy slices from
-host memory; calling these arrays "streaming" previously obscured XLA's copies.
-Set ``HOUFIN_MODEL_INPUT_RESIDENCY=host`` only as an experimental mode.
+One ``load_data`` for every inference entry point, so residency and dtype handling
+cannot drift between them. Heavy inputs default to explicit device residency: a
+JIT-compiled differentiable ``lax.scan`` cannot truly stream NumPy slices from host
+memory, so calling these arrays "streaming" only obscured XLA's copies. Set
+``HOUFIN_MODEL_INPUT_RESIDENCY=host`` as an experimental mode only.
 """
 import os
 import pickle
@@ -14,10 +13,8 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-# st_basis used to belong here: the old generic spatiotemporal disease basis was
-# (967, 33, N_land) ~ 2 GiB. The structured disease term (src/model/age_fields.py)
-# uses two time-independent spatial bases of a few MB, so only the Z arrays are
-# large now.
+# Only the Z arrays are large enough to need explicit residency handling; the disease
+# bases are two time-independent spatial bases of a few MB.
 LARGE_INPUT_KEYS = {"Z_gathered", "Z_disp_gathered"}
 
 

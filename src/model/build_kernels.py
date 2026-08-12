@@ -24,13 +24,11 @@ import jax.numpy as jnp
 import jax.nn
 from jax.numpy.fft import fft2, ifft2
 
-# Re-exported for backwards compatibility. These live in a deliberately JAX-FREE
-# module so that tooling which only needs to know the dispersal spec -- notably
-# the sweep driver's login-node preflight -- can resolve it without importing
-# JAX, whose CPU-backend init aborts on TACC login nodes.
+# Re-exported so callers can resolve the dispersal spec from here. These live in a
+# deliberately JAX-FREE module, so tooling that only needs the spec -- notably the sweep
+# driver's login-node preflight -- can import it without JAX, whose CPU-backend init
+# aborts on TACC login nodes.
 from src.model.dispersal_spec import (  # noqa: F401
-    JUVENILE_MDD_KM,
-    JUVENILE_SHAPE,
     dispersal_spec,
     get_dispersal_quantiles,
     get_gamma_scale,
@@ -98,7 +96,7 @@ def edge_correction_from_fft(fft_land, fft_kernel, land_mask, Ny, Nx, eps=1e-12)
     Calculates the Fraction of the kernel that lands on valid habitat.
     
     FIX: Returns the FRACTION (denominator), not the reciprocal.
-    forward.py divides by this value: Result = Conv / Fraction.
+    age_forward.py divides by this value: Result = Conv / Fraction.
     """
     # Cross-Correlation in Fourier Domain = F(A) * conj(F(B))
     fraction_land = jnp.real(ifft2(fft_land * jnp.conj(fft_kernel)))[:Ny, :Nx]
@@ -119,7 +117,8 @@ def make_radial_directional_kernels(
     smoothness_km=None
 ):
     """
-    Splits the base_kernel_grid into 12 wedges using soft masking.
+    Splits the base_kernel_grid into 4 x (len(radii_splits)-1) wedges using soft masking
+    (12 at the pinned 3-band config; tests/test_dispersal_physics.py exercises a 4-band, K=16 case).
     Does NOT re-normalize. The sum of all kernels equals base_kernel_grid.
     """
     if smoothness_km is None:
@@ -161,9 +160,9 @@ def make_radial_directional_kernels(
             # This preserves the probability mass of the donut.
             k = base_kernel_grid * mask_combined
 
-            # [REMOVED] Normalization Step
-            # total = jnp.sum(k)
-            # k = k / total
+            # Deliberately NOT renormalized per wedge: the wedges partition the master
+            # kernel's mass, and rescaling each to sum 1 would destroy that partition.
+            # make_juvenile_kernel_stack asserts the total is conserved.
 
             kernels.append(k)
             labels.append(f"{d}_{r_min_val:.0f}-{r_max_val:.0f}")
@@ -266,7 +265,7 @@ def build_simulation_struct(
     # Adult Edge Correction (Standard)
     adult_edge_correction = edge_correction_from_fft(fft_land, adult_fft_kernel, land_mask, Ny, Nx)
 
-    # 3. Juvenile (12 Cohorts)
+    # 3. Juvenile cohorts (K = 4 directions x radial bands)
     # A+B. Master juvenile PDF split into directional x radial wedges, via the shared builder
     # so the Z_disp path features use the IDENTICAL kernel family (same base PDF + splits).
     juv_kernels, labels = make_juvenile_kernel_stack(
@@ -301,7 +300,7 @@ def build_simulation_struct(
         "adult_fft_kernel": adult_fft_kernel,
         "adult_edge_correction": adult_edge_correction,
         
-        "juvenile_fft_kernel_stack": jnp.stack(fft_list, axis=0),        # (12, Ly, Lx)
+        "juvenile_fft_kernel_stack": jnp.stack(fft_list, axis=0),        # (K, Ly, Lx)
         "juvenile_edge_correction_stack": jnp.stack(edge_list, axis=0),  # (12, Ny, Nx)
         
         "labels": labels,

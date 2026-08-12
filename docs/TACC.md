@@ -412,7 +412,7 @@ This runs `path-features` then `model-ingest`. The former writes raw instantaneo
 `Z`, `Z_disp`, kernel/mask/timeline provenance, and a build ID into every yearly
 file. The latter verifies every build ID and contract before atomically publishing
 versioned memmaps through `metadata.pkl`. The statistical model explicitly keeps
-the configured top 16 of the 64 source eigenfeatures by default; changing
+the configured top 24 of the 64 source eigenfeatures; changing
 `age_model_config.json:latent_dim` is the supported VRAM tradeoff.
 
 **Before the first `model-ingest` of the disease-gated model**, the arrival-year

@@ -19,13 +19,6 @@ import math
 
 from scipy.special import gamma, gammaincinv
 
-# Juvenile dispersal kernel defaults. Kept here beside the resolver so the
-# config, the path-feature builder, and the forward model all trace back to one
-# definition of the kernel family.
-JUVENILE_MDD_KM = 330.0
-JUVENILE_SHAPE = 0.468
-
-
 def get_gamma_scale(mean_dist, shape):
     """Kernel ``scale`` giving a 2-D radial generalized Gaussian the target mean.
 

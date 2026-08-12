@@ -63,7 +63,7 @@ if MAP_PROFILE != "standard":
     _run_name = f"{_run_name}_{MAP_PROFILE}"
 OUTPUT_DIR = os.path.join(_cfg["results_dir"], _run_name)
 TOTAL_STEPS = int(
-    os.environ.get("HOUFIN_MAP_STEPS", _active_map_cfg.get("target_steps", 900))
+    os.environ.get("HOUFIN_MAP_STEPS", _active_map_cfg["target_steps"])
 )
 CKPT_EVERY = int(os.environ.get("HOUFIN_MAP_CKPT_EVERY", 100))
 # How often to print a progress line to stdout. tqdm's postfix carries the loss

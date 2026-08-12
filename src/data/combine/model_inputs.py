@@ -476,8 +476,8 @@ def ingest_data():
 
     # 5. Disease term inputs (see src/model/age_fields.py). The effect on K is
     # severity(x) * onset_gate(x,t) * (1 - recovery(t - arrival)); the only
-    # spatially varying free pieces are two smooth, time-independent fields, so
-    # what used to be a 2 GiB spatiotemporal array is now a few MB.
+    # spatially varying free pieces are two smooth, time-independent fields, which is
+    # why these bases are a few MB rather than gigabytes.
     dis_timestep = disease_timestep(_tl, first_year=start_year_model)
     if dis_timestep < 0 or dis_timestep >= Time:
         raise ValueError(f"disease_start_year {_tl['disease_start_year']} lies outside the "

@@ -32,8 +32,7 @@ URBAN_PATH = f"{_DR}/urban_avian/spp_urban_indices.csv"
 EBIRD_CROSSWALK_PATH = f"{_DR}/avonet/eBird_taxonomy.csv"
 
 # The clean, ordered species list the eBird downloader consumes; the two wide
-# analysis tables land alongside it. All config-driven (previously written to
-# the current working directory).
+# analysis tables land alongside it. All config-driven.
 SPECIES_LIST_PATH = _CFG.get(
     "species_list", f"{_DR}/avonet/reference_community_ranked.csv"
 )

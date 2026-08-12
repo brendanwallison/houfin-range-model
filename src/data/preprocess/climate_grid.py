@@ -57,7 +57,8 @@ SCHEME = "monthly_bioyear_v2"
 MANIFEST = "manifest.json"
 
 # A scheme-v2 variable token always ends "_b<kk>m<MM>_q<nn>"; the v1 annual tokens
-# (e.g. "Tmax_q50") do not. Used to refuse a directory holding both.
+# (e.g. "Tmax_q50") do not. This is how assert_no_legacy_rasters refuses a directory
+# holding both -- see its docstring for why that cannot be caught downstream.
 _V2_TOKEN = re.compile(r"_b\d{2}m\d{2}_q\d{2}$")
 _YEAR_TIF = re.compile(r"^(?P<var>.+)_(?P<year>\d{4})_grid\.tif$")
 

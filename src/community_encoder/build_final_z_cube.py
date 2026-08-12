@@ -9,7 +9,9 @@ cleanup (``fill_gaps_stage1/2/3``). CRS/mask/normalization anchor come from the
 data + encoder configs.
 """
 import glob
+import hashlib
 import os
+import pathlib
 from typing import Any, Dict, Optional, Union
 
 import numpy as np
@@ -85,6 +87,16 @@ def fill_gaps_stage3_nearest(z_cube, valid_mask, land_mask):
         z_filled[y_target, x_target, d] = interp_vals
 
     return z_filled
+
+
+def _file_identity(path):
+    """``(name, size, content_sha256)`` for a produced artifact, for cube_meta provenance."""
+    p = pathlib.Path(path)
+    h = hashlib.sha256()
+    with p.open("rb") as fh:
+        for chunk in iter(lambda: fh.read(1 << 20), b""):
+            h.update(chunk)
+    return {"name": p.name, "size": p.stat().st_size, "content_sha256": h.hexdigest()}
 
 
 def build_spacetime_cube(config: Optional[Union[Dict[str, Any], str, os.PathLike]] = None):
@@ -250,6 +262,11 @@ def build_spacetime_cube(config: Optional[Union[Dict[str, Any], str, os.PathLike
               f"({n_filled / max(len(years), 1):.0f}/yr). Covariate coverage has shrunk; "
               f"see scripts/diagnose_state_footprint.py", flush=True)
 
+    # WHICH DESK produced this cube. Without it, a cube is indistinguishable from one
+    # encoded by a different checkpoint: overlays/map_new_z.json documents the resulting
+    # failure -- "Nothing hashes the DESK checkpoint into cube_meta.json, so if those are
+    # skipped this silently fits the OLD encoder and the A/B is vacuous -- both points would
+    # be the same run." Content hashes, not mtimes, so a re-copied file still compares equal.
     with open(os.path.join(output_dir, "cube_meta.json"), "w", encoding="utf-8") as fh:
         _json.dump({
             "kernel": kernel, "centered": centered, "latent_dim": latent_dim,
@@ -259,6 +276,9 @@ def build_spacetime_cube(config: Optional[Union[Dict[str, Any], str, os.PathLike
             "temporal_output": "raw_instantaneous",
             "training_output_ema": ema_on,
             "training_ema_half_life": hl if np.isfinite(hl) else None,
+            "desk_checkpoint": _file_identity(model_path),
+            "desk_meta": _file_identity(meta_path),
+            "esk_basis_dir": str(z_dir),
         }, fh, indent=2)
 
     print("Spatiotemporal Cube Generation Complete.")

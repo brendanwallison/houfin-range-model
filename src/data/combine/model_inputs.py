@@ -581,6 +581,15 @@ def ingest_data():
             "source_latent_dim": available_M,
             "truncation": "top_eigenfeatures" if M < available_M else "none",
             "disp_kernel_note": "exact for raw-Z (local); z_disp=A.Z is a smoothed A.K.A^T",
+            # WHICH encoder produced these inputs. build_final_z_cube hashes the DESK
+            # checkpoint into cube_meta, generate_all_path_features copies cube_meta into
+            # path_meta["kernel_contract"] verbatim, and it lands here -- so a fitted model's
+            # metadata.pkl names the exact encoder it was fit against. Without this the chain
+            # was contract-checkable but not traceable: two cubes from different checkpoints
+            # are indistinguishable to every guard, which is the silent-wrong-answer path
+            # config/overlays/map_new_z.json warns about.
+            "desk_checkpoint": source_contract.get("desk_checkpoint"),
+            "esk_basis_dir": source_contract.get("esk_basis_dir"),
         },
         # Disease term: two smooth land-centered spatial bases, the exogenous
         # arrival map (timestep units) and its decade-scaled version, and the

@@ -449,3 +449,45 @@ def test_juvenile_survival_field_is_not_a_monotone_transform_of_adult():
     assert (np.abs(rhos) < 0.999).all(), f"S_j still a monotone transform of S_a: {rhos}"
     # but the prior coupling should keep them broadly aligned rather than independent
     assert np.median(np.abs(rhos)) > 0.4, f"S_j and S_a decoupled too far: {np.median(rhos)}"
+
+
+def test_encoder_identity_propagates_cube_to_path_meta_to_metadata():
+    """The DESK checkpoint's identity must survive the whole chain to metadata.pkl.
+
+    The guards along this chain check the kernel FAMILY, the centering convention and the
+    latent width -- none of which distinguishes two cubes encoded by DIFFERENT DESK
+    checkpoints. ``config/overlays/map_new_z.json`` documents the consequence in its own
+    comment: "Nothing hashes the DESK checkpoint into cube_meta.json, so if those are
+    skipped this silently fits the OLD encoder and the A/B is vacuous -- both points would
+    be the same run."
+
+    So the identity is now recorded at the source and copied forward:
+
+        build_final_z_cube      -> cube_meta["desk_checkpoint"]  (content sha256)
+        generate_all_path_features -> path_meta["kernel_contract"] = cube_meta, verbatim
+        model_inputs            -> metadata["z_kernel_contract"]["desk_checkpoint"]
+
+    This test pins the two ends and the copy in the middle, reading the source rather than
+    re-implementing it, so a future edit that drops a link fails here.
+    """
+    import re
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+
+    # 1. build_final_z_cube writes it, hashing CONTENT (not mtime, so a re-copied file
+    #    still compares equal).
+    cube_src = (root / "src" / "community_encoder" / "build_final_z_cube.py").read_text()
+    assert '"desk_checkpoint": _file_identity(model_path)' in cube_src
+    assert "content_sha256" in cube_src, "identity must be a content hash, not a timestamp"
+
+    # 2. generate_all_path_features copies cube_meta in verbatim, which is what carries it
+    #    across without naming the key again.
+    path_src = (root / "src" / "processing" / "generate_all_path_features.py").read_text()
+    assert '"kernel_contract": cube_meta' in path_src
+
+    # 3. model_inputs reads it back off path_meta into the metadata the model is fit against.
+    mi_src = (root / "src" / "data" / "combine" / "model_inputs.py").read_text()
+    assert 'source_contract.get("desk_checkpoint")' in mi_src
+    assert re.search(r'source_contract\s*=\s*path_meta\.get\("kernel_contract"\)', mi_src), \
+        "model_inputs must take the contract from path_meta, which is where cube_meta landed"

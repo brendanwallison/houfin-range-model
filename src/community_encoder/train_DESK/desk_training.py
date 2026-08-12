@@ -1,26 +1,28 @@
 """Train DESK: a semi-supervised autoencoder predicting ESK's Z from covariates.
 
 DESK ("Deep ESK") learns to reconstruct the ESK kernel-PCA latent Z -- the
-habitat-similarity "ground truth" (for ``off``/``validate`` this is the eBird 2023
-spatial Z) -- from covariates that exist for every year, so Z can be extrapolated
-across the whole timeline. Trained with three losses: a stabilizing MSE against the
-ESK Z where it is known, a metric loss preserving Ruzicka-similarity relationships,
-and an autoencoder reconstruction over labeled + unlabeled years.
+habitat-similarity "ground truth" -- from covariates that exist for every year, so Z
+can be extrapolated across the whole timeline. Trained with three losses: a
+stabilizing MSE against the ESK Z, a metric loss preserving Ruzicka-similarity
+relationships, and an autoencoder reconstruction.
+
+**The objective is the output-EMA one.** DESK predicts a per-year raw z from
+(lightly-smoothed) covariates, applies a LEARNED causal EMA over the year axis
+(``OutputEMA``) to get z_ema, and supervises z_ema against the per-year targets
+projected from the trend point set -- every (cell, year) point equally weighted. The
+EMA models demographic lag: the year-Y community is a leaky integral of past
+suitability, so per-year predictions flux with the environment while the supervised
+estimate stays a stable mixture of recent years.
 
 **Grid-native.** The model (``MultiStreamAutoencoder``) maps a covariate grid
-``(B,H,W,C)`` -> latent grid, so its optional spatial residual conv can see each
-cell's neighbours. Training therefore operates on whole-year grids, not a shuffled
-bag of pixels: the supervised losses gather the valid pixels of the single labelled
-year's grid (2023), and every other year's ``state_{year}.npz`` grid feeds the
-reconstruction loss (and gives the spatial conv many unlabelled spatial examples to
-regularise its filters against -- the labelled signal exists for only one grid).
+``(B,H,W,C)`` -> latent grid, so its spatial residual conv can see each cell's
+neighbours. Training therefore operates on whole-year grids, not a shuffled bag of
+pixels.
 
 N-stream: reads ``state_{year}.npz`` (climate/land-use/HYDE/soil/elevation) via
-``state_schema.json`` (``covariate_io``). The ``enrich`` mode's multi-year
-supervised points are added in ``spacetime_enrich``.
+``state_schema.json`` (``covariate_io``).
 """
 import contextlib
-import glob
 import json
 import os
 import resource
@@ -34,7 +36,6 @@ import torch.nn.functional as F
 from .augment import ChannelGroupMasker, blocked_holdout
 from .config_utils import load_config
 from . import covariate_io as cio
-from .ebird_cache import load_ebird_stack
 from .model_arch import MultiStreamAutoencoder
 
 
@@ -46,18 +47,6 @@ def compute_valid_mask(ebird_stack, cov_stack, z_mask):
     print(f"[mask] eBird {m_ebird.sum()} & cov {m_cov.sum()} & Z {z_mask.sum()} "
           f"-> {final.sum()} supervised pixels")
     return final
-
-
-def _split_mask(mask, train_frac=0.8, seed=0):
-    """Split a boolean grid mask's True cells into (train, val) boolean grid masks."""
-    ys, xs = np.where(mask)
-    g = np.random.default_rng(seed)
-    perm = g.permutation(len(ys))
-    cut = int(train_frac * len(ys))
-    tr = np.zeros_like(mask); va = np.zeros_like(mask)
-    tr[ys[perm[:cut]], xs[perm[:cut]]] = True
-    va[ys[perm[cut:]], xs[perm[cut:]]] = True
-    return tr, va
 
 
 def true_kernel_loss(z_pred, x_raw, num_pairs=4096):
@@ -82,188 +71,6 @@ def true_kernel_loss(z_pred, x_raw, num_pairs=4096):
     return F.mse_loss(sim_pred, sim_true)
 
 
-def _load_hist_grids(states_dir, schema, mu, sd, exclude_year):
-    """Preload every ``state_{year}.npz`` grid (except the labelled year) as
-    normalized ``(H,W,C)`` tensors + validity masks for the reconstruction loss."""
-    grids, masks, years = [], [], []
-    for fp in sorted(glob.glob(os.path.join(states_dir, "state_*.npz"))):
-        yr = int(os.path.basename(fp).split("_")[1].split(".")[0])
-        if yr == exclude_year:
-            continue
-        covn, m = cio.norm_grid(cio.load_state_stack(yr, states_dir, schema), mu, sd)
-        grids.append(torch.tensor(covn)); masks.append(torch.tensor(m)); years.append(yr)
-    if not grids:
-        return None, None, []
-    print(f"[Historical] {len(years)} year grids ({years[0]}..{years[-1]})")
-    return torch.stack(grids), torch.stack(masks), years
-
-
-def train_model_semisup(covn2023, mask_cov, mask_sup_tr, mask_sup_val, z_ref, x_raw_grid,
-                        hist_grids, hist_masks, stream_dims, latent_dim, spatial_kernel=3,
-                        epochs=100, lr=1e-3, batch_years=8, weights=None, seed=0,
-                        enrich=None, ebird_frac=0.8, direction=None, dir_weights=None,
-                        uniform_stab=False, patience=50, min_delta=1e-4, dropout=0.5,
-                        weight_decay=0.0, hidden_width=None, mlp_expansion=4):
-    """Train the N-stream grid DESK autoencoder semi-supervised; return the fitted model.
-
-    ``enrich`` (or None): tuple ``(pt_covn, pt_covmask, pt_zobs, pt_tgt)`` of per-historical-
-    year grids/targets. When given, the stabilizing loss becomes eBird-heavy weighted:
-    ``ebird_frac``·(recent eBird MSE) + (1-``ebird_frac``)·``w_absolute``·(historical BBS z_obs
-    MSE), so reliable modern eBird dominates.
-
-    ``direction`` (or None): per-cell direction-of-change targets (from
-    ``_prepare_direction_targets``). When given, adds an up-weighted **cosine** alignment of
-    the per-cell change vector ``Δ = z(2023) − weighted-mean(z over preceding years)`` (pred vs
-    obs, magnitude-free) + a tiny **one-sided magnitude floor** ``relu(‖Δ_obs‖ − ‖Δ_pred‖)``
-    (punishes under-shoot only), both reliability-weighted. ``dir_weights`` = {direction,
-    magnitude_floor, absolute}.
-    """
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    weights = weights or {"stabilizing": 1.0, "metric": 5.0, "reconstruction": 0.1}
-    # This path had no seeding at all: model init, dropout masks, and the metric loss's pair
-    # sampling all drew from the unseeded global RNG, so two "identical" runs differed.
-    torch.manual_seed(seed)
-    if torch.cuda.is_available():
-        torch.cuda.manual_seed_all(seed)
-
-    model = MultiStreamAutoencoder(stream_dims, latent_dim, spatial_kernel, dropout,
-                                   hidden_width, mlp_expansion).to(device)
-    opt = torch.optim.AdamW(_param_groups([model], weight_decay), lr=lr)
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(opt, mode="min", factor=0.5, patience=5)
-
-    # Supervised (labelled) year grid: forwarded every step (small; dropout varies it).
-    cov2023 = covn2023[None].to(device)                 # (1,H,W,C)
-    m_cov = mask_cov[None].to(device)                   # (1,H,W)
-    z_ref_t = torch.tensor(z_ref, device=device)        # (H,W,L)
-    x_t = torch.tensor(x_raw_grid, device=device)       # (H,W, S*T)
-    m_tr = torch.as_tensor(mask_sup_tr, device=device).bool()
-    m_val = torch.as_tensor(mask_sup_val, device=device).bool()
-    m_cov2023 = torch.as_tensor(mask_cov, device=device).bool()
-
-    en = None
-    if enrich is not None:
-        pc, pm, pz, pt = enrich
-        en = (torch.tensor(pc, device=device), torch.as_tensor(pm, device=device),
-              torch.tensor(pz, device=device), torch.as_tensor(pt, device=device).bool())
-
-    dw = dir_weights or {}
-    w_dir = float(dw.get("direction", 0.0)); w_mag = float(dw.get("magnitude_floor", 0.0))
-    w_abs = float(dw.get("absolute", 1.0))
-    dr = None
-    if direction is not None:
-        dr = {"rows": torch.as_tensor(direction["rows"], device=device).long(),
-              "cols": torch.as_tensor(direction["cols"], device=device).long(),
-              "dobs": torch.as_tensor(direction["dobs"], device=device).float(),
-              "dobs_norm": torch.as_tensor(direction["dobs_norm"], device=device).float(),
-              "rel": torch.as_tensor(direction["rel"], device=device).float(),
-              "pre_cell": torch.as_tensor(direction["pre_cell"], device=device).long(),
-              "pre_grid": torch.as_tensor(direction["pre_grid"], device=device).long(),
-              "pre_row": torch.as_tensor(direction["pre_row"], device=device).long(),
-              "pre_col": torch.as_tensor(direction["pre_col"], device=device).long(),
-              "pre_w": torch.as_tensor(direction["pre_w"], device=device).float()}
-        n_dir = dr["rows"].shape[0]
-
-    n_hist = 0 if hist_grids is None else hist_grids.shape[0]
-    g = torch.Generator().manual_seed(seed)
-    best_val, best_state, bad = float("inf"), None, 0     # early stopping on held-out Stab(val)
-    print(f"--- Training grid DESK (spatial_kernel={spatial_kernel}, {n_hist} hist years, "
-          f"max {epochs} ep, patience {patience}) ---")
-
-    for ep in range(1, epochs + 1):
-        model.train()
-        order = torch.randperm(n_hist, generator=g) if n_hist else torch.zeros(1, dtype=torch.long)
-        total_rh, total_sh, total_dir, steps = 0.0, 0.0, 0.0, 0
-        for b0 in range(0, max(n_hist, 1), batch_years):
-            steps += 1
-            opt.zero_grad()
-
-            # Supervised losses on the labelled (2023) grid.
-            z2023, recon2023 = model(cov2023, m_cov)     # (1,H,W,L), (1,H,W,C)
-            z_flat = z2023[0]
-            sq_rec = torch.sum((z_flat[m_tr] - z_ref_t[m_tr]) ** 2, dim=1)   # per recent-cell
-            loss_stab = sq_rec.mean()
-            loss_true = true_kernel_loss(z_flat[m_tr], x_t[m_tr])
-            loss_recon_s = F.mse_loss(recon2023[0][m_cov2023], cov2023[0][m_cov2023])
-
-            # Enrich: eBird-heavy-weighted historical supervision (absolute z_obs, down-weighted)
-            # + direction-of-change (cosine, up-weighted) + one-sided magnitude floor (tiny).
-            loss_stab_hist = torch.zeros((), device=device)
-            loss_dir = torch.zeros((), device=device)
-            loss_mag = torch.zeros((), device=device)
-            if en is not None:
-                z_pt, _ = model(en[0], en[1])                    # (n_py,H,W,L)
-                sq = torch.sum((z_pt[en[3]] - en[2][en[3]]) ** 2, dim=1)
-                loss_stab_hist = sq.mean() if sq.numel() else loss_stab_hist
-                if uniform_stab:
-                    # Trend mode: pool the recent-anchor cells and ALL historical points,
-                    # weighting every (cell,year) equally ("evenly prioritizing all
-                    # locations and times") -- no eBird up-weighting, no direction split.
-                    denom = int(sq_rec.numel() + sq.numel())
-                    loss_stab = (sq_rec.sum() + sq.sum()) / max(denom, 1)
-                else:
-                    loss_stab = ebird_frac * loss_stab + (1.0 - ebird_frac) * w_abs * loss_stab_hist
-
-                if dr is not None:
-                    L = z_pt.shape[-1]
-                    zp_ref = z_flat[dr["rows"], dr["cols"]]                       # (n_dir, L)
-                    gathered = z_pt[dr["pre_grid"], dr["pre_row"], dr["pre_col"]] # (n_pre, L)
-                    accum = torch.zeros(n_dir, L, device=device)
-                    wsum = torch.zeros(n_dir, 1, device=device)
-                    accum.index_add_(0, dr["pre_cell"], gathered * dr["pre_w"][:, None])
-                    wsum.index_add_(0, dr["pre_cell"], dr["pre_w"][:, None])
-                    dpred = zp_ref - accum / wsum.clamp_min(1e-8)                 # Δ_pred
-                    rel = dr["rel"]; rsum = rel.sum().clamp_min(1e-8)
-                    loss_dir = (rel * (1.0 - F.cosine_similarity(dpred, dr["dobs"], dim=1))).sum() / rsum
-                    loss_mag = (rel * torch.relu(dr["dobs_norm"] - dpred.norm(dim=1))).sum() / rsum
-
-            # Reconstruction on a batch of unlabelled year grids.
-            if n_hist:
-                sel = order[b0:b0 + batch_years]
-                xb = hist_grids[sel].to(device); mb = hist_masks[sel].to(device).bool()
-                _, recon_h = model(xb, mb)
-                loss_recon_h = F.mse_loss(recon_h[mb], xb[mb])
-            else:
-                loss_recon_h = torch.tensor(0.0, device=device)
-
-            loss = (weights["stabilizing"] * loss_stab
-                    + weights["metric"] * loss_true
-                    + weights["reconstruction"] * (loss_recon_s + loss_recon_h)
-                    + w_dir * loss_dir + w_mag * loss_mag)
-            loss.backward()
-            opt.step()
-            total_rh += loss_recon_h.item()
-            total_sh += loss_stab_hist.item()
-            total_dir += loss_dir.item()
-
-        model.eval()
-        with torch.no_grad():
-            z2023, _ = model(cov2023, m_cov)
-            zf = z2023[0]
-            stab_val = torch.mean(torch.sum((zf[m_val] - z_ref_t[m_val]) ** 2, dim=1)).item()
-            cos = F.cosine_similarity(zf[m_val], z_ref_t[m_val]).mean().item()
-            true_val = true_kernel_loss(zf[m_val], x_t[m_val]).item()
-            gpar = float(model.gamma.detach()) if spatial_kernel > 0 else 0.0
-            scheduler.step(stab_val)
-            sh = f" | StabHist {total_sh / max(steps,1):.4f}" if en is not None else ""
-            dd = f" | Dir {total_dir / max(steps,1):.4f}" if dr is not None else ""
-            print(f"Ep {ep:03d} | Stab(val) {stab_val:.4f} | True(val) {true_val:.4f} | "
-                  f"Rec(H) {total_rh / max(steps,1):.4f}{sh}{dd} | Cos {cos:.3f} | gamma {gpar:+.4f}",
-                  flush=True)
-
-        # Early stopping on held-out Stab(val); keep the best weights so a long budget is safe.
-        if stab_val < best_val - min_delta:
-            best_val, bad = stab_val, 0
-            best_state = {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}
-        else:
-            bad += 1
-            if bad >= patience:
-                print(f"[desk] early stop at ep {ep} (best Stab(val) {best_val:.4f})")
-                break
-    if best_state is not None:
-        model.load_state_dict({k: v.to(device) for k, v in best_state.items()})
-    return model
-
-
 def prepare_supervised(cov_stack, ebird_stack, z_flat, z_mask, mu, sd, out_dir):
     """Build the labelled year's grid tensors: normalized covariate grid + cov mask,
     supervised mask (eBird & cov & Z), ESK-Z grid, and raw eBird grid."""
@@ -277,108 +84,7 @@ def prepare_supervised(cov_stack, ebird_stack, z_flat, z_mask, mu, sd, out_dir):
     return covn, mask_cov, mask_sup, z_grid, x_grid
 
 
-def _prepare_enrich(config, states_dir, schema, mu, sd, z_dir, latent_dim, holdout, label_year):
-    """Build the enrich supervised targets: project the BBS-amplitude communities into the
-    SAME eBird-2023 ESK basis DESK uses (z_obs), then per historical point-year assemble a
-    covariate grid, a z_obs target grid, and a target mask (point cells, cov-valid, NOT
-    held-out). eBird defines the basis; BBS only says where historical cells land in it.
-    """
-    from .esk_kernel import project_amplitude_to_z
-    zt = config["bbs"]["z_dir"]
-    X = np.load(os.path.join(zt, "X_points.npy"))
-    pidx = np.load(os.path.join(zt, "point_index.npy"))
-    z_obs = project_amplitude_to_z(X, z_dir, latent_dim)
-    if z_obs is None:
-        raise FileNotFoundError(
-            f"enrich needs the saved ESK projection in {z_dir} (esk_landmarks/projmat); re-run esk")
-    rows, cols, yrs = pidx[:, 0], pidx[:, 1], pidx[:, 2]
-    hist_years = sorted({int(y) for y in yrs if int(y) != label_year})
-    covn, covm, zobs_g, tgt = [], [], [], []
-    for y in hist_years:
-        cn, m = cio.norm_grid(cio.load_state_stack(y, states_dir, schema), mu, sd)
-        H, W = m.shape
-        sel = np.where(yrs == y)[0]
-        zg = np.zeros((H, W, latent_dim), dtype="float32"); tm = np.zeros((H, W), bool)
-        zg[rows[sel], cols[sel]] = z_obs[sel]; tm[rows[sel], cols[sel]] = True
-        tm &= m & (~holdout)
-        covn.append(cn); covm.append(m); zobs_g.append(zg); tgt.append(tm)
-    n_tgt = int(sum(t.sum() for t in tgt))
-    print(f"[enrich] {len(hist_years)} historical target years, {n_tgt} supervised BBS points "
-          f"({int(holdout.sum())} cells held out for eval)")
-    return (np.stack(covn), np.stack(covm), np.stack(zobs_g), np.stack(tgt)), hist_years
-
-
-def _weighted_median_cols(V, w):
-    """Component-wise effort-weighted median of ``V`` (k, L) with weights ``w`` (k,) -> (L,).
-    Robust central estimate of a cell's preceding-year z (BBS is noisy, per assumption 1)."""
-    order = np.argsort(V, axis=0)
-    Vs = np.take_along_axis(V, order, axis=0)
-    Ws = np.asarray(w, float)[order]
-    cum = np.cumsum(Ws, axis=0)
-    idx = (cum >= 0.5 * cum[-1]).argmax(axis=0)
-    return Vs[idx, np.arange(V.shape[1])]
-
-
-def _prepare_direction_targets(config, z_dir, latent_dim, holdout, hist_years, recent_year,
-                               reference_start, baseline_scale):
-    """DEPRECATED (amplitude/enrich path only; the trend path supervises z directly).
-
-    Per-cell direction-of-change target in the (joint) ESK basis.
-
-    For each train cell with a 2023 anchor + >=1 preceding point (year < reference_start):
-    ``Δ_obs = z_ref(2023 anchor) - weighted_median(preceding z_obs)``. Reliability
-    ``r = clip((reference_start - effort-weighted preceding TCOM) / baseline_scale, 0, 1)``
-    down-weights short/recent baselines. Returns the per-cell targets plus a flat map that
-    lets the trainer aggregate the PREDICTED preceding mean by scatter-add over the same
-    historical point-year grids (aligned to ``hist_years``), with the same effort weights.
-    """
-    from .esk_kernel import project_amplitude_to_z
-    zt = config["bbs"]["z_dir"]
-    X = np.load(os.path.join(zt, "X_points.npy"))
-    pidx = np.load(os.path.join(zt, "point_index.npy"))
-    z_obs = project_amplitude_to_z(X, z_dir, latent_dim)
-    sf = np.load(os.path.join(zt, "support_field.npz"))
-    sup, syears = sf["support"], [int(y) for y in sf["years"]]
-    yr_ix = {y: i for i, y in enumerate(syears)}
-    rows, cols, yrs = pidx[:, 0], pidx[:, 1], pidx[:, 2]
-    hist_pos = {int(y): k for k, y in enumerate(hist_years)}
-
-    rec = np.where(yrs == recent_year)[0]
-    rec_map = {(int(rows[i]), int(cols[i])): int(i) for i in rec}
-    pre = {}                                     # (r,c) -> list of (point_idx, year, weight)
-    for i in np.where(yrs < reference_start)[0]:
-        r, c, y = int(rows[i]), int(cols[i]), int(yrs[i])
-        if (r, c) in rec_map and not holdout[r, c] and y in hist_pos and y in yr_ix:
-            pre.setdefault((r, c), []).append((i, y, float(sup[yr_ix[y], r, c])))
-
-    dir_r, dir_c, dobs, rel = [], [], [], []
-    p_cell, p_grid, p_r, p_c, p_w = [], [], [], [], []
-    for cpos, (r, c) in enumerate(k for k in pre if pre[k]):
-        pts = pre[(r, c)]
-        V = z_obs[[p[0] for p in pts]]
-        W = np.array([p[2] for p in pts], float)
-        Wn = W if W.sum() > 0 else np.ones_like(W)
-        zpre = _weighted_median_cols(V, Wn)
-        dobs.append(z_obs[rec_map[(r, c)]] - zpre)
-        tcom = float(np.sum(Wn * np.array([p[1] for p in pts])) / Wn.sum())
-        rel.append(min(1.0, max(0.0, (reference_start - tcom) / baseline_scale)))
-        dir_r.append(r); dir_c.append(c)
-        for (i, y, w) in pts:
-            p_cell.append(cpos); p_grid.append(hist_pos[y]); p_r.append(r); p_c.append(c)
-            p_w.append(w if W.sum() > 0 else 1.0)
-    dobs = np.array(dobs, dtype="float32")
-    print(f"[enrich-dir] {len(dir_r)} direction cells, {len(p_cell)} preceding points "
-          f"(reference_start={reference_start}, baseline_scale={baseline_scale})")
-    return dict(
-        rows=np.array(dir_r, int), cols=np.array(dir_c, int), dobs=dobs,
-        dobs_norm=np.linalg.norm(dobs, axis=1).astype("float32"),
-        rel=np.array(rel, dtype="float32"),
-        pre_cell=np.array(p_cell, int), pre_grid=np.array(p_grid, int),
-        pre_row=np.array(p_r, int), pre_col=np.array(p_c, int),
-        pre_w=np.array(p_w, dtype="float32"))
-
-
-# --- Output-EMA path (bbs_mode=trend): demographic lag on the predicted Z --------
+# --- Output-EMA: demographic lag on the predicted Z ------------------------------
 
 class OutputEMA(torch.nn.Module):
     """Learned causal EMA over the leading (year) axis of a ``(T, ...)`` tensor.
@@ -624,7 +330,7 @@ def train_model_ema(cov_window, mask_window, window_years, targets, x2023, m2023
                     schema=None, augment_cfg=None, dropout=0.5, weight_decay=0.0,
                     warmup_epochs=0, min_lr_frac=1.0, amp=False, eval_every=1,
                     holdout_year_targets=None, hidden_width=None, mlp_expansion=4):
-    """Train DESK with a learned output-EMA (bbs_mode=trend).
+    """Train DESK with a learned output-EMA.
 
     Forwards the ordered year window (per-year gradient checkpointing), applies the
     learned causal EMA over the year axis, and supervises ``z_ema`` against the per-year
@@ -960,10 +666,14 @@ def train_model_ema(cov_window, mask_window, window_years, targets, x2023, m2023
 def run_desk_experiment(config=None):
     """Driver: load N-stream states + ESK Z, prepare grids, train DESK, save model+meta.
 
-    ``off``/``validate``: eBird 2023 spatial ESK Z target (single labelled year). ``enrich``:
-    additionally supervise DESK at historical (cell,year) points against the BBS-amplitude
-    communities projected into the eBird ESK basis (z_obs), weighted eBird-heavy, with a
-    spatial cell holdout for honest evaluation.
+    Supervises DESK against the trend-based spatiotemporal z-target -- the anchor-year
+    community plus the backward-reconstructed historical points -- over a spatially
+    BLOCKED cell holdout, with a buffer ring derived from the conv kernel so held-out
+    receptive fields cannot reach training cells.
+
+    The checkpoint filename ``env_model_semisup.pth`` is historical and kept only so
+    existing artifacts stay loadable; the "semi-supervised" part is the reconstruction
+    loss over unlabelled years, which the EMA objective still carries.
     """
     config = load_config(config) if not isinstance(config, dict) else config
     paths, desk_cfg = config["paths"], config["desk"]
@@ -978,27 +688,23 @@ def run_desk_experiment(config=None):
     spatial_kernel = int(desk_cfg.get("spatial_conv", {}).get("kernel", 3)) \
         if desk_cfg.get("spatial_conv", {}).get("enabled", True) else 0
 
-    bbs_mode = config.get("bbs_mode", "validate")
     cov_stack = cio.load_state_stack(label_year, states_dir, schema)
-    if bbs_mode == "trend":
-        # The Ružicka metric anchor is the reconstructed reference-year (anchor_year)
-        # community -- the EXACT vectors that seeded the ESK basis (log1p abundance,
-        # anchor-mode-agnostic). Scatter X_points' anchor-year rows into an (H,W,S) grid,
-        # so DESK depends on no weekly eBird product (trends-abd anchor needs none).
-        ztz = config["bbs"]["z_dir"]
-        Xp = np.load(os.path.join(ztz, "X_points.npy"))
-        pip = np.load(os.path.join(ztz, "point_index.npy"))
-        pm = json.load(open(os.path.join(ztz, "points_meta.json")))
-        ay, S = int(pm["recent_year"]), int(pm["n_species"])
-        H, W = cov_stack.shape[:2]
-        sel = pip[:, 2] == ay
-        ebird_stack = np.full((H, W, S), np.nan, dtype="float32")
-        ebird_stack[pip[sel, 0], pip[sel, 1]] = Xp[sel]                # already log1p in X_points
-        log1p_kernel = bool(pm.get("ruzicka_log1p", True))
-        print(f"[desk] trend mode: Ružicka metric anchored on the reconstructed year-{ay} "
-              f"community from X_points (anchor_mode={pm.get('anchor_mode')}, log1p={log1p_kernel})")
-    else:
-        ebird_stack, _ = load_ebird_stack(config)
+    # The Ružicka metric anchor is the reconstructed reference-year (anchor_year) community --
+    # the EXACT vectors that seeded the ESK basis (log1p abundance, anchor-mode-agnostic).
+    # Scatter X_points' anchor-year rows into an (H,W,S) grid, so DESK depends on no weekly
+    # eBird product (the trends-abd anchor needs none).
+    ztz = config["bbs"]["z_dir"]
+    Xp = np.load(os.path.join(ztz, "X_points.npy"))
+    pip = np.load(os.path.join(ztz, "point_index.npy"))
+    pm = json.load(open(os.path.join(ztz, "points_meta.json")))
+    ay, S = int(pm["recent_year"]), int(pm["n_species"])
+    H, W = cov_stack.shape[:2]
+    sel = pip[:, 2] == ay
+    ebird_stack = np.full((H, W, S), np.nan, dtype="float32")
+    ebird_stack[pip[sel, 0], pip[sel, 1]] = Xp[sel]                # already log1p in X_points
+    log1p_kernel = bool(pm.get("ruzicka_log1p", True))
+    print(f"[desk] Ružicka metric anchored on the reconstructed year-{ay} community from "
+          f"X_points (anchor_mode={pm.get('anchor_mode')}, log1p={log1p_kernel})")
 
     z_dir = desk_cfg["z_dir"]
     try:
@@ -1027,26 +733,19 @@ def run_desk_experiment(config=None):
     # stats the cube reuses). Blocks + a buffer, both defined here so the fit can exclude them.
     holdout = np.zeros_like(mask_sup0)
     buffer_cells_mask = np.zeros_like(mask_sup0)
-    if bbs_mode in ("trend", "enrich"):
-        _cfg = desk_cfg.get("trend" if bbs_mode == "trend" else "enrich", {})
-        ebird_valid = np.any(~np.isnan(ebird_stack), axis=-1)
-        # Buffer width is DERIVED from the conv kernel, never configured separately: a prediction
-        # at a val cell reads cells up to kernel//2 away, so a narrower buffer would let val
-        # receptive fields overlap training cells and quietly flatter the metric.
-        buf = spatial_kernel // 2
-        block = int(_cfg.get("block_cells", 12))
-        if block <= 1 and buf == 0:
-            rng = np.random.default_rng(int(_cfg.get("seed", 0)))       # legacy i.i.d. draw
-            ys, xs = np.where(ebird_valid)
-            ho = rng.random(len(ys)) < float(_cfg.get("holdout_frac", 0.2))
-            holdout[ys[ho], xs[ho]] = True
-        else:
-            holdout, buffer_cells_mask = blocked_holdout(
-                ebird_valid, block_cells=block, holdout_frac=float(_cfg.get("holdout_frac", 0.2)),
-                buffer_cells=buf, seed=int(_cfg.get("seed", 0)))
-        print(f"[desk] split: {block}x{block}-cell blocks, buffer {buf} cells (from "
-              f"spatial_kernel={spatial_kernel}) -> {int(holdout.sum())} val, "
-              f"{int(buffer_cells_mask.sum())} buffer cells", flush=True)
+    _cfg = desk_cfg.get("trend", {})
+    ebird_valid = np.any(~np.isnan(ebird_stack), axis=-1)
+    # Buffer width is DERIVED from the conv kernel, never configured separately: a prediction
+    # at a val cell reads cells up to kernel//2 away, so a narrower buffer would let val
+    # receptive fields overlap training cells and quietly flatter the metric.
+    buf = spatial_kernel // 2
+    block = int(_cfg.get("block_cells", 12))
+    holdout, buffer_cells_mask = blocked_holdout(
+        ebird_valid, block_cells=block, holdout_frac=float(_cfg.get("holdout_frac", 0.2)),
+        buffer_cells=buf, seed=int(_cfg.get("seed", 0)))
+    print(f"[desk] split: {block}x{block}-cell blocks, buffer {buf} cells (from "
+          f"spatial_kernel={spatial_kernel}) -> {int(holdout.sum())} val, "
+          f"{int(buffer_cells_mask.sum())} buffer cells", flush=True)
 
     # Normalization stats: fit on the supervised TRAINING pixels only (buffer cells are excluded
     # as well -- not evaluation data, but not clean training data either), then applied to every
@@ -1056,129 +755,67 @@ def run_desk_experiment(config=None):
 
     covn, mask_cov, mask_sup, z_grid, x_grid = prepare_supervised(
         cov_stack, ebird_stack, z_flat, z_mask, mu, sd, out_dir)
-    mask_cov_t = torch.tensor(mask_cov)
-
-    # Mode: 'trend' supervises DESK directly + uniformly against the trend-based
-    # spatiotemporal z-target (recent anchor + backward-reconstructed historical points);
-    # 'enrich' (deprecated amplitude path) up-weighted recent eBird + a direction-of-change
-    # split; 'off'/'validate' train eBird-2023-only. bbs_mode was read above.
-    #
-    # Which trainer runs is decided here rather than at the call site, because the two need
-    # DIFFERENT targets and building the wrong one is not free: train_model_ema assembles its
-    # own per-year targets from _prepare_trend_targets, while train_model_semisup needs the
-    # _prepare_enrich grids. Deciding late meant the trend path built BOTH -- a second full
-    # Nystrom projection of every point plus a re-read of every state_{year}.npz, ~1 GiB
-    # stacked and then dropped, on every production run.
-    ema_cfg = desk_cfg.get("output_ema", {})
-    use_output_ema = bbs_mode == "trend" and bool(ema_cfg.get("enabled", False))
-    enrich_data, direction, ebird_frac = None, None, 0.8
-    dir_weights = {}
-    uniform_stab = False
-    if bbs_mode == "trend":
-        tr_cfg = desk_cfg.get("trend", {})
-        # holdout/buffer were drawn above (before the normalization fit). Training excludes BOTH;
-        # evaluation uses the holdout only, so buffer cells appear in neither.
-        m_tr = mask_sup & (~holdout) & (~buffer_cells_mask)
-        m_val = mask_sup & holdout
-        if not use_output_ema:
-            # train_model_semisup path only: project the trend points (year < label_year) into
-            # the joint ESK basis (z_obs) and assemble per-year target grids.
-            enrich_data, hist_years = _prepare_enrich(config, states_dir, schema, mu, sd, z_dir,
-                                                      z_grid.shape[2], holdout, label_year)
-        direction = None
-        dir_weights = {"absolute": 1.0}
-        uniform_stab = True
-        np.save(os.path.join(out_dir, "holdout_cells.npy"), holdout)
-        np.save(os.path.join(out_dir, "buffer_cells.npy"), buffer_cells_mask)
-        print(f"[desk] TREND mode: direct uniform z-target over recent + historical points; "
-              f"{int(holdout.sum())} cells held out for eval, "
-              f"{int(buffer_cells_mask.sum())} buffered out of training")
-    elif bbs_mode == "enrich":
-        en_cfg = desk_cfg.get("enrich", {})
-        ebird_frac = float(en_cfg.get("ebird_loss_fraction", 0.8))
-        m_tr = mask_sup & (~holdout) & (~buffer_cells_mask)
-        m_val = mask_sup & holdout
-        enrich_data, hist_years = _prepare_enrich(config, states_dir, schema, mu, sd, z_dir,
-                                                  z_grid.shape[2], holdout, label_year)
-        direction = _prepare_direction_targets(
-            config, z_dir, z_grid.shape[2], holdout, hist_years, label_year,
-            int(en_cfg.get("reference_start", 2014)), float(en_cfg.get("baseline_scale", 20.0)))
-        dir_weights = {"direction": float(en_cfg.get("w_direction", 2.0)),
-                       "magnitude_floor": float(en_cfg.get("w_magnitude_floor", 0.05)),
-                       "absolute": float(en_cfg.get("w_absolute", 1.0))}
-        np.save(os.path.join(out_dir, "holdout_cells.npy"), holdout)
-        np.save(os.path.join(out_dir, "buffer_cells.npy"), buffer_cells_mask)
-        print(f"[desk] ENRICH mode: ebird_loss_fraction={ebird_frac}, weights={dir_weights}, "
-              f"{int(holdout.sum())} cells held out")
-    else:
-        m_tr, m_val = _split_mask(mask_sup, desk_cfg.get("train_val_split", 0.8))
+    ema_cfg = desk_cfg["output_ema"]
+    tr_cfg = desk_cfg.get("trend", {})
+    # holdout/buffer were drawn above (before the normalization fit). Training excludes BOTH;
+    # evaluation uses the holdout only, so buffer cells appear in neither.
+    m_tr = mask_sup & (~holdout) & (~buffer_cells_mask)
+    m_val = mask_sup & holdout
+    np.save(os.path.join(out_dir, "holdout_cells.npy"), holdout)
+    np.save(os.path.join(out_dir, "buffer_cells.npy"), buffer_cells_mask)
+    print(f"[desk] uniform z-target over the anchor + historical trend points; "
+          f"{int(holdout.sum())} cells held out for eval, "
+          f"{int(buffer_cells_mask.sum())} buffered out of training")
 
     stream_dims = cio.stream_dims(schema)
     ema_half_life = None
-    if use_output_ema:
-        # Output-EMA objective: forward the ordered year window, apply a learned causal
-        # EMA over the year axis to the predicted Z (demographic lag), and supervise the
-        # EMA'd z_ema against the per-year trend targets. Replaces the direct per-year target.
-        warmup_start = int(ema_cfg.get("warmup_start", 1940))
-        window_years = list(range(warmup_start, label_year + 1))
-        cov_win, mask_win, kept = _load_year_window(states_dir, schema, mu, sd, window_years)
-        targets = _prepare_trend_targets(config, z_dir, z_grid.shape[2], holdout)
+    # Output-EMA objective: forward the ordered year window, apply a learned causal
+    # EMA over the year axis to the predicted Z (demographic lag), and supervise the
+    # EMA'd z_ema against the per-year trend targets. Replaces the direct per-year target.
+    warmup_start = int(ema_cfg.get("warmup_start", 1940))
+    window_years = list(range(warmup_start, label_year + 1))
+    cov_win, mask_win, kept = _load_year_window(states_dir, schema, mu, sd, window_years)
+    targets = _prepare_trend_targets(config, z_dir, z_grid.shape[2], holdout)
 
-        # Temporal holdout: withhold a contiguous span of supervised years from the objective and
-        # score them separately. The spatial split says nothing about extrapolation THROUGH TIME,
-        # which is what DESK exists to do. The anchor (label_year) is never withheld -- it carries
-        # the eBird metric loss. Diagnostic only; model selection stays on the spatial metric so
-        # there is exactly one selection signal.
-        ho_years = [int(y) for y in (tr_cfg.get("holdout_years") or []) if int(y) != label_year]
-        year_val = {}
-        for y in ho_years:
-            if y in targets:
-                zg, tr_m, va_m = targets[y]
-                year_val[y] = (zg, tr_m | va_m)            # score every supervised cell that year
-                targets[y] = (zg, np.zeros_like(tr_m), va_m)   # ...and train on none of it
-        if year_val:
-            print(f"[desk] temporal holdout years (diagnostic, excluded from the objective): "
-                  f"{sorted(year_val)}", flush=True)
+    # Temporal holdout: withhold a contiguous span of supervised years from the objective and
+    # score them separately. The spatial split says nothing about extrapolation THROUGH TIME,
+    # which is what DESK exists to do. The anchor (label_year) is never withheld -- it carries
+    # the eBird metric loss. Diagnostic only; model selection stays on the spatial metric so
+    # there is exactly one selection signal.
+    ho_years = [int(y) for y in (tr_cfg.get("holdout_years") or []) if int(y) != label_year]
+    year_val = {}
+    for y in ho_years:
+        if y in targets:
+            zg, tr_m, va_m = targets[y]
+            year_val[y] = (zg, tr_m | va_m)            # score every supervised cell that year
+            targets[y] = (zg, np.zeros_like(tr_m), va_m)   # ...and train on none of it
+    if year_val:
+        print(f"[desk] temporal holdout years (diagnostic, excluded from the objective): "
+              f"{sorted(year_val)}", flush=True)
 
-        model, ema = train_model_ema(
-            cov_win, mask_win, kept, targets, x_grid, m_tr, m_val,
-            stream_dims, latent_dim=z_grid.shape[2], ema_cfg=ema_cfg,
-            spatial_kernel=spatial_kernel,
-            epochs=desk_cfg.get("epochs", 500), lr=desk_cfg.get("lr", 1e-3),
-            weights=desk_cfg.get("weights"), patience=desk_cfg.get("patience", 50),
-            schema=schema, augment_cfg=config.get("augment"),
-            dropout=float(desk_cfg.get("dropout", 0.5)),
-            weight_decay=float(desk_cfg.get("weight_decay", 0.0)),
-            warmup_epochs=int(desk_cfg.get("warmup_epochs", 0)),
-            min_lr_frac=float(desk_cfg.get("min_lr_frac", 1.0)),
-            amp=bool(desk_cfg.get("amp", False)),
-            eval_every=int(desk_cfg.get("eval_every", 1)),
-            holdout_year_targets=year_val or None,
-            hidden_width=hidden_width, mlp_expansion=mlp_expansion)
-        ema_half_life = float(ema.half_life().item())
-        torch.save(ema.state_dict(), os.path.join(out_dir, "output_ema.pth"))
-        print(f"[desk] output-EMA learned half-life = {ema_half_life:.2f} yr")
-    else:
-        hist_grids, hist_masks, _ = _load_hist_grids(states_dir, schema, mu, sd, label_year)
-        model = train_model_semisup(
-            torch.tensor(covn), mask_cov_t, m_tr, m_val, z_grid, x_grid,
-            hist_grids, hist_masks, stream_dims, latent_dim=z_grid.shape[2],
-            spatial_kernel=spatial_kernel,
-            epochs=desk_cfg.get("epochs", 100), lr=desk_cfg.get("lr", 1e-3),
-            batch_years=desk_cfg.get("batch_years", 8),
-            weights=desk_cfg.get("weights"),
-            enrich=enrich_data, ebird_frac=ebird_frac,
-            direction=direction, dir_weights=dir_weights, uniform_stab=uniform_stab,
-            patience=desk_cfg.get("patience", 50),
-            dropout=float(desk_cfg.get("dropout", 0.5)),
-            weight_decay=float(desk_cfg.get("weight_decay", 0.0)),
-            hidden_width=hidden_width, mlp_expansion=mlp_expansion)
-
+    model, ema = train_model_ema(
+        cov_win, mask_win, kept, targets, x_grid, m_tr, m_val,
+        stream_dims, latent_dim=z_grid.shape[2], ema_cfg=ema_cfg,
+        spatial_kernel=spatial_kernel,
+        epochs=desk_cfg.get("epochs", 500), lr=desk_cfg.get("lr", 1e-3),
+        weights=desk_cfg.get("weights"), patience=desk_cfg.get("patience", 50),
+        schema=schema, augment_cfg=config.get("augment"),
+        dropout=float(desk_cfg.get("dropout", 0.5)),
+        weight_decay=float(desk_cfg.get("weight_decay", 0.0)),
+        warmup_epochs=int(desk_cfg.get("warmup_epochs", 0)),
+        min_lr_frac=float(desk_cfg.get("min_lr_frac", 1.0)),
+        amp=bool(desk_cfg.get("amp", False)),
+        eval_every=int(desk_cfg.get("eval_every", 1)),
+        holdout_year_targets=year_val or None,
+        hidden_width=hidden_width, mlp_expansion=mlp_expansion)
+    ema_half_life = float(ema.half_life().item())
+    torch.save(ema.state_dict(), os.path.join(out_dir, "output_ema.pth"))
+    print(f"[desk] output-EMA learned half-life = {ema_half_life:.2f} yr")
     torch.save(model.state_dict(), os.path.join(out_dir, "env_model_semisup.pth"))
     np.savez(os.path.join(out_dir, "desk_meta.npz"),
              mu=mu, sd=sd, stream_dims=np.array(stream_dims, int),
              latent_dim=z_grid.shape[2], label_year=label_year,
-             spatial_kernel=spatial_kernel, bbs_mode=bbs_mode,
+             spatial_kernel=spatial_kernel,
              # Provenance for the regularization/augmentation recipe. dropout does not change
              # state_dict keys (so checkpoints stay loadable either way), but without recording
              # it a run cannot be reproduced or compared against another.
@@ -1189,14 +826,14 @@ def run_desk_experiment(config=None):
              mlp_expansion=int(model.mlp_expansion),
              augment=json.dumps(config.get("augment") or {}),
              holdout_cells=int(holdout.sum()), buffer_cells=int(buffer_cells_mask.sum()),
-             ebird_frac=ebird_frac, schema=json.dumps(schema),
-             output_ema=bool(ema_cfg.get("enabled", False)),
+             schema=json.dumps(schema),
+             output_ema=True,
              ema_half_life=(ema_half_life if ema_half_life is not None else np.nan),
              ema_warmup_start=int(ema_cfg.get("warmup_start", 1940)),
              kernel=str(z_meta["kernel"]), centered=bool(z_meta["centered"]),
              kernel_contract=str(z_meta.get("kernel_contract", "")))
     print(f"[desk] saved model + desk_meta.npz -> {out_dir} "
-          f"(spatial_kernel={spatial_kernel}, mode={bbs_mode})")
+          f"(spatial_kernel={spatial_kernel})")
 
 
 if __name__ == "__main__":

@@ -66,7 +66,14 @@
     "min_coverage": 0.5
   },
   "bbs": {
-    "_comment": "BBS community settings. LIVE on the pipeline: community_top_n and species_list (community selection, read by identify/*), turnover_min_gap (the validate stage) and ebird_stack_cache (the opt-in ebird-cache stage). The community_matrix path and the smoothing/anomaly knobs below are read ONLY by the raw-BBS turnover diagnostic, scripts/viz/raw_bbs_turnover.py -- they are not pipeline inputs. The ESK point set moved to trend.points_dir and the production landmark budget to esk.spacetime.n_landmarks; both used to live here, which is why the production values were hard to find.",
+    "_comment": "BBS community settings. LIVE on the pipeline: community_axes and species_list (community selection, read by identify/*), turnover_min_gap (the validate stage) and ebird_stack_cache (the opt-in ebird-cache stage). The community_matrix path and the smoothing/anomaly knobs below are read ONLY by the raw-BBS turnover diagnostic, scripts/viz/raw_bbs_turnover.py -- they are not pipeline inputs. The ESK point set moved to trend.points_dir and the production landmark budget to esk.spacetime.n_landmarks; both used to live here, which is why the production values were hard to find.",
+    "_community_axes_comment": "The reference community is the UNION of four per-axis top-N cuts (phylo-nearest, morphology-nearest, urban-loving, urban-avoiding), taken AFTER the BBS/eBird trend-product gates -- see identify/community_axes.py. n_per_axis=30 lands the union near 100, matching the previous community size. max_migratory_frac is the knob you actually set: the selector solves for the SMALLEST migration rank penalty achieving it, because pool-rank units are arbitrary (a fixed penalty drifts in meaning if the gate or the pool changes) while a stated composition does not. Migrants are downweighted because Z encodes local year-round suitability from year-round covariates, and a long-distance migrant's June abundance is driven by wintering-ground and flyway dynamics the model has no covariates for. The penalty is additive on the pool rank and zero for sedentary species, so raising it can never displace a non-migrant; the interpretable form is the per-class admission bar the selector logs. penalty_max only bounds the search.",
+    "community_axes": {
+      "n_per_axis": 30,
+      "max_migratory_frac": 0.2,
+      "penalty_max": 120
+    },
+    "_community_top_n_comment": "NOT the community size any more -- community_axes is. This is only the default --top-n for the standalone identify/bbs_crosswalk.py diagnostic CLI, which reports how far down the candidate pool the AOU join succeeds.",
     "community_top_n": 100,
     "species_list": "${HOUFIN_DATA}/bbs_2026_release/SpeciesList.csv",
     "community_matrix": "${HOUFIN_DATA}/bbs/community_matrix.npz",

@@ -1,15 +1,31 @@
 #!/usr/bin/env python3
 """
-AVONET + phylogeny + urban tolerance pipeline
+AVONET + phylogeny + urban tolerance: build the candidate pool for the reference
+community.
 
 Filtering:
 - Species set is defined by presence in the urban intensity dataset
   (via eBird taxonomy crosswalk)
 
 Adds:
-- Urban tolerance distance (6 indices)
-- Equal weighting across morphology, phylogeny, and urban tolerance
+- Patristic distance to the focal species (single-source traversal)
+- Morphological distance to the focal (11 standardized AVONET traits)
+- Urban tolerance (mean of 6 standardized indices; signed, higher = more tolerant)
 - eBird species code (SPECIES_CODE)
+
+This module SCORES; it does not select. The community is the union of four
+per-axis top-N cuts taken after the BBS/eBird trend gates -- see
+identify/community_axes.py for the rule and identify/select_trend_community.py for
+the gates. What is written here is the full candidate pool with the axis inputs
+attached.
+
+``Mean.Rank`` (the unweighted mean of three rank columns) is retained only as a
+legacy total order over the pool, because ``read_community_codes`` sorts on it.
+It is no longer the selection rule: averaging ranks across axes that measure
+incommensurable things -- two reward proximity to the focal, one rewards
+population extremeness -- produced a scalar nothing was actually ranked on (the
+focal placed 23rd on its own urban axis), and it enriched long-distance migrants
+relative to the pool.
 """
 
 import os
@@ -64,6 +80,17 @@ URBAN_COLS = [
     "X90th.NL",
     "Habitat.Use.NL",
 ]
+
+# Columns the candidate-pool artifact carries beyond species_code/mean_rank, and
+# their tidy names. These are the raw inputs to the four selection axes plus the
+# AVONET migration class (1 sedentary / 2 partial / 3 migratory) -- values, not
+# ranks, because identify/community_axes re-ranks within the GATED pool.
+POOL_COLS = {
+    "Migration": "migration",
+    "Phylo.Distance": "phylo_distance",
+    "Trait.Distance": "trait_distance",
+    "Urban.Tolerance": "urban_tolerance",
+}
 
 # Utilities
 
@@ -245,28 +272,48 @@ def main():
 
     print(f"Saved rank-based comparison table (with eBird SPECIES_CODE) to {OUTPUT_COMPARISON}")
 
-    # Clean species list for the eBird downloader
-    # Minimal, ordered artifact: species_code + mean_rank, most-similar first.
-    # Selection (top-N / threshold) is deliberately left to download time, so
-    # the full ranked list is written here rather than a pre-cut subset.
+    # The candidate POOL for community selection, and the list the eBird downloader
+    # consumes. Selection is deliberately not applied here: it has to happen after
+    # the BBS/eBird trend-product gates, or each axis loses a different unbalanced
+    # number of species to the gates (identify/select_trend_community).
+    #
+    # Carries the four axis columns and the migration class alongside mean_rank, so
+    # the selector reads one tidy artifact rather than the 66-column comparison
+    # table. mean_rank is retained because read_community_codes sorts on it.
     #
     # CRITICAL: DROP THE FOCAL SPECIES (House Finch). It is the transfer TARGET of the
     # downstream statistical model, which uses the community-derived Z as a covariate.
     # If the focal were in the community, Z would encode House Finch's own distribution
     # and predicting House Finch from it would be circular (leakage). The focal ranks
-    # ~1 (distance 0 to itself), so it MUST be excluded here; the community is the
-    # nearest-N species EXCLUDING the focal.
+    # ~1 (distance 0 to itself), so it MUST be excluded here.
     n_before = int(bl["SPECIES_CODE"].notna().sum())
     keep = bl["Avibase.ID1"] != FOCAL_ID
     species_list = (
-        bl.loc[keep, ["SPECIES_CODE", "Mean.Rank"]]
+        bl.loc[keep, ["SPECIES_CODE", "Mean.Rank"] + list(POOL_COLS)]
         .dropna(subset=["SPECIES_CODE"])
-        .rename(columns={"SPECIES_CODE": "species_code", "Mean.Rank": "mean_rank"})
+        .rename(columns={"SPECIES_CODE": "species_code", "Mean.Rank": "mean_rank",
+                         **POOL_COLS})
     )
     dropped = n_before - len(species_list)
+
+    # The selector ranks within the pool and refuses non-finite values, so an
+    # unusable row is dropped HERE, where the loss can be named, rather than being
+    # ranked silently last on every axis.
+    axis_cols = list(POOL_COLS.values())
+    usable = np.isfinite(species_list[axis_cols].apply(pd.to_numeric, errors="coerce")).all(axis=1)
+    if not usable.all():
+        lost = species_list.loc[~usable, "species_code"].tolist()
+        print(f"Dropped {len(lost)} species with a non-finite axis value: {lost[:12]}"
+              + (" ..." if len(lost) > 12 else ""))
+        species_list = species_list.loc[usable]
+    species_list["migration"] = species_list["migration"].astype(int)
+
     species_list.to_csv(SPECIES_LIST_PATH, index=False)
-    print(f"Saved {len(species_list)} ranked species codes to {SPECIES_LIST_PATH} "
+    counts = species_list["migration"].value_counts().to_dict()
+    print(f"Saved {len(species_list)} candidate species to {SPECIES_LIST_PATH} "
           f"(excluded {dropped} focal-species row(s) -- House Finch is the transfer target).")
+    print(f"  migration classes (1 sedentary / 2 partial / 3 migratory): "
+          + ", ".join(f"{k}: {counts.get(k, 0)}" for k in (1, 2, 3)))
 
 if __name__ == "__main__":
     main()

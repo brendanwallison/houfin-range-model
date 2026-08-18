@@ -61,8 +61,14 @@ dev = [
 # ${HOUFIN_DATA}/${HOUFIN_PROCESSED} tree. testpaths pins the surface to tests/ so
 # collection cannot drift into scripts/, where argparse CLIs named test_*.py would be
 # imported (executing their module-level config load) while contributing no test items.
+# pythonpath puts the repo root on sys.path so `from src...` resolves: the package is
+# installed as `src.*` from package-dir src/, which does NOT make the top-level name
+# `src` importable, and most test modules import it that way. Some prepend the root to
+# sys.path themselves; this makes that unnecessary and stops collection from failing on
+# the ones that don't.
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["."]
 
 [tool.setuptools]
 package-dir = {"" = "src"}

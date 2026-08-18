@@ -15,16 +15,17 @@ the raster, or every cell outside the US would arrive as a confident "no buildin
 
 **It is in its own CRS on its own lattice.** EPSG:5070 (lat_0 = 23) at 250 m, while the
 model grid is ESRI:102003 (lat_0 = 37.5) at 27 km with its origin snapped to the BBS
-lattice. The deprecated module derived its output transform from the SOURCE profile and
-so wrote in BUI's projection at BUI's origin -- rasters the streamer would either fail on
-or, worse, align by index. This follows ``preprocess/elevation.py`` instead: reproject
-onto a ``fine_factor`` x sub-grid **of the ref transform**, then take exact per-model-cell
-quantiles with ``regrid.block_quantiles``. Nesting into the ref lattice is what makes the
-aggregation exact and the output alignable.
+lattice. So the output transform must be derived from the REF grid, never from the source
+profile -- deriving it from the source writes in BUI's projection at BUI's origin, which
+the streamer will either reject or, worse, align by index. This follows
+``preprocess/elevation.py``: reproject onto a ``fine_factor`` x sub-grid **of the ref
+transform**, then take exact per-model-cell quantiles with ``regrid.block_quantiles``.
+Nesting into the ref lattice is what makes the aggregation exact and the output
+alignable.
 
 Outputs (one single-band raster per variable per year, the layout
-``PerVariableYearStreamer`` reads -- it reads band 1 only, so the deprecated module's
-one-file-7-bands product was unusable):
+``PerVariableYearStreamer`` reads -- it reads band 1 only, so a one-file-many-bands
+product would be silently truncated to its first band):
 
     bui_q05_{year}_grid.tif ... bui_q99_{year}_grid.tif    within-cell BUI quantiles
     bui_avail_{year}_grid.tif                              fraction of the cell with data
@@ -33,7 +34,7 @@ one-file-7-bands product was unusable):
 Three decisions worth understanding before changing anything:
 
 1. **Absent cells are filled with the in-coverage MEAN, not 0.** This is the only choice
-   that puts them at exactly 0 after standardisation -- the value this pipeline already
+   that puts them at (very near) 0 after standardisation -- the value this pipeline already
    treats as "no information" everywhere (``covariate_io.norm_grid`` zero-fills invalid
    cells; the masker masks to 0). Filling with 0 instead would put them at ``-mu/sd``, a
    systematic negative offset that is structured signal, not neutrality. Leaving them NaN
@@ -183,10 +184,19 @@ def neutral_fill(stacks, transform=None):
 
     ``stacks`` is ``{year: (Q, H, W)}``. Returns ``(Q,)`` fill values: the mean of the
     in-coverage values **in the transformed space**, mapped back through the transform's
-    inverse, so that the eventual ``covariate_io._transform`` puts the filled cells at
-    exactly the pooled in-coverage mean. Doing the average in transformed space is the
-    point -- the mean of log1p is not log1p of the mean, and it is the transformed values
-    that get standardised.
+    inverse, so that the eventual ``covariate_io._transform`` puts the filled cells at the
+    pooled in-coverage mean. Doing the average in transformed space is the point -- the mean
+    of log1p is not log1p of the mean, and it is the transformed values that get standardised.
+
+    NEAR that mean, not exactly on it. The mean here pools the raw snapshots with equal
+    weight, whereas the mu that is actually fit is over MODEL YEARS after the streamer's
+    linear interpolation between snapshots (which resamples the series onto 124 annual
+    steps) and after the stream's year-axis EMA, and over training cells only rather than
+    all of them. So the filled cells land close to 0
+    after standardisation rather than at 0 to machine precision. The residual is a small
+    constant offset on a channel the availability flag already marks as absent, which is why
+    approximating it here is preferable to threading the EMA and the fit mask into this
+    stage.
 
     Pooled over ALL years, so the fill is one constant per channel and the absent region
     carries no temporal signal (see the module docstring).
@@ -243,9 +253,14 @@ def write_manifest(out_dir, variables, years, fine_factor, quantiles, fill):
         "_fill_comment": (
             "raw_fill_value is the per-channel constant written outside the CONUS "
             "footprint, chosen so that after the stream's log1p transform the filled "
-            "cells sit at the pooled in-coverage mean and therefore at 0 after "
-            "standardisation. Constant across years on purpose: BUI grows monotonically, "
-            "so a per-year fill would inject a spurious trend into the no-data region."),
+            "cells sit at the pooled in-coverage mean and therefore near 0 after "
+            "standardisation. Near, not exactly: the mu that is fit downstream is over "
+            "model years (snapshots linearly interpolated by the streamer) after the "
+            "year-axis "
+            "EMA and over training cells only, while this mean pools the raw snapshots "
+            "equally -- see neutral_fill. Constant across years on purpose: BUI grows "
+            "monotonically, so a per-year fill would inject a spurious trend into the "
+            "no-data region."),
     }
     with open(os.path.join(out_dir, MANIFEST), "w") as fh:
         json.dump(manifest, fh, indent=2, sort_keys=True)

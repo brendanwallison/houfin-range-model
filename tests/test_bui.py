@@ -120,6 +120,94 @@ def test_neutral_fill_refuses_a_fully_absent_channel():
     raise AssertionError("a fully-absent channel produced a fill value")
 
 
+def _write_raster(path, arr, transform, crs, nodata=None):
+    import rasterio
+    prof = dict(driver="GTiff", height=arr.shape[0], width=arr.shape[1], count=1,
+                dtype="float64", transform=transform, crs=crs)
+    if nodata is not None:
+        prof["nodata"] = nodata
+    with rasterio.open(path, "w", **prof) as dst:
+        dst.write(arr.astype("float64"), 1)
+
+
+def _bui_like_source(path, ref_transform, ref_crs, H, W, value, pad_m=0.0, res=250.0):
+    """A 250 m raster in BUI's own CRS whose footprint covers the ref box (+/- ``pad_m``).
+
+    ``pad_m`` < 0 shrinks it so part of the ref box is genuinely uncovered. The origin is
+    deliberately NOT snapped to anything -- the point is that alignment comes from the
+    reprojection onto the ref sub-grid, not from the source happening to line up.
+    """
+    import rasterio
+    from rasterio.crs import CRS
+    from rasterio.warp import transform_bounds
+
+    src_crs = CRS.from_epsg(5070)                       # BUI's CRS: Albers, lat_0 = 23
+    left, top = ref_transform.c, ref_transform.f
+    ref_bounds = (left, top - H * ref_transform.a, left + W * ref_transform.a, top)
+    x0, y0, x1, y1 = transform_bounds(ref_crs, src_crs, *ref_bounds)
+    x0, y0, x1, y1 = x0 - pad_m, y0 - pad_m, x1 + pad_m, y1 + pad_m
+    # +0.5 px of deliberate misalignment, so nothing can pass by lattice coincidence
+    transform = rasterio.Affine(res, 0, x0 - res / 2, 0, -res, y1 + res / 2)
+    h, w = int(np.ceil((y1 - y0) / res)) + 2, int(np.ceil((x1 - x0) / res)) + 2
+    _write_raster(path, np.full((h, w), value), transform, src_crs)
+    return h, w
+
+
+def test_fine_grid_nests_into_the_ref_lattice_across_a_crs_change(tmp_path):
+    """The failure the deprecated module actually had: it derived its output transform
+    from the SOURCE profile, so it wrote in BUI's projection at BUI's origin -- rasters the
+    streamer would either reject or, worse, align by index. The fine grid must be exactly
+    ``ff`` x the ref grid, on the ref CRS, sharing the ref ORIGIN, so blocks nest.
+    """
+    import rasterio
+    from rasterio.crs import CRS
+    from src.data.preprocess.bui import bui_to_fine_grid
+
+    H, W, res, ff = 4, 6, 27000.0, 3
+    ref_transform = rasterio.Affine(res, 0, -1_000_000.0, 0, -res, 1_000_000.0)
+    ref_crs = CRS.from_string("ESRI:102003")
+    src = tmp_path / "2020_BUI.tif"
+    # negative pad: the source covers only the middle of the ref box, so the uncovered
+    # fringe must come back NaN -- the one absence the source itself can express
+    _bui_like_source(src, ref_transform, ref_crs, H, W, 7.0, pad_m=-20_000.0)
+
+    fine, block = bui_to_fine_grid(str(src), ref_transform, ref_crs, H, W, ff)
+    assert block == ff
+    assert fine.shape == (H * ff, W * ff)                # exact nesting, no remainder
+    fine_transform = ref_transform * rasterio.Affine.scale(1.0 / ff, 1.0 / ff)
+    assert fine_transform.c == ref_transform.c          # the REF origin, not the source's
+    assert fine_transform.f == ref_transform.f
+    assert np.isclose(fine_transform.a, res / ff) and np.isclose(fine_transform.e, -res / ff)
+
+    # a constant field survives `average` resampling exactly, so any value that is not
+    # the source's means the reprojection mixed in the NaN/zero background
+    inside = fine[np.isfinite(fine)]
+    assert inside.size and np.allclose(inside, 7.0)
+    assert np.isnan(fine).any(), "the shrunken source should leave the fringe uncovered"
+
+
+def test_a_covering_source_gives_constant_quantiles_and_full_availability(tmp_path):
+    """End-to-end over the reproject: a uniform source covering the ref box must come back
+    as the same value at every quantile, and availability must be 1 everywhere -- so a
+    units, alignment or aggregation error shows up as a value that is not the source's."""
+    import rasterio
+    from rasterio.crs import CRS
+    from src.data.preprocess.bui import bui_to_fine_grid
+
+    H, W, res, ff = 4, 4, 27000.0, 3
+    ref_transform = rasterio.Affine(res, 0, 0.0, 0, -res, 0.0)
+    ref_crs = CRS.from_string("ESRI:102003")
+    src = tmp_path / "1990_BUI.tif"
+    _bui_like_source(src, ref_transform, ref_crs, H, W, 1234.0, pad_m=30_000.0)
+
+    fine, block = bui_to_fine_grid(str(src), ref_transform, ref_crs, H, W, ff)
+    valid = np.isfinite(fine)
+    assert valid.all(), "a padded source must cover the whole ref box"
+    q = cell_quantiles(fine, valid, block, quantiles=QUANTILES)
+    assert np.allclose(q, 1234.0)                        # every quantile of a constant
+    assert np.allclose(availability(valid, block), 1.0)
+
+
 def test_quantiles_are_monotone_in_q():
     """Quantiles are taken at target resolution from the fine values, so monotonicity in
     q is automatic -- unlike interpolating quantile bands, which needs a re-sort."""

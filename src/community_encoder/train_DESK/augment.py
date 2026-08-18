@@ -47,8 +47,8 @@ Four rules that are easy to get wrong:
    channel mean" everywhere in this pipeline. No sentinel is needed for *synthetic* masking of a
    channel that is otherwise always observed: mean imputation is unbiased and needs no flag.
 
-   **Amended for structurally-partial covariates.** That argument fails for a covariate absent
-   over a large, fixed part of the domain in every year -- there "at the mean" is not a random
+   **This argument does not extend to structurally-partial covariates.** For a covariate absent
+   over a large, fixed part of the domain in every year, "at the mean" is not a random
    perturbation but a spatially structured lie the encoder cannot distinguish from signal. Such a
    stream carries its own availability channel, declared as ``indicator_variable`` in the schema.
 
@@ -90,8 +90,8 @@ class _Tier:
 
     Two tiers share all the group *machinery* and differ only in their rates and
     spatial granularity, so the probabilities live here rather than on the masker.
-    The persistent tier defaults to all-zero: adding a ``persist`` block is opt-in,
-    and an absent one is exactly the pre-persistence behaviour.
+    The persistent tier defaults to all-zero, so a ``persist`` block is opt-in and an
+    absent one costs nothing.
     """
 
     def __init__(self, cfg, defaults):
@@ -116,7 +116,7 @@ _TRANSIENT_DEFAULTS = {"p_base": 0.15, "p_month": 0.15, "span_prob": 0.30, "span
                        "p_level": 0.10, "p_stream": 0.10, "max_masked_frac": 0.5,
                        "tile_cells": 0}
 _PERSIST_DEFAULTS = {"p_base": 0.0, "p_month": 0.0, "span_prob": 0.0, "span_max": 3,
-                     "p_level": 0.0, "p_stream": 0.0, "max_masked_frac": 0.35,
+                     "p_level": 0.0, "p_stream": 0.0, "max_masked_frac": 0.25,
                      "tile_cells": 0}
 
 
@@ -135,9 +135,16 @@ class ChannelGroupMasker:
         self.enabled = bool(cfg.get("enabled", False))
         self.transient = _Tier(cfg, _TRANSIENT_DEFAULTS)
         self.persist = _Tier(cfg.get("persist"), _PERSIST_DEFAULTS)
-        # Persistence is off unless something is actually configured to persist, so the
-        # default config path is bit-for-bit the pre-persistence one.
+        # Persistence is off unless something is actually configured to persist, so a
+        # config without a persist block takes no persistent code path at all.
         self.persist_enabled = self.persist.any_rate()
+        # A persist block that only sets tile_cells/max_masked_frac reads as "persistence
+        # is configured" but every rate is 0, so nothing is ever drawn. Say so rather than
+        # letting it look enabled in the config and be off in the run.
+        if cfg.get("persist") and not self.persist_enabled:
+            print("[augment] WARNING augment.persist is configured but every rate "
+                  "(p_base/p_month/span_prob/p_level/p_stream) is 0, so NO persistent "
+                  "mask is drawn.", flush=True)
 
         streams = schema["streams"]
         self.C = int(total_dim if total_dim is not None else schema.get(
@@ -294,8 +301,8 @@ class ChannelGroupMasker:
     def sample_persistent_keep(self, rng, device=None, dtype=torch.float32, hw=None):
         """PERSISTENT 0/1 keep mask: draw ONCE per optimizer step, hold across every year.
 
-        Returns ``None`` when persistence is unconfigured, so the caller can skip the multiply
-        and the default path stays exactly the pre-persistence one.
+        Returns ``None`` when persistence is unconfigured, so the caller skips the multiply
+        entirely rather than composing with an all-ones mask.
 
         The caller multiplies this into the per-year mask, so a channel is kept only if both
         tiers keep it. That composition is what makes the two axes orthogonal: persistence

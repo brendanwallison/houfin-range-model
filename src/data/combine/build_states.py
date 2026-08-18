@@ -29,8 +29,8 @@ _YEAR_TIF = re.compile(r"^(?P<var>.+)_(?P<year>\d{4})_grid\.tif$")
 def load_grid_manifest(grid_dir):
     """A grid dir's ``manifest.json`` (authoritative channel order), or None.
 
-    Only ``climate_grid_monthly`` writes one; LUH-3/HYDE dirs have none and fall
-    back to sorted-glob discovery.
+    ``climate_grid_monthly`` and ``bui_grid`` write one; LUH-3/HYDE dirs have none
+    and fall back to sorted-glob discovery.
     """
     path = os.path.join(grid_dir, "manifest.json")
     if not os.path.exists(path):

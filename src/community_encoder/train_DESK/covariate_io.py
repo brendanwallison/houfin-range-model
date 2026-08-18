@@ -136,6 +136,17 @@ def assert_schema_compatible(saved, live, context=""):
                 f"transform {ss.get('transform')!r} in the model but "
                 f"{ls.get('transform')!r} on disk. The saved mu/sd were fit on the "
                 f"post-transform scale, so rebuild states and retrain.")
+        # Same failure class as the transform, one channel narrower. indicator_variable
+        # exempts a channel from BOTH the transform and the standardization, so adding,
+        # removing or moving it changes what mu/sd mean for that channel while name, dim,
+        # variables and transform all stay identical.
+        if (ss.get("indicator_variable") or None) != (ls.get("indicator_variable") or None):
+            raise SystemExit(
+                f"state schema mismatch{where}: stream {ss['name']!r} declares "
+                f"indicator_variable {ss.get('indicator_variable')!r} in the model but "
+                f"{ls.get('indicator_variable')!r} on disk. That channel is exempt from "
+                f"the transform and the standardization, so the saved mu/sd do not "
+                f"transfer -- rebuild states and retrain.")
 
 
 def load_state_stack(year, states_dir, schema):

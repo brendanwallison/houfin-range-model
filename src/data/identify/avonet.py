@@ -19,13 +19,10 @@ identify/community_axes.py for the rule and identify/select_trend_community.py f
 the gates. What is written here is the full candidate pool with the axis inputs
 attached.
 
-``Mean.Rank`` (the unweighted mean of three rank columns) is retained only as a
-legacy total order over the pool, because ``read_community_codes`` sorts on it.
-It is no longer the selection rule: averaging ranks across axes that measure
-incommensurable things -- two reward proximity to the focal, one rewards
-population extremeness -- produced a scalar nothing was actually ranked on (the
-focal placed 23rd on its own urban axis), and it enriched long-distance migrants
-relative to the pool.
+``Mean.Rank`` (the unweighted mean of three rank columns) is NOT the selection rule --
+it exists only to give the pool a stable total order, because ``read_community_codes``
+sorts on it. Do not reintroduce it as a cut: it averages ranks across axes that measure
+incommensurable things, which yields a scalar nothing is actually ranked on.
 """
 
 import os
@@ -233,11 +230,15 @@ def main():
     bl = standardize(bl, URBAN_COLS)
 
     # A single urban-tolerance score (mean of the standardized indices; higher =
-    # more urban-tolerant), then EXTREMENESS from the median so that BOTH the most
-    # and the least urban-tolerant species score well -- not only those similar to
-    # the urban-tolerant house finch. This axis is deliberately focal-independent:
-    # "Urban.Distance" here is distance from the median tolerance, so the tails of
-    # the gradient rank best (see the rank block below).
+    # more urban-tolerant). SIGNED, and this is the column selection actually uses:
+    # community_axes reads it from both ends (urban_loving descending, urban_avoiding
+    # ascending), which is what makes both tails reachable.
+    #
+    # Urban.Distance -- extremeness from the median -- fed the retired composite, which
+    # intended the same "both tails" property but could not deliver it: the distribution
+    # is asymmetric (min -1.79, median -0.09, max 5.00), so its top 20 measured 18
+    # urban-lovers to 2 urban-avoiders. It survives only as an input to the legacy
+    # Mean.Rank total order below.
     bl["Urban.Tolerance"] = bl[URBAN_COLS].mean(axis=1)
     bl["Urban.Distance"] = (bl["Urban.Tolerance"] - bl["Urban.Tolerance"].median()).abs()
 
@@ -275,7 +276,7 @@ def main():
     # The candidate POOL for community selection, and the list the eBird downloader
     # consumes. Selection is deliberately not applied here: it has to happen after
     # the BBS/eBird trend-product gates, or each axis loses a different unbalanced
-    # number of species to the gates (identify/select_trend_community).
+    # number of species to them (identify/select_trend_community).
     #
     # Carries the four axis columns and the migration class alongside mean_rank, so
     # the selector reads one tidy artifact rather than the 66-column comparison

@@ -1,46 +1,44 @@
 """Per-axis top-N community selection with a migration rank penalty.
 
-The reference community used to be the top-100 by ``Mean.Rank``, the unweighted
-mean of three rank columns. That had two defects. Averaging ranks across
-incommensurable axes (two reward *proximity to the focal*, one rewards *population
-extremeness*) yields a scalar nothing is actually ranked on -- the focal itself
-placed 23rd on its own urban axis. And the morphology axis is effectively a
-wing-shape axis (``Wing.Length``, ``Kipps.Distance``, ``Secondary1`` and
-``Hand-Wing.Index`` are near-collinear, so wing shape counts ~4x of 11 traits),
-and wing shape is a migration proxy -- so the rule *enriched* long-distance
-migrants relative to the candidate pool.
+The reference community is the UNION of four explicit top-N cuts, one per axis, taken
+over a pool already gated on trend-product availability. A union rather than a composite
+ranking because the axes measure incommensurable things -- two reward *proximity to the
+focal*, two reward position on the urban gradient -- so averaging their ranks yields a
+scalar nothing is actually ranked on. The union also preserves WHICH axis chose each
+species (``category``), which a mean rank destroys.
 
-That matters because Z is meant to encode local, year-round habitat suitability
-inferred from year-round covariates against a June breeding count. A long-distance
-migrant's June abundance is jointly governed by wintering-ground and flyway
-dynamics the model has no covariates for, so migrant abundance injects variance
-the kernel attributes to local habitat.
+Migrants are downweighted by an additive rank penalty, because Z is meant to encode
+local, year-round habitat suitability inferred from year-round covariates against a June
+breeding count. A long-distance migrant's June abundance is jointly governed by
+wintering-ground and flyway dynamics the model has no covariates for, so migrant
+abundance injects variance the kernel attributes to local habitat.
 
-This module replaces the composite with the union of four explicit top-N axes,
-and downweights migrants with an additive rank penalty.
+The penalty is not cosmetic on the morphology axis in particular: ``Wing.Length``,
+``Kipps.Distance``, ``Secondary1`` and ``Hand-Wing.Index`` are near-collinear, so wing
+shape carries ~4 of 11 traits and the axis is effectively a wing-shape axis -- and wing
+shape is a migration proxy. Left alone that axis ENRICHES long-distance migrants relative
+to the candidate pool.
 
 Reading the penalty
 -------------------
-The penalty is added to a species' rank *within the whole gated pool* to form a
-sort key; each axis then takes the N smallest keys. The trap is to read the cut as
-"key <= N": it is not. The Nth-smallest KEY is well above N, and it RISES with the
-penalty, because penalised species vacate slots that unpenalised species fill from
-deeper down the raw ranking. One measured axis at N=30, p=30 admits a class-3
-species whose raw rank is 3 (key 63) at position 26 of 30, with a threshold key of
-73.
+The penalty is added to a species' rank *within the whole gated pool* to form a sort key;
+each axis then takes the N smallest keys. The trap is to read the cut as "key <= N": it is
+not. The Nth-smallest KEY is well above N, and it RISES with the penalty, because penalised
+species vacate slots that unpenalised species fill from deeper down the raw ranking. One
+measured axis at N=30, p=30 admits a class-3 species whose raw rank is 3 (key 63) at
+position 26 of 30, with a threshold key of 73.
 
-So the legible quantity is not the penalty but the **admission bar in raw-rank
-units** -- what raw rank each migration class needs to place. See
-``admission_bars``. Raising p never removes a sedentary species; class 1 is never
-penalised, so its bar only loosens (measured: 30 -> 73 -> 104 as p goes 0 -> 30 ->
-60) while the migratory bar tightens (30 -> 13 -> 0).
+So the legible quantity is not the penalty but the **admission bar in raw-rank units** --
+what raw rank each migration class needs to place. See ``admission_bars``. Raising p never
+removes a sedentary species; class 1 is never penalised, so its bar only loosens (measured:
+30 -> 73 -> 104 as p goes 0 -> 30 -> 60) while the migratory bar tightens (30 -> 13 -> 0).
 
-Because pool-rank units are an arbitrary scale -- if the gate changes or the pool
-grows, a fixed p silently means something different -- callers state the target
-composition and ``solve_penalty`` recovers the smallest p that achieves it.
+Because pool-rank units are an arbitrary scale -- if the gate changes or the pool grows, a
+fixed p silently means something different -- callers state the target composition and
+``solve_penalty`` recovers the smallest p that achieves it.
 
-Pure and numpy-only on purpose: the whole selection rule is unit-testable without
-pandas, rasterio, the network, or the BBS/eBird gate artifacts.
+Pure and numpy-only on purpose: the whole selection rule is unit-testable without pandas,
+rasterio, the network, or the BBS/eBird gate artifacts.
 """
 import numpy as np
 
@@ -49,11 +47,11 @@ SEDENTARY, PARTIAL, MIGRATORY = 1, 2, 3
 MIGRATION_LABELS = {SEDENTARY: "sedentary", PARTIAL: "partial", MIGRATORY: "migratory"}
 
 # The four selection axes. ``column`` names a key in the pool dict; ``ascending``
-# says whether a SMALL value is better. The two urban axes read the same signed
-# column from opposite ends -- which is what makes both tails reachable. The old
-# ``Urban.Distance`` (absolute deviation from the median, ranked descending)
-# intended that too, but the distribution is asymmetric (min -1.79, median -0.09,
-# max 5.00), so its top 20 measured 18 urban-lovers to 2 urban-avoiders.
+# says whether a SMALL value is better. The two urban axes read the same SIGNED
+# column from opposite ends, which is what makes both tails reachable. Ranking one
+# absolute deviation-from-median column descending does NOT achieve the same thing:
+# the tolerance distribution is asymmetric (min -1.79, median -0.09, max 5.00), so a
+# single extremeness cut lands ~9:1 on urban-lovers.
 AXES = (
     {"name": "phylo", "column": "phylo_distance", "ascending": True,
      "note": "nearest the focal on the patristic tree"},
@@ -69,12 +67,11 @@ AXES = (
 def rank_average(values, ascending=True):
     """Ranks 1..n with ties averaged (matches ``pandas.Series.rank``).
 
-    Ranking here rather than reusing the precomputed ``*.Rank`` columns is
-    deliberate: those were ranked over the FULL AVONET table, while the penalty
-    has to act on ranks within the *gated* pool, or p means a different thing on
-    every axis. It also puts the two urban axes -- which arrive as signed values,
-    not ranks -- on the same scale as the two distance axes, so one p is
-    commensurable across all four.
+    Rank here rather than reusing AVONET's precomputed ``*.Rank`` columns: those are
+    ranked over the FULL table, while the penalty has to act on ranks within the
+    *gated* pool, or p means a different thing on every axis. Ranking here also puts
+    the two urban axes -- which arrive as signed values, not ranks -- on the same
+    scale as the two distance axes, so one p is commensurable across all four.
     """
     v = np.asarray(values, dtype="float64")
     if v.ndim != 1:

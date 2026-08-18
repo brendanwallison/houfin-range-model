@@ -336,9 +336,10 @@ raised worker count) fits dev 2h. Cold start: run §3 → §3a (login warm) → 
 one-shot with `STAGES` starting at `climate`, or just use the split
 `submit_preprocess.sh`/`submit_climate.sh`/`submit_states.sh` scripts.
 
-**Clean up before a fresh run.** The encoder was rewired from the deprecated
-2-stream PRISM/BUI states to N-stream `state_{year}.npz` + `state_schema.json`, so
-clear stale encoder artifacts so nothing mixes formats:
+**Clean up before a fresh run.** Encoder states are N-stream `state_{year}.npz` +
+`state_schema.json`, and the channel width changes whenever a stream is added or
+rebuilt. Clear stale encoder artifacts so nothing mixes widths or formats — the saved
+`mu`/`sd` and the checkpoint input layer are both positional:
 
 ```bash
 rm -rf $HOUFIN_PROCESSED/encoder     # regenerated downstream

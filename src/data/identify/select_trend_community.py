@@ -14,16 +14,14 @@ Pipeline::
       -> per-axis top-N with a migration rank penalty (community_axes)
       -> print + write community_trend.csv
 
-**The gates come before the cut.** The old rule walked a single composite ranking
-applying the gates inline and stopped at 100 -- correct for a scalar ranking, wrong
-for per-axis selection, where each axis would otherwise lose a different unbalanced
-number of species to the gates. So the whole pool is gated first, then each axis
-takes its top-N from the survivors, and the per-axis gate attrition is reported.
+**The gates come before the cut.** The whole pool is gated first, then each axis takes
+its top-N from the survivors. Applying the gates inline while walking a ranking would
+instead cost each axis a different, unbalanced number of species, so the axes would no
+longer be comparable; the per-axis gate attrition is reported for the same reason.
 
-Because gating first means probing every candidate rather than only the ~120 the
-old walk reached, the eBird REST listing is cached to CSV. That also makes
-selection offline and repeatable, which matters if the rule is going to be
-iterated -- which is the point of making it explicit.
+Gating the whole pool means probing every candidate (~300 REST calls), so the eBird
+listing is cached to CSV. That also makes selection offline and repeatable, which
+matters because the rule is meant to be iterated.
 
 The eBird presence test reuses the same REST listing the trends downloader uses
 (``acquire.ebird.list_trend_objkeys``); it is the practical stand-in for the
@@ -85,9 +83,9 @@ def code_to_aou_map(matched, bbs_aou_set):
 def load_pool(ranked_path, exclude=None):
     """The candidate pool as a dict of aligned lists, ready for ``community_axes``.
 
-    Requires the axis-value columns; a pool artifact predating them is refused
-    rather than silently falling back to the composite rank, because that fallback
-    would reinstate the old selection rule with no visible symptom.
+    Requires the axis-value columns. A pool artifact lacking them is refused rather
+    than falling back to the ``mean_rank`` composite, which would silently select a
+    different community with no visible symptom.
     """
     df = pd.read_csv(ranked_path)
     missing = [c for c in POOL_VALUE_COLS if c not in df.columns]
@@ -311,10 +309,10 @@ def main():
     print(f"[select] {n_multi} species were chosen by more than one axis "
           f"(union {len(df)} of a possible {slots})")
 
-    # Community SIZE is now an outcome, not a target: the old rule walked deeper
-    # until it had exactly top_n, whereas four fixed-N axes drawn from a gated pool
-    # overlap more as the pool shrinks. Say so, with the knob, rather than leaving
-    # a quietly smaller community to be discovered downstream.
+    # Community SIZE is an outcome, not a target: four fixed-N axes drawn from a gated
+    # pool overlap more as the pool shrinks, so the union can come in well under the
+    # slot count. Say so, with the knob, rather than leaving a quietly smaller
+    # community to be discovered downstream.
     if len(df) < 0.8 * slots:
         print(f"[select] NOTE the union is {len(df)}, well short of the {slots} axis "
               f"slots -- a gated pool of {len(gated['species_code'])} forces the axes to "

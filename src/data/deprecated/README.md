@@ -31,11 +31,21 @@ and has been deleted: it could not run at any committed config (it resolved
 `block_factor(4000, 27000)`, ratio 6.75, and raised before reading data) and it hardcoded
 `START_YEAR`/`END_YEAR`/`EMA_TAU`, which `docs/TEMPORAL.md` forbids.
 
-A caveat to carry: these modules date from the 4 km / 16 km BUI-grid era and use integer
-`block_reduce`, which requires the target resolution to be an integer multiple of the
-native one. That holds for 4 km → 16 km; it does **not** hold for the current 27 km grid,
-so the aggregation path needs revisiting (`regrid.reproject_to_ref` is the modern route)
-before BUI can be re-ingested.
+The caveat to carry is **CRS and lattice, not resolution**. The block factor is fine:
+`block_factor(250, 27000)` is 108 exactly. But `bui.py` derives its output transform as
+`source_profile.transform * Affine.scale(block, block)` (`cell_values`) and reuses the
+source profile, so it writes in *BUI's own CRS at BUI's own origin* — `ESRI:102039`
+(lat_0 = 23), 107 × 170, with an origin that is off the 27 km ref lattice and a silent
+edge crop. `data/ref_grid_27km.tif` is `ESRI:102003` (lat_0 = 37.5), 133 × 224.
+`PerVariableYearStreamer._read_grid` never reprojects, so such rasters would either crash
+the stack or, worse, align by index.
+
+The route back is `preprocess/elevation.py`'s: `dem_to_fine_grid` reprojects onto a
+`fine_factor`× sub-grid **of the ref transform**, then `regrid.block_quantiles` aggregates
+per model cell. Two further changes are needed — one single-band `{var}_{year}_grid.tif`
+per quantile (the streamer reads band 1 only, so this module's 7-band file is unusable),
+and an explicit fill outside the CONUS footprint, since BUI encodes absence as 0 rather
+than nodata (see below).
 
 ## Why the BUI ocean rule was wrong
 

@@ -36,6 +36,33 @@ def ema_alpha(tau):
     return 1.0 - np.exp(-1.0 / tau)
 
 
+def schema_entry(spec, name, start, end):
+    """One ``state_schema.json`` stream entry, derived from its config spec.
+
+    The schema is the ONLY thing the encoder side reads -- ``covariate_io`` never
+    sees ``states.streams`` -- so every config field that changes channel VALUES
+    has to be copied here or it silently controls nothing. ``transform`` is the
+    live example: it was read by ``covariate_io._transform`` from a schema entry
+    that never carried it, so ``hyde: log1p`` was a no-op from the day it was
+    configured. ``ema_tau`` deliberately stays out: it is consumed here at build
+    time and is already baked into the written arrays.
+
+    Absent keys are omitted rather than written as null, so a stream with no
+    transform serializes byte-identically to the pre-fix schema.
+    """
+    entry = {
+        "name": name,
+        "start": int(start),
+        "end": int(end),
+        "dim": int(end - start),
+        "type": spec["type"],
+        "variables": list(spec.get("variables", [])),
+    }
+    if spec.get("transform"):
+        entry["transform"] = spec["transform"]
+    return entry
+
+
 def _read_grid_uncached(path):
     """Read a single-band grid raster as (H, W) float32 with nodata -> NaN.
 
@@ -357,14 +384,7 @@ def run_states(specs, out_dir, start_year, end_year, mask, sample_start,
         spec_by_name = {s.get("name", s["type"]): s for s in specs}
         schema = {
             "streams": [
-                {
-                    "name": name,
-                    "start": int(offsets[name][0]),
-                    "end": int(offsets[name][1]),
-                    "dim": int(offsets[name][1] - offsets[name][0]),
-                    "type": spec_by_name[name]["type"],
-                    "variables": list(spec_by_name[name].get("variables", [])),
-                }
+                schema_entry(spec_by_name[name], name, *offsets[name])
                 for name in names
             ],
             "total_dim": int(offsets[names[-1]][1]),

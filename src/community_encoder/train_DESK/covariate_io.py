@@ -1,9 +1,15 @@
 """Shared N-stream covariate IO for the DESK encoder (trainer, validate, cube).
 
 Loads per-year ``state_{year}.npz`` (one array per stream) using the ``state_schema.json``
-sidecar written by ``streams.run_states`` for the channel layout, applies optional
-per-stream transforms (from the ``states`` config), and provides the split into per-stream
-tensors that ``MultiStreamAutoencoder.forward(*streams)`` expects.
+sidecar written by ``streams.run_states`` for the channel layout, applies each stream's
+optional transform, and provides the split into per-stream tensors that
+``MultiStreamAutoencoder.forward(*streams)`` expects.
+
+The schema sidecar is the whole interface: nothing here reads ``states.streams`` from the
+config, so a stream property only reaches this module if ``streams.schema_entry`` copies it
+into the schema. States are written in RAW units and transformed on load (both here and in
+``transform_flat`` for ``history_vectors.npy``), so the transform is applied exactly once,
+before mu/sd are fit.
 
 Per-channel normalization stats are fit ONCE, on the supervised training pixels only
 (holdout and buffer cells excluded, so the evaluation distribution cannot leak into the
@@ -78,6 +84,16 @@ def assert_schema_compatible(saved, live, context=""):
                 f"width but a different channel ORDER (first difference at index "
                 f"{diff}: model {sv[diff]!r} vs disk {lv[diff]!r}). Normalization "
                 f"is positional, so this would silently apply the wrong stats.")
+        # The transform runs BEFORE mu/sd are fit, so changing it moves every
+        # channel of the stream onto a different scale while leaving name, dim
+        # and variables identical -- the same silent-misnormalization failure as
+        # a reorder, and equally invisible without this check.
+        if (ss.get("transform") or None) != (ls.get("transform") or None):
+            raise SystemExit(
+                f"state schema mismatch{where}: stream {ss['name']!r} was built with "
+                f"transform {ss.get('transform')!r} in the model but "
+                f"{ls.get('transform')!r} on disk. The saved mu/sd were fit on the "
+                f"post-transform scale, so rebuild states and retrain.")
 
 
 def load_state_stack(year, states_dir, schema):

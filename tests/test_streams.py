@@ -86,6 +86,72 @@ def test_run_states_bag_offsets_and_npz():
         assert npz["landuse"].shape == (2, 2, 2) and npz["soil"].shape == (2, 2, 1)
 
 
+def test_schema_entry_carries_transform_and_omits_when_absent():
+    """The schema is the encoder's only view of a stream, so a value-changing
+    config field has to be copied into it. Absent -> key omitted, not null, so an
+    untransformed stream serializes byte-identically to the pre-fix schema."""
+    t = {"type": "log1p"}
+    with_t = streams.schema_entry(
+        {"type": "per_variable", "variables": ["a", "b"], "transform": t}, "hyde", 4, 6)
+    assert with_t["transform"] == t
+    assert with_t["dim"] == 2 and with_t["variables"] == ["a", "b"]
+    without = streams.schema_entry({"type": "static"}, "soil", 6, 7)
+    assert "transform" not in without
+
+
+def test_transform_round_trips_config_to_loaded_stack():
+    """Regression: ``states.streams[].transform`` used to be dropped by the schema
+    writer, so ``covariate_io._transform`` read it from an entry that never carried
+    it and the configured ``hyde: log1p`` silently did nothing. States are stored
+    RAW; the transform must appear on load, in both the grid and the flat bag."""
+    from src.community_encoder.train_DESK import covariate_io as cio
+    with tempfile.TemporaryDirectory() as d:
+        hy, out = os.path.join(d, "hy"), os.path.join(d, "out")
+        os.makedirs(hy)
+        for y in (2000, 2001):
+            _write_grid(os.path.join(hy, f"popc_{y}_grid.tif"), np.full((2, 2), 999.0))
+        specs = [{"type": "per_variable", "name": "hyde", "grid_dir": hy,
+                  "variables": ["popc"], "ema_tau": 10,
+                  "transform": {"type": "log1p"}}]
+        bag, _ = streams.run_states(specs, out, 2000, 2001, np.ones((2, 2), bool),
+                                    sample_start=2000, samples_per_year=4,
+                                    rng=np.random.default_rng(0))
+
+        schema = cio.load_schema(out)
+        assert schema["streams"][0]["transform"] == {"type": "log1p"}
+
+        states_dir = os.path.join(out, "yearly_states")
+        raw = np.load(os.path.join(states_dir, "state_2000.npz"))["hyde"]
+        assert np.allclose(raw, 999.0)                       # stored in raw units
+        stack = cio.load_state_stack(2000, states_dir, schema)
+        assert np.allclose(stack, np.log1p(999.0), atol=1e-4)  # transformed on load
+        assert np.allclose(cio.transform_flat(bag, schema), np.log1p(bag), atol=1e-4)
+
+
+def test_assert_schema_compatible_rejects_transform_change():
+    """A transform runs before mu/sd are fit, so changing it rescales every channel
+    while name/dim/variables stay identical -- silent misnormalization otherwise."""
+    from src.community_encoder.train_DESK import covariate_io as cio
+
+    def sch(transform):
+        s = {"name": "hyde", "start": 0, "end": 1, "dim": 1,
+             "type": "per_variable", "variables": ["popc"]}
+        if transform:
+            s["transform"] = transform
+        return {"streams": [s]}
+
+    cio.assert_schema_compatible(sch({"type": "log1p"}), sch({"type": "log1p"}))
+    cio.assert_schema_compatible(sch(None), sch(None))
+    for a, b in ((sch({"type": "log1p"}), sch(None)),
+                 (sch(None), sch({"type": "log1p"})),
+                 (sch({"type": "log1p"}), sch({"type": "pow", "p": 0.25}))):
+        try:
+            cio.assert_schema_compatible(a, b)
+        except SystemExit:
+            continue
+        raise AssertionError("transform mismatch was not caught")
+
+
 if __name__ == "__main__":
     test_nearest_year_fill_and_shape()
     print("[per-variable] nearest-year fill + shape OK")
@@ -95,4 +161,10 @@ if __name__ == "__main__":
     print("[static] same state every year OK")
     test_run_states_bag_offsets_and_npz()
     print("[run_states] bag/offsets/per-year npz OK")
+    test_schema_entry_carries_transform_and_omits_when_absent()
+    print("[schema] transform carried; omitted when absent OK")
+    test_transform_round_trips_config_to_loaded_stack()
+    print("[schema] transform round-trips config -> schema -> loaded stack OK")
+    test_assert_schema_compatible_rejects_transform_change()
+    print("[schema] transform mismatch refused OK")
     print("\nALL STREAM CHECKS PASSED")

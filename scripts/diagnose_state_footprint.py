@@ -1,24 +1,36 @@
 #!/usr/bin/env python3
-"""Why is the covariate footprint smaller than the land mask?
+"""Verify the covariate footprint equals the land mask -- the cube's gap-fill no-op claim.
 
-``covariate_io.norm_grid`` marks a cell valid only if **every** channel is finite
-(``~np.isnan(cov).any(axis=-1)``). With ~295 channels across 5 streams that is
-all-or-nothing: a single product whose coverage stops at the Mexican border
-invalidates the whole cell, and the DESK cube then *gap-fills* it. Stage-2 of that
-fill assigns a year-invariant static field, which is what makes predicted turnover
-collapse to exactly 0 over Mexico and the Canadian fringe.
+``build_final_z_cube`` asserts that on the current 27 km grid every covariate stream
+covers 100% of the land cells, so ``valid_pixels`` equals the land mask and all three
+gap-fill stages find nothing to do. It names THIS script as the verifier, and its
+runtime warning points here when ``gapfilled_cell_years`` comes back non-zero. So this
+is a standing check, not an open investigation.
 
-So before masking those cells out of the figures, find out whether they are
-recoverable. This reports, per stream:
+WHY IT MATTERS THAT THE CLAIM STAYS TRUE. ``covariate_io.norm_grid`` marks a cell valid
+only if **every** channel is finite (``~np.isnan(cov).any(axis=-1)``). That is
+all-or-nothing across every channel of all five streams, so ONE product whose coverage
+stops short -- at the Canadian fringe, or the northern-Mexico strip inside the study box
+-- invalidates those cells entirely, and the cube then gap-fills them. Stage 2 of that
+fill assigns a *year-invariant* static field, which makes predicted turnover collapse to
+exactly 0 there: a silently degenerate temporal statistic, not an error. That failure
+mode is why the continental products (climr, LUH-3, HYDE, SoilGrids) replaced the
+CONUS-only ones, and it is what a new stream with a narrower footprint would reintroduce.
+
+Reports, per stream:
 
   valid          cells where that stream alone is fully finite
   uniquely lost  cells that ALL OTHER streams cover but this one does not
                  <- the actionable number: fix this stream, gain these cells
 
 plus the all-stream intersection (what the pipeline actually gets), a per-channel
-breakdown inside the worst offender (whole product missing vs one bad band), and
-the stage-2 footprint ``land & ~cov_valid & esk_valid`` -- the cells that will show
-zero turnover -- rendered to PNG so the geography is visible.
+breakdown inside the worst offender (whole product missing vs one bad band), and the
+stage-2 footprint ``land & ~cov_valid & esk_valid`` -- the cells that would show zero
+turnover -- rendered to PNG so the geography is visible.
+
+Expected result today: uniquely-lost is 0 for every stream and the intersection equals
+the land mask. Anything else means a stream regressed, and the per-channel breakdown
+says which.
 
     python scripts/diagnose_state_footprint.py                     # latest year on disk
     python scripts/diagnose_state_footprint.py --years 1980,2025
@@ -162,10 +174,8 @@ def main():
     land = read_land_mask(mask_path)
 
     # The ESK reference mask defines where stage-2 can act at all (it needs a static Z).
-    z_dir = cfg.get("latent_cube", {}).get("z_dir") or cfg["desk"].get("z_dir") \
-        or cfg["paths"]["desk_output_dir"]
     esk_valid = None
-    mref = cfg.get("latent_cube", {}).get("mask_ref_path") or os.path.join(z_dir, "valid_mask.npy")
+    mref = cfg["latent_cube"]["mask_ref_path"]
     if os.path.exists(mref):
         esk_valid = np.load(mref)
         if esk_valid.shape != land.shape:

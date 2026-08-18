@@ -115,6 +115,122 @@ def test_masker_span_is_contiguous():
     print("masker contiguous span OK")
 
 
+def _schema_with_indicator(n_val=6):
+    """A schema plus a BUI-shaped stream: ``n_val`` value channels + one availability
+    channel, declared as the stream's ``indicator_variable``."""
+    sch = _schema()
+    variables = [f"bui_q{q:02d}" for q in (5, 25, 50, 75, 90, 99)][:n_val] + ["bui_avail"]
+    start = sch["total_dim"]
+    sch["streams"].append({"name": "bui", "start": start, "end": start + len(variables),
+                           "dim": len(variables), "variables": variables,
+                           "indicator_variable": "bui_avail"})
+    sch["total_dim"] = start + len(variables)
+    return sch
+
+
+def test_persistent_tier_holds_across_years_and_transient_does_not():
+    """Persistence is the axis today's augmentation cannot express: a per-year draw can
+    only ever present a covariate as transiently absent, while BUI is missing in EVERY
+    year over the same region."""
+    sch = _schema()
+    M = ChannelGroupMasker(sch, {
+        "enabled": True, "p_base": 0.0, "p_month": 0.0, "span_prob": 0.0, "p_level": 0.0,
+        "p_stream": 0.5,
+        "persist": {"p_stream": 0.5}})
+    assert M.persist_enabled
+    rng = np.random.default_rng(0)
+
+    # one "optimizer step": a single persistent draw reused for every year
+    step = M.sample_persistent_keep(rng)
+    years = [M.sample_keep(rng) for _ in range(12)]
+    assert not all(torch.equal(years[0], y) for y in years[1:]), "transient tier never varied"
+    # whatever the persistent draw dropped stays dropped in every year of the window
+    dropped = (step[0, 0, 0] == 0.0)
+    assert bool(dropped.any()), "persistent draw masked nothing at p_stream=0.5"
+    for y in years:
+        assert float(((y * step)[0, 0, 0])[dropped].abs().max()) == 0.0
+
+    # a second step draws a different persistent mask
+    steps = [M.sample_persistent_keep(rng) for _ in range(12)]
+    assert not all(torch.equal(steps[0], s) for s in steps[1:]), "persistent tier never varied"
+
+    # the composition the trainer performs: kept only if BOTH tiers keep it
+    combined = years[0] * step
+    assert set(torch.unique(combined).tolist()) <= {0.0, 1.0}
+    assert bool((combined <= years[0]).all()) and bool((combined <= step).all())
+
+
+def test_persist_absent_is_exactly_the_old_behaviour():
+    """No ``persist`` block -> no persistent mask at all, so the default config path is
+    bit-for-bit the pre-persistence one."""
+    M = ChannelGroupMasker(_schema(), {"enabled": True})
+    assert M.persist_enabled is False
+    assert M.sample_persistent_keep(np.random.default_rng(0)) is None
+    # an all-zero persist block is also a no-op, not a mask of everything
+    Z = ChannelGroupMasker(_schema(), {"enabled": True, "persist": {"p_stream": 0.0}})
+    assert Z.persist_enabled is False and Z.sample_persistent_keep(np.random.default_rng(0)) is None
+    # ...and disabled overall stays identity even with persistence configured
+    off = ChannelGroupMasker(_schema(), {"enabled": False, "persist": {"p_stream": 1.0}})
+    assert off.sample_persistent_keep(np.random.default_rng(0)) is None
+
+
+def test_persist_tier_has_its_own_granularity():
+    """Structural absence is regional, so the persistent tier takes its own tile_cells."""
+    M = ChannelGroupMasker(_schema(), {
+        "enabled": True, "tile_cells": 6, "persist": {"p_stream": 0.5, "tile_cells": 24}})
+    assert M.transient.tile_cells == 6 and M.persist.tile_cells == 24
+    rng = np.random.default_rng(0)
+    tr = M.sample_keep(rng, hw=(48, 48))
+    pe = M.sample_persistent_keep(rng, hw=(48, 48))
+    assert tr.shape == (1, 48, 48, M.C) and pe.shape == (1, 48, 48, M.C)
+    # the coarser tier must be constant over any 24x24 block it owns
+    blk = pe[0, :24, :24, :]
+    assert torch.equal(blk, blk[0, 0].expand_as(blk))
+
+
+def test_indicator_is_masked_with_its_values():
+    """The indicator and its value channels are one atomic unit. Values gone with the
+    indicator still at 1 teaches that 'available' can coexist with a meanless value --
+    the single inference the indicator exists to prevent."""
+    sch = _schema_with_indicator()
+    M = ChannelGroupMasker(sch, {"enabled": True, "p_stream": 0.5,
+                                 "persist": {"p_stream": 0.5}})
+    (ind_ch, val_mask), = M.indicator_groups
+    bui = sch["streams"][-1]
+    assert ind_ch == bui["end"] - 1                      # bui_avail is the last channel
+    assert val_mask.sum() == bui["dim"] - 1
+
+    rng = np.random.default_rng(0)
+    saw_dropped = saw_kept = False
+    for _ in range(4000):
+        for tier in (M.transient, M.persist):
+            drop = M.sample_drop(rng, tier=tier)
+            if drop[val_mask].any() or drop[ind_ch]:
+                assert drop[ind_ch] and drop[val_mask].all(), "indicator/value split apart"
+                saw_dropped = True
+            else:
+                saw_kept = True
+    assert saw_dropped and saw_kept, "test never exercised both states"
+
+
+def test_indicator_must_name_a_real_channel():
+    sch = _schema_with_indicator()
+    sch["streams"][-1]["indicator_variable"] = "not_a_channel"
+    try:
+        ChannelGroupMasker(sch, {"enabled": True})
+    except ValueError as exc:
+        assert "not_a_channel" in str(exc)
+    else:
+        raise AssertionError("a bogus indicator_variable was accepted")
+
+
+def test_streams_without_an_indicator_are_untouched():
+    M = ChannelGroupMasker(_schema(), {"enabled": True})
+    assert M.indicator_groups == []
+    rng = np.random.default_rng(0)
+    assert M.sample_drop(rng).shape == (M.C,)
+
+
 def test_blocked_buffered_split():
     H, W = 133, 224
     valid = np.zeros((H, W), bool)
@@ -488,6 +604,12 @@ if __name__ == "__main__":
     test_masker_groups()
     test_masker_draw_properties()
     test_masker_span_is_contiguous()
+    test_persistent_tier_holds_across_years_and_transient_does_not()
+    test_persist_absent_is_exactly_the_old_behaviour()
+    test_persist_tier_has_its_own_granularity()
+    test_indicator_is_masked_with_its_values()
+    test_indicator_must_name_a_real_channel()
+    test_streams_without_an_indicator_are_untouched()
     test_blocked_buffered_split()
     test_partial_conv_5x5()
     test_dropout_threading_and_loss_reparam()

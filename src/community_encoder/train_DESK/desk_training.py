@@ -425,13 +425,24 @@ def train_model_ema(cov_window, mask_window, window_years, targets, x2023, m2023
         """
         model.train(train_mode)
         z_raw, rl = [], torch.zeros((), device=device)
+        # Drawn ONCE for the whole window, so the groups it drops are missing in EVERY year --
+        # the shape real missingness has (a CONUS-only covariate, a product that ends before the
+        # timeline does). Hoisted out of the year loop for exactly that reason; a per-year draw
+        # can only ever express transient noise. None when persistence is unconfigured.
+        keep_persist = None
+        if mask_inputs and masker is not None:
+            keep_persist = masker.sample_persistent_keep(
+                aug_rng, device=device, hw=(cov.shape[1], cov.shape[2]))
         for t in range(cov.shape[0]):
             xt = cov[t:t + 1]
             if mask_inputs and masker is not None:
+                keep = masker.sample_keep(aug_rng, device=device,
+                                          hw=(cov.shape[1], cov.shape[2]))
+                if keep_persist is not None:
+                    keep = keep * keep_persist       # kept only if BOTH tiers keep it
                 # New tensor: cov[t:t+1] is a VIEW of the single resident (T,H,W,C) window, so an
                 # in-place mask would permanently destroy that year for every later epoch.
-                xt = xt * masker.sample_keep(aug_rng, device=device,
-                                             hw=(cov.shape[1], cov.shape[2]))
+                xt = xt * keep
             with autocast():
                 if train_mode:
                     zt, rt = checkpoint(model, xt, msk[t:t + 1], use_reentrant=False)

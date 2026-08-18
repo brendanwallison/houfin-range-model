@@ -26,7 +26,17 @@ losing different variables. That matters because the holdout is spatially blocke
 generalization is precisely what is being measured. Set it to a block size in cells for
 independent draws per tile.
 
-Three rules that are easy to get wrong:
+PERSISTENCE (``persist``) is the second, orthogonal axis. Every draw above is redrawn per year,
+so the augmentation can only ever present a covariate as *transiently* absent -- noise, not a
+regime. Real missingness in this pipeline is the opposite shape: BUI is CONUS-only in EVERY year,
+LUH-3 ends 2024 and is carried forward, HYDE is decadal early on, and there is no BBS before
+1966. A ``persist`` draw is taken ONCE per optimizer step and held across all years of the
+window, then combined multiplicatively with the per-year draw. That single knob covers three
+levels at once -- a region, a covariate, and a whole stream, each persistent across all years --
+because persistence is orthogonal to *what* is grouped, which the machinery above already
+handles. Give it its own (usually coarser) ``tile_cells``: structural absence is regional.
+
+Four rules that are easy to get wrong:
 
 1. **No ``1/(1-p)`` rescaling.** This is masked-input augmentation (denoising-autoencoder /
    MAE semantics), not unit dropout: surviving channels must keep their true values, because
@@ -34,14 +44,25 @@ Three rules that are easy to get wrong:
    would rescale survivors and is deliberately not used.
 2. **Masking to 0 == mean imputation, for free.** Covariates are standardized and invalid cells
    are zero-filled *after* standardization (``covariate_io.norm_grid``), so 0 already means "the
-   channel mean" everywhere in this pipeline. No sentinel, no extra missingness indicator.
+   channel mean" everywhere in this pipeline. No sentinel is needed for *synthetic* masking of a
+   channel that is otherwise always observed: mean imputation is unbiased and needs no flag.
+
+   **Amended for structurally-partial covariates.** That argument fails for a covariate absent
+   over a large, fixed part of the domain in every year -- there "at the mean" is not a random
+   perturbation but a spatially structured lie the encoder cannot distinguish from signal. Such a
+   stream carries its own availability channel, declared as ``indicator_variable`` in the schema.
+   The indicator and its value channels are then one ATOMIC masking unit (see
+   ``indicator_groups``): masking values while leaving the indicator at 1 would teach exactly the
+   inference the indicator exists to prevent, and clearing the indicator while leaving real
+   values would teach the model to ignore data it has.
 3. **The climate stream is never dropped as a stream.** It is ~81% of all channels (240/295);
    removing it leaves the model with almost no input. Climate is masked on the base/month/span/
    level axes instead, which is the point of having them.
-
-Cell (spatial) and year (temporal) masking are deliberately NOT offered here: cell masking would
-desync ``PartialConv2d``'s explicit validity mask (it would average zeros in as though valid),
-and year masking would corrupt the causal ``OutputEMA`` scan over the year axis.
+4. **Cell and year masking are still not offered.** Cell masking would desync
+   ``PartialConv2d``'s explicit validity mask (it would average zeros in as though valid), and
+   year masking would corrupt the causal ``OutputEMA`` scan over the year axis. Persisting a
+   CHANNEL drop across years breaks neither: every year still gets a forward pass with a full
+   set of valid cells.
 """
 import re
 
@@ -55,26 +76,59 @@ _CLIMATE_TOKEN = re.compile(r"^(?P<base>.+)_b(?P<pos>\d{2})m(?P<month>\d{2})_(?P
 CLIMATE_STREAM = "climate"
 
 
+class _Tier:
+    """One set of group probabilities: the per-year tier, or the persistent tier.
+
+    Two tiers share all the group *machinery* and differ only in their rates and
+    spatial granularity, so the probabilities live here rather than on the masker.
+    The persistent tier defaults to all-zero: adding a ``persist`` block is opt-in,
+    and an absent one is exactly the pre-persistence behaviour.
+    """
+
+    def __init__(self, cfg, defaults):
+        cfg = dict(cfg or {})
+        self.p_base = float(cfg.get("p_base", defaults["p_base"]))
+        self.p_month = float(cfg.get("p_month", defaults["p_month"]))
+        self.span_prob = float(cfg.get("span_prob", defaults["span_prob"]))
+        self.span_max = int(cfg.get("span_max", defaults["span_max"]))
+        self.p_level = float(cfg.get("p_level", defaults["p_level"]))
+        self.p_stream = float(cfg.get("p_stream", defaults["p_stream"]))
+        self.max_masked_frac = float(cfg.get("max_masked_frac", defaults["max_masked_frac"]))
+        # 0 = one mask for the whole grid (no spatial diversity); >0 = independent draws per
+        # tile_cells x tile_cells block, so different regions practise on different subsets.
+        self.tile_cells = int(cfg.get("tile_cells", defaults["tile_cells"]))
+
+    def any_rate(self):
+        """True if this tier can drop anything at all (so a no-op tier costs nothing)."""
+        return max(self.p_base, self.p_month, self.span_prob, self.p_level, self.p_stream) > 0.0
+
+
+_TRANSIENT_DEFAULTS = {"p_base": 0.15, "p_month": 0.15, "span_prob": 0.30, "span_max": 3,
+                       "p_level": 0.10, "p_stream": 0.10, "max_masked_frac": 0.5,
+                       "tile_cells": 0}
+_PERSIST_DEFAULTS = {"p_base": 0.0, "p_month": 0.0, "span_prob": 0.0, "span_max": 3,
+                     "p_level": 0.0, "p_stream": 0.0, "max_masked_frac": 0.35,
+                     "tile_cells": 0}
+
+
 class ChannelGroupMasker:
     """Samples 0/1 keep-vectors over the ``C`` covariate channels by structured group.
 
     Built once from the ``state_schema.json`` dict; ``sample_keep`` is then a cheap draw.
     Group membership is precomputed as boolean ``(C,)`` arrays so a draw is a few OR-reductions.
+
+    Two tiers: ``sample_keep`` is redrawn per year, ``sample_persistent_keep`` once per
+    optimizer step. The caller multiplies them.
     """
 
     def __init__(self, schema, cfg=None, total_dim=None):
         cfg = dict(cfg or {})
         self.enabled = bool(cfg.get("enabled", False))
-        self.p_base = float(cfg.get("p_base", 0.15))
-        self.p_month = float(cfg.get("p_month", 0.15))
-        self.span_prob = float(cfg.get("span_prob", 0.30))
-        self.span_max = int(cfg.get("span_max", 3))
-        self.p_level = float(cfg.get("p_level", 0.10))
-        self.p_stream = float(cfg.get("p_stream", 0.10))
-        self.max_masked_frac = float(cfg.get("max_masked_frac", 0.5))
-        # 0 = one mask for the whole grid (no spatial diversity); >0 = independent draws per
-        # tile_cells x tile_cells block, so different regions practise on different subsets.
-        self.tile_cells = int(cfg.get("tile_cells", 0))
+        self.transient = _Tier(cfg, _TRANSIENT_DEFAULTS)
+        self.persist = _Tier(cfg.get("persist"), _PERSIST_DEFAULTS)
+        # Persistence is off unless something is actually configured to persist, so the
+        # default config path is bit-for-bit the pre-persistence one.
+        self.persist_enabled = self.persist.any_rate()
 
         streams = schema["streams"]
         self.C = int(total_dim if total_dim is not None else schema.get(
@@ -105,53 +159,110 @@ class ChannelGroupMasker:
         self.base_keys = sorted(self.by_base)
         self.stream_keys = [s["name"] for s in streams if s["name"] != CLIMATE_STREAM]
 
+        # Availability indicators: (indicator_channel, value-channel mask). A stream declaring
+        # ``indicator_variable`` is one whose values are structurally absent over part of the
+        # domain, so its indicator and its values must be masked together -- see rule 2.
+        self.indicator_groups = []
+        for s in streams:
+            ind = s.get("indicator_variable")
+            if not ind:
+                continue
+            variables = [str(v) for v in (s.get("variables") or [])]
+            if str(ind) not in variables:
+                raise ValueError(
+                    f"stream {s['name']!r} declares indicator_variable {ind!r}, which is not "
+                    f"among its {len(variables)} variables. The indicator has to be a real "
+                    f"channel of the stream, or the coupling silently protects nothing.")
+            lo, hi = int(s["start"]), int(s["end"])
+            ch = lo + variables.index(str(ind))
+            vals = np.zeros(self.C, dtype=bool)
+            vals[lo:hi] = True
+            vals[ch] = False
+            self.indicator_groups.append((ch, vals))
+
     def describe(self):
         """One-line summary for the training log (so a misparsed schema is visible)."""
+        ind = [int(ch) for ch, _ in self.indicator_groups]
         return (f"ChannelGroupMasker(C={self.C}, bases={len(self.base_keys)}, "
                 f"month_pos={len(self.month_keys)}, levels={self.level_keys}, "
-                f"streams={self.stream_keys}, tile_cells={self.tile_cells}, "
-                f"enabled={self.enabled})")
+                f"streams={self.stream_keys}, tile_cells={self.transient.tile_cells}, "
+                f"persist={'off' if not self.persist_enabled else f'tile={self.persist.tile_cells}'}, "
+                f"indicator_ch={ind}, enabled={self.enabled})")
 
-    def _draw(self, rng):
+    def _couple_indicators(self, drop):
+        """Enforce: an indicator is dropped exactly when its value group is dropped.
+
+        Both directions matter. Values gone with the indicator still at 1 teaches that
+        "available" can coexist with a meanless value -- the one inference the indicator
+        exists to prevent. Indicator gone with real values present teaches the model to
+        ignore data it actually has. So the group is atomic; no masking axis today can
+        split it, and this keeps that true if one is added.
+        """
+        for ch, vals in self.indicator_groups:
+            if drop[ch] or drop[vals].any():
+                drop[ch] = True
+                drop |= vals
+        return drop
+
+    def _draw(self, tier, rng):
         """One raw draw -> boolean (C,) 'drop' array, before the max-fraction guard."""
         drop = np.zeros(self.C, dtype=bool)
         for b in self.base_keys:
-            if rng.random() < self.p_base:
+            if rng.random() < tier.p_base:
                 drop |= self.by_base[b]
         for p in self.month_keys:
-            if rng.random() < self.p_month:
+            if rng.random() < tier.p_month:
                 drop |= self.by_month_pos[p]
-        if self.month_keys and rng.random() < self.span_prob:
-            span = int(rng.integers(1, self.span_max + 1))
+        if self.month_keys and rng.random() < tier.span_prob:
+            span = int(rng.integers(1, tier.span_max + 1))
             lo = int(rng.integers(0, max(1, len(self.month_keys) - span + 1)))
             for p in self.month_keys[lo:lo + span]:     # contiguous in window order, no wrap
                 drop |= self.by_month_pos[p]
         for lv in self.level_keys:
-            if rng.random() < self.p_level:
+            if rng.random() < tier.p_level:
                 drop |= self.by_level[lv]
         for st in self.stream_keys:                     # climate excluded by construction
-            if rng.random() < self.p_stream:
+            if rng.random() < tier.p_stream:
                 drop |= self.by_stream[st]
-        return drop
+        return self._couple_indicators(drop)
 
-    def sample_drop(self, rng, max_tries=8):
-        """Boolean ``(C,)`` drop mask honouring ``max_masked_frac``.
+    def sample_drop(self, rng, max_tries=8, tier=None):
+        """Boolean ``(C,)`` drop mask honouring the tier's ``max_masked_frac``.
 
         A degenerate draw (most of the input gone) teaches nothing and destabilizes the step, so
         redraw; if the configured probabilities are so high that ``max_tries`` draws all exceed
         the cap, fall back to no masking for this step rather than looping or hard-failing.
         """
+        tier = tier or self.transient
         if not self.enabled or self.C == 0:
             return np.zeros(self.C, dtype=bool)
-        cap = self.max_masked_frac * self.C
+        cap = tier.max_masked_frac * self.C
         for _ in range(max_tries):
-            drop = self._draw(rng)
+            drop = self._draw(tier, rng)
             if drop.sum() <= cap:
                 return drop
         return np.zeros(self.C, dtype=bool)
 
+    def _keep(self, tier, rng, device, dtype, hw):
+        """0/1 keep mask for one tier: ``(1,1,1,C)`` grid-wide or ``(1,H,W,C)`` tiled."""
+        if hw is None or tier.tile_cells <= 0:
+            keep = ~self.sample_drop(rng, tier=tier)
+            t = torch.as_tensor(keep.astype("float32"), dtype=dtype, device=device)
+            return t.view(1, 1, 1, self.C)
+
+        H, W = int(hw[0]), int(hw[1])
+        b = int(tier.tile_cells)
+        nby, nbx = (H + b - 1) // b, (W + b - 1) // b
+        tiles = np.empty((nby, nbx, self.C), dtype=bool)
+        for iy in range(nby):
+            for ix in range(nbx):
+                tiles[iy, ix] = ~self.sample_drop(rng, tier=tier)
+        keep = np.repeat(np.repeat(tiles, b, axis=0), b, axis=1)[:H, :W]
+        t = torch.as_tensor(keep.astype("float32"), dtype=dtype, device=device)
+        return t.view(1, H, W, self.C)
+
     def sample_keep(self, rng, device=None, dtype=torch.float32, hw=None):
-        """0/1 keep mask to broadcast-multiply into a ``(B,H,W,C)`` grid.
+        """TRANSIENT 0/1 keep mask, redrawn per year, to multiply into a ``(B,H,W,C)`` grid.
 
         ``hw=None`` (or ``tile_cells<=0``) returns ``(1,1,1,C)``: ONE draw shared by every cell.
         ``hw=(H,W)`` returns ``(1,H,W,C)`` assembled from ``tile_cells`` x ``tile_cells`` spatial
@@ -169,21 +280,22 @@ class ChannelGroupMasker:
 
         Strictly 0/1 -- survivors are NOT rescaled (see the module docstring).
         """
-        if hw is None or self.tile_cells <= 0:
-            keep = ~self.sample_drop(rng)
-            t = torch.as_tensor(keep.astype("float32"), dtype=dtype, device=device)
-            return t.view(1, 1, 1, self.C)
+        return self._keep(self.transient, rng, device, dtype, hw)
 
-        H, W = int(hw[0]), int(hw[1])
-        b = int(self.tile_cells)
-        nby, nbx = (H + b - 1) // b, (W + b - 1) // b
-        tiles = np.empty((nby, nbx, self.C), dtype=bool)
-        for iy in range(nby):
-            for ix in range(nbx):
-                tiles[iy, ix] = ~self.sample_drop(rng)
-        keep = np.repeat(np.repeat(tiles, b, axis=0), b, axis=1)[:H, :W]
-        t = torch.as_tensor(keep.astype("float32"), dtype=dtype, device=device)
-        return t.view(1, H, W, self.C)
+    def sample_persistent_keep(self, rng, device=None, dtype=torch.float32, hw=None):
+        """PERSISTENT 0/1 keep mask: draw ONCE per optimizer step, hold across every year.
+
+        Returns ``None`` when persistence is unconfigured, so the caller can skip the multiply
+        and the default path stays exactly the pre-persistence one.
+
+        The caller multiplies this into the per-year mask, so a channel is kept only if both
+        tiers keep it. That composition is what makes the two axes orthogonal: persistence
+        controls *for how long* a group is missing, the group probabilities control *what* is
+        missing.
+        """
+        if not (self.enabled and self.persist_enabled) or self.C == 0:
+            return None
+        return self._keep(self.persist, rng, device, dtype, hw)
 
 
 def blocked_holdout(valid, block_cells, holdout_frac, buffer_cells, seed=0):

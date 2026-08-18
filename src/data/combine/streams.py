@@ -39,16 +39,21 @@ def ema_alpha(tau):
 def schema_entry(spec, name, start, end):
     """One ``state_schema.json`` stream entry, derived from its config spec.
 
-    The schema is the ONLY thing the encoder side reads -- ``covariate_io`` never
-    sees ``states.streams`` -- so every config field that changes channel VALUES
-    has to be copied here or it silently controls nothing. ``transform`` is the
-    live example: it was read by ``covariate_io._transform`` from a schema entry
-    that never carried it, so ``hyde: log1p`` was a no-op from the day it was
-    configured. ``ema_tau`` deliberately stays out: it is consumed here at build
-    time and is already baked into the written arrays.
+    The schema is the ONLY thing the encoder side reads -- ``covariate_io`` and
+    ``augment`` never see ``states.streams`` -- so every config field the encoder
+    has to honour must be copied here or it silently controls nothing.
+    ``transform`` is the live example: it was read by ``covariate_io._transform``
+    from a schema entry that never carried it, so ``hyde: log1p`` was a no-op from
+    the day it was configured. ``ema_tau`` deliberately stays out: it is consumed
+    here at build time and is already baked into the written arrays.
 
-    Absent keys are omitted rather than written as null, so a stream with no
-    transform serializes byte-identically to the pre-fix schema.
+    ``indicator_variable`` names the stream's availability channel, for a stream
+    whose values are structurally absent over part of the domain (BUI is
+    CONUS-only). ``augment.ChannelGroupMasker`` reads it to keep the indicator and
+    its values as one atomic masking unit.
+
+    Absent keys are omitted rather than written as null, so a stream with neither
+    serializes byte-identically to the pre-fix schema.
     """
     entry = {
         "name": name,
@@ -58,8 +63,9 @@ def schema_entry(spec, name, start, end):
         "type": spec["type"],
         "variables": list(spec.get("variables", [])),
     }
-    if spec.get("transform"):
-        entry["transform"] = spec["transform"]
+    for key in ("transform", "indicator_variable"):
+        if spec.get(key):
+            entry[key] = spec[key]
     return entry
 
 

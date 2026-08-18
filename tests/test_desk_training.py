@@ -20,7 +20,12 @@ OTHERS = ("CMD", "CMI", "DD18", "DD5", "DDsub0", "DDsub18", "Eref", "NFFD", "PAS
 
 
 def _schema(bio_start=8):
-    """The real LS6 layout: 14 climate bases (3 with q10/q90) = 240 ch, + 55 others = 295."""
+    """The pre-BUI layout: 14 climate bases (3 with q10/q90) = 240 ch, + 55 others = 295.
+
+    Deliberately without the ``bui`` stream: these tests check group CONSTRUCTION from a
+    schema, so the fixture only needs to be a realistic one. ``_schema_with_indicator``
+    adds the BUI-shaped stream for the tests that need an availability channel.
+    """
     months = [(k, (bio_start - 1 + k - 1) % 12 + 1) for k in range(1, 13)]
     cvars = []
     for b in sorted(TEMPS + OTHERS):

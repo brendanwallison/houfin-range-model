@@ -106,6 +106,14 @@ def load_pool(ranked_path, exclude=None):
     pool = {"species_code": keep, "migration": sub["migration"].astype(int).to_numpy()}
     for col in POOL_VALUE_COLS[1:]:
         pool[col] = sub[col].astype("float64").to_numpy()
+    # community_axes refuses non-finite values rather than ranking them silently last;
+    # catch it here so the message names the artifact to rebuild.
+    bad = {c: int((~np.isfinite(pool[c])).sum()) for c in POOL_VALUE_COLS[1:]}
+    if any(bad.values()):
+        raise SystemExit(
+            f"{ranked_path} has non-finite axis values ({bad}). Re-run "
+            f"`python -m src.data.identify.avonet`, which drops and reports such rows "
+            f"when it writes the pool.")
     return pool
 
 
@@ -253,8 +261,12 @@ def main():
             probes[code] = oks[0] if oks else ""
         return probes[code]
 
-    gated, attrs, skipped = gate_pool(pool, c2a, has_ebird_trend)
-    _probe_cache_save(probe_cache, year, probes)
+    # finally, not just on success: gating the whole pool means ~300 REST probes, and
+    # losing all of them to one network error is exactly what the cache exists to prevent.
+    try:
+        gated, attrs, skipped = gate_pool(pool, c2a, has_ebird_trend)
+    finally:
+        _probe_cache_save(probe_cache, year, probes)
 
     gc = ca.composition(gated["migration"])
     print(f"[select] gated composition: "

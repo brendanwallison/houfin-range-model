@@ -1,6 +1,6 @@
 """Structured channel-group masking for DESK covariate inputs (denoising augmentation).
 
-The covariate grid has ~295 channels whose redundancy is *structured*: climate is 14 base
+The covariate grid has ~300 channels whose redundancy is *structured*: climate is 14 base
 variables x 12 bio-year month positions x 1-3 elevation quantiles, so a channel's nearest
 neighbours (adjacent month, same base; same month, another quantile) carry nearly the same
 information. Independent per-channel dropout is therefore almost free to satisfy — the model
@@ -55,7 +55,7 @@ Four rules that are easy to get wrong:
    ``indicator_groups``): masking values while leaving the indicator at 1 would teach exactly the
    inference the indicator exists to prevent, and clearing the indicator while leaving real
    values would teach the model to ignore data it has.
-3. **The climate stream is never dropped as a stream.** It is ~81% of all channels (240/295);
+3. **The climate stream is never dropped as a stream.** It is ~80% of all channels (240/302);
    removing it leaves the model with almost no input. Climate is masked on the base/month/span/
    level axes instead, which is the point of having them.
 4. **Cell and year masking are still not offered.** Cell masking would desync

@@ -111,10 +111,12 @@ def build_spacetime_cube(config: Optional[Union[Dict[str, Any], str, os.PathLike
     100% of the 17,209 land cells, so ``valid_pixels`` equals the land mask and all
     three stages find nothing to fill (verify with
     ``scripts/diagnose_state_footprint.py``). The stages remain as insurance for a
-    future stream with a narrower footprint -- note that validity is all-or-nothing
-    across ~295 channels, so one such stream would invalidate whole regions, and
-    stage 2's *year-invariant* static backfill would then make temporal statistics
-    degenerate on them.
+    stream with a narrower footprint -- note that validity is all-or-nothing across
+    ~300 channels, so one such stream would invalidate whole regions, and stage 2's
+    *year-invariant* static backfill would then make temporal statistics degenerate
+    on them. ``bui`` IS such a stream (CONUS-only), which is exactly why
+    ``preprocess/bui.py`` writes an explicit fill outside its footprint rather than
+    NaN, and carries an availability channel instead.
     """
     if config is None:
         config = load_config()

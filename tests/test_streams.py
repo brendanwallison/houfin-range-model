@@ -1,7 +1,8 @@
 """Tests for src/data/combine/streams.py — generic covariate streamers.
 
-Synthetic per-year grid rasters; checks nearest-year fill, EMA, static streaming,
-and the run_states bag/offsets/NaN-filter. Runs standalone or under pytest.
+Synthetic per-year grid rasters; checks linear between-snapshot interpolation, EMA,
+static streaming, and the run_states bag/offsets/NaN-filter. Runs standalone or under
+pytest.
 """
 import os
 import sys
@@ -24,19 +25,71 @@ def _write_grid(path, arr):
         dst.write(arr, 1)
 
 
-def test_nearest_year_fill_and_shape():
+def test_sparse_variable_interpolates_between_snapshots():
+    """A sparse variable is a straight line between the snapshots that straddle the year,
+    not a step to the nearest one. Every sparse product here (BUI, HYDE, LUH-3) is a
+    continuous slowly-varying field, so the line is the better estimate -- and it also
+    reduces how much of a future snapshot an early year absorbs."""
     with tempfile.TemporaryDirectory() as d:
-        # primf every year; pastr only at 1900 and 2000 (sparse, like HYDE).
-        for y in (1900, 1901, 1902):
+        # primf every year; pastr only at 1900 and 1910 (sparse, like HYDE/BUI).
+        for y in range(1900, 1911):
             _write_grid(os.path.join(d, f"primf_{y}_grid.tif"), np.full((2, 3), 0.5))
         _write_grid(os.path.join(d, "pastr_1900_grid.tif"), np.full((2, 3), 1.0))
-        _write_grid(os.path.join(d, "pastr_2000_grid.tif"), np.full((2, 3), 9.0))
-        s = streams.PerVariableYearStreamer(d, ["primf", "pastr"], 1900, 1902,
-                                            streams.ema_alpha(10), name="landuse")
+        _write_grid(os.path.join(d, "pastr_1910_grid.tif"), np.full((2, 3), 11.0))
+        # alpha=1 -> EMA is the identity, so this reads the raw per-year state
+        s = streams.PerVariableYearStreamer(d, ["primf", "pastr"], 1900, 1910, 1.0,
+                                            name="landuse")
         out = dict(s)
         assert out[1900].shape == (2, 3, 2)
-        # pastr at 1901/1902 fills from nearest available (1900), not 2000.
-        assert abs(out[1902][0, 0, 1] - 1.0) < 1e-4
+        assert abs(out[1900][0, 0, 1] - 1.0) < 1e-4          # exact hit at the lower end
+        assert abs(out[1910][0, 0, 1] - 11.0) < 1e-4         # exact hit at the upper end
+        assert abs(out[1902][0, 0, 1] - 3.0) < 1e-4          # 20% of the way: 1 + 0.2*10
+        assert abs(out[1905][0, 0, 1] - 6.0) < 1e-4          # midpoint
+        # ...and it is NOT the old nearest-year step (1902 would have been 1.0)
+        assert out[1902][0, 0, 1] > 2.0
+        # the dense variable is untouched by any of this
+        assert abs(out[1905][0, 0, 0] - 0.5) < 1e-4
+
+
+def test_outside_the_snapshot_range_holds_constant_and_never_extrapolates():
+    """BUI stops in 2020 and LUH-3 in 2024, but the timeline runs to 2025. Continuing a
+    monotone growth trend past the data would invent exactly the signal the model infers."""
+    with tempfile.TemporaryDirectory() as d:
+        _write_grid(os.path.join(d, "v_2010_grid.tif"), np.full((1, 1), 10.0))
+        _write_grid(os.path.join(d, "v_2020_grid.tif"), np.full((1, 1), 20.0))
+        s = streams.PerVariableYearStreamer(d, ["v"], 2000, 2030, 1.0, name="s")
+        out = dict(s)
+        assert abs(out[2000][0, 0, 0] - 10.0) < 1e-4         # before the first: held
+        assert abs(out[2009][0, 0, 0] - 10.0) < 1e-4
+        assert abs(out[2030][0, 0, 0] - 20.0) < 1e-4         # after the last: held, not 30
+        assert abs(out[2025][0, 0, 0] - 20.0) < 1e-4
+
+
+def test_interpolation_never_widens_the_nan_footprint():
+    """norm_grid validity is all-or-nothing across every concatenated channel, so a cell
+    that goes NaN in one stream is lost across all ~300. A cell present in only one
+    bracket endpoint must therefore keep that endpoint's value, not blend to NaN."""
+    with tempfile.TemporaryDirectory() as d:
+        a = np.array([[1.0, np.nan, np.nan]])
+        b = np.array([[11.0, 5.0, np.nan]])
+        _write_grid(os.path.join(d, "v_1900_grid.tif"), a)
+        _write_grid(os.path.join(d, "v_1910_grid.tif"), b)
+        s = streams.PerVariableYearStreamer(d, ["v"], 1905, 1905, 1.0, name="s")
+        got = dict(s)[1905][0, :, 0]
+        assert abs(got[0] - 6.0) < 1e-4        # both present -> interpolated
+        assert abs(got[1] - 5.0) < 1e-4        # only the upper present -> that value
+        assert np.isnan(got[2])                # genuinely absent in both -> still NaN
+
+
+def test_prefetch_covers_both_ends_of_every_bracket():
+    """The cache pre-warm must name both endpoints, or the sequential EMA loop takes a
+    cold Lustre read for the upper bracket of every interpolated year."""
+    with tempfile.TemporaryDirectory() as d:
+        for y in (1900, 1910, 1920):
+            _write_grid(os.path.join(d, f"v_{y}_grid.tif"), np.full((1, 1), float(y)))
+        s = streams.PerVariableYearStreamer(d, ["v"], 1900, 1920, 1.0, name="s")
+        got = {os.path.basename(p) for p in s.prefetch_paths([1905])}
+        assert got == {"v_1900_grid.tif", "v_1910_grid.tif"}
 
 
 def test_ema_smoothing():
@@ -187,6 +240,36 @@ def test_masking_the_availability_channel_equals_a_genuinely_absent_cell():
     assert cio.apply_norm(raw, mu_std, sd_std)[1, 1] < -0.5
 
 
+def test_assert_schema_compatible_rejects_an_indicator_change():
+    """Same class as the transform check, one channel narrower: indicator_variable exempts
+    a channel from the transform AND the standardization, so adding, dropping or moving it
+    changes what mu/sd mean for that channel with name/dim/variables/transform all equal."""
+    from src.community_encoder.train_DESK import covariate_io as cio
+    import copy
+    with_ind = _indicator_schema()
+
+    without = copy.deepcopy(with_ind)
+    del without["streams"][1]["indicator_variable"]
+    for a, b in ((with_ind, without), (without, with_ind)):        # both directions
+        try:
+            cio.assert_schema_compatible(a, b, context="unit")
+        except SystemExit as exc:
+            assert "indicator_variable" in str(exc)
+        else:
+            raise AssertionError("an indicator_variable change was accepted")
+
+    moved = copy.deepcopy(with_ind)
+    moved["streams"][1]["indicator_variable"] = "bui_q50"          # a different channel
+    try:
+        cio.assert_schema_compatible(with_ind, moved, context="unit")
+    except SystemExit:
+        pass
+    else:
+        raise AssertionError("a moved indicator_variable was accepted")
+
+    cio.assert_schema_compatible(with_ind, copy.deepcopy(with_ind))   # identical is fine
+
+
 def test_assert_schema_compatible_rejects_transform_change():
     """A transform runs before mu/sd are fit, so changing it rescales every channel
     while name/dim/variables stay identical -- silent misnormalization otherwise."""
@@ -212,8 +295,14 @@ def test_assert_schema_compatible_rejects_transform_change():
 
 
 if __name__ == "__main__":
-    test_nearest_year_fill_and_shape()
-    print("[per-variable] nearest-year fill + shape OK")
+    test_sparse_variable_interpolates_between_snapshots()
+    print("[per-variable] linear interpolation between snapshots OK")
+    test_outside_the_snapshot_range_holds_constant_and_never_extrapolates()
+    print("[per-variable] held constant outside the snapshot range OK")
+    test_interpolation_never_widens_the_nan_footprint()
+    print("[per-variable] NaN footprint not widened OK")
+    test_prefetch_covers_both_ends_of_every_bracket()
+    print("[per-variable] prefetch covers both bracket ends OK")
     test_ema_smoothing()
     print("[ema] first-year raw, then a*curr+(1-a)*state OK")
     test_static_streamer_constant()
@@ -228,6 +317,8 @@ if __name__ == "__main__":
     print("[indicator] availability channel skips transform + norm OK")
     test_masking_the_availability_channel_equals_a_genuinely_absent_cell()
     print("[indicator] masked == genuinely absent OK")
+    test_assert_schema_compatible_rejects_an_indicator_change()
+    print("[schema] indicator_variable mismatch refused OK")
     test_assert_schema_compatible_rejects_transform_change()
     print("[schema] transform mismatch refused OK")
     print("\nALL STREAM CHECKS PASSED")

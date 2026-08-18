@@ -4,10 +4,26 @@ A registry of named streams, each yielding ``(year, state)`` in lockstep so the 
 can assemble any covariate set. Two generic streamers cover the new products:
 
 - ``PerVariableYearStreamer`` — a set of variables each stored as
-  ``{var}_{year}_grid.tif`` (what preprocess/luh3.py and hyde.py write). Per
-  year it stacks the variables into an (H, W, n_var) state, filling each variable
-  from its nearest available year (so sparse HYDE time points and annual LUH-3
-  interoperate), then EMA-smooths across years. This is the land-use stream.
+  ``{var}_{year}_grid.tif`` (what preprocess/luh3.py, hyde.py and bui.py write).
+  Per year it stacks the variables into an (H, W, n_var) state, LINEARLY
+  INTERPOLATING each variable between the snapshots that straddle that year (so
+  sparse BUI/HYDE time points and annual LUH-3 interoperate), then EMA-smooths
+  across years.
+
+  Interpolating rather than snapping to the nearest snapshot matters for the
+  sparse products. Every one of them (BUI built-up area, HYDE population density
+  and urban/rural counts, LUH-3 land-use fractions) is a continuous, slowly and
+  near-monotonically varying field, so a straight line across a 5-10 year gap is a
+  far better estimate than a step. It also shrinks the amount of future a given
+  model year sees: under nearest-year, BUI 2018 took the FULL 2020 value; it now
+  takes 60% of the way from 2015 to 2020, which is much nearer the truth. Note it
+  does not eliminate that look-ahead, it grades it -- the upper bracket is by
+  definition a future snapshot. Beyond the last snapshot the series is held
+  constant, never extrapolated.
+
+  This runs on RAW raster values, before any stream transform or standardization
+  (those happen at load time in ``covariate_io``), which is the only order in which
+  a linear blend means what it says.
 - ``StaticStreamer`` — time-invariant rasters (SoilGrids); stacks them once and
   yields the same state every year (no EMA). This is the soil stream.
 
@@ -17,6 +33,7 @@ The monthly bio-year climate stream is one of these streamers like any other:
 how a covariate is added or removed -- ``states.streams`` is authoritative and has no
 code-side default.
 """
+import bisect
 import functools
 import glob
 import json
@@ -41,19 +58,18 @@ def schema_entry(spec, name, start, end):
 
     The schema is the ONLY thing the encoder side reads -- ``covariate_io`` and
     ``augment`` never see ``states.streams`` -- so every config field the encoder
-    has to honour must be copied here or it silently controls nothing.
-    ``transform`` is the live example: it was read by ``covariate_io._transform``
-    from a schema entry that never carried it, so ``hyde: log1p`` was a no-op from
-    the day it was configured. ``ema_tau`` deliberately stays out: it is consumed
-    here at build time and is already baked into the written arrays.
+    has to honour must be copied here or it silently controls nothing. Adding a
+    stream property therefore means adding it BOTH to the config spec and to this
+    entry. ``ema_tau`` deliberately stays out: it is consumed here at build time
+    and is already baked into the written arrays.
 
     ``indicator_variable`` names the stream's availability channel, for a stream
     whose values are structurally absent over part of the domain (BUI is
     CONUS-only). ``augment.ChannelGroupMasker`` reads it to keep the indicator and
     its values as one atomic masking unit.
 
-    Absent keys are omitted rather than written as null, so a stream with neither
-    serializes byte-identically to the pre-fix schema.
+    Absent keys are omitted rather than written as null, so a stream declaring neither
+    serializes to exactly the keys it uses.
     """
     entry = {
         "name": name,
@@ -81,16 +97,18 @@ def _read_grid_uncached(path):
     return out
 
 
-# Cached because nearest-year fill re-requests the SAME file across many years
-# (every warmup year maps to the earliest available; decadal products repeat
-# within a decade), so uncached one raster is re-read from Lustre dozens of times.
+# Cached because interpolation re-requests the SAME file across many years (every
+# warmup year clamps to the earliest available; a decadal product's two bracket
+# endpoints serve all nine years between them, and each snapshot serves the bracket
+# on either side of it), so uncached one raster is re-read from Lustre dozens of
+# times.
 #
 # BOUNDED, unlike the original ``maxsize=None``: with monthly climate the covariate
 # set is ~250 channels x ~124 years ~= 31k rasters, and an unbounded cache holding
 # every one of them for the whole run is several GB of resident memory that is
-# never reclaimed. An LRU keeps exactly the working set the nearest-year fill
-# actually reuses (a small neighbourhood of years), which is why bounding it costs
-# no re-reads in practice. ``run_states`` sizes it to the live year-chunk.
+# never reclaimed. An LRU keeps exactly the working set the interpolation actually
+# reuses (a small neighbourhood of years), which is why bounding it costs no
+# re-reads in practice. ``run_states`` sizes it to the live year-chunk.
 _READ_CACHE_DEFAULT = 2048
 _read_grid = functools.lru_cache(maxsize=_READ_CACHE_DEFAULT)(_read_grid_uncached)
 
@@ -150,7 +168,7 @@ class _EmaStreamer:
 
 
 class PerVariableYearStreamer(_EmaStreamer):
-    """Stack ``{var}_{year}_grid.tif`` variables per year, nearest-year fill + EMA."""
+    """Stack ``{var}_{year}_grid.tif`` variables per year, linear interpolation + EMA."""
 
     def __init__(self, grid_dir, variables, start_year, end_year, alpha,
                  name="stream"):
@@ -175,26 +193,59 @@ class PerVariableYearStreamer(_EmaStreamer):
               f"{{{min(min(v) for v in self.avail.values())}.."
               f"{max(max(v) for v in self.avail.values())}}} yrs -> {grid_dir}")
 
-    def _nearest_year(self, years_available, year):
-        """Nearest available year (ties -> the earlier/past year, no peeking bias)."""
-        return min(years_available, key=lambda y: (abs(y - year), y > year))
+    def _bracket(self, years_available, year):
+        """``(y_lo, y_hi, w)``: the snapshots straddling ``year`` and the blend weight.
+
+        ``w`` is the fraction of the way from ``y_lo`` to ``y_hi``, so the value is
+        ``(1-w)*lo + w*hi``. An exact hit gives ``y_lo == y_hi`` and ``w == 0``. Outside
+        the available range both endpoints clamp to the nearest one, so the series is held
+        CONSTANT before the first snapshot and after the last -- never extrapolated. That
+        matters at both ends: BUI stops in 2020 and LUH-3 in 2024, and linearly continuing
+        a monotone growth trend past the data would be inventing the very signal the model
+        is asked to infer.
+        """
+        ys = sorted(years_available)
+        if year <= ys[0]:
+            return ys[0], ys[0], 0.0
+        if year >= ys[-1]:
+            return ys[-1], ys[-1], 0.0
+        hi_i = bisect.bisect_left(ys, year)
+        if ys[hi_i] == year:
+            return year, year, 0.0
+        lo, hi = ys[hi_i - 1], ys[hi_i]
+        return lo, hi, (year - lo) / (hi - lo)
 
     def _year_state(self, year):
         bands = []
         for var in self.variables:
             yrs = self.avail[var]
-            path = yrs.get(year) or yrs[self._nearest_year(yrs.keys(), year)]
-            bands.append(_read_grid(path))
+            lo, hi, w = self._bracket(yrs.keys(), year)
+            a = _read_grid(yrs[lo])
+            if lo == hi:
+                bands.append(a)
+                continue
+            b = _read_grid(yrs[hi])
+            out = (1.0 - w) * a + w * b
+            # Interpolation must never WIDEN the NaN footprint: a cell missing in only one
+            # endpoint would otherwise go NaN across the whole bracket, and norm_grid
+            # validity is all-or-nothing across every concatenated channel, so that would
+            # invalidate the cell for all ~300 of them. Where exactly one side is present,
+            # use it: a one-sided bracket is still strictly more information than NaN.
+            if np.isnan(out).any():
+                out = np.where(np.isnan(out), np.where(np.isnan(a), b, a), out)
+            bands.append(out)
         return np.stack(bands, axis=-1)
 
     def prefetch_paths(self, years):
-        """Every distinct raster this streamer will read over ``years`` (after
-        nearest-year fill) -- for parallel cache pre-warming."""
+        """Every distinct raster this streamer will read over ``years`` (both ends of each
+        interpolation bracket) -- for parallel cache pre-warming."""
         out = set()
         for var in self.variables:
             yrs = self.avail[var]
             for y in years:
-                out.add(yrs.get(y) or yrs[self._nearest_year(yrs.keys(), y)])
+                lo, hi, _ = self._bracket(yrs.keys(), y)
+                out.add(yrs[lo])
+                out.add(yrs[hi])
         return out
 
 
@@ -228,10 +279,10 @@ def build_streamer(spec, start_year, end_year):
     stype = spec["type"]
     name = spec.get("name", stype)
     if stype == "per_variable":
-        # ema_tau is required, not defaulted. The old default of 10.0 was the pre-2026 value;
-        # the config now sets 2 on every EMA stream ("Was 10 (~7-yr half-life); reduced so
-        # z_raw fluxes and the two lags stay identifiable"), so a spec that omitted it would
-        # be smoothed seven times harder than intended, silently.
+        # ema_tau is required, not defaulted. The config sets 2 on every EMA stream, and a
+        # silent fallback is the dangerous kind of default here: the smoothing it controls
+        # is invisible in the output, so a spec that omitted it would just be smoothed
+        # harder than intended with no symptom.
         if "ema_tau" not in spec:
             raise KeyError(f"stream {name!r} (per_variable) must set ema_tau in states.streams")
         alpha = ema_alpha(spec["ema_tau"])
@@ -300,7 +351,7 @@ def run_states(specs, out_dir, start_year, end_year, mask, sample_start,
             return
         if not _cache_sized[0]:
             # Hold ~2 chunks: the live one plus the tail of the previous, which is
-            # what nearest-year fill reaches back into.
+            # what the lower bracket endpoint reaches back into.
             set_read_cache_size(max(_READ_CACHE_DEFAULT, 2 * len(paths)))
             _cache_sized[0] = True
             print(f"[states] read cache sized for {len(paths)} rasters/chunk "

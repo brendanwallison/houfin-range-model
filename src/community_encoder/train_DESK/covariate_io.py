@@ -34,17 +34,59 @@ def load_schema(states_dir):
     raise FileNotFoundError(f"state_schema.json not found in/above {states_dir}")
 
 
+def _indicator_index(spec):
+    """Position of a stream's availability channel within that stream, or None."""
+    ind = spec.get("indicator_variable")
+    if not ind:
+        return None
+    variables = [str(v) for v in (spec.get("variables") or [])]
+    if str(ind) not in variables:
+        raise SystemExit(
+            f"stream {spec.get('name')!r} declares indicator_variable {ind!r}, which is "
+            f"not among its {len(variables)} variables. Rebuild states.")
+    return variables.index(str(ind))
+
+
+def indicator_channels(schema):
+    """Channel positions, in the concatenated ``(..., C)`` array, of availability channels.
+
+    An availability channel says whether its stream has real data in this cell. It is a
+    flag, not a measurement, and the two things it must NOT go through are the stream
+    transform and the standardization -- both of which move the value that means "absent"
+    away from 0. That matters because the augmentation masks by multiplying by 0, so if 0
+    does not mean "absent", masking writes a value that never occurs in the real data.
+    Left alone, the channel reaches the encoder as the raw coverage fraction: 0.0 absent,
+    1.0 fully covered, 0.5 half covered.
+    """
+    out = []
+    for s in schema["streams"]:
+        j = _indicator_index(s)
+        if j is not None:
+            out.append(int(s["start"]) + j)
+    return out
+
+
 def _transform(arr, spec):
-    """Apply a stream's optional transform (``{'type':'pow','p':..}`` | ``log1p``)."""
+    """Apply a stream's optional transform (``{'type':'pow','p':..}`` | ``log1p``).
+
+    The stream's availability channel is exempt: the transform exists for the stream's
+    measurements (raw BUI is square feet running to ~1e8), and a coverage fraction is not
+    one of them.
+    """
     t = spec.get("transform")
     if not t:
         return arr
     kind = t.get("type")
     if kind == "pow":
-        return np.power(np.clip(arr, 0.0, None), float(t["p"]))
-    if kind == "log1p":
-        return np.log1p(np.clip(arr, 0.0, None))
-    raise ValueError(f"unknown stream transform {t!r}")
+        out = np.power(np.clip(arr, 0.0, None), float(t["p"]))
+    elif kind == "log1p":
+        out = np.log1p(np.clip(arr, 0.0, None))
+    else:
+        raise ValueError(f"unknown stream transform {t!r}")
+    j = _indicator_index(spec)
+    if j is not None:
+        out[..., j] = arr[..., j]
+    return out
 
 
 def stream_dims(schema):
@@ -123,11 +165,24 @@ def transform_flat(bag, schema):
     return bag
 
 
-def fit_norm(cov_flat):
-    """Per-channel mean/std over ``(N, C)`` (post-transform). Returns ``(mu, sd)``."""
-    mu = cov_flat.mean(0)
-    sd = cov_flat.std(0)
-    return mu.astype("float32"), sd.astype("float32")
+def fit_norm(cov_flat, schema=None):
+    """Per-channel mean/std over ``(N, C)`` (post-transform). Returns ``(mu, sd)``.
+
+    Availability channels are left un-standardized. ``apply_norm`` computes
+    ``(x - mu) / sd`` over all channels at once, so switching it off for one channel means
+    giving that channel ``mu = 0`` and ``sd = 1``: the subtraction and division then leave
+    the value unchanged. Standardizing a 0/1 flag would put "absent" at roughly -1.2 and
+    "present" at +0.8, so 0 -- the value the augmentation mask writes -- would mean neither.
+
+    ``schema`` is optional only so callers that predate availability channels still work;
+    pass it whenever the stack has one.
+    """
+    mu = cov_flat.mean(0).astype("float32")
+    sd = cov_flat.std(0).astype("float32")
+    for ch in (indicator_channels(schema) if schema else []):
+        mu[ch] = 0.0
+        sd[ch] = 1.0
+    return mu, sd
 
 
 def apply_norm(cov, mu, sd):

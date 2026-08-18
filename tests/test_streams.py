@@ -128,6 +128,65 @@ def test_transform_round_trips_config_to_loaded_stack():
         assert np.allclose(cio.transform_flat(bag, schema), np.log1p(bag), atol=1e-4)
 
 
+def _indicator_schema():
+    """A BUI-shaped stream: 2 quantile channels + an availability channel, log1p."""
+    return {"streams": [
+        {"name": "hyde", "start": 0, "end": 1, "dim": 1, "type": "per_variable",
+         "variables": ["popc"], "transform": {"type": "log1p"}},
+        {"name": "bui", "start": 1, "end": 4, "dim": 3, "type": "per_variable",
+         "variables": ["bui_avail", "bui_q50", "bui_q90"],
+         "transform": {"type": "log1p"}, "indicator_variable": "bui_avail"},
+    ]}
+
+
+def test_availability_channel_skips_the_transform_and_the_norm():
+    """0 in the availability channel has to mean ABSENT, because the augmentation masks
+    by multiplying by 0. Transforming or standardizing it moves 'absent' off 0, so a
+    masked cell would carry a value no real cell has."""
+    from src.community_encoder.train_DESK import covariate_io as cio
+    schema = _indicator_schema()
+    assert cio.indicator_channels(schema) == [1]              # global channel index
+
+    # the transform hits the quantile bands but not the flag
+    stream = np.array([[0.0, 100.0, 900.0], [1.0, 0.0, 50.0]], dtype="float32")
+    out = cio._transform(stream, schema["streams"][1])
+    assert np.allclose(out[:, 0], [0.0, 1.0])                 # flag passes through
+    assert np.allclose(out[:, 1], np.log1p([100.0, 0.0]), atol=1e-5)
+    assert np.allclose(out[:, 2], np.log1p([900.0, 50.0]), atol=1e-5)
+
+    # ...and the norm leaves it alone: mu 0 / sd 1 makes (x - mu)/sd a no-op
+    flat = np.array([[5.0, 0.0, 1.0, 2.0], [7.0, 1.0, 3.0, 8.0],
+                     [9.0, 1.0, 5.0, 4.0]], dtype="float32")
+    mu, sd = cio.fit_norm(flat, schema)
+    assert mu[1] == 0.0 and sd[1] == 1.0
+    assert mu[0] != 0.0 and mu[2] != 0.0                       # every other channel fitted
+    normed = cio.apply_norm(flat, mu, sd)
+    assert np.allclose(normed[:, 1], flat[:, 1], atol=1e-5)
+
+
+def test_masking_the_availability_channel_equals_a_genuinely_absent_cell():
+    """The property the whole design rests on: an augmented cell and a real uncovered
+    cell must present the same input."""
+    from src.community_encoder.train_DESK import covariate_io as cio
+    schema = _indicator_schema()
+    # two cells: one covered with real BUI, one uncovered (avail 0, values at the fill)
+    raw = np.array([[10.0, 1.0, 5000.0, 9000.0],
+                    [10.0, 0.0, 12.0, 12.0]], dtype="float32")
+    mu, sd = cio.fit_norm(raw, schema)
+    normed = cio.apply_norm(raw, mu, sd)
+    absent = normed[1, 1]
+    assert absent == 0.0                                       # real absence reads as 0
+
+    keep = np.ones(4, dtype="float32")
+    keep[1:4] = 0.0                                            # mask the whole bui stream
+    masked = normed[0] * keep
+    assert masked[1] == absent                                 # same state, not a third one
+
+    # and without the exemption it would NOT hold -- absent would be a negative number
+    mu_std, sd_std = cio.fit_norm(raw)                          # no schema -> standardize all
+    assert cio.apply_norm(raw, mu_std, sd_std)[1, 1] < -0.5
+
+
 def test_assert_schema_compatible_rejects_transform_change():
     """A transform runs before mu/sd are fit, so changing it rescales every channel
     while name/dim/variables stay identical -- silent misnormalization otherwise."""
@@ -165,6 +224,10 @@ if __name__ == "__main__":
     print("[schema] transform carried; omitted when absent OK")
     test_transform_round_trips_config_to_loaded_stack()
     print("[schema] transform round-trips config -> schema -> loaded stack OK")
+    test_availability_channel_skips_the_transform_and_the_norm()
+    print("[indicator] availability channel skips transform + norm OK")
+    test_masking_the_availability_channel_equals_a_genuinely_absent_cell()
+    print("[indicator] masked == genuinely absent OK")
     test_assert_schema_compatible_rejects_transform_change()
     print("[schema] transform mismatch refused OK")
     print("\nALL STREAM CHECKS PASSED")

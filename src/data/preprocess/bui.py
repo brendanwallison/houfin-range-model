@@ -52,13 +52,19 @@ Three decisions worth understanding before changing anything:
    "no information" has to look like.
 
 3. **The availability channel rides inside this stream**, declared as
-   ``indicator_variable`` so ``augment.ChannelGroupMasker`` masks it atomically with the
-   values. A standalone 1-wide stream would cost ~500k parameters (+23%), because the
-   stream count enters both the mixer and the decoder, versus ~1k folded in. Note the
-   stream ``transform`` (log1p, mandatory here -- raw BUI is square feet running to
-   ~1e7-1e8 with a heavy right tail) also hits the availability channel; log1p is
-   monotone on [0, 1], so it is an order-preserving rescale of a bounded channel that
-   standardisation then absorbs. It changes nothing the encoder can use.
+   ``indicator_variable``. A standalone 1-wide stream would cost ~500k parameters (+23%),
+   because the stream count enters both the mixer and the decoder, versus ~1k folded in.
+
+   But it is a flag, not a measurement, so it does NOT go through the stream's value
+   pipeline: ``covariate_io`` exempts it from both the ``transform`` (log1p, mandatory for
+   the quantile bands -- raw BUI is square feet running to ~1e7-1e8 with a heavy right
+   tail) and the standardization. It reaches the encoder as the raw coverage fraction:
+   0.0 absent, 1.0 fully covered, 0.5 half covered.
+
+   That exemption is load-bearing, not tidiness. The augmentation masks channels by
+   multiplying by 0, so 0 has to mean "absent" for masking this channel to make sense.
+   Standardizing it would put "absent" near -1.2 and make 0 mean "about 60% covered" --
+   a state no real cell is in.
 
     python -m src.data.preprocess.bui
 """

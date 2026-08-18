@@ -51,10 +51,19 @@ Four rules that are easy to get wrong:
    over a large, fixed part of the domain in every year -- there "at the mean" is not a random
    perturbation but a spatially structured lie the encoder cannot distinguish from signal. Such a
    stream carries its own availability channel, declared as ``indicator_variable`` in the schema.
-   The indicator and its value channels are then one ATOMIC masking unit (see
-   ``indicator_groups``): masking values while leaving the indicator at 1 would teach exactly the
-   inference the indicator exists to prevent, and clearing the indicator while leaving real
-   values would teach the model to ignore data it has.
+
+   That channel is NOT transformed and NOT standardized (``covariate_io.indicator_channels``),
+   so it reaches the encoder as the raw coverage fraction and **0 means absent**. That is what
+   makes masking it correct: multiplying by 0 writes exactly the value a genuinely uncovered
+   cell carries, so an augmented cell and a real Canadian cell look the same. Standardizing it
+   would break this -- "absent" would land near -1.2 and 0 would mean "about 60% covered", a
+   state no real cell is in, so the mask would be teaching the model about an input that
+   cannot occur.
+
+   The indicator and its value channels are one ATOMIC masking unit (see ``indicator_groups``):
+   masking values while leaving the indicator at 1 would teach exactly the inference the
+   indicator exists to prevent, and clearing the indicator while leaving real values would
+   teach the model to ignore data it has.
 3. **The climate stream is never dropped as a stream.** It is ~80% of all channels (240/302);
    removing it leaves the model with almost no input. Climate is masked on the base/month/span/
    level axes instead, which is the point of having them.

@@ -762,7 +762,8 @@ def run_desk_experiment(config=None):
     # as well -- not evaluation data, but not clean training data either), then applied to every
     # grid (labelled + historical) and frozen for the cube.
     fit_mask = mask_sup0 & (~holdout) & (~buffer_cells_mask)
-    mu, sd = cio.fit_norm(cov_stack[fit_mask].astype("float32"))
+    # schema so availability channels are left un-standardized (see cio.indicator_channels)
+    mu, sd = cio.fit_norm(cov_stack[fit_mask].astype("float32"), schema)
 
     covn, mask_cov, mask_sup, z_grid, x_grid = prepare_supervised(
         cov_stack, ebird_stack, z_flat, z_mask, mu, sd, out_dir)

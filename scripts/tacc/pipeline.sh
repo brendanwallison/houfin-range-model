@@ -68,6 +68,7 @@ _vpath () {
         ebird)     echo "$DATA/ebird_weekly_2023_grid" ;;
         luh3)      echo "$DATA/luh3_grid" ;;
         hyde)      echo "$DATA/hyde35_grid" ;;
+        bui)       echo "$DATA/bui_grid" ;;
         soilgrids) echo "$DATA/soilgrids_grid" ;;
         elevation) echo "$DATA/elevation" ;;
         subcell)   echo "$DATA/elevation/subcell_centroids.csv" ;;
@@ -118,6 +119,10 @@ stage_land_mask () { run land_mask  python -m src.data.preprocess.land_mask; }
 stage_ebird     () { run ebird      python scripts/project_ebird; }
 stage_luh3      () { run luh3       python -m src.data.preprocess.luh3; }
 stage_hyde      () { run hyde       python -m src.data.preprocess.hyde; }
+# BUI needs land_mask's Natural Earth admin-0 polygon (read as a CONUS *inclusion*), so it
+# runs after it in the bundle below. It is CPU/memory-bound, not I/O-bound: one ~174 MB
+# float64 fine grid per snapshot, reprojected then quantiled per model cell.
+stage_bui       () { run bui        python -m src.data.preprocess.bui; }
 stage_soilgrids () { run soilgrids  python -m src.data.preprocess.soilgrids; }
 stage_elevation () { run elevation  python -m src.data.preprocess.elevation; }
 stage_subcell   () { run subcell    python -m src.data.preprocess.subcell_centroids; }
@@ -125,7 +130,7 @@ stage_bbs_finch () { run bbs_finch  python scripts/ingest_bbs_data.py; }
 stage_preprocess () {
     # NOTE: 'ebird' (project_ebird, weekly status grids) is NOT in this bundle -- it is
     # opt-in (weekly anchor / off / validate only). Run it explicitly: STAGES="... ebird ...".
-    stage_ref_grid; stage_land_mask; stage_luh3; stage_hyde
+    stage_ref_grid; stage_land_mask; stage_luh3; stage_hyde; stage_bui
     stage_soilgrids; stage_elevation; stage_subcell; stage_bbs_finch
 }
 stage_climate () {

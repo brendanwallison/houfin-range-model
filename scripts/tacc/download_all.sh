@@ -43,6 +43,12 @@ python scripts/download_zenodo.py --dataset luh3
 echo "== HYDE 3.5 =="
 python scripts/download_hyde.py
 
+echo "== HISDAC-US BUI (Harvard Dataverse; 43 semi-decadal 250 m CONUS snapshots) =="
+# Additive to HYDE, not a replacement -- CONUS-only, so preprocess/bui.py also writes an
+# availability channel from the Natural Earth admin-0 polygon fetched below. --extract
+# unpacks BUI.tar.gz into the depositor's nested layout, which discover_bui_rasters walks.
+python scripts/download_dataverse.py --dataset bui --extract
+
 echo "== SoilGrids =="
 python scripts/download_soilgrids.py
 

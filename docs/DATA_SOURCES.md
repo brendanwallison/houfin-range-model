@@ -15,6 +15,7 @@ the model grid (equal-area Albers at `grid.target_res_m`; see
 | **Climate (ClimateNA via `climr`)** | R `climr` over a DEM (`climatena.py`→`climate_climr.R`) | computed (GeoTIFF out) | downscaled to query pts | lon/lat in, Albers out | monthly, 1901→`end_year` | Tmin/Tmax/Tave/PPT (+ derived incl. DD\*/NFFD/CMD/Eref); **all 12 months kept as separate channels** (see TEMPORAL.md), ×3 elevation quantiles for temperatures / q50 only otherwise | built directly on Albers grid |
 | **LUH-3** (v1.2 CMIP7 hist.) | Zenodo `19261724` (`zenodo.py`) | netCDF4 | 0.25° (~28 km) | WGS84 geographic | annual, 850–2024 | `states` (12 land-use fractions) + `management` | reproject → Albers (~1:1) |
 | **HYDE 3.5** (baseline, apr2025) | Utrecht vault HTTP (`hyde.py`) | netCDF (per var) | 5′ (~9.3 km) | WGS84 geographic | annual time points near-present, to 2025 | popd, urban pop, rural pop | reproject **average** (density) / **sum** (counts) → Albers |
+| **HISDAC-US BUI** | Harvard Dataverse `10.7910/DVN/CSLOJP` (`dataverse.py`) | GeoTIFF (int) | 250 m | **EPSG:5070** (Albers, lat_0 23) | semi-decadal, 1810–2020 | indoor building gross area per pixel, ft² — **CONUS only** | reproject→fine sub-grid, block-quantile (6 bands) + `bui_avail` → Albers (`bui.py`) |
 | **SoilGrids** (aggregated) | ISRIC HTTP (`soilgrids.py`) | COG GeoTIFF | 5000 m | **Goode Homolosine** ESRI:54052 | **static** | sand/silt/clay/phh2o/soc/bdod/cec/nitrogen × 2 depths | reproject **average** → Albers |
 | **BBS US/Canada** | ScienceBase item `6a0b…` (`acquire/bbs.py`) | CSV (+ States.zip) | point routes | WGS84 (lat/lon) | annual, 1966–**2025** | House-Finch counts; `RunType`/`RPID` QC | rasterize to Albers land cells |
 | **BBS Mexico** (unprocessed) | ScienceBase item `5f32…`, DOI 10.5066/P9L4KBDC | CSV | point routes | WGS84 (lat/lon) | annual, 2008–2018 | counts (`SpeciesData`), runs (`RouteData`), loc (`RouteDetails`) | rasterize; **no RunType/RPID** → quality covariate |
@@ -33,6 +34,10 @@ so the aggregation method is chosen per product:
   The DEM takes this path: ETOPO 60″ (~1.85 km) is first reprojected to a
   `elevation.fine_factor = 15` sub-grid of the model grid, then block-quantiled, so the
   block factor is exact by construction rather than by luck of the native resolution.
+  BUI takes the same path at `bui.fine_factor = 27`. Note 27000/250 = 108 exactly, so
+  BUI *could* be block-reduced directly — but only in **its own** CRS on its own origin,
+  which is not the model lattice. Reprojecting onto a ref sub-grid first is what makes the
+  output alignable; the sub-grid, not the native ratio, is what makes the blocks nest.
 - **Non-integer or ~1:1** → `rioxarray.reproject_match` with `Resampling.average`
   for continuous fields (eBird ~2.96 km, HYDE ~9.3 km, SoilGrids 5 km→27 km,
   LUH-3 0.25° ~1:1), `Resampling.nearest`/`mode` for categorical masks.
@@ -52,9 +57,15 @@ loudly on mismatch rather than silently mis-ingesting:
 - Ocean/land mask band count.
 - BBS quality fields present for US/Canada (`RunType`,`RPID`); absent for Mexico
   (→ quality covariate, not a protocol filter).
+- BUI cannot report its own extent: `nodata` is unset and ocean, Canada, Mexico and
+  genuinely unbuilt CONUS land are all exactly `0.0`. Absence is therefore established
+  from the Natural Earth admin-0 polygon (read as a USA *inclusion*), and `bui.py` fails
+  rather than proceeding if that polygon is missing.
 
 ## Provenance / licensing
 
 eBird S&T (Cornell, access-key terms); ClimateNA/`climr` (CC-BY, bcgov);
 LUH-3 (CC-BY, Zenodo); HYDE 3.5 (CC-BY 3.0, Utrecht/PBL); SoilGrids (CC-BY,
-ISRIC); BBS (USGS public domain); DEM/coastline (public).
+ISRIC); HISDAC-US BUI (CC0, Harvard Dataverse — cite Ahn, Leyk, Uhl & McShane 2023
+and Leyk & Uhl 2018 *Sci. Data* 5:180175); BBS (USGS public domain);
+DEM/coastline (public).

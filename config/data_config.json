@@ -33,7 +33,7 @@
     "box_bounds": [-2976931.1039, -1523184.5953, 3071068.8961, 2067815.4047],
     "box_crs": "ESRI:102003",
     "_box_comment": "Fixed study-area extent (left, bottom, right, top) in box_crs = USA Contiguous Albers NAD83 (ESRI:102003), the native CRS of the USGS BBS mapping rasters (trend/abundance, 27 km). The box is the lon/lat region [-125..-66, 24..53] (CONUS + southern Canada; AK, far-northern Canada and most of Mexico clipped out) reprojected to 102003, with its ORIGIN SNAPPED to the BBS 27 km lattice (residues x=20068.8961, y=15815.4047 mod 27000) so BBS trend rasters land on this grid with ZERO resampling (clip/pad only). 133 rows x 224 cols at 27 km. build_ref_grid defaults to these when given no --base-raster/--bounds, so the canonical ref grid builds standalone on any machine.",
-    "_comment": "Single source of truth for the model grid. target_res_m is THE model resolution (27 km), matching the native resolution of the trend products this pipeline targets (USGS BBS mapping rasters, 27 km ESRI:102003; eBird Status & Trends, 27 km). Continental products (climate/climr, LUH-3, HYDE, SoilGrids, DEM, eBird abundance) are aggregated onto ref_raster via regrid.reproject_to_ref `average`; the BBS trend rasters share this CRS+lattice and align by nearest clip/pad (no resampling of the ground truth). Nonlinear steps (Ruzicka kernel/PCA for Z, quantiles, transforms) are applied at this resolution -- Z is built at 27 km, never pooled. The prior 25 km ESRI:102039 CONUS box lives in git history; the older 16 km / 4 km BUI-grid pipeline is preserved under src/data/deprecated/."
+    "_comment": "Single source of truth for the model grid. target_res_m is THE model resolution (27 km), matching the native resolution of the trend products this pipeline targets (USGS BBS mapping rasters, 27 km ESRI:102003; eBird Status & Trends, 27 km). Continental products (climate/climr, LUH-3, HYDE, SoilGrids, DEM, eBird abundance) are aggregated onto ref_raster via regrid.reproject_to_ref `average`; the BBS trend rasters share this CRS+lattice and align by nearest clip/pad (no resampling of the ground truth). Nonlinear steps (Ruzicka kernel/PCA for Z, quantiles, transforms) are applied at this resolution -- Z is built at 27 km, never pooled. The prior 25 km ESRI:102039 CONUS box and the older 16 km / 4 km BUI-grid pipeline both live in git history; BUI now ingests onto THIS lattice via src/data/preprocess/bui.py."
   },
   "regions": {
     "_comment": "Named region rasters on the model grid, built by scripts and consumed by diagnostics. great_plains_zones is the gap-free west|barrier|east corridor partition (codes 1/2/3, nodata 0) written by scripts/build_great_plains_mask.py from the EPA/CEC Ecoregions Level I shapefile. The shapefile is NOT in git (/data/ is gitignored) and is not in download_all.sh, so the raster must be built where the vector lives and scp'd to HPC; consumers skip cleanly when it is absent. This key lives in data_config.json rather than age_model_config.json on purpose: the MAP fingerprint hashes the entire resolved age-model config, so adding a key there would invalidate resume of every existing checkpoint.",
@@ -78,6 +78,7 @@
     "climr_obs_min_year": 1901,
     "climr_obs_max_year": 2024
   },
+  "_dataverse_comment": "Harvard Dataverse (src/data/acquire/dataverse.py). The bui DOI is the DATASET that actually serves the files and is the one to keep; BUI_README.txt inside the download cites doi:10.7910/DVN/1WB9E4, which is the citation DOI for the broader 'Gridded Settlement Data for the Conterminous United States Over 200 years' deposit. They are not interchangeable -- do not 'correct' the one below to match the README.",
   "dataverse": {
     "server": "https://dataverse.harvard.edu",
     "datasets": {
@@ -85,6 +86,14 @@
     },
     "out_subdirs": {
       "bui": "HBUI"
+    }
+  },
+  "_bui_comment": "HISDAC-US built-up intensity -> model grid (src/data/preprocess/bui.py). Source is 250 m EPSG:5070 integer indoor building area in square feet, 43 semi-decadal snapshots 1810-2020, CONTERMINOUS US ONLY. fine_factor is the sub-cell subdivision of the ref grid used before per-cell quantiling: 108 would nest 250 m exactly but costs a ~2.8 GB float64 intermediate per year, and 27 (~1 km, 729 samples per model cell) is ample for a quantile at 16x less memory. transform must stay non-null and invertible -- preprocess/bui.py needs it to compute the constant fill for cells outside the CONUS footprint, and it must match the bui stream's transform in esk_desk_config.json or the fill will not land at the in-coverage mean. The CONUS footprint itself comes from coastline.study_exclusion_source, read as an inclusion, because BUI encodes absence as 0 rather than nodata and so cannot report its own extent.",
+  "bui": {
+    "out_subdir": "bui_grid",
+    "fine_factor": 27,
+    "transform": {
+      "type": "log1p"
     }
   },
   "zenodo": {

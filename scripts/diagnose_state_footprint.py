@@ -9,13 +9,21 @@ is a standing check, not an open investigation.
 
 WHY IT MATTERS THAT THE CLAIM STAYS TRUE. ``covariate_io.norm_grid`` marks a cell valid
 only if **every** channel is finite (``~np.isnan(cov).any(axis=-1)``). That is
-all-or-nothing across every channel of all five streams, so ONE product whose coverage
+all-or-nothing across every channel of every stream, so ONE product whose coverage
 stops short -- at the Canadian fringe, or the northern-Mexico strip inside the study box
 -- invalidates those cells entirely, and the cube then gap-fills them. Stage 2 of that
 fill assigns a *year-invariant* static field, which makes predicted turnover collapse to
 exactly 0 there: a silently degenerate temporal statistic, not an error. That failure
 mode is why the continental products (climr, LUH-3, HYDE, SoilGrids) replaced the
-CONUS-only ones, and it is what a new stream with a narrower footprint would reintroduce.
+CONUS-only ones.
+
+THIS IS THE GATE FOR BUI. The ``bui`` stream is CONUS-only, which is exactly the shape
+that would reintroduce the failure above -- so ``preprocess/bui.py`` never writes NaN: it
+fills outside the CONUS footprint with a constant that lands at 0 after standardisation,
+and carries a ``bui_avail`` channel so the encoder still knows where the real data is.
+The whole design rests on this script's verdict. Run it after any BUI rebuild: uniquely-
+lost must be 0 for ``bui`` like every other stream. If it is not, the fill is wrong, and
+this is where that shows -- before the encoder ever runs.
 
 Reports, per stream:
 

@@ -55,8 +55,12 @@ loudly on mismatch rather than silently mis-ingesting:
 - SoilGrids native CRS is Goode Homolosine (must be reprojected, not assumed
   Albers).
 - Ocean/land mask band count.
-- BBS quality fields present for US/Canada (`RunType`,`RPID`); absent for Mexico
-  (→ quality covariate, not a protocol filter).
+- BBS quality fields: US/Canada carry `RunType` and `RPID`. Mexico carries `RPID`
+  but **not** `RunType`, so it cannot be screened the same way and enters as an
+  unscreened tier (→ quality covariate, not a protocol filter).
+- Mexico `SpeciesData.csv` ships stop 46 with a damaged header (`Sto 46`). The parser
+  absorbs it and **refuses a gap** in the stop numbering rather than summing 49 of 50,
+  which would undercount invisibly.
 - BUI cannot report its own extent: `nodata` is unset and ocean, Canada, Mexico and
   genuinely unbuilt CONUS land are all exactly `0.0`. Absence is therefore established
   from the Natural Earth admin-0 polygon (read as a USA *inclusion*), and `bui.py` fails

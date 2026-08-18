@@ -225,3 +225,40 @@ if __name__ == "__main__":
     test_validate_metrics()
     test_temporal_metrics()
     print("\nALL BBS-SPACETIME CHECKS PASSED")
+
+
+def test_mexico_stop_columns_absorb_the_usgs_header_typo():
+    """The real USGS Mexico release ships stop 46 as 'Sto 46' -- the 'p' replaced by a
+    space. A startswith('stop') test drops it and silently undercounts that route by one
+    stop, which is invisible: the sum is still a plausible number."""
+    import pandas as pd
+    from src.data.preprocess.bbs import _mexico_count, _mexico_stop_columns
+
+    cols = ([f"Stop{i}" for i in range(1, 46)] + ["Sto 46"]
+            + [f"Stop{i}" for i in range(47, 51)])            # the real header, verbatim
+    df = pd.DataFrame([[1] * 50], columns=cols)
+    stops = _mexico_stop_columns(df)
+    assert set(stops) == set(range(1, 51)), "did not recover all 50 stops"
+    assert stops[46] == "Sto 46"
+    assert int(_mexico_count(df).iloc[0]) == 50               # not 49
+
+
+def test_mexico_stop_columns_refuse_a_gap_rather_than_undercount():
+    """An unrecognised header mangling must stop the ingest, not contribute a zero."""
+    import pandas as pd
+    from src.data.preprocess.bbs import _mexico_stop_columns
+
+    cols = [f"Stop{i}" for i in range(1, 46)] + ["S46"] + [f"Stop{i}" for i in range(47, 51)]
+    try:
+        _mexico_stop_columns(pd.DataFrame([[0] * 50], columns=cols))
+    except ValueError as exc:
+        assert "46" in str(exc) and "undercount" in str(exc)
+    else:
+        raise AssertionError("a gap in the stop numbering was silently accepted")
+
+
+def test_mexico_count_prefers_speciestotal_when_present():
+    import pandas as pd
+    from src.data.preprocess.bbs import _mexico_count
+    df = pd.DataFrame({"SpeciesTotal": [7], "Stop1": [1], "Stop2": [2]})
+    assert int(_mexico_count(df).iloc[0]) == 7

@@ -22,6 +22,7 @@ the canonical contract in src/temporal.py; nothing here hardcodes a year.
 """
 import glob
 import os
+import re
 
 import geopandas as gpd
 import numpy as np
@@ -155,13 +156,47 @@ def _mexico_year(run_data):
     return pd.to_datetime(run_data["RunDate"], errors="coerce").dt.year
 
 
+# A BBS stop column, tolerant of header damage in the USGS Mexico release, which
+# ships stop 46 as ``Sto 46`` -- the 'p' replaced by a space. ``\S?`` absorbs that
+# character whatever it is and ``\s*`` the stray space, so ``Stop46`` and ``Sto 46``
+# both resolve to 46. A stricter prefix test silently drops the damaged column and
+# undercounts that route by one stop.
+_STOP_RE = re.compile(r"^sto\S?\s*(\d+)$")
+
+
+def _mexico_stop_columns(species):
+    """``{stop_number: column}`` for the 50 per-stop count columns.
+
+    Raises on a GAP in the numbering rather than summing what it found. That is the
+    whole point: the failure this guards against is silent undercounting, so an
+    unrecognised column has to stop the ingest instead of quietly contributing zero.
+    A gap means the header is damaged in some way ``_STOP_RE`` does not yet absorb.
+    """
+    stops = {}
+    for c in species.columns:
+        m = _STOP_RE.match(str(c).strip().lower())
+        if m:
+            stops[int(m.group(1))] = c
+    if not stops:
+        return {}
+    missing = sorted(set(range(1, max(stops) + 1)) - set(stops))
+    if missing:
+        raise ValueError(
+            f"Mexico SpeciesData stop columns are not contiguous: found {len(stops)} "
+            f"running to {max(stops)}, missing {missing}. The header is damaged in a "
+            f"way the parser does not recognise -- summing the rest would silently "
+            f"undercount. Columns present: {list(species.columns)}")
+    return stops
+
+
 def _mexico_count(species):
     """House-Finch count per Mexico record, robust to schema (SpeciesTotal or Stop sum)."""
     if "SpeciesTotal" in species:
         return pd.to_numeric(species["SpeciesTotal"], errors="coerce")
-    stops = [c for c in species.columns if c.lower().startswith("stop") and c[4:].isdigit()]
+    stops = _mexico_stop_columns(species)
     if stops:
-        return species[stops].apply(pd.to_numeric, errors="coerce").sum(axis=1)
+        cols = [stops[i] for i in sorted(stops)]
+        return species[cols].apply(pd.to_numeric, errors="coerce").sum(axis=1)
     for alt in ("Count", "Total", "SpeciesCount"):
         if alt in species:
             return pd.to_numeric(species[alt], errors="coerce")

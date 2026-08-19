@@ -70,6 +70,12 @@
       "min_r": 0.2
     }
   },
+  "_trend_reference_comment": "The trend products rebuilt as a SANITY-CHECK REFERENCE rather than a training target, read by train_DESK/validate_trend_reference.py. Two differences from the trend block: smooth_sigma_cells is 0, and it writes to its own points_dir so the reference and the training target coexist. The blur existed to stabilise a training target and there is no target to stabilise any more -- leaving it on would mean the panel's pure-spatial comparison grades the model against OUR smoothing of the products rather than against the products, making a poor score there unattributable. The soft caps deliberately stay on (inherited from the trend block): their stabilising purpose is gone but their outlier-control purpose is not, and a handful of 100x-fold extrapolations would dominate exactly the RMSE and rank statistics the panel's comparisons 2 and 4 use.",
+  "trend_reference": {
+    "enabled": true,
+    "points_dir": "${HOUFIN_PROCESSED}/encoder/trend_reference_points",
+    "smooth_sigma_cells": 0.0
+  },
   "_trend_comment": "Trend-product spatiotemporal community target (trend_community.build_trend_points). Applies published %/yr trends to the 2023 eBird annual anchor, blending eBird recent (2012-2022) and BBS long-term (1966-2022) rates with a smooth handoff, integrated backward to first_year. Paths (bbs_trend_grid, ebird_trend_grid, community_trend_list) fall back to data_config; ebird_weekly_grid falls back to paths.ebird_folder.",
   "trend": {
     "_anchor_comment": "anchor_mode=trends-abd (default): the reference-year abundance E is the eBird trends product's own midpoint reference `abd` (rel-abundance at (start_year+end_year)/2, ~2017), forward-extrapolated to anchor_year along abd_ppy: E = abd*(1+abd_ppy/100)^(anchor_year-mid). Same product+cells as the rate (no coverage mismatch); needs NO weekly eBird download. anchor_mode=weekly is the legacy path (2023 annual mean of the weekly status rasters; needs the projected weekly grid + --require-weekly download). anchor_year=2025 is the reference year (end of the covariate timeline); reconstruction compounds backward from it. Both abd_ppy (eBird) and tr{AOU} (BBS) are percent-PER-YEAR.",

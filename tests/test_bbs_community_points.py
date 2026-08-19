@@ -221,8 +221,9 @@ def test_overlap_pairs_only_uses_cell_years_both_products_cover():
     pairs = overlap_pairs(X_eb, K_eb, X_bbs, K_bbs)
     # only (0,0,2015) is shared; cell (1,1) has no BBS row and (9,9) no eBird row
     assert set(pairs) == {0, 1}
-    assert pairs[0] == (np.array([2.0]), np.array([3.0])) or np.allclose(pairs[0][0], [2.0])
-    assert np.allclose(pairs[0][1], [3.0]) and np.allclose(pairs[1][1], [4.0])
+    # x is BBS and y is eBird: eBird is the common frame, so BBS is what gets transformed
+    assert np.allclose(pairs[0][0], [3.0]) and np.allclose(pairs[0][1], [2.0])
+    assert np.allclose(pairs[1][0], [4.0]) and np.allclose(pairs[1][1], [1.0])
 
 
 def test_overlap_pairs_excludes_zeros_on_either_side():

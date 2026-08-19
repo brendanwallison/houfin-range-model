@@ -1,178 +1,228 @@
-"""Put eBird relative abundance on the raw-BBS count scale, per species.
+"""Put raw BBS counts on the eBird abundance scale, per species, by partial pooling.
 
-Both products measure the same latent community but in different units: BBS is birds per
-route on a 50-stop roadside survey, eBird Status & Trends is a modelled relative abundance.
-For the two to be rows of ONE community matrix feeding ONE Ruzicka kernel they have to share
-a scale -- Ruzicka is ``sum(min)/sum(max)``, which is scale-sensitive in each argument, so
-an uncalibrated mix would make source membership itself a similarity signal.
+BBS counts birds on a survey route; eBird Status & Trends gives a modelled relative
+abundance. Different units. For the two to be rows of one community matrix feeding one
+Ruzicka kernel they have to share a scale, because Ruzicka is ``sum(min)/sum(max)`` and is
+scale-sensitive in each argument -- an uncalibrated mix would make the data SOURCE itself a
+similarity signal.
 
-This replaces the single scalar ``k[s] = median(E/B)`` in ``trend_community._species_scale``,
-which was scale-only and fit against the *published* BBS abundance raster rather than the
-raw counts.
+**eBird is the common frame, and BBS is what gets transformed.** eBird is the richer product:
+17,205 cells against BBS's ~3,900, denser per row, and modelled from far more observation
+effort. So the fitted transform lands on the sparser data rather than on the majority of it.
+Worth stating the consequence: BBS log-counts vary roughly 3.4x as much as eBird's, so this
+compresses BBS's spread. Much of that extra spread is single-route sampling noise rather than
+signal, which is the argument for compressing it -- and it is a linear rescale, so it borrows
+nothing across space the way a spatial smoother would.
 
-## Two choices that are easy to get backwards
+## Partial pooling, not thresholds
 
-**Direction: fit BBS from eBird, not the reverse.** We apply the fit to eBird values to
-produce BBS-scale values, so the regression has to run in that direction. Fitting
-``ebird ~ bbs`` and inverting is a different estimator and biases the result.
+Every species gets its own slope and intercept, drawn from a population distribution:
 
-**Estimator: reduced major axis, not OLS.** OLS minimises residuals in y, which shrinks
-predictions toward the mean -- so OLS-calibrated eBird rows would carry systematically LESS
-variance than real BBS rows. In a similarity kernel that is not a small bias: eBird-derived
-cell-years would look more like each other than BBS-derived ones do, and the kernel would
-learn source membership. RMA (geometric-mean regression) sets
+    log1p(ebird)_si = a_s + exp(beta_s) * log1p(bbs)_si + noise
+    beta_s ~ Normal(mu_beta, tau_beta)      a_s ~ Normal(mu_a, tau_a)
 
-    b = sign(r) * sd(y)/sd(x)
+The slope is parameterised as ``exp(beta)`` rather than fitted directly, and that is load
+bearing. A calibration factor between two abundance measures has to be POSITIVE. Fitted
+directly, a species whose two products happen to disagree can land on a slope near zero --
+which flattens it to a constant in every cell, destroying whatever BBS knew about it -- or
+below zero, which inverts it, so more BBS birds would mean less eBird abundance. Neither is a
+calibration. On the log scale both are unreachable: ``exp(beta)`` is positive for every
+``beta``, and the prior pulling ``beta`` toward 0 resists collapse toward zero rather than
+merely discouraging it. No threshold is involved.
 
-which preserves variance by construction and is the standard estimator when the goal is
-putting two measurements on a common scale rather than predicting one from the other.
-``form="ols"`` remains available for comparison.
+A species with thousands of overlapping cell-years is fitted almost entirely by its own data.
+A species with five, or with no real relationship between the two products, is pulled to the
+population estimate -- automatically, and in proportion to how much its data actually says.
+A species with NO overlap lands exactly on the population estimate, with no special case.
 
-## Guards
+This is what replaces an earlier design with hard cutoffs (a minimum overlap count and a
+minimum correlation, below which a species was dropped to a pooled fit). Those numbers were
+invented, and they made the treatment of a species discontinuous in its evidence: 49 pairs
+behaved completely differently from 51. Shrinkage is the same idea done continuously, and it
+needs no invented constants.
 
-A per-species fit is REFUSED (falling back a rung) when the correlation is below ``min_r``.
-Negative is the obvious case: an inverting slope would calibrate a species so that more eBird
-detections mean fewer BBS birds, which is never a calibration -- it says the two products
-disagree about that species. Near-zero is the subtler one, and it matters specifically because
-of RMA: the slope is ``sign(r)*sd(y)/sd(x)``, which stays large even at ``r ~ 0``, so a species
-with no real agreement would still receive a confident-looking variance-matching slope with an
-essentially random sign. The pooled relationship is the more honest estimate there.
+## The population prior
 
-The per-species ``r`` values are therefore the diagnostic to read before trusting a run: a low
-median means the calibration is fitting noise and the eBird rows are not measuring the same
-thing the BBS rows are.
+``mu_beta`` is centred on 0 (so a slope of 1) and ``mu_a`` on 0, which says the two products
+correspond up to a pure scale factor -- a proportional relationship rather than a power one.
+That is the honest prior belief: they are two measurements of the same thing. Departures are
+allowed, but a species has to produce evidence for one, and the population level is itself
+estimated, so enough species agreeing on something else will move it.
 
-The fallback ladder, every rung logged:
+## MAP, not a posterior
 
-1. ``>= min_overlap_points`` overlapping cell-years with both values > 0, and ``r >= min_r``
-   -> per-species ``(a_s, b_s)``
-2. else -> the pooled fit across all species
-3. else -> scale-only (``b = 1``, ``a = median(y - x)``), i.e. what ``k[s]`` did
+We need point estimates to apply to the data, not uncertainty about them. Coordinate ascent
+alternates per-species fits, the population location and spread, and the noise scale, to
+convergence. The log-slope makes the per-species step non-conjugate, so it is a small 2-D
+optimisation with an analytic gradient computed from sufficient statistics rather than a
+closed form -- still deterministic, still no sampler, and no JAX dependency in a CPU
+preprocessing stage.
 """
 import numpy as np
 
-_MIN_SD = 1e-9
+_MIN_SD = 1e-6
 
 
-def rma_fit(x, y):
-    """Reduced major axis fit ``y ~ a + b*x``: ``(a, b, pearson_r)``.
+def _species_map(stats, beta0, a0, mu_beta, tau_beta, mu_a, tau_a, sigma):
+    """MAP ``(beta, a)`` for one species given the population, from sufficient statistics.
 
-    ``b = sign(r)*sd(y)/sd(x)`` preserves variance, so calibrated values keep the spread of
-    the scale being mapped onto. Returns ``b = nan`` when either side is constant.
+    Minimises the negative log posterior
+
+        sum_i (y_i - a - e^beta x_i)^2 / (2 sigma^2)
+            + (beta - mu_beta)^2 / (2 tau_beta^2) + (a - mu_a)^2 / (2 tau_a^2)
+
+    All the data enters through ``(n, Sx, Sy, Sxx, Sxy)``, so the cost does not grow with the
+    number of paired observations. The gradient is analytic, so the optimiser is deterministic
+    and needs no finite differences.
     """
-    x = np.asarray(x, "float64"); y = np.asarray(y, "float64")
-    sx, sy = x.std(), y.std()
-    if sx < _MIN_SD or sy < _MIN_SD:
-        return float("nan"), float("nan"), float("nan")
-    r = float(np.corrcoef(x, y)[0, 1])
-    b = float(np.sign(r) * sy / sx)
-    return float(y.mean() - b * x.mean()), b, r
+    from scipy.optimize import minimize
+
+    n, Sx, Sy, Sxx, Sxy, _Syy = stats
+    s2 = sigma ** 2
+
+    def nlp(th):
+        beta, a = th
+        B = np.exp(beta)
+        # residual sum of squares, expanded so only the sufficient statistics appear
+        rss = (_Syy - 2.0 * a * Sy - 2.0 * B * Sxy + 2.0 * a * B * Sx
+               + a * a * n + B * B * Sxx)
+        f = rss / (2.0 * s2) + (beta - mu_beta) ** 2 / (2.0 * tau_beta ** 2) \
+            + (a - mu_a) ** 2 / (2.0 * tau_a ** 2)
+        r_sum = Sy - n * a - B * Sx                 # sum of residuals
+        rx_sum = Sxy - a * Sx - B * Sxx             # sum of residual * x
+        g_a = -r_sum / s2 + (a - mu_a) / tau_a ** 2
+        g_b = -B * rx_sum / s2 + (beta - mu_beta) / tau_beta ** 2
+        return f, np.array([g_b, g_a])
+
+    res = minimize(nlp, np.array([beta0, a0]), jac=True, method="L-BFGS-B")
+    return float(res.x[0]), float(res.x[1])
 
 
-def ols_fit(x, y):
-    """Ordinary least squares ``y ~ a + b*x``: ``(a, b, pearson_r)``. See the module note on
-    why this is not the default -- it compresses the variance of what it predicts."""
-    x = np.asarray(x, "float64"); y = np.asarray(y, "float64")
-    if x.std() < _MIN_SD:
-        return float("nan"), float("nan"), float("nan")
-    b, a = np.polyfit(x, y, 1)
-    r = float(np.corrcoef(x, y)[0, 1])
-    return float(a), float(b), r
+def fit_hierarchical_calibration(pairs_by_species, n_species, prior_slope=1.0,
+                                 prior_intercept=0.0, prior_log_slope_sd=0.5,
+                                 prior_intercept_sd=1.0, n_iter=60, tol=1e-9,
+                                 verbose=True):
+    """Partially pooled per-species calibration of BBS onto the eBird scale.
 
+    ``pairs_by_species``: ``{species_index: (x_bbs_log1p, y_ebird_log1p)}`` over overlapping
+    cell-years, restricted to rows where both values are > 0.
 
-def scale_only_fit(x, y):
-    """``b = 1``, ``a = median(y - x)``: a pure offset in log space, i.e. a multiplicative
-    scale in raw units. The last rung, and exactly what the retired ``k[s]`` did."""
-    x = np.asarray(x, "float64"); y = np.asarray(y, "float64")
-    if x.size == 0:
-        return 0.0, 1.0, float("nan")
-    return float(np.median(y - x)), 1.0, float("nan")
-
-
-_FITTERS = {"rma": rma_fit, "ols": ols_fit}
-
-
-def fit_calibration(pairs_by_species, n_species, min_overlap_points=50, form="rma",
-                    min_r=0.2, verbose=True):
-    """Per-species calibration of eBird onto the BBS scale, with the fallback ladder.
-
-    ``pairs_by_species``: ``{species_index: (x_ebird_log1p, y_bbs_log1p)}`` over the
-    overlapping cell-years, already restricted to rows where BOTH values are > 0.
-
-    Returns ``{"a": (S,), "b": (S,), "rung": (S,) of str, "r": (S,), "n": (S,),
-    "pooled": {...}, "form": form}``. Every species gets a usable ``(a, b)``; ``rung``
-    records which rung produced it so a run can be audited rather than trusted.
+    Returns per-species ``a``/``b`` (length ``n_species``), the population
+    ``mu_beta``/``mu_a``/``tau_beta``/``tau_a``/``sigma``, per-species ``n``, and
+    ``shrinkage`` -- the share of each species' estimate that came from the population rather
+    than from its own data. That last one is the honest replacement for a pass/fail flag: how
+    much a species' calibration rests on its own evidence is a continuous quantity, so it is
+    reported as one.
     """
-    if form not in _FITTERS:
-        raise ValueError(f"unknown calibration form {form!r}; expected one of {sorted(_FITTERS)}")
-    fitter = _FITTERS[form]
     S = int(n_species)
-
-    # Rung 2 needs the pooled relationship, so fit it first over every overlapping pair.
-    xs = [np.asarray(p[0], "float64") for p in pairs_by_species.values()]
-    ys = [np.asarray(p[1], "float64") for p in pairs_by_species.values()]
-    x_all = np.concatenate(xs) if xs else np.zeros(0)
-    y_all = np.concatenate(ys) if ys else np.zeros(0)
-    pa, pb, pr = fitter(x_all, y_all) if x_all.size >= 2 else (float("nan"),) * 3
-    if not np.isfinite(pb):
-        pa, pb, pr = scale_only_fit(x_all, y_all)
-        pooled_rung = "pooled_scale_only"
-    else:
-        pooled_rung = f"pooled_{form}"
-
-    a = np.full(S, pa, dtype="float64")
-    b = np.full(S, pb, dtype="float64")
-    r = np.full(S, pr, dtype="float64")
-    n = np.zeros(S, dtype="int64")
-    rung = np.array([pooled_rung] * S, dtype=object)
-
+    stats = np.zeros((S, 6))                        # n, Sx, Sy, Sxx, Sxy, Syy
     for s, (x, y) in pairs_by_species.items():
-        if not (0 <= int(s) < S):
+        s = int(s)
+        if not (0 <= s < S):
             continue
         x = np.asarray(x, "float64"); y = np.asarray(y, "float64")
-        n[s] = x.size
-        if x.size < int(min_overlap_points):
-            continue
-        aa, bb, rr = fitter(x, y)
-        if not np.isfinite(bb):
-            continue
-        if not (np.isfinite(rr) and rr >= float(min_r)):
-            # Two rejections in one test. A NEGATIVE correlation would invert this species'
-            # abundance -- calibrating so more eBird detections mean fewer BBS birds. A
-            # near-ZERO one is worse than it looks under RMA: the slope is sign(r)*sd(y)/sd(x),
-            # so at r ~ 0 it is a pure variance match with an essentially random sign, fitted
-            # to noise. Below min_r the pooled relationship is the more honest estimate.
-            continue
-        a[s], b[s], r[s], rung[s] = aa, bb, rr, form
+        stats[s] = [x.size, x.sum(), y.sum(), float(x @ x), float(x @ y), float(y @ y)]
+    n = stats[:, 0].astype("int64")
+    N = int(n.sum())
 
-    out = {"a": a, "b": b, "r": r, "n": n, "rung": rung, "form": form,
-           "pooled": {"a": float(pa), "b": float(pb), "r": float(pr),
-                      "n": int(x_all.size), "rung": pooled_rung},
-           "min_overlap_points": int(min_overlap_points), "min_r": float(min_r)}
+    mu_beta, mu_a = float(np.log(prior_slope)), float(prior_intercept)
+    tau_beta, tau_a = float(prior_log_slope_sd), float(prior_intercept_sd)
+    beta = np.full(S, mu_beta); a = np.full(S, mu_a)
+    sigma = 1.0
+    if N > 0:
+        ybar = stats[:, 2].sum() / N
+        sigma = max(float(np.sqrt(max(stats[:, 5].sum() / N - ybar ** 2, 1e-12))), _MIN_SD)
+
+    for _ in range(int(n_iter)):
+        prev = np.array([mu_beta, mu_a, tau_beta, tau_a, sigma])
+        for s in range(S):
+            if n[s] == 0:
+                beta[s], a[s] = mu_beta, mu_a       # no data: exactly the population estimate
+                continue
+            beta[s], a[s] = _species_map(stats[s], beta[s], a[s], mu_beta, tau_beta,
+                                         mu_a, tau_a, sigma)
+        # Population LOCATION is estimated; population SPREAD is not, and that is deliberate.
+        # Joint MAP over a hierarchical variance is degenerate in both directions, and both
+        # showed up here in testing. When species agree, the empirical spread collapses to zero
+        # and the prior becomes infinitely strong, pooling every species completely. When one
+        # species disagrees, its departure inflates the spread, which weakens the prior, which
+        # lets it depart further -- a runaway. Neither is a property of the data; both are
+        # artefacts of taking the mode of a variance. So the spread stays at the prior scale:
+        # one stated belief about how much species' calibrations differ from each other, which
+        # is exactly what a prior is for.
+        wb = 1.0 / tau_beta ** 2
+        mu_beta = (wb * beta.sum() + float(np.log(prior_slope)) / prior_log_slope_sd ** 2) / \
+                  (wb * S + 1.0 / prior_log_slope_sd ** 2)
+        wa = 1.0 / tau_a ** 2
+        mu_a = (wa * a.sum() + float(prior_intercept) / prior_intercept_sd ** 2) / \
+               (wa * S + 1.0 / prior_intercept_sd ** 2)
+        if N > 0:
+            rss = 0.0
+            for s in range(S):
+                if n[s] == 0:
+                    continue
+                ns, Sx, Sy, Sxx, Sxy, Syy = stats[s]
+                B = np.exp(beta[s])
+                rss += (Syy - 2 * a[s] * Sy - 2 * B * Sxy + 2 * a[s] * B * Sx
+                        + a[s] ** 2 * ns + B ** 2 * Sxx)
+            sigma = max(float(np.sqrt(max(rss, 0.0) / N)), _MIN_SD)
+        if np.max(np.abs(prev - np.array([mu_beta, mu_a, tau_beta, tau_a, sigma]))) < tol:
+            break
+
+    # Final per-species pass against the converged population, so no species is left holding an
+    # estimate fitted against a stale population value.
+    for s in range(S):
+        if n[s] == 0:
+            beta[s], a[s] = mu_beta, mu_a
+        else:
+            beta[s], a[s] = _species_map(stats[s], beta[s], a[s], mu_beta, tau_beta,
+                                         mu_a, tau_a, sigma)
+
+    b = np.exp(beta)
+    # Curvature of the likelihood in beta at the optimum, against the prior's: the share of the
+    # estimate coming from the population rather than the species' own data.
+    shrink = np.ones(S)
+    for s in range(S):
+        if n[s] == 0:
+            continue
+        like = (b[s] ** 2) * stats[s, 3] / sigma ** 2        # d2/dbeta2 of the fit term
+        shrink[s] = float((1.0 / tau_beta ** 2) / (like + 1.0 / tau_beta ** 2))
+
+    out = {"a": a, "b": b, "beta": beta, "n": n, "shrinkage": shrink,
+           "mu_a": float(mu_a), "mu_beta": float(mu_beta), "mu_b": float(np.exp(mu_beta)),
+           "tau_a": float(tau_a), "tau_beta": float(tau_beta), "sigma": float(sigma),
+           "prior": {"slope": float(prior_slope), "intercept": float(prior_intercept),
+                     "log_slope_sd": float(prior_log_slope_sd),
+                     "intercept_sd": float(prior_intercept_sd)},
+           "n_species_with_overlap": int((n > 0).sum()), "n_overlap_points": N}
     if verbose:
-        counts = {}
-        for k in rung:
-            counts[k] = counts.get(k, 0) + 1
-        print(f"[calib] form={form} pooled a={pa:.3f} b={pb:.3f} r={pr:.3f} "
-              f"(n={x_all.size:,})")
-        print(f"[calib] rungs: " + ", ".join(f"{k}={v}" for k, v in sorted(counts.items()))
-              + f"  (min_r={min_r}, min_overlap={min_overlap_points})")
-        fitted = np.array([k == form for k in rung])
+        fitted = n > 0
+        print(f"[calib] BBS -> eBird, partially pooled over {S} species "
+              f"({int(fitted.sum())} with overlap, {N:,} paired cell-years)")
+        print(f"[calib] population slope {np.exp(mu_beta):.3f} "
+              f"(log-slope {mu_beta:+.3f} +/- {tau_beta:.3f}), "
+              f"intercept {mu_a:+.3f} +/- {tau_a:.3f}, residual sd {sigma:.3f}")
         if fitted.any():
-            print(f"[calib] per-species fits: median r={np.nanmedian(r[fitted]):.3f}, "
-                  f"median slope={np.nanmedian(b[fitted]):.3f}, "
-                  f"median n={int(np.median(n[fitted]))}")
+            print(f"[calib] per-species slope: median {np.median(b[fitted]):.3f}, "
+                  f"range {b[fitted].min():.3f}..{b[fitted].max():.3f} "
+                  f"(positive by construction)")
+            print(f"[calib] shrinkage toward the population: median "
+                  f"{np.median(shrink[fitted]):.3f}, "
+                  f"{int((shrink > 0.5).sum())} species more population than own data")
+        if (~fitted).any():
+            print(f"[calib] {int((~fitted).sum())} species have no overlap and sit exactly on "
+                  f"the population estimate")
     return out
 
 
-def apply_calibration(X_ebird_log, cal):
-    """Map log1p eBird values onto the BBS log1p scale: ``a[s] + b[s]*x`` (pure).
+def apply_calibration(X_bbs_log, cal):
+    """Map log1p BBS values onto the eBird log1p scale: ``a[s] + b[s]*x`` (pure).
 
-    Clipped at 0 because the output feeds ``log1p``-space Ruzicka, where a negative value is
-    not a smaller abundance -- it is outside the domain, and ``sum(min)/sum(max)`` would
-    silently produce a similarity greater than 1 or a negative denominator.
+    Clipped at 0 because the output feeds log1p-space Ruzicka, where a negative value is not a
+    smaller abundance -- it is outside the domain, and ``sum(min)/sum(max)`` would silently
+    produce a similarity above 1 or flip the denominator's sign.
     """
-    X = np.asarray(X_ebird_log, "float64")
+    X = np.asarray(X_bbs_log, "float64")
     a = np.asarray(cal["a"], "float64").reshape(1, -1)
     b = np.asarray(cal["b"], "float64").reshape(1, -1)
     if X.shape[1] != a.shape[1]:
@@ -181,18 +231,24 @@ def apply_calibration(X_ebird_log, cal):
 
 
 def calibration_meta(cal, species):
-    """JSON-safe per-species calibration record for ``points_meta.json``.
+    """JSON-safe per-species record for ``points_meta.json``.
 
-    These diagnostics are the artifact that reveals whether the two products agree at all,
-    and are worth reading BEFORE trusting a multi-task run: a low median ``r`` means the
-    calibration is fitting noise and the eBird rows are not measuring the same thing.
+    ``shrinkage`` is the field to read: near 1 means that species' calibration is essentially
+    the population relationship because its own data said little, near 0 means its own data
+    determined it. There is no pass/fail flag to read instead, deliberately -- how much a
+    species' estimate rests on its own evidence is a continuous quantity.
     """
     return {
-        "form": cal["form"], "pooled": cal["pooled"],
-        "min_overlap_points": cal["min_overlap_points"],
+        "direction": "bbs_to_ebird", "method": "hierarchical_map",
+        "population": {"slope": cal["mu_b"], "log_slope": cal["mu_beta"],
+                       "log_slope_sd": cal["tau_beta"],
+                       "intercept": cal["mu_a"], "intercept_sd": cal["tau_a"],
+                       "residual_sd": cal["sigma"]},
+        "prior": cal["prior"],
+        "n_species_with_overlap": cal["n_species_with_overlap"],
+        "n_overlap_points": cal["n_overlap_points"],
         "per_species": {str(c): {"a": float(cal["a"][i]), "b": float(cal["b"][i]),
-                                 "r": (None if not np.isfinite(cal["r"][i])
-                                       else float(cal["r"][i])),
-                                 "n": int(cal["n"][i]), "rung": str(cal["rung"][i])}
+                                 "n": int(cal["n"][i]),
+                                 "shrinkage": float(cal["shrinkage"][i])}
                         for i, c in enumerate(species)},
     }

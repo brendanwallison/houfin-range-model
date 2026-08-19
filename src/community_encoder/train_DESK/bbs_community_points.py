@@ -376,7 +376,11 @@ def ebird_window_grid(abd, ppy, mid, year):
 
 
 def overlap_pairs(X_eb_log, K_eb, X_bbs_log, K_bbs):
-    """``{species_index: (x_ebird, y_bbs)}`` over cell-years both products cover (pure).
+    """``{species_index: (x_bbs, y_ebird)}`` over cell-years both products cover (pure).
+
+    ``x`` is BBS and ``y`` is eBird because eBird is the common frame: it is the richer product
+    (17,205 cells against BBS's ~3,900, denser per row, modelled from far more effort), so the
+    fitted transform lands on the sparser data rather than on the majority of it.
 
     Restricted to entries where BOTH values are > 0. Zeros are excluded deliberately: log1p(0)
     is 0, so a mass of double-zero rows would pin the fit through the origin and flatten the
@@ -389,23 +393,21 @@ def overlap_pairs(X_eb_log, K_eb, X_bbs_log, K_bbs):
         j = bbs_at.get((int(r), int(c), int(y)))
         if j is None:
             continue
-        xe, yb = X_eb_log[i], X_bbs_log[j]
-        both = (xe > 0) & (yb > 0)
+        ye, xb = X_eb_log[i], X_bbs_log[j]
+        both = (ye > 0) & (xb > 0)
         for s in np.nonzero(both)[0]:
             xs, ys = pairs.setdefault(int(s), ([], []))
-            xs.append(float(xe[s])); ys.append(float(yb[s]))
+            xs.append(float(xb[s])); ys.append(float(ye[s]))
     return {s: (np.asarray(x), np.asarray(y)) for s, (x, y) in pairs.items()}
 
 
-def build_ebird_window_rows(codes, X_bbs_log, K_bbs, window=None, weight=1.0,
-                            min_overlap_points=50, form="rma", min_r=0.2, verbose=True):
-    """eBird half of the target, calibrated onto the BBS scale.
+def build_ebird_window_rows(codes, window=None, weight=1.0, verbose=True):
+    """eBird half of the target, in eBird's OWN units.
 
-    Returns ``(X, keys, weights, meta)``. ``X`` is already in BBS log1p units, so it can be
-    stacked with the BBS rows and fed to one Ruzicka kernel.
+    No calibration here: eBird is the common frame, so it is BBS that gets transformed onto
+    this scale (see ``calibrate_bbs_rows``). Returns ``(X, keys, weights, meta)``.
     """
     from src.config_utils import load_data_config
-    from .bbs_ebird_calibration import (apply_calibration, calibration_meta, fit_calibration)
     from .trend_community import _load_trend_grid
     from src.data.preprocess import bbs as bbsmod
     from src.data.preprocess import bbs_community
@@ -458,12 +460,8 @@ def build_ebird_window_rows(codes, X_bbs_log, K_bbs, window=None, weight=1.0,
     X_raw = np.concatenate(rows, axis=0)
     have = np.concatenate(have, axis=0)
     K = np.concatenate(keys, axis=0).astype("int32")
-    X_log = bbs_community.log1p_community(X_raw)
-
-    pairs = overlap_pairs(X_log, K, X_bbs_log, K_bbs)
-    cal = fit_calibration(pairs, len(codes), min_overlap_points=min_overlap_points,
-                          form=form, min_r=min_r, verbose=verbose)
-    X = np.where(have, apply_calibration(X_log, cal), 0.0).astype("float32")
+    X = bbs_community.log1p_community(X_raw)
+    X = np.where(have, X, 0.0).astype("float32")
     W = np.full(K.shape[0], float(weight), dtype="float32")
 
     # A row with no data for ANY species is not an observation of an empty community -- it is
@@ -479,20 +477,39 @@ def build_ebird_window_rows(codes, X_bbs_log, K_bbs, window=None, weight=1.0,
         "weight": float(weight),
         "species_missing_abd": missing_abd, "species_missing_abd_ppy": missing_ppy,
         "n_species_with_a_window": len(per_species_years),
-        "n_overlap_species": len(pairs),
-        "n_overlap_points": int(sum(len(x) for x, _ in pairs.values())),
         "n_rows_dropped_no_data": n_empty,
         "mean_species_with_data_per_row": float(have.sum(1).mean()) if have.size else 0.0,
-        "calibration": calibration_meta(cal, codes),
     }
     if verbose:
         print(f"[ebird-window] {meta['n_rows']:,} rows over {rr.size:,} cells x "
               f"{len(all_years)} years {all_years[0]}..{all_years[-1]}")
-        print(f"[ebird-window] calibration overlap: {meta['n_overlap_points']:,} points "
-              f"across {len(pairs)} species")
         print(f"[ebird-window] {meta['mean_species_with_data_per_row']:.1f} species with data "
               f"per row; dropped {n_empty:,} rows with no data for any species")
     return X, K, W, meta
+
+
+def calibrate_bbs_rows(X_bbs_log, K_bbs, X_eb_log, K_eb, codes, prior_slope=1.0,
+                       prior_intercept=0.0, prior_log_slope_sd=0.5, prior_intercept_sd=1.0,
+                       verbose=True):
+    """Transform the BBS rows onto the eBird scale. Returns ``(X_bbs_calibrated, meta)``.
+
+    eBird is the common frame because it is the richer product, so the fitted transform lands
+    on the sparser data. Every species gets its own slope and intercept, shrunk toward a
+    population relationship in proportion to how much its own overlapping data actually says --
+    so a species with little overlap, or with no real agreement between the two products, is
+    pulled to the population estimate rather than fitted to noise, and one with no overlap at
+    all lands exactly on it.
+    """
+    from .bbs_ebird_calibration import (apply_calibration, calibration_meta,
+                                        fit_hierarchical_calibration)
+
+    pairs = overlap_pairs(X_eb_log, K_eb, X_bbs_log, K_bbs)
+    cal = fit_hierarchical_calibration(
+        pairs, len(codes), prior_slope=prior_slope, prior_intercept=prior_intercept,
+        prior_log_slope_sd=prior_log_slope_sd, prior_intercept_sd=prior_intercept_sd,
+        verbose=verbose)
+    X = apply_calibration(X_bbs_log, cal)
+    return X, calibration_meta(cal, codes)
 
 
 def main():
@@ -537,9 +554,16 @@ def main():
         if ecfg.get("start_year") and ecfg.get("end_year"):
             win = (int(ecfg["start_year"]), int(ecfg["end_year"]))
         Xe, Ke, We, emeta = build_ebird_window_rows(
-            codes, X, keys, window=win, weight=float(ecfg.get("weight", 1.0)),
-            min_overlap_points=int(ccfg.get("min_overlap_points", 50)),
-            form=str(ccfg.get("form", "rma")), min_r=float(ccfg.get("min_r", 0.2)))
+            codes, window=win, weight=float(ecfg.get("weight", 1.0)))
+        # BBS is what gets transformed: eBird is the common frame, so the fitted transform
+        # lands on the sparser product rather than on the majority of the data.
+        X, cmeta = calibrate_bbs_rows(
+            X, keys, Xe, Ke, codes,
+            prior_slope=float(ccfg.get("prior_slope", 1.0)),
+            prior_intercept=float(ccfg.get("prior_intercept", 0.0)),
+            prior_log_slope_sd=float(ccfg.get("prior_log_slope_sd", 0.5)),
+            prior_intercept_sd=float(ccfg.get("prior_intercept_sd", 1.0)))
+        meta["calibration"] = cmeta
         X, keys, weights, source, supervise = concat_sources(X, keys, weights, Xe, Ke, We)
         meta["ebird_window"] = emeta
         n_sup_eb = int((supervise & (source == SOURCE_EBIRD)).sum())

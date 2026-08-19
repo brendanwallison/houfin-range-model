@@ -489,8 +489,8 @@ def build_ebird_window_rows(codes, window=None, weight=1.0, verbose=True):
 
 
 def calibrate_bbs_rows(X_bbs_log, K_bbs, X_eb_log, K_eb, codes, prior_exponent=1.0,
-                       prior_log_exponent_sd=0.10, prior_log_scale_sd=0.10,
-                       population_log_exponent_sd=5.0, population_log_scale_sd=5.0,
+                       prior_log_exponent_sd=0.05, prior_log_scale_sd=0.10,
+                       population_log_exponent_sd=0.05, population_log_scale_sd=5.0,
                        verbose=True):
     """Transform the BBS rows onto the eBird scale. Returns ``(X_bbs_calibrated, meta)``.
 
@@ -563,9 +563,9 @@ def main():
         X, cmeta = calibrate_bbs_rows(
             X, keys, Xe, Ke, codes,
             prior_exponent=float(ccfg.get("prior_exponent", 1.0)),
-            prior_log_exponent_sd=float(ccfg.get("prior_log_exponent_sd", 0.10)),
+            prior_log_exponent_sd=float(ccfg.get("prior_log_exponent_sd", 0.05)),
             prior_log_scale_sd=float(ccfg.get("prior_log_scale_sd", 0.10)),
-            population_log_exponent_sd=float(ccfg.get("population_log_exponent_sd", 5.0)),
+            population_log_exponent_sd=float(ccfg.get("population_log_exponent_sd", 0.05)),
             population_log_scale_sd=float(ccfg.get("population_log_scale_sd", 5.0)))
         meta["calibration"] = cmeta
         X, keys, weights, source, supervise = concat_sources(X, keys, weights, Xe, Ke, We)

@@ -71,36 +71,24 @@ disagreeing will move them.
 FOUR separate beliefs, deliberately given four knobs -- an earlier version used one number for
 two of them, which conflated things that are not the same question:
 
-The split that matters is LOCATION versus SPREAD, and they pull in opposite directions:
+The two parameters want opposite things from their priors.
 
-- The population LOCATIONS are free to drift. We have no idea what the units conversion
-  between a roadside route count and a modelled abundance index is, nor whether the typical
-  exponent is exactly 1, so ``population_log_exponent_sd`` and ``population_log_scale_sd`` are
-  both 5.0 -- effectively flat. The data determines where the population sits.
-- The SPREAD around that location is tight. ``prior_log_exponent_sd`` and
-  ``prior_log_scale_sd`` are both 0.10, so 95% of species lie within a 1.49x total span of the
-  population value.
+The EXPONENT ``d``: we strongly prefer a LINEAR relationship between the two surveys, so its
+population location gets a prior at 1 (``population_log_exponent_sd`` 0.05), and species
+deviate from it with spread ``prior_log_exponent_sd`` = 0.05. Both are PREFERENCES rather than
+constraints: the location is estimated from ~94 species at once, so at 0.05 the prior carries
+about 1% of the weight and an observed population exponent of 1.378 would land at 1.356. If the
+exponent ever needs holding harder, this is the knob, and it has to go well below 0.05 to bite
+against that many species.
 
-For the scale that says: species do not differ wildly in DETECTABILITY BETWEEN THE TWO
-SURVEYS. Note that is the ratio, not absolute detectability -- a species that is hard for BBS
-to detect is usually also hard for eBird observers, so the ratio between the two should stay
-close to typical even where the absolute detectability does not. An earlier version left this
-at 2.0, admitting a 2981x span, on the mistaken reasoning that species differ in
-detectability. They do; the RATIO is the thing that should not.
-
-For the exponent it says the SHAPE of the relationship is close to common across species. A
-value above 1 mostly reflects BBS saturating at high abundance -- 50 stops, limited counting
-time -- which is real but should be similar across species.
-
-``exp(delta)`` keeps every exponent positive. A negative one would invert a species --
-calibrating so that more BBS birds mean less eBird abundance -- which is never a calibration.
-
-The two ``tau`` values are NOT estimated. Joint MAP over a hierarchical variance is degenerate
-in both directions and both showed up in testing: when species agree the empirical spread
-collapses to zero and the prior becomes infinitely strong, pooling everything completely; when
-one species disagrees its departure inflates the spread, weakening the prior, letting it depart
-further. Neither is a property of the data. So they stay stated beliefs about how much species'
-calibrations differ, which is what a prior is for.
+The SCALE ``k``: the opposite. Its population location is free (``population_log_scale_sd``
+5.0, effectively flat), because we have no idea what the units conversion between a roadside
+route count and a modelled abundance index is and the data should determine it. The spread
+around it is tight (``prior_log_scale_sd`` 0.10, so 95% of species within a 1.49x span),
+because species should not differ wildly in DETECTABILITY BETWEEN THE TWO SURVEYS. Note that
+is the ratio, not absolute detectability -- a species that is hard for BBS to detect is
+usually also hard for eBird observers, so the ratio between them should stay near typical even
+where the absolute detectability does not.
 
 ## Matching spreads rather than least squares
 
@@ -147,8 +135,8 @@ def _species_estimate(x_log, y_log):
 
 
 def fit_hierarchical_calibration(pairs_by_species, n_species, prior_exponent=1.0,
-                                 prior_log_exponent_sd=0.10, prior_log_scale_sd=0.10,
-                                 population_log_exponent_sd=5.0,
+                                 prior_log_exponent_sd=0.05, prior_log_scale_sd=0.10,
+                                 population_log_exponent_sd=0.05,
                                  population_log_scale_sd=5.0,
                                  n_iter=200, tol=1e-12, verbose=True):
     """Partially pooled per-species calibration of BBS onto the eBird scale: ``E = k * B^d``.

@@ -72,12 +72,9 @@ def test_apply_refuses_a_species_count_mismatch():
 def test_a_species_with_ample_data_recovers_its_own_exponent_and_scale():
     cal = fit_hierarchical_calibration({0: _pairs(3000, k=0.5, d=0.7)}, n_species=1,
                                        verbose=False)
-    assert abs(cal["d"][0] - 0.7) < 0.03
-    B = np.array([[2.0], [20.0]])
-    out = np.expm1(apply_calibration(np.log1p(B), {"k": cal["k"][:1], "d": cal["d"][:1],
-                                                   "B0": cal["B0"]}))
-    assert np.allclose(out.ravel(), 0.5 * B.ravel() ** 0.7, rtol=0.10), out.ravel()
-    assert cal["shrinkage"][0] < 0.05      # tighter spread prior -> a little more pull, still small
+    # pulled slightly toward 1 by the linear preference, but its own data still decides
+    assert 0.70 <= cal["d"][0] <= 0.78, cal["d"][0]
+    assert cal["shrinkage"][0] < 0.20      # a real pull toward linear, not a constraint
 
 
 def test_species_with_genuinely_different_exponents_keep_them():
@@ -117,15 +114,25 @@ def test_every_exponent_is_positive():
     assert (cal["d"] > 0).all()
 
 
-def test_the_population_values_are_learned_not_fixed():
-    """Both locations move with the evidence. Only the SPREADS are fixed."""
+def test_the_linear_preference_is_a_preference_and_the_data_wins():
+    """The exponent's population location is nudged toward 1, not held there. With every
+    species truly at 1.5 and 2000 observations each, the fit lands near 1.4 -- a small pull
+    toward linear that plenty of evidence overrides. Holding it harder means taking the
+    population prior well below 0.05, because that location is estimated from all species at
+    once and the prior competes with every one of them."""
     pairs = {i: _pairs(2000, k=0.05, d=1.5, seed=i) for i in range(8)}
     cal = fit_hierarchical_calibration(pairs, n_species=8, verbose=False)
-    assert cal["mu_d"] > 1.25, cal["mu_d"]              # moved off the prior's 1.0
-    # the population scale is eBird's value at a typical BBS count, so check it against the
-    # truth evaluated there rather than against the raw coefficient
-    expected = 0.05 * cal["B0"] ** 1.5
-    assert abs(np.log(cal["mu_k"] / expected)) < 0.3, (cal["mu_k"], expected)
+    assert cal["mu_d"] < 1.5, cal["mu_d"]               # pulled toward linear
+    assert cal["mu_d"] > 1.2, cal["mu_d"]               # but nowhere near pinned
+    assert 1.30 < cal["d"].mean() < 1.50, cal["d"]
+
+
+def test_genuinely_linear_data_is_left_alone():
+    """The other side: when the data agrees with the preference, nothing is distorted."""
+    pairs = {i: _pairs(2000, k=0.05, d=1.0, seed=i) for i in range(8)}
+    cal = fit_hierarchical_calibration(pairs, n_species=8, verbose=False)
+    assert abs(cal["mu_d"] - 1.0) < 0.02
+    assert np.abs(cal["d"] - 1.0).max() < 0.02
 
 
 def test_the_prior_is_a_pure_unit_conversion():
@@ -179,16 +186,16 @@ def test_the_tight_exponent_prior_pulls_thin_species_together():
     assert list(np.argsort(cal["d"])) == list(range(len(truth)))
 
 
-def test_the_population_is_free_to_drift_while_the_spread_stays_tight():
-    """The structural split. We have no idea what the units conversion between a route count
-    and a modelled abundance index is, so the population LOCATION must be free -- but species
-    should sit close to whatever that turns out to be. Location loose, spread tight."""
-    cal = fit_hierarchical_calibration({}, n_species=2, verbose=False)
-    pr = cal["prior"]
-    assert pr["population_log_scale_sd"] > 10 * pr["log_scale_sd"]
-    assert pr["population_log_exponent_sd"] > 10 * pr["log_exponent_sd"]
-    span_k = np.exp(4 * pr["log_scale_sd"])
-    assert span_k < 2.0, f"detectability ratios may span {span_k:.2f}x -- too loose"
+def test_the_two_parameters_get_different_prior_structures():
+    """The exponent's population location carries a prior at 1, because a linear relationship
+    between the two surveys is what we expect. The scale's is effectively flat, because the
+    units conversion between a route count and a modelled abundance index is genuinely unknown
+    and the data should decide it. Its SPREAD is still tight, because species should not differ
+    wildly in detectability BETWEEN the two surveys."""
+    pr = fit_hierarchical_calibration({}, n_species=2, verbose=False)["prior"]
+    assert pr["population_log_exponent_sd"] <= 0.1, "the exponent's location is unconstrained"
+    assert pr["population_log_scale_sd"] > 10 * pr["log_scale_sd"], "the scale is not free"
+    assert np.exp(4 * pr["log_scale_sd"]) < 2.0, "detectability ratios too loose"
 
 
 def test_the_population_scale_really_does_follow_the_data():
@@ -200,10 +207,12 @@ def test_the_population_scale_really_does_follow_the_data():
     assert abs(np.log(cal["mu_k"] / expected)) < 0.3, (cal["mu_k"], expected)
 
 
-def test_between_species_spread_is_separate_from_confidence_in_the_population():
-    """Two different beliefs, two knobs. Species could be tightly clustered around an exponent
-    that is not 1, so 'how much species differ from each other' and 'how sure we are the
-    population value is 1' cannot share a number."""
-    cal = fit_hierarchical_calibration({}, n_species=2, verbose=False)
-    assert "population_log_exponent_sd" in cal["prior"]
-    assert cal["prior"]["population_log_exponent_sd"] != cal["prior"]["log_exponent_sd"]
+def test_the_four_priors_are_separate_knobs():
+    """Between-species spread and confidence in the population location are different beliefs,
+    for each of the two parameters, so there are four values and not two. They may happen to
+    coincide numerically -- both exponent knobs are 0.05 -- but they are set independently."""
+    pr = fit_hierarchical_calibration({}, n_species=2, verbose=False)["prior"]
+    for key in ("log_exponent_sd", "log_scale_sd",
+                "population_log_exponent_sd", "population_log_scale_sd"):
+        assert key in pr, key
+    assert pr["log_scale_sd"] != pr["population_log_scale_sd"]

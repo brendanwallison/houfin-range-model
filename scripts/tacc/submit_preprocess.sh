@@ -4,6 +4,7 @@
 # override QUEUE/TIME for a full run. CLI -p/-t override the script's #SBATCH.
 #     bash scripts/tacc/submit_preprocess.sh                          # development, 2h
 #     QUEUE=normal TIME=06:00:00 bash scripts/tacc/submit_preprocess.sh   # full run
+#     STAGES="bbs_points trend_reference" bash scripts/tacc/submit_preprocess.sh
 set -euo pipefail
 source "$(dirname "$0")/env.sh"
 
@@ -17,7 +18,7 @@ A=""
 # --parsable; grab just the numeric job id (see submit.sh).
 submit () { sbatch "$@" 2>&1 | grep -Eo '^[0-9]+$' | tail -1; }
 
-prep=$(submit $A -p "$QUEUE" -t "$TIME" --parsable scripts/tacc/01_preprocess.slurm)
+prep=$(submit $A -p "$QUEUE" -t "$TIME" --export=ALL --parsable scripts/tacc/01_preprocess.slurm)
 [ -n "$prep" ] || { echo "01_preprocess submit failed (no job id captured)"; exit 1; }
 echo "submitted 01_preprocess ($QUEUE, $TIME): $prep"
 echo "watch: squeue -u \$USER ; log: houfin_prep.o$prep"

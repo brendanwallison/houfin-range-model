@@ -38,7 +38,7 @@ date
 
 # Default to the trend preprocessing chain unless the submitter overrode STAGES
 # (matches pipeline.sh's default; the weekly eBird stages are opt-in).
-export STAGES="${STAGES:-preprocess climate climate_grid states bbs_trend bbs_abund ebird_trend trend_points}"
+export STAGES="${STAGES:-preprocess climate climate_grid states bbs_trend bbs_abund ebird_trend bbs_points trend_reference}"
 bash "$SLURM_SUBMIT_DIR/scripts/tacc/pipeline.sh"
 
 echo "=== 00_preprocess_all complete ==="

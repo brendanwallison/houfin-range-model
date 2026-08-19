@@ -49,7 +49,7 @@ date
 #   ebird_trend  -> eBird S&T trends parquet gridded (supplies the trends-abd anchor)
 #   trend_points -> X_points/point_index: the community point set the ESK consumes
 # The GPU job (20_encoder) stays purely spacetime-esk -> desk -> cube -> validate.
-export STAGES="${STAGES:-states bbs_trend bbs_abund ebird_trend trend_points}"
+export STAGES="${STAGES:-states bbs_trend bbs_abund ebird_trend bbs_points trend_reference}"
 bash "$SLURM_SUBMIT_DIR/scripts/tacc/pipeline.sh"
 
 echo "=== 04_states complete ($STAGES) -> states + aligned trend rasters + trend point set ==="

@@ -349,6 +349,76 @@ rm -rf $HOUFIN_PROCESSED/encoder     # regenerated downstream
 Confirm the BBS release has `bbs_2026_release/{SpeciesList.csv,Weather.csv,
 Routes.csv,States/*.csv}` (SpeciesList.csv drives the AOU↔eBird crosswalk).
 
+### What the encoder is trained on (changed)
+
+The encoder used to learn from a target built out of the published trend products. It no
+longer does. That target reconstructed each cell from about four time-invariant numbers,
+capped the result, and then blurred it across space, which left it smooth in both space and
+time — so simple spatial interpolation was close to optimal on it by construction.
+Validation MSE never beat an inverse-distance baseline in four runs (1.49×, 1.97×, 2.10×,
+2.02× worse). That is a fact about the target's shape, not about the covariates.
+
+What it learns from now:
+
+| | |
+|---|---|
+| **Raw BBS** | route-level community counts aggregated to 27 km cells, 1966–2025. There are 1.08 routes per cell-year, so that aggregation is very nearly a no-op rather than a spatial average. ~3,900 cells. |
+| **eBird trends** | inside their own 2012–2022 window only, moving within it using the product's own rate. Never outside — that is the extrapolation being removed. Much wider footprint, so together the two supervise ~12,400 of 17,209 land cells. |
+| **Calibration** | puts eBird on the BBS count scale so both can be rows of one similarity kernel. Its per-species correlations are the diagnostic to read before trusting a run. |
+
+Two new stages build it, and both are in the default preprocessing list:
+
+```bash
+STAGES="bbs_points trend_reference" bash scripts/tacc/submit_preprocess_all.sh
+```
+
+`bbs_points` writes the training target. `trend_reference` rebuilds the trend products
+**without** our spatial blur, into a separate directory, for use as a sanity check.
+
+`trend_points` — the old target — is no longer in the default list. Run it explicitly and
+point `target.points_dir` at its output only to reproduce the retired target for an A/B.
+
+**Read these three numbers before spending GPU time**, from the `bbs_points` log:
+
+```bash
+grep -E "^\[bbs-points\]|^\[calib\]|^\[ebird-window\]|^\[points\]" houfin_preall.o<jobid>
+```
+
+- **species per cell-year.** ~16 of 96 with a realistic community. If it comes in near 8 the
+  counts are sparse enough that the similarity kernel may be noisy, and
+  `target.bbs.temporal_ema_tau` is the lever.
+- **calibration correlations.** `[calib] per-species fits: median r=...`. A low median means
+  the calibration is fitting noise and the eBird rows are not measuring the same thing as the
+  BBS rows. Species below `min_r` fall back to a pooled relationship, and the rung counts are
+  printed.
+- **supervised cells.** Expect ~12,400. Much lower means the eBird half did not land.
+
+### Grading the result
+
+Three validations, answering different questions:
+
+```bash
+STAGES=validate            bash scripts/tacc/submit_encoder.sh   # against the target itself
+STAGES=bbs-route-validate  bash scripts/tacc/submit_encoder.sh   # against raw route counts
+STAGES=validate-reference  bash scripts/tacc/submit_encoder.sh   # against the trend products
+```
+
+`validate-reference` reports five comparisons separately rather than as one score, because
+the reference is smoothed spatially and closed-form temporally and so the two axes are
+contaminated differently:
+
+1. temporal direction — does the model move the same way as the reference? (clean)
+2. temporal rank — are the cells that changed most the same cells? (clean)
+3. species trend sign — does the long-run direction match the published rate?
+4. full similarity structure across all cell-year pairs
+5. spatial similarity within one year — **the contaminated axis**, since the blur acts on it
+
+A model scoring well on 5 and poorly on 1 is evidence about the reference, not the model.
+
+**The number that carries across this change** is `bbs_route_validate`'s `rmse_skill`. It is
+graded against raw route counts either way, so it is the only metric comparable to the runs
+made before the target changed. Record the current value first.
+
 ## 3e. Encoder (spacetime-esk → DESK → cube → validate) — separate GPU job
 
 The encoder is **not** preprocessing: ESK (Nyström kernel-PCA) and DESK

@@ -237,6 +237,40 @@ def similarity_agreement(X_ref, Zm, Z_null=None):
 
 # ----------------------------- orchestration -----------------------------
 
+def build_reference_points(config=None):
+    """Build the reference point set: the trend products WITHOUT our spatial blur.
+
+    Same builder as the retired target (``trend_community.build_trend_points``) with two
+    overrides from the ``trend_reference`` config block:
+
+    - ``smooth_sigma_cells = 0``. The blur exists to stabilise a training target, and there is
+      no target to stabilise any more. Leaving it on would mean comparison 5 grades the model's
+      spatial structure against our own smoothing of the products rather than against the
+      products, so a poor score there would be unattributable.
+    - a separate ``points_dir``, so the reference and the training target coexist and the A/B
+      against the old target stays runnable.
+
+    The soft caps stay ON. Their stabilising purpose is gone, but their outlier-control purpose
+    is not: a handful of 100x-fold extrapolations would dominate an RMSE or a rank correlation,
+    and comparisons 2 and 4 are exactly those.
+    """
+    import copy
+
+    from src.config_utils import load_config
+    from .trend_community import build_trend_points
+
+    config = load_config(config) if not isinstance(config, dict) else config
+    rcfg = config.get("trend_reference", {}) or {}
+    cfg = copy.deepcopy(config)
+    cfg["trend"]["smooth_sigma_cells"] = float(rcfg.get("smooth_sigma_cells", 0.0))
+    if rcfg.get("points_dir"):
+        cfg["trend"]["points_dir"] = rcfg["points_dir"]
+    print(f"[ref-build] trend products WITHOUT the spatial blur "
+          f"(smooth_sigma_cells={cfg['trend']['smooth_sigma_cells']}) "
+          f"-> {cfg['trend']['points_dir']}", flush=True)
+    return build_trend_points(cfg)
+
+
 def load_reference(points_dir):
     """The reference point set: ``(X_ref, keys)``, log1p community vectors per (cell, year).
 

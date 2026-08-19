@@ -69,6 +69,7 @@ _vpath () {
         luh3)      echo "$DATA/luh3_grid" ;;
         hyde)      echo "$DATA/hyde35_grid" ;;
         bui)       echo "$DATA/bui_grid" ;;
+        bbs_points) echo "$HOUFIN_PROCESSED/encoder/bbs_points/X_points.npy" ;;
         soilgrids) echo "$DATA/soilgrids_grid" ;;
         elevation) echo "$DATA/elevation" ;;
         subcell)   echo "$DATA/elevation/subcell_centroids.csv" ;;
@@ -173,6 +174,14 @@ stage_bbs_abund        () { run bbs_abund        python -m src.data.preprocess.b
 stage_ebird_trend      () { run ebird_trend      python -m src.data.preprocess.ebird_trend; }
 stage_select_community () { run select_community python -m src.data.identify.select_trend_community; }
 stage_trend_points     () { run trend_points     python scripts/run_encoder.py trend-points; }
+# The LIVE training target: raw route-level BBS community counts plus the eBird trend product
+# inside its own window, put on one scale by an explicit calibration. Replaces trend_points as
+# the thing the encoder learns from -- trend_points now only builds the sanity-check reference.
+# CPU; reads the BBS release and the eBird trend grid.
+stage_bbs_points       () { run bbs_points       python scripts/run_encoder.py bbs-points; }
+# The reference for validate_reference: the same trend products WITHOUT our spatial blur, in a
+# separate points_dir so it and the training target coexist. CPU.
+stage_trend_reference  () { run trend_reference  python scripts/run_encoder.py trend-reference; }
 stage_esk       () { run esk       python scripts/run_encoder.py esk; }
 stage_spacetime_esk () { run spacetime_esk python scripts/run_encoder.py spacetime-esk; }
 stage_desk      () { run desk      python scripts/run_encoder.py desk; }
@@ -182,6 +191,12 @@ stage_validate  () { run validate  python scripts/run_encoder.py validate; }
 # `validate` grades against the IDW-interpolated BBS trend surface, this grades against raw route
 # counts at surveyed cell-years only, where reproducing an interpolator cannot win. GPU queue.
 stage_bbs_route_validate () { run bbs_route_validate python scripts/run_encoder.py bbs-route-validate; }
+# Five comparisons against the trend products as a REFERENCE rather than as truth: temporal
+# direction and rank (which use the products' direction and ordering, not their magnitudes),
+# per-species trend sign, and the full and spatial similarity structures. Reported separately
+# because the reference is smoothed spatially and closed-form temporally, so a poor spatial
+# score is partly the reference. GPU queue: one encode pass over the EMA span.
+stage_validate_reference () { run validate_reference python scripts/run_encoder.py validate-reference; }
 stage_encoder_viz () {
     # Always reconstruct the comparison arrays in a submitted diagnostics run.
     # Direct invocations may reuse the provenance-checked cache.
@@ -191,9 +206,14 @@ stage_path_features () { run path_features python src/processing/generate_all_pa
 stage_model_ingest () { run model_ingest python scripts/ingest_model_data.py; }
 stage_viz       () { run viz       python scripts/viz/quicklook_grids.py --climate; }
 
+# NOTE on the default list: bbs_points (raw BBS + the eBird window) is the TRAINING TARGET and
+# trend_reference is the sanity-check reference. `trend_points` -- the old trend-product target --
+# is deliberately NOT in the default any more; run it explicitly only to reproduce the retired
+# target for an A/B (and point target.points_dir at its output to train against it).
+#
 # Default = the CPU preprocessing chain only. Encoder stages (esk/desk/cube/
 # validate) are opt-in via STAGES from the GPU encoder job.
-STAGES="${STAGES:-preprocess climate climate_grid states bbs_trend bbs_abund ebird_trend trend_points}"
+STAGES="${STAGES:-preprocess climate climate_grid states bbs_trend bbs_abund ebird_trend bbs_points trend_reference}"
 echo "STAGES: $STAGES"
 for s in $STAGES; do
     fn="stage_${s//-/_}"      # accept either 'spacetime-esk' or 'spacetime_esk' (bash fn names can't have '-')

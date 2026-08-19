@@ -9,8 +9,8 @@ stage is meant to run as its own process (the TACC pipeline calls this once per
 stage), so the two roots never collide within one interpreter.
 
     python scripts/run_encoder.py
-        {ebird-cache|trend-points|esk|spacetime-esk|desk|cube|validate|
-         bbs-route-validate|single-year-analysis}
+        {ebird-cache|bbs-points|trend-points|trend-reference|esk|spacetime-esk|desk|
+         cube|validate|validate-reference|bbs-route-validate|single-year-analysis}
 """
 import os
 import sys
@@ -49,6 +49,24 @@ def main():
         from community_encoder.analysis_2023.compare_esk_desk import compare_esk_desk
         run_single_year_analysis()
         compare_esk_desk()
+    elif cmd == "bbs-points":
+        # The raw-BBS + eBird-window training target: what the surveyors counted, rather than a
+        # reconstruction from published trend rates.
+        from src.community_encoder.train_DESK.bbs_community_points import main as bbs_points_main
+        sys.argv = [sys.argv[0]] + sys.argv[2:]
+        bbs_points_main()
+    elif cmd == "trend-reference":
+        # The trend products rebuilt WITHOUT our spatial blur, for use as a sanity-check
+        # reference rather than as a target.
+        from src.community_encoder.train_DESK.validate_trend_reference import build_reference_points
+        build_reference_points()
+    elif cmd == "validate-reference":
+        # Five comparisons against that reference: direction and rank (clean), species trend
+        # sign, and the full and spatial similarity structures (the spatial one grades the axis
+        # the products' own smoothing acts on). Needs a GPU queue -- one encode pass over the
+        # EMA span, same cost as bbs-route-validate.
+        from src.community_encoder.train_DESK.validate_trend_reference import run_panel
+        run_panel()
     elif cmd == "bbs-route-validate":
         # Route-level BBS validation: grades DESK against a no-change null on GENUINELY
         # SURVEYED cell-years, escaping the IDW-interpolated target every other metric uses.
@@ -56,8 +74,9 @@ def main():
         from src.community_encoder.train_DESK.validate_bbs_routes import run
         run()
     else:
-        sys.exit(f"unknown encoder stage: {cmd!r} (ebird-cache|trend-points|esk|"
-                 "spacetime-esk|desk|cube|validate|bbs-route-validate|"
+        sys.exit(f"unknown encoder stage: {cmd!r} (ebird-cache|bbs-points|trend-points|"
+                 "trend-reference|esk|spacetime-esk|desk|cube|validate|validate-reference|"
+                 "bbs-route-validate|"
                  "single-year-analysis)")
 
 

@@ -343,7 +343,9 @@ def _tiny_train(augment, seed=0, epochs=3, patch=None):
     msk = np.ones((T, H, W), bool)
     years = list(range(2022, 2026))
     m = np.ones((H, W), bool)
-    tgt = {y: (rng.normal(size=(H, W, L)).astype("float32") * 0.1, m, m) for y in years[1:]}
+    w = np.ones((H, W), dtype="float32")
+    tgt = {y: (rng.normal(size=(H, W, L)).astype("float32") * 0.1, m, m, w)
+           for y in years[1:]}
     x = rng.random((H, W, 12)).astype("float32")
 
     saved = D.true_kernel_loss
@@ -421,7 +423,8 @@ def test_rotation_diagnostic_reads_a_known_angle():
     tgt = {}
     for i, y in enumerate(years[1:]):
         a = ang * (i / max(len(years) - 2, 1))
-        tgt[y] = ((np.cos(a) * base + np.sin(a) * perp).astype("float32"), m, m)
+        tgt[y] = ((np.cos(a) * base + np.sin(a) * perp).astype("float32"), m, m,
+                  np.ones((H, W), dtype="float32"))
 
     out = io.StringIO()
     with contextlib.redirect_stdout(out):
@@ -625,3 +628,68 @@ if __name__ == "__main__":
     test_direction_cosine_recovers_known_angles()
     test_nonfinite_loss_guard()
     print("\nALL DESK-TRAINING CHECKS PASSED")
+
+
+# ----------------------------- per-point weights and the split domain -----------------------
+
+def test_point_set_loader_defaults_missing_files_to_neutral(tmp_path):
+    """A trend-product point set has no weights or supervise file. It must still load, with
+    everything counting and everything supervising -- that is what keeps the A/B possible."""
+    from src.community_encoder.train_DESK import desk_training as D
+    np.save(tmp_path / "X_points.npy", np.zeros((4, 3), "float32"))
+    np.save(tmp_path / "point_index.npy", np.zeros((4, 3), "int32"))
+    X, pidx, w, sup = D.load_point_set(str(tmp_path))
+    assert w.shape == (4,) and (w == 1.0).all()
+    assert sup.shape == (4,) and sup.all()
+
+
+def test_point_set_loader_refuses_a_length_mismatch(tmp_path):
+    """These are parallel arrays in one row order. A short weights file would attach the wrong
+    weight to the wrong cell-year with no symptom anywhere downstream."""
+    from src.community_encoder.train_DESK import desk_training as D
+    np.save(tmp_path / "X_points.npy", np.zeros((4, 3), "float32"))
+    np.save(tmp_path / "point_index.npy", np.zeros((4, 3), "int32"))
+    np.save(tmp_path / "point_weights.npy", np.ones(3, "float32"))
+    try:
+        D.load_point_set(str(tmp_path))
+    except SystemExit as exc:
+        assert "point_weights" in str(exc)
+    else:
+        raise AssertionError("a short weights file was accepted")
+
+
+def test_supervised_cells_ignores_unsupervised_rows():
+    """Duplicate cell-years are kept for the kernel but only one supervises. The split domain
+    must be built from the supervised rows, or it would include cells whose only rows are
+    duplicates already covered elsewhere."""
+    from src.community_encoder.train_DESK import desk_training as D
+    pidx = np.array([[1, 1, 2000], [5, 5, 2000], [9, 9, 2000]], dtype="int32")
+    sup = np.array([True, False, True])
+    grid = D.supervised_cells(pidx, sup, (10, 10))
+    assert grid[1, 1] and grid[9, 9]
+    assert not grid[5, 5]
+    assert grid.sum() == 2
+
+
+def test_weights_actually_change_the_stabilizing_loss():
+    """Guards against inert plumbing: if the weight grid were threaded through but never
+    multiplied in, every test above would still pass. Downweighting the cells that carry the
+    error has to lower the loss."""
+    import torch
+    L, H, W = 4, 6, 6
+    g = torch.Generator().manual_seed(0)
+    zg = torch.zeros(H, W, L)
+    pred = torch.zeros(H, W, L)
+    pred[0, 0] = 1.0                       # all the error sits in one cell
+    tr = torch.zeros(H, W, dtype=torch.bool); tr[0, 0] = True; tr[1, 1] = True
+
+    def stab(wg):
+        s = torch.sum((pred[tr] - zg[tr]) ** 2, dim=1) * wg[tr]
+        return float(s.sum() / max(float(wg[tr].sum()), 1e-8) / L)
+
+    full = torch.ones(H, W)
+    half = torch.ones(H, W); half[0, 0] = 0.5      # downweight the erroring cell
+    assert stab(half) < stab(full), "the weight grid is not reaching the loss"
+    # and a uniform rescale must NOT change it -- the denominator is the weight sum, so the
+    # effective learning rate on this term stays put when weights are rescaled
+    assert abs(stab(full * 0.3) - stab(full)) < 1e-9

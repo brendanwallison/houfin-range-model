@@ -155,17 +155,64 @@ def apply_output_ema(z_raw, half_life, valid=None):
     return out
 
 
-def _prepare_trend_targets(config, z_dir, latent_dim, holdout):
-    """Per-year ESK-basis targets for EVERY supervised year, from the trend points.
+def load_point_set(points_dir):
+    """Read a target point set: ``(X, pidx, weights, supervise)``.
 
-    Projects ``X_points`` into the joint ESK basis (z_obs) and scatters each point into
-    its year's grid; returns ``{year: (zg (H,W,L), tm_tr (H,W), tm_val (H,W))}`` where the
-    train/val split is the spatial ``holdout`` (val = held-out cells). Includes 2023.
+    ``point_weights.npy`` and ``point_supervise.npy`` are written by the raw-BBS builder and
+    absent from the older trend-product point sets, so both default to "everything counts,
+    everything supervises". That keeps a trend-product point set loadable unchanged, which is
+    what makes the A/B between the two targets possible.
+
+    ``supervise`` exists because one cell-year can be measured by two sources. The kernel wants
+    both rows -- they are two measurements of one community, and their similarity is what ties
+    the two scales together -- but the supervision grid is a scatter, so a duplicate cell-year
+    would overwrite silently and there would be no way to tell which source survived.
+    """
+    X = np.load(os.path.join(points_dir, "X_points.npy"))
+    pidx = np.load(os.path.join(points_dir, "point_index.npy"))
+    n = pidx.shape[0]
+    wp = os.path.join(points_dir, "point_weights.npy")
+    sp = os.path.join(points_dir, "point_supervise.npy")
+    weights = np.load(wp).astype("float32") if os.path.exists(wp) \
+        else np.ones(n, dtype="float32")
+    supervise = np.load(sp).astype(bool) if os.path.exists(sp) \
+        else np.ones(n, dtype=bool)
+    for name, arr in (("point_weights", weights), ("point_supervise", supervise)):
+        if arr.shape[0] != n:
+            raise SystemExit(f"{name}.npy has {arr.shape[0]} rows but point_index.npy has "
+                             f"{n}. These are parallel arrays in one row order; a mismatch "
+                             f"would attach the wrong value to the wrong cell-year.")
+    return X, pidx, weights, supervise
+
+
+def supervised_cells(pidx, supervise, shape):
+    """Boolean grid of cells that carry at least one supervised point in any year.
+
+    The holdout has to be drawn from THESE cells, not from the eBird covariate footprint. The
+    two used to be nearly the same (~17,200 cells either way) because the old target was an
+    interpolated surface covering everything. A measured target does not: raw BBS reaches
+    ~3,900 cells and BBS+eBird ~12,400, so blocks drawn over the full footprint would leave
+    many validation blocks holding no supervised cell at all, and the reported validation
+    number would rest on far fewer cells than it appears to.
+    """
+    out = np.zeros(shape, dtype=bool)
+    out[pidx[supervise, 0], pidx[supervise, 1]] = True
+    return out
+
+
+def _prepare_trend_targets(config, z_dir, latent_dim, holdout, points_dir=None):
+    """Per-year ESK-basis targets for EVERY supervised year, from the target point set.
+
+    Projects ``X_points`` into the joint ESK basis (z_obs) and scatters each supervised point
+    into its year's grid. Returns ``{year: (zg (H,W,L), tm_tr (H,W), tm_val (H,W),
+    wg (H,W))}`` where the train/val split is the spatial ``holdout`` (val = held-out cells)
+    and ``wg`` is the per-cell loss weight for that year.
+
+    Only rows flagged ``supervise`` are scattered, so each cell-year is written exactly once.
     """
     from .esk_kernel import project_points_to_z
-    zt = config["trend"]["points_dir"]
-    X = np.load(os.path.join(zt, "X_points.npy"))
-    pidx = np.load(os.path.join(zt, "point_index.npy"))
+    zt = points_dir or config["trend"]["points_dir"]
+    X, pidx, weights, supervise = load_point_set(zt)
     z_obs = project_points_to_z(X, z_dir, latent_dim)
     if z_obs is None:
         raise FileNotFoundError(f"trend targets need the ESK projection in {z_dir}; re-run spacetime-esk")
@@ -173,12 +220,14 @@ def _prepare_trend_targets(config, z_dir, latent_dim, holdout):
     H, W = holdout.shape
     out = {}
     for y in sorted({int(v) for v in yrs}):
-        sel = np.where(yrs == y)[0]
+        sel = np.where((yrs == y) & supervise)[0]
         zg = np.zeros((H, W, latent_dim), dtype="float32")
         present = np.zeros((H, W), bool)
+        wg = np.zeros((H, W), dtype="float32")
         zg[rows[sel], cols[sel]] = z_obs[sel]
         present[rows[sel], cols[sel]] = True
-        out[y] = (zg, present & (~holdout), present & holdout)
+        wg[rows[sel], cols[sel]] = weights[sel]
+        out[y] = (zg, present & (~holdout), present & holdout, wg)
     return out
 
 
@@ -257,7 +306,7 @@ def spatial_interp_baseline(tgt, k=8, power=2.0):
     cnt = 0
     cache = {}
     for y in years:
-        zg, tr_m, va_m = tgt[y]
+        zg, tr_m, va_m = tgt[y][0], tgt[y][1], tgt[y][2]
         tr_np, va_np = _np(tr_m), _np(va_m)
         if not va_np.any() or tr_np.sum() < k:
             continue                                       # same skip as _z_mse's m.any()
@@ -387,8 +436,9 @@ def train_model_ema(cov_window, mask_window, window_years, targets, x2023, m2023
     m_tr = torch.as_tensor(m2023_tr, device=device).bool(); m_val = torch.as_tensor(m2023_val, device=device).bool()
     # supervised year targets that fall inside the forwarded window
     tgt = {y: (torch.tensor(zg, device=device),
-               torch.as_tensor(tr, device=device).bool(), torch.as_tensor(va, device=device).bool())
-           for y, (zg, tr, va) in targets.items() if y in yi}
+               torch.as_tensor(tr, device=device).bool(), torch.as_tensor(va, device=device).bool(),
+               torch.as_tensor(wg, device=device).float())
+           for y, (zg, tr, va, wg) in targets.items() if y in yi}
     y2023 = int(max(tgt))                                         # anchor year index in the window
 
     # No-skill baselines on the held-out cells (pooled over all supervised years): the Z-MSE
@@ -396,7 +446,7 @@ def train_model_ema(cov_window, mask_window, window_years, targets, x2023, m2023
     # below these to have any skill; Val/baseline is the fraction of held-out Z variance left
     # unexplained (targets have ||Z||^2 ~ 1 since Z.Z^T ~= Ružicka with unit self-similarity).
     with torch.no_grad():
-        held = [zg[va] for _, (zg, _t, va) in tgt.items() if bool(va.any())]
+        held = [zg[va] for _, (zg, _t, va, _w) in tgt.items() if bool(va.any())]
         if held:
             allv = torch.cat(held, 0)
             base_mean = float(torch.mean(torch.sum((allv - allv.mean(0, keepdim=True)) ** 2, dim=1)))
@@ -527,12 +577,12 @@ def train_model_ema(cov_window, mask_window, window_years, targets, x2023, m2023
 
         return median_dir_cos(dp, dt), median_dir_cos(dp, dt[perm])
 
-    val_sel = {y: (zg, va) for y, (zg, _tr, va) in tgt.items()}
+    val_sel = {y: (zg, va) for y, (zg, _tr, va, _w) in tgt.items()}
     # Train-cell selection on the SAME footing as val, evaluated on the clean forward. Without
     # it the only train-side number is `Stab`, which is (a) measured under dropout+masking and
     # so overstates the error, and (b) divided by latent_dim while Val is not -- two different
     # scales for the same quantity in one log line.
-    tr_sel = {y: (zg, tr) for y, (zg, tr, _va) in tgt.items()}
+    tr_sel = {y: (zg, tr) for y, (zg, tr, _va, _w) in tgt.items()}
     # Deepest year that still has TRAINING coverage -- not simply min(tgt). A temporally
     # held-out year stays in `tgt` with an all-False train mask (that is how it is withheld
     # from the objective), so anchoring on min(tgt) would make `rot_tr` empty and the rotation
@@ -571,12 +621,19 @@ def train_model_ema(cov_window, mask_window, window_years, targets, x2023, m2023
         # Divided by latent_dim so the term is a per-ELEMENT mean like the other two; the
         # config's stabilizing weight absorbs the factor (1.0 -> latent_dim), leaving the total
         # loss numerically unchanged while making the three weights directly comparable.
-        sq_sum, n = torch.zeros((), device=device), 0
-        for y, (zg, tr, _va) in tgt.items():
+        # Per-cell WEIGHTS, so a cell-year surveyed by an observer on their first year at that
+        # route counts less. Weighted rather than dropped: those cell-years still carry real
+        # absences, and dropping them would thin the early era ~2x harder than the modern one
+        # (first-year share 25.6% in 1966-1980 against 12.3% in 2001-2025), i.e. exactly where
+        # the data is thinnest. The denominator is the weight SUM, not the row count, so
+        # changing the weights rescales the loss consistently and does not quietly change the
+        # effective learning rate on this term.
+        sq_sum, n_eff = torch.zeros((), device=device), 0.0
+        for y, (zg, tr, _va, wg) in tgt.items():
             zz = z_ema[yi[y]]
-            s = torch.sum((zz[tr] - zg[tr]) ** 2, dim=1)
-            sq_sum = sq_sum + s.sum(); n += int(tr.sum())
-        loss_stab = sq_sum / max(n, 1) / latent_dim
+            s = torch.sum((zz[tr] - zg[tr]) ** 2, dim=1) * wg[tr]
+            sq_sum = sq_sum + s.sum(); n_eff += float(wg[tr].sum())
+        loss_stab = sq_sum / max(n_eff, 1e-8) / latent_dim
         z_anchor = z_ema[yi[y2023]]
         loss_true = true_kernel_loss(z_anchor[m_tr], x2023_t[m_tr])
         w_stab = weights["stabilizing"] * loss_stab
@@ -704,10 +761,15 @@ def run_desk_experiment(config=None):
     # the EXACT vectors that seeded the ESK basis (log1p abundance, anchor-mode-agnostic).
     # Scatter X_points' anchor-year rows into an (H,W,S) grid, so DESK depends on no weekly
     # eBird product (the trends-abd anchor needs none).
-    ztz = config["trend"]["points_dir"]
-    Xp = np.load(os.path.join(ztz, "X_points.npy"))
-    pip = np.load(os.path.join(ztz, "point_index.npy"))
-    pm = json.load(open(os.path.join(ztz, "points_meta.json")))
+    # One point set for the whole run: target.points_dir when configured (the raw-BBS +
+    # eBird-window target), else trend.points_dir (the older trend-product target). Keeping
+    # both loadable is what makes an A/B between the two targets possible.
+    points_dir = (config.get("target", {}) or {}).get("points_dir") \
+        or config["trend"]["points_dir"]
+    Xp, pip, p_weights, p_supervise = load_point_set(points_dir)
+    pm = json.load(open(os.path.join(points_dir, "points_meta.json")))
+    print(f"[desk] target: {pm.get('target_source', 'trend_products')} from {points_dir} "
+          f"({Xp.shape[0]:,} rows, {int(p_supervise.sum()):,} supervised)", flush=True)
     ay, S = int(pm["recent_year"]), int(pm["n_species"])
     H, W = cov_stack.shape[:2]
     sel = pip[:, 2] == ay
@@ -751,12 +813,31 @@ def run_desk_experiment(config=None):
     # receptive fields overlap training cells and quietly flatter the metric.
     buf = spatial_kernel // 2
     block = int(_cfg.get("block_cells", 12))
+    # Draw the split over the cells that actually CARRY SUPERVISION, not over the eBird
+    # covariate footprint. The two were nearly the same while the target was an interpolated
+    # surface covering ~17,200 cells; a measured target is not -- raw BBS reaches ~3,900 cells
+    # and BBS+eBird ~12,400. Drawing blocks over the full footprint would put many validation
+    # blocks on cells with no target at all, so the reported number would rest on far fewer
+    # cells than the block count suggests, and its variance would be invisible.
+    sup_cells = supervised_cells(pip, p_supervise, ebird_valid.shape)
+    split_domain = sup_cells & ebird_valid          # a target is useless without covariates
     holdout, buffer_cells_mask = blocked_holdout(
-        ebird_valid, block_cells=block, holdout_frac=float(_cfg.get("holdout_frac", 0.2)),
+        split_domain, block_cells=block, holdout_frac=float(_cfg.get("holdout_frac", 0.15)),
         buffer_cells=buf, seed=int(_cfg.get("seed", 0)))
+    n_val = int(holdout.sum())
+    print(f"[desk] split domain: {int(sup_cells.sum())} supervised cells, "
+          f"{int(split_domain.sum())} with covariates too "
+          f"({int(ebird_valid.sum())} in the covariate footprint)", flush=True)
     print(f"[desk] split: {block}x{block}-cell blocks, buffer {buf} cells (from "
-          f"spatial_kernel={spatial_kernel}) -> {int(holdout.sum())} val, "
+          f"spatial_kernel={spatial_kernel}) -> {n_val} val, "
           f"{int(buffer_cells_mask.sum())} buffer cells", flush=True)
+    min_val = int(_cfg.get("min_val_cells", 200))
+    if n_val < min_val:
+        raise SystemExit(
+            f"only {n_val} validation cells (floor {min_val}). Every reported val number, "
+            f"and best-epoch selection itself, would rest on too few cells to mean anything. "
+            f"Raise desk.trend.holdout_frac, lower block_cells, or lower "
+            f"desk.trend.min_val_cells if you accept the noise.")
 
     # Normalization stats: fit on the supervised TRAINING pixels only (buffer cells are excluded
     # as well -- not evaluation data, but not clean training data either), then applied to every
@@ -787,7 +868,8 @@ def run_desk_experiment(config=None):
     warmup_start = int(ema_cfg.get("warmup_start", 1940))
     window_years = list(range(warmup_start, label_year + 1))
     cov_win, mask_win, kept = _load_year_window(states_dir, schema, mu, sd, window_years)
-    targets = _prepare_trend_targets(config, z_dir, z_grid.shape[2], holdout)
+    targets = _prepare_trend_targets(config, z_dir, z_grid.shape[2], holdout,
+                                     points_dir=points_dir)
 
     # Temporal holdout: withhold a contiguous span of supervised years from the objective and
     # score them separately. The spatial split says nothing about extrapolation THROUGH TIME,
@@ -798,9 +880,9 @@ def run_desk_experiment(config=None):
     year_val = {}
     for y in ho_years:
         if y in targets:
-            zg, tr_m, va_m = targets[y]
+            zg, tr_m, va_m, wg = targets[y]
             year_val[y] = (zg, tr_m | va_m)            # score every supervised cell that year
-            targets[y] = (zg, np.zeros_like(tr_m), va_m)   # ...and train on none of it
+            targets[y] = (zg, np.zeros_like(tr_m), va_m, wg)   # ...and train on none of it
     if year_val:
         print(f"[desk] temporal holdout years (diagnostic, excluded from the objective): "
               f"{sorted(year_val)}", flush=True)

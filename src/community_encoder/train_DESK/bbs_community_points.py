@@ -173,18 +173,72 @@ def species_order(community_csv):
     return [str(c).lower() for c in df["species_code"]]
 
 
-def write_points(out_dir, X, keys, weights, meta):
-    """Write the four artifacts. Row order of all three arrays is ``keys``' order."""
+def write_points(out_dir, X, keys, weights, meta, source=None, supervise=None):
+    """Write the point-set artifacts. Row order of every array is ``keys``' order.
+
+    ``source`` (int8, 0 = bbs_raw, 1 = ebird_window) and ``supervise`` (bool) are written only
+    when given, so a BBS-only build stays a three-array artifact. ``supervise`` is what makes
+    the ESK/DESK asymmetry expressible in one file -- see ``concat_sources``.
+    """
     os.makedirs(out_dir, exist_ok=True)
-    if not (X.shape[0] == keys.shape[0] == weights.shape[0]):
-        raise ValueError(f"ragged artifacts: X {X.shape}, keys {keys.shape}, "
-                         f"weights {weights.shape}")
+    n = keys.shape[0]
+    lens = {"X": X.shape[0], "keys": n, "weights": weights.shape[0]}
+    if source is not None:
+        lens["source"] = len(source)
+    if supervise is not None:
+        lens["supervise"] = len(supervise)
+    if len(set(lens.values())) != 1:
+        raise ValueError(f"ragged artifacts: {lens}")
     np.save(os.path.join(out_dir, "X_points.npy"), np.asarray(X, dtype="float32"))
     np.save(os.path.join(out_dir, "point_index.npy"), np.asarray(keys, dtype="int32"))
     np.save(os.path.join(out_dir, "point_weights.npy"), np.asarray(weights, dtype="float32"))
+    if source is not None:
+        np.save(os.path.join(out_dir, "point_source.npy"), np.asarray(source, dtype="int8"))
+    if supervise is not None:
+        np.save(os.path.join(out_dir, "point_supervise.npy"),
+                np.asarray(supervise, dtype=bool))
     with open(os.path.join(out_dir, "points_meta.json"), "w") as fh:
         json.dump(meta, fh, indent=2, sort_keys=True)
     return out_dir
+
+
+SOURCE_BBS, SOURCE_EBIRD = 0, 1
+
+
+def concat_sources(X_bbs, K_bbs, W_bbs, X_eb, K_eb, W_eb):
+    """Stack the two sources into one point set, resolving duplicate cell-years (pure).
+
+    Returns ``(X, keys, weights, source, supervise)``.
+
+    The asymmetry is deliberate and is the crux of the multi-task design:
+
+    - **ESK sees every row.** A cell-year covered by both products is two independent
+      measurements of one latent community, and the kernel should see that they resemble each
+      other -- that is exactly the information tying the two scales together after calibration.
+    - **DESK supervises one row per cell-year**, marked by ``supervise``. Its target grid is an
+      ``(H, W, latent)`` scatter, so a duplicate ``(row, col, year)`` would silently overwrite
+      -- last writer wins, with no error and no way to know which source survived.
+
+    **BBS wins the duplicate**, because it is the measurement rather than the model output;
+    eBird supervises only cell-years BBS never surveyed. That is also what makes eBird worth
+    adding: its footprint is far wider than the ~3,900 BBS cells, so the modern era gets
+    supervision almost everywhere while the historical era stays BBS-only.
+    """
+    X = np.concatenate([np.asarray(X_bbs), np.asarray(X_eb)], axis=0).astype("float32")
+    keys = np.concatenate([np.asarray(K_bbs), np.asarray(K_eb)], axis=0).astype("int32")
+    weights = np.concatenate([np.asarray(W_bbs), np.asarray(W_eb)]).astype("float32")
+    source = np.concatenate([np.full(len(K_bbs), SOURCE_BBS, "int8"),
+                             np.full(len(K_eb), SOURCE_EBIRD, "int8")])
+
+    # First occurrence wins, and BBS rows come first by construction.
+    supervise = np.zeros(keys.shape[0], dtype=bool)
+    seen = set()
+    for i, (r, c, y) in enumerate(keys):
+        k = (int(r), int(c), int(y))
+        if k not in seen:
+            seen.add(k)
+            supervise[i] = True
+    return X, keys, weights, source, supervise
 
 
 def build_bbs_rows(community_codes, first_year_weight=0.5, temporal_ema_tau=0.0,
@@ -246,6 +300,18 @@ def build_bbs_rows(community_codes, first_year_weight=0.5, temporal_ema_tau=0.0,
     X_raw = temporal_ema(X_raw, keys, temporal_ema_tau)
     X = bbs_community.log1p_community(X_raw)
 
+    # An all-zero row is a REAL observation -- a surveyed cell-year where none of the community
+    # species were recorded -- and densify_community produces it on purpose. But Ruzicka cannot
+    # represent it: sum(max) is 0, so the similarity is undefined, and esk_kernel's
+    # `denominator > 1e-6` guard silently returns 0 for every pair INCLUDING the diagonal. Such
+    # a point would enter the basis with ||z|| = 0, violating the self-similarity-1 contract
+    # that desk_training.true_kernel_loss calibrates against. So it is dropped from the POINT
+    # SET because the kernel cannot express it, not because it is not real -- and the count is
+    # reported so the loss stays visible. (Measured: 20 of 114,172 rows.)
+    nonempty = X.sum(axis=1) > 0
+    n_empty = int((~nonempty).sum())
+    X, keys, weights = X[nonempty], keys[nonempty], weights[nonempty]
+
     years = sorted({int(y) for y in keys[:, 2]}) if keys.size else []
     meta = {
         "n_rows": int(X.shape[0]), "n_species": len(codes),
@@ -255,6 +321,7 @@ def build_bbs_rows(community_codes, first_year_weight=0.5, temporal_ema_tau=0.0,
         "years_absent_in_range": [y for y in range(years[0], years[-1] + 1)
                                   if y not in set(years)] if years else [],
         "presence_triples_outside_coverage": int(n_dropped),
+        "rows_dropped_all_zero": n_empty,
         "cell_years_without_a_first_year_flag": int(n_missing_w),
         "first_year_weight": float(first_year_weight),
         "mean_weight": float(weights.mean()) if weights.size else None,
@@ -270,6 +337,10 @@ def build_bbs_rows(community_codes, first_year_weight=0.5, temporal_ema_tau=0.0,
         print(f"[bbs-points] first-year downweight: {meta['n_downweighted']:,} rows "
               f"({meta['n_downweighted']/max(meta['n_rows'],1):.1%}), "
               f"mean weight {meta['mean_weight']:.4f}")
+        if n_empty:
+            print(f"[bbs-points] dropped {n_empty:,} all-zero rows (surveyed, none of the "
+                  f"community species recorded): Ruzicka cannot represent them -- sum(max)=0 "
+                  f"leaves self-similarity undefined, so they would enter the basis at ||z||=0")
         if n_dropped:
             print(f"[bbs-points] dropped {n_dropped:,} presence triples outside coverage "
                   f"(failed QC)")
@@ -278,6 +349,150 @@ def build_bbs_rows(community_codes, first_year_weight=0.5, temporal_ema_tau=0.0,
                   f"row; they keep weight 1.0. Both sides derive from the same QC-passing "
                   f"Weather rows, so this should be 0 -- investigate before trusting the run.")
     return X, keys, weights, meta
+
+
+def ebird_window_years(start_year, end_year, window=None):
+    """Integer years to sample inside a species' trend window (pure).
+
+    Clipped to the species' OWN ``start_year``/``end_year`` from the parquet, then optionally
+    further narrowed by ``window``. Never outside: the %/yr rate is a summary OF that window,
+    and integrating it beyond is the closed-form extrapolation this whole target replaces.
+    """
+    lo, hi = int(np.ceil(start_year)), int(np.floor(end_year))
+    if window is not None:
+        lo, hi = max(lo, int(window[0])), min(hi, int(window[1]))
+    return list(range(lo, hi + 1)) if hi >= lo else []
+
+
+def ebird_window_grid(abd, ppy, mid, year):
+    """One year's eBird abundance inside the window: ``abd * (1 + ppy/100)**(year - mid)``.
+
+    Same expression as ``trend_community._trends_abd_anchor``, evaluated INSIDE the window
+    instead of extrapolated to the anchor year. No caps: over an ~11-year window even a
+    10%/yr rate is under 1.8x fold, so the soft caps that the extrapolated target needs have
+    nothing to do here.
+    """
+    return abd * np.power(1.0 + ppy / 100.0, float(year) - float(mid))
+
+
+def overlap_pairs(X_eb_log, K_eb, X_bbs_log, K_bbs):
+    """``{species_index: (x_ebird, y_bbs)}`` over cell-years both products cover (pure).
+
+    Restricted to entries where BOTH values are > 0. Zeros are excluded deliberately: log1p(0)
+    is 0, so a mass of double-zero rows would pin the fit through the origin and flatten the
+    slope, and a BBS zero against a positive eBird value is a detection difference rather than
+    a scale difference -- calibrating on it would fold non-detection into the units.
+    """
+    bbs_at = {(int(r), int(c), int(y)): i for i, (r, c, y) in enumerate(K_bbs)}
+    pairs = {}
+    for i, (r, c, y) in enumerate(K_eb):
+        j = bbs_at.get((int(r), int(c), int(y)))
+        if j is None:
+            continue
+        xe, yb = X_eb_log[i], X_bbs_log[j]
+        both = (xe > 0) & (yb > 0)
+        for s in np.nonzero(both)[0]:
+            xs, ys = pairs.setdefault(int(s), ([], []))
+            xs.append(float(xe[s])); ys.append(float(yb[s]))
+    return {s: (np.asarray(x), np.asarray(y)) for s, (x, y) in pairs.items()}
+
+
+def build_ebird_window_rows(codes, X_bbs_log, K_bbs, window=None, weight=1.0,
+                            min_overlap_points=50, form="rma", min_r=0.2, verbose=True):
+    """eBird half of the target, calibrated onto the BBS scale.
+
+    Returns ``(X, keys, weights, meta)``. ``X`` is already in BBS log1p units, so it can be
+    stacked with the BBS rows and fed to one Ruzicka kernel.
+    """
+    from src.config_utils import load_data_config
+    from .bbs_ebird_calibration import (apply_calibration, calibration_meta, fit_calibration)
+    from .trend_community import _load_trend_grid
+    from src.data.preprocess import bbs as bbsmod
+    from src.data.preprocess import bbs_community
+
+    dcfg = load_data_config()
+    eb_path = dcfg["trends"]["ebird_trend_grid"]
+    abd, missing_abd = _load_trend_grid(eb_path, codes, "abd")          # (S, H, W)
+    ppy, missing_ppy = _load_trend_grid(eb_path, codes, "abd_ppy")
+    z = np.load(eb_path, allow_pickle=True)
+    gc = {str(c): i for i, c in enumerate(z["species_code"])}
+    sy, ey = z["start_year"], z["end_year"]
+
+    land_mask, _o, _t, _c, _nx, _ny = bbsmod.load_grid_reference(bbsmod.MASK_PATH)
+    valid = np.isfinite(abd).any(axis=0) & land_mask
+    rr, cc = np.nonzero(valid)
+
+    # Per-species windows differ, so build the union of sampled years and mask per species.
+    per_species_years = {}
+    for s, c in enumerate(codes):
+        if c not in gc:
+            continue
+        i = gc[c]
+        per_species_years[s] = (ebird_window_years(sy[i], ey[i], window),
+                                0.5 * (float(sy[i]) + float(ey[i])))
+    all_years = sorted({y for ys, _ in per_species_years.values() for y in ys})
+    if not all_years:
+        raise SystemExit(
+            f"no eBird trend years inside window={window}. The product's own start_year/"
+            f"end_year bound this, and extrapolating outside is refused by design.")
+
+    # ``have`` distinguishes "no data" from "zero abundance", and it is load-bearing. A
+    # species outside its OWN trend window, or a cell outside its footprint, has nothing to
+    # say -- but log1p(0) is 0, and the calibration is affine, so a + b*0 = a would hand those
+    # entries the intercept as if it were a measured abundance. Caught by a synthetic-grid
+    # smoke test where one species had a narrow 2014-2016 window and came out at 0.373 in
+    # 2012. The mask forces them back to exactly 0 after calibration.
+    rows, keys, have = [], [], []
+    for y in all_years:
+        grid = np.zeros((len(codes), rr.size), dtype="float64")
+        ok = np.zeros((len(codes), rr.size), dtype=bool)
+        for s, (ys, mid) in per_species_years.items():
+            if y not in ys:
+                continue                                   # outside this species' own window
+            a_s, p_s = abd[s][rr, cc], ppy[s][rr, cc]
+            ok[s] = np.isfinite(a_s) & np.isfinite(p_s)
+            grid[s] = np.where(ok[s], ebird_window_grid(a_s, p_s, mid, y), 0.0)
+        rows.append(np.nan_to_num(grid.T, nan=0.0))                    # (M, S)
+        have.append(ok.T)
+        keys.append(np.stack([rr, cc, np.full(rr.size, y)], axis=1))
+    X_raw = np.concatenate(rows, axis=0)
+    have = np.concatenate(have, axis=0)
+    K = np.concatenate(keys, axis=0).astype("int32")
+    X_log = bbs_community.log1p_community(X_raw)
+
+    pairs = overlap_pairs(X_log, K, X_bbs_log, K_bbs)
+    cal = fit_calibration(pairs, len(codes), min_overlap_points=min_overlap_points,
+                          form=form, min_r=min_r, verbose=verbose)
+    X = np.where(have, apply_calibration(X_log, cal), 0.0).astype("float32")
+    W = np.full(K.shape[0], float(weight), dtype="float32")
+
+    # A row with no data for ANY species is not an observation of an empty community -- it is
+    # not an observation. Drop it rather than feeding an all-zero vector to Ruzicka, where it
+    # would have an undefined similarity to everything.
+    keep = have.any(axis=1)
+    n_empty = int((~keep).sum())
+    X, K, W, have = X[keep], K[keep], W[keep], have[keep]
+
+    meta = {
+        "n_rows": int(X.shape[0]), "n_cells": int(rr.size),
+        "years": all_years, "window": list(window) if window else None,
+        "weight": float(weight),
+        "species_missing_abd": missing_abd, "species_missing_abd_ppy": missing_ppy,
+        "n_species_with_a_window": len(per_species_years),
+        "n_overlap_species": len(pairs),
+        "n_overlap_points": int(sum(len(x) for x, _ in pairs.values())),
+        "n_rows_dropped_no_data": n_empty,
+        "mean_species_with_data_per_row": float(have.sum(1).mean()) if have.size else 0.0,
+        "calibration": calibration_meta(cal, codes),
+    }
+    if verbose:
+        print(f"[ebird-window] {meta['n_rows']:,} rows over {rr.size:,} cells x "
+              f"{len(all_years)} years {all_years[0]}..{all_years[-1]}")
+        print(f"[ebird-window] calibration overlap: {meta['n_overlap_points']:,} points "
+              f"across {len(pairs)} species")
+        print(f"[ebird-window] {meta['mean_species_with_data_per_row']:.1f} species with data "
+              f"per row; dropped {n_empty:,} rows with no data for any species")
+    return X, K, W, meta
 
 
 def main():
@@ -291,11 +506,15 @@ def main():
     ap.add_argument("--out-dir", default=None, help="default: target.points_dir")
     ap.add_argument("--first-year-weight", type=float, default=None)
     ap.add_argument("--temporal-ema-tau", type=float, default=None)
+    ap.add_argument("--no-ebird", action="store_true",
+                    help="BBS rows only (skip the eBird window half and the calibration)")
     args = ap.parse_args()
 
     cfg, dcfg = load_config(), load_data_config()
     tcfg = cfg.get("target", {}) or {}
     bcfg = tcfg.get("bbs", {}) or {}
+    ecfg = tcfg.get("ebird_window", {}) or {}
+    ccfg = tcfg.get("calibration", {}) or {}
     community = args.community or cfg.get("trend", {}).get("community_trend_list") \
         or dcfg["community_trend_list"]
     out_dir = args.out_dir or tcfg.get("points_dir")
@@ -305,14 +524,48 @@ def main():
         else float(bcfg.get("first_year_weight", 0.5))
     tau = args.temporal_ema_tau if args.temporal_ema_tau is not None \
         else float(bcfg.get("temporal_ema_tau", 0.0))
+    use_ebird = (not args.no_ebird) and bool(ecfg.get("enabled", True))
 
     codes = species_order(community)
     X, keys, weights, meta = build_bbs_rows(codes, first_year_weight=fyw,
                                             temporal_ema_tau=tau)
-    meta.update({"target_source": "bbs_raw", "species": codes,
-                 "community_csv": community, "ruzicka_log1p": True})
-    write_points(out_dir, X, keys, weights, meta)
-    print(f"[bbs-points] wrote {X.shape[0]:,} x {X.shape[1]} -> {out_dir}")
+    meta = {"bbs": meta}
+    source = supervise = None
+
+    if use_ebird:
+        win = None
+        if ecfg.get("start_year") and ecfg.get("end_year"):
+            win = (int(ecfg["start_year"]), int(ecfg["end_year"]))
+        Xe, Ke, We, emeta = build_ebird_window_rows(
+            codes, X, keys, window=win, weight=float(ecfg.get("weight", 1.0)),
+            min_overlap_points=int(ccfg.get("min_overlap_points", 50)),
+            form=str(ccfg.get("form", "rma")), min_r=float(ccfg.get("min_r", 0.2)))
+        X, keys, weights, source, supervise = concat_sources(X, keys, weights, Xe, Ke, We)
+        meta["ebird_window"] = emeta
+        n_sup_eb = int((supervise & (source == SOURCE_EBIRD)).sum())
+        meta["combined"] = {
+            "n_rows": int(X.shape[0]),
+            "n_supervised": int(supervise.sum()),
+            "n_supervised_bbs": int((supervise & (source == SOURCE_BBS)).sum()),
+            "n_supervised_ebird": n_sup_eb,
+            "n_duplicate_cell_years": int(X.shape[0] - supervise.sum()),
+            "n_supervised_cells": int(len({(int(r), int(c))
+                                           for r, c, _ in keys[supervise]})),
+        }
+        cb = meta["combined"]
+        print(f"[points] combined {cb['n_rows']:,} rows; supervised {cb['n_supervised']:,} "
+              f"({cb['n_supervised_bbs']:,} BBS + {n_sup_eb:,} eBird) over "
+              f"{cb['n_supervised_cells']:,} cells; "
+              f"{cb['n_duplicate_cell_years']:,} duplicate cell-years kept for the kernel")
+
+    meta.update({"target_source": "bbs_raw+ebird_window" if use_ebird else "bbs_raw",
+                 "species": codes, "n_species": len(codes),
+                 "community_csv": community, "ruzicka_log1p": True,
+                 "n_rows": int(X.shape[0]),
+                 "n_recent": int(supervise.sum()) if supervise is not None
+                 else int(X.shape[0])})
+    write_points(out_dir, X, keys, weights, meta, source=source, supervise=supervise)
+    print(f"[points] wrote {X.shape[0]:,} x {X.shape[1]} -> {out_dir}")
 
 
 if __name__ == "__main__":

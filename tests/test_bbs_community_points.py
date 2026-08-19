@@ -180,3 +180,108 @@ def test_write_points_roundtrips(tmp_path):
     assert np.allclose(np.load(tmp_path / "point_weights.npy"), w)
     import json
     assert json.load(open(tmp_path / "points_meta.json"))["target_source"] == "bbs_raw"
+
+
+# ----------------------------- eBird window -----------------------------
+
+def test_window_years_never_leave_the_products_own_window():
+    """The %/yr rate is a summary OF its window. Integrating outside it is exactly the
+    closed-form extrapolation this target replaces, so the year list must clip to the
+    species' own start/end even when the caller asks for more."""
+    from src.community_encoder.train_DESK.bbs_community_points import ebird_window_years
+    assert ebird_window_years(2012, 2022) == list(range(2012, 2023))
+    # a caller-supplied window can only NARROW, never widen
+    assert ebird_window_years(2012, 2022, window=(2015, 2018)) == [2015, 2016, 2017, 2018]
+    assert ebird_window_years(2012, 2022, window=(1990, 2050)) == list(range(2012, 2023))
+    assert ebird_window_years(2014, 2016, window=(2020, 2030)) == []      # disjoint -> empty
+
+
+def test_window_years_handles_fractional_bounds_inward():
+    from src.community_encoder.train_DESK.bbs_community_points import ebird_window_years
+    assert ebird_window_years(2012.4, 2022.6) == list(range(2013, 2023))
+
+
+def test_ebird_window_grid_is_exact_at_the_midpoint():
+    """At the window midpoint the rate contributes nothing, so the value must be abd itself."""
+    from src.community_encoder.train_DESK.bbs_community_points import ebird_window_grid
+    abd = np.array([10.0, 4.0]); ppy = np.array([5.0, -3.0])
+    assert np.allclose(ebird_window_grid(abd, ppy, mid=2017, year=2017), abd)
+    # and moves in the sign of the rate away from it
+    up = ebird_window_grid(abd, ppy, 2017, 2022)
+    assert up[0] > abd[0] and up[1] < abd[1]
+    assert np.allclose(up[0], 10.0 * 1.05 ** 5)
+
+
+def test_overlap_pairs_only_uses_cell_years_both_products_cover():
+    from src.community_encoder.train_DESK.bbs_community_points import overlap_pairs
+    K_eb = np.array([[0, 0, 2015], [1, 1, 2015]], dtype="int32")
+    K_bbs = np.array([[0, 0, 2015], [9, 9, 2015]], dtype="int32")
+    X_eb = np.array([[2.0, 1.0], [5.0, 5.0]])
+    X_bbs = np.array([[3.0, 4.0], [7.0, 7.0]])
+    pairs = overlap_pairs(X_eb, K_eb, X_bbs, K_bbs)
+    # only (0,0,2015) is shared; cell (1,1) has no BBS row and (9,9) no eBird row
+    assert set(pairs) == {0, 1}
+    assert pairs[0] == (np.array([2.0]), np.array([3.0])) or np.allclose(pairs[0][0], [2.0])
+    assert np.allclose(pairs[0][1], [3.0]) and np.allclose(pairs[1][1], [4.0])
+
+
+def test_overlap_pairs_excludes_zeros_on_either_side():
+    """log1p(0) is 0, so double-zero rows would pin the fit through the origin and flatten
+    the slope; a BBS zero against a positive eBird value is a detection difference, not a
+    scale difference, and calibrating on it folds non-detection into the units."""
+    from src.community_encoder.train_DESK.bbs_community_points import overlap_pairs
+    K = np.array([[0, 0, 2015]], dtype="int32")
+    X_eb = np.array([[1.0, 0.0, 2.0]])
+    X_bbs = np.array([[1.0, 1.0, 0.0]])
+    pairs = overlap_pairs(X_eb, K, X_bbs, K)
+    assert set(pairs) == {0}, "a zero on either side must not enter the fit"
+
+
+# ----------------------------- concatenation -----------------------------
+
+def test_concat_supervises_one_row_per_cell_year_preferring_bbs():
+    """The crux of the multi-task design. ESK sees both measurements of a shared cell-year,
+    but DESK's target is an (H,W,latent) scatter -- a duplicate would silently overwrite,
+    last-writer-wins, with no error and no way to tell which source survived."""
+    from src.community_encoder.train_DESK.bbs_community_points import (
+        SOURCE_BBS, SOURCE_EBIRD, concat_sources)
+    K_bbs = np.array([[0, 0, 2015]], dtype="int32")
+    K_eb = np.array([[0, 0, 2015], [7, 7, 2015]], dtype="int32")
+    X, K, W, src, sup = concat_sources(
+        np.array([[1.0]]), K_bbs, np.array([0.5]),
+        np.array([[2.0], [3.0]]), K_eb, np.array([1.0, 1.0]))
+    assert X.shape[0] == 3, "ESK must keep every row, including the duplicate"
+    assert sup.tolist() == [True, False, True]
+    assert src.tolist() == [SOURCE_BBS, SOURCE_EBIRD, SOURCE_EBIRD]
+    # the shared cell-year is supervised by BBS, and its weight survives
+    assert W[0] == 0.5
+    # exactly one supervised row per distinct cell-year
+    assert len({tuple(k) for k in K[sup]}) == int(sup.sum())
+
+
+def test_concat_marks_every_cell_year_exactly_once():
+    from src.community_encoder.train_DESK.bbs_community_points import concat_sources
+    K_bbs = np.array([[0, 0, 1990], [0, 0, 1991]], dtype="int32")
+    K_eb = np.array([[0, 0, 1991], [0, 0, 1992], [0, 0, 1992]], dtype="int32")
+    _X, K, _W, _s, sup = concat_sources(
+        np.zeros((2, 1)), K_bbs, np.ones(2), np.zeros((3, 1)), K_eb, np.ones(3))
+    assert len({tuple(k) for k in K[sup]}) == int(sup.sum()) == 3     # 1990, 1991, 1992
+    assert sup.tolist() == [True, True, False, True, False]
+
+
+def test_write_points_rejects_a_ragged_source_or_supervise(tmp_path):
+    X = np.zeros((3, 2), "float32"); keys = np.zeros((3, 3), "int32"); w = np.ones(3, "float32")
+    for bad in ({"source": np.zeros(2, "int8")}, {"supervise": np.ones(4, bool)}):
+        try:
+            write_points(str(tmp_path), X, keys, w, {}, **bad)
+        except ValueError as exc:
+            assert "ragged" in str(exc)
+        else:
+            raise AssertionError(f"ragged {list(bad)[0]} was written")
+
+
+def test_write_points_omits_source_and_supervise_for_a_bbs_only_build(tmp_path):
+    write_points(str(tmp_path), np.zeros((2, 1), "float32"),
+                 np.zeros((2, 3), "int32"), np.ones(2, "float32"), {})
+    assert not (tmp_path / "point_source.npy").exists()
+    assert not (tmp_path / "point_supervise.npy").exists()

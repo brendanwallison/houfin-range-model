@@ -49,15 +49,8 @@ def compute_valid_mask(ebird_stack, cov_stack, z_mask):
     return final
 
 
-def true_kernel_loss(z_pred, x_raw, num_pairs=4096):
-    """MSE between the dot product in Z and the Ruzicka similarity in raw X, over
-    ``num_pairs`` random pairs drawn from the supplied (valid) pixel set."""
-    B = z_pred.shape[0]
-    if B < 2:
-        return torch.tensor(0.0, device=z_pred.device, requires_grad=True)
-    idx = torch.randint(0, B, (2, num_pairs), device=z_pred.device)
-    i, j = idx[0], idx[1]
-    xi, xj = x_raw[i], x_raw[j]
+def _pair_kernel_loss(zi, zj, xi, xj):
+    """MSE between the dot product in Z and the Ruzicka similarity in raw X, for paired rows."""
     sum_plus = xi + xj
     diff_abs = torch.abs(xi - xj)
     numerator = 0.5 * torch.sum(sum_plus - diff_abs, dim=1)
@@ -66,29 +59,62 @@ def true_kernel_loss(z_pred, x_raw, num_pairs=4096):
     if valid.sum() == 0:
         return torch.tensor(0.0, device=z_pred.device, requires_grad=True)
     sim_true = numerator[valid] / (denominator[valid] + 1e-8)
-    zi, zj = z_pred[i][valid], z_pred[j][valid]
-    sim_pred = (zi * zj).sum(dim=1)
+    sim_pred = (zi[valid] * zj[valid]).sum(dim=1)
     return F.mse_loss(sim_pred, sim_true)
 
 
+def true_kernel_loss(z_pred, x_raw, num_pairs=4096):
+    """Kernel loss over pairs drawn from one supplied (valid) pixel set."""
+    B = z_pred.shape[0]
+    if B < 2:
+        return torch.tensor(0.0, device=z_pred.device, requires_grad=True)
+    idx = torch.randint(0, B, (2, num_pairs), device=z_pred.device)
+    i, j = idx[0], idx[1]
+    return _pair_kernel_loss(z_pred[i], z_pred[j], x_raw[i], x_raw[j])
 
-def per_year_metric_rows(pip, Xp, sup_rows, m_tr, W):
-    """``{year: (flat cell indices, community rows)}`` for the Ružička metric loss.
 
-    Sparse on purpose: a dense ``(T,H,W,S)`` tensor would be ~59x the point set for no gain,
-    since only surveyed cells carry a community. Restricted to training cells, so held-out and
-    buffered cells never enter the similarity target. Years with fewer than two training cells
-    are dropped -- a pair needs two.
+def spacetime_kernel_loss(z_by_t, pool_t, pool_flat, pool_x, num_pairs=4096, generator=None):
+    """Kernel loss over pairs drawn from the whole SPACETIME pool of supervised cell-years.
+
+    The ESK basis is one joint Ružička kernel-PCA over every ``(cell, year)`` point, so its
+    contract is ``dot(z_i, z_j) ~= Ružička(x_i, x_j)`` for ANY two points -- two cells in one
+    year, one cell in two years, or two different cells in two different years. This term is
+    what holds DESK to that contract, so its pairs have to be drawn the same way.
+
+    Pairs are uniform over the pool, which weights each year by how many cells it supervises
+    and leaves the within-year share at roughly 1/n_years. That is the faithful reproduction of
+    the kernel; deliberately over-sampling same-year pairs would be a second knob with no
+    principled value.
+
+    ``z_by_t`` is ``(T, H, W, L)``; ``pool_t``/``pool_flat`` index its year and flattened cell
+    axes, and ``pool_x`` holds the matching raw communities.
     """
-    out = {}
+    N = int(pool_t.shape[0])
+    if N < 2:
+        return torch.zeros((), device=z_by_t.device, requires_grad=True)
+    T, H, W, L = z_by_t.shape
+    idx = torch.randint(0, N, (2, num_pairs), device=z_by_t.device, generator=generator)
+    i, j = idx[0], idx[1]
+    zf = z_by_t.reshape(T, H * W, L)
+    zi = zf[pool_t[i], pool_flat[i]]
+    zj = zf[pool_t[j], pool_flat[j]]
+    return _pair_kernel_loss(zi, zj, pool_x[i], pool_x[j])
+
+
+
+def spacetime_metric_pool(pip, Xp, sup_rows, m_tr, W):
+    """``(years, flat cell indices, community rows)`` -- the pool the metric loss samples.
+
+    One flat pool over every supervised training cell-year, NOT a per-year grouping: pairs must
+    be able to span years, because that is what the joint ESK kernel encodes. Sparse rather
+    than a dense ``(T,H,W,S)`` tensor, which would be ~59x the point set for no gain, since
+    only surveyed cells carry a community. Held-out and buffered cells are excluded so they
+    never enter the similarity target.
+    """
     tr_flat = m_tr.reshape(-1)
     flat_of_row = pip[:, 0].astype(np.int64) * W + pip[:, 1].astype(np.int64)
-    for y in np.unique(pip[sup_rows, 2]):
-        sel_y = sup_rows & (pip[:, 2] == y) & tr_flat[flat_of_row]
-        if int(sel_y.sum()) < 2:
-            continue
-        out[int(y)] = (flat_of_row[sel_y], Xp[sel_y].astype("float32"))
-    return out
+    sel = sup_rows & tr_flat[flat_of_row]
+    return (pip[sel, 2].astype(np.int64), flat_of_row[sel], Xp[sel].astype("float32"))
 
 
 def prepare_supervised(cov_stack, ebird_stack, z_flat, z_mask, mu, sd, out_dir):
@@ -394,7 +420,7 @@ def _warmup_cosine(epochs, warmup, min_frac):
     return fn
 
 
-def train_model_ema(cov_window, mask_window, window_years, targets, x_by_year, m2023_tr, m2023_val,
+def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool, m2023_tr, m2023_val,
                     stream_dims, latent_dim, ema_cfg, spatial_kernel=3, epochs=500, lr=1e-3,
                     weights=None, seed=0, patience=50, min_delta=1e-4,
                     schema=None, augment_cfg=None, dropout=0.5, weight_decay=0.0,
@@ -453,10 +479,18 @@ def train_model_ema(cov_window, mask_window, window_years, targets, x_by_year, m
     cov = torch.tensor(cov_window, device=device)                 # (T,H,W,C)
     msk = torch.as_tensor(mask_window, device=device).bool()      # (T,H,W)
     yi = {y: i for i, y in enumerate(window_years)}
-    # {year: (flat cell indices, raw community rows)} -- the metric loss's per-year targets
-    x_year_t = {int(y): (torch.as_tensor(i, device=device, dtype=torch.long),
-                         torch.as_tensor(x, device=device))
-                for y, (i, x) in x_by_year.items()}
+    # The spacetime pool the metric loss samples pairs from. Points whose year falls outside
+    # the forwarded window have no z to compare against, so they are dropped here rather than
+    # silently indexing the wrong year.
+    _py, _pf, _px = metric_pool
+    _keep = np.array([int(y) in yi for y in _py], dtype=bool)
+    if not _keep.all():
+        print(f"[desk] metric pool: dropped {int((~_keep).sum()):,} cell-years outside the "
+              f"forwarded window {min(yi)}-{max(yi)}")
+    pool_t = torch.as_tensor(np.array([yi[int(y)] for y in _py[_keep]]),
+                             device=device, dtype=torch.long)
+    pool_flat = torch.as_tensor(_pf[_keep], device=device, dtype=torch.long)
+    pool_x = torch.as_tensor(_px[_keep], device=device)
     m_tr = torch.as_tensor(m2023_tr, device=device).bool(); m_val = torch.as_tensor(m2023_val, device=device).bool()
     # supervised year targets that fall inside the forwarded window
     tgt = {y: (torch.tensor(zg, device=device),
@@ -658,16 +692,12 @@ def train_model_ema(cov_window, mask_window, window_years, targets, x_by_year, m
             s = torch.sum((zz[tr] - zg[tr]) ** 2, dim=1) * wg[tr]
             sq_sum = sq_sum + s.sum(); n_eff += float(wg[tr].sum())
         loss_stab = sq_sum / max(n_eff, 1e-8) / latent_dim
-        # Averaged over years, NOT pooled across them: Ružička between two cells observed a
-        # decade apart would confound change in place with change in time, which is the one
-        # thing this model exists to separate. Pairs stay within a year; years then average.
-        kt, n_kt = torch.zeros((), device=device), 0
-        for _y, (_idx, _xr) in x_year_t.items():
-            if _y not in yi:
-                continue
-            kt = kt + true_kernel_loss(z_ema[yi[_y]].reshape(-1, latent_dim)[_idx], _xr)
-            n_kt += 1
-        loss_true = kt / max(n_kt, 1)
+        # Pairs span the whole spacetime pool -- same year, same cell across years, and
+        # different cells in different years alike. The ESK basis is ONE joint kernel-PCA over
+        # every (cell, year) point, so that is the similarity structure this term has to hold
+        # the model to. Restricting pairs to within a year would enforce only the spatial half
+        # of a spatiotemporal kernel.
+        loss_true = spacetime_kernel_loss(z_ema, pool_t, pool_flat, pool_x)
         w_stab = weights["stabilizing"] * loss_stab
         w_true = weights["metric"] * loss_true
         w_rec = weights["reconstruction"] * recon_loss
@@ -808,7 +838,8 @@ def run_desk_experiment(config=None):
     # (the reconstructed target gave every cell a value in every year, so that cost nothing);
     # on raw BBS it would gate supervision to the ~2,200 cells surveyed in that one year,
     # discarding 43% of the cells BBS actually covers. Coverage is now ANY supervised year,
-    # and the metric loss draws its pairs within each year separately -- see x_by_year.
+    # and the metric loss draws its pairs across the whole spacetime pool -- see
+    # spacetime_metric_pool and spacetime_kernel_loss.
     sup_rows = p_supervise if p_supervise is not None else np.ones(len(pip), bool)
     ebird_stack = np.full((H, W, S), np.nan, dtype="float32")
     order = np.argsort(pip[sup_rows, 2])                           # latest year wins per cell
@@ -894,9 +925,9 @@ def run_desk_experiment(config=None):
     m_tr = mask_sup & (~holdout) & (~buffer_cells_mask)
     m_val = mask_sup & holdout
 
-    x_by_year = per_year_metric_rows(pip, Xp, sup_rows, m_tr, W)
-    n_cy = sum(len(v[0]) for v in x_by_year.values())
-    print(f"[desk] metric loss over {n_cy:,} training cell-years in {len(x_by_year)} years "
+    metric_pool = spacetime_metric_pool(pip, Xp, sup_rows, m_tr, W)
+    print(f"[desk] metric loss over {len(metric_pool[0]):,} training cell-years spanning "
+          f"{len(np.unique(metric_pool[0]))} years, pairs drawn across space AND time "
           f"(was one year, {int((pip[:, 2] == ay).sum()):,} rows)")
     np.save(os.path.join(out_dir, "holdout_cells.npy"), holdout)
     np.save(os.path.join(out_dir, "buffer_cells.npy"), buffer_cells_mask)
@@ -932,7 +963,7 @@ def run_desk_experiment(config=None):
               f"{sorted(year_val)}", flush=True)
 
     model, ema = train_model_ema(
-        cov_win, mask_win, kept, targets, x_by_year, m_tr, m_val,
+        cov_win, mask_win, kept, targets, metric_pool, m_tr, m_val,
         stream_dims, latent_dim=z_grid.shape[2], ema_cfg=ema_cfg,
         spatial_kernel=spatial_kernel,
         epochs=desk_cfg.get("epochs", 500), lr=desk_cfg.get("lr", 1e-3),

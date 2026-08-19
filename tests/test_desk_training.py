@@ -21,12 +21,13 @@ OTHERS = ("CMD", "CMI", "DD18", "DD5", "DDsub0", "DDsub18", "Eref", "NFFD", "PAS
 
 
 def _metric_dict(x, m, years):
-    """The per-year form train_model_ema now takes: {year: (flat cell idx, community rows)}.
-    Every masked cell in every year, which is what the dense grid used to mean implicitly."""
+    """The (years, flat cell idx, rows) pool train_model_ema takes: every masked cell in
+    every year, which is what the dense single-year grid used to mean implicitly."""
     H, W = m.shape
     flat = np.flatnonzero(m.reshape(-1))
     rows = x.reshape(H * W, -1)[flat].astype("float32")
-    return {int(y): (flat, rows) for y in years}
+    ys = np.repeat(np.asarray(years, dtype=np.int64), len(flat))
+    return (ys, np.tile(flat, len(years)), np.tile(rows, (len(years), 1)))
 
 
 def _schema(bio_start=8):
@@ -358,9 +359,11 @@ def _tiny_train(augment, seed=0, epochs=3, patch=None):
            for y in years[1:]}
     x = rng.random((H, W, 12)).astype("float32")
 
-    saved = D.true_kernel_loss
+    # the loop calls spacetime_kernel_loss now -- patching true_kernel_loss would
+    # patch a function nothing on the hot path calls, and the guard would never fire
+    saved = D.spacetime_kernel_loss
     if patch is not None:
-        D.true_kernel_loss = patch
+        D.spacetime_kernel_loss = patch
     out = io.StringIO()
     try:
         with contextlib.redirect_stdout(out):
@@ -371,7 +374,7 @@ def _tiny_train(augment, seed=0, epochs=3, patch=None):
                 schema=sch, augment_cfg={"enabled": augment}, dropout=0.1,
                 warmup_epochs=1, min_lr_frac=0.05)
     finally:
-        D.true_kernel_loss = saved
+        D.spacetime_kernel_loss = saved
     text = out.getvalue()
     return [float(v) for v in re.findall(r"Stab (\d+\.\d+)", text)], text
 
@@ -706,54 +709,81 @@ def test_weights_actually_change_the_stabilizing_loss():
     assert abs(stab(full * 0.3) - stab(full)) < 1e-9
 
 
-# --------- the metric loss after the anchor was removed ---------
 
-def test_metric_rows_cover_every_year_not_just_the_anchor():
-    """The point of dropping the anchor: a cell surveyed in 1975 and never again still
-    contributes to the similarity target, instead of being invisible because it has no row
-    in the anchor year."""
-    from src.community_encoder.train_DESK.desk_training import per_year_metric_rows
+# --------- the metric loss is spatiotemporal, not spatial-per-year ---------
+
+def test_the_metric_pool_spans_years_so_pairs_can_cross_time():
+    """The ESK basis is ONE joint kernel-PCA over every (cell, year) point, so its contract is
+    dot(z_i,z_j) ~= Ruzicka(x_i,x_j) for ANY two points -- two cells in one year, one cell in
+    two years, or two cells in two different years. A pool grouped by year could only ever
+    enforce the spatial half of that."""
+    from src.community_encoder.train_DESK.desk_training import spacetime_metric_pool
     W = 10
-    pip = np.array([[0, 0, 1975], [0, 1, 1975], [2, 3, 2025], [2, 4, 2025]], dtype=np.int32)
-    Xp = np.arange(4 * 3, dtype="float32").reshape(4, 3)
-    m_tr = np.zeros((5, W), bool); m_tr[0, 0] = m_tr[0, 1] = m_tr[2, 3] = m_tr[2, 4] = True
-    out = per_year_metric_rows(pip, Xp, np.ones(4, bool), m_tr, W)
-    assert sorted(out) == [1975, 2025]
-    assert list(out[1975][0]) == [0, 1] and list(out[2025][0]) == [2 * W + 3, 2 * W + 4]
+    pip = np.array([[0, 0, 1975], [0, 1, 1975], [2, 3, 2025]], dtype=np.int32)
+    Xp = np.arange(9, dtype="float32").reshape(3, 3)
+    m_tr = np.zeros((5, W), bool); m_tr[0, 0] = m_tr[0, 1] = m_tr[2, 3] = True
+    yrs, flat, rows = spacetime_metric_pool(pip, Xp, np.ones(3, bool), m_tr, W)
+    assert list(yrs) == [1975, 1975, 2025]           # one flat pool, not a per-year grouping
+    assert list(flat) == [0, 1, 2 * W + 3]
+    assert rows.shape == (3, 3)
 
 
-def test_metric_rows_exclude_heldout_and_buffered_cells():
+def test_a_cell_surveyed_in_one_year_only_still_enters_the_pool():
+    """Under the old single-year anchor this cell was invisible: no row in the anchor year
+    meant no contribution to the similarity target at all."""
+    from src.community_encoder.train_DESK.desk_training import spacetime_metric_pool
+    W = 4
+    yrs, flat, _ = spacetime_metric_pool(
+        np.array([[0, 0, 1975]], dtype=np.int32), np.ones((1, 2), "float32"),
+        np.ones(1, bool), np.ones((1, W), bool), W)
+    assert list(yrs) == [1975] and list(flat) == [0]
+
+
+def test_the_pool_excludes_heldout_and_unsupervised_rows():
     """Held-out cells must not enter the similarity target, or the spatial split stops
-    measuring generalization."""
-    from src.community_encoder.train_DESK.desk_training import per_year_metric_rows
+    measuring generalization. Duplicate rows kept only for the ESK basis carry supervise=False
+    and would otherwise enter the pair pool twice."""
+    from src.community_encoder.train_DESK.desk_training import spacetime_metric_pool
     W = 4
-    pip = np.array([[0, 0, 2000], [0, 1, 2000], [0, 2, 2000]], dtype=np.int32)
-    Xp = np.ones((3, 2), "float32")
-    m_tr = np.zeros((2, W), bool); m_tr[0, 0] = m_tr[0, 1] = True     # cell (0,2) held out
-    out = per_year_metric_rows(pip, Xp, np.ones(3, bool), m_tr, W)
-    assert list(out[2000][0]) == [0, 1]
+    pip = np.array([[0, 0, 2000], [0, 1, 2000], [0, 1, 2000], [0, 2, 2000]], dtype=np.int32)
+    m_tr = np.zeros((1, W), bool); m_tr[0, 0] = m_tr[0, 1] = True     # (0,2) held out
+    _, flat, _ = spacetime_metric_pool(pip, np.ones((4, 2), "float32"),
+                                       np.array([True, True, False, True]), m_tr, W)
+    assert list(flat) == [0, 1]
 
 
-def test_a_year_with_one_training_cell_is_dropped():
-    """Ružička needs a pair. A single-cell year would sample i == j and contribute a
-    degenerate self-similarity of 1.0 to the loss."""
-    from src.community_encoder.train_DESK.desk_training import per_year_metric_rows
-    W = 4
-    pip = np.array([[0, 0, 1966], [0, 0, 2000], [0, 1, 2000]], dtype=np.int32)
-    Xp = np.ones((3, 2), "float32")
-    m_tr = np.zeros((1, W), bool); m_tr[0, 0] = m_tr[0, 1] = True
-    out = per_year_metric_rows(pip, Xp, np.ones(3, bool), m_tr, W)
-    assert sorted(out) == [2000]                                     # 1966 had one cell
+def test_the_kernel_loss_reads_z_from_each_point_own_year():
+    """The failure this guards: indexing every point into one year's Z slice. Z is built so
+    year 0 matches the communities exactly and year 1 has them swapped, so reading the wrong
+    year cannot score zero by luck."""
+    import torch
+    from src.community_encoder.train_DESK.desk_training import spacetime_kernel_loss
+    T, H, W, L = 2, 1, 2, 2
+    x = torch.tensor([[1.0, 0.0], [0.0, 1.0]])           # two disjoint communities -> sim 0
+    z = torch.zeros(T, H, W, L)
+    z[0, 0, 0] = torch.tensor([1.0, 0.0]); z[0, 0, 1] = torch.tensor([0.0, 1.0])
+    z[1, 0, 0] = torch.tensor([1.0, 0.0]); z[1, 0, 1] = torch.tensor([1.0, 0.0])
+    flat = torch.tensor([0, 1])
+    right = spacetime_kernel_loss(z, torch.tensor([0, 0]), flat, x, 512,
+                                  torch.Generator().manual_seed(0))
+    wrong = spacetime_kernel_loss(z, torch.tensor([1, 1]), flat, x, 512,
+                                  torch.Generator().manual_seed(0))
+    assert right.item() < 1e-6, right.item()             # orthogonal z -> dot 0 -> matches
+    assert wrong.item() > 0.1, wrong.item()              # identical z -> dot 1 -> way off
 
 
-def test_unsupervised_rows_are_excluded():
-    """Duplicate cell-years kept only for the ESK basis carry supervise=False; they must not
-    reach the metric loss, or the same cell-year enters the pair pool twice."""
-    from src.community_encoder.train_DESK.desk_training import per_year_metric_rows
-    W = 4
-    pip = np.array([[0, 0, 2000], [0, 1, 2000], [0, 1, 2000]], dtype=np.int32)
-    Xp = np.ones((3, 2), "float32")
-    sup = np.array([True, True, False])
-    m_tr = np.ones((1, W), bool)
-    out = per_year_metric_rows(pip, Xp, sup, m_tr, W)
-    assert len(out[2000][0]) == 2
+def test_pairs_actually_span_years_in_the_sampled_loss():
+    """Not just the pool: the SAMPLER must produce cross-year pairs. Two years hold the same
+    cell with the same community, so a within-year sampler would score 0 -- only cross-year
+    pairs, where z differs between the years, can make this loss positive."""
+    import torch
+    from src.community_encoder.train_DESK.desk_training import spacetime_kernel_loss
+    T, H, W, L = 2, 1, 1, 2
+    x = torch.tensor([[1.0, 1.0]])                       # one cell, identical both years
+    z = torch.zeros(T, H, W, L)
+    z[0, 0, 0] = torch.tensor([1.0, 0.0])                # self-similarity 1 -> dot 1: exact
+    z[1, 0, 0] = torch.tensor([0.0, 0.0])                # but across years the dot is 0
+    pool_x = torch.cat([x, x])
+    loss = spacetime_kernel_loss(z, torch.tensor([0, 1]), torch.tensor([0, 0]), pool_x, 512,
+                                 torch.Generator().manual_seed(0))
+    assert loss.item() > 0.2, loss.item()

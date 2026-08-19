@@ -19,6 +19,16 @@ TEMPS = ("Tave", "Tmax", "Tmin")
 OTHERS = ("CMD", "CMI", "DD18", "DD5", "DDsub0", "DDsub18", "Eref", "NFFD", "PAS", "PPT", "RH")
 
 
+
+def _metric_dict(x, m, years):
+    """The per-year form train_model_ema now takes: {year: (flat cell idx, community rows)}.
+    Every masked cell in every year, which is what the dense grid used to mean implicitly."""
+    H, W = m.shape
+    flat = np.flatnonzero(m.reshape(-1))
+    rows = x.reshape(H * W, -1)[flat].astype("float32")
+    return {int(y): (flat, rows) for y in years}
+
+
 def _schema(bio_start=8):
     """The pre-BUI layout: 14 climate bases (3 with q10/q90) = 240 ch, + 55 others = 295.
 
@@ -355,7 +365,7 @@ def _tiny_train(augment, seed=0, epochs=3, patch=None):
     try:
         with contextlib.redirect_stdout(out):
             D.train_model_ema(
-                cov, msk, years, tgt, x, m, m, dims, latent_dim=L,
+                cov, msk, years, tgt, _metric_dict(x, m, years), m, m, dims, latent_dim=L,
                 ema_cfg={"earlystop_warmup": 1}, spatial_kernel=5, epochs=epochs, lr=1e-3,
                 seed=seed, weights={"stabilizing": 64.0, "metric": 5.0, "reconstruction": 0.1},
                 schema=sch, augment_cfg={"enabled": augment}, dropout=0.1,
@@ -429,7 +439,8 @@ def test_rotation_diagnostic_reads_a_known_angle():
     out = io.StringIO()
     with contextlib.redirect_stdout(out):
         D.train_model_ema(
-            cov, msk, years, tgt, rng.random((H, W, 12)).astype("float32"), m, m, dims,
+            cov, msk, years, tgt,
+            _metric_dict(rng.random((H, W, 12)).astype("float32"), m, years), m, m, dims,
             latent_dim=L, ema_cfg={"earlystop_warmup": 1}, spatial_kernel=5, epochs=3, lr=1e-3,
             weights={"stabilizing": 64.0, "metric": 5.0, "reconstruction": 0.1},
             schema=sch, augment_cfg={"enabled": True}, dropout=0.1,
@@ -693,3 +704,56 @@ def test_weights_actually_change_the_stabilizing_loss():
     # and a uniform rescale must NOT change it -- the denominator is the weight sum, so the
     # effective learning rate on this term stays put when weights are rescaled
     assert abs(stab(full * 0.3) - stab(full)) < 1e-9
+
+
+# --------- the metric loss after the anchor was removed ---------
+
+def test_metric_rows_cover_every_year_not_just_the_anchor():
+    """The point of dropping the anchor: a cell surveyed in 1975 and never again still
+    contributes to the similarity target, instead of being invisible because it has no row
+    in the anchor year."""
+    from src.community_encoder.train_DESK.desk_training import per_year_metric_rows
+    W = 10
+    pip = np.array([[0, 0, 1975], [0, 1, 1975], [2, 3, 2025], [2, 4, 2025]], dtype=np.int32)
+    Xp = np.arange(4 * 3, dtype="float32").reshape(4, 3)
+    m_tr = np.zeros((5, W), bool); m_tr[0, 0] = m_tr[0, 1] = m_tr[2, 3] = m_tr[2, 4] = True
+    out = per_year_metric_rows(pip, Xp, np.ones(4, bool), m_tr, W)
+    assert sorted(out) == [1975, 2025]
+    assert list(out[1975][0]) == [0, 1] and list(out[2025][0]) == [2 * W + 3, 2 * W + 4]
+
+
+def test_metric_rows_exclude_heldout_and_buffered_cells():
+    """Held-out cells must not enter the similarity target, or the spatial split stops
+    measuring generalization."""
+    from src.community_encoder.train_DESK.desk_training import per_year_metric_rows
+    W = 4
+    pip = np.array([[0, 0, 2000], [0, 1, 2000], [0, 2, 2000]], dtype=np.int32)
+    Xp = np.ones((3, 2), "float32")
+    m_tr = np.zeros((2, W), bool); m_tr[0, 0] = m_tr[0, 1] = True     # cell (0,2) held out
+    out = per_year_metric_rows(pip, Xp, np.ones(3, bool), m_tr, W)
+    assert list(out[2000][0]) == [0, 1]
+
+
+def test_a_year_with_one_training_cell_is_dropped():
+    """Ružička needs a pair. A single-cell year would sample i == j and contribute a
+    degenerate self-similarity of 1.0 to the loss."""
+    from src.community_encoder.train_DESK.desk_training import per_year_metric_rows
+    W = 4
+    pip = np.array([[0, 0, 1966], [0, 0, 2000], [0, 1, 2000]], dtype=np.int32)
+    Xp = np.ones((3, 2), "float32")
+    m_tr = np.zeros((1, W), bool); m_tr[0, 0] = m_tr[0, 1] = True
+    out = per_year_metric_rows(pip, Xp, np.ones(3, bool), m_tr, W)
+    assert sorted(out) == [2000]                                     # 1966 had one cell
+
+
+def test_unsupervised_rows_are_excluded():
+    """Duplicate cell-years kept only for the ESK basis carry supervise=False; they must not
+    reach the metric loss, or the same cell-year enters the pair pool twice."""
+    from src.community_encoder.train_DESK.desk_training import per_year_metric_rows
+    W = 4
+    pip = np.array([[0, 0, 2000], [0, 1, 2000], [0, 1, 2000]], dtype=np.int32)
+    Xp = np.ones((3, 2), "float32")
+    sup = np.array([True, True, False])
+    m_tr = np.ones((1, W), bool)
+    out = per_year_metric_rows(pip, Xp, sup, m_tr, W)
+    assert len(out[2000][0]) == 2

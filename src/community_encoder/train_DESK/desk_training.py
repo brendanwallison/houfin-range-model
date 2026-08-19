@@ -71,6 +71,26 @@ def true_kernel_loss(z_pred, x_raw, num_pairs=4096):
     return F.mse_loss(sim_pred, sim_true)
 
 
+
+def per_year_metric_rows(pip, Xp, sup_rows, m_tr, W):
+    """``{year: (flat cell indices, community rows)}`` for the Ružička metric loss.
+
+    Sparse on purpose: a dense ``(T,H,W,S)`` tensor would be ~59x the point set for no gain,
+    since only surveyed cells carry a community. Restricted to training cells, so held-out and
+    buffered cells never enter the similarity target. Years with fewer than two training cells
+    are dropped -- a pair needs two.
+    """
+    out = {}
+    tr_flat = m_tr.reshape(-1)
+    flat_of_row = pip[:, 0].astype(np.int64) * W + pip[:, 1].astype(np.int64)
+    for y in np.unique(pip[sup_rows, 2]):
+        sel_y = sup_rows & (pip[:, 2] == y) & tr_flat[flat_of_row]
+        if int(sel_y.sum()) < 2:
+            continue
+        out[int(y)] = (flat_of_row[sel_y], Xp[sel_y].astype("float32"))
+    return out
+
+
 def prepare_supervised(cov_stack, ebird_stack, z_flat, z_mask, mu, sd, out_dir):
     """Build the labelled year's grid tensors: normalized covariate grid + cov mask,
     supervised mask (eBird & cov & Z), ESK-Z grid, and raw eBird grid."""
@@ -374,7 +394,7 @@ def _warmup_cosine(epochs, warmup, min_frac):
     return fn
 
 
-def train_model_ema(cov_window, mask_window, window_years, targets, x2023, m2023_tr, m2023_val,
+def train_model_ema(cov_window, mask_window, window_years, targets, x_by_year, m2023_tr, m2023_val,
                     stream_dims, latent_dim, ema_cfg, spatial_kernel=3, epochs=500, lr=1e-3,
                     weights=None, seed=0, patience=50, min_delta=1e-4,
                     schema=None, augment_cfg=None, dropout=0.5, weight_decay=0.0,
@@ -433,7 +453,10 @@ def train_model_ema(cov_window, mask_window, window_years, targets, x2023, m2023
     cov = torch.tensor(cov_window, device=device)                 # (T,H,W,C)
     msk = torch.as_tensor(mask_window, device=device).bool()      # (T,H,W)
     yi = {y: i for i, y in enumerate(window_years)}
-    x2023_t = torch.tensor(x2023, device=device)                  # (H,W, S) annual eBird
+    # {year: (flat cell indices, raw community rows)} -- the metric loss's per-year targets
+    x_year_t = {int(y): (torch.as_tensor(i, device=device, dtype=torch.long),
+                         torch.as_tensor(x, device=device))
+                for y, (i, x) in x_by_year.items()}
     m_tr = torch.as_tensor(m2023_tr, device=device).bool(); m_val = torch.as_tensor(m2023_val, device=device).bool()
     # supervised year targets that fall inside the forwarded window
     tgt = {y: (torch.tensor(zg, device=device),
@@ -635,8 +658,16 @@ def train_model_ema(cov_window, mask_window, window_years, targets, x2023, m2023
             s = torch.sum((zz[tr] - zg[tr]) ** 2, dim=1) * wg[tr]
             sq_sum = sq_sum + s.sum(); n_eff += float(wg[tr].sum())
         loss_stab = sq_sum / max(n_eff, 1e-8) / latent_dim
-        z_anchor = z_ema[yi[y2023]]
-        loss_true = true_kernel_loss(z_anchor[m_tr], x2023_t[m_tr])
+        # Averaged over years, NOT pooled across them: Ružička between two cells observed a
+        # decade apart would confound change in place with change in time, which is the one
+        # thing this model exists to separate. Pairs stay within a year; years then average.
+        kt, n_kt = torch.zeros((), device=device), 0
+        for _y, (_idx, _xr) in x_year_t.items():
+            if _y not in yi:
+                continue
+            kt = kt + true_kernel_loss(z_ema[yi[_y]].reshape(-1, latent_dim)[_idx], _xr)
+            n_kt += 1
+        loss_true = kt / max(n_kt, 1)
         w_stab = weights["stabilizing"] * loss_stab
         w_true = weights["metric"] * loss_true
         w_rec = weights["reconstruction"] * recon_loss
@@ -773,12 +804,19 @@ def run_desk_experiment(config=None):
           f"({Xp.shape[0]:,} rows, {int(p_supervise.sum()):,} supervised)", flush=True)
     ay, S = int(pm["recent_year"]), int(pm["n_species"])
     H, W = cov_stack.shape[:2]
-    sel = pip[:, 2] == ay
+    # There is no anchor YEAR any more. The metric loss used to read one year's community
+    # (the reconstructed target gave every cell a value in every year, so that cost nothing);
+    # on raw BBS it would gate supervision to the ~2,200 cells surveyed in that one year,
+    # discarding 43% of the cells BBS actually covers. Coverage is now ANY supervised year,
+    # and the metric loss draws its pairs within each year separately -- see x_by_year.
+    sup_rows = p_supervise if p_supervise is not None else np.ones(len(pip), bool)
     ebird_stack = np.full((H, W, S), np.nan, dtype="float32")
-    ebird_stack[pip[sel, 0], pip[sel, 1]] = Xp[sel]                # already log1p in X_points
+    order = np.argsort(pip[sup_rows, 2])                           # latest year wins per cell
+    _r, _c = pip[sup_rows][order, 0], pip[sup_rows][order, 1]
+    ebird_stack[_r, _c] = Xp[sup_rows][order]                      # already log1p in X_points
     log1p_kernel = bool(pm.get("ruzicka_log1p", True))
-    print(f"[desk] Ružicka metric anchored on the reconstructed year-{ay} community from "
-          f"X_points (anchor_mode={pm.get('anchor_mode')}, log1p={log1p_kernel})")
+    print(f"[desk] Ružicka metric over every supervised cell-year, pairs drawn WITHIN each "
+          f"year (log1p={log1p_kernel}); coverage grid = any surveyed year")
 
     z_dir = desk_cfg["z_dir"]
     try:
@@ -847,7 +885,7 @@ def run_desk_experiment(config=None):
     # schema so availability channels are left un-standardized (see cio.indicator_channels)
     mu, sd = cio.fit_norm(cov_stack[fit_mask].astype("float32"), schema)
 
-    covn, mask_cov, mask_sup, z_grid, x_grid = prepare_supervised(
+    covn, mask_cov, mask_sup, z_grid, _x_grid = prepare_supervised(   # grid unused since the metric went per-year
         cov_stack, ebird_stack, z_flat, z_mask, mu, sd, out_dir)
     ema_cfg = desk_cfg["output_ema"]
     tr_cfg = desk_cfg.get("trend", {})
@@ -855,6 +893,11 @@ def run_desk_experiment(config=None):
     # evaluation uses the holdout only, so buffer cells appear in neither.
     m_tr = mask_sup & (~holdout) & (~buffer_cells_mask)
     m_val = mask_sup & holdout
+
+    x_by_year = per_year_metric_rows(pip, Xp, sup_rows, m_tr, W)
+    n_cy = sum(len(v[0]) for v in x_by_year.values())
+    print(f"[desk] metric loss over {n_cy:,} training cell-years in {len(x_by_year)} years "
+          f"(was one year, {int((pip[:, 2] == ay).sum()):,} rows)")
     np.save(os.path.join(out_dir, "holdout_cells.npy"), holdout)
     np.save(os.path.join(out_dir, "buffer_cells.npy"), buffer_cells_mask)
     print(f"[desk] uniform z-target over the anchor + historical trend points; "
@@ -889,7 +932,7 @@ def run_desk_experiment(config=None):
               f"{sorted(year_val)}", flush=True)
 
     model, ema = train_model_ema(
-        cov_win, mask_win, kept, targets, x_grid, m_tr, m_val,
+        cov_win, mask_win, kept, targets, x_by_year, m_tr, m_val,
         stream_dims, latent_dim=z_grid.shape[2], ema_cfg=ema_cfg,
         spatial_kernel=spatial_kernel,
         epochs=desk_cfg.get("epochs", 500), lr=desk_cfg.get("lr", 1e-3),

@@ -489,32 +489,24 @@ def build_ebird_window_rows(codes, window=None, weight=1.0, verbose=True):
 
 
 def calibrate_bbs_rows(X_bbs_log, K_bbs, X_eb_log, K_eb, codes, prior_slope=1.0,
-                       prior_intercept=0.0, prior_log_slope_sd=0.5, prior_intercept_sd=1.0,
-                       verbose=True):
+                       prior_log_slope_sd=0.5, verbose=True):
     """Transform the BBS rows onto the eBird scale. Returns ``(X_bbs_calibrated, meta)``.
 
-    eBird is the common frame because it is the richer product, so the fitted transform lands
-    on the sparser data. Every species gets its own slope and intercept, shrunk toward a
-    population relationship in proportion to how much its own overlapping data actually says --
-    so a species with little overlap, or with no real agreement between the two products, is
-    pulled to the population estimate rather than fitted to noise, and one with no overlap at
-    all lands exactly on it.
+    eBird is the common frame because it is the richer product, so the fitted transform lands on
+    the sparser data. The form is a power law THROUGH THE ORIGIN -- no intercept -- so a BBS zero
+    stays a zero and no measured absence can become a fabricated presence. Each species' exponent
+    is shrunk toward a population value in proportion to how much its own overlapping data says,
+    so a species with little overlap is pulled to the population and one with none lands exactly
+    on it.
     """
     from .bbs_ebird_calibration import (apply_calibration, calibration_meta,
-                                        fit_hierarchical_calibration, report_zero_effect)
+                                        fit_hierarchical_calibration)
 
     pairs = overlap_pairs(X_eb_log, K_eb, X_bbs_log, K_bbs)
-    cal = fit_hierarchical_calibration(
-        pairs, len(codes), prior_slope=prior_slope, prior_intercept=prior_intercept,
-        prior_log_slope_sd=prior_log_slope_sd, prior_intercept_sd=prior_intercept_sd,
-        verbose=verbose)
+    cal = fit_hierarchical_calibration(pairs, len(codes), prior_slope=prior_slope,
+                                       prior_log_slope_sd=prior_log_slope_sd, verbose=verbose)
     X = apply_calibration(X_bbs_log, cal)
-    # What the calibration does to ABSENCES. Cannot be measured off-cluster (it needs the real
-    # eBird grid), and it decides whether the affine map needs anything doing about zeros at
-    # all -- see apply_calibration. Reported into the log and the meta rather than acted on.
-    meta = calibration_meta(cal, codes)
-    meta["zero_effect"] = report_zero_effect(X_bbs_log, cal, verbose=verbose)
-    return X, meta
+    return X, calibration_meta(cal, codes)
 
 
 def main():
@@ -565,9 +557,7 @@ def main():
         X, cmeta = calibrate_bbs_rows(
             X, keys, Xe, Ke, codes,
             prior_slope=float(ccfg.get("prior_slope", 1.0)),
-            prior_intercept=float(ccfg.get("prior_intercept", 0.0)),
-            prior_log_slope_sd=float(ccfg.get("prior_log_slope_sd", 0.5)),
-            prior_intercept_sd=float(ccfg.get("prior_intercept_sd", 1.0)))
+            prior_log_slope_sd=float(ccfg.get("prior_log_slope_sd", 0.5)))
         meta["calibration"] = cmeta
         X, keys, weights, source, supervise = concat_sources(X, keys, weights, Xe, Ke, We)
         meta["ebird_window"] = emeta

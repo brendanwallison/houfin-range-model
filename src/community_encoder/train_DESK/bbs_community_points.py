@@ -488,23 +488,29 @@ def build_ebird_window_rows(codes, window=None, weight=1.0, verbose=True):
     return X, K, W, meta
 
 
-def calibrate_bbs_rows(X_bbs_log, K_bbs, X_eb_log, K_eb, codes, prior_slope=1.0,
-                       prior_log_slope_sd=0.5, verbose=True):
+def calibrate_bbs_rows(X_bbs_log, K_bbs, X_eb_log, K_eb, codes, prior_exponent=1.0,
+                       prior_log_exponent_sd=0.10, prior_log_scale_sd=0.10,
+                       population_log_exponent_sd=5.0, population_log_scale_sd=5.0,
+                       verbose=True):
     """Transform the BBS rows onto the eBird scale. Returns ``(X_bbs_calibrated, meta)``.
 
     eBird is the common frame because it is the richer product, so the fitted transform lands on
-    the sparser data. The form is a power law THROUGH THE ORIGIN -- no intercept -- so a BBS zero
-    stays a zero and no measured absence can become a fabricated presence. Each species' exponent
-    is shrunk toward a population value in proportion to how much its own overlapping data says,
-    so a species with little overlap is pulled to the population and one with none lands exactly
-    on it.
+    the sparser data. The form is ``E = k_s * B^d_s`` in RAW units, so a BBS zero stays a zero
+    for any k and d -- no measured absence can become a fabricated presence -- while ``d = 1``
+    with ``k`` free still expresses a pure unit conversion between the two surveys. Each species'
+    exponent is shrunk toward a learned population value in proportion to how much its own
+    overlapping data says; a species with none lands exactly on it.
     """
     from .bbs_ebird_calibration import (apply_calibration, calibration_meta,
                                         fit_hierarchical_calibration)
 
     pairs = overlap_pairs(X_eb_log, K_eb, X_bbs_log, K_bbs)
-    cal = fit_hierarchical_calibration(pairs, len(codes), prior_slope=prior_slope,
-                                       prior_log_slope_sd=prior_log_slope_sd, verbose=verbose)
+    cal = fit_hierarchical_calibration(
+        pairs, len(codes), prior_exponent=prior_exponent,
+        prior_log_exponent_sd=prior_log_exponent_sd,
+        prior_log_scale_sd=prior_log_scale_sd,
+        population_log_exponent_sd=population_log_exponent_sd,
+        population_log_scale_sd=population_log_scale_sd, verbose=verbose)
     X = apply_calibration(X_bbs_log, cal)
     return X, calibration_meta(cal, codes)
 
@@ -556,8 +562,11 @@ def main():
         # lands on the sparser product rather than on the majority of the data.
         X, cmeta = calibrate_bbs_rows(
             X, keys, Xe, Ke, codes,
-            prior_slope=float(ccfg.get("prior_slope", 1.0)),
-            prior_log_slope_sd=float(ccfg.get("prior_log_slope_sd", 0.5)))
+            prior_exponent=float(ccfg.get("prior_exponent", 1.0)),
+            prior_log_exponent_sd=float(ccfg.get("prior_log_exponent_sd", 0.10)),
+            prior_log_scale_sd=float(ccfg.get("prior_log_scale_sd", 0.10)),
+            population_log_exponent_sd=float(ccfg.get("population_log_exponent_sd", 5.0)),
+            population_log_scale_sd=float(ccfg.get("population_log_scale_sd", 5.0)))
         meta["calibration"] = cmeta
         X, keys, weights, source, supervise = concat_sources(X, keys, weights, Xe, Ke, We)
         meta["ebird_window"] = emeta

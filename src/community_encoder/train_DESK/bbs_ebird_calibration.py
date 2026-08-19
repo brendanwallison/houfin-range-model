@@ -9,37 +9,41 @@ argument -- an uncalibrated mix would make the data SOURCE itself a similarity s
 17,205 cells against BBS's ~3,900, denser per row, modelled from far more observation effort.
 So the fitted transform lands on the sparser data rather than on the majority of it.
 
-## The functional form, and why there is no intercept
+## The functional form
 
-    log1p(ebird)_si  =  exp(beta_s) * log1p(bbs)_si  +  noise
+    E = k_s * B^(d_s)          B = BBS mean count, E = eBird abundance, both RAW
 
-Undoing the logs, that is ``(1 + E) = (1 + B)^b`` -- a power law through the origin.
+Equivalently ``log E = log k_s + d_s * log B``, which is what is fitted, over the cell-years
+where both products recorded the species.
 
-The intercept is absent on purpose, and it is the most important property here. With one,
-``B = 0`` maps to ``a``, so a surveyed cell-year where the species was NOT RECORDED becomes a
-small presence. Absences are most of the matrix (83.3% of the real BBS community matrix), so a
-positive intercept would give every cell-year a floor in every species -- and Ruzicka cannot
-see past a shared floor: it enters both numerator and denominator, inflating similarity toward
-1 and compressing its SPREAD, which is the structure the kernel discriminates on.
+Two properties make this the right family, and an earlier version that worked in ``log1p``
+space had neither:
 
-Through the origin, that is unreachable. A zero maps to a zero, the occupancy pattern of the
-calibrated matrix is identical to the raw one, and nothing has to be masked, flagged, or
-diagnosed. It is a guarantee rather than a measurement, which matters because the alternative's
-behaviour depends on the sign of the fitted intercept, and that sign depends on BBS detection
-rates that are not known in advance.
+**A zero maps to a zero.** ``B = 0`` gives ``E = 0`` for any ``k`` and ``d``. A surveyed
+cell-year where the species was not recorded cannot become a small presence. That matters
+because absences are 83.3% of the real BBS matrix, and a shared floor across every cell is
+exactly what Ruzicka cannot see past -- it enters both numerator and denominator, inflating
+similarity toward 1 and compressing its SPREAD, which is the structure the kernel
+discriminates on. Note this holds DESPITE there being a free scale parameter: ``k`` is
+multiplicative, so it cannot create a floor the way an additive intercept does.
 
-What is given up: an intercept can partially stand in for BBS under-detection, and that is
-real -- in simulation with 15% detection, about a third of BBS zeros were undetected presences.
-But it stands in for it crudely, applying one constant floor to genuinely-absent regions and
-undetected-presence ones alike. Doing that properly needs a detection or presence model, not a
-constant, and a constant that is right by accident is worse than not attempting it.
+**It can express a unit conversion.** ``d = 1`` with ``k`` free is exactly "the two products
+correspond up to a scale factor", which is the honest prior for two measurements of the same
+thing. The previous ``log1p(E) = b * log1p(B)`` could not represent that at all: if eBird were
+simply 0.2x BBS, the implied ``b`` would have to slide from 0.235 at low abundance to 0.720 at
+high, and the best single value (0.630) over-predicted by +1.8 at moderate abundance and
+under-predicted by -24.5 at high. Worse, ``b = 1`` there meant ``1+E = 1+B``, i.e. E and B
+IDENTICAL rather than proportional -- so the prior was making a far stronger claim than
+intended, and the fitted exponent was contorting to approximate a scale change it could not
+express.
 
 ## Partial pooling, not thresholds
 
-    beta_s ~ Normal(mu_beta, tau_beta)
+    delta_s = log(d_s) ~ Normal(mu_delta, tau_delta)
+    log k_s            ~ Normal(mu_logk,  tau_k)
 
-A species with thousands of overlapping cell-years is fitted almost entirely by its own data. A
-species with five, or with no real relationship between the two products, is pulled to the
+A species with thousands of overlapping cell-years is fitted almost entirely by its own data.
+A species with five, or with no real relationship between the two products, is pulled to the
 population estimate -- in proportion to how much its data actually says. A species with NO
 overlap lands exactly on the population estimate, with no special case.
 
@@ -48,119 +52,172 @@ correlation, below which a species was dropped to a pooled fit). Those numbers w
 and they made a species' treatment discontinuous in its evidence: 49 pairs behaved completely
 differently from 51.
 
-## The prior
+## The priors
 
-``mu_beta`` is centred on 0, i.e. a slope of 1, which says the two products correspond up to a
-pure scale factor rather than a power. That is the honest prior for two measurements of the
-same thing. The population location is estimated, so enough species disagreeing will move it.
+``mu_delta`` is centred on 0, i.e. an exponent of 1, so the prior says the surveys differ by a
+scale factor rather than a power. Both population locations are LEARNED, so enough species
+disagreeing will move them.
 
-``exp(beta)`` also keeps every slope positive. A negative slope would invert a species --
+FOUR separate beliefs, deliberately given four knobs -- an earlier version used one number for
+two of them, which conflated things that are not the same question:
+
+The split that matters is LOCATION versus SPREAD, and they pull in opposite directions:
+
+- The population LOCATIONS are free to drift. We have no idea what the units conversion
+  between a roadside route count and a modelled abundance index is, nor whether the typical
+  exponent is exactly 1, so ``population_log_exponent_sd`` and ``population_log_scale_sd`` are
+  both 5.0 -- effectively flat. The data determines where the population sits.
+- The SPREAD around that location is tight. ``prior_log_exponent_sd`` and
+  ``prior_log_scale_sd`` are both 0.10, so 95% of species lie within a 1.49x total span of the
+  population value.
+
+For the scale that says: species do not differ wildly in DETECTABILITY BETWEEN THE TWO
+SURVEYS. Note that is the ratio, not absolute detectability -- a species that is hard for BBS
+to detect is usually also hard for eBird observers, so the ratio between the two should stay
+close to typical even where the absolute detectability does not. An earlier version left this
+at 2.0, admitting a 2981x span, on the mistaken reasoning that species differ in
+detectability. They do; the RATIO is the thing that should not.
+
+For the exponent it says the SHAPE of the relationship is close to common across species. A
+value above 1 mostly reflects BBS saturating at high abundance -- 50 stops, limited counting
+time -- which is real but should be similar across species.
+
+``exp(delta)`` keeps every exponent positive. A negative one would invert a species --
 calibrating so that more BBS birds mean less eBird abundance -- which is never a calibration.
 
-``tau_beta`` is NOT estimated. Joint MAP over a hierarchical variance is degenerate in both
-directions and both showed up in testing: when species agree the empirical spread collapses to
-zero and the prior becomes infinitely strong, pooling everything completely; when one species
-disagrees its departure inflates the spread, weakening the prior, letting it depart further.
-Neither is a property of the data. So it stays a stated belief about how much species'
+The two ``tau`` values are NOT estimated. Joint MAP over a hierarchical variance is degenerate
+in both directions and both showed up in testing: when species agree the empirical spread
+collapses to zero and the prior becomes infinitely strong, pooling everything completely; when
+one species disagrees its departure inflates the spread, weakening the prior, letting it depart
+further. Neither is a property of the data. So they stay stated beliefs about how much species'
 calibrations differ, which is what a prior is for.
+
+## Matching spreads rather than least squares
+
+The per-species exponent is ``sd(log E)/sd(log B)``, not a regression fit. Least squares gives
+the best estimate of each individual value -- it knows part of a high BBS count is survey luck
+and pulls it back -- but we never use individual values. The target is consumed only through a
+similarity table, and pulling every cell toward the mean makes all cells more alike, so
+similarities inflate and their spread compresses. Measured against known truth across BBS noise
+0.2 to 1.2, least squares won on individual values at every noise level and lost on the
+similarity table at every noise level, by up to 3.4x, with median similarity drifting from a
+true 0.708 to 0.828 while spread-matching held it at 0.708.
 
 ## MAP, not a posterior
 
-We need point estimates to apply, not uncertainty about them. With no intercept the per-species
-step is a one-parameter fit with an analytic gradient from sufficient statistics, so coordinate
-ascent is deterministic, needs no sampler, and adds no JAX dependency to a CPU stage.
+Point estimates are all we apply. Coordinate ascent, deterministic, no sampler, and no JAX
+dependency in a CPU preprocessing stage.
 """
 import numpy as np
 
 _MIN = 1e-12
 
 
-def _species_beta(Sxx, Sxy, mu_beta, tau_beta, sigma, beta0):
-    """MAP ``beta`` for one species, no intercept, from sufficient statistics.
+def _species_estimate(x_log, y_log):
+    """One species' own ``(log d, log k, se)`` from matching spreads in LOG-LOG space.
 
-    Minimises  ``(Syy - 2 e^beta Sxy + e^2beta Sxx)/(2 sigma^2) + (beta-mu)^2/(2 tau^2)``.
-    ``Syy`` is constant in ``beta`` so it drops out. The gradient is
-
-        e^beta (e^beta Sxx - Sxy)/sigma^2  +  (beta - mu)/tau^2
-
-    which is monotone enough that a short Newton iteration converges from the population value.
+    ``x_log``/``y_log`` are ``log(BBS)`` and ``log(eBird)`` over cell-years where both recorded
+    the species. ``d = sd(y)/sd(x)`` and ``log k = mean(y) - d*mean(x)``, so the fitted line
+    passes through the species' own means. ``se ~= 1/sqrt(n-1)`` is the approximate standard
+    error of ``log d``, which is what tells the pooling step how much this species' own data
+    should count.
     """
-    beta = float(beta0)
-    for _ in range(60):
-        B = np.exp(beta)
-        g = B * (B * Sxx - Sxy) / sigma ** 2 + (beta - mu_beta) / tau_beta ** 2
-        h = (2.0 * B * B * Sxx - B * Sxy) / sigma ** 2 + 1.0 / tau_beta ** 2
-        step = g / max(h, _MIN)
-        beta -= max(min(step, 1.0), -1.0)              # damped, so a bad curvature cannot bolt
-        if abs(step) < 1e-12:
-            break
-    return beta
+    n = x_log.size
+    if n < 3:
+        return None
+    sx, sy = x_log.std(), y_log.std()
+    if sx < 1e-9 or sy < 1e-9:
+        return None
+    d = sy / sx
+    return float(np.log(d)), float(y_log.mean() - d * x_log.mean()), \
+        float(1.0 / np.sqrt(max(n - 1.0, 1.0)))
 
 
-def fit_hierarchical_calibration(pairs_by_species, n_species, prior_slope=1.0,
-                                 prior_log_slope_sd=0.5, n_iter=200, tol=1e-12, verbose=True):
-    """Partially pooled per-species calibration of BBS onto the eBird scale, through the origin.
+def fit_hierarchical_calibration(pairs_by_species, n_species, prior_exponent=1.0,
+                                 prior_log_exponent_sd=0.10, prior_log_scale_sd=0.10,
+                                 population_log_exponent_sd=5.0,
+                                 population_log_scale_sd=5.0,
+                                 n_iter=200, tol=1e-12, verbose=True):
+    """Partially pooled per-species calibration of BBS onto the eBird scale: ``E = k * B^d``.
 
     ``pairs_by_species``: ``{species_index: (x_bbs_log1p, y_ebird_log1p)}`` over overlapping
-    cell-years, restricted to rows where both values are > 0.
+    cell-years where both values are > 0. Converted internally to raw units and then to logs --
+    the callers already hold log1p values, so this keeps the interface unchanged.
 
-    Returns per-species ``b`` (length ``n_species``), the population ``mu_beta``/``mu_b``,
-    per-species ``n``, and ``shrinkage`` -- the share of each estimate that came from the
+    Returns per-species ``k`` and ``d``, the learned population ``mu_delta``/``mu_logk``,
+    per-species ``n``, and ``shrinkage`` -- the share of each exponent that came from the
     population rather than the species' own data. That is the honest replacement for a pass/fail
     flag: how much a species rests on its own evidence is continuous, so it is reported as one.
     """
     S = int(n_species)
-    Sxx = np.zeros(S); Sxy = np.zeros(S); Syy = np.zeros(S); n = np.zeros(S, dtype="int64")
-    for s, (x, y) in pairs_by_species.items():
+    own_delta = np.full(S, np.nan); own_logk = np.full(S, np.nan); own_se = np.full(S, np.inf)
+    mean_x = np.zeros(S); mean_y = np.zeros(S); n = np.zeros(S, dtype="int64")
+    for s, (x1p, y1p) in pairs_by_species.items():
         s = int(s)
         if not (0 <= s < S):
             continue
-        x = np.asarray(x, "float64"); y = np.asarray(y, "float64")
-        Sxx[s] = float(x @ x); Sxy[s] = float(x @ y); Syy[s] = float(y @ y); n[s] = x.size
-    usable = (n > 0) & (Sxx > _MIN)
-    N = int(n.sum())
+        # log1p -> raw -> log. Only positive pairs reach here, so log is safe.
+        x = np.log(np.maximum(np.expm1(np.asarray(x1p, "float64")), 1e-9))
+        y = np.log(np.maximum(np.expm1(np.asarray(y1p, "float64")), 1e-9))
+        n[s] = x.size; mean_x[s] = x.mean(); mean_y[s] = y.mean()
+        est = _species_estimate(x, y)
+        if est is not None:
+            own_delta[s], own_logk[s], own_se[s] = est
+    usable = np.isfinite(own_delta)
 
-    mu_beta = float(np.log(prior_slope))
-    tau_beta = float(prior_log_slope_sd)
-    beta = np.full(S, mu_beta)
-    sigma = max(float(np.sqrt(Syy.sum() / N)) if N else 1.0, 1e-6)
+    mu_delta = float(np.log(prior_exponent)); mu_logk = 0.0
+    tau_d = float(prior_log_exponent_sd); tau_k = float(prior_log_scale_sd)
+    pop_sd_d = float(population_log_exponent_sd); pop_sd_k = float(population_log_scale_sd)
+    delta = np.full(S, mu_delta); logk = np.full(S, mu_logk)
 
     for _ in range(int(n_iter)):
-        prev = (mu_beta, sigma)
-        for s in range(S):
-            beta[s] = _species_beta(Sxx[s], Sxy[s], mu_beta, tau_beta, sigma, beta[s]) \
-                if usable[s] else mu_beta
-        w = 1.0 / tau_beta ** 2
+        prev = (mu_delta, mu_logk)
+        w_own = np.where(usable, 1.0 / np.maximum(own_se, 1e-12) ** 2, 0.0)
+        w_pop = 1.0 / tau_d ** 2
+        delta = np.where(usable, (w_own * np.nan_to_num(own_delta) + w_pop * mu_delta)
+                         / (w_own + w_pop), mu_delta)
+        # The scale follows from the shrunk exponent, so the line still passes through the
+        # species' own means. Shrinking the two independently would leave an offset nobody
+        # asked for.
+        logk = np.where(usable, mean_y - np.exp(delta) * mean_x, mu_logk)
         if usable.any():
-            mu_beta = (w * beta[usable].sum() + np.log(prior_slope) / prior_log_slope_sd ** 2) \
-                      / (w * usable.sum() + 1.0 / prior_log_slope_sd ** 2)
-        if N:
-            B = np.exp(beta)
-            rss = float((Syy - 2.0 * B * Sxy + B * B * Sxx)[usable].sum())
-            sigma = max(float(np.sqrt(max(rss, 0.0) / N)), 1e-6)
-        if max(abs(prev[0] - mu_beta), abs(prev[1] - sigma)) < tol:
+            mu_delta = (w_pop * delta[usable].sum()
+                        + np.log(prior_exponent) / pop_sd_d ** 2) \
+                       / (w_pop * usable.sum() + 1.0 / pop_sd_d ** 2)
+            wk = 1.0 / tau_k ** 2
+            mu_logk = (wk * logk[usable].sum()) / (wk * usable.sum() + 1.0 / pop_sd_k ** 2)
+        if max(abs(prev[0] - mu_delta), abs(prev[1] - mu_logk)) < tol:
             break
 
-    beta = np.where(usable, beta, mu_beta)
-    b = np.exp(beta)
-    like = np.where(usable, b ** 2 * Sxx / sigma ** 2, 0.0)      # curvature from the data
-    shrink = (1.0 / tau_beta ** 2) / (like + 1.0 / tau_beta ** 2)
+    delta = np.where(usable, delta, mu_delta)
+    logk = np.where(usable, logk, mu_logk)
+    d = np.exp(delta); k = np.exp(logk)
+    shrink = np.where(usable, (1.0 / tau_d ** 2) /
+                      (np.where(usable, 1.0 / np.maximum(own_se, 1e-12) ** 2, 0.0)
+                       + 1.0 / tau_d ** 2), 1.0)
 
-    out = {"b": b, "beta": beta, "n": n, "shrinkage": shrink, "sigma": float(sigma),
-           "mu_beta": float(mu_beta), "mu_b": float(np.exp(mu_beta)),
-           "tau_beta": float(tau_beta),
-           "prior": {"slope": float(prior_slope),
-                     "log_slope_sd": float(prior_log_slope_sd)},
-           "n_species_with_overlap": int(usable.sum()), "n_overlap_points": N}
+    out = {"k": k, "d": d, "delta": delta, "log_k": logk, "n": n, "shrinkage": shrink,
+           "mu_delta": float(mu_delta), "mu_d": float(np.exp(mu_delta)),
+           "mu_logk": float(mu_logk), "mu_k": float(np.exp(mu_logk)),
+           "tau_delta": float(tau_d), "tau_logk": float(tau_k),
+           "prior": {"exponent": float(prior_exponent),
+                     "log_exponent_sd": float(prior_log_exponent_sd),
+                     "log_scale_sd": float(prior_log_scale_sd),
+                     "population_log_exponent_sd": float(population_log_exponent_sd),
+                     "population_log_scale_sd": float(population_log_scale_sd)},
+           "n_species_with_overlap": int(usable.sum()), "n_overlap_points": int(n.sum())}
     if verbose:
-        print(f"[calib] BBS -> eBird through the origin, partially pooled over {S} species "
-              f"({int(usable.sum())} with overlap, {N:,} paired cell-years)")
-        print(f"[calib] population slope {np.exp(mu_beta):.3f} "
-              f"(log-slope {mu_beta:+.3f}, prior sd {tau_beta:.2f}), residual sd {sigma:.3f}")
+        print(f"[calib] BBS -> eBird as E = k*B^d, partially pooled over {S} species "
+              f"({int(usable.sum())} with usable overlap, {int(n.sum()):,} paired cell-years)")
+        print(f"[calib] population: scale k={np.exp(mu_logk):.4f}, exponent d="
+              f"{np.exp(mu_delta):.3f}  (d=1 would mean a pure unit conversion)")
+        print(f"[calib] priors at 2sd: exponents within {np.exp(2*tau_d):.2f}x of the "
+              f"population, detectability ratios within {np.exp(2*tau_k):.1f}x")
         if usable.any():
-            print(f"[calib] per-species slope: median {np.median(b[usable]):.3f}, "
-                  f"range {b[usable].min():.3f}..{b[usable].max():.3f} "
-                  f"(positive by construction)")
+            print(f"[calib] per-species exponent d: median {np.median(d[usable]):.3f}, "
+                  f"range {d[usable].min():.3f}..{d[usable].max():.3f} (positive by construction)")
+            print(f"[calib] per-species scale k:    median {np.median(k[usable]):.4f}, "
+                  f"range {k[usable].min():.4f}..{k[usable].max():.4f}")
             print(f"[calib] shrinkage toward the population: median "
                   f"{np.median(shrink[usable]):.3f}, "
                   f"{int((shrink > 0.5).sum())} species more population than own data")
@@ -171,35 +228,41 @@ def fit_hierarchical_calibration(pairs_by_species, n_species, prior_slope=1.0,
 
 
 def apply_calibration(X_bbs_log, cal):
-    """Map log1p BBS values onto the eBird log1p scale: ``b[s] * x`` (pure).
+    """Map log1p BBS values onto the eBird log1p scale via ``E = k * B^d`` (pure).
 
-    Through the origin, so a zero stays a zero and the occupancy pattern of the calibrated
-    matrix is identical to the raw one. That is the property the whole form exists for -- see the
-    module docstring. Nothing needs masking and no absence can become a presence.
+    A zero stays a zero for any ``k`` and ``d``, so the occupancy pattern of the calibrated
+    matrix is identical to the raw one -- nothing needs masking and no measured absence can
+    become a fabricated presence. That holds despite ``k`` being a free scale, because ``k`` is
+    multiplicative: unlike an additive intercept it cannot create a floor.
     """
     X = np.asarray(X_bbs_log, "float64")
-    b = np.asarray(cal["b"], "float64").reshape(1, -1)
-    if X.shape[1] != b.shape[1]:
-        raise ValueError(f"calibration has {b.shape[1]} species, X has {X.shape[1]}")
-    return np.clip(b * X, 0.0, None).astype("float32")
+    k = np.asarray(cal["k"], "float64").reshape(1, -1)
+    d = np.asarray(cal["d"], "float64").reshape(1, -1)
+    if X.shape[1] != k.shape[1]:
+        raise ValueError(f"calibration has {k.shape[1]} species, X has {X.shape[1]}")
+    B = np.expm1(X)
+    E = np.where(B > 0, k * np.power(np.maximum(B, 0.0), d), 0.0)
+    return np.log1p(np.clip(E, 0.0, None)).astype("float32")
 
 
 def calibration_meta(cal, species):
     """JSON-safe per-species record for ``points_meta.json``.
 
-    ``shrinkage`` is the field to read: near 1 means that species' calibration is essentially
-    the population relationship because its own data said little, near 0 means its own data
-    determined it. There is no pass/fail flag to read instead, deliberately.
+    ``shrinkage`` is the field to read: near 1 means that species' exponent is essentially the
+    population value because its own data said little, near 0 means its own data determined it.
+    There is no pass/fail flag to read instead, deliberately.
     """
     return {
-        "direction": "bbs_to_ebird", "method": "hierarchical_map_through_origin",
-        "form": "log1p(ebird) = b_s * log1p(bbs)",
-        "population": {"slope": cal["mu_b"], "log_slope": cal["mu_beta"],
-                       "log_slope_sd_prior": cal["tau_beta"], "residual_sd": cal["sigma"]},
+        "direction": "bbs_to_ebird", "method": "hierarchical_map_power_law",
+        "form": "ebird = k_s * bbs**d_s   (raw units; zero maps to zero)",
+        "population": {"scale_k": cal["mu_k"], "exponent_d": cal["mu_d"],
+                       "log_exponent_sd_prior": cal["tau_delta"],
+                       "log_scale_sd_prior": cal["tau_logk"]},
         "prior": cal["prior"],
         "n_species_with_overlap": cal["n_species_with_overlap"],
         "n_overlap_points": cal["n_overlap_points"],
-        "per_species": {str(c): {"b": float(cal["b"][i]), "n": int(cal["n"][i]),
+        "per_species": {str(c): {"k": float(cal["k"][i]), "d": float(cal["d"][i]),
+                                 "n": int(cal["n"][i]),
                                  "shrinkage": float(cal["shrinkage"][i])}
                         for i, c in enumerate(species)},
     }

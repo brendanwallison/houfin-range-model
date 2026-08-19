@@ -55,6 +55,9 @@ MASK_PATH = f"{_DR}/land_mask/ocean_mask_{_RES_KM}km.tif"
 
 HOUSE_FINCH_AOU = 5190
 RPID_STANDARD = 101
+# bbsBayes2 groups the first-year flag by observer x ROUTE (its ``obs_route``), not by
+# observer alone -- see first_year_flags.
+_OBS_ROUTE_KEYS = ["CountryNum", "StateNum", "Route", "ObsN"]
 START_YEAR = _TL["first_year"]                 # 1902
 END_YEAR = _TL["end_year"]                      # 2025
 PSEUDO_ZERO_END_YEAR = _TL["invasion_year"] - 1  # last pre-invasion year (1939)
@@ -83,6 +86,50 @@ def load_grid_reference(mask_path):
         ny, nx = data.shape
     print(f"Grid loaded: {ny}x{nx}, CRS: {crs}")
     return land_mask, ocean_mask, transform, crs, nx, ny
+
+
+def load_run_metadata():
+    """QC-passing route-years WITH the observer id: the input to ``first_year_flags``.
+
+    A separate read rather than widening ``load_usca_observations``'s ``w_cols``, because that
+    function does ``qc.dropna().astype(int)`` across every column it reads -- adding ``ObsN``
+    there would let a missing observer id silently drop a route-year from the COVERAGE table,
+    which is the authoritative row set for community absences. Coverage semantics must not
+    depend on observer metadata.
+
+    Returns ``[CountryNum, StateNum, Route, Year, ObsN]`` for runs passing the same gates as
+    the counts (``RunType != 0``, ``RPID == RPID_STANDARD``).
+    """
+    cols = ["CountryNum", "StateNum", "Route", "RPID", "Year", "RunType", "ObsN"]
+    runs = pd.read_csv(WEATHER_FILE, usecols=cols)
+    for c in cols:
+        runs[c] = pd.to_numeric(runs[c], errors="coerce")
+    runs = runs.dropna(subset=cols).astype({c: int for c in cols})
+    runs = runs[(runs["RunType"] != 0) & (runs["RPID"] == RPID_STANDARD)]
+    return runs[["CountryNum", "StateNum", "Route", "Year", "ObsN"]].drop_duplicates()
+
+
+def first_year_flags(runs):
+    """Flag each observer's FIRST year on each route: ``first_year`` in {0, 1} (pure).
+
+    This is the one piece of the bbsBayes2 observer submodel that ports to a non-Bayesian
+    target. There it is ``eta * first_year[i]`` -- a single global coefficient on a 0/1 column.
+    The observer/route random effects (``sdobs * obs_raw``, ``sdste * ste_raw``) do NOT port:
+    they are partially pooled latents, and ``sdobs ~ normal(0, 0.3)`` is doing real regularizing
+    work that unpooled dummies would not reproduce.
+
+    **Grouped by (route, observer), not observer alone** -- matching bbsBayes2's ``obs_route``.
+    An experienced observer moving to a new route is flagged again, because the effect being
+    modelled is unfamiliarity with THAT ROUTE, not inexperience in general.
+
+    Why it matters: dropping each observer's first year on each route lowered trend estimates
+    for 415/459 species in the USGS analysis (significantly for 213), averaging 1.8%/yr -- so
+    first-year counts run low and bias trends upward if left uncorrected.
+    """
+    out = runs.copy()
+    grp = out.groupby(_OBS_ROUTE_KEYS)["Year"].transform("min")
+    out["first_year"] = (out["Year"] == grp).astype("int8")
+    return out
 
 
 def load_usca_observations(aou_filter=HOUSE_FINCH_AOU, return_coverage=False):

@@ -262,3 +262,49 @@ def test_mexico_count_prefers_speciestotal_when_present():
     from src.data.preprocess.bbs import _mexico_count
     df = pd.DataFrame({"SpeciesTotal": [7], "Stop1": [1], "Stop2": [2]})
     assert int(_mexico_count(df).iloc[0]) == 7
+
+
+# ----------------------------- observer first-year flag -----------------------------
+
+def _runs(rows):
+    """rows = [(route, obsn, year), ...] -> the frame first_year_flags expects."""
+    import pandas as pd
+    return pd.DataFrame([{"CountryNum": 840, "StateNum": 2, "Route": r, "Year": y, "ObsN": o}
+                         for r, o, y in rows])
+
+
+def test_first_year_is_grouped_by_observer_AND_route():
+    """bbsBayes2 groups on obs_route, not observer. An experienced observer moving to a new
+    route is flagged AGAIN, because the effect is unfamiliarity with that route -- not
+    inexperience. Grouping by observer alone would miss every route change."""
+    from src.data.preprocess.bbs import first_year_flags
+    # observer 7 runs route 1 from 1990, then also starts route 2 in 1995
+    out = first_year_flags(_runs([(1, 7, 1990), (1, 7, 1991), (1, 7, 1992),
+                                  (2, 7, 1995), (2, 7, 1996)]))
+    got = {(int(r.Route), int(r.Year)): int(r.first_year) for r in out.itertuples()}
+    assert got[(1, 1990)] == 1                       # first year on route 1
+    assert got[(1, 1991)] == 0 and got[(1, 1992)] == 0
+    assert got[(2, 1995)] == 1, "route change must re-flag an experienced observer"
+    assert got[(2, 1996)] == 0
+
+
+def test_first_year_flags_each_observer_independently_on_a_shared_route():
+    """Two observers on one route: each gets their own first year, and a later observer's
+    debut is flagged even though the route itself has been surveyed for years."""
+    from src.data.preprocess.bbs import first_year_flags
+    out = first_year_flags(_runs([(1, 7, 1990), (1, 7, 1991), (1, 9, 2005), (1, 9, 2006)]))
+    got = {(int(r.ObsN), int(r.Year)): int(r.first_year) for r in out.itertuples()}
+    assert got[(7, 1990)] == 1 and got[(7, 1991)] == 0
+    assert got[(9, 2005)] == 1 and got[(9, 2006)] == 0
+
+
+def test_first_year_flags_is_pure_and_total():
+    """Does not mutate its input, and flags exactly one year per (route, observer)."""
+    from src.data.preprocess.bbs import first_year_flags
+    runs = _runs([(1, 7, 1990), (1, 7, 1991), (2, 8, 1975)])
+    before = runs.copy()
+    out = first_year_flags(runs)
+    assert "first_year" not in runs.columns and runs.equals(before)
+    n_groups = len({(int(r.Route), int(r.ObsN)) for r in out.itertuples()})
+    assert int(out["first_year"].sum()) == n_groups
+    assert set(out["first_year"].unique()) <= {0, 1}

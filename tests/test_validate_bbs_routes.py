@@ -62,6 +62,27 @@ def test_densify_deduplicates_coverage_rows():
     assert keys.shape == (1, 3) and X.shape == (1, 1) and X[0, 0] == 4.0
 
 
+def test_densify_returns_three_values_even_with_no_coverage():
+    """The empty-coverage path used to return a 2-tuple while every other path returned 3, so
+    an all-uncovered input unpacked into a ValueError instead of an empty result. Reachable
+    whenever a gate removes every surveyed cell-year."""
+    X, keys, dropped = densify_community(
+        row=[0], col=[0], year=[2000], species_index=[0], mean_count=[5.0],
+        cov_row=[], cov_col=[], cov_year=[], n_species=3)
+    assert X.shape == (0, 3) and keys.shape == (0, 3)
+    assert X.dtype == np.float32 and keys.dtype == np.int32
+    assert dropped == 0
+
+
+def test_densify_and_log1p_are_the_shared_bbs_community_implementations():
+    """These moved to src/data/preprocess/bbs_community.py because the raw-BBS TARGET and this
+    validation must densify identically. Re-exported here; assert it is the same object, not a
+    copy that could drift."""
+    from src.data.preprocess import bbs_community as bc
+    assert densify_community is bc.densify_community
+    assert log1p_community is bc.log1p_community
+
+
 def test_log1p_clips_negatives():
     out = log1p_community(np.array([[-1.0, 0.0, np.e - 1.0]]))
     assert out[0, 0] == 0.0 and out[0, 1] == 0.0

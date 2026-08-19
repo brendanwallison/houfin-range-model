@@ -79,6 +79,59 @@ def build_community_matrix(obs_all, coverage, crosswalk, route_cells):
     return mean_df, cov_df
 
 
+def densify_community(row, col, year, species_index, mean_count,
+                      cov_row, cov_col, cov_year, n_species):
+    """Long-form BBS community triples -> dense per-surveyed-cell-year matrix (pure).
+
+    ``build_community_matrix`` emits PRESENT species only; absences are implicit. The
+    authoritative row set is therefore the COVERAGE table (``cov_*``), not the presence
+    triples: a surveyed cell-year where a species went unrecorded is a genuine zero, and a
+    surveyed cell-year where *nothing* was recorded is a real all-zero row, not a missing one.
+    Building rows from the presence triples instead would silently drop exactly the cell-years
+    that carry the strongest turnover signal.
+
+    Returns ``(X (N, n_species) float32 raw counts, keys (N, 3) int32 [row, col, year],
+    n_dropped)`` ordered by ``(row, col, year)``. Presence triples for cell-years absent from
+    coverage are dropped (they failed QC) and reported as ``n_dropped``.
+
+    Lives here rather than in the validation module because it is now the shared core of BOTH
+    the raw-BBS training target and the route-level validation -- the two must densify
+    identically or they are not measuring the same community.
+    """
+    keys = np.stack([np.asarray(cov_row, "int64"),
+                     np.asarray(cov_col, "int64"),
+                     np.asarray(cov_year, "int64")], axis=1)
+    if keys.shape[0] == 0:
+        return np.zeros((0, n_species), "float32"), np.zeros((0, 3), "int32"), 0
+    # Deduplicate + sort the coverage rows so the output order is deterministic and a repeated
+    # cell-year in cov_* cannot create two rows for one site-year.
+    keys = np.unique(keys, axis=0)
+    order = {(int(r), int(c), int(y)): i for i, (r, c, y) in enumerate(keys)}
+
+    X = np.zeros((keys.shape[0], int(n_species)), dtype="float32")
+    dropped = 0
+    for r, c, y, s, v in zip(np.asarray(row), np.asarray(col), np.asarray(year),
+                             np.asarray(species_index), np.asarray(mean_count)):
+        i = order.get((int(r), int(c), int(y)))
+        if i is None:                       # present species in an uncovered cell-year
+            dropped += 1
+            continue
+        si = int(s)
+        if 0 <= si < X.shape[1]:
+            X[i, si] += float(v)            # += so crosswalk lumps accumulate
+    return X, keys.astype("int32"), dropped
+
+
+def log1p_community(X):
+    """``log1p(clip(x, 0, None))`` -- the transform the spacetime ESK is fit with.
+
+    Ruzicka is scale-sensitive per-argument, so every producer of a community matrix that
+    feeds the same kernel has to apply the same transform or the similarity structure is not
+    the same quantity. Matches ``trend_community`` (``ruzicka_log1p``, default True).
+    """
+    return np.log1p(np.clip(np.asarray(X, "float64"), 0.0, None)).astype("float32")
+
+
 def save_npz(out_path, mean_df, cov_df, species_codes, ny, nx):
     """Serialize the community matrix to a compact long-form ``.npz``."""
     code_ix = {c: i for i, c in enumerate(species_codes)}

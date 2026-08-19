@@ -1,62 +1,54 @@
 """Raw route-level BBS community counts as the community-encoder training target.
 
-The target this replaces was derived from published trend products, and its shape was the
-problem rather than its accuracy. ``trend_community`` reconstructs each cell's community as
-a closed-form function of ~4 time-invariant numbers (an anchor abundance, a BBS %/yr rate,
-an eBird %/yr rate, a scale), capped, then Gaussian-smoothed across space. That makes the
-target low-complexity in BOTH axes -- spatially smooth because the products are IDW/model
-surfaces which we then blur again, temporally an exponential -- so an interpolator is close
-to optimal on it *by construction*. Measured: Val MSE never beat an inverse-distance
-baseline in any run (1.49x, 1.97x, 2.10x, 2.02x worse), and our own smoothing at sigma=2
-cells was measured to retain only ~78% of real per-cell change (~65% at sigma=5; a planted
-localized change collapsed 0.90 -> 0.21).
+Replaces a target derived from published trend products, whose SHAPE was the problem rather
+than its accuracy. ``trend_community`` reconstructs each cell's community as a closed-form
+function of ~4 time-invariant numbers, capped, then Gaussian-smoothed across space -- low
+complexity in both axes, so an interpolator is near-optimal on it by construction. Measured:
+Val MSE never beat an inverse-distance baseline in any run (1.49x, 1.97x, 2.10x, 2.02x
+worse), and our own sigma=2 smoothing retained only ~78% of real per-cell change. No holdout
+carved from such a target can say whether the covariates carry community signal.
 
-So no holdout carved from that target can answer whether the covariates carry community
-signal: every split is graded against a smooth reconstruction of itself.
+This module writes what the surveyors counted -- no caps, no spatial smoothing, no
+reconstruction. The QC gates (``RunType != 0``, ``RPID == 101``) live upstream in
+``bbs.load_usca_observations`` and are the only filtering.
 
-What this module writes instead is what the surveyors counted. No caps, no spatial
-smoothing, no reconstruction. The QC gates (``RunType != 0``, ``RPID == 101``) are the only
-filtering, and they live upstream in ``bbs.load_usca_observations``.
+Two properties make a cell-level target honest rather than a re-smoothing:
 
-Two properties of BBS make the cell-level target honest rather than a re-smoothing:
+- **1.08 routes per covered cell-year** (median 1). Aggregating routes to the 27 km model
+  grid is very nearly a no-op, not a spatial average -- it is the target's native resolution.
+- **Absences are real.** ``densify_community`` treats the coverage table as authoritative, so
+  a surveyed cell-year where a species went unrecorded is a genuine zero, not a gap. That is
+  where most of the turnover signal lives.
 
-- **1.08 routes per covered cell-year** (median 1; 79% of route-bearing cells hold exactly
-  one route). Aggregating routes to 27 km cells is very nearly a no-op, not a spatial
-  average. The model grid IS 27 km, so this is the target's native resolution.
-- **Absences are real.** ``densify_community`` treats the coverage table as authoritative,
-  so a surveyed cell-year where a species went unrecorded is a genuine zero rather than a
-  gap. That is where most of the turnover signal lives.
-
-What it costs, stated plainly: supervision covers ~4,012 cells of 17,209 land cells (23%),
-against 17,205 before. The counter-argument is that the other ~13,000 cells were IDW
-interpolation *from these same routes* and so were never independent information -- but Z
-in unsurveyed regions is now genuinely less constrained, and that is a real scientific cost.
-The cube still spans every cell because it is the encoder applied to covariates, not the
-target.
+The cost, stated plainly: supervision covers ~3,900 of 17,209 land cells (23%), against
+17,205 before. The other ~13,000 were IDW interpolation *from these same routes* and so were
+never independent information -- but Z in unsurveyed regions is now genuinely less
+constrained, which is a real scientific cost. The cube still spans every cell, being the
+encoder applied to covariates rather than the target.
 
 Measured end-to-end on the real 2026 release with a rank-ordered 96-species proxy community
 (the production community needs the eBird REST gate, so these will shift slightly):
 
-    114,172 surveyed cell-years over 3,902 cells; 1966-2025, 59 years present, 2020 absent
-    16.0 species present per cell-year (median 16, p10 8, max 34); matrix 16.7% dense
-    off-diagonal Ruzicka: p50 0.197, mean 0.235
-      same-cell different-year pairs  median 0.649
-      different-cell pairs            median 0.197      -> 3.3x separation
+    114,152 surveyed cell-years over 3,902 cells; 1966-2025, 59 years present, 2020 absent
+    16.0 species per cell-year (median 16, p10 8, max 34); matrix 16.7% dense
+    off-diagonal Ruzicka p50 0.197 -- same-cell/different-year 0.649 vs different-cell 0.197
 
-That last contrast is the argument that this target is better CONDITIONED, not just more
+That 3.3x separation is the argument that this target is better CONDITIONED, not just more
 honest. ``validate_bbs_routes`` reads a median off-diagonal similarity near 1.0 as
-underpowered, and the reconstructed target sits near that failure mode: it gives every cell
-a positive value for every species, so any two cell-years look alike. Raw counts are 16.7%
-dense, so the kernel has structure to work with -- and it recovers the ecologically correct
-ordering, where a place resembles itself across time far more than it resembles elsewhere.
+underpowered, and the reconstructed target sat near that failure mode: it gave every cell a
+positive value for every species, so any two cell-years looked alike.
 
 Artifacts (same format as ``trend_community.build_trend_points``, so ``esk_kernel`` and
-``desk_training`` need no loader changes), plus one new file:
+``desk_training`` need no loader changes), plus three new files:
 
-    X_points.npy      (N, S) float32   log1p(mean_count), species in community order
-    point_index.npy   (N, 3) int32     (row, col, year)
-    point_weights.npy (N,)   float32   NEW: observer first-year downweight
-    points_meta.json                   provenance, incl. target_source
+    X_points.npy        (N, S) float32   log1p(mean_count), species in community order
+    point_index.npy     (N, 3) int32     (row, col, year)
+    point_weights.npy   (N,)   float32   NEW: observer first-year downweight
+    point_source.npy    (N,)   int8      NEW: 0 = BBS, 1 = eBird window
+    point_supervise.npy (N,)   bool      NEW: false for duplicate cell-years kept only for
+                                         the kernel, so DESK supervision sees each cell-year
+                                         once (BBS preferred)
+    points_meta.json                     provenance, incl. target_source and calibration
 
     python -m src.community_encoder.train_DESK.bbs_community_points
 """

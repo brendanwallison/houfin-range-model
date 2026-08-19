@@ -11,10 +11,20 @@ So the fitted transform lands on the sparser data rather than on the majority of
 
 ## The functional form
 
-    E = k_s * B^(d_s)          B = BBS mean count, E = eBird abundance, both RAW
+    E = k_s * (B / B0)^(d_s)       B = BBS mean count, E = eBird abundance, both RAW
 
-Equivalently ``log E = log k_s + d_s * log B``, which is what is fitted, over the cell-years
-where both products recorded the species.
+fitted as ``log E = log k_s + d_s * (log B - log B0)`` over the cell-years where both products
+recorded the species. ``B0`` is the typical BBS count, pooled across all species, and it is
+what makes ``k_s`` mean something: it is eBird's value at a TYPICAL BBS count -- the actual
+exchange rate between the two surveys.
+
+Anchoring at ``B0`` rather than at ``B = 1`` is not cosmetic. Uncentred, ``log k`` is the value
+where BBS counts exactly one bird, which is the far edge of the data, and it is strongly
+coupled to the exponent: a species with a high ``d`` must have a tiny ``k`` to compensate. On
+the real data that coupling alone dragged the reported ``k`` across ~27x before any genuine
+difference in detectability, so a prior on its spread was being applied to a quantity that was
+mostly an artefact of where the fit was anchored. Centred, ``k_s`` and ``d_s`` are close to
+independent and the prior on ``k`` means what it says.
 
 Two properties make this the right family, and an earlier version that worked in ``log1p``
 space had neither:
@@ -129,8 +139,11 @@ def _species_estimate(x_log, y_log):
     if sx < 1e-9 or sy < 1e-9:
         return None
     d = sy / sx
-    return float(np.log(d)), float(y_log.mean() - d * x_log.mean()), \
-        float(1.0 / np.sqrt(max(n - 1.0, 1.0)))
+    # se on log d from the ratio of two sample spreads; se on log k from the mean of y, which
+    # dominates its uncertainty. Both feed the pooling step, so a species with thin data is
+    # pulled toward the population on BOTH parameters rather than only on the exponent.
+    return (float(np.log(d)), float(1.0 / np.sqrt(max(n - 1.0, 1.0))),
+            float(y_log.mean()), float(x_log.mean()), float(sy / np.sqrt(n)))
 
 
 def fit_hierarchical_calibration(pairs_by_species, n_species, prior_exponent=1.0,
@@ -150,8 +163,10 @@ def fit_hierarchical_calibration(pairs_by_species, n_species, prior_exponent=1.0
     flag: how much a species rests on its own evidence is continuous, so it is reported as one.
     """
     S = int(n_species)
-    own_delta = np.full(S, np.nan); own_logk = np.full(S, np.nan); own_se = np.full(S, np.inf)
-    mean_x = np.zeros(S); mean_y = np.zeros(S); n = np.zeros(S, dtype="int64")
+    own_delta = np.full(S, np.nan); own_se = np.full(S, np.inf)
+    mean_x = np.zeros(S); mean_y = np.zeros(S); se_k = np.full(S, np.inf)
+    n = np.zeros(S, dtype="int64")
+    xs_all = []
     for s, (x1p, y1p) in pairs_by_species.items():
         s = int(s)
         if not (0 <= s < S):
@@ -159,11 +174,15 @@ def fit_hierarchical_calibration(pairs_by_species, n_species, prior_exponent=1.0
         # log1p -> raw -> log. Only positive pairs reach here, so log is safe.
         x = np.log(np.maximum(np.expm1(np.asarray(x1p, "float64")), 1e-9))
         y = np.log(np.maximum(np.expm1(np.asarray(y1p, "float64")), 1e-9))
-        n[s] = x.size; mean_x[s] = x.mean(); mean_y[s] = y.mean()
+        n[s] = x.size
+        xs_all.append(x)
         est = _species_estimate(x, y)
         if est is not None:
-            own_delta[s], own_logk[s], own_se[s] = est
+            own_delta[s], own_se[s], mean_y[s], mean_x[s], se_k[s] = est
     usable = np.isfinite(own_delta)
+    # ONE anchor for every species, so the k values are comparable to each other and a prior on
+    # their spread is a statement about species rather than about where each fit was centred.
+    log_B0 = float(np.concatenate(xs_all).mean()) if xs_all else 0.0
 
     mu_delta = float(np.log(prior_exponent)); mu_logk = 0.0
     tau_d = float(prior_log_exponent_sd); tau_k = float(prior_log_scale_sd)
@@ -179,7 +198,16 @@ def fit_hierarchical_calibration(pairs_by_species, n_species, prior_exponent=1.0
         # The scale follows from the shrunk exponent, so the line still passes through the
         # species' own means. Shrinking the two independently would leave an offset nobody
         # asked for.
-        logk = np.where(usable, mean_y - np.exp(delta) * mean_x, mu_logk)
+        # Shrunk toward the population like the exponent, weighted by how precisely this
+        # species' data pins it down. An earlier version computed it directly from the species'
+        # own means and never shrank it at all, so the prior on its spread affected only the
+        # population value -- the per-species k values were completely unconstrained, and on
+        # real data they spanned 612x against a prior asserting 1.2x.
+        own_logk = mean_y - np.exp(delta) * (mean_x - log_B0)
+        w_own_k = np.where(usable, 1.0 / np.maximum(se_k, 1e-12) ** 2, 0.0)
+        w_pop_k = 1.0 / tau_k ** 2
+        logk = np.where(usable, (w_own_k * own_logk + w_pop_k * mu_logk)
+                        / (w_own_k + w_pop_k), mu_logk)
         if usable.any():
             mu_delta = (w_pop * delta[usable].sum()
                         + np.log(prior_exponent) / pop_sd_d ** 2) \
@@ -195,8 +223,12 @@ def fit_hierarchical_calibration(pairs_by_species, n_species, prior_exponent=1.0
     shrink = np.where(usable, (1.0 / tau_d ** 2) /
                       (np.where(usable, 1.0 / np.maximum(own_se, 1e-12) ** 2, 0.0)
                        + 1.0 / tau_d ** 2), 1.0)
+    shrink_k = np.where(usable, (1.0 / tau_k ** 2) /
+                        (np.where(usable, 1.0 / np.maximum(se_k, 1e-12) ** 2, 0.0)
+                         + 1.0 / tau_k ** 2), 1.0)
 
     out = {"k": k, "d": d, "delta": delta, "log_k": logk, "n": n, "shrinkage": shrink,
+           "shrinkage_k": shrink_k, "log_B0": log_B0, "B0": float(np.exp(log_B0)),
            "mu_delta": float(mu_delta), "mu_d": float(np.exp(mu_delta)),
            "mu_logk": float(mu_logk), "mu_k": float(np.exp(mu_logk)),
            "tau_delta": float(tau_d), "tau_logk": float(tau_k),
@@ -216,11 +248,13 @@ def fit_hierarchical_calibration(pairs_by_species, n_species, prior_exponent=1.0
         if usable.any():
             print(f"[calib] per-species exponent d: median {np.median(d[usable]):.3f}, "
                   f"range {d[usable].min():.3f}..{d[usable].max():.3f} (positive by construction)")
-            print(f"[calib] per-species scale k:    median {np.median(k[usable]):.4f}, "
-                  f"range {k[usable].min():.4f}..{k[usable].max():.4f}")
-            print(f"[calib] shrinkage toward the population: median "
-                  f"{np.median(shrink[usable]):.3f}, "
-                  f"{int((shrink > 0.5).sum())} species more population than own data")
+            print(f"[calib] per-species scale k (eBird at a typical BBS count of "
+                  f"{np.exp(log_B0):.2f} birds): median {np.median(k[usable]):.4f}, "
+                  f"range {k[usable].min():.4f}..{k[usable].max():.4f} "
+                  f"({k[usable].max()/max(k[usable].min(),1e-12):.1f}x span)")
+            print(f"[calib] shrinkage toward the population -- exponent: median "
+                  f"{np.median(shrink[usable]):.3f}; scale: median "
+                  f"{np.median(shrink_k[usable]):.3f}")
         if (~usable).any():
             print(f"[calib] {int((~usable).sum())} species lack usable overlap and sit exactly "
                   f"on the population estimate")
@@ -240,8 +274,9 @@ def apply_calibration(X_bbs_log, cal):
     d = np.asarray(cal["d"], "float64").reshape(1, -1)
     if X.shape[1] != k.shape[1]:
         raise ValueError(f"calibration has {k.shape[1]} species, X has {X.shape[1]}")
+    B0 = float(cal.get("B0", 1.0))
     B = np.expm1(X)
-    E = np.where(B > 0, k * np.power(np.maximum(B, 0.0), d), 0.0)
+    E = np.where(B > 0, k * np.power(np.maximum(B, 0.0) / B0, d), 0.0)
     return np.log1p(np.clip(E, 0.0, None)).astype("float32")
 
 
@@ -254,7 +289,8 @@ def calibration_meta(cal, species):
     """
     return {
         "direction": "bbs_to_ebird", "method": "hierarchical_map_power_law",
-        "form": "ebird = k_s * bbs**d_s   (raw units; zero maps to zero)",
+        "form": "ebird = k_s * (bbs/B0)**d_s   (raw units; zero maps to zero)",
+        "B0_typical_bbs_count": cal.get("B0"),
         "population": {"scale_k": cal["mu_k"], "exponent_d": cal["mu_d"],
                        "log_exponent_sd_prior": cal["tau_delta"],
                        "log_scale_sd_prior": cal["tau_logk"]},
@@ -263,6 +299,7 @@ def calibration_meta(cal, species):
         "n_overlap_points": cal["n_overlap_points"],
         "per_species": {str(c): {"k": float(cal["k"][i]), "d": float(cal["d"][i]),
                                  "n": int(cal["n"][i]),
-                                 "shrinkage": float(cal["shrinkage"][i])}
+                                 "shrinkage": float(cal["shrinkage"][i]),
+                                 "shrinkage_k": float(cal["shrinkage_k"][i])}
                         for i, c in enumerate(species)},
     }

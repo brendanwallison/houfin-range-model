@@ -43,18 +43,19 @@ def test_occupancy_is_preserved_exactly():
 
 
 def test_a_pure_unit_conversion_is_representable_and_recovered():
-    """The failure that motivated this form. If eBird is simply 0.2x BBS, the answer is
-    k=0.2, d=1 exactly. The previous log1p(E)=b*log1p(B) could not express it for any b --
-    the implied b slid from 0.235 at low abundance to 0.720 at high."""
+    """The failure that motivated this form. If eBird is simply 0.2x BBS the model must
+    reproduce it exactly. The previous log1p(E)=b*log1p(B) could not express it for any b --
+    the implied b slid from 0.235 at low abundance to 0.720 at high.
+
+    Checked through the PREDICTION rather than the raw parameters, because k is anchored at a
+    typical BBS count rather than at one bird, so its numeric value depends on that anchor."""
     cal = fit_hierarchical_calibration({0: _pairs(3000, k=0.2, d=1.0, noise=0.0)},
                                        n_species=1, verbose=False)
     assert abs(cal["d"][0] - 1.0) < 0.02, cal["d"][0]
-    assert abs(cal["k"][0] - 0.2) < 0.01, cal["k"][0]
-    # and applying it reproduces the relationship
-    B = np.array([[1.0, 10.0, 100.0]])
-    out = np.expm1(apply_calibration(np.log1p(B), cal | {"k": cal["k"][[0,0,0]],
-                                                          "d": cal["d"][[0,0,0]]}))
-    assert np.allclose(out, 0.2 * B, rtol=0.05)
+    B = np.array([[1.0], [10.0], [100.0]])
+    out = np.expm1(apply_calibration(np.log1p(B), {"k": cal["k"][:1], "d": cal["d"][:1],
+                                                   "B0": cal["B0"]}))
+    assert np.allclose(out.ravel(), 0.2 * B.ravel(), rtol=0.05), out.ravel()
 
 
 def test_apply_refuses_a_species_count_mismatch():
@@ -71,7 +72,11 @@ def test_apply_refuses_a_species_count_mismatch():
 def test_a_species_with_ample_data_recovers_its_own_exponent_and_scale():
     cal = fit_hierarchical_calibration({0: _pairs(3000, k=0.5, d=0.7)}, n_species=1,
                                        verbose=False)
-    assert abs(cal["d"][0] - 0.7) < 0.03 and abs(cal["k"][0] - 0.5) < 0.08
+    assert abs(cal["d"][0] - 0.7) < 0.03
+    B = np.array([[2.0], [20.0]])
+    out = np.expm1(apply_calibration(np.log1p(B), {"k": cal["k"][:1], "d": cal["d"][:1],
+                                                   "B0": cal["B0"]}))
+    assert np.allclose(out.ravel(), 0.5 * B.ravel() ** 0.7, rtol=0.10), out.ravel()
     assert cal["shrinkage"][0] < 0.05      # tighter spread prior -> a little more pull, still small
 
 
@@ -117,7 +122,10 @@ def test_the_population_values_are_learned_not_fixed():
     pairs = {i: _pairs(2000, k=0.05, d=1.5, seed=i) for i in range(8)}
     cal = fit_hierarchical_calibration(pairs, n_species=8, verbose=False)
     assert cal["mu_d"] > 1.25, cal["mu_d"]              # moved off the prior's 1.0
-    assert cal["mu_k"] < 0.5, cal["mu_k"]
+    # the population scale is eBird's value at a typical BBS count, so check it against the
+    # truth evaluated there rather than against the raw coefficient
+    expected = 0.05 * cal["B0"] ** 1.5
+    assert abs(np.log(cal["mu_k"] / expected)) < 0.3, (cal["mu_k"], expected)
 
 
 def test_the_prior_is_a_pure_unit_conversion():
@@ -140,7 +148,8 @@ def test_meta_is_json_safe_and_records_the_form():
     m = calibration_meta(cal, ["houspa", "amegfi"])
     json.dumps(m)
     assert m["direction"] == "bbs_to_ebird"
-    assert "k_s * bbs**d_s" in m["form"]
+    assert "(bbs/B0)**d_s" in m["form"]
+    assert m["B0_typical_bbs_count"] is not None
     assert m["per_species"]["amegfi"]["shrinkage"] == 1.0
 
 
@@ -187,7 +196,8 @@ def test_the_population_scale_really_does_follow_the_data():
     ratio far from 1; the population must follow rather than anchoring at the prior."""
     p = {i: _pairs(2000, k=0.02, d=1.0, seed=i) for i in range(6)}
     cal = fit_hierarchical_calibration(p, 6, verbose=False)
-    assert cal["mu_k"] < 0.05, cal["mu_k"]
+    expected = 0.02 * cal["B0"]                        # d = 1, so eBird at B0 is 0.02*B0
+    assert abs(np.log(cal["mu_k"] / expected)) < 0.3, (cal["mu_k"], expected)
 
 
 def test_between_species_spread_is_separate_from_confidence_in_the_population():

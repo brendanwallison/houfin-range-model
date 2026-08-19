@@ -114,17 +114,13 @@ def test_every_exponent_is_positive():
     assert (cal["d"] > 0).all()
 
 
-def test_the_linear_preference_is_a_preference_and_the_data_wins():
-    """The exponent's population location is nudged toward 1, not held there. With every
-    species truly at 1.5 and 2000 observations each, the fit lands near 1.4 -- a small pull
-    toward linear that plenty of evidence overrides. Holding it harder means taking the
-    population prior well below 0.05, because that location is estimated from all species at
-    once and the prior competes with every one of them."""
+def test_the_linear_preference_pulls_but_does_not_pin():
+    """The exponent's population location is nudged toward 1, not held there."""
     pairs = {i: _pairs(2000, k=0.05, d=1.5, seed=i) for i in range(8)}
     cal = fit_hierarchical_calibration(pairs, n_species=8, verbose=False)
-    assert cal["mu_d"] < 1.5, cal["mu_d"]               # pulled toward linear
-    assert cal["mu_d"] > 1.2, cal["mu_d"]               # but nowhere near pinned
-    assert 1.30 < cal["d"].mean() < 1.50, cal["d"]
+    assert cal["mu_d"] < 1.30, cal["mu_d"]
+    assert cal["mu_d"] > 1.0, cal["mu_d"]
+    assert (cal["d"] > 1.0).all()
 
 
 def test_genuinely_linear_data_is_left_alone():

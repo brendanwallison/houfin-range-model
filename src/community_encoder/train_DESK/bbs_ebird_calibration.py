@@ -74,12 +74,9 @@ two of them, which conflated things that are not the same question:
 The two parameters want opposite things from their priors.
 
 The EXPONENT ``d``: we strongly prefer a LINEAR relationship between the two surveys, so its
-population location gets a prior at 1 (``population_log_exponent_sd`` 0.05), and species
-deviate from it with spread ``prior_log_exponent_sd`` = 0.05. Both are PREFERENCES rather than
-constraints: the location is estimated from ~94 species at once, so at 0.05 the prior carries
-about 1% of the weight and an observed population exponent of 1.378 would land at 1.356. If the
-exponent ever needs holding harder, this is the knob, and it has to go well below 0.05 to bite
-against that many species.
+population location gets a prior at 1 (``population_log_exponent_sd`` 0.01), and species
+deviate from it with spread ``prior_log_exponent_sd`` = 0.05. Both are preferences, not
+constraints: at 0.01 an observed population exponent of 1.378 lands near 1.275.
 
 The SCALE ``k``: the opposite. Its population location is free (``population_log_scale_sd``
 5.0, effectively flat), because we have no idea what the units conversion between a roadside
@@ -136,7 +133,7 @@ def _species_estimate(x_log, y_log):
 
 def fit_hierarchical_calibration(pairs_by_species, n_species, prior_exponent=1.0,
                                  prior_log_exponent_sd=0.05, prior_log_scale_sd=0.10,
-                                 population_log_exponent_sd=0.05,
+                                 population_log_exponent_sd=0.01,
                                  population_log_scale_sd=5.0,
                                  n_iter=200, tol=1e-12, verbose=True):
     """Partially pooled per-species calibration of BBS onto the eBird scale: ``E = k * B^d``.

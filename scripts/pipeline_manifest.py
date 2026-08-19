@@ -144,7 +144,8 @@ def collect():
     """Every artifact worth pinning, resolved from the configs."""
     cfg, dcfg, acfg = load_config(), load_data_config(), load_age_model_config()
     trends = dcfg.get("trends", {})
-    points = Path(cfg["trend"]["points_dir"])
+    from src.config_utils import target_points_dir
+    points = Path(target_points_dir(cfg))
     basis = Path(cfg["desk"]["z_dir"])
     desk_out = Path(cfg["paths"]["desk_output_dir"])
     cube = Path(cfg["latent_cube"]["output_dir"])

@@ -58,6 +58,9 @@ from src.community_encoder.train_DESK.esk_kernel import project_into_z, smooth_a
 CACHE_SCHEMA = 2
 
 
+from src.config_utils import target_points_dir
+
+
 def _corr(a, b):
     a, b = np.asarray(a, float), np.asarray(b, float)
     ok = np.isfinite(a) & np.isfinite(b)
@@ -228,7 +231,7 @@ def paired_turnover(X, Ze, Zd, rows, cols, years, deep, recent):
 
 def _comparison_signature(cfg, selected_years):
     """Cheap provenance fingerprint for every file represented in the cache."""
-    point_dir = Path(cfg["trend"]["points_dir"])
+    point_dir = Path(target_points_dir(cfg))
     zdir = Path(cfg["desk"]["z_dir"])
     cube = Path(cfg["latent_cube"]["output_dir"])
     holdout = Path(cfg["paths"]["desk_output_dir"]) / "holdout_cells.npy"
@@ -268,7 +271,7 @@ def load_comparison(cfg, selected_years, out_dir, recompute=False):
             return {k: z[k] for k in z.files if k != "cache_signature"}
         print(f"[encoder-viz] cache is stale; rebuilding -> {cache}")
 
-    point_dir = Path(cfg["trend"]["points_dir"])
+    point_dir = Path(target_points_dir(cfg))
     X_all = np.load(point_dir / "X_points.npy", mmap_mode="r")
     pidx_all = np.load(point_dir / "point_index.npy")
     take = np.isin(pidx_all[:, 2], selected_years)

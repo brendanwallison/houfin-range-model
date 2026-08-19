@@ -211,7 +211,8 @@ def _prepare_trend_targets(config, z_dir, latent_dim, holdout, points_dir=None):
     Only rows flagged ``supervise`` are scattered, so each cell-year is written exactly once.
     """
     from .esk_kernel import project_points_to_z
-    zt = points_dir or config["trend"]["points_dir"]
+    from src.config_utils import target_points_dir
+    zt = points_dir or target_points_dir(config)
     X, pidx, weights, supervise = load_point_set(zt)
     z_obs = project_points_to_z(X, z_dir, latent_dim)
     if z_obs is None:
@@ -764,8 +765,8 @@ def run_desk_experiment(config=None):
     # One point set for the whole run: target.points_dir when configured (the raw-BBS +
     # eBird-window target), else trend.points_dir (the older trend-product target). Keeping
     # both loadable is what makes an A/B between the two targets possible.
-    points_dir = (config.get("target", {}) or {}).get("points_dir") \
-        or config["trend"]["points_dir"]
+    from src.config_utils import target_points_dir
+    points_dir = target_points_dir(config)
     Xp, pip, p_weights, p_supervise = load_point_set(points_dir)
     pm = json.load(open(os.path.join(points_dir, "points_meta.json")))
     print(f"[desk] target: {pm.get('target_source', 'trend_products')} from {points_dir} "

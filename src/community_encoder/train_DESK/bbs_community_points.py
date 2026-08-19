@@ -171,6 +171,11 @@ def write_points(out_dir, X, keys, weights, meta, source=None, supervise=None):
     ``source`` (int8, 0 = bbs_raw, 1 = ebird_window) and ``supervise`` (bool) are written only
     when given, so a BBS-only build stays a three-array artifact. ``supervise`` is what makes
     the ESK/DESK asymmetry expressible in one file -- see ``concat_sources``.
+
+    When they are NOT given, any existing copies are DELETED rather than left in place. They
+    are parallel arrays in one row order, so a stale pair from an earlier eBird-enabled build
+    would silently attach the wrong value to the wrong cell-year -- or, as it did on TACC, halt
+    the run with a length mismatch after the CPU stage had already been paid for.
     """
     os.makedirs(out_dir, exist_ok=True)
     n = keys.shape[0]
@@ -189,6 +194,12 @@ def write_points(out_dir, X, keys, weights, meta, source=None, supervise=None):
     if supervise is not None:
         np.save(os.path.join(out_dir, "point_supervise.npy"),
                 np.asarray(supervise, dtype=bool))
+    for name, arr in (("point_source.npy", source), ("point_supervise.npy", supervise)):
+        if arr is None:
+            stale = os.path.join(out_dir, name)
+            if os.path.exists(stale):
+                os.remove(stale)
+                print(f"[points] removed stale {name} from an earlier build")
     with open(os.path.join(out_dir, "points_meta.json"), "w") as fh:
         json.dump(meta, fh, indent=2, sort_keys=True)
     return out_dir
@@ -578,12 +589,21 @@ def main():
               f"{cb['n_supervised_cells']:,} cells; "
               f"{cb['n_duplicate_cell_years']:,} duplicate cell-years kept for the kernel")
 
+    # The consumer contract that trend_community also writes: esk_kernel reads n_weeks and
+    # recent_year (the latter keys its landmark strata), desk_training reads recent_year as the
+    # year whose community anchors the Ruzicka metric. n_recent/n_hist are the split at that
+    # year -- NOT a supervised-row count, which is what an earlier version wrote here.
+    anchor_year = int(cfg["trend"]["anchor_year"])
+    n_recent = int((keys[:, 2] == anchor_year).sum())
     meta.update({"target_source": "bbs_raw+ebird_window" if use_ebird else "bbs_raw",
-                 "species": codes, "n_species": len(codes),
+                 "species": codes, "n_species": len(codes), "n_weeks": 1,
                  "community_csv": community, "ruzicka_log1p": True,
-                 "n_rows": int(X.shape[0]),
-                 "n_recent": int(supervise.sum()) if supervise is not None
-                 else int(X.shape[0])})
+                 "n_rows": int(X.shape[0]), "recent_year": anchor_year,
+                 "n_recent": n_recent, "n_hist": int(X.shape[0]) - n_recent})
+    if n_recent == 0:
+        raise SystemExit(
+            f"no rows at anchor_year {anchor_year}: the Ruzicka metric anchor and the ESK "
+            f"recent stratum would both be empty. Set trend.anchor_year to a surveyed year.")
     write_points(out_dir, X, keys, weights, meta, source=source, supervise=supervise)
     print(f"[points] wrote {X.shape[0]:,} x {X.shape[1]} -> {out_dir}")
 

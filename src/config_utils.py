@@ -165,3 +165,14 @@ def get_secret(
         if env_val:
             return env_val
     return load_secrets(config_path).get(key)
+
+
+def target_points_dir(config):
+    """Where the community point set lives: ``target.points_dir`` when configured, else the
+    older ``trend.points_dir``.
+
+    One resolver because the target switch has to move every consumer at once. When it moved
+    only DESK, ``run_spacetime_esk`` kept reading trend.points_dir -- which is the ESK OUTPUT
+    directory -- and died on a missing X_points.npy after the CPU stage had already run.
+    """
+    return (config.get("target", {}) or {}).get("points_dir") or config["trend"]["points_dir"]

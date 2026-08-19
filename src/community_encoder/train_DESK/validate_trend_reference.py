@@ -264,7 +264,11 @@ def build_reference_points(config=None):
     cfg = copy.deepcopy(config)
     cfg["trend"]["smooth_sigma_cells"] = float(rcfg.get("smooth_sigma_cells", 0.0))
     if rcfg.get("points_dir"):
+        # Both keys: this cfg copy describes the REFERENCE point set, and target.points_dir
+        # is what config_utils.target_points_dir prefers. Setting only trend.points_dir would
+        # leave any resolver-based reader pointed at the training target instead.
         cfg["trend"]["points_dir"] = rcfg["points_dir"]
+        cfg.setdefault("target", {})["points_dir"] = rcfg["points_dir"]
     print(f"[ref-build] trend products WITHOUT the spatial blur "
           f"(smooth_sigma_cells={cfg['trend']['smooth_sigma_cells']}) "
           f"-> {cfg['trend']['points_dir']}", flush=True)

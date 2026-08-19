@@ -649,7 +649,8 @@ def run_spacetime_esk(config=None):
     landmark_mode = str(sc.get("landmark_mode", "random"))
     n_landmarks = int(sc["n_landmarks"]); seed = int(esk_cfg.get("seed", 0))
 
-    zt = config["trend"]["points_dir"]
+    from src.config_utils import target_points_dir
+    zt = target_points_dir(config)
     X = np.nan_to_num(np.load(os.path.join(zt, "X_points.npy"))).astype("float32")
     pidx = np.load(os.path.join(zt, "point_index.npy"))
     with open(os.path.join(zt, "points_meta.json")) as fh:

@@ -286,3 +286,29 @@ def test_write_points_omits_source_and_supervise_for_a_bbs_only_build(tmp_path):
                  np.zeros((2, 3), "int32"), np.ones(2, "float32"), {})
     assert not (tmp_path / "point_source.npy").exists()
     assert not (tmp_path / "point_supervise.npy").exists()
+
+
+# --------- the artifact contract, as three TACC failures defined it ---------
+
+def test_stale_parallel_arrays_are_removed_not_left_behind(tmp_path):
+    """A BBS-only build writes no source/supervise. If an earlier eBird-enabled build left
+    its own copies in the directory, they are parallel arrays in a DIFFERENT row order and
+    length -- they must go, or they attach the wrong value to the wrong cell-year."""
+    d = str(tmp_path)
+    X = np.zeros((4, 3), "float32"); keys = np.zeros((4, 3), "int32"); w = np.ones(4, "float32")
+    write_points(d, X, keys, w, {"n_species": 3},
+                 source=np.zeros(4, "int8"), supervise=np.ones(4, bool))
+    assert os.path.exists(os.path.join(d, "point_supervise.npy"))
+    write_points(d, X, keys, w, {"n_species": 3})            # BBS-only rebuild, same directory
+    assert not os.path.exists(os.path.join(d, "point_supervise.npy"))
+    assert not os.path.exists(os.path.join(d, "point_source.npy"))
+
+
+def test_ragged_artifacts_are_refused(tmp_path):
+    try:
+        write_points(str(tmp_path), np.zeros((4, 3), "float32"), np.zeros((4, 3), "int32"),
+                     np.ones(4, "float32"), {}, supervise=np.ones(9, bool))
+    except ValueError as exc:
+        assert "ragged" in str(exc)
+    else:
+        raise AssertionError("a length mismatch was written to disk")

@@ -501,7 +501,7 @@ def calibrate_bbs_rows(X_bbs_log, K_bbs, X_eb_log, K_eb, codes, prior_slope=1.0,
     all lands exactly on it.
     """
     from .bbs_ebird_calibration import (apply_calibration, calibration_meta,
-                                        fit_hierarchical_calibration)
+                                        fit_hierarchical_calibration, report_zero_effect)
 
     pairs = overlap_pairs(X_eb_log, K_eb, X_bbs_log, K_bbs)
     cal = fit_hierarchical_calibration(
@@ -509,7 +509,12 @@ def calibrate_bbs_rows(X_bbs_log, K_bbs, X_eb_log, K_eb, codes, prior_slope=1.0,
         prior_log_slope_sd=prior_log_slope_sd, prior_intercept_sd=prior_intercept_sd,
         verbose=verbose)
     X = apply_calibration(X_bbs_log, cal)
-    return X, calibration_meta(cal, codes)
+    # What the calibration does to ABSENCES. Cannot be measured off-cluster (it needs the real
+    # eBird grid), and it decides whether the affine map needs anything doing about zeros at
+    # all -- see apply_calibration. Reported into the log and the meta rather than acted on.
+    meta = calibration_meta(cal, codes)
+    meta["zero_effect"] = report_zero_effect(X_bbs_log, cal, verbose=verbose)
+    return X, meta
 
 
 def main():

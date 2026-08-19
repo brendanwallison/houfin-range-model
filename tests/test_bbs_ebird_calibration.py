@@ -155,3 +155,28 @@ def test_meta_is_json_safe_and_records_direction_and_shrinkage():
     # shrinkage is the field that replaces a pass/fail flag, so it must be present per species
     assert 0.0 <= m["per_species"]["houspa"]["shrinkage"] <= 1.0
     assert m["per_species"]["amegfi"]["shrinkage"] == 1.0        # no overlap
+
+
+def test_report_zero_effect_surfaces_a_positive_intercept():
+    """The instrument that decides whether zeros need handling at all. It cannot be run
+    off-cluster on real data, so what is tested here is that it would flag the case."""
+    from src.community_encoder.train_DESK.bbs_ebird_calibration import report_zero_effect
+    X = np.array([[0.0, 0.0], [2.0, 0.0], [0.0, 3.0]])
+    r = report_zero_effect(X, {"a": np.array([0.21, 0.30]), "b": np.array([0.5, 0.5])},
+                           verbose=False)
+    assert r["n_positive_intercepts"] == 2
+    assert r["occupancy_before"] < r["occupancy_after"] == 1.0
+    assert r["floor_birds_median"] > 0.0
+
+
+def test_report_zero_effect_is_quiet_when_intercepts_are_negative():
+    """With a negative intercept the existing clip already sends absences to 0, so there is
+    nothing to fix. In a simulation with realistic BBS detection most species landed here."""
+    from src.community_encoder.train_DESK.bbs_ebird_calibration import report_zero_effect
+    X = np.array([[0.0, 2.0], [1.0, 0.0]])
+    r = report_zero_effect(X, {"a": np.array([-0.2, -0.1]), "b": np.array([0.5, 0.5])},
+                           verbose=False)
+    assert r["n_positive_intercepts"] == 0
+    assert r["occupancy_after"] <= r["occupancy_before"]
+
+

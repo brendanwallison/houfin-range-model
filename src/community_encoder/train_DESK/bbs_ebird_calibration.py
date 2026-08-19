@@ -199,11 +199,39 @@ def fit_hierarchical_calibration(pairs_by_species, n_species, prior_slope=1.0,
 
 
 def apply_calibration(X_bbs_log, cal):
-    """Map log1p BBS values onto the eBird log1p scale: ``a[s] + b[s]*x`` (pure).
+    """Map log1p BBS values onto the eBird log1p scale: ``clip(a[s] + b[s]*x, 0, inf)`` (pure).
 
-    Clipped at 0 because the output feeds log1p-space Ruzicka, where a negative value is not a
-    smaller abundance -- it is outside the domain, and ``sum(min)/sum(max)`` would silently
-    produce a similarity above 1 or flip the denominator's sign.
+    Clipped at 0 because a negative value is outside log1p-Ruzicka's domain -- not a smaller
+    abundance -- and would let ``sum(min)/sum(max)`` exceed 1 or flip the denominator's sign.
+
+    WHAT HAPPENS AT A TRUE ZERO, and why this is left alone rather than patched.
+
+    An entry of 0 is a surveyed cell-year where the species was not recorded. The affine map
+    sends it to ``a``, so if ``a > 0`` an absence becomes a small presence in every such cell.
+    Absences are most of the matrix -- 83.3% of the real BBS community matrix -- so a positive
+    intercept would give every cell-year a floor in every species, and Ruzicka cannot see past a
+    shared floor: it enters both numerator and denominator, inflating similarity toward 1 and
+    compressing its SPREAD, which is the structure the kernel discriminates on.
+
+    Three reasons it is nevertheless not masked here:
+
+    1. ``clip(..., 0)`` already handles the case where ``a <= 0``, and whether the real fitted
+       intercepts are positive is UNKNOWN -- it needs the eBird trend grid, which is not
+       available off-cluster. In a simulation with realistic BBS detection only 8 of 30 species
+       came out with a positive intercept.
+    2. Masking zeros trades the problem rather than solving it. A rare species whose count
+       flickers 0, 1, 0, 1 across years would jump between 0 and ``a + b*log1p(1)`` on sampling
+       luck alone, and this encoder exists to measure temporal change. Measured on a Poisson
+       observation model, masking changed the fabricated year-to-year variation by under 1%
+       (0.6788 -> 0.6836) -- the flicker is dominated by counting noise, not by the transform --
+       while making the similarity structure slightly WORSE (0.1355 -> 0.1539).
+    3. Distinguishing "present but undetected" from "genuinely absent" is a presence model.
+       Neither the affine map nor a mask can do it; both collapse the two states into one. A
+       patch that pretends otherwise is worse than the honest version.
+
+    ``report_zero_effect`` is the instrument for settling this on real data. Run it on the real
+    eBird grid and look at the intercept signs and the occupancy change before deciding whether
+    anything is needed here.
     """
     X = np.asarray(X_bbs_log, "float64")
     a = np.asarray(cal["a"], "float64").reshape(1, -1)
@@ -211,6 +239,48 @@ def apply_calibration(X_bbs_log, cal):
     if X.shape[1] != a.shape[1]:
         raise ValueError(f"calibration has {a.shape[1]} species, X has {X.shape[1]}")
     return np.clip(a + b * X, 0.0, None).astype("float32")
+
+
+def report_zero_effect(X_bbs_log, cal, verbose=True):
+    """What the calibration does to ABSENCES, on whatever data you have. Returns a dict.
+
+    This is the measurement that decides whether ``apply_calibration`` needs anything doing
+    about zeros, and it cannot be made off-cluster because it needs the real eBird grid. The
+    numbers to look at:
+
+    - ``n_positive_intercepts``. If 0, there is nothing to discuss: ``clip`` already sends every
+      absence to 0.
+    - ``occupancy_before`` vs ``occupancy_after``. A jump from ~17% to ~100% means every
+      cell-year now shares a floor in every species.
+    - ``floor_birds``. The invented abundance at an unrecorded species, in raw units.
+
+    If those say there IS a problem, the fix is a presence model, not a mask -- see the note in
+    ``apply_calibration`` for why masking trades the artifact rather than removing it.
+    """
+    X = np.asarray(X_bbs_log)
+    a = np.asarray(cal["a"], "float64")
+    C = apply_calibration(X, cal)
+    pos = a > 0
+    out = {"n_species": int(a.size), "n_positive_intercepts": int(pos.sum()),
+           "intercept_median": float(np.median(a)),
+           "intercept_min": float(a.min()), "intercept_max": float(a.max()),
+           "occupancy_before": float((X > 0).mean()),
+           "occupancy_after": float((C > 0).mean()),
+           "floor_birds_median": float(np.expm1(np.median(np.clip(a, 0, None)))),
+           "floor_birds_max": float(np.expm1(max(a.max(), 0.0)))}
+    if verbose:
+        print(f"[calib] intercepts: {out['n_positive_intercepts']}/{out['n_species']} positive, "
+              f"median {out['intercept_median']:+.3f} "
+              f"(range {out['intercept_min']:+.3f}..{out['intercept_max']:+.3f})")
+        print(f"[calib] occupancy of the BBS matrix: {out['occupancy_before']:.1%} before "
+              f"calibration -> {out['occupancy_after']:.1%} after")
+        if out["occupancy_after"] > out["occupancy_before"] + 0.05:
+            print(f"[calib] NOTE a positive intercept is giving unrecorded species a floor of "
+                  f"up to {out['floor_birds_max']:.3f} birds. Every cell-year then shares that "
+                  f"floor in every species, which inflates Ruzicka similarity and compresses "
+                  f"its spread. If this is large, the answer is a presence model -- masking the "
+                  f"zeros only converts it into fabricated year-to-year flicker.")
+    return out
 
 
 def calibration_meta(cal, species):

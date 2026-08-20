@@ -787,3 +787,28 @@ def test_pairs_actually_span_years_in_the_sampled_loss():
     loss = spacetime_kernel_loss(z, torch.tensor([0, 1]), torch.tensor([0, 0]), pool_x, 512,
                                  torch.Generator().manual_seed(0))
     assert loss.item() > 0.2, loss.item()
+
+
+def test_supervision_is_not_gated_on_the_anchor_year_esk_mask():
+    """The 2,222-cell ceiling on TACC. compute_valid_mask used to intersect with the ESK Z
+    mask, which marks cells holding an ANCHOR-YEAR embedding -- but DESK never reads those
+    values, since its per-year targets are projected per point. Gating on it discarded every
+    cell BBS surveyed in some other year."""
+    from src.community_encoder.train_DESK.desk_training import compute_valid_mask
+    H, W, S, C = 4, 4, 3, 2
+    target = np.full((H, W, S), np.nan, "float32")
+    target[0, 0] = 1.0; target[1, 1] = 1.0; target[2, 2] = 1.0     # observed in some year
+    cov = np.zeros((H, W, C), "float32")
+    m = compute_valid_mask(target, cov)
+    assert int(m.sum()) == 3
+    assert m[0, 0] and m[1, 1] and m[2, 2]
+
+
+def test_a_cell_without_covariates_is_still_excluded():
+    """The covariate intersection is real: the model cannot predict a cell it has no inputs
+    for, so such a cell must not enter supervision or the validation set."""
+    from src.community_encoder.train_DESK.desk_training import compute_valid_mask
+    target = np.ones((2, 2, 3), "float32")
+    cov = np.zeros((2, 2, 2), "float32"); cov[1, 1, 0] = np.nan
+    m = compute_valid_mask(target, cov)
+    assert int(m.sum()) == 3 and not m[1, 1]

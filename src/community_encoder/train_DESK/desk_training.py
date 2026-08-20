@@ -39,13 +39,19 @@ from . import covariate_io as cio
 from .model_arch import MultiStreamAutoencoder
 
 
-def compute_valid_mask(ebird_stack, cov_stack, z_mask):
-    """Intersect finite eBird, finite covariates (all channels), and the ESK-Z mask."""
-    m_ebird = np.any(~np.isnan(ebird_stack), axis=-1)
+def compute_valid_mask(target_stack, cov_stack):
+    """Cells DESK can supervise: a community observed in some year, and finite covariates.
+
+    Deliberately NOT intersected with the ESK Z mask. That mask marks cells with an
+    ANCHOR-YEAR embedding, and DESK never reads the anchor-year Z values -- its per-year
+    targets come from project_points_to_z over every point (see _prepare_trend_targets). Gating
+    on it cost real supervision: with raw BBS it held the mask to the 2,222 cells surveyed in
+    the anchor year, against the 3,902 that BBS covers.
+    """
+    m_obs = np.any(~np.isnan(target_stack), axis=-1)
     m_cov = np.all(~np.isnan(cov_stack), axis=-1)
-    final = m_ebird & m_cov & z_mask
-    print(f"[mask] eBird {m_ebird.sum()} & cov {m_cov.sum()} & Z {z_mask.sum()} "
-          f"-> {final.sum()} supervised pixels")
+    final = m_obs & m_cov
+    print(f"[mask] observed {m_obs.sum()} & cov {m_cov.sum()} -> {final.sum()} supervised pixels")
     return final
 
 
@@ -117,17 +123,12 @@ def spacetime_metric_pool(pip, Xp, sup_rows, m_tr, W):
     return (pip[sel, 2].astype(np.int64), flat_of_row[sel], Xp[sel].astype("float32"))
 
 
-def prepare_supervised(cov_stack, ebird_stack, z_flat, z_mask, mu, sd, out_dir):
-    """Build the labelled year's grid tensors: normalized covariate grid + cov mask,
-    supervised mask (eBird & cov & Z), ESK-Z grid, and raw eBird grid."""
-    H, W, _ = cov_stack.shape
-    mask_sup = compute_valid_mask(ebird_stack, cov_stack, z_mask)
+def prepare_supervised(cov_stack, target_stack, mu, sd, out_dir):
+    """Normalized covariate grid + cov mask + the supervised-cell mask."""
+    mask_sup = compute_valid_mask(target_stack, cov_stack)
     np.save(os.path.join(out_dir, "training_mask.npy"), mask_sup)
     covn, mask_cov = cio.norm_grid(cov_stack, mu, sd)
-    z_grid = np.zeros((H, W, z_flat.shape[1]), dtype="float32")
-    z_grid[z_mask] = z_flat
-    x_grid = np.nan_to_num(ebird_stack, nan=0.0).astype("float32")
-    return covn, mask_cov, mask_sup, z_grid, x_grid
+    return covn, mask_cov, mask_sup
 
 
 # --- Output-EMA: demographic lag on the predicted Z ------------------------------
@@ -869,7 +870,7 @@ def run_desk_experiment(config=None):
         print(f"[desk] truncating ESK Z {z_flat.shape[1]} -> {int(ld)} dims (top eigen-components)")
         z_flat = z_flat[:, :int(ld)]
 
-    mask_sup0 = compute_valid_mask(ebird_stack, cov_stack, z_mask)
+    mask_sup0 = compute_valid_mask(ebird_stack, cov_stack)
 
     # Spatial holdout is drawn BEFORE the normalization fit: mu/sd computed over held-out cells
     # too would leak the evaluation distribution into every training input (and into the frozen
@@ -916,8 +917,12 @@ def run_desk_experiment(config=None):
     # schema so availability channels are left un-standardized (see cio.indicator_channels)
     mu, sd = cio.fit_norm(cov_stack[fit_mask].astype("float32"), schema)
 
-    covn, mask_cov, mask_sup, z_grid, _x_grid = prepare_supervised(   # grid unused since the metric went per-year
-        cov_stack, ebird_stack, z_flat, z_mask, mu, sd, out_dir)
+    latent_dim = z_flat.shape[1]
+    if int(z_mask.sum()) < int(np.any(~np.isnan(ebird_stack), axis=-1).sum()):
+        print(f"[desk] note: the ESK anchor-year Z covers {int(z_mask.sum()):,} cells, fewer "
+              f"than the {int(np.any(~np.isnan(ebird_stack), axis=-1).sum()):,} with an "
+              f"observed community. Not a gate -- targets are projected per point.")
+    covn, mask_cov, mask_sup = prepare_supervised(cov_stack, ebird_stack, mu, sd, out_dir)
     ema_cfg = desk_cfg["output_ema"]
     tr_cfg = desk_cfg.get("trend", {})
     # holdout/buffer were drawn above (before the normalization fit). Training excludes BOTH;
@@ -943,7 +948,7 @@ def run_desk_experiment(config=None):
     warmup_start = int(ema_cfg.get("warmup_start", 1940))
     window_years = list(range(warmup_start, label_year + 1))
     cov_win, mask_win, kept = _load_year_window(states_dir, schema, mu, sd, window_years)
-    targets = _prepare_trend_targets(config, z_dir, z_grid.shape[2], holdout,
+    targets = _prepare_trend_targets(config, z_dir, latent_dim, holdout,
                                      points_dir=points_dir)
 
     # Temporal holdout: withhold a contiguous span of supervised years from the objective and
@@ -964,7 +969,7 @@ def run_desk_experiment(config=None):
 
     model, ema = train_model_ema(
         cov_win, mask_win, kept, targets, metric_pool, m_tr, m_val,
-        stream_dims, latent_dim=z_grid.shape[2], ema_cfg=ema_cfg,
+        stream_dims, latent_dim=latent_dim, ema_cfg=ema_cfg,
         spatial_kernel=spatial_kernel,
         epochs=desk_cfg.get("epochs", 500), lr=desk_cfg.get("lr", 1e-3),
         weights=desk_cfg.get("weights"), patience=desk_cfg.get("patience", 50),
@@ -983,7 +988,7 @@ def run_desk_experiment(config=None):
     torch.save(model.state_dict(), os.path.join(out_dir, "env_model_semisup.pth"))
     np.savez(os.path.join(out_dir, "desk_meta.npz"),
              mu=mu, sd=sd, stream_dims=np.array(stream_dims, int),
-             latent_dim=z_grid.shape[2], label_year=label_year,
+             latent_dim=latent_dim, label_year=label_year,
              spatial_kernel=spatial_kernel,
              # Provenance for the regularization/augmentation recipe. dropout does not change
              # state_dict keys (so checkpoints stay loadable either way), but without recording

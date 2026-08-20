@@ -372,6 +372,11 @@ def encode_points(config, point_index):
     return Z, ~np.isnan(Z).any(1)
 
 
+def is_ho_hist(ho, pidx, hist):
+    """Held-out flag per HISTORICAL point, in ``pidx[hist]`` row order."""
+    return ho[pidx[hist, 0], pidx[hist, 1]]
+
+
 def zspace_reconstruction(config, pidx, X, Z_desk, recent_year, to_rec, has_rec):
     """Per-cell reconstruction in Z-SPACE: is DESK's predicted z closer to the observed
     community's z than the no-change (2023) z is?
@@ -451,7 +456,22 @@ def zspace_reconstruction(config, pidx, X, Z_desk, recent_year, to_rec, has_rec)
     ho_path = os.path.join(config["paths"]["desk_output_dir"], "holdout_cells.npy")
     if os.path.exists(ho_path):
         ho = np.load(ho_path)
-        is_ho = ho[pidx[hist, 0], pidx[hist, 1]]
+        # The no-change null assumes 60 years of stasis, so it is weakest exactly where the
+        # historical points are densest -- beating it is a low bar. This is the real one:
+        # interpolate the OBSERVED z from training cells surveyed the SAME year. No covariates,
+        # no learning. On the val MSE and the direction diagnostic this bar was not cleared.
+        from .validate_baselines import zspace_idw_baseline
+        e_idw = zspace_idw_baseline(pidx, z_obs, ho, hist)
+        fin = np.isfinite(e_idw)
+        if fin.sum() >= 4:
+            out["median_err_idw"] = float(np.median(e_idw[fin]))
+            out["frac_desk_beats_idw"] = float(np.mean(ed[fin] < e_idw[fin]))
+            out["n_idw_scored"] = int(fin.sum())
+            hm = fin & is_ho_hist(ho, pidx, hist)
+            if hm.sum() >= 4:
+                out["frac_desk_beats_idw_heldout"] = float(np.mean(ed[hm] < e_idw[hm]))
+                out["median_err_idw_heldout"] = float(np.median(e_idw[hm]))
+        is_ho = is_ho_hist(ho, pidx, hist)
         for lab, m in (("heldout", is_ho), ("train", ~is_ho)):
             if m.sum() >= 4:
                 out[f"n_{lab}"] = int(m.sum())
@@ -487,8 +507,17 @@ def run_validate(config=None, n_pairs=20000, cka_sample=800, seed=0):
         print(f"[validate:timing] {name:<26} {now - _t0:7.1f} s", flush=True)
         _t0 = now
 
-    Z, ok = encode_points(config, pidx)
-    _phase("encode_points")
+    # The trainer supervised z_ema, not raw z, so that is what the report grades. Raw z is
+    # what the CUBE exports (the population model below it supplies demographic lag), so it is
+    # kept as a secondary figure -- the two answer different questions and with a learned
+    # ~10 y half-life they are not close. Grading raw here was measuring a quantity the
+    # objective never optimized.
+    from .validate_bbs_routes import desk_z_ema
+    Z_raw, ok = encode_points(config, pidx)
+    _phase("encode_points (raw z)")
+    Z = desk_z_ema(config, pidx)
+    ok = ok & np.isfinite(Z).all(axis=1)
+    _phase("encode_points (z_ema)")
     # Every metric below is computed ONLY on these points. `encode_points` fills Z solely
     # where `norm_grid`'s all-channels-finite mask holds, so points over cells the covariates
     # do not cover are dropped here rather than scored -- this path reads the STATES, never
@@ -589,6 +618,26 @@ def run_validate(config=None, n_pairs=20000, cka_sample=800, seed=0):
     _phase("directional change")
     recon = zspace_reconstruction(config, pidx, X, Z, recent_year, to_rec, has_rec)
     _phase("zspace recon (projection)")
+
+    # Direction of change, per epoch pair, against interpolation rather than a permutation null.
+    # Folded in here rather than run as its own stage: it needs exactly what this function has
+    # already paid for -- the encoded z and the projected z_obs.
+    epochs_panel = None
+    ho_path = os.path.join(config["paths"]["desk_output_dir"], "holdout_cells.npy")
+    bf_path = os.path.join(config["paths"]["desk_output_dir"], "buffer_cells.npy")
+    if os.path.exists(ho_path):
+        from .validate_baselines import epoch_direction_panel
+        from .esk_kernel import project_points_to_z
+        ho = np.load(ho_path)
+        bf = np.load(bf_path) if os.path.exists(bf_path) else np.zeros_like(ho)
+        z_obs_pts = project_points_to_z(X, config["desk"]["z_dir"], Z.shape[1])
+        if z_obs_pts is not None:
+            zm = {(int(r), int(c), int(y)): Z[i]
+                  for i, (r, c, y) in enumerate(pidx) if ok[i]}
+            print("[validate] DIRECTION of change vs inverse-distance interpolation "
+                  "(z_ema; pairs share cells and nest in time, so never pooled):")
+            epochs_panel = epoch_direction_panel(pidx, None, z_obs_pts, zm, ho, bf)
+        _phase("epoch direction panel")
     report["directional_change"] = {k: v for k, v in dirchg.items()
                                      if k in ("n_sites", "mean_dir_cos", "median_dir_cos",
                                               "frac_same_dir", "mean_dir_cos_null", "note")}
@@ -647,6 +696,9 @@ def run_validate(config=None, n_pairs=20000, cka_sample=800, seed=0):
                      "median_err_desk_heldout", "median_err_nochange_heldout", "n_train",
                      "frac_desk_beats_nochange_train", "median_err_desk_train",
                      "median_err_nochange_train")}
+        if epochs_panel is not None:
+            report["epoch_directions"] = epochs_panel
+        report["graded_on"] = "z_ema"
         report["zspace_reconstruction"]["_note"] = ("PER-CELL reconstruction in the pinned ESK "
             "z-basis: err_desk = ||z_DESK - z_obs||, err_nochange = ||z_obs(2023) - z_obs||. "
             "frac_desk_beats_nochange > 0.5 => DESK reconstructs the past community better than "
@@ -704,6 +756,14 @@ def run_validate(config=None, n_pairs=20000, cka_sample=800, seed=0):
         print(f"[validate] Z-SPACE reconstruction ({rc['n']} hist pts): err DESK={rc['median_err_desk']:.4f} "
               f"vs no-change={rc['median_err_nochange']:.4f} | DESK beats no-change in "
               f"{rc['frac_desk_beats_nochange']:.1%} of cells | basis residual={rc['recent_basis_residual']:.2e}")
+        if "frac_desk_beats_idw" in rc:
+            print(f"           vs INTERPOLATION of observed z from same-year training cells "
+                  f"(n={rc['n_idw_scored']}): DESK beats it in "
+                  f"{rc['frac_desk_beats_idw']:.1%} of cells (err idw={rc['median_err_idw']:.4f})")
+            if "frac_desk_beats_idw_heldout" in rc:
+                print(f"           HELD-OUT vs interpolation: DESK beats it in "
+                      f"{rc['frac_desk_beats_idw_heldout']:.1%} "
+                      f"(err idw={rc['median_err_idw_heldout']:.4f})")
         if "frac_desk_beats_nochange_heldout" in rc:
             print(f"           HELD-OUT cells ({rc['n_heldout']}): DESK beats no-change in "
                   f"{rc['frac_desk_beats_nochange_heldout']:.1%}  <- the honest held-out grade "

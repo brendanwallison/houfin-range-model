@@ -10,7 +10,6 @@ stage), so the two roots never collide within one interpreter.
 
     python scripts/run_encoder.py
         {ebird-cache|bbs-points|trend-points|trend-reference|esk|spacetime-esk|desk|
-         desk-baselines|validate-epochs|
          cube|validate|validate-reference|bbs-route-validate|single-year-analysis}
 """
 import os
@@ -39,13 +38,6 @@ def main():
     elif cmd == "desk":
         from src.community_encoder.train_DESK.desk_training import run_desk_experiment
         run_desk_experiment()
-    elif cmd == "desk-baselines":
-        from src.community_encoder.train_DESK.desk_training import run_desk_baselines
-        run_desk_baselines()
-    elif cmd == "validate-epochs":
-        from src.community_encoder.train_DESK.validate_epoch_directions import (
-            run_epoch_directions)
-        run_epoch_directions()
     elif cmd == "cube":
         from community_encoder.build_final_z_cube import build_spacetime_cube
         build_spacetime_cube()
@@ -83,8 +75,7 @@ def main():
         run()
     else:
         sys.exit(f"unknown encoder stage: {cmd!r} (ebird-cache|bbs-points|trend-points|"
-                 "trend-reference|esk|spacetime-esk|desk|desk-baselines|validate-epochs|"
-                 "cube|validate|"
+                 "trend-reference|esk|spacetime-esk|desk|cube|validate|"
                  "validate-reference|"
                  "bbs-route-validate|"
                  "single-year-analysis)")

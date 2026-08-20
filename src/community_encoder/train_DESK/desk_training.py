@@ -315,106 +315,6 @@ def median_dir_cos(dp, dt):
     return float(torch.median(torch.sum(dp * dt, dim=1)[ok] / den[ok]))
 
 
-def spatial_interp_dir_cos(tgt, y_deep, y_anchor, rot_va, k=8, power=2.0):
-    """Direction-cosine of the INTERPOLATED change, on the same val cells as the model's.
-
-    ``spatial_interp_baseline`` answers "do the covariates beat spatial smoothness at
-    reproducing Z?". This answers the sharper question: do they beat it at reproducing the
-    DIRECTION OF CHANGE? Inverse-distance interpolation is run separately in the deep year and
-    the anchor year, using each year's own training cells, and the difference of the two
-    interpolations is its predicted change vector. A model whose dir-cos merely matches this is
-    getting its temporal signal from "what the neighbours did", not from the covariates.
-
-    Returns ``(idw_dir_cos, n_cells)``, or ``(nan, 0)`` if either year is unusable.
-    """
-    from scipy.spatial import cKDTree
-
-    def _np(a):
-        return a.detach().cpu().numpy() if hasattr(a, "detach") else np.asarray(a)
-
-    va = _np(rot_va)
-    if y_deep is None or y_deep not in tgt or y_anchor not in tgt or not va.any():
-        return float("nan"), 0
-    va_rc = np.argwhere(va)
-    preds, truths = [], []
-    for y in (y_deep, y_anchor):
-        zg, tr_np = _np(tgt[y][0]), _np(tgt[y][1])
-        if tr_np.sum() < k:
-            return float("nan"), 0
-        tr_rc = np.argwhere(tr_np)
-        dist, idx = cKDTree(tr_rc).query(va_rc, k=k)
-        w = 1.0 / np.maximum(dist, 1e-6) ** power
-        w = w / w.sum(axis=1, keepdims=True)
-        src = zg[tr_rc[:, 0], tr_rc[:, 1]]
-        preds.append(np.einsum("nk,nkl->nl", w, src[idx]))
-        truths.append(zg[va_rc[:, 0], va_rc[:, 1]])
-    dp = torch.as_tensor(preds[1] - preds[0], dtype=torch.float32)
-    dt = torch.as_tensor(truths[1] - truths[0], dtype=torch.float32)
-    return median_dir_cos(dp, dt), int(len(va_rc))
-
-
-def spatial_interp_baseline(tgt, k=8, power=2.0):
-    """Predict held-out cells by inverse-distance interpolation of the TARGETS themselves.
-
-    The existing no-skill baselines (predict-mean, predict-zero) ignore geography, but Z is
-    strongly spatially autocorrelated, so a model that merely interpolates its neighbours
-    already scores well. This is the honest reference for a spatially BLOCKED holdout: it uses
-    no covariates and no learning, only "the answer at nearby training cells". If the trained
-    model's val error is not clearly below this, the covariates are adding nothing beyond
-    spatial smoothness, and further capacity or regularization work is pointless.
-
-    The blocked split plus its buffer put every val cell at least ``kernel//2 + 1`` cells from
-    any training cell, so this baseline is genuinely extrapolating into the block interior --
-    which is exactly the task the model faces.
-
-    Returns ``(nearest_mse, idw_mse)`` on the same per-cell summed scale as ``_z_mse``.
-
-    The per-year masks matter and must not be shortcut. ``_prepare_trend_targets`` builds each
-    year's grid as ``np.zeros`` and marks only the cells with a trend point that year, so a cell
-    absent in year Y holds a **zero**, not a NaN, and the train/val masks are ``present &
-    (~holdout)`` / ``present & holdout`` -- i.e. per-year, not constant. An earlier version of
-    this function reused the first year's masks throughout, which scored interpolation against
-    zero-filled targets and fed zero-filled sources into the interpolation, on a different cell
-    population and a different denominator from ``_z_mse``. That made the baseline
-    incomparable with the model's val. So: rebuild the neighbour index per distinct mask and
-    accumulate with the per-year counts, mirroring ``_z_mse`` exactly.
-    """
-    from scipy.spatial import cKDTree
-
-    years = sorted(tgt)
-    if not years:
-        return float("nan"), float("nan")
-
-    def _np(a):
-        return a.detach().cpu().numpy() if hasattr(a, "detach") else np.asarray(a)
-
-    sq_n = sq_i = 0.0
-    cnt = 0
-    cache = {}
-    for y in years:
-        zg, tr_m, va_m = tgt[y][0], tgt[y][1], tgt[y][2]
-        tr_np, va_np = _np(tr_m), _np(va_m)
-        if not va_np.any() or tr_np.sum() < k:
-            continue                                       # same skip as _z_mse's m.any()
-        key = (tr_np.tobytes(), va_np.tobytes())           # masks repeat across many years
-        if key not in cache:
-            tr_rc, va_rc = np.argwhere(tr_np), np.argwhere(va_np)
-            dist, idx = cKDTree(tr_rc).query(va_rc, k=k)
-            w = 1.0 / np.maximum(dist, 1e-6) ** power
-            cache[key] = (tr_rc, va_rc, idx, w / w.sum(axis=1, keepdims=True))
-        tr_rc, va_rc, idx, w = cache[key]
-
-        z = _np(zg)
-        src = z[tr_rc[:, 0], tr_rc[:, 1]]                  # (n_train, L), this year's values
-        truth = z[va_rc[:, 0], va_rc[:, 1]]                # (n_val, L)
-        pred_n = src[idx[:, 0]]                            # nearest training cell
-        pred_i = np.einsum("nk,nkl->nl", w, src[idx])      # inverse-distance weighted
-        sq_n += float(((pred_n - truth) ** 2).sum())
-        sq_i += float(((pred_i - truth) ** 2).sum())
-        cnt += len(va_rc)
-    if cnt == 0:
-        return float("nan"), float("nan")
-    return sq_n / cnt, sq_i / cnt
 
 
 def _param_groups(modules, weight_decay):
@@ -554,6 +454,8 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
     # targets from neighbouring TRAINING cells, no covariates and no learning. Val must sit
     # clearly below this or the covariates are adding nothing over spatial smoothness.
     try:
+        from .validate_baselines import (spatial_interp_baseline,
+                                         spatial_interp_dir_cos)
         b_near, b_idw = spatial_interp_baseline(tgt)
         print(f"[desk] spatial-interpolation baselines (no model, no covariates): "
               f"nearest-train-cell={b_near:.4f}, inverse-distance-8={b_idw:.4f} "
@@ -840,58 +742,6 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
     return model, ema
 
 
-def run_desk_baselines(config=None):
-    """Print the spatial and DIRECTION interpolation baselines without training anything.
-
-    Both are properties of the TARGETS and the split, not of the model: the blocked holdout is
-    drawn from the supervised cell set with a fixed seed, and the per-year z-targets come from
-    project_points_to_z. So this reproduces the exact split a DESK run would draw and reports
-    the bars that run has to clear -- no GPU, no covariate stack, no checkpoint. Use it to get
-    the direction baseline for a run that has already finished.
-    """
-    import rasterio
-    from src.config_utils import load_data_config, target_points_dir
-
-    config = load_config(config) if not isinstance(config, dict) else config
-    desk_cfg = config["desk"]
-    z_dir = desk_cfg["z_dir"]
-    _cfg = desk_cfg.get("trend", {})
-    points_dir = target_points_dir(config)
-
-    _X, pip, _w, p_supervise = load_point_set(points_dir)
-    with rasterio.open(load_data_config()["grid"]["ref_raster"]) as src:
-        H, W = src.height, src.width
-    latent_dim = int(desk_cfg.get("latent_dim")
-                     or np.load(os.path.join(z_dir, "Z.npy")).shape[1])
-
-    spatial_kernel = int(desk_cfg.get("spatial_conv", {}).get("kernel", 3)) \
-        if desk_cfg.get("spatial_conv", {}).get("enabled", True) else 0
-    sup_cells = supervised_cells(pip, p_supervise, (H, W))
-    holdout, buffer_cells_mask = blocked_holdout(
-        sup_cells, block_cells=int(_cfg.get("block_cells", 12)),
-        holdout_frac=float(_cfg.get("holdout_frac", 0.15)),
-        buffer_cells=spatial_kernel // 2, seed=int(_cfg.get("seed", 0)))
-    print(f"[base] {int(sup_cells.sum()):,} supervised cells -> {int(holdout.sum()):,} val, "
-          f"{int(buffer_cells_mask.sum()):,} buffer (same split a DESK run draws)")
-
-    targets = _prepare_trend_targets(config, z_dir, latent_dim, holdout,
-                                     points_dir=points_dir)
-    tgt = {y: (torch.tensor(zg), torch.tensor(tr), torch.tensor(va), torch.tensor(wg))
-           for y, (zg, tr, va, wg) in targets.items()}
-    b_near, b_idw = spatial_interp_baseline(tgt)
-    print(f"[base] Z-MSE, no covariates: nearest-train-cell={b_near:.4f}, "
-          f"inverse-distance-8={b_idw:.4f}")
-
-    y_anchor = int(max(tgt))
-    cand = [y for y in sorted(tgt) if y != y_anchor and bool(tgt[y][1].any())]
-    y_deep = cand[0] if cand else None
-    dc, n = spatial_interp_dir_cos(tgt, y_deep, y_anchor, tgt[y_anchor][2] & tgt[y_deep][2]) \
-        if y_deep is not None else (float("nan"), 0)
-    print(f"[base] direction of change {y_deep}->{y_anchor}, no covariates: "
-          f"dcos={dc:.2f} on {n} val cells")
-    return {"nearest": b_near, "idw": b_idw, "idw_dir_cos": dc, "dir_cells": n,
-            "val_cells": int(holdout.sum())}
-
 
 def run_desk_experiment(config=None):
     """Driver: load N-stream states + ESK Z, prepare grids, train DESK, save model+meta.
@@ -1034,6 +884,9 @@ def run_desk_experiment(config=None):
           f"{len(np.unique(metric_pool[0]))} years, pairs drawn across space AND time "
           f"(was one year, {int((pip[:, 2] == ay).sum()):,} rows)")
     np.save(os.path.join(out_dir, "holdout_cells.npy"), holdout)
+    # The buffer too: validate's epoch panel must draw its interpolation sources from the
+    # SAME training cells the model saw, and buffer cells are in neither set.
+    np.save(os.path.join(out_dir, "buffer_cells.npy"), buffer_cells_mask)
     np.save(os.path.join(out_dir, "buffer_cells.npy"), buffer_cells_mask)
     print(f"[desk] uniform z-target over the anchor + historical trend points; "
           f"{int(holdout.sum())} cells held out for eval, "

@@ -132,6 +132,20 @@ def spacetime_metric_pool(pip, Xp, sup_rows, m_tr, W, exclude_years=()):
     return (pip[sel, 2].astype(np.int64), flat_of_row[sel], Xp[sel].astype("float32"))
 
 
+def device_targets(mapping, device):
+    """``{year: (zg, mask)}`` as tensors on ``device``, from numpy or tensors.
+
+    Exists because the alternative fails ONLY on CUDA. Mixing a numpy ``zg`` into a subtraction
+    against a CPU tensor works silently; against a CUDA tensor it raises. So a local test on CPU
+    passes and the GPU run dies two minutes in -- which is exactly what happened to the first
+    temporal-holdout run. Converting through one function makes the requirement explicit and
+    checkable anywhere.
+    """
+    return {int(y): (torch.as_tensor(zg, device=device).float(),
+                     torch.as_tensor(m, device=device).bool())
+            for y, (zg, m) in (mapping or {}).items()}
+
+
 def prepare_supervised(cov_stack, target_stack, mu, sd, out_dir):
     """Normalized covariate grid + cov mask + the supervised-cell mask."""
     mask_sup = compute_valid_mask(target_stack, cov_stack)
@@ -373,7 +387,8 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
                     weights=None, seed=0, patience=50, min_delta=1e-4,
                     schema=None, augment_cfg=None, dropout=0.5, weight_decay=0.0,
                     warmup_epochs=0, min_lr_frac=1.0, amp=False, eval_every=1,
-                    holdout_year_targets=None, hidden_width=None, mlp_expansion=4):
+                    holdout_year_targets=None, hidden_width=None, mlp_expansion=4,
+                    _skip_target_conversion=False):
     """Train DESK with a learned output-EMA.
 
     Forwards the ordered year window (per-year gradient checkpointing), applies the
@@ -445,6 +460,15 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
                torch.as_tensor(tr, device=device).bool(), torch.as_tensor(va, device=device).bool(),
                torch.as_tensor(wg, device=device).float())
            for y, (zg, tr, va, wg) in targets.items() if y in yi}
+    # The temporal-holdout targets arrive as NUMPY (built in run_desk_experiment alongside the
+    # raw targets) but _z_mse subtracts them from a CUDA tensor, so they have to be moved here
+    # like `tgt` is. This path never ran while holdout_years was empty, which is exactly why it
+    # was broken: the first temporal-holdout run died on it after two minutes.
+    _hy_in = {y: v for y, v in (holdout_year_targets or {}).items() if y in yi}
+    # _skip_target_conversion exists only so a test can prove the _z_mse guard fires; the
+    # conversion is not optional in any real run.
+    hy_tgt = (_hy_in or None) if _skip_target_conversion else (device_targets(_hy_in, device)
+                                                              or None)
     y2023 = int(max(tgt))                                         # anchor year index in the window
 
     # No-skill baselines on the held-out cells (pooled over all supervised years): the Z-MSE
@@ -517,6 +541,11 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
         """Mean per-cell summed-over-latent Z error on the cells selected by ``sel[y]``."""
         sq, cnt = 0.0, 0
         for y, (zg, m) in sel.items():
+            if not (torch.is_tensor(zg) and torch.is_tensor(m)):
+                raise TypeError(
+                    f"_z_mse got non-tensor targets for year {y} ({type(zg).__name__}). "
+                    f"Route them through device_targets(): numpy silently works on CPU and "
+                    f"raises on CUDA, so this must fail the same way everywhere.")
             if bool(m.any()):
                 d = (z_all[yi[y]][m] - zg[m]).detach()
                 sq += float(torch.sum(d * d)); cnt += int(m.sum())
@@ -699,8 +728,7 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
                 vs_anchor = (float(torch.sum((z_eval[yi[y2023]][va_anchor]
                                               - tgt[y2023][0][va_anchor]) ** 2))
                              / max(int(va_anchor.sum()), 1)) if bool(va_anchor.any()) else float("nan")
-                vs_time = (_z_mse(z_eval, holdout_year_targets)[0]
-                           if holdout_year_targets else float("nan"))
+                vs_time = _z_mse(z_eval, hy_tgt)[0] if hy_tgt else float("nan")
                 ts, _ = _z_mse(z_eval, tr_sel)          # clean-train MSE, same scale as vs
                 # Rotation on the SUPERVISED z_ema (ratio-to-one is meaningful), plus the raw
                 # pre-EMA rotation for information since that is what the cube exports.
@@ -805,8 +833,8 @@ def run_desk_experiment(config=None):
     _r, _c = pip[sup_rows][order, 0], pip[sup_rows][order, 1]
     ebird_stack[_r, _c] = Xp[sup_rows][order]                      # already log1p in X_points
     log1p_kernel = bool(pm.get("ruzicka_log1p", True))
-    print(f"[desk] Ružicka metric over every supervised cell-year, pairs drawn WITHIN each "
-          f"year (log1p={log1p_kernel}); coverage grid = any surveyed year")
+    print(f"[desk] Ružicka metric over every supervised cell-year, pairs drawn across space "
+          f"AND time (log1p={log1p_kernel}); coverage grid = any surveyed year")
 
     z_dir = desk_cfg["z_dir"]
     try:

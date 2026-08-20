@@ -338,7 +338,8 @@ def test_dropout_threading_and_loss_reparam():
     print("dropout threading + loss reparametrization OK")
 
 
-def _tiny_train(augment, seed=0, epochs=3, patch=None):
+def _tiny_train(augment, seed=0, epochs=3, patch=None, holdout_year_targets=None,
+                convert_targets=True):
     """Drive train_model_ema on a small synthetic window; return the per-epoch Stab values."""
     import contextlib
     import io
@@ -372,7 +373,9 @@ def _tiny_train(augment, seed=0, epochs=3, patch=None):
                 ema_cfg={"earlystop_warmup": 1}, spatial_kernel=5, epochs=epochs, lr=1e-3,
                 seed=seed, weights={"stabilizing": 64.0, "metric": 5.0, "reconstruction": 0.1},
                 schema=sch, augment_cfg={"enabled": augment}, dropout=0.1,
-                warmup_epochs=1, min_lr_frac=0.05)
+                warmup_epochs=1, min_lr_frac=0.05,
+                holdout_year_targets=holdout_year_targets,
+                _skip_target_conversion=not convert_targets)
     finally:
         D.spacetime_kernel_loss = saved
     text = out.getvalue()
@@ -769,3 +772,55 @@ def test_an_empty_holdout_list_does_not_filter_anything():
                                             np.ones(2, bool), np.ones((1, 4), bool), 4,
                                             exclude_years=excl)
         assert len(yrs) == 2
+
+
+def test_the_temporal_holdout_targets_are_converted_to_tensors():
+    """The bug that killed the first temporal-extrapolation run, in the only form a CPU can
+    check. The targets are built as NUMPY in run_desk_experiment; _z_mse subtracts them from a
+    model tensor. That works silently on CPU and raises on CUDA -- so a behavioural test here
+    passes with the bug present (verified), and only the conversion contract is testable."""
+    import torch
+    from src.community_encoder.train_DESK.desk_training import device_targets
+    H, W, L = 4, 5, 3
+    rng = np.random.default_rng(0)
+    hy = {2023: (rng.normal(size=(H, W, L)).astype("float32"), np.ones((H, W), bool))}
+    out = device_targets(hy, torch.device("cpu"))
+    zg, m = out[2023]
+    assert torch.is_tensor(zg) and torch.is_tensor(m)
+    assert zg.dtype == torch.float32 and m.dtype == torch.bool
+    assert device_targets(None, torch.device("cpu")) == {}      # the unconfigured default
+
+
+def test_z_mse_refuses_numpy_targets_on_every_device():
+    """Turns a CUDA-only crash into an immediate, device-independent error, so this class of bug
+    cannot be invisible in local testing again. Driven through the real loop, since _z_mse is a
+    closure over the year index."""
+    H, W, L = 16, 20, 64
+    rng = np.random.default_rng(3)
+    numpy_targets = {2023: (rng.normal(size=(H, W, L)).astype("float32") * 0.1,
+                            np.ones((H, W), bool))}
+    try:
+        _tiny_train(False, epochs=2, holdout_year_targets=numpy_targets,
+                    convert_targets=False)
+    except TypeError as exc:
+        assert "device_targets" in str(exc), exc
+    else:
+        raise AssertionError("numpy targets reached _z_mse without complaint")
+
+
+def test_the_temporal_holdout_score_is_reported_when_configured():
+    """End to end through the loop: a configured holdout year yields a real number."""
+    import re
+    H, W, L = 16, 20, 64
+    rng = np.random.default_rng(3)
+    hy = {2023: (rng.normal(size=(H, W, L)).astype("float32") * 0.1, np.ones((H, W), bool))}
+    _stab, text = _tiny_train(False, epochs=2, holdout_year_targets=hy)
+    vals = re.findall(r"Val\(yr-out\) ([0-9.]+|nan)", text)
+    assert vals and all(v != "nan" for v in vals), (vals, text[-500:])
+
+
+def test_no_temporal_holdout_reports_nan_not_a_crash():
+    """The default path stays intact: nothing configured means the field is nan, not an error."""
+    import re
+    _stab, text = _tiny_train(False, epochs=2)
+    assert re.findall(r"Val\(yr-out\) nan", text), text[-400:]

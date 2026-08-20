@@ -187,6 +187,9 @@ stage_spacetime_esk () { run spacetime_esk python scripts/run_encoder.py spaceti
 stage_desk      () { run desk      python scripts/run_encoder.py desk; }
 # Targets-only diagnostic: the bars a DESK run has to clear. No GPU, no checkpoint.
 stage_desk_baselines () { run desk_baselines python scripts/run_encoder.py desk-baselines; }
+# Multi-epoch direction panel: model vs inverse-distance, per epoch pair, plus curvature.
+# Needs the saved DESK checkpoint (encodes the year span), so run it on the GPU queue.
+stage_validate_epochs () { run validate_epochs python scripts/run_encoder.py validate-epochs; }
 stage_cube      () { run cube      python scripts/run_encoder.py cube; }
 stage_validate  () { run validate  python scripts/run_encoder.py validate; }
 # Route-level BBS validation. Separate from `validate` because it answers a different question:

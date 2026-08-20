@@ -290,3 +290,301 @@ def epoch_direction_panel(pidx, supervise, z_obs, z_model, holdout, buffer_mask,
         out["curvature"][f"{a}_{b}_{c3}"] = {"n": len(cells), "model_dir_cos": mc,
                                              "idw_dir_cos": ic}
     return out
+
+
+# --- The ladder: each rung is handed DIFFERENT information ------------------------
+#
+# What a baseline needs is what it isolates. Read as a set, they separate "DESK knows where"
+# from "DESK knows when" from "DESK knows how this place changed":
+#
+#   no-change            the cell's modern state           zero dynamics
+#   cell_temporal        the cell's other TRAINING years    time without covariates
+#   spatial_interp       the target year elsewhere          space, year given free
+#   borrowed_delta       modern state + neighbours' change  "it changed like its neighbours"
+#   spacetime_idw        anything near in space AND time    joint interpolation
+#
+# Under a temporal block holdout the middle two go unavailable by construction -- there are no
+# training points in those years at all. That narrowing is the point: it leaves the honest
+# competitor set for backward extrapolation, and it is why spatial IDW could never test it.
+
+_MIN_TREND_YEARS = 2          # a line needs two points
+#: Space/time anisotropy candidates for the joint IDW bar, in grid cells per year. Extends
+#: BELOW 1 on purpose: a cell is 27 km, and a year of community change is very unlikely to be
+#: worth more than a whole cell of distance, so the interesting range is the sub-cell one. The
+#: sweep picks among these on training rows; it is not a prior on the answer.
+SPACETIME_RATIOS = (0.1, 0.25, 0.5, 1.0, 2.0, 5.0)
+
+
+def _train_rows(pidx, holdout, buffer_mask=None, exclude_years=()):
+    """Rows the model actually trained on: cell not held out or buffered, year not withheld.
+
+    ``exclude_years`` matters for the temporal experiment. A baseline that sourced from a
+    withheld year would be handed information the model never saw, and would stop being a fair
+    bar -- it would be scoring an interpolation of the answer.
+    """
+    ho = _np(holdout)
+    keep = ~ho[pidx[:, 0], pidx[:, 1]]
+    if buffer_mask is not None:
+        keep &= ~_np(buffer_mask)[pidx[:, 0], pidx[:, 1]]
+    if len(exclude_years):
+        keep &= ~np.isin(pidx[:, 2], np.asarray(list(exclude_years)))
+    return keep
+
+
+def cell_temporal_baseline(pidx, z_obs, holdout, target_rows, mode="trend",
+                           buffer_mask=None, exclude_years=()):
+    """Predict a point from the SAME CELL's other training years. No covariates, no neighbours.
+
+    ``mode="nearest"`` takes the training year closest in time; ``mode="trend"`` fits a line per
+    z-dimension over that cell's training years and evaluates it at the target year, which is
+    genuine temporal EXTRAPOLATION when the target lies outside their range.
+
+    This is the rung that survives a temporal block holdout, so it is the one that matters for
+    the backward-extrapolation claim. Returns per-row error aligned to ``pidx[target_rows]``,
+    NaN where the cell has too few training years.
+    """
+    tr = _train_rows(pidx, holdout, buffer_mask, exclude_years)
+    by_cell = {}
+    for i in np.flatnonzero(tr):
+        by_cell.setdefault((int(pidx[i, 0]), int(pidx[i, 1])), []).append(i)
+
+    idx = np.flatnonzero(target_rows)
+    err = np.full(len(idx), np.nan, dtype="float32")
+    need = _MIN_TREND_YEARS if mode == "trend" else 1
+    for out_i, i in enumerate(idx):
+        rows = by_cell.get((int(pidx[i, 0]), int(pidx[i, 1])))
+        if not rows:
+            continue
+        rows = [r for r in rows if r != i]                 # never its own answer
+        if len(rows) < need:
+            continue
+        ys = pidx[rows, 2].astype("float64")
+        y0 = float(pidx[i, 2])
+        if mode == "nearest":
+            pred = z_obs[rows[int(np.argmin(np.abs(ys - y0)))]]
+        else:
+            if np.ptp(ys) == 0:                            # all one year -> no slope
+                continue
+            A = np.vstack([ys - ys.mean(), np.ones_like(ys)]).T
+            coef, *_ = np.linalg.lstsq(A, z_obs[rows], rcond=None)
+            pred = coef[0] * (y0 - ys.mean()) + coef[1]
+        err[out_i] = float(np.linalg.norm(pred - z_obs[i]))
+    return err
+
+
+def borrowed_delta_baseline(pidx, z_obs, holdout, target_rows, recent_year,
+                            buffer_mask=None, k=8, power=2.0, exclude_years=()):
+    """``z(c, recent) + mean over neighbours of [z(n, y) - z(n, recent)]``.
+
+    The direct competitor to DESK's actual claim. DESK says the covariates tell you HOW a place
+    changed; this says "assume it changed the way nearby places changed", using the cell's own
+    modern state as the starting point. If DESK cannot beat this, its temporal contribution is a
+    regional trend rather than anything covariate-driven.
+
+    Needs training neighbours in BOTH the target year and the recent year, so it is unavailable
+    under a temporal block holdout -- NaN, never a degenerate value.
+    """
+    from scipy.spatial import cKDTree
+
+    tr = _train_rows(pidx, holdout, buffer_mask, exclude_years)
+    idx = np.flatnonzero(target_rows)
+    err = np.full(len(idx), np.nan, dtype="float32")
+
+    # the target cell's own modern value, and each training cell's
+    rec_of = {(int(r), int(c)): i for i, (r, c, y) in enumerate(pidx) if int(y) == recent_year}
+    for y in np.unique(pidx[idx, 2]):
+        if int(y) == recent_year:
+            continue
+        src = [i for i in np.flatnonzero(tr & (pidx[:, 2] == y))
+               if (int(pidx[i, 0]), int(pidx[i, 1])) in rec_of]
+        if len(src) < k:
+            continue
+        deltas = np.stack([z_obs[i] - z_obs[rec_of[(int(pidx[i, 0]), int(pidx[i, 1]))]]
+                           for i in src])
+        tree = cKDTree(pidx[src, :2].astype(float))
+        want = [(o, i) for o, i in enumerate(idx)
+                if pidx[i, 2] == y and (int(pidx[i, 0]), int(pidx[i, 1])) in rec_of]
+        if not want:
+            continue
+        pos = np.array([o for o, _ in want])
+        rows = np.array([i for _, i in want])
+        dist, nb = tree.query(pidx[rows, :2].astype(float), k=k)
+        w = np.where(dist > 1e-9, 1.0 / np.maximum(dist, 1e-6) ** power, 0.0)
+        ok = w.sum(axis=1) > 0
+        w[ok] /= w[ok].sum(axis=1, keepdims=True)
+        borrowed = np.einsum("nk,nkl->nl", w, deltas[nb])
+        base = np.stack([z_obs[rec_of[(int(pidx[i, 0]), int(pidx[i, 1]))]] for i in rows])
+        e = np.linalg.norm(base + borrowed - z_obs[rows], axis=1)
+        err[pos[ok]] = e[ok]
+    return err
+
+
+def _spacetime_predict(pidx, z_obs, tr_rows, target_rows, ratio, k=8, power=2.0):
+    """``(pred, ok)`` -- spacetime-IDW estimate of z at ``target_rows``, at anisotropy ``ratio``.
+
+    Zero-distance neighbours are dropped, so a training row is never handed its own answer.
+    """
+    from scipy.spatial import cKDTree
+
+    def coords(rows):
+        c = pidx[rows][:, [0, 1, 2]].astype("float64").copy()
+        c[:, 2] *= ratio                                   # years -> grid-cell units
+        return c
+
+    src = np.flatnonzero(tr_rows)
+    idx = np.flatnonzero(target_rows)
+    pred = np.full((len(idx), z_obs.shape[1]), np.nan, dtype="float32")
+    if len(src) < k or not len(idx):
+        return pred, np.zeros(len(idx), bool)
+    dist, nb = cKDTree(coords(src)).query(coords(idx), k=k)
+    w = np.where(dist > 1e-9, 1.0 / np.maximum(dist, 1e-6) ** power, 0.0)
+    ok = w.sum(axis=1) > 0
+    w[ok] /= w[ok].sum(axis=1, keepdims=True)
+    pred[ok] = np.einsum("nk,nkl->nl", w[ok], z_obs[src][nb[ok]])
+    return pred, ok
+
+
+def _spacetime_err(pidx, z_obs, tr_rows, target_rows, ratio, k=8, power=2.0):
+    """Per-row error of spacetime IDW at a given space/time anisotropy ``ratio``."""
+    idx = np.flatnonzero(target_rows)
+    pred, ok = _spacetime_predict(pidx, z_obs, tr_rows, target_rows, ratio, k=k, power=power)
+    err = np.full(len(idx), np.nan, dtype="float32")
+    err[ok] = np.linalg.norm(pred[ok] - z_obs[idx][ok], axis=1)
+    return err
+
+
+def spacetime_idw_z(pidx, z_obs, holdout, ratio, buffer_mask=None, k=8, power=2.0,
+                    exclude_years=()):
+    """A full ``(N, L)`` stand-in for the model's Z, interpolated in spacetime from TRAINING rows.
+
+    Lets the report re-run its EXISTING metrics -- ``directional_change_agreement``,
+    ``analog_displacement`` -- on an interpolation instead of the model, which turns every
+    "vs null" figure into "vs a real alternative" without writing a second copy of any metric.
+    Rows the interpolation cannot reach come back NaN and the metric drops them as usual.
+    """
+    tr = _train_rows(pidx, holdout, buffer_mask, exclude_years)
+    pred, _ok = _spacetime_predict(pidx, z_obs, tr, np.ones(len(pidx), bool), ratio,
+                                   k=k, power=power)
+    return pred
+
+
+def spacetime_idw_baseline(pidx, z_obs, holdout, target_rows, buffer_mask=None,
+                           ratios=SPACETIME_RATIOS, k=8, power=2.0, verbose=True,
+                           exclude_years=()):
+    """Inverse-distance interpolation in SPACE AND TIME jointly. Returns ``(err, ratio)``.
+
+    One ``cKDTree`` over ``(row, col, year * ratio)``, so ordinary Euclidean distance in the
+    scaled space IS spacetime distance -- no bespoke metric.
+
+    ``ratio`` (grid cells per year) is chosen by holding out a random half of the TRAINING rows
+    and scoring the rest, then taking the minimiser. Fitted on training data only, so it cannot
+    leak; and a bar should be the strongest cheap alternative rather than a guess, which is why
+    it is measured instead of hardcoded.
+    """
+    tr = _train_rows(pidx, holdout, buffer_mask, exclude_years)
+    tr_idx = np.flatnonzero(tr)
+    best, best_ratio = np.inf, float(ratios[0])
+    if len(tr_idx) >= 4 * k:
+        rng = np.random.default_rng(0)
+        probe = rng.permutation(tr_idx)[: len(tr_idx) // 2]
+        fit = np.zeros(len(pidx), bool); fit[tr_idx] = True; fit[probe] = False
+        pm = np.zeros(len(pidx), bool); pm[probe] = True
+        for r in ratios:
+            e = _spacetime_err(pidx, z_obs, fit, pm, float(r), k=k, power=power)
+            fin = np.isfinite(e)
+            if fin.sum() and float(np.median(e[fin])) < best:
+                best, best_ratio = float(np.median(e[fin])), float(r)
+        if verbose:
+            print(f"  spacetime IDW anisotropy: {best_ratio:g} grid cells per year "
+                  f"(chosen on training rows only, from {list(ratios)})")
+    return _spacetime_err(pidx, z_obs, tr, target_rows, best_ratio, k=k, power=power), best_ratio
+
+
+def _era_of(years):
+    """Decade label per year, so eras are legible without a config knob."""
+    return np.array([f"{int(y) // 10 * 10}s" for y in years])
+
+
+def baseline_panel(pidx, z_obs, z_desk, holdout, recent_year, buffer_mask=None,
+                   heldout_only=True, verbose=True, target_rows=None, exclude_years=()):
+    """The whole ladder, scored per era against DESK. Returns a nested dict.
+
+    Reports **DESK beats it in X%** per rung per era, plus median errors. Held-out cells only by
+    default -- a training cell's score is not evidence about anything.
+
+    ``target_rows`` overrides what is graded, which is how the temporal experiment gets its
+    three buckets (unseen year / unseen cell / both). ``exclude_years`` must carry the withheld
+    years so no rung sources from them.
+
+    **The n/a pattern is structural, not a defect, and the two holdouts are complementary:**
+
+    * Under a SPATIAL holdout a held-out cell is held out in every year, so it has no training
+      years of its own -- ``cell_nearest_year`` and ``cell_trend`` cannot run at all.
+    * Under a TEMPORAL holdout there are no training points in the withheld years, so
+      ``spatial_interp`` and ``borrowed_delta`` cannot run.
+
+    Neither holdout alone can exercise the whole ladder. That is the argument for running both
+    rather than picking one.
+    """
+    ho = _np(holdout)
+    is_ho = ho[pidx[:, 0], pidx[:, 1]]
+    if target_rows is not None:
+        target = np.asarray(target_rows, bool)
+    else:
+        target = is_ho if heldout_only else np.ones(len(pidx), bool)
+    target = target & (pidx[:, 2] != recent_year)      # the recent year IS the no-change source
+    if not target.any():
+        return {"note": "no target rows"}
+
+    err_desk_all = np.linalg.norm(z_desk - z_obs, axis=1)
+    rec_of = {(int(r), int(c)): i for i, (r, c, y) in enumerate(pidx) if int(y) == recent_year}
+    nochange = np.full(len(pidx), np.nan, dtype="float32")
+    for i in np.flatnonzero(target):
+        j = rec_of.get((int(pidx[i, 0]), int(pidx[i, 1])))
+        if j is not None:
+            nochange[i] = np.linalg.norm(z_obs[j] - z_obs[i])
+
+    _kw = {"buffer_mask": buffer_mask, "exclude_years": exclude_years}
+    st_err, ratio = spacetime_idw_baseline(pidx, z_obs, holdout, target,
+                                           verbose=verbose, **_kw)
+    bars = {
+        "no_change": nochange[target],
+        "cell_nearest_year": cell_temporal_baseline(pidx, z_obs, holdout, target,
+                                                    mode="nearest", **_kw),
+        "cell_trend": cell_temporal_baseline(pidx, z_obs, holdout, target,
+                                             mode="trend", **_kw),
+        "borrowed_delta": borrowed_delta_baseline(pidx, z_obs, holdout, target, recent_year,
+                                                  **_kw),
+        "spacetime_idw": st_err,
+    }
+    ed = err_desk_all[target]
+    eras = _era_of(pidx[target, 2])
+    out = {"recent_year": int(recent_year), "spacetime_ratio_cells_per_year": ratio,
+           "heldout_only": bool(heldout_only), "by_era": {}, "overall": {}}
+
+    def _score(mask):
+        row = {"n": int(mask.sum()), "median_err_desk": float(np.median(ed[mask]))}
+        for name, e in bars.items():
+            fin = mask & np.isfinite(e)
+            row[name] = ({"n": int(fin.sum()), "median_err": float(np.median(e[fin])),
+                          "desk_beats_frac": float(np.mean(ed[fin] < e[fin]))}
+                         if fin.sum() >= 4 else {"n": int(fin.sum()), "median_err": float("nan"),
+                                                 "desk_beats_frac": float("nan")})
+        return row
+
+    for era in sorted(set(eras)):
+        out["by_era"][era] = _score(eras == era)
+    out["overall"] = _score(np.ones(len(ed), bool))
+
+    if verbose:
+        names = list(bars)
+        print(f"  DESK beats each bar, held-out cells, by era (n/a = bar cannot run there)")
+        print("  era        n   errDESK  " + "  ".join(f"{n[:13]:>13}" for n in names))
+        for era in sorted(set(eras)) + ["overall"]:
+            r = out["by_era"][era] if era != "overall" else out["overall"]
+            cells = []
+            for n in names:
+                f = r[n]["desk_beats_frac"]
+                cells.append("          n/a" if not np.isfinite(f) else f"{f:12.1%} ")
+            print(f"  {era:<8} {r['n']:>5}   {r['median_err_desk']:7.4f}  " + " ".join(cells))
+    return out

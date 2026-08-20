@@ -740,3 +740,32 @@ def test_a_cell_without_covariates_is_still_excluded():
     cov = np.zeros((2, 2, 2), "float32"); cov[1, 1, 0] = np.nan
     m = compute_valid_mask(target, cov)
     assert int(m.sum()) == 3 and not m[1, 1]
+
+
+def test_temporally_withheld_years_never_reach_the_metric_pool():
+    """The leak that would have invalidated the whole temporal-extrapolation experiment.
+    Zeroing a year's train mask in `targets` keeps it out of the stabilizing loss, but the
+    metric pool filters on the SPATIAL mask, so a withheld year still reached the objective
+    through the Ruzicka term -- and the measurement would be reading trained-on years."""
+    from src.community_encoder.train_DESK.desk_training import spacetime_metric_pool
+    W = 4
+    pip = np.array([[0, 0, 1970], [0, 1, 1970], [0, 0, 2025], [0, 1, 2025]], dtype=np.int32)
+    Xp = np.ones((4, 2), "float32")
+    m_tr = np.ones((1, W), bool)
+    yrs, _flat, _rows = spacetime_metric_pool(pip, Xp, np.ones(4, bool), m_tr, W,
+                                              exclude_years=[1970])
+    assert sorted(set(yrs)) == [2025], sorted(set(yrs))
+    # and with nothing withheld the pool is unchanged
+    yrs_all, _f, _r = spacetime_metric_pool(pip, Xp, np.ones(4, bool), m_tr, W)
+    assert sorted(set(yrs_all)) == [1970, 2025]
+
+
+def test_an_empty_holdout_list_does_not_filter_anything():
+    """The default. An `np.isin` against an empty array would drop every row."""
+    from src.community_encoder.train_DESK.desk_training import spacetime_metric_pool
+    pip = np.array([[0, 0, 1970], [0, 1, 2025]], dtype=np.int32)
+    for excl in ((), [], None if False else []):
+        yrs, _f, _r = spacetime_metric_pool(pip, np.ones((2, 2), "float32"),
+                                            np.ones(2, bool), np.ones((1, 4), bool), 4,
+                                            exclude_years=excl)
+        assert len(yrs) == 2

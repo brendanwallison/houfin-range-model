@@ -372,6 +372,21 @@ def encode_points(config, point_index):
     return Z, ~np.isnan(Z).any(1)
 
 
+#: Per-point arrays from ``zspace_reconstruction``: they go to the .npz for viz, never to the
+#: JSON report. Everything else is a scalar figure and belongs in the report.
+RECON_ARRAY_KEYS = ("rows", "cols", "err_desk", "err_nochange")
+
+
+def report_scalars(recon):
+    """Report-safe view of a reconstruction dict: drop the per-point arrays, keep every scalar.
+
+    This was an ALLOW-LIST of key names, which silently dropped anything newly added -- the
+    interpolation bar was computed, never listed, and so could never print, because the summary
+    reads this filtered dict rather than the original. An exclusion cannot fail that way.
+    """
+    return {k: v for k, v in recon.items() if k not in RECON_ARRAY_KEYS}
+
+
 def is_ho_hist(ho, pidx, hist):
     """Held-out flag per HISTORICAL point, in ``pidx[hist]`` row order."""
     return ho[pidx[hist, 0], pidx[hist, 1]]
@@ -622,7 +637,7 @@ def run_validate(config=None, n_pairs=20000, cka_sample=800, seed=0):
     # Direction of change, per epoch pair, against interpolation rather than a permutation null.
     # Folded in here rather than run as its own stage: it needs exactly what this function has
     # already paid for -- the encoded z and the projected z_obs.
-    epochs_panel = None
+    epochs_panel = ladder = None
     ho_path = os.path.join(config["paths"]["desk_output_dir"], "holdout_cells.npy")
     bf_path = os.path.join(config["paths"]["desk_output_dir"], "buffer_cells.npy")
     if os.path.exists(ho_path):
@@ -637,6 +652,60 @@ def run_validate(config=None, n_pairs=20000, cka_sample=800, seed=0):
             print("[validate] DIRECTION of change vs inverse-distance interpolation "
                   "(z_ema; pairs share cells and nest in time, so never pooled):")
             epochs_panel = epoch_direction_panel(pidx, None, z_obs_pts, zm, ho, bf)
+
+            # The full ladder, per era. Each rung is handed different information, so the row
+            # says WHICH claim survives: beating no-change is nearly free, beating
+            # borrowed_delta means the covariates say something neighbours' trends do not.
+            from .validate_baselines import baseline_panel, spacetime_idw_z
+            hy = [int(y) for y in (config["desk"].get("trend", {}).get("holdout_years") or [])]
+            print("[validate] BASELINE LADDER (z_ema, held-out cells):")
+            ladder = baseline_panel(pidx, z_obs_pts, Z, ho, int(recent_year), buffer_mask=bf,
+                                    exclude_years=hy)
+
+            # With a temporal holdout configured, the spatial table above answers only "unseen
+            # PLACE". Add the buckets that answer "unseen YEAR" -- the backward-extrapolation
+            # question, and the one the 1900 use case actually rests on.
+            if hy:
+                is_ho = ho[pidx[:, 0], pidx[:, 1]]
+                in_hy = np.isin(pidx[:, 2], np.asarray(hy))
+                ladder["temporal_buckets"] = {}
+                for lab, rows in (("unseen_year_seen_cell", in_hy & ~is_ho),
+                                  ("unseen_year_unseen_cell", in_hy & is_ho)):
+                    if int(rows.sum()) < 20:
+                        print(f"  {lab}: {int(rows.sum())} rows, too few to report")
+                        continue
+                    print(f"  {lab} ({int(rows.sum()):,} rows) -- withheld years "
+                          f"{min(hy)}-{max(hy)}:")
+                    ladder["temporal_buckets"][lab] = baseline_panel(
+                        pidx, z_obs_pts, Z, ho, int(recent_year), buffer_mask=bf,
+                        target_rows=rows, exclude_years=hy)
+
+            # Re-run the EXISTING metrics on an interpolated stand-in for Z. Both take Z as an
+            # argument, so this turns "vs null" into "vs a real alternative" without a second
+            # copy of either metric. The null they already report is weak: on direction of
+            # change the model beat its permutation null (0.48 vs 0.22) and still lost to
+            # interpolation (0.51).
+            ratio = ladder.get("spacetime_ratio_cells_per_year")
+            if ratio:
+                Z_idw = spacetime_idw_z(pidx, z_obs_pts, ho, float(ratio),
+                                        buffer_mask=bf, exclude_years=hy)
+                fin = np.isfinite(Z_idw).all(axis=1)
+                if fin.sum() >= 100:
+                    Zi = np.where(fin[:, None], Z_idw, 0.0).astype("float32")
+                    _SCALARS = lambda d: {k: v for k, v in d.items()
+                                          if np.isscalar(v) or isinstance(v, str)}
+                    _di = directional_change_agreement(Zi, X, pidx, recent_year,
+                                                       np.random.default_rng(seed))
+                    _an = analog_displacement(Zi, X, pidx, xy, recent_year,
+                                              np.random.default_rng(seed))
+                    ladder["interpolated_z_metrics"] = {"n_rows": int(fin.sum()),
+                                                        "directional": _SCALARS(_di),
+                                                        "analog": _SCALARS(_an)}
+                    print(f"  same metrics on INTERPOLATED z (spacetime IDW, ratio={ratio:g}): "
+                          f"direction mean_dir_cos={_di.get('mean_dir_cos', float('nan')):+.3f}, "
+                          f"analog cos={_an.get('mean_cos_displacement', float('nan')):+.3f}"
+                          f"  <- the model's figures above must beat THESE, not the nulls")
+        _phase("baseline ladder")
         _phase("epoch direction panel")
     report["directional_change"] = {k: v for k, v in dirchg.items()
                                      if k in ("n_sites", "mean_dir_cos", "median_dir_cos",
@@ -690,14 +759,11 @@ def run_validate(config=None, n_pairs=20000, cka_sample=800, seed=0):
         report["analog"] = {k: v for k, v in analog.items() if k == "note"}
 
     if recon is not None:
-        report["zspace_reconstruction"] = {k: v for k, v in recon.items()
-            if k in ("n", "median_err_desk", "median_err_nochange", "frac_desk_beats_nochange",
-                     "recent_basis_residual", "note", "n_heldout", "frac_desk_beats_nochange_heldout",
-                     "median_err_desk_heldout", "median_err_nochange_heldout", "n_train",
-                     "frac_desk_beats_nochange_train", "median_err_desk_train",
-                     "median_err_nochange_train")}
+        report["zspace_reconstruction"] = report_scalars(recon)
         if epochs_panel is not None:
             report["epoch_directions"] = epochs_panel
+        if ladder is not None:
+            report["baseline_ladder"] = ladder
         report["graded_on"] = "z_ema"
         report["zspace_reconstruction"]["_note"] = ("PER-CELL reconstruction in the pinned ESK "
             "z-basis: err_desk = ||z_DESK - z_obs||, err_nochange = ||z_obs(2023) - z_obs||. "

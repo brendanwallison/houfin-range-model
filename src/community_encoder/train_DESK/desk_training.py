@@ -108,7 +108,7 @@ def spacetime_kernel_loss(z_by_t, pool_t, pool_flat, pool_x, num_pairs=4096, gen
 
 
 
-def spacetime_metric_pool(pip, Xp, sup_rows, m_tr, W):
+def spacetime_metric_pool(pip, Xp, sup_rows, m_tr, W, exclude_years=()):
     """``(years, flat cell indices, community rows)`` -- the pool the metric loss samples.
 
     One flat pool over every supervised training cell-year, NOT a per-year grouping: pairs must
@@ -116,10 +116,19 @@ def spacetime_metric_pool(pip, Xp, sup_rows, m_tr, W):
     than a dense ``(T,H,W,S)`` tensor, which would be ~59x the point set for no gain, since
     only surveyed cells carry a community. Held-out and buffered cells are excluded so they
     never enter the similarity target.
+
+    ``exclude_years`` must carry ``desk.trend.holdout_years``. Zeroing a year's train mask in
+    ``targets`` keeps it out of the stabilizing loss but NOT out of this pool, which filters on
+    the spatial mask -- so a temporally held-out year would still reach the objective through
+    the metric term, and the temporal-extrapolation measurement would be reading years the
+    model was trained on. That leak did not exist while the metric loss used the anchor year
+    alone (the anchor is never withheld); it appeared when the loss went spacetime-wide.
     """
     tr_flat = m_tr.reshape(-1)
     flat_of_row = pip[:, 0].astype(np.int64) * W + pip[:, 1].astype(np.int64)
     sel = sup_rows & tr_flat[flat_of_row]
+    if len(exclude_years):
+        sel = sel & ~np.isin(pip[:, 2], np.asarray(list(exclude_years), dtype=pip.dtype))
     return (pip[sel, 2].astype(np.int64), flat_of_row[sel], Xp[sel].astype("float32"))
 
 
@@ -879,7 +888,10 @@ def run_desk_experiment(config=None):
     m_tr = mask_sup & (~holdout) & (~buffer_cells_mask)
     m_val = mask_sup & holdout
 
-    metric_pool = spacetime_metric_pool(pip, Xp, sup_rows, m_tr, W)
+    # Computed here, above the pool, because the pool must exclude these years -- see
+    # spacetime_metric_pool. The anchor is never withheld; it carries the metric loss.
+    ho_years = [int(y) for y in (tr_cfg.get("holdout_years") or []) if int(y) != label_year]
+    metric_pool = spacetime_metric_pool(pip, Xp, sup_rows, m_tr, W, exclude_years=ho_years)
     print(f"[desk] metric loss over {len(metric_pool[0]):,} training cell-years spanning "
           f"{len(np.unique(metric_pool[0]))} years, pairs drawn across space AND time "
           f"(was one year, {int((pip[:, 2] == ay).sum()):,} rows)")
@@ -908,7 +920,6 @@ def run_desk_experiment(config=None):
     # which is what DESK exists to do. The anchor (label_year) is never withheld -- it carries
     # the eBird metric loss. Diagnostic only; model selection stays on the spatial metric so
     # there is exactly one selection signal.
-    ho_years = [int(y) for y in (tr_cfg.get("holdout_years") or []) if int(y) != label_year]
     year_val = {}
     for y in ho_years:
         if y in targets:

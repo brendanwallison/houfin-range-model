@@ -419,6 +419,72 @@ A model scoring well on 5 and poorly on 1 is evidence about the reference, not t
 graded against raw route counts either way, so it is the only metric comparable to the runs
 made before the target changed. Record the current value first.
 
+### Baselines: what each metric has to beat
+
+`validate` prints a **baseline ladder** per era on held-out cells. Each rung is handed
+different information, so the row tells you which claim survives:
+
+| Rung | Needs | Isolates |
+|---|---|---|
+| `no_change` | the cell's modern state | zero dynamics |
+| `cell_nearest_year`, `cell_trend` | the cell's *other training* years | time without covariates |
+| `spatial_interp` (IDW-8) | the target year elsewhere | space, year given free |
+| `borrowed_delta` | modern state + neighbours' change | "it changed like its neighbours" |
+| `spacetime_idw` | anything near in space **and** time | joint interpolation |
+
+`n/a` means the rung genuinely cannot run there (e.g. no training points in that year), not
+that it failed. **`borrowed_delta` is the one to watch**: it is the direct competitor to the
+claim that covariates say *how* a place changed. Beating `no_change` is nearly free — it
+assumes six decades of stasis.
+
+Why this matters concretely: on the first raw-BBS run the model scored 0.48 on direction of
+change against a permutation null of 0.22, which looked like real skill — and lost to
+inverse-distance interpolation at 0.51. A null a plain interpolator clears is not a bar.
+
+`spacetime_idw`'s space/time anisotropy (grid cells per year) is chosen by sweep on **training
+rows only** and the choice is printed. It is measured, not assumed.
+
+### Testing temporal extrapolation (backward)
+
+Everything above is graded at years that have data. DESK also has to extrapolate *backward*
+(ultimately to 1900), and no spatial holdout tests that. `desk.trend.holdout_years` withholds
+a contiguous span from the objective entirely; three overlays withhold progressively more of
+the early record, giving skill against extrapolation distance:
+
+```bash
+for y in 1975 1985 1995; do
+  ESK_DESK_CONFIG=config/overlays/desk_tempho_$y.json \
+    STAGES=desk TIME=04:00:00 bash scripts/tacc/submit_encoder.sh
+done
+# validate each with the SAME overlay, so it reads that run's checkpoint
+for y in 1975 1985 1995; do
+  ESK_DESK_CONFIG=config/overlays/desk_tempho_$y.json \
+    STAGES=validate bash scripts/tacc/submit_encoder.sh
+done
+```
+
+Each writes to its own `desk_output_dir`, so the production checkpoint under `encoder/desk` is
+untouched. Confirm `[desk] temporal holdout years (diagnostic, excluded from the objective)`
+appears and that `Val(yr-out)` is no longer `nan`.
+
+Under these holdouts `spatial_interp` and `borrowed_delta` go `n/a` by construction — there are
+no training points in the withheld years at all. That narrowing is the point: what remains
+(persistence, `cell_trend`, `spacetime_idw`) is the honest competitor set for extrapolation, and
+it is why spatial IDW could never have tested this.
+
+Two deliberate choices worth knowing:
+
+- **`desk.trend.seed` is not overridden**, so all three runs draw the same spatial split. A
+  moving holdout would confound the decay curve.
+- **The ESK basis is shared** (not rebuilt per run), so the z-space is mildly informed by the
+  withheld years. DESK and every baseline are scored in that same basis, so the within-run
+  verdict is unaffected and errors stay comparable across the three runs. Rebuilding per run
+  would remove the representational leak at the cost of three incomparable z-spaces.
+
+What this can and cannot support: a statement of the form "skill decays to baseline at N years
+beyond the data". It does **not** validate 1900, which lies outside every window. That belongs
+in the paper, not in a log line.
+
 ## 3e. Encoder (spacetime-esk → DESK → cube → validate) — separate GPU job
 
 The encoder is **not** preprocessing: ESK (Nyström kernel-PCA) and DESK

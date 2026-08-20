@@ -1,0 +1,11 @@
+{
+  "_comment": "TEMPORAL-EXTRAPOLATION EXPERIMENT, run 1975. Withholds 1966-1975 (10 years) from the DESK objective entirely, so those years test extrapolation BACKWARD beyond the training data -- the direction the 1900 use case needs. Run the three overlays (1975/1985/1995) to get skill against extrapolation distance. desk.trend.seed is NOT overridden anywhere: the spatial split must stay identical across the three or the decay curve is confounded by a moving holdout. Usage: ESK_DESK_CONFIG=config/overlays/desk_tempho_1975.json STAGES=desk bash scripts/tacc/submit_encoder.sh",
+  "paths": {
+    "desk_output_dir": "${HOUFIN_PROCESSED}/encoder/desk_tempho_1975"
+  },
+  "desk": {
+    "trend": {
+      "holdout_years": [1966, 1967, 1968, 1969, 1970, 1971, 1972, 1973, 1974, 1975]
+    }
+  }
+}

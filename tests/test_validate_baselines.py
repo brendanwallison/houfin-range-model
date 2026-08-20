@@ -183,3 +183,177 @@ def test_the_direction_baseline_reports_nan_when_it_cannot_run():
     dc, n = spatial_interp_dir_cos(tgt, None, 2025, m)
     assert np.isnan(dc) and n == 0
 
+
+
+# --------- the ladder: each rung isolates one claim ---------
+
+def _grid_points(cells, years):
+    pidx = np.array([[r, c, y] for (r, c) in cells for y in years], dtype=np.int32)
+    return pidx
+
+
+def test_cell_trend_is_exact_on_a_linear_in_time_field():
+    """The rung that survives a temporal block holdout, so the one the 1900 claim rests on.
+    On a field that really is linear in time per cell, extrapolating a line must be exact --
+    including BACKWARD, outside the range of the training years."""
+    from src.community_encoder.train_DESK.validate_baselines import cell_temporal_baseline
+    years = [1970, 1985, 2000, 2015]
+    pidx = _grid_points([(0, 0), (0, 1)], years)
+    z = np.stack([[float(y) * 0.5, -float(y)] for _r, _c, y in pidx]).astype("float32")
+    ho = np.zeros((2, 2), bool)
+    target = pidx[:, 2] == 1970                     # earliest -> genuine backward extrapolation
+    err = cell_temporal_baseline(pidx, z, ho, target, mode="trend")
+    assert np.isfinite(err).all() and np.abs(err).max() < 1e-3, err
+
+
+def test_cell_trend_is_nan_with_only_one_other_year():
+    """A line needs two points. Returning something anyway would put a fake bar in the table."""
+    from src.community_encoder.train_DESK.validate_baselines import cell_temporal_baseline
+    pidx = np.array([[0, 0, 1970], [0, 0, 2020]], dtype=np.int32)
+    z = np.ones((2, 3), "float32")
+    err = cell_temporal_baseline(pidx, z, np.zeros((1, 1), bool), pidx[:, 2] == 1970,
+                                mode="trend")
+    assert np.isnan(err).all()                      # one other year -> no slope
+
+
+def test_a_point_is_never_its_own_baseline():
+    """A target row must be excluded from its own cell's source rows, or the bar reads 0 and
+    beats every model by construction."""
+    from src.community_encoder.train_DESK.validate_baselines import cell_temporal_baseline
+    pidx = _grid_points([(0, 0)], [1970, 1990, 2010])
+    z = np.stack([[float(y), 0.0] for _r, _c, y in pidx]).astype("float32")
+    err = cell_temporal_baseline(pidx, z, np.zeros((1, 1), bool), pidx[:, 2] == 1990,
+                                 mode="nearest")
+    assert err[0] > 0.0, "the 1990 point was handed its own value"
+
+
+def test_borrowed_delta_is_exact_when_every_cell_changed_alike():
+    """'It changed like its neighbours' must be exact when that is literally true -- otherwise
+    it is too weak to be the competitor to DESK's claim."""
+    from src.community_encoder.train_DESK.validate_baselines import borrowed_delta_baseline
+    cells = [(r, c) for r in range(5) for c in range(5)]
+    pidx = _grid_points(cells, [1980, 2025])
+    base = {cell: np.array([r * 1.0, c * 1.0], "float32") for cell, (r, c) in zip(cells, cells)}
+    shift = np.array([3.0, -2.0], "float32")        # same delta everywhere
+    z = np.stack([base[(int(r), int(c))] + (0.0 if y == 2025 else -shift)
+                  for r, c, y in pidx]).astype("float32")
+    ho = np.zeros((5, 5), bool); ho[2, 2] = True
+    target = (pidx[:, 0] == 2) & (pidx[:, 1] == 2) & (pidx[:, 2] == 1980)
+    err = borrowed_delta_baseline(pidx, z, ho, target, recent_year=2025)
+    assert np.isfinite(err).any() and np.nanmax(err) < 1e-4, err
+
+
+def test_borrowed_delta_is_nan_when_the_year_has_no_training_neighbours():
+    """Exactly what a temporal block holdout does. It must report n/a, not a number."""
+    from src.community_encoder.train_DESK.validate_baselines import borrowed_delta_baseline
+    cells = [(0, c) for c in range(12)]
+    pidx = _grid_points(cells, [1980, 2025])
+    z = np.ones((len(pidx), 2), "float32")
+    ho = np.zeros((1, 12), bool)
+    ho[0, :] = True                                  # every 1980 cell held out -> no sources
+    err = borrowed_delta_baseline(pidx, z, ho, pidx[:, 2] == 1980, recent_year=2025)
+    assert np.isnan(err).all()
+
+
+def _sparse_layout(n_cells=12, spacing=4, years=range(1960, 2040, 10)):
+    """Cells spaced far apart in space, several years deep.
+
+    Spacing matters: on a DENSE grid the same-year neighbours are the nearest ones at every
+    ratio, so nothing discriminates and the sweep just returns the first candidate. The ratio
+    only has meaning when crossing a year can actually cost less than crossing space.
+    """
+    cells = [(0, c * spacing) for c in range(n_cells)]
+    return _grid_points(cells, list(years))
+
+
+def test_spacetime_ratio_cv_finds_a_time_dominated_field():
+    """A field that varies with YEAR and not position. Borrowing across years is what hurts
+    here, so the sweep must pick a LARGE ratio -- making a year expensive to cross, hence
+    neighbours same-year."""
+    from src.community_encoder.train_DESK.validate_baselines import spacetime_idw_baseline
+    pidx = _sparse_layout()
+    z = np.stack([[float(y) * 0.1, 0.0] for _r, _c, y in pidx]).astype("float32")
+    _err, ratio = spacetime_idw_baseline(pidx, z, np.zeros((1, 64), bool),
+                                         np.ones(len(pidx), bool), verbose=False)
+    assert ratio >= 2.0, ratio
+
+
+def test_spacetime_ratio_cv_finds_a_space_dominated_field():
+    """The converse, on the same layout: a field varying with position and not year must pick a
+    SMALL ratio, so a cell's own other years are its nearest neighbours."""
+    from src.community_encoder.train_DESK.validate_baselines import spacetime_idw_baseline
+    pidx = _sparse_layout()
+    z = np.stack([[float(c), 0.0] for _r, c, _y in pidx]).astype("float32")
+    _err, ratio = spacetime_idw_baseline(pidx, z, np.zeros((1, 64), bool),
+                                         np.ones(len(pidx), bool), verbose=False)
+    assert ratio <= 0.25, ratio
+
+
+def test_the_panel_marks_unavailable_bars_nan_rather_than_inventing_a_number():
+    """The whole point of the n/a column. With every historical cell held out there are no
+    training sources in that year, so borrowed_delta cannot run -- and must say so."""
+    from src.community_encoder.train_DESK.validate_baselines import baseline_panel
+    cells = [(0, c) for c in range(12)]
+    pidx = _grid_points(cells, [1980, 2025])
+    z = np.random.default_rng(0).normal(size=(len(pidx), 3)).astype("float32")
+    ho = np.zeros((1, 12), bool); ho[0, :] = True
+    out = baseline_panel(pidx, z, z.copy(), ho, recent_year=2025, verbose=False)
+    assert np.isnan(out["by_era"]["1980s"]["borrowed_delta"]["desk_beats_frac"])
+
+
+def test_the_panel_scores_a_perfect_model_as_beating_every_available_bar():
+    """Sanity on the direction of the comparison: if z_desk IS z_obs, DESK's error is 0 and it
+    must beat every bar that can run. A flipped inequality would read as total failure."""
+    from src.community_encoder.train_DESK.validate_baselines import baseline_panel
+    cells = [(r, c) for r in range(6) for c in range(6)]
+    pidx = _grid_points(cells, [1980, 2000, 2025])
+    rng = np.random.default_rng(1)
+    z = rng.normal(size=(len(pidx), 3)).astype("float32")
+    ho = np.zeros((6, 6), bool); ho[::3, ::3] = True
+    out = baseline_panel(pidx, z, z.copy(), ho, recent_year=2025, verbose=False)
+    for name, r in out["overall"].items():
+        if isinstance(r, dict) and np.isfinite(r["desk_beats_frac"]):
+            assert r["desk_beats_frac"] == 1.0, (name, r)
+
+
+def test_the_two_holdouts_have_COMPLEMENTARY_baseline_sets():
+    """The argument for running both. Under a SPATIAL holdout a cell is out in every year, so it
+    has no training years of its own and the per-cell temporal rungs cannot run. Under a
+    TEMPORAL holdout there are no training points in the withheld years, so borrowed-delta
+    cannot run. Neither holdout alone exercises the whole ladder."""
+    from src.community_encoder.train_DESK.validate_baselines import baseline_panel
+    cells = [(r, c) for r in range(10) for c in range(10)]
+    years = [1970, 1980, 1990, 2000, 2025]
+    pidx = _grid_points(cells, years)
+    rng = np.random.default_rng(0)
+    z = rng.normal(size=(len(pidx), 3)).astype("float32")
+    ho = np.zeros((10, 10), bool); ho[::3, ::3] = True
+
+    spatial = baseline_panel(pidx, z, z + 0.1, ho, 2025, verbose=False)["overall"]
+    assert not np.isfinite(spatial["cell_trend"]["desk_beats_frac"])       # cannot run
+    assert np.isfinite(spatial["borrowed_delta"]["desk_beats_frac"])       # can
+
+    is_ho = ho[pidx[:, 0], pidx[:, 1]]
+    withheld = [1970, 1980]
+    temporal = baseline_panel(pidx, z, z + 0.1, ho, 2025, verbose=False,
+                              target_rows=np.isin(pidx[:, 2], withheld) & ~is_ho,
+                              exclude_years=withheld)["overall"]
+    assert np.isfinite(temporal["cell_trend"]["desk_beats_frac"])          # now it can
+    assert not np.isfinite(temporal["borrowed_delta"]["desk_beats_frac"])  # and this cannot
+
+
+def test_no_rung_may_source_from_a_withheld_year():
+    """A baseline reading a withheld year gets information the model never saw and stops being a
+    fair bar. cell_trend on a linear-in-time field would be EXACT if it could see the withheld
+    endpoints; excluded, it must extrapolate and so cannot be exact for free."""
+    from src.community_encoder.train_DESK.validate_baselines import cell_temporal_baseline
+    pidx = _grid_points([(0, 0)], [1970, 1975, 1990, 2000, 2010, 2025])
+    z = np.stack([[float(y), 0.0] for _r, _c, y in pidx]).astype("float32")
+    withheld = [1970, 1975]
+    target = np.isin(pidx[:, 2], withheld)
+    leaky = cell_temporal_baseline(pidx, z, np.zeros((1, 1), bool), target, mode="nearest")
+    fair = cell_temporal_baseline(pidx, z, np.zeros((1, 1), bool), target, mode="nearest",
+                                 exclude_years=withheld)
+    # leaky can reach the OTHER withheld year (1975 for 1970, 5 units away); fair must reach
+    # 1990 at minimum, so its error is strictly larger
+    assert np.nanmax(fair) > np.nanmax(leaky), (leaky, fair)

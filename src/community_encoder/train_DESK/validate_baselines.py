@@ -239,9 +239,13 @@ def epoch_direction_panel(pidx, supervise, z_obs, z_model, holdout, buffer_mask,
     if verbose:
         print("  pair          cells   model    idw     null   verdict")
     for a, b in itertools.combinations(epochs, 2):
-        cells = sorted(set(val_of[a]) & set(val_of[b]) & {c for c in val_of[a]
-                                                          if (c[0], c[1], val_of[a][c]) in z_model
-                                                          and (c[0], c[1], val_of[b][c]) in z_model})
+        # Intersect FIRST, then test z_model. The comprehension is evaluated in full before
+        # the `&` runs, so filtering over val_of[a] would index val_of[b] at cells epoch b
+        # never surveyed -- a KeyError, not a quiet drop.
+        both = set(val_of[a]) & set(val_of[b])
+        cells = sorted(c for c in both
+                       if (c[0], c[1], val_of[a][c]) in z_model
+                       and (c[0], c[1], val_of[b][c]) in z_model)
         if len(cells) < 10:
             if verbose:
                 print(f"  {a}->{b}  {len(cells):>6}   (too few cells)")

@@ -357,3 +357,26 @@ def test_no_rung_may_source_from_a_withheld_year():
     # leaky can reach the OTHER withheld year (1975 for 1970, 5 units away); fair must reach
     # 1990 at minimum, so its error is strictly larger
     assert np.nanmax(fair) > np.nanmax(leaky), (leaky, fair)
+
+
+def test_a_cell_surveyed_near_only_one_epoch_does_not_crash_the_pair():
+    """BBS routes come and go: a cell surveyed near 1985 but never near 2005 belongs to
+    val_of[1985] and not val_of[2005]. The pair's cell set has to intersect the two epochs
+    BEFORE looking up either year, or the per-cell year lookup indexes an epoch that cell was
+    never surveyed near -- the KeyError that killed a full validate run."""
+    from src.community_encoder.train_DESK.validate_baselines import epoch_direction_panel
+    epochs = (1985, 2005)
+    rows = []
+    for i in range(20):                    # 20 cells present in BOTH epochs
+        rows += [[0, i, 1985], [0, i, 2005]]
+    rows += [[1, 0, 1985]]                 # and one present in 1985 only
+    pidx = np.array(rows, dtype=np.int32)
+    holdout = np.ones((2, 20), bool)       # every cell held out -> all land in val_of
+    buf = np.zeros((2, 20), bool)
+    rng = np.random.default_rng(0)
+    z_obs = rng.normal(size=(len(pidx), 3)).astype("float32")
+    z_model = {(int(r), int(c), int(y)): z_obs[i] for i, (r, c, y) in enumerate(pidx)}
+
+    out = epoch_direction_panel(pidx, None, z_obs, z_model, holdout, buf,
+                                epochs=epochs, verbose=False)
+    assert out["pairs"]["1985_2005"]["n"] == 20      # the one-epoch cell is dropped, not fatal

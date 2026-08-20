@@ -29,3 +29,31 @@ def test_the_per_point_arrays_stay_out_of_the_json():
     kept = report_scalars({"n": 3, **{k: np.zeros(3) for k in RECON_ARRAY_KEYS}})
     assert set(kept) == {"n"}
     json.dumps(kept)
+
+
+def test_every_desk_z_ema_call_site_unpacks_two_values():
+    """A static check, because this bug class cannot be caught dynamically here.
+
+    desk_z_ema returns ``(Z, metadata)``. Two call sites -- both added this session, in modules
+    that need the full data tree to run -- bound the tuple to a single name and died only on
+    TACC, one of them after burning two minutes of GPU time. There is no local fixture that
+    would exercise them, so the contract is checked in the source instead.
+    """
+    import ast
+    import pathlib
+
+    root = pathlib.Path(__file__).resolve().parents[1] / "src"
+    offenders = []
+    for path in root.rglob("*.py"):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Assign):
+                continue
+            call = node.value
+            if not (isinstance(call, ast.Call) and getattr(call.func, "id", None) == "desk_z_ema"):
+                continue
+            tgt = node.targets[0]
+            if not (isinstance(tgt, ast.Tuple) and len(tgt.elts) == 2):
+                offenders.append(f"{path.name}:{node.lineno}")
+    assert not offenders, ("desk_z_ema returns (Z, metadata); these bind it to one name: "
+                          + ", ".join(offenders))

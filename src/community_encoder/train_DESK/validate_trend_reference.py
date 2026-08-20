@@ -344,7 +344,7 @@ def run_panel(config=None, n_sample=3000, min_gap=5, seed=0, out_dir=None,
     samp = stratified_sample(keys, int(n_sample), rng)
     need = np.unique(np.concatenate([want, samp]))
 
-    z_sub = desk_z_ema(config, keys[need])
+    z_sub, _ema_meta = desk_z_ema(config, keys[need])   # returns (Z, metadata)
     L = z_sub.shape[1]
     Zm = np.full((keys.shape[0], L), np.nan, dtype="float64")
     Zm[need] = z_sub

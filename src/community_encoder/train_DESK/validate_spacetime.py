@@ -530,7 +530,7 @@ def run_validate(config=None, n_pairs=20000, cka_sample=800, seed=0):
     from .validate_bbs_routes import desk_z_ema
     Z_raw, ok = encode_points(config, pidx)
     _phase("encode_points (raw z)")
-    Z = desk_z_ema(config, pidx)
+    Z, ema_meta = desk_z_ema(config, pidx)      # returns (Z, metadata), not a bare array
     ok = ok & np.isfinite(Z).all(axis=1)
     _phase("encode_points (z_ema)")
     # Every metric below is computed ONLY on these points. `encode_points` fills Z solely
@@ -765,6 +765,7 @@ def run_validate(config=None, n_pairs=20000, cka_sample=800, seed=0):
         if ladder is not None:
             report["baseline_ladder"] = ladder
         report["graded_on"] = "z_ema"
+        report["z_ema_meta"] = ema_meta
         report["zspace_reconstruction"]["_note"] = ("PER-CELL reconstruction in the pinned ESK "
             "z-basis: err_desk = ||z_DESK - z_obs||, err_nochange = ||z_obs(2023) - z_obs||. "
             "frac_desk_beats_nochange > 0.5 => DESK reconstructs the past community better than "

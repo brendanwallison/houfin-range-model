@@ -315,6 +315,44 @@ def median_dir_cos(dp, dt):
     return float(torch.median(torch.sum(dp * dt, dim=1)[ok] / den[ok]))
 
 
+def spatial_interp_dir_cos(tgt, y_deep, y_anchor, rot_va, k=8, power=2.0):
+    """Direction-cosine of the INTERPOLATED change, on the same val cells as the model's.
+
+    ``spatial_interp_baseline`` answers "do the covariates beat spatial smoothness at
+    reproducing Z?". This answers the sharper question: do they beat it at reproducing the
+    DIRECTION OF CHANGE? Inverse-distance interpolation is run separately in the deep year and
+    the anchor year, using each year's own training cells, and the difference of the two
+    interpolations is its predicted change vector. A model whose dir-cos merely matches this is
+    getting its temporal signal from "what the neighbours did", not from the covariates.
+
+    Returns ``(idw_dir_cos, n_cells)``, or ``(nan, 0)`` if either year is unusable.
+    """
+    from scipy.spatial import cKDTree
+
+    def _np(a):
+        return a.detach().cpu().numpy() if hasattr(a, "detach") else np.asarray(a)
+
+    va = _np(rot_va)
+    if y_deep is None or y_deep not in tgt or y_anchor not in tgt or not va.any():
+        return float("nan"), 0
+    va_rc = np.argwhere(va)
+    preds, truths = [], []
+    for y in (y_deep, y_anchor):
+        zg, tr_np = _np(tgt[y][0]), _np(tgt[y][1])
+        if tr_np.sum() < k:
+            return float("nan"), 0
+        tr_rc = np.argwhere(tr_np)
+        dist, idx = cKDTree(tr_rc).query(va_rc, k=k)
+        w = 1.0 / np.maximum(dist, 1e-6) ** power
+        w = w / w.sum(axis=1, keepdims=True)
+        src = zg[tr_rc[:, 0], tr_rc[:, 1]]
+        preds.append(np.einsum("nk,nkl->nl", w, src[idx]))
+        truths.append(zg[va_rc[:, 0], va_rc[:, 1]])
+    dp = torch.as_tensor(preds[1] - preds[0], dtype=torch.float32)
+    dt = torch.as_tensor(truths[1] - truths[0], dtype=torch.float32)
+    return median_dir_cos(dp, dt), int(len(va_rc))
+
+
 def spatial_interp_baseline(tgt, k=8, power=2.0):
     """Predict held-out cells by inverse-distance interpolation of the TARGETS themselves.
 
@@ -662,6 +700,14 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
                   f"{int(min(tgt))} has no training cells -- temporal holdout)", flush=True)
         print(f"[desk] rotation/direction diagnostic {y_deep}->{y2023}: "
               f"{int(rot_tr.sum())} train / {int(rot_va.sum())} val cells", flush=True)
+        # What the covariates must beat on the TEMPORAL axis. The Z-MSE baseline above says
+        # nothing about direction of change, and the permutation null only says "better than
+        # a shuffled pairing" -- neither rules out the model simply reproducing what its
+        # neighbours did. This does.
+        _idw_dc, _idw_n = spatial_interp_dir_cos(tgt, y_deep, y2023, rot_va)
+        print(f"[desk] direction baseline (inverse-distance, no covariates): "
+              f"dcos={_idw_dc:.2f} on {_idw_n} val cells -- the model's dcos va must beat "
+              f"this, not just the permutation null", flush=True)
     else:
         rot_tr = rot_va = torch.zeros(1, dtype=torch.bool, device=device)
         perm_tr = perm_va = torch.zeros(0, dtype=torch.long, device=device)

@@ -812,3 +812,31 @@ def test_a_cell_without_covariates_is_still_excluded():
     cov = np.zeros((2, 2, 2), "float32"); cov[1, 1, 0] = np.nan
     m = compute_valid_mask(target, cov)
     assert int(m.sum()) == 3 and not m[1, 1]
+
+
+def test_the_direction_baseline_scores_high_when_change_is_smooth_in_space():
+    """A spatially smooth change field is exactly what interpolation reproduces, so the
+    baseline must score near 1 there -- otherwise it is too weak to be a fair bar and would
+    flatter the model."""
+    import torch
+    from src.community_encoder.train_DESK.desk_training import spatial_interp_dir_cos
+    H, W, L = 12, 12, 3
+    rng = np.random.default_rng(0)
+    z0 = rng.normal(size=(H, W, L)).astype("float32") * 0.01
+    yy, xx = np.mgrid[0:H, 0:W]
+    delta = np.stack([yy / H, xx / W, (yy + xx) / (H + W)], -1).astype("float32")
+    tr = np.zeros((H, W), bool); tr[::2, ::2] = True
+    va = np.zeros((H, W), bool); va[1::4, 1::4] = True
+    tgt = {1966: (torch.tensor(z0), torch.tensor(tr), torch.tensor(va), None),
+           2025: (torch.tensor(z0 + delta), torch.tensor(tr), torch.tensor(va), None)}
+    dc, n = spatial_interp_dir_cos(tgt, 1966, 2025, torch.tensor(va))
+    assert n == int(va.sum()) and dc > 0.95, (dc, n)
+
+
+def test_the_direction_baseline_reports_nan_when_it_cannot_run():
+    import torch
+    from src.community_encoder.train_DESK.desk_training import spatial_interp_dir_cos
+    z = torch.zeros(4, 4, 2); m = torch.zeros(4, 4, dtype=torch.bool)
+    tgt = {2025: (z, m, m, None)}
+    dc, n = spatial_interp_dir_cos(tgt, None, 2025, m)
+    assert np.isnan(dc) and n == 0

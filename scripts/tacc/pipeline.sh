@@ -185,6 +185,8 @@ stage_trend_reference  () { run trend_reference  python scripts/run_encoder.py t
 stage_esk       () { run esk       python scripts/run_encoder.py esk; }
 stage_spacetime_esk () { run spacetime_esk python scripts/run_encoder.py spacetime-esk; }
 stage_desk      () { run desk      python scripts/run_encoder.py desk; }
+# Targets-only diagnostic: the bars a DESK run has to clear. No GPU, no checkpoint.
+stage_desk_baselines () { run desk_baselines python scripts/run_encoder.py desk-baselines; }
 stage_cube      () { run cube      python scripts/run_encoder.py cube; }
 stage_validate  () { run validate  python scripts/run_encoder.py validate; }
 # Route-level BBS validation. Separate from `validate` because it answers a different question:

@@ -840,6 +840,59 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
     return model, ema
 
 
+def run_desk_baselines(config=None):
+    """Print the spatial and DIRECTION interpolation baselines without training anything.
+
+    Both are properties of the TARGETS and the split, not of the model: the blocked holdout is
+    drawn from the supervised cell set with a fixed seed, and the per-year z-targets come from
+    project_points_to_z. So this reproduces the exact split a DESK run would draw and reports
+    the bars that run has to clear -- no GPU, no covariate stack, no checkpoint. Use it to get
+    the direction baseline for a run that has already finished.
+    """
+    import rasterio
+    from src.config_utils import load_data_config, target_points_dir
+
+    config = load_config(config) if not isinstance(config, dict) else config
+    desk_cfg = config["desk"]
+    z_dir = desk_cfg["z_dir"]
+    _cfg = desk_cfg.get("trend", {})
+    points_dir = target_points_dir(config)
+
+    _X, pip, _w, p_supervise = load_point_set(points_dir)
+    with rasterio.open(load_data_config()["grid"]["ref_raster"]) as src:
+        H, W = src.height, src.width
+    latent_dim = int(desk_cfg.get("latent_dim")
+                     or np.load(os.path.join(z_dir, "Z.npy")).shape[1])
+
+    spatial_kernel = int(desk_cfg.get("spatial_conv", {}).get("kernel", 3)) \
+        if desk_cfg.get("spatial_conv", {}).get("enabled", True) else 0
+    sup_cells = supervised_cells(pip, p_supervise, (H, W))
+    holdout, buffer_cells_mask = blocked_holdout(
+        sup_cells, block_cells=int(_cfg.get("block_cells", 12)),
+        holdout_frac=float(_cfg.get("holdout_frac", 0.15)),
+        buffer_cells=spatial_kernel // 2, seed=int(_cfg.get("seed", 0)))
+    print(f"[base] {int(sup_cells.sum()):,} supervised cells -> {int(holdout.sum()):,} val, "
+          f"{int(buffer_cells_mask.sum()):,} buffer (same split a DESK run draws)")
+
+    targets = _prepare_trend_targets(config, z_dir, latent_dim, holdout,
+                                     points_dir=points_dir)
+    tgt = {y: (torch.tensor(zg), torch.tensor(tr), torch.tensor(va), torch.tensor(wg))
+           for y, (zg, tr, va, wg) in targets.items()}
+    b_near, b_idw = spatial_interp_baseline(tgt)
+    print(f"[base] Z-MSE, no covariates: nearest-train-cell={b_near:.4f}, "
+          f"inverse-distance-8={b_idw:.4f}")
+
+    y_anchor = int(max(tgt))
+    cand = [y for y in sorted(tgt) if y != y_anchor and bool(tgt[y][1].any())]
+    y_deep = cand[0] if cand else None
+    dc, n = spatial_interp_dir_cos(tgt, y_deep, y_anchor, tgt[y_anchor][2] & tgt[y_deep][2]) \
+        if y_deep is not None else (float("nan"), 0)
+    print(f"[base] direction of change {y_deep}->{y_anchor}, no covariates: "
+          f"dcos={dc:.2f} on {n} val cells")
+    return {"nearest": b_near, "idw": b_idw, "idw_dir_cos": dc, "dir_cells": n,
+            "val_cells": int(holdout.sum())}
+
+
 def run_desk_experiment(config=None):
     """Driver: load N-stream states + ESK Z, prepare grids, train DESK, save model+meta.
 

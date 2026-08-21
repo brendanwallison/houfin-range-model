@@ -99,8 +99,21 @@ def spatial_tiles(row, col, spatial_bins):
     return _bins(np.asarray(row)), _bins(np.asarray(col))
 
 
-def spacetime_strata(point_index, X, spatial_bins=8, abundance_bins=4):
+def spacetime_strata(point_index, X, spatial_bins=8, abundance_bins=4, include_abundance=True):
     """``(labels, keys)`` -- one ``(decade, row tile, col tile, abundance quantile)`` label per point.
+
+    ``include_abundance=False`` drops the abundance axis, and the two purposes genuinely want
+    different axes rather than the same ones at different resolutions:
+
+    * LANDMARK coverage wants abundance diversity, because the job is to span the community
+      manifold -- an empty, a sparse and an abundant community are different regions of it.
+    * WEIGHTING wants geographic and temporal balance, because the job is to stop the objective
+      being fit where the survey happens to be dense. Abundance is not a sampling-bias axis; it
+      is a property of the place. Including it fragments the pool for no gain: measured, 8x8
+      tiles x 7 decades x 4 abundance bins gave 750-1,087 occupied strata over 49-73k rows, so
+      the median stratum held 41 observations and the thinnest held 1. A weighting scheme cannot
+      be supported by cells that small -- the thin tail is mostly binning artifact, and
+      upweighting it would chase exactly the noise the n_min floor exists to prevent.
 
     THE shared stratification. The ESK's landmark coverage, DESK's metric-pair weighting, and the
     validation sampler all key on this, so that "stratum" means one thing across the pipeline. When
@@ -120,9 +133,12 @@ def spacetime_strata(point_index, X, spatial_bins=8, abundance_bins=4):
         raise ValueError(f"X has {len(X)} rows, point_index has {len(pidx)}")
     rb, cb = spatial_tiles(pidx[:, 0], pidx[:, 1], spatial_bins)
     decade = (pidx[:, 2].astype(int) // 10) * 10
-    mag = np.log1p(np.maximum(X, 0).sum(axis=1))
-    edges = np.unique(np.quantile(mag, np.linspace(0, 1, abundance_bins + 1)))
-    ab = np.searchsorted(edges[1:-1], mag, side="right")
+    if include_abundance:
+        mag = np.log1p(np.maximum(X, 0).sum(axis=1))
+        edges = np.unique(np.quantile(mag, np.linspace(0, 1, abundance_bins + 1)))
+        ab = np.searchsorted(edges[1:-1], mag, side="right")
+    else:
+        ab = np.zeros(len(pidx), dtype=int)
     keys = np.stack((decade, rb, cb, ab), axis=1)
     _, labels = np.unique(keys, axis=0, return_inverse=True)
     return labels, keys

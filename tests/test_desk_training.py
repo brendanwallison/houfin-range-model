@@ -1109,3 +1109,41 @@ def test_windowed_augmentation_skips_singleton_windows():
     pidx = np.array([[0, 0, 1970], [5, 5, 2000]], dtype=np.int32)
     X2, _p2, is_synth = augment_with_windowed(X, pidx, half_width=2, min_years=2)
     assert is_synth.sum() == 0 and len(X2) == 2
+
+
+def test_weighting_strata_drop_the_abundance_axis():
+    """Abundance is a property of the PLACE, not a sampling-bias axis, and the two purposes want
+    different axes. Including it fragmented the real pool to a median of 41 rows per stratum
+    (750-1087 strata over 49-73k rows), which no weighting scheme can be supported by -- the thin
+    tail becomes binning artifact, and upweighting it chases noise instead of correcting bias."""
+    from src.community_encoder.train_DESK.esk_kernel import spacetime_strata
+    rng = np.random.default_rng(0)
+    pidx = np.stack([rng.integers(0, 64, 4000), rng.integers(0, 64, 4000),
+                     rng.integers(1966, 2026, 4000)], axis=1).astype(np.int32)
+    X = rng.random((4000, 6)) * 10
+    with_ab, _ = spacetime_strata(pidx, X, 8, 4, include_abundance=True)
+    no_ab, _ = spacetime_strata(pidx, X, 8, 4, include_abundance=False)
+    n_with, n_without = len(np.unique(with_ab)), len(np.unique(no_ab))
+    # dropping the axis must coarsen substantially -- that is the point
+    assert n_without < n_with / 2, (n_with, n_without)
+    # and the coarse labelling must be a strict GROUPING of the fine one, not a different cut
+    from src.community_encoder.train_DESK.esk_kernel import nests_within
+    assert nests_within(with_ab, no_ab)
+
+
+def test_a_floor_above_every_stratum_makes_the_correction_inert():
+    """Reproduces the failure the first real run hid. With n_min above the largest stratum, every
+    stratum gets the floor weight, so the spread collapses to a mild downweight of the densest
+    cells with NO uplift anywhere -- and it still prints as enabled. This is why n_min is now
+    derived from the occupancy table instead of guessed."""
+    from src.community_encoder.train_DESK.desk_training import stratum_weights
+    # realistic shape: median ~40, max ~570, as measured
+    sizes = [40] * 300 + [120] * 30 + [570] * 3
+    labels = np.concatenate([np.full(n, i) for i, n in enumerate(sizes)])
+    inert = stratum_weights(labels, n_min=200, cap=5.0)
+    assert inert.max() / inert.min() < 2.0, inert.max() / inert.min()
+    assert np.isclose(inert.max(), 1.0, atol=0.01)          # no uplift above the median at all
+    # a floor drawn from the table restores a real spread
+    counts = np.bincount(labels); counts = counts[counts > 0]
+    live = stratum_weights(labels, n_min=max(2, int(np.quantile(counts, 0.25))), cap=5.0)
+    assert live.max() / live.min() > inert.max() / inert.min()

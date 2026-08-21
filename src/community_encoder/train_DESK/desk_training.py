@@ -1194,9 +1194,14 @@ def run_desk_experiment(config=None):
     _bal = desk_cfg.get("balance", {}) or {}
     _sb = int(config["esk"].get("spacetime", {}).get("spatial_bins", 8))
     _ab = int(config["esk"].get("spacetime", {}).get("abundance_bins", 4))
-    pool_labels, pool_keys = spacetime_strata(_ppidx, _px, _sb, _ab)
+    # Geography x time only for WEIGHTING -- abundance is a property of the place, not a
+    # sampling-bias axis, and including it fragmented the pool to a median of 41 rows per
+    # stratum. See spacetime_strata's include_abundance note.
+    _wb = int(_bal.get("spatial_bins", _sb))
+    pool_labels, pool_keys = spacetime_strata(_ppidx, _px, _wb, _ab,
+                                              include_abundance=False)
     occ = stratum_occupancy(pool_labels, pool_keys, _ppidx)
-    print(f"[desk] shared strata ({_sb}x{_sb} tiles x decade x {_ab} abundance bins): "
+    print(f"[desk] weighting strata ({_wb}x{_wb} tiles x decade, no abundance axis): "
           f"{occ['n_strata']} occupied over {occ['n_points']:,} pool rows; per-stratum "
           f"median {occ['median_per_stratum']:.0f}, p10 {occ['p10_per_stratum']:.0f}, "
           f"max {occ['max_per_stratum']:,} (max/median = "
@@ -1206,7 +1211,20 @@ def run_desk_experiment(config=None):
               f"{r['n_cells']:>4} cells, {r['n_years']:>3} years")
     pool_w = None
     if bool(_bal.get("enabled", False)):
-        wv = stratum_weights(pool_labels, n_min=int(_bal.get("n_min", 200)),
+        # n_min=null derives the floor from the occupancy table rather than guessing it. The first
+        # run hardcoded 200 while the median stratum held 41 and the max ~570, so the floor sat
+        # ABOVE almost every stratum, every one of them got the floor weight, and the realised
+        # range collapsed to 0.60-1.00 -- a downweight of the few dense strata with no uplift
+        # anywhere. A quantile of the observed counts cannot make that mistake.
+        _cnt = np.bincount(pool_labels)
+        _cnt = _cnt[_cnt > 0]
+        _nmin = _bal.get("n_min")
+        if _nmin is None:
+            _nmin = max(2, int(np.quantile(_cnt, float(_bal.get("n_min_quantile", 0.25)))))
+            print(f"[desk] n_min derived from the occupancy table: {_nmin} "
+                  f"(q{float(_bal.get('n_min_quantile', 0.25)):.2f} of stratum sizes; "
+                  f"median {np.median(_cnt):.0f}, max {_cnt.max()})")
+        wv = stratum_weights(pool_labels, n_min=int(_nmin),
                              cap=float(_bal.get("cap", 5.0)),
                              power=float(_bal.get("power", 0.5)))
         pool_w = torch.tensor(wv, dtype=torch.float32)
@@ -1214,12 +1232,16 @@ def run_desk_experiment(config=None):
         # already downweights green observers and is era-correlated (25.6% of 1966-1980 cell-years
         # against 12.3% of 2001-2025), so an early-era uplift partly cancels a downweight that
         # exists for a good reason. Print both shares rather than assume they compose benignly.
-        early = _ppidx[:, 2] <= 1980
-        print(f"[desk] rebalance ON (n^-{float(_bal.get('power', 0.5)):g}, n_min="
-              f"{int(_bal.get('n_min', 200))}, cap={float(_bal.get('cap', 5.0)):g}): "
-              f"pre-1981 share of pool rows {early.mean():.3f} -> effective "
-              f"{(wv[early].sum() / wv.sum()):.3f}; weight range "
-              f"{wv.min():.2f}-{wv.max():.2f}")
+        # The era split has to come from the pool, not a constant. A hardcoded 1981 reported
+        # "0.000 -> 0.000" in two of three runs, because those withhold every year before 1986
+        # and 1996 respectively -- the pool contains no pre-1981 rows at all to shift.
+        _yy = _ppidx[:, 2]
+        _cut = int(np.quantile(_yy, 0.25))
+        early = _yy <= _cut
+        print(f"[desk] rebalance ON (n^-{float(_bal.get('power', 0.5)):g}, n_min={int(_nmin)}, "
+              f"cap={float(_bal.get('cap', 5.0)):g}): earliest-quartile (<= {_cut}) share of "
+              f"pool rows {early.mean():.3f} -> effective {(wv[early].sum() / wv.sum()):.3f}; "
+              f"weight range {wv.min():.2f}-{wv.max():.2f} over {len(_cnt)} strata")
     else:
         print("[desk] rebalance OFF (desk.balance.enabled=false): metric pairs drawn uniformly, "
               "so the objective inherits BBS's coast/present bias")

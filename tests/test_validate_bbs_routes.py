@@ -965,3 +965,59 @@ def test_build_spacetime_bar_returns_none_rather_than_raising():
     assert build_spacetime_bar({}, keys, X, 4) is None                       # no config keys
     assert build_spacetime_bar({"desk": {"z_dir": "/nope"},
                                 "paths": {"desk_output_dir": "/nope"}}, keys, X, 4) is None
+
+
+def test_the_oracle_refuses_to_run_off_span(tmp_path, monkeypatch, capsys):
+    """The exact failure that produced a withdrawn finding. The oracle's reading assumes the kernel
+    contract (||z||^2 = 1), so when its own inputs violate that -- as 20-year averaged communities
+    did, at 0.15 against 0.672 annual -- it must emit a refusal and NO number, rather than a value
+    that measures the input mismatch instead of a ceiling."""
+    from src.community_encoder.train_DESK import validate_bbs_routes as V
+
+    n_species, L = 8, 4
+    rng = np.random.default_rng(0)
+    keys, rows = [], []
+    for c in range(12):
+        for y in (1968, 1970, 1975, 2008, 2015, 2022):
+            keys.append([0, c, y])
+            # SPARSE, as a real annual community is (~1.08 routes per cell-year). Averaging fills
+            # the zeros, which is what puts an epoch mean in a different region of the input space.
+            rows.append(rng.poisson(0.4, n_species).astype(float))
+    keys = np.array(keys, dtype="int32"); X_arr = np.array(rows)
+    desk = tmp_path / "desk"; desk.mkdir()
+    np.save(desk / "holdout_cells.npy", np.zeros((4, 20), bool))
+    cfg = {"trend": {"points_dir": str(tmp_path)}, "paths": {"desk_output_dir": str(desk)},
+           "desk": {"z_dir": str(tmp_path)}}
+
+    # A projection that is FINE on single years and badly deflated on averaged communities --
+    # the real situation, reproduced by keying off how many species are non-zero.
+    def fake_proj(X, z_dir, latent_dim, **kw):
+        X = np.asarray(X)
+        # Annual Poisson(0.4) communities sit near 33% non-zero; the mean of three fills that to
+        # ~70%, so the threshold between them separates "annual" from "averaged".
+        dense = (X > 0).mean(1) > 0.5
+        z = rng.normal(size=(len(X), latent_dim))
+        z /= np.linalg.norm(z, axis=1, keepdims=True)
+        z[dense] *= np.sqrt(0.15)              # off-span
+        z[~dense] *= np.sqrt(0.67)             # annual, as measured
+        return z.astype("float32")
+
+    monkeypatch.setattr(V, "load_observed", lambda config: (
+        V.log1p_community(X_arr), keys,
+        {"n_species": n_species, "n_surveyed_cell_years": int(keys.shape[0]),
+         "year_range": [1968, 2022]}, X_arr))
+    import src.community_encoder.train_DESK.esk_kernel as EK
+    monkeypatch.setattr(EK, "project_points_to_z", fake_proj)
+
+    # _run_epoch_analysis builds Xe/Xm itself from these row lists, so the averaging depth has to
+    # come from the lists: three sparse annual rows per epoch, whose mean fills in the zeros.
+    e_rows = [[6 * c + 0, 6 * c + 1, 6 * c + 2] for c in range(12)]
+    m_rows = [[6 * c + 3, 6 * c + 4, 6 * c + 5] for c in range(12)]
+    out = V._run_epoch_analysis(cfg, keys, X_arr, np.array([[0, c] for c in range(12)], "int32"),
+                                e_rows, m_rows, {}, lambda k: np.zeros((len(k), L), "float32"),
+                                {}, str(desk))
+    txt = capsys.readouterr().out
+    assert "ESK oracle REFUSED" in txt, txt
+    assert "does not span averaged communities" in txt
+    if out is not None:
+        assert "self_change_esk_oracle" not in out.get("types", {}), "refused but still reported"

@@ -867,3 +867,60 @@ def test_the_spacetime_bar_reaches_epochs_the_spatial_bar_cannot():
     # and adding a bar must not perturb the model's own numbers
     assert without["pairs"][k]["model_dir_cos"] == with_bar["pairs"][k]["model_dir_cos"]
     assert without["pairs"][k]["n"] == with_bar["pairs"][k]["n"]
+
+
+def test_per_dimension_split_recovers_a_planted_spectrum():
+    """Without this, a flat result is uninformative -- it could mean the estimator is blind rather
+    than the signal being absent. Same reason the ESK oracle needs a detect-a-high-ceiling test.
+
+    Signal is planted in KNOWN leading dimensions and noise spread over all of them, so the
+    estimator must put signal_var where the signal is and noise_var everywhere."""
+    from src.community_encoder.train_DESK.validate_baselines import (
+        ATTEN_GAP, per_dimension_signal_noise)
+    rng = np.random.default_rng(0)
+    L, sig_dims, noise_sd, g = 16, 4, 0.4, 0.25
+    rows, z = [], []
+    for cell in range(80):
+        d = np.zeros(L); d[:sig_dims] = rng.normal(size=sig_dims)   # this cell's drift direction
+        for t in range(ATTEN_GAP + 3):
+            rows.append([0, cell, 1970 + t])
+            z.append(d * g * t + rng.normal(scale=noise_sd, size=L))
+    out = per_dimension_signal_noise(np.array(rows, dtype=np.int32),
+                                     np.stack(z).astype("float32"), min_pairs=10)
+    sig = np.array(out["signal_var"]); noi = np.array(out["noise_var"])
+    # signal concentrates on the planted dimensions
+    assert sig[:sig_dims].mean() > 20 * sig[sig_dims:].mean(), (sig[:sig_dims], sig[sig_dims:])
+    # noise is spread across all of them, so the empty dims are noise-only
+    assert noi[sig_dims:].mean() > 0.5 * noi[:sig_dims].mean()
+    # signal is in the LEADING half here, so SNR must fall along the basis
+    assert out["snr_slope"] < 0, out["snr_slope"]
+    assert out["snr_leading_8"] > out["snr_trailing_8"]
+    assert out["signal_share_leading_half"] > 0.9, out["signal_share_leading_half"]
+
+
+def test_per_dimension_split_detects_signal_in_the_TRAILING_directions():
+    """The reading that would make the shrinkage tilt a real defect. If the estimator could only
+    ever report signal-in-the-leading-dims it would confirm the convenient answer by construction,
+    so plant the opposite arrangement and require it to be found."""
+    from src.community_encoder.train_DESK.validate_baselines import (
+        ATTEN_GAP, per_dimension_signal_noise)
+    rng = np.random.default_rng(1)
+    L, g = 16, 0.25
+    rows, z = [], []
+    for cell in range(80):
+        d = np.zeros(L); d[-4:] = rng.normal(size=4)                # signal in the TAIL
+        for t in range(ATTEN_GAP + 3):
+            rows.append([0, cell, 1970 + t])
+            z.append(d * g * t + rng.normal(scale=0.4, size=L))
+    out = per_dimension_signal_noise(np.array(rows, dtype=np.int32),
+                                     np.stack(z).astype("float32"), min_pairs=10)
+    assert out["snr_slope"] > 0, out["snr_slope"]
+    assert out["snr_trailing_8"] > out["snr_leading_8"]
+    assert out["signal_share_leading_half"] < 0.1, out["signal_share_leading_half"]
+
+
+def test_per_dimension_split_refuses_on_too_few_pairs():
+    from src.community_encoder.train_DESK.validate_baselines import per_dimension_signal_noise
+    pidx = np.array([[0, 0, 1970], [0, 0, 1971]], dtype=np.int32)
+    out = per_dimension_signal_noise(pidx, np.zeros((2, 5), "float32"), min_pairs=30)
+    assert "note" in out and "signal_var" not in out

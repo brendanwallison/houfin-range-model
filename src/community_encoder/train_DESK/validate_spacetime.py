@@ -753,6 +753,30 @@ def run_validate(config=None, n_pairs=20000, cka_sample=800, seed=0):
                   for i, (r, c, y) in enumerate(pidx) if ok[i]}
             # How much of the reported dir-cos is eaten by single-year measurement noise, per
             # era. Printed before the panel so the panel's numbers can be read against it.
+            # Per-DIMENSION signal/noise, read against zspace_reconstruction's shrinkage profile.
+            # The shrinkage tilt (leading dims ~1.11, trailing ~0.43) is only a defect if the
+            # trailing directions carry temporal SIGNAL. Noise is ~half a same-cell difference and
+            # is high-dimensional and low-variance per direction, so it should land in exactly those
+            # trailing dims -- in which case shrinking them is correct and the tilt is the model
+            # denoising. This is the measurement that separates the two readings.
+            from .validate_baselines import per_dimension_signal_noise
+            sn = per_dimension_signal_noise(pidx, z_obs_pts)
+            if "snr_slope" in sn:
+                report["per_dimension_signal_noise"] = sn
+                verdict = ("signal concentrates in the LEADING dims -> the shrinkage tilt discards "
+                           "little signal, so it is appropriate rather than a defect"
+                           if sn["snr_slope"] < 0 else
+                           "signal persists into the TRAILING dims -> the shrinkage tilt is "
+                           "discarding temporal signal, which makes it a real defect")
+                print(f"[validate] per-dimension signal/noise (gap {sn['gap_years']}yr, "
+                      f"{sn['n_adjacent_pairs']:,} adjacent / {sn['n_gap_pairs']:,} gap pairs): "
+                      f"SNR leading-8 {sn['snr_leading_8']:.3f} vs trailing-8 "
+                      f"{sn['snr_trailing_8']:.3f}, slope {sn['snr_slope']:+.5f}/dim, "
+                      f"{sn['signal_share_leading_half']:.0%} of signal in the leading half")
+                print(f"[validate]   => {verdict}")
+            else:
+                print(f"[validate] per-dimension signal/noise unavailable ({sn.get('note')})")
+
             atten = per_era_attenuation(pidx, z_obs_pts)
             if atten:
                 print("[validate] dir-cos attenuation from single-year survey noise "

@@ -771,6 +771,88 @@ ATTEN_GAP = 20
 ATTEN_GAP_TOL = 2
 
 
+def per_dimension_signal_noise(pidx, z_obs, min_pairs=30, gap=ATTEN_GAP,
+                               gap_tol=ATTEN_GAP_TOL):
+    """Where along the basis does temporal SIGNAL live, and where does survey NOISE live?
+
+    ``{"noise_var": [..], "signal_var": [..], "total_var": [..], "snr": [..], ...}``, one entry per
+    latent dimension, in eigen order.
+
+    THE QUESTION THIS ANSWERS. ``zspace_reconstruction`` measures a monotone shrinkage profile --
+    DESK reproduces the leading eigen-directions at ~1.11 of observed variance and the trailing ones
+    at ~0.43. That was reported as evidence the kernel is tilted toward spatial structure, and the
+    interpretation had to be withdrawn, because what the trailing directions CONTAIN was never
+    measured. Noise accounts for roughly half the difference between two surveys of the same cell,
+    and noise is high-dimensional and low-variance per direction, so it should land precisely in
+    those trailing directions. **If the tail is mostly noise, shrinking it is correct behaviour and
+    the tilt is the model denoising rather than failing.** Only this measurement separates the two.
+
+    Same decomposition as :func:`per_era_attenuation`, resolved per dimension instead of summed:
+
+    * ``noise_var[k]``  -- adjacent-year within-cell differences. Real community change over ONE
+      year is small, so this is essentially ``2*sigma^2`` per dimension: pure measurement noise.
+    * ``total_var[k]``  -- fixed-gap within-cell differences, carrying the real change over that
+      gap PLUS the same noise.
+    * ``signal_var[k]`` -- the difference, clipped at zero. Where temporal signal actually lives.
+
+    The gap is FIXED for the reason recorded on ``per_era_attenuation``: using each cell's own span
+    makes the baseline vary with record length, so the result ranks record length rather than the
+    thing being asked about.
+
+    Call this on ``z_obs`` -- the question is where the DATA's temporal signal sits, which then gets
+    read against the model's shrinkage profile. Passing ``z_desk`` would ask a different question and
+    silently answer it.
+    """
+    z_obs = np.asarray(z_obs, dtype="float64")
+    L = z_obs.shape[1]
+    lo_gap, hi_gap = int(gap) - int(gap_tol), int(gap) + int(gap_tol)
+    by_cell = {}
+    for i, (r, c, y) in enumerate(pidx):
+        by_cell.setdefault((int(r), int(c)), []).append((int(y), i))
+    adj = np.zeros(L); lng = np.zeros(L)
+    n_adj = n_lng = 0
+    for _cell, rows in by_cell.items():
+        rows.sort()
+        for a, (y0, i0) in enumerate(rows):
+            for (y1, i1) in rows[a + 1:]:
+                d = y1 - y0
+                if d == 1:
+                    adj += (z_obs[i1] - z_obs[i0]) ** 2
+                    n_adj += 1
+                elif lo_gap <= d <= hi_gap:
+                    lng += (z_obs[i1] - z_obs[i0]) ** 2
+                    n_lng += 1
+                    break                     # one pair per (cell, earlier year), as elsewhere
+                elif d > hi_gap:
+                    break
+    if n_adj < min_pairs or n_lng < min_pairs:
+        return {"note": f"too few pairs (adjacent {n_adj}, gap {n_lng})",
+                "n_adjacent_pairs": n_adj, "n_gap_pairs": n_lng}
+    noise = adj / n_adj
+    total = lng / n_lng
+    signal = np.maximum(total - noise, 0.0)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        snr = np.where(noise > 1e-12, signal / noise, np.nan)
+    k = np.arange(L)
+    fin = np.isfinite(snr)
+    return {"n_adjacent_pairs": n_adj, "n_gap_pairs": n_lng,
+            "gap_years": int(gap), "gap_tol": int(gap_tol),
+            "noise_var": [float(v) for v in noise],
+            "total_var": [float(v) for v in total],
+            "signal_var": [float(v) for v in signal],
+            "snr": [None if not np.isfinite(v) else float(v) for v in snr],
+            # Does temporal signal concentrate in the LEADING or the TRAILING directions? A negative
+            # slope means signal-to-noise falls off along the basis, so the directions DESK shrinks
+            # hardest are the ones carrying least signal -- i.e. the shrinkage is appropriate. A flat
+            # or positive slope means it is discarding signal.
+            "snr_slope": (float(np.polyfit(k[fin], snr[fin], 1)[0]) if fin.sum() >= 3
+                          else float("nan")),
+            "snr_leading_8": float(np.nanmedian(snr[:8])),
+            "snr_trailing_8": float(np.nanmedian(snr[-8:])),
+            "signal_share_leading_half": float(signal[:L // 2].sum()
+                                               / max(signal.sum(), 1e-12))}
+
+
 def per_era_attenuation(pidx, z_obs, era_width=10, min_pairs=30,
                         gap=ATTEN_GAP, gap_tol=ATTEN_GAP_TOL):
     """Per-era measurement noise and the dir-cos attenuation it causes. ``{era: {...}}``.

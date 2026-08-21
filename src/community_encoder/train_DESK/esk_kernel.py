@@ -86,6 +86,78 @@ def stratified_landmarks(strata, n_landmarks, rng, recent_label=0, recent_frac=0
     return rng.permutation(np.concatenate(picks)) if picks else rng.permutation(N)
 
 
+def spatial_tiles(row, col, spatial_bins):
+    """Equal-width tile index per axis on the OCCUPIED extent (robust to nonzero origins).
+
+    Separate from :func:`spacetime_strata` so a coarser spatial axis can be derived from the
+    identical rule -- see ``coarse_spatial``. Two different tilings would be two different
+    definitions of "where", which is exactly what sharing the stratification is meant to prevent.
+    """
+    def _bins(v):
+        span = max(float(np.max(v) - np.min(v) + 1), 1.0)
+        return np.minimum(((v - np.min(v)) * spatial_bins / span).astype(int), spatial_bins - 1)
+    return _bins(np.asarray(row)), _bins(np.asarray(col))
+
+
+def spacetime_strata(point_index, X, spatial_bins=8, abundance_bins=4):
+    """``(labels, keys)`` -- one ``(decade, row tile, col tile, abundance quantile)`` label per point.
+
+    THE shared stratification. The ESK's landmark coverage, DESK's metric-pair weighting, and the
+    validation sampler all key on this, so that "stratum" means one thing across the pipeline. When
+    the landmark selector carried its own inline copy, the basis and the objective could silently
+    drift onto different notions of a sparse region -- and the objective had no notion at all.
+
+    Abundance uses quantiles of log total abundance, so empty/sparse through abundant communities
+    are separated without a few extreme totals dictating the bin edges.
+
+    ``point_index`` is ``(row, col, year)``; ``X`` supplies the community magnitudes.
+    """
+    pidx = np.asarray(point_index)
+    X = np.asarray(X)
+    if pidx.ndim != 2 or pidx.shape[1] != 3:
+        raise ValueError(f"point_index must be (N, 3); got {pidx.shape}")
+    if len(X) != len(pidx):
+        raise ValueError(f"X has {len(X)} rows, point_index has {len(pidx)}")
+    rb, cb = spatial_tiles(pidx[:, 0], pidx[:, 1], spatial_bins)
+    decade = (pidx[:, 2].astype(int) // 10) * 10
+    mag = np.log1p(np.maximum(X, 0).sum(axis=1))
+    edges = np.unique(np.quantile(mag, np.linspace(0, 1, abundance_bins + 1)))
+    ab = np.searchsorted(edges[1:-1], mag, side="right")
+    keys = np.stack((decade, rb, cb, ab), axis=1)
+    _, labels = np.unique(keys, axis=0, return_inverse=True)
+    return labels, keys
+
+
+def coarse_spatial(point_index, regions=2):
+    """Coarse spatial label that NESTS inside ``spacetime_strata``'s tiles.
+
+    The validation row sampler cannot use the fine strata: 3 year-windows x 2 holdout x 64 tiles is
+    384 cells against a ~4,000-row budget, so most would be empty and the rest ~10 rows. It needs a
+    handful of regions instead -- but derived by grouping the SAME tiles, so the two are one
+    definition at two resolutions rather than two definitions. ``regions`` is per axis, so
+    ``regions=2`` gives four quadrants.
+
+    Nesting requires ``spatial_bins`` to be a multiple of ``regions``; the caller is responsible,
+    and :func:`nests_within` checks it.
+    """
+    rb, cb = spatial_tiles(point_index[:, 0], point_index[:, 1], regions)
+    return rb * regions + cb
+
+
+def nests_within(fine_labels, coarse_labels):
+    """True iff every fine stratum maps to exactly one coarse stratum.
+
+    The guarantee that the two resolutions are the same definition. If a fine stratum straddled two
+    coarse ones, a weight and the sample share it is meant to correct would refer to different
+    regions.
+    """
+    fine_labels, coarse_labels = np.asarray(fine_labels), np.asarray(coarse_labels)
+    for f in np.unique(fine_labels):
+        if len(np.unique(coarse_labels[fine_labels == f])) > 1:
+            return False
+    return True
+
+
 def diverse_landmarks(X, point_index, n_landmarks, rng, spatial_bins=8,
                       abundance_bins=4):
     """Scalable diversity-aware landmark sampling over space, time, and abundance.
@@ -94,6 +166,11 @@ def diverse_landmarks(X, point_index, n_landmarks, rng, spatial_bins=8,
     one landmark first; the rest of the budget is a uniform sample of the remaining
     population.  Thus rare parts of the manifold cannot disappear entirely, while
     most landmarks retain the population weighting of ordinary random Nyström.
+
+    Coverage WITHOUT extra weight is the conservative half of the rebalance: a thin stratum becomes
+    representable in the basis without gaining influence over it, so a handful of noisy Great Plains
+    cell-years from the late 1960s cannot pull the leading components. The weighting half lives in
+    DESK's objective, where it is capped and floored -- see ``desk_training.stratum_weights``.
 
     This is O(N) in the number of points, unlike k-means++/farthest-point selection,
     whose O(N*M*D) cost is prohibitive for roughly one million points and 16k centers.
@@ -108,23 +185,7 @@ def diverse_landmarks(X, point_index, n_landmarks, rng, spatial_bins=8,
     if pidx.shape != (N, 3):
         raise ValueError(f"point_index must have shape ({N}, 3), got {pidx.shape}")
 
-    row, col, year = pidx[:, 0], pidx[:, 1], pidx[:, 2]
-    # Equal-width spatial tiles on the occupied extent (robust to nonzero origins).
-    def _bins(v):
-        span = max(float(np.max(v) - np.min(v) + 1), 1.0)
-        return np.minimum(((v - np.min(v)) * spatial_bins / span).astype(int),
-                          spatial_bins - 1)
-    rb, cb = _bins(row), _bins(col)
-    decade = (year.astype(int) // 10) * 10
-
-    # Quantiles of log total abundance capture empty/sparse through abundant
-    # communities without allowing a few extreme totals to dominate the bins.
-    mag = np.log1p(np.maximum(X, 0).sum(axis=1))
-    edges = np.unique(np.quantile(mag, np.linspace(0, 1, abundance_bins + 1)))
-    ab = np.searchsorted(edges[1:-1], mag, side="right")
-
-    keys = np.stack((decade, rb, cb, ab), axis=1)
-    _, inverse = np.unique(keys, axis=0, return_inverse=True)
+    inverse, _keys = spacetime_strata(pidx, X, spatial_bins, abundance_bins)
     # One sort + split keeps grouping O(N log N); repeatedly scanning all N rows
     # once per stratum would be costly at the roughly one-million-point scale.
     order = np.argsort(inverse, kind="stable")

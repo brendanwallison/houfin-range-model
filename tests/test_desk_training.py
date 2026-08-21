@@ -967,3 +967,101 @@ def test_a_leaky_community_point_set_is_refused():
     # a missing species list or focal code is a DIFFERENT failure and must not read as leakage
     assert assert_focal_excluded({}, "houfin") is None
     assert assert_focal_excluded(clean, "") is None
+
+
+def test_stratum_weights_floor_protects_thin_strata():
+    """The failure a naive rebalance invites. Full inverse-frequency hands the THINNEST stratum the
+    LARGEST boost -- exactly the handful of noisy Great Plains cell-years from the late 1960s that
+    cannot support an estimate. Below n_min the weight must stop rising."""
+    from src.community_encoder.train_DESK.desk_training import stratum_weights
+    # three strata: very thin (5), just under the floor (150), well above it (5000)
+    labels = np.concatenate([np.zeros(5, int), np.ones(150, int), np.full(5000, 2)])
+    w = stratum_weights(labels, n_min=200, cap=5.0)
+    w_thin, w_mid, w_dense = w[0], w[10], w[-1]
+    # both sub-floor strata are pinned to the SAME weight -- no extra uplift for being thinner
+    assert np.isclose(w_thin, w_mid), (w_thin, w_mid)
+    # and the dense stratum is downweighted relative to them
+    assert w_dense < w_thin
+    # full inverse-frequency would have separated them by ~sqrt(150/5)=5.5x; the floor forbids it
+    assert w_thin / w_mid < 1.01
+
+
+def test_stratum_weights_are_partial_not_full_correction():
+    """power=0.5, not 1.0. A sqrt correction removes most of the population tilt while leaving a
+    thin stratum a fraction of the pull full inverse-frequency would give it. If this ever became
+    1/n, a dozen cell-years would carry the weight of thousands."""
+    from src.community_encoder.train_DESK.desk_training import stratum_weights
+    labels = np.concatenate([np.zeros(400, int), np.ones(40000, int)])
+    w = stratum_weights(labels, n_min=100, cap=100.0)     # cap wide open, so shrinkage shows
+    ratio = w[0] / w[-1]
+    assert np.isclose(ratio, np.sqrt(40000 / 400), rtol=0.02), ratio   # sqrt, = 10x
+    assert ratio < (40000 / 400)                                        # NOT 100x
+
+
+def test_stratum_weights_cap_binds():
+    """Whatever the occupancy table turns out to be, the worst-case ratio is bounded."""
+    from src.community_encoder.train_DESK.desk_training import stratum_weights
+    labels = np.concatenate([np.zeros(300, int), np.ones(3_000_000 // 100, int)])
+    w = stratum_weights(labels, n_min=100, cap=2.0)
+    assert w.max() <= 2.0 + 1e-9 and w.min() >= 0.5 - 1e-9, (w.min(), w.max())
+
+
+def test_stratum_weights_are_median_normalised():
+    """They compose multiplicatively with first_year_weight, so a median of 1.0 keeps the effective
+    learning rate on the weighted terms unchanged when the rebalance is switched on."""
+    from src.community_encoder.train_DESK.desk_training import stratum_weights
+    rng = np.random.default_rng(0)
+    labels = rng.integers(0, 40, size=20000)
+    w = stratum_weights(labels)
+    assert abs(float(np.median(w)) - 1.0) < 0.15, float(np.median(w))
+
+
+def test_weighted_pair_draw_moves_toward_balance_but_not_to_uniform():
+    """The realised draw is what actually matters -- the weights are only a means. On a deliberately
+    imbalanced pool the sampled stratum shares must move toward balance and stop short of it. Full
+    equalisation would mean the sqrt shrinkage or the cap is not being applied, which is the
+    over-fitting failure the guards exist to prevent."""
+    import torch
+
+    from src.community_encoder.train_DESK.desk_training import (
+        spacetime_kernel_loss, stratum_weights)
+
+    # 98% of the pool in one "coastal/modern" stratum, 2% in a thin "interior/early" one
+    n_dense, n_thin = 9800, 200
+    labels = np.concatenate([np.zeros(n_dense, int), np.ones(n_thin, int)])
+    N = n_dense + n_thin
+    w = torch.tensor(stratum_weights(labels, n_min=100, cap=5.0), dtype=torch.float64)
+
+    g = torch.Generator().manual_seed(0)
+    draws = torch.multinomial(w, 200_000, replacement=True, generator=g).numpy()
+    got = float((draws >= n_dense).mean())
+    pop = n_thin / N                       # 0.02
+    assert got > 2 * pop, (got, pop)       # meaningfully rebalanced
+    assert got < 0.5, got                  # but nowhere near equal shares
+
+    # and the loss still runs with weights supplied, on a small synthetic pool
+    T, H, W, L, S = 3, 4, 5, 6, 7
+    z = torch.randn(T, H * W, L).reshape(T, H, W, L)
+    pool_t = torch.randint(0, T, (N,))
+    pool_flat = torch.randint(0, H * W, (N,))
+    pool_x = torch.rand(N, S)
+    out = spacetime_kernel_loss(z, pool_t, pool_flat, pool_x, num_pairs=64,
+                               generator=torch.Generator().manual_seed(1), pool_w=w.float())
+    assert torch.isfinite(out), out
+
+
+def test_unweighted_pair_draw_is_unchanged():
+    """pool_w=None must reproduce the historical uniform draw exactly, so switching the rebalance
+    off restores every previously reported number."""
+    import torch
+
+    from src.community_encoder.train_DESK.desk_training import spacetime_kernel_loss
+    T, H, W, L, S, N = 3, 4, 5, 6, 7, 500
+    z = torch.randn(T, H, W, L)
+    pool_t, pool_flat = torch.randint(0, T, (N,)), torch.randint(0, H * W, (N,))
+    pool_x = torch.rand(N, S)
+    a = spacetime_kernel_loss(z, pool_t, pool_flat, pool_x, num_pairs=128,
+                              generator=torch.Generator().manual_seed(7))
+    b = spacetime_kernel_loss(z, pool_t, pool_flat, pool_x, num_pairs=128,
+                              generator=torch.Generator().manual_seed(7))
+    assert torch.equal(a, b)

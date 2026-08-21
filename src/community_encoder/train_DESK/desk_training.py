@@ -79,7 +79,8 @@ def true_kernel_loss(z_pred, x_raw, num_pairs=4096):
     return _pair_kernel_loss(z_pred[i], z_pred[j], x_raw[i], x_raw[j])
 
 
-def spacetime_kernel_loss(z_by_t, pool_t, pool_flat, pool_x, num_pairs=4096, generator=None):
+def spacetime_kernel_loss(z_by_t, pool_t, pool_flat, pool_x, num_pairs=4096, generator=None,
+                          pool_w=None):
     """Kernel loss over pairs drawn from the whole SPACETIME pool of supervised cell-years.
 
     The ESK basis is one joint Ružička kernel-PCA over every ``(cell, year)`` point, so its
@@ -87,10 +88,18 @@ def spacetime_kernel_loss(z_by_t, pool_t, pool_flat, pool_x, num_pairs=4096, gen
     year, one cell in two years, or two different cells in two different years. This term is
     what holds DESK to that contract, so its pairs have to be drawn the same way.
 
-    Pairs are uniform over the pool, which weights each year by how many cells it supervises
-    and leaves the within-year share at roughly 1/n_years. That is the faithful reproduction of
-    the kernel; deliberately over-sampling same-year pairs would be a second knob with no
-    principled value.
+    With ``pool_w=None`` pairs are uniform over the pool, which weights each year by how many
+    cells it supervises and leaves the within-year share at roughly 1/n_years. That is the faithful
+    reproduction of the SURVEY; deliberately over-sampling same-year pairs would be a second knob
+    with no principled value.
+
+    ``pool_w`` supplies a per-point sampling weight instead, and the distinction it turns on is
+    that faithful-to-the-survey and works-everywhere are different objectives. BBS is coast- and
+    present-heavy, so a uniform objective is fit where the survey is dense; the strata a range
+    model most needs (the interior, the early era) contribute in proportion to how little they were
+    surveyed. The contract itself is indifferent -- it says dot(z_i, z_j) must match Ruzicka for ANY
+    pair, not that pairs must arrive at survey frequency. See ``stratum_weights`` for the shrinkage,
+    floor and cap that keep the correction from over-fitting thin strata.
 
     ``z_by_t`` is ``(T, H, W, L)``; ``pool_t``/``pool_flat`` index its year and flattened cell
     axes, and ``pool_x`` holds the matching raw communities.
@@ -99,7 +108,18 @@ def spacetime_kernel_loss(z_by_t, pool_t, pool_flat, pool_x, num_pairs=4096, gen
     if N < 2:
         return torch.zeros((), device=z_by_t.device, requires_grad=True)
     T, H, W, L = z_by_t.shape
-    idx = torch.randint(0, N, (2, num_pairs), device=z_by_t.device, generator=generator)
+    if pool_w is None:
+        idx = torch.randint(0, N, (2, num_pairs), device=z_by_t.device, generator=generator)
+    else:
+        # Weighted draw over the pool. This OVERRIDES the uniform-draw argument recorded above:
+        # uniform is faithful to the survey's own sampling, and the survey is concentrated on the
+        # coasts and in recent decades, so a uniform objective is fit where BBS happens to be dense.
+        # The kernel contract governs WHICH PAIRS the model must reproduce -- any two points -- not
+        # whether the loss should inherit the survey's geographic and temporal bias. The weights are
+        # sqrt-shrunk, floored and capped upstream (see stratum_weights), so a thin stratum gains
+        # influence without being able to dominate.
+        idx = torch.multinomial(pool_w, 2 * num_pairs, replacement=True,
+                                generator=generator).view(2, num_pairs)
     i, j = idx[0], idx[1]
     zf = z_by_t.reshape(T, H * W, L)
     zi = zf[pool_t[i], pool_flat[i]]
@@ -108,7 +128,73 @@ def spacetime_kernel_loss(z_by_t, pool_t, pool_flat, pool_x, num_pairs=4096, gen
 
 
 
-def spacetime_metric_pool(pip, Xp, sup_rows, m_tr, W, exclude_years=()):
+def stratum_weights(labels, n_min=200, cap=5.0, power=0.5):
+    """Per-point sampling weight that partly corrects BBS's coast/present bias. ``(N,)`` float.
+
+    BBS coverage is concentrated on the coasts and in recent decades, so a uniform draw over the
+    supervised pool trains the model where the survey happens to be dense and leaves the interior
+    and the early era fit by whatever generalises. But a naive correction is worse than none: full
+    inverse-frequency would hand a stratum with a dozen noisy cell-years the same total pull as one
+    with thousands, and the model would chase that noise.
+
+    Three guards, in the order they bind:
+
+    * ``power=0.5`` -- weight goes as ``n^-0.5``, not ``n^-1``. The standard partial correction:
+      it removes most of the population tilt while leaving a thin stratum a fraction of the pull
+      full inverse-frequency would give it.
+    * ``n_min`` -- a stratum with fewer than this many points gets the weight computed AT the floor,
+      i.e. no further uplift. This is the direct answer to "a few noisy observations in the Great
+      Plains in the late 1960s": below the floor there is not enough data to support an estimate, so
+      those strata are the ones that must NOT be amplified. Without it they receive the largest
+      boost of all, which inverts the intent.
+    * ``cap`` -- the final ratio to the median weight is clipped to ``[1/cap, cap]``, bounding the
+      worst case whatever the occupancy table turns out to look like.
+
+    Returns weights normalised to a median of 1.0, so they compose multiplicatively with the
+    existing per-cell weights (notably ``first_year_weight``) without changing the effective
+    learning rate on a term.
+    """
+    labels = np.asarray(labels)
+    counts = np.bincount(labels)
+    n_eff = np.maximum(counts[labels].astype("float64"), 1.0)
+    w = np.power(np.maximum(n_eff, float(n_min)), -float(power))
+    med = float(np.median(w))
+    if med <= 0:
+        return np.ones(len(labels), dtype="float64")
+    w = w / med
+    return np.clip(w, 1.0 / float(cap), float(cap))
+
+
+def stratum_occupancy(labels, keys, pidx, top_thin=20):
+    """Human-readable occupancy of the shared strata, for choosing ``n_min`` and ``cap``.
+
+    Runs BEFORE any rebalancing so the parameters are set against the real table rather than
+    guessed. The coast/present bias is asserted everywhere in this project and has never been
+    quantified here; this is that number.
+    """
+    labels = np.asarray(labels)
+    counts = np.bincount(labels)
+    rows = []
+    for lab in np.argsort(counts):
+        m = labels == lab
+        if not m.any():
+            continue
+        dec, rb, cb, ab = (int(v) for v in keys[m][0])
+        rows.append({"stratum": f"{dec}s/tile{rb},{cb}/abund{ab}",
+                     "n_cell_years": int(m.sum()),
+                     "n_cells": int(len(np.unique(pidx[m][:, :2], axis=0))),
+                     "n_years": int(len(np.unique(pidx[m][:, 2])))})
+    return {"n_strata": int((counts > 0).sum()),
+            "n_points": int(len(labels)),
+            "median_per_stratum": float(np.median(counts[counts > 0])),
+            "p10_per_stratum": float(np.quantile(counts[counts > 0], 0.10)),
+            "max_per_stratum": int(counts.max()),
+            "imbalance_ratio_max_over_median": float(counts.max()
+                                                     / max(np.median(counts[counts > 0]), 1)),
+            "thinnest": rows[:int(top_thin)]}
+
+
+def spacetime_metric_pool(pip, Xp, sup_rows, m_tr, W, exclude_years=(), return_pidx=False):
     """``(years, flat cell indices, community rows)`` -- the pool the metric loss samples.
 
     One flat pool over every supervised training cell-year, NOT a per-year grouping: pairs must
@@ -116,6 +202,12 @@ def spacetime_metric_pool(pip, Xp, sup_rows, m_tr, W, exclude_years=()):
     than a dense ``(T,H,W,S)`` tensor, which would be ~59x the point set for no gain, since
     only surveyed cells carry a community. Held-out and buffered cells are excluded so they
     never enter the similarity target.
+
+    Returns the 3-tuple by default. ``return_pidx=True`` appends the selected rows'
+    ``(row, col, year)``, which the shared strata need and which the flat index has already lost --
+    behind a flag rather than as a fourth element always, because several call sites unpack this as
+    a 3-tuple and a silent arity change is a failure mode this codebase has been bitten by (see
+    ``test_every_desk_z_ema_call_site_unpacks_two_values``).
 
     ``exclude_years`` must carry ``desk.trend.holdout_years``. Zeroing a year's train mask in
     ``targets`` keeps it out of the stabilizing loss but NOT out of this pool, which filters on
@@ -129,7 +221,8 @@ def spacetime_metric_pool(pip, Xp, sup_rows, m_tr, W, exclude_years=()):
     sel = sup_rows & tr_flat[flat_of_row]
     if len(exclude_years):
         sel = sel & ~np.isin(pip[:, 2], np.asarray(list(exclude_years), dtype=pip.dtype))
-    return (pip[sel, 2].astype(np.int64), flat_of_row[sel], Xp[sel].astype("float32"))
+    out = (pip[sel, 2].astype(np.int64), flat_of_row[sel], Xp[sel].astype("float32"))
+    return out + (pip[sel],) if return_pidx else out
 
 
 def assert_focal_excluded(points_meta, focal_code):
@@ -418,7 +511,7 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
                     weights=None, seed=0, patience=50, min_delta=1e-4,
                     schema=None, augment_cfg=None, dropout=0.5, weight_decay=0.0,
                     warmup_epochs=0, min_lr_frac=1.0, amp=False, eval_every=1,
-                    holdout_year_targets=None, direction_anchor_year=None,
+                    holdout_year_targets=None, pool_w=None, direction_anchor_year=None,
                     direction_withheld_anchor_year=None,
                     hidden_width=None, mlp_expansion=4,
                     _skip_target_conversion=False):
@@ -487,6 +580,10 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
                              device=device, dtype=torch.long)
     pool_flat = torch.as_tensor(_pf[_keep], device=device, dtype=torch.long)
     pool_x = torch.as_tensor(_px[_keep], device=device)
+    # Same row filter as the pool itself, or the weights would address different rows than the
+    # draw -- the class of index-space bug this file has hit before.
+    pool_w_t = None if pool_w is None else torch.as_tensor(
+        np.asarray(pool_w)[_keep], device=device, dtype=torch.float32)
     m_tr = torch.as_tensor(m2023_tr, device=device).bool(); m_val = torch.as_tensor(m2023_val, device=device).bool()
     # supervised year targets that fall inside the forwarded window
     tgt = {y: (torch.tensor(zg, device=device),
@@ -820,7 +917,7 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
         # every (cell, year) point, so that is the similarity structure this term has to hold
         # the model to. Restricting pairs to within a year would enforce only the spatial half
         # of a spatiotemporal kernel.
-        loss_true = spacetime_kernel_loss(z_ema, pool_t, pool_flat, pool_x)
+        loss_true = spacetime_kernel_loss(z_ema, pool_t, pool_flat, pool_x, pool_w=pool_w_t)
         w_stab = weights["stabilizing"] * loss_stab
         w_true = weights["metric"] * loss_true
         w_rec = weights["reconstruction"] * recon_loss
@@ -1081,10 +1178,51 @@ def run_desk_experiment(config=None):
     # Computed here, above the pool, because the pool must exclude these years -- see
     # spacetime_metric_pool. The anchor is never withheld; it carries the metric loss.
     ho_years = [int(y) for y in (tr_cfg.get("holdout_years") or []) if int(y) != label_year]
-    metric_pool = spacetime_metric_pool(pip, Xp, sup_rows, m_tr, W, exclude_years=ho_years)
+    _py, _pf, _px, _ppidx = spacetime_metric_pool(pip, Xp, sup_rows, m_tr, W,
+                                                  exclude_years=ho_years, return_pidx=True)
+    metric_pool = (_py, _pf, _px)
     print(f"[desk] metric loss over {len(metric_pool[0]):,} training cell-years spanning "
           f"{len(np.unique(metric_pool[0]))} years, pairs drawn across space AND time "
           f"(was one year, {int((pip[:, 2] == ay).sum()):,} rows)")
+
+    # --- the shared stratification, and the rebalance it drives ----------------------------------
+    # BBS is coast- and present-heavy, so a uniform objective is fit where the survey happens to be
+    # dense. The occupancy table is printed BEFORE any correction because n_min and cap should be
+    # chosen against the real numbers; the bias has been asserted throughout this project and never
+    # quantified here.
+    from .esk_kernel import spacetime_strata
+    _bal = desk_cfg.get("balance", {}) or {}
+    _sb = int(config["esk"].get("spacetime", {}).get("spatial_bins", 8))
+    _ab = int(config["esk"].get("spacetime", {}).get("abundance_bins", 4))
+    pool_labels, pool_keys = spacetime_strata(_ppidx, _px, _sb, _ab)
+    occ = stratum_occupancy(pool_labels, pool_keys, _ppidx)
+    print(f"[desk] shared strata ({_sb}x{_sb} tiles x decade x {_ab} abundance bins): "
+          f"{occ['n_strata']} occupied over {occ['n_points']:,} pool rows; per-stratum "
+          f"median {occ['median_per_stratum']:.0f}, p10 {occ['p10_per_stratum']:.0f}, "
+          f"max {occ['max_per_stratum']:,} (max/median = "
+          f"{occ['imbalance_ratio_max_over_median']:.0f}x)")
+    for r in occ["thinnest"][:8]:
+        print(f"[desk]   thinnest: {r['stratum']:<28} {r['n_cell_years']:>5} cell-years, "
+              f"{r['n_cells']:>4} cells, {r['n_years']:>3} years")
+    pool_w = None
+    if bool(_bal.get("enabled", False)):
+        wv = stratum_weights(pool_labels, n_min=int(_bal.get("n_min", 200)),
+                             cap=float(_bal.get("cap", 5.0)),
+                             power=float(_bal.get("power", 0.5)))
+        pool_w = torch.tensor(wv, dtype=torch.float32)
+        # Realised effective-sample shares, early vs modern, before and after. first_year_weight
+        # already downweights green observers and is era-correlated (25.6% of 1966-1980 cell-years
+        # against 12.3% of 2001-2025), so an early-era uplift partly cancels a downweight that
+        # exists for a good reason. Print both shares rather than assume they compose benignly.
+        early = _ppidx[:, 2] <= 1980
+        print(f"[desk] rebalance ON (n^-{float(_bal.get('power', 0.5)):g}, n_min="
+              f"{int(_bal.get('n_min', 200))}, cap={float(_bal.get('cap', 5.0)):g}): "
+              f"pre-1981 share of pool rows {early.mean():.3f} -> effective "
+              f"{(wv[early].sum() / wv.sum()):.3f}; weight range "
+              f"{wv.min():.2f}-{wv.max():.2f}")
+    else:
+        print("[desk] rebalance OFF (desk.balance.enabled=false): metric pairs drawn uniformly, "
+              "so the objective inherits BBS's coast/present bias")
     np.save(os.path.join(out_dir, "holdout_cells.npy"), holdout)
     # The buffer too: validate's epoch panel must draw its interpolation sources from the
     # SAME training cells the model saw, and buffer cells are in neither set.
@@ -1110,6 +1248,28 @@ def run_desk_experiment(config=None):
     # which is what DESK exists to do. The anchor (label_year) is never withheld -- it carries
     # the eBird metric loss. Diagnostic only; model selection stays on the spatial metric so
     # there is exactly one selection signal.
+    # --- item 5: make the two loss terms agree ---------------------------------------------------
+    # loss_stab was weighted (first_year_weight) and loss_true was not, so the two halves of the
+    # objective disagreed about what a sparse early cell-year is worth. Compose the stratum weight
+    # MULTIPLICATIVELY onto the existing per-cell weight rather than stacking it as a separate
+    # factor, so first_year_weight's era-correlated downweight is respected instead of overridden.
+    if pool_w is not None:
+        wv_np = np.asarray(pool_w, dtype="float32")
+        n_touched = 0
+        # Scatter per year rather than dict-lookup per cell: 3,900 cells x ~60 years is 234k
+        # Python-level lookups for a grid multiply numpy does in one pass.
+        for y in sorted(targets):
+            sel_y = _ppidx[:, 2] == int(y)
+            if not sel_y.any():
+                continue
+            zg, tr_m, va_m, wg = targets[y]
+            g = np.ones_like(wg)
+            g[_ppidx[sel_y, 0], _ppidx[sel_y, 1]] = wv_np[sel_y]
+            targets[y] = (zg, tr_m, va_m, (wg * g).astype("float32"))
+            n_touched += int(sel_y.sum())
+        print(f"[desk] stratum weights composed onto {n_touched:,} supervised cell-year target "
+              f"weights, so loss_stab and loss_true now agree on what a cell-year is worth")
+
     year_val = {}
     for y in ho_years:
         if y in targets:
@@ -1134,6 +1294,7 @@ def run_desk_experiment(config=None):
         amp=bool(desk_cfg.get("amp", False)),
         eval_every=int(desk_cfg.get("eval_every", 1)),
         holdout_year_targets=year_val or None,
+        pool_w=pool_w,
         # Pinned so the diagnostic interval is a constant across the temporal sweep instead of
         # shrinking with the holdout. None = the historical auto-selected deepest trained year.
         direction_anchor_year=tr_cfg.get("direction_anchor_year"),

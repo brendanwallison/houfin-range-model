@@ -1066,21 +1066,41 @@ def _run_epoch_analysis(config, keys, X_raw_all, cells, e_rows, m_rows, gate_sta
     # (= bbs_points), so the landmarks are already at raw-BBS magnitude and there is no
     # BBS->eBird scale factor to invent. project_points_to_z is the single source of truth for
     # z_obs, shared with the trainer and with validate_spacetime.
+    # SELF-GATED. This oracle was published once and withdrawn, because it fed the basis 20-year
+    # averaged communities whose projections sit at ||z||^2 = 0.15 against 0.672 for single
+    # cell-years -- the Ruzicka feature map is nonlinear, so phi(mean x) lies off the span of
+    # {phi(x_i)} even though mean phi(x_i) does not. It therefore measured that mismatch and not a
+    # ceiling. A diagnostic whose reading assumes the kernel contract has to REFUSE when the
+    # contract does not hold on its own inputs, so the representability check is now a gate rather
+    # than a printed aside.
     sc_esk = None
     try:
         from .esk_kernel import project_points_to_z
         _zd = config["desk"]["z_dir"]
         Ze_o = project_points_to_z(Xe, _zd, Ze.shape[1])
         Zm_o = project_points_to_z(Xm, _zd, Zm.shape[1])
-        if Ze_o is not None and Zm_o is not None:
-            sc_esk = (Ze_o, Zm_o)
-            print(f"[bbs-routes] ESK oracle available: projected observed epoch communities "
-                  f"into {_zd} (median ||z_obs||^2 early/modern "
-                  f"{float(np.median((Ze_o ** 2).sum(1))):.4f}/"
-                  f"{float(np.median((Zm_o ** 2).sum(1))):.4f}; contract 1.0)")
-        else:
+        if Ze_o is None or Zm_o is None:
             print("[bbs-routes] ESK oracle unavailable: no saved projection in "
                   f"{_zd}; the self_change ceiling cannot be measured this run")
+        else:
+            n_avg = float(np.median(np.concatenate([(Ze_o ** 2).sum(1), (Zm_o ** 2).sum(1)])))
+            # The reference: ANNUAL communities, which are what the basis was fitted on.
+            _rs = np.random.default_rng(0).permutation(len(X_raw_all))[:4000]
+            z_ann = project_points_to_z(log1p_community(X_raw_all[_rs]), _zd, Ze.shape[1])
+            n_ann = float(np.median((z_ann ** 2).sum(1))) if z_ann is not None else float("nan")
+            tol = float(config.get("bbs_routes", {}).get("oracle_norm_tol", 0.5))
+            ok = np.isfinite(n_ann) and n_ann > 0 and (n_avg / n_ann) >= tol
+            if ok:
+                sc_esk = (Ze_o, Zm_o)
+                print(f"[bbs-routes] ESK oracle ENABLED: averaged-community ||z_obs||^2 = "
+                      f"{n_avg:.4f} against {n_ann:.4f} annual (ratio {n_avg / n_ann:.2f} "
+                      f">= tol {tol:g}); the basis spans the objects the oracle projects")
+            else:
+                print(f"[bbs-routes] ESK oracle REFUSED: ceiling not measurable -- the basis does "
+                      f"not span averaged communities (||z_obs||^2 = {n_avg:.4f} against "
+                      f"{n_ann:.4f} annual, ratio {n_avg / max(n_ann, 1e-9):.2f} < tol {tol:g}). "
+                      f"Any number computed here would measure that mismatch, not a ceiling. "
+                      f"Widen the ESK landmark support to cover averaged communities first.")
     except Exception as exc:                      # diagnostic only; never block the analysis
         print(f"[bbs-routes] ESK oracle unavailable ({exc})")
 

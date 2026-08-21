@@ -466,6 +466,69 @@ def zspace_reconstruction(config, pidx, X, Z_desk, recent_year, to_rec, has_rec)
            "recent_basis_residual": resid,
            "rows": pidx[hist, 0], "cols": pidx[hist, 1],
            "err_desk": ed.astype("float32"), "err_nochange": en.astype("float32")}
+
+    # --- the error, decomposed ------------------------------------------------------------
+    # ||z_desk - z_obs||^2 splits EXACTLY into a magnitude term (||z_desk|| - ||z_obs||)^2 and an
+    # angular term 2||z_desk|| ||z_obs||(1 - cos). Reporting only the total (as this function did)
+    # cannot say whether DESK points the wrong way or merely too short -- and those have different
+    # fixes. The two halves also trade off: shrinking is the MSE-optimal answer to a poor angle,
+    # which is why the norm deficit and the direction deficit are one phenomenon, not two.
+    from .validate_baselines import error_decomposition
+    tot_d, mag_d, ang_d, cos_d = error_decomposition(Z_desk[hist], z_obs[hist])
+    n_d = np.linalg.norm(Z_desk[hist], axis=1)
+    n_o = np.linalg.norm(z_obs[hist], axis=1)
+    out.update({
+        "err_total_sq_desk": float(np.median(tot_d)),
+        "err_magnitude_sq_desk": float(np.median(mag_d)),
+        "err_angular_sq_desk": float(np.median(ang_d)),
+        # Shares of the MEAN, not of the medians: medians of two terms do not add to the median
+        # of their sum, and a reader comparing the three medians above would otherwise conclude
+        # the identity is broken. The identity holds per point; these are its expectation split.
+        "err_magnitude_share": float(np.mean(mag_d) / max(np.mean(tot_d), 1e-12)),
+        "err_angular_share": float(np.mean(ang_d) / max(np.mean(tot_d), 1e-12)),
+        "median_cos_desk_vs_obs": float(np.nanmedian(cos_d)),
+        # Self-similarity. The kernel contract pins ||z||^2 = Ruzicka(x,x) = 1 EXACTLY (Sum-min
+        # over Sum-max of a vector with itself is 1), so a deficit is the model asserting a
+        # community is less than fully similar to itself. Separated for z_desk and z_obs because
+        # the causes differ and the fixes differ: z_desk short = MSE shrinkage (the model
+        # hedging), z_obs short = basis truncation (what the finite ESK projection cannot
+        # represent). The report could not previously tell them apart.
+        "median_z_desk_norm2": float(np.median(n_d ** 2)),
+        "median_z_obs_norm2": float(np.median(n_o ** 2)),
+        # What the error distance MEANS in the units the space represents: the Ruzicka similarity
+        # between the predicted and the observed community. The naive 1 - d^2/2 assumes both norms
+        # are 1 and so flatters the model by exactly the norm deficit.
+        "implied_ruzicka_desk_vs_obs": float(np.median((n_d ** 2 + n_o ** 2 - tot_d) / 2.0)),
+        "implied_ruzicka_naive_if_unit_norm": float(np.median(1.0 - tot_d / 2.0)),
+    })
+    # Per-dimension shrinkage: the magnitude half resolved along the basis. The ESK is
+    # kernel-PCA, so dim index is ordered by eigenvalue. FLAT means a uniform rescale, which the
+    # downstream's fitted w_env absorbs and which therefore costs nothing. FALLING with the index
+    # means the low-eigenvalue directions are squeezed hardest -- and since MSE shrinks whatever
+    # it predicts worst, those are the temporal ones -- so the kernel would be tilted toward
+    # spatial similarity and the GP prior distorted. Aggregate ||z||^2 cannot distinguish these.
+    #
+    # Read it as a VARIANCE ratio, so a uniform norm scale c appears as c^2: a flat profile at
+    # 0.64 means every direction is scaled 0.8. If the shrinkage really is uniform then
+    # shrinkage_median should agree with median_z_desk_norm2 / median_z_obs_norm2; a large
+    # disagreement between those two is itself evidence of a tilt.
+    #
+    # Measured behaviour of this diagnostic on planted inputs: a uniform 0.8 rescale gives
+    # slope +0.00000 with the error 100% in the magnitude term (a rescale cannot change a
+    # direction); a linear tilt from 1.0 to 0.2 gives slope -0.031 and splits the error 53%
+    # magnitude / 47% angular.
+    v_d = np.var(Z_desk[hist], axis=0)
+    v_o = np.var(z_obs[hist], axis=0)
+    prof = np.where(v_o > 1e-12, v_d / np.maximum(v_o, 1e-12), np.nan)
+    # latent_dim long (~64), so this is a figure rather than a per-point array: it stays in the
+    # JSON report. As a list, not an ndarray -- report_scalars keeps it and json.dump must be
+    # able to write it.
+    out["shrinkage_by_dim"] = [None if not np.isfinite(v) else float(v) for v in prof]
+    ok_p = np.isfinite(prof)
+    if ok_p.sum() >= 3:
+        kk = np.arange(len(prof))[ok_p]
+        out["shrinkage_slope"] = float(np.polyfit(kk, prof[ok_p], 1)[0])
+        out["shrinkage_median"] = float(np.median(prof[ok_p]))
     # DESK saves a spatial holdout; split the value-add into held-out (honest, unseen
     # cells) vs train -- held-out frac_desk_beats_nochange is the number that counts.
     ho_path = os.path.join(config["paths"]["desk_output_dir"], "holdout_cells.npy")
@@ -477,6 +540,40 @@ def zspace_reconstruction(config, pidx, X, Z_desk, recent_year, to_rec, has_rec)
         # no learning. On the val MSE and the direction diagnostic this bar was not cleared.
         from .validate_baselines import zspace_idw_baseline
         e_idw = zspace_idw_baseline(pidx, z_obs, ho, hist)
+        # The SAME-YEAR spatial bar above cannot run in a withheld year -- there are no training
+        # cells that year, so every withheld row comes back NaN and the deep past, which is the
+        # whole point of the temporal experiment, ends up with no bar at all. The spacetime
+        # variant borrows across years as well as space and so does reach it.
+        try:
+            from .validate_baselines import spacetime_idw_baseline, spacetime_idw_z
+            bf_p = os.path.join(config["paths"]["desk_output_dir"], "buffer_cells.npy")
+            bf = np.load(bf_p) if os.path.exists(bf_p) else np.zeros_like(ho)
+            hy = [int(y) for y in (config["desk"].get("trend", {}).get("holdout_years") or [])]
+            _e, ratio = spacetime_idw_baseline(pidx, z_obs, ho, np.zeros(len(pidx), bool),
+                                               buffer_mask=bf, exclude_years=hy, verbose=False)
+            z_st = spacetime_idw_z(pidx, z_obs, ho, float(ratio),
+                                   buffer_mask=bf, exclude_years=hy)
+            e_st = np.linalg.norm(z_st[hist] - z_obs[hist], axis=1)
+            fst = np.isfinite(e_st)
+            if fst.sum() >= 4:
+                out["spacetime_idw_ratio_cells_per_year"] = float(ratio)
+                out["median_err_spacetime_idw"] = float(np.median(e_st[fst]))
+                out["frac_desk_beats_spacetime_idw"] = float(np.mean(ed[fst] < e_st[fst]))
+                out["n_spacetime_idw_scored"] = int(fst.sum())
+                hs = fst & is_ho_hist(ho, pidx, hist)
+                if hs.sum() >= 4:
+                    out["frac_desk_beats_spacetime_idw_heldout"] = float(
+                        np.mean(ed[hs] < e_st[hs]))
+                    out["median_err_spacetime_idw_heldout"] = float(np.median(e_st[hs]))
+                if hy:
+                    inhy = np.isin(pidx[hist, 2], np.asarray(hy)) & fst
+                    if inhy.sum() >= 4:
+                        # the rows the same-year bar cannot reach at all
+                        out["frac_desk_beats_spacetime_idw_withheld_years"] = float(
+                            np.mean(ed[inhy] < e_st[inhy]))
+                        out["n_withheld_years_scored"] = int(inhy.sum())
+        except Exception as exc:                  # diagnostic only
+            print(f"[validate] spacetime IDW bar on reconstruction unavailable ({exc})")
         fin = np.isfinite(e_idw)
         if fin.sum() >= 4:
             out["median_err_idw"] = float(np.median(e_idw[fin]))
@@ -664,11 +761,25 @@ def run_validate(config=None, n_pairs=20000, cka_sample=800, seed=0):
                     print(f"  {era}  attenuation {a['dir_cos_attenuation']:.2f}  "
                           f"(noise is {a['noise_share_of_long_gap']:.0%} of the long-gap "
                           f"difference; n_adj={a['n_adjacent_pairs']})")
+            # The spacetime bar for the epoch panel: available even for epochs inside the
+            # holdout, where the per-epoch spatial bar correctly reads n/a. Built once here and
+            # handed in, so the panel and the ladder below score against the same alternative.
+            z_st_panel = None
+            try:
+                from .validate_baselines import spacetime_idw_baseline, spacetime_idw_z
+                _e, _r = spacetime_idw_baseline(pidx, z_obs_pts, ho,
+                                                np.zeros(len(pidx), bool),
+                                                buffer_mask=bf, exclude_years=hy, verbose=False)
+                z_st_panel = spacetime_idw_z(pidx, z_obs_pts, ho, float(_r),
+                                             buffer_mask=bf, exclude_years=hy)
+                print(f"[validate] epoch-panel spacetime bar at ratio={_r:g} cells/yr")
+            except Exception as exc:
+                print(f"[validate] epoch-panel spacetime bar unavailable ({exc})")
             hw = int(_tr_cfg.get("direction_half_width", 0))
             print("[validate] DIRECTION of change vs inverse-distance interpolation "
                   "(z_ema; pairs share cells and nest in time, so never pooled):")
             epochs_panel = epoch_direction_panel(pidx, None, z_obs_pts, zm, ho, bf,
-                                                 exclude_years=hy)
+                                                 exclude_years=hy, z_spacetime=z_st_panel)
             if hw:
                 # Same panel, endpoints averaged over +/-hw years on model, target and bar
                 # alike. The GAP between the two tables is the noise measurement.
@@ -678,7 +789,8 @@ def run_validate(config=None, n_pairs=20000, cka_sample=800, seed=0):
                 epochs_panel = {"single_year": epochs_panel,
                                 "windowed": epoch_direction_panel(
                                     pidx, None, z_obs_pts, zm, ho, bf,
-                                    exclude_years=hy, half_width=hw),
+                                    exclude_years=hy, half_width=hw,
+                                    z_spacetime=z_st_panel),
                                 "attenuation_by_era": atten}
             else:
                 epochs_panel = {"single_year": epochs_panel, "attenuation_by_era": atten}

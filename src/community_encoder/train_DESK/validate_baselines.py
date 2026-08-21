@@ -27,6 +27,42 @@ def _np(a):
     return a.detach().cpu().numpy() if hasattr(a, "detach") else np.asarray(a)
 
 
+def error_decomposition(a, b, eps=1e-12):
+    """Split ``||a - b||^2`` into its magnitude and angular halves. EXACT, no residual.
+
+    ``a`` is the prediction, ``b`` the truth, both ``(n, L)``. Returns arrays
+    ``(total, magnitude, angular, cos)`` with ``magnitude + angular == total`` to
+    floating-point, from the identity
+
+        ||a - b||^2 = (||a|| - ||b||)^2  +  2 ||a|| ||b|| (1 - cos t)
+                      |--- magnitude ---|    |------- angular -------|
+
+    WHY THIS EXISTS. Every angular measure in this codebase -- ``rot``, ``dcos``, the epoch
+    panel's dir-cos, ``cosine_gram`` -- is precisely ONE of these two terms, and the other one is
+    the norm/shrinkage deficit (measured ``||z_desk||^2 ~ 0.60`` against a contract of 1.0).
+    Reporting an angle without its magnitude partner hides half the error, and hides that the two
+    TRADE OFF: minimising the total over ``||a||`` at fixed ``cos = rho`` gives ``||a|| =
+    rho*||b||``, so shrinkage is the MSE-optimal response to a poor angle. That is also where
+    ``rot ~ dcos^2`` comes from (via ``1 - cos ~ theta^2/2``), which makes ``cal = rot/dcos^2`` a
+    ratio between these two terms rather than an ad-hoc index.
+
+    Degenerate rows (either vector ~0) get ``cos = nan``; their magnitude term is still exact and
+    their angular term is 0, which is the correct split for a zero-length prediction.
+    """
+    a = np.asarray(a, dtype="float64")
+    b = np.asarray(b, dtype="float64")
+    na, nb = np.linalg.norm(a, axis=-1), np.linalg.norm(b, axis=-1)
+    total = np.sum((a - b) ** 2, axis=-1)
+    mag = (na - nb) ** 2
+    # angular = total - mag identically; computing it by subtraction rather than from cos keeps
+    # the identity exact even where cos is undefined, and cos is reported separately for reading.
+    ang = total - mag
+    den = na * nb
+    with np.errstate(invalid="ignore", divide="ignore"):
+        cos = np.where(den > eps, np.sum(a * b, axis=-1) / np.maximum(den, eps), np.nan)
+    return total, mag, ang, cos
+
+
 def median_dir_cos_np(dp, dt):
     from .desk_training import median_dir_cos
     return median_dir_cos(torch.as_tensor(np.asarray(dp), dtype=torch.float32),
@@ -275,7 +311,7 @@ def zspace_idw_baseline(pidx, z_obs, holdout, hist_mask, k=8, power=2.0):
 
 def epoch_direction_panel(pidx, supervise, z_obs, z_model, holdout, buffer_mask,
                           epochs=DEFAULT_EPOCHS, tol=DEFAULT_TOL, verbose=True,
-                          exclude_years=(), half_width=0):
+                          exclude_years=(), half_width=0, z_spacetime=None):
     """Model vs inverse-distance on the DIRECTION of change, per epoch pair, plus curvature.
 
     ``z_model`` is a ``{(row,col,year): vector}`` mapping -- the caller decides whether that is
@@ -340,6 +376,14 @@ def epoch_direction_panel(pidx, supervise, z_obs, z_model, holdout, buffer_mask,
               if (cell[0], cell[1], y) in z_model]
         return np.mean(np.stack(vs), axis=0) if vs else None
 
+    def zs(cell, years):
+        """Mean SPACETIME-IDW z over the same years. Same window as model and target."""
+        rows = [row_of[(cell[0], cell[1], y)] for y in years
+                if (cell[0], cell[1], y) in row_of]
+        if not rows:
+            return np.full(z_obs.shape[1], np.nan)
+        return np.mean(np.stack([z_spacetime[r] for r in rows]), axis=0)
+
     ho, bf = _np(holdout), _np(buffer_mask)
     val_of = {e: {c: ys for c, ys in near[e].items() if ho[c]} for e in epochs}
     # Training sources: spatial masks AND the year filter. Dropping the year filter is the bug
@@ -370,7 +414,7 @@ def epoch_direction_panel(pidx, supervise, z_obs, z_model, holdout, buffer_mask,
               f"{[e for e in epochs if withheld_epoch[int(e)]]} -- 'n/a', not a failure")
 
     if verbose:
-        print("  pair          cells   model    idw     null   verdict   depth")
+        print("  pair          cells   model    idw   st-idw    null   verdict   depth")
     for a, b in itertools.combinations(epochs, 2):
         # Intersect FIRST, then test z_model. The comprehension is evaluated in full before
         # the `&` runs, so filtering over val_of[a] would index val_of[b] at cells epoch b
@@ -385,11 +429,32 @@ def epoch_direction_panel(pidx, supervise, z_obs, z_model, holdout, buffer_mask,
             continue
         dt = np.stack([zt(c, val_of[b][c]) - zt(c, val_of[a][c]) for c in cells])
         dm = np.stack([zm(c, val_of[b][c]) - zm(c, val_of[a][c]) for c in cells])
+        # dir-cos is the ANGULAR half of an exact two-term split of ||dm - dt||^2; the other half
+        # is the magnitude of the predicted change. Reporting the angle alone cannot distinguish
+        # "moved the wrong way" from "barely moved", and the two trade off -- under-moving is the
+        # MSE-optimal response to a poor angle, so a good dir-cos with a tiny magnitude ratio is a
+        # different model from a good dir-cos that also moves the right distance.
+        _tot, _mag, _ang, _ = error_decomposition(dm, dt)
+        nm, nt = np.linalg.norm(dm, axis=1), np.linalg.norm(dt, axis=1)
+        mag_ratio = float(np.median(nm[nt > 1e-12] / nt[nt > 1e-12])) if (nt > 1e-12).any() \
+            else float("nan")
+        mag_share = float(np.mean(_mag) / max(np.mean(_tot), 1e-12))
         ia, ib = _idw_at(cells, trn_of[a], zt), _idw_at(cells, trn_of[b], zt)
         di = (ib - ia) if (ia is not None and ib is not None) else None
+        # The SPACETIME bar. The spatial one above is unavailable for any epoch inside the
+        # temporal holdout (no training cells that year), which is exactly the deep-past epoch
+        # the experiment cares about -- so the pairs that matter most had no bar at all. This one
+        # borrows across years as well as space and does reach them.
+        ds = None
+        if z_spacetime is not None:
+            sa = np.stack([zs(c, val_of[a][c]) for c in cells])
+            sb = np.stack([zs(c, val_of[b][c]) for c in cells])
+            if np.isfinite(sa).all() and np.isfinite(sb).all():
+                ds = sb - sa
         perm = np.random.default_rng(0).permutation(len(cells))
         mc = median_dir_cos_np(dm, dt)
         ic = median_dir_cos_np(di, dt) if di is not None else float("nan")
+        sc = median_dir_cos_np(ds, dt) if ds is not None else float("nan")
         null = median_dir_cos_np(dm, dt[perm])
         # A missing bar is not a tie. Saying "tie" when the bar could not run would read as
         # evidence of parity, which is the opposite of what an absent comparison means.
@@ -400,11 +465,22 @@ def epoch_direction_panel(pidx, supervise, z_obs, z_model, holdout, buffer_mask,
         depth = float(np.mean([len(val_of[a][c]) + len(val_of[b][c]) for c in cells]) / 2.0)
         ic_s = "  n/a" if not np.isfinite(ic) else f"{ic:5.2f}"
         if verbose:
-            print(f"  {a}->{b}  {len(cells):>6}   {mc:5.2f}   {ic_s}   {null:5.2f}   "
+            sc_s = "  n/a" if not np.isfinite(sc) else f"{sc:5.2f}"
+            print(f"  {a}->{b}  {len(cells):>6}   {mc:5.2f}   {ic_s}   {sc_s}   {null:5.2f}   "
                   f"{verdict:<7}  {depth:.2f}")
         out["pairs"][f"{a}_{b}"] = {"n": len(cells), "model_dir_cos": mc, "idw_dir_cos": ic,
                                     "null_dir_cos": null, "verdict": verdict,
-                                    "mean_window_depth": depth}
+                                    "mean_window_depth": depth,
+                                    # the magnitude half, so the pair's error is attributable
+                                    "change_magnitude_ratio": mag_ratio,
+                                    "err_magnitude_share": mag_share,
+                                    "err_angular_share": 1.0 - mag_share,
+                                    # MSE-calibrated magnitude ratio is exactly dir-cos; >1 means
+                                    # moving further than the direction accuracy justifies
+                                    "magnitude_calibration": (mag_ratio / mc)
+                                    if (np.isfinite(mc) and abs(mc) > 1e-6) else float("nan"),
+                                    # available even inside the holdout, unlike idw_dir_cos
+                                    "spacetime_idw_dir_cos": sc}
 
     if verbose:
         print("  curvature (second difference, three consecutive epochs)")
@@ -686,22 +762,45 @@ def spacetime_idw_baseline(pidx, z_obs, holdout, target_rows, buffer_mask=None,
     return _spacetime_err(pidx, z_obs, tr, target_rows, best_ratio, k=k, power=power), best_ratio
 
 
-def per_era_attenuation(pidx, z_obs, era_width=10, min_pairs=30):
+#: Gap, in years, at which the per-era long-baseline difference is measured, and its tolerance.
+#: FIXED on purpose -- see ``per_era_attenuation``. An earlier version used each cell's own
+#: first-to-last span, which varies systematically with era (a record starting in 1966 spans ~59
+#: years, one starting in 2010 spans <=15), so the reported ordering ranked cells by RECORD LENGTH
+#: rather than eras by noisiness.
+ATTEN_GAP = 20
+ATTEN_GAP_TOL = 2
+
+
+def per_era_attenuation(pidx, z_obs, era_width=10, min_pairs=30,
+                        gap=ATTEN_GAP, gap_tol=ATTEN_GAP_TOL):
     """Per-era measurement noise and the dir-cos attenuation it causes. ``{era: {...}}``.
 
-    Turns "the direction numbers are biased low, and unequally by era" from a caveat into a
-    measurement. Two quantities, both from the point set already in hand:
+    Turns "the direction numbers are biased low" from a caveat into a measurement. Two
+    quantities, both from the point set already in hand, and both binned on the EARLIER year of
+    the pair:
 
     * ``adj_sq`` = mean ``||z(y+1) - z(y)||^2`` over cells surveyed in consecutive years. Real
       community change over ONE year is small, so this is essentially ``2*sigma^2`` -- pure
       measurement noise.
-    * ``long_sq`` = the same over the widest gap available in the era, which carries both the
-      true change and the same noise: ``tau^2 + 2*sigma^2``.
+    * ``long_sq`` = the same over pairs separated by ``gap +/- gap_tol`` years, which carry both
+      the true change over that gap and the same noise: ``tau^2 + 2*sigma^2``.
 
     So ``tau^2 = long_sq - adj_sq`` and the attenuation factor on a dir-cos measured against
     that noisy endpoint is ``sqrt(tau^2 / long_sq) = sqrt(1 - adj_sq/long_sq)`` -- no need to
     separate sigma at all. A factor of 0.8 means an observed dir-cos of 0.40 is consistent with
     a true 0.50.
+
+    **The gap is FIXED, and that is the whole point of this function's shape.** An earlier
+    version took ``long_sq`` from each cell's own first-to-last span while binning the era on the
+    cell's FIRST survey year. Span then varies with era by construction, a longer record
+    accumulates more real change, ``long_sq`` grows, and the attenuation figure rises -- so the
+    table ranked record length, not era noisiness, and the shipped ordering (1960s 0.81 ->
+    2010s 0.59) pointed the opposite way from the claim it was written to support. Holding the
+    gap fixed makes the era the only thing that varies between rows.
+
+    The AGGREGATE magnitude was never in doubt and is unchanged: noise accounts for a third to
+    two-thirds of the difference between two surveys of the same cell, corroborated independently
+    by windowed endpoints recovering ~30% of every epoch-pair dir-cos.
 
     This estimator is valid ONLY because the target is raw BBS (``target.source = bbs_raw``, ~1.08
     routes per cell-year), where consecutive years are independent observations. Against a
@@ -714,20 +813,26 @@ def per_era_attenuation(pidx, z_obs, era_width=10, min_pairs=30):
     by_cell = {}
     for i, (r, c, y) in enumerate(pidx):
         by_cell.setdefault((int(r), int(c)), []).append((int(y), i))
+    lo_gap, hi_gap = int(gap) - int(gap_tol), int(gap) + int(gap_tol)
     adj, lng = {}, {}
     for _cell, rows in by_cell.items():
         rows.sort()
-        for (y0, i0), (y1, i1) in zip(rows, rows[1:]):
-            if y1 - y0 == 1:
-                era = f"{y0 // era_width * era_width}s"
-                adj.setdefault(era, []).append(
-                    float(np.sum((z_obs[i1] - z_obs[i0]) ** 2)))
-        if len(rows) >= 2:
-            (y0, i0), (y1, i1) = rows[0], rows[-1]
-            if y1 - y0 >= era_width:
-                era = f"{y0 // era_width * era_width}s"
-                lng.setdefault(era, []).append(
-                    float(np.sum((z_obs[i1] - z_obs[i0]) ** 2)))
+        for a, (y0, i0) in enumerate(rows):
+            era = f"{y0 // era_width * era_width}s"
+            for (y1, i1) in rows[a + 1:]:
+                d = y1 - y0
+                if d == 1:
+                    adj.setdefault(era, []).append(
+                        float(np.sum((z_obs[i1] - z_obs[i0]) ** 2)))
+                elif lo_gap <= d <= hi_gap:
+                    # One pair per (cell, earlier year) at the fixed gap: taking every
+                    # qualifying pair would weight densely-surveyed cells more heavily, and
+                    # survey density is itself era-correlated.
+                    lng.setdefault(era, []).append(
+                        float(np.sum((z_obs[i1] - z_obs[i0]) ** 2)))
+                    break
+                elif d > hi_gap:
+                    break
     out = {}
     for era in sorted(set(adj) & set(lng)):
         if len(adj[era]) < min_pairs or len(lng[era]) < min_pairs:
@@ -735,6 +840,7 @@ def per_era_attenuation(pidx, z_obs, era_width=10, min_pairs=30):
         a2, l2 = float(np.mean(adj[era])), float(np.mean(lng[era]))
         frac = 1.0 - (a2 / l2) if l2 > 1e-12 else float("nan")
         out[era] = {"n_adjacent_pairs": len(adj[era]), "n_long_pairs": len(lng[era]),
+                    "gap_years": int(gap), "gap_tol": int(gap_tol),
                     "adjacent_sq": a2, "long_sq": l2,
                     "noise_share_of_long_gap": (a2 / l2) if l2 > 1e-12 else float("nan"),
                     "dir_cos_attenuation": float(np.sqrt(frac)) if frac > 0 else float("nan")}

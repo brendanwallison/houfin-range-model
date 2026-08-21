@@ -26,8 +26,19 @@ between that dot product and the Ruzicka similarity of the raw communities. The 
 therefore both the model's stated output and the quantity it was optimized for. Because the
 contract makes the two directly comparable rather than merely correlated, they can be compared
 ELEMENTWISE -- which is strictly more informative than CKA, and catches a norm-calibration error
-that CKA is provably blind to (see tests). Cosine is reported as a secondary column only, to
-separate an angular failure from a ||z|| scaling failure.
+that CKA is provably blind to (see tests).
+
+The cosine columns are NOT a secondary curiosity, which is how they were previously labelled. They
+are the ANGULAR HALF of an exact decomposition of the dot-product error::
+
+    ||a - b||^2 = (||a|| - ||b||)^2  +  2 ||a|| ||b|| (1 - cos t)
+                  |-- magnitude --|     |------- angular -------|
+
+so dot and cosine together account for the whole error with no residual, and the magnitude half is
+exactly the ``||z||^2`` deficit (measured ~0.60 against a contract of 1.0). Reading one without the
+other hides half the error -- and hides that the two TRADE OFF: minimising the total at a fixed
+direction cosine ``rho`` gives ``||a|| = rho*||b||``, so shrinking is the MSE-optimal response to a
+poor angle. See ``validate_baselines.error_decomposition``.
 
 BOTH MODEL-SIDE MATRICES USE THE SAME FUNCTIONAL, so the ONLY difference between them is temporal
 variation. That is load-bearing. An earlier version built the null as Ruzicka on the observed
@@ -43,10 +54,28 @@ The no-change null has ZERO temporal variation by construction, so differencing 
 isolates exactly the temporal component. A large ``cka_desk`` with ``cka_gain <= 0`` means DESK
 reproduced the map and nothing about change.
 
-WHY SIMILARITY SPACE AND NOT Z SPACE. The ESK landmarks are frozen at grid-product magnitude, so
-projecting route counts into ``esk/spacetime`` would require inventing a per-species BBS->eBird
-scale factor, and if it were off that artifact would dominate. Comparing similarities needs no
-such factor and no new estimated quantity.
+TRUTH STAYS OUT OF Z SPACE; THE BARS DO NOT. ``S_true`` is Ruzicka on raw counts and owes nothing
+to any fitted object -- that is what makes this module uncircular, and it does not change.
+
+This section used to say z-space projection was unavailable here, because "the ESK landmarks are
+frozen at grid-product magnitude, so projecting route counts would require inventing a per-species
+BBS->eBird scale factor". That was true of the retired trend-product basis. It is stale:
+``run_spacetime_esk`` now fits the basis on ``target_points_dir`` (= ``bbs_points``, raw route-level
+BBS), so the landmarks are already at raw-BBS magnitude, there is no scale factor to invent, and
+``validate_spacetime`` performs this projection on this same point set every run.
+
+Two things depend on the projection, and both are BARS rather than truth:
+
+* the spacetime-IDW bar -- an actual alternative predictor, needed because ``S_nc`` is a
+  decomposition device and nearly free to beat (measured: on ``self_change`` the null already
+  correlates 0.53-0.63 with observed change while carrying zero temporal content);
+* the ESK oracle on ``self_change`` -- the ceiling, which says whether the basis can represent
+  same-cell temporal change at all, and so whether a weak DESK row is the model's fault.
+
+The residual cost, stated rather than left implicit: those two carry basis dependence, the truth
+they are scored against does not. A bar must also use DESK's OWN functional -- a dot product of
+ESK-space vectors -- for the reason recorded below: scoring a bar in Ruzicka while DESK is scored
+in dot product was worth -0.28 on a temporally-neutral model, from the metric mismatch alone.
 
 READ ``rmse_skill``, NOT the absolute ``rmse_desk``. Bare Ruzicka is invariant when both arguments
 are rescaled, but ``log1p`` is NOT (``log1p(c*x) != c*log1p(x)``), so the absolute count scale does
@@ -587,8 +616,43 @@ def _rowwise_ruzicka(A, B):
     return np.where(mx > 0, mn / mx, 1.0)
 
 
+def bootstrap_skill_ci(obs, pred, null, n_boot=2000, seed=0, alpha=0.05):
+    """Percentile CI on ``1 - rmse(pred,obs)/rmse(null,obs)``, resampling ELEMENTS. Pure.
+
+    Call this on per-FOCAL-CELL vectors (``self_change``), never on pair matrices. Pairs drawn
+    from N sampled rows number ~N^2/2 but are massively correlated, so an interval computed over
+    pairs would be far too narrow -- the effective sample size is the number of independent
+    cells, not the number of pairs. Reporting ``n_pairs`` without an interval is how a difference
+    of a few thousandths came to be read as a finding.
+
+    Returns ``{"skill", "lo", "hi", "n"}``; the point estimate is the unresampled value.
+    """
+    obs = np.asarray(obs, "float64"); pred = np.asarray(pred, "float64")
+    null = np.asarray(null, "float64")
+    fin = np.isfinite(obs) & np.isfinite(pred) & np.isfinite(null)
+    obs, pred, null = obs[fin], pred[fin], null[fin]
+    n = obs.size
+
+    def skill(o, p, q):
+        rn = np.sqrt(np.mean((q - o) ** 2))
+        return float(1.0 - np.sqrt(np.mean((p - o) ** 2)) / rn) if rn > 0 else float("nan")
+
+    if n < 8:
+        return {"skill": float("nan"), "lo": float("nan"), "hi": float("nan"), "n": int(n)}
+    rng = np.random.default_rng(seed)
+    draws = rng.integers(0, n, size=(int(n_boot), n))
+    vals = np.array([skill(obs[d], pred[d], null[d]) for d in draws])
+    vals = vals[np.isfinite(vals)]
+    if vals.size < 8:
+        return {"skill": skill(obs, pred, null), "lo": float("nan"), "hi": float("nan"),
+                "n": int(n)}
+    return {"skill": skill(obs, pred, null),
+            "lo": float(np.quantile(vals, alpha / 2.0)),
+            "hi": float(np.quantile(vals, 1.0 - alpha / 2.0)), "n": int(n)}
+
+
 def epoch_neighborhood_analysis(Xe, Xm, Ze, Zm, xy, k=99, n_bins=10, is_heldout=None,
-                                device=None):
+                                device=None, sc_esk=None, sc_idw=(None, None)):
     """Focal-to-neighbour comparisons across space AND time, resolved by distance (pure-ish).
 
     Four comparison types per focal/neighbour pair, all graded against the SAME frozen-modern null
@@ -623,6 +687,18 @@ def epoch_neighborhood_analysis(Xe, Xm, Ze, Zm, xy, k=99, n_bins=10, is_heldout=
                        _pairwise_dot_neighbours(Ze, Zm, idx, device=device), null_pair),
     }
 
+    # The same three comparisons with the spacetime-IDW stand-in in DESK's place, against the
+    # SAME null, so DESK and the bar are scored identically and can be differenced.
+    Ze_i, Zm_i = sc_idw if sc_idw is not None else (None, None)
+    if Ze_i is not None and Zm_i is not None:
+        types_idw = {
+            "spatial_early": _pairwise_dot_neighbours(Ze_i, Ze_i, idx, device=device),
+            "spatial_modern": _pairwise_dot_neighbours(Zm_i, Zm_i, idx, device=device),
+            "cross_time": _pairwise_dot_neighbours(Ze_i, Zm_i, idx, device=device),
+        }
+    else:
+        types_idw = {}
+
     n = Xe.shape[0]
     ho = np.zeros(n, bool) if is_heldout is None else np.asarray(is_heldout, bool)
     splits = {"pooled": np.ones(n, bool)}
@@ -644,13 +720,31 @@ def epoch_neighborhood_analysis(Xe, Xm, Ze, Zm, xy, k=99, n_bins=10, is_heldout=
         report["types"][tname] = {}
         for sname, smask in splits.items():
             rows = np.where(smask)[0]
-            per_bin = {"all_distances": pair_metrics(obs[rows], desk[rows], null[rows])}
+            def _with_bar(o, d, nl, sub=None):
+                """Metrics vs the null, plus DESK-vs-BAR and BAR-vs-null in the same row.
+
+                One helper for the pooled row and the per-distance rows: attaching the bar to
+                only one of them is how `all_distances` -- the row everyone actually reads -- came
+                out without it on the first attempt.
+                """
+                m = pair_metrics(o, d, nl)
+                if tname in types_idw:
+                    bi = types_idw[tname] if sub is None else types_idw[tname][rows][sub]
+                    m["vs_idw"] = pair_metrics(o, d, bi)["rmse_skill"]
+                    m["idw_vs_null"] = pair_metrics(o, bi, nl)["rmse_skill"]
+                    m["pearson_idw"] = pair_metrics(o, bi, nl)["pearson_desk"]
+                return m
+
+            per_bin = {"all_distances": _with_bar(
+                obs[rows], desk[rows], null[rows],
+                sub=slice(None) if tname in types_idw else None)}
             for b, lab in enumerate(labels):
                 sel = bin_of[rows] == b
                 if sel.sum() < 10:
                     per_bin[lab] = {"n_pairs": int(sel.sum()), "skipped": "fewer than 10 pairs"}
                     continue
-                per_bin[lab] = pair_metrics(obs[rows][sel], desk[rows][sel], null[rows][sel])
+                per_bin[lab] = _with_bar(obs[rows][sel], desk[rows][sel], null[rows][sel],
+                                         sub=sel)
             report["types"][tname][sname] = per_bin
 
     # self_change: one value per focal cell, no distance axis (d=0 by definition).
@@ -661,6 +755,54 @@ def epoch_neighborhood_analysis(Xe, Xm, Ze, Zm, xy, k=99, n_bins=10, is_heldout=
         s: {"all_distances": pair_metrics(sc_obs[np.where(m)[0]], sc_desk[np.where(m)[0]],
                                           sc_null[np.where(m)[0]])}
         for s, m in splits.items()}
+
+    # An interval, resampling FOCAL CELLS. self_change is one value per cell over ~1950
+    # independent cells, so this is the one place in this module where a bootstrap is honest;
+    # the pair matrices elsewhere have an effective n far below their n_pairs.
+    for sname, m in splits.items():
+        w = np.where(m)[0]
+        report["types"]["self_change"][sname]["all_distances"]["ci95"] = bootstrap_skill_ci(
+            sc_obs[w], sc_desk[w], sc_null[w])
+
+    # self_change against the BAR rather than the free null.
+    if Ze_i is not None and Zm_i is not None:
+        sc_idw_v = (np.asarray(Ze_i, "float64") * np.asarray(Zm_i, "float64")).sum(1)
+        report["types"]["self_change_vs_idw"] = {}
+        for sname, m in splits.items():
+            w = np.where(m)[0]
+            row = pair_metrics(sc_obs[w], sc_desk[w], sc_idw_v[w])   # null slot := the bar
+            row["ci95"] = bootstrap_skill_ci(sc_obs[w], sc_desk[w], sc_idw_v[w])
+            row["idw_vs_null"] = pair_metrics(sc_obs[w], sc_idw_v[w], sc_null[w])["rmse_skill"]
+            row["pearson_idw"] = pair_metrics(sc_obs[w], sc_idw_v[w], sc_null[w])["pearson_desk"]
+            report["types"]["self_change_vs_idw"][sname] = {"all_distances": row}
+
+    # THE CEILING. Same comparison with z_obs -- the ESK projection of the OBSERVED epoch
+    # communities -- in place of DESK's z. By the kernel contract z(x).z(x') ~= Ruzicka(x,x'),
+    # so this asks whether the BASIS can represent same-cell temporal change at all, which
+    # bounds what any encoder trained against it could achieve. Without it a weak DESK row is
+    # unattributable: it could be the model discarding available signal, or a basis that never
+    # carried it.
+    #
+    # The oracle projects the AVERAGED community (Xe, Xm) rather than averaging projections of
+    # single years, because Xe/Xm are exactly the inputs the observed side uses -- so obs and
+    # oracle are the same functional of the same vectors, which is the contract being tested.
+    # DESK's row necessarily averages z instead (it emits z per cell-year, not a community), and
+    # that asymmetry is a property of what each side can produce, not a choice.
+    if sc_esk is not None:
+        Ze_o, Zm_o = sc_esk
+        sc_or = (np.asarray(Ze_o, "float64") * np.asarray(Zm_o, "float64")).sum(1)
+        report["types"]["self_change_esk_oracle"] = {}
+        for sname, m in splits.items():
+            w = np.where(m)[0]
+            row = pair_metrics(sc_obs[w], sc_or[w], sc_null[w])
+            row["ci95"] = bootstrap_skill_ci(sc_obs[w], sc_or[w], sc_null[w])
+            report["types"]["self_change_esk_oracle"][sname] = {"all_distances": row}
+        report["_esk_oracle_note"] = (
+            "Ceiling on self_change: z_obs (ESK projection of the observed epoch communities) in "
+            "place of DESK's z. Read pearson_desk MINUS pearson_null against pearson_desk of this "
+            "row minus the same null -- pearson is scale-invariant and so immune to the ||z||^2 "
+            "deficit that confounds rmse_skill. If this row is also ~0 over the null, the basis "
+            "cannot represent same-cell temporal change and the fix belongs to the ESK, not DESK.")
 
     # Per-focal-cell arrays, so the result can be mapped without recomputing.
     per_cell = {"neighbour_idx": idx.astype("int32"), "neighbour_dist_m": dist.astype("float32"),
@@ -834,8 +976,55 @@ def desk_z_ema(config, keys):
                   "ema_warmup_start": warm, "encode_years": [years[0], years[-1]]}
 
 
+def build_spacetime_bar(config, keys, X_raw_all, latent_dim):
+    """Spacetime-IDW stand-in for z at every row of ``keys``, or None. ``(N, latent_dim)``.
+
+    WHY A BAR AT ALL. Every skill figure in this module is scored against ``S_nc`` -- DESK's own z
+    frozen at the modern year. That null is a DECOMPOSITION device (both sides share the
+    functional, so their difference isolates temporal variation), not a competitor, and it is
+    nearly free to beat: measured, on ``self_change`` the null already correlates 0.53-0.63 with
+    observed change while carrying ZERO temporal content, because how much a cell appears to
+    change is largely a static property of the cell. An honest bar has to be a real alternative
+    PREDICTOR, so this interpolates the observed z in space AND time from training rows only.
+
+    Uses DESK's OWN functional -- a dot product of ESK-space vectors -- because scoring a bar in
+    Ruzicka while DESK is scored in dot product was measured at -0.28 on a temporally-neutral
+    model, from the metric mismatch alone. That needs the observed communities projected into the
+    pinned basis, which is admissible now that ``run_spacetime_esk`` fits the basis on
+    ``target_points_dir`` (= raw route-level BBS); see the module docstring.
+
+    Returns None (with a printed reason) whenever the projection or the holdout mask is missing,
+    so a run without a bar degrades to the old report rather than failing.
+    """
+    try:
+        from .esk_kernel import project_points_to_z
+        from .validate_baselines import spacetime_idw_baseline, spacetime_idw_z
+        zd = config["desk"]["z_dir"]
+        z_rows = project_points_to_z(log1p_community(X_raw_all), zd, latent_dim)
+        ho_p = os.path.join(config["paths"]["desk_output_dir"], "holdout_cells.npy")
+        bf_p = os.path.join(config["paths"]["desk_output_dir"], "buffer_cells.npy")
+        if z_rows is None or not os.path.exists(ho_p):
+            print(f"[bbs-routes] spacetime-IDW bar unavailable (no projection in {zd} "
+                  f"or no holdout mask); skill will be reported against the no-change null only")
+            return None
+        ho = np.load(ho_p)
+        bf = np.load(bf_p) if os.path.exists(bf_p) else np.zeros_like(ho)
+        hy = [int(y) for y in (config["desk"].get("trend", {}).get("holdout_years") or [])]
+        # Anisotropy fitted on TRAINING rows only, long-gap probe when years are withheld, so
+        # the bar is tuned for the reach it is judging rather than for interpolation.
+        _e, ratio = spacetime_idw_baseline(keys, z_rows, ho, np.zeros(len(keys), bool),
+                                           buffer_mask=bf, exclude_years=hy, verbose=True)
+        bar = spacetime_idw_z(keys, z_rows, ho, float(ratio), buffer_mask=bf, exclude_years=hy)
+        print(f"[bbs-routes] spacetime-IDW bar at ratio={ratio:g} cells/yr; "
+              f"{int(np.isfinite(bar).all(1).sum()):,}/{len(keys):,} rows reachable")
+        return bar
+    except Exception as exc:                      # a missing bar must not sink the analysis
+        print(f"[bbs-routes] spacetime-IDW bar unavailable ({exc})")
+        return None
+
+
 def _run_epoch_analysis(config, keys, X_raw_all, cells, e_rows, m_rows, gate_stats, gather_z,
-                        zmeta, out_dir, k=99, n_bins=10):
+                        zmeta, out_dir, k=99, n_bins=10, idw_rows=None):
     """Epoch means -> kNN neighbourhoods -> distance-resolved comparisons. Writes json + npz."""
     if cells.shape[0] < 5:
         print(f"[bbs-routes] epoch analysis SKIPPED: only {cells.shape[0]} cells passed the gate")
@@ -848,10 +1037,63 @@ def _run_epoch_analysis(config, keys, X_raw_all, cells, e_rows, m_rows, gate_sta
     Zm = epoch_mean_z(gather_z(keys[np.array([i for r in m_rows for i in r])]),
                       _reindex_row_lists(m_rows))
 
+    # --- the spacetime-IDW BAR (shared builder; see build_spacetime_bar) -------------------
+    # Why this exists: every skill figure in this module is scored against S_nc, DESK's own z
+    # frozen at the modern year. That null is a DECOMPOSITION device (it isolates temporal
+    # variation because both sides share the functional), not a competitor -- and it is nearly
+    # free to beat. Measured: on self_change the null already correlates 0.53-0.63 with observed
+    # change while carrying ZERO temporal content, because how much a cell appears to change is
+    # largely a static property of the cell. An honest bar has to be an actual alternative
+    # PREDICTOR, so: interpolate the observed z in space AND time from training rows only.
+    #
+    # It must use DESK's functional (a dot product of ESK-space vectors). A Ruzicka-based bar
+    # would be scored in truth's own metric while DESK is not, and that mismatch alone was
+    # measured at -0.28 on a temporally-neutral model.
+    Z_idw_rows = idw_rows if idw_rows is not None else build_spacetime_bar(
+        config, keys, X_raw_all, Ze.shape[1])
+
+    Ze_idw = Zm_idw = None
+    if Z_idw_rows is not None:
+        # Averaged over the SAME epoch rows as DESK, through the same epoch_mean_z, so a
+        # difference between model and bar is never an averaging artifact.
+        Ze_idw = epoch_mean_z(Z_idw_rows[np.array([i for r in e_rows for i in r])],
+                              _reindex_row_lists(e_rows))
+        Zm_idw = epoch_mean_z(Z_idw_rows[np.array([i for r in m_rows for i in r])],
+                              _reindex_row_lists(m_rows))
+
+    # The ceiling: project the OBSERVED epoch communities through the same pinned ESK basis.
+    # Now admissible on raw BBS -- run_spacetime_esk fits the basis on target_points_dir
+    # (= bbs_points), so the landmarks are already at raw-BBS magnitude and there is no
+    # BBS->eBird scale factor to invent. project_points_to_z is the single source of truth for
+    # z_obs, shared with the trainer and with validate_spacetime.
+    sc_esk = None
+    try:
+        from .esk_kernel import project_points_to_z
+        _zd = config["desk"]["z_dir"]
+        Ze_o = project_points_to_z(Xe, _zd, Ze.shape[1])
+        Zm_o = project_points_to_z(Xm, _zd, Zm.shape[1])
+        if Ze_o is not None and Zm_o is not None:
+            sc_esk = (Ze_o, Zm_o)
+            print(f"[bbs-routes] ESK oracle available: projected observed epoch communities "
+                  f"into {_zd} (median ||z_obs||^2 early/modern "
+                  f"{float(np.median((Ze_o ** 2).sum(1))):.4f}/"
+                  f"{float(np.median((Zm_o ** 2).sum(1))):.4f}; contract 1.0)")
+        else:
+            print("[bbs-routes] ESK oracle unavailable: no saved projection in "
+                  f"{_zd}; the self_change ceiling cannot be measured this run")
+    except Exception as exc:                      # diagnostic only; never block the analysis
+        print(f"[bbs-routes] ESK oracle unavailable ({exc})")
+
     finite = np.isfinite(Ze).all(1) & np.isfinite(Zm).all(1)
+    if sc_esk is not None:
+        finite &= np.isfinite(sc_esk[0]).all(1) & np.isfinite(sc_esk[1]).all(1)
     if not finite.all():
-        print(f"[bbs-routes] epoch: dropping {int((~finite).sum())} cells with non-finite DESK z")
+        print(f"[bbs-routes] epoch: dropping {int((~finite).sum())} cells with non-finite z")
         cells, Xe, Xm, Ze, Zm = cells[finite], Xe[finite], Xm[finite], Ze[finite], Zm[finite]
+        if sc_esk is not None:
+            sc_esk = (sc_esk[0][finite], sc_esk[1][finite])
+        if Ze_idw is not None:
+            Ze_idw, Zm_idw = Ze_idw[finite], Zm_idw[finite]
     if cells.shape[0] < 5:
         print("[bbs-routes] epoch analysis SKIPPED: too few cells after the finite-z filter")
         return None
@@ -866,6 +1108,7 @@ def _run_epoch_analysis(config, keys, X_raw_all, cells, e_rows, m_rows, gate_sta
 
     t0 = time.perf_counter()
     rep, per_cell = epoch_neighborhood_analysis(Xe, Xm, Ze, Zm, xy, k=k, n_bins=n_bins,
+                                                sc_esk=sc_esk, sc_idw=(Ze_idw, Zm_idw),
                                                 is_heldout=is_ho)
     rep["gate"] = gate_stats
     rep["desk"] = zmeta
@@ -1125,9 +1368,37 @@ def run(config=None, n_sample=4000, seed=0):
         X_s, keys_s, X_nc_s = X_s[finite], keys_s[finite], X_nc_s[finite]
         Z_s, Z_nc, is_ho = Z_s[finite], Z_nc[finite], is_ho[finite]
 
+    # ONE bar for the whole module: the pooled matrices below and the epoch analysis at the end
+    # both take it, so they cannot end up scored against different alternatives.
+    #
+    # Built in FULL row space (keys_all), because that is the space X_raw_all lives in and the
+    # space the epoch analysis indexes -- the same split the site gate creates and that has bitten
+    # here before ("IndexError at 110878 vs size 110839"). The pooled path indexes down through
+    # sel_full, then through `finite`, in that order, to land on Z_s's rows.
+    idw_rows = build_spacetime_bar(config, keys_all, X_raw_all, Z_s.shape[1])
+    Z_idw_s = None
+    if idw_rows is not None:
+        Z_idw_s = idw_rows[sel_full]
+        if not finite.all():
+            Z_idw_s = Z_idw_s[finite]
+        fin_bar = np.isfinite(Z_idw_s).all(1)
+        if fin_bar.sum() < max(8, int(0.2 * len(Z_idw_s))):
+            print(f"[bbs-routes] spacetime-IDW bar reaches only {int(fin_bar.sum())}/"
+                  f"{len(Z_idw_s)} sampled rows; too thin to score the pooled matrices against")
+            Z_idw_s = None
+        else:
+            # Unreachable rows would poison a Gram matrix, and dropping them here would put the
+            # bar on a different row set from DESK. Fill with the no-change vector instead: the
+            # bar then degrades TOWARD the null exactly where it cannot reach, which is the
+            # conservative direction (it can only make the bar weaker, never stronger).
+            Z_idw_s = np.where(fin_bar[:, None], Z_idw_s, Z_nc)
+            print(f"[bbs-routes] pooled IDW bar: {int((~fin_bar).sum())} unreachable rows filled "
+                  f"with the no-change vector (conservative -- weakens the bar, never strengthens)")
+
     S_true = ruzicka_rect(X_s, X_s)
     S_desk, S_nc = dot_gram(Z_s), dot_gram(Z_nc)             # THE contract: dot ~= Ruzicka
-    S_desk_cos, S_nc_cos = cosine_gram(Z_s), cosine_gram(Z_nc)   # secondary, norm-free
+    S_idw = dot_gram(Z_idw_s) if Z_idw_s is not None else None
+    S_desk_cos, S_nc_cos = cosine_gram(Z_s), cosine_gram(Z_nc)   # the ANGULAR half; see docstring
     S_nc_obs = ruzicka_rect(X_nc_s, X_nc_s)                  # achievable-ceiling reference
 
     # Is the kernel contract even holding on this data? ||z||^2 should be ~1 and the dot should
@@ -1179,9 +1450,18 @@ def run(config=None, n_sample=4000, seed=0):
                 continue
             ix = np.where(m)[0]
             g = np.ix_(ix, ix)
-            report["buckets"][f"{sname}/{wname}"] = bucket_metrics(
+            row = bucket_metrics(
                 S_true[g], S_desk[g], S_nc[g], S_nc_obs=S_nc_obs[g],
                 S_desk_cos=S_desk_cos[g], S_nc_cos=S_nc_cos[g])
+            if S_idw is not None:
+                # DESK against the BAR, and the bar against the null, in the same row. The two
+                # together say WHICH claim holds: "better than assuming stasis" is nearly free,
+                # "better than interpolating in space and time" is the one that means something.
+                row["rmse_skill_vs_idw"] = bucket_metrics(
+                    S_true[g], S_desk[g], S_idw[g])["rmse_skill"]
+                row["idw_rmse_skill_vs_nochange"] = bucket_metrics(
+                    S_true[g], S_idw[g], S_nc[g])["rmse_skill"]
+            report["buckets"][f"{sname}/{wname}"] = row
 
     out_dir = config["paths"]["desk_output_dir"]
     os.makedirs(out_dir, exist_ok=True)
@@ -1191,11 +1471,12 @@ def run(config=None, n_sample=4000, seed=0):
     np.savez_compressed(os.path.join(out_dir, "bbs_route_validation.npz"),
                         keys=keys_s, S_true=S_true.astype("float32"),
                         S_desk=S_desk.astype("float32"), S_nc=S_nc.astype("float32"),
-                        S_nc_obs=S_nc_obs.astype("float32"), is_heldout=is_ho)
+                        S_nc_obs=S_nc_obs.astype("float32"), is_heldout=is_ho,
+                        **({"S_idw": S_idw.astype("float32")} if S_idw is not None else {}))
 
     # ---- epoch x local-neighbourhood analysis (separate outputs, same encode pass)
     ep_report = _run_epoch_analysis(config, keys_all, X_raw_all, ep_cells, ep_e_rows, ep_m_rows,
-                                    ep_stats, _gather, zmeta, out_dir)
+                                    ep_stats, _gather, zmeta, out_dir, idw_rows=idw_rows)
 
     b0 = next((v for v in report["buckets"].values() if "observed_sd" in v), None)
     if b0:

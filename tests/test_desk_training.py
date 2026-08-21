@@ -479,6 +479,10 @@ def test_rotation_diagnostic_reads_a_known_angle():
         text)) == 3, text
     # the MSE-calibration ratio rot/dcos^2 is reported (diagnostic only, never optimized)
     assert len(re.findall(r"cal (?:[\d.]+|nan|inf)", text)) == 3, text
+    # and the MAGNITUDE half of the same pairs: rot/dcos/cal are all angular, so without this
+    # the line accounts for only one of the two terms of the error and cannot separate "moved the
+    # wrong way" from "barely moved".
+    assert len(re.findall(r"mag tr (?:[\d.]+|nan) va (?:[\d.]+|nan)", text)) == 3, text
     print("rotation diagnostic reads a known angle OK")
 
 
@@ -940,3 +944,26 @@ def test_the_withheld_split_follows_the_train_mask_not_a_passed_list():
     txt = _tiny_ema_run(tgt_extra=_withhold(2021))
     spt = re.findall(r"va\(sp\+t\) ([\d.]+|nan)", txt)
     assert spt and all(v != "nan" for v in spt), txt
+
+
+def test_a_leaky_community_point_set_is_refused():
+    """The focal species must never be in the community it is regressed on: Z would encode its own
+    target and the circularity would be invisible, because every metric would still look
+    plausible. Two independent filters keep it out today, but they key on DIFFERENT identifiers
+    (an Avibase ID in avonet, an eBird code in read_community_codes), so one could silently retire
+    while the other kept working. This asserts on the artifact actually being trained."""
+    import pytest
+
+    from src.community_encoder.train_DESK.desk_training import assert_focal_excluded
+
+    clean = {"species": ["lesgol", "balori", "houspa"]}
+    assert assert_focal_excluded(clean, "houfin") == 3
+
+    with pytest.raises(ValueError, match="circular"):
+        assert_focal_excluded({"species": ["lesgol", "houfin"]}, "houfin")
+    # case and whitespace must not be a way past it
+    with pytest.raises(ValueError, match="circular"):
+        assert_focal_excluded({"species": ["lesgol", " HOUFIN "]}, "houfin")
+    # a missing species list or focal code is a DIFFERENT failure and must not read as leakage
+    assert assert_focal_excluded({}, "houfin") is None
+    assert assert_focal_excluded(clean, "") is None

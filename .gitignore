@@ -23,3 +23,6 @@ docs/img
 houfin_*.o*
 houfin_*.e*
 gpu_*.csv
+# Pulled run outputs (reports + job logs scp'd off TACC). Data artifacts, not source --
+# processed outputs live under $HOUFIN_PROCESSED, never inside the repo.
+results/

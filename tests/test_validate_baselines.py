@@ -432,7 +432,19 @@ def test_half_width_zero_reproduces_the_single_year_panel_exactly():
     kw = dict(epochs=(1970, 2005), verbose=False)
     a = epoch_direction_panel(pidx, None, z_obs, z_model, holdout, buf, **kw)
     b = epoch_direction_panel(pidx, None, z_obs, z_model, holdout, buf, half_width=0, **kw)
-    assert a["pairs"] == b["pairs"]
+
+    def same(x, y):
+        """Plain == fails on NaN fields (nan != nan), and rows legitimately carry NaN wherever a
+        bar is unavailable -- so compare NaN-aware rather than weakening the assertion."""
+        if isinstance(x, float) and isinstance(y, float):
+            return (np.isnan(x) and np.isnan(y)) or x == y
+        return x == y
+
+    assert set(a["pairs"]) == set(b["pairs"])
+    for key, row in a["pairs"].items():
+        assert set(row) == set(b["pairs"][key]), key
+        for f, v in row.items():
+            assert same(v, b["pairs"][key][f]), (key, f, v, b["pairs"][key][f])
     assert a["pairs"]["1970_2005"]["mean_window_depth"] == 1.0    # one year per endpoint
 
 
@@ -678,3 +690,180 @@ def test_a_boundary_anisotropy_is_flagged_as_censored():
     out = buf.getvalue()
     assert ratio == min(SPACETIME_RATIOS), (ratio, out)
     assert "WARNING" in out and "LOW end of the grid" in out, out
+
+
+def _atten_points(era_start, n_cells, span, noise, seed, trend=0.30, dims=4):
+    """Cells whose records all START at era_start and run for `span` years, with known noise."""
+    rng = np.random.default_rng(seed)
+    v = np.zeros(dims); v[0] = 1.0
+    rows, z = [], []
+    for c in range(n_cells):
+        for t in range(span + 1):
+            rows.append([0, c, era_start + t])
+            z.append(v * trend * t + rng.normal(scale=noise, size=dims))
+    return np.array(rows, dtype=np.int32), np.stack(z).astype("float32")
+
+
+def test_attenuation_is_controlled_for_record_length():
+    """The bug this replaced: binning an era on a cell's FIRST survey year while taking the long
+    baseline from that cell's FULL span makes span vary with era by construction. A longer record
+    accumulates more real change, so long_sq grows and the attenuation figure rises -- the table
+    then ranks RECORD LENGTH, not era noisiness. Two eras with identical noise and identical
+    trend, differing only in how long their records run, must report the same attenuation."""
+    from src.community_encoder.train_DESK.validate_baselines import per_era_attenuation
+    # same noise, same per-year trend; the 1960s cells are surveyed for 50 yr, the 1990s for 25
+    p_long, z_long = _atten_points(1960, 60, 50, noise=0.5, seed=0)
+    p_short, z_short = _atten_points(1990, 60, 25, noise=0.5, seed=1)
+    pidx = np.vstack([p_long, p_short])
+    pidx[len(p_long):, 1] += 100                      # keep the two eras on disjoint cells
+    z = np.vstack([z_long, z_short])
+    out = per_era_attenuation(pidx, z, era_width=10, min_pairs=10)
+    a60, a90 = out["1960s"]["dir_cos_attenuation"], out["1990s"]["dir_cos_attenuation"]
+    assert abs(a60 - a90) < 0.05, (a60, a90)          # record length must not move it
+    # and the long baseline really is the fixed gap, not the cell's span
+    assert out["1960s"]["gap_years"] == out["1990s"]["gap_years"] == 20
+
+
+def test_attenuation_recovers_the_analytic_value_per_era():
+    """Having controlled span, the estimator must still measure a genuine noise difference -- and
+    measure it CORRECTLY, not merely order it. With a per-year trend g over a fixed gap G and
+    per-component noise s in D dims, tau^2 = (g*G)^2 and the noise contributes 2*D*s^2, so the
+    attenuation is sqrt(tau^2 / (tau^2 + 2*D*s^2)) in closed form."""
+    from src.community_encoder.train_DESK.validate_baselines import (
+        ATTEN_GAP, per_era_attenuation)
+    g, D = 0.30, 4
+    p_quiet, z_quiet = _atten_points(1960, 60, 30, noise=0.2, seed=2, trend=g, dims=D)
+    p_noisy, z_noisy = _atten_points(1990, 60, 30, noise=0.9, seed=3, trend=g, dims=D)
+    pidx = np.vstack([p_quiet, p_noisy])
+    pidx[len(p_quiet):, 1] += 100                     # disjoint cells per era
+    z = np.vstack([z_quiet, z_noisy])
+    out = per_era_attenuation(pidx, z, era_width=10, min_pairs=10)
+
+    def expected(s):
+        tau2 = (g * ATTEN_GAP) ** 2
+        return float(np.sqrt(tau2 / (tau2 + 2 * D * s ** 2)))
+
+    for era, s in (("1960s", 0.2), ("1990s", 0.9)):
+        got = out[era]["dir_cos_attenuation"]
+        assert abs(got - expected(s)) < 0.02, (era, got, expected(s))
+    # and the noisier era is the more attenuated one
+    assert out["1960s"]["dir_cos_attenuation"] > out["1990s"]["dir_cos_attenuation"], out
+
+
+def test_the_error_decomposition_is_exact():
+    """The identity everything in the magnitude/angular reporting rests on. If magnitude and
+    angular do not sum to the total, every derived reading -- cal, the shrinkage profile, the
+    epoch panel's attribution -- is measuring something other than it claims."""
+    from src.community_encoder.train_DESK.validate_baselines import error_decomposition
+    rng = np.random.default_rng(0)
+    a, b = rng.normal(size=(200, 9)), rng.normal(size=(200, 9))
+    total, mag, ang, cos = error_decomposition(a, b)
+    assert np.allclose(mag + ang, total, rtol=0, atol=1e-9)
+    assert np.allclose(total, np.sum((a - b) ** 2, axis=-1))
+    # the angular term must match its closed form where cos is defined
+    na, nb = np.linalg.norm(a, axis=-1), np.linalg.norm(b, axis=-1)
+    assert np.allclose(ang, 2 * na * nb * (1 - cos), rtol=0, atol=1e-9)
+
+
+def test_the_decomposition_survives_a_zero_length_prediction():
+    """A shrunk-to-nothing prediction is exactly the failure mode the magnitude term exists to
+    expose, so it must not produce a NaN total or break the identity."""
+    from src.community_encoder.train_DESK.validate_baselines import error_decomposition
+    a = np.array([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]])
+    b = np.array([[3.0, 4.0, 0.0], [1.0, 0.0, 0.0]])
+    total, mag, ang, cos = error_decomposition(a, b)
+    assert np.allclose(mag + ang, total)
+    assert np.isclose(total[0], 25.0) and np.isclose(mag[0], 25.0) and np.isclose(ang[0], 0.0)
+    assert np.isnan(cos[0])                      # undefined direction, reported as such
+    assert np.isclose(total[1], 0.0) and np.isclose(cos[1], 1.0)
+
+
+def test_shrinkage_is_the_mse_optimal_answer_to_a_poor_angle():
+    """Pins the trade-off the decomposition makes visible: at a fixed direction cosine rho, the
+    total is minimised at ||a|| = rho*||b||. This is where rot ~ dcos^2 comes from, and why
+    reporting an angle alone cannot explain an error."""
+    from src.community_encoder.train_DESK.validate_baselines import error_decomposition
+    rng = np.random.default_rng(1)
+    b = rng.normal(size=12); b /= np.linalg.norm(b)
+    perp = rng.normal(size=12); perp -= (perp @ b) * b; perp /= np.linalg.norm(perp)
+    for rho in (0.2, 0.5, 0.8):
+        u = rho * b + np.sqrt(1 - rho ** 2) * perp        # unit vector at cosine rho to b
+        scales = np.linspace(0.01, 2.0, 4000)
+        totals = error_decomposition(scales[:, None] * u[None, :],
+                                     np.broadcast_to(b, (len(scales), 12)))[0]
+        assert abs(scales[np.argmin(totals)] - rho) < 0.01, (rho, scales[np.argmin(totals)])
+
+
+def test_the_epoch_panel_reports_the_magnitude_half_not_just_the_angle():
+    """dir-cos is one half of an exact split of the change-vector error. Reported alone it cannot
+    tell "moved the wrong way" from "barely moved" -- and those are different models, because
+    under-moving is the MSE-optimal response to a poor angle. Two predictions with the SAME
+    dir-cos and very different magnitudes must be distinguishable in the report."""
+    from src.community_encoder.train_DESK.validate_baselines import epoch_direction_panel
+    rng = np.random.default_rng(0)
+    years = (1970, 2020)
+    cells = 40
+    pidx = np.array([[1, i, y] for i in range(cells) for y in years], dtype=np.int32)
+    ho = np.ones((2, cells), bool); bf = np.zeros((2, cells), bool)
+
+    def panel(scale):
+        z_obs, model = [], {}
+        for i in range(cells):
+            d = rng.normal(size=4); d /= np.linalg.norm(d)
+            off = rng.normal(size=4) * 0.35                   # fixed angular error budget
+            for y in years:
+                z_obs.append(d * (1.0 if y > 2000 else -1.0))
+            # model change = scale * (truth direction + the same angular perturbation)
+            model[(1, i, years[0])] = -(d + off) * scale / 2.0
+            model[(1, i, years[1])] = (d + off) * scale / 2.0
+        zo = np.stack(z_obs).astype("float32")
+        return epoch_direction_panel(pidx, None, zo, model, ho, bf, epochs=years,
+                                     verbose=False)["pairs"]["1970_2020"]
+
+    small, big = panel(0.2), panel(2.0)
+    # same direction error, so the ANGLE is unchanged and cannot separate them...
+    assert abs(small["model_dir_cos"] - big["model_dir_cos"]) < 0.02, (small, big)
+    # ...but the magnitude half does, which is the whole point of reporting it
+    assert big["change_magnitude_ratio"] > 5 * small["change_magnitude_ratio"]
+    # The SHARE is large exactly when the magnitude is WRONG: `small` barely moves (ratio ~0.1)
+    # so its error is almost all magnitude, while `big` is scaled about right (ratio ~1.1) and
+    # its error is mostly angular. So the badly-scaled one carries the larger magnitude share.
+    assert small["err_magnitude_share"] > 0.8, small
+    assert big["err_magnitude_share"] < 0.5, big
+    # the two shares must partition the error
+    for r in (small, big):
+        assert abs(r["err_magnitude_share"] + r["err_angular_share"] - 1.0) < 1e-9
+
+
+def test_the_spacetime_bar_reaches_epochs_the_spatial_bar_cannot():
+    """The per-epoch spatial bar needs training cells IN that year, so it goes n/a for any epoch
+    inside the temporal holdout -- which is precisely the deep-past epoch the experiment exists to
+    measure. Those pairs therefore had no bar at all. The spacetime bar borrows across years too,
+    so it must produce a finite value exactly where the spatial one cannot."""
+    from src.community_encoder.train_DESK.validate_baselines import epoch_direction_panel
+    epochs, withheld = (1970, 2020), [1970]
+    rng = np.random.default_rng(0)
+    rows = []
+    for i in range(30):
+        rows += [[0, i, 1970], [0, i, 2020], [1, i, 1970], [1, i, 2020]]
+    pidx = np.array(rows, dtype=np.int32)
+    ho = np.zeros((2, 30), bool); ho[1, :] = True
+    bf = np.zeros((2, 30), bool)
+    z_obs = rng.normal(size=(len(pidx), 4)).astype("float32")
+    z_model = {(int(r), int(c), int(y)): z_obs[i] for i, (r, c, y) in enumerate(pidx)}
+    z_st = rng.normal(size=(len(pidx), 4)).astype("float32")     # a stand-in bar at every row
+    kw = dict(epochs=epochs, verbose=False, exclude_years=withheld)
+
+    without = epoch_direction_panel(pidx, None, z_obs, z_model, ho, bf, **kw)
+    with_bar = epoch_direction_panel(pidx, None, z_obs, z_model, ho, bf,
+                                     z_spacetime=z_st, **kw)
+    k = "1970_2020"
+    # the spatial bar is unavailable in both -- 1970 is withheld
+    assert not np.isfinite(without["pairs"][k]["idw_dir_cos"])
+    assert not np.isfinite(with_bar["pairs"][k]["idw_dir_cos"])
+    # but the spacetime bar reaches it
+    assert not np.isfinite(without["pairs"][k]["spacetime_idw_dir_cos"])
+    assert np.isfinite(with_bar["pairs"][k]["spacetime_idw_dir_cos"]), with_bar["pairs"][k]
+    # and adding a bar must not perturb the model's own numbers
+    assert without["pairs"][k]["model_dir_cos"] == with_bar["pairs"][k]["model_dir_cos"]
+    assert without["pairs"][k]["n"] == with_bar["pairs"][k]["n"]

@@ -802,3 +802,166 @@ def test_run_averages_the_right_rows_when_the_site_gate_shifts_indices(tmp_path,
     X_expect = V.epoch_mean_observed(
         X_arr, [groups[by_key[(int(r), int(c), int(y))]] for r, c, y in ks])
     assert np.allclose(ruzicka_rect(X_expect, X_expect), S_true, atol=1e-5)
+
+
+def test_the_esk_oracle_detects_a_high_ceiling():
+    """The oracle must be able to report a HIGH ceiling, or a low reading is uninformative -- it
+    could mean the diagnostic is broken rather than the basis being unable to carry temporal
+    change. Constructed so the projection reproduces observed similarity by design: with z set
+    to the (L2-normalised) community itself, z(a).z(b) is the cosine, which is monotone in
+    Ruzicka across these rows, so the oracle's correlation must be ~1."""
+    from src.community_encoder.train_DESK.validate_bbs_routes import (
+        epoch_neighborhood_analysis)
+    from src.community_encoder.train_DESK.validate_bbs_routes import _rowwise_ruzicka
+    rng = np.random.default_rng(0)
+    n, S = 60, 8
+    Xe = np.abs(rng.normal(size=(n, S))) + 0.05
+    Xm = np.abs(rng.normal(size=(n, S))) + 0.05             # genuinely different modern community
+    # Build the oracle so its rowwise dot IS the observed Ruzicka. Normalising the communities
+    # would NOT do this: for Xm = c*Xe the cosine is 1 for every c while Ruzicka is min(c, 1/c),
+    # so a unit-normalised "oracle" carries none of the magnitude information Ruzicka depends on
+    # (measured: pearson 0.17). Ruzicka is PD but has no convenient closed-form feature map, so
+    # construct the target directly -- the point is to prove the DIAGNOSTIC reports ~1 when the
+    # oracle's dot equals observed similarity, not to re-derive that feature map.
+    sc = _rowwise_ruzicka(Xe, Xm)
+    e1 = np.zeros(S); e1[0] = 1.0
+    Ze_o = np.sqrt(sc)[:, None] * e1[None, :]
+    Zm_o = Ze_o.copy()                                      # dot == sc exactly
+    Zd = rng.normal(size=(n, S)) * 0.01                     # DESK: noise, so it must score ~0
+    xy = np.stack([np.arange(n) * 30000.0, np.zeros(n)], 1)
+    rep, _pc = epoch_neighborhood_analysis(Xe, Xm, Zd, Zd, xy, k=8, n_bins=2,
+                                           sc_esk=(Ze_o, Zm_o))
+    assert "self_change_esk_oracle" in rep["types"], sorted(rep["types"])
+    orc = rep["types"]["self_change_esk_oracle"]["pooled"]["all_distances"]
+    assert orc["pearson_desk"] > 0.9, orc["pearson_desk"]
+    # and the CI must be present and finite, since this is what a real reading needs
+    assert np.isfinite(orc["ci95"]["lo"]) and np.isfinite(orc["ci95"]["hi"]), orc["ci95"]
+
+
+def test_self_change_ci_resamples_cells_not_pairs():
+    """Pairs from N rows number ~N^2/2 but are massively correlated, so an interval computed over
+    pairs would be far too narrow. Resampling the ~1950 independent focal cells is the honest
+    unit -- and a small sample must produce a WIDE interval rather than a confident one."""
+    from src.community_encoder.train_DESK.validate_bbs_routes import bootstrap_skill_ci
+    rng = np.random.default_rng(0)
+    obs = rng.normal(size=400)
+    null = np.zeros(400)
+    pred = obs * 0.5 + rng.normal(scale=0.5, size=400)
+    wide = bootstrap_skill_ci(obs[:25], pred[:25], null[:25])
+    tight = bootstrap_skill_ci(obs, pred, null)
+    assert wide["n"] == 25 and tight["n"] == 400
+    assert (wide["hi"] - wide["lo"]) > (tight["hi"] - tight["lo"]), (wide, tight)
+    # the interval must bracket its own point estimate
+    for r in (wide, tight):
+        assert r["lo"] <= r["skill"] <= r["hi"], r
+    # too few elements: refuse rather than emit a confident-looking interval
+    assert not np.isfinite(bootstrap_skill_ci(obs[:4], pred[:4], null[:4])["lo"])
+
+
+def test_the_idw_bar_is_scored_in_desks_own_functional():
+    """The bar must be a dot product of ESK-space vectors, like DESK. A Ruzicka-based bar would be
+    scored in truth's own metric while DESK is not, and this module records that the mismatch
+    alone was worth -0.28 on a temporally-neutral model. Verified structurally: feeding the bar
+    DESK's OWN vectors must make the DESK-vs-bar skill exactly 0 -- only possible if both sides go
+    through the same functional."""
+    from src.community_encoder.train_DESK.validate_bbs_routes import (
+        epoch_neighborhood_analysis)
+    rng = np.random.default_rng(0)
+    n, S = 40, 6
+    Xe = np.abs(rng.normal(size=(n, S))) + 0.05
+    Xm = np.abs(rng.normal(size=(n, S))) + 0.05
+    Ze = rng.normal(size=(n, S))
+    Zm = rng.normal(size=(n, S))
+    xy = np.stack([np.arange(n) * 30000.0, np.zeros(n)], 1)
+    rep, _ = epoch_neighborhood_analysis(Xe, Xm, Ze, Zm, xy, k=8, n_bins=2,
+                                         sc_idw=(Ze, Zm))          # bar := DESK itself
+    sc = rep["types"]["self_change_vs_idw"]["pooled"]["all_distances"]
+    assert abs(sc["rmse_skill"]) < 1e-9, sc["rmse_skill"]
+    for t in ("spatial_early", "spatial_modern", "cross_time"):
+        row = rep["types"][t]["pooled"]["all_distances"]
+        assert abs(row["vs_idw"]) < 1e-9, (t, row["vs_idw"])
+
+
+def test_a_better_bar_lowers_desks_skill():
+    """Sanity on direction: replacing the free null with a bar that genuinely predicts must make
+    DESK look WORSE, not better. If the sign came out the other way the bar would be decorative."""
+    from src.community_encoder.train_DESK.validate_bbs_routes import (
+        _rowwise_ruzicka, epoch_neighborhood_analysis)
+    rng = np.random.default_rng(1)
+    n, S = 60, 6
+    Xe = np.abs(rng.normal(size=(n, S))) + 0.05
+    Xm = np.abs(rng.normal(size=(n, S))) + 0.05
+    sc = _rowwise_ruzicka(Xe, Xm)
+    e1 = np.zeros(S); e1[0] = 1.0
+    # a near-oracle bar, and a DESK that is mostly noise
+    good = (np.sqrt(sc)[:, None] * e1[None, :])
+    Zd = rng.normal(size=(n, S)) * 0.05
+    xy = np.stack([np.arange(n) * 30000.0, np.zeros(n)], 1)
+    rep, _ = epoch_neighborhood_analysis(Xe, Xm, Zd, Zd, xy, k=8, n_bins=2, sc_idw=(good, good))
+    vs_null = rep["types"]["self_change"]["pooled"]["all_distances"]["rmse_skill"]
+    vs_idw = rep["types"]["self_change_vs_idw"]["pooled"]["all_distances"]["rmse_skill"]
+    assert vs_idw < vs_null, (vs_idw, vs_null)
+    # and the bar must be recorded as beating the null, since it does
+    assert rep["types"]["self_change_vs_idw"]["pooled"]["all_distances"]["idw_vs_null"] > 0
+
+
+def test_the_pooled_bar_is_built_in_full_row_space(tmp_path, monkeypatch):
+    """The bar is built on keys_all (full rows, matching X_raw_all) while the pooled matrices are
+    bookkept post-gate, so run() must index down through sel_full and then `finite`. Getting that
+    wrong scores DESK against some other row's interpolation -- plausible numbers, no error. The
+    site gate drops cells FIRST here so the two index spaces genuinely differ."""
+    from src.community_encoder.train_DESK import validate_bbs_routes as V
+
+    n_species = 4
+    rng = np.random.default_rng(5)
+    keys, rows = [], []
+    for c in range(6):                       # dropped by the site gate (no modern survey)
+        for y in (1968, 1975, 1982):
+            keys.append([0, c, y]); rows.append(rng.random(n_species) * 5)
+    for c in range(6, 20):                   # survive both gates
+        for y in (1968, 1969, 1975, 2008, 2015, 2022):
+            keys.append([0, c, y]); rows.append(rng.random(n_species) * 5)
+    keys = np.array(keys, dtype="int32")
+    X_arr = np.array(rows)
+
+    desk = tmp_path / "desk"; desk.mkdir()
+    np.save(desk / "holdout_cells.npy", np.zeros((4, 30), bool))
+    cfg = {"trend": {"points_dir": str(tmp_path)}, "paths": {"desk_output_dir": str(desk)},
+           "desk": {"z_dir": str(tmp_path / "nozdir")}}      # no projection -> bar unavailable
+    monkeypatch.setattr(V, "load_observed", lambda config: (
+        V.log1p_community(X_arr), keys,
+        {"n_species": n_species, "n_surveyed_cell_years": int(keys.shape[0]),
+         "year_range": [1968, 2022]}, X_arr))
+    A = rng.standard_normal((n_species, 4))
+    monkeypatch.setattr(V, "desk_z_ema", lambda config, k: (
+        np.stack([np.log1p(np.full(n_species, 1.0 + int(y) % 7)) @ A for _, _, y in k]
+                 ).astype("float32"),
+        {"output_ema_applied": True, "ema_half_life": 10.0, "ema_warmup_start": 1940,
+         "encode_years": [1940, 2022]}))
+    import src.config_utils as CU
+    monkeypatch.setattr(CU, "load_data_config", lambda *a, **kw: {"grid": {"ref_raster": "x"}})
+    import src.community_encoder.train_DESK.validate_spacetime as VS
+    monkeypatch.setattr(VS, "cell_xy", lambda r, c, ref: np.stack(
+        [np.asarray(c, float) * 27000.0, np.asarray(r, float) * 27000.0], axis=1))
+
+    rep = V.run(config=cfg, n_sample=50, seed=0)
+    # indices really do shift, so this fixture exercises the mapping
+    assert rep["site_gate"]["rows_total"] - rep["site_gate"]["rows_kept"] == 18
+    # With no saved projection the bar must be absent -- and absent CLEANLY, leaving the
+    # no-change columns intact rather than raising or emitting a half-built row.
+    for name, b in rep["buckets"].items():
+        if "skipped" in b:
+            continue
+        assert "rmse_skill" in b, (name, sorted(b))
+        assert "rmse_skill_vs_idw" not in b, (name, "bar reported without a projection")
+
+
+def test_build_spacetime_bar_returns_none_rather_than_raising():
+    """A missing projection or holdout mask must degrade the report to the no-change null, not
+    take the stage down -- the bar is a diagnostic, and the rest of the module still works."""
+    from src.community_encoder.train_DESK.validate_bbs_routes import build_spacetime_bar
+    keys = np.array([[0, 0, 2000], [0, 1, 2001]], dtype=np.int32)
+    X = np.ones((2, 3))
+    assert build_spacetime_bar({}, keys, X, 4) is None                       # no config keys
+    assert build_spacetime_bar({"desk": {"z_dir": "/nope"},
+                                "paths": {"desk_output_dir": "/nope"}}, keys, X, 4) is None

@@ -132,6 +132,37 @@ def spacetime_metric_pool(pip, Xp, sup_rows, m_tr, W, exclude_years=()):
     return (pip[sel, 2].astype(np.int64), flat_of_row[sel], Xp[sel].astype("float32"))
 
 
+def assert_focal_excluded(points_meta, focal_code):
+    """Refuse a point set whose community contains the FOCAL species. Pure.
+
+    Z is a habitat proxy built from OTHER species and the downstream regresses the focal species
+    on it, so a focal member makes that regression partly a readback of its own target -- and it
+    would be invisible: every metric would still look plausible.
+
+    Two independent filters already keep it out (``avonet`` drops it by ``Avibase.ID1 !=
+    FOCAL_ID``; ``bbs_crosswalk.read_community_codes`` defaults ``exclude`` to
+    ``focal_species_code``), and the shipped artifact is clean. But they key on DIFFERENT
+    identifiers -- an Avibase ID and an eBird species code -- so a taxonomy change could retire
+    one while the other kept working, and neither is covered by a test. This asserts on the
+    artifact actually being trained, which is the only place the two can be checked together.
+
+    No-ops when either the species list or the focal code is unavailable rather than guessing:
+    a missing key is a different failure and should not masquerade as leakage.
+    """
+    sp = (points_meta or {}).get("species")
+    f = str(focal_code or "").strip().lower()
+    if not sp or not f:
+        return None
+    hit = [str(x) for x in sp if str(x).strip().lower() == f]
+    if hit:
+        raise ValueError(
+            f"focal species {f!r} is present in the community point set ({len(sp)} species). "
+            f"Z would encode the downstream's own target, making the regression circular. "
+            f"Rebuild the community (src.data.identify.avonet, then select_trend_community) "
+            f"and check both exclusion layers.")
+    return len(sp)
+
+
 def device_targets(mapping, device):
     """``{year: (zg, mask)}`` as tensors on ``device``, from numpy or tensors.
 
@@ -605,6 +636,28 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
         zt0, zt1 = tgt[y_a][0][m], tgt[y2023][0][m]
         return med(zp0, zp1), med(zt0, zt1)
 
+    def _mag_ratio(z_all, m, y_a=None):
+        """Median ``||dp|| / ||dt||`` for the same pair ``_dir_cos`` scores. The MAGNITUDE half.
+
+        ``rot``, ``dcos`` and ``cal`` are all angular. Squared error splits exactly into a
+        magnitude term and an angular term, so an angle reported alone accounts for only half of
+        it -- and cannot separate "moved the wrong way" from "barely moved". Those are different
+        models: under-moving is the MSE-optimal answer to a poor angle (the minimiser at fixed
+        cosine rho is exactly rho times the truth), so a respectable dcos with a ratio near 0 is
+        a model hedging, not a model succeeding. 1.0 means reproducing the observed amount of
+        change; rho would be MSE-calibrated.
+        """
+        y_a = y_deep if y_a is None else int(y_a)
+        if y_a is None or not bool(m.any()):
+            return float("nan")
+        dp = (z_all[yi[y2023]][m] - z_all[yi[y_a]][m]).detach()
+        dt = tgt[y2023][0][m] - tgt[y_a][0][m]
+        nt = dt.norm(dim=1)
+        ok = nt > 1e-12
+        if not bool(ok.any()):
+            return float("nan")
+        return float(torch.median(dp.norm(dim=1)[ok] / nt[ok]))
+
     def _dir_cos(z_all, m, perm, y_a=None):
         """Median cosine between the PREDICTED and TARGET change vectors, and a permuted null.
 
@@ -831,6 +884,8 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
                     dcH, _ = _dir_cos(z_eval, rot_ho, perm_ho, y_a=y_ho)
                 else:
                     rotPh = rotTh = dcH = float("nan")
+                # the magnitude half of the same pairs the angles above score
+                mgT, mgV = _mag_ratio(z_eval, rot_tr), _mag_ratio(z_eval, rot_va)
         dt = time.perf_counter() - t_ep
         rss = _max_rss_gib()
         vram = (f" | VRAM {torch.cuda.max_memory_allocated() / 2**30:.2f}/"
@@ -861,7 +916,7 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
               f"Val(2025) {vs_anchor:.4f} | Val(yr-out) {vs_time:.4f} | "
               f"rot tr {rr:.2f} va {rrv:.2f} ho {rrh:.2f} (raw {rawr:.2f}/{rawrv:.2f}) | "
               f"dcos tr {dcT:.2f} va {dcV:.2f} ho {dcH:.2f} null {dcTn:+.2f}/{dcVn:+.2f} | "
-              f"cal {cal:.1f} | "
+              f"mag tr {mgT:.2f} va {mgV:.2f} | cal {cal:.1f} | "
               f"half-life {ema.half_life().item():.1f}y | "
               f"mix {w_stab.item()/tot:.2f}/{w_true.item()/tot:.2f}/{w_rec.item()/tot:.2f} | "
               f"lr {opt.param_groups[0]['lr']:.2e} | {dt:.1f}s{vram} | RSS {rss:.1f}G", flush=True)
@@ -919,8 +974,13 @@ def run_desk_experiment(config=None):
     points_dir = target_points_dir(config)
     Xp, pip, p_weights, p_supervise = load_point_set(points_dir)
     pm = json.load(open(os.path.join(points_dir, "points_meta.json")))
+    # Fail before training rather than after: a leaky community produces plausible-looking
+    # numbers throughout, so there is no downstream symptom to catch it by.
+    from src.config_utils import load_data_config as _ldc
+    _n_sp = assert_focal_excluded(pm, (_ldc() or {}).get("focal_species_code"))
     print(f"[desk] target: {pm.get('target_source', 'trend_products')} from {points_dir} "
-          f"({Xp.shape[0]:,} rows, {int(p_supervise.sum()):,} supervised)", flush=True)
+          f"({Xp.shape[0]:,} rows, {int(p_supervise.sum()):,} supervised"
+          + (f"; {_n_sp} species, focal excluded" if _n_sp else "") + ")", flush=True)
     ay, S = int(pm["recent_year"]), int(pm["n_species"])
     H, W = cov_stack.shape[:2]
     # There is no anchor YEAR any more. The metric loss used to read one year's community

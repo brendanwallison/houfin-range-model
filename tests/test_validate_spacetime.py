@@ -57,3 +57,40 @@ def test_every_desk_z_ema_call_site_unpacks_two_values():
                 offenders.append(f"{path.name}:{node.lineno}")
     assert not offenders, ("desk_z_ema returns (Z, metadata); these bind it to one name: "
                           + ", ".join(offenders))
+
+
+def test_shrinkage_profile_separates_a_uniform_rescale_from_a_tilt():
+    """The distinction the whole diagnostic exists for. A uniform norm deficit is harmless -- the
+    downstream's fitted w_env absorbs a constant rescale -- while shrinkage concentrated in the
+    low-eigenvalue directions tilts the kernel toward spatial similarity and distorts the GP
+    prior. Aggregate ||z||^2 is identical in both cases, so only the per-dimension profile can
+    tell them apart.
+
+    Also pins the companion fact: a uniform rescale puts ALL the error in the magnitude term,
+    because scaling a vector cannot change its direction. If a flat profile ever came with a
+    non-zero angular share, the decomposition would be mis-wired.
+    """
+    import numpy as np
+
+    from src.community_encoder.train_DESK.validate_baselines import error_decomposition
+
+    rng = np.random.default_rng(0)
+    n, L = 3000, 32
+    z_obs = rng.normal(size=(n, L)) * np.linspace(1.0, 0.3, L)     # eigen-ordered variance
+
+    def profile(scale):
+        z_desk = z_obs * scale
+        tot, mag, ang, _cos = error_decomposition(z_desk, z_obs)
+        assert np.allclose(mag + ang, tot, atol=1e-9)              # identity must hold
+        prof = np.var(z_desk, 0) / np.var(z_obs, 0)
+        slope = float(np.polyfit(np.arange(L), prof, 1)[0])
+        return slope, float(np.median(prof)), float(mag.mean() / tot.mean())
+
+    flat_slope, flat_med, flat_mag_share = profile(np.full(L, 0.8))
+    assert abs(flat_slope) < 1e-6, flat_slope
+    assert abs(flat_med - 0.64) < 0.02, flat_med          # variance ratio, so c^2 not c
+    assert flat_mag_share > 0.999, flat_mag_share         # a rescale is pure magnitude error
+
+    tilt_slope, _tilt_med, tilt_mag_share = profile(np.linspace(1.0, 0.2, L))
+    assert tilt_slope < -0.01, tilt_slope                 # clearly negative
+    assert tilt_mag_share < 0.8, tilt_mag_share           # a tilt introduces angular error

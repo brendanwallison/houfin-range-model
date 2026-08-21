@@ -257,25 +257,191 @@ def vector_error(t, p):
             "n": int(t.size)}
 
 
-def pair_metrics(obs, desk, null):
-    """DESK vs the frozen-modern null on flat pair vectors (pure).
+#: WHAT THIS SUITE TESTS, and why -- the map. These four pairings were previously implicit in where
+#: the code happened to call things, which made it possible (and it happened, repeatedly) to add a
+#: predictor or a quantity to some of them and not others, and to propose building a test that
+#: already existed. Every question is evaluated against every predictor in PREDICTOR_ROLES, and
+#: ``assert_complete`` requires a result or a stated reason for each combination.
+QUESTIONS = {
+    "same_cell_over_time": {
+        "pairs": "one cell, early era vs modern era",
+        "observed": "Ruzicka(Xe_i, Xm_i)",
+        "why": ("the temporal question proper -- did THIS place change the way the model says. The "
+                "only pairing where 'did it change correctly' is directly interpretable, and the "
+                "one the downstream kernel has to get right."),
+    },
+    "cross_cell_same_era": {
+        "pairs": "two cells, both early or both modern",
+        "observed": "Ruzicka(Xe_i, Xe_j) / Ruzicka(Xm_i, Xm_j)",
+        "why": ("the spatial control. `spatial_modern` is identical to its own no-change null by "
+                "construction, so its skill must be EXACTLY 0 -- the harness's built-in zero "
+                "check. If it ever moves, no other row can be trusted."),
+    },
+    "cross_cell_cross_time": {
+        "pairs": "historic cell i against modern cell j",
+        "observed": "Ruzicka(Xe_i, Xm_j)",
+        "why": ("the analog question: is a historic community like some modern community "
+                "elsewhere. Distance-resolved, so it also says at what range the resemblance "
+                "holds. Needs the ANGULAR form especially, since the dot form carries the ~34% "
+                "self-similarity deficit and this pairing spans both eras."),
+    },
+    "absolute_position": {
+        "pairs": "one cell-year against its own observation",
+        "observed": "||z_pred - z_obs|| at that cell-year",
+        "why": ("where a place IS, not how it moved. Separating this from "
+                "`same_cell_over_time` is what revealed that DESK can have the direction of "
+                "change right while the absolute position is wrong -- a cell-specific offset "
+                "hurts position and cancels in a difference."),
+    },
+}
 
-    The same primary family ``bucket_metrics`` reports, minus CKA/Mantel (which need a full
-    matrix and have no meaning for a focal-to-neighbour vector). ``rmse_skill`` and
-    ``error_variance_removed`` are the readouts; absolute rmse/bias stay confounded by the log1p
-    scale mismatch, as everywhere in this module.
+#: The predictors every question is graded against. Names are the report's addressing, so they must
+#: not drift: adding one here adds a row to every question automatically, which is the property the
+#: `compare_predictors` refactor exists to buy.
+PREDICTOR_ROLES = {
+    "desk": "the model under test",
+    "spacetime_idw": ("the honest bar -- interpolate observed z in space AND time from training "
+                      "rows only. The no-change null is a decomposition device and nearly free to "
+                      "beat; this is an actual alternative predictor."),
+    "no_change": ("frozen-modern null: the model's own z held at each cell's modern year. Shares "
+                  "DESK's functional, so their difference isolates temporal variation. NOT a "
+                  "competitor."),
+    "esk_oracle": ("ceiling -- the observed community's own projection in place of the model's. "
+                   "Says whether the BASIS can represent the pairing at all, so a weak DESK row "
+                   "can be attributed to the model rather than inherited."),
+}
+
+
+#: Reason recorded when a predictor's inputs were not supplied to a question. A stated reason, not
+#: an absent key -- an absence is invisible, and every gap this suite accumulated was an absence.
+PREDICTOR_UNAVAILABLE_DEFAULT = ("inputs not supplied to this run (bar unbuilt, or oracle refused "
+                                 "its representability gate)")
+
+
+def canonical_question(name):
+    """Map an emitted question key to its registry entry, or None if it belongs to no question.
+
+    A question may be emitted as several INSTANCES -- `cross_cell_same_era` runs once within the
+    early era and once within the modern -- and they share one registry entry because they share
+    one rationale. Matching is by longest registry prefix on a `_` boundary rather than by
+    stripping the last token, so a question whose own name contains underscores
+    (`same_cell_over_time`) cannot be mangled into a prefix that happens to exist.
     """
-    e_d, e_n = vector_error(obs, desk), vector_error(obs, null)
-    ratio = (e_d["rmse"] / e_n["rmse"]) if e_n["rmse"] > 0 else 1.0
-    return {
-        "n_pairs": e_d["n"],
-        "observed_mean": e_d["mean_true"], "observed_sd": e_d["sd_true"],
-        "rmse_desk": e_d["rmse"], "rmse_null": e_n["rmse"],
-        "rmse_skill": 1.0 - ratio, "error_variance_removed": 1.0 - ratio ** 2,
-        "r2_desk": e_d["r2"], "r2_null": e_n["r2"], "r2_gain": e_d["r2"] - e_n["r2"],
-        "bias_desk": e_d["bias"], "bias_null": e_n["bias"],
-        "pearson_desk": e_d["pearson_r"], "pearson_null": e_n["pearson_r"],
-    }
+    if name in QUESTIONS:
+        return name
+    cands = [q for q in QUESTIONS if name.startswith(q + "_")]
+    return max(cands, key=len) if cands else None
+
+
+def assert_complete(results, predictors=tuple(PREDICTOR_ROLES), questions=tuple(QUESTIONS)):
+    """Every (question x predictor) must have a result or a stated reason. Returns the gaps.
+
+    This is the check that makes a silently-missing comparison impossible. Every gap that
+    accumulated in this suite -- the bar reaching the pooled matrices but not the per-distance
+    rows, the decomposition computed for DESK and not the bar, the cosine form present for the
+    pooled matrices and absent from all four epoch types -- would have been caught here, because
+    each was an absent key rather than a wrong number and nothing looked for absences.
+
+    `questions` is the scope the report is RESPONSIBLE for, and callers must pass their own: this
+    module does not produce `absolute_position` (that is `zspace_reconstruction`'s), and a check
+    that flagged it on every run would train the reader to ignore the output -- the exact habit
+    this exists to break. Scope is declared by the report as `covers`, never inferred from what it
+    emitted, which would make the check compare the output to itself and always pass.
+
+    Descends to the leaves. A predictor present in the pooled row but missing from `heldout`, or
+    from one distance bin, is precisely the class of gap that kept recurring, so checking only the
+    top level would reproduce the blind spot.
+    """
+    gaps = []
+    seen = {}
+    for emitted, r in (results or {}).items():
+        q = canonical_question(emitted)
+        if q is None:
+            gaps.append(f"{emitted}: emitted but in no question registry")
+            continue
+        seen.setdefault(q, []).append(emitted)
+        for sname, split in r.items():
+            for bin_label, row in split.items():
+                if "skipped" in row:
+                    continue                       # a stated reason, which is what we require
+                for form in ("dot", "cosine"):
+                    where = f"{emitted}/{sname}/{bin_label}/{form}"
+                    cell = row.get(form)
+                    if cell is None:
+                        gaps.append(f"{where}: quantity absent")
+                        continue
+                    have = set(cell.get("predictors", {})) | set(cell.get("unavailable", {}))
+                    for pname in predictors:
+                        if pname not in have:
+                            gaps.append(f"{where} x {pname}: neither a result nor a reason")
+    for q in questions:
+        if q not in seen:
+            gaps.append(f"{q}: question absent entirely")
+    return gaps
+
+
+def compare_predictors(obs, predictors, reference="no_change", grams=False):
+    """Grade EVERY predictor against one observed truth, on identical terms. Pure.
+
+    ``obs`` is a flat pair vector, or a square Gram when ``grams=True``. ``predictors`` is
+    ``{name: values}`` in the same shape. Returns::
+
+        {"n", "observed_mean", "observed_sd", "reference",
+         "predictors": {name: {rmse, bias, bias_share, pearson_r, r2, calibration_loss,
+                               [cka, mantel]}},
+         "skill_vs": {name: 1 - rmse[name]/rmse[reference]},
+         "unavailable": {name: reason}}
+
+    WHY THIS REPLACED ``pair_metrics`` / ``bucket_metrics``. Both took exactly two predictors and
+    baked their names into the OUTPUT KEYS -- ``rmse_desk``, ``r2_nochange``, ``pearson_desk``. A
+    third predictor could then only be bolted on at each call site, and the vocabulary made
+    "DESK vs the no-change null" the one first-class comparison. The result was a line reading
+    ``pair_metrics(sc_obs, sc_desk, sc_idw)  # null slot := the bar`` -- three different
+    predictors pushed through two slots with their meaning carried in a comment, and a suite where
+    the interpolation bar reached some questions and not others, the magnitude/angular split was
+    computed for DESK and never for the bar, and the cosine form existed for the pooled matrices
+    and for none of the epoch types. Every one of those was fixed individually and the class came
+    back, because the primitive made asymmetry the cheapest path.
+
+    Here no predictor is privileged. ``reference`` is a NAME, so "DESK vs no-change" and "DESK vs
+    spacetime-IDW" are the same call with a different argument rather than one built-in comparison
+    plus an afterthought, and adding a predictor adds a row everywhere with no call-site edit.
+
+    ``unavailable`` carries a REASON for any predictor that could not run, so a gap is stated in
+    the report rather than inferred from a missing key.
+    """
+    obs_a = np.asarray(obs, "float64")
+    flat = (lambda A: _offdiag(np.asarray(A, "float64"))) if grams else (
+        lambda A: np.asarray(A, "float64").ravel())
+    t = flat(obs_a)
+    rows, unavailable = {}, {}
+    for name, val in (predictors or {}).items():
+        if val is None:
+            unavailable[name] = "predictor not supplied"
+            continue
+        if isinstance(val, str):                 # a reason string in the predictor slot
+            unavailable[name] = val
+            continue
+        e = vector_error(t, flat(val))
+        row = {"rmse": e["rmse"], "bias": e["bias"], "pearson_r": e["pearson_r"], "r2": e["r2"],
+               "bias_share": ((e["bias"] ** 2) / (e["rmse"] ** 2)) if e["rmse"] > 0 else 0.0,
+               # pearson^2 - r2 is the calibration loss: scale-free ranking minus absolute
+               # accuracy, so the gap is exactly what a wrong scale or a bias costs.
+               "calibration_loss": e["pearson_r"] ** 2 - e["r2"]}
+        if grams:
+            row["cka"] = linear_cka(obs_a, np.asarray(val, "float64"))
+            row["mantel"] = mantel_r(obs_a, np.asarray(val, "float64"))
+        rows[name] = row
+
+    ref_rmse = rows.get(reference, {}).get("rmse")
+    skill = {}
+    for name, row in rows.items():
+        skill[name] = (1.0 - row["rmse"] / ref_rmse) if (ref_rmse and ref_rmse > 0) else float("nan")
+    return {"n": int(t.size),
+            "observed_mean": float(t.mean()) if t.size else float("nan"),
+            "observed_sd": float(t.std()) if t.size else float("nan"),
+            "reference": reference, "predictors": rows,
+            "skill_vs": skill, "unavailable": unavailable}
 
 
 def kernel_error(S_true, S_pred):
@@ -297,57 +463,6 @@ def kernel_error(S_true, S_pred):
     (pearson^2 0.78 vs r2 0.55), and that gap is where the model's miscalibration lives.
     """
     return vector_error(_offdiag(S_true), _offdiag(S_pred))
-
-
-def bucket_metrics(S_true, S_desk, S_nc, S_nc_obs=None, S_desk_cos=None, S_nc_cos=None):
-    """Grade DESK's kernel against observed Ruzicka, versus the frozen-modern null (pure).
-
-    ``S_desk``/``S_nc`` are DOT-product Grams -- the quantity the contract and the training loss
-    are both stated in. ``S_desk`` and ``S_nc`` must use the same functional as each other so
-    their difference isolates temporal variation.
-
-    PRIMARY metric is ``rmse_skill``: how much of the null's kernel error DESK removes, on the
-    same scale as the similarities themselves. This is available only because the contract makes
-    dot and Ruzicka directly comparable; CKA can only say the two structures covary.
-
-    ``S_nc_obs`` (Ruzicka on the modern observed community) is reported as the achievable-ceiling
-    reference. ``S_desk_cos``/``S_nc_cos`` are the cosine variants -- secondary, for separating a
-    norm-calibration failure from an angular one.
-    """
-    cka_d, cka_n = linear_cka(S_true, S_desk), linear_cka(S_true, S_nc)
-    man_d, man_n = mantel_r(S_true, S_desk), mantel_r(S_true, S_nc)
-    e_d, e_n = kernel_error(S_true, S_desk), kernel_error(S_true, S_nc)
-    # Error-variance reduction: the squared RMSE ratio, which is what rmse_skill means in variance
-    # units. "DESK removes X% of the error the no-change assumption leaves."
-    ratio = (e_d["rmse"] / e_n["rmse"]) if e_n["rmse"] > 0 else 1.0
-    out = {
-        "n_rows": int(np.asarray(S_true).shape[0]),
-        # --- scale of the target, so every error below is interpretable ---
-        "observed_mean": e_d["mean_true"], "observed_sd": e_d["sd_true"],
-        # --- primary: elementwise kernel agreement (dot product vs Ruzicka) ---
-        "rmse_desk": e_d["rmse"], "rmse_nochange": e_n["rmse"],
-        "rmse_skill": 1.0 - ratio,
-        "error_variance_removed": 1.0 - ratio ** 2,
-        # r2 vs the predict-the-mean floor; r2_gain is the headline in variance-explained units
-        "r2_desk": e_d["r2"], "r2_nochange": e_n["r2"], "r2_gain": e_d["r2"] - e_n["r2"],
-        "bias_desk": e_d["bias"], "bias_nochange": e_n["bias"],
-        # bias^2 / rmse^2: how much of the error is SYSTEMATIC under-prediction of turnover
-        "bias_share_desk": ((e_d["bias"] ** 2) / (e_d["rmse"] ** 2)) if e_d["rmse"] > 0 else 0.0,
-        "pearson_desk": e_d["pearson_r"], "pearson_nochange": e_n["pearson_r"],
-        # pearson^2 - r2 = the calibration loss (scale-free ranking minus absolute accuracy)
-        "calibration_loss_desk": e_d["pearson_r"] ** 2 - e_d["r2"],
-        # --- secondary: structure-only agreement ---
-        "cka_desk": cka_d, "cka_nochange": cka_n, "cka_gain": cka_d - cka_n,
-        "mantel_desk": man_d, "mantel_nochange": man_n, "mantel_gain": man_d - man_n,
-    }
-    if S_nc_obs is not None:
-        out["cka_nochange_observed"] = linear_cka(S_true, S_nc_obs)
-        out["rmse_nochange_observed"] = kernel_error(S_true, S_nc_obs)["rmse"]
-    if S_desk_cos is not None and S_nc_cos is not None:
-        ck_d, ck_n = linear_cka(S_true, S_desk_cos), linear_cka(S_true, S_nc_cos)
-        out.update({"cka_desk_cosine": ck_d, "cka_nochange_cosine": ck_n,
-                    "cka_gain_cosine": ck_d - ck_n})
-    return out
 
 
 def stratified_sample(keys, n_sample, rng, windows=(MODERN_WINDOW, EARLY_WINDOW), is_heldout=None,
@@ -697,27 +812,46 @@ def epoch_neighborhood_analysis(Xe, Xm, Ze, Zm, xy, k=99, n_bins=10, is_heldout=
     edges, labels = quantile_distance_bins(dist, n_bins=n_bins)
     bin_of = np.clip(np.digitize(dist, edges) - 1, 0, len(labels) - 1) if idx.size else dist
 
-    null_pair = _pairwise_dot_neighbours(Zm, Zm, idx, device=device)
-    types = {
-        "spatial_early": (_pairwise_ruzicka_neighbours(Xe, Xe, idx, device=device),
-                          _pairwise_dot_neighbours(Ze, Ze, idx, device=device), null_pair),
-        "spatial_modern": (_pairwise_ruzicka_neighbours(Xm, Xm, idx, device=device),
-                           _pairwise_dot_neighbours(Zm, Zm, idx, device=device), null_pair),
-        "cross_time": (_pairwise_ruzicka_neighbours(Xe, Xm, idx, device=device),
-                       _pairwise_dot_neighbours(Ze, Zm, idx, device=device), null_pair),
-    }
-
-    # The same three comparisons with the spacetime-IDW stand-in in DESK's place, against the
-    # SAME null, so DESK and the bar are scored identically and can be differenced.
+    # --- one predictor table, every question, dot AND cosine -------------------------------------
+    # Each predictor supplies its (early, modern) z; the pairings below are then generated
+    # identically for all of them. That is the whole point: a predictor added here appears in every
+    # question and every distance bin with no call-site edit, which is what previously had to be
+    # remembered separately at fourteen places and repeatedly was not.
     Ze_i, Zm_i = sc_idw if sc_idw is not None else (None, None)
-    if Ze_i is not None and Zm_i is not None:
-        types_idw = {
-            "spatial_early": _pairwise_dot_neighbours(Ze_i, Ze_i, idx, device=device),
-            "spatial_modern": _pairwise_dot_neighbours(Zm_i, Zm_i, idx, device=device),
-            "cross_time": _pairwise_dot_neighbours(Ze_i, Zm_i, idx, device=device),
-        }
-    else:
-        types_idw = {}
+    sources = {"desk": (Ze, Zm),
+               "no_change": (Zm, Zm),          # frozen modern: shares DESK's functional
+               "spacetime_idw": (Ze_i, Zm_i) if Ze_i is not None else None,
+               "esk_oracle": sc_esk}
+    missing = {n: PREDICTOR_UNAVAILABLE_DEFAULT for n, v in sources.items() if v is None}
+
+    def _unit(A):
+        """Row-normalised, so a dot becomes a cosine. The ANGULAR form is not a secondary
+        curiosity: it is the half of an exact error decomposition whose partner is the norm
+        deficit, and with ||z||^2 ~ 0.66 the dot form carries that deficit while this does not."""
+        A = np.asarray(A, "float64")
+        nrm = np.linalg.norm(A, axis=1, keepdims=True)
+        return A / np.maximum(nrm, 1e-12)
+
+    # (question -> (observed, {predictor -> (A, B)})) so dot and cosine differ only in _unit.
+    pairings = {
+        "cross_cell_same_era_early": (_pairwise_ruzicka_neighbours(Xe, Xe, idx, device=device),
+                                      lambda ze, zm: (ze, ze)),
+        "cross_cell_same_era_modern": (_pairwise_ruzicka_neighbours(Xm, Xm, idx, device=device),
+                                       lambda ze, zm: (zm, zm)),
+        "cross_cell_cross_time": (_pairwise_ruzicka_neighbours(Xe, Xm, idx, device=device),
+                                  lambda ze, zm: (ze, zm)),
+    }
+    types, types_cos, types_obs = {}, {}, {}
+    for qname, (obs_q, sel) in pairings.items():
+        types_obs[qname] = obs_q
+        types[qname], types_cos[qname] = {}, {}
+        for pname, zs in sources.items():
+            if zs is None:
+                continue
+            a, b = sel(*zs)
+            types[qname][pname] = _pairwise_dot_neighbours(a, b, idx, device=device)
+            types_cos[qname][pname] = _pairwise_dot_neighbours(_unit(a), _unit(b), idx,
+                                                               device=device)
 
     n = Xe.shape[0]
     ho = np.zeros(n, bool) if is_heldout is None else np.asarray(is_heldout, bool)
@@ -736,108 +870,105 @@ def epoch_neighborhood_analysis(Xe, Xm, Ze, Zm, xy, k=99, n_bins=10, is_heldout=
         "types": {},
     }
 
-    for tname, (obs, desk, null) in types.items():
-        report["types"][tname] = {}
+    for qname in pairings:
+        report["types"][qname] = {}
+        obs_q = types_obs[qname]
         for sname, smask in splits.items():
             rows = np.where(smask)[0]
-            def _with_bar(o, d, nl, sub=None):
-                """Metrics vs the null, plus DESK-vs-BAR and BAR-vs-null in the same row.
 
-                One helper for the pooled row and the per-distance rows: attaching the bar to
-                only one of them is how `all_distances` -- the row everyone actually reads -- came
-                out without it on the first attempt.
-                """
-                m = pair_metrics(o, d, nl)
-                if tname in types_idw:
-                    bi = types_idw[tname] if sub is None else types_idw[tname][rows][sub]
-                    m["vs_idw"] = pair_metrics(o, d, bi)["rmse_skill"]
-                    m["idw_vs_null"] = pair_metrics(o, bi, nl)["rmse_skill"]
-                    m["pearson_idw"] = pair_metrics(o, bi, nl)["pearson_desk"]
-                return m
+            def _row(sub):
+                """One row: every predictor, dot AND cosine, plus the reasons for any that could
+                not run. `sub` indexes within `rows`, or None for all of them."""
+                take = (lambda M: M[rows] if sub is None else M[rows][sub])
+                dot = compare_predictors(take(obs_q),
+                                         {p: take(M) for p, M in types[qname].items()})
+                cos = compare_predictors(take(obs_q),
+                                         {p: take(M) for p, M in types_cos[qname].items()})
+                dot["unavailable"].update(missing)
+                cos["unavailable"].update(missing)
+                # DESK against the BAR as well as against the null. Both are just a named
+                # reference over the same rows, so neither is privileged.
+                if "spacetime_idw" in dot["predictors"]:
+                    dot["skill_vs_spacetime_idw"] = compare_predictors(
+                        take(obs_q), {p: take(M) for p, M in types[qname].items()},
+                        reference="spacetime_idw")["skill_vs"]
+                return {"dot": dot, "cosine": cos}
 
-            per_bin = {"all_distances": _with_bar(
-                obs[rows], desk[rows], null[rows],
-                sub=slice(None) if tname in types_idw else None)}
+            per_bin = {"all_distances": _row(None)}
             for b, lab in enumerate(labels):
-                sel = bin_of[rows] == b
-                if sel.sum() < 10:
-                    per_bin[lab] = {"n_pairs": int(sel.sum()), "skipped": "fewer than 10 pairs"}
-                    continue
-                per_bin[lab] = _with_bar(obs[rows][sel], desk[rows][sel], null[rows][sel],
-                                         sub=sel)
-            report["types"][tname][sname] = per_bin
+                sel_b = bin_of[rows] == b
+                per_bin[lab] = ({"n_pairs": int(sel_b.sum()), "skipped": "fewer than 10 pairs"}
+                                if sel_b.sum() < 10 else _row(sel_b))
+            report["types"][qname][sname] = per_bin
 
-    # self_change: one value per focal cell, no distance axis (d=0 by definition).
+    # same_cell_over_time: one value per focal cell, no distance axis (d=0 by definition).
+    # This was three hand-written blocks -- self_change, self_change_vs_idw and
+    # self_change_esk_oracle -- each pushing a different predictor through a two-slot signature,
+    # one of them annotated "null slot := the bar". Now it is the same predictor table as every
+    # other question, so the bar and the oracle are rows rather than special cases.
     sc_obs = _rowwise_ruzicka(Xe, Xm)
-    sc_desk = (np.asarray(Ze, "float64") * np.asarray(Zm, "float64")).sum(1)
-    sc_null = (np.asarray(Zm, "float64") ** 2).sum(1)
-    report["types"]["self_change"] = {
-        s: {"all_distances": pair_metrics(sc_obs[np.where(m)[0]], sc_desk[np.where(m)[0]],
-                                          sc_null[np.where(m)[0]])}
-        for s, m in splits.items()}
+    sc = {}
+    for pname, zs in sources.items():
+        if zs is None:
+            continue
+        a, b = zs
+        sc[pname] = (np.asarray(a, "float64") * np.asarray(b, "float64")).sum(1)
+    sc_cos = {}
+    for pname, zs in sources.items():
+        if zs is None:
+            continue
+        a, b = zs
+        sc_cos[pname] = (_unit(a) * _unit(b)).sum(1)
 
-    # An interval, resampling FOCAL CELLS. self_change is one value per cell over ~1950
-    # independent cells, so this is the one place in this module where a bootstrap is honest;
-    # the pair matrices elsewhere have an effective n far below their n_pairs.
+    report["types"]["same_cell_over_time"] = {}
     for sname, m in splits.items():
         w = np.where(m)[0]
-        report["types"]["self_change"][sname]["all_distances"]["ci95"] = bootstrap_skill_ci(
-            sc_obs[w], sc_desk[w], sc_null[w])
-
-    # self_change against the BAR rather than the free null.
-    if Ze_i is not None and Zm_i is not None:
-        sc_idw_v = (np.asarray(Ze_i, "float64") * np.asarray(Zm_i, "float64")).sum(1)
-        report["types"]["self_change_vs_idw"] = {}
-        for sname, m in splits.items():
-            w = np.where(m)[0]
-            row = pair_metrics(sc_obs[w], sc_desk[w], sc_idw_v[w])   # null slot := the bar
-            row["ci95"] = bootstrap_skill_ci(sc_obs[w], sc_desk[w], sc_idw_v[w])
-            row["idw_vs_null"] = pair_metrics(sc_obs[w], sc_idw_v[w], sc_null[w])["rmse_skill"]
-            row["pearson_idw"] = pair_metrics(sc_obs[w], sc_idw_v[w], sc_null[w])["pearson_desk"]
-            report["types"]["self_change_vs_idw"][sname] = {"all_distances": row}
-
-    # THE CEILING. Same comparison with z_obs -- the ESK projection of the OBSERVED epoch
-    # communities -- in place of DESK's z. By the kernel contract z(x).z(x') ~= Ruzicka(x,x'),
-    # so this asks whether the BASIS can represent same-cell temporal change at all, which
-    # bounds what any encoder trained against it could achieve. Without it a weak DESK row is
-    # unattributable: it could be the model discarding available signal, or a basis that never
-    # carried it.
-    #
-    # The oracle projects the AVERAGED community (Xe, Xm) rather than averaging projections of
-    # single years, because Xe/Xm are exactly the inputs the observed side uses -- so obs and
-    # oracle are the same functional of the same vectors, which is the contract being tested.
-    # DESK's row necessarily averages z instead (it emits z per cell-year, not a community), and
-    # that asymmetry is a property of what each side can produce, not a choice.
-    if sc_esk is not None:
-        Ze_o, Zm_o = sc_esk
-        sc_or = (np.asarray(Ze_o, "float64") * np.asarray(Zm_o, "float64")).sum(1)
-        report["types"]["self_change_esk_oracle"] = {}
-        for sname, m in splits.items():
-            w = np.where(m)[0]
-            row = pair_metrics(sc_obs[w], sc_or[w], sc_null[w])
-            row["ci95"] = bootstrap_skill_ci(sc_obs[w], sc_or[w], sc_null[w])
-            report["types"]["self_change_esk_oracle"][sname] = {"all_distances": row}
-        report["_esk_oracle_note"] = (
-            "Ceiling on self_change: z_obs (ESK projection of the observed epoch communities) in "
-            "place of DESK's z. Read pearson_desk MINUS pearson_null against pearson_desk of this "
-            "row minus the same null -- pearson is scale-invariant and so immune to the ||z||^2 "
-            "deficit that confounds rmse_skill. If this row is also ~0 over the null, the basis "
-            "cannot represent same-cell temporal change and the fix belongs to the ESK, not DESK.")
+        dot = compare_predictors(sc_obs[w], {p: v[w] for p, v in sc.items()})
+        cos = compare_predictors(sc_obs[w], {p: v[w] for p, v in sc_cos.items()})
+        dot["unavailable"].update(missing)
+        cos["unavailable"].update(missing)
+        if "spacetime_idw" in dot["predictors"]:
+            dot["skill_vs_spacetime_idw"] = compare_predictors(
+                sc_obs[w], {p: v[w] for p, v in sc.items()},
+                reference="spacetime_idw")["skill_vs"]
+        # An interval, resampling FOCAL CELLS. This is the one place in the module where a
+        # bootstrap is honest: one value per cell over ~1,950 independent cells. The pair
+        # matrices elsewhere have an effective n far below their n_pairs.
+        dot["ci95"] = {p: bootstrap_skill_ci(sc_obs[w], v[w], sc["no_change"][w])
+                       for p, v in sc.items() if p != "no_change"}
+        report["types"]["same_cell_over_time"][sname] = {"all_distances": {"dot": dot,
+                                                                           "cosine": cos}}
 
     # Per-focal-cell arrays, so the result can be mapped without recomputing.
     per_cell = {"neighbour_idx": idx.astype("int32"), "neighbour_dist_m": dist.astype("float32"),
-                "self_change_obs": sc_obs.astype("float32"),
-                "self_change_desk": sc_desk.astype("float32"),
-                "self_change_null": sc_null.astype("float32"),
-                "is_heldout": ho}
-    for tname, (obs, desk, null) in types.items():
-        # RMSE of each focal cell's own 99 pairs -- a per-cell skill field for mapping.
-        rd = np.sqrt(((desk - obs) ** 2).mean(1)) if idx.size else np.full(n, np.nan)
-        rn = np.sqrt(((null - obs) ** 2).mean(1)) if idx.size else np.full(n, np.nan)
-        per_cell[f"{tname}_rmse_desk"] = rd.astype("float32")
-        per_cell[f"{tname}_rmse_null"] = rn.astype("float32")
-        with np.errstate(divide="ignore", invalid="ignore"):
-            per_cell[f"{tname}_skill"] = np.where(rn > 0, 1.0 - rd / rn, 0.0).astype("float32")
+                "same_cell_over_time_obs": sc_obs.astype("float32"), "is_heldout": ho}
+    # One field per PREDICTOR, not just DESK: mapping where the bar beats the model is as useful
+    # as mapping where the model beats the null, and it costs nothing now that they are symmetric.
+    for pname, v in sc.items():
+        per_cell[f"same_cell_over_time_{pname}"] = v.astype("float32")
+    for qname in pairings:
+        obs_q = types_obs[qname]
+        rn = (np.sqrt(((types[qname]["no_change"] - obs_q) ** 2).mean(1)) if idx.size
+              else np.full(n, np.nan))
+        for pname, M in types[qname].items():
+            rp = np.sqrt(((M - obs_q) ** 2).mean(1)) if idx.size else np.full(n, np.nan)
+            per_cell[f"{qname}_rmse_{pname}"] = rp.astype("float32")
+            with np.errstate(divide="ignore", invalid="ignore"):
+                per_cell[f"{qname}_skill_{pname}"] = np.where(
+                    rn > 0, 1.0 - rp / rn, 0.0).astype("float32")
+
+    report["manifest"] = {
+        # The registry questions this analysis OWNS. Declared, not derived from `types` -- a scope
+        # read back off the output would make `assert_complete` compare the report to itself.
+        # `absolute_position` is deliberately absent: it is `zspace_reconstruction`'s question.
+        "covers": ["same_cell_over_time", "cross_cell_same_era", "cross_cell_cross_time"],
+        "questions": {q: QUESTIONS.get(canonical_question(q), {}) for q in report["types"]},
+        "predictors": {p: PREDICTOR_ROLES.get(p, "") for p in sources if sources[p] is not None},
+        "unavailable": missing,
+        "quantities": {"dot": "z.z' against Ruzicka -- the contract's own quantity",
+                       "cosine": "the angular half; free of the ~34% self-similarity deficit"},
+        "populations": {s: int(m.sum()) for s, m in splits.items()},
+    }
     return report, per_cell
 
 
@@ -1192,20 +1323,34 @@ def _run_epoch_analysis(config, keys, X_raw_all, cells, e_rows, m_rows, gate_sta
     print(f"\nEPOCH x NEIGHBOURHOOD -- {cells.shape[0]} focal cells, k={rep['config']['k']}, "
           f"neighbour distance {d['min_km']:.0f}/{d['median_km']:.0f}/{d['max_km']:.0f} km "
           f"(min/median/max)")
+    # One column per PREDICTOR, generated from the row itself, so a predictor added to the
+    # registry appears in the printed table too rather than only in the JSON.
     for tname, per_split in rep["types"].items():
-        print(f"\n  {tname}")
-        print(f"    {'split/bin':<20}{'n':>9}{'r2_desk':>9}{'r2_null':>9}{'r2_gain':>9}"
-              f"{'skill':>8}{'errVar%':>9}{'bias':>9}")
+        print(f"\n  {tname}  -- {QUESTIONS.get(tname, {}).get('why', '')[:96]}")
         for sname, per_bin in per_split.items():
             for bname, mm in per_bin.items():
                 if "skipped" in mm:
                     continue
-                print(f"    {sname + '/' + bname:<20}{mm['n_pairs']:>9}{mm['r2_desk']:>9.3f}"
-                      f"{mm['r2_null']:>9.3f}{mm['r2_gain']:>+9.3f}{mm['rmse_skill']:>+8.3f}"
-                      f"{100 * mm['error_variance_removed']:>8.1f}%{mm['bias_desk']:>+9.4f}")
-    sm = rep["types"]["spatial_modern"]["pooled"]["all_distances"]["rmse_skill"]
-    print(f"\n  [null test] spatial_modern skill = {sm:+.2e} -- MUST be ~0: DESK and the null are "
-          "the same quantity there by construction. Non-zero means the harness is broken.")
+                for form in ("dot", "cosine"):
+                    blk = mm.get(form)
+                    if not blk or not blk.get("predictors"):
+                        continue
+                    names = sorted(blk["predictors"])
+                    if bname == "all_distances" and form == "dot":
+                        print(f"    {'split/form':<18}{'n':>8}" +
+                              "".join(f"{p[:12]:>13}" for p in names))
+                    print(f"    {sname + '/' + form:<18}{blk['n']:>8}" +
+                          "".join(f"{blk['skill_vs'][p]:>+13.3f}" for p in names)
+                          + ("   [skill vs no_change]" if form == "dot" else ""))
+                    break
+        for reason_p, reason in (mm.get("dot", {}) or {}).get("unavailable", {}).items():
+            print(f"      unavailable: {reason_p} -- {reason}")
+    sm = rep["types"]["cross_cell_same_era_modern"]["pooled"]["all_distances"]["dot"]["skill_vs"]["desk"]
+    print(f"\n  [null test] cross_cell_same_era_modern skill = {sm:+.2e} -- MUST be ~0: DESK and "
+          "the null are the same quantity there by construction. Non-zero means the harness is "
+          "broken.")
+    gaps = assert_complete(rep["types"])
+    print(f"  [completeness] {'OK -- every question x predictor has a result or a reason' if not gaps else 'GAPS: ' + '; '.join(gaps[:6])}")
     print(f"[bbs-routes] epoch report -> {os.path.join(out_dir, 'bbs_epoch_neighborhood.json')}")
     return rep
 
@@ -1500,17 +1645,26 @@ def run(config=None, n_sample=4000, seed=0):
                 continue
             ix = np.where(m)[0]
             g = np.ix_(ix, ix)
-            row = bucket_metrics(
-                S_true[g], S_desk[g], S_nc[g], S_nc_obs=S_nc_obs[g],
-                S_desk_cos=S_desk_cos[g], S_nc_cos=S_nc_cos[g])
+            # Same predictor table as every other question, dot and cosine both. The bolt-on
+            # form this replaced computed the bar's skill with two extra calls and reported one
+            # scalar from each, so the bar never got the quantities DESK got.
+            gram_preds = {"desk": S_desk[g], "no_change": S_nc[g]}
+            gram_cos = {"desk": S_desk_cos[g], "no_change": S_nc_cos[g]}
             if S_idw is not None:
-                # DESK against the BAR, and the bar against the null, in the same row. The two
-                # together say WHICH claim holds: "better than assuming stasis" is nearly free,
-                # "better than interpolating in space and time" is the one that means something.
-                row["rmse_skill_vs_idw"] = bucket_metrics(
-                    S_true[g], S_desk[g], S_idw[g])["rmse_skill"]
-                row["idw_rmse_skill_vs_nochange"] = bucket_metrics(
-                    S_true[g], S_idw[g], S_nc[g])["rmse_skill"]
+                gram_preds["spacetime_idw"] = S_idw[g]
+                gram_cos["spacetime_idw"] = cosine_gram(Z_idw_s[ix])
+            dot = compare_predictors(S_true[g], gram_preds, grams=True)
+            cos = compare_predictors(S_true[g], gram_cos, grams=True)
+            for miss in set(PREDICTOR_ROLES) - set(gram_preds):
+                dot["unavailable"][miss] = PREDICTOR_UNAVAILABLE_DEFAULT
+                cos["unavailable"][miss] = PREDICTOR_UNAVAILABLE_DEFAULT
+            if "spacetime_idw" in dot["predictors"]:
+                dot["skill_vs_spacetime_idw"] = compare_predictors(
+                    S_true[g], gram_preds, reference="spacetime_idw", grams=True)["skill_vs"]
+            row = {"n_rows": int(len(ix)), "dot": dot, "cosine": cos,
+                   # the achievable-ceiling reference: Ruzicka on the modern OBSERVED community,
+                   # never differenced against the model columns (different functional).
+                   "observed_ceiling_cka": linear_cka(S_true[g], S_nc_obs[g])}
             report["buckets"][f"{sname}/{wname}"] = row
 
     # BALANCED aggregate alongside the population-weighted one. Three numbers, not one: the
@@ -1519,7 +1673,7 @@ def run(config=None, n_sample=4000, seed=0):
     # population-weighted figure unchanged for comparability with every run reported so far.
     # A rebalanced model can move these two in OPPOSITE directions, which is the whole point.
     _bal_src = [(k, v) for k, v in report["buckets"].items()
-                if isinstance(v, dict) and "rmse_skill" in v and k.startswith("heldout/")]
+                if isinstance(v, dict) and "dot" in v and k.startswith("heldout/")]
     if _bal_src:
         report["balanced_aggregate"] = {
             "note": ("unweighted mean over held-out buckets -- each era counted once regardless of "
@@ -1527,10 +1681,13 @@ def run(config=None, n_sample=4000, seed=0):
                      "the population-weighted one can fall while the model improves, because BBS "
                      "row counts are concentrated on the coasts and in recent decades."),
             "n_buckets": len(_bal_src),
-            "rmse_skill_balanced": float(np.mean([v["rmse_skill"] for _k, v in _bal_src])),
-            "cka_gain_balanced": float(np.mean([v["cka_gain"] for _k, v in _bal_src])),
-            "per_bucket": {k: {"rmse_skill": v["rmse_skill"], "n_rows": v.get("n_rows")}
-                           for k, v in _bal_src},
+            "rmse_skill_balanced": float(np.mean([v["dot"]["skill_vs"]["desk"]
+                                                  for _k, v in _bal_src])),
+            "cka_gain_balanced": float(np.mean([v["dot"]["predictors"]["desk"]["cka"]
+                                                - v["dot"]["predictors"]["no_change"]["cka"]
+                                                for _k, v in _bal_src])),
+            "per_bucket": {k: {"skill_vs_no_change": v["dot"]["skill_vs"]["desk"],
+                               "n_rows": v.get("n_rows")} for k, v in _bal_src},
         }
         print(f"[bbs-routes] balanced aggregate over {len(_bal_src)} held-out buckets: "
               f"rmse_skill {report['balanced_aggregate']['rmse_skill_balanced']:+.4f} "
@@ -1562,32 +1719,56 @@ def run(config=None, n_sample=4000, seed=0):
           f"true_kernel_loss trains on).")
     print(f"  r2 = variance of observed similarity explained; errVar% = share of the NULL's error "
           f"variance that DESK removes.")
-    print(f"{'bucket':<18}{'n':>7}{'r2_desk':>9}{'r2_nc':>8}{'r2_gain':>9}{'errVar%':>9}"
-          f"{'rmse_desk':>11}{'rmse_nc':>9}{'bias':>9}{'bias%':>8}")
-    for k, v in report["buckets"].items():
-        if "skipped" in v:
-            print(f"{k:<18}{v['n_rows']:>7}  skipped ({v['skipped']})")
-        else:
-            print(f"{k:<18}{v['n_rows']:>7}{v['r2_desk']:>9.3f}{v['r2_nochange']:>8.3f}"
-                  f"{v['r2_gain']:>+9.3f}{100 * v['error_variance_removed']:>8.1f}%"
-                  f"{v['rmse_desk']:>11.4f}{v['rmse_nochange']:>9.4f}"
-                  f"{v['bias_desk']:>+9.4f}{100 * v['bias_share_desk']:>7.1f}%")
-    print(f"\n  pearson^2 vs r2 -- their gap is calibration loss (ranking is right, scale is not):")
-    for k, v in report["buckets"].items():
-        if "skipped" not in v:
-            print(f"  {k:<18}pearson^2 {v['pearson_desk'] ** 2:>6.3f}  r2 {v['r2_desk']:>6.3f}  "
-                  f"calibration loss {v['calibration_loss_desk']:>+6.3f}")
-    print(f"\nSECONDARY -- structure-only (CKA/Mantel), and the norm-free cosine variant:")
-    print(f"{'bucket':<18}{'n':>7}{'cka_gain':>11}{'mantel_gain':>13}{'cka_gain_cos':>14}")
-    for k, v in report["buckets"].items():
-        if "skipped" not in v:
-            print(f"{k:<18}{v['n_rows']:>7}{v['cka_gain']:>+11.4f}{v['mantel_gain']:>+13.4f}"
-                  f"{v.get('cka_gain_cosine', float('nan')):>+14.4f}")
+    # Columns are generated from the predictor table, so a predictor added to the registry shows
+    # up here too. Previously the header hardcoded desk/nochange and the bar could only appear as
+    # an appended scalar.
+    _first = next((v for v in report["buckets"].values() if "dot" in v), None)
+    _names = sorted(_first["dot"]["predictors"]) if _first else []
+    if _names:
+        print(f"{'bucket':<18}{'n':>7}" + "".join(f"{p[:10]:>12}" for p in _names)
+              + "   [skill vs no_change, dot form]")
+        for k, v in report["buckets"].items():
+            if "skipped" in v:
+                print(f"{k:<18}{v['n_rows']:>7}  skipped ({v['skipped']})")
+                continue
+            print(f"{k:<18}{v['n_rows']:>7}"
+                  + "".join(f"{v['dot']['skill_vs'].get(p, float('nan')):>+12.3f}" for p in _names))
+        print(f"\n{'bucket':<18}{'n':>7}" + "".join(f"{p[:10]:>12}" for p in _names)
+              + "   [same, COSINE form -- free of the ||z||^2 deficit]")
+        for k, v in report["buckets"].items():
+            if "skipped" in v:
+                continue
+            print(f"{k:<18}{v['n_rows']:>7}"
+                  + "".join(f"{v['cosine']['skill_vs'].get(p, float('nan')):>+12.3f}"
+                            for p in _names))
+        print(f"\n  pearson^2 vs r2 per predictor -- their gap is calibration loss "
+              f"(ranking right, scale wrong):")
+        for k, v in report["buckets"].items():
+            if "skipped" in v:
+                continue
+            for pn in _names:
+                d = v["dot"]["predictors"][pn]
+                print(f"  {k:<18}{pn:<15}pearson^2 {d['pearson_r'] ** 2:>6.3f}  "
+                      f"r2 {d['r2']:>6.3f}  calibration loss {d['calibration_loss']:>+6.3f}")
+        for pn, reason in (_first["dot"].get("unavailable") or {}).items():
+            print(f"  unavailable: {pn} -- {reason}")
+    print(f"\nSTRUCTURE-ONLY (CKA / Mantel), per predictor, gain over the no-change null:")
+    if _names:
+        print(f"{'bucket':<18}{'form':<8}" + "".join(f"{p[:10]:>12}" for p in _names))
+        for k, v in report["buckets"].items():
+            if "skipped" in v:
+                continue
+            for form in ("dot", "cosine"):
+                base = v[form]["predictors"].get("no_change", {}).get("cka", float("nan"))
+                print(f"{k:<18}{form:<8}"
+                      + "".join(f"{v[form]['predictors'][p]['cka'] - base:>+12.4f}"
+                                for p in _names))
     print(f"\n[bbs-routes] report -> {out}")
     print("[bbs-routes] rmse_skill > 0 means DESK's kernel is closer to observed Ruzicka than the "
           "frozen-modern null is, on GENUINELY OBSERVED data. <= 0 is a real negative result.")
-    print("[bbs-routes] If rmse_skill is poor but cka_gain_cos is healthy, the failure is ||z|| "
-          "calibration, not the angular structure -- check the contract line above.")
+    print("[bbs-routes] If the DOT rows are poor but the COSINE rows are healthy, the failure is "
+          "||z|| calibration and not the angular structure -- check the contract line above. The "
+          "two forms are the two halves of an exact error decomposition, so read them together.")
     return report
 
 

@@ -14,7 +14,7 @@ primary.
 import numpy as np
 
 from src.community_encoder.train_DESK.validate_bbs_routes import (
-    EPOCH_EARLY, EPOCH_MODERN, bucket_metrics, cosine_gram, densify_community, dot_gram,
+    EPOCH_EARLY, EPOCH_MODERN, compare_predictors, cosine_gram, densify_community, dot_gram,
     epoch_gate, epoch_mean_observed, epoch_mean_z, epoch_neighborhood_analysis, kernel_error,
     knn_neighbours, log1p_community, modern_reference_rows, quantile_distance_bins,
     stratified_sample, _pairwise_dot_neighbours, _pairwise_ruzicka_neighbours)
@@ -149,11 +149,12 @@ def test_a_temporally_neutral_desk_scores_exactly_zero_gain():
 
     Z_nc = X[nc_src] @ np.random.default_rng(2).standard_normal((X.shape[1], 6))
     S_nc = dot_gram(Z_nc)
-    m = bucket_metrics(ruzicka_rect(X, X), S_nc, S_nc)
-    assert m["cka_gain"] == 0.0, m
-    assert m["mantel_gain"] == 0.0, m
-    assert m["rmse_skill"] == 0.0, m               # identical kernels -> no error reduction
-    assert m["rmse_desk"] == m["rmse_nochange"], m
+    m = compare_predictors(ruzicka_rect(X, X), {"desk": S_nc, "no_change": S_nc}, grams=True)
+    d, nl = m["predictors"]["desk"], m["predictors"]["no_change"]
+    assert d["cka"] - nl["cka"] == 0.0, m
+    assert d["mantel"] - nl["mantel"] == 0.0, m
+    assert m["skill_vs"]["desk"] == 0.0, m         # identical kernels -> no error reduction
+    assert d["rmse"] == nl["rmse"], m
 
 
 def test_cka_gain_is_positive_only_when_temporal_information_is_added():
@@ -174,9 +175,10 @@ def test_cka_gain_is_positive_only_when_temporal_information_is_added():
     S_true = ruzicka_rect(X, X)
     S_nc = dot_gram(X[nc_src] @ A)
 
-    m = bucket_metrics(S_true, dot_gram(X @ A), S_nc)
-    assert m["cka_gain"] > 0.0, m
-    assert m["cka_desk"] > m["cka_nochange"], m
+    m = compare_predictors(S_true, {"desk": dot_gram(X @ A), "no_change": S_nc}, grams=True)
+    d, nl = m["predictors"]["desk"], m["predictors"]["no_change"]
+    assert d["cka"] - nl["cka"] > 0.0, m
+    assert d["cka"] > nl["cka"], m
 
 
 def test_observed_space_null_is_reported_but_not_differenced():
@@ -188,21 +190,26 @@ def test_observed_space_null_is_reported_but_not_differenced():
     A = np.random.default_rng(4).standard_normal((X.shape[1], 6))
     S_true = ruzicka_rect(X, X)
 
-    m = bucket_metrics(S_true, dot_gram(X @ A), dot_gram(X_nc @ A),
-                       S_nc_obs=ruzicka_rect(X_nc, X_nc),
-                       S_desk_cos=cosine_gram(X @ A), S_nc_cos=cosine_gram(X_nc @ A))
-    assert "cka_nochange_observed" in m and "rmse_nochange_observed" in m
-    assert m["cka_gain"] == m["cka_desk"] - m["cka_nochange"]      # unaffected by the diagnostic
-    # the cosine variant is reported SEPARATELY and must not overwrite the dot-product headline
-    assert "cka_gain_cosine" in m and m["cka_gain_cosine"] != m["cka_gain"]
+    dot = compare_predictors(S_true, {"desk": dot_gram(X @ A), "no_change": dot_gram(X_nc @ A)},
+                             grams=True)
+    cos = compare_predictors(S_true, {"desk": cosine_gram(X @ A),
+                                      "no_change": cosine_gram(X_nc @ A)}, grams=True)
+    g = lambda m: m["predictors"]["desk"]["cka"] - m["predictors"]["no_change"]["cka"]
+    # The observed-space reference uses Ruzicka -- truth's OWN functional -- so it is reported
+    # beside the model columns and never differenced against them; mixing functionals was
+    # measured at -0.28 on a temporally-neutral model.
+    assert g(dot) == dot["predictors"]["desk"]["cka"] - dot["predictors"]["no_change"]["cka"]
+    # dot and cosine are separate forms, not one overwriting the other
+    assert g(cos) != g(dot)
 
 
 def test_cka_of_truth_against_itself_is_one():
     _, X = _synthetic()
     S = ruzicka_rect(X, X)
-    m = bucket_metrics(S, S, S)
-    assert abs(m["cka_desk"] - 1.0) < 1e-8
-    assert abs(m["cka_gain"]) < 1e-8                           # identical inputs -> no gain
+    m = compare_predictors(S, {"desk": S, "no_change": S}, grams=True)
+    assert abs(m["predictors"]["desk"]["cka"] - 1.0) < 1e-8
+    assert abs(m["predictors"]["desk"]["cka"]
+               - m["predictors"]["no_change"]["cka"]) < 1e-8    # identical inputs -> no gain
 
 
 def test_dot_gram_is_the_contract_and_keeps_scale():
@@ -270,13 +277,13 @@ def test_error_variance_removed_is_the_squared_rmse_ratio():
     noise_d = rng.normal(0, 0.05, S.shape); noise_d = (noise_d + noise_d.T) / 2
     noise_n = rng.normal(0, 0.09, S.shape); noise_n = (noise_n + noise_n.T) / 2
 
-    m = bucket_metrics(S, S + noise_d, S + noise_n)
-    ratio = m["rmse_desk"] / m["rmse_nochange"]
-    assert abs(m["error_variance_removed"] - (1 - ratio ** 2)) < 1e-12
-    assert abs(m["rmse_skill"] - (1 - ratio)) < 1e-12
-    # r2_gain == (rmse_nc^2 - rmse_desk^2) / sd^2
-    expect = (m["rmse_nochange"] ** 2 - m["rmse_desk"] ** 2) / m["observed_sd"] ** 2
-    assert abs(m["r2_gain"] - expect) < 1e-9
+    m = compare_predictors(S, {"desk": S + noise_d, "no_change": S + noise_n}, grams=True)
+    d, nl = m["predictors"]["desk"], m["predictors"]["no_change"]
+    ratio = d["rmse"] / nl["rmse"]
+    assert abs(m["skill_vs"]["desk"] - (1 - ratio)) < 1e-12
+    # the r2 gain is that same reduction expressed as a share of TOTAL variance
+    expect = (nl["rmse"] ** 2 - d["rmse"] ** 2) / m["observed_sd"] ** 2
+    assert abs((d["r2"] - nl["r2"]) - expect) < 1e-9
 
 
 def test_calibration_loss_is_pearson_sq_minus_r2():
@@ -289,9 +296,13 @@ def test_calibration_loss_is_pearson_sq_minus_r2():
     assert abs(e["pearson_r"] - 1.0) < 1e-9
     assert e["r2"] < 1.0
     assert abs(e["bias"] - 0.05) < 1e-9
-    m = bucket_metrics(S, S + 0.05, S + 0.09)
-    assert abs(m["calibration_loss_desk"] - (m["pearson_desk"] ** 2 - m["r2_desk"])) < 1e-12
-    assert m["calibration_loss_desk"] > 0                     # ranking better than accuracy
+    m = compare_predictors(S, {"desk": S + 0.05, "no_change": S + 0.09}, grams=True)
+    d = m["predictors"]["desk"]
+    assert abs(d["calibration_loss"] - (d["pearson_r"] ** 2 - d["r2"])) < 1e-12
+    assert d["calibration_loss"] > 0                          # ranking better than accuracy
+    # and it is computed for EVERY predictor, not only the model -- the asymmetry this refactor
+    # removed meant a bar could never be diagnosed the way DESK was.
+    assert "calibration_loss" in m["predictors"]["no_change"]
 
 
 def test_cosine_gram_is_scale_invariant_and_unit_diagonal():
@@ -410,7 +421,8 @@ def test_run_end_to_end_gates_cells_and_buckets(tmp_path, monkeypatch):
     for name in ("pooled/all", "train/all", "heldout/all",
                  "pooled/modern", "pooled/early", "heldout/early"):
         assert name in rep["buckets"], name
-    assert rep["buckets"]["pooled/all"]["cka_gain"] > 0, rep["buckets"]["pooled/all"]
+    b = rep["buckets"]["pooled/all"]["dot"]["predictors"]
+    assert b["desk"]["cka"] - b["no_change"]["cka"] > 0, rep["buckets"]["pooled/all"]
     assert (desk / "bbs_route_validation.json").exists()
     assert (desk / "bbs_route_validation.npz").exists()
 
@@ -532,6 +544,15 @@ def _epoch_fixture(n=40, n_species=7, latent=5, seed=0):
     return log1p_community(Xe), log1p_community(Xm), A, xy
 
 
+def _dot(rep, question, split="pooled", bin_="all_distances"):
+    """New addressing: results are keyed by PREDICTOR, and the dot/cosine forms are siblings."""
+    return rep["types"][question][split][bin_]["dot"]
+
+
+def _skill(rep, question, predictor="desk", split="pooled", bin_="all_distances"):
+    return _dot(rep, question, split, bin_)["skill_vs"][predictor]
+
+
 def test_spatial_modern_skill_is_exactly_zero_the_builtin_null_test():
     # spatial_modern grades Zm.Zm against a null that IS Zm.Zm. Its skill must be exactly 0.
     # This is the analysis's own null test: if it ever moves, the harness mis-pairs its inputs
@@ -539,29 +560,34 @@ def test_spatial_modern_skill_is_exactly_zero_the_builtin_null_test():
     Xe, Xm, A, xy = _epoch_fixture()
     rep, per_cell = epoch_neighborhood_analysis(Xe, Xm, Xe @ A, Xm @ A, xy, k=9, n_bins=3)
 
-    for split, per_bin in rep["types"]["spatial_modern"].items():
+    for split, per_bin in rep["types"]["cross_cell_same_era_modern"].items():
         for bname, mm in per_bin.items():
             if "skipped" in mm:
                 continue
-            assert mm["rmse_skill"] == 0.0, (split, bname, mm)
-            assert mm["rmse_desk"] == mm["rmse_null"], (split, bname, mm)
-            assert mm["r2_gain"] == 0.0, (split, bname, mm)
-    assert np.allclose(per_cell["spatial_modern_skill"], 0.0)
+            d = mm["dot"]["predictors"]
+            assert mm["dot"]["skill_vs"]["desk"] == 0.0, (split, bname, mm)
+            assert d["desk"]["rmse"] == d["no_change"]["rmse"], (split, bname, mm)
+            assert d["desk"]["r2"] == d["no_change"]["r2"], (split, bname, mm)
+            # the ANGULAR form must pass the same zero check, not just the dot form
+            assert mm["cosine"]["skill_vs"]["desk"] == 0.0, (split, bname, mm)
+    assert np.allclose(per_cell["cross_cell_same_era_modern_skill_desk"], 0.0)
 
 
 def test_epoch_analysis_shape_and_that_a_tracking_desk_beats_the_null():
     Xe, Xm, A, xy = _epoch_fixture()
     rep, per_cell = epoch_neighborhood_analysis(Xe, Xm, Xe @ A, Xm @ A, xy, k=9, n_bins=3)
 
-    assert set(rep["types"]) == {"spatial_early", "spatial_modern", "cross_time", "self_change"}
+    assert set(rep["types"]) == {"cross_cell_same_era_early", "cross_cell_same_era_modern",
+                                 "cross_cell_cross_time", "same_cell_over_time"}
     assert rep["config"]["k"] == 9 and rep["config"]["n_focal_cells"] == 40
     # a DESK that tracks the truth must beat the frozen-modern null where time matters
-    assert rep["types"]["spatial_early"]["pooled"]["all_distances"]["rmse_skill"] > 0
-    assert rep["types"]["self_change"]["pooled"]["all_distances"]["n_pairs"] == 40
+    assert _skill(rep, "cross_cell_same_era_early") > 0
+    assert _dot(rep, "same_cell_over_time")["n"] == 40
     # per-cell fields are present and one value per focal cell, for mapping
-    for key in ("spatial_early_skill", "cross_time_skill", "self_change_obs", "neighbour_dist_m"):
+    for key in ("cross_cell_same_era_early_skill_desk", "cross_cell_cross_time_skill_desk",
+                "same_cell_over_time_obs", "neighbour_dist_m"):
         assert key in per_cell
-    assert per_cell["spatial_early_skill"].shape == (40,)
+    assert per_cell["cross_cell_same_era_early_skill_desk"].shape == (40,)
     assert per_cell["neighbour_dist_m"].shape == (40, 9)
 
 
@@ -569,8 +595,8 @@ def test_epoch_analysis_splits_by_holdout_when_given_a_mask():
     Xe, Xm, A, xy = _epoch_fixture()
     ho = np.zeros(40, bool); ho[::2] = True
     rep, _ = epoch_neighborhood_analysis(Xe, Xm, Xe @ A, Xm @ A, xy, k=9, n_bins=3, is_heldout=ho)
-    assert set(rep["types"]["cross_time"]) == {"pooled", "train", "heldout"}
-    n_ho = rep["types"]["self_change"]["heldout"]["all_distances"]["n_pairs"]
+    assert set(rep["types"]["cross_cell_cross_time"]) == {"pooled", "train", "heldout"}
+    n_ho = _dot(rep, "same_cell_over_time", "heldout")["n"]
     assert n_ho == 20
 
 
@@ -651,7 +677,7 @@ def test_run_epoch_rows_survive_the_pooled_site_gate(tmp_path, monkeypatch):
     ep = json.load(open(desk / "bbs_epoch_neighborhood.json"))
     assert ep["gate"]["cells_kept"] == 10
     assert ep["config"]["n_focal_cells"] == 10
-    assert ep["types"]["spatial_modern"]["pooled"]["all_distances"]["rmse_skill"] == 0.0
+    assert ep["types"]["cross_cell_same_era_modern"]["pooled"]["all_distances"]["dot"]["skill_vs"]["desk"] == 0.0
 
 
 def test_modern_reference_groups_share_the_site_gate_with_the_single_year_reference():
@@ -831,11 +857,12 @@ def test_the_esk_oracle_detects_a_high_ceiling():
     xy = np.stack([np.arange(n) * 30000.0, np.zeros(n)], 1)
     rep, _pc = epoch_neighborhood_analysis(Xe, Xm, Zd, Zd, xy, k=8, n_bins=2,
                                            sc_esk=(Ze_o, Zm_o))
-    assert "self_change_esk_oracle" in rep["types"], sorted(rep["types"])
-    orc = rep["types"]["self_change_esk_oracle"]["pooled"]["all_distances"]
-    assert orc["pearson_desk"] > 0.9, orc["pearson_desk"]
+    assert "esk_oracle" in rep["types"]["same_cell_over_time"]["pooled"]["all_distances"]["dot"]["predictors"], sorted(rep["types"])
+    orc = _dot(rep, "same_cell_over_time")["predictors"]["esk_oracle"]
+    assert orc["pearson_r"] > 0.9, orc["pearson_r"]
     # and the CI must be present and finite, since this is what a real reading needs
-    assert np.isfinite(orc["ci95"]["lo"]) and np.isfinite(orc["ci95"]["hi"]), orc["ci95"]
+    ci = _dot(rep, "same_cell_over_time")["ci95"]["esk_oracle"]
+    assert np.isfinite(ci["lo"]) and np.isfinite(ci["hi"]), ci
 
 
 def test_self_change_ci_resamples_cells_not_pairs():
@@ -875,11 +902,11 @@ def test_the_idw_bar_is_scored_in_desks_own_functional():
     xy = np.stack([np.arange(n) * 30000.0, np.zeros(n)], 1)
     rep, _ = epoch_neighborhood_analysis(Xe, Xm, Ze, Zm, xy, k=8, n_bins=2,
                                          sc_idw=(Ze, Zm))          # bar := DESK itself
-    sc = rep["types"]["self_change_vs_idw"]["pooled"]["all_distances"]
-    assert abs(sc["rmse_skill"]) < 1e-9, sc["rmse_skill"]
-    for t in ("spatial_early", "spatial_modern", "cross_time"):
-        row = rep["types"][t]["pooled"]["all_distances"]
-        assert abs(row["vs_idw"]) < 1e-9, (t, row["vs_idw"])
+    sc = _dot(rep, "same_cell_over_time")["skill_vs_spacetime_idw"]["desk"]
+    assert abs(sc) < 1e-9, sc
+    for t in ("cross_cell_same_era_early", "cross_cell_same_era_modern", "cross_cell_cross_time"):
+        v = _dot(rep, t)["skill_vs_spacetime_idw"]["desk"]
+        assert abs(v) < 1e-9, (t, v)
 
 
 def test_a_better_bar_lowers_desks_skill():
@@ -898,11 +925,12 @@ def test_a_better_bar_lowers_desks_skill():
     Zd = rng.normal(size=(n, S)) * 0.05
     xy = np.stack([np.arange(n) * 30000.0, np.zeros(n)], 1)
     rep, _ = epoch_neighborhood_analysis(Xe, Xm, Zd, Zd, xy, k=8, n_bins=2, sc_idw=(good, good))
-    vs_null = rep["types"]["self_change"]["pooled"]["all_distances"]["rmse_skill"]
-    vs_idw = rep["types"]["self_change_vs_idw"]["pooled"]["all_distances"]["rmse_skill"]
+    d = _dot(rep, "same_cell_over_time")
+    vs_null = d["skill_vs"]["desk"]
+    vs_idw = d["skill_vs_spacetime_idw"]["desk"]
     assert vs_idw < vs_null, (vs_idw, vs_null)
     # and the bar must be recorded as beating the null, since it does
-    assert rep["types"]["self_change_vs_idw"]["pooled"]["all_distances"]["idw_vs_null"] > 0
+    assert d["skill_vs"]["spacetime_idw"] > 0
 
 
 def test_the_pooled_bar_is_built_in_full_row_space(tmp_path, monkeypatch):
@@ -952,8 +980,11 @@ def test_the_pooled_bar_is_built_in_full_row_space(tmp_path, monkeypatch):
     for name, b in rep["buckets"].items():
         if "skipped" in b:
             continue
-        assert "rmse_skill" in b, (name, sorted(b))
-        assert "rmse_skill_vs_idw" not in b, (name, "bar reported without a projection")
+        assert "dot" in b and "cosine" in b, (name, sorted(b))
+        # With no saved projection the bar must be ABSENT-WITH-A-REASON, never a silent gap
+        # and never a half-built row.
+        assert "spacetime_idw" not in b["dot"]["predictors"], (name, "bar without a projection")
+        assert b["dot"]["unavailable"].get("spacetime_idw"), (name, "absent without a reason")
 
 
 def test_build_spacetime_bar_returns_none_rather_than_raising():
@@ -1020,7 +1051,8 @@ def test_the_oracle_refuses_to_run_off_span(tmp_path, monkeypatch, capsys):
     assert "ESK oracle REFUSED" in txt, txt
     assert "does not span averaged communities" in txt
     if out is not None:
-        assert "self_change_esk_oracle" not in out.get("types", {}), "refused but still reported"
+        assert "esk_oracle" not in (out.get("types", {}).get("same_cell_over_time", {})
+            .get("pooled", {}).get("all_distances", {}).get("dot", {}).get("predictors", {})), "refused but still reported"
 
 
 def test_the_validation_spatial_axis_nests_inside_the_weighting_strata():
@@ -1072,3 +1104,131 @@ def test_balanced_and_population_weighted_aggregates_can_disagree_in_sign():
     pop = float(np.average([v["rmse_skill"] for _k, v in src],
                            weights=[v["n_rows"] for _k, v in src]))
     assert balanced > 0 > pop, (balanced, pop)
+
+
+def test_adding_a_predictor_adds_a_row_everywhere_with_no_call_site_edit():
+    """THE property the refactor exists to buy. Previously a third predictor could only be bolted
+    on per call site -- which is why the interpolation bar reached the pooled matrices but not the
+    per-distance rows, and the decomposition was computed for DESK and never for the bar. Here a
+    predictor handed to the analysis must appear in EVERY question and EVERY distance bin, in both
+    the dot and cosine forms, without touching any reporting code."""
+    from src.community_encoder.train_DESK.validate_bbs_routes import epoch_neighborhood_analysis
+    Xe, Xm, A, xy = _epoch_fixture()
+    Ze, Zm = Xe @ A, Xm @ A
+    rng = np.random.default_rng(0)
+    extra = (rng.normal(size=Ze.shape), rng.normal(size=Zm.shape))    # a synthetic 4th predictor
+    rep, _pc = epoch_neighborhood_analysis(Xe, Xm, Ze, Zm, xy, k=9, n_bins=3,
+                                           sc_idw=extra, sc_esk=extra)
+    for q, per_split in rep["types"].items():
+        for split, per_bin in per_split.items():
+            for bname, mm in per_bin.items():
+                if "skipped" in mm:
+                    continue
+                for form in ("dot", "cosine"):
+                    got = set(mm[form]["predictors"])
+                    assert got == {"desk", "no_change", "spacetime_idw", "esk_oracle"}, (
+                        q, split, bname, form, got)
+                    # identical quantity set for every predictor -- no privileged vocabulary
+                    keys = [set(v) for v in mm[form]["predictors"].values()]
+                    assert all(k == keys[0] for k in keys), (q, form, keys)
+
+
+def test_the_completeness_check_fails_on_a_silently_dropped_predictor():
+    """The mechanism that makes a missing comparison impossible. Every gap this suite accumulated
+    was an ABSENT KEY rather than a wrong number, and nothing looked for absences.
+
+    Driven off the REAL report rather than a hand-built dict: a hand-built fixture only proves the
+    checker agrees with the fixture's author about the shape, and the first version of this test
+    did exactly that -- it passed against a flat `{q: {"predictors": ...}}` the analysis has never
+    emitted, so the checker walked to a depth where nothing lived and reported every combination
+    as missing while the suite stayed green.
+    """
+    from src.community_encoder.train_DESK.validate_bbs_routes import (
+        assert_complete, epoch_neighborhood_analysis)
+    Xe, Xm, A, xy = _epoch_fixture()
+    rng = np.random.default_rng(0)
+    Ze, Zm = Xe @ A, Xm @ A
+    bar = (Ze + rng.normal(scale=0.3, size=Ze.shape), Zm + rng.normal(scale=0.3, size=Zm.shape))
+    rep, _ = epoch_neighborhood_analysis(Xe, Xm, Ze, Zm, xy, k=9, n_bins=3, sc_idw=bar,
+                                         sc_esk=(Ze, Zm))
+    qs = rep["manifest"]["covers"]
+    assert assert_complete(rep["types"], questions=qs) == []
+
+    # A predictor dropped from ONE leaf only -- the pooled row still has it. This is the exact
+    # shape of the gaps that recurred (the bar reached the pooled matrices but not the per-distance
+    # rows), so a checker that stopped at the top level would pass this.
+    import copy
+    broken = copy.deepcopy(rep["types"])
+    leaf = broken["cross_cell_cross_time"]["pooled"]["all_distances"]["dot"]
+    leaf["predictors"].pop("spacetime_idw")
+    gaps = assert_complete(broken, questions=qs)
+    assert any("spacetime_idw" in g and "cross_cell_cross_time" in g for g in gaps), gaps
+
+    # A stated REASON is acceptable where a result is not -- that is the whole distinction.
+    ok = copy.deepcopy(broken)
+    ok["cross_cell_cross_time"]["pooled"]["all_distances"]["dot"]["unavailable"][
+        "spacetime_idw"] = "bar unbuilt for this run"
+    assert assert_complete(ok, questions=qs) == []
+
+    # A question in scope but absent entirely, and a question emitted under no registry entry.
+    assert any("absent entirely" in g for g in assert_complete({}, questions=qs))
+    stray = dict(rep["types"])
+    stray["cross_cell_by_elevation"] = stray["cross_cell_cross_time"]
+    assert any("no question registry" in g for g in assert_complete(stray, questions=qs))
+
+
+def test_question_instances_map_back_to_one_registry_entry():
+    """`cross_cell_same_era` is emitted twice -- once per era -- and both share one rationale.
+    Matching is by longest registry prefix, not by stripping the last token, which would mangle
+    `same_cell_over_time` into a `same_cell_over` that no entry defines."""
+    from src.community_encoder.train_DESK.validate_bbs_routes import canonical_question, QUESTIONS
+    assert canonical_question("cross_cell_same_era_early") == "cross_cell_same_era"
+    assert canonical_question("cross_cell_same_era_modern") == "cross_cell_same_era"
+    assert canonical_question("same_cell_over_time") == "same_cell_over_time"
+    assert canonical_question("cross_cell_by_elevation") is None
+    for q in QUESTIONS:
+        assert canonical_question(q) == q
+
+
+def test_cosine_and_dot_diverge_under_a_norm_deficit():
+    """If the two forms agreed, the angular one would be redundant rather than the calibration-free
+    reading. With ||z||^2 ~ 0.66 measured, the dot form carries that deficit and the cosine does
+    not -- which is exactly why cross_cell_cross_time needs the angular form."""
+    from src.community_encoder.train_DESK.validate_bbs_routes import epoch_neighborhood_analysis
+    Xe, Xm, A, xy = _epoch_fixture()
+    Ze, Zm = Xe @ A, Xm @ A
+    rep_full, _ = epoch_neighborhood_analysis(Xe, Xm, Ze, Zm, xy, k=9, n_bins=3)
+    # shrink every vector: pure norm deficit, directions untouched
+    rep_short, _ = epoch_neighborhood_analysis(Xe, Xm, Ze * 0.6, Zm * 0.6, xy, k=9, n_bins=3)
+    q = "cross_cell_cross_time"
+    dot_f = _dot(rep_full, q)["predictors"]["desk"]["rmse"]
+    dot_s = _dot(rep_short, q)["predictors"]["desk"]["rmse"]
+    cos_f = rep_full["types"][q]["pooled"]["all_distances"]["cosine"]["predictors"]["desk"]["rmse"]
+    cos_s = rep_short["types"][q]["pooled"]["all_distances"]["cosine"]["predictors"]["desk"]["rmse"]
+    assert not np.isclose(dot_f, dot_s, rtol=1e-3), (dot_f, dot_s)   # dot sees the deficit
+    assert np.isclose(cos_f, cos_s, rtol=1e-6), (cos_f, cos_s)       # cosine does not
+
+
+def test_the_report_carries_a_manifest_of_what_was_tested():
+    """A report should say what it measured, against what, on how many rows -- so two runs can be
+    diffed structurally and not only numerically. Knowing what the suite tests previously meant
+    reading four thousand lines."""
+    from src.community_encoder.train_DESK.validate_bbs_routes import QUESTIONS
+    from src.community_encoder.train_DESK.validate_bbs_routes import epoch_neighborhood_analysis
+    Xe, Xm, A, xy = _epoch_fixture()
+    rep, _pc = epoch_neighborhood_analysis(Xe, Xm, Xe @ A, Xm @ A, xy, k=9, n_bins=3)
+    m = rep["manifest"]
+    assert set(m) == {"covers", "questions", "predictors", "unavailable", "quantities",
+                      "populations"}
+    # `covers` is the scope the report claims responsibility for, and it must be REGISTRY names --
+    # it is what `assert_complete` is checked against, so a typo here would silently narrow the
+    # check rather than fail it.
+    assert set(m["covers"]) <= set(QUESTIONS)
+    assert "absolute_position" not in m["covers"]      # that is zspace_reconstruction's question
+    assert set(m["quantities"]) == {"dot", "cosine"}
+    assert "desk" in m["predictors"] and "no_change" in m["predictors"]
+    # the bar and the oracle were not supplied here, so both must be recorded WITH a reason
+    assert set(m["unavailable"]) == {"spacetime_idw", "esk_oracle"}
+    assert all(v for v in m["unavailable"].values())
+    # every question carries its own rationale, which is the map that kept getting lost
+    assert all(q in rep["types"] for q in m["questions"])

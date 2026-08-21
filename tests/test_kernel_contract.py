@@ -45,7 +45,13 @@ def test_latent_width_and_gp_contract_agree_across_configs():
     # all legitimate), so assert the CONTRACT -- a positive top-eigenfeature
     # truncation of the 64-D source -- rather than any one chosen width.
     assert 0 < age["latent_dim"] <= age["source_latent_dim"]
-    assert encoder["esk"]["spacetime"]["landmark_mode"] == "random"
+    # Same reasoning as latent_dim just above, applied consistently: assert the CONTRACT, not one
+    # chosen value. The Nystrom contract (Z.Z' ~= Ruzicka) holds for ANY landmark set -- the mode
+    # only changes WHICH points are landmarks, and nothing in the age model's contract depends on
+    # it. Pinning "random" was pinning a config default, and it is a default worth changing: it
+    # samples landmarks uniformly, so the basis inherits BBS's coast/present bias wholesale, while
+    # "diverse" guarantees every occupied (decade x tile x abundance) stratum is represented.
+    assert encoder["esk"]["spacetime"]["landmark_mode"] in ("random", "stratified", "diverse")
     assert age["kernel_contract"]["kernel"] == "ruzicka"
     assert age["kernel_contract"]["centered"] is False
     assert age["kernel_contract"]["feature_prior"] == "isotropic"

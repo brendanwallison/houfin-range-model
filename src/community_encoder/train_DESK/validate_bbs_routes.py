@@ -350,7 +350,8 @@ def bucket_metrics(S_true, S_desk, S_nc, S_nc_obs=None, S_desk_cos=None, S_nc_co
     return out
 
 
-def stratified_sample(keys, n_sample, rng, windows=(MODERN_WINDOW, EARLY_WINDOW), is_heldout=None):
+def stratified_sample(keys, n_sample, rng, windows=(MODERN_WINDOW, EARLY_WINDOW), is_heldout=None,
+                      spatial_regions=0):
     """Sample row indices, giving each (year-window x holdout) cell a guaranteed share (pure).
 
     Two separate imbalances make a uniform sample useless here, and BOTH have to be corrected or
@@ -367,6 +368,18 @@ def stratified_sample(keys, n_sample, rng, windows=(MODERN_WINDOW, EARLY_WINDOW)
     each drawing an equal share of the budget, with short strata backfilled from the remainder.
     Because the similarity matrices are n^2, raising ``n_sample`` is a quadratic-cost way to buy
     held-out rows; stratifying buys them for free.
+
+    ``spatial_regions`` > 0 adds a THIRD axis, and it is not symmetry for its own sake. BBS is
+    coast-heavy, so a population-weighted metric scores the model where the survey is dense -- and
+    once the objective is rebalanced (``desk.balance``) that metric would report an IMPROVEMENT as a
+    regression, because the rebalanced model trades coastal accuracy for interior accuracy. The
+    deficiency the rebalance exists to fix is exactly the one a population-weighted metric cannot
+    see, so without this axis the training change is not assessable.
+
+    The regions are COARSE (``spatial_regions`` per axis, so 2 gives quadrants) and derived by
+    grouping the same tiles ``esk_kernel.spacetime_strata`` uses, so the two are one definition at
+    two resolutions. The fine labels cannot be used here: 3 year-windows x 2 holdout x 64 tiles is
+    384 strata against a ~4,000-row budget, which is ~10 rows each with most empty.
 
     ``is_heldout`` (``(N,)`` bool, optional) omitted reduces this to year-window stratification.
     """
@@ -388,7 +401,14 @@ def stratified_sample(keys, n_sample, rng, windows=(MODERN_WINDOW, EARLY_WINDOW)
     else:
         ho = np.asarray(is_heldout, bool)
         splits = [~ho, ho]
-    strata = [np.where(y & s)[0] for y in year_strata for s in splits]
+    if int(spatial_regions) > 0:
+        from .esk_kernel import coarse_spatial
+        reg = coarse_spatial(keys, regions=int(spatial_regions))
+        regions = [reg == r for r in np.unique(reg)]
+    else:
+        regions = [np.ones(n, bool)]
+    strata = [np.where(y & s & g)[0]
+              for y in year_strata for s in splits for g in regions]
     strata = [ix for ix in strata if ix.size]
     if not strata:
         return np.arange(min(n, n_sample))
@@ -1247,8 +1267,12 @@ def run(config=None, n_sample=4000, seed=0):
     # window_groups. Only the pooled row bookkeeping (X_log/keys/nc_src) is gated.
     nc_groups_full, _keep_g = modern_reference_groups(keys, MODERN_WINDOW)
     assert bool((_keep_g == keep).all()), "reference gate must not depend on the averaging mode"
+    # The single shared point-denoising half-width; bbs_routes.window_half_width is honoured only
+    # as a legacy fallback so old configs keep working.
     win_groups_full = window_groups(keys, int(
-        config.get("bbs_routes", {}).get("window_half_width", 2)))
+        (config.get("target", {}) or {}).get(
+            "smooth_half_width",
+            config.get("bbs_routes", {}).get("window_half_width", 2))))
     kept_to_full = np.where(keep)[0]
     n_cells_all = np.unique(keys[:, :2], axis=0).shape[0]
     X_log, keys, nc_src = X_log[keep], keys[keep], nc_src[keep]
@@ -1277,7 +1301,12 @@ def run(config=None, n_sample=4000, seed=0):
               "reporting pooled only (every prior metric was pooled at ~83% training points)")
         is_ho_all = None
 
-    sel = stratified_sample(keys, int(n_sample), rng, is_heldout=is_ho_all)
+    _reg = int(config.get("bbs_routes", {}).get("spatial_regions", 0))
+    sel = stratified_sample(keys, int(n_sample), rng, is_heldout=is_ho_all,
+                            spatial_regions=_reg)
+    if _reg:
+        print(f"[bbs-routes] row sampling stratified over year-window x holdout x {_reg}x{_reg} "
+              f"spatial regions, so a coast-heavy metric cannot hide an interior deficit")
     X_s, keys_s, nc_s = X_log[sel], keys[sel], nc_src[sel]
     keys_nc = keys[nc_s]                                     # each row's MODERN (cell, year)
     sel_full = kept_to_full[sel]                             # back into X_raw_all's row space
@@ -1297,7 +1326,8 @@ def run(config=None, n_sample=4000, seed=0):
     # truth never passes through a fitted projection, so this module's whole reason for existing
     # (escaping the target's own construction operator) is preserved.
     avg = bool(config.get("bbs_routes", {}).get("average_windows", True))
-    hw = int(config.get("bbs_routes", {}).get("window_half_width", 2))
+    hw = int((config.get("target", {}) or {}).get(
+        "smooth_half_width", config.get("bbs_routes", {}).get("window_half_width", 2)))
     grp_nc = [nc_groups_full[i] for i in sel_full]            # modern reference group per row
     grp_win = [win_groups_full[i] for i in sel_full]          # +/-hw window per row
     if avg:
@@ -1482,6 +1512,30 @@ def run(config=None, n_sample=4000, seed=0):
                 row["idw_rmse_skill_vs_nochange"] = bucket_metrics(
                     S_true[g], S_idw[g], S_nc[g])["rmse_skill"]
             report["buckets"][f"{sname}/{wname}"] = row
+
+    # BALANCED aggregate alongside the population-weighted one. Three numbers, not one: the
+    # per-bucket rows are already reported above; this adds the unweighted mean over buckets (each
+    # region-era counted once, however many rows it happens to contribute) and keeps the
+    # population-weighted figure unchanged for comparability with every run reported so far.
+    # A rebalanced model can move these two in OPPOSITE directions, which is the whole point.
+    _bal_src = [(k, v) for k, v in report["buckets"].items()
+                if isinstance(v, dict) and "rmse_skill" in v and k.startswith("heldout/")]
+    if _bal_src:
+        report["balanced_aggregate"] = {
+            "note": ("unweighted mean over held-out buckets -- each era counted once regardless of "
+                     "row count. Read WITH the population-weighted figure: on a rebalanced model "
+                     "the population-weighted one can fall while the model improves, because BBS "
+                     "row counts are concentrated on the coasts and in recent decades."),
+            "n_buckets": len(_bal_src),
+            "rmse_skill_balanced": float(np.mean([v["rmse_skill"] for _k, v in _bal_src])),
+            "cka_gain_balanced": float(np.mean([v["cka_gain"] for _k, v in _bal_src])),
+            "per_bucket": {k: {"rmse_skill": v["rmse_skill"], "n_rows": v.get("n_rows")}
+                           for k, v in _bal_src},
+        }
+        print(f"[bbs-routes] balanced aggregate over {len(_bal_src)} held-out buckets: "
+              f"rmse_skill {report['balanced_aggregate']['rmse_skill_balanced']:+.4f} "
+              f"(population-weighted heldout/all "
+              f"{report['buckets'].get('heldout/all', {}).get('rmse_skill', float('nan')):+.4f})")
 
     out_dir = config["paths"]["desk_output_dir"]
     os.makedirs(out_dir, exist_ok=True)

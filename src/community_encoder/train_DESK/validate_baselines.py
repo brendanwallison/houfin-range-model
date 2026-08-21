@@ -311,7 +311,8 @@ def zspace_idw_baseline(pidx, z_obs, holdout, hist_mask, k=8, power=2.0):
 
 def epoch_direction_panel(pidx, supervise, z_obs, z_model, holdout, buffer_mask,
                           epochs=DEFAULT_EPOCHS, tol=DEFAULT_TOL, verbose=True,
-                          exclude_years=(), half_width=0, z_spacetime=None):
+                          exclude_years=(), half_width=0, z_spacetime=None,
+                          x_obs=None, project=None):
     """Model vs inverse-distance on the DIRECTION of change, per epoch pair, plus curvature.
 
     ``z_model`` is a ``{(row,col,year): vector}`` mapping -- the caller decides whether that is
@@ -364,11 +365,41 @@ def epoch_direction_panel(pidx, supervise, z_obs, z_model, holdout, buffer_mask,
         near = {e: {c: (y,) for c, y in d.items()}
                 for e, d in nearest_survey(pidx, supervise, epochs, tol).items()}
 
+    # RAW-SPACE averaging for the truth side when it is available. Averaging raw counts and then
+    # projecting is the CONSISTENT estimator of a denoised community: the mean of raw counts is the
+    # MVUE for a Poisson rate, whereas averaging z converges on the noise-attenuated quantity
+    # instead (simulated: 0.234 vs 0.138 against a true 0.2354). It is gated because
+    # phi(mean x) is off-span unless the ESK landmark support was widened to cover window means --
+    # see esk_kernel.augment_with_windowed. Ungated, this would silently project inputs the basis
+    # cannot represent, which is exactly how the ceiling oracle produced a withdrawn finding.
+    raw_truth = False
+    if x_obs is not None and project is not None:
+        try:
+            _probe = project(np.log1p(np.expm1(np.maximum(np.asarray(x_obs[:512]), 0.0))))
+            _ann = float(np.median((np.asarray(z_obs[:512]) ** 2).sum(1)))
+            _avg = float(np.median((np.asarray(_probe) ** 2).sum(1)))
+            raw_truth = _ann > 0 and (_avg / _ann) >= 0.5
+            if not raw_truth and verbose:
+                print(f"  truth side stays in z-space: window means project to ||z||^2 {_avg:.4f} "
+                      f"against {_ann:.4f} annual, so the basis does not span them. The z-space "
+                      f"average is the NOISE-ATTENUATED estimand -- read dir-cos accordingly.")
+        except Exception:
+            raw_truth = False
+
     def zt(cell, years):
-        """Mean observed z over the cell's surveys in the window (None if none are present)."""
+        """Mean observed community over the cell's window (None if none are present).
+
+        Averages RAW counts then projects when the basis can represent the result; otherwise falls
+        back to averaging z and says so. The two are different estimands, not two routes to one.
+        """
         rows = [row_of[(cell[0], cell[1], y)] for y in years
                 if (cell[0], cell[1], y) in row_of]
-        return np.mean(np.stack([z_obs[r] for r in rows]), axis=0) if rows else None
+        if not rows:
+            return None
+        if raw_truth:
+            cnt = np.expm1(np.maximum(np.asarray(x_obs)[rows], 0.0)).mean(axis=0)
+            return np.asarray(project(np.log1p(cnt)[None, :]))[0]
+        return np.mean(np.stack([z_obs[r] for r in rows]), axis=0)
 
     def zm(cell, years):
         """Mean MODEL z over the SAME years -- symmetry is the point; see the docstring."""
@@ -407,6 +438,9 @@ def epoch_direction_panel(pidx, supervise, z_obs, z_model, holdout, buffer_mask,
     withheld_epoch = {int(e): (not trn_of[e]) and _spatial_src[int(e)] for e in epochs}
     out = {"epochs": list(epochs), "tol": tol, "exclude_years": sorted(ex),
            "half_width": int(half_width),
+           # Which estimand the truth side is: raw-space averaging is consistent for the denoised
+           # community, z-space averaging is asymptotically biased toward the noise-attenuated one.
+           "truth_averaging": "raw_counts_then_project" if raw_truth else "z_space_biased",
            "epochs_without_bar": [e for e in epochs if withheld_epoch[int(e)]],
            "pairs": {}, "curvature": {}}
     if verbose and any(withheld_epoch.values()):

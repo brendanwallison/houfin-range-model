@@ -1021,3 +1021,54 @@ def test_the_oracle_refuses_to_run_off_span(tmp_path, monkeypatch, capsys):
     assert "does not span averaged communities" in txt
     if out is not None:
         assert "self_change_esk_oracle" not in out.get("types", {}), "refused but still reported"
+
+
+def test_the_validation_spatial_axis_nests_inside_the_weighting_strata():
+    """One definition at two resolutions, not two definitions. If a fine stratum straddled two
+    coarse regions, a weight and the sample share meant to correct it would refer to different
+    places, and the rebalance would be uninterpretable."""
+    from src.community_encoder.train_DESK.esk_kernel import (
+        coarse_spatial, nests_within, spacetime_strata)
+    rng = np.random.default_rng(0)
+    pidx = np.stack([rng.integers(0, 64, 3000), rng.integers(0, 64, 3000),
+                     rng.integers(1966, 2026, 3000)], axis=1).astype(np.int32)
+    X = rng.random((3000, 5))
+    fine, _keys = spacetime_strata(pidx, X, spatial_bins=8, abundance_bins=4)
+    assert nests_within(fine, coarse_spatial(pidx, regions=2))    # 8 tiles / 2 regions -> nests
+    assert nests_within(fine, coarse_spatial(pidx, regions=4))
+    # and a non-divisor must NOT be claimed to nest, so the check has teeth
+    assert not nests_within(fine, coarse_spatial(pidx, regions=3))
+
+
+def test_the_spatial_axis_changes_which_rows_are_sampled():
+    """A coast-heavy sample cannot expose an interior deficit. With a deliberately lopsided spatial
+    distribution, adding the region axis must raise the sparse region's share of the sample."""
+    from src.community_encoder.train_DESK.validate_bbs_routes import stratified_sample
+    rng = np.random.default_rng(0)
+    # 95% of rows in the low-column half ("coast"), 5% in the high half ("interior")
+    n_coast, n_int = 3800, 200
+    keys = np.concatenate([
+        np.stack([np.zeros(n_coast, int), rng.integers(0, 8, n_coast),
+                  rng.integers(1966, 2026, n_coast)], 1),
+        np.stack([np.zeros(n_int, int), rng.integers(56, 64, n_int),
+                  rng.integers(1966, 2026, n_int)], 1)]).astype(np.int32)
+    interior = keys[:, 1] >= 32
+    plain = stratified_sample(keys, 800, np.random.default_rng(1))
+    withreg = stratified_sample(keys, 800, np.random.default_rng(1), spatial_regions=2)
+    assert interior[withreg].mean() > 2 * interior[plain].mean(), (
+        interior[plain].mean(), interior[withreg].mean())
+
+
+def test_balanced_and_population_weighted_aggregates_can_disagree_in_sign():
+    """The reason 4b exists. A model better on thin buckets and worse on dense ones must show the
+    two aggregates moving opposite ways -- otherwise the balanced figure adds nothing and a
+    rebalanced model would be scored as a regression."""
+    # dense bucket dominates the row count but the model is worse there; thin buckets are better
+    buckets = {"heldout/modern": {"rmse_skill": -0.05, "n_rows": 3600},
+               "heldout/early": {"rmse_skill": +0.20, "n_rows": 200},
+               "heldout/all": {"rmse_skill": -0.04, "n_rows": 3800}}
+    src = [(k, v) for k, v in buckets.items() if k != "heldout/all"]
+    balanced = float(np.mean([v["rmse_skill"] for _k, v in src]))
+    pop = float(np.average([v["rmse_skill"] for _k, v in src],
+                           weights=[v["n_rows"] for _k, v in src]))
+    assert balanced > 0 > pop, (balanced, pop)

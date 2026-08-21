@@ -799,11 +799,20 @@ def run_validate(config=None, n_pairs=20000, cka_sample=800, seed=0):
                 print(f"[validate] epoch-panel spacetime bar at ratio={_r:g} cells/yr")
             except Exception as exc:
                 print(f"[validate] epoch-panel spacetime bar unavailable ({exc})")
-            hw = int(_tr_cfg.get("direction_half_width", 0))
+            # ONE point-denoising half-width for the whole pipeline. This used to be
+            # desk.trend.direction_half_width here and bbs_routes.window_half_width there, with
+            # DEFAULT_TOL reused as a third value -- three constants for one concept.
+            hw = int((config.get("target", {}) or {}).get(
+                "smooth_half_width", _tr_cfg.get("direction_half_width", 0)))
+            # Raw-space truth averaging, if the basis spans window means. The panel gates on that
+            # itself and reports which estimand it used.
+            _proj_fn = (lambda A: project_points_to_z(np.asarray(A, "float32"),
+                                                     config["desk"]["z_dir"], Z.shape[1]))
             print("[validate] DIRECTION of change vs inverse-distance interpolation "
                   "(z_ema; pairs share cells and nest in time, so never pooled):")
             epochs_panel = epoch_direction_panel(pidx, None, z_obs_pts, zm, ho, bf,
-                                                 exclude_years=hy, z_spacetime=z_st_panel)
+                                                 exclude_years=hy, z_spacetime=z_st_panel,
+                                                 x_obs=X, project=_proj_fn)
             if hw:
                 # Same panel, endpoints averaged over +/-hw years on model, target and bar
                 # alike. The GAP between the two tables is the noise measurement.
@@ -814,7 +823,8 @@ def run_validate(config=None, n_pairs=20000, cka_sample=800, seed=0):
                                 "windowed": epoch_direction_panel(
                                     pidx, None, z_obs_pts, zm, ho, bf,
                                     exclude_years=hy, half_width=hw,
-                                    z_spacetime=z_st_panel),
+                                    z_spacetime=z_st_panel,
+                                    x_obs=X, project=_proj_fn),
                                 "attenuation_by_era": atten}
             else:
                 epochs_panel = {"single_year": epochs_panel, "attenuation_by_era": atten}

@@ -158,6 +158,60 @@ def nests_within(fine_labels, coarse_labels):
     return True
 
 
+def augment_with_windowed(X, point_index, half_width=2, min_years=2):
+    """Append each cell's raw-count WINDOW MEANS to the point set. ``(X2, pidx2, is_synth)``.
+
+    WHY THE BASIS NEEDS THESE. The Ruzicka feature map is nonlinear, so
+    ``phi(mean x) != mean phi(x)``: the span of the landmark feature maps contains
+    ``mean phi(x_i)`` but NOT ``phi(mean x_i)``. Projecting an averaged community therefore lands
+    off-span, measured at ``||z||^2 = 0.15`` against ``0.672`` for single cell-years. That blocks
+    raw-space averaging everywhere downstream -- and raw-space averaging is the CONSISTENT estimator
+    of a denoised community (mean of raw counts is the MVUE for a Poisson rate), while averaging in
+    z-space converges on the noise-attenuated quantity instead. Including window means among the
+    landmark candidates makes that region representable.
+
+    This is NOT "smooth the data instead of using raw". The annual points all remain; the support
+    is widened so both an annual and a denoised query are on-span. Fitting on averages alone would
+    just move the problem -- annual queries would become the off-span ones, and DESK emits annual z.
+
+    Averaging is on RAW counts: ``X`` arrives ``log1p``-transformed, so this expm1s (exact inverse),
+    averages, and re-applies ``log1p`` -- the same order as ``epoch_mean_observed``. Averaging the
+    ``log1p`` values would be biased low for the rate, by Jensen.
+
+    Synthetic rows carry the window's CENTRE year and are flagged in ``is_synth``, so nothing
+    downstream can mistake one for an observation -- in particular the anchor-year grid embedding
+    must select on ``(year == recent_year) & ~is_synth``.
+
+    Cells with fewer than ``min_years`` observations in a window contribute nothing: a "mean" over
+    one observation is that observation, which would duplicate a point rather than add a region.
+    """
+    X = np.asarray(X, dtype="float64")
+    pidx = np.asarray(point_index)
+    counts = np.expm1(np.maximum(X, 0.0))              # back to raw counts; exact inverse of log1p
+    by_cell = {}
+    for i, (r, c, y) in enumerate(pidx):
+        by_cell.setdefault((int(r), int(c)), []).append((int(y), i))
+    rows, keys = [], []
+    hw = int(half_width)
+    for (r, c), obs in by_cell.items():
+        obs.sort()
+        years = np.array([y for y, _ in obs])
+        for centre in np.unique(years):
+            sel = [i for y, i in obs if abs(y - centre) <= hw]
+            if len(sel) < int(min_years):
+                continue
+            rows.append(counts[sel].mean(axis=0))
+            keys.append((r, c, int(centre)))
+    if not rows:
+        return (X.astype("float32"), pidx,
+                np.zeros(len(pidx), bool))
+    synth = np.log1p(np.stack(rows)).astype("float32")
+    X2 = np.vstack([X.astype("float32"), synth])
+    pidx2 = np.vstack([pidx, np.array(keys, dtype=pidx.dtype)])
+    is_synth = np.concatenate([np.zeros(len(pidx), bool), np.ones(len(synth), bool)])
+    return X2, pidx2, is_synth
+
+
 def diverse_landmarks(X, point_index, n_landmarks, rng, spatial_bins=8,
                       abundance_bins=4):
     """Scalable diversity-aware landmark sampling over space, time, and abundance.
@@ -721,6 +775,21 @@ def run_spacetime_esk(config=None):
     print(f"[st-esk] joint points {X.shape}: {pmeta['n_recent']} recent + {pmeta['n_hist']} historical")
 
     X = smooth_abundances(X, n_weeks, sigma) if sigma > 0 else X   # match the eBird-ESK weekly smoothing
+
+    # Widen the landmark support to cover DENOISED communities as well as annual ones. Without this
+    # phi(mean x) is off-span (measured ||z||^2 = 0.15 vs 0.672 annual) and raw-space averaging is
+    # blocked everywhere downstream -- see augment_with_windowed for why that matters. The annual
+    # points are untouched; synthetic rows are flagged and excluded from the anchor-year grid
+    # embedding and from the reported diagnostics.
+    is_synth = np.zeros(len(pidx), bool)
+    if bool(sc.get("augment_windowed", False)):
+        n0 = len(pidx)
+        X, pidx, is_synth = augment_with_windowed(
+            X, pidx, half_width=int(sc.get("augment_half_width", 2)),
+            min_years=int(sc.get("augment_min_years", 2)))
+        print(f"[st-esk] landmark support widened: +{len(pidx) - n0:,} window-mean rows "
+              f"(half-width {int(sc.get('augment_half_width', 2))} yr) alongside {n0:,} annual; "
+              f"synthetic rows are landmark candidates only")
     yrs = pidx[:, 2]
     strata = np.where(yrs == recent_year, 0, ((yrs // 10) * 10).astype(int))   # 0=recent, else decade
     rng = np.random.default_rng(seed)
@@ -743,9 +812,19 @@ def run_spacetime_esk(config=None):
     Zj, lm, pm = compute_optimal_latent_z_ruzicka(
         X, n_species, n_weeks, latent_dim, n_landmarks=n_landmarks, seed=seed,
         return_proj=True, landmark_idx=lm_idx)
+    # Diagnostics on the REAL rows only, so they stay comparable with runs made before the support
+    # was widened. Synthetic rows are a change to the basis, not to the population it is judged on.
+    _real = ~is_synth
     diag = compute_kernel_diagnostics_ruzicka(
-        Zj, X, n_species, n_weeks,
+        Zj[_real], X[_real], n_species, n_weeks,
         max_samples=int(sc.get("diagnostic_sample", 800)), seed=seed)
+    # The check that says whether widening worked: self-similarity of an annual community against a
+    # window mean. The contract pins both at 1.0; the gap is what blocked raw-space averaging.
+    _n_ann = float(np.median((Zj[_real] ** 2).sum(1)))
+    _n_syn = (float(np.median((Zj[is_synth] ** 2).sum(1))) if is_synth.any() else float("nan"))
+    print(f"[st-esk] representability: median ||z||^2 annual {_n_ann:.4f}, "
+          f"window-mean {_n_syn:.4f} (contract 1.0). Raw-space averaging downstream needs these "
+          f"comparable; a large gap means the widening did not take.")
     du, dc = diag["uncentered"], diag["centered"]
     print(f"[st-esk] fixed-sample diagnostics (n={diag['sample_size']}, seed={seed}, "
           f"retained_rank={latent_dim}; production=UNCENTERED):")
@@ -765,7 +844,10 @@ def run_spacetime_esk(config=None):
     from src.config_utils import load_data_config
     with rasterio.open(load_data_config()["grid"]["ref_raster"]) as src:
         H, W = src.height, src.width
-    rec = yrs == recent_year
+    # ~is_synth is load-bearing: a window mean carries its centre year, so without it a synthetic
+    # row whose centre lands on the anchor year would be written into the exported grid as if it
+    # were an observation.
+    rec = (yrs == recent_year) & ~is_synth
     rr, cc = pidx[rec, 0], pidx[rec, 1]
     vm = np.zeros((H, W), bool); vm[rr, cc] = True
     Zg = np.full((H, W, latent_dim), np.nan, np.float32); Zg[rr, cc] = Zj[rec]
@@ -787,6 +869,12 @@ def run_spacetime_esk(config=None):
                    "recent_frac": landmark_recent_frac,
                    "population_recent_frac": population_recent_frac,
                    "recent_year": recent_year, "diagnostics": diag,
+                   "augment_windowed": bool(sc.get("augment_windowed", False)),
+                   "augment_half_width": int(sc.get("augment_half_width", 2)),
+                   "n_synthetic_window_rows": int(is_synth.sum()),
+                   "median_z_norm2_annual": _n_ann,
+                   "median_z_norm2_window_mean": _n_syn,
+                   "landmark_synthetic_share": float(np.mean(is_synth[lm_idx])),
                    "n_landmarks": int(len(lm_idx))}, fh, indent=2)
     print(f"[st-esk] saved joint basis -> {out_dir} (recent Z {Z_flat.shape}, latent_dim {latent_dim})")
     return out_dir

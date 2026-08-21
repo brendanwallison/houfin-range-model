@@ -1065,3 +1065,47 @@ def test_unweighted_pair_draw_is_unchanged():
     b = spacetime_kernel_loss(z, pool_t, pool_flat, pool_x, num_pairs=128,
                               generator=torch.Generator().manual_seed(7))
     assert torch.equal(a, b)
+
+
+def test_windowed_augmentation_averages_raw_counts_not_log1p():
+    """The order that makes the added points the RIGHT points. X arrives log1p-transformed, so the
+    augmentation must expm1 back to counts, average, and re-apply log1p. Averaging the log1p values
+    would be biased low for the Poisson rate (Jensen), so the synthetic rows would describe a
+    community that is systematically sparser than the one they claim to summarise."""
+    from src.community_encoder.train_DESK.esk_kernel import augment_with_windowed
+    raw = np.array([[0.0, 40.0, 0.0], [0.0, 0.0, 0.0], [4.0, 0.0, 0.0]])
+    X = np.log1p(raw).astype("float32")
+    pidx = np.array([[0, 0, 2000], [0, 0, 2001], [0, 0, 2002]], dtype=np.int32)
+    X2, pidx2, is_synth = augment_with_windowed(X, pidx, half_width=2, min_years=2)
+    assert is_synth.sum() == 3 and (~is_synth).sum() == 3
+    # the centre-2001 row averages all three years
+    row = X2[is_synth][np.where(pidx2[is_synth][:, 2] == 2001)[0][0]]
+    right = np.log1p(raw.mean(0))                    # average counts, then transform
+    wrong = np.log1p(raw).mean(0)                    # transform, then average
+    assert np.allclose(row, right, atol=1e-5), (row, right)
+    assert not np.allclose(row, wrong, atol=1e-3)
+    assert right[1] > wrong[1]                       # log1p(mean) > mean(log1p), by Jensen
+
+
+def test_windowed_augmentation_leaves_annual_points_untouched():
+    """The support is WIDENED, not replaced. If the annual rows moved, annual queries would become
+    the off-span ones and DESK -- which emits per-year z -- would be the thing that broke."""
+    from src.community_encoder.train_DESK.esk_kernel import augment_with_windowed
+    rng = np.random.default_rng(0)
+    X = np.log1p(rng.poisson(0.6, (40, 6))).astype("float32")
+    pidx = np.array([[0, c, 2000 + t] for c in range(8) for t in range(5)], dtype=np.int32)
+    X2, pidx2, is_synth = augment_with_windowed(X, pidx, half_width=1, min_years=2)
+    assert np.array_equal(X2[~is_synth], X)
+    assert np.array_equal(pidx2[~is_synth], pidx)
+    assert is_synth.sum() > 0
+
+
+def test_windowed_augmentation_skips_singleton_windows():
+    """A 'mean' over one observation is that observation. Adding it would duplicate a point rather
+    than make a new region representable, and duplicates distort the landmark Gram."""
+    from src.community_encoder.train_DESK.esk_kernel import augment_with_windowed
+    X = np.log1p(np.array([[1.0, 2.0], [3.0, 4.0]])).astype("float32")
+    # two cells, one observation each -> no window has >= 2 years
+    pidx = np.array([[0, 0, 1970], [5, 5, 2000]], dtype=np.int32)
+    X2, _p2, is_synth = augment_with_windowed(X, pidx, half_width=2, min_years=2)
+    assert is_synth.sum() == 0 and len(X2) == 2

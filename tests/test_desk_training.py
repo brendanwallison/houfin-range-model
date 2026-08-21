@@ -454,9 +454,11 @@ def test_rotation_diagnostic_reads_a_known_angle():
     text = out.getvalue()
 
     assert "rotation/direction diagnostic 2021->2025" in text
-    # `rot tr R va R (raw Rr/Rrv)`: R is z_ema (the SUPERVISED quantity, so 1.0 is the goal),
-    # raw is the pre-EMA rotation, which must be LARGER because the EMA attenuates.
-    rots = re.findall(r"rot tr ([\d.]+) va ([\d.]+) \(raw ([\d.]+)/([\d.]+)\)", text)
+    # `rot tr R va R ho Rh (raw Rr/Rrv)`: R is z_ema (the SUPERVISED quantity, so 1.0 is the
+    # goal), raw is the pre-EMA rotation, which must be LARGER because the EMA attenuates. `ho`
+    # is the withheld-era pair and is nan here (no temporal holdout in this fixture).
+    rots = re.findall(
+        r"rot tr ([\d.]+) va ([\d.]+) ho (?:[\d.]+|nan) \(raw ([\d.]+)/([\d.]+)\)", text)
     assert len(rots) == 3, text
     ema_r = [float(a) for a, _, _, _ in rots]
     raw_r = [float(c) for _, _, c, _ in rots]
@@ -467,9 +469,16 @@ def test_rotation_diagnostic_reads_a_known_angle():
     assert all(e <= r + 1e-9 for e, r in zip(ema_r, raw_r)), (ema_r, raw_r)
     # the target rotation is a fixed property of the data; the diagnostic line reports the
     # cell counts, and the mse columns must be finite
-    assert re.search(r"mse tr [\d.]+ va [\d.]+ gap [\d.]+x", text), text
+    assert re.search(r"mse tr [\d.]+ va\(pool\) [\d.]+ gap [\d.]+x", text), text
+    # The pooled val MSE must be split into its trained-era (E) and withheld-era (H) parts --
+    # reporting only the pool is what forced the sweep's two key numbers to be recovered by hand.
+    assert len(re.findall(r"va\(sp\) [\d.]+ va\(sp\+t\) (?:[\d.]+|nan)", text)) == 3, text
     # the direction column and its permuted null must both be present every epoch
-    assert len(re.findall(r"dcos tr [\d.-]+ va [\d.-]+ null [+-][\d.]+/[+-][\d.]+", text)) == 3, text
+    assert len(re.findall(
+        r"dcos tr [\d.-]+ va [\d.-]+ ho (?:[\d.-]+|nan) null [+-][\d.]+/[+-][\d.]+",
+        text)) == 3, text
+    # the MSE-calibration ratio rot/dcos^2 is reported (diagnostic only, never optimized)
+    assert len(re.findall(r"cal (?:[\d.]+|nan|inf)", text)) == 3, text
     print("rotation diagnostic reads a known angle OK")
 
 
@@ -824,3 +833,110 @@ def test_no_temporal_holdout_reports_nan_not_a_crash():
     import re
     _stab, text = _tiny_train(False, epochs=2)
     assert re.findall(r"Val\(yr-out\) nan", text), text[-400:]
+
+
+def _tiny_ema_run(tgt_extra=None, **kw):
+    """Smallest train_model_ema call that still produces the diagnostic lines. Returns stdout."""
+    import contextlib
+    import io
+
+    from src.community_encoder.train_DESK import desk_training as D
+
+    sch = _schema()
+    dims = [s["dim"] for s in sch["streams"]]
+    T, H, W, L = 6, 10, 12, 16
+    rng = np.random.default_rng(0)
+    cov = rng.normal(size=(T, H, W, sch["total_dim"])).astype("float32")
+    msk = np.ones((T, H, W), bool)
+    years = list(range(2020, 2026))
+    m = np.ones((H, W), bool)
+    ho = np.zeros((H, W), bool); ho[:, :4] = True          # a real spatial split
+    tgt = {}
+    for y in years[1:]:
+        zg = rng.normal(size=(H, W, L)).astype("float32")
+        tgt[y] = (zg, m & ~ho, m & ho, np.ones((H, W), dtype="float32"))
+    if tgt_extra:
+        tgt_extra(tgt, m, ho)
+    out = io.StringIO()
+    with contextlib.redirect_stdout(out):
+        D.train_model_ema(cov, msk, years, tgt,
+                          _metric_dict(rng.random((H, W, 12)).astype("float32"), m, years),
+                          m & ~ho, m & ho, dims, latent_dim=L,
+                          ema_cfg={"earlystop_warmup": 1}, spatial_kernel=3, epochs=2, lr=1e-3,
+                          weights={"stabilizing": 64.0, "metric": 5.0, "reconstruction": 0.1},
+                          schema=sch, dropout=0.1, **kw)
+    return out.getvalue()
+
+
+def _withhold(year):
+    """Make ``year`` temporally withheld, the way run_desk_experiment does: train mask zeroed."""
+    def apply(tgt, m, ho):
+        zg, _tr, va, wg = tgt[year]
+        tgt[year] = (zg, np.zeros_like(m), va, wg)
+    return apply
+
+
+def test_the_direction_anchor_can_be_pinned_so_the_interval_stops_moving():
+    """Auto-selecting the deepest TRAINED year shortened the diagnostic interval across the
+    temporal sweep (49/39/29 yr), so most of the apparent dcos decline was a shrinking chord.
+    Pinning makes the interval a constant and the holdout width the only variable."""
+    auto = _tiny_ema_run(tgt_extra=_withhold(2021))
+    assert "rotation/direction diagnostic 2022->2025" in auto, auto   # 2021 withheld -> moved
+    pinned = _tiny_ema_run(tgt_extra=_withhold(2021), direction_anchor_year=2023)
+    assert "rotation/direction diagnostic 2023->2025" in pinned, pinned
+    assert "trained-era CONTROL" in pinned, pinned
+
+
+def test_a_pinned_anchor_that_cannot_work_fails_loudly():
+    """A mis-set overlay must not silently fall back to auto-select: the whole point of pinning
+    is that the interval is known, so a quiet fallback would misreport the experiment."""
+    import pytest
+
+    with pytest.raises(ValueError, match="not a supervised year"):
+        _tiny_ema_run(direction_anchor_year=1900)
+    # the trained-era control needs training cells; a withheld year cannot serve as one
+    with pytest.raises(ValueError, match="no training cells"):
+        _tiny_ema_run(tgt_extra=_withhold(2021), direction_anchor_year=2021)
+    # ...but the WITHHELD anchor is allowed to be exactly that year, by design
+    txt = _tiny_ema_run(tgt_extra=_withhold(2021), direction_withheld_anchor_year=2021)
+    assert "WITHHELD-era direction pair 2021->2025" in txt, txt
+
+
+def test_the_withheld_pair_gets_no_idw_bar_rather_than_a_rigged_one():
+    """spatial_interp_dir_cos needs >=k TRAINING cells in the deep year and a withheld year has
+    none, so it self-disables. Forcing a value would hand the bar that year's truth while the
+    model saw none of it."""
+    txt = _tiny_ema_run(tgt_extra=_withhold(2021), direction_withheld_anchor_year=2021)
+    line = [l for l in txt.splitlines() if "WITHHELD-era direction pair" in l][0]
+    assert "n/a" in line, line
+    assert "spacetime_idw" in line, line
+
+
+def test_val_mse_is_split_into_trained_era_and_withheld_era():
+    """E and H are the results of the temporal sweep. Reporting only the pool forced them to be
+    recovered by hand from three runs, and invited comparing the pool against a bar that covers
+    only the trained years."""
+    import re
+
+    txt = _tiny_ema_run(tgt_extra=_withhold(2021))
+    rows = re.findall(r"va\(pool\) ([\d.]+) gap [\d.]+x \| va\(sp\) ([\d.]+) "
+                      r"va\(sp\+t\) ([\d.]+)", txt)
+    assert rows, txt
+    for pool, sp, spt in rows:
+        pool, sp, spt = float(pool), float(sp), float(spt)
+        # the pool is a cell-count-weighted mix of the two, so it must lie between them
+        assert min(sp, spt) - 1e-6 <= pool <= max(sp, spt) + 1e-6, (pool, sp, spt)
+    # with no temporal holdout the withheld column has nothing to report
+    assert "va(sp+t) nan" in _tiny_ema_run()
+
+
+def test_the_withheld_split_follows_the_train_mask_not_a_passed_list():
+    """The split must be derived from what the objective actually saw. Zeroing a year's train
+    mask IS how a year is withheld, so that mask -- not a separately-passed list that could drift
+    from it -- has to define the reported split."""
+    import re
+
+    # tgt alone marks 2021 withheld; holdout_year_targets is deliberately NOT passed
+    txt = _tiny_ema_run(tgt_extra=_withhold(2021))
+    spt = re.findall(r"va\(sp\+t\) ([\d.]+|nan)", txt)
+    assert spt and all(v != "nan" for v in spt), txt

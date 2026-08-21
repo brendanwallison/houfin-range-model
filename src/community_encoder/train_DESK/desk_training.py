@@ -387,7 +387,9 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
                     weights=None, seed=0, patience=50, min_delta=1e-4,
                     schema=None, augment_cfg=None, dropout=0.5, weight_decay=0.0,
                     warmup_epochs=0, min_lr_frac=1.0, amp=False, eval_every=1,
-                    holdout_year_targets=None, hidden_width=None, mlp_expansion=4,
+                    holdout_year_targets=None, direction_anchor_year=None,
+                    direction_withheld_anchor_year=None,
+                    hidden_width=None, mlp_expansion=4,
                     _skip_target_conversion=False):
     """Train DESK with a learned output-EMA.
 
@@ -487,12 +489,21 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
     # targets from neighbouring TRAINING cells, no covariates and no learning. Val must sit
     # clearly below this or the covariates are adding nothing over spatial smoothness.
     try:
-        from .validate_baselines import (spatial_interp_baseline,
+        from .validate_baselines import (interp_year_coverage, spatial_interp_baseline,
                                          spatial_interp_dir_cos)
         b_near, b_idw = spatial_interp_baseline(tgt)
+        n_used, n_tot = interp_year_coverage(tgt)
+        # Which years the bar actually covers, because it silently skips any year with no
+        # training cells -- i.e. every temporally withheld year. Comparing the POOLED val MSE
+        # against a bar measured on a subset of years is not a comparison, and that is exactly
+        # the mistake the first temporal-holdout sweep invited.
+        scope = (f"{n_used}/{n_tot} supervised years"
+                 + ("" if n_used == n_tot else
+                    " -- withheld years have no training cells to interpolate from, so compare "
+                    "va(sp), NOT the pooled va"))
         print(f"[desk] spatial-interpolation baselines (no model, no covariates): "
               f"nearest-train-cell={b_near:.4f}, inverse-distance-8={b_idw:.4f} "
-              f"-- Val must beat these to justify the covariates", flush=True)
+              f"over {scope}", flush=True)
     except Exception as exc:                       # diagnostic only; never block training
         print(f"[desk] spatial-interpolation baseline unavailable ({exc})", flush=True)
 
@@ -551,8 +562,12 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
                 sq += float(torch.sum(d * d)); cnt += int(m.sum())
         return sq / max(cnt, 1), cnt
 
-    def _rotation(z_all, m):
-        """Median ``1 - cos`` between the deepest and anchor year, predicted and target.
+    def _rotation(z_all, m, y_a=None):
+        """Median ``1 - cos`` between the deep and anchor year, predicted and target.
+
+        ``y_a`` overrides the deep year so the same diagnostic can be run on a second, WITHHELD
+        pair -- the trained-era pair alone never looks at the years the temporal holdout removed,
+        which is the whole point of the experiment.
 
         Call this on ``z_ema``, the SUPERVISED quantity, so a ratio of 1.0 means "the model
         reproduces its target's temporal change". Scoring the pre-EMA ``z_raw`` against the
@@ -574,7 +589,8 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
         folds in ⟨z,z⟩ calibration drift (measured ``||Z||^2`` ~ 0.73) and would report that drift
         as turnover.
         """
-        if y_deep is None or not bool(m.any()):
+        y_a = y_deep if y_a is None else int(y_a)
+        if y_a is None or not bool(m.any()):
             return float("nan"), float("nan")
 
         def med(a, b):
@@ -585,11 +601,11 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
                 return float("nan")
             return float(torch.median(1.0 - num[ok] / den[ok]))
 
-        zp0, zp1 = z_all[yi[y_deep]][m].detach(), z_all[yi[y2023]][m].detach()
-        zt0, zt1 = tgt[y_deep][0][m], tgt[y2023][0][m]
+        zp0, zp1 = z_all[yi[y_a]][m].detach(), z_all[yi[y2023]][m].detach()
+        zt0, zt1 = tgt[y_a][0][m], tgt[y2023][0][m]
         return med(zp0, zp1), med(zt0, zt1)
 
-    def _dir_cos(z_all, m, perm):
+    def _dir_cos(z_all, m, perm, y_a=None):
         """Median cosine between the PREDICTED and TARGET change vectors, and a permuted null.
 
         ``_rotation`` measures only how far z swings; two models can match its magnitude while
@@ -607,14 +623,29 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
         rather than fresh noise: it pairs each predicted change with a different cell's target
         change, giving the cosine attainable with no per-cell information.
         """
-        if y_deep is None or not bool(m.any()):
+        y_a = y_deep if y_a is None else int(y_a)
+        if y_a is None or not bool(m.any()):
             return float("nan"), float("nan")
-        dp = (z_all[yi[y2023]][m] - z_all[yi[y_deep]][m]).detach()
-        dt = tgt[y2023][0][m] - tgt[y_deep][0][m]
+        dp = (z_all[yi[y2023]][m] - z_all[yi[y_a]][m]).detach()
+        dt = tgt[y2023][0][m] - tgt[y_a][0][m]
 
         return median_dir_cos(dp, dt), median_dir_cos(dp, dt[perm])
 
     val_sel = {y: (zg, va) for y, (zg, _tr, va, _w) in tgt.items()}
+    # The pooled `va` above mixes two very different questions: held-out cells in years the
+    # model trained on (unseen PLACE) and held-out cells in withheld years (unseen place AND
+    # year). Reporting only the pool meant the two had to be recovered by hand from three runs
+    # of the sweep -- and invited comparing the pool against a bar that covers only the trained
+    # years. Split it here; the pooled value is unchanged and remains the selection signal.
+    # "Withheld" is derived from the TRAIN MASK, not from holdout_year_targets. The mask is what
+    # the objective actually saw, so the split cannot disagree with reality -- and a divergence
+    # between "what we withheld" and "what we report as withheld" is precisely the class of bug
+    # this whole change exists to close. run_desk_experiment sets both consistently; deriving
+    # from the mask also covers a year that has no training cells for any other reason, which is
+    # equally a year the objective never saw.
+    _ho_yrs = {int(y) for y, (_zg, _tr, _va, _w) in tgt.items() if not bool(_tr.any())}
+    val_sel_sp = {y: v for y, v in val_sel.items() if int(y) not in _ho_yrs}
+    val_sel_spt = {y: v for y, v in val_sel.items() if int(y) in _ho_yrs}
     # Train-cell selection on the SAME footing as val, evaluated on the clean forward. Without
     # it the only train-side number is `Stab`, which is (a) measured under dropout+masking and
     # so overstates the error, and (b) divided by latent_dim while Val is not -- two different
@@ -626,6 +657,32 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
     # and direction columns would silently go dark exactly when a temporal holdout is added.
     _cand = [y for y in sorted(tgt) if y != y2023 and bool(tgt[y][1].any())]
     y_deep = _cand[0] if _cand else None
+    # PINNED anchors. Auto-selecting the deepest TRAINED year silently shortened the diagnostic
+    # interval across the temporal sweep (1976->2025, 1986->2025, 1996->2025 = 49/39/29 yr), so
+    # most of the apparent decline in dcos was a shrinking chord rather than a worse model.
+    # Pinning makes the interval a constant and the holdout width the only variable.
+    def _pinned(year, label, need_train):
+        if year is None:
+            return None
+        y = int(year)
+        if y not in tgt:
+            raise ValueError(f"{label}={y} is not a supervised year "
+                             f"(have {min(tgt)}..{max(tgt)}); fix the overlay")
+        if need_train and not bool(tgt[y][1].any()):
+            raise ValueError(f"{label}={y} has no training cells (it is temporally withheld); "
+                             f"the trained-era control needs a year the model trained on")
+        return y
+
+    _pin = _pinned(direction_anchor_year, "desk.trend.direction_anchor_year", True)
+    if _pin is not None:
+        y_deep = _pin
+    # The withheld-era pair: the measurement the temporal sweep exists to produce, and absent
+    # from the log until now. Pinned rather than defaulted to the deepest withheld year, which
+    # is 1966 in every sweep overlay -- BBS's launch year, ~400 routes, and after intersecting
+    # with the anchor year and the val split it is the ~36-val-cell case DEFAULT_EPOCHS was
+    # written to avoid.
+    y_ho = _pinned(direction_withheld_anchor_year,
+                   "desk.trend.direction_withheld_anchor_year", False)
     # Cells supervised in BOTH the deep and anchor year, split train/val -- the diagnostic
     # needs the same cell present at both ends to measure its change.
     if y_deep is not None:
@@ -635,9 +692,16 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
         g_null = torch.Generator(device="cpu").manual_seed(seed)
         perm_tr = torch.randperm(int(rot_tr.sum()), generator=g_null).to(device)
         perm_va = torch.randperm(int(rot_va.sum()), generator=g_null).to(device)
-        if int(min(tgt)) != y_deep:
-            print(f"[desk] rotation anchor moved to {y_deep} (min supervised year "
-                  f"{int(min(tgt))} has no training cells -- temporal holdout)", flush=True)
+        if _pin is not None:
+            print(f"[desk] rotation anchor PINNED to {y_deep} "
+                  f"(desk.trend.direction_anchor_year) -- the interval is a constant across the "
+                  f"sweep, so a change in this pair is not a change in chord length",
+                  flush=True)
+        elif int(min(tgt)) != y_deep:
+            print(f"[desk] rotation anchor auto-moved to {y_deep} (min supervised year "
+                  f"{int(min(tgt))} has no training cells -- temporal holdout). This SHORTENS "
+                  f"the interval; pin desk.trend.direction_anchor_year to compare across runs.",
+                  flush=True)
         print(f"[desk] rotation/direction diagnostic {y_deep}->{y2023}: "
               f"{int(rot_tr.sum())} train / {int(rot_va.sum())} val cells", flush=True)
         # What the covariates must beat on the TEMPORAL axis. The Z-MSE baseline above says
@@ -648,9 +712,28 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
         print(f"[desk] direction baseline (inverse-distance, no covariates): "
               f"dcos={_idw_dc:.2f} on {_idw_n} val cells -- the model's dcos va must beat "
               f"this, not just the permutation null", flush=True)
+        if _pin is not None:
+            print(f"[desk] NOTE {y_deep}->{y2023} is the trained-era CONTROL: both ends lie in "
+                  f"years the model trained on, so it measures whether losing the deep past hurt "
+                  f"modern-era skill -- not extrapolation. See the withheld pair below.",
+                  flush=True)
     else:
         rot_tr = rot_va = torch.zeros(1, dtype=torch.bool, device=device)
         perm_tr = perm_va = torch.zeros(0, dtype=torch.long, device=device)
+    # The withheld-era pair. Its IDW bar is deliberately absent: spatial_interp_dir_cos needs
+    # >=k TRAINING cells in the deep year and a withheld year has none, so it self-disables.
+    # That is the honest answer -- forcing a value would hand the bar that year's truth while
+    # the model saw none of it. The admissible bar is validate's spacetime_idw.
+    rot_ho = perm_ho = None
+    if y_ho is not None:
+        rot_ho = tgt[y_ho][2] & tgt[y2023][2]
+        g_ho = torch.Generator(device="cpu").manual_seed(seed + 1)
+        perm_ho = torch.randperm(int(rot_ho.sum()), generator=g_ho).to(device)
+        _ho_dc, _ = spatial_interp_dir_cos(tgt, y_ho, y2023, rot_ho)
+        print(f"[desk] WITHHELD-era direction pair {y_ho}->{y2023}: "
+              f"{int(rot_ho.sum())} val cells; idw bar "
+              f"{'n/a (no training cells that year -- use validate spacetime_idw)' if not np.isfinite(_ho_dc) else f'{_ho_dc:.2f}'}",
+              flush=True)
     best_val, best, bad, nonfinite = float("inf"), None, 0, 0
     print(f"--- Training DESK+outputEMA ({len(window_years)}yr window {window_years[0]}..{window_years[-1]}, "
           f"{len(tgt)} supervised years, max {epochs} ep; grad_clip={grad_clip}, es_warmup={es_warmup}, "
@@ -724,6 +807,9 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
                 z_eval, _, z_raw_eval = _forward_window(train_mode=False, mask_inputs=False,
                                                         want_raw=True)
                 vs, vn = _z_mse(z_eval, val_sel)
+                # E and H: the two numbers the temporal sweep is actually about.
+                vs_sp = _z_mse(z_eval, val_sel_sp)[0] if val_sel_sp else float("nan")
+                vs_spt = _z_mse(z_eval, val_sel_spt)[0] if val_sel_spt else float("nan")
                 va_anchor = tgt[y2023][2]
                 vs_anchor = (float(torch.sum((z_eval[yi[y2023]][va_anchor]
                                               - tgt[y2023][0][va_anchor]) ** 2))
@@ -739,6 +825,12 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
                 # Direction of change, with a fixed-permutation null. rot is magnitude only.
                 dcT, dcTn = _dir_cos(z_eval, rot_tr, perm_tr)
                 dcV, dcVn = _dir_cos(z_eval, rot_va, perm_va)
+                # Withheld-era pair: same two diagnostics, on years the model never trained on.
+                if rot_ho is not None:
+                    rotPh, rotTh = _rotation(z_eval, rot_ho, y_a=y_ho)
+                    dcH, _ = _dir_cos(z_eval, rot_ho, perm_ho, y_a=y_ho)
+                else:
+                    rotPh = rotTh = dcH = float("nan")
         dt = time.perf_counter() - t_ep
         rss = _max_rss_gib()
         vram = (f" | VRAM {torch.cuda.max_memory_allocated() / 2**30:.2f}/"
@@ -754,12 +846,22 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
         # informational, not a ratio-to-one.
         rr, rrv = _ratio(rotP, rotT), _ratio(rotPv, rotTv)
         rawr, rawrv = _ratio(rawP, rotT), _ratio(rawPv, rotTv)
+        rrh = _ratio(rotPh, rotTh)
         gap = (vs / ts) if ts > 1e-12 else float("nan")
+        # Calibration. For an MSE objective the optimal magnitude of a prediction whose direction
+        # cosine is rho is rho*truth, and since 1-cos ~ theta^2/2 that makes rot ~ dcos^2 the
+        # MSE-calibrated value. cal = rot/dcos^2: ~1 is MSE-calibrated, >1 means the model swings
+        # further than its direction accuracy justifies (which RAISES error), and rot -> 1 is the
+        # separate thing the science wants. Reported, not optimized -- the objective is unchanged.
+        cal = (rrv / (dcV ** 2)) if (np.isfinite(rrv) and np.isfinite(dcV)
+                                     and abs(dcV) > 1e-6) else float("nan")
         print(f"Ep {ep:03d} | Stab {loss_stab.item():.4f} | True {loss_true.item():.4f} | "
-              f"Rec {recon_loss.item():.4f} | mse tr {ts:.4f} va {vs:.4f} gap {gap:.1f}x | "
+              f"Rec {recon_loss.item():.4f} | mse tr {ts:.4f} va(pool) {vs:.4f} gap {gap:.1f}x | "
+              f"va(sp) {vs_sp:.4f} va(sp+t) {vs_spt:.4f} | "
               f"Val(2025) {vs_anchor:.4f} | Val(yr-out) {vs_time:.4f} | "
-              f"rot tr {rr:.2f} va {rrv:.2f} (raw {rawr:.2f}/{rawrv:.2f}) | "
-              f"dcos tr {dcT:.2f} va {dcV:.2f} null {dcTn:+.2f}/{dcVn:+.2f} | "
+              f"rot tr {rr:.2f} va {rrv:.2f} ho {rrh:.2f} (raw {rawr:.2f}/{rawrv:.2f}) | "
+              f"dcos tr {dcT:.2f} va {dcV:.2f} ho {dcH:.2f} null {dcTn:+.2f}/{dcVn:+.2f} | "
+              f"cal {cal:.1f} | "
               f"half-life {ema.half_life().item():.1f}y | "
               f"mix {w_stab.item()/tot:.2f}/{w_true.item()/tot:.2f}/{w_rec.item()/tot:.2f} | "
               f"lr {opt.param_groups[0]['lr']:.2e} | {dt:.1f}s{vram} | RSS {rss:.1f}G", flush=True)
@@ -972,6 +1074,10 @@ def run_desk_experiment(config=None):
         amp=bool(desk_cfg.get("amp", False)),
         eval_every=int(desk_cfg.get("eval_every", 1)),
         holdout_year_targets=year_val or None,
+        # Pinned so the diagnostic interval is a constant across the temporal sweep instead of
+        # shrinking with the holdout. None = the historical auto-selected deepest trained year.
+        direction_anchor_year=tr_cfg.get("direction_anchor_year"),
+        direction_withheld_anchor_year=tr_cfg.get("direction_withheld_anchor_year"),
         hidden_width=hidden_width, mlp_expansion=mlp_expansion)
     ema_half_life = float(ema.half_life().item())
     torch.save(ema.state_dict(), os.path.join(out_dir, "output_ema.pth"))

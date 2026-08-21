@@ -118,6 +118,61 @@ def modern_reference_rows(keys, modern_window=MODERN_WINDOW):
     return nc_src, nc_src >= 0
 
 
+def window_groups(keys, half_width):
+    """``[rows, ...]`` per row -- that cell's rows within +/-half_width YEARS of the row's own year.
+
+    Indices are in the SAME row space as ``keys``, which must be the UNFILTERED key array: the
+    caller averages ``X_raw`` with these, and ``X_raw`` is never site-gated (see the note at the
+    gate). Handing in post-gate keys would index the wrong rows -- the failure mode already
+    recorded there as "IndexError at 110878 vs size 110839".
+
+    ``half_width=0`` returns each row alone, so the windowed path reduces exactly to the
+    historical per-row behaviour.
+    """
+    keys = np.asarray(keys)
+    hw = int(half_width)
+    by_cell = {}
+    for i in range(keys.shape[0]):
+        by_cell.setdefault((int(keys[i, 0]), int(keys[i, 1])), []).append(i)
+    out = []
+    for i in range(keys.shape[0]):
+        y = int(keys[i, 2])
+        out.append(tuple(j for j in by_cell[(int(keys[i, 0]), int(keys[i, 1]))]
+                         if abs(int(keys[j, 2]) - y) <= hw))
+    return out
+
+
+def modern_reference_groups(keys, modern_window=MODERN_WINDOW):
+    """``(groups, keep)`` -- ALL of each cell's rows inside ``modern_window``, not just the last.
+
+    ``modern_reference_rows`` picks each cell's most recent surveyed row, which uses a 16-year
+    window to select a single route-year. At ~1.08 routes per cell-year that reference is one
+    observer on one morning, and it appears in every no-change null and every observed-space
+    ceiling in this report -- so its noise propagates everywhere, attenuating the measured
+    similarity toward zero.
+
+    Averaging the window instead cuts that noise by ~sqrt(n_years). ``groups[i]`` is the tuple of
+    row indices to average for row ``i``; ``keep`` is the same site gate as
+    ``modern_reference_rows`` (a cell with no survey in the window has no definable null), so the
+    row population and the gate are unchanged and only the reference VALUE differs.
+
+    The caller must average the observed community and the model's z over the SAME group. Doing
+    one and not the other would compare a smoothed truth against an unsmoothed prediction, which
+    is the asymmetry this module exists to avoid.
+    """
+    keys = np.asarray(keys)
+    lo, hi = int(modern_window[0]), int(modern_window[1])
+    by_cell = {}
+    for i in range(keys.shape[0]):
+        y = int(keys[i, 2])
+        if lo <= y <= hi:
+            by_cell.setdefault((int(keys[i, 0]), int(keys[i, 1])), []).append(i)
+    groups = [tuple(by_cell.get((int(keys[i, 0]), int(keys[i, 1])), ()))
+              for i in range(keys.shape[0])]
+    keep = np.array([len(g) > 0 for g in groups], dtype=bool)
+    return groups, keep
+
+
 def dot_gram(Z):
     """``Z @ Z.T`` → ``(n, n)``. THE prediction, per the kernel contract.
 
@@ -925,6 +980,13 @@ def run(config=None, n_sample=4000, seed=0):
 
     # Site gate: drop every row of any cell lacking a modern survey (no definable null).
     nc_src, keep = modern_reference_rows(keys, MODERN_WINDOW)
+    # Averaging groups stay in FULL row space, indexed the same way X_raw_all is -- see
+    # window_groups. Only the pooled row bookkeeping (X_log/keys/nc_src) is gated.
+    nc_groups_full, _keep_g = modern_reference_groups(keys, MODERN_WINDOW)
+    assert bool((_keep_g == keep).all()), "reference gate must not depend on the averaging mode"
+    win_groups_full = window_groups(keys, int(
+        config.get("bbs_routes", {}).get("window_half_width", 2)))
+    kept_to_full = np.where(keep)[0]
     n_cells_all = np.unique(keys[:, :2], axis=0).shape[0]
     X_log, keys, nc_src = X_log[keep], keys[keep], nc_src[keep]
     remap = -np.ones(len(keep), dtype="int64")
@@ -955,7 +1017,50 @@ def run(config=None, n_sample=4000, seed=0):
     sel = stratified_sample(keys, int(n_sample), rng, is_heldout=is_ho_all)
     X_s, keys_s, nc_s = X_log[sel], keys[sel], nc_src[sel]
     keys_nc = keys[nc_s]                                     # each row's MODERN (cell, year)
-    X_nc_s = X_log[nc_s]                                     # for the observed-space diagnostic
+    sel_full = kept_to_full[sel]                             # back into X_raw_all's row space
+
+    # DENOISED endpoints. A cell-year is ~1.08 routes, i.e. one observer on one morning, so a
+    # single-year community is a noisy realization of the decadal quantity we actually care
+    # about. Averaging borrows power over time at a FIXED location, which is defensible in a way
+    # spatial smoothing would not be (it borrows none across space).
+    #
+    # Averaging happens on RAW COUNTS, then log1p once -- via epoch_mean_observed, the same
+    # helper and the same order the epoch analysis already uses. That order is not a preference:
+    # BBS counts are Poisson (a count with mean B has log-variance ~1/B), so the mean of raw
+    # counts is the minimum-variance unbiased estimator of the rate, while mean-of-log1p is
+    # biased for it and understates abundant species. Because the transform is still applied
+    # exactly once at the end, S_true remains Ruzicka of a log1p community -- the same functional
+    # on the same quantity, from a better estimate of it. The kernel contract is untouched and
+    # truth never passes through a fitted projection, so this module's whole reason for existing
+    # (escaping the target's own construction operator) is preserved.
+    avg = bool(config.get("bbs_routes", {}).get("average_windows", True))
+    hw = int(config.get("bbs_routes", {}).get("window_half_width", 2))
+    grp_nc = [nc_groups_full[i] for i in sel_full]            # modern reference group per row
+    grp_win = [win_groups_full[i] for i in sel_full]          # +/-hw window per row
+    if avg:
+        X_s = epoch_mean_observed(X_raw_all, grp_win)         # mean raw counts THEN log1p
+        X_nc_s = epoch_mean_observed(X_raw_all, grp_nc)
+        d_win = float(np.mean([len(g) for g in grp_win])) if grp_win else float("nan")
+        d_nc = float(np.mean([len(g) for g in grp_nc])) if grp_nc else float("nan")
+        # Bucket membership keys on the row's OWN year, so a window near a bucket edge reaches
+        # across it. Reported rather than clamped: clamping would make averaging depth depend on
+        # the bucket, which would reintroduce exactly the era-dependent smoothing this removes.
+        yv = keys_s[:, 2]
+        straddle = int(np.sum([
+            (np.min(keys_all[list(g)][:, 2]) < EARLY_WINDOW[1] < np.max(keys_all[list(g)][:, 2]))
+            or (np.min(keys_all[list(g)][:, 2]) < MODERN_WINDOW[0] <= np.max(keys_all[list(g)][:, 2]))
+            for g in grp_win])) if len(yv) else 0
+        print(f"[bbs-routes] DENOISED endpoints (mean raw counts then log1p): rows averaged over "
+              f"+/-{hw} yr, mean {d_win:.1f} surveyed years each; modern reference averaged over "
+              f"{MODERN_WINDOW[0]}-{MODERN_WINDOW[1]}, mean {d_nc:.1f} years "
+              f"(single-year was 1.0 for both)")
+        print(f"[bbs-routes] {straddle}/{len(yv)} sampled windows reach across an early/modern "
+              f"bucket edge; buckets key on the row's own (centre) year")
+    else:
+        X_nc_s = X_log[nc_s]
+        d_win = d_nc = 1.0
+        print(f"[bbs-routes] single-year endpoints, modern reference = most recent survey in "
+              f"{MODERN_WINDOW[0]}-{MODERN_WINDOW[1]} (historical behaviour)")
     is_ho = is_ho_all[sel] if is_ho_all is not None else np.zeros(len(sel), bool)
     print(f"[bbs-routes] sampled {len(sel)} rows ({int(is_ho.sum())} held-out) "
           f"for the {len(sel)}x{len(sel)} matrices")
@@ -967,6 +1072,13 @@ def run(config=None, n_sample=4000, seed=0):
     # asked for explicitly.
     ep_rows_flat = np.array([i for rows in (ep_e_rows + ep_m_rows) for i in rows], dtype="int64")
     need = [keys_s, keys_nc]
+    if avg:
+        # Every row the two averages touch, in FULL row space. Free in forwards: desk_z_ema
+        # encodes every requested cell across every year of the span, so extra keys add gathers
+        # only (same reasoning as the epoch rows below).
+        avg_rows_full = np.unique(np.concatenate(
+            [np.asarray(g, dtype="int64") for g in (grp_win + grp_nc) if len(g)]))
+        need.append(keys_all[avg_rows_full])
     if ep_rows_flat.size:
         need.append(keys_all[ep_rows_flat])          # keys_all: epoch rows index the FULL array
         # The all_years DESK variant needs z at EVERY year of each epoch, not just surveyed ones.
@@ -983,7 +1095,26 @@ def run(config=None, n_sample=4000, seed=0):
     def _gather(kk):
         return Z_want[[want_ix[(int(r), int(c), int(y))] for r, c, y in np.asarray(kk)]]
 
-    Z_s, Z_nc = _gather(keys_s), _gather(keys_nc)
+    # The kernel contract is a property of a SINGLE cell-year's z, so it must be checked on
+    # unaveraged z: ||mean(z)||^2 < mean(||z||^2) whenever the z's differ (Jensen), so measuring
+    # it on the averaged vectors would report a calibration failure that is really just averaging.
+    Z_raw_rows = _gather(keys_s)
+    if avg:
+        # The SAME groups drive both sides -- one list, so symmetry is structural, not asserted.
+        # Averaged over the OBSERVED years only, never over every year in the window: the model
+        # is deterministic, so its averaging exists to estimate the same functional the
+        # observation estimates ("mean over surveyed years"). Averaging all years instead would
+        # shift the model's effective time centre wherever a cell's surveys sit asymmetrically in
+        # the window -- a systematic offset, largest in the sparsely-surveyed early era, scored as
+        # model error when it is survey timing.
+        zc_rows = np.unique(np.concatenate(
+            [np.asarray(g, dtype="int64") for g in (grp_win + grp_nc) if len(g)]))
+        Zc = _gather(keys_all[zc_rows])
+        cpos = {int(r): i for i, r in enumerate(zc_rows)}
+        Z_s = epoch_mean_z(Zc, [[cpos[int(j)] for j in g] for g in grp_win])
+        Z_nc = epoch_mean_z(Zc, [[cpos[int(j)] for j in g] for g in grp_nc])
+    else:
+        Z_s, Z_nc = Z_raw_rows, _gather(keys_nc)
 
     finite = np.isfinite(Z_s).all(1) & np.isfinite(Z_nc).all(1)
     if finite.sum() < 3:
@@ -1002,8 +1133,10 @@ def run(config=None, n_sample=4000, seed=0):
     # Is the kernel contract even holding on this data? ||z||^2 should be ~1 and the dot should
     # land on the same [0,1] scale as Ruzicka. A large gap here means the headline RMSE is
     # dominated by calibration, and the cosine columns are the ones to read.
-    z2 = float(np.median((Z_s ** 2).sum(1)))
-    print(f"[bbs-routes] contract check: median ||z||^2 = {z2:.4f} (contract 1.0); "
+    z2 = float(np.median((Z_raw_rows[finite] ** 2).sum(1)))
+    print(f"[bbs-routes] contract check (UNAVERAGED z: averaging shrinks ||z||^2 by Jensen, so "
+          f"the contract cannot be read off the denoised vectors): median ||z||^2 = {z2:.4f} "
+          f"(contract 1.0); "
           f"median dot = {np.median(_offdiag(S_desk)):.4f} vs observed Ruzicka "
           f"{np.median(_offdiag(S_true)):.4f}")
 
@@ -1023,7 +1156,13 @@ def run(config=None, n_sample=4000, seed=0):
         splits.update({"train": ~is_ho, "heldout": is_ho})
 
     report = {"config": {"n_sample": int(n_sample), "seed": int(seed),
-                         "modern_window": list(MODERN_WINDOW), "early_window": list(EARLY_WINDOW)},
+                         "modern_window": list(MODERN_WINDOW), "early_window": list(EARLY_WINDOW),
+                         # Which reference produced these numbers. Load-bearing for comparing
+                         # against any report written before the averaging existed.
+                         "average_windows": bool(avg),
+                         "window_half_width": hw,
+                         "mean_window_depth_years": d_win,
+                         "mean_reference_depth_years": d_nc},
               "observed": meta, "desk": zmeta,
               "site_gate": {"rows_kept": int(keep.sum()), "rows_total": int(len(keep)),
                             "cells_kept": int(n_cells_kept), "cells_total": int(n_cells_all),

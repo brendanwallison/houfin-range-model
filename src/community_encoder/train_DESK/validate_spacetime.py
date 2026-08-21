@@ -641,23 +641,52 @@ def run_validate(config=None, n_pairs=20000, cka_sample=800, seed=0):
     ho_path = os.path.join(config["paths"]["desk_output_dir"], "holdout_cells.npy")
     bf_path = os.path.join(config["paths"]["desk_output_dir"], "buffer_cells.npy")
     if os.path.exists(ho_path):
-        from .validate_baselines import epoch_direction_panel
+        from .validate_baselines import epoch_direction_panel, per_era_attenuation
         from .esk_kernel import project_points_to_z
         ho = np.load(ho_path)
         bf = np.load(bf_path) if os.path.exists(bf_path) else np.zeros_like(ho)
         z_obs_pts = project_points_to_z(X, config["desk"]["z_dir"], Z.shape[1])
+        # Hoisted ABOVE the epoch panel: the panel needs it too. It used to be computed only
+        # for baseline_panel below, which is why the panel's IDW bar was free to source from
+        # withheld years -- it interpolated the answer's own year while the model saw none of it.
+        _tr_cfg = config["desk"].get("trend", {})
+        hy = [int(y) for y in (_tr_cfg.get("holdout_years") or [])]
         if z_obs_pts is not None:
             zm = {(int(r), int(c), int(y)): Z[i]
                   for i, (r, c, y) in enumerate(pidx) if ok[i]}
+            # How much of the reported dir-cos is eaten by single-year measurement noise, per
+            # era. Printed before the panel so the panel's numbers can be read against it.
+            atten = per_era_attenuation(pidx, z_obs_pts)
+            if atten:
+                print("[validate] dir-cos attenuation from single-year survey noise "
+                      "(raw BBS, ~1.08 routes/cell-year; 0.80 => observed 0.40 ~ true 0.50):")
+                for era, a in atten.items():
+                    print(f"  {era}  attenuation {a['dir_cos_attenuation']:.2f}  "
+                          f"(noise is {a['noise_share_of_long_gap']:.0%} of the long-gap "
+                          f"difference; n_adj={a['n_adjacent_pairs']})")
+            hw = int(_tr_cfg.get("direction_half_width", 0))
             print("[validate] DIRECTION of change vs inverse-distance interpolation "
                   "(z_ema; pairs share cells and nest in time, so never pooled):")
-            epochs_panel = epoch_direction_panel(pidx, None, z_obs_pts, zm, ho, bf)
+            epochs_panel = epoch_direction_panel(pidx, None, z_obs_pts, zm, ho, bf,
+                                                 exclude_years=hy)
+            if hw:
+                # Same panel, endpoints averaged over +/-hw years on model, target and bar
+                # alike. The GAP between the two tables is the noise measurement.
+                print(f"[validate] same panel with endpoints averaged over +/-{hw} yr "
+                      f"(both sides windowed identically; the gap vs the table above is the "
+                      f"noise that was eating the estimate):")
+                epochs_panel = {"single_year": epochs_panel,
+                                "windowed": epoch_direction_panel(
+                                    pidx, None, z_obs_pts, zm, ho, bf,
+                                    exclude_years=hy, half_width=hw),
+                                "attenuation_by_era": atten}
+            else:
+                epochs_panel = {"single_year": epochs_panel, "attenuation_by_era": atten}
 
             # The full ladder, per era. Each rung is handed different information, so the row
             # says WHICH claim survives: beating no-change is nearly free, beating
             # borrowed_delta means the covariates say something neighbours' trends do not.
             from .validate_baselines import baseline_panel, spacetime_idw_z
-            hy = [int(y) for y in (config["desk"].get("trend", {}).get("holdout_years") or [])]
             print("[validate] BASELINE LADDER (z_ema, held-out cells):")
             ladder = baseline_panel(pidx, z_obs_pts, Z, ho, int(recent_year), buffer_mask=bf,
                                     exclude_years=hy)
@@ -668,17 +697,76 @@ def run_validate(config=None, n_pairs=20000, cka_sample=800, seed=0):
             if hy:
                 is_ho = ho[pidx[:, 0], pidx[:, 1]]
                 in_hy = np.isin(pidx[:, 2], np.asarray(hy))
+                # Distance from the training edge, per withheld row. This is the sweep's real
+                # independent variable and it was never reported: pooling the whole block hides
+                # it, and BBS coverage grows ~7x from 1966 to 1995, so each run's pooled figure
+                # is dominated by its OWN shallow, cheap end (a 10.8 yr EMA half-life makes a
+                # 1-2 year reach close to interpolation). That is why 0.1836/0.2050/0.2195
+                # barely moved: three different target sets, each weighted to short distances.
+                first_trained = int(min(y for y in np.unique(pidx[:, 2]) if int(y) not in set(hy)))
+                dist = first_trained - pidx[:, 2]
+                # The distance axis assumes the holdout is a contiguous block BELOW the training
+                # data (backward extrapolation), which is what every sweep overlay does. A
+                # withheld year ABOVE first_trained gets a negative distance and would be dropped
+                # from every bin without a trace, so say so rather than quietly under-reporting.
+                fwd = int(np.sum(in_hy & (dist <= 0)))
+                if fwd:
+                    print(f"[validate] NOTE {fwd:,} withheld rows lie at or after the first "
+                          f"trained year ({first_trained}); the distance bins below cover "
+                          f"BACKWARD extrapolation only and exclude them")
+                # The window withheld in EVERY run of the sweep. Restricting to it makes the
+                # runs compare like with like -- identical years, cells and truth -- so the
+                # cross-run difference means extrapolation distance and nothing else.
+                common = [int(y) for y in (_tr_cfg.get("common_holdout_years") or [])]
+                # Guard, not an assumption: a common window containing a year this run TRAINED
+                # on would put trained rows in a bucket labelled "withheld", and the cross-run
+                # comparison would silently be measuring something else.
+                leak = sorted(set(common) - set(hy))
+                if leak:
+                    raise ValueError(
+                        f"desk.trend.common_holdout_years contains {leak}, which this run did "
+                        f"NOT withhold (holdout_years {min(hy)}-{max(hy)}). The common window "
+                        f"must be a subset of every run's holdout or the buckets are not common.")
+                in_common = np.isin(pidx[:, 2], np.asarray(common)) if common else None
+                if common:
+                    print(f"[validate] common withheld window {min(common)}-{max(common)} "
+                          f"(withheld in every run of the sweep); this run reaches it at "
+                          f"distance {first_trained - max(common)}-{first_trained - min(common)} yr")
+                else:
+                    print("[validate] NOTE: desk.trend.common_holdout_years unset -- the "
+                          "cross-run figures below are on this run's own block and are NOT "
+                          "comparable across the sweep")
                 ladder["temporal_buckets"] = {}
-                for lab, rows in (("unseen_year_seen_cell", in_hy & ~is_ho),
-                                  ("unseen_year_unseen_cell", in_hy & is_ho)):
+                buckets = [("unseen_year_seen_cell", in_hy & ~is_ho),
+                           ("unseen_year_unseen_cell", in_hy & is_ho)]
+                if in_common is not None:
+                    buckets += [("common_window_seen_cell", in_common & ~is_ho),
+                                ("common_window_unseen_cell", in_common & is_ho)]
+                for lab, rows in buckets:
                     if int(rows.sum()) < 20:
                         print(f"  {lab}: {int(rows.sum())} rows, too few to report")
                         continue
-                    print(f"  {lab} ({int(rows.sum()):,} rows) -- withheld years "
-                          f"{min(hy)}-{max(hy)}:")
-                    ladder["temporal_buckets"][lab] = baseline_panel(
+                    yrs_here = pidx[rows, 2]
+                    print(f"  {lab} ({int(rows.sum()):,} rows) -- years "
+                          f"{int(yrs_here.min())}-{int(yrs_here.max())}, distance "
+                          f"{int(dist[rows].min())}-{int(dist[rows].max())} yr:")
+                    res = baseline_panel(
                         pidx, z_obs_pts, Z, ho, int(recent_year), buffer_mask=bf,
                         target_rows=rows, exclude_years=hy)
+                    # Resolution INSIDE the band: one average over a 1-30 year range is a
+                    # blurry measurement of the very thing being measured.
+                    res["by_distance"] = {}
+                    # Half-open on the LOW side: a withheld year adjacent to the training edge is
+                    # distance 1, never 0, so bin "d1-d10" must be (0, 10] and not [0, 10).
+                    for lo in range(0, int(dist[rows].max()), 10):
+                        sub = rows & (dist > lo) & (dist <= lo + 10)
+                        if int(sub.sum()) >= 20:
+                            res["by_distance"][f"d{lo + 1}-{lo + 10}"] = baseline_panel(
+                                pidx, z_obs_pts, Z, ho, int(recent_year), buffer_mask=bf,
+                                target_rows=sub, exclude_years=hy, verbose=False)
+                    ladder["temporal_buckets"][lab] = res
+                ladder["first_trained_year"] = first_trained
+                ladder["common_holdout_years"] = common
 
             # Re-run the EXISTING metrics on an interpolated stand-in for Z. Both take Z as an
             # argument, so this turns "vs null" into "vs a real alternative" without a second

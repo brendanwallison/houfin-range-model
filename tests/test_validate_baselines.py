@@ -380,3 +380,272 @@ def test_a_cell_surveyed_near_only_one_epoch_does_not_crash_the_pair():
     out = epoch_direction_panel(pidx, None, z_obs, z_model, holdout, buf,
                                 epochs=epochs, verbose=False)
     assert out["pairs"]["1985_2005"]["n"] == 20      # the one-epoch cell is dropped, not fatal
+
+
+def test_the_epoch_panel_idw_bar_may_not_source_from_a_withheld_year():
+    """The bug this whole round is about. For an epoch inside a temporal holdout the IDW bar
+    would interpolate that year's TRUTH from that year's neighbours, while the model saw no truth
+    from that year anywhere. Different information sets are not a bar, so the bar must go away."""
+    from src.community_encoder.train_DESK.validate_baselines import epoch_direction_panel
+    epochs, withheld = (1970, 2020), [1970]
+    rng = np.random.default_rng(0)
+    rows = []
+    for i in range(30):                      # 30 TRAIN cells (col 0..29) at both epochs
+        rows += [[0, i, 1970], [0, i, 2020]]
+    for i in range(30):                      # 30 VAL cells (row 1) at both epochs
+        rows += [[1, i, 1970], [1, i, 2020]]
+    pidx = np.array(rows, dtype=np.int32)
+    holdout = np.zeros((2, 30), bool); holdout[1, :] = True
+    buf = np.zeros((2, 30), bool)
+    z_obs = rng.normal(size=(len(pidx), 4)).astype("float32")
+    z_model = {(int(r), int(c), int(y)): z_obs[i] for i, (r, c, y) in enumerate(pidx)}
+
+    free = epoch_direction_panel(pidx, None, z_obs, z_model, holdout, buf,
+                                 epochs=epochs, verbose=False)
+    fair = epoch_direction_panel(pidx, None, z_obs, z_model, holdout, buf,
+                                 epochs=epochs, verbose=False, exclude_years=withheld)
+    key = "1970_2020"
+    assert np.isfinite(free["pairs"][key]["idw_dir_cos"])          # bar ran: it saw 1970
+    assert not np.isfinite(fair["pairs"][key]["idw_dir_cos"])      # and must not
+    # a missing bar is reported as such, never as parity with the model
+    assert fair["pairs"][key]["verdict"] == "no-bar"
+    assert 1970 in fair["epochs_without_bar"]
+    # the model side is untouched -- only the bar changed
+    assert free["pairs"][key]["model_dir_cos"] == fair["pairs"][key]["model_dir_cos"]
+
+
+def test_half_width_zero_reproduces_the_single_year_panel_exactly():
+    """The windowed path must be a strict superset: `half_width=0` has to reproduce the pinned
+    single-year selection (nearest survey within tol, ties to the earlier year), or every number
+    reported before windowing existed becomes unreproducible."""
+    from src.community_encoder.train_DESK.validate_baselines import epoch_direction_panel
+    rng = np.random.default_rng(1)
+    rows = []
+    for i in range(25):
+        for y in (1969, 1971, 2004, 2006):          # off-epoch years, inside tol=2
+            rows += [[0, i, y], [1, i, y]]
+    pidx = np.array(rows, dtype=np.int32)
+    holdout = np.zeros((2, 25), bool); holdout[1, :] = True
+    buf = np.zeros((2, 25), bool)
+    z_obs = rng.normal(size=(len(pidx), 4)).astype("float32")
+    z_model = {(int(r), int(c), int(y)): z_obs[i] for i, (r, c, y) in enumerate(pidx)}
+    kw = dict(epochs=(1970, 2005), verbose=False)
+    a = epoch_direction_panel(pidx, None, z_obs, z_model, holdout, buf, **kw)
+    b = epoch_direction_panel(pidx, None, z_obs, z_model, holdout, buf, half_width=0, **kw)
+    assert a["pairs"] == b["pairs"]
+    assert a["pairs"]["1970_2005"]["mean_window_depth"] == 1.0    # one year per endpoint
+
+
+def test_windowing_averages_model_and_target_over_the_same_years():
+    """Symmetry is the whole content of the old 'no averaging' rule: smoothing the target while
+    reading the model at one year compares two different quantities. With a field that is
+    IDENTICAL in model and target, any asymmetry in which years each side averages would drive
+    dir-cos off 1.0; equal treatment keeps it exactly 1.0."""
+    from src.community_encoder.train_DESK.validate_baselines import epoch_direction_panel
+    rng = np.random.default_rng(2)
+    rows = []
+    for i in range(25):
+        for y in (1968, 1969, 1970, 1971, 1972, 2003, 2004, 2005):
+            rows += [[0, i, y], [1, i, y]]
+    pidx = np.array(rows, dtype=np.int32)
+    holdout = np.zeros((2, 25), bool); holdout[1, :] = True
+    buf = np.zeros((2, 25), bool)
+    z_obs = rng.normal(size=(len(pidx), 4)).astype("float32")
+    z_model = {(int(r), int(c), int(y)): z_obs[i] for i, (r, c, y) in enumerate(pidx)}
+    out = epoch_direction_panel(pidx, None, z_obs, z_model, holdout, buf,
+                                epochs=(1970, 2005), verbose=False, half_width=2)
+    p = out["pairs"]["1970_2005"]
+    assert p["model_dir_cos"] > 0.999, p          # identical fields, identical windows
+    assert p["mean_window_depth"] > 1.0, p        # and the window really did average
+
+
+def test_windowing_recovers_direction_lost_to_survey_noise():
+    """The point of windowing: a single-year endpoint is one observer on one morning, and that
+    noise attenuates dir-cos toward zero. Averaging the window must recover some of it."""
+    from src.community_encoder.train_DESK.validate_baselines import epoch_direction_panel
+    rng = np.random.default_rng(3)
+    years = (1968, 1969, 1970, 1971, 1972, 2003, 2004, 2005, 2006, 2007)
+    rows, truth, noisy = [], {}, {}
+    for i in range(40):
+        d = rng.normal(size=4)                    # this cell's true change direction
+        d /= np.linalg.norm(d)
+        for y in years:
+            rows.append([1, i, y])                # all val cells
+            clean = d * (1.0 if y > 2000 else -1.0)
+            truth[(1, i, y)] = clean
+            noisy[(1, i, y)] = clean + rng.normal(scale=1.4, size=4)
+    pidx = np.array(rows, dtype=np.int32)
+    z_obs = np.stack([noisy[(int(r), int(c), int(y))] for r, c, y in pidx]).astype("float32")
+    z_model = {(int(r), int(c), int(y)): truth[(int(r), int(c), int(y))] for r, c, y in pidx}
+    holdout = np.ones((2, 40), bool); buf = np.zeros((2, 40), bool)
+    kw = dict(epochs=(1970, 2005), verbose=False)
+    single = epoch_direction_panel(pidx, None, z_obs, z_model, holdout, buf, **kw)
+    win = epoch_direction_panel(pidx, None, z_obs, z_model, holdout, buf, half_width=2, **kw)
+    s = single["pairs"]["1970_2005"]["model_dir_cos"]
+    w = win["pairs"]["1970_2005"]["model_dir_cos"]
+    assert w > s, (s, w)                          # averaging recovers attenuated direction
+
+
+def test_attenuation_estimator_recovers_injected_noise():
+    """`per_era_attenuation` must measure the noise, not assume it. Built on a field with a known
+    linear trend plus known-variance noise, so the attenuation factor is known in closed form."""
+    from src.community_encoder.train_DESK.validate_baselines import per_era_attenuation
+    rng = np.random.default_rng(4)
+    D, L, g, s = 4, 30, 0.30, 0.5                 # dims, span, per-year trend, noise scale
+    v = np.zeros(D); v[0] = 1.0
+    rows, z = [], []
+    for cell in range(60):
+        for t in range(L + 1):
+            rows.append([0, cell, 1970 + t])
+            z.append(v * g * t + rng.normal(scale=s, size=D))
+    pidx = np.array(rows, dtype=np.int32)
+    z = np.stack(z).astype("float32")
+    out = per_era_attenuation(pidx, z, era_width=L)
+    era = f"{1970 // L * L}s"
+    tau2, noise2 = (g * L) ** 2, 2.0 * D * s ** 2
+    expected = np.sqrt(tau2 / (tau2 + noise2))
+    got = out[era]["dir_cos_attenuation"]
+    # The estimator is very slightly conservative: adjacent-year differences carry one year of
+    # real change as well as noise, biasing it by (L^2-1)/L^2 -- 0.1% at L=30.
+    assert abs(got - expected) < 0.03, (got, expected)
+
+
+def test_year_coverage_matches_the_years_the_bar_actually_uses():
+    """The reported coverage and the years the bar sums over must come from one predicate, or the
+    print drifts from the number it is describing -- which is how the population mismatch hid."""
+    from src.community_encoder.train_DESK.validate_baselines import (
+        _interp_usable_years, interp_year_coverage)
+    H = W = 12
+    z = np.zeros((H, W, 3), dtype="float32")
+    present = np.ones((H, W), bool)
+    ho = np.zeros((H, W), bool); ho[:, :4] = True
+    tgt = {1970: (z, np.zeros((H, W), bool), present & ho, np.ones((H, W), "float32")),
+           2000: (z, present & ~ho, present & ho, np.ones((H, W), "float32"))}
+    assert _interp_usable_years(tgt) == [2000]        # 1970 has no training cells
+    assert interp_year_coverage(tgt) == (1, 2)
+
+
+def test_long_gap_probe_is_used_only_when_years_are_withheld():
+    """The bar's anisotropy must be fitted on the gap it is judging. With a temporal holdout the
+    probe is the earliest contiguous TRAINING block (a synthetic backward extrapolation); with no
+    holdout there is nothing to match and it stays the random half."""
+    import io
+    import contextlib
+
+    from src.community_encoder.train_DESK.validate_baselines import spacetime_idw_baseline
+    rng = np.random.default_rng(5)
+    rows = [[r, c, y] for r in range(6) for c in range(6) for y in range(1980, 2011, 2)]
+    pidx = np.array(rows, dtype=np.int32)
+    z = rng.normal(size=(len(pidx), 3)).astype("float32")
+    ho = np.zeros((6, 6), bool); ho[5, :] = True
+    target = ho[pidx[:, 0], pidx[:, 1]]
+
+    def _mode(exclude):
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            spacetime_idw_baseline(pidx, z, ho, target, exclude_years=exclude)
+        return buf.getvalue()
+
+    assert "long-gap probe" in _mode(list(range(1966, 1980)))
+    assert "random-half probe" in _mode(())
+
+
+def test_the_sweep_overlays_are_mutually_consistent():
+    """The three temporal-holdout overlays only produce a comparable distance curve if the
+    anchors and the common window are IDENTICAL across them and the common window is withheld in
+    every run. A drifting anchor is what confounded the first sweep, so pin it with a test."""
+    import glob
+    import json
+    import os
+
+    root = os.path.join(os.path.dirname(__file__), "..", "config", "overlays")
+    paths = sorted(glob.glob(os.path.join(root, "desk_tempho_*.json")))
+    assert len(paths) >= 3, paths
+    seen = {}
+    for p in paths:
+        t = json.load(open(p))["desk"]["trend"]
+        ho, common = set(t["holdout_years"]), set(t["common_holdout_years"])
+        # the common window must actually be withheld in this run, or it is not common
+        assert common and common <= ho, (p, sorted(common - ho))
+        # the trained-era control must NOT be withheld here; the withheld anchor MUST be
+        assert t["direction_anchor_year"] not in ho, p
+        assert t["direction_withheld_anchor_year"] in ho, p
+        for k in ("direction_anchor_year", "direction_withheld_anchor_year",
+                  "common_holdout_years"):
+            seen.setdefault(k, []).append(json.dumps(t[k], sort_keys=True))
+    for k, vals in seen.items():
+        assert len(set(vals)) == 1, f"{k} differs across the sweep overlays: {set(vals)}"
+
+
+def test_the_windowed_and_single_year_panels_cover_the_same_cells():
+    """Inclusion is "a survey within +/-tol" for the single-year path and "within +/-half_width"
+    for the windowed one, so a half_width below tol silently drops cells -- and the gap between
+    the two tables, which is supposed to measure NOISE, would instead be a population change.
+    Measured before the fix: n=30 at half_width=0 collapsed to n=0 at half_width=1."""
+    from src.community_encoder.train_DESK.validate_baselines import epoch_direction_panel
+    rng = np.random.default_rng(0)
+    pidx = np.array([[1, i, y] for i in range(30) for y in (1968, 1972, 2003, 2007)],
+                    dtype=np.int32)
+    z = rng.normal(size=(len(pidx), 4)).astype("float32")
+    zm = {(int(r), int(c), int(y)): z[i] for i, (r, c, y) in enumerate(pidx)}
+    ho = np.ones((2, 30), bool); bf = np.zeros((2, 30), bool)
+    ns = []
+    for hw in (0, 1, 2, 3):
+        p = epoch_direction_panel(pidx, None, z, zm, ho, bf, epochs=(1970, 2005),
+                                  verbose=False, half_width=hw)["pairs"].get("1970_2005")
+        ns.append(p["n"] if p else 0)
+    assert len(set(ns)) == 1 and ns[0] == 30, ns
+
+
+def test_excluding_years_changes_only_the_bar_never_the_model_or_the_cells():
+    """The year filter must land on the IDW source set alone. If it reached val_of it would drop
+    exactly the held-out-in-a-withheld-year rows the experiment exists to score."""
+    from src.community_encoder.train_DESK.validate_baselines import epoch_direction_panel
+    rng = np.random.default_rng(0)
+    rows = []
+    for i in range(30):
+        rows += [[0, i, 1970], [0, i, 2020], [1, i, 1970], [1, i, 2020]]
+    pidx = np.array(rows, dtype=np.int32)
+    ho = np.zeros((2, 30), bool); ho[1, :] = True
+    bf = np.zeros((2, 30), bool)
+    z = rng.normal(size=(len(pidx), 4)).astype("float32")
+    zm = {(int(r), int(c), int(y)): z[i] for i, (r, c, y) in enumerate(pidx)}
+    kw = dict(epochs=(1970, 2020), verbose=False)
+    a = epoch_direction_panel(pidx, None, z, zm, ho, bf, **kw)["pairs"]["1970_2020"]
+    b = epoch_direction_panel(pidx, None, z, zm, ho, bf, exclude_years=[1970],
+                              **kw)["pairs"]["1970_2020"]
+    assert a["n"] == b["n"]                                        # cells unchanged
+    assert a["model_dir_cos"] == b["model_dir_cos"]                # model unchanged
+    assert a["null_dir_cos"] == b["null_dir_cos"]                  # null unchanged
+    assert np.isfinite(a["idw_dir_cos"]) and not np.isfinite(b["idw_dir_cos"])
+
+
+def test_which_ladder_rungs_survive_each_temporal_bucket():
+    """Pins the n/a structure, because it determines WHICH claim each bucket can support. A
+    held-out cell has no training years of its own, so no per-cell rung can run there: for the
+    doubly-held-out bucket the only admissible bars are no_change and spacetime_idw."""
+    from src.community_encoder.train_DESK.validate_baselines import baseline_panel
+    rng = np.random.default_rng(0)
+    hy = list(range(1966, 1976))
+    pidx = np.array([[r, c, y] for r in range(8) for c in range(8)
+                     for y in list(range(1966, 1996, 3)) + [2025]], dtype=np.int32)
+    z = rng.normal(size=(len(pidx), 4)).astype("float32")
+    zd = z + rng.normal(scale=0.1, size=z.shape).astype("float32")
+    ho = np.zeros((8, 8), bool); ho[6:, :] = True
+    bf = np.zeros((8, 8), bool)
+    is_ho, in_hy = ho[pidx[:, 0], pidx[:, 1]], np.isin(pidx[:, 2], np.asarray(hy))
+    # the two buckets must be disjoint and together cover every withheld row
+    assert not (in_hy & ~is_ho & (in_hy & is_ho)).any()
+    assert (((in_hy & ~is_ho) | (in_hy & is_ho)) == in_hy).all()
+
+    def avail(rowsel):
+        o = baseline_panel(pidx, z, zd, ho, 2025, buffer_mask=bf, target_rows=rowsel,
+                           exclude_years=hy, verbose=False)["overall"]
+        return {n for n in ("no_change", "cell_nearest_year", "cell_trend", "borrowed_delta",
+                            "spacetime_idw") if o[n]["n"] > 0}
+
+    # unseen YEAR, seen cell: the cell has training years elsewhere, so a trend can be fit
+    assert avail(in_hy & ~is_ho) == {"no_change", "cell_nearest_year", "cell_trend",
+                                     "spacetime_idw"}
+    # unseen year AND unseen cell: no training rows for this cell at all
+    assert avail(in_hy & is_ho) == {"no_change", "spacetime_idw"}

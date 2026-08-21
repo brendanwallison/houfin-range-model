@@ -652,3 +652,153 @@ def test_run_epoch_rows_survive_the_pooled_site_gate(tmp_path, monkeypatch):
     assert ep["gate"]["cells_kept"] == 10
     assert ep["config"]["n_focal_cells"] == 10
     assert ep["types"]["spatial_modern"]["pooled"]["all_distances"]["rmse_skill"] == 0.0
+
+
+def test_modern_reference_groups_share_the_site_gate_with_the_single_year_reference():
+    """The averaged reference must change only the VALUE, never which rows survive. If the gate
+    moved, the averaged and single-year reports would be scored on different row populations and
+    could not be compared -- the same population mismatch that made the trainer's IDW bar
+    incomparable with its pooled val MSE."""
+    from src.community_encoder.train_DESK.validate_bbs_routes import (
+        modern_reference_groups, modern_reference_rows)
+    keys = np.array([[0, 0, 1995], [0, 0, 2012], [0, 0, 2020],     # cell with modern surveys
+                     [1, 1, 1990],                                  # cell with none
+                     [2, 2, 2015]], dtype=np.int32)
+    nc_src, keep = modern_reference_rows(keys, modern_window=(2010, 2025))
+    groups, keep_g = modern_reference_groups(keys, modern_window=(2010, 2025))
+    assert (keep_g == keep).all()
+    # the single-year reference is the most recent; the group is every modern row of that cell
+    assert groups[0] == (1, 2) and nc_src[0] == 2
+    assert groups[3] == () and not keep[3]
+    # every kept row's group must contain its own single-year reference
+    for i in np.flatnonzero(keep):
+        assert nc_src[i] in groups[i], (i, nc_src[i], groups[i])
+
+
+def test_averaged_modern_reference_actually_reduces_reference_noise():
+    """Why the averaging exists: at ~1.08 routes per cell-year the modern reference is one
+    observer on one morning, and a 16-year window was being used to pick just one of them."""
+    from src.community_encoder.train_DESK.validate_bbs_routes import modern_reference_groups
+    rng = np.random.default_rng(0)
+    truth = np.array([3.0, 1.0, 2.0])
+    keys, X = [], []
+    for y in range(2010, 2026):
+        keys.append([0, 0, y])
+        X.append(truth + rng.normal(scale=1.0, size=3))
+    keys = np.array(keys, dtype=np.int32)
+    X = np.stack(X)
+    groups, keep = modern_reference_groups(keys, modern_window=(2010, 2025))
+    assert keep.all() and len(groups[0]) == 16
+    single = np.linalg.norm(X[-1] - truth)                    # most recent row alone
+    averaged = np.linalg.norm(X[list(groups[0])].mean(0) - truth)
+    assert averaged < single, (averaged, single)
+
+
+def test_window_groups_are_per_cell_and_reduce_to_single_rows_at_zero_width():
+    """The window must never reach across cells, and half_width=0 has to reproduce the historical
+    one-row-per-endpoint behaviour exactly, or the pre-change numbers become unreproducible."""
+    from src.community_encoder.train_DESK.validate_bbs_routes import window_groups
+    keys = np.array([[0, 0, 1970], [0, 0, 1971], [0, 0, 1975],
+                     [0, 1, 1970], [0, 1, 1971]], dtype=np.int32)
+    g2 = window_groups(keys, 2)
+    assert g2[0] == (0, 1) and g2[1] == (0, 1)        # 1975 is 5 yr away, and cell (0,1) is other
+    assert g2[2] == (2,)
+    assert g2[3] == (3, 4)                            # different cell, its own window
+    assert window_groups(keys, 0) == [(0,), (1,), (2,), (3,), (4,)]
+
+
+def test_endpoints_average_raw_counts_before_log1p_not_after():
+    """The load-bearing order. BBS counts are Poisson, so the mean of RAW counts is the
+    minimum-variance unbiased estimator of the rate; mean-of-log1p is biased for it and
+    understates abundant species because log1p is concave. Averaging after the transform would
+    therefore bias every denoised community low, worst where abundance varies most across years
+    -- which is exactly the changing cells the temporal experiment is about."""
+    from src.community_encoder.train_DESK.validate_bbs_routes import (
+        epoch_mean_observed, log1p_community, window_groups)
+    keys = np.array([[0, 0, 1970], [0, 0, 1971]], dtype=np.int32)
+    X_raw = np.array([[0.0, 40.0], [0.0, 0.0]])       # a species swinging hard between years
+    groups = window_groups(keys, 2)
+    got = epoch_mean_observed(X_raw, groups)
+    right = log1p_community(X_raw.mean(0, keepdims=True))          # average, then transform
+    wrong = log1p_community(X_raw).mean(0, keepdims=True)          # transform, then average
+    assert np.allclose(got[0], right[0], atol=1e-6), (got[0], right[0])
+    assert not np.allclose(got[0], wrong[0], atol=1e-3), (got[0], wrong[0])
+    # and the wrong order really does understate: log1p(mean) > mean(log1p) by Jensen
+    assert right[0, 1] > wrong[0, 1]
+
+
+def test_the_no_change_null_keeps_zero_temporal_variation_when_averaged():
+    """Load-bearing property of this module: the null differs from DESK ONLY by having no
+    temporal variation. If the averaged modern reference varied across a cell's years the null
+    would acquire some, and the gain would stop isolating the temporal component."""
+    from src.community_encoder.train_DESK.validate_bbs_routes import (
+        epoch_mean_observed, modern_reference_groups)
+    keys = np.array([[0, 0, 1970], [0, 0, 1990], [0, 0, 2012], [0, 0, 2020]], dtype=np.int32)
+    X_raw = np.arange(8, dtype="float64").reshape(4, 2)
+    groups, keep = modern_reference_groups(keys, modern_window=(2010, 2025))
+    assert keep.all()
+    out = epoch_mean_observed(X_raw, groups)
+    # every row of the same cell must receive the identical reference vector
+    assert np.allclose(out, out[0]), out
+
+
+def test_run_averages_the_right_rows_when_the_site_gate_shifts_indices(tmp_path, monkeypatch):
+    """The alignment that could silently be wrong. Averaging groups index the UNFILTERED rows
+    (X_raw_all is never gated) while the sampled rows are bookkept post-gate, so run must map
+    between the two. With cells dropped FIRST the two index spaces genuinely differ, and a
+    mix-up would average some other cell's years into this row's endpoint -- producing plausible
+    numbers with no error. Verified by reconstructing each returned endpoint from its own key."""
+    from src.community_encoder.train_DESK import validate_bbs_routes as V
+
+    n_species = 4
+    rng = np.random.default_rng(3)
+    keys, rows = [], []
+    for c in range(5):                       # cells 0-4: early only -> site gate drops them
+        for y in (1968, 1975, 1982):
+            keys.append([0, c, y]); rows.append(rng.random(n_species) * 5)
+    for c in range(5, 15):                   # cells 5-14: pass both gates
+        for y in (1968, 1969, 1975, 2008, 2015, 2022):
+            keys.append([0, c, y]); rows.append(rng.random(n_species) * 5)
+    keys = np.array(keys, dtype="int32")
+    X_arr = np.array(rows)
+
+    desk = tmp_path / "desk"; desk.mkdir()
+    np.save(desk / "holdout_cells.npy", np.zeros((4, 20), bool))
+    cfg = {"trend": {"points_dir": str(tmp_path)},
+           "paths": {"desk_output_dir": str(desk)},
+           "bbs_routes": {"average_windows": True, "window_half_width": 2}}
+    monkeypatch.setattr(V, "load_observed", lambda config: (
+        V.log1p_community(X_arr), keys,
+        {"n_species": n_species, "n_surveyed_cell_years": int(keys.shape[0]),
+         "year_range": [1968, 2022]}, X_arr))
+    A = rng.standard_normal((n_species, 4))
+    monkeypatch.setattr(V, "desk_z_ema", lambda config, k: (
+        np.stack([np.log1p(np.full(n_species, 1.0 + int(y) % 7)) @ A for _, _, y in k]
+                 ).astype("float32"),
+        {"output_ema_applied": True, "ema_half_life": 10.0, "ema_warmup_start": 1940,
+         "encode_years": [1940, 2022]}))
+    import src.config_utils as CU
+    monkeypatch.setattr(CU, "load_data_config", lambda *a, **kw: {"grid": {"ref_raster": "x"}})
+    import src.community_encoder.train_DESK.validate_spacetime as VS
+    monkeypatch.setattr(VS, "cell_xy", lambda r, c, ref: np.stack(
+        [np.asarray(c, float) * 27000.0, np.asarray(r, float) * 27000.0], axis=1))
+
+    rep = V.run(config=cfg, n_sample=60, seed=0)
+    assert rep["site_gate"]["rows_total"] - rep["site_gate"]["rows_kept"] == 15   # indices shift
+    assert rep["config"]["average_windows"] is True
+    # 1968/1969 are within +/-2 of each other, so those endpoints average 2 years; the isolated
+    # 1975/2008/2015/2022 rows average 1. Mean depth must land strictly between 1 and 2.
+    assert 1.0 < rep["config"]["mean_window_depth_years"] < 2.0, rep["config"]
+    # the modern reference averages only rows INSIDE MODERN_WINDOW=(2010, 2025), so 2008 is
+    # excluded and each cell contributes 2015 + 2022 -> depth exactly 2
+    assert rep["config"]["mean_reference_depth_years"] == 2.0, rep["config"]
+
+    saved = np.load(desk / "bbs_route_validation.npz")
+    ks, S_true = saved["keys"], saved["S_true"]
+    # Reconstruct each row's endpoint from its OWN key and compare to the matrix' diagonal-free
+    # content: rebuild S_true independently and require an exact match.
+    groups = V.window_groups(keys, 2)
+    by_key = {(int(r), int(c), int(y)): i for i, (r, c, y) in enumerate(keys)}
+    X_expect = V.epoch_mean_observed(
+        X_arr, [groups[by_key[(int(r), int(c), int(y))]] for r, c, y in ks])
+    assert np.allclose(ruzicka_rect(X_expect, X_expect), S_true, atol=1e-5)

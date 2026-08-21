@@ -33,6 +33,33 @@ def median_dir_cos_np(dp, dt):
                           torch.as_tensor(np.asarray(dt), dtype=torch.float32))
 
 
+def _interp_usable_years(tgt, k=8):
+    """Years spatial interpolation can actually serve: some val cell AND >= ``k`` train cells.
+
+    Factored out so ``spatial_interp_baseline`` and ``interp_year_coverage`` cannot drift. A
+    temporally withheld year carries an all-zero train mask (that is how it is withheld), so it
+    fails the ``>= k`` test and is skipped. Correct -- but the skip is INVISIBLE unless the count
+    is reported, and that invisibility is what made "model 0.2222 vs idw 0.2143" look like a
+    comparison when the two sides sat on different year sets.
+    """
+    out = []
+    for y in sorted(tgt):
+        tr_np, va_np = _np(tgt[y][1]), _np(tgt[y][2])
+        if va_np.any() and tr_np.sum() >= k:
+            out.append(int(y))
+    return out
+
+
+def interp_year_coverage(tgt, k=8):
+    """``(n_usable, n_total)`` -- supervised years the spatial IDW bar actually covers.
+
+    Reported next to the bar so the reader knows which model column it may be compared against.
+    Under a temporal holdout the withheld years are missing here, so the bar is comparable to the
+    trained-year val MSE (``va(sp)``) and NOT to the pooled one.
+    """
+    return len(_interp_usable_years(tgt, k)), len(tgt)
+
+
 def spatial_interp_baseline(tgt, k=8, power=2.0):
     """Predict held-out cells by inverse-distance interpolation of the TARGETS themselves.
 
@@ -47,7 +74,16 @@ def spatial_interp_baseline(tgt, k=8, power=2.0):
     any training cell, so this baseline is genuinely extrapolating into the block interior --
     which is exactly the task the model faces.
 
-    Returns ``(nearest_mse, idw_mse)`` on the same per-cell summed scale as ``_z_mse``.
+    Returns ``(nearest_mse, idw_mse)`` on the same per-cell summed scale as ``_z_mse``. The
+    arity is load-bearing: seven call sites unpack it as a 2-tuple, so year coverage is reported
+    by ``interp_year_coverage`` rather than appended here.
+
+    Under a TEMPORAL holdout this bar is not merely unavailable for the withheld years, it is
+    **inadmissible**. The truth is still sitting in ``zg`` (only the train mask was zeroed), so a
+    value could be computed -- but it would interpolate that year's answer from that year's
+    neighbours, information DESK never saw anywhere. Different information sets are not a bar.
+    ``spacetime_idw_baseline`` is the admissible relative: it borrows across years as well as
+    space, and its source rows honour ``exclude_years``.
 
     The per-year masks matter and must not be shortcut. ``_prepare_trend_targets`` builds each
     year's grid as ``np.zeros`` and marks only the cells with a trend point that year, so a cell
@@ -61,21 +97,16 @@ def spatial_interp_baseline(tgt, k=8, power=2.0):
     """
     from scipy.spatial import cKDTree
 
-    years = sorted(tgt)
+    years = _interp_usable_years(tgt, k)
     if not years:
         return float("nan"), float("nan")
-
-    def _np(a):
-        return a.detach().cpu().numpy() if hasattr(a, "detach") else np.asarray(a)
 
     sq_n = sq_i = 0.0
     cnt = 0
     cache = {}
-    for y in years:
+    for y in years:                                        # same skip as _z_mse's m.any()
         zg, tr_m, va_m = tgt[y][0], tgt[y][1], tgt[y][2]
         tr_np, va_np = _np(tr_m), _np(va_m)
-        if not va_np.any() or tr_np.sum() < k:
-            continue                                       # same skip as _z_mse's m.any()
         key = (tr_np.tobytes(), va_np.tobytes())           # masks repeat across many years
         if key not in cache:
             tr_rc, va_rc = np.argwhere(tr_np), np.argwhere(va_np)
@@ -156,6 +187,39 @@ def nearest_survey(pip, supervise, epochs, tol):
     return out
 
 
+def surveys_in_window(pip, supervise, epochs, half_width):
+    """``{epoch: {(row,col): (years,...)}}`` -- EVERY surveyed year within +/-half_width.
+
+    The windowed sibling of :func:`nearest_survey`. ``nearest_survey`` answers "which single year
+    stands for this epoch"; this answers "which years should be averaged to stand for it". The
+    target is raw BBS at ~1.08 routes per cell-year, so a single-year endpoint is one observer on
+    one morning: its noise inflates ``||dt||`` and randomizes its direction, attenuating every
+    dir-cos toward zero by roughly ``tau/sqrt(tau^2+sigma^2)``. Worse for a cross-era sweep,
+    ``sigma`` is not constant across eras -- the first-year-observer share is 25.6% in 1966-1980
+    against 12.3% in 2001-2025 -- so the attenuation is DIFFERENTIAL and lands directly on the
+    axis the temporal sweep varies.
+
+    Averaging depth is deliberately unequal: inclusion is "any survey in the window", not "all
+    years present", because requiring full coverage would thin the early era hardest -- exactly
+    where the noise is worst. The caller reports the depth distribution so the imbalance is
+    visible rather than assumed away.
+
+    Same ``supervise`` gate and ascending-year iteration as ``nearest_survey``, so the two select
+    from the same row population.
+    """
+    sup = supervise if supervise is not None else np.ones(len(pip), bool)
+    hw = int(half_width)
+    out = {int(e): {} for e in epochs}
+    for i in np.lexsort((pip[:, 2],)):                     # ascending year -> stable tuples
+        if not sup[i]:
+            continue
+        r, c, y = int(pip[i, 0]), int(pip[i, 1]), int(pip[i, 2])
+        for e in out:
+            if abs(y - e) <= hw:
+                out[e].setdefault((r, c), []).append(y)
+    return {e: {c: tuple(ys) for c, ys in d.items()} for e, d in out.items()}
+
+
 def _idw_at(cells_wanted, train_years, z_of, k=8, power=2.0):
     """Inverse-distance estimate at ``cells_wanted`` from ``train_years`` (cell -> year).
 
@@ -210,7 +274,8 @@ def zspace_idw_baseline(pidx, z_obs, holdout, hist_mask, k=8, power=2.0):
 
 
 def epoch_direction_panel(pidx, supervise, z_obs, z_model, holdout, buffer_mask,
-                          epochs=DEFAULT_EPOCHS, tol=DEFAULT_TOL, verbose=True):
+                          epochs=DEFAULT_EPOCHS, tol=DEFAULT_TOL, verbose=True,
+                          exclude_years=(), half_width=0):
     """Model vs inverse-distance on the DIRECTION of change, per epoch pair, plus curvature.
 
     ``z_model`` is a ``{(row,col,year): vector}`` mapping -- the caller decides whether that is
@@ -221,56 +286,133 @@ def epoch_direction_panel(pidx, supervise, z_obs, z_model, holdout, buffer_mask,
     SEPARATELY and never pooled -- they share cells and nest in time (1967->2025 contains
     1985->2005), so a pooled figure would overstate the evidence.
 
+    ``exclude_years`` MUST carry ``desk.trend.holdout_years``. The IDW source set is otherwise
+    filtered on the spatial masks alone, so for an epoch inside a temporal holdout the bar would
+    interpolate that year's TRUTH from that year's neighbours -- information the model never saw
+    anywhere. That is not a weaker bar, it is a different information set, and it silently rigged
+    every epoch inside the holdout (``DEFAULT_EPOCHS`` puts 1967 inside all three sweep runs and
+    1985 inside two). Excluded years leave the bar unavailable -> ``nan`` -> printed ``n/a``,
+    matching the structural n/a pattern documented on ``baseline_panel``.
+
+    ``half_width`` > 0 replaces each single-year endpoint with the MEAN over all of a cell's
+    surveys within +/-half_width of the epoch, on the model and the target and the bar alike --
+    see ``surveys_in_window``. The target is raw BBS at ~1.08 routes per cell-year, so a
+    single-year endpoint is one observer on one morning; that noise attenuates every dir-cos
+    toward zero, and unequally by era. ``half_width=0`` is the historical single-year behaviour.
+
     Curvature is the test a single pair cannot run. A 1967->2025 difference is a chord and cannot
     distinguish monotone growth from rise-then-fall, which for House Finch is the eastern story:
     expansion, then decline once conjunctivitis arrives in the 1990s.
     """
+    ex = set(int(y) for y in (exclude_years or ()))
     row_of = {(int(r), int(c), int(y)): i for i, (r, c, y) in enumerate(pidx)}
 
-    def zt(cell, year):
-        return z_obs[row_of[(cell[0], cell[1], year)]]
+    # Endpoint years per cell. half_width=0 keeps the historical single-year selection exactly
+    # (nearest survey within tol, ties to the earlier year); >0 averages a window. Both are
+    # normalized to a TUPLE of years so everything downstream -- target, model and IDW bar alike
+    # -- runs one code path and cannot treat the three asymmetrically.
+    if int(half_width) > 0:
+        # The two tables are only comparable if they score the SAME cells, and inclusion is
+        # "has a survey within +/-tol" for the single-year path but "within +/-half_width" for
+        # this one. With half_width < tol the windowed table silently loses cells (measured: a
+        # set giving n=30 at tol=2 collapsed to n=0 at half_width=1), which would make the gap
+        # between the tables read as a noise effect when it is a population change. Floor the
+        # window at tol: equal at the default half_width == tol, a superset above it, never less.
+        hw_eff = max(int(half_width), int(tol))
+        if hw_eff != int(half_width) and verbose:
+            print(f"  half_width raised {half_width} -> {hw_eff} to match tol={tol}, so the "
+                  f"windowed and single-year tables cover the same cells")
+        half_width = hw_eff
+        near = surveys_in_window(pidx, supervise, epochs, half_width)
+    else:
+        near = {e: {c: (y,) for c, y in d.items()}
+                for e, d in nearest_survey(pidx, supervise, epochs, tol).items()}
 
-    near = nearest_survey(pidx, supervise, epochs, tol)
+    def zt(cell, years):
+        """Mean observed z over the cell's surveys in the window (None if none are present)."""
+        rows = [row_of[(cell[0], cell[1], y)] for y in years
+                if (cell[0], cell[1], y) in row_of]
+        return np.mean(np.stack([z_obs[r] for r in rows]), axis=0) if rows else None
+
+    def zm(cell, years):
+        """Mean MODEL z over the SAME years -- symmetry is the point; see the docstring."""
+        vs = [z_model[(cell[0], cell[1], y)] for y in years
+              if (cell[0], cell[1], y) in z_model]
+        return np.mean(np.stack(vs), axis=0) if vs else None
+
     ho, bf = _np(holdout), _np(buffer_mask)
-    val_of = {e: {c: y for c, y in near[e].items() if ho[c]} for e in epochs}
-    trn_of = {e: {c: y for c, y in near[e].items() if not ho[c] and not bf[c]} for e in epochs}
-    out = {"epochs": list(epochs), "tol": tol, "pairs": {}, "curvature": {}}
+    val_of = {e: {c: ys for c, ys in near[e].items() if ho[c]} for e in epochs}
+    # Training sources: spatial masks AND the year filter. Dropping the year filter is the bug
+    # described in the docstring -- the bar would be handed the withheld year's answer. A cell
+    # whose every windowed year is withheld drops out entirely rather than contributing a
+    # partial (and differently-smoothed) average.
+    trn_of = {}
+    for e in epochs:
+        keep = {}
+        for c, ys in near[e].items():
+            if ho[c] or bf[c]:
+                continue
+            ok = tuple(y for y in ys if int(y) not in ex)
+            if ok:
+                keep[c] = ok
+        trn_of[e] = keep
+    # An epoch has no admissible bar when the year filter is what emptied its source set --
+    # distinct from an epoch that simply has no nearby training cells, which is not a holdout
+    # artifact and should not be described as one.
+    _spatial_src = {int(e): any(not ho[c] and not bf[c] for c in near[e]) for e in epochs}
+    withheld_epoch = {int(e): (not trn_of[e]) and _spatial_src[int(e)] for e in epochs}
+    out = {"epochs": list(epochs), "tol": tol, "exclude_years": sorted(ex),
+           "half_width": int(half_width),
+           "epochs_without_bar": [e for e in epochs if withheld_epoch[int(e)]],
+           "pairs": {}, "curvature": {}}
+    if verbose and any(withheld_epoch.values()):
+        print(f"  epochs with no admissible IDW bar (inside the temporal holdout): "
+              f"{[e for e in epochs if withheld_epoch[int(e)]]} -- 'n/a', not a failure")
 
     if verbose:
-        print("  pair          cells   model    idw     null   verdict")
+        print("  pair          cells   model    idw     null   verdict   depth")
     for a, b in itertools.combinations(epochs, 2):
         # Intersect FIRST, then test z_model. The comprehension is evaluated in full before
         # the `&` runs, so filtering over val_of[a] would index val_of[b] at cells epoch b
         # never surveyed -- a KeyError, not a quiet drop.
         both = set(val_of[a]) & set(val_of[b])
         cells = sorted(c for c in both
-                       if (c[0], c[1], val_of[a][c]) in z_model
-                       and (c[0], c[1], val_of[b][c]) in z_model)
+                       if zm(c, val_of[a][c]) is not None and zm(c, val_of[b][c]) is not None
+                       and zt(c, val_of[a][c]) is not None and zt(c, val_of[b][c]) is not None)
         if len(cells) < 10:
             if verbose:
                 print(f"  {a}->{b}  {len(cells):>6}   (too few cells)")
             continue
         dt = np.stack([zt(c, val_of[b][c]) - zt(c, val_of[a][c]) for c in cells])
-        dm = np.stack([z_model[(c[0], c[1], val_of[b][c])] - z_model[(c[0], c[1], val_of[a][c])]
-                       for c in cells])
+        dm = np.stack([zm(c, val_of[b][c]) - zm(c, val_of[a][c]) for c in cells])
         ia, ib = _idw_at(cells, trn_of[a], zt), _idw_at(cells, trn_of[b], zt)
         di = (ib - ia) if (ia is not None and ib is not None) else None
         perm = np.random.default_rng(0).permutation(len(cells))
         mc = median_dir_cos_np(dm, dt)
         ic = median_dir_cos_np(di, dt) if di is not None else float("nan")
         null = median_dir_cos_np(dm, dt[perm])
-        verdict = "model" if mc > ic + 0.02 else ("idw" if ic > mc + 0.02 else "tie")
+        # A missing bar is not a tie. Saying "tie" when the bar could not run would read as
+        # evidence of parity, which is the opposite of what an absent comparison means.
+        if not np.isfinite(ic):
+            verdict = "no-bar"
+        else:
+            verdict = "model" if mc > ic + 0.02 else ("idw" if ic > mc + 0.02 else "tie")
+        depth = float(np.mean([len(val_of[a][c]) + len(val_of[b][c]) for c in cells]) / 2.0)
+        ic_s = "  n/a" if not np.isfinite(ic) else f"{ic:5.2f}"
         if verbose:
-            print(f"  {a}->{b}  {len(cells):>6}   {mc:5.2f}   {ic:5.2f}   {null:5.2f}   {verdict}")
+            print(f"  {a}->{b}  {len(cells):>6}   {mc:5.2f}   {ic_s}   {null:5.2f}   "
+                  f"{verdict:<7}  {depth:.2f}")
         out["pairs"][f"{a}_{b}"] = {"n": len(cells), "model_dir_cos": mc, "idw_dir_cos": ic,
-                                    "null_dir_cos": null, "verdict": verdict}
+                                    "null_dir_cos": null, "verdict": verdict,
+                                    "mean_window_depth": depth}
 
     if verbose:
         print("  curvature (second difference, three consecutive epochs)")
     for a, b, c3 in zip(epochs, epochs[1:], epochs[2:]):
         cells = sorted(set(val_of[a]) & set(val_of[b]) & set(val_of[c3]))
         cells = [c for c in cells
-                 if all((c[0], c[1], val_of[e][c]) in z_model for e in (a, b, c3))]
+                 if all(zm(c, val_of[e][c]) is not None and zt(c, val_of[e][c]) is not None
+                        for e in (a, b, c3))]
         if len(cells) < 10:
             if verbose:
                 print(f"  {a}/{b}/{c3} {len(cells):>6}  (too few cells)")
@@ -281,7 +423,7 @@ def epoch_direction_panel(pidx, supervise, z_obs, z_model, holdout, buffer_mask,
             d2 = np.stack([get(cc, c3) - get(cc, b) for cc in cells])
             return d2 - d1
 
-        sm = second(lambda cc, e: z_model[(cc[0], cc[1], val_of[e][cc])])
+        sm = second(lambda cc, e: zm(cc, val_of[e][cc]))
         st = second(lambda cc, e: zt(cc, val_of[e][cc]))
         si = None
         ii = {e: _idw_at(cells, trn_of[e], zt) for e in (a, b, c3)}
@@ -290,7 +432,8 @@ def epoch_direction_panel(pidx, supervise, z_obs, z_model, holdout, buffer_mask,
         mc = median_dir_cos_np(sm, st)
         ic = median_dir_cos_np(si, st) if si is not None else float("nan")
         if verbose:
-            print(f"  {a}/{b}/{c3} {len(cells):>6}  model {mc:5.2f}   idw {ic:5.2f}")
+            ic_s = "  n/a" if not np.isfinite(ic) else f"{ic:5.2f}"
+            print(f"  {a}/{b}/{c3} {len(cells):>6}  model {mc:5.2f}   idw {ic_s}")
         out["curvature"][f"{a}_{b}_{c3}"] = {"n": len(cells), "model_dir_cos": mc,
                                              "idw_dir_cos": ic}
     return out
@@ -480,17 +623,42 @@ def spacetime_idw_baseline(pidx, z_obs, holdout, target_rows, buffer_mask=None,
     One ``cKDTree`` over ``(row, col, year * ratio)``, so ordinary Euclidean distance in the
     scaled space IS spacetime distance -- no bespoke metric.
 
-    ``ratio`` (grid cells per year) is chosen by holding out a random half of the TRAINING rows
-    and scoring the rest, then taking the minimiser. Fitted on training data only, so it cannot
-    leak; and a bar should be the strongest cheap alternative rather than a guess, which is why
-    it is measured instead of hardcoded.
+    ``ratio`` (grid cells per year) is chosen by scoring a held-back probe of the TRAINING rows
+    and taking the minimiser. Fitted on training data only, so it cannot leak; and a bar should be
+    the strongest cheap alternative rather than a guess, which is why it is measured.
+
+    **The probe has to match the gap being judged.** A random half of the training rows is mostly
+    SHORT temporal gaps -- a probe row usually has a training neighbour a year or two away -- so
+    the ratio it selects is tuned for interpolation. Applied to a 20-30 year backward
+    extrapolation that is the wrong tuning, and it makes the bar weaker (or stronger) than it
+    should be for reasons unrelated to the model. So when ``exclude_years`` is non-empty the probe
+    becomes the EARLIEST contiguous block of training years, sized to the withheld span: a
+    synthetic temporal holdout inside the training set, extrapolated backward the same way the
+    real task is. The mode and ratio are both printed, because the bar's strength depends on them.
     """
     tr = _train_rows(pidx, holdout, buffer_mask, exclude_years)
     tr_idx = np.flatnonzero(tr)
     best, best_ratio = np.inf, float(ratios[0])
+    mode = "none"
     if len(tr_idx) >= 4 * k:
-        rng = np.random.default_rng(0)
-        probe = rng.permutation(tr_idx)[: len(tr_idx) // 2]
+        tr_years = np.unique(pidx[tr_idx, 2])
+        span = len(set(int(y) for y in (exclude_years or ())))
+        # Cap the probe at half the training years: a probe wide enough to swallow most of
+        # training would leave too little to interpolate FROM, and the ratio would be chosen
+        # under a data regime the real bar never sees.
+        n_probe_yr = int(min(span, max(1, len(tr_years) // 2))) if span else 0
+        if n_probe_yr:
+            probe_years = set(int(y) for y in tr_years[:n_probe_yr])
+            probe = tr_idx[np.isin(pidx[tr_idx, 2], list(probe_years))]
+            mode = f"long-gap probe ({min(probe_years)}-{max(probe_years)}, {n_probe_yr} yr)"
+        else:
+            probe = np.random.default_rng(0).permutation(tr_idx)[: len(tr_idx) // 2]
+            mode = "random-half probe"
+        # Guard both ends: too small a probe gives a noisy minimiser, too large leaves no
+        # source rows. Fall back to the random half rather than silently fitting on nothing.
+        if len(probe) < k or len(tr_idx) - len(probe) < 4 * k:
+            probe = np.random.default_rng(0).permutation(tr_idx)[: len(tr_idx) // 2]
+            mode = "random-half probe (long-gap probe too small or too large)"
         fit = np.zeros(len(pidx), bool); fit[tr_idx] = True; fit[probe] = False
         pm = np.zeros(len(pidx), bool); pm[probe] = True
         for r in ratios:
@@ -500,8 +668,63 @@ def spacetime_idw_baseline(pidx, z_obs, holdout, target_rows, buffer_mask=None,
                 best, best_ratio = float(np.median(e[fin])), float(r)
         if verbose:
             print(f"  spacetime IDW anisotropy: {best_ratio:g} grid cells per year "
-                  f"(chosen on training rows only, from {list(ratios)})")
+                  f"({mode}, training rows only, from {list(ratios)})")
     return _spacetime_err(pidx, z_obs, tr, target_rows, best_ratio, k=k, power=power), best_ratio
+
+
+def per_era_attenuation(pidx, z_obs, era_width=10, min_pairs=30):
+    """Per-era measurement noise and the dir-cos attenuation it causes. ``{era: {...}}``.
+
+    Turns "the direction numbers are biased low, and unequally by era" from a caveat into a
+    measurement. Two quantities, both from the point set already in hand:
+
+    * ``adj_sq`` = mean ``||z(y+1) - z(y)||^2`` over cells surveyed in consecutive years. Real
+      community change over ONE year is small, so this is essentially ``2*sigma^2`` -- pure
+      measurement noise.
+    * ``long_sq`` = the same over the widest gap available in the era, which carries both the
+      true change and the same noise: ``tau^2 + 2*sigma^2``.
+
+    So ``tau^2 = long_sq - adj_sq`` and the attenuation factor on a dir-cos measured against
+    that noisy endpoint is ``sqrt(tau^2 / long_sq) = sqrt(1 - adj_sq/long_sq)`` -- no need to
+    separate sigma at all. A factor of 0.8 means an observed dir-cos of 0.40 is consistent with
+    a true 0.50.
+
+    This estimator is valid ONLY because the target is raw BBS (``target.source = bbs_raw``, ~1.08
+    routes per cell-year), where consecutive years are independent observations. Against a
+    reconstructed target -- where every year is a closed-form function of one anchor and a couple
+    of rate coefficients -- adjacent-year differences are pure SIGNAL, ``adj_sq`` would collapse
+    toward zero, and this would confidently report no attenuation. Do not point it at one.
+
+    Returns ``{}`` for eras with too few pairs rather than a noisy number.
+    """
+    by_cell = {}
+    for i, (r, c, y) in enumerate(pidx):
+        by_cell.setdefault((int(r), int(c)), []).append((int(y), i))
+    adj, lng = {}, {}
+    for _cell, rows in by_cell.items():
+        rows.sort()
+        for (y0, i0), (y1, i1) in zip(rows, rows[1:]):
+            if y1 - y0 == 1:
+                era = f"{y0 // era_width * era_width}s"
+                adj.setdefault(era, []).append(
+                    float(np.sum((z_obs[i1] - z_obs[i0]) ** 2)))
+        if len(rows) >= 2:
+            (y0, i0), (y1, i1) = rows[0], rows[-1]
+            if y1 - y0 >= era_width:
+                era = f"{y0 // era_width * era_width}s"
+                lng.setdefault(era, []).append(
+                    float(np.sum((z_obs[i1] - z_obs[i0]) ** 2)))
+    out = {}
+    for era in sorted(set(adj) & set(lng)):
+        if len(adj[era]) < min_pairs or len(lng[era]) < min_pairs:
+            continue
+        a2, l2 = float(np.mean(adj[era])), float(np.mean(lng[era]))
+        frac = 1.0 - (a2 / l2) if l2 > 1e-12 else float("nan")
+        out[era] = {"n_adjacent_pairs": len(adj[era]), "n_long_pairs": len(lng[era]),
+                    "adjacent_sq": a2, "long_sq": l2,
+                    "noise_share_of_long_gap": (a2 / l2) if l2 > 1e-12 else float("nan"),
+                    "dir_cos_attenuation": float(np.sqrt(frac)) if frac > 0 else float("nan")}
+    return out
 
 
 def _era_of(years):

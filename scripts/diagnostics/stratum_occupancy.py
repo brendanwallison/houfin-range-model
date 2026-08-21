@@ -28,11 +28,16 @@ WHAT TO LOOK FOR, in order:
 """
 import argparse
 import os
+import sys
 
 import numpy as np
 
-from src.community_encoder.train_DESK.esk_kernel import spacetime_strata
-from src.config_utils import load_config, target_points_dir
+# Same line as scripts/diagnostics/bbs_abundance_quantiles.py: run by path rather than as a module,
+# so the repo root is not on sys.path and `import src` fails without it.
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+
+from src.community_encoder.train_DESK.esk_kernel import spacetime_strata  # noqa: E402
+from src.config_utils import load_config, target_points_dir                # noqa: E402
 
 
 def _summary(labels, pidx):

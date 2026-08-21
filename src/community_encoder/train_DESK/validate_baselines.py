@@ -275,7 +275,7 @@ def _idw_at(cells_wanted, train_years, z_of, k=8, power=2.0):
     return np.einsum("nk,nkl->nl", w, src[idx])
 
 
-def zspace_idw_baseline(pidx, z_obs, holdout, hist_mask, k=8, power=2.0):
+def zspace_idw_baseline(pidx, z_obs, holdout, hist_mask, k=8, power=2.0, return_z=False):
     """Per-point Z-space error of interpolating the OBSERVED z from training cells, same year.
 
     The reconstruction metric compares DESK against a no-change null. That null is weak in the
@@ -283,11 +283,17 @@ def zspace_idw_baseline(pidx, z_obs, holdout, hist_mask, k=8, power=2.0):
     is the bar that matters: no covariates, no learning, just "the observed community at nearby
     cells surveyed the same year". Returns per-point error aligned to ``pidx[hist_mask]``, NaN
     where a year had fewer than ``k`` training cells.
+
+    ``return_z=True`` additionally returns the interpolated ``(n_hist, L)`` latents themselves, so
+    the bar can be graded by the SAME predictor table as every other predictor rather than only
+    through a precomputed error. A flag, not a changed arity, matching ``return_proj`` /
+    ``return_pidx`` elsewhere in this package -- the five existing callers keep working untouched.
     """
     from scipy.spatial import cKDTree
 
     hist_idx = np.flatnonzero(hist_mask)
     err = np.full(len(hist_idx), np.nan, dtype="float32")
+    zi = np.full((len(hist_idx), z_obs.shape[1]), np.nan, dtype="float32")
     ho = _np(holdout)
     for y in np.unique(pidx[hist_idx, 2]):
         same = pidx[:, 2] == y
@@ -306,7 +312,9 @@ def zspace_idw_baseline(pidx, z_obs, holdout, hist_mask, k=8, power=2.0):
         pos = np.searchsorted(hist_idx, want)
         e = np.linalg.norm(pred - z_obs[want], axis=1)
         err[pos[ok]] = e[ok]
-    return err
+        if return_z:
+            zi[pos[ok]] = pred[ok]
+    return (err, zi) if return_z else err
 
 
 def epoch_direction_panel(pidx, supervise, z_obs, z_model, holdout, buffer_mask,
@@ -1019,20 +1027,35 @@ def baseline_panel(pidx, z_obs, z_desk, holdout, recent_year, buffer_mask=None,
         "borrowed_delta": borrowed_delta_baseline(pidx, z_obs, holdout, target, recent_year,
                                                   **_kw),
         "spacetime_idw": st_err,
+        # DESK is a ROW here, not the permanent subject outside the table. It used to sit outside
+        # as `median_err_desk` / `desk_beats_frac`, which made "does the spacetime bar beat the
+        # no-change null" -- the question that says whether borrowing across time helps at all --
+        # unaskable, and left DESK the only thing any comparison could be about.
+        "desk": err_desk_all,
     }
+    bars = {k: (v[target] if len(v) == len(pidx) else v) for k, v in bars.items()}
     ed = err_desk_all[target]
     eras = _era_of(pidx[target, 2])
     out = {"recent_year": int(recent_year), "spacetime_ratio_cells_per_year": ratio,
            "heldout_only": bool(heldout_only), "by_era": {}, "overall": {}}
 
-    def _score(mask):
-        row = {"n": int(mask.sum()), "median_err_desk": float(np.median(ed[mask]))}
+    def _score(mask, reference="no_change"):
+        """Every predictor graded on identical terms, with the subject of the comparison a NAMED
+        argument. Win rates use the intersection of the pair's finite rows -- a bar reaches only
+        where it has neighbours, and scoring its easy subset against a reference's full set would
+        flatter whichever predictor declined the hardest rows."""
+        row = {"n": int(mask.sum()), "reference": reference, "predictors": {}, "win_rate_vs": {}}
         for name, e in bars.items():
             fin = mask & np.isfinite(e)
-            row[name] = ({"n": int(fin.sum()), "median_err": float(np.median(e[fin])),
-                          "desk_beats_frac": float(np.mean(ed[fin] < e[fin]))}
-                         if fin.sum() >= 4 else {"n": int(fin.sum()), "median_err": float("nan"),
-                                                 "desk_beats_frac": float("nan")})
+            row["predictors"][name] = {
+                "n": int(fin.sum()),
+                "median_err": float(np.median(e[fin])) if fin.sum() >= 4 else float("nan")}
+        ref = bars.get(reference)
+        if ref is not None:
+            for name, e in bars.items():
+                both = mask & np.isfinite(e) & np.isfinite(ref)
+                row["win_rate_vs"][name] = (float(np.mean(e[both] < ref[both]))
+                                            if both.sum() >= 4 else float("nan"))
         return row
 
     for era in sorted(set(eras)):
@@ -1040,14 +1063,17 @@ def baseline_panel(pidx, z_obs, z_desk, holdout, recent_year, buffer_mask=None,
     out["overall"] = _score(np.ones(len(ed), bool))
 
     if verbose:
-        names = list(bars)
-        print(f"  DESK beats each bar, held-out cells, by era (n/a = bar cannot run there)")
-        print("  era        n   errDESK  " + "  ".join(f"{n[:13]:>13}" for n in names))
+        names = [n for n in bars if n != "no_change"]
+        print("  each predictor vs the NO-CHANGE null, held-out cells, by era "
+              "(n/a = predictor cannot run there). DESK is one row among them, so a bar beating "
+              "another bar is visible too.")
+        print("  era        n  " + "  ".join(f"{n[:13]:>13}" for n in names))
         for era in sorted(set(eras)) + ["overall"]:
             r = out["by_era"][era] if era != "overall" else out["overall"]
-            cells = []
-            for n in names:
-                f = r[n]["desk_beats_frac"]
-                cells.append("          n/a" if not np.isfinite(f) else f"{f:12.1%} ")
-            print(f"  {era:<8} {r['n']:>5}   {r['median_err_desk']:7.4f}  " + " ".join(cells))
+            cells = ["          n/a" if not np.isfinite(r["win_rate_vs"].get(n, np.nan))
+                     else f"{r['win_rate_vs'][n]:12.1%} " for n in names]
+            print(f"  {era:<8} {r['n']:>5}  " + " ".join(cells))
+        ov = out["overall"]["predictors"]
+        print("  median error: " + "  ".join(
+            f"{n}={ov[n]['median_err']:.4f}" for n in sorted(ov) if np.isfinite(ov[n]["median_err"])))
     return out

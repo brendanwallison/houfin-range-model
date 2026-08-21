@@ -13,13 +13,19 @@ def test_new_reconstruction_scalars_reach_the_report():
     """Regression. The key filter was an ALLOW-LIST, so the interpolation bar was computed,
     never listed, and could never print -- the printed summary reads this filtered dict, not the
     original. Any new scalar must survive by default."""
-    recon = {"n": 10, "median_err_desk": 0.4, "frac_desk_beats_nochange": 0.63,
-             "median_err_idw": 0.42, "frac_desk_beats_idw": 0.51,   # the two that went missing
+    recon = {"n": 10, "recent_basis_residual": 1e-6, "shrinkage_slope": -0.01,
              "some_future_bar": 1.23,
+             # the predictor table is NESTED, and an allow-list of scalar names would drop it
+             # whole -- which is the same failure at a larger scale than the one that motivated
+             # this regression, since it is now where every baseline's numbers live.
+             "absolute_position": {"n": 10, "predictors": {"desk": {"median_err": 0.4},
+                                                           "spacetime_idw": {"median_err": 0.42}},
+                                   "win_rate_vs": {"desk": 0.51}},
              **{k: np.zeros(10) for k in RECON_ARRAY_KEYS}}
     kept = report_scalars(recon)
-    for k in ("median_err_idw", "frac_desk_beats_idw", "some_future_bar", "n"):
+    for k in ("shrinkage_slope", "some_future_bar", "n", "absolute_position"):
         assert k in kept, k
+    assert kept["absolute_position"]["predictors"]["spacetime_idw"]["median_err"] == 0.42
 
 
 def test_the_per_point_arrays_stay_out_of_the_json():
@@ -94,3 +100,31 @@ def test_shrinkage_profile_separates_a_uniform_rescale_from_a_tilt():
     tilt_slope, _tilt_med, tilt_mag_share = profile(np.linspace(1.0, 0.2, L))
     assert tilt_slope < -0.01, tilt_slope                 # clearly negative
     assert tilt_mag_share < 0.8, tilt_mag_share           # a tilt introduces angular error
+
+
+def test_the_absolute_position_table_prints():
+    """A broken f-string in the summary would otherwise surface only at the end of a multi-hour
+    job, which is why the printer is a module-level function rather than inline in run_validate."""
+    import io, contextlib
+    from src.community_encoder.train_DESK.validate_spacetime import print_absolute_position
+    from src.community_encoder.train_DESK.validate_bbs_routes import compare_positions
+    rng = np.random.default_rng(1)
+    z = rng.normal(size=(300, 8))
+    preds = {"desk": z + rng.normal(scale=.3, size=z.shape),
+             "no_change": z + rng.normal(scale=.6, size=z.shape),
+             "spacetime_idw": z + rng.normal(scale=.4, size=z.shape),
+             "zspace_idw": None}
+    pops = {"heldout": np.arange(300) < 120, "train": np.arange(300) >= 120}
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        print_absolute_position({"recent_basis_residual": 1.2e-6,
+                                 "absolute_position": compare_positions(z, preds,
+                                                                        populations=pops)})
+    txt = buf.getvalue()
+    for want in ("desk", "no_change", "spacetime_idw", "heldout", "train"):
+        assert want in txt, (want, txt)
+    assert "not scored" in txt                    # the unbuilt bar states its reason
+    # an empty report must print nothing rather than raise
+    with contextlib.redirect_stdout(io.StringIO()) as empty:
+        print_absolute_position({})
+    assert empty.getvalue() == ""

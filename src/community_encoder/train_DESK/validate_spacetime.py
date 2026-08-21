@@ -387,6 +387,43 @@ def report_scalars(recon):
     return {k: v for k, v in recon.items() if k not in RECON_ARRAY_KEYS}
 
 
+def print_absolute_position(rc):
+    """Print the `absolute_position` predictor table.
+
+    A TABLE, not three nested ifs each printing "DESK beats X". Module level rather than
+    inline in `run_validate` so the formatting is testable: a broken f-string here would
+    otherwise only surface at the end of a multi-hour job.
+    """
+    ap = rc.get("absolute_position")
+    if not ap:
+        return
+    # A TABLE, not three nested ifs each printing "DESK beats X". The old form could only
+    # ever make DESK the subject, so the reader could not see whether the spacetime bar beat
+    # the same-year bar, nor compare the bars' error decompositions against the model's.
+    print(f"[validate] ABSOLUTE POSITION -- where a cell-year IS ({ap['n']} hist pts, "
+          f"basis residual={rc.get('recent_basis_residual', float('nan')):.2e})")
+    print(f"           {'predictor':<15}{'err':>8}{'win%':>7}{'skill':>8}{'ang%':>7}"
+          f"{'cos':>7}{'|z|^2':>8}{'ruzicka':>9}   vs {ap['reference']}")
+    for name, r in sorted(ap["predictors"].items(),
+                          key=lambda kv: kv[1]["median_err"]):
+        w = ap.get("win_rate_vs", {}).get(name)
+        sk = ap.get("skill_vs", {}).get(name)
+        print(f"           {name:<15}{r['median_err']:>8.4f}"
+              f"{('%.1f%%' % (100 * w)) if w is not None else '     --':>7}"
+              f"{('%+.3f' % sk) if sk is not None else '      --':>8}"
+              f"{100 * r['angular_share']:>6.0f}%{r['median_cos_vs_obs']:>7.3f}"
+              f"{r['median_z_norm2']:>8.3f}{r['implied_ruzicka']:>9.3f}")
+    print(f"           observed |z|^2={ap['median_z_obs_norm2']:.3f}  (contract pins it at 1; "
+          f"the deficit is what the finite basis cannot represent)")
+    for pop, blk in sorted(ap.get("populations", {}).items()):
+        row = "  ".join(f"{n}={r['median_err']:.4f}"
+                        f"({100 * blk.get('win_rate_vs', {}).get(n, float('nan')):.0f}%)"
+                        for n, r in sorted(blk["predictors"].items()))
+        print(f"           {pop:<15}n={blk['n']:<7} {row}")
+    for name, why in sorted(ap.get("unavailable", {}).items()):
+        print(f"           {name:<15}-- not scored: {why}")
+
+
 def is_ho_hist(ho, pidx, hist):
     """Held-out flag per HISTORICAL point, in ``pidx[hist]`` row order."""
     return ho[pidx[hist, 0], pidx[hist, 1]]
@@ -459,137 +496,87 @@ def zspace_reconstruction(config, pidx, X, Z_desk, recent_year, to_rec, has_rec)
     if hist.sum() < 4:
         return {"n": int(hist.sum()), "note": "too few historical points"}
     ed, en = err_desk[hist], err_nc[hist]
+    hidx = np.flatnonzero(hist)
     out = {"n": int(hist.sum()),
-           "median_err_desk": float(np.median(ed)),
-           "median_err_nochange": float(np.median(en)),
-           "frac_desk_beats_nochange": float(np.mean(ed < en)),
            "recent_basis_residual": resid,
            "rows": pidx[hist, 0], "cols": pidx[hist, 1],
            "err_desk": ed.astype("float32"), "err_nochange": en.astype("float32")}
 
-    # --- the error, decomposed ------------------------------------------------------------
-    # ||z_desk - z_obs||^2 splits EXACTLY into a magnitude term (||z_desk|| - ||z_obs||)^2 and an
-    # angular term 2||z_desk|| ||z_obs||(1 - cos). Reporting only the total (as this function did)
-    # cannot say whether DESK points the wrong way or merely too short -- and those have different
-    # fixes. The two halves also trade off: shrinking is the MSE-optimal answer to a poor angle,
-    # which is why the norm deficit and the direction deficit are one phenomenon, not two.
-    from .validate_baselines import error_decomposition
-    tot_d, mag_d, ang_d, cos_d = error_decomposition(Z_desk[hist], z_obs[hist])
-    n_d = np.linalg.norm(Z_desk[hist], axis=1)
-    n_o = np.linalg.norm(z_obs[hist], axis=1)
-    out.update({
-        "err_total_sq_desk": float(np.median(tot_d)),
-        "err_magnitude_sq_desk": float(np.median(mag_d)),
-        "err_angular_sq_desk": float(np.median(ang_d)),
-        # Shares of the MEAN, not of the medians: medians of two terms do not add to the median
-        # of their sum, and a reader comparing the three medians above would otherwise conclude
-        # the identity is broken. The identity holds per point; these are its expectation split.
-        "err_magnitude_share": float(np.mean(mag_d) / max(np.mean(tot_d), 1e-12)),
-        "err_angular_share": float(np.mean(ang_d) / max(np.mean(tot_d), 1e-12)),
-        "median_cos_desk_vs_obs": float(np.nanmedian(cos_d)),
-        # Self-similarity. The kernel contract pins ||z||^2 = Ruzicka(x,x) = 1 EXACTLY (Sum-min
-        # over Sum-max of a vector with itself is 1), so a deficit is the model asserting a
-        # community is less than fully similar to itself. Separated for z_desk and z_obs because
-        # the causes differ and the fixes differ: z_desk short = MSE shrinkage (the model
-        # hedging), z_obs short = basis truncation (what the finite ESK projection cannot
-        # represent). The report could not previously tell them apart.
-        "median_z_desk_norm2": float(np.median(n_d ** 2)),
-        "median_z_obs_norm2": float(np.median(n_o ** 2)),
-        # What the error distance MEANS in the units the space represents: the Ruzicka similarity
-        # between the predicted and the observed community. The naive 1 - d^2/2 assumes both norms
-        # are 1 and so flatters the model by exactly the norm deficit.
-        "implied_ruzicka_desk_vs_obs": float(np.median((n_d ** 2 + n_o ** 2 - tot_d) / 2.0)),
-        "implied_ruzicka_naive_if_unit_norm": float(np.median(1.0 - tot_d / 2.0)),
-    })
-    # Per-dimension shrinkage: the magnitude half resolved along the basis. The ESK is
-    # kernel-PCA, so dim index is ordered by eigenvalue. FLAT means a uniform rescale, which the
-    # downstream's fitted w_env absorbs and which therefore costs nothing. FALLING with the index
-    # means the low-eigenvalue directions are squeezed hardest -- and since MSE shrinks whatever
-    # it predicts worst, those are the temporal ones -- so the kernel would be tilted toward
-    # spatial similarity and the GP prior distorted. Aggregate ||z||^2 cannot distinguish these.
+    # Per-dimension shrinkage: the magnitude half of the error resolved along the basis. The ESK
+    # is kernel-PCA, so dim index is ordered by eigenvalue. FLAT means a uniform rescale, which
+    # the downstream's fitted w_env absorbs and which therefore costs nothing. FALLING with the
+    # index means the low-eigenvalue directions are squeezed hardest -- and since MSE shrinks
+    # whatever it predicts worst, those are the temporal ones -- so the kernel would be tilted
+    # toward spatial similarity and the GP prior distorted. Aggregate ||z||^2 cannot tell these
+    # apart. Read it as a VARIANCE ratio, so a uniform norm scale c appears as c^2: a flat
+    # profile at 0.64 means every direction is scaled 0.8, and a large disagreement with
+    # median_z_norm2 / median_z_obs_norm2 is itself evidence of a tilt.
     #
-    # Read it as a VARIANCE ratio, so a uniform norm scale c appears as c^2: a flat profile at
-    # 0.64 means every direction is scaled 0.8. If the shrinkage really is uniform then
-    # shrinkage_median should agree with median_z_desk_norm2 / median_z_obs_norm2; a large
-    # disagreement between those two is itself evidence of a tilt.
-    #
-    # Measured behaviour of this diagnostic on planted inputs: a uniform 0.8 rescale gives
-    # slope +0.00000 with the error 100% in the magnitude term (a rescale cannot change a
-    # direction); a linear tilt from 1.0 to 0.2 gives slope -0.031 and splits the error 53%
-    # magnitude / 47% angular.
+    # Measured on planted inputs: a uniform 0.8 rescale gives slope +0.00000 with the error 100%
+    # in the magnitude term (a rescale cannot change a direction); a linear tilt from 1.0 to 0.2
+    # gives slope -0.031 and splits the error 53% magnitude / 47% angular.
     v_d = np.var(Z_desk[hist], axis=0)
     v_o = np.var(z_obs[hist], axis=0)
     prof = np.where(v_o > 1e-12, v_d / np.maximum(v_o, 1e-12), np.nan)
-    # latent_dim long (~64), so this is a figure rather than a per-point array: it stays in the
-    # JSON report. As a list, not an ndarray -- report_scalars keeps it and json.dump must be
-    # able to write it.
+    # latent_dim long (~64), so a figure rather than a per-point array: it stays in the JSON. As
+    # a list, not an ndarray -- report_scalars keeps it and json.dump must be able to write it.
     out["shrinkage_by_dim"] = [None if not np.isfinite(v) else float(v) for v in prof]
     ok_p = np.isfinite(prof)
     if ok_p.sum() >= 3:
         kk = np.arange(len(prof))[ok_p]
         out["shrinkage_slope"] = float(np.polyfit(kk, prof[ok_p], 1)[0])
         out["shrinkage_median"] = float(np.median(prof[ok_p]))
-    # DESK saves a spatial holdout; split the value-add into held-out (honest, unseen
-    # cells) vs train -- held-out frac_desk_beats_nochange is the number that counts.
+
+    # ---- the predictor table -------------------------------------------------------------
+    # This block was previously one hand-written key pair per baseline -- frac_desk_beats_nochange,
+    # frac_desk_beats_idw, frac_desk_beats_spacetime_idw -- each gated behind its own `if` and
+    # attached to whichever populations happened to be in scope where it was written. So DESK was
+    # the only possible SUBJECT of a comparison ("does the spacetime bar beat the same-year bar?"
+    # was unaskable), the error decomposition existed for DESK alone, and the populations differed
+    # per baseline. Now every predictor is a row in one table, graded on every population.
+    from .validate_bbs_routes import compare_positions
+    preds = {"desk": Z_desk[hist], "no_change": z_nc[hist]}
+    pops = {}
+
     ho_path = os.path.join(config["paths"]["desk_output_dir"], "holdout_cells.npy")
-    if os.path.exists(ho_path):
-        ho = np.load(ho_path)
+    ho = np.load(ho_path) if os.path.exists(ho_path) else None
+    hy = [int(y) for y in (config["desk"].get("trend", {}).get("holdout_years") or [])]
+    if ho is not None:
+        is_ho = is_ho_hist(ho, pidx, hist)
+        pops["heldout"], pops["train"] = is_ho, ~is_ho
         # The no-change null assumes 60 years of stasis, so it is weakest exactly where the
-        # historical points are densest -- beating it is a low bar. This is the real one:
-        # interpolate the OBSERVED z from training cells surveyed the SAME year. No covariates,
-        # no learning. On the val MSE and the direction diagnostic this bar was not cleared.
+        # historical points are densest -- beating it is a low bar. These are the real ones:
+        # interpolate the OBSERVED z, with no covariates and no learning.
         from .validate_baselines import zspace_idw_baseline
-        e_idw = zspace_idw_baseline(pidx, z_obs, ho, hist)
-        # The SAME-YEAR spatial bar above cannot run in a withheld year -- there are no training
-        # cells that year, so every withheld row comes back NaN and the deep past, which is the
-        # whole point of the temporal experiment, ends up with no bar at all. The spacetime
-        # variant borrows across years as well as space and so does reach it.
+        _e, z_idw = zspace_idw_baseline(pidx, z_obs, ho, hist, return_z=True)
+        preds["zspace_idw"] = z_idw
+        # The SAME-YEAR spatial bar cannot run in a withheld year -- there are no training cells
+        # that year, so every withheld row is NaN and the deep past, the whole point of the
+        # temporal experiment, gets no bar at all. The spacetime variant borrows across years too
+        # and so does reach it.
         try:
             from .validate_baselines import spacetime_idw_baseline, spacetime_idw_z
             bf_p = os.path.join(config["paths"]["desk_output_dir"], "buffer_cells.npy")
             bf = np.load(bf_p) if os.path.exists(bf_p) else np.zeros_like(ho)
-            hy = [int(y) for y in (config["desk"].get("trend", {}).get("holdout_years") or [])]
-            _e, ratio = spacetime_idw_baseline(pidx, z_obs, ho, np.zeros(len(pidx), bool),
-                                               buffer_mask=bf, exclude_years=hy, verbose=False)
+            _e2, ratio = spacetime_idw_baseline(pidx, z_obs, ho, np.zeros(len(pidx), bool),
+                                                buffer_mask=bf, exclude_years=hy, verbose=False)
             z_st = spacetime_idw_z(pidx, z_obs, ho, float(ratio),
                                    buffer_mask=bf, exclude_years=hy)
-            e_st = np.linalg.norm(z_st[hist] - z_obs[hist], axis=1)
-            fst = np.isfinite(e_st)
-            if fst.sum() >= 4:
-                out["spacetime_idw_ratio_cells_per_year"] = float(ratio)
-                out["median_err_spacetime_idw"] = float(np.median(e_st[fst]))
-                out["frac_desk_beats_spacetime_idw"] = float(np.mean(ed[fst] < e_st[fst]))
-                out["n_spacetime_idw_scored"] = int(fst.sum())
-                hs = fst & is_ho_hist(ho, pidx, hist)
-                if hs.sum() >= 4:
-                    out["frac_desk_beats_spacetime_idw_heldout"] = float(
-                        np.mean(ed[hs] < e_st[hs]))
-                    out["median_err_spacetime_idw_heldout"] = float(np.median(e_st[hs]))
-                if hy:
-                    inhy = np.isin(pidx[hist, 2], np.asarray(hy)) & fst
-                    if inhy.sum() >= 4:
-                        # the rows the same-year bar cannot reach at all
-                        out["frac_desk_beats_spacetime_idw_withheld_years"] = float(
-                            np.mean(ed[inhy] < e_st[inhy]))
-                        out["n_withheld_years_scored"] = int(inhy.sum())
+            preds["spacetime_idw"] = z_st[hist]
+            out["spacetime_idw_ratio_cells_per_year"] = float(ratio)
         except Exception as exc:                  # diagnostic only
             print(f"[validate] spacetime IDW bar on reconstruction unavailable ({exc})")
-        fin = np.isfinite(e_idw)
-        if fin.sum() >= 4:
-            out["median_err_idw"] = float(np.median(e_idw[fin]))
-            out["frac_desk_beats_idw"] = float(np.mean(ed[fin] < e_idw[fin]))
-            out["n_idw_scored"] = int(fin.sum())
-            hm = fin & is_ho_hist(ho, pidx, hist)
-            if hm.sum() >= 4:
-                out["frac_desk_beats_idw_heldout"] = float(np.mean(ed[hm] < e_idw[hm]))
-                out["median_err_idw_heldout"] = float(np.median(e_idw[hm]))
-        is_ho = is_ho_hist(ho, pidx, hist)
-        for lab, m in (("heldout", is_ho), ("train", ~is_ho)):
-            if m.sum() >= 4:
-                out[f"n_{lab}"] = int(m.sum())
-                out[f"frac_desk_beats_nochange_{lab}"] = float(np.mean(ed[m] < en[m]))
-                out[f"median_err_desk_{lab}"] = float(np.median(ed[m]))
-                out[f"median_err_nochange_{lab}"] = float(np.median(en[m]))
+    if hy:
+        pops["withheld_years"] = np.isin(pidx[hidx, 2], np.asarray(hy))
+
+    out["absolute_position"] = compare_positions(z_obs[hist], preds, reference="no_change",
+                                                 populations=pops)
+    # DESK against the BAR as well as against the null -- the same table with a different named
+    # reference, so neither comparison is privileged by construction.
+    if "spacetime_idw" in out["absolute_position"]["predictors"]:
+        out["absolute_position"]["vs_spacetime_idw"] = compare_positions(
+            z_obs[hist], preds, reference="spacetime_idw", populations=pops)
+
     return out
 
 
@@ -1052,23 +1039,7 @@ def run_validate(config=None, n_pairs=20000, cka_sample=800, seed=0):
         print(f"[validate] analog displacement ({a['n_hist']} pts): cos={a['mean_cos_displacement']:+.3f} "
               f"vs null={a['mean_cos_displacement_null']:+.3f} | EW(partial)={a['corr_disp_EW_partial']:+.3f} "
               f"NS(partial)={a['corr_disp_NS_partial']:+.3f}")
-    rc = report.get("zspace_reconstruction", {})
-    if "median_err_desk" in rc:
-        print(f"[validate] Z-SPACE reconstruction ({rc['n']} hist pts): err DESK={rc['median_err_desk']:.4f} "
-              f"vs no-change={rc['median_err_nochange']:.4f} | DESK beats no-change in "
-              f"{rc['frac_desk_beats_nochange']:.1%} of cells | basis residual={rc['recent_basis_residual']:.2e}")
-        if "frac_desk_beats_idw" in rc:
-            print(f"           vs INTERPOLATION of observed z from same-year training cells "
-                  f"(n={rc['n_idw_scored']}): DESK beats it in "
-                  f"{rc['frac_desk_beats_idw']:.1%} of cells (err idw={rc['median_err_idw']:.4f})")
-            if "frac_desk_beats_idw_heldout" in rc:
-                print(f"           HELD-OUT vs interpolation: DESK beats it in "
-                      f"{rc['frac_desk_beats_idw_heldout']:.1%} "
-                      f"(err idw={rc['median_err_idw_heldout']:.4f})")
-        if "frac_desk_beats_nochange_heldout" in rc:
-            print(f"           HELD-OUT cells ({rc['n_heldout']}): DESK beats no-change in "
-                  f"{rc['frac_desk_beats_nochange_heldout']:.1%}  <- the honest held-out grade "
-                  f"(err DESK={rc['median_err_desk_heldout']:.4f} vs {rc['median_err_nochange_heldout']:.4f})")
+    print_absolute_position(report.get("zspace_reconstruction", {}))
     _phase("write outputs")
     print("[validate:timing] total " + "  ".join(f"{n}={t:.0f}s" for n, t in _marks)
           + f"  => {sum(t for _, t in _marks):.0f}s", flush=True)

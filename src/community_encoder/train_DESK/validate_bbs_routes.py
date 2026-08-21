@@ -333,6 +333,26 @@ def canonical_question(name):
     return max(cands, key=len) if cands else None
 
 
+def _predictor_leaves(node, path):
+    """Yield every (path, table) that carries a predictor table, at whatever depth it sits.
+
+    Questions differ in shape -- the neighbour questions nest split/distance-bin/form, while
+    `absolute_position` nests only populations -- so the walk finds leaves BY SHAPE rather than by
+    a fixed depth. Depth-coupling is what silently disabled the first version of this check: it
+    read `results[q]["predictors"]`, a level the analysis never emits, and so inspected nothing
+    while reporting green.
+    """
+    if not isinstance(node, dict):
+        return
+    if "predictors" in node or "unavailable" in node:
+        yield path, node
+    if "skipped" in node:
+        return                                     # a stated reason, which is what we require
+    for k, v in node.items():
+        if isinstance(v, dict) and k not in ("predictors", "unavailable"):
+            yield from _predictor_leaves(v, f"{path}/{k}")
+
+
 def assert_complete(results, predictors=tuple(PREDICTOR_ROLES), questions=tuple(QUESTIONS)):
     """Every (question x predictor) must have a result or a stated reason. Returns the gaps.
 
@@ -360,24 +380,116 @@ def assert_complete(results, predictors=tuple(PREDICTOR_ROLES), questions=tuple(
             gaps.append(f"{emitted}: emitted but in no question registry")
             continue
         seen.setdefault(q, []).append(emitted)
-        for sname, split in r.items():
-            for bin_label, row in split.items():
-                if "skipped" in row:
-                    continue                       # a stated reason, which is what we require
-                for form in ("dot", "cosine"):
-                    where = f"{emitted}/{sname}/{bin_label}/{form}"
-                    cell = row.get(form)
-                    if cell is None:
-                        gaps.append(f"{where}: quantity absent")
-                        continue
-                    have = set(cell.get("predictors", {})) | set(cell.get("unavailable", {}))
-                    for pname in predictors:
-                        if pname not in have:
-                            gaps.append(f"{where} x {pname}: neither a result nor a reason")
+        leaves = list(_predictor_leaves(r, emitted))
+        if not leaves:
+            gaps.append(f"{emitted}: question present but carries no predictor table")
+        for where, cell in leaves:
+            have = set(cell.get("predictors", {})) | set(cell.get("unavailable", {}))
+            for pname in predictors:
+                if pname not in have:
+                    gaps.append(f"{where} x {pname}: neither a result nor a reason")
     for q in questions:
         if q not in seen:
             gaps.append(f"{q}: question absent entirely")
     return gaps
+
+
+def compare_positions(z_obs, predictors, reference="no_change", populations=None):
+    """Grade every predictor's ABSOLUTE POSITION against the observed z, on identical terms.
+
+    The `absolute_position` question asks where a place IS, not how it moved, so its truth is a
+    matrix of observed latents rather than a similarity vector -- `compare_predictors` does not
+    fit. This shares that function's OUTPUT vocabulary exactly (`predictors` / `skill_vs` /
+    `unavailable` / `reference`) so both questions address the same way and one completeness
+    check covers both.
+
+    WHY THIS REPLACED THE HAND-WRITTEN BLOCKS in `zspace_reconstruction`. That function grew one
+    key pair per baseline -- `frac_desk_beats_nochange`, `frac_desk_beats_idw`,
+    `frac_desk_beats_spacetime_idw` -- so DESK was the only possible SUBJECT of a comparison.
+    "Does the spacetime bar beat the same-year bar", which says whether borrowing across time
+    helps at all, could not be asked. The error decomposition was computed for DESK alone, so
+    "does the bar win on magnitude while DESK wins on direction" had no answer for the bar. And
+    the populations were applied unevenly -- the null got train/heldout, the same-year bar got
+    heldout only, the spacetime bar got heldout plus withheld-years -- because each was bolted on
+    where it was written.
+
+    `populations` is `{name: mask}` over the same rows; every predictor is scored on every one.
+
+    Predictors may carry NaN rows (an interpolation bar reaches only where it has neighbours).
+    Each predictor's own summaries use its own finite rows, but a WIN RATE uses the intersection
+    of the pair's finite rows -- scoring a bar's easy subset against a reference's full set would
+    otherwise flatter whichever predictor declined the hardest rows.
+    """
+    from .validate_baselines import error_decomposition
+
+    z_obs = np.asarray(z_obs, "float64")
+    n_o = np.linalg.norm(z_obs, axis=1)
+
+    def _summary(P, mask):
+        P = np.asarray(P, "float64")
+        err = np.linalg.norm(P - z_obs, axis=1)
+        fin = np.isfinite(err) & mask
+        if fin.sum() < 4:
+            return None
+        tot, mag, ang, cos = error_decomposition(P[fin], z_obs[fin])
+        n_p = np.linalg.norm(P[fin], axis=1)
+        return {
+            "n_scored": int(fin.sum()),
+            "median_err": float(np.median(err[fin])),
+            "err_total_sq": float(np.median(tot)),
+            "err_magnitude_sq": float(np.median(mag)),
+            "err_angular_sq": float(np.median(ang)),
+            # Shares of the MEAN, not of the medians: medians of two terms do not add to the
+            # median of their sum, and a reader comparing the three medians would otherwise
+            # conclude the identity is broken. It holds per point; these are its expectation.
+            "magnitude_share": float(np.mean(mag) / max(np.mean(tot), 1e-12)),
+            "angular_share": float(np.mean(ang) / max(np.mean(tot), 1e-12)),
+            "median_cos_vs_obs": float(np.nanmedian(cos)),
+            "median_z_norm2": float(np.median(n_p ** 2)),
+            # The Ruzicka similarity the error distance actually implies. The naive 1 - d^2/2
+            # assumes both norms are 1 and so flatters by exactly the norm deficit.
+            "implied_ruzicka": float(np.median((n_p ** 2 + n_o[fin] ** 2 - tot) / 2.0)),
+        }
+
+    def _block(mask):
+        rows, errs = {}, {}
+        for name, P in predictors.items():
+            if P is None:
+                continue
+            e = np.linalg.norm(np.asarray(P, "float64") - z_obs, axis=1)
+            errs[name] = e
+            r = _summary(P, mask)
+            if r is not None:
+                rows[name] = r
+        out = {"n": int(mask.sum()), "reference": reference, "predictors": rows,
+               "median_z_obs_norm2": float(np.median(n_o[mask] ** 2)) if mask.any() else None,
+               "unavailable": {}}
+        ref = errs.get(reference)
+        if ref is not None:
+            wins, skill = {}, {}
+            for name, e in errs.items():
+                # the intersection, so neither predictor is graded on rows the other declined
+                both = mask & np.isfinite(e) & np.isfinite(ref)
+                if both.sum() < 4:
+                    continue
+                wins[name] = float(np.mean(e[both] < ref[both]))
+                skill[name] = float(1.0 - np.median(e[both]) / max(np.median(ref[both]), 1e-12))
+            out["win_rate_vs"], out["skill_vs"] = wins, skill
+        return out
+
+    n = z_obs.shape[0]
+    res = _block(np.ones(n, bool))
+    res["populations"] = {}
+    for pname, m in (populations or {}).items():
+        m = np.asarray(m, bool)
+        if m.sum() >= 4:
+            res["populations"][pname] = _block(m)
+    # A predictor that produced too few finite rows anywhere is a STATED reason, not an absence.
+    for name, P in predictors.items():
+        if name not in res["predictors"]:
+            res["unavailable"][name] = (PREDICTOR_UNAVAILABLE_DEFAULT if P is None else
+                                        "fewer than 4 finite rows to score")
+    return res
 
 
 def compare_predictors(obs, predictors, reference="no_change", grams=False):

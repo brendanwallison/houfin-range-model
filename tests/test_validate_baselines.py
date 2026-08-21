@@ -298,7 +298,7 @@ def test_the_panel_marks_unavailable_bars_nan_rather_than_inventing_a_number():
     z = np.random.default_rng(0).normal(size=(len(pidx), 3)).astype("float32")
     ho = np.zeros((1, 12), bool); ho[0, :] = True
     out = baseline_panel(pidx, z, z.copy(), ho, recent_year=2025, verbose=False)
-    assert np.isnan(out["by_era"]["1980s"]["borrowed_delta"]["desk_beats_frac"])
+    assert np.isnan(out["by_era"]["1980s"]["win_rate_vs"]["borrowed_delta"])
 
 
 def test_the_panel_scores_a_perfect_model_as_beating_every_available_bar():
@@ -311,9 +311,13 @@ def test_the_panel_scores_a_perfect_model_as_beating_every_available_bar():
     z = rng.normal(size=(len(pidx), 3)).astype("float32")
     ho = np.zeros((6, 6), bool); ho[::3, ::3] = True
     out = baseline_panel(pidx, z, z.copy(), ho, recent_year=2025, verbose=False)
-    for name, r in out["overall"].items():
-        if isinstance(r, dict) and np.isfinite(r["desk_beats_frac"]):
-            assert r["desk_beats_frac"] == 1.0, (name, r)
+    # DESK is a row in the same table now, so this reads as "every OTHER predictor loses to the
+    # null less often than DESK does" only if we ask it against DESK -- ask it directly instead.
+    ov = baseline_panel(pidx, z, z, ho, 2025, verbose=False)
+    for name, w in ov["overall"]["win_rate_vs"].items():
+        if name != "desk" and np.isfinite(w):
+            assert w <= ov["overall"]["win_rate_vs"]["desk"], (name, w)
+    assert ov["overall"]["win_rate_vs"]["desk"] == 1.0     # a perfect model never loses
 
 
 def test_the_two_holdouts_have_COMPLEMENTARY_baseline_sets():
@@ -330,16 +334,16 @@ def test_the_two_holdouts_have_COMPLEMENTARY_baseline_sets():
     ho = np.zeros((10, 10), bool); ho[::3, ::3] = True
 
     spatial = baseline_panel(pidx, z, z + 0.1, ho, 2025, verbose=False)["overall"]
-    assert not np.isfinite(spatial["cell_trend"]["desk_beats_frac"])       # cannot run
-    assert np.isfinite(spatial["borrowed_delta"]["desk_beats_frac"])       # can
+    assert not np.isfinite(spatial["win_rate_vs"]["cell_trend"])           # cannot run
+    assert np.isfinite(spatial["win_rate_vs"]["borrowed_delta"])           # can
 
     is_ho = ho[pidx[:, 0], pidx[:, 1]]
     withheld = [1970, 1980]
     temporal = baseline_panel(pidx, z, z + 0.1, ho, 2025, verbose=False,
                               target_rows=np.isin(pidx[:, 2], withheld) & ~is_ho,
                               exclude_years=withheld)["overall"]
-    assert np.isfinite(temporal["cell_trend"]["desk_beats_frac"])          # now it can
-    assert not np.isfinite(temporal["borrowed_delta"]["desk_beats_frac"])  # and this cannot
+    assert np.isfinite(temporal["win_rate_vs"]["cell_trend"])              # now it can
+    assert not np.isfinite(temporal["win_rate_vs"]["borrowed_delta"])      # and this cannot
 
 
 def test_no_rung_may_source_from_a_withheld_year():
@@ -654,7 +658,7 @@ def test_which_ladder_rungs_survive_each_temporal_bucket():
         o = baseline_panel(pidx, z, zd, ho, 2025, buffer_mask=bf, target_rows=rowsel,
                            exclude_years=hy, verbose=False)["overall"]
         return {n for n in ("no_change", "cell_nearest_year", "cell_trend", "borrowed_delta",
-                            "spacetime_idw") if o[n]["n"] > 0}
+                            "spacetime_idw") if o["predictors"][n]["n"] > 0}
 
     # unseen YEAR, seen cell: the cell has training years elsewhere, so a trend can be fit
     assert avail(in_hy & ~is_ho) == {"no_change", "cell_nearest_year", "cell_trend",

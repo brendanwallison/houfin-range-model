@@ -1232,3 +1232,114 @@ def test_the_report_carries_a_manifest_of_what_was_tested():
     assert all(v for v in m["unavailable"].values())
     # every question carries its own rationale, which is the map that kept getting lost
     assert all(q in rep["types"] for q in m["questions"])
+
+
+# ---------------------------------------------------------------------------------------------
+# compare_positions -- the `absolute_position` question's predictor table
+# ---------------------------------------------------------------------------------------------
+
+def desk_err(P, z_obs):
+    return np.linalg.norm(np.asarray(P, "float64") - z_obs, axis=1)
+
+
+def _positions(n=200, seed=3):
+    rng = np.random.default_rng(seed)
+    z_obs = rng.normal(size=(n, 8))
+    return rng, z_obs
+
+
+def test_compare_positions_grades_every_predictor_identically():
+    """The property the refactor exists to buy. The old block wrote one key pair per baseline --
+    frac_desk_beats_nochange, frac_desk_beats_idw, frac_desk_beats_spacetime_idw -- so DESK was
+    the only possible SUBJECT and the error decomposition existed for DESK alone."""
+    from src.community_encoder.train_DESK.validate_bbs_routes import compare_positions
+    rng, z_obs = _positions()
+    preds = {"desk": z_obs + rng.normal(scale=.3, size=z_obs.shape),
+             "no_change": z_obs + rng.normal(scale=.6, size=z_obs.shape),
+             "spacetime_idw": z_obs + rng.normal(scale=.4, size=z_obs.shape)}
+    r = compare_positions(z_obs, preds)
+    assert set(r["predictors"]) == set(preds)
+    keys = [set(v) for v in r["predictors"].values()]
+    assert all(k == keys[0] for k in keys), keys        # no privileged vocabulary
+    # a brand-new predictor needs no call-site change to appear with the full quantity set
+    preds["some_future_bar"] = z_obs + rng.normal(scale=.5, size=z_obs.shape)
+    r2 = compare_positions(z_obs, preds)
+    assert set(r2["predictors"]["some_future_bar"]) == keys[0]
+
+
+def test_compare_positions_reference_is_only_a_name():
+    """"DESK vs the null" and "DESK vs the bar" must be one call with a different reference, not
+    one built-in comparison plus a bolt-on -- otherwise a comparison is privileged by
+    construction, which is how the asymmetry kept coming back."""
+    from src.community_encoder.train_DESK.validate_bbs_routes import compare_positions
+    rng, z_obs = _positions()
+    preds = {"desk": z_obs + rng.normal(scale=.3, size=z_obs.shape),
+             "no_change": z_obs + rng.normal(scale=.6, size=z_obs.shape),
+             "spacetime_idw": z_obs + rng.normal(scale=.4, size=z_obs.shape)}
+    a = compare_positions(z_obs, preds, reference="no_change")
+    b = compare_positions(z_obs, preds, reference="spacetime_idw")
+    assert a["predictors"] == b["predictors"]           # per-predictor rows are reference-free
+    assert a["win_rate_vs"] != b["win_rate_vs"]
+    assert abs(a["win_rate_vs"]["no_change"] - 0.0) < 1e-12       # never beats itself
+    assert abs(b["skill_vs"]["spacetime_idw"] - 0.0) < 1e-12
+    # and the question the old code could not ask at all: does the bar beat the OTHER bar?
+    assert b["win_rate_vs"]["no_change"] < 0.5          # the null is worse than the bar
+
+
+def test_compare_positions_win_rate_uses_the_intersection_of_finite_rows():
+    """An interpolation bar reaches only where it has neighbours. Scoring its easy subset against
+    a reference's FULL set would flatter whichever predictor declined the hardest rows."""
+    from src.community_encoder.train_DESK.validate_bbs_routes import compare_positions
+    rng, z_obs = _positions()
+    hard = np.zeros(len(z_obs), bool)
+    hard[:100] = True                                   # the half the bar will decline
+    desk = z_obs + rng.normal(scale=.3, size=z_obs.shape)
+    desk[hard] += 3.0                                   # DESK does badly exactly there
+    bar = z_obs + rng.normal(scale=.4, size=z_obs.shape)
+    bar[hard] = np.nan                                  # ...and the bar simply declines it
+    r = compare_positions(z_obs, {"desk": desk, "no_change": bar}, reference="no_change")
+    # Scored on the 100 easy rows only, where DESK is genuinely better. The naive form -- compare
+    # over all 200 and let the NaNs fall where they may -- returns False on every declined row,
+    # so DESK would appear to win only ~half as often for a reason that is pure bookkeeping.
+    naive = float(np.mean(desk_err(desk, z_obs) < desk_err(bar, z_obs)))
+    assert r["win_rate_vs"]["desk"] > 0.7
+    assert r["win_rate_vs"]["desk"] > naive + 0.3, (r["win_rate_vs"]["desk"], naive)
+    assert r["predictors"]["no_change"]["n_scored"] == 100
+
+
+def test_compare_positions_states_a_reason_rather_than_omitting_a_predictor():
+    from src.community_encoder.train_DESK.validate_bbs_routes import (
+        compare_positions, assert_complete)
+    rng, z_obs = _positions()
+    preds = {"desk": z_obs + rng.normal(scale=.3, size=z_obs.shape),
+             "no_change": z_obs + rng.normal(scale=.6, size=z_obs.shape),
+             "spacetime_idw": None,                      # bar could not be built
+             "esk_oracle": np.where(np.arange(len(z_obs))[:, None] < 2, z_obs, np.nan)}
+    r = compare_positions(z_obs, preds)
+    assert set(r["unavailable"]) == {"spacetime_idw", "esk_oracle"}
+    assert "finite" in r["unavailable"]["esk_oracle"]
+    # and that is enough for the completeness check: a reason counts, an absence does not
+    assert assert_complete({"absolute_position": r}, questions=("absolute_position",)) == []
+    r["unavailable"].pop("spacetime_idw")
+    gaps = assert_complete({"absolute_position": r}, questions=("absolute_position",))
+    assert any("spacetime_idw" in g for g in gaps), gaps
+
+
+def test_completeness_walks_both_question_shapes():
+    """`absolute_position` nests populations; the neighbour questions nest split/bin/form. The
+    walk must find leaves BY SHAPE -- coupling it to a fixed depth is what made the first version
+    of this check inspect nothing while reporting green."""
+    from src.community_encoder.train_DESK.validate_bbs_routes import (
+        compare_positions, assert_complete, _predictor_leaves)
+    rng, z_obs = _positions()
+    pops = {"heldout": np.arange(len(z_obs)) < 100, "train": np.arange(len(z_obs)) >= 100}
+    r = compare_positions(z_obs, {"desk": z_obs + rng.normal(scale=.3, size=z_obs.shape),
+                                  "no_change": z_obs + rng.normal(scale=.6, size=z_obs.shape)},
+                          populations=pops)
+    leaves = dict(_predictor_leaves(r, "absolute_position"))
+    assert len(leaves) == 3                              # the pooled block plus both populations
+    # a predictor dropped from ONE population only must still be caught
+    r["populations"]["heldout"]["predictors"].pop("desk")
+    gaps = assert_complete({"absolute_position": r},
+                           predictors=("desk", "no_change"), questions=("absolute_position",))
+    assert any("heldout" in g and "desk" in g for g in gaps), gaps

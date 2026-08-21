@@ -649,3 +649,32 @@ def test_which_ladder_rungs_survive_each_temporal_bucket():
                                      "spacetime_idw"}
     # unseen year AND unseen cell: no training rows for this cell at all
     assert avail(in_hy & is_ho) == {"no_change", "spacetime_idw"}
+
+
+def test_a_boundary_anisotropy_is_flagged_as_censored():
+    """An argmin on the edge of the grid is censored, not measured: the optimum may lie outside,
+    so the bar is a lower bound and any DESK margin over it is overstated. This is not
+    hypothetical -- the first temporal-holdout sweep selected the grid floor in all three runs,
+    which would have made a narrow win look real."""
+    import contextlib
+    import io
+
+    from src.community_encoder.train_DESK.validate_baselines import (
+        SPACETIME_RATIOS, spacetime_idw_baseline)
+    # the grid must reach well below 1 cell/yr, which is where the sweep actually landed
+    assert min(SPACETIME_RATIOS) <= 0.01, SPACETIME_RATIOS
+
+    rng = np.random.default_rng(0)
+    pidx = np.array([[r, c, y] for r in range(6) for c in range(6)
+                     for y in range(1980, 2011, 2)], dtype=np.int32)
+    ho = np.zeros((6, 6), bool); ho[5, :] = True
+    target = ho[pidx[:, 0], pidx[:, 1]]
+    # a field that varies ONLY in space: time distance is pure cost, so the winner is the
+    # smallest ratio on offer -- i.e. the low boundary, which must be flagged.
+    z = np.stack([[float(r), float(c)] for r, c, _y in pidx]).astype("float32")
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        _err, ratio = spacetime_idw_baseline(pidx, z, ho, target)
+    out = buf.getvalue()
+    assert ratio == min(SPACETIME_RATIOS), (ratio, out)
+    assert "WARNING" in out and "LOW end of the grid" in out, out

@@ -459,7 +459,13 @@ _MIN_TREND_YEARS = 2          # a line needs two points
 #: BELOW 1 on purpose: a cell is 27 km, and a year of community change is very unlikely to be
 #: worth more than a whole cell of distance, so the interesting range is the sub-cell one. The
 #: sweep picks among these on training rows; it is not a prior on the answer.
-SPACETIME_RATIOS = (0.1, 0.25, 0.5, 1.0, 2.0, 5.0)
+#:
+#: Extended down to 0.01 because the first temporal-holdout sweep selected the OLD floor (0.1)
+#: in all three runs -- an argmin on the grid boundary is censored, not measured, and the bar was
+#: therefore weaker than the data wanted. 0.01 means a 27 km step is worth ~100 years of change,
+#: which is a deliberately generous bound rather than a belief. ``spacetime_idw_baseline`` warns
+#: when the winner still lands on an endpoint, so a future censoring cannot pass silently.
+SPACETIME_RATIOS = (0.01, 0.02, 0.05, 0.1, 0.25, 0.5, 1.0, 2.0, 5.0)
 
 
 def _train_rows(pidx, holdout, buffer_mask=None, exclude_years=()):
@@ -669,6 +675,14 @@ def spacetime_idw_baseline(pidx, z_obs, holdout, target_rows, buffer_mask=None,
         if verbose:
             print(f"  spacetime IDW anisotropy: {best_ratio:g} grid cells per year "
                   f"({mode}, training rows only, from {list(ratios)})")
+            # An argmin on the boundary is censored: the optimum may lie outside the grid, so the
+            # bar is weaker than the data wants and any DESK margin over it is overstated. This
+            # actually happened -- the first sweep picked the then-floor 0.1 in all three runs.
+            if best_ratio in (float(ratios[0]), float(ratios[-1])):
+                print(f"  WARNING: that ratio is the {'LOW' if best_ratio == float(ratios[0]) else 'HIGH'}"
+                      f" end of the grid, so the optimum may lie outside it. This bar is a LOWER "
+                      f"bound on the strength of spacetime interpolation; widen SPACETIME_RATIOS "
+                      f"before trusting a narrow DESK win over it.")
     return _spacetime_err(pidx, z_obs, tr, target_rows, best_ratio, k=k, power=power), best_ratio
 
 

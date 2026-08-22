@@ -725,7 +725,8 @@ def run_validate(config=None, n_pairs=20000, cka_sample=800, seed=0):
     ho_path = os.path.join(config["paths"]["desk_output_dir"], "holdout_cells.npy")
     bf_path = os.path.join(config["paths"]["desk_output_dir"], "buffer_cells.npy")
     if os.path.exists(ho_path):
-        from .validate_baselines import epoch_direction_panel, per_era_attenuation
+        from .validate_baselines import (ATTEN_GAP, ATTEN_GAP_TOL,
+                                         epoch_direction_panel, per_era_attenuation)
         from .esk_kernel import project_points_to_z
         ho = np.load(ho_path)
         bf = np.load(bf_path) if os.path.exists(bf_path) else np.zeros_like(ho)
@@ -765,6 +766,22 @@ def run_validate(config=None, n_pairs=20000, cka_sample=800, seed=0):
                 print(f"[validate] per-dimension signal/noise unavailable ({sn.get('note')})")
 
             atten = per_era_attenuation(pidx, z_obs_pts)
+            # STORED, not only printed. This number governs every temporal claim in the project --
+            # it is what says whether a low dir-cos is a weak model or a noisy target -- and its
+            # only copy was job stdout. A figure that has to be grepped out of a log is a figure
+            # that gets quoted from memory, or forgotten and re-derived by hand.
+            #
+            # Caveat that belongs WITH the number: it is measured on SINGLE-YEAR adjacent pairs.
+            # Comparisons built on windowed endpoints (bbs_routes averages 4.2 early / 11.4 modern
+            # surveys) carry far less noise than this, roughly in proportion to the survey count,
+            # so applying 53% to them over-corrects. See scripts/diagnostics/noise_floor.py, which
+            # measures the floor at matched sample sizes.
+            if atten:
+                report["per_era_attenuation"] = {
+                    "note": ("measured on SINGLE-YEAR adjacent pairs at a fixed gap; do NOT apply "
+                             "to windowed-endpoint comparisons without rescaling for the survey "
+                             "count -- see scripts/diagnostics/noise_floor.py"),
+                    "gap_years": ATTEN_GAP, "gap_tol": ATTEN_GAP_TOL, "by_era": atten}
             if atten:
                 print("[validate] dir-cos attenuation from single-year survey noise "
                       "(raw BBS, ~1.08 routes/cell-year; 0.80 => observed 0.40 ~ true 0.50):")

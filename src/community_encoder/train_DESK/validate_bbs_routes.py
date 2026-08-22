@@ -1087,7 +1087,7 @@ def epoch_neighborhood_analysis(Xe, Xm, Ze, Zm, xy, k=99, n_bins=10, is_heldout=
 # ----------------------------- IO / driver -----------------------------
 
 def load_observed(config):
-    """Build the observed route-level community from RAW BBS → ``(X_log, keys, meta)``.
+    """Build the observed route-level community from RAW BBS → ``(X_log, keys, meta, X_raw)``.
 
     The community is ``community_trend_list`` (``community_trend.csv``) -- the same list
     ``trend_community.build_trend_points`` uses -- so truth is defined over exactly the community

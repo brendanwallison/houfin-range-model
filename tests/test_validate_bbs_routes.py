@@ -1220,7 +1220,12 @@ def test_the_report_carries_a_manifest_of_what_was_tested():
     rep, _pc = epoch_neighborhood_analysis(Xe, Xm, Xe @ A, Xm @ A, xy, k=9, n_bins=3)
     m = rep["manifest"]
     assert set(m) == {"covers", "questions", "predictors", "unavailable", "quantities",
-                      "populations"}
+                      "populations", "denoising", "denoising_mismatch"}
+    # The manifest must carry the denoising footing, not just the predictor list: a report that
+    # names its predictors but not how denoised they are invites exactly the apples-to-oranges
+    # reading that made the oracle look like an achievable ceiling.
+    assert set(m["denoising"]) <= set(m["predictors"])
+    assert isinstance(m["denoising_mismatch"], list)
     # `covers` is the scope the report claims responsibility for, and it must be REGISTRY names --
     # it is what `assert_complete` is checked against, so a typo here would silently narrow the
     # check rather than fail it.
@@ -1529,3 +1534,24 @@ def test_a_near_constant_predictor_is_flagged_uninterpretable():
     m2 = compare_predictors(truth, {"poor": poor, "no_change": real}, grams=False)
     assert m2["predictors"]["poor"]["pearson_interpretable"] is True
     assert m2["predictors"]["poor"]["pearson_r"] < -0.5      # genuinely anti-correlated
+
+
+def test_every_predictor_declares_its_denoising_level():
+    """The axis that decides whether a comparison is apples-to-apples, and the one the registry
+    did not record -- so compare_predictors graded four predictors on 'identical terms' while
+    being blind to what makes terms non-identical. Format symmetry is not information symmetry."""
+    from src.community_encoder.train_DESK.validate_bbs_routes import (
+        PREDICTOR_ROLES, PREDICTOR_DENOISING, denoising_mismatch)
+    assert set(PREDICTOR_DENOISING) == set(PREDICTOR_ROLES), (
+        "a predictor without a declared denoising level can be compared against anything")
+    for p, d in PREDICTOR_DENOISING.items():
+        assert d["level"] and isinstance(d["shares_target_noise"], bool), p
+    # the oracle must be flagged: it is built from the same arrays the truth is computed from
+    assert PREDICTOR_DENOISING["esk_oracle"]["shares_target_noise"] is True
+    assert PREDICTOR_DENOISING["desk"]["shares_target_noise"] is False
+
+    notes = denoising_mismatch(["desk", "esk_oracle"])
+    assert any("esk_oracle" in n and "SHARES THE TARGET'S NOISE" in n for n in notes), notes
+    assert not any(n.startswith("desk:") for n in notes)
+    # an unregistered predictor is reported, not silently accepted
+    assert any("UNRECORDED" in n for n in denoising_mismatch(["some_new_bar"]))

@@ -316,6 +316,51 @@ QUESTIONS = {
 #: The predictors every question is graded against. Names are the report's addressing, so they must
 #: not drift: adding one here adds a row to every question automatically, which is the property the
 #: `compare_predictors` refactor exists to buy.
+#: Denoising level, and independence from the target. THE axis that decides whether a comparison
+#: is apples-to-apples, and the one this registry did not record -- so `compare_predictors` graded
+#: four predictors on "identical terms" while being structurally blind to the thing that makes
+#: terms non-identical. Format symmetry is not information symmetry.
+#:
+#: `shares_target_noise` is the sharper of the two. The oracle is built by projecting the SAME
+#: arrays the observed truth is computed from (epoch: ruzicka(Xe,Xm) against project(Xe),
+#: project(Xm); route: ruzicka_rect(X_s,X_s) against project(X_s)), so it is the target passed
+#: through a rank-64 filter, noise included. Its pearson of 0.995 measures how well truncation
+#: preserves the object it was handed -- not what the basis can achieve from an independent
+#: observation. DESK never saw that noise draw and cannot match it in principle, so every
+#: "DESK vs ceiling" gap read off it is overstated.
+PREDICTOR_DENOISING = {
+    "desk": {"level": "covariate-smooth + ~10.8 yr output EMA", "shares_target_noise": False},
+    "no_change": {"level": "same functional as desk, frozen at the modern year",
+                  "shares_target_noise": False},
+    "spacetime_idw": {"level": "~8 observed neighbours averaged over space AND time",
+                      "shares_target_noise": False},
+    "esk_oracle": {"level": "rank-64 truncation only -- the LEAST denoised predictor",
+                   "shares_target_noise": True},
+}
+
+
+def denoising_mismatch(predictors, truth_note=""):
+    """Which predictors in this comparison are not on comparable footing. Returns a list of notes.
+
+    Surfaced in every report rather than left implicit, because implicit is how it survived: a
+    predictor that shares the target's noise is not a ceiling, and a predictor smoother than the
+    target is penalised for failing to reproduce noise. Both were being read as model quality.
+    """
+    notes = []
+    for p in sorted(predictors):
+        d = PREDICTOR_DENOISING.get(p)
+        if d is None:
+            notes.append(f"{p}: denoising level UNRECORDED -- add it to PREDICTOR_DENOISING")
+        elif d["shares_target_noise"]:
+            notes.append(
+                f"{p}: SHARES THE TARGET'S NOISE (built from the same arrays the truth is "
+                f"computed from), so it is not an achievable ceiling -- it is the target through "
+                f"a filter. Any predictor that did not see this noise draw cannot match it.")
+    if truth_note:
+        notes.append(f"truth: {truth_note}")
+    return notes
+
+
 PREDICTOR_ROLES = {
     "desk": "the model under test",
     "spacetime_idw": ("the honest bar -- interpolate observed z in space AND time from training "
@@ -1108,7 +1153,15 @@ def epoch_neighborhood_analysis(Xe, Xm, Ze, Zm, xy, k=99, n_bins=10, is_heldout=
         "predictors": {p: PREDICTOR_ROLES.get(p, "") for p in sources if sources[p] is not None},
         "unavailable": missing,
         "quantities": {"dot": "z.z' against Ruzicka -- the contract's own quantity",
-                       "cosine": "the angular half; free of the ~34% self-similarity deficit"},
+                       "cosine": ("the angular half. NOT automatically the form to trust: it "
+                                  "discards the norm, and for same_cell_over_time the norm "
+                                  "carries much of 'how much did this cell change'")},
+        "denoising": {p: PREDICTOR_DENOISING.get(p) for p in sources if sources[p] is not None},
+        "denoising_mismatch": denoising_mismatch(
+            [p for p in sources if sources[p] is not None],
+            truth_note=("endpoints are survey AVERAGES and the two sides differ -- see the "
+                        "DENOISED endpoints line in the log for the per-side survey counts. An "
+                        "asymmetry there biases the noisier side's apparent change upward.")),
         "populations": {s: int(m.sum()) for s, m in splits.items()},
     }
     return report, per_cell

@@ -312,10 +312,20 @@ PREDICTOR_ROLES = {
 }
 
 
-#: Reason recorded when a predictor's inputs were not supplied to a question. A stated reason, not
-#: an absent key -- an absence is invisible, and every gap this suite accumulated was an absence.
-PREDICTOR_UNAVAILABLE_DEFAULT = ("inputs not supplied to this run (bar unbuilt, or oracle refused "
-                                 "its representability gate)")
+#: Reasons a predictor may be missing from a question. NAMED and specific, because a single
+#: catch-all defeats the completeness check that consumes them.
+#:
+#: The catch-all this replaced read "inputs not supplied to this run (bar unbuilt, or oracle refused
+#: its representability gate)" -- a DISJUNCTION. It could not distinguish a refusal, which is a
+#: real finding about the basis, from a wiring omission, which is a bug. The route-level buckets
+#: never passed the oracle in at all and stamped that reason over the hole, so a code gap read as a
+#: measured decision, `assert_complete` returned zero gaps, and the missing ceiling went unnoticed
+#: across several runs. A reason is only as good as its specificity.
+UNAVAILABLE_NOT_WIRED = ("not wired into this question -- a CODE GAP, not a property of the data. "
+                         "The inputs exist; nothing passes them here.")
+UNAVAILABLE_NOT_SUPPLIED = "caller passed None for this predictor"
+UNAVAILABLE_BAR_UNBUILT = "interpolation bar could not be built for this run"
+UNAVAILABLE_ORACLE_GATE = "oracle refused its representability gate"
 
 
 def canonical_question(name):
@@ -487,7 +497,7 @@ def compare_positions(z_obs, predictors, reference="no_change", populations=None
     # A predictor that produced too few finite rows anywhere is a STATED reason, not an absence.
     for name, P in predictors.items():
         if name not in res["predictors"]:
-            res["unavailable"][name] = (PREDICTOR_UNAVAILABLE_DEFAULT if P is None else
+            res["unavailable"][name] = (UNAVAILABLE_NOT_SUPPLIED if P is None else
                                         "fewer than 4 finite rows to score")
     return res
 
@@ -934,7 +944,7 @@ def epoch_neighborhood_analysis(Xe, Xm, Ze, Zm, xy, k=99, n_bins=10, is_heldout=
                "no_change": (Zm, Zm),          # frozen modern: shares DESK's functional
                "spacetime_idw": (Ze_i, Zm_i) if Ze_i is not None else None,
                "esk_oracle": sc_esk}
-    missing = {n: PREDICTOR_UNAVAILABLE_DEFAULT for n, v in sources.items() if v is None}
+    missing = {n: UNAVAILABLE_NOT_SUPPLIED for n, v in sources.items() if v is None}
 
     def _unit(A):
         """Row-normalised, so a dot becomes a cosine. The ANGULAR form is not a secondary
@@ -1783,6 +1793,32 @@ def run(config=None, n_sample=4000, seed=0):
     S_desk_cos, S_nc_cos = cosine_gram(Z_s), cosine_gram(Z_nc)   # the ANGULAR half; see docstring
     S_nc_obs = ruzicka_rect(X_nc_s, X_nc_s)                  # achievable-ceiling reference
 
+    # THE ORACLE, as a predictor row rather than a separate scalar. It substitutes the observed
+    # community's own projection for the model's z, so the gap between it and S_true is the
+    # BASIS's representational limit and nothing to do with DESK. Without it a route-level skill
+    # of ~0 cannot be attributed: unclear whether the model failed to learn the signal or the
+    # basis cannot carry it. It was never passed in here, and the catch-all reason made that hole
+    # look like a decision.
+    # Degrades gracefully like the bar above, but records WHY -- a specific cause, never a
+    # catch-all, since a vague reason is what hid this row's absence in the first place.
+    from .esk_kernel import project_points_to_z
+    Z_esk_s, oracle_why = None, None
+    _zdir = (config.get("desk", {}) or {}).get("z_dir")
+    if not _zdir:
+        oracle_why = "desk.z_dir is not configured, so the observed community cannot be projected"
+    else:
+        Z_esk_s = project_points_to_z(np.asarray(X_s, "float32"), _zdir, Z_s.shape[1])
+        if Z_esk_s is None:
+            oracle_why = f"no saved ESK projection in {_zdir}"
+    S_esk = dot_gram(Z_esk_s) if Z_esk_s is not None else None
+    S_esk_cos = cosine_gram(Z_esk_s) if Z_esk_s is not None else None
+    if Z_esk_s is not None:
+        print(f"[bbs-routes] oracle wired into the route buckets: median ||z_obs||^2 = "
+              f"{float(np.median((Z_esk_s ** 2).sum(1))):.4f} (contract 1.0); the gap from "
+              "S_true is the BASIS limit, not DESK's")
+    else:
+        print(f"[bbs-routes] oracle NOT in the route buckets: {oracle_why}")
+
     # Is the kernel contract even holding on this data? ||z||^2 should be ~1 and the dot should
     # land on the same [0,1] scale as Ruzicka. A large gap here means the headline RMSE is
     # dominated by calibration, and the cosine columns are the ones to read.
@@ -1840,11 +1876,20 @@ def run(config=None, n_sample=4000, seed=0):
             if S_idw is not None:
                 gram_preds["spacetime_idw"] = S_idw[g]
                 gram_cos["spacetime_idw"] = cosine_gram(Z_idw_s[ix])
+            if S_esk is not None:
+                gram_preds["esk_oracle"] = S_esk[g]
+                gram_cos["esk_oracle"] = S_esk_cos[g]
             dot = compare_predictors(S_true[g], gram_preds, grams=True)
             cos = compare_predictors(S_true[g], gram_cos, grams=True)
+            # Specific causes. A blanket reason here is what hid the oracle's absence for several
+            # runs: the loop stamped "inputs not supplied" over a predictor nothing had ever
+            # passed in, and the completeness check accepted it.
             for miss in set(PREDICTOR_ROLES) - set(gram_preds):
-                dot["unavailable"][miss] = PREDICTOR_UNAVAILABLE_DEFAULT
-                cos["unavailable"][miss] = PREDICTOR_UNAVAILABLE_DEFAULT
+                why = (UNAVAILABLE_BAR_UNBUILT if miss == "spacetime_idw"
+                       else (oracle_why or UNAVAILABLE_ORACLE_GATE) if miss == "esk_oracle"
+                       else UNAVAILABLE_NOT_WIRED)
+                dot["unavailable"][miss] = why
+                cos["unavailable"][miss] = why
             if "spacetime_idw" in dot["predictors"]:
                 dot["skill_vs_spacetime_idw"] = compare_predictors(
                     S_true[g], gram_preds, reference="spacetime_idw", grams=True)["skill_vs"]

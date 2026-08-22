@@ -1468,3 +1468,37 @@ def test_the_points_dir_comes_from_the_shared_helper():
     assert "target_points_dir(config)" in code
     assert 'config["trend"]["points_dir"]' not in code
     assert 'config.get("trend", {}).get("points_dir"' not in code
+
+
+def test_no_catch_all_unavailable_reason_survives():
+    """A completeness check is only as strong as the specificity of the reasons it accepts.
+
+    The reason string this guards against read "inputs not supplied to this run (bar unbuilt, or
+    oracle refused its representability gate)" -- a DISJUNCTION covering a real finding (the
+    oracle refused its gate, which says something about the basis) and a bug (nothing passed it
+    in). The route-level buckets never wired the oracle in and stamped that reason over the hole,
+    so a code gap read as a measured decision, assert_complete returned zero gaps, and the missing
+    ceiling went unnoticed across several runs.
+    """
+    import src.community_encoder.train_DESK.validate_bbs_routes as m
+    assert not hasattr(m, "PREDICTOR_UNAVAILABLE_DEFAULT")
+    reasons = [m.UNAVAILABLE_NOT_WIRED, m.UNAVAILABLE_NOT_SUPPLIED,
+               m.UNAVAILABLE_BAR_UNBUILT, m.UNAVAILABLE_ORACLE_GATE]
+    assert len(set(reasons)) == len(reasons)                  # each distinguishable
+    for r in reasons:
+        # no reason may hedge between two causes -- that is what made the old one useless
+        assert " or " not in r.lower(), r
+    # and the wiring-gap reason must say it is a code gap, so it reads as a bug not a decision
+    assert "code gap" in m.UNAVAILABLE_NOT_WIRED.lower()
+
+
+def test_the_oracle_reaches_the_route_level_buckets():
+    """It is the only row that says whether a route-level skill of ~0 is DESK's failure or the
+    basis's limit, and it was absent from exactly the table where that matters."""
+    src = open("src/community_encoder/train_DESK/validate_bbs_routes.py").read()
+    body = src[src.index("    S_nc_obs = ruzicka_rect(X_nc_s, X_nc_s)"):]
+    body = body[:body.index('report["buckets"][f"{sname}/{wname}"] = row')]
+    code = "\n".join(l for l in body.splitlines() if not l.lstrip().startswith("#"))
+    assert "project_points_to_z" in code                      # the oracle is computed
+    assert 'gram_preds["esk_oracle"]' in code                 # ...and enters the dot table
+    assert 'gram_cos["esk_oracle"]' in code                   # ...and the cosine table

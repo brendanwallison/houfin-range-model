@@ -251,9 +251,27 @@ def vector_error(t, p):
     sd = float(t.std())
     r = float(np.corrcoef(t, p)[0, 1]) if t.size > 1 and sd > 0 and p.std() > 0 else 0.0
     rmse = float(np.sqrt(np.mean(d ** 2))) if t.size else float("nan")
+    # A predictor's own SPREAD, and whether it is large enough for its correlation to mean
+    # anything. A near-constant predictor still returns a finite pearson_r -- computed on
+    # whatever numerical noise it has -- and the sign is then effectively arbitrary.
+    #
+    # This is not hypothetical. `no_change` in the COSINE form of same_cell_over_time is
+    # cos(z_modern, z_modern) = 1.0 for every cell: measured spread 0.0145 against an observed
+    # 0.1128, and it reported pearson_r = +0.064. DESK there had spread 0.0296, 26% of observed,
+    # and reported -0.151 -- which I read as "DESK predicts change backwards" when it means
+    # "DESK predicts almost no change at all, and its residual wobble does not track anything".
+    # An attenuation finding misread as a directional one. The constant was also the RMSE
+    # REFERENCE for every cosine skill figure in that table.
+    sd_p = float(p.std())
+    ratio = (sd_p / sd) if sd > 0 else float("nan")
     return {"rmse": rmse, "bias": float(np.mean(d)) if t.size else float("nan"),
             "pearson_r": r, "r2": (1.0 - (rmse / sd) ** 2) if sd > 0 else 0.0,
             "sd_true": sd, "mean_true": float(t.mean()) if t.size else float("nan"),
+            "sd_pred": sd_p, "sd_ratio": ratio,
+            # Correlation is reportable only if the predictor varies enough to correlate. The
+            # threshold is a judgement, so the RATIO is reported alongside and the caller can
+            # re-decide; what must not happen is a sign being read off a flat line.
+            "pearson_interpretable": bool(np.isfinite(ratio) and ratio >= 0.25),
             "n": int(t.size)}
 
 
@@ -546,6 +564,8 @@ def compare_predictors(obs, predictors, reference="no_change", grams=False):
             continue
         e = vector_error(t, flat(val))
         row = {"rmse": e["rmse"], "bias": e["bias"], "pearson_r": e["pearson_r"], "r2": e["r2"],
+               "sd_pred": e["sd_pred"], "sd_ratio": e["sd_ratio"],
+               "pearson_interpretable": e["pearson_interpretable"],
                "bias_share": ((e["bias"] ** 2) / (e["rmse"] ** 2)) if e["rmse"] > 0 else 0.0,
                # pearson^2 - r2 is the calibration loss: scale-free ranking minus absolute
                # accuracy, so the gap is exactly what a wrong scale or a bias costs.

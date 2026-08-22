@@ -1502,3 +1502,30 @@ def test_the_oracle_reaches_the_route_level_buckets():
     assert "project_points_to_z" in code                      # the oracle is computed
     assert 'gram_preds["esk_oracle"]' in code                 # ...and enters the dot table
     assert 'gram_cos["esk_oracle"]' in code                   # ...and the cosine table
+
+
+def test_a_near_constant_predictor_is_flagged_uninterpretable():
+    """A flat predictor still returns a finite pearson_r, and its SIGN is then arbitrary.
+
+    `no_change` in the cosine form of same_cell_over_time is cos(z_modern, z_modern) = 1 for every
+    cell: measured spread 0.0145 against an observed 0.1128, reporting pearson_r = +0.064. DESK
+    there had 26% of the observed spread and reported -0.151, which reads as "predicts change
+    backwards" but means "predicts almost no change, and the residual wobble tracks nothing".
+    """
+    from src.community_encoder.train_DESK.validate_bbs_routes import compare_predictors
+    rng = np.random.default_rng(0)
+    truth = rng.normal(size=400)
+    flat = np.full(400, 1.0) + rng.normal(scale=1e-3, size=400)   # a constant plus noise
+    real = truth + rng.normal(scale=0.4, size=400)
+    m = compare_predictors(truth, {"flat": flat, "real": real, "no_change": real}, grams=False)
+    f, r = m["predictors"]["flat"], m["predictors"]["real"]
+    assert f["sd_ratio"] < 0.05
+    assert f["pearson_interpretable"] is False
+    assert r["sd_ratio"] > 0.5
+    assert r["pearson_interpretable"] is True
+    # the flag is about SPREAD, not about being wrong: a predictor can vary plenty and still
+    # correlate poorly, and that IS interpretable
+    poor = -truth * 0.9 + rng.normal(scale=0.3, size=400)
+    m2 = compare_predictors(truth, {"poor": poor, "no_change": real}, grams=False)
+    assert m2["predictors"]["poor"]["pearson_interpretable"] is True
+    assert m2["predictors"]["poor"]["pearson_r"] < -0.5      # genuinely anti-correlated

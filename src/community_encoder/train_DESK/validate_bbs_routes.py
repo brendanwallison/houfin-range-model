@@ -1678,6 +1678,8 @@ def _epoch_strata(config, cells, Xe, Xm, floor_vals, split_ok, is_ho, min_cells=
     from .esk_kernel import coarse_spatial
     regions = int(config.get("bbs_routes", {}).get("spatial_regions", 2) or 2)
     lab = coarse_spatial(np.asarray(cells), regions=regions)
+    # Xe/Xm here are HALF A of each era, the same per-side survey count the floor is built from,
+    # so `excess` compares two quantities carrying the same amount of measurement noise.
     observed = _rowwise_ruzicka(Xe, Xm)                       # cross-era: turnover PLUS noise
     splits = {"pooled": np.ones(len(cells), bool)}
     if is_ho is not None:
@@ -1889,7 +1891,13 @@ def _run_epoch_analysis(config, keys, X_raw_all, cells, e_rows, m_rows, gate_sta
     rep["noise_floor"] = {"early": noise_floor(floor_early[split_ok]),
                           "modern": noise_floor(floor_modern[split_ok]),
                           "n_splittable": int(split_ok.sum()), "n_cells": int(len(split_ok))}
-    rep["strata"] = _epoch_strata(config, cells, Xe, Xm, floor_early, split_ok, is_ho)
+    # HALF A on both sides, matching the floor's own sample size. The floor compares two halves
+    # (~n/2 surveys each); comparing it against a cross-era value built from the FULL groups (~n)
+    # puts the two at different noise levels, and excess = floor - observed then mixes a noisier
+    # floor with a cleaner observation. Measured: that made excess an UNDERSTATEMENT, which is the
+    # safe direction but still wrong -- the whole point of this pass is that "safe direction" is
+    # not a substitute for like-for-like.
+    rep["strata"] = _epoch_strata(config, cells, XeA, XmA, floor_early, split_ok, is_ho)
     rep["balanced"] = balanced_over_strata(
         rep["strata"], "excess", **(config.get("bbs_routes", {}).get("balance", {}) or {}))
     rep["desk"] = zmeta

@@ -12,6 +12,7 @@ provably blind to a pure norm deficit that the elementwise rmse catches, which i
 primary.
 """
 import numpy as np
+import pytest
 
 from src.community_encoder.train_DESK.validate_bbs_routes import (
     EPOCH_EARLY, EPOCH_MODERN, compare_predictors, cosine_gram, densify_community, dot_gram,
@@ -1424,3 +1425,46 @@ def test_a_species_bbs_cannot_survey_keeps_its_column():
         # the compacted version -- what NOT to do -- moves gryjay from column 3 to column 2
         compacted = {c: i for i, c in enumerate([c for c in layout if c in matched])}
         assert compacted["gryjay"] == 2 != ix["gryjay"]
+
+
+def test_the_layout_check_catches_a_permutation_that_counts_and_sets_cannot():
+    """The check that was skipped every run, and the only kind that could have caught the bug.
+
+    Both sides had 96 species, the same 96, in different orders. So a length check passes, a set
+    check passes, and `matched 96/96, 0 unmatched` prints -- while 94 of 96 columns are wrong.
+    """
+    from src.community_encoder.train_DESK.validate_bbs_routes import assert_same_layout
+    rank = ["casfin", "houspa", "allhum", "gryjay", "amegfi"]
+    taxo = ["gryjay", "casfin", "amegfi", "allhum", "houspa"]
+
+    assert len(rank) == len(taxo) and set(rank) == set(taxo)   # every weaker check passes
+    assert_same_layout(rank, rank)                             # agreement is silent
+    assert_same_layout([s.upper() for s in rank], rank)        # case-insensitive
+
+    with pytest.raises(ValueError, match="pure permutation"):
+        assert_same_layout(rank, taxo)
+    with pytest.raises(ValueError, match="column 0"):
+        assert_same_layout(rank, taxo)
+    # a genuine set difference is reported as such, not as a permutation
+    with pytest.raises(ValueError, match="sets differ"):
+        assert_same_layout(rank, ["casfin", "houspa", "allhum", "gryjay", "pinsis"])
+
+
+def test_the_points_dir_comes_from_the_shared_helper():
+    """validate_bbs_routes read config["trend"]["points_dir"] directly while every other consumer
+    used target_points_dir, so it looked in the RETIRED trend-products directory, found no
+    points_meta.json, and warned instead of checking -- which is how the permutation survived."""
+    from src.config_utils import target_points_dir
+    cfg = {"target": {"points_dir": "/live/bbs_points"},
+           "trend": {"points_dir": "/retired/esk_spacetime"}}
+    assert target_points_dir(cfg) == "/live/bbs_points"        # target wins
+    assert target_points_dir({"trend": {"points_dir": "/retired/esk_spacetime"}}) \
+        == "/retired/esk_spacetime"                            # fallback still works
+    src = open("src/community_encoder/train_DESK/validate_bbs_routes.py").read()
+    body = src[src.index("def load_observed(config):"):src.index("def desk_z_ema(")]
+    # Comments in that function NAME the old expression to explain the bug, so strip comment
+    # lines before asserting -- otherwise the test fails on its own documentation.
+    code = "\n".join(l for l in body.splitlines() if not l.lstrip().startswith("#"))
+    assert "target_points_dir(config)" in code
+    assert 'config["trend"]["points_dir"]' not in code
+    assert 'config.get("trend", {}).get("points_dir"' not in code

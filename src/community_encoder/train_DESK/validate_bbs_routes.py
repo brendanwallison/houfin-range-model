@@ -1086,6 +1086,33 @@ def epoch_neighborhood_analysis(Xe, Xm, Ze, Zm, xy, k=99, n_bins=10, is_heldout=
 
 # ----------------------------- IO / driver -----------------------------
 
+def assert_same_layout(trained, species, source="points_meta.json"):
+    """Raise unless two species layouts agree POSITION BY POSITION. Pure.
+
+    Order, not membership. The basis and this module once held identical SETS of 96 species, of
+    identical length, while 94 of 96 POSITIONS held a different species -- so `matched 96/96, 0
+    unmatched` printed, every count and coverage check passed, and Ruzicka silently compared one
+    species' abundance to another's. No test of counts or sets can see a permutation; only a
+    positional comparison can, which is why this exists as its own function with its own test.
+    """
+    a = [str(x).lower() for x in trained]
+    b = [str(x).lower() for x in species]
+    if a == b:
+        return
+    same_set = set(a) == set(b)
+    n_bad = sum(1 for x, y in zip(a, b) if x != y)
+    first = next(((i, x, y) for i, (x, y) in enumerate(zip(a, b)) if x != y), None)
+    raise ValueError(
+        f"species LAYOUT disagrees with {source}: {n_bad} of {min(len(a), len(b))} positions hold "
+        f"a different species"
+        + (f" (lengths {len(a)} vs {len(b)})" if len(a) != len(b) else "")
+        + (" (same set, so it is a pure permutation)" if same_set else " (and the sets differ)")
+        + (f"; first at column {first[0]}: trained={first[1]!r} validation={first[2]!r}"
+           if first else "")
+        + ". Ruzicka would compare one species' abundance to another's. Both sides must order "
+          "columns by bbs_community_points.species_order(community_trend.csv).")
+
+
 def load_observed(config):
     """Build the observed route-level community from RAW BBS → ``(X_log, keys, meta, X_raw)``.
 
@@ -1168,21 +1195,40 @@ def load_observed(config):
     # ESK meta.json. Cross-check rather than assume: a raw-count basis would make a log1p
     # similarity structure the wrong quantity, and a species set that does not match
     # community_trend.csv means this module and the trainer disagree about the community.
-    zt = config.get("trend", {}).get("points_dir", "")
+    # WHICH point set. `target_points_dir` prefers target.points_dir (= bbs_points, the live raw-BBS
+    # target the basis is actually fitted on) and falls back to trend.points_dir (= esk_spacetime,
+    # the retired trend-products set). This function read config["trend"]["points_dir"] DIRECTLY,
+    # so it looked in the retired directory, found no points_meta.json there, and warned instead
+    # of checking -- every run. Every other consumer (esk_kernel, desk_training,
+    # validate_spacetime, pipeline_manifest, the diagnostics) goes through the helper, and
+    # config_utils' own docstring warns about this exact mistake.
+    #
+    # The cost of that skipped check was the column permutation: 94 of 96 species columns
+    # disagreed with the basis, and this is the check that compares the two species lists.
+    from src.config_utils import target_points_dir
+    zt = target_points_dir(config)
     pm_path = os.path.join(zt, "points_meta.json") if zt else ""
     log1p_flag, trained = True, None
-    if pm_path and os.path.exists(pm_path):
-        with open(pm_path, "r", encoding="utf-8") as fh:
-            pm = json.load(fh)
-        log1p_flag = bool(pm.get("ruzicka_log1p", True))
-        trained = [str(s) for s in (pm.get("species") or [])]
-        if not log1p_flag:
-            raise ValueError(
-                f"{pm_path} reports ruzicka_log1p=false; the ESK basis was fit on RAW counts. "
-                "Comparing a log1p similarity structure against it is not like-for-like.")
-    else:
-        print(f"[bbs-routes] WARNING: no points_meta.json at {pm_path or '<trend.points_dir unset>'}; "
-              "assuming ruzicka_log1p=true and skipping the species cross-check")
+    if not (pm_path and os.path.exists(pm_path)):
+        # HARD FAILURE, not a warning. A warning is what let the permutation through: it printed
+        # once per run into a log nobody diffs, and the grading continued on scrambled columns.
+        raise FileNotFoundError(
+            f"no points_meta.json at {pm_path or '<no points_dir configured>'}; the basis/BBS "
+            "species-layout cross-check cannot run, and grading without it is what produced 94 "
+            "of 96 misaligned columns. Point target.points_dir at the point set the basis was "
+            "fitted on, or re-run the target-build stage.")
+    with open(pm_path, "r", encoding="utf-8") as fh:
+        pm = json.load(fh)
+    log1p_flag = bool(pm.get("ruzicka_log1p", True))
+    trained = [str(s) for s in (pm.get("species") or [])]
+    if not log1p_flag:
+        raise ValueError(
+            f"{pm_path} reports ruzicka_log1p=false; the ESK basis was fit on RAW counts. "
+            "Comparing a log1p similarity structure against it is not like-for-like.")
+    if trained:
+        assert_same_layout(trained, species, pm_path)
+    print(f"[bbs-routes] layout cross-check PASSED against {pm_path}: {len(species)} species, "
+          f"same order as the basis (ruzicka_log1p={log1p_flag})")
 
     sp = {"n_community_trend": len(codes), "n_columns": len(species),
           "n_bbs_matched": n_matched}

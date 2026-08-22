@@ -29,9 +29,15 @@ from src.community_encoder.train_DESK.config_utils import load_config          #
 
 
 def main():
+    # Mirror load_observed EXACTLY -- same config loader, same crosswalk module, same key
+    # lookups. Any divergence here would compare two things neither side actually uses.
+    from src.config_utils import load_data_config
+    from src.data.identify.bbs_crosswalk import build_crosswalk
+    from src.data.preprocess import bbs
+
     cfg = load_config(os.environ.get("ESK_DESK_CONFIG") or None)
-    dcfg = cfg["data"] if "data" in cfg else cfg
-    tc = cfg.get("desk", {}).get("trend", {}) or {}
+    dcfg = load_data_config()
+    tc = cfg.get("trend", {}) or {}
     community_csv = tc.get("community_trend_list") or dcfg["community_trend_list"]
     print(f"community list: {community_csv}")
 
@@ -40,8 +46,6 @@ def main():
     basis = species_order(community_csv)
 
     # --- the VALIDATION's column order ----------------------------------------------------
-    from src.data.preprocess.bbs_community import build_crosswalk
-    from src.data.preprocess import bbs_data as bbs
     codes = [str(c) for c in pd.read_csv(community_csv)["species_code"].tolist()]
     dr = dcfg["datasets_root"]
     bbs_species = cfg.get("bbs", {}).get("species_list") or \

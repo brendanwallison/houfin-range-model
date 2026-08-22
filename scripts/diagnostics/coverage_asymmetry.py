@@ -1,13 +1,17 @@
 """Is the early-era sample a spatially biased subset, and does the epoch gate make it worse?
 
-BBS began in 1966 in the east and expanded west and into Canada over following decades, so a
-cell's FIRST SURVEY YEAR is not random -- it is structured in space. Nothing in the encoder
-conditions on it (`first_year_weight` is the OBSERVER's first year on a route, a different
-effect). Two consequences worth measuring rather than assuming:
+A cell's FIRST SURVEY YEAR is not random -- it is structured in space, and BBS is biased toward
+the COASTS. Nothing in the encoder conditions on it (`first_year_weight` is the OBSERVER's first
+year on a route, a different effect). Two consequences worth measuring rather than assuming:
 
-1. Any "early era" statistic is computed on whichever cells existed early, which is an eastern,
-   long-record subset. For House Finch specifically that is the introduced/invading population,
-   not a continental sample -- so an early-vs-modern difference confounds era with geography.
+1. Any "early era" statistic is computed on whichever cells existed early, so an early-vs-modern
+   difference confounds era with geography. Note this concerns the REFERENCE COMMUNITY -- DESK
+   encodes 96 species with the focal House Finch EXCLUDED -- so what is at stake is which
+   communities the basis and the validation represent, not anything about the focal species'
+   range.
+
+   The axis must be DISTANCE TO COAST. An east-west split cannot see a coastal bias: it puts the
+   Pacific coast in the same bin as the interior mountain west, so a U-shape reads as a trend.
 
 2. The epoch gate requires >=3 distinct surveyed years in BOTH eras. That is a data-quality
    filter in form and a SPATIAL filter in effect, and it compounds (1).
@@ -49,15 +53,33 @@ def main():
     crow = np.array([c // 100000 for c in cids])
 
     print(f"{len(cids):,} cells, first-survey year {fy.min()}-{fy.max()}")
-    print(f"\n=== first survey year vs EASTING (grid column; higher = further east) ===")
-    print(f"  Pearson r(first_year, column) = {np.corrcoef(fy, ccol)[0, 1]:+.3f}")
-    qs = np.quantile(ccol, [0, .25, .5, .75, 1.0])
-    print(f"  {'easting quartile':<20}{'cells':>7}{'median first yr':>17}{'% by 1970':>11}")
+
+    # DISTANCE TO COAST, not easting. BBS is coast-biased, and a monotonic east-west split cannot
+    # see that -- it lumps the Pacific coast in with the interior mountain west, so a real U-shape
+    # in coverage reads as a spurious trend. The axis has to be distance from the coastline.
+    from scipy import ndimage
+    from src.data.preprocess import bbs
+    land_mask, _, transform, crs, nx, ny = bbs.load_grid_reference(bbs.MASK_PATH)
+    land = np.asarray(land_mask, bool)
+    # Distance (in grid cells) from each land cell to the nearest non-land cell = the coastline.
+    dist_coast = ndimage.distance_transform_edt(land)
+    dc = np.array([dist_coast[r, c] if (0 <= r < land.shape[0] and 0 <= c < land.shape[1]) else
+                   np.nan for r, c in zip(crow, ccol)])
+    good = np.isfinite(dc)
+    print(f"\n=== coverage vs DISTANCE TO COAST (grid cells; 1 cell ~ 27 km) ===")
+    print(f"  Pearson r(first_year, dist_to_coast) = "
+          f"{np.corrcoef(fy[good], dc[good])[0, 1]:+.3f}   "
+          f"(positive => interior cells entered the survey LATER)")
+    edges = np.nanquantile(dc[good], [0, .25, .5, .75, 1.0])
+    print(f"  {'coast->interior':<20}{'cells':>7}{'med dist':>10}{'median first yr':>17}"
+          f"{'% by 1970':>11}")
+    coast_bins = []
     for i in range(4):
-        m = (ccol >= qs[i]) & (ccol <= qs[i + 1] if i == 3 else ccol < qs[i + 1])
+        m = good & (dc >= edges[i]) & ((dc <= edges[i + 1]) if i == 3 else (dc < edges[i + 1]))
+        coast_bins.append(m)
         if m.sum():
-            print(f"  Q{i + 1} (west->east){'':<6}{int(m.sum()):>7}{np.median(fy[m]):>17.0f}"
-                  f"{100 * np.mean(fy[m] <= 1970):>10.1f}%")
+            print(f"  Q{i + 1}{'':<17}{int(m.sum()):>7}{np.median(dc[m]):>10.1f}"
+                  f"{np.median(fy[m]):>17.0f}{100 * np.mean(fy[m] <= 1970):>10.1f}%")
 
     # --- the epoch gate, and who it keeps -------------------------------------------------
     def n_distinct(c, lo, hi):
@@ -71,17 +93,18 @@ def main():
     print(f"  passes modern gate: {modern_ok.sum():>6,} / {len(cids):,}")
     print(f"  passes BOTH       : {both.sum():>6,} / {len(cids):,}  "
           f"({100 * both.mean():.1f}% of cells)")
-    print(f"\n  {'easting quartile':<20}{'all cells':>10}{'pass both':>11}{'pass rate':>11}")
-    for i in range(4):
-        m = (ccol >= qs[i]) & (ccol <= qs[i + 1] if i == 3 else ccol < qs[i + 1])
+    print(f"\n  {'coast->interior':<20}{'all cells':>10}{'pass both':>11}{'pass rate':>11}")
+    for i, m in enumerate(coast_bins):
         if m.sum():
-            print(f"  Q{i + 1} (west->east){'':<6}{int(m.sum()):>10}{int((m & both).sum()):>11}"
+            print(f"  Q{i + 1}{'':<17}{int(m.sum()):>10}{int((m & both).sum()):>11}"
                   f"{100 * (m & both).sum() / m.sum():>10.1f}%")
-    if both.sum():
-        print(f"\n  mean easting: all cells {ccol.mean():.1f}  vs gated {ccol[both].mean():.1f}  "
-              f"(shift {ccol[both].mean() - ccol.mean():+.1f} grid cells)")
-        print(f"  mean northing: all cells {crow.mean():.1f}  vs gated {crow[both].mean():.1f}  "
-              f"(shift {crow[both].mean() - crow.mean():+.1f})")
+    if both.sum() and good.sum():
+        print(f"\n  mean distance to coast: all cells {np.nanmean(dc[good]):.2f} vs gated "
+              f"{np.nanmean(dc[good & both]):.2f} grid cells "
+              f"(shift {np.nanmean(dc[good & both]) - np.nanmean(dc[good]):+.2f} "
+              f"~ {27 * (np.nanmean(dc[good & both]) - np.nanmean(dc[good])):+.0f} km)")
+        print("  A NEGATIVE shift means the gate keeps coastal cells preferentially and thins the")
+        print("  interior -- the known BBS bias, now quantified on the axis that can see it.")
 
     # --- endpoint averaging asymmetry -----------------------------------------------------
     print(f"\n=== endpoint averaging, per gated cell ===")

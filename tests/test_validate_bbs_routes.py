@@ -1555,3 +1555,35 @@ def test_every_predictor_declares_its_denoising_level():
     assert not any(n.startswith("desk:") for n in notes)
     # an unregistered predictor is reported, not silently accepted
     assert any("UNRECORDED" in n for n in denoising_mismatch(["some_new_bar"]))
+
+
+def test_matched_group_sizes_equalise_endpoint_noise():
+    """The two endpoints of a difference must carry the same measurement noise, or the difference
+    is biased by whichever side is noisier -- and biased BY ERA, which is the axis the temporal
+    sweep varies. Measured before this existed: modern median 16 surveys vs early 5, a 3.2x gap."""
+    from src.community_encoder.train_DESK.validate_bbs_routes import match_group_sizes
+    early = [(0, 1, 2), (3, 4), (5,), ()]
+    modern = [(10, 11, 12, 13, 14, 15), (16, 17, 18), (19, 20), ()]
+    a, b = match_group_sizes(early, modern, seed=0)
+    for ga, gb, oa, ob in zip(a, b, early, modern):
+        assert len(ga) == len(gb) == min(len(oa), len(ob))
+        assert set(ga) <= set(oa) and set(gb) <= set(ob)      # subsets, never invented rows
+    assert [len(g) for g in a] == [3, 2, 1, 0]
+
+
+def test_split_half_gives_the_oracle_an_independent_observation():
+    """The oracle shared the target's noise: it projected the very arrays the truth was computed
+    from, so pearson 0.995 measured truncation fidelity, not an achievable ceiling. Halves must be
+    DISJOINT for the oracle to be predicting something it did not see."""
+    from src.community_encoder.train_DESK.validate_bbs_routes import split_half_groups
+    groups = [tuple(range(6)), tuple(range(10, 14)), (20, 21), (30,), ()]
+    a, b, ok = split_half_groups(groups, seed=0)
+    assert list(ok) == [True, True, True, False, False]
+    for ga, gb, g, good in zip(a, b, groups, ok):
+        if not good:
+            continue
+        assert set(ga) & set(gb) == set(), (ga, gb)           # DISJOINT -- the whole point
+        assert set(ga) | set(gb) <= set(g)
+        assert len(ga) == len(gb)                             # equal halves -> matched noise
+    # a group too small to split is flagged, not silently compared against itself
+    assert ok[3] is np.False_ or ok[3] == False

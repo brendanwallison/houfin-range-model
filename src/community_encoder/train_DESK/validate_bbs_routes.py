@@ -171,6 +171,75 @@ def window_groups(keys, half_width):
     return out
 
 
+def match_group_sizes(group_a, group_b, seed=0):
+    """Subsample two row-group lists to a COMMON per-row size (pure, given the seed).
+
+    The two endpoints of a difference must carry the same measurement noise, or the difference is
+    biased by whichever side is noisier -- and biased BY ERA, which is the axis the temporal sweep
+    varies, so the confound runs straight through the independent variable.
+
+    Measured before this existed: the modern reference averaged every row in a 16-year window
+    (median 16 surveys) while the early endpoint used +/-2 years (median 5) -- 3.2x more averaging
+    on the modern side. Two functions built for different jobs (a low-noise anchor for the
+    no-change null; an endpoint denoiser) composed into one comparison, each correct alone.
+
+    Subsampling the richer side discards data, which is the right trade: noise variance scales
+    ~1/n, so the difference is dominated by the SMALLER n either way, and the extra modern surveys
+    buy precision on one endpoint that the other cannot match while introducing an era-dependent
+    bias. Keeping them costs more than it gains.
+    """
+    rng = np.random.default_rng(seed)
+    out_a, out_b = [], []
+    for ga, gb in zip(group_a, group_b):
+        ga, gb = tuple(ga), tuple(gb)
+        n = min(len(ga), len(gb))
+        if n == 0:
+            out_a.append(ga)
+            out_b.append(gb)
+            continue
+        out_a.append(tuple(ga[i] for i in sorted(rng.permutation(len(ga))[:n])))
+        out_b.append(tuple(gb[i] for i in sorted(rng.permutation(len(gb))[:n])))
+    return out_a, out_b
+
+
+def split_half_groups(groups, seed=0):
+    """Split each row group into two DISJOINT halves -> ``(half_a, half_b, ok)``.
+
+    This is what makes an oracle honest and a noise floor measurable, and they are the SAME
+    measurement. The oracle was built by projecting the very arrays the observed truth is computed
+    from -- epoch: ``ruzicka(Xe, Xm)`` against ``project(Xe)``/``project(Xm)``; route:
+    ``ruzicka_rect(X_s, X_s)`` against ``project(X_s)`` -- so it shared the target's noise
+    realisation. That is not a ceiling: it measures how faithfully rank-64 truncation preserves the
+    object it was handed, noise included, which is why it reached pearson 0.995. No predictor that
+    did not see that noise draw can approach it, so every "model vs ceiling" gap read off it was
+    overstated.
+
+    Build the truth from half A and the oracle from half B and the oracle becomes "how well can
+    the basis predict this community from an INDEPENDENT observation of it" -- an achievable
+    ceiling. The similarity between the two halves is simultaneously the noise floor, since same
+    cell and same era means no real turnover is possible and everything below 1.0 is measurement
+    noise.
+
+    ``ok[i]`` is False where a group has fewer than 2 rows and cannot be split; the caller must
+    drop those rows rather than silently compare a group against itself.
+    """
+    rng = np.random.default_rng(seed)
+    a, b, ok = [], [], []
+    for g in groups:
+        g = tuple(g)
+        if len(g) < 2:
+            a.append(g)
+            b.append(g)
+            ok.append(False)
+            continue
+        perm = rng.permutation(len(g))
+        h = len(g) // 2
+        a.append(tuple(sorted(g[i] for i in perm[:h])))
+        b.append(tuple(sorted(g[i] for i in perm[h:2 * h])))   # equal halves, matched noise
+        ok.append(True)
+    return a, b, np.asarray(ok, bool)
+
+
 def modern_reference_groups(keys, modern_window=MODERN_WINDOW):
     """``(groups, keep)`` -- ALL of each cell's rows inside ``modern_window``, not just the last.
 

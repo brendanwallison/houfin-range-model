@@ -1119,11 +1119,29 @@ def load_observed(config):
         bbs_species, os.path.join(dr, "avonet", "eBird_taxonomy.csv"),
         os.path.join(dr, "avonet", "reference_community_ranked.csv"),
         community_codes=codes)                      # <- DESK's community, not the weekly stack
-    species = list(dict.fromkeys(crosswalk["species_code"]))
-    if len(species) < 3:
+    # THE COLUMN LAYOUT IS PINNED TO community_trend.csv, via the SAME function the basis uses.
+    #
+    # This used to be `list(dict.fromkeys(crosswalk["species_code"]))` -- the order species happen
+    # to appear in the crosswalk, which is TAXONOMIC (mutswa, wooduc, motduc, bargol, ...). The
+    # basis builds its layout from `species_order(community_csv)`, which is the CSV's own
+    # rank-ordering (casfin, houspa, allhum, ...). Both had 96 species and the same SET, so every
+    # count and coverage check passed, while 94 of 96 COLUMNS held a different species. Ruzicka
+    # then compared one species' abundance to another's: measured best-landmark similarity 0.17
+    # against 0.65 for like-against-like, and ||z_obs||^2 = 0.15 against a contract of 1.0.
+    #
+    # Calling species_order here rather than re-deriving the order is the point: one function
+    # owns the layout, so the two sides cannot drift apart again.
+    from .bbs_community_points import species_order
+    species = species_order(community_csv)
+    matched = {str(c).lower() for c in crosswalk["species_code"]}
+    n_matched = sum(1 for c in species if c in matched)
+    if n_matched < 3:
         raise ValueError(
-            f"only {len(species)} of {len(codes)} community_trend species crosswalked to a BBS "
+            f"only {n_matched} of {len(codes)} community_trend species crosswalked to a BBS "
             f"AOU (from {bbs_species}); cannot build a route-level community")
+    # A species BBS cannot survey keeps its column, all zeros. Compacting it out would shift every
+    # later column and reintroduce exactly the misalignment above -- the layout must depend on the
+    # community definition alone, never on what BBS happens to match this release.
 
     obs_all, coverage = bbs.load_usca_observations(aou_filter=None, return_coverage=True)
     routes = bbs.load_routes()
@@ -1132,12 +1150,19 @@ def load_observed(config):
     mean_df, cov_df = build_community_matrix(obs_all, coverage, crosswalk, route_cells)
 
     code_ix = {c: i for i, c in enumerate(species)}
-    mean_df = mean_df[mean_df["species_code"].isin(code_ix)]
+    # species_order lowercases; the crosswalk's codes may not, and a case mismatch here would
+    # silently drop every row of an affected species rather than misplace it.
+    sp_lower = mean_df["species_code"].astype(str).str.lower()
+    mean_df = mean_df[sp_lower.isin(code_ix)]
     X_raw, keys, dropped = densify_community(
         mean_df["row"].to_numpy(), mean_df["col"].to_numpy(), mean_df["year"].to_numpy(),
-        mean_df["species_code"].map(code_ix).to_numpy(), mean_df["mean_count"].to_numpy(),
+        mean_df["species_code"].astype(str).str.lower().map(code_ix).to_numpy(),
+        mean_df["mean_count"].to_numpy(),
         cov_df["row"].to_numpy(), cov_df["col"].to_numpy(), cov_df["year"].to_numpy(),
         len(species))
+    if X_raw.shape[1] != len(species):
+        raise ValueError(f"community matrix has {X_raw.shape[1]} columns for {len(species)} "
+                         "species; the pinned layout was not honoured")
 
     # points_meta.json records the log1p flag and the species DESK trained on. Neither is in the
     # ESK meta.json. Cross-check rather than assume: a raw-count basis would make a log1p
@@ -1159,22 +1184,26 @@ def load_observed(config):
         print(f"[bbs-routes] WARNING: no points_meta.json at {pm_path or '<trend.points_dir unset>'}; "
               "assuming ruzicka_log1p=true and skipping the species cross-check")
 
-    sp = {"n_community_trend": len(codes), "n_bbs_matched": len(species)}
+    sp = {"n_community_trend": len(codes), "n_columns": len(species),
+          "n_bbs_matched": n_matched}
     if trained:
         # Both sides now derive from community_trend.csv, so a shortfall here is only species BBS
         # cannot survey -- not a definitional mismatch. A LARGE shortfall means the trained points
         # were built from a different community list and the comparison is not like-for-like.
         shared = [s for s in species if s in set(trained)]
         sp.update({"n_trained": len(trained), "n_shared_with_trained": len(shared)})
-        print(f"[bbs-routes] community: {len(codes)} community_trend -> {len(species)} BBS-matched; "
+        print(f"[bbs-routes] community: {len(species)} columns pinned to community_trend.csv "
+              f"order (species_order), {n_matched} observable in BBS; "
               f"{len(shared)}/{len(trained)} of the trained community observable")
         if len(shared) < 0.5 * len(species):
             print(f"[bbs-routes] WARNING: only {len(shared)}/{len(species)} BBS-matched species "
                   f"appear in {pm_path}; verify the trained points used {community_csv}")
     else:
-        print(f"[bbs-routes] community: {len(codes)} community_trend -> {len(species)} BBS-matched")
+        print(f"[bbs-routes] community: {len(species)} columns pinned to community_trend.csv "
+              f"order (species_order), {n_matched} observable in BBS")
 
-    meta = {"n_species": len(species), "n_surveyed_cell_years": int(keys.shape[0]),
+    meta = {"n_species": len(species), "species": list(species),
+            "n_surveyed_cell_years": int(keys.shape[0]),
             "presence_triples_outside_coverage": int(dropped),
             "ruzicka_log1p": log1p_flag, "community_csv": community_csv, **sp,
             "year_range": [int(keys[:, 2].min()), int(keys[:, 2].max())] if keys.size else []}

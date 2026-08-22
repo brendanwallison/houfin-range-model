@@ -1343,3 +1343,84 @@ def test_completeness_walks_both_question_shapes():
     gaps = assert_complete({"absolute_position": r},
                            predictors=("desk", "no_change"), questions=("absolute_position",))
     assert any("heldout" in g and "desk" in g for g in gaps), gaps
+
+
+# ---------------------------------------------------------------------------------------------
+# Column layout: the basis and the validation must agree on which species is in which column
+# ---------------------------------------------------------------------------------------------
+
+def test_the_community_column_layout_comes_from_one_function(tmp_path):
+    """Regression, and the worst bug this suite has had.
+
+    `load_observed` ordered its columns by `list(dict.fromkeys(crosswalk["species_code"]))` --
+    the order species happen to appear in the crosswalk, which is TAXONOMIC. The basis orders
+    its columns by `species_order(community_csv)`, the CSV's own rank-ordering. Same 96 species,
+    same SET, so every count and coverage check in the module passed while 94 of 96 COLUMNS held
+    a different species, and Ruzicka silently compared one species' abundance to another's.
+
+    Measured consequence: best-landmark similarity 0.17 where like-against-like gives 0.65, and
+    ||z_obs||^2 = 0.15 against a kernel contract of exactly 1.0.
+
+    The fix is that ONE function owns the layout. This test pins that, because no test of counts
+    or sets can catch a permutation -- both sides had 96 of the same species.
+    """
+    import pandas as pd
+    from src.community_encoder.train_DESK.bbs_community_points import species_order
+
+    # A community list whose CSV order is deliberately NOT taxonomic or alphabetical, so a
+    # re-derived order cannot coincide with the pinned one by luck.
+    csv = tmp_path / "community_trend.csv"
+    codes = ["casfin", "houspa", "allhum", "gryjay", "amegfi", "eutspa"]
+    pd.DataFrame({"species_code": codes}).to_csv(csv, index=False)
+
+    layout = species_order(str(csv))
+    assert layout == codes, layout                       # CSV row order, lowercased
+
+    # The taxonomic ordering a crosswalk would hand back: same SET, different ORDER.
+    crosswalk_order = sorted(codes)
+    assert set(crosswalk_order) == set(layout)
+    assert crosswalk_order != layout, "fixture must actually differ, or it proves nothing"
+
+    # This is what the bug looked like: build the same community twice, once per ordering, and
+    # the similarity between them collapses even though every count matches.
+    rng = np.random.default_rng(0)
+    base = rng.random((200, len(codes))) * np.array([4.0, 3.0, 2.0, 1.0, 0.5, 0.25])
+    ix_pin = {c: i for i, c in enumerate(layout)}
+    ix_bad = {c: i for i, c in enumerate(crosswalk_order)}
+    perm = [ix_bad[c] for c in layout]
+    mis = base[:, perm]                                  # the same data, wrongly laid out
+
+    assert base.sum(1).round(9).tolist() == mis.sum(1).round(9).tolist()   # totals identical
+    assert ((base > 0).sum(1) == (mis > 0).sum(1)).all()                   # sparsity identical
+
+    def ruz(A, B):
+        return np.array([np.minimum(a, b).sum() / max(np.maximum(a, b).sum(), 1e-12)
+                         for a, b in zip(A, B)])
+
+    self_sim = ruz(base, base)
+    cross = ruz(base, mis)
+    assert np.allclose(self_sim, 1.0)                    # the contract, exactly 1
+    assert np.median(cross) < 0.75, np.median(cross)     # ...and destroyed by the permutation
+    # so a permutation is invisible to counts and sets, and only visible in the similarity
+    assert ix_pin != ix_bad
+
+
+def test_a_species_bbs_cannot_survey_keeps_its_column():
+    """Compacting out an unmatched species would shift every later column -- the same class of
+    misalignment. The layout must depend on the community definition alone, never on what BBS
+    happens to match in a given release."""
+    import pandas as pd
+    import tempfile, os as _os
+    from src.community_encoder.train_DESK.bbs_community_points import species_order
+    with tempfile.TemporaryDirectory() as d:
+        csv = _os.path.join(d, "c.csv")
+        codes = ["casfin", "houspa", "allhum", "gryjay"]
+        pd.DataFrame({"species_code": codes}).to_csv(csv, index=False)
+        layout = species_order(csv)
+        # pretend BBS cannot survey 'houspa'
+        matched = {"casfin", "allhum", "gryjay"}
+        ix = {c: i for i, c in enumerate(layout)}         # ALL of them, matched or not
+        assert len(ix) == 4 and ix["gryjay"] == 3
+        # the compacted version -- what NOT to do -- moves gryjay from column 3 to column 2
+        compacted = {c: i for i, c in enumerate([c for c in layout if c in matched])}
+        assert compacted["gryjay"] == 2 != ix["gryjay"]

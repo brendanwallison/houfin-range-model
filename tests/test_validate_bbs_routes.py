@@ -831,7 +831,7 @@ def test_run_averages_the_right_rows_when_the_site_gate_shifts_indices(tmp_path,
     assert np.allclose(ruzicka_rect(X_expect, X_expect), S_true, atol=1e-5)
 
 
-def test_the_esk_oracle_detects_a_high_ceiling():
+def test_the_esk_truncation_row_detects_a_high_ceiling():
     """The oracle must be able to report a HIGH ceiling, or a low reading is uninformative -- it
     could mean the diagnostic is broken rather than the basis being unable to carry temporal
     change. Constructed so the projection reproduces observed similarity by design: with z set
@@ -858,11 +858,11 @@ def test_the_esk_oracle_detects_a_high_ceiling():
     xy = np.stack([np.arange(n) * 30000.0, np.zeros(n)], 1)
     rep, _pc = epoch_neighborhood_analysis(Xe, Xm, Zd, Zd, xy, k=8, n_bins=2,
                                            sc_esk=(Ze_o, Zm_o))
-    assert "esk_oracle" in rep["types"]["same_cell_over_time"]["pooled"]["all_distances"]["dot"]["predictors"], sorted(rep["types"])
-    orc = _dot(rep, "same_cell_over_time")["predictors"]["esk_oracle"]
+    assert "esk_truncation" in rep["types"]["same_cell_over_time"]["pooled"]["all_distances"]["dot"]["predictors"], sorted(rep["types"])
+    orc = _dot(rep, "same_cell_over_time")["predictors"]["esk_truncation"]
     assert orc["pearson_r"] > 0.9, orc["pearson_r"]
     # and the CI must be present and finite, since this is what a real reading needs
-    ci = _dot(rep, "same_cell_over_time")["ci95"]["esk_oracle"]
+    ci = _dot(rep, "same_cell_over_time")["ci95"]["esk_truncation"]
     assert np.isfinite(ci["lo"]) and np.isfinite(ci["hi"]), ci
 
 
@@ -1052,7 +1052,7 @@ def test_the_oracle_refuses_to_run_off_span(tmp_path, monkeypatch, capsys):
     assert "ESK oracle REFUSED" in txt, txt
     assert "does not span averaged communities" in txt
     if out is not None:
-        assert "esk_oracle" not in (out.get("types", {}).get("same_cell_over_time", {})
+        assert "esk_truncation" not in (out.get("types", {}).get("same_cell_over_time", {})
             .get("pooled", {}).get("all_distances", {}).get("dot", {}).get("predictors", {})), "refused but still reported"
 
 
@@ -1127,7 +1127,7 @@ def test_adding_a_predictor_adds_a_row_everywhere_with_no_call_site_edit():
                     continue
                 for form in ("dot", "cosine"):
                     got = set(mm[form]["predictors"])
-                    assert got == {"desk", "no_change", "spacetime_idw", "esk_oracle"}, (
+                    assert got == {"desk", "no_change", "spacetime_idw", "esk_truncation"}, (
                         q, split, bname, form, got)
                     # identical quantity set for every predictor -- no privileged vocabulary
                     keys = [set(v) for v in mm[form]["predictors"].values()]
@@ -1234,7 +1234,9 @@ def test_the_report_carries_a_manifest_of_what_was_tested():
     assert set(m["quantities"]) == {"dot", "cosine"}
     assert "desk" in m["predictors"] and "no_change" in m["predictors"]
     # the bar and the oracle were not supplied here, so both must be recorded WITH a reason
-    assert set(m["unavailable"]) == {"spacetime_idw", "esk_oracle"}
+    # esk_oracle_independent needs a split-half input this fixture does not supply, and it is
+    # reported as unavailable WITH A REASON rather than silently absent.
+    assert set(m["unavailable"]) == {"spacetime_idw", "esk_truncation", "esk_oracle_independent"}
     assert all(v for v in m["unavailable"].values())
     # every question carries its own rationale, which is the map that kept getting lost
     assert all(q in rep["types"] for q in m["questions"])
@@ -1320,10 +1322,12 @@ def test_compare_positions_states_a_reason_rather_than_omitting_a_predictor():
     preds = {"desk": z_obs + rng.normal(scale=.3, size=z_obs.shape),
              "no_change": z_obs + rng.normal(scale=.6, size=z_obs.shape),
              "spacetime_idw": None,                      # bar could not be built
-             "esk_oracle": np.where(np.arange(len(z_obs))[:, None] < 2, z_obs, np.nan)}
+             "esk_truncation": np.where(np.arange(len(z_obs))[:, None] < 2, z_obs, np.nan),
+             "esk_oracle_independent": None}     # split-half ceiling: not built for this question
     r = compare_positions(z_obs, preds)
-    assert set(r["unavailable"]) == {"spacetime_idw", "esk_oracle"}
-    assert "finite" in r["unavailable"]["esk_oracle"]
+    assert set(r["unavailable"]) == {"spacetime_idw", "esk_truncation",
+                                     "esk_oracle_independent"}
+    assert "finite" in r["unavailable"]["esk_truncation"]
     # and that is enough for the completeness check: a reason counts, an absence does not
     assert assert_complete({"absolute_position": r}, questions=("absolute_position",)) == []
     r["unavailable"].pop("spacetime_idw")
@@ -1505,8 +1509,8 @@ def test_the_oracle_reaches_the_route_level_buckets():
     body = body[:body.index('report["buckets"][f"{sname}/{wname}"] = row')]
     code = "\n".join(l for l in body.splitlines() if not l.lstrip().startswith("#"))
     assert "project_points_to_z" in code                      # the oracle is computed
-    assert 'gram_preds["esk_oracle"]' in code                 # ...and enters the dot table
-    assert 'gram_cos["esk_oracle"]' in code                   # ...and the cosine table
+    assert 'gram_preds["esk_truncation"]' in code                 # ...and enters the dot table
+    assert 'gram_cos["esk_truncation"]' in code                   # ...and the cosine table
 
 
 def test_a_near_constant_predictor_is_flagged_uninterpretable():
@@ -1547,11 +1551,11 @@ def test_every_predictor_declares_its_denoising_level():
     for p, d in PREDICTOR_DENOISING.items():
         assert d["level"] and isinstance(d["shares_target_noise"], bool), p
     # the oracle must be flagged: it is built from the same arrays the truth is computed from
-    assert PREDICTOR_DENOISING["esk_oracle"]["shares_target_noise"] is True
+    assert PREDICTOR_DENOISING["esk_truncation"]["shares_target_noise"] is True
     assert PREDICTOR_DENOISING["desk"]["shares_target_noise"] is False
 
-    notes = denoising_mismatch(["desk", "esk_oracle"])
-    assert any("esk_oracle" in n and "SHARES THE TARGET'S NOISE" in n for n in notes), notes
+    notes = denoising_mismatch(["desk", "esk_truncation"])
+    assert any("esk_truncation" in n and "SHARES THE TARGET'S NOISE" in n for n in notes), notes
     assert not any(n.startswith("desk:") for n in notes)
     # an unregistered predictor is reported, not silently accepted
     assert any("UNRECORDED" in n for n in denoising_mismatch(["some_new_bar"]))
@@ -1587,3 +1591,160 @@ def test_split_half_gives_the_oracle_an_independent_observation():
         assert len(ga) == len(gb)                             # equal halves -> matched noise
     # a group too small to split is flagged, not silently compared against itself
     assert ok[3] is np.False_ or ok[3] == False
+
+
+# ---------------------------------------------------------------------------------------------
+# Apples-to-apples: honest ceiling, matched endpoints, measured strata
+# ---------------------------------------------------------------------------------------------
+
+def _noisy_cell_surveys(n_cells=120, n_surveys=6, n_sp=20, turnover=0.0, noise=0.6, seed=0):
+    """Per-cell early/modern survey draws with a KNOWN amount of real turnover.
+
+    Real signal is a per-cell community; `turnover` rotates the modern one away from the early
+    one; `noise` is independent per SURVEY, which is what a 1.08-routes-per-cell-year draw looks
+    like. Returns raw counts so the code under test can average and log1p as it does in anger.
+    """
+    rng = np.random.default_rng(seed)
+    base = rng.random((n_cells, n_sp)) * 6.0
+    shift = rng.random((n_cells, n_sp)) * 6.0
+    modern_true = (1.0 - turnover) * base + turnover * shift
+    early = np.clip(base[:, None, :] + rng.normal(scale=noise, size=(n_cells, n_surveys, n_sp)), 0, None)
+    modern = np.clip(modern_true[:, None, :] + rng.normal(scale=noise, size=(n_cells, n_surveys, n_sp)), 0, None)
+    return early, modern
+
+
+def test_the_independent_oracle_does_not_share_the_targets_noise():
+    """The bug this whole change exists for. The oracle projected the SAME arrays the truth was
+    computed from, so it scored 0.995 by reproducing the target's noise -- not a ceiling any model
+    could reach. Built from a disjoint half it must score strictly LOWER; if it matched, the split
+    did nothing."""
+    from src.community_encoder.train_DESK.validate_bbs_routes import _rowwise_ruzicka
+    from src.data.preprocess.bbs_community import log1p_community
+    early, modern = _noisy_cell_surveys(turnover=0.35, seed=1)
+    h = early.shape[1] // 2
+    Xe_A = log1p_community(early[:, :h].mean(1))
+    Xe_B = log1p_community(early[:, h:].mean(1))
+    Xm_A = log1p_community(modern[:, :h].mean(1))
+    Xm_B = log1p_community(modern[:, h:].mean(1))
+
+    truth = _rowwise_ruzicka(Xe_A, Xm_A)
+    shared = _rowwise_ruzicka(Xe_A, Xm_A)                 # the SAME arrays -- what the bug was
+    independent = _rowwise_ruzicka(Xe_B, Xm_B)            # a disjoint observation
+
+    r_shared = float(np.corrcoef(truth, shared)[0, 1])
+    r_indep = float(np.corrcoef(truth, independent)[0, 1])
+    assert r_shared > 0.999, r_shared                     # sharing the noise is near-perfect
+    assert r_indep < r_shared - 0.05, (r_indep, r_shared)  # independence costs, and must
+    assert r_indep > 0.0, r_indep                         # ...but real signal still shows
+
+
+def test_matched_endpoints_remove_an_era_dependent_noise_bias():
+    """Unequal endpoint noise biases a DIFFERENCE toward the noisier side -- and the imbalance was
+    era-dependent (early 5 surveys vs modern 16), so it was confounded with the axis the temporal
+    sweep varies."""
+    from src.community_encoder.train_DESK.validate_bbs_routes import (
+        match_group_sizes, _rowwise_ruzicka)
+    from src.data.preprocess.bbs_community import log1p_community
+    early, modern = _noisy_cell_surveys(n_surveys=12, turnover=0.0, seed=2)
+
+    # unmatched: 2 early surveys against 12 modern -- exactly the 3x+ imbalance measured in anger
+    unmatched = _rowwise_ruzicka(log1p_community(early[:, :2].mean(1)),
+                                 log1p_community(modern.mean(1)))
+    matched = _rowwise_ruzicka(log1p_community(early[:, :2].mean(1)),
+                               log1p_community(modern[:, :2].mean(1)))
+    # With ZERO real turnover, any shortfall from 1.0 is pure noise. The noisier-endpoint pairing
+    # is not automatically lower, but the two must differ -- the imbalance is a real effect, not a
+    # wash -- and the matched version is the one whose two sides are comparable.
+    assert abs(np.median(unmatched) - np.median(matched)) > 0.01, (
+        np.median(unmatched), np.median(matched))
+
+    e_groups = [tuple(range(6)), tuple(range(6, 8)), (8,)]
+    m_groups = [tuple(range(20, 36)), tuple(range(36, 40)), (40, 41)]
+    a, b = match_group_sizes(e_groups, m_groups, seed=0)
+    assert [len(g) for g in a] == [len(g) for g in b] == [6, 2, 1]
+
+
+def test_a_stratum_with_no_real_turnover_is_excluded_with_a_reason():
+    """The case where the correct answer is 'this cannot be measured'. With zero real turnover the
+    cross-era difference is entirely noise, excess is ~0, and no predictor can be graded there."""
+    from src.community_encoder.train_DESK.validate_bbs_routes import (
+        stratum_viable, noise_floor, _rowwise_ruzicka)
+    from src.data.preprocess.bbs_community import log1p_community
+    early, modern = _noisy_cell_surveys(n_cells=150, turnover=0.0, seed=3)
+    h = early.shape[1] // 2
+    Xe_A, Xe_B = log1p_community(early[:, :h].mean(1)), log1p_community(early[:, h:].mean(1))
+    Xm_A = log1p_community(modern[:, :h].mean(1))
+    observed = _rowwise_ruzicka(Xe_A, Xm_A)               # cross-era: noise only, by construction
+    floor = _rowwise_ruzicka(Xe_A, Xe_B)                  # same era: noise only, by definition
+
+    ok, why, stats = stratum_viable(observed, floor, n_cells=150, seed=0)
+    assert ok is False, stats
+    assert "not distinguishable from zero" in why, why
+    assert abs(stats["excess"]) < 0.05, stats             # floor and cross-era coincide
+
+    nf = noise_floor(floor)
+    assert nf["floor"] < 1.0                              # noise pushes two looks apart
+    assert nf["n"] == 150
+
+    # ...and with REAL turnover planted, the same stratum qualifies
+    early2, modern2 = _noisy_cell_surveys(n_cells=150, turnover=0.6, seed=3)
+    Xe2_A, Xe2_B = (log1p_community(early2[:, :h].mean(1)), log1p_community(early2[:, h:].mean(1)))
+    Xm2_A = log1p_community(modern2[:, :h].mean(1))
+    ok2, why2, stats2 = stratum_viable(_rowwise_ruzicka(Xe2_A, Xm2_A),
+                                       _rowwise_ruzicka(Xe2_A, Xe2_B), n_cells=150, seed=0)
+    assert ok2 is True, (why2, stats2)
+    assert stats2["excess"] > 0.05, stats2
+
+
+def test_a_thin_stratum_is_excluded_before_it_can_move_an_aggregate():
+    from src.community_encoder.train_DESK.validate_bbs_routes import stratum_viable
+    rng = np.random.default_rng(0)
+    obs = rng.random(12) * 0.3 + 0.4
+    flo = obs + 0.4                                       # a huge apparent excess...
+    ok, why, _ = stratum_viable(obs, flo, n_cells=12, min_cells=30, seed=0)
+    assert ok is False and "only 12 cells" in why, why     # ...but far too few cells to believe
+
+
+def test_the_balanced_aggregate_damps_thin_strata():
+    """Pure equal weight would hand a stratum of 12 cells the same pull as one of 600 -- the
+    failure desk_training.stratum_weights was written to prevent."""
+    from src.community_encoder.train_DESK.validate_bbs_routes import balanced_over_strata
+    per = {"a": {"qualified": True, "n_cells": 600, "excess": 0.10},
+           "b": {"qualified": True, "n_cells": 600, "excess": 0.10},
+           "thin": {"qualified": True, "n_cells": 30, "excess": 0.90}}
+    agg = balanced_over_strata(per, "excess", n_min=None, cap=5.0, power=0.5)
+    equal = np.mean([0.10, 0.10, 0.90])
+    assert agg["balanced"] < equal, (agg["balanced"], equal)   # thin stratum pulled less than 1/3
+    assert agg["weights"]["thin"] < agg["weights"]["a"]
+    # and the population-weighted figure is reported beside it -- the GAP is the coverage bias
+    assert agg["population_weighted"] < agg["balanced"]
+    # an unqualified stratum never enters at all
+    per["thin"]["qualified"] = False
+    agg2 = balanced_over_strata(per, "excess", n_min=None, cap=5.0, power=0.5)
+    assert agg2["n_strata"] == 2 and abs(agg2["balanced"] - 0.10) < 1e-9
+
+
+def test_the_epoch_strata_use_the_same_tiling_as_everything_else():
+    """One definition of 'where' at two resolutions, not two definitions."""
+    from src.community_encoder.train_DESK.esk_kernel import (
+        coarse_spatial, spatial_tiles, nests_within)
+    rng = np.random.default_rng(0)
+    pidx = np.column_stack([rng.integers(0, 64, 400), rng.integers(0, 64, 400),
+                            rng.integers(1966, 2025, 400)])
+    rb, cb = spatial_tiles(pidx[:, 0], pidx[:, 1], 4)
+    fine = rb * 4 + cb
+    coarse = coarse_spatial(pidx, regions=2)
+    assert nests_within(fine, coarse), "coarse regions must group whole fine tiles"
+
+
+def test_a_stratum_dropped_without_a_reason_is_caught():
+    """The stratum-level twin of the predictor completeness check. A headline aggregated over a
+    silently-shrinking set of strata looks stable while its basis moves."""
+    from src.community_encoder.train_DESK.validate_bbs_routes import assert_strata_explained
+    good = {"heldout/region0": {"qualified": True, "n_cells": 400},
+            "heldout/region1": {"qualified": False, "n_cells": 9,
+                                "unavailable": {"balanced_aggregate": "only 9 cells (needs >= 30)"}}}
+    assert assert_strata_explained(good) == []
+    bad = {"heldout/region1": {"qualified": False, "n_cells": 9}}     # excluded, no reason
+    gaps = assert_strata_explained(bad)
+    assert any("no stated reason" in g for g in gaps), gaps

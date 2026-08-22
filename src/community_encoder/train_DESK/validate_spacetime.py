@@ -535,7 +535,11 @@ def zspace_reconstruction(config, pidx, X, Z_desk, recent_year, to_rec, has_rec)
     # was unaskable), the error decomposition existed for DESK alone, and the populations differed
     # per baseline. Now every predictor is a row in one table, graded on every population.
     from .validate_bbs_routes import compare_positions
-    preds = {"desk": Z_desk[hist], "no_change": z_nc[hist]}
+    # esk_oracle_independent is the split-half ceiling and is built in the bbs-routes epoch path,
+    # which has the per-cell-era survey groups needed to split. Declared here as an explicit None
+    # so it reports a REASON rather than being absent -- an absence is what the completeness check
+    # exists to catch, and a question quietly missing a predictor is how the last one hid.
+    preds = {"desk": Z_desk[hist], "no_change": z_nc[hist], "esk_oracle_independent": None}
     pops = {}
 
     ho_path = os.path.join(config["paths"]["desk_output_dir"], "holdout_cells.npy")

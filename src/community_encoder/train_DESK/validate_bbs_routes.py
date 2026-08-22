@@ -403,8 +403,11 @@ PREDICTOR_DENOISING = {
                   "shares_target_noise": False},
     "spacetime_idw": {"level": "~8 observed neighbours averaged over space AND time",
                       "shares_target_noise": False},
-    "esk_oracle": {"level": "rank-64 truncation only -- the LEAST denoised predictor",
-                   "shares_target_noise": True},
+    "esk_truncation": {"level": "rank-64 truncation of the TARGET ITSELF -- shares its noise draw",
+                       "shares_target_noise": True},
+    "esk_oracle_independent": {
+        "level": "rank-64 truncation of a DISJOINT half of the same cell-era's surveys",
+        "shares_target_noise": False},
 }
 
 
@@ -438,9 +441,18 @@ PREDICTOR_ROLES = {
     "no_change": ("frozen-modern null: the model's own z held at each cell's modern year. Shares "
                   "DESK's functional, so their difference isolates temporal variation. NOT a "
                   "competitor."),
-    "esk_oracle": ("ceiling -- the observed community's own projection in place of the model's. "
-                   "Says whether the BASIS can represent the pairing at all, so a weak DESK row "
-                   "can be attributed to the model rather than inherited."),
+    "esk_truncation": (
+        "TRUNCATION FIDELITY, not a ceiling. The observed community's own projection, built from "
+        "the SAME arrays the truth is computed from -- so it shares the target's noise and "
+        "measures only how faithfully rank-64 truncation preserves the object it was handed. It "
+        "was named `esk_oracle` and read as an achievable bound, which is how a pearson of 0.995 "
+        "came to be quoted as a ceiling DESK 'fell short of'. No predictor that did not see that "
+        "noise draw can approach it. Useful for what it is: the basis's representational limit."),
+    "esk_oracle_independent": (
+        "THE ceiling. The observed community projected from a DISJOINT half of the same cell-era's "
+        "surveys, so it predicts an observation it did not see. That is an achievable bound -- and "
+        "the similarity between the two halves is simultaneously the NOISE FLOOR, since same cell "
+        "and same era means no real turnover is possible."),
 }
 
 
@@ -458,6 +470,108 @@ UNAVAILABLE_NOT_WIRED = ("not wired into this question -- a CODE GAP, not a prop
 UNAVAILABLE_NOT_SUPPLIED = "caller passed None for this predictor"
 UNAVAILABLE_BAR_UNBUILT = "interpolation bar could not be built for this run"
 UNAVAILABLE_ORACLE_GATE = "oracle refused its representability gate"
+UNAVAILABLE_UNSPLITTABLE = ("cell has too few surveys in this era to split into two disjoint "
+                            "halves, so no independent observation exists")
+
+
+def noise_floor(half_similarity):
+    """Summarise the similarity between two INDEPENDENT observations of the same community. Pure.
+
+    ``half_similarity`` is one value per cell: ``Ruzicka(half_A, half_B)`` for disjoint surveys of
+    the SAME cell in the SAME era. No real turnover is possible there, so everything below 1.0 is
+    measurement noise, and this is the reference any cross-era similarity must be read against.
+
+    The suite ran without it, which is how an observed cross-era similarity of 0.62 came to be
+    reported as "38% community change the model failed to predict". At ~1.08 BBS routes per
+    cell-year, against endpoints averaging 5 and 16 surveys, an unknown and probably large share of
+    that was sampling noise.
+
+    Same measurement as the independent oracle (see ``split_half_groups``), read differently:
+    grading the basis on half B against a truth from half A, and asking how far apart the halves
+    are, use the identical split.
+    """
+    v = np.asarray(half_similarity, "float64").ravel()
+    v = v[np.isfinite(v)]
+    if v.size < 4:
+        return {"n": int(v.size), "floor": float("nan"), "note": "fewer than 4 usable cells"}
+    return {"n": int(v.size), "floor": float(np.median(v)),
+            "floor_q25": float(np.quantile(v, 0.25)),
+            "floor_q75": float(np.quantile(v, 0.75)),
+            "note": ("median Ruzicka between two disjoint halves of the same cell-era; 1.0 would "
+                     "mean noiseless, and the shortfall bounds how much apparent change is real")}
+
+
+def stratum_viable(observed, floor_vals, n_cells, min_cells=30, n_boot=400, seed=0):
+    """Can this stratum grade a predictor at all? ``(ok, reason, stats)``. Pure given the seed.
+
+    ``observed`` is the cross-era similarity per cell; ``floor_vals`` the same cells' within-era
+    noise floor. ``excess = floor - observed`` is the only part that can be REAL turnover: the
+    floor already contains everything noise does to two observations of an unchanged community.
+
+    A stratum qualifies only when it has enough cells AND its excess is distinguishable from zero
+    by a bootstrap over cells. This is the empirical answer to "equal weight per stratum is only
+    sound if each stratum supports a non-noisy estimate" -- viability is measured here rather than
+    assumed, and a stratum that fails is reported with a stated reason rather than quietly dropped
+    or quietly averaged in.
+
+    A failing stratum is not a bad stratum. It means the temporal signal is not resolvable there at
+    this coverage, which is itself the finding, and no predictor comparison from it should be read.
+    """
+    obs = np.asarray(observed, "float64").ravel()
+    flo = np.asarray(floor_vals, "float64").ravel()
+    fin = np.isfinite(obs) & np.isfinite(flo)
+    obs, flo = obs[fin], flo[fin]
+    stats = {"n_cells": int(n_cells), "n_paired": int(fin.sum()),
+             "median_observed": float(np.median(obs)) if obs.size else float("nan"),
+             "median_floor": float(np.median(flo)) if flo.size else float("nan")}
+    stats["excess"] = stats["median_floor"] - stats["median_observed"]
+    if n_cells < min_cells:
+        return False, f"only {int(n_cells)} cells (needs >= {min_cells})", stats
+    if obs.size < 4:
+        return False, f"only {int(obs.size)} cells have both a cross-era value and a floor", stats
+    rng = np.random.default_rng(seed)
+    d = flo - obs
+    boot = np.array([np.median(d[rng.integers(0, len(d), len(d))]) for _ in range(int(n_boot))])
+    lo, hi = float(np.quantile(boot, 0.025)), float(np.quantile(boot, 0.975))
+    stats["excess_ci95"] = [lo, hi]
+    if lo <= 0.0:
+        return False, (f"excess turnover {stats['excess']:+.4f} is not distinguishable from zero "
+                       f"(95% CI [{lo:+.4f}, {hi:+.4f}]) -- the cross-era difference here is "
+                       f"consistent with pure sampling noise, so no predictor can be graded"), stats
+    return True, "", stats
+
+
+def balanced_over_strata(per_stratum, key, n_min=None, cap=5.0, power=0.5):
+    """Aggregate a per-stratum metric, damping thin strata. ``{...}``. Pure.
+
+    Equal weight per stratum is the point -- it stops a coast-dense stratum setting the headline --
+    but PURE equal weight hands a stratum of 12 noisy cells the same pull as one of 600, which is
+    the failure ``desk_training.stratum_weights`` was written to prevent ("a few noisy observations
+    in the Great Plains in the late 1960s"). So borrow its shape: weight goes as ``n^power``
+    relative to the floor, capped, which removes most of the population tilt while leaving a thin
+    stratum less than a full share.
+
+    Reports the population-weighted figure alongside. The GAP between the two is the coverage bias,
+    and on a rebalanced model the population-weighted one can fall while the model improves.
+    """
+    rows = [(s, r) for s, r in per_stratum.items()
+            if r.get("qualified") and np.isfinite(r.get(key, np.nan))]
+    if not rows:
+        return {"note": "no stratum qualified", "n_strata": 0,
+                "balanced": None, "population_weighted": None}
+    n = np.array([float(r["n_cells"]) for _, r in rows])
+    v = np.array([float(r[key]) for _, r in rows])
+    floor = float(n_min) if n_min else float(max(np.quantile(n, 0.25), 1.0))
+    w = np.minimum(np.maximum(n, floor) ** float(power) / floor ** float(power), float(cap))
+    w = w / w.sum()
+    return {"n_strata": len(rows), "strata": [s for s, _ in rows],
+            "balanced": float((w * v).sum()),
+            "population_weighted": float((n * v).sum() / n.sum()),
+            "weights": {s: float(wi) for (s, _), wi in zip(rows, w)},
+            "n_min_floor": floor, "cap": float(cap), "power": float(power),
+            "note": ("balanced damps thin strata (n^power vs a floor, capped) rather than giving "
+                     "every stratum an equal share; the gap from population_weighted IS the "
+                     "coverage bias")}
 
 
 def canonical_question(name):
@@ -1043,7 +1157,9 @@ def bootstrap_skill_ci(obs, pred, null, n_boot=2000, seed=0, alpha=0.05):
 
 
 def epoch_neighborhood_analysis(Xe, Xm, Ze, Zm, xy, k=99, n_bins=10, is_heldout=None,
-                                device=None, sc_esk=None, sc_idw=(None, None)):
+                                device=None, sc_esk=None, sc_idw=(None, None),
+                                sc_esk_independent=None, floor_similarity=None,
+                                strata=None, balance=None):
     """Focal-to-neighbour comparisons across space AND time, resolved by distance (pure-ish).
 
     Four comparison types per focal/neighbour pair, all graded against the SAME frozen-modern null
@@ -1077,8 +1193,14 @@ def epoch_neighborhood_analysis(Xe, Xm, Ze, Zm, xy, k=99, n_bins=10, is_heldout=
     sources = {"desk": (Ze, Zm),
                "no_change": (Zm, Zm),          # frozen modern: shares DESK's functional
                "spacetime_idw": (Ze_i, Zm_i) if Ze_i is not None else None,
-               "esk_oracle": sc_esk}
+               "esk_truncation": sc_esk,
+               # THE ceiling: projected from a DISJOINT half of the same cell-era's surveys, so it
+               # predicts an observation it did not see. `esk_truncation` above shares the target's
+               # noise draw and is a representational-limit check, not a bound any model could hit.
+               "esk_oracle_independent": sc_esk_independent}
     missing = {n: UNAVAILABLE_NOT_SUPPLIED for n, v in sources.items() if v is None}
+    if sc_esk_independent is None:
+        missing["esk_oracle_independent"] = UNAVAILABLE_UNSPLITTABLE
 
     def _unit(A):
         """Row-normalised, so a dot becomes a cosine. The ANGULAR form is not a secondary
@@ -1228,9 +1350,12 @@ def epoch_neighborhood_analysis(Xe, Xm, Ze, Zm, xy, k=99, n_bins=10, is_heldout=
         "denoising": {p: PREDICTOR_DENOISING.get(p) for p in sources if sources[p] is not None},
         "denoising_mismatch": denoising_mismatch(
             [p for p in sources if sources[p] is not None],
-            truth_note=("endpoints are survey AVERAGES and the two sides differ -- see the "
-                        "DENOISED endpoints line in the log for the per-side survey counts. An "
-                        "asymmetry there biases the noisier side's apparent change upward.")),
+            truth_note=("endpoints are survey AVERAGES, now subsampled to a COMMON per-cell "
+                        "count (see report['endpoint_matching'] for the realised numbers). They "
+                        "were 3.2x apart -- modern 16 surveys against early 5 -- which biased "
+                        "every difference toward the noisier early side, era-dependently. What "
+                        "remains is a floor of residual noise shared by both sides: read any "
+                        "apparent change against report['noise_floor'], not against 1.0.")),
         "populations": {s: int(m.sum()) for s, m in splits.items()},
     }
     return report, per_cell
@@ -1513,6 +1638,66 @@ def build_spacetime_bar(config, keys, X_raw_all, latent_dim):
         return None
 
 
+def assert_strata_explained(strata):
+    """Every stratum must either qualify or state why not. Returns the gaps.
+
+    The stratum-level twin of ``assert_complete``, and it exists for the same reason: an exclusion
+    that leaves no trace is indistinguishable from a stratum that was never computed, and a
+    headline aggregated over a silently-shrinking set of strata looks stable while its basis moves.
+    A stratum failing viability is not an error -- it is the finding that the temporal signal is not
+    resolvable there at this coverage -- but it has to be visible to be that finding.
+    """
+    gaps = []
+    for name, r in (strata or {}).items():
+        if not isinstance(r, dict):
+            gaps.append(f"{name}: not a stratum record")
+            continue
+        if r.get("qualified"):
+            continue
+        why = (r.get("unavailable") or {}).get("balanced_aggregate")
+        if not why:
+            gaps.append(f"{name}: excluded from the aggregate with no stated reason")
+    return gaps
+
+
+def _epoch_strata(config, cells, Xe, Xm, floor_vals, split_ok, is_ho, min_cells=30):
+    """Per-stratum cross-era change against that stratum's OWN noise floor. ``{name: {...}}``.
+
+    Strata are (coarse spatial region x train/heldout). The spatial labels come from
+    ``esk_kernel.coarse_spatial`` at ``bbs_routes.spatial_regions``, which nests inside the tiles
+    ``spacetime_strata`` uses -- one definition of "where" at two resolutions, not two definitions.
+    The route-bucket path already stratifies on exactly these axes; the epoch path did not, and
+    every temporal finding in this suite comes from the epoch path, so the headline was computed on
+    a coverage-biased set (the gate passes ~50% of cells and the failure is spatially structured).
+
+    Each stratum is graded for VIABILITY before it may enter an aggregate: enough cells, and an
+    excess turnover distinguishable from its own noise floor by a bootstrap. A stratum that fails
+    carries a stated REASON -- it is not a bad stratum, it means the temporal signal is not
+    resolvable there at this coverage, which is itself the finding.
+    """
+    from .esk_kernel import coarse_spatial
+    regions = int(config.get("bbs_routes", {}).get("spatial_regions", 2) or 2)
+    lab = coarse_spatial(np.asarray(cells), regions=regions)
+    observed = _rowwise_ruzicka(Xe, Xm)                       # cross-era: turnover PLUS noise
+    splits = {"pooled": np.ones(len(cells), bool)}
+    if is_ho is not None:
+        splits.update({"train": ~np.asarray(is_ho, bool), "heldout": np.asarray(is_ho, bool)})
+
+    out = {}
+    for sname, smask in splits.items():
+        for r in np.unique(lab):
+            m = smask & (lab == r) & split_ok
+            name = f"{sname}/region{int(r)}"
+            ok, why, stats = stratum_viable(observed[m], floor_vals[m], int(m.sum()),
+                                            min_cells=min_cells)
+            stats.update({"qualified": bool(ok), "region": int(r), "split": sname})
+            if not ok:
+                # a stated reason, never a silent exclusion -- assert_complete consumes these
+                stats["unavailable"] = {"balanced_aggregate": why}
+            out[name] = stats
+    return out
+
+
 def _run_epoch_analysis(config, keys, X_raw_all, cells, e_rows, m_rows, gate_stats, gather_z,
                         zmeta, out_dir, k=99, n_bins=10, idw_rows=None):
     """Epoch means -> kNN neighbourhoods -> distance-resolved comparisons. Writes json + npz."""
@@ -1520,12 +1705,44 @@ def _run_epoch_analysis(config, keys, X_raw_all, cells, e_rows, m_rows, gate_sta
         print(f"[bbs-routes] epoch analysis SKIPPED: only {cells.shape[0]} cells passed the gate")
         return None
 
+    # MATCHED ENDPOINTS. The two sides of a difference must carry the same measurement noise or
+    # the difference is biased by whichever is noisier -- and biased BY ERA, which is the axis the
+    # temporal sweep varies, so the confound runs through the independent variable. Measured
+    # before this: modern median 16 surveys against early 5, a 3.2x gap.
+    n_e_raw = float(np.mean([len(g) for g in e_rows])) if e_rows else float("nan")
+    n_m_raw = float(np.mean([len(g) for g in m_rows])) if m_rows else float("nan")
+    e_rows, m_rows = match_group_sizes(e_rows, m_rows, seed=0)
+    n_e, n_m = (float(np.mean([len(g) for g in e_rows])) if e_rows else float("nan"),
+                float(np.mean([len(g) for g in m_rows])) if m_rows else float("nan"))
+    print(f"[bbs-routes] endpoints MATCHED: early {n_e_raw:.1f} -> {n_e:.1f} surveys/cell, "
+          f"modern {n_m_raw:.1f} -> {n_m:.1f}; unequal endpoint noise biases a difference by era")
+
     Xe = epoch_mean_observed(X_raw_all, e_rows)               # mean raw counts THEN log1p
     Xm = epoch_mean_observed(X_raw_all, m_rows)
     Ze = epoch_mean_z(gather_z(keys[np.array([i for r in e_rows for i in r])]),
                       _reindex_row_lists(e_rows))
     Zm = epoch_mean_z(gather_z(keys[np.array([i for r in m_rows for i in r])]),
                       _reindex_row_lists(m_rows))
+
+    # SPLIT-HALF. Disjoint halves of each cell-era give two things at once: an oracle that predicts
+    # an observation it did NOT see (an achievable ceiling, unlike the same-array one below), and
+    # the NOISE FLOOR -- same cell, same era, so no real turnover is possible and everything below
+    # 1.0 is measurement noise. The suite ran without the floor, which is how an observed cross-era
+    # similarity of 0.62 was reported as "38% change the model failed to predict".
+    eA, eB, e_ok = split_half_groups(e_rows, seed=0)
+    mA, mB, m_ok = split_half_groups(m_rows, seed=1)
+    split_ok = e_ok & m_ok
+    XeA = epoch_mean_observed(X_raw_all, eA)
+    XmA = epoch_mean_observed(X_raw_all, mA)
+    XeB = epoch_mean_observed(X_raw_all, eB)
+    XmB = epoch_mean_observed(X_raw_all, mB)
+    # The floor, per cell and per era: two independent looks at an UNCHANGED community.
+    floor_early = _rowwise_ruzicka(XeA, XeB)
+    floor_modern = _rowwise_ruzicka(XmA, XmB)
+    print(f"[bbs-routes] noise floor (same cell, same era, DISJOINT surveys -- no real turnover "
+          f"is possible): early {np.nanmedian(floor_early[split_ok]):.4f}, "
+          f"modern {np.nanmedian(floor_modern[split_ok]):.4f}; "
+          f"{int(split_ok.sum())}/{len(split_ok)} cells splittable")
 
     # --- the spacetime-IDW BAR (shared builder; see build_spacetime_bar) -------------------
     # Why this exists: every skill figure in this module is scored against S_nc, DESK's own z
@@ -1563,7 +1780,7 @@ def _run_epoch_analysis(config, keys, X_raw_all, cells, e_rows, m_rows, gate_sta
     # ceiling. A diagnostic whose reading assumes the kernel contract has to REFUSE when the
     # contract does not hold on its own inputs, so the representability check is now a gate rather
     # than a printed aside.
-    sc_esk = None
+    sc_esk = sc_esk_ind = None
     try:
         from .esk_kernel import project_points_to_z
         _zd = config["desk"]["z_dir"]
@@ -1582,6 +1799,12 @@ def _run_epoch_analysis(config, keys, X_raw_all, cells, e_rows, m_rows, gate_sta
             ok = np.isfinite(n_ann) and n_ann > 0 and (n_avg / n_ann) >= tol
             if ok:
                 sc_esk = (Ze_o, Zm_o)
+                # THE ceiling: project the DISJOINT half. Same basis, same gate, but it never saw
+                # the noise draw the truth is built from, so a model can in principle match it.
+                ZeB = project_points_to_z(XeB, _zd, Ze.shape[1])
+                ZmB = project_points_to_z(XmB, _zd, Zm.shape[1])
+                if ZeB is not None and ZmB is not None:
+                    sc_esk_ind = (ZeB, ZmB)
                 print(f"[bbs-routes] ESK oracle ENABLED: averaged-community ||z_obs||^2 = "
                       f"{n_avg:.4f} against {n_ann:.4f} annual (ratio {n_avg / n_ann:.2f} "
                       f">= tol {tol:g}); the basis spans the objects the oracle projects")
@@ -1602,8 +1825,15 @@ def _run_epoch_analysis(config, keys, X_raw_all, cells, e_rows, m_rows, gate_sta
         cells, Xe, Xm, Ze, Zm = cells[finite], Xe[finite], Xm[finite], Ze[finite], Zm[finite]
         if sc_esk is not None:
             sc_esk = (sc_esk[0][finite], sc_esk[1][finite])
+        if sc_esk_ind is not None:
+            sc_esk_ind = (sc_esk_ind[0][finite], sc_esk_ind[1][finite])
         if Ze_idw is not None:
             Ze_idw, Zm_idw = Ze_idw[finite], Zm_idw[finite]
+        # every per-cell array the split produced must ride the same filter, or the ceiling table
+        # would silently pair cell i's truth with cell j's oracle
+        XeA, XmA = XeA[finite], XmA[finite]
+        floor_early, floor_modern = floor_early[finite], floor_modern[finite]
+        split_ok = split_ok[finite]
     if cells.shape[0] < 5:
         print("[bbs-routes] epoch analysis SKIPPED: too few cells after the finite-z filter")
         return None
@@ -1617,10 +1847,51 @@ def _run_epoch_analysis(config, keys, X_raw_all, cells, e_rows, m_rows, gate_sta
     is_ho = np.load(ho_path)[cells[:, 0], cells[:, 1]] if os.path.exists(ho_path) else None
 
     t0 = time.perf_counter()
+    # MAIN TABLE -- full-sample truth, best precision for desk / no_change / spacetime_idw. The
+    # esk_truncation row here shares the target's noise draw and is a representational-limit
+    # check, NOT a ceiling; the ceiling lives in the split-half table below.
     rep, per_cell = epoch_neighborhood_analysis(Xe, Xm, Ze, Zm, xy, k=k, n_bins=n_bins,
                                                 sc_esk=sc_esk, sc_idw=(Ze_idw, Zm_idw),
                                                 is_heldout=is_ho)
     rep["gate"] = gate_stats
+    rep["endpoint_matching"] = {
+        "early_surveys_per_cell": n_e, "modern_surveys_per_cell": n_m,
+        "early_before_match": n_e_raw, "modern_before_match": n_m_raw,
+        "note": ("both endpoints subsampled to a common per-cell survey count. Unequal endpoint "
+                 "noise biases a difference toward the noisier side, and the imbalance was "
+                 "era-dependent -- confounded with the axis the temporal sweep varies.")}
+
+    # CEILING TABLE -- truth from half A, oracle from half B. Lower precision (each endpoint has
+    # half the surveys) but the oracle predicts an observation it did not see, so the gap between
+    # a model and this row is an achievable one.
+    if sc_esk_ind is not None and int(split_ok.sum()) >= 5:
+        ZeA = epoch_mean_z(gather_z(keys[np.array([i for r in eA for i in r])]),
+                           _reindex_row_lists(eA)) if any(len(g) for g in eA) else Ze
+        ZmA = epoch_mean_z(gather_z(keys[np.array([i for r in mA for i in r])]),
+                           _reindex_row_lists(mA)) if any(len(g) for g in mA) else Zm
+        if len(ZeA) == len(Xe):
+            sub = split_ok
+            rep_c, _ = epoch_neighborhood_analysis(
+                XeA[sub], XmA[sub], ZeA[sub], ZmA[sub], xy[sub], k=min(k, int(sub.sum()) - 1),
+                n_bins=n_bins, sc_esk=None,
+                sc_idw=(Ze_idw[sub], Zm_idw[sub]) if Ze_idw is not None else (None, None),
+                sc_esk_independent=(sc_esk_ind[0][sub], sc_esk_ind[1][sub]),
+                is_heldout=is_ho[sub] if is_ho is not None else None)
+            rep["ceiling"] = rep_c
+            print(f"[bbs-routes] ceiling table built on {int(sub.sum())} splittable cells "
+                  f"(truth = half A, oracle = half B -- independent noise draws)")
+    else:
+        rep["ceiling"] = {"note": UNAVAILABLE_UNSPLITTABLE,
+                          "n_splittable": int(split_ok.sum())}
+
+    # THE FLOOR, and per-stratum viability. Equal weight per stratum only makes sense if each
+    # stratum can support a non-noisy estimate, so that is MEASURED here rather than assumed.
+    rep["noise_floor"] = {"early": noise_floor(floor_early[split_ok]),
+                          "modern": noise_floor(floor_modern[split_ok]),
+                          "n_splittable": int(split_ok.sum()), "n_cells": int(len(split_ok))}
+    rep["strata"] = _epoch_strata(config, cells, Xe, Xm, floor_early, split_ok, is_ho)
+    rep["balanced"] = balanced_over_strata(
+        rep["strata"], "excess", **(config.get("bbs_routes", {}).get("balance", {}) or {}))
     rep["desk"] = zmeta
     rep["epochs"] = {"early": list(EPOCH_EARLY), "modern": list(EPOCH_MODERN),
                      "min_distinct_years": MIN_EPOCH_YEARS,
@@ -2019,8 +2290,8 @@ def run(config=None, n_sample=4000, seed=0):
                 gram_preds["spacetime_idw"] = S_idw[g]
                 gram_cos["spacetime_idw"] = cosine_gram(Z_idw_s[ix])
             if S_esk is not None:
-                gram_preds["esk_oracle"] = S_esk[g]
-                gram_cos["esk_oracle"] = S_esk_cos[g]
+                gram_preds["esk_truncation"] = S_esk[g]
+                gram_cos["esk_truncation"] = S_esk_cos[g]
             dot = compare_predictors(S_true[g], gram_preds, grams=True)
             cos = compare_predictors(S_true[g], gram_cos, grams=True)
             # Specific causes. A blanket reason here is what hid the oracle's absence for several
@@ -2028,7 +2299,7 @@ def run(config=None, n_sample=4000, seed=0):
             # passed in, and the completeness check accepted it.
             for miss in set(PREDICTOR_ROLES) - set(gram_preds):
                 why = (UNAVAILABLE_BAR_UNBUILT if miss == "spacetime_idw"
-                       else (oracle_why or UNAVAILABLE_ORACLE_GATE) if miss == "esk_oracle"
+                       else (oracle_why or UNAVAILABLE_ORACLE_GATE) if miss == "esk_truncation"
                        else UNAVAILABLE_NOT_WIRED)
                 dot["unavailable"][miss] = why
                 cos["unavailable"][miss] = why

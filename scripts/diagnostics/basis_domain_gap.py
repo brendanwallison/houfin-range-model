@@ -106,16 +106,24 @@ def main():
         print("     by construction. So the shortfall is the rank-64 truncation, NOT anything")
         print("     about BBS, and it caps every predictor equally. Raising latent_dim is the")
         print("     lever; the BBS-specific gap is whatever remains beyond this.")
-    if b["total"] < 0.6 * lmk["total"] or b["r_best"] < 0.6 * lmk["r_best"]:
-        print(f"  -> BBS sits at a DIFFERENT SCALE/DOMAIN than the landmarks (abundance ratio "
-              f"{b['total'] / max(lmk['total'], 1e-9):.2f}, best-landmark similarity "
-              f"{b['r_best']:.3f} vs {lmk['r_best']:.3f}).")
-        print("     Ruzicka is not scale-invariant, so this alone collapses ||z||^2. Fix the")
-        print("     community construction so both sides are the same object -- do NOT rescale z.")
-    elif b["z2"] < 0.6 * lmk["z2"]:
-        print("  -> Same scale, but BBS still projects far worse than the landmarks: the landmark")
-        print("     SET does not cover the BBS region of community space. More/better-targeted")
-        print("     landmarks, not a rescale.")
+    # Scale and coverage are SEPARATE diagnoses with different fixes, so they get separate
+    # tests. Reporting them through one branch (as the first version of this did) printed
+    # "different scale" on a 0.92 abundance ratio, which is agreement, not a gap.
+    scale_gap = b["total"] < 0.6 * lmk["total"] or b["total"] > 1.7 * lmk["total"]
+    cover_gap = b["r_best"] < 0.6 * lmk["r_best"]
+    if scale_gap:
+        print(f"  -> SCALE gap: BBS total abundance {b['total']:.2f} vs landmarks "
+              f"{lmk['total']:.2f} (ratio {b['total'] / max(lmk['total'], 1e-9):.2f}). Ruzicka is "
+              "not scale-invariant, so this alone collapses ||z||^2. Fix the community "
+              "construction -- do NOT rescale z.")
+    else:
+        print(f"  -> No scale gap: abundance ratio {b['total'] / max(lmk['total'], 1e-9):.2f}, "
+              "so Ruzicka's scale sensitivity is NOT the explanation.")
+    if cover_gap:
+        print(f"  -> COVERAGE gap: the best of {len(landmarks):,} landmarks is only "
+              f"{b['r_best']:.3f} similar to a BBS community, against {lmk['r_best']:.3f} for a "
+              "landmark against its own neighbours. The landmark set does not reach the region "
+              "BBS occupies. Run basis_coverage_gap.py to localise it by species.")
     json.dump(res, open("basis_domain_gap.json", "w"), indent=2)
     print("\n  wrote basis_domain_gap.json")
 

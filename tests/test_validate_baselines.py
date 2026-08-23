@@ -1113,7 +1113,10 @@ def test_the_noise_floor_excludes_coin_flips_not_signal():
     real = np.zeros(n_sp)
     real[:50] = rng.uniform(0.5, 1.5, 50) * np.where(rng.random(50) < 0.5, 1, -1)
     xm = xe + real + rng.normal(scale=0.02, size=n_sp)   # 100 species change by noise only
-    pm = xe + real                                       # predicts the real 50 exactly
+    # The predictor gets the real 50 exactly and COMMITS to a direction on the noise species too,
+    # guessing at random -- which is what a real predictor does. (If it predicted exactly zero for
+    # them it would abstain and the threshold would have nothing to remove.)
+    pm = xe + real + np.where(real == 0, rng.normal(scale=0.01, size=n_sp), 0.0)
     loose = species_change_agreement(xe, xm, xe, pm, noise_floor_abs=0.0)
     tight = species_change_agreement(xe, xm, xe, pm, noise_floor_abs=0.1)
     assert tight["n_species_scored"] == 50, tight        # only the real movers survive
@@ -1128,3 +1131,58 @@ def test_a_species_absent_from_both_endpoints_is_not_scored():
     r = species_change_agreement(xe, xm, xe, xm)
     # species 0 and 3 are absent from both; 1 appeared, 2 disappeared, and 20 rose
     assert r["n_species_scored"] == 22, r
+
+
+def test_the_species_readout_is_fitted_on_training_rows_only():
+    """Fitting on everything would let the readout memorise the rows it is scored on."""
+    from src.community_encoder.train_DESK.validate_baselines import species_stream
+    rng = np.random.default_rng(0)
+    cells = [(r, c) for r in range(8) for c in range(8)]
+    years = [1970, 2025]
+    pidx = np.array([[r, c, y] for (r, c) in cells for y in years], dtype=np.int32)
+    Zt = rng.normal(size=(len(pidx), 6))
+    W = rng.normal(size=(6, 25)) * 0.7
+    X = np.clip(Zt @ W + 3.0, 0.0, None)
+    ho = np.zeros((8, 8), bool)
+    ho[6:, :] = True                                    # held-out cells never seen by the fit
+
+    out = species_stream(pidx, X, Zt, Zt, ho, 2025, verbose=False)
+    assert "readout_fit" in out and out["n_cells"] == 16
+    # the fit saw only training rows: 48 cells x 2 years
+    assert out["readout_fit"]["n_train"] == 96, out["readout_fit"]
+    # a readout given the observed coordinates IS the ceiling, and must score well
+    assert out["predictors"]["ceiling"]["direction_skill"] > 0.5
+    # frozen-at-recent predicts no change for any species, so it ABSTAINS rather than scoring --
+    # counting its silence as wrong would read as 'worse than useless'
+    assert "abstention" in out["predictors"]["no_change"]["note"]
+
+
+def test_the_species_stream_says_so_when_it_cannot_run():
+    from src.community_encoder.train_DESK.validate_baselines import species_stream
+    pidx = np.array([[0, 0, 1970], [0, 0, 2025]], dtype=np.int32)
+    X = np.ones((2, 5))
+    out = species_stream(pidx, X, np.ones((2, 3)), np.ones((2, 3)),
+                         np.ones((1, 1), bool), 2025, verbose=False)
+    assert "note" in out and "held-out cells" in out["note"]
+
+
+def test_a_predictor_of_no_change_abstains_rather_than_scoring_worst():
+    """The frozen-at-recent null predicts zero change for every species by construction. Counting
+    that as wrong every time read as -1.007 -- 'worse than useless' -- when the honest description
+    is that it declines to answer."""
+    from src.community_encoder.train_DESK.validate_baselines import species_change_agreement
+    rng = np.random.default_rng(0)
+    n_sp = 60
+    xe = np.full((1, n_sp), 3.0)
+    xm = xe + rng.normal(size=n_sp)
+    silent = species_change_agreement(xe, xm, xe, xe)      # predicts identical -> zero change
+    assert "abstention" in silent["note"], silent
+    assert "direction_skill" not in silent                 # no score is offered at all
+
+    # a predictor that commits on only some species is scored on those, and says how often
+    partial = xe.copy()
+    partial[0, :30] = xe[0, :30] + np.sign(xm[0, :30] - xe[0, :30])
+    r = species_change_agreement(xe, xm, xe, partial)
+    assert r["n_species_committed"] == 30, r
+    assert 0.4 < r["commit_rate"] < 0.6
+    assert r["direction_skill"] > 0.9                      # right on every one it committed to

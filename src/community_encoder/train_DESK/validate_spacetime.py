@@ -822,6 +822,19 @@ def run_validate(config=None, n_pairs=20000, cka_sample=800, seed=0):
             else:
                 print(f"[validate] per-dimension signal/noise unavailable ({sn.get('note')})")
 
+            # SPECIES SPACE. Same question -- how did this place change -- asked about which
+            # species rose and fell rather than about a similarity, so a result can be checked
+            # against what is known about a species. Also a second metric on different
+            # principles: two conclusions this suite produced turned out to be properties of the
+            # metric rather than the model, and two independent metrics rarely fail the same way.
+            try:
+                from .validate_baselines import species_stream
+                report["species_change"] = species_stream(
+                    pidx, X, z_obs_pts, Z, ho, int(recent_year), exclude_years=hy)
+            except Exception as exc:
+                print(f"[validate] species-space stream unavailable ({exc})")
+                report["species_change"] = {"note": f"unavailable ({exc})"}
+
             atten = per_era_attenuation(pidx, z_obs_pts)
             # STORED, not only printed. This number governs every temporal claim in the project --
             # it is what says whether a low dir-cos is a weak model or a noisy target -- and its

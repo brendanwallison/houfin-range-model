@@ -2197,6 +2197,17 @@ def run(config=None, n_sample=4000, seed=0):
     grp_nc = [nc_groups_full[i] for i in sel_full]            # modern reference group per row
     grp_win = [win_groups_full[i] for i in sel_full]          # +/-hw window per row
     if avg:
+        # MATCHED, as the epoch tables already are. These two ends were averaged over ~5 and ~16
+        # surveys, so any difference between them was dominated by the noisier side -- and the
+        # imbalance is era-dependent, which is the axis the temporal experiment varies. This fix
+        # reached the epoch tables and not these, which is the same one-of-two-paths omission that
+        # has caused most of the trouble in this module.
+        _n_win0 = float(np.mean([len(g) for g in grp_win])) if grp_win else float("nan")
+        _n_nc0 = float(np.mean([len(g) for g in grp_nc])) if grp_nc else float("nan")
+        grp_win, grp_nc = match_group_sizes(grp_win, grp_nc, seed=0)
+        print(f"[bbs-routes] bucket endpoints MATCHED: window {_n_win0:.1f} -> "
+              f"{np.mean([len(g) for g in grp_win]):.1f} surveys/row, modern reference "
+              f"{_n_nc0:.1f} -> {np.mean([len(g) for g in grp_nc]):.1f}")
         X_s = epoch_mean_observed(X_raw_all, grp_win)         # mean raw counts THEN log1p
         X_nc_s = epoch_mean_observed(X_raw_all, grp_nc)
         d_win = float(np.mean([len(g) for g in grp_win])) if grp_win else float("nan")
@@ -2326,6 +2337,27 @@ def run(config=None, n_sample=4000, seed=0):
     # Degrades gracefully like the bar above, but records WHY -- a specific cause, never a
     # catch-all, since a vague reason is what hid this row's absence in the first place.
     from .esk_kernel import project_points_to_z
+    # The INDEPENDENT ceiling for the bucket tables. `Z_esk_s` below projects the same array the
+    # truth is computed from and so scores its own noise; this projects a disjoint half of each
+    # row's window, and is the only one of the two a model could actually reach.
+    Z_esk_ind, ind_why = None, None
+    if avg:
+        _hA, _hB, _hok = split_half_groups(grp_win, seed=0)
+        if int(_hok.sum()) >= 4:
+            _XB = epoch_mean_observed(X_raw_all, _hB)
+            _zB = project_points_to_z(np.asarray(_XB, "float32"),
+                                      (config.get("desk", {}) or {}).get("z_dir", ""),
+                                      Z_s.shape[1]) if (config.get("desk") or {}).get("z_dir") else None
+            if _zB is not None:
+                Z_esk_ind = np.where(_hok[:, None], _zB, np.nan)
+                print(f"[bbs-routes] bucket ceiling: {int(_hok.sum())}/{len(_hok)} rows have a "
+                      "splittable window, so the ceiling is an INDEPENDENT observation")
+            else:
+                ind_why = "no saved ESK projection to build an independent ceiling from"
+        else:
+            ind_why = UNAVAILABLE_UNSPLITTABLE
+    else:
+        ind_why = "window averaging is off, so a row has no surveys to split"
     Z_esk_s, oracle_why = None, None
     _zdir = (config.get("desk", {}) or {}).get("z_dir")
     if not _zdir:
@@ -2336,6 +2368,9 @@ def run(config=None, n_sample=4000, seed=0):
             oracle_why = f"no saved ESK projection in {_zdir}"
     S_esk = dot_gram(Z_esk_s) if Z_esk_s is not None else None
     S_esk_cos = cosine_gram(Z_esk_s) if Z_esk_s is not None else None
+    _ind_ok = Z_esk_ind is not None and np.isfinite(Z_esk_ind).all(1).sum() >= 4
+    S_esk_ind = dot_gram(np.nan_to_num(Z_esk_ind)) if _ind_ok else None
+    S_esk_ind_cos = cosine_gram(np.nan_to_num(Z_esk_ind)) if _ind_ok else None
     if Z_esk_s is not None:
         print(f"[bbs-routes] oracle wired into the route buckets: median ||z_obs||^2 = "
               f"{float(np.median((Z_esk_s ** 2).sum(1))):.4f} (contract 1.0); the gap from "
@@ -2403,6 +2438,9 @@ def run(config=None, n_sample=4000, seed=0):
             if S_esk is not None:
                 gram_preds["esk_truncation"] = S_esk[g]
                 gram_cos["esk_truncation"] = S_esk_cos[g]
+            if S_esk_ind is not None:
+                gram_preds["esk_oracle_independent"] = S_esk_ind[g]
+                gram_cos["esk_oracle_independent"] = S_esk_ind_cos[g]
             dot = compare_predictors(S_true[g], gram_preds, grams=True)
             cos = compare_predictors(S_true[g], gram_cos, grams=True)
             # Specific causes. A blanket reason here is what hid the oracle's absence for several
@@ -2411,6 +2449,8 @@ def run(config=None, n_sample=4000, seed=0):
             for miss in set(PREDICTOR_ROLES) - set(gram_preds):
                 why = (UNAVAILABLE_BAR_UNBUILT if miss == "spacetime_idw"
                        else (oracle_why or UNAVAILABLE_ORACLE_GATE) if miss == "esk_truncation"
+                       else (ind_why or UNAVAILABLE_UNSPLITTABLE)
+                       if miss == "esk_oracle_independent"
                        else UNAVAILABLE_NOT_WIRED)
                 dot["unavailable"][miss] = why
                 cos["unavailable"][miss] = why

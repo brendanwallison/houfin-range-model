@@ -817,9 +817,13 @@ def test_run_averages_the_right_rows_when_the_site_gate_shifts_indices(tmp_path,
     # 1968/1969 are within +/-2 of each other, so those endpoints average 2 years; the isolated
     # 1975/2008/2015/2022 rows average 1. Mean depth must land strictly between 1 and 2.
     assert 1.0 < rep["config"]["mean_window_depth_years"] < 2.0, rep["config"]
-    # the modern reference averages only rows INSIDE MODERN_WINDOW=(2010, 2025), so 2008 is
-    # excluded and each cell contributes 2015 + 2022 -> depth exactly 2
-    assert rep["config"]["mean_reference_depth_years"] == 2.0, rep["config"]
+    # The modern reference draws only from rows INSIDE MODERN_WINDOW=(2010, 2025), so 2008 is
+    # excluded and each cell has 2015 + 2022 available -- but the two ends of a difference are now
+    # MATCHED, so the reference is subsampled down to whatever the window side has. It must
+    # therefore equal the window depth exactly, not its own unmatched depth of 2.
+    assert rep["config"]["mean_reference_depth_years"] == rep["config"]["mean_window_depth_years"], (
+        rep["config"])
+    assert rep["config"]["mean_reference_depth_years"] < 2.0, "matching must have subsampled it"
 
     saved = np.load(desk / "bbs_route_validation.npz")
     ks, S_true = saved["keys"], saved["S_true"]

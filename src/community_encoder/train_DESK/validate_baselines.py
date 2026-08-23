@@ -386,7 +386,7 @@ def smoothing_half_width(config):
     """
     return int((config.get("target", {}) or {}).get(
         "smooth_half_width",
-        (config.get("bbs_routes", {}) or {}).get("window_half_width", 4)))
+        (config.get("bbs_routes", {}) or {}).get("window_half_width", 2)))
 
 
 def smoothing_manifest(config, used):

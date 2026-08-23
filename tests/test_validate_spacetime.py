@@ -128,3 +128,50 @@ def test_the_absolute_position_table_prints():
     with contextlib.redirect_stdout(io.StringIO()) as empty:
         print_absolute_position({})
     assert empty.getvalue() == ""
+
+
+def test_parallel_movement_is_distinguishable_from_no_movement():
+    """The whole reason the co-movement curve exists.
+
+    Two places can both move a long way in the SAME direction and end up exactly as similar as
+    they started. The convergence measure reads that as nothing happening; this must read it as
+    strong agreement. If the two agreed, one of them would be redundant.
+    """
+    from src.community_encoder.train_DESK.validate_spacetime import _co_movement_by_distance
+    rng = np.random.default_rng(0)
+    n, n_anchor = 200, 40
+    rows = rng.integers(0, 40, n)
+    cols = rng.integers(0, 40, n)
+
+    shared = rng.normal(size=(1, n_anchor))
+    parallel = np.repeat(shared, n, axis=0) + rng.normal(scale=0.05, size=(n, n_anchor))
+    scattered = rng.normal(size=(n, n_anchor))
+
+    par = _co_movement_by_distance(parallel, parallel, rows, cols, rng)
+    sca = _co_movement_by_distance(scattered, scattered, rows, cols, rng)
+    assert par["bins"] and sca["bins"]
+    assert np.mean([b["observed_co_movement"] for b in par["bins"]]) > 0.9   # all moving together
+    assert abs(np.mean([b["observed_co_movement"] for b in sca["bins"]])) < 0.2  # unrelated
+
+
+def test_a_model_that_oversmooths_reads_above_the_observed_curve():
+    """The expected failure for a smooth function of smooth covariates: neighbouring places all
+    given much the same predicted change while the real ones differ."""
+    from src.community_encoder.train_DESK.validate_spacetime import _co_movement_by_distance
+    rng = np.random.default_rng(1)
+    n, n_anchor = 200, 40
+    rows, cols = rng.integers(0, 40, n), rng.integers(0, 40, n)
+    observed = rng.normal(size=(n, n_anchor))                 # every place moves its own way
+    smooth = np.repeat(rng.normal(size=(1, n_anchor)), n, axis=0)   # model gives everyone the same
+    r = _co_movement_by_distance(smooth, observed, rows, cols, rng)
+    gaps = [b["gap"] for b in r["bins"]]
+    assert all(g > 0.5 for g in gaps), gaps       # model curve well ABOVE observed at every range
+    assert len(r["bins"]) >= 4
+
+
+def test_the_co_movement_curve_needs_enough_sites():
+    from src.community_encoder.train_DESK.validate_spacetime import _co_movement_by_distance
+    rng = np.random.default_rng(0)
+    r = _co_movement_by_distance(np.zeros((5, 3)), np.zeros((5, 3)),
+                                 np.arange(5), np.arange(5), rng)
+    assert "too few" in r["note"]

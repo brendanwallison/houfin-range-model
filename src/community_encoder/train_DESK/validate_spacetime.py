@@ -257,10 +257,63 @@ def directional_change_agreement(Z, X, pidx, recent_year, rng, n_anchor=400, min
     perm = rng.permutation(len(keys))
     dop = do[perm]; nop = nov[perm]
     cos_null = (dp * dop).sum(1) / np.where(npv * nop > 0, npv * nop, 1.0)
-    return {"n_sites": len(keys), "mean_dir_cos": float(np.mean(cos)),
-            "median_dir_cos": float(np.median(cos)), "frac_same_dir": float(np.mean(cos > 0)),
-            "mean_dir_cos_null": float(np.mean(cos_null)),
-            "rows": rows[hi], "cols": cols[hi], "hist_year": yrs[hi], "dir_cos": cos.astype("float32")}
+    out = {"n_sites": len(keys), "mean_dir_cos": float(np.mean(cos)),
+           "median_dir_cos": float(np.median(cos)), "frac_same_dir": float(np.mean(cos > 0)),
+           "mean_dir_cos_null": float(np.mean(cos_null)),
+           "rows": rows[hi], "cols": cols[hi], "hist_year": yrs[hi],
+           "dir_cos": cos.astype("float32")}
+    out["co_movement"] = _co_movement_by_distance(dp, do, rows[hi], cols[hi], rng)
+    return out
+
+
+def _co_movement_by_distance(dp, do, rows, cols, rng, n_pairs=60000, n_bins=8, cell_km=27.0):
+    """Do NEARBY places move the SAME WAY? Model curve against observed curve, by separation.
+
+    Everything above scores each place on its own. This asks whether the FIELD of change is
+    spatially organised -- whether two places near each other moved in similar directions.
+
+    It is a different question from whether two places grew more or less alike, which the
+    convergence measure answers. Two places can both move a long way in the same direction and end
+    up exactly as similar as they started; convergence reads that as nothing happening, and this
+    reads it as strong agreement. Only together do they describe the joint structure.
+
+    Read it by COMPARING THE TWO CURVES, not by the model's alone. If the model's agreement decays
+    more slowly with distance than the observed one, it is smoothing regional structure -- giving
+    neighbouring places much the same predicted change when the real ones differ. That is the
+    expected failure for a smooth function of smooth covariates, and the measured 10%-of-achievable
+    for close pairs on the convergence question says to look for it here.
+    """
+    n = len(rows)
+    if n < 30:
+        return {"note": f"only {n} sites; too few to resolve a distance curve"}
+    i = rng.integers(0, n, int(n_pairs))
+    j = rng.integers(0, n, int(n_pairs))
+    keep = i != j
+    i, j = i[keep], j[keep]
+    d_km = np.hypot(rows[i].astype(float) - rows[j], cols[i].astype(float) - cols[j]) * cell_km
+
+    def _cos(V):
+        a, b = V[i], V[j]
+        na, nb = np.linalg.norm(a, axis=1), np.linalg.norm(b, axis=1)
+        return (a * b).sum(1) / np.where(na * nb > 0, na * nb, 1.0)
+
+    cm, co = _cos(dp), _cos(do)
+    edges = np.quantile(d_km, np.linspace(0, 1, int(n_bins) + 1))
+    bins = []
+    for b in range(int(n_bins)):
+        m = (d_km >= edges[b]) & ((d_km <= edges[b + 1]) if b == n_bins - 1
+                                  else (d_km < edges[b + 1]))
+        if m.sum() < 50:
+            continue
+        bins.append({"km_lo": float(edges[b]), "km_hi": float(edges[b + 1]),
+                     "n_pairs": int(m.sum()),
+                     "model_co_movement": float(np.mean(cm[m])),
+                     "observed_co_movement": float(np.mean(co[m])),
+                     "gap": float(np.mean(cm[m]) - np.mean(co[m]))})
+    return {"bins": bins, "n_pairs_sampled": int(len(i)),
+            "note": ("agreement between two places' change directions, by how far apart they are. "
+                     "The MODEL curve sitting above the OBSERVED one means neighbouring places are "
+                     "being given too similar a change -- regional structure smoothed away.")}
 
 
 def analog_displacement(Z, X, pidx, xy, recent_year, rng, n_hist=1500, n_present=4000, topk=15):
@@ -1096,6 +1149,15 @@ def run_validate(config=None, n_pairs=20000, cka_sample=800, seed=0):
         part = tt.get("spearman_turnover_partial", float("nan"))
         print(f"[validate] turnover MAGNITUDE Spearman ({turn['n_sites']} sites, cosine self-sim): "
               f"raw={tt['spearman_turnover']:+.3f} | partial(span+space out)={part:+.3f}")
+    cmv = (report.get("directional_change", {}) or {}).get("co_movement", {})
+    if cmv.get("bins"):
+        print("[validate] DO NEARBY PLACES MOVE THE SAME WAY? (model curve above observed = "
+              "regional structure smoothed away)")
+        print(f"    {'separation km':>16}{'pairs':>8}{'model':>9}{'observed':>10}{'gap':>8}")
+        for b in cmv["bins"]:
+            print(f"    {b['km_lo']:>7.0f}-{b['km_hi']:<8.0f}{b['n_pairs']:>8}"
+                  f"{b['model_co_movement']:>+9.3f}{b['observed_co_movement']:>+10.3f}"
+                  f"{b['gap']:>+8.3f}")
     a = report.get("analog", {})
     if "mean_cos_displacement" in a:
         print(f"[validate] analog displacement ({a['n_hist']} pts): cos={a['mean_cos_displacement']:+.3f} "

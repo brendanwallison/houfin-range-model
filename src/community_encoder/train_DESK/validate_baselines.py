@@ -332,7 +332,8 @@ def _ceiling_row(do, null_cos, model_cos):
     """
     if do is None:
         return {"ceiling_dir_cos": float("nan"),
-                "ceiling_note": "windows too short to split into disjoint halves"}
+                "ceiling_note": ("fewer than 4 cells have two surveys at BOTH endpoints, so no "
+                                 "independent observation exists to form a ceiling from")}
     dtA, dtB = do
     nA = np.linalg.norm(dtA, axis=1)
     nB = np.linalg.norm(dtB, axis=1)
@@ -598,15 +599,25 @@ def epoch_direction_panel(pidx, supervise, z_obs, z_model, holdout, buffer_mask,
         # Halves ALTERNATE through the sorted years rather than splitting early/late, because an
         # early/late split inside the window puts a real time gradient between the two halves and
         # that would register as change when the point is that no change is possible.
-        do = None
-        try:
-            dtA = np.stack([zt(c, _half_years(val_of[b][c], 0)) - zt(c, _half_years(val_of[a][c], 0))
-                            for c in cells])
-            dtB = np.stack([zt(c, _half_years(val_of[b][c], 1)) - zt(c, _half_years(val_of[a][c], 1))
-                            for c in cells])
-            do = (dtA, dtB)
-        except (TypeError, ValueError):
-            do = None                     # a cell whose window cannot be split; ceiling omitted
+        # PER CELL, not all-or-nothing. The first version wrapped this whole loop in one
+        # try/except, so a single cell with a one-year window returned no ceiling for the entire
+        # pair -- and with a mean window depth of 3.1 that happened every time, which is why the
+        # ceiling came back empty on its first run.
+        dA, dB = [], []
+        for c in cells:
+            try:
+                ya0, ya1 = _half_years(val_of[a][c], 0), _half_years(val_of[a][c], 1)
+                yb0, yb1 = _half_years(val_of[b][c], 0), _half_years(val_of[b][c], 1)
+            except (TypeError, ValueError):
+                continue                  # this cell cannot be split; the others still can
+            pa0, pa1 = zt(c, ya0), zt(c, ya1)
+            pb0, pb1 = zt(c, yb0), zt(c, yb1)
+            if any(v is None for v in (pa0, pa1, pb0, pb1)):
+                continue
+            dA.append(pb0 - pa0)
+            dB.append(pb1 - pa1)
+        do = (np.stack(dA), np.stack(dB)) if len(dA) >= 4 else None
+        n_splittable = len(dA)
         # dir-cos is the ANGULAR half of an exact two-term split of ||dm - dt||^2; the other half
         # is the magnitude of the predicted change. Reporting the angle alone cannot distinguish
         # "moved the wrong way" from "barely moved", and the two trade off -- under-moving is the
@@ -664,6 +675,7 @@ def epoch_direction_panel(pidx, supervise, z_obs, z_model, holdout, buffer_mask,
                                     if (np.isfinite(mc) and abs(mc) > 1e-6) else float("nan"),
                                     # available even inside the holdout, unlike idw_dir_cos
                                     "spacetime_idw_dir_cos": sc,
+                                    "n_cells_splittable": n_splittable,
                                     **_ceiling_row(do, null, mc)}
 
     if verbose:

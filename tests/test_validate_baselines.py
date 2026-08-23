@@ -961,8 +961,8 @@ def test_the_direction_panel_ceiling_is_an_independent_observation():
     clean = _ceiling_row((signal, signal), null_cos=0.0, model_cos=0.5)
     assert clean["ceiling_dir_cos"] > 0.999, clean
 
-    # too short to split -> a stated reason, never a silent number
-    assert "too short" in _ceiling_row(None, 0.0, 0.5)["ceiling_note"]
+    # not enough splittable cells -> a stated reason, never a silent number
+    assert "fewer than 4 cells" in _ceiling_row(None, 0.0, 0.5)["ceiling_note"]
 
 
 def test_the_direction_panel_flags_a_narrow_comparison():
@@ -1006,3 +1006,20 @@ def test_one_smoothing_length_by_default_and_divergences_must_say_why():
     # every declared divergence carries a real reason, not a placeholder
     for name, (width, reason) in SMOOTHING_DIVERGENCES.items():
         assert width and len(reason) > 80, name
+
+
+def test_one_unsplittable_cell_does_not_destroy_the_whole_ceiling():
+    """Regression. The first version wrapped the per-cell loop in a single try/except, so one cell
+    with a one-year window returned no ceiling for the entire epoch pair. With a mean window depth
+    of 3.1 surveys that fired on every pair of every run, and the ceiling column came back empty.
+    """
+    from src.community_encoder.train_DESK.validate_baselines import _half_years
+    windows = {"a": [1970, 1971, 1972], "b": [1985], "c": [2000, 2001]}
+    ok, dropped = [], []
+    for name, yrs in windows.items():
+        try:
+            _half_years(yrs, 0), _half_years(yrs, 1)
+            ok.append(name)
+        except ValueError:
+            dropped.append(name)
+    assert ok == ["a", "c"] and dropped == ["b"]     # the short one goes, the others stay

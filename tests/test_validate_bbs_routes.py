@@ -1849,3 +1849,19 @@ def test_every_epoch_question_reports_its_room():
             continue
         assert "room" in row["dot"], q
         assert "verdict" in row["dot"]["room"], (q, row["dot"]["room"])
+
+
+def test_room_flags_a_ceiling_that_shares_the_targets_noise():
+    """A ceiling built from the same arrays as the truth scores its own noise and sits far too
+    high. Measured on the 1995 run it put the room for pair_convergence at 0.959 where the
+    independent ceiling puts it at 0.654 -- so the figure built to stop a comparison being
+    over-read would itself have overstated by half."""
+    from src.community_encoder.train_DESK.validate_bbs_routes import resolving_room
+    borrowed = resolving_room({"predictors": {"no_change": {"pearson_r": 0.0},
+                                              "esk_truncation": {"pearson_r": 0.959}}})
+    assert borrowed["ceiling_shares_target_noise"] is True
+    assert "OVERSTATEMENT" in borrowed["caveat"]
+    honest = resolving_room({"predictors": {"no_change": {"pearson_r": 0.0},
+                                            "esk_oracle_independent": {"pearson_r": 0.654}}})
+    assert honest["ceiling_shares_target_noise"] is False
+    assert "caveat" not in honest

@@ -782,6 +782,13 @@ def resolving_room(result, baseline="no_change", ceiling=("esk_oracle_independen
     if baseline not in preds:
         return {"note": f"baseline {baseline!r} absent; room undefined"}
     ceil_name = next((c for c in ceiling if c in preds), None)
+    # A ceiling that SHARES the target's noise is not a ceiling: it scores its own noise and so
+    # sits far too high, making the room look larger than it is. Measured on the 1995 run, the
+    # noise-sharing row put the room for pair_convergence at 0.959 where the independent one puts
+    # it at 0.654. Falling back to it silently would have the room figure -- built to stop a
+    # comparison being over-read -- overstating by half.
+    borrowed = bool(ceil_name and PREDICTOR_DENOISING.get(ceil_name, {}).get(
+        "shares_target_noise"))
     if ceil_name is None:
         return {"note": f"no ceiling among {list(ceiling)}; room undefined",
                 "baseline_r": preds[baseline].get("pearson_r")}
@@ -789,7 +796,11 @@ def resolving_room(result, baseline="no_change", ceiling=("esk_oracle_independen
     c = float(preds[ceil_name].get("pearson_r", float("nan")))
     room = c - b
     out = {"baseline": baseline, "baseline_r": b, "ceiling": ceil_name, "ceiling_r": c,
-           "room": room}
+           "room": room, "ceiling_shares_target_noise": borrowed}
+    if borrowed:
+        out["caveat"] = (f"{ceil_name} shares the target's noise draw, so this ceiling is too high "
+                         "and the room below is an OVERSTATEMENT. The honest figure needs "
+                         "esk_oracle_independent -- see the split-half ceiling table.")
     if not np.isfinite(room):
         out["verdict"] = "room undefined"
     elif room < 0.15:

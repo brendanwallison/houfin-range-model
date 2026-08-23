@@ -317,6 +317,57 @@ def zspace_idw_baseline(pidx, z_obs, holdout, hist_mask, k=8, power=2.0, return_
     return (err, zi) if return_z else err
 
 
+def _ceiling_row(do, null_cos, model_cos):
+    """The achievable ceiling for a dir-cos, and how much room the comparison has. Pure.
+
+    ``do`` is ``(dtA, dtB)`` -- the same change vector built from two DISJOINT halves of each
+    window's years. Their agreement is what an INDEPENDENT observation of the same place scores,
+    which is the most any model could, because the target is a handful of surveys and carries
+    noise a prediction cannot reproduce.
+
+    Without this a dir-cos has no scale. "model_dir_cos = 0.23" reads as poor against 1.0 and as
+    good against a ceiling of 0.35, and only the second comparison is meaningful. `room` is the
+    distance from the no-information null to that ceiling: where it is small, differences between
+    predictors are not evidence of skill.
+    """
+    if do is None:
+        return {"ceiling_dir_cos": float("nan"),
+                "ceiling_note": "windows too short to split into disjoint halves"}
+    dtA, dtB = do
+    nA = np.linalg.norm(dtA, axis=1)
+    nB = np.linalg.norm(dtB, axis=1)
+    ok = (nA > 1e-12) & (nB > 1e-12)
+    if ok.sum() < 4:
+        return {"ceiling_dir_cos": float("nan"),
+                "ceiling_note": f"only {int(ok.sum())} cells with two non-degenerate halves"}
+    ceil = float(np.median((dtA[ok] * dtB[ok]).sum(1) / (nA[ok] * nB[ok])))
+    room = ceil - null_cos if np.isfinite(null_cos) else float("nan")
+    out = {"ceiling_dir_cos": ceil, "n_ceiling": int(ok.sum()), "room": room}
+    if np.isfinite(room) and np.isfinite(model_cos) and room > 1e-9:
+        # where the model sits between "knows nothing" and "is an independent observation"
+        out["share_of_room"] = float((model_cos - null_cos) / room)
+    if np.isfinite(room) and room < 0.15:
+        out["room_verdict"] = (f"NARROW ({room:.3f}): null {null_cos:.3f} against a ceiling of "
+                               f"{ceil:.3f}; differences here are not evidence of skill")
+    return out
+
+
+def _half_years(years, which):
+    """One of two DISJOINT halves of a window's years, alternating through them (pure).
+
+    Alternating rather than early/late: an early/late split inside a window contains a real time
+    gradient, so the two halves would differ for a reason other than measurement noise, and the
+    ceiling built from them would understate itself.
+
+    Raises if the window is too short to split, so the caller drops that pair rather than silently
+    comparing a set against itself.
+    """
+    ys = sorted(years)
+    if len(ys) < 2:
+        raise ValueError(f"window of {len(ys)} year(s) cannot be split into disjoint halves")
+    return ys[which::2]
+
+
 def epoch_direction_panel(pidx, supervise, z_obs, z_model, holdout, buffer_mask,
                           epochs=DEFAULT_EPOCHS, tol=DEFAULT_TOL, verbose=True,
                           exclude_years=(), half_width=0, z_spacetime=None,
@@ -456,7 +507,11 @@ def epoch_direction_panel(pidx, supervise, z_obs, z_model, holdout, buffer_mask,
               f"{[e for e in epochs if withheld_epoch[int(e)]]} -- 'n/a', not a failure")
 
     if verbose:
-        print("  pair          cells   model    idw   st-idw    null   verdict   depth")
+        print("  'ceil' is what an INDEPENDENT observation of the same place scores -- the most "
+              "any model could,\n  since the target carries survey noise a prediction cannot "
+              "reproduce. 'room%' is where the model sits\n  between knowing nothing (null) and "
+              "that ceiling.")
+        print("  pair          cells   model    idw   st-idw    null    ceil   room%   verdict   depth")
     for a, b in itertools.combinations(epochs, 2):
         # Intersect FIRST, then test z_model. The comprehension is evaluated in full before
         # the `&` runs, so filtering over val_of[a] would index val_of[b] at cells epoch b
@@ -471,6 +526,25 @@ def epoch_direction_panel(pidx, supervise, z_obs, z_model, holdout, buffer_mask,
             continue
         dt = np.stack([zt(c, val_of[b][c]) - zt(c, val_of[a][c]) for c in cells])
         dm = np.stack([zm(c, val_of[b][c]) - zm(c, val_of[a][c]) for c in cells])
+
+        # THE CEILING. Build the same change vector from a DISJOINT half of each window's years,
+        # so it is an independent observation of the same place rather than the target restated.
+        # Without it "model_dir_cos = 0.23" has no scale: the target is a handful of surveys at
+        # ~1.08 routes per cell-year, so even a perfect prediction cannot reach 1, and how far
+        # below 1 is exactly what this measures.
+        #
+        # Halves ALTERNATE through the sorted years rather than splitting early/late, because an
+        # early/late split inside the window puts a real time gradient between the two halves and
+        # that would register as change when the point is that no change is possible.
+        do = None
+        try:
+            dtA = np.stack([zt(c, _half_years(val_of[b][c], 0)) - zt(c, _half_years(val_of[a][c], 0))
+                            for c in cells])
+            dtB = np.stack([zt(c, _half_years(val_of[b][c], 1)) - zt(c, _half_years(val_of[a][c], 1))
+                            for c in cells])
+            do = (dtA, dtB)
+        except (TypeError, ValueError):
+            do = None                     # a cell whose window cannot be split; ceiling omitted
         # dir-cos is the ANGULAR half of an exact two-term split of ||dm - dt||^2; the other half
         # is the magnitude of the predicted change. Reporting the angle alone cannot distinguish
         # "moved the wrong way" from "barely moved", and the two trade off -- under-moving is the
@@ -508,8 +582,13 @@ def epoch_direction_panel(pidx, supervise, z_obs, z_model, holdout, buffer_mask,
         ic_s = "  n/a" if not np.isfinite(ic) else f"{ic:5.2f}"
         if verbose:
             sc_s = "  n/a" if not np.isfinite(sc) else f"{sc:5.2f}"
+            _cr = _ceiling_row(do, null, mc)
+            _ce = _cr.get("ceiling_dir_cos", float("nan"))
+            _sh = _cr.get("share_of_room")
+            _ce_s = "  n/a" if not np.isfinite(_ce) else f"{_ce:5.2f}"
+            _sh_s = "   n/a" if _sh is None else f"{100 * _sh:5.0f}%"
             print(f"  {a}->{b}  {len(cells):>6}   {mc:5.2f}   {ic_s}   {sc_s}   {null:5.2f}   "
-                  f"{verdict:<7}  {depth:.2f}")
+                  f"{_ce_s}  {_sh_s}   {verdict:<7}  {depth:.2f}")
         out["pairs"][f"{a}_{b}"] = {"n": len(cells), "model_dir_cos": mc, "idw_dir_cos": ic,
                                     "null_dir_cos": null, "verdict": verdict,
                                     "mean_window_depth": depth,
@@ -522,7 +601,8 @@ def epoch_direction_panel(pidx, supervise, z_obs, z_model, holdout, buffer_mask,
                                     "magnitude_calibration": (mag_ratio / mc)
                                     if (np.isfinite(mc) and abs(mc) > 1e-6) else float("nan"),
                                     # available even inside the holdout, unlike idw_dir_cos
-                                    "spacetime_idw_dir_cos": sc}
+                                    "spacetime_idw_dir_cos": sc,
+                                    **_ceiling_row(do, null, mc)}
 
     if verbose:
         print("  curvature (second difference, three consecutive epochs)")

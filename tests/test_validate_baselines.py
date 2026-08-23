@@ -8,6 +8,7 @@ import os
 import sys
 
 import numpy as np
+import pytest
 import torch
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -928,3 +929,48 @@ def test_per_dimension_split_refuses_on_too_few_pairs():
     pidx = np.array([[0, 0, 1970], [0, 0, 1971]], dtype=np.int32)
     out = per_dimension_signal_noise(pidx, np.zeros((2, 5), "float32"), min_pairs=30)
     assert "note" in out and "signal_var" not in out
+
+
+def test_the_direction_panel_ceiling_is_an_independent_observation():
+    """A dir-cos has no scale without it: 0.23 reads as poor against 1.0 and as good against a
+    ceiling of 0.35, and only the second comparison means anything. The ceiling is built from a
+    DISJOINT half of each window's years, so it is an independent look at the same place rather
+    than the target restated."""
+    from src.community_encoder.train_DESK.validate_baselines import _half_years, _ceiling_row
+    # halves alternate through the sorted years -- an early/late split would put a real time
+    # gradient between them and the ceiling would understate itself
+    assert _half_years([1970, 1971, 1972, 1973, 1974], 0) == [1970, 1972, 1974]
+    assert _half_years([1970, 1971, 1972, 1973, 1974], 1) == [1971, 1973]
+    a, b = _half_years(range(1970, 1980), 0), _half_years(range(1970, 1980), 1)
+    assert not (set(a) & set(b)), (a, b)              # DISJOINT is the whole point
+    with pytest.raises(ValueError):
+        _half_years([1970], 0)                       # cannot split; caller must drop the pair
+
+    rng = np.random.default_rng(0)
+    n, L = 200, 8
+    signal = rng.normal(size=(n, L))
+    # two independent noisy looks at the same underlying change
+    dtA = signal + rng.normal(scale=0.6, size=(n, L))
+    dtB = signal + rng.normal(scale=0.6, size=(n, L))
+    row = _ceiling_row((dtA, dtB), null_cos=0.02, model_cos=0.30)
+    assert 0.2 < row["ceiling_dir_cos"] < 0.95, row  # noisy, so well below 1.0
+    assert row["room"] == row["ceiling_dir_cos"] - 0.02
+    assert 0.0 < row["share_of_room"] < 1.5, row
+
+    # a noiseless target gives a ceiling of ~1: then the model really is being read against 1.0
+    clean = _ceiling_row((signal, signal), null_cos=0.0, model_cos=0.5)
+    assert clean["ceiling_dir_cos"] > 0.999, clean
+
+    # too short to split -> a stated reason, never a silent number
+    assert "too short" in _ceiling_row(None, 0.0, 0.5)["ceiling_note"]
+
+
+def test_the_direction_panel_flags_a_narrow_comparison():
+    from src.community_encoder.train_DESK.validate_baselines import _ceiling_row
+    rng = np.random.default_rng(1)
+    d = rng.normal(size=(100, 6))
+    # ceiling barely above the null -> nothing to resolve
+    row = _ceiling_row((d, d * 0.0 + rng.normal(scale=5.0, size=(100, 6))),
+                       null_cos=0.02, model_cos=0.05)
+    if np.isfinite(row.get("room", np.nan)) and row["room"] < 0.15:
+        assert "NARROW" in row["room_verdict"], row

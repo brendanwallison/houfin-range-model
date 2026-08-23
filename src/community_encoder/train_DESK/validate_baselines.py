@@ -1339,6 +1339,15 @@ def species_change_agreement(x_early, x_modern, p_early, p_modern, noise_floor_a
     # what a predictor gets for free by always naming the commoner direction
     share_down = float((so < 0).mean())
     lazy = max(share_down, 1.0 - share_down)
+    # If EVERY species moved the same way there is nothing for a direction score to discriminate:
+    # the lazy guess is already perfect, and dividing by what is left of it produces a number like
+    # -5e10 rather than a finding. Measured on a fixture where all species rose together.
+    if 1.0 - lazy < 1e-3:
+        return {"n_species_scored": n, "n_species_committed": n_commit,
+                "share_declining_observed": share_down,
+                "note": ("every scored species moved the same way, so direction carries no "
+                         "information here and no skill can be measured -- a property of this "
+                         "comparison, not of the predictor")}
     out = {"n_species_scored": n,
            "n_species_committed": n_commit,
            "commit_rate": n_commit / max(n, 1),
@@ -1358,79 +1367,11 @@ def species_change_agreement(x_early, x_modern, p_early, p_modern, noise_floor_a
     return out
 
 
-def species_stream(pidx, X, z_obs, z_model, holdout, recent_year, exclude_years=(),
-                   min_gap=5, ridge=1.0, noise_floor_abs=0.0, verbose=True):
-    """The whole species-space comparison for one place over time. ``{...}``.
+#: Every predictor the species stream must account for. Same device as PREDICTOR_ROLES: a name
+#: here that produces neither a result nor a stated reason is a gap the check below reports.
+SPECIES_PREDICTORS = ("desk", "no_change", "spacetime_idw", "ceiling")
 
-    Pairs each cell's earliest historical point with its recent one (at least ``min_gap`` years
-    apart), then asks which species rose and fell, for the model and for each baseline.
 
-    The readout is fitted on TRAINING rows only -- cells outside the holdout, years outside
-    ``exclude_years`` -- and applied to held-out rows. Fitting on everything would let the readout
-    memorise the very rows it is scored on, and the number would say nothing.
-
-    Predictors, all put through the identical readout so a difference between them is about the
-    coordinates and not about the decoder:
-
-    * ``desk``  -- the model's own coordinates at both ends
-    * ``no_change`` -- the model frozen at the recent year, so it predicts no species change at all
-    * ``ceiling`` -- the OBSERVED community's own coordinates. This bounds what a linear readout of
-      this coordinate system can express, which is a separate thing from what DESK gets wrong.
-    """
-    rows, cols, yrs = pidx[:, 0], pidx[:, 1], pidx[:, 2]
-    ho = _np(holdout)
-    excl = set(int(y) for y in (exclude_years or ()))
-
-    rec_ix = {(int(r), int(c)): int(i) for r, c, i in
-              zip(rows[yrs == recent_year], cols[yrs == recent_year],
-                  np.where(yrs == recent_year)[0])}
-    best = {}
-    for i in np.where(yrs != recent_year)[0]:
-        key = (int(rows[i]), int(cols[i]))
-        y = int(yrs[i])
-        if key in rec_ix and (int(recent_year) - y) >= min_gap \
-                and (key not in best or y < best[key][0]):
-            best[key] = (y, int(i))
-    keys = [k for k in best if ho[k[0], k[1]]]           # held-out cells: the honest population
-    if len(keys) < 8:
-        return {"note": f"only {len(keys)} held-out cells have an early and a recent point"}
-
-    train = ~ho[rows, cols] & ~np.isin(yrs, list(excl)) if excl else ~ho[rows, cols]
-    if int(train.sum()) < 50:
-        return {"note": f"only {int(train.sum())} training rows to fit a species readout on"}
-    readout = fit_species_readout(z_obs[train], X[train], ridge=ridge)
-
-    hi = np.array([best[k][1] for k in keys])
-    ri = np.array([rec_ix[k] for k in keys])
-    obs_e, obs_m = X[hi], X[ri]
-    preds = {
-        "desk": (apply_species_readout(readout, z_model[hi]),
-                 apply_species_readout(readout, z_model[ri])),
-        "no_change": (apply_species_readout(readout, z_model[ri]),
-                      apply_species_readout(readout, z_model[ri])),
-        "ceiling": (apply_species_readout(readout, z_obs[hi]),
-                    apply_species_readout(readout, z_obs[ri])),
-    }
-    out = {"n_cells": len(keys), "readout_fit": {k: v for k, v in readout.items() if k != "W"},
-           "predictors": {}}
-    for name, (pe, pm) in preds.items():
-        out["predictors"][name] = species_change_agreement(
-            obs_e, obs_m, pe, pm, noise_floor_abs=noise_floor_abs)
-    if verbose:
-        f = out["readout_fit"]
-        print(f"[validate] SPECIES SPACE -- which species rose and fell, {len(keys)} held-out "
-              f"cells (readout in-sample R2 {f['train_r2']:.3f} on {f['n_train']:,} training rows;"
-              " read that first)")
-        print(f"    {'predictor':<12}{'direction skill':>17}{'raw hit':>9}{'lazy':>7}{'rank tau':>10}")
-        for name, r in out["predictors"].items():
-            if "direction_skill" not in r:
-                print(f"    {name:<12}   {r.get('note', 'unavailable')}")
-                continue
-            print(f"    {name:<12}{r['direction_skill']:>+17.3f}{r['direction_hit_rate']:>9.3f}"
-                  f"{r['majority_direction_rate']:>7.3f}{r['rank_tau']:>+10.3f}")
-        s0 = out["predictors"].get("desk", {})
-        if "n_species_scored" in s0:
-            print(f"    {s0['n_species_scored']} species scored, "
-                  f"{s0['n_species_excluded_as_noise']} excluded below the noise floor; "
-                  f"{100 * s0['share_declining_observed']:.0f}% of scored species declined")
-    return out
+#: Denoising level of each species-stream predictor, and whether it is independent of the target.
+#: The same axis PREDICTOR_DENOISING records for the similarity stream, and it was missing here --
+#: which let the ceiling be built from the very rows the truth is computed from for one run.

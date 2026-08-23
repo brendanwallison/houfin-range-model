@@ -1221,10 +1221,67 @@ def bootstrap_skill_ci(obs, pred, null, n_boot=2000, seed=0, alpha=0.05):
             "hi": float(np.quantile(vals, 1.0 - alpha / 2.0)), "n": int(n)}
 
 
+def species_on_pairings(Xe, Xm, sources, idx, readout, is_heldout=None, n_pairs=20000,
+                        noise_floor_abs=0.0, seed=0):
+    """The species question asked of THE SAME pairs the similarity questions use. ``{...}``.
+
+    Not a second set of comparison points. `Xe`/`Xm` and the neighbour index `idx` already define
+    every pairing this module grades -- one place over time, two places in one era, two places
+    across eras -- so the species metric is applied to those, with the same predictors, on the
+    same rows. Building its own pairing would create a second definition of "which places are
+    being compared", which is the drift this module has been bitten by repeatedly.
+
+    For a pair of cells the "change" is the difference BETWEEN them rather than over time, and the
+    metric reads the same way: which species are higher in one than the other, and does the model
+    get that right. `readout` maps latent coordinates to per-species abundance and must have been
+    fitted on training rows only.
+
+    Pairs are SAMPLED (`n_pairs`) because a full cross of cells and neighbours is millions of pair
+    x species combinations for no extra resolution.
+    """
+    from .validate_baselines import apply_species_readout, species_change_agreement
+    rng = np.random.default_rng(seed)
+    n, k = idx.shape
+    ho = np.zeros(n, bool) if is_heldout is None else np.asarray(is_heldout, bool)
+
+    questions = {
+        "same_cell_over_time": ("self", lambda ze, zm: (ze, zm)),
+        "cross_cell_same_era_early": ("pair_ee", lambda ze, zm: (ze, ze)),
+        "cross_cell_same_era_modern": ("pair_mm", lambda ze, zm: (zm, zm)),
+        "cross_cell_cross_time": ("pair_em", lambda ze, zm: (ze, zm)),
+    }
+    out = {"n_pairs_sampled": {}, "questions": {}}
+    for qname, (kind, sel) in questions.items():
+        for split, mask in (("pooled", np.ones(n, bool)), ("heldout", ho)):
+            rowsel = np.where(mask)[0]
+            if len(rowsel) < 8:
+                continue
+            if kind == "self":
+                i = rowsel if len(rowsel) <= n_pairs else rng.choice(rowsel, n_pairs, False)
+                j = i
+            else:
+                i = rng.choice(rowsel, min(n_pairs, len(rowsel) * k), replace=True)
+                j = idx[i, rng.integers(0, k, len(i))]
+            XA, XB = (Xe, Xm) if kind in ("self", "pair_em") else \
+                     ((Xe, Xe) if kind == "pair_ee" else (Xm, Xm))
+            obs_a, obs_b = XA[i], XB[j]
+            block = {"n_pairs": int(len(i)), "predictors": {}}
+            for pname, zs in sources.items():
+                if zs is None:
+                    continue
+                za, zb = sel(*zs)
+                pa = apply_species_readout(readout, np.asarray(za)[i])
+                pb = apply_species_readout(readout, np.asarray(zb)[j])
+                block["predictors"][pname] = species_change_agreement(
+                    obs_a, obs_b, pa, pb, noise_floor_abs=noise_floor_abs)
+            out["questions"].setdefault(qname, {})[split] = block
+    return out
+
+
 def epoch_neighborhood_analysis(Xe, Xm, Ze, Zm, xy, k=99, n_bins=10, is_heldout=None,
                                 device=None, sc_esk=None, sc_idw=(None, None),
                                 sc_esk_independent=None, floor_similarity=None,
-                                strata=None, balance=None):
+                                strata=None, balance=None, species_readout=None):
     """Focal-to-neighbour comparisons across space AND time, resolved by distance (pure-ish).
 
     Four comparison types per focal/neighbour pair, all graded against the SAME frozen-modern null
@@ -1431,6 +1488,15 @@ def epoch_neighborhood_analysis(Xe, Xm, Ze, Zm, xy, k=99, n_bins=10, is_heldout=
             with np.errstate(divide="ignore", invalid="ignore"):
                 per_cell[f"{qname}_skill_{pname}"] = np.where(
                     rn > 0, 1.0 - rp / rn, 0.0).astype("float32")
+
+    # THE SPECIES QUESTION, on the SAME pairs. `species_readout` is fitted on training rows by the
+    # caller; without one this block is skipped and says so rather than being quietly absent.
+    if species_readout is not None:
+        report["species"] = species_on_pairings(Xe, Xm, sources, idx, species_readout,
+                                                is_heldout=is_heldout)
+    else:
+        report["species"] = {"note": ("no species readout supplied, so the species-space questions "
+                                      "were not asked this run")}
 
     report["manifest"] = {
         # The registry questions this analysis OWNS. Declared, not derived from `types` -- a scope
@@ -1950,9 +2016,28 @@ def _run_epoch_analysis(config, keys, X_raw_all, cells, e_rows, m_rows, gate_sta
     # MAIN TABLE -- full-sample truth, best precision for desk / no_change / spacetime_idw. The
     # esk_truncation row here shares the target's noise draw and is a representational-limit
     # check, NOT a ceiling; the ceiling lives in the split-half table below.
+    # The species readout, fitted on TRAINING rows only: cells outside the holdout. It maps latent
+    # coordinates to per-species abundance so the species question can be asked of every predictor
+    # through one decoder -- a difference between predictors is then about the coordinates rather
+    # than about how each was decoded.
+    species_readout = None
+    try:
+        from .validate_baselines import fit_species_readout
+        if sc_esk is not None and is_ho is not None and (~is_ho).sum() >= 50:
+            _tr = ~is_ho
+            species_readout = fit_species_readout(
+                np.vstack([sc_esk[0][_tr], sc_esk[1][_tr]]),
+                np.vstack([Xe[_tr], Xm[_tr]]))
+            print(f"[bbs-routes] species readout: in-sample R2 "
+                  f"{species_readout['train_r2']:.3f} on {species_readout['n_train']:,} training "
+                  "rows -- read this before any species number below")
+    except Exception as exc:
+        print(f"[bbs-routes] species readout unavailable ({exc})")
+
     rep, per_cell = epoch_neighborhood_analysis(Xe, Xm, Ze, Zm, xy, k=k, n_bins=n_bins,
                                                 sc_esk=sc_esk, sc_idw=(Ze_idw, Zm_idw),
-                                                is_heldout=is_ho)
+                                                is_heldout=is_ho,
+                                                species_readout=species_readout)
     rep["gate"] = gate_stats
     from .validate_baselines import smoothing_manifest
     rep["smoothing"] = smoothing_manifest(config, {

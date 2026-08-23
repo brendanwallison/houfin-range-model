@@ -822,19 +822,6 @@ def run_validate(config=None, n_pairs=20000, cka_sample=800, seed=0):
             else:
                 print(f"[validate] per-dimension signal/noise unavailable ({sn.get('note')})")
 
-            # SPECIES SPACE. Same question -- how did this place change -- asked about which
-            # species rose and fell rather than about a similarity, so a result can be checked
-            # against what is known about a species. Also a second metric on different
-            # principles: two conclusions this suite produced turned out to be properties of the
-            # metric rather than the model, and two independent metrics rarely fail the same way.
-            try:
-                from .validate_baselines import species_stream
-                report["species_change"] = species_stream(
-                    pidx, X, z_obs_pts, Z, ho, int(recent_year), exclude_years=hy)
-            except Exception as exc:
-                print(f"[validate] species-space stream unavailable ({exc})")
-                report["species_change"] = {"note": f"unavailable ({exc})"}
-
             atten = per_era_attenuation(pidx, z_obs_pts)
             # STORED, not only printed. This number governs every temporal claim in the project --
             # it is what says whether a low dir-cos is a weak model or a noisy target -- and its
@@ -859,6 +846,13 @@ def run_validate(config=None, n_pairs=20000, cka_sample=800, seed=0):
                     print(f"  {era}  attenuation {a['dir_cos_attenuation']:.2f}  "
                           f"(noise is {a['noise_share_of_long_gap']:.0%} of the long-gap "
                           f"difference; n_adj={a['n_adjacent_pairs']})")
+            # ONE point-denoising half-width for the whole pipeline, through the shared
+            # resolver. This was three constants for one concept, then two, and this site still
+            # re-derived it inline instead of calling smoothing_half_width -- which is how a
+            # fourth value gets introduced without anyone deciding to.
+            from .validate_baselines import smoothing_half_width
+            hw = smoothing_half_width(config)
+
             # The spacetime bar for the epoch panel: available even for epochs inside the
             # holdout, where the per-epoch spatial bar correctly reads n/a. Built once here and
             # handed in, so the panel and the ladder below score against the same alternative.
@@ -873,11 +867,141 @@ def run_validate(config=None, n_pairs=20000, cka_sample=800, seed=0):
                 print(f"[validate] epoch-panel spacetime bar at ratio={_r:g} cells/yr")
             except Exception as exc:
                 print(f"[validate] epoch-panel spacetime bar unavailable ({exc})")
-            # ONE point-denoising half-width for the whole pipeline. This used to be
-            # desk.trend.direction_half_width here and bbs_routes.window_half_width there, with
-            # DEFAULT_TOL reused as a third value -- three constants for one concept.
-            hw = int((config.get("target", {}) or {}).get(
-                "smooth_half_width", _tr_cfg.get("direction_half_width", 0)))
+            atten = per_era_attenuation(pidx, z_obs_pts)
+            # STORED, not only printed. This number governs every temporal claim in the project --
+            # it is what says whether a low dir-cos is a weak model or a noisy target -- and its
+            # only copy was job stdout. A figure that has to be grepped out of a log is a figure
+            # that gets quoted from memory, or forgotten and re-derived by hand.
+            #
+            # Caveat that belongs WITH the number: it is measured on SINGLE-YEAR adjacent pairs.
+            # Comparisons built on windowed endpoints (bbs_routes averages 4.2 early / 11.4 modern
+            # surveys) carry far less noise than this, roughly in proportion to the survey count,
+            # so applying 53% to them over-corrects. See scripts/diagnostics/noise_floor.py, which
+            # measures the floor at matched sample sizes.
+            if atten:
+                report["per_era_attenuation"] = {
+                    "note": ("measured on SINGLE-YEAR adjacent pairs at a fixed gap; do NOT apply "
+                             "to windowed-endpoint comparisons without rescaling for the survey "
+                             "count -- see scripts/diagnostics/noise_floor.py"),
+                    "gap_years": ATTEN_GAP, "gap_tol": ATTEN_GAP_TOL, "by_era": atten}
+            if atten:
+                print("[validate] dir-cos attenuation from single-year survey noise "
+                      "(raw BBS, ~1.08 routes/cell-year; 0.80 => observed 0.40 ~ true 0.50):")
+                for era, a in atten.items():
+                    print(f"  {era}  attenuation {a['dir_cos_attenuation']:.2f}  "
+                          f"(noise is {a['noise_share_of_long_gap']:.0%} of the long-gap "
+                          f"difference; n_adj={a['n_adjacent_pairs']})")
+            # ONE point-denoising half-width for the whole pipeline, through the shared
+            # resolver. This was three constants for one concept, then two, and this site still
+            # re-derived it inline instead of calling smoothing_half_width -- which is how a
+            # fourth value gets introduced without anyone deciding to.
+            from .validate_baselines import smoothing_half_width
+            hw = smoothing_half_width(config)
+
+            # The spacetime bar for the epoch panel: available even for epochs inside the
+            # holdout, where the per-epoch spatial bar correctly reads n/a. Built once here and
+            # handed in, so the panel and the ladder below score against the same alternative.
+            z_st_panel = None
+            try:
+                from .validate_baselines import spacetime_idw_baseline, spacetime_idw_z
+                _e, _r = spacetime_idw_baseline(pidx, z_obs_pts, ho,
+                                                np.zeros(len(pidx), bool),
+                                                buffer_mask=bf, exclude_years=hy, verbose=False)
+                z_st_panel = spacetime_idw_z(pidx, z_obs_pts, ho, float(_r),
+                                             buffer_mask=bf, exclude_years=hy)
+                print(f"[validate] epoch-panel spacetime bar at ratio={_r:g} cells/yr")
+            except Exception as exc:
+                print(f"[validate] epoch-panel spacetime bar unavailable ({exc})")
+            atten = per_era_attenuation(pidx, z_obs_pts)
+            # STORED, not only printed. This number governs every temporal claim in the project --
+            # it is what says whether a low dir-cos is a weak model or a noisy target -- and its
+            # only copy was job stdout. A figure that has to be grepped out of a log is a figure
+            # that gets quoted from memory, or forgotten and re-derived by hand.
+            #
+            # Caveat that belongs WITH the number: it is measured on SINGLE-YEAR adjacent pairs.
+            # Comparisons built on windowed endpoints (bbs_routes averages 4.2 early / 11.4 modern
+            # surveys) carry far less noise than this, roughly in proportion to the survey count,
+            # so applying 53% to them over-corrects. See scripts/diagnostics/noise_floor.py, which
+            # measures the floor at matched sample sizes.
+            if atten:
+                report["per_era_attenuation"] = {
+                    "note": ("measured on SINGLE-YEAR adjacent pairs at a fixed gap; do NOT apply "
+                             "to windowed-endpoint comparisons without rescaling for the survey "
+                             "count -- see scripts/diagnostics/noise_floor.py"),
+                    "gap_years": ATTEN_GAP, "gap_tol": ATTEN_GAP_TOL, "by_era": atten}
+            if atten:
+                print("[validate] dir-cos attenuation from single-year survey noise "
+                      "(raw BBS, ~1.08 routes/cell-year; 0.80 => observed 0.40 ~ true 0.50):")
+                for era, a in atten.items():
+                    print(f"  {era}  attenuation {a['dir_cos_attenuation']:.2f}  "
+                          f"(noise is {a['noise_share_of_long_gap']:.0%} of the long-gap "
+                          f"difference; n_adj={a['n_adjacent_pairs']})")
+            # ONE point-denoising half-width for the whole pipeline, through the shared
+            # resolver. This was three constants for one concept, then two, and this site still
+            # re-derived it inline instead of calling smoothing_half_width -- which is how a
+            # fourth value gets introduced without anyone deciding to.
+            from .validate_baselines import smoothing_half_width
+            hw = smoothing_half_width(config)
+
+            # The spacetime bar for the epoch panel: available even for epochs inside the
+            # holdout, where the per-epoch spatial bar correctly reads n/a. Built once here and
+            # handed in, so the panel and the ladder below score against the same alternative.
+            z_st_panel = None
+            try:
+                from .validate_baselines import spacetime_idw_baseline, spacetime_idw_z
+                _e, _r = spacetime_idw_baseline(pidx, z_obs_pts, ho,
+                                                np.zeros(len(pidx), bool),
+                                                buffer_mask=bf, exclude_years=hy, verbose=False)
+                z_st_panel = spacetime_idw_z(pidx, z_obs_pts, ho, float(_r),
+                                             buffer_mask=bf, exclude_years=hy)
+                print(f"[validate] epoch-panel spacetime bar at ratio={_r:g} cells/yr")
+            except Exception as exc:
+                print(f"[validate] epoch-panel spacetime bar unavailable ({exc})")
+            atten = per_era_attenuation(pidx, z_obs_pts)
+            # STORED, not only printed. This number governs every temporal claim in the project --
+            # it is what says whether a low dir-cos is a weak model or a noisy target -- and its
+            # only copy was job stdout. A figure that has to be grepped out of a log is a figure
+            # that gets quoted from memory, or forgotten and re-derived by hand.
+            #
+            # Caveat that belongs WITH the number: it is measured on SINGLE-YEAR adjacent pairs.
+            # Comparisons built on windowed endpoints (bbs_routes averages 4.2 early / 11.4 modern
+            # surveys) carry far less noise than this, roughly in proportion to the survey count,
+            # so applying 53% to them over-corrects. See scripts/diagnostics/noise_floor.py, which
+            # measures the floor at matched sample sizes.
+            if atten:
+                report["per_era_attenuation"] = {
+                    "note": ("measured on SINGLE-YEAR adjacent pairs at a fixed gap; do NOT apply "
+                             "to windowed-endpoint comparisons without rescaling for the survey "
+                             "count -- see scripts/diagnostics/noise_floor.py"),
+                    "gap_years": ATTEN_GAP, "gap_tol": ATTEN_GAP_TOL, "by_era": atten}
+            if atten:
+                print("[validate] dir-cos attenuation from single-year survey noise "
+                      "(raw BBS, ~1.08 routes/cell-year; 0.80 => observed 0.40 ~ true 0.50):")
+                for era, a in atten.items():
+                    print(f"  {era}  attenuation {a['dir_cos_attenuation']:.2f}  "
+                          f"(noise is {a['noise_share_of_long_gap']:.0%} of the long-gap "
+                          f"difference; n_adj={a['n_adjacent_pairs']})")
+            # ONE point-denoising half-width for the whole pipeline, through the shared
+            # resolver. This was three constants for one concept, then two, and this site still
+            # re-derived it inline instead of calling smoothing_half_width -- which is how a
+            # fourth value gets introduced without anyone deciding to.
+            from .validate_baselines import smoothing_half_width
+            hw = smoothing_half_width(config)
+
+            # The spacetime bar for the epoch panel: available even for epochs inside the
+            # holdout, where the per-epoch spatial bar correctly reads n/a. Built once here and
+            # handed in, so the panel and the ladder below score against the same alternative.
+            z_st_panel = None
+            try:
+                from .validate_baselines import spacetime_idw_baseline, spacetime_idw_z
+                _e, _r = spacetime_idw_baseline(pidx, z_obs_pts, ho,
+                                                np.zeros(len(pidx), bool),
+                                                buffer_mask=bf, exclude_years=hy, verbose=False)
+                z_st_panel = spacetime_idw_z(pidx, z_obs_pts, ho, float(_r),
+                                             buffer_mask=bf, exclude_years=hy)
+                print(f"[validate] epoch-panel spacetime bar at ratio={_r:g} cells/yr")
+            except Exception as exc:
+                print(f"[validate] epoch-panel spacetime bar unavailable ({exc})")
             # Raw-space truth averaging, if the basis spans window means. The panel gates on that
             # itself and reports which estimand it used.
             _proj_fn = (lambda A: project_points_to_z(np.asarray(A, "float32"),

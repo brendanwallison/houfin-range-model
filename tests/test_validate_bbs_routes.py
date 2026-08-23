@@ -1869,3 +1869,29 @@ def test_room_flags_a_ceiling_that_shares_the_targets_noise():
                                             "esk_oracle_independent": {"pearson_r": 0.654}}})
     assert honest["ceiling_shares_target_noise"] is False
     assert "caveat" not in honest
+
+
+def test_the_species_questions_use_the_same_pairs_as_the_similarity_questions():
+    """Not a second set of comparison points. Building its own pairing would create a second
+    definition of which places are being compared, which is the drift that has bitten this module
+    repeatedly -- two species-column orders, three window constants, two change decompositions."""
+    from src.community_encoder.train_DESK.validate_bbs_routes import (
+        species_on_pairings, epoch_neighborhood_analysis)
+    from src.community_encoder.train_DESK.validate_baselines import fit_species_readout
+    Xe, Xm, A, xy = _epoch_fixture()
+    Ze, Zm = Xe @ A, Xm @ A
+    ro = fit_species_readout(np.vstack([Ze, Zm]), np.vstack([Xe, Xm]))
+    rep, _ = epoch_neighborhood_analysis(Xe, Xm, Ze, Zm, xy, k=9, n_bins=3,
+                                         sc_esk=(Ze, Zm), species_readout=ro)
+    sp = rep["species"]["questions"]
+    # all three streams, not just the temporal one
+    assert "same_cell_over_time" in sp                      # temporal
+    assert "cross_cell_same_era_early" in sp                # spatial
+    assert "cross_cell_same_era_modern" in sp               # spatial
+    assert "cross_cell_cross_time" in sp                    # spatiotemporal
+    # and the same predictors as the similarity tables
+    got = set(sp["cross_cell_cross_time"]["pooled"]["predictors"])
+    assert {"desk", "no_change", "esk_truncation"} <= got, got
+    # absent readout -> a stated reason, never a silent omission
+    bare, _ = epoch_neighborhood_analysis(Xe, Xm, Ze, Zm, xy, k=9, n_bins=3)
+    assert "no species readout supplied" in bare["species"]["note"]

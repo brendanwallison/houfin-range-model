@@ -1131,41 +1131,6 @@ def test_a_species_absent_from_both_endpoints_is_not_scored():
     r = species_change_agreement(xe, xm, xe, xm)
     # species 0 and 3 are absent from both; 1 appeared, 2 disappeared, and 20 rose
     assert r["n_species_scored"] == 22, r
-
-
-def test_the_species_readout_is_fitted_on_training_rows_only():
-    """Fitting on everything would let the readout memorise the rows it is scored on."""
-    from src.community_encoder.train_DESK.validate_baselines import species_stream
-    rng = np.random.default_rng(0)
-    cells = [(r, c) for r in range(8) for c in range(8)]
-    years = [1970, 2025]
-    pidx = np.array([[r, c, y] for (r, c) in cells for y in years], dtype=np.int32)
-    Zt = rng.normal(size=(len(pidx), 6))
-    W = rng.normal(size=(6, 25)) * 0.7
-    X = np.clip(Zt @ W + 3.0, 0.0, None)
-    ho = np.zeros((8, 8), bool)
-    ho[6:, :] = True                                    # held-out cells never seen by the fit
-
-    out = species_stream(pidx, X, Zt, Zt, ho, 2025, verbose=False)
-    assert "readout_fit" in out and out["n_cells"] == 16
-    # the fit saw only training rows: 48 cells x 2 years
-    assert out["readout_fit"]["n_train"] == 96, out["readout_fit"]
-    # a readout given the observed coordinates IS the ceiling, and must score well
-    assert out["predictors"]["ceiling"]["direction_skill"] > 0.5
-    # frozen-at-recent predicts no change for any species, so it ABSTAINS rather than scoring --
-    # counting its silence as wrong would read as 'worse than useless'
-    assert "abstention" in out["predictors"]["no_change"]["note"]
-
-
-def test_the_species_stream_says_so_when_it_cannot_run():
-    from src.community_encoder.train_DESK.validate_baselines import species_stream
-    pidx = np.array([[0, 0, 1970], [0, 0, 2025]], dtype=np.int32)
-    X = np.ones((2, 5))
-    out = species_stream(pidx, X, np.ones((2, 3)), np.ones((2, 3)),
-                         np.ones((1, 1), bool), 2025, verbose=False)
-    assert "note" in out and "held-out cells" in out["note"]
-
-
 def test_a_predictor_of_no_change_abstains_rather_than_scoring_worst():
     """The frozen-at-recent null predicts zero change for every species by construction. Counting
     that as wrong every time read as -1.007 -- 'worse than useless' -- when the honest description
@@ -1186,3 +1151,13 @@ def test_a_predictor_of_no_change_abstains_rather_than_scoring_worst():
     assert r["n_species_committed"] == 30, r
     assert 0.4 < r["commit_rate"] < 0.6
     assert r["direction_skill"] > 0.9                      # right on every one it committed to
+def test_a_comparison_where_every_species_moves_the_same_way_reports_no_skill():
+    """The lazy guess is already perfect, so there is nothing for a direction score to
+    discriminate. Dividing by what remains of it produced -5e10 on a real fixture."""
+    from src.community_encoder.train_DESK.validate_baselines import species_change_agreement
+    xe = np.full((1, 40), 2.0)
+    xm = xe + 1.0                                    # every species rises
+    r = species_change_agreement(xe, xm, xe, xm)
+    assert "direction_skill" not in r, r
+    assert "no information" in r["note"]
+    assert r["share_declining_observed"] == 0.0

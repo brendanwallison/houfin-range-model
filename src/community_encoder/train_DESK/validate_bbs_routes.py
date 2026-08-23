@@ -364,6 +364,18 @@ QUESTIONS = {
                 "construction, so its skill must be EXACTLY 0 -- the harness's built-in zero "
                 "check. If it ever moves, no other row can be trusted."),
     },
+    "pair_convergence": {
+        "pairs": "two cells, EARLY similarity against MODERN similarity -- the difference",
+        "observed": "Ruzicka(Xm_i, Xm_j) - Ruzicka(Xe_i, Xe_j)",
+        "why": ("did these two places grow more alike, or less. The JOINT question, and the only "
+                "one here that is neither purely spatial nor purely temporal: a model can predict "
+                "each place's trajectory acceptably and still get every RELATIONSHIP wrong -- "
+                "communities that converged shown as diverging, regional homogenisation missed. "
+                "It is also the one temporal-ish question with room to resolve skill: freezing "
+                "both cells leaves the similarity between them untouched, so the no-change null "
+                "scores EXACTLY zero here, unlike `same_cell_over_time` where it already reaches "
+                "0.65 from static cell structure and leaves almost nothing to measure."),
+    },
     "cross_cell_cross_time": {
         "pairs": "historic cell i against modern cell j",
         "observed": "Ruzicka(Xe_i, Xm_j)",
@@ -746,6 +758,48 @@ def compare_positions(z_obs, predictors, reference="no_change", populations=None
             res["unavailable"][name] = (UNAVAILABLE_NOT_SUPPLIED if P is None else
                                         "fewer than 4 finite rows to score")
     return res
+
+
+def resolving_room(result, baseline="no_change", ceiling=("esk_oracle_independent",
+                                                          "esk_truncation")):
+    """How much room a comparison has to tell models apart. ``{...}``. Pure.
+
+    The distance between the no-information baseline and the ceiling. This is a property of the
+    QUESTION, not of the model, and printing it beside every result is the direct fix for the
+    contradiction that motivated this whole pass:
+
+    * comparing how similar a place's early community is to its modern one, the frozen-in-place
+      baseline already scores 0.65 and the ceiling is 0.80. Every model lands in a band of 0.15,
+      differences of 0.01 are not interpretable, and reading one as "DESK knows nothing about
+      time" was wrong.
+    * comparing the DIRECTION of each place's change, the same baseline scores 0.02-0.12 against
+      a ceiling of 0.42. There is room, and DESK's 0.09-0.42 means something.
+
+    Both describe the same places over the same period. The second can resolve skill and the
+    first cannot, and nothing in the report said so.
+    """
+    preds = (result or {}).get("predictors") or {}
+    if baseline not in preds:
+        return {"note": f"baseline {baseline!r} absent; room undefined"}
+    ceil_name = next((c for c in ceiling if c in preds), None)
+    if ceil_name is None:
+        return {"note": f"no ceiling among {list(ceiling)}; room undefined",
+                "baseline_r": preds[baseline].get("pearson_r")}
+    b = float(preds[baseline].get("pearson_r", float("nan")))
+    c = float(preds[ceil_name].get("pearson_r", float("nan")))
+    room = c - b
+    out = {"baseline": baseline, "baseline_r": b, "ceiling": ceil_name, "ceiling_r": c,
+           "room": room}
+    if not np.isfinite(room):
+        out["verdict"] = "room undefined"
+    elif room < 0.15:
+        out["verdict"] = (f"NARROW ({room:.3f}): the no-information baseline already scores "
+                          f"{b:.3f} against a ceiling of {c:.3f}, so every model is squeezed into "
+                          "a small band. Differences between predictors here are NOT evidence of "
+                          "skill; use a comparison with more room.")
+    else:
+        out["verdict"] = f"usable ({room:.3f}): a model has somewhere to be between {b:.3f} and {c:.3f}"
+    return out
 
 
 def compare_predictors(obs, predictors, reference="no_change", grams=False):
@@ -1156,77 +1210,6 @@ def bootstrap_skill_ci(obs, pred, null, n_boot=2000, seed=0, alpha=0.05):
             "hi": float(np.quantile(vals, 1.0 - alpha / 2.0)), "n": int(n)}
 
 
-def movement_decomposition(sources, reference="esk_oracle_independent"):
-    """How each predictor's community MOVES over time, against a reference's movement. Pure.
-
-    ``sources`` is ``{name: (z_early, z_modern)}``. For each predictor the change vector is
-    ``d = z_modern - z_early``; the reference's ``d_ref`` is what the observed community actually
-    did. Returns per predictor::
-
-        {"delta_norm", "delta_ratio", "dir_cos", "radial_share", "tangential_share",
-         "mag_share_of_error", "ang_share_of_error"}
-
-    WHY THIS IS SEPARATE FROM THE SIMILARITY TABLE, and why it had to come first.
-
-    The similarity metrics answer "does predicted similarity fall the way observed similarity
-    does". Their temporal content reduces to ``desk - no_change = (z_e - z_m) . z_m``: the
-    component of movement ALONG the modern position, i.e. the part that changes the dot product.
-    Movement ORTHOGONAL to ``z_m`` does not register there at all. So a predictor moving barely at
-    all in the right direction and one moving a great deal in a direction that happens not to
-    reduce similarity produce the SAME number, while being opposite diagnoses with opposite fixes:
-    the first is a damped model (the ~10.8 yr output EMA is the obvious suspect), the second is a
-    model whose movement is misdirected, where damping is irrelevant and the loss or the geometry
-    is at fault.
-
-    ``delta_ratio`` and ``dir_cos`` separate them directly: ratio ~0 with a high cosine is small
-    movement in the right direction; ratio ~1 with a cosine near 0 is large movement in the wrong
-    one. The magnitude/angular split of the residual comes from ``error_decomposition``, the same
-    identity used for positions, applied here to the change vectors.
-    """
-    from .validate_baselines import error_decomposition
-
-    ref = sources.get(reference)
-    if ref is None or ref[0] is None or ref[1] is None:
-        return {"note": f"reference {reference!r} unavailable; movement cannot be referenced"}
-    d_ref = np.asarray(ref[1], "float64") - np.asarray(ref[0], "float64")
-    n_ref = np.linalg.norm(d_ref, axis=1)
-
-    out = {"reference": reference,
-           "reference_delta_norm": float(np.median(n_ref)),
-           "predictors": {}}
-    for name, zs in sources.items():
-        if zs is None or zs[0] is None or zs[1] is None:
-            continue
-        ze, zm = np.asarray(zs[0], "float64"), np.asarray(zs[1], "float64")
-        d = zm - ze
-        nd = np.linalg.norm(d, axis=1)
-        # Split the movement about the MODERN position: the radial part changes the dot product
-        # (and so drives every similarity metric), the tangential part is invisible to them.
-        unit_m = zm / np.maximum(np.linalg.norm(zm, axis=1, keepdims=True), 1e-12)
-        radial = (d * unit_m).sum(1)
-        tangential = np.sqrt(np.maximum(nd ** 2 - radial ** 2, 0.0))
-        tot, mag, ang, cos = error_decomposition(d, d_ref)
-        with np.errstate(divide="ignore", invalid="ignore"):
-            ratio = np.where(n_ref > 1e-12, nd / n_ref, np.nan)
-        out["predictors"][name] = {
-            "delta_norm": float(np.median(nd)),
-            "delta_ratio": float(np.nanmedian(ratio)),
-            "dir_cos": float(np.nanmedian(cos)),
-            "radial_share": float(np.median(np.abs(radial) /
-                                            np.maximum(np.abs(radial) + tangential, 1e-12))),
-            "tangential_share": float(np.median(tangential /
-                                                np.maximum(np.abs(radial) + tangential, 1e-12))),
-            "mag_share_of_error": float(np.mean(mag) / max(float(np.mean(tot)), 1e-12)),
-            "ang_share_of_error": float(np.mean(ang) / max(float(np.mean(tot)), 1e-12)),
-        }
-    out["reading"] = ("delta_ratio ~0 with high dir_cos = SMALL movement in the RIGHT direction "
-                      "(a damped model; check the output EMA). delta_ratio ~1 with dir_cos ~0 = "
-                      "LARGE movement in the WRONG direction (loss/geometry; damping is not the "
-                      "issue). The similarity tables cannot tell these apart, because they see "
-                      "only the radial component.")
-    return out
-
-
 def epoch_neighborhood_analysis(Xe, Xm, Ze, Zm, xy, k=99, n_bins=10, is_heldout=None,
                                 device=None, sc_esk=None, sc_idw=(None, None),
                                 sc_esk_independent=None, floor_similarity=None,
@@ -1341,6 +1324,7 @@ def epoch_neighborhood_analysis(Xe, Xm, Ze, Zm, xy, k=99, n_bins=10, is_heldout=
                     dot["skill_vs_spacetime_idw"] = compare_predictors(
                         take(obs_q), {p: take(M) for p, M in types[qname].items()},
                         reference="spacetime_idw")["skill_vs"]
+                dot["room"] = resolving_room(dot)
                 return {"dot": dot, "cosine": cos}
 
             per_bin = {"all_distances": _row(None)}
@@ -1369,6 +1353,36 @@ def epoch_neighborhood_analysis(Xe, Xm, Ze, Zm, xy, k=99, n_bins=10, is_heldout=
         a, b = zs
         sc_cos[pname] = (_unit(a) * _unit(b)).sum(1)
 
+    # ---- pair_convergence: did i and j grow more alike, or less? --------------------------
+    # Pure subtraction of two tables that already ran over the SAME neighbour pairs. Both halves
+    # have been computed and reported separately since the epoch analysis was written; their
+    # difference -- the joint spacetime quantity -- was never formed.
+    E, M = "cross_cell_same_era_early", "cross_cell_same_era_modern"
+    if E in types and M in types:
+        conv_obs = types_obs[M] - types_obs[E]
+        conv = {p: types[M][p] - types[E][p] for p in types[M] if p in types[E]}
+        conv_cos = {p: types_cos[M][p] - types_cos[E][p]
+                    for p in types_cos[M] if p in types_cos[E]}
+        report["types"]["pair_convergence"] = {}
+        for sname, smask in splits.items():
+            rows = np.where(smask)[0]
+            per_bin = {}
+            for lab, sel_b in [("all_distances", None)] + [
+                    (l, bin_of[rows] == b) for b, l in enumerate(labels)]:
+                take = (lambda A: A[rows] if sel_b is None else A[rows][sel_b])
+                n_here = len(rows) if sel_b is None else int(sel_b.sum())
+                if n_here < 10:
+                    per_bin[lab] = {"n_pairs": n_here, "skipped": "fewer than 10 pairs"}
+                    continue
+                dot_c = compare_predictors(take(conv_obs), {p: take(v) for p, v in conv.items()})
+                cos_c = compare_predictors(take(conv_obs),
+                                           {p: take(v) for p, v in conv_cos.items()})
+                dot_c["unavailable"].update(missing)
+                cos_c["unavailable"].update(missing)
+                dot_c["room"] = resolving_room(dot_c)
+                per_bin[lab] = {"dot": dot_c, "cosine": cos_c}
+            report["types"]["pair_convergence"][sname] = per_bin
+
     report["types"]["same_cell_over_time"] = {}
     for sname, m in splits.items():
         w = np.where(m)[0]
@@ -1385,6 +1399,7 @@ def epoch_neighborhood_analysis(Xe, Xm, Ze, Zm, xy, k=99, n_bins=10, is_heldout=
         # matrices elsewhere have an effective n far below their n_pairs.
         dot["ci95"] = {p: bootstrap_skill_ci(sc_obs[w], v[w], sc["no_change"][w])
                        for p, v in sc.items() if p != "no_change"}
+        dot["room"] = resolving_room(dot)
         report["types"]["same_cell_over_time"][sname] = {"all_distances": {"dot": dot,
                                                                            "cosine": cos}}
 
@@ -1406,17 +1421,12 @@ def epoch_neighborhood_analysis(Xe, Xm, Ze, Zm, xy, k=99, n_bins=10, is_heldout=
                 per_cell[f"{qname}_skill_{pname}"] = np.where(
                     rn > 0, 1.0 - rp / rn, 0.0).astype("float32")
 
-    # WHAT MOVED, not just whether predicted similarity fell. See movement_decomposition: the
-    # similarity tables see only the component of movement along z_m, so they cannot separate a
-    # damped model from a misdirected one.
-    report["movement"] = movement_decomposition(
-        {n: v for n, v in sources.items() if v is not None})
-
     report["manifest"] = {
         # The registry questions this analysis OWNS. Declared, not derived from `types` -- a scope
         # read back off the output would make `assert_complete` compare the report to itself.
         # `absolute_position` is deliberately absent: it is `zspace_reconstruction`'s question.
-        "covers": ["same_cell_over_time", "cross_cell_same_era", "cross_cell_cross_time"],
+        "covers": ["same_cell_over_time", "cross_cell_same_era", "cross_cell_cross_time",
+                   "pair_convergence"],
         "questions": {q: QUESTIONS.get(canonical_question(q), {}) for q in report["types"]},
         "predictors": {p: PREDICTOR_ROLES.get(p, "") for p in sources if sources[p] is not None},
         "unavailable": missing,

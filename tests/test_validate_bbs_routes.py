@@ -578,7 +578,8 @@ def test_epoch_analysis_shape_and_that_a_tracking_desk_beats_the_null():
     Xe, Xm, A, xy = _epoch_fixture()
     rep, per_cell = epoch_neighborhood_analysis(Xe, Xm, Xe @ A, Xm @ A, xy, k=9, n_bins=3)
 
-    assert set(rep["types"]) == {"cross_cell_same_era_early", "cross_cell_same_era_modern",
+    assert set(rep["types"]) == {"pair_convergence",
+                                 "cross_cell_same_era_early", "cross_cell_same_era_modern",
                                  "cross_cell_cross_time", "same_cell_over_time"}
     assert rep["config"]["k"] == 9 and rep["config"]["n_focal_cells"] == 40
     # a DESK that tracks the truth must beat the frozen-modern null where time matters
@@ -1750,54 +1751,101 @@ def test_a_stratum_dropped_without_a_reason_is_caught():
     assert any("no stated reason" in g for g in gaps), gaps
 
 
-def test_movement_separates_a_damped_model_from_a_misdirected_one():
-    """The distinction the similarity tables structurally cannot make.
+# ---------------------------------------------------------------------------------------------
+# pair_convergence -- did two places grow more alike, or less
+# ---------------------------------------------------------------------------------------------
 
-    `desk - no_change` is `(z_e - z_m) . z_m`: only the component of movement ALONG the modern
-    position. A model barely moving in the right direction and one moving a lot in a direction
-    that happens not to reduce similarity give the SAME number -- while being opposite diagnoses
-    with opposite fixes (damping vs loss/geometry).
+def test_convergence_has_a_true_zero_baseline():
+    """Why this question can resolve skill when same_cell_over_time cannot.
+
+    Freezing both cells at their modern state leaves the similarity BETWEEN them untouched, so the
+    no-change null predicts exactly zero convergence. That is a genuine zero. On
+    same_cell_over_time the same null already reaches 0.65, because how much a place appears to
+    change is mostly a fixed property of that place, and there is almost no room left above it.
     """
-    from src.community_encoder.train_DESK.validate_bbs_routes import movement_decomposition
+    Xe, Xm, A, xy = _epoch_fixture()
     rng = np.random.default_rng(0)
-    n, L = 300, 12
-    zm = rng.normal(size=(n, L))
-    d_true = rng.normal(size=(n, L)) * 0.5                # what the community actually did
-    truth = (zm - d_true, zm)
+    Ze, Zm = Xe @ A, Xm @ A
+    rep, _ = epoch_neighborhood_analysis(Xe, Xm, Ze, Zm, xy, k=9, n_bins=3)
+    node = rep["types"]["pair_convergence"]["pooled"]["all_distances"]["dot"]
+    nc = node["predictors"]["no_change"]
 
-    damped = (zm - 0.05 * d_true, zm)                     # right direction, 5% of the magnitude
-    ortho = rng.normal(size=(n, L))
-    ortho -= (ortho * d_true).sum(1, keepdims=True) * d_true / (d_true ** 2).sum(1, keepdims=True)
-    ortho *= np.linalg.norm(d_true, axis=1, keepdims=True) / np.linalg.norm(ortho, axis=1, keepdims=True)
-    misdirected = (zm - ortho, zm)                        # full magnitude, orthogonal direction
-
-    out = movement_decomposition(
-        {"damped": damped, "misdirected": misdirected, "esk_oracle_independent": truth})
-    dmp = out["predictors"]["damped"]
-    mis = out["predictors"]["misdirected"]
-
-    assert dmp["delta_ratio"] < 0.15, dmp                  # barely moves...
-    assert dmp["dir_cos"] > 0.95, dmp                      # ...but the right way
-    assert mis["delta_ratio"] > 0.8, mis                   # moves the full amount...
-    assert abs(mis["dir_cos"]) < 0.2, mis                  # ...in an unrelated direction
-    # and the reference matches itself exactly
-    ref = out["predictors"]["esk_oracle_independent"]
-    assert abs(ref["delta_ratio"] - 1.0) < 1e-9 and ref["dir_cos"] > 0.999
-
-    # the error splits the two ways round: damped fails on MAGNITUDE, misdirected on ANGLE
-    assert dmp["mag_share_of_error"] > dmp["ang_share_of_error"], dmp
-    assert mis["ang_share_of_error"] > mis["mag_share_of_error"], mis
+    # the null predicts a CONSTANT zero: no spread, and flagged as such
+    assert abs(nc["sd_pred"]) < 1e-12, nc
+    assert nc["pearson_interpretable"] is False, nc
+    # ...and the observed convergence is NOT zero, so there is something to predict
+    assert node["observed_sd"] > 1e-6, node["observed_sd"]
 
 
-def test_movement_reports_the_component_the_similarity_tables_cannot_see():
-    """Radial movement drives every similarity metric; tangential movement is invisible to them."""
-    from src.community_encoder.train_DESK.validate_bbs_routes import movement_decomposition
-    rng = np.random.default_rng(1)
-    n, L = 200, 8
-    zm = rng.normal(size=(n, L))
-    unit = zm / np.linalg.norm(zm, axis=1, keepdims=True)
-    radial_only = (zm - unit * 0.4, zm)                    # purely along z_m
-    out = movement_decomposition({"radial": radial_only, "esk_oracle_independent": radial_only})
-    r = out["predictors"]["radial"]
-    assert r["radial_share"] > 0.98, r
-    assert r["tangential_share"] < 0.02, r
+def test_convergence_recovers_planted_structure():
+    """Cells made to converge must read as converging, and cells made to diverge as diverging."""
+    from src.community_encoder.train_DESK.validate_bbs_routes import _rowwise_ruzicka
+    rng = np.random.default_rng(2)
+    n_sp = 24
+    a = rng.random(n_sp) * 5.0
+    b = rng.random(n_sp) * 5.0
+    # a pair that converges: both eras start apart, end close
+    e_i, e_j = a, b
+    m_i, m_j = 0.5 * (a + b), 0.5 * (a + b)
+    conv = (_rowwise_ruzicka(m_i[None, :], m_j[None, :])
+            - _rowwise_ruzicka(e_i[None, :], e_j[None, :]))[0]
+    # a pair that diverges: same endpoints, swapped eras
+    div = (_rowwise_ruzicka(e_i[None, :], e_j[None, :])
+           - _rowwise_ruzicka(m_i[None, :], m_j[None, :]))[0]
+    assert conv > 0.05, conv        # grew more alike -> positive
+    assert div < -0.05, div         # grew less alike -> negative
+    assert abs(conv + div) < 1e-12  # exact mirror image
+
+
+def test_convergence_is_the_difference_of_two_tables_that_already_ran():
+    """It is a subtraction, not a new measurement -- both halves ran over the SAME neighbour pairs
+    and were reported separately for the whole life of the epoch analysis."""
+    Xe, Xm, A, xy = _epoch_fixture()
+    Ze, Zm = Xe @ A, Xm @ A
+    rep, _ = epoch_neighborhood_analysis(Xe, Xm, Ze, Zm, xy, k=9, n_bins=3)
+    g = lambda q: rep["types"][q]["pooled"]["all_distances"]["dot"]
+    early, modern, conv = g("cross_cell_same_era_early"), g("cross_cell_same_era_modern"), g("pair_convergence")
+    assert early["n"] == modern["n"] == conv["n"]          # identical pair population
+    # observed convergence mean is the difference of the two observed means
+    assert abs(conv["observed_mean"] - (modern["observed_mean"] - early["observed_mean"])) < 1e-9
+
+
+def test_room_flags_a_question_that_cannot_resolve_skill():
+    """The direct fix for the contradiction that motivated this pass: two comparisons of the same
+    places over the same period gave opposite verdicts, and nothing said one of them had no room."""
+    from src.community_encoder.train_DESK.validate_bbs_routes import resolving_room
+    # the REAL measured values from the 1995 run, not round numbers -- the narrow case sits at
+    # 0.147 and a fixture at exactly 0.15 would straddle the threshold for no good reason
+    narrow = {"predictors": {"no_change": {"pearson_r": 0.649},      # similarity between eras
+                             "desk": {"pearson_r": 0.638},
+                             "esk_oracle_independent": {"pearson_r": 0.796}}}
+    wide = {"predictors": {"no_change": {"pearson_r": 0.066},        # direction of change
+                           "desk": {"pearson_r": 0.233},
+                           "esk_oracle_independent": {"pearson_r": 0.42}}}
+    n, w = resolving_room(narrow), resolving_room(wide)
+    assert n["room"] < 0.15 and "NARROW" in n["verdict"], n
+    assert w["room"] > 0.3 and "usable" in w["verdict"], w
+    # DESK is 0.01 BELOW the null in the narrow case and 0.25 above it in the wide one -- but the
+    # narrow verdict must not be read as skill either way, which is what the verdict says
+    assert "NOT evidence of skill" in n["verdict"]
+    # falls back to the truncation ceiling when the independent one is unavailable
+    only_trunc = {"predictors": {"no_change": {"pearson_r": 0.1},
+                                 "esk_truncation": {"pearson_r": 0.9}}}
+    assert resolving_room(only_trunc)["ceiling"] == "esk_truncation"
+    # and says so rather than inventing a number when there is no ceiling at all
+    assert "room undefined" in resolving_room({"predictors": {"no_change": {"pearson_r": 0.1}}})["note"]
+
+
+def test_every_epoch_question_reports_its_room():
+    Xe, Xm, A, xy = _epoch_fixture()
+    rng = np.random.default_rng(0)
+    Ze, Zm = Xe @ A, Xm @ A
+    ind = (Ze + rng.normal(scale=.15, size=Ze.shape), Zm + rng.normal(scale=.15, size=Zm.shape))
+    rep, _ = epoch_neighborhood_analysis(Xe, Xm, Ze, Zm, xy, k=9, n_bins=3,
+                                         sc_esk=(Ze, Zm), sc_esk_independent=ind)
+    for q, node in rep["types"].items():
+        row = node["pooled"]["all_distances"]
+        if "skipped" in row:
+            continue
+        assert "room" in row["dot"], q
+        assert "verdict" in row["dot"]["room"], (q, row["dot"]["room"])

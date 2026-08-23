@@ -1023,3 +1023,108 @@ def test_one_unsplittable_cell_does_not_destroy_the_whole_ceiling():
         except ValueError:
             dropped.append(name)
     assert ok == ["a", "c"] and dropped == ["b"]     # the short one goes, the others stay
+
+
+# ---------------------------------------------------------------------------------------------
+# Species space -- which species rise and fall
+# ---------------------------------------------------------------------------------------------
+
+def _species_world(n=400, n_sp=30, latent=6, seed=0):
+    """Communities generated from latent coordinates, so a linear readout can in principle work."""
+    rng = np.random.default_rng(seed)
+    Z = rng.normal(size=(n, latent))
+    W = rng.normal(size=(latent, n_sp)) * 0.8
+    X = np.clip(Z @ W + 3.0 + rng.normal(scale=0.1, size=(n, n_sp)), 0.0, None)
+    return Z, X
+
+
+def test_the_species_readout_is_reported_in_sample_before_anything_else():
+    """If the coordinates cannot reproduce abundances on the data the map was fitted to, nothing
+    computed from the readout is about DESK."""
+    from src.community_encoder.train_DESK.validate_baselines import (
+        fit_species_readout, apply_species_readout)
+    Z, X = _species_world()
+    r = fit_species_readout(Z[:300], X[:300])
+    assert r["train_r2"] > 0.9, r                       # generated linearly, so it must fit
+    assert r["n_train"] == 300 and r["n_species"] == 30
+    # and it generalises to rows it never saw
+    held = apply_species_readout(r, Z[300:])
+    ss_res = ((X[300:] - held) ** 2).sum()
+    ss_tot = ((X[300:] - X[300:].mean(0)) ** 2).sum()
+    assert 1 - ss_res / ss_tot > 0.85
+
+    # coordinates that carry NO species information must show it in-sample, not silently pass
+    rng = np.random.default_rng(1)
+    junk = fit_species_readout(rng.normal(size=(300, 6)), X[:300])
+    assert junk["train_r2"] < 0.2, junk
+
+
+def test_direction_skill_is_not_fooled_by_guessing_the_commoner_direction():
+    """BBS declines are widespread, so 'everything declined' scores well against a coin flip and
+    would read as skill. The correction against the majority guess is the whole point."""
+    from src.community_encoder.train_DESK.validate_baselines import species_change_agreement
+    rng = np.random.default_rng(0)
+    n_sp = 200
+    xe = np.full((1, n_sp), 3.0)
+    drop = rng.random(n_sp) < 0.8                       # 80% of species decline
+    xm = xe - np.where(drop, 1.0, -1.0) * rng.uniform(0.3, 1.0, n_sp)
+
+    lazy = species_change_agreement(xe, xm, xe, xe - 1.0)          # predicts decline for all
+    # By construction the lazy predictor achieves EXACTLY the majority rate -- that is what makes
+    # it lazy -- so assert against the realised rate rather than the intended 0.8, which the draw
+    # will not hit exactly.
+    assert lazy["direction_hit_rate"] == lazy["majority_direction_rate"], lazy
+    assert lazy["direction_hit_rate"] > 0.6, lazy                   # looks respectable raw...
+    assert abs(lazy["direction_skill"]) < 0.05, lazy                # ...and scores ~0 corrected
+
+    skilled = species_change_agreement(xe, xm, xe, xm)              # gets every species right
+    assert skilled["direction_skill"] > 0.99, skilled
+
+
+def test_direction_and_rank_separate():
+    """A predictor can get every sign right and still rank the magnitudes backwards."""
+    from src.community_encoder.train_DESK.validate_baselines import species_change_agreement
+    rng = np.random.default_rng(2)
+    n_sp = 120
+    xe = np.full((1, n_sp), 4.0)
+    mag = rng.uniform(0.2, 2.0, n_sp)
+    sign = np.where(rng.random(n_sp) < 0.5, 1.0, -1.0)
+    xm = xe + sign * mag
+    # right sign, magnitude ordering exactly reversed: the species that moved most is predicted
+    # to have moved least. (Indexing mag by its own ranks is a scramble, not a reversal -- tau
+    # 0.02 -- which is a fixture bug worth not repeating.)
+    order = np.argsort(mag)
+    rev = np.empty_like(mag)
+    rev[order] = np.sort(mag)[::-1]
+    pm = xe + sign * rev
+    r = species_change_agreement(xe, xm, xe, pm)
+    assert r["direction_skill"] > 0.99, r               # every direction correct
+    # ...and the magnitude ordering inverted. This is why the rank statistic uses the ABSOLUTE
+    # change: on the signed change tau reads +0.51 here, dominated by the signs being right, and
+    # the reversal is invisible.
+    assert r["rank_tau"] < -0.9, r
+
+
+def test_the_noise_floor_excludes_coin_flips_not_signal():
+    from src.community_encoder.train_DESK.validate_baselines import species_change_agreement
+    rng = np.random.default_rng(3)
+    n_sp = 150
+    xe = np.full((1, n_sp), 3.0)
+    real = np.zeros(n_sp)
+    real[:50] = rng.uniform(0.5, 1.5, 50) * np.where(rng.random(50) < 0.5, 1, -1)
+    xm = xe + real + rng.normal(scale=0.02, size=n_sp)   # 100 species change by noise only
+    pm = xe + real                                       # predicts the real 50 exactly
+    loose = species_change_agreement(xe, xm, xe, pm, noise_floor_abs=0.0)
+    tight = species_change_agreement(xe, xm, xe, pm, noise_floor_abs=0.1)
+    assert tight["n_species_scored"] == 50, tight        # only the real movers survive
+    assert loose["n_species_scored"] > 100
+    assert tight["direction_skill"] > loose["direction_skill"]   # coin flips were diluting it
+
+
+def test_a_species_absent_from_both_endpoints_is_not_scored():
+    from src.community_encoder.train_DESK.validate_baselines import species_change_agreement
+    xe = np.array([[0.0, 0.0, 2.0, 0.0] + [1.0] * 20])
+    xm = np.array([[0.0, 3.0, 0.0, 0.0] + [2.0] * 20])
+    r = species_change_agreement(xe, xm, xe, xm)
+    # species 0 and 3 are absent from both; 1 appeared, 2 disappeared, and 20 rose
+    assert r["n_species_scored"] == 22, r

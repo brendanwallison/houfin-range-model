@@ -1231,3 +1231,113 @@ def baseline_panel(pidx, z_obs, z_desk, holdout, recent_year, buffer_mask=None,
         print("  median error: " + "  ".join(
             f"{n}={ov[n]['median_err']:.4f}" for n in sorted(ov) if np.isfinite(ov[n]["median_err"])))
     return out
+
+
+# ============================================================================================
+# SPECIES SPACE -- the same questions, asked about which species rose and fell
+# ============================================================================================
+#
+# Everything else in this suite reports a similarity, so "DESK gets this place wrong" never
+# becomes "DESK has the wrong species declining here". That is the interpretable form for a range
+# model, and it is the form that can be checked against what is known about a species.
+#
+# It is also a second, differently-built metric. This session produced two confident answers that
+# turned out to be properties of the metric rather than the model -- an angle-only reading that
+# made a barely-moving model look inverted, and a comparison whose baseline sat so high nothing
+# could be resolved. A metric constructed on different principles is the cheapest guard against a
+# third, because the two are unlikely to fail the same way.
+
+
+def fit_species_readout(z_train, x_train, ridge=1.0):
+    """Least-squares map from latent coordinates to per-species log1p abundance. Pure.
+
+    DESK emits coordinates, not abundances -- its autoencoder reconstructs the covariate grid, not
+    the community -- so a species-space question needs a decoder. This is a ridge fit from ``z`` to
+    ``log1p(abundance)`` for each species.
+
+    A LINEAR readout specifically, because that is how the population model downstream consumes Z:
+    through learned linear weights (``w_env``). So a good score here says the information the
+    downstream depends on is genuinely present in the coordinates, and a poor one says it is not --
+    a more useful statement than either would be about a decoder invented for the test.
+
+    Fit on TRAINING rows only. The caller is responsible for passing training rows; ``readout_fit``
+    reports how well it does in-sample, which has to be read first: if ``z`` cannot reproduce
+    abundances even on the data the map was fitted to, every number downstream of it is about the
+    readout rather than about DESK.
+    """
+    Z = np.asarray(z_train, "float64")
+    X = np.asarray(x_train, "float64")
+    Z1 = np.hstack([Z, np.ones((len(Z), 1))])            # intercept: species differ in base rate
+    A = Z1.T @ Z1 + float(ridge) * np.eye(Z1.shape[1])
+    A[-1, -1] -= float(ridge)                            # never penalise the intercept
+    W = np.linalg.solve(A, Z1.T @ X)
+    pred = Z1 @ W
+    ss_res = float(((X - pred) ** 2).sum())
+    ss_tot = float(((X - X.mean(0)) ** 2).sum())
+    return {"W": W, "n_train": int(len(Z)), "n_species": int(X.shape[1]),
+            "train_r2": 1.0 - ss_res / max(ss_tot, 1e-12),
+            "train_rmse": float(np.sqrt(((X - pred) ** 2).mean())),
+            "note": ("read train_r2 FIRST: if the coordinates cannot reproduce abundances in "
+                     "sample, nothing computed from this readout is about the model")}
+
+
+def apply_species_readout(readout, z):
+    """Latent coordinates -> per-species log1p abundance, clipped at zero (pure)."""
+    Z1 = np.hstack([np.asarray(z, "float64"), np.ones((len(z), 1))])
+    return np.clip(Z1 @ readout["W"], 0.0, None)
+
+
+def species_change_agreement(x_early, x_modern, p_early, p_modern, noise_floor_abs=0.0):
+    """Do the right species rise and fall? ``{...}``. Pure.
+
+    ``x_*`` are observed communities, ``p_*`` the predicted ones, all ``(n_rows, n_species)`` in
+    log1p abundance. Every species present in EITHER endpoint is counted: present in both is the
+    direction of its change, appearing is an increase, disappearing is a decrease. A species absent
+    from both is excluded -- there is nothing to be right or wrong about.
+
+    Two numbers, because one hides the other:
+
+    ``direction_skill`` -- the share of species whose direction is right, MINUS the share a
+    predictor gets by always guessing the commoner direction. BBS declines are widespread, so
+    "everything declined" scores well against a coin flip and would read as skill. That correction
+    is the whole point; the raw share is reported too but should not be quoted alone.
+
+    ``rank_tau`` -- Kendall's tau across species on the SIZE of the change, ignoring its sign, so
+    "gets the direction right but ranks the magnitudes wrong" is visible rather than buried inside
+    a sign statistic. On the SIGNED change tau would be dominated by whether each species rose or
+    fell, which ``direction_skill`` already reports -- measured on a planted case where every sign
+    was right and every magnitude ordering reversed, signed tau read +0.51 and hid the reversal
+    completely. Taking the absolute change makes the two numbers independent.
+
+    ``noise_floor_abs`` excludes species whose observed change is smaller than the measured
+    survey noise. Those are coin flips: scoring them drags every predictor toward the null and
+    makes a real difference harder to see. Zero includes everything.
+    """
+    xe, xm = np.asarray(x_early, "float64"), np.asarray(x_modern, "float64")
+    pe, pm = np.asarray(p_early, "float64"), np.asarray(p_modern, "float64")
+    present = (xe > 0) | (xm > 0)
+    d_obs, d_pred = xm - xe, pm - pe
+    scored = present & (np.abs(d_obs) > float(noise_floor_abs))
+    n = int(scored.sum())
+    if n < 8:
+        return {"n_species_scored": n, "note": "fewer than 8 species clear the noise floor"}
+
+    so, sp = np.sign(d_obs[scored]), np.sign(d_pred[scored])
+    hit = float((so == sp).mean())
+    # what a predictor gets for free by always naming the commoner direction
+    share_down = float((so < 0).mean())
+    lazy = max(share_down, 1.0 - share_down)
+    out = {"n_species_scored": n,
+           "n_species_excluded_as_noise": int((present & ~scored).sum()),
+           "direction_hit_rate": hit,
+           "majority_direction_rate": lazy,
+           "direction_skill": (hit - lazy) / max(1.0 - lazy, 1e-12),
+           "share_declining_observed": share_down,
+           "note": ("direction_skill is the share correct beyond always guessing the commoner "
+                    "direction, rescaled so 1.0 is perfect and 0.0 is that lazy guess")}
+    from scipy.stats import kendalltau
+    tau, _ = kendalltau(np.abs(d_obs[scored]), np.abs(d_pred[scored]))
+    out["rank_tau"] = float(tau) if tau == tau else float("nan")
+    out["rank_note"] = ("Kendall tau on the ABSOLUTE change -- which species moved most, "
+                        "independent of which way. Signed tau would restate direction_skill.")
+    return out

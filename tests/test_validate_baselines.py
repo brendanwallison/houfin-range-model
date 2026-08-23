@@ -986,13 +986,13 @@ def test_one_smoothing_length_by_default_and_divergences_must_say_why():
     """
     from src.community_encoder.train_DESK.validate_baselines import (
         smoothing_half_width, smoothing_manifest, SMOOTHING_DIVERGENCES)
-    cfg = {"target": {"smooth_half_width": 2}}
-    assert smoothing_half_width(cfg) == 2
+    cfg = {"target": {"smooth_half_width": 4}}
+    assert smoothing_half_width(cfg) == 4
     assert smoothing_half_width({"bbs_routes": {"window_half_width": 3}}) == 3   # legacy fallback
-    assert smoothing_half_width({}) == 2
+    assert smoothing_half_width({}) == 4
 
-    m = smoothing_manifest(cfg, {"a": 2, "bbs_routes.epoch_eras": "whole era (~13 surveys)"})
-    assert m["default_half_width_yr"] == 2
+    m = smoothing_manifest(cfg, {"a": 4, "bbs_routes.epoch_eras": "whole era (~13 surveys)"})
+    assert m["default_half_width_yr"] == 4
     assert m["measurements"]["a"]["matches_default"] is True
     era = m["measurements"]["bbs_routes.epoch_eras"]
     assert era["matches_default"] is False and era["reason"]

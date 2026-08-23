@@ -845,7 +845,7 @@ def run_validate(config=None, n_pairs=20000, cka_sample=800, seed=0):
                 # Diagnostic only. Nothing downstream reads it; a future run changes `hw` if a
                 # width is clearly better.
                 sweep = {}
-                for w in sorted({0, 2, 4, 6} | {hw}):
+                for w in sorted({0, 2, 4, 6, 8} | {hw}):
                     try:
                         pw = epoch_direction_panel(
                             pidx, None, z_obs_pts, zm, ho, bf, exclude_years=hy, half_width=w,

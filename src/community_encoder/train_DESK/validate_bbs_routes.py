@@ -1943,6 +1943,14 @@ def _run_epoch_analysis(config, keys, X_raw_all, cells, e_rows, m_rows, gate_sta
                                                 sc_esk=sc_esk, sc_idw=(Ze_idw, Zm_idw),
                                                 is_heldout=is_ho)
     rep["gate"] = gate_stats
+    from .validate_baselines import smoothing_manifest
+    rep["smoothing"] = smoothing_manifest(config, {
+        "bbs_routes.epoch_eras": f"whole era (~{n_e:.1f} surveys/cell after matching)",
+        "bbs_routes.modern_reference": "16 yr (2010-2025)",
+    })
+    if rep["smoothing"]["unjustified"]:
+        for u in rep["smoothing"]["unjustified"]:
+            print(f"[bbs-routes] SMOOTHING NOT JUSTIFIED: {u}")
     rep["endpoint_matching"] = {
         "early_surveys_per_cell": n_e, "modern_surveys_per_cell": n_m,
         "early_before_match": n_e_raw, "modern_before_match": n_m_raw,
@@ -2119,10 +2127,8 @@ def run(config=None, n_sample=4000, seed=0):
     assert bool((_keep_g == keep).all()), "reference gate must not depend on the averaging mode"
     # The single shared point-denoising half-width; bbs_routes.window_half_width is honoured only
     # as a legacy fallback so old configs keep working.
-    win_groups_full = window_groups(keys, int(
-        (config.get("target", {}) or {}).get(
-            "smooth_half_width",
-            config.get("bbs_routes", {}).get("window_half_width", 2))))
+    from .validate_baselines import smoothing_half_width
+    win_groups_full = window_groups(keys, smoothing_half_width(config))
     kept_to_full = np.where(keep)[0]
     n_cells_all = np.unique(keys[:, :2], axis=0).shape[0]
     X_log, keys, nc_src = X_log[keep], keys[keep], nc_src[keep]
@@ -2176,8 +2182,7 @@ def run(config=None, n_sample=4000, seed=0):
     # truth never passes through a fitted projection, so this module's whole reason for existing
     # (escaping the target's own construction operator) is preserved.
     avg = bool(config.get("bbs_routes", {}).get("average_windows", True))
-    hw = int((config.get("target", {}) or {}).get(
-        "smooth_half_width", config.get("bbs_routes", {}).get("window_half_width", 2)))
+    hw = smoothing_half_width(config)
     grp_nc = [nc_groups_full[i] for i in sel_full]            # modern reference group per row
     grp_win = [win_groups_full[i] for i in sel_full]          # +/-hw window per row
     if avg:

@@ -352,6 +352,68 @@ def _ceiling_row(do, null_cos, model_cos):
     return out
 
 
+#: THE smoothing half-width for the pipeline, in years, and the record of everywhere that
+#: deliberately differs. One length by default: a measurement that averages a different number of
+#: years than its neighbours is not comparable to them, and every instance of that in this project
+#: so far was an accident rather than a choice (three constants for one concept; two modules
+#: disagreeing on whether to average raw counts or z at the same width; endpoints averaged over 5
+#: and 16 surveys inside a single difference).
+#:
+#: Diverging is allowed and sometimes right. It just has to be DECLARED here with the reason, so a
+#: reader can see that the question being asked is different rather than inferring it from a
+#: survey count that came out unexpectedly.
+SMOOTHING_DIVERGENCES = {
+    "bbs_routes.epoch_eras": (
+        "whole era (~21 yr, ~13 surveys/cell)",
+        "This measurement contrasts two named PERIODS -- the 1966-1986 community against the "
+        "2005-2025 one -- rather than two dates, so the era IS the unit and a half-width around a "
+        "midpoint would be a different question. Read with the caveat that each endpoint then "
+        "spans 21 years while the gap between the era midpoints is 39, so real change inside an "
+        "endpoint is being averaged away and is not small relative to the change being measured."),
+    "bbs_routes.modern_reference": (
+        "16 yr (2010-2025)",
+        "The frozen-modern reference is meant to be a stable anchor rather than a dated "
+        "observation, so it is averaged as widely as the modern record allows. It is matched "
+        "against the early endpoint by match_group_sizes before any difference is taken, so the "
+        "width here does not put the two sides of a difference on different footings."),
+}
+
+
+def smoothing_half_width(config):
+    """The one smoothing half-width, in years. Everything that averages surveys should call this.
+
+    ``bbs_routes.window_half_width`` is honoured only as a legacy fallback for old configs.
+    """
+    return int((config.get("target", {}) or {}).get(
+        "smooth_half_width",
+        (config.get("bbs_routes", {}) or {}).get("window_half_width", 2)))
+
+
+def smoothing_manifest(config, used):
+    """What smoothing each measurement actually used, and whether that is the default. ``{...}``.
+
+    ``used`` is ``{measurement: half_width_or_description}``. Anything not equal to the default
+    must appear in :data:`SMOOTHING_DIVERGENCES` or it is reported as UNJUSTIFIED -- the same
+    device as the unavailability reasons: a difference that carries no stated reason is
+    indistinguishable from an oversight, and here it silently makes two numbers incomparable.
+    """
+    default = smoothing_half_width(config)
+    out = {"default_half_width_yr": default, "measurements": {}, "unjustified": []}
+    for name, w in (used or {}).items():
+        if w == default:
+            out["measurements"][name] = {"half_width_yr": w, "matches_default": True}
+            continue
+        why = SMOOTHING_DIVERGENCES.get(name)
+        out["measurements"][name] = {"width": w, "matches_default": False,
+                                     "reason": why[1] if why else None}
+        if why is None:
+            out["unjustified"].append(
+                f"{name} averages {w}, which is not the default {default} yr, and no reason is "
+                "declared in SMOOTHING_DIVERGENCES. Either bring it onto the default or say why "
+                "it differs.")
+    return out
+
+
 def _half_years(years, which):
     """One of two DISJOINT halves of a window's years, alternating through them (pure).
 

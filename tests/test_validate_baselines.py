@@ -974,3 +974,35 @@ def test_the_direction_panel_flags_a_narrow_comparison():
                        null_cos=0.02, model_cos=0.05)
     if np.isfinite(row.get("room", np.nan)) and row["room"] < 0.15:
         assert "NARROW" in row["room_verdict"], row
+
+
+def test_one_smoothing_length_by_default_and_divergences_must_say_why():
+    """Same number of years averaged everywhere unless there is a stated reason.
+
+    A measurement that averages a different span than its neighbours is not comparable to them,
+    and every instance of that here so far was an accident: three constants for one concept, two
+    modules disagreeing on whether to average raw counts or z at the same width, and the two ends
+    of a single difference averaged over 5 and 16 surveys.
+    """
+    from src.community_encoder.train_DESK.validate_baselines import (
+        smoothing_half_width, smoothing_manifest, SMOOTHING_DIVERGENCES)
+    cfg = {"target": {"smooth_half_width": 2}}
+    assert smoothing_half_width(cfg) == 2
+    assert smoothing_half_width({"bbs_routes": {"window_half_width": 3}}) == 3   # legacy fallback
+    assert smoothing_half_width({}) == 2
+
+    m = smoothing_manifest(cfg, {"a": 2, "bbs_routes.epoch_eras": "whole era (~13 surveys)"})
+    assert m["default_half_width_yr"] == 2
+    assert m["measurements"]["a"]["matches_default"] is True
+    era = m["measurements"]["bbs_routes.epoch_eras"]
+    assert era["matches_default"] is False and era["reason"]
+    assert m["unjustified"] == []                       # declared, so it passes
+
+    # an undeclared difference is reported, not accepted
+    bad = smoothing_manifest(cfg, {"somewhere_new": 9})
+    assert len(bad["unjustified"]) == 1
+    assert "no reason is declared" in bad["unjustified"][0]
+
+    # every declared divergence carries a real reason, not a placeholder
+    for name, (width, reason) in SMOOTHING_DIVERGENCES.items():
+        assert width and len(reason) > 80, name

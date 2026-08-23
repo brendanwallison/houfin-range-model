@@ -834,6 +834,47 @@ def run_validate(config=None, n_pairs=20000, cka_sample=800, seed=0):
                                     z_spacetime=z_st_panel,
                                     x_obs=X, project=_proj_fn),
                                 "attenuation_by_era": atten}
+
+                # THE SWEEP. One width is operative -- `hw`, the pipeline default -- and the rest
+                # are reported so the setting can be revisited from a measurement instead of
+                # re-argued. Averaging more years cuts survey noise but also smooths across years
+                # when the place was genuinely changing, and the two only trade off well at some
+                # width. We have never known where: only 0 and 2 had ever been compared, and every
+                # pair was still improving at 2, so the better setting may lie above it.
+                #
+                # Diagnostic only. Nothing downstream reads it; a future run changes `hw` if a
+                # width is clearly better.
+                sweep = {}
+                for w in sorted({0, 2, 4, 6} | {hw}):
+                    try:
+                        pw = epoch_direction_panel(
+                            pidx, None, z_obs_pts, zm, ho, bf, exclude_years=hy, half_width=w,
+                            z_spacetime=z_st_panel, x_obs=X, project=_proj_fn, verbose=False)
+                        rows = (pw.get("pairs") or {})
+                        cos = [v["model_dir_cos"] for v in rows.values()
+                               if np.isfinite(v.get("model_dir_cos", np.nan))]
+                        dep = [v["mean_window_depth"] for v in rows.values()]
+                        sweep[str(w)] = {
+                            "median_model_dir_cos": float(np.median(cos)) if cos else float("nan"),
+                            "mean_surveys_per_endpoint": float(np.mean(dep)) if dep else float("nan"),
+                            "per_pair": {k: v["model_dir_cos"] for k, v in rows.items()}}
+                    except Exception as exc:
+                        sweep[str(w)] = {"note": f"unavailable ({exc})"}
+                epochs_panel["half_width_sweep"] = {
+                    "operative": hw, "note": ("diagnostic only -- `operative` is what every "
+                                              "reported number used; the rest say whether a "
+                                              "different width would be better"),
+                    "widths": sweep}
+                print(f"[validate] smoothing half-width sweep (operative = {hw} yr; wider cuts "
+                      "survey noise but smooths across real change):")
+                print(f"    {'half-width':>11}{'surveys/end':>13}{'median dir-cos':>16}")
+                for w, r in sweep.items():
+                    if "note" in r:
+                        print(f"    {w:>11}   {r['note']}")
+                        continue
+                    star = "  <- operative" if int(w) == hw else ""
+                    print(f"    {w:>11}{r['mean_surveys_per_endpoint']:>13.2f}"
+                          f"{r['median_model_dir_cos']:>16.3f}{star}")
             else:
                 epochs_panel = {"single_year": epochs_panel, "attenuation_by_era": atten}
 

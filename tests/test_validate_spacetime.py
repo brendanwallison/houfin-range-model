@@ -175,3 +175,18 @@ def test_the_co_movement_curve_needs_enough_sites():
     r = _co_movement_by_distance(np.zeros((5, 3)), np.zeros((5, 3)),
                                  np.arange(5), np.arange(5), rng)
     assert "too few" in r["note"]
+
+
+def test_a_new_directional_change_field_reaches_the_report():
+    """Regression, and the second time this project has hit it. The filter was an ALLOW-LIST of
+    key names, so anything computed but not listed was dropped silently -- report_scalars had the
+    same bug and was changed to an exclusion for the same reason. Here it cost the co-movement
+    curves an entire run: computed, dropped, and the print that reads this dict found nothing."""
+    import src.community_encoder.train_DESK.validate_spacetime as VS
+    src = open(VS.__file__.replace(".pyc", ".py")).read()
+    blk = src[src.index('report["directional_change"] = '):]
+    blk = blk[:blk.index("\n\n")]
+    assert "not in" in blk, "must EXCLUDE arrays, never allow-list scalar names"
+    # the arrays that must stay out are large per-site vectors, not summaries
+    for name in ("rows", "cols", "dir_cos"):
+        assert name in blk, name

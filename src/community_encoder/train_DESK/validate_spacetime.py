@@ -1056,9 +1056,13 @@ def run_validate(config=None, n_pairs=20000, cka_sample=800, seed=0):
                           f"  <- the model's figures above must beat THESE, not the nulls")
         _phase("baseline ladder")
         _phase("epoch direction panel")
-    report["directional_change"] = {k: v for k, v in dirchg.items()
-                                     if k in ("n_sites", "mean_dir_cos", "median_dir_cos",
-                                              "frac_same_dir", "mean_dir_cos_null", "note")}
+    # EXCLUDE the big per-site arrays; keep everything else. This was an ALLOW-LIST of key names,
+    # which is the same bug report_scalars already had and was changed away from: a figure that is
+    # computed but never listed cannot reach the report or the printed summary, and nothing says
+    # so. It cost the co-movement curves a whole run -- they were computed, dropped here, and the
+    # print that reads this dict found nothing. An exclusion cannot fail that way.
+    _DIRCHG_ARRAYS = ("rows", "cols", "hist_year", "dir_cos")
+    report["directional_change"] = {k: v for k, v in dirchg.items() if k not in _DIRCHG_ARRAYS}
     report["directional_change"]["_note"] = ("DIRECTION of community change (magnitude-"
         "canceling), unlike turnover which is magnitude-only. Read mean_dir_cos RELATIVE to "
         "mean_dir_cos_null (permuted-site baseline); frac_same_dir null=0.5.")

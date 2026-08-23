@@ -1748,3 +1748,56 @@ def test_a_stratum_dropped_without_a_reason_is_caught():
     bad = {"heldout/region1": {"qualified": False, "n_cells": 9}}     # excluded, no reason
     gaps = assert_strata_explained(bad)
     assert any("no stated reason" in g for g in gaps), gaps
+
+
+def test_movement_separates_a_damped_model_from_a_misdirected_one():
+    """The distinction the similarity tables structurally cannot make.
+
+    `desk - no_change` is `(z_e - z_m) . z_m`: only the component of movement ALONG the modern
+    position. A model barely moving in the right direction and one moving a lot in a direction
+    that happens not to reduce similarity give the SAME number -- while being opposite diagnoses
+    with opposite fixes (damping vs loss/geometry).
+    """
+    from src.community_encoder.train_DESK.validate_bbs_routes import movement_decomposition
+    rng = np.random.default_rng(0)
+    n, L = 300, 12
+    zm = rng.normal(size=(n, L))
+    d_true = rng.normal(size=(n, L)) * 0.5                # what the community actually did
+    truth = (zm - d_true, zm)
+
+    damped = (zm - 0.05 * d_true, zm)                     # right direction, 5% of the magnitude
+    ortho = rng.normal(size=(n, L))
+    ortho -= (ortho * d_true).sum(1, keepdims=True) * d_true / (d_true ** 2).sum(1, keepdims=True)
+    ortho *= np.linalg.norm(d_true, axis=1, keepdims=True) / np.linalg.norm(ortho, axis=1, keepdims=True)
+    misdirected = (zm - ortho, zm)                        # full magnitude, orthogonal direction
+
+    out = movement_decomposition(
+        {"damped": damped, "misdirected": misdirected, "esk_oracle_independent": truth})
+    dmp = out["predictors"]["damped"]
+    mis = out["predictors"]["misdirected"]
+
+    assert dmp["delta_ratio"] < 0.15, dmp                  # barely moves...
+    assert dmp["dir_cos"] > 0.95, dmp                      # ...but the right way
+    assert mis["delta_ratio"] > 0.8, mis                   # moves the full amount...
+    assert abs(mis["dir_cos"]) < 0.2, mis                  # ...in an unrelated direction
+    # and the reference matches itself exactly
+    ref = out["predictors"]["esk_oracle_independent"]
+    assert abs(ref["delta_ratio"] - 1.0) < 1e-9 and ref["dir_cos"] > 0.999
+
+    # the error splits the two ways round: damped fails on MAGNITUDE, misdirected on ANGLE
+    assert dmp["mag_share_of_error"] > dmp["ang_share_of_error"], dmp
+    assert mis["ang_share_of_error"] > mis["mag_share_of_error"], mis
+
+
+def test_movement_reports_the_component_the_similarity_tables_cannot_see():
+    """Radial movement drives every similarity metric; tangential movement is invisible to them."""
+    from src.community_encoder.train_DESK.validate_bbs_routes import movement_decomposition
+    rng = np.random.default_rng(1)
+    n, L = 200, 8
+    zm = rng.normal(size=(n, L))
+    unit = zm / np.linalg.norm(zm, axis=1, keepdims=True)
+    radial_only = (zm - unit * 0.4, zm)                    # purely along z_m
+    out = movement_decomposition({"radial": radial_only, "esk_oracle_independent": radial_only})
+    r = out["predictors"]["radial"]
+    assert r["radial_share"] > 0.98, r
+    assert r["tangential_share"] < 0.02, r

@@ -1156,6 +1156,77 @@ def bootstrap_skill_ci(obs, pred, null, n_boot=2000, seed=0, alpha=0.05):
             "hi": float(np.quantile(vals, 1.0 - alpha / 2.0)), "n": int(n)}
 
 
+def movement_decomposition(sources, reference="esk_oracle_independent"):
+    """How each predictor's community MOVES over time, against a reference's movement. Pure.
+
+    ``sources`` is ``{name: (z_early, z_modern)}``. For each predictor the change vector is
+    ``d = z_modern - z_early``; the reference's ``d_ref`` is what the observed community actually
+    did. Returns per predictor::
+
+        {"delta_norm", "delta_ratio", "dir_cos", "radial_share", "tangential_share",
+         "mag_share_of_error", "ang_share_of_error"}
+
+    WHY THIS IS SEPARATE FROM THE SIMILARITY TABLE, and why it had to come first.
+
+    The similarity metrics answer "does predicted similarity fall the way observed similarity
+    does". Their temporal content reduces to ``desk - no_change = (z_e - z_m) . z_m``: the
+    component of movement ALONG the modern position, i.e. the part that changes the dot product.
+    Movement ORTHOGONAL to ``z_m`` does not register there at all. So a predictor moving barely at
+    all in the right direction and one moving a great deal in a direction that happens not to
+    reduce similarity produce the SAME number, while being opposite diagnoses with opposite fixes:
+    the first is a damped model (the ~10.8 yr output EMA is the obvious suspect), the second is a
+    model whose movement is misdirected, where damping is irrelevant and the loss or the geometry
+    is at fault.
+
+    ``delta_ratio`` and ``dir_cos`` separate them directly: ratio ~0 with a high cosine is small
+    movement in the right direction; ratio ~1 with a cosine near 0 is large movement in the wrong
+    one. The magnitude/angular split of the residual comes from ``error_decomposition``, the same
+    identity used for positions, applied here to the change vectors.
+    """
+    from .validate_baselines import error_decomposition
+
+    ref = sources.get(reference)
+    if ref is None or ref[0] is None or ref[1] is None:
+        return {"note": f"reference {reference!r} unavailable; movement cannot be referenced"}
+    d_ref = np.asarray(ref[1], "float64") - np.asarray(ref[0], "float64")
+    n_ref = np.linalg.norm(d_ref, axis=1)
+
+    out = {"reference": reference,
+           "reference_delta_norm": float(np.median(n_ref)),
+           "predictors": {}}
+    for name, zs in sources.items():
+        if zs is None or zs[0] is None or zs[1] is None:
+            continue
+        ze, zm = np.asarray(zs[0], "float64"), np.asarray(zs[1], "float64")
+        d = zm - ze
+        nd = np.linalg.norm(d, axis=1)
+        # Split the movement about the MODERN position: the radial part changes the dot product
+        # (and so drives every similarity metric), the tangential part is invisible to them.
+        unit_m = zm / np.maximum(np.linalg.norm(zm, axis=1, keepdims=True), 1e-12)
+        radial = (d * unit_m).sum(1)
+        tangential = np.sqrt(np.maximum(nd ** 2 - radial ** 2, 0.0))
+        tot, mag, ang, cos = error_decomposition(d, d_ref)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            ratio = np.where(n_ref > 1e-12, nd / n_ref, np.nan)
+        out["predictors"][name] = {
+            "delta_norm": float(np.median(nd)),
+            "delta_ratio": float(np.nanmedian(ratio)),
+            "dir_cos": float(np.nanmedian(cos)),
+            "radial_share": float(np.median(np.abs(radial) /
+                                            np.maximum(np.abs(radial) + tangential, 1e-12))),
+            "tangential_share": float(np.median(tangential /
+                                                np.maximum(np.abs(radial) + tangential, 1e-12))),
+            "mag_share_of_error": float(np.mean(mag) / max(float(np.mean(tot)), 1e-12)),
+            "ang_share_of_error": float(np.mean(ang) / max(float(np.mean(tot)), 1e-12)),
+        }
+    out["reading"] = ("delta_ratio ~0 with high dir_cos = SMALL movement in the RIGHT direction "
+                      "(a damped model; check the output EMA). delta_ratio ~1 with dir_cos ~0 = "
+                      "LARGE movement in the WRONG direction (loss/geometry; damping is not the "
+                      "issue). The similarity tables cannot tell these apart, because they see "
+                      "only the radial component.")
+    return out
+
+
 def epoch_neighborhood_analysis(Xe, Xm, Ze, Zm, xy, k=99, n_bins=10, is_heldout=None,
                                 device=None, sc_esk=None, sc_idw=(None, None),
                                 sc_esk_independent=None, floor_similarity=None,
@@ -1334,6 +1405,12 @@ def epoch_neighborhood_analysis(Xe, Xm, Ze, Zm, xy, k=99, n_bins=10, is_heldout=
             with np.errstate(divide="ignore", invalid="ignore"):
                 per_cell[f"{qname}_skill_{pname}"] = np.where(
                     rn > 0, 1.0 - rp / rn, 0.0).astype("float32")
+
+    # WHAT MOVED, not just whether predicted similarity fell. See movement_decomposition: the
+    # similarity tables see only the component of movement along z_m, so they cannot separate a
+    # damped model from a misdirected one.
+    report["movement"] = movement_decomposition(
+        {n: v for n, v in sources.items() if v is not None})
 
     report["manifest"] = {
         # The registry questions this analysis OWNS. Declared, not derived from `types` -- a scope

@@ -760,8 +760,19 @@ def compare_positions(z_obs, predictors, reference="no_change", populations=None
     return res
 
 
-def resolving_room(result, baseline="no_change", ceiling=("esk_oracle_independent",
-                                                          "esk_truncation")):
+#: Questions for which the frozen-modern baseline genuinely knows nothing, so that the distance
+#: from it to the ceiling is a real measure of how much room a comparison has.
+#:
+#: It qualifies exactly where freezing time destroys the answer. On "did this place change" it
+#: predicts a per-cell constant with no temporal content; on "did two places grow more alike" it
+#: predicts exactly zero, because freezing both leaves the similarity between them untouched. On a
+#: question about two places in ONE era it predicts their full modern similarity, which is most of
+#: the answer -- so it is a competitor there, not a floor.
+NULL_IS_A_FLOOR_FOR = ("same_cell_over_time", "pair_convergence")
+
+
+def resolving_room(result, baseline="no_change", question=None,
+                   ceiling=("esk_oracle_independent", "esk_truncation")):
     """How much room a comparison has to tell models apart. ``{...}``. Pure.
 
     The distance between the no-information baseline and the ceiling. This is a property of the
@@ -781,6 +792,22 @@ def resolving_room(result, baseline="no_change", ceiling=("esk_oracle_independen
     preds = (result or {}).get("predictors") or {}
     if baseline not in preds:
         return {"note": f"baseline {baseline!r} absent; room undefined"}
+    # `no_change` is only a NULL for a question about time. It is DESK's z frozen at the modern
+    # year, so for a question about two places in one era it predicts z_m_i . z_m_j -- the whole
+    # modern spatial structure of both cells. Spatial structure is largely stable over sixty
+    # years, so that is close to the right answer, and it scores ~0.87 because it is a STRONG
+    # PREDICTOR, not because the question is hard.
+    #
+    # Computing ceiling - no_change there and calling it "room" is meaningless, and reporting it
+    # as a narrow band reads as "no model could do better here" when the truth is that this
+    # comparison HAS NO FLOOR and cannot rank predictors at all.
+    if question and question not in NULL_IS_A_FLOOR_FOR:
+        return {"note": (f"{baseline!r} is not a no-information baseline for {question!r}: it "
+                         "carries the full modern spatial structure, which largely answers a "
+                         "spatial question by itself. This comparison has no floor, so room is "
+                         "undefined -- it cannot rank predictors and none of its rows should be "
+                         "read as skill."),
+                "baseline_is_a_floor": False, "question": question}
     ceil_name = next((c for c in ceiling if c in preds), None)
     # A ceiling that SHARES the target's noise is not a ceiling: it scores its own noise and so
     # sits far too high, making the room look larger than it is. Measured on the 1995 run, the
@@ -1392,7 +1419,7 @@ def epoch_neighborhood_analysis(Xe, Xm, Ze, Zm, xy, k=99, n_bins=10, is_heldout=
                     dot["skill_vs_spacetime_idw"] = compare_predictors(
                         take(obs_q), {p: take(M) for p, M in types[qname].items()},
                         reference="spacetime_idw")["skill_vs"]
-                dot["room"] = resolving_room(dot)
+                dot["room"] = resolving_room(dot, question=qname)
                 return {"dot": dot, "cosine": cos}
 
             per_bin = {"all_distances": _row(None)}
@@ -1447,7 +1474,7 @@ def epoch_neighborhood_analysis(Xe, Xm, Ze, Zm, xy, k=99, n_bins=10, is_heldout=
                                            {p: take(v) for p, v in conv_cos.items()})
                 dot_c["unavailable"].update(missing)
                 cos_c["unavailable"].update(missing)
-                dot_c["room"] = resolving_room(dot_c)
+                dot_c["room"] = resolving_room(dot_c, question="pair_convergence")
                 per_bin[lab] = {"dot": dot_c, "cosine": cos_c}
             report["types"]["pair_convergence"][sname] = per_bin
 
@@ -1467,7 +1494,7 @@ def epoch_neighborhood_analysis(Xe, Xm, Ze, Zm, xy, k=99, n_bins=10, is_heldout=
         # matrices elsewhere have an effective n far below their n_pairs.
         dot["ci95"] = {p: bootstrap_skill_ci(sc_obs[w], v[w], sc["no_change"][w])
                        for p, v in sc.items() if p != "no_change"}
-        dot["room"] = resolving_room(dot)
+        dot["room"] = resolving_room(dot, question="same_cell_over_time")
         report["types"]["same_cell_over_time"][sname] = {"all_distances": {"dot": dot,
                                                                            "cosine": cos}}
 

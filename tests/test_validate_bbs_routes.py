@@ -1852,7 +1852,15 @@ def test_every_epoch_question_reports_its_room():
         if "skipped" in row:
             continue
         assert "room" in row["dot"], q
-        assert "verdict" in row["dot"]["room"], (q, row["dot"]["room"])
+        rm = row["dot"]["room"]
+        # A question whose baseline is not a floor must REFUSE to report room rather than
+        # computing a meaningless one. `no_change` carries the full modern spatial structure, so
+        # on a same-era spatial question it is a strong predictor, not a null.
+        if q.startswith("cross_cell_same_era") or q == "cross_cell_cross_time":
+            assert rm.get("baseline_is_a_floor") is False, (q, rm)
+            assert "no floor" in rm["note"], (q, rm)
+        else:
+            assert "verdict" in rm, (q, rm)
 
 
 def test_room_flags_a_ceiling_that_shares_the_targets_noise():
@@ -1895,3 +1903,28 @@ def test_the_species_questions_use_the_same_pairs_as_the_similarity_questions():
     # absent readout -> a stated reason, never a silent omission
     bare, _ = epoch_neighborhood_analysis(Xe, Xm, Ze, Zm, xy, k=9, n_bins=3)
     assert "no species readout supplied" in bare["species"]["note"]
+
+
+def test_the_frozen_baseline_is_not_treated_as_a_floor_for_spatial_questions():
+    """`no_change` is DESK's z frozen at the modern year. On a question about two places in ONE
+    era it predicts their full modern similarity -- most of the answer, since spatial structure is
+    largely stable over sixty years. It measured 0.87 there, and calling that 'a baseline holding
+    no information' inverted the meaning: the comparison has no floor, not a narrow band."""
+    from src.community_encoder.train_DESK.validate_bbs_routes import (
+        resolving_room, NULL_IS_A_FLOOR_FOR)
+    tbl = {"predictors": {"no_change": {"pearson_r": 0.871},
+                          "desk": {"pearson_r": 0.873},
+                          "esk_oracle_independent": {"pearson_r": 0.968}}}
+    spatial = resolving_room(tbl, question="cross_cell_same_era_early")
+    assert spatial["baseline_is_a_floor"] is False
+    assert "room" not in spatial, "must not report a number it cannot compute"
+    assert "no floor" in spatial["note"]
+
+    # where freezing time genuinely destroys the answer, room is real
+    for q in NULL_IS_A_FLOOR_FOR:
+        r = resolving_room({"predictors": {"no_change": {"pearson_r": 0.0},
+                                           "esk_oracle_independent": {"pearson_r": 0.654}}},
+                           question=q)
+        assert abs(r["room"] - 0.654) < 1e-9, (q, r)
+    assert "cross_cell_same_era_early" not in NULL_IS_A_FLOOR_FOR
+    assert "cross_cell_cross_time" not in NULL_IS_A_FLOOR_FOR

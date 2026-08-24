@@ -34,6 +34,12 @@ source "$(dirname "$0")/env.sh"
 
 SWEEP_NAME="${SWEEP_NAME:-desk_hp}"
 SWEEP_ROOT="${SWEEP_ROOT:-$HOUFIN_PROCESSED/sweeps/$SWEEP_NAME}"
+# `normal`, NOT the `development` default that submit_states.sh uses for a single build.
+# hpc/lonestar6.md: development allows 8 nodes and 2 hours but only ONE JOB PER USER, and a
+# jobs-per-user overrun is REJECTED at submit time rather than queued -- so three tau builds
+# there would take one and silently lose two. normal allows 20 jobs/user and 48 hours. Both
+# bill at 1 SU/node-hour, so this costs nothing extra, and TACC's own guidance is to run serial
+# jobs (build_states is -N 1 -n 1) in normal.
 QUEUE="${QUEUE:-normal}"
 TIME="${TIME:-02:00:00}"
 DRY_RUN="${DRY_RUN:-1}"
@@ -117,7 +123,25 @@ if [ -d "$PROD_STATES/yearly_states" ]; then
     fi
 fi
 
-echo "=== ${#ROWS[@]} states build(s) (DRY_RUN=$DRY_RUN) ==="
+# Refuse a queue whose jobs-per-user cap this submission would exceed. Named per queue rather
+# than inferred: development's cap of 1 is the whole reason this script does not default to it,
+# and someone overriding QUEUE to save scheduling time would otherwise lose builds to a
+# rejection whose message says nothing about a cap.
+case "$QUEUE" in
+    development) Q_MAX_JOBS=1 ;;
+    normal)      Q_MAX_JOBS=20 ;;
+    vm-small)    Q_MAX_JOBS=4 ;;
+    *)           Q_MAX_JOBS=0 ;;                  # unknown queue: skip rather than guess
+esac
+if [ "$Q_MAX_JOBS" -gt 0 ] && [ "${#ROWS[@]}" -gt "$Q_MAX_JOBS" ]; then
+    echo "ERROR: ${#ROWS[@]} builds exceeds the $QUEUE queue's $Q_MAX_JOBS-jobs-per-user cap."
+    echo "       sbatch REJECTS the overflow instead of queueing it, so builds would be lost"
+    echo "       with nothing in the output naming a cap as the reason."
+    [ "$QUEUE" = "development" ] && echo "       Use the default QUEUE=normal (20 jobs/user, same 1 SU rate)."
+    exit 1
+fi
+
+echo "=== ${#ROWS[@]} states build(s) on $QUEUE (DRY_RUN=$DRY_RUN) ==="
 for row in "${ROWS[@]}"; do
     tag="$(printf '%s' "$row" | cut -f1)"
     overlay="$(printf '%s' "$row" | cut -f2)"

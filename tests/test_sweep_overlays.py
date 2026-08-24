@@ -562,3 +562,26 @@ def test_the_smoke_run_cannot_be_mistaken_for_the_real_baseline(tmp_path):
     assert cfg["desk"]["trend"]["buffer_floor"] == G.BUFFER_FLOOR
     assert len(cfg["states"]["streams"]) == 6
     print("the smoke run is isolated from the grid it gates")
+
+
+def test_the_tau_builds_do_not_default_to_a_one_job_queue():
+    """``development`` caps jobs-per-user at 1, and that cap REJECTS rather than queues.
+
+    ``submit_states.sh`` defaults to ``development`` because it submits a single build. This
+    script submits one per ema_tau -- three for the current grid -- so the inherited default
+    would have taken one and silently lost the other two, with nothing in sbatch's output naming
+    a cap as the reason. From hpc/lonestar6.md: development is 8 nodes / 2 h / 1 job per user,
+    normal is 64 nodes / 48 h / 20 jobs per user, and BOTH bill at 1 SU per node-hour -- so the
+    correct queue is also the free one.
+    """
+    src = open(os.path.join(REPO, "scripts", "tacc", "submit_tau_states.sh")).read()
+    assert 'QUEUE="${QUEUE:-normal}"' in src, "must not inherit the one-job development default"
+    assert "ONE JOB PER USER" in src, "the reason has to be recorded, not just the value"
+    assert "development) Q_MAX_JOBS=1" in src, \
+        "an explicit QUEUE=development override must be caught, not silently truncated"
+    assert "REJECTS the overflow" in src
+    # and the single-build script may keep its own default -- one job fits in development
+    single = open(os.path.join(REPO, "scripts", "tacc", "submit_states.sh")).read()
+    assert 'QUEUE="${QUEUE:-development}"' in single, \
+        "submit_states.sh submits one build; changing its default is out of scope here"
+    print("tau builds default to normal; a development override is refused")

@@ -34,14 +34,33 @@ source "$(dirname "$0")/env.sh"
 
 SWEEP_NAME="${SWEEP_NAME:-desk_hp}"
 SWEEP_ROOT="${SWEEP_ROOT:-$HOUFIN_PROCESSED/sweeps/$SWEEP_NAME}"
-# `normal`, NOT the `development` default that submit_states.sh uses for a single build.
-# hpc/lonestar6.md: development allows 8 nodes and 2 hours but only ONE JOB PER USER, and a
-# jobs-per-user overrun is REJECTED at submit time rather than queued -- so three tau builds
-# there would take one and silently lose two. normal allows 20 jobs/user and 48 hours. Both
-# bill at 1 SU/node-hour, so this costs nothing extra, and TACC's own guidance is to run serial
-# jobs (build_states is -N 1 -n 1) in normal.
-QUEUE="${QUEUE:-normal}"
-TIME="${TIME:-02:00:00}"
+# `vm-small`. The deciding factor is SCHEDULING LATENCY, not charge rate: vm-small is a virtual
+# node (1/7 of a machine, 16 cores) so it places almost immediately, while `normal` asks for a
+# whole 128-core node and queues behind everything else on the system. For three sub-hour CPU
+# builds that sit on the critical path of the whole sweep, time-to-start dominates -- the SU
+# difference (0.143 vs 1.0 per node-hour, ~0.4 SU against ~3 for all three) is noise either way
+# and is NOT the reason.
+#
+# From hpc/lonestar6.md Table 5: vm-small is 1 node / 48 h / 4 nodes per user / 4 JOBS per user,
+# so three builds fit. `development` also schedules fast but caps jobs-per-user at ONE, and that
+# cap REJECTS rather than queues -- inheriting submit_states.sh's development default would have
+# taken one build and silently lost two.
+#
+# vm-small's 16 cores and ~29 GB are below what build_states assumes by default: read_workers
+# defaults to 2*cpu and the training bag is ~3 GB final / ~6 GB peak at 20k samples per year over
+# ~295 channels. 04_states.slurm already documents the settings for exactly this case, so they
+# are applied here rather than left as a trap -- a host OOM on a virtual node is the failure this
+# invites, and it would land an hour in.
+QUEUE="${QUEUE:-vm-small}"
+TIME="${TIME:-04:00:00}"
+if [ "$QUEUE" = "vm-small" ]; then
+    export HOUFIN_STATES_READ_WORKERS="${HOUFIN_STATES_READ_WORKERS:-4}"
+    export HOUFIN_STATES_WORKERS="${HOUFIN_STATES_WORKERS:-1}"
+    export HOUFIN_STATES_SAMPLES="${HOUFIN_STATES_SAMPLES:-6000}"
+    echo "vm-small: read_workers=$HOUFIN_STATES_READ_WORKERS "\
+         "write_workers=$HOUFIN_STATES_WORKERS samples=$HOUFIN_STATES_SAMPLES "\
+         "(16 cores / ~29 GB; the defaults assume a full 128-core node)"
+fi
 DRY_RUN="${DRY_RUN:-1}"
 MANIFEST="$SWEEP_ROOT/sweep_manifest.json"
 
@@ -127,17 +146,20 @@ fi
 # than inferred: development's cap of 1 is the whole reason this script does not default to it,
 # and someone overriding QUEUE to save scheduling time would otherwise lose builds to a
 # rejection whose message says nothing about a cap.
+# Jobs-per-user caps from hpc/lonestar6.md Table 5. This cap REJECTS the overflow at submit
+# time rather than queueing it, so exceeding it loses builds with nothing in sbatch's output
+# naming a cap as the reason.
 case "$QUEUE" in
+    vm-small)    Q_MAX_JOBS=4 ;;
     development) Q_MAX_JOBS=1 ;;
     normal)      Q_MAX_JOBS=20 ;;
-    vm-small)    Q_MAX_JOBS=4 ;;
     *)           Q_MAX_JOBS=0 ;;                  # unknown queue: skip rather than guess
 esac
 if [ "$Q_MAX_JOBS" -gt 0 ] && [ "${#ROWS[@]}" -gt "$Q_MAX_JOBS" ]; then
     echo "ERROR: ${#ROWS[@]} builds exceeds the $QUEUE queue's $Q_MAX_JOBS-jobs-per-user cap."
     echo "       sbatch REJECTS the overflow instead of queueing it, so builds would be lost"
     echo "       with nothing in the output naming a cap as the reason."
-    [ "$QUEUE" = "development" ] && echo "       Use the default QUEUE=normal (20 jobs/user, same 1 SU rate)."
+    [ "$QUEUE" = "development" ] && echo "       Use the default QUEUE=vm-small (4 jobs/user, and it schedules fast)."
     exit 1
 fi
 

@@ -575,8 +575,16 @@ def test_the_tau_builds_do_not_default_to_a_one_job_queue():
     correct queue is also the free one.
     """
     src = open(os.path.join(REPO, "scripts", "tacc", "submit_tau_states.sh")).read()
-    assert 'QUEUE="${QUEUE:-normal}"' in src, "must not inherit the one-job development default"
-    assert "ONE JOB PER USER" in src, "the reason has to be recorded, not just the value"
+    assert 'QUEUE="${QUEUE:-vm-small}"' in src, "must not inherit the one-job development default"
+    assert "caps jobs-per-user at ONE" in src, \
+        "why development is wrong here has to be recorded, not just avoided"
+    assert "SCHEDULING LATENCY" in src, \
+        "the deciding factor is time-to-start, not the charge rate -- record which"
+    # vm-small is 16 cores / ~29 GB, below what build_states assumes; the settings 04_states.slurm
+    # documents for that case must be applied, not left as a trap that OOMs an hour in
+    for var in ("HOUFIN_STATES_READ_WORKERS", "HOUFIN_STATES_WORKERS", "HOUFIN_STATES_SAMPLES"):
+        assert var in src, f"{var} must be set for a virtual node"
+    assert "vm-small)    Q_MAX_JOBS=4" in src, "vm-small allows 4 jobs/user; 3 builds fit"
     assert "development) Q_MAX_JOBS=1" in src, \
         "an explicit QUEUE=development override must be caught, not silently truncated"
     assert "REJECTS the overflow" in src

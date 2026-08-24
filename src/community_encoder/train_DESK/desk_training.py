@@ -1040,11 +1040,24 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
     if selection_metric not in ("val_zmse", "val_kernel"):
         raise ValueError(f"desk.selection_metric must be 'val_zmse' or 'val_kernel'; "
                          f"got {selection_metric!r}")
+    # Is there a validation set AT ALL? A no-holdout production retrain has none by design, and
+    # for it "nothing to select on" is the expected state, not an error -- the final weights are
+    # kept and the stopping epoch comes from the sweep. Distinguishing that from a WIRING failure
+    # matters both ways: raising on the deliberate case makes val_kernel unusable as the default
+    # (the production run would refuse to start), and staying silent on the accidental case means
+    # selecting on NaN, where every comparison is False and the warmup epoch's weights are kept
+    # while the log still reports a finished run.
+    _has_val = any(bool(va.any()) for _y, (_z, _t, va, _w) in tgt.items())
     if selection_metric == "val_kernel" and not val_pools.get("pool"):
-        raise ValueError(
-            "selection_metric='val_kernel' but the validation kernel pool is empty or not "
-            "wired, so there is nothing to select on. Selecting on a NaN would silently keep "
-            "epoch 1's weights. Pass val_metric_pool, or select on val_zmse.")
+        if _has_val:
+            raise ValueError(
+                "selection_metric='val_kernel' and there ARE validation cells, but the "
+                "validation kernel pool is empty or not wired -- so there is nothing to select "
+                "on and selecting on a NaN would silently keep the warmup epoch's weights. "
+                "Pass val_metric_pool, or select on val_zmse.")
+        print("[desk] no validation cells, so no epoch can be selected on any metric. The "
+              "FINAL weights are kept; the stopping epoch must come from desk.stop_at_epoch, "
+              "chosen on the sweep grid. This run has no measured skill of its own.", flush=True)
     print(f"[desk] epoch selection on {selection_metric} "
           f"({'held-out kernel term -- what the population model consumes' if selection_metric == 'val_kernel' else 'held-out z-MSE -- the historical signal'})",
           flush=True)

@@ -1396,11 +1396,16 @@ def test_selecting_on_the_kernel_can_pick_a_different_epoch_than_zmse(tmp_path):
 
 
 def test_selecting_on_a_kernel_that_does_not_exist_is_refused():
-    """``selection_metric='val_kernel'`` with no val pool would select on NaN.
+    """``selection_metric='val_kernel'`` with val cells but no pool would select on NaN.
 
     Every comparison against NaN is False, so nothing would ever beat the initial best and the
     run would silently keep the warmup epoch's weights -- a broken run that finishes, reports a
     number, and looks like the others.
+
+    The guard is conditioned on there BEING validation cells. A no-holdout production retrain has
+    none by design and can select on no metric at all; raising there would make val_kernel
+    unusable as the committed default, since the one run the sweep exists to produce would refuse
+    to start. See test_a_no_holdout_run_selects_on_nothing_without_failing.
     """
     import contextlib
     import io
@@ -1611,3 +1616,69 @@ def test_eval_every_above_one_runs_and_records_only_measured_epochs(tmp_path):
         m = re.search(r"restored best epoch (\d+)", txt)
         assert m and int(m.group(1)) in want_rows, (ee, m.group(1) if m else None, want_rows)
     print("eval_every>1 works and records only measured epochs")
+
+
+def test_a_no_holdout_run_selects_on_nothing_without_failing():
+    """With no validation cells, val_kernel must be a no-op rather than an error.
+
+    This is the production retrain: holdout_frac=0, nothing held out, so neither metric exists.
+    It keeps its final weights and takes its stopping point from stop_at_epoch, chosen on the
+    sweep grid. Making the committed default val_kernel would otherwise have broken exactly the
+    run the whole sweep exists to produce -- and the failure would have appeared only at the very
+    end, after every grid run had been paid for.
+
+    The distinction that makes this safe is between "no validation set" (deliberate) and "a
+    validation set whose kernel pool did not build" (a wiring bug). The second still raises.
+    """
+    import contextlib
+    import io
+
+    from src.community_encoder.train_DESK import desk_training as D
+
+    sch = _schema()
+    dims = [s["dim"] for s in sch["streams"]]
+    T, H, W, L = 4, 6, 7, 16
+    rng = np.random.default_rng(2)
+    cov = rng.normal(size=(T, H, W, sch["total_dim"])).astype("float32")
+    m = np.ones((H, W), bool)
+    empty = np.zeros((H, W), bool)
+    years = list(range(2022, 2026))
+    tgt = {y: (rng.normal(size=(H, W, L)).astype("float32"), m, empty,
+               np.ones((H, W), dtype="float32")) for y in years[1:]}
+    out = io.StringIO()
+    with contextlib.redirect_stdout(out):
+        _model, _ema, info = D.train_model_ema(
+            cov, np.ones((T, H, W), bool), years, tgt,
+            _metric_dict(rng.random((H, W, 9)).astype("float32"), m, years), m, empty, dims,
+            latent_dim=L, ema_cfg={"earlystop_warmup": 0}, spatial_kernel=3, epochs=3,
+            schema=sch, dropout=0.1, selection_metric="val_kernel", stop_at_epoch=2,
+            return_info=True)
+    txt = out.getvalue()
+    assert "no validation cells, so no epoch can be selected" in txt, txt
+    assert "stop_at_epoch" in txt, "the log must say where the stopping point has to come from"
+    assert info["restored_best"] is False and info["best_epoch"] == 2, info
+    assert info["epochs_run"] == 2 and info["epochs_budget"] == 3, info
+    print("a no-holdout run under val_kernel finishes and keeps its final weights")
+
+
+def test_the_committed_default_selects_on_the_kernel():
+    """The config default must be the metric the downstream consumes.
+
+    Not contingent on a measurement: two selection metrics cannot be ranked by outcome, since
+    selecting on one always yields the better value of that one. The population model reads Z
+    through learned linear weights, so its covariance IS the similarity -- which settles it. An
+    earlier version of the config comment made the default conditional on a pending run; that
+    conflated the metric choice with the separate question of the epoch BUDGET.
+    """
+    import json as _json
+    import pathlib
+
+    cfg = _json.loads((pathlib.Path(__file__).resolve().parents[1] / "config"
+                       / "esk_desk_config.json").read_text(encoding="utf-8"))
+    assert cfg["desk"]["selection_metric"] == "val_kernel", cfg["desk"]["selection_metric"]
+    note = cfg["desk"]["_selection_comment"]
+    assert "NOT contingent on a measurement" in note
+    assert "cannot be ranked by outcome" in note
+    assert "stop_at_epoch" in note, \
+        "the comment must say how a no-validation run gets its stopping point"
+    print("committed default selects on the kernel term")

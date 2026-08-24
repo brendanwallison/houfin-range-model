@@ -1330,6 +1330,12 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
             "stop_at_epoch": (None if stop_at_epoch is None else int(stop_at_epoch)),
             "trajectory_path": (str(trajectory_path) if trajectory_path else None),
             "eval_kernel_pairs": int(eval_kernel_pairs),
+            # Recorded so a reader can tell whether the run is entitled to a statement about
+            # where the optimum lies. A budget only a little longer than the warmup is almost
+            # entirely LR ramp, and the minimum it reports is a transient of the schedule rather
+            # than a property of the model.
+            "warmup_epochs": int(warmup_epochs),
+            "min_lr_frac": float(min_lr_frac),
             "restored_best": best is not None}
     return (model, ema, info) if return_info else (model, ema)
 

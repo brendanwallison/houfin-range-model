@@ -123,19 +123,42 @@ def check(run_dir):
         k = [r["kernel_val"] for r in rows if np.isfinite(r["kernel_val"])]
         tail = k[-max(3, len(k) // 10):]
         best_k = min(k)
+        best_k_ep = [r["epoch"] for r in rows if r["kernel_val"] == best_k][0]
         still = np.mean(tail) <= best_k * 1.02
-        msgs.append(f"note  kernel_val best {best_k:.6g} at epoch "
-                    f"{[r['epoch'] for r in rows if r['kernel_val'] == best_k][0]}; "
-                    f"tail mean {np.mean(tail):.6g} -> "
-                    + ("STILL FALLING at the end: the budget is too SMALL, do not pick an "
-                       "epoch from this run" if still else "has turned over: the budget covers "
-                       "the optimum"))
+        # A run whose budget is not comfortably longer than its LR warmup cannot support ANY
+        # statement about where the optimum lies. _warmup_cosine ramps the LR over warmup_epochs
+        # and only then anneals, so at epochs=30 against warmup=20 two thirds of the run is ramp:
+        # the LR peaks near epoch 20 and the "minimum" a few epochs later is a transient of the
+        # schedule, not a property of the model. Saying "the budget covers the optimum" there is
+        # exactly the kind of plausible-looking claim this script exists to prevent, and the
+        # smoke run produced it.
+        warm = int(summ.get("warmup_epochs", 0))
+        budget = int(summ.get("epochs_budget", rows[-1]["epoch"]))
+        if warm and budget < 3 * warm:
+            msgs.append(f"note  kernel_val best {best_k:.6g} at epoch {best_k_ep}, but this run "
+                        f"is {budget} epochs against {warm} of LR warmup "
+                        f"({100 * warm // max(budget, 1)}% ramp) -- NO conclusion about the "
+                        f"optimum or the budget is available from it. Use a run of at least "
+                        f"{3 * warm} epochs.")
+        else:
+            msgs.append(f"note  kernel_val best {best_k:.6g} at epoch {best_k_ep}; "
+                        f"tail mean {np.mean(tail):.6g} -> "
+                        + ("STILL FALLING at the end: the budget is too SMALL, do not pick an "
+                           "epoch from this run" if still else "has turned over: the budget "
+                           "covers the optimum"))
         z = [r["zmse_val"] for r in rows if np.isfinite(r["zmse_val"])]
         if z:
             bz = min(z)
-            msgs.append(f"note  val z-MSE best {bz:.6g} at epoch "
-                        f"{[r['epoch'] for r in rows if r['zmse_val'] == bz][0]} -- if that "
-                        f"differs from the kernel's best epoch, THAT is the finding")
+            bz_ep = [r["epoch"] for r in rows if r["zmse_val"] == bz][0]
+            gap = ("they AGREE" if bz_ep == best_k_ep else
+                   f"they DISAGREE by {abs(bz_ep - best_k_ep)} epochs")
+            msgs.append(f"note  val z-MSE best {bz:.6g} at epoch {bz_ep} vs kernel at "
+                        f"{best_k_ep}: {gap}. A large gap is diagnostic about the MODEL, not "
+                        f"about which metric to select on -- a cell-specific offset ruins "
+                        f"coordinate accuracy while cancelling in every similarity comparison.")
+            if bz_ep == rows[-1]["epoch"]:
+                msgs.append("note  val z-MSE was still improving at the LAST epoch, so its own "
+                            "optimum is outside this budget")
     return msgs, hard
 
 

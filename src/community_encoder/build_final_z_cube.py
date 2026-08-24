@@ -25,7 +25,8 @@ from tqdm import tqdm
 
 from community_encoder.train_DESK.config_utils import load_config
 from community_encoder.train_DESK import covariate_io as cio
-from community_encoder.train_DESK.model_arch import MultiStreamAutoencoder
+from community_encoder.train_DESK.model_arch import (MultiStreamAutoencoder,
+                                                     hidden_width_from_meta)
 from src.data.masks import read_land_mask
 
 def fill_gaps_stage1_spatial(z_cube, valid_mask, land_mask, radius_px=25):
@@ -175,7 +176,9 @@ def build_spacetime_cube(config: Optional[Union[Dict[str, Any], str, os.PathLike
     latent_dim = int(dm["latent_dim"])
     spatial_kernel = int(dm["spatial_kernel"]) if "spatial_kernel" in dm else 0
     # Architecture width is a trained property, not a config choice at inference time.
-    hidden_width = int(dm["hidden_width"]) if "hidden_width" in dm else None
+    # Scalar OR per-stream list: hidden_width_from_meta decides which, in one place, so a
+    # per-stream net does not crash here after training successfully.
+    hidden_width = hidden_width_from_meta(dm)
     mlp_expansion = int(dm["mlp_expansion"]) if "mlp_expansion" in dm else 4
     schema = _json.loads(str(dm["schema"]))
     kernel = str(dm["kernel"]) if "kernel" in dm else ""

@@ -393,7 +393,7 @@ def cell_xy(rows, cols, ref_raster):
 
 def _load_model(config):
     import torch
-    from .model_arch import MultiStreamAutoencoder
+    from .model_arch import MultiStreamAutoencoder, hidden_width_from_meta
     dm = np.load(os.path.join(config["paths"]["desk_output_dir"], "desk_meta.npz"), allow_pickle=True)
     schema = json.loads(str(dm["schema"]))
     spatial_kernel = int(dm["spatial_kernel"]) if "spatial_kernel" in dm else 0
@@ -401,7 +401,9 @@ def _load_model(config):
     # shapes, so rebuilding at the config's current width would fail to load older weights.
     model = MultiStreamAutoencoder(
         [int(d) for d in dm["stream_dims"]], int(dm["latent_dim"]), spatial_kernel,
-        hidden_width=(int(dm["hidden_width"]) if "hidden_width" in dm else None),
+        # Scalar OR per-stream list -- one reader for both, so a per-stream checkpoint
+        # cannot train fine and then fail every validation stage that reloads it.
+        hidden_width=hidden_width_from_meta(dm),
         mlp_expansion=(int(dm["mlp_expansion"]) if "mlp_expansion" in dm else 4))
     # Put the net on the accelerator. This path used to load with map_location="cpu" and never
     # call .to(device), so all 60 whole-grid forwards ran on CPU (~480 ms each, ~87% of this

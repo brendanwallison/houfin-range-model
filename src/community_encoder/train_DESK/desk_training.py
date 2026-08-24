@@ -128,6 +128,44 @@ def spacetime_kernel_loss(z_by_t, pool_t, pool_flat, pool_x, num_pairs=4096, gen
 
 
 
+def fixed_kernel_pairs(n_points, num_pairs, seed):
+    """A FIXED ``(2, num_pairs)`` index draw over a pool -- the pairs an eval metric scores.
+
+    ``spacetime_kernel_loss`` redraws its pairs every call, which is right for a training
+    term (fresh pairs each step are the stochastic gradient) and wrong for a metric used to
+    pick an epoch. With a fresh draw the epoch-to-epoch difference mixes the model's change
+    with the pair set's change, so the argmin over epochs is partly a draw of the dice --
+    and best-epoch selection is exactly what this instrumentation exists to support. Drawing
+    once and reusing the same pairs makes consecutive epochs differ only by the model.
+
+    Returns ``None`` when the pool holds fewer than 2 points, which is the honest answer for
+    a val pool that no held-out cell reaches (see ``NULL_IS_A_FLOOR_FOR``: a metric with no
+    pairs is unavailable, not zero).
+    """
+    n = int(n_points)
+    if n < 2:
+        return None
+    g = np.random.default_rng(int(seed))
+    return g.integers(0, n, size=(2, int(num_pairs)), dtype=np.int64)
+
+
+def kernel_loss_on_pairs(z_by_t, pool_t, pool_flat, pool_x, pairs):
+    """``spacetime_kernel_loss`` on a caller-supplied pair index array. Same estimand.
+
+    Shares ``_pair_kernel_loss`` with the training term rather than reimplementing the
+    Ružička ratio, so the number selected on and the number optimized cannot drift apart --
+    the failure this codebase hit when two modules averaged the same width in different
+    orders.
+    """
+    T, H, W, L = z_by_t.shape
+    i = torch.as_tensor(pairs[0], device=z_by_t.device, dtype=torch.long)
+    j = torch.as_tensor(pairs[1], device=z_by_t.device, dtype=torch.long)
+    zf = z_by_t.reshape(T, H * W, L)
+    return _pair_kernel_loss(zf[pool_t[i], pool_flat[i]], zf[pool_t[j], pool_flat[j]],
+                             pool_x[i], pool_x[j])
+
+
+
 def stratum_weights(labels, n_min=200, cap=5.0, power=0.5):
     """Per-point sampling weight that partly corrects BBS's coast/present bias. ``(N,)`` float.
 
@@ -394,7 +432,8 @@ def supervised_cells(pidx, supervise, shape):
     return out
 
 
-def _prepare_trend_targets(config, z_dir, latent_dim, holdout, points_dir=None):
+def _prepare_trend_targets(config, z_dir, latent_dim, holdout, points_dir=None,
+                           exclude=None):
     """Per-year ESK-basis targets for EVERY supervised year, from the target point set.
 
     Projects ``X_points`` into the joint ESK basis (z_obs) and scatters each supervised point
@@ -403,6 +442,16 @@ def _prepare_trend_targets(config, z_dir, latent_dim, holdout, points_dir=None):
     and ``wg`` is the per-cell loss weight for that year.
 
     Only rows flagged ``supervise`` are scattered, so each cell-year is written exactly once.
+
+    ``exclude`` drops cells from the TRAIN mask without adding them to val -- the buffer ring,
+    and any block a ``train_frac`` thinning removed. Both were previously excluded from the
+    metric pool (through ``m_tr``) and from the normalization fit but NOT from here, so buffer
+    cells still supervised the STABILIZING term, which carries most of the loss. That silently
+    voided the buffer's guarantee: a held-out cell's convolutional receptive field reaches
+    ``kernel//2`` cells away, and those cells were supervised, so the held-out score was
+    measured against a model trained right up to the block edge. The masks are also what makes
+    a ``train_frac`` axis mean anything -- thinning the metric pool alone would leave the
+    dominant term reading every cell.
     """
     from .esk_kernel import project_points_to_z
     from src.config_utils import target_points_dir
@@ -413,6 +462,11 @@ def _prepare_trend_targets(config, z_dir, latent_dim, holdout, points_dir=None):
         raise FileNotFoundError(f"trend targets need the ESK projection in {z_dir}; re-run spacetime-esk")
     rows, cols, yrs = pidx[:, 0], pidx[:, 1], pidx[:, 2]
     H, W = holdout.shape
+    drop = (np.zeros_like(holdout) if exclude is None
+            else np.asarray(exclude, dtype=bool))
+    if drop.shape != holdout.shape:
+        raise ValueError(f"exclude has shape {drop.shape} but the holdout grid is "
+                         f"{holdout.shape}; these are cell-aligned masks.")
     out = {}
     for y in sorted({int(v) for v in yrs}):
         sel = np.where((yrs == y) & supervise)[0]
@@ -422,7 +476,7 @@ def _prepare_trend_targets(config, z_dir, latent_dim, holdout, points_dir=None):
         zg[rows[sel], cols[sel]] = z_obs[sel]
         present[rows[sel], cols[sel]] = True
         wg[rows[sel], cols[sel]] = weights[sel]
-        out[y] = (zg, present & (~holdout), present & holdout, wg)
+        out[y] = (zg, present & (~holdout) & (~drop), present & holdout, wg)
     return out
 
 
@@ -514,6 +568,9 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
                     holdout_year_targets=None, pool_w=None, direction_anchor_year=None,
                     direction_withheld_anchor_year=None,
                     hidden_width=None, mlp_expansion=4,
+                    val_metric_pool=None, val_pool_holdout_years=(),
+                    eval_kernel_pairs=65536, selection_metric="val_zmse",
+                    trajectory_path=None, stop_at_epoch=None, return_info=False,
                     _skip_target_conversion=False):
     """Train DESK with a learned output-EMA.
 
@@ -526,6 +583,33 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
     With ``augment_cfg`` enabled this becomes a **denoising** autoencoder: each year's forward
     sees a channel-group-masked input while the reconstruction target stays the clean grid, so
     the encoder must infer masked variables/months from the rest rather than copying them.
+
+    ``val_metric_pool`` is the same 3-tuple as ``metric_pool`` but built over the HELD-OUT
+    cells, so the kernel term -- the quantity the population model actually consumes -- can be
+    scored on cells the objective never saw. Until now the kernel loss existed only on the
+    train pool, so the one term downstream depends on had never been measured out of sample,
+    and epoch selection ran on ``val`` z-MSE instead. Those two disagree: on an existing
+    500-epoch run z-MSE was best at epoch 109 (0.2026, rising to 0.2224 by 500) while the
+    train-pool kernel loss was still falling at 500 (0.00250, 39% below its epoch-109 value).
+    Which of them the held-out kernel follows is the question this measures, so BOTH are
+    logged whatever ``selection_metric`` picks.
+
+    ``val_pool_holdout_years`` splits that pool the way the z-MSE report is already split: a
+    held-out cell in a TRAINED year is an unseen place, a held-out cell in a WITHHELD year is
+    an unseen place and time. Pooling them reports a mixture of two questions, and which one
+    dominates depends on how many years the overlay withheld -- i.e. on the sweep's own
+    independent variable.
+
+    ``selection_metric`` is ``val_zmse`` (historical) or ``val_kernel``. ``stop_at_epoch``
+    halts the loop early WITHOUT shortening the LR schedule, which ``epochs`` would: the
+    cosine anneal is parameterised on the budget, so lowering ``epochs`` to the stopping point
+    changes the learning rate at every preceding step and trains a different model rather than
+    the same one stopped sooner. ``trajectory_path`` receives one JSON object per epoch.
+
+    With ``return_info=True`` the return grows a third element, the per-run summary (best
+    epoch, both metrics there, the trajectory path). Behind a flag rather than always, because
+    a silent arity change is a failure mode this file has been bitten by -- see
+    ``spacetime_metric_pool``'s ``return_pidx`` note.
     """
     from torch.utils.checkpoint import checkpoint
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -584,6 +668,52 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
     # draw -- the class of index-space bug this file has hit before.
     pool_w_t = None if pool_w is None else torch.as_tensor(
         np.asarray(pool_w)[_keep], device=device, dtype=torch.float32)
+
+    # --- the VALIDATION kernel pool: the downstream's own quantity, out of sample ----------
+    # Built by the caller from the val mask, so by construction it shares no cell with the
+    # train pool -- the two come from complementary masks and the buffer ring sits between
+    # them. Pairs are drawn ONCE (fixed_kernel_pairs) and reused at every eval so consecutive
+    # epochs differ only by the model, and the whole block runs under no_grad at the eval
+    # site: it must never touch a weight.
+    def _prep_val_pool(py, pf, px, label):
+        keep = np.array([int(y) in yi for y in py], dtype=bool)
+        if not keep.any():
+            print(f"[desk] val kernel pool ({label}): EMPTY -- no held-out cell-year falls "
+                  f"in the forwarded window, so this metric is UNAVAILABLE_NO_VAL_POINTS "
+                  f"rather than 0", flush=True)
+            return None
+        t = torch.as_tensor(np.array([yi[int(y)] for y in py[keep]]),
+                            device=device, dtype=torch.long)
+        f = torch.as_tensor(pf[keep], device=device, dtype=torch.long)
+        x = torch.as_tensor(px[keep], device=device)
+        pairs = fixed_kernel_pairs(int(t.shape[0]), eval_kernel_pairs, seed)
+        if pairs is None:
+            print(f"[desk] val kernel pool ({label}): {int(t.shape[0])} point(s), too few to "
+                  f"form a pair -- UNAVAILABLE_TOO_FEW_POINTS", flush=True)
+            return None
+        print(f"[desk] val kernel pool ({label}): {int(t.shape[0]):,} held-out cell-years "
+              f"over {len(np.unique(py[keep]))} years, {eval_kernel_pairs:,} FIXED pairs",
+              flush=True)
+        return (t, f, x, pairs)
+
+    # The train pool's own fixed eval pairs, seeded differently from the val pools so the two
+    # are independent draws rather than the same index pattern over different pools.
+    train_eval_pairs = fixed_kernel_pairs(int(pool_t.shape[0]), eval_kernel_pairs, seed + 977)
+    val_pools = {}
+    if val_metric_pool is not None:
+        _vy, _vf, _vx = val_metric_pool
+        _vho = np.isin(_vy, np.asarray(list(val_pool_holdout_years) or [-1], dtype=_vy.dtype))
+        # sp   = held-out cell, TRAINED year   -> unseen place
+        # sp+t = held-out cell, WITHHELD year  -> unseen place AND time
+        # pool = both, kept because it is the single number a sweep column can be ranked on
+        val_pools["pool"] = _prep_val_pool(_vy, _vf, _vx, "pool")
+        val_pools["sp"] = _prep_val_pool(_vy[~_vho], _vf[~_vho], _vx[~_vho], "sp")
+        val_pools["spt"] = (_prep_val_pool(_vy[_vho], _vf[_vho], _vx[_vho], "sp+t")
+                            if _vho.any() else None)
+    else:
+        print("[desk] val kernel pool: NOT WIRED (no val_metric_pool passed) -- the kernel "
+              "term is measured on training pairs only, so it cannot be selected on",
+              flush=True)
     m_tr = torch.as_tensor(m2023_tr, device=device).bool(); m_val = torch.as_tensor(m2023_val, device=device).bool()
     # supervised year targets that fall inside the forwarded window
     tgt = {y: (torch.tensor(zg, device=device),
@@ -677,7 +807,17 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
         return out + (stack,) if want_raw else out
 
     def _z_mse(z_all, sel):
-        """Mean per-cell summed-over-latent Z error on the cells selected by ``sel[y]``."""
+        """Mean per-cell summed-over-latent Z error on the cells selected by ``sel[y]``.
+
+        Returns ``nan`` when no cell is selected, NOT 0. The old ``sq / max(cnt, 1)`` made an
+        empty selection score a PERFECT 0.0000: with no validation cells -- the production
+        retrain's configuration, and any run whose val blocks happen to miss every supervised
+        cell -- the best-epoch comparison then accepted epoch 1 and kept near-init weights,
+        while the log reported ``va(pool) 0.0000`` and the run finished normally. The only
+        thing standing between that and a shipped model was the configurable
+        ``min_val_cells`` floor. An absent measurement has to be absent (see
+        ``UNAVAILABLE_*``), because a zero here is indistinguishable from a perfect fit.
+        """
         sq, cnt = 0.0, 0
         for y, (zg, m) in sel.items():
             if not (torch.is_tensor(zg) and torch.is_tensor(m)):
@@ -688,7 +828,7 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
             if bool(m.any()):
                 d = (z_all[yi[y]][m] - zg[m]).detach()
                 sq += float(torch.sum(d * d)); cnt += int(m.sum())
-        return sq / max(cnt, 1), cnt
+        return (sq / cnt if cnt else float("nan")), cnt
 
     def _rotation(z_all, m, y_a=None):
         """Median ``1 - cos`` between the deep and anchor year, predicted and target.
@@ -885,6 +1025,29 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
               f"{'n/a (no training cells that year -- use validate spacetime_idw)' if not np.isfinite(_ho_dc) else f'{_ho_dc:.2f}'}",
               flush=True)
     best_val, best, bad, nonfinite = float("inf"), None, 0, 0
+    best_epoch, best_zmse, best_kernel = None, float("nan"), float("nan")
+    # Pre-bound so an eval_every > 1 epoch cannot reference an eval-only name before it is
+    # first assigned: the printed line and the JSONL row are emitted EVERY epoch.
+    vk, tk = {}, float("nan")
+    traj_fh = None
+    if trajectory_path:
+        os.makedirs(os.path.dirname(os.path.abspath(trajectory_path)), exist_ok=True)
+        # "w", not "a": a resumed or rerun training writes a NEW trajectory, and appending
+        # would interleave two runs' epochs in one file with nothing to separate them -- the
+        # best-epoch argmin would then be taken over a mixture.
+        traj_fh = open(trajectory_path, "w", encoding="utf-8")
+        print(f"[desk] per-epoch trajectory -> {trajectory_path}", flush=True)
+    if selection_metric not in ("val_zmse", "val_kernel"):
+        raise ValueError(f"desk.selection_metric must be 'val_zmse' or 'val_kernel'; "
+                         f"got {selection_metric!r}")
+    if selection_metric == "val_kernel" and not val_pools.get("pool"):
+        raise ValueError(
+            "selection_metric='val_kernel' but the validation kernel pool is empty or not "
+            "wired, so there is nothing to select on. Selecting on a NaN would silently keep "
+            "epoch 1's weights. Pass val_metric_pool, or select on val_zmse.")
+    print(f"[desk] epoch selection on {selection_metric} "
+          f"({'held-out kernel term -- what the population model consumes' if selection_metric == 'val_kernel' else 'held-out z-MSE -- the historical signal'})",
+          flush=True)
     print(f"--- Training DESK+outputEMA ({len(window_years)}yr window {window_years[0]}..{window_years[-1]}, "
           f"{len(tgt)} supervised years, max {epochs} ep; grad_clip={grad_clip}, es_warmup={es_warmup}, "
           f"amp={use_amp}, dropout={dropout}, wd={weight_decay}) ---")
@@ -983,6 +1146,19 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
                     rotPh = rotTh = dcH = float("nan")
                 # the magnitude half of the same pairs the angles above score
                 mgT, mgV = _mag_ratio(z_eval, rot_tr), _mag_ratio(z_eval, rot_va)
+                # THE selection candidate: the kernel term on held-out cells. Same estimand
+                # as the training term (shared _pair_kernel_loss), on fixed pairs, under
+                # no_grad, on the clean unmasked forward -- so it is comparable epoch to
+                # epoch and cannot influence a weight.
+                vk = {k: (float(kernel_loss_on_pairs(z_eval, *v)) if v is not None
+                          else float("nan")) for k, v in val_pools.items()}
+                # The train pool scored the SAME way (fixed pairs, clean forward). Without it
+                # the only kernel number was the training term measured under dropout and
+                # input masking on a fresh draw, which is not on the same footing as the val
+                # figure and cannot support a train/val gap.
+                tk = (float(kernel_loss_on_pairs(z_eval, pool_t, pool_flat, pool_x,
+                                                 train_eval_pairs))
+                      if train_eval_pairs is not None else float("nan"))
         dt = time.perf_counter() - t_ep
         rss = _max_rss_gib()
         vram = (f" | VRAM {torch.cuda.max_memory_allocated() / 2**30:.2f}/"
@@ -1017,20 +1193,98 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
               f"half-life {ema.half_life().item():.1f}y | "
               f"mix {w_stab.item()/tot:.2f}/{w_true.item()/tot:.2f}/{w_rec.item()/tot:.2f} | "
               f"lr {opt.param_groups[0]['lr']:.2e} | {dt:.1f}s{vram} | RSS {rss:.1f}G", flush=True)
+        # The kernel line is separate rather than appended: the line above is already at the
+        # terminal width, and these are the numbers a sweep is read on, so they should not be
+        # the ones that scroll off.
+        #
+        # Labels are parenthesis-free `k_*` tokens, NOT the `va(...)` family the z-MSE line
+        # uses. Reusing those made every existing log regex match BOTH lines and return a
+        # mixture of two different quantities; a `kva(...)` prefix did not fix it either, since
+        # `va\(sp\+t\)` still matches inside `kva(sp+t)`. Caught by a test that greps the
+        # z-MSE token, and the reason to keep the two token families disjoint by construction
+        # rather than relax the pattern.
+        print(f"Ep {ep:03d} | kernel k_tr {tk:.5f} k_val {vk.get('pool', float('nan')):.5f} "
+              f"k_val_sp {vk.get('sp', float('nan')):.5f} "
+              f"k_val_spt {vk.get('spt', float('nan')):.5f}", flush=True)
+        # Written EVERY epoch, unconditionally. Every trajectory analysed so far was recovered
+        # by regex-parsing job logs, which only works while the log survives and while the
+        # print format holds; a JSONL costs nothing and is the artifact the sweep reads.
+        if traj_fh is not None:
+            traj_fh.write(json.dumps({
+                "epoch": int(ep),
+                "loss_total": float(loss.item()),
+                "loss_stab": float(loss_stab.item()),
+                "loss_metric": float(loss_true.item()),
+                "loss_recon": float(recon_loss.item()),
+                "kernel_train": tk,
+                "kernel_val": vk.get("pool", float("nan")),
+                "kernel_val_sp": vk.get("sp", float("nan")),
+                "kernel_val_spt": vk.get("spt", float("nan")),
+                "zmse_train": ts, "zmse_val": vs,
+                "zmse_val_sp": vs_sp, "zmse_val_spt": vs_spt,
+                "zmse_val_anchor": vs_anchor, "zmse_val_yearout": vs_time,
+                "rot_ratio_train": rr, "rot_ratio_val": rrv, "rot_ratio_withheld": rrh,
+                "dcos_train": dcT, "dcos_val": dcV, "dcos_withheld": dcH,
+                "mag_train": mgT, "mag_val": mgV,
+                "half_life": float(ema.half_life().item()),
+                "lr": float(opt.param_groups[0]["lr"]),
+                "epoch_seconds": float(dt),
+                "selection_metric": selection_metric,
+            }) + "\n")
+            traj_fh.flush()          # a killed job must still leave a readable trajectory
         if ep <= es_warmup:
             continue                       # don't let the volatile warmup epochs set 'best'
-        if vs < best_val - min_delta:
-            best_val, bad = vs, 0
+        # ONE selection signal, named in the config. z-MSE stays logged either way so a run
+        # under the new metric is still comparable against every run made under the old one.
+        crit = vs if selection_metric == "val_zmse" else vk.get("pool", float("nan"))
+        if np.isfinite(crit) and crit < best_val - min_delta:
+            best_val, bad, best_epoch = crit, 0, int(ep)
+            best_zmse, best_kernel = vs, vk.get("pool", float("nan"))
             best = ({k: v.detach().cpu().clone() for k, v in model.state_dict().items()},
                     {k: v.detach().cpu().clone() for k, v in ema.state_dict().items()})
         else:
             bad += 1
             if bad >= patience:
-                print(f"[desk] early stop at ep {ep} (best Val {best_val:.4f})"); break
+                print(f"[desk] early stop at ep {ep} (best {selection_metric} "
+                      f"{best_val:.5f} at ep {best_epoch})"); break
+        # Halt WITHOUT having shortened the schedule. Lowering `epochs` to this value instead
+        # would re-parameterise the cosine anneal (_warmup_cosine takes the BUDGET, not the
+        # stopping point), changing the learning rate at every preceding step -- a different
+        # model, not the same one stopped earlier.
+        if stop_at_epoch is not None and ep >= int(stop_at_epoch):
+            print(f"[desk] stop_at_epoch={int(stop_at_epoch)} reached; the LR schedule was "
+                  f"parameterised on the full {epochs}-epoch budget and is unchanged",
+                  flush=True)
+            break
+    if traj_fh is not None:
+        traj_fh.close()
     if best is not None:
         model.load_state_dict({k: v.to(device) for k, v in best[0].items()})
         ema.load_state_dict({k: v.to(device) for k, v in best[1].items()})
-    return model, ema
+        print(f"[desk] restored best epoch {best_epoch} "
+              f"({selection_metric}={best_val:.5f}; val z-MSE {best_zmse:.4f}, "
+              f"val kernel {best_kernel:.5f})", flush=True)
+    else:
+        # No checkpoint was ever taken: there is no validation set (the production retrain
+        # holds nothing out) or every epoch was non-finite. Keep the FINAL weights rather
+        # than failing on a None -- which is what this did, so a no-holdout run could not
+        # finish at all -- and say which case it was, because "no val set" is a deliberate
+        # configuration and "nothing ever improved" is a broken run.
+        best_epoch = int(ep)
+        why = ("no validation cells, so no epoch could be scored -- this is the expected path "
+               "for a no-holdout production retrain" if not any(bool(va.any())
+                                                                for _, (_z, _t, va, _w) in tgt.items())
+               else "no epoch improved on the selection metric after the warmup")
+        print(f"[desk] keeping the FINAL weights from epoch {best_epoch}: {why}", flush=True)
+    info = {"best_epoch": best_epoch, "best_selection_value": float(best_val),
+            "best_val_zmse": float(best_zmse), "best_val_kernel": float(best_kernel),
+            "selection_metric": str(selection_metric),
+            "epochs_run": int(ep), "epochs_budget": int(epochs),
+            "stop_at_epoch": (None if stop_at_epoch is None else int(stop_at_epoch)),
+            "trajectory_path": (str(trajectory_path) if trajectory_path else None),
+            "eval_kernel_pairs": int(eval_kernel_pairs),
+            "restored_best": best is not None}
+    return (model, ema, info) if return_info else (model, ema)
 
 
 
@@ -1128,6 +1382,26 @@ def run_desk_experiment(config=None):
     # at a val cell reads cells up to kernel//2 away, so a narrower buffer would let val
     # receptive fields overlap training cells and quietly flatter the metric.
     buf = spatial_kernel // 2
+    # A FLOOR on that derivation, never a narrower buffer. The kernel is a swept knob, and
+    # kernel//2 makes the buffer move with it (0/0/1/2 for kernel 0/1/3/5) -- so each variant
+    # would be graded on a different split, with different training-cell counts and different
+    # val/train separation. kernel=0 in particular would put val cells directly adjacent to
+    # training cells, which is exactly the optimism the buffer exists to remove, and its
+    # held-out score would not be comparable with kernel=5's. Pinning the floor at the widest
+    # kernel in a sweep gives every configuration identical held-out regions. null keeps the
+    # historical derived-only behaviour, so no existing run changes.
+    _floor = _cfg.get("buffer_floor")
+    if _floor is not None:
+        if int(_floor) < spatial_kernel // 2:
+            raise SystemExit(
+                f"desk.trend.buffer_floor={int(_floor)} is NARROWER than this kernel needs "
+                f"({spatial_kernel}//2 = {spatial_kernel // 2}). A val cell's receptive field "
+                f"would reach training cells and the held-out metric would flatter itself. "
+                f"The floor may only widen the buffer.")
+        buf = max(buf, int(_floor))
+        print(f"[desk] buffer width {buf} cells = max(kernel//2={spatial_kernel // 2}, "
+              f"buffer_floor={int(_floor)}) -- pinned so every swept kernel is graded on the "
+              f"SAME held-out regions", flush=True)
     block = int(_cfg.get("block_cells", 12))
     # Draw the split over the cells that actually CARRY SUPERVISION, not over the eBird
     # covariate footprint. The two were nearly the same while the target was an interpolated
@@ -1147,7 +1421,43 @@ def run_desk_experiment(config=None):
     print(f"[desk] split: {block}x{block}-cell blocks, buffer {buf} cells (from "
           f"spatial_kernel={spatial_kernel}) -> {n_val} val, "
           f"{int(buffer_cells_mask.sum())} buffer cells", flush=True)
+    # train_frac subsamples the TRAINING blocks after the split is drawn, so the amount of
+    # training data can be varied while the validation set stays byte-identical. Doing it with
+    # holdout_frac instead -- the obvious reading -- moves the val set too, and then each
+    # column of a data-amount sweep reports its metric on a different, differently-sized set
+    # of held-out cells, which is not a trajectory. Whole blocks, not scattered cells: a
+    # thinned-at-random training set leaves every val block still ringed by training data at
+    # the same distance, so it would reduce the count without reducing the reach.
+    train_frac = _cfg.get("train_frac")
+    train_drop = np.zeros_like(holdout)
+    if train_frac is not None and float(train_frac) < 1.0:
+        tf = float(train_frac)
+        if not 0.0 < tf < 1.0:
+            raise SystemExit(f"desk.trend.train_frac must be in (0,1] or null; got {tf}")
+        avail = split_domain & (~holdout) & (~buffer_cells_mask)
+        _b = max(1, block)
+        _nby, _nbx = (avail.shape[0] + _b - 1) // _b, (avail.shape[1] + _b - 1) // _b
+        # A SEPARATE rng stream from the split's, so changing train_frac cannot perturb which
+        # blocks were held out -- the whole point of doing this after the split.
+        _rng = np.random.default_rng(int(_cfg.get("seed", 0)) + 104729)
+        _drop = _rng.random((_nby, _nbx)) >= tf
+        train_drop = (np.repeat(np.repeat(_drop, _b, axis=0), _b, axis=1)[:avail.shape[0],
+                                                                         :avail.shape[1]]
+                      & avail)
+        print(f"[desk] train_frac={tf:g}: dropped {int(train_drop.sum())} of "
+              f"{int(avail.sum())} available training cells "
+              f"({1 - int(train_drop.sum()) / max(int(avail.sum()), 1):.3f} retained) by whole "
+              f"{_b}x{_b} blocks; the validation set is UNCHANGED", flush=True)
     min_val = int(_cfg.get("min_val_cells", 200))
+    if float(_cfg.get("holdout_frac", 0.15)) == 0.0:
+        # The production retrain holds nothing out on purpose, so there is no val number to
+        # protect and the floor would simply refuse to run. Say so explicitly: a run with no
+        # validation set has NO measured skill of its own -- its expected skill is inferred
+        # from the sweep grid it was configured from, and must be reported that way.
+        min_val = 0
+        print("[desk] holdout_frac=0: NO VALIDATION SET. Epoch selection is unavailable, the "
+              "final weights are kept, and this run has no measured skill -- infer it from "
+              "the nearest sweep grid point and state that it was inferred.", flush=True)
     if n_val < min_val:
         raise SystemExit(
             f"only {n_val} validation cells (floor {min_val}). Every reported val number, "
@@ -1158,7 +1468,11 @@ def run_desk_experiment(config=None):
     # Normalization stats: fit on the supervised TRAINING pixels only (buffer cells are excluded
     # as well -- not evaluation data, but not clean training data either), then applied to every
     # grid (labelled + historical) and frozen for the cube.
-    fit_mask = mask_sup0 & (~holdout) & (~buffer_cells_mask)
+    # train_drop is excluded too: a cell the objective never sees must not contribute to the
+    # statistics every input is standardized by, or the smaller-training-set columns of a
+    # data-amount sweep would still carry the full set's normalization and the axis would be
+    # only partly varied.
+    fit_mask = mask_sup0 & (~holdout) & (~buffer_cells_mask) & (~train_drop)
     # schema so availability channels are left un-standardized (see cio.indicator_channels)
     mu, sd = cio.fit_norm(cov_stack[fit_mask].astype("float32"), schema)
 
@@ -1172,7 +1486,7 @@ def run_desk_experiment(config=None):
     tr_cfg = desk_cfg.get("trend", {})
     # holdout/buffer were drawn above (before the normalization fit). Training excludes BOTH;
     # evaluation uses the holdout only, so buffer cells appear in neither.
-    m_tr = mask_sup & (~holdout) & (~buffer_cells_mask)
+    m_tr = mask_sup & (~holdout) & (~buffer_cells_mask) & (~train_drop)
     m_val = mask_sup & holdout
 
     # Computed here, above the pool, because the pool must exclude these years -- see
@@ -1181,6 +1495,14 @@ def run_desk_experiment(config=None):
     _py, _pf, _px, _ppidx = spacetime_metric_pool(pip, Xp, sup_rows, m_tr, W,
                                                   exclude_years=ho_years, return_pidx=True)
     metric_pool = (_py, _pf, _px)
+    # The SAME builder on the val mask. exclude_years is deliberately NOT passed: a withheld
+    # year is exactly what the sp+t half of the val kernel metric has to score, and excluding
+    # it here would leave the temporal question unmeasurable. The years are carried through so
+    # the trainer can split the pool rather than having to re-derive which is which.
+    val_metric_pool = spacetime_metric_pool(pip, Xp, sup_rows, m_val, W, exclude_years=())
+    print(f"[desk] val metric pool: {len(val_metric_pool[0]):,} HELD-OUT cell-years spanning "
+          f"{len(np.unique(val_metric_pool[0])) if len(val_metric_pool[0]) else 0} years "
+          f"({int(np.isin(val_metric_pool[0], ho_years).sum()):,} in withheld years)")
     print(f"[desk] metric loss over {len(metric_pool[0]):,} training cell-years spanning "
           f"{len(np.unique(metric_pool[0]))} years, pairs drawn across space AND time "
           f"(was one year, {int((pip[:, 2] == ay).sum()):,} rows)")
@@ -1263,7 +1585,13 @@ def run_desk_experiment(config=None):
     window_years = list(range(warmup_start, label_year + 1))
     cov_win, mask_win, kept = _load_year_window(states_dir, schema, mu, sd, window_years)
     targets = _prepare_trend_targets(config, z_dir, latent_dim, holdout,
-                                     points_dir=points_dir)
+                                     points_dir=points_dir,
+                                     exclude=buffer_cells_mask | train_drop)
+    _n_tr_tgt = int(sum(int(tr.sum()) for _y, (_z, tr, _v, _w) in targets.items()))
+    print(f"[desk] stabilizing target: {_n_tr_tgt:,} training cell-years after excluding the "
+          f"buffer ({int(buffer_cells_mask.sum())} cells) and any train_frac thinning "
+          f"({int(train_drop.sum())} cells) -- the same exclusions the metric pool and the "
+          f"normalization fit already apply", flush=True)
 
     # Temporal holdout: withhold a contiguous span of supervised years from the objective and
     # score them separately. The spatial split says nothing about extrapolation THROUGH TIME,
@@ -1302,7 +1630,7 @@ def run_desk_experiment(config=None):
         print(f"[desk] temporal holdout years (diagnostic, excluded from the objective): "
               f"{sorted(year_val)}", flush=True)
 
-    model, ema = train_model_ema(
+    model, ema, train_info = train_model_ema(
         cov_win, mask_win, kept, targets, metric_pool, m_tr, m_val,
         stream_dims, latent_dim=latent_dim, ema_cfg=ema_cfg,
         spatial_kernel=spatial_kernel,
@@ -1321,7 +1649,13 @@ def run_desk_experiment(config=None):
         # shrinking with the holdout. None = the historical auto-selected deepest trained year.
         direction_anchor_year=tr_cfg.get("direction_anchor_year"),
         direction_withheld_anchor_year=tr_cfg.get("direction_withheld_anchor_year"),
-        hidden_width=hidden_width, mlp_expansion=mlp_expansion)
+        hidden_width=hidden_width, mlp_expansion=mlp_expansion,
+        val_metric_pool=val_metric_pool, val_pool_holdout_years=ho_years,
+        eval_kernel_pairs=int(desk_cfg.get("eval_kernel_pairs", 65536)),
+        selection_metric=str(desk_cfg.get("selection_metric", "val_zmse")),
+        trajectory_path=os.path.join(out_dir, "train_trajectory.jsonl"),
+        stop_at_epoch=desk_cfg.get("stop_at_epoch"),
+        return_info=True)
     ema_half_life = float(ema.half_life().item())
     torch.save(ema.state_dict(), os.path.join(out_dir, "output_ema.pth"))
     print(f"[desk] output-EMA learned half-life = {ema_half_life:.2f} yr")
@@ -1336,8 +1670,31 @@ def run_desk_experiment(config=None):
              dropout=float(desk_cfg.get("dropout", 0.5)),
              # hidden_width/mlp_expansion change state_dict SHAPES: without persisting them
              # the cube would rebuild a differently-sized net and fail to load these weights.
-             hidden_width=int(model.hidden_width),
+             # Scalar when every branch shares a width, a per-stream ARRAY when they do not.
+             # Scalar for the uniform case on purpose: an existing uniform run's meta stays
+             # byte-comparable, and any reader that has not been taught about the list form
+             # still loads it. hidden_width_from_meta reads both.
+             hidden_width=(np.int64(model.hidden_widths[0])
+                           if model.hidden_width is not None
+                           else np.array(model.hidden_widths, dtype=np.int64)),
              mlp_expansion=int(model.mlp_expansion),
+             # The best epoch was recorded NOWHERE. The weights were restored from it, but the
+             # only print sat in the early-stop branch, which cannot fire while patience equals
+             # epochs (both 500) -- so every run's chosen epoch had to be inferred from a log,
+             # and the production retrain needs it as an input.
+             best_epoch=int(train_info["best_epoch"]),
+             selection_metric=str(train_info["selection_metric"]),
+             best_selection_value=float(train_info["best_selection_value"]),
+             best_val_zmse=float(train_info["best_val_zmse"]),
+             best_val_kernel=float(train_info["best_val_kernel"]),
+             epochs_run=int(train_info["epochs_run"]),
+             epochs_budget=int(train_info["epochs_budget"]),
+             restored_best=bool(train_info["restored_best"]),
+             buffer_floor=(-1 if _cfg.get("buffer_floor") is None
+                           else int(_cfg["buffer_floor"])),
+             train_frac=float(_cfg.get("train_frac") or 1.0),
+             train_cells=int(m_tr.sum()), val_cells=int(m_val.sum()),
+             train_dropped_cells=int(train_drop.sum()),
              augment=json.dumps(config.get("augment") or {}),
              holdout_cells=int(holdout.sum()), buffer_cells=int(buffer_cells_mask.sum()),
              schema=json.dumps(schema),
@@ -1346,8 +1703,40 @@ def run_desk_experiment(config=None):
              ema_warmup_start=int(ema_cfg.get("warmup_start", 1940)),
              kernel=str(z_meta["kernel"]), centered=bool(z_meta["centered"]),
              kernel_contract=str(z_meta.get("kernel_contract", "")))
-    print(f"[desk] saved model + desk_meta.npz -> {out_dir} "
-          f"(spatial_kernel={spatial_kernel})")
+    # The manifest a sweep is read from: one small JSON per run, so the analysis never has to
+    # open a .npz or parse a log. Written LAST, so its presence is what "this run finished"
+    # means -- which is what makes the submit script's resume able to skip it safely.
+    def _jsonable(v):
+        """Non-finite floats -> None. ``json.dumps`` emits bare ``NaN``/``Infinity``, which
+        Python reads back but strict JSON parsers (jq, most other languages) reject -- and a
+        summary nobody outside Python can read defeats the point of writing one."""
+        return None if isinstance(v, float) and not np.isfinite(v) else v
+
+    with open(os.path.join(out_dir, "run_summary.json"), "w", encoding="utf-8") as fh:
+        json.dump({**{k: _jsonable(v) for k, v in train_info.items()},
+                   "desk_output_dir": out_dir,
+                   "spatial_kernel": int(spatial_kernel),
+                   "buffer_cells": int(buffer_cells_mask.sum()),
+                   "hidden_widths": [int(v) for v in model.hidden_widths],
+                   "mlp_expansion": int(model.mlp_expansion),
+                   "dropout": float(desk_cfg.get("dropout", 0.5)),
+                   "weight_decay": float(desk_cfg.get("weight_decay", 0.0)),
+                   "metric_weight": _jsonable(float((desk_cfg.get("weights") or {})
+                                                    .get("metric", float("nan")))),
+                   "half_life_bounds": list(ema_cfg.get("half_life_bounds", [1.0, 40.0])),
+                   "ema_half_life": _jsonable(ema_half_life),
+                   "holdout_frac": float(_cfg.get("holdout_frac", 0.15)),
+                   "train_frac": float(_cfg.get("train_frac") or 1.0),
+                   "holdout_years": sorted(ho_years),
+                   "n_train_cells": int(m_tr.sum()), "n_val_cells": int(m_val.sum()),
+                   "n_train_cell_years": int(len(metric_pool[0])),
+                   "n_val_cell_years": int(len(val_metric_pool[0])),
+                   "n_params": int(sum(p.numel() for p in model.parameters())),
+                   "sweep": config.get("_sweep") or None},
+                  fh, indent=2)
+    print(f"[desk] saved model + desk_meta.npz + run_summary.json -> {out_dir} "
+          f"(spatial_kernel={spatial_kernel}, best epoch {train_info['best_epoch']} on "
+          f"{train_info['selection_metric']})")
 
 
 if __name__ == "__main__":

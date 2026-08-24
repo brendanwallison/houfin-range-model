@@ -140,6 +140,21 @@ def assert_schema_compatible(saved, live, context=""):
         # exempts a channel from BOTH the transform and the standardization, so adding,
         # removing or moving it changes what mu/sd mean for that channel while name, dim,
         # variables and transform all stay identical.
+        # ema_tau is baked into the written arrays and changes nothing about their shape,
+        # names, order, transform or indicator -- only how smooth they are in time. So two
+        # states dirs built at different tau are interchangeable by every other check here and
+        # by every count, while the model was fitted on one smoothness and would be run on
+        # another. Compared only when BOTH sides recorded it: state dirs built before ema_tau
+        # became provenance carry no such key, and a run against one of those must keep
+        # working rather than fail on an absence.
+        s_tau, l_tau = ss.get("ema_tau"), ls.get("ema_tau")
+        if s_tau is not None and l_tau is not None and float(s_tau) != float(l_tau):
+            raise SystemExit(
+                f"state schema mismatch{where}: stream {ss['name']!r} was built with "
+                f"ema_tau={s_tau} in the model but {l_tau} on disk. The input smoothing is "
+                f"baked into the arrays and is invisible in every shape and name check, so "
+                f"these two states dirs are not interchangeable -- point the run at the "
+                f"states dir it was trained against, or rebuild and retrain.")
         if (ss.get("indicator_variable") or None) != (ls.get("indicator_variable") or None):
             raise SystemExit(
                 f"state schema mismatch{where}: stream {ss['name']!r} declares "

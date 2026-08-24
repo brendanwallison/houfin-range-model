@@ -60,8 +60,18 @@ def schema_entry(spec, name, start, end):
     ``augment`` never see ``states.streams`` -- so every config field the encoder
     has to honour must be copied here or it silently controls nothing. Adding a
     stream property therefore means adding it BOTH to the config spec and to this
-    entry. ``ema_tau`` deliberately stays out: it is consumed here at build time
-    and is already baked into the written arrays.
+    entry.
+
+    ``ema_tau`` is recorded but is PROVENANCE, not a key the encoder honours: it is consumed
+    here at build time and is already baked into the written arrays, so nothing downstream
+    should re-apply it. It has to be recorded anyway, precisely because the value it controls
+    is invisible in the output. Two states dirs built at tau 2 and tau 4 have identical stream
+    names, dims, variables, transforms and indicators -- and differently smoothed arrays -- so
+    without this key they are indistinguishable from their artifacts, and a model could be
+    trained against one and run against the other with no symptom anywhere. That is the same
+    silent-misnormalization class as ``transform``, which is why ``assert_schema_compatible``
+    compares it too (only when both sides recorded it, so pre-existing state dirs keep
+    loading).
 
     ``indicator_variable`` names the stream's availability channel, for a stream
     whose values are structurally absent over part of the domain (BUI is
@@ -82,6 +92,8 @@ def schema_entry(spec, name, start, end):
     for key in ("transform", "indicator_variable"):
         if spec.get(key):
             entry[key] = spec[key]
+    if spec.get("ema_tau") is not None:
+        entry["ema_tau"] = spec["ema_tau"]
     return entry
 
 

@@ -5,7 +5,9 @@ Covers the cluster-free pure cores of the training recipe: structured channel-gr
 (``augment.blocked_holdout``), the 5x5 partial conv, and the stabilizing-loss
 reparametrization. Runs standalone or under pytest; no GPU and no state files needed.
 """
+import json
 import os
+import re
 import sys
 
 import numpy as np
@@ -1147,3 +1149,431 @@ def test_a_floor_above_every_stratum_makes_the_correction_inert():
     counts = np.bincount(labels); counts = counts[counts > 0]
     live = stratum_weights(labels, n_min=max(2, int(np.quantile(counts, 0.25))), cap=5.0)
     assert live.max() / live.min() > inert.max() / inert.min()
+
+
+# ------------------- the validation kernel pool, and per-epoch instrumentation ----------------
+
+def _val_pool_run(epochs=3, **kw):
+    """``train_model_ema`` with a real spatial split AND a val kernel pool. Returns stdout.
+
+    Deliberately builds the train and val pools from COMPLEMENTARY masks, the way
+    ``run_desk_experiment`` does, so the disjointness the tests below assert is a property of
+    the construction rather than of the fixture.
+    """
+    import contextlib
+    import io
+
+    from src.community_encoder.train_DESK import desk_training as D
+
+    sch = _schema()
+    dims = [s["dim"] for s in sch["streams"]]
+    T, H, W, L = 6, 10, 12, 16
+    rng = np.random.default_rng(0)
+    cov = rng.normal(size=(T, H, W, sch["total_dim"])).astype("float32")
+    msk = np.ones((T, H, W), bool)
+    years = list(range(2020, 2026))
+    m = np.ones((H, W), bool)
+    ho = np.zeros((H, W), bool); ho[:, :4] = True
+    tr_m, va_m = m & ~ho, m & ho
+    tgt = {y: (rng.normal(size=(H, W, L)).astype("float32"), tr_m, va_m,
+               np.ones((H, W), dtype="float32")) for y in years[1:]}
+    x = rng.random((H, W, 12)).astype("float32")
+    out = io.StringIO()
+    with contextlib.redirect_stdout(out):
+        D.train_model_ema(cov, msk, years, tgt, _metric_dict(x, tr_m, years),
+                          tr_m, va_m, dims, latent_dim=L,
+                          ema_cfg={"earlystop_warmup": 1}, spatial_kernel=3,
+                          epochs=epochs, lr=1e-3,
+                          weights={"stabilizing": 64.0, "metric": 5.0, "reconstruction": 0.1},
+                          schema=sch, dropout=0.1,
+                          val_metric_pool=_metric_dict(x, va_m, years),
+                          eval_kernel_pairs=512, **kw)
+    return out.getvalue()
+
+
+def test_the_val_kernel_pool_shares_no_cell_with_the_train_pool():
+    """The two pools come from complementary masks, so a shared cell would mean a leak.
+
+    A held-out cell reaching the training pool would put the evaluation data into the objective
+    -- and the kernel term is exactly the term the population model consumes, so the number
+    would be the one most worth trusting and the least trustworthy. Asserted on the pool builder
+    rather than on a log line, because the builder is what both call sites use.
+    """
+    from src.community_encoder.train_DESK.desk_training import spacetime_metric_pool
+
+    H, W = 8, 9
+    rng = np.random.default_rng(3)
+    n = 200
+    pip = np.stack([rng.integers(0, H, n), rng.integers(0, W, n),
+                    rng.integers(2000, 2006, n)], axis=1)
+    Xp = rng.random((n, 5)).astype("float32")
+    sup = np.ones(n, bool)
+    ho = np.zeros((H, W), bool); ho[:, :4] = True
+    m_tr, m_val = ~ho, ho
+
+    _ty, tf, _tx = spacetime_metric_pool(pip, Xp, sup, m_tr, W, exclude_years=())
+    _vy, vf, _vx = spacetime_metric_pool(pip, Xp, sup, m_val, W, exclude_years=())
+    assert len(tf) and len(vf), (len(tf), len(vf))
+    assert not (set(tf.tolist()) & set(vf.tolist())), "train and val pools share a flat cell"
+    # and together they account for every supervised row -- no row silently dropped from both
+    assert len(tf) + len(vf) == n
+    print(f"train pool {len(tf)} / val pool {len(vf)} cell-years, disjoint")
+
+
+def test_the_val_kernel_metric_never_touches_a_weight():
+    """The val kernel term is a METRIC, not a loss: no gradient may reach a parameter from it.
+
+    The plan's original check was "a step with and without the val pool gives identical
+    weights". That is not testable here: this trainer is NOT bit-reproducible run to run even
+    with every RNG seeded and the config unchanged -- two identical runs differ by up to ~6e-5
+    on a weight after two epochs, from non-deterministic multi-threaded float32 reductions on
+    CPU. (The existing ablation guard survives only because it compares `Stab` printed to four
+    decimals.) An equality assertion would therefore fail for a reason that has nothing to do
+    with a leak, and a tolerance loose enough to pass would be loose enough to hide one.
+
+    So the property is checked directly instead, at the two places a leak could exist:
+      * the z the metric is computed on carries NO grad_fn -- it comes from the clean re-forward
+        inside ``torch.no_grad``, so there is no graph to backprop through at all;
+      * the loss the metric returns carries no grad_fn either, so it cannot be added to
+        anything that is stepped.
+    Both are properties of the tensors, immune to float noise, and neither can hold by accident.
+    """
+    import contextlib
+    import io
+
+    from src.community_encoder.train_DESK import desk_training as D
+
+    seen = []
+    real = D.kernel_loss_on_pairs
+
+    def spy(z_by_t, pool_t, pool_flat, pool_x, pairs):
+        out = real(z_by_t, pool_t, pool_flat, pool_x, pairs)
+        seen.append((z_by_t.requires_grad, z_by_t.grad_fn is not None,
+                     out.requires_grad, out.grad_fn is not None))
+        return out
+
+    sch = _schema()
+    dims = [s["dim"] for s in sch["streams"]]
+    T, H, W, L = 5, 8, 10, 16
+    rng = np.random.default_rng(1)
+    cov = rng.normal(size=(T, H, W, sch["total_dim"])).astype("float32")
+    m = np.ones((H, W), bool)
+    ho = np.zeros((H, W), bool); ho[:, :3] = True
+    tr_m, va_m = m & ~ho, m & ho
+    years = list(range(2021, 2026))
+    x = rng.random((H, W, 12)).astype("float32")
+    tgt = {y: (rng.normal(size=(H, W, L)).astype("float32"), tr_m, va_m,
+               np.ones((H, W), dtype="float32")) for y in years[1:]}
+    D.kernel_loss_on_pairs = spy
+    try:
+        with contextlib.redirect_stdout(io.StringIO()):
+            model, _ema = D.train_model_ema(
+                cov, np.ones((T, H, W), bool), years, tgt, _metric_dict(x, tr_m, years),
+                tr_m, va_m, dims, latent_dim=L, ema_cfg={"earlystop_warmup": 0},
+                spatial_kernel=3, epochs=2, lr=1e-2, seed=0,
+                weights={"stabilizing": 64.0, "metric": 5.0, "reconstruction": 0.1},
+                schema=sch, dropout=0.1, val_metric_pool=_metric_dict(x, va_m, years),
+                eval_kernel_pairs=256)
+    finally:
+        D.kernel_loss_on_pairs = real
+    assert seen, "the kernel metric was never evaluated -- the fixture proves nothing"
+    for z_rg, z_graph, l_rg, l_graph in seen:
+        assert not z_graph, "the z the metric reads carries a graph: a leak is possible"
+        assert not l_graph, "the metric's loss carries a graph and could be backpropagated"
+        assert not z_rg and not l_rg, (z_rg, l_rg)
+    # The complementary half -- that the training loss itself is unmoved -- is
+    # test_wiring_the_val_pool_does_not_move_the_training_loss below.
+    print(f"kernel metric evaluated {len(seen)}x, always off-graph")
+
+
+def test_wiring_the_val_pool_does_not_move_the_training_loss():
+    """``Stab`` must be identical with and without the val kernel pool.
+
+    Stab is the training loss, computed before the eval re-forward, so it is the exact quantity
+    a gradient leak from the val term would move -- and unlike a weight tensor it is printed to
+    four decimals, which is coarse enough to be stable under this trainer's float
+    non-determinism and fine enough that a leak at lr=1e-3 would show.
+    """
+    on, _ = _tiny_train(False)
+    off, _ = _tiny_train(False)
+    assert on == off, (on, off)          # the baseline is stable at this precision
+    txt_with = _val_pool_run(selection_metric="val_kernel")
+    stab_with = re.findall(r"Stab (\d+\.\d+)", txt_with)
+    txt_plain = _val_pool_run(selection_metric="val_zmse")
+    stab_plain = re.findall(r"Stab (\d+\.\d+)", txt_plain)
+    assert stab_with and stab_with == stab_plain, (stab_with, stab_plain)
+    print(f"training loss unchanged by the val kernel metric: {stab_with}")
+
+
+def test_the_kernel_metric_uses_fixed_pairs_so_epochs_are_comparable():
+    """Two evaluations of the SAME model must give the same kernel number.
+
+    The training term redraws its pairs every step, which is right for a gradient and wrong for
+    a metric an epoch is selected on: with a fresh draw, consecutive epochs differ by the dice
+    as well as by the model, and the argmin over 500 epochs is partly a coin flip. This is the
+    property that makes best-epoch selection mean anything.
+    """
+    from src.community_encoder.train_DESK.desk_training import (fixed_kernel_pairs,
+                                                               kernel_loss_on_pairs,
+                                                               spacetime_kernel_loss)
+    rng = np.random.default_rng(5)
+    T, H, W, L, S, N = 4, 5, 6, 8, 7, 60
+    z = torch.tensor(rng.normal(size=(T, H, W, L)).astype("float32"))
+    pt = torch.tensor(rng.integers(0, T, N))
+    pf = torch.tensor(rng.integers(0, H * W, N))
+    px = torch.tensor(rng.random((N, S)).astype("float32"))
+
+    pairs = fixed_kernel_pairs(N, 1024, seed=0)
+    a = float(kernel_loss_on_pairs(z, pt, pf, px, pairs))
+    b = float(kernel_loss_on_pairs(z, pt, pf, px, pairs))
+    assert a == b, (a, b)                              # same pairs, same model -> same number
+    # and the same seed reproduces the pair set, so a rerun of a run is comparable to it
+    assert np.array_equal(pairs, fixed_kernel_pairs(N, 1024, seed=0))
+    assert not np.array_equal(pairs, fixed_kernel_pairs(N, 1024, seed=1))
+    # a redrawing loss on the same model does NOT agree with itself -- the thing being avoided
+    g = torch.Generator().manual_seed(0)
+    c = float(spacetime_kernel_loss(z, pt, pf, px, num_pairs=1024, generator=g))
+    d = float(spacetime_kernel_loss(z, pt, pf, px, num_pairs=1024, generator=g))
+    assert c != d, "the training term is supposed to redraw; the fixture is not exercising it"
+    # too few points to pair is UNAVAILABLE, not zero
+    assert fixed_kernel_pairs(1, 100, 0) is None
+    print("fixed pairs make the kernel metric deterministic across epochs")
+
+
+def test_the_trajectory_jsonl_holds_every_epoch_and_names_the_best(tmp_path):
+    """Every trajectory analysed so far was recovered by regex-parsing a job log.
+
+    That works only while the log survives and the print format holds, and it cannot record a
+    quantity that was never printed. The JSONL is the artifact the sweep reads, so it must carry
+    one row per epoch and the recorded best epoch must be the argmin of the selected column --
+    not of some other column that happens to correlate.
+    """
+    path = tmp_path / "sub" / "train_trajectory.jsonl"
+    txt = _val_pool_run(trajectory_path=str(path), selection_metric="val_kernel")
+    rows = [json.loads(l) for l in open(path)]
+    assert [r["epoch"] for r in rows] == [1, 2, 3], [r["epoch"] for r in rows]
+    for r in rows:
+        for key in ("kernel_val", "kernel_val_sp", "kernel_train", "zmse_val", "lr",
+                    "half_life", "epoch_seconds", "selection_metric"):
+            assert key in r, key
+        assert r["selection_metric"] == "val_kernel"
+    # the restored epoch must be the argmin of the column that was selected on, over the epochs
+    # eligible for selection (earlystop_warmup=1 excludes epoch 1)
+    m = re.search(r"restored best epoch (\d+)", txt)
+    assert m, txt
+    eligible = [r for r in rows if r["epoch"] > 1]
+    want = min(eligible, key=lambda r: r["kernel_val"])["epoch"]
+    assert int(m.group(1)) == want, (m.group(1), [(r["epoch"], r["kernel_val"]) for r in rows])
+    print(f"trajectory holds every epoch; best epoch {want} is the argmin of kernel_val")
+
+
+def test_selecting_on_the_kernel_can_pick_a_different_epoch_than_zmse(tmp_path):
+    """The two metrics must be able to disagree, and the log must say which one was used.
+
+    On a real 500-epoch run they do: val z-MSE was best at 109 and 10% worse by 500, while the
+    kernel loss was still falling at 500. If the code could only ever agree with z-MSE the
+    switch would be decorative, and the disagreement -- which the plan calls a finding -- would
+    be unobservable.
+    """
+    txt_k = _val_pool_run(trajectory_path=str(tmp_path / "k.jsonl"),
+                          selection_metric="val_kernel")
+    txt_z = _val_pool_run(trajectory_path=str(tmp_path / "z.jsonl"),
+                          selection_metric="val_zmse")
+    assert "epoch selection on val_kernel" in txt_k
+    assert "epoch selection on val_zmse" in txt_z
+    rows = [json.loads(l) for l in open(tmp_path / "k.jsonl")]
+    elig = [r for r in rows if r["epoch"] > 1]
+    best_k = min(elig, key=lambda r: r["kernel_val"])["epoch"]
+    best_z = min(elig, key=lambda r: r["zmse_val"])["epoch"]
+    assert re.search(rf"restored best epoch {best_k}\b", txt_k), txt_k
+    assert re.search(rf"restored best epoch {best_z}\b", txt_z), txt_z
+    # both columns are present in both runs, so a run under one metric stays comparable with a
+    # run made under the other
+    for p in ("k.jsonl", "z.jsonl"):
+        r0 = json.loads(open(tmp_path / p).readline())
+        assert np.isfinite(r0["kernel_val"]) and np.isfinite(r0["zmse_val"])
+    print(f"kernel picked ep {best_k}, z-MSE picked ep {best_z}; both logged either way")
+
+
+def test_selecting_on_a_kernel_that_does_not_exist_is_refused():
+    """``selection_metric='val_kernel'`` with no val pool would select on NaN.
+
+    Every comparison against NaN is False, so nothing would ever beat the initial best and the
+    run would silently keep the warmup epoch's weights -- a broken run that finishes, reports a
+    number, and looks like the others.
+    """
+    import contextlib
+    import io
+
+    from src.community_encoder.train_DESK import desk_training as D
+
+    sch = _schema()
+    dims = [s["dim"] for s in sch["streams"]]
+    T, H, W, L = 4, 6, 7, 16
+    rng = np.random.default_rng(0)
+    cov = rng.normal(size=(T, H, W, sch["total_dim"])).astype("float32")
+    m = np.ones((H, W), bool)
+    years = list(range(2022, 2026))
+    tgt = {y: (rng.normal(size=(H, W, L)).astype("float32"), m, m,
+               np.ones((H, W), dtype="float32")) for y in years[1:]}
+    try:
+        with contextlib.redirect_stdout(io.StringIO()):
+            D.train_model_ema(cov, np.ones((T, H, W), bool), years, tgt,
+                              _metric_dict(rng.random((H, W, 9)).astype("float32"), m, years),
+                              m, m, dims, latent_dim=L, ema_cfg={}, spatial_kernel=3,
+                              epochs=2, schema=sch, dropout=0.1,
+                              selection_metric="val_kernel")
+        raise AssertionError("selecting on an unwired kernel metric must be refused")
+    except ValueError as exc:
+        assert "nothing to select on" in str(exc), str(exc)
+    print("selecting on a missing kernel metric is refused, not silently NaN")
+
+
+def test_stop_at_epoch_leaves_the_learning_rate_schedule_untouched(tmp_path):
+    """Lowering ``epochs`` is NOT the same as stopping early, and the difference is every step.
+
+    ``_warmup_cosine`` takes the BUDGET: with ``epochs=500`` the anneal reaches its floor at
+    500, so a run stopped at 300 has seen a different LR at every one of those 300 steps than a
+    run configured with ``epochs=300``. The production retrain has no validation set and must
+    reproduce the model the sweep selected, so it has to stop at the chosen epoch while keeping
+    the schedule the sweep ran under.
+    """
+    from src.community_encoder.train_DESK.desk_training import _warmup_cosine
+
+    full = _warmup_cosine(10, 2, 0.05)
+    short = _warmup_cosine(4, 2, 0.05)
+    assert [round(full(e), 6) for e in range(4)] != [round(short(e), 6) for e in range(4)], \
+        "the fixture must exercise a schedule that a shorter budget actually changes"
+
+    a = _val_pool_run(trajectory_path=str(tmp_path / "a.jsonl"),
+                      selection_metric="val_kernel", epochs=6, warmup_epochs=1,
+                      min_lr_frac=0.05)
+    b = _val_pool_run(trajectory_path=str(tmp_path / "b.jsonl"),
+                      selection_metric="val_kernel", epochs=6, warmup_epochs=1,
+                      min_lr_frac=0.05, stop_at_epoch=3)
+    lr_a = [r["lr"] for r in map(json.loads, open(tmp_path / "a.jsonl"))]
+    lr_b = [r["lr"] for r in map(json.loads, open(tmp_path / "b.jsonl"))]
+    assert len(lr_a) == 6 and len(lr_b) == 3, (len(lr_a), len(lr_b))
+    assert lr_a[:3] == lr_b, (lr_a[:3], lr_b)          # identical LR at every step up to the stop
+    assert "stop_at_epoch=3 reached" in b
+    print(f"stop_at_epoch truncates the run, not the schedule: {lr_b} == {lr_a[:3]}")
+
+
+def test_a_run_with_no_validation_set_keeps_its_final_weights():
+    """The production retrain holds nothing out, so ``best`` is never set.
+
+    The code restored ``best`` unconditionally, so this path failed on a ``None`` -- a
+    no-holdout run could not finish at all, which is the one run the whole sweep exists to
+    produce. Keeping the FINAL weights is the only defensible answer, and the log has to say
+    that no epoch was selected: a run with no measured skill must not be reported as if it had
+    some.
+    """
+    import contextlib
+    import io
+
+    from src.community_encoder.train_DESK import desk_training as D
+
+    sch = _schema()
+    dims = [s["dim"] for s in sch["streams"]]
+    T, H, W, L = 4, 6, 7, 16
+    rng = np.random.default_rng(2)
+    cov = rng.normal(size=(T, H, W, sch["total_dim"])).astype("float32")
+    m = np.ones((H, W), bool)
+    empty = np.zeros((H, W), bool)                    # NO validation cells anywhere
+    years = list(range(2022, 2026))
+    tgt = {y: (rng.normal(size=(H, W, L)).astype("float32"), m, empty,
+               np.ones((H, W), dtype="float32")) for y in years[1:]}
+    out = io.StringIO()
+    with contextlib.redirect_stdout(out):
+        model, _ema, info = D.train_model_ema(
+            cov, np.ones((T, H, W), bool), years, tgt,
+            _metric_dict(rng.random((H, W, 9)).astype("float32"), m, years),
+            m, empty, dims, latent_dim=L, ema_cfg={"earlystop_warmup": 0},
+            spatial_kernel=3, epochs=3, schema=sch, dropout=0.1, return_info=True)
+    txt = out.getvalue()
+    assert "keeping the FINAL weights from epoch 3" in txt, txt
+    assert "no validation cells" in txt, txt
+    assert info["restored_best"] is False and info["best_epoch"] == 3, info
+    assert all(torch.isfinite(p).all() for p in model.parameters())
+    print("a no-holdout run finishes and keeps its final weights")
+
+
+def test_return_info_is_behind_a_flag_so_the_arity_cannot_change_silently():
+    """A silent arity change is a failure mode this file has been bitten by.
+
+    ``spacetime_metric_pool`` puts its fourth element behind ``return_pidx`` for exactly this
+    reason. The default 2-tuple keeps every existing call site working; the 3-tuple is opt-in.
+    """
+    import contextlib
+    import io
+
+    from src.community_encoder.train_DESK import desk_training as D
+
+    sch = _schema()
+    dims = [s["dim"] for s in sch["streams"]]
+    T, H, W, L = 3, 5, 6, 16
+    rng = np.random.default_rng(4)
+    cov = rng.normal(size=(T, H, W, sch["total_dim"])).astype("float32")
+    m = np.ones((H, W), bool)
+    years = list(range(2023, 2026))
+    tgt = {y: (rng.normal(size=(H, W, L)).astype("float32"), m, m,
+               np.ones((H, W), dtype="float32")) for y in years[1:]}
+    args = (cov, np.ones((T, H, W), bool), years, tgt,
+            _metric_dict(rng.random((H, W, 9)).astype("float32"), m, years), m, m, dims)
+    kw = dict(latent_dim=L, ema_cfg={"earlystop_warmup": 0}, spatial_kernel=3, epochs=1,
+              schema=sch, dropout=0.1)
+    with contextlib.redirect_stdout(io.StringIO()):
+        assert len(D.train_model_ema(*args, **kw)) == 2
+        assert len(D.train_model_ema(*args, return_info=True, **kw)) == 3
+    print("return_info is opt-in; the default arity is unchanged")
+
+
+def test_the_stabilizing_target_excludes_the_buffer_and_any_thinned_blocks():
+    """The buffer was excluded from the metric pool and the fit, but NOT from the STABILIZING
+    term -- which carries most of the loss.
+
+    That silently voided the buffer's guarantee: a held-out cell's convolutional receptive field
+    reaches ``kernel//2`` cells away, and those cells were supervised, so every held-out score
+    was measured against a model trained right up to the block edge. It is also what makes a
+    ``train_frac`` axis mean anything -- thinning the metric pool alone would leave the dominant
+    term reading every cell, and the data-amount trajectory would be mostly flat by
+    construction.
+    """
+    from src.community_encoder.train_DESK.desk_training import _prepare_trend_targets
+
+    H, W = 6, 8
+    ho = np.zeros((H, W), bool); ho[:, :2] = True
+    buf = np.zeros((H, W), bool); buf[:, 2] = True
+    drop = np.zeros((H, W), bool); drop[0, 5] = True
+    calls = {}
+
+    class _FakeZ:
+        pass
+
+    # Patch the two things _prepare_trend_targets reaches out for, so the mask arithmetic can be
+    # tested without an ESK basis on disk.
+    import src.community_encoder.train_DESK.desk_training as D
+    import src.community_encoder.train_DESK.esk_kernel as K
+    n = H * W
+    rr, cc = np.meshgrid(np.arange(H), np.arange(W), indexing="ij")
+    pidx = np.stack([rr.ravel(), cc.ravel(), np.full(n, 2020)], axis=1)
+    saved_proj, saved_dir = K.project_points_to_z, D.target_points_dir if hasattr(
+        D, "target_points_dir") else None
+    try:
+        K.project_points_to_z = lambda X, zd, ld: np.zeros((X.shape[0], ld), "float32")
+        D.load_point_set = lambda _d: (np.ones((n, 3), "float32"), pidx,
+                                       np.ones(n, "float32"), np.ones(n, bool))
+        cfg = {"target": {"points_dir": "/nonexistent"}, "trend": {"points_dir": "/nonexistent"}}
+        out = _prepare_trend_targets(cfg, "/nonexistent", 4, ho, points_dir="/nonexistent",
+                                     exclude=buf | drop)
+    finally:
+        K.project_points_to_z = saved_proj
+    _zg, tr, va, _wg = out[2020]
+    assert not (tr & ho).any(), "held-out cells reached the stabilizing train mask"
+    assert not (tr & buf).any(), "BUFFER cells reached the stabilizing train mask"
+    assert not (tr & drop).any(), "train_frac-dropped cells reached the stabilizing train mask"
+    assert (va == ho).all(), "the val mask must be exactly the holdout"
+    # the excluded cells go to NEITHER side -- they are not evaluation data either
+    assert not (va & buf).any() and not (va & drop).any()
+    assert int(tr.sum()) == int(((~ho) & (~buf) & (~drop)).sum())
+    print(f"stabilizing train mask: {int(tr.sum())} cells, buffer and thinned blocks excluded")

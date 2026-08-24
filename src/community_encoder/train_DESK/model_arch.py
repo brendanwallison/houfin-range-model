@@ -26,6 +26,7 @@ Design safeguards (see the DESK spatial-conv plan):
 ``MultiInputAutoencoder`` (the deprecated 2-stream PRISM/BUI special case) is
 retained only as a constructor shim; it has no live caller.
 """
+import numpy as np
 import torch
 import torch.nn.functional as F
 from torch import nn
@@ -79,6 +80,55 @@ class PartialConv2d(nn.Conv2d):
         return out * new_mask, new_mask
 
 
+def resolve_hidden_widths(hidden_width, n_streams, latent_dim):
+    """``hidden_width`` (scalar, sequence, or ``None``) -> a per-stream list of ``n_streams`` ints.
+
+    One resolver because the value arrives from three places -- a config, a constructor
+    argument, and ``desk_meta.npz`` -- and it has three admissible shapes. Resolving it in
+    each of them separately is how the scalar/list distinction becomes a silent shape bug:
+    a length-1 list would broadcast in one place and index out of range in another.
+
+    A sequence whose length does not match the stream count is refused rather than padded
+    or truncated. Widths are POSITIONAL against ``dims``, so a length mismatch means the
+    widths are being applied to the wrong streams, and padding would apply a default to
+    whichever streams happened to fall off the end -- exactly the kind of off-by-one that
+    the species-column bug taught this project to fail loudly on.
+    """
+    n = int(n_streams)
+    if hidden_width is None or (not isinstance(hidden_width, (list, tuple))
+                                and not hidden_width):
+        return [max(128, int(latent_dim) * 4)] * n           # the historical default
+    if isinstance(hidden_width, (list, tuple)):
+        widths = [int(v) for v in hidden_width]
+        if len(widths) != n:
+            raise ValueError(
+                f"hidden_width has {len(widths)} entries but there are {n} streams. Widths "
+                f"are positional against `dims`, so a mismatch applies them to the wrong "
+                f"streams; state the width for every stream explicitly.")
+        if any(w < 1 for w in widths):
+            raise ValueError(f"every per-stream hidden_width must be >= 1; got {widths}")
+        return widths
+    return [int(hidden_width)] * n
+
+
+def hidden_width_from_meta(dm):
+    """Read ``hidden_width`` back out of a ``desk_meta.npz`` as a scalar, list, or ``None``.
+
+    ``np.savez`` stores an int as a 0-d array and a per-stream list as a 1-d one, and
+    ``int()`` on the latter raises only for length > 1 -- so a one-stream list would convert
+    silently while a six-stream list crashed at inference, two GPU-hours after the run that
+    produced it. Every reader goes through here so the scalar/list distinction is decided in
+    exactly one place, and so an OLD checkpoint (scalar, or the key absent entirely) keeps
+    loading unchanged.
+    """
+    if "hidden_width" not in dm:
+        return None                                    # pre-capacity-knob checkpoint
+    arr = np.asarray(dm["hidden_width"])
+    if arr.ndim == 0:
+        return int(arr)
+    return [int(v) for v in arr.reshape(-1)]
+
+
 class MultiStreamAutoencoder(nn.Module):
     """N-stream grid autoencoder: per-pixel encoder branches + shared latent +
     optional spatial residual + decoder.
@@ -101,9 +151,24 @@ class MultiStreamAutoencoder(nn.Module):
     SPATIAL axis -- the holdout is blocked by cell -- and there are only ~12k training
     cells against ~7.6M parameters at ``h=256``, i.e. ~620 parameters per cell.
 
+    ``hidden_width`` may also be a PER-STREAM sequence, one width per entry of ``dims``.
+    The uniform scalar spends the same capacity on every branch, and the branches are not
+    the same size: only ``Linear(d, h)`` depends on the input width (128 parameters for
+    elevation's ~1 channel against ~25,600 for climate's ~200), while the two
+    ``BMLPBlock``s that hold ~262k parameters each at ``h=128`` are identical in every
+    branch. So a scalar gives a 3-channel static stream the same 262k-parameter encoder as
+    the 240-channel climate stream. A sequence lets capacity follow input width -- wide for
+    climate, narrow for the static streams -- which is the cheapest form of the knob.
+
+    ``self.hidden_widths`` is the canonical per-stream list; ``self.hidden_width`` stays an
+    ``int`` when every branch shares a width (and is ``None`` when they do not), so a
+    uniform net persists and reloads exactly as it did before this became a sequence.
+
     NOTE ``hidden_width`` and ``mlp_expansion`` change ``state_dict`` shapes, so both are
     persisted in ``desk_meta.npz`` and must be read back wherever the model is rebuilt
-    for inference (``build_final_z_cube``, ``validate_spacetime``).
+    for inference (``build_final_z_cube``, ``validate_spacetime``). A per-stream list has
+    to survive that round-trip as a list, and every reader must still accept the scalar
+    that older checkpoints hold.
     """
 
     def __init__(self, dims, latent_dim, spatial_kernel=3, dropout=0.5,
@@ -112,22 +177,31 @@ class MultiStreamAutoencoder(nn.Module):
         self.dims = list(dims)
         self.dropout = float(dropout)
         n = len(self.dims)
-        h = int(hidden_width) if hidden_width else max(128, latent_dim * 4)
-        self.hidden_width = h
+        self.hidden_widths = resolve_hidden_widths(hidden_width, n, latent_dim)
+        # Kept an int for the uniform case so `desk_meta.npz` still holds a scalar and
+        # nothing downstream has to change to reload an existing checkpoint; None when the
+        # branches differ, because there is no single width to report and returning one of
+        # them would be a number that silently misdescribes the net.
+        uniform = len(set(self.hidden_widths)) == 1
+        self.hidden_width = self.hidden_widths[0] if uniform else None
         self.mlp_expansion = int(mlp_expansion)
         self.encoders = nn.ModuleList([
             nn.Sequential(nn.Linear(d, h), nn.GELU(),
                           BMLPBlock(h, k=self.mlp_expansion, dropout=self.dropout),
                           BMLPBlock(h, k=self.mlp_expansion, dropout=self.dropout))
-            for d in self.dims
+            for d, h in zip(self.dims, self.hidden_widths)
         ])
+        # sum(hidden_widths), not n*h: identical to the old n*h whenever the widths are
+        # uniform (so uniform state_dicts keep their exact shapes), and the only width that
+        # matches the concatenated branch codes when they are not.
+        hsum = int(sum(self.hidden_widths))
         self.mixer = nn.Sequential(
-            nn.Linear(n * h, n * h), nn.GELU(),
-            nn.Linear(n * h, latent_dim),
+            nn.Linear(hsum, hsum), nn.GELU(),
+            nn.Linear(hsum, latent_dim),
         )
         self.decoder = nn.Sequential(
-            nn.Linear(latent_dim, n * h), nn.GELU(),
-            nn.Linear(n * h, sum(self.dims)),
+            nn.Linear(latent_dim, hsum), nn.GELU(),
+            nn.Linear(hsum, sum(self.dims)),
         )
         self.spatial_kernel = int(spatial_kernel)
         if self.spatial_kernel > 0:

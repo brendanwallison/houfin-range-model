@@ -114,6 +114,17 @@ c=load_config(); t={s.get('ema_tau') for s in c['states']['streams'] if s.get('e
 print(sorted(t)[0] if len(t)==1 else 'MIXED')")"
     [ "$tau" != "MIXED" ] || { echo "ERROR: $tag has more than one ema_tau across its streams"; exit 1; }
 
+    # Evaluate the EMA coefficient this tau resolves to, HERE, before the queue. ema_alpha(0)
+    # raised ZeroDivisionError until it was taught that tau=0 means alpha=1 (no smoothing) --
+    # and the crash landed partway into an 86-year states build, after the queue wait, not at
+    # submission. Any future tau that the coefficient cannot be computed for fails in a second
+    # instead of an hour.
+    alpha="$(ESK_DESK_CONFIG="$overlay" "$PY" -c \
+        "from src.data.combine.streams import ema_alpha; print(f'{ema_alpha($tau):.6f}')")" || {
+        echo "ERROR: $tag ema_tau=$tau does not resolve to a usable EMA coefficient (above)"
+        exit 1; }
+    echo "      ema_tau=$tau -> alpha=$alpha$([ "$tau" = "0" ] && echo '  (no smoothing: each year raw)')"
+
     if [ -d "$outdir/yearly_states" ]; then
         echo "  $tag (tau=$tau): already built -> $outdir  [skipping]"
         continue

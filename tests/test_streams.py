@@ -9,6 +9,7 @@ import sys
 import tempfile
 
 import numpy as np
+import pytest
 import rasterio
 from rasterio.transform import from_origin
 
@@ -102,6 +103,73 @@ def test_ema_smoothing():
         a = streams.ema_alpha(10)
         assert abs(out[2000][0, 0, 0] - 0.0) < 1e-6           # first year = raw
         assert abs(out[2001][0, 0, 0] - (a * 1.0)) < 1e-6     # a*curr + (1-a)*0
+
+
+def test_ema_tau_zero_means_no_smoothing_rather_than_a_crash():
+    """``ema_tau=0`` is the natural way to ask for un-smoothed covariates, and the ablation the
+    input-smoothing sweep needs as its zero point.
+
+    ``1 - exp(-1/tau)`` raises ZeroDivisionError at exactly 0, so the sweep's ``tau0`` build
+    would have died -- not at submission, but partway into an 86-year states build, after the
+    queue wait. The limit as tau approaches 0 from above is 1.0, which makes the update
+    ``state = 1.0*curr + 0.0*state``: every year passed through raw, which is precisely what
+    "no input smoothing" means. Returning the limit also keeps ONE spelling of "off"; the
+    alternative is a caller inventing a sentinel that ``ema_alpha`` would not recognise.
+    """
+    assert streams.ema_alpha(0) == 1.0
+    with tempfile.TemporaryDirectory() as d:
+        _write_grid(os.path.join(d, "v_2000_grid.tif"), np.zeros((1, 1)))
+        _write_grid(os.path.join(d, "v_2001_grid.tif"), np.ones((1, 1)))
+        _write_grid(os.path.join(d, "v_2002_grid.tif"), np.full((1, 1), 5.0))
+        out = dict(streams.PerVariableYearStreamer(d, ["v"], 2000, 2002,
+                                                   streams.ema_alpha(0), name="s"))
+        # every year is its own raw value -- no carry-over from the previous one at all
+        for year, want in ((2000, 0.0), (2001, 1.0), (2002, 5.0)):
+            assert abs(out[year][0, 0, 0] - want) < 1e-6, (year, out[year][0, 0, 0])
+
+
+def test_a_negative_ema_tau_is_refused():
+    """A negative time constant gives ``alpha > 1``: an AMPLIFYING filter, not a smoother.
+
+    The update becomes ``state = alpha*curr - (alpha-1)*state``, which diverges over an 86-year
+    timeline. Nothing downstream would flag it -- the arrays keep the right shape, the right
+    channel names and finite-looking values for a while -- so it has to fail here.
+    """
+    with pytest.raises(ValueError, match="must be >= 0"):
+        streams.ema_alpha(-1)
+    with pytest.raises(ValueError, match="AMPLIFIES"):
+        streams.ema_alpha(-0.5)
+
+
+def test_the_schema_records_ema_tau_so_two_builds_are_distinguishable():
+    """Two states dirs built at different tau are otherwise IDENTICAL by every check.
+
+    Same stream names, dims, variables, transforms and indicators; differently smoothed arrays.
+    Without ``ema_tau`` in the schema a model trained against one could be run against the other
+    with no symptom anywhere -- the same silent-misnormalization class as ``transform``, which is
+    why ``assert_schema_compatible`` compares it. Compared only when BOTH sides recorded it, so
+    states dirs built before this keep loading.
+    """
+    from src.community_encoder.train_DESK import covariate_io as cio
+
+    spec = {"type": "per_variable", "variables": ["a", "b"], "ema_tau": 2}
+    e2 = streams.schema_entry(spec, "clim", 0, 2)
+    e4 = streams.schema_entry({**spec, "ema_tau": 4}, "clim", 0, 2)
+    assert e2["ema_tau"] == 2 and e4["ema_tau"] == 4
+    # a static stream carries no ema_tau: build_streamer never reads one for it, and writing the
+    # key would record a smoothing nothing applied
+    assert "ema_tau" not in streams.schema_entry({"type": "static"}, "soil", 0, 3)
+
+    saved = {"streams": [e2], "total_dim": 2}
+    live = {"streams": [e4], "total_dim": 2}
+    cio.assert_schema_compatible(saved, dict(saved), "same tau")          # no raise
+    with pytest.raises(SystemExit, match="ema_tau"):
+        cio.assert_schema_compatible(saved, live, "tau mismatch")
+    # an OLD schema with no ema_tau must still load against a new one -- absence is not a
+    # mismatch, or every existing states dir would stop working
+    old = {"streams": [{k: v for k, v in e2.items() if k != "ema_tau"}], "total_dim": 2}
+    cio.assert_schema_compatible(old, live, "legacy")
+    cio.assert_schema_compatible(live, old, "legacy reversed")
 
 
 def test_static_streamer_constant():

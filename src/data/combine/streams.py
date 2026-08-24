@@ -49,7 +49,30 @@ from src.processing import regrid
 
 
 def ema_alpha(tau):
-    """EMA weight for a time constant of ``tau`` years (matches states.py)."""
+    """EMA weight for a time constant of ``tau`` years (matches states.py).
+
+    ``tau <= 0`` means NO smoothing and returns 1.0, which is the limit of
+    ``1 - exp(-1/tau)`` as tau approaches 0 from above and makes the update
+    ``state = 1.0*curr + 0.0*state``, i.e. the raw year passed straight through. Special-cased
+    because the expression itself raises ZeroDivisionError at exactly 0 -- which is the natural
+    way to ask for the un-smoothed covariates, and the ablation the input-smoothing sweep needs
+    as its zero point. Returning the limit is not a convenience: the alternative is a crash
+    hours into a states build, or a caller inventing its own sentinel for "off" that this
+    function would not recognise.
+
+    A NEGATIVE tau is refused. It yields ``alpha > 1``, so the update becomes
+    ``state = alpha*curr - (alpha-1)*state`` -- an amplifying filter that diverges over 86 years
+    rather than a smoother. Nothing downstream would flag it: the arrays would have the right
+    shape, the right names, and finite-looking values for a while.
+    """
+    tau = float(tau)
+    if tau < 0:
+        raise ValueError(
+            f"ema_tau must be >= 0; got {tau}. A negative time constant gives alpha > 1, which "
+            f"AMPLIFIES year-to-year differences instead of smoothing them and diverges over "
+            f"the timeline. Use 0 for no smoothing.")
+    if tau == 0:
+        return 1.0
     return 1.0 - np.exp(-1.0 / tau)
 
 

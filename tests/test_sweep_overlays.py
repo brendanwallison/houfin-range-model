@@ -436,4 +436,29 @@ def test_every_states_submitter_forwards_the_environment():
         "04_states defaults to the whole pre-encoder chain; those products are tau-independent"
     assert "manifest says" in tau, \
         "the overlay's resolved hist_dir must be checked against the manifest's"
+    assert "ema_alpha" in tau, \
+        "the EMA coefficient must be evaluated at submission, not hours into the build"
     print("states submitters forward the environment and refuse production")
+
+
+def test_every_swept_tau_resolves_to_a_usable_ema_coefficient():
+    """Each tau in the grid must produce a finite alpha in (0, 1] -- checked without a cluster.
+
+    ``tau0`` is the case that mattered: ``1 - exp(-1/tau)`` raises ZeroDivisionError at exactly
+    0, so that build would have failed partway through an 86-year run, after the queue wait,
+    rather than at submission. alpha=1 is the correct limit and means every year passes through
+    raw, which is what "no input smoothing" is.
+    """
+    from src.data.combine.streams import ema_alpha
+
+    for spec in G.configurations():
+        streams = (spec[2].get("states") or {}).get("streams")
+        if not streams:
+            continue
+        for st in streams:
+            if st.get("ema_tau") is None:
+                continue
+            a = ema_alpha(st["ema_tau"])
+            assert 0.0 < a <= 1.0, (spec[0], st["name"], st["ema_tau"], a)
+    assert ema_alpha(0) == 1.0, "tau=0 must mean no smoothing, not a crash"
+    print("every swept ema_tau resolves to a usable coefficient")

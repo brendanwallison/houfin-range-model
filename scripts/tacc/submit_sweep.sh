@@ -45,6 +45,11 @@ TASKS_PER_NODE="${TASKS_PER_NODE:-3}"
 # gpu-a100 allows 8 nodes/job and 12 nodes/user. Default to 4 so several stages can be in
 # flight without one of them monopolising the per-user cap.
 MAX_NODES="${MAX_NODES:-4}"
+# Cap on how many batches this invocation submits. The staged progression the plan calls for
+# needs exactly this: one batch on gpu-a100-dev (1 job/user, 2 h) to prove three packed
+# processes do not collide, before the full grid goes to gpu-a100. Without it a 17-run stage
+# computes 6 batches, exceeds the dev queue's 1-job cap, and is refused outright.
+MAX_BATCHES="${MAX_BATCHES:-0}"
 DRY_RUN="${DRY_RUN:-1}"
 ALLOW_DIRTY="${ALLOW_DIRTY:-0}"
 STAGES_ENV="${SWEEP_TRAIN_STAGES:-desk}"
@@ -195,6 +200,12 @@ case "$QUEUE" in
     *)              MAX_JOBS=0;  CAP_NODES=0  ;;   # unknown queue: skip the check, don't guess
 esac
 N_BATCHES=$(( (N_PENDING + CHUNK - 1) / CHUNK ))
+if [ "$MAX_BATCHES" -gt 0 ] && [ "$N_BATCHES" -gt "$MAX_BATCHES" ]; then
+    echo "MAX_BATCHES=$MAX_BATCHES: submitting $MAX_BATCHES of $N_BATCHES batches"
+    echo "  ($(( N_PENDING - MAX_BATCHES * CHUNK )) run(s) left for a later invocation --"
+    echo "   resume picks them up, nothing is lost)"
+    N_BATCHES="$MAX_BATCHES"
+fi
 if [ "$MAX_JOBS" -gt 0 ]; then
     # `set -euo pipefail` is active, so a non-zero squeue inside a command substitution ABORTS
     # the script -- and with the redirect swallowing its stderr, silently: the run stopped dead
@@ -245,6 +256,10 @@ while [ "$i" -lt "$N_PENDING" ]; do
     nodes=$(( (n + TASKS_PER_NODE - 1) / TASKS_PER_NODE ))
     echo "  batch $batch: $n run(s) on $nodes node(s) -> $LIST"
     awk -F'\t' '{printf "      %s\n", $1}' "$LIST"
+    if [ "$MAX_BATCHES" -gt 0 ] && [ "$batch" -gt "$MAX_BATCHES" ]; then
+        echo "      (not submitted: MAX_BATCHES=$MAX_BATCHES)"
+        break
+    fi
     if [ "$DRY_RUN" = "1" ]; then continue; fi
     jid=$(SWEEP_JOBLIST="$LIST" SWEEP_TASKS_PER_NODE="$TASKS_PER_NODE" \
           SWEEP_STAGES="$STAGES_ENV" \

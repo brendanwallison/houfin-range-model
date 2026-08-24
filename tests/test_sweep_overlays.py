@@ -528,3 +528,37 @@ def test_the_queue_caps_distinguish_rejection_from_queueing():
     # an unknown queue must skip the check rather than guess a cap
     assert "MAX_JOBS=0;  CAP_NODES=0" in src and "don't guess" in src
     print("job cap errors, node cap notes, unknown queue skips")
+
+
+def test_the_smoke_run_cannot_be_mistaken_for_the_real_baseline(tmp_path):
+    """The instrumentation check must not share a run_id or a manifest with the grid.
+
+    Its configuration IS the baseline, so the obvious implementation gives it
+    ``sweep_t0_f100_base`` -- the same run_id as the real baseline run, in the same output dir.
+    Its ``run_summary.json`` would then satisfy the resume marker and the grid would skip the
+    500-epoch run it exists to gate. Writing over ``sweep_manifest.json`` has the mirror
+    failure: the submit script would resume a one-run grid and report the other 16 complete.
+    """
+    root, _man = _generate(tmp_path, "--stage", "1")
+    sroot = str(tmp_path / "sweeps" / "hp")
+    env = dict(os.environ, HOUFIN_PROCESSED=str(tmp_path))
+    out = subprocess.run([sys.executable, os.path.join(REPO, "scripts", "sweep",
+                                                       "generate_overlays.py"),
+                          "--root", sroot, "--smoke", "30"],
+                         capture_output=True, text=True, cwd=REPO, env=env)
+    assert out.returncode == 0, out.stderr
+    smoke = json.load(open(os.path.join(sroot, "smoke_manifest.json")))
+    assert os.path.exists(os.path.join(sroot, "sweep_manifest.json")), \
+        "the stage manifest must survive a smoke generation"
+    assert len(smoke["runs"]) == 1
+    r = smoke["runs"][0]
+    assert r["run_id"] == "smoke30ep_base"
+    assert "sweep_t0_f100" not in r["run_id"], "must not collide with the real baseline run"
+    assert r["desk_output_dir"] != os.path.join(sroot, "sweep_t0_f100_base")
+    cfg = load_config(r["overlay"])
+    assert cfg["desk"]["epochs"] == 30
+    # and it still carries every pin, so what it exercises is the real code path
+    assert cfg["desk"]["selection_metric"] == G.SELECTION_METRIC
+    assert cfg["desk"]["trend"]["buffer_floor"] == G.BUFFER_FLOOR
+    assert len(cfg["states"]["streams"]) == 6
+    print("the smoke run is isolated from the grid it gates")

@@ -343,6 +343,9 @@ def main():
     ap.add_argument("--seeds", default="",
                     help="stage 3: comma-separated spatial seeds for ONE config "
                          "(with --configs naming exactly that one)")
+    ap.add_argument("--smoke", type=int, default=0, metavar="N",
+                    help="emit ONE short baseline run of N epochs, in its own output dir, to "
+                         "verify the instrumentation before spending the grid")
     ap.add_argument("--dry-run", action="store_true",
                     help="print the grid and write nothing")
     args = ap.parse_args()
@@ -359,7 +362,22 @@ def main():
     cfgs = [c for c in args.configs.split(",") if c]
     seeds = [int(s) for s in args.seeds.split(",") if s]
 
-    if seeds:
+    if args.smoke:
+        # The plumbing check from the verification plan: does the trajectory JSONL appear, does
+        # the val kernel pool build, is a best epoch recorded, does run_summary.json land. Its
+        # own output dir so it cannot be mistaken for -- or overwrite -- the real baseline run,
+        # whose run_id it would otherwise share and whose resume marker it would satisfy.
+        #
+        # NOT a model to draw any conclusion from. warmup_epochs is 20 against this budget, so
+        # a 30-epoch run is almost entirely LR warmup and its metrics mean nothing; the point is
+        # that every artifact exists and every column is populated.
+        reason, frag = {t: (r, f) for t, r, f in configurations()}["base"]
+        grid = [(f"smoke{args.smoke}ep_base", "smoke", "base", [], None, frag,
+                 f"{args.smoke}-epoch instrumentation check -- artifacts only, not a result")]
+        seeds = [SPATIAL_SEED]
+        smoke_extra = {"desk": {"epochs": int(args.smoke)}}
+    elif seeds:
+        smoke_extra = None
         if len(cfgs) != 1:
             raise SystemExit("--seeds is the stage-3 seed replicate: name exactly one "
                              "--configs tag, since its whole purpose is to measure the "
@@ -368,6 +386,7 @@ def main():
         grid = [(f"sweep_t0_f100_{cfgs[0]}_s{s}", "t0_f100", cfgs[0], [], None, frag, reason)
                 for s in seeds]
     else:
+        smoke_extra = None
         grid = build_grid(args.stage, cfgs)
         seeds = [SPATIAL_SEED] * len(grid)
 
@@ -375,7 +394,7 @@ def main():
     for i, (run_id, cell, tag, ho, frac, frag, reason) in enumerate(grid):
         seed = seeds[i] if len(seeds) == len(grid) else SPATIAL_SEED
         ov = make_overlay(run_id, frag, ho, frac, root_literal,
-                          states_root=states_root, sha=sha, seed=seed)
+                          states_root=states_root, sha=sha, seed=seed, extra=smoke_extra)
         # Resolve the real (expanded) directory the job will actually write to, and refuse a
         # collision with production. A sweep run that overwrote $HOUFIN_PROCESSED/encoder/desk
         # would destroy the checkpoint every downstream stage reads, with no way back.
@@ -409,7 +428,9 @@ def main():
     if args.dry_run:
         print("dry run: nothing written")
         return
-    man = os.path.join(root, "sweep_manifest.json")
+    # A distinct filename: writing the smoke run over a stage manifest would leave the submit
+    # script resuming a one-run grid and reporting the other 16 as complete.
+    man = os.path.join(root, "smoke_manifest.json" if args.smoke else "sweep_manifest.json")
     with open(man, "w", encoding="utf-8") as fh:
         json.dump({"stage": args.stage, "git_sha": sha, "root": root,
                    "states_root": states_root,

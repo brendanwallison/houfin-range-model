@@ -2343,9 +2343,12 @@ def run(config=None, n_sample=4000, seed=0):
     ep_cells, ep_e_rows, ep_m_rows, ep_stats = epoch_gate(keys_all, early=_early)
     ep_stats["early_window_used"] = list(_early)
     ep_stats["early_window_is_fully_withheld"] = bool(_common)
+    # Print the window ACTUALLY used, not the module default -- the restriction above may have
+    # narrowed it, and a message naming 1966-1986 while the gate ran on 1966-1975 is the kind of
+    # stale provenance that takes a run to notice.
     print(f"[bbs-routes] epoch gate: {ep_stats['cells_kept']}/{ep_stats['cells_seen']} cells have "
           f">={MIN_EPOCH_YEARS} distinct surveyed years in BOTH "
-          f"{EPOCH_EARLY[0]}-{EPOCH_EARLY[1]} and {EPOCH_MODERN[0]}-{EPOCH_MODERN[1]} "
+          f"{_early[0]}-{_early[1]} and {EPOCH_MODERN[0]}-{EPOCH_MODERN[1]} "
           f"(failed: early-only {ep_stats['cells_failed_early_only']}, "
           f"modern-only {ep_stats['cells_failed_modern_only']}, "
           f"both {ep_stats['cells_failed_both']})")

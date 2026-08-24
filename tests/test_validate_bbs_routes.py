@@ -1132,8 +1132,14 @@ def test_adding_a_predictor_adds_a_row_everywhere_with_no_call_site_edit():
                     continue
                 for form in ("dot", "cosine"):
                     got = set(mm[form]["predictors"])
-                    assert got == {"desk", "no_change", "spacetime_idw", "esk_truncation"}, (
-                        q, split, bname, form, got)
+                    want = {"desk", "no_change", "spacetime_idw", "esk_truncation"}
+                    # the distance-only floor applies wherever there IS a separation between the
+                    # two things compared; same_cell_over_time compares a cell with itself
+                    if q != "same_cell_over_time":
+                        want |= {"distance_only"}
+                    else:
+                        assert "distance_only" in mm[form]["unavailable"], (q, form)
+                    assert got == want, (q, split, bname, form, got)
                     # identical quantity set for every predictor -- no privileged vocabulary
                     keys = [set(v) for v in mm[form]["predictors"].values()]
                     assert all(k == keys[0] for k in keys), (q, form, keys)
@@ -1328,10 +1334,11 @@ def test_compare_positions_states_a_reason_rather_than_omitting_a_predictor():
              "no_change": z_obs + rng.normal(scale=.6, size=z_obs.shape),
              "spacetime_idw": None,                      # bar could not be built
              "esk_truncation": np.where(np.arange(len(z_obs))[:, None] < 2, z_obs, np.nan),
-             "esk_oracle_independent": None}     # split-half ceiling: not built for this question
+             "esk_oracle_independent": None,     # split-half ceiling: not built for this question
+             "distance_only": None}              # spatial floor: needs a distance axis
     r = compare_positions(z_obs, preds)
     assert set(r["unavailable"]) == {"spacetime_idw", "esk_truncation",
-                                     "esk_oracle_independent"}
+                                     "esk_oracle_independent", "distance_only"}
     assert "finite" in r["unavailable"]["esk_truncation"]
     # and that is enough for the completeness check: a reason counts, an absence does not
     assert assert_complete({"absolute_position": r}, questions=("absolute_position",)) == []
@@ -1956,3 +1963,30 @@ def test_the_manifest_says_which_generalisation_each_question_tests():
     # every question this analysis covers must declare its era status
     for q in rep["types"]:
         assert q in era, q
+
+
+def test_the_spatial_floor_knows_nothing_but_distance():
+    """The spatial comparison had NO floor. Its only baseline was the model frozen at the present
+    day, which for a same-era question supplies the whole modern spatial structure -- a strong
+    competitor, not a null. It scored 0.87 and that read as a hard question rather than an easy
+    predictor, so the comparison could not rank anything."""
+    from src.community_encoder.train_DESK.validate_bbs_routes import distance_only_predictor
+    rng = np.random.default_rng(0)
+    n = 4000
+    d = rng.uniform(0, 1.5e6, n)
+    # similarity really does decay with separation, so a constant floor would be too easy to beat
+    obs = np.clip(0.9 - 5e-7 * d + rng.normal(scale=0.05, size=n), 0, 1)
+    tr = rng.random(n) < 0.8
+    pred = distance_only_predictor(obs, d, tr)
+    assert np.corrcoef(pred, obs)[0, 1] > 0.7          # captures the decay...
+    # ...but it cannot know anything about a particular pair beyond how far apart they are:
+    # shuffle the communities at a FIXED distance and its prediction is unchanged
+    same_d = np.full(n, 5e5)
+    p1 = distance_only_predictor(obs, same_d, tr)
+    p2 = distance_only_predictor(rng.permutation(obs), same_d, tr)
+    assert abs(np.mean(p1) - np.mean(p2)) < 0.02
+    assert np.std(p1) < 1e-9                           # one distance, one prediction
+
+    # too few training pairs to bin -> falls back to a constant rather than inventing bins
+    flat = distance_only_predictor(obs[:10], d[:10], np.ones(10, bool))
+    assert np.std(flat) < 1e-9

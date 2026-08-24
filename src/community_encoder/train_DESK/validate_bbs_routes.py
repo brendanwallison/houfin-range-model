@@ -420,6 +420,8 @@ PREDICTOR_DENOISING = {
     "esk_oracle_independent": {
         "level": "rank-64 truncation of a DISJOINT half of the same cell-era's surveys",
         "shares_target_noise": False},
+    "distance_only": {"level": "geographic separation alone; no community information whatever",
+                      "shares_target_noise": False},
 }
 
 
@@ -460,6 +462,14 @@ PREDICTOR_ROLES = {
         "was named `esk_oracle` and read as an achievable bound, which is how a pearson of 0.995 "
         "came to be quoted as a ceiling DESK 'fell short of'. No predictor that did not see that "
         "noise draw can approach it. Useful for what it is: the basis's representational limit."),
+    "distance_only": (
+        "THE SPATIAL FLOOR. Predicts similarity from the distance between two cells and nothing "
+        "else -- fitted on training pairs, so it carries no knowledge of either community. The "
+        "spatial comparison previously had no floor at all: its only baseline was the model frozen "
+        "at the present day, which for a same-era question supplies the whole modern spatial "
+        "structure and is therefore a strong competitor. Without this row that comparison could "
+        "not rank anything, and a score of 0.87 read as a hard question when it was an easy "
+        "predictor."),
     "esk_oracle_independent": (
         "THE ceiling. The observed community projected from a DISJOINT half of the same cell-era's "
         "surveys, so it predicts an observation it did not see. That is an achievable bound -- and "
@@ -484,6 +494,8 @@ UNAVAILABLE_BAR_UNBUILT = "interpolation bar could not be built for this run"
 UNAVAILABLE_ORACLE_GATE = "oracle refused its representability gate"
 UNAVAILABLE_UNSPLITTABLE = ("cell has too few surveys in this era to split into two disjoint "
                             "halves, so no independent observation exists")
+UNAVAILABLE_NO_DISTANCE_AXIS = ("this question compares a cell with ITSELF, so the separation is "
+                                "always zero and a distance-only floor carries no information")
 
 
 def noise_floor(half_similarity):
@@ -769,6 +781,11 @@ def compare_positions(z_obs, predictors, reference="no_change", populations=None
 #: question about two places in ONE era it predicts their full modern similarity, which is most of
 #: the answer -- so it is a competitor there, not a floor.
 NULL_IS_A_FLOOR_FOR = ("same_cell_over_time", "pair_convergence")
+
+#: The floor for a SPATIAL question. `no_change` cannot serve: freezing time leaves the modern
+#: similarity between two places intact, which is most of the answer. `distance_only` knows only
+#: how far apart they are.
+SPATIAL_FLOOR = "distance_only"
 
 
 def resolving_room(result, baseline="no_change", question=None,
@@ -1305,6 +1322,34 @@ def species_on_pairings(Xe, Xm, sources, idx, readout, is_heldout=None, n_pairs=
     return out
 
 
+def distance_only_predictor(obs, dist_m, train_mask=None, n_bins=24):
+    """Predict similarity from geographic separation alone. ``(n,)``. Pure.
+
+    The floor a spatial comparison needs and did not have. Every other predictor here knows
+    something about the two communities; this one knows only how far apart they are, so beating it
+    is the minimum evidence that a model has learned anything spatial at all.
+
+    Fitted as a step function of distance on TRAINING pairs -- the mean observed similarity in each
+    distance bin -- because similarity decays with separation in a way no constant captures, and a
+    floor that ignored that would be too easy to beat to mean anything.
+    """
+    obs = np.asarray(obs, "float64").ravel()
+    d = np.asarray(dist_m, "float64").ravel()
+    fit = np.ones(len(obs), bool) if train_mask is None else np.asarray(train_mask, bool).ravel()
+    if fit.sum() < n_bins * 4:
+        return np.full(len(obs), float(np.mean(obs[fit])) if fit.any() else np.nan)
+    edges = np.quantile(d[fit], np.linspace(0, 1, int(n_bins) + 1))
+    edges[0], edges[-1] = -np.inf, np.inf
+    which = np.clip(np.searchsorted(edges, d, side="right") - 1, 0, int(n_bins) - 1)
+    which_fit = np.clip(np.searchsorted(edges, d[fit], side="right") - 1, 0, int(n_bins) - 1)
+    out = np.full(len(obs), float(np.mean(obs[fit])))
+    for b in range(int(n_bins)):
+        m = which_fit == b
+        if m.sum() >= 4:
+            out[which == b] = float(np.mean(obs[fit][m]))
+    return out
+
+
 def epoch_neighborhood_analysis(Xe, Xm, Ze, Zm, xy, k=99, n_bins=10, is_heldout=None,
                                 device=None, sc_esk=None, sc_idw=(None, None),
                                 sc_esk_independent=None, floor_similarity=None,
@@ -1369,6 +1414,11 @@ def epoch_neighborhood_analysis(Xe, Xm, Ze, Zm, xy, k=99, n_bins=10, is_heldout=
                                   lambda ze, zm: (ze, zm)),
     }
     types, types_cos, types_obs = {}, {}, {}
+    # `ho` is needed by the spatial floor below, which fits on TRAINING rows only. It used to be
+    # built after this loop.
+    ho = (np.zeros(Xe.shape[0], bool) if is_heldout is None
+          else np.asarray(is_heldout, bool))
+    _dist_flat = np.asarray(dist, "float64")
     for qname, (obs_q, sel) in pairings.items():
         types_obs[qname] = obs_q
         types[qname], types_cos[qname] = {}, {}
@@ -1379,9 +1429,14 @@ def epoch_neighborhood_analysis(Xe, Xm, Ze, Zm, xy, k=99, n_bins=10, is_heldout=
             types[qname][pname] = _pairwise_dot_neighbours(a, b, idx, device=device)
             types_cos[qname][pname] = _pairwise_dot_neighbours(_unit(a), _unit(b), idx,
                                                                device=device)
+        # the spatial floor: separation and nothing else, fitted on training rows only
+        _tr = ~ho if is_heldout is not None else np.ones(len(obs_q), bool)
+        _fitm = np.repeat(_tr[:, None], obs_q.shape[1], axis=1)
+        _dl = distance_only_predictor(obs_q.ravel(), _dist_flat.ravel(), _fitm.ravel())
+        types[qname][SPATIAL_FLOOR] = _dl.reshape(obs_q.shape)
+        types_cos[qname][SPATIAL_FLOOR] = _dl.reshape(obs_q.shape)
 
     n = Xe.shape[0]
-    ho = np.zeros(n, bool) if is_heldout is None else np.asarray(is_heldout, bool)
     splits = {"pooled": np.ones(n, bool)}
     if is_heldout is not None:
         splits.update({"train": ~ho, "heldout": ho})
@@ -1485,6 +1540,8 @@ def epoch_neighborhood_analysis(Xe, Xm, Ze, Zm, xy, k=99, n_bins=10, is_heldout=
         cos = compare_predictors(sc_obs[w], {p: v[w] for p, v in sc_cos.items()})
         dot["unavailable"].update(missing)
         cos["unavailable"].update(missing)
+        dot["unavailable"][SPATIAL_FLOOR] = UNAVAILABLE_NO_DISTANCE_AXIS
+        cos["unavailable"][SPATIAL_FLOOR] = UNAVAILABLE_NO_DISTANCE_AXIS
         if "spacetime_idw" in dot["predictors"]:
             dot["skill_vs_spacetime_idw"] = compare_predictors(
                 sc_obs[w], {p: v[w] for p, v in sc.items()},

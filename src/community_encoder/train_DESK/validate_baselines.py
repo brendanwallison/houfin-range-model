@@ -1190,8 +1190,18 @@ def baseline_panel(pidx, z_obs, z_desk, holdout, recent_year, buffer_mask=None,
     bars = {k: (v[target] if len(v) == len(pidx) else v) for k, v in bars.items()}
     ed = err_desk_all[target]
     eras = _era_of(pidx[target, 2])
+    # Record what was ACTUALLY graded, not the parameter that may have been overridden.
+    # `heldout_only` was echoed here regardless, so a bucket named `unseen_year_seen_cell` carried
+    # a flag claiming it had been restricted to held-out cells. The behaviour was right and the
+    # provenance was wrong, which is the harder kind to notice.
+    _n_ho = int((target & is_ho).sum())
     out = {"recent_year": int(recent_year), "spacetime_ratio_cells_per_year": ratio,
-           "heldout_only": bool(heldout_only), "by_era": {}, "overall": {}}
+           "graded_rows": int(target.sum()),
+           "graded_heldout_rows": _n_ho,
+           "graded_train_rows": int(target.sum()) - _n_ho,
+           "row_selection": ("explicit target_rows" if target_rows is not None
+                             else ("held-out cells only" if heldout_only else "all cells")),
+           "by_era": {}, "overall": {}}
 
     def _score(mask, reference="no_change"):
         """Every predictor graded on identical terms, with the subject of the comparison a NAMED

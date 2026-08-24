@@ -1225,7 +1225,7 @@ def test_the_report_carries_a_manifest_of_what_was_tested():
     rep, _pc = epoch_neighborhood_analysis(Xe, Xm, Xe @ A, Xm @ A, xy, k=9, n_bins=3)
     m = rep["manifest"]
     assert set(m) == {"covers", "questions", "predictors", "unavailable", "quantities",
-                      "populations", "denoising", "denoising_mismatch"}
+                      "populations", "denoising", "denoising_mismatch", "generalisation"}
     # The manifest must carry the denoising footing, not just the predictor list: a report that
     # names its predictors but not how denoised they are invites exactly the apples-to-oranges
     # reading that made the oracle look like an achievable ceiling.
@@ -1928,3 +1928,31 @@ def test_the_frozen_baseline_is_not_treated_as_a_floor_for_spatial_questions():
         assert abs(r["room"] - 0.654) < 1e-9, (q, r)
     assert "cross_cell_same_era_early" not in NULL_IS_A_FLOOR_FOR
     assert "cross_cell_cross_time" not in NULL_IS_A_FLOOR_FOR
+
+
+def test_the_early_window_is_restricted_to_years_every_run_withholds():
+    """The sweep varies ONE thing: how far past its training edge the model reaches. EPOCH_EARLY
+    spans 1966-1986, of which the three runs withhold 48%, 95% and 100% -- so the shallowest run's
+    early endpoint was half built from years it trained on, and the reported decay across runs was
+    partly a decay in how much of the endpoint had already been seen."""
+    src = open("src/community_encoder/train_DESK/validate_bbs_routes.py").read()
+    body = src[src.index("    keys_all = keys"):src.index("ep_stats[\"early_window_is_fully_withheld\"]")]
+    code = "\n".join(l for l in body.splitlines() if not l.lstrip().startswith("#"))
+    assert "common_holdout_years" in code
+    assert "epoch_gate(keys_all, early=_early)" in code
+    # and it must warn rather than silently proceed when the common window is unset
+    assert "not valid" in body
+
+
+def test_the_manifest_says_which_generalisation_each_question_tests():
+    Xe, Xm, A, xy = _epoch_fixture()
+    Ze, Zm = Xe @ A, Xm @ A
+    rep, _ = epoch_neighborhood_analysis(Xe, Xm, Ze, Zm, xy, k=9, n_bins=3)
+    g = rep["manifest"]["generalisation"]
+    assert "162 km" in g["place_axis"]
+    era = g["era_axis"]
+    assert "SEEN era" in era["cross_cell_same_era_modern"]
+    assert "UNSEEN era" in era["cross_cell_same_era_early"]
+    # every question this analysis covers must declare its era status
+    for q in rep["types"]:
+        assert q in era, q

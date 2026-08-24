@@ -1531,6 +1531,27 @@ def epoch_neighborhood_analysis(Xe, Xm, Ze, Zm, xy, k=99, n_bins=10, is_heldout=
         # `absolute_position` is deliberately absent: it is `zspace_reconstruction`'s question.
         "covers": ["same_cell_over_time", "cross_cell_same_era", "cross_cell_cross_time",
                    "pair_convergence"],
+        # WHICH KIND OF GENERALISATION EACH ROW TESTS. Two holdouts exist -- whole 162 km regions
+        # and early decades -- and crossing them is the point of having both. The place axis is
+        # the `train`/`heldout` split; the era axis is fixed by WHICH QUESTION it is, because the
+        # early window is now restricted to years every run withholds while the modern window is
+        # trained in every run. Stated here rather than left for a reader to work out, since a
+        # result that mixes the two cannot say which kind of generalisation is failing.
+        "generalisation": {
+            "place_axis": ("`heldout` = a cell inside a 162 km block the model never saw, with a "
+                           "buffer ring so its receptive field never reached a training cell. "
+                           "`train` = cells it was fitted on."),
+            "era_axis": {
+                "cross_cell_same_era_modern": "SEEN era -- the modern window is trained in every run",
+                "cross_cell_same_era_early": "UNSEEN era -- restricted to years every run withholds",
+                "same_cell_over_time": "spans both: an unseen early era against a seen modern one",
+                "cross_cell_cross_time": "spans both",
+                "pair_convergence": "spans both",
+            },
+            "read_this_way": ("heldout x unseen-era is the hardest cell and the one the 1900 use "
+                              "case rests on; train x seen-era is in-sample and is reported only "
+                              "as a reference point"),
+        },
         "questions": {q: QUESTIONS.get(canonical_question(q), {}) for q in report["types"]},
         "predictors": {p: PREDICTOR_ROLES.get(p, "") for p in sources if sources[p] is not None},
         "unavailable": missing,
@@ -2234,7 +2255,37 @@ def run(config=None, n_sample=4000, seed=0):
     # wrong rows afterwards (and did: IndexError at 110878 vs size 110839). X_raw_all is already
     # unfiltered, so the epoch analysis must be handed keys_all to match it.
     keys_all = keys
-    ep_cells, ep_e_rows, ep_m_rows, ep_stats = epoch_gate(keys_all)
+
+    # THE EARLY WINDOW MUST BE OUT-OF-SAMPLE IN EVERY RUN, or the sweep does not measure what it
+    # was built to measure. The experiment varies ONE thing: how far past its training edge the
+    # model must reach. But EPOCH_EARLY spans 1966-1986, of which the three runs withhold 48%,
+    # 95% and 100% -- so the shallowest run's early endpoint is half built from years it trained
+    # on, and the reported decay across runs was partly a decay in how much of the endpoint the
+    # model had already seen.
+    #
+    # Restricting to desk.trend.common_holdout_years -- the window EVERY run withholds -- makes the
+    # three runs measure identical rows over identical years, all fully unseen. The baseline ladder
+    # already does exactly this and the config already explains why; this brings the epoch analysis
+    # onto the same rule instead of leaving it as one measurement's local choice.
+    #
+    # The cost is real and reported rather than hidden: a 10-year window instead of 21, so fewer
+    # surveys per endpoint and a higher noise floor. `noise_floor` is re-measured on the restricted
+    # window so the cost is visible next to the result.
+    _common = [int(y) for y in ((config.get("desk", {}) or {}).get("trend", {})
+                                .get("common_holdout_years") or [])]
+    _early = EPOCH_EARLY
+    if _common:
+        _early = (min(_common), max(_common))
+        print(f"[bbs-routes] early window restricted to {_early[0]}-{_early[1]}, the years EVERY "
+              f"run of the sweep withholds (was {EPOCH_EARLY[0]}-{EPOCH_EARLY[1]}, which the "
+              "shallowest run had partly trained on -- the runs were not comparable)")
+    else:
+        print(f"[bbs-routes] WARNING: desk.trend.common_holdout_years unset, so the early window "
+              f"stays {EPOCH_EARLY[0]}-{EPOCH_EARLY[1]} and may include years this run TRAINED "
+              "on. Cross-run comparisons are not valid.")
+    ep_cells, ep_e_rows, ep_m_rows, ep_stats = epoch_gate(keys_all, early=_early)
+    ep_stats["early_window_used"] = list(_early)
+    ep_stats["early_window_is_fully_withheld"] = bool(_common)
     print(f"[bbs-routes] epoch gate: {ep_stats['cells_kept']}/{ep_stats['cells_seen']} cells have "
           f">={MIN_EPOCH_YEARS} distinct surveyed years in BOTH "
           f"{EPOCH_EARLY[0]}-{EPOCH_EARLY[1]} and {EPOCH_MODERN[0]}-{EPOCH_MODERN[1]} "

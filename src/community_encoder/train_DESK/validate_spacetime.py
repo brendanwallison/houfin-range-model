@@ -138,6 +138,28 @@ def ruzicka_rect(A, B):
     return np.where((denom + L1) > 0, (denom - L1) / (denom + L1), 1.0)
 
 
+def holdout_split(pidx, holdout, name):
+    """``{split: mask}`` over rows, plus the note that says which cells a number covers.
+
+    THREE MEASUREMENTS IN THIS MODULE HAD NO HOLDOUT MASK AT ALL -- temporal turnover, directional
+    change and analog displacement were computed over training cells together with held-out ones
+    and reported as validation. A number that includes the cells a model was fitted on is not a
+    statement about generalisation, and nothing in the output said which it was.
+
+    Held-out here means a cell inside a 162 km block the model never saw, with a buffer ring around
+    it wide enough that its receptive field never reached a training cell -- so the two splits are
+    genuinely different questions, not two samples of one.
+    """
+    if holdout is None:
+        return {"pooled": np.ones(len(pidx), bool)}, (
+            f"{name}: no holdout mask available this run, so these cover ALL cells including "
+            "training ones and are NOT a generalisation result")
+    ho = np.asarray(holdout)[pidx[:, 0], pidx[:, 1]]
+    return ({"heldout": ho, "train": ~ho, "pooled": np.ones(len(pidx), bool)},
+            f"{name}: `heldout` is the honest number -- cells in 162 km blocks the model never "
+            "saw. `train` and `pooled` include cells it was fitted on.")
+
+
 def temporal_turnover_agreement(Z, X, pidx, recent_year, min_gap=5):
     """Per-site community turnover (earliest supported point → recent), pred vs obs.
 
@@ -765,6 +787,13 @@ def run_validate(config=None, n_pairs=20000, cka_sample=800, seed=0):
     from src.config_utils import load_data_config
     ref_raster = load_data_config()["grid"]["ref_raster"]
     xy = cell_xy(pidx[:, 0], pidx[:, 1], ref_raster)
+    # HOISTED. The holdout mask was loaded far below, after these three had already run, which is
+    # how they came to be computed over training cells and reported as validation.
+    _ho_path = os.path.join(config["paths"]["desk_output_dir"], "holdout_cells.npy")
+    _ho_mask = np.load(_ho_path) if os.path.exists(_ho_path) else None
+    _splits, _split_note = holdout_split(pidx, _ho_mask, "turnover/direction/analog")
+    print(f"[validate] {_split_note}")
+
     turn = temporal_turnover_agreement(Z, X, pidx, recent_year,
                                        min_gap=int(bc.get("turnover_min_gap", 5)))
     _phase("turnover")
@@ -1187,6 +1216,33 @@ def run_validate(config=None, n_pairs=20000, cka_sample=800, seed=0):
     # print that reads this dict found nothing. An exclusion cannot fail that way.
     _DIRCHG_ARRAYS = ("rows", "cols", "hist_year", "dir_cos")
     report["directional_change"] = {k: v for k, v in dirchg.items() if k not in _DIRCHG_ARRAYS}
+    # BY SPLIT. The figures above pool every cell, including ones the model was fitted on; these
+    # separate them, and `heldout` is the honest one.
+    report["directional_change"]["by_split"] = {}
+    report["temporal_turnover_by_split"] = {}
+    report["analog_by_split"] = {}
+    for _sname, _smask in _splits.items():
+        if int(_smask.sum()) < 40:
+            report["directional_change"]["by_split"][_sname] = {
+                "note": f"only {int(_smask.sum())} rows in this split"}
+            continue
+        _sub = np.where(_smask)[0]
+        try:
+            _d = directional_change_agreement(Z[_sub], X[_sub], pidx[_sub], recent_year,
+                                              np.random.default_rng(seed))
+            report["directional_change"]["by_split"][_sname] = {
+                k: v for k, v in _d.items() if k not in _DIRCHG_ARRAYS}
+            _t = temporal_turnover_agreement(Z[_sub], X[_sub], pidx[_sub], recent_year,
+                                             min_gap=int(bc.get("turnover_min_gap", 5)))
+            report["temporal_turnover_by_split"][_sname] = {
+                k: v for k, v in _t.items() if not isinstance(v, np.ndarray)}
+            _a = analog_displacement(Z[_sub], X[_sub], pidx[_sub], xy[_sub], recent_year,
+                                     np.random.default_rng(seed))
+            report["analog_by_split"][_sname] = {k: v for k, v in _a.items()
+                                                 if not isinstance(v, np.ndarray)}
+        except Exception as exc:
+            report["directional_change"]["by_split"][_sname] = {"note": f"unavailable ({exc})"}
+    report["directional_change"]["_split_note"] = _split_note
     report["directional_change"]["_note"] = ("DIRECTION of community change (magnitude-"
         "canceling), unlike turnover which is magnitude-only. Read mean_dir_cos RELATIVE to "
         "mean_dir_cos_null (permuted-site baseline); frac_same_dir null=0.5.")

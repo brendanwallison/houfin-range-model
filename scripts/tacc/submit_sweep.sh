@@ -103,17 +103,28 @@ for d in need:
 PYS
 )"
 if [ -n "$MISSING_STATES" ]; then
-    echo "ERROR: these yearly_states builds are required but absent:"
+    echo "these yearly_states builds are required but absent:"
     echo "$MISSING_STATES" | sed 's/^/  /'
-    echo "ema_tau is consumed at STATE-BUILD time (src/data/combine/streams.py), not by DESK,"
-    echo "so each tau variant needs its own build. For each dir above, run the states stage"
-    echo "with paths.hist_dir pointed at it, using that variant's overlay:"
-    echo "    ESK_DESK_CONFIG=$SWEEP_ROOT/overlays/<the tau run>.json \\"
-    echo "      STAGES=states bash scripts/tacc/submit_preprocess.sh"
-    echo "Or drop the tau configurations from this stage with SWEEP_CONFIGS."
-    exit 1
+    echo "ema_tau is consumed at STATE-BUILD time (src/data/combine/streams.py applies it along"
+    echo "the year axis as the arrays are written), not by DESK, so each tau variant is a"
+    echo "different covariate dataset and needs its own build. Submit them with:"
+    echo "    DRY_RUN=0 bash scripts/tacc/submit_tau_states.sh"
+    echo "It reads them from this manifest, so no overlay path has to be retyped. Or drop the"
+    echo "tau configurations from this stage: SWEEP_CONFIGS=<tags without tau0/tau1/tau4>."
+    # A DRY RUN still prints the packing plan. Blocking here meant the one command whose whole
+    # job is "show me what you would do" refused to answer until hours of unrelated
+    # preprocessing had finished -- so the plan could not be reviewed before committing to it.
+    # A real submission is still refused: those runs would fail per-year on a missing states
+    # dir, or read a dir built at a different tau and measure the wrong thing entirely.
+    if [ "$DRY_RUN" != "1" ]; then
+        echo "REFUSING to submit. Build them first, or exclude them."
+        exit 1
+    fi
+    echo "(dry run: continuing so the plan below can be reviewed -- these runs would be"
+    echo " REFUSED on a real submission)"
+else
+    echo "all required states dirs present"
 fi
-echo "all required states dirs present"
 
 # --- resume: drop runs that already finished -------------------------------------------------
 mapfile -t PENDING < <("$PY" - "$MANIFEST" <<'PYP'

@@ -390,17 +390,50 @@ def test_the_submit_script_defaults_to_a_dry_run():
     print("submit defaults to a dry run and refuses a dirty tree")
 
 
-def test_the_submit_script_blocks_on_a_missing_states_build():
-    """``ema_tau`` needs its own yearly_states, and a missing one must stop the job.
+def test_a_missing_states_build_blocks_submission_but_not_a_dry_run():
+    """``ema_tau`` needs its own yearly_states, and a missing one must stop a real submission.
 
-    ``ema_tau`` is applied when ``state_{year}.npz`` is written, so pointing a tau run at a
-    directory that does not exist is not a slow path -- it is a per-year FileNotFoundError, or
-    worse, a silent read of a states dir built at a DIFFERENT tau, in which case the run
-    measures the production smoothing while its overlay claims otherwise. That silent case is
-    what ``state_schema.json``'s new ``ema_tau`` provenance closes.
+    Pointing a tau run at a directory that does not exist is not a slow path -- it is a per-year
+    FileNotFoundError, or worse a silent read of a states dir built at a DIFFERENT tau, in which
+    case the run measures the production smoothing while its overlay claims otherwise. That
+    silent case is what ``state_schema.json``'s ``ema_tau`` provenance closes.
+
+    But it must NOT block ``DRY_RUN=1``. The one command whose entire job is "show me what you
+    would do" was refusing to answer until hours of unrelated preprocessing had finished, so the
+    packing plan could not be reviewed before committing to it.
     """
     src = open(SUBMIT).read()
-    assert "requires_states_dir" in src
-    assert "yearly_states" in src
+    assert "requires_states_dir" in src and "yearly_states" in src
     assert "STATE-BUILD time" in src
-    print("a missing per-tau states build blocks submission")
+    assert 'if [ "$DRY_RUN" != "1" ]; then' in src, \
+        "the states gate must refuse a real submission but let a dry run through"
+    assert "REFUSING to submit" in src
+    # and it must point at the submitter that actually exists and forwards the overlay
+    assert "submit_tau_states.sh" in src
+    assert os.path.exists(os.path.join(REPO, "scripts", "tacc", "submit_tau_states.sh"))
+    assert "submit_preprocess.sh" not in src, \
+        "submit_preprocess.sh runs the wrong slurm script for a states build"
+    print("states gate blocks submission, not planning")
+
+
+def test_every_states_submitter_forwards_the_environment():
+    """A states job that loses ``ESK_DESK_CONFIG`` builds into the PRODUCTION states dir.
+
+    ``build_states`` resolves its output as ``load_config()["paths"]["hist_dir"]``, and
+    ``load_config()`` with no overlay returns the committed config. So a wrapper missing
+    ``--export=ALL`` does not fail -- it silently rebuilds production while the caller believes
+    it built a tau variant, overwriting the covariates every other run in the grid was
+    normalized against. Every other submit_*.sh wrapper in this tree already sets it; these two
+    are the ones a sweep depends on.
+    """
+    for name in ("submit_states.sh", "submit_tau_states.sh"):
+        src = open(os.path.join(REPO, "scripts", "tacc", name)).read()
+        assert "--export=ALL" in src, f"{name} must forward the environment to the job"
+    tau = open(os.path.join(REPO, "scripts", "tacc", "submit_tau_states.sh")).read()
+    # the two guards that make a mistake here loud instead of silent
+    assert "PRODUCTION states dir" in tau, "a tau build must refuse to target production"
+    assert "STAGES=states" in tau, \
+        "04_states defaults to the whole pre-encoder chain; those products are tau-independent"
+    assert "manifest says" in tau, \
+        "the overlay's resolved hist_dir must be checked against the manifest's"
+    print("states submitters forward the environment and refuse production")

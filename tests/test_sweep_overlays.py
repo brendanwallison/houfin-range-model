@@ -462,3 +462,69 @@ def test_every_swept_tau_resolves_to_a_usable_ema_coefficient():
             assert 0.0 < a <= 1.0, (spec[0], st["name"], st["ema_tau"], a)
     assert ema_alpha(0) == 1.0, "tau=0 must mean no smoothing, not a crash"
     print("every swept ema_tau resolves to a usable coefficient")
+
+
+def test_no_command_substitution_can_silently_abort_the_submission():
+    """``set -euo pipefail`` + a redirected stderr makes a failing pipeline abort SILENTLY.
+
+    Measured: ``EXISTING=$(squeue ... 2>/dev/null | wc -l)`` killed the whole script the moment
+    squeue returned non-zero -- after the manifest was written, before anything was submitted,
+    with no message at all, because the redirect had already swallowed the only clue. squeue
+    exits non-zero for reasons unrelated to the check (a slurmctld timeout, an unrecognised
+    partition), so every such probe has to absorb failure explicitly.
+
+    Also asserts the two states are distinguished: "no jobs queued" and "could not ask" pass a
+    cap check identically and only one of them is safe.
+    """
+    for name in ("submit_sweep.sh", "submit_tau_states.sh"):
+        src = open(os.path.join(REPO, "scripts", "tacc", name)).read()
+        assert "set -euo pipefail" in src, name
+        for line in src.splitlines():
+            line = line.strip()
+            if not line.startswith(("EXISTING=$(", "AVAIL_GB=$(", "ONE_GB=$(", "DIRTY=$(")):
+                continue
+            assert "|| true" in line or line.startswith("DIRTY="), (
+                f"{name}: `{line}` can abort the script silently under pipefail; "
+                f"absorb the failure with `|| true` or an if-guard")
+    sweep = open(SUBMIT).read()
+    assert 'EXISTING="unknown"' in sweep, \
+        "a squeue that could not be asked must not be reported as zero queued jobs"
+    print("no probe can abort submission silently")
+
+
+def test_the_su_per_gpu_hour_figure_is_computed_not_mangled():
+    """``$(awk "BEGIN{printf \\"%.2f\\", ...}")`` inside a double-quoted echo loses its escapes.
+
+    Measured: awk received ``BEGIN{printf %.2f, 3.0/3}``, printed a syntax error twice, and the
+    cost figure came out blank -- the one number that justifies packing at all. Not
+    platform-specific; awk is awk. The fix is ``awk -v`` with single quotes on its own line.
+    """
+    src = open(SUBMIT).read()
+    assert "awk -v n=" in src and "'BEGIN{printf" in src, \
+        "compute the figure with awk -v and single quotes, on its own line"
+    # Non-comment lines only: the comment above the fix quotes the broken form on purpose, and
+    # a check that cannot tell code from prose would forbid documenting the bug it prevents.
+    code = "\n".join(l for l in src.splitlines() if not l.strip().startswith("#"))
+    assert '\\"%.2f\\"' not in code, "escaped quotes inside a double-quoted echo get eaten"
+    # and the documented cost claim must be the one the arithmetic produces
+    out = subprocess.run(["awk", "-v", "n=3", 'BEGIN{printf "%.2f", 3.0/n}'],
+                         capture_output=True, text=True)
+    assert out.stdout == "1.00", out
+    print("packed cost computes to 1.00 SU per GPU-hour against 3.00 unpacked")
+
+
+def test_the_queue_caps_distinguish_rejection_from_queueing():
+    """A nodes-per-user overrun QUEUES; a jobs-per-user overrun is REJECTED at submit time.
+
+    Conflating them either blocks a submission that would have been fine, or lets the tail
+    batches of a large stage be silently discarded by sbatch. The rates and limits come from
+    hpc/lonestar6.md.
+    """
+    src = open(SUBMIT).read()
+    assert "gpu-a100)       MAX_JOBS=8;  CAP_NODES=12" in src
+    assert "REJECTS the overflow" in src, "the jobs cap must be a hard error"
+    assert "That is queueing, not rejection -- nothing is lost." in src, \
+        "the nodes cap must be a note, not an error"
+    # an unknown queue must skip the check rather than guess a cap
+    assert "MAX_JOBS=0;  CAP_NODES=0" in src and "don't guess" in src
+    print("job cap errors, node cap notes, unknown queue skips")

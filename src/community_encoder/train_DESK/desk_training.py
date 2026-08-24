@@ -1115,7 +1115,10 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
         # early stopping, the LR schedule, and the reported Val were all reading noise. No grad
         # and no checkpoint recompute makes the extra pass much cheaper than the training one;
         # eval_every amortizes it further if needed.
-        if ep % max(1, int(eval_every)) == 0 or ep == epochs:
+        # Named, because three things downstream depend on it: the metric line, the JSONL row,
+        # and epoch selection. Recomputing the condition at each of those is how they drift.
+        evaluated = (ep % max(1, int(eval_every)) == 0 or ep == epochs)
+        if evaluated:
             with torch.no_grad():
                 z_eval, _, z_raw_eval = _forward_window(train_mode=False, mask_inputs=False,
                                                         want_raw=True)
@@ -1163,53 +1166,77 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
         rss = _max_rss_gib()
         vram = (f" | VRAM {torch.cuda.max_memory_allocated() / 2**30:.2f}/"
                 f"{torch.cuda.memory_reserved() / 2**30:.2f}G" if device == "cuda" else "")
-        tot = float(loss.item()) or 1.0
-        # rot: predicted vs target temporal rotation, and their ratio. The ratio is the headline
-        # number -- 1.0 means DESK reproduces the observed amount of community change; the
-        # measured value on the 27 km grid was ~0.29 (interior), i.e. a 3.4x under-prediction.
-        def _ratio(p, t):
-            return (p / t) if (t and np.isfinite(t) and t > 1e-9) else float("nan")
-        # rot: how much of the TARGET's temporal change the supervised z_ema reproduces. 1.00 is
-        # the goal. (raw ...) is the pre-EMA rotation, which must exceed the target -- it is
-        # informational, not a ratio-to-one.
-        rr, rrv = _ratio(rotP, rotT), _ratio(rotPv, rotTv)
-        rawr, rawrv = _ratio(rawP, rotT), _ratio(rawPv, rotTv)
-        rrh = _ratio(rotPh, rotTh)
-        gap = (vs / ts) if ts > 1e-12 else float("nan")
-        # Calibration. For an MSE objective the optimal magnitude of a prediction whose direction
-        # cosine is rho is rho*truth, and since 1-cos ~ theta^2/2 that makes rot ~ dcos^2 the
-        # MSE-calibrated value. cal = rot/dcos^2: ~1 is MSE-calibrated, >1 means the model swings
-        # further than its direction accuracy justifies (which RAISES error), and rot -> 1 is the
-        # separate thing the science wants. Reported, not optimized -- the objective is unchanged.
-        cal = (rrv / (dcV ** 2)) if (np.isfinite(rrv) and np.isfinite(dcV)
-                                     and abs(dcV) > 1e-6) else float("nan")
-        print(f"Ep {ep:03d} | Stab {loss_stab.item():.4f} | True {loss_true.item():.4f} | "
-              f"Rec {recon_loss.item():.4f} | mse tr {ts:.4f} va(pool) {vs:.4f} gap {gap:.1f}x | "
-              f"va(sp) {vs_sp:.4f} va(sp+t) {vs_spt:.4f} | "
-              f"Val(2025) {vs_anchor:.4f} | Val(yr-out) {vs_time:.4f} | "
-              f"rot tr {rr:.2f} va {rrv:.2f} ho {rrh:.2f} (raw {rawr:.2f}/{rawrv:.2f}) | "
-              f"dcos tr {dcT:.2f} va {dcV:.2f} ho {dcH:.2f} null {dcTn:+.2f}/{dcVn:+.2f} | "
-              f"mag tr {mgT:.2f} va {mgV:.2f} | cal {cal:.1f} | "
-              f"half-life {ema.half_life().item():.1f}y | "
-              f"mix {w_stab.item()/tot:.2f}/{w_true.item()/tot:.2f}/{w_rec.item()/tot:.2f} | "
-              f"lr {opt.param_groups[0]['lr']:.2e} | {dt:.1f}s{vram} | RSS {rss:.1f}G", flush=True)
-        # The kernel line is separate rather than appended: the line above is already at the
-        # terminal width, and these are the numbers a sweep is read on, so they should not be
-        # the ones that scroll off.
-        #
-        # Labels are parenthesis-free `k_*` tokens, NOT the `va(...)` family the z-MSE line
-        # uses. Reusing those made every existing log regex match BOTH lines and return a
-        # mixture of two different quantities; a `kva(...)` prefix did not fix it either, since
-        # `va\(sp\+t\)` still matches inside `kva(sp+t)`. Caught by a test that greps the
-        # z-MSE token, and the reason to keep the two token families disjoint by construction
-        # rather than relax the pattern.
-        print(f"Ep {ep:03d} | kernel k_tr {tk:.5f} k_val {vk.get('pool', float('nan')):.5f} "
-              f"k_val_sp {vk.get('sp', float('nan')):.5f} "
-              f"k_val_spt {vk.get('spt', float('nan')):.5f}", flush=True)
+        # The ratio/rotation/calibration columns and the main log line all read names bound
+        # ONLY inside the eval branch (rotP, vs, ts, ...). With eval_every > 1 this whole block
+        # raised UnboundLocalError on the first un-evaluated epoch, so the knob the config
+        # documents as "amortizes the clean eval re-forward" could not be used at all. Gated
+        # rather than pre-bound: pre-binding would print the PREVIOUS eval's numbers under this
+        # epoch's number, which is a stale value that reads as a fresh one.
+        if evaluated:
+            tot = float(loss.item()) or 1.0
+            # rot: predicted vs target temporal rotation, and their ratio. The ratio is the headline
+            # number -- 1.0 means DESK reproduces the observed amount of community change; the
+            # measured value on the 27 km grid was ~0.29 (interior), i.e. a 3.4x under-prediction.
+            def _ratio(p, t):
+                return (p / t) if (t and np.isfinite(t) and t > 1e-9) else float("nan")
+            # rot: how much of the TARGET's temporal change the supervised z_ema reproduces. 1.00 is
+            # the goal. (raw ...) is the pre-EMA rotation, which must exceed the target -- it is
+            # informational, not a ratio-to-one.
+            rr, rrv = _ratio(rotP, rotT), _ratio(rotPv, rotTv)
+            rawr, rawrv = _ratio(rawP, rotT), _ratio(rawPv, rotTv)
+            rrh = _ratio(rotPh, rotTh)
+            gap = (vs / ts) if ts > 1e-12 else float("nan")
+            # Calibration. For an MSE objective the optimal magnitude of a prediction whose direction
+            # cosine is rho is rho*truth, and since 1-cos ~ theta^2/2 that makes rot ~ dcos^2 the
+            # MSE-calibrated value. cal = rot/dcos^2: ~1 is MSE-calibrated, >1 means the model swings
+            # further than its direction accuracy justifies (which RAISES error), and rot -> 1 is the
+            # separate thing the science wants. Reported, not optimized -- the objective is unchanged.
+            cal = (rrv / (dcV ** 2)) if (np.isfinite(rrv) and np.isfinite(dcV)
+                                         and abs(dcV) > 1e-6) else float("nan")
+            print(f"Ep {ep:03d} | Stab {loss_stab.item():.4f} | True {loss_true.item():.4f} | "
+                  f"Rec {recon_loss.item():.4f} | mse tr {ts:.4f} va(pool) {vs:.4f} gap {gap:.1f}x | "
+                  f"va(sp) {vs_sp:.4f} va(sp+t) {vs_spt:.4f} | "
+                  f"Val(2025) {vs_anchor:.4f} | Val(yr-out) {vs_time:.4f} | "
+                  f"rot tr {rr:.2f} va {rrv:.2f} ho {rrh:.2f} (raw {rawr:.2f}/{rawrv:.2f}) | "
+                  f"dcos tr {dcT:.2f} va {dcV:.2f} ho {dcH:.2f} null {dcTn:+.2f}/{dcVn:+.2f} | "
+                  f"mag tr {mgT:.2f} va {mgV:.2f} | cal {cal:.1f} | "
+                  f"half-life {ema.half_life().item():.1f}y | "
+                  f"mix {w_stab.item()/tot:.2f}/{w_true.item()/tot:.2f}/{w_rec.item()/tot:.2f} | "
+                  f"lr {opt.param_groups[0]['lr']:.2e} | {dt:.1f}s{vram} | RSS {rss:.1f}G", flush=True)
+            # The kernel line is separate rather than appended: the line above is already at the
+            # terminal width, and these are the numbers a sweep is read on, so they should not be
+            # the ones that scroll off.
+            #
+            # Labels are parenthesis-free `k_*` tokens, NOT the `va(...)` family the z-MSE line
+            # uses. Reusing those made every existing log regex match BOTH lines and return a
+            # mixture of two different quantities; a `kva(...)` prefix did not fix it either, since
+            # `va\(sp\+t\)` still matches inside `kva(sp+t)`. Caught by a test that greps the
+            # z-MSE token, and the reason to keep the two token families disjoint by construction
+            # rather than relax the pattern.
+        else:
+            # No eval this epoch: report only what was actually measured -- the training losses
+            # and the step cost. Deliberately NOT the previous eval's metrics.
+            print(f"Ep {ep:03d} | Stab {loss_stab.item():.4f} | True {loss_true.item():.4f} | "
+                  f"Rec {recon_loss.item():.4f} | (no eval this epoch, eval_every="
+                  f"{max(1, int(eval_every))}) | "
+                  f"half-life {ema.half_life().item():.1f}y | "
+                  f"lr {opt.param_groups[0]['lr']:.2e} | {dt:.1f}s{vram} | RSS {rss:.1f}G",
+                  flush=True)
+        if evaluated:
+            print(f"Ep {ep:03d} | kernel k_tr {tk:.5f} k_val {vk.get('pool', float('nan')):.5f} "
+                  f"k_val_sp {vk.get('sp', float('nan')):.5f} "
+                  f"k_val_spt {vk.get('spt', float('nan')):.5f}", flush=True)
         # Written EVERY epoch, unconditionally. Every trajectory analysed so far was recovered
         # by regex-parsing job logs, which only works while the log survives and while the
         # print format holds; a JSONL costs nothing and is the artifact the sweep reads.
-        if traj_fh is not None:
+        # Only EVALUATED epochs get a row. An un-evaluated epoch has no measurement, and the
+        # eval-only names still hold the PREVIOUS eval's values -- writing those under this
+        # epoch's number would be a stale value that looks like a fresh one, which is the
+        # failure mode this project has been burned by most. It is also why every eval-only
+        # name is read here and nowhere outside this guard: with eval_every > 1 the whole block
+        # raised UnboundLocalError on epoch 1, since `vs`, `ts`, `rotP` and the rest are bound
+        # only inside the eval branch.
+        if traj_fh is not None and evaluated:
             traj_fh.write(json.dumps({
                 "epoch": int(ep),
                 "loss_total": float(loss.item()),
@@ -1230,10 +1257,17 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
                 "lr": float(opt.param_groups[0]["lr"]),
                 "epoch_seconds": float(dt),
                 "selection_metric": selection_metric,
+                # so a reader knows the row spacing rather than assuming consecutive epochs
+                "eval_every": int(max(1, int(eval_every))),
             }) + "\n")
             traj_fh.flush()          # a killed job must still leave a readable trajectory
         if ep <= es_warmup:
             continue                       # don't let the volatile warmup epochs set 'best'
+        if not evaluated:
+            # No fresh measurement, so nothing to select on and nothing to count toward
+            # patience: doing either would compare this epoch's weights against the previous
+            # eval's score.
+            continue
         # ONE selection signal, named in the config. z-MSE stays logged either way so a run
         # under the new metric is still comparable against every run made under the old one.
         crit = vs if selection_metric == "val_zmse" else vk.get("pool", float("nan"))

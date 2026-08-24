@@ -127,7 +127,14 @@ else
 fi
 
 # --- resume: drop runs that already finished -------------------------------------------------
-mapfile -t PENDING < <("$PY" - "$MANIFEST" <<'PYP'
+# while-read, not `mapfile`: mapfile is a bash 4 builtin and this repo is
+# developed on macOS, whose /bin/bash is 3.2 -- the script would pass `bash -n`
+# and then die at this line on a dev machine while working on the cluster.
+# submit_juv_mdd_sweep.sh already uses this form for the same reason.
+PENDING=()
+while IFS= read -r _line; do
+    [ -n "$_line" ] && PENDING+=("$_line")
+done < <("$PY" - "$MANIFEST" <<'PYP'
 import json, os, sys
 m = json.load(open(sys.argv[1]))
 done = pend = 0
@@ -142,7 +149,27 @@ print(f"# {done} already complete, {pend} pending", file=sys.stderr)
 PYP
 )
 N_PENDING="${#PENDING[@]}"
-echo "=== $N_PENDING run(s) pending ==="
+# Cross-check against the manifest, counted INDEPENDENTLY. A process substitution's exit status
+# is invisible to the reading loop, so if the reader above dies the array is simply empty -- and
+# an empty array is indistinguishable from "everything finished". That reads as a completed
+# sweep and exits 0. Counting the completed runs separately and requiring the two halves to add
+# up turns a crashed reader into an error instead of a false success.
+N_TOTAL=$("$PY" -c "
+import json; print(len(json.load(open('$MANIFEST'))['runs']))")
+N_DONE=$("$PY" - "$MANIFEST" <<'PYD'
+import json, os, sys
+m = json.load(open(sys.argv[1]))
+print(sum(os.path.exists(os.path.join(os.path.expandvars(r["desk_output_dir"]),
+                                      "run_summary.json")) for r in m["runs"]))
+PYD
+)
+if [ $((N_PENDING + N_DONE)) -ne "$N_TOTAL" ]; then
+    echo "ERROR: manifest has $N_TOTAL runs but $N_PENDING pending + $N_DONE complete ="
+    echo "       $((N_PENDING + N_DONE)). The resume reader did not enumerate every run --"
+    echo "       treat this as a failure, not as a finished sweep."
+    exit 1
+fi
+echo "=== $N_PENDING run(s) pending, $N_DONE complete, $N_TOTAL total ==="
 [ "$N_PENDING" -gt 0 ] || { echo "nothing to do -- every run in the manifest is complete"; exit 0; }
 
 # --- pack into node-sized chunks -------------------------------------------------------------
@@ -150,7 +177,58 @@ N_NODES=$(( (N_PENDING + TASKS_PER_NODE - 1) / TASKS_PER_NODE ))
 [ "$N_NODES" -le "$MAX_NODES" ] || N_NODES="$MAX_NODES"
 CHUNK=$(( N_NODES * TASKS_PER_NODE ))
 echo "queue=$QUEUE time=$TIME nodes=$N_NODES tasks/node=$TASKS_PER_NODE -> $CHUNK per job"
-echo "packed cost: ${TASKS_PER_NODE} GPUs of 3 per node at 3 SU/node-hr = $(awk "BEGIN{printf \"%.2f\", 3.0/$TASKS_PER_NODE}") SU per GPU-hour"
+# Computed on its own line with awk -v and SINGLE quotes. Inline as
+# `$(awk "BEGIN{printf \"%.2f\", 3.0/$TPN}")` inside a double-quoted echo, the \" escapes are
+# eaten by the outer quoting level and awk receives `BEGIN{printf %.2f, 3.0/3}` -- a syntax
+# error, printed twice, with the cost figure blank. Not platform-specific: awk is awk.
+SU_PER_GPU_HR=$(awk -v n="$TASKS_PER_NODE" 'BEGIN{printf "%.2f", 3.0/n}')
+echo "packed cost: ${TASKS_PER_NODE} GPUs of 3 per node at 3 SU/node-hr = ${SU_PER_GPU_HR} SU per GPU-hour (unpacked would be 3.00)"
+
+# Queue caps, from hpc/lonestar6.md. These behave DIFFERENTLY and the distinction matters:
+# a nodes-per-user overrun just leaves jobs pending (QOSMaxNodePerUserLimit), but a
+# jobs-per-user overrun is REJECTED at submit time -- so a large stage, or a resubmission while
+# an earlier batch is still queued, silently loses its tail batches unless this is checked.
+case "$QUEUE" in
+    gpu-a100)       MAX_JOBS=8;  CAP_NODES=12 ;;
+    gpu-a100-small) MAX_JOBS=12; CAP_NODES=3  ;;
+    gpu-a100-dev)   MAX_JOBS=1;  CAP_NODES=2  ;;
+    *)              MAX_JOBS=0;  CAP_NODES=0  ;;   # unknown queue: skip the check, don't guess
+esac
+N_BATCHES=$(( (N_PENDING + CHUNK - 1) / CHUNK ))
+if [ "$MAX_JOBS" -gt 0 ]; then
+    # `set -euo pipefail` is active, so a non-zero squeue inside a command substitution ABORTS
+    # the script -- and with the redirect swallowing its stderr, silently: the run stopped dead
+    # after the cost line with no message and nothing submitted. squeue exits non-zero for
+    # reasons that have nothing to do with this check (a slurmctld timeout, an unrecognised
+    # partition), so its failure has to be absorbed and REPORTED rather than treated as zero.
+    # Reporting matters: "no jobs queued" and "could not ask" pass the cap check identically,
+    # and only one of them is safe.
+    if EXISTING=$(squeue -u "$USER" -h -p "$QUEUE" 2>/dev/null); then
+        EXISTING=$(printf '%s\n' "$EXISTING" | grep -c . || true)
+    else
+        EXISTING="unknown"
+    fi
+    echo "queue caps for $QUEUE: $MAX_JOBS jobs/user, $CAP_NODES nodes/user; $EXISTING already queued, $N_BATCHES to add"
+    if [ "$EXISTING" = "unknown" ]; then
+        echo "warning: squeue failed, so the jobs-per-user cap could NOT be checked. If this"
+        echo "         submission is rejected, that is why -- wait for running jobs or raise"
+        echo "         MAX_NODES to pack more runs into fewer jobs."
+        EXISTING=0
+    fi
+    if [ $((EXISTING + N_BATCHES)) -gt "$MAX_JOBS" ]; then
+        echo "ERROR: $N_BATCHES batches + $EXISTING already queued exceeds $QUEUE's"
+        echo "       $MAX_JOBS-jobs-per-user cap. sbatch REJECTS the overflow rather than"
+        echo "       queueing it, so the tail batches would be silently lost. Either wait for"
+        echo "       running jobs, or raise MAX_NODES to pack more runs per job:"
+        echo "         MAX_NODES=$(( (N_PENDING + TASKS_PER_NODE - 1) / TASKS_PER_NODE )) puts everything in one job."
+        exit 1
+    fi
+    if [ $((N_BATCHES * N_NODES)) -gt "$CAP_NODES" ]; then
+        echo "note: $N_BATCHES x $N_NODES = $((N_BATCHES * N_NODES)) nodes exceeds the"
+        echo "      $CAP_NODES-nodes-per-user cap, so later batches will sit PENDING until"
+        echo "      earlier ones finish. That is queueing, not rejection -- nothing is lost."
+    fi
+fi
 
 JOBLIST_DIR="$SWEEP_ROOT/joblists"
 mkdir -p "$JOBLIST_DIR"

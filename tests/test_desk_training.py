@@ -1577,3 +1577,37 @@ def test_the_stabilizing_target_excludes_the_buffer_and_any_thinned_blocks():
     assert not (va & buf).any() and not (va & drop).any()
     assert int(tr.sum()) == int(((~ho) & (~buf) & (~drop)).sum())
     print(f"stabilizing train mask: {int(tr.sum())} cells, buffer and thinned blocks excluded")
+
+
+def test_eval_every_above_one_runs_and_records_only_measured_epochs(tmp_path):
+    """``eval_every > 1`` raised UnboundLocalError on the first un-evaluated epoch.
+
+    ``vs``, ``ts``, ``rotP`` and every other reported quantity are bound only inside the eval
+    branch, while the log line and the ratio columns that read them sat outside it -- so the
+    knob the config documents as "amortizes the clean eval re-forward" could not be used at
+    all. It is a loud crash rather than a wrong number, but it is on the Tier-3 list and would
+    have failed on the cluster, per run.
+
+    Pre-binding those names would have been worse than the crash: the eval-only values persist
+    across iterations, so an un-evaluated epoch would have printed and RECORDED the previous
+    eval's numbers under its own epoch number -- a stale value that reads as a fresh
+    measurement, which is the failure mode this project has been burned by most. So an
+    un-evaluated epoch reports only what was actually measured (the training losses) and gets
+    no trajectory row and no shot at being selected.
+    """
+    for ee, want_rows in ((1, [1, 2, 3, 4]), (2, [2, 4]), (3, [3, 4])):
+        path = tmp_path / f"e{ee}.jsonl"
+        txt = _val_pool_run(epochs=4, eval_every=ee, trajectory_path=str(path),
+                            selection_metric="val_kernel")
+        rows = [json.loads(l) for l in open(path)]
+        assert [r["epoch"] for r in rows] == want_rows, (ee, [r["epoch"] for r in rows])
+        assert all(r["eval_every"] == ee for r in rows), ee
+        # every recorded row carries a real measurement, never a carried-over one
+        for r in rows:
+            assert np.isfinite(r["kernel_val"]) and np.isfinite(r["zmse_val"]), (ee, r["epoch"])
+        # un-evaluated epochs say so instead of reprinting stale metrics
+        assert txt.count("no eval this epoch") == 4 - len(want_rows), (ee, txt)
+        # and the selected epoch is one that was actually evaluated
+        m = re.search(r"restored best epoch (\d+)", txt)
+        assert m and int(m.group(1)) in want_rows, (ee, m.group(1) if m else None, want_rows)
+    print("eval_every>1 works and records only measured epochs")

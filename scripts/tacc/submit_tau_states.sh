@@ -57,7 +57,14 @@ echo "production states (protected): $PROD_STATES"
 # One overlay per required states dir. A dir is claimed by several runs only if they share a
 # tau, so taking the first run that names it is well defined; asserting that is cheaper than
 # discovering later that two taus wrote to one directory.
-mapfile -t ROWS < <("$PY" - "$MANIFEST" <<'PYS'
+# while-read, not `mapfile`: mapfile is a bash 4 builtin and this repo is
+# developed on macOS, whose /bin/bash is 3.2 -- the script would pass `bash -n`
+# and then die at this line on a dev machine while working on the cluster.
+# submit_juv_mdd_sweep.sh already uses this form for the same reason.
+ROWS=()
+while IFS= read -r _line; do
+    [ -n "$_line" ] && ROWS+=("$_line")
+done < <("$PY" - "$MANIFEST" <<'PYS'
 import collections, json, os, sys
 m = json.load(open(sys.argv[1]))
 by = collections.defaultdict(list)
@@ -73,6 +80,21 @@ for d, runs in sorted(by.items()):
     print(f'{runs[0]["config"]}\t{os.path.expandvars(runs[0]["overlay"])}\t{d}')
 PYS
 )
+# Same cross-check as submit_sweep.sh: a process substitution's failure is invisible to the
+# reading loop, so a crashed reader yields an empty array, which is indistinguishable from "no
+# tau builds needed" -- and the sweep would then be blocked by its own preflight with no
+# explanation of why nothing was built.
+N_NEEDED=$("$PY" - "$MANIFEST" <<'PYN'
+import json, sys
+m = json.load(open(sys.argv[1]))
+print(len({r["requires_states_dir"] for r in m["runs"] if r["requires_states_dir"]}))
+PYN
+)
+if [ "${#ROWS[@]}" -ne "$N_NEEDED" ]; then
+    echo "ERROR: the manifest requires $N_NEEDED states dir(s) but the reader enumerated"
+    echo "       ${#ROWS[@]}. Treat this as a failure, not as 'nothing to build'."
+    exit 1
+fi
 [ "${#ROWS[@]}" -gt 0 ] || { echo "no per-tau states builds required by this manifest"; exit 0; }
 
 # Disk. A states dir is 86 years of per-year npz over ~295 channels; three of them is not a
@@ -80,8 +102,13 @@ PYS
 # preflight would accept (it checks for the yearly_states directory, not its year count).
 AVAIL_GB=$(df -k "$HOUFIN_PROCESSED" 2>/dev/null | awk 'NR==2 {print int($4/1048576)}' || true)
 if [ -d "$PROD_STATES/yearly_states" ]; then
-    ONE_GB=$(du -sk "$PROD_STATES/yearly_states" 2>/dev/null | awk '{print int($1/1048576)+1}')
+    # `|| true` for the same reason as the squeue call in submit_sweep.sh: pipefail plus set -e
+    # makes a failing du abort the script from inside a command substitution, with its stderr
+    # already redirected away.
+    ONE_GB=$(du -sk "$PROD_STATES/yearly_states" 2>/dev/null | awk '{print int($1/1048576)+1}' || true)
+    ONE_GB="${ONE_GB:-0}"
     NEED_GB=$(( ONE_GB * ${#ROWS[@]} ))
+    [ "$ONE_GB" -gt 0 ] || echo "note: could not size the existing states dir; skipping the disk check"
     echo "disk: ${AVAIL_GB:-?} GB available; ~${NEED_GB} GB needed (${ONE_GB} GB x ${#ROWS[@]} builds)"
     if [ -n "${AVAIL_GB:-}" ] && [ "$AVAIL_GB" -lt "$NEED_GB" ]; then
         echo "ERROR: insufficient space. Drop the tau configurations from the grid"

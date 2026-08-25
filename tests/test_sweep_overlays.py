@@ -593,3 +593,58 @@ def test_the_tau_builds_do_not_default_to_a_one_job_queue():
     assert 'QUEUE="${QUEUE:-development}"' in single, \
         "submit_states.sh submits one build; changing its default is out of scope here"
     print("tau builds default to normal; a development override is refused")
+
+
+def test_the_production_overlay_holds_nothing_out_and_keeps_the_swept_budget(tmp_path):
+    """The three properties the production retrain turns on, asserted rather than assumed.
+
+    ``epochs`` must stay at the SWEPT value while ``stop_at_epoch`` does the stopping.
+    ``_warmup_cosine`` is parameterised on the budget, so lowering ``epochs`` to the stopping
+    point changes the learning rate at every preceding step and trains a different model rather
+    than the same one stopped earlier -- the exact mistake §11 of the plan exists to prevent, and
+    the one a hand-written overlay would make.
+
+    Its manifest is separate, and its run_id carries the stopping epoch, so it can never collide
+    with a grid run's resume marker.
+    """
+    env = dict(os.environ, HOUFIN_PROCESSED=str(tmp_path))
+    sroot = str(tmp_path / "sweeps" / "hp")
+    out = subprocess.run([sys.executable, os.path.join(REPO, "scripts", "sweep",
+                                                       "generate_overlays.py"),
+                          "--root", sroot, "--production", "sk0", "137"],
+                         capture_output=True, text=True, cwd=REPO, env=env)
+    assert out.returncode == 0, out.stderr
+    assert "INFERRED from the grid, not measured on itself" in out.stdout, out.stdout
+    man = json.load(open(os.path.join(sroot, "production_manifest.json")))
+    assert len(man["runs"]) == 1
+    r = man["runs"][0]
+    assert r["run_id"] == "production_sk0_stop137"
+    assert not r["run_id"].startswith("sweep_"), "must not collide with a grid run"
+    cfg = load_config(r["overlay"])["desk"]
+    base = load_config(os.path.join(REPO, "config", "esk_desk_config.json"))["desk"]
+    assert float(cfg["trend"]["holdout_frac"]) == 0.0
+    assert int(cfg["trend"]["min_val_cells"]) == 0, "the val-cell floor must not block it"
+    assert int(cfg["stop_at_epoch"]) == 137
+    assert int(cfg["epochs"]) == int(base["epochs"]), \
+        "epochs must stay at the swept budget, or the LR schedule is re-parameterised"
+    # the winning configuration's own knob must survive into it
+    assert cfg["spatial_conv"]["enabled"] is False, "the sk0 knob was lost"
+    print("production overlay: nothing held out, swept budget kept, knob preserved")
+
+
+def test_the_analysis_script_flags_a_false_leader():
+    """A configuration that leads only because of a spike must not be reported as robust.
+
+    The first version of this script compared the two top-4 SETS, which can coincide while the
+    ordering is completely different -- so a run whose winning value came from one lucky
+    evaluation was printed as "robust to the spike problem". That is exactly the
+    plausible-looking summary the script exists to prevent, produced by the script itself. It now
+    compares the two RANKINGS and names any configuration that moves >= 2 places.
+    """
+    src = open(os.path.join(REPO, "scripts", "sweep", "analyze.py")).read()
+    assert "FALSE LEADER" in src
+    assert "rank_k" in src and "rank_t" in src, "must compare rankings, not just top-N sets"
+    assert "DO NOT carry the argmin top-4 forward as-is" in src
+    # the provisional threshold must be labelled as such until stage 3 measures the seed spread
+    assert "PROVISIONAL" in src
+    print("the analysis script detects a spike-driven false leader")

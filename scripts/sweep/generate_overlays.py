@@ -343,6 +343,10 @@ def main():
     ap.add_argument("--seeds", default="",
                     help="stage 3: comma-separated spatial seeds for ONE config "
                          "(with --configs naming exactly that one)")
+    ap.add_argument("--production", nargs=2, metavar=("CONFIG", "STOP_EPOCH"), default=None,
+                    help="emit the production retrain: the winning CONFIG with holdout_frac=0, "
+                         "all years, and stop_at_epoch=STOP_EPOCH (the MEDIAN best epoch across "
+                         "the stage-3 seeds)")
     ap.add_argument("--smoke", type=int, default=0, metavar="N",
                     help="emit ONE short baseline run of N epochs, in its own output dir, to "
                          "verify the instrumentation before spending the grid")
@@ -362,7 +366,28 @@ def main():
     cfgs = [c for c in args.configs.split(",") if c]
     seeds = [int(s) for s in args.seeds.split(",") if s]
 
-    if args.smoke:
+    if args.production:
+        tag, stop = args.production[0], int(args.production[1])
+        all_cfg = {t: (r, f) for t, r, f in configurations()}
+        if tag not in all_cfg:
+            raise SystemExit(f"unknown config {tag!r}; have {sorted(all_cfg)}")
+        reason, frag = all_cfg[tag]
+        # holdout_frac=0 and min_val_cells=0: nothing is held out, so there is no epoch to
+        # select and the trainer keeps its final weights. epochs is left at the SWEPT value on
+        # purpose -- _warmup_cosine is parameterised on the budget, so lowering it to the
+        # stopping point would change the learning rate at every preceding step and train a
+        # different model rather than the same one stopped earlier.
+        prod_extra = {"desk": {"stop_at_epoch": stop,
+                               "trend": {"holdout_frac": 0.0, "min_val_cells": 0}}}
+        grid = [(f"production_{tag}_stop{stop}", "production", tag, [], None, frag,
+                 f"production retrain: {reason}; stop_at_epoch={stop} from the stage-3 median")]
+        seeds = [SPATIAL_SEED]
+        smoke_extra = prod_extra
+        print(f"PRODUCTION retrain: config={tag}, stop_at_epoch={stop}, holdout_frac=0.\n"
+              f"  Its skill is INFERRED from the grid, not measured on itself -- there is no\n"
+              f"  validation set. Compare its trajectory against the nearest grid point\n"
+              f"  (sweep_t0_f100_{tag}); that is the only signal it has gone wrong.")
+    elif args.smoke:
         # The plumbing check from the verification plan: does the trajectory JSONL appear, does
         # the val kernel pool build, is a best epoch recorded, does run_summary.json land. Its
         # own output dir so it cannot be mistaken for -- or overwrite -- the real baseline run,
@@ -417,6 +442,15 @@ def main():
         with open(ov_path, "w", encoding="utf-8") as fh:
             json.dump(ov, fh, indent=2)
         verify_overlay(ov_path, STREAM_NAMES, len(STREAM_NAMES), expect_seed=seed)
+        if args.production:
+            _c = load_config(ov_path)["desk"]
+            # The three properties §11 turns on, asserted rather than assumed: nothing held
+            # out, a stopping point, and the schedule left at its swept budget.
+            assert float(_c["trend"]["holdout_frac"]) == 0.0, "production must hold nothing out"
+            assert int(_c["stop_at_epoch"]) == int(args.production[1])
+            assert int(_c["epochs"]) == int(_BASE["desk"]["epochs"]), (
+                "epochs must stay at the SWEPT budget; lowering it to the stopping point "
+                "re-parameterises the cosine schedule and trains a different model")
 
     tau_dirs = sorted({e["requires_states_dir"] for e in entries if e["requires_states_dir"]})
     print(f"\n{len(entries)} runs; {len(tau_dirs)} extra yearly_states build(s) required:")
@@ -430,7 +464,8 @@ def main():
         return
     # A distinct filename: writing the smoke run over a stage manifest would leave the submit
     # script resuming a one-run grid and reporting the other 16 as complete.
-    man = os.path.join(root, "smoke_manifest.json" if args.smoke else "sweep_manifest.json")
+    man = os.path.join(root, "production_manifest.json" if args.production
+                       else ("smoke_manifest.json" if args.smoke else "sweep_manifest.json"))
     with open(man, "w", encoding="utf-8") as fh:
         json.dump({"stage": args.stage, "git_sha": sha, "root": root,
                    "states_root": states_root,

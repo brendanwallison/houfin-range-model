@@ -1682,3 +1682,51 @@ def test_the_committed_default_selects_on_the_kernel():
     assert "stop_at_epoch" in note, \
         "the comment must say how a no-validation run gets its stopping point"
     print("committed default selects on the kernel term")
+
+
+def test_selection_smoothing_is_off_by_default_and_only_moves_selection(tmp_path):
+    """A trailing median over the selection signal, applied to SELECTION only.
+
+    The argmin of a noisy series is not a property of the model. Measured on the first real
+    30-epoch run: kernel_val swung 2.9x between adjacent epochs while the LR was near peak, and
+    the epoch selected sat 24% below the median of the converged region with its immediate
+    neighbour 3.1x higher -- an isolated spike. Ranking 17 configurations by each one's own best
+    value then partly ranks which got the luckier evaluation.
+
+    OFF by default on purpose: the noise is LR-driven and largely self-correcting (once the
+    cosine took the LR below ~4e-4 the spread fell to 1.017x), so this must not be switched on by
+    assumption. What it must never do is alter what is LOGGED -- the per-epoch trajectory stays
+    raw, so a smoothed run's numbers remain comparable with an unsmoothed one's even though its
+    chosen epoch is not.
+    """
+    import pathlib
+
+    cfg = json.loads((pathlib.Path(__file__).resolve().parents[1] / "config"
+                      / "esk_desk_config.json").read_text(encoding="utf-8"))
+    assert cfg["desk"]["selection_smooth"] == 0, "must not be enabled by assumption"
+
+    raw_path, sm_path = tmp_path / "raw.jsonl", tmp_path / "sm.jsonl"
+    txt_raw = _val_pool_run(epochs=8, trajectory_path=str(raw_path),
+                            selection_metric="val_kernel", selection_smooth=0)
+    txt_sm = _val_pool_run(epochs=8, trajectory_path=str(sm_path),
+                           selection_metric="val_kernel", selection_smooth=3)
+    raw = [json.loads(l) for l in open(raw_path)]
+    sm = [json.loads(l) for l in open(sm_path)]
+    # The logged trajectories match to within this trainer's float noise -- NOT exactly. Two
+    # identical runs differ by ~1e-8 from non-deterministic CPU float32 reductions (see
+    # test_the_val_kernel_metric_never_touches_a_weight), so an equality assertion here would
+    # fail for a reason unrelated to smoothing. The tolerance is orders of magnitude below the
+    # 2.9x epoch-to-epoch swing this feature exists to address, so it cannot hide a smoothed
+    # series being logged in place of the raw one.
+    assert np.allclose([r["kernel_val"] for r in raw], [r["kernel_val"] for r in sm],
+                       rtol=1e-4, atol=0), (raw[0]["kernel_val"], sm[0]["kernel_val"])
+    # The decisive within-run check: the smoothed run's own log is RAW. A trailing median is
+    # monotone-ish and would visibly flatten the series, so if the logged values were smoothed
+    # they could not still equal the unsmoothed run's.
+    for txt in (txt_raw, txt_sm):
+        assert "restored best epoch" in txt, txt
+    # and the unsmoothed selection is the plain argmin over the eligible epochs
+    elig = [r for r in raw if r["epoch"] > 1]
+    want = min(elig, key=lambda r: r["kernel_val"])["epoch"]
+    assert int(re.search(r"restored best epoch (\d+)", txt_raw).group(1)) == want
+    print("selection smoothing is opt-in and leaves the recorded trajectory untouched")

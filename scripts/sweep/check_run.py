@@ -63,7 +63,23 @@ def check(run_dir):
     else:
         _ok(msgs, f"best_epoch {be} agrees between desk_meta.npz and run_summary.json")
 
-    if summ["restored_best"]:
+    smooth = int(summ.get("selection_smooth", 0))
+    if summ["restored_best"] and smooth > 1:
+        # With a trailing median the selected epoch is deliberately NOT the raw argmin, so
+        # comparing against it would hard-fail every smoothed run. Check the smoothed series
+        # instead -- the property that still has to hold is that selection used the signal it
+        # says it used.
+        ser = [r[col] for r in rows]
+        med = [float(np.median([v for v in ser[max(0, i - smooth + 1):i + 1]
+                                if np.isfinite(v)] or [np.nan])) for i in range(len(ser))]
+        cand = [(m, rows[i]["epoch"]) for i, m in enumerate(med) if np.isfinite(m)]
+        if cand and min(cand)[1] != be:
+            _fail(msgs, f"best_epoch {be} is not the argmin of the {smooth}-epoch trailing "
+                        f"median of {col} ({min(cand)[1]})"); hard += 1
+        else:
+            _ok(msgs, f"best_epoch {be} is the argmin of the {smooth}-epoch trailing median "
+                      f"of {col}")
+    elif summ["restored_best"]:
         elig = [r for r in rows if np.isfinite(r[col])]
         if not elig:
             _fail(msgs, f"selected on {sel} but every {col} is non-finite"); hard += 1
@@ -116,6 +132,37 @@ def check(run_dir):
         _fail(msgs, "holdout and buffer masks overlap"); hard += 1
     else:
         _ok(msgs, f"holdout ({int(ho.sum())}) and buffer ({int(bf.sum())}) masks are disjoint")
+
+    # Is the selected epoch an isolated spike or a stable basin? The argmin of a noisy series is
+    # not a property of the model, and this metric is measurably noisy while the LR is high: on
+    # the first real 30-epoch run kernel_val swung 2.9x between adjacent epochs near peak LR and
+    # 1.017x once the cosine took it below 4e-4. A best epoch whose neighbours are far worse was
+    # selected on a lucky evaluation, and its value is biased low -- which matters because
+    # configurations are ranked against each other by exactly this number.
+    if summ.get("restored_best") and len(rows) >= 7:
+        by_ep = {r["epoch"]: r[col] for r in rows}
+        bv = by_ep.get(be)
+        nb = [by_ep[e] for e in (be - 1, be + 1) if e in by_ep and np.isfinite(by_ep[e])]
+        finite = [v for v in by_ep.values() if np.isfinite(v)]
+        if bv is not None and np.isfinite(bv) and nb and bv > 0:
+            worst_nb = max(nb) / bv
+            med_all = float(np.median(finite))
+            below = 1 - bv / med_all if med_all else 0
+            if worst_nb >= 2.0:
+                msgs.append(f"warn  best epoch {be} is an ISOLATED SPIKE: a neighbour is "
+                            f"{worst_nb:.1f}x its value, and it sits {100 * below:.0f}% below "
+                            f"the median of all epochs. It was selected on a lucky evaluation, "
+                            f"so its value is biased low -- treat cross-configuration rankings "
+                            f"built on it with suspicion. desk.selection_smooth applies a "
+                            f"trailing median if this persists at full length.")
+            else:
+                msgs.append(f"ok    best epoch {be} sits in a stable region "
+                            f"(worst neighbour {worst_nb:.2f}x its value)")
+        if smooth > 1:
+            msgs.append(f"note  selection used a trailing median over {smooth} epochs "
+                        f"(raw value at the selected epoch: "
+                        f"{summ.get('best_selection_raw', float('nan')):.6g}). A run under a "
+                        f"nonzero window is NOT comparable with one under 0.")
 
     # Is the kernel still falling at the end? That is the §5-step-3 question: if it is, the
     # epoch budget is too SMALL, not too large, and no epoch decision should be made yet.

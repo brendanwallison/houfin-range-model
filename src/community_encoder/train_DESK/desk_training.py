@@ -570,6 +570,7 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
                     hidden_width=None, mlp_expansion=4,
                     val_metric_pool=None, val_pool_holdout_years=(),
                     eval_kernel_pairs=65536, selection_metric="val_zmse",
+                    selection_smooth=0,
                     trajectory_path=None, stop_at_epoch=None, return_info=False,
                     _skip_target_conversion=False):
     """Train DESK with a learned output-EMA.
@@ -1026,9 +1027,11 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
               flush=True)
     best_val, best, bad, nonfinite = float("inf"), None, 0, 0
     best_epoch, best_zmse, best_kernel = None, float("nan"), float("nan")
+    best_crit_raw = float("nan")
     # Pre-bound so an eval_every > 1 epoch cannot reference an eval-only name before it is
     # first assigned: the printed line and the JSONL row are emitted EVERY epoch.
     vk, tk = {}, float("nan")
+    crit_hist = []
     traj_fh = None
     if trajectory_path:
         os.makedirs(os.path.dirname(os.path.abspath(trajectory_path)), exist_ok=True)
@@ -1283,10 +1286,26 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
             continue
         # ONE selection signal, named in the config. z-MSE stays logged either way so a run
         # under the new metric is still comparable against every run made under the old one.
-        crit = vs if selection_metric == "val_zmse" else vk.get("pool", float("nan"))
+        crit_raw = vs if selection_metric == "val_zmse" else vk.get("pool", float("nan"))
+        # Optional trailing-median smoothing of the SELECTION signal only (the logged and
+        # recorded per-epoch values stay raw). The argmin of a noisy series is not a property of
+        # the model: measured on a 30-epoch run, kernel_val swung 2.9x between adjacent epochs
+        # while the LR was near peak, and the selected epoch sat 24% below the median of the
+        # converged region with its immediate neighbour 3.1x higher -- an isolated spike. Ranking
+        # configurations by each one's best value then partly ranks which got the luckier spike.
+        #
+        # OFF by default because the noise is LR-driven and largely self-correcting: once the
+        # cosine decayed below ~4e-4 the spread fell to 1.017x, so at the full 500-epoch budget
+        # the argmin should land in the stable tail on its own. Turn it on if a full-length run
+        # shows otherwise -- which is a thing to measure, not to assume in either direction.
+        crit_hist.append(crit_raw)
+        w = int(selection_smooth)
+        crit = (float(np.median(crit_hist[-w:])) if w > 1 and len(crit_hist) >= w
+                else crit_raw)
         if np.isfinite(crit) and crit < best_val - min_delta:
             best_val, bad, best_epoch = crit, 0, int(ep)
             best_zmse, best_kernel = vs, vk.get("pool", float("nan"))
+            best_crit_raw = crit_raw
             best = ({k: v.detach().cpu().clone() for k, v in model.state_dict().items()},
                     {k: v.detach().cpu().clone() for k, v in ema.state_dict().items()})
         else:
@@ -1335,6 +1354,8 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
             # entirely LR ramp, and the minimum it reports is a transient of the schedule rather
             # than a property of the model.
             "warmup_epochs": int(warmup_epochs),
+            "selection_smooth": int(selection_smooth),
+            "best_selection_raw": float(best_crit_raw),
             "min_lr_frac": float(min_lr_frac),
             "restored_best": best is not None}
     return (model, ema, info) if return_info else (model, ema)
@@ -1706,6 +1727,7 @@ def run_desk_experiment(config=None):
         val_metric_pool=val_metric_pool, val_pool_holdout_years=ho_years,
         eval_kernel_pairs=int(desk_cfg.get("eval_kernel_pairs", 65536)),
         selection_metric=str(desk_cfg.get("selection_metric", "val_zmse")),
+        selection_smooth=int(desk_cfg.get("selection_smooth", 0)),
         trajectory_path=os.path.join(out_dir, "train_trajectory.jsonl"),
         stop_at_epoch=desk_cfg.get("stop_at_epoch"),
         return_info=True)

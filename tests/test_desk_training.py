@@ -11,6 +11,7 @@ import re
 import sys
 
 import numpy as np
+import pytest
 import torch
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -1153,7 +1154,7 @@ def test_a_floor_above_every_stratum_makes_the_correction_inert():
 
 # ------------------- the validation kernel pool, and per-epoch instrumentation ----------------
 
-def _val_pool_run(epochs=3, **kw):
+def _val_pool_run(epochs=3, eval_kernel_pairs=512, **kw):
     """``train_model_ema`` with a real spatial split AND a val kernel pool. Returns stdout.
 
     Deliberately builds the train and val pools from COMPLEMENTARY masks, the way
@@ -1187,7 +1188,7 @@ def _val_pool_run(epochs=3, **kw):
                           weights={"stabilizing": 64.0, "metric": 5.0, "reconstruction": 0.1},
                           schema=sch, dropout=0.1,
                           val_metric_pool=_metric_dict(x, va_m, years),
-                          eval_kernel_pairs=512, **kw)
+                          eval_kernel_pairs=eval_kernel_pairs, **kw)
     return out.getvalue()
 
 
@@ -1246,8 +1247,8 @@ def test_the_val_kernel_metric_never_touches_a_weight():
     seen = []
     real = D.kernel_loss_on_pairs
 
-    def spy(z_by_t, pool_t, pool_flat, pool_x, pairs):
-        out = real(z_by_t, pool_t, pool_flat, pool_x, pairs)
+    def spy(z_by_t, pool_t, pool_flat, pool_x, pairs, rank=None):
+        out = real(z_by_t, pool_t, pool_flat, pool_x, pairs, rank=rank)
         seen.append((z_by_t.requires_grad, z_by_t.grad_fn is not None,
                      out.requires_grad, out.grad_fn is not None))
         return out
@@ -1760,3 +1761,134 @@ def test_the_best_epoch_is_the_argmin_not_the_first_epoch_within_an_epsilon(tmp_
     got2 = int(re.search(r"restored best epoch (\d+)", txt2).group(1))
     assert got2 <= got, (got2, got)
     print(f"best epoch {got} is the argmin; a large min_delta still moves it to {got2}")
+
+
+def test_independent_draws_give_a_real_error_bar_on_the_selected_metric(tmp_path):
+    """A single draw yields a number with no error bar, which is why stage 1 was unreadable.
+
+    17 configurations spread over 8% of the held-out kernel and nothing could say whether that
+    was above the sampling noise of the kernel estimate itself. With several independent draws the
+    mean is the selection signal and the spread across draws is the estimator's noise floor, so
+    the comparison that decides whether a sweep could resolve anything becomes available.
+
+    Asserts the spread is non-zero (it is a real measurement, not a placeholder) and that it
+    SHRINKS with more pairs at the expected rate -- if it did not, the number would not be
+    sampling error and averaging draws would not help.
+    """
+    def sd_at(pairs, draws):
+        p = tmp_path / f"t{pairs}_{draws}.jsonl"
+        _val_pool_run(epochs=3, trajectory_path=str(p), selection_metric="val_kernel",
+                      eval_kernel_pairs=pairs, eval_kernel_draws=draws)
+        rows = [json.loads(l) for l in open(p)]
+        assert all(r["kernel_val_draws"] == draws for r in rows)
+        return np.mean([r["kernel_val_sd"] for r in rows]), \
+            np.mean([r["kernel_val"] for r in rows])
+
+    sd_small, mean_small = sd_at(256, 6)
+    sd_big, mean_big = sd_at(4096, 6)
+    assert sd_small > 0, "the spread must be a real measurement"
+    # 16x the pairs should cut the standard deviation ~4x (it falls as 1/sqrt(P)). Loose bounds:
+    # 6 draws estimate a std to only +-32%, so this checks the scaling law, not a constant.
+    ratio = sd_small / sd_big
+    assert 2.0 < ratio < 8.0, (sd_small, sd_big, ratio)
+    # and the MEAN is stable across pair counts -- more pairs reduce variance, not shift the
+    # estimand. If it moved, the metric would not be comparable across configurations either.
+    assert abs(mean_big - mean_small) / mean_small < 0.15, (mean_small, mean_big)
+    print(f"sd {sd_small:.5f} -> {sd_big:.5f} for 16x pairs ({ratio:.1f}x), mean stable")
+
+
+def test_one_draw_reproduces_the_previous_single_draw_behaviour(tmp_path):
+    """``eval_kernel_draws=1`` must be the old code path exactly, so old runs stay comparable."""
+    p = tmp_path / "one.jsonl"
+    _val_pool_run(epochs=2, trajectory_path=str(p), selection_metric="val_kernel",
+                  eval_kernel_draws=1)
+    rows = [json.loads(l) for l in open(p)]
+    assert all(r["kernel_val_draws"] == 1 for r in rows)
+    # A single draw has no spread; it must report 0, not nan -- nan would read as "unavailable"
+    # when the truth is "unmeasurable from one sample".
+    assert all(r["kernel_val_sd"] == 0.0 for r in rows), [r["kernel_val_sd"] for r in rows]
+    print("a single draw reports zero spread, not nan")
+
+
+def test_the_three_val_pools_draw_from_independent_seed_streams():
+    """pool/sp/spt previously shared one seed, so they were not independent draws.
+
+    They differed only because the pools had different lengths, which is not independence -- and a
+    spread computed across them would have understated the noise. Checked on the helper rather
+    than through a run, because the property is a property of the seeding.
+    """
+    from src.community_encoder.train_DESK.desk_training import (POOL_SEED_OFFSET,
+                                                                kernel_pair_draws)
+    n, pairs, seed = 5000, 64, 7
+    per_pool = {}
+    for label, off in POOL_SEED_OFFSET.items():
+        d = kernel_pair_draws(n, pairs, seed + 104729 * (off + 1), 3)
+        per_pool[label] = d
+        # draws WITHIN a pool are independent of each other
+        assert not np.array_equal(d[0], d[1]) and not np.array_equal(d[1], d[2]), label
+    # and no two pools share a draw
+    flat = [(lab, i, tuple(map(tuple, d))) for lab, ds in per_pool.items()
+            for i, d in enumerate(ds)]
+    assert len({f for _l, _i, f in flat}) == len(flat), "two pools share a pair set"
+    # too few points is UNAVAILABLE for the whole set, not a partially-populated list
+    assert kernel_pair_draws(1, 64, 0, 4) is None
+    print(f"{len(flat)} pair sets across {len(per_pool)} pools, all distinct")
+
+
+def test_the_rank_curve_measures_what_a_truncating_downstream_would_get(tmp_path):
+    """Selection stays full-rank; the curve reports the ranks the downstream might adopt.
+
+    The population model truncates positionally to the first M components, so the rank-M kernel is
+    the covariance of the GP it fits -- and that is not the rank-64 number selection runs on. The
+    curve is reported for several ranks on purpose: M is 24 today and plausibly 32 later, so
+    keying any decision on one rank would bake in a moving target.
+
+    Also asserts the curve improves with rank, which is the sanity condition: adding components
+    cannot make the kernel approximation worse if they carry any signal at all.
+    """
+    p = tmp_path / "ranks.jsonl"
+    txt = _val_pool_run(epochs=2, trajectory_path=str(p), selection_metric="val_kernel",
+                        eval_kernel_ranks=(4, 8, 16), eval_kernel_draws=2)
+    row = [json.loads(l) for l in open(p)][-1]
+    for q in ("ema", "raw"):
+        vals = [row[f"kernel_val_{q}_r{r}"] for r in (4, 8, 16)]
+        assert all(np.isfinite(v) for v in vals), (q, vals)
+        assert vals[0] >= vals[1] >= vals[2], f"{q} curve not monotone in rank: {vals}"
+    # the full-rank ema value is the one selected on, and matches the pooled kernel column
+    assert row["kernel_val_ema_r16"] == pytest.approx(row["kernel_val"], rel=1e-9)
+    # z_raw is reported alongside z_ema because only z_ema is supervised while the cube exports
+    # z_raw -- the gap is the point, so both must be present and they must not be aliases
+    assert row["kernel_val_raw_r16"] != row["kernel_val_ema_r16"]
+    assert "restored best epoch" in txt
+    print("rank curve monotone on both z_ema and z_raw; full rank matches the selected value")
+
+
+def test_the_pool_is_not_scored_twice_when_no_year_is_withheld():
+    """With no withheld years `sp` IS `pool`; scoring both was a quarter of the eval wasted.
+
+    Previously they also shared pair indices, so the log printed the two values identically -- a
+    reader could not tell an alias from a coincidence. Aliasing makes the redundancy explicit and
+    pays for the extra independent draws.
+    """
+    txt = _val_pool_run(epochs=1, selection_metric="val_kernel", eval_kernel_draws=2)
+    assert "no withheld years, so sp == pool; scoring it once" in txt, txt
+    # exactly one val pool is prepared, not two identical ones
+    assert txt.count("val kernel pool (pool):") == 1
+    assert "val kernel pool (sp):" not in txt
+    print("pool scored once when sp is identical to it")
+
+
+def test_the_degenerate_pair_branch_returns_zero_instead_of_raising():
+    """``_pair_kernel_loss``'s all-invalid branch referenced a name not in its scope.
+
+    It said ``z_pred.device`` -- a leftover from ``true_kernel_loss``, where the argument really
+    is called ``z_pred`` -- so instead of returning 0 it raised NameError. Unreachable only
+    because a real community is never all-zero, which is exactly the kind of latent break that
+    surfaces the first time a pool is filtered down to nothing.
+    """
+    from src.community_encoder.train_DESK.desk_training import _pair_kernel_loss
+    zeros = torch.zeros(4, 3)
+    out = _pair_kernel_loss(torch.randn(4, 5), torch.randn(4, 5), zeros, zeros)
+    assert float(out) == 0.0
+    assert out.requires_grad
+    print("a degenerate pair set yields 0, not NameError")

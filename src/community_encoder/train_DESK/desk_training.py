@@ -63,7 +63,11 @@ def _pair_kernel_loss(zi, zj, xi, xj):
     denominator = 0.5 * torch.sum(sum_plus + diff_abs, dim=1)
     valid = denominator > 1e-3
     if valid.sum() == 0:
-        return torch.tensor(0.0, device=z_pred.device, requires_grad=True)
+        # `zi`, not `z_pred`: this branch referenced a name that does not exist in this scope --
+        # a leftover from `true_kernel_loss`, where the argument IS called z_pred. It therefore
+        # raised NameError instead of returning 0, and was unreachable only because a real
+        # community is never all-zero. A degenerate pool must yield 0, not a crash.
+        return torch.zeros((), device=zi.device, requires_grad=True)
     sim_true = numerator[valid] / (denominator[valid] + 1e-8)
     sim_pred = (zi[valid] * zj[valid]).sum(dim=1)
     return F.mse_loss(sim_pred, sim_true)
@@ -149,20 +153,51 @@ def fixed_kernel_pairs(n_points, num_pairs, seed):
     return g.integers(0, n, size=(2, int(num_pairs)), dtype=np.int64)
 
 
-def kernel_loss_on_pairs(z_by_t, pool_t, pool_flat, pool_x, pairs):
+# Distinct seed streams per pool. A dict rather than an enumerate() so a pool added later cannot
+# silently shift every other pool's draw and make new runs incomparable with old ones.
+POOL_SEED_OFFSET = {"pool": 0, "sp": 1, "spt": 2}
+
+
+def kernel_pair_draws(n_points, num_pairs, seed, n_draws):
+    """``n_draws`` INDEPENDENT fixed pair sets, or ``None`` if the pool cannot form a pair.
+
+    One draw gives a number with no error bar, so there is no way to say whether an 8% spread
+    between configurations is above or below the noise of the thing being compared. Several
+    independent draws give both: the mean is the selection signal (standard error down by
+    ``sqrt(n_draws)``) and the spread across draws is the estimator's own noise floor.
+
+    Each draw gets its own seed. The previous single-draw code passed the SAME seed for the
+    pool/sp/spt pools, so those three "independent" numbers came from one RNG stream and differed
+    only because the pools had different lengths -- not independent at all.
+    """
+    out = [fixed_kernel_pairs(n_points, num_pairs, int(seed) + 7919 * d)
+           for d in range(max(1, int(n_draws)))]
+    return None if any(p is None for p in out) else out
+
+
+def kernel_loss_on_pairs(z_by_t, pool_t, pool_flat, pool_x, pairs, rank=None):
     """``spacetime_kernel_loss`` on a caller-supplied pair index array. Same estimand.
 
     Shares ``_pair_kernel_loss`` with the training term rather than reimplementing the
     Ružička ratio, so the number selected on and the number optimized cannot drift apart --
     the failure this codebase hit when two modules averaged the same width in different
     orders.
+
+    ``rank`` truncates z to its first ``rank`` components before the dot product. That is the
+    quantity a downstream consuming a rank-r prefix actually gets: ingest takes ``z[..., :M]``
+    positionally (``src/data/combine/model_inputs.py``), so the rank-M kernel is the covariance
+    of the GP it fits, and it is NOT the rank-64 kernel this metric otherwise reports. Reported
+    as a curve over several ranks rather than at one value, because the retained M is a moving
+    target and nothing here should key on today's.
     """
     T, H, W, L = z_by_t.shape
     i = torch.as_tensor(pairs[0], device=z_by_t.device, dtype=torch.long)
     j = torch.as_tensor(pairs[1], device=z_by_t.device, dtype=torch.long)
     zf = z_by_t.reshape(T, H * W, L)
-    return _pair_kernel_loss(zf[pool_t[i], pool_flat[i]], zf[pool_t[j], pool_flat[j]],
-                             pool_x[i], pool_x[j])
+    zi, zj = zf[pool_t[i], pool_flat[i]], zf[pool_t[j], pool_flat[j]]
+    if rank is not None and int(rank) < L:
+        zi, zj = zi[:, :int(rank)], zj[:, :int(rank)]
+    return _pair_kernel_loss(zi, zj, pool_x[i], pool_x[j])
 
 
 
@@ -569,7 +604,9 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
                     direction_withheld_anchor_year=None,
                     hidden_width=None, mlp_expansion=4,
                     val_metric_pool=None, val_pool_holdout_years=(),
-                    eval_kernel_pairs=65536, selection_metric="val_zmse",
+                    metric_pairs=4096,
+                    eval_kernel_pairs=65536, eval_kernel_draws=1, eval_kernel_ranks=(),
+                    selection_metric="val_zmse",
                     selection_smooth=0,
                     trajectory_path=None, stop_at_epoch=None, return_info=False,
                     _skip_target_conversion=False):
@@ -687,19 +724,25 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
                             device=device, dtype=torch.long)
         f = torch.as_tensor(pf[keep], device=device, dtype=torch.long)
         x = torch.as_tensor(px[keep], device=device)
-        pairs = fixed_kernel_pairs(int(t.shape[0]), eval_kernel_pairs, seed)
-        if pairs is None:
+        # Per-pool seed offset. Passing the same seed to every pool made the three draws share
+        # one RNG stream, so they differed only by pool length -- not independent, which is the
+        # whole property a spread across pools is supposed to have.
+        draws = kernel_pair_draws(int(t.shape[0]), eval_kernel_pairs,
+                                  seed + 104729 * (POOL_SEED_OFFSET.get(label, 0) + 1),
+                                  eval_kernel_draws)
+        if draws is None:
             print(f"[desk] val kernel pool ({label}): {int(t.shape[0])} point(s), too few to "
                   f"form a pair -- UNAVAILABLE_TOO_FEW_POINTS", flush=True)
             return None
         print(f"[desk] val kernel pool ({label}): {int(t.shape[0]):,} held-out cell-years "
-              f"over {len(np.unique(py[keep]))} years, {eval_kernel_pairs:,} FIXED pairs",
-              flush=True)
-        return (t, f, x, pairs)
+              f"over {len(np.unique(py[keep]))} years, {len(draws)} x {eval_kernel_pairs:,} "
+              f"FIXED pairs", flush=True)
+        return (t, f, x, draws)
 
     # The train pool's own fixed eval pairs, seeded differently from the val pools so the two
     # are independent draws rather than the same index pattern over different pools.
-    train_eval_pairs = fixed_kernel_pairs(int(pool_t.shape[0]), eval_kernel_pairs, seed + 977)
+    train_eval_pairs = kernel_pair_draws(int(pool_t.shape[0]), eval_kernel_pairs, seed + 977,
+                                        eval_kernel_draws)
     val_pools = {}
     if val_metric_pool is not None:
         _vy, _vf, _vx = val_metric_pool
@@ -708,9 +751,18 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
         # sp+t = held-out cell, WITHHELD year  -> unseen place AND time
         # pool = both, kept because it is the single number a sweep column can be ranked on
         val_pools["pool"] = _prep_val_pool(_vy, _vf, _vx, "pool")
-        val_pools["sp"] = _prep_val_pool(_vy[~_vho], _vf[~_vho], _vx[~_vho], "sp")
-        val_pools["spt"] = (_prep_val_pool(_vy[_vho], _vf[_vho], _vx[_vho], "sp+t")
-                            if _vho.any() else None)
+        if _vho.any():
+            val_pools["sp"] = _prep_val_pool(_vy[~_vho], _vf[~_vho], _vx[~_vho], "sp")
+            val_pools["spt"] = _prep_val_pool(_vy[_vho], _vf[_vho], _vx[_vho], "sp+t")
+        else:
+            # With no withheld years, `sp` IS `pool` -- same rows, and previously the same pair
+            # indices too, so the log printed the two values identically and one of the four
+            # eval calls per epoch was pure duplication. Alias it instead of recomputing; the
+            # saving pays for the extra independent draws.
+            val_pools["sp"] = val_pools["pool"]
+            val_pools["spt"] = None
+            print("[desk] val kernel pool: no withheld years, so sp == pool; scoring it once",
+                  flush=True)
     else:
         print("[desk] val kernel pool: NOT WIRED (no val_metric_pool passed) -- the kernel "
               "term is measured on training pairs only, so it cannot be selected on",
@@ -1030,7 +1082,7 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
     best_crit_raw = float("nan")
     # Pre-bound so an eval_every > 1 epoch cannot reference an eval-only name before it is
     # first assigned: the printed line and the JSONL row are emitted EVERY epoch.
-    vk, tk = {}, float("nan")
+    vk, vk_sd, tk, rank_curve = {}, {}, float("nan"), {}
     crit_hist = []
     traj_fh = None
     if trajectory_path:
@@ -1096,7 +1148,8 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
         # every (cell, year) point, so that is the similarity structure this term has to hold
         # the model to. Restricting pairs to within a year would enforce only the spatial half
         # of a spatiotemporal kernel.
-        loss_true = spacetime_kernel_loss(z_ema, pool_t, pool_flat, pool_x, pool_w=pool_w_t)
+        loss_true = spacetime_kernel_loss(z_ema, pool_t, pool_flat, pool_x, pool_w=pool_w_t,
+                                          num_pairs=int(metric_pairs))
         w_stab = weights["stabilizing"] * loss_stab
         w_true = weights["metric"] * loss_true
         w_rec = weights["reconstruction"] * recon_loss
@@ -1169,14 +1222,39 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
                 # as the training term (shared _pair_kernel_loss), on fixed pairs, under
                 # no_grad, on the clean unmasked forward -- so it is comparable epoch to
                 # epoch and cannot influence a weight.
-                vk = {k: (float(kernel_loss_on_pairs(z_eval, *v)) if v is not None
-                          else float("nan")) for k, v in val_pools.items()}
+                # Mean AND spread across independent draws. The mean is the selection signal
+                # (standard error down by sqrt(n_draws)); the spread is the estimator's own noise
+                # floor, which is the number that says whether a between-configuration difference
+                # is resolvable at all. Without it, an 8% spread across 17 configurations cannot
+                # be told from sampling error.
+                def _pool_stats(v, zq, rank=None):
+                    if v is None:
+                        return float("nan"), float("nan")
+                    t_, f_, x_, draws = v
+                    vals = [float(kernel_loss_on_pairs(zq, t_, f_, x_, d, rank=rank))
+                            for d in draws]
+                    return (float(np.mean(vals)),
+                            float(np.std(vals, ddof=1)) if len(vals) > 1 else 0.0)
+
+                vk, vk_sd = {}, {}
+                for _k, _v in val_pools.items():
+                    vk[_k], vk_sd[_k] = _pool_stats(_v, z_eval)
+                # Rank curve, diagnostic only: what a downstream truncating to r would get, on
+                # the supervised z_ema and on the z_raw the cube actually exports. Selection
+                # stays on the full-rank z_ema value above.
+                rank_curve = {}
+                for _r in (int(r) for r in eval_kernel_ranks):
+                    rank_curve[f"ema_r{_r}"] = _pool_stats(val_pools.get("pool"), z_eval,
+                                                           rank=_r)[0]
+                    rank_curve[f"raw_r{_r}"] = _pool_stats(val_pools.get("pool"), z_raw_eval,
+                                                           rank=_r)[0]
                 # The train pool scored the SAME way (fixed pairs, clean forward). Without it
                 # the only kernel number was the training term measured under dropout and
                 # input masking on a fresh draw, which is not on the same footing as the val
                 # figure and cannot support a train/val gap.
-                tk = (float(kernel_loss_on_pairs(z_eval, pool_t, pool_flat, pool_x,
-                                                 train_eval_pairs))
+                tk = (float(np.mean([float(kernel_loss_on_pairs(z_eval, pool_t, pool_flat,
+                                                               pool_x, d))
+                                    for d in train_eval_pairs]))
                       if train_eval_pairs is not None else float("nan"))
         dt = time.perf_counter() - t_ep
         rss = _max_rss_gib()
@@ -1240,6 +1318,7 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
                   flush=True)
         if evaluated:
             print(f"Ep {ep:03d} | kernel k_tr {tk:.5f} k_val {vk.get('pool', float('nan')):.5f} "
+                  f"+-{vk_sd.get('pool', float('nan')):.5f} "
                   f"k_val_sp {vk.get('sp', float('nan')):.5f} "
                   f"k_val_spt {vk.get('spt', float('nan')):.5f}", flush=True)
         # Written EVERY epoch, unconditionally. Every trajectory analysed so far was recovered
@@ -1263,6 +1342,12 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
                 "kernel_val": vk.get("pool", float("nan")),
                 "kernel_val_sp": vk.get("sp", float("nan")),
                 "kernel_val_spt": vk.get("spt", float("nan")),
+                # The estimator's own noise, so a between-configuration gap can be compared
+                # against the noise of the number the gap is measured in.
+                "kernel_val_sd": vk_sd.get("pool", float("nan")),
+                "kernel_val_sp_sd": vk_sd.get("sp", float("nan")),
+                "kernel_val_draws": int(max(1, int(eval_kernel_draws))),
+                **{f"kernel_val_{k}": v for k, v in rank_curve.items()},
                 "zmse_train": ts, "zmse_val": vs,
                 "zmse_val_sp": vs_sp, "zmse_val_spt": vs_spt,
                 "zmse_val_anchor": vs_anchor, "zmse_val_yearout": vs_time,
@@ -1735,7 +1820,10 @@ def run_desk_experiment(config=None):
         direction_withheld_anchor_year=tr_cfg.get("direction_withheld_anchor_year"),
         hidden_width=hidden_width, mlp_expansion=mlp_expansion,
         val_metric_pool=val_metric_pool, val_pool_holdout_years=ho_years,
+        metric_pairs=int(desk_cfg.get("metric_pairs", 4096)),
         eval_kernel_pairs=int(desk_cfg.get("eval_kernel_pairs", 65536)),
+        eval_kernel_draws=int(desk_cfg.get("eval_kernel_draws", 1)),
+        eval_kernel_ranks=tuple(desk_cfg.get("eval_kernel_ranks") or ()),
         min_delta=float(desk_cfg.get("min_delta", 0.0)),
         selection_metric=str(desk_cfg.get("selection_metric", "val_zmse")),
         selection_smooth=int(desk_cfg.get("selection_smooth", 0)),

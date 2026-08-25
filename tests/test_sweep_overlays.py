@@ -766,3 +766,40 @@ def test_the_submit_script_uses_no_process_substitution_with_a_heredoc():
         "use plain temp files; a heredoc inside a process substitution breaks on bash 3.2"
     assert "_RESUME_OUT" in src and "_RESUME_ERR" in src
     print("no heredoc nested in a process substitution")
+
+
+def test_the_rank_curve_report_flags_an_inversion_rather_than_printing_zero():
+    """An error curve that RISES with rank is the interesting case, and the first version hid it.
+
+    The old message computed ``max(curve)/full - 1``, which assumes the curve falls with rank. On
+    the first real run the curve rose -- r8=0.0109 up to r64=0.0121 -- so max and full were the
+    same value and it printed "costs 0% against full rank", saying nothing about the fact that
+    rank 8 beat full rank by 11%. That matters twice over: the higher components are adding
+    variance to the dot product rather than signal, and the full-rank value selection runs on is
+    therefore not the model's best kernel.
+    """
+    src = open(os.path.join(REPO, "scripts", "sweep", "check_run.py")).read()
+    assert "INVERTED" in src
+    assert "min(rc, key=lambda rv: rv[1])" in src, "must find the BEST rank, not the worst"
+    assert "max(v for _r, v in rc)" not in src, "the old max/full-1 formula must be gone"
+    # A phrase that is contiguous in the SOURCE -- the message is built from an f-string split
+    # across lines, so asserting on the rendered sentence would fail on the line break rather
+    # than on the behaviour.
+    assert "make the kernel approximation WORSE" in src
+    # and the monotone branch must still report the truncation cost
+    assert "rank curve is monotone" in src
+    print("the rank-curve report distinguishes an inversion from a monotone curve")
+
+
+def test_the_checker_reports_per_epoch_cost_excluding_the_first_epoch():
+    """Cost has to be measured, not assumed, and the first epoch is not representative.
+
+    It carries one-off setup -- ~41 s against a ~6 s steady state -- so including it overstates a
+    30-epoch run's per-epoch cost about sixfold, which is exactly the wrong direction when the
+    question is whether an added diagnostic is affordable.
+    """
+    src = open(os.path.join(REPO, "scripts", "sweep", "check_run.py")).read()
+    assert "s/epoch" in src and "excluding the first" in src
+    assert "secs[1:]" in src, "the first epoch must be excluded from the median"
+    assert "GPU-hours for a 500-epoch run" in src
+    print("per-epoch cost is reported from the trajectory, first epoch excluded")

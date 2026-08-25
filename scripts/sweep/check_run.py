@@ -116,6 +116,15 @@ def check(run_dir):
             _fail(msgs, f"{c} is exactly 0.0 in {len(z)} epoch(s) -- that is what an empty "
                         f"validation set scores, not a perfect fit"); hard += 1
 
+    secs = [r["epoch_seconds"] for r in rows
+            if np.isfinite(r.get("epoch_seconds", np.nan))]
+    if len(secs) > 1:
+        # Skip the first epoch: it carries one-off setup (~40 s against ~6 s steady state), so
+        # including it overstates the per-epoch cost by ~6x on a short run.
+        med = float(np.median(secs[1:]))
+        msgs.append(f"note  {med:.1f} s/epoch (median, excluding the first) -> "
+                    f"{med * 500 / 3600:.2f} GPU-hours for a 500-epoch run")
+
     nv = int(dm["val_cells"]) if "val_cells" in dm else -1
     nt = int(dm["train_cells"]) if "train_cells" in dm else -1
     _ok(msgs, f"{nt:,} train cells / {nv:,} val cells, "
@@ -206,12 +215,27 @@ def check(run_dir):
         rc = sorted((int(k.rsplit("_r", 1)[1]), rows[-1][k]) for k in rows[-1]
                     if k.startswith("kernel_val_ema_r"))
         if rc:
-            worst = max(v for _r, v in rc)
-            full = rc[-1][1]
-            msgs.append("note  rank curve (z_ema): "
-                        + "  ".join(f"r{r}={v:.5g}" for r, v in rc)
-                        + f"  -- truncating to the lowest rank shown costs "
-                          f"{100 * (worst / full - 1):.0f}% against full rank")
+            full_r, full_v = rc[-1]
+            best_r, best_v = min(rc, key=lambda rv: rv[1])
+            msgs.append("note  rank curve (z_ema, lower is better): "
+                        + "  ".join(f"r{r}={v:.5g}" for r, v in rc))
+            if best_r < full_r and full_v > best_v:
+                # Reported as a warning, not a note. The old message computed max/full - 1, which
+                # assumed the curve falls with rank and printed a meaningless "0%" for exactly the
+                # case that matters: if error RISES with rank, the higher components are adding
+                # variance to the dot product without adding signal, so they actively degrade the
+                # kernel. That also means the full-rank value selection runs on is not the best
+                # this model can do, and a downstream truncating LOWER would do better -- the
+                # opposite of the usual worry about truncation.
+                msgs.append(f"warn  the rank curve is INVERTED: rank {best_r} beats full rank "
+                            f"{full_r} by {100 * (full_v / best_v - 1):.1f}%. Components beyond "
+                            f"{best_r} make the kernel approximation WORSE, so they carry noise "
+                            f"rather than signal. Selection runs on the full-rank value, which is "
+                            f"therefore not this model's best kernel.")
+            else:
+                msgs.append(f"ok    rank curve is monotone: full rank {full_r} is best, and "
+                            f"truncating to r{rc[0][0]} costs "
+                            f"{100 * (rc[0][1] / full_v - 1):.0f}%")
         raw = {int(k.rsplit("_r", 1)[1]): rows[-1][k] for k in rows[-1]
                if k.startswith("kernel_val_raw_r")}
         if raw and rc:

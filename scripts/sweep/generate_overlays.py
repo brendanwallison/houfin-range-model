@@ -134,8 +134,20 @@ def configurations():
          {"desk": {"output_ema": {"half_life_bounds": [1.0, 4.0]}}}),
         # Loss mix. The kernel term is what the downstream consumes and carries weight 5
         # against the stabilizing term's 64; both are per-element, so those are comparable.
-        ("mw20", "kernel-loss weight 5 -> 20", {"desk": {"weights": {"metric": 20.0}}}),
-        ("mw60", "kernel-loss weight 5 -> 60", {"desk": {"weights": {"metric": 60.0}}}),
+        # The arm is extended upward because the stage-1 evidence did not refute high metric
+        # weight -- it failed to test it. mw60's argmin landed on epoch 249 of 250, so it never
+        # converged, and the optimum moves monotonically later with this weight (117 at w=5, 126
+        # at w=20, 249 at w=60). Measured loss shares at the operating point: w=20 puts the
+        # kernel term at 28% of the total, w=40 at 44%, w=60 at 54%, w=100 at 66%.
+        ("mw20", "kernel-loss weight 5 -> 20 (kernel term 9% -> 28% of the loss)",
+         {"desk": {"weights": {"metric": 20.0}}}),
+        ("mw40", "kernel-loss weight 5 -> 40 (kernel term ~44%, roughly balanced with "
+                 "stabilizing)", {"desk": {"weights": {"metric": 40.0}}}),
+        ("mw60", "kernel-loss weight 5 -> 60 (kernel term ~54%; its stage-1 run never "
+                 "converged, so this is a retest not a repeat)",
+         {"desk": {"weights": {"metric": 60.0}}}),
+        ("mw100", "kernel-loss weight 5 -> 100 (kernel term ~66%, dominant)",
+         {"desk": {"weights": {"metric": 100.0}}}),
         # Tier 2 -- capacity. ~2.5M parameters against ~12k training cells, generalizing along
         # the spatial axis.
         ("w64", "uniform width halved, 128 -> 64 (branch params scale as h^2)",

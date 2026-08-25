@@ -1995,6 +1995,13 @@ def run_desk_experiment(config=None):
                    "weight_decay": float(desk_cfg.get("weight_decay", 0.0)),
                    "metric_weight": _jsonable(float((desk_cfg.get("weights") or {})
                                                     .get("metric", float("nan")))),
+                   # The settings that decide whether two runs are COMPARABLE, as opposed to
+                   # merely both finished. metric_pairs changes the gradient's variance and so
+                   # the optimization trajectory; the eval settings change the estimator the
+                   # ranking is built from. Recorded so a resume can refuse to mix them.
+                   "metric_pairs": int(desk_cfg.get("metric_pairs", 4096)),
+                   "eval_kernel_pairs": int(desk_cfg.get("eval_kernel_pairs", 65536)),
+                   "eval_kernel_draws": int(desk_cfg.get("eval_kernel_draws", 1)),
                    "half_life_bounds": list(ema_cfg.get("half_life_bounds", [1.0, 40.0])),
                    "ema_half_life": _jsonable(ema_half_life),
                    "holdout_frac": float(_cfg.get("holdout_frac", 0.15)),

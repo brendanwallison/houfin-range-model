@@ -152,43 +152,88 @@ else
     echo "all required states dirs present"
 fi
 
-# --- resume: drop runs that already finished -------------------------------------------------
+# --- resume: drop runs that already finished, and REFUSE to mix incomparable ones -------------
+# A finished run is only skippable if it was produced under the settings now configured. metric_pairs
+# changes the gradient's variance and therefore the optimization trajectory; the eval settings change
+# the estimator the ranking is built from. Resume keying on run_summary.json alone would silently
+# keep stale runs and rank them against new ones -- two estimators in one table, with nothing in the
+# output saying so.
 # while-read, not `mapfile`: mapfile is a bash 4 builtin and this repo is
 # developed on macOS, whose /bin/bash is 3.2 -- the script would pass `bash -n`
 # and then die at this line on a dev machine while working on the cluster.
 # submit_juv_mdd_sweep.sh already uses this form for the same reason.
+# Plain temp files, NOT `< <(...)`. A heredoc nested inside a process substitution with an
+# added redirection is unparseable on bash 3.2 (macOS, this repo's dev platform): it fails with
+# "bad substitution: no closing )" while passing `bash -n`. Two files are also clearer -- the
+# reader's rows and its diagnostics are genuinely two outputs.
+_RESUME_OUT="$(mktemp)"; _RESUME_ERR="$(mktemp)"
+"$PY" - "$MANIFEST" >"$_RESUME_OUT" 2>"$_RESUME_ERR" <<'PYP'
+import json, os, subprocess, sys
+sys.path.insert(0, os.environ.get("HOUFIN_REPO", "."))
+from src.config_utils import load_config
+cfg = load_config()["desk"]
+WANT = {"metric_pairs": int(cfg.get("metric_pairs", 4096)),
+        "eval_kernel_pairs": int(cfg.get("eval_kernel_pairs", 65536)),
+        "eval_kernel_draws": int(cfg.get("eval_kernel_draws", 1))}
+m = json.load(open(sys.argv[1]))
+done = pend = 0
+stale_ids = []
+for r in m["runs"]:
+    out = os.path.expandvars(r["desk_output_dir"])
+    sp = os.path.join(out, "run_summary.json")
+    if os.path.exists(sp):
+        try:
+            got = json.load(open(sp))
+        except Exception:
+            got = {}
+        stale = [k for k, v in WANT.items()
+                 if k in got and int(got[k]) != int(v)]
+        if not stale:
+            done += 1
+            continue
+        print(f"# STALE {r['run_id']}: "
+              + ", ".join(f"{k} {got[k]} != {WANT[k]}" for k in stale), file=sys.stderr)
+        stale_ids.append(r["run_id"])
+    pend += 1
+    print(f'{r["run_id"]}\t{os.path.expandvars(r["overlay"])}\t{out}\t'
+          f'{1 if r["run_id"] in stale_ids else 0}')
+print(f"#TOTALS {done} {pend} {len(m['runs'])} {len(stale_ids)}", file=sys.stderr)
+print(f"# {done} comparable and complete, {pend} pending"
+      + (f" ({len(stale_ids)} STALE -- produced under different metric/eval settings and "
+         f"queued for rerun)" if stale_ids else ""), file=sys.stderr)
+PYP
+_rc=$?
+cat "$_RESUME_ERR" >&2
+if [ "$_rc" -ne 0 ]; then
+    echo "ERROR: the resume reader failed (exit $_rc). Treat this as a failure, not a finished"
+    echo "       sweep -- an empty pending list is indistinguishable from 'all done'."
+    rm -f "$_RESUME_OUT" "$_RESUME_ERR"; exit 1
+fi
 PENDING=()
 while IFS= read -r _line; do
     [ -n "$_line" ] && PENDING+=("$_line")
-done < <("$PY" - "$MANIFEST" <<'PYP'
-import json, os, sys
-m = json.load(open(sys.argv[1]))
-done = pend = 0
-for r in m["runs"]:
-    out = os.path.expandvars(r["desk_output_dir"])
-    if os.path.exists(os.path.join(out, "run_summary.json")):
-        done += 1
-        continue
-    pend += 1
-    print(f'{r["run_id"]}\t{os.path.expandvars(r["overlay"])}\t{out}')
-print(f"# {done} already complete, {pend} pending", file=sys.stderr)
-PYP
-)
+done < "$_RESUME_OUT"
+# Totals from the SAME reader that produced the rows, so the cross-check cannot disagree with the
+# list by construction. A second, independently-written counter is how "all complete" and "nothing
+# enumerated" became indistinguishable in the first place.
+_tag=""; N_DONE=0; N_PEND_R=0; N_TOTAL=0; N_STALE=0
+if grep -q '^#TOTALS ' "$_RESUME_ERR"; then
+    set -- $(grep '^#TOTALS ' "$_RESUME_ERR" | head -1)
+    _tag="$1"; N_DONE="$2"; N_PEND_R="$3"; N_TOTAL="$4"; N_STALE="$5"
+fi
+rm -f "$_RESUME_OUT" "$_RESUME_ERR"
 N_PENDING="${#PENDING[@]}"
 # Cross-check against the manifest, counted INDEPENDENTLY. A process substitution's exit status
 # is invisible to the reading loop, so if the reader above dies the array is simply empty -- and
 # an empty array is indistinguishable from "everything finished". That reads as a completed
 # sweep and exits 0. Counting the completed runs separately and requiring the two halves to add
 # up turns a crashed reader into an error instead of a false success.
-N_TOTAL=$("$PY" -c "
-import json; print(len(json.load(open('$MANIFEST'))['runs']))")
-N_DONE=$("$PY" - "$MANIFEST" <<'PYD'
-import json, os, sys
-m = json.load(open(sys.argv[1]))
-print(sum(os.path.exists(os.path.join(os.path.expandvars(r["desk_output_dir"]),
-                                      "run_summary.json")) for r in m["runs"]))
-PYD
-)
+if [ "$_tag" != "#TOTALS" ] || [ "$N_PENDING" -ne "$N_PEND_R" ]; then
+    echo "ERROR: the resume reader did not report totals, or reported $N_PEND_R pending against"
+    echo "       $N_PENDING rows actually read. Treat this as a failure, not a finished sweep."
+    exit 1
+fi
+[ "$N_STALE" -eq 0 ] || echo "$N_STALE run(s) will be RERUN: their recorded metric/eval settings differ from the current config"
 if [ $((N_PENDING + N_DONE)) -ne "$N_TOTAL" ]; then
     echo "ERROR: manifest has $N_TOTAL runs but $N_PENDING pending + $N_DONE complete ="
     echo "       $((N_PENDING + N_DONE)). The resume reader did not enumerate every run --"

@@ -51,7 +51,7 @@ def test_every_overlay_keeps_all_six_streams(tmp_path):
     with mu/sd fitted to it and every reported number internally consistent.
     """
     root, man = _generate(tmp_path, "--stage", "1")
-    assert len(man["runs"]) == 17, [r["run_id"] for r in man["runs"]]
+    assert len(man["runs"]) == 19, [r["run_id"] for r in man["runs"]]
     base = load_config(os.path.join(REPO, "config", "esk_desk_config.json"))
     want = [s["name"] for s in base["states"]["streams"]]
     assert len(want) == 6, want
@@ -99,7 +99,9 @@ def test_only_the_intended_key_moves(tmp_path):
         "hl10": {"desk.output_ema.half_life_bounds"},
         "hl4": {"desk.output_ema.half_life_bounds"},
         "mw20": {"desk.weights.metric"},
+        "mw40": {"desk.weights.metric"},
         "mw60": {"desk.weights.metric"},
+        "mw100": {"desk.weights.metric"},
         "w64": {"desk.hidden_width"},
         "wps": {"desk.hidden_width"},
         "do005": {"desk.dropout"},
@@ -725,3 +727,42 @@ def test_the_states_preflight_checks_completeness_not_just_existence():
     assert "NO state_schema.json" in src, "a dir with no ema_tau provenance must be refused"
     assert "absent or incomplete" in src
     print("states preflight checks completeness and provenance")
+
+
+def test_resume_refuses_to_mix_runs_made_under_different_metric_settings():
+    """A finished run is skippable only if it was produced under the settings now configured.
+
+    metric_pairs changes the gradient's variance and therefore the optimization trajectory; the
+    eval settings change the estimator the ranking is built from. Keying resume on
+    run_summary.json alone would keep the 17 existing stage-1 runs -- made at 4,096 training pairs
+    and a single eval draw -- and rank them against new ones: two estimators in one table, with
+    nothing in the output saying so.
+    """
+    src = open(SUBMIT).read()
+    assert "metric_pairs" in src and "eval_kernel_draws" in src
+    assert "STALE" in src and "queued for rerun" in src
+    # the per-task re-check must honour the flag, or the wrapper's reruns are skipped again
+    slurm = open(SLURM).read()
+    assert 'cut -f4' in slurm, "the task must read the stale flag from the joblist"
+    assert '[ "${STALE:-0}" != "1" ]' in slurm, \
+        "a stale run has a run_summary.json AND needs redoing; the file alone must not skip it"
+    # and the trainer must record what makes runs comparable
+    trainer = open(os.path.join(REPO, "src", "community_encoder", "train_DESK",
+                                "desk_training.py")).read()
+    for key in ('"metric_pairs":', '"eval_kernel_pairs":', '"eval_kernel_draws":'):
+        assert key in trainer, key
+    print("resume detects and reruns runs made under different metric/eval settings")
+
+
+def test_the_submit_script_uses_no_process_substitution_with_a_heredoc():
+    """A heredoc nested in `< <(...)` with a redirection is unparseable on bash 3.2.
+
+    It fails at runtime with "bad substitution: no closing )" while passing `bash -n`, so the
+    syntax check gives no warning -- and this repo is developed on macOS, whose /bin/bash is 3.2.
+    """
+    src = open(SUBMIT).read()
+    code = [l for l in src.splitlines() if not l.strip().startswith("#")]
+    assert not any("< <(" in l for l in code), \
+        "use plain temp files; a heredoc inside a process substitution breaks on bash 3.2"
+    assert "_RESUME_OUT" in src and "_RESUME_ERR" in src
+    print("no heredoc nested in a process substitution")

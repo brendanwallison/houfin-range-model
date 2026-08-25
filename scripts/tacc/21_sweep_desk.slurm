@@ -72,15 +72,21 @@ fi
 RUN_ID="$(printf '%s' "$LINE" | cut -f1)"
 OVERLAY="$(printf '%s' "$LINE" | cut -f2)"
 OUT_DIR="$(printf '%s' "$LINE" | cut -f3)"
+STALE="$(printf '%s' "$LINE" | cut -f4)"
 echo "[rank $SLURM_PROCID localid $SLURM_LOCALID gpu $CUDA_VISIBLE_DEVICES] $RUN_ID -> $OUT_DIR"
 
 # Resume, checked again HERE and not only in the wrapper: a resubmission can race a job still
 # finishing an earlier batch, and repeating a completed run would overwrite its checkpoint and
 # its trajectory with a second, differently-seeded one.
-if [ -f "$OUT_DIR/run_summary.json" ]; then
+# The wrapper only lists runs that need doing, but this re-check exists because a resubmission
+# can race a job still finishing an earlier batch. It must honour the STALE flag: a run whose
+# recorded metric/eval settings differ from the current config has a run_summary.json AND needs
+# redoing, so checking for the file alone would skip exactly the reruns the wrapper asked for.
+if [ -f "$OUT_DIR/run_summary.json" ] && [ "${STALE:-0}" != "1" ]; then
     echo "[$RUN_ID] already complete (run_summary.json present) -- skipping"
     exit 0
 fi
+[ "${STALE:-0}" = "1" ] && echo "[$RUN_ID] RERUN: recorded settings differ from the current config"
 mkdir -p "$OUT_DIR"
 # Per-task scratch. PyTorch/CUDA and matplotlib both write into shared temp roots; three ranks
 # sharing one is a documented source of intermittent cache corruption.

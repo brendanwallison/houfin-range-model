@@ -846,3 +846,28 @@ def test_a_threshold_far_above_the_resolvable_limit_is_explained():
     assert "SEED-TO-SEED spread it stands in for" in src
     assert "resolvable by the instrument but unproven" in src
     print("a threshold far above the noise floor is explained, not just accepted")
+
+
+def test_env_sh_does_not_abort_every_stage_on_one_unavailable_root():
+    """A single failing mkdir killed runs that never needed the directory.
+
+    env.sh is sourced by pipeline.sh under `set -euo pipefail`, and it created all four data roots
+    in one unconditional mkdir. When a $SCRATCH subtree was briefly unavailable
+    ("mkdir: cannot create directory '/scratch/07980': Permission denied") that aborted the whole
+    pipeline before any stage started -- killing the mw40 and mw100 runs, whose inputs (hist_dir,
+    points_dir, z_dir) all live under $HOUFIN_PROCESSED on $WORK and never touch $HOUFIN_DATA.
+
+    Warned rather than silenced: a stage that genuinely needs the missing root must still fail, at
+    the point of use, naming what it wanted.
+    """
+    src = open(os.path.join(REPO, "scripts", "tacc", "env.sh")).read()
+    assert 'mkdir -p "$HOUFIN_DATA" "$HOUFIN_PROCESSED"' not in src, \
+        "one unconditional mkdir over all roots makes an unrelated root's absence fatal"
+    assert "for _houfin_root in" in src, "each root must be created independently"
+    assert "WARNING: cannot create" in src, "a failure must be reported, not swallowed"
+    assert "2>/dev/null ||" in src, "the failure must not propagate under set -e"
+    # and pipeline.sh must still be the strict script it was -- the fix belongs in env.sh, not in
+    # relaxing error handling for every stage
+    pl = open(os.path.join(REPO, "scripts", "tacc", "pipeline.sh")).read()
+    assert "set -euo pipefail" in pl
+    print("one unavailable root warns; the other roots and the run proceed")

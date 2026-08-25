@@ -57,7 +57,22 @@ export HOUFIN_PROCESSED="$WORK/houfin/processed"
 export HOUFIN_CLIMR_CACHE="$WORK/houfin/climr_cache"
 export R_USER_CACHE_DIR="$HOUFIN_CLIMR_CACHE"
 
-mkdir -p "$HOUFIN_DATA" "$HOUFIN_PROCESSED" "$HOUFIN_CLIMR_CACHE" "$UV_CACHE_DIR"
+# Per-root, and NON-FATAL. This is sourced by pipeline.sh under `set -euo pipefail`, so a single
+# failing mkdir previously aborted every stage before any of them started -- which is what killed
+# the mw40/mw100 runs: `mkdir: cannot create directory '/scratch/07980': Permission denied`, from a
+# $SCRATCH subtree that was briefly unavailable. The desk stage reads hist_dir, points_dir and
+# z_dir, all under $HOUFIN_PROCESSED on $WORK, and never touches $HOUFIN_DATA at all, so an
+# unavailable $SCRATCH has no business failing it.
+#
+# Warned rather than silenced: a stage that genuinely needs the missing root now fails at the point
+# of use, naming the file it wanted, instead of every stage failing here on a directory it may not
+# need. The alternative -- deciding per stage which roots are required -- would put that knowledge
+# in env.sh, which does not know which stage is about to run.
+for _houfin_root in "$HOUFIN_DATA" "$HOUFIN_PROCESSED" "$HOUFIN_CLIMR_CACHE" "$UV_CACHE_DIR"; do
+    [ -d "$_houfin_root" ] && continue
+    mkdir -p "$_houfin_root" 2>/dev/null ||         echo "[env] WARNING: cannot create $_houfin_root -- continuing. Any stage that needs it"              "will fail at the point of use. If this is \$SCRATCH, check the mount:"              "ls -d \$SCRATCH" >&2
+done
+unset _houfin_root
 
 # R interpreter for the climr climate step. TACC's Rstats/4.0.3 is too old for
 # climr's CRAN dep tree (dplyr/tidyr/ggplot2/... need R >= 4.1) and climr is

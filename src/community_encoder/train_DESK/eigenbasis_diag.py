@@ -45,7 +45,7 @@ why NeuralSVD's diagnostics transfer without adaptation.
 import numpy as np
 
 
-def ruzicka_gram(x, y=None):
+def ruzicka_gram(x, y=None, max_block_mib=256):
     """Ružička similarity between every row of ``x`` and every row of ``y``. ``(Bx, By)``.
 
     The same estimand as ``desk_training._pair_kernel_loss``'s per-pair ratio, over a full block
@@ -54,8 +54,12 @@ def ruzicka_gram(x, y=None):
     onto different definitions of the kernel DESK is fitted to.
 
     A full block is required because the nesting objective needs ``Tf = K f`` -- an operator
-    applied to the feature map -- which random pairs cannot supply. This is the one O(Bx*By*S)
-    step in the module; at B=2048, S=96 that is ~4e8 multiply-adds and a 16 MB result.
+    applied to the feature map -- which random pairs cannot supply. The result is small (a 32 MB
+    ``(B,B)`` matrix at B=2048) but the natural expression is not: the pairwise ``|xi - xj|`` needs
+    a ``(Bx,By,S)`` intermediate, which at B=2048, S=96 is **3 GiB** -- a hundred times the output,
+    in host memory, allocated inside the training loop. Computed in row blocks sized to cap that
+    intermediate at ``max_block_mib`` instead, which changes nothing about the result and makes the
+    cost scale with the answer rather than with the cube.
 
     Rows whose pair denominator vanishes (two all-zero communities) get similarity 0 rather than
     a divide-by-zero: undefined similarity is not high similarity.
@@ -64,14 +68,23 @@ def ruzicka_gram(x, y=None):
     y = x if y is None else np.asarray(y, dtype="float64")
     if x.ndim != 2 or y.ndim != 2 or x.shape[1] != y.shape[1]:
         raise ValueError(f"need (Bx,S) and (By,S) with matching S; got {x.shape} and {y.shape}")
-    # sum over species of min(xi,yj) and max(xi,yj), via the identities
-    # min = (a+b-|a-b|)/2 and max = (a+b+|a-b|)/2 -- pairwise, so |a-b| needs the outer diff.
-    s = x.sum(1)[:, None] + y.sum(1)[None, :]                      # (Bx,By)
-    d = np.abs(x[:, None, :] - y[None, :, :]).sum(2)               # (Bx,By)
-    num, den = 0.5 * (s - d), 0.5 * (s + d)
-    out = np.zeros_like(num)
-    ok = den > 1e-12
-    out[ok] = num[ok] / den[ok]
+    bx, by, sdim = x.shape[0], y.shape[0], x.shape[1]
+    ysum = y.sum(1)
+    out = np.zeros((bx, by), dtype="float64")
+    # Rows per block, from the byte budget for the (rows, By, S) intermediate. At least 1, so a
+    # very wide community set still makes progress instead of dividing to zero.
+    per_row = max(by * sdim * 8, 1)
+    rows = max(1, int(max_block_mib * 2 ** 20 // per_row))
+    for i in range(0, bx, rows):
+        xb = x[i:i + rows]
+        # sum over species of min and max, via min = (a+b-|a-b|)/2 and max = (a+b+|a-b|)/2
+        s = xb.sum(1)[:, None] + ysum[None, :]
+        d = np.abs(xb[:, None, :] - y[None, :, :]).sum(2)
+        num, den = 0.5 * (s - d), 0.5 * (s + d)
+        ok = den > 1e-12
+        blk = np.zeros_like(num)
+        blk[ok] = num[ok] / den[ok]
+        out[i:i + rows] = blk
     return out
 
 

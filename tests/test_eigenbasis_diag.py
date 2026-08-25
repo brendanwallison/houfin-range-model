@@ -256,3 +256,32 @@ def test_ranks_beyond_the_available_width_are_skipped_not_clipped():
 
 if __name__ == "__main__":
     sys.exit(pytest.main([__file__, "-q"]))
+
+
+def test_the_gram_is_chunked_and_bit_identical_to_the_unchunked_form():
+    """The natural expression allocates a (Bx,By,S) cube: 3 GiB at B=2048, S=96.
+
+    That is a hundred times the size of the (B,B) answer, in host memory, inside the training
+    loop -- and the configured batch is 2048. Chunking must change nothing about the result, so
+    this compares against the unchunked formula directly and at several block sizes: a chunked
+    reduction that quietly changed the summation order would be a silent difference in the
+    kernel every diagnostic is measured against.
+    """
+    rng = np.random.default_rng(0)
+    x = rng.random((300, 96))
+    s = x.sum(1)[:, None] + x.sum(1)[None, :]
+    d = np.abs(x[:, None, :] - x[None, :, :]).sum(2)
+    num, den = 0.5 * (s - d), 0.5 * (s + d)
+    ref = np.zeros_like(num)
+    ok = den > 1e-12
+    ref[ok] = num[ok] / den[ok]
+    for mb in (1, 8, 256):
+        assert np.array_equal(ruzicka_gram(x, max_block_mib=mb), ref), mb
+
+    # a block budget too small for even one row must still make progress, not divide to zero
+    assert ruzicka_gram(x, max_block_mib=0).shape == (300, 300)
+    # and an asymmetric pair of inputs still works
+    y = rng.random((37, 96))
+    g = ruzicka_gram(x, y, max_block_mib=1)
+    assert g.shape == (300, 37) and np.isfinite(g).all()
+    print("the chunked Gram is bit-identical at every block size")

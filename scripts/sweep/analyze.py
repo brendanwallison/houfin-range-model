@@ -253,13 +253,6 @@ def main():
                     help="relative margin a configuration must beat the baseline by to count "
                          "(default 0.05, PROVISIONAL -- replace with the stage-3 seed spread)")
     args = ap.parse_args()
-    if args.root.startswith(("/sweeps/", "/encoder/")):
-        print("ERROR: --root begins at /sweeps or /encoder, so $HOUFIN_PROCESSED expanded to "
-              "nothing.\n       Run:  source scripts/tacc/env.sh", file=sys.stderr)
-        return 2
-    if not os.path.isdir(args.root):
-        print(f"ERROR: {args.root} is not a directory", file=sys.stderr)
-        return 2
     runs, _man = load_runs(args.root)
     print(f"{len(runs)} finished run(s) under {args.root}\n")
     if not runs:

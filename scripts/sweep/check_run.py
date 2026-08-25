@@ -214,15 +214,6 @@ def main():
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("run_dir", nargs="+")
     args = ap.parse_args()
-    # A path starting at "/sweeps/..." means $HOUFIN_PROCESSED was empty: env.sh is not sourced
-    # in an interactive shell by default, and forgetting it has cost time on this project before.
-    # Worth naming, because the failure otherwise reads as "the run is missing" rather than "the
-    # path never resolved" -- and an unset root pointing at / is how something gets read from or
-    # written to somewhere unintended.
-    if any(d.startswith(("/sweeps/", "/encoder/")) for d in args.run_dir):
-        print("ERROR: a path begins at /sweeps or /encoder, so $HOUFIN_PROCESSED expanded to "
-              "nothing.\n       Run:  source scripts/tacc/env.sh", file=sys.stderr)
-        return 2
     bad = 0
     for d in args.run_dir:
         print(f"=== {d}")

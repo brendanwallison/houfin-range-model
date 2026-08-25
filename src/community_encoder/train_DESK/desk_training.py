@@ -562,7 +562,7 @@ def _warmup_cosine(epochs, warmup, min_frac):
 
 def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool, m2023_tr, m2023_val,
                     stream_dims, latent_dim, ema_cfg, spatial_kernel=3, epochs=500, lr=1e-3,
-                    weights=None, seed=0, patience=50, min_delta=1e-4,
+                    weights=None, seed=0, patience=50, min_delta=0.0,
                     schema=None, augment_cfg=None, dropout=0.5, weight_decay=0.0,
                     warmup_epochs=0, min_lr_frac=1.0, amp=False, eval_every=1,
                     holdout_year_targets=None, pool_w=None, direction_anchor_year=None,
@@ -1298,6 +1298,16 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
         # cosine decayed below ~4e-4 the spread fell to 1.017x, so at the full 500-epoch budget
         # the argmin should land in the stable tail on its own. Turn it on if a full-length run
         # shows otherwise -- which is a thing to measure, not to assume in either direction.
+        # min_delta is an ABSOLUTE epsilon and the two selection metrics live on scales two
+        # orders of magnitude apart: 1e-4 is 0.05% of a val z-MSE (~0.2) and 1.4% of a val
+        # kernel (~0.007). At the old 1e-4 default, moving selection to the kernel silently
+        # turned "the best epoch" into "the first epoch within 1e-4 of the best", so 11 of 17
+        # stage-1 runs recorded a best_epoch that was not the argmin and a best value that was
+        # not the minimum -- and the cross-configuration ranking built on those values was
+        # comparing a mix of true minima and early-stopped ones. Default 0 makes selection a
+        # pure argmin, which is what it has to be while `patience` equals `epochs` and early
+        # stopping cannot fire at all; a nonzero value is only meaningful with live early
+        # stopping, and then it must be scaled to the metric.
         crit_hist.append(crit_raw)
         w = int(selection_smooth)
         crit = (float(np.median(crit_hist[-w:])) if w > 1 and len(crit_hist) >= w
@@ -1726,6 +1736,7 @@ def run_desk_experiment(config=None):
         hidden_width=hidden_width, mlp_expansion=mlp_expansion,
         val_metric_pool=val_metric_pool, val_pool_holdout_years=ho_years,
         eval_kernel_pairs=int(desk_cfg.get("eval_kernel_pairs", 65536)),
+        min_delta=float(desk_cfg.get("min_delta", 0.0)),
         selection_metric=str(desk_cfg.get("selection_metric", "val_zmse")),
         selection_smooth=int(desk_cfg.get("selection_smooth", 0)),
         trajectory_path=os.path.join(out_dir, "train_trajectory.jsonl"),

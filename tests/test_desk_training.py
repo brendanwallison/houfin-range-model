@@ -1730,3 +1730,33 @@ def test_selection_smoothing_is_off_by_default_and_only_moves_selection(tmp_path
     want = min(elig, key=lambda r: r["kernel_val"])["epoch"]
     assert int(re.search(r"restored best epoch (\d+)", txt_raw).group(1)) == want
     print("selection smoothing is opt-in and leaves the recorded trajectory untouched")
+
+
+def test_the_best_epoch_is_the_argmin_not_the_first_epoch_within_an_epsilon(tmp_path):
+    """``min_delta`` is absolute, and the two selection metrics differ by ~30x in scale.
+
+    1e-4 is 0.05% of a val z-MSE (~0.2) and 1.4% of a val kernel (~0.007). At the old hardcoded
+    1e-4, moving selection to the kernel redefined "best epoch" as "first epoch within 1e-4 of
+    the best": 11 of 17 stage-1 runs recorded a best_epoch that was not their argmin and a best
+    value that was not their minimum, and the cross-configuration ranking built on those values
+    was comparing the selection epsilon as much as the configurations.
+
+    0 is not merely a safer default, it is the only correct one while ``patience`` equals
+    ``epochs``: early stopping cannot fire, so min_delta's sole remaining effect is to prevent
+    the best epoch from being the best epoch.
+    """
+    path = tmp_path / "t.jsonl"
+    txt = _val_pool_run(epochs=8, trajectory_path=str(path), selection_metric="val_kernel")
+    rows = [json.loads(l) for l in open(path)]
+    elig = [r for r in rows if r["epoch"] > 1]          # earlystop_warmup=1
+    want = min(elig, key=lambda r: r["kernel_val"])["epoch"]
+    got = int(re.search(r"restored best epoch (\d+)", txt).group(1))
+    assert got == want, (got, want, [(r["epoch"], r["kernel_val"]) for r in rows])
+
+    # and an explicit epsilon large against this metric's scale still shifts it, which is the
+    # mechanism that caused the bug -- so it stays observable rather than removed
+    txt2 = _val_pool_run(epochs=8, trajectory_path=str(tmp_path / "u.jsonl"),
+                         selection_metric="val_kernel", min_delta=1.0)
+    got2 = int(re.search(r"restored best epoch (\d+)", txt2).group(1))
+    assert got2 <= got, (got2, got)
+    print(f"best epoch {got} is the argmin; a large min_delta still moves it to {got2}")

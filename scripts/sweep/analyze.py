@@ -90,11 +90,22 @@ def stage1(runs, threshold):
         cell, cfg, seed = _cfg_and_cell(r["_run_id"])
         if cell != "t0_f100" or seed is not None:
             continue
+        # Ranked on the TRAJECTORY's own minimum, not on run_summary's recorded best value.
+        # Those differ whenever min_delta rejected a genuine improvement, and a ranking built on
+        # a mix of true minima and early-stopped values compares the selection epsilon as much
+        # as the configurations. Reading the trajectory also means a min_delta bug is recoverable
+        # from artifacts already on disk instead of costing a rerun.
+        kv = [(x["kernel_val"], x["epoch"]) for x in r["_rows"]
+              if x.get("kernel_val") is not None and np.isfinite(x["kernel_val"])]
+        zv = [(x["zmse_val"], x["epoch"]) for x in r["_rows"]
+              if x.get("zmse_val") is not None and np.isfinite(x["zmse_val"])]
+        k_min, k_ep = min(kv) if kv else (float("nan"), None)
         rows.append({
             "config": cfg,
-            "best_epoch": r["best_epoch"],
-            "kernel": r.get("best_val_kernel", float("nan")),
-            "zmse": r.get("best_val_zmse", float("nan")),
+            "best_epoch": k_ep if k_ep is not None else r["best_epoch"],
+            "recorded_epoch": r["best_epoch"],
+            "kernel": k_min,
+            "zmse": (min(zv)[0] if zv else float("nan")),
             "tail": _stable_tail(r["_rows"], col),
             "spike": _spike_factor(r["_rows"], r["best_epoch"], col),
             "epochs": r.get("epochs_budget"),
@@ -104,6 +115,13 @@ def stage1(runs, threshold):
     if not rows:
         print("no stage-1 runs found under this root (expected cell t0_f100)")
         return
+    off = [x for x in rows if x["recorded_epoch"] != x["best_epoch"]]
+    if off:
+        print(f"NOTE {len(off)}/{len(rows)} runs recorded a best_epoch that is not their "
+              f"trajectory's argmin (min_delta rejected genuine improvements). The table below "
+              f"is rebuilt from the trajectories, so the ranking is sound; the saved "
+              f"CHECKPOINTS are from the recorded epoch and would need a rerun only if a "
+              f"checkpoint itself is wanted. Stage 1 needs the ranking, not the weights.\n")
     base = next((x for x in rows if x["config"] == "base"), None)
     if base is None:
         print("WARNING: no `base` run -- every margin below is unanchored")

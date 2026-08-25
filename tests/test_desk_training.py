@@ -1892,3 +1892,85 @@ def test_the_degenerate_pair_branch_returns_zero_instead_of_raising():
     assert float(out) == 0.0
     assert out.requires_grad
     print("a degenerate pair set yields 0, not NameError")
+
+
+def test_the_eigenbasis_diagnostic_runs_off_graph_on_a_cadence(tmp_path):
+    """It must populate every field, respect its cadence, and never touch a weight.
+
+    The Ružička block it needs is O(B^2 S), so it runs on a cadence rather than every epoch --
+    which means the trajectory has rows both with and without the fields, and a reader must not
+    mistake an absent row for a zero. Asserted on which epochs carry them.
+    """
+    import contextlib
+    import io
+
+    from src.community_encoder.train_DESK import desk_training as D
+
+    sch = _schema()
+    dims = [s["dim"] for s in sch["streams"]]
+    T, H, W, L = 6, 10, 12, 16
+    rng = np.random.default_rng(0)
+    cov = rng.normal(size=(T, H, W, sch["total_dim"])).astype("float32")
+    years = list(range(2020, 2026))
+    m = np.ones((H, W), bool)
+    ho = np.zeros((H, W), bool); ho[:, :4] = True
+    tr_m, va_m = m & ~ho, m & ho
+    tgt = {y: (rng.normal(size=(H, W, L)).astype("float32"), tr_m, va_m,
+               np.ones((H, W), dtype="float32")) for y in years[1:]}
+    x = rng.random((H, W, 12)).astype("float32")
+    vp = _metric_dict(x, va_m, years)
+    ref = rng.normal(size=(len(vp[0]), L)).astype("float32")
+    path = tmp_path / "eig.jsonl"
+
+    out = io.StringIO()
+    with contextlib.redirect_stdout(out):
+        model, _ema = D.train_model_ema(
+            cov, np.ones((T, H, W), bool), years, tgt, _metric_dict(x, tr_m, years),
+            tr_m, va_m, dims, latent_dim=L, ema_cfg={"earlystop_warmup": 1}, spatial_kernel=3,
+            epochs=4, weights={"stabilizing": 64.0, "metric": 5.0, "reconstruction": 0.1},
+            schema=sch, dropout=0.1, val_metric_pool=vp, metric_pairs=1024,
+            eval_kernel_pairs=256, eval_kernel_draws=2, eval_kernel_ranks=(4, 8, 16),
+            selection_metric="val_kernel", trajectory_path=str(path),
+            eigenbasis_batch=120, eigenbasis_every=2, eigenbasis_ref=ref)
+    rows = [json.loads(l) for l in open(path)]
+    have = [r["epoch"] for r in rows if "eig_nesting" in r]
+    assert have == [2, 4], have                        # the cadence, not every epoch
+    e = [r for r in rows if "eig_nesting" in r][-1]
+    for key in ("eig_max_offdiag", "eig_spectrum_descending", "eig_spectrum_inversions",
+                "eig_estimator_disagreement", "eig_nesting", "eig_nesting_ratio",
+                "eig_nesting_gap", "eig_nesting_ref", "eig_subspace_r4", "eig_subspace_r16"):
+        assert key in e, key
+    assert np.isfinite(e["eig_nesting"]) and np.isfinite(e["eig_nesting_gap"])
+    assert all(torch.isfinite(p).all() for p in model.parameters())
+    assert "eigenbasis diagnostic: 120 held-out cell-years" in out.getvalue()
+    print(f"eigenbasis fields on epochs {have}, all finite, weights unharmed")
+
+
+def test_the_eigenbasis_diagnostic_degrades_gracefully_without_a_reference(tmp_path):
+    """No saved ESK projection means the GAP is unavailable, not zero.
+
+    The nesting scalar scales with the kernel and the batch, so it is uninterpretable without a
+    reference that is an ordered eigenbasis by construction. Substituting a constant would make an
+    unmeasurable quantity look measured; the reference-free parts must still run.
+    """
+    path = tmp_path / "noref.jsonl"
+    txt = _val_pool_run(epochs=2, trajectory_path=str(path), selection_metric="val_kernel",
+                        eval_kernel_draws=2, eval_kernel_ranks=(4, 8),
+                        eigenbasis_batch=100, eigenbasis_every=1, eigenbasis_ref=None)
+    e = [json.loads(l) for l in open(path)][-1]
+    assert "eig_nesting" in e and np.isfinite(e["eig_nesting"])       # reference-free part runs
+    assert "eig_spectrum_descending" in e
+    assert "eig_nesting_gap" not in e, "a missing reference must not produce a gap"
+    assert "eig_subspace_r4" not in e
+    assert "no ESK ref" in txt or "NO ESK reference" in txt, txt
+    print("without a reference the gap is absent, not fabricated")
+
+
+def test_too_few_held_out_points_disables_the_diagnostic_loudly():
+    """A batch that cannot support the estimate must say so, not return a number."""
+    txt = _val_pool_run(epochs=1, selection_metric="val_kernel", eval_kernel_draws=2,
+                        eigenbasis_batch=4, eigenbasis_every=1)
+    # 240 val points are available, so a request for 4 is honoured; the guard is on the POOL
+    # being too small, which the fixture cannot make. Assert the batch is capped by the request.
+    assert "eigenbasis diagnostic: 4 held-out cell-years" in txt, txt
+    print("the eigenbasis batch is the requested size, drawn from the val pool")

@@ -606,6 +606,7 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
                     val_metric_pool=None, val_pool_holdout_years=(),
                     metric_pairs=4096,
                     eval_kernel_pairs=65536, eval_kernel_draws=1, eval_kernel_ranks=(),
+                    eigenbasis_batch=0, eigenbasis_every=0, eigenbasis_ref=None,
                     selection_metric="val_zmse",
                     selection_smooth=0,
                     trajectory_path=None, stop_at_epoch=None, return_info=False,
@@ -743,6 +744,41 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
     # are independent draws rather than the same index pattern over different pools.
     train_eval_pairs = kernel_pair_draws(int(pool_t.shape[0]), eval_kernel_pairs, seed + 977,
                                         eval_kernel_draws)
+    # --- the eigenbasis diagnostic's fixed batch -----------------------------------------------
+    # A BATCH, not pairs: the nesting objective needs Tf = Kf, an operator applied to the feature
+    # map, which sampled pairs cannot supply. Drawn once with a fixed seed so the number is
+    # comparable epoch to epoch and run to run, and small (a few thousand) because the Ružička
+    # block is O(B^2 S).
+    eig_batch = None
+    if eigenbasis_batch and val_metric_pool is not None:
+        _ey, _ef, _ex = val_metric_pool
+        _ekeep = np.array([int(y) in yi for y in _ey], dtype=bool)
+        _n = int(_ekeep.sum())
+        if _n >= 8:
+            _sel = np.flatnonzero(_ekeep)
+            if _n > int(eigenbasis_batch):
+                _sel = np.random.default_rng(seed + 31337).choice(
+                    _sel, int(eigenbasis_batch), replace=False)
+            eig_batch = {
+                "t": torch.as_tensor(np.array([yi[int(_ey[k])] for k in _sel]),
+                                     device=device, dtype=torch.long),
+                "flat": torch.as_tensor(_ef[_sel], device=device, dtype=torch.long),
+                "x": np.asarray(_ex[_sel], dtype="float64"),
+                # ESK's own projection of the SAME communities: an ordered eigenbasis by
+                # construction, so its diagnostic values are the achievable floor at this
+                # Nyström rank and DESK's gap to them is the honest measure.
+                "ref": (None if eigenbasis_ref is None
+                        else np.asarray(eigenbasis_ref)[_sel]),
+            }
+            print(f"[desk] eigenbasis diagnostic: {len(_sel):,} held-out cell-years, "
+                  f"Ružička block {len(_sel)}x{len(_sel)}, every {eigenbasis_every} eval(s)"
+                  + ("" if eig_batch["ref"] is not None else
+                     " -- NO ESK reference (subspace/nesting gap unavailable)"), flush=True)
+        else:
+            print(f"[desk] eigenbasis diagnostic: only {_n} held-out points in the window, "
+                  f"too few -- UNAVAILABLE_TOO_FEW_POINTS", flush=True)
+    _eig_gram = {}          # cached: the batch is fixed, so its Ružička block never changes
+
     val_pools = {}
     if val_metric_pool is not None:
         _vy, _vf, _vx = val_metric_pool
@@ -1082,7 +1118,7 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
     best_crit_raw = float("nan")
     # Pre-bound so an eval_every > 1 epoch cannot reference an eval-only name before it is
     # first assigned: the printed line and the JSONL row are emitted EVERY epoch.
-    vk, vk_sd, tk, rank_curve = {}, {}, float("nan"), {}
+    vk, vk_sd, tk, rank_curve, eig = {}, {}, float("nan"), {}, {}
     crit_hist = []
     traj_fh = None
     if trajectory_path:
@@ -1242,6 +1278,38 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
                 # Rank curve, diagnostic only: what a downstream truncating to r would get, on
                 # the supervised z_ema and on the z_raw the cube actually exports. Selection
                 # stays on the full-rank z_ema value above.
+                # Eigenbasis diagnostics: is Z the ORDERED eigenbasis, or merely a basis
+                # reproducing the kernel? Every other metric here is a function of dot products
+                # and so is blind to Z -> ZQ, which is exactly what breaks the downstream's
+                # positional truncation. Computed on detached numpy, off-graph by construction,
+                # on a cadence because the Ružička block is O(B^2 S).
+                eig = {}
+                if eig_batch is not None and eigenbasis_every and (
+                        ep % int(eigenbasis_every) == 0 or ep == epochs):
+                    from .eigenbasis_diag import eigenbasis_report, ruzicka_gram
+                    if "g" not in _eig_gram:
+                        _eig_gram["g"] = ruzicka_gram(eig_batch["x"])
+                    _zf = z_eval.reshape(z_eval.shape[0], -1, z_eval.shape[-1])
+                    _zb = _zf[eig_batch["t"], eig_batch["flat"]].detach().cpu().numpy()
+                    _rep = eigenbasis_report(_zb, eig_batch["x"], z_ref=eig_batch["ref"],
+                                             ranks=tuple(int(r) for r in eval_kernel_ranks),
+                                             gram=_eig_gram["g"])
+                    eig = {
+                        "eig_max_offdiag": _rep["orthogonality"]["max_offdiag"],
+                        "eig_offdiag_mean": _rep["orthogonality"]["mean_abs_offdiag"],
+                        "eig_spectrum_descending": _rep["spectrum"]["descending"],
+                        "eig_spectrum_inversions": _rep["spectrum"]["inversions"],
+                        "eig_first_inversion": _rep["spectrum"]["worst_inversion_at"],
+                        "eig_estimator_disagreement":
+                            _rep["spectrum"].get("estimator_disagreement", float("nan")),
+                        "eig_nesting": _rep["nesting"]["nesting_loss"],
+                        "eig_nesting_ratio": _rep["nesting"]["operator_metric_ratio"],
+                    }
+                    if "nesting_gap" in _rep:
+                        eig["eig_nesting_gap"] = _rep["nesting_gap"]
+                        eig["eig_nesting_ref"] = _rep["nesting_ref"]["nesting_loss"]
+                        eig.update({f"eig_subspace_r{r}": v
+                                    for r, v in _rep["subspace_vs_ref"].items()})
                 rank_curve = {}
                 for _r in (int(r) for r in eval_kernel_ranks):
                     rank_curve[f"ema_r{_r}"] = _pool_stats(val_pools.get("pool"), z_eval,
@@ -1321,6 +1389,14 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
                   f"+-{vk_sd.get('pool', float('nan')):.5f} "
                   f"k_val_sp {vk.get('sp', float('nan')):.5f} "
                   f"k_val_spt {vk.get('spt', float('nan')):.5f}", flush=True)
+            if eig:
+                print(f"Ep {ep:03d} | eigbasis ordered={eig['eig_spectrum_descending']} "
+                      f"inv={eig['eig_spectrum_inversions']} "
+                      f"offdiag={eig['eig_max_offdiag']:.3f} "
+                      f"disagree={eig['eig_estimator_disagreement']:.3f} "
+                      f"nest={eig['eig_nesting']:+.4f}"
+                      + (f" gap={eig['eig_nesting_gap']:+.4f}"
+                         if "eig_nesting_gap" in eig else " (no ESK ref)"), flush=True)
         # Written EVERY epoch, unconditionally. Every trajectory analysed so far was recovered
         # by regex-parsing job logs, which only works while the log survives and while the
         # print format holds; a JSONL costs nothing and is the artifact the sweep reads.
@@ -1348,6 +1424,7 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
                 "kernel_val_sp_sd": vk_sd.get("sp", float("nan")),
                 "kernel_val_draws": int(max(1, int(eval_kernel_draws))),
                 **{f"kernel_val_{k}": v for k, v in rank_curve.items()},
+                **eig,
                 "zmse_train": ts, "zmse_val": vs,
                 "zmse_val_sp": vs_sp, "zmse_val_spt": vs_spt,
                 "zmse_val_anchor": vs_anchor, "zmse_val_yearout": vs_time,
@@ -1669,6 +1746,24 @@ def run_desk_experiment(config=None):
     # it here would leave the temporal question unmeasurable. The years are carried through so
     # the trainer can split the pool rather than having to re-derive which is which.
     val_metric_pool = spacetime_metric_pool(pip, Xp, sup_rows, m_val, W, exclude_years=())
+    # ESK's own projection of the val pool's communities: the reference the eigenbasis
+    # diagnostic's gap is measured against. ESK is an explicit eigenvalue-descending
+    # decomposition (see esk_kernel), so it IS the ordered eigenbasis up to Nyström error, and its
+    # diagnostic values are therefore the achievable floor on this batch. Without a reference the
+    # nesting scalar is uninterpretable -- it scales with the kernel and the batch -- so a missing
+    # projection disables the gap rather than being silently replaced by a constant.
+    eig_ref = None
+    if int(desk_cfg.get("eigenbasis_batch", 0)):
+        from .esk_kernel import project_points_to_z as _proj
+        eig_ref = _proj(val_metric_pool[2], z_dir, latent_dim)
+        if eig_ref is None:
+            print("[desk] eigenbasis diagnostic: no saved ESK projection in z_dir, so the "
+                  "subspace curve and nesting GAP are UNAVAILABLE_NO_ESK_REFERENCE; the "
+                  "reference-free parts (spectrum, orthogonality) still run", flush=True)
+        else:
+            print(f"[desk] eigenbasis reference: ESK projection of {len(eig_ref):,} val "
+                  f"communities into the pinned basis", flush=True)
+
     print(f"[desk] val metric pool: {len(val_metric_pool[0]):,} HELD-OUT cell-years spanning "
           f"{len(np.unique(val_metric_pool[0])) if len(val_metric_pool[0]) else 0} years "
           f"({int(np.isin(val_metric_pool[0], ho_years).sum()):,} in withheld years)")
@@ -1824,6 +1919,9 @@ def run_desk_experiment(config=None):
         eval_kernel_pairs=int(desk_cfg.get("eval_kernel_pairs", 65536)),
         eval_kernel_draws=int(desk_cfg.get("eval_kernel_draws", 1)),
         eval_kernel_ranks=tuple(desk_cfg.get("eval_kernel_ranks") or ()),
+        eigenbasis_batch=int(desk_cfg.get("eigenbasis_batch", 0)),
+        eigenbasis_every=int(desk_cfg.get("eigenbasis_every", 0)),
+        eigenbasis_ref=eig_ref,
         min_delta=float(desk_cfg.get("min_delta", 0.0)),
         selection_metric=str(desk_cfg.get("selection_metric", "val_zmse")),
         selection_smooth=int(desk_cfg.get("selection_smooth", 0)),

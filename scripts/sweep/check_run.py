@@ -164,6 +164,104 @@ def check(run_dir):
                         f"{summ.get('best_selection_raw', float('nan')):.6g}). A run under a "
                         f"nonzero window is NOT comparable with one under 0.")
 
+    # An argmin at or near the LAST epoch means the run may simply have been truncated before its
+    # optimum. The tail-mean test below cannot catch this: mw60's tail mean (0.00796) sat well
+    # above its dip at epoch 249 (0.00687), so a noisy tail read as "converged" while the argmin
+    # was on the final epoch. A configuration truncated before its optimum looks WORSE than it is,
+    # which distorts a cross-configuration ranking rather than merely wasting time.
+    if summ.get("restored_best") and rows:
+        last = rows[-1]["epoch"]
+        k_ep = min(((r[col], r["epoch"]) for r in rows if np.isfinite(r.get(col, np.nan))),
+                   default=(None, None))[1]
+        if k_ep is not None and k_ep >= 0.95 * last:
+            _fail(msgs, f"the argmin of {col} is at epoch {k_ep} of {last} -- this run was "
+                        f"probably STOPPED BEFORE its optimum, so its value is not comparable "
+                        f"with runs that converged. Rerun it at a higher stop_at_epoch/epochs "
+                        f"before using it in a ranking."); hard += 1
+        elif k_ep is not None and k_ep >= 0.8 * last:
+            msgs.append(f"warn  the argmin of {col} is at epoch {k_ep} of {last} (>80% of the "
+                        f"budget) -- close enough to the end to be worth confirming at a longer "
+                        f"budget")
+
+    # The estimator's own noise, against which a between-configuration gap has to be judged.
+    sds = [r["kernel_val_sd"] for r in rows
+           if np.isfinite(r.get("kernel_val_sd", np.nan)) and r.get("kernel_val_sd", 0) > 0]
+    if sds:
+        sd = float(np.median(sds))
+        kv = float(np.median([r["kernel_val"] for r in rows
+                              if np.isfinite(r.get("kernel_val", np.nan))]))
+        rel = sd / kv if kv else float("nan")
+        n_draws = int(rows[-1].get("kernel_val_draws", 1))
+        msgs.append(f"note  estimator noise: sd {sd:.6g} over {n_draws} independent draws = "
+                    f"{100 * rel:.2f}% of the value; the mean's standard error is "
+                    f"{100 * rel / max(n_draws, 1) ** 0.5:.2f}%. A between-configuration "
+                    f"difference smaller than that is NOT resolvable by this measurement.")
+    elif rows and "kernel_val_sd" in rows[0]:
+        msgs.append("note  estimator noise unavailable (single draw) -- raise "
+                    "desk.eval_kernel_draws to get an error bar on the ranked quantity")
+
+    # Rank curve: where positional truncation starts to cost, for whatever rank the downstream
+    # adopts. Reported, never a gate -- selection stays full-rank.
+    if rows:
+        rc = sorted((int(k.rsplit("_r", 1)[1]), rows[-1][k]) for k in rows[-1]
+                    if k.startswith("kernel_val_ema_r"))
+        if rc:
+            worst = max(v for _r, v in rc)
+            full = rc[-1][1]
+            msgs.append("note  rank curve (z_ema): "
+                        + "  ".join(f"r{r}={v:.5g}" for r, v in rc)
+                        + f"  -- truncating to the lowest rank shown costs "
+                          f"{100 * (worst / full - 1):.0f}% against full rank")
+        raw = {int(k.rsplit("_r", 1)[1]): rows[-1][k] for k in rows[-1]
+               if k.startswith("kernel_val_raw_r")}
+        if raw and rc:
+            r_full = max(raw)
+            gap = raw[r_full] / rc[-1][1] - 1 if rc[-1][1] else float("nan")
+            msgs.append(f"note  z_raw is {100 * gap:+.0f}% against z_ema at rank {r_full}. The "
+                        f"cube exports z_raw and the age model treats its dot products as the GP "
+                        f"covariance, but only z_ema is supervised -- this gap is that "
+                        f"inconsistency, measured.")
+
+    # Eigenbasis diagnostics: the questions no dot-product metric can answer.
+    eig_rows = [r for r in rows if "eig_nesting" in r]
+    if eig_rows:
+        e = eig_rows[-1]
+        if not e.get("eig_spectrum_descending", True):
+            msgs.append(f"warn  the implied eigenvalue spectrum is NOT descending "
+                        f"({e.get('eig_spectrum_inversions')} inversions, first at component "
+                        f"{e.get('eig_first_inversion')}). Z[:, :M] is therefore not the top-M "
+                        f"eigen-subspace for at least one M, so the downstream's positional "
+                        f"truncation fits the wrong rank-M kernel -- and every dot-product "
+                        f"metric is blind to this.")
+        else:
+            _ok(msgs, "implied eigenvalue spectrum is descending (positional truncation is safe)")
+        od = e.get("eig_max_offdiag")
+        if od is not None and np.isfinite(od):
+            msgs.append(f"note  component orthogonality: max off-diagonal {od:.3f} "
+                        f"(0 = perfectly orthogonal), estimator disagreement "
+                        f"{e.get('eig_estimator_disagreement', float('nan')):.3f}")
+        gap = e.get("eig_nesting_gap")
+        if gap is not None and np.isfinite(gap):
+            if gap < -1e-6:
+                msgs.append(f"warn  the nesting objective is BETTER than the ESK reference "
+                            f"(gap {gap:+.4g}). ESK is an ordered eigenbasis by construction, so "
+                            f"a large negative gap more likely means the reference projection is "
+                            f"wrong -- or generalises worse out of sample -- than that DESK "
+                            f"beat it. Check the ESK projection before reading this as a win.")
+            else:
+                msgs.append(f"note  nesting gap vs the ESK reference {gap:+.4g} "
+                            f"(0 = matches the ordered eigenbasis; lower is better, and the "
+                            f"reference is the achievable floor at this Nystrom rank)")
+        sub = sorted((int(k.rsplit("_r", 1)[1]), e[k]) for k in e if k.startswith("eig_subspace_r"))
+        if sub:
+            msgs.append("note  subspace distance vs ESK by rank: "
+                        + "  ".join(f"r{r}={v:.4f}" for r, v in sub)
+                        + "  -- 0 means the top-r subspace matches, so truncation at that rank "
+                          "is safe whatever M the downstream later adopts")
+    elif rows and summ.get("restored_best"):
+        msgs.append("note  eigenbasis diagnostics not run (desk.eigenbasis_batch=0) -- nothing "
+                    "here can detect a rotated or reordered basis")
+
     # Is the kernel still falling at the end? That is the §5-step-3 question: if it is, the
     # epoch budget is too SMALL, not too large, and no epoch decision should be made yet.
     if finite_k >= 10:

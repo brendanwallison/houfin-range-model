@@ -122,6 +122,30 @@ def stage1(runs, threshold):
               f"is rebuilt from the trajectories, so the ranking is sound; the saved "
               f"CHECKPOINTS are from the recorded epoch and would need a rerun only if a "
               f"checkpoint itself is wanted. Stage 1 needs the ranking, not the weights.\n")
+    # The estimator's own noise, pooled across runs. This is the number that says whether the
+    # ranking below can resolve anything at all: a spread between configurations smaller than the
+    # noise of the quantity they are ranked by is not a finding. Stage 1's total spread was 8%
+    # with no error bar available, which is exactly the situation this closes.
+    sds = []
+    for r in runs:
+        v = [x.get("kernel_val_sd") for x in r["_rows"]]
+        v = [x for x in v if x is not None and np.isfinite(x) and x > 0]
+        k = [x.get("kernel_val") for x in r["_rows"]]
+        k = [x for x in k if x is not None and np.isfinite(x)]
+        if v and k:
+            sds.append(float(np.median(v)) / float(np.median(k)))
+    noise_floor = float(np.median(sds)) if sds else None
+    if noise_floor is not None:
+        nd = int(next((x.get("kernel_val_draws", 1) for r in runs for x in r["_rows"]), 1))
+        se = noise_floor / max(nd, 1) ** 0.5
+        print(f"estimator noise floor: {100 * noise_floor:.2f}% per draw, "
+              f"{100 * se:.2f}% on the mean of {nd} draws.")
+        print(f"  A margin below {100 * se:.2f}% is sampling error, not a difference between "
+              f"configurations.\n")
+    else:
+        print("estimator noise floor: UNAVAILABLE (single-draw runs). Raise "
+              "desk.eval_kernel_draws -- without it, no margin below can be called resolvable.\n")
+
     base = next((x for x in rows if x["config"] == "base"), None)
     if base is None:
         print("WARNING: no `base` run -- every margin below is unanchored")
@@ -150,6 +174,20 @@ def stage1(runs, threshold):
     print()
     print(f"threshold = {100 * threshold:.0f}% relative. PROVISIONAL until stage 3 measures the "
           f"seed-to-seed spread; rerun with --threshold <measured> then.")
+    if noise_floor is not None:
+        nd = int(next((x.get("kernel_val_draws", 1) for r in runs for x in r["_rows"]), 1))
+        se = noise_floor / max(nd, 1) ** 0.5
+        unresolvable = [x["config"] for x in rows if base and base["kernel"]
+                        and abs(base["kernel"] - x["kernel"]) / base["kernel"] < se
+                        and x["config"] != "base"]
+        if unresolvable:
+            print(f"{len(unresolvable)} configuration(s) differ from baseline by LESS than the "
+                  f"estimator's own standard error ({100 * se:.2f}%): {unresolvable}. Those are "
+                  f"indistinguishable from measurement noise regardless of the threshold.")
+        if threshold < se:
+            print(f"WARNING: the threshold ({100 * threshold:.1f}%) is BELOW the estimator's "
+                  f"standard error ({100 * se:.2f}%), so it cannot be met by evidence. Raise the "
+                  f"threshold, raise eval_kernel_draws, or raise eval_kernel_pairs.")
     n_spike = sum(1 for x in rows if np.isfinite(x["spike"]) and x["spike"] >= 2)
     if n_spike:
         print(f"{n_spike}/{len(rows)} runs selected at a spike (a neighbour >=2x the chosen "

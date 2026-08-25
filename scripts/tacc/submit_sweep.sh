@@ -39,6 +39,10 @@ SWEEP_ROOT="${SWEEP_ROOT:-$HOUFIN_PROCESSED/sweeps/$SWEEP_NAME}"
 SWEEP_STAGE="${SWEEP_STAGE:-1}"
 SWEEP_CONFIGS="${SWEEP_CONFIGS:-}"
 SWEEP_SEEDS="${SWEEP_SEEDS:-}"
+# Forwarded to the generator. Without this the wrapper's own regeneration silently DROPS a
+# --stop-at applied by an earlier manual run of the generator, and every run goes full-length --
+# the overlays on disk would say one thing and the submitted jobs another.
+SWEEP_STOP_AT="${SWEEP_STOP_AT:-0}"
 QUEUE="${QUEUE:-gpu-a100}"
 TIME="${TIME:-04:00:00}"
 TASKS_PER_NODE="${TASKS_PER_NODE:-3}"
@@ -88,6 +92,7 @@ echo "=== overlays ==="
 GEN_ARGS=(--root "$SWEEP_ROOT" --stage "$SWEEP_STAGE")
 [ -n "$SWEEP_CONFIGS" ] && GEN_ARGS+=(--configs "$SWEEP_CONFIGS")
 [ -n "$SWEEP_SEEDS" ] && GEN_ARGS+=(--seeds "$SWEEP_SEEDS")
+[ "$SWEEP_STOP_AT" -gt 0 ] && GEN_ARGS+=(--stop-at "$SWEEP_STOP_AT")
 "$PY" scripts/sweep/generate_overlays.py "${GEN_ARGS[@]}"
 MANIFEST="$SWEEP_ROOT/sweep_manifest.json"
 [ -f "$MANIFEST" ] || { echo "ERROR: no manifest at $MANIFEST"; exit 1; }

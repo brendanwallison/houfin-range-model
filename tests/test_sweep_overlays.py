@@ -648,3 +648,59 @@ def test_the_analysis_script_flags_a_false_leader():
     # the provisional threshold must be labelled as such until stage 3 measures the seed spread
     assert "PROVISIONAL" in src
     print("the analysis script detects a spike-driven false leader")
+
+
+def test_stop_at_shortens_the_run_not_the_schedule_and_spares_production(tmp_path):
+    """``--stop-at`` must set stop_at_epoch while leaving ``epochs`` at the full budget.
+
+    The measured optimum on the production cell is epoch 117 of 500, so most of every run is
+    spent past it. Lowering ``epochs`` would re-parameterise the cosine and train a different
+    model; ``stop_at_epoch`` halts with the schedule intact, so a truncated run stays comparable
+    with the full-length one that measured the optimum.
+
+    It must NEVER touch the production retrain, which carries its own stop_at_epoch from the
+    stage-3 median. Overwriting that would stop the shipped model at the wrong epoch -- and
+    since a no-holdout run has no validation curve, nothing downstream could reveal it.
+    """
+    env = dict(os.environ, HOUFIN_PROCESSED=str(tmp_path))
+    sroot = str(tmp_path / "sweeps" / "hp")
+    base = load_config(os.path.join(REPO, "config", "esk_desk_config.json"))["desk"]
+
+    out = subprocess.run([sys.executable, os.path.join(REPO, "scripts", "sweep",
+                                                       "generate_overlays.py"),
+                          "--root", sroot, "--stage", "1", "--stop-at", "300"],
+                         capture_output=True, text=True, cwd=REPO, env=env)
+    assert out.returncode == 0, out.stderr
+    man = json.load(open(os.path.join(sroot, "sweep_manifest.json")))
+    for r in man["runs"]:
+        cfg = load_config(r["overlay"])["desk"]
+        assert int(cfg["stop_at_epoch"]) == 300, r["run_id"]
+        assert int(cfg["epochs"]) == int(base["epochs"]), (
+            f"{r['run_id']}: epochs must stay at the full budget or the LR schedule changes")
+
+    # production keeps its own stopping epoch even when --stop-at is passed
+    out = subprocess.run([sys.executable, os.path.join(REPO, "scripts", "sweep",
+                                                       "generate_overlays.py"),
+                          "--root", sroot, "--production", "sk0", "137", "--stop-at", "300"],
+                         capture_output=True, text=True, cwd=REPO, env=env)
+    assert out.returncode == 0, out.stderr
+    pman = json.load(open(os.path.join(sroot, "production_manifest.json")))
+    pcfg = load_config(pman["runs"][0]["overlay"])["desk"]
+    assert int(pcfg["stop_at_epoch"]) == 137, \
+        "--stop-at must not override the production retrain's own stopping epoch"
+    assert int(pcfg["epochs"]) == int(base["epochs"])
+    print("--stop-at truncates the grid, keeps the schedule, and spares production")
+
+
+def test_the_submit_wrapper_forwards_stop_at_to_the_generator():
+    """The wrapper regenerates overlays, so it must forward --stop-at or silently drop it.
+
+    Running the generator by hand with --stop-at and then submitting would have the wrapper
+    rewrite every overlay WITHOUT it: the files on disk would say one thing and the submitted
+    jobs would run full-length. Nothing would error, and the cost overrun would only show up in
+    the SU bill.
+    """
+    src = open(SUBMIT).read()
+    assert "SWEEP_STOP_AT" in src
+    assert '--stop-at "$SWEEP_STOP_AT"' in src, "must reach the generator, not just be read"
+    print("submit wrapper forwards --stop-at")

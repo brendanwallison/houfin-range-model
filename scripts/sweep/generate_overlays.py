@@ -347,6 +347,12 @@ def main():
                     help="emit the production retrain: the winning CONFIG with holdout_frac=0, "
                          "all years, and stop_at_epoch=STOP_EPOCH (the MEDIAN best epoch across "
                          "the stage-3 seeds)")
+    ap.add_argument("--stop-at", type=int, default=0, metavar="N",
+                    help="halt every generated run at epoch N WITHOUT shortening the LR "
+                         "schedule. The measured optimum on the production cell is epoch 117 of "
+                         "500, so most of each run is spent past it; 300 keeps a 2.5x margin at "
+                         "~60%% of the cost. Runs stay comparable with a full-length run because "
+                         "_warmup_cosine is still parameterised on the full budget.")
     ap.add_argument("--smoke", type=int, default=0, metavar="N",
                     help="emit ONE short baseline run of N epochs, in its own output dir, to "
                          "verify the instrumentation before spending the grid")
@@ -414,6 +420,16 @@ def main():
         smoke_extra = None
         grid = build_grid(args.stage, cfgs)
         seeds = [SPATIAL_SEED] * len(grid)
+
+    # stop_at_epoch composes onto whatever the stage put in `smoke_extra`, and NEVER onto the
+    # production retrain -- that one carries its own stop_at_epoch from the stage-3 median, and
+    # silently overwriting it would stop the shipped model at the wrong epoch.
+    if args.stop_at and not args.production:
+        smoke_extra = _merge(smoke_extra or {}, {"desk": {"stop_at_epoch": int(args.stop_at)}})
+        print(f"stop_at_epoch={args.stop_at} on every run: the LR schedule stays parameterised "
+              f"on the full {_BASE['desk']['epochs']}-epoch budget, so these remain comparable "
+              f"with a full-length run. check_run.py flags any run still improving at the stop, "
+              f"which is the signal to raise it rather than a silently truncated answer.")
 
     entries = []
     for i, (run_id, cell, tag, ho, frac, frag, reason) in enumerate(grid):

@@ -186,13 +186,20 @@ for r in m["runs"]:
             got = json.load(open(sp))
         except Exception:
             got = {}
-        stale = [k for k, v in WANT.items()
-                 if k in got and int(got[k]) != int(v)]
+        # A MISSING key counts as stale, not as matching. These settings were only added to
+        # run_summary.json when the staleness check itself was added, so every run predating it
+        # has no record of the estimator it used -- which is precisely the population the check
+        # exists to catch. Treating absence as agreement made the guard inert for exactly those
+        # runs: 17 of them reported "comparable and complete" while having been trained at 4,096
+        # pairs and scored on a single draw. Absence of provenance is not evidence of
+        # comparability; this repo's own rule is that a missing key is indistinguishable from an
+        # oversight and must not read as a pass.
+        stale = [f"{k} {got.get(k, 'UNRECORDED')} != {v}" for k, v in WANT.items()
+                 if k not in got or int(got[k]) != int(v)]
         if not stale:
             done += 1
             continue
-        print(f"# STALE {r['run_id']}: "
-              + ", ".join(f"{k} {got[k]} != {WANT[k]}" for k in stale), file=sys.stderr)
+        print(f"# STALE {r['run_id']}: " + ", ".join(stale), file=sys.stderr)
         stale_ids.append(r["run_id"])
     pend += 1
     print(f'{r["run_id"]}\t{os.path.expandvars(r["overlay"])}\t{out}\t'

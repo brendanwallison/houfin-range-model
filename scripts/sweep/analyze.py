@@ -115,6 +115,20 @@ def stage1(runs, threshold):
     if not rows:
         print("no stage-1 runs found under this root (expected cell t0_f100)")
         return
+    # A table mixing runs made under different estimator settings compares two instruments as
+    # much as two configurations. Named here rather than left for the reader to infer from a
+    # min_delta note, because the settings are recorded and the check is free.
+    setts = {}
+    for r in runs:
+        cell, cfg, seed = _cfg_and_cell(r["_run_id"])
+        if cell == "t0_f100" and seed is None and cfg in {x["config"] for x in rows}:
+            setts.setdefault((r.get("metric_pairs"), r.get("eval_kernel_draws")), []).append(cfg)
+    if len(setts) > 1:
+        print("WARNING: this table mixes runs made under DIFFERENT metric/eval settings:")
+        for (mp, dr), cfgs in sorted(setts.items(), key=lambda kv: str(kv[0])):
+            print(f"  metric_pairs={mp} eval_kernel_draws={dr}: {len(cfgs)} run(s) {sorted(cfgs)}")
+        print("  Those are different instruments, not just different configurations. Rerun so "
+              "they share one setting before reading the ranking.\n")
     off = [x for x in rows if x["recorded_epoch"] != x["best_epoch"]]
     if off:
         print(f"NOTE {len(off)}/{len(rows)} runs recorded a best_epoch that is not their "
@@ -126,15 +140,32 @@ def stage1(runs, threshold):
     # ranking below can resolve anything at all: a spread between configurations smaller than the
     # noise of the quantity they are ranked by is not a finding. Stage 1's total spread was 8%
     # with no error bar available, which is exactly the situation this closes.
-    sds = []
+    # Pooled ONLY over the runs in the table. Pooling over every run under the root attributed a
+    # noise floor measured on a smoke run (8 draws) to a table of single-draw runs that have no
+    # error bar at all -- a number borrowed from a different configuration and printed as if it
+    # described these. The floor is a property of the estimator each run used, so it may only be
+    # quoted for runs that used it.
+    in_table = {x["config"] for x in rows}
+    sds, n_with, n_without = [], 0, 0
     for r in runs:
+        cell, cfg, seed = _cfg_and_cell(r["_run_id"])
+        if cell != "t0_f100" or seed is not None or cfg not in in_table:
+            continue
         v = [x.get("kernel_val_sd") for x in r["_rows"]]
         v = [x for x in v if x is not None and np.isfinite(x) and x > 0]
         k = [x.get("kernel_val") for x in r["_rows"]]
         k = [x for x in k if x is not None and np.isfinite(x)]
         if v and k:
-            sds.append(float(np.median(v)) / float(np.median(k)))
+            sds.append(float(np.median(v)) / float(np.median(k))); n_with += 1
+        else:
+            n_without += 1
     noise_floor = float(np.median(sds)) if sds else None
+    if noise_floor is not None and n_without:
+        print(f"WARNING: {n_with} of {n_with + n_without} runs in the table carry an error bar. "
+              f"The floor below describes only those; the rest were run single-draw and their "
+              f"margins cannot be judged against it. Rerun them with desk.eval_kernel_draws > 1 "
+              f"before comparing.\n")
+        noise_floor = None if n_with < (n_with + n_without) / 2 else noise_floor
     if noise_floor is not None:
         nd = int(next((x.get("kernel_val_draws", 1) for r in runs for x in r["_rows"]), 1))
         se = noise_floor / max(nd, 1) ** 0.5
@@ -184,6 +215,13 @@ def stage1(runs, threshold):
             print(f"{len(unresolvable)} configuration(s) differ from baseline by LESS than the "
                   f"estimator's own standard error ({100 * se:.2f}%): {unresolvable}. Those are "
                   f"indistinguishable from measurement noise regardless of the threshold.")
+        if threshold > 5 * se:
+            print(f"NOTE the threshold ({100 * threshold:.1f}%) is {threshold / se:.0f}x the "
+                  f"estimator's standard error ({100 * se:.2f}%), so it is limited by the "
+                  f"SEED-TO-SEED spread it stands in for, not by the measurement. Stage 3 "
+                  f"measures that spread; until then margins between {100 * se:.2f}% and "
+                  f"{100 * threshold:.1f}% are resolvable by the instrument but unproven "
+                  f"against training noise.")
         if threshold < se:
             print(f"WARNING: the threshold ({100 * threshold:.1f}%) is BELOW the estimator's "
                   f"standard error ({100 * se:.2f}%), so it cannot be met by evidence. Raise the "

@@ -741,6 +741,14 @@ def test_resume_refuses_to_mix_runs_made_under_different_metric_settings():
     src = open(SUBMIT).read()
     assert "metric_pairs" in src and "eval_kernel_draws" in src
     assert "STALE" in src and "queued for rerun" in src
+    # A MISSING key must count as stale. The first version wrote `if k in got and ...`, which made
+    # the guard inert for exactly the runs it existed to catch: the 17 stage-1 runs predated the
+    # recording of these settings, so their summaries had no such key, the comparison was skipped,
+    # and all 17 reported "comparable and complete" while having been trained at 4,096 pairs on a
+    # single eval draw. Absence of provenance is not evidence of comparability.
+    assert "if k not in got or int(got[k]) != int(v)" in src, \
+        "an unrecorded setting must count as stale, not as matching"
+    assert "UNRECORDED" in src, "the report must distinguish absent from mismatched"
     # the per-task re-check must honour the flag, or the wrapper's reruns are skipped again
     slurm = open(SLURM).read()
     assert 'cut -f4' in slurm, "the task must read the stale flag from the joblist"
@@ -803,3 +811,38 @@ def test_the_checker_reports_per_epoch_cost_excluding_the_first_epoch():
     assert "secs[1:]" in src, "the first epoch must be excluded from the median"
     assert "GPU-hours for a 500-epoch run" in src
     print("per-epoch cost is reported from the trajectory, first epoch excluded")
+
+
+def test_the_noise_floor_is_not_borrowed_from_runs_outside_the_table():
+    """A floor measured on one configuration must not be quoted for runs that lack it.
+
+    Pooling over every run under the sweep root attributed a noise floor measured on an 8-draw
+    smoke run to a table of single-draw runs with no error bar at all -- a number from a different
+    instrument, printed as though it described these. The floor is a property of the estimator each
+    run used, so it may only be quoted for the runs that used it, and a table where most runs lack
+    it must report the floor as unavailable rather than borrow one.
+    """
+    src = open(os.path.join(REPO, "scripts", "sweep", "analyze.py")).read()
+    assert "in_table" in src, "the floor must be pooled over the table's runs only"
+    assert "carry an error bar" in src
+    assert "borrowed" in src or "different configuration" in src
+    # and a table mixing estimator settings must say so before anyone reads the ranking
+    assert "DIFFERENT metric/eval settings" in src
+    assert "different instruments, not just different configurations" in src
+    print("the noise floor is scoped to the table, and mixed settings are flagged")
+
+
+def test_a_threshold_far_above_the_resolvable_limit_is_explained():
+    """Both directions matter, and only one was covered.
+
+    A threshold BELOW the estimator's standard error cannot be met by evidence -- already warned.
+    A threshold far ABOVE it is not a measurement limit at all: it is standing in for the
+    seed-to-seed spread stage 3 measures, and until then margins between the two are resolvable by
+    the instrument but unproven against training noise. Saying nothing there invites reading
+    'NOT distinguishable' as 'the instrument cannot see it', which is the opposite of the truth.
+    """
+    src = open(os.path.join(REPO, "scripts", "sweep", "analyze.py")).read()
+    assert "threshold > 5 * se" in src
+    assert "SEED-TO-SEED spread it stands in for" in src
+    assert "resolvable by the instrument but unproven" in src
+    print("a threshold far above the noise floor is explained, not just accepted")

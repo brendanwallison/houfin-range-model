@@ -102,18 +102,34 @@ MANIFEST="$SWEEP_ROOT/sweep_manifest.json"
 # not a slow path -- it is a FileNotFoundError per year, or worse, a silent fallback to a dir
 # built at a different tau. state_schema.json now records ema_tau for exactly that reason.
 echo "=== states dirs ==="
-MISSING_STATES="$("$PY" - "$MANIFEST" <<'PYS'
-import json, os, sys
+# Checks COMPLETENESS, not just existence. A build killed partway -- out of disk, out of wall
+# clock -- leaves a yearly_states directory that an isdir() test happily accepts, and the run
+# then trains on however many years happened to get written. That is a silent change to the
+# amount of data a sweep cell sees, which is the sweep's own independent variable. Compared
+# against the PRODUCTION states dir rather than a hardcoded count, so the expectation tracks the
+# timeline instead of drifting from it.
+PROD_STATES="$("$PY" -c "from src.config_utils import load_config; print(load_config()['paths']['hist_dir'])")"
+MISSING_STATES="$("$PY" - "$MANIFEST" "$PROD_STATES" <<'PYS'
+import glob, json, os, sys
 m = json.load(open(sys.argv[1]))
+prod = os.path.join(os.path.expandvars(sys.argv[2]), "yearly_states")
+n_prod = len(glob.glob(os.path.join(prod, "state_*.npz")))
 need = sorted({r["requires_states_dir"] for r in m["runs"] if r["requires_states_dir"]})
 for d in need:
     d = os.path.expandvars(d)
-    if not os.path.isdir(os.path.join(d, "yearly_states")):
-        print(d)
+    ys = os.path.join(d, "yearly_states")
+    if not os.path.isdir(ys):
+        print(f"{d}\tABSENT")
+        continue
+    n = len(glob.glob(os.path.join(ys, "state_*.npz")))
+    if n_prod and n < n_prod:
+        print(f"{d}\tINCOMPLETE: {n} of {n_prod} years")
+    elif not os.path.exists(os.path.join(d, "state_schema.json")):
+        print(f"{d}\tNO state_schema.json (the ema_tau provenance is missing)")
 PYS
 )"
 if [ -n "$MISSING_STATES" ]; then
-    echo "these yearly_states builds are required but absent:"
+    echo "these yearly_states builds are required but absent or incomplete:"
     echo "$MISSING_STATES" | sed 's/^/  /'
     echo "ema_tau is consumed at STATE-BUILD time (src/data/combine/streams.py applies it along"
     echo "the year axis as the arrays are written), not by DESK, so each tau variant is a"

@@ -704,3 +704,24 @@ def test_the_submit_wrapper_forwards_stop_at_to_the_generator():
     assert "SWEEP_STOP_AT" in src
     assert '--stop-at "$SWEEP_STOP_AT"' in src, "must reach the generator, not just be read"
     print("submit wrapper forwards --stop-at")
+
+
+def test_the_states_preflight_checks_completeness_not_just_existence():
+    """A states build killed partway leaves a directory that an isdir() test accepts.
+
+    Out of disk or out of wall clock, and yearly_states exists holding half the timeline. The run
+    then trains on however many years got written -- a silent change to the amount of data that
+    cell sees, which is the sweep's own independent variable, and nothing downstream compares the
+    year count against the timeline. The expected count comes from the PRODUCTION states dir so
+    it tracks the timeline rather than drifting from a hardcoded number.
+
+    The schema check matters for the same reason: without state_schema.json there is no ema_tau
+    provenance, so the dir cannot be told apart from one built at a different tau.
+    """
+    src = open(SUBMIT).read()
+    assert "INCOMPLETE" in src and "state_*.npz" in src, \
+        "the preflight must count years, not just test isdir()"
+    assert "n_prod" in src, "the expected count must come from the production dir"
+    assert "NO state_schema.json" in src, "a dir with no ema_tau provenance must be refused"
+    assert "absent or incomplete" in src
+    print("states preflight checks completeness and provenance")

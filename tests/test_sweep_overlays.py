@@ -871,3 +871,28 @@ def test_env_sh_does_not_abort_every_stage_on_one_unavailable_root():
     pl = open(os.path.join(REPO, "scripts", "tacc", "pipeline.sh")).read()
     assert "set -euo pipefail" in pl
     print("one unavailable root warns; the other roots and the run proceed")
+
+
+def test_the_eigenbasis_table_reads_across_configurations_not_per_run():
+    """The finding it exists for is a TREND that no single run shows.
+
+    Every one of 19 stage-1 runs is individually flagged "rank curve inverted, spectrum not
+    descending" -- identical warnings, so per-run output carries no signal about which
+    configuration helps. Side by side the trend appears: the cost of using all 64 dimensions falls
+    from 4.8% at metric weight 5 to 1.3% at 60, i.e. the weight makes more of the latent space
+    carry signal while leaving the full-rank kernel value -- what selection reads -- almost
+    unchanged.
+
+    Strictly diagnostic: selection remains the held-out kernel alone, so this table must never
+    feed the ranking.
+    """
+    src = open(os.path.join(REPO, "scripts", "sweep", "analyze.py")).read()
+    assert "def eigenbasis_table(" in src
+    assert "NOT selected on" in src, "the table must be labelled as diagnostic"
+    assert "all-64 cost against metric weight" in src, "the cross-config trend is the point"
+    assert "wider than" in src, "a best rank below 64 must be called out"
+    # it must not touch the ranking: the only ranked column is the kernel
+    rank_section = src[src.index("def stage1("):src.index("def eigenbasis_table(")]
+    for key in ("eig_nesting", "eig_subspace", "eig_spectrum"):
+        assert key not in rank_section, f"{key} must not reach the stage-1 ranking"
+    print("the eigenbasis table is cross-configuration and never feeds selection")

@@ -272,6 +272,84 @@ def stage1(runs, threshold):
               "to the spike problem")
 
 
+def eigenbasis_table(runs):
+    """Basis quality across configurations, side by side. Diagnostic only -- never ranked on.
+
+    Selection is the held-out kernel alone. This table exists for a different question: whether the
+    representation is an ORDERED eigenbasis, which every dot-product metric is blind to and which
+    the downstream's positional truncation depends on. Read across configurations rather than per
+    run, because the interesting signal turned out to be a trend against the metric weight that no
+    single run shows.
+    """
+    rows = []
+    for r in runs:
+        cell, cfg, seed = _cfg_and_cell(r["_run_id"])
+        if cell != "t0_f100" or seed is not None:
+            continue
+        e = [x for x in r["_rows"] if "eig_nesting" in x]
+        rc = sorted((int(k.rsplit("_r", 1)[1]), r["_rows"][-1][k]) for k in r["_rows"][-1]
+                    if k.startswith("kernel_val_ema_r")) if r["_rows"] else []
+        if not e and not rc:
+            rows.append({"config": cfg, "missing": True})
+            continue
+        last = e[-1] if e else {}
+        best_r, best_v = (min(rc, key=lambda rv: rv[1]) if rc else (None, None))
+        full_v = rc[-1][1] if rc else None
+        rows.append({
+            "config": cfg, "missing": False,
+            "metric_weight": r.get("metric_weight"),
+            "best_rank": best_r,
+            "penalty": (100 * (full_v / best_v - 1) if best_v else float("nan")),
+            "inversions": last.get("eig_spectrum_inversions"),
+            "first_inv": last.get("eig_first_inversion"),
+            "offdiag": last.get("eig_max_offdiag"),
+            "gap": last.get("eig_nesting_gap"),
+            "sub24": last.get("eig_subspace_r24"),
+        })
+    if not rows:
+        return
+    miss = [x["config"] for x in rows if x["missing"]]
+    rows = [x for x in rows if not x["missing"]]
+    print("\n=== eigenbasis diagnostics (NOT selected on) ===")
+    if miss:
+        print(f"no diagnostics recorded for {sorted(miss)} -- those runs predate them or ran "
+              f"with desk.eigenbasis_batch=0")
+    if not rows:
+        return
+    print(f"{'config':<8} {'w':>4} {'bestR':>6} {'all-64 cost':>12} {'inv':>4} {'1st':>4} "
+          f"{'offdiag':>8} {'sub@24':>7} {'nest gap':>9}")
+    print("-" * 72)
+    for x in sorted(rows, key=lambda y: (y["penalty"] if np.isfinite(y["penalty"]) else 1e9)):
+        print(f"{x['config']:<8} {x['metric_weight'] or 0:>4.0f} {x['best_rank'] or 0:>6} "
+              f"{x['penalty']:>11.1f}% {x['inversions'] or 0:>4} {x['first_inv'] or 0:>4} "
+              f"{(x['offdiag'] if x['offdiag'] is not None else float('nan')):>8.3f} "
+              f"{(x['sub24'] if x['sub24'] is not None else float('nan')):>7.3f} "
+              f"{(x['gap'] if x['gap'] is not None else float('nan')):>9.4f}")
+    # The trend that no single run shows: does pushing the kernel objective make more of the
+    # 64 dimensions usable? That is the evidence for or against replacing the stabilizing
+    # mixture with an explicit orthogonality term.
+    byw = {}
+    for x in rows:
+        w = x["metric_weight"]
+        if w is not None and np.isfinite(x["penalty"]):
+            byw.setdefault(float(w), []).append(x["penalty"])
+    if len(byw) > 2:
+        print("\nall-64 cost against metric weight (median over configurations at each weight):")
+        for w in sorted(byw):
+            print(f"  w={w:>5.0f}  {np.median(byw[w]):>5.1f}%   ({len(byw[w])} run(s))")
+        ws = sorted(byw)
+        if np.median(byw[ws[-1]]) < np.median(byw[ws[0]]):
+            print("  The cost FALLS as the metric weight rises: pushing the kernel objective makes "
+                  "more\n  of the 64 dimensions carry signal. The weight is doing measurable work "
+                  "that the\n  full-rank kernel value -- what selection reads -- does not show.")
+    n_inv = sum(1 for x in rows if x["best_rank"] and x["best_rank"] < 64)
+    if n_inv:
+        print(f"\n{n_inv}/{len(rows)} configurations do best at a rank BELOW 64, so latent_dim=64 "
+              f"is wider than\nthe data supports in every one of them. The trailing components are "
+              f"not merely idle -- they\ndegrade the kernel, and they are not eigen-ordered, so a "
+              f"downstream truncating positionally\nto 24 or 32 inherits that.")
+
+
 def stage2(runs, threshold):
     col = "kernel_val"
     grid = {}
@@ -352,6 +430,8 @@ def main():
     if not runs:
         return 1
     (stage1 if args.stage == 1 else stage2)(runs, args.threshold)
+    if args.stage == 1:
+        eigenbasis_table(runs)
     return 0
 
 

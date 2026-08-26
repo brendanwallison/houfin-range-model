@@ -2313,7 +2313,14 @@ def test_the_tiles_partition_the_grid_exactly():
             for r0, _r1, c0, _c1, ir0, ir1, ic0, ic1 in tiles:
                 cover[r0 + ir0:r0 + ir1, c0 + ic0:c0 + ic1] += 1
             assert cover.min() == 1 and cover.max() == 1, (H, W, n, cover.min(), cover.max())
-            assert len(tiles) <= max(n, 1) * 2, (H, W, n, len(tiles))
+            assert len(tiles) <= max(n, 1) * 4, (H, W, n, len(tiles))
+            # A JITTERED offset must stay an exact cover too: it only adds a leading partial
+            # band, so per-epoch coverage stays complete and the stabilizing term stays unbiased.
+            for off in ((3, 0), (0, 5), (7, 11), (H - 1, W - 1)):
+                cov2 = np.zeros((H, W), int)
+                for r0, _r1, c0, _c1, ir0, ir1, ic0, ic1 in spatial_tiles(H, W, n, 2, offset=off):
+                    cov2[r0 + ir0:r0 + ir1, c0 + ic0:c0 + ic1] += 1
+                assert cov2.min() == 1 and cov2.max() == 1, (H, W, n, off, cov2.min(), cov2.max())
 
 
 def test_tiling_multiplies_the_optimizer_steps():
@@ -2353,7 +2360,8 @@ def test_tiling_multiplies_the_optimizer_steps():
                                   _metric_dict(x, m & ~ho, years), m & ~ho, ho, dims,
                                   latent_dim=L, ema_cfg={"earlystop_warmup": 0},
                                   spatial_kernel=5, epochs=EP, schema=sch, dropout=0.1,
-                                  metric_pairs=128, n_spatial_tiles=nt)
+                                  metric_pairs=128, n_spatial_tiles=nt,
+                                  tiles_per_step=1, tile_jitter=False)
         finally:
             torch.optim.AdamW.step = real_step
             torch.optim.lr_scheduler.LambdaLR.step = real_sched
@@ -2366,3 +2374,122 @@ def test_tiling_multiplies_the_optimizer_steps():
     assert lr_steps[1] == lr_steps[4] == EP + 1, lr_steps
     print(f"steps/epoch: 1 tile -> {counts[1] / EP:.0f}, 4 tiles -> {counts[4] / EP:.0f}; "
           f"LR steps {lr_steps[4]} either way")
+
+
+def test_grouping_tiles_per_step_restores_long_range_pairs():
+    """k tiles per step must give ~1/k the steps, and let pairs span tiles.
+
+    Why this matters: with ONE contiguous tile per step, the probability that two cells are ever
+    compared by the metric term is ``max(0, 1 - d/tile_width)`` -- exactly zero beyond one tile
+    width, however often the boundaries are re-drawn. Grouping k tiles per step makes the pair
+    draw range over their union, so cells at ANY separation can be compared.
+    """
+    import contextlib
+    import io
+
+    from src.community_encoder.train_DESK import desk_training as D
+
+    sch = _schema()
+    dims = [s["dim"] for s in sch["streams"]]
+    L, EP = 16, 4
+    rng = np.random.default_rng(0)
+    cov = rng.normal(size=(6, 12, 14, sch["total_dim"])).astype("float32")
+    years = list(range(2020, 2026))
+    m = np.ones((12, 14), bool)
+    ho = np.zeros((12, 14), bool); ho[:, :4] = True
+    tgt = {y: (rng.normal(size=(12, 14, L)).astype("float32"), m & ~ho, ho,
+               np.ones((12, 14), dtype="float32")) for y in years[1:]}
+    x = rng.random((12, 14, 12)).astype("float32")
+
+    steps = {}
+    real_step = torch.optim.AdamW.step
+    for k in (1, 2):
+        c = {"n": 0}
+        torch.optim.AdamW.step = lambda self, *a, **kw: (c.__setitem__("n", c["n"] + 1),
+                                                         real_step(self, *a, **kw))[1]
+        try:
+            with contextlib.redirect_stdout(io.StringIO()):
+                D.train_model_ema(cov, np.ones((6, 12, 14), bool), years, tgt,
+                                  _metric_dict(x, m & ~ho, years), m & ~ho, ho, dims,
+                                  latent_dim=L, ema_cfg={"earlystop_warmup": 0},
+                                  spatial_kernel=5, epochs=EP, schema=sch, dropout=0.1,
+                                  metric_pairs=128, n_spatial_tiles=4,
+                                  tiles_per_step=k, tile_jitter=False)
+        finally:
+            torch.optim.AdamW.step = real_step
+        steps[k] = c["n"]
+
+    # k=2 pairs the 4 tiles into 2 groups, so half the steps -- the cost of long-range pairs
+    assert steps[1] == 4 * EP, steps
+    assert steps[2] == 2 * EP, steps
+
+    # The real claim: the pair draw must actually be able to cross tiles. Build the union the
+    # trainer builds and check that a uniform draw over it produces pairs whose two members sit in
+    # DIFFERENT tiles -- impossible when k == 1.
+    tiles = D.spatial_tiles(12, 14, 4, 2)
+    a, b = tiles[0], tiles[-1]
+    na = (a[5] - a[4]) * (a[7] - a[6])
+    nb = (b[5] - b[4]) * (b[7] - b[6])
+    idx = np.random.default_rng(0).integers(0, na + nb, size=(2, 4096))
+    crossed = ((idx[0] < na) != (idx[1] < na)).mean()
+    assert crossed > 0.4, crossed
+    # and those two tiles are genuinely non-adjacent: opposite corners of the grid
+    assert a[4] + a[0] < b[4] + b[0] and a[6] + a[0] < b[6] + b[0]
+    print(f"steps/epoch: k=1 -> {steps[1] / EP:.0f}, k=2 -> {steps[2] / EP:.0f}; "
+          f"{crossed:.0%} of union pairs cross tiles")
+
+
+def test_nesting_is_actually_applied_under_spatial_tiling():
+    """weights['nesting'] must reach the optimizer when tiling is on, not be silently dropped.
+
+    The tiled path cannot use the cached global nesting batches -- their cell-years are scattered
+    over the whole grid while a tiled step only holds z for the slabs it forwarded -- so the Gram is
+    rebuilt per step. That is exactly the kind of substitution that can quietly end up computing
+    nothing, and the pure-nesting arm (every other weight 0) would then train on an all-zero loss
+    and look like a converged result. So: a pure-nesting tiled run must differ from a
+    zero-everything tiled run, and a PROBE must not.
+    """
+    import contextlib
+    import io
+
+    from src.community_encoder.train_DESK import desk_training as D
+
+    sch = _schema()
+    dims = [s["dim"] for s in sch["streams"]]
+    L, EP = 16, 3
+    rng = np.random.default_rng(0)
+    cov = rng.normal(size=(6, 12, 14, sch["total_dim"])).astype("float32")
+    years = list(range(2020, 2026))
+    m = np.ones((12, 14), bool)
+    ho = np.zeros((12, 14), bool); ho[:, :4] = True
+    tgt = {y: (rng.normal(size=(12, 14, L)).astype("float32"), m & ~ho, ho,
+               np.ones((12, 14), dtype="float32")) for y in years[1:]}
+    x = rng.random((12, 14, 12)).astype("float32")
+
+    def run(w, probe=False):
+        torch.manual_seed(0)
+        with contextlib.redirect_stdout(io.StringIO()):
+            out = D.train_model_ema(
+                cov, np.ones((6, 12, 14), bool), years, tgt,
+                _metric_dict(x, m & ~ho, years), m & ~ho, ho, dims,
+                latent_dim=L, ema_cfg={"earlystop_warmup": 0}, spatial_kernel=5,
+                epochs=EP, schema=sch, dropout=0.0, metric_pairs=64,
+                n_spatial_tiles=4, tiles_per_step=2, tile_jitter=False,
+                nesting_batch=16, nesting_batches=1, nesting_probe=probe,
+                weights={"stabilizing": 0.0, "metric": 0.0, "reconstruction": 0.0,
+                         "nesting": w})
+        mdl = out[0] if isinstance(out, tuple) else out
+        return torch.cat([p.detach().reshape(-1) for p in mdl.parameters()])
+
+    dead = run(0.0)
+    nested = run(1.0)
+    probed = run(0.0, probe=True)
+
+    d_nest = float((nested - dead).abs().max())
+    d_probe = float((probed - dead).abs().max())
+    assert d_nest > 1e-7, (
+        f"nesting weight 1.0 changed no weight under tiling (max delta {d_nest:.2e}) -- the term "
+        f"is being dropped, so a pure-nesting tiled run would train on nothing")
+    assert d_probe == 0.0, (
+        f"probe mode moved weights by {d_probe:.2e}; it must only log")
+    print(f"tiled pure-nesting moves weights by {d_nest:.2e}; probe by {d_probe:.2e}")

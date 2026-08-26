@@ -574,7 +574,28 @@ def _param_groups(modules, weight_decay):
             {"params": no_decay, "weight_decay": 0.0}]
 
 
-def spatial_tiles(h, w, n_tiles, halo):
+def _tile_edges(n, k, off):
+    """Interior boundaries along one axis: ``k`` bands of ~``n/k``, shifted by ``off``.
+
+    ``off`` is taken modulo the band width, so it only ever adds a leading partial band -- the
+    result is always a complete, non-overlapping cover of ``0..n``.
+    """
+    if k <= 1:
+        return [0, n]
+    step = n / k
+    off = int(off) % max(1, int(round(step)))
+    edges = [0]
+    x = off
+    while x < n:
+        if x > edges[-1]:
+            edges.append(int(x))
+        x += step
+    if edges[-1] < n:
+        edges.append(n)
+    return edges
+
+
+def spatial_tiles(h, w, n_tiles, halo, offset=(0, 0)):
     """Split an ``(h, w)`` grid into ~``n_tiles`` rectangles, each with a halo. Pure.
 
     Returns ``[(r0, r1, c0, c1, ir0, ir1, ic0, ic1)]`` where the first four bound the slab to
@@ -590,6 +611,13 @@ def spatial_tiles(h, w, n_tiles, halo):
 
     Tiles are made as square as possible because the halo is perimeter overhead: a 1-cell-wide
     strip would be almost entirely halo.
+
+    ``offset`` shifts the interior boundaries by ``(dr, dc)`` cells, leaving partial bands at the
+    top and left. Drawn fresh each epoch, it stops the partition from being a fixed structure: with
+    static edges the same cells share a tile for the whole run and two cells either side of a
+    boundary are never compared, which bakes an arbitrary grid into the objective. The partition
+    stays exact -- every cell is in exactly one interior, so per-epoch coverage is complete and the
+    stabilizing term stays unbiased.
     """
     n = max(1, int(n_tiles))
     halo = max(0, int(halo))
@@ -599,10 +627,10 @@ def spatial_tiles(h, w, n_tiles, halo):
     nc = max(1, int(np.ceil(n / nr)))
     nc = min(nc, w)
     out = []
-    r_edges = [int(round(i * h / nr)) for i in range(nr + 1)]
-    c_edges = [int(round(j * w / nc)) for j in range(nc + 1)]
-    for i in range(nr):
-        for j in range(nc):
+    r_edges = _tile_edges(h, nr, int(offset[0]))
+    c_edges = _tile_edges(w, nc, int(offset[1]))
+    for i in range(len(r_edges) - 1):
+        for j in range(len(c_edges) - 1):
             ir0, ir1 = r_edges[i], r_edges[i + 1]
             ic0, ic1 = c_edges[j], c_edges[j + 1]
             if ir1 <= ir0 or ic1 <= ic0:
@@ -648,7 +676,7 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
                     eigenbasis_batch=0, eigenbasis_every=0, eigenbasis_ref=None,
                     eigenbasis_draws=1,
                     nesting_batch=2048, nesting_batches=8, nesting_probe=False,
-                    n_spatial_tiles=1,
+                    n_spatial_tiles=1, tiles_per_step=2, tile_jitter=True,
                     selection_metric="val_zmse",
                     selection_smooth=0,
                     trajectory_path=None, stop_at_epoch=None, return_info=False,
@@ -805,31 +833,42 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
     # target share of the objective.
     nest_probe = bool(nesting_probe)
     nest_batches = []
+    # With spatial tiling the cached global batches are UNUSABLE: their cell-years are scattered
+    # over the whole grid, but a tiled step only has z for the slabs it forwarded. So under tiling
+    # the Gram is built per step over the rows of the tiles in that step -- 0.4 GFLOP and 16 MB at
+    # B=2048, against ~38 TFLOP for a full step, so building it fresh is not the binding cost. The
+    # masks are shared either way.
+    nest_tiled = int(n_spatial_tiles) > 1
     if (nest_w > 0 or nest_probe) and int(nesting_batch) >= 8:
         from .nested_lora import joint_nesting_masks as _jnm
         from .nested_lora import ruzicka_gram as _rg
         _npool = int(pool_t.shape[0])
         _bs = min(int(nesting_batch), _npool)
         _rng_n = np.random.default_rng(seed + 5701)
-        for _bi in range(max(1, int(nesting_batches))):
+        for _bi in range(0 if nest_tiled else max(1, int(nesting_batches))):
             _idx = _rng_n.choice(_npool, _bs, replace=False) if _npool > _bs \
                 else np.arange(_npool)
             _it = torch.as_tensor(_idx, device=device, dtype=torch.long)
             nest_batches.append({"t": pool_t[_it], "flat": pool_flat[_it],
                                  "gram": _rg(pool_x[_it])})
         nest_masks = _jnm(latent_dim, 1, device=device, dtype=torch.float32)
+        nest_gram_fn, nest_bs = _rg, _bs
         print(f"[desk] NestedLoRA "
               + (f"objective ON (weight {nest_w:g})" if nest_w > 0 else
                  "PROBE only (weight 0, computed and logged, NOT added to the loss)")
-              + f": {len(nest_batches)} cached "
-              f"batches of {_bs:,} training cell-years, {_bs}x{_bs} Ružička block each "
-              f"({len(nest_batches) * _bs * _bs * 4 / 2**20:.0f} MB total), rotated per epoch",
+              + (f": Gram built PER STEP over the tiles in that step, up to {_bs:,} cell-years "
+                 f"({_bs * _bs * 4 / 2**20:.0f} MB), because a tiled step only holds z for the "
+                 f"slabs it forwarded" if nest_tiled else
+                 f": {len(nest_batches)} cached "
+                 f"batches of {_bs:,} training cell-years, {_bs}x{_bs} Ružička block each "
+                 f"({len(nest_batches) * _bs * _bs * 4 / 2**20:.0f} MB total), rotated per epoch"),
               flush=True)
     elif nest_w > 0 or nest_probe:
         raise ValueError(f"weights['nesting']={nest_w} but nesting_batch={nesting_batch} is too "
                          f"small to form a batch; the term needs a kernel BLOCK, not pairs")
     else:
         nest_masks = None
+        nest_gram_fn, nest_bs = None, 0
 
     # --- the eigenbasis diagnostic's fixed batch -----------------------------------------------
     # A BATCH, not pairs: the nesting objective needs Tf = Kf, an operator applied to the feature
@@ -1223,34 +1262,53 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
     # cells bit-identical z to a full-grid forward -- see spatial_tiles. Each tile is then its own
     # optimizer step, and the year window stays whole within each.
     #
-    # A side effect worth naming: pairs for the metric term are drawn WITHIN a tile, so with n
-    # tiles the pool each draw sees is ~1/n the size and P(same cell) rises ~n-fold. Same-cell
-    # pairs -- the only ones carrying within-cell temporal information, and 0.035% of a full-pool
-    # draw -- become correspondingly more frequent. The matching cost is that pairs no longer span
-    # tiles, so the term sees only shorter-range spatial pairs.
+    # Two things follow from tiling that the metric term cares about, and they pull opposite ways.
+    # The pool each draw sees is ~1/n the size, so P(same cell) rises ~n-fold -- same-cell pairs are
+    # the only ones carrying within-cell temporal information and just 0.035% of a full-pool draw,
+    # so that is a gain. Against it, a single tile per step caps pair range at one tile width.
+    # tiles_per_step > 1 removes the cap without giving up the short-range enrichment: pairs are
+    # drawn over the union of k tiles, so ~(1 - 1/k) of them span tiles at unbounded distance while
+    # the rest stay within one. tile_jitter re-draws the partition offset each epoch so the
+    # boundaries are not a fixed structure baked into the objective.
     tiles = None
     if int(n_spatial_tiles) > 1:
         _H, _W = m_tr.shape
-        tiles = spatial_tiles(_H, _W, int(n_spatial_tiles), spatial_kernel // 2)
         _pf = pool_flat.detach().cpu().numpy()
         _pr, _pc = _pf // _W, _pf % _W
-        tile_rows = []
-        for (r0, _r1, c0, _c1, ir0, ir1, ic0, ic1) in tiles:
-            g0, g1, h0, h1 = r0 + ir0, r0 + ir1, c0 + ic0, c0 + ic1
-            sel = (_pr >= g0) & (_pr < g1) & (_pc >= h0) & (_pc < h1)
-            tile_rows.append(torch.as_tensor(np.flatnonzero(sel), device=device,
-                                             dtype=torch.long))
-        _kept = sum(int(t.numel()) for t in tile_rows)
+
+        def _make_tiles(offset=(0, 0)):
+            """Partition, plus each tile's metric-pool rows and their index into its interior.
+
+            Rebuilt per epoch when tile_jitter is on. pool_flat is a GLOBAL cell index, so it is
+            remapped to the interior's own flat layout here rather than in the training loop.
+            """
+            _t = spatial_tiles(_H, _W, int(n_spatial_tiles), spatial_kernel // 2, offset=offset)
+            rows, lflat = [], []
+            for (r0, _r1, c0, _c1, ir0, ir1, ic0, ic1) in _t:
+                g0, g1, h0, h1 = r0 + ir0, r0 + ir1, c0 + ic0, c0 + ic1
+                sel = np.flatnonzero((_pr >= g0) & (_pr < g1) & (_pc >= h0) & (_pc < h1))
+                rows.append(torch.as_tensor(sel, device=device, dtype=torch.long))
+                lflat.append(torch.as_tensor((_pr[sel] - g0) * (h1 - h0) + (_pc[sel] - h0),
+                                             device=device, dtype=torch.long))
+            return _t, rows, lflat
+
+        tiles, tile_rows, tile_lflat = _make_tiles()
+        _k = max(1, int(tiles_per_step))
+        _steps = int(np.ceil(sum(1 for t in tile_rows if t.numel() >= 2) / _k))
         _fwd = sum((r1 - r0) * (c1 - c0) for r0, r1, c0, c1, *_ in tiles) / (_H * _W)
-        print(f"[desk] spatial tiling: {len(tiles)} tiles -> {len(tiles)} optimizer steps per "
-              f"epoch ({len(tiles) * epochs:,} total, was {epochs:,}). Halo "
+        print(f"[desk] spatial tiling: {len(tiles)} tiles, {_k} per optimizer step -> ~{_steps} "
+              f"steps per epoch ({_steps * epochs:,} total, was {epochs:,}). Halo "
               f"{spatial_kernel // 2} cells, so {_fwd:.2f}x the grid is forwarded per epoch. "
-              f"Metric pool rows per tile: median "
-              f"{int(np.median([int(t.numel()) for t in tile_rows])):,} of {_kept:,}",
-              flush=True)
-        _empty = sum(1 for t in tile_rows if t.numel() < 4)
+              f"Jitter {'on' if tile_jitter else 'OFF'}. Metric pool rows per tile: median "
+              f"{int(np.median([int(t.numel()) for t in tile_rows])):,} of "
+              f"{sum(int(t.numel()) for t in tile_rows):,}", flush=True)
+        if _k > 1:
+            print(f"[desk] pairs are drawn over the UNION of the {_k} tiles in a step, so ~"
+                  f"{1.0 - 1.0 / _k:.0%} of them are cross-tile and unbounded in range; with "
+                  f"{_k} = 1 the reach ceiling would be one tile width", flush=True)
+        _empty = sum(1 for t in tile_rows if t.numel() < 2)
         if _empty:
-            print(f"[desk] NOTE {_empty} tile(s) hold fewer than 4 supervised cell-years and are "
+            print(f"[desk] NOTE {_empty} tile(s) hold fewer than 2 supervised cell-years and are "
                   f"skipped: a tile with no supervision contributes no gradient, and stepping on "
                   f"it would apply weight decay with no signal", flush=True)
 
@@ -1302,44 +1360,100 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
             torch.cuda.reset_peak_memory_stats()
 
         if tiles is not None:
-            # One optimizer step per tile. Tile order is shuffled each epoch so the last tile of
-            # one epoch is not always followed by the same first tile of the next, which would
-            # give the schedule a fixed spatial rhythm.
-            _order = np.random.default_rng(seed + 1000 + ep).permutation(len(tiles))
+            # One optimizer step per GROUP of k tiles. k>1 exists so the metric term keeps
+            # long-range pairs: with one tile per step, pairs can only be drawn within a tile, and
+            # for a CONTIGUOUS slab that means P(two cells compared) = max(0, 1 - d/tile_width) --
+            # exactly ZERO beyond one tile width, however often the boundaries are re-drawn. At 16
+            # tiles that ceiling is ~1650 km against a 6590 km grid diagonal, so the western native
+            # and eastern introduced ranges could never be compared. Re-drawing the offset each
+            # epoch does add transitive coupling (A~B then B~C), and the shared CNN weights tie the
+            # regions further, but neither pins a FAR pair's dot product: the ESK contract is
+            # dot(z_i,z_j) ~= Ruzicka for ANY two points, and fixing every local distance does not
+            # fix global geometry -- a chain of locally-rigid links can still curl.
+            #
+            # Two live tiles instead of a cached reference because BOTH pair members then carry
+            # gradient and neither is stale. A detached memory-bank cache of z at the pool's
+            # cell-years would be cheap (20 MB) but gives a one-sided gradient and a value up to an
+            # epoch old; forwarding both slabs is exact on both sides.
+            #
+            # Cost: at equal compute k tiles per step means 1/k the steps per epoch, and k slabs are
+            # resident at once. Raise spatial_tiles to compensate.
+            _rng = np.random.default_rng(seed + 1000 + ep)
+            if tile_jitter:
+                tiles, tile_rows, tile_lflat = _make_tiles(
+                    (int(_rng.integers(0, 1 << 20)), int(_rng.integers(0, 1 << 20))))
+            _live = [int(i) for i in _rng.permutation(len(tiles)) if tile_rows[i].numel() >= 2]
+            _k = max(1, int(tiles_per_step))
+            _groups = [_live[a:a + _k] for a in range(0, len(_live), _k)]
             _acc = {"stab": 0.0, "true": 0.0, "rec": 0.0, "n": 0}
             _nonfinite_tiles = 0
-            for _ti in _order:
-                _rows = tile_rows[_ti]
-                if _rows.numel() < 4:
-                    continue
-                r0, r1, c0, c1, ir0, ir1, ic0, ic1 = tiles[_ti]
-                g0, g1, h0, h1 = r0 + ir0, r0 + ir1, c0 + ic0, c0 + ic1
+            _cross = 0.0
+            _nest_acc = []
+            for _grp in _groups:
                 opt.zero_grad()
-                _zs, _rl = _forward_window(train_mode=True, mask_inputs=True,
-                                           box=(r0, r1, c0, c1))
-                _zi = _zs[:, ir0:ir1, ic0:ic1, :]                  # exact for the interior
-                _ih, _iw = _zi.shape[1], _zi.shape[2]
-                # stabilizing, over this tile's training cells only
+                _zparts, _lparts, _rparts = [], [], []
                 _sq, _ne = torch.zeros((), device=device), 0.0
-                for _y, (_zg, _tr, _va, _wg) in tgt.items():
-                    _t = _tr[g0:g1, h0:h1]
-                    if not bool(_t.any()):
-                        continue
-                    _d = _zi[yi[_y]][_t] - _zg[g0:g1, h0:h1][_t]
-                    _w = _wg[g0:g1, h0:h1][_t]
-                    _sq = _sq + (torch.sum(_d ** 2, dim=1) * _w).sum()
-                    _ne += float(_w.sum())
+                _rl = torch.zeros((), device=device)
+                _base = 0
+                for _ti in _grp:
+                    r0, r1, c0, c1, ir0, ir1, ic0, ic1 = tiles[_ti]
+                    g0, g1, h0, h1 = r0 + ir0, r0 + ir1, c0 + ic0, c0 + ic1
+                    _zs, _r = _forward_window(train_mode=True, mask_inputs=True,
+                                              box=(r0, r1, c0, c1))
+                    _zi = _zs[:, ir0:ir1, ic0:ic1, :]              # exact for the interior
+                    _rl = _rl + _r
+                    # stabilizing, over this tile's training cells only
+                    for _y, (_zg, _tr, _va, _wg) in tgt.items():
+                        _t = _tr[g0:g1, h0:h1]
+                        if not bool(_t.any()):
+                            continue
+                        _d = _zi[yi[_y]][_t] - _zg[g0:g1, h0:h1][_t]
+                        _w = _wg[g0:g1, h0:h1][_t]
+                        _sq = _sq + (torch.sum(_d ** 2, dim=1) * _w).sum()
+                        _ne += float(_w.sum())
+                    # flatten the interior onto a single cell axis, so the group's tiles become one
+                    # virtual grid the pair draw can span
+                    _T, _ih, _iw, _L = _zi.shape
+                    _zparts.append(_zi.reshape(_T, _ih * _iw, _L))
+                    _lparts.append(tile_lflat[_ti] + _base)
+                    _rparts.append(tile_rows[_ti])
+                    _base += _ih * _iw
                 _ls = _sq / max(_ne, 1e-8) / latent_dim
-                # metric, over pairs drawn from this tile's cell-years. pool_flat is a GLOBAL
-                # cell index, so it is remapped to the interior's own flat layout.
-                _lf = ((pool_flat[_rows] // m_tr.shape[1] - g0) * _iw
-                       + (pool_flat[_rows] % m_tr.shape[1] - h0))
+                _rl = _rl / len(_grp)
+                _zcat = torch.cat(_zparts, dim=1).unsqueeze(1)      # (T, 1, sum_cells, L)
+                _rows = torch.cat(_rparts) if len(_rparts) > 1 else _rparts[0]
+                _lf = torch.cat(_lparts) if len(_lparts) > 1 else _lparts[0]
                 _lt = spacetime_kernel_loss(
-                    _zi, pool_t[_rows], _lf, pool_x[_rows],
+                    _zcat, pool_t[_rows], _lf, pool_x[_rows],
                     num_pairs=int(metric_pairs),
                     pool_w=(None if pool_w_t is None else pool_w_t[_rows]))
+                if len(_grp) > 1:
+                    _n = np.array([int(t.numel()) for t in _rparts], dtype=float)
+                    _cross += float(1.0 - (_n ** 2).sum() / max(_n.sum() ** 2, 1.0))
                 _loss = (weights["stabilizing"] * _ls + weights["metric"] * _lt
                          + weights["reconstruction"] * _rl)
+                # NestedLoRA over the union of this step's tiles. Its batch is drawn from the same
+                # union the metric pairs are, so with tiles_per_step > 1 the Ružička block spans
+                # tiles and the eigenbasis it pushes toward is not a per-region one. That matters
+                # more here than for the metric term: the nesting objective is what FIXES the
+                # component ORDER, and positional truncation downstream reads z[..., :24], so an
+                # order that differs by region would silently hand the age model an arbitrary
+                # 24-D subspace.
+                if nest_masks is not None and _rows.numel() >= 8:
+                    from .nested_lora import nested_lora_loss as _nll
+                    _nn = min(int(nest_bs), int(_rows.numel()))
+                    _pick = torch.as_tensor(
+                        np.random.default_rng(seed + 5701 + ep * 977 + int(_grp[0])).choice(
+                            int(_rows.numel()), _nn, replace=False),
+                        device=device, dtype=torch.long)
+                    _fb = _zcat.reshape(_zcat.shape[0], -1, _zcat.shape[-1])[
+                        pool_t[_rows][_pick], _lf[_pick]]
+                    _nl, _np_parts = _nll(_fb, nest_gram_fn(pool_x[_rows][_pick]),
+                                          masks=nest_masks, return_parts=True)
+                    _np_parts["raw"] = _nl.detach()
+                    _nest_acc.append(_np_parts)
+                    if nest_w > 0:
+                        _loss = _loss + nest_w * _nl
                 if not torch.isfinite(_loss):
                     _nonfinite_tiles += 1
                     opt.zero_grad(set_to_none=True)
@@ -1350,18 +1464,22 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
                 opt.step()
                 _acc["stab"] += float(_ls.detach()); _acc["true"] += float(_lt.detach())
                 _acc["rec"] += float(_rl.detach()); _acc["n"] += 1
-            sched.step()                                  # one LR step per EPOCH, not per tile
+            sched.step()                                  # one LR step per EPOCH, not per group
             if _acc["n"] == 0:
                 nonfinite += 1
-                print(f"Ep {ep:03d} | every tile non-finite or empty -- epoch skipped "
+                print(f"Ep {ep:03d} | every tile group non-finite or empty -- epoch skipped "
                       f"({nonfinite} consecutive)", flush=True)
                 if nonfinite >= 5:
                     raise RuntimeError("DESK loss non-finite for 5 consecutive epochs; aborting")
                 continue
             nonfinite = 0
             if _nonfinite_tiles:
-                print(f"Ep {ep:03d} | {_nonfinite_tiles} of {len(tiles)} tiles non-finite, "
-                      f"skipped", flush=True)
+                print(f"Ep {ep:03d} | {_nonfinite_tiles} of {len(_groups)} tile groups "
+                      f"non-finite, skipped", flush=True)
+            if ep == 1 or ep % 25 == 0:
+                print(f"Ep {ep:03d} | {_acc['n']} steps over {len(_live)} live tiles"
+                      + (f", {_cross / max(len(_groups), 1):.0%} of pairs cross-tile"
+                         if _k > 1 else ""), flush=True)
             loss_stab = torch.tensor(_acc["stab"] / _acc["n"])
             loss_true = torch.tensor(_acc["true"] / _acc["n"])
             recon_loss = torch.tensor(_acc["rec"] / _acc["n"])
@@ -1370,6 +1488,11 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
             w_rec = weights["reconstruction"] * recon_loss
             loss = w_stab + w_true + w_rec
             w_nest, nest_parts = torch.zeros(()), None
+            if _nest_acc:
+                nest_parts = {k: torch.tensor(float(np.mean([float(d[k]) for d in _nest_acc])))
+                              for k in _nest_acc[0]}
+                w_nest = torch.tensor(nest_w * float(nest_parts["raw"]))
+                loss = loss + w_nest
         else:
             opt.zero_grad()
             z_ema, recon_loss = _forward_window(train_mode=True, mask_inputs=True)
@@ -2202,6 +2325,8 @@ def run_desk_experiment(config=None):
         nesting_batches=int(desk_cfg.get("nesting_batches", 8)),
         nesting_probe=bool(desk_cfg.get("nesting_probe", False)),
         n_spatial_tiles=int(desk_cfg.get("spatial_tiles", 1)),
+        tiles_per_step=int(desk_cfg.get("tiles_per_step", 2)),
+        tile_jitter=bool(desk_cfg.get("tile_jitter", True)),
         min_delta=float(desk_cfg.get("min_delta", 0.0)),
         selection_metric=str(desk_cfg.get("selection_metric", "val_zmse")),
         selection_smooth=int(desk_cfg.get("selection_smooth", 0)),

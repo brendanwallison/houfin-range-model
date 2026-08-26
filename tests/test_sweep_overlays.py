@@ -946,3 +946,27 @@ def test_the_smoothed_ranking_rejects_a_spike_and_needs_no_rerun():
     src = open(os.path.join(REPO, "scripts", "sweep", "analyze.py")).read()
     assert "--smooth" in src and "no rerun was needed" in src
     print("the smoothed ranking rejects a spike and is recomputed from saved trajectories")
+
+
+def test_the_rescore_runs_on_a_compute_node_not_a_login_node():
+    """It forwards ~86 whole grids per run and holds ~2 GB; a login node kills that.
+
+    The first attempt died mid-first-run with "Connection reset by peer" -- the login node's
+    process reaper doing its job. Nineteen runs x 86 forward passes, each holding z_raw and z_ema
+    for the window, is a batch workload, and the advice to run it interactively was wrong.
+
+    The wrapper must also validate the glob BEFORE submitting: a mistyped pattern that matches
+    nothing should fail in a second, not after a queue wait and an empty result file.
+    """
+    sub = os.path.join(REPO, "scripts", "tacc", "submit_rescore.sh")
+    slurm = os.path.join(REPO, "scripts", "tacc", "22_rescore.slurm")
+    assert os.path.exists(sub) and os.path.exists(slurm)
+    s, sl = open(sub).read(), open(slurm).read()
+    assert "--export=ALL" in s, "the job must inherit RESCORE_* from the submitting shell"
+    assert "-A $TACC_ALLOCATION" in s, "SLURM rejects a job with no allocation on this account"
+    assert 'matched nothing' in s, "a mistyped glob must fail before the queue wait"
+    assert "gpu-a100-small" in s, "one GPU is enough; a packed gpu-a100 node would be wasteful"
+    # the slurm script must refuse to run without being told what to score
+    assert 'RESCORE_GLOB:?' in sl, "an unset glob must fail loudly, not score nothing"
+    assert "NOT A LOGIN-NODE JOB" in sl, "the reason for the queue must be recorded"
+    print("the rescore is a batch job, with the glob validated before submission")

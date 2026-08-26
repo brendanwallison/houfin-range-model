@@ -326,17 +326,26 @@ def test_the_nesting_forward_matches_the_reference_implementation_exactly():
 
 @pytest.mark.skipif(not os.path.isdir(NEURAL_SVD),
                     reason="reference NeuralSVD implementation not present")
-def test_the_reference_backward_is_not_the_gradient_of_its_forward():
-    """Documents an UNRESOLVED discrepancy, so it cannot be forgotten if this becomes a loss.
+def test_the_reference_backward_supplies_a_factor_autograd_cannot_see():
+    """RESOLVED: the reference is right, and plain autograd on a detached Tf is wrong.
 
     The reference's custom backward returns ``-(4/B) * v * Tf`` for the operator term where plain
     autograd through the same forward gives ``-(2/B) * v * Tf`` -- a factor of two. The metric
     term's two gradients match exactly.
 
-    For a DIAGNOSTIC this is irrelevant: only the forward value is read, and that is verified exact
-    above. For a TRAINING LOSS it is disqualifying until explained -- either the factor accounts for
-    ``f1``/``f2`` being chunks of ``f`` in real use (so the true total derivative double-counts), or
-    one of the two is wrong. This test pins the observation rather than guessing which.
+    The explanation: the operator term is ``-2 sum_l v_l <f_l, T f_l>``, and because ``T`` is
+    self-adjoint with ``f`` on both sides, ``d/dtheta <f, Tf> = 2 <Tf, df/dtheta>``. The reference
+    receives ``Tf`` already computed and so cannot see the second occurrence, and supplies the
+    missing factor by hand.
+
+    Confirmed against central finite differences on a free parameterisation
+    (``tests/test_nested_lora.py::test_the_gradient_matches_central_finite_differences``): the
+    reference backward is correct to ~2e-9, autograd with a detached ``Tf`` is wrong by ~6e-2, and
+    building ``Tf`` inside the graph is correct to the same ~2e-9. ``nested_lora.py`` takes the
+    third route and therefore needs no hand-written backward at all.
+
+    Kept as a test so the factor cannot be "simplified" away by someone who notices autograd
+    disagrees with it.
     """
     import torch
 
@@ -363,6 +372,6 @@ def test_the_reference_backward_is_not_the_gradient_of_its_forward():
     # the metric term agrees exactly
     assert torch.allclose(a1.grad, b1.grad, atol=1e-12)
     assert torch.allclose(a2.grad, b2.grad, atol=1e-12)
-    # the operator term is off by exactly 2x -- pinned, not accepted
+    # the operator term is off by exactly 2x, and the reference is the correct one
     ratio = (a.grad / b.grad).flatten()
     assert torch.allclose(ratio, torch.full_like(ratio, 2.0), atol=1e-10), ratio[:5]

@@ -1563,8 +1563,13 @@ def test_the_stabilizing_target_excludes_the_buffer_and_any_thinned_blocks():
     n = H * W
     rr, cc = np.meshgrid(np.arange(H), np.arange(W), indexing="ij")
     pidx = np.stack([rr.ravel(), cc.ravel(), np.full(n, 2020)], axis=1)
-    saved_proj, saved_dir = K.project_points_to_z, D.target_points_dir if hasattr(
-        D, "target_points_dir") else None
+    # BOTH patches must be restored. An earlier version saved and restored only
+    # project_points_to_z, leaving D.load_point_set replaced by this fixture's lambda for the
+    # remainder of the session -- so any later test that loaded a point set silently got a
+    # 3-species stub. It passed in isolation and failed only in the full suite, which is the
+    # worst way for a leak to present.
+    saved_proj = K.project_points_to_z
+    saved_load = D.load_point_set
     try:
         K.project_points_to_z = lambda X, zd, ld: np.zeros((X.shape[0], ld), "float32")
         D.load_point_set = lambda _d: (np.ones((n, 3), "float32"), pidx,
@@ -1574,6 +1579,7 @@ def test_the_stabilizing_target_excludes_the_buffer_and_any_thinned_blocks():
                                      exclude=buf | drop)
     finally:
         K.project_points_to_z = saved_proj
+        D.load_point_set = saved_load
     _zg, tr, va, _wg = out[2020]
     assert not (tr & ho).any(), "held-out cells reached the stabilizing train mask"
     assert not (tr & buf).any(), "BUFFER cells reached the stabilizing train mask"

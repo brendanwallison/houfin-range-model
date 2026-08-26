@@ -607,6 +607,7 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
                     metric_pairs=4096,
                     eval_kernel_pairs=65536, eval_kernel_draws=1, eval_kernel_ranks=(),
                     eigenbasis_batch=0, eigenbasis_every=0, eigenbasis_ref=None,
+                    eigenbasis_draws=1,
                     selection_metric="val_zmse",
                     selection_smooth=0,
                     trajectory_path=None, stop_at_epoch=None, return_info=False,
@@ -755,24 +756,33 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
         _ekeep = np.array([int(y) in yi for y in _ey], dtype=bool)
         _n = int(_ekeep.sum())
         if _n >= 8:
-            _sel = np.flatnonzero(_ekeep)
-            if _n > int(eigenbasis_batch):
-                _sel = np.random.default_rng(seed + 31337).choice(
-                    _sel, int(eigenbasis_batch), replace=False)
-            eig_batch = {
-                "t": torch.as_tensor(np.array([yi[int(_ey[k])] for k in _sel]),
-                                     device=device, dtype=torch.long),
-                "flat": torch.as_tensor(_ef[_sel], device=device, dtype=torch.long),
-                "x": np.asarray(_ex[_sel], dtype="float64"),
-                # ESK's own projection of the SAME communities: an ordered eigenbasis by
-                # construction, so its diagnostic values are the achievable floor at this
-                # Nyström rank and DESK's gap to them is the honest measure.
-                "ref": (None if eigenbasis_ref is None
-                        else np.asarray(eigenbasis_ref)[_sel]),
-            }
-            print(f"[desk] eigenbasis diagnostic: {len(_sel):,} held-out cell-years, "
-                  f"Ružička block {len(_sel)}x{len(_sel)}, every {eigenbasis_every} eval(s)"
-                  + ("" if eig_batch["ref"] is not None else
+            _pool = np.flatnonzero(_ekeep)
+            # INDEPENDENT batches, not one. A single batch gives a nesting gap with no error bar,
+            # which is precisely the state the kernel metric was in before eval_kernel_draws: an
+            # 18% spread across configurations that cannot be told from sampling noise. Each batch
+            # is its own fixed draw, so the value stays comparable epoch to epoch while the spread
+            # across batches measures how much of any between-configuration difference is real.
+            eig_batch = []
+            for _di in range(max(1, int(eigenbasis_draws))):
+                _sel = _pool
+                if _n > int(eigenbasis_batch):
+                    _sel = np.random.default_rng(seed + 31337 + 7919 * _di).choice(
+                        _pool, int(eigenbasis_batch), replace=False)
+                eig_batch.append({
+                    "t": torch.as_tensor(np.array([yi[int(_ey[k])] for k in _sel]),
+                                         device=device, dtype=torch.long),
+                    "flat": torch.as_tensor(_ef[_sel], device=device, dtype=torch.long),
+                    "x": np.asarray(_ex[_sel], dtype="float64"),
+                    # ESK's own projection of the SAME communities: an ordered eigenbasis by
+                    # construction, so its values are the achievable floor at this Nyström rank
+                    # and DESK's gap to them is the honest measure.
+                    "ref": (None if eigenbasis_ref is None
+                            else np.asarray(eigenbasis_ref)[_sel]),
+                })
+            print(f"[desk] eigenbasis diagnostic: {len(eig_batch)} x {len(_sel):,} held-out "
+                  f"cell-years, Ružička block {len(_sel)}x{len(_sel)}, every "
+                  f"{eigenbasis_every} eval(s)"
+                  + ("" if eig_batch[0]["ref"] is not None else
                      " -- NO ESK reference (subspace/nesting gap unavailable)"), flush=True)
         else:
             print(f"[desk] eigenbasis diagnostic: only {_n} held-out points in the window, "
@@ -1287,13 +1297,18 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
                 if eig_batch is not None and eigenbasis_every and (
                         ep % int(eigenbasis_every) == 0 or ep == epochs):
                     from .eigenbasis_diag import eigenbasis_report, ruzicka_gram
-                    if "g" not in _eig_gram:
-                        _eig_gram["g"] = ruzicka_gram(eig_batch["x"])
                     _zf = z_eval.reshape(z_eval.shape[0], -1, z_eval.shape[-1])
-                    _zb = _zf[eig_batch["t"], eig_batch["flat"]].detach().cpu().numpy()
-                    _rep = eigenbasis_report(_zb, eig_batch["x"], z_ref=eig_batch["ref"],
-                                             ranks=tuple(int(r) for r in eval_kernel_ranks),
-                                             gram=_eig_gram["g"])
+                    _reps = []
+                    for _bi, _b in enumerate(eig_batch):
+                        if _bi not in _eig_gram:
+                            _eig_gram[_bi] = ruzicka_gram(_b["x"])
+                        _zb = _zf[_b["t"], _b["flat"]].detach().cpu().numpy()
+                        _reps.append(eigenbasis_report(
+                            _zb, _b["x"], z_ref=_b["ref"],
+                            ranks=tuple(int(r) for r in eval_kernel_ranks),
+                            gram=_eig_gram[_bi]))
+                    _rep = _reps[0]
+                    _gaps = [r["nesting_gap"] for r in _reps if "nesting_gap" in r]
                     eig = {
                         "eig_max_offdiag": _rep["orthogonality"]["max_offdiag"],
                         "eig_offdiag_mean": _rep["orthogonality"]["mean_abs_offdiag"],
@@ -1305,8 +1320,14 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
                         "eig_nesting": _rep["nesting"]["nesting_loss"],
                         "eig_nesting_ratio": _rep["nesting"]["operator_metric_ratio"],
                     }
-                    if "nesting_gap" in _rep:
-                        eig["eig_nesting_gap"] = _rep["nesting_gap"]
+                    if _gaps:
+                        # Mean over independent batches, plus their spread: the same treatment the
+                        # kernel metric gets, so a between-configuration difference in the gap can
+                        # be judged against the gap's own sampling noise instead of assumed real.
+                        eig["eig_nesting_gap"] = float(np.mean(_gaps))
+                        eig["eig_nesting_gap_sd"] = (float(np.std(_gaps, ddof=1))
+                                                     if len(_gaps) > 1 else 0.0)
+                        eig["eig_nesting_gap_draws"] = len(_gaps)
                         eig["eig_nesting_ref"] = _rep["nesting_ref"]["nesting_loss"]
                         eig.update({f"eig_subspace_r{r}": v
                                     for r, v in _rep["subspace_vs_ref"].items()})
@@ -1922,6 +1943,7 @@ def run_desk_experiment(config=None):
         eigenbasis_batch=int(desk_cfg.get("eigenbasis_batch", 0)),
         eigenbasis_every=int(desk_cfg.get("eigenbasis_every", 0)),
         eigenbasis_ref=eig_ref,
+        eigenbasis_draws=int(desk_cfg.get("eigenbasis_draws", 1)),
         min_delta=float(desk_cfg.get("min_delta", 0.0)),
         selection_metric=str(desk_cfg.get("selection_metric", "val_zmse")),
         selection_smooth=int(desk_cfg.get("selection_smooth", 0)),

@@ -1942,7 +1942,7 @@ def test_the_eigenbasis_diagnostic_runs_off_graph_on_a_cadence(tmp_path):
         assert key in e, key
     assert np.isfinite(e["eig_nesting"]) and np.isfinite(e["eig_nesting_gap"])
     assert all(torch.isfinite(p).all() for p in model.parameters())
-    assert "eigenbasis diagnostic: 120 held-out cell-years" in out.getvalue()
+    assert "eigenbasis diagnostic: 1 x 120 held-out cell-years" in out.getvalue()
     print(f"eigenbasis fields on epochs {have}, all finite, weights unharmed")
 
 
@@ -1972,5 +1972,69 @@ def test_too_few_held_out_points_disables_the_diagnostic_loudly():
                         eigenbasis_batch=4, eigenbasis_every=1)
     # 240 val points are available, so a request for 4 is honoured; the guard is on the POOL
     # being too small, which the fixture cannot make. Assert the batch is capped by the request.
-    assert "eigenbasis diagnostic: 4 held-out cell-years" in txt, txt
+    assert "eigenbasis diagnostic: 1 x 4 held-out cell-years" in txt, txt
     print("the eigenbasis batch is the requested size, drawn from the val pool")
+
+
+def test_the_nesting_gap_gets_an_error_bar_from_independent_batches(tmp_path):
+    """An 18% spread across configurations means nothing without the gap's own sampling noise.
+
+    The nesting gap separated the 19 stage-1 configurations by 18% -- against ~7% for the kernel,
+    and with the baseline ranking 16th of 19 rather than 3rd -- on ONE fixed batch of held-out
+    points. Reporting a more discriminating number without its error bar is exactly how the
+    single-draw kernel estimate misled, so the fix is the same: independent batches, mean plus
+    spread.
+
+    Each batch stays a FIXED draw so the value remains comparable epoch to epoch; the spread is
+    across batches, not across epochs.
+    """
+    import contextlib
+    import io
+
+    from src.community_encoder.train_DESK import desk_training as D
+
+    sch = _schema()
+    dims = [s["dim"] for s in sch["streams"]]
+    T, H, W, L = 6, 10, 12, 16
+    rng = np.random.default_rng(0)
+    cov = rng.normal(size=(T, H, W, sch["total_dim"])).astype("float32")
+    years = list(range(2020, 2026))
+    m = np.ones((H, W), bool)
+    ho = np.zeros((H, W), bool); ho[:, :4] = True
+    tr_m, va_m = m & ~ho, m & ho
+    tgt = {y: (rng.normal(size=(H, W, L)).astype("float32"), tr_m, va_m,
+               np.ones((H, W), dtype="float32")) for y in years[1:]}
+    x = rng.random((H, W, 12)).astype("float32")
+    vp = _metric_dict(x, va_m, years)
+    ref = rng.normal(size=(len(vp[0]), L)).astype("float32")
+    path = tmp_path / "nd.jsonl"
+    out = io.StringIO()
+    with contextlib.redirect_stdout(out):
+        D.train_model_ema(
+            cov, np.ones((T, H, W), bool), years, tgt, _metric_dict(x, tr_m, years),
+            tr_m, va_m, dims, latent_dim=L, ema_cfg={"earlystop_warmup": 1}, spatial_kernel=3,
+            epochs=2, weights={"stabilizing": 64.0, "metric": 5.0, "reconstruction": 0.1},
+            schema=sch, dropout=0.1, val_metric_pool=vp, metric_pairs=512,
+            eval_kernel_pairs=256, eval_kernel_draws=2, eval_kernel_ranks=(4, 8),
+            selection_metric="val_kernel", trajectory_path=str(path),
+            eigenbasis_batch=60, eigenbasis_every=1, eigenbasis_ref=ref, eigenbasis_draws=4)
+    txt = out.getvalue()
+    assert "eigenbasis diagnostic: 4 x 60 held-out cell-years" in txt, txt
+    e = [json.loads(l) for l in open(path)][-1]
+    assert e["eig_nesting_gap_draws"] == 4
+    assert np.isfinite(e["eig_nesting_gap"]) and np.isfinite(e["eig_nesting_gap_sd"])
+    assert e["eig_nesting_gap_sd"] > 0, "independent batches must disagree by something"
+    # a single batch reports zero spread, not nan -- unmeasurable from one sample, not absent
+    path1 = tmp_path / "n1.jsonl"
+    with contextlib.redirect_stdout(io.StringIO()):
+        D.train_model_ema(
+            cov, np.ones((T, H, W), bool), years, tgt, _metric_dict(x, tr_m, years),
+            tr_m, va_m, dims, latent_dim=L, ema_cfg={"earlystop_warmup": 1}, spatial_kernel=3,
+            epochs=2, weights={"stabilizing": 64.0, "metric": 5.0, "reconstruction": 0.1},
+            schema=sch, dropout=0.1, val_metric_pool=vp, metric_pairs=512,
+            eval_kernel_pairs=256, eval_kernel_draws=2, eval_kernel_ranks=(4,),
+            selection_metric="val_kernel", trajectory_path=str(path1),
+            eigenbasis_batch=60, eigenbasis_every=1, eigenbasis_ref=ref, eigenbasis_draws=1)
+    e1 = [json.loads(l) for l in open(path1)][-1]
+    assert e1["eig_nesting_gap_draws"] == 1 and e1["eig_nesting_gap_sd"] == 0.0
+    print(f"nesting gap {e['eig_nesting_gap']:.4f} +- {e['eig_nesting_gap_sd']:.4f} over 4 batches")

@@ -351,6 +351,9 @@ def eigenbasis_table(runs):
             "first_inv": last.get("eig_first_inversion"),
             "offdiag": last.get("eig_max_offdiag"),
             "gap": last.get("eig_nesting_gap"),
+            "gap_sd": last.get("eig_nesting_gap_sd"),
+            "nest": last.get("eig_nesting"),
+            "ratio": last.get("eig_nesting_ratio"),
             "sub24": last.get("eig_subspace_r24"),
         })
     if not rows:
@@ -363,15 +366,45 @@ def eigenbasis_table(runs):
               f"with desk.eigenbasis_batch=0")
     if not rows:
         return
-    print(f"{'config':<8} {'w':>4} {'bestR':>6} {'all-64 cost':>12} {'inv':>4} {'1st':>4} "
-          f"{'offdiag':>8} {'sub@24':>7} {'nest gap':>9}")
-    print("-" * 72)
-    for x in sorted(rows, key=lambda y: (y["penalty"] if np.isfinite(y["penalty"]) else 1e9)):
+    # Ordered by the NESTING GAP, which is the NeuralSVD loss against ESK's value on the same
+    # batch. It is one scalar (operator term + metric term), not a composite of many pieces, and
+    # it is the closest thing here to "how far is this a genuine ordered eigenbasis".
+    print(f"{'config':<8} {'w':>4} {'bestR':>6} {'all-64':>7} {'inv':>4} {'1st':>4} "
+          f"{'offdiag':>8} {'sub@24':>7} {'nest gap':>9} {'+-':>7} {'op/met':>7}")
+    print("-" * 84)
+    def _g(x):
+        return x["gap"] if x["gap"] is not None and np.isfinite(x["gap"]) else 1e9
+    for x in sorted(rows, key=_g):
         print(f"{x['config']:<8} {x['metric_weight'] or 0:>4.0f} {x['best_rank'] or 0:>6} "
-              f"{x['penalty']:>11.1f}% {x['inversions'] or 0:>4} {x['first_inv'] or 0:>4} "
+              f"{x['penalty']:>6.1f}% {x['inversions'] or 0:>4} {x['first_inv'] or 0:>4} "
               f"{(x['offdiag'] if x['offdiag'] is not None else float('nan')):>8.3f} "
               f"{(x['sub24'] if x['sub24'] is not None else float('nan')):>7.3f} "
-              f"{(x['gap'] if x['gap'] is not None else float('nan')):>9.4f}")
+              f"{(x['gap'] if x['gap'] is not None else float('nan')):>9.4f} "
+              f"{(x['gap_sd'] if x['gap_sd'] is not None else float('nan')):>7.4f} "
+              f"{(x['ratio'] if x['ratio'] is not None else float('nan')):>7.3f}")
+    # Is the gap's spread across configurations bigger than the gap's own sampling noise? Without
+    # this the ordering above is just an ordering.
+    gaps = [x["gap"] for x in rows if x["gap"] is not None and np.isfinite(x["gap"])]
+    sds = [x["gap_sd"] for x in rows
+           if x["gap_sd"] is not None and np.isfinite(x["gap_sd"]) and x["gap_sd"] > 0]
+    if len(gaps) > 1:
+        spread = 100 * (max(gaps) / min(gaps) - 1)
+        if sds:
+            nd = int(next((r.get("eig_nesting_gap_draws", 1) for x in rows for r in [{}]), 1))
+            rel = 100 * float(np.median(sds)) / float(np.median(gaps))
+            print(f"\nnesting gap: {spread:.0f}% spread across configurations, against a "
+                  f"per-batch sd of {rel:.1f}%.")
+            if spread > 3 * rel:
+                print("  The spread is well above the diagnostic's own noise, so the ordering "
+                      "above is a real\n  difference between configurations -- and note it is a "
+                      "DIFFERENT ordering from the kernel's.")
+            else:
+                print("  The spread is NOT clearly above the noise; do not read the ordering.")
+        else:
+            print(f"\nnesting gap: {spread:.0f}% spread across configurations, but NO error bar "
+                  f"(single batch).\n  Raise desk.eigenbasis_draws before reading this ordering "
+                  f"-- a more discriminating number\n  without its noise is how the kernel "
+                  f"metric misled.")
     # The trend that no single run shows: does pushing the kernel objective make more of the
     # 64 dimensions usable? That is the evidence for or against replacing the stabilizing
     # mixture with an explicit orthogonality term.

@@ -83,7 +83,33 @@ def _stable_tail(rows, col, frac=0.1):
     return float(np.median(v[-max(3, int(len(v) * frac)):]))
 
 
-def stage1(runs, threshold):
+def _smoothed_min(series, window):
+    """``(value, epoch)`` of the trailing-median minimum. The robust argmin.
+
+    The plain argmin of a noisy series is not a property of the model: 14 of 19 stage-1
+    configurations moved >= 2 places between the argmin ranking and the spike-free tail ranking,
+    and one moved 15. A trailing median over a few epochs removes the lucky single evaluation
+    without shifting the estimand, and it can be computed from the recorded trajectory -- so the
+    robust ranking costs nothing, where re-running 19 configurations under
+    ``desk.selection_smooth`` costs ~17 GPU-hours.
+
+    The window is trailing rather than centred so the reported epoch is one the run actually
+    reached, which matters because that epoch is what a production retrain is told to stop at.
+    """
+    vals = [(x["epoch"], x["v"]) for x in series if np.isfinite(x["v"])]
+    if not vals:
+        return float("nan"), None
+    w = max(1, int(window))
+    best = (float("inf"), None)
+    for i in range(len(vals)):
+        lo = max(0, i - w + 1)
+        med = float(np.median([v for _e, v in vals[lo:i + 1]]))
+        if i + 1 >= w and med < best[0]:
+            best = (med, vals[i][0])
+    return best if best[1] is not None else (vals[0][1], vals[0][0])
+
+
+def stage1(runs, threshold, smooth=0):
     col = "kernel_val"
     rows = []
     for r in runs:
@@ -99,7 +125,10 @@ def stage1(runs, threshold):
               if x.get("kernel_val") is not None and np.isfinite(x["kernel_val"])]
         zv = [(x["zmse_val"], x["epoch"]) for x in r["_rows"]
               if x.get("zmse_val") is not None and np.isfinite(x["zmse_val"])]
-        k_min, k_ep = min(kv) if kv else (float("nan"), None)
+        if smooth > 1:
+            k_min, k_ep = _smoothed_min([{"epoch": e, "v": v} for v, e in kv], smooth)
+        else:
+            k_min, k_ep = min(kv) if kv else (float("nan"), None)
         rows.append({
             "config": cfg,
             "best_epoch": k_ep if k_ep is not None else r["best_epoch"],
@@ -182,6 +211,11 @@ def stage1(runs, threshold):
         print("WARNING: no `base` run -- every margin below is unanchored")
     rows.sort(key=lambda x: (np.inf if not np.isfinite(x["kernel"]) else x["kernel"]))
 
+    if smooth > 1:
+        print(f"ranked on the {smooth}-epoch TRAILING MEDIAN of {col}, not its raw argmin. The "
+              f"argmin of a noisy series is not a property of the model, and this metric swings "
+              f"~2x between adjacent epochs at high LR. Recomputed from the recorded "
+              f"trajectories, so no rerun was needed.\n")
     print(f"{'config':<8} {'ep':>4} {'kernel':>10} {'tail':>10} {'spike':>6} "
           f"{'zmse':>8} {'vs base':>9}  verdict")
     print("-" * 78)
@@ -421,6 +455,10 @@ def main():
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--root", required=True)
     ap.add_argument("--stage", type=int, default=1)
+    ap.add_argument("--smooth", type=int, default=0, metavar="N",
+                    help="rank on the N-epoch trailing median of the kernel instead of its raw "
+                         "argmin. Removes the lucky-evaluation bias without retraining, since it "
+                         "is recomputed from the saved trajectories.")
     ap.add_argument("--threshold", type=float, default=0.05,
                     help="relative margin a configuration must beat the baseline by to count "
                          "(default 0.05, PROVISIONAL -- replace with the stage-3 seed spread)")
@@ -429,7 +467,10 @@ def main():
     print(f"{len(runs)} finished run(s) under {args.root}\n")
     if not runs:
         return 1
-    (stage1 if args.stage == 1 else stage2)(runs, args.threshold)
+    if args.stage == 1:
+        stage1(runs, args.threshold, smooth=args.smooth)
+    else:
+        stage2(runs, args.threshold)
     if args.stage == 1:
         eigenbasis_table(runs)
     return 0

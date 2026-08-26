@@ -896,3 +896,43 @@ def test_the_eigenbasis_table_reads_across_configurations_not_per_run():
     for key in ("eig_nesting", "eig_subspace", "eig_spectrum"):
         assert key not in rank_section, f"{key} must not reach the stage-1 ranking"
     print("the eigenbasis table is cross-configuration and never feeds selection")
+
+
+def test_the_smoothed_ranking_rejects_a_spike_and_needs_no_rerun():
+    """The robust ranking must be recomputable from the trajectories already on disk.
+
+    14 of 19 stage-1 configurations moved >= 2 places between the argmin ranking and the
+    spike-free tail ranking, one of them by 15 places -- so the argmin is noise-dominated and
+    unusable for selection. The tool's own advice was to set desk.selection_smooth and rerun, which
+    is ~17 GPU-hours. But smoothing only changes WHICH epoch is chosen, and every epoch's value is
+    recorded, so the ranking can be recomputed for free. Only the saved checkpoints would come from
+    the unsmoothed epoch, and stage 1 needs the ranking.
+
+    The window is trailing, not centred, because the reported epoch is what a production retrain
+    would be told to stop at -- it has to be an epoch the run actually reached.
+    """
+    import numpy as np
+
+    from scripts.sweep.analyze import _smoothed_min
+
+    rng = np.random.default_rng(0)
+    v = [0.010 * (1 + 0.8 * np.exp(-e / 12)) + rng.normal(0, 0.0004) for e in range(1, 101)]
+    v[11] = 0.0062                      # an isolated lucky evaluation, far from the basin
+    series = [{"epoch": i + 1, "v": x} for i, x in enumerate(v)]
+
+    raw_ep = min(range(len(v)), key=lambda i: v[i]) + 1
+    sm_v, sm_ep = _smoothed_min(series, 5)
+    assert sm_ep != raw_ep, "smoothing must reject the spike the raw argmin picks"
+    assert sm_v > min(v), "the smoothed value must not inherit the spike's biased-low value"
+
+    # window 1 is a no-op, so an unsmoothed run stays exactly comparable
+    one_v, one_ep = _smoothed_min(series, 1)
+    assert one_ep == raw_ep and one_v == pytest.approx(min(v))
+
+    # an all-nan series is unavailable, not zero
+    nan_v, nan_ep = _smoothed_min([{"epoch": 1, "v": float("nan")}], 3)
+    assert nan_ep is None and not np.isfinite(nan_v)
+
+    src = open(os.path.join(REPO, "scripts", "sweep", "analyze.py")).read()
+    assert "--smooth" in src and "no rerun was needed" in src
+    print("the smoothed ranking rejects a spike and is recomputed from saved trajectories")

@@ -228,7 +228,7 @@ def stage1(runs, threshold, smooth=0):
               f"argmin of a noisy series is not a property of the model, and this metric swings "
               f"~2x between adjacent epochs at high LR. Recomputed from the recorded "
               f"trajectories, so no rerun was needed.\n")
-    print(f"{'config':<8} {'ep':>4} {'kernel':>10} {'tail':>10} {'spike':>6} "
+    print(f"{'config':<8} {'ep':>4} {'kernel':>10} {'endval':>10} {'spike':>6} "
           f"{'zmse':>8} {'vs base':>9}  verdict")
     print("-" * 78)
     for x in rows:
@@ -246,7 +246,7 @@ def stage1(runs, threshold, smooth=0):
             verdict = f"within +-{100 * threshold:.0f}% -- NOT distinguishable"
         flag = "  <-- SPIKE" if np.isfinite(x["spike"]) and x["spike"] >= 2 else ""
         print(f"{x['config']:<8} {x['best_epoch']:>4} {x['kernel']:>10.6f} "
-              f"{x['tail']:>10.6f} {x['spike']:>6.2f} {x['zmse']:>8.4f} "
+              f"{x['endval']:>10.6f} {x['spike']:>6.2f} {x['zmse']:>8.4f} "
               f"{100 * rel:>8.1f}%  {verdict}{flag}")
     print()
     print(f"threshold = {100 * threshold:.0f}% relative. PROVISIONAL until stage 3 measures the "

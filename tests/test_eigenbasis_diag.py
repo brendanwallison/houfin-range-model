@@ -285,3 +285,84 @@ def test_the_gram_is_chunked_and_bit_identical_to_the_unchunked_form():
     g = ruzicka_gram(x, y, max_block_mib=1)
     assert g.shape == (300, 37) and np.isfinite(g).all()
     print("the chunked Gram is bit-identical at every block size")
+
+
+NEURAL_SVD = "/Users/breallis/Dev/neural-svd"
+
+
+@pytest.mark.skipif(not os.path.isdir(NEURAL_SVD),
+                    reason="reference NeuralSVD implementation not present")
+def test_the_nesting_forward_matches_the_reference_implementation_exactly():
+    """Numerical equivalence with the paper's own code, which is the only decisive check.
+
+    Every other test here compares against constructed cases -- an orthonormal basis, a component
+    swap, a rotation. Those verify the diagnostic behaves sensibly, not that it computes the
+    published objective. This compares against
+    ``methods/nestedlora.py:NestedLoRALossFunctionEVD.forward`` directly, and the masks against
+    ``get_joint_nesting_masks``.
+
+    Skipped rather than vendored when the reference is absent: copying it in to keep a test green
+    would mean testing our copy against our copy.
+    """
+    import torch
+
+    sys.path.insert(0, NEURAL_SVD)
+    from methods.nestedlora import (NestedLoRALossFunctionEVD,  # noqa: E402
+                                    get_joint_nesting_masks)
+
+    rng = np.random.default_rng(0)
+    for B, L in ((64, 6), (128, 8), (256, 16)):
+        f, tf = rng.normal(size=(B, L)), rng.normal(size=(B, L))
+        v_ref, m_ref = get_joint_nesting_masks(np.ones(L))
+        v_mine, m_mine = joint_nesting_masks(L)
+        assert np.allclose(v_ref.numpy(), v_mine), (L, v_ref, v_mine)
+        assert np.allclose(m_ref.numpy(), m_mine), L
+        ref = float(NestedLoRALossFunctionEVD.apply(
+            torch.tensor(f), torch.tensor(tf),
+            torch.tensor(f[:B // 2]), torch.tensor(f[B // 2:2 * (B // 2)]), v_ref, m_ref))
+        mine = nesting_objective(f, tf)["nesting_loss"]
+        assert abs(ref - mine) < 1e-12 * max(abs(ref), 1.0), (B, L, ref, mine)
+
+
+@pytest.mark.skipif(not os.path.isdir(NEURAL_SVD),
+                    reason="reference NeuralSVD implementation not present")
+def test_the_reference_backward_is_not_the_gradient_of_its_forward():
+    """Documents an UNRESOLVED discrepancy, so it cannot be forgotten if this becomes a loss.
+
+    The reference's custom backward returns ``-(4/B) * v * Tf`` for the operator term where plain
+    autograd through the same forward gives ``-(2/B) * v * Tf`` -- a factor of two. The metric
+    term's two gradients match exactly.
+
+    For a DIAGNOSTIC this is irrelevant: only the forward value is read, and that is verified exact
+    above. For a TRAINING LOSS it is disqualifying until explained -- either the factor accounts for
+    ``f1``/``f2`` being chunks of ``f`` in real use (so the true total derivative double-counts), or
+    one of the two is wrong. This test pins the observation rather than guessing which.
+    """
+    import torch
+
+    sys.path.insert(0, NEURAL_SVD)
+    from methods.nestedlora import (NestedLoRALossFunctionEVD,  # noqa: E402
+                                    get_joint_nesting_masks)
+
+    torch.manual_seed(0)
+    B, L = 128, 8
+    f0 = torch.randn(B, L, dtype=torch.float64)
+    tf = torch.randn(B, L, dtype=torch.float64)
+    v, m = get_joint_nesting_masks(np.ones(L))
+    v, m = v.double(), m.double()
+
+    a, a1, a2 = (f0.clone().requires_grad_(True), f0[:B // 2].clone().requires_grad_(True),
+                 f0[B // 2:].clone().requires_grad_(True))
+    NestedLoRALossFunctionEVD.apply(a, tf, a1, a2, v, m).backward()
+
+    b, b1, b2 = (f0.clone().requires_grad_(True), f0[:B // 2].clone().requires_grad_(True),
+                 f0[B // 2:].clone().requires_grad_(True))
+    lam1, lam2 = b1.T @ b1 / b1.shape[0], b2.T @ b2 / b2.shape[0]
+    (-2 * torch.einsum('l,bl,bl->b', v, b, tf).mean() + (m * lam1 * lam2).sum()).backward()
+
+    # the metric term agrees exactly
+    assert torch.allclose(a1.grad, b1.grad, atol=1e-12)
+    assert torch.allclose(a2.grad, b2.grad, atol=1e-12)
+    # the operator term is off by exactly 2x -- pinned, not accepted
+    ratio = (a.grad / b.grad).flatten()
+    assert torch.allclose(ratio, torch.full_like(ratio, 2.0), atol=1e-10), ratio[:5]

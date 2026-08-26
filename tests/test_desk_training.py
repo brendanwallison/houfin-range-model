@@ -2188,3 +2188,181 @@ def test_a_nesting_batch_too_small_for_a_kernel_block_is_refused():
         raise AssertionError("a batch too small for a kernel block must be refused")
     except ValueError as exc:
         assert "kernel BLOCK, not pairs" in str(exc), str(exc)
+
+
+def test_pure_nesting_descends_through_the_real_network_path(tmp_path):
+    """The gradient must survive the gather AND the EMA scan AND gradient checkpointing.
+
+    Every other test of this objective uses a FREE ``f``: they establish that its minimiser is the
+    ordered eigenbasis, and say nothing about whether the gradient reaches network weights through
+    the production path -- ``z_ema`` from a checkpointed per-year forward, then an advanced-index
+    gather at the batch's cell-years. That path could silently detach and the loss would still be
+    computed, logged, and finite.
+
+    Run with EVERY other weight at zero, which is also the arm worth testing first: if nesting is
+    to replace the stabilizing and metric terms rather than supplement them, it has to train the
+    network on its own. The assertion is that the term actually goes DOWN -- a loss that is merely
+    finite proves nothing.
+    """
+    import contextlib
+    import io
+
+    from src.community_encoder.train_DESK import desk_training as D
+
+    sch = _schema()
+    dims = [s["dim"] for s in sch["streams"]]
+    T, H, W, L = 6, 10, 12, 16
+    rng = np.random.default_rng(0)
+    cov = rng.normal(size=(T, H, W, sch["total_dim"])).astype("float32")
+    years = list(range(2020, 2026))
+    m = np.ones((H, W), bool)
+    ho = np.zeros((H, W), bool); ho[:, :4] = True
+    tr, va = m & ~ho, m & va if False else m & ho
+    tgt = {y: (rng.normal(size=(H, W, L)).astype("float32"), m & ~ho, ho,
+               np.ones((H, W), dtype="float32")) for y in years[1:]}
+    x = rng.random((H, W, 12)).astype("float32")
+    path = tmp_path / "pure.jsonl"
+    with contextlib.redirect_stdout(io.StringIO()):
+        model, _ema = D.train_model_ema(
+            cov, np.ones((T, H, W), bool), years, tgt, _metric_dict(x, m & ~ho, years),
+            m & ~ho, ho, dims, latent_dim=L, ema_cfg={"earlystop_warmup": 0}, spatial_kernel=3,
+            epochs=40, lr=1e-2,
+            weights={"stabilizing": 0.0, "metric": 0.0, "reconstruction": 0.0, "nesting": 1.0},
+            schema=sch, dropout=0.1, val_metric_pool=_metric_dict(x, ho, years),
+            metric_pairs=256, eval_kernel_pairs=256, eval_kernel_draws=2,
+            selection_metric="val_kernel", trajectory_path=str(path),
+            nesting_batch=96, nesting_batches=2)
+    rows = [json.loads(l) for l in open(path)]
+    raw = [r["nesting_raw"] for r in rows]
+    assert all(np.isfinite(v) for v in raw), raw[:5]
+    assert raw[-1] < raw[0] - 0.1, (
+        f"pure nesting did not descend ({raw[0]:+.4f} -> {raw[-1]:+.4f}); the gradient is not "
+        f"reaching the weights through the gather/EMA path")
+    # the guard must stay near 1: with the halves re-permuted each call, the network has no stable
+    # half to push magnitude into, so a drift here would mean the protection failed
+    assert rows[-1]["nesting_half_imbalance"] < 3.0, rows[-1]["nesting_half_imbalance"]
+    # the zero-weighted terms are still computed and logged, and must not have moved the weights
+    assert np.isfinite(rows[-1]["loss_stab"]) and np.isfinite(rows[-1]["loss_metric"])
+    assert all(torch.isfinite(p).all() for p in model.parameters())
+    print(f"pure nesting {raw[0]:+.4f} -> {raw[-1]:+.4f}, half_imbalance "
+          f"{rows[-1]['nesting_half_imbalance']:.2f}")
+
+
+def test_a_tile_interior_is_bit_identical_to_the_full_grid_forward():
+    """The claim that makes tiling exact rather than an approximation.
+
+    The output EMA is causal over YEARS, so the whole year window must stay intact -- but cells
+    interact only through the ``kernel x kernel`` residual conv, which reaches ``kernel//2``. A slab
+    padded by that halo therefore gives its interior cells exactly the neighbours a full-grid
+    forward would, including PartialConv2d's valid-neighbour renormalisation.
+
+    ``gamma`` MUST be opened first. It initialises to 0 precisely so training starts point-wise, so
+    on a fresh model the spatial residual contributes nothing and every halo width -- including
+    zero -- matches. The first version of this test omitted that and passed vacuously.
+    """
+    from src.community_encoder.train_DESK.desk_training import OutputEMA, spatial_tiles
+    from src.community_encoder.train_DESK.model_arch import MultiStreamAutoencoder
+
+    torch.manual_seed(0)
+    sch = _schema()
+    dims = [s["dim"] for s in sch["streams"]]
+    T, H, W, L, K = 5, 24, 26, 16, 5
+    cov = torch.randn(T, H, W, sch["total_dim"])
+    msk = torch.ones(T, H, W, dtype=torch.bool)
+    model = MultiStreamAutoencoder(dims, L, K, dropout=0.0, hidden_width=16).eval()
+    assert float(model.gamma.detach()) == 0.0, "gamma should init to 0 (point-wise start)"
+    with torch.no_grad():
+        model.gamma.fill_(0.85)                  # open the gate or the test proves nothing
+    ema = OutputEMA(1.0, 40.0, 8.0)
+
+    def fwd(box=None):
+        r0, r1, c0, c1 = box or (0, H, 0, W)
+        with torch.no_grad():
+            zs = [model(cov[t:t + 1, r0:r1, c0:c1], msk[t:t + 1, r0:r1, c0:c1])[0][0]
+                  for t in range(T)]
+            return ema(torch.stack(zs, 0))
+
+    full = fwd()
+
+    def worst_for(halo):
+        w = 0.0
+        for r0, r1, c0, c1, ir0, ir1, ic0, ic1 in spatial_tiles(H, W, 4, halo):
+            ti = fwd((r0, r1, c0, c1))[:, ir0:ir1, ic0:ic1, :]
+            ref = full[:, r0 + ir0:r0 + ir1, c0 + ic0:c0 + ic1, :]
+            w = max(w, (ti - ref).abs().max().item())
+        return w
+
+    assert worst_for(K // 2) < 1e-6, worst_for(K // 2)      # exact at the derived halo
+    assert worst_for(K // 2 + 1) < 1e-6                     # and wider is fine
+    # too narrow MUST differ, or the halo is not what is making it exact
+    assert worst_for(0) > 1e-3, worst_for(0)
+    assert worst_for(1) > 1e-3, worst_for(1)
+
+
+def test_the_tiles_partition_the_grid_exactly():
+    """Every cell must be the interior of exactly one tile -- no gaps, no double-counting.
+
+    A gap silently drops supervision; an overlap double-weights it. Neither shows up as an error.
+    """
+    from src.community_encoder.train_DESK.desk_training import spatial_tiles
+
+    for H, W in ((172, 173), (60, 40), (7, 5)):
+        for n in (1, 4, 16, 64):
+            cover = np.zeros((H, W), int)
+            tiles = spatial_tiles(H, W, n, 2)
+            for r0, _r1, c0, _c1, ir0, ir1, ic0, ic1 in tiles:
+                cover[r0 + ir0:r0 + ir1, c0 + ic0:c0 + ic1] += 1
+            assert cover.min() == 1 and cover.max() == 1, (H, W, n, cover.min(), cover.max())
+            assert len(tiles) <= max(n, 1) * 2, (H, W, n, len(tiles))
+
+
+def test_tiling_multiplies_the_optimizer_steps():
+    """The whole point: n tiles must give n steps per epoch, with one LR step per EPOCH.
+
+    The LR schedule is parameterised in epochs (``_warmup_cosine`` takes the epoch budget), so
+    stepping it per tile would compress the anneal by the tile count and train a different model.
+    """
+    import contextlib
+    import io
+
+    from src.community_encoder.train_DESK import desk_training as D
+
+    sch = _schema()
+    dims = [s["dim"] for s in sch["streams"]]
+    L, EP = 16, 5
+    rng = np.random.default_rng(0)
+    cov = rng.normal(size=(6, 12, 14, sch["total_dim"])).astype("float32")
+    years = list(range(2020, 2026))
+    m = np.ones((12, 14), bool)
+    ho = np.zeros((12, 14), bool); ho[:, :4] = True
+    tgt = {y: (rng.normal(size=(12, 14, L)).astype("float32"), m & ~ho, ho,
+               np.ones((12, 14), dtype="float32")) for y in years[1:]}
+    x = rng.random((12, 14, 12)).astype("float32")
+
+    counts, lr_steps = {}, {}
+    real_step, real_sched = torch.optim.AdamW.step, torch.optim.lr_scheduler.LambdaLR.step
+    for nt in (1, 4):
+        c = {"opt": 0, "sched": 0}
+        torch.optim.AdamW.step = lambda self, *a, **k: (c.__setitem__("opt", c["opt"] + 1),
+                                                        real_step(self, *a, **k))[1]
+        torch.optim.lr_scheduler.LambdaLR.step = lambda self, *a, **k: (
+            c.__setitem__("sched", c["sched"] + 1), real_sched(self, *a, **k))[1]
+        try:
+            with contextlib.redirect_stdout(io.StringIO()):
+                D.train_model_ema(cov, np.ones((6, 12, 14), bool), years, tgt,
+                                  _metric_dict(x, m & ~ho, years), m & ~ho, ho, dims,
+                                  latent_dim=L, ema_cfg={"earlystop_warmup": 0},
+                                  spatial_kernel=5, epochs=EP, schema=sch, dropout=0.1,
+                                  metric_pairs=128, n_spatial_tiles=nt)
+        finally:
+            torch.optim.AdamW.step = real_step
+            torch.optim.lr_scheduler.LambdaLR.step = real_sched
+        counts[nt], lr_steps[nt] = c["opt"], c["sched"]
+    assert counts[1] == EP, counts
+    assert counts[4] == 4 * EP, counts
+    # The LR schedule advances once per EPOCH regardless of tile count -- stepping it per tile
+    # would compress the cosine anneal by the tile count and train a different model. EP+1 because
+    # LambdaLR.__init__ calls step() once to set the initial LR.
+    assert lr_steps[1] == lr_steps[4] == EP + 1, lr_steps
+    print(f"steps/epoch: 1 tile -> {counts[1] / EP:.0f}, 4 tiles -> {counts[4] / EP:.0f}; "
+          f"LR steps {lr_steps[4]} either way")

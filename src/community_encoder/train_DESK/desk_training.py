@@ -574,6 +574,45 @@ def _param_groups(modules, weight_decay):
             {"params": no_decay, "weight_decay": 0.0}]
 
 
+def spatial_tiles(h, w, n_tiles, halo):
+    """Split an ``(h, w)`` grid into ~``n_tiles`` rectangles, each with a halo. Pure.
+
+    Returns ``[(r0, r1, c0, c1, ir0, ir1, ic0, ic1)]`` where the first four bound the slab to
+    FORWARD (interior plus halo) and the last four are the interior's offsets WITHIN that slab.
+
+    Why this is exact rather than an approximation: the output EMA is a causal scan over the YEAR
+    axis, so every cell needs its whole year series -- but cells are independent of each other
+    except through the ``kernel x kernel`` spatial residual conv, which reaches ``kernel//2``
+    cells. Forward a slab padded by that halo and the interior cells see exactly the neighbours
+    they would have seen in a full-grid forward, so their z is identical. ``PartialConv2d``
+    renormalises by valid-neighbour count, and the halo supplies those neighbours, so even the
+    renormalisation matches.
+
+    Tiles are made as square as possible because the halo is perimeter overhead: a 1-cell-wide
+    strip would be almost entirely halo.
+    """
+    n = max(1, int(n_tiles))
+    halo = max(0, int(halo))
+    # rows x cols of tiles, as close to square as n allows
+    nr = max(1, int(round(np.sqrt(n * h / max(w, 1)))))
+    nr = min(nr, h)
+    nc = max(1, int(np.ceil(n / nr)))
+    nc = min(nc, w)
+    out = []
+    r_edges = [int(round(i * h / nr)) for i in range(nr + 1)]
+    c_edges = [int(round(j * w / nc)) for j in range(nc + 1)]
+    for i in range(nr):
+        for j in range(nc):
+            ir0, ir1 = r_edges[i], r_edges[i + 1]
+            ic0, ic1 = c_edges[j], c_edges[j + 1]
+            if ir1 <= ir0 or ic1 <= ic0:
+                continue
+            r0, r1 = max(0, ir0 - halo), min(h, ir1 + halo)
+            c0, c1 = max(0, ic0 - halo), min(w, ic1 + halo)
+            out.append((r0, r1, c0, c1, ir0 - r0, ir1 - r0, ic0 - c0, ic1 - c0))
+    return out
+
+
 def _warmup_cosine(epochs, warmup, min_frac):
     """LR multiplier: linear warmup then cosine decay to ``min_frac``.
 
@@ -608,7 +647,8 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
                     eval_kernel_pairs=65536, eval_kernel_draws=1, eval_kernel_ranks=(),
                     eigenbasis_batch=0, eigenbasis_every=0, eigenbasis_ref=None,
                     eigenbasis_draws=1,
-                    nesting_batch=2048, nesting_batches=8,
+                    nesting_batch=2048, nesting_batches=8, nesting_probe=False,
+                    n_spatial_tiles=1,
                     selection_metric="val_zmse",
                     selection_smooth=0,
                     trajectory_path=None, stop_at_epoch=None, return_info=False,
@@ -758,8 +798,14 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
     # the no-cache path would only cost ~500 Grams per run. Measured: 16 MB and 0.4 GFLOP per Gram
     # at B=2048, against ~38 TFLOP for a single training step, so neither is the binding cost.
     nest_w = float((weights or {}).get("nesting", 0.0))
+    # `nesting_probe` computes and logs the term WITHOUT adding it to the loss. There is no
+    # principled starting weight otherwise: the term's scale on real communities has never been
+    # measured, and the toy values (-4 to -0.004) do not transfer. One probe run -- which is just
+    # the baseline, since the loss is untouched -- gives the magnitude needed to set a weight for a
+    # target share of the objective.
+    nest_probe = bool(nesting_probe)
     nest_batches = []
-    if nest_w > 0 and int(nesting_batch) >= 8:
+    if (nest_w > 0 or nest_probe) and int(nesting_batch) >= 8:
         from .nested_lora import joint_nesting_masks as _jnm
         from .nested_lora import ruzicka_gram as _rg
         _npool = int(pool_t.shape[0])
@@ -772,11 +818,14 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
             nest_batches.append({"t": pool_t[_it], "flat": pool_flat[_it],
                                  "gram": _rg(pool_x[_it])})
         nest_masks = _jnm(latent_dim, 1, device=device, dtype=torch.float32)
-        print(f"[desk] NestedLoRA objective ON (weight {nest_w:g}): {len(nest_batches)} cached "
+        print(f"[desk] NestedLoRA "
+              + (f"objective ON (weight {nest_w:g})" if nest_w > 0 else
+                 "PROBE only (weight 0, computed and logged, NOT added to the loss)")
+              + f": {len(nest_batches)} cached "
               f"batches of {_bs:,} training cell-years, {_bs}x{_bs} Ružička block each "
               f"({len(nest_batches) * _bs * _bs * 4 / 2**20:.0f} MB total), rotated per epoch",
               flush=True)
-    elif nest_w > 0:
+    elif nest_w > 0 or nest_probe:
         raise ValueError(f"weights['nesting']={nest_w} but nesting_batch={nesting_batch} is too "
                          f"small to form a batch; the term needs a kernel BLOCK, not pairs")
     else:
@@ -901,7 +950,7 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
     except Exception as exc:                       # diagnostic only; never block training
         print(f"[desk] spatial-interpolation baseline unavailable ({exc})", flush=True)
 
-    def _forward_window(train_mode, mask_inputs, want_raw=False):
+    def _forward_window(train_mode, mask_inputs, want_raw=False, box=None):
         """Forward the whole year window -> ``(z_ema, recon_loss[, z_raw])``.
 
         ``train_mode`` toggles dropout; ``mask_inputs`` toggles the augmentation. The eval call
@@ -911,6 +960,11 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
         both export raw z, so raw is what every reported turnover number measures).
         """
         model.train(train_mode)
+        # ``box`` restricts the forward to a spatial slab (r0, r1, c0, c1). The EMA is a causal
+        # scan over YEARS, so the whole year window is still forwarded -- only space is narrowed.
+        r0, r1, c0, c1 = box if box is not None else (0, cov.shape[1], 0, cov.shape[2])
+        cv, mk = cov[:, r0:r1, c0:c1], msk[:, r0:r1, c0:c1]
+        hw = (cv.shape[1], cv.shape[2])
         z_raw, rl = [], torch.zeros((), device=device)
         # Drawn ONCE for the whole window, so the groups it drops are missing in EVERY year --
         # the shape real missingness has (a CONUS-only covariate, a product that ends before the
@@ -918,13 +972,11 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
         # can only ever express transient noise. None when persistence is unconfigured.
         keep_persist = None
         if mask_inputs and masker is not None:
-            keep_persist = masker.sample_persistent_keep(
-                aug_rng, device=device, hw=(cov.shape[1], cov.shape[2]))
-        for t in range(cov.shape[0]):
-            xt = cov[t:t + 1]
+            keep_persist = masker.sample_persistent_keep(aug_rng, device=device, hw=hw)
+        for t in range(cv.shape[0]):
+            xt = cv[t:t + 1]
             if mask_inputs and masker is not None:
-                keep = masker.sample_keep(aug_rng, device=device,
-                                          hw=(cov.shape[1], cov.shape[2]))
+                keep = masker.sample_keep(aug_rng, device=device, hw=hw)
                 if keep_persist is not None:
                     keep = keep * keep_persist       # kept only if BOTH tiers keep it
                 # New tensor: cov[t:t+1] is a VIEW of the single resident (T,H,W,C) window, so an
@@ -932,14 +984,14 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
                 xt = xt * keep
             with autocast():
                 if train_mode:
-                    zt, rt = checkpoint(model, xt, msk[t:t + 1], use_reentrant=False)
+                    zt, rt = checkpoint(model, xt, mk[t:t + 1], use_reentrant=False)
                 else:
-                    zt, rt = model(xt, msk[t:t + 1])
+                    zt, rt = model(xt, mk[t:t + 1])
             z_raw.append(zt[0].float())                          # fp32 before the EMA scan
             # Target is the CLEAN grid even when the input was masked -> denoising objective.
-            rl = rl + F.mse_loss(rt[0][msk[t]].float(), cov[t][msk[t]])
+            rl = rl + F.mse_loss(rt[0][mk[t]].float(), cv[t][mk[t]])
         stack = torch.stack(z_raw, 0)
-        out = (ema(stack), rl / cov.shape[0])
+        out = (ema(stack), rl / cv.shape[0])
         return out + (stack,) if want_raw else out
 
     def _z_mse(z_all, sel):
@@ -1160,6 +1212,48 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
               f"{int(rot_ho.sum())} val cells; idw bar "
               f"{'n/a (no training cells that year -- use validate spacetime_idw)' if not np.isfinite(_ho_dc) else f'{_ho_dc:.2f}'}",
               flush=True)
+    # --- spatial tiling: more than one optimizer step per epoch -----------------------------------
+    # This trainer took exactly ONE full-batch step per epoch, so a 500-epoch run was 500 updates
+    # for a 2.5M-parameter network (typical training is 1e4-1e6). The cause is real: the output EMA
+    # is a causal scan over years, so the whole window must be forwarded before any loss exists,
+    # and the config recorded "there is no per-step batching knob".
+    #
+    # But the constraint is temporal, not spatial. Cells are independent except through the
+    # kernel x kernel residual conv, so forwarding a slab padded by kernel//2 gives its interior
+    # cells bit-identical z to a full-grid forward -- see spatial_tiles. Each tile is then its own
+    # optimizer step, and the year window stays whole within each.
+    #
+    # A side effect worth naming: pairs for the metric term are drawn WITHIN a tile, so with n
+    # tiles the pool each draw sees is ~1/n the size and P(same cell) rises ~n-fold. Same-cell
+    # pairs -- the only ones carrying within-cell temporal information, and 0.035% of a full-pool
+    # draw -- become correspondingly more frequent. The matching cost is that pairs no longer span
+    # tiles, so the term sees only shorter-range spatial pairs.
+    tiles = None
+    if int(n_spatial_tiles) > 1:
+        _H, _W = m_tr.shape
+        tiles = spatial_tiles(_H, _W, int(n_spatial_tiles), spatial_kernel // 2)
+        _pf = pool_flat.detach().cpu().numpy()
+        _pr, _pc = _pf // _W, _pf % _W
+        tile_rows = []
+        for (r0, _r1, c0, _c1, ir0, ir1, ic0, ic1) in tiles:
+            g0, g1, h0, h1 = r0 + ir0, r0 + ir1, c0 + ic0, c0 + ic1
+            sel = (_pr >= g0) & (_pr < g1) & (_pc >= h0) & (_pc < h1)
+            tile_rows.append(torch.as_tensor(np.flatnonzero(sel), device=device,
+                                             dtype=torch.long))
+        _kept = sum(int(t.numel()) for t in tile_rows)
+        _fwd = sum((r1 - r0) * (c1 - c0) for r0, r1, c0, c1, *_ in tiles) / (_H * _W)
+        print(f"[desk] spatial tiling: {len(tiles)} tiles -> {len(tiles)} optimizer steps per "
+              f"epoch ({len(tiles) * epochs:,} total, was {epochs:,}). Halo "
+              f"{spatial_kernel // 2} cells, so {_fwd:.2f}x the grid is forwarded per epoch. "
+              f"Metric pool rows per tile: median "
+              f"{int(np.median([int(t.numel()) for t in tile_rows])):,} of {_kept:,}",
+              flush=True)
+        _empty = sum(1 for t in tile_rows if t.numel() < 4)
+        if _empty:
+            print(f"[desk] NOTE {_empty} tile(s) hold fewer than 4 supervised cell-years and are "
+                  f"skipped: a tile with no supervision contributes no gradient, and stepping on "
+                  f"it would apply weight decay with no signal", flush=True)
+
     best_val, best, bad, nonfinite = float("inf"), None, 0, 0
     best_epoch, best_zmse, best_kernel = None, float("nan"), float("nan")
     best_crit_raw = float("nan")
@@ -1206,70 +1300,147 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
         t_ep = time.perf_counter()
         if device == "cuda":
             torch.cuda.reset_peak_memory_stats()
-        opt.zero_grad()
-        z_ema, recon_loss = _forward_window(train_mode=True, mask_inputs=True)
 
-        # uniform stabilizing loss over all supervised (cell,year), train cells only.
-        # Divided by latent_dim so the term is a per-ELEMENT mean like the other two; the
-        # config's stabilizing weight absorbs the factor (1.0 -> latent_dim), leaving the total
-        # loss numerically unchanged while making the three weights directly comparable.
-        # Per-cell WEIGHTS, so a cell-year surveyed by an observer on their first year at that
-        # route counts less. Weighted rather than dropped: those cell-years still carry real
-        # absences, and dropping them would thin the early era ~2x harder than the modern one
-        # (first-year share 25.6% in 1966-1980 against 12.3% in 2001-2025), i.e. exactly where
-        # the data is thinnest. The denominator is the weight SUM, not the row count, so
-        # changing the weights rescales the loss consistently and does not quietly change the
-        # effective learning rate on this term.
-        sq_sum, n_eff = torch.zeros((), device=device), 0.0
-        for y, (zg, tr, _va, wg) in tgt.items():
-            zz = z_ema[yi[y]]
-            s = torch.sum((zz[tr] - zg[tr]) ** 2, dim=1) * wg[tr]
-            sq_sum = sq_sum + s.sum(); n_eff += float(wg[tr].sum())
-        loss_stab = sq_sum / max(n_eff, 1e-8) / latent_dim
-        # Pairs span the whole spacetime pool -- same year, same cell across years, and
-        # different cells in different years alike. The ESK basis is ONE joint kernel-PCA over
-        # every (cell, year) point, so that is the similarity structure this term has to hold
-        # the model to. Restricting pairs to within a year would enforce only the spatial half
-        # of a spatiotemporal kernel.
-        loss_true = spacetime_kernel_loss(z_ema, pool_t, pool_flat, pool_x, pool_w=pool_w_t,
-                                          num_pairs=int(metric_pairs))
-        w_stab = weights["stabilizing"] * loss_stab
-        w_true = weights["metric"] * loss_true
-        w_rec = weights["reconstruction"] * recon_loss
-        loss = w_stab + w_true + w_rec
-        # NestedLoRA, as an ADDITIONAL term. Its operator half is itself a kernel-fit term, so it
-        # partly duplicates loss_true -- that overlap is deliberate here (both are on, and their
-        # relative weight is the thing being tested) but it means the two weights are not
-        # independent knobs and a sweep must treat them as one axis.
-        w_nest, nest_parts = torch.zeros((), device=device), None
-        if nest_batches:
-            from .nested_lora import nested_lora_loss as _nll
-            _nb = nest_batches[(ep - 1) % len(nest_batches)]
-            _zf2 = z_ema.reshape(z_ema.shape[0], -1, z_ema.shape[-1])
-            _fb = _zf2[_nb["t"], _nb["flat"]]
-            _nl, nest_parts = _nll(_fb, _nb["gram"], masks=nest_masks, return_parts=True)
-            w_nest = nest_w * _nl
-            loss = loss + w_nest
+        if tiles is not None:
+            # One optimizer step per tile. Tile order is shuffled each epoch so the last tile of
+            # one epoch is not always followed by the same first tile of the next, which would
+            # give the schedule a fixed spatial rhythm.
+            _order = np.random.default_rng(seed + 1000 + ep).permutation(len(tiles))
+            _acc = {"stab": 0.0, "true": 0.0, "rec": 0.0, "n": 0}
+            _nonfinite_tiles = 0
+            for _ti in _order:
+                _rows = tile_rows[_ti]
+                if _rows.numel() < 4:
+                    continue
+                r0, r1, c0, c1, ir0, ir1, ic0, ic1 = tiles[_ti]
+                g0, g1, h0, h1 = r0 + ir0, r0 + ir1, c0 + ic0, c0 + ic1
+                opt.zero_grad()
+                _zs, _rl = _forward_window(train_mode=True, mask_inputs=True,
+                                           box=(r0, r1, c0, c1))
+                _zi = _zs[:, ir0:ir1, ic0:ic1, :]                  # exact for the interior
+                _ih, _iw = _zi.shape[1], _zi.shape[2]
+                # stabilizing, over this tile's training cells only
+                _sq, _ne = torch.zeros((), device=device), 0.0
+                for _y, (_zg, _tr, _va, _wg) in tgt.items():
+                    _t = _tr[g0:g1, h0:h1]
+                    if not bool(_t.any()):
+                        continue
+                    _d = _zi[yi[_y]][_t] - _zg[g0:g1, h0:h1][_t]
+                    _w = _wg[g0:g1, h0:h1][_t]
+                    _sq = _sq + (torch.sum(_d ** 2, dim=1) * _w).sum()
+                    _ne += float(_w.sum())
+                _ls = _sq / max(_ne, 1e-8) / latent_dim
+                # metric, over pairs drawn from this tile's cell-years. pool_flat is a GLOBAL
+                # cell index, so it is remapped to the interior's own flat layout.
+                _lf = ((pool_flat[_rows] // m_tr.shape[1] - g0) * _iw
+                       + (pool_flat[_rows] % m_tr.shape[1] - h0))
+                _lt = spacetime_kernel_loss(
+                    _zi, pool_t[_rows], _lf, pool_x[_rows],
+                    num_pairs=int(metric_pairs),
+                    pool_w=(None if pool_w_t is None else pool_w_t[_rows]))
+                _loss = (weights["stabilizing"] * _ls + weights["metric"] * _lt
+                         + weights["reconstruction"] * _rl)
+                if not torch.isfinite(_loss):
+                    _nonfinite_tiles += 1
+                    opt.zero_grad(set_to_none=True)
+                    continue
+                _loss.backward()
+                if grad_clip > 0:
+                    torch.nn.utils.clip_grad_norm_(params, grad_clip)
+                opt.step()
+                _acc["stab"] += float(_ls.detach()); _acc["true"] += float(_lt.detach())
+                _acc["rec"] += float(_rl.detach()); _acc["n"] += 1
+            sched.step()                                  # one LR step per EPOCH, not per tile
+            if _acc["n"] == 0:
+                nonfinite += 1
+                print(f"Ep {ep:03d} | every tile non-finite or empty -- epoch skipped "
+                      f"({nonfinite} consecutive)", flush=True)
+                if nonfinite >= 5:
+                    raise RuntimeError("DESK loss non-finite for 5 consecutive epochs; aborting")
+                continue
+            nonfinite = 0
+            if _nonfinite_tiles:
+                print(f"Ep {ep:03d} | {_nonfinite_tiles} of {len(tiles)} tiles non-finite, "
+                      f"skipped", flush=True)
+            loss_stab = torch.tensor(_acc["stab"] / _acc["n"])
+            loss_true = torch.tensor(_acc["true"] / _acc["n"])
+            recon_loss = torch.tensor(_acc["rec"] / _acc["n"])
+            w_stab = weights["stabilizing"] * loss_stab
+            w_true = weights["metric"] * loss_true
+            w_rec = weights["reconstruction"] * recon_loss
+            loss = w_stab + w_true + w_rec
+            w_nest, nest_parts = torch.zeros(()), None
+        else:
+            opt.zero_grad()
+            z_ema, recon_loss = _forward_window(train_mode=True, mask_inputs=True)
 
-        # A non-finite loss here would silently poison every weight via the optimizer step, and
-        # several terms mean() over masks that can in principle be empty. Skip the step, keep
-        # going, and abort only if it persists -- one bad epoch is recoverable, a stuck run is not.
-        if not torch.isfinite(loss):
-            nonfinite += 1
-            print(f"Ep {ep:03d} | NON-FINITE loss (stab={loss_stab.item():.4g} "
-                  f"true={loss_true.item():.4g} rec={recon_loss.item():.4g}) -- step skipped "
-                  f"({nonfinite} consecutive)", flush=True)
-            opt.zero_grad(set_to_none=True)
-            if nonfinite >= 5:
-                raise RuntimeError("DESK loss non-finite for 5 consecutive epochs; aborting")
-            continue
-        nonfinite = 0
+            # uniform stabilizing loss over all supervised (cell,year), train cells only.
+            # Divided by latent_dim so the term is a per-ELEMENT mean like the other two; the
+            # config's stabilizing weight absorbs the factor (1.0 -> latent_dim), leaving the total
+            # loss numerically unchanged while making the three weights directly comparable.
+            # Per-cell WEIGHTS, so a cell-year surveyed by an observer on their first year at that
+            # route counts less. Weighted rather than dropped: those cell-years still carry real
+            # absences, and dropping them would thin the early era ~2x harder than the modern one
+            # (first-year share 25.6% in 1966-1980 against 12.3% in 2001-2025), i.e. exactly where
+            # the data is thinnest. The denominator is the weight SUM, not the row count, so
+            # changing the weights rescales the loss consistently and does not quietly change the
+            # effective learning rate on this term.
+            sq_sum, n_eff = torch.zeros((), device=device), 0.0
+            for y, (zg, tr, _va, wg) in tgt.items():
+                zz = z_ema[yi[y]]
+                s = torch.sum((zz[tr] - zg[tr]) ** 2, dim=1) * wg[tr]
+                sq_sum = sq_sum + s.sum(); n_eff += float(wg[tr].sum())
+            loss_stab = sq_sum / max(n_eff, 1e-8) / latent_dim
+            # Pairs span the whole spacetime pool -- same year, same cell across years, and
+            # different cells in different years alike. The ESK basis is ONE joint kernel-PCA over
+            # every (cell, year) point, so that is the similarity structure this term has to hold
+            # the model to. Restricting pairs to within a year would enforce only the spatial half
+            # of a spatiotemporal kernel.
+            loss_true = spacetime_kernel_loss(z_ema, pool_t, pool_flat, pool_x, pool_w=pool_w_t,
+                                              num_pairs=int(metric_pairs))
+            w_stab = weights["stabilizing"] * loss_stab
+            w_true = weights["metric"] * loss_true
+            w_rec = weights["reconstruction"] * recon_loss
+            loss = w_stab + w_true + w_rec
+            # NestedLoRA, as an ADDITIONAL term. Its operator half is itself a kernel-fit term, so it
+            # partly duplicates loss_true -- that overlap is deliberate here (both are on, and their
+            # relative weight is the thing being tested) but it means the two weights are not
+            # independent knobs and a sweep must treat them as one axis.
+            w_nest, nest_parts = torch.zeros((), device=device), None
+            if nest_batches:
+                from .nested_lora import nested_lora_loss as _nll
+                _nb = nest_batches[(ep - 1) % len(nest_batches)]
+                _zf2 = z_ema.reshape(z_ema.shape[0], -1, z_ema.shape[-1])
+                _fb = _zf2[_nb["t"], _nb["flat"]]
+                _nl, nest_parts = _nll(_fb, _nb["gram"], masks=nest_masks, return_parts=True)
+                nest_parts["raw"] = _nl.detach()
+                if nest_w > 0:
+                    w_nest = nest_w * _nl
+                    loss = loss + w_nest
+                else:
+                    # Probe: the value is recorded but never reaches the optimizer. Detached so it
+                    # cannot contribute a gradient even by accident.
+                    w_nest = _nl.detach() * 0.0
 
-        loss.backward()
-        if grad_clip > 0:
-            torch.nn.utils.clip_grad_norm_(params, grad_clip)
-        opt.step()
-        sched.step()
+            # A non-finite loss here would silently poison every weight via the optimizer step, and
+            # several terms mean() over masks that can in principle be empty. Skip the step, keep
+            # going, and abort only if it persists -- one bad epoch is recoverable, a stuck run is not.
+            if not torch.isfinite(loss):
+                nonfinite += 1
+                print(f"Ep {ep:03d} | NON-FINITE loss (stab={loss_stab.item():.4g} "
+                      f"true={loss_true.item():.4g} rec={recon_loss.item():.4g}) -- step skipped "
+                      f"({nonfinite} consecutive)", flush=True)
+                opt.zero_grad(set_to_none=True)
+                if nonfinite >= 5:
+                    raise RuntimeError("DESK loss non-finite for 5 consecutive epochs; aborting")
+                continue
+            nonfinite = 0
+
+            loss.backward()
+            if grad_clip > 0:
+                torch.nn.utils.clip_grad_norm_(params, grad_clip)
+            opt.step()
+            sched.step()
 
         # Held-out-cell Z-MSE pooled over ALL supervised years -- matches the uniform all-years
         # training objective (not just the easy anchor year), and averaging over many cells/years
@@ -1456,10 +1627,18 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
                   f"lr {opt.param_groups[0]['lr']:.2e} | {dt:.1f}s{vram} | RSS {rss:.1f}G",
                   flush=True)
         if nest_parts is not None:
-            print(f"Ep {ep:03d} | nest {float(w_nest):+.4f} (op {float(nest_parts['operator']):+.4f}"
-                  f" met {float(nest_parts['metric']):+.4f} ratio "
-                  f"{float(nest_parts['ratio']):.3f} halfimb "
-                  f"{float(nest_parts['half_imbalance']):.2f})", flush=True)
+            _raw = float(nest_parts["raw"])
+            # The weight that would give the nesting term a 50% share of the current total, so a
+            # probe run reports a usable starting value instead of leaving it to be guessed.
+            _tot_now = float(loss.detach())
+            _w50 = (abs(_tot_now / _raw) if abs(_raw) > 1e-12 else float("nan"))
+            print(f"Ep {ep:03d} | nest raw {_raw:+.4f} weighted "
+                  f"{float(w_nest.detach()):+.4f} "
+                  f"(op {float(nest_parts['operator']):+.4f} met "
+                  f"{float(nest_parts['metric']):+.4f} ratio {float(nest_parts['ratio']):.3f} "
+                  f"halfimb {float(nest_parts['half_imbalance']):.2f}"
+                  + (f" | w for a 50% share ~{_w50:.3g}" if nest_w == 0 else "")
+                  + ")", flush=True)
         if evaluated:
             print(f"Ep {ep:03d} | kernel k_tr {tk:.5f} k_val {vk.get('pool', float('nan')):.5f} "
                   f"+-{vk_sd.get('pool', float('nan')):.5f} "
@@ -1493,7 +1672,9 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
                 # NestedLoRA term, when on. half_imbalance is the guard: the split-half estimator
                 # is unbounded below if one half can carry all the magnitude, so a value drifting
                 # far above 1 means the penalty is being evaded, not that training is going well.
-                "loss_nesting": (float(w_nest) if nest_parts is not None else float("nan")),
+                "loss_nesting": (float(w_nest.detach()) if nest_parts is not None
+                                 else float("nan")),
+                "nesting_raw": (float(nest_parts["raw"]) if nest_parts else float("nan")),
                 "nesting_operator": (float(nest_parts["operator"]) if nest_parts else
                                      float("nan")),
                 "nesting_metric": (float(nest_parts["metric"]) if nest_parts else float("nan")),
@@ -2019,6 +2200,8 @@ def run_desk_experiment(config=None):
         eigenbasis_draws=int(desk_cfg.get("eigenbasis_draws", 1)),
         nesting_batch=int(desk_cfg.get("nesting_batch", 2048)),
         nesting_batches=int(desk_cfg.get("nesting_batches", 8)),
+        nesting_probe=bool(desk_cfg.get("nesting_probe", False)),
+        n_spatial_tiles=int(desk_cfg.get("spatial_tiles", 1)),
         min_delta=float(desk_cfg.get("min_delta", 0.0)),
         selection_metric=str(desk_cfg.get("selection_metric", "val_zmse")),
         selection_smooth=int(desk_cfg.get("selection_smooth", 0)),

@@ -276,8 +276,8 @@ def stage1(runs, threshold, smooth=0):
     if n_spike:
         print(f"{n_spike}/{len(rows)} runs selected at a spike (a neighbour >=2x the chosen "
               f"value). Their kernel column is biased low, so the ranking above partly ranks "
-              f"which run got the luckier evaluation. Compare the `tail` column: if it "
-              f"disagrees with the ranking, set desk.selection_smooth and rerun stage 1.")
+              f"which run got the luckier evaluation. Use --smooth N: the rank-stability block "
+              f"below compares the raw and smoothed argmin, which is the check that applies.")
     # ROBUSTNESS: compare the two estimates of the SAME quantity -- the raw argmin and the
     # smoothed argmin. The previous check compared the argmin against the end-of-training value,
     # which for runs that peak at epoch ~120 of 500 is the over-trained state: a different
@@ -316,7 +316,7 @@ def stage1(runs, threshold, smooth=0):
         print("\nrun again with --smooth 5 for a rank-stability check: the raw argmin of this "
               "metric is noise-dominated (it swings ~2x between adjacent epochs at high LR).")
     print(f"\nend-of-training value (epochs {int(0.9 * 500)}+, i.e. AFTER the optimum) is the "
-          f"`tail` column above -- it measures over-training resistance, a different question "
+          f"`endval` column above -- it measures over-training resistance, a different question "
           f"from the best achievable kernel. Not a robustness check.")
 
 def eigenbasis_table(runs):

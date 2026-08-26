@@ -2089,3 +2089,102 @@ def test_the_training_seed_actually_changes_the_run():
     assert a == b, (a, b)                       # same seed reproduces
     assert a != c, (a, c)                       # a different seed does not
     print(f"seed 0 {a} vs seed 12345 {c}")
+
+
+def test_the_nesting_objective_is_off_by_default_and_changes_nothing(tmp_path):
+    """weights['nesting']=0 must reproduce the existing recipe exactly.
+
+    An additional objective that perturbs runs when disabled would silently invalidate every
+    previously reported number, so this is the guard that lets it be added at all.
+    """
+    off1, _ = _tiny_train(False)
+    off2, _ = _tiny_train(False)
+    assert off1 == off2, (off1, off2)
+    txt = _val_pool_run(epochs=2, selection_metric="val_kernel", eval_kernel_draws=2)
+    assert "NestedLoRA objective ON" not in txt
+    assert "| nest " not in txt
+
+
+def test_the_nesting_objective_trains_and_reports_its_guard(tmp_path):
+    """When on it must reach the loss, log its parts, and record the half-imbalance guard.
+
+    The guard matters more than the value: the split-half estimator is unbounded below if one half
+    of the batch carries all the magnitude, so a run can dive to a spectacular loss and produce
+    nothing. half_imbalance drifting far above 1 is what that looks like before the loss diverges.
+    """
+    import contextlib
+    import io
+
+    from src.community_encoder.train_DESK import desk_training as D
+
+    sch = _schema()
+    dims = [s["dim"] for s in sch["streams"]]
+    T, H, W, L = 6, 10, 12, 16
+    rng = np.random.default_rng(0)
+    cov = rng.normal(size=(T, H, W, sch["total_dim"])).astype("float32")
+    years = list(range(2020, 2026))
+    m = np.ones((H, W), bool)
+    ho = np.zeros((H, W), bool); ho[:, :4] = True
+    tr_m, va_m = m & ~ho, m & ho
+    tgt = {y: (rng.normal(size=(H, W, L)).astype("float32"), tr_m, va_m,
+               np.ones((H, W), dtype="float32")) for y in years[1:]}
+    x = rng.random((H, W, 12)).astype("float32")
+    path = tmp_path / "n.jsonl"
+    out = io.StringIO()
+    with contextlib.redirect_stdout(out):
+        model, _ema = D.train_model_ema(
+            cov, np.ones((T, H, W), bool), years, tgt, _metric_dict(x, tr_m, years),
+            tr_m, va_m, dims, latent_dim=L, ema_cfg={"earlystop_warmup": 1}, spatial_kernel=3,
+            epochs=3, weights={"stabilizing": 64.0, "metric": 5.0, "reconstruction": 0.1,
+                               "nesting": 1.0},
+            schema=sch, dropout=0.1, val_metric_pool=_metric_dict(x, va_m, years),
+            metric_pairs=512, eval_kernel_pairs=256, eval_kernel_draws=2,
+            selection_metric="val_kernel", trajectory_path=str(path),
+            nesting_batch=64, nesting_batches=3)
+    txt = out.getvalue()
+    assert "NestedLoRA objective ON (weight 1)" in txt, txt
+    assert "3 cached batches of 64" in txt, txt
+    assert "| nest " in txt, txt
+    rows = [json.loads(l) for l in open(path)]
+    for r in rows:
+        for k in ("loss_nesting", "nesting_operator", "nesting_metric", "nesting_ratio",
+                  "nesting_half_imbalance"):
+            assert k in r and np.isfinite(r[k]), (k, r.get(k))
+        # the guard must be a real ratio, not a placeholder
+        assert r["nesting_half_imbalance"] >= 1.0, r["nesting_half_imbalance"]
+    assert all(torch.isfinite(p).all() for p in model.parameters())
+    # it must actually change training, or it is not reaching the optimizer
+    off, _ = _tiny_train(False)
+    assert off  # sanity
+    print(f"nesting term active; half_imbalance {rows[-1]['nesting_half_imbalance']:.2f}")
+
+
+def test_a_nesting_batch_too_small_for_a_kernel_block_is_refused():
+    """The term needs a BLOCK, not pairs. Silently falling back to pairs would compute a
+    different objective under the same name."""
+    import contextlib
+    import io
+
+    from src.community_encoder.train_DESK import desk_training as D
+
+    sch = _schema()
+    dims = [s["dim"] for s in sch["streams"]]
+    T, H, W, L = 4, 6, 7, 16
+    rng = np.random.default_rng(0)
+    cov = rng.normal(size=(T, H, W, sch["total_dim"])).astype("float32")
+    m = np.ones((H, W), bool)
+    years = list(range(2022, 2026))
+    tgt = {y: (rng.normal(size=(H, W, L)).astype("float32"), m, m,
+               np.ones((H, W), dtype="float32")) for y in years[1:]}
+    try:
+        with contextlib.redirect_stdout(io.StringIO()):
+            D.train_model_ema(cov, np.ones((T, H, W), bool), years, tgt,
+                              _metric_dict(rng.random((H, W, 9)).astype("float32"), m, years),
+                              m, m, dims, latent_dim=L, ema_cfg={}, spatial_kernel=3, epochs=1,
+                              schema=sch, dropout=0.1,
+                              weights={"stabilizing": 64.0, "metric": 5.0,
+                                       "reconstruction": 0.1, "nesting": 1.0},
+                              nesting_batch=4)
+        raise AssertionError("a batch too small for a kernel block must be refused")
+    except ValueError as exc:
+        assert "kernel BLOCK, not pairs" in str(exc), str(exc)

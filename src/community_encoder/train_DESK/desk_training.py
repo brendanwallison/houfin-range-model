@@ -608,6 +608,7 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
                     eval_kernel_pairs=65536, eval_kernel_draws=1, eval_kernel_ranks=(),
                     eigenbasis_batch=0, eigenbasis_every=0, eigenbasis_ref=None,
                     eigenbasis_draws=1,
+                    nesting_batch=2048, nesting_batches=8,
                     selection_metric="val_zmse",
                     selection_smooth=0,
                     trajectory_path=None, stop_at_epoch=None, return_info=False,
@@ -745,6 +746,42 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
     # are independent draws rather than the same index pattern over different pools.
     train_eval_pairs = kernel_pair_draws(int(pool_t.shape[0]), eval_kernel_pairs, seed + 977,
                                         eval_kernel_draws)
+    # --- the NestedLoRA training term's batches ------------------------------------------------
+    # An ADDITIONAL objective, off unless weights["nesting"] is set. It needs a BATCH with its
+    # kernel block, not sampled pairs, because its operator term is Tf = Kf -- an operator applied
+    # to the feature map. Drawn from the TRAINING pool (the diagnostic uses the val pool).
+    #
+    # Several fixed batches, cached and rotated, rather than one fixed batch or a fresh draw each
+    # step. One fixed batch would fit the term to 2.5% of the pool; a fresh draw each step means
+    # recomputing an O(B^2 S) Gram every step. Rotating N cached Grams samples N*B points for one
+    # Gram's worth of recompute -- and since this trainer takes ONE optimizer step per epoch, even
+    # the no-cache path would only cost ~500 Grams per run. Measured: 16 MB and 0.4 GFLOP per Gram
+    # at B=2048, against ~38 TFLOP for a single training step, so neither is the binding cost.
+    nest_w = float((weights or {}).get("nesting", 0.0))
+    nest_batches = []
+    if nest_w > 0 and int(nesting_batch) >= 8:
+        from .nested_lora import joint_nesting_masks as _jnm
+        from .nested_lora import ruzicka_gram as _rg
+        _npool = int(pool_t.shape[0])
+        _bs = min(int(nesting_batch), _npool)
+        _rng_n = np.random.default_rng(seed + 5701)
+        for _bi in range(max(1, int(nesting_batches))):
+            _idx = _rng_n.choice(_npool, _bs, replace=False) if _npool > _bs \
+                else np.arange(_npool)
+            _it = torch.as_tensor(_idx, device=device, dtype=torch.long)
+            nest_batches.append({"t": pool_t[_it], "flat": pool_flat[_it],
+                                 "gram": _rg(pool_x[_it])})
+        nest_masks = _jnm(latent_dim, 1, device=device, dtype=torch.float32)
+        print(f"[desk] NestedLoRA objective ON (weight {nest_w:g}): {len(nest_batches)} cached "
+              f"batches of {_bs:,} training cell-years, {_bs}x{_bs} Ružička block each "
+              f"({len(nest_batches) * _bs * _bs * 4 / 2**20:.0f} MB total), rotated per epoch",
+              flush=True)
+    elif nest_w > 0:
+        raise ValueError(f"weights['nesting']={nest_w} but nesting_batch={nesting_batch} is too "
+                         f"small to form a batch; the term needs a kernel BLOCK, not pairs")
+    else:
+        nest_masks = None
+
     # --- the eigenbasis diagnostic's fixed batch -----------------------------------------------
     # A BATCH, not pairs: the nesting objective needs Tf = Kf, an operator applied to the feature
     # map, which sampled pairs cannot supply. Drawn once with a fixed seed so the number is
@@ -1200,6 +1237,19 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
         w_true = weights["metric"] * loss_true
         w_rec = weights["reconstruction"] * recon_loss
         loss = w_stab + w_true + w_rec
+        # NestedLoRA, as an ADDITIONAL term. Its operator half is itself a kernel-fit term, so it
+        # partly duplicates loss_true -- that overlap is deliberate here (both are on, and their
+        # relative weight is the thing being tested) but it means the two weights are not
+        # independent knobs and a sweep must treat them as one axis.
+        w_nest, nest_parts = torch.zeros((), device=device), None
+        if nest_batches:
+            from .nested_lora import nested_lora_loss as _nll
+            _nb = nest_batches[(ep - 1) % len(nest_batches)]
+            _zf2 = z_ema.reshape(z_ema.shape[0], -1, z_ema.shape[-1])
+            _fb = _zf2[_nb["t"], _nb["flat"]]
+            _nl, nest_parts = _nll(_fb, _nb["gram"], masks=nest_masks, return_parts=True)
+            w_nest = nest_w * _nl
+            loss = loss + w_nest
 
         # A non-finite loss here would silently poison every weight via the optimizer step, and
         # several terms mean() over masks that can in principle be empty. Skip the step, keep
@@ -1405,6 +1455,11 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
                   f"half-life {ema.half_life().item():.1f}y | "
                   f"lr {opt.param_groups[0]['lr']:.2e} | {dt:.1f}s{vram} | RSS {rss:.1f}G",
                   flush=True)
+        if nest_parts is not None:
+            print(f"Ep {ep:03d} | nest {float(w_nest):+.4f} (op {float(nest_parts['operator']):+.4f}"
+                  f" met {float(nest_parts['metric']):+.4f} ratio "
+                  f"{float(nest_parts['ratio']):.3f} halfimb "
+                  f"{float(nest_parts['half_imbalance']):.2f})", flush=True)
         if evaluated:
             print(f"Ep {ep:03d} | kernel k_tr {tk:.5f} k_val {vk.get('pool', float('nan')):.5f} "
                   f"+-{vk_sd.get('pool', float('nan')):.5f} "
@@ -1435,6 +1490,16 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
                 "loss_stab": float(loss_stab.item()),
                 "loss_metric": float(loss_true.item()),
                 "loss_recon": float(recon_loss.item()),
+                # NestedLoRA term, when on. half_imbalance is the guard: the split-half estimator
+                # is unbounded below if one half can carry all the magnitude, so a value drifting
+                # far above 1 means the penalty is being evaded, not that training is going well.
+                "loss_nesting": (float(w_nest) if nest_parts is not None else float("nan")),
+                "nesting_operator": (float(nest_parts["operator"]) if nest_parts else
+                                     float("nan")),
+                "nesting_metric": (float(nest_parts["metric"]) if nest_parts else float("nan")),
+                "nesting_ratio": (float(nest_parts["ratio"]) if nest_parts else float("nan")),
+                "nesting_half_imbalance": (float(nest_parts["half_imbalance"]) if nest_parts
+                                           else float("nan")),
                 "kernel_train": tk,
                 "kernel_val": vk.get("pool", float("nan")),
                 "kernel_val_sp": vk.get("sp", float("nan")),
@@ -1952,6 +2017,8 @@ def run_desk_experiment(config=None):
         eigenbasis_every=int(desk_cfg.get("eigenbasis_every", 0)),
         eigenbasis_ref=eig_ref,
         eigenbasis_draws=int(desk_cfg.get("eigenbasis_draws", 1)),
+        nesting_batch=int(desk_cfg.get("nesting_batch", 2048)),
+        nesting_batches=int(desk_cfg.get("nesting_batches", 8)),
         min_delta=float(desk_cfg.get("min_delta", 0.0)),
         selection_metric=str(desk_cfg.get("selection_metric", "val_zmse")),
         selection_smooth=int(desk_cfg.get("selection_smooth", 0)),

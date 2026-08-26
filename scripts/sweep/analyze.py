@@ -69,13 +69,20 @@ def _spike_factor(rows, best_epoch, col):
     return max(nb) / bv if nb else float("nan")
 
 
-def _stable_tail(rows, col, frac=0.1):
-    """Median of the last ``frac`` of epochs -- a spike-free alternative to the argmin.
+def _end_of_training(rows, col, frac=0.1):
+    """Median of the last ``frac`` of epochs -- the OVER-TRAINED value, not a robust optimum.
 
-    Reported alongside the argmin because ranking configurations on a value that may have been
-    selected at a spike ranks the luck as well as the configuration. The two agreeing is what
-    makes the ranking trustworthy; the two disagreeing is the signal to turn on
-    desk.selection_smooth and rerun, not to pick whichever looks better.
+    Originally introduced as a "spike-free alternative to the argmin", and that description was
+    wrong in a way that mattered. These runs peak at epoch 111-242 of 500 and degrade afterwards,
+    so the last 10% of epochs is 451-500: this measures how far a configuration has over-trained
+    past its own optimum, which is a different quantity from its best achievable kernel. Comparing
+    it against the argmin ranking and calling the differences "false leaders" was therefore
+    apples-to-oranges -- the two are SUPPOSED to disagree, which is why 18 of 19 configurations
+    "moved".
+
+    Kept, because over-training resistance is worth seeing, and renamed so it cannot be mistaken
+    for a robust estimate of the optimum. The actual robustness check is now the rank shift between
+    the raw and smoothed argmin, which compares two estimates of the SAME quantity.
     """
     v = [r[col] for r in rows if r.get(col) is not None and np.isfinite(r[col])]
     if not v:
@@ -125,17 +132,19 @@ def stage1(runs, threshold, smooth=0):
               if x.get("kernel_val") is not None and np.isfinite(x["kernel_val"])]
         zv = [(x["zmse_val"], x["epoch"]) for x in r["_rows"]
               if x.get("zmse_val") is not None and np.isfinite(x["zmse_val"])]
-        if smooth > 1:
-            k_min, k_ep = _smoothed_min([{"epoch": e, "v": v} for v, e in kv], smooth)
-        else:
-            k_min, k_ep = min(kv) if kv else (float("nan"), None)
+        raw_min, raw_ep = min(kv) if kv else (float("nan"), None)
+        sm_min, sm_ep = (_smoothed_min([{"epoch": e, "v": v} for v, e in kv], smooth)
+                         if smooth > 1 else (raw_min, raw_ep))
+        k_min, k_ep = (sm_min, sm_ep) if smooth > 1 else (raw_min, raw_ep)
         rows.append({
             "config": cfg,
             "best_epoch": k_ep if k_ep is not None else r["best_epoch"],
             "recorded_epoch": r["best_epoch"],
+            "raw": raw_min, "raw_epoch": raw_ep,
+            "smoothed": sm_min, "smoothed_epoch": sm_ep,
             "kernel": k_min,
             "zmse": (min(zv)[0] if zv else float("nan")),
-            "tail": _stable_tail(r["_rows"], col),
+            "endval": _end_of_training(r["_rows"], col),
             "spike": _spike_factor(r["_rows"], r["best_epoch"], col),
             "epochs": r.get("epochs_budget"),
             "params": r.get("n_params"),
@@ -158,7 +167,10 @@ def stage1(runs, threshold, smooth=0):
             print(f"  metric_pairs={mp} eval_kernel_draws={dr}: {len(cfgs)} run(s) {sorted(cfgs)}")
         print("  Those are different instruments, not just different configurations. Rerun so "
               "they share one setting before reading the ranking.\n")
-    off = [x for x in rows if x["recorded_epoch"] != x["best_epoch"]]
+    # Only meaningful without smoothing. With --smooth the table's epoch is the smoothed argmin
+    # and run_summary's is the raw one, so they differ BY DESIGN -- reporting that as "min_delta
+    # rejected genuine improvements" diagnosed a bug that is fixed and was not the cause.
+    off = [x for x in rows if x["recorded_epoch"] != x["best_epoch"]] if smooth <= 1 else []
     if off:
         print(f"NOTE {len(off)}/{len(rows)} runs recorded a best_epoch that is not their "
               f"trajectory's argmin (min_delta rejected genuine improvements). The table below "
@@ -266,45 +278,46 @@ def stage1(runs, threshold, smooth=0):
               f"value). Their kernel column is biased low, so the ranking above partly ranks "
               f"which run got the luckier evaluation. Compare the `tail` column: if it "
               f"disagrees with the ranking, set desk.selection_smooth and rerun stage 1.")
-    # Rank by the spike-free column too, and compare the two RANKINGS -- not the two top-4
-    # SETS. Set equality was the first thing this printed and it was wrong: with a handful of
-    # configurations the top-4 sets can coincide while the order is completely different, so a
-    # run that leads only because of a lucky evaluation still gets reported as robust. That is
-    # precisely the plausible-looking summary this script exists to prevent, and it produced it.
-    by_tail = sorted((x for x in rows if np.isfinite(x["tail"])), key=lambda x: x["tail"])
-    rank_k = {x["config"]: i for i, x in enumerate(rows)}
-    rank_t = {x["config"]: i for i, x in enumerate(by_tail)}
-    print("\nrank by best-epoch kernel vs by stable tail:")
-    movers = []
-    for cfg in sorted(rank_k, key=lambda c: rank_k[c]):
-        rk, rt = rank_k[cfg], rank_t.get(cfg)
-        if rt is None:
-            continue
-        shift = rt - rk
-        note = ""
-        # A config that ranks much better on the argmin than on the tail is a FALSE LEADER: its
-        # winning value came from a spike, not from being a better configuration.
-        if shift >= 2:
-            note = f"  <-- FALSE LEADER: {shift} places worse on the spike-free column"
-            movers.append(cfg)
-        elif shift <= -2:
-            note = f"  <-- UNDERRATED by the argmin: {-shift} places better on the tail"
-            movers.append(cfg)
-        print(f"  {cfg:<8} argmin #{rk + 1}  tail #{rt + 1}{note}")
-    top_k = [x["config"] for x in rows[:4]]
-    top_t = [x["config"] for x in by_tail[:4]]
-    print(f"\ntop 4 by best-epoch kernel: {top_k}")
-    print(f"top 4 by stable tail:       {top_t}")
-    if movers or set(top_k) != set(top_t):
-        print(f"  DO NOT carry the argmin top-4 forward as-is. {len(movers)} configuration(s) "
-              f"move >=2 places between the two columns ({movers}), so the argmin ranking is "
-              f"partly ranking luck. Either set desk.selection_smooth and rerun stage 1, or "
-              f"carry the UNION of the two top-4 lists and pay for the extra stage-2 runs: "
-              f"{sorted(set(top_k) | set(top_t))}")
+    # ROBUSTNESS: compare the two estimates of the SAME quantity -- the raw argmin and the
+    # smoothed argmin. The previous check compared the argmin against the end-of-training value,
+    # which for runs that peak at epoch ~120 of 500 is the over-trained state: a different
+    # quantity, so it disagreed for 18 of 19 configurations by construction and said nothing
+    # about noise.
+    if smooth > 1:
+        by_raw = {x["config"]: i for i, x in
+                  enumerate(sorted(rows, key=lambda y: (np.inf if not np.isfinite(y["raw"])
+                                                        else y["raw"])))}
+        by_sm = {x["config"]: i for i, x in
+                 enumerate(sorted(rows, key=lambda y: (np.inf if not np.isfinite(y["smoothed"])
+                                                       else y["smoothed"])))}
+        shifts = {c: by_sm[c] - by_raw[c] for c in by_raw}
+        movers = {c: d for c, d in shifts.items() if abs(d) >= 3}
+        print(f"\nrank stability, raw argmin vs {smooth}-epoch smoothed argmin "
+              f"(same quantity, two estimators):")
+        print(f"  median |shift| {np.median([abs(d) for d in shifts.values()]):.0f} place(s), "
+              f"max {max(abs(d) for d in shifts.values())}; "
+              f"{len(movers)}/{len(shifts)} move >= 3 places")
+        if movers:
+            print(f"  unstable: {sorted(movers, key=lambda c: -abs(movers[c]))[:6]}")
+            print("  A configuration whose rank depends on which estimator is used has not been "
+                  "separated\n  from its neighbours by this measurement, whatever the table's "
+                  "ordering says.")
+        else:
+            print("  The ordering is the same under both estimators, so it is not an artifact of "
+                  "the spike.")
+        top4 = [x["config"] for x in rows[:4]]
+        stable_top4 = [c for c in top4 if abs(shifts.get(c, 99)) < 3]
+        print(f"\ntop 4 on the smoothed ranking: {top4}")
+        print(f"  of those, rank-stable across both estimators: {stable_top4 or 'NONE'}")
+        if len(stable_top4) < 4:
+            print(f"  Carry {stable_top4 or 'nothing'} forward on this evidence; the rest are "
+                  f"not separated from the field.")
     else:
-        print("  the two rankings agree and nothing moved >=2 places, so the top 4 are robust "
-              "to the spike problem")
-
+        print("\nrun again with --smooth 5 for a rank-stability check: the raw argmin of this "
+              "metric is noise-dominated (it swings ~2x between adjacent epochs at high LR).")
+    print(f"\nend-of-training value (epochs {int(0.9 * 500)}+, i.e. AFTER the optimum) is the "
+          f"`tail` column above -- it measures over-training resistance, a different question "
+          f"from the best achievable kernel. Not a robustness check.")
 
 def eigenbasis_table(runs):
     """Basis quality across configurations, side by side. Diagnostic only -- never ranked on.

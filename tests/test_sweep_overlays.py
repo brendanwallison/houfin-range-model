@@ -634,22 +634,32 @@ def test_the_production_overlay_holds_nothing_out_and_keeps_the_swept_budget(tmp
     print("production overlay: nothing held out, swept budget kept, knob preserved")
 
 
-def test_the_analysis_script_flags_a_false_leader():
-    """A configuration that leads only because of a spike must not be reported as robust.
+def test_robustness_compares_two_estimates_of_the_same_quantity():
+    """The old check compared the argmin against the END-OF-TRAINING value, which is not the
+    same quantity.
 
-    The first version of this script compared the two top-4 SETS, which can coincide while the
-    ordering is completely different -- so a run whose winning value came from one lucky
-    evaluation was printed as "robust to the spike problem". That is exactly the
-    plausible-looking summary the script exists to prevent, produced by the script itself. It now
-    compares the two RANKINGS and names any configuration that moves >= 2 places.
+    These runs peak at epoch 111-242 of 500 and degrade afterwards, so the last 10% of epochs is
+    the over-trained state. Comparing it against the optimum and labelling the differences "false
+    leaders" was apples-to-oranges: the two are supposed to disagree, which is exactly why 18 of 19
+    configurations "moved" and why the check conveyed no information about noise.
+
+    The robustness check is now the rank shift between the raw and the smoothed argmin -- two
+    estimators of the same quantity -- so a shift really does mean the configuration was not
+    separated from its neighbours.
     """
     src = open(os.path.join(REPO, "scripts", "sweep", "analyze.py")).read()
-    assert "FALSE LEADER" in src
-    assert "rank_k" in src and "rank_t" in src, "must compare rankings, not just top-N sets"
-    assert "DO NOT carry the argmin top-4 forward as-is" in src
-    # the provisional threshold must be labelled as such until stage 3 measures the seed spread
-    assert "PROVISIONAL" in src
-    print("the analysis script detects a spike-driven false leader")
+    assert "rank stability, raw argmin vs" in src
+    assert "same quantity, two estimators" in src
+    assert "FALSE LEADER" not in src, \
+        "the argmin-vs-end-of-training comparison must be gone, not merely supplemented"
+    # the end-of-training column stays, but must be described for what it is
+    assert "_end_of_training" in src and "over-training resistance" in src
+    assert "_stable_tail" not in src, "the misleading name must be gone"
+    # and the min_delta note must not fire when smoothing moved the epoch deliberately
+    assert 'if smooth <= 1 else []' in src, \
+        "with --smooth the recorded and table epochs differ by design, not because of min_delta"
+    print("robustness compares raw vs smoothed argmin; end-of-training is labelled honestly")
+
 
 
 def test_stop_at_shortens_the_run_not_the_schedule_and_spares_production(tmp_path):

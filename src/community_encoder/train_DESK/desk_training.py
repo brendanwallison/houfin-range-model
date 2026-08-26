@@ -1920,6 +1920,14 @@ def run_desk_experiment(config=None):
         stream_dims, latent_dim=latent_dim, ema_cfg=ema_cfg,
         spatial_kernel=spatial_kernel,
         epochs=desk_cfg.get("epochs", 500), lr=desk_cfg.get("lr", 1e-3),
+        # The TRAINING seed: model init, dropout masks, augmentation draws, and the metric loss's
+        # pair sampling. It was never passed, so it took train_model_ema's default of 0 in every
+        # run ever made -- meaning a training run could not be replicated, and the training-init
+        # noise floor was unmeasurable. desk.trend.seed is a DIFFERENT knob: it draws the spatial
+        # split, so varying it changes which cells are held out and therefore what the metric is
+        # measured on. Conflating the two made a 12% spread across trend.seed look like training
+        # noise when it is evaluation-set variation.
+        seed=int(desk_cfg.get("seed", 0)),
         weights=desk_cfg.get("weights"), patience=desk_cfg.get("patience", 50),
         schema=schema, augment_cfg=config.get("augment"),
         dropout=float(desk_cfg.get("dropout", 0.5)),

@@ -2044,3 +2044,48 @@ def test_the_nesting_gap_gets_an_error_bar_from_independent_batches(tmp_path):
     e1 = [json.loads(l) for l in open(path1)][-1]
     assert e1["eig_nesting_gap_draws"] == 1 and e1["eig_nesting_gap_sd"] == 0.0
     print(f"nesting gap {e['eig_nesting_gap']:.4f} +- {e['eig_nesting_gap_sd']:.4f} over 4 batches")
+
+
+def test_the_training_seed_is_plumbed_and_distinct_from_the_split_seed():
+    """Two different seeds, two different questions, and only one was ever wired.
+
+    ``train_model_ema`` was called with no ``seed``, so it used its default of 0 in every run --
+    model init, dropout masks, augmentation draws and the metric loss's pair sampling were
+    identical everywhere. A training run therefore could not be replicated, and the training-init
+    noise floor was unmeasurable. That floor is what limits a comparison between two
+    configurations on the SAME holdout, which is exactly what the sweep does.
+
+    ``desk.trend.seed`` is a different knob: it draws the spatial split, so varying it changes
+    which cells are held out. A spread across trend.seed measures dependence on the evaluation
+    set, not training noise -- and a 12% spread of that kind was briefly mistaken for a precision
+    floor.
+    """
+    import pathlib
+
+    src = open(os.path.join(os.path.dirname(__file__), "..", "src", "community_encoder",
+                            "train_DESK", "desk_training.py")).read()
+    assert 'seed=int(desk_cfg.get("seed", 0)),' in src, \
+        "the training seed must be passed, not left at the signature default"
+    cfg = json.loads((pathlib.Path(__file__).resolve().parents[1] / "config"
+                      / "esk_desk_config.json").read_text(encoding="utf-8"))
+    assert "seed" in cfg["desk"], "desk.seed must exist"
+    assert "seed" in cfg["desk"]["trend"], "desk.trend.seed is the separate split seed"
+    note = cfg["desk"]["_seed_comment"]
+    assert "spatial split" in note and "precision floor" in note, \
+        "the comment must distinguish the two seeds' roles"
+
+
+def test_the_training_seed_actually_changes_the_run():
+    """It must reach model init and the stochastic terms, or replication is a no-op.
+
+    Asserted on the training loss trajectory rather than on weights: this trainer is not
+    bit-reproducible run to run (see test_the_val_kernel_metric_never_touches_a_weight), so a
+    weight comparison would differ even at a fixed seed. Stab is printed to four decimals, coarse
+    enough to be stable under that noise and fine enough that a different init shows.
+    """
+    a, _ = _tiny_train(True, seed=0)
+    b, _ = _tiny_train(True, seed=0)
+    c, _ = _tiny_train(True, seed=12345)
+    assert a == b, (a, b)                       # same seed reproduces
+    assert a != c, (a, c)                       # a different seed does not
+    print(f"seed 0 {a} vs seed 12345 {c}")

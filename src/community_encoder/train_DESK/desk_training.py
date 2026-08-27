@@ -677,6 +677,7 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
                     eigenbasis_draws=1,
                     nesting_batch=2048, nesting_batches=8, nesting_probe=False,
                     n_spatial_tiles=1, tiles_per_step=2, tile_jitter=True,
+                    procrustes_diag="auto",
                     selection_metric="val_zmse",
                     selection_smooth=0,
                     trajectory_path=None, stop_at_epoch=None, return_info=False,
@@ -870,6 +871,25 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
         nest_masks = None
         nest_gram_fn, nest_bs = None, 0
 
+    # --- Procrustes-aligned diagnostics -------------------------------------------------------
+    # "auto" turns them on exactly when the stabilizing term is OFF, because that term is the only
+    # thing pinning DESK's basis to ESK's; without it the rotation-sensitive diagnostics measure an
+    # arbitrary rotation. The RAW metrics are still reported unchanged, so no previously recorded
+    # number moves and the aligned ones are strictly additional.
+    _pd = procrustes_diag
+    if isinstance(_pd, str) and _pd.lower() == "auto":
+        proc_on = float((weights or {}).get("stabilizing", 0.0)) == 0.0
+        _why = ("stabilizing weight is 0, so nothing pins the basis to ESK's"
+                if proc_on else "stabilizing weight is non-zero, so the basis is already pinned")
+    else:
+        proc_on = bool(_pd)
+        _why = "set explicitly"
+    if proc_on:
+        print(f"[desk] Procrustes-aligned diagnostics ON ({_why}): an orthogonal rotation plus "
+              f"isotropic scale is fit on the TRAIN cells only and applied to val, reported "
+              f"ALONGSIDE the raw metrics. Rotation-invariant metrics (every kernel term) are "
+              f"unaffected by construction.", flush=True)
+
     # --- the eigenbasis diagnostic's fixed batch -----------------------------------------------
     # A BATCH, not pairs: the nesting objective needs Tf = Kf, an operator applied to the feature
     # map, which sampled pairs cannot supply. Drawn once with a fixed seed so the number is
@@ -1056,6 +1076,50 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
                 d = (z_all[yi[y]][m] - zg[m]).detach()
                 sq += float(torch.sum(d * d)); cnt += int(m.sum())
         return (sq / cnt if cnt else float("nan")), cnt
+
+    def _procrustes_fit(z_all, sel):
+        """Best orthogonal rotation + isotropic scale taking ``z_all`` onto the ESK targets.
+
+        Fit on the cells ``sel`` selects -- ALWAYS the TRAIN cells at the call site -- and applied
+        to validation, so it cannot launder held-out performance: the alignment sees no val cell.
+
+        Why this is needed at all. The population model is rotation-invariant (``H = Z*beta`` with
+        an isotropic prior), so ``Z -> ZQ`` leaves the induced GP unchanged, and the stabilizing
+        term is the ONLY thing pinning DESK's basis to ESK's. Turn that term off -- the pure-nesting
+        arm does exactly this -- and every rotation-sensitive diagnostic (val z-MSE, rot, dcos, mag,
+        cal) is comparing two bases that were never asked to agree, so it reports the arbitrary
+        rotation between them rather than anything about the model. dcos then sits near 0 and cal
+        swings over orders of magnitude regardless of fit quality.
+
+        Scale is fitted too, because the two conventions genuinely differ: ESK normalises so
+        ``dot(z_i,z_j) ~= Ruzicka``, while the NestedLoRA objective sets ``f^T f / B`` to the implied
+        eigenvalues. Without a scale term the comparison is dominated by that convention gap.
+
+        Orthogonal Procrustes: for ``M = Z^T G = U S V^T`` the minimiser of ``||ZR - G||_F`` over
+        orthogonal ``R`` is ``U V^T``; the scale is then the least-squares ``<ZR,G>/<ZR,ZR>``.
+        Returns ``(R, s, frac)`` where ``frac`` is the share of target variance the aligned z
+        explains ON THE FIT CELLS -- a sanity read on whether an alignment existed to find.
+        """
+        zs, gs = [], []
+        for y, (zg, m) in sel.items():
+            if bool(m.any()):
+                zs.append(z_all[yi[y]][m].detach())
+                gs.append(zg[m].detach())
+        if not zs:
+            return None, float("nan"), float("nan")
+        Z = torch.cat(zs).double()
+        G = torch.cat(gs).double()
+        if Z.shape[0] < Z.shape[1]:
+            # Fewer points than dimensions: R would be fit exactly and mean nothing.
+            return None, float("nan"), float("nan")
+        U, _S, Vh = torch.linalg.svd(Z.T @ G, full_matrices=False)
+        R = U @ Vh
+        ZR = Z @ R
+        den = float(torch.sum(ZR * ZR))
+        sc = (float(torch.sum(ZR * G)) / den) if den > 0 else 1.0
+        resid = float(torch.sum((sc * ZR - G) ** 2))
+        tot = float(torch.sum((G - G.mean(0)) ** 2))
+        return (R.to(z_all.dtype), sc, (1.0 - resid / tot) if tot > 0 else float("nan"))
 
     def _rotation(z_all, m, y_a=None):
         """Median ``1 - cos`` between the deep and anchor year, predicted and target.
@@ -1591,6 +1655,19 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
                              / max(int(va_anchor.sum()), 1)) if bool(va_anchor.any()) else float("nan")
                 vs_time = _z_mse(z_eval, hy_tgt)[0] if hy_tgt else float("nan")
                 ts, _ = _z_mse(z_eval, tr_sel)          # clean-train MSE, same scale as vs
+                # Aligned duplicates. Fit on tr_sel (train cells) and applied to the SAME z, so the
+                # val numbers below are still held out -- the alignment never sees a val cell.
+                al = {}
+                if proc_on:
+                    _R, _sc, _frac = _procrustes_fit(z_eval, tr_sel)
+                    if _R is not None:
+                        _za = (z_eval @ _R) * _sc
+                        al = {"scale": _sc, "fit": _frac,
+                              "vs": _z_mse(_za, val_sel)[0], "ts": _z_mse(_za, tr_sel)[0],
+                              "rot": _rotation(_za, rot_va)[0],
+                              "dcos_tr": _dir_cos(_za, rot_tr, perm_tr)[0],
+                              "dcos_va": _dir_cos(_za, rot_va, perm_va)[0],
+                              "mag_va": _mag_ratio(_za, rot_va)}
                 # Rotation on the SUPERVISED z_ema (ratio-to-one is meaningful), plus the raw
                 # pre-EMA rotation for information since that is what the cube exports.
                 rotP, rotT = _rotation(z_eval, rot_tr)
@@ -1730,6 +1807,16 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
                   f"half-life {ema.half_life().item():.1f}y | "
                   f"mix {w_stab.item()/tot:.2f}/{w_true.item()/tot:.2f}/{w_rec.item()/tot:.2f} | "
                   f"lr {opt.param_groups[0]['lr']:.2e} | {dt:.1f}s{vram} | RSS {rss:.1f}G", flush=True)
+            if al:
+                # Raw metrics stay above, unchanged. These are the same quantities after the
+                # train-fitted rotation+scale, which is the only form that means anything when the
+                # stabilizing term is off. "fit" is the share of TRAIN target variance the aligned z
+                # explains: near 0 means no alignment existed to find, so the aligned numbers below
+                # are describing noise and should not be read as an improvement.
+                print(f"Ep {ep:03d} | aligned | mse tr {al['ts']:.4f} va {al['vs']:.4f} | "
+                      f"rot va {al['rot']:.2f} | dcos tr {al['dcos_tr']:.2f} "
+                      f"va {al['dcos_va']:.2f} | mag va {al['mag_va']:.2f} | "
+                      f"scale {al['scale']:.3g} | train fit {al['fit']:+.3f}", flush=True)
             # The kernel line is separate rather than appended: the line above is already at the
             # terminal width, and these are the numbers a sweep is read on, so they should not be
             # the ones that scroll off.
@@ -1820,6 +1907,14 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
                 "zmse_val_anchor": vs_anchor, "zmse_val_yearout": vs_time,
                 "rot_ratio_train": rr, "rot_ratio_val": rrv, "rot_ratio_withheld": rrh,
                 "dcos_train": dcT, "dcos_val": dcV, "dcos_withheld": dcH,
+                "al_val_zmse": al.get("vs", float("nan")),
+                "al_train_zmse": al.get("ts", float("nan")),
+                "al_rot_val": al.get("rot", float("nan")),
+                "al_dcos_train": al.get("dcos_tr", float("nan")),
+                "al_dcos_val": al.get("dcos_va", float("nan")),
+                "al_mag_val": al.get("mag_va", float("nan")),
+                "al_scale": al.get("scale", float("nan")),
+                "al_train_fit": al.get("fit", float("nan")),
                 "mag_train": mgT, "mag_val": mgV,
                 "half_life": float(ema.half_life().item()),
                 "lr": float(opt.param_groups[0]["lr"]),
@@ -2327,6 +2422,7 @@ def run_desk_experiment(config=None):
         n_spatial_tiles=int(desk_cfg.get("spatial_tiles", 1)),
         tiles_per_step=int(desk_cfg.get("tiles_per_step", 2)),
         tile_jitter=bool(desk_cfg.get("tile_jitter", True)),
+        procrustes_diag=desk_cfg.get("procrustes_diag", "auto"),
         min_delta=float(desk_cfg.get("min_delta", 0.0)),
         selection_metric=str(desk_cfg.get("selection_metric", "val_zmse")),
         selection_smooth=int(desk_cfg.get("selection_smooth", 0)),

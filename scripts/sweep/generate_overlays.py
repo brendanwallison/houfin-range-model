@@ -240,6 +240,46 @@ def states_dir_for(cfg_frag, states_root):
     return f"{states_root}/states_tau{taus[0]}"
 
 
+# --- the nesting arm ------------------------------------------------------------------------
+# Decoupled deliberately: tiling changes the STEP COUNT and the pair-distance mix, the nesting
+# objective changes WHAT is optimised, and running them together would confound the two. So the
+# arm is three runs whose differences are one change each.
+#
+# On the pure-nesting run's weight: with every other term at 0 the nesting weight only SCALES the
+# single remaining gradient, which is exactly a learning-rate change. So 1.0 is not a tuned value
+# and there is no weight arm to sweep here -- lr is the knob, and it is already pinned.
+#
+# spatial_tiles 32 with tiles_per_step 2 gives ~16 steps per epoch (8,000 over 500 epochs against
+# the historical 500). 32 rather than 16 because k=2 forwards two slabs per step, so the step count
+# is tiles/k -- 32/2 restores what 16 tiles at one-per-step would have given, at ~1.2x the forward.
+NESTING_TILES = {"spatial_tiles": 32, "tiles_per_step": 2, "tile_jitter": True}
+
+
+def nesting_arm():
+    """``[(tag, reason, overlay fragment)]`` -- the runs that characterise the nesting objective."""
+    return [
+        ("nest_probe",
+         "production weights, nesting COMPUTED AND LOGGED BUT NOT ADDED (probe). The term's scale "
+         "on real communities has never been measured and the toy values (-4 to -0.004) do not "
+         "transfer, so this is what makes a weight settable if the term is ever mixed in. The "
+         "battery is unchanged from base, so it doubles as a same-code control.",
+         {"desk": {"nesting_probe": True}}),
+        ("tiles32",
+         "production weights, tiling ON (32 tiles, 2 per step, ~16 steps/epoch). Isolates the step "
+         "count and the pair-distance mix from the objective change, so a shift in the nesting run "
+         "cannot be attributed to the new loss when tiling alone would have produced it.",
+         {"desk": dict(NESTING_TILES)}),
+        ("nest_only",
+         "PURE NESTING: stabilizing, metric and reconstruction all 0, nesting 1.0, tiling on. "
+         "Nothing pins the basis to ESK's, so procrustes_diag auto-enables and the al_* metrics "
+         "are the ones to read -- the raw dcos/cal/val_zmse describe an arbitrary rotation. "
+         "Selection is on val_kernel, which is rotation-invariant and so unaffected.",
+         {"desk": dict(NESTING_TILES,
+                       weights={"stabilizing": 0.0, "metric": 0.0, "reconstruction": 0.0,
+                                "nesting": 1.0})}),
+    ]
+
+
 def build_grid(stage, configs=None):
     """``[(run_id, cell_tag, cfg_tag, holdout_years, train_frac, cfg_frag, reason)]``.
 
@@ -248,6 +288,9 @@ def build_grid(stage, configs=None):
     Stage 2 crosses the surviving configurations (named by ``configs``) with all 12 cells.
     """
     all_cfg = {t: (r, f) for t, r, f in configurations()}
+    if stage == "nesting":
+        return [(f"nest_t0_f100_{t}", "t0_f100", t, [], None, f, r)
+                for t, r, f in nesting_arm()]
     if stage == 1:
         rows = [(t, (r, f)) for t, r, f in configurations()]
         out = []
@@ -269,7 +312,7 @@ def build_grid(stage, configs=None):
                     out.append((f"sweep_{t_tag}_{f_tag}_{tag}", f"{t_tag}_{f_tag}", tag,
                                 ho, frac, frag, reason))
         return out
-    raise SystemExit(f"--stage must be 1 or 2; got {stage}")
+    raise SystemExit(f"--stage must be 1, 2 or 'nesting'; got {stage}")
 
 
 def make_overlay(run_id, cfg_frag, holdout_years, train_frac, root, states_root, sha,
@@ -349,7 +392,9 @@ def main():
     ap.add_argument("--states-root", default=None,
                     help="where the per-ema_tau yearly_states builds live "
                          "(default: <root>/states)")
-    ap.add_argument("--stage", type=int, default=1)
+    ap.add_argument("--stage", default="1",
+                    help="1 | 2 | nesting. 'nesting' emits the three-run nesting arm "
+                         "(nest_probe, tiles32, nest_only) at the production cell.")
     ap.add_argument("--configs", default="",
                     help="stage 2 only: comma-separated config tags stage 1 selected")
     ap.add_argument("--seeds", default="",
@@ -430,7 +475,10 @@ def main():
                 for s in seeds]
     else:
         smoke_extra = None
-        grid = build_grid(args.stage, cfgs)
+        # --stage is a string so 'nesting' is accepted; numeric stages stay ints, because
+        # build_grid compares them to 1 and 2 and a string "1" would fall through to the error.
+        _stage = int(args.stage) if str(args.stage).strip().isdigit() else str(args.stage).strip()
+        grid = build_grid(_stage, cfgs)
         seeds = [SPATIAL_SEED] * len(grid)
 
     # stop_at_epoch composes onto whatever the stage put in `smoke_extra`, and NEVER onto the

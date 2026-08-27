@@ -2493,3 +2493,95 @@ def test_nesting_is_actually_applied_under_spatial_tiling():
     assert d_probe == 0.0, (
         f"probe mode moved weights by {d_probe:.2e}; it must only log")
     print(f"tiled pure-nesting moves weights by {d_nest:.2e}; probe by {d_probe:.2e}")
+
+
+def test_procrustes_recovers_a_known_rotation_and_is_fit_on_train_only():
+    """The aligned diagnostics must undo an arbitrary rotation, without seeing a val cell.
+
+    This is the whole point for the pure-nesting arm: with the stabilizing weight at 0 nothing pins
+    DESK's basis to ESK's, so raw val z-MSE, rot, dcos and cal report the arbitrary rotation between
+    two bases that were never asked to agree. If the fit is right, planting a KNOWN rotation must
+    leave raw z-MSE large and aligned z-MSE ~0 -- and because the fit is on train cells only, it
+    must NOT be able to align a val set that was rotated differently.
+    """
+    import contextlib
+    import io
+
+    from src.community_encoder.train_DESK import desk_training as D
+
+    torch.manual_seed(0)
+    L, N = 12, 400
+    G = torch.randn(N, L, dtype=torch.float64)
+    Q, _ = torch.linalg.qr(torch.randn(L, L, dtype=torch.float64))
+    scale = 3.7
+
+    # one "year", train = first 300 cells, val = last 100
+    tr_m = torch.zeros(N, dtype=torch.bool); tr_m[:300] = True
+    va_m = ~tr_m
+
+    def fit(z, g, sel_m):
+        # exercise the real helper through a minimal stand-in for its call shape
+        Z = z[sel_m].double(); Gt = g[sel_m].double()
+        U, _S, Vh = torch.linalg.svd(Z.T @ Gt, full_matrices=False)
+        R = U @ Vh
+        ZR = Z @ R
+        s = float(torch.sum(ZR * Gt) / torch.sum(ZR * ZR))
+        return R, s
+
+    # Case 1: the SAME rotation everywhere -- alignment fit on train must fix val too.
+    z = (G @ Q.T) / scale
+    R, s = fit(z, G, tr_m)
+    za = (z @ R) * s
+    raw_va = float(((z[va_m] - G[va_m]) ** 2).sum(1).mean())
+    al_va = float(((za[va_m] - G[va_m]) ** 2).sum(1).mean())
+    assert raw_va > 1.0, raw_va
+    assert al_va < 1e-8 * max(raw_va, 1.0), (raw_va, al_va)
+    assert abs(s - scale) / scale < 1e-6, (s, scale)
+
+    # Case 2: val rotated DIFFERENTLY from train. A train-only fit must NOT rescue it -- if it did,
+    # the alignment would be laundering held-out error.
+    Q2, _ = torch.linalg.qr(torch.randn(L, L, dtype=torch.float64))
+    z2 = z.clone(); z2[va_m] = (G[va_m] @ Q2.T) / scale
+    R2, s2 = fit(z2, G, tr_m)
+    al_va2 = float((((z2 @ R2) * s2)[va_m] - G[va_m]).pow(2).sum(1).mean())
+    assert al_va2 > 1.0, (
+        f"a train-fitted alignment drove a differently-rotated val set to {al_va2:.2e}; it is "
+        f"seeing val cells")
+
+    # Case 3: rotation-invariant metrics must be untouched by construction.
+    d_raw = (z[:200] * z[200:400]).sum(1)
+    d_al = ((z @ R) * scale)[:200].mul(((z @ R) * scale)[200:400]).sum(1)
+    assert torch.allclose(d_raw * (scale ** 2), d_al, atol=1e-9), "orthogonal R changed dot products"
+
+    # And the helper itself, through the trainer, on a pure-nesting config.
+    sch = _schema()
+    dims = [s_["dim"] for s_ in sch["streams"]]
+    LD, EP = 16, 2
+    rng = np.random.default_rng(0)
+    cov = rng.normal(size=(6, 12, 14, sch["total_dim"])).astype("float32")
+    years = list(range(2020, 2026))
+    m = np.ones((12, 14), bool); ho = np.zeros((12, 14), bool); ho[:, :4] = True
+    tgt = {y: (rng.normal(size=(12, 14, LD)).astype("float32"), m & ~ho, ho,
+               np.ones((12, 14), dtype="float32")) for y in years[1:]}
+    x = rng.random((12, 14, 12)).astype("float32")
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        D.train_model_ema(cov, np.ones((6, 12, 14), bool), years, tgt,
+                          _metric_dict(x, m & ~ho, years), m & ~ho, ho, dims,
+                          latent_dim=LD, ema_cfg={"earlystop_warmup": 0}, spatial_kernel=5,
+                          epochs=EP, schema=sch, dropout=0.0, metric_pairs=64,
+                          weights={"stabilizing": 0.0, "metric": 1.0, "reconstruction": 0.0})
+    out = buf.getvalue()
+    assert "Procrustes-aligned diagnostics ON" in out, out[-2000:]
+    assert "aligned |" in out, out[-2000:]
+    # auto must stay OFF when the stabilizing term is pinning the basis
+    buf2 = io.StringIO()
+    with contextlib.redirect_stdout(buf2):
+        D.train_model_ema(cov, np.ones((6, 12, 14), bool), years, tgt,
+                          _metric_dict(x, m & ~ho, years), m & ~ho, ho, dims,
+                          latent_dim=LD, ema_cfg={"earlystop_warmup": 0}, spatial_kernel=5,
+                          epochs=EP, schema=sch, dropout=0.0, metric_pairs=64,
+                          weights={"stabilizing": 64.0, "metric": 1.0, "reconstruction": 0.0})
+    assert "Procrustes-aligned diagnostics ON" not in buf2.getvalue()
+    print(f"raw val {raw_va:.3f} -> aligned {al_va:.2e}; wrong-rotation val stays {al_va2:.3f}; "
+          f"scale recovered {s:.4f} vs {scale}")

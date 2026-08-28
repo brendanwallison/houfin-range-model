@@ -429,3 +429,142 @@ def test_the_PRODUCTION_form_orders_only_above_a_batch_size_floor():
         f"guidance on desk.nesting_batch needs remeasuring")
     print(f"production form orders at b={b_ok} (min|cos| {ok:.4f}) and fails at b=200 "
           f"(min|cos| {small:.4f})")
+
+
+def test_a_resampled_and_REGIONAL_gram_still_orders():
+    """Rebuilding the gram every step, and restricting it to a REGION, must not break the ordering.
+
+    This is the tiled path's configuration: desk_training builds a fresh Ružička block per optimizer
+    step from the tiles in that step, so the operator is re-estimated every step and each estimate
+    comes from a spatially restricted subsample rather than the whole pool. The worry was that
+    per-region operators disagree about component ORDER -- eigenvalues 3 and 4 swapping between
+    regions -- so each step would pull toward a different basis and no consistent order would form.
+    It does not happen: the gradient averages over steps and finds the POPULATION eigenbasis.
+
+    steps=8000 is not padding: the ordering is the slowest thing this objective converges, and the
+    same control sits at only 0.887 after 6000. See
+    test_the_PRODUCTION_form_orders_only_above_a_batch_size_floor for the convergence curve.
+
+    Both are tested because the answer was counter-intuitive -- resampling slightly HELPS (a fixed
+    subsample's eigenbasis is only that subsample's, while fresh draws estimate the population's).
+
+    An earlier version of this experiment appeared to show BOTH failing. That harness was invalid:
+    it drew X from an isotropic normal, so the population covariance was ~identity, the spectrum was
+    degenerate, and there was no ordering to recover. The split_halves=False control caught it by
+    failing at min|cos| 0.079 where a free f recovers to 1e-8. Hence the control below, kept in the
+    test: a harness for an ordering claim must first be shown capable of recovering an ordering.
+    """
+    rs = np.random.RandomState(0)
+    d, L, R, per = 10, 5, 32, 400
+    Q, _ = np.linalg.qr(rs.randn(d, d))
+    # Regions whose LOCAL spectra reorder, over a population whose order is clean. 27/32 of them
+    # are locally out of order, so the disagreement is real and not a token perturbation.
+    regions, n_flip = [], 0
+    for _r in range(R):
+        sp = (0.55 ** np.arange(d)) * np.exp(rs.randn(d) * 0.5)
+        if np.any(np.diff(sp) > 0):
+            n_flip += 1
+        regions.append((rs.randn(per, d) * np.sqrt(sp)) @ Q.T)
+    assert n_flip > R // 2, f"only {n_flip}/{R} regions reorder; the conflict is too weak to test"
+    X = np.vstack(regions)
+    reg = np.repeat(np.arange(R), per)
+    C = X.T @ X / len(X)
+    mu, V = np.linalg.eigh(C)
+    o = np.argsort(mu)[::-1]
+    mu, V = mu[o], V[:, o]
+    assert np.all(np.diff(mu[:L + 1]) < 0), "population spectrum is not ordered; harness invalid"
+    masks = joint_nesting_masks(L, 1, torch.device("cpu"), torch.float64)
+
+    def fit(mode, split, B=800, steps=8000, lr=0.02, seed=0):
+        g = torch.Generator().manual_seed(seed)
+        gg = torch.Generator().manual_seed(seed + 1)
+        rr = np.random.RandomState(seed + 2)
+        idx0 = rr.choice(len(X), B, replace=False)
+        W = torch.randn(d, L, dtype=torch.float64, generator=g, requires_grad=True)
+        opt = torch.optim.Adam([W], lr=lr)
+        for _t in range(steps):
+            if mode == "fixed":
+                idx = idx0
+            elif mode == "uniform":
+                idx = rr.choice(len(X), B, replace=False)
+            else:
+                idx = np.flatnonzero(np.isin(reg, rr.choice(R, 2, replace=False)))
+            Xb = torch.tensor(X[idx], dtype=torch.float64)
+            opt.zero_grad()
+            nested_lora_loss(Xb @ W, Xb @ Xb.T, masks=masks, split_halves=split,
+                             generator=(gg if split else None)).backward()
+            opt.step()
+        Wn = W.detach().numpy()
+        return min(abs(np.dot(Wn[:, l] / np.linalg.norm(Wn[:, l]), V[:, l])) for l in range(L))
+
+    ctrl = fit("fixed", False)
+    assert ctrl > 0.95, (
+        f"CONTROL failed at min|cos| {ctrl:.3f}: the harness cannot recover an ordering even in the "
+        f"verified configuration, so nothing below it means anything (this is exactly how the "
+        f"degenerate-spectrum version of this test fooled me)")
+    tiled = fit("tilepair", True)
+    assert tiled > 0.95, (
+        f"regional per-step grams ordered only to {tiled:.3f}; the tiled path would not be "
+        f"delivering the ordering the objective is for")
+    print(f"control {ctrl:.4f}; regional per-step gram {tiled:.4f} "
+          f"({n_flip}/{R} regions locally reordered)")
+
+
+def test_the_ordering_guarantee_collapses_once_the_basis_is_wide():
+    """Nesting orders ~8 components, not 64, and that is structural rather than a tuning failure.
+
+    The ordering signal is the nesting mask's structure on the metric term, which can only separate
+    component l from l+1 if their eigenvalues are distinguishable. Holding the condition number
+    fixed at 100x and varying L (so d == L, no null space, identical conditioning across rows), the
+    adjacent eigenvalue ratio necessarily shrinks as more components share the same dynamic range,
+    and the recovery collapses with it. Measured at 8000 steps:
+
+        L=4   gap 4.55x   min|cos| 0.996
+        L=8   gap 1.85x   min|cos| 0.961
+        L=16  gap 1.34x   min|cos| 0.032   <- collapses here
+        L=32  gap 1.16x   min|cos| 0.028
+        L=64  gap 1.08x   min|cos| 0.001   (mean 0.304)
+
+    L and the gap cannot be separated in practice: holding the gap at 1.85x with L=64 needs a
+    spectrum spanning 1e16. So a 64-wide ordered eigenbasis is not something this objective delivers.
+
+    Why it matters beyond the toy: DESK runs at latent_dim=64 and the pure-nesting run was read as
+    evidence against the objective. It is not -- at L=64 the ordering was unreachable at any step
+    budget, so that run tested the configuration, not the method. It also agrees with a finding the
+    sweep reached independently, that the best rank is 8-16 in 21 of 22 configurations.
+    """
+    def run(L, span=100.0, b=1024, steps=8000, lr=0.02, seed=0):
+        rs = np.random.RandomState(seed)
+        spec = span ** (-np.arange(L) / max(L - 1, 1))
+        Q, _ = np.linalg.qr(rs.randn(L, L))
+        X = (rs.randn(b, L) * np.sqrt(spec)) @ Q.T
+        C = X.T @ X / b
+        mu, V = np.linalg.eigh(C)
+        o = np.argsort(mu)[::-1]
+        V = V[:, o]
+        gram = torch.tensor(X @ X.T, dtype=torch.float64)
+        Xb = torch.tensor(X, dtype=torch.float64)
+        masks = joint_nesting_masks(L, 1, torch.device("cpu"), torch.float64)
+        g = torch.Generator().manual_seed(seed)
+        W = torch.randn(L, L, dtype=torch.float64, generator=g, requires_grad=True)
+        opt = torch.optim.Adam([W], lr=lr)
+        gg = torch.Generator().manual_seed(seed + 1)
+        for _ in range(steps):
+            opt.zero_grad()
+            nested_lora_loss(Xb @ W, gram, masks=masks, split_halves=True,
+                             generator=gg).backward()
+            opt.step()
+        Wn = W.detach().numpy()
+        return min(abs(np.dot(Wn[:, l] / np.linalg.norm(Wn[:, l]), V[:, l])) for l in range(L))
+
+    narrow = run(8)
+    wide = run(32)
+    assert narrow > 0.9, (
+        f"L=8 ordered only to {narrow:.3f}; the objective is failing even where it should succeed, "
+        f"so the comparison below says nothing about width")
+    assert wide < 0.5, (
+        f"L=32 ordered to {wide:.3f}, far better than the measured 0.028. If that is real it is good "
+        f"news and the guidance to keep the nesting basis narrow should be revisited -- but check "
+        f"the harness first")
+    print(f"L=8 orders to {narrow:.4f}; L=32 only to {wide:.4f} -- ordering does not scale to a "
+          f"wide basis")

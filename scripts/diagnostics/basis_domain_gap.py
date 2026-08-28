@@ -35,7 +35,9 @@ absolute value against the sweep's k@24.
     CAVEAT, and read section 1 first: if ||z||^2 on BBS communities is still collapsed, the basis
     barely represents these points and the rank curve here is measuring that rather than the tail.
 
-Run on TACC (needs the raw BBS release):
+Run on TACC (needs the raw BBS release). load_observed reads ~6.9M species-route-years, so use a
+compute node rather than a login node -- an interactive `idev -p vm-small -t 00:30:00` is enough,
+and no GPU is involved anywhere in this script:
     cd $HOUFIN_REPO && python scripts/diagnostics/basis_domain_gap.py
 """
 import json
@@ -141,13 +143,18 @@ def rank_curve(name, X, z_dir, ld, rng, ranks=(8, 16, 24, 32, 48, 64), n=700):
     rather than sampled index pairs: the sample is the only randomness, so the curve across ranks
     moves only with rank.
     """
-    z = project_points_to_z(np.asarray(X, dtype="float32"), z_dir, ld)
+    # SUBSAMPLE FIRST, then project. Projecting all of X and slicing afterwards builds an
+    # (len(X) x n_landmarks) kernel block -- 16,000 landmarks against 16,000 landmarks is a 1.0 GB
+    # float32 tensor before the numerator/denominator copies, which OOMed on a login node. Only `n`
+    # rows are ever used, so projecting the rest is pure waste: at n=700 the block is ~45 MB.
+    # `describe` above already had this order right; this function did not.
+    take = rng.permutation(len(X))[:min(n, len(X))]
+    S = np.asarray(X[take], dtype="float64")
+    z = project_points_to_z(np.asarray(X[take], dtype="float32"), z_dir, ld)
     if z is None:
         print(f"\n  {name}: no saved projection, rank curve unavailable")
         return None
-    take = rng.permutation(len(X))[:min(n, len(X))]
-    S = np.asarray(X[take], dtype="float64")
-    zt = np.asarray(z[take], dtype="float64")
+    zt = np.asarray(z, dtype="float64")
     R = ruzicka_pairs(S, S)
     iu = np.triu_indices(len(S), k=1)
     r_true = R[iu]

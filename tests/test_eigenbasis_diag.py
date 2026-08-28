@@ -395,24 +395,39 @@ def test_the_esk_rank_curve_separates_a_noisy_tail_from_a_real_one():
 
     rng = np.random.default_rng(1)
     X = rng.random((300, 30)) * rng.gamma(2, 1, (300, 1))
-    R = B.ruzicka_pairs(X.astype("float64"), X.astype("float64"))
-    w, V = np.linalg.eigh(R)
-    o = np.argsort(w)[::-1]
-    w, V = w[o], V[:, o]
-    exact = V[:, :64] * np.sqrt(np.maximum(w[:64], 0))
 
-    def curve_with(z):
+    # The stub must be a genuine FUNCTION OF ITS INPUT, not a precomputed array. rank_curve
+    # subsamples before projecting, so a fixed array indexed in the original row order no longer
+    # lines up with the permuted sample -- which is exactly how an earlier version of this test
+    # broke when that (correct) ordering was introduced. Computing z from the rows actually handed
+    # over keeps the stub honest under any sampling the function chooses.
+    def make_stub(k_real, seed):
+        def _proj(Xin, _zd, _ld):
+            A = np.asarray(Xin, dtype="float64")
+            R = B.ruzicka_pairs(A, A)
+            w, V = np.linalg.eigh(R)
+            o = np.argsort(w)[::-1]
+            w, V = w[o], V[:, o]
+            k = min(64, V.shape[1])
+            z = V[:, :k] * np.sqrt(np.maximum(w[:k], 0))
+            if k_real < k:
+                z = z.copy()
+                z[:, k_real:] = np.random.default_rng(seed).normal(
+                    scale=np.sqrt(np.maximum(w[:k], 0))[k_real:] * 3,
+                    size=(len(A), k - k_real))
+            return z.astype("float32")
+        return _proj
+
+    def curve_with(k_real):
         real = B.project_points_to_z
-        B.project_points_to_z = lambda _X, _zd, _ld, _z=z: _z
+        B.project_points_to_z = make_stub(k_real, 7)
         try:
             return B.rank_curve("t", X, "unused", 64, np.random.default_rng(0), n=300)
         finally:
             B.project_points_to_z = real
 
-    noisy = exact.copy()
-    noisy[:, 8:] = rng.normal(scale=np.sqrt(np.maximum(w[:64], 0))[8:] * 3, size=(300, 56))
-    c_noise = curve_with(noisy.astype("float32"))
-    c_real = curve_with(exact.astype("float32"))
+    c_noise = curve_with(8)
+    c_real = curve_with(64)
 
     assert min(c_noise, key=c_noise.get) <= 8, (
         f"a tail replaced by noise still favoured rank {min(c_noise, key=c_noise.get)}; the curve "

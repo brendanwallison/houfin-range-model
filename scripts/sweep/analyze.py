@@ -48,9 +48,14 @@ def load_runs(root):
 
 
 def _cfg_and_cell(run_id):
-    """``sweep_<cell>_<frac>_<config>[_s<seed>]`` -> (cell, config, seed)."""
+    """``<prefix>_<cell>_<frac>_<config>[_s<seed>]`` -> (cell, config, seed).
+
+    ``nest`` is accepted alongside ``sweep``: the nesting arm uses its own run-id prefix so its
+    output dirs cannot collide with stage 1's, and a prefix check that only knew "sweep" dropped
+    every one of those runs silently -- an empty table reads identically to a null result.
+    """
     p = run_id.split("_")
-    if p[0] != "sweep" or len(p) < 4:
+    if p[0] not in ("sweep", "nest") or len(p) < 4:
         return None, None, None
     seed = None
     if p[-1].startswith("s") and p[-1][1:].isdigit():
@@ -496,11 +501,68 @@ def stage2(runs, threshold):
                   f"cell-years  (d(epoch)/d(log cell-years) = {slope:+.0f})")
 
 
+def nesting_table(runs):
+    """The nesting arm, on the numbers that decide it.
+
+    Selection is val_kernel and nothing else. The al_* columns exist because the pure-nesting run
+    has no stabilizing term, so nothing pins its basis to ESK's and the RAW rotation-sensitive
+    metrics describe an arbitrary rotation rather than the model -- but they are only readable when
+    al_fit shows an alignment was actually found. eigbasis columns are the direct test of what the
+    nesting objective is FOR: an ordered, orthogonal basis means offdiag -> 0, inv = 0, and the two
+    independent eigenvalue estimators agreeing (disagree -> 1).
+    """
+    print("\n=== nesting arm ===")
+    hdr = (f"{'config':<12} {'best_ep':>7} {'k_val':>9} {'vs_base':>8} | "
+           f"{'al_fit':>7} {'al_vs':>7} {'al_dcos':>8} {'al_mag':>7} | "
+           f"{'offdiag':>8} {'inv':>4} {'disagr':>7} {'ordered':>8}")
+    print(hdr); print("-" * len(hdr))
+    base_k = None
+    got = []
+    for r in runs:
+        _cell, cfg, _s = _cfg_and_cell(r["_run_id"])
+        if cfg is None:
+            continue
+        rows = r.get("_rows") or []
+        if not rows:
+            continue
+        kv = [(x.get("val_kernel"), x) for x in rows
+              if isinstance(x.get("val_kernel"), (int, float))
+              and x.get("val_kernel") == x.get("val_kernel")]
+        if not kv:
+            continue
+        k, row = min(kv, key=lambda t: t[0])
+        got.append((cfg, row.get("epoch"), k, row))
+        if cfg in ("base", "nest_probe"):
+            base_k = k if base_k is None else min(base_k, k)
+    for cfg, ep, k, row in sorted(got, key=lambda t: t[2]):
+        rel = ((k / base_k - 1.0) * 100.0) if base_k else float("nan")
+        def g(key, d=float("nan")):
+            v = row.get(key, d)
+            return v if isinstance(v, (int, float)) else d
+        print(f"{cfg:<12} {ep if ep else '-':>7} {k:>9.5f} "
+              f"{rel:>+7.1f}% | {g('al_train_fit'):>7.3f} {g('al_val_zmse'):>7.4f} "
+              f"{g('al_dcos_val'):>8.3f} {g('al_mag_val'):>7.3f} | "
+              f"{g('eig_offdiag_mean'):>8.3f} {g('eig_spectrum_inversions'):>4.0f} "
+              f"{g('eig_estimator_disagreement'):>7.3f} "
+              f"{str(row.get('eig_spectrum_descending')):>8}")
+    if base_k is None:
+        print("  NOTE no base/nest_probe run found, so vs_base is undefined -- the pure-nesting "
+              "number alone says nothing without the control.")
+    print("\n  Reference points: base's val_kernel ~0.00837, the no-covariate IDW direction "
+          "baseline dcos 0.19, and the standard model's dcos ceiling 0.218. An al_dcos below "
+          "0.19 is worse than using no covariates at all.")
+    print("  Read al_fit FIRST: near 0 means no alignment existed to find, so the al_* columns "
+          "beside it are describing noise, not a result.")
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--root", required=True)
-    ap.add_argument("--stage", type=int, default=1)
+    # Not type=int: the nesting arm's stage is the string "nesting", and an int-typed argument
+    # rejects it outright.
+    ap.add_argument("--stage", default="1",
+                    help="1 | 2 | nesting")
     ap.add_argument("--smooth", type=int, default=0, metavar="N",
                     help="rank on the N-epoch trailing median of the kernel instead of its raw "
                          "argmin. Removes the lucky-evaluation bias without retraining, since it "
@@ -513,11 +575,17 @@ def main():
     print(f"{len(runs)} finished run(s) under {args.root}\n")
     if not runs:
         return 1
-    if args.stage == 1:
+    # args.stage is a string so "nesting" is accepted; numeric stages become ints.
+    stage = int(args.stage) if str(args.stage).strip().isdigit() else str(args.stage).strip()
+    if stage == "nesting":
+        nesting_table(runs)
+        eigenbasis_table(runs)
+        return 0
+    if stage == 1:
         stage1(runs, args.threshold, smooth=args.smooth)
     else:
         stage2(runs, args.threshold)
-    if args.stage == 1:
+    if stage == 1:
         eigenbasis_table(runs)
     return 0
 

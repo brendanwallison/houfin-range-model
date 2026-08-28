@@ -367,3 +367,65 @@ def test_the_half_imbalance_diagnostic_detects_the_exploit():
     n1 = (lopsided[:half].T @ lopsided[:half] / half).diagonal().sum()
     n2 = (lopsided[half:].T @ lopsided[half:] / half).diagonal().sum()
     assert (n1 / n2.clamp_min(1e-30)) > 1e6, "the exploit must show as a huge imbalance"
+
+
+def test_the_PRODUCTION_form_orders_only_above_a_batch_size_floor():
+    """``split_halves=True`` -- what the trainer actually calls -- recovers the ORDER only if the
+    batch is big enough, so ``desk.nesting_batch`` is load-bearing.
+
+    Every other correctness test in this file uses ``split_halves=False``, because the split-half
+    form is unbounded below over a free ``f`` and an unconstrained fit exploits it. That left the
+    optimum of the form production MINIMISES untested, which is a real hole: the split-half
+    estimator is unbiased for ``E[.]^2`` but noisy, and the ordering signal lives in the nesting
+    mask's structure on the metric term -- precisely the term the noise lands on. Small batches
+    therefore keep the SUBSPACE and lose the ORDER, which is the one thing nesting exists to fix
+    and is invisible to any dot-product metric.
+
+    Measured: min |cos| between component l and eigenvector l is 0.786 at b=200, 0.978 at 500,
+    0.9996 at 1000, 0.999 at 2048. The default nesting_batch is 2048, comfortably above the floor.
+
+    The ORDER is also the slowest thing to converge, which is why ``steps`` here is large. On a free
+    f and a FIXED gram at b=1000, L=5: min |cos| is 0.014 at 500 steps, 0.147 at 1000, 0.735 at
+    2500, 0.987 at 5000, 0.9995 at 10000. The SUBSPACE arrives far earlier -- it is at 1.7e-3 while
+    the order is still 0.79 -- so the loss value and the subspace can both look converged while the
+    ordering, the only reason to use this objective, is still wrong. Any run of it has to be sized
+    on the ordering, not on the loss curve.
+    """
+    b_ok, L, steps = 1000, 5, 6000
+
+    def fit(b, split, seed=0):
+        rs = np.random.RandomState(seed)
+        X = rs.randn(b, 10)
+        K = X @ X.T + 0.5 * np.eye(b)
+        w, V = np.linalg.eigh(K)
+        o = np.argsort(w)[::-1]
+        V = V[:, o]
+        gram = torch.tensor(K, dtype=torch.float64)
+        masks = joint_nesting_masks(L, 1, torch.device("cpu"), torch.float64)
+        g = torch.Generator().manual_seed(seed)
+        f = torch.randn(b, L, dtype=torch.float64, generator=g, requires_grad=True)
+        opt = torch.optim.Adam([f], lr=0.02)
+        gg = torch.Generator().manual_seed(seed + 1)
+        for _ in range(steps):
+            opt.zero_grad()
+            nested_lora_loss(f, gram, masks=masks, split_halves=split,
+                             generator=(gg if split else None)).backward()
+            opt.step()
+        fn = f.detach().numpy()
+        cos = [abs(np.dot(fn[:, l] / np.linalg.norm(fn[:, l]), V[:, l])) for l in range(L)]
+        return min(cos)
+
+    # At a production-scale batch the ordering IS recovered by the form the trainer uses.
+    ok = fit(b_ok, True)
+    assert ok > 0.97, (
+        f"split_halves=True failed to order at b={b_ok} (min |cos| {ok:.3f}); this is the form "
+        f"desk_training actually minimises, so the objective would not be delivering the ordering "
+        f"it was adopted for")
+    # And it genuinely DOES fail small, so the assertion above is not passing for free and
+    # nesting_batch cannot be lowered casually.
+    small = fit(200, True)
+    assert small < 0.95, (
+        f"b=200 ordered to {small:.3f}; the batch-size floor this test documents has moved, so the "
+        f"guidance on desk.nesting_batch needs remeasuring")
+    print(f"production form orders at b={b_ok} (min|cos| {ok:.4f}) and fails at b=200 "
+          f"(min|cos| {small:.4f})")

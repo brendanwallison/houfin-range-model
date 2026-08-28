@@ -5,10 +5,13 @@
 #   PREDICT_MAX_ROWS=120000 bash scripts/tacc/submit_predictability.sh    # a faster first look
 #   PREDICT_PAIRS=6000 TIME=04:00:00 QUEUE=normal bash scripts/tacc/submit_predictability.sh
 #
-# Runs on a COMPUTE node, not a login node. It needs no GPU, which is exactly why the mistake is
-# tempting: the heavy steps are a sustained n*d^2 dgemm (~6,200 columns on the interaction rung)
-# and the ESK projection of the sampled communities on CPU, plus ~1 GB resident. That profile is
-# what a shared login node's process reaper kills. See the header of 23_predictability.slurm.
+# Runs on vm-small, the lightweight non-GPU queue 25_model_prep already uses for numpy/memmap
+# work. Not `development`: at a 133x224 grid nothing here can use a 128-core node (the biggest
+# BLAS step is ~10 s on 16 cores), and on LS6 `development` is the scarce short-iteration queue.
+# Not a login node either -- the peak is ~2 GB, in the ESK projection rather than the BLAS. The
+# full accounting is in the header of 23_predictability.slurm.
+#
+#   QUEUE=development TIME=02:00:00 bash scripts/tacc/submit_predictability.sh   # if VM is tight
 set -euo pipefail
 source "$(dirname "$0")/env.sh"
 
@@ -18,7 +21,7 @@ export PREDICT_PCA_DIM="${PREDICT_PCA_DIM:-48}"
 export PREDICT_RFF_WIDTH="${PREDICT_RFF_WIDTH:-2048}"
 export PREDICT_OUT="${PREDICT_OUT:-$HOUFIN_PROCESSED/encoder/component_predictability.json}"
 export PREDICT_THREADS="${PREDICT_THREADS:-}"
-QUEUE="${QUEUE:-development}"
+QUEUE="${QUEUE:-vm-small}"
 TIME="${TIME:-02:00:00}"
 
 # Fail here, before the queue wait, on the three inputs whose absence the script can only report

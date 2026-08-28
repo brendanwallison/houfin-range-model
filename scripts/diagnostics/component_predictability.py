@@ -62,23 +62,24 @@ the identical config knobs and seed. Buffer cells are in neither set. Reusing th
 whole point: an R^2 measured on a different split is not comparable to the DESK number it exists
 to be compared against.
 
-Run on TACC, on a COMPUTE NODE. Needs no GPU, which is exactly what makes the mistake tempting --
-but "no GPU" is not "login node" here, and the invocation this file first carried was copied from
-``basis_domain_gap.py``, which IS login-node safe because its peak block is ~0.04 GiB. The heavy
-steps here are a sustained ``n*d^2`` dgemm on the interaction rung (~6,200 columns at C=100) and
-the ESK projection of the sampled communities on CPU, at ~1 GB resident. That is the profile a
-shared login node's process reaper kills:
+Run on TACC as a batch job, on the lightweight ``vm-small`` queue. Not a login node -- the peak is
+~2 GB and the projection runs for minutes, which is what a shared login node's process reaper
+kills, and the bare invocation this file first carried was copied from ``basis_domain_gap.py``,
+whose 0.04 GiB peak is what justifies its. But not a compute node either: at a 133x224 grid the
+biggest BLAS step is ~10 s on 16 cores, so nothing here can use a 128-core node. The dominant cost
+is the ESK projection, not the ridge -- ``project_into_z`` caps its CPU batch at 5,000 rows and
+holds ~5 live ``(batch, M)`` tensors, so at M=16,000 landmarks that is ~1.6 GB and several minutes.
 
     bash scripts/tacc/submit_predictability.sh          # -> scripts/tacc/23_predictability.slurm
 
 The wrapper checks the states dir, the schema sidecar and the three basis files before queueing,
 and says whether the trained run's holdout masks were found (they are what makes the R^2
 comparable to DESK's own val numbers). Rows are subsampled BEFORE either the ESK projection or the
-feature assembly, so peak memory is ``max_rows x 7C``
-float32 (~0.8 GB at 300k rows and C=100) plus one standardized copy and two covariate grids. The
-cost is dominated by the interaction rung: its Gram is ``n * d^2`` with ``d = 6C + pairs``, a few
-minutes at the defaults, and it is accumulated in chunks sized to a 256 MiB budget. ``--max-rows``,
-``--pairs`` and ``--rff-width`` bound all of it. Writes ``component_predictability.json``.
+feature assembly, so the other ~2 GB claimant is the feature matrix, ``max_rows x 7C`` float32
+(~0.7 GB at 300k rows and C=80) plus one standardized copy. The interaction rung's Gram is
+``n * d^2`` with ``d = 6C + pairs``, accumulated in chunks sized to a 256 MiB budget.
+``--max-rows``, ``--pairs`` and ``--rff-width`` bound all of it. Writes
+``component_predictability.json``.
 """
 import argparse
 import json

@@ -6,31 +6,37 @@
 # the `#SBATCH -A` line below is deliberately disabled, and SLURM rejects a job with no
 # allocation.
 #
-# NOT A LOGIN-NODE JOB, even though it needs no GPU. The invocation line in the script's own
-# docstring was copied from basis_domain_gap.py, which IS login-node safe -- its peak kernel
-# block is ~0.04 GiB after the subsample-first fix. This one is a different shape of work:
+# NOT A LOGIN-NODE JOB, but not a compute-node job either. The first version of this header
+# claimed "a sustained n*d^2 dgemm that saturates every core" and ~1 GB resident, and put it on
+# `development`. Both numbers were wrong, and the queue followed from them:
 #
-#   * a dense multi-target ridge whose interaction rung has d = 42C + pairs (~6,200 columns at
-#     C=100), so the Gram accumulation is an n*d^2 dgemm that saturates every core it is given
-#     for minutes at a time -- exactly the sustained multi-core BLAS a shared login node's
-#     process reaper exists to kill;
-#   * ~1 GB resident for the feature matrix plus its standardized copy;
-#   * the ESK projection of the sampled communities against ~16k landmarks over all species,
-#     on CPU because this script deliberately takes no GPU.
+#   * the model grid is 133 x 224 = 29,792 cells, so a per-year state is ~10 MB and the whole
+#     load loop is seconds, not minutes;
+#   * the interaction rung's Gram is n*d^2 ~= 4.3e12 flops at 150k rows and d~5,400 -- about
+#     10 s on 16 cores and 3 s on 128. Nothing here can use a full node;
+#   * the real peak is the ESK PROJECTION, not the BLAS. project_into_z caps its CPU batch at
+#     5,000 rows and holds ~5 live (batch, M) tensors; at M=16,000 landmarks that is ~320 MB
+#     each, so ~1.6 GB, and the feature matrix plus its standardized copy lands in the same
+#     range. Budget ~2 GB.
 #
-# CPU-only, one node, so the development queue is the cheap right answer (same reasoning as
-# 04_states). Unlike 04_states the native thread pools are NOT pinned to 1: that job is
-# I/O-bound and parallelizes reads and writes itself, whereas every heavy step here is a
-# single BLAS call that wants the whole node.
+# So this is the "numpy/memmap I/O plus a one-time build, fine on CPU" shape that 25_model_prep
+# already sends to vm-small, and `development` was the wrong home: on LS6 it is the scarce
+# short-iteration queue (one job per user, 2 h cap) and it bills a 128-core node this job cannot
+# use. vm-small is the default here for that reason.
 #
-# Needs: the target point set, ${HOUFIN_PROCESSED}/encoder/states/yearly_states, and the saved
-# ESK basis in desk.z_dir. Reuses the trained DESK run's holdout/buffer masks and mu/sd when
-# desk_output_dir has them, which is what makes the R^2 comparable to DESK's own val numbers.
-#----------------------------------------------------------------------
+# If vm-small turns out to be memory-tight for the ~2 GB peak, the fallback needs no edit --
+# the wrapper takes QUEUE/TIME from the environment:
+#
+#     QUEUE=development TIME=02:00:00 bash scripts/tacc/submit_predictability.sh
+#
+# A login node is still the wrong answer: ~2 GB resident and a multi-minute CPU projection is
+# what a shared login node's process reaper kills, and the bare invocation this script first
+# carried was copied from basis_domain_gap.py, whose 0.04 GiB peak is what justifies its.
+#
 #SBATCH -J houfin_predict
 #SBATCH -o houfin_predict.o%j
 #SBATCH -e houfin_predict.e%j
-#SBATCH -p development
+#SBATCH -p vm-small
 #SBATCH -N 1
 #SBATCH -n 1
 #SBATCH -t 02:00:00
@@ -43,14 +49,17 @@ module load python/3.12.11 2>/dev/null || true
 [ -n "${TACC_ALLOCATION:-}" ] && echo "allocation: $TACC_ALLOCATION"
 date
 
-# Give the BLAS the node. Left unset, OpenBLAS/MKL pick their own default, which on a 128-core
-# node has been either the whole machine (fine here, but only by luck) or a single core (which
-# turns the interaction rung from seconds into an hour).
-NTHREADS="${PREDICT_THREADS:-${SLURM_CPUS_ON_NODE:-32}}"
+# Set the native thread pools explicitly. Left unset, OpenBLAS/MKL pick their own default,
+# which has been either the whole machine or a single core -- and on a shared VM partition the
+# first is the antisocial one. Take the node's actual allocation, and fall back LOW rather than
+# to a compute-node figure: this used to default to 32, which oversubscribes a vm-small slot.
+# Not pinned to 1 as in 04_states, which is I/O-bound and parallelizes reads and writes itself;
+# here the projection and the ridge are single BLAS/torch calls that do want the cores present.
+NTHREADS="${PREDICT_THREADS:-${SLURM_CPUS_ON_NODE:-8}}"
 export OMP_NUM_THREADS="$NTHREADS" OPENBLAS_NUM_THREADS="$NTHREADS" \
        MKL_NUM_THREADS="$NTHREADS" VECLIB_MAXIMUM_THREADS="$NTHREADS" \
        NUMEXPR_NUM_THREADS="$NTHREADS"
-echo "BLAS threads: $NTHREADS"
+echo "threads: $NTHREADS (SLURM_CPUS_ON_NODE=${SLURM_CPUS_ON_NODE:-unset})"
 
 PREDICT_MAX_ROWS="${PREDICT_MAX_ROWS:-300000}"
 PREDICT_PAIRS="${PREDICT_PAIRS:-2000}"

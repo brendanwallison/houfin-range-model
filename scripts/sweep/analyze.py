@@ -525,9 +525,12 @@ def nesting_table(runs):
         rows = r.get("_rows") or []
         if not rows:
             continue
-        kv = [(x.get("val_kernel"), x) for x in rows
-              if isinstance(x.get("val_kernel"), (int, float))
-              and x.get("val_kernel") == x.get("val_kernel")]
+        # kernel_val, NOT val_kernel: val_kernel is the SELECTION-METRIC name (desk.selection_metric)
+        # while the trajectory column is kernel_val. Using the wrong one matched nothing and printed
+        # an empty table, which is indistinguishable from "the runs are missing".
+        kv = [(x.get("kernel_val"), x) for x in rows
+              if isinstance(x.get("kernel_val"), (int, float))
+              and np.isfinite(x.get("kernel_val"))]
         if not kv:
             continue
         k, row = min(kv, key=lambda t: t[0])
@@ -545,6 +548,15 @@ def nesting_table(runs):
               f"{g('eig_offdiag_mean'):>8.3f} {g('eig_spectrum_inversions'):>4.0f} "
               f"{g('eig_estimator_disagreement'):>7.3f} "
               f"{str(row.get('eig_spectrum_descending')):>8}")
+    # Name what is absent. An arm run that has not finished has no run_summary.json and so is not
+    # loaded at all; without this the table just renders short and reads like a result.
+    have = {c for c, _e, _k, _r in got}
+    missing = [c for c in ("nest_probe", "tiles32", "nest_only") if c not in have]
+    if missing:
+        print(f"\n  MISSING from the arm: {', '.join(missing)}. A run still training has no "
+              f"run_summary.json and is not loaded, so its absence here is NOT a result. The arm "
+              f"is only interpretable complete: nest_probe is the control, tiles32 separates "
+              f"tiling from the objective, nest_only is the test.")
     if base_k is None:
         print("  NOTE no base/nest_probe run found, so vs_base is undefined -- the pure-nesting "
               "number alone says nothing without the control.")

@@ -205,13 +205,18 @@ def test_verdict_reaches_opposite_conclusions_on_the_two_cases_it_exists_for(cap
 
 
 def test_main_runs_end_to_end_on_a_synthetic_project(tmp_path, monkeypatch, capsys):
-    """Wiring smoke test: every path, config key and array alignment in ``main``.
+    """Wiring smoke test: every path, config key and array alignment in ``main``, sections 1-9.
 
     The numerics are asserted above on synthetic targets; what this catches is the other half --
-    a wrong config key, a column slice that does not line up with its block, the val-row index
-    map used by the rank curve, or a numpy scalar that will not serialize. All of those fail only
-    inside ``main``, which cannot be run locally against the real artifacts, so without this the
-    first time the script is exercised is on TACC after an hour of state loading.
+    a wrong config key, a column slice that does not line up with its block, the val-row index map
+    the rank curve uses, a numpy array the JSON encoder cannot take, or one of the borrowed
+    validation functions being handed the wrong shape. All of those fail only inside ``main``,
+    which cannot be run locally against the real artifacts, so without this the first time the
+    script is exercised is on TACC after an hour of state loading.
+
+    The year span is deliberately wide enough (1970-2005) for ``ATTEN_GAP``'s 20-year pairs to
+    exist, because sections 5 and 7 both silently no-op on a short record and a smoke test that
+    skips two of the sections it exists to cover is not covering them.
     """
     M = _mod()
     # L=40 so the 9-16 / 17-32 bands the verdict thresholds read actually exist.
@@ -223,10 +228,11 @@ def test_main_runs_end_to_end_on_a_synthetic_project(tmp_path, monkeypatch, caps
     states.mkdir(parents=True)
     schema = {"streams": [{"name": "s", "dim": C, "start": 0, "end": C, "variables": list("abcd")}]}
     (states / "state_schema.json").write_text(__import__("json").dumps(schema))
-    years = list(range(1990, 2001))
+    # States must reach 15 years before the earliest point year for the lag blocks.
+    years = list(range(1970, 2006))
     grids = {}
-    for y in years:
-        g = rng.normal(size=(H, W, C)).astype("float32") + 0.05 * (y - 1990)
+    for y in range(1955, 2006):
+        g = rng.normal(size=(H, W, C)).astype("float32") + 0.05 * (y - 1955)
         grids[y] = g
         np.savez(states / f"state_{y}.npz", s=g)
 
@@ -243,6 +249,9 @@ def test_main_runs_end_to_end_on_a_synthetic_project(tmp_path, monkeypatch, caps
         .astype("float32")
     np.save(pts / "X_points.npy", Xp)
     np.save(pts / "point_index.npy", pidx)
+    # recent_year is read from here, not from config -- the same source validate_spacetime uses.
+    (pts / "points_meta.json").write_text(__import__("json").dumps(
+        {"recent_year": 2005, "n_species": S}))
 
     zdir = tmp_path / "z"
     zdir.mkdir()
@@ -268,31 +277,54 @@ def test_main_runs_end_to_end_on_a_synthetic_project(tmp_path, monkeypatch, caps
         "paths": {"hist_dir": str(tmp_path / "states"), "desk_output_dir": str(desk_out)},
         "target": {"points_dir": str(pts)},
         "trend": {"points_dir": str(pts)},
-        "desk": {"z_dir": str(zdir), "latent_dim": L, "label_year": 2000,
+        "desk": {"z_dir": str(zdir), "latent_dim": L, "label_year": 2005,
                  "spatial_conv": {"enabled": True, "kernel": 3},
                  "trend": {"block_cells": 4, "holdout_frac": 0.25, "seed": 0,
-                           "buffer_floor": None}},
+                           "buffer_floor": None, "holdout_years": []}},
     }
     monkeypatch.setattr(M, "load_config", lambda *_a, **_k: cfg)
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(
         sys, "argv",
-        ["component_predictability", "--max-rows", "6000", "--pairs", "200", "--pca-dim", "8",
+        ["component_predictability", "--max-rows", "8000", "--pairs", "200", "--pca-dim", "8",
          "--rff-width", "256", "--curve-points", "120"])
     M.main()
     out = capsys.readouterr().out
+    res = __import__("json").loads((tmp_path / "component_predictability.json").read_text())
+
     assert "=== verdict ===" in out, out
     assert "THE ENCODER IS THE LIMIT" not in out, \
         "36 of 40 components are functions of noise only; that branch must not fire\n" + out
-    res = __import__("json").loads((tmp_path / "component_predictability.json").read_text())
     assert len(res["var_share"]) == L
     assert set(res["context_ladder"]) == set(M.RUNGS)
     assert "esk_oracle" in res["rank_curves"]
-    # The two constructed components must come back predictable and the noise must not: this is
-    # the alignment check, since a block/column mismatch would blur them together.
+    # The two constructed groups must come back separated: this is the alignment check, since a
+    # block/column mismatch would blur them together.
     r2 = res["context_ladder"]["+temporal"]["r2"]
     assert min(r2[:4]) > 0.5, f"the four covariate-driven components were lost: {r2[:4]}"
     assert max(r2[4:]) < 0.2, f"noise-driven components came back predictable: {max(r2[4:]):.3f}"
+
+    # --- every new section must have RUN, not silently no-opped ---------------------------
+    d = res["decompositions"]
+    for section in ("=== 5. NOISE CEILING", "=== 6. AGAINST THE REAL BARS",
+                    "=== 7. LEVEL vs CHANGE", "=== 8. DIRECTION and MAGNITUDE",
+                    "=== 9. WHERE the predictability lives"):
+        assert section in out, f"{section} did not print\n{out}"
+    assert "unavailable" not in out.split("=== 5.")[1].split("=== 6.")[0], \
+        "section 5 no-opped; the fixture must span a 20-year gap\n" + out
+    assert len(d["signal_noise"]["signal_var"]) == L
+    assert len(d["achievable_r2"]) == L
+    assert len(d["r2_spatial_idw"]) == L and len(d["r2_spacetime_idw"]) == L
+    assert d["change"]["n_pairs"] > 200, d["change"]
+    assert "r2" in d["change"], "section 7 skipped; it needs pairs on both sides of the split"
+    assert set(d["banded_error_split"]) and all(
+        v["n_dims"] >= 8 for v in d["banded_error_split"].values()), d["banded_error_split"]
+    assert any(k.startswith("era ") for k in d["r2_by_group"]), d["r2_by_group"].keys()
+    assert "baseline_panel" in d and "epoch_direction_panel" in d
+    # The covariate-driven components must beat the interpolator and the noise ones must not --
+    # the assertion that protects the headline this whole section exists to check.
+    gain = np.array(d["r2_gain_over_best_bar"], dtype="float64")
+    assert np.nanmean(gain[:4]) > 0.1, f"real signal must beat IDW: {gain[:4]}"
 
 
 def test_the_rank_curve_is_not_fooled_by_shrinkage():
@@ -356,3 +388,136 @@ def test_a_flat_rank_curve_is_reported_as_flat_not_as_a_winner():
     jitter = {r: {"corr": 0.183 + s, "mse": 0.5, "mse_raw": 0.5, "scale": 1.0}
               for r, s in zip((8, 16, 32, 64), (0.0, 0.004, -0.003, 0.002))}
     assert M.best_rank(jitter, "corr")[0] is None
+
+
+def test_the_noise_ceiling_rescales_a_noisy_component_to_its_achievable_r2():
+    """A component that is mostly survey noise must stop looking like a covariate failure.
+
+    This is the correction that can overturn a raw-R^2 reading: no covariate can predict noise, so
+    reporting a noise-dominated component's low R^2 as a missing-covariate gap is a category error.
+    Constructed so the answer is known -- signal share 0.25 and a raw R^2 of 0.25 is a model that
+    captured ALL of the achievable signal, and must be reported at ~1.0.
+    """
+    M = _mod()
+    sn = {"signal_var": [0.25, 0.9], "total_var": [1.0, 1.0], "noise_var": [0.75, 0.1]}
+    ach, share = M.achievable_r2(np.array([0.25, 0.45]), sn)
+    assert share[0] == pytest.approx(0.25) and share[1] == pytest.approx(0.9)
+    assert ach[0] == pytest.approx(1.0), f"a fully-captured noisy component must read 1.0: {ach[0]}"
+    assert ach[1] == pytest.approx(0.5), f"0.45 of an 0.9 signal share is 0.5: {ach[1]}"
+    # Capped at 1.0: a ratio above 1 means the noise estimate is imprecise, not that the model
+    # beat the ceiling, and reporting 1.4 would invite exactly that misreading.
+    assert M.achievable_r2(np.array([0.9]), {"signal_var": [0.5], "total_var": [1.0]})[0][0] \
+        == pytest.approx(1.0)
+    assert M.achievable_r2(np.array([0.3]), {"note": "too few pairs"}) == (None, None)
+    # BOTH bounds, and the refusal. Dividing a negative R^2 by a tiny share is how a synthetic run
+    # printed "R^2 vs ACHIEVABLE -215.144" from a raw R^2 of -0.0005; the rescale must refuse that
+    # case rather than produce a number, and must never go below 0 where it does apply.
+    a_lo, s_lo = M.achievable_r2(np.array([-0.0005, -0.4]),
+                                 {"signal_var": [0.006, 0.9], "total_var": [1.0, 1.0]})
+    assert not np.isfinite(a_lo[0]), f"a 0.6% signal share must be refused, not scaled: {a_lo[0]}"
+    assert s_lo[0] == pytest.approx(0.006), "the share itself must still be reported"
+    assert a_lo[1] == pytest.approx(0.0), \
+        f"a negative R^2 over a real share floors at 0, not below: {a_lo[1]}"
+    # The threshold is the documented one, and it is a floor on the SHARE, not on the R^2.
+    ok = M.achievable_r2(np.array([0.03]),
+                         {"signal_var": [M.MIN_SIGNAL_SHARE], "total_var": [1.0]})[0][0]
+    assert np.isfinite(ok), "exactly at MIN_SIGNAL_SHARE the rescale must still apply"
+
+
+def test_a_spatially_smooth_component_is_beaten_by_the_idw_bar():
+    """The assertion that protects the headline this decomposition exists to check.
+
+    A component that is nothing but spatial smoothness is 'predictable' from any smooth covariate,
+    and an R^2 against its own mean will say so. Only a comparison against inverse-distance
+    interpolation separates that from environmental signal. Built two ways in one array: column 0
+    is a pure function of position, column 1 a pure function of a covariate that is spatial noise.
+    """
+    M = _mod()
+    rng = np.random.default_rng(3)
+    rows, cols, years = [], [], []
+    for y in (2000, 2001):
+        for r in range(20):
+            for c in range(20):
+                rows.append(r); cols.append(c); years.append(y)
+    pidx = np.stack([rows, cols, years], 1).astype(int)
+    smooth = 0.05 * pidx[:, 0] + 0.03 * pidx[:, 1]              # a plane: IDW nails it
+    rough = rng.normal(size=len(pidx))                          # white noise in space
+    Y = np.stack([smooth, rough], 1).astype("float64")
+    # Held-out cells SCATTERED through the interior, each ringed by training cells. The two
+    # obvious alternatives both break the measurement rather than the method: an edge strip makes
+    # IDW extrapolate a gradient it can only average (scored 0.82), and one interior block leaves
+    # the val set spanning so little of the plane that R^2's own denominator collapses (0.53).
+    # Scattering keeps every val cell interpolable AND keeps the full range of the plane in the
+    # val variance.
+    holdout = np.zeros((20, 20), bool)
+    holdout[1:19:3, 1:19:3] = True
+    va_mask = holdout[pidx[:, 0], pidx[:, 1]]
+    _err, zi = M.zspace_idw_baseline(pidx, Y, holdout, va_mask, return_z=True)
+    r2, n = M.per_component_r2_of(zi, Y[va_mask])
+    assert n[0] > 30
+    assert r2[0] > 0.9, f"IDW must recover a spatial plane; got {r2[0]:.3f}"
+    assert r2[1] < 0.2, f"IDW must NOT recover spatial white noise; got {r2[1]:.3f}"
+
+
+def test_level_and_change_are_measured_as_different_quantities():
+    """``gap_pairs`` must find fixed-gap within-cell pairs, and only those.
+
+    Section 7 rests entirely on this pairing. A per-cell-span pairing would rank cells by RECORD
+    LENGTH instead of measuring change over a fixed interval, which is the mistake recorded on
+    ``per_era_attenuation``, so the gap is asserted exactly.
+    """
+    M = _mod()
+    pidx = np.array([[0, 0, 1970], [0, 0, 1990], [0, 0, 1991], [0, 0, 2010],
+                     [1, 1, 1980], [1, 1, 1985],                 # 5 yr apart: no pair
+                     [2, 2, 1970], [2, 2, 1988]], dtype=int)     # 18 yr: inside 20+/-2
+    ea, la = M.gap_pairs(pidx, gap=20, tol=2)
+    got = {(int(pidx[a, 2]), int(pidx[b, 2]), int(pidx[a, 0])) for a, b in zip(ea, la)}
+    assert (1970, 1990, 0) in got, got
+    assert (1970, 1988, 2) in got, got
+    assert not any(r == 1 for _y0, _y1, r in got), f"a 5-year gap must not pair: {got}"
+    for y0, y1, _r in got:
+        assert 18 <= y1 - y0 <= 22, f"gap {y1 - y0} outside 20+/-2: {got}"
+    # One pair per (cell, earlier year): 1990 must not also pair with 2010 AND appear twice.
+    assert len(ea) == len(set(zip(ea.tolist(), la.tolist())))
+
+
+def test_direction_is_reported_per_band_and_never_per_component():
+    """An angle needs >=2 dimensions; a one-column 'direction' is sign agreement.
+
+    ``banded_direction`` must therefore keep bands at their real width and the angular term must be
+    a genuine fraction of the error. Asserted both ways: a pure scale error is all magnitude and no
+    angle, and a rotation is all angle and no magnitude.
+    """
+    M = _mod()
+    rng = np.random.default_rng(4)
+    truth = rng.normal(size=(500, 16))
+    scaled = 0.5 * truth                                   # same direction, wrong length
+    got = M.banded_direction(scaled, truth, bands=((0, 8), (8, 16)))
+    assert set(got) == {"1-8", "9-16"}
+    for v in got.values():
+        assert v["n_dims"] == 8, "bands must keep their width; a width-1 band cannot hold an angle"
+        assert v["mag_share"] > 0.99, f"a pure rescale is all magnitude: {v}"
+        assert v["ang_share"] < 0.01, f"a pure rescale has no angular error: {v}"
+        assert v["norm_ratio"] == pytest.approx(0.5, abs=1e-6)
+    # A norm-preserving perturbation is the other extreme.
+    other = rng.normal(size=(500, 16))
+    rot = other / np.linalg.norm(other, axis=1, keepdims=True) \
+        * np.linalg.norm(truth, axis=1, keepdims=True)
+    got2 = M.banded_direction(rot, truth, bands=((0, 16),))["1-16"]
+    assert got2["ang_share"] > 0.9, f"a norm-preserving error is all angular: {got2}"
+    assert got2["norm_ratio"] == pytest.approx(1.0, abs=0.05)
+
+
+def test_the_no_change_null_never_silently_borrows_row_zero():
+    """A cell with no ``recent_year`` row must come back unflagged, not pointing at row 0.
+
+    The null is inlined in three places in the validation suite and copied here; the ``-1``
+    sentinel plus the ``has_rec`` gate is the whole reason the copy is safe, so it is pinned.
+    """
+    M = _mod()
+    pidx = np.array([[0, 0, 1990], [0, 0, 2005],       # has a recent row
+                     [1, 1, 1990]], dtype=int)         # does NOT
+    to_rec, has_rec = M.nochange_rows(pidx, 2005)
+    assert has_rec.tolist() == [True, True, False]
+    assert to_rec[0] == 1 and to_rec[1] == 1
+    assert to_rec[2] == -1, f"a cell with no recent year must be -1, not 0: {to_rec}"

@@ -2585,3 +2585,68 @@ def test_procrustes_recovers_a_known_rotation_and_is_fit_on_train_only():
     assert "Procrustes-aligned diagnostics ON" not in buf2.getvalue()
     print(f"raw val {raw_va:.3f} -> aligned {al_va:.2e}; wrong-rotation val stays {al_va2:.3f}; "
           f"scale recovered {s:.4f} vs {scale}")
+
+
+def test_walltime_projection_warns_when_the_run_will_not_finish():
+    """A run that cannot reach its epoch budget in the job's slot must say so early.
+
+    This is the failure it exists to stop: a 4-hour queue slot cut a tiled run at epoch 278 of 500
+    with NO error anywhere in the log -- SLURM's TIME LIMIT notice goes to the .e file, the batch
+    script exits 0 so one bad run does not sink the batch, and run_summary.json is only written at
+    the end, so the run then vanished from the analysis entirely. Nothing in the pipeline said the
+    budget was impossible, and it was knowable within five epochs.
+    """
+    import contextlib
+    import io
+    import time
+
+    from src.community_encoder.train_DESK import desk_training as D
+
+    sch = _schema()
+    dims = [s["dim"] for s in sch["streams"]]
+    L, EP = 16, 8
+    rng = np.random.default_rng(0)
+    cov = rng.normal(size=(6, 12, 14, sch["total_dim"])).astype("float32")
+    years = list(range(2020, 2026))
+    m = np.ones((12, 14), bool); ho = np.zeros((12, 14), bool); ho[:, :4] = True
+    tgt = {y: (rng.normal(size=(12, 14, L)).astype("float32"), m & ~ho, ho,
+               np.ones((12, 14), dtype="float32")) for y in years[1:]}
+    x = rng.random((12, 14, 12)).astype("float32")
+
+    def run(end_offset_s):
+        env = dict(os.environ)
+        os.environ["SLURM_JOB_END_TIME"] = str(time.time() + end_offset_s)
+        try:
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                D.train_model_ema(cov, np.ones((6, 12, 14), bool), years, tgt,
+                                  _metric_dict(x, m & ~ho, years), m & ~ho, ho, dims,
+                                  latent_dim=L, ema_cfg={"earlystop_warmup": 0},
+                                  spatial_kernel=5, epochs=EP, schema=sch, dropout=0.1,
+                                  metric_pairs=64)
+            return buf.getvalue()
+        finally:
+            os.environ.clear(); os.environ.update(env)
+
+    # A slot ending almost immediately cannot reach epoch 8, and must warn.
+    short = run(0.5)
+    assert "WALLTIME PROJECTION" in short, short[-1500:]
+    assert "stop_at_epoch" in short, short[-1500:]
+    # A generous slot must NOT warn -- a false alarm every run trains people to ignore it.
+    long = run(86400.0)
+    assert "WALLTIME PROJECTION" not in long, long[-1500:]
+    assert "walltime projection" in long, long[-1500:]
+    # And with no SLURM variable at all, no projection is invented from a guessed budget.
+    env = dict(os.environ); os.environ.pop("SLURM_JOB_END_TIME", None)
+    try:
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            D.train_model_ema(cov, np.ones((6, 12, 14), bool), years, tgt,
+                              _metric_dict(x, m & ~ho, years), m & ~ho, ho, dims,
+                              latent_dim=L, ema_cfg={"earlystop_warmup": 0},
+                              spatial_kernel=5, epochs=EP, schema=sch, dropout=0.1,
+                              metric_pairs=64)
+        assert "walltime projection" not in buf.getvalue().lower()
+    finally:
+        os.environ.clear(); os.environ.update(env)
+    print("warns when the budget is impossible, silent when it is not, absent off-cluster")

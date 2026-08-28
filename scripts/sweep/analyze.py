@@ -43,7 +43,32 @@ def load_runs(root):
         rows = [json.loads(l) for l in open(tp)] if os.path.exists(tp) else []
         summ["_run_id"] = name
         summ["_rows"] = rows
+        summ["_incomplete"] = False
         out.append(summ)
+    # Runs killed mid-training -- a walltime cut is the common case -- never write run_summary.json,
+    # so requiring it discarded every epoch they DID complete. The trainer flushes the trajectory
+    # every epoch precisely so a killed job stays readable, and a 278-epoch run whose optimum is
+    # around epoch 100-200 is usually already decided. Loaded and flagged, never silently dropped:
+    # an incomplete run must not be compared as though it had converged.
+    for name in sorted(os.listdir(root)):
+        d = os.path.join(root, name)
+        if os.path.isfile(os.path.join(d, "run_summary.json")):
+            continue
+        tp = os.path.join(d, "train_trajectory.jsonl")
+        if not os.path.isfile(tp):
+            continue
+        rows = []
+        for line in open(tp):
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                rows.append(json.loads(line))
+            except json.JSONDecodeError:
+                break        # a kill mid-write leaves a torn final line; keep what parsed
+        if rows:
+            out.append({"_run_id": name, "_rows": rows, "_incomplete": True,
+                        "_last_epoch": rows[-1].get("epoch")})
     return out, man
 
 
@@ -547,7 +572,7 @@ def nesting_table(runs):
         eig_rows = [x for x in rows if isinstance(x.get("eig_offdiag_mean"), (int, float))]
         eig = min(eig_rows, key=lambda x: abs((x.get("epoch") or 0) - (row.get("epoch") or 0))) \
             if eig_rows else {}
-        got.append((cfg, row.get("epoch"), k, row, eig))
+        got.append((cfg + ("*" if r.get("_incomplete") else ""), row.get("epoch"), k, row, eig))
         if cfg == "base":
             base_k = k
     for cfg, ep, k, row, eig in sorted(got, key=lambda t: t[2]):
@@ -565,13 +590,21 @@ def nesting_table(runs):
               f"{str(eig.get('eig_spectrum_descending')):>5}{at:>6}")
     # Name what is absent. An arm run that has not finished has no run_summary.json and so is not
     # loaded at all; without this the table just renders short and reads like a result.
-    have = {c for c, _e, _k, _r, _g in got}
+    inc = [(c, r) for c, _e, _k, _r, _g in got for r in [None] if c.endswith("*")]
+    if inc:
+        print(f"\n  * = INCOMPLETE (killed before writing run_summary.json, almost always a "
+              f"walltime cut). Its epochs are real -- the trainer flushes the trajectory every "
+              f"epoch -- but the run never finished, so its best epoch may not be its optimum and "
+              f"it must not be ranked against converged runs as an equal.")
+    have = {c.rstrip("*") for c, _e, _k, _r, _g in got}
     missing = [c for c in ("nest_probe", "tiles32", "nest_only") if c not in have]
     if missing:
-        print(f"\n  MISSING from the arm: {', '.join(missing)}. A run still training has no "
-              f"run_summary.json and is not loaded, so its absence here is NOT a result. The arm "
-              f"is only interpretable complete: nest_probe is the control, tiles32 separates "
-              f"tiling from the objective, nest_only is the test.")
+        print(f"\n  MISSING from the arm: {', '.join(missing)}. Not merely unfinished -- an "
+              f"unfinished run appears above marked '*', since its trajectory is flushed every "
+              f"epoch. No trajectory at all means the run NEVER STARTED or died before its first "
+              f"epoch, so check the job's .e file. The arm is only interpretable complete: "
+              f"nest_probe is the control, tiles32 separates tiling from the objective, nest_only "
+              f"is the test.")
     if base_k is None:
         print("  NOTE no base/nest_probe run found, so vs_base is undefined -- the pure-nesting "
               "number alone says nothing without the control.")

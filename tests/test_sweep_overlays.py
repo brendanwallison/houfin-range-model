@@ -344,8 +344,12 @@ def test_resume_keys_on_the_last_written_artifact():
     # and the trainer must really write it last
     trainer = open(os.path.join(REPO, "src", "community_encoder", "train_DESK",
                                 "desk_training.py")).read()
-    i_meta = trainer.index("desk_meta.npz")
-    i_sum = trainer.index("run_summary.json")
+    # Key on the WRITE CALLS, not the first textual mention. Both names also appear in comments and
+    # log strings, so index() on the bare name compared prose position rather than write order -- a
+    # mention of run_summary.json in an unrelated log line broke this while the actual write order
+    # was untouched, which is a false alarm on a guard that matters.
+    i_meta = trainer.index('np.savez(os.path.join(out_dir, "desk_meta.npz")')
+    i_sum = trainer.index('open(os.path.join(out_dir, "run_summary.json"), "w"')
     assert i_meta < i_sum, "run_summary.json must be written AFTER desk_meta.npz"
     # the double check inside the task exists too: a resubmission can race a job still running
     assert slurm.count("run_summary.json") >= 2, \

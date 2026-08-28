@@ -1418,8 +1418,17 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
     print(f"--- Training DESK+outputEMA ({len(window_years)}yr window {window_years[0]}..{window_years[-1]}, "
           f"{len(tgt)} supervised years, max {epochs} ep; grad_clip={grad_clip}, es_warmup={es_warmup}, "
           f"amp={use_amp}, dropout={dropout}, wd={weight_decay}) ---")
+    # SLURM_JOB_END_TIME is epoch seconds; absent off-cluster, in which case no projection is made
+    # rather than a guessed budget.
+    try:
+        _slurm_end = float(os.environ["SLURM_JOB_END_TIME"])
+    except (KeyError, ValueError):
+        _slurm_end = None
+    _t_first = time.perf_counter()
     for ep in range(1, epochs + 1):
         t_ep = time.perf_counter()
+        if ep == 1:
+            _t_first = time.perf_counter()
         if device == "cuda":
             torch.cuda.reset_peak_memory_stats()
 
@@ -1924,6 +1933,24 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
                 "eval_every": int(max(1, int(eval_every))),
             }) + "\n")
             traj_fh.flush()          # a killed job must still leave a readable trajectory
+        # Project against the job's walltime and say so ONCE, early. A tiled run is ~n_steps
+        # times slower per epoch than the historical one-step-per-epoch trainer -- the year EMA
+        # is a sequential scan, so per-step cost has a large launch-bound component that does
+        # NOT shrink with the slab -- and a 4-hour queue slot silently cut one at epoch 278 of
+        # 500 with no error in the log. Warning early makes it a decision instead of a loss.
+        if ep == 5 and _slurm_end is not None:
+            _rate = (time.perf_counter() - _t_first) / max(ep - 1, 1)
+            _reach = ep + int(max(0.0, _slurm_end - time.time()) / max(_rate, 1e-6))
+            if _reach < epochs:
+                print(f"[desk] WALLTIME PROJECTION: {_rate:.1f}s/epoch reaches ~epoch "
+                      f"{_reach} of {epochs} before the job ends. The trajectory is flushed "
+                      f"every epoch so nothing is lost, but run_summary.json is written only "
+                      f"at the end and the analysis marks such a run INCOMPLETE. Either raise "
+                      f"the queue walltime or set desk.stop_at_epoch <= {_reach}.", flush=True)
+            else:
+                print(f"[desk] walltime projection: {_rate:.1f}s/epoch, all {epochs} epochs "
+                      f"fit with {(_slurm_end - time.time()) / 3600.0:.1f}h to spare",
+                      flush=True)
         if ep <= es_warmup:
             continue                       # don't let the volatile warmup epochs set 'best'
         if not evaluated:

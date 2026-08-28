@@ -24,31 +24,60 @@ export PREDICT_THREADS="${PREDICT_THREADS:-}"
 QUEUE="${QUEUE:-vm-small}"
 TIME="${TIME:-02:00:00}"
 
-# Fail here, before the queue wait, on the three inputs whose absence the script can only report
-# after it has already loaded the point set.
+# Fail here, before the queue wait, on the inputs whose absence the script can only report after
+# it has already loaded the point set.
+#
+# Every path below is resolved by the SAME loader the script uses, never by an assembled path.
+# The first version of this check looked for state_schema.json inside yearly_states/ -- but
+# run_states writes the sidecar into hist_dir while the npz files go into hist_dir/yearly_states,
+# which is exactly why cio.load_schema searches the dir AND its parent. So it reported a perfectly
+# good states tree as broken and told the user to rebuild ~130 years of states. A preflight that
+# can be stricter than the thing it gates is worse than no preflight.
+#
+# env.sh already cd's to $HOUFIN_REPO, but these read through $HOUFIN_REPO explicitly rather than
+# through the cwd, so they keep working if that ever stops being true.
+_cfgq () { HOUFIN_QUERY="$1" python - <<'PYQ'
+import os, sys
+sys.path.insert(0, os.environ["HOUFIN_REPO"])
+from src.community_encoder.train_DESK.config_utils import load_config
+cfg = load_config(os.environ.get("ESK_DESK_CONFIG") or None)
+sec, key = os.environ["HOUFIN_QUERY"].split(".", 1)
+print(cfg[sec][key])
+PYQ
+}
+
+_schema_ok () { STATES_DIR="$1" python - <<'PYS'
+import os, sys
+sys.path.insert(0, os.environ["HOUFIN_REPO"])
+from src.community_encoder.train_DESK import covariate_io as cio
+try:
+    sc = cio.load_schema(os.environ["STATES_DIR"])
+except FileNotFoundError as exc:
+    print(f"{exc}")
+    raise SystemExit(1)
+print(f"{int(sc['streams'][-1]['end'])} channels in {len(sc['streams'])} streams ("
+      + ", ".join(s["name"] for s in sc["streams"]) + ")")
+PYS
+}
+
 STATES="$HOUFIN_PROCESSED/encoder/states/yearly_states"
 [ -d "$STATES" ] || { echo "ERROR: no states dir at $STATES (run 04_states first)"; exit 1; }
-[ -f "$STATES/state_schema.json" ] || {
-    echo "ERROR: $STATES has no state_schema.json -- rebuild states"; exit 1; }
-ZDIR=$(python - <<'PY'
-import json, os, sys
-sys.path.insert(0, os.getcwd())
-from src.community_encoder.train_DESK.config_utils import load_config
-print(load_config(os.environ.get("ESK_DESK_CONFIG") or None)["desk"]["z_dir"])
-PY
-)
+ls "$STATES"/state_*.npz >/dev/null 2>&1 || {
+    echo "ERROR: no state_*.npz in $STATES (run 04_states first)"; exit 1; }
+SCHEMA=$(_schema_ok "$STATES") || {
+    echo "ERROR: $SCHEMA"
+    echo "       Searched $STATES and its parent, which is where run_states writes it."
+    exit 1; }
+
+ZDIR=$(_cfgq desk.z_dir)
 for f in esk_landmarks.npy esk_projmat.npy meta.json; do
     [ -f "$ZDIR/$f" ] || { echo "ERROR: $ZDIR/$f missing -- run spacetime-esk first"; exit 1; }
 done
 echo "states: $STATES"
+echo "schema: $SCHEMA"
 echo "basis:  $ZDIR"
-DD=$(python - <<'PY'
-import os, sys
-sys.path.insert(0, os.getcwd())
-from src.community_encoder.train_DESK.config_utils import load_config
-print(load_config(os.environ.get("ESK_DESK_CONFIG") or None)["paths"]["desk_output_dir"])
-PY
-)
+
+DD=$(_cfgq paths.desk_output_dir)
 if [ -f "$DD/holdout_cells.npy" ]; then
     echo "split:  reusing the trained run's masks in $DD (comparable to its val numbers)"
 else

@@ -434,6 +434,28 @@ def eigenbasis_table(runs):
     print("-" * 104)
     print("  k@24 / v.best / sub@24 are the columns that SHIP: ingest truncates positionally to "
           "z[..., :24].")
+    # ESK's own curve is a property of the BASIS, identical across runs, so it prints once above the
+    # table rather than as a column. It is what makes the per-run bestR interpretable: without it,
+    # "DESK peaks at rank 8" cannot be told apart from "ESK peaks at rank 8".
+    esk = next((r.get("esk_rank_curve") for r in runs if r.get("esk_rank_curve")), None)
+    if esk:
+        ks = sorted(esk, key=lambda k: int(k))
+        bk = min(ks, key=lambda k: esk[k])
+        pen = 100.0 * (esk[ks[-1]] / max(esk[bk], 1e-12) - 1.0)
+        print("\n  ESK REFERENCE (the basis itself, no encoder): "
+              + "  ".join(f"r{k}={esk[k]:.5f}" for k in ks))
+        if pen > 1.0:
+            print(f"    ESK's own best rank is {bk}; keeping all {ks[-1]} costs {pen:+.1f}%. The "
+                  f"tail is NOISE in the basis itself,\n    so latent_dim is wider than the data "
+                  f"supports and a low per-run bestR is not an encoder failure.")
+        else:
+            print(f"    ESK's own best rank is {bk} and keeping all {ks[-1]} costs only "
+                  f"{pen:+.1f}%. The tail is REAL in the basis,\n    so a per-run bestR far below "
+                  f"{ks[-1]} means the ENCODER is not reaching it -- latent_dim is not the problem.")
+    else:
+        print("\n  ESK REFERENCE: not recorded (runs predate it). Without it a low bestR cannot be "
+              "attributed:\n  a noisy basis tail and an encoder that cannot predict a real tail "
+              "look identical here.")
     def _g(x):
         return x["gap"] if x["gap"] is not None and np.isfinite(x["gap"]) else 1e9
     # Ordered by k@24 -- the shipped truncation -- not by the nesting gap, whose run-to-run floor

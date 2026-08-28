@@ -2707,3 +2707,70 @@ def test_the_nesting_probe_is_genuinely_inert():
         f"probe mode moved the weights by {d:.3e}; it must be exactly inert, or every number it "
         f"reports describes a different model than the one it claims to be measuring")
     print(f"probe leaves weights byte-identical (max delta {d:.1e}) with dropout on")
+
+
+def test_the_esk_reference_rank_curve_is_computed_and_aligned():
+    """ESK's OWN rank curve must be reported, on the SAME pairs as DESK's, or it proves nothing.
+
+    Why it has to exist. The DESK rank curve answers "do DESK's components r+1..64 improve held-out
+    Ružička". It cannot answer whether ESK's TAIL carries real signal, because a flat DESK curve is
+    equally consistent with the tail being Nyström noise and with the tail being real community
+    structure the covariates cannot predict. Those imply opposite actions -- cut latent_dim and lose
+    nothing, versus latent_dim is fine and the encoder is the ceiling -- so a rank claim made from
+    the DESK curve alone silently assumes the first.
+
+    The alignment matters as much as the presence: the reference is a flat (N, L) array over the
+    ORIGINAL val pool rows while the pool keeps only rows whose year is in the forwarded window, so
+    the mask has to be applied or the curve compares mismatched points. The trainer checks the row
+    counts agree and SKIPS with a message rather than emitting a misaligned curve, which is the
+    behaviour asserted here -- a wrong curve is worse than none, because it looks like an answer.
+    """
+    import contextlib
+    import io
+
+    from src.community_encoder.train_DESK import desk_training as D
+
+    sch = _schema()
+    dims = [s["dim"] for s in sch["streams"]]
+    L, EP = 16, 2
+    rng = np.random.default_rng(0)
+    cov = rng.normal(size=(6, 12, 14, sch["total_dim"])).astype("float32")
+    years = list(range(2020, 2026))
+    m = np.ones((12, 14), bool); ho = np.zeros((12, 14), bool); ho[:, :4] = True
+    tgt = {y: (rng.normal(size=(12, 14, L)).astype("float32"), m & ~ho, ho,
+               np.ones((12, 14), dtype="float32")) for y in years[1:]}
+    x = rng.random((12, 14, 12)).astype("float32")
+    vp = _metric_dict(x, ho, years)
+    n_rows = len(vp[0])
+
+    def run(ref):
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            out = D.train_model_ema(
+                cov, np.ones((6, 12, 14), bool), years, tgt, _metric_dict(x, m & ~ho, years),
+                m & ~ho, ho, dims, latent_dim=L, ema_cfg={"earlystop_warmup": 0},
+                spatial_kernel=5, epochs=EP, schema=sch, dropout=0.0, metric_pairs=64,
+                val_metric_pool=vp, eval_kernel_pairs=256, eval_kernel_draws=2,
+                eval_kernel_ranks=(4, 8, 16), eigenbasis_ref=ref, return_info=True)
+        return buf.getvalue(), (out[-1] if isinstance(out, tuple) else {})
+
+    # aligned reference: the curve must appear, at every requested rank, and be finite
+    ref = rng.normal(size=(n_rows, L)).astype("float32")
+    log, info = run(ref)
+    curve = info.get("esk_rank_curve")
+    assert curve, f"no esk_rank_curve in the summary; log tail:\n{log[-1500:]}"
+    assert set(curve) == {"4", "8", "16"}, curve
+    assert all(np.isfinite(v) and v > 0 for v in curve.values()), curve
+    assert "ESK reference rank curve" in log
+
+    # MISALIGNED reference: must be refused, not silently computed on mismatched rows
+    log2, info2 = run(rng.normal(size=(n_rows // 2, L)).astype("float32"))
+    assert info2.get("esk_rank_curve") is None, (
+        "a reference with half the rows produced a curve anyway; it would be comparing ESK at one "
+        "set of points against pairs drawn from another")
+    assert "SKIPPED" in log2, log2[-1200:]
+
+    # and with no reference at all, the field is absent rather than fabricated
+    _log3, info3 = run(None)
+    assert info3.get("esk_rank_curve") is None
+    print(f"aligned -> curve {curve}; misaligned -> skipped; absent -> None")

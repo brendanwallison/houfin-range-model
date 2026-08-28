@@ -961,12 +961,61 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
             # saving pays for the extra independent draws.
             val_pools["sp"] = val_pools["pool"]
             val_pools["spt"] = None
+
             print("[desk] val kernel pool: no withheld years, so sp == pool; scoring it once",
                   flush=True)
     else:
         print("[desk] val kernel pool: NOT WIRED (no val_metric_pool passed) -- the kernel "
               "term is measured on training pairs only, so it cannot be selected on",
               flush=True)
+
+    # --- ESK's OWN rank curve, once, as the reference the DESK rank curve needs -------------------
+    # The DESK rank curve answers "do DESK's components r+1..64 improve held-out Ružička". It CANNOT
+    # answer "does ESK's tail carry real signal", because a flat DESK curve is equally consistent
+    # with (a) the tail being Nyström noise and (b) the tail being real community structure the
+    # covariates cannot predict. Those imply opposite actions -- (a) means cut latent_dim and lose
+    # nothing, (b) means latent_dim is fine and the ENCODER is the ceiling -- and every rank claim
+    # made off the DESK curve alone silently assumed (a).
+    #
+    # ESK is an explicit eigenvalue-descending decomposition, so its own curve separates them: if it
+    # also peaks at 8-16 the tail is noise; if it improves out to 64 the information is there and
+    # DESK is not reaching it.
+    #
+    # Computed ONCE at setup, not per epoch: ESK's projection is fixed, so this is a constant. It
+    # reuses the SAME fixed pair indices as the DESK curve so the two are the same estimand on the
+    # same pairs, not two samples that differ by draw.
+    esk_rank_curve = {}
+    if eigenbasis_ref is not None and val_pools.get("pool") is not None:
+        _kp = np.array([int(y) in yi for y in val_metric_pool[0]], dtype=bool)
+        _er = np.asarray(eigenbasis_ref)
+        _t0, _f0, _x0, _dr0 = val_pools["pool"]
+        if len(_er) == len(_kp) and int(_kp.sum()) == int(_t0.shape[0]):
+            _zr = torch.as_tensor(_er[_kp], device=device, dtype=_x0.dtype)
+            for _r in (int(r) for r in eval_kernel_ranks):
+                _v = []
+                for _d in _dr0:
+                    _i = torch.as_tensor(_d[0], device=device, dtype=torch.long)
+                    _j = torch.as_tensor(_d[1], device=device, dtype=torch.long)
+                    _rr = min(int(_r), int(_zr.shape[1]))
+                    _v.append(float(_pair_kernel_loss(_zr[_i, :_rr], _zr[_j, :_rr],
+                                                      _x0[_i], _x0[_j])))
+                esk_rank_curve[int(_r)] = (float(np.mean(_v)),
+                                           float(np.std(_v, ddof=1)) if len(_v) > 1 else 0.0)
+            _bk = min(esk_rank_curve, key=lambda k: esk_rank_curve[k][0])
+            _full = max(esk_rank_curve)
+            _pen = 100.0 * (esk_rank_curve[_full][0] / max(esk_rank_curve[_bk][0], 1e-12) - 1.0)
+            print("[desk] ESK reference rank curve (the basis itself, no encoder): "
+                  + "  ".join(f"r{k}={esk_rank_curve[k][0]:.5f}"
+                              for k in sorted(esk_rank_curve))
+                  + f"\n[desk]   ESK's own best rank is {_bk}; keeping all {_full} costs "
+                    f"{_pen:+.1f}%. If that is ~0 the tail is REAL and DESK is not reaching it; "
+                    f"if strongly positive the tail is noise and latent_dim is too wide.",
+                  flush=True)
+        else:
+            print(f"[desk] ESK reference rank curve SKIPPED: the reference has {len(_er)} rows "
+                  f"against {int(_kp.sum())} kept pool rows, so the two are not aligned and a "
+                  f"curve here would be comparing mismatched points", flush=True)
+
     m_tr = torch.as_tensor(m2023_tr, device=device).bool(); m_val = torch.as_tensor(m2023_val, device=device).bool()
     # supervised year targets that fall inside the forwarded window
     tgt = {y: (torch.tensor(zg, device=device),
@@ -2039,7 +2088,16 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
                                                                 for _, (_z, _t, va, _w) in tgt.items())
                else "no epoch improved on the selection metric after the warmup")
         print(f"[desk] keeping the FINAL weights from epoch {best_epoch}: {why}", flush=True)
-    info = {"best_epoch": best_epoch, "best_selection_value": float(best_val),
+    info = {
+            # ESK's own rank curve: a CONSTANT of the basis, not of this run, so it belongs in the
+            # summary rather than in every trajectory row. It is what makes the DESK rank curve
+            # interpretable -- see the setup block for why one without the other cannot distinguish
+            # a noisy tail from a tail the encoder simply cannot predict.
+            "esk_rank_curve": ({str(k): v[0] for k, v in esk_rank_curve.items()}
+                               if esk_rank_curve else None),
+            "esk_rank_curve_sd": ({str(k): v[1] for k, v in esk_rank_curve.items()}
+                                  if esk_rank_curve else None),
+            "best_epoch": best_epoch, "best_selection_value": float(best_val),
             "best_val_zmse": float(best_zmse), "best_val_kernel": float(best_kernel),
             "selection_metric": str(selection_metric),
             "epochs_run": int(ep), "epochs_budget": int(epochs),

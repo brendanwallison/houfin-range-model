@@ -375,3 +375,53 @@ def test_the_reference_backward_supplies_a_factor_autograd_cannot_see():
     # the operator term is off by exactly 2x, and the reference is the correct one
     ratio = (a.grad / b.grad).flatten()
     assert torch.allclose(ratio, torch.full_like(ratio, 2.0), atol=1e-10), ratio[:5]
+
+
+def test_the_esk_rank_curve_separates_a_noisy_tail_from_a_real_one():
+    """``basis_domain_gap.rank_curve`` must reach opposite verdicts on the two cases it exists for.
+
+    The trainer's rank curve is on DESK's z, so a flat result cannot distinguish a basis whose tail
+    is noise from a basis whose tail is real signal the covariates cannot predict. Those imply
+    opposite actions -- cut latent_dim and lose nothing, versus latent_dim is fine and the ENCODER is
+    the ceiling. This function is what separates them, so a test that only checks it RUNS would miss
+    the entire point; both verdicts are asserted against constructed answers.
+
+    The construction: build z from the exact eigenvectors of the sample's Ružička matrix, then either
+    replace the components past r8 with noise (tail is noise) or leave them exact (tail is real).
+    """
+    import numpy as np
+
+    from scripts.diagnostics import basis_domain_gap as B
+
+    rng = np.random.default_rng(1)
+    X = rng.random((300, 30)) * rng.gamma(2, 1, (300, 1))
+    R = B.ruzicka_pairs(X.astype("float64"), X.astype("float64"))
+    w, V = np.linalg.eigh(R)
+    o = np.argsort(w)[::-1]
+    w, V = w[o], V[:, o]
+    exact = V[:, :64] * np.sqrt(np.maximum(w[:64], 0))
+
+    def curve_with(z):
+        real = B.project_points_to_z
+        B.project_points_to_z = lambda _X, _zd, _ld, _z=z: _z
+        try:
+            return B.rank_curve("t", X, "unused", 64, np.random.default_rng(0), n=300)
+        finally:
+            B.project_points_to_z = real
+
+    noisy = exact.copy()
+    noisy[:, 8:] = rng.normal(scale=np.sqrt(np.maximum(w[:64], 0))[8:] * 3, size=(300, 56))
+    c_noise = curve_with(noisy.astype("float32"))
+    c_real = curve_with(exact.astype("float32"))
+
+    assert min(c_noise, key=c_noise.get) <= 8, (
+        f"a tail replaced by noise still favoured rank {min(c_noise, key=c_noise.get)}; the curve "
+        f"cannot detect a noisy tail and its verdict would be backwards")
+    assert min(c_real, key=c_real.get) == max(c_real), (
+        f"an EXACT tail favoured rank {min(c_real, key=c_real.get)} rather than the full width; the "
+        f"curve would report real signal as noise and send latent_dim the wrong way")
+    # monotone improvement when the tail is real -- the property the verdict text claims
+    ks = sorted(c_real)
+    assert all(c_real[a] >= c_real[b] for a, b in zip(ks, ks[1:])), c_real
+    print(f"noisy tail -> best rank {min(c_noise, key=c_noise.get)}; "
+          f"real tail -> best rank {min(c_real, key=c_real.get)}")

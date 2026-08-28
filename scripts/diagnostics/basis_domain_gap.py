@@ -35,10 +35,16 @@ absolute value against the sweep's k@24.
     CAVEAT, and read section 1 first: if ||z||^2 on BBS communities is still collapsed, the basis
     barely represents these points and the rank curve here is measuring that rather than the tail.
 
-Run on TACC (needs the raw BBS release). load_observed reads ~6.9M species-route-years, so use a
-compute node rather than a login node -- an interactive `idev -p vm-small -t 00:30:00` is enough,
-and no GPU is involved anywhere in this script:
+Run on TACC (needs the raw BBS release). No GPU anywhere in this script, and after the projection
+was fixed to subsample first its peak kernel block is ~0.04 GiB, so it runs directly:
+
     cd $HOUFIN_REPO && python scripts/diagnostics/basis_domain_gap.py
+
+The heaviest step is load_observed reading ~6.9M species-route-years. That has been observed to
+complete on a login node. To batch it instead, follow the established pattern in scripts/tacc --
+a .slurm paired with a submit_*.sh that supplies -A "$TACC_ALLOCATION" and --export=ALL (the
+`#SBATCH -A` line is deliberately disabled in every job file here, and SLURM rejects a job with no
+account). scripts/tacc/22_rescore.slurm and submit_rescore.sh are the closest precedent.
 """
 import json
 import os

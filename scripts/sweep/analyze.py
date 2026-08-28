@@ -364,17 +364,38 @@ def eigenbasis_table(runs):
         if cell != "t0_f100" or seed is not None:
             continue
         e = [x for x in r["_rows"] if "eig_nesting" in x]
-        rc = sorted((int(k.rsplit("_r", 1)[1]), r["_rows"][-1][k]) for k in r["_rows"][-1]
-                    if k.startswith("kernel_val_ema_r")) if r["_rows"] else []
+        # Read at the epoch that would SHIP, not at the end of training. These runs are selected on
+        # the held-out kernel and the optimum sits near epoch 100-215, so the final epoch is well
+        # past it -- and the basis measurably degrades with over-training (base's mean off-diagonal
+        # is 0.123 at its selected epoch against 0.456 late), so reading last made every
+        # configuration look worse than the model anyone would actually use.
+        kv = [x for x in r["_rows"] if isinstance(x.get("kernel_val"), (int, float))
+              and np.isfinite(x.get("kernel_val"))]
+        sel_ep = min(kv, key=lambda x: x["kernel_val"]).get("epoch") if kv else None
+        # Last row carrying a rank curve, not simply the last row: the curve is written on eval
+        # epochs only, so a run whose final epoch is not one gave a truncated curve -- and a curve
+        # holding only r64 makes best_rank 64 with a 0.0% penalty, which reads as "all 64
+        # dimensions earn their place" when in fact nothing was compared.
+        rc_rows = [x for x in r["_rows"]
+                   if sum(1 for k in x if k.startswith("kernel_val_ema_r")) >= 2]
+        rc_src = (min(rc_rows, key=lambda x: abs((x.get("epoch") or 0) - (sel_ep or 0)))
+                  if rc_rows and sel_ep is not None else (rc_rows[-1] if rc_rows else None))
+        rc = sorted((int(k.rsplit("_r", 1)[1]), rc_src[k]) for k in rc_src
+                    if k.startswith("kernel_val_ema_r")) if rc_src else []
         if not e and not rc:
             rows.append({"config": cfg, "missing": True})
             continue
-        last = e[-1] if e else {}
+        last = (min(e, key=lambda x: abs((x.get("epoch") or 0) - (sel_ep or 0)))
+                if e and sel_ep is not None else (e[-1] if e else {}))
         best_r, best_v = (min(rc, key=lambda rv: rv[1]) if rc else (None, None))
         full_v = rc[-1][1] if rc else None
         rows.append({
-            "config": cfg, "missing": False,
+            "config": cfg + ("*" if r.get("_incomplete") else ""), "missing": False,
+            # None, not 0, when unavailable: an incomplete run has no run_summary.json, so this
+            # read as metric weight 0 for runs whose weight was actually 5.
             "metric_weight": r.get("metric_weight"),
+            "at_epoch": last.get("epoch"), "rank_epoch": (rc_src or {}).get("epoch"),
+            "n_ranks": len(rc),
             "best_rank": best_r,
             "penalty": (100 * (full_v / best_v - 1) if best_v else float("nan")),
             "inversions": last.get("eig_spectrum_inversions"),
@@ -399,13 +420,17 @@ def eigenbasis_table(runs):
     # Ordered by the NESTING GAP, which is the NeuralSVD loss against ESK's value on the same
     # batch. It is one scalar (operator term + metric term), not a composite of many pieces, and
     # it is the closest thing here to "how far is this a genuine ordered eigenbasis".
-    print(f"{'config':<8} {'w':>4} {'bestR':>6} {'all-64':>7} {'inv':>4} {'1st':>4} "
-          f"{'offdiag':>8} {'sub@24':>7} {'nest gap':>9} {'+-':>7} {'op/met':>7}")
-    print("-" * 84)
+    print(f"{'config':<10} {'w':>4} {'at_ep':>6} {'bestR':>6} {'/n':>3} {'all-64':>7} "
+          f"{'inv':>4} {'1st':>4} {'offdMAX':>8} {'sub@24':>7} {'nest gap':>9} {'+-':>7} "
+          f"{'op/met':>7}")
+    print("-" * 96)
     def _g(x):
         return x["gap"] if x["gap"] is not None and np.isfinite(x["gap"]) else 1e9
     for x in sorted(rows, key=_g):
-        print(f"{x['config']:<8} {x['metric_weight'] or 0:>4.0f} {x['best_rank'] or 0:>6} "
+        _w = (f"{x['metric_weight']:.0f}" if isinstance(x["metric_weight"], (int, float))
+              else "?")
+        print(f"{x['config']:<10} {_w:>4} {x['at_epoch'] or 0:>6} {x['best_rank'] or 0:>6} "
+              f"{x['n_ranks']:>3} "
               f"{x['penalty']:>6.1f}% {x['inversions'] or 0:>4} {x['first_inv'] or 0:>4} "
               f"{(x['offdiag'] if x['offdiag'] is not None else float('nan')):>8.3f} "
               f"{(x['sub24'] if x['sub24'] is not None else float('nan')):>7.3f} "
@@ -539,7 +564,7 @@ def nesting_table(runs):
     print("\n=== nesting arm ===")
     hdr = (f"{'config':<12} {'best_ep':>7} {'k_val':>9} {'vs_base':>8} | "
            f"{'al_fit':>7} {'al_vs':>7} {'al_dcos':>8} {'al_mag':>7} | "
-           f"{'offdiag':>8} {'inv':>4} {'disagr':>7} {'ordered':>8}")
+           f"{'offdMEAN':>8} {'inv':>4} {'disagr':>7} {'ordered':>8}")
     print(hdr); print("-" * len(hdr))
     # The arm, plus base as the control it is measured against. Without this filter every stage-1
     # configuration printed here, which buried the three runs the table exists for and listed seed

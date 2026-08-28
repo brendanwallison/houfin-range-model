@@ -516,12 +516,18 @@ def nesting_table(runs):
            f"{'al_fit':>7} {'al_vs':>7} {'al_dcos':>8} {'al_mag':>7} | "
            f"{'offdiag':>8} {'inv':>4} {'disagr':>7} {'ordered':>8}")
     print(hdr); print("-" * len(hdr))
+    # The arm, plus base as the control it is measured against. Without this filter every stage-1
+    # configuration printed here, which buried the three runs the table exists for and listed seed
+    # replicates as duplicate rows with no seed shown.
+    ARM = ("nest_probe", "tiles32", "nest_only")
     base_k = None
     got = []
     for r in runs:
-        _cell, cfg, _s = _cfg_and_cell(r["_run_id"])
-        if cfg is None:
+        _cell, cfg, seed = _cfg_and_cell(r["_run_id"])
+        if cfg is None or cfg not in ARM + ("base",):
             continue
+        if seed is not None:
+            cfg = f"{cfg}_s{seed}"
         rows = r.get("_rows") or []
         if not rows:
             continue
@@ -534,23 +540,32 @@ def nesting_table(runs):
         if not kv:
             continue
         k, row = min(kv, key=lambda t: t[0])
-        got.append((cfg, row.get("epoch"), k, row))
-        if cfg in ("base", "nest_probe"):
-            base_k = k if base_k is None else min(base_k, k)
-    for cfg, ep, k, row in sorted(got, key=lambda t: t[2]):
+        # The eigenbasis fields are written only every desk.eigenbasis_every epochs, so the
+        # best-kernel epoch usually has none and the columns read nan -- which looks like "not
+        # recorded" rather than "recorded 3 epochs away". Take the NEAREST epoch that has them and
+        # report which, so the two are never confused.
+        eig_rows = [x for x in rows if isinstance(x.get("eig_offdiag_mean"), (int, float))]
+        eig = min(eig_rows, key=lambda x: abs((x.get("epoch") or 0) - (row.get("epoch") or 0))) \
+            if eig_rows else {}
+        got.append((cfg, row.get("epoch"), k, row, eig))
+        if cfg == "base":
+            base_k = k
+    for cfg, ep, k, row, eig in sorted(got, key=lambda t: t[2]):
         rel = ((k / base_k - 1.0) * 100.0) if base_k else float("nan")
-        def g(key, d=float("nan")):
-            v = row.get(key, d)
+        def g(key, src, d=float("nan")):
+            v = src.get(key, d)
             return v if isinstance(v, (int, float)) else d
+        eig_ep = eig.get("epoch")
+        at = "" if eig_ep in (None, ep) else f"@{eig_ep}"
         print(f"{cfg:<12} {ep if ep else '-':>7} {k:>9.5f} "
-              f"{rel:>+7.1f}% | {g('al_train_fit'):>7.3f} {g('al_val_zmse'):>7.4f} "
-              f"{g('al_dcos_val'):>8.3f} {g('al_mag_val'):>7.3f} | "
-              f"{g('eig_offdiag_mean'):>8.3f} {g('eig_spectrum_inversions'):>4.0f} "
-              f"{g('eig_estimator_disagreement'):>7.3f} "
-              f"{str(row.get('eig_spectrum_descending')):>8}")
+              f"{rel:>+7.1f}% | {g('al_train_fit', row):>7.3f} {g('al_val_zmse', row):>7.4f} "
+              f"{g('al_dcos_val', row):>8.3f} {g('al_mag_val', row):>7.3f} | "
+              f"{g('eig_offdiag_mean', eig):>8.3f} {g('eig_spectrum_inversions', eig):>4.0f} "
+              f"{g('eig_estimator_disagreement', eig):>7.3f} "
+              f"{str(eig.get('eig_spectrum_descending')):>5}{at:>6}")
     # Name what is absent. An arm run that has not finished has no run_summary.json and so is not
     # loaded at all; without this the table just renders short and reads like a result.
-    have = {c for c, _e, _k, _r in got}
+    have = {c for c, _e, _k, _r, _g in got}
     missing = [c for c in ("nest_probe", "tiles32", "nest_only") if c not in have]
     if missing:
         print(f"\n  MISSING from the arm: {', '.join(missing)}. A run still training has no "
@@ -560,9 +575,13 @@ def nesting_table(runs):
     if base_k is None:
         print("  NOTE no base/nest_probe run found, so vs_base is undefined -- the pure-nesting "
               "number alone says nothing without the control.")
-    print("\n  Reference points: base's val_kernel ~0.00837, the no-covariate IDW direction "
-          "baseline dcos 0.19, and the standard model's dcos ceiling 0.218. An al_dcos below "
-          "0.19 is worse than using no covariates at all.")
+    # Measured, not hardcoded: an earlier version of this line carried a stale 0.00837 from a run
+    # under different pins while base actually sits at 0.00696, so every margin quoted off it was
+    # wrong by 20%.
+    print(f"\n  Reference points: base's val_kernel "
+          + (f"{base_k:.5f} (measured, this root)" if base_k else "UNAVAILABLE -- no base run")
+          + ", the no-covariate IDW direction baseline dcos 0.19, and the standard model's dcos "
+            "ceiling 0.218. An al_dcos below 0.19 is worse than using no covariates at all.")
     print("  Read al_fit FIRST: near 0 means no alignment existed to find, so the al_* columns "
           "beside it are describing noise, not a result.")
 

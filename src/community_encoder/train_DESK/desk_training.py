@@ -854,6 +854,15 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
                                  "gram": _rg(pool_x[_it])})
         nest_masks = _jnm(latent_dim, 1, device=device, dtype=torch.float32)
         nest_gram_fn, nest_bs = _rg, _bs
+        # nested_lora_loss's split-half estimator calls torch.randperm, and with generator=None that
+        # draws from the GLOBAL torch RNG. In PROBE mode -- which is supposed to compute and log
+        # while touching nothing -- that silently shifted every subsequent random draw in training:
+        # dropout masks, metric pair indices, all of it. base and nest_probe are the same model by
+        # construction and landed on different best epochs (107 vs 105) because of this. A dedicated
+        # generator, reseeded per epoch, makes the probe genuinely inert AND makes the split
+        # reproducible, so the diagnostic's epoch-to-epoch movement is the model changing rather
+        # than the estimator resampling.
+        nest_gen = torch.Generator(device=device)
         print(f"[desk] NestedLoRA "
               + (f"objective ON (weight {nest_w:g})" if nest_w > 0 else
                  "PROBE only (weight 0, computed and logged, NOT added to the loss)")
@@ -869,7 +878,7 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
                          f"small to form a batch; the term needs a kernel BLOCK, not pairs")
     else:
         nest_masks = None
-        nest_gram_fn, nest_bs = None, 0
+        nest_gram_fn, nest_bs, nest_gen = None, 0, None
 
     # --- Procrustes-aligned diagnostics -------------------------------------------------------
     # "auto" turns them on exactly when the stabilizing term is OFF, because that term is the only
@@ -1521,8 +1530,10 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
                         device=device, dtype=torch.long)
                     _fb = _zcat.reshape(_zcat.shape[0], -1, _zcat.shape[-1])[
                         pool_t[_rows][_pick], _lf[_pick]]
+                    nest_gen.manual_seed(int(seed) * 1000003 + ep)
                     _nl, _np_parts = _nll(_fb, nest_gram_fn(pool_x[_rows][_pick]),
-                                          masks=nest_masks, return_parts=True)
+                                          masks=nest_masks, return_parts=True,
+                                          generator=nest_gen)
                     _np_parts["raw"] = _nl.detach()
                     _nest_acc.append(_np_parts)
                     if nest_w > 0:
@@ -1608,7 +1619,9 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
                 _nb = nest_batches[(ep - 1) % len(nest_batches)]
                 _zf2 = z_ema.reshape(z_ema.shape[0], -1, z_ema.shape[-1])
                 _fb = _zf2[_nb["t"], _nb["flat"]]
-                _nl, nest_parts = _nll(_fb, _nb["gram"], masks=nest_masks, return_parts=True)
+                nest_gen.manual_seed(int(seed) * 1000003 + ep)
+                _nl, nest_parts = _nll(_fb, _nb["gram"], masks=nest_masks, return_parts=True,
+                                       generator=nest_gen)
                 nest_parts["raw"] = _nl.detach()
                 if nest_w > 0:
                     w_nest = nest_w * _nl

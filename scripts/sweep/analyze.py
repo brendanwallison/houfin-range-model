@@ -442,17 +442,40 @@ def eigenbasis_table(runs):
     gaps = [x["gap"] for x in rows if x["gap"] is not None and np.isfinite(x["gap"])]
     sds = [x["gap_sd"] for x in rows
            if x["gap_sd"] is not None and np.isfinite(x["gap_sd"]) and x["gap_sd"] > 0]
+    # An EMPIRICAL floor, which beats the per-batch sd whenever it is available. base and nest_probe
+    # are the same model by construction -- probe computes and logs without touching the loss -- so
+    # any disagreement between them is pure run-to-run noise in the diagnostic, and it bounds what
+    # a between-configuration difference has to clear. The per-batch sd only measures resampling the
+    # batch at FIXED weights, which is the smaller of the two variances and the one that flatters
+    # the ordering. This is the same error that made the kernel metric look flat: comparing a spread
+    # against a noise estimate that did not include the dominant term.
+    byc = {x["config"].rstrip("*"): x["gap"] for x in rows
+           if x["gap"] is not None and np.isfinite(x["gap"])}
+    repl = None
+    if "base" in byc and "nest_probe" in byc:
+        lo, hi = sorted((byc["base"], byc["nest_probe"]))
+        repl = 100 * (hi / lo - 1) if lo > 0 else None
     if len(gaps) > 1:
         spread = 100 * (max(gaps) / min(gaps) - 1)
+        if repl is not None:
+            print(f"\nnesting gap REPLICATE CHECK: base {byc['base']:.4f} vs nest_probe "
+                  f"{byc['nest_probe']:.4f} -- {repl:.0f}% apart, and these are the SAME model "
+                  f"(probe does not touch the loss).")
+            if repl > 20:
+                print(f"  So the run-to-run floor for this diagnostic is ~{repl:.0f}%, not the "
+                      f"per-batch sd below. Treat the\n  ordering as unreadable except for gaps "
+                      f"far exceeding {repl:.0f}%, and note the per-batch sd\n  measures only "
+                      f"resampling at fixed weights -- the smaller variance, not the binding one.")
         if sds:
             nd = int(next((r.get("eig_nesting_gap_draws", 1) for x in rows for r in [{}]), 1))
             rel = 100 * float(np.median(sds)) / float(np.median(gaps))
             print(f"\nnesting gap: {spread:.0f}% spread across configurations, against a "
                   f"per-batch sd of {rel:.1f}%.")
-            if spread > 3 * rel:
-                print("  The spread is well above the diagnostic's own noise, so the ordering "
-                      "above is a real\n  difference between configurations -- and note it is a "
-                      "DIFFERENT ordering from the kernel's.")
+            floor = max(rel, repl or 0.0)
+            if spread > 3 * floor:
+                print(f"  The spread exceeds 3x the binding noise estimate ({floor:.1f}%), so the "
+                      f"ordering above is a real\n  difference between configurations -- and note "
+                      f"it is a DIFFERENT ordering from the kernel's.")
             else:
                 print("  The spread is NOT clearly above the noise; do not read the ordering.")
         else:

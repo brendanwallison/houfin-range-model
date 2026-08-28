@@ -2226,7 +2226,7 @@ def test_pure_nesting_descends_through_the_real_network_path(tmp_path):
         model, _ema = D.train_model_ema(
             cov, np.ones((T, H, W), bool), years, tgt, _metric_dict(x, m & ~ho, years),
             m & ~ho, ho, dims, latent_dim=L, ema_cfg={"earlystop_warmup": 0}, spatial_kernel=3,
-            epochs=40, lr=1e-2,
+            epochs=40, lr=1e-3,
             weights={"stabilizing": 0.0, "metric": 0.0, "reconstruction": 0.0, "nesting": 1.0},
             schema=sch, dropout=0.1, val_metric_pool=_metric_dict(x, ho, years),
             metric_pairs=256, eval_kernel_pairs=256, eval_kernel_draws=2,
@@ -2235,9 +2235,20 @@ def test_pure_nesting_descends_through_the_real_network_path(tmp_path):
     rows = [json.loads(l) for l in open(path)]
     raw = [r["nesting_raw"] for r in rows]
     assert all(np.isfinite(v) for v in raw), raw[:5]
-    assert raw[-1] < raw[0] - 0.1, (
-        f"pure nesting did not descend ({raw[0]:+.4f} -> {raw[-1]:+.4f}); the gradient is not "
-        f"reaching the weights through the gather/EMA path")
+    # min, NOT the final epoch. This objective throws violent POSITIVE transients whose size scales
+    # with the learning rate -- measured on this toy: peak +4.9e8 at lr=1e-2, +1.8e4 at 3e-3, +95 at
+    # 1e-3, while the minimum reached is -3.6 to -4.3 in every one of them. So the endpoint is a
+    # coin flip on which draw lands last, and asserting on it made this test pass or fail on the
+    # split-half permutation rather than on the gradient path it exists to check. The transients are
+    # the split-half estimator's unbounded-below pathology showing up in the value: grad_clip bounds
+    # the STEP, not z's scale, and nothing else constrains that scale when nesting is the only term.
+    assert min(raw) < raw[0] - 0.1, (
+        f"pure nesting never descended (start {raw[0]:+.4f}, best {min(raw):+.4f}); the gradient is "
+        f"not reaching the weights through the gather/EMA path")
+    # And record the transient, so a regression that makes it worse is visible rather than absorbed.
+    assert max(raw) < 1e4, (
+        f"nesting transient reached {max(raw):+.3g} at lr=1e-3, far above the ~+95 measured; the "
+        f"objective has become less stable, which is a real change even though min still descends")
     # the guard must stay near 1: with the halves re-permuted each call, the network has no stable
     # half to push magnitude into, so a drift here would mean the protection failed
     assert rows[-1]["nesting_half_imbalance"] < 3.0, rows[-1]["nesting_half_imbalance"]
@@ -2650,3 +2661,49 @@ def test_walltime_projection_warns_when_the_run_will_not_finish():
     finally:
         os.environ.clear(); os.environ.update(env)
     print("warns when the budget is impossible, silent when it is not, absent off-cluster")
+
+
+def test_the_nesting_probe_is_genuinely_inert():
+    """PROBE mode must not change the model it measures -- byte-identical weights.
+
+    nested_lora_loss's split-half estimator calls torch.randperm, and with generator=None that draws
+    from the GLOBAL torch RNG. So merely OBSERVING the nesting term consumed randomness and shifted
+    every later draw in training: dropout masks, metric pair indices. The evidence was two runs that
+    are the same model by construction, base and nest_probe, landing on different best epochs (107
+    vs 105) and reporting nesting gaps 87% apart. A probe that perturbs its subject is worse than no
+    probe, because its output looks like a measurement of the baseline.
+    """
+    import contextlib
+    import io
+
+    from src.community_encoder.train_DESK import desk_training as D
+
+    sch = _schema()
+    dims = [s["dim"] for s in sch["streams"]]
+    L, EP = 16, 6
+    rng = np.random.default_rng(0)
+    cov = rng.normal(size=(6, 12, 14, sch["total_dim"])).astype("float32")
+    years = list(range(2020, 2026))
+    m = np.ones((12, 14), bool); ho = np.zeros((12, 14), bool); ho[:, :4] = True
+    tgt = {y: (rng.normal(size=(12, 14, L)).astype("float32"), m & ~ho, ho,
+               np.ones((12, 14), dtype="float32")) for y in years[1:]}
+    x = rng.random((12, 14, 12)).astype("float32")
+
+    def run(probe):
+        torch.manual_seed(1234)
+        with contextlib.redirect_stdout(io.StringIO()):
+            out = D.train_model_ema(cov, np.ones((6, 12, 14), bool), years, tgt,
+                                    _metric_dict(x, m & ~ho, years), m & ~ho, ho, dims,
+                                    latent_dim=L, ema_cfg={"earlystop_warmup": 0},
+                                    spatial_kernel=5, epochs=EP, schema=sch, dropout=0.2,
+                                    metric_pairs=64, nesting_batch=32, nesting_batches=2,
+                                    nesting_probe=probe)
+        mdl = out[0] if isinstance(out, tuple) else out
+        return torch.cat([p.detach().reshape(-1) for p in mdl.parameters()])
+
+    off, on = run(False), run(True)
+    d = float((on - off).abs().max())
+    assert d == 0.0, (
+        f"probe mode moved the weights by {d:.3e}; it must be exactly inert, or every number it "
+        f"reports describes a different model than the one it claims to be measuring")
+    print(f"probe leaves weights byte-identical (max delta {d:.1e}) with dropout on")

@@ -398,6 +398,14 @@ def eigenbasis_table(runs):
             "n_ranks": len(rc),
             "best_rank": best_r,
             "penalty": (100 * (full_v / best_v - 1) if best_v else float("nan")),
+            # The kernel error at the rank the DOWNSTREAM actually keeps. model_inputs truncates
+            # positionally to z[..., :24], so this is the number that ships -- and it is not the
+            # same question as "does rank 64 beat the best rank", which is what all-64 asks. A
+            # configuration can carry signal across all 64 dimensions and still hand the age model
+            # a worse top-24 block.
+            "k24": dict(rc).get(24),
+            "k24_vs_best": (100 * (dict(rc)[24] / best_v - 1)
+                            if best_v and 24 in dict(rc) else float("nan")),
             "inversions": last.get("eig_spectrum_inversions"),
             "first_inv": last.get("eig_first_inversion"),
             "offdiag": last.get("eig_max_offdiag"),
@@ -421,22 +429,29 @@ def eigenbasis_table(runs):
     # batch. It is one scalar (operator term + metric term), not a composite of many pieces, and
     # it is the closest thing here to "how far is this a genuine ordered eigenbasis".
     print(f"{'config':<10} {'w':>4} {'at_ep':>6} {'bestR':>6} {'/n':>3} {'all-64':>7} "
-          f"{'inv':>4} {'1st':>4} {'offdMAX':>8} {'sub@24':>7} {'nest gap':>9} {'+-':>7} "
-          f"{'op/met':>7}")
-    print("-" * 96)
+          f"{'k@24':>8} {'v.best':>7} {'inv':>4} {'offdMAX':>8} {'sub@24':>7} {'nest gap':>9} "
+          f"{'+-':>7}")
+    print("-" * 104)
+    print("  k@24 / v.best / sub@24 are the columns that SHIP: ingest truncates positionally to "
+          "z[..., :24].")
     def _g(x):
         return x["gap"] if x["gap"] is not None and np.isfinite(x["gap"]) else 1e9
-    for x in sorted(rows, key=_g):
+    # Ordered by k@24 -- the shipped truncation -- not by the nesting gap, whose run-to-run floor
+    # is ~87% (see the replicate check) and which therefore cannot order anything yet.
+    def _k24(x):
+        v = x["k24"]
+        return v if v is not None and np.isfinite(v) else 1e9
+    for x in sorted(rows, key=_k24):
         _w = (f"{x['metric_weight']:.0f}" if isinstance(x["metric_weight"], (int, float))
               else "?")
         print(f"{x['config']:<10} {_w:>4} {x['at_epoch'] or 0:>6} {x['best_rank'] or 0:>6} "
-              f"{x['n_ranks']:>3} "
-              f"{x['penalty']:>6.1f}% {x['inversions'] or 0:>4} {x['first_inv'] or 0:>4} "
+              f"{x['n_ranks']:>3} {x['penalty']:>6.1f}% "
+              f"{(x['k24'] if x['k24'] is not None else float('nan')):>8.5f} "
+              f"{x['k24_vs_best']:>+6.1f}% {x['inversions'] or 0:>4} "
               f"{(x['offdiag'] if x['offdiag'] is not None else float('nan')):>8.3f} "
               f"{(x['sub24'] if x['sub24'] is not None else float('nan')):>7.3f} "
               f"{(x['gap'] if x['gap'] is not None else float('nan')):>9.4f} "
-              f"{(x['gap_sd'] if x['gap_sd'] is not None else float('nan')):>7.4f} "
-              f"{(x['ratio'] if x['ratio'] is not None else float('nan')):>7.3f}")
+              f"{(x['gap_sd'] if x['gap_sd'] is not None else float('nan')):>7.4f}")
     # Is the gap's spread across configurations bigger than the gap's own sampling noise? Without
     # this the ordering above is just an ordering.
     gaps = [x["gap"] for x in rows if x["gap"] is not None and np.isfinite(x["gap"])]

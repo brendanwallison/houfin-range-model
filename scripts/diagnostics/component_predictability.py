@@ -129,6 +129,7 @@ from src.community_encoder.train_DESK.esk_kernel import (                       
 # it without inheriting the validation driver's dependencies. `_era_of` is imported despite the
 # underscore rather than open-coding the decade convention a fourth time (it is already
 # duplicated in validate_spacetime's period loop and in per_era_attenuation).
+from src.community_encoder.train_DESK.desk_training import apply_output_ema      # noqa: E402
 from src.community_encoder.train_DESK.validate_baselines import (               # noqa: E402
     ATTEN_GAP, ATTEN_GAP_TOL, DEFAULT_EPOCHS, _era_of, baseline_panel,
     epoch_direction_panel, error_decomposition, per_dimension_signal_noise,
@@ -355,12 +356,15 @@ def capacity_ladder(F, tr, n_pairs=2000, pca_dim=48, rff_width=2048, rng=None):
     ]
 
 
-def fit_and_score(F, Y, tr, va, alphas=ALPHAS, fmaps=(None,), inner_frac=0.25, rng=None,
-                  predict_rows=None):
-    """Ridge on ``tr``, ``(feature map, alpha)`` chosen on an inner split of ``tr``, scored on ``va``.
+def fit_selected(F, Y, tr, alphas=ALPHAS, fmaps=(None,), inner_frac=0.25, rng=None):
+    """Fit the ridge and SELECT ``(feature map, alpha)`` per component on an inner split of ``tr``.
 
-    Neither knob is chosen on ``va``: that is the held-out set every number here is compared to
-    DESK's on, and selecting on it would make this diagnostic optimistic by exactly the amount that
+    Returned as a model so it can be applied to a feature matrix other than the one it was fitted
+    on -- which is what section 7 needs: the EMA has to run over a contiguous year series at every
+    held-out cell, including years nobody surveyed, and those rows are not in ``F``.
+
+    Neither knob is chosen on the outer held-out set: that is what every number here is compared to
+    DESK on, and selecting there would make the diagnostic optimistic by exactly the amount that
     matters. The inner split is a slice of a permutation of the training rows -- the spatial
     separation that matters is already in the outer blocked split.
 
@@ -368,15 +372,7 @@ def fit_and_score(F, Y, tr, va, alphas=ALPHAS, fmaps=(None,), inner_frac=0.25, r
     alone. A single heuristic bandwidth was 64x too wide for a sin/cos target in
     ``tests/test_component_predictability.py``, and the capacity ladder scored 0.036 on a signal it
     should have recovered at 0.9 -- which would have read as "the information is not in the
-    environment", the script's most expensive conclusion, produced entirely by a mis-set scale. So
-    the scale is a selected knob like alpha, chosen per component on the inner split.
-
-    ``predict_rows`` widens WHERE the fitted model is evaluated without changing what it is scored
-    on. The validation machinery this feeds needs a prediction at rows other than ``va``:
-    ``baseline_panel`` computes ``norm(z_desk - z_obs)`` over every row before masking, and
-    ``epoch_direction_panel`` reads arbitrary ``(cell, year)`` pairs. Scoring stays on ``va``
-    exactly as before -- the returned ``r2`` is unaffected -- so this costs one extra predict pass
-    and buys no optimism.
+    environment", the script's most expensive conclusion, produced entirely by a mis-set scale.
     """
     rng = rng or np.random.default_rng(0)
     perm = rng.permutation(len(tr))
@@ -394,30 +390,53 @@ def fit_and_score(F, Y, tr, va, alphas=ALPHAS, fmaps=(None,), inner_frac=0.25, r
             best = np.where(upd, r2, best)
             pick_f, pick_a = np.where(upd, fi, pick_f), np.where(upd, ai, pick_a)
         del acc_i
-    rows = va if predict_rows is None else np.asarray(predict_rows)
-    pred = np.empty((len(rows), L), dtype="float64")
-    tmean = np.zeros(L)
+    # Refit each selected combination on the FULL training set and keep its coefficients.
+    parts = []
     for fi in sorted(set(int(v) for v in pick_f)):
         acc = _accum(F, Y, tr, fmap=fmaps[fi])
         for ai in sorted(set(int(a) for a in pick_a[pick_f == fi])):
             c, mx, my = _solve(acc, alphas[ai])
-            p = _predict(F, rows, c, mx, my, fmap=fmaps[fi])
             cols = np.where((pick_f == fi) & (pick_a == ai))[0]
-            pred[:, cols] = p[:, cols]
-            tmean[cols] = my[cols]
+            parts.append({"fmap": fmaps[fi], "coef": c, "mx": mx, "my": my, "cols": cols})
         del acc
-    # Scored on `va` whatever `predict_rows` asked for. Locating va inside rows rather than
-    # re-predicting keeps the two exactly consistent -- a second predict pass with a different
-    # chunking could differ in the last bits and make the reported r2 not quite the r2 of the
-    # array handed downstream.
+    tmean = np.zeros(L)
+    for pt in parts:
+        tmean[pt["cols"]] = pt["my"][pt["cols"]]
+    return {"parts": parts, "L": L, "train_mean": tmean, "inner_r2": best,
+            "alpha": [alphas[int(j)] for j in pick_a], "fmap": pick_f.tolist()}
+
+
+def predict_model(model, F, rows=None):
+    """Apply a :func:`fit_selected` model to ``rows`` of ANY matching-width feature matrix."""
+    rows = np.arange(len(F)) if rows is None else np.asarray(rows)
+    out = np.empty((len(rows), model["L"]), dtype="float64")
+    for pt in model["parts"]:
+        p = _predict(F, rows, pt["coef"], pt["mx"], pt["my"], fmap=pt["fmap"])
+        out[:, pt["cols"]] = p[:, pt["cols"]]
+    return out
+
+
+def fit_and_score(F, Y, tr, va, alphas=ALPHAS, fmaps=(None,), inner_frac=0.25, rng=None,
+                  predict_rows=None, return_model=False):
+    """:func:`fit_selected` then score on ``va``. ``predict_rows`` widens what is RETURNED only.
+
+    The validation machinery this feeds needs a prediction at rows other than ``va``:
+    ``baseline_panel`` computes ``norm(z_desk - z_obs)`` over every row before masking, and
+    ``epoch_direction_panel`` reads arbitrary ``(cell, year)`` pairs. Scoring stays on ``va``
+    exactly as before, so widening buys no optimism.
+    """
+    model = fit_selected(F, Y, tr, alphas=alphas, fmaps=fmaps, inner_frac=inner_frac, rng=rng)
+    rows = va if predict_rows is None else np.asarray(predict_rows)
+    pred = predict_model(model, F, rows)
     if predict_rows is None:
         pred_va = pred
     else:
         pos = {int(v): i for i, v in enumerate(rows)}
         pred_va = pred[np.array([pos[int(v)] for v in va])]
-    r2, beats = held_out_r2(Y[va], pred_va, tmean)
-    return dict(r2=r2, beats_const=beats, alpha=[alphas[int(j)] for j in pick_a],
-                fmap=pick_f.tolist(), inner_r2=best), pred
+    r2, beats = held_out_r2(Y[va], pred_va, model["train_mean"])
+    res = dict(r2=r2, beats_const=beats, alpha=model["alpha"], fmap=model["fmap"],
+               inner_r2=model["inner_r2"])
+    return ((res, pred, model) if return_model else (res, pred))
 
 
 # --- feature assembly --------------------------------------------------------------------------
@@ -636,17 +655,47 @@ def verdict(rungs, caps, var_share):
 MIN_SIGNAL_SHARE = 0.05
 
 
-def achievable_r2(r2, sn, min_share=MIN_SIGNAL_SHARE):
-    """Rescale each component's R^2 by the share of its variance that is not survey noise.
+def change_signal_share(sn):
+    """Share of a fixed-gap DIFFERENCE that is real change rather than survey noise, per component.
 
-    R^2 against total variance answers "how much of this component can be predicted", which is the
-    wrong question when part of the component IS measurement noise. ``per_dimension_signal_noise``
-    measures that share directly: adjacent-year within-cell differences are essentially ``2 sigma^2``
-    (real community change over one year is small), and fixed-gap differences carry the same noise
-    plus real change. A component that is 90% noise cannot be predicted from ANY covariate, and
-    reporting its low R^2 as a covariate gap is a category error -- which is the specific mistake
-    this rescale prevents, since the module's own docstring predicts noise concentrates in the
-    trailing directions, exactly where this script measured its lowest R^2.
+    This is what ``per_dimension_signal_noise`` measures natively: ``noise_var`` is the mean squared
+    adjacent-year within-cell difference (real change over one year is small, so it is essentially
+    ``2 sigma^2``), ``total_var`` the same at the fixed gap, and their difference the signal. So the
+    ratio is the ceiling for a model predicting CHANGE over that gap -- and for nothing else.
+    """
+    if "signal_var" not in sn:
+        return None
+    sig = np.asarray(sn["signal_var"], dtype="float64")
+    tot = np.asarray(sn["total_var"], dtype="float64")
+    return np.where(tot > 1e-300, sig / np.maximum(tot, 1e-300), np.nan)
+
+
+def level_signal_share(sn, level_var):
+    """Share of a single observation's LEVEL variance that is real, per component.
+
+    NOT the same ratio as :func:`change_signal_share`, and the first version of this script used
+    that one for both -- which silently rescaled level R^2 by a change ceiling and reported the
+    result as "R^2 vs ACHIEVABLE". The two differ by construction: a difference of two independent
+    observations carries ``2 sigma^2``, a single observation carries ``sigma^2``, and the level
+    variance it sits in is the target's own, not the gap difference's.
+
+    So ``sigma^2 = noise_var / 2`` and the share is ``1 - sigma^2 / var(level)``. ``level_var`` must
+    be the ABSOLUTE per-component variance of the target on the same rows, not a normalized share.
+    """
+    if "noise_var" not in sn:
+        return None
+    sigma2 = np.asarray(sn["noise_var"], dtype="float64") / 2.0
+    lv = np.asarray(level_var, dtype="float64")
+    return np.clip(1.0 - sigma2 / np.maximum(lv, 1e-300), 0.0, 1.0)
+
+
+def achievable_r2(r2, share, min_share=MIN_SIGNAL_SHARE):
+    """R^2 restated as the fraction of the ACHIEVABLE signal captured, per component.
+
+    Part of a component is survey noise, and no covariate can predict noise, so reporting a
+    noise-dominated component's low R^2 as a covariate gap is a category error -- the specific
+    mistake this prevents, since noise is expected to concentrate in the trailing directions,
+    exactly where this script measures its lowest R^2.
 
     Bounded on BOTH sides, and refused where it cannot mean anything:
 
@@ -654,21 +703,20 @@ def achievable_r2(r2, sn, min_share=MIN_SIGNAL_SHARE):
       the model beat the ceiling;
     * below 0.0, because "captured a negative fraction of the achievable signal" is not a reading --
       failing to beat the mean is already what the raw R^2 says;
-    * NaN where the signal share is under ``min_share``. This is the case the first version got
-      badly wrong: it divided regardless, and a raw R^2 of -0.0005 over a share of 0.006 printed as
-      -215. Where the share is that low, the share itself is the answer.
+    * NaN where the share is under ``min_share``. This is the case the first version got badly
+      wrong: it divided regardless, and a raw R^2 of -0.0005 over a share of 0.006 printed as -215.
+      Where the share is that low, the share itself is the answer.
 
-    Returns ``(achievable, signal_share)``, both per component, or ``(None, None)`` if
-    ``per_dimension_signal_noise`` declined for want of pairs.
+    Pass the share from :func:`level_signal_share` for a level R^2 and from
+    :func:`change_signal_share` for a change R^2. They are different ratios; using one for the
+    other is the bug noted on ``level_signal_share``.
     """
-    if "signal_var" not in sn:
-        return None, None
-    sig = np.asarray(sn["signal_var"], dtype="float64")
-    tot = np.asarray(sn["total_var"], dtype="float64")
-    share = np.where(tot > 1e-300, sig / np.maximum(tot, 1e-300), np.nan)
+    if share is None:
+        return None
+    share = np.asarray(share, dtype="float64")
     with np.errstate(divide="ignore", invalid="ignore"):
         ach = np.clip(np.asarray(r2, dtype="float64") / share, 0.0, 1.0)
-    return np.where(share >= float(min_share), ach, np.nan), share
+    return np.where(share >= float(min_share), ach, np.nan)
 
 
 def per_component_r2_of(pred, truth):
@@ -812,6 +860,47 @@ def r2_by_group(pred, truth, groups):
             if int(np.asarray(m).sum()) >= 30}
 
 
+def ema_trajectories(model, cells, years, states_dir, schema, mu, sd, fw_mean, fw_sd,
+                     half_life, blocks=BLOCKS):
+    """Predict a CONTIGUOUS per-year series at every cell, then apply DESK's output EMA.
+
+    This exists because the first version of section 7 graded the wrong quantity, and the codebase
+    says so in as many words: ``apply_output_ema``'s docstring records that the trainer supervises
+    ``z_ema`` while every export is raw, so "anything grading DESK against an observed community has
+    to reconstruct ``z_ema`` here rather than compare the wrong quantity". A regressor emitting an
+    instantaneous per-year z is not doing DESK's job -- DESK's supervised output is a learned causal
+    EMA over the year axis, half-life ~11 yr in the validated route-level run.
+
+    The scan is causal and cannot be applied to an isolated ``(cell, year)``, so every cell needs a
+    full ascending series from the burn-in year. Those rows are mostly years nobody surveyed, which
+    is why the model has to be applied to a feature matrix it was not fitted on -- hence
+    ``fit_selected`` / ``predict_model``.
+
+    ``years`` must already be restricted to years that HAVE a state file: the trainer's own window
+    skips missing years rather than clamping (``_load_year_window`` continues on FileNotFoundError),
+    and matching that keeps the burn-in identical.
+
+    Returns ``(z_ema (T, n_cells, L), z_raw, index)`` where ``index[(row, col, year)]`` gives the
+    ``(t, c)`` position, so a surveyed cell-year can be looked up directly.
+    """
+    cells = np.asarray(cells)
+    years = list(sorted(int(y) for y in years))
+    grid = np.array([(int(r), int(c), y) for y in years for r, c in cells], dtype=int)
+    F, ok, cols = build_features(grid, states_dir, schema, mu, sd, blocks=blocks, verbose=False)
+    sub = np.concatenate([np.arange(cols[b].start, cols[b].stop) for b in blocks])
+    # The SAME standardization the model was fitted under. Refitting stats here would move every
+    # feature onto a different scale than the coefficients expect, silently.
+    Fg = ((np.ascontiguousarray(F[:, sub]) - fw_mean) / np.maximum(fw_sd, 1e-6)).astype("float32")
+    z = predict_model(model, Fg).reshape(len(years), len(cells), -1)
+    valid = ok.reshape(len(years), len(cells))
+    # `valid` persists the prior EMA state through an unusable year instead of overwriting it with
+    # NaN -- without that one gap-year poisons every later year at that cell.
+    z_ema = apply_output_ema(np.nan_to_num(z, nan=0.0), half_life, valid=valid)
+    index = {(int(r), int(c), int(y)): (t, ci)
+             for t, y in enumerate(years) for ci, (r, c) in enumerate(cells)}
+    return z_ema, z, index
+
+
 def _jsonable(o):
     """JSON default for the validation suite's returns, which nest numpy arrays and scalars.
 
@@ -893,6 +982,7 @@ def main():
     # inputs were. Refitting here on the same training cells is equivalent in expectation but not
     # identical, and an unexplained difference between two diagnostics is worse than a dependency.
     mp = os.path.join(dd, "desk_meta.npz")
+    dm = None
     if os.path.exists(mp):
         dm = np.load(mp)
         cio.assert_schema_compatible(
@@ -977,18 +1067,19 @@ def main():
               + f"   | mean {np.mean(np.where(res['beats_const'], res['r2'], 0.0)):.3f}")
 
     print("\n=== 2. CAPACITY LADDER (closed-form rungs on the widest context rung) ===")
-    caps = {}
+    caps, cap_models = {}, {}
     sub = np.concatenate([np.arange(cols[b].start, cols[b].stop) for b in BLOCKS])
     Fw = np.ascontiguousarray(F[:, sub])
     # Standardized once, on TRAIN rows only: the hinge knots are quantiles and the RBF length
     # scale is a distance, so both are meaningless on raw channels that differ by 10^6.
-    Fw = ((Fw - Fw[tr].mean(0)) / np.maximum(Fw[tr].std(0), 1e-6)).astype("float32")
+    fw_mean, fw_sd = Fw[tr].mean(0), Fw[tr].std(0)
+    Fw = ((Fw - fw_mean) / np.maximum(fw_sd, 1e-6)).astype("float32")
     for name, fmaps, width in capacity_ladder(Fw, tr, n_pairs=args.pairs, pca_dim=args.pca_dim,
                                               rff_width=args.rff_width,
                                               rng=np.random.default_rng(2)):
-        res, p = fit_and_score(Fw, Y, tr, va, fmaps=fmaps, rng=np.random.default_rng(4),
-                               predict_rows=all_rows)
-        caps[name], preds[name] = res, p
+        res, p, mdl = fit_and_score(Fw, Y, tr, va, fmaps=fmaps, rng=np.random.default_rng(4),
+                                    predict_rows=all_rows, return_model=True)
+        caps[name], preds[name], cap_models[name] = res, p, mdl
         b = band_means(res["r2"], res["beats_const"])
         print(f"  {name:<22} {width:>6} features   "
               + "  ".join(f"{k}={v:.3f}" for k, v in b.items())
@@ -1069,13 +1160,26 @@ def main():
     pidx_sel = pidx[sel]
     r2_best = np.asarray(best_all[best_name]["r2"], dtype="float64")
     extra = {"best_model": best_name}
+    best_cap = max(caps, key=lambda k: np.mean(
+        np.where(caps[k]["beats_const"], caps[k]["r2"], 0.0)))
+    best_model_obj = cap_models[best_cap]
     print(f"\n  (sections 5-9 grade the winning rung, {best_name})")
+    if best_cap != best_name:
+        print(f"  section 7 uses {best_cap}, the best CAPACITY rung: the context rungs are fitted "
+              f"on\n  narrower unstandardized column slices, so their coefficients do not apply to "
+              f"the\n  rebuilt year grid.")
 
     print("\n=== 5. NOISE CEILING: how much of each component is even measurable ===")
     sn = per_dimension_signal_noise(pidx_sel, Y)
-    ach, share = achievable_r2(r2_best, sn)
-    M_MIN_SHARE = MIN_SIGNAL_SHARE
     extra["signal_noise"] = sn
+    # TWO different ceilings, and they are not interchangeable. A single observation carries
+    # sigma^2; a difference of two carries 2*sigma^2 and sits in a different variance. The first
+    # version of this section used the CHANGE ratio to rescale a LEVEL R^2 and printed the result
+    # as "R^2 vs ACHIEVABLE", which is a category error -- see level_signal_share.
+    level_var = Y[tr].var(0)
+    share = level_signal_share(sn, level_var)
+    share_ch = change_signal_share(sn)
+    ach = achievable_r2(r2_best, share) if share is not None else None
     if ach is None:
         print(f"  unavailable: {sn.get('note')}")
     else:
@@ -1083,31 +1187,32 @@ def main():
               f"{sn['gap_years']}+/-{sn['gap_tol']} yr. snr slope {sn['snr_slope']:+.4f}, "
               f"leading-8 median {sn['snr_leading_8']:.3f} vs trailing-8 "
               f"{sn['snr_trailing_8']:.3f}")
-        extra["achievable_r2"] = ach.tolist()
-        extra["signal_share"] = share.tolist()
+        extra["achievable_r2_level"] = ach.tolist()
+        extra["signal_share_level"] = share.tolist()
+        extra["signal_share_change"] = share_ch.tolist()
         _nref = int(np.sum(~np.isfinite(ach)))
         if _nref:
             print(f"  {_nref} of {len(ach)} components carry under "
-                  f"{100 * M_MIN_SHARE:.0f}% real signal, so an achievable-R^2 is REFUSED for "
-                  f"them\n  (n/a below) -- at that share the rescale amplifies noise without "
-                  f"bound and the share IS the finding")
+                  f"{100 * MIN_SIGNAL_SHARE:.0f}% real LEVEL signal, so an achievable-R^2 is "
+                  f"REFUSED for them (n/a below)")
+        print(f"  {'band':<9} {'sig share':>10} {'(change)':>9} {'R^2':>8} {'R^2 vs ACHIEVABLE':>19}")
         for a, b in BANDS:
             b = min(b, len(ach))
             if a >= b:
                 continue
             _a = np.nanmean(ach[a:b]) if np.isfinite(ach[a:b]).any() else np.nan
-            _as = "    n/a" if not np.isfinite(_a) else f"{_a:7.3f}"
-            print(f"  l{a + 1:>3}-{b:<3} signal share {np.nanmean(share[a:b]):.3f}   "
-                  f"R^2 vs total {np.nanmean(r2_best[a:b]):7.3f}   "
-                  f"R^2 vs ACHIEVABLE {_as}"
-                  f"   ({int(np.isfinite(ach[a:b]).sum())}/{b - a} defined)")
-        # The reading that would overturn section 3: if the trailing components are mostly noise,
-        # their low raw R^2 was never a covariate gap and no covariate can close it.
+            _as = "        n/a" if not np.isfinite(_a) else f"{_a:11.3f}"
+            _sat = " (capped)" if np.isfinite(_a) and _a > 0.995 else ""
+            print(f"  l{a + 1:>3}-{b:<4} {np.nanmean(share[a:b]):10.3f} "
+                  f"{np.nanmean(share_ch[a:b]):9.3f} {np.nanmean(r2_best[a:b]):8.3f} "
+                  f"{_as}   ({int(np.isfinite(ach[a:b]).sum())}/{b - a}){_sat}")
+        print("  'capped' means R^2/share exceeded 1, i.e. the NOISE ESTIMATE is the imprecise\n"
+              "  quantity there -- read that row as saturated, not as perfect.")
         if np.nanmean(share[32:]) < 0.5 and np.nanmean(share[:8]) > 0.7:
             print("  -> the TAIL IS MOSTLY NOISE. Components 33-64 carry more survey noise than\n"
-                  "     temporal signal, so their low R^2 is not a covariate gap and no covariate\n"
-                  "     can close it. The ESK oracle can 'predict' that noise only because it is\n"
-                  "     projected FROM the same communities; a covariate model never can.")
+                  "     signal, so their low R^2 is not a covariate gap and no covariate can close\n"
+                  "     it. The ESK oracle 'predicts' that noise only because it is projected FROM\n"
+                  "     the same communities; a covariate model never can.")
     atten = per_era_attenuation(pidx_sel, Y)
     extra["per_era_attenuation"] = atten
     if atten:
@@ -1175,49 +1280,113 @@ def main():
                                             buffer_mask=buffer_cells, heldout_only=True,
                                             verbose=True, exclude_years=ho_years)
 
-    print("\n=== 7. LEVEL vs CHANGE: the quantity DESK actually has to predict ===")
-    # Sections 1-6 all grade a LEVEL. Anything static explains level and not change, and this
-    # project's own finding is that direction is where the model fails (dcos 0.21 against a 0.19
-    # no-covariate baseline, over-moving 2.2x). Same gap as section 5's signal/noise, so those
-    # numbers describe this exact quantity.
+    print("\n=== 7. LEVEL vs CHANGE, through DESK's own output EMA ===")
+    # The first version of this section fitted a FRESH model on differenced features and compared
+    # instantaneous per-year predictions. That is not DESK's task, in three separate ways, and it
+    # understated change badly:
+    #   * DESK supervises z_ema, a learned causal EMA over the year axis (half-life ~11 yr in the
+    #     validated run), not an instantaneous z. apply_output_ema's docstring says explicitly that
+    #     grading DESK against an observed community requires reconstructing z_ema first.
+    #   * differencing the LEVEL model's predictions lets a static per-cell error cancel; refitting
+    #     on differences throws that cancellation away, and with a level R^2 near 0.72 it is
+    #     probably worth a great deal.
+    #   * the differenced target is ~half survey noise (section 5's change share), so the ceiling
+    #     is nowhere near 1.0 and the raw number was being read against the wrong denominator.
+    # Input context was never the problem: ema_tau=2 is baked into state_*.npz at build time, and
+    # the feature blocks add 3x3/9x9 neighbourhood means and 5/15-year lags on top, so this
+    # regressor sees at least as much as DESK's per-year forward does.
     ea, la = gap_pairs(pidx_sel, ATTEN_GAP, ATTEN_GAP_TOL)
     extra["change"] = {"n_pairs": int(len(ea)), "gap_years": ATTEN_GAP}
-    if len(ea) < 200:
-        print(f"  only {len(ea)} within-cell pairs at {ATTEN_GAP}+/-{ATTEN_GAP_TOL} yr; SKIPPED")
+    d_va = np.isin(ea, va) & np.isin(la, va)
+    if len(ea) < 200 or int(d_va.sum()) < 100:
+        print(f"  only {len(ea)} within-cell pairs at {ATTEN_GAP}+/-{ATTEN_GAP_TOL} yr "
+              f"({int(d_va.sum())} held-out); SKIPPED")
     else:
+        hl = float(dm["ema_half_life"]) if (dm is not None and "ema_half_life" in dm
+                                            and np.isfinite(dm["ema_half_life"])) else None
+        warm = int(dm["ema_warmup_start"]) if (dm is not None
+                                               and "ema_warmup_start" in dm) else 1940
+        if hl is None:
+            hl = float(desk_cfg.get("output_ema", {}).get("init_half_life", 10.0))
+            print(f"  NOTE no learned ema_half_life in desk_meta.npz; using the config init "
+                  f"{hl:.1f} yr. This is the trained run's actual smoothing when present.")
+        have = sorted(int(f[6:10]) for f in os.listdir(states_dir)
+                      if f.startswith("state_") and f.endswith(".npz"))
+        yrs_ema = [y for y in have if warm <= y <= int(desk_cfg.get("label_year", 2025))]
+        vcells = np.unique(pidx_sel[va][:, :2], axis=0)
+        print(f"  EMA half-life {hl:.2f} yr over {len(yrs_ema)} contiguous years "
+              f"({yrs_ema[0]}-{yrs_ema[-1]}) at {len(vcells):,} held-out cells "
+              f"({len(vcells) * len(yrs_ema):,} rows)", flush=True)
+        z_ema, z_raw_traj, tix = ema_trajectories(
+            best_model_obj, vcells, yrs_ema, states_dir, schema, mu, sd, fw_mean, fw_sd, hl)
+
+        def _gather(cube, rows):
+            out = np.full((len(rows), cube.shape[-1]), np.nan)
+            for i, k in enumerate(rows):
+                pos = tix.get((int(pidx_sel[k, 0]), int(pidx_sel[k, 1]), int(pidx_sel[k, 2])))
+                if pos is not None:
+                    out[i] = cube[pos[0], pos[1]]
+            return out
+
+        pe, pl = ea[d_va], la[d_va]
+        lvl_ema = _gather(z_ema, np.concatenate([pe, pl]))
+        lvl_raw = _gather(z_raw_traj, np.concatenate([pe, pl]))
+        n2 = len(pe)
+        dY = Y[pl] - Y[pe]
+        rows = {}
+        rows["EMA, differenced"] = per_component_r2_of(lvl_ema[n2:] - lvl_ema[:n2], dY)[0]
+        rows["raw, differenced"] = per_component_r2_of(lvl_raw[n2:] - lvl_raw[:n2], dY)[0]
+        # The original construction, kept as the CONTRAST: a fresh model on differenced features.
+        # It answers a real but different question -- can covariate CHANGE predict community change
+        # from scratch -- and the gap between it and the row above is the error cancellation.
         d_tr = np.isin(ea, tr) & np.isin(la, tr)
-        d_va = np.isin(ea, va) & np.isin(la, va)
-        print(f"  {len(ea):,} within-cell pairs at {ATTEN_GAP}+/-{ATTEN_GAP_TOL} yr "
-              f"({int(d_tr.sum()):,} train, {int(d_va.sum()):,} val)")
-        if int(d_tr.sum()) < 100 or int(d_va.sum()) < 100:
-            print("  too few on one side of the split; SKIPPED")
-        else:
-            dF = np.ascontiguousarray(Fw[la] - Fw[ea])
-            dY = Y[la] - Y[ea]
-            res_d, _ = fit_and_score(dF, dY, np.where(d_tr)[0], np.where(d_va)[0],
+        if int(d_tr.sum()) >= 100:
+            res_d, _ = fit_and_score(np.ascontiguousarray(Fw[la] - Fw[ea]), Y[la] - Y[ea],
+                                     np.where(d_tr)[0], np.where(d_va)[0],
                                      rng=np.random.default_rng(21))
-            r2_ch = np.asarray(res_d["r2"], dtype="float64")
-            extra["change"]["r2"] = r2_ch.tolist()
-            # Compared against the LINEAR level rung, not the best (nonlinear) one. The change fit
-            # is linear, so grading it against a capacity-laddered level number would measure the
-            # model class as well as the quantity, and the level/change gap is the only thing this
-            # section is for. `linear` is the same feature set (widest context), same solver.
-            r2_lvl = np.asarray(caps["linear"]["r2"], dtype="float64")
-            extra["change"]["r2_level_linear"] = r2_lvl.tolist()
-            print("  both fits are LINEAR on the same features, so the gap is the quantity")
-            print(f"  {'band':<9} {'R^2 level':>10} {'R^2 CHANGE':>11}")
-            for a, b in BANDS:
-                b = min(b, len(r2_ch))
-                if a >= b:
-                    continue
-                print(f"  l{a + 1:>3}-{b:<4} {np.nanmean(r2_lvl[a:b]):10.3f} "
-                      f"{np.nanmean(r2_ch[a:b]):11.3f}")
-            _cl = np.nanmean(r2_ch[:8]); _ll = np.nanmean(r2_lvl[:8])
-            if _cl < 0.25 * max(_ll, 1e-9):
-                print(f"  -> the covariates explain LEVEL ({_ll:.3f}) far better than CHANGE "
-                      f"({_cl:.3f}).\n     Every R^2 in sections 1-6 is answering the easier "
-                      f"question. A covariate that varies\n     mostly in space cannot help "
-                      f"here however high its level R^2.")
+            rows["refit on differences"] = np.asarray(res_d["r2"], dtype="float64")
+        r2_lvl_ema, _ = per_component_r2_of(_gather(z_ema, va), Y[va])
+        # The raw level too. The EMA is NOT automatically a benefit -- it helps only where the
+        # target is temporally smooth relative to the prediction's own year-to-year noise, and on
+        # a target with no temporal autocorrelation it destroys signal. Reporting only the EMA row
+        # would hide which of those regimes this data is in.
+        r2_lvl_raw, _ = per_component_r2_of(_gather(z_raw_traj, va), Y[va])
+        extra["change"]["r2_level_raw"] = r2_lvl_raw.tolist()
+        extra["change"].update({k: v.tolist() for k, v in rows.items()})
+        extra["change"]["r2_level_ema"] = r2_lvl_ema.tolist()
+        extra["change"]["ema_half_life"] = hl
+        print(f"  {len(pe):,} held-out pairs. Level row is z_ema at surveyed cell-years.")
+        print(f"  {'quantity':<22} " + " ".join(f"{f'l{a + 1}-{min(b, latent_dim)}':>9}"
+                                                for a, b in BANDS if a < latent_dim))
+        for lbl, arr in ([("LEVEL (raw)", r2_lvl_raw), ("LEVEL (z_ema)", r2_lvl_ema)]
+                         + list(rows.items())):
+            print(f"  {lbl:<22} " + " ".join(
+                f"{np.nanmean(arr[a:min(b, len(arr))]):9.3f}" for a, b in BANDS if a < len(arr)))
+        ach_ch = achievable_r2(rows["EMA, differenced"], share_ch) if share_ch is not None else None
+        if ach_ch is not None:
+            extra["change"]["achievable_r2"] = ach_ch.tolist()
+            def _band(arr, a, b):
+                sl = arr[a:min(b, len(arr))]
+                # np.nanmean warns on an all-NaN slice, which is the ORDINARY case here: a band
+                # where every component fell under MIN_SIGNAL_SHARE is refused wholesale.
+                return f"{np.mean(sl[np.isfinite(sl)]):9.3f}" if np.isfinite(sl).any() else "      n/a"
+            print(f"  {'CHANGE vs achievable':<22} "
+                  + " ".join(_band(ach_ch, a, b) for a, b in BANDS if a < len(ach_ch)))
+        _ce = np.nanmean(rows["EMA, differenced"][:16])
+        _cr = np.nanmean(rows["raw, differenced"][:16])
+        _cf = np.nanmean(rows.get("refit on differences", np.full(16, np.nan))[:16])
+        print(f"  EMA vs raw on change (l1-16): {_ce:.3f} vs {_cr:.3f}; refit-on-differences "
+              f"{_cf:.3f}")
+        _le, _lr = np.nanmean(r2_lvl_ema[:16]), np.nanmean(r2_lvl_raw[:16])
+        if _lr > _le + 0.05:
+            print(f"  NOTE the EMA HURTS here (level l1-16 {_le:.3f} vs raw {_lr:.3f}): this "
+                  f"target has less\n  temporal autocorrelation than the smoothing assumes, so "
+                  f"read the raw rows as the\n  covariates' reach and the EMA rows as DESK's "
+                  f"actual output quantity.")
+        if np.isfinite(_cf) and _ce > _cf + 0.02:
+            print("  -> differencing the LEVEL model beats refitting on differences, which is the\n"
+                  "     static per-cell error cancelling. The first version of this section threw\n"
+                  "     that away and reported the result as a covariate finding.")
 
     print("\n=== 8. DIRECTION and MAGNITUDE (bands; an angle needs >=2 dimensions) ===")
     print(f"  {'band':<9} {'dims':>5} {'ang share':>10} {'mag share':>10} {'median cos':>11} "

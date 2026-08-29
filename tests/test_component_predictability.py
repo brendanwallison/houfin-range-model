@@ -313,10 +313,15 @@ def test_main_runs_end_to_end_on_a_synthetic_project(tmp_path, monkeypatch, caps
     assert "unavailable" not in out.split("=== 5.")[1].split("=== 6.")[0], \
         "section 5 no-opped; the fixture must span a 20-year gap\n" + out
     assert len(d["signal_noise"]["signal_var"]) == L
-    assert len(d["achievable_r2"]) == L
+    assert len(d["achievable_r2_level"]) == L
+    assert len(d["signal_share_level"]) == L and len(d["signal_share_change"]) == L
     assert len(d["r2_spatial_idw"]) == L and len(d["r2_spacetime_idw"]) == L
     assert d["change"]["n_pairs"] > 200, d["change"]
-    assert "r2" in d["change"], "section 7 skipped; it needs pairs on both sides of the split"
+    # Section 7 must grade DESK's actual output quantity: the EMA'd trajectory, differenced.
+    assert "EMA, differenced" in d["change"], \
+        "section 7 skipped or did not run the EMA path\n" + out
+    assert "r2_level_ema" in d["change"] and len(d["change"]["r2_level_ema"]) == L
+    assert d["change"]["ema_half_life"] > 0
     assert set(d["banded_error_split"]) and all(
         v["n_dims"] >= 8 for v in d["banded_error_split"].values()), d["banded_error_split"]
     assert any(k.startswith("era ") for k in d["r2_by_group"]), d["r2_by_group"].keys()
@@ -390,6 +395,26 @@ def test_a_flat_rank_curve_is_reported_as_flat_not_as_a_winner():
     assert M.best_rank(jitter, "corr")[0] is None
 
 
+def test_the_two_noise_ceilings_are_different_ratios_and_are_not_interchangeable():
+    """A level ceiling and a change ceiling come from different quantities.
+
+    The first version used ``signal_var/total_var`` -- which is the share of a fixed-gap DIFFERENCE
+    -- to rescale a LEVEL R^2 and printed it as "R^2 vs ACHIEVABLE". A single observation carries
+    sigma^2 while a difference of two carries 2*sigma^2, and they sit in different variances, so the
+    two ratios cannot substitute for one another. Constructed with sigma^2 = 0.5 so both are known.
+    """
+    M = _mod()
+    sn = {"noise_var": [1.0], "signal_var": [1.0], "total_var": [2.0]}
+    assert M.change_signal_share(sn)[0] == pytest.approx(0.5)
+    # sigma^2 = noise_var/2 = 0.5 against a level variance of 2.0 -> 75% real.
+    assert M.level_signal_share(sn, np.array([2.0]))[0] == pytest.approx(0.75)
+    # ... and against a level variance of 1.0 -> 50%. Same sn, different answer: the level ceiling
+    # depends on the target's own variance, which the change ratio knows nothing about.
+    assert M.level_signal_share(sn, np.array([1.0]))[0] == pytest.approx(0.5)
+    assert M.change_signal_share({"note": "too few pairs"}) is None
+    assert M.level_signal_share({"note": "too few pairs"}, np.array([1.0])) is None
+
+
 def test_the_noise_ceiling_rescales_a_noisy_component_to_its_achievable_r2():
     """A component that is mostly survey noise must stop looking like a covariate failure.
 
@@ -399,28 +424,20 @@ def test_the_noise_ceiling_rescales_a_noisy_component_to_its_achievable_r2():
     captured ALL of the achievable signal, and must be reported at ~1.0.
     """
     M = _mod()
-    sn = {"signal_var": [0.25, 0.9], "total_var": [1.0, 1.0], "noise_var": [0.75, 0.1]}
-    ach, share = M.achievable_r2(np.array([0.25, 0.45]), sn)
-    assert share[0] == pytest.approx(0.25) and share[1] == pytest.approx(0.9)
+    ach = M.achievable_r2(np.array([0.25, 0.45]), np.array([0.25, 0.9]))
     assert ach[0] == pytest.approx(1.0), f"a fully-captured noisy component must read 1.0: {ach[0]}"
     assert ach[1] == pytest.approx(0.5), f"0.45 of an 0.9 signal share is 0.5: {ach[1]}"
     # Capped at 1.0: a ratio above 1 means the noise estimate is imprecise, not that the model
     # beat the ceiling, and reporting 1.4 would invite exactly that misreading.
-    assert M.achievable_r2(np.array([0.9]), {"signal_var": [0.5], "total_var": [1.0]})[0][0] \
-        == pytest.approx(1.0)
-    assert M.achievable_r2(np.array([0.3]), {"note": "too few pairs"}) == (None, None)
+    assert M.achievable_r2(np.array([0.9]), np.array([0.5]))[0] == pytest.approx(1.0)
+    assert M.achievable_r2(np.array([0.3]), None) is None
     # BOTH bounds, and the refusal. Dividing a negative R^2 by a tiny share is how a synthetic run
-    # printed "R^2 vs ACHIEVABLE -215.144" from a raw R^2 of -0.0005; the rescale must refuse that
-    # case rather than produce a number, and must never go below 0 where it does apply.
-    a_lo, s_lo = M.achievable_r2(np.array([-0.0005, -0.4]),
-                                 {"signal_var": [0.006, 0.9], "total_var": [1.0, 1.0]})
+    # printed "R^2 vs ACHIEVABLE -215.144" from a raw R^2 of -0.0005.
+    a_lo = M.achievable_r2(np.array([-0.0005, -0.4]), np.array([0.006, 0.9]))
     assert not np.isfinite(a_lo[0]), f"a 0.6% signal share must be refused, not scaled: {a_lo[0]}"
-    assert s_lo[0] == pytest.approx(0.006), "the share itself must still be reported"
     assert a_lo[1] == pytest.approx(0.0), \
         f"a negative R^2 over a real share floors at 0, not below: {a_lo[1]}"
-    # The threshold is the documented one, and it is a floor on the SHARE, not on the R^2.
-    ok = M.achievable_r2(np.array([0.03]),
-                         {"signal_var": [M.MIN_SIGNAL_SHARE], "total_var": [1.0]})[0][0]
+    ok = M.achievable_r2(np.array([0.03]), np.array([M.MIN_SIGNAL_SHARE]))[0]
     assert np.isfinite(ok), "exactly at MIN_SIGNAL_SHARE the rescale must still apply"
 
 
@@ -521,3 +538,68 @@ def test_the_no_change_null_never_silently_borrows_row_zero():
     assert has_rec.tolist() == [True, True, False]
     assert to_rec[0] == 1 and to_rec[1] == 1
     assert to_rec[2] == -1, f"a cell with no recent year must be -1, not 0: {to_rec}"
+
+
+def test_differencing_a_level_model_beats_refitting_on_differences():
+    """The error-cancellation section 7 originally threw away, isolated.
+
+    A level model with a STATIC per-cell bias predicts change perfectly once differenced, because
+    the bias cancels. A model refit on differenced features cannot recover that -- it never sees
+    the level. The first version of section 7 did the second and reported the result as a statement
+    about covariate sufficiency for change, which is why its answer disagreed with DESK's own
+    validated temporal skill.
+    """
+    M = _mod()
+    rng = np.random.default_rng(11)
+    n_cells, T = 60, 2
+    cell = np.repeat(np.arange(n_cells), T)
+    x = rng.normal(size=(len(cell), 3))
+    bias = rng.normal(size=n_cells)[cell] * 3.0        # large, static, per cell
+    truth = (x @ np.array([1.0, -0.5, 0.25]))[:, None]
+    level_pred = truth + bias[:, None]                 # a good model with a static offset
+    ea = np.arange(0, len(cell), 2)
+    la = ea + 1
+    dY = truth[la] - truth[ea]
+    r2_diff_of_level = M.per_component_r2_of(level_pred[la] - level_pred[ea], dY)[0][0]
+    r2_of_level = M.per_component_r2_of(level_pred, truth)[0][0]
+    assert r2_diff_of_level > 0.99, \
+        f"a static per-cell bias must cancel under differencing; got {r2_diff_of_level:.3f}"
+    assert r2_of_level < 0.5, \
+        f"the same model must look POOR on level, which is the whole point: {r2_of_level:.3f}"
+
+
+def test_ema_trajectories_applies_the_learned_smoothing_over_contiguous_years():
+    """The EMA must actually smooth, be causal, and be keyed so a cell-year can be found.
+
+    ``apply_output_ema`` cannot run on isolated cell-years -- it needs an ascending contiguous
+    series per cell -- and getting that wrong silently yields an unsmoothed prediction that looks
+    like a covariate finding. Uses a constant-in-space, alternating-in-time signal so the smoothing
+    is visible as a variance drop and the causal direction is checkable.
+    """
+    M = _mod()
+    H, W, C, L = 6, 6, 2, 3
+    schema = {"streams": [{"name": "s", "dim": C, "start": 0, "end": C, "variables": ["a", "b"]}]}
+    import tempfile, json as _j
+    with tempfile.TemporaryDirectory() as d:
+        years = list(range(1990, 2011))
+        for i, y in enumerate(years):                   # alternating +/-1 in time
+            np.savez(os.path.join(d, f"state_{y}.npz"),
+                     s=np.full((H, W, C), 1.0 if i % 2 == 0 else -1.0, dtype="float32"))
+        (open(os.path.join(d, "state_schema.json"), "w")).write(_j.dumps(schema))
+        cells = np.array([[2, 2], [3, 3]])
+        nb = len(M.BLOCKS) * C
+        model = {"L": L, "train_mean": np.zeros(L), "parts": [{
+            "fmap": None, "coef": np.tile(np.eye(L, dtype="float64"), (nb // L + 1, 1))[:nb],
+            "mx": np.zeros(nb), "my": np.zeros(L), "cols": np.arange(L)}]}
+        mu, sd = np.zeros(C, "float32"), np.ones(C, "float32")
+        z_ema, z_raw, tix = M.ema_trajectories(
+            model, cells, years, d, schema, mu, sd,
+            np.zeros(nb, "float32"), np.ones(nb, "float32"), half_life=8.0)
+        assert z_ema.shape == (len(years), len(cells), L)
+        assert (2, 2, 2000) in tix and tix[(2, 2, 1990)][0] == 0
+        # Smoothing: the alternating raw signal must lose variance through the EMA.
+        assert z_ema[:, 0, 0].var() < 0.5 * z_raw[:, 0, 0].var(), \
+            f"the EMA did not smooth: raw var {z_raw[:, 0, 0].var():.4f} " \
+            f"ema var {z_ema[:, 0, 0].var():.4f}"
+        # Causal: the first entry is the raw value, never a blend of the future.
+        assert z_ema[0, 0, 0] == pytest.approx(z_raw[0, 0, 0], abs=1e-5)

@@ -628,17 +628,34 @@ def zspace_reconstruction(config, pidx, X, Z_desk, recent_year, to_rec, has_rec)
         # The no-change null assumes 60 years of stasis, so it is weakest exactly where the
         # historical points are densest -- beating it is a low bar. These are the real ones:
         # interpolate the OBSERVED z, with no covariates and no learning.
+        #
+        # BOTH bars get the SAME source rule -- not holdout cells, not buffer cells, not withheld
+        # years -- because this table's contract is that every predictor is graded on identical
+        # terms, and two bars with different source sets are not. The same-year bar previously got
+        # only the holdout cell mask, so it read buffer cells the model was never fitted on and,
+        # under a temporal holdout, interpolated a withheld year's truth from training cells
+        # surveyed in that same year. The comment here used to assert the opposite ("cannot run in
+        # a withheld year"); the counts said otherwise -- 27,860 of 27,860 withheld rows finite.
         from .validate_baselines import zspace_idw_baseline
-        _e, z_idw = zspace_idw_baseline(pidx, z_obs, ho, hist, return_z=True)
-        preds["zspace_idw"] = z_idw
-        # The SAME-YEAR spatial bar cannot run in a withheld year -- there are no training cells
-        # that year, so every withheld row is NaN and the deep past, the whole point of the
-        # temporal experiment, gets no bar at all. The spacetime variant borrows across years too
-        # and so does reach it.
+        bf_p = os.path.join(config["paths"]["desk_output_dir"], "buffer_cells.npy")
+        bf = np.load(bf_p) if os.path.exists(bf_p) else np.zeros_like(ho)
+        _e, z_idw = zspace_idw_baseline(pidx, z_obs, ho, hist, return_z=True,
+                                        buffer_mask=bf, exclude_years=hy)
+        # `spatial_idw`, not `zspace_idw`. Both bars interpolate observed z, so naming one for
+        # the SPACE ITS VALUES LIVE IN and the other for the DOMAIN IT INTERPOLATES OVER made the
+        # pair unreadable side by side -- the axis that actually separates them is same-year
+        # versus across-years. The old name disambiguated this function from the trainer-side
+        # `spatial_interp_baseline`, which is a fact about the code and not about the predictor.
+        # Every prose description in the tree already called it "spatial IDW", including
+        # `component_predictability`'s own `r2_spatial_idw` key; only this one label disagreed.
+        # Readers of archived JSON get the old key aliased -- see PREDICTOR_ALIASES.
+        preds["spatial_idw"] = z_idw
+        # Now that the years really are excluded, the same-year bar has no admissible source in a
+        # withheld year and goes NaN there -- so the deep past, the whole point of the temporal
+        # experiment, gets no same-year bar at all. That is the honest answer, and it is why the
+        # spacetime variant exists: it borrows across years as well and does reach those rows.
         try:
             from .validate_baselines import spacetime_idw_baseline, spacetime_idw_z
-            bf_p = os.path.join(config["paths"]["desk_output_dir"], "buffer_cells.npy")
-            bf = np.load(bf_p) if os.path.exists(bf_p) else np.zeros_like(ho)
             _e2, ratio = spacetime_idw_baseline(pidx, z_obs, ho, np.zeros(len(pidx), bool),
                                                 buffer_mask=bf, exclude_years=hy, verbose=False)
             z_st = spacetime_idw_z(pidx, z_obs, ho, float(ratio),
@@ -1322,6 +1339,14 @@ def run_validate(config=None, n_pairs=20000, cka_sample=800, seed=0):
         d_pred=analog.get("d_pred", np.zeros((0, 2))), d_obs=analog.get("d_obs", np.zeros((0, 2))),
         xy_hist=analog.get("xy_hist", np.zeros((0, 2))),
         analog_hist_year=analog.get("hist_year", np.array([])),
+        # The per-cell direction field. `directional_change_agreement` returns these and
+        # `_DIRCHG_ARRAYS` drops them from the JSON (correctly -- they are per-point), but nothing
+        # carried them here either, so the one map that says WHERE the model gets the direction of
+        # change right could not be drawn from any artifact this run writes.
+        dirchg_rows=dirchg.get("rows", np.array([])),
+        dirchg_cols=dirchg.get("cols", np.array([])),
+        dirchg_hist_year=dirchg.get("hist_year", np.array([])),
+        dir_cos=dirchg.get("dir_cos", np.array([])),
         recon_rows=recon["rows"],
         recon_cols=recon["cols"],
         recon_err_desk=recon["err_desk"],

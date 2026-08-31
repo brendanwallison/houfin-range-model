@@ -1241,12 +1241,25 @@ def main():
     _st_err, st_ratio = spacetime_idw_baseline(pidx_sel, Y, holdout, va_mask,
                                               exclude_years=ho_years, verbose=True)
     Z_st = spacetime_idw_z(pidx_sel, Y, holdout, st_ratio, exclude_years=ho_years)
-    _sp_err, Z_sp = zspace_idw_baseline(pidx_sel, Y, holdout, va_mask, return_z=True)
+    # Same withheld years as the spacetime bar three lines up. Without this the same-year bar
+    # interpolates a withheld year's truth from training cells surveyed in that same year, and
+    # since `bar` below is the ELEMENTWISE MAX of the two, a contaminated spatial bar raises the
+    # bar the covariates are scored against and understates `r2_gain_over_best_bar`.
+    # No buffer_mask: buffer rows are dropped from `sel` upstream, so `pidx_sel` has none.
+    _sp_err, Z_sp = zspace_idw_baseline(pidx_sel, Y, holdout, va_mask, return_z=True,
+                                        exclude_years=ho_years)
     r2_st, _n_st = per_component_r2_of(Z_st[va], Y[va])
     r2_sp, n_sp = per_component_r2_of(Z_sp, Y[va])              # zi is already va-aligned
     extra["spacetime_ratio_cells_per_year"] = st_ratio
     extra["r2_spacetime_idw"] = r2_st.tolist()
     extra["r2_spatial_idw"] = r2_sp.tolist()
+    # WHAT THE BARS WERE TOLD TO EXCLUDE, recorded rather than inferred. Before `exclude_years`
+    # reached the same-year bar it interpolated a withheld year's truth from training cells
+    # surveyed in that same year, and nothing in the output distinguished such a run from a
+    # corrected one -- so a reader could not tell whether `r2_spatial_idw`, and therefore
+    # `r2_gain_over_best_bar` below, meant anything. Same discipline as baseline_panel's
+    # `row_selection`: state what was actually done, never what the parameter said.
+    extra["bars_exclude_years"] = list(ho_years)
     bar = np.fmax(np.nan_to_num(r2_st, nan=-np.inf), np.nan_to_num(r2_sp, nan=-np.inf))
     bar = np.where(np.isfinite(bar), bar, np.nan)
     gain = r2_best - bar

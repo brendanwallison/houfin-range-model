@@ -275,29 +275,66 @@ def _idw_at(cells_wanted, train_years, z_of, k=8, power=2.0):
     return np.einsum("nk,nkl->nl", w, src[idx])
 
 
-def zspace_idw_baseline(pidx, z_obs, holdout, hist_mask, k=8, power=2.0, return_z=False):
+def _train_rows(pidx, holdout, buffer_mask=None, exclude_years=()):
+    """Rows the model actually trained on: cell not held out or buffered, year not withheld.
+
+    ``exclude_years`` matters for the temporal experiment. A baseline that sourced from a
+    withheld year would be handed information the model never saw, and would stop being a fair
+    bar -- it would be scoring an interpolation of the answer.
+    """
+    ho = _np(holdout)
+    keep = ~ho[pidx[:, 0], pidx[:, 1]]
+    if buffer_mask is not None:
+        keep &= ~_np(buffer_mask)[pidx[:, 0], pidx[:, 1]]
+    if len(exclude_years):
+        keep &= ~np.isin(pidx[:, 2], np.asarray(list(exclude_years)))
+    return keep
+
+
+def zspace_idw_baseline(pidx, z_obs, holdout, hist_mask, k=8, power=2.0, return_z=False,
+                        buffer_mask=None, exclude_years=()):
     """Per-point Z-space error of interpolating the OBSERVED z from training cells, same year.
 
     The reconstruction metric compares DESK against a no-change null. That null is weak in the
     deep past by construction -- it assumes 60 years of stasis -- so beating it says little. This
     is the bar that matters: no covariates, no learning, just "the observed community at nearby
     cells surveyed the same year". Returns per-point error aligned to ``pidx[hist_mask]``, NaN
-    where a year had fewer than ``k`` training cells.
+    where a year had fewer than ``k`` admissible source cells.
 
     ``return_z=True`` additionally returns the interpolated ``(n_hist, L)`` latents themselves, so
     the bar can be graded by the SAME predictor table as every other predictor rather than only
-    through a precomputed error. A flag, not a changed arity, matching ``return_proj`` /
-    ``return_pidx`` elsewhere in this package -- the five existing callers keep working untouched.
+    through a precomputed error.
+
+    **``exclude_years`` MUST carry ``desk.trend.holdout_years``, and its absence was a defect.**
+    This bar interpolates WITHIN a year. Under a temporal holdout the withheld years still have
+    rows in ``pidx`` -- the surveys happened; they were withheld from DESK's objective, not from
+    the record -- so filtering sources on the holdout CELL mask alone let the bar interpolate a
+    withheld year's truth from training cells surveyed in that same year. That is information the
+    model never saw anywhere, which makes it a different information set rather than a weaker bar,
+    exactly the rigging ``epoch_direction_panel`` documents and guards against. Measured on the
+    shipped 1995 run: all 27,860 withheld-year rows came back finite, and the call site's own
+    comment already asserted the opposite ("every withheld row is NaN"). With the years excluded a
+    withheld year has no admissible source at all, so the bar goes NaN there -- which is the
+    honest answer and what that comment always described.
+
+    ``buffer_mask`` defaults to None, preserving the historical sources exactly. Pass it wherever
+    the sibling ``spacetime_idw`` bar is given one: the buffer ring is excluded from training, so
+    a bar that reads it is sourcing from observations the model was never fitted on, and two bars
+    in one table with different source rules are not "graded on identical terms". It is opt-in
+    rather than defaulted on because turning it on narrows the source set and moves the number --
+    a change a caller should make deliberately, not inherit.
     """
     from scipy.spatial import cKDTree
 
     hist_idx = np.flatnonzero(hist_mask)
     err = np.full(len(hist_idx), np.nan, dtype="float32")
     zi = np.full((len(hist_idx), z_obs.shape[1]), np.nan, dtype="float32")
-    ho = _np(holdout)
+    # One definition of "a row the model actually trained on", shared with every other rung, so
+    # the source rule cannot drift between bars in the same table.
+    admissible = _train_rows(pidx, holdout, buffer_mask, exclude_years)
     for y in np.unique(pidx[hist_idx, 2]):
         same = pidx[:, 2] == y
-        tr = np.flatnonzero(same & ~ho[pidx[:, 0], pidx[:, 1]])
+        tr = np.flatnonzero(same & admissible)
         want = np.flatnonzero(hist_mask & same)
         if len(tr) < k or not len(want):
             continue
@@ -714,17 +751,55 @@ def epoch_direction_panel(pidx, supervise, z_obs, z_model, holdout, buffer_mask,
 # --- The ladder: each rung is handed DIFFERENT information ------------------------
 #
 # What a baseline needs is what it isolates. Read as a set, they separate "DESK knows where"
-# from "DESK knows when" from "DESK knows how this place changed":
+# from "DESK knows when" from "DESK knows how this place changed". The table is `LADDER_ROLES`
+# below rather than a comment, because it was a comment: the figures and the reports both need
+# it and both had to restate it, and a restatement is what drifts.
 #
-#   no-change            the cell's modern state           zero dynamics
-#   cell_temporal        the cell's other TRAINING years    time without covariates
-#   spatial_interp       the target year elsewhere          space, year given free
-#   borrowed_delta       modern state + neighbours' change  "it changed like its neighbours"
-#   spacetime_idw        anything near in space AND time    joint interpolation
+# Under a temporal block holdout the middle two go unavailable, and the reason has to be stated
+# precisely because a loose version of it caused a real defect. It is NOT that "there are no
+# training points in those years": the surveys happened and `pidx` carries their rows -- 38,594 of
+# them at (training cell, withheld year) on the shipped 1995 run. It is that those rows were
+# withheld from DESK's objective, so a bar that reads them is handed an information set the model
+# never had. That makes the exclusion a CHOICE the caller must make, not a property that falls out
+# of the cell masks -- which is why every rung here takes `exclude_years` and why
+# `zspace_idw_baseline` shipped without it and silently interpolated withheld years from their own
+# neighbours until it was given one too.
 #
-# Under a temporal block holdout the middle two go unavailable by construction -- there are no
-# training points in those years at all. That narrowing is the point: it leaves the honest
-# competitor set for backward extrapolation, and it is why spatial IDW could never test it.
+# That narrowing is the point: it leaves the honest competitor set for backward extrapolation.
+
+#: What each rung is HANDED, in information order. The two IDW bars sit adjacent on purpose:
+#: they differ in ONE thing -- whether time is a dimension they may borrow along -- and the names
+#: now say so.
+#: The prose form of the ladder, as data, so a
+#: report or a figure can name a bar without re-describing it and diverging from this module.
+#: `PREDICTOR_ROLES` in ``validate_bbs_routes`` is the same idea for the similarity-space
+#: predictors; these are the z-space ones, and the two are disjoint by design.
+#: Renames this table has been through, so a reader of an archived report can still find the row.
+#: `zspace_idw` named the space the VALUES live in while its sibling `spacetime_idw` named the
+#: domain it INTERPOLATES OVER -- non-parallel on the only axis that distinguishes them.
+PREDICTOR_ALIASES = {"zspace_idw": "spatial_idw"}
+
+LADDER_ROLES = {
+    "no_change": ("the cell's own modern state, held constant", "zero dynamics"),
+    "cell_nearest_year": ("the same cell's nearest TRAINING year", "time without covariates"),
+    "cell_trend": ("a line fitted through the same cell's training years, evaluated at the "
+                   "target year", "genuine temporal extrapolation"),
+    "borrowed_delta": ("the cell's modern state plus its neighbours' observed change",
+                       "'it changed like its neighbours'"),
+    "spatial_idw": ("inverse-distance interpolation of observed z over the k=8 nearest TRAINING "
+                   "cells surveyed in the SAME year -- space only, the year given free. Because "
+                   "it works within a year it has no admissible source in a withheld one, which "
+                   "is why the spacetime variant exists",
+                   "space, year given free"),
+    "spacetime_idw": ("the same interpolation over a JOINT space-time distance, where one year "
+                      "of separation counts as `spacetime_ratio_cells_per_year` grid cells. The "
+                      "ratio is fitted, not assumed, and lands low (0.02 cells/yr = a year is "
+                      "worth ~0.5 km), so the same cell's other years are nearly free -- which is "
+                      "why it is strong wherever the target cell is itself a source and collapses "
+                      "on a held-out block, where it never is",
+                      "anything near in space AND time"),
+    "desk": ("climate, land use and soil, through the trained encoder", "the model under test"),
+}
 
 _MIN_TREND_YEARS = 2          # a line needs two points
 #: Space/time anisotropy candidates for the joint IDW bar, in grid cells per year. Extends
@@ -738,22 +813,6 @@ _MIN_TREND_YEARS = 2          # a line needs two points
 #: which is a deliberately generous bound rather than a belief. ``spacetime_idw_baseline`` warns
 #: when the winner still lands on an endpoint, so a future censoring cannot pass silently.
 SPACETIME_RATIOS = (0.01, 0.02, 0.05, 0.1, 0.25, 0.5, 1.0, 2.0, 5.0)
-
-
-def _train_rows(pidx, holdout, buffer_mask=None, exclude_years=()):
-    """Rows the model actually trained on: cell not held out or buffered, year not withheld.
-
-    ``exclude_years`` matters for the temporal experiment. A baseline that sourced from a
-    withheld year would be handed information the model never saw, and would stop being a fair
-    bar -- it would be scoring an interpolation of the answer.
-    """
-    ho = _np(holdout)
-    keep = ~ho[pidx[:, 0], pidx[:, 1]]
-    if buffer_mask is not None:
-        keep &= ~_np(buffer_mask)[pidx[:, 0], pidx[:, 1]]
-    if len(exclude_years):
-        keep &= ~np.isin(pidx[:, 2], np.asarray(list(exclude_years)))
-    return keep
 
 
 def cell_temporal_baseline(pidx, z_obs, holdout, target_rows, mode="trend",

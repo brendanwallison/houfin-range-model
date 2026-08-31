@@ -732,7 +732,7 @@ def compare_positions(z_obs, predictors, reference="no_change", populations=None
         }
 
     def _block(mask):
-        rows, errs = {}, {}
+        rows, errs, gone = {}, {}, {}
         for name, P in predictors.items():
             if P is None:
                 continue
@@ -741,9 +741,18 @@ def compare_positions(z_obs, predictors, reference="no_change", populations=None
             r = _summary(P, mask)
             if r is not None:
                 rows[name] = r
+            else:
+                # A predictor that reaches too few rows of a POPULATION used to vanish from that
+                # population's table with no trace, which is the absence class `assert_complete`
+                # exists to catch -- and it is the normal outcome of a correct exclusion, not an
+                # error: with the withheld years excluded, the same-year bar has no admissible
+                # source in a withheld year and is legitimately absent there. Absent-with-a-reason
+                # and absent-silently read identically to anyone downstream, so say which it is.
+                gone[name] = (f"reaches only {int((np.isfinite(e) & mask).sum())} of "
+                              f"{int(mask.sum())} rows in this population -- too few to summarise")
         out = {"n": int(mask.sum()), "reference": reference, "predictors": rows,
                "median_z_obs_norm2": float(np.median(n_o[mask] ** 2)) if mask.any() else None,
-               "unavailable": {}}
+               "unavailable": gone}
         ref = errs.get(reference)
         if ref is not None:
             wins, skill = {}, {}

@@ -13,7 +13,7 @@ import torch
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from src.community_encoder.train_DESK.validate_baselines import (
-    DEFAULT_EPOCHS, _idw_at, nearest_survey)
+    DEFAULT_EPOCHS, _idw_at, nearest_survey, zspace_idw_baseline)
 
 
 
@@ -1161,3 +1161,139 @@ def test_a_comparison_where_every_species_moves_the_same_way_reports_no_skill():
     assert "direction_skill" not in r, r
     assert "no information" in r["note"]
     assert r["share_declining_observed"] == 0.0
+
+
+# --- the same-year bar's source set -------------------------------------------------------------
+#
+# This bar interpolates WITHIN a year, and it shipped filtering its sources on the holdout CELL
+# mask alone. Under a temporal holdout the withheld years still have rows -- the surveys happened,
+# they were withheld from DESK's objective -- so it interpolated a withheld year's truth from
+# training cells surveyed in that same year: an information set the model never had, which is the
+# rigging `epoch_direction_panel` documents. These pin the source rule, because the failure was
+# invisible in the output (a plausible number, on every row) and was contradicted only by a
+# comment.
+
+
+def _dense_grid(years, n_side=6):
+    """A dense square of cells at each year, so k=8 neighbours always exist within a year.
+
+    Named apart from the module's existing `_grid_points(cells, years)` on purpose: shadowing it
+    silently broke seven unrelated tests the first time these were added.
+    """
+    return np.array([[r, c, y] for y in years
+                     for r in range(n_side) for c in range(n_side)], dtype=np.int32)
+
+
+def test_a_withheld_year_leaves_the_same_year_bar_with_no_admissible_source():
+    """The whole point of a temporal holdout is that the model saw nothing in those years. A bar
+    that interpolates the withheld year from ITS OWN neighbours is not a weaker predictor, it is a
+    different information set -- so the honest result is no bar at all, which is what the call
+    site's comment always claimed and what the code did not do."""
+    pidx = _dense_grid([1970, 2000])
+    rng = np.random.default_rng(0)
+    z = rng.normal(size=(len(pidx), 4))
+    holdout = np.zeros((6, 6), bool)
+    holdout[0, 0] = True                                  # one held-out cell, present in both years
+    want = (pidx[:, 0] == 0) & (pidx[:, 1] == 0)
+
+    err_open = zspace_idw_baseline(pidx, z, holdout, want)
+    assert np.isfinite(err_open).all(), "both years reachable when nothing is excluded"
+
+    err_excl = zspace_idw_baseline(pidx, z, holdout, want, exclude_years=(1970,))
+    yrs = pidx[want, 2]
+    assert not np.isfinite(err_excl[yrs == 1970]).any(), "withheld year must yield NO bar"
+    assert np.isfinite(err_excl[yrs == 2000]).all(), "trained years must be untouched"
+
+
+def test_the_bar_never_sources_from_a_buffer_cell():
+    """The buffer ring is excluded from training so a held-out cell's receptive field never
+    reached a training cell. A bar that reads buffer observations is sourcing from data the model
+    was never fitted on -- and the sibling spacetime bar already excludes it, so leaving this one
+    open put two bars with different source rules in a table whose contract is 'identical terms'."""
+    pidx = _dense_grid([2000], n_side=6)
+    z = np.zeros((len(pidx), 3))
+    # Every non-buffer, non-holdout cell carries a distinctive value; buffer cells carry another.
+    holdout = np.zeros((6, 6), bool); holdout[2, 2] = True
+    buffer_mask = np.zeros((6, 6), bool)
+    for r in range(1, 4):
+        for c in range(1, 4):
+            if not holdout[r, c]:
+                buffer_mask[r, c] = True
+    is_buf = buffer_mask[pidx[:, 0], pidx[:, 1]]
+    z[is_buf] = 100.0                                     # buffer cells are wildly different
+    want = holdout[pidx[:, 0], pidx[:, 1]]
+
+    _e, zi_open = zspace_idw_baseline(pidx, z, holdout, want, return_z=True)
+    _e, zi_excl = zspace_idw_baseline(pidx, z, holdout, want, return_z=True,
+                                      buffer_mask=buffer_mask)
+    # Buffer cells are the held-out cell's nearest neighbours, so leaving them in dominates it.
+    assert zi_open[0, 0] > 50.0, "buffer cells were being used as sources"
+    assert zi_excl[0, 0] == pytest.approx(0.0), "buffer cells must not be sources once excluded"
+
+
+def test_the_default_source_set_is_unchanged_so_no_shipped_number_moves_by_accident():
+    """Both new arguments default to the historical behaviour. Turning them on narrows the source
+    set and moves the number, so it has to be a caller's deliberate act -- not something a shared
+    helper inflicts on every call site the moment it gains a parameter."""
+    pidx = _dense_grid([1970, 2000])
+    z = np.random.default_rng(1).normal(size=(len(pidx), 4))
+    holdout = np.zeros((6, 6), bool); holdout[0, 0] = True
+    want = (pidx[:, 0] == 0) & (pidx[:, 1] == 0)
+    a = zspace_idw_baseline(pidx, z, holdout, want)
+    b = zspace_idw_baseline(pidx, z, holdout, want, buffer_mask=None, exclude_years=())
+    assert np.allclose(a, b, equal_nan=True)
+
+
+def test_both_idw_bars_now_share_one_source_rule():
+    """`_train_rows` is the single definition of 'a row the model actually trained on'. The defect
+    was possible because this bar open-coded its own, narrower version (`~holdout` only), so the
+    two bars in one table could drift apart without anything saying so."""
+    import inspect
+
+    from src.community_encoder.train_DESK import validate_baselines as VB
+    src = inspect.getsource(VB.zspace_idw_baseline)
+    assert "_train_rows(" in src, "the same-year bar must use the shared source rule"
+    assert "~ho[pidx" not in src, "the open-coded holdout-only filter must be gone"
+
+
+def test_every_bar_that_can_source_from_a_year_accepts_exclude_years():
+    """The guard the previous one could not be. `test_no_rung_may_source_from_a_withheld_year`
+    names ONE rung, so a bar that lacked the parameter entirely could not even be expressed as a
+    failure -- and that is precisely how `zspace_idw_baseline` shipped without it and silently
+    interpolated withheld years from their own neighbours. Enumerate instead of naming.
+
+    Membership of the list is the claim: any function here reads observations at particular YEARS
+    to predict another row, so under a temporal holdout it can be handed rows the model never saw.
+    A new bar added without `exclude_years` fails here rather than in a figure six weeks later.
+    """
+    import inspect
+
+    from src.community_encoder.train_DESK import validate_baselines as VB
+    bars = ("zspace_idw_baseline", "spacetime_idw_z", "spacetime_idw_baseline",
+            "cell_temporal_baseline", "borrowed_delta_baseline", "epoch_direction_panel",
+            "_train_rows")
+    missing = [n for n in bars
+               if "exclude_years" not in inspect.signature(getattr(VB, n)).parameters]
+    assert not missing, f"these bars cannot be told about a temporal holdout: {missing}"
+
+
+def test_the_shipped_call_sites_actually_pass_the_withheld_years():
+    """A parameter nobody passes is the same defect one step later. Both production callers of the
+    same-year bar are checked by source, because neither can be exercised here without a data
+    tree, and both had the withheld years to hand at the call site already -- component_
+    predictability computed `ho_years` and passed it to the sibling bar three lines above."""
+    import os
+    import re
+    root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+    for rel in ("src/community_encoder/train_DESK/validate_spacetime.py",
+                "scripts/diagnostics/component_predictability.py"):
+        text = open(os.path.join(root, rel), encoding="utf-8").read()
+        for m in re.finditer(r"zspace_idw_baseline\(", text):
+            depth, i = 0, m.end() - 1
+            while i < len(text):
+                depth += (text[i] == "(") - (text[i] == ")")
+                if depth == 0:
+                    break
+                i += 1
+            call = text[m.start():i + 1]
+            assert "exclude_years" in call, f"{rel}: call site does not pass exclude_years:\n{call}"

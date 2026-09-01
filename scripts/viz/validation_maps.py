@@ -445,16 +445,23 @@ def map06_ecology(run, maps, geo, out_dir):
                      reduce="count")
     err, note = _geo.gate(err, n, MIN_SUPPORT, "cells")
 
-    fig, axs = _panel(geo, ncols=2, w=5.0)
+    fig, axs = _panel(geo, ncols=3, w=4.4)
     _draw(geo, axs[0][0], err, f"DESK reconstruction error\n{note}", cmap="magma")
     geo.great_plains(axs[0][0])
     geo.scalebar(axs[0][0])
+    if geo.front is not None:
+        # The colonization front as a contour ON the error map, so the reader can see whether the
+        # error tracks it without holding two panels in their head.
+        axs[0][0].contour(geo.front, levels=[1970, 1980, 1990], colors=["#1f6fb4"],
+                          linewidths=0.7, extent=geo.extent, origin="upper", zorder=6)
 
     b = axs[0][1]
-    if geo.gp_zones is not None:
+    zones = geo.gp_zones or {}
+    cols_z = [z for z in ("west", "barrier", "east") if z in zones]
+    if cols_z:
         vals, labels = [], []
-        for zname in ("west", "barrier", "east"):
-            m = geo.gp_zones[zname] & np.isfinite(err)
+        for zname in cols_z:
+            m = zones[zname] & np.isfinite(err)
             if m.any():
                 vals.append(err[m])
                 labels.append(f"{zname}\nn={int(m.sum()):,}")
@@ -463,19 +470,45 @@ def map06_ecology(run, maps, geo, out_dir):
             for patch, col in zip(bp["boxes"], ("#8fb4d6", "#d9c48a", "#7fbcab")):
                 patch.set_facecolor(col)
             b.set_ylabel("DESK reconstruction error", fontsize=8)
-            b.set_title("error by Great Plains zone", fontsize=8.5)
-            for sp in ("top", "right"):
-                b.spines[sp].set_visible(False)
+    b.set_title("error by Great Plains zone", fontsize=8.5)
+    for sp in ("top", "right"):
+        b.spines[sp].set_visible(False)
+
+    # AGAINST THE FRONT. This is the one panel here that asks a mechanistic question rather than a
+    # geographic one: a range model that is worst exactly where the range was moving is failing at
+    # the thing it exists to do, and that is not visible in any zone-stratified number.
+    c_ax = axs[0][2]
+    if geo.front is not None:
+        edges = [1966, 1975, 1985, 1995, 2026]
+        vals, labels = [], []
+        for lo, hi in zip(edges[:-1], edges[1:]):
+            m = np.isfinite(err) & np.isfinite(geo.front) & (geo.front >= lo) & (geo.front < hi)
+            if m.sum() >= 5:
+                vals.append(err[m])
+                labels.append(f"{lo}–{hi - 1}\nn={int(m.sum()):,}")
+        if vals:
+            c_ax.boxplot(vals, tick_labels=labels, showfliers=False)
+            c_ax.set_xlabel("year the finch was first detected there", fontsize=8)
+            c_ax.set_ylabel("DESK reconstruction error", fontsize=8)
+        c_ax.set_title("error against the colonization front\n(eastern expansion only)",
+                       fontsize=8.5)
+        for sp in ("top", "right"):
+            c_ax.spines[sp].set_visible(False)
     else:
-        b.text(0.5, 0.5, "Great Plains zone raster absent", ha="center", transform=b.transAxes,
-               fontsize=8, color="#999999")
-        b.set_axis_off()
+        c_ax.text(0.5, 0.5, "colonization front absent\n"
+                            "run scripts/build_colonization_front.py",
+                  ha="center", va="center", transform=c_ax.transAxes, fontsize=8,
+                  color="#999999")
+        c_ax.set_axis_off()
+
     return S.finish(fig, os.path.join(out_dir, "m06_ecology.png"),
                     "The Great Plains zones and the disease-arrival front are NOT independent "
                     "cuts: median arrival is 1997 in the east, 2002 in the barrier and 2005 in "
                     "the west, so a difference across zones and a difference across disease eras "
                     "are largely the same difference. Cells below the coverage gate are blank "
-                    "rather than dark.")
+                    "rather than dark. The blue contours on the map are the 1970/1980/1990 "
+                    "colonization fronts; the native western range carries no front and is "
+                    "excluded from that panel by construction.")
 
 
 def map07_depth(run, maps, geo, out_dir):

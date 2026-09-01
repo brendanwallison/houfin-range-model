@@ -89,7 +89,7 @@ def test_a_missing_optional_layer_costs_an_outline_not_the_figure():
     spec = _geo.base_grid_spec()
     geo.extent, geo.box_bounds = spec["extent"], spec["box_bounds"]
     geo.res_m, geo.crs = spec["res_m"], spec["crs"]
-    geo.land = geo.land_geom = geo.gp_zones = None
+    geo.land = geo.land_geom = geo.gp_zones = geo.front = None
     geo.shape = (133, 224)
     import matplotlib.pyplot as plt
     fig, ax = plt.subplots()

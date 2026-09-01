@@ -79,6 +79,7 @@ class GeoContext:
         self.land = self._load_land(shape)
         self.shape = self.land.shape if self.land is not None else shape
         self.gp_zones = self._load_gp_zones(self.shape)
+        self.front = self._load_front(self.shape)
         self.land_geom = self._load_land_geom() if want_vectors else None
         self.notes = []
         if self.land is None:
@@ -87,6 +88,8 @@ class GeoContext:
             self.notes.append("no coastline (Natural Earth land shapefile absent)")
         if self.gp_zones is None:
             self.notes.append("no Great Plains outline (zone raster absent)")
+        if self.front is None:
+            self.notes.append("no colonization front (run scripts/build_colonization_front.py)")
 
     # --- loaders, each independently optional ---------------------------------------------
     def _load_land(self, shape):
@@ -106,6 +109,27 @@ class GeoContext:
             from src.data.preprocess.great_plains import read_zone_raster
             path = load_data_config()["regions"]["great_plains_zones"]
             return read_zone_raster(path, shape) if shape else None
+        except Exception:
+            return None
+
+    def _load_front(self, shape):
+        """Observed first-detection year, EASTERN EXPANSION ONLY -- the native hull is nodata.
+
+        Optional like every other overlay. Its absence is worth a note rather than a failure,
+        because it is a derived product that has to be built where the BBS npz lives.
+        """
+        try:
+            import rasterio
+            cfg = load_data_config()
+            path = os.path.join(cfg["processed_root"], "regions",
+                                "colonization_front_27km.tif")
+            if not os.path.exists(path):
+                return None
+            with rasterio.open(path) as src:
+                a = src.read(1).astype("float64")
+                nod = src.nodata
+            a = np.where((a == nod) if nod is not None else False, np.nan, a)
+            return a if (shape is None or a.shape == shape) else None
         except Exception:
             return None
 

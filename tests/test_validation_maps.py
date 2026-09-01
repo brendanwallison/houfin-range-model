@@ -31,6 +31,7 @@ def _geo_ctx(shape=(20, 30)):
     g.gp_zones["west"][:, :10] = True
     g.gp_zones["barrier"][:, 10:20] = True
     g.gp_zones["east"][:, 20:] = True
+    g.front = None
     g.notes = []
     return g
 
@@ -233,3 +234,28 @@ def test_the_native_hull_is_masked_because_the_west_has_no_front():
     assert m[2, 2] and m[1, 1] and m[3, 3]
     assert not m[0, 0]
     assert native_hull_mask([2], [2], (5, 5), dilate=0).sum() == 1
+
+
+def test_the_ecology_map_bins_error_against_the_front_when_one_exists(tmp_path):
+    """The front panel is the only one here that asks a MECHANISTIC question rather than a
+    geographic one: a range model worst exactly where the range was moving is failing at the thing
+    it exists to do, and no zone-stratified number shows that. The raster is a derived product
+    that has to be built where the BBS npz lives, so its absence is a note, not a failure."""
+    m = _maps()
+    geo = _geo_ctx()
+    assert geo.front is None
+    made = VM.map06_ecology({"report": None}, m, geo, str(tmp_path))
+    assert made, "the map must still draw with no front"
+
+    yy, xx = np.mgrid[0:geo.shape[0], 0:geo.shape[1]]
+    geo.front = 1966.0 + xx * 1.5
+    made2 = VM.map06_ecology({"report": None}, m, geo, str(tmp_path))
+    assert made2 and os.path.getsize(made2) > os.path.getsize(made) * 0.5
+
+
+def test_a_front_raster_that_is_the_wrong_shape_is_refused_not_resampled():
+    """A stale-grid overlay silently misaligns the front by hundreds of km, which is exactly the
+    failure `load_disease_onset` raises on rather than resampling. Here the cost is a missing
+    panel, so it declines instead of raising -- but it must never stretch to fit."""
+    g = _geo.GeoContext.__new__(_geo.GeoContext)
+    assert g._load_front((999, 999)) is None

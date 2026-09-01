@@ -25,6 +25,8 @@ import math
 import os
 import sys
 
+import numpy as np
+
 _REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 if _REPO not in sys.path:
     sys.path.insert(0, _REPO)
@@ -296,3 +298,66 @@ def question_glossary():
     """``[(name, pairs, observed, why)]`` for the five named questions the route stream asks."""
     return [(q, v.get("pairs", ""), v.get("observed", ""), v.get("why", ""))
             for q, v in QUESTIONS.items()]
+
+
+# --- the map layer -------------------------------------------------------------------------------
+
+NPZ = {"spacetime": "validate_spacetime.npz",
+       "epoch": "bbs_epoch_neighborhood.npz",
+       "routes": "bbs_route_validation.npz"}
+
+
+def load_maps(run_dir):
+    """Per-cell arrays for the map suite, plus the split masks. Missing pieces are None.
+
+    Returns ``{"spacetime", "epoch", "routes", "holdout", "buffer", "missing"}``. ``missing`` is a
+    list of human-readable reasons, because every one of these artifacts is produced on HPC and a
+    local run legitimately has none of them -- a map that cannot be drawn should name what it
+    wanted, not render an empty axis.
+    """
+    out = {"run_dir": run_dir, "missing": []}
+    for key, fname in NPZ.items():
+        path = os.path.join(run_dir, fname)
+        if os.path.exists(path):
+            out[key] = dict(np.load(path, allow_pickle=True))
+        else:
+            out[key] = None
+            out["missing"].append(fname)
+    for key, fname in (("holdout", "holdout_cells.npy"), ("buffer", "buffer_cells.npy")):
+        path = os.path.join(run_dir, fname)
+        out[key] = np.load(path) if os.path.exists(path) else None
+        if out[key] is None:
+            out["missing"].append(fname)
+    return out
+
+
+def ladder_bars(maps):
+    """``(rows, {bar: err})`` from the ladder's per-row map layer, or ``(None, {})``.
+
+    The extractor flattens with dotted paths, so the ladder's arrays arrive as
+    ``baseline_ladder._rows`` and ``baseline_ladder._bars.<name>``. Reading them by prefix rather
+    than by a fixed key list means a rung added to the ladder appears here with no edit.
+    """
+    st = (maps or {}).get("spacetime") or {}
+    rows = st.get("baseline_ladder._rows")
+    if rows is None:
+        return None, {}
+    pre = "baseline_ladder._bars."
+    return rows, {k[len(pre):]: v for k, v in st.items() if k.startswith(pre)}
+
+
+def epoch_pair_cells(maps, pair, panel="windowed"):
+    """Per-cell direction arrays for one epoch pair, or ``{}``.
+
+    Pairs are addressed individually and never merged: they share cells and nest in time, so a
+    map that averaged them would overstate its evidence exactly the way a pooled scalar would.
+    """
+    st = (maps or {}).get("spacetime") or {}
+    pre = f"epoch_directions.{panel}.pairs.{pair}._"
+    return {k[len(pre):]: v for k, v in st.items() if k.startswith(pre)}
+
+
+def epoch_pairs_available(maps, panel="windowed"):
+    st = (maps or {}).get("spacetime") or {}
+    pre = f"epoch_directions.{panel}.pairs."
+    return sorted({k[len(pre):].split("._")[0] for k in st if k.startswith(pre) and "._" in k})

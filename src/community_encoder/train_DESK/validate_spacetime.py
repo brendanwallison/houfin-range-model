@@ -454,6 +454,36 @@ def encode_points(config, point_index):
 RECON_ARRAY_KEYS = ("rows", "cols", "err_desk", "err_nochange")
 
 
+def extract_map_layer(obj, prefix=""):
+    """Split a report tree into ``(json_safe, {dotted_path: ndarray})``. Pure, one traversal.
+
+    Several panels now return per-cell arrays alongside their scalars -- the ladder's six per-row
+    bars, the direction panel's per-cell dir-cos and split-half ceiling, the position table's
+    per-row error for every predictor. They exist so the results can be MAPPED, and they sit
+    nested inside dicts that are handed straight to ``json.dump``, which cannot write an ndarray.
+
+    The rule is "an ndarray is not a scalar", NOT a list of key names. An allow-list is what let
+    the interpolation bar be computed and never reported, and `report_scalars`' own docstring
+    records that lesson; a name list here would fail the same way the moment a panel adds a field.
+    Prose keys like ``_note`` and ``_scale_warning`` are strings and survive untouched, which is
+    what the figures read for their captions.
+
+    Paths are dotted so a caller can put the whole thing in one npz without collisions, and so a
+    reader can find which panel a map came from without guessing.
+    """
+    if isinstance(obj, np.ndarray):
+        return None, {prefix: obj}
+    if isinstance(obj, dict):
+        clean, arrays = {}, {}
+        for k, v in obj.items():
+            sub_clean, sub_arrays = extract_map_layer(v, f"{prefix}.{k}" if prefix else str(k))
+            arrays.update(sub_arrays)
+            if sub_clean is not None or not sub_arrays:
+                clean[k] = sub_clean if sub_arrays else v
+        return clean, arrays
+    return obj, {}
+
+
 def report_scalars(recon):
     """Report-safe view of a reconstruction dict: drop the per-point arrays, keep every scalar.
 
@@ -576,7 +606,9 @@ def zspace_reconstruction(config, pidx, X, Z_desk, recent_year, to_rec, has_rec)
     hidx = np.flatnonzero(hist)
     out = {"n": int(hist.sum()),
            "recent_basis_residual": resid,
-           "rows": pidx[hist, 0], "cols": pidx[hist, 1],
+           # YEAR too. Without it the only map these rows support is a mean over sixty years,
+           # which averages the extrapolated deep past together with the anchor year.
+           "rows": pidx[hist, 0], "cols": pidx[hist, 1], "year": pidx[hist, 2],
            "err_desk": ed.astype("float32"), "err_nochange": en.astype("float32")}
 
     # Per-dimension shrinkage: the magnitude half of the error resolved along the basis. The ESK
@@ -1327,12 +1359,19 @@ def run_validate(config=None, n_pairs=20000, cka_sample=800, seed=0):
     out_dir = config["paths"]["desk_output_dir"]
     out = os.path.join(out_dir, "validate_report.json")
     os.makedirs(out_dir, exist_ok=True)
+    # One traversal splits the scalars from the map layer, so no panel has to remember to strip
+    # its own arrays before the dump and none of them can reach json.dump and raise.
+    report, map_layer = extract_map_layer(report)
     with open(out, "w") as fh:
         json.dump(report, fh, indent=2)
+    if map_layer:
+        print(f"[validate] map layer: {len(map_layer)} per-cell arrays "
+              f"({', '.join(sorted(map_layer)[:3])}{', …' if len(map_layer) > 3 else ''})")
     # Bundle the per-site/per-point arrays for visualization (turnover maps + analog arrows).
     viz = os.path.join(out_dir, "validate_spacetime.npz")
     np.savez_compressed(
         viz,
+        **map_layer,
         turn_rows=turn.get("rows", np.array([])), turn_cols=turn.get("cols", np.array([])),
         turnover_pred=turn.get("turnover_pred", np.array([])),
         turnover_obs=turn.get("turnover_obs", np.array([])),
@@ -1349,6 +1388,7 @@ def run_validate(config=None, n_pairs=20000, cka_sample=800, seed=0):
         dir_cos=dirchg.get("dir_cos", np.array([])),
         recon_rows=recon["rows"],
         recon_cols=recon["cols"],
+        recon_year=recon["year"],
         recon_err_desk=recon["err_desk"],
         recon_err_nochange=recon["err_nochange"],
         ref_raster=np.array(ref_raster))

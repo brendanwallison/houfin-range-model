@@ -69,6 +69,19 @@ def median_dir_cos_np(dp, dt):
                           torch.as_tensor(np.asarray(dt), dtype=torch.float32))
 
 
+def dir_cos_rows_np(dp, dt):
+    """The per-row cosine VECTOR, numpy in and out. Degenerate rows are NaN.
+
+    Shares ``dir_cos_rows`` with the median so a mapped direction and a reported one cannot
+    disagree about which rows were skipped -- the same reason ``median_dir_cos_np`` defers to the
+    trainer's function rather than reimplementing the reduction.
+    """
+    from .desk_training import dir_cos_rows
+    v = dir_cos_rows(torch.as_tensor(np.asarray(dp), dtype=torch.float32),
+                     torch.as_tensor(np.asarray(dt), dtype=torch.float32))
+    return v.detach().cpu().numpy()
+
+
 def _interp_usable_years(tgt, k=8):
     """Years spatial interpolation can actually serve: some val cell AND >= ``k`` train cells.
 
@@ -378,9 +391,17 @@ def _ceiling_row(do, null_cos, model_cos):
     if ok.sum() < 4:
         return {"ceiling_dir_cos": float("nan"),
                 "ceiling_note": f"only {int(ok.sum())} cells with two non-degenerate halves"}
-    ceil = float(np.median((dtA[ok] * dtB[ok]).sum(1) / (nA[ok] * nB[ok])))
+    with np.errstate(invalid="ignore", divide="ignore"):
+        per_cell = np.where(ok, (dtA * dtB).sum(1) / np.maximum(nA * nB, 1e-12), np.nan)
+    ceil = float(np.median(per_cell[ok]))
     room = ceil - null_cos if np.isfinite(null_cos) else float("nan")
-    out = {"ceiling_dir_cos": ceil, "n_ceiling": int(ok.sum()), "room": room}
+    out = {"ceiling_dir_cos": ceil, "n_ceiling": int(ok.sum()), "room": room,
+           # The ceiling PER CELL, not just its median. A dir-cos map is unreadable without one:
+           # 0.23 is poor against 1.0 and good against a ceiling of 0.35, and that comparison has
+           # to be made cell by cell because the ceiling is set by how many times each cell was
+           # surveyed. Aligned to the caller's splittable-cell list, NaN where a half was
+           # degenerate. Stripped before the JSON dump; it travels in the npz.
+           "_ceiling_per_cell": per_cell.astype("float32")}
     if np.isfinite(room) and np.isfinite(model_cos) and room > 1e-9:
         # where the model sits between "knows nothing" and "is an independent observation"
         out["share_of_room"] = float((model_cos - null_cos) / room)
@@ -640,8 +661,8 @@ def epoch_direction_panel(pidx, supervise, z_obs, z_model, holdout, buffer_mask,
         # try/except, so a single cell with a one-year window returned no ceiling for the entire
         # pair -- and with a mean window depth of 3.1 that happened every time, which is why the
         # ceiling came back empty on its first run.
-        dA, dB = [], []
-        for c in cells:
+        dA, dB, ceil_cells = [], [], []
+        for ci, c in enumerate(cells):
             try:
                 ya0, ya1 = _half_years(val_of[a][c], 0), _half_years(val_of[a][c], 1)
                 yb0, yb1 = _half_years(val_of[b][c], 0), _half_years(val_of[b][c], 1)
@@ -653,6 +674,10 @@ def epoch_direction_panel(pidx, supervise, z_obs, z_model, holdout, buffer_mask,
                 continue
             dA.append(pb0 - pa0)
             dB.append(pb1 - pa1)
+            # WHICH cell each ceiling row belongs to. The loop used to `continue` without
+            # recording identity, so the ceiling had no cell it could be attached to and could
+            # only ever be a median -- which is exactly why a per-cell dir-cos had no scale.
+            ceil_cells.append(ci)
         do = (np.stack(dA), np.stack(dB)) if len(dA) >= 4 else None
         n_splittable = len(dA)
         # dir-cos is the ANGULAR half of an exact two-term split of ||dm - dt||^2; the other half
@@ -664,6 +689,8 @@ def epoch_direction_panel(pidx, supervise, z_obs, z_model, holdout, buffer_mask,
         nm, nt = np.linalg.norm(dm, axis=1), np.linalg.norm(dt, axis=1)
         mag_ratio = float(np.median(nm[nt > 1e-12] / nt[nt > 1e-12])) if (nt > 1e-12).any() \
             else float("nan")
+        with np.errstate(invalid="ignore", divide="ignore"):
+            mag_ratio_cells = np.where(nt > 1e-12, nm / np.maximum(nt, 1e-12), np.nan)
         mag_share = float(np.mean(_mag) / max(np.mean(_tot), 1e-12))
         ia, ib = _idw_at(cells, trn_of[a], zt), _idw_at(cells, trn_of[b], zt)
         di = (ib - ia) if (ia is not None and ib is not None) else None
@@ -688,7 +715,9 @@ def epoch_direction_panel(pidx, supervise, z_obs, z_model, holdout, buffer_mask,
             verdict = "no-bar"
         else:
             verdict = "model" if mc > ic + 0.02 else ("idw" if ic > mc + 0.02 else "tie")
-        depth = float(np.mean([len(val_of[a][c]) + len(val_of[b][c]) for c in cells]) / 2.0)
+        depth_cells = np.array([(len(val_of[a][c]) + len(val_of[b][c])) / 2.0 for c in cells],
+                               dtype="float32")
+        depth = float(depth_cells.mean())
         ic_s = "  n/a" if not np.isfinite(ic) else f"{ic:5.2f}"
         if verbose:
             sc_s = "  n/a" if not np.isfinite(sc) else f"{sc:5.2f}"
@@ -713,6 +742,26 @@ def epoch_direction_panel(pidx, supervise, z_obs, z_model, holdout, buffer_mask,
                                     # available even inside the holdout, unlike idw_dir_cos
                                     "spacetime_idw_dir_cos": sc,
                                     "n_cells_splittable": n_splittable,
+                                    # THE MAP LAYER. Underscore-prefixed by convention: these are
+                                    # per-cell arrays, they travel in the npz, and the report
+                                    # assembly strips every `_`-prefixed key before json.dump.
+                                    # `_cells` is (n, 2) row/col so every other array here is
+                                    # placeable on the grid without re-deriving the cell list.
+                                    "_cells": np.asarray(cells, dtype="int32").reshape(-1, 2),
+                                    "_dir_cos": dir_cos_rows_np(dm, dt),
+                                    "_idw_dir_cos": (dir_cos_rows_np(di, dt) if di is not None
+                                                     else np.full(len(cells), np.nan, "float32")),
+                                    "_spacetime_idw_dir_cos": (
+                                        dir_cos_rows_np(ds, dt) if ds is not None
+                                        else np.full(len(cells), np.nan, "float32")),
+                                    "_mag_ratio": mag_ratio_cells.astype("float32"),
+                                    # how many surveys each endpoint averaged -- the precision
+                                    # channel, and the reason one cell's ceiling differs from
+                                    # another's
+                                    "_window_depth": depth_cells,
+                                    # index INTO _cells, not a cell list: a ceiling row exists
+                                    # only for a cell whose windows could be split in half
+                                    "_ceiling_cell_idx": np.asarray(ceil_cells, dtype="int32"),
                                     **_ceiling_row(do, null, mc)}
 
     if verbose:
@@ -1284,6 +1333,12 @@ def baseline_panel(pidx, z_obs, z_desk, holdout, recent_year, buffer_mask=None,
     for era in sorted(set(eras)):
         out["by_era"][era] = _score(eras == era)
     out["overall"] = _score(np.ones(len(ed), bool))
+    # THE MAP LAYER. Every rung's per-row error already exists -- `bars` is exactly that, and the
+    # function reduced it to six medians and threw the rows away. Keeping them is what makes a
+    # "which rung wins HERE" map possible, which is the ladder's own question asked geographically.
+    # `_`-prefixed so the report assembly strips it before json.dump; it travels in the npz.
+    out["_rows"] = pidx[target].astype("int32")          # (n, 3) row/col/year, placeable directly
+    out["_bars"] = {k: np.asarray(v, dtype="float32") for k, v in bars.items()}
 
     if verbose:
         names = [n for n in bars if n != "no_change"]

@@ -732,12 +732,20 @@ def compare_positions(z_obs, predictors, reference="no_change", populations=None
         }
 
     def _block(mask):
-        rows, errs, gone = {}, {}, {}
+        rows, errs, gone, decomp = {}, {}, {}, {}
         for name, P in predictors.items():
             if P is None:
                 continue
             e = np.linalg.norm(np.asarray(P, "float64") - z_obs, axis=1)
             errs[name] = e
+            # The exact split, per row. `_summary` already computes these and medians them; the
+            # suite's own rule is that an angle is never reported without its magnitude partner,
+            # and that rule has to survive onto a map or a per-cell dir-cos means nothing.
+            _t, _m, _a, _c = error_decomposition(np.asarray(P, "float64"), z_obs)
+            with np.errstate(invalid="ignore", divide="ignore"):
+                decomp[name] = {"cos": _c.astype("float32"),
+                                "mag_share": np.where(_t > 0, _m / np.maximum(_t, 1e-12),
+                                                      np.nan).astype("float32")}
             r = _summary(P, mask)
             if r is not None:
                 rows[name] = r
@@ -752,7 +760,13 @@ def compare_positions(z_obs, predictors, reference="no_change", populations=None
                               f"{int(mask.sum())} rows in this population -- too few to summarise")
         out = {"n": int(mask.sum()), "reference": reference, "predictors": rows,
                "median_z_obs_norm2": float(np.median(n_o[mask] ** 2)) if mask.any() else None,
-               "unavailable": gone}
+               "unavailable": gone,
+               # THE MAP LAYER: the per-row error of every predictor, which `errs` already holds
+               # and which existed only to compute win rates. With it a per-cell map can be drawn
+               # for the BARS, not just for DESK -- and "where does the bar beat the model" is the
+               # question this table's symmetry was built to make askable.
+               "_err_rows": {k: v.astype("float32") for k, v in errs.items()},
+               "_decomp_rows": decomp}
         ref = errs.get(reference)
         if ref is not None:
             wins, skill = {}, {}
@@ -1517,11 +1531,16 @@ def epoch_neighborhood_analysis(Xe, Xm, Ze, Zm, xy, k=99, n_bins=10, is_heldout=
     # have been computed and reported separately since the epoch analysis was written; their
     # difference -- the joint spacetime quantity -- was never formed.
     E, M = "cross_cell_same_era_early", "cross_cell_same_era_modern"
+    conv = conv_cos = conv_obs = None
     if E in types and M in types:
         conv_obs = types_obs[M] - types_obs[E]
         conv = {p: types[M][p] - types[E][p] for p in types[M] if p in types[E]}
         conv_cos = {p: types_cos[M][p] - types_cos[E][p]
                     for p in types_cos[M] if p in types_cos[E]}
+        # Per-focal-cell, like the three cross-cell questions. It was the only question left out
+        # of the map layer, and it is the one `NULL_IS_A_FLOOR_FOR` names as having real
+        # resolving room -- freezing both cells leaves the similarity between them untouched, so
+        # the null scores exactly zero here rather than the 0.65 it gets on same_cell_over_time.
         report["types"]["pair_convergence"] = {}
         for sname, smask in splits.items():
             rows = np.where(smask)[0]
@@ -1571,16 +1590,31 @@ def epoch_neighborhood_analysis(Xe, Xm, Ze, Zm, xy, k=99, n_bins=10, is_heldout=
     # as mapping where the model beats the null, and it costs nothing now that they are symmetric.
     for pname, v in sc.items():
         per_cell[f"same_cell_over_time_{pname}"] = v.astype("float32")
-    for qname in pairings:
-        obs_q = types_obs[qname]
-        rn = (np.sqrt(((types[qname]["no_change"] - obs_q) ** 2).mean(1)) if idx.size
+    # The COSINE form too. The suite's rule is that the dot and the cosine are two halves of one
+    # exact split and neither is read alone; the per-cell block kept only the dot, so a map could
+    # see the magnitude-bearing half and not the angular one.
+    for pname, v in sc_cos.items():
+        per_cell[f"same_cell_over_time_cos_{pname}"] = v.astype("float32")
+
+    def _add_question(qname, tables, obs_q, suffix=""):
+        """Per-focal-cell rmse and skill for one question, over that cell's own neighbour pairs."""
+        if "no_change" not in tables:
+            return
+        rn = (np.sqrt(((tables["no_change"] - obs_q) ** 2).mean(1)) if idx.size
               else np.full(n, np.nan))
-        for pname, M in types[qname].items():
+        for pname, M in tables.items():
             rp = np.sqrt(((M - obs_q) ** 2).mean(1)) if idx.size else np.full(n, np.nan)
-            per_cell[f"{qname}_rmse_{pname}"] = rp.astype("float32")
+            per_cell[f"{qname}_rmse{suffix}_{pname}"] = rp.astype("float32")
             with np.errstate(divide="ignore", invalid="ignore"):
-                per_cell[f"{qname}_skill_{pname}"] = np.where(
+                per_cell[f"{qname}_skill{suffix}_{pname}"] = np.where(
                     rn > 0, 1.0 - rp / rn, 0.0).astype("float32")
+
+    for qname in pairings:
+        _add_question(qname, types[qname], types_obs[qname])
+        _add_question(qname, types_cos[qname], types_obs[qname], suffix="_cos")
+    if conv is not None:
+        _add_question("pair_convergence", conv, conv_obs)
+        _add_question("pair_convergence", conv_cos, conv_obs, suffix="_cos")
 
     # THE SPECIES QUESTION, on the SAME pairs. `species_readout` is fitted on training rows by the
     # caller; without one this block is skipped and says so rather than being quietly absent.
@@ -2171,6 +2205,7 @@ def _run_epoch_analysis(config, keys, X_raw_all, cells, e_rows, m_rows, gate_sta
     # CEILING TABLE -- truth from half A, oracle from half B. Lower precision (each endpoint has
     # half the surveys) but the oracle predicts an observation it did not see, so the gap between
     # a model and this row is an achievable one.
+    ceiling_per_cell = {}
     if sc_esk_ind is not None and int(split_ok.sum()) >= 5:
         ZeA = epoch_mean_z(gather_z(keys[np.array([i for r in eA for i in r])]),
                            _reindex_row_lists(eA)) if any(len(g) for g in eA) else Ze
@@ -2178,13 +2213,21 @@ def _run_epoch_analysis(config, keys, X_raw_all, cells, e_rows, m_rows, gate_sta
                            _reindex_row_lists(mA)) if any(len(g) for g in mA) else Zm
         if len(ZeA) == len(Xe):
             sub = split_ok
-            rep_c, _ = epoch_neighborhood_analysis(
+            # `_` here threw away the per-cell arrays of the ONE table that carries the honest
+            # ceiling -- the oracle predicting an observation it did not see. Every other
+            # predictor had a per-cell map and the bound they are read against did not.
+            rep_c, per_cell_ceiling = epoch_neighborhood_analysis(
                 XeA[sub], XmA[sub], ZeA[sub], ZmA[sub], xy[sub], k=min(k, int(sub.sum()) - 1),
                 n_bins=n_bins, sc_esk=None,
                 sc_idw=(Ze_idw[sub], Zm_idw[sub]) if Ze_idw is not None else (None, None),
                 sc_esk_independent=(sc_esk_ind[0][sub], sc_esk_ind[1][sub]),
                 is_heldout=is_ho[sub] if is_ho is not None else None)
             rep["ceiling"] = rep_c
+            # Prefixed and carrying its own index, because this table runs on the `split_ok`
+            # SUBSET: its rows are not aligned to `cells` and merging them by position would
+            # silently attribute one cell's ceiling to another.
+            ceiling_per_cell = {f"ceiling_{kk}": vv for kk, vv in per_cell_ceiling.items()}
+            ceiling_per_cell["ceiling_cell_idx"] = np.flatnonzero(sub).astype("int32")
             print(f"[bbs-routes] ceiling table built on {int(sub.sum())} splittable cells "
                   f"(truth = half A, oracle = half B -- independent noise draws)")
     else:
@@ -2239,7 +2282,17 @@ def _run_epoch_analysis(config, keys, X_raw_all, cells, e_rows, m_rows, gate_sta
     np.savez_compressed(os.path.join(out_dir, "bbs_epoch_neighborhood.npz"),
                         cells=cells, rows=cells[:, 0], cols=cells[:, 1],
                         Xe=Xe.astype("float32"), Xm=Xm.astype("float32"),
-                        Ze=Ze, Zm=Zm, **per_cell)
+                        Ze=Ze, Zm=Zm,
+                        # THE PER-CELL NOISE FLOOR: the similarity between two disjoint halves of
+                        # the SAME cell in the SAME era, where no real turnover is possible, so
+                        # everything below 1.0 is measurement noise. Only its median survived into
+                        # the report, which meant a per-cell skill map had no per-cell scale --
+                        # and how much a cell CAN be resolved is set by how often it was surveyed,
+                        # which varies over the continent by more than the skill does.
+                        floor_early=floor_early.astype("float32"),
+                        floor_modern=floor_modern.astype("float32"),
+                        split_ok=split_ok,
+                        **per_cell, **ceiling_per_cell)
 
     # --- console summary
     d = rep["distance_summary"]

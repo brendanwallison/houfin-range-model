@@ -440,7 +440,15 @@ def test_half_width_zero_reproduces_the_single_year_panel_exactly():
 
     def same(x, y):
         """Plain == fails on NaN fields (nan != nan), and rows legitimately carry NaN wherever a
-        bar is unavailable -- so compare NaN-aware rather than weakening the assertion."""
+        bar is unavailable -- so compare NaN-aware rather than weakening the assertion.
+
+        Arrays are compared elementwise for the same reason, not skipped: the `_`-prefixed
+        per-cell map layer is part of the row, and "half_width=0 reproduces the default exactly"
+        has to cover the arrays or the equality it asserts is only about the summaries."""
+        if isinstance(x, np.ndarray) or isinstance(y, np.ndarray):
+            xa, ya = np.asarray(x), np.asarray(y)
+            return xa.shape == ya.shape and bool(
+                np.array_equal(xa, ya, equal_nan=np.issubdtype(xa.dtype, np.floating)))
         if isinstance(x, float) and isinstance(y, float):
             return (np.isnan(x) and np.isnan(y)) or x == y
         return x == y

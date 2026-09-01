@@ -537,6 +537,26 @@ def _max_rss_gib():
     return resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / _RSS_TO_GIB
 
 
+def dir_cos_rows(dp, dt, eps=1e-12):
+    """Per-row cosine between two sets of change vectors ``(n, L)``. Degenerate rows -> NaN.
+
+    The VECTOR, not its median. ``median_dir_cos`` is the reduction and calls this, so the two
+    cannot disagree about which rows are degenerate -- and a caller that wants to MAP direction
+    has somewhere to get it. Every per-cell direction in this project was previously destroyed
+    inside the median: the cosine was computed per cell, reduced, and the cells discarded, so the
+    single question a map answers ("is the model wrong HERE, or everywhere a little") could not be
+    asked at all.
+
+    Returns a float tensor of length ``n`` on ``dp``'s device.
+    """
+    den = dp.norm(dim=1) * dt.norm(dim=1)
+    out = torch.full((dp.shape[0],), float("nan"), dtype=torch.float32, device=dp.device)
+    ok = den > eps
+    if bool(ok.any()):
+        out[ok] = (torch.sum(dp * dt, dim=1)[ok] / den[ok]).to(out.dtype)
+    return out
+
+
 def median_dir_cos(dp, dt):
     """Median per-row cosine between two sets of change vectors ``(n, L)``.
 
@@ -544,11 +564,11 @@ def median_dir_cos(dp, dt):
     closure over the year indices and cannot be called directly. Rows whose either vector is
     degenerate are skipped rather than contributing a spurious value.
     """
-    den = dp.norm(dim=1) * dt.norm(dim=1)
-    ok = den > 1e-12
+    v = dir_cos_rows(dp, dt)
+    ok = ~torch.isnan(v)
     if not bool(ok.any()):
         return float("nan")
-    return float(torch.median(torch.sum(dp * dt, dim=1)[ok] / den[ok]))
+    return float(torch.median(v[ok]))
 
 
 

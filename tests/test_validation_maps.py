@@ -285,3 +285,47 @@ def test_a_rung_that_declines_only_some_rows_still_narrows_the_common_support(tm
     keep = np.isfinite(np.vstack([bars[n] for n in live])).all(axis=0)
     assert live == comp, "a partially-available rung is still a competitor"
     assert keep.sum() == len(rows) - 40
+
+
+def test_structural_absence_is_population_conditional_not_global(tmp_path):
+    """The bug that made the ladder map lie about its own scope. `borrowed_delta` needs
+    neighbours' change in the target year, so under a temporal holdout it is finite on every
+    trained-year row and NO withheld-year row. It is not globally absent, so a global
+    all-NaN filter does not catch it -- and intersecting on it across the whole map silently
+    dropped every withheld-year row, producing a map of pure SPATIAL extrapolation captioned as
+    if it covered the temporal experiment. The populations must be solved separately."""
+    m = _maps()
+    rows = m["spacetime"]["baseline_ladder._rows"]
+    yr = rows[:, 2]
+    first_trained = int(np.median(yr))
+    wh = yr < first_trained
+    bd = np.where(wh, np.nan, 1.0).astype("float32")
+    m["spacetime"]["baseline_ladder._bars.borrowed_delta"] = bd
+    assert np.isfinite(bd).any(), "the rung is NOT globally absent -- that is the whole trap"
+    assert not np.isfinite(bd[wh]).any()
+
+    run = {"report": {"baseline_ladder": {"first_trained_year": first_trained}}}
+    made = VM.map03_ladder_winner(run, m, _geo_ctx(), str(tmp_path))
+    assert made
+    import matplotlib.image as mpimg
+    # three panels (two populations + the zone chart), not two: the split happened
+    assert mpimg.imread(made).shape[1] > 1800
+
+
+def test_the_withheld_span_comes_from_first_trained_year_not_the_common_window(tmp_path):
+    """`common_holdout_years` is the 10-year window every run withheld so the sweep can be
+    compared; the 1995 run actually withholds 30. Using the common window to label populations
+    would call 20 of this run's withheld years 'trained'."""
+    # Assert on USE, not on the word: the body mentions common_holdout_years precisely to record
+    # why it is the wrong field, and a test that banned the mention would delete the explanation.
+    m = _maps()
+    rows = m["spacetime"]["baseline_ladder._rows"]
+    ft = int(np.median(rows[:, 2]))
+    run = {"report": {"baseline_ladder": {"first_trained_year": ft,
+                                          "common_holdout_years": [int(rows[:, 2].min())]}}}
+    n_wh = int((rows[:, 2] < ft).sum())
+    assert n_wh > 1, "fixture must have more withheld years than the common window"
+    # borrowed_delta absent exactly on the first_trained_year split -> the map splits there
+    m["spacetime"]["baseline_ladder._bars.borrowed_delta"] = np.where(
+        rows[:, 2] < ft, np.nan, 1.0).astype("float32")
+    assert VM.map03_ladder_winner(run, m, _geo_ctx(), str(tmp_path))

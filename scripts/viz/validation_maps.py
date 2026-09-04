@@ -257,112 +257,120 @@ def map02_ceiling(run, maps, geo, out_dir):
 
 
 def map03_ladder_winner(run, maps, geo, out_dir):
-    """Which rung wins here — the ladder asked geographically.
+    """Which rung wins here — the ladder asked geographically, and asked SEPARATELY per year.
 
     Each rung is handed different information, so the winner names which claim survives at that
-    place: the cell's own modern state, its own other years, its neighbours' change, joint
-    space-time interpolation, or the covariates. Saturation is the MARGIN over the runner-up, so a
-    1% win does not look like a 50% win.
+    place. Saturation is the MARGIN over the runner-up, so a 1% win does not look like a 50% win.
+
+    SPLIT BY YEAR-POPULATION, because the admissible rung set is not the same in both. Under a
+    temporal holdout `borrowed_delta` needs neighbours' change in the target year and there is
+    none, so it is finite on 6,666 trained rows and 0 withheld ones. Intersecting on it across the
+    whole map -- which is right for a rung that merely declines rows -- silently dropped every
+    withheld-year row and produced a map of pure SPATIAL extrapolation labelled as if it covered
+    the temporal experiment. Structural absence is population-conditional, and a single map cannot
+    honour that; two can.
     """
     rows, bars = L.ladder_bars(maps)
     if rows is None or len(bars) < 2:
         return None
-    # TWO DIFFERENT ABSENCES, and conflating them empties the map. A rung that DECLINES SOME ROWS
-    # must be intersected, or it is flattered by being graded on its easy subset -- that is what
-    # `win_rate_vs` protects against. A rung that CANNOT RUN AT ALL is not competing: under a
-    # spatial holdout a held-out cell has no training years of its own, so cell_trend and
-    # cell_nearest_year are finite on 0 of 15,934 rows, and requiring their support intersects
-    # every row away. Structural n/a is not a failure and is not a decline; it is an absence, and
-    # the figure names it rather than silently dropping it.
-    candidates = [n for n in S.ordered(list(bars)) if n != "no_change"]
-    absent = [n for n in candidates if not np.isfinite(bars[n]).any()]
-    names = [n for n in candidates if n not in absent]
-    if len(names) < 2:
+    # `first_trained_year`, not `common_holdout_years`: the latter is the 10-year window every
+    # run withheld so the sweep can be compared, and using it here would call 20 of this run's 30
+    # withheld years "trained". The holdout is a contiguous span below the first trained year.
+    bl = (run.get("report") or {}).get("baseline_ladder") or {}
+    first_trained = bl.get("first_trained_year")
+    is_wh = (rows[:, 2] < int(first_trained)) if first_trained else np.zeros(len(rows), bool)
+    pops = [("trained years", ~is_wh)] + ([("withheld years", is_wh)] if is_wh.any() else [])
+    pops = [(nm, m) for nm, m in pops if m.sum() >= 10]
+    if not pops:
         return None
-    stack = np.vstack([bars[n] for n in names])                 # (rungs, n_rows)
-    finite = np.isfinite(stack)
-    keep = finite.all(axis=0)
-    if keep.sum() < 10:
+
+    solved = []
+    for nm, pmask in pops:
+        cand = [n for n in S.ordered(list(bars)) if n != "no_change"]
+        absent = [n for n in cand if not np.isfinite(bars[n][pmask]).any()]
+        names = [n for n in cand if n not in absent]
+        if len(names) < 2:
+            continue
+        stack = np.vstack([bars[n][pmask] for n in names])
+        keep = np.isfinite(stack).all(axis=0)
+        if keep.sum() < 10:
+            continue
+        sub = stack[:, keep]
+        win = np.argmin(sub, axis=0)
+        srt = np.sort(sub, axis=0)
+        margin = (srt[1] - srt[0]) / np.maximum(srt[1], 1e-9)
+        idx = np.flatnonzero(pmask)[keep]
+        solved.append({"name": nm, "names": names, "absent": absent, "win": win,
+                       "margin": margin, "r": rows[idx, 0].astype(int),
+                       "c": rows[idx, 1].astype(int),
+                       "n_rows": int(pmask.sum()), "n_kept": int(keep.sum())})
+    if not solved:
         return None
-    sub = stack[:, keep]
-    win = np.argmin(sub, axis=0)
-    srt = np.sort(sub, axis=0)
-    margin = (srt[1] - srt[0]) / np.maximum(srt[1], 1e-9)
 
-    r, c = rows[keep, 0].astype(int), rows[keep, 1].astype(int)
-    win_g = _geo.to_grid(r, c, win.astype("float64"), geo.shape)
-    marg_g = _geo.to_grid(r, c, margin, geo.shape)
-
-    fig, axs = _panel(geo, ncols=2, w=5.0)
-    a = axs[0][0]
-    geo.basemap(a)
-    # ALPHA on the category itself, not a white veil over it. The fade reference is the
-    # seed-to-seed spread of a fixed configuration: a margin smaller than that is a tie, and the
-    # threshold is the one the rest of the suite already uses rather than a number picked here.
-    rgba = np.zeros(geo.shape + (4,))
-    alpha = np.clip(marg_g / S.SEED_NOISE, 0.0, 1.0)
-    for i, nm in enumerate(names):
-        m = np.isfinite(win_g) & (np.round(win_g) == i)
-        if m.any():
-            rgba[m] = matplotlib.colors.to_rgba(S.color(nm))
-    rgba[..., 3] = np.where(np.isfinite(win_g), np.nan_to_num(alpha), 0.0)
-    a.imshow(rgba, extent=geo.extent, origin="upper", zorder=2)
-    geo.coastline(a)
-    geo.great_plains(a)
-    n_tie = int(np.nansum(alpha[np.isfinite(win_g)] < 1.0))
-    a.set_title(f"which rung predicts this cell best\n"
-                f"{int(keep.sum()):,} of {len(keep):,} cell-years survive the common-support "
-                f"intersection\nfaded = margin under {100 * S.SEED_NOISE:.1f}% (a tie): "
-                f"{n_tie:,} of {int(np.isfinite(win_g).sum()):,} cells", fontsize=8.5)
+    all_names = S.ordered(list({n for sv in solved for n in sv["names"]}))
+    fig, axs = _panel(geo, ncols=len(solved) + 1, w=4.6)
+    for ax, sv in zip(axs[0], solved):
+        geo.basemap(ax)
+        win_g = _geo.to_grid(sv["r"], sv["c"], sv["win"].astype("float64"), geo.shape)
+        marg_g = _geo.to_grid(sv["r"], sv["c"], sv["margin"], geo.shape)
+        # ALPHA on the category itself, not a white veil over it. The fade reference is the
+        # seed-to-seed spread of a fixed configuration: a margin smaller than that is a tie, and
+        # the threshold is the one the rest of the suite already uses.
+        rgba = np.zeros(geo.shape + (4,))
+        for i, nm in enumerate(sv["names"]):
+            m = np.isfinite(win_g) & (np.round(win_g) == i)
+            if m.any():
+                rgba[m] = matplotlib.colors.to_rgba(S.color(nm))
+        rgba[..., 3] = np.where(np.isfinite(win_g),
+                                np.nan_to_num(np.clip(marg_g / S.SEED_NOISE, 0, 1)), 0.0)
+        ax.imshow(rgba, extent=geo.extent, origin="upper", zorder=2)
+        geo.coastline(ax)
+        geo.great_plains(ax)
+        sv["win_g"] = win_g
+        ax.set_title(f"{sv['name']}\n{sv['n_kept']:,} of {sv['n_rows']:,} cell-years survive "
+                     f"the common-support\nintersection; faded = a tie under "
+                     f"{100 * S.SEED_NOISE:.1f}%", fontsize=8)
     fig.legend(handles=[plt.Rectangle((0, 0), 1, 1, fc=S.color(n), ec="none", label=S.label(n))
-                        for n in names],
-               fontsize=7, ncol=min(len(names), 4), loc="upper center", frameon=False,
+                        for n in all_names],
+               fontsize=7, ncol=min(len(all_names), 4), loc="upper center", frameon=False,
                bbox_to_anchor=(0.5, 1.005))
 
-    # Who wins WHERE, as a share -- the categorical map's own summary, cut by the one ecological
-    # partition this project has. A map shows the texture; this says whether the texture is a
-    # pattern.
-    b = axs[0][1]
+    # Who wins WHERE, as a share. A map shows the texture; this says whether it is a pattern.
+    b = axs[0][-1]
     zones = geo.gp_zones or {}
     cols_z = [z for z in ("west", "barrier", "east") if z in zones]
+    target = solved[-1]                    # the withheld population when there is one
     if cols_z:
         bottom = np.zeros(len(cols_z))
-        for i, nm in enumerate(names):
+        for i, nm in enumerate(target["names"]):
             share = []
             for z in cols_z:
-                m = zones[z] & np.isfinite(win_g)
-                share.append(float(np.mean(np.round(win_g[m]) == i)) if m.any() else 0.0)
+                m = zones[z] & np.isfinite(target["win_g"])
+                share.append(float(np.mean(np.round(target["win_g"][m]) == i)) if m.any() else 0.0)
             b.bar(cols_z, share, bottom=bottom, color=S.color(nm), label=S.label(nm))
             bottom += np.asarray(share)
         b.set_xticks(range(len(cols_z)))
-        b.set_xticklabels([f"{z}\nn={int((zones[z] & np.isfinite(win_g)).sum()):,}"
+        b.set_xticklabels([f"{z}\nn={int((zones[z] & np.isfinite(target['win_g'])).sum()):,}"
                            for z in cols_z], fontsize=8)
         b.set_ylabel("share of cells won", fontsize=8)
         b.set_ylim(0, 1)
-        b.set_title("who wins where, by Great Plains zone", fontsize=8.5)
-        b.tick_params(labelsize=8)
+        b.set_title(f"who wins where — {target['name']}", fontsize=8.5)
         for sp in ("top", "right"):
             b.spines[sp].set_visible(False)
     else:
         b.set_axis_off()
         b.set_title("Great Plains zone raster absent", fontsize=8.5)
 
-    cap_absent = ("" if not absent else
-                  f" Structurally absent here and excluded from the comparison: "
-                  f"{', '.join(S.label(a) for a in absent)} — under a spatial holdout a held-out "
-                  f"cell has no training years of its own, so these cannot run at ALL, which is "
-                  f"different from declining a row and different again from losing.")
+    notes = "; ".join(f"{sv['name']}: {', '.join(S.label(a) for a in sv['absent'])} cannot run"
+                      for sv in solved if sv["absent"])
     return S.finish(fig, os.path.join(out_dir, "m03_ladder_winner.png"),
                     "Scored only on cell-years every REMAINING rung reached, so no rung is "
-                    "credited for "
-                    "declining the hard rows. Faded regions are ties, not wins — a bare "
-                    "winner-take-all map shows a confident colour for a 1% margin, which is how "
-                    "a noise field comes to look like a spatial finding." + cap_absent +
-                    " The intersection is what borrowed_delta costs: it reaches under half the "
-                    "rows, and requiring its support to rank a cell is the same discipline "
-                    "win_rate_vs applies — the alternative flatters whichever rung declined the "
-                    "hard rows.",
-                    tight_rect=(0, 0.10, 1, 0.92))
+                    "credited for declining the hard rows. Faded regions are ties, not wins — a "
+                    "bare winner-take-all map shows a confident colour for a 1% margin, which is "
+                    "how a noise field comes to look like a spatial finding. Structural absence "
+                    "is per population and the panels do not share a rung set — "
+                    + (notes or "no rung was structurally absent") + ".",
+                    tight_rect=(0, 0.08, 1, 0.90))
 
 
 def map04_vs_bar(run, maps, geo, out_dir):

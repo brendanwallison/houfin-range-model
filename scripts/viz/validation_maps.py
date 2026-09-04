@@ -376,9 +376,15 @@ def map03_ladder_winner(run, maps, geo, out_dir):
 def map04_vs_bar(run, maps, geo, out_dir):
     """DESK against the honest bar, where the comparison can resolve anything.
 
-    `spacetime_idw` is the competitor; `no_change` is a decomposition device that assumes sixty
-    years of stasis and is nearly free to beat. Cells where the two differ by less than the
-    seed-to-seed spread of a fixed configuration are greyed: that difference is noise.
+    `spacetime_idw` is the competitor. `no_change` is usually a decomposition device -- it assumes
+    sixty years of stasis and is nearly free to beat -- but "usually" is not "always", and where it
+    is NOT free to beat that is the most important thing on the page. The third panel therefore
+    scores DESK against BOTH, per Great Plains zone, because pooled they cancel: DESK beats the
+    null on ~79% of rows overall and on under half of them in the western native range, where the
+    community was already established and stasis is close to right.
+
+    Cells where DESK and the bar differ by less than the seed-to-seed spread are greyed: that
+    difference is noise.
     """
     rows, bars = L.ladder_bars(maps)
     if rows is None or "desk" not in bars or "spacetime_idw" not in bars:
@@ -392,7 +398,7 @@ def map04_vs_bar(run, maps, geo, out_dir):
     g = _geo.to_grid(r, c, rel, geo.shape)
     ho = maps.get("holdout")
 
-    fig, axs = _panel(geo, ncols=2, w=5.0)
+    fig, axs = _panel(geo, ncols=3, w=4.6)
     # `baseline_panel` grades held-out cells only, so BOTH panels are out-of-sample -- the left
     # one per cell, the right aggregated to the block. Labelling the left "DESK vs the bar" alone
     # would imply it covers the whole map, which it does not and cannot.
@@ -424,11 +430,52 @@ def map04_vs_bar(run, maps, geo, out_dir):
         axs[0][1].text(0.5, 0.42, "indistinguishable out of sample", transform=axs[0][1].transAxes,
                        ha="center", fontsize=9, color="#8a3208")
     geo.great_plains(axs[0][1])
+
+    # BOTH comparisons, per zone. The winner map cannot carry this: it ranks competitors and the
+    # null is not one, so a region where the null is actually the best answer is invisible there
+    # by construction. That is exactly the western native range.
+    c_ax = axs[0][2]
+    zones = geo.gp_zones or {}
+    cols_z = [z for z in ("west", "barrier", "east") if z in zones]
+    nc = bars.get("no_change")
+    if cols_z and nc is not None:
+        zr = rows[:, 0].astype(int), rows[:, 1].astype(int)
+        vs_null, vs_bar, labs = [], [], []
+        for z in cols_z:
+            zm = zones[z][zr[0], zr[1]]
+            sn = zm & np.isfinite(d) & np.isfinite(nc)
+            sb = zm & np.isfinite(d) & np.isfinite(b)
+            if sn.sum() < 20:
+                continue
+            vs_null.append(float(np.mean(d[sn] < nc[sn])))
+            vs_bar.append(float(np.mean(d[sb] < b[sb])))
+            labs.append(f"{z}\nn={int(sn.sum()):,}")
+        x = np.arange(len(labs))
+        c_ax.bar(x - 0.2, vs_null, 0.38, color=S.color("no_change"), label="vs the no-change null")
+        c_ax.bar(x + 0.2, vs_bar, 0.38, color=S.color("spacetime_idw"), label="vs spacetime IDW")
+        c_ax.axhline(0.5, color="#c1440e", lw=1.2, ls="--")
+        c_ax.text(len(labs) - 0.5, 0.51, "below this line DESK is worse than the alternative",
+                  fontsize=6.5, color="#c1440e", ha="right", va="bottom")
+        c_ax.set_xticks(x)
+        c_ax.set_xticklabels(labs, fontsize=8)
+        c_ax.set_ylim(0, 1)
+        c_ax.set_ylabel("share of rows DESK wins", fontsize=8)
+        c_ax.set_title("DESK against both, by zone", fontsize=8.5)
+        c_ax.legend(fontsize=6.5, frameon=False, loc="lower left")
+        for sp in ("top", "right"):
+            c_ax.spines[sp].set_visible(False)
+    else:
+        c_ax.set_axis_off()
+
     return S.finish(fig, os.path.join(out_dir, "m04_vs_bar.png"),
                     f"Right panel is aggregated to the {BLOCK}x{BLOCK} holdout block because cells "
                     f"within a block are not independent, and blank where the two predictors "
                     f"differ by less than the {100 * S.SEED_NOISE:.1f}% seed-to-seed spread of a "
-                    f"fixed configuration. A difference that small is not an effect.")
+                    f"fixed configuration. A difference that small is not an effect. Read the right "
+                    f"panel FIRST: beating the interpolation bar is not the same as being useful, "
+                    f"and in the western native range — where the finch was already established "
+                    f"and the community was largely stable — DESK loses to simply assuming "
+                    f"nothing changed.")
 
 
 def map05_direction(run, maps, geo, out_dir):

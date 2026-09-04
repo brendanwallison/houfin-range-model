@@ -329,3 +329,27 @@ def test_the_withheld_span_comes_from_first_trained_year_not_the_common_window(t
     m["spacetime"]["baseline_ladder._bars.borrowed_delta"] = np.where(
         rows[:, 2] < ft, np.nan, 1.0).astype("float32")
     assert VM.map03_ladder_winner(run, m, _geo_ctx(), str(tmp_path))
+
+
+def test_the_null_is_scored_even_though_it_is_not_a_competitor(tmp_path):
+    """`no_change` is excluded from the WINNER map by design -- it ranks competitors and the null
+    is a decomposition device. But "usually free to beat" is not "always", and where the null is
+    genuinely the best answer the winner map cannot show it, by construction. Pooled it cancels:
+    DESK beats the null on ~79% of rows overall and on well under half in the western native
+    range, where the community was already established and stasis is close to right. So m04
+    scores DESK against BOTH, per zone."""
+    m = _maps()
+    geo = _geo_ctx()
+    # make the null unbeatable in the west and hopeless in the east
+    rows = m["spacetime"]["baseline_ladder._rows"]
+    west = geo.gp_zones["west"][rows[:, 0].astype(int), rows[:, 1].astype(int)]
+    nc = m["spacetime"]["baseline_ladder._bars.desk"].copy()
+    nc[west] *= 0.5
+    nc[~west] *= 2.0
+    m["spacetime"]["baseline_ladder._bars.no_change"] = nc
+    made = VM.map04_vs_bar({"report": None}, m, geo, str(tmp_path))
+    assert made
+    src = open(os.path.join(os.path.dirname(__file__), "..", "scripts", "viz",
+                            "validation_maps.py"), encoding="utf-8").read()
+    block = src[src.index("def map04_vs_bar"):src.index("def map05_direction")]
+    assert 'bars.get("no_change")' in block, "m04 must score against the null, not only the bar"

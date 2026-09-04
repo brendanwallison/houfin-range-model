@@ -259,3 +259,29 @@ def test_a_front_raster_that_is_the_wrong_shape_is_refused_not_resampled():
     panel, so it declines instead of raising -- but it must never stretch to fit."""
     g = _geo.GeoContext.__new__(_geo.GeoContext)
     assert g._load_front((999, 999)) is None
+
+
+def test_a_structurally_absent_rung_is_excluded_rather_than_emptying_the_comparison(tmp_path):
+    """The distinction the whole suite rests on, in the map layer. A rung that DECLINES SOME ROWS
+    must be intersected or it is graded on its easy subset; a rung that CANNOT RUN AT ALL is not
+    competing. Under a spatial holdout a held-out cell has no training years of its own, so
+    cell_trend is finite on 0 of 15,934 rows on the real data -- and requiring its support
+    intersected every row away and skipped the map entirely."""
+    m = _maps()
+    n = len(m["spacetime"]["baseline_ladder._bars.desk"])
+    m["spacetime"]["baseline_ladder._bars.cell_trend"] = np.full(n, np.nan, "float32")
+    made = VM.map03_ladder_winner({"report": None}, m, _geo_ctx(), str(tmp_path))
+    assert made, "an all-NaN rung must be dropped, not empty the whole comparison"
+
+
+def test_a_rung_that_declines_only_some_rows_still_narrows_the_common_support(tmp_path):
+    """The other half of the same distinction: a PARTIALLY available rung is competing, so its
+    missing rows must leave the comparison rather than being scored against a fuller opponent."""
+    m = _maps()
+    rows, bars = L.ladder_bars(m)
+    bars["spacetime_idw"][:40] = np.nan
+    comp = [n for n in bars if n != "no_change"]
+    live = [n for n in comp if np.isfinite(bars[n]).any()]
+    keep = np.isfinite(np.vstack([bars[n] for n in live])).all(axis=0)
+    assert live == comp, "a partially-available rung is still a competitor"
+    assert keep.sum() == len(rows) - 40

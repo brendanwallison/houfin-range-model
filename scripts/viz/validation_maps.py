@@ -112,7 +112,10 @@ def _blockify(grid, block=BLOCK):
     H, W = grid.shape
     ph, pw = (-H) % block, (-W) % block
     g = np.pad(grid, ((0, ph), (0, pw)), constant_values=np.nan)
-    with np.errstate(invalid="ignore"):
+    import warnings
+    with np.errstate(invalid="ignore"), warnings.catch_warnings():
+        # An all-NaN block is the normal case off the holdout, not a problem worth a warning.
+        warnings.simplefilter("ignore", RuntimeWarning)
         bm = np.nanmean(g.reshape(g.shape[0] // block, block, g.shape[1] // block, block),
                         axis=(1, 3))
     return np.kron(bm, np.ones((block, block)))[:H, :W]
@@ -221,9 +224,16 @@ def map02_ceiling(run, maps, geo, out_dir):
         g[r[ok], c[ok]] = ep[key][ok]
         _draw(geo, ax, g, f"noise floor — {title}", cmap="viridis", vmax=1.0)
         geo.great_plains(ax)
+    # NOT `1 - floor`. That is the NOISE share -- a cell whose two halves disagree is a noisy
+    # cell, not a cell with more to learn -- and drawing it as "room" inverts the map: the thinly
+    # surveyed west lights up brightest precisely where least can be resolved. The quantity that
+    # IS the room is how much a cell changed ACROSS eras beyond what its own within-era noise
+    # explains, which is `stratum_viable`'s own `d = flo - obs`.
     room = np.full(geo.shape, np.nan)
-    room[r[ok], c[ok]] = 1.0 - np.asarray(ep["floor_early"])[ok]
-    _draw(geo, axs[0][2], room, "resolvable room  (1 − floor)", cmap="magma")
+    obs = np.asarray(ep.get("same_cell_over_time_obs", np.full(len(r), np.nan)))
+    room[r[ok], c[ok]] = np.asarray(ep["floor_early"])[ok] - obs[ok]
+    _draw(geo, axs[0][2], room, "real turnover above the cell's own noise\n(floor − observed "
+                                "cross-era)", cmap="magma")
     geo.great_plains(axs[0][2])
     # REFUSED cells get their own flat colour and a legend entry rather than a hatch: at 27 km a
     # hatch over scattered single cells is illegible, and an illegible mark that means "we cannot
@@ -237,10 +247,13 @@ def map02_ceiling(run, maps, geo, out_dir):
                                                 label="refused: too few surveys to split")],
                          fontsize=6.5, loc="lower left", frameon=False)
     return S.finish(fig, os.path.join(out_dir, "m02_ceiling.png"),
-                    f"1.0 would be a noiseless cell. Hatched cells have too few surveys in an era "
-                    f"to split in half, so no independent observation exists and no ceiling can be "
-                    f"formed — they are refused, not scored. {int((~ok).sum()):,} of "
-                    f"{len(ok):,} cells.")
+                    f"The floor is the similarity between two disjoint halves of the SAME cell in "
+                    f"the SAME era, where no real turnover is possible — so 1.0 is a noiseless "
+                    f"cell and the shortfall is measurement noise. It is a CEILING on what any "
+                    f"model can score there. The third panel is the room that leaves: a cell only "
+                    f"has something to predict where it changed across eras by more than its own "
+                    f"noise. Refused cells (grey) have too few surveys in an era to split in half, "
+                    f"so no independent observation exists: {int((~ok).sum()):,} of {len(ok):,}.")
 
 
 def map03_ladder_winner(run, maps, geo, out_dir):
@@ -254,11 +267,20 @@ def map03_ladder_winner(run, maps, geo, out_dir):
     rows, bars = L.ladder_bars(maps)
     if rows is None or len(bars) < 2:
         return None
-    names = [n for n in S.ordered(list(bars)) if n != "no_change"]
+    # TWO DIFFERENT ABSENCES, and conflating them empties the map. A rung that DECLINES SOME ROWS
+    # must be intersected, or it is flattered by being graded on its easy subset -- that is what
+    # `win_rate_vs` protects against. A rung that CANNOT RUN AT ALL is not competing: under a
+    # spatial holdout a held-out cell has no training years of its own, so cell_trend and
+    # cell_nearest_year are finite on 0 of 15,934 rows, and requiring their support intersects
+    # every row away. Structural n/a is not a failure and is not a decline; it is an absence, and
+    # the figure names it rather than silently dropping it.
+    candidates = [n for n in S.ordered(list(bars)) if n != "no_change"]
+    absent = [n for n in candidates if not np.isfinite(bars[n]).any()]
+    names = [n for n in candidates if n not in absent]
+    if len(names) < 2:
+        return None
     stack = np.vstack([bars[n] for n in names])                 # (rungs, n_rows)
     finite = np.isfinite(stack)
-    # COMMON SUPPORT: only rank a row where every rung reached it. Scoring a bar's easy subset
-    # against a reference's full set is the flattering that `win_rate_vs` intersects to avoid.
     keep = finite.all(axis=0)
     if keep.sum() < 10:
         return None
@@ -288,9 +310,10 @@ def map03_ladder_winner(run, maps, geo, out_dir):
     geo.coastline(a)
     geo.great_plains(a)
     n_tie = int(np.nansum(alpha[np.isfinite(win_g)] < 1.0))
-    a.set_title(f"which rung predicts this cell best\nfaded = margin under "
-                f"{100 * S.SEED_NOISE:.1f}% (a tie): {n_tie:,} of "
-                f"{int(np.isfinite(win_g).sum()):,} cells", fontsize=8.5)
+    a.set_title(f"which rung predicts this cell best\n"
+                f"{int(keep.sum()):,} of {len(keep):,} cell-years survive the common-support "
+                f"intersection\nfaded = margin under {100 * S.SEED_NOISE:.1f}% (a tie): "
+                f"{n_tie:,} of {int(np.isfinite(win_g).sum()):,} cells", fontsize=8.5)
     fig.legend(handles=[plt.Rectangle((0, 0), 1, 1, fc=S.color(n), ec="none", label=S.label(n))
                         for n in names],
                fontsize=7, ncol=min(len(names), 4), loc="upper center", frameon=False,
@@ -311,6 +334,9 @@ def map03_ladder_winner(run, maps, geo, out_dir):
                 share.append(float(np.mean(np.round(win_g[m]) == i)) if m.any() else 0.0)
             b.bar(cols_z, share, bottom=bottom, color=S.color(nm), label=S.label(nm))
             bottom += np.asarray(share)
+        b.set_xticks(range(len(cols_z)))
+        b.set_xticklabels([f"{z}\nn={int((zones[z] & np.isfinite(win_g)).sum()):,}"
+                           for z in cols_z], fontsize=8)
         b.set_ylabel("share of cells won", fontsize=8)
         b.set_ylim(0, 1)
         b.set_title("who wins where, by Great Plains zone", fontsize=8.5)
@@ -321,12 +347,22 @@ def map03_ladder_winner(run, maps, geo, out_dir):
         b.set_axis_off()
         b.set_title("Great Plains zone raster absent", fontsize=8.5)
 
+    cap_absent = ("" if not absent else
+                  f" Structurally absent here and excluded from the comparison: "
+                  f"{', '.join(S.label(a) for a in absent)} — under a spatial holdout a held-out "
+                  f"cell has no training years of its own, so these cannot run at ALL, which is "
+                  f"different from declining a row and different again from losing.")
     return S.finish(fig, os.path.join(out_dir, "m03_ladder_winner.png"),
-                    "Scored only on cell-years every rung reached, so no rung is credited for "
+                    "Scored only on cell-years every REMAINING rung reached, so no rung is "
+                    "credited for "
                     "declining the hard rows. Faded regions are ties, not wins — a bare "
                     "winner-take-all map shows a confident colour for a 1% margin, which is how "
-                    "a noise field comes to look like a spatial finding.",
-                    tight_rect=(0, 0.06, 1, 0.93))
+                    "a noise field comes to look like a spatial finding." + cap_absent +
+                    " The intersection is what borrowed_delta costs: it reaches under half the "
+                    "rows, and requiring its support to rank a cell is the same discipline "
+                    "win_rate_vs applies — the alternative flatters whichever rung declined the "
+                    "hard rows.",
+                    tight_rect=(0, 0.10, 1, 0.92))
 
 
 def map04_vs_bar(run, maps, geo, out_dir):
@@ -349,12 +385,12 @@ def map04_vs_bar(run, maps, geo, out_dir):
     ho = maps.get("holdout")
 
     fig, axs = _panel(geo, ncols=2, w=5.0)
-    _draw(geo, axs[0][0], g, "DESK vs spacetime IDW  (blue = DESK better)",
+    # `baseline_panel` grades held-out cells only, so BOTH panels are out-of-sample -- the left
+    # one per cell, the right aggregated to the block. Labelling the left "DESK vs the bar" alone
+    # would imply it covers the whole map, which it does not and cannot.
+    _draw(geo, axs[0][0], g, "DESK vs spacetime IDW, per held-out cell\n(blue = DESK better)",
           cmap="RdBu", diverging=True)
     geo.great_plains(axs[0][0])
-    if ho is not None:
-        axs[0][0].contour(ho.astype(float), levels=[0.5], colors="#111111", linewidths=0.5,
-                          extent=geo.extent, origin="upper", zorder=7)
     # Held out only, at BLOCK resolution -- the honest out-of-sample picture.
     gh = np.full(geo.shape, np.nan)
     if ho is not None:

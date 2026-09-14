@@ -2307,6 +2307,24 @@ def run_desk_experiment(config=None):
         print("[desk] holdout_frac=0: NO VALIDATION SET. Epoch selection is unavailable, the "
               "final weights are kept, and this run has no measured skill -- infer it from "
               "the nearest sweep grid point and state that it was inferred.", flush=True)
+        # The two knobs must move TOGETHER. With no validation set nothing can select an epoch,
+        # so an unset stop_at_epoch is not "use the default" -- it trains the full `epochs`
+        # budget and ships whatever the final step produced. That is the OVER-TRAINED state:
+        # 9aa07ff measured the held-out kernel DEGRADING past the optimum rather than
+        # plateauing, so this silently ships a model measurably worse than the one the sweep
+        # selected. Nothing downstream can detect it either, precisely because the run has no
+        # score. Refused rather than warned: the whole point of this mode is that no metric
+        # will notice afterwards.
+        if desk_cfg.get("stop_at_epoch") is None:
+            raise SystemExit(
+                "desk.trend.holdout_frac=0 with desk.stop_at_epoch unset. With no validation "
+                "set no epoch can be selected, so training would run the full "
+                f"{desk_cfg.get('epochs')}-epoch budget and keep the FINAL weights -- past "
+                "the optimum, where "
+                "the held-out kernel is measured to degrade. Set desk.stop_at_epoch to the "
+                "epoch the sweep chose (analyze.py --stage 1 --smooth N gives the robust "
+                "argmin; --stage 2 extrapolates it to this data amount when the train_frac "
+                "axis has been run). See config/overlays/production.json.")
     if n_val < min_val:
         raise SystemExit(
             f"only {n_val} validation cells (floor {min_val}). Every reported val number, "

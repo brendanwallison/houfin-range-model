@@ -202,6 +202,49 @@ def test_every_overlay_still_names_one_basis_AFTER_merging_onto_the_base():
     assert checked, "no overlay exercises this; the guard would be silently untested"
 
 
+def test_no_config_sets_holdout_frac_zero_without_a_stopping_epoch():
+    """The one combination that silently ships a worse model than the sweep selected.
+
+    With holdout_frac=0 there is no validation set, so nothing can select an epoch: the trainer
+    keeps the FINAL weights and takes its stopping point from stop_at_epoch alone. Leave that
+    unset and the run trains its whole budget and ships the over-trained state -- and 9aa07ff
+    measured the held-out kernel DEGRADING past the optimum rather than plateauing, so it is
+    actively worse, not merely wasteful. No metric downstream can catch it, because the whole
+    point of the mode is that the run has no score.
+
+    Checked on base and on every overlay merged onto it, since either can carry either knob.
+    """
+    from src.config_utils import _deep_merge
+    root = os.path.join(os.path.dirname(__file__), "..")
+    base = json.loads(open(os.path.join(root, "config", "esk_desk_config.json"),
+                           encoding="utf-8").read())
+    d = os.path.join(root, "config", "overlays")
+    candidates = [("<base>", base)]
+    for name in sorted(n for n in os.listdir(d) if n.endswith(".json")):
+        o = json.loads(open(os.path.join(d, name), encoding="utf-8").read())
+        candidates.append((name, _deep_merge(base, o)))
+    for name, cfg in candidates:
+        frac = ((cfg.get("desk") or {}).get("trend") or {}).get("holdout_frac", 0.15)
+        if float(frac) != 0.0:
+            continue
+        assert (cfg.get("desk") or {}).get("stop_at_epoch") is not None, \
+            (f"{name} sets holdout_frac=0 without stop_at_epoch: no epoch can be selected, so "
+             f"it would train the full budget and ship the over-trained weights")
+
+
+def test_the_production_overlay_is_the_one_that_enables_that_mode():
+    """And it must carry BOTH knobs, since that is the pairing the guard exists for."""
+    p = os.path.join(os.path.dirname(__file__), "..", "config", "overlays", "production.json")
+    o = json.loads(open(p, encoding="utf-8").read())
+    assert float(o["desk"]["trend"]["holdout_frac"]) == 0.0
+    assert int(o["desk"]["stop_at_epoch"]) > 0
+    # `epochs` must NOT be lowered to the stopping point instead: _warmup_cosine is
+    # parameterised on the epochs BUDGET, so changing it alters the learning rate at every
+    # preceding step and trains a different model rather than the same one stopped earlier.
+    assert "epochs" not in o.get("desk", {}), \
+        "lowering epochs re-parameterises the LR schedule; stop_at_epoch is the halt that does not"
+
+
 def test_the_tempho_overlays_pin_their_basis_rather_than_inheriting_it():
     """The three temporal-holdout runs must name the basis they were actually run on.
 

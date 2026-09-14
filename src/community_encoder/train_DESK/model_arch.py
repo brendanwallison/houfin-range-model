@@ -26,6 +26,8 @@ Design safeguards (see the DESK spatial-conv plan):
 ``MultiInputAutoencoder`` (the deprecated 2-stream PRISM/BUI special case) is
 retained only as a constructor shim; it has no live caller.
 """
+import os
+
 import numpy as np
 import torch
 import torch.nn.functional as F
@@ -127,6 +129,64 @@ def hidden_width_from_meta(dm):
     if arr.ndim == 0:
         return int(arr)
     return [int(v) for v in arr.reshape(-1)]
+
+
+def basis_dir_from_meta(dm):
+    """Read the ESK basis directory back out of a ``desk_meta.npz``, or ``None`` if absent.
+
+    ``None`` means the checkpoint predates basis recording (added 2026-09-14) and its basis
+    is UNKNOWABLE from the artifact -- not that it matches. ``desk_meta.npz`` records
+    normalization, architecture, dropout and best epoch, but until now not the one thing that
+    makes a z-coordinate mean anything.
+    """
+    if "esk_basis_dir" not in dm:
+        return None
+    return str(np.asarray(dm["esk_basis_dir"]).reshape(-1)[0])
+
+
+def check_basis_matches(dm, z_dir, *, context):
+    """Refuse to grade or encode a checkpoint through a basis it was not trained in.
+
+    THE FAILURE THIS EXISTS FOR. A Nystrom feature map is a square-root factorization of the
+    Ruzicka kernel, so two bases fitted from different landmark sets satisfy the SAME kernel
+    contract while differing by a rotation Q. Measured across this project's two bases: Gram
+    relative difference 0.016 (interchangeable as kernels) against median ||z_A - z_B|| at
+    1.087x ||z|| and a Procrustes residual of 0.089 (not interchangeable as coordinates).
+    Every raw-coordinate metric -- ``zspace_reconstruction``'s ``||z_DESK - z_obs||`` above
+    all -- then measures Q rather than the model, and the kernel contract in both bases'
+    ``meta.json`` will agree the whole time.
+
+    Config alone could not catch it: ``desk.z_dir`` moved in commit 0288236 while the
+    checkpoint stayed put, and the check that LOOKED like cover
+    (``validate_spacetime.recent_basis_residual``) compares points projected through a basis
+    against that same basis's stored ``Z.npy``, so it is identically zero for ANY basis and
+    blind to precisely this.
+
+    An absent record WARNS rather than raises: every checkpoint built before 2026-09-14 lacks
+    one, and refusing them would strand the production model. It says plainly that the basis
+    is unverified, which is the honest state, rather than implying a match.
+    """
+    recorded = basis_dir_from_meta(dm)
+    want = os.path.normpath(str(z_dir))
+    if recorded is None:
+        print(f"[{context}] WARNING: this checkpoint's desk_meta.npz predates basis recording, "
+              f"so the basis it TRAINED in cannot be verified against the basis being used "
+              f"({want}). If they differ, every raw-coordinate metric here measures the "
+              f"rotation between them rather than the model. Retrain, or confirm by hand.",
+              flush=True)
+        return None
+    if os.path.normpath(recorded) != want:
+        raise ValueError(
+            f"[{context}] basis mismatch. This DESK checkpoint was trained in\n"
+            f"    {recorded}\n"
+            f"but the active config supplies\n"
+            f"    {want}\n"
+            f"Two bases can satisfy the same Ruzicka kernel contract and still differ by a "
+            f"rotation, so z-coordinates are NOT comparable across them and no metric built "
+            f"on ||z - z'|| means anything here. Point desk.z_dir/latent_cube.z_dir at the "
+            f"basis this checkpoint trained in, or retrain against the basis you want "
+            f"(spacetime-esk -> desk -> cube, all three under one config).")
+    return recorded
 
 
 class MultiStreamAutoencoder(nn.Module):

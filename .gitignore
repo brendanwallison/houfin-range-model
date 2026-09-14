@@ -23,6 +23,15 @@ docs/img
 houfin_*.o*
 houfin_*.e*
 gpu_*.csv
+# REMORA writes one directory per job (plus one per resubmit), so a few months of runs
+# leaves several hundred of them and `git status` stops being readable -- which is how a
+# genuinely stray file goes unnoticed among them.
+remora_*/
+# submit_sweep.sh generates its per-task script into the submit dir.
+.sweep_task_*.sh
+# Diagnostics that write their report into the cwd rather than $HOUFIN_PROCESSED.
+basis_domain_gap.json
+download*.log
 # Pulled run outputs (reports + job logs scp'd off TACC). Data artifacts, not source --
 # processed outputs live under $HOUFIN_PROCESSED, never inside the repo.
 results/

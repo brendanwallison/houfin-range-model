@@ -393,8 +393,13 @@ def cell_xy(rows, cols, ref_raster):
 
 def _load_model(config):
     import torch
-    from .model_arch import MultiStreamAutoencoder, hidden_width_from_meta
+    from .model_arch import (MultiStreamAutoencoder, check_basis_matches,
+                             hidden_width_from_meta)
     dm = np.load(os.path.join(config["paths"]["desk_output_dir"], "desk_meta.npz"), allow_pickle=True)
+    # Every metric below that compares z-coordinates is meaningless if the basis this model
+    # trained in is not the basis `desk.z_dir` now supplies -- and recent_basis_residual
+    # cannot see that, because it grades a basis against itself.
+    check_basis_matches(dm, config["desk"]["z_dir"], context="validate")
     schema = json.loads(str(dm["schema"]))
     spatial_kernel = int(dm["spatial_kernel"]) if "spatial_kernel" in dm else 0
     # Width is a property of the TRAINED net, not a config choice here: it sets state_dict
@@ -1353,8 +1358,11 @@ def run_validate(config=None, n_pairs=20000, cka_sample=800, seed=0):
         report["zspace_reconstruction"]["_note"] = ("PER-CELL reconstruction in the pinned ESK "
             "z-basis: err_desk = ||z_DESK - z_obs||, err_nochange = ||z_obs(2023) - z_obs||. "
             "frac_desk_beats_nochange > 0.5 => DESK reconstructs the past community better than "
-            "assuming 2023. recent_basis_residual ~0 confirms the basis matches (z_obs reproduces "
-            "the ESK Z at recent points).")
+            "assuming 2023. recent_basis_residual ~0 confirms only that z_obs reproduces the "
+            "ESK Z stored in THE SAME z_dir -- it is a self-consistency check on one basis and "
+            "is identically zero for any of them, so it does NOT confirm that this basis is the "
+            "one DESK trained in. That is model_arch.check_basis_matches, against the "
+            "esk_basis_dir recorded in desk_meta.npz.")
 
     out_dir = config["paths"]["desk_output_dir"]
     out = os.path.join(out_dir, "validate_report.json")

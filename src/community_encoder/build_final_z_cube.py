@@ -26,6 +26,7 @@ from tqdm import tqdm
 from community_encoder.train_DESK.config_utils import load_config
 from community_encoder.train_DESK import covariate_io as cio
 from community_encoder.train_DESK.model_arch import (MultiStreamAutoencoder,
+                                                     check_basis_matches,
                                                      hidden_width_from_meta)
 from src.data.masks import read_land_mask
 
@@ -155,6 +156,30 @@ def build_spacetime_cube(config: Optional[Union[Dict[str, Any], str, os.PathLike
     water_mask_path = _req("water_mask_path")
     output_dir = _req("output_dir")
 
+    # The four places the ESK basis is named must resolve to ONE directory. The comment above
+    # explains how they came to disagree; this is what makes the disagreement fail. It bit for
+    # real: commit 0288236 moved latent_cube.z_dir and desk.z_dir to a new basis and left
+    # z_ref_path/mask_ref_path behind, which would have labelled a cube with one basis while
+    # backfilling it from another -- and z_dir is ONLY the label here (it is never loaded), so
+    # the key that moved and the key that determines content were disjoint.
+    _basis = {
+        "latent_cube.z_dir": os.path.normpath(str(z_dir)),
+        "latent_cube.z_ref_path": os.path.normpath(os.path.dirname(str(z_ref_path))),
+        "latent_cube.mask_ref_path": os.path.normpath(os.path.dirname(str(mask_ref_path))),
+    }
+    _desk_zdir = (config.get("desk", {}) or {}).get("z_dir")
+    if _desk_zdir:
+        _basis["desk.z_dir"] = os.path.normpath(str(_desk_zdir))
+    if len(set(_basis.values())) > 1:
+        raise ValueError(
+            "the ESK basis is named inconsistently across the config:\n"
+            + "".join(f"    {k:26s} -> {v}\n" for k, v in _basis.items())
+            + "All four must be one directory. Two bases can satisfy the same Ružička kernel "
+              "contract and still differ by a rotation, so a cube built from one and "
+              "backfilled from another is not a cube in either basis. Note z_dir is only the "
+              "provenance LABEL here; z_ref_path/mask_ref_path are what the static backfill "
+              "actually reads, so a mismatch is silently wrong rather than loudly broken.")
+
     os.makedirs(output_dir, exist_ok=True)
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -179,6 +204,10 @@ def build_spacetime_cube(config: Optional[Union[Dict[str, Any], str, os.PathLike
     # Scalar OR per-stream list: hidden_width_from_meta decides which, in one place, so a
     # per-stream net does not crash here after training successfully.
     hidden_width = hidden_width_from_meta(dm)
+    # And the basis the CHECKPOINT trained in must be the basis this config supplies. The
+    # config-internal check above cannot see that: it only proves the config agrees with
+    # itself, which it did throughout the 2026-08/09 mismatch.
+    check_basis_matches(dm, z_dir, context="cube")
     mlp_expansion = int(dm["mlp_expansion"]) if "mlp_expansion" in dm else 4
     schema = _json.loads(str(dm["schema"]))
     kernel = str(dm["kernel"]) if "kernel" in dm else ""

@@ -2555,6 +2555,13 @@ def run_desk_experiment(config=None):
              mu=mu, sd=sd, stream_dims=np.array(stream_dims, int),
              latent_dim=latent_dim, label_year=label_year,
              spatial_kernel=spatial_kernel,
+             # WHICH ESK basis the targets were projected through. Without it a checkpoint's
+             # z-coordinates are uninterpretable: two bases satisfying the same Ruzicka kernel
+             # contract differ by a rotation, so grading this model in the wrong one measures
+             # that rotation. desk.z_dir moved under a fixed checkpoint for three weeks in
+             # 2026-08/09 and nothing could detect it, because this was the missing record.
+             # model_arch.check_basis_matches reads it back at every encode and grade.
+             esk_basis_dir=str(z_dir),
              # Provenance for the regularization/augmentation recipe. dropout does not change
              # state_dict keys (so checkpoints stay loadable either way), but without recording
              # it a run cannot be reproduced or compared against another.

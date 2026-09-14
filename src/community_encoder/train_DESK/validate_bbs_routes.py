@@ -1861,6 +1861,12 @@ def desk_z_ema(config, keys):
 
     out_dir = config["paths"]["desk_output_dir"]
     dm = np.load(os.path.join(out_dir, "desk_meta.npz"), allow_pickle=True)
+    # The ESK oracle and every z-space bucket below project observed communities through
+    # desk.z_dir and compare them to this model's output, so the two must be one basis.
+    _zd = (config.get("desk", {}) or {}).get("z_dir")
+    if _zd:
+        from .model_arch import check_basis_matches
+        check_basis_matches(dm, _zd, context="bbs-routes")
     ema_on = bool(dm["output_ema"]) if "output_ema" in dm.files else False
     hl = float(dm["ema_half_life"]) if "ema_half_life" in dm.files else float("nan")
     warm = int(dm["ema_warmup_start"]) if "ema_warmup_start" in dm.files else 1940

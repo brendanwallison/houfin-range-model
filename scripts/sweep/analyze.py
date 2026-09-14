@@ -564,12 +564,20 @@ def stage2(runs, threshold):
     cells = sorted({c for v in grid.values() for c in v},
                    key=lambda c: (_t_order.get(c.split("_")[0], 99),
                                   _f_order.get(c.split("_")[1], 99)))
+    # An INCOMPLETE run (killed before writing run_summary.json, recovered from its trajectory
+    # by 022e9f1) has rows but no best_epoch. Stage 1 already renders those with a '*'; stage 2
+    # indexed the key directly and died on the first one, taking the whole analysis with it --
+    # including the tables that had nothing to do with the missing field.
+    def _epoch(rec):
+        e = rec.get("best_epoch")
+        return f"{e:>12}" if e is not None else f"{'incomplete':>12}"
+
     print("best EPOCH by configuration x data cell")
     print(f"{'config':<8} " + " ".join(f"{c:>12}" for c in cells))
     print("-" * (9 + 13 * len(cells)))
     for cfg, byc in sorted(grid.items()):
         print(f"{cfg:<8} " + " ".join(
-            f"{byc[c]['best_epoch']:>12}" if c in byc else f"{'-':>12}" for c in cells))
+            _epoch(byc[c]) if c in byc else f"{'-':>12}" for c in cells))
     print()
     print("best held-out KERNEL by configuration x data cell")
     print(f"{'config':<8} " + " ".join(f"{c:>12}" for c in cells))
@@ -601,14 +609,27 @@ def stage2(runs, threshold):
               f"monotone rather than noise by comparing against the stage-3 seed spread.")
     # epoch vs data amount, at the production end
     print("\nbest epoch against training cell-years (the trajectory to extrapolate along):")
+    fitted = 0
     for cfg, byc in sorted(grid.items()):
         pts = [(v.get("n_train_cell_years"), v["best_epoch"]) for c, v in sorted(byc.items())
-               if v.get("n_train_cell_years")]
+               if v.get("n_train_cell_years") and v.get("best_epoch") is not None]
         if len(pts) >= 2:
             xs, ys = zip(*pts)
-            slope = np.polyfit(np.log(xs), ys, 1)[0] if len(pts) >= 2 else float("nan")
+            slope = np.polyfit(np.log(xs), ys, 1)[0]
+            fitted += 1
             print(f"  {cfg:<8} epochs {min(ys)}..{max(ys)} over {min(xs):,}..{max(xs):,} "
                   f"cell-years  (d(epoch)/d(log cell-years) = {slope:+.0f})")
+    if not fitted:
+        # Say the axis is MISSING rather than printing an empty section under a heading that
+        # promises a trajectory. A production retrain reading stop_at_epoch off this needs to
+        # know the number is a single point, not a fit -- and best epoch grows with data, so
+        # one measured at a holdout cell UNDERSTATES the optimum at 100% of cells.
+        print(f"  NO TRAJECTORY: {len(cells)} data cell(s) present ({', '.join(cells)}), and a "
+              f"fit needs at least 2 differing in training data amount.")
+        print( "  The train_frac / temporal axes of the grid were never run, so best epoch "
+               "cannot be extrapolated to the production data amount.")
+        print( "  Either run the data-amount arm (desk.trend.train_frac over f70/f85/f95), or "
+               "treat the single-cell best epoch as a LOWER BOUND on stop_at_epoch and say so.")
 
 
 def nesting_table(runs):

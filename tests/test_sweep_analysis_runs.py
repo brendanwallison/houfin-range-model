@@ -204,6 +204,50 @@ def test_stage2_runs_to_completion(tmp_path):
     assert "winner per cell" in out.stdout
 
 
+def test_stage2_survives_an_incomplete_run(tmp_path):
+    """One walltime-killed run must not take the whole analysis down with it.
+
+    `load_runs` deliberately loads trajectory-only runs and flags them `_incomplete`, and stage 1
+    renders those with a '*'. Stage 2 indexed `best_epoch` directly, so the FIRST incomplete run
+    raised KeyError and killed every table after it -- including the ones that do not use the
+    field. An analysis that dies on the runs it was extended to recover is worse than one that
+    never loaded them, because the failure looks like a bug in the data rather than in the
+    reader.
+    """
+    root = str(tmp_path / "sweeps" / "hp3")
+    os.makedirs(root, exist_ok=True)
+    for cfg in ("base", "hl4"):
+        _make_run(root, f"sweep_t0_f100_{cfg}")
+    killed = _make_run(root, "sweep_t0_f100_mw40")
+    os.remove(os.path.join(killed, "run_summary.json"))     # exactly what a walltime cut leaves
+
+    out = _run("--root", root, "--stage", "2")
+    assert out.returncode == 0, out.stderr
+    assert "Traceback" not in out.stderr, out.stderr
+    assert "incomplete" in out.stdout, "the killed run must be shown as incomplete, not omitted"
+    assert "winner per cell" in out.stdout, "tables after the incomplete row must still render"
+
+
+def test_stage2_refuses_to_imply_a_trajectory_from_one_data_cell(tmp_path):
+    """A single data cell cannot support the fit the section heading promises.
+
+    This is the real state of the desk_hp sweep: 25 runs, all at t0_f100, because the
+    train_frac / temporal axes were never run. The heading "the trajectory to extrapolate
+    along" over an empty section invites reading the single-cell best epoch as though it were
+    fitted -- and best epoch GROWS with training data, so a value measured with a holdout
+    understates the optimum at 100% of cells. It has to say the axis is missing.
+    """
+    root = str(tmp_path / "sweeps" / "hp4")
+    os.makedirs(root, exist_ok=True)
+    for cfg in ("base", "hl4"):
+        _make_run(root, f"sweep_t0_f100_{cfg}")
+
+    out = _run("--root", root, "--stage", "2")
+    assert out.returncode == 0, out.stderr
+    assert "NO TRAJECTORY" in out.stdout
+    assert "LOWER BOUND" in out.stdout, "it must say how the single number may be used"
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main([__file__, "-q"]))
 

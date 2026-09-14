@@ -158,21 +158,61 @@ def test_the_cube_refuses_a_config_that_names_two_bases(tmp_path):
     assert not out.exists(), "the guard must fire before the cube directory is created"
 
 
-def test_the_balanced_arm_overlay_moves_all_four_paths_together():
-    """The overlay is the thing that would reintroduce the bug if it moved only some keys.
-
-    0288236 moved two of the four and left the backfill reference behind. Since z_dir is only
-    a provenance label in the cube builder while z_ref_path is what the static backfill reads,
-    the keys it moved and the key that determines content were disjoint.
-    """
-    p = os.path.join(os.path.dirname(__file__), "..", "config", "overlays",
-                     "basis_balanced.json")
-    o = json.loads(open(p, encoding="utf-8").read())
-    seen = {
-        "desk.z_dir": o["desk"]["z_dir"],
-        "latent_cube.z_dir": o["latent_cube"]["z_dir"],
-        "latent_cube.z_ref_path": os.path.dirname(o["latent_cube"]["z_ref_path"]),
-        "latent_cube.mask_ref_path": os.path.dirname(o["latent_cube"]["mask_ref_path"]),
+def _basis_paths(cfg):
+    """The four independent copies of the ESK basis path, as a dict of key -> directory."""
+    return {
+        "desk.z_dir": cfg["desk"]["z_dir"],
+        "latent_cube.z_dir": cfg["latent_cube"]["z_dir"],
+        "latent_cube.z_ref_path": os.path.dirname(cfg["latent_cube"]["z_ref_path"]),
+        "latent_cube.mask_ref_path": os.path.dirname(cfg["latent_cube"]["mask_ref_path"]),
     }
-    assert len(set(seen.values())) == 1, f"overlay names more than one ESK basis: {seen}"
-    assert all("esk_balanced" in v for v in seen.values())
+
+
+def test_every_overlay_still_names_one_basis_AFTER_merging_onto_the_base():
+    """The invariant is on the MERGED config, which is the only thing any stage ever sees.
+
+    Checking an overlay in isolation gets this wrong in both directions: an overlay that pins
+    only `desk.z_dir` (the tempho runs, which never build a cube) looks incomplete while being
+    perfectly consistent, and an overlay that moves all four to a basis the BASE disagrees with
+    looks fine while being the original defect.
+
+    That defect, precisely: 0288236 moved both z_dirs and left z_ref_path/mask_ref_path behind.
+    z_dir is only a provenance LABEL in the cube builder while z_ref_path is what the static
+    backfill actually reads, so the keys it moved and the key that determines content were
+    disjoint -- the cube would have been labelled with one basis and filled from another.
+
+    Iterating every overlay rather than a named list is deliberate: the next one to get this
+    wrong does not exist yet. The merge is the real `_deep_merge`, so this cannot drift from
+    what `load_config` does.
+    """
+    from src.config_utils import _deep_merge
+    root = os.path.join(os.path.dirname(__file__), "..")
+    base = json.loads(open(os.path.join(root, "config", "esk_desk_config.json"),
+                           encoding="utf-8").read())
+    d = os.path.join(root, "config", "overlays")
+    checked = []
+    for name in sorted(n for n in os.listdir(d) if n.endswith(".json")):
+        o = json.loads(open(os.path.join(d, name), encoding="utf-8").read())
+        if "desk" not in o and "latent_cube" not in o:
+            continue                                  # not an encoder overlay (e.g. map_*_z)
+        seen = _basis_paths(_deep_merge(base, o))
+        assert len(set(seen.values())) == 1, \
+            f"{name} merged onto the base names more than one ESK basis: {seen}"
+        checked.append(name)
+    assert checked, "no overlay exercises this; the guard would be silently untested"
+
+
+def test_the_tempho_overlays_pin_their_basis_rather_than_inheriting_it():
+    """The three temporal-holdout runs must name the basis they were actually run on.
+
+    They were run on esk_balanced (checkpoints 2026-08-21, graded 2026-09-01). Inheriting the
+    basis from the base config is how the production checkpoint came to sit on a different one
+    silently -- an overlay whose job is to reproduce a specific run cannot let the basis move
+    underneath it when production later moves.
+    """
+    d = os.path.join(os.path.dirname(__file__), "..", "config", "overlays")
+    for yr in (1975, 1985, 1995):
+        o = json.loads(open(os.path.join(d, f"desk_tempho_{yr}.json"), encoding="utf-8").read())
+        z = (o.get("desk") or {}).get("z_dir")
+        assert z and "esk_balanced" in z, \
+            f"desk_tempho_{yr}.json must pin the basis it ran on, got {z!r}"

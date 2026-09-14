@@ -1,0 +1,53 @@
+{
+  "_comment": [
+    "THE LEGACY BASIS, kept for forensics and reproduction -- not for new work. Production is",
+    "encoder/esk_balanced/spacetime (the base config); this overlay is the basis that preceded",
+    "it, encoder/esk/spacetime, built 2026-08-19 18:12 with random landmarks and no windowed",
+    "augmentation.",
+    "",
+    "WHAT IT IDENTIFIES. Two artifacts on disk were made with this basis and are therefore NOT",
+    "production, despite sitting at the production paths:",
+    "    encoder/desk/env_model_semisup.pth   2026-08-20 08:28",
+    "    encoder/cube/                        2026-08-20 10:38 (built from that checkpoint)",
+    "Both predate encoder/esk_balanced/spacetime (2026-08-21 12:01) and must be rebuilt before",
+    "anything downstream consumes them: spacetime-esk is already done, so `desk` then `cube`.",
+    "",
+    "HOW THE MISMATCH WAS FOUND, since the numbers are the clearest statement of why it matters.",
+    "The 2026-09-04 validate run graded that Aug-20 checkpoint through the BALANCED basis. Its",
+    "own internal control gives the size of the effect -- `no_change` is computed entirely",
+    "inside the grading basis and came out at 0.46745043992996216 in all four reports, while",
+    "DESK's median error moved:",
+    "    desk (Aug-20 ckpt, graded in esk_balanced)   0.8046   wins 5.8% of rows",
+    "    desk_tempho_1975 (Aug-21 ckpt, same basis)   0.4340   wins 58.1%",
+    "    desk_tempho_1985 (Aug-21 ckpt, same basis)   0.4432   wins 56.4%",
+    "    desk_tempho_1995 (Aug-21 ckpt, same basis)   0.4507   wins 55.5%",
+    "The null does not move because it never leaves the grading basis; DESK's error nearly",
+    "doubles because its coordinates are in the other one. The two bases agree as kernels (Gram",
+    "relative difference 0.016) and differ by a rotation (Procrustes residual 0.089, median",
+    "||z_A - z_B|| = 1.087x ||z||), which is precisely why every contract check passed while the",
+    "comparison was meaningless.",
+    "",
+    "Reproducing an Aug-20-era artifact:",
+    "    ESK_DESK_CONFIG=config/overlays/basis_esk_native.json STAGES=<stage> bash scripts/tacc/submit_encoder.sh",
+    "Note landmark_mode/augment_windowed/balance are carried too: they define the basis and the",
+    "training target, so the paths alone would not reproduce anything."
+  ],
+  "paths": {
+    "esk_output_dir": "${HOUFIN_PROCESSED}/encoder/esk"
+  },
+  "esk": {
+    "spacetime": {"sigma": 0.0, "latent_dim": 64, "landmark_mode": "random",
+                  "augment_windowed": false, "augment_half_width": 2, "augment_min_years": 2,
+                  "n_landmarks": 16000, "diagnostic_sample": 800}
+  },
+  "desk": {
+    "z_dir": "${HOUFIN_PROCESSED}/encoder/esk/spacetime",
+    "balance": {"enabled": false, "n_min": null, "n_min_quantile": 0.25, "spatial_bins": 4,
+                "cap": 5.0, "power": 0.5}
+  },
+  "latent_cube": {
+    "z_dir": "${HOUFIN_PROCESSED}/encoder/esk/spacetime",
+    "z_ref_path": "${HOUFIN_PROCESSED}/encoder/esk/spacetime/Z.npy",
+    "mask_ref_path": "${HOUFIN_PROCESSED}/encoder/esk/spacetime/valid_mask.npy"
+  }
+}

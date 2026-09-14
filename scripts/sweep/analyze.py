@@ -166,16 +166,22 @@ def stage1(runs, threshold, smooth=0):
         sm_min, sm_ep = (_smoothed_min([{"epoch": e, "v": v} for v, e in kv], smooth)
                          if smooth > 1 else (raw_min, raw_ep))
         k_min, k_ep = (sm_min, sm_ep) if smooth > 1 else (raw_min, raw_ep)
+        # An INCOMPLETE run (walltime-killed, recovered from its trajectory by load_runs) has
+        # rows but never wrote run_summary.json, so it has no recorded best_epoch. Everything
+        # stage 1 ranks on is rebuilt from the trajectory anyway, so such a run IS rankable --
+        # it just has no recorded epoch to compare the trajectory's argmin against. Indexing
+        # the key directly killed the whole stage on the first one, which is how the
+        # `* = INCOMPLETE` legend came to describe a table that could not be reached.
         rows.append({
-            "config": cfg,
-            "best_epoch": k_ep if k_ep is not None else r["best_epoch"],
-            "recorded_epoch": r["best_epoch"],
+            "config": cfg + ("*" if r.get("_incomplete") else ""),
+            "best_epoch": k_ep if k_ep is not None else r.get("best_epoch"),
+            "recorded_epoch": r.get("best_epoch"),
             "raw": raw_min, "raw_epoch": raw_ep,
             "smoothed": sm_min, "smoothed_epoch": sm_ep,
             "kernel": k_min,
             "zmse": (min(zv)[0] if zv else float("nan")),
             "endval": _end_of_training(r["_rows"], col),
-            "spike": _spike_factor(r["_rows"], r["best_epoch"], col),
+            "spike": _spike_factor(r["_rows"], r.get("best_epoch"), col),
             "epochs": r.get("epochs_budget"),
             "params": r.get("n_params"),
             "smooth": r.get("selection_smooth", 0),
@@ -200,7 +206,8 @@ def stage1(runs, threshold, smooth=0):
     # Only meaningful without smoothing. With --smooth the table's epoch is the smoothed argmin
     # and run_summary's is the raw one, so they differ BY DESIGN -- reporting that as "min_delta
     # rejected genuine improvements" diagnosed a bug that is fixed and was not the cause.
-    off = [x for x in rows if x["recorded_epoch"] != x["best_epoch"]] if smooth <= 1 else []
+    off = [x for x in rows if x["recorded_epoch"] is not None
+           and x["recorded_epoch"] != x["best_epoch"]] if smooth <= 1 else []
     if off:
         print(f"NOTE {len(off)}/{len(rows)} runs recorded a best_epoch that is not their "
               f"trajectory's argmin (min_delta rejected genuine improvements). The table below "

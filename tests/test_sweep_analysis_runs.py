@@ -204,6 +204,31 @@ def test_stage2_runs_to_completion(tmp_path):
     assert "winner per cell" in out.stdout
 
 
+@pytest.mark.parametrize("stage,extra", [("1", ["--smooth", "11"]), ("1", []), ("2", [])])
+def test_neither_stage_dies_on_an_incomplete_run(tmp_path, stage, extra):
+    """Both stages, and stage 1 under --smooth, which is the invocation that exposed it.
+
+    `load_runs` recovers walltime-killed runs from their trajectories and flags them
+    `_incomplete`; two of analyze.py's tables already render that flag as a trailing '*'. But
+    stage 1 and stage 2 both indexed r["best_epoch"] directly, so the FIRST incomplete run
+    raised KeyError -- meaning the `* = INCOMPLETE` legend described a table no root containing
+    such a run could ever reach. Everything stage 1 ranks on is rebuilt from the trajectory, so
+    these runs are genuinely rankable; only the recorded epoch is missing.
+    """
+    root = str(tmp_path / "sweeps" / f"hp_inc_{stage}{len(extra)}")
+    os.makedirs(root, exist_ok=True)
+    for cfg in ("base", "hl4"):
+        _make_run(root, f"sweep_t0_f100_{cfg}")
+    killed = _make_run(root, "sweep_t0_f100_mw40")
+    os.remove(os.path.join(killed, "run_summary.json"))     # exactly what a walltime cut leaves
+
+    out = _run("--root", root, "--stage", stage, *extra)
+    assert out.returncode == 0, out.stderr
+    assert "Traceback" not in out.stderr, out.stderr
+    assert "mw40*" in out.stdout or "incomplete" in out.stdout, \
+        "the killed run must be shown and marked, not dropped and not fatal"
+
+
 def test_stage2_survives_an_incomplete_run(tmp_path):
     """One walltime-killed run must not take the whole analysis down with it.
 

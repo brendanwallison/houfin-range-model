@@ -52,6 +52,18 @@ model = [
 gpu = [
     "jax[cuda12]>=0.8.1",
 ]
+# Correlative-SDM benchmark baselines (scripts/run_sdm_benchmark.py). LightGBM
+# for the boosted-regression-tree baseline -- NOT sklearn's HistGradientBoosting,
+# because the Poisson/Tweedie objectives are what the SDM literature's BRT recipe
+# (Elith, Leathwick & Hastie 2008) needs. biolith is the Python implementation of
+# the `unmarked` occupancy/N-mixture family; it rides on the numpyro/jax already
+# in [model], so this extra is additive and does not touch the CUDA pins below.
+#   uv pip install -e ".[sdm]"
+sdm = [
+    "scikit-learn>=1.6",
+    "lightgbm>=4.5",
+    "biolith>=0.1.0",
+]
 # Test runner (dev only). Install with:  uv pip install -e ".[dev]"
 dev = [
     "pytest>=8.0",

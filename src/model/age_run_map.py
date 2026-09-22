@@ -251,6 +251,24 @@ def run_map():
         losses = list(np.asarray(ckpt["losses"]))
         if start_step != len(losses):
             raise RuntimeError("checkpoint step/loss history mismatch")
+        # numpyro keeps `constrain_fn` on the SVI OBJECT, not inside SVIState: __init__ sets it
+        # to None and only init() builds it from the model's parameter transforms
+        # (numpyro/infer/svi.py). A pickled SVIState therefore restores the optimizer but leaves
+        # the object half-constructed, and the first update() dies inside loss_fn with
+        # "'NoneType' object is not callable" -- AFTER the checkpoint has loaded cleanly and
+        # printed a reassuring [resume] line naming the right step. So every chained resume job
+        # has failed since RESUBMITS was written; a wall-clock kill silently ended the fit at
+        # whatever step it had reached.
+        #
+        # init() is called purely for that side effect and its state discarded. It costs one
+        # model compile, which a fresh run pays anyway. prior_scale is taken at the RESUMED
+        # step so the traced model matches the continuation, though constrain_fn depends only
+        # on parameter supports and not on the scale.
+        svi.init(
+            jax.random.PRNGKey(41),
+            data=data_dict,
+            prior_scale=_prior_scale_for_step(start_step),
+        )
         print(f"[resume] compatible checkpoint at absolute step {start_step}/{TOTAL_STEPS}")
     else:
         print("Compiling model (fresh optimizer state)...")

@@ -11,7 +11,14 @@ noise, because it infers the niche axis from the occupancy axis (Pulliam 2000).
 Subcommands
 -----------
   preflight    Check every input exists and is on the model grid. Fits nothing,
-               exits nonzero if not. Run this BEFORE submitting anything.
+               exits nonzero if not. Cheap enough for a TACC LOGIN NODE -- it
+               samples years and verifies geometry once per source, so it costs
+               a few hundred stats, not thousands of raster header reads.
+               Run this BEFORE submitting anything.
+
+EVERYTHING ELSE BELONGS IN A BATCH JOB. `brt` fits 5-fold LightGBM over ~64k
+route-years and `biolith` runs NUTS; neither should touch a login node. Use
+scripts/tacc/submit_sdm_benchmark.sh.
   premise      Observed BBS abundance/occupancy by Great Plains zone and latitude
                band. Run this first: it is the data check the whole design rests
                on, and it needs no model and no covariates.

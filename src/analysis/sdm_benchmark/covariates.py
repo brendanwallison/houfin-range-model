@@ -64,11 +64,16 @@ class Source:
 
     def available(self, years):
         """True when every file this source needs exists AND is on the model grid."""
-        probe_years = years if self.annual else [None]
-        for y in probe_years:
+        probe = _sample_years(years) if self.annual else [None]
+        checked_geometry = False
+        for y in probe:
             for p in self.paths_for(y).values():
-                if not _geometry_ok(p):
+                if not _exists_ok(p):
                     return False
+                if not checked_geometry:
+                    if not _geometry_ok(p):
+                        return False
+                    checked_geometry = True
         return True
 
 
@@ -99,6 +104,14 @@ def _soil_vars():
 # the bio-year window (b01 = bio_year_start_month), m{MM} the calendar month.
 _CLIM_TOKEN = re.compile(r"^(?P<base>.+)_b(?P<b>\d{2})m(?P<m>\d{2})_(?P<lvl>q\d{2})$")
 
+# Availability probing samples years rather than opening every file. The climate
+# stream alone is ~144 monthly channels; times 26 years that is ~3,700 raster
+# opens, each a Lustre metadata round-trip -- far too much I/O for the login-node
+# check this is meant to be. Geometry is a property of how a source was BUILT,
+# so it is verified once per source; existence is checked on sampled years.
+# build_design still fails loudly on a genuinely missing intermediate year.
+PROBE_YEARS = 3
+
 SUMMER_MONTHS = (6, 7, 8)
 WINTER_MONTHS = (12, 1, 2)
 
@@ -125,15 +138,23 @@ class DerivedSource:
     def available(self, years):
         if not self.groups:
             return False
-        probe = years if self.annual else [None]
+        probe = _sample_years(years) if self.annual else [None]
+        seen, checked_geometry = set(), False
         for y in probe:
             for members in self.groups.values():
                 for v in members:
                     p = self.template.replace("{var}", v)
                     if self.annual:
                         p = p.replace("{year}", str(y))
-                    if not _geometry_ok(p):
+                    if p in seen:
+                        continue            # groups share monthly members
+                    seen.add(p)
+                    if not _exists_ok(p):
                         return False
+                    if not checked_geometry:
+                        if not _geometry_ok(p):
+                            return False
+                        checked_geometry = True
         return True
 
 
@@ -233,6 +254,19 @@ def _read(path):
                 f"ref_raster (regrid.reproject_to_ref) before use -- sampling it "
                 f"as-is would silently mis-assign every covariate.")
         return src.read(1).astype(np.float32)
+
+
+def _sample_years(years, k=PROBE_YEARS):
+    """First, last and a middle year -- enough to catch an unbuilt stream."""
+    ys = sorted(set(int(y) for y in years))
+    if len(ys) <= k:
+        return ys
+    return sorted({ys[0], ys[len(ys) // 2], ys[-1]})
+
+
+def _exists_ok(path):
+    """Cheap existence check -- a stat, no header read."""
+    return os.path.exists(path)
 
 
 def _geometry_ok(path):
@@ -421,7 +455,7 @@ def probe_tier(years, tier):
 
     if tier == "full":
         d = os.path.join(_PROC, "encoder", "states", "yearly_states")
-        gaps = [os.path.join(d, f"state_{y}.npz") for y in years
+        gaps = [os.path.join(d, f"state_{y}.npz") for y in _sample_years(years)
                 if not os.path.exists(os.path.join(d, f"state_{y}.npz"))]
         n = 0
         if not gaps:
@@ -432,7 +466,7 @@ def probe_tier(years, tier):
 
     if tier == "latent":
         d = os.path.join(_PROC, "latent_avian_paths")
-        gaps = [os.path.join(d, f"Z_latent_{y}.npy") for y in years
+        gaps = [os.path.join(d, f"Z_latent_{y}.npy") for y in _sample_years(years)
                 if not os.path.exists(os.path.join(d, f"Z_latent_{y}.npy"))]
         return {"tier": tier, "available": not gaps, "n_features": 24,
                 "dir": d, "first_missing": gaps[:3]}
@@ -442,7 +476,7 @@ def probe_tier(years, tier):
 
 def _first_missing(source, years):
     """The first path a source needs but cannot use, for a legible error."""
-    probe = years if getattr(source, "annual", False) else [None]
+    probe = _sample_years(years) if getattr(source, "annual", False) else [None]
     if isinstance(source, DerivedSource):
         if not source.groups:
             return f"{source.name}: no channels discovered (grid dir empty or absent)"
@@ -452,14 +486,14 @@ def _first_missing(source, years):
                     pth = source.template.replace("{var}", v)
                     if source.annual:
                         pth = pth.replace("{year}", str(y))
-                    if not _geometry_ok(pth):
+                    if not _exists_ok(pth) or not _geometry_ok(pth):
                         return _why(pth, source.name)
         return None
     if not source.variables:
         return f"{source.name}: no variables discovered"
     for y in probe:
         for pth in source.paths_for(y).values():
-            if not _geometry_ok(pth):
+            if not _exists_ok(pth) or not _geometry_ok(pth):
                 return _why(pth, source.name)
     return None
 

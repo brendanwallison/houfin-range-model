@@ -327,3 +327,54 @@ def test_build_design_reads_the_matching_year_per_row(tmp_path):
     df = pd.DataFrame({"row": [0, 0], "col": [0, 0], "Year": [2020, 2021]})
     X, _ = cov.build_design(df, sources=[src])
     assert X[:, 0].tolist() == [3.0, 9.0]
+
+
+def test_probing_is_cheap_enough_for_a_login_node(monkeypatch):
+    """Availability probing must not open every raster for every year.
+
+    preflight is meant to run on a TACC login node. Checking geometry per file
+    meant ~144 climate channels x 26 years = ~3,700 rasterio.open calls, each a
+    Lustre metadata round-trip -- an I/O storm, and slow enough to look hung.
+    Geometry is a property of how a source was BUILT, so one open per source is
+    enough; existence is a cheap stat on sampled years.
+    """
+    cov = pytest.importorskip("src.analysis.sdm_benchmark.covariates")
+    years = list(range(2000, 2026))
+    toks = [f"{b}_b{i+1:02d}m{m:02d}_q50"
+            for b in ("Tmax", "Tmin", "Tave", "PPT", "CMD", "DD5")
+            for i, m in enumerate([8, 9, 10, 11, 12, 1, 2, 3, 4, 5, 6, 7])]
+    monkeypatch.setattr(cov, "_discover", lambda d, level=None: toks)
+    src = cov.DerivedSource("climate", "/x/{var}_{year}_grid.tif",
+                            groups=cov.climate_summary_groups())
+
+    n = {"stat": 0, "open": 0}
+    monkeypatch.setattr(cov, "_exists_ok",
+                        lambda p: (n.__setitem__("stat", n["stat"] + 1), True)[1])
+    monkeypatch.setattr(cov, "_geometry_ok",
+                        lambda p: (n.__setitem__("open", n["open"] + 1), True)[1])
+
+    assert src.available(years) is True
+    assert n["open"] == 1                               # geometry checked once
+    assert n["stat"] <= len(toks) * cov.PROBE_YEARS     # years are sampled
+    assert n["stat"] < len(toks) * len(years) / 4       # far below the naive cost
+
+
+def test_sampled_probe_years_span_the_window():
+    cov = pytest.importorskip("src.analysis.sdm_benchmark.covariates")
+    ys = cov._sample_years(list(range(2000, 2026)))
+    assert len(ys) == cov.PROBE_YEARS
+    assert ys[0] == 2000 and ys[-1] == 2025             # endpoints always probed
+    assert cov._sample_years([2020, 2021]) == [2020, 2021]   # short windows kept whole
+
+
+def test_probe_distinguishes_absent_from_off_grid(tmp_path):
+    """The two need different fixes, so preflight must not conflate them."""
+    cov = pytest.importorskip("src.analysis.sdm_benchmark.covariates")
+    pytest.importorskip("rasterio")
+    missing = cov._why(str(tmp_path / "nope.tif"), "src")
+    assert "MISSING" in missing
+    try:
+        _write_grid_tif(tmp_path / "ok.tif", 1.0)
+    except Exception as e:
+        pytest.skip(f"model grid reference unavailable: {e}")
+    assert cov._geometry_ok(str(tmp_path / "ok.tif"))

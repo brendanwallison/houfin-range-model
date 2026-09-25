@@ -69,12 +69,12 @@ for tier in $TIERS; do
     run_stage "brt/$tier" python scripts/run_sdm_benchmark.py brt \
         --tier "$tier" --out "$OUT"
 
-    # nmixture is opt-in (HOUFIN_SDM_NMIXTURE=1): its latent-N enumeration is
-    # quadratic in max_abundance, and House Finch route counts reach 490 in the
-    # western native range, so the honest ceiling wants ~55 GiB. occu() is the
-    # robust member of the pair and is always fitted.
+    # The abundance fit runs by default, via the direct marginal sum (Royle
+    # 2004) rather than biolith's enumerated Categorical -- linear in the
+    # ceiling (~0.3 GiB) instead of quadratic (55 GiB), same model, verified to
+    # agree to MCMC noise. HOUFIN_SDM_NMIXTURE=0 skips it.
     NMIX=""
-    [ "${HOUFIN_SDM_NMIXTURE:-0}" = "1" ] && NMIX="--nmixture"
+    [ "${HOUFIN_SDM_NMIXTURE:-1}" = "0" ] && NMIX="--no-nmixture"
     run_stage "biolith/$tier" python scripts/run_sdm_benchmark.py biolith \
         --tier "$tier" --out "$OUT" --chains "$CHAINS" --samples "$SAMPLES" $NMIX
 

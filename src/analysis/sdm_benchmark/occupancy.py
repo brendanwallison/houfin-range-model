@@ -144,6 +144,47 @@ def check_enumeration_budget(n_sites, max_abundance, budget_gib=8.0):
         f"the robust member of the pair and needs no enumeration.")
 
 
+def fit_nmixture_marginal(inputs, max_abundance, site_random_effects=True,
+                          num_samples=1000, num_warmup=1000, num_chains=4,
+                          seed=0, budget_gib=8.0, **kwargs):
+    """N-mixture with the latent N summed out directly (Royle 2004).
+
+    The DEFAULT abundance fit. biolith's nmixture enumerates a Categorical and
+    is quadratic in the ceiling (55 GiB at the ceiling this data implies); the
+    direct sum is linear (~0.3 GiB) and agrees with it to MCMC noise. Same
+    model, standard formulation -- see nmixture_marginal's module docstring.
+    """
+    import jax
+    from numpyro.infer import MCMC, NUTS
+
+    from src.analysis.sdm_benchmark import nmixture_marginal as nm
+
+    n_sites = np.asarray(inputs["obs"]).shape[1]
+    n_rep = np.asarray(inputs["obs"]).shape[-1]
+    need = nm.enumeration_free_bytes(n_sites, max_abundance, n_rep)
+    if need > budget_gib * 2 ** 30:
+        fits = int(budget_gib * 2 ** 30 //
+                   max(4 * n_sites * n_rep, 1)) - 1
+        raise MemoryError(
+            f"direct-sum N-mixture needs {need / 2**30:.1f} GiB for {n_sites} "
+            f"sites x {n_rep} visits at max_abundance={max_abundance} "
+            f"(budget {budget_gib:.1f} GiB). Cost is linear in the ceiling; "
+            f"max_abundance<={fits} would fit.")
+
+    kernel = NUTS(nm.nmixture)
+    mcmc = MCMC(kernel, num_warmup=num_warmup, num_samples=num_samples,
+                num_chains=num_chains, progress_bar=True)
+    mcmc.run(jax.random.PRNGKey(int(seed)),
+             site_covs=inputs["site_covs"], obs_covs=inputs["obs_covs"],
+             obs=inputs["obs"], max_abundance=int(max_abundance),
+             site_random_effects=bool(site_random_effects), **kwargs)
+
+    class _R:                       # same surface as biolith's FitResult
+        samples = mcmc.get_samples()
+    _R.samples = {k: np.asarray(v) for k, v in _R.samples.items()}
+    return _R
+
+
 def fit_nmixture(inputs, max_abundance, coords=None, site_random_effects=True,
                  num_samples=1000, num_warmup=1000, num_chains=4, seed=0,
                  budget_gib=8.0, **kwargs):
@@ -152,6 +193,10 @@ def fit_nmixture(inputs, max_abundance, coords=None, site_random_effects=True,
     ``site_random_effects=True`` makes the latent abundance Poisson-lognormal,
     i.e. overdispersed -- the stand-in for the NB2 the dynamic model uses, since
     nmixture itself offers only a Poisson latent.
+
+    NOTE this is biolith's ENUMERATED implementation, quadratic in
+    max_abundance. Prefer fit_nmixture_marginal unless you specifically want to
+    cross-check against biolith; this one exists for that comparison.
     """
     from biolith.models import nmixture
     from biolith.utils import fit

@@ -363,9 +363,13 @@ def cmd_biolith(args):
     mx, need = occupancy.suggest_max_abundance(counts)
     if args.max_abundance:
         mx = int(args.max_abundance)
-    if args.nmixture:
-        gib = occupancy.enumeration_bytes(len(sites), mx) / 2 ** 30
-        print(f"  max_abundance={mx} (data need {need}); enumeration ~{gib:.1f} GiB")
+    if not args.no_nmixture:
+        from src.analysis.sdm_benchmark import nmixture_marginal as _nm
+        n_rep = counts.shape[1]
+        gib = (occupancy.enumeration_bytes(len(sites), mx) if args.enumerate_nmixture
+               else _nm.enumeration_free_bytes(len(sites), mx, n_rep)) / 2 ** 30
+        how = "enumerated" if args.enumerate_nmixture else "direct marginal sum"
+        print(f"  max_abundance={mx} (data need {need}); {how} ~{gib:.2f} GiB")
 
     out = {"tier": args.tier, "window": [args.rep_start, args.rep_end],
            "covariate_year": out_cov_year, "years": years,
@@ -388,8 +392,8 @@ def cmd_biolith(args):
                         psi=psi, row=sites.row.to_numpy(), col=sites.col.to_numpy(),
                         lon=sites.Longitude.to_numpy(), lat=sites.Latitude.to_numpy())
 
-    if not args.nmixture:
-        print("  nmixture skipped (pass --nmixture to attempt it)")
+    if args.no_nmixture:
+        print("  nmixture skipped (--no-nmixture)")
         return out
 
     # nmixture is opt-in: enumeration is QUADRATIC in max_abundance, and House
@@ -397,14 +401,24 @@ def cmd_biolith(args):
     # honest max_abundance far past what a GPU can hold. A failure here must not
     # discard the occu fit above.
     pn = None
+    out["nmixture_method"] = ("enumerated" if args.enumerate_nmixture
+                              else "marginal")
     try:
         ic = occupancy.build_inputs(sites, counts, years, X, binary=False)
-        r_nm = occupancy.fit_nmixture(ic, max_abundance=mx, coords=coords,
-                                      site_random_effects=not args.no_site_re,
-                                      num_samples=args.samples,
-                                      num_warmup=args.warmup,
-                                      num_chains=args.chains, seed=args.seed,
-                                      budget_gib=args.budget_gib)
+        if args.enumerate_nmixture:
+            r_nm = occupancy.fit_nmixture(ic, max_abundance=mx, coords=coords,
+                                          site_random_effects=not args.no_site_re,
+                                          num_samples=args.samples,
+                                          num_warmup=args.warmup,
+                                          num_chains=args.chains, seed=args.seed,
+                                          budget_gib=args.budget_gib)
+        else:
+            r_nm = occupancy.fit_nmixture_marginal(
+                ic, max_abundance=mx,
+                site_random_effects=not args.no_site_re,
+                num_samples=args.samples, num_warmup=args.warmup,
+                num_chains=args.chains, seed=args.seed,
+                budget_gib=args.budget_gib)
         pn = occupancy.psi_from_nmixture(r_nm)
         chk = occupancy.analytic_poisson_check(r_nm)
         out["nmixture"] = {"p_occ_mean": float(pn.mean()),
@@ -475,10 +489,12 @@ def build_parser():
                    help="add a spatial GP (Test B: environment vs space)")
     p.add_argument("--no-site-re", action="store_true",
                    help="disable site random effects (Poisson, not Poisson-lognormal)")
-    p.add_argument("--nmixture", action="store_true",
-                   help="also fit nmixture(). OFF by default: enumeration is "
-                        "quadratic in max_abundance and House Finch counts reach "
-                        "490, so the honest ceiling does not fit on a GPU")
+    p.add_argument("--no-nmixture", action="store_true",
+                   help="skip the abundance fit (occu only)")
+    p.add_argument("--enumerate-nmixture", action="store_true",
+                   help="use biolith's ENUMERATED nmixture instead of the "
+                        "direct marginal sum. Quadratic in max_abundance (55 GiB "
+                        "at this data's ceiling); for cross-checking only")
     p.add_argument("--max-abundance", type=int, default=None,
                    help="override the data-derived ceiling (TRUNCATES abundance "
                         "above it, biasing low -- state it if you use it)")

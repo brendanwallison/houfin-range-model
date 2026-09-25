@@ -509,8 +509,14 @@ def test_max_abundance_for_budget_is_the_largest_that_fits():
     assert occ.enumeration_bytes(n, m + 2) > budget      # and it is tight
 
 
-def test_biolith_parser_makes_nmixture_opt_in():
-    """occu() must always run; nmixture is the expensive optional sensitivity."""
+def test_biolith_parser_defaults_to_the_affordable_nmixture():
+    """The abundance fit runs by DEFAULT again.
+
+    It was briefly made opt-in because biolith's enumerated implementation
+    needed 55 GiB at this data's ceiling. The direct marginal sum is linear and
+    needs ~0.3 GiB, so disabling the model is no longer the price of running the
+    benchmark; --enumerate-nmixture keeps biolith's version for cross-checking.
+    """
     import importlib.util
     from pathlib import Path
     repo = Path(__file__).resolve().parents[1]
@@ -522,7 +528,74 @@ def test_biolith_parser_makes_nmixture_opt_in():
     except Exception as e:
         pytest.skip(f"CLI not importable here: {e}")
     ap = mod.build_parser()
-    assert ap.parse_args(["biolith"]).nmixture is False
-    assert ap.parse_args(["biolith", "--nmixture"]).nmixture is True
-    assert ap.parse_args(["biolith"]).budget_gib == 8.0
+    a = ap.parse_args(["biolith"])
+    assert a.no_nmixture is False            # abundance runs by default
+    assert a.enumerate_nmixture is False     # via the direct marginal sum
+    assert a.budget_gib == 8.0
+    assert ap.parse_args(["biolith", "--no-nmixture"]).no_nmixture is True
+    assert ap.parse_args(["biolith", "--enumerate-nmixture"]).enumerate_nmixture
     assert ap.parse_args(["biolith", "--max-abundance", "460"]).max_abundance == 460
+
+
+# --------------------------------------- direct-sum N-mixture (Royle 2004)
+
+def test_direct_sum_is_linear_not_quadratic_in_the_ceiling():
+    """This is the whole point: biolith's enumeration is quadratic, this is not."""
+    nm = pytest.importorskip("src.analysis.sdm_benchmark.nmixture_marginal",
+                             reason="needs numpyro/jax")
+    occ = pytest.importorskip("src.analysis.sdm_benchmark.occupancy",
+                              reason="needs numpyro/jax")
+    n, rep = 3853, 10
+    # doubling the ceiling doubles the direct sum, but quadruples enumeration
+    assert nm.enumeration_free_bytes(n, 1959, rep) == pytest.approx(
+        2 * nm.enumeration_free_bytes(n, 979, rep), rel=0.01)
+    assert occ.enumeration_bytes(n, 1959) == pytest.approx(
+        4 * occ.enumeration_bytes(n, 979), rel=0.01)
+    # at the ceiling this data implies, 55 GiB becomes well under 1 GiB
+    assert occ.enumeration_bytes(n, 1960) / 2 ** 30 > 50
+    assert nm.enumeration_free_bytes(n, 1960, rep) / 2 ** 30 < 1
+
+
+def test_log_binom_pmf_matches_scipy_and_is_minus_inf_above_n():
+    nm = pytest.importorskip("src.analysis.sdm_benchmark.nmixture_marginal",
+                             reason="needs numpyro/jax")
+    binom = pytest.importorskip("scipy.stats").binom
+    y = np.array([0.0, 2.0, 5.0])
+    n = np.array([5.0, 5.0, 5.0])
+    p = np.array([0.3, 0.3, 0.3])
+    got = np.asarray(nm._log_binom_pmf(y, n, p))
+    assert np.allclose(got, binom.logpmf(y, n, p), atol=1e-5)
+    # N must be at least the observed count
+    assert np.isneginf(float(nm._log_binom_pmf(np.array(6.0), np.array(5.0),
+                                               np.array(0.3))))
+
+
+def test_marginal_likelihood_ignores_unsurveyed_visits():
+    """NaN visits must not contribute; masking them changes nothing else."""
+    nm = pytest.importorskip("src.analysis.sdm_benchmark.nmixture_marginal",
+                             reason="needs numpyro/jax")
+    jnp = pytest.importorskip("jax.numpy")
+    y = jnp.array([[2.0, 3.0, 0.0]])
+    lam = jnp.array([4.0])
+    p = jnp.array([[0.5, 0.5, 0.5]])
+    full = nm.marginal_log_likelihood(y, jnp.array([[True, True, True]]), lam, p, 40)
+    part = nm.marginal_log_likelihood(y, jnp.array([[True, True, False]]), lam, p, 40)
+    two = nm.marginal_log_likelihood(y[:, :2], jnp.array([[True, True]]),
+                                     lam, p[:, :2], 40)
+    assert float(part[0]) == pytest.approx(float(two[0]), rel=1e-5)
+    assert float(part[0]) != pytest.approx(float(full[0]), rel=1e-5)
+
+
+def test_marginal_likelihood_is_a_proper_log_probability():
+    nm = pytest.importorskip("src.analysis.sdm_benchmark.nmixture_marginal",
+                             reason="needs numpyro/jax")
+    jnp = pytest.importorskip("jax.numpy")
+    # one site, one visit: summing exp(logL) over all observable y must give 1
+    lam = jnp.array([3.0])
+    p = jnp.array([[0.4]])
+    tot = 0.0
+    for yv in range(0, 60):
+        ll = nm.marginal_log_likelihood(jnp.array([[float(yv)]]),
+                                        jnp.array([[True]]), lam, p, 200)
+        tot += float(np.exp(np.asarray(ll)[0]))
+    assert tot == pytest.approx(1.0, abs=1e-4)

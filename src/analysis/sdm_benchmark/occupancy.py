@@ -104,8 +104,49 @@ def fit_occu(inputs, coords=None, num_samples=1000, num_warmup=1000,
                num_chains=num_chains, random_seed=seed, **kw, **kwargs)
 
 
+def enumeration_bytes(n_sites, max_abundance, dtype_bytes=4):
+    """Peak bytes for nmixture's latent-N enumeration.
+
+    biolith enumerates N over 0..max_abundance and the Categorical log_prob
+    broadcast materializes an (n_sites, M+1, M+1)-shaped term, so cost is
+    QUADRATIC in max_abundance. Verified against an observed failure: 3853 sites
+    at max_abundance=1960 requested exactly 55.20 GiB.
+    """
+    return dtype_bytes * int(n_sites) * (int(max_abundance) + 1) ** 2
+
+
+def max_abundance_for_budget(n_sites, budget_bytes, dtype_bytes=4):
+    """Largest max_abundance whose enumeration fits in ``budget_bytes``."""
+    import math
+    return max(1, int(math.isqrt(int(budget_bytes) //
+                                 max(dtype_bytes * int(n_sites), 1))) - 1)
+
+
+def check_enumeration_budget(n_sites, max_abundance, budget_gib=8.0):
+    """Refuse an nmixture fit that cannot fit, BEFORE the GPU allocates.
+
+    An OOM deep inside NUTS initialization loses whatever else the job had
+    already computed; this turns it into an actionable message up front.
+    """
+    need = enumeration_bytes(n_sites, max_abundance)
+    budget = budget_gib * 2 ** 30
+    if need <= budget:
+        return need
+    fits = max_abundance_for_budget(n_sites, budget)
+    raise MemoryError(
+        f"nmixture enumeration needs {need / 2**30:.1f} GiB for {n_sites} sites "
+        f"at max_abundance={max_abundance} (budget {budget_gib:.1f} GiB). Cost is "
+        f"QUADRATIC in max_abundance.\n"
+        f"Options: restrict to a region whose counts are smaller (Great Plains "
+        f"tops out near 79 and the East near 115, while the western native range "
+        f"reaches 490); pass max_abundance<={fits}, ACCEPTING that abundances "
+        f"above it are truncated and biased low; or fit occu() only, which is "
+        f"the robust member of the pair and needs no enumeration.")
+
+
 def fit_nmixture(inputs, max_abundance, coords=None, site_random_effects=True,
-                 num_samples=1000, num_warmup=1000, num_chains=4, seed=0, **kwargs):
+                 num_samples=1000, num_warmup=1000, num_chains=4, seed=0,
+                 budget_gib=8.0, **kwargs):
     """Fit biolith nmixture().
 
     ``site_random_effects=True`` makes the latent abundance Poisson-lognormal,
@@ -114,6 +155,8 @@ def fit_nmixture(inputs, max_abundance, coords=None, site_random_effects=True,
     """
     from biolith.models import nmixture
     from biolith.utils import fit
+    check_enumeration_budget(np.asarray(inputs["obs"]).shape[1], max_abundance,
+                             budget_gib=budget_gib)
     kw = dict(inputs)
     if coords is not None:
         kw["coords"] = np.asarray(coords, dtype=float)

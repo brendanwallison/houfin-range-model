@@ -361,13 +361,20 @@ def cmd_biolith(args):
         coords = (coords - coords.mean(0)) / coords.std(0)
 
     mx, need = occupancy.suggest_max_abundance(counts)
-    print(f"  max_abundance={mx} (need {need}; biolith default 100 would truncate)")
+    if args.max_abundance:
+        mx = int(args.max_abundance)
+    if args.nmixture:
+        gib = occupancy.enumeration_bytes(len(sites), mx) / 2 ** 30
+        print(f"  max_abundance={mx} (data need {need}); enumeration ~{gib:.1f} GiB")
 
     out = {"tier": args.tier, "window": [args.rep_start, args.rep_end],
            "covariate_year": out_cov_year, "years": years,
            "n_sites": int(len(sites)), "spatial": bool(args.spatial),
            "max_abundance": mx}
 
+    # occu() first, and PERSIST IT IMMEDIATELY. It is the robust member of the
+    # pair and the one the designation comparison needs; losing a finished fit
+    # because the optional nmixture blew up afterwards is not acceptable.
     ib = occupancy.build_inputs(sites, counts, years, X, binary=True)
     r_occu = occupancy.fit_occu(ib, coords=coords, num_samples=args.samples,
                                 num_warmup=args.warmup, num_chains=args.chains,
@@ -375,26 +382,49 @@ def cmd_biolith(args):
     psi = occupancy.psi_from_occu(r_occu)
     out["occu"] = {"psi_mean": float(psi.mean()),
                    "convergence": occupancy.convergence(r_occu)}
-
-    ic = occupancy.build_inputs(sites, counts, years, X, binary=False)
-    r_nm = occupancy.fit_nmixture(ic, max_abundance=mx, coords=coords,
-                                  site_random_effects=not args.no_site_re,
-                                  num_samples=args.samples, num_warmup=args.warmup,
-                                  num_chains=args.chains, seed=args.seed)
-    pn = occupancy.psi_from_nmixture(r_nm)
-    chk = occupancy.analytic_poisson_check(r_nm)
-    out["nmixture"] = {"p_occ_mean": float(pn.mean()),
-                       "jensen_gap_max": chk["max_abs_gap"],
-                       "convergence": occupancy.convergence(r_nm)}
-    out["occu_vs_nmixture_corr"] = float(np.corrcoef(psi, pn)[0, 1])
-    print(f"\nbiolith[{args.tier}] psi={psi.mean():.3f} P(N>0)={pn.mean():.3f} "
-          f"corr={out['occu_vs_nmixture_corr']:.3f} "
-          f"jensen_gap={chk['max_abs_gap']:.4f}")
+    print(f"\nbiolith[{args.tier}] occu psi={psi.mean():.3f}")
     _write(args.out, f"biolith_{args.tier}.json", out)
     np.savez_compressed(os.path.join(args.out, f"biolith_{args.tier}_pred.npz"),
-                        psi=psi, p_occ_nmix=pn, row=sites.row.to_numpy(),
-                        col=sites.col.to_numpy(),
+                        psi=psi, row=sites.row.to_numpy(), col=sites.col.to_numpy(),
                         lon=sites.Longitude.to_numpy(), lat=sites.Latitude.to_numpy())
+
+    if not args.nmixture:
+        print("  nmixture skipped (pass --nmixture to attempt it)")
+        return out
+
+    # nmixture is opt-in: enumeration is QUADRATIC in max_abundance, and House
+    # Finch route counts reach 490 in the western native range, which puts the
+    # honest max_abundance far past what a GPU can hold. A failure here must not
+    # discard the occu fit above.
+    pn = None
+    try:
+        ic = occupancy.build_inputs(sites, counts, years, X, binary=False)
+        r_nm = occupancy.fit_nmixture(ic, max_abundance=mx, coords=coords,
+                                      site_random_effects=not args.no_site_re,
+                                      num_samples=args.samples,
+                                      num_warmup=args.warmup,
+                                      num_chains=args.chains, seed=args.seed,
+                                      budget_gib=args.budget_gib)
+        pn = occupancy.psi_from_nmixture(r_nm)
+        chk = occupancy.analytic_poisson_check(r_nm)
+        out["nmixture"] = {"p_occ_mean": float(pn.mean()),
+                           "jensen_gap_max": chk["max_abs_gap"],
+                           "convergence": occupancy.convergence(r_nm)}
+        out["occu_vs_nmixture_corr"] = float(np.corrcoef(psi, pn)[0, 1])
+        print(f"  nmixture P(N>0)={pn.mean():.3f} "
+              f"corr={out['occu_vs_nmixture_corr']:.3f} "
+              f"jensen_gap={chk['max_abs_gap']:.4f}")
+    except (MemoryError, RuntimeError) as e:
+        out["nmixture"] = {"failed": f"{type(e).__name__}: {e}"}
+        print(f"  nmixture FAILED (occu result above is kept): {e}")
+
+    _write(args.out, f"biolith_{args.tier}.json", out)
+    if pn is not None:
+        np.savez_compressed(os.path.join(args.out, f"biolith_{args.tier}_pred.npz"),
+                            psi=psi, p_occ_nmix=pn, row=sites.row.to_numpy(),
+                            col=sites.col.to_numpy(),
+                            lon=sites.Longitude.to_numpy(),
+                            lat=sites.Latitude.to_numpy())
     return out
 
 
@@ -445,6 +475,15 @@ def build_parser():
                    help="add a spatial GP (Test B: environment vs space)")
     p.add_argument("--no-site-re", action="store_true",
                    help="disable site random effects (Poisson, not Poisson-lognormal)")
+    p.add_argument("--nmixture", action="store_true",
+                   help="also fit nmixture(). OFF by default: enumeration is "
+                        "quadratic in max_abundance and House Finch counts reach "
+                        "490, so the honest ceiling does not fit on a GPU")
+    p.add_argument("--max-abundance", type=int, default=None,
+                   help="override the data-derived ceiling (TRUNCATES abundance "
+                        "above it, biasing low -- state it if you use it)")
+    p.add_argument("--budget-gib", type=float, default=8.0,
+                   help="refuse an nmixture enumeration larger than this")
     p.add_argument("--samples", type=int, default=1000)
     p.add_argument("--warmup", type=int, default=1000)
     p.add_argument("--chains", type=int, default=4)

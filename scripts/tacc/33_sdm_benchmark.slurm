@@ -50,25 +50,49 @@ python scripts/run_sdm_benchmark.py preflight --tiers $TIERS
 # zone structure is recorded alongside whatever the baselines conclude.
 /usr/bin/time -v python scripts/run_sdm_benchmark.py premise --out "$OUT"
 
-for tier in $TIERS; do
-    echo "=== BRT tier=$tier ==="
-    /usr/bin/time -v python scripts/run_sdm_benchmark.py brt --tier "$tier" --out "$OUT"
+# Per-stage failures must not abandon the tiers that would have succeeded: a
+# `set -e` abort on the first tier previously meant full and latent never ran at
+# all. Record failures and carry on; the exit status at the end reflects them.
+FAILED=""
+run_stage () {                      # run_stage <label> <cmd...>
+    local label="$1"; shift
+    echo "=== $label ==="
+    if /usr/bin/time -v "$@"; then
+        return 0
+    fi
+    echo "!!! $label FAILED (continuing to remaining stages)"
+    FAILED="$FAILED $label"
+    return 0
+}
 
-    echo "=== biolith tier=$tier ==="
-    /usr/bin/time -v python scripts/run_sdm_benchmark.py biolith --tier "$tier" \
-        --out "$OUT" --chains "$CHAINS" --samples "$SAMPLES"
+for tier in $TIERS; do
+    run_stage "brt/$tier" python scripts/run_sdm_benchmark.py brt \
+        --tier "$tier" --out "$OUT"
+
+    # nmixture is opt-in (HOUFIN_SDM_NMIXTURE=1): its latent-N enumeration is
+    # quadratic in max_abundance, and House Finch route counts reach 490 in the
+    # western native range, so the honest ceiling wants ~55 GiB. occu() is the
+    # robust member of the pair and is always fitted.
+    NMIX=""
+    [ "${HOUFIN_SDM_NMIXTURE:-0}" = "1" ] && NMIX="--nmixture"
+    run_stage "biolith/$tier" python scripts/run_sdm_benchmark.py biolith \
+        --tier "$tier" --out "$OUT" --chains "$CHAINS" --samples "$SAMPLES" $NMIX
 
     # Test B: the same model with a spatial GP added. If the Great Plains
     # designation only matches the data once space is in the model, the pattern
     # is not environmentally attributable -- and that conclusion does not depend
     # on trusting the dynamic model at all.
     if [ "${HOUFIN_SDM_SPATIAL:-0}" = "1" ]; then
-        echo "=== biolith tier=$tier +spatial (Test B) ==="
-        /usr/bin/time -v python scripts/run_sdm_benchmark.py biolith --tier "$tier" \
-            --spatial --out "$OUT/spatial" --chains "$CHAINS" --samples "$SAMPLES"
+        run_stage "biolith/$tier+spatial" python scripts/run_sdm_benchmark.py \
+            biolith --tier "$tier" --spatial --out "$OUT/spatial" \
+            --chains "$CHAINS" --samples "$SAMPLES" $NMIX
     fi
 done
 
-echo "=== 33_sdm_benchmark complete ==="
 ls -la "$OUT"
 date
+if [ -n "$FAILED" ]; then
+    echo "=== 33_sdm_benchmark finished WITH FAILURES:$FAILED ==="
+    exit 1
+fi
+echo "=== 33_sdm_benchmark complete ==="

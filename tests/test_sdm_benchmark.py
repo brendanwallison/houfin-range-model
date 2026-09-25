@@ -472,3 +472,57 @@ def test_latent_design_accepts_the_bare_npy_intermediate(tmp_path):
     df = pd.DataFrame({"row": [5], "col": [7], "Year": [2015]})
     X, _ = cov.latent_z_design(df, z_dir=str(tmp_path), latent_dim=24)
     assert X[0].tolist() == [i * 2.0 for i in range(24)]
+
+
+# ------------------------------------------------- nmixture enumeration cost
+
+def test_enumeration_bytes_matches_the_observed_oom():
+    """Verified against a real failure on an A100.
+
+    3853 sites at max_abundance=1960 requested exactly 55.20 GiB; biolith's
+    Categorical log_prob broadcast makes the cost QUADRATIC in max_abundance,
+    which is why a ceiling derived from a 490-bird western route is unusable.
+    """
+    occ = pytest.importorskip("src.analysis.sdm_benchmark.occupancy",
+                              reason="needs numpyro/jax")
+    gib = occ.enumeration_bytes(3853, 1960) / 2 ** 30
+    assert gib == pytest.approx(55.20, abs=0.01)
+    # quadratic, not linear: halving the ceiling quarters the cost
+    assert occ.enumeration_bytes(3853, 979) == pytest.approx(
+        occ.enumeration_bytes(3853, 1959) / 4, rel=0.01)
+
+
+def test_budget_guard_refuses_before_the_gpu_allocates():
+    occ = pytest.importorskip("src.analysis.sdm_benchmark.occupancy",
+                              reason="needs numpyro/jax")
+    with pytest.raises(MemoryError, match="QUADRATIC"):
+        occ.check_enumeration_budget(3853, 1960, budget_gib=8.0)
+    assert occ.check_enumeration_budget(3853, 100, budget_gib=8.0) > 0
+
+
+def test_max_abundance_for_budget_is_the_largest_that_fits():
+    occ = pytest.importorskip("src.analysis.sdm_benchmark.occupancy",
+                              reason="needs numpyro/jax")
+    n, budget = 3853, 8 * 2 ** 30
+    m = occ.max_abundance_for_budget(n, budget)
+    assert occ.enumeration_bytes(n, m) <= budget
+    assert occ.enumeration_bytes(n, m + 2) > budget      # and it is tight
+
+
+def test_biolith_parser_makes_nmixture_opt_in():
+    """occu() must always run; nmixture is the expensive optional sensitivity."""
+    import importlib.util
+    from pathlib import Path
+    repo = Path(__file__).resolve().parents[1]
+    spec = importlib.util.spec_from_file_location(
+        "_run_sdm2", repo / "scripts" / "run_sdm_benchmark.py")
+    mod = importlib.util.module_from_spec(spec)
+    try:
+        spec.loader.exec_module(mod)
+    except Exception as e:
+        pytest.skip(f"CLI not importable here: {e}")
+    ap = mod.build_parser()
+    assert ap.parse_args(["biolith"]).nmixture is False
+    assert ap.parse_args(["biolith", "--nmixture"]).nmixture is True
+    assert ap.parse_args(["biolith"]).budget_gib == 8.0
+    assert ap.parse_args(["biolith", "--max-abundance", "460"]).max_abundance == 460

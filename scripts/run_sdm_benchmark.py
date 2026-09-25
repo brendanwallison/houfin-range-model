@@ -10,6 +10,8 @@ noise, because it infers the niche axis from the occupancy axis (Pulliam 2000).
 
 Subcommands
 -----------
+  preflight    Check every input exists and is on the model grid. Fits nothing,
+               exits nonzero if not. Run this BEFORE submitting anything.
   premise      Observed BBS abundance/occupancy by Great Plains zone and latitude
                band. Run this first: it is the data check the whole design rests
                on, and it needs no model and no covariates.
@@ -67,6 +69,66 @@ def _write(out_dir, name, payload):
         json.dump(payload, fh, indent=2, default=_jsonable)
     print(f"  wrote {p}")
     return p
+
+
+def cmd_preflight(args):
+    """Can this machine actually run the benchmark? Checks, never fits.
+
+    Exits nonzero when something needed is absent, so a four-hour job is not how
+    you discover an unbuilt grid directory.
+    """
+    ok = True
+    print("\n-- BBS response --")
+    try:
+        df = data.route_years(args.start_year, args.end_year)
+        routes = df[["CountryNum", "StateNum", "Route"]].drop_duplicates()
+        print(f"   OK   {len(df):,} route-years, {len(routes):,} routes, "
+              f"{args.start_year}-{args.end_year}, "
+              f"{100*(df['count'] > 0).mean():.1f}% with detections")
+        _s, counts, years = data.site_replicates(df, args.rep_start, args.rep_end)
+        print(f"   OK   replicate matrix {counts.shape}, years {years}")
+    except Exception as e:
+        ok = False
+        print(f"   FAIL {type(e).__name__}: {e}")
+        df = None
+
+    print("\n-- covariate tiers --")
+    if df is not None:
+        yrs = sorted(df["Year"].unique().tolist())
+        for tier in ("standard", "full", "latent"):
+            try:
+                r = covariates.probe_tier(yrs, tier)
+            except Exception as e:
+                ok = False
+                print(f"   FAIL {tier:9s} {type(e).__name__}: {e}")
+                continue
+            if r["available"]:
+                print(f"   OK   {tier:9s} {r['n_features']:4d} features")
+            else:
+                ok = False
+                print(f"   FAIL {tier:9s} unavailable")
+                for m in (r.get("first_missing") or [])[:3]:
+                    print(f"          {m}")
+
+    print("\n-- dynamic model (needed only for `designation`) --")
+    if args.run_dir:
+        try:
+            f = designation.load_dynamic_fields(args.run_dir)
+            lam = f["lam_fundamental_modern"]
+            fin = np.isfinite(lam)
+            print(f"   OK   lam_fundamental: {int(fin.sum())} finite cells, "
+                  f"{100*(lam[fin] >= 1).mean():.1f}% >= 1, "
+                  f"window={f.get('window_years')}")
+        except Exception as e:
+            ok = False
+            print(f"   FAIL {type(e).__name__}: {e}")
+    else:
+        print("   skip (pass --run-dir to check one)")
+
+    print(f"\n{'READY' if ok else 'NOT READY'}")
+    if not ok:
+        sys.exit(1)
+    return {"ok": ok}
 
 
 def cmd_premise(args):
@@ -297,6 +359,11 @@ def build_parser():
         if rep:
             p.add_argument("--rep-start", type=int, default=data.DEFAULT_REPLICATE_START)
             p.add_argument("--rep-end", type=int, default=data.DEFAULT_REPLICATE_END)
+
+    p = sub.add_parser("preflight", help="check inputs exist; fits nothing")
+    common(p)
+    p.add_argument("--run-dir", default=None, help="also check a MAP run's fields")
+    p.set_defaults(fn=cmd_preflight)
 
     p = sub.add_parser("premise", help="observed BBS structure, no model")
     common(p); p.set_defaults(fn=cmd_premise)

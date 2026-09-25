@@ -46,6 +46,10 @@ class Source:
     annual: bool = False
     transform: str = "none"       # none | log1p
 
+    @property
+    def n_features(self):
+        return len(self.variables) if self.variables else 1
+
     def paths_for(self, year=None):
         vs = self.variables or (None,)
         out = {}
@@ -113,6 +117,10 @@ class DerivedSource:
     groups: dict
     annual: bool = True
     transform: str = "none"
+
+    @property
+    def n_features(self):
+        return len(self.groups)
 
     def available(self, years):
         if not self.groups:
@@ -244,7 +252,7 @@ def discover(years, sources=None):
     sources = sources or standard_sources()
     rep = []
     for s in sources:
-        n_vars = len(s.variables) if s.variables else 1
+        n_vars = s.n_features
         rep.append({"name": s.name, "n_vars": n_vars, "annual": s.annual,
                     "available": s.available(years) and n_vars > 0})
     return rep
@@ -381,3 +389,89 @@ def standardize(X, mu=None, sd=None):
         sd = np.nanstd(X, axis=0)
         sd = np.where(sd > 0, sd, 1.0)
     return (X - mu) / sd, mu, sd
+
+
+def probe_tier(years, tier):
+    """Report whether a tier can supply covariates, and name the first gap.
+
+    Cheap: touches file metadata only, never reads a band. This is what the
+    ``preflight`` subcommand runs so a four-hour job is not the way you discover
+    that a grid directory was never built.
+    """
+    if tier == "standard":
+        srcs = standard_sources()
+        # Go through discover() rather than re-deriving availability here: it is
+        # the function build_design calls first, so preflight must exercise the
+        # same path. A separate branch here once passed while build_design
+        # crashed on the very same source list.
+        rep = {r["name"]: r for r in discover(years, srcs)}
+        parts, missing = [], []
+        for sc in srcs:
+            r = rep[sc.name]
+            ok = bool(r["available"])
+            parts.append({"source": sc.name, "n_features": r["n_vars"],
+                          "available": ok})
+            if not ok:
+                missing.append(_first_missing(sc, years))
+        return {"tier": tier,
+                "available": all(p["available"] for p in parts) and bool(parts),
+                "n_features": sum(p["n_features"] for p in parts if p["available"]),
+                "sources": parts,
+                "first_missing": [m for m in missing if m]}
+
+    if tier == "full":
+        d = os.path.join(_PROC, "encoder", "states", "yearly_states")
+        gaps = [os.path.join(d, f"state_{y}.npz") for y in years
+                if not os.path.exists(os.path.join(d, f"state_{y}.npz"))]
+        n = 0
+        if not gaps:
+            with np.load(os.path.join(d, f"state_{years[0]}.npz")) as z:
+                n = sum((z[k].shape[-1] if z[k].ndim == 3 else 1) for k in z.files)
+        return {"tier": tier, "available": not gaps, "n_features": n,
+                "dir": d, "first_missing": gaps[:3]}
+
+    if tier == "latent":
+        d = os.path.join(_PROC, "latent_avian_paths")
+        gaps = [os.path.join(d, f"Z_latent_{y}.npy") for y in years
+                if not os.path.exists(os.path.join(d, f"Z_latent_{y}.npy"))]
+        return {"tier": tier, "available": not gaps, "n_features": 24,
+                "dir": d, "first_missing": gaps[:3]}
+
+    raise ValueError(f"unknown tier {tier!r}")
+
+
+def _first_missing(source, years):
+    """The first path a source needs but cannot use, for a legible error."""
+    probe = years if getattr(source, "annual", False) else [None]
+    if isinstance(source, DerivedSource):
+        if not source.groups:
+            return f"{source.name}: no channels discovered (grid dir empty or absent)"
+        for y in probe:
+            for members in source.groups.values():
+                for v in members:
+                    pth = source.template.replace("{var}", v)
+                    if source.annual:
+                        pth = pth.replace("{year}", str(y))
+                    if not _geometry_ok(pth):
+                        return _why(pth, source.name)
+        return None
+    if not source.variables:
+        return f"{source.name}: no variables discovered"
+    for y in probe:
+        for pth in source.paths_for(y).values():
+            if not _geometry_ok(pth):
+                return _why(pth, source.name)
+    return None
+
+
+def _why(path, name):
+    """Distinguish 'absent' from 'present but on the wrong grid'."""
+    if not os.path.exists(path):
+        return f"{name}: MISSING {path}"
+    try:
+        ref_shape, ref_crs = _ref_geometry()
+        with rasterio.open(path) as src:
+            return (f"{name}: OFF-GRID {path} is {src.shape}/{src.crs}, "
+                    f"model grid is {ref_shape}/{ref_crs}")
+    except Exception as e:
+        return f"{name}: UNREADABLE {path} ({e})"

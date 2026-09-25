@@ -229,3 +229,101 @@ def test_derived_source_is_unavailable_when_groups_are_empty():
     cov = pytest.importorskip("src.analysis.sdm_benchmark.covariates")
     d = cov.DerivedSource("climate", "/nope/{var}_{year}_grid.tif", groups={})
     assert not d.available([2020])
+
+
+def test_discover_handles_every_source_type_in_the_standard_tier():
+    """Regression: discover() reached for .variables, which DerivedSource lacks.
+
+    build_design calls discover() FIRST, so this crashed every `brt --tier
+    standard` run before the climate rasters were ever opened. It stayed hidden
+    locally because with no climate dir the derived source is empty and nothing
+    exercised discover() on a mixed source list.
+    """
+    cov = pytest.importorskip("src.analysis.sdm_benchmark.covariates")
+    sources = [
+        cov.Source("static", "/nope/{var}.tif", variables=("a", "b")),
+        cov.Source("annual", "/nope/{var}_{year}.tif", variables=("c",), annual=True),
+        cov.DerivedSource("derived", "/nope/{var}_{year}.tif",
+                          groups={"x_ann": ["x_b01m08_q50"], "x_summer": ["x_b11m06_q50"]}),
+    ]
+    rep = cov.discover([2020, 2021], sources)          # must not raise
+    assert [r["n_vars"] for r in rep] == [2, 1, 2]
+    assert all(r["available"] is False for r in rep)   # nothing on disk
+
+
+def test_every_source_type_exposes_n_features():
+    cov = pytest.importorskip("src.analysis.sdm_benchmark.covariates")
+    assert cov.Source("s", "/t/{var}.tif", variables=("a", "b")).n_features == 2
+    assert cov.Source("s", "/t.tif").n_features == 1
+    assert cov.DerivedSource("d", "/t/{var}_{year}.tif",
+                             groups={"a": ["m1"], "b": ["m2"]}).n_features == 2
+
+
+def test_standard_tier_survives_discover_end_to_end():
+    """The real standard_sources() list must pass through discover() cleanly."""
+    cov = pytest.importorskip("src.analysis.sdm_benchmark.covariates")
+    rep = cov.discover([2020], cov.standard_sources())   # must not raise
+    assert {r["name"] for r in rep} >= {"elev", "hyde", "soil", "luh3", "climate"}
+
+
+def _write_grid_tif(path, value):
+    """A raster matching the model grid exactly, filled with ``value``."""
+    import rasterio
+    from src.config_utils import load_data_config
+    with rasterio.open(load_data_config()["grid"]["ref_raster"]) as ref:
+        profile = ref.profile
+        shape, transform, crs = ref.shape, ref.transform, ref.crs
+    profile.update(dtype="float32", count=1, nodata=None, compress="lzw")
+    arr = np.full(shape, float(value), dtype="float32")
+    with rasterio.open(path, "w", **profile) as dst:
+        dst.write(arr, 1)
+
+
+def test_build_design_averages_derived_groups(tmp_path):
+    """The DerivedSource branch of build_design -- the code that runs on TACC.
+
+    It had never executed anywhere: locally the climate dir is absent so the
+    group dict is empty, and the unit tests only touched discover(). This writes
+    real rasters on the model grid and checks the monthly members are averaged.
+    """
+    cov = pytest.importorskip("src.analysis.sdm_benchmark.covariates")
+    pytest.importorskip("rasterio")
+    pd = pytest.importorskip("pandas")
+    try:
+        _write_grid_tif(tmp_path / "probe.tif", 1.0)
+    except Exception as e:                      # no ref grid in this checkout
+        pytest.skip(f"model grid reference unavailable: {e}")
+
+    # Two monthly members per feature, constant-valued so the mean is exact.
+    for var, val in [("T_b01m08_q50", 10.0), ("T_b11m06_q50", 20.0)]:
+        _write_grid_tif(tmp_path / f"{var}_2020_grid.tif", val)
+
+    src = cov.DerivedSource("climate", str(tmp_path / "{var}_{year}_grid.tif"),
+                            groups={"T_summer": ["T_b01m08_q50", "T_b11m06_q50"]})
+    assert src.n_features == 1
+    assert src.available([2020])
+
+    df = pd.DataFrame({"row": [0, 5, 10], "col": [0, 7, 21], "Year": [2020] * 3})
+    X, names = cov.build_design(df, sources=[src])
+    assert names == ["climate:T_summer"]
+    assert X.shape == (3, 1)
+    assert np.allclose(X[:, 0], 15.0)           # (10 + 20) / 2
+
+
+def test_build_design_reads_the_matching_year_per_row(tmp_path):
+    """Annual sources must sample each row's OWN year, not a single raster."""
+    cov = pytest.importorskip("src.analysis.sdm_benchmark.covariates")
+    pytest.importorskip("rasterio")
+    pd = pytest.importorskip("pandas")
+    try:
+        _write_grid_tif(tmp_path / "probe.tif", 1.0)
+    except Exception as e:
+        pytest.skip(f"model grid reference unavailable: {e}")
+
+    _write_grid_tif(tmp_path / "v_2020_grid.tif", 3.0)
+    _write_grid_tif(tmp_path / "v_2021_grid.tif", 9.0)
+    src = cov.Source("s", str(tmp_path / "{var}_{year}_grid.tif"),
+                     variables=("v",), annual=True)
+    df = pd.DataFrame({"row": [0, 0], "col": [0, 0], "Year": [2020, 2021]})
+    X, _ = cov.build_design(df, sources=[src])
+    assert X[:, 0].tolist() == [3.0, 9.0]

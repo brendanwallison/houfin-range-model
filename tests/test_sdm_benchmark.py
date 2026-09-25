@@ -378,3 +378,34 @@ def test_probe_distinguishes_absent_from_off_grid(tmp_path):
     except Exception as e:
         pytest.skip(f"model grid reference unavailable: {e}")
     assert cov._geometry_ok(str(tmp_path / "ok.tif"))
+
+
+def test_processed_root_is_not_derived_from_the_data_root():
+    """On HPC the two roots are different filesystems.
+
+    HOUFIN_DATA lives under $SCRATCH and HOUFIN_PROCESSED under $WORK, so
+    building the processed root as datasets_root/processed pointed at a
+    directory that does not exist and reported every encoder tier as missing.
+    """
+    cov = pytest.importorskip("src.analysis.sdm_benchmark.covariates")
+    cfg = pytest.importorskip("src.config_utils").load_data_config()
+    assert cov._PROC == cfg["processed_root"]
+
+
+def test_last_complete_year_walks_back_past_trailing_gaps(tmp_path, monkeypatch):
+    """Covariate streams end before BBS does; find the newest usable year."""
+    cov = pytest.importorskip("src.analysis.sdm_benchmark.covariates")
+    present = {2020, 2021, 2022}
+    monkeypatch.setattr(cov, "standard_sources", lambda: [
+        cov.Source("s", str(tmp_path / "{var}_{year}_grid.tif"),
+                   variables=("v",), annual=True)])
+    monkeypatch.setattr(cov, "_exists_ok",
+                        lambda p: any(f"_{y}_" in p for y in present))
+    assert cov.last_complete_year([2020, 2021, 2022, 2023, 2024], "standard") == 2022
+    assert cov.last_complete_year([2023, 2024], "standard") is None
+
+
+def test_last_complete_year_rejects_unknown_tier():
+    cov = pytest.importorskip("src.analysis.sdm_benchmark.covariates")
+    with pytest.raises(ValueError, match="unknown tier"):
+        cov.last_complete_year([2020], "nope")

@@ -30,11 +30,32 @@ import numpy as np
 import pandas as pd
 import rasterio
 
-from src.config_utils import load_data_config
+from src.config_utils import load_age_model_config, load_config, load_data_config
+
+
+def _load_esk_desk():
+    return load_config("esk_desk_config.json")
 
 _CFG = load_data_config()
 _DR = _CFG["datasets_root"]
-_PROC = os.path.join(_DR, "processed")
+# NOT datasets_root/processed. On HPC the two roots are different filesystems --
+# HOUFIN_DATA under $SCRATCH, HOUFIN_PROCESSED under $WORK -- so constructing the
+# processed root from the data root silently points at a directory that does not
+# exist. data_config.processed_root is the single source of truth.
+_PROC = _CFG.get("processed_root") or os.path.join(_DR, "processed")
+
+
+def _cfg_path(loader, *keys, default=None):
+    """A path from a config, falling back when the config or key is absent."""
+    try:
+        cfg = loader()
+    except Exception:
+        return default
+    for k in keys:
+        if not isinstance(cfg, dict) or k not in cfg:
+            return default
+        cfg = cfg[k]
+    return cfg if isinstance(cfg, str) else default
 
 
 @dataclass
@@ -364,7 +385,8 @@ def build_design(df, sources=None, require_all=True):
 
 def latent_z_design(df, z_dir=None, latent_dim=24):
     """The 'latent' tier: the same truncated basis Z the dynamic model consumes."""
-    z_dir = z_dir or os.path.join(_PROC, "latent_avian_paths")
+    z_dir = z_dir or _cfg_path(load_age_model_config, "raw_z_dir",
+                               default=os.path.join(_PROC, "latent_avian_paths"))
     years = sorted(df["Year"].unique().tolist())
     r, c, yr = df["row"].to_numpy(), df["col"].to_numpy(), df["Year"].to_numpy()
     X = np.full((len(df), latent_dim), np.nan, dtype=np.float32)
@@ -382,7 +404,10 @@ def latent_z_design(df, z_dir=None, latent_dim=24):
 
 def full_states_design(df, states_dir=None):
     """The 'full' tier: the ~295 raw encoder channels from yearly_states."""
-    states_dir = states_dir or os.path.join(_PROC, "encoder", "states", "yearly_states")
+    if states_dir is None:
+        hist = _cfg_path(_load_esk_desk, "states", "hist_dir",
+                         default=os.path.join(_PROC, "encoder", "states"))
+        states_dir = os.path.join(hist, "yearly_states")
     years = sorted(df["Year"].unique().tolist())
     r, c, yr = df["row"].to_numpy(), df["col"].to_numpy(), df["Year"].to_numpy()
 
@@ -454,7 +479,9 @@ def probe_tier(years, tier):
                 "first_missing": [m for m in missing if m]}
 
     if tier == "full":
-        d = os.path.join(_PROC, "encoder", "states", "yearly_states")
+        hist = _cfg_path(_load_esk_desk, "states", "hist_dir",
+                         default=os.path.join(_PROC, "encoder", "states"))
+        d = os.path.join(hist, "yearly_states")
         gaps = [os.path.join(d, f"state_{y}.npz") for y in _sample_years(years)
                 if not os.path.exists(os.path.join(d, f"state_{y}.npz"))]
         n = 0
@@ -465,7 +492,8 @@ def probe_tier(years, tier):
                 "dir": d, "first_missing": gaps[:3]}
 
     if tier == "latent":
-        d = os.path.join(_PROC, "latent_avian_paths")
+        d = _cfg_path(load_age_model_config, "raw_z_dir",
+                      default=os.path.join(_PROC, "latent_avian_paths"))
         gaps = [os.path.join(d, f"Z_latent_{y}.npy") for y in _sample_years(years)
                 if not os.path.exists(os.path.join(d, f"Z_latent_{y}.npy"))]
         return {"tier": tier, "available": not gaps, "n_features": 24,
@@ -509,3 +537,49 @@ def _why(path, name):
                     f"model grid is {ref_shape}/{ref_crs}")
     except Exception as e:
         return f"{name}: UNREADABLE {path} ({e})"
+
+
+def last_complete_year(years, tier):
+    """Greatest year in ``years`` for which ``tier`` has all its inputs.
+
+    Covariate streams end before BBS does -- LUH-3's source netCDF runs to 2024
+    and the climate downscaling lags similarly, while the BBS 2026 release
+    carries the 2025 field season. Rather than hardcode a cutoff that will drift,
+    walk back from the newest year until one is complete. Returns None when no
+    year is.
+
+    One representative file per source per year, so the cost is a few stats.
+    """
+    ys = sorted(set(int(y) for y in years))
+    for y in reversed(ys):
+        if _year_complete(y, tier):
+            return y
+    return None
+
+
+def _year_complete(year, tier):
+    if tier == "standard":
+        for sc in standard_sources():
+            if not sc.annual:
+                continue
+            if isinstance(sc, DerivedSource):
+                if not sc.groups:
+                    return False
+                probe = next(iter(sc.groups.values()))[0]
+            else:
+                if not sc.variables:
+                    return False
+                probe = sc.variables[0]
+            p = sc.template.replace("{var}", probe).replace("{year}", str(year))
+            if not _exists_ok(p):
+                return False
+        return True
+    if tier == "full":
+        hist = _cfg_path(_load_esk_desk, "states", "hist_dir",
+                         default=os.path.join(_PROC, "encoder", "states"))
+        return _exists_ok(os.path.join(hist, "yearly_states", f"state_{year}.npz"))
+    if tier == "latent":
+        d = _cfg_path(load_age_model_config, "raw_z_dir",
+                      default=os.path.join(_PROC, "latent_avian_paths"))
+        return _exists_ok(os.path.join(d, f"Z_latent_{year}.npy"))
+    raise ValueError(f"unknown tier {tier!r}")

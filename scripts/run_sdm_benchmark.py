@@ -111,6 +111,13 @@ def cmd_preflight(args):
                 continue
             if r["available"]:
                 print(f"   OK   {tier:9s} {r['n_features']:4d} features")
+                continue
+            # Covariate streams end before BBS does, so distinguish "this tier
+            # was never built" from "it just stops earlier than the window".
+            last = covariates.last_complete_year(yrs, tier)
+            if last is not None and last < max(yrs):
+                print(f"   WARN {tier:9s} complete only through {last} "
+                      f"(window asks for {max(yrs)}); will clamp to {last}")
             else:
                 ok = False
                 print(f"   FAIL {tier:9s} unavailable")
@@ -230,6 +237,26 @@ def cmd_designation(args):
     return out
 
 
+def _clamp_to_covariates(df, tier):
+    """Trim the window to the last year the tier actually covers, loudly.
+
+    A batch job should not die because LUH-3 stops in 2024 while BBS reaches
+    2025. Clamping is announced, never silent, and refuses outright if no year
+    is complete -- that means the tier was never built, which clamping cannot fix.
+    """
+    yrs = sorted(df["Year"].unique().tolist())
+    last = covariates.last_complete_year(yrs, tier)
+    if last is None:
+        raise FileNotFoundError(
+            f"tier {tier!r} has no complete year in {yrs[0]}-{yrs[-1]}; its "
+            f"grids have not been built. Run `preflight` for the exact paths.")
+    if last < max(yrs):
+        print(f"  clamping {tier} window to {yrs[0]}-{last} "
+              f"(covariates stop before {max(yrs)})")
+        df = df[df["Year"] <= last]
+    return df
+
+
 def _design_for_tier(df, tier):
     if tier == "standard":
         return covariates.build_design(df)
@@ -243,6 +270,7 @@ def _design_for_tier(df, tier):
 def cmd_brt(args):
     """Boosted-regression-tree baselines under spatial block CV."""
     df = data.attach_zones(data.route_years(args.start_year, args.end_year))
+    df = _clamp_to_covariates(df, args.tier).reset_index(drop=True)
     X, names = _design_for_tier(df, args.tier)
     y = df["count"].to_numpy(dtype=float)
     rows, cols = df["row"].to_numpy(), df["col"].to_numpy()
@@ -304,7 +332,20 @@ def cmd_biolith(args):
     site_df = df.drop_duplicates(subset=["CountryNum", "StateNum", "Route"])
     site_df = site_df.set_index(["CountryNum", "StateNum", "Route"]).loc[
         list(zip(sites.CountryNum, sites.StateNum, sites.Route))].reset_index()
-    site_df["Year"] = args.rep_end
+    # Site covariates are read at ONE year (the window is treated as closed).
+    # It must be a year the tier actually covers: LUH-3 and climate stop before
+    # BBS does, so rep_end would ask for a raster that was never built.
+    cov_year = covariates.last_complete_year(
+        list(range(args.rep_start, args.rep_end + 1)), args.tier)
+    if cov_year is None:
+        raise FileNotFoundError(
+            f"tier {args.tier!r} has no complete year in "
+            f"{args.rep_start}-{args.rep_end}; run `preflight` for the paths.")
+    if cov_year < args.rep_end:
+        print(f"  site covariates read at {cov_year} "
+              f"(tier {args.tier} does not reach {args.rep_end})")
+    site_df["Year"] = cov_year
+    out_cov_year = cov_year
     X, names = _design_for_tier(site_df, args.tier)
     X, mu, sd = covariates.standardize(X)
     keep = ~np.isnan(X).any(axis=1)
@@ -321,7 +362,8 @@ def cmd_biolith(args):
     print(f"  max_abundance={mx} (need {need}; biolith default 100 would truncate)")
 
     out = {"tier": args.tier, "window": [args.rep_start, args.rep_end],
-           "years": years, "n_sites": int(len(sites)), "spatial": bool(args.spatial),
+           "covariate_year": out_cov_year, "years": years,
+           "n_sites": int(len(sites)), "spatial": bool(args.spatial),
            "max_abundance": mx}
 
     ib = occupancy.build_inputs(sites, counts, years, X, binary=True)

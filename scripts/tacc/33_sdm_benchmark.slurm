@@ -42,9 +42,9 @@ SAMPLES="${HOUFIN_SDM_SAMPLES:-1000}"
 mkdir -p "$OUT"
 echo "tiers=[$TIERS] out=$OUT chains=$CHAINS samples=$SAMPLES"
 
-# Fail in seconds, not hours. preflight exits nonzero if BBS will not load or a
+# (TIERS/OUT are set above.) Fail in seconds, not hours. preflight exits nonzero if BBS will not load or a
 # covariate grid is absent / on the wrong lattice, and `set -e` aborts the job.
-python scripts/run_sdm_benchmark.py preflight
+python scripts/run_sdm_benchmark.py preflight --tiers $TIERS
 
 # The premise check is model-free and costs seconds; run it first so the observed
 # zone structure is recorded alongside whatever the baselines conclude.

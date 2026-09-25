@@ -409,3 +409,66 @@ def test_last_complete_year_rejects_unknown_tier():
     cov = pytest.importorskip("src.analysis.sdm_benchmark.covariates")
     with pytest.raises(ValueError, match="unknown tier"):
         cov.last_complete_year([2020], "nope")
+
+
+def test_preflight_parser_scopes_tiers():
+    """An unbuilt tier must not block a submission that never asks for it."""
+    import importlib.util
+    from pathlib import Path
+    repo = Path(__file__).resolve().parents[1]
+    spec = importlib.util.spec_from_file_location(
+        "_run_sdm", repo / "scripts" / "run_sdm_benchmark.py")
+    mod = importlib.util.module_from_spec(spec)
+    try:
+        spec.loader.exec_module(mod)
+    except Exception as e:
+        pytest.skip(f"CLI not importable here: {e}")
+    ap = mod.build_parser()
+    assert ap.parse_args(["preflight"]).tiers == ["standard", "full", "latent"]
+    assert ap.parse_args(["preflight", "--tiers", "standard", "full"]).tiers == \
+        ["standard", "full"]
+    with pytest.raises(SystemExit):
+        ap.parse_args(["preflight", "--tiers", "bogus"])
+
+
+def test_latent_tier_prefers_the_npz_the_model_actually_reads(tmp_path):
+    """Z_latent_*.npy is an intermediate; the age model ingests Z_disp_*.npz.
+
+    model_inputs globs Z_disp_*.npz and reads peek['Z_raw'], so a tree with
+    completed MAP runs can legitimately have no .npy left. Looking only for
+    .npy reported the tier unbuilt on a machine that had just fitted the model.
+    """
+    cov = pytest.importorskip("src.analysis.sdm_benchmark.covariates")
+    pd = pytest.importorskip("pandas")
+
+    path, key = cov._latent_year_path(str(tmp_path), 2015)
+    assert path.endswith("Z_latent_2015.npy") and key is None   # fallback
+
+    np.savez(tmp_path / "Z_disp_2015.npz",
+             Z_raw=np.zeros((1, 133, 224, 64), dtype="float32"))
+    path, key = cov._latent_year_path(str(tmp_path), 2015)
+    assert path.endswith("Z_disp_2015.npz") and key == "Z_raw"  # preferred
+
+
+def test_latent_design_reads_z_raw_and_truncates(tmp_path):
+    cov = pytest.importorskip("src.analysis.sdm_benchmark.covariates")
+    pd = pytest.importorskip("pandas")
+    z = np.zeros((1, 133, 224, 64), dtype="float32")
+    z[0, 5, 7, :] = np.arange(64)
+    np.savez(tmp_path / "Z_disp_2015.npz", Z_raw=z)
+
+    df = pd.DataFrame({"row": [5], "col": [7], "Year": [2015]})
+    X, names = cov.latent_z_design(df, z_dir=str(tmp_path), latent_dim=24)
+    assert X.shape == (1, 24) and len(names) == 24
+    assert X[0].tolist() == list(range(24))      # leading axis dropped, truncated
+
+
+def test_latent_design_accepts_the_bare_npy_intermediate(tmp_path):
+    cov = pytest.importorskip("src.analysis.sdm_benchmark.covariates")
+    pd = pytest.importorskip("pandas")
+    z = np.zeros((133, 224, 64), dtype="float32")
+    z[5, 7, :] = np.arange(64) * 2.0
+    np.save(tmp_path / "Z_latent_2015.npy", z)
+    df = pd.DataFrame({"row": [5], "col": [7], "Year": [2015]})
+    X, _ = cov.latent_z_design(df, z_dir=str(tmp_path), latent_dim=24)
+    assert X[0].tolist() == [i * 2.0 for i in range(24)]

@@ -383,22 +383,61 @@ def build_design(df, sources=None, require_all=True):
     return X, names
 
 
-def latent_z_design(df, z_dir=None, latent_dim=24):
+def _latent_year_path(z_dir, year):
+    """Path and key for one year of the latent basis, preferring what the model reads.
+
+    The pipeline writes Z_latent_{year}.npy as an INTERMEDIATE
+    (build_final_z_cube), then generate_all_path_features consumes it and emits
+    Z_disp_{year}.npz carrying both Z_raw and the path-integrated Z_disp. What
+    the age model actually ingests is the .npz: model_inputs globs Z_disp_*.npz
+    and reads peek['Z_raw']. So a tree with completed MAP runs can perfectly
+    well have no .npy left -- looking for those reported the tier as unbuilt on
+    a machine that had just finished fitting the model with it.
+
+    Returns (path, key) where key is None for a bare .npy.
+    """
+    npz = os.path.join(z_dir, f"Z_disp_{year}.npz")
+    if os.path.exists(npz):
+        return npz, "Z_raw"
+    return os.path.join(z_dir, f"Z_latent_{year}.npy"), None
+
+
+def _default_latent_dim():
+    v = _cfg_path(load_age_model_config, "latent_dim")
+    try:
+        return int(v)
+    except (TypeError, ValueError):
+        try:
+            return int(load_age_model_config().get("latent_dim", 24))
+        except Exception:
+            return 24
+
+
+def latent_z_design(df, z_dir=None, latent_dim=None):
     """The 'latent' tier: the same truncated basis Z the dynamic model consumes."""
     z_dir = z_dir or _cfg_path(load_age_model_config, "raw_z_dir",
                                default=os.path.join(_PROC, "latent_avian_paths"))
+    latent_dim = latent_dim or _default_latent_dim()
     years = sorted(df["Year"].unique().tolist())
     r, c, yr = df["row"].to_numpy(), df["col"].to_numpy(), df["Year"].to_numpy()
     X = np.full((len(df), latent_dim), np.nan, dtype=np.float32)
     for y in years:
-        p = os.path.join(z_dir, f"Z_latent_{y}.npy")
-        if not os.path.exists(p):
+        path, key = _latent_year_path(z_dir, y)
+        if not os.path.exists(path):
             raise FileNotFoundError(
-                f"{p} not found. The latent cube is built on HPC; the 'latent' "
-                f"tier cannot run from a laptop checkout.")
-        z = np.load(p, mmap_mode="r")
+                f"no Z_disp_{y}.npz or Z_latent_{y}.npy in {z_dir}. The latent "
+                f"cube is built on HPC; this tier cannot run from a laptop "
+                f"checkout.")
         sel = yr == y
-        X[sel] = np.asarray(z[r[sel], c[sel], :latent_dim], dtype=np.float32)
+        if key is None:
+            z = np.load(path, mmap_mode="r")
+            X[sel] = np.asarray(z[r[sel], c[sel], :latent_dim], dtype=np.float32)
+        else:
+            with np.load(path) as zf:
+                z = zf[key]
+                z = z[0] if z.ndim == 4 else z      # (1, Ny, Nx, M) -> (Ny, Nx, M)
+                X[sel] = np.asarray(z[r[sel], c[sel], :latent_dim],
+                                    dtype=np.float32)
     return X, [f"z{i:02d}" for i in range(latent_dim)]
 
 
@@ -494,9 +533,10 @@ def probe_tier(years, tier):
     if tier == "latent":
         d = _cfg_path(load_age_model_config, "raw_z_dir",
                       default=os.path.join(_PROC, "latent_avian_paths"))
-        gaps = [os.path.join(d, f"Z_latent_{y}.npy") for y in _sample_years(years)
-                if not os.path.exists(os.path.join(d, f"Z_latent_{y}.npy"))]
-        return {"tier": tier, "available": not gaps, "n_features": 24,
+        gaps = [_latent_year_path(d, y)[0] for y in _sample_years(years)
+                if not os.path.exists(_latent_year_path(d, y)[0])]
+        return {"tier": tier, "available": not gaps,
+                "n_features": _default_latent_dim(),
                 "dir": d, "first_missing": gaps[:3]}
 
     raise ValueError(f"unknown tier {tier!r}")
@@ -581,5 +621,5 @@ def _year_complete(year, tier):
     if tier == "latent":
         d = _cfg_path(load_age_model_config, "raw_z_dir",
                       default=os.path.join(_PROC, "latent_avian_paths"))
-        return _exists_ok(os.path.join(d, f"Z_latent_{year}.npy"))
+        return _exists_ok(_latent_year_path(d, year)[0])
     raise ValueError(f"unknown tier {tier!r}")

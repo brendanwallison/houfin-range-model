@@ -102,7 +102,9 @@ def cmd_preflight(args):
     print("\n-- covariate tiers --")
     if df is not None:
         yrs = sorted(df["Year"].unique().tolist())
-        for tier in ("standard", "full", "latent"):
+        # Only the tiers the job will actually run. An unbuilt tier must not
+        # block a submission that never asks for it.
+        for tier in args.tiers:
             try:
                 r = covariates.probe_tier(yrs, tier)
             except Exception as e:
@@ -412,6 +414,9 @@ def build_parser():
     p = sub.add_parser("preflight", help="check inputs exist; fits nothing")
     common(p)
     p.add_argument("--run-dir", default=None, help="also check a MAP run's fields")
+    p.add_argument("--tiers", nargs="+", default=["standard", "full", "latent"],
+                   choices=["standard", "full", "latent"],
+                   help="only check these tiers (default: all three)")
     p.set_defaults(fn=cmd_preflight)
 
     p = sub.add_parser("premise", help="observed BBS structure, no model")

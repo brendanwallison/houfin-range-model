@@ -25,7 +25,7 @@
 #SBATCH -p gpu-a100-small
 #SBATCH -N 1
 #SBATCH -n 1
-#SBATCH -t 04:00:00
+#SBATCH -t 12:00:00
 #SBATCH --mail-type=all
 set -euo pipefail
 
@@ -40,6 +40,10 @@ OUT="${HOUFIN_SDM_OUT:-$HOUFIN_PROCESSED/sdm_benchmark}"
 CHAINS="${HOUFIN_SDM_CHAINS:-4}"
 SAMPLES="${HOUFIN_SDM_SAMPLES:-1000}"
 mkdir -p "$OUT"
+# HOUFIN_SDM_SKIP_EXISTING=1 resumes after a wall-clock kill without redoing the
+# stages that already wrote a report.
+SKIP=""
+[ "${HOUFIN_SDM_SKIP_EXISTING:-0}" = "1" ] && SKIP="--skip-existing"
 echo "tiers=[$TIERS] out=$OUT chains=$CHAINS samples=$SAMPLES"
 
 # (TIERS/OUT are set above.) Fail in seconds, not hours. preflight exits nonzero if BBS will not load or a
@@ -67,7 +71,7 @@ run_stage () {                      # run_stage <label> <cmd...>
 
 for tier in $TIERS; do
     run_stage "brt/$tier" python scripts/run_sdm_benchmark.py brt \
-        --tier "$tier" --out "$OUT"
+        --tier "$tier" --out "$OUT" $SKIP
 
     # The abundance fit runs by default, via the direct marginal sum (Royle
     # 2004) rather than biolith's enumerated Categorical -- linear in the
@@ -76,7 +80,8 @@ for tier in $TIERS; do
     NMIX=""
     [ "${HOUFIN_SDM_NMIXTURE:-1}" = "0" ] && NMIX="--no-nmixture"
     run_stage "biolith/$tier" python scripts/run_sdm_benchmark.py biolith \
-        --tier "$tier" --out "$OUT" --chains "$CHAINS" --samples "$SAMPLES" $NMIX
+        --tier "$tier" --out "$OUT" --chains "$CHAINS" --samples "$SAMPLES" \
+        $NMIX $SKIP
 
     # Test B: the same model with a spatial GP added. If the Great Plains
     # designation only matches the data once space is in the model, the pattern

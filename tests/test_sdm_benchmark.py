@@ -158,13 +158,21 @@ def test_per_draw_conversion_differs_from_naive_mean_by_jensen():
     assert occupancy.analytic_poisson_check(R())["max_abs_gap"] > 0.05
 
 
-def test_suggest_max_abundance_exceeds_the_largest_count():
+def test_suggest_max_abundance_follows_the_unmarked_convention():
+    """K = max(y) + 100, as unmarked::pcount uses.
+
+    The old rule was max(y)/detection_floor with a 0.25 floor, giving 1960 for a
+    490-bird western route -- over 3x the convention, and cost is LINEAR in the
+    ceiling, so every NUTS gradient step was 3x more expensive for no gain.
+    """
     occupancy = pytest.importorskip("src.analysis.sdm_benchmark.occupancy",
                                     reason="needs numpyro/jax")
     counts = np.array([[0.0, 5.0], [np.nan, 490.0]])
-    mx, need = occupancy.suggest_max_abundance(counts, detection_floor=0.25)
-    assert need == 1960
+    mx, need = occupancy.suggest_max_abundance(counts)
+    assert (mx, need) == (590, 590)
     assert mx > 490                      # the biolith default of 100 would truncate
+    # the old behaviour stays reachable when asked for explicitly
+    assert occupancy.suggest_max_abundance(counts, detection_floor=0.25)[1] == 1960
 
 
 def test_build_inputs_shapes_and_nan_policy():
@@ -599,3 +607,62 @@ def test_marginal_likelihood_is_a_proper_log_probability():
                                         jnp.array([[True]]), lam, p, 200)
         tot += float(np.exp(np.asarray(ll)[0]))
     assert tot == pytest.approx(1.0, abs=1e-4)
+
+
+def test_sampler_diagnostics_flags_treedepth_saturation():
+    """A run pinned at 1023 leapfrog steps is hitting max_tree_depth.
+
+    That is a badly conditioned posterior -- slow AND poorly mixed -- and is
+    what the first full run showed. Reporting it beats reading it off a
+    progress bar afterwards.
+    """
+    occupancy = pytest.importorskip("src.analysis.sdm_benchmark.occupancy",
+                                    reason="needs numpyro/jax")
+
+    class _M:
+        def get_extra_fields(self):
+            return {"diverging": np.array([False, True, False, True]),
+                    "num_steps": np.array([1023, 1023, 1023, 7])}
+
+    d = occupancy.sampler_diagnostics(_M())
+    assert d["divergences"] == 2
+    assert d["frac_at_max_treedepth"] == pytest.approx(0.75)
+    assert d["mean_steps"] == pytest.approx((1023 * 3 + 7) / 4)
+
+
+def test_sampler_diagnostics_is_silent_without_extra_fields():
+    occupancy = pytest.importorskip("src.analysis.sdm_benchmark.occupancy",
+                                    reason="needs numpyro/jax")
+
+    class _M:
+        def get_extra_fields(self):
+            raise RuntimeError("not collected")
+
+    assert occupancy.sampler_diagnostics(_M()) == {}
+
+
+def test_max_abundance_sensitivity_reports_no_shift_for_identical_fits():
+    occupancy = pytest.importorskip("src.analysis.sdm_benchmark.occupancy",
+                                    reason="needs numpyro/jax")
+    a = np.array([0.1, 0.5, 0.9])
+    r = occupancy.max_abundance_sensitivity(a, a)
+    assert r["max_abs_shift"] == 0.0 and r["correlation"] == pytest.approx(1.0)
+    r2 = occupancy.max_abundance_sensitivity(a, a + 0.2)
+    assert r2["max_abs_shift"] == pytest.approx(0.2)
+
+
+def test_skip_existing_flag_is_available_on_the_fitting_stages():
+    import importlib.util
+    from pathlib import Path
+    repo = Path(__file__).resolve().parents[1]
+    spec = importlib.util.spec_from_file_location(
+        "_run_sdm3", repo / "scripts" / "run_sdm_benchmark.py")
+    mod = importlib.util.module_from_spec(spec)
+    try:
+        spec.loader.exec_module(mod)
+    except Exception as e:
+        pytest.skip(f"CLI not importable here: {e}")
+    ap = mod.build_parser()
+    assert ap.parse_args(["brt"]).skip_existing is False
+    assert ap.parse_args(["brt", "--skip-existing"]).skip_existing is True
+    assert ap.parse_args(["biolith", "--skip-existing"]).skip_existing is True

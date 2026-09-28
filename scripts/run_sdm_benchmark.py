@@ -269,8 +269,23 @@ def _design_for_tier(df, tier):
     raise ValueError(f"unknown tier {tier!r}")
 
 
+def _already_done(args, name):
+    """True when this stage's report exists and --skip-existing was passed.
+
+    A resubmit after a wall-clock kill should not redo the stages that already
+    succeeded -- the BRT tiers alone are ~25 minutes of the budget.
+    """
+    p = os.path.join(args.out, name)
+    if getattr(args, "skip_existing", False) and os.path.exists(p):
+        print(f"  skipping: {p} already exists (--skip-existing)")
+        return True
+    return False
+
+
 def cmd_brt(args):
     """Boosted-regression-tree baselines under spatial block CV."""
+    if _already_done(args, f"brt_{args.tier}.json"):
+        return None
     df = data.attach_zones(data.route_years(args.start_year, args.end_year))
     df = _clamp_to_covariates(df, args.tier).reset_index(drop=True)
     X, names = _design_for_tier(df, args.tier)
@@ -326,6 +341,8 @@ def cmd_brt(args):
 
 def cmd_biolith(args):
     """Detection-corrected occu() and nmixture(), reduced to occupancy."""
+    if _already_done(args, f"biolith_{args.tier}.json"):
+        return None
     from src.analysis.sdm_benchmark import occupancy
 
     df = data.attach_zones(data.route_years(args.rep_start, args.rep_end))
@@ -386,7 +403,9 @@ def cmd_biolith(args):
     psi = occupancy.psi_from_occu(r_occu)
     out["occu"] = {"psi_mean": float(psi.mean()),
                    "convergence": occupancy.convergence(r_occu)}
-    print(f"\nbiolith[{args.tier}] occu psi={psi.mean():.3f}")
+    _cv = out["occu"]["convergence"] or {}
+    _rh = max((v["r_hat_max"] for v in _cv.values()), default=float("nan"))
+    print(f"\nbiolith[{args.tier}] occu psi={psi.mean():.3f} r_hat_max={_rh:.3f}")
     _write(args.out, f"biolith_{args.tier}.json", out)
     np.savez_compressed(os.path.join(args.out, f"biolith_{args.tier}_pred.npz"),
                         psi=psi, row=sites.row.to_numpy(), col=sites.col.to_numpy(),
@@ -421,13 +440,21 @@ def cmd_biolith(args):
                 budget_gib=args.budget_gib)
         pn = occupancy.psi_from_nmixture(r_nm)
         chk = occupancy.analytic_poisson_check(r_nm)
+        diag = getattr(r_nm, "diagnostics", {}) or {}
         out["nmixture"] = {"p_occ_mean": float(pn.mean()),
                            "jensen_gap_max": chk["max_abs_gap"],
-                           "convergence": occupancy.convergence(r_nm)}
+                           "convergence": occupancy.convergence(r_nm),
+                           "sampler": diag}
+        if diag.get("frac_at_max_treedepth", 0) > 0.5:
+            print(f"  WARNING: {100*diag['frac_at_max_treedepth']:.0f}% of "
+                  f"iterations hit max tree depth -- the posterior is badly "
+                  f"conditioned, so treat these estimates as unconverged")
         out["occu_vs_nmixture_corr"] = float(np.corrcoef(psi, pn)[0, 1])
+        cv = out["nmixture"]["convergence"] or {}
+        rh = max((v["r_hat_max"] for v in cv.values()), default=float("nan"))
         print(f"  nmixture P(N>0)={pn.mean():.3f} "
               f"corr={out['occu_vs_nmixture_corr']:.3f} "
-              f"jensen_gap={chk['max_abs_gap']:.4f}")
+              f"jensen_gap={chk['max_abs_gap']:.4f} r_hat_max={rh:.3f}")
     except (MemoryError, RuntimeError) as e:
         out["nmixture"] = {"failed": f"{type(e).__name__}: {e}"}
         print(f"  nmixture FAILED (occu result above is kept): {e}")
@@ -449,6 +476,9 @@ def build_parser():
 
     def common(p, rep=True):
         p.add_argument("--out", default=str(_REPO / "results" / "sdm_benchmark"))
+        p.add_argument("--skip-existing", action="store_true",
+                       help="skip a stage whose report already exists (resume "
+                            "after a wall-clock kill without redoing work)")
         p.add_argument("--start-year", type=int, default=data.DEFAULT_START_YEAR)
         p.add_argument("--end-year", type=int, default=data.DEFAULT_END_YEAR)
         if rep:

@@ -77,19 +77,35 @@ def build_inputs(sites, counts, years, X_site, binary=False, add_year_obs_cov=Tr
             "obs": obs}
 
 
-def suggest_max_abundance(counts, detection_floor=0.25, ceiling=2000):
-    """Size nmixture's latent-N enumeration from the data.
+def suggest_max_abundance(counts, margin=100, ceiling=2000, detection_floor=None):
+    """Size the latent-N summation ceiling, following unmarked::pcount.
 
-    nmixture enumerates N over 0..max_abundance and observes Binomial(N, p), so
-    max_abundance must exceed the largest plausible TRUE abundance -- not the
-    largest observed count. With detection p, N ~ count / p, hence the floor.
-    The default 100 is far too small for House Finch (route counts reach ~490 in
-    the western native range), and silently truncating the support would bias
-    every abundance downward.
+    unmarked's convention is K = max(y) + 100: N cannot plausibly exceed the
+    largest observed count by a wide margin, because detection is not that poor.
+    The earlier rule here was max(y) / detection_floor with a 0.25 floor, which
+    for House Finch gave 1960 against a 490-bird western route -- over 3x larger
+    than the convention, and cost is linear in it, so it made every NUTS
+    gradient step over 3x more expensive for no gain.
+
+    ``detection_floor`` keeps the old behaviour when passed explicitly.
+
+    THE CEILING IS AN ASSUMPTION, not a free parameter: the right check is that
+    the answer does not move when it is raised. Use max_abundance_sensitivity.
     """
     m = float(np.nanmax(counts)) if np.isfinite(np.nanmax(counts)) else 0.0
-    need = int(np.ceil(m / max(detection_floor, 1e-3)))
+    if detection_floor:
+        need = int(np.ceil(m / max(detection_floor, 1e-3)))
+    else:
+        need = int(np.ceil(m)) + int(margin)
     return int(min(max(need, 10), ceiling)), need
+
+
+def max_abundance_sensitivity(psi_low, psi_high):
+    """How much a raised ceiling moved the answer. Near zero = ceiling is fine."""
+    a, b = np.asarray(psi_low, float), np.asarray(psi_high, float)
+    return {"max_abs_shift": float(np.nanmax(np.abs(a - b))),
+            "mean_abs_shift": float(np.nanmean(np.abs(a - b))),
+            "correlation": float(np.corrcoef(a, b)[0, 1])}
 
 
 def fit_occu(inputs, coords=None, num_samples=1000, num_warmup=1000,
@@ -177,11 +193,12 @@ def fit_nmixture_marginal(inputs, max_abundance, site_random_effects=True,
     mcmc.run(jax.random.PRNGKey(int(seed)),
              site_covs=inputs["site_covs"], obs_covs=inputs["obs_covs"],
              obs=inputs["obs"], max_abundance=int(max_abundance),
-             site_random_effects=bool(site_random_effects), **kwargs)
+             site_random_effects=bool(site_random_effects),
+             extra_fields=("diverging", "num_steps"), **kwargs)
 
     class _R:                       # same surface as biolith's FitResult
-        samples = mcmc.get_samples()
-    _R.samples = {k: np.asarray(v) for k, v in _R.samples.items()}
+        samples = {k: np.asarray(v) for k, v in mcmc.get_samples().items()}
+        diagnostics = sampler_diagnostics(mcmc)
     return _R
 
 
@@ -256,6 +273,27 @@ def analytic_poisson_check(result):
     naive = 1.0 - np.exp(-lam.mean(axis=0))
     return {"per_draw_mean": per_draw, "naive_on_mean": naive,
             "max_abs_gap": float(np.nanmax(np.abs(per_draw - naive)))}
+
+
+def sampler_diagnostics(mcmc):
+    """Divergences and max-treedepth saturation from a raw numpyro MCMC.
+
+    A run pinned at 1023 leapfrog steps (2^10 - 1) every iteration is hitting
+    max_tree_depth, which means a badly conditioned posterior -- slow AND poorly
+    mixed. Reporting it beats inferring it from a progress bar after the fact.
+    """
+    try:
+        extra = mcmc.get_extra_fields()
+    except Exception:
+        return {}
+    out = {}
+    if "diverging" in extra:
+        out["divergences"] = int(np.asarray(extra["diverging"]).sum())
+    if "num_steps" in extra:
+        steps = np.asarray(extra["num_steps"])
+        out["mean_steps"] = float(steps.mean())
+        out["frac_at_max_treedepth"] = float((steps >= 1023).mean())
+    return out
 
 
 def convergence(result, sites=("psi", "abundance")):

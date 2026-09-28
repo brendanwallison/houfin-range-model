@@ -160,10 +160,18 @@ def check_enumeration_budget(n_sites, max_abundance, budget_gib=8.0):
         f"the robust member of the pair and needs no enumeration.")
 
 
-def fit_nmixture_marginal(inputs, max_abundance, site_random_effects=True,
+def fit_nmixture_marginal(inputs, max_abundance, mixture="NB",
+                          site_random_effects=False,
                           num_samples=1000, num_warmup=1000, num_chains=4,
                           seed=0, budget_gib=8.0, **kwargs):
     """N-mixture with the latent N summed out directly (Royle 2004).
+
+    Overdispersion comes from a NEGATIVE-BINOMIAL latent (unmarked::pcount's
+    mixture="NB"), not from per-site random effects: one dispersion parameter
+    instead of one latent per site. Per-site effects both wreck the sampler
+    geometry and absorb the variation the benchmark wants attributed to
+    environment, competing with the covariate coefficients that generate the
+    suitability surface.
 
     The DEFAULT abundance fit. biolith's nmixture enumerates a Categorical and
     is quadratic in the ceiling (55 GiB at the ceiling this data implies); the
@@ -193,6 +201,7 @@ def fit_nmixture_marginal(inputs, max_abundance, site_random_effects=True,
     mcmc.run(jax.random.PRNGKey(int(seed)),
              site_covs=inputs["site_covs"], obs_covs=inputs["obs_covs"],
              obs=inputs["obs"], max_abundance=int(max_abundance),
+             mixture=str(mixture),
              site_random_effects=bool(site_random_effects),
              extra_fields=("diverging", "num_steps"), **kwargs)
 

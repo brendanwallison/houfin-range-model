@@ -38,28 +38,58 @@ def _log_binom_pmf(y, n, p, eps=1e-9):
     return jnp.where(n >= y, lp, -jnp.inf)
 
 
-def marginal_log_likelihood(y, mask, lam, p, max_abundance):
+def _log_nb2_pmf(n, lam, phi):
+    """log NegativeBinomial2(n | mean lam, concentration phi).
+
+    Same parameterisation as the dynamic model's likelihood
+    (src/model/age_priors.py): var = lam + lam^2 / phi, so a LOWER phi is MORE
+    overdispersion.
+    """
+    return (gammaln(n + phi) - gammaln(phi) - gammaln(n + 1.0)
+            + phi * jnp.log(phi / (phi + lam)) + n * jnp.log(lam / (phi + lam)))
+
+
+def marginal_log_likelihood(y, mask, lam, p, max_abundance, phi=None):
     """Per-site log L, summing the latent N out over 0..max_abundance.
 
     y     (n_sites, n_rep)  counts, any value where mask is False
     mask  (n_sites, n_rep)  True where the site was actually surveyed
     lam   (n_sites,)        expected true abundance
     p     (n_sites, n_rep)  per-visit detection probability
+    phi   scalar or None    NB2 concentration; None = Poisson latent
     """
     support = jnp.arange(max_abundance + 1, dtype=jnp.float32)        # (M+1,)
-    log_pois = dist.Poisson(lam[:, None]).log_prob(support[None, :])  # (S, M+1)
+    if phi is None:
+        log_state = dist.Poisson(lam[:, None]).log_prob(support[None, :])
+    else:
+        log_state = _log_nb2_pmf(support[None, :], lam[:, None], phi)  # (S, M+1)
 
     yy = jnp.where(mask, y, 0.0)[:, :, None]                          # (S, T, 1)
     pp = p[:, :, None]
     nn = support[None, None, :]
     log_det = _log_binom_pmf(yy, nn, pp)                              # (S, T, M+1)
     log_det = jnp.where(mask[:, :, None], log_det, 0.0)               # skip unsurveyed
-    return logsumexp(log_pois + log_det.sum(axis=1), axis=-1)         # (S,)
+    return logsumexp(log_state + log_det.sum(axis=1), axis=-1)        # (S,)
 
 
 def nmixture(site_covs, obs_covs, obs=None, max_abundance=100,
-             site_random_effects=True, prior_scale=2.0):
+             mixture="NB", site_random_effects=False, prior_scale=2.0):
     """Royle (2004) N-mixture, latent N marginalized by direct summation.
+
+    ``mixture`` chooses how overdispersion enters, following unmarked::pcount:
+
+      "NB"  negative-binomial latent abundance -- ONE dispersion parameter, and
+            the same NB2 parameterisation the dynamic model's own likelihood
+            uses (src/model/age_priors.py). THE DEFAULT.
+      "P"   Poisson latent, no overdispersion.
+
+    ``site_random_effects`` adds a per-site term on top (Poisson-lognormal when
+    mixture="P"). It is OFF by default and should stay off for this benchmark:
+    3853 free per-site parameters against ~7 visits each both wreck the sampler
+    geometry (max tree depth saturating every iteration) and, worse, absorb
+    exactly the variation the benchmark wants attributed to ENVIRONMENT -- they
+    compete with the covariate coefficients that generate the suitability
+    surface. NB overdispersion costs one parameter and does neither.
 
     Shapes follow biolith's contract so the two are interchangeable:
       site_covs (n_sites, n_site_covs)
@@ -88,6 +118,12 @@ def nmixture(site_covs, obs_covs, obs=None, max_abundance=100,
         log_lam = log_lam + re_sd * re
     lam = numpyro.deterministic("abundance", jnp.exp(jnp.clip(log_lam, -20.0, 20.0)))
 
+    phi = None
+    if str(mixture).upper() == "NB":
+        # Exponential(1) on the concentration, matching the dynamic model's
+        # prior on its own NB2 concentration.
+        phi = numpyro.sample("concentration", dist.Exponential(1.0))
+
     oc = obs_covs[:, 0, :, :]                                   # (S, T, n_obs_covs)
     p = numpyro.deterministic("prob_detection",
                               jax.nn.sigmoid(alpha0 + oc @ alpha))
@@ -96,7 +132,8 @@ def nmixture(site_covs, obs_covs, obs=None, max_abundance=100,
     mask = ~jnp.isnan(y_raw)
     y = jnp.nan_to_num(y_raw)
     numpyro.factor("marginal",
-                   marginal_log_likelihood(y, mask, lam, p, max_abundance).sum())
+                   marginal_log_likelihood(y, mask, lam, p, max_abundance,
+                                           phi=phi).sum())
 
 
 def enumeration_free_bytes(n_sites, max_abundance, n_replicates, dtype_bytes=4):

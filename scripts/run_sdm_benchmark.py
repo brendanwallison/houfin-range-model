@@ -421,20 +421,20 @@ def cmd_biolith(args):
     # discard the occu fit above.
     pn = None
     out["nmixture_method"] = ("enumerated" if args.enumerate_nmixture
-                              else "marginal")
+                              else f"marginal/{args.mixture}")
     try:
         ic = occupancy.build_inputs(sites, counts, years, X, binary=False)
         if args.enumerate_nmixture:
             r_nm = occupancy.fit_nmixture(ic, max_abundance=mx, coords=coords,
-                                          site_random_effects=not args.no_site_re,
+                                          site_random_effects=args.site_random_effects,
                                           num_samples=args.samples,
                                           num_warmup=args.warmup,
                                           num_chains=args.chains, seed=args.seed,
                                           budget_gib=args.budget_gib)
         else:
             r_nm = occupancy.fit_nmixture_marginal(
-                ic, max_abundance=mx,
-                site_random_effects=not args.no_site_re,
+                ic, max_abundance=mx, mixture=args.mixture,
+                site_random_effects=args.site_random_effects,
                 num_samples=args.samples, num_warmup=args.warmup,
                 num_chains=args.chains, seed=args.seed,
                 budget_gib=args.budget_gib)
@@ -517,8 +517,15 @@ def build_parser():
     p.add_argument("--tier", choices=["standard", "full", "latent"], default="standard")
     p.add_argument("--spatial", action="store_true",
                    help="add a spatial GP (Test B: environment vs space)")
-    p.add_argument("--no-site-re", action="store_true",
-                   help="disable site random effects (Poisson, not Poisson-lognormal)")
+    p.add_argument("--mixture", choices=["NB", "P"], default="NB",
+                   help="latent abundance distribution (unmarked::pcount's "
+                        "mixture). NB gives overdispersion from ONE parameter "
+                        "and matches the dynamic model's NB2")
+    p.add_argument("--site-random-effects", action="store_true",
+                   help="add per-site random effects. OFF by default: 3853 free "
+                        "per-site parameters wreck the sampler geometry AND "
+                        "absorb variation the benchmark wants attributed to "
+                        "environment")
     p.add_argument("--no-nmixture", action="store_true",
                    help="skip the abundance fit (occu only)")
     p.add_argument("--enumerate-nmixture", action="store_true",

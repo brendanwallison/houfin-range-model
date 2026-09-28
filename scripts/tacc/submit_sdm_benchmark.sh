@@ -11,7 +11,7 @@ set -euo pipefail
 source "$(dirname "$0")/env.sh"
 
 QUEUE="${QUEUE:-gpu-a100-small}"
-TIME="${TIME:-12:00:00}"
+TIME="${TIME:-04:00:00}"
 TIERS="${HOUFIN_SDM_TIERS:-standard full latent}"
 SPATIAL="${HOUFIN_SDM_SPATIAL:-0}"
 NMIXTURE="${HOUFIN_SDM_NMIXTURE:-1}"

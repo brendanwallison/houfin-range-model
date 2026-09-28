@@ -18,6 +18,14 @@
 # (~900+ for House Finch, whose western route counts reach 490), so the NUTS
 # scan is much happier on an A100. The BRT half is CPU-only and cheap.
 #
+# WALL TIME. Measured on job 3470064, whose 4h were dominated by one stage: the
+# abundance fit at a 1960 ceiling with 3853 site random effects. That ceiling is
+# now 590 (unmarked's max(y)+100, ~3.3x cheaper -- cost is linear in it) and the
+# overdispersion comes from an NB latent instead, which halves the leapfrog steps
+# and stops NUTS saturating max tree depth. A full run should land near 2.5h, so
+# 4h carries headroom without the scheduling penalty a 12h request pays.
+# Overrun is cheap anyway: HOUFIN_SDM_SKIP_EXISTING=1 resumes from what finished.
+#
 # Tiers via HOUFIN_SDM_TIERS, spatial contrast (Test B) via HOUFIN_SDM_SPATIAL=1.
 #SBATCH -J houfin_sdm
 #SBATCH -o houfin_sdm.o%j
@@ -25,7 +33,7 @@
 #SBATCH -p gpu-a100-small
 #SBATCH -N 1
 #SBATCH -n 1
-#SBATCH -t 12:00:00
+#SBATCH -t 04:00:00
 #SBATCH --mail-type=all
 set -euo pipefail
 

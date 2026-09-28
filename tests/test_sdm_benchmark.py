@@ -666,3 +666,70 @@ def test_skip_existing_flag_is_available_on_the_fitting_stages():
     assert ap.parse_args(["brt"]).skip_existing is False
     assert ap.parse_args(["brt", "--skip-existing"]).skip_existing is True
     assert ap.parse_args(["biolith", "--skip-existing"]).skip_existing is True
+
+
+# ------------------------------ NB latent abundance (unmarked's mixture="NB")
+
+def test_nb2_latent_pmf_matches_scipy():
+    nm = pytest.importorskip("src.analysis.sdm_benchmark.nmixture_marginal",
+                             reason="needs numpyro/jax")
+    jnp = pytest.importorskip("jax.numpy")
+    nbinom = pytest.importorskip("scipy.stats").nbinom
+    n = jnp.arange(0.0, 20.0)
+    got = np.asarray(nm._log_nb2_pmf(n, jnp.float32(4.0), jnp.float32(2.5)))
+    assert np.allclose(got, nbinom.logpmf(np.arange(20), 2.5, 2.5 / (2.5 + 4.0)),
+                       atol=1e-5)
+
+
+@pytest.mark.parametrize("phi", [None, 2.0])
+def test_marginal_likelihood_integrates_to_one_for_both_mixtures(phi):
+    """Poisson and NB latents must each give a proper likelihood."""
+    nm = pytest.importorskip("src.analysis.sdm_benchmark.nmixture_marginal",
+                             reason="needs numpyro/jax")
+    jnp = pytest.importorskip("jax.numpy")
+    lam, p = jnp.array([3.0]), jnp.array([[0.4]])
+    ph = None if phi is None else jnp.float32(phi)
+    tot = sum(float(np.exp(np.asarray(nm.marginal_log_likelihood(
+        jnp.array([[float(y)]]), jnp.array([[True]]), lam, p, 300, phi=ph))[0]))
+        for y in range(0, 150))
+    assert tot == pytest.approx(1.0, abs=1e-4)
+
+
+def test_nb_latent_is_overdispersed_and_poisson_is_not():
+    """Binomial thinning of a Poisson stays Poisson (var/mean == 1 exactly)."""
+    nm = pytest.importorskip("src.analysis.sdm_benchmark.nmixture_marginal",
+                             reason="needs numpyro/jax")
+    jnp = pytest.importorskip("jax.numpy")
+
+    def var_over_mean(phi):
+        ys = np.arange(200)
+        ll = np.asarray(nm.marginal_log_likelihood(
+            jnp.array([[float(y)] for y in ys]), jnp.ones((200, 1), bool),
+            jnp.full((200,), 3.0), jnp.full((200, 1), 0.4), 400, phi=phi))
+        w = np.exp(ll); w /= w.sum()
+        m = (w * ys).sum()
+        return ((w * (ys - m) ** 2).sum()) / m
+
+    assert var_over_mean(None) == pytest.approx(1.0, abs=1e-3)      # Poisson
+    assert var_over_mean(jnp.float32(5.0)) > 1.1                    # NB, mild
+    assert var_over_mean(jnp.float32(1.0)) > 2.0                    # NB, strong
+
+
+def test_biolith_parser_defaults_to_nb_without_site_random_effects():
+    """Per-site effects compete with the covariates that make the map."""
+    import importlib.util
+    from pathlib import Path
+    repo = Path(__file__).resolve().parents[1]
+    spec = importlib.util.spec_from_file_location(
+        "_run_sdm4", repo / "scripts" / "run_sdm_benchmark.py")
+    mod = importlib.util.module_from_spec(spec)
+    try:
+        spec.loader.exec_module(mod)
+    except Exception as e:
+        pytest.skip(f"CLI not importable here: {e}")
+    ap = mod.build_parser()
+    a = ap.parse_args(["biolith"])
+    assert a.mixture == "NB"
+    assert a.site_random_effects is False
+    assert ap.parse_args(["biolith", "--mixture", "P"]).mixture == "P"
+    assert ap.parse_args(["biolith", "--site-random-effects"]).site_random_effects

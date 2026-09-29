@@ -110,12 +110,22 @@ def max_abundance_sensitivity(psi_low, psi_high):
 
 def fit_occu(inputs, coords=None, num_samples=1000, num_warmup=1000,
              num_chains=4, seed=0, **kwargs):
-    """Fit biolith occu(). Returns the FitResult."""
+    """Fit biolith occu(). Returns the FitResult.
+
+    ``extra_fields`` is requested so occu gets the SAME divergence and
+    tree-depth diagnostics as the abundance fit. It was previously omitted, so
+    the only saturation warning the benchmark ever printed was nmixture's and
+    occu's sampler behaviour was simply unknown -- a hole in the diagnostic that
+    was meant to say which fits to trust. biolith's fit() forwards **kwargs to
+    mcmc.run, so this reaches NumPyro unchanged.
+    """
     from biolith.models import occu
     from biolith.utils import fit
     kw = dict(inputs)
     if coords is not None:
         kw["coords"] = np.asarray(coords, dtype=float)
+    kwargs.setdefault("extra_fields", ("diverging", "num_steps", "accept_prob",
+                                       "adapt_state.step_size"))
     return fit(occu, num_samples=num_samples, num_warmup=num_warmup,
                num_chains=num_chains, random_seed=seed, **kw, **kwargs)
 
@@ -203,7 +213,8 @@ def fit_nmixture_marginal(inputs, max_abundance, mixture="NB",
              obs=inputs["obs"], max_abundance=int(max_abundance),
              mixture=str(mixture),
              site_random_effects=bool(site_random_effects),
-             extra_fields=("diverging", "num_steps"), **kwargs)
+             extra_fields=("diverging", "num_steps", "accept_prob",
+                      "adapt_state.step_size"), **kwargs)
 
     class _R:                       # same surface as biolith's FitResult
         samples = {k: np.asarray(v) for k, v in mcmc.get_samples().items()}
@@ -249,22 +260,37 @@ def psi_from_occu(result):
     return _site_axis(result.samples["psi"]).mean(axis=0)
 
 
-def psi_from_nmixture(result, max_abundance=None):
+def psi_from_nmixture(result, max_abundance=None, concentration=None):
     """Posterior-mean P(N>0) per site, converted PER DRAW from abundance.
 
-    Averaging ``1 - exp(-lambda)`` over draws is the correct marginalization;
-    applying the formula to the posterior-mean lambda is biased by Jensen. When
-    ``max_abundance`` is given, the truncation is corrected exactly -- negligible
-    unless the enumeration ceiling is close to the fitted abundances, which is
-    itself a sign the ceiling is too low.
+    THE ZERO PROBABILITY MUST MATCH THE LATENT. For a Poisson latent
+    P(N=0) = exp(-lambda); for the NEGATIVE BINOMIAL latent this model now uses
+    by default it is (phi/(phi+lambda))^phi, which is strictly LARGER -- an NB
+    puts more mass on zero at the same mean. Applying the Poisson formula to an
+    NB fit therefore OVERSTATES occupancy, and by a lot when phi is small. The
+    concentration is picked up automatically from the fit when present.
+
+    Averaging per draw is the other half: applying either formula to the
+    posterior-mean lambda is biased by Jensen's inequality.
     """
     lam = _site_axis(result.samples["abundance"])
-    p0 = np.exp(-lam)
-    if max_abundance is not None:
+    if concentration is None:
+        c = (result.samples or {}).get("concentration")
+        if c is not None:
+            c = np.asarray(c)
+            concentration = c.reshape(c.shape[0], *([1] * (lam.ndim - 1)))
+
+    if concentration is None:                      # Poisson latent
+        p0 = np.exp(-lam)
+    else:                                          # NB2 latent
+        phi = np.asarray(concentration, dtype=float)
+        p0 = np.exp(phi * np.log(phi / (phi + lam)))
+
+    if max_abundance is not None and concentration is None:
         from scipy.stats import poisson
         norm = poisson.cdf(int(max_abundance), lam)
         return float_clip(1.0 - p0 / np.maximum(norm, 1e-12)).mean(axis=0)
-    return (1.0 - p0).mean(axis=0)
+    return float_clip(1.0 - p0).mean(axis=0)
 
 
 def float_clip(a):
@@ -285,12 +311,14 @@ def analytic_poisson_check(result):
             "max_abs_gap": float(np.nanmax(np.abs(per_draw - naive)))}
 
 
-def sampler_diagnostics(mcmc):
+def sampler_diagnostics(mcmc, max_tree_depth=10):
     """Divergences and max-treedepth saturation from a raw numpyro MCMC.
 
-    A run pinned at 1023 leapfrog steps (2^10 - 1) every iteration is hitting
-    max_tree_depth, which means a badly conditioned posterior -- slow AND poorly
-    mixed. Reporting it beats inferring it from a progress bar after the fact.
+    A run pinned at 2^max_tree_depth - 1 leapfrog steps every iteration is
+    hitting the depth limit, which means a badly conditioned posterior -- slow
+    AND poorly mixed. Reporting it beats inferring it from a progress bar after
+    the fact. The threshold is derived from the kernel's depth rather than
+    hardcoded, so it stays right if the depth is ever raised.
     """
     try:
         extra = mcmc.get_extra_fields()
@@ -299,11 +327,26 @@ def sampler_diagnostics(mcmc):
     out = {}
     if "diverging" in extra:
         out["divergences"] = int(np.asarray(extra["diverging"]).sum())
+    for key, name in (("accept_prob", "mean_accept_prob"),):
+        if key in extra:
+            out[name] = float(np.asarray(extra[key]).mean())
+    if "adapt_state.step_size" in extra:
+        out["step_size"] = float(np.asarray(extra["adapt_state.step_size"]).mean())
     if "num_steps" in extra:
         steps = np.asarray(extra["num_steps"])
+        limit = 2 ** int(max_tree_depth) - 1
         out["mean_steps"] = float(steps.mean())
-        out["frac_at_max_treedepth"] = float((steps >= 1023).mean())
+        out["max_treedepth_steps"] = int(limit)
+        out["frac_at_max_treedepth"] = float((steps >= limit).mean())
     return out
+
+
+def diagnostics_of(result, max_tree_depth=10):
+    """Sampler diagnostics from any fit result carrying an .mcmc object."""
+    mcmc = getattr(result, "mcmc", None)
+    if mcmc is None:
+        return {}
+    return sampler_diagnostics(mcmc, max_tree_depth=max_tree_depth)
 
 
 def _grouped_samples(result):
@@ -365,3 +408,45 @@ def worst_r_hat(conv):
     if not conv or "worst" not in conv:
         return float("nan")
     return float(conv["worst"]["r_hat_max"])
+
+
+def identifiability(result, pairs=(("beta0", "alpha0"),)):
+    """Posterior correlation between abundance and detection intercepts.
+
+    THE DECISIVE TEST for why an N-mixture samples badly. lambda and p are only
+    weakly separable -- their product is well determined while the split between
+    them is not -- and that ridge shows up directly as a near +-1 posterior
+    correlation between the abundance intercept and the detection intercept.
+
+    This distinguishes the two competing explanations for tree-depth saturation:
+    a correlation near +-1 means the ridge is INTRINSIC to the N-mixture and no
+    amount of covariate rotation will fix it, while a modest correlation means
+    the problem was the design matrix and PCA should have helped. The
+    literature's identifiability warnings (Barker 2018, Link 2018) are about
+    exactly this quantity.
+    """
+    samples = getattr(result, "samples", {}) or {}
+    out = {}
+    for a, b in pairs:
+        if a in samples and b in samples:
+            x = np.asarray(samples[a]).ravel()
+            y = np.asarray(samples[b]).ravel()
+            if x.size == y.size and x.size > 2:
+                out[f"corr({a},{b})"] = float(np.corrcoef(x, y)[0, 1])
+    return out
+
+
+def detection_summary(result):
+    """Posterior detection probability. Degenerate near 0 or 1."""
+    samples = getattr(result, "samples", {}) or {}
+    p = samples.get("prob_detection")
+    if p is None and "alpha0" in samples:
+        a = np.asarray(samples["alpha0"]).ravel()
+        p = 1.0 / (1.0 + np.exp(-a))
+    if p is None:
+        return {}
+    p = np.asarray(p, dtype=float)
+    return {"mean": float(np.nanmean(p)),
+            "q05": float(np.nanpercentile(p, 5)),
+            "q95": float(np.nanpercentile(p, 95)),
+            "degenerate": bool(np.nanmean(p) > 0.98 or np.nanmean(p) < 0.02)}

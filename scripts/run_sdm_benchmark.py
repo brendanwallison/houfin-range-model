@@ -43,6 +43,7 @@ processed tree.
 from __future__ import annotations
 
 import argparse
+import glob
 import json
 import os
 import sys
@@ -269,6 +270,24 @@ def _design_for_tier(df, tier):
     raise ValueError(f"unknown tier {tier!r}")
 
 
+def _warn_saturation(label, diag):
+    """Say plainly when a fit was pinned at the tree-depth limit.
+
+    Saturation means slow AND poorly mixed sampling, so the uncertainty is not
+    to be believed even when the point estimates look reasonable.
+    """
+    if not diag:
+        print(f"  note: {label} sampler diagnostics unavailable")
+        return
+    frac = diag.get("frac_at_max_treedepth")
+    if frac is not None and frac > 0.5:
+        print(f"  WARNING: {label}: {100*frac:.0f}% of iterations hit max tree "
+              f"depth ({diag.get('max_treedepth_steps')} steps) -- badly "
+              f"conditioned posterior, treat as unconverged")
+    if diag.get("divergences"):
+        print(f"  WARNING: {label}: {diag['divergences']} divergent transitions")
+
+
 def _already_done(args, name):
     """True when this stage's report exists and --skip-existing was passed.
 
@@ -470,14 +489,18 @@ def cmd_biolith(args):
                                 num_warmup=args.warmup, num_chains=args.chains,
                                 seed=args.seed)
     psi = occupancy.psi_from_occu(r_occu)
+    occu_diag = occupancy.diagnostics_of(r_occu)
     out["occu"] = {"psi_mean": float(psi.mean()),
-                   "convergence": occupancy.convergence(r_occu)}
+                   "convergence": occupancy.convergence(r_occu),
+                   "sampler": occu_diag,
+                   "detection": occupancy.detection_summary(r_occu)}
     from src.analysis.sdm_benchmark.occupancy import worst_r_hat
     _cv = out["occu"]["convergence"]
     print(f"\nbiolith[{args.tier}] occu psi={psi.mean():.3f} "
           f"r_hat_max={worst_r_hat(_cv):.3f} ({_cv.get('worst', {}).get('param', '?')})")
     if _cv.get("error"):
         print(f"  WARNING: convergence not assessed -- {_cv['error']}")
+    _warn_saturation("occu", occu_diag)
     _write(args.out, f"biolith_{args.tier}.json", out)
     np.savez_compressed(os.path.join(args.out, f"biolith_{args.tier}_pred.npz"),
                         psi=psi, row=sites.row.to_numpy(), col=sites.col.to_numpy(),
@@ -513,14 +536,23 @@ def cmd_biolith(args):
         pn = occupancy.psi_from_nmixture(r_nm)
         chk = occupancy.analytic_poisson_check(r_nm)
         diag = getattr(r_nm, "diagnostics", {}) or {}
+        ident = occupancy.identifiability(r_nm)
+        det = occupancy.detection_summary(r_nm)
         out["nmixture"] = {"p_occ_mean": float(pn.mean()),
                            "jensen_gap_max": chk["max_abs_gap"],
                            "convergence": occupancy.convergence(r_nm),
-                           "sampler": diag}
-        if diag.get("frac_at_max_treedepth", 0) > 0.5:
-            print(f"  WARNING: {100*diag['frac_at_max_treedepth']:.0f}% of "
-                  f"iterations hit max tree depth -- the posterior is badly "
-                  f"conditioned, so treat these estimates as unconverged")
+                           "sampler": diag,
+                           "identifiability": ident,
+                           "detection": det}
+        for k, v in ident.items():
+            if abs(v) > 0.9:
+                print(f"  WARNING: {k}={v:+.3f} -- lambda and p are nearly "
+                      f"unidentified (the intrinsic N-mixture ridge, NOT a "
+                      f"covariate problem; rotation cannot fix it)")
+        if det.get("degenerate"):
+            print(f"  WARNING: detection estimated at {det['mean']:.3f} "
+                  f"-- degenerate, the abundance scale is not identified")
+        _warn_saturation("nmixture", diag)
         out["occu_vs_nmixture_corr"] = float(np.corrcoef(psi, pn)[0, 1])
         cv = out["nmixture"]["convergence"]
         print(f"  nmixture P(N>0)={pn.mean():.3f} "
@@ -541,6 +573,85 @@ def cmd_biolith(args):
                             col=sites.col.to_numpy(),
                             lon=sites.Longitude.to_numpy(),
                             lat=sites.Latitude.to_numpy())
+    return out
+
+
+def cmd_compare(args):
+    """THE BENCHMARK: correlative designation vs the dynamic model's lam >= 1.
+
+    Both sides are binarized and overlaid on the same surveyed cells. The number
+    to read is ``occupied_sink`` -- occupied ground the niche call says is not
+    self-sustaining. A correlative SDM infers its niche axis FROM occurrence, so
+    it can only populate that cell by threshold noise; the dynamic model can,
+    because lambda and N are separate quantities.
+    """
+    import rasterio
+    from src.config_utils import load_data_config
+
+    fields = designation.load_dynamic_fields(args.run_dir)
+    lam = fields["lam_fundamental_modern"]
+    niche_dyn, finite = designation.niche_from_lambda(lam, args.lam_threshold)
+    ny, nx = lam.shape
+
+    df = data.plains_band(data.attach_zones(
+        data.route_years(args.rep_start, args.rep_end)))
+    occ, surv, _mean = designation.cell_occupancy(df, ny, nx)
+    with rasterio.open(load_data_config()["regions"]["great_plains_zones"]) as src:
+        zones = src.read(1)
+
+    models = {"dynamic (lambda>=1)": niche_dyn}
+    for path in sorted(glob.glob(os.path.join(args.out, "*_pred.npz"))):
+        tag = os.path.basename(path)[: -len("_pred.npz")]
+        with np.load(path, allow_pickle=True) as z:
+            keys = set(z.files)
+            if "psi" in keys:                       # biolith: one row per site
+                score, r, c = z["psi"], z["row"], z["col"]
+            elif "occ_pred" in keys:                # BRT: one row per route-year
+                score, r, c = z["occ_pred"], z["row"], z["col"]
+            else:
+                continue
+            r, c = np.asarray(r), np.asarray(c)
+        ok = np.isfinite(score)
+        score, r, c = np.asarray(score)[ok], r[ok], c[ok]
+        # Aggregate to cells (BRT rows are route-years), then threshold against
+        # OBSERVED occupancy -- which is precisely why the resulting "niche"
+        # axis cannot disagree with occupancy except by threshold noise.
+        # Mean over the rows landing in a cell. BRT rows are route-years and
+        # biolith rows are sites, so several can share a 27 km cell.
+        tot = np.zeros((ny, nx), dtype=float)
+        cnt = np.zeros((ny, nx), dtype=float)
+        np.add.at(tot, (r, c), score.astype(float))
+        np.add.at(cnt, (r, c), 1.0)
+        has = cnt > 0
+        grid = np.where(has, tot / np.maximum(cnt, 1.0), np.nan)
+        m = has & surv
+        if not m.any():
+            print(f"  {tag}: no predictions on surveyed cells, skipped")
+            continue
+        thr = designation.threshold_max_sss(grid[m], occ[m])
+        models[tag] = has & (np.where(has, grid, -np.inf) >= thr)
+
+    out = {"run_dir": args.run_dir, "models": {}}
+    print(f"\nDesignation comparison on surveyed cells, "
+          f"{data.PLAINS_LAT_MIN:.0f}-{data.PLAINS_LAT_MAX:.0f}N")
+    for zone, lab in list(ZONE_LABELS.items()) + [(None, "all")]:
+        base = finite & surv & ((zones == zone) if zone else (zones > 0))
+        if not base.sum():
+            continue
+        print(f"\n  {lab.upper()}  ({int(base.sum())} cells, "
+              f"{100*occ[base].mean():.1f}% occupied)")
+        print(f"    {'model':26s} {'niche%':>7s} {'OCC_SINK':>9s} {'UNOCC_SRC':>10s} {'kappa':>7s}")
+        for name, niche in models.items():
+            r = designation.contingency(niche, occ, base)
+            rec = {"niche_fraction": float(niche[base].mean()),
+                   "occupied_sink": r["fractions"]["occupied_sink"],
+                   "unoccupied_source": r["fractions"]["unoccupied_source"],
+                   "kappa": designation.cohens_kappa(niche, occ, base)}
+            out["models"].setdefault(name, {})[lab] = rec
+            print(f"    {name:26s} {100*rec['niche_fraction']:7.1f} "
+                  f"{rec['occupied_sink']:9.3f} {rec['unoccupied_source']:10.3f} "
+                  f"{rec['kappa']:+7.3f}")
+    _write(args.out, "comparison.json", out)
     return out
 
 
@@ -567,6 +678,12 @@ def build_parser():
                    choices=["standard", "full", "latent"],
                    help="only check these tiers (default: all three)")
     p.set_defaults(fn=cmd_preflight)
+
+    p = sub.add_parser("compare", help="THE BENCHMARK: SDM vs dynamic designation")
+    common(p)
+    p.add_argument("--run-dir", required=True)
+    p.add_argument("--lam-threshold", type=float, default=1.0)
+    p.set_defaults(fn=cmd_compare)
 
     p = sub.add_parser("premise", help="observed BBS structure, no model")
     common(p); p.set_defaults(fn=cmd_premise)

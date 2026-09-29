@@ -1073,3 +1073,123 @@ def test_per_stream_pca_leaves_cross_stream_collinearity():
     for stream in set(st):
         corr[np.ix_(st == stream, st == stream)] = 0.0
     assert corr.max() > 0.9
+
+
+# ------------------------------------------- what the naive SDM actually estimates
+
+def test_identifiability_measures_the_lambda_p_ridge():
+    """Posterior corr(beta0, alpha0) near +-1 means lambda and p are not separable.
+
+    This is the decisive test for WHY an N-mixture samples badly: near +-1 the
+    ridge is intrinsic and no covariate rotation helps; modest means the design
+    matrix was the problem.
+    """
+    occupancy = pytest.importorskip("src.analysis.sdm_benchmark.occupancy",
+                                    reason="needs numpyro/jax")
+    rng = np.random.default_rng(0)
+    t = rng.normal(size=500)
+
+    class _Ridged:
+        samples = {"beta0": t, "alpha0": -t + 0.01 * rng.normal(size=500)}
+
+    class _Clean:
+        samples = {"beta0": rng.normal(size=500), "alpha0": rng.normal(size=500)}
+
+    assert occupancy.identifiability(_Ridged())["corr(beta0,alpha0)"] < -0.9
+    assert abs(occupancy.identifiability(_Clean())["corr(beta0,alpha0)"]) < 0.2
+
+
+def test_detection_summary_flags_degenerate_estimates():
+    occupancy = pytest.importorskip("src.analysis.sdm_benchmark.occupancy",
+                                    reason="needs numpyro/jax")
+
+    class _R:
+        samples = {"prob_detection": np.full(200, 0.45)}
+
+    d = occupancy.detection_summary(_R())
+    assert d["mean"] == pytest.approx(0.45) and not d["degenerate"]
+
+    class _Deg:
+        samples = {"prob_detection": np.full(200, 0.995)}
+
+    assert occupancy.detection_summary(_Deg())["degenerate"] is True
+
+    class _None:
+        samples = {}
+
+    assert occupancy.detection_summary(_None()) == {}
+
+
+def test_sampler_diagnostics_threshold_follows_the_tree_depth():
+    occupancy = pytest.importorskip("src.analysis.sdm_benchmark.occupancy",
+                                    reason="needs numpyro/jax")
+
+    class _M:
+        def get_extra_fields(self):
+            return {"num_steps": np.array([1023, 1023, 7, 7])}
+
+    at10 = occupancy.sampler_diagnostics(_M(), max_tree_depth=10)
+    assert at10["frac_at_max_treedepth"] == pytest.approx(0.5)
+    assert at10["max_treedepth_steps"] == 1023
+    # raising the depth means those same runs are no longer at the limit
+    at12 = occupancy.sampler_diagnostics(_M(), max_tree_depth=12)
+    assert at12["frac_at_max_treedepth"] == 0.0
+
+
+def test_compare_subcommand_is_registered():
+    """The benchmark's primary stage: SDM designation vs the dynamic model."""
+    import importlib.util
+    from pathlib import Path
+    repo = Path(__file__).resolve().parents[1]
+    spec = importlib.util.spec_from_file_location(
+        "_run_sdm8", repo / "scripts" / "run_sdm_benchmark.py")
+    mod = importlib.util.module_from_spec(spec)
+    try:
+        spec.loader.exec_module(mod)
+    except Exception as e:
+        pytest.skip(f"CLI not importable here: {e}")
+    ap = mod.build_parser()
+    a = ap.parse_args(["compare", "--run-dir", "/tmp/x"])
+    assert a.run_dir == "/tmp/x" and a.lam_threshold == 1.0
+
+
+def test_zero_probability_matches_the_latent_distribution():
+    """P(N=0) is exp(-lambda) for Poisson but (phi/(phi+lambda))^phi for NB2.
+
+    The latent was switched to negative binomial while the conversion still used
+    the Poisson formula, which OVERSTATES occupancy -- badly at small phi. At
+    lambda=8 the Poisson puts 0.0003 on zero and NB2(phi=1) puts 0.111.
+    """
+    occupancy = pytest.importorskip("src.analysis.sdm_benchmark.occupancy",
+                                    reason="needs numpyro/jax")
+    nbinom = pytest.importorskip("scipy.stats").nbinom
+    poisson = pytest.importorskip("scipy.stats").poisson
+    lam = np.array([[8.0], [8.0]])                 # 2 draws, 1 site
+
+    class _P:
+        samples = {"abundance": lam}
+
+    class _NB:
+        samples = {"abundance": lam, "concentration": np.array([1.0, 1.0])}
+
+    got_p = occupancy.psi_from_nmixture(_P())[0]
+    got_nb = occupancy.psi_from_nmixture(_NB())[0]
+    assert got_p == pytest.approx(1 - poisson.pmf(0, 8.0), abs=1e-6)
+    assert got_nb == pytest.approx(1 - nbinom.pmf(0, 1.0, 1.0 / (1.0 + 8.0)),
+                                   abs=1e-6)
+    assert got_nb < got_p - 0.05          # NB puts far more mass on zero
+
+
+def test_nb_concentration_is_picked_up_automatically_from_the_fit():
+    occupancy = pytest.importorskip("src.analysis.sdm_benchmark.occupancy",
+                                    reason="needs numpyro/jax")
+    lam = np.full((4, 3), 2.0)
+
+    class _NB:
+        samples = {"abundance": lam, "concentration": np.full(4, 1.5)}
+
+    auto = occupancy.psi_from_nmixture(_NB())
+    explicit = occupancy.psi_from_nmixture(
+        _NB(), concentration=np.full(4, 1.5).reshape(4, 1))
+    assert np.allclose(auto, explicit)
+    assert np.all((auto >= 0) & (auto <= 1))

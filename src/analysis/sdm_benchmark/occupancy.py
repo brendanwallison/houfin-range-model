@@ -208,6 +208,7 @@ def fit_nmixture_marginal(inputs, max_abundance, mixture="NB",
     class _R:                       # same surface as biolith's FitResult
         samples = {k: np.asarray(v) for k, v in mcmc.get_samples().items()}
         diagnostics = sampler_diagnostics(mcmc)
+    _R.mcmc = mcmc                  # needed for PER-CHAIN R-hat
     return _R
 
 
@@ -305,16 +306,62 @@ def sampler_diagnostics(mcmc):
     return out
 
 
-def convergence(result, sites=("psi", "abundance")):
-    """R-hat / ESS summary for the fitted parameters that matter."""
+def _grouped_samples(result):
+    """Per-chain posterior draws, shaped (n_chains, n_draws, ...).
+
+    get_samples() CONCATENATES chains, so feeding it to Gelman-Rubin measures a
+    single chain against itself and yields nan. biolith's FitResult carries the
+    numpyro MCMC object as .mcmc, and the direct-sum fitter exposes the same, so
+    ask it for group_by_chain=True.
+    """
+    mcmc = getattr(result, "mcmc", None)
+    if mcmc is None:
+        return None
+    try:
+        return mcmc.get_samples(group_by_chain=True)
+    except Exception:
+        return None
+
+
+def convergence(result, max_params=None):
+    """R-hat / ESS per parameter, from PER-CHAIN draws.
+
+    Returns a dict with a ``worst`` summary so a caller does not have to scan.
+    Deterministic site-level arrays (psi, abundance, prob_detection) are skipped:
+    they are thousands of derived quantities whose R-hat says little that the
+    parameters driving them do not.
+    """
     import numpyro.diagnostics as diag
+
+    grouped = _grouped_samples(result)
+    if not grouped:
+        return {"error": "no per-chain draws available; R-hat undefined"}
+
+    skip = {"psi", "abundance", "prob_detection", "prob_detection_fp",
+            "site_re", "N_i"}
     out = {}
-    for k, v in result.samples.items():
-        if k.startswith("cov_") or k in sites or k.endswith("_sd"):
-            a = np.asarray(v)
-            try:
-                out[k] = {"r_hat_max": float(np.nanmax(diag.gelman_rubin(a[None]))),
-                          "ess_min": float(np.nanmin(diag.effective_sample_size(a[None])))}
-            except Exception:
-                continue
+    for k, v in grouped.items():
+        if k in skip:
+            continue
+        a = np.asarray(v)
+        if a.ndim < 2 or a.shape[0] < 2:
+            continue                      # need >= 2 chains for R-hat
+        try:
+            rh = np.asarray(diag.split_gelman_rubin(a))
+            ess = np.asarray(diag.effective_sample_size(a))
+        except Exception:
+            continue
+        out[k] = {"r_hat_max": float(np.nanmax(rh)),
+                  "ess_min": float(np.nanmin(ess))}
+    if not out:
+        return {"error": "R-hat needs at least 2 chains"}
+    worst = max(out.items(), key=lambda kv: kv[1]["r_hat_max"])
+    out["worst"] = {"param": worst[0], **worst[1]}
     return out
+
+
+def worst_r_hat(conv):
+    """The single number to look at, or nan when it could not be computed."""
+    if not conv or "worst" not in conv:
+        return float("nan")
+    return float(conv["worst"]["r_hat_max"])

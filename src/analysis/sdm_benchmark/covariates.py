@@ -623,3 +623,121 @@ def _year_complete(year, tier):
                       default=os.path.join(_PROC, "latent_avian_paths"))
         return _exists_ok(_latent_year_path(d, year)[0])
     raise ValueError(f"unknown tier {tier!r}")
+
+
+def pca_reduce(X, n_components=None, var_target=0.99, mu=None, sd=None,
+               basis=None, center=None):
+    """Decorrelate a design matrix, fitting the rotation on TRAIN only.
+
+    WHY THIS EXISTS. The encoder's covariate bank is 12 climate bases x 12
+    bio-year months plus near-duplicate quantile levels, so adjacent channels
+    are almost the same variable. A boosted tree is indifferent to that; a
+    LINEAR model is not -- collinear columns make a ridge in the coefficient
+    posterior, which is what leaves NUTS saturating max tree depth on every
+    iteration and reports as slow, badly mixed sampling.
+
+    PCA is the standard SDM remedy for correlated predictors, and it keeps the
+    comparison honest in a way a hand-picked subset would not: the linear model
+    still sees the SAME INFORMATION the encoder sees, merely rotated into a
+    basis it can condition on. Nothing is discarded except variance below
+    ``var_target``.
+
+    Pass ``basis``/``center``/``mu``/``sd`` back in to apply a fitted rotation
+    to held-out rows.
+    """
+    X = np.asarray(X, dtype=np.float64)
+    if basis is None:
+        Xs, mu, sd = standardize(X)
+        Xs = np.nan_to_num(Xs)
+        center = Xs.mean(axis=0)
+        U, S, Vt = np.linalg.svd(Xs - center, full_matrices=False)
+        var = S ** 2
+        ratio = var / max(var.sum(), 1e-300)
+        if n_components is None:
+            k = int(np.searchsorted(np.cumsum(ratio), float(var_target)) + 1)
+            k = max(1, min(k, Vt.shape[0]))
+        else:
+            k = max(1, min(int(n_components), Vt.shape[0]))
+        basis = Vt[:k]
+        explained = float(np.cumsum(ratio)[k - 1])
+    else:
+        Xs, _, _ = standardize(X, mu, sd)
+        Xs = np.nan_to_num(Xs)
+        explained = float("nan")
+    Z = (Xs - center) @ basis.T
+    names = [f"pc{i:03d}" for i in range(basis.shape[0])]
+    return Z.astype(np.float32), names, {
+        "basis": basis, "center": center, "mu": mu, "sd": sd,
+        "n_components": int(basis.shape[0]), "explained_variance": explained}
+
+
+def condition_number(X):
+    """Ratio of largest to smallest singular value of the standardized matrix.
+
+    A large value is the quantitative statement of "these predictors are nearly
+    duplicates", which is what a linear model chokes on.
+    """
+    Xs, _, _ = standardize(np.asarray(X, dtype=np.float64))
+    sv = np.linalg.svd(np.nan_to_num(Xs), compute_uv=False)
+    sv = sv[sv > 0]
+    return float(sv[0] / sv[-1]) if sv.size else float("inf")
+
+
+def stream_of(name):
+    """The encoder stream a channel name belongs to ("climate:012" -> climate)."""
+    return str(name).split(":", 1)[0] if ":" in str(name) else "_"
+
+
+def pca_reduce_by_stream(X, names, var_target=0.99, min_components=1,
+                         fitted=None):
+    """PCA WITHIN each covariate stream, then concatenate.
+
+    WHY NOT ONE GLOBAL PCA. The encoder bank is ~80% climate (14 bases x 12
+    bio-year months, plus quantile levels for temperatures), against ~10
+    human-footprint channels from HYDE and HISDAC built-up. A single rotation is
+    driven by total variance, so climate's 240 near-duplicate columns dominate
+    the leading components and the human-footprint signal can be squeezed out of
+    the retained set entirely -- invisibly.
+
+    That would be a bad trade for a HOUSE FINCH in particular: it is a
+    human-commensal species whose urban/suburban association is plausibly the
+    single strongest predictor, and the streams carrying that signal are exactly
+    the small ones. Reducing within each stream collapses climate's redundancy
+    hard while leaving soil, land use, elevation and the built-up channels
+    essentially intact.
+
+    Returns ``(Z, names, info)``; pass ``info["fitted"]`` back as ``fitted`` to
+    apply the same rotation to held-out rows.
+    """
+    X = np.asarray(X, dtype=np.float64)
+    groups = {}
+    for j, nm in enumerate(names):
+        groups.setdefault(stream_of(nm), []).append(j)
+
+    out_cols, out_names, per_stream = [], [], {}
+    for stream in sorted(groups):
+        idx = groups[stream]
+        sub = X[:, idx]
+        prev = (fitted or {}).get(stream)
+        if prev is None:
+            Z, _, info = pca_reduce(sub, var_target=var_target)
+            if Z.shape[1] < min_components:
+                Z, _, info = pca_reduce(sub, n_components=min(min_components,
+                                                              sub.shape[1]))
+        else:
+            Z, _, info = pca_reduce(sub, basis=prev["basis"],
+                                    center=prev["center"], mu=prev["mu"],
+                                    sd=prev["sd"])
+        out_cols.append(Z)
+        out_names += [f"{stream}:pc{i:03d}" for i in range(Z.shape[1])]
+        per_stream[stream] = {"n_in": len(idx), "n_out": int(Z.shape[1]),
+                              "explained_variance": info["explained_variance"],
+                              "basis": info["basis"], "center": info["center"],
+                              "mu": info["mu"], "sd": info["sd"]}
+    Z = np.hstack(out_cols).astype(np.float32)
+    return Z, out_names, {
+        "fitted": per_stream,
+        "n_components": int(Z.shape[1]),
+        "per_stream": {k: {"n_in": v["n_in"], "n_out": v["n_out"],
+                           "explained_variance": v["explained_variance"]}
+                       for k, v in per_stream.items()}}

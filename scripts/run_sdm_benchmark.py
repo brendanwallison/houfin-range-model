@@ -366,11 +366,55 @@ def cmd_biolith(args):
     site_df["Year"] = cov_year
     out_cov_year = cov_year
     X, names = _design_for_tier(site_df, args.tier)
+    cond_raw = covariates.condition_number(X)
+    if args.pca:
+        # biolith fits a LINEAR model, and the encoder's channels are near
+        # duplicates of one another (12 bases x 12 months, plus quantile
+        # levels). Rotating to principal components keeps the same information
+        # while removing the collinearity that makes the coefficient posterior a
+        # ridge -- which is what saturates NUTS's tree depth.
+        if args.pca_global:
+            n_pc = None if args.pca < 0 else int(args.pca)
+            X, names, pca_info = covariates.pca_reduce(
+                X, n_components=n_pc, var_target=args.pca_var)
+            print(f"  PCA (global): {len(names)} components retain "
+                  f"{100*pca_info['explained_variance']:.2f}% of variance")
+        else:
+            # Per stream, so climate's ~240 near-duplicate channels cannot
+            # squeeze the ~10 human-footprint ones out of the retained set.
+            X, names, pca_info = covariates.pca_reduce_by_stream(
+                X, names, var_target=args.pca_var)
+            print(f"  PCA (per stream): {X.shape[1]} components")
+            for st, r in sorted(pca_info["per_stream"].items()):
+                print(f"      {st:10s} {r['n_in']:4d} -> {r['n_out']:3d} "
+                      f"({100*r['explained_variance']:.1f}% var)")
+        out_pca = {k: v for k, v in pca_info.items() if k != "fitted"}
+        print(f"      condition number {cond_raw:.3g} -> "
+              f"{covariates.condition_number(X):.3g}")
+        mu = sd = None
+    else:
+        out_pca = None
+        print(f"  design condition number {cond_raw:.3g} "
+              f"(>1e4 makes a linear fit badly conditioned; try --pca)")
     X, mu, sd = covariates.standardize(X)
     keep = ~np.isnan(X).any(axis=1)
     if not keep.all():
         print(f"  dropping {int((~keep).sum())} sites with NaN covariates")
         sites, counts, X = sites[keep].reset_index(drop=True), counts[keep], X[keep]
+
+    if args.dump_design:
+        # The assembled site x covariate matrix is TINY (3853 x ~40 floats,
+        # under a megabyte) even though the grids behind it are not. Dumping it
+        # lets the sampler be diagnosed off-HPC without moving any raster.
+        dp = os.path.join(args.out, f"design_{args.tier}.npz")
+        os.makedirs(args.out, exist_ok=True)
+        np.savez_compressed(dp, X=X, names=np.array(names, dtype=object),
+                            counts=counts, years=np.array(years),
+                            row=sites.row.to_numpy(), col=sites.col.to_numpy(),
+                            lon=sites.Longitude.to_numpy(),
+                            lat=sites.Latitude.to_numpy(),
+                            covariate_year=out_cov_year)
+        print(f"  wrote {dp}  ({os.path.getsize(dp)/1e6:.2f} MB)")
 
     coords = None
     if args.spatial:
@@ -390,6 +434,10 @@ def cmd_biolith(args):
 
     out = {"tier": args.tier, "window": [args.rep_start, args.rep_end],
            "covariate_year": out_cov_year, "years": years,
+           "n_covariates": int(X.shape[1]),
+           "condition_number_raw": cond_raw,
+           "pca": bool(args.pca),
+           "pca_info": out_pca,
            "n_sites": int(len(sites)), "spatial": bool(args.spatial),
            "max_abundance": mx}
 
@@ -403,9 +451,12 @@ def cmd_biolith(args):
     psi = occupancy.psi_from_occu(r_occu)
     out["occu"] = {"psi_mean": float(psi.mean()),
                    "convergence": occupancy.convergence(r_occu)}
-    _cv = out["occu"]["convergence"] or {}
-    _rh = max((v["r_hat_max"] for v in _cv.values()), default=float("nan"))
-    print(f"\nbiolith[{args.tier}] occu psi={psi.mean():.3f} r_hat_max={_rh:.3f}")
+    from src.analysis.sdm_benchmark.occupancy import worst_r_hat
+    _cv = out["occu"]["convergence"]
+    print(f"\nbiolith[{args.tier}] occu psi={psi.mean():.3f} "
+          f"r_hat_max={worst_r_hat(_cv):.3f} ({_cv.get('worst', {}).get('param', '?')})")
+    if _cv.get("error"):
+        print(f"  WARNING: convergence not assessed -- {_cv['error']}")
     _write(args.out, f"biolith_{args.tier}.json", out)
     np.savez_compressed(os.path.join(args.out, f"biolith_{args.tier}_pred.npz"),
                         psi=psi, row=sites.row.to_numpy(), col=sites.col.to_numpy(),
@@ -450,11 +501,14 @@ def cmd_biolith(args):
                   f"iterations hit max tree depth -- the posterior is badly "
                   f"conditioned, so treat these estimates as unconverged")
         out["occu_vs_nmixture_corr"] = float(np.corrcoef(psi, pn)[0, 1])
-        cv = out["nmixture"]["convergence"] or {}
-        rh = max((v["r_hat_max"] for v in cv.values()), default=float("nan"))
+        cv = out["nmixture"]["convergence"]
         print(f"  nmixture P(N>0)={pn.mean():.3f} "
               f"corr={out['occu_vs_nmixture_corr']:.3f} "
-              f"jensen_gap={chk['max_abs_gap']:.4f} r_hat_max={rh:.3f}")
+              f"jensen_gap={chk['max_abs_gap']:.4f} "
+              f"r_hat_max={worst_r_hat(cv):.3f} "
+              f"({cv.get('worst', {}).get('param', '?')})")
+        if cv.get("error"):
+            print(f"  WARNING: convergence not assessed -- {cv['error']}")
     except (MemoryError, RuntimeError) as e:
         out["nmixture"] = {"failed": f"{type(e).__name__}: {e}"}
         print(f"  nmixture FAILED (occu result above is kept): {e}")
@@ -537,6 +591,22 @@ def build_parser():
                         "above it, biasing low -- state it if you use it)")
     p.add_argument("--budget-gib", type=float, default=8.0,
                    help="refuse an nmixture enumeration larger than this")
+    p.add_argument("--pca", type=int, nargs="?", const=-1, default=None,
+                   help="rotate covariates to principal components before "
+                        "fitting. Bare --pca keeps enough components for "
+                        "--pca-var; an integer fixes the count. Recommended for "
+                        "the full tier, whose 302 channels are near duplicates")
+    p.add_argument("--pca-global", action="store_true",
+                   help="one PCA over all streams instead of per stream. NOT "
+                        "recommended: climate is ~80%% of the channels and would "
+                        "dominate, squeezing out the human-footprint signal that "
+                        "matters most for a commensal species")
+    p.add_argument("--pca-var", type=float, default=0.99,
+                   help="variance retained when --pca is given without a count")
+    p.add_argument("--dump-design", action="store_true",
+                   help="save the assembled site x covariate matrix (<1 MB) so "
+                        "the sampler can be diagnosed off-HPC without moving "
+                        "any raster")
     p.add_argument("--samples", type=int, default=1000)
     p.add_argument("--warmup", type=int, default=1000)
     p.add_argument("--chains", type=int, default=4)

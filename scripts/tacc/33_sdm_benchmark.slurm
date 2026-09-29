@@ -87,9 +87,19 @@ for tier in $TIERS; do
     # agree to MCMC noise. HOUFIN_SDM_NMIXTURE=0 skips it.
     NMIX=""
     [ "${HOUFIN_SDM_NMIXTURE:-1}" = "0" ] && NMIX="--no-nmixture"
+
+    # biolith fits a LINEAR model, so collinear covariates make the coefficient
+    # posterior a ridge and NUTS saturates max tree depth. The encoder bank is
+    # 12 climate bases x 12 bio-year months plus near-duplicate quantile levels,
+    # i.e. maximally collinear, so rotate it to principal components -- same
+    # information, conditioned for a linear fit. NOT for the latent tier: Z is
+    # already a kernel-PCA eigenbasis, so rotating it again buys nothing.
+    PCA="--pca"
+    [ "$tier" = "latent" ] && PCA=""
+    [ "${HOUFIN_SDM_PCA:-1}" = "0" ] && PCA=""
     run_stage "biolith/$tier" python scripts/run_sdm_benchmark.py biolith \
         --tier "$tier" --out "$OUT" --chains "$CHAINS" --samples "$SAMPLES" \
-        $NMIX $SKIP
+        $NMIX $SKIP $PCA --dump-design
 
     # Test B: the same model with a spatial GP added. If the Great Plains
     # designation only matches the data once space is in the model, the pattern

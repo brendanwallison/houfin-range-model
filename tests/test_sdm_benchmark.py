@@ -733,3 +733,238 @@ def test_biolith_parser_defaults_to_nb_without_site_random_effects():
     assert a.site_random_effects is False
     assert ap.parse_args(["biolith", "--mixture", "P"]).mixture == "P"
     assert ap.parse_args(["biolith", "--site-random-effects"]).site_random_effects
+
+
+def test_convergence_uses_per_chain_draws_not_concatenated_ones():
+    """get_samples() concatenates chains, which made every R-hat come back nan.
+
+    Gelman-Rubin needs (n_chains, n_draws, ...). Feeding it the flattened array
+    compares a chain with itself, and the first real run reported r_hat_max=nan
+    for every fit -- so the benchmark had no convergence signal at all.
+    """
+    occupancy = pytest.importorskip("src.analysis.sdm_benchmark.occupancy",
+                                    reason="needs numpyro/jax")
+    rng = np.random.default_rng(0)
+
+    class _MCMC:
+        def __init__(self, grouped):
+            self._g = grouped
+
+        def get_samples(self, group_by_chain=False):
+            if group_by_chain:
+                return self._g
+            return {k: v.reshape((-1,) + v.shape[2:]) for k, v in self._g.items()}
+
+    class _R:
+        pass
+
+    good = {"beta": rng.normal(size=(4, 200, 3)),
+            "beta0": rng.normal(size=(4, 200))}
+    r = _R(); r.mcmc = _MCMC(good)
+    cv = occupancy.convergence(r)
+    assert "error" not in cv
+    assert np.isfinite(occupancy.worst_r_hat(cv))
+    assert occupancy.worst_r_hat(cv) < 1.1
+    assert cv["worst"]["param"] in {"beta", "beta0"}
+
+
+def test_convergence_reports_an_error_rather_than_nan_when_it_cannot_compute():
+    occupancy = pytest.importorskip("src.analysis.sdm_benchmark.occupancy",
+                                    reason="needs numpyro/jax")
+
+    class _R:
+        pass
+
+    cv = occupancy.convergence(_R())                 # no .mcmc at all
+    assert "error" in cv
+    assert np.isnan(occupancy.worst_r_hat(cv))
+
+    class _MCMC1:
+        def get_samples(self, group_by_chain=False):
+            return {"beta0": np.zeros((1, 100))}     # a single chain
+
+    r = _R(); r.mcmc = _MCMC1()
+    assert "error" in occupancy.convergence(r)       # R-hat needs >= 2 chains
+
+
+def test_convergence_skips_the_thousands_of_derived_site_quantities():
+    occupancy = pytest.importorskip("src.analysis.sdm_benchmark.occupancy",
+                                    reason="needs numpyro/jax")
+    rng = np.random.default_rng(1)
+
+    class _MCMC:
+        def get_samples(self, group_by_chain=False):
+            return {"beta0": rng.normal(size=(4, 50)),
+                    "abundance": rng.normal(size=(4, 50, 3853)),
+                    "psi": rng.normal(size=(4, 50, 3853))}
+
+    class _R:
+        pass
+
+    r = _R(); r.mcmc = _MCMC()
+    cv = occupancy.convergence(r)
+    assert "abundance" not in cv and "psi" not in cv
+    assert "beta0" in cv
+
+
+def test_dump_design_flag_exists():
+    import importlib.util
+    from pathlib import Path
+    repo = Path(__file__).resolve().parents[1]
+    spec = importlib.util.spec_from_file_location(
+        "_run_sdm5", repo / "scripts" / "run_sdm_benchmark.py")
+    mod = importlib.util.module_from_spec(spec)
+    try:
+        spec.loader.exec_module(mod)
+    except Exception as e:
+        pytest.skip(f"CLI not importable here: {e}")
+    ap = mod.build_parser()
+    assert ap.parse_args(["biolith"]).dump_design is False
+    assert ap.parse_args(["biolith", "--dump-design"]).dump_design is True
+
+
+# ---------------------------------------- PCA for the linear (biolith) models
+
+def test_pca_removes_the_collinearity_a_linear_model_chokes_on():
+    """The encoder bank is 12 bases x 12 months plus duplicate quantile levels.
+
+    A boosted tree is indifferent to that; a linear model is not -- collinear
+    columns make a ridge in the coefficient posterior, which is what leaves NUTS
+    saturating max tree depth every iteration.
+    """
+    cov = pytest.importorskip("src.analysis.sdm_benchmark.covariates")
+    rng = np.random.default_rng(0)
+    blocks = []
+    for _ in range(8):
+        base = rng.normal(size=(500, 1))
+        blocks.append(base + 0.15 * rng.normal(size=(500, 12)))   # near-duplicates
+    X = np.hstack(blocks)
+
+    raw = cov.condition_number(X)
+    Z, names, info = cov.pca_reduce(X, var_target=0.99)
+    assert raw > 10                                   # genuinely ill-conditioned
+    assert cov.condition_number(Z) == pytest.approx(1.0, abs=1e-3)   # orthogonal
+    assert Z.shape[1] < X.shape[1]                    # and it reduces
+    assert 0.98 <= info["explained_variance"] <= 1.0
+    assert names == [f"pc{i:03d}" for i in range(Z.shape[1])]
+
+
+def test_pca_rotation_can_be_applied_to_heldout_rows():
+    """Fit the rotation on train only, then transform -- no leakage."""
+    cov = pytest.importorskip("src.analysis.sdm_benchmark.covariates")
+    rng = np.random.default_rng(1)
+    X = rng.normal(size=(200, 12))
+    Z, _, info = cov.pca_reduce(X, n_components=5)
+    Z2, _, _ = cov.pca_reduce(X[:20], basis=info["basis"], center=info["center"],
+                              mu=info["mu"], sd=info["sd"])
+    assert Z2.shape == (20, 5)
+    assert np.allclose(Z2, Z[:20], atol=1e-4)
+
+
+def test_pca_component_count_is_controllable():
+    cov = pytest.importorskip("src.analysis.sdm_benchmark.covariates")
+    rng = np.random.default_rng(2)
+    X = rng.normal(size=(300, 20))
+    assert cov.pca_reduce(X, n_components=7)[0].shape[1] == 7
+    # a lower variance target keeps fewer components
+    lo = cov.pca_reduce(X, var_target=0.5)[0].shape[1]
+    hi = cov.pca_reduce(X, var_target=0.99)[0].shape[1]
+    assert lo < hi
+
+
+def test_condition_number_flags_duplicate_columns():
+    cov = pytest.importorskip("src.analysis.sdm_benchmark.covariates")
+    rng = np.random.default_rng(3)
+    good = rng.normal(size=(200, 5))
+    assert cov.condition_number(good) < 5
+    dup = np.hstack([good, good[:, :1] + 1e-6 * rng.normal(size=(200, 1))])
+    assert cov.condition_number(dup) > 100
+
+
+def test_pca_flags_parse():
+    import importlib.util
+    from pathlib import Path
+    repo = Path(__file__).resolve().parents[1]
+    spec = importlib.util.spec_from_file_location(
+        "_run_sdm6", repo / "scripts" / "run_sdm_benchmark.py")
+    mod = importlib.util.module_from_spec(spec)
+    try:
+        spec.loader.exec_module(mod)
+    except Exception as e:
+        pytest.skip(f"CLI not importable here: {e}")
+    ap = mod.build_parser()
+    assert ap.parse_args(["biolith"]).pca is None            # off unless asked
+    assert ap.parse_args(["biolith", "--pca"]).pca == -1     # bare = use var target
+    assert ap.parse_args(["biolith", "--pca", "30"]).pca == 30
+    assert ap.parse_args(["biolith", "--pca-var", "0.95"]).pca_var == 0.95
+
+
+def test_per_stream_pca_protects_the_small_human_footprint_streams():
+    """A global PCA is driven by total variance, and climate is ~80% of columns.
+
+    House Finch is human-commensal, so the HYDE and built-up channels plausibly
+    carry the strongest signal -- and they are exactly the streams a global
+    rotation would squeeze out of the retained set, invisibly.
+    """
+    cov = pytest.importorskip("src.analysis.sdm_benchmark.covariates")
+    rng = np.random.default_rng(0)
+    cols, names = [], []
+
+    def add(stream, n, redundant=False):
+        if redundant:
+            base = rng.normal(size=(400, 1))
+            a = base + 0.15 * rng.normal(size=(400, n))
+        else:
+            a = rng.normal(size=(400, n))
+        cols.append(a)
+        names.extend(f"{stream}:{i:03d}" for i in range(n))
+
+    for _ in range(20):
+        add("climate", 12, redundant=True)        # 240 near-duplicate channels
+    add("soil", 16); add("bui", 7); add("hyde", 3)
+    X = np.hstack(cols)
+
+    Z, out_names, info = cov.pca_reduce_by_stream(X, names, var_target=0.99)
+    per = info["per_stream"]
+    assert per["climate"]["n_in"] == 240
+    assert per["climate"]["n_out"] < 240           # redundancy collapsed
+    # the small streams survive intact
+    assert per["hyde"]["n_out"] == 3
+    assert per["bui"]["n_out"] == 7
+    # stream identity is preserved in the names, so loadings stay interpretable
+    assert any(n.startswith("hyde:pc") for n in out_names)
+    assert cov.condition_number(Z) < cov.condition_number(X)
+
+
+def test_per_stream_rotation_applies_to_heldout_rows():
+    cov = pytest.importorskip("src.analysis.sdm_benchmark.covariates")
+    rng = np.random.default_rng(1)
+    X = rng.normal(size=(200, 12))
+    names = [f"a:{i}" for i in range(6)] + [f"b:{i}" for i in range(6)]
+    Z, _, info = cov.pca_reduce_by_stream(X, names, var_target=0.99)
+    Z2, _, _ = cov.pca_reduce_by_stream(X[:20], names, fitted=info["fitted"])
+    assert Z2.shape[1] == Z.shape[1]
+    assert np.allclose(Z2, Z[:20], atol=1e-4)
+
+
+def test_stream_of_parses_channel_names():
+    cov = pytest.importorskip("src.analysis.sdm_benchmark.covariates")
+    assert cov.stream_of("climate:012") == "climate"
+    assert cov.stream_of("hyde:popd_2020") == "hyde"
+    assert cov.stream_of("z00") == "_"          # latent tier has no stream prefix
+
+
+def test_pca_global_flag_exists_but_is_not_the_default():
+    import importlib.util
+    from pathlib import Path
+    repo = Path(__file__).resolve().parents[1]
+    spec = importlib.util.spec_from_file_location(
+        "_run_sdm7", repo / "scripts" / "run_sdm_benchmark.py")
+    mod = importlib.util.module_from_spec(spec)
+    try:
+        spec.loader.exec_module(mod)
+    except Exception as e:
+        pytest.skip(f"CLI not importable here: {e}")
+    ap = mod.build_parser()
+    assert ap.parse_args(["biolith", "--pca"]).pca_global is False
+    assert ap.parse_args(["biolith", "--pca", "--pca-global"]).pca_global is True

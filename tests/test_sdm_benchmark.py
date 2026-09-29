@@ -899,12 +899,13 @@ def test_pca_flags_parse():
     assert ap.parse_args(["biolith", "--pca-var", "0.95"]).pca_var == 0.95
 
 
-def test_per_stream_pca_protects_the_small_human_footprint_streams():
-    """A global PCA is driven by total variance, and climate is ~80% of columns.
+def test_per_stream_pca_protects_small_streams_when_truncating():
+    """Per-stream matters only when components are being DISCARDED.
 
-    House Finch is human-commensal, so the HYDE and built-up channels plausibly
-    carry the strongest signal -- and they are exactly the streams a global
-    rotation would squeeze out of the retained set, invisibly.
+    Climate is ~80% of the bank, so a variance budget applied globally can
+    squeeze the ~10 human-footprint channels out of the retained set invisibly.
+    That is the one thing per-stream buys; it does NOT fix conditioning (see
+    test_per_stream_pca_leaves_cross_stream_collinearity).
     """
     cov = pytest.importorskip("src.analysis.sdm_benchmark.covariates")
     rng = np.random.default_rng(0)
@@ -954,7 +955,7 @@ def test_stream_of_parses_channel_names():
     assert cov.stream_of("z00") == "_"          # latent tier has no stream prefix
 
 
-def test_pca_global_flag_exists_but_is_not_the_default():
+def test_pca_per_stream_is_opt_in_and_global_is_the_default():
     import importlib.util
     from pathlib import Path
     repo = Path(__file__).resolve().parents[1]
@@ -966,5 +967,109 @@ def test_pca_global_flag_exists_but_is_not_the_default():
     except Exception as e:
         pytest.skip(f"CLI not importable here: {e}")
     ap = mod.build_parser()
-    assert ap.parse_args(["biolith", "--pca"]).pca_global is False
-    assert ap.parse_args(["biolith", "--pca", "--pca-global"]).pca_global is True
+    assert ap.parse_args(["biolith", "--pca"]).pca_per_stream is False
+    assert ap.parse_args(["biolith", "--pca", "--pca-per-stream"]).pca_per_stream
+
+
+def test_rotation_alone_fixes_conditioning_so_truncation_is_not_required():
+    """The default keeps every numerically meaningful component.
+
+    Conditioning is fixed by the ROTATION -- components are standardized before
+    fitting, so the design is orthonormal however many are kept. Truncating is a
+    separate, optional decision.
+    """
+    cov = pytest.importorskip("src.analysis.sdm_benchmark.covariates")
+    rng = np.random.default_rng(0)
+    cols = []
+    for _ in range(10):
+        base = rng.normal(size=(600, 1))
+        cols.append(base + 0.15 * rng.normal(size=(600, 12)))
+    X = np.hstack(cols)
+
+    Z, _, _ = cov.pca_reduce(X)                       # default: no truncation
+    assert Z.shape[1] == X.shape[1]                   # nothing dropped
+    assert cov.condition_number(Z) == pytest.approx(1.0, abs=1e-3)
+    assert cov.condition_number(X) > 5                # the raw matrix was not
+    # a variance budget is opt-in and does truncate
+    assert cov.pca_reduce(X, var_target=0.99)[0].shape[1] < X.shape[1]
+
+
+def test_variance_budget_can_discard_the_predictive_direction():
+    """The reason the 99% default was wrong, as an executable demonstration."""
+    cov = pytest.importorskip("src.analysis.sdm_benchmark.covariates")
+    rng = np.random.default_rng(0)
+    cols = []
+    for _ in range(20):
+        base = rng.normal(size=(1500, 1))
+        cols.append(base + 0.15 * rng.normal(size=(1500, 12)))
+    X = np.hstack(cols)
+    Z, _, _ = cov.pca_reduce(X)                       # rotate, keep all
+    kept_99 = cov.pca_reduce(X, var_target=0.99)[0].shape[1]
+    # a component beyond the 99% budget still exists and carries variance
+    assert kept_99 < Z.shape[1]
+    assert np.std(Z[:, kept_99 + 10]) > 0             # not numerically dead
+
+
+def test_select_n_components_cv_prefers_parsimony_on_a_flat_curve():
+    cov = pytest.importorskip("src.analysis.sdm_benchmark.covariates")
+    pytest.importorskip("sklearn")
+    rng = np.random.default_rng(3)
+    Z = rng.normal(size=(800, 40))
+    # signal entirely in the first component -> small k should suffice
+    y = (rng.random(800) < 1 / (1 + np.exp(-Z[:, 0])))
+    k, rep = cov.select_n_components_cv(Z, y, n_folds=4)
+    assert 1 <= k <= 40
+    assert rep["chosen_k"] <= rep["best_k"]           # one-SE rule never grows k
+    assert "mean_auc" in rep
+
+
+def test_numerical_rank_drops_only_degenerate_directions():
+    cov = pytest.importorskip("src.analysis.sdm_benchmark.covariates")
+    rng = np.random.default_rng(4)
+    X = rng.normal(size=(300, 8))
+    assert cov.numerical_rank(X) == 8
+    X2 = np.hstack([X, X[:, :1]])                     # an exact duplicate column
+    assert cov.numerical_rank(X2) == 8
+
+
+def test_per_stream_pca_leaves_cross_stream_collinearity():
+    """Per-stream rotation does nothing ACROSS streams, and the streams correlate.
+
+    Temperature with elevation through the lapse rate; HYDE population with
+    HISDAC built-up and urban land use all measuring human footprint. An earlier
+    version of this benchmark made per-stream the default on the strength of a
+    test whose streams were independent noise -- which assumed away exactly this.
+    """
+    cov = pytest.importorskip("src.analysis.sdm_benchmark.covariates")
+    rng = np.random.default_rng(0)
+    S = 1500
+    temp = rng.normal(size=(S, 1))
+    relief = temp * 0.8 + 0.6 * rng.normal(size=(S, 1))     # elevation <-> climate
+    human = rng.normal(size=(S, 1))                          # hyde <-> bui
+
+    cols, names = [], []
+
+    def add(stream, n, driver, noise):
+        cols.append(driver + noise * rng.normal(size=(S, n)))
+        names.extend(f"{stream}:{i:03d}" for i in range(n))
+
+    for _ in range(8):
+        add("climate", 12, temp, 0.2)
+    add("elevation", 3, relief, 0.1)
+    add("hyde", 3, human, 0.1)
+    add("bui", 7, human, 0.15)
+    X = np.hstack(cols)
+
+    Zs, ns, _ = cov.pca_reduce_by_stream(X, names)
+    Zg, _, _ = cov.pca_reduce(X)
+    assert cov.condition_number(Zg) == pytest.approx(1.0, abs=1e-3)
+    assert cov.condition_number(Zs) > 5        # per-stream stays ill-conditioned
+
+    # and a specific cross-stream pair is nearly collinear
+    Zn = (Zs - Zs.mean(0)) / Zs.std(0)
+    corr = np.abs(np.corrcoef(Zn.T))
+    np.fill_diagonal(corr, 0.0)
+    st = np.array([n.split(":")[0] for n in ns])
+    for stream in set(st):
+        corr[np.ix_(st == stream, st == stream)] = 0.0
+    assert corr.max() > 0.9

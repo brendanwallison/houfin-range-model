@@ -91,9 +91,13 @@ for tier in $TIERS; do
     # biolith fits a LINEAR model, so collinear covariates make the coefficient
     # posterior a ridge and NUTS saturates max tree depth. The encoder bank is
     # 12 climate bases x 12 bio-year months plus near-duplicate quantile levels,
-    # i.e. maximally collinear, so rotate it to principal components -- same
-    # information, conditioned for a linear fit. NOT for the latent tier: Z is
-    # already a kernel-PCA eigenbasis, so rotating it again buys nothing.
+    # so rotate it to principal components -- same information, conditioned for
+    # a linear fit, and NOTHING truncated (rotation alone gives an orthonormal
+    # design; a variance budget would discard real signal). A GLOBAL rotation,
+    # not per-stream: the streams are physically correlated with each other
+    # (elevation with temperature, built-up with population), so per-stream
+    # leaves a condition number of ~32 against 1 for global.
+    # NOT for the latent tier: Z is already a kernel-PCA eigenbasis.
     PCA="--pca"
     [ "$tier" = "latent" ] && PCA=""
     [ "${HOUFIN_SDM_PCA:-1}" = "0" ] && PCA=""

@@ -373,21 +373,42 @@ def cmd_biolith(args):
         # levels). Rotating to principal components keeps the same information
         # while removing the collinearity that makes the coefficient posterior a
         # ridge -- which is what saturates NUTS's tree depth.
-        if args.pca_global:
-            n_pc = None if args.pca < 0 else int(args.pca)
-            X, names, pca_info = covariates.pca_reduce(
-                X, n_components=n_pc, var_target=args.pca_var)
-            print(f"  PCA (global): {len(names)} components retain "
-                  f"{100*pca_info['explained_variance']:.2f}% of variance")
-        else:
-            # Per stream, so climate's ~240 near-duplicate channels cannot
-            # squeeze the ~10 human-footprint ones out of the retained set.
+        if args.pca_per_stream:
+            # Only sensible alongside a variance budget: it protects the small
+            # streams from being truncated away, but leaves the streams
+            # collinear WITH EACH OTHER (elevation with temperature, built-up
+            # with population), so the design stays ill-conditioned.
             X, names, pca_info = covariates.pca_reduce_by_stream(
                 X, names, var_target=args.pca_var)
             print(f"  PCA (per stream): {X.shape[1]} components")
             for st, r in sorted(pca_info["per_stream"].items()):
-                print(f"      {st:10s} {r['n_in']:4d} -> {r['n_out']:3d} "
-                      f"({100*r['explained_variance']:.1f}% var)")
+                print(f"      {st:10s} {r['n_in']:4d} -> {r['n_out']:3d}")
+            if not args.pca_var:
+                print("      NOTE per-stream without a variance budget leaves "
+                      "cross-stream collinearity; the global rotation is better")
+        else:
+            n_pc = None if args.pca < 0 else int(args.pca)
+            X, names, pca_info = covariates.pca_reduce(
+                X, n_components=n_pc, var_target=args.pca_var)
+            print(f"  PCA (global): {X.shape[1]} components"
+                  + ("" if (args.pca_var or n_pc)
+                     else "  [rotate only, nothing truncated]"))
+            if args.pca_var:
+                print("      WARNING a global VARIANCE budget can bury the "
+                      "small human-footprint streams; --pca-per-stream protects "
+                      "them, or use --pca-select-cv")
+        print(f"      condition number {cond_raw:.3g} -> "
+              f"{covariates.condition_number(X):.3g}")
+        mu = sd = None
+        if args.pca_select_cv:
+            # Variance is not predictive relevance, so let held-out AUC pick.
+            blocks = (sites.row.to_numpy() // 6) * 1000 + (sites.col.to_numpy() // 6)
+            y_bin = (np.nanmax(counts, axis=1) > 0).astype(int)
+            k, sel = covariates.select_n_components_cv(X, y_bin, groups=blocks)
+            print(f"  PCA CV selection: keeping {k} of {X.shape[1]} "
+                  f"({sel.get('rule', '')})")
+            X, names = X[:, :k], names[:k]
+            pca_info["cv_selection"] = sel
         out_pca = {k: v for k, v in pca_info.items() if k != "fitted"}
         print(f"      condition number {cond_raw:.3g} -> "
               f"{covariates.condition_number(X):.3g}")
@@ -596,13 +617,22 @@ def build_parser():
                         "fitting. Bare --pca keeps enough components for "
                         "--pca-var; an integer fixes the count. Recommended for "
                         "the full tier, whose 302 channels are near duplicates")
-    p.add_argument("--pca-global", action="store_true",
-                   help="one PCA over all streams instead of per stream. NOT "
-                        "recommended: climate is ~80%% of the channels and would "
-                        "dominate, squeezing out the human-footprint signal that "
-                        "matters most for a commensal species")
-    p.add_argument("--pca-var", type=float, default=0.99,
-                   help="variance retained when --pca is given without a count")
+    p.add_argument("--pca-per-stream", action="store_true",
+                   help="rotate within each covariate stream instead of "
+                        "globally. Only useful WITH --pca-var: it protects the "
+                        "small human-footprint streams from being truncated "
+                        "away, but leaves the streams collinear with each other "
+                        "(measured condition number 31.6 vs 1 for global)")
+    p.add_argument("--pca-var", type=float, default=None,
+                   help="OPTIONAL variance budget. Off by default: rotation "
+                        "alone fixes the conditioning (the components are "
+                        "standardized before fitting, so the design is "
+                        "orthonormal however many are kept), while truncating "
+                        "on variance can discard real signal -- variance is not "
+                        "predictive relevance")
+    p.add_argument("--pca-select-cv", action="store_true",
+                   help="choose the component count by held-out AUC under "
+                        "spatial-block CV (one-SE rule) instead of keeping all")
     p.add_argument("--dump-design", action="store_true",
                    help="save the assembled site x covariate matrix (<1 MB) so "
                         "the sampler can be diagnosed off-HPC without moving "

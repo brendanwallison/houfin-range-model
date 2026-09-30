@@ -604,6 +604,67 @@ falling host `MemAvailable`/`SwapFree` at saturated VRAM reveals host-memory
 pressure. MAP logs also print JAX allocator in-use/peak/limit counters at input
 load and every checkpoint, while `/usr/bin/time -v` reports peak process RSS.
 
+## 3f-bis. HMC trial: posterior probe → NUTS from MAP / VI-guided NeuTra
+
+This stage trials sampling procedures on the prior_scale=1 posterior. It needs a
+finished MAP checkpoint (§3f). Every stage reads the MAP from `age_run_map`'s own
+output directory. **Export the same `AGE_MODEL_CONFIG` overlay and
+`HOUFIN_MAP_PROFILE` the MAP was fitted with** (for run 17:
+`export AGE_MODEL_CONFIG=config/overlays/map_new_z.json HOUFIN_MAP_PROFILE=quick90`).
+Outputs are named after that MAP run (`probe__age_map_float32_run_17_new_z_quick90`,
+`hmc_map_laplace_fixed__...`), so trials on run 16 and run 17 don't collide. Each stage refuses
+to start if the model code or inputs have changed since that fit
+(`HOUFIN_HMC_ALLOW_MODEL_DRIFT=1` overrides this). Settings live in
+`config/age_posterior_config.json`, **deliberately not** in `age_model_config.json`:
+MAP fingerprints the whole age-model config, so editing it would stop every MAP
+checkpoint from resuming. Env vars override individual settings (`HOUFIN_HMC_WARMUP`,
+`_SAMPLES`, `_CHUNK`, `_MAX_TREE_DEPTH`, `_TARGET_ACCEPT`, `_STEP_SIZE`,
+`_INIT_JITTER`; `HOUFIN_VI_RANK`, `_STEPS`, ...).
+
+```bash
+# 1. Probe (~1 h): grad time, |grad| at MAP, dense Hessian spectrum, laplace.npz.
+#    READ probe.json BEFORE step 2: seconds_per_nuts_draw_at_depth sets max_tree_depth and
+#    draw counts; negative/near-zero eigenvalues (and the sites they load on) show where
+#    the posterior is nasty.
+STAGE=probe bash scripts/tacc/submit_hmc.sh
+
+# 2. Arm A: NUTS from MAP, one chain per array task. METRIC=diag is the baseline;
+#    laplace_fixed / laplace_adapt use the probe's dense Laplace metric.
+STAGE=hmc ARM=map METRIC=laplace_fixed CHAINS=2 RESUBMITS=2 bash scripts/tacc/submit_hmc.sh
+STAGE=hmc ARM=map METRIC=diag          CHAINS=2 RESUBMITS=2 bash scripts/tacc/submit_hmc.sh
+
+# 3. Arm B: low-rank VI from MAP, then NUTS in its NeuTra space.
+vi=$(STAGE=vi RESUBMITS=1 bash scripts/tacc/submit_hmc.sh | grep -Eo '[0-9]+$' | tail -1)   # the LAST chained VI job
+STAGE=hmc ARM=neutra CHAINS=2 RESUBMITS=2 AFTER=$vi bash scripts/tacc/submit_hmc.sh
+
+# 4. Compare (CPU, any time, works on partial runs)
+python scripts/diagnostics/compare_hmc_trials.py --json $HOUFIN_PROCESSED/model_results/hmc_trial.json
+```
+
+**Smoke test first.** Run `HOUFIN_HMC_WARMUP=10 HOUFIN_HMC_SAMPLES=10 HOUFIN_HMC_CHUNK=5
+TIME=00:30:00 RESUBMITS=1 FRESH=1` on each arm. The second job's log should read
+`[resume] ... 5/10`, and `chunks/` should hold two files. A smoke run writes to the
+same directory as the real run, so start the real run with `FRESH=1`, which archives
+the old output rather than deleting it.
+
+**Mechanics.**
+- **Warmup** runs inside the first job, because numpyro cannot split an adaptation
+  window. It has to fit in `TIME`. As a rough guide, warmup takes
+  num_warmup × (typical leapfrog steps) × grad time.
+- **Sampling** runs in `chunk`-draw pieces. After each chunk the job saves
+  `chain_XX/chunks/chunk_NNNN.pkl`, then `mcmc_state.pkl` (the exact sampler state).
+  A timeout loses at most one chunk, and a resumed chain continues bit-for-bit.
+- **What is stored:** latent sites only. The model's full-grid deterministics are
+  hidden from MCMC. Rebuild derived fields from thinned draws with `Predictive`.
+- **Starting points:** chain 0 starts at MAP. Every other chain starts at MAP plus an
+  `init_jitter`-scaled draw from the Laplace covariance, taken in unconstrained space,
+  so R-hat across chains means something. The NeuTra arm does the same in its warped
+  space.
+- **Precision:** the default is float32. If divergences show no site pattern and
+  |ΔH| stays large at small step sizes, rerun the probe and one arm with
+  `HOUFIN_MODEL_PRECISION=float64`. That also needs a float64 MAP, because the MAP
+  directory is keyed by precision.
+
 ## 3g-bis. Juvenile dispersal sensitivity sweep
 
 `juvenile_mdd_km` (330 km) is a literature value, not something the fit estimates.

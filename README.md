@@ -114,10 +114,12 @@ age_priors.py :: build_model_2d   (src/model/, using age_fields.py + age_forward
                     │
         ┌───────────┼────────────────┐
         ▼           ▼                ▼
-  age_run_map.py  age_run_svi.py  (each followed by a resume/refine step)
-        │              │
-  age_resume_svi_from_map.py   age_run_hmc.py   (NeuTra-reparameterized NUTS, warm-started from SVI)
-  age_resume_hmc.py            (plain HMC, warm-started from MAP)
+  age_run_map.py  ──►  age_hmc_probe.py        (grad cost + Hessian/Laplace at MAP)
+        │
+        ├──► age_resume_hmc.py              (arm A: NUTS from MAP, diag / Laplace metric)
+        └──► age_resume_svi_from_map.py ──► age_run_hmc.py   (arm B: low-rank VI → NeuTra NUTS)
+             (shared: hmc_common.py; compare: scripts/diagnostics/compare_hmc_trials.py)
+  age_run_svi.py   (legacy standalone VI; stale, not wired)
                     │
        src/analysis/{engine,stats,plots}.py, analyze_svi.py
        src/vis/visualize_{advi,hmc,age}_model.py
@@ -131,7 +133,7 @@ age_priors.py :: build_model_2d   (src/model/, using age_fields.py + age_forward
 
 **Why the model is seeded with an explicit invasion pulse.** The western native population is initialized from its inferred core/margin map. The eastern population began with a human-caused release in New York City, so its location and calendar start (1940, mapped to the canonical timeline) are fixed while a (9 sites x 10 years) matrix of introduction magnitudes is learned.
 
-**Where the inference backends stand.** MAP is the wired path and is what runs: `age_run_map.py`, submitted by `scripts/tacc/30_model_map.slurm`. **HMC warm-started from MAP is the goal, and is not yet plugged in** — the HMC code in tree (`age_run_hmc.py`, `age_resume_hmc.py`) is a legacy version predating the current model, so it is kept but not wired. Low-rank SVI (`age_run_svi.py`, `age_resume_svi_from_map.py`, and `src/analysis/`) is the fallback if that does not work out. Nothing but MAP has a `.slurm`, a `pipeline.sh` stage, or a test. MAP uses **prior continuation**, not annealing: it begins with tight scale priors to keep optimization physical and relaxes them to nominal widths at fixed absolute optimizer steps. Extending a checkpointed run cannot shift that schedule or its learning-rate decay backward.
+**Where the inference backends stand.** MAP is the production path: `age_run_map.py`, submitted by `scripts/tacc/30_model_map.slurm`. A **trial of HMC started from MAP** is wired as SLURM stages 34–36 via `scripts/tacc/submit_hmc.sh` (docs/TACC.md §3f-bis). It has three stages: a posterior probe (`age_hmc_probe.py`); arm A, NUTS from MAP with a diagonal or Laplace metric (`age_resume_hmc.py`); and arm B, MAP → low-rank VI → NeuTra NUTS (`age_resume_svi_from_map.py` → `age_run_hmc.py`). The shared machinery and its tests are in `hmc_common.py` and `tests/test_hmc_common.py`. The trial so far has only been run on toy models, not on the real posterior. Still stale and unwired: `age_run_svi.py`, `src/analysis/engine.py`/`analyze_svi.py`, and `src/vis/visualize_{hmc,advi}_model.py`, which hand-copy an old forward simulation. MAP uses **prior continuation**, not annealing: it begins with tight scale priors to keep optimization physical and relaxes them to nominal widths at fixed absolute optimizer steps. Extending a checkpointed run cannot shift that schedule or its learning-rate decay backward.
 
 **Why the likelihood is negative-binomial, not Poisson.** Real ecological count data is almost always overdispersed relative to a Poisson distribution (variance exceeds the mean, due to unmodeled heterogeneity in detection and local conditions); the negative-binomial-2 likelihood adds a dispersion parameter to absorb that, giving more realistic uncertainty estimates than a Poisson model would.
 

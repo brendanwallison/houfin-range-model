@@ -1,0 +1,40 @@
+{
+  "_comment": "Posterior-inference (VI + HMC) settings for the age model. DELIBERATELY a separate file from age_model_config.json: age_run_map fingerprints that whole config, so editing it here would make every existing MAP checkpoint refuse to resume. The MAP source run is NOT named here -- it is age_run_map's own OUTPUT_DIR (run_names.map + HOUFIN_MAP_PROFILE suffix), so the posterior stages cannot point at a stale MAP. Env vars (HOUFIN_HMC_*, HOUFIN_VI_*, HOUFIN_PROBE_*) override individual leaves. Overlay with $AGE_POSTERIOR_CONFIG.",
+  "run_names": {
+    "_comment": "{map_run} is the MAP directory's basename (e.g. age_map_float32_run_17_new_z_quick90, which already carries precision + profile), so trials from different MAP fits never share an output directory. Select the MAP with the same AGE_MODEL_CONFIG overlay + HOUFIN_MAP_PROFILE it was fitted with.",
+    "probe": "probe__{map_run}",
+    "vi": "vi_rank{rank}__{map_run}",
+    "hmc": "hmc_{variant}__{map_run}"
+  },
+  "probe": {
+    "_comment": "Gradient timing + dense Hessian of the potential at the MAP point, in the unconstrained space NUTS samples. eig_floor bounds the Laplace inverse mass matrix: eigenvalues of H below it (negative = the MAP point is not a local max of the unconstrained posterior, e.g. a ridge) are raised to it, capping any direction's Laplace sd at 1/sqrt(eig_floor).",
+    "grad_reps": 5,
+    "hvp_chunk": 8,
+    "eig_floor": 0.01,
+    "save_every_chunks": 8
+  },
+  "vi": {
+    "_comment": "Low-rank MVN guide initialized at MAP, fit under nominal priors (prior_scale=1). Stage 1 of the NeuTra arm.",
+    "rank": 10,
+    "steps": 3000,
+    "block": 100,
+    "init_lr": 5e-4,
+    "init_scale": 0.01,
+    "num_particles": 1
+  },
+  "hmc": {
+    "_comment": "NUTS on prior_scale=1. num_samples must be a multiple of chunk: warmup runs in ONE job (numpyro cannot split an adaptation window), sampling in chunks checkpointed via mcmc.last_state. initial_step_size is per metric: a unit/diag metric starts in a space where dispersal_random has sd 1e-3, so a step of 1 diverges on the first trajectory.",
+    "num_warmup": 200,
+    "num_samples": 400,
+    "chunk": 50,
+    "max_tree_depth": 8,
+    "target_accept": 0.8,
+    "init_jitter": 1.0,
+    "initial_step_size": {
+      "diag": 0.001,
+      "laplace_fixed": 0.3,
+      "laplace_adapt": 0.3,
+      "neutra": 0.3
+    }
+  }
+}

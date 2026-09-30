@@ -846,3 +846,29 @@ def numerical_rank(X, rel_tol=1e-8):
     Xs, _, _ = standardize(np.asarray(X, dtype=np.float64))
     sv = np.linalg.svd(np.nan_to_num(Xs), compute_uv=False)
     return int((sv > sv[0] * float(rel_tol)).sum()) if sv.size else 0
+
+
+def grid_frame(land_mask, year):
+    """A design frame covering EVERY land cell, at one covariate year.
+
+    The fitting stages only ever predicted at the rows they were handed -- route
+    -years for the BRT, survey sites for biolith -- so the saved surfaces existed
+    on ~1,800 of ~17,000 land cells and the maps looked like a sampling design
+    rather than a species distribution. Producing a continental surface is the
+    whole point of an SDM, and the covariates exist everywhere, so the models
+    should be evaluated everywhere.
+
+    Returns a DataFrame with the row/col/Year columns the design builders want.
+    """
+    import pandas as pd
+
+    rows, cols = np.nonzero(np.asarray(land_mask, dtype=bool))
+    return pd.DataFrame({"row": rows, "col": cols,
+                         "Year": np.full(rows.shape, int(year))})
+
+
+def design_to_grid(values, rows, cols, shape, fill=np.nan):
+    """Scatter a per-row prediction back onto the (ny, nx) grid."""
+    out = np.full(shape, fill, dtype=float)
+    out[np.asarray(rows), np.asarray(cols)] = np.asarray(values, dtype=float)
+    return out

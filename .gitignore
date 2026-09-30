@@ -35,3 +35,7 @@ download*.log
 # Pulled run outputs (reports + job logs scp'd off TACC). Data artifacts, not source --
 # processed outputs live under $HOUFIN_PROCESSED, never inside the repo.
 results/
+
+# Generated report PDFs -- regenerable in seconds from the prediction files
+# (scripts/viz/sdm_benchmark_report.py), and they churn on every refit.
+*.pdf

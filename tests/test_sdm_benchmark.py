@@ -1222,3 +1222,61 @@ def test_compare_reports_the_threshold_free_quantities_first():
     except Exception as e:
         pytest.skip(f"CLI not importable here: {e}")
     assert mod.build_parser().parse_args(["compare", "--run-dir", "/tmp/x"])
+
+
+# --------------------------------------------------------------- PDF report
+
+def test_report_textpage_wraps_instead_of_overflowing():
+    """matplotlib's wrap=True does nothing for text in FIGURE coordinates.
+
+    Long covariate descriptions ran off the page and collided at the bottom
+    margin, so the page wraps to a character count itself.
+    """
+    import importlib.util
+    from pathlib import Path
+    repo = Path(__file__).resolve().parents[1]
+    src = (repo / "scripts" / "viz" / "sdm_benchmark_report.py").read_text()
+    assert "import textwrap" in src
+    assert "def _textpage" in src
+    # the docstring MENTIONS wrap=True to explain why it was dropped, so match
+    # the call form, not the bare string
+    import re
+    assert not re.search(r"fig\.text\([^)]*wrap\s*=\s*True", src, re.S)
+    assert "textwrap.wrap(" in src
+
+
+def test_report_draws_correlative_surfaces_unthresholded():
+    """Binarising psi at maxSSS would manufacture the answer the report exists
+    to show; the report must not do it."""
+    from pathlib import Path
+    repo = Path(__file__).resolve().parents[1]
+    src = (repo / "scripts" / "viz" / "sdm_benchmark_report.py").read_text()
+    assert "threshold_max_sss" not in src
+    assert "unthresholded" in src.lower() or "UNTHRESHOLDED" in src
+
+
+def test_report_reuses_the_shared_geo_and_regrid_helpers():
+    """_geo for the basemap/Great Plains outline, regrid for eBird's EPSG:8857
+    raster -- both already existed and should not be reimplemented."""
+    from pathlib import Path
+    repo = Path(__file__).resolve().parents[1]
+    src = (repo / "scripts" / "viz" / "sdm_benchmark_report.py").read_text()
+    assert "import _geo" in src and "GeoContext" in src
+    assert "reproject_to_ref" in src
+    assert "_validation_style" in src
+
+
+def test_report_cli_parses():
+    import importlib.util
+    from pathlib import Path
+    repo = Path(__file__).resolve().parents[1]
+    spec = importlib.util.spec_from_file_location(
+        "_sdm_report", repo / "scripts" / "viz" / "sdm_benchmark_report.py")
+    mod = importlib.util.module_from_spec(spec)
+    try:
+        spec.loader.exec_module(mod)
+    except Exception as e:
+        pytest.skip(f"report module not importable here: {e}")
+    assert set(mod.MODEL_NOTES) >= {"biolith_standard", "brt_standard"}
+    for n in mod.MODEL_NOTES.values():
+        assert {"kind", "estimates", "covars", "prep"} <= set(n)

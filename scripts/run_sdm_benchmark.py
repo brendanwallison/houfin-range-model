@@ -334,6 +334,31 @@ def cmd_brt(args):
         print(f"  fold {k}: train={tr.sum():6d} val={va.sum():6d} "
               f"trees(occ/cnt)={it_o}/{it_c}")
 
+    # A final model on ALL rows for MAPPING. The fold models above give honest
+    # out-of-fold scores; a map needs one model that has seen everything, which
+    # is the standard SDM workflow (CV to evaluate, full fit to predict).
+    grid_occ = grid_cnt = None
+    if not args.no_grid:
+        land, _t2, _c2, _nx2, _ny2 = data.load_grid()
+        gdf = covariates.grid_frame(land, int(df["Year"].max()))
+        try:
+            Xg, _ = _design_for_tier(gdf, args.tier)
+        except Exception as e:
+            print(f"  grid prediction skipped: {e}")
+            Xg = None
+        if Xg is not None:
+            Xa, mu_a, sd_a = covariates.standardize(X)
+            Xga, _, _ = covariates.standardize(Xg, mu_a, sd_a)
+            mo_f, _ = baselines.fit_occurrence(Xa, y, Xa, y, seed=args.seed)
+            mc_f, _ = baselines.fit_count(Xa, y, Xa, y, seed=args.seed)
+            good = ~np.isnan(Xga).any(axis=1)
+            po = np.full(len(gdf), np.nan); pc = np.full(len(gdf), np.nan)
+            po[good] = mo_f.predict_proba(Xga[good])[:, 1]
+            pc[good] = mc_f.predict(Xga[good])
+            grid_occ = covariates.design_to_grid(po, gdf.row, gdf.col, (ny, nx))
+            grid_cnt = covariates.design_to_grid(pc, gdf.row, gdf.col, (ny, nx))
+            print(f"  grid surface: {int(good.sum()):,} of {len(gdf):,} land cells")
+
     ok = np.isfinite(occ_pred)
     lab = y > 0
     phi = baselines.nb2_concentration_mle(y[ok], np.maximum(cnt_pred[ok], 1e-6))
@@ -351,11 +376,72 @@ def cmd_brt(args):
     print(f"\nBRT[{args.tier}] AUC={out['auc']:.4f} TSS={out['tss_maxsss']:.4f} "
           f"NB2 phi={phi:.3f} dev.expl={out['nb2_deviance_explained']:.4f}")
     _write(args.out, f"brt_{args.tier}.json", out)
-    np.savez_compressed(os.path.join(args.out, f"brt_{args.tier}_pred.npz"),
-                        occ_pred=occ_pred, cnt_pred=cnt_pred, y=y,
-                        row=rows, col=cols, year=df["Year"].to_numpy(),
-                        zone=df["zone"].to_numpy())
+    payload = dict(occ_pred=occ_pred, cnt_pred=cnt_pred, y=y,
+                   row=rows, col=cols, year=df["Year"].to_numpy(),
+                   zone=df["zone"].to_numpy())
+    if grid_occ is not None:
+        payload["grid_occ"] = grid_occ.astype(np.float32)
+        payload["grid_cnt"] = grid_cnt.astype(np.float32)
+    np.savez_compressed(os.path.join(args.out, f"brt_{args.tier}_pred.npz"), **payload)
     return out
+
+
+def _biolith_grid_psi(args, occupancy, covariates, data, X_sites, pca_info,
+                      cov_year):
+    """Posterior-mean psi on EVERY land cell, from the fitted occupancy model.
+
+    Uses biolith's own ``predict`` with the fitted MCMC rather than
+    reconstructing the linear predictor by hand, so the coefficient layout and
+    any link/offset stay biolith's business.
+
+    The PCA rotation is the one FITTED ON THE SITES, reapplied to the grid --
+    refitting it on grid cells would put the model's coefficients in a different
+    basis and silently produce nonsense.
+    """
+    import numpy as _np
+    from biolith.models import occu
+    from biolith.utils import predict as bio_predict
+
+    land, _t, _c, nx, ny = data.load_grid()
+    gdf = covariates.grid_frame(land, cov_year)
+    try:
+        Xg, _names = _design_for_tier(gdf, args.tier)
+    except Exception as e:
+        print(f"  grid prediction skipped: {e}")
+        return None
+
+    if pca_info is not None:
+        if args.pca_per_stream:
+            Xg, _, _ = covariates.pca_reduce_by_stream(
+                Xg, _names, fitted=pca_info["fitted"])
+        else:
+            Xg, _, _ = covariates.pca_reduce(
+                Xg, basis=pca_info["basis"], center=pca_info["center"],
+                mu=pca_info["mu"], sd=pca_info["sd"])
+    Xg, _, _ = covariates.standardize(Xg)
+
+    good = ~_np.isnan(Xg).any(axis=1)
+    if not good.any():
+        print("  grid prediction skipped: no land cell has complete covariates")
+        return None
+    Xg = _np.nan_to_num(Xg)
+
+    # One dummy visit: psi does not depend on the observation layer, but the
+    # model signature requires obs_covs shaped like the fit's.
+    n = Xg.shape[0]
+    oc = _np.zeros((n, 1, 1, 1))
+    obs = _np.full((1, n, 1, 1), _np.nan)
+    try:
+        post = bio_predict(occu, args._mcmc, site_covs=Xg, obs_covs=oc, obs=obs,
+                           num_samples=min(200, args.samples))
+    except Exception as e:
+        print(f"  grid prediction failed: {type(e).__name__}: {e}")
+        return None
+    psi = _np.asarray(post["psi"])
+    psi = psi[..., 0] if psi.ndim == 3 and psi.shape[-1] == 1 else psi
+    vals = _np.where(good, psi.mean(axis=0), _np.nan)
+    print(f"  grid surface: {int(good.sum()):,} of {n:,} land cells")
+    return covariates.design_to_grid(vals, gdf.row, gdf.col, (ny, nx))
 
 
 def cmd_biolith(args):
@@ -488,8 +574,13 @@ def cmd_biolith(args):
     r_occu = occupancy.fit_occu(ib, coords=coords, num_samples=args.samples,
                                 num_warmup=args.warmup, num_chains=args.chains,
                                 seed=args.seed)
+    args._mcmc = getattr(r_occu, "mcmc", None)
     psi = occupancy.psi_from_occu(r_occu)
     occu_diag = occupancy.diagnostics_of(r_occu)
+    grid_psi = None
+    if not args.no_grid:
+        grid_psi = _biolith_grid_psi(args, occupancy, covariates, data, X,
+                                     pca_info if args.pca else None, cov_year)
     out["occu"] = {"psi_mean": float(psi.mean()),
                    "convergence": occupancy.convergence(r_occu),
                    "sampler": occu_diag,
@@ -502,9 +593,11 @@ def cmd_biolith(args):
         print(f"  WARNING: convergence not assessed -- {_cv['error']}")
     _warn_saturation("occu", occu_diag)
     _write(args.out, f"biolith_{args.tier}.json", out)
-    np.savez_compressed(os.path.join(args.out, f"biolith_{args.tier}_pred.npz"),
-                        psi=psi, row=sites.row.to_numpy(), col=sites.col.to_numpy(),
-                        lon=sites.Longitude.to_numpy(), lat=sites.Latitude.to_numpy())
+    pay = dict(psi=psi, row=sites.row.to_numpy(), col=sites.col.to_numpy(),
+               lon=sites.Longitude.to_numpy(), lat=sites.Latitude.to_numpy())
+    if grid_psi is not None:
+        pay["grid_psi"] = grid_psi.astype(np.float32)
+    np.savez_compressed(os.path.join(args.out, f"biolith_{args.tier}_pred.npz"), **pay)
 
     if args.no_nmixture:
         print("  nmixture skipped (--no-nmixture)")
@@ -781,6 +874,10 @@ def build_parser():
     p.add_argument("--pca-select-cv", action="store_true",
                    help="choose the component count by held-out AUC under "
                         "spatial-block CV (one-SE rule) instead of keeping all")
+    p.add_argument("--no-grid", action="store_true",
+                   help="skip the continental prediction surface. It is ON by "
+                        "default: an SDM's product is a map, and restricting it "
+                        "to surveyed cells shows the survey design instead")
     p.add_argument("--dump-design", action="store_true",
                    help="save the assembled site x covariate matrix (<1 MB) so "
                         "the sampler can be diagnosed off-HPC without moving "

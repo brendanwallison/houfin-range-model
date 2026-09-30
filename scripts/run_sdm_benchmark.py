@@ -600,6 +600,7 @@ def cmd_compare(args):
         zones = src.read(1)
 
     models = {"dynamic (lambda>=1)": niche_dyn}
+    continuous = {}                     # un-thresholded surfaces, by model
     for path in sorted(glob.glob(os.path.join(args.out, "*_pred.npz"))):
         tag = os.path.basename(path)[: -len("_pred.npz")]
         with np.load(path, allow_pickle=True) as z:
@@ -628,12 +629,42 @@ def cmd_compare(args):
         if not m.any():
             print(f"  {tag}: no predictions on surveyed cells, skipped")
             continue
+        continuous[tag] = grid
         thr = designation.threshold_max_sss(grid[m], occ[m])
         models[tag] = has & (np.where(has, grid, -np.inf) >= thr)
 
-    out = {"run_dir": args.run_dir, "models": {}}
-    print(f"\nDesignation comparison on surveyed cells, "
+    out = {"run_dir": args.run_dir, "occupancy_vs_demography": {}, "models": {}}
+
+    # THRESHOLD-FREE FIRST. psi is already the quantity of interest and needs no
+    # cut; thresholding it destroys the finding (a model reporting psi=0.83 in
+    # the Great Plains reads as "35% niche" under maxSSS). Mean lambda needs no
+    # cut either. Both sides compare directly, so this is the headline and the
+    # contingency table below is the supporting detail.
+    print(f"\nOCCUPANCY vs SELF-SUSTAINING -- no threshold on either side, "
           f"{data.PLAINS_LAT_MIN:.0f}-{data.PLAINS_LAT_MAX:.0f}N")
+    psi_names = [n for n in continuous if n.startswith("biolith")]
+    head = f"    {'zone':14s} {'cells':>5s}" + "".join(
+        f"{n.replace('biolith_', 'psi '):>13s}" for n in psi_names)
+    print(head + f"{'BBS any':>9s}{'lam>=1':>9s}{'mean lam':>9s}")
+    for zone, lab in ZONE_LABELS.items():
+        base = finite & surv & (zones == zone)
+        if not base.sum():
+            continue
+        rec = {"n_cells": int(base.sum()),
+               "bbs_any_detection": float(occ[base].mean()),
+               "lam_ge_1_fraction": float(niche_dyn[base].mean()),
+               "mean_lambda": float(np.nanmean(lam[base]))}
+        row = f"    {lab:14s} {int(base.sum()):5d}"
+        for n in psi_names:
+            v = float(np.nanmean(continuous[n][base]))
+            rec[f"psi_{n.replace('biolith_', '')}"] = v
+            row += f"{v:13.3f}"
+        out["occupancy_vs_demography"][lab] = rec
+        print(row + f"{rec['bbs_any_detection']:9.3f}"
+                    f"{100*rec['lam_ge_1_fraction']:8.1f}%{rec['mean_lambda']:9.3f}")
+
+    print(f"\nDesignation comparison (maxSSS-thresholded -- supporting detail; "
+          f"the cut is a convention, not a finding)")
     for zone, lab in list(ZONE_LABELS.items()) + [(None, "all")]:
         base = finite & surv & ((zones == zone) if zone else (zones > 0))
         if not base.sum():

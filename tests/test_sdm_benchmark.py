@@ -1193,3 +1193,32 @@ def test_nb_concentration_is_picked_up_automatically_from_the_fit():
         _NB(), concentration=np.full(4, 1.5).reshape(4, 1))
     assert np.allclose(auto, explicit)
     assert np.all((auto >= 0) & (auto <= 1))
+
+
+def test_compare_reports_the_threshold_free_quantities_first():
+    """psi and mean lambda compare directly; thresholding psi destroys the result.
+
+    A model reporting psi=0.83 in the Great Plains reads as "35% niche" once
+    maxSSS is applied. The cut is a convention, so the headline is the
+    un-thresholded pair and the contingency table is supporting detail.
+    """
+    import importlib.util
+    from pathlib import Path
+    repo = Path(__file__).resolve().parents[1]
+    src = (repo / "scripts" / "run_sdm_benchmark.py").read_text()
+    # the threshold-free block must be built and printed before the 2x2
+    i_free = src.index("OCCUPANCY vs SELF-SUSTAINING")
+    i_thr = src.index("Designation comparison (maxSSS-thresholded")
+    assert i_free < i_thr
+    assert "occupancy_vs_demography" in src
+    # and the un-thresholded surfaces must be retained, not discarded
+    assert "continuous[tag] = grid" in src
+
+    spec = importlib.util.spec_from_file_location("_run_sdm9",
+                                                  repo / "scripts" / "run_sdm_benchmark.py")
+    mod = importlib.util.module_from_spec(spec)
+    try:
+        spec.loader.exec_module(mod)
+    except Exception as e:
+        pytest.skip(f"CLI not importable here: {e}")
+    assert mod.build_parser().parse_args(["compare", "--run-dir", "/tmp/x"])

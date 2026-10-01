@@ -387,16 +387,20 @@ def cmd_brt(args):
 
 
 def _biolith_grid_psi(args, occupancy, covariates, data, X_sites, pca_info,
-                      cov_year):
+                      cov_year, mu=None, sd=None):
     """Posterior-mean psi on EVERY land cell, from the fitted occupancy model.
 
     Uses biolith's own ``predict`` with the fitted MCMC rather than
     reconstructing the linear predictor by hand, so the coefficient layout and
     any link/offset stay biolith's business.
 
-    The PCA rotation is the one FITTED ON THE SITES, reapplied to the grid --
-    refitting it on grid cells would put the model's coefficients in a different
-    basis and silently produce nonsense.
+    The PCA rotation AND the standardization are the ones FITTED ON THE SITES,
+    reapplied to the grid. Refitting either on grid cells expresses the model's
+    coefficients in a different basis and silently produces nonsense: with the
+    grid standardized to its own mean/sd, psi at SURVEYED cells came back 0.91-
+    0.94 where the site predictions for those same cells were 0.82-0.83, and the
+    zone ordering inverted. Same model, same cells, different answers -- the
+    signature of a transform mismatch, not of a modelling choice.
     """
     import numpy as _np
     from biolith.models import occu
@@ -418,7 +422,7 @@ def _biolith_grid_psi(args, occupancy, covariates, data, X_sites, pca_info,
             Xg, _, _ = covariates.pca_reduce(
                 Xg, basis=pca_info["basis"], center=pca_info["center"],
                 mu=pca_info["mu"], sd=pca_info["sd"])
-    Xg, _, _ = covariates.standardize(Xg)
+    Xg, _, _ = covariates.standardize(Xg, mu, sd)
 
     good = ~_np.isnan(Xg).any(axis=1)
     if not good.any():
@@ -580,7 +584,8 @@ def cmd_biolith(args):
     grid_psi = None
     if not args.no_grid:
         grid_psi = _biolith_grid_psi(args, occupancy, covariates, data, X,
-                                     pca_info if args.pca else None, cov_year)
+                                     pca_info if args.pca else None, cov_year,
+                                     mu=mu, sd=sd)
     out["occu"] = {"psi_mean": float(psi.mean()),
                    "convergence": occupancy.convergence(r_occu),
                    "sampler": occu_diag,

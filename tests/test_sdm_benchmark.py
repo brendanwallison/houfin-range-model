@@ -1304,3 +1304,41 @@ def test_biolith_saves_do_not_clobber_each_other():
     for s in saves:
         if "_pred.npz" in s:
             assert "**pay" in s, f"save rebuilds the payload instead of extending it: {s[:120]}"
+
+
+def test_grid_prediction_reuses_the_fitted_transforms():
+    """The grid must be standardized with the SITE mean/sd, not its own.
+
+    Refitting the transform on grid cells expresses the model's coefficients in
+    a different basis: psi at SURVEYED cells came back 0.91-0.94 where the site
+    predictions for those same cells were 0.82-0.83, and the zone ordering
+    inverted. Same model, same cells, different answers.
+    """
+    import re
+    from pathlib import Path
+    repo = Path(__file__).resolve().parents[1]
+    src = (repo / "scripts" / "run_sdm_benchmark.py").read_text()
+    body = src[src.index("def _biolith_grid_psi"):]
+    body = body[:body.index("\ndef ", 1)]
+    # the grid standardization must pass the fitted mu/sd through
+    assert re.search(r"standardize\(\s*Xg\s*,\s*mu\s*,\s*sd\s*\)", body), \
+        "grid standardization refits on the grid instead of reusing site mu/sd"
+    # and the PCA rotation likewise
+    assert "basis=pca_info" in body and "center=pca_info" in body
+    # the caller must supply them
+    call = src[src.index("grid_psi = _biolith_grid_psi"):]
+    assert "mu=mu" in call[:400] and "sd=sd" in call[:400]
+
+
+def test_standardize_with_supplied_stats_is_not_refitted():
+    """covariates.standardize(X, mu, sd) must apply, not re-estimate."""
+    cov = pytest.importorskip("src.analysis.sdm_benchmark.covariates")
+    rng = np.random.default_rng(0)
+    train = rng.normal(5.0, 2.0, size=(200, 3))
+    _, mu, sd = cov.standardize(train)
+    # a shifted block must come out shifted, not re-centred on itself
+    other = train + 10.0
+    out, _, _ = cov.standardize(other, mu, sd)
+    assert out.mean() > 3.0                      # retains the shift
+    refit, _, _ = cov.standardize(other)
+    assert abs(refit.mean()) < 0.1               # refitting would erase it

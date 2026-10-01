@@ -47,6 +47,8 @@
     "invasion_lon": -73.4445,
     "invasion_window_years": 10,
     "invasion_sites": 9,
+    "_release_allee_comment": "Years from the release (invasion_timestep) during which the 9 candidate release cells skip the mate-finding Allee factor. The Allee term models continental colonization (thin arrivals into a 27 km cell); released cage birds were aggregated far below grid scale, so mates did not limit them. Without this the fit inflated and concentrated the founder pulse to clear the cell-averaged threshold -- a saddle with corner-shaped modes (probe of run_17). Matches invasion_window_years. 0 restores the old behaviour.",
+    "release_allee_exemption_years": 10,
     "dispersal_target_capacity_fraction": 0.8,
     "_disease_prior_comment": "The mycoplasmal-conjunctivitis effect on capacity, as a STRUCTURED hypothesis: K = K_base * (1 - severity(x) * onset_gate(x,t) * (1 - recovery(t - arrival))). See docs/PRIORS.md#disease-term and src/model/age_fields.py.",
     "_capacity_level_comment": "Prior on K's continental LEVEL, in expected BBS route counts, anchored on the typical OCCUPIED cell (median 2.618). See docs/PRIORS.md#capacity-level.",

@@ -1,0 +1,15 @@
+{
+  "_comment": [
+    "Run 18: identical to map_new_z.json (run_17) except for the MODEL change committed with it --",
+    "release_allee_exemption_years=10 in age_model_config.json (the 9 release cells skip the Allee factor",
+    "for the pulse window) -- and the obs-quality tier count now read as an int. Same input_dir, same",
+    "profile (quick90) as run_17, so run_17 vs run_18 isolates the Allee change. Its probe should show",
+    "the log_inv_pulse_fraction block bowl-shaped if the exemption was what the founders were compensating for."
+  ],
+  "input_dir": "${HOUFIN_PROCESSED}/model_inputs/numpyro_input",
+  "run_names": {
+    "_comment": "run_18: run_17 + release-cell Allee exemption",
+    "map": "age_map_{precision}_run_18_new_z",
+    "vis_map": "age_map_{precision}_run_18_new_z"
+  }
+}

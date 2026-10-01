@@ -10,9 +10,7 @@ Toy models only; no data or GPU. What each test pins:
 * our flattening order is numpyro's dense-mass order, so a Laplace matrix lands on the
   right coordinates;
 * the chunked, resumable dense Hessian gives the Gaussian's precision exactly;
-* NeuTra can be rebuilt from a saved low-rank guide of any rank;
-* a model that branches on ``int(jnp.max(data))`` (as build_model_2d does on
-  obs_quality) can be traced by NUTS, the probe's jit, and a jitted SVI scan.
+* NeuTra can be rebuilt from a saved low-rank guide of any rank.
 """
 import os
 import pickle
@@ -161,11 +159,12 @@ def test_dense_hessian_recovers_gaussian_precision_and_resumes(tmp_path):
     assert report["n_negative"] == 0 and report["n_below_floor"] == 0
 
 
-def test_laplace_floors_negative_curvature():
+def test_laplace_softabs_keeps_the_scale_of_negative_curvature():
+    """A saddle axis with curvature -1 gets width 1 (|lambda|), not the floor's 10."""
     H = np.diag([4.0, -1.0, 1e-6])
     inv_mass, evals, _, report = hc.laplace_inverse_mass(H, eig_floor=0.01)
-    assert report["n_negative"] == 1 and report["n_below_floor"] == 2
-    np.testing.assert_allclose(np.sort(np.diag(inv_mass)), [0.25, 100.0, 100.0])
+    assert report["n_negative"] == 1 and report["n_below_floor"] == 1
+    np.testing.assert_allclose(np.diag(inv_mass), [0.25, 1.0, 100.0])
 
 
 @pytest.mark.parametrize("rank", [1, 2])
@@ -202,39 +201,23 @@ def test_neutra_refuses_a_guide_from_a_different_model():
         build_neutra(toy, vi, KW)
 
 
-def branchy(data, prior_scale=1.0):
-    """build_model_2d's obs_quality pattern: a Python branch on a reduction of the data."""
-    mu = numpyro.sample("mu", dist.Normal(0.0, 1.0))
-    scale = 1.0
-    if int(jnp.max(data["q"])) > int(jnp.min(data["q"])):
-        scale = numpyro.sample("q_mult", dist.Beta(2.0, 2.0))
-    numpyro.sample("obs", dist.Normal(mu, scale), obs=data["y"])
+
+def test_release_cells_skip_the_allee_factor_only_while_exempt():
+    """allee_off=1 restores full fecundity; partial values interpolate; None is legacy."""
+    from src.model.age_forward import reproduction_age_structured
+    N = jnp.array([1e-3, 1e-3])
+    args = (N * 0.5, N * 0.25, N * 0.25, 0.6, 0.4, 3.0, 1.0, 0.5, 2.0)
+    _, juv_allee = reproduction_age_structured(*args)
+    _, juv_off = reproduction_age_structured(*args, allee_off=jnp.array([1.0, 0.0]))
+    _, juv_legacy = reproduction_age_structured(*args, allee_off=None)
+    np.testing.assert_allclose(juv_legacy, juv_allee)
+    np.testing.assert_allclose(juv_off[1], juv_allee[1])           # not exempt: unchanged
+    assert juv_off[0] > 100 * juv_allee[0]                          # exempt: mates not limiting
 
 
-BKW = {"data": {"y": Y, "q": jnp.array([0, 1, 0, 0, 1, 0])}, "prior_scale": 1.0}
-
-
-def test_unwrapped_data_branch_fails_under_jit():
-    """Pins the TACC 3480304 failure, so the wrapper is not removed as cargo."""
-    z, potential_fn, _ = hc.unconstrained_setup(branchy, BKW["data"])
-    with pytest.raises(jax.errors.ConcretizationTypeError):
-        jax.jit(potential_fn)(z)
-
-
-def test_jit_safe_model_traces_under_probe_nuts_and_svi_scan():
-    model = hc.hide_deterministics(branchy)
-    z, potential_fn, _ = hc.unconstrained_setup(model, BKW["data"])
-    assert set(z) == {"mu", "q_mult"}
-    assert np.isfinite(jax.jit(jax.value_and_grad(lambda zz: potential_fn(zz)))(z)[0])
-
-    mcmc = MCMC(NUTS(model), num_warmup=5, num_samples=5, progress_bar=False)
-    mcmc.run(jax.random.PRNGKey(0), init_params=z, **BKW)
-    assert set(mcmc.get_samples()) == {"mu", "q_mult"}
-
-    safe = hc.jit_safe(branchy)
-    svi = SVI(safe, AutoLowRankMultivariateNormal(safe, rank=1), numpyro.optim.Adam(1e-2),
-              loss=Trace_ELBO())
-    state = svi.init(jax.random.PRNGKey(0), **BKW)
-    state, losses = jax.jit(lambda st: jax.lax.scan(
-        lambda s, _: svi.update(s, **BKW), st, None, length=3))(state)
-    assert np.isfinite(np.asarray(losses)).all()
+def test_quality_branch_is_static_under_jit():
+    """build_model_2d's site-existence decision must not use jnp (TACC job 3480304)."""
+    import inspect
+    from src.model import age_priors
+    src = inspect.getsource(age_priors.build_model_2d)
+    assert "int(jnp.max(obs_quality))" not in src and "n_obs_quality_tiers" in src

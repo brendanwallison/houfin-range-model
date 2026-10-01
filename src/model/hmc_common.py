@@ -144,24 +144,6 @@ def load_map():
 
 # ------------------------------------------------------------- model + potential
 
-def jit_safe(model):
-    """Let ``model`` be traced under ``jax.jit`` despite branching on its DATA.
-
-    build_model_2d decides whether to sample ``quality_conc_mult`` with
-    ``int(jnp.max(obs_quality)) > int(jnp.min(obs_quality))``. MAP never noticed:
-    ``SVI.update`` runs eagerly. But NUTS (fori_collect), the probe's jitted
-    value_and_grad and VI's jitted scan all trace the model, and under a trace even
-    ``jnp.max`` of a constant array is staged out -> ConcretizationTypeError (TACC job
-    3480304). ``ensure_compile_time_eval`` evaluates operations whose inputs are all
-    concrete (the data) eagerly while still tracing anything touching parameters, so
-    the model runs unmodified -- editing age_priors.py would change every MAP fingerprint.
-    """
-    def wrapped(*args, **kwargs):
-        with jax.ensure_compile_time_eval():
-            return model(*args, **kwargs)
-    return wrapped
-
-
 def hide_deterministics(model):
     """Wrap ``model`` so MCMC never collects its deterministic sites.
 
@@ -170,11 +152,9 @@ def hide_deterministics(model):
     which exhausts device memory within a few draws. Derived fields are recomputed from
     stored latents with ``Predictive`` instead.
     """
-    safe = jit_safe(model)
-
     def blocked(*args, **kwargs):
         with block(hide_fn=lambda site: site["type"] == "deterministic"):
-            return safe(*args, **kwargs)
+            return model(*args, **kwargs)
     return blocked
 
 
@@ -258,21 +238,25 @@ def dense_hessian(potential_fn, z: dict, chunk: int = 8, partial_path: str | Non
 
 
 def laplace_inverse_mass(H: np.ndarray, eig_floor: float):
-    """Laplace covariance from a Hessian, with non-positive curvature floored.
+    """A NUTS metric from a Hessian that need not be positive-definite (SoftAbs).
 
-    Returns (inv_mass, report). Eigenvalues below ``eig_floor`` -- including negative
-    ones, which mean the point is not a local maximum in unconstrained space -- are
-    raised to it, so no direction gets a Laplace sd above 1/sqrt(eig_floor).
+    Each principal axis gets width 1/sqrt(max(|lambda|, eig_floor)). A NEGATIVE
+    eigenvalue means the point is a saddle along that axis -- there is no Gaussian
+    there -- but |lambda| still measures how fast the density changes, which is what a
+    step scale needs. Flooring negatives instead (the first version) gave strongly
+    curved directions sd = 1/sqrt(eig_floor) = 10: e.g. alpha_a 4.5 against a prior sd
+    of 0.5 at run_17's MAP, a metric that would have thrown NUTS along exactly the
+    directions it cannot follow. eig_floor now only guards genuinely flat axes.
     """
     evals, evecs = np.linalg.eigh(H)
-    clipped = np.maximum(evals, eig_floor)
+    clipped = np.maximum(np.abs(evals), eig_floor)
     inv_mass = (evecs / clipped) @ evecs.T
     report = {
         "d": int(H.shape[0]),
         "eig_min": float(evals[0]),
         "eig_max": float(evals[-1]),
         "n_negative": int((evals < 0).sum()),
-        "n_below_floor": int((evals < eig_floor).sum()),
+        "n_below_floor": int((np.abs(evals) < eig_floor).sum()),
         "eig_floor": float(eig_floor),
         "condition_number_clipped": float(clipped[-1] / clipped[0]),
         "eig_smallest_10": evals[:10].tolist(),

@@ -8,7 +8,7 @@ Measures what decides whether NUTS on this model is feasible and how to configur
   constrained space without the change-of-variables Jacobian, so the MAP point is not
   exactly the mode NUTS sees; a large norm here says the Laplace centre is off;
 * the dense Hessian there, its eigen-spectrum (negative / near-zero eigenvalues =
-  ridge or saddle, not a clean mode) and the floored Laplace inverse mass matrix
+  ridge or saddle, not a clean mode) and the SoftAbs Laplace inverse mass matrix
   that arm A's dense metrics and every chain's overdispersed start use.
 
 Writes ``probe.json`` (human-readable report) and ``laplace.npz`` to

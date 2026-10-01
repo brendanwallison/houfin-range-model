@@ -46,6 +46,10 @@ def load_data(input_dir, target_device=None, precision="float32", verbose=True):
 
     meta["Z_gathered"] = np.asarray(z_mem, dtype=f_type_cpu)
     meta["Z_disp_gathered"] = np.asarray(z_disp_mem, dtype=f_type_cpu)
+    # A plain int, computed from the HOST array before device placement, so the model can
+    # decide structurally (whether quality_conc_mult exists) without touching jnp.
+    if isinstance(meta.get("obs_quality"), np.ndarray):
+        meta["n_obs_quality_tiers"] = int(np.unique(meta["obs_quality"]).size)
     residency = os.environ.get("HOUFIN_MODEL_INPUT_RESIDENCY", "device").lower()
     if residency not in {"device", "host"}:
         raise ValueError("HOUFIN_MODEL_INPUT_RESIDENCY must be 'device' or 'host'")

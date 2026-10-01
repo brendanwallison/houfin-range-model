@@ -7,7 +7,7 @@
     "hmc": "hmc_{variant}__{map_run}"
   },
   "probe": {
-    "_comment": "Gradient timing + dense Hessian of the potential at the MAP point, in the unconstrained space NUTS samples. eig_floor bounds the Laplace inverse mass matrix: eigenvalues of H below it (negative = the MAP point is not a local max of the unconstrained posterior, e.g. a ridge) are raised to it, capping any direction's Laplace sd at 1/sqrt(eig_floor).",
+    "_comment": "Gradient timing + dense Hessian of the potential at the MAP point, in the unconstrained space NUTS samples. The Laplace inverse mass matrix is SoftAbs: each axis gets width 1/sqrt(max(|lambda|, eig_floor)), so a negative eigenvalue (a saddle along that axis) keeps its curvature scale; eig_floor only caps genuinely flat axes at sd 1/sqrt(eig_floor).",
     "grad_reps": 5,
     "hvp_chunk": 8,
     "eig_floor": 0.01,

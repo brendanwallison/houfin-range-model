@@ -117,7 +117,8 @@ def forward_sim_age_structured(
     time, inv_locations, inv_timestep,
     dispersal_logit_intercept, dispersal_logit_slope,
     allee_gamma,
-    target_fraction=0.8
+    target_fraction=0.8,
+    allee_exempt_years=0,
 ):
     """Run the age-structured simulation for ``time`` years.
 
@@ -136,6 +137,18 @@ def forward_sim_age_structured(
     scatter-add (``.at[rows, cols].add(...)``) naturally handles any number of sites
     in one vectorized op, including the ``n_sites=1`` case this replaces.
 
+    ``allee_exempt_years`` switches the mate-finding Allee factor OFF (to 1) in the
+    candidate release cells for that many years from ``inv_timestep``. The Allee term
+    describes continental colonization: dispersers arriving thinly into a 27 km cell.
+    The 1940 release was the opposite -- a small group of cage birds freed together,
+    aggregated far below grid scale, for whom finding a mate was not the constraint.
+    Applying the cell-averaged Allee factor to them made the fit manufacture extra
+    founders to clear the threshold, and concentrating those founders in one
+    (site, year) cell was the cheapest way to do that: the probe of MAP run_17 found 78
+    of the 89 founder-reallocation directions curving downhill (a saddle at the even
+    spread, with corner-shaped modes). 0 = legacy behaviour (no exemption); the
+    no-release counterfactual in map_diagnostics relies on that default.
+
     Returns ``(total_densities, Na_densities, Nj_densities)``, each shape
     (time, Ny, Nx). The age-split outputs cost nothing extra during MAP/SVI
     optimization -- XLA's dead-code elimination strips them whenever the
@@ -153,6 +166,7 @@ def forward_sim_age_structured(
     
     # Pre-allocate zero grid for scattering to avoid repeated memory allocations
     zero_grid = jnp.zeros((Ny, Nx))
+    release_mask = zero_grid.at[inv_rows, inv_cols].set(1.0)
     
     # Pre-allocate the Q-grid to avoid creating it inside the scan loop
     K_kernels = Q_flat.shape[-1]
@@ -199,10 +213,12 @@ def forward_sim_age_structured(
             Q_grid=Q_g, eps=1e-6
         )
         
-        # 4. Survival & Reproduction (Updated reproduction call)
+        # 4. Survival & Reproduction. Release cells skip the Allee factor while
+        # exempt (see allee_exempt_years in the docstring).
+        allee_off = jnp.where((k >= 0) & (k < allee_exempt_years), release_mask, 0.0)
         N_a_new, N_j_new = reproduction_age_structured(
             N_a_post, juvenile_stayers, juvenile_arriving,
-            Sa_g, Sj_g, Fmax_g, K_g, c_g, allee_gamma
+            Sa_g, Sj_g, Fmax_g, K_g, c_g, allee_gamma, allee_off=allee_off
         )
             
         # 5. Mask & Final Clip
@@ -222,7 +238,7 @@ def forward_sim_age_structured(
 
 def reproduction_age_structured(
     N_a_post, N_j_stayers, N_j_arrivers,
-    S_a, S_j, F_max, K, c, allee_gamma, eps=1e-12 # <-- Accept pre-computed c
+    S_a, S_j, F_max, K, c, allee_gamma, eps=1e-12, allee_off=None
     ):
     """Advance one year of survival + reproduction to next-year (N_a, N_j).
 
@@ -231,12 +247,18 @@ def reproduction_age_structured(
     ``1 - exp(-allee_gamma * N)``. The local linearized matrix is
     ``[[S_a, S_j], [F*S_a, 0]]``: adults are surviving adults plus surviving
     juveniles, and the surviving adults produce the next juvenile cohort.
+
+    ``allee_off`` (optional, broadcastable to N, values in [0, 1]) removes that share
+    of the Allee limitation: 1 = mate-finding never limits (the release cells during
+    their exemption window), 0 = the normal Allee factor.
     """
     N_total_post = N_a_post + N_j_stayers + N_j_arrivers
     K_safe = jnp.maximum(K, eps)
 
     F_eff = F_max / (1.0 + c * (N_total_post / K_safe))
     allee_factor = 1.0 - jnp.exp(-allee_gamma * N_total_post)
+    if allee_off is not None:
+        allee_factor = allee_factor + allee_off * (1.0 - allee_factor)
     F_actual = F_eff * allee_factor
 
     surviving_adults = N_a_post * S_a

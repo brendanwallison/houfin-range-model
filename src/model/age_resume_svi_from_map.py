@@ -41,8 +41,7 @@ from src.model.data_loading import load_data                       # noqa: E402
 from src.model.runtime_diagnostics import memory_snapshot, require_gpu  # noqa: E402
 
 
-# The VI block is a jitted lax.scan, so the model must survive tracing (hc.jit_safe).
-MODEL = hc.jit_safe(build_model_2d)
+MODEL = build_model_2d
 
 
 def vi_settings(pcfg: dict) -> dict:

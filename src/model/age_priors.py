@@ -32,6 +32,7 @@ _CAPACITY_LEVEL = dict(_POP_SPEC["capacity_level_prior"])
 _INVASION_PULSE = dict(_POP_SPEC["invasion_pulse_prior"])
 _INITPOP_SEED = dict(_POP_SPEC["initpop_seed"])
 _ALLEE_PRIOR = dict(_POP_SPEC["allee_prior"])
+_RELEASE_ALLEE_EXEMPT_YEARS = int(_POP_SPEC.get("release_allee_exemption_years", 0))
 # THE GAUGE. Every absolute-scale prior is declared in expected BBS ROUTE COUNTS in
 # config and divided by this at exactly one boundary, so changing the gauge cannot
 # change any prior's meaning. (n50 already followed this convention; the capacity
@@ -704,6 +705,7 @@ def build_model_2d(data, prior_scale=1.0):
         priors['dispersal_logit_intercept'], priors['dispersal_logit_slope'],
         priors['allee_gamma'],
         target_fraction=data["dispersal_target_fraction"],
+        allee_exempt_years=_RELEASE_ALLEE_EXEMPT_YEARS,
     )
 
     numpyro.deterministic("simulated_density", densities)
@@ -734,7 +736,14 @@ def build_model_2d(data, prior_scale=1.0):
     # (0,1) is the principled constraint; the data set the magnitude. This is a
     # no-op when only tier-0 observations are present (q_mult ** 0 == 1).
     obs_quality = data.get("obs_quality")
-    if obs_quality is not None and int(jnp.max(obs_quality)) > int(jnp.min(obs_quality)):
+    # Whether the site EXISTS must be a plain Python bool. data_loading records the tier
+    # count as an int; the numpy fallback works on any concrete array. Never jnp here:
+    # under jit (NUTS, the posterior probe, VI's scan) jnp.max of even constant data is
+    # an abstract tracer and int() of it raises (TACC job 3480304).
+    n_tiers = data.get("n_obs_quality_tiers")
+    if n_tiers is None and obs_quality is not None:
+        n_tiers = int(np.unique(np.asarray(obs_quality)).size)
+    if obs_quality is not None and n_tiers > 1:
         q_mult = numpyro.sample("quality_conc_mult", dist.Beta(2.0, 2.0))
         conc_obs = concentration * jnp.power(q_mult, obs_quality)
     else:

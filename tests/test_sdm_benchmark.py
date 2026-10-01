@@ -1280,3 +1280,27 @@ def test_report_cli_parses():
     assert set(mod.MODEL_NOTES) >= {"biolith_standard", "brt_standard"}
     for n in mod.MODEL_NOTES.values():
         assert {"kind", "estimates", "covars", "prep"} <= set(n)
+
+
+def test_biolith_saves_do_not_clobber_each_other():
+    """cmd_biolith writes the prediction file twice: after occu, then after
+    nmixture. The second must EXTEND the first payload, not rebuild it.
+
+    Rebuilding dropped grid_psi -- the occu save wrote the continental surface
+    and the nmixture save overwrote the file without it, so a run that logged
+    "grid surface: 17,209 of 17,209 land cells" still shipped a file with no
+    grid in it.
+    """
+    import re
+    from pathlib import Path
+    repo = Path(__file__).resolve().parents[1]
+    src = (repo / "scripts" / "run_sdm_benchmark.py").read_text()
+    body = src[src.index("def cmd_biolith"):]
+    body = body[:body.index("\ndef ", 1)] if "\ndef " in body[1:] else body
+
+    saves = re.findall(r"np\.savez_compressed\((.*?)\)\n", body, re.S)
+    assert len(saves) >= 2, "expected an occu save and an nmixture save"
+    # every save of the prediction file must go through the shared payload dict
+    for s in saves:
+        if "_pred.npz" in s:
+            assert "**pay" in s, f"save rebuilds the payload instead of extending it: {s[:120]}"

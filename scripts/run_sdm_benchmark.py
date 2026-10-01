@@ -661,11 +661,14 @@ def cmd_biolith(args):
 
     _write(args.out, f"biolith_{args.tier}.json", out)
     if pn is not None:
-        np.savez_compressed(os.path.join(args.out, f"biolith_{args.tier}_pred.npz"),
-                            psi=psi, p_occ_nmix=pn, row=sites.row.to_numpy(),
-                            col=sites.col.to_numpy(),
-                            lon=sites.Longitude.to_numpy(),
-                            lat=sites.Latitude.to_numpy())
+        # EXTEND the payload written after occu -- do not rebuild it. Rebuilding
+        # here silently dropped grid_psi: the occu save wrote the continental
+        # surface and this one overwrote the file without it, so a run whose log
+        # said "grid surface: 17,209 of 17,209 land cells" still produced a file
+        # with no grid in it.
+        pay["p_occ_nmix"] = pn
+        np.savez_compressed(
+            os.path.join(args.out, f"biolith_{args.tier}_pred.npz"), **pay)
     return out
 
 

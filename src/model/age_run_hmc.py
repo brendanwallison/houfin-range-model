@@ -120,7 +120,7 @@ def run_neutra_hmc():
     memory_snapshot("neutra-inputs-loaded", device)
     kwargs = hc.model_kwargs(data)
 
-    _, warped, to_constrained = build_neutra(build_model_2d, vi, kwargs)
+    _, warped, to_constrained = build_neutra(hc.jit_safe(build_model_2d), vi, kwargs)
     kernel = NUTS(warped, target_accept_prob=s["target_accept"],
                   max_tree_depth=s["max_tree_depth"], step_size=s["step_size"],
                   dense_mass=False, adapt_mass_matrix=True)

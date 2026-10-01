@@ -144,6 +144,24 @@ def load_map():
 
 # ------------------------------------------------------------- model + potential
 
+def jit_safe(model):
+    """Let ``model`` be traced under ``jax.jit`` despite branching on its DATA.
+
+    build_model_2d decides whether to sample ``quality_conc_mult`` with
+    ``int(jnp.max(obs_quality)) > int(jnp.min(obs_quality))``. MAP never noticed:
+    ``SVI.update`` runs eagerly. But NUTS (fori_collect), the probe's jitted
+    value_and_grad and VI's jitted scan all trace the model, and under a trace even
+    ``jnp.max`` of a constant array is staged out -> ConcretizationTypeError (TACC job
+    3480304). ``ensure_compile_time_eval`` evaluates operations whose inputs are all
+    concrete (the data) eagerly while still tracing anything touching parameters, so
+    the model runs unmodified -- editing age_priors.py would change every MAP fingerprint.
+    """
+    def wrapped(*args, **kwargs):
+        with jax.ensure_compile_time_eval():
+            return model(*args, **kwargs)
+    return wrapped
+
+
 def hide_deterministics(model):
     """Wrap ``model`` so MCMC never collects its deterministic sites.
 
@@ -152,9 +170,11 @@ def hide_deterministics(model):
     which exhausts device memory within a few draws. Derived fields are recomputed from
     stored latents with ``Predictive`` instead.
     """
+    safe = jit_safe(model)
+
     def blocked(*args, **kwargs):
         with block(hide_fn=lambda site: site["type"] == "deterministic"):
-            return model(*args, **kwargs)
+            return safe(*args, **kwargs)
     return blocked
 
 

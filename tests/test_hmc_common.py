@@ -10,7 +10,9 @@ Toy models only; no data or GPU. What each test pins:
 * our flattening order is numpyro's dense-mass order, so a Laplace matrix lands on the
   right coordinates;
 * the chunked, resumable dense Hessian gives the Gaussian's precision exactly;
-* NeuTra can be rebuilt from a saved low-rank guide of any rank.
+* NeuTra can be rebuilt from a saved low-rank guide of any rank;
+* a model that branches on ``int(jnp.max(data))`` (as build_model_2d does on
+  obs_quality) can be traced by NUTS, the probe's jit, and a jitted SVI scan.
 """
 import os
 import pickle
@@ -198,3 +200,41 @@ def test_neutra_refuses_a_guide_from_a_different_model():
                      "auto_scale": jnp.ones(7)}}
     with pytest.raises(RuntimeError, match="latents"):
         build_neutra(toy, vi, KW)
+
+
+def branchy(data, prior_scale=1.0):
+    """build_model_2d's obs_quality pattern: a Python branch on a reduction of the data."""
+    mu = numpyro.sample("mu", dist.Normal(0.0, 1.0))
+    scale = 1.0
+    if int(jnp.max(data["q"])) > int(jnp.min(data["q"])):
+        scale = numpyro.sample("q_mult", dist.Beta(2.0, 2.0))
+    numpyro.sample("obs", dist.Normal(mu, scale), obs=data["y"])
+
+
+BKW = {"data": {"y": Y, "q": jnp.array([0, 1, 0, 0, 1, 0])}, "prior_scale": 1.0}
+
+
+def test_unwrapped_data_branch_fails_under_jit():
+    """Pins the TACC 3480304 failure, so the wrapper is not removed as cargo."""
+    z, potential_fn, _ = hc.unconstrained_setup(branchy, BKW["data"])
+    with pytest.raises(jax.errors.ConcretizationTypeError):
+        jax.jit(potential_fn)(z)
+
+
+def test_jit_safe_model_traces_under_probe_nuts_and_svi_scan():
+    model = hc.hide_deterministics(branchy)
+    z, potential_fn, _ = hc.unconstrained_setup(model, BKW["data"])
+    assert set(z) == {"mu", "q_mult"}
+    assert np.isfinite(jax.jit(jax.value_and_grad(lambda zz: potential_fn(zz)))(z)[0])
+
+    mcmc = MCMC(NUTS(model), num_warmup=5, num_samples=5, progress_bar=False)
+    mcmc.run(jax.random.PRNGKey(0), init_params=z, **BKW)
+    assert set(mcmc.get_samples()) == {"mu", "q_mult"}
+
+    safe = hc.jit_safe(branchy)
+    svi = SVI(safe, AutoLowRankMultivariateNormal(safe, rank=1), numpyro.optim.Adam(1e-2),
+              loss=Trace_ELBO())
+    state = svi.init(jax.random.PRNGKey(0), **BKW)
+    state, losses = jax.jit(lambda st: jax.lax.scan(
+        lambda s, _: svi.update(s, **BKW), st, None, length=3))(state)
+    assert np.isfinite(np.asarray(losses)).all()

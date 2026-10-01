@@ -41,6 +41,10 @@ from src.model.data_loading import load_data                       # noqa: E402
 from src.model.runtime_diagnostics import memory_snapshot, require_gpu  # noqa: E402
 
 
+# The VI block is a jitted lax.scan, so the model must survive tracing (hc.jit_safe).
+MODEL = hc.jit_safe(build_model_2d)
+
+
 def vi_settings(pcfg: dict) -> dict:
     v = pcfg["vi"]
     return {
@@ -59,7 +63,7 @@ def vi_dir(pcfg: dict, rank: int) -> str:
 
 def make_guide(rank: int, init_values=None, init_scale: float = 0.01):
     kw = {} if init_values is None else {"init_loc_fn": init_to_value(values=init_values)}
-    return AutoLowRankMultivariateNormal(build_model_2d, rank=rank, init_scale=init_scale, **kw)
+    return AutoLowRankMultivariateNormal(MODEL, rank=rank, init_scale=init_scale, **kw)
 
 
 def run_vi_resume():
@@ -85,7 +89,7 @@ def run_vi_resume():
                                             alpha=0.1)
     optimizer = numpyro.optim.optax_to_numpyro(
         optax.chain(optax.clip_by_global_norm(1.0), optax.adam(scheduler, eps=1e-7)))
-    svi = SVI(build_model_2d, guide, optimizer, loss=Trace_ELBO(num_particles=s["num_particles"]))
+    svi = SVI(MODEL, guide, optimizer, loss=Trace_ELBO(num_particles=s["num_particles"]))
     kw = hc.model_kwargs(data)
 
     payload = {"settings": s, "precision": hc.PRECISION, "map_fingerprint": map_ckpt["fingerprint"],

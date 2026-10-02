@@ -50,21 +50,36 @@ esac
 echo "MAP selection: AGE_MODEL_CONFIG=${AGE_MODEL_CONFIG:-<committed config>} HOUFIN_MAP_PROFILE=${HOUFIN_MAP_PROFILE:-standard} HOUFIN_MODEL_PRECISION=${HOUFIN_MODEL_PRECISION:-float32}"
 [ -z "${AGE_MODEL_CONFIG:-}" ] && echo "  [warn] no overlay: this targets run_names.map of the COMMITTED config, not an A/B run"
 
-submit () { sbatch "$@" 2>&1 | grep -Eo '^[0-9]+' | tail -1; }
+# Print sbatch's own message on failure. The first version piped it straight into
+# grep, so under pipefail a rejected submit (e.g. a dependency on a job that had already
+# left the queue) exited silently without "submitted" or "submit failed".
+submit () {
+    local out
+    if ! out=$(sbatch "$@" 2>&1); then echo "sbatch rejected the job: $out" >&2; return 1; fi
+    echo "$out" | grep -Eo '^[0-9]+' | tail -1
+}
 
 DEP=()
-[ -n "$AFTER" ] && DEP=(--dependency=afterok:"$AFTER")
+if [ -n "$AFTER" ]; then
+    # afterok on a job that has already finished is rejected outright, so resolve it here.
+    state=$(sacct -n -X -j "$AFTER" -o State 2>/dev/null | head -1 | tr -d ' ')
+    case "$state" in
+        COMPLETED) echo "AFTER=$AFTER already COMPLETED: submitting without a dependency" ;;
+        PENDING|RUNNING|CONFIGURING|REQUEUED|SUSPENDED|"") DEP=(--dependency=afterok:"$AFTER") ;;
+        *) echo "AFTER=$AFTER ended $state, so its output is not usable; not submitting" >&2; exit 1 ;;
+    esac
+fi
 jid=$(submit $A -p "$QUEUE" -t "$TIME" ${EXTRA[@]+"${EXTRA[@]}"} ${DEP[@]+"${DEP[@]}"} \
-             --export=ALL,"$FRESH_VAR"="$FRESH" --parsable "$SCRIPT")
-[ -n "$jid" ] || { echo "submit failed (no job id captured)"; exit 1; }
+             --export=ALL,"$FRESH_VAR"="$FRESH" --parsable "$SCRIPT") || exit 1
+[ -n "$jid" ] || { echo "submit failed (no job id captured)" >&2; exit 1; }
 echo "submitted $STAGE ${HOUFIN_HMC_ARM:-} ${HOUFIN_HMC_METRIC:-} ($QUEUE, $TIME): $jid"
 
 prev="$jid"
 for _ in $(seq 1 "$RESUBMITS"); do
     # For an array, afterany waits for EVERY task; finished chains exit fast on resume.
     nxt=$(submit $A -p "$QUEUE" -t "$TIME" ${EXTRA[@]+"${EXTRA[@]}"} --export=ALL,"$FRESH_VAR"=0 --parsable \
-                 --dependency=afterany:"$prev" "$SCRIPT")
-    [ -n "$nxt" ] || { echo "chained submit failed"; exit 1; }
+                 --dependency=afterany:"$prev" "$SCRIPT") || exit 1
+    [ -n "$nxt" ] || { echo "chained submit failed" >&2; exit 1; }
     echo "  chained resume job (afterany:$prev): $nxt"
     prev="$nxt"
 done

@@ -830,6 +830,8 @@ def build_parser():
     p = sub.add_parser("brt", help="boosted-regression-tree baselines")
     common(p, rep=False)
     p.add_argument("--tier", choices=["standard", "full", "latent"], default="standard")
+    p.add_argument("--no-grid", action="store_true",
+                   help="skip the continental prediction surface")
     p.add_argument("--block-cells", type=int, default=6)
     p.add_argument("--n-folds", type=int, default=5)
     p.add_argument("--buffer-cells", type=int, default=1)

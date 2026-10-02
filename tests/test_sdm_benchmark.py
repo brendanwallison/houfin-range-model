@@ -1342,3 +1342,50 @@ def test_standardize_with_supplied_stats_is_not_refitted():
     assert out.mean() > 3.0                      # retains the shift
     refit, _, _ = cov.standardize(other)
     assert abs(refit.mean()) < 0.1               # refitting would erase it
+
+
+def test_every_subcommand_defines_the_args_its_handler_reads():
+    """Guards the class of bug that killed all three BRT stages.
+
+    --no-grid was added to the biolith subparser only, while cmd_brt read
+    args.no_grid -- so the BRT died with AttributeError at runtime, on HPC,
+    after the covariates had already been assembled. Parsers and handlers are
+    edited in different places and drift silently; this checks them against
+    each other.
+    """
+    import importlib.util
+    import re
+    from pathlib import Path
+
+    repo = Path(__file__).resolve().parents[1]
+    path = repo / "scripts" / "run_sdm_benchmark.py"
+    spec = importlib.util.spec_from_file_location("_run_sdm_args", path)
+    mod = importlib.util.module_from_spec(spec)
+    try:
+        spec.loader.exec_module(mod)
+    except Exception as e:
+        pytest.skip(f"CLI not importable here: {e}")
+
+    src = path.read_text()
+    ap = mod.build_parser()
+    subparsers = [a for a in ap._actions if hasattr(a, "choices") and a.choices
+                  and all(hasattr(v, "parse_args") for v in a.choices.values())]
+    assert subparsers, "no subparsers found"
+
+    # attributes the CLI sets itself at runtime rather than through argparse
+    runtime_only = {"fn", "_mcmc"}
+
+    for name, sub in subparsers[0].choices.items():
+        handler = {"brt": "cmd_brt", "biolith": "cmd_biolith",
+                   "premise": "cmd_premise", "designation": "cmd_designation",
+                   "compare": "cmd_compare", "preflight": "cmd_preflight"}.get(name)
+        if handler is None or f"def {handler}" not in src:
+            continue
+        body = src[src.index(f"def {handler}"):]
+        nxt = body.index("\ndef ", 1) if "\ndef " in body[1:] else len(body)
+        body = body[:nxt]
+        read = set(re.findall(r"\bargs\.([A-Za-z_][A-Za-z0-9_]*)", body)) - runtime_only
+        defined = {a.dest for a in sub._actions}
+        missing = sorted(read - defined)
+        assert not missing, (
+            f"{handler} reads args that `{name}` does not define: {missing}")

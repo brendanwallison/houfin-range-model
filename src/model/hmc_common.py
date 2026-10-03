@@ -258,10 +258,11 @@ def laplace_inverse_mass(H: np.ndarray, eig_floor: float):
         "n_negative": int((evals < 0).sum()),
         "n_below_floor": int((np.abs(evals) < eig_floor).sum()),
         "eig_floor": float(eig_floor),
-        "condition_number_clipped": float(clipped[-1] / clipped[0]),
+        # |lambda| is not sorted even though lambda is: use max/min, not the ends.
+        "condition_number_clipped": float(clipped.max() / clipped.min()),
         "eig_smallest_10": evals[:10].tolist(),
         "eig_largest_10": evals[-10:].tolist(),
-        "median_adjacent_log_gap": float(np.median(np.diff(np.log(clipped)))),
+        "median_adjacent_log_gap": float(np.median(np.diff(np.log(np.sort(clipped))))),
     }
     return 0.5 * (inv_mass + inv_mass.T), evals, evecs, report
 

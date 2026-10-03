@@ -165,6 +165,7 @@ def test_laplace_softabs_keeps_the_scale_of_negative_curvature():
     inv_mass, evals, _, report = hc.laplace_inverse_mass(H, eig_floor=0.01)
     assert report["n_negative"] == 1 and report["n_below_floor"] == 1
     np.testing.assert_allclose(np.diag(inv_mass), [0.25, 1.0, 100.0])
+    assert report["condition_number_clipped"] == pytest.approx(4.0 / 0.01)
 
 
 @pytest.mark.parametrize("rank", [1, 2])

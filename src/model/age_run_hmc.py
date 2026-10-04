@@ -118,9 +118,9 @@ def run_neutra_hmc():
     data = load_data(load_age_model_config()["input_dir"], target_device=device,
                      precision=hc.PRECISION)
     memory_snapshot("neutra-inputs-loaded", device)
-    kwargs = hc.model_kwargs(data)
-
-    _, warped, to_constrained = build_neutra(build_model_2d, vi, kwargs)
+    arrays, static = hc.split_data(data)
+    kwargs = {"arrays": arrays}
+    _, warped, to_constrained = build_neutra(hc.array_model(build_model_2d, static), vi, kwargs)
     kernel = NUTS(warped, target_accept_prob=s["target_accept"],
                   max_tree_depth=s["max_tree_depth"], step_size=s["step_size"],
                   dense_mass=False, adapt_mass_matrix=True)

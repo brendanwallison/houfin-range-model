@@ -41,9 +41,6 @@ from src.model.data_loading import load_data                       # noqa: E402
 from src.model.runtime_diagnostics import memory_snapshot, require_gpu  # noqa: E402
 
 
-MODEL = build_model_2d
-
-
 def vi_settings(pcfg: dict) -> dict:
     v = pcfg["vi"]
     return {
@@ -60,9 +57,9 @@ def vi_dir(pcfg: dict, rank: int) -> str:
     return hc.posterior_dir(pcfg, "vi", rank=rank)
 
 
-def make_guide(rank: int, init_values=None, init_scale: float = 0.01):
+def make_guide(model, rank: int, init_values=None, init_scale: float = 0.01):
     kw = {} if init_values is None else {"init_loc_fn": init_to_value(values=init_values)}
-    return AutoLowRankMultivariateNormal(MODEL, rank=rank, init_scale=init_scale, **kw)
+    return AutoLowRankMultivariateNormal(model, rank=rank, init_scale=init_scale, **kw)
 
 
 def run_vi_resume():
@@ -83,13 +80,17 @@ def run_vi_resume():
                      precision=hc.PRECISION)
     memory_snapshot("vi-inputs-loaded", device)
 
-    guide = make_guide(s["rank"], map_latents, s["init_scale"])
+    # The scan is jitted with the data ARRAYS as its argument (hc.split_data): closed
+    # over, they would be compiled in as 2.68 GB of constants.
+    arrays, static = hc.split_data(data)
+    model = hc.array_model(build_model_2d, static)
+    guide = make_guide(model, s["rank"], map_latents, s["init_scale"])
     scheduler = optax.cosine_decay_schedule(init_value=s["init_lr"], decay_steps=s["steps"],
                                             alpha=0.1)
     optimizer = numpyro.optim.optax_to_numpyro(
         optax.chain(optax.clip_by_global_norm(1.0), optax.adam(scheduler, eps=1e-7)))
-    svi = SVI(MODEL, guide, optimizer, loss=Trace_ELBO(num_particles=s["num_particles"]))
-    kw = hc.model_kwargs(data)
+    svi = SVI(model, guide, optimizer, loss=Trace_ELBO(num_particles=s["num_particles"]))
+    kw = {"arrays": arrays}
 
     payload = {"settings": s, "precision": hc.PRECISION, "map_fingerprint": map_ckpt["fingerprint"],
                "versions": hc.versions(), "sources": hc.source_identities([__file__])}
@@ -110,10 +111,10 @@ def run_vi_resume():
     else:
         svi_state, start, losses = fresh_state, 0, []
 
-    def body(state, _):
-        return svi.update(state, **kw)
-
-    run_block = jax.jit(lambda st: jax.lax.scan(body, st, None, length=s["block"]))
+    @jax.jit
+    def run_block(st, arr):
+        return jax.lax.scan(lambda state, _: svi.update(state, arrays=arr), st, None,
+                            length=s["block"])
 
     def save(state, step):
         save_pickle_atomic({"format_version": 3, "svi_state": state, "step": step,
@@ -123,7 +124,7 @@ def run_vi_resume():
     t_start = time.time()
     for block_start in range(start, s["steps"], s["block"]):
         t0 = time.time()
-        new_state, block_losses = run_block(svi_state)
+        new_state, block_losses = run_block(svi_state, arrays)
         block_losses = np.asarray(block_losses)
         if not np.isfinite(block_losses).all():
             save(svi_state, block_start)

@@ -71,6 +71,32 @@ def model_kwargs(data) -> dict:
     return {"data": data, "prior_scale": 1.0}
 
 
+def split_data(data: dict):
+    """(arrays, static): device arrays vs plain metadata (ints, strings, dicts).
+
+    Compiled samplers must receive the ARRAYS as arguments. Closing over them makes
+    every compile embed all 2.68 GB of inputs as constants, and numpyro's MCMC
+    recompiles at every chunk, so host memory grew by several GB per chunk until
+    TACC job 3486435 died at 64 GB RSS ("Failed to allocate buffer for Literal").
+    The static part (time, inv_window, Nx, ...) must stay Python values: the model
+    uses them as shapes.
+    """
+    arrays = {k: v for k, v in data.items() if isinstance(v, jax.Array)}
+    static = {k: v for k, v in data.items() if k not in arrays}
+    return arrays, static
+
+
+def array_model(model, static: dict, prior_scale: float = 1.0):
+    """``model(data, prior_scale)`` re-exposed as ``m(arrays=...)`` for jit_model_args.
+
+    prior_scale is closed over (posterior inference is always at 1.0) so it cannot
+    become a tracer either.
+    """
+    def wrapped(arrays):
+        return model({**static, **arrays}, prior_scale=prior_scale)
+    return wrapped
+
+
 # ------------------------------------------------------------------ fingerprinting
 
 def file_identity(path) -> dict:
@@ -158,17 +184,20 @@ def hide_deterministics(model):
     return blocked
 
 
-def unconstrained_setup(model, data, init_values=None, rng_seed=0):
+def unconstrained_setup(model, data, init_values=None, rng_seed=0, kwargs=None):
     """``initialize_model`` at ``init_values`` (constrained; e.g. MAP latents).
 
     Returns ``(z, potential_fn, postprocess_fn)``: ``z`` is the UNCONSTRAINED latent dict
     NUTS samples in, ``potential_fn(z)`` is -log joint density there (Jacobians
-    included), and ``postprocess_fn(z)`` maps back to constrained values.
+    included), and ``postprocess_fn(z)`` maps back to constrained values. Pass
+    ``kwargs`` instead of the default ``{"data": data, "prior_scale": 1}`` for an
+    ``array_model``.
     """
     strategy = init_to_value(values=init_values) if init_values is not None else None
     kw = {} if strategy is None else {"init_strategy": strategy}
     info = initialize_model(
-        jax.random.PRNGKey(rng_seed), model, model_kwargs=model_kwargs(data), **kw,
+        jax.random.PRNGKey(rng_seed), model,
+        model_kwargs=model_kwargs(data) if kwargs is None else kwargs, **kw,
     )
     return info.param_info.z, info.potential_fn, info.postprocess_fn
 
@@ -327,7 +356,10 @@ def run_chunked_mcmc(kernel, *, out_dir: str, run_fingerprint: str, payload: dic
         raise ValueError(f"num_samples={num_samples} must be a multiple of chunk={chunk}")
     os.makedirs(os.path.join(out_dir, "chunks"), exist_ok=True)
     state_path = os.path.join(out_dir, STATE_FILE)
+    # jit_model_args: kwargs are traced ARGUMENTS of the compiled sampler, not constants
+    # baked into it (see split_data). Use an array_model so every kwarg leaf is an array.
     mcmc = MCMC(kernel, num_warmup=num_warmup, num_samples=chunk, num_chains=1,
+                jit_model_args=True,
                 progress_bar=os.environ.get("HOUFIN_HMC_PROGRESS", "1") == "1")
 
     if os.path.exists(state_path):

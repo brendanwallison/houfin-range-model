@@ -75,8 +75,10 @@ def run_hmc():
                      precision=hc.PRECISION)
     memory_snapshot("hmc-inputs-loaded", device)
 
-    model = hc.hide_deterministics(build_model_2d)
-    z_map, _, _ = hc.unconstrained_setup(model, data, map_latents)
+    arrays, static = hc.split_data(data)
+    kwargs = {"arrays": arrays}
+    model = hc.hide_deterministics(hc.array_model(build_model_2d, static))
+    z_map, _, _ = hc.unconstrained_setup(model, None, map_latents, kwargs=kwargs)
     names, x_map, _ = hc.flatten_sorted(z_map)
 
     probe_dir = hc.posterior_dir(pcfg, "probe")
@@ -113,7 +115,7 @@ def run_hmc():
     hc.run_chunked_mcmc(
         kernel, out_dir=out_dir, run_fingerprint=hc.fingerprint(payload), payload=payload,
         num_warmup=s["num_warmup"], num_samples=s["num_samples"], chunk=s["chunk"],
-        rng_key=rng_run, kwargs=hc.model_kwargs(data), init_params=init,
+        rng_key=rng_run, kwargs=kwargs, init_params=init,
     )
     memory_snapshot("hmc-done", device)
 

@@ -222,3 +222,53 @@ def test_quality_branch_is_static_under_jit():
     from src.model import age_priors
     src = inspect.getsource(age_priors.build_model_2d)
     assert "int(jnp.max(obs_quality))" not in src and "n_obs_quality_tiers" in src
+
+
+def static_shape_model(data, prior_scale=1.0):
+    """Mixes the two kinds of data the age model has: arrays, and Python ints used as shapes."""
+    w = numpyro.sample("w", dist.Normal(0.0, 1.0).expand([data["n"]]))
+    numpyro.sample("obs", dist.Normal(data["x"] @ w, 1.0), obs=data["y"])
+
+
+def _static_shape_data():
+    x = jax.random.normal(jax.random.PRNGKey(5), (200, 3))
+    return {"x": x, "y": x @ jnp.array([1.0, -0.5, 0.2]), "n": 3, "label": "toy"}
+
+
+def test_split_data_keeps_python_metadata_static():
+    arrays, static = hc.split_data(_static_shape_data())
+    assert set(arrays) == {"x", "y"} and static == {"n": 3, "label": "toy"}
+
+
+def test_sampler_takes_data_as_arguments_not_compiled_constants(tmp_path):
+    """TACC job 3486435: closing over the data compiled 2.68 GB of constants into every
+    chunk's recompile, until host RAM ran out. JAX warns when lowering captures constants
+    above jax_captured_constants_warn_bytes; with the data passed as arguments it must not."""
+    import warnings
+    data = _static_shape_data()
+    arrays, static = hc.split_data(data)
+    model = hc.hide_deterministics(hc.array_model(static_shape_model, static))
+    kwargs = {"arrays": arrays}
+    z, _, _ = hc.unconstrained_setup(model, None, kwargs=kwargs)
+    old = jax.config.jax_captured_constants_warn_bytes
+    jax.config.update("jax_captured_constants_warn_bytes", 1024)    # x alone is 2.4 kB
+    try:
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            hc.run_chunked_mcmc(NUTS(model), out_dir=str(tmp_path), run_fingerprint="fp",
+                                payload={}, num_warmup=10, num_samples=10, chunk=5,
+                                rng_key=jax.random.PRNGKey(0), kwargs=kwargs, init_params=z,
+                                log=lambda *_: None)
+        captured = [w for w in caught if "constants were captured" in str(w.message)]
+        assert not captured, captured[0].message
+        # ...and the same sampler with the data closed over DOES trip it (the bug).
+        closed = hc.hide_deterministics(lambda: static_shape_model(data))
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            MCMC(NUTS(closed), num_warmup=5, num_samples=5, progress_bar=False).run(
+                jax.random.PRNGKey(0))
+        assert any("constants were captured" in str(w.message) for w in caught)
+    finally:
+        jax.config.update("jax_captured_constants_warn_bytes", old)
+    samples, _, _ = hc.load_chain(str(tmp_path))[:3]
+    assert samples["w"].shape == (10, 3)

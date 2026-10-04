@@ -195,10 +195,23 @@ def laplace_dir(pcfg: dict) -> str:
     return posterior_dir(pcfg, "probe", at_map_precision=True)
 
 
+def cast_latents(latents: dict) -> dict:
+    """MAP latents in THIS run's float type.
+
+    The MAP is stored in its fitting precision. init_to_value keeps the dtype it is
+    given, so float32 MAP values silently made a "float64" run's parameter vector
+    float32: data and arithmetic in float64, but positions quantized at ~6e-8 relative
+    (the run_18 float64 roughness probe).
+    """
+    dtype = jnp.float64 if PRECISION == "float64" else jnp.float32
+    return {k: jnp.asarray(v, dtype=dtype) for k, v in latents.items()}
+
+
 def load_map():
-    """Constrained MAP latents keyed by site name, plus the verified v2 checkpoint."""
+    """Constrained MAP latents keyed by site name (in this run's float type), plus the
+    verified v2 checkpoint."""
     params, checkpoint = load_map_params(map_dir())
-    return auto_delta_params_to_latents(params), checkpoint
+    return cast_latents(auto_delta_params_to_latents(params)), checkpoint
 
 
 # ------------------------------------------------------------- model + potential

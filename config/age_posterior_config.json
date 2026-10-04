@@ -29,7 +29,8 @@
     "chunk": 50,
     "max_tree_depth": 8,
     "target_accept": 0.8,
-    "init_jitter": 1.0,
+    "_init_jitter_comment": "Chains >0 start at MAP + init_jitter * (Laplace draw). Measured at run_18's MAP (roughness probe), U - U(MAP) at jitter 0.25 / 0.5 / 1.0 was ~30-100 / ~800 / ~8900 nats, against ~220 for the typical set of a 439-d Gaussian: the potential rises far faster than the Laplace quadratic, so 0.5 already starts deep in the tail (that chain diverged through warmup). 0.25 starts near the typical set.",
+    "init_jitter": 0.25,
     "initial_step_size": {
       "diag": 0.001,
       "laplace_fixed": 0.3,

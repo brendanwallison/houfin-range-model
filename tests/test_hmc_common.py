@@ -296,3 +296,13 @@ def test_float64_inference_from_a_float32_map_gets_its_own_directories(monkeypat
         "hmc_x__age_map_float32_run_18_new_z_quick90__float64")
     assert hc.posterior_dir(pcfg, "probe", at_map_precision=True).endswith(
         "probe__age_map_float32_run_18_new_z_quick90")
+
+
+def test_map_latents_take_the_run_precision(monkeypatch):
+    """A float32 MAP must not leave a float64 run with float32 parameters."""
+    lat = {"a": np.float32([1.0, 2.0]), "b": np.float32(0.5)}
+    monkeypatch.setattr(hc, "PRECISION", "float32")
+    assert all(v.dtype == jnp.float32 for v in hc.cast_latents(lat).values())
+    if jax.config.jax_enable_x64:
+        monkeypatch.setattr(hc, "PRECISION", "float64")
+        assert all(v.dtype == jnp.float64 for v in hc.cast_latents(lat).values())

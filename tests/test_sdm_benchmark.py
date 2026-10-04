@@ -1389,3 +1389,79 @@ def test_every_subcommand_defines_the_args_its_handler_reads():
         missing = sorted(read - defined)
         assert not missing, (
             f"{handler} reads args that `{name}` does not define: {missing}")
+
+
+def test_every_structure_equation_renders_in_mathtext():
+    """matplotlib's mathtext is not LaTeX: \\big and bmatrix both fail.
+
+    Rendering each equation in isolation names the offender instead of failing
+    the whole page with one traceback.
+    """
+    pytest.importorskip("matplotlib")
+    import importlib.util
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    from pathlib import Path
+
+    repo = Path(__file__).resolve().parents[1]
+    spec = importlib.util.spec_from_file_location(
+        "_sdm_struct", repo / "scripts" / "viz" / "sdm_benchmark_report.py")
+    mod = importlib.util.module_from_spec(spec)
+    try:
+        spec.loader.exec_module(mod)
+    except Exception as e:
+        pytest.skip(f"report module not importable here: {e}")
+
+    bad = []
+    for title, _latent, eqs, _note in mod.STRUCTURE:
+        for eq, gloss in eqs:
+            for frag in (eq, gloss):
+                fig = plt.figure()
+                fig.text(0.1, 0.5, frag)
+                try:
+                    fig.canvas.draw()
+                except Exception as e:
+                    bad.append((title, frag[:50], str(e).strip().splitlines()[-1]))
+                finally:
+                    plt.close(fig)
+    assert not bad, f"equations that do not render: {bad}"
+
+
+def test_structure_notes_contain_no_mathtext():
+    """Wrapped prose cannot hold math.
+
+    _structure wraps the notes with textwrap, so a $...$ pair split across two
+    lines renders as literal source. Equations keep their mathtext; notes use
+    plain words.
+    """
+    import importlib.util
+    from pathlib import Path
+    repo = Path(__file__).resolve().parents[1]
+    spec = importlib.util.spec_from_file_location(
+        "_sdm_struct2", repo / "scripts" / "viz" / "sdm_benchmark_report.py")
+    mod = importlib.util.module_from_spec(spec)
+    try:
+        spec.loader.exec_module(mod)
+    except Exception as e:
+        pytest.skip(f"report module not importable here: {e}")
+    offenders = [t for t, _l, _e, note in mod.STRUCTURE if "$" in note]
+    assert not offenders, f"notes containing math that textwrap will break: {offenders}"
+
+
+def test_structure_covers_every_model_family():
+    import importlib.util
+    from pathlib import Path
+    repo = Path(__file__).resolve().parents[1]
+    spec = importlib.util.spec_from_file_location(
+        "_sdm_struct3", repo / "scripts" / "viz" / "sdm_benchmark_report.py")
+    mod = importlib.util.module_from_spec(spec)
+    try:
+        spec.loader.exec_module(mod)
+    except Exception as e:
+        pytest.skip(f"report module not importable here: {e}")
+    titles = " ".join(t for t, _l, _e, _n in mod.STRUCTURE).lower()
+    for family in ("boosted", "occupancy", "n-mixture", "ebird", "dynamic"):
+        assert family in titles, f"no structure entry for {family}"
+    # the latent state is the organising idea; every entry must declare one
+    assert all(latent for _t, latent, _e, _n in mod.STRUCTURE)

@@ -88,6 +88,70 @@ MODEL_NOTES = {
         prep="Elith/Leathwick/Hastie (2008) recipe; 5-fold spatial block CV."),
 }
 
+# The core formulation of each model family. The page these feed makes ONE
+# point: a latent state variable, visited more than once, is what lets occupancy
+# be separated from detection. Without it a model estimates only their product.
+STRUCTURE = [
+    (r"Boosted regression trees  (brt_*)", r"no latent state", [
+        (r"$y_{it}\;\sim\;f(\mathbf{X}_i)$",
+         r"a learned function of environment, fitted directly to detection / non-detection"),
+    ], r"There is no variable for 'is the site occupied'. The fitted quantity is "
+       r"P(detected), which equals psi x p -- occupancy times detectability -- "
+       r"and nothing in the model can take them apart. A site that is occupied but "
+       r"sparse scores low, indistinguishably from one that is empty."),
+
+    (r"Occupancy model  (biolith occu)", r"latent occupancy state $z_i$", [
+        (r"$z_i \sim \mathrm{Bernoulli}(\psi_i), \quad "
+         r"\mathrm{logit}\,\psi_i = \beta_0 + \mathbf{X}_i\boldsymbol{\beta}$",
+         r"is the site occupied?   (environment)"),
+        (r"$y_{it}\mid z_i \sim \mathrm{Bernoulli}(z_i\,p_{it}), \quad "
+         r"\mathrm{logit}\,p_{it} = \alpha_0 + \mathbf{W}_{it}\boldsymbol{\alpha}$",
+         r"was it detected on visit $t$?   (effort / conditions)"),
+    ], r"THE SEPARATION COMES FROM REPEAT VISITS. All-zero across T visits has "
+       r"probability (1-psi) + psi(1-p)^T: an empty site gives zeros every time, "
+       r"an occupied one only sometimes. The MIX of detections and non-detections at "
+       r"the same site identifies p, and psi is what remains. Here the repeat "
+       r"visits are the ten survey years 2015-2025."),
+
+    (r"N-mixture model  (biolith nmixture)", r"latent abundance $N_i$", [
+        (r"$N_i \sim \mathrm{NegBin}(\lambda_i,\phi), \quad "
+         r"\log \lambda_i = \beta_0 + \mathbf{X}_i\boldsymbol{\beta}$",
+         r"how many birds are there?   (environment)"),
+        (r"$y_{it}\mid N_i \sim \mathrm{Binomial}(N_i,\,p_{it})$",
+         r"how many were counted on visit $t$?"),
+        (r"$\psi_i = P(N_i>0) = 1-\left(\frac{\phi}{\phi+\lambda_i}\right)^{\phi}$",
+         r"occupancy, DERIVED from abundance"),
+    ], r"Counts carry more information than presence/absence -- 5, 8, 3 birds is "
+       r"unambiguously occupied -- so detection is better identified. The cost: "
+       r"occupancy is now derived, and inherits whatever was assumed about the count "
+       r"distribution. The same lambda gives a different psi under Poisson than "
+       r"under negative binomial."),
+
+    (r"eBird Status & Trends", r"ensemble of local models", [
+        (r"$y \sim \mathrm{AdaSTEM}(\mathbf{X}_{\mathrm{env}},\;"
+         r"\mathbf{X}_{\mathrm{effort}})$",
+         r"many local regressions over space and time, averaged"),
+    ], r"Semi-structured checklists, so effort enters as covariates (duration, "
+       r"distance, party size, stationary vs travelling) rather than through a latent "
+       r"state. Conditioning on effort is not the same operation as modelling a latent "
+       r"z, though it serves a similar purpose at continental scale."),
+
+    (r"Dynamic age-structured model", r"latent POPULATION, simulated forward", [
+        (r"$\mathbf{n}_{t+1} = \mathbf{M}(\boldsymbol{\theta},\mathbf{Z})\,"
+         r"\mathbf{n}_t \;+\; \mathcal{D}(\mathbf{n}_t)$",
+         r"survival / fecundity, then dispersal, 1902 $\rightarrow$ 2025"),
+        (r"$y \sim \mathrm{NegBin2}(n_{\mathrm{obs}}\cdot s,\; \phi)$",
+         r"route counts observe the simulated population"),
+        (r"$\lambda = \rho\left(\left[\,S_a,\;S_j\,;\;F_{\max}S_a,\;0\,\right]\right)$",
+         r"intrinsic growth: dominant eigenvalue of the local Leslie matrix"),
+    ], r"The latent state is a POPULATION with its own dynamics, so the model carries "
+       r"a rate of increase as well as a density. lambda is dispersal-free, "
+       r"density-free and Allee-free: it asks whether a population here replaces "
+       r"itself from its OWN births and deaths. That question does not exist in any "
+       r"model above, at any threshold, because none of them contains a birth or a "
+       r"death."),
+]
+
 EBIRD_NOTE = dict(
     kind="Published range boundary (eBird Status & Trends)",
     estimates="Range: is the species present at all",
@@ -276,6 +340,7 @@ def build(args):
         _cover(pdf, surfaces, ebird, occ, niche, lam, finite, surv, zones, args)
         _maps(pdf, geo, surfaces, ebird, lam, niche, meanc, ebird_abd, is_grid)
         _stats(pdf, surfaces, ebird, occ, niche, lam, finite, surv, zones)
+        _structure(pdf)
         _methods(pdf, surfaces)
         d = pdf.infodict()
         d["Title"] = TITLE
@@ -449,6 +514,38 @@ def _stats(pdf, surfaces, ebird, occ, niche, lam, finite, surv, zones):
              "Mean lambda does not: the Great Plains sits below replacement while the East is "
              "well above it.\nThat gap -- occupied, but not self-sustaining -- is the benchmark's "
              "result, and it requires no threshold.", fontsize=8.5, color="0.15")
+    pdf.savefig(fig, dpi=_vs.DPI); plt.close(fig)
+
+
+def _structure(pdf):
+    """One page: what each model IS, and why only some can separate occupancy.
+
+    The equations are the argument. A model with no latent state cannot estimate
+    occupancy at all -- not badly, not at the wrong threshold, but not as a
+    quantity it contains -- and no post-processing of its output recovers one.
+    """
+    import textwrap
+
+    fig = plt.figure(figsize=(8.5, 11))
+    fig.text(0.05, 0.965, "What each model is", fontsize=15, fontweight="bold")
+    fig.text(0.05, 0.945,
+             "A latent state, observed more than once, is what separates "
+             "occupancy from detection.", fontsize=9, color="0.3")
+    y = 0.915
+    for title, latent, eqs, note in STRUCTURE:
+        fig.text(0.05, y, title, fontsize=10.5, fontweight="bold")
+        fig.text(0.62, y, f"latent: {latent}", fontsize=7.5, color="0.4")
+        y -= 0.021
+        for eq, gloss in eqs:
+            fig.text(0.08, y, eq, fontsize=10.5, color="0.05")
+            y -= 0.020
+            fig.text(0.11, y, gloss, fontsize=7.2, color="0.45", style="italic")
+            y -= 0.017
+        y -= 0.004
+        for line in textwrap.wrap(note, width=104):
+            fig.text(0.05, y, line, fontsize=7.8, color="0.15")
+            y -= 0.0145
+        y -= 0.017
     pdf.savefig(fig, dpi=_vs.DPI); plt.close(fig)
 
 

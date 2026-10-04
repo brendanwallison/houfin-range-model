@@ -39,3 +39,12 @@ results/
 # Generated report PDFs -- regenerable in seconds from the prediction files
 # (scripts/viz/sdm_benchmark_report.py), and they churn on every refit.
 *.pdf
+
+# Model/analysis artifacts. results/ is already ignored wholesale, but fitted
+# objects and arrays also land in the repo root when a script is run from here
+# (laplace.npz, map_params.pkl, probe.json from the HMC work). None of these
+# belong in git: they are large, binary, and regenerable from the pipeline.
+*.npz
+*.npy
+*.pkl
+/probe.json

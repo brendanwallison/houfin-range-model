@@ -26,6 +26,11 @@ PRECISION = os.environ.get("HOUFIN_MODEL_PRECISION", "float32")
 if PRECISION not in {"float32", "float64"}:
     raise ValueError("HOUFIN_MODEL_PRECISION must be float32 or float64")
 jax.config.update("jax_enable_x64", PRECISION == "float64")
+# The precision the MAP was FITTED in, which may differ from the one inference runs
+# in: a float64 sampler can start from the float32 MAP (and its float32 probe).
+MAP_PRECISION = os.environ.get("HOUFIN_HMC_MAP_PRECISION", PRECISION)
+if MAP_PRECISION not in {"float32", "float64"}:
+    raise ValueError("HOUFIN_HMC_MAP_PRECISION must be float32 or float64")
 
 import numpyro                                                     # noqa: E402
 from numpyro.handlers import block                                 # noqa: E402
@@ -151,15 +156,43 @@ def check_model_drift(upstream_payload: dict, what: str = "MAP") -> None:
 # ------------------------------------------------------------------------ the MAP
 
 def map_dir() -> str:
-    """age_run_map's own OUTPUT_DIR (run_names.map + profile suffix): one source of truth."""
+    """The MAP run directory, as age_run_map names it (run_names.map + profile suffix).
+
+    Taken from age_run_map's own OUTPUT_DIR when inference runs at the MAP's
+    precision. Otherwise age_run_map (which names by the CURRENT precision) cannot be
+    asked, so the same rule is applied with MAP_PRECISION -- keep in step with
+    age_run_map's _run_name block.
+    """
     from src.model.age_run_map import OUTPUT_DIR
-    return OUTPUT_DIR
+    if MAP_PRECISION == PRECISION:
+        return OUTPUT_DIR
+    from src.config_utils import load_age_model_config
+    name = load_age_model_config()["run_names"]["map"].format(precision=MAP_PRECISION)
+    profile = os.environ.get("HOUFIN_MAP_PROFILE", "standard")
+    if profile != "standard":
+        name = f"{name}_{profile}"
+    return os.path.join(os.path.dirname(OUTPUT_DIR.rstrip(os.sep)), name)
 
 
-def posterior_dir(pcfg: dict, key: str, **fmt) -> str:
-    """results_dir/<run_names[key]>, keyed on the MAP run so different MAP fits never collide."""
+def posterior_dir(pcfg: dict, key: str, at_map_precision: bool = False, **fmt) -> str:
+    """results_dir/<run_names[key]>, keyed on the MAP run so different MAP fits never collide.
+
+    When inference runs at a different precision than the MAP was fitted in, the name
+    gets a ``__<precision>`` suffix so float32 and float64 runs from one MAP never share
+    a directory. ``at_map_precision=True`` drops it (e.g. the MAP-precision probe).
+    """
     name = pcfg["run_names"][key].format(map_run=os.path.basename(map_dir().rstrip(os.sep)), **fmt)
+    if PRECISION != MAP_PRECISION and not at_map_precision:
+        name = f"{name}__{PRECISION}"
     return results_dir(name)
+
+
+def laplace_dir(pcfg: dict) -> str:
+    """The probe holding laplace.npz: this precision's if it has one, else the MAP's."""
+    own = posterior_dir(pcfg, "probe")
+    if os.path.exists(os.path.join(own, "laplace.npz")):
+        return own
+    return posterior_dir(pcfg, "probe", at_map_precision=True)
 
 
 def load_map():
@@ -182,6 +215,23 @@ def hide_deterministics(model):
         with block(hide_fn=lambda site: site["type"] == "deterministic"):
             return model(*args, **kwargs)
     return blocked
+
+
+def potential_with_args(model, kwargs: dict, init_values=None, rng_seed=0):
+    """(z, potential(z, kwargs)): the potential with model kwargs as an ARGUMENT.
+
+    Jit ``potential`` with the kwargs passed in, never closed over -- closed-over data
+    is compiled in as constants (see split_data).
+    """
+    strategy = init_to_value(values=init_values) if init_values is not None else None
+    kw = {} if strategy is None else {"init_strategy": strategy}
+    info = initialize_model(jax.random.PRNGKey(rng_seed), model, model_kwargs=kwargs,
+                            dynamic_args=True, **kw)
+    gen = info.potential_fn
+
+    def potential(z, kw_):
+        return gen(**kw_)(z)
+    return info.param_info.z, potential
 
 
 def unconstrained_setup(model, data, init_values=None, rng_seed=0, kwargs=None):

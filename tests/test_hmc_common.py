@@ -272,3 +272,27 @@ def test_sampler_takes_data_as_arguments_not_compiled_constants(tmp_path):
         jax.config.update("jax_captured_constants_warn_bytes", old)
     samples, _, _ = hc.load_chain(str(tmp_path))[:3]
     assert samples["w"].shape == (10, 3)
+
+
+def test_noise_floor_separates_a_smooth_potential_from_a_noisy_one():
+    """The roughness diagnostic's core: a smooth U has residuals ~delta^2/2 (float64 here),
+    while U carrying per-point rounding noise shows a floor that does not shrink."""
+    from src.model.age_hmc_roughness import noise_floor
+    x0 = np.zeros(3); v = np.array([1.0, 0.0, 0.0])
+    smooth = lambda x: 0.5 * float(np.sum(np.asarray(x) ** 2)) + 2e5      # noqa: E731
+    noisy = lambda x: smooth(x) + 0.3 * np.sin(1e12 * float(np.asarray(x)[0]) + 1.0)  # noqa: E731
+    _, f_smooth = noise_floor(smooth, x0, v, 0.0)
+    _, f_noisy = noise_floor(noisy, x0, v, 0.0)
+    assert f_smooth < 1e-6 and f_noisy > 1e-2
+
+
+def test_float64_inference_from_a_float32_map_gets_its_own_directories(monkeypatch):
+    """A float64 sampler started from the float32 MAP must not write into float32 runs' dirs."""
+    monkeypatch.setattr(hc, "PRECISION", "float64")
+    monkeypatch.setattr(hc, "MAP_PRECISION", "float32")
+    monkeypatch.setattr(hc, "map_dir", lambda: "/r/age_map_float32_run_18_new_z_quick90")
+    pcfg = {"run_names": {"hmc": "hmc_{variant}__{map_run}", "probe": "probe__{map_run}"}}
+    assert hc.posterior_dir(pcfg, "hmc", variant="x").endswith(
+        "hmc_x__age_map_float32_run_18_new_z_quick90__float64")
+    assert hc.posterior_dir(pcfg, "probe", at_map_precision=True).endswith(
+        "probe__age_map_float32_run_18_new_z_quick90")

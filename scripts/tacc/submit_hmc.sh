@@ -2,6 +2,9 @@
 # Submit a stage of the HMC trial (docs/TACC.md §3g). One GPU per job, as for MAP.
 #
 #   STAGE=probe                                  34_model_hmc_probe.slurm
+#   STAGE=roughness                              same script, age_hmc_roughness, submitted
+#                                                twice: float32 and float64 (both load the
+#                                                float32 MAP; HOUFIN_HMC_MAP_PRECISION overrides)
 #   STAGE=vi                                     35_model_vi_from_map.slurm
 #   STAGE=hmc ARM=map METRIC=<diag|laplace_fixed|laplace_adapt> CHAINS=2
 #   STAGE=hmc ARM=neutra CHAINS=2                36_model_hmc.slurm, array 0..CHAINS-1
@@ -24,7 +27,7 @@
 set -euo pipefail
 source "$(dirname "$0")/env.sh"
 
-STAGE="${STAGE:?set STAGE=probe|vi|hmc}"
+STAGE="${STAGE:?set STAGE=probe|roughness|vi|hmc}"
 QUEUE="${QUEUE:-gpu-a100-small}"
 TIME="${TIME:-02:00:00}"
 RESUBMITS="${RESUBMITS:-0}"
@@ -34,8 +37,19 @@ FRESH="${FRESH:-0}"
 A=""
 [ -n "${TACC_ALLOCATION:-}" ] && [ "$TACC_ALLOCATION" != "REPLACE_WITH_PROJECT" ] && A="-A $TACC_ALLOCATION"
 
+echo "MAP selection: AGE_MODEL_CONFIG=${AGE_MODEL_CONFIG:-<committed config>} HOUFIN_MAP_PROFILE=${HOUFIN_MAP_PROFILE:-standard} HOUFIN_MODEL_PRECISION=${HOUFIN_MODEL_PRECISION:-float32}"
+[ -z "${AGE_MODEL_CONFIG:-}" ] && echo "  [warn] no overlay: this targets run_names.map of the COMMITTED config, not an A/B run"
+
 case "$STAGE" in
     probe) SCRIPT=scripts/tacc/34_model_hmc_probe.slurm; EXTRA=(); FRESH_VAR=HOUFIN_PROBE_FRESH ;;
+    roughness)
+        for p in float32 float64; do
+            out=$(sbatch $A -p "$QUEUE" -t "${TIME_ROUGHNESS:-00:30:00}" --parsable \
+                  --export=ALL,HOUFIN_PROBE_MODULE=src.model.age_hmc_roughness,HOUFIN_MODEL_PRECISION=$p,HOUFIN_HMC_MAP_PRECISION=${HOUFIN_HMC_MAP_PRECISION:-float32} \
+                  scripts/tacc/34_model_hmc_probe.slurm 2>&1) || { echo "sbatch rejected the $p job: $out" >&2; exit 1; }
+            echo "submitted roughness $p: $out (log houfin_probe.o$out)"
+        done
+        exit 0 ;;
     vi)    SCRIPT=scripts/tacc/35_model_vi_from_map.slurm; EXTRA=(); FRESH_VAR=HOUFIN_VI_FRESH ;;
     hmc)
         SCRIPT=scripts/tacc/36_model_hmc.slurm
@@ -44,11 +58,9 @@ case "$STAGE" in
         export HOUFIN_HMC_ARM="${ARM:-map}"
         [ -n "${METRIC:-}" ] && export HOUFIN_HMC_METRIC="$METRIC"
         ;;
-    *) echo "STAGE must be probe, vi or hmc"; exit 2 ;;
+    *) echo "STAGE must be probe, roughness, vi or hmc"; exit 2 ;;
 esac
 
-echo "MAP selection: AGE_MODEL_CONFIG=${AGE_MODEL_CONFIG:-<committed config>} HOUFIN_MAP_PROFILE=${HOUFIN_MAP_PROFILE:-standard} HOUFIN_MODEL_PRECISION=${HOUFIN_MODEL_PRECISION:-float32}"
-[ -z "${AGE_MODEL_CONFIG:-}" ] && echo "  [warn] no overlay: this targets run_names.map of the COMMITTED config, not an A/B run"
 
 # Print sbatch's own message on failure. The first version piped it straight into
 # grep, so under pipefail a rejected submit (e.g. a dependency on a job that had already

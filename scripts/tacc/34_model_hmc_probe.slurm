@@ -10,6 +10,7 @@
 #
 #   STAGE=probe bash scripts/tacc/submit_hmc.sh
 #   STAGE=probe HOUFIN_PROBE_HESSIAN=0 bash scripts/tacc/submit_hmc.sh   # timing only
+#   STAGE=roughness bash scripts/tacc/submit_hmc.sh    # noise floor of U, float32 AND float64
 #----------------------------------------------------------------------
 #SBATCH -J houfin_probe
 #SBATCH -o houfin_probe.o%j
@@ -29,6 +30,8 @@ gpu_preflight "age-model posterior probe"
 start_gpu_monitor "$SLURM_SUBMIT_DIR/gpu_probe_${SLURM_JOB_ID}.csv" 30
 trap stop_gpu_monitor EXIT
 date
-/usr/bin/time -v python -m src.model.age_hmc_probe
+# HOUFIN_PROBE_MODULE=src.model.age_hmc_roughness runs the potential-smoothness
+# diagnostic instead (submit_hmc.sh STAGE=roughness sets it).
+/usr/bin/time -v python -m "${HOUFIN_PROBE_MODULE:-src.model.age_hmc_probe}"
 echo "=== 34_model_hmc_probe complete ==="
 date

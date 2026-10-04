@@ -81,7 +81,7 @@ def run_hmc():
     z_map, _, _ = hc.unconstrained_setup(model, None, map_latents, kwargs=kwargs)
     names, x_map, _ = hc.flatten_sorted(z_map)
 
-    probe_dir = hc.posterior_dir(pcfg, "probe")
+    probe_dir = hc.laplace_dir(pcfg)
     laplace, laplace_id = None, None
     need_laplace = metric != "diag" or (chain > 0 and s["init_jitter"] > 0)
     if need_laplace:

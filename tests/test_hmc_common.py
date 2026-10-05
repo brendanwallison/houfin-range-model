@@ -306,3 +306,46 @@ def test_map_latents_take_the_run_precision(monkeypatch):
     if jax.config.jax_enable_x64:
         monkeypatch.setattr(hc, "PRECISION", "float64")
         assert all(v.dtype == jnp.float64 for v in hc.cast_latents(lat).values())
+
+
+def _quad():
+    A = jnp.diag(jnp.array([1e6, 1.0, 1e-2, 5.0]))
+    b = jnp.array([1.0, 2.0, 3.0, -1.0])
+    return (lambda x, kw: 0.5 * x @ (kw["A"] @ x) - kw["b"] @ x), {"A": A, "b": b}, b / jnp.diag(A)
+
+
+_REFINE = {"max_iter": 200, "memory": 10, "tol_du": 1e-10, "tol_window": 5, "tol_grad": 1e-8,
+           "ckpt_every": 3, "log_every": 1000}
+
+
+def test_lbfgs_refine_reaches_the_optimum_of_an_ill_conditioned_potential(tmp_path):
+    from src.model.age_refine_map import lbfgs_minimize
+    f, kw, exact = _quad()
+    x, hist, reason = lbfgs_minimize(f, jnp.zeros(4), kw, _REFINE, str(tmp_path / "s.pkl"), "fp",
+                                     log=lambda *_: None)
+    np.testing.assert_allclose(np.asarray(x), np.asarray(exact), rtol=1e-4, atol=1e-8)
+    assert reason and "max_iter" not in reason
+
+
+def test_lbfgs_refine_resumes_exactly(tmp_path):
+    from src.model.age_refine_map import lbfgs_minimize
+    f, kw, _ = _quad()
+    full, h_full, _ = lbfgs_minimize(f, jnp.zeros(4), kw, {**_REFINE, "max_iter": 12},
+                                     str(tmp_path / "a.pkl"), "fp", log=lambda *_: None)
+    lbfgs_minimize(f, jnp.zeros(4), kw, {**_REFINE, "max_iter": 6}, str(tmp_path / "b.pkl"), "fp",
+                   log=lambda *_: None)                      # "job 1" stops at 6
+    part, h_part, _ = lbfgs_minimize(f, jnp.zeros(4), kw, {**_REFINE, "max_iter": 12},
+                                     str(tmp_path / "b.pkl"), "fp", log=lambda *_: None)
+    np.testing.assert_allclose(np.asarray(part), np.asarray(full), rtol=1e-12)
+    assert [h[1] for h in h_part] == pytest.approx([h[1] for h in h_full])
+
+
+def test_lbfgs_refine_never_ends_on_a_non_finite_point(tmp_path):
+    """U = -x below x = 2 and nan beyond: the minimizer walks toward the hole. Either the
+    zoom linesearch backs off on its own or the loop's guard stops it; both must leave a
+    finite point."""
+    from src.model.age_refine_map import lbfgs_minimize
+    f = lambda x, kw: jnp.where(x[0] < 2.0, -x[0] + 0.0 * kw["c"], jnp.nan)  # noqa: E731
+    x, hist, reason = lbfgs_minimize(f, jnp.zeros(1), {"c": jnp.ones(())}, _REFINE,
+                                     str(tmp_path / "s.pkl"), "fp", log=lambda *_: None)
+    assert float(x[0]) < 2.0 and np.isfinite(float(f(x, {"c": 1.0}))) and np.isfinite(hist[-1][1])

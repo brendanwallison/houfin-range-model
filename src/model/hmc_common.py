@@ -156,13 +156,20 @@ def check_model_drift(upstream_payload: dict, what: str = "MAP") -> None:
 # ------------------------------------------------------------------------ the MAP
 
 def map_dir() -> str:
-    """The MAP run directory, as age_run_map names it (run_names.map + profile suffix).
+    """The MAP run directory, as age_run_map names it (run_names.map + profile suffix),
+    unless HOUFIN_HMC_MAP_DIR names another MAP-format checkpoint directory.
 
     Taken from age_run_map's own OUTPUT_DIR when inference runs at the MAP's
     precision. Otherwise age_run_map (which names by the CURRENT precision) cannot be
     asked, so the same rule is applied with MAP_PRECISION -- keep in step with
     age_run_map's _run_name block.
     """
+    override = os.environ.get("HOUFIN_HMC_MAP_DIR")
+    if override:
+        # Any MAP-format checkpoint directory: an L-BFGS refinement (age_refine_map)
+        # or an exported HMC draw (export_hmc_draw). Its basename keys every
+        # downstream output directory, so it cannot collide with the original MAP's.
+        return override.rstrip(os.sep)
     from src.model.age_run_map import OUTPUT_DIR
     if MAP_PRECISION == PRECISION:
         return OUTPUT_DIR
@@ -231,7 +238,9 @@ def hide_deterministics(model):
 
 
 def potential_with_args(model, kwargs: dict, init_values=None, rng_seed=0):
-    """(z, potential(z, kwargs)): the potential with model kwargs as an ARGUMENT.
+    """(z, potential(z, kwargs), postprocess(z, kwargs)): model kwargs as an ARGUMENT.
+
+    ``postprocess`` maps unconstrained z to constrained site values.
 
     Jit ``potential`` with the kwargs passed in, never closed over -- closed-over data
     is compiled in as constants (see split_data).
@@ -240,11 +249,14 @@ def potential_with_args(model, kwargs: dict, init_values=None, rng_seed=0):
     kw = {} if strategy is None else {"init_strategy": strategy}
     info = initialize_model(jax.random.PRNGKey(rng_seed), model, model_kwargs=kwargs,
                             dynamic_args=True, **kw)
-    gen = info.potential_fn
+    gen, post = info.potential_fn, info.postprocess_fn
 
     def potential(z, kw_):
         return gen(**kw_)(z)
-    return info.param_info.z, potential
+
+    def postprocess(z, kw_):
+        return post(**kw_)(z)
+    return info.param_info.z, potential, postprocess
 
 
 def unconstrained_setup(model, data, init_values=None, rng_seed=0, kwargs=None):

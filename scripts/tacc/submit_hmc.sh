@@ -1,6 +1,8 @@
 #!/bin/bash
 # Submit a stage of the HMC trial (docs/TACC.md §3g). One GPU per job, as for MAP.
 #
+#   STAGE=refine                                 L-BFGS from the MAP (age_refine_map), float64;
+#                                                then HOUFIN_HMC_MAP_DIR=<refined dir> for the rest
 #   STAGE=probe                                  34_model_hmc_probe.slurm
 #   STAGE=roughness                              same script, age_hmc_roughness, submitted
 #                                                twice: float32 and float64 (both load the
@@ -27,7 +29,7 @@
 set -euo pipefail
 source "$(dirname "$0")/env.sh"
 
-STAGE="${STAGE:?set STAGE=probe|roughness|vi|hmc}"
+STAGE="${STAGE:?set STAGE=refine|probe|roughness|vi|hmc}"
 QUEUE="${QUEUE:-gpu-a100-small}"
 TIME="${TIME:-02:00:00}"
 RESUBMITS="${RESUBMITS:-0}"
@@ -42,6 +44,11 @@ echo "MAP selection: AGE_MODEL_CONFIG=${AGE_MODEL_CONFIG:-<committed config>} HO
 
 case "$STAGE" in
     probe) SCRIPT=scripts/tacc/34_model_hmc_probe.slurm; EXTRA=(); FRESH_VAR=HOUFIN_PROBE_FRESH ;;
+    refine)
+        # L-BFGS from the MAP (src/model/age_refine_map.py) on the probe's GPU script.
+        # Run in float64; resumable, so RESUBMITS works as for the other stages.
+        SCRIPT=scripts/tacc/34_model_hmc_probe.slurm; EXTRA=(); FRESH_VAR=HOUFIN_REFINE_FRESH
+        export HOUFIN_PROBE_MODULE=src.model.age_refine_map ;;
     roughness)
         for p in float32 float64; do
             out=$(sbatch $A -p "$QUEUE" -t "${TIME_ROUGHNESS:-00:30:00}" --parsable \
@@ -58,7 +65,7 @@ case "$STAGE" in
         export HOUFIN_HMC_ARM="${ARM:-map}"
         [ -n "${METRIC:-}" ] && export HOUFIN_HMC_METRIC="$METRIC"
         ;;
-    *) echo "STAGE must be probe, roughness, vi or hmc"; exit 2 ;;
+    *) echo "STAGE must be refine, probe, roughness, vi or hmc"; exit 2 ;;
 esac
 
 

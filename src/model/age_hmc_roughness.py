@@ -69,7 +69,7 @@ def run_roughness():
     arrays, static = hc.split_data(data)
     kwargs = {"arrays": arrays}
     model = hc.hide_deterministics(hc.array_model(build_model_2d, static))
-    z, potential = hc.potential_with_args(model, kwargs, map_latents)
+    z, potential, _ = hc.potential_with_args(model, kwargs, map_latents)
     names, x0, unravel = hc.flatten_sorted(z)
     if tuple(laplace["site_names"].tolist()) != names:
         raise RuntimeError("probe site layout differs from the current model; rerun the probe")

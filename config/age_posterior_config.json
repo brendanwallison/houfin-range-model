@@ -4,7 +4,8 @@
     "_comment": "{map_run} is the MAP directory's basename (e.g. age_map_float32_run_17_new_z_quick90, which already carries precision + profile), so trials from different MAP fits never share an output directory. Select the MAP with the same AGE_MODEL_CONFIG overlay + HOUFIN_MAP_PROFILE it was fitted with.",
     "probe": "probe__{map_run}",
     "vi": "vi_rank{rank}__{map_run}",
-    "hmc": "hmc_{variant}__{map_run}"
+    "hmc": "hmc_{variant}__{map_run}",
+    "refine": "refined_{precision}__{map_run}"
   },
   "probe": {
     "_comment": "Gradient timing + dense Hessian of the potential at the MAP point, in the unconstrained space NUTS samples. The Laplace inverse mass matrix is SoftAbs: each axis gets width 1/sqrt(max(|lambda|, eig_floor)), so a negative eigenvalue (a saddle along that axis) keeps its curvature scale; eig_floor only caps genuinely flat axes at sd 1/sqrt(eig_floor).",
@@ -18,7 +19,7 @@
     "rank": 10,
     "steps": 3000,
     "block": 100,
-    "init_lr": 5e-4,
+    "init_lr": 0.0005,
     "init_scale": 0.01,
     "num_particles": 1
   },
@@ -37,5 +38,15 @@
       "laplace_adapt": 0.3,
       "neutra": 0.3
     }
+  },
+  "refine": {
+    "_comment": "L-BFGS (optax, zoom linesearch) on the UNCONSTRAINED potential NUTS samples -- the posterior at prior_scale=1 including the change-of-variables Jacobians, so its optimum is the point the probe's Laplace metric should be centred on (AutoDelta's MAP omits the Jacobians; only concentration and quality_conc_mult are constrained, so the two differ little). Run in float64: float32 U carries a ~1 nat noise floor. Stops when U falls by less than tol_du over tol_window iterations, or |grad| < tol_grad.",
+    "max_iter": 3000,
+    "memory": 20,
+    "tol_du": 0.05,
+    "tol_window": 20,
+    "tol_grad": 1.0,
+    "ckpt_every": 25,
+    "log_every": 10
   }
 }

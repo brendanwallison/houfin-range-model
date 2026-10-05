@@ -22,6 +22,8 @@ trap stop_gpu_monitor EXIT
 date
 
 export HOUFIN_MAP_PROFILE="${HOUFIN_MAP_PROFILE:-standard}"
+# HOUFIN_VIZ_RUN_DIR (optional) points the suite at another checkpoint directory, e.g.
+# an HMC draw exported by scripts/diagnostics/export_hmc_draw.py; map_diagnostics reads it.
 /usr/bin/time -v python scripts/viz/map_diagnostics.py --profile "$HOUFIN_MAP_PROFILE"
 
 echo "=== 31_model_viz complete (profile=$HOUFIN_MAP_PROFILE) ==="

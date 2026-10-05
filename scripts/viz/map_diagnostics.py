@@ -2025,12 +2025,16 @@ def main():
     parser.add_argument("--window-years", type=int, default=None,
                         help="override the named eras with trailing/anchored N-year windows")
     parser.add_argument("--out", default=None)
+    parser.add_argument("--run-dir", default=os.environ.get("HOUFIN_VIZ_RUN_DIR"),
+                        help="read map_checkpoint.pkl from this directory instead of the "
+                             "config's MAP run (e.g. an HMC draw written by "
+                             "scripts/diagnostics/export_hmc_draw.py)")
     args = parser.parse_args()
     if args.window_years is not None and args.window_years < 1:
         raise ValueError("--window-years must be positive")
 
     cfg, dcfg = load_age_model_config(), load_data_config()
-    run_dir = _run_dir(cfg, args.profile, args.precision)
+    run_dir = Path(args.run_dir) if args.run_dir else _run_dir(cfg, args.profile, args.precision)
     out = Path(args.out) if args.out else run_dir / "map_diagnostics"
     out.mkdir(parents=True, exist_ok=True)
     device = require_gpu("post-MAP diagnostics")

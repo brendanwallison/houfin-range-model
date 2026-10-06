@@ -1,0 +1,9 @@
+{
+  "_comment": "GP species validation (train_DESK/validate_gp_species.py) of production's HOLDOUT predecessor. Production (encoder/desk, 2026-09-14) trained with holdout_frac=0 and has nothing to grade on; sweep_t0_f100_base is the same base configuration with the 0.15 blocked holdout, stopped at its selected epoch 107 instead of a fixed 200. That epoch was chosen on a held-out kernel metric over these same blocks -- a mild optimistic bias in DESK's favour, recorded in the report. The basis is PINNED rather than inherited (see desk_tempho_*.json for why). Results from this overlay must never select an epoch or a configuration. Usage: bash scripts/tacc/submit_gp_species.sh",
+  "paths": {
+    "desk_output_dir": "${HOUFIN_PROCESSED}/sweeps/desk_hp/sweep_t0_f100_base"
+  },
+  "desk": {
+    "z_dir": "${HOUFIN_PROCESSED}/encoder/esk_balanced/spacetime"
+  }
+}

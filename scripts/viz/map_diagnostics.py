@@ -1739,7 +1739,9 @@ def simulate_no_invasion_counterfactual(sim, data, drop_disease=True):
         data["land_rows"], data["land_cols"], data["land_mask"],
         data["adult_fft_kernel"], data["juvenile_fft_kernel_stack"],
         data["adult_edge_correction"], data["juvenile_edge_correction_stack"],
-        jnp.asarray(sim["initpop_seeded"]), jnp.asarray(latents["dispersal_random"]),
+        jnp.asarray(sim["initpop_seeded"]),
+        # Absent when dispersal_random_enabled is false (the model then uses zeros).
+        jnp.asarray(latents.get("dispersal_random", np.zeros(int(data["time"])))),
         inv_pop_zero,
         int(data["time"]), data["inv_locations"], data["inv_timestep"],
         float(np.asarray(latents["dispersal_logit_intercept"])),

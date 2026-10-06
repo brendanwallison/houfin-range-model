@@ -317,7 +317,10 @@ def rates_from_manifolds(p, H_s, H_sj, H_r, H_k=None):
         "Fmax": softplus(p["alpha_f"] + p["gamma_f"] * H_r),
     }
     if H_k is not None:
-        out["K"] = softplus(p["alpha_k"] + p["gamma_k"] * H_k)
+        # Same link the model uses (config capacity_level_prior.link).
+        from src.model.age_priors import _K_LINK
+        arg = p["alpha_k"] + p["gamma_k"] * H_k
+        out["K"] = np.exp(arg) if _K_LINK == "exp" else softplus(arg)
     return out
 
 

@@ -14,7 +14,7 @@
     "kernel": "ruzicka",
     "centered": false,
     "feature_prior": "isotropic",
-    "_comment": "The encoder supplies an uncentered 64-D Nystr\u00f6m feature map; model ingestion explicitly retains the first latent_dim (24) eigenfeatures to fit VRAM. Conditional on each w_scale, iid coefficients over those retained features imply Cov[H(x),H(x')|w_scale] = w_scale^2 Z_r(x)\u00b7Z_r(x'), the configured rank-r approximation to the original Ru\u017ei\u010dka kernel. Truncation must be config-driven and recorded, never silent."
+    "_comment": "The encoder supplies an uncentered 64-D Nyström feature map; model ingestion explicitly retains the first latent_dim (24) eigenfeatures to fit VRAM. Conditional on each w_scale, iid coefficients over those retained features imply Cov[H(x),H(x')|w_scale] = w_scale^2 Z_r(x)·Z_r(x'), the configured rank-r approximation to the original Ružička kernel. Truncation must be config-driven and recorded, never silent."
   },
   "dispersal": {
     "_comment": "Single source of truth shared by Z_disp preparation and the forward model; resolved in exactly one place, build_kernels.dispersal_spec. Do not duplicate these boundaries in code.",
@@ -50,6 +50,8 @@
     "_release_allee_comment": "Years from the release (invasion_timestep) during which the 9 candidate release cells skip the mate-finding Allee factor. The Allee term models continental colonization (thin arrivals into a 27 km cell); released cage birds were aggregated far below grid scale, so mates did not limit them. Without this the fit inflated and concentrated the founder pulse to clear the cell-averaged threshold -- a saddle with corner-shaped modes (probe of run_17). Matches invasion_window_years. 0 restores the old behaviour.",
     "release_allee_exemption_years": 10,
     "dispersal_target_capacity_fraction": 0.8,
+    "_dispersal_random_comment": "Per-year Normal(0, 0.001) noise on the dispersal logit. At that scale it moves dispersal by ~0.025%; the run_18 probe found its 124 directions exactly at prior curvature and L-BFGS moved it ~3e-5. false removes the site (the model uses zeros). See docs/PRIORS.md#structural-switches.",
+    "dispersal_random_enabled": true,
     "_disease_prior_comment": "The mycoplasmal-conjunctivitis effect on capacity, as a STRUCTURED hypothesis: K = K_base * (1 - severity(x) * onset_gate(x,t) * (1 - recovery(t - arrival))). See docs/PRIORS.md#disease-term and src/model/age_fields.py.",
     "_capacity_level_comment": "Prior on K's continental LEVEL, in expected BBS route counts, anchored on the typical OCCUPIED cell (median 2.618). See docs/PRIORS.md#capacity-level.",
     "_allee_comment": "Allee half-saturation on the BBS ROUTE-COUNT scale: allee_factor = 1 - 2^(-C/n50), half released at C = n50. See docs/PRIORS.md#allee-effect.",
@@ -71,6 +73,8 @@
       "log_budget": 3.0
     },
     "capacity_level_prior": {
+      "_link_switch_comment": "softplus (default) or exp. At the operating point the softplus argument is ~-2.1, where softplus ~ exp, so low K costs the same under both; exp removes softplus's shrinkage of the upper tail. alpha_k's location is re-solved per link so the level median stays at target_level_median_route_counts. See docs/PRIORS.md#structural-switches.",
+      "link": "softplus",
       "_link_comment": "K uses a SOFTPLUS link applied in DENSITY space: K = softplus(alpha_k + gamma_k*H_k + trend), no gauge conversion around it. See docs/PRIORS.md#capacity-link.",
       "_calibration_comment": "target_level_median_route_counts is the belief; alpha_k's prior LOCATION is solved from it at import by age_priors._softplus_loc_for_median. See docs/PRIORS.md#capacity-calibration.",
       "target_level_median_route_counts": 2.6183,
@@ -79,6 +83,10 @@
     "_manifold_comment": "Correlated weights for FOUR demographic manifolds, ordered [survival_adult, reproduction, capacity, survival_juv] -- survival_juv is APPENDED, so w_env[:,0..2] keeps its meaning for positional readers. See docs/PRIORS.md#manifold-prior.",
     "_amplitude_comment": "GP AMPLITUDE, one per manifold: w_scale_j = softplus(Normal(amplitude_loc_j, amplitude_scale_j)), so Var(beta_j) = w_scale_j^2 and H_j is a GP conditional on it. See docs/PRIORS.md#gp-amplitude.",
     "manifold_prior": {
+      "_form_comment": "rank2 (two coupled groups via communality + angle, below) or exchangeable (ONE coupling rho for all four fields: beta_j = w_scale_j*(sqrt(rho)*f + sqrt(1-rho)*eps_j); rho = sigmoid(Normal(logit(coupling_target), coupling_logit_scale))). See docs/PRIORS.md#structural-switches.",
+      "form": "rank2",
+      "coupling_target": 0.85,
+      "coupling_logit_scale": 0.15,
       "target_corr_survival_adult_juv": 0.85,
       "target_corr_repro_capacity": 0.85,
       "target_corr_cross_group": 0.7,

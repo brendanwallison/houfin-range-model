@@ -641,6 +641,13 @@ STAGE=hmc ARM=neutra CHAINS=2 RESUBMITS=2 AFTER=$vi bash scripts/tacc/submit_hmc
 python scripts/diagnostics/compare_hmc_trials.py --json $HOUFIN_PROCESSED/model_results/hmc_trial.json
 ```
 
+**Comparing model variants: `submit_chain.sh`.** One command per overlay submits MAP (float32) -> L-BFGS refine (float64) -> visualization and probe on the refined point, as dependent jobs. Compare variants at their refined points (refined_float64__<map run>/map_diagnostics/metrics.json), never at quick90 MAPs: run_18's MAP sat 7,320 nats above its refined optimum.
+
+```bash
+OVERLAY=config/overlays/map_run19_exchangeable.json bash scripts/tacc/submit_chain.sh
+OVERLAY=config/overlays/map_run19_exchangeable_explink.json bash scripts/tacc/submit_chain.sh
+```
+
 **Smoke test first.** Run `HOUFIN_HMC_WARMUP=10 HOUFIN_HMC_SAMPLES=10 HOUFIN_HMC_CHUNK=5
 TIME=00:30:00 RESUBMITS=1 FRESH=1` on each arm. The second job's log should read
 `[resume] ... 5/10`, and `chunks/` should hold two files. A smoke run writes to the

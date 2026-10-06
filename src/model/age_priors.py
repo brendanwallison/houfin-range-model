@@ -33,6 +33,18 @@ _INVASION_PULSE = dict(_POP_SPEC["invasion_pulse_prior"])
 _INITPOP_SEED = dict(_POP_SPEC["initpop_seed"])
 _ALLEE_PRIOR = dict(_POP_SPEC["allee_prior"])
 _RELEASE_ALLEE_EXEMPT_YEARS = int(_POP_SPEC.get("release_allee_exemption_years", 0))
+# Structural switches. Each default reproduces the model before the switch existed, so a
+# config without the key fits the same model it always did.
+#   manifold_prior.form       "rank2" (two coupled groups) | "exchangeable" (one coupling)
+#   capacity_level_prior.link "softplus" | "exp"
+#   dispersal_random_enabled  per-year dispersal noise on/off
+_MANIFOLD_FORM = str(_MANIFOLD_PRIOR.get("form", "rank2"))
+_K_LINK = str(_CAPACITY_LEVEL.get("link", "softplus"))
+_DISPERSAL_RANDOM = bool(_POP_SPEC.get("dispersal_random_enabled", True))
+if _MANIFOLD_FORM not in {"rank2", "exchangeable"}:
+    raise ValueError(f"manifold_prior.form must be rank2 or exchangeable, got {_MANIFOLD_FORM!r}")
+if _K_LINK not in {"softplus", "exp"}:
+    raise ValueError(f"capacity_level_prior.link must be softplus or exp, got {_K_LINK!r}")
 # THE GAUGE. Every absolute-scale prior is declared in expected BBS ROUTE COUNTS in
 # config and divided by this at exactly one boundary, so changing the gauge cannot
 # change any prior's meaning. (n50 already followed this convention; the capacity
@@ -78,8 +90,16 @@ def counts_to_relative(route_counts):
 
 # alpha_k's prior location, solved so the level's MEDIAN matches the configured target in
 # route counts. Closed form, evaluated at import, so it tracks pop_scalar automatically.
-_ALPHA_K_LOC = _softplus_loc_for_median(
-    _CAPACITY_LEVEL["target_level_median_route_counts"], _POP_SCALAR)
+# Under the exp link the median of exp(alpha_k) is exp(loc), so loc = log(target density).
+_ALPHA_K_LOC = (
+    float(np.log(float(_CAPACITY_LEVEL["target_level_median_route_counts"]) / _POP_SCALAR))
+    if _K_LINK == "exp" else
+    _softplus_loc_for_median(_CAPACITY_LEVEL["target_level_median_route_counts"], _POP_SCALAR))
+
+
+def k_link(x, link=None):
+    """Capacity link: K = link(alpha_k + gamma_k*H_k + trend), in density space."""
+    return jnp.exp(x) if (link or _K_LINK) == "exp" else jnn.softplus(x)
 
 
 def validate_environment_kernel_contract(data):
@@ -125,6 +145,43 @@ def equilibrium_age_quantities(Sa, Sj, Fmax, K, allee_gamma):
     lam = (Sa + jnp.sqrt(Sa**2 + 4.0 * F_at_K * Sa * Sj)) / 2.0
     rho = (F_at_K * Sa) / (F_at_K * Sa + lam)
     return c, F_at_K, lam, rho
+
+
+def _exchangeable_w_env(M_features, w_scale, prior_scale):
+    """EXCHANGEABLE manifold prior: one coupling rho shared by all four fields.
+
+        beta_j = w_scale_j * (sqrt(rho) * f + sqrt(1 - rho) * eps_j),  f, eps iid over features
+
+    so Var(beta_j) = w_scale_j^2 and Corr(j, k) = rho for EVERY pair, exactly. The
+    uncentered-Ruzicka GP contract holds unchanged: f and eps are iid across features.
+
+    Why it replaced rank-2 for run_19: under rank-2 each field has its own communality and
+    angle, so the fit could decouple ONE field -- the run_18 HMC descent took reproduction's
+    communality from 0.76 to 0.27 and juvenile survival's to 0.43 while adult survival and
+    capacity stayed coupled, which is what let lambda and K come apart (K turned into an
+    absence switch). With a single rho, loosening one field's coupling loosens all of them.
+    Loses: within-group vs cross-group structure (all pairs share rho) and trade-offs
+    (rho > 0). Also drops the angle/rotation directions that made up part of the
+    manifold block's negative curvature at the run_17/18 MAP.
+    """
+    _m = _MANIFOLD_PRIOR
+    target = float(_m["coupling_target"])
+    logit_target = math.log(target / (1.0 - target))
+    rho_c = numpyro.deterministic("manifold_coupling", jnn.sigmoid(numpyro.sample(
+        "manifold_coupling_logit",
+        dist.Normal(logit_target, float(_m["coupling_logit_scale"]) * prior_scale))))
+    with numpyro.plate("env_features", M_features, dim=-2):
+        f_shared = numpyro.sample("manifold_factor", dist.Normal(0.0, 1.0))   # (M, 1)
+        with numpyro.plate("manifolds", 4, dim=-1):
+            eps_idio = numpyro.sample("manifold_idio", dist.Normal(0.0, 1.0))  # (M, 4)
+    w_env = numpyro.deterministic(
+        "w_env", w_scale[None, :] * (jnp.sqrt(rho_c) * f_shared + jnp.sqrt(1.0 - rho_c) * eps_idio))
+    # The rank-2 reporting names, filled with their exchangeable equivalents (every field at
+    # communality sqrt(rho) on one factor, angle 0), so diagnostics read unchanged.
+    r = jnp.sqrt(rho_c) * jnp.ones(4)
+    numpyro.deterministic("manifold_communality", r)
+    L_load = numpyro.deterministic("manifold_loadings", jnp.stack([r, jnp.zeros(4)], axis=-1))
+    return w_env, L_load @ L_load.T
 
 
 def sample_priors(prior_scale=1.0, M_features=None, time=None,
@@ -182,23 +239,25 @@ def sample_priors(prior_scale=1.0, M_features=None, time=None,
     _logit_r = math.log(_r_med / (1.0 - _r_med))
     _th_med = jnp.array([-_phi / 2, _phi / 2, _phi / 2, -_phi / 2])  # Sa, F, K, Sj
 
-    # Communality per field, logit-normal so r stays in (0,1) and no correlation can leave
-    # [-1,1] and the idiosyncratic weight sqrt(1-r^2) stays real.
-    r_load = numpyro.deterministic(
-        "manifold_communality",
-        jnn.sigmoid(numpyro.sample(
-            "manifold_communality_raw",
-            dist.Normal(_logit_r, float(_m["communality_logit_scale"]) * prior_scale)
-            .expand([4]))),
-    )
-    th_load = numpyro.sample(
-        "manifold_angle",
-        dist.Normal(_th_med, float(_m["angle_scale"]) * prior_scale))
-    # (4, 2) factor loadings. Emitted under the historical `manifold_loadings` name, now a
-    # matrix rather than a vector -- map_diagnostics writes it to JSON as a flat list.
-    L_load = numpyro.deterministic(
-        "manifold_loadings",
-        jnp.stack([r_load * jnp.cos(th_load), r_load * jnp.sin(th_load)], axis=-1))
+    if _MANIFOLD_FORM == "rank2":
+        # Communality per field, logit-normal so r stays in (0,1) and no correlation can leave
+        # [-1,1] and the idiosyncratic weight sqrt(1-r^2) stays real.
+        r_load = numpyro.deterministic(
+            "manifold_communality",
+            jnn.sigmoid(numpyro.sample(
+                "manifold_communality_raw",
+                dist.Normal(_logit_r, float(_m["communality_logit_scale"]) * prior_scale)
+                .expand([4]))),
+        )
+        th_load = numpyro.sample(
+            "manifold_angle",
+            dist.Normal(_th_med, float(_m["angle_scale"]) * prior_scale))
+        # (4, 2) factor loadings. Emitted under the historical `manifold_loadings` name, now a
+        # matrix rather than a vector -- map_diagnostics writes it to JSON as a flat list.
+        L_load = numpyro.deterministic(
+            "manifold_loadings",
+            jnp.stack([r_load * jnp.cos(th_load), r_load * jnp.sin(th_load)], axis=-1))
+
     # GP AMPLITUDE, one per manifold, and now the SOLE amplitude: the per-rate slopes
     # are fixed at 1 (see the gamma block below), because w_scale and gamma multiplied
     # the same field and only their product entered the likelihood -- three exactly
@@ -229,19 +288,26 @@ def sample_priors(prior_scale=1.0, M_features=None, time=None,
     # w_scale_j^2 * Z(x).Z(x') and validate_environment_kernel_contract's isotropic-feature
     # requirement still holds. A full covariance over FEATURES would have broken it; adding a
     # second FACTOR does not.
-    with numpyro.plate("env_features", M_features, dim=-2):
-        f_shared = numpyro.sample("manifold_factor", dist.Normal(0.0, 1.0).expand([2]))
-        eps_idio = numpyro.sample("manifold_idio", dist.Normal(0.0, 1.0).expand([4]))
-
-    w_env = numpyro.deterministic(
-        "w_env",
-        w_scale[None, :] * (f_shared @ L_load.T
-                            + jnp.sqrt(1.0 - (L_load ** 2).sum(-1))[None, :] * eps_idio),
-    )
+    # The rightmost axis is plated too (factors / manifolds): numpyro warned "Missing a
+    # plate statement for batch dimension -1" on every run when it was a bare .expand().
+    # Same shapes, same log density.
+    if _MANIFOLD_FORM == "rank2":
+        with numpyro.plate("env_features", M_features, dim=-2):
+            with numpyro.plate("manifold_factors", 2, dim=-1):
+                f_shared = numpyro.sample("manifold_factor", dist.Normal(0.0, 1.0))
+            with numpyro.plate("manifolds", 4, dim=-1):
+                eps_idio = numpyro.sample("manifold_idio", dist.Normal(0.0, 1.0))
+        w_env = numpyro.deterministic(
+            "w_env",
+            w_scale[None, :] * (f_shared @ L_load.T
+                                + jnp.sqrt(1.0 - (L_load ** 2).sum(-1))[None, :] * eps_idio),
+        )
+        corr = L_load @ L_load.T
+    else:
+        w_env, corr = _exchangeable_w_env(M_features, w_scale, prior_scale)
 
     # Report the implied correlations (and a 4x4 Cholesky under the historical L_corr name) so
     # diagnostics can read what the fit concluded about how tightly the manifolds move together.
-    corr = L_load @ L_load.T
     corr = corr + jnp.diag(1.0 - jnp.diag(corr))
     numpyro.deterministic("L_corr", jnp.linalg.cholesky(corr))
     numpyro.deterministic("rho", corr[0, 1])  # survival-reproduction, the old `rho`
@@ -444,8 +510,7 @@ def sample_priors(prior_scale=1.0, M_features=None, time=None,
     # the same names so the diagnostics and response curves read unchanged. Under
     # softplus it is not separable from the covariate term, so this is "capacity where
     # the covariates are neutral" rather than a multiplicative level.
-    priors['k_level'] = numpyro.deterministic(
-        "k_level", jnn.softplus(priors['alpha_k']))
+    priors['k_level'] = numpyro.deterministic("k_level", k_link(priors['alpha_k']))
     numpyro.deterministic("k_level_route_counts", priors['k_level'] * _POP_SCALAR)
     
     # --- 3. DEMOGRAPHIC SENSITIVITIES (Gammas) ---
@@ -517,7 +582,14 @@ def sample_priors(prior_scale=1.0, M_features=None, time=None,
     priors['dispersal_logit_slope'] = numpyro.sample("dispersal_logit_slope", dist.Normal(4.0, 1.0 * prior_scale))
     
     # Temporal Annual Noise (Maintained for dispersal probability fluctuations)
-    priors['dispersal_random'] = numpyro.sample("dispersal_random", dist.Normal(0., 0.001 * prior_scale), sample_shape=(time,))
+    # At sd 0.001 on the logit this moves dispersal by ~0.025%: the probe of run_18 found its
+    # 124 directions exactly at prior curvature (1e6) and L-BFGS moved it ~3e-5. It only
+    # added sampling dimensions, so it can be switched off (dispersal_random_enabled).
+    if _DISPERSAL_RANDOM:
+        priors['dispersal_random'] = numpyro.sample(
+            "dispersal_random", dist.Normal(0., 0.001 * prior_scale), sample_shape=(time,))
+    else:
+        priors['dispersal_random'] = jnp.zeros(time)
     
     return priors
 
@@ -618,7 +690,8 @@ def build_model_2d(data, prior_scale=1.0):
         priors['alpha_a'], priors['gamma_a'],
         priors['alpha_j'], priors['gamma_j'],
         priors['alpha_f'], priors['gamma_f'],
-        priors['alpha_k'], priors['gamma_k']
+        priors['alpha_k'], priors['gamma_k'],
+        k_link=k_link,
     )
         
     # Save fields for viz

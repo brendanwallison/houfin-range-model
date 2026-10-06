@@ -1,0 +1,29 @@
+{
+  "input_dir": "${HOUFIN_PROCESSED}/model_inputs/numpyro_input",
+  "population_model": {
+    "dispersal_random_enabled": false,
+    "manifold_prior": {
+      "form": "exchangeable",
+      "coupling_target": 0.85,
+      "coupling_logit_scale": 0.15,
+      "amplitude_scale": [
+        1.0263,
+        1.0263,
+        1.0227,
+        1.0263
+      ]
+    },
+    "capacity_level_prior": {
+      "link": "exp"
+    }
+  },
+  "_comment": [
+    "run_19e = run_19 with K's link switched softplus -> exp: K = k_level * exp(H_k + trend).",
+    "At the model's operating point the softplus argument is ~-2.1, where softplus ~ exp, so LOW K costs the same under both links; the difference is the upper tail, which softplus shrinks (softplus/exp 0.74 at 16 route counts, 0.28 at 73) and exp does not -- this tests 'very high K is genuinely possible'.",
+    "K's amplitude prior is left numerically unchanged: because softplus ~ exp there, its current calibration is already effectively in log-K units. alpha_k's location is re-solved for the exp link (log of the 2.6183-route-count target), so the level median is preserved."
+  ],
+  "run_names": {
+    "map": "age_map_{precision}_run_19e_new_z",
+    "vis_map": "age_map_{precision}_run_19e_new_z"
+  }
+}

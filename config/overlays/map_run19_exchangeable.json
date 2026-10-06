@@ -1,0 +1,28 @@
+{
+  "input_dir": "${HOUFIN_PROCESSED}/model_inputs/numpyro_input",
+  "population_model": {
+    "dispersal_random_enabled": false,
+    "manifold_prior": {
+      "form": "exchangeable",
+      "coupling_target": 0.85,
+      "coupling_logit_scale": 0.15,
+      "amplitude_scale": [
+        1.0263,
+        1.0263,
+        1.0227,
+        1.0263
+      ]
+    }
+  },
+  "_comment": [
+    "run_19 = run_18 (release-cell Allee exemption, new DESK Z, quick90) plus:",
+    "(1) EXCHANGEABLE manifold prior: one coupling rho for all four fields, prior median 0.85, logit sd 0.15 (1 sd ~ 0.83-0.87). Replaces rank-2, whose per-field communalities let the run_18 descent decouple reproduction (0.27) and juvenile survival (0.43) from capacity, turning K into an absence switch.",
+    "(2) survival amplitude_scale 0.5628 -> 1.0263 (adult and juvenile), matching reproduction: the HMC descent already pushed adult survival's amplitude ~5.7 prior sds out.",
+    "(3) dispersal_random off: at sd 0.001 it moved dispersal ~0.025% and its 124 directions sat at prior curvature.",
+    "K's link and priors unchanged (softplus). Pair: map_run19_exchangeable_explink.json (identical but exp link)."
+  ],
+  "run_names": {
+    "map": "age_map_{precision}_run_19_new_z",
+    "vis_map": "age_map_{precision}_run_19_new_z"
+  }
+}

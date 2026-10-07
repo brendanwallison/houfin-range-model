@@ -5,6 +5,11 @@ Status: built 2026-10-06, not yet run on TACC. Code: `train_DESK/gp_kernels.py`,
 `tests/test_gp_species.py`; job `scripts/tacc/submit_gp_species.sh`, overlay
 `config/overlays/gp_species_base.json`. Outputs land in `<run>/gp_species/`.
 
+Temporal holdouts (added after the first run, which covered space only): on a `desk_tempho_*`
+checkpoint the withheld years are excluded from every fit, and rows are scored in three groups
+(space, time, space_time) with matching change sets. The first version would have leaked the
+withheld years into training; `row_splits` now owns that exclusion and a test checks it.
+
 Built differently from the plan below, with reasons in the code:
 - **Baseline shapes are shared across species.** The spacetime and covariate GPs fit ONE set of
   lengthscales for all evaluation species, plus a per-species amplitude and noise. That is the

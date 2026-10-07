@@ -19,7 +19,14 @@ WHICH RUN. Point ``paths.desk_output_dir`` at a run trained WITH a holdout -- th
 has ``holdout_frac=0`` and nothing to grade. ``config/overlays/gp_species_base.json`` points at
 production's holdout predecessor. Results must never select that run's epoch or configuration.
 
-THE PREDICTORS (task A, block extrapolation; all share the GP machinery in ``gp_kernels``):
+HOLDOUTS, as in the existing suite. Spatial blocks always; and on a ``desk_tempho_*`` checkpoint
+the withheld early decades too, excluded from EVERY fit in every cell. Scored in three groups --
+space (held-out blocks, trained years), time (training cells, withheld years), space_time (both)
+-- because the spacetime GP's advantage depends on neighbours observed in the same years, which
+only the space group has. Run one overlay per checkpoint, e.g.
+``ESK_DESK_CONFIG=config/overlays/desk_tempho_1985.json``.
+
+THE PREDICTORS (all share the GP machinery in ``gp_kernels``):
 
     desk            s^2 z_ema(x).z_ema(x')                        what DESK was trained on
     desk_raw        s^2 z_raw(x).z_raw(x')                        what the downstream model gets
@@ -180,26 +187,73 @@ def load_all_species(config):
 
 # ----------------------------- splits -----------------------------
 
-def row_splits(keys, holdout, buffer, block_cells, test_years=()):
-    """``(is_train, is_test, block_id)`` per row. Pure.
+#: Held-out row groups, mirroring the existing suite's holdouts. 0 = not scored.
+GROUPS = {1: "space", 2: "time", 3: "space_time"}
 
-    Train = cells neither held out nor buffer, which is what the DESK run trained on. Test = held-
-    out cells, restricted to ``test_years`` when the run withheld years in common. Block ids
-    follow ``augment.blocked_holdout``'s tiling (origin at 0,0), so a bootstrap over blocks
-    resamples the same units the split drew.
+
+def row_splits(keys, holdout, buffer, block_cells, withheld_years=(), common_years=()):
+    """``(is_train, group, block_id)`` per row. Pure.
+
+    Training rows are cells neither held out nor buffer, in years the run did NOT withhold --
+    exactly what the DESK checkpoint trained on. ``withheld_years`` is ``desk.trend.holdout_years``
+    (the ``desk_tempho_*`` runs withhold the early decades from every cell); leaving those years in
+    training would hand every GP the very years DESK never saw.
+
+    Scored rows fall in three groups, the holdouts of the existing suite:
+
+    * ``space`` (1): held-out block cells in trained years -- spatial extrapolation only. Every
+      such row has training cells around it observed in the SAME year.
+    * ``time`` (2): training cells in withheld years -- temporal extrapolation only. No cell is
+      observed in those years.
+    * ``space_time`` (3): held-out block cells in withheld years -- both at once.
+
+    ``common_years`` (``common_holdout_years``) restricts groups 2 and 3 to the window every run
+    withholds, so the tempho runs are comparable; withheld years outside it are neither trained
+    on nor scored. Block ids follow ``augment.blocked_holdout``'s tiling (origin 0,0).
     """
     keys = np.asarray(keys)
-    r, c = keys[:, 0], keys[:, 1]
+    r, c, yr = keys[:, 0], keys[:, 1], keys[:, 2]
     ho = np.asarray(holdout, bool)[r, c]
     bf = np.asarray(buffer, bool)[r, c] if buffer is not None else np.zeros(len(keys), bool)
-    is_test = ho.copy()
-    if len(test_years):
-        is_test &= np.isin(keys[:, 2], np.asarray(test_years))
-    is_train = ~ho & ~bf
+    wh = np.isin(yr, np.asarray(list(withheld_years), int))
+    win = np.isin(yr, np.asarray(list(common_years), int)) if len(common_years) else wh
+    is_train = ~ho & ~bf & ~wh
+    group = np.zeros(len(keys), "int8")
+    group[ho & ~wh] = 1
+    group[~ho & ~bf & wh & win] = 2
+    group[ho & wh & win] = 3
     b = max(1, int(block_cells))
     nbx = int(np.asarray(holdout).shape[1] + b - 1) // b
     block_id = (r // b) * nbx + (c // b)
-    return is_train, is_test, block_id.astype("int64")
+    return is_train, group, block_id.astype("int64")
+
+
+def change_sets(tkeys, row_group, withheld):
+    """Which held-out cells give a same-cell change, and from which rows. ``{name: rows}``. Pure.
+
+    ``row_group`` labels the predicted rows (0 = an in-sample modern row of a training cell). A
+    change needs an early and a modern epoch from the same cell:
+
+    * held-out block cells: modern rows are ``space`` rows; early rows are ``space_time`` rows when
+      years were withheld (the set is then ``space_time``), else ``space`` rows (set ``space``).
+    * training cells with withheld early years (set ``time``): early rows are ``time`` rows, modern
+      rows are that cell's own TRAINING rows, predicted in-sample. That is the honest question for
+      temporal extrapolation: given a cell's observed present, how well is its unobserved past
+      predicted.
+
+    Returns indices into the predicted rows; ``epoch_gate`` is applied per set by the caller.
+    """
+    yr = np.asarray(tkeys)[:, 2]
+    early = (yr >= EPOCH_EARLY[0]) & (yr <= EPOCH_EARLY[1])
+    modern = (yr >= EPOCH_MODERN[0]) & (yr <= EPOCH_MODERN[1])
+    g = np.asarray(row_group)
+    out = {}
+    if len(withheld):
+        out["space_time"] = np.where(((g == 1) & modern) | ((g == 3) & early))[0]
+        out["time"] = np.where(((g == 0) & modern) | ((g == 2) & early))[0]
+    else:
+        out["space"] = np.where((g == 1) & (modern | early))[0]
+    return out
 
 
 def modern_reference_keys(keys, modern=EPOCH_MODERN):
@@ -615,7 +669,7 @@ def shape_summary(shape):
 
 # ----------------------------- run -----------------------------
 
-def _load_masks(run_dir):
+def _load_masks(run_dir, buffer_floor=None):
     ho_p, bf_p = os.path.join(run_dir, "holdout_cells.npy"), os.path.join(run_dir,
                                                                           "buffer_cells.npy")
     if not os.path.exists(ho_p):
@@ -624,8 +678,20 @@ def _load_masks(run_dir):
     if not ho.any():
         raise ValueError(f"{ho_p} is empty -- holdout_frac=0 (the production run?). Point "
                          "paths.desk_output_dir at a run trained with a holdout.")
-    bf = np.load(bf_p) if os.path.exists(bf_p) else None
-    return ho, bf
+    if os.path.exists(bf_p):
+        return ho, np.load(bf_p), "saved buffer_cells.npy"
+    # Older checkpoints (the desk_tempho_* runs) did not save the buffer. Rebuild it the way
+    # training did -- a Chebyshev ring of width spatial_kernel // 2 (floored by buffer_floor)
+    # around the held-out cells -- rather than letting buffer cells pass as training cells.
+    from .augment import _shift2d
+    dm = np.load(os.path.join(run_dir, "desk_meta.npz"), allow_pickle=True)
+    k = int(dm["spatial_kernel"]) if "spatial_kernel" in dm.files else 0
+    width = max(k // 2, int(buffer_floor or 0))
+    near = np.zeros_like(ho)
+    for dy in range(-width, width + 1):
+        for dx in range(-width, width + 1):
+            near |= _shift2d(ho, dy, dx)
+    return ho, near & ~ho, f"rebuilt: Chebyshev width {width} (spatial_kernel {k})"
 
 
 def _predictor_scores(Y, mean, var, block_id):
@@ -673,6 +739,32 @@ def comparisons(names):
     return pairs
 
 
+def _score_comparisons(names, sse_by_pred, n_boot, seed, skip_refs=()):
+    """Pooled skill for every comparison pair on one set of SSE tables. ``(report, per_species)``."""
+    out, per = {}, {}
+    for a, b in comparisons(names):
+        if b in skip_refs or a not in sse_by_pred or b not in sse_by_pred:
+            continue
+        pooled, sk = pooled_skill(sse_by_pred[a], sse_by_pred[b], n_boot, seed)
+        out[f"{a}_vs_{b}"] = pooled
+        per[f"{a}_vs_{b}"] = sk
+    return out, per
+
+
+def _direction_report(dir_tables):
+    rep, per = {}, {}
+    for name, tab in dir_tables.items():
+        ds = np.array([t.get("direction_skill", np.nan) for t in tab], "float64")
+        n_abst = sum(1 for t in tab if "n_species_committed" in t and "direction_skill" not in t)
+        rep[name] = {
+            "n_species_scored": int(np.isfinite(ds).sum()),
+            "n_species_abstained_or_undefined": int((~np.isfinite(ds)).sum()),
+            "n_abstained": int(n_abst),
+            "median_direction_skill": float(np.nanmedian(ds)) if np.isfinite(ds).any() else None}
+        per[name] = ds
+    return rep, per
+
+
 def run(config=None, out_dir=None, n_boot=1000, seed=0, opts=None):
     t0 = time.perf_counter()
     config = config or load_config()
@@ -687,7 +779,8 @@ def run(config=None, out_dir=None, n_boot=1000, seed=0, opts=None):
     latent = int(dm["latent_dim"])
     tr_cfg = (config.get("desk", {}) or {}).get("trend", {}) or {}
     block_cells = int(tr_cfg.get("block_cells", 6))
-    test_years = [int(y) for y in (tr_cfg.get("common_holdout_years") or [])]
+    withheld = [int(y) for y in (tr_cfg.get("holdout_years") or [])]
+    common = [int(y) for y in (tr_cfg.get("common_holdout_years") or [])]
     cell_km = float(opts.get("cell_km") or _cell_km())
 
     from src.data.preprocess.bbs_community import log1p_community
@@ -696,13 +789,23 @@ def run(config=None, out_dir=None, n_boot=1000, seed=0, opts=None):
     Ylog = log1p_community(X_raw)
     Y_eval, X_comm = Ylog[:, nc:], Ylog[:, :nc]
 
-    ho, bf = _load_masks(run_dir)
-    is_train, is_test, block_id = row_splits(keys, ho, bf, block_cells, test_years)
-    use = is_train | is_test
+    ho, bf, buffer_note = _load_masks(run_dir, tr_cfg.get("buffer_floor"))
+    is_train, group, block_id = row_splits(keys, ho, bf, block_cells, withheld, common)
+    yr = keys[:, 2]
+    # Training cells with a withheld early epoch also need their MODERN rows predicted (in-sample)
+    # so their change can be scored: the "time" change set.
+    time_cells = {(int(a), int(b)) for a, b in keys[group == 2, :2]}
+    in_time_cell = np.array([(int(a), int(b)) in time_cells for a, b in keys[:, :2]], bool)
+    insample = (is_train & in_time_cell & (yr >= EPOCH_MODERN[0]) & (yr <= EPOCH_MODERN[1]))
+    pred = (group > 0) | insample
+    use = is_train | pred
+    print(f"[gp-species] withheld years: {withheld[:1] + ['...'] + withheld[-1:] if withheld else 'none'}"
+          f"; scored rows: " + ", ".join(f"{GROUPS[g]} {int((group == g).sum()):,}"
+                                         for g in GROUPS) + f"; buffer {buffer_note}")
 
-    # One encode for everything: rows to fit and predict, plus the modern epoch of every held-out
+    # One encode for everything: rows to fit and predict, plus the modern epoch of every predicted
     # cell for the no-change reference.
-    ref_keys = modern_reference_keys(keys[is_test])
+    ref_keys = modern_reference_keys(keys[pred])
     want = np.concatenate([keys[use], ref_keys]).astype("int32")
     want_u, inv = np.unique(want, axis=0, return_inverse=True)
     Zu_raw, Zu, zinfo = desk_z_both(config, want_u)
@@ -727,13 +830,14 @@ def run(config=None, out_dir=None, n_boot=1000, seed=0, opts=None):
     if F_cov.shape[1]:
         finite &= np.isfinite(F_cov).all(1) & np.isfinite(F_cov_raw).all(1)
     Z_nc_all = np.full_like(Z, np.nan)
-    Z_nc_all[is_test] = no_change_z(keys[is_test], ref_keys, Z_ref)
+    Z_nc_all[pred] = no_change_z(keys[pred], ref_keys, Z_ref)
     Z_nc_raw = np.full_like(Z, np.nan)
-    Z_nc_raw[is_test] = no_change_z(keys[is_test], ref_keys, Z_ref_raw)
+    Z_nc_raw[pred] = no_change_z(keys[pred], ref_keys, Z_ref_raw)
     tr_rows = np.where(is_train & finite)[0]
-    te_rows = np.where(is_test & finite & np.isfinite(Z_nc_all).all(1)
+    te_rows = np.where(pred & finite & np.isfinite(Z_nc_all).all(1)
                        & np.isfinite(Z_nc_raw).all(1))[0]
-    n_drop = int(is_test.sum() - len(te_rows))
+    n_drop = int(pred.sum() - len(te_rows))
+    row_group = group[te_rows]
 
     # Species with ZERO training detections leave the evaluation entirely. Every predictor's
     # posterior mean for them is exactly the training mean (zero), so no metric can tell any two
@@ -748,8 +852,9 @@ def run(config=None, out_dir=None, n_boot=1000, seed=0, opts=None):
     layout = {**layout, "evaluation": [c for c, k in zip(layout["evaluation"], keep_sp) if k]}
     print(f"[gp-species] dropped {len(dropped_species)} species with no training detections; "
           f"{int(keep_sp.sum())} evaluated")
-    print(f"[gp-species] {len(tr_rows):,} training rows, {len(te_rows):,} held-out rows "
-          f"({n_drop} held-out rows dropped: outside the covariate footprint or no modern z)")
+    print(f"[gp-species] {len(tr_rows):,} training rows, {len(te_rows):,} predicted rows "
+          f"({int((row_group == 0).sum()):,} in-sample modern rows of time-group cells; "
+          f"{n_drop} dropped: outside the covariate footprint or no modern z)")
 
     Z_oracle, oracle_note = None, None
     try:
@@ -770,91 +875,103 @@ def run(config=None, out_dir=None, n_boot=1000, seed=0, opts=None):
     Yte = Y_eval[te_rows].astype("float64")
     Ytr = Y_eval[tr_rows]
     names = list(preds)
-
-    # ---- level ----
-    scores = {}
-    for name, (mu, var) in preds.items():
-        blocks, scores[name] = _predictor_scores(Yte, np.asarray(mu), np.asarray(var), bid)
-
-    # ---- change (primary) ----
     tk = keys[te_rows]
-    cells, e_rows, m_rows, gate = epoch_gate(tk, EPOCH_EARLY, EPOCH_MODERN, MIN_EPOCH_YEARS)
-    have_change = len(cells) > 0
-    cell_block = bid[[r[0] for r in e_rows]] if have_change else np.zeros(0, int)
-    change_sse, dir_tables = (_change_tables(preds, Yte, e_rows, m_rows, cell_block)
-                              if have_change else ({}, {}))
-
-    # ---- extrapolation degree, per held-out row and per change cell ----
-    train_cells = np.unique(keys[tr_rows, :2], axis=0)
-    dist_km = distance_to_training_km(tk[:, :2], train_cells, cell_km)
-    novelty = (mahalanobis_novelty(F_cov[te_rows], F_cov[tr_rows]) if F_cov.shape[1]
-               else np.full(len(te_rows), np.nan))
-    yrs_before = np.clip(EPOCH_MODERN[0] - tk[:, 2], 0, None).astype("float64")
-    cell_dist = np.array([dist_km[r[0]] for r in e_rows]) if have_change else np.zeros(0)
-    cell_nov = (np.array([np.nanmean(novelty[np.asarray(r)]) for r in e_rows]) if have_change
-                else np.zeros(0))
-
-    # ---- report ----
     ev = layout["evaluation"]
+
     rep = {"run_dir": run_dir, "basis": config["desk"].get("z_dir"),
            "ema": zinfo, "best_epoch_of_checkpoint": int(dm["best_epoch"])
            if "best_epoch" in dm.files else None,
+           "withheld_years": withheld, "common_holdout_years": common, "buffer": buffer_note,
            "selection_caveat": ("the checkpoint's epoch was selected on a held-out kernel metric "
                                 "over these same blocks: a mild optimistic bias for desk"),
            "covariate_gp_caveat": ("the covariate GP sees each cell's own covariates; desk also "
                                    "sees a 5x5 neighbourhood through its convolution"),
            "options": {k: (list(v) if isinstance(v, tuple) else v) for k, v in opts.items()},
            "layout": {k: v for k, v in layout.items() if k not in ("community", "evaluation")},
-           "rows": {"train": int(len(tr_rows)), "heldout": int(len(te_rows)),
-                    "heldout_dropped": n_drop, "heldout_blocks": int(len(blocks))},
+           "rows": {"train": int(len(tr_rows)), "predicted": int(len(te_rows)),
+                    "dropped": n_drop, "in_sample_modern": int((row_group == 0).sum()),
+                    **{GROUPS[g]: int((row_group == g).sum()) for g in GROUPS}},
            "dropped_zero_training_detections": {"n": len(dropped_species),
                                                 "species": dropped_species},
            "pooled_priors": {k: v["prior"] for k, v in fits.items() if "prior" in v},
-           "epoch_gate": gate, "oracle_note": oracle_note or
+           "oracle_note": oracle_note or
            "esk_oracle is computed from the same routes as the truth: an optimistic ceiling",
            "baseline_shapes": {k: shape_summary(v) for k, v in fits.items() if "theta" in v},
-           "primary": {}, "change": {}, "level": {}, "probabilistic": {}, "direction": {}}
-
+           "primary": {}, "change": {}, "level": {}, "probabilistic": {}, "direction": {},
+           "epoch_gate": {}}
     per_species = {}
-    for a, b in comparisons(names):
-        if have_change and b != "intercept":
-            pooled, sk = pooled_skill(change_sse[a], change_sse[b], n_boot, seed)
-            rep["change"][f"{a}_vs_{b}"] = pooled
-            per_species[f"change_skill_{a}_vs_{b}"] = sk
-        pooled, sk = pooled_skill(scores[a]["sse"], scores[b]["sse"], n_boot, seed)
-        rep["level"][f"{a}_vs_{b}"] = pooled
-        per_species[f"level_skill_{a}_vs_{b}"] = sk
-    if have_change:
-        rep["primary"] = {"metric": "per-species RMSE skill on held-out same-cell change, "
-                                    "desk vs no_change", **rep["change"]["desk_vs_no_change"]}
+
+    # ---- level, per held-out group (never on in-sample rows) ----
+    level_sse = {}
+    for g, gname in GROUPS.items():
+        sel = np.where(row_group == g)[0]
+        if len(sel) == 0:
+            continue
+        scores = {}
+        for name, (mu, var) in preds.items():
+            _, scores[name] = _predictor_scores(Yte[sel], np.asarray(mu)[sel],
+                                                np.asarray(var)[sel], bid[sel])
+        level_sse[gname] = {k: v["sse"] for k, v in scores.items()}
+        rep["level"][gname], per = _score_comparisons(names, level_sse[gname], n_boot, seed)
+        per_species.update({f"level_skill_{gname}_{k}": v for k, v in per.items()})
+        n_g = float(len(sel))
+        prob = {}
+        for name, sc in scores.items():
+            prob[name] = {
+                "median_lpd_per_row": float(np.median(sc["lpd"].sum(0) / n_g)),
+                "median_crps": float(np.median(sc["crps"].sum(0) / n_g)),
+                "coverage50_pooled": float(sc["cov50"].sum() / (n_g * sc["cov50"].shape[1])),
+                "coverage90_pooled": float(sc["cov90"].sum() / (n_g * sc["cov90"].shape[1]))}
+        for name in [p for p in scores if p != "desk"]:
+            dl = (scores["desk"]["lpd"].sum(0) - scores[name]["lpd"].sum(0)) / n_g
+            prob[f"desk_minus_{name}_lpd_per_row"] = {
+                "median": float(np.median(dl)), "share_above_zero": float((dl > 0).mean())}
+        rep["probabilistic"][gname] = prob
+
+    # ---- change, per change set ----
+    sets = change_sets(tk, row_group, withheld)
+    change_store, change_sse = {}, {}
+    for sname, rows in sets.items():
+        cells, e_loc, m_loc, gate = epoch_gate(tk[rows], EPOCH_EARLY, EPOCH_MODERN,
+                                               MIN_EPOCH_YEARS)
+        rep["epoch_gate"][sname] = gate
+        if len(cells) == 0:
+            continue
+        e_rows = [rows[np.asarray(r)] for r in e_loc]
+        m_rows = [rows[np.asarray(r)] for r in m_loc]
+        cell_block = bid[[r[0] for r in e_rows]]
+        sse, dirs = _change_tables(preds, Yte, e_rows, m_rows, cell_block)
+        change_sse[sname] = sse
+        rep["change"][sname], per = _score_comparisons(names, sse, n_boot, seed,
+                                                       skip_refs=("intercept",))
+        per_species.update({f"change_skill_{sname}_{k}": v for k, v in per.items()})
+        rep["direction"][sname], per = _direction_report(dirs)
+        per_species.update({f"direction_skill_{sname}_{k}": v for k, v in per.items()})
+        change_store[sname] = {"cells": cells, "e_rows": e_rows, "m_rows": m_rows,
+                               "cell_block": cell_block}
+    primary_set = "space_time" if withheld else "space"
+    if "desk_vs_no_change" in rep["change"].get(primary_set, {}):
+        rep["primary"] = {"metric": f"per-species RMSE skill on held-out same-cell change "
+                                    f"({primary_set}), desk vs no_change",
+                          "set": primary_set, **rep["change"][primary_set]["desk_vs_no_change"]}
     else:
-        rep["primary"] = {"note": "no held-out cell passes the epoch gate; change is unmeasurable"}
+        rep["primary"] = {"note": f"no {primary_set} cell passes the epoch gate"}
 
-    n_te = float(len(te_rows))
-    for name, sc in scores.items():
-        rep["probabilistic"][name] = {
-            "median_lpd_per_row": float(np.median(sc["lpd"].sum(0) / n_te)),
-            "median_crps": float(np.median(sc["crps"].sum(0) / n_te)),
-            "coverage50_pooled": float(sc["cov50"].sum() / (n_te * sc["cov50"].shape[1])),
-            "coverage90_pooled": float(sc["cov90"].sum() / (n_te * sc["cov90"].shape[1]))}
-    for name in [p for p in scores if p != "desk"]:
-        dl = (scores["desk"]["lpd"].sum(0) - scores[name]["lpd"].sum(0)) / n_te
-        rep["probabilistic"][f"desk_minus_{name}_lpd_per_row"] = {
-            "median": float(np.median(dl)), "share_above_zero": float((dl > 0).mean())}
-        per_species[f"lpd_desk_minus_{name}"] = dl
-
-    for name, tab in dir_tables.items():
-        ds = np.array([t.get("direction_skill", np.nan) for t in tab], "float64")
-        n_abst = sum(1 for t in tab if "n_species_committed" in t and "direction_skill" not in t)
-        rep["direction"][name] = {
-            "n_species_scored": int(np.isfinite(ds).sum()),
-            "n_species_abstained_or_undefined": int((~np.isfinite(ds)).sum()),
-            "n_abstained": int(n_abst),
-            "median_direction_skill": float(np.nanmedian(ds)) if np.isfinite(ds).any() else None}
-        per_species[f"direction_skill_{name}"] = ds
+    # ---- extrapolation degree, per predicted row and per change cell ----
+    train_cells = np.unique(keys[tr_rows, :2], axis=0)
+    dist_km = distance_to_training_km(tk[:, :2], train_cells, cell_km)
+    novelty = (mahalanobis_novelty(F_cov[te_rows], F_cov[tr_rows]) if F_cov.shape[1]
+               else np.full(len(te_rows), np.nan))
+    yrs_before = np.clip(EPOCH_MODERN[0] - tk[:, 2], 0, None).astype("float64")
+    # How far a withheld year lies BEYOND the training edge -- the independent variable of the
+    # tempho design (1 yr past the edge for 1975, 11 for 1985, 21 for 1995 at year 1975).
+    edge = (max(withheld) + 1) if withheld else None
+    reach = (np.where(np.isin(tk[:, 2], withheld), edge - tk[:, 2], 0).astype("float64")
+             if withheld else np.zeros(len(tk)))
 
     # ---- per-species table, the input to the regressions ----
-    det_tr, det_te = (Ytr > 0).sum(0), (Yte > 0).sum(0)
+    scored = row_group > 0
+    det_tr, det_te = (Ytr > 0).sum(0), (Yte[scored] > 0).sum(0)
     cmax, ctop = cooccurrence_similarity(Ytr, X_comm[tr_rows])
     table = {"species_code": np.array(ev), "n_train_detections": det_tr,
              "n_heldout_detections": det_te, "prevalence_train": det_tr / max(len(tr_rows), 1),
@@ -866,25 +983,37 @@ def run(config=None, out_dir=None, n_boot=1000, seed=0, opts=None):
     with open(os.path.join(out_dir, "layout.json"), "w", encoding="utf-8") as fh:
         json.dump({"community": layout["community"], "evaluation": ev}, fh, indent=1)
 
-    # Per-row held-out predictions, extrapolation degrees and per-block tables, so the regressions
-    # and any re-pooling run without re-encoding.
+    # Per-row predictions, groups, extrapolation degrees, and per-set change bookkeeping, so the
+    # noise ceiling, the regressions and any re-pooling run without re-encoding.
+    change_arrays = {}
+    for sname, cs in change_store.items():
+        e_rows, m_rows = cs["e_rows"], cs["m_rows"]
+        change_arrays.update({
+            f"change_cells_{sname}": cs["cells"], f"change_cell_block_{sname}": cs["cell_block"],
+            f"change_cell_dist_km_{sname}": np.array([dist_km[r[0]] for r in e_rows]),
+            f"change_cell_novelty_{sname}": np.array([np.nanmean(novelty[r]) for r in e_rows]),
+            f"change_cell_reach_{sname}": np.array([np.mean(reach[r]) for r in e_rows]),
+            f"change_early_rows_{sname}": np.array([np.asarray(r) for r in e_rows], dtype=object),
+            f"change_modern_rows_{sname}": np.array([np.asarray(r) for r in m_rows],
+                                                    dtype=object),
+            **{f"change_sse_{sname}_{k}": v for k, v in change_sse[sname].items()}})
     np.savez_compressed(
         os.path.join(out_dir, "heldout_predictions.npz"),
         keys=tk, block_id=bid, y=Yte.astype("float32"), species=np.array(ev),
+        row_group=row_group, change_set_names=np.array(list(change_store)),
         dist_to_train_km=dist_km, cov_novelty=novelty, years_before_modern=yrs_before,
+        years_beyond_training_edge=reach,
         **{f"mean_{k}": np.asarray(v[0], "float32") for k, v in preds.items()},
         **{f"var_{k}": np.asarray(v[1], "float32") for k, v in preds.items()},
-        blocks=blocks, change_cells=cells, change_cell_block=cell_block,
-        change_cell_dist_km=cell_dist, change_cell_novelty=cell_nov,
-        change_early_rows=np.array([np.asarray(r) for r in e_rows], dtype=object),
-        change_modern_rows=np.array([np.asarray(r) for r in m_rows], dtype=object),
-        **{f"change_sse_{k}": v for k, v in change_sse.items()},
-        **{f"level_sse_{k}": v["sse"] for k, v in scores.items()})
+        **change_arrays)
 
     # ---- thinning arm: the data-poor claim, test set fixed ----
     if opts["thin"]:
-        rep["thinning"] = run_thinning(D, tr_rows, te_rows, Yte, e_rows, m_rows, opts, seed,
-                                       out_dir)
+        cs = change_store.get(primary_set)
+        rep["thinning"] = run_thinning(
+            D, tr_rows, te_rows, Yte, np.where(scored)[0],
+            cs["e_rows"] if cs else [], cs["m_rows"] if cs else [], opts, seed, out_dir,
+            primary_set)
 
     rep["elapsed_s"] = round(time.perf_counter() - t0, 1)
     with open(os.path.join(out_dir, "report.json"), "w", encoding="utf-8") as fh:
@@ -893,12 +1022,14 @@ def run(config=None, out_dir=None, n_boot=1000, seed=0, opts=None):
     return rep
 
 
-def run_thinning(D, tr_rows, te_rows, Yte, e_rows, m_rows, opts, seed, out_dir):
+def run_thinning(D, tr_rows, te_rows, Yte, scored, e_rows, m_rows, opts, seed, out_dir,
+                 change_set):
     """Refit every predictor on a thinned training set; score on the SAME held-out rows.
 
-    Saves per-species level and change SSE per predictor per fraction, with each species'
-    remaining training detections -- the x-axis of the data-poor curve. Skill against no_change on
-    change needs no refit of the reference: no_change predicts zero change at every fraction.
+    Level is scored on ``scored`` (all held-out groups, no in-sample rows); change on the primary
+    change set. Saves per-species SSE per predictor per fraction, with each species' remaining
+    training detections -- the x-axis of the data-poor curve. Skill against no_change on change
+    needs no refit of the reference: no_change predicts zero change at every fraction.
     """
     fracs = [1.0] + [float(f) for f in opts["thin"]]
     out = {"fractions": fracs, "n_train_rows": [], "level_sse": {}, "change_sse": {},
@@ -918,24 +1049,26 @@ def run_thinning(D, tr_rows, te_rows, Yte, e_rows, m_rows, opts, seed, out_dir):
         out["n_train_rows"].append(int(len(tr)))
         out["n_train_detections"].append((D["Y"][tr] > 0).sum(0))
         for name, (mu, _v) in preds.items():
-            out["level_sse"].setdefault(name, []).append(((Yte - mu) ** 2).sum(0))
+            mu = np.asarray(mu)
+            out["level_sse"].setdefault(name, []).append(
+                ((Yte[scored] - mu[scored]) ** 2).sum(0))
             if have_change:
-                pe, pm = epoch_change(np.asarray(mu), e_rows, m_rows)
+                pe, pm = epoch_change(mu, e_rows, m_rows)
                 out["change_sse"].setdefault(name, []).append(((pm - pe - d_obs) ** 2).sum(0))
     arrays = {"fractions": np.array(fracs), "n_train_rows": np.array(out["n_train_rows"]),
-              "n_train_detections": np.stack(out["n_train_detections"])}
+              "n_train_detections": np.stack(out["n_train_detections"]),
+              "change_set": np.array(change_set)}
     for kind in ("level_sse", "change_sse"):
         for name, v in out[kind].items():
             arrays[f"{kind}_{name}"] = np.stack(v)
     if "change_sse_zero" in out:
         arrays["change_sse_zero"] = out["change_sse_zero"]
     np.savez_compressed(os.path.join(out_dir, "thinning.npz"), **arrays)
-    # Headline per fraction: median change skill vs no_change, per predictor.
     summary = {}
     for name, v in out["change_sse"].items():
-        sk = [skill_from_sse(s, out["change_sse_zero"]) for s in v]
-        summary[name] = [float(np.nanmedian(s)) if np.isfinite(s).any() else None for s in sk]
-    return {"fractions": fracs, "n_train_rows": out["n_train_rows"],
+        sk = [skill_from_sse(s_, out["change_sse_zero"]) for s_ in v]
+        summary[name] = [float(np.nanmedian(s_)) if np.isfinite(s_).any() else None for s_ in sk]
+    return {"fractions": fracs, "n_train_rows": out["n_train_rows"], "change_set": change_set,
             "median_change_skill_vs_no_change": summary,
             "note": "per-species curves (skill vs remaining detections) are in thinning.npz"}
 
@@ -966,10 +1099,11 @@ def _print_summary(rep):
             print(f"  WARNING: {k} shape fit did not converge ({v['message']}); rerun with more "
                   "--shape-iters before reading its comparisons")
     for sec in ("change", "level"):
-        for k, v in rep[sec].items():
-            if "median" in v:
-                print(f"  {sec:6s} {k:32s} median {v['median']:+.3f}  "
-                      f"share>0 {v['share_above_zero']:.2f}")
+        for grp, pairs in rep[sec].items():
+            for k, v in pairs.items():
+                if "median" in v:
+                    print(f"  {sec:6s} {grp:10s} {k:34s} median {v['median']:+.3f}  "
+                          f"share>0 {v['share_above_zero']:.2f}")
 
 
 def main():

@@ -201,8 +201,16 @@ def _winsorize(v):
     return np.clip(v, lo, hi)
 
 
-def level_frame(H, base, species_tab):
-    """Long table of normalized level-error differences per (cell, decade, species). Pure."""
+def level_frame(H, base, species_tab, group=None):
+    """Long table of normalized level-error differences per (cell, decade, species). Pure.
+
+    ``group`` restricts to one held-out row group (``row_group`` code); in-sample rows (code 0)
+    are never scored."""
+    rg = H["row_group"] if "row_group" in H.files else np.ones(len(H["y"]), int)
+    sel = (rg == group) if group is not None else (rg > 0)
+    H = {k: (H[k][sel] if k in ("y", "keys", "block_id", "dist_to_train_km", "cov_novelty",
+                                "years_before_modern", "years_beyond_training_edge")
+                         or k.startswith("mean_") else H[k]) for k in H.files}
     y = H["y"].astype("float64")
     ed = (H["mean_desk"] - y) ** 2
     eb = (H[f"mean_{base}"] - y) ** 2
@@ -233,19 +241,22 @@ def level_frame(H, base, species_tab):
         "species": np.repeat(np.arange(n_sp), G),
         "dist_to_train_km": np.tile(gmean(H["dist_to_train_km"]), n_sp),
         "cov_novelty": np.tile(gmean(np.nan_to_num(H["cov_novelty"])), n_sp),
-        "years_before_modern": np.tile(gmean(H["years_before_modern"]), n_sp)})
+        "years_before_modern": np.tile(gmean(H["years_before_modern"]), n_sp),
+        "years_beyond_training_edge": np.tile(gmean(H.get("years_beyond_training_edge",
+                                                          np.zeros(len(y)))), n_sp)})
     for c in sp.columns:
         if c != "species_code":
             frame[c] = np.repeat(sp[c].to_numpy(), G)
     return frame
 
 
-def change_frame(H, base, species_tab, include=None):
+def change_frame(H, base, species_tab, sname, include=None):
     """Long table of normalized change-error differences per (change cell, species). Pure.
 
-    ``include`` (bool per species) restricts to a subset -- the resolvable species."""
+    ``sname`` is the change set; ``include`` (bool per species) restricts to a subset -- the
+    resolvable species."""
     y = H["y"].astype("float64")
-    er, mr = H["change_early_rows"], H["change_modern_rows"]
+    er, mr = H[f"change_early_rows_{sname}"], H[f"change_modern_rows_{sname}"]
     if len(er) == 0:
         return None
 
@@ -264,10 +275,11 @@ def change_frame(H, base, species_tab, include=None):
     G, n_sp = r.shape[0], len(sp)
     frame = pd.DataFrame({
         "response": r.T.ravel(), "weight": 1.0,
-        "block": np.tile(H["change_cell_block"], n_sp),
+        "block": np.tile(H[f"change_cell_block_{sname}"], n_sp),
         "species": np.repeat(np.arange(n_sp), G),
-        "dist_to_train_km": np.tile(H["change_cell_dist_km"], n_sp),
-        "cov_novelty": np.tile(np.nan_to_num(H["change_cell_novelty"]), n_sp)})
+        "dist_to_train_km": np.tile(H[f"change_cell_dist_km_{sname}"], n_sp),
+        "cov_novelty": np.tile(np.nan_to_num(H[f"change_cell_novelty_{sname}"]), n_sp),
+        "years_beyond_training_edge": np.tile(H[f"change_cell_reach_{sname}"], n_sp)})
     for c in sp.columns:
         if c != "species_code":
             frame[c] = np.repeat(sp[c].to_numpy(), G)
@@ -313,6 +325,9 @@ def thinning_curves(T, bins=DETECTION_BINS, noise=None):
         """Per FRACTION, the median over species in each remaining-detection bin. Each fraction is
         its own refit, so pooling fractions into one bin would mix different models."""
         b = np.digitize(det, bins[1:-1], right=False)
+        # A species with no remaining detections at a fraction is predicted by its training mean
+        # by EVERY model; its exact-zero skill says nothing and is left out.
+        sk = np.where(det > 0, sk, np.nan)
         res = []
         for f in range(sk.shape[0]):
             row = []
@@ -406,7 +421,7 @@ def split_half_change(y, early_rows, modern_rows, years=None):
     return np.stack(full), np.stack(da), np.stack(db)
 
 
-def change_noise_ceiling(H, n_boot=400, seed=0):
+def change_noise_ceiling(H, sname, n_boot=400, seed=0):
     """How much of observed per-species change is noise, and what share of the REAL change each
     predictor captures. ``(summary, per_species DataFrame)``. Pure given the inputs.
 
@@ -431,7 +446,7 @@ def change_noise_ceiling(H, n_boot=400, seed=0):
     ``captured`` values are left out of the pooled medians, not averaged in.
     """
     y = H["y"].astype("float64")
-    er, mr = H["change_early_rows"], H["change_modern_rows"]
+    er, mr = H[f"change_early_rows_{sname}"], H[f"change_modern_rows_{sname}"]
     years = H["keys"][:, 2] if "keys" in H.files else None
     d_full, d_a, d_b = split_half_change(y, er, mr, years)
     sq = d_full ** 2
@@ -472,7 +487,7 @@ def change_noise_ceiling(H, n_boot=400, seed=0):
                                        / max(np.sum(np.where(resolvable, avail, 0)), 1e-300))}
     ok = ms_obs > 0
     summary = {
-        "n_cells": int(nc), "n_species_with_change": int(ok.sum()),
+        "set": sname, "n_cells": int(nc), "n_species_with_change": int(ok.sum()),
         "n_resolvable": int(resolvable.sum()),
         "median_signal_share": float(np.nanmedian(share[ok])),
         "signal_share_quartiles": [float(np.nanquantile(share[ok], q)) for q in (0.25, 0.75)],
@@ -495,26 +510,32 @@ CHANGE_EXTRAP = ["dist_to_train_km", "cov_novelty"]
 
 
 def run_noise(gp_dir):
-    """The observation-noise read alone: no AVONET, no regressions, seconds to run."""
+    """The observation-noise read alone, per change set: no AVONET, no regressions, seconds."""
     H = np.load(os.path.join(gp_dir, "heldout_predictions.npz"), allow_pickle=True)
-    summary, tab = change_noise_ceiling(H)
-    tab.to_csv(os.path.join(gp_dir, "change_noise_per_species.csv"), index=False)
+    out = {}
+    for sname in [str(x) for x in H["change_set_names"]]:
+        summary, tab = change_noise_ceiling(H, sname)
+        out[sname] = summary
+        tab.to_csv(os.path.join(gp_dir, f"change_noise_per_species_{sname}.csv"), index=False)
+        print(f"\n[gp-noise] set {sname}: {summary['n_cells']} change cells, "
+              f"{summary['n_species_with_change']} species with observed change, "
+              f"{summary['n_resolvable']} resolvable above noise")
+        print(f"  signal share of observed squared change: median "
+              f"{summary['median_signal_share']:+.3f} (IQR "
+              f"{summary['signal_share_quartiles'][0]:+.3f}.."
+              f"{summary['signal_share_quartiles'][1]:+.3f}), pooled "
+              f"{summary['pooled_signal_share']:+.3f}")
+        print(f"  ceiling change skill (resolvable species, median): "
+              f"{summary['median_ceiling_skill_resolvable']}")
+        print("  share of AVAILABLE change captured (resolvable species): median / share>0 / "
+              "pooled")
+        for p, v in summary["captured_share_of_available_signal"].items():
+            if v["median"] is not None:
+                print(f"    {p:22s} {v['median']:+.3f}   {v['share_above_zero']:.2f}   "
+                      f"{v['pooled']:+.3f}")
     with open(os.path.join(gp_dir, "change_noise.json"), "w", encoding="utf-8") as fh:
-        json.dump(summary, fh, indent=2)
-    print(f"[gp-noise] {summary['n_cells']} change cells, {summary['n_species_with_change']} "
-          f"species with observed change, {summary['n_resolvable']} resolvable above noise")
-    print(f"  signal share of observed squared change: median "
-          f"{summary['median_signal_share']:+.3f} (IQR {summary['signal_share_quartiles'][0]:+.3f}"
-          f"..{summary['signal_share_quartiles'][1]:+.3f}), pooled "
-          f"{summary['pooled_signal_share']:+.3f}")
-    print(f"  ceiling change skill (resolvable species, median): "
-          f"{summary['median_ceiling_skill_resolvable']}")
-    print("  share of AVAILABLE change captured (resolvable species): median / share>0 / pooled")
-    for p, v in summary["captured_share_of_available_signal"].items():
-        if v["median"] is not None:
-            print(f"    {p:14s} {v['median']:+.3f}   {v['share_above_zero']:.2f}   "
-                  f"{v['pooled']:+.3f}")
-    return summary
+        json.dump(out, fh, indent=2)
+    return out
 
 
 def run(gp_dir, datasets_root=None):
@@ -536,27 +557,39 @@ def run(gp_dir, datasets_root=None):
     H = np.load(os.path.join(gp_dir, "heldout_predictions.npz"), allow_pickle=True)
     stab = tab.drop(columns=[c for c in tab.columns if c.startswith(("change_skill", "level_skill",
                                                                      "direction_skill", "lpd_"))])
-    noise_tab = None
-    if len(H["change_early_rows"]):
-        rep["change_noise"], noise_tab = change_noise_ceiling(H)
-    resolvable = (None if noise_tab is None else noise_tab["resolvable"].to_numpy(bool))
     bases = [b for b in ("no_change", "spacetime", "covariate") if f"mean_{b}" in H.files]
-    for base in bases:
-        lf = level_frame(H, base, stab)
-        rep["level"][f"desk_vs_{base}"] = {
-            "main": fit_regression(lf, SPECIES_COLS + ["migratory"], LEVEL_EXTRAP)}
-        # Urban tolerance exists for a subset only, so it gets its own fit on that subset rather
-        # than shrinking the main one to it.
-        if "urban_tolerance" in lf:
-            rep["level"][f"desk_vs_{base}"]["with_urban"] = fit_regression(
-                lf, SPECIES_COLS + ["urban_tolerance"], LEVEL_EXTRAP)
-        cf = change_frame(H, base, stab, include=resolvable)
-        if cf is not None:
-            rep["change"][f"desk_vs_{base}"] = {
-                "main": fit_regression(cf, SPECIES_COLS + ["migratory"], CHANGE_EXTRAP)}
+    groups = {1: "space", 2: "time", 3: "space_time"}
+    rg = H["row_group"]
+    for g, gname in groups.items():
+        if not (rg == g).any():
+            continue
+        extrap = LEVEL_EXTRAP + (["years_beyond_training_edge"] if g in (2, 3) else [])
+        for base in bases:
+            lf = level_frame(H, base, stab, group=g)
+            fits = {"main": fit_regression(lf, SPECIES_COLS + ["migratory"], extrap)}
+            # Urban tolerance exists for a subset only, so it gets its own fit on that subset
+            # rather than shrinking the main one to it.
+            if "urban_tolerance" in lf:
+                fits["with_urban"] = fit_regression(lf, SPECIES_COLS + ["urban_tolerance"],
+                                                    extrap)
+            rep["level"][f"{gname}: desk_vs_{base}"] = fits
+    noise_by_set = {}
+    for sname in [str(x) for x in H["change_set_names"]]:
+        summary, ntab = change_noise_ceiling(H, sname)
+        rep.setdefault("change_noise", {})[sname] = summary
+        noise_by_set[sname] = ntab
+        resolvable = ntab["resolvable"].to_numpy(bool)
+        extrap = CHANGE_EXTRAP + (["years_beyond_training_edge"] if sname != "space" else [])
+        for base in bases:
+            cf = change_frame(H, base, stab, sname, include=resolvable)
+            if cf is not None:
+                rep["change"][f"{sname}: desk_vs_{base}"] = {
+                    "main": fit_regression(cf, SPECIES_COLS + ["migratory"], extrap)}
     tp = os.path.join(gp_dir, "thinning.npz")
     if os.path.exists(tp):
-        rep["thinning_curves"] = thinning_curves(np.load(tp), noise=noise_tab)
+        T = np.load(tp)
+        tset = str(T["change_set"]) if "change_set" in T.files else None
+        rep["thinning_curves"] = thinning_curves(T, noise=noise_by_set.get(tset))
     with open(os.path.join(gp_dir, "analysis.json"), "w", encoding="utf-8") as fh:
         json.dump(rep, fh, indent=2)
     _print(rep)
@@ -591,6 +624,54 @@ def _print(rep):
                 print(f"      f={f:<5g} {r}")
 
 
+#: The comparisons the summary prints, in reading order. Everything else is in report.json.
+KEY_PAIRS = ("desk_vs_no_change", "desk_raw_vs_no_change_raw", "desk_vs_spacetime",
+             "desk_vs_covariate", "desk_raw_vs_covariate_raw", "desk_pooled_vs_spacetime_pooled",
+             "desk_vs_esk_oracle", "spacetime_vs_no_change", "covariate_vs_no_change")
+
+
+def summarize(gp_dir):
+    """Print the headline numbers of a finished run, per held-out group and change set."""
+    with open(os.path.join(gp_dir, "report.json"), encoding="utf-8") as fh:
+        r = json.load(fh)
+    f = lambda v: "  n/a " if v is None else f"{v:+.3f}"
+    print(f"run {r['run_dir']}\nwithheld years: {r.get('withheld_years') or 'none'}  "
+          f"(common {r.get('common_holdout_years') or 'none'}); buffer: {r.get('buffer')}")
+    print("rows:", r["rows"], "| dropped species:", r["dropped_zero_training_detections"]["n"])
+    for k, v in r.get("baseline_shapes", {}).items():
+        print(f"  shape {k:14s} converged={v['converged']}  at_bound={v.get('at_bound')}  "
+              f"lengthscales[:4]={[round(x, 2) for x in v['lengthscales'][:4]]}")
+    p = r["primary"]
+    print("\nPRIMARY:", p.get("metric", p.get("note")))
+    if "median" in p:
+        print(f"  median {f(p['median'])} CI [{f(p['median_ci'][0])}, {f(p['median_ci'][1])}]  "
+              f"share>0 {p['share_above_zero']:.2f}  ({p['n_species_defined']} species)")
+    for sec in ("change", "level"):
+        for grp, pairs in r[sec].items():
+            print(f"\n{sec.upper()} -- {grp}   (median skill [CI]  share>0  n)")
+            for k in KEY_PAIRS:
+                v = pairs.get(k)
+                if v and "median" in v:
+                    print(f"  {k:34s} {f(v['median'])} [{f(v['median_ci'][0])}, "
+                          f"{f(v['median_ci'][1])}]  {v['share_above_zero']:.2f}  "
+                          f"{v['n_species_defined']}")
+    npath = os.path.join(gp_dir, "change_noise.json")
+    if os.path.exists(npath):
+        with open(npath, encoding="utf-8") as fh:
+            nz = json.load(fh)
+        nz = nz if "set" not in nz else {nz["set"]: nz}
+        for sname, v in nz.items():
+            print(f"\nNOISE -- {sname}: signal share median {v['median_signal_share']:+.3f}, "
+                  f"{v['n_resolvable']} resolvable; captured share of available change "
+                  "(median / share>0 / pooled):")
+            for k, c in v["captured_share_of_available_signal"].items():
+                if c["median"] is not None and not k.endswith(("_k8", "_k4")):
+                    print(f"  {k:22s} {c['median']:+.3f}  {c['share_above_zero']:.2f}  "
+                          f"{c['pooled']:+.3f}")
+    else:
+        print("\n(no change_noise.json yet: run with --noise-only)")
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -598,8 +679,12 @@ def main():
     ap.add_argument("--datasets-root", default=None, help="default: data_config datasets_root")
     ap.add_argument("--noise-only", action="store_true",
                     help="only the split-half observation-noise read (seconds; no AVONET)")
+    ap.add_argument("--summary", action="store_true",
+                    help="print the headline numbers of a finished run and exit")
     args = ap.parse_args()
-    if args.noise_only:
+    if args.summary:
+        summarize(args.gp_dir)
+    elif args.noise_only:
         run_noise(args.gp_dir)
     else:
         run(args.gp_dir, args.datasets_root)

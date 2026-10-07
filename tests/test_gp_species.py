@@ -193,10 +193,31 @@ def test_row_splits_follow_holdout_buffer_and_block_tiling():
     bf = np.zeros_like(ho)
     bf[0:6, 5] = True
     keys = np.array([[1, 7, 2000], [1, 5, 2000], [8, 1, 2000], [2, 8, 1970]])
-    tr, te, bid = row_splits(keys, ho, bf, 6, test_years=(2000,))
-    assert te.tolist() == [True, False, False, False]      # 1970 not in the common years
+    tr, grp, bid = row_splits(keys, ho, bf, 6)
+    assert grp.tolist() == [1, 0, 0, 1]                    # no withheld years: space only
     assert tr.tolist() == [False, False, True, False]      # buffer and held-out excluded
     assert bid[0] == bid[3] and bid[0] != bid[2]
+
+
+def test_row_splits_withhold_years_from_training_everywhere():
+    # The tempho leak: a withheld year must leave TRAINING in every cell, and be scored as
+    # time (training cells) or space_time (held-out cells).
+    ho = np.zeros((12, 12), bool)
+    ho[0:6, 6:12] = True
+    keys = np.array([[8, 1, 1970], [8, 1, 2000], [1, 7, 1970], [1, 7, 2000], [8, 1, 1980]])
+    tr, grp, _ = row_splits(keys, ho, None, 6, withheld_years=range(1966, 1986),
+                            common_years=range(1966, 1976))
+    assert tr.tolist() == [False, True, False, False, False]
+    assert grp.tolist() == [2, 0, 3, 1, 0]                 # 1980: withheld, outside common
+
+
+def test_change_sets_pair_the_right_epochs():
+    from src.community_encoder.train_DESK.validate_gp_species import change_sets
+    tk = np.array([[0, 0, 1970], [0, 0, 2010], [1, 1, 1970], [1, 1, 2010]])
+    g = np.array([3, 1, 2, 0])
+    sets = change_sets(tk, g, withheld=[1970])
+    assert sets["space_time"].tolist() == [0, 1] and sets["time"].tolist() == [2, 3]
+    assert "space" in change_sets(tk, np.array([1, 1, 0, 0]), withheld=[])
 
 
 def test_no_change_z_is_cell_mean_over_modern_epoch_and_skips_nan():
@@ -228,7 +249,7 @@ def test_layout_refuses_focal_species_inside_the_community():
 
 # ----------------------------- end to end, with I/O mocked -----------------------------
 
-def _synthetic_run(tmp_path, monkeypatch):
+def _synthetic_run(tmp_path, monkeypatch, withheld=(), common=()):
     """The orchestration in ``run`` -- splits, encode bookkeeping, every predictor, the report
     and the saved tables -- on a synthetic grid where half the species are readouts of z."""
     from src.community_encoder.train_DESK import validate_bbs_routes as vbr
@@ -285,7 +306,9 @@ def _synthetic_run(tmp_path, monkeypatch):
         return (c, c + 0.01) if both else c
     monkeypatch.setattr(vgs, "covariates_for_keys", _cov)
     cfg = {"paths": {"desk_output_dir": str(run_dir)},
-           "desk": {"z_dir": "unused", "trend": {"block_cells": 6}}}
+           "desk": {"z_dir": "unused", "trend": {"block_cells": 6,
+                                                 "holdout_years": list(withheld),
+                                                 "common_holdout_years": list(common)}}}
     rep = vgs.run(cfg, out_dir=str(tmp_path / "out"), n_boot=50,
                   opts={"cell_km": 27.0, "n_fit": 400, "shape_iters": 15, "k_nn": (16, 4),
                         "k_max": 800, "thin": (0.3,)})
@@ -295,29 +318,33 @@ def _synthetic_run(tmp_path, monkeypatch):
 def test_run_end_to_end_on_a_synthetic_grid(tmp_path, monkeypatch):
     rep, n_ev, ho, keys = _synthetic_run(tmp_path, monkeypatch)
     assert rep["dropped_zero_training_detections"]["species"] == ["heldonly"]
+    lv = rep["level"]["space"]
     for name in ("desk_pooled", "spacetime_pooled", "covariate_pooled", "desk_raw_pooled"):
-        assert f"{name}_vs_no_change" in rep["change"] or f"{name}_vs_intercept" in rep["level"]
-    assert "desk_pooled_vs_spacetime_pooled" in rep["level"]
+        assert f"{name}_vs_intercept" in lv
+    assert "desk_pooled_vs_spacetime_pooled" in lv
+    assert set(rep["level"]) == {"space"} and set(rep["change"]) == {"space"}
 
-    assert rep["rows"]["heldout"] == int(ho[keys[:, 0], keys[:, 1]].sum())
+    assert rep["rows"]["space"] == int(ho[keys[:, 0], keys[:, 1]].sum())
+    assert rep["primary"]["set"] == "space"
     assert rep["primary"]["n_species_defined"] == n_ev
     assert 0.3 <= rep["primary"]["share_above_zero"] <= 0.7    # half the species are blind
-    assert rep["direction"]["no_change"]["n_abstained"] == n_ev
+    assert rep["direction"]["space"]["no_change"]["n_abstained"] == n_ev
     import pandas as pd
     tab = pd.read_csv(tmp_path / "out" / "per_species.csv")
-    sk = tab["change_skill_desk_vs_no_change"].to_numpy()
+    sk = tab["change_skill_space_desk_vs_no_change"].to_numpy()
     assert (sk[: n_ev // 2] > 0.3).all() and (sk[n_ev // 2:] < 0.1).all()
     saved = np.load(tmp_path / "out" / "heldout_predictions.npz", allow_pickle=True)
-    assert saved["mean_desk"].shape == (rep["rows"]["heldout"], n_ev)
+    n_pred = rep["rows"]["predicted"]
+    assert saved["mean_desk"].shape == (n_pred, n_ev)
     for name in ("spacetime", "covariate", "spacetime_k4", "covariate_k4", "desk_raw",
                  "no_change_raw", "covariate_raw"):
-        assert saved[f"mean_{name}"].shape == (rep["rows"]["heldout"], n_ev)
+        assert saved[f"mean_{name}"].shape == (n_pred, n_ev)
     assert np.isfinite(saved["cov_novelty"]).all() and (saved["dist_to_train_km"] > 0).all()
     # desk beats both baselines on change for the z-driven species: they cannot see the drift
     for b in ("spacetime", "covariate"):
-        skb = tab[f"change_skill_desk_vs_{b}"].to_numpy()
+        skb = tab[f"change_skill_space_desk_vs_{b}"].to_numpy()
         assert (skb[: n_ev // 2] > 0).all()
-    assert "desk_raw_vs_no_change_raw" in rep["level"] and "desk_vs_desk_raw" in rep["level"]
+    assert "desk_raw_vs_no_change_raw" in lv and "desk_vs_desk_raw" in lv
     th = np.load(tmp_path / "out" / "thinning.npz")
     assert "level_sse_covariate_raw" not in th.files       # raw covariate arm: main run only
     assert th["level_sse_desk"].shape == (2, n_ev)
@@ -523,9 +550,9 @@ def test_analysis_runs_on_the_synthetic_outputs(tmp_path, monkeypatch):
     monkeypatch.setattr(ga, "species_similarity", lambda e, c, d: sim)
     res = ga.run(str(out), datasets_root="unused")
     for base in ("no_change", "spacetime", "covariate"):
-        m = res["level"][f"desk_vs_{base}"]["main"]
+        m = res["level"][f"space: desk_vs_{base}"]["main"]
         assert "coefficients" in m or "note" in m
-    m = res["level"]["desk_vs_spacetime"]["main"]
+    m = res["level"]["space: desk_vs_spacetime"]["main"]
     assert "dist_to_train_km x cooc_max" in m["coefficients"]
     tc = res["thinning_curves"]
     assert set(tc["change"]) >= {"desk", "spacetime", "covariate"}
@@ -549,8 +576,8 @@ def _noise_fixture(n_cells=400, S=3, years=8, sig=(1.0, 0.3, 0.0), noise=0.5, se
         y.append(true[c] + rng.normal(size=(years, S)) * noise)
         perfect.append(np.zeros((years, S))); perfect.append(np.tile(true[c], (years, 1)))
     H = {"y": np.concatenate(y), "species": np.array(["a", "b", "c"]),
-         "change_early_rows": np.array(e_rows, dtype=object),
-         "change_modern_rows": np.array(m_rows, dtype=object),
+         "change_early_rows_s": np.array(e_rows, dtype=object),
+         "change_modern_rows_s": np.array(m_rows, dtype=object),
          "mean_perfect": np.concatenate(perfect),
          "mean_no_change": np.zeros((r, S))}
 
@@ -562,7 +589,7 @@ def _noise_fixture(n_cells=400, S=3, years=8, sig=(1.0, 0.3, 0.0), noise=0.5, se
 def test_noise_ceiling_recovers_the_planted_noise_and_signal():
     from src.community_encoder.train_DESK.gp_species_analysis import change_noise_ceiling
     H, true, noise, years = _noise_fixture()
-    summ, tab = change_noise_ceiling(H, n_boot=200)
+    summ, tab = change_noise_ceiling(H, "s", n_boot=200)
     expected_noise = 2 * noise ** 2 / years          # var of a difference of two epoch means
     np.testing.assert_allclose(tab["noise_change"], expected_noise, rtol=0.2)
     # species 0: large real change, resolvable; species 2: none, not resolvable
@@ -579,7 +606,7 @@ def test_noise_ceiling_recovers_the_planted_noise_and_signal():
 def test_noise_ceiling_on_pure_noise_resolves_nothing():
     from src.community_encoder.train_DESK.gp_species_analysis import change_noise_ceiling
     H, _, _, _ = _noise_fixture(sig=(0.0, 0.0, 0.0), seed=3)
-    summ, tab = change_noise_ceiling(H, n_boot=200)
+    summ, tab = change_noise_ceiling(H, "s", n_boot=200)
     assert summ["n_resolvable"] == 0
     assert abs(summ["pooled_signal_share"]) < 0.1
 
@@ -636,10 +663,12 @@ def test_regression_scale_is_data_side_so_a_perfect_baseline_cannot_blow_it_up()
     y = np.zeros((n, 2))
     y[:5, 0] = 1.0                                        # rare species: five detections
     y[:, 1] = rng.normal(size=n)
-    H = {"y": y, "mean_desk": y + 0.1, "mean_base": y.copy(),   # baseline is PERFECT
-         "keys": np.column_stack([np.arange(n) % 20, np.arange(n) // 20, np.full(n, 2000)]),
-         "block_id": np.arange(n) % 4, "dist_to_train_km": np.ones(n),
-         "cov_novelty": np.ones(n), "years_before_modern": np.ones(n)}
+    class _N(dict):
+        files = property(lambda self: list(self.keys()))
+    H = _N(y=y, mean_desk=y + 0.1, mean_base=y.copy(),          # baseline is PERFECT
+           keys=np.column_stack([np.arange(n) % 20, np.arange(n) // 20, np.full(n, 2000)]),
+           block_id=np.arange(n) % 4, dist_to_train_km=np.ones(n), row_group=np.ones(n, int),
+           cov_novelty=np.ones(n), years_before_modern=np.ones(n))
     f = level_frame(H, "base", pd.DataFrame({"species_code": ["a", "b"]}))
     assert np.isfinite(f["response"]).all() and f["response"].abs().max() < 1.0
 
@@ -749,3 +778,41 @@ def test_fit_is_scale_equivariant_down_to_rare_species_units():
         else:
             np.testing.assert_allclose(m["s2"], ref["s2"] * c ** 2, rtol=1e-3)
             np.testing.assert_allclose(m["n2"], ref["n2"] * c ** 2, rtol=1e-3)
+
+
+def test_run_end_to_end_with_withheld_early_decades(tmp_path, monkeypatch):
+    """The tempho design: early years withheld from EVERY cell. All three groups must be scored,
+    and no withheld year may reach any fit."""
+    import json
+    from src.community_encoder.train_DESK import gp_kernels as gk
+    seen = []
+    real_fit = gk.fit
+
+    def spy_fit(Z, Y, pool=False):
+        seen.append(len(Z))
+        return real_fit(Z, Y, pool)
+    monkeypatch.setattr(gk, "fit", spy_fit)
+    rep, n_ev, ho, keys = _synthetic_run(tmp_path, monkeypatch,
+                                         withheld=range(1966, 1986), common=range(1966, 1976))
+    assert set(rep["level"]) == {"space", "time", "space_time"}
+    assert set(rep["change"]) == {"space_time", "time"}
+    assert rep["primary"]["set"] == "space_time"
+    # every fit saw only training rows: held-out cells, buffer, and withheld years excluded
+    trainable = (~ho[keys[:, 0], keys[:, 1]]) & ~np.isin(keys[:, 2], range(1966, 1986))
+    assert max(seen) <= int(trainable.sum())
+    saved = np.load(tmp_path / "out" / "heldout_predictions.npz", allow_pickle=True)
+    g = saved["row_group"]
+    yrs = saved["keys"][:, 2]
+    assert (yrs[g == 2] < 1976).all() and (yrs[g == 3] < 1976).all()
+    assert (saved["years_beyond_training_edge"][g == 2] >= 11).all()   # 1975 is 11 yr past 1986
+
+
+def test_summary_and_noise_run_on_tempho_outputs(tmp_path, monkeypatch, capsys):
+    from src.community_encoder.train_DESK import gp_species_analysis as ga
+    _synthetic_run(tmp_path, monkeypatch, withheld=range(1966, 1986), common=range(1966, 1976))
+    out = str(tmp_path / "out")
+    noise = ga.run_noise(out)
+    assert set(noise) == {"space_time", "time"}
+    ga.summarize(out)
+    printed = capsys.readouterr().out
+    assert "PRIMARY" in printed and "CHANGE -- time" in printed and "NOISE -- space_time" in printed

@@ -16,10 +16,14 @@ THREE PRODUCTS
    baseline, per (held-out cell, decade, species) for level and per (change cell, species) for
    change::
 
-       r = (err_desk^2 - err_base^2) / MSE_base(species)          negative = desk better
+       r = (err_desk^2 - err_base^2) / scale(species)          negative = desk better
 
-   Its species mean is ``MSE_desk/MSE_base - 1``, so it is the per-row decomposition of the same
-   quantity the skill reports. Regressors are the species covariates, the extrapolation degrees
+   ``scale`` is the species' held-out variance for level and its mean squared observed change for
+   change -- properties of the DATA, identical for every baseline. The first run divided by the
+   baseline's own MSE, which is near zero for a rare species a baseline predicts as all zeros and
+   put coefficients in the thousands; a data-side scale cannot do that. Change regressions use
+   RESOLVABLE species only (real change distinguishable from noise, ``change_noise_ceiling``),
+   the population the captured-share metric is read on. Regressors are the species covariates, the extrapolation degrees
    (distance to the nearest training cell, covariate novelty, years before the modern epoch), and
    extrapolation x {similarity, data} interactions -- the question being whether desk's advantage
    grows or shrinks as extrapolation gets harder, and whether that depends on the species.
@@ -202,9 +206,9 @@ def level_frame(H, base, species_tab):
     y = H["y"].astype("float64")
     ed = (H["mean_desk"] - y) ** 2
     eb = (H[f"mean_{base}"] - y) ** 2
-    mse_b = eb.mean(0)
-    keep = mse_b > 0
-    r = (ed[:, keep] - eb[:, keep]) / mse_b[keep]
+    scale = y.var(0)
+    keep = scale > 0
+    r = (ed[:, keep] - eb[:, keep]) / scale[keep]
     keys = H["keys"]
     decade = (keys[:, 2] // 10) * 10
     grp = pd.DataFrame({"r": keys[:, 0], "c": keys[:, 1], "dec": decade})
@@ -236,8 +240,10 @@ def level_frame(H, base, species_tab):
     return frame
 
 
-def change_frame(H, base, species_tab):
-    """Long table of normalized change-error differences per (change cell, species). Pure."""
+def change_frame(H, base, species_tab, include=None):
+    """Long table of normalized change-error differences per (change cell, species). Pure.
+
+    ``include`` (bool per species) restricts to a subset -- the resolvable species."""
     y = H["y"].astype("float64")
     er, mr = H["change_early_rows"], H["change_modern_rows"]
     if len(er) == 0:
@@ -249,9 +255,11 @@ def change_frame(H, base, species_tab):
     d_obs = delta(y)
     ed = (delta(H["mean_desk"].astype("float64")) - d_obs) ** 2
     eb = (delta(H[f"mean_{base}"].astype("float64")) - d_obs) ** 2
-    mse_b = eb.mean(0)
-    keep = mse_b > 0
-    r = (ed[:, keep] - eb[:, keep]) / mse_b[keep]
+    scale = (d_obs ** 2).mean(0)
+    keep = scale > 0
+    if include is not None:
+        keep &= np.asarray(include, bool)
+    r = (ed[:, keep] - eb[:, keep]) / scale[keep]
     sp = species_tab.loc[keep].reset_index(drop=True)
     G, n_sp = r.shape[0], len(sp)
     frame = pd.DataFrame({
@@ -280,18 +288,20 @@ def fit_regression(frame, species_cols, extrap_cols):
             "n_blocks": int(f["block"].nunique()), "clusters": res["n_clusters"],
             "coefficients": {n: {"beta": float(b), "se": float(s), "t": float(tt)}
                              for n, b, s, tt in zip(names, res["beta"], res["se"], t)},
-            "note": ("response is (err_desk^2 - err_base^2)/MSE_base: NEGATIVE coefficients mean "
+            "note": ("response is (err_desk^2 - err_base^2)/scale: NEGATIVE coefficients mean "
                      "desk gains on the baseline as the regressor rises. Regressors are "
                      "standardized (per SD).")}
 
 
 # ----------------------------- thinning -----------------------------
 
-def thinning_curves(T, bins=DETECTION_BINS):
+def thinning_curves(T, bins=DETECTION_BINS, noise=None):
     """Median per-species skill by remaining-detection bin, per predictor and fraction. Pure.
 
     Change skill is against no_change (zero predicted change, so the reference needs no refit);
-    level skill is against the intercept refitted at the same fraction.
+    level skill is against the intercept refitted at the same fraction. Given ``noise`` -- the
+    ``change_noise_ceiling`` per-species table, in the same species order -- also the CAPTURED
+    share of available change on resolvable species, the metric the change result is read on.
     """
     det = T["n_train_detections"]                                     # (F, S)
     preds = sorted({k.split("_sse_", 1)[1] for k in T.files if "_sse_" in k} - {"zero"})
@@ -300,11 +310,16 @@ def thinning_curves(T, bins=DETECTION_BINS):
     out = {"bins": labels, "fractions": T["fractions"].tolist(), "change": {}, "level": {}}
 
     def _bin_medians(sk):
+        """Per FRACTION, the median over species in each remaining-detection bin. Each fraction is
+        its own refit, so pooling fractions into one bin would mix different models."""
         b = np.digitize(det, bins[1:-1], right=False)
         res = []
-        for k in range(len(labels)):
-            v = sk[(b == k) & np.isfinite(sk)]
-            res.append({"median": float(np.median(v)) if len(v) else None, "n": int(len(v))})
+        for f in range(sk.shape[0]):
+            row = []
+            for k in range(len(labels)):
+                v = sk[f][(b[f] == k) & np.isfinite(sk[f])]
+                row.append({"median": float(np.median(v)) if len(v) else None, "n": int(len(v))})
+            res.append(row)
         return res
 
     if "change_sse_zero" in T.files:
@@ -314,6 +329,21 @@ def thinning_curves(T, bins=DETECTION_BINS):
                 with np.errstate(invalid="ignore", divide="ignore"):
                     sk = np.where(z > 0, 1 - np.sqrt(T[f"change_sse_{p}"] / z), np.nan)
                 out["change"][p] = _bin_medians(sk)
+    if noise is not None and "change_sse_zero" in T.files:
+        z = T["change_sse_zero"]
+        n_cells = np.where(noise["ms_obs_change"].to_numpy() > 0,
+                           z / np.maximum(noise["ms_obs_change"].to_numpy(), 1e-300), 0)
+        avail = z - noise["noise_change"].to_numpy() * n_cells
+        res = noise["resolvable"].to_numpy(bool)
+        out["captured"] = {}
+        for p in preds:
+            if f"change_sse_{p}" in T.files:
+                with np.errstate(invalid="ignore", divide="ignore"):
+                    c = np.where(res[None, :], (z[None, :] - T[f"change_sse_{p}"]) / avail, np.nan)
+                pooled = [float(np.nansum(np.where(res, z - row, 0))
+                                / max(np.sum(np.where(res, avail, 0)), 1e-300))
+                          for row in T[f"change_sse_{p}"]]
+                out["captured"][p] = {"by_detection_bin": _bin_medians(c), "pooled": pooled}
     if "level_sse_intercept" in T.files:
         ref = T["level_sse_intercept"]
         for p in preds:
@@ -506,6 +536,10 @@ def run(gp_dir, datasets_root=None):
     H = np.load(os.path.join(gp_dir, "heldout_predictions.npz"), allow_pickle=True)
     stab = tab.drop(columns=[c for c in tab.columns if c.startswith(("change_skill", "level_skill",
                                                                      "direction_skill", "lpd_"))])
+    noise_tab = None
+    if len(H["change_early_rows"]):
+        rep["change_noise"], noise_tab = change_noise_ceiling(H)
+    resolvable = (None if noise_tab is None else noise_tab["resolvable"].to_numpy(bool))
     bases = [b for b in ("no_change", "spacetime", "covariate") if f"mean_{b}" in H.files]
     for base in bases:
         lf = level_frame(H, base, stab)
@@ -516,15 +550,13 @@ def run(gp_dir, datasets_root=None):
         if "urban_tolerance" in lf:
             rep["level"][f"desk_vs_{base}"]["with_urban"] = fit_regression(
                 lf, SPECIES_COLS + ["urban_tolerance"], LEVEL_EXTRAP)
-        cf = change_frame(H, base, stab)
+        cf = change_frame(H, base, stab, include=resolvable)
         if cf is not None:
             rep["change"][f"desk_vs_{base}"] = {
                 "main": fit_regression(cf, SPECIES_COLS + ["migratory"], CHANGE_EXTRAP)}
-    if len(H["change_early_rows"]):
-        rep["change_noise"] = change_noise_ceiling(H)[0]
     tp = os.path.join(gp_dir, "thinning.npz")
     if os.path.exists(tp):
-        rep["thinning_curves"] = thinning_curves(np.load(tp))
+        rep["thinning_curves"] = thinning_curves(np.load(tp), noise=noise_tab)
     with open(os.path.join(gp_dir, "analysis.json"), "w", encoding="utf-8") as fh:
         json.dump(rep, fh, indent=2)
     _print(rep)
@@ -543,6 +575,20 @@ def _print(rep):
             for n, c in m["coefficients"].items():
                 flag = " *" if abs(c["t"]) > 2 else ""
                 print(f"    {n:44s} {c['beta']:+.4f}  se {c['se']:.4f}  t {c['t']:+.2f}{flag}")
+    cap = (rep.get("thinning_curves") or {}).get("captured")
+    if cap:
+        tc = rep["thinning_curves"]
+        print(f"\n[gp-analysis] thinning: POOLED share of available change captured, resolvable "
+              f"species, by training fraction {tc['fractions']}")
+        for p, v in cap.items():
+            print(f"    {p:14s} {['%+.3f' % x for x in v['pooled']]}")
+        print(f"  median captured by remaining-detection bin {tc['bins']}, per fraction:")
+        for p, v in cap.items():
+            row = ["  ".join("   .  " if b["median"] is None else f"{b['median']:+.3f}"
+                             for b in frac) for frac in v["by_detection_bin"]]
+            print(f"    {p}")
+            for f, r in zip(tc["fractions"], row):
+                print(f"      f={f:<5g} {r}")
 
 
 def main():

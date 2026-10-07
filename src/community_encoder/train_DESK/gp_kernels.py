@@ -265,23 +265,31 @@ def _scales_given_shape(K, Yc):
     return Q, np.clip(lam, 0.0, None), U, hp
 
 
-def fit_shared_shape(kind, F, Y, theta0, n_iter=80, lr=0.05, verbose=True):
+def fit_shared_shape(kind, F, Y, theta0, n_iter=400, verbose=True):
     """Fit the shared lengthscales and every species' (s^2, sigma^2). Returns the shape fit.
 
     ``F (n, d)`` are the fitting rows' inputs (a subsample of training rows: this is an n x n
-    eigendecomposition per iteration), ``Y (n, S)`` log1p abundance. Adam on log-lengthscales
-    with the envelope gradient described above.
+    eigendecomposition per evaluation), ``Y (n, S)`` log1p abundance.
+
+    L-BFGS-B on the log-lengthscales, minimizing the summed NLL with every species' scales
+    PROFILED out, with the envelope gradient described above. Not Adam: the first run used Adam
+    at a fixed step for a fixed 80 iterations, and it creeps along flat ridges indefinitely (a
+    lengthscale heading for infinity, an ARD dimension that barely matters), so the covariate GP's
+    30-odd lengthscales were still moving when it stopped. L-BFGS-B has a real convergence test
+    (projected gradient and relative objective change) and reports whether it met it, which
+    ``converged`` records. ``n_iter`` caps L-BFGS iterations.
     """
     import torch
+    from scipy.optimize import minimize as _minimize
     kern = KERNELS[kind]
     Ft = torch.as_tensor(np.asarray(F, "float64"))
     Y = np.asarray(Y, "float64")
     ybar = Y.mean(0)
     Yc = Y - ybar
-    theta = torch.tensor(np.asarray(theta0, "float64"), requires_grad=True)
-    opt = torch.optim.Adam([theta], lr=lr)
     trace = []
-    for it in range(int(n_iter)):
+
+    def f(th):
+        theta = torch.tensor(th, requires_grad=True)
         with torch.no_grad():
             K = kern(Ft, Ft, theta).numpy()
         Q, lam, U, hp = _scales_given_shape(K, Yc)
@@ -289,24 +297,29 @@ def fit_shared_shape(kind, F, Y, theta0, n_iter=80, lr=0.05, verbose=True):
         s2, n2 = hp["s2"][live], hp["n2"][live]
         D = s2[None, :] * lam[:, None] + n2[None, :]                     # (n, S_live)
         A = U[:, live] / D                                               # a_s in the eigenbasis
-        diag = (s2[None, :] / D).sum(1)
-        B = (A * s2[None, :]) @ A.T
-        M = Q @ (np.diag(diag) - B) @ Q.T
+        M = Q @ (np.diag((s2[None, :] / D).sum(1)) - (A * s2[None, :]) @ A.T) @ Q.T
+        (0.5 * (torch.as_tensor(M) * kern(Ft, Ft, theta)).sum()).backward()
         total = float(np.nansum(hp["nll"]))
         trace.append(total)
-        opt.zero_grad()
-        surrogate = 0.5 * (torch.as_tensor(M) * kern(Ft, Ft, theta)).sum()
-        surrogate.backward()
-        opt.step()
-        with torch.no_grad():
-            theta.clamp_(-8.0, 12.0)
-        if verbose and (it % 10 == 0 or it == n_iter - 1):
-            print(f"[gp-{kind}] iter {it:3d}  sum nll {total:,.1f}  "
-                  f"lengthscales {np.round(np.exp(theta.detach().numpy()), 3)[:6]}", flush=True)
-    th = theta.detach().numpy().copy()
+        if verbose and len(trace) % 10 == 1:
+            print(f"[gp-{kind}] eval {len(trace):3d}  sum nll {total:,.1f}  "
+                  f"lengthscales {np.round(np.exp(th), 3)[:6]}", flush=True)
+        return total, theta.grad.numpy().copy()
+
+    res = _minimize(f, np.asarray(theta0, "float64"), jac=True, method="L-BFGS-B",
+                    bounds=[(-8.0, 12.0)] * len(theta0),
+                    options={"maxiter": int(n_iter), "maxfun": 2 * int(n_iter)})
+    th = np.asarray(res.x, "float64")
+    at_bound = np.isclose(th, -8.0) | np.isclose(th, 12.0)
+    if verbose:
+        print(f"[gp-{kind}] {'converged' if res.success else 'NOT converged'} after "
+              f"{res.nit} iterations ({res.message}); "
+              f"{int(at_bound.sum())} lengthscale(s) at a bound", flush=True)
     K = kern(Ft, Ft, torch.as_tensor(th)).numpy()
     _, _, _, hp = _scales_given_shape(K, Yc)
-    return {"kind": kind, "theta": th, "ybar": ybar, "trace": trace, **hp}
+    return {"kind": kind, "theta": th, "ybar": ybar, "trace": trace,
+            "converged": bool(res.success), "message": str(res.message),
+            "n_iterations": int(res.nit), "at_bound": at_bound.tolist(), **hp}
 
 
 def knn_union(Fs_train, Fs_test, k, k_max, device=None):

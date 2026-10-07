@@ -269,13 +269,16 @@ def _synthetic_run(tmp_path, monkeypatch):
     np.savez(run_dir / "desk_meta.npz", latent_dim=L, best_epoch=107)
 
     monkeypatch.setattr(vgs, "load_all_species", lambda cfg: (X_raw, keys, layout))
-    monkeypatch.setattr(vbr, "desk_z_ema", lambda cfg, k: (z_of(k), {"ema_half_life": 10.0}))
+    # raw z: the drift lands abruptly; z_ema: the same drift, so the z-driven species follow it
+    monkeypatch.setattr(vgs, "desk_z_both",
+                        lambda cfg, k: (z_of(k) + 0.05, z_of(k), {"ema_half_life": 10.0}))
     monkeypatch.setattr(esk_kernel, "project_points_to_z", lambda X, zd, l: z_of(keys))
     # Covariates that know each cell but not its change: the covariate GP can place a species
     # but, like no_change, cannot see z's drift.
-    monkeypatch.setattr(vgs, "covariates_for_keys",
-                        lambda cfg, k: base[np.asarray(k)[:, 0], np.asarray(k)[:, 1], :3]
-                        .astype("float32"))
+    def _cov(cfg, k, both=False):
+        c = base[np.asarray(k)[:, 0], np.asarray(k)[:, 1], :3].astype("float32")
+        return (c, c + 0.01) if both else c
+    monkeypatch.setattr(vgs, "covariates_for_keys", _cov)
     cfg = {"paths": {"desk_output_dir": str(run_dir)},
            "desk": {"z_dir": "unused", "trend": {"block_cells": 6}}}
     rep = vgs.run(cfg, out_dir=str(tmp_path / "out"), n_boot=50,
@@ -297,14 +300,17 @@ def test_run_end_to_end_on_a_synthetic_grid(tmp_path, monkeypatch):
     assert (sk[: n_ev // 2] > 0.3).all() and (sk[n_ev // 2:] < 0.1).all()
     saved = np.load(tmp_path / "out" / "heldout_predictions.npz", allow_pickle=True)
     assert saved["mean_desk"].shape == (rep["rows"]["heldout"], n_ev)
-    for name in ("spacetime", "covariate", "spacetime_k4", "covariate_k4"):
+    for name in ("spacetime", "covariate", "spacetime_k4", "covariate_k4", "desk_raw",
+                 "no_change_raw", "covariate_raw"):
         assert saved[f"mean_{name}"].shape == (rep["rows"]["heldout"], n_ev)
     assert np.isfinite(saved["cov_novelty"]).all() and (saved["dist_to_train_km"] > 0).all()
     # desk beats both baselines on change for the z-driven species: they cannot see the drift
     for b in ("spacetime", "covariate"):
         skb = tab[f"change_skill_desk_vs_{b}"].to_numpy()
         assert (skb[: n_ev // 2] > 0).all()
+    assert "desk_raw_vs_no_change_raw" in rep["level"] and "desk_vs_desk_raw" in rep["level"]
     th = np.load(tmp_path / "out" / "thinning.npz")
+    assert "level_sse_covariate_raw" not in th.files       # raw covariate arm: main run only
     assert th["level_sse_desk"].shape == (2, n_ev)
     assert (th["n_train_detections"][1] <= th["n_train_detections"][0]).all()
 
@@ -352,7 +358,7 @@ def test_envelope_gradient_matches_finite_differences_of_profiled_nll():
 
 def test_fit_shared_shape_lowers_the_objective():
     F, Y = _st_data()
-    fit = gpk.fit_shared_shape("spacetime", F, Y, np.log([500.0, 50.0]), n_iter=40, lr=0.1,
+    fit = gpk.fit_shared_shape("spacetime", F, Y, np.log([500.0, 50.0]), n_iter=40,
                                verbose=False)
     assert fit["trace"][-1] < fit["trace"][0]
 
@@ -398,7 +404,7 @@ def test_spacetime_baseline_wins_level_on_a_purely_spatial_species():
     test = xy[:, 0] > 850
     Y = y[:, None]
     shape = gpk.fit_shared_shape("spacetime", F[~test][:600], Y[~test][:600],
-                                 np.log([200.0, 30.0]), n_iter=30, lr=0.1, verbose=False)
+                                 np.log([200.0, 30.0]), n_iter=30, verbose=False)
     m_st, _ = gpk.predict_local(shape, F[~test], Y[~test], F[test],
                                 (xy[test, 1] // 200).astype(int), k=32, k_max=1500)
     m_d, _ = gpk.predict(gpk.fit(Z[~test], Y[~test]), Z[test])
@@ -455,6 +461,9 @@ def test_comparisons_cover_nulls_and_desk_against_every_baseline():
               ("desk", "spacetime"), ("desk", "covariate")]:
         assert p in pairs
     assert ("no_change", "no_change") not in pairs and ("intercept", "no_change") not in pairs
+    pairs = comparisons(["desk", "desk_raw", "no_change", "no_change_raw", "intercept"])
+    assert ("desk_raw", "no_change_raw") in pairs and ("desk", "desk_raw") in pairs
+    assert not any(a.startswith("no_change") for a, _ in pairs)
 
 
 # ----------------------------- analysis -----------------------------
@@ -582,3 +591,67 @@ def test_abba_halves_cancel_a_linear_within_epoch_trend():
     # rows given out of year order are sorted before splitting
     a2, b2 = abba_halves(np.array([3, 0, 2, 1]), np.array([1993, 1990, 1992, 1991]))
     assert sorted(a2.tolist()) == [0, 3] and sorted(b2.tolist()) == [1, 2]
+
+
+# ----------------------------- fixes after the first run -----------------------------
+
+def test_direction_treats_float_rounding_as_abstention():
+    from src.community_encoder.train_DESK.validate_gp_species import direction_by_species
+    rng = np.random.default_rng(0)
+    obs_e, obs_m = rng.uniform(0, 2, (50, 1)), rng.uniform(0, 2, (50, 1))
+    pe = np.full((50, 1), 0.3)
+    pm = pe + rng.choice([-1, 1], (50, 1)) * 1e-16      # what a constant predictor yields
+    r = direction_by_species(obs_e, obs_m, pe, pm)[0]
+    assert "direction_skill" not in r                     # abstained, not scored
+
+
+def test_shape_fit_converges_and_says_so():
+    # Temporal structure in the data, so the time lengthscale has a finite optimum.
+    F, Y = _st_data()
+    Y = Y + np.sin(F[:, 2] / 4.0)[:, None]
+    fit = gpk.fit_shared_shape("spacetime", F, Y, np.log([90.0, 15.0]), n_iter=400,
+                               verbose=False)
+    assert fit["converged"] and fit["n_iterations"] < 400
+    # at the optimum the profiled objective is no better at nearby lengthscales
+    best = _profiled_total_nll("spacetime", F, Y, fit["theta"])
+    for e in np.eye(2):
+        for h in (-0.05, 0.05):
+            assert _profiled_total_nll("spacetime", F, Y, fit["theta"] + h * e) >= best - 1e-3
+
+
+def test_regression_scale_is_data_side_so_a_perfect_baseline_cannot_blow_it_up():
+    from src.community_encoder.train_DESK.gp_species_analysis import level_frame
+    import pandas as pd
+    rng = np.random.default_rng(0)
+    n = 200
+    y = np.zeros((n, 2))
+    y[:5, 0] = 1.0                                        # rare species: five detections
+    y[:, 1] = rng.normal(size=n)
+    H = {"y": y, "mean_desk": y + 0.1, "mean_base": y.copy(),   # baseline is PERFECT
+         "keys": np.column_stack([np.arange(n) % 20, np.arange(n) // 20, np.full(n, 2000)]),
+         "block_id": np.arange(n) % 4, "dist_to_train_km": np.ones(n),
+         "cov_novelty": np.ones(n), "years_before_modern": np.ones(n)}
+    f = level_frame(H, "base", pd.DataFrame({"species_code": ["a", "b"]}))
+    assert np.isfinite(f["response"]).all() and f["response"].abs().max() < 1.0
+
+
+def test_thinning_captured_share_on_resolvable_species():
+    import pandas as pd
+    from src.community_encoder.train_DESK.gp_species_analysis import thinning_curves
+
+    class _T(dict):
+        files = property(lambda self: list(self.keys()))
+    n_cells = 10
+    z = np.array([10.0, 10.0, 0.0])                       # sum of squared observed change
+    T = _T(n_train_detections=np.array([[50, 5, 0], [20, 2, 0]]),
+           fractions=np.array([1.0, 0.3]),
+           change_sse_zero=z,
+           change_sse_desk=np.array([[6.0, 10.0, 0.0], [8.0, 10.0, 0.0]]),
+           change_sse_no_change=np.tile(z, (2, 1)))
+    noise = pd.DataFrame({"ms_obs_change": z / n_cells, "noise_change": [0.2, 0.2, 0.0],
+                          "resolvable": [True, True, False]})
+    out = thinning_curves(T, noise=noise)
+    # available = 10 - 0.2*10 = 8 per resolvable species; desk gains 4 and 0 at f=1
+    assert out["captured"]["desk"]["pooled"][0] == pytest.approx(4.0 / 16.0)
+    assert out["captured"]["desk"]["pooled"][1] == pytest.approx(2.0 / 16.0)
+    assert out["captured"]["no_change"]["pooled"] == [0.0, 0.0]

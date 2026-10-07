@@ -5,6 +5,10 @@ COMMUNITY similarity. This asks the question the kernel is deployed for: put ``s
 GP, condition on training blocks, predict one species' abundance in held-out blocks. Design:
 ``docs/methods/gp_species_validation.md``.
 
+RAW vs EMA. DESK is trained through a learned causal output EMA (demographic lag) and
+supervised on z_ema, but the cube exports RAW z because the population model supplies lag
+itself. A static GP has no dynamics, so neither is exactly the deployed object; both are graded.
+
 WHICH SPECIES. Every BBS species that crosswalks to the eBird taxonomy, minus the reference
 community and minus House Finch. The community is what DESK was trained to reproduce, so grading
 on it would be grading on the training target; House Finch is the deployment species, so grading
@@ -17,8 +21,13 @@ production's holdout predecessor. Results must never select that run's epoch or 
 
 THE PREDICTORS (task A, block extrapolation; all share the GP machinery in ``gp_kernels``):
 
-    desk            s^2 z_ema(x).z_ema(x')                        the deployed kernel
+    desk            s^2 z_ema(x).z_ema(x')                        what DESK was trained on
+    desk_raw        s^2 z_raw(x).z_raw(x')                        what the downstream model gets
     no_change       desk's fit, with each held-out cell's modern-epoch z used for every year
+                    (no_change_raw: the same for desk_raw)
+    spacetime       Matern(space) x exponential(time)            shared shape, per-species scale
+    covariate       ARD-RBF on DESK's covariates + output EMA     matched to z_ema
+                    (covariate_raw: input-side EMA only, matched to z_raw)
     intercept       the training mean; the floor for LEVEL (it knows nothing about place)
     esk_oracle      the observed community's ESK projection in place of z_ema -- a CEILING,
                     and an optimistic one: it is computed from the same routes as the truth
@@ -323,6 +332,13 @@ def direction_by_species(obs_e, obs_m, pred_e, pred_m):
     rule. That transposition is the whole adaptation.
     """
     from .validate_baselines import species_change_agreement
+    # Snap predicted change below ``tol`` to exactly zero. A predictor that is constant over
+    # years (no_change, intercept) gives epoch means that differ only by float rounding, and
+    # species_change_agreement read those 1e-16 differences as committed directions -- scoring
+    # an abstaining null as a confident wrong guess (-0.54 in the first run).
+    tol = 1e-9
+    d = np.asarray(pred_m, "float64") - np.asarray(pred_e, "float64")
+    pred_m = np.where(np.abs(d) < tol, pred_e, pred_m)
     out = []
     for s in range(obs_e.shape[1]):
         r = species_change_agreement(obs_e[:, s:s + 1], obs_m[:, s:s + 1],
@@ -349,8 +365,13 @@ def rows_from_stack(stack, years, cells, keys):
     return out
 
 
-def covariates_for_keys(config, keys):
+def covariates_for_keys(config, keys, both=False):
     """DESK's own normalized covariates at each key, EMA'd at DESK's learned half-life. ``(N, C)``.
+
+    With ``both=True`` returns ``(ema, raw)``: ``raw`` carries only the light input-side EMA
+    (``ema_tau`` at state-build time), matching DESK's RAW z, which is what the downstream model
+    consumes; ``ema`` adds DESK's learned output EMA, matching z_ema, which is what DESK was
+    trained on.
 
     The covariate GP's inputs. Same states, same channel transforms, same training-pixel mu/sd as
     the checkpoint, and the same causal EMA DESK applies to its output -- so the covariate GP sees
@@ -386,9 +407,55 @@ def covariates_for_keys(config, keys):
         stack[t][~valid[t]] = np.nan
     if stack is None:
         raise FileNotFoundError(f"no yearly states under {states_dir}")
+    raw = rows_from_stack(stack, years, cells, keys) if both else None
     stack = apply_output_ema(stack, hl, valid=valid)
     print(f"[gp-species] covariates: {stack.shape[-1]} channels, EMA half-life {hl:.2f} yr")
-    return rows_from_stack(stack, years, cells, keys)
+    ema = rows_from_stack(stack, years, cells, keys)
+    return (ema, raw) if both else ema
+
+
+def desk_z_both(config, keys):
+    """DESK's z at every key, RAW and output-EMA'd. ``(Z_raw, Z_ema, info)``.
+
+    DESK trains through a learned causal output EMA (demographic lag, half-life ~10 yr) and is
+    supervised on z_ema, but the cube exports RAW z because the population model downstream
+    supplies the lag itself. A static GP has no dynamics, so neither is exactly the deployed
+    object: raw z is the literal deployed feature with no lag supplied (a lower bound), z_ema is
+    raw z plus one particular lag. Both are graded. Same encode as
+    ``validate_bbs_routes.desk_z_ema`` -- every involved cell over the contiguous span from
+    ``ema_warmup_start``, since the scan cannot be applied to an isolated cell-year -- done once
+    and returned both ways.
+    """
+    from .desk_training import apply_output_ema
+    from .model_arch import check_basis_matches
+    from .validate_spacetime import encode_points
+
+    run_dir = config["paths"]["desk_output_dir"]
+    dm = np.load(os.path.join(run_dir, "desk_meta.npz"), allow_pickle=True)
+    _zd = (config.get("desk", {}) or {}).get("z_dir")
+    if _zd:
+        check_basis_matches(dm, _zd, context="gp-species")
+    ema_on = bool(dm["output_ema"]) if "output_ema" in dm.files else False
+    hl = float(dm["ema_half_life"]) if "ema_half_life" in dm.files else float("nan")
+    warm = int(dm["ema_warmup_start"]) if "ema_warmup_start" in dm.files else 1940
+    keys = np.asarray(keys)
+    cells = np.unique(keys[:, :2], axis=0)
+    years = list(range(min(warm, int(keys[:, 2].min())), int(keys[:, 2].max()) + 1))
+    grid = np.empty((len(cells) * len(years), 3), dtype="int32")
+    for t, y in enumerate(years):
+        grid[t * len(cells):(t + 1) * len(cells), :2] = cells
+        grid[t * len(cells):(t + 1) * len(cells), 2] = y
+    Z, ok = encode_points(config, grid)
+    L = Z.shape[1]
+    raw = Z.reshape(len(years), len(cells), L)
+    valid = ok.reshape(len(years), len(cells))
+    if not (ema_on and np.isfinite(hl)):
+        raise ValueError(f"desk_meta has output_ema={ema_on}, ema_half_life={hl}: this "
+                         "checkpoint has no learned lag, so z_ema cannot be reconstructed")
+    ema = apply_output_ema(raw, hl, valid=valid)
+    info = {"ema_half_life": hl, "ema_warmup_start": warm, "encode_years": [years[0], years[-1]]}
+    return (rows_from_stack(raw, years, cells, keys), rows_from_stack(ema, years, cells, keys),
+            info)
 
 
 def spacetime_inputs(keys, cell_km):
@@ -472,6 +539,11 @@ def fit_predict_all(D, tr, te, opts, rng, verbose=True):
     fits["desk"] = m
     preds["desk"] = gpk.predict(m, D["Z"][te])
     preds["no_change"] = gpk.predict(m, D["Z_nc"])
+    if D.get("Z_raw") is not None:
+        mr = gpk.fit(D["Z_raw"][tr], Ytr)
+        fits["desk_raw"] = mr
+        preds["desk_raw"] = gpk.predict(mr, D["Z_raw"][te])
+        preds["no_change_raw"] = gpk.predict(mr, D["Z_nc_raw"])
     n = len(tr)
     vy = np.maximum(Ytr.var(0) * (1 + 1 / n), gpk.VAR_FLOOR)
     preds["intercept"] = (np.broadcast_to(Ytr.mean(0), (len(te), Ytr.shape[1])),
@@ -483,42 +555,45 @@ def fit_predict_all(D, tr, te, opts, rng, verbose=True):
     if opts.get("baselines", True):
         fit_rows = tr if len(tr) <= opts["n_fit"] else np.sort(rng.choice(tr, opts["n_fit"],
                                                                           replace=False))
-        for kind, Fkey, th0 in (("spacetime", "F_st", np.log([300.0, 20.0])),
-                                ("covariate", "F_cov",
-                                 np.full(D["F_cov"].shape[1],
-                                         np.log(np.sqrt(D["F_cov"].shape[1]))))):
+        th_cov = np.full(D["F_cov"].shape[1], np.log(np.sqrt(max(D["F_cov"].shape[1], 1))))
+        arms = [("spacetime", "spacetime", "F_st", np.log([300.0, 20.0])),
+                ("covariate", "covariate", "F_cov", th_cov)]
+        # The covariate GP matched to RAW z (input-side EMA only), so desk_raw has a like-for-like
+        # rival. Main run only: it is a third shape fit, and thinning is about data, not lag.
+        if opts.get("raw_baseline", True) and D.get("F_cov_raw") is not None:
+            arms.append(("covariate_raw", "covariate", "F_cov_raw", th_cov))
+        for label, kind, Fkey, th0 in arms:
             t0 = time.perf_counter()
             shape = gpk.fit_shared_shape(kind, D[Fkey][fit_rows], D["Y"][fit_rows],
                                          th0, n_iter=opts["shape_iters"], verbose=verbose)
             # The per-species scales from the fit subsample, but the MEAN from all training rows,
             # as for desk.
             shape["ybar"] = Ytr.mean(0)
-            fits[kind] = shape
+            fits[label] = shape
             for k in opts["k_nn"]:
-                name = kind if k == opts["k_nn"][0] else f"{kind}_k{k}"
+                name = label if k == opts["k_nn"][0] else f"{label}_k{k}"
                 preds[name] = gpk.predict_local(shape, D[Fkey][tr], Ytr, D[Fkey][te],
                                                 D["groups"], k=k, k_max=opts["k_max"])
             if verbose:
-                print(f"[gp-species] {kind} baseline fitted and predicted in "
+                print(f"[gp-species] {label} baseline fitted and predicted in "
                       f"{time.perf_counter() - t0:.0f}s", flush=True)
     return preds, fits
 
 
-def shape_summary(shape, tail=10, tol=1e-4):
-    """Lengthscales and a convergence read of a baseline's shared-shape fit. Pure.
+def shape_summary(shape):
+    """Lengthscales and the optimizer's own convergence verdict for a baseline's shape fit. Pure.
 
-    An under-converged baseline is a strawman, so the report says whether the summed NLL was still
-    falling over the last ``tail`` iterations (relative change above ``tol``) instead of leaving it
-    to be assumed. If it was, rerun with more ``--shape-iters`` before reading the comparison.
+    An under-converged baseline is a strawman, so the report carries L-BFGS-B's verdict and which
+    lengthscales sit at a bound (a lengthscale pinned at the upper bound means that input, or
+    time, carries no usable structure -- a finding, not a failure).
     """
-    tr = np.asarray(shape["trace"], "float64")
-    rel = (float(abs(tr[-1] - tr[-1 - tail]) / max(abs(tr[-1]), 1e-12))
-           if len(tr) > tail else None)
+    tr = np.asarray(shape.get("trace", []), "float64")
     return {"lengthscales": np.exp(shape["theta"]).tolist(),
+            "converged": bool(shape.get("converged", False)),
+            "message": shape.get("message"), "n_iterations": shape.get("n_iterations"),
+            "at_bound": shape.get("at_bound"),
             "sum_nll_first": float(tr[0]) if len(tr) else None,
-            "sum_nll_final": float(tr[-1]) if len(tr) else None,
-            "rel_change_last_iters": rel,
-            "converged": (rel is not None and rel < tol)}
+            "sum_nll_final": float(tr[-1]) if len(tr) else None}
 
 
 # ----------------------------- run -----------------------------
@@ -558,24 +633,28 @@ def _change_tables(preds, Yte, e_rows, m_rows, cell_block):
     return sse, dirs
 
 
+REFERENCES = ("no_change", "intercept")
+
+
 def comparisons(names):
     """Which (model, reference) pairs the report scores. Pure.
 
-    Every predictor against no_change (the change null) and intercept (the level floor), and desk
-    against every other predictor -- so "desk vs spacetime" is reported directly rather than left
-    to be inferred from two separate skills.
+    Every model against no_change (the change null) and intercept (the level floor); desk against
+    every other model, so "desk vs spacetime" and "desk vs desk_raw" are reported directly; and
+    desk_raw against its own null, no_change_raw. Nulls never appear on the model side.
     """
-    pairs = []
-    for ref in ("no_change", "intercept"):
-        pairs += [(p, ref) for p in names if p not in (ref, "no_change", "intercept")]
-    pairs += [("desk", p) for p in names if p not in ("desk", "no_change", "intercept")]
+    models = [p for p in names if not p.startswith(("no_change", "intercept"))]
+    pairs = [(p, ref) for ref in REFERENCES for p in models]
+    pairs += [("desk", p) for p in models if p != "desk"]
+    if "desk_raw" in names and "no_change_raw" in names:
+        pairs.append(("desk_raw", "no_change_raw"))
     return pairs
 
 
 def run(config=None, out_dir=None, n_boot=1000, seed=0, opts=None):
     t0 = time.perf_counter()
     config = config or load_config()
-    opts = {"baselines": True, "n_fit": 3000, "shape_iters": 80, "k_nn": (32, 8),
+    opts = {"baselines": True, "n_fit": 3000, "shape_iters": 400, "k_nn": (32, 8),
             "k_max": 4000, "thin": (0.3, 0.1, 0.03), **(opts or {})}
     rng = np.random.default_rng(seed)
     run_dir = config["paths"]["desk_output_dir"]
@@ -589,8 +668,6 @@ def run(config=None, out_dir=None, n_boot=1000, seed=0, opts=None):
     cell_km = float(opts.get("cell_km") or _cell_km())
 
     from src.data.preprocess.bbs_community import log1p_community
-    from . import validate_bbs_routes as vbr
-
     X_raw, keys, layout = load_all_species(config)
     nc = layout["n_community"]
     Ylog = log1p_community(X_raw)
@@ -605,27 +682,34 @@ def run(config=None, out_dir=None, n_boot=1000, seed=0, opts=None):
     ref_keys = modern_reference_keys(keys[is_test])
     want = np.concatenate([keys[use], ref_keys]).astype("int32")
     want_u, inv = np.unique(want, axis=0, return_inverse=True)
-    Zu, zinfo = vbr.desk_z_ema(config, want_u)
+    Zu_raw, Zu, zinfo = desk_z_both(config, want_u)
     n_rows = int(use.sum())
     Z = np.full((len(keys), latent), np.nan, "float32")
-    Z[use] = Zu[inv[:n_rows]]
-    Z_ref = Zu[inv[n_rows:]]
+    Z_raw = np.full((len(keys), latent), np.nan, "float32")
+    Z[use], Z_raw[use] = Zu[inv[:n_rows]], Zu_raw[inv[:n_rows]]
+    Z_ref, Z_ref_raw = Zu[inv[n_rows:]], Zu_raw[inv[n_rows:]]
 
     F_cov = np.full((len(keys), 0), np.nan, "float32")
+    F_cov_raw = F_cov
     if opts["baselines"]:
-        Fc = covariates_for_keys(config, keys[use])
+        Fc, Fr = covariates_for_keys(config, keys[use], both=True)
         F_cov = np.full((len(keys), Fc.shape[1]), np.nan, "float32")
-        F_cov[use] = Fc
+        F_cov_raw = np.full_like(F_cov, np.nan)
+        F_cov[use], F_cov_raw[use] = Fc, Fr
     F_st = spacetime_inputs(keys, cell_km)
 
-    # ONE common row set for every predictor: finite z, finite covariates, finite no-change z.
-    finite = np.isfinite(Z).all(1)
+    # ONE common row set for every predictor: finite z (both forms), finite covariates (both
+    # forms), finite no-change z.
+    finite = np.isfinite(Z).all(1) & np.isfinite(Z_raw).all(1)
     if F_cov.shape[1]:
-        finite &= np.isfinite(F_cov).all(1)
+        finite &= np.isfinite(F_cov).all(1) & np.isfinite(F_cov_raw).all(1)
     Z_nc_all = np.full_like(Z, np.nan)
     Z_nc_all[is_test] = no_change_z(keys[is_test], ref_keys, Z_ref)
+    Z_nc_raw = np.full_like(Z, np.nan)
+    Z_nc_raw[is_test] = no_change_z(keys[is_test], ref_keys, Z_ref_raw)
     tr_rows = np.where(is_train & finite)[0]
-    te_rows = np.where(is_test & finite & np.isfinite(Z_nc_all).all(1))[0]
+    te_rows = np.where(is_test & finite & np.isfinite(Z_nc_all).all(1)
+                       & np.isfinite(Z_nc_raw).all(1))[0]
     n_drop = int(is_test.sum() - len(te_rows))
     print(f"[gp-species] {len(tr_rows):,} training rows, {len(te_rows):,} held-out rows "
           f"({n_drop} held-out rows dropped: outside the covariate footprint or no modern z)")
@@ -642,7 +726,8 @@ def run(config=None, out_dir=None, n_boot=1000, seed=0, opts=None):
         print(f"[gp-species] {oracle_note}")
 
     bid = block_id[te_rows]
-    D = {"Y": Y_eval, "Z": Z, "Z_nc": Z_nc_all[te_rows], "F_st": F_st, "F_cov": F_cov,
+    D = {"Y": Y_eval, "Z": Z, "Z_nc": Z_nc_all[te_rows], "Z_raw": Z_raw,
+         "Z_nc_raw": Z_nc_raw[te_rows], "F_st": F_st, "F_cov": F_cov, "F_cov_raw": F_cov_raw,
          "Z_oracle": Z_oracle, "groups": bid}
     preds, fits = fit_predict_all(D, tr_rows, te_rows, opts, rng)
     Yte = Y_eval[te_rows].astype("float64")
@@ -788,7 +873,8 @@ def run_thinning(D, tr_rows, te_rows, Yte, e_rows, m_rows, opts, seed, out_dir):
         tr = thin_rows(tr_rows, f, rng)
         print(f"[gp-species] thinning {f:g}: {len(tr):,} training rows", flush=True)
         preds, _ = fit_predict_all(D, tr, te_rows,
-                                   {**opts, "k_nn": opts["k_nn"][:1]}, rng, verbose=False)
+                                   {**opts, "k_nn": opts["k_nn"][:1], "raw_baseline": False},
+                                   rng, verbose=False)
         out["n_train_rows"].append(int(len(tr)))
         out["n_train_detections"].append((D["Y"][tr] > 0).sum(0))
         for name, (mu, _v) in preds.items():
@@ -837,8 +923,8 @@ def _print_summary(rep):
               f"({p['n_species_defined']} species defined, {p['n_species_undefined']} undefined)")
     for k, v in rep.get("baseline_shapes", {}).items():
         if not v["converged"]:
-            print(f"  WARNING: {k} shape fit still moving (rel change {v['rel_change_last_iters']})"
-                  "; rerun with more --shape-iters before reading its comparisons")
+            print(f"  WARNING: {k} shape fit did not converge ({v['message']}); rerun with more "
+                  "--shape-iters before reading its comparisons")
     for sec in ("change", "level"):
         for k, v in rep[sec].items():
             if "median" in v:
@@ -856,7 +942,8 @@ def main():
                     help="desk / no_change / intercept / oracle only (no spacetime, covariate)")
     ap.add_argument("--n-fit", type=int, default=3000,
                     help="training rows the baselines' shared lengthscales are fitted on")
-    ap.add_argument("--shape-iters", type=int, default=80)
+    ap.add_argument("--shape-iters", type=int, default=400,
+                    help="cap on L-BFGS-B iterations for the shared shape; it stops when converged")
     ap.add_argument("--k-nn", default="32,8",
                     help="neighbours per test row for the local baselines; the first is primary, "
                          "the rest are a support-sensitivity check")

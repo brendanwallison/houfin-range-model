@@ -30,9 +30,14 @@ model makes the same assumption of the kernel, so it is not corrected here.
 import numpy as np
 from scipy.optimize import minimize
 
-#: Floor on both variances. A species with zero variance in training (never detected) has no
-#: likelihood to fit, and an unfloored sigma^2 runs to zero and takes the log-density with it.
+#: Absolute floor, used only for species with no training variance (nothing to fit) and for
+#: the intercept predictor.
 VAR_FLOOR = 1e-6
+#: Per-species floor on both variances, RELATIVE to that species' training variance. An absolute
+#: floor is not scale-free: a species with a few detections among ~80k rows has total variance
+#: ~1e-5 in log1p abundance, so an absolute 1e-6 floor on sigma^2 was a tenth of its variance and
+#: "s^2 at the floor" read as a collapse when it was mostly that species' units.
+REL_FLOOR = 1e-6
 #: Singular values below this fraction of the largest are dropped from the basis. A collapsed
 #: latent dimension otherwise contributes log(sigma^2) terms with no data behind them.
 RANK_TOL = 1e-8
@@ -96,6 +101,11 @@ def neg_log_marginal(log_s2, log_n2, basis, stats):
     return nll, g_s, g_n
 
 
+def species_floor(var_y):
+    """Per-species variance floor: REL_FLOOR of the species' own variance. Pure."""
+    return np.maximum(REL_FLOOR * np.asarray(var_y, "float64"), 1e-14)
+
+
 def fit_hyperparameters(basis, stats, max_iter=500):
     """Fit ``(s^2, sigma^2)`` for every species jointly by L-BFGS. ``{s2, n2, nll, ok}``. Pure.
 
@@ -106,11 +116,11 @@ def fit_hyperparameters(basis, stats, max_iter=500):
     k = stats["yy"].shape[0]
     n = basis["n"]
     var_y = stats["yy"] / max(n - 1, 1)
-    live = var_y > VAR_FLOOR
-    lo = np.log(VAR_FLOOR)
+    live = var_y > 1e-14
+    floor = species_floor(var_y)
     # Start with half the variance explained by the features and half residual.
-    s2_0 = np.maximum(0.5 * var_y / max(float((basis["S"] ** 2).sum()) / n, 1e-12), VAR_FLOOR)
-    n2_0 = np.maximum(0.5 * var_y, VAR_FLOOR)
+    s2_0 = np.maximum(0.5 * var_y / max(float((basis["S"] ** 2).sum()) / n, 1e-12), floor)
+    n2_0 = np.maximum(0.5 * var_y, floor)
     x0 = np.concatenate([np.log(s2_0), np.log(n2_0)])
     sub = {"ybar": stats["ybar"][live], "yy": stats["yy"][live], "u": stats["u"][:, live]}
     kl = int(live.sum())
@@ -123,19 +133,136 @@ def fit_hyperparameters(basis, stats, max_iter=500):
     nll = np.full(k, np.nan)
     if kl:
         x0l = np.concatenate([x0[:k][live], x0[k:][live]])
+        lo = np.log(floor[live])
         res = minimize(f, x0l, jac=True, method="L-BFGS-B",
-                       bounds=[(lo, 30.0)] * (2 * kl), options={"maxiter": int(max_iter)})
+                       bounds=[(v, 30.0) for v in np.concatenate([lo, lo])],
+                       options={"maxiter": int(max_iter)})
         s2[live], n2[live] = np.exp(res.x[:kl]), np.exp(res.x[kl:])
         nll[live] = neg_log_marginal(res.x[:kl], res.x[kl:], basis, sub)[0]
     s2[~live], n2[~live] = VAR_FLOOR, VAR_FLOOR
     return {"s2": s2, "n2": n2, "nll": nll, "ok": live}
 
 
-def fit(Z, Y):
-    """Fit the GP for every column of ``Y`` on features ``Z``. Returns the fitted model. Pure."""
+# ----------------------------- pooled scales -----------------------------
+#
+# Per-species marginal likelihood collapses the kernel's amplitude to the floor for rare species
+# (first run: 94% of species with 1-3 training detections, 38% with 4-10), and a collapsed species
+# is predicted by its training mean: the kernel contributes nothing exactly where a data-poor
+# advantage would have to show. The fix is a cross-species prior -- an empirical-Bayes estimate of
+# the amplitude prior a NEW species (House Finch, downstream) would face.
+#
+# It is a prior on the AMPLITUDE, centred relative to each species' own noise: with kappa the
+# kernel's mean variance on the training rows,
+#
+#     log s^2_s ~ N(log sigma^2_s - log kappa + a, tau^2)
+#
+# equivalently logit rho_s ~ N(a, tau^2) for the kernel's variance share rho = s^2 kappa / v,
+# v = s^2 kappa + sigma^2 (flat prior on v). Centring on the noise rather than on an absolute
+# value is what makes it comparable across species: absolute s^2 spans six orders of magnitude
+# mostly because rare species have little variance in log1p abundance at all.
+#
+# INTERCEPT ONLY, deliberately. A slope on log detections was tried and it learned "rare species
+# have a low share" FROM the rare species' own estimates -- re-encoding the very thing the prior
+# was meant to correct. And measured on simulations, the premise needs stating: when rarity means
+# mostly zeros, the kernel's true share of the OBSERVED variance is genuinely small and the
+# likelihood says so firmly, so no amplitude prior moves those species much. This arm is a check
+# of that on the real data, not an expected rescue.
+#
+# (a, tau) by EM with a Laplace E-step: per-species MAP under the current prior, its curvature in
+# logit rho, then a = mean mode and tau^2 = mode variance plus mean posterior variance. Only the
+# scales are pooled; a stationary kernel's SHAPE still comes from the unpooled shared-shape fit.
+
+TAU_FLOOR = 0.05
+
+
+def _kappa(basis):
+    """Mean prior variance of the unit-amplitude kernel over the rows it was built on."""
+    return float((basis["S"] ** 2).sum() / max(basis["n"] - 1, 1))
+
+
+def _pooled_objective(lv, eta, basis, stats, kappa, mu, tau2, floor=1e-14):
+    """Per-species negative log posterior in ``(log v, logit rho)`` and its gradient. Pure."""
+    rho = 1.0 / (1.0 + np.exp(-eta))
+    v = np.exp(lv)
+    ls2 = np.log(np.maximum(v * rho / kappa, floor))
+    ln2 = np.log(np.maximum(v * (1 - rho), floor))
+    nll, gs, gn = neg_log_marginal(ls2, ln2, basis, stats)
+    obj = nll + 0.5 * (eta - mu) ** 2 / tau2
+    g_lv = gs + gn
+    g_eta = gs * (1 - rho) - gn * rho + (eta - mu) / tau2
+    return obj, g_lv, g_eta
+
+
+def fit_pooled_scales(basis, stats, hp0, n_em=300, tol=1e-4):
+    """Every species' (s^2, sigma^2) under the cross-species amplitude prior.
+
+    ``hp0`` is the unpooled fit, used as the starting point. Species with no training variance
+    (``hp0['ok']`` False) keep their floors and do not inform the prior. Returns
+    ``{s2, n2, ok, prior}``.
+    """
+    ok = np.asarray(hp0["ok"], bool)
+    kappa = _kappa(basis)
+    sub = {"ybar": stats["ybar"][ok], "yy": stats["yy"][ok], "u": stats["u"][:, ok]}
+    k = int(ok.sum())
+    flo = species_floor(stats["yy"][ok] / max(basis["n"] - 1, 1))
+    v0 = hp0["s2"][ok] * kappa + hp0["n2"][ok]
+    lv = np.log(v0)
+    eta = np.clip(np.log(hp0["s2"][ok] * kappa / hp0["n2"][ok]), -12, 12)
+    X = np.ones((k, 1))
+    coef = np.linalg.lstsq(X, eta, rcond=None)[0]
+    tau2 = float(np.var(eta - X @ coef)) + 1.0
+    trace = []
+    for it in range(int(n_em)):
+        mu = X @ coef
+
+        def f(z):
+            o, gl, ge = _pooled_objective(z[:k], z[k:], basis, sub, kappa, mu, tau2, flo)
+            return float(o.sum()), np.concatenate([gl, ge])
+        res = minimize(f, np.concatenate([lv, eta]), jac=True, method="L-BFGS-B",
+                       bounds=[(np.log(2 * f_), 30.0) for f_ in flo] + [(-15.0, 15.0)] * k,
+                       options={"maxiter": 500})
+        lv, eta = res.x[:k], res.x[k:]
+        # Laplace curvature: the 2x2 Hessian per species by central differences of the gradient.
+        h = 1e-4
+        _, gl_p, ge_p = _pooled_objective(lv + h, eta, basis, sub, kappa, mu, tau2, flo)
+        _, gl_m, ge_m = _pooled_objective(lv - h, eta, basis, sub, kappa, mu, tau2, flo)
+        _, gl_q, ge_q = _pooled_objective(lv, eta + h, basis, sub, kappa, mu, tau2, flo)
+        _, gl_r, ge_r = _pooled_objective(lv, eta - h, basis, sub, kappa, mu, tau2, flo)
+        H_vv = (gl_p - gl_m) / (2 * h)
+        H_ee = (ge_q - ge_r) / (2 * h)
+        H_ve = 0.5 * ((ge_p - ge_m) / (2 * h) + (gl_q - gl_r) / (2 * h))
+        det = H_vv * H_ee - H_ve ** 2
+        post_var = np.where(det > 0, H_vv / np.where(det > 0, det, 1.0), tau2)
+        post_var = np.clip(post_var, 0.0, tau2)
+        new_coef = np.linalg.lstsq(X, eta, rcond=None)[0]
+        new_tau2 = max(float(np.mean((eta - X @ new_coef) ** 2 + post_var)), TAU_FLOOR ** 2)
+        delta = max(np.max(np.abs(new_coef - coef)), abs(np.sqrt(new_tau2) - np.sqrt(tau2)))
+        coef, tau2 = new_coef, new_tau2
+        trace.append({"a": float(coef[0]), "tau": float(np.sqrt(tau2))})
+        if delta < tol:
+            break
+    rho = 1.0 / (1.0 + np.exp(-eta))
+    v = np.exp(lv)
+    s2, n2 = hp0["s2"].copy(), hp0["n2"].copy()
+    s2[ok] = np.maximum(v * rho / kappa, flo)
+    n2[ok] = np.maximum(v * (1 - rho), flo)
+    return {"s2": s2, "n2": n2, "ok": ok,
+            "prior": {"a": float(coef[0]), "tau": float(np.sqrt(tau2)),
+                      "kappa": kappa, "em_iterations": len(trace),
+                      "converged": bool(trace and len(trace) < int(n_em))}}
+
+
+def fit(Z, Y, pool=False):
+    """Fit the GP for every column of ``Y`` on features ``Z``. Returns the fitted model. Pure.
+
+    With ``pool`` the scales are fitted under the cross-species amplitude prior
+    (``fit_pooled_scales``); otherwise each species alone.
+    """
     basis = feature_svd(Z)
     stats = sufficient_stats(basis, Z, Y)
     hp = fit_hyperparameters(basis, stats)
+    if pool:
+        hp = {**hp, **fit_pooled_scales(basis, stats, hp)}
     S = basis["S"][:, None]
     lam = hp["n2"][None, :] / hp["s2"][None, :]
     coef = S * stats["u"] / (S ** 2 + lam)               # posterior mean of w, in the V basis
@@ -320,6 +447,23 @@ def fit_shared_shape(kind, F, Y, theta0, n_iter=400, verbose=True):
     return {"kind": kind, "theta": th, "ybar": ybar, "trace": trace,
             "converged": bool(res.success), "message": str(res.message),
             "n_iterations": int(res.nit), "at_bound": at_bound.tolist(), **hp}
+
+
+def pool_shape_scales(shape, F_fit, Y_fit):
+    """A copy of a stationary shape fit with its per-species scales re-fitted under the
+    cross-species prior. The shape (lengthscales) is unchanged. Pure."""
+    import torch
+    K = KERNELS[shape["kind"]](torch.as_tensor(np.asarray(F_fit, "float64")),
+                               torch.as_tensor(np.asarray(F_fit, "float64")),
+                               torch.as_tensor(shape["theta"])).numpy()
+    Y = np.asarray(Y_fit, "float64")
+    Yc = Y - Y.mean(0)
+    lam, Q = np.linalg.eigh(K)
+    basis = _eig_basis(lam, K.shape[0])
+    stats = {"ybar": np.zeros(Y.shape[1]), "yy": (Yc * Yc).sum(0), "u": Q.T @ Yc}
+    hp0 = {"s2": shape["s2"], "n2": shape["n2"], "ok": shape["ok"]}
+    pooled = fit_pooled_scales(basis, stats, hp0)
+    return {**shape, "s2": pooled["s2"], "n2": pooled["n2"], "prior": pooled["prior"]}
 
 
 def knn_union(Fs_train, Fs_test, k, k_max, device=None):

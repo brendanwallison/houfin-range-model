@@ -544,6 +544,16 @@ def fit_predict_all(D, tr, te, opts, rng, verbose=True):
         fits["desk_raw"] = mr
         preds["desk_raw"] = gpk.predict(mr, D["Z_raw"][te])
         preds["no_change_raw"] = gpk.predict(mr, D["Z_nc_raw"])
+    # Pooled arms: the same kernels with every species' amplitude under one cross-species prior
+    # (gp_kernels.fit_pooled_scales). Applied to every model, so pooling cannot tilt a comparison.
+    if opts.get("pooled", True):
+        mp = gpk.fit(D["Z"][tr], Ytr, pool=True)
+        fits["desk_pooled"] = mp
+        preds["desk_pooled"] = gpk.predict(mp, D["Z"][te])
+        if D.get("Z_raw") is not None:
+            mrp = gpk.fit(D["Z_raw"][tr], Ytr, pool=True)
+            fits["desk_raw_pooled"] = mrp
+            preds["desk_raw_pooled"] = gpk.predict(mrp, D["Z_raw"][te])
     n = len(tr)
     vy = np.maximum(Ytr.var(0) * (1 + 1 / n), gpk.VAR_FLOOR)
     preds["intercept"] = (np.broadcast_to(Ytr.mean(0), (len(te), Ytr.shape[1])),
@@ -574,6 +584,13 @@ def fit_predict_all(D, tr, te, opts, rng, verbose=True):
                 name = label if k == opts["k_nn"][0] else f"{label}_k{k}"
                 preds[name] = gpk.predict_local(shape, D[Fkey][tr], Ytr, D[Fkey][te],
                                                 D["groups"], k=k, k_max=opts["k_max"])
+            if opts.get("pooled", True):
+                ps = gpk.pool_shape_scales(shape, D[Fkey][fit_rows], D["Y"][fit_rows])
+                ps["ybar"] = Ytr.mean(0)
+                fits[f"{label}_pooled"] = ps
+                preds[f"{label}_pooled"] = gpk.predict_local(
+                    ps, D[Fkey][tr], Ytr, D[Fkey][te], D["groups"], k=opts["k_nn"][0],
+                    k_max=opts["k_max"])
             if verbose:
                 print(f"[gp-species] {label} baseline fitted and predicted in "
                       f"{time.perf_counter() - t0:.0f}s", flush=True)
@@ -648,13 +665,19 @@ def comparisons(names):
     pairs += [("desk", p) for p in models if p != "desk"]
     if "desk_raw" in names and "no_change_raw" in names:
         pairs.append(("desk_raw", "no_change_raw"))
+    # The pooled DESK arms against every pooled rival, like for like.
+    for d, rivals in (("desk_pooled", ("spacetime_pooled", "covariate_pooled")),
+                      ("desk_raw_pooled", ("covariate_raw_pooled",))):
+        if d in names:
+            pairs += [(d, p) for p in rivals if p in names]
     return pairs
 
 
 def run(config=None, out_dir=None, n_boot=1000, seed=0, opts=None):
     t0 = time.perf_counter()
     config = config or load_config()
-    opts = {"baselines": True, "n_fit": 3000, "shape_iters": 400, "k_nn": (32, 8),
+    opts = {"baselines": True, "pooled": True, "n_fit": 3000, "shape_iters": 400,
+            "k_nn": (32, 8),
             "k_max": 4000, "thin": (0.3, 0.1, 0.03), **(opts or {})}
     rng = np.random.default_rng(seed)
     run_dir = config["paths"]["desk_output_dir"]
@@ -711,6 +734,20 @@ def run(config=None, out_dir=None, n_boot=1000, seed=0, opts=None):
     te_rows = np.where(is_test & finite & np.isfinite(Z_nc_all).all(1)
                        & np.isfinite(Z_nc_raw).all(1))[0]
     n_drop = int(is_test.sum() - len(te_rows))
+
+    # Species with ZERO training detections leave the evaluation entirely. Every predictor's
+    # posterior mean for them is exactly the training mean (zero), so no metric can tell any two
+    # predictors apart, and keeping them only adds exact-zero skills that drag the pooled medians
+    # toward 0. In the first run these were 91 species absent from the study area in June
+    # (arctic breeders, pelagics, Alaskan specialties, vagrants) plus 7 whose whole range fell in
+    # held-out blocks. Not a data-poverty filter: one training detection is enough to stay in.
+    det_all = (Y_eval[tr_rows] > 0).sum(0)
+    keep_sp = det_all > 0
+    dropped_species = [c for c, k in zip(layout["evaluation"], keep_sp) if not k]
+    Y_eval = Y_eval[:, keep_sp]
+    layout = {**layout, "evaluation": [c for c, k in zip(layout["evaluation"], keep_sp) if k]}
+    print(f"[gp-species] dropped {len(dropped_species)} species with no training detections; "
+          f"{int(keep_sp.sum())} evaluated")
     print(f"[gp-species] {len(tr_rows):,} training rows, {len(te_rows):,} held-out rows "
           f"({n_drop} held-out rows dropped: outside the covariate footprint or no modern z)")
 
@@ -770,6 +807,9 @@ def run(config=None, out_dir=None, n_boot=1000, seed=0, opts=None):
            "layout": {k: v for k, v in layout.items() if k not in ("community", "evaluation")},
            "rows": {"train": int(len(tr_rows)), "heldout": int(len(te_rows)),
                     "heldout_dropped": n_drop, "heldout_blocks": int(len(blocks))},
+           "dropped_zero_training_detections": {"n": len(dropped_species),
+                                                "species": dropped_species},
+           "pooled_priors": {k: v["prior"] for k, v in fits.items() if "prior" in v},
            "epoch_gate": gate, "oracle_note": oracle_note or
            "esk_oracle is computed from the same routes as the truth: an optimistic ceiling",
            "baseline_shapes": {k: shape_summary(v) for k, v in fits.items() if "theta" in v},
@@ -938,6 +978,8 @@ def main():
     ap.add_argument("--out-dir", default=None, help="default: <desk_output_dir>/gp_species")
     ap.add_argument("--n-boot", type=int, default=1000)
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--no-pooled", action="store_true",
+                    help="skip the cross-species amplitude-prior arms")
     ap.add_argument("--no-baselines", action="store_true",
                     help="desk / no_change / intercept / oracle only (no spacetime, covariate)")
     ap.add_argument("--n-fit", type=int, default=3000,
@@ -951,7 +993,8 @@ def main():
     ap.add_argument("--thin", default="0.3,0.1,0.03",
                     help="training fractions for the data-poor arm; 'none' to skip")
     args = ap.parse_args()
-    opts = {"baselines": not args.no_baselines, "n_fit": args.n_fit,
+    opts = {"baselines": not args.no_baselines, "pooled": not args.no_pooled,
+            "n_fit": args.n_fit,
             "shape_iters": args.shape_iters,
             "k_nn": tuple(int(k) for k in args.k_nn.split(",") if k),
             "k_max": args.k_max,

@@ -254,9 +254,14 @@ def _synthetic_run(tmp_path, monkeypatch):
     lin = Zk @ Wsp
     lin[:, n_ev // 2:] = rng.normal(size=(len(keys), n_ev - n_ev // 2))   # blind species
     X_ev = np.expm1(np.clip(lin + 1.0, 0, None))
-    X_raw = np.hstack([rng.uniform(0, 3, size=(len(keys), n_comm)), X_ev]).astype("float32")
-    layout = {"community": ["c1", "c2"], "evaluation": [f"s{i:02d}" for i in range(n_ev)],
-              "n_community": n_comm, "n_evaluation": n_ev, "focal_excluded": "houfin"}
+    # plus one species seen ONLY in held-out cells: no training detections, must be dropped
+    only_ho = np.zeros((len(keys), 1))
+    only_ho[(keys[:, 0] < 12) & (keys[:, 1] >= 12), 0] = 2.0
+    X_raw = np.hstack([rng.uniform(0, 3, size=(len(keys), n_comm)), X_ev,
+                       only_ho]).astype("float32")
+    layout = {"community": ["c1", "c2"],
+              "evaluation": [f"s{i:02d}" for i in range(n_ev)] + ["heldonly"],
+              "n_community": n_comm, "n_evaluation": n_ev + 1, "focal_excluded": "houfin"}
 
     run_dir = tmp_path / "run"
     run_dir.mkdir()
@@ -289,6 +294,10 @@ def _synthetic_run(tmp_path, monkeypatch):
 
 def test_run_end_to_end_on_a_synthetic_grid(tmp_path, monkeypatch):
     rep, n_ev, ho, keys = _synthetic_run(tmp_path, monkeypatch)
+    assert rep["dropped_zero_training_detections"]["species"] == ["heldonly"]
+    for name in ("desk_pooled", "spacetime_pooled", "covariate_pooled", "desk_raw_pooled"):
+        assert f"{name}_vs_no_change" in rep["change"] or f"{name}_vs_intercept" in rep["level"]
+    assert "desk_pooled_vs_spacetime_pooled" in rep["level"]
 
     assert rep["rows"]["heldout"] == int(ho[keys[:, 0], keys[:, 1]].sum())
     assert rep["primary"]["n_species_defined"] == n_ev
@@ -655,3 +664,88 @@ def test_thinning_captured_share_on_resolvable_species():
     assert out["captured"]["desk"]["pooled"][0] == pytest.approx(4.0 / 16.0)
     assert out["captured"]["desk"]["pooled"][1] == pytest.approx(2.0 / 16.0)
     assert out["captured"]["no_change"]["pooled"] == [0.0, 0.0]
+
+
+# ----------------------------- pooled scales -----------------------------
+
+def _pool_data(seed=0, n=3000, r=6, S=60, share=0.5):
+    """Species with the SAME true kernel share; half are rare (a handful of nonzero rows)."""
+    rng = np.random.default_rng(seed)
+    Z = rng.normal(size=(n, r))
+    Y = np.zeros((n, S))
+    det = np.zeros(S)
+    for s in range(S):
+        w = rng.normal(size=r)
+        f = Z @ w
+        f = f / f.std() * np.sqrt(share)
+        y = f + rng.normal(size=n) * np.sqrt(1 - share)
+        if s % 2:                                    # rare: observe only ~8 rows, rest zero
+            keep = rng.choice(n, 8, replace=False)
+            m = np.zeros(n)
+            m[keep] = y[keep]
+            y = m
+        Y[:, s] = y
+        det[s] = (y != 0).sum()
+    return Z, Y, det
+
+
+def test_pooled_objective_gradient_matches_finite_differences():
+    Z, Y, _ = _pool_data(S=4)
+    b = gpk.feature_svd(Z)
+    st = gpk.sufficient_stats(b, Z, Y)
+    kap = gpk._kappa(b)
+    lv, eta = np.log(Y.var(0)), np.array([0.3, -1.0, 2.0, 0.0])
+    mu, tau2 = np.zeros(4), 1.5
+    _, gl, ge = gpk._pooled_objective(lv, eta, b, st, kap, mu, tau2)
+    h = 1e-6
+    f = lambda a, e: gpk._pooled_objective(a, e, b, st, kap, mu, tau2)[0]
+    np.testing.assert_allclose(gl, (f(lv + h, eta) - f(lv - h, eta)) / (2 * h), rtol=1e-4,
+                               atol=1e-4)
+    np.testing.assert_allclose(ge, (f(lv, eta + h) - f(lv, eta - h)) / (2 * h), rtol=1e-4,
+                               atol=1e-4)
+
+
+def test_pooling_shrinks_noisy_amplitude_estimates_toward_the_shared_truth():
+    # Every species has the SAME true share; with few rows the per-species estimates scatter, and
+    # the pooled ones must sit closer to the truth.
+    rng = np.random.default_rng(0)
+    n, r, S, share = 120, 6, 80, 0.3
+    Z = rng.normal(size=(n, r))
+    Y = np.empty((n, S))
+    for s_ in range(S):
+        f = Z @ rng.normal(size=r)
+        f = f / f.std() * np.sqrt(share)
+        Y[:, s_] = f + rng.normal(size=n) * np.sqrt(1 - share)
+    b = gpk.feature_svd(Z)
+    kap = gpk._kappa(b)
+    sh = lambda m: m["s2"] * kap / (m["s2"] * kap + m["n2"])
+    m0, mp = gpk.fit(Z, Y), gpk.fit(Z, Y, pool=True)
+    logit = lambda p: np.log(p / (1 - p))
+    err0 = np.mean((logit(np.clip(sh(m0), 1e-6, 1 - 1e-6)) - logit(share)) ** 2)
+    errp = np.mean((logit(np.clip(sh(mp), 1e-6, 1 - 1e-6)) - logit(share)) ** 2)
+    assert errp < err0
+    assert mp["prior"]["converged"] and mp["prior"]["tau"] >= gpk.TAU_FLOOR
+
+
+def test_pooling_does_not_manufacture_signal_for_zero_dominated_species():
+    # Rarity as mostly zeros: the kernel's share of the OBSERVED variance is genuinely small, and
+    # the pooled fit must not pretend otherwise.
+    Z, Y, det = _pool_data()
+    b = gpk.feature_svd(Z)
+    kap = gpk._kappa(b)
+    mp = gpk.fit(Z, Y, pool=True)
+    sh = mp["s2"] * kap / (mp["s2"] * kap + mp["n2"])
+    assert np.median(sh[det < 20]) < 0.05 and np.median(sh[det >= 20]) > 0.4
+
+
+def test_fit_is_scale_equivariant_down_to_rare_species_units():
+    # Rescaling a species' abundance must rescale both variances by c^2 -- including at the tiny
+    # scale of a rare species, which an absolute floor broke.
+    Z, Y = _toy(n=400, k=2)
+    for c in (1.0, 1e-3):
+        m = gpk.fit(Z, Y * c)
+        if c == 1.0:
+            ref = m
+        else:
+            np.testing.assert_allclose(m["s2"], ref["s2"] * c ** 2, rtol=1e-3)
+            np.testing.assert_allclose(m["n2"], ref["n2"] * c ** 2, rtol=1e-3)

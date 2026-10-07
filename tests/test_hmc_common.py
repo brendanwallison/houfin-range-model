@@ -349,3 +349,33 @@ def test_lbfgs_refine_never_ends_on_a_non_finite_point(tmp_path):
     x, hist, reason = lbfgs_minimize(f, jnp.zeros(1), {"c": jnp.ones(())}, _REFINE,
                                      str(tmp_path / "s.pkl"), "fp", log=lambda *_: None)
     assert float(x[0]) < 2.0 and np.isfinite(float(f(x, {"c": 1.0}))) and np.isfinite(hist[-1][1])
+
+
+def test_dense_hessian_takes_data_as_an_argument(tmp_path):
+    """TACC job 3491211: the float64 probe closed over the data and every compile captured it as
+    constants until host memory ran out. With kwargs passed through, nothing is captured, and the
+    Hessian still equals the analytic one."""
+    import warnings
+    data = _static_shape_data()
+    arrays, static = hc.split_data(data)
+    model = hc.hide_deterministics(hc.array_model(static_shape_model, static))
+    kw = {"arrays": arrays}
+    z, potential, _ = hc.potential_with_args(model, kw)
+    old = jax.config.jax_captured_constants_warn_bytes
+    jax.config.update("jax_captured_constants_warn_bytes", 1024)
+    try:
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            names, _, H = hc.dense_hessian(potential, z, chunk=2, log=lambda *_: None, kwargs=kw)
+        assert not [w for w in caught if "constants were captured" in str(w.message)]
+    finally:
+        jax.config.update("jax_captured_constants_warn_bytes", old)
+    x = np.asarray(data["x"])
+    np.testing.assert_allclose(H, x.T @ x + np.eye(3), rtol=1e-4)   # likelihood + N(0,1) prior
+
+
+def test_barrier_crossing_departure_without_dispersal_random():
+    from src.vis.barrier_crossing import low_density_departure_probability as p0
+    lat = {"dispersal_logit_intercept": 1.0, "dispersal_logit_slope": 2.0}
+    with_zeros = p0({**lat, "dispersal_random": np.zeros(10)}, target_fraction=0.8)
+    assert p0(lat, target_fraction=0.8) == pytest.approx(with_zeros)

@@ -293,25 +293,31 @@ def flatten_sorted(z: dict):
 
 
 def dense_hessian(potential_fn, z: dict, chunk: int = 8, partial_path: str | None = None,
-                  save_every: int = 8, log=print):
+                  save_every: int = 8, log=print, kwargs=None):
     """Dense Hessian of ``potential_fn`` at ``z`` by chunked Hessian-vector products.
 
     ``jax.hessian`` over the whole vector would materialize d forward-mode tangents of
     the full simulation at once; this does ``chunk`` at a time (forward-over-reverse)
     and, if ``partial_path`` is given, checkpoints completed columns so a wall-clock
     kill resumes rather than restarts. Returns (names, flat_z, H) with H symmetrized.
+
+    With ``kwargs``, ``potential_fn(z, kwargs)`` is called with them as a jit ARGUMENT
+    (see split_data): closed over, float64 data is compiled in as 5.4 GB of constants
+    per compile, which killed the run_19 probe (TACC job 3491211) on host memory.
     """
     names, x0, unravel = flatten_sorted(z)
     d = x0.size
 
-    def f(x):
-        return potential_fn(unravel(x))
+    kw = {} if kwargs is None else kwargs
+
+    def f(x, kw_):
+        return potential_fn(unravel(x)) if kwargs is None else potential_fn(unravel(x), kw_)
 
     grad_f = jax.grad(f)
 
     @jax.jit
-    def hvp_batch(V):
-        return jax.vmap(lambda v: jax.jvp(grad_f, (x0,), (v,))[1])(V)
+    def hvp_batch(V, kw_):
+        return jax.vmap(lambda v: jax.jvp(lambda x: grad_f(x, kw_), (x0,), (v,))[1])(V)
 
     H = np.full((d, d), np.nan, dtype=np.float64)
     start = 0
@@ -327,7 +333,7 @@ def dense_hessian(potential_fn, z: dict, chunk: int = 8, partial_path: str | Non
         V = eye[lo:hi]
         if hi - lo < chunk:  # keep one compiled shape
             V = jnp.concatenate([V, jnp.zeros((chunk - (hi - lo), d), x0.dtype)])
-        cols = np.asarray(hvp_batch(V), dtype=np.float64)[: hi - lo]
+        cols = np.asarray(hvp_batch(V, kw), dtype=np.float64)[: hi - lo]
         H[:, lo:hi] = cols.T
         n_chunks += 1
         if n_chunks == 1 or hi == d or n_chunks % save_every == 0:

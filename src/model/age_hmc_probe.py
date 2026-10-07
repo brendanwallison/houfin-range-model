@@ -58,14 +58,19 @@ def run_probe():
                      precision=hc.PRECISION)
     memory_snapshot("probe-inputs-loaded", device)
 
-    model = hc.hide_deterministics(build_model_2d)
-    z, potential_fn, _ = hc.unconstrained_setup(model, data, map_latents)
+    # Data ARRAYS are jit arguments throughout (hc.split_data): closed over, every compile
+    # embedded them as constants (5.4 GB each in float64) until host memory ran out.
+    arrays, static = hc.split_data(data)
+    kwargs = {"arrays": arrays}
+    model = hc.hide_deterministics(hc.array_model(build_model_2d, static))
+    z, potential_fn, _ = hc.potential_with_args(model, kwargs, map_latents)
     names, x0, unravel = hc.flatten_sorted(z)
     sizes = {k: int(np.size(z[k])) for k in names}
     print(f"[dims] d={x0.size} across {len(names)} sites; largest: "
           + ", ".join(f"{k}={v}" for k, v in sorted(sizes.items(), key=lambda kv: -kv[1])[:6]))
 
-    vg = jax.jit(jax.value_and_grad(lambda x: potential_fn(unravel(x))))
+    vg_ = jax.jit(jax.value_and_grad(lambda x, kw: potential_fn(unravel(x), kw)))
+    vg = lambda x: vg_(x, kwargs)                                  # noqa: E731
     t0 = time.time()
     u0, g0 = jax.block_until_ready(vg(x0))
     compile_s = time.time() - t0
@@ -104,7 +109,8 @@ def run_probe():
     if do_hessian and report["finite"]:
         names_h, xh, H = hc.dense_hessian(
             potential_fn, z, chunk=hvp_chunk,
-            partial_path=os.path.join(out_dir, "hessian_partial.npz"), save_every=save_every)
+            partial_path=os.path.join(out_dir, "hessian_partial.npz"), save_every=save_every,
+            kwargs=kwargs)
         inv_mass, evals, evecs, eig_report = hc.laplace_inverse_mass(H, eig_floor)
         laplace_sd = np.sqrt(np.diag(inv_mass))
         offsets = np.cumsum([0] + [sizes[k] for k in names_h])

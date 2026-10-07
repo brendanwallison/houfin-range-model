@@ -94,7 +94,9 @@ def low_density_departure_probability(latents, target_fraction, years=None, era=
     """
     beta0 = float(np.asarray(latents["dispersal_logit_intercept"]))
     beta1 = float(np.asarray(latents["dispersal_logit_slope"]))
-    r = np.asarray(latents["dispersal_random"], dtype=float)
+    # Absent when dispersal_random_enabled is false (the model then uses zeros); the
+    # empty array falls through to r_bar = 0 below.
+    r = np.asarray(latents.get("dispersal_random", []), dtype=float)
     if r.size and years is not None and era is not None:
         i0, i1, _ = era_span(era, years)
         r_bar = float(np.mean(r[i0:i1]))

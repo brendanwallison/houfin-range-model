@@ -512,3 +512,73 @@ def test_analysis_runs_on_the_synthetic_outputs(tmp_path, monkeypatch):
     tc = res["thinning_curves"]
     assert set(tc["change"]) >= {"desk", "spacetime", "covariate"}
     assert (out / "per_species_with_similarity.csv").exists()
+
+
+# ----------------------------- observation noise -----------------------------
+
+def _noise_fixture(n_cells=400, S=3, years=8, sig=(1.0, 0.3, 0.0), noise=0.5, seed=0):
+    """Cells with a true per-species change plus independent per-year noise. Species 0 has large
+    real change, 1 small, 2 none. A predictor that knows the truth is stored as mean_oracle."""
+    rng = np.random.default_rng(seed)
+    true = rng.normal(size=(n_cells, S)) * np.asarray(sig)
+    y, e_rows, m_rows, perfect = [], [], [], []
+    r = 0
+    for c in range(n_cells):
+        e = list(range(r, r + years)); r += years
+        m = list(range(r, r + years)); r += years
+        e_rows.append(np.array(e)); m_rows.append(np.array(m))
+        y.append(rng.normal(size=(years, S)) * noise)
+        y.append(true[c] + rng.normal(size=(years, S)) * noise)
+        perfect.append(np.zeros((years, S))); perfect.append(np.tile(true[c], (years, 1)))
+    H = {"y": np.concatenate(y), "species": np.array(["a", "b", "c"]),
+         "change_early_rows": np.array(e_rows, dtype=object),
+         "change_modern_rows": np.array(m_rows, dtype=object),
+         "mean_perfect": np.concatenate(perfect),
+         "mean_no_change": np.zeros((r, S))}
+
+    class _NpzLike(dict):
+        files = property(lambda self: list(self.keys()))
+    return _NpzLike(H), true, noise, years
+
+
+def test_noise_ceiling_recovers_the_planted_noise_and_signal():
+    from src.community_encoder.train_DESK.gp_species_analysis import change_noise_ceiling
+    H, true, noise, years = _noise_fixture()
+    summ, tab = change_noise_ceiling(H, n_boot=200)
+    expected_noise = 2 * noise ** 2 / years          # var of a difference of two epoch means
+    np.testing.assert_allclose(tab["noise_change"], expected_noise, rtol=0.2)
+    # species 0: large real change, resolvable; species 2: none, not resolvable
+    assert tab["resolvable"].tolist()[0] and not tab["resolvable"].tolist()[2]
+    share0 = 1 - expected_noise / (1.0 + expected_noise)
+    assert tab["signal_share"].iloc[0] == pytest.approx(share0, abs=0.05)
+    # A predictor that knows the true change captures ~all of the available signal ...
+    assert tab["captured_perfect"].iloc[0] == pytest.approx(1.0, abs=0.1)
+    # ... and no_change captures none of it, by construction.
+    assert tab["captured_no_change"].iloc[0] == pytest.approx(0.0, abs=1e-12)
+    assert np.isnan(tab["captured_perfect"].iloc[2])       # unresolvable: not graded
+
+
+def test_noise_ceiling_on_pure_noise_resolves_nothing():
+    from src.community_encoder.train_DESK.gp_species_analysis import change_noise_ceiling
+    H, _, _, _ = _noise_fixture(sig=(0.0, 0.0, 0.0), seed=3)
+    summ, tab = change_noise_ceiling(H, n_boot=200)
+    assert summ["n_resolvable"] == 0
+    assert abs(summ["pooled_signal_share"]) < 0.1
+
+
+def test_abba_halves_cancel_a_linear_within_epoch_trend():
+    from src.community_encoder.train_DESK.gp_species_analysis import (
+        abba_halves, split_half_change)
+    yrs = np.arange(1990, 1998)                       # 8 years: two full ABBA blocks
+    a, b = abba_halves(np.arange(8), yrs)
+    assert len(a) == len(b) == 4 and set(a).isdisjoint(b)
+    assert yrs[a].mean() == yrs[b].mean()
+    # A pure within-epoch trend, no noise, no between-epoch change: halves must agree exactly,
+    # i.e. zero estimated noise. A random split would report the trend as noise.
+    y = np.concatenate([np.arange(8.0), np.arange(8.0)])[:, None]
+    full, da, db = split_half_change(y, [np.arange(8)], [np.arange(8, 16)],
+                                     years=np.concatenate([yrs, yrs + 30]))
+    assert da[0, 0] == pytest.approx(db[0, 0])
+    # rows given out of year order are sorted before splitting
+    a2, b2 = abba_halves(np.array([3, 0, 2, 1]), np.array([1993, 1990, 1992, 1991]))
+    assert sorted(a2.tolist()) == [0, 3] and sorted(b2.tolist()) == [1, 2]

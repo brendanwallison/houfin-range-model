@@ -5,6 +5,32 @@ Status: built 2026-10-06, not yet run on TACC. Code: `train_DESK/gp_kernels.py`,
 `tests/test_gp_species.py`; job `scripts/tacc/submit_gp_species.sh`, overlay
 `config/overlays/gp_species_base.json`. Outputs land in `<run>/gp_species/`.
 
+## Guards carried over from the existing suite
+
+Every guard the route and spacetime suites learned the hard way, and where it lives here. Shared
+code is in `train_DESK/validation_core.py`; nothing below is re-derived locally.
+
+| Guard (origin) | Here |
+|---|---|
+| Spatial blocks + buffer ring (trainer) | `validation_core.load_holdout_masks`; ring rebuilt from `spatial_kernel` when a checkpoint predates `buffer_cells.npy` (previously an empty ring in every suite) |
+| Withheld decades, `common_holdout_years` (tempho runs) | `validation_core.row_splits`: excluded from every fit; scored as space / time / space_time |
+| Same aggregation as the target (`load_observed`) | `validate_bbs_routes.observed_counts`, shared |
+| Raw vs EMA z, one encode (`desk_z_ema`) | `desk_z_ema(..., return_raw=True)` |
+| Year-balanced split-half (this session) | `validation_core.split_half_groups` / `abba_halves`, now used by the route suite too |
+| Noise floor + viability (`noise_floor`, `stratum_viable`) | `validation_core.change_noise` per species; `stratum_viable` per change set and region |
+| Independent oracle + representability gate (`esk_oracle_independent`, `oracle_norm_tol`) | `independent_oracle_z`: community from the disjoint ABBA half of the cell-epoch; refused below the norm gate. The same-rows oracle is removed |
+| Coverage balance (`spatial_regions`, `balanced_over_strata`) | every pair carries per-region medians, balanced and population-weighted |
+| Magnitude vs angle (`error_decomposition`) | `decomposition`: per-species cos, norm ratio, over-move |
+| Noise-floored direction (`noise_floor_abs`) | split-half noise sd per species |
+| Early / modern buckets | `level_by_window` |
+| Named unavailability + completeness (`PREDICTOR_ROLES`, `assert_complete`) | `GP_PREDICTOR_ROLES`, `unavailable`, `completeness_gaps` |
+| Seed noise floor 6.6% (sweep) | stated in every report (`seed_caveat`); not fixable without more seeds |
+| Estimand: log1p of epoch-mean abundance (`epoch_mean_observed`) | truth and predictions alike; prediction count = exp(mean + var/2) - 1 |
+
+Consequences for the OTHER suites, deliberate: their split-halves are now ABBA, and their bars on
+tempho checkpoints no longer read buffer cells. Reports from before this change are not directly
+comparable and should be rerun.
+
 Temporal holdouts (added after the first run, which covered space only): on a `desk_tempho_*`
 checkpoint the withheld years are excluded from every fit, and rows are scored in three groups
 (space, time, space_time) with matching change sets. The first version would have leaked the

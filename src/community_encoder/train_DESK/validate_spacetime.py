@@ -656,8 +656,10 @@ def zspace_reconstruction(config, pidx, X, Z_desk, recent_year, to_rec, has_rec)
     preds = {"desk": Z_desk[hist], "no_change": z_nc[hist], "esk_oracle_independent": None}
     pops = {}
 
-    ho_path = os.path.join(config["paths"]["desk_output_dir"], "holdout_cells.npy")
-    ho = np.load(ho_path) if os.path.exists(ho_path) else None
+    from .validation_core import load_holdout_masks
+    _tr = (config.get("desk", {}) or {}).get("trend", {}) or {}
+    ho, bf, _bnote = load_holdout_masks(config["paths"]["desk_output_dir"],
+                                        _tr.get("buffer_floor"))
     hy = [int(y) for y in (config["desk"].get("trend", {}).get("holdout_years") or [])]
     if ho is not None:
         is_ho = is_ho_hist(ho, pidx, hist)
@@ -674,8 +676,6 @@ def zspace_reconstruction(config, pidx, X, Z_desk, recent_year, to_rec, has_rec)
         # surveyed in that same year. The comment here used to assert the opposite ("cannot run in
         # a withheld year"); the counts said otherwise -- 27,860 of 27,860 withheld rows finite.
         from .validate_baselines import zspace_idw_baseline
-        bf_p = os.path.join(config["paths"]["desk_output_dir"], "buffer_cells.npy")
-        bf = np.load(bf_p) if os.path.exists(bf_p) else np.zeros_like(ho)
         _e, z_idw = zspace_idw_baseline(pidx, z_obs, ho, hist, return_z=True,
                                         buffer_mask=bf, exclude_years=hy)
         # `spatial_idw`, not `zspace_idw`. Both bars interpolate observed z, so naming one for
@@ -845,8 +845,8 @@ def run_validate(config=None, n_pairs=20000, cka_sample=800, seed=0):
     xy = cell_xy(pidx[:, 0], pidx[:, 1], ref_raster)
     # HOISTED. The holdout mask was loaded far below, after these three had already run, which is
     # how they came to be computed over training cells and reported as validation.
-    _ho_path = os.path.join(config["paths"]["desk_output_dir"], "holdout_cells.npy")
-    _ho_mask = np.load(_ho_path) if os.path.exists(_ho_path) else None
+    from .validation_core import load_holdout_masks
+    _ho_mask = load_holdout_masks(config["paths"]["desk_output_dir"])[0]
     _splits, _split_note = holdout_split(pidx, _ho_mask, "turnover/direction/analog")
     print(f"[validate] {_split_note}")
 
@@ -864,14 +864,15 @@ def run_validate(config=None, n_pairs=20000, cka_sample=800, seed=0):
     # Folded in here rather than run as its own stage: it needs exactly what this function has
     # already paid for -- the encoded z and the projected z_obs.
     epochs_panel = ladder = None
-    ho_path = os.path.join(config["paths"]["desk_output_dir"], "holdout_cells.npy")
-    bf_path = os.path.join(config["paths"]["desk_output_dir"], "buffer_cells.npy")
-    if os.path.exists(ho_path):
+    from .validation_core import load_holdout_masks
+    _tr = (config.get("desk", {}) or {}).get("trend", {}) or {}
+    _ho_grid, _bf_grid, _bnote = load_holdout_masks(config["paths"]["desk_output_dir"],
+                                                    _tr.get("buffer_floor"))
+    if _ho_grid is not None:
         from .validate_baselines import (ATTEN_GAP, ATTEN_GAP_TOL,
                                          epoch_direction_panel, per_era_attenuation)
         from .esk_kernel import project_points_to_z
-        ho = np.load(ho_path)
-        bf = np.load(bf_path) if os.path.exists(bf_path) else np.zeros_like(ho)
+        ho, bf = _ho_grid, _bf_grid
         z_obs_pts = project_points_to_z(X, config["desk"]["z_dir"], Z.shape[1])
         # Hoisted ABOVE the epoch panel: the panel needs it too. It used to be computed only
         # for baseline_panel below, which is why the panel's IDW bar was free to source from

@@ -42,6 +42,8 @@ import os
 import numpy as np
 import pandas as pd
 
+from .validation_core import captured_share, change_noise, epoch_values, split_half_change
+
 #: Winsorization of the regression response. Squared-error differences are heavy-tailed, and a
 #: handful of rows with huge errors would otherwise set every coefficient.
 WINSOR = (0.005, 0.995)
@@ -255,17 +257,12 @@ def change_frame(H, base, species_tab, sname, include=None):
 
     ``sname`` is the change set; ``include`` (bool per species) restricts to a subset -- the
     resolvable species."""
-    y = H["y"].astype("float64")
     er, mr = H[f"change_early_rows_{sname}"], H[f"change_modern_rows_{sname}"]
     if len(er) == 0:
         return None
-
-    def delta(v):
-        return (np.stack([v[np.asarray(m, int)].mean(0) for m in mr])
-                - np.stack([v[np.asarray(e, int)].mean(0) for e in er]))
-    d_obs = delta(y)
-    ed = (delta(H["mean_desk"].astype("float64")) - d_obs) ** 2
-    eb = (delta(H[f"mean_{base}"].astype("float64")) - d_obs) ** 2
+    d_obs, preds = _set_deltas(H, sname, ("desk", base))
+    ed = (preds["desk"] - d_obs) ** 2
+    eb = (preds[base] - d_obs) ** 2
     scale = (d_obs ** 2).mean(0)
     keep = scale > 0
     if include is not None:
@@ -371,138 +368,64 @@ def thinning_curves(T, bins=DETECTION_BINS, noise=None):
 
 # ----------------------------- observation noise -----------------------------
 
-def abba_halves(rows, years):
-    """Split rows into two year-balanced halves by an ABBA pattern over year order. Pure.
+def _set_deltas(H, sname, predictors=None):
+    """Observed and predicted per-cell change for one change set, on the abundance estimand.
 
-    Rows are sorted by year and assigned A, B, B, A, A, B, B, A, ... A random split can put more
-    early years in one half and more late years in the other, so a trend INSIDE the epoch would
-    read as disagreement between halves and be counted as noise. Plain alternation (ABAB) still
-    leaves B half a step later than A. ABBA gives both halves the same mean year in every complete
-    block of four, so a linear within-epoch trend cancels exactly and only year-to-year variation
-    about it counts as noise. A trailing unpaired year is dropped from both halves; when the
-    paired count is not a multiple of four, the halves' mean years differ by one step over n/2.
+    ``(d_obs, {predictor: d_pred})``. Truth is log1p of the epoch-mean count (the saved ``y`` is
+    log1p of the cell-year mean, so ``expm1`` recovers the count exactly); a prediction's count is
+    ``exp(mean + var/2) - 1`` (``validate_gp_species.predicted_raw``). Both go through
+    ``validation_core.epoch_values``, the one definition of the estimand.
     """
-    rows = np.asarray(rows, int)
-    order = rows[np.argsort(np.asarray(years), kind="stable")]
-    n = (len(order) // 2) * 2
-    pattern = np.array([0, 1, 1, 0])
-    lab = pattern[np.arange(n) % 4]
-    # When n % 4 == 2 the last pair is (A, B) and B ends up one year-step later in total, i.e.
-    # 1/(n/2) steps on the half means. No assignment of two rows to two halves can avoid that
-    # short of dropping the pair, and dropping it costs a third of the data at n = 6.
-    return order[:n][lab == 0], order[:n][lab == 1]
-
-
-def split_half_change(y, early_rows, modern_rows, years=None):
-    """Per-species change from two DISJOINT, year-balanced halves of each cell's survey years.
-
-    The per-species counterpart of ``validate_bbs_routes.split_half_groups``. Each change cell's
-    early-epoch years and modern-epoch years are split into halves A and B by ``abba_halves``, so
-    ``d_a`` and ``d_b`` are two independent observations of the SAME cell's change with the same
-    mean year. Their disagreement is measurement noise; their covariance is the real change. Rows
-    are cell-years (routes already averaged), so the split is over years, and the noise is route
-    sampling, observer and interannual variation about any within-epoch trend -- everything a
-    smooth predictor of the epoch change cannot see.
-
-    ``years`` is the year of each row of ``y``; without it rows are taken to be in year order (the
-    order ``epoch_gate`` emits). Returns ``(d_full, d_a, d_b)``, each ``(n_cells, S)``. The epoch
-    gate guarantees >= 3 years per epoch, so every half has at least one year.
-    """
-    y = np.asarray(y, "float64")
-    yr = np.arange(len(y)) if years is None else np.asarray(years)
-    full, da, db = [], [], []
-    for e, m in zip(early_rows, modern_rows):
-        e, m = np.asarray(e, int), np.asarray(m, int)
-        ea, eb = abba_halves(e, yr[e])
-        ma, mb = abba_halves(m, yr[m])
-        full.append(y[m].mean(0) - y[e].mean(0))
-        da.append(y[ma].mean(0) - y[ea].mean(0))
-        db.append(y[mb].mean(0) - y[eb].mean(0))
-    return np.stack(full), np.stack(da), np.stack(db)
+    from .validate_gp_species import predicted_raw
+    er = [np.asarray(r, int) for r in H[f"change_early_rows_{sname}"]]
+    mr = [np.asarray(r, int) for r in H[f"change_modern_rows_{sname}"]]
+    oe, om = epoch_values(np.expm1(H["y"].astype("float64")), er, mr)
+    names = predictors or [k[len("mean_"):] for k in H.files if k.startswith("mean_")]
+    out = {}
+    for p in names:
+        pe, pm = epoch_values(predicted_raw(H[f"mean_{p}"], H[f"var_{p}"]), er, mr)
+        out[p] = pm - pe
+    return om - oe, out
 
 
 def change_noise_ceiling(H, sname, n_boot=400, seed=0):
     """How much of observed per-species change is noise, and what share of the REAL change each
-    predictor captures. ``(summary, per_species DataFrame)``. Pure given the inputs.
+    predictor captures. ``(summary, per_species DataFrame)``.
 
-    Per species, over change cells:
-
-    * ``ms_obs = mean(d_full^2)``, the no_change predictor's MSE (it predicts zero change).
-    * ``noise = mean((d_a - d_b)^2) / 4``, the noise variance of ``d_full``. Two independent half
-      estimates differ by twice a half's noise variance, and the full estimate averages both
-      halves, halving it again. The halves are year-balanced (``abba_halves``), so a linear trend
-      inside an epoch is NOT counted as noise. Slightly CONSERVATIVE still: an unpaired year left
-      out of the halves is in ``d_full``, and curvature inside an epoch counts as noise.
-    * ``signal_share = 1 - noise/ms_obs``, the share of observed squared change that is real.
-    * ``ceiling_skill = 1 - sqrt(noise/ms_obs)``, the change skill of a predictor that knows the
-      true change exactly: no predictor can beat it.
-    * ``captured_<p> = (ms_obs - MSE_p) / (ms_obs - noise)``, each predictor's improvement on
-      no_change as a share of the improvement available. This is the per-species analogue of the
-      route suite's "share of available temporal signal".
-
-    A species is RESOLVABLE when the bootstrap over cells puts ``ms_obs - noise`` above zero, the
-    same viability rule as ``validate_bbs_routes.stratum_viable``. For an unresolvable species the
-    observed change is consistent with pure noise and nothing can be graded on it; its
-    ``captured`` values are left out of the pooled medians, not averaged in.
+    A wrapper over ``validation_core.split_half_change`` / ``change_noise`` / ``captured_share``,
+    the same functions the run itself reports with, on the same abundance estimand -- so this
+    re-derives nothing. See those functions for the definitions and caveats.
     """
-    y = H["y"].astype("float64")
-    er, mr = H[f"change_early_rows_{sname}"], H[f"change_modern_rows_{sname}"]
-    years = H["keys"][:, 2] if "keys" in H.files else None
-    d_full, d_a, d_b = split_half_change(y, er, mr, years)
-    sq = d_full ** 2
-    nz = (d_a - d_b) ** 2 / 4.0
-    ms_obs, noise = sq.mean(0), nz.mean(0)
-    rng = np.random.default_rng(seed + 1)
-    nc = sq.shape[0]
-    boot = np.empty((int(n_boot), sq.shape[1]))
-    for b in range(int(n_boot)):
-        i = rng.integers(0, nc, nc)
-        boot[b] = sq[i].mean(0) - nz[i].mean(0)
-    lo = np.quantile(boot, 0.025, axis=0)
-    with np.errstate(invalid="ignore", divide="ignore"):
-        share = np.where(ms_obs > 0, 1 - noise / ms_obs, np.nan)
-        ceil = np.where(ms_obs > 0, 1 - np.sqrt(np.minimum(noise / ms_obs, 1.0)), np.nan)
-    resolvable = (ms_obs > 0) & (lo > 0)
-    tab = pd.DataFrame({"species_code": H["species"], "ms_obs_change": ms_obs,
-                        "noise_change": noise, "signal_share": share,
-                        "ceiling_skill": ceil, "resolvable": resolvable})
-
-    def _delta(v):
-        v = np.asarray(v, "float64")
-        return (np.stack([v[np.asarray(m, int)].mean(0) for m in mr])
-                - np.stack([v[np.asarray(e, int)].mean(0) for e in er]))
-
-    preds = [k[len("mean_"):] for k in H.files if k.startswith("mean_")]
-    avail = ms_obs - noise
+    er = [np.asarray(r, int) for r in H[f"change_early_rows_{sname}"]]
+    mr = [np.asarray(r, int) for r in H[f"change_modern_rows_{sname}"]]
+    years = H["keys"][:, 2] if "keys" in H.files else np.arange(len(H["y"]))
+    d_full, d_a, d_b = split_half_change(np.expm1(H["y"].astype("float64")), er, mr, years)
+    nz = change_noise(d_full, d_a, d_b, n_boot=n_boot, seed=seed)
+    tab = pd.DataFrame({"species_code": H["species"], "ms_obs_change": nz["ms_obs"],
+                        "noise_change": nz["noise"], "signal_share": nz["signal_share"],
+                        "ceiling_skill": nz["ceiling_skill"], "resolvable": nz["resolvable"]})
+    _, deltas = _set_deltas(H, sname)
     captured = {}
-    for p in preds:
-        mse = ((_delta(H[f"mean_{p}"]) - d_full) ** 2).mean(0)
-        with np.errstate(invalid="ignore", divide="ignore"):
-            c = np.where(resolvable, (ms_obs - mse) / avail, np.nan)
-        tab[f"captured_{p}"] = c
-        captured[p] = {"median": float(np.nanmedian(c)) if np.isfinite(c).any() else None,
-                       "share_above_zero": float(np.nanmean(c[np.isfinite(c)] > 0))
-                       if np.isfinite(c).any() else None,
-                       "pooled": float(np.nansum(np.where(resolvable, ms_obs - mse, 0))
-                                       / max(np.sum(np.where(resolvable, avail, 0)), 1e-300))}
-    ok = ms_obs > 0
+    for p, dp in deltas.items():
+        per, pooled = captured_share(d_full, dp, nz)
+        tab[f"captured_{p}"] = per
+        v = per[np.isfinite(per)]
+        captured[p] = {"median": float(np.median(v)) if len(v) else None,
+                       "share_above_zero": float((v > 0).mean()) if len(v) else None,
+                       "pooled": pooled}
+    ok = nz["ms_obs"] > 0
     summary = {
-        "set": sname, "n_cells": int(nc), "n_species_with_change": int(ok.sum()),
-        "n_resolvable": int(resolvable.sum()),
-        "median_signal_share": float(np.nanmedian(share[ok])),
-        "signal_share_quartiles": [float(np.nanquantile(share[ok], q)) for q in (0.25, 0.75)],
-        "pooled_signal_share": float(1 - noise[ok].sum() / ms_obs[ok].sum()),
-        "median_ceiling_skill_resolvable": (float(np.median(ceil[resolvable]))
-                                            if resolvable.any() else None),
-        "captured_share_of_available_signal": captured,
-        "note": ("signal_share is the fraction of observed squared change that is real; "
-                 "ceiling_skill is the best change skill any predictor could reach; captured is "
-                 "each predictor's gain on no_change as a share of the available gain, over "
-                 "resolvable species only. Noise is split-half over years, slightly conservative.")}
+        "set": sname, "n_cells": int(d_full.shape[0]), "n_species_with_change": int(ok.sum()),
+        "n_resolvable": int(nz["resolvable"].sum()),
+        "median_signal_share": float(np.nanmedian(nz["signal_share"][ok])),
+        "signal_share_quartiles": [float(np.nanquantile(nz["signal_share"][ok], q))
+                                   for q in (0.25, 0.75)],
+        "pooled_signal_share": float(1 - nz["noise"][ok].sum() / nz["ms_obs"][ok].sum()),
+        "median_ceiling_skill_resolvable": (float(np.median(nz["ceiling_skill"][nz["resolvable"]]))
+                                            if nz["resolvable"].any() else None),
+        "captured_share_of_available_signal": captured}
     return summary, tab
 
-
-# ----------------------------- run -----------------------------
 
 SPECIES_COLS = ["phylo_min", "trait_min", "cooc_max", "log_train_detections"]
 LEVEL_EXTRAP = ["dist_to_train_km", "cov_novelty", "years_before_modern"]
@@ -627,49 +550,70 @@ def _print(rep):
 #: The comparisons the summary prints, in reading order. Everything else is in report.json.
 KEY_PAIRS = ("desk_vs_no_change", "desk_raw_vs_no_change_raw", "desk_vs_spacetime",
              "desk_vs_covariate", "desk_raw_vs_covariate_raw", "desk_pooled_vs_spacetime_pooled",
-             "desk_vs_esk_oracle", "spacetime_vs_no_change", "covariate_vs_no_change")
+             "desk_vs_esk_oracle_independent", "spacetime_vs_no_change",
+             "covariate_vs_no_change", "esk_oracle_independent_vs_no_change")
+KEY_PREDICTORS = ("desk", "desk_raw", "desk_pooled", "spacetime", "covariate", "covariate_raw",
+                  "esk_oracle_independent")
 
 
 def summarize(gp_dir):
     """Print the headline numbers of a finished run, per held-out group and change set."""
     with open(os.path.join(gp_dir, "report.json"), encoding="utf-8") as fh:
         r = json.load(fh)
-    f = lambda v: "  n/a " if v is None else f"{v:+.3f}"
+    f = lambda v: "  n/a " if v is None or (isinstance(v, float) and v != v) else f"{v:+.3f}"
     print(f"run {r['run_dir']}\nwithheld years: {r.get('withheld_years') or 'none'}  "
           f"(common {r.get('common_holdout_years') or 'none'}); buffer: {r.get('buffer')}")
     print("rows:", r["rows"], "| dropped species:", r["dropped_zero_training_detections"]["n"])
+    print("estimand:", r.get("estimand"))
+    print("CAVEAT:", r.get("seed_caveat"))
     for k, v in r.get("baseline_shapes", {}).items():
         print(f"  shape {k:14s} converged={v['converged']}  at_bound={v.get('at_bound')}  "
               f"lengthscales[:4]={[round(x, 2) for x in v['lengthscales'][:4]]}")
+    for k, v in (r.get("unavailable") or {}).items():
+        print(f"  unavailable: {k}: {v}")
+    if r.get("completeness_gaps"):
+        print(f"  GAPS (no result, no reason): {r['completeness_gaps']}")
+    print(f"  oracle: {r.get('oracle')}")
     p = r["primary"]
     print("\nPRIMARY:", p.get("metric", p.get("note")))
     if "median" in p:
         print(f"  median {f(p['median'])} CI [{f(p['median_ci'][0])}, {f(p['median_ci'][1])}]  "
-              f"share>0 {p['share_above_zero']:.2f}  ({p['n_species_defined']} species)")
+              f"share>0 {p['share_above_zero']:.2f}  balanced {f(p.get('balanced_median'))}  "
+              f"viable={p.get('viable')}  ({p['n_species_defined']} species)")
     for sec in ("change", "level"):
         for grp, pairs in r[sec].items():
-            print(f"\n{sec.upper()} -- {grp}   (median skill [CI]  share>0  n)")
+            extra = ""
+            if sec == "change":
+                v = r.get("change_viability", {}).get(grp, {})
+                extra = f"   viable={v.get('qualified')} {v.get('reason') or ''}"
+            print(f"\n{sec.upper()} -- {grp}{extra}\n  {'pair':34s} median [CI]  share>0  "
+                  "balanced  pop-weighted  n")
             for k in KEY_PAIRS:
                 v = pairs.get(k)
                 if v and "median" in v:
                     print(f"  {k:34s} {f(v['median'])} [{f(v['median_ci'][0])}, "
                           f"{f(v['median_ci'][1])}]  {v['share_above_zero']:.2f}  "
-                          f"{v['n_species_defined']}")
-    npath = os.path.join(gp_dir, "change_noise.json")
-    if os.path.exists(npath):
-        with open(npath, encoding="utf-8") as fh:
-            nz = json.load(fh)
-        nz = nz if "set" not in nz else {nz["set"]: nz}
-        for sname, v in nz.items():
-            print(f"\nNOISE -- {sname}: signal share median {v['median_signal_share']:+.3f}, "
-                  f"{v['n_resolvable']} resolvable; captured share of available change "
-                  "(median / share>0 / pooled):")
-            for k, c in v["captured_share_of_available_signal"].items():
-                if c["median"] is not None and not k.endswith(("_k8", "_k4")):
-                    print(f"  {k:22s} {c['median']:+.3f}  {c['share_above_zero']:.2f}  "
-                          f"{c['pooled']:+.3f}")
-    else:
-        print("\n(no change_noise.json yet: run with --noise-only)")
+                          f"{f(v.get('balanced_median'))}  "
+                          f"{f(v.get('population_weighted_median'))}  {v['n_species_defined']}")
+    for grp, wins in r.get("level_by_window", {}).items():
+        print(f"\nLEVEL by window -- {grp}: desk_vs_no_change / desk_vs_spacetime medians")
+        for w, pairs in wins.items():
+            a, b = pairs.get("desk_vs_no_change", {}), pairs.get("desk_vs_spacetime", {})
+            print(f"  {w:7s} {f(a.get('median'))}  {f(b.get('median'))}")
+    for sname, nz in r.get("change_noise", {}).items():
+        print(f"\nNOISE -- {sname}: signal share median {f(nz.get('median_signal_share'))}, "
+              f"pooled {f(nz.get('pooled_signal_share'))}; {nz.get('n_resolvable')} resolvable; "
+              f"ceiling skill {f(nz.get('median_ceiling_skill_resolvable'))}")
+        cap = r.get("captured", {}).get(sname, {})
+        dec = r.get("decomposition", {}).get(sname, {})
+        print(f"  {'predictor':24s} captured: median  share>0  pooled | change direction cos  "
+              "norm ratio  overmove")
+        for k in KEY_PREDICTORS:
+            c, d = cap.get(k), dec.get(k, {})
+            if c and c.get("median") is not None:
+                print(f"  {k:24s} {f(c['median'])}  {c['share_above_zero']:.2f}  "
+                      f"{f(c['pooled'])} | {f(d.get('median_cos'))}  "
+                      f"{f(d.get('median_norm_ratio'))}  {f(d.get('median_overmove'))}")
 
 
 def main():

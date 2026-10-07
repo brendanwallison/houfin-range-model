@@ -59,10 +59,14 @@ def test_every_desk_z_ema_call_site_unpacks_two_values():
             if not (isinstance(call, ast.Call) and getattr(call.func, "id", None) == "desk_z_ema"):
                 continue
             tgt = node.targets[0]
-            if not (isinstance(tgt, ast.Tuple) and len(tgt.elts) == 2):
+            # return_raw=True adds the raw z as a third value; the arity must match the flag.
+            raw = any(k.arg == "return_raw" and isinstance(k.value, ast.Constant)
+                      and k.value.value is True for k in call.keywords)
+            want = 3 if raw else 2
+            if not (isinstance(tgt, ast.Tuple) and len(tgt.elts) == want):
                 offenders.append(f"{path.name}:{node.lineno}")
-    assert not offenders, ("desk_z_ema returns (Z, metadata); these bind it to one name: "
-                          + ", ".join(offenders))
+    assert not offenders, ("desk_z_ema returns (Z, metadata), or (Z, metadata, Z_raw) with "
+                          "return_raw=True; these unpack the wrong arity: " + ", ".join(offenders))
 
 
 def test_shrinkage_profile_separates_a_uniform_rescale_from_a_tilt():

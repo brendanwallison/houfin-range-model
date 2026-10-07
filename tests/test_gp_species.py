@@ -10,8 +10,9 @@ import pytest
 
 from src.community_encoder.train_DESK import gp_kernels as gpk
 from src.community_encoder.train_DESK.validate_gp_species import (
-    block_sums, epoch_change, gaussian_crps, interval_coverage, modern_reference_keys,
-    no_change_z, pooled_skill, row_splits, skill_from_sse, species_layout)
+    block_sums, gaussian_crps, interval_coverage, modern_reference_keys,
+    no_change_z, pooled_skill, skill_from_sse, species_layout)
+from src.community_encoder.train_DESK.validation_core import row_splits
 
 
 # ----------------------------- algebra -----------------------------
@@ -105,6 +106,13 @@ def _planted(seed=0, n_cells=300, years=range(1970, 2021, 5), r=6, temporal=True
     y_blind = (np.repeat(cell_eff, len(years)) + frac * np.repeat(cell_drift, len(years))
                + 0.2 * rng.normal(size=len(Z)))
     return keys, Z, np.stack([y_z, y_blind], 1)
+
+
+def epoch_change(v, e_rows, m_rows):
+    """Plain epoch means, for the GP-algebra sign tests (their synthetic y is not a count)."""
+    v = np.asarray(v, "float64")
+    return (np.stack([v[np.asarray(r)].mean(0) for r in e_rows]),
+            np.stack([v[np.asarray(r)].mean(0) for r in m_rows]))
 
 
 def _change_skill(keys, Z, Y, test):
@@ -296,9 +304,12 @@ def _synthetic_run(tmp_path, monkeypatch, withheld=(), common=()):
 
     monkeypatch.setattr(vgs, "load_all_species", lambda cfg: (X_raw, keys, layout))
     # raw z: the drift lands abruptly; z_ema: the same drift, so the z-driven species follow it
-    monkeypatch.setattr(vgs, "desk_z_both",
-                        lambda cfg, k: (z_of(k) + 0.05, z_of(k), {"ema_half_life": 10.0}))
-    monkeypatch.setattr(esk_kernel, "project_points_to_z", lambda X, zd, l: z_of(keys))
+    monkeypatch.setattr(vbr, "desk_z_ema",
+                        lambda cfg, k, return_raw=False: (z_of(k), {"ema_half_life": 10.0},
+                                                          z_of(k) + 0.05))
+    P = rng.normal(size=(n_comm, L))
+    monkeypatch.setattr(esk_kernel, "project_points_to_z",
+                        lambda X, zd, l: (np.asarray(X, "float64") @ P).astype("float32"))
     # Covariates that know each cell but not its change: the covariate GP can place a species
     # but, like no_change, cannot see z's drift.
     def _cov(cfg, k, both=False):
@@ -328,7 +339,14 @@ def test_run_end_to_end_on_a_synthetic_grid(tmp_path, monkeypatch):
     assert rep["primary"]["set"] == "space"
     assert rep["primary"]["n_species_defined"] == n_ev
     assert 0.3 <= rep["primary"]["share_above_zero"] <= 0.7    # half the species are blind
-    assert rep["direction"]["space"]["no_change"]["n_abstained"] == n_ev
+    assert rep["direction"]["space"]["no_change"]["n_species_scored"] == 0   # never commits
+    assert rep["completeness_gaps"] == []
+    assert ("esk_oracle_independent" in rep["predictors"]
+            or "esk_oracle_independent" in rep["unavailable"])
+    v = rep["change"]["space"]["desk_vs_no_change"]
+    assert "balanced_median" in v and "regions" in v
+    assert set(rep["level_by_window"]["space"]) <= {"early", "mid", "modern"}
+    assert rep["decomposition"]["space"]["desk"]["median_cos"] is not None
     import pandas as pd
     tab = pd.read_csv(tmp_path / "out" / "per_species.csv")
     sk = tab["change_skill_space_desk_vs_no_change"].to_numpy()
@@ -562,40 +580,51 @@ def test_analysis_runs_on_the_synthetic_outputs(tmp_path, monkeypatch):
 # ----------------------------- observation noise -----------------------------
 
 def _noise_fixture(n_cells=400, S=3, years=8, sig=(1.0, 0.3, 0.0), noise=0.5, seed=0):
-    """Cells with a true per-species change plus independent per-year noise. Species 0 has large
-    real change, 1 small, 2 none. A predictor that knows the truth is stored as mean_oracle."""
+    """Cells with a true per-species log-abundance change plus per-year lognormal noise (mean-one,
+    so the epoch-mean count is unbiased). Species 0 has large real change, 1 small, 2 none. A
+    predictor that knows the true expected counts is stored as mean_perfect (var 0)."""
     rng = np.random.default_rng(seed)
-    true = rng.normal(size=(n_cells, S)) * np.asarray(sig)
+    base = np.log(rng.uniform(2, 20, size=(n_cells, S)))
+    change = rng.normal(size=(n_cells, S)) * np.asarray(sig)
     y, e_rows, m_rows, perfect = [], [], [], []
     r = 0
     for c in range(n_cells):
-        e = list(range(r, r + years)); r += years
-        m = list(range(r, r + years)); r += years
-        e_rows.append(np.array(e)); m_rows.append(np.array(m))
-        y.append(rng.normal(size=(years, S)) * noise)
-        y.append(true[c] + rng.normal(size=(years, S)) * noise)
-        perfect.append(np.zeros((years, S))); perfect.append(np.tile(true[c], (years, 1)))
-    H = {"y": np.concatenate(y), "species": np.array(["a", "b", "c"]),
+        e = list(range(r, r + years))
+        r += years
+        m = list(range(r, r + years))
+        r += years
+        e_rows.append(np.array(e))
+        m_rows.append(np.array(m))
+        for lev in (base[c], base[c] + change[c]):
+            eps = rng.normal(size=(years, S)) * noise
+            y.append(np.log1p(np.exp(lev) * np.exp(eps - noise ** 2 / 2)))
+            perfect.append(np.tile(np.log1p(np.exp(lev)), (years, 1)))
+    yy = np.concatenate(y)
+    H = {"y": yy, "species": np.array(["a", "b", "c"]),
          "change_early_rows_s": np.array(e_rows, dtype=object),
          "change_modern_rows_s": np.array(m_rows, dtype=object),
-         "mean_perfect": np.concatenate(perfect),
-         "mean_no_change": np.zeros((r, S))}
+         "mean_perfect": np.concatenate(perfect), "var_perfect": np.zeros_like(yy),
+         "mean_no_change": np.zeros_like(yy), "var_no_change": np.zeros_like(yy)}
 
     class _NpzLike(dict):
         files = property(lambda self: list(self.keys()))
-    return _NpzLike(H), true, noise, years
+    return _NpzLike(H), change, noise, years
 
 
 def test_noise_ceiling_recovers_the_planted_noise_and_signal():
     from src.community_encoder.train_DESK.gp_species_analysis import change_noise_ceiling
-    H, true, noise, years = _noise_fixture()
+    H, change, noise, years = _noise_fixture()
     summ, tab = change_noise_ceiling(H, "s", n_boot=200)
-    expected_noise = 2 * noise ** 2 / years          # var of a difference of two epoch means
-    np.testing.assert_allclose(tab["noise_change"], expected_noise, rtol=0.2)
+    # The split-half noise must match the ACTUAL error of the observed change against the truth,
+    # measured directly here on the abundance estimand.
+    from src.community_encoder.train_DESK.validation_core import epoch_values
+    er, mr = list(H["change_early_rows_s"]), list(H["change_modern_rows_s"])
+    oe, om = epoch_values(np.expm1(H["y"]), er, mr)
+    te, tm = epoch_values(np.expm1(H["mean_perfect"]), er, mr)
+    actual = (((om - oe) - (tm - te)) ** 2).mean(0)
+    np.testing.assert_allclose(tab["noise_change"], actual, rtol=0.3)
     # species 0: large real change, resolvable; species 2: none, not resolvable
     assert tab["resolvable"].tolist()[0] and not tab["resolvable"].tolist()[2]
-    share0 = 1 - expected_noise / (1.0 + expected_noise)
-    assert tab["signal_share"].iloc[0] == pytest.approx(share0, abs=0.05)
     # A predictor that knows the true change captures ~all of the available signal ...
     assert tab["captured_perfect"].iloc[0] == pytest.approx(1.0, abs=0.1)
     # ... and no_change captures none of it, by construction.
@@ -612,16 +641,15 @@ def test_noise_ceiling_on_pure_noise_resolves_nothing():
 
 
 def test_abba_halves_cancel_a_linear_within_epoch_trend():
-    from src.community_encoder.train_DESK.gp_species_analysis import (
-        abba_halves, split_half_change)
+    from src.community_encoder.train_DESK.validation_core import abba_halves, split_half_change
     yrs = np.arange(1990, 1998)                       # 8 years: two full ABBA blocks
     a, b = abba_halves(np.arange(8), yrs)
     assert len(a) == len(b) == 4 and set(a).isdisjoint(b)
     assert yrs[a].mean() == yrs[b].mean()
     # A pure within-epoch trend, no noise, no between-epoch change: halves must agree exactly,
     # i.e. zero estimated noise. A random split would report the trend as noise.
-    y = np.concatenate([np.arange(8.0), np.arange(8.0)])[:, None]
-    full, da, db = split_half_change(y, [np.arange(8)], [np.arange(8, 16)],
+    raw = np.concatenate([np.arange(8.0), np.arange(8.0)])[:, None] + 1.0  # counts, linear trend
+    full, da, db = split_half_change(raw, [np.arange(8)], [np.arange(8, 16)],
                                      years=np.concatenate([yrs, yrs + 30]))
     assert da[0, 0] == pytest.approx(db[0, 0])
     # rows given out of year order are sorted before splitting
@@ -816,3 +844,62 @@ def test_summary_and_noise_run_on_tempho_outputs(tmp_path, monkeypatch, capsys):
     ga.summarize(out)
     printed = capsys.readouterr().out
     assert "PRIMARY" in printed and "CHANGE -- time" in printed and "NOISE -- space_time" in printed
+
+
+# ----------------------------- audit fixes -----------------------------
+
+def test_predicted_raw_is_the_lognormal_mean():
+    from src.community_encoder.train_DESK.validate_gp_species import predicted_raw
+    rng = np.random.default_rng(0)
+    y = rng.normal(0.7, 0.5, 400000)
+    assert predicted_raw(0.7, 0.25) == pytest.approx(np.expm1(y).mean(), rel=5e-3)
+
+
+def test_independent_oracle_never_uses_the_rows_own_survey(monkeypatch):
+    from src.community_encoder.train_DESK import esk_kernel
+    from src.community_encoder.train_DESK.validate_gp_species import independent_oracle_z
+    # projection = identity on a 1-species community, so z IS the community value it was given
+    monkeypatch.setattr(esk_kernel, "project_points_to_z",
+                        lambda X, zd, l: np.asarray(X, "float32"))
+    years = [1970, 1971, 1972, 1973]
+    keys = np.array([[0, 0, y] for y in years] + [[0, 0, 1990]])
+    X = np.array([[1.0], [10.0], [100.0], [1000.0], [5.0]])
+    Z, info = independent_oracle_z(keys, X, "zd", 1, norm_tol=0.0)
+    # ABBA over 1970..73: A = {1970, 1973}, B = {1971, 1972}
+    a_val = np.log1p((1.0 + 1000.0) / 2)
+    b_val = np.log1p((10.0 + 100.0) / 2)
+    np.testing.assert_allclose(Z[[0, 3], 0], b_val, rtol=1e-6)   # A rows see B's community
+    np.testing.assert_allclose(Z[[1, 2], 0], a_val, rtol=1e-6)
+    assert np.isnan(Z[4]).all()                                  # 1990: outside both epochs
+
+
+def test_independent_oracle_refuses_off_span_projections(monkeypatch):
+    from src.community_encoder.train_DESK import esk_kernel
+    from src.community_encoder.train_DESK.validate_gp_species import independent_oracle_z
+    # a projection whose norm collapses for averaged input: refused by the gate
+    monkeypatch.setattr(esk_kernel, "project_points_to_z",
+                        lambda X, zd, l: (np.asarray(X, "float32") - 2.0))
+    keys = np.array([[0, 0, y] for y in (1970, 1971, 1972, 1973)])
+    X = np.array([[0.0], [100.0], [0.0], [100.0]])
+    Z, info = independent_oracle_z(keys, X, "zd", 1, norm_tol=0.99)
+    assert Z is None and "representability gate" in info["reason"]
+
+
+def test_decomposition_separates_overmoving_from_wrong_direction():
+    from src.community_encoder.train_DESK.validate_gp_species import decomposition
+    rng = np.random.default_rng(0)
+    obs = rng.normal(size=(200, 2))
+    over = np.column_stack([2.0 * obs[:, 0], -obs[:, 1]])     # sp0: right way, 2x; sp1: reversed
+    summ, per = decomposition(over, obs, np.array([True, True]))
+    assert per["cos"][0] == pytest.approx(1.0) and per["overmove"][0] == pytest.approx(2.0)
+    assert per["cos"][1] == pytest.approx(-1.0) and np.isnan(per["overmove"][1])
+
+
+def test_expected_predictors_cover_every_configured_arm():
+    from src.community_encoder.train_DESK.validate_gp_species import (
+        GP_PREDICTOR_ROLES, expected_predictors, role_of)
+    names = expected_predictors({"baselines": True, "pooled": True, "k_nn": (32, 8)})
+    assert {"spacetime_k8", "covariate_raw_k8", "covariate_raw_pooled",
+            "esk_oracle_independent"} <= set(names)
+    assert all(not role_of(n).startswith("UNREGISTERED") for n in names)
+    assert "esk_oracle" not in GP_PREDICTOR_ROLES        # the same-rows oracle is gone

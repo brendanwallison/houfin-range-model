@@ -202,42 +202,11 @@ def match_group_sizes(group_a, group_b, seed=0):
     return out_a, out_b
 
 
-def split_half_groups(groups, seed=0):
-    """Split each row group into two DISJOINT halves -> ``(half_a, half_b, ok)``.
-
-    This is what makes an oracle honest and a noise floor measurable, and they are the SAME
-    measurement. The oracle was built by projecting the very arrays the observed truth is computed
-    from -- epoch: ``ruzicka(Xe, Xm)`` against ``project(Xe)``/``project(Xm)``; route:
-    ``ruzicka_rect(X_s, X_s)`` against ``project(X_s)`` -- so it shared the target's noise
-    realisation. That is not a ceiling: it measures how faithfully rank-64 truncation preserves the
-    object it was handed, noise included, which is why it reached pearson 0.995. No predictor that
-    did not see that noise draw can approach it, so every "model vs ceiling" gap read off it was
-    overstated.
-
-    Build the truth from half A and the oracle from half B and the oracle becomes "how well can
-    the basis predict this community from an INDEPENDENT observation of it" -- an achievable
-    ceiling. The similarity between the two halves is simultaneously the noise floor, since same
-    cell and same era means no real turnover is possible and everything below 1.0 is measurement
-    noise.
-
-    ``ok[i]`` is False where a group has fewer than 2 rows and cannot be split; the caller must
-    drop those rows rather than silently compare a group against itself.
-    """
-    rng = np.random.default_rng(seed)
-    a, b, ok = [], [], []
-    for g in groups:
-        g = tuple(g)
-        if len(g) < 2:
-            a.append(g)
-            b.append(g)
-            ok.append(False)
-            continue
-        perm = rng.permutation(len(g))
-        h = len(g) // 2
-        a.append(tuple(sorted(g[i] for i in perm[:h])))
-        b.append(tuple(sorted(g[i] for i in perm[h:2 * h])))   # equal halves, matched noise
-        ok.append(True)
-    return a, b, np.asarray(ok, bool)
+# split_half_groups lives in validation_core, shared by every arm. It was a RANDOM split here,
+# which can put more early years in one half and more late years in the other, so a trend inside
+# the window read as disagreement between halves and was counted as noise. The shared version is
+# year-balanced (ABBA). Callers pass the row years; see validation_core.split_half_groups.
+from .validation_core import split_half_groups  # noqa: E402
 
 
 def modern_reference_groups(keys, modern_window=MODERN_WINDOW):
@@ -1702,6 +1671,43 @@ def assert_same_layout(trained, species, source="points_meta.json"):
           "columns by bbs_community_points.species_order(community_trend.csv).")
 
 
+def observed_counts(species, crosswalk):
+    """Raw BBS -> dense per-surveyed-cell-year counts for ``species``, in that column order.
+
+    THE aggregation chain, shared by every consumer: route QC, route -> cell, ``SpeciesTotal``
+    summed per cell-year (crosswalk lumps summed) and divided by the cell-year's QC route count,
+    densified against coverage so a surveyed absence is a real zero. ``species`` fixes the column
+    layout and is never compacted: a species BBS cannot survey keeps an all-zero column, because
+    compacting would shift every later column (the 94-of-96 misalignment). ``crosswalk`` is
+    ``[aou, species_code]``. Returns ``(X_raw (N, S) float32, keys (N, 3) int32, n_dropped)``.
+    """
+    from src.data.preprocess import bbs
+    from src.data.preprocess.bbs_community import build_community_matrix, route_grid_map
+
+    species = [str(c).lower() for c in species]
+    obs_all, coverage = bbs.load_usca_observations(aou_filter=None, return_coverage=True)
+    routes = bbs.load_routes()
+    land_mask, _, transform, crs, nx, ny = bbs.load_grid_reference(bbs.MASK_PATH)
+    route_cells = route_grid_map(routes, transform, crs, nx, ny, land_mask)
+    mean_df, cov_df = build_community_matrix(obs_all, coverage, crosswalk, route_cells)
+
+    code_ix = {c: i for i, c in enumerate(species)}
+    # species are lowercased; the crosswalk's codes may not be, and a case mismatch here would
+    # silently drop every row of an affected species rather than misplace it.
+    sp_lower = mean_df["species_code"].astype(str).str.lower()
+    mean_df = mean_df[sp_lower.isin(code_ix)]
+    X_raw, keys, dropped = densify_community(
+        mean_df["row"].to_numpy(), mean_df["col"].to_numpy(), mean_df["year"].to_numpy(),
+        mean_df["species_code"].astype(str).str.lower().map(code_ix).to_numpy(),
+        mean_df["mean_count"].to_numpy(),
+        cov_df["row"].to_numpy(), cov_df["col"].to_numpy(), cov_df["year"].to_numpy(),
+        len(species))
+    if X_raw.shape[1] != len(species):
+        raise ValueError(f"community matrix has {X_raw.shape[1]} columns for {len(species)} "
+                         "species; the pinned layout was not honoured")
+    return X_raw, keys, dropped
+
+
 def load_observed(config):
     """Build the observed route-level community from RAW BBS → ``(X_log, keys, meta, X_raw)``.
 
@@ -1718,7 +1724,6 @@ def load_observed(config):
     from src.config_utils import load_data_config
     from src.data.identify.bbs_crosswalk import build_crosswalk
     from src.data.preprocess import bbs
-    from src.data.preprocess.bbs_community import build_community_matrix, route_grid_map
     import pandas as pd
 
     dcfg = load_data_config()
@@ -1759,26 +1764,7 @@ def load_observed(config):
     # later column and reintroduce exactly the misalignment above -- the layout must depend on the
     # community definition alone, never on what BBS happens to match this release.
 
-    obs_all, coverage = bbs.load_usca_observations(aou_filter=None, return_coverage=True)
-    routes = bbs.load_routes()
-    land_mask, _, transform, crs, nx, ny = bbs.load_grid_reference(bbs.MASK_PATH)
-    route_cells = route_grid_map(routes, transform, crs, nx, ny, land_mask)
-    mean_df, cov_df = build_community_matrix(obs_all, coverage, crosswalk, route_cells)
-
-    code_ix = {c: i for i, c in enumerate(species)}
-    # species_order lowercases; the crosswalk's codes may not, and a case mismatch here would
-    # silently drop every row of an affected species rather than misplace it.
-    sp_lower = mean_df["species_code"].astype(str).str.lower()
-    mean_df = mean_df[sp_lower.isin(code_ix)]
-    X_raw, keys, dropped = densify_community(
-        mean_df["row"].to_numpy(), mean_df["col"].to_numpy(), mean_df["year"].to_numpy(),
-        mean_df["species_code"].astype(str).str.lower().map(code_ix).to_numpy(),
-        mean_df["mean_count"].to_numpy(),
-        cov_df["row"].to_numpy(), cov_df["col"].to_numpy(), cov_df["year"].to_numpy(),
-        len(species))
-    if X_raw.shape[1] != len(species):
-        raise ValueError(f"community matrix has {X_raw.shape[1]} columns for {len(species)} "
-                         "species; the pinned layout was not honoured")
+    X_raw, keys, dropped = observed_counts(species, crosswalk)
 
     # points_meta.json records the log1p flag and the species DESK trained on. Neither is in the
     # ESK meta.json. Cross-check rather than assume: a raw-count basis would make a log1p
@@ -1848,8 +1834,12 @@ def load_observed(config):
     return log1p_community(X_raw), keys, meta, X_raw
 
 
-def desk_z_ema(config, keys):
+def desk_z_ema(config, keys, return_raw=False):
     """DESK ``z_ema`` for every row of ``keys`` → ``(N, latent)``.
+
+    ``return_raw=True`` also returns the RAW z at the same keys, from the same single encode, as a
+    third value. The cube exports raw z (the population model supplies the lag), so an arm that
+    grades the deployed features needs it; encoding twice would be a second definition of z.
 
     The EMA is a CAUSAL scan, so a single (cell, year) cannot be smoothed in isolation. Encodes
     the involved cells over the contiguous span ``ema_warmup_start .. max(year)``, runs the scan
@@ -1890,6 +1880,7 @@ def desk_z_ema(config, keys):
 
     L = Z.shape[1]
     stack = Z.reshape(len(years), len(cells), L)
+    raw_stack = stack.copy() if return_raw else None
     valid = ok.reshape(len(years), len(cells))
     if ema_on and np.isfinite(hl):
         stack = apply_output_ema(stack, hl, valid=valid)
@@ -1901,12 +1892,15 @@ def desk_z_ema(config, keys):
 
     cell_ix = {(int(r), int(c)): i for i, (r, c) in enumerate(cells)}
     year_ix = {y: t for t, y in enumerate(years)}
-    Zout = np.full((keys.shape[0], L), np.nan, dtype="float32")
-    for i in range(keys.shape[0]):
-        Zout[i] = stack[year_ix[int(keys[i, 2])], cell_ix[(int(keys[i, 0]), int(keys[i, 1]))]]
-    return Zout, {"output_ema_applied": bool(ema_on and np.isfinite(hl)),
-                  "ema_half_life": hl if np.isfinite(hl) else None,
-                  "ema_warmup_start": warm, "encode_years": [years[0], years[-1]]}
+    ti = np.array([year_ix[int(y)] for y in keys[:, 2]])
+    ci = np.array([cell_ix[(int(r), int(c))] for r, c in keys[:, :2]])
+    Zout = stack[ti, ci].astype("float32")
+    info = {"output_ema_applied": bool(ema_on and np.isfinite(hl)),
+            "ema_half_life": hl if np.isfinite(hl) else None,
+            "ema_warmup_start": warm, "encode_years": [years[0], years[-1]]}
+    if return_raw:
+        return Zout, info, raw_stack[ti, ci].astype("float32")
+    return Zout, info
 
 
 def build_spacetime_bar(config, keys, X_raw_all, latent_dim):
@@ -1934,14 +1928,14 @@ def build_spacetime_bar(config, keys, X_raw_all, latent_dim):
         from .validate_baselines import spacetime_idw_baseline, spacetime_idw_z
         zd = config["desk"]["z_dir"]
         z_rows = project_points_to_z(log1p_community(X_raw_all), zd, latent_dim)
-        ho_p = os.path.join(config["paths"]["desk_output_dir"], "holdout_cells.npy")
-        bf_p = os.path.join(config["paths"]["desk_output_dir"], "buffer_cells.npy")
-        if z_rows is None or not os.path.exists(ho_p):
+        from .validation_core import load_holdout_masks
+        _tr = (config.get("desk", {}) or {}).get("trend", {}) or {}
+        ho, bf, _bnote = load_holdout_masks(config["paths"]["desk_output_dir"],
+                                            _tr.get("buffer_floor"))
+        if z_rows is None or ho is None:
             print(f"[bbs-routes] spacetime-IDW bar unavailable (no projection in {zd} "
                   f"or no holdout mask); skill will be reported against the no-change null only")
             return None
-        ho = np.load(ho_p)
-        bf = np.load(bf_p) if os.path.exists(bf_p) else np.zeros_like(ho)
         hy = [int(y) for y in (config["desk"].get("trend", {}).get("holdout_years") or [])]
         # Anisotropy fitted on TRAINING rows only, long-gap probe when years are withheld, so
         # the bar is tuned for the reach it is judging rather than for interpolation.
@@ -2049,8 +2043,8 @@ def _run_epoch_analysis(config, keys, X_raw_all, cells, e_rows, m_rows, gate_sta
     # the NOISE FLOOR -- same cell, same era, so no real turnover is possible and everything below
     # 1.0 is measurement noise. The suite ran without the floor, which is how an observed cross-era
     # similarity of 0.62 was reported as "38% change the model failed to predict".
-    eA, eB, e_ok = split_half_groups(e_rows, seed=0)
-    mA, mB, m_ok = split_half_groups(m_rows, seed=1)
+    eA, eB, e_ok = split_half_groups(e_rows, years=keys[:, 2])
+    mA, mB, m_ok = split_half_groups(m_rows, years=keys[:, 2])
     split_ok = e_ok & m_ok
     XeA = epoch_mean_observed(X_raw_all, eA)
     XmA = epoch_mean_observed(X_raw_all, mA)
@@ -2163,8 +2157,9 @@ def _run_epoch_analysis(config, keys, X_raw_all, cells, e_rows, m_rows, gate_sta
     from .validate_spacetime import cell_xy
     xy = cell_xy(cells[:, 0], cells[:, 1], load_data_config()["grid"]["ref_raster"])
 
-    ho_path = os.path.join(config["paths"]["desk_output_dir"], "holdout_cells.npy")
-    is_ho = np.load(ho_path)[cells[:, 0], cells[:, 1]] if os.path.exists(ho_path) else None
+    from .validation_core import load_holdout_masks
+    _ho_grid = load_holdout_masks(config["paths"]["desk_output_dir"])[0]
+    is_ho = _ho_grid[cells[:, 0], cells[:, 1]] if _ho_grid is not None else None
 
     t0 = time.perf_counter()
     # MAIN TABLE -- full-sample truth, best precision for desk / no_change / spacetime_idw. The
@@ -2447,10 +2442,11 @@ def run(config=None, n_sample=4000, seed=0):
     # Holdout must be resolved BEFORE sampling so it can be a stratum. Held-out cells are a small
     # minority of rows, and held-out is the only split that answers whether the model generalizes,
     # so leaving it to chance makes the table's most important cells its least reliable.
+    from .validation_core import load_holdout_masks
     ho_path = os.path.join(config["paths"]["desk_output_dir"], "holdout_cells.npy")
-    has_ho = os.path.exists(ho_path)
+    ho_grid = load_holdout_masks(config["paths"]["desk_output_dir"])[0]
+    has_ho = ho_grid is not None
     if has_ho:
-        ho_grid = np.load(ho_path)
         is_ho_all = ho_grid[keys[:, 0], keys[:, 1]]
         print(f"[bbs-routes] holdout mask: {int(is_ho_all.sum())}/{len(is_ho_all)} rows "
               f"({100.0 * is_ho_all.mean():.1f}%) are held-out cells")
@@ -2633,7 +2629,7 @@ def run(config=None, n_sample=4000, seed=0):
     # row's window, and is the only one of the two a model could actually reach.
     Z_esk_ind, ind_why = None, None
     if avg:
-        _hA, _hB, _hok = split_half_groups(grp_win, seed=0)
+        _hA, _hB, _hok = split_half_groups(grp_win, years=keys_all[:, 2])
         if int(_hok.sum()) >= 4:
             _XB = epoch_mean_observed(X_raw_all, _hB)
             _zB = project_points_to_z(np.asarray(_XB, "float32"),

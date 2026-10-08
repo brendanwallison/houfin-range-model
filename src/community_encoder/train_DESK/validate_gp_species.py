@@ -473,7 +473,7 @@ def spacetime_inputs(keys, cell_km):
     return np.column_stack([k[:, 1] * cell_km, k[:, 0] * cell_km, k[:, 2]])
 
 
-def cooccurrence_similarity(Y_eval, Y_comm, top=5):
+def cooccurrence_similarity(Y_eval, Y_comm, top=5, exclude=None):
     """How closely each evaluation species tracks its nearest community species. Pure.
 
     Pearson correlation of log1p abundance over TRAINING rows between each evaluation species and
@@ -488,6 +488,8 @@ def cooccurrence_similarity(Y_eval, Y_comm, top=5):
             return (A - A.mean(0)) / np.where(sd > 0, sd, np.nan)
     C = _std(Y_eval).T @ np.nan_to_num(_std(Y_comm)) / len(Y_eval)        # (S_eval, S_comm)
     C = np.where(np.isfinite(C), C, np.nan)
+    if exclude is not None:                      # exclude[i]: column of evaluation species i itself
+        C[np.arange(len(exclude)), np.asarray(exclude, int)] = np.nan
     srt = -np.sort(-np.nan_to_num(C, nan=-np.inf), axis=1)
     k = min(int(top), C.shape[1])
     mx = srt[:, 0]
@@ -719,7 +721,7 @@ def comparisons(names):
 
 
 def _pair_table(err, avail, block, region, cell_of, pairs, n_boot, seed, region_ok, bal_kw,
-                regions=True):
+                truth, regions=True):
     """Pooled skill per pair, on the rows where BOTH predictors exist, with regional balance.
 
     ``err[name]`` is a per-unit squared-error table (rows or cells x species), ``avail[name]`` the
@@ -727,6 +729,13 @@ def _pair_table(err, avail, block, region, cell_of, pairs, n_boot, seed, region_
     unless ``regions`` is off, a per-region median and ``balanced_over_strata`` across regions --
     BBS is coast-heavy, so the population-weighted figure grades a model where the survey is dense
     and cannot see a deficit elsewhere. Both are reported; their gap IS the coverage bias.
+
+    ``truth`` (units x species) decides where a species' skill is DEFINED: only over units where
+    the truth carries any signal for it (a detection for level, a nonzero observed change for
+    change). Elsewhere the reference's error is not zero but merely tiny -- a baseline predicting
+    1e-6 where the species is absent -- and a skill computed against it is noise of any size: the
+    first audited run reported regional skills of -7 to -1858 from exactly that. The rule is the
+    suite's "undefined metric" rule, applied per region and to the pooled figure alike.
     """
     from .validate_bbs_routes import balanced_over_strata
     out, per = {}, {}
@@ -740,6 +749,8 @@ def _pair_table(err, avail, block, region, cell_of, pairs, n_boot, seed, region_
             continue
         _, sa = block_sums(err[a][m], block[m])
         _, sb = block_sums(err[b][m], block[m])
+        undefined = ~(np.abs(truth[m]) > 0).any(0)
+        sa[:, undefined], sb[:, undefined] = 0.0, 0.0      # -> skill NaN: no signal to grade
         pooled, sk = pooled_skill(sa, sb, n_boot, seed)
         per[key] = sk
         if regions:
@@ -748,6 +759,7 @@ def _pair_table(err, avail, block, region, cell_of, pairs, n_boot, seed, region_
                 mm = m & (region == rg)
                 ra, rb = err[a][mm].sum(0), err[b][mm].sum(0)
                 skr = skill_from_sse(ra, rb)
+                skr[~(np.abs(truth[mm]) > 0).any(0)] = np.nan
                 fin = np.isfinite(skr)
                 ok, why = region_ok.get(int(rg), (False, "no viability verdict"))
                 strata[str(int(rg))] = {
@@ -824,14 +836,26 @@ def _prob_table(Y, preds, sel, avail):
 
 # ----------------------------- run -----------------------------
 
+#: Which species are graded. ``out_of_community`` is the transfer question and the default;
+#: ``community`` grades the 96 species DESK's target is built from -- a CONSISTENCY run, the
+#: per-species analogue of the route suite, never evidence about transfer (DESK was trained on
+#: these species' similarity structure; it is out-of-sample in space and time only).
+SPECIES_MODES = ("out_of_community", "community")
+
+
 def run(config=None, out_dir=None, n_boot=1000, seed=0, opts=None):
     t0 = time.perf_counter()
     config = config or load_config()
     opts = {"baselines": True, "pooled": True, "n_fit": 3000, "shape_iters": 400,
-            "k_nn": (32, 8), "k_max": 4000, "thin": (0.3, 0.1, 0.03), **(opts or {})}
+            "k_nn": (32, 8), "k_max": 4000, "thin": (0.3, 0.1, 0.03),
+            "species": "out_of_community", **(opts or {})}
+    if opts["species"] not in SPECIES_MODES:
+        raise ValueError(f"species mode {opts['species']!r}; one of {SPECIES_MODES}")
+    community_mode = opts["species"] == "community"
     rng = np.random.default_rng(seed)
     run_dir = config["paths"]["desk_output_dir"]
-    out_dir = out_dir or os.path.join(run_dir, "gp_species")
+    out_dir = out_dir or os.path.join(run_dir, "gp_species_community" if community_mode
+                                      else "gp_species")
     os.makedirs(out_dir, exist_ok=True)
     dm = np.load(os.path.join(run_dir, "desk_meta.npz"), allow_pickle=True)
     latent = int(dm["latent_dim"])
@@ -853,7 +877,14 @@ def run(config=None, out_dir=None, n_boot=1000, seed=0, opts=None):
     X_raw, keys, layout = load_all_species(config)
     nc = layout["n_community"]
     Ylog = log1p_community(X_raw)
-    Y_eval = Ylog[:, nc:]
+    if community_mode:
+        # Grade the community's own columns. The independent oracle still projects the WHOLE
+        # community, including the graded species, but from the disjoint half of the years -- the
+        # route suite's esk_oracle_independent, applied per species.
+        Y_eval = Ylog[:, :nc]
+        layout = {**layout, "evaluation": list(layout["community"])}
+    else:
+        Y_eval = Ylog[:, nc:]
     X_comm_raw = np.asarray(X_raw[:, :nc], "float64")
     # Regions over ALL surveyed rows, the route suite's definition (coarse_spatial bins the
     # occupied extent of the points it is given, so it must be given the same points).
@@ -968,6 +999,13 @@ def run(config=None, out_dir=None, n_boot=1000, seed=0, opts=None):
            if "best_epoch" in dm.files else None,
            "withheld_years": withheld, "common_holdout_years": common, "buffer": buffer_note,
            "estimand": ESTIMAND, "seed_caveat": SEED_CAVEAT,
+           "species_mode": opts["species"],
+           "species_mode_note": ("COMMUNITY species: a consistency check against the route suite, "
+                                 "in-sample in species (DESK's target is built from them), "
+                                 "out-of-sample in space and time. Not evidence about transfer."
+                                 if community_mode else
+                                 "out-of-community species minus House Finch: the transfer "
+                                 "question"),
            "selection_caveat": ("the checkpoint's epoch was selected on a held-out kernel metric "
                                 "over these same blocks: a mild optimistic bias for desk"),
            "covariate_gp_caveat": ("the covariate GP sees each cell's own covariates; desk also "
@@ -1005,7 +1043,7 @@ def run(config=None, out_dir=None, n_boot=1000, seed=0, opts=None):
             n_c = len(np.unique(cells_g[reg[sel] == rg], axis=0))
             region_ok[int(rg)] = (n_c >= 30, "" if n_c >= 30 else f"only {n_c} cells (needs >= 30)")
         rep["level"][gname], per = _pair_table(err, avail, bid[sel], reg[sel], cells_g, pairs,
-                                               n_boot, seed, region_ok, bal_kw)
+                                               n_boot, seed, region_ok, bal_kw, truth=Yte[sel])
         per_species.update({f"level_skill_{gname}_{k}": v for k, v in per.items()})
         rep["level_by_window"][gname] = {}
         for wname, (lo, hi) in WINDOWS.items():
@@ -1015,7 +1053,7 @@ def run(config=None, out_dir=None, n_boot=1000, seed=0, opts=None):
             rep["level_by_window"][gname][wname], _ = _pair_table(
                 {k: v[w] for k, v in err.items()}, {k: v[w] for k, v in avail.items()},
                 bid[sel][w], reg[sel][w], cells_g[w], pairs, n_boot, seed, region_ok, bal_kw,
-                regions=False)
+                truth=Yte[sel][w], regions=False)
         rep["probabilistic"][gname] = _prob_table(Yte, preds, sel, avail_rows)
 
     # ---- change, per change set ----
@@ -1067,7 +1105,7 @@ def run(config=None, out_dir=None, n_boot=1000, seed=0, opts=None):
             per_species.update({f"{k}_{sname}_{n_}": v_ for k, v_ in dper.items()})
         cpairs = [(a, b) for a, b in pairs if b != "intercept"]
         rep["change"][sname], per = _pair_table(err, avail, cell_block, cell_reg, cells, cpairs,
-                                                n_boot, seed, region_ok, bal_kw)
+                                                n_boot, seed, region_ok, bal_kw, truth=d_full)
         per_species.update({f"change_skill_{sname}_{k}": v for k, v in per.items()})
         rep["direction"][sname], per = _direction_report(dirs)
         per_species.update({f"direction_skill_{sname}_{k}": v for k, v in per.items()})
@@ -1116,7 +1154,12 @@ def run(config=None, out_dir=None, n_boot=1000, seed=0, opts=None):
     # ---- per-species table, the input to the regressions ----
     scored = row_group > 0
     det_tr, det_te = (Ytr > 0).sum(0), (Yte[scored] > 0).sum(0)
-    cmax, ctop = cooccurrence_similarity(Ytr, Ylog[tr_rows][:, :nc])
+    if community_mode:
+        # A community species' nearest community species must not be itself.
+        cmax, ctop = cooccurrence_similarity(Ytr, Ylog[tr_rows][:, :nc],
+                                             exclude=[layout["community"].index(c) for c in ev])
+    else:
+        cmax, ctop = cooccurrence_similarity(Ytr, Ylog[tr_rows][:, :nc])
     table = {"species_code": np.array(ev), "n_train_detections": det_tr,
              "n_heldout_detections": det_te, "prevalence_train": det_tr / max(len(tr_rows), 1),
              "cooc_max": cmax, "cooc_top5": ctop,
@@ -1276,6 +1319,9 @@ def main():
                     help="neighbours per test row for the local baselines; the first is primary, "
                          "the rest are a support-sensitivity check")
     ap.add_argument("--k-max", type=int, default=4000)
+    ap.add_argument("--species", default="out_of_community", choices=SPECIES_MODES,
+                    help="which species are graded; 'community' is the consistency run, written "
+                         "to <run>/gp_species_community")
     ap.add_argument("--thin", default="0.3,0.1,0.03",
                     help="training fractions for the data-poor arm; 'none' to skip")
     args = ap.parse_args()
@@ -1283,7 +1329,7 @@ def main():
             "n_fit": args.n_fit,
             "shape_iters": args.shape_iters,
             "k_nn": tuple(int(k) for k in args.k_nn.split(",") if k),
-            "k_max": args.k_max,
+            "k_max": args.k_max, "species": args.species,
             "thin": (() if args.thin.strip().lower() in ("", "none", "0")
                      else tuple(float(f) for f in args.thin.split(",") if f))}
     run(out_dir=args.out_dir, n_boot=args.n_boot, seed=args.seed, opts=opts)

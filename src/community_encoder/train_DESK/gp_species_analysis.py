@@ -76,15 +76,22 @@ def patristic_to_set(tree, labels_from, labels_to):
     return mn, me
 
 
-def trait_distance_to_set(T_from, T_to):
-    """Min and mean Euclidean distance in (already standardized) trait space. Pure."""
+def trait_distance_to_set(T_from, T_to, self_index=None):
+    """Min and mean Euclidean distance in (already standardized) trait space. Pure.
+
+    ``self_index[i]`` is the column of ``T_to`` that IS species ``i`` (or -1), excluded so a
+    community species' nearest community member is never itself."""
     A, B = np.asarray(T_from, "float64"), np.asarray(T_to, "float64")
-    B = B[np.isfinite(B).all(1)]
     ok = np.isfinite(A).all(1)
     mn, me = np.full(len(A), np.nan), np.full(len(A), np.nan)
     if len(B) and ok.any():
-        d = np.sqrt(((A[ok, None, :] - B[None, :, :]) ** 2).sum(-1))
-        mn[ok], me[ok] = d.min(1), d.mean(1)
+        d = np.sqrt(((A[:, None, :] - B[None, :, :]) ** 2).sum(-1))
+        d[:, ~np.isfinite(B).all(1)] = np.nan
+        if self_index is not None:
+            si = np.asarray(self_index, int)
+            d[np.arange(len(A))[si >= 0], si[si >= 0]] = np.nan
+        with np.errstate(all="ignore"):
+            mn[ok], me[ok] = np.nanmin(d[ok], 1), np.nanmean(d[ok], 1)
     return mn, me
 
 
@@ -118,7 +125,9 @@ def species_similarity(evaluation, community, datasets_root):
     traits = av.standardize(rows[av.TRAIT_COLS].apply(pd.to_numeric, errors="coerce"),
                             av.TRAIT_COLS).to_numpy()
     ne = len(evaluation)
-    t_min, t_mean = trait_distance_to_set(traits[:ne], traits[ne:])
+    pos = {c: i for i, c in enumerate(community)}
+    t_min, t_mean = trait_distance_to_set(traits[:ne], traits[ne:],
+                                          self_index=[pos.get(c, -1) for c in evaluation])
 
     tree = dendropy.Tree.get(path=os.path.join(datasets_root, "avonet", "PhylogeneticData",
                                                "HackettStage1_0001_1000_MCCTreeTargetHeights.nex"),

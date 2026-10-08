@@ -257,7 +257,7 @@ def test_layout_refuses_focal_species_inside_the_community():
 
 # ----------------------------- end to end, with I/O mocked -----------------------------
 
-def _synthetic_run(tmp_path, monkeypatch, withheld=(), common=()):
+def _synthetic_run(tmp_path, monkeypatch, withheld=(), common=(), n_comm=2, species=None):
     """The orchestration in ``run`` -- splits, encode bookkeeping, every predictor, the report
     and the saved tables -- on a synthetic grid where half the species are readouts of z."""
     from src.community_encoder.train_DESK import validate_bbs_routes as vbr
@@ -278,7 +278,7 @@ def _synthetic_run(tmp_path, monkeypatch, withheld=(), common=()):
     years = list(range(1966, 2026, 3))
     keys = np.array([(r, c, y) for r in range(H) for c in range(W) for y in years], "int32")
     Zk = z_of(keys)
-    n_comm, n_ev = 2, 10
+    n_ev = 10
     Wsp = rng.normal(size=(L, n_ev))
     lin = Zk @ Wsp
     lin[:, n_ev // 2:] = rng.normal(size=(len(keys), n_ev - n_ev // 2))   # blind species
@@ -288,7 +288,7 @@ def _synthetic_run(tmp_path, monkeypatch, withheld=(), common=()):
     only_ho[(keys[:, 0] < 12) & (keys[:, 1] >= 12), 0] = 2.0
     X_raw = np.hstack([rng.uniform(0, 3, size=(len(keys), n_comm)), X_ev,
                        only_ho]).astype("float32")
-    layout = {"community": ["c1", "c2"],
+    layout = {"community": [f"c{i}" for i in range(n_comm)],
               "evaluation": [f"s{i:02d}" for i in range(n_ev)] + ["heldonly"],
               "n_community": n_comm, "n_evaluation": n_ev + 1, "focal_excluded": "houfin"}
 
@@ -322,7 +322,8 @@ def _synthetic_run(tmp_path, monkeypatch, withheld=(), common=()):
                                                  "common_holdout_years": list(common)}}}
     rep = vgs.run(cfg, out_dir=str(tmp_path / "out"), n_boot=50,
                   opts={"cell_km": 27.0, "n_fit": 400, "shape_iters": 15, "k_nn": (16, 4),
-                        "k_max": 800, "thin": (0.3,)})
+                        "k_max": 800, "thin": (0.3,),
+                        **({"species": species} if species else {})})
     return rep, n_ev, ho, keys
 
 
@@ -910,3 +911,47 @@ def test_predictions_are_decompressed_once(tmp_path):
     np.savez_compressed(tmp_path / "heldout_predictions.npz", y=np.arange(5.0), z=np.ones(3))
     H = Arrays(str(tmp_path / "heldout_predictions.npz"))
     assert H["y"] is H["y"] and "z" in H and "q" not in H and set(H.files) == {"y", "z"}
+
+
+def test_regional_skill_is_undefined_where_a_species_is_absent():
+    # Species 1 is absent in region 1. A baseline predicting ~0 there has a tiny but nonzero
+    # error, and a skill against it is noise of any size: it must be undefined, not -1858.
+    from src.community_encoder.train_DESK.validate_gp_species import _pair_table
+    rng = np.random.default_rng(0)
+    n = 400
+    region = np.repeat([0, 1], n // 2)
+    # 7 species, 4 of them absent in region 1: without the rule the region's MEDIAN is one of
+    # the exploding skills; with it, 3 defined species remain (the minimum for a median).
+    S = 7
+    truth = np.abs(rng.normal(size=(n, S))) + 0.5
+    truth[region == 1, :4] = 0.0
+    err = {"desk": (rng.normal(size=(n, S)) * 0.3) ** 2,
+           "base": np.where(truth > 0, (rng.normal(size=(n, S)) * 0.5) ** 2, 1e-12)}
+    avail = {k: np.ones(n, bool) for k in err}
+    cells = np.column_stack([np.arange(n), np.zeros(n, int)])
+    out, _ = _pair_table(err, avail, np.arange(n) % 8, region, cells, [("desk", "base")], 50, 0,
+                         {0: (True, ""), 1: (True, "")}, {}, truth=truth)
+    # Without the rule, species 1 in region 1 scores 1 - sqrt(SSE/1e-12-ish): about -1e5.
+    for rg in ("0", "1"):
+        assert abs(out["desk_vs_base"]["regions"][rg]["median"]) < 5
+    assert np.isfinite(out["desk_vs_base"]["balanced_median"])
+
+
+def test_community_mode_grades_the_community_and_never_pairs_a_species_with_itself(
+        tmp_path, monkeypatch):
+    rep, n_ev, ho, keys = _synthetic_run(tmp_path, monkeypatch, n_comm=6, species="community")
+    assert rep["species_mode"] == "community"
+    import json
+    lay = json.load(open(tmp_path / "out" / "layout.json"))
+    assert lay["evaluation"] == lay["community"][: len(lay["evaluation"])] or \
+        set(lay["evaluation"]) <= set(lay["community"])
+    import pandas as pd
+    tab = pd.read_csv(tmp_path / "out" / "per_species.csv")
+    assert (tab["cooc_max"].dropna() < 0.999).all()        # never its own column
+
+
+def test_trait_distance_excludes_the_species_itself():
+    from src.community_encoder.train_DESK.gp_species_analysis import trait_distance_to_set
+    T = np.array([[0.0, 0.0], [3.0, 4.0]])
+    mn, _ = trait_distance_to_set(T, T, self_index=[0, 1])
+    np.testing.assert_allclose(mn, [5.0, 5.0])

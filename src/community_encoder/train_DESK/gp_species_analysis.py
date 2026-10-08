@@ -210,9 +210,10 @@ def level_frame(H, base, species_tab, group=None):
     are never scored."""
     rg = H["row_group"] if "row_group" in H.files else np.ones(len(H["y"]), int)
     sel = (rg == group) if group is not None else (rg > 0)
-    H = {k: (H[k][sel] if k in ("y", "keys", "block_id", "dist_to_train_km", "cov_novelty",
-                                "years_before_modern", "years_beyond_training_edge")
-                         or k.startswith("mean_") else H[k]) for k in H.files}
+    # Only the members this frame reads -- never every stored predictor.
+    need = ["y", "keys", "block_id", "dist_to_train_km", "cov_novelty", "years_before_modern",
+            "years_beyond_training_edge", "mean_desk", f"mean_{base}"]
+    H = {k: H[k][sel] for k in need if k in H.files}
     y = H["y"].astype("float64")
     ed = (H["mean_desk"] - y) ** 2
     eb = (H[f"mean_{base}"] - y) ** 2
@@ -379,11 +380,16 @@ def _set_deltas(H, sname, predictors=None):
     from .validate_gp_species import predicted_raw
     er = [np.asarray(r, int) for r in H[f"change_early_rows_{sname}"]]
     mr = [np.asarray(r, int) for r in H[f"change_modern_rows_{sname}"]]
-    oe, om = epoch_values(np.expm1(H["y"].astype("float64")), er, mr)
+    # Work on the change rows only: a few thousand of the tens of thousands predicted.
+    rows = np.unique(np.concatenate(er + mr))
+    remap = {int(r): i for i, r in enumerate(rows)}
+    er = [np.array([remap[int(i)] for i in r]) for r in er]
+    mr = [np.array([remap[int(i)] for i in r]) for r in mr]
+    oe, om = epoch_values(np.expm1(H["y"][rows].astype("float64")), er, mr)
     names = predictors or [k[len("mean_"):] for k in H.files if k.startswith("mean_")]
     out = {}
     for p in names:
-        pe, pm = epoch_values(predicted_raw(H[f"mean_{p}"], H[f"var_{p}"]), er, mr)
+        pe, pm = epoch_values(predicted_raw(H[f"mean_{p}"][rows], H[f"var_{p}"][rows]), er, mr)
         out[p] = pm - pe
     return om - oe, out
 
@@ -398,8 +404,13 @@ def change_noise_ceiling(H, sname, n_boot=400, seed=0):
     """
     er = [np.asarray(r, int) for r in H[f"change_early_rows_{sname}"]]
     mr = [np.asarray(r, int) for r in H[f"change_modern_rows_{sname}"]]
-    years = H["keys"][:, 2] if "keys" in H.files else np.arange(len(H["y"]))
-    d_full, d_a, d_b = split_half_change(np.expm1(H["y"].astype("float64")), er, mr, years)
+    rows = np.unique(np.concatenate(er + mr))                 # the change rows only
+    remap = {int(r): i for i, r in enumerate(rows)}
+    er = [np.array([remap[int(i)] for i in r]) for r in er]
+    mr = [np.array([remap[int(i)] for i in r]) for r in mr]
+    years = (H["keys"][rows, 2] if "keys" in H.files else rows)
+    d_full, d_a, d_b = split_half_change(np.expm1(H["y"][rows].astype("float64")), er, mr,
+                                         years)
     nz = change_noise(d_full, d_a, d_b, n_boot=n_boot, seed=seed)
     tab = pd.DataFrame({"species_code": H["species"], "ms_obs_change": nz["ms_obs"],
                         "noise_change": nz["noise"], "signal_share": nz["signal_share"],
@@ -427,6 +438,39 @@ def change_noise_ceiling(H, sname, n_boot=400, seed=0):
     return summary, tab
 
 
+class Arrays(dict):
+    """An npz loaded ONCE into memory, with the ``.files`` interface of ``np.load``.
+
+    Indexing an ``NpzFile`` decompresses that member from scratch on every access, and the
+    held-out predictions run to ~50 members of up to ~100 MB each on a tempho run. Reading through
+    the NpzFile directly meant re-decompressing every predictor's means and variances once per
+    group x baseline. Members are decompressed lazily, at most once each.
+    """
+
+    def __init__(self, path):
+        super().__init__()
+        self._npz = np.load(path, allow_pickle=True)
+
+    @property
+    def files(self):
+        return list(self._npz.files)
+
+    def __contains__(self, k):
+        return k in self._npz.files
+
+    def __getitem__(self, k):
+        if not dict.__contains__(self, k):
+            dict.__setitem__(self, k, self._npz[k])
+        return dict.__getitem__(self, k)
+
+    def get(self, k, default=None):
+        return self[k] if k in self else default
+
+
+def load_predictions(gp_dir):
+    return Arrays(os.path.join(gp_dir, "heldout_predictions.npz"))
+
+
 SPECIES_COLS = ["phylo_min", "trait_min", "cooc_max", "log_train_detections"]
 LEVEL_EXTRAP = ["dist_to_train_km", "cov_novelty", "years_before_modern"]
 CHANGE_EXTRAP = ["dist_to_train_km", "cov_novelty"]
@@ -434,7 +478,7 @@ CHANGE_EXTRAP = ["dist_to_train_km", "cov_novelty"]
 
 def run_noise(gp_dir):
     """The observation-noise read alone, per change set: no AVONET, no regressions, seconds."""
-    H = np.load(os.path.join(gp_dir, "heldout_predictions.npz"), allow_pickle=True)
+    H = load_predictions(gp_dir)
     out = {}
     for sname in [str(x) for x in H["change_set_names"]]:
         summary, tab = change_noise_ceiling(H, sname)
@@ -477,7 +521,7 @@ def run(gp_dir, datasets_root=None):
                                    ["phylo_min", "trait_min", "cooc_max", "migration",
                                     "urban_tolerance"] if c in tab},
            "n_species": int(len(tab)), "level": {}, "change": {}}
-    H = np.load(os.path.join(gp_dir, "heldout_predictions.npz"), allow_pickle=True)
+    H = load_predictions(gp_dir)
     stab = tab.drop(columns=[c for c in tab.columns if c.startswith(("change_skill", "level_skill",
                                                                      "direction_skill", "lpd_"))])
     bases = [b for b in ("no_change", "spacetime", "covariate") if f"mean_{b}" in H.files]

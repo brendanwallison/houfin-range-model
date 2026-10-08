@@ -903,3 +903,10 @@ def test_expected_predictors_cover_every_configured_arm():
             "esk_oracle_independent"} <= set(names)
     assert all(not role_of(n).startswith("UNREGISTERED") for n in names)
     assert "esk_oracle" not in GP_PREDICTOR_ROLES        # the same-rows oracle is gone
+
+
+def test_predictions_are_decompressed_once(tmp_path):
+    from src.community_encoder.train_DESK.gp_species_analysis import Arrays
+    np.savez_compressed(tmp_path / "heldout_predictions.npz", y=np.arange(5.0), z=np.ones(3))
+    H = Arrays(str(tmp_path / "heldout_predictions.npz"))
+    assert H["y"] is H["y"] and "z" in H and "q" not in H and set(H.files) == {"y", "z"}

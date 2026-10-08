@@ -318,9 +318,13 @@ def rates_from_manifolds(p, H_s, H_sj, H_r, H_k=None):
     }
     if H_k is not None:
         # Same link the model uses (config capacity_level_prior.link).
-        from src.model.age_priors import _K_LINK
-        arg = p["alpha_k"] + p["gamma_k"] * H_k
-        out["K"] = np.exp(arg) if _K_LINK == "exp" else softplus(arg)
+        from src.model.age_priors import _K_FORM, _K_LINK, crowding_capacity
+        if _K_FORM == "crowding":
+            out["K"] = np.asarray(crowding_capacity(
+                p["alpha_k"], p["gamma_k"] * H_k, 0.0, out["Sa"], out["Sj"], out["Fmax"]))
+        else:
+            arg = p["alpha_k"] + p["gamma_k"] * H_k
+            out["K"] = np.exp(arg) if _K_LINK == "exp" else softplus(arg)
     return out
 
 

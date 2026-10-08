@@ -99,3 +99,36 @@ def test_switches_resolve_from_overlays(overlay, form, link, disp):
     assert ("manifold_angle" in r["sites"]) == (form == "rank2")
     assert ("manifold_coupling_logit" in r["sites"]) == (form == "exchangeable")
     assert r["factor_shape"] == ([24, 2] if form == "rank2" else [24, 1])
+
+
+def test_crowding_capacity_is_growth_derived_and_bounded():
+    """K = kappa * (R0-1)_+: zero for sinks, the Beverton-Holt term reduces to 1/kappa, and the
+    habitat modifier can shift K by at most e^B."""
+    import src.model.age_priors as ap
+    Sa = jnp.array([0.5, 0.5, 0.5, 0.5]); Sj = jnp.array([0.4, 0.4, 0.4, 0.4])
+    Fmax = jnp.array([1.0, 2.5, 5.0, 10.0])              # R0 = Fmax*Sa*Sj/(1-Sa) = 0.4, 1, 2, 4
+    R0 = np.asarray(Fmax * Sa * Sj / (1 - Sa))
+    K = np.asarray(ap.crowding_capacity(0.0, jnp.zeros(4), 0.0, Sa, Sj, Fmax, bound=0.0, softness=0.02))
+    assert K[0] < 1e-6 and K[1] == pytest.approx(0.02 * np.log(2), rel=1e-3)   # sink; R0 = 1
+    np.testing.assert_allclose(K[2:], R0[2:] - 1, rtol=1e-4)                  # kappa0 = 1
+    c = np.maximum(R0 - 1, 0)
+    np.testing.assert_allclose(c[2:] / K[2:], 1.0, rtol=1e-4)                  # c/K = 1/kappa
+    B = np.log(4)
+    Kmod = np.asarray(ap.crowding_capacity(0.0, jnp.full(4, 50.0), 0.0, Sa, Sj, Fmax, bound=B, softness=0.02))
+    np.testing.assert_allclose(Kmod[2:] / K[2:], 4.0, rtol=1e-6)               # saturates at e^B
+
+
+@pytest.mark.parametrize("overlay,bound", [("map_run20a_crowding.json", 0.0),
+                                           ("map_run20b_crowding_modifier.json", 1.3863)])
+def test_crowding_overlays_resolve(overlay, bound):
+    probe = """
+import json, src.model.age_priors as a
+print(json.dumps({"form": a._K_FORM, "bound": a._CROWDING["modifier_bound"],
+  "level": float(__import__("jax").numpy.exp(a._ALPHA_K_LOC)) * (a._CROWDING["reference_R0"] - 1) * a._POP_SCALAR,
+  "rho": a._MANIFOLD_PRIOR["coupling_target"]}))
+"""
+    env = dict(os.environ, AGE_MODEL_CONFIG=os.path.join(REPO, "config", "overlays", overlay))
+    r = json.loads(subprocess.run([sys.executable, "-c", probe], cwd=REPO, env=env, capture_output=True,
+                                  text=True, check=True).stdout.strip().splitlines()[-1])
+    assert r["form"] == "crowding" and r["bound"] == pytest.approx(bound) and r["rho"] == 0.6
+    assert r["level"] == pytest.approx(2.6183, rel=1e-6)

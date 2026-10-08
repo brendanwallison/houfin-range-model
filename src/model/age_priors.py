@@ -40,6 +40,11 @@ _RELEASE_ALLEE_EXEMPT_YEARS = int(_POP_SPEC.get("release_allee_exemption_years",
 #   dispersal_random_enabled  per-year dispersal noise on/off
 _MANIFOLD_FORM = str(_MANIFOLD_PRIOR.get("form", "rank2"))
 _K_LINK = str(_CAPACITY_LEVEL.get("link", "softplus"))
+#   capacity_level_prior.form "field" (K from its own habitat field) | "crowding"
+_K_FORM = str(_CAPACITY_LEVEL.get("form", "field"))
+_CROWDING = dict(_CAPACITY_LEVEL.get("crowding", {}))
+if _K_FORM not in {"field", "crowding"}:
+    raise ValueError(f"capacity_level_prior.form must be field or crowding, got {_K_FORM!r}")
 _DISPERSAL_RANDOM = bool(_POP_SPEC.get("dispersal_random_enabled", True))
 if _MANIFOLD_FORM not in {"rank2", "exchangeable"}:
     raise ValueError(f"manifold_prior.form must be rank2 or exchangeable, got {_MANIFOLD_FORM!r}")
@@ -91,15 +96,45 @@ def counts_to_relative(route_counts):
 # alpha_k's prior location, solved so the level's MEDIAN matches the configured target in
 # route counts. Closed form, evaluated at import, so it tracks pop_scalar automatically.
 # Under the exp link the median of exp(alpha_k) is exp(loc), so loc = log(target density).
-_ALPHA_K_LOC = (
-    float(np.log(float(_CAPACITY_LEVEL["target_level_median_route_counts"]) / _POP_SCALAR))
-    if _K_LINK == "exp" else
-    _softplus_loc_for_median(_CAPACITY_LEVEL["target_level_median_route_counts"], _POP_SCALAR))
+# Under the crowding form alpha_k is log(kappa0), capacity per unit of surplus growth, so
+# the target is met at the reference R0: K = kappa0 * (R0_ref - 1) = target.
+_TARGET_DENSITY = float(_CAPACITY_LEVEL["target_level_median_route_counts"]) / _POP_SCALAR
+if _K_FORM == "crowding":
+    _ALPHA_K_LOC = float(np.log(_TARGET_DENSITY / (float(_CROWDING["reference_R0"]) - 1.0)))
+elif _K_LINK == "exp":
+    _ALPHA_K_LOC = float(np.log(_TARGET_DENSITY))
+else:
+    _ALPHA_K_LOC = _softplus_loc_for_median(
+        _CAPACITY_LEVEL["target_level_median_route_counts"], _POP_SCALAR)
 
 
 def k_link(x, link=None):
     """Capacity link: K = link(alpha_k + gamma_k*H_k + trend), in density space."""
     return jnp.exp(x) if (link or _K_LINK) == "exp" else jnn.softplus(x)
+
+
+def crowding_capacity(alpha_k, H, trend, Sa, Sj, Fmax, bound=None, softness=None):
+    """Growth-derived capacity: K = kappa(x) * exp(trend) * (R0 - 1)_+.
+
+    R0 = Fmax*Sa*Sj/(1 - Sa) is the cell's mate-unlimited net reproductive number --
+    the same quantity reproduction_age_structured's Beverton-Holt term uses as c + 1.
+    With this K that term's c/K reduces to 1/kappa: classic Beverton-Holt crowding,
+    F_eff = Fmax / (1 + N/kappa), equilibrium N* = kappa * (R0 - 1). So a cell can only
+    hold birds by being a source; absence comes from R0 <= 1 (a sink), never from an
+    independent capacity field driven to zero (the run_18/19 'K switch': 40% of
+    lambda-suitable cells Allee-dead).
+
+    kappa(x) = exp(alpha_k + B*tanh(H/B)): the habitat field H (K's manifold column) can
+    shift abundance by at most a factor e^B around what growth implies, and cannot create
+    absence. B = 0 drops it (constant crowding). (x)_+ is smoothed at scale ``softness`` so
+    the potential stays differentiable at R0 = 1.
+    """
+    bound = float(_CROWDING.get("modifier_bound", 0.0)) if bound is None else bound
+    softness = float(_CROWDING.get("softness", 0.02)) if softness is None else softness
+    R0 = Fmax * Sa * Sj / (1.0 - Sa + 1e-6)
+    surplus = softness * jnn.softplus((R0 - 1.0) / softness)
+    modifier = bound * jnp.tanh(H / bound) if bound > 0 else 0.0
+    return jnp.exp(alpha_k + modifier + trend) * surplus
 
 
 def validate_environment_kernel_contract(data):
@@ -510,7 +545,12 @@ def sample_priors(prior_scale=1.0, M_features=None, time=None,
     # the same names so the diagnostics and response curves read unchanged. Under
     # softplus it is not separable from the covariate term, so this is "capacity where
     # the covariates are neutral" rather than a multiplicative level.
-    priors['k_level'] = numpyro.deterministic("k_level", k_link(priors['alpha_k']))
+    # k_level: capacity where the habitat field is neutral -- under the crowding form, at
+    # the reference R0 (where the prior median puts it at the measured target).
+    priors['k_level'] = numpyro.deterministic(
+        "k_level",
+        jnp.exp(priors['alpha_k']) * (float(_CROWDING["reference_R0"]) - 1.0)
+        if _K_FORM == "crowding" else k_link(priors['alpha_k']))
     numpyro.deterministic("k_level_route_counts", priors['k_level'] * _POP_SCALAR)
     
     # --- 3. DEMOGRAPHIC SENSITIVITIES (Gammas) ---
@@ -692,6 +732,7 @@ def build_model_2d(data, prior_scale=1.0):
         priors['alpha_f'], priors['gamma_f'],
         priors['alpha_k'], priors['gamma_k'],
         k_link=k_link,
+        capacity=crowding_capacity if _K_FORM == "crowding" else None,
     )
         
     # Save fields for viz

@@ -143,6 +143,7 @@ def project_and_scatter_age_structured(
     alpha_f, gamma_f, # Max fecundity intercept & slope
     alpha_k, gamma_k, # Carrying capacity intercept (inside the link) & slope
     k_link=None,      # callable: K = k_link(argument); default softplus
+    capacity=None,    # callable (alpha_k, H, trend, Sa, Sj, Fmax) -> K_base; overrides k_link
 ):
     """Project Z → (S_a, S_j, F_max, K, Q) for every year, on the land cells.
 
@@ -228,7 +229,13 @@ def project_and_scatter_age_structured(
         # The link is a config switch (capacity_level_prior.link, via age_priors.k_link);
         # under exp, K = k_level * exp(H_k + trend) and the upper tail is not shrunk.
         _arg = alpha_k + gamma_k * H_k_local + k_trend_t
-        K_base_val = jnn.softplus(_arg) if k_link is None else k_link(_arg)
+        if capacity is not None:
+            # Growth-derived capacity (age_priors.crowding_capacity): K follows from this
+            # cell's own R0, so it cannot be an independent absence switch.
+            K_base_val = capacity(alpha_k, gamma_k * H_k_local, k_trend_t,
+                                  S_a_val, S_j_val, F_max_val)
+        else:
+            K_base_val = jnn.softplus(_arg) if k_link is None else k_link(_arg)
 
         # 4b. Disease effect on K only: a bounded MULTIPLICATIVE rescale (see the
         # module docstring for why the earlier additive-inside-softplus form

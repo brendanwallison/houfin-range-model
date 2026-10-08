@@ -1,0 +1,34 @@
+{
+  "input_dir": "${HOUFIN_PROCESSED}/model_inputs/numpyro_input",
+  "population_model": {
+    "dispersal_random_enabled": false,
+    "manifold_prior": {
+      "form": "exchangeable",
+      "coupling_target": 0.6,
+      "coupling_logit_scale": 0.5,
+      "amplitude_scale": [
+        1.0263,
+        1.0263,
+        1.0227,
+        1.0263
+      ]
+    },
+    "capacity_level_prior": {
+      "form": "crowding",
+      "crowding": {
+        "reference_R0": 2.0,
+        "modifier_bound": 1.3863,
+        "softness": 0.02
+      }
+    }
+  },
+  "_comment": [
+    "Capacity DERIVED FROM GROWTH (capacity_level_prior.form=crowding): K = kappa(x) * (R0 - 1)_+, so the Beverton-Holt term becomes F_eff = Fmax/(1 + N/kappa) and N* = kappa*(R0-1). Absence can only come from R0 <= 1 (a sink): run_19/19e turned K into an absence switch (40% of lambda-suitable cells Allee-dead, K fold-range 5e5-6e7) that the coupling prior could not stop. kappa0 = exp(alpha_k), prior median set so K at R0 = 2 is the measured 2.6183-route-count occupied median.",
+    "Otherwise run_19 (exchangeable manifold, survival amplitude scale 1.0263, no dispersal noise), with the coupling LOOSENED to logit-normal around 0.6, sd 0.5: tight coupling existed to stop the K switch, which the crowding form now removes structurally (run_19's data put rho at ~0.56).",
+    "run_20b: crowding with a BOUNDED habitat modifier, kappa(x) = kappa0 * exp(B*tanh(H_k/B)), B = log 4: K's manifold column can shift abundance at most 4x either way around what growth implies, and cannot create absence."
+  ],
+  "run_names": {
+    "map": "age_map_{precision}_run_20b_new_z",
+    "vis_map": "age_map_{precision}_run_20b_new_z"
+  }
+}

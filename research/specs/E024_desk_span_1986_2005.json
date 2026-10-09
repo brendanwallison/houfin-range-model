@@ -1,8 +1,11 @@
 {
  "exp": "E024",
- "name": "desk-span-plus2025-1986-2005",
+ "name": "desk-span-1986-2005",
  "group": "gpu",
  "overlay": "research/overlays/desk_span_1986_2005.json",
+ "after_jobs": [
+  "E024/desk-span-smoke"
+ ],
  "cmd": [
   "bash",
   "-c",
@@ -12,7 +15,7 @@
  "summarize": [
   "python",
   "-c",
-  "import json; s=json.load(open('{out}/desk/run_summary.json')); print({k: s.get(k) for k in ('best_epoch','best_val_kernel','best_val_zmse','epochs_run','n_train_cell_years')})"
+  "import json; s=json.load(open('{out}/desk/run_summary.json')); print({k: s.get(k) for k in ('best_epoch','best_val_kernel','best_val_zmse','epochs_run','n_train_cell_years','holdout_years')})"
  ],
- "note": "E024 revised: DESK trained on 1986-2005 PLUS its label year 2025 (never withheld); pre-registered in E024.md"
+ "note": "E024: DESK trained on 1986-2005 ONLY (2025 withheld too, after the stale label-year filter was removed); pre-registered in E024.md"
 }

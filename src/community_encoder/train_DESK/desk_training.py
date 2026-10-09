@@ -2470,8 +2470,12 @@ def run_desk_experiment(config=None):
     m_val = mask_sup & holdout
 
     # Computed here, above the pool, because the pool must exclude these years -- see
-    # spacetime_metric_pool. The anchor is never withheld; it carries the metric loss.
-    ho_years = [int(y) for y in (tr_cfg.get("holdout_years") or []) if int(y) != label_year]
+    # spacetime_metric_pool. Every listed year is honoured, label_year included: the old rule "the anchor is never
+    # withheld; it carries the metric loss" dates from when the metric loss read the anchor year's community. It now
+    # draws pairs across the whole spacetime pool (there is no anchor year), and label_year only fixes the covariate
+    # normalization and the end of the forward window -- neither needs the year to be TRAINED. Keeping the filter
+    # silently trained every span run on 2025 (E024 smoke test, 2026-10-09).
+    ho_years = [int(y) for y in (tr_cfg.get("holdout_years") or [])]
     _py, _pf, _px, _ppidx = spacetime_metric_pool(pip, Xp, sup_rows, m_tr, W,
                                                   exclude_years=ho_years, return_pidx=True)
     metric_pool = (_py, _pf, _px)
@@ -2593,8 +2597,8 @@ def run_desk_experiment(config=None):
 
     # Temporal holdout: withhold a contiguous span of supervised years from the objective and
     # score them separately. The spatial split says nothing about extrapolation THROUGH TIME,
-    # which is what DESK exists to do. The anchor (label_year) is never withheld -- it carries
-    # the eBird metric loss. Diagnostic only; model selection stays on the spatial metric so
+    # which is what DESK exists to do. Any listed year may be withheld, label_year included (see ho_years above).
+    # Diagnostic only; model selection stays on the spatial metric so
     # there is exactly one selection signal.
     # --- item 5: make the two loss terms agree ---------------------------------------------------
     # loss_stab was weighted (first_year_weight) and loss_true was not, so the two halves of the

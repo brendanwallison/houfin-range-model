@@ -14,3 +14,10 @@ Cold copy to E: (the nohup'd rsyncs died with their session): pueue group "io", 
 When done: cd /mnt/e/Datasets/houfin/work_houfin && sha256sum -c --quiet processed_xfer.sha256 (same for data).
 TACC baseline (old suite, A1-diluted): out-of-community primary change skill base +0.0002 (401 spp),
 tempho1975 -0.0007, 1985 -0.0037, 1995 -0.0100; community mode +0.0086/+0.0108/+0.0017/-0.0036 (~91 spp).
+2026-10-09 (user's over/under-movement speculations -> S1-S3): the target becomes an HONEST backcast (accurate where
+possible, uncertainty the readout carries), not minimal or maximal movement. Proposed next, cheap, on cached arrays,
+before any DESK training: E017 where DESK's backcast errors point (analog direction, false neighbours; S2); E018 does the
+readout know when it guesses (leverage vs error, habitat-level coverage, covariate novelty -> z novelty; S1/T9); E019
+backcast error vs distance from the training years (tempho 1975/1985/1995; input to an errors-in-features variance).
+Shrinkage (T10) no longer counts as a fix by itself. Proposed rung 5 for the user's go: age-model MAP under 2-3
+plausible backcasts (DESK, no-change, within-cell surrogate) -- how far do the vital rates move? Awaiting the user's go.

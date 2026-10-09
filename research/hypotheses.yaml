@@ -413,3 +413,35 @@
   evidence:
   - {job: "skeptic:E004", exp: E004, dir: for, strength: moderate, note: "centered slope of truth on DESK 0.62 (trained) / 0.37 (withheld) equivalent; independent of target noise."}
   - {job: "adhoc:E016-dev", exp: E016, dir: for, strength: weak, note: "a linear within-cell map is calibrated (truth-on-prediction 0.75-0.91) where DESK is not (0.37-0.62): the over-movement is DESK-specific, not inherent to the task."}
+# ---------------- added 2026-10-09 from the user's over/under-movement speculations ----------------
+- id: S1
+  stage: B
+  priority: 1
+  status: open
+  statement: (user, refined) Over-estimated similarity biases inference while under-estimated similarity only widens intervals. Refinement - in the age model's finite-rank readout (H = z.beta, beta pinned by modern data) a site-time's interval widens only with its leverage (distance outside the cloud of training z's), so a wrong z gives a confidently wrong habitat in either direction unless it leaves the cloud; under-movement (a modern map) is a bias too.
+  test: Leverage of backcast z's vs training z's; coverage of the readout's habitat-level backcast intervals (B2); whether novel early covariates become high-leverage z's or are mapped into familiar territory (T9).
+  kill: Backcast leverage rises in proportion to backcast error and habitat-level coverage is near nominal.
+  blr: If the refinement holds, the backcast needs explicit feature uncertainty (an errors-in-variables variance growing with distance from the training years); accuracy alone is not the target.
+  parents: [B2, T9, T10]
+  evidence: []
+- id: S2
+  stage: T
+  priority: 1
+  status: open
+  statement: (user) DESK's misdirected movement does not only make a cell-year dissimilar to its own past; it moves it toward other places' states - plausibly toward space-for-time analogs (places whose modern covariates match the cell's past covariates) - producing the over-similarity bias of S1.
+  test: Alignment of DESK's backcast error with the analog direction (toward the modern states of covariate analogs) vs the true change's alignment; false-neighbour rate (DESK's nearest modern site-times vs the truth's).
+  kill: DESK's backcast error is no more aligned with the analog direction than the true change is, and neighbour sets agree as well as noise allows.
+  blr: If true, the backcast is confidently biased toward analog habitats; mitigations are direction (within-cell supervision, E016) and honest uncertainty, not shrinkage.
+  parents: [T4, S1]
+  evidence: []
+- id: S3
+  stage: T
+  priority: 2
+  status: open
+  statement: (user) Community responses lag covariates heterogeneously (places, times, covariates; up to century-scale vegetation processes), while spatial turnover is an equilibrium of mixed lags, so temporal extrapolation from spatial turnover is fraught for ANY covariate-based habitat model; a single global lag is always locally miscalibrated. Not solvable; must be respected.
+  test: E016 (spatial vs within-cell coefficients on decadal change); a distributed-lag within-cell surrogate (covariates smoothed at several timescales); backcast error vs distance from the training years (tempho 1975/1985/1995).
+  kill: Spatial and within-cell coefficients agree on decadal change, and one lag explains it as well as several.
+  blr: Honest uncertainty for 1902-1939, and a sensitivity analysis of the vital-rate inference to the habitat backcast (rung 5, human-gated).
+  parents: [T4, L1, T9]
+  evidence:
+  - {job: "adhoc:E016-dev", exp: E016, dir: for, strength: weak, note: "coefficients learned across space predict none of the decadal community change (corr 0.02-0.03); within-cell coefficients 0.27-0.42. UNVERIFIED."}

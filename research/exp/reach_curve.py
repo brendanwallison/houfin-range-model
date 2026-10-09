@@ -39,6 +39,8 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--out")
     ap.add_argument("--models", nargs="+", default=list(MODELS))
+    ap.add_argument("--extra", nargs="*", default=(),
+                    help="more models as name=cache_subdir:first_training_year (e.g. seed replicates)")
     ap.add_argument("--ranks", type=int, nargs="+", default=(12, 24, 64))
     ap.add_argument("--min-years", type=int, default=4)
     ap.add_argument("--n-boot", type=int, default=300)
@@ -51,6 +53,11 @@ def main():
     from src.community_encoder.train_DESK.validate_bbs_routes import epoch_mean_observed
     from src.community_encoder.train_DESK.validation_core import split_half_groups
     os.makedirs(a.out, exist_ok=True)
+    for spec in a.extra:
+        name, rest = spec.split("=")
+        sub, first = rest.split(":")
+        MODELS[name] = (sub, int(first))
+        a.models = list(a.models) + [name]
     base_dir = os.path.join(CACHE_ROOT, MODELS["base"][0])
     keys = np.load(os.path.join(base_dir, "keys.npy"))
     for m in a.models:

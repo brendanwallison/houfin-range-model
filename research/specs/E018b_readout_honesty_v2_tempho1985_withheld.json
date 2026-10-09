@@ -1,0 +1,26 @@
+{
+ "exp": "E018",
+ "name": "readout-honesty-v2-tempho1985_withheld",
+ "group": "cpu",
+ "cmd": [
+  "python",
+  "research/exp/readout_honesty.py",
+  "--cache",
+  "{cache}/desk_tempho_1985",
+  "--out",
+  "{out}",
+  "--population",
+  "withheld"
+ ],
+ "expected_minutes": 8,
+ "summarize": [
+  "python",
+  "research/exp/readout_honesty.py",
+  "--summarize",
+  "{out}"
+ ],
+ "note": "E018 v2 (centered V, equal-n level fit, floor CI)",
+ "after_jobs": [
+  "E003/esk-desk_tempho_1985"
+ ]
+}

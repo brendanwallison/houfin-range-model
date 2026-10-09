@@ -53,6 +53,8 @@ def main():
     ap.add_argument("--dispersion", type=float, default=2.0)
     ap.add_argument("--cell-km", type=float, default=27.0)
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--generators", nargs="+", default=("z", "spacetime", "mix"),
+                    help="which generators to plant (e.g. z alone for a readout floor with enough species)")
     a = ap.parse_args()
     import pandas as pd
     rng = np.random.default_rng(a.seed)
@@ -85,15 +87,15 @@ def main():
     def scaled(v, sd):
         return (v - v.mean()) / max(v.std(), 1e-12) * sd
 
-    for s in range(a.n_per):                                         # z readouts
+    for s in range(a.n_per if "z" in a.generators else 0):         # z readouts
         logl.append(scaled(zk @ rng.normal(size=zk.shape[1]), 0.8))
         gens.append("z")
-    for s in range(a.n_per):                                         # separable space x time
+    for s in range(a.n_per if "spacetime" in a.generators else 0):  # separable space x time
         phi = rff_field(xy, 64, 400.0, rng)
         ser = ar1_series(64, len(years), 0.95, rng)
         logl.append(scaled((phi[ci] * ser.T[yi]).sum(1), 0.8))
         gens.append("spacetime")
-    for rho in (0.0, 0.1, 0.3, 0.6):                                 # static + temporal share rho
+    for rho in ((0.0, 0.1, 0.3, 0.6) if "mix" in a.generators else ()):   # static + temporal share rho
         for s in range(a.n_per):
             g = rff_field(xy, 64, 500.0, rng) @ rng.normal(size=64)
             phi = rff_field(xy, 32, 300.0, rng)

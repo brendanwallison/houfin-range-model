@@ -53,6 +53,8 @@ def main():
     ap.add_argument("--population", default="withheld", choices=("trained", "withheld"))
     ap.add_argument("--ranks", type=int, nargs="+", default=(12, 24, 64))
     ap.add_argument("--species-regex", default=None)
+    ap.add_argument("--lvl-epochs", default="modern", choices=("modern", "both"),
+                    help="levels the readout is fitted on (training cells); modern keeps n equal across populations")
     ap.add_argument("--summarize", default=None)
     a = ap.parse_args()
     if a.summarize:
@@ -124,22 +126,31 @@ def main():
     nz = change_noise(d["full"][ev], d["a"][ev], d["b"][ev])
     resm = nz["resolvable"]
     noise_b = (d["a"][ev] - d["b"][ev]) ** 2 / 2.0
-    lvl_groups = np.unique(np.concatenate([pairs[tr, 1]] + ([pairs[tr, 0]] if not want_wh else [])))
+    # the level fit uses the MODERN epoch of training cells by default in both populations: R scales with 1/n, so
+    # designs must match n to be compared (skeptic, 2026-10-09: "trained 261 vs backcast 126" was n 2838 vs 1419)
+    both = a.lvl_epochs == "both" and not want_wh
+    lvl_groups = np.unique(np.concatenate([pairs[tr, 1]] + ([pairs[tr, 0]] if both else [])))
+    res["level_fit_rows"] = int(len(lvl_groups))
+    rngb = np.random.default_rng(0)
     for r in a.ranks:
         m = blr.fit(D[lvl_groups, :r], Y["b"][lvl_groups], [(0, r)])
         dz = D[pairs[ev, 1], :r] - D[pairs[ev, 0], :r]
         pred = dz @ m["coef"].T
-        V = np.einsum("cp,spq,cq->cs", dz, m["Ainv"], dz)
         out_r = {"n_resolvable": int(resm.sum())}
-        # total: the species' mean change (trend) is outside the readout's model and counts as error; place:
-        # trend removed from prediction and truth alike, so only the place-specific error is graded
-        for kind, (p_, t_) in (("total", (pred, d["b"][ev])),
-                               ("place", (pred - pred.mean(0), d["b"][ev] - d["b"][ev].mean(0)))):
+        # total: the species' mean change (trend) is outside the readout's model and counts as error; place: trend
+        # removed from prediction, truth AND the posterior variance (V from centered dz) alike
+        dzc = dz - dz.mean(0)
+        for kind, (p_, t_, dz_) in (("total", (pred, d["b"][ev], dz)),
+                                    ("place", (pred - pred.mean(0), d["b"][ev] - d["b"][ev].mean(0), dzc))):
+            V = np.einsum("cp,spq,cq->cs", dz_, m["Ainv"], dz_)
             err2 = (p_ - t_) ** 2 - noise_b
             with np.errstate(invalid="ignore", divide="ignore"):
                 Rs = err2.sum(0) / V.sum(0)
             Rr = Rs[resm & np.isfinite(Rs)]
+            boot = [np.median(rngb.choice(Rr, len(Rr))) for _ in range(1000)] if len(Rr) > 2 else []
             out_r[kind] = {"median_R": float(np.median(Rr)) if len(Rr) else None,
+                           "median_R_ci": [float(np.percentile(boot, 2.5)), float(np.percentile(boot, 97.5))]
+                           if len(boot) else None,
                            "share_R_above_4": float((Rr > 4).mean()) if len(Rr) else None,
                            "R_quartiles": [float(np.percentile(Rr, q)) for q in (25, 75)] if len(Rr) else None}
         res["interval_honesty"][str(r)] = out_r
@@ -168,7 +179,8 @@ def summarize(out):
         for kind in ("total", "place"):
             w = v.get(kind) or {}
             if w.get("median_R") is not None:
-                print(f"  r{rk} {kind:5s}: species change intervals: median R {w['median_R']:.1f} (IQR "
+                ci = w.get("median_R_ci") or [float("nan"), float("nan")]
+                print(f"  r{rk} {kind:5s}: species change intervals: median R {w['median_R']:.1f} [{ci[0]:.1f}, {ci[1]:.1f}] (IQR "
                       f"{w['R_quartiles'][0]:.1f}-{w['R_quartiles'][1]:.1f}); {w['share_R_above_4']:.0%} of "
                       f"{v['n_resolvable']} resolvable species have errors > 2x their interval's sd")
 

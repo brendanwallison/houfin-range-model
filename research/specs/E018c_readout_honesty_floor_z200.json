@@ -1,0 +1,18 @@
+{
+ "exp": "E018",
+ "name": "readout-honesty-floor-z200",
+ "group": "cpu",
+ "cmd": [
+  "bash",
+  "-c",
+  "set -e; {python} research/exp/planted.py --cache {cache}/desk_tempho_1995 --out {cache}/planted_z200_tempho1995 --n-per 200 --seed 2 --generators z; {python} research/exp/readout_honesty.py --cache {cache}/planted_z200_tempho1995 --out {out} --population withheld --species-regex ^z_"
+ ],
+ "expected_minutes": 15,
+ "summarize": [
+  "python",
+  "research/exp/readout_honesty.py",
+  "--summarize",
+  "{out}"
+ ],
+ "note": "E018 floor with 200 z-planted species (skeptic: the 16-species floor was unstable)"
+}

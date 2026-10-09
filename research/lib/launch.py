@@ -13,7 +13,9 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import paths  # noqa: E402
 
-os.environ.update(paths.job_env("default", code_dir=paths.REPO))
+# the GPU belongs to the queue: interactive runs are CPU-only unless RX_GPU=1 (an interactive ESK projection once
+# held ~1 GB of GPU memory and contended with a DESK training job for 20 minutes)
+os.environ.update(paths.job_env("default" if os.environ.get("RX_GPU") == "1" else "cpu", code_dir=paths.REPO))
 sys.path[:0] = [paths.REPO, paths.REPO + "/src"]
 os.chdir(paths.REPO)
 if len(sys.argv) < 2:

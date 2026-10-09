@@ -193,6 +193,7 @@
   evidence:
   - {job: "adhoc:E011-dev", exp: E011, dir: for, strength: weak, note: "the readout analogue (community->species): level-fitted beta on community change captures 4-10% (base) / -5% (tempho1995 withheld) of available species change; change-fitted beta on the SAME features 25-29%. Interactive development run; E011 jobs queued. UNVERIFIED."}
   - {job: "adhoc:E016-dev", exp: E016, dir: for, strength: moderate, note: "covariate->community map fitted in the trained era: between-cell (spatial) coefficients predict NONE of the temporal community change (corr 0.03 trained / 0.02 backcast); within-cell coefficients 0.42 / 0.27, as good as DESK (0.41 / 0.21) and better calibrated (0.91 / 0.75 vs 0.62 / 0.37). UNVERIFIED; replications queued."}
+  - {job: "skeptic3:E016", exp: E016, dir: neutral, strength: moderate, note: "pure space-for-time predicts none of the decadal change (single-year cross-section betas -0.03 to +0.01 in every cache; robust). But the within-cell advantage is regional TREND persistence: a position x time placebo with no covariates matches or beats the within map (covariates add +0.03-0.05). The lever is not within-cell coefficients."}
 - id: T6
   stage: T
   priority: 2
@@ -222,8 +223,8 @@
   kill: Covariate-change model explains most resolvable change.
   blr: If true, a temporal residual term (B5) is mandatory.
   parents: []
-  evidence: []
-
+  evidence:
+  - {job: "skeptic3:E016", exp: E016, dir: for, strength: moderate, note: "covariate change adds only +0.025-0.053 beyond position x time trends in predicting held-out decadal community change; a within map on cell-detrended covariate anomalies scores ~0."}
 # ---------------- readout (BLR): the downstream lever ----------------
 - id: B1
   stage: B
@@ -319,6 +320,7 @@
   parents: []
   evidence:
   - {job: "adhoc:E021-dev", exp: E021, dir: for, strength: moderate, note: "observer turnover is ~29% [25, 33] of species and 28-29% of ESK early->modern change energy (within-modern design by observer continuity); 81% of cells share no observer between epochs. Every change target is diluted by it (defect A14). Found by the skeptic, reproduced."}
+  - {job: "skeptic3:E013", exp: E013, dir: for, strength: moderate, note: "observer co-movement inflates the observed-community arm of E013 by 33-45% of its numerator (DESK ~0); adjusted, DESK matches the true community in trained years and reaches 41-52% of it in withheld decades."}
 # ---------------- downstream proxy ----------------
 - id: D1
   stage: D
@@ -413,6 +415,7 @@
   evidence:
   - {job: "skeptic:E004", exp: E004, dir: for, strength: moderate, note: "centered slope of truth on DESK 0.62 (trained) / 0.37 (withheld) equivalent; independent of target noise."}
   - {job: "adhoc:E016-dev", exp: E016, dir: for, strength: weak, note: "a linear within-cell map is calibrated (truth-on-prediction 0.75-0.91) where DESK is not (0.37-0.62): the over-movement is DESK-specific, not inherent to the task."}
+  - {job: "skeptic3:E016", exp: E016, dir: neutral, strength: moderate, note: "CORRECTS the DESK-specific reading: DESK z deviations recalibrated by a trained-era within-cell BLR score 0.30-0.45 with slopes 0.88-1.05 -- the calibration gap was the recalibration step. A trained-era recalibration of DESK is cheap and carries calibration into withheld decades."}
 # ---------------- added 2026-10-09 from the user's over/under-movement speculations ----------------
 - id: S1
   stage: B

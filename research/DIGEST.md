@@ -1,7 +1,7 @@
 # DIGEST
 
 ## CURRENT STATE (rewritten each round; read this first -- the dated log below keeps the history)
-Last updated 2026-10-09 evening, after the second skeptic round. "Solid" = independently re-derived, replicated on
+Last updated 2026-10-09 evening, after the third skeptic round. "Solid" = independently re-derived, replicated on
 a second split or seed, and survived a skeptic review. "Tentative" = one run, or checks still pending.
 
 SOLID
@@ -20,13 +20,17 @@ TENTATIVE (skeptic-reviewed; replications or seeds still pending)
   DESK reaches further back, its useful temporal signal fades and its movement increasingly follows space-for-time.
   - DESK's backcast moves along the space-for-time direction (your point 2): alignment +0.02 / +0.16 / +0.21 (the
     explicit space-for-time map: ~+0.2 everywhere); real communities stay at ~0 or slightly against it.
-  - DESK's change read through the age-model readout: correlation with species change 0.13 / 0.07 / 0.06 (the true
-    community change, read the same way: ~0.24 in all three).
+  - DESK's change read through the age-model readout: correlation with species change 0.13 / 0.07 / 0.06. The
+    observed community's change, read the same way, gives ~0.24, but a third or more of that is observers moving
+    community and species together; adjusted, DESK reaches about half of it in withheld decades and all of it in
+    trained years.
   - Beyond regional trends, DESK's temporal deviations add +0.02-0.04 of species change skill at 1-20 years of reach
     and nothing at 21-30.
-- Space-for-time fails at the covariate stage (replicated in all four caches; skeptic review running): coefficients
-  learned by comparing places predict none of the decadal community change (corr -0.00 to 0.03); coefficients
-  learned within cells predict it about as well as DESK (0.27-0.42) and far better calibrated.
+- Space-for-time fails at the covariate stage (robust in all four caches): coefficients learned by comparing places
+  at a fixed time predict none of the decadal community change. What does predict it is REGIONAL TREND PERSISTENCE:
+  a placebo of smooth position fields x year, with no covariates, matches or beats a within-cell covariate map, and
+  the covariates add only +0.03-0.05 beyond it. Raw DESK sits below that placebo everywhere; DESK recalibrated on its
+  trained years reaches it, and is then well calibrated.
 - DESK's backcast degrades steadily with distance from its training years: for the same target decade its
   correlation falls 0.42 -> 0.12 and calibration 0.58 -> 0.20 between 0 and 28 years of reach. It is at most ~10%
   better than no change even in trained years, and 10-20% worse beyond ~15 years. Two more seeds per model queued.
@@ -49,6 +53,9 @@ OVERTURNED (kept so the corrections are visible)
 - "DESK's backcast errors are not pulled toward space-for-time analogs" (my first analog test): its direction was
   ~80% the cell's own quirks; the corrected test shows they are.
 - "Intervals ~3x too narrow": ~2x on a stable floor.
+- "Within-cell covariate coefficients transfer to the past, so train DESK on within-cell variation": the within map
+  is a regional trend extrapolator (a position x year placebo does as well); its better calibration was the
+  recalibration step, which works on DESK too. Withdrawn as a DESK-side lever.
 
 WHAT IT MEANS FOR 1902-1939 (working view)
 - The target is an honest backcast, not maximal or minimal movement: DESK's pre-BBS deviations probably cost more
@@ -56,6 +63,10 @@ WHAT IT MEANS FOR 1902-1939 (working view)
 - Because DESK's backcast error is partly SYSTEMATIC (toward climate-analog places), it will not average out
   regionally: 1902-1939 habitat would lean toward the habitat of places whose present climate resembles the past
   -- the over-similarity bias you were worried about.
+- Little of the decadal change we can score is covariate-driven beyond regional trends (the drivers are mostly not
+  in the covariates, or act on lags the covariates cannot carry -- your point 3). Every candidate backcast for
+  1902-1939 (DESK, a within-cell map, trend persistence) amounts to extrapolating 1966-2025 trends backward.
+- Cheap and supported: recalibrate DESK's temporal deviations on its trained years before the readout sees them.
 - Next decisive check (needs your go): fit the age model under two or three plausible backcasts and see how far
   the inferred vital rates move.
 

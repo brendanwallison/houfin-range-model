@@ -39,6 +39,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(_HERE)))
 from lib import blr, ledger  # noqa: E402
 
 GROUPS = {1: "space", 2: "time", 3: "space_time"}
+TIERS = (0.0, 0.02, 0.1, 0.3, 1.01)                 # prevalence tiers, as in planted_report (E009)
 
 
 def load_cache(cache):
@@ -108,6 +109,46 @@ def attenuation(d_pred, d_obs, noise):
         return np.where(noise["resolvable"] & (sig > 0), cov / sig, np.nan)
 
 
+def change_stats(d_obs, dp_model, dp_nc, nz, cell_block, prevalence, n_boot):
+    """Change skill vs no_change (resolvable species, block bootstrap), captured share and attenuation,
+    pooled and within prevalence tiers -- the pooled median is dominated by rare species, whose change
+    no readout can show (E009). Returns ``(per-species skill, stats)``; stats["_attenuation"] holds the
+    per-species slopes for the caller."""
+    from src.community_encoder.train_DESK.validate_gp_species import block_sums, pooled_skill
+    from src.community_encoder.train_DESK.validation_core import captured_share
+    _, sa = block_sums((dp_model - d_obs) ** 2, cell_block)
+    _, sb = block_sums((dp_nc - d_obs) ** 2, cell_block)
+    _, sg = block_sums((np.abs(d_obs) > 0).astype("float64"), cell_block)
+    res_all = nz["resolvable"]
+    att = attenuation(dp_model, d_obs, nz)
+    fin = np.isfinite(att)
+
+    def one(res_mask):
+        sa_t, sb_t = sa.copy(), sb.copy()
+        sa_t[:, ~res_mask], sb_t[:, ~res_mask] = 0.0, 0.0
+        pooled, sk = pooled_skill(sa_t, sb_t, n_boot, 0, block_signal=sg)
+        _, cap = captured_share(d_obs, dp_model, dict(nz, resolvable=res_mask))
+        at = att[res_mask & fin]
+        return sk, {"skill_vs_no_change": {k: pooled.get(k) for k in
+                                           ("median", "median_ci", "share_above_zero",
+                                            "n_species_defined")},
+                    "captured_pooled": cap,
+                    "attenuation_median": float(np.median(at)) if len(at) else None,
+                    "attenuation_iqr": ([float(np.percentile(at, 25)), float(np.percentile(at, 75))]
+                                        if len(at) else None)}
+    sk, out = one(res_all)
+    out["tiers"] = {}
+    for lo, hi in zip(TIERS[:-1], TIERS[1:]):
+        tm = (prevalence >= lo) & (prevalence < hi)
+        if (res_all & tm).sum() < 3:
+            continue
+        _, o = one(res_all & tm)
+        out["tiers"][f"{lo:g}-{hi:g}"] = dict(o, n_species=int(tm.sum()),
+                                              n_resolvable=int((res_all & tm).sum()))
+    out["_attenuation"] = att
+    return sk, out
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--cache")
@@ -153,6 +194,7 @@ def main():
     keep = (Y[tr] > 0).any(0)                                     # gradable: a training detection
     Y = Y[:, keep]
     species = np.asarray(c["meta"]["dev_species"])[keep]
+    prevalence = (Y[tr] > 0).mean(0)
 
     X, Xnc, blocks = features(c, a)
     model = blr.fit(X[tr], Y[tr], blocks)
@@ -220,21 +262,20 @@ def main():
         for k in ("model", "no_change"):
             pe, pm = epoch_values(predicted_raw(preds[k][0], noise[k][None, :]), e_rows, m_rows)
             dp[k] = pm - pe
-        _, sa = block_sums((dp["model"] - d_full) ** 2, cell_block)
-        _, sb = block_sums((dp["no_change"] - d_full) ** 2, cell_block)
-        _, sg = block_sums((np.abs(d_full) > 0).astype("float64"), cell_block)
-        sa[:, ~nz["resolvable"]], sb[:, ~nz["resolvable"]] = 0.0, 0.0
-        pooled, sk = pooled_skill(sa, sb, a.n_boot, 0, block_signal=sg)
-        out["skill_vs_no_change"] = {k: pooled.get(k) for k in ("median", "median_ci",
-                                                                "share_above_zero",
-                                                                "n_species_defined")}
-        _, cap = captured_share(d_full, dp["model"], nz)
-        out["captured_pooled"] = cap
-        att = attenuation(dp["model"], d_full, nz)
-        fin = np.isfinite(att)
-        out["attenuation_median"] = float(np.median(att[fin])) if fin.any() else None
-        out["attenuation_iqr"] = ([float(np.percentile(att[fin], 25)),
-                                   float(np.percentile(att[fin], 75))] if fin.any() else None)
+        sk, stats = change_stats(d_full, dp["model"], dp["no_change"], nz, cell_block, prevalence,
+                                 a.n_boot)
+        att = stats.pop("_attenuation")
+        out.update(stats)
+        # PLACE-specific change: each species' mean change over these cells removed from the truth,
+        # its halves and every prediction, so a continental trend (one number per species) cannot
+        # score. What is left is the spatial pattern of change -- the habitat signal. (The
+        # attenuation slope is a covariance over cells, so it is place-specific already.)
+        dm = lambda v: v - v.mean(0, keepdims=True)
+        nz_p = change_noise(dm(d_full), dm(d_a), dm(d_b))
+        _, place = change_stats(dm(d_full), dm(dp["model"]), dm(dp["no_change"]), nz_p, cell_block,
+                                prevalence, a.n_boot)
+        place.pop("_attenuation")
+        out["place"] = dict(place, n_resolvable=int(nz_p["resolvable"].sum()))
         res["change"][sname] = out
         if a.dump_change:
             flat = lambda rs: (np.concatenate([te[r] for r in rs]),
@@ -274,10 +315,20 @@ def summarize(out):
         if "note" in o:
             print(f"  change {s:10s} {o['note']}")
             continue
+        ci = lambda sk: [round(x, 3) for x in (sk.get("median_ci") or [])]
         sk = o["skill_vs_no_change"]
         print(f"  change {s:10s} cells={o['n_cells']} resolvable={o['n_resolvable']} skill "
-              f"{f(sk.get('median'))} CI {[round(x, 3) for x in (sk.get('median_ci') or [])]} captured {f(o['captured_pooled'])} "
+              f"{f(sk.get('median'))} CI {ci(sk)} captured {f(o['captured_pooled'])} "
               f"attenuation {f(o['attenuation_median'])} IQR {[round(x, 3) for x in (o['attenuation_iqr'] or [])]}")
+        for label, blk in (("", o), ("place ", o.get("place") or {})):
+            if label and blk:
+                print(f"    place-specific (species mean change removed): resolvable {blk['n_resolvable']} "
+                      f"skill {f(blk['skill_vs_no_change'].get('median'))} CI {ci(blk['skill_vs_no_change'])} "
+                      f"captured {f(blk['captured_pooled'])}")
+            for t, ot in (blk.get("tiers") or {}).items():
+                print(f"    {label}prevalence {t:9s} resolvable {ot['n_resolvable']:3d}/{ot['n_species']:3d} "
+                      f"skill {f(ot['skill_vs_no_change'].get('median'))} CI {ci(ot['skill_vs_no_change'])} "
+                      f"captured {f(ot['captured_pooled'])} attenuation {f(ot['attenuation_median'])}")
 
 
 if __name__ == "__main__":

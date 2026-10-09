@@ -1,0 +1,20 @@
+{
+ "exp": "E012",
+ "name": "split-variants",
+ "group": "cpu",
+ "env": {
+  "RESEARCH_EXP": "E012"
+ },
+ "cmd": [
+  "bash",
+  "-c",
+  "set -e; {python} research/exp/fast_arm.py --cache {cache}/desk_tempho_1995 --out {out}/desk_tempho_1995/C0 --tag E012_C0 --kernel iso --features raw --rank 24 > /dev/null; {python} research/exp/fast_arm.py --cache {cache}/desk_tempho_1995 --out {out}/desk_tempho_1995/C1 --tag E012_C1 --kernel split --features raw --rank 24 > /dev/null; {python} research/exp/fast_arm.py --cache {cache}/desk_tempho_1995 --out {out}/desk_tempho_1995/C2 --tag E012_C2 --kernel split --features ema --rank 24 > /dev/null; {python} research/exp/fast_arm.py --cache {cache}/desk_tempho_1995 --out {out}/desk_tempho_1995/C3 --tag E012_C3 --kernel split --features raw --rank 24 --lag-hl 5 > /dev/null; {python} research/exp/fast_arm.py --cache {cache}/desk_tempho_1995 --out {out}/desk_tempho_1995/C4 --tag E012_C4 --kernel split --features raw --rank 64 > /dev/null; {python} research/exp/fast_arm.py --cache {cache}/desk_tempho_1995 --out {out}/desk_tempho_1995/C5 --tag E012_C5 --kernel split --features ema --rank 64 > /dev/null; {python} research/exp/fast_arm.py --cache {cache}/desk_tempho_1995 --out {out}/desk_tempho_1995/C6 --tag E012_C6 --kernel split --features raw --rank 24 --ref-window 2011 2025 > /dev/null; {python} research/exp/fast_arm.py --cache {cache}/gp_species_base --out {out}/gp_species_base/C0 --tag E012_C0 --kernel iso --features raw --rank 24 > /dev/null; {python} research/exp/fast_arm.py --cache {cache}/gp_species_base --out {out}/gp_species_base/C1 --tag E012_C1 --kernel split --features raw --rank 24 > /dev/null; {python} research/exp/fast_arm.py --cache {cache}/gp_species_base --out {out}/gp_species_base/C2 --tag E012_C2 --kernel split --features ema --rank 24 > /dev/null; {python} research/exp/fast_arm.py --cache {cache}/gp_species_base --out {out}/gp_species_base/C3 --tag E012_C3 --kernel split --features raw --rank 24 --lag-hl 5 > /dev/null; {python} research/exp/fast_arm.py --cache {cache}/gp_species_base --out {out}/gp_species_base/C4 --tag E012_C4 --kernel split --features raw --rank 64 > /dev/null; {python} research/exp/fast_arm.py --cache {cache}/gp_species_base --out {out}/gp_species_base/C5 --tag E012_C5 --kernel split --features ema --rank 64 > /dev/null; {python} research/exp/fast_arm.py --cache {cache}/gp_species_base --out {out}/gp_species_base/C6 --tag E012_C6 --kernel split --features raw --rank 24 --ref-window 2011 2025 > /dev/null"
+ ],
+ "expected_minutes": 10,
+ "summarize": [
+  "bash",
+  "-c",
+  "for c in desk_tempho_1995 gp_species_base; do echo \"== $c\"; {python} research/exp/compare_arms.py {out}/$c; done"
+ ],
+ "note": "pre-registered in research/experiments/E012.md"
+}

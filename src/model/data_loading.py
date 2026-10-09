@@ -18,6 +18,29 @@ import numpy as np
 LARGE_INPUT_KEYS = {"Z_gathered", "Z_disp_gathered"}
 
 
+def occupied_habitat_center(meta):
+    """Mean Z feature vector over OCCUPIED cell-years (a positive BBS count), host-side.
+
+    The location the habitat fields are centred at when population_model.habitat_centering
+    is "occupied" (age_fields.project_and_scatter_age_structured): each rate's intercept
+    then means "the rate at the habitat typical of occupied cells", the population the
+    capacity anchor (median occupied cell) was measured on. Each occupied (year, cell)
+    counts once, however many routes it has. None if the inputs needed are absent.
+    """
+    keys = ("Z_gathered", "land_rows", "land_cols", "obs_time_indices", "obs_rows",
+            "obs_cols", "observed_results")
+    if not all(isinstance(meta.get(k), np.ndarray) for k in keys):
+        return None
+    lookup = np.full((int(meta["Ny"]), int(meta["Nx"])), -1, dtype=np.int64)
+    lookup[meta["land_rows"], meta["land_cols"]] = np.arange(meta["land_rows"].size)
+    cell = lookup[meta["obs_rows"], meta["obs_cols"]]
+    keep = (np.asarray(meta["observed_results"]) > 0) & (cell >= 0)
+    pairs = np.unique(np.stack([meta["obs_time_indices"][keep], cell[keep]], axis=1), axis=0)
+    if pairs.size == 0:
+        return None
+    return np.asarray(meta["Z_gathered"][pairs[:, 0], pairs[:, 1]], dtype=np.float64).mean(axis=0)
+
+
 def load_data(input_dir, target_device=None, precision="float32", verbose=True):
     """Load model inputs, casting to ``precision`` and placing device arrays.
 
@@ -50,6 +73,9 @@ def load_data(input_dir, target_device=None, precision="float32", verbose=True):
     # decide structurally (whether quality_conc_mult exists) without touching jnp.
     if isinstance(meta.get("obs_quality"), np.ndarray):
         meta["n_obs_quality_tiers"] = int(np.unique(meta["obs_quality"]).size)
+    occupied_center = occupied_habitat_center(meta)
+    if occupied_center is not None:
+        meta["habitat_center_occupied"] = occupied_center
     residency = os.environ.get("HOUFIN_MODEL_INPUT_RESIDENCY", "device").lower()
     if residency not in {"device", "host"}:
         raise ValueError("HOUFIN_MODEL_INPUT_RESIDENCY must be 'device' or 'host'")

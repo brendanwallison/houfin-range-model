@@ -46,6 +46,10 @@ _CROWDING = dict(_CAPACITY_LEVEL.get("crowding", {}))
 if _K_FORM not in {"field", "crowding"}:
     raise ValueError(f"capacity_level_prior.form must be field or crowding, got {_K_FORM!r}")
 _DISPERSAL_RANDOM = bool(_POP_SPEC.get("dispersal_random_enabled", True))
+#   habitat_centering         "none" | "occupied" (fields centred at mean occupied-cell Z)
+_HABITAT_CENTERING = str(_POP_SPEC.get("habitat_centering", "none"))
+if _HABITAT_CENTERING not in {"none", "occupied"}:
+    raise ValueError(f"habitat_centering must be none or occupied, got {_HABITAT_CENTERING!r}")
 if _MANIFOLD_FORM not in {"rank2", "exchangeable"}:
     raise ValueError(f"manifold_prior.form must be rank2 or exchangeable, got {_MANIFOLD_FORM!r}")
 if _K_LINK not in {"softplus", "exp"}:
@@ -200,15 +204,25 @@ def _exchangeable_w_env(M_features, w_scale, prior_scale):
     manifold block's negative curvature at the run_17/18 MAP.
     """
     _m = _MANIFOLD_PRIOR
-    target = float(_m["coupling_target"])
-    logit_target = math.log(target / (1.0 - target))
-    rho_c = numpyro.deterministic("manifold_coupling", jnn.sigmoid(numpyro.sample(
-        "manifold_coupling_logit",
-        dist.Normal(logit_target, float(_m["coupling_logit_scale"]) * prior_scale))))
+    fixed = _m.get("fixed_coupling")
+    if fixed is not None:
+        # SINGLE HABITAT FIELD at fixed_coupling = 1: beta_j = w_scale_j * f, so every rate
+        # reads the same field H = Z.f with its own positive sensitivity w_scale_j. No
+        # private parts are sampled (they would carry zero weight).
+        rho_c = numpyro.deterministic("manifold_coupling", jnp.asarray(float(fixed)))
+    else:
+        target = float(_m["coupling_target"])
+        logit_target = math.log(target / (1.0 - target))
+        rho_c = numpyro.deterministic("manifold_coupling", jnn.sigmoid(numpyro.sample(
+            "manifold_coupling_logit",
+            dist.Normal(logit_target, float(_m["coupling_logit_scale"]) * prior_scale))))
     with numpyro.plate("env_features", M_features, dim=-2):
         f_shared = numpyro.sample("manifold_factor", dist.Normal(0.0, 1.0))   # (M, 1)
-        with numpyro.plate("manifolds", 4, dim=-1):
-            eps_idio = numpyro.sample("manifold_idio", dist.Normal(0.0, 1.0))  # (M, 4)
+        if fixed is None or float(fixed) < 1.0:
+            with numpyro.plate("manifolds", 4, dim=-1):
+                eps_idio = numpyro.sample("manifold_idio", dist.Normal(0.0, 1.0))  # (M, 4)
+        else:
+            eps_idio = jnp.zeros((M_features, 4))
     w_env = numpyro.deterministic(
         "w_env", w_scale[None, :] * (jnp.sqrt(rho_c) * f_shared + jnp.sqrt(1.0 - rho_c) * eps_idio))
     # The rank-2 reporting names, filled with their exchangeable equivalents (every field at
@@ -719,6 +733,18 @@ def build_model_2d(data, prior_scale=1.0):
     allee_gamma_scaled = priors['gamma_raw'] * data['pop_scalar']
     priors['allee_gamma'] = numpyro.deterministic("allee_gamma", allee_gamma_scaled)
 
+    # Habitat centring: intercepts become "the rate at typical occupied habitat", so a prior
+    # on alpha_k is a prior on K's level where birds live. Without it the uncentered
+    # Ruzicka features' near-constant leading direction gives every field a second, nearly
+    # free intercept, which is how run_19's K level drifted to 0.03 route counts (anchor
+    # 2.6) while alpha_k sat 5.6 prior sds out. Offsets reported for the visualizations.
+    z_center = None
+    if _HABITAT_CENTERING == "occupied":
+        z_center = data["habitat_center_occupied"]
+        numpyro.deterministic("habitat_center_offsets", jnp.stack([
+            jnp.dot(z_center, priors['beta_s']), jnp.dot(z_center, priors['beta_r']),
+            jnp.dot(z_center, priors['beta_k']), jnp.dot(z_center, priors['beta_sj'])]))
+
     # 1. Compute Biological Fields (2D Manifold -> Demographic Rates)
     # Notice we now pass beta_s and beta_r instead of a single beta_h
     Sa_flat, Sj_flat, Fmax_flat, K_flat, Q_flat, Kbase_flat = project_and_scatter_age_structured(
@@ -733,6 +759,7 @@ def build_model_2d(data, prior_scale=1.0):
         priors['alpha_k'], priors['gamma_k'],
         k_link=k_link,
         capacity=crowding_capacity if _K_FORM == "crowding" else None,
+        z_center=z_center,
     )
         
     # Save fields for viz

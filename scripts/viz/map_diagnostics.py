@@ -229,7 +229,9 @@ def reconstruct_map(data, params):
               "disease_k_half_route_counts", "disease_hill_n",
               "disease_severity_map", "disease_mu_sev", "disease_b_late",
               "disease_w_lag", "disease_lag0", "disease_tau", "disease_rec",
-              "disease_tau_rec", "Na_grid", "Nj_grid"]
+              "disease_tau_rec", "Na_grid", "Nj_grid",
+              # Present only with habitat_centering="occupied"; Predictive drops absent names.
+              "habitat_center_offsets"]
     predictive = Predictive(build_model_2d, posterior_samples=posterior, return_sites=needed)
     result = predictive(jax.random.PRNGKey(104), data=data, prior_scale=1.0)
     result = jax.block_until_ready(result)
@@ -250,7 +252,7 @@ def reconstruct_map(data, params):
     sim["latents"] = dict(latents)
     for name in ("w_env", "k_level", "gamma_a", "gamma_j", "gamma_f", "gamma_k",
                  "gamma_j_diff", "manifold_loadings", "manifold_communality",
-                 "env_corr_survival_adult_juv"):
+                 "env_corr_survival_adult_juv", "habitat_center_offsets"):
         if name in sim:
             sim["latents"][name] = sim[name]
     return sim

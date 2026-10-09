@@ -132,3 +132,61 @@ print(json.dumps({"form": a._K_FORM, "bound": a._CROWDING["modifier_bound"],
                                   text=True, check=True).stdout.strip().splitlines()[-1])
     assert r["form"] == "crowding" and r["bound"] == pytest.approx(bound) and r["rho"] == 0.6
     assert r["level"] == pytest.approx(2.6183, rel=1e-6)
+
+
+def test_single_field_has_one_pattern_and_no_private_parts(monkeypatch):
+    import src.model.age_priors as ap
+    monkeypatch.setitem(ap._MANIFOLD_PRIOR, "fixed_coupling", 1.0)
+    w_scale = jnp.array([0.7, 2.0, 1.3, 0.4])
+    tr = handlers.trace(handlers.seed(lambda: ap._exchangeable_w_env(30, w_scale, 1.0), 0)).get_trace()
+    sites = {k for k, v in tr.items() if v["type"] == "sample"}
+    assert sites == {"manifold_factor"}
+    w = np.asarray(tr["w_env"]["value"])
+    np.testing.assert_allclose(w / np.asarray(w_scale), np.repeat(w[:, :1] / 0.7, 4, axis=1), rtol=1e-6)
+
+
+def test_occupied_habitat_center_counts_each_occupied_cell_year_once():
+    from src.model.data_loading import occupied_habitat_center
+    Z = np.arange(2 * 3 * 2, dtype=float).reshape(2, 3, 2)      # (time, N_land, M)
+    meta = {"Z_gathered": Z, "Ny": 2, "Nx": 2,
+            "land_rows": np.array([0, 0, 1]), "land_cols": np.array([0, 1, 1]),
+            # two routes in (t=0, land 1), one zero count, one occupied (t=1, land 2)
+            "obs_time_indices": np.array([0, 0, 0, 1]), "obs_rows": np.array([0, 0, 0, 1]),
+            "obs_cols": np.array([1, 1, 0, 1]), "observed_results": np.array([3, 1, 0, 2])}
+    np.testing.assert_allclose(occupied_habitat_center(meta), (Z[0, 1] + Z[1, 2]) / 2)
+
+
+def test_viz_rates_at_the_centre_equal_the_intercepts():
+    """With centred fields, every rate evaluated at z_center is link(alpha): the
+    visualization's intercept shift must reproduce the model's centring exactly."""
+    from src.vis.age_model_math import demographic_params, rates_from_manifolds
+    rng = np.random.default_rng(0)
+    w_env = rng.normal(size=(5, 4)); z_c = rng.normal(size=5)
+    lat = {"w_env": w_env, "alpha_a": 0.3, "alpha_j": -0.4, "alpha_f": 1.2, "alpha_k": -2.0,
+           "gamma_a": 1.0, "gamma_j": 1.0, "gamma_f": 1.0, "gamma_k": 1.0,
+           "habitat_center_offsets": z_c @ w_env}
+    p = demographic_params(lat)
+    H = z_c @ w_env                                   # the UNCENTERED z.beta callers compute
+    r = rates_from_manifolds(p, H[0], H[3], H[1], H[2])
+    sig = lambda x: 1 / (1 + np.exp(-x))              # noqa: E731
+    assert r["Sa"] == pytest.approx(sig(0.3)) and r["Sj"] == pytest.approx(sig(-0.4))
+    assert r["Fmax"] == pytest.approx(np.log1p(np.exp(1.2)))
+    assert r["K"] == pytest.approx(np.log1p(np.exp(-2.0)))
+
+
+def test_single_field_overlay_resolves():
+    probe = """
+import json, src.model.age_priors as a
+from numpyro import handlers
+tr = handlers.trace(handlers.seed(a.sample_priors, 0)).get_trace(
+    prior_scale=1.0, M_features=24, time=10, N_sev_basis=24, N_lag_basis=24)
+print(json.dumps({"centering": a._HABITAT_CENTERING, "fixed": a._MANIFOLD_PRIOR.get("fixed_coupling"),
+  "level": float(a.k_link(a._ALPHA_K_LOC)) * a._POP_SCALAR, "scale": a._CAPACITY_LEVEL["alpha_k_scale"],
+  "sites": sorted(k for k, v in tr.items() if v["type"] == "sample")}))
+"""
+    env = dict(os.environ, AGE_MODEL_CONFIG=os.path.join(REPO, "config", "overlays", "map_run21_single_field.json"))
+    r = json.loads(subprocess.run([sys.executable, "-c", probe], cwd=REPO, env=env, capture_output=True,
+                                  text=True, check=True).stdout.strip().splitlines()[-1])
+    assert r["centering"] == "occupied" and r["fixed"] == 1.0 and r["scale"] == 1.0
+    assert r["level"] == pytest.approx(3.0, rel=1e-6)
+    assert "manifold_idio" not in r["sites"] and "manifold_coupling_logit" not in r["sites"]

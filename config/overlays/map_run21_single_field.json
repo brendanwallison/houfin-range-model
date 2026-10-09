@@ -1,0 +1,32 @@
+{
+  "_comment": [
+    "run_21: a SINGLE HABITAT FIELD. manifold_prior.fixed_coupling = 1 makes every rate read the same field H = (Z - z_occ).f with its own positive sensitivity w_scale_j (no private parts): good habitat is good for all four rates, no trade-offs. Parsimony test: run_19/19e/20a/20b all bought fit by pulling the fields apart (rho 0.85->0.56, 0.6->0.03) and building a 25-40% Allee-dead belt on the northern Plains; with lambda and K monotone in one field, that belt can only occupy a narrow band of H.",
+    "habitat_centering = occupied: fields centred at the mean Z of occupied cell-years, so each intercept is the rate at typical occupied habitat and alpha_k's prior is a prior on K's level where birds live (the uncentered features' near-constant direction otherwise acts as a free second intercept: run_19's K level drifted to 0.03 route counts).",
+    "Capacity level prior loosened to median 3.0 route counts, alpha_k_scale 1.0 (about a factor e per sd), softplus link kept. Otherwise run_19: no dispersal noise, survival amplitude scale 1.0263."
+  ],
+  "input_dir": "${HOUFIN_PROCESSED}/model_inputs/numpyro_input",
+  "population_model": {
+    "dispersal_random_enabled": false,
+    "manifold_prior": {
+      "form": "exchangeable",
+      "coupling_target": 0.85,
+      "coupling_logit_scale": 0.15,
+      "amplitude_scale": [
+        1.0263,
+        1.0263,
+        1.0227,
+        1.0263
+      ],
+      "fixed_coupling": 1.0
+    },
+    "habitat_centering": "occupied",
+    "capacity_level_prior": {
+      "target_level_median_route_counts": 3.0,
+      "alpha_k_scale": 1.0
+    }
+  },
+  "run_names": {
+    "map": "age_map_{precision}_run_21_new_z",
+    "vis_map": "age_map_{precision}_run_21_new_z"
+  }
+}

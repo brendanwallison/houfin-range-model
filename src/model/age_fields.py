@@ -144,6 +144,7 @@ def project_and_scatter_age_structured(
     alpha_k, gamma_k, # Carrying capacity intercept (inside the link) & slope
     k_link=None,      # callable: K = k_link(argument); default softplus
     capacity=None,    # callable (alpha_k, H, trend, Sa, Sj, Fmax) -> K_base; overrides k_link
+    z_center=None,    # (M,) feature vector the habitat fields are centred at, or None
 ):
     """Project Z → (S_a, S_j, F_max, K, Q) for every year, on the land cells.
 
@@ -165,6 +166,15 @@ def project_and_scatter_age_structured(
     # through the continental trend, so it is computed per year.
     onset_t = disease_onset_timestep(disease)
 
+    # Habitat centring (population_model.habitat_centering): H = (z - z_center).beta, so
+    # each intercept is the rate at z_center. Constant per field, so computed once; the
+    # dispersal block uses the same offset, keeping Q's intercept on the same footing.
+    if z_center is None:
+        off_s = off_r = off_k = off_sj = 0.0
+    else:
+        off_s, off_r = jnp.dot(z_center, beta_s), jnp.dot(z_center, beta_r)
+        off_k, off_sj = jnp.dot(z_center, beta_k), jnp.dot(z_center, beta_sj)
+
     # Checkpoint: don't store this function's large intermediates for the
     # backward pass; recompute them instead.
     @checkpoint
@@ -175,18 +185,18 @@ def project_and_scatter_age_structured(
 
         # 2. Compute the 4 Correlated Habitat Manifolds (H_s, H_sj, H_r, H_k) --
         # purely covariate-driven (Z.beta), no spatiotemporal term mixed in.
-        H_s_local = jnp.dot(z_t, beta_s)
-        H_r_local = jnp.dot(z_t, beta_r)
+        H_s_local = jnp.dot(z_t, beta_s) - off_s
+        H_r_local = jnp.dot(z_t, beta_r) - off_r
         # Juvenile survival reads its OWN manifold. It used to reuse H_s_local with only a
         # scalar shift (alpha_j) and scale (gamma_j), so "where juveniles survive" could not
         # differ in PATTERN from "where adults survive" -- zero independent spatial degrees of
         # freedom. The two are still tightly coupled, but now through a PRIOR on their
         # correlation (rank-2 manifold prior, target 0.85) rather than by identity.
-        H_sj_local = jnp.dot(z_t, beta_sj)
+        H_sj_local = jnp.dot(z_t, beta_sj) - off_sj
         # Capacity reads its OWN manifold. It used to reuse H_r, making K a strictly
         # monotone function of Fmax, so the disease term was the only way their
         # spatial patterns could differ -- see the module docstring.
-        H_k_local = jnp.dot(z_t, beta_k)
+        H_k_local = jnp.dot(z_t, beta_k) - off_k
 
         # 3. Path-Integrated Survival Suitability
         # z_disp_t is (N_land, K_kernels, M) -> dot with beta_s (M,) gives (N_land, K_kernels)
@@ -199,7 +209,7 @@ def project_and_scatter_age_structured(
         # existed. The exact GP-kernel interpretation remains only approximate on the dispersal
         # block. See kernel_contract note in model_inputs.py and the "dispersal-block prior"
         # future-work item.
-        H_sj_disp = jnp.dot(z_disp_t, beta_sj)
+        H_sj_disp = jnp.dot(z_disp_t, beta_sj) - off_sj
 
         # 4. Map H_s and H_r to Demographic Rates using Intercepts and Slopes
         # Survival listens to H_s

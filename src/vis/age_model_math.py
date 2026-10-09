@@ -271,13 +271,20 @@ def demographic_params(latents):
     # map_diagnostics.reconstruct_map); the fallbacks below keep pre-d7db319
     # checkpoints, where the *_raw names were genuinely sampled, plotting correctly.
     gamma_a = _gamma_slope(latents, "gamma_a", "gamma_a_raw")
+    # Centred habitat fields (habitat_centering="occupied"): the model uses
+    # H = z.beta - z_center.beta, which is the same as shifting each intercept by
+    # -gamma * offset and feeding the uncentered z.beta every caller here computes.
+    off = (np.asarray(latents["habitat_center_offsets"], dtype=float)
+           if "habitat_center_offsets" in latents else np.zeros(4))
+    alpha_k = alpha_k - _gamma_slope(latents, "gamma_k", "gamma_k_raw") * off[2]
     return {
         "beta_sj": beta_sj,
         "w_env": w_env,
         "beta_s": beta_s, "beta_r": beta_r, "beta_k": beta_k,
-        "alpha_a": float(latents["alpha_a"]),
-        "alpha_j": float(latents["alpha_j"]),
-        "alpha_f": float(latents["alpha_f"]),
+        "alpha_a": float(latents["alpha_a"]) - gamma_a * off[0],
+        "alpha_j": float(latents["alpha_j"]) - (float(np.asarray(latents["gamma_j"])) if "gamma_j" in latents
+                                                else gamma_a + float(latents["gamma_j_diff"])) * off[3],
+        "alpha_f": float(latents["alpha_f"]) - _gamma_slope(latents, "gamma_f", "gamma_f_raw") * off[1],
         "alpha_k": alpha_k,
         "gamma_a": gamma_a,
         # gamma_j: prefer the DETERMINISTIC `gamma_j` site, which is the quantity itself.

@@ -108,6 +108,7 @@
   evidence:
   - {job: "E004/atlas-base-trained-6e20bd69e4b0", exp: E004, dir: against, strength: moderate, note: "strong form: at matched exact-kernel size temporal retention r24 0.228 [0.216,0.238] vs spatial (lag 1) 0.232 [0.223,0.241]; r6 0.067 vs 0.084, r64 0.391 vs 0.388. The 40-y change (exact 0.430) is SMALLER than the adjacent-cell difference (0.482), so lag 1 is an upper bound on the matched spatial value. Truncation drops small differences, not temporal directions. UNVERIFIED."}
   - {job: "skeptic:E004", exp: E004, dir: for, strength: weak, note: "the matched-size equality is confounded by a between-route spatial nugget (fits 0.14-0.30 of lag 1; ESK keeps ~none): against the STRUCTURED spatial part r24 retention is 0.36-0.62 vs temporal 0.23-0.31 (ratio 0.4-0.7, strong form), and the 40-y change is ~90-110 km, not < 27 km. Undetermined until the nugget is measured directly (N1)."}
+  - {job: "adhoc:E014-dev", exp: E014, dir: against, strength: moderate, note: "route-level, effort-matched: the nugget is large (0.29 at < 10 km) but ESK keeps ~24% of it; temporal retention equals spatial at the same raw size (0.280 vs 0.273); the regionally coherent part of the 40-y change is kept at 45-71% (r24), as well as structured spatial differences; only the route-specific remainder is dropped (~6%). Strong form not supported. UNVERIFIED; replication queued."}
 - id: R2p
   stage: R
   priority: 2
@@ -191,6 +192,7 @@
   parents: []
   evidence:
   - {job: "adhoc:E011-dev", exp: E011, dir: for, strength: weak, note: "the readout analogue (community->species): level-fitted beta on community change captures 4-10% (base) / -5% (tempho1995 withheld) of available species change; change-fitted beta on the SAME features 25-29%. Interactive development run; E011 jobs queued. UNVERIFIED."}
+  - {job: "adhoc:E016-dev", exp: E016, dir: for, strength: moderate, note: "covariate->community map fitted in the trained era: between-cell (spatial) coefficients predict NONE of the temporal community change (corr 0.03 trained / 0.02 backcast); within-cell coefficients 0.42 / 0.27, as good as DESK (0.41 / 0.21) and better calibrated (0.91 / 0.75 vs 0.62 / 0.37). UNVERIFIED; replications queued."}
 - id: T6
   stage: T
   priority: 2
@@ -410,3 +412,4 @@
   parents: [T0]
   evidence:
   - {job: "skeptic:E004", exp: E004, dir: for, strength: moderate, note: "centered slope of truth on DESK 0.62 (trained) / 0.37 (withheld) equivalent; independent of target noise."}
+  - {job: "adhoc:E016-dev", exp: E016, dir: for, strength: weak, note: "a linear within-cell map is calibrated (truth-on-prediction 0.75-0.91) where DESK is not (0.37-0.62): the over-movement is DESK-specific, not inherent to the task."}

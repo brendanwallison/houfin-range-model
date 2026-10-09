@@ -1,0 +1,8 @@
+{
+  "exp": "E014", "name": "route-nugget-k3s0", "group": "cpu",
+  "overlay": "config/overlays/gp_species_base.json",
+  "cmd": ["python", "research/exp/route_nugget.py", "--out", "{out}", "--k", "3", "--seed", "0"],
+  "expected_minutes": 8,
+  "summarize": ["python", "research/exp/route_nugget.py", "--summarize", "{out}"],
+  "note": "pre-registered in research/experiments/E014.md"
+}

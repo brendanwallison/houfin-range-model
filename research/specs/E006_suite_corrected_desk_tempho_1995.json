@@ -1,0 +1,8 @@
+{
+  "exp": "E006", "name": "suite-corrected-desk_tempho_1995", "group": "gpu",
+  "overlay": "config/overlays/desk_tempho_1995.json",
+  "cmd": ["python", "-m", "src.community_encoder.train_DESK.validate_gp_species", "--n-boot", "1000", "--out-dir", "{out}/gp_species"],
+  "expected_minutes": 240,
+  "summarize": ["python", "research/exp/compare_reports.py", "{out}/gp_species/report.json", "${HOUFIN_PROCESSED}/sweeps/desk_hp/sweep_t0_f100_base/gp_species/report.json", "--max-rows", "25"],
+  "note": "the audited suite (A1-A8, multi-start scales, bounds) on the same checkpoint: old vs new numbers for the Gate 1 report"
+}

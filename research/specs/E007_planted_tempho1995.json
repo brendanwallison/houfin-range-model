@@ -1,0 +1,9 @@
+{
+  "exp": "E007", "name": "planted-tempho1995", "group": "cpu",
+  "after_jobs": ["E002/cache-desk_tempho_1995"],
+  "env": {"RESEARCH_EXP": "E007"},
+  "cmd": ["bash", "-c", "set -e; python research/exp/planted.py --cache {cache}/desk_tempho_1995 --out {cache}/planted_tempho1995 --n-per 12; python research/exp/fast_arm.py --cache {cache}/planted_tempho1995 --out {out}/A0 --tag planted_A0"],
+  "expected_minutes": 20,
+  "summarize": ["python", "research/exp/fast_arm.py", "--summarize", "{out}/A0"],
+  "note": "Phase 1.4: achievable skill per generator under the real sampling design (per-species table in A0/per_species.csv)"
+}

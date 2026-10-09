@@ -195,8 +195,20 @@ def enqueue(spec_path):
             "eval_version": eval_version(), "enqueued_at": now()}
     atomic_json(out / "spec.json", full)
     group = spec["group"]
+    # "after_jobs": ["E002/cache-x", ...] -> pueue --after on their latest queued task ids. A
+    # dependency that finished long ago (no live task) is simply satisfied; one never queued is an
+    # error, because running without its inputs would fail later and less legibly.
+    after = []
+    st_all = latest_by_job()
+    for dep in spec.get("after_jobs", []):
+        hits = [s for j, s in st_all.items() if j.startswith(dep + "-") or j == dep]
+        if not hits:
+            raise SystemExit(f"after_jobs: {dep!r} was never queued")
+        live = [s for s in hits if s.get("event") == "queued" and s.get("pueue_id") is not None]
+        after += [str(s["pueue_id"]) for s in live]
     res = subprocess.run([paths.PUEUE, "add", "--group", group, "--label", job, "--print-task-id",
-                          "--working-directory", str(code), "--",
+                          "--working-directory", str(code)]
+                         + (["--after", *after] if after else []) + ["--",
                           paths.VENV_PY, str(runner / "research" / "jobs.py"), "run", str(out)],
                          capture_output=True, text=True)
     if res.returncode != 0:

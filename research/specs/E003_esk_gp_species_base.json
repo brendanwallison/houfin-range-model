@@ -1,0 +1,9 @@
+{
+  "exp": "E003", "name": "esk-gp_species_base", "group": "gpu",
+  "overlay": "config/overlays/gp_species_base.json",
+  "after_jobs": ["E002/cache-gp_species_base"],
+  "cmd": ["python", "research/exp/esk_project.py", "--cache", "{cache}/gp_species_base"],
+  "expected_minutes": 20,
+  "summarize": ["python", "-c", "import numpy as np; E=np.load('{cache}/gp_species_base/esk_epochs.npz'); print('cell-epochs', len(E['cells']), 'withheld', int(E['withheld'].sum()), 'median years', float(np.median(E['n_years'])))"],
+  "note": "ESK coordinates of the observed community per cell-year and per ABBA half of each cell-epoch (input of E004)"
+}

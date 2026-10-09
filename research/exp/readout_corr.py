@@ -53,6 +53,8 @@ def main():
     ap.add_argument("--rank", type=int, default=24)
     ap.add_argument("--n-boot", type=int, default=300)
     ap.add_argument("--species-regex", default=None, help="planted caches: grade one generator, e.g. '^z_'")
+    ap.add_argument("--beta-epochs", default=None, choices=("both", "modern"),
+                    help="levels the betas are fitted on; default both (trained) / modern (withheld)")
     ap.add_argument("--summarize", default=None)
     a = ap.parse_args()
     if a.summarize:
@@ -91,7 +93,8 @@ def main():
     res_mask = nz["resolvable"]
     prev = (Xd[:, keep] > 0).mean(0)
     r = a.rank
-    lvl_groups = np.unique(np.concatenate([pairs[tr, 1]] + ([pairs[tr, 0]] if not want_wh else [])))
+    both = (a.beta_epochs or ("modern" if want_wh else "both")) == "both"
+    lvl_groups = np.unique(np.concatenate([pairs[tr, 1]] + ([pairs[tr, 0]] if both else [])))
 
     # true-community readout (cross halves)
     Za, Zb = E["z_a"][:, :r].astype("float64"), E["z_b"][:, :r].astype("float64")
@@ -144,7 +147,8 @@ def main():
             out[k + "_ci"] = [float(np.percentile(v, 2.5)), float(np.percentile(v, 97.5))] if len(v) else None
         return out
 
-    res = {"cache": a.cache, "population": a.population, "rank": r, "n_eval_cells": int(len(ev)),
+    res = {"cache": a.cache, "population": a.population, "rank": r, "beta_epochs": "both" if both else "modern",
+           "n_eval_cells": int(len(ev)),
            "n_species": int(keep.sum()), "n_resolvable": int(res_mask.sum()),
            "all": stats(res_mask), "tiers": {}}
     for lo, hi in zip(TIERS[:-1], TIERS[1:]):
@@ -158,7 +162,8 @@ def summarize(out):
     r = json.load(open(os.path.join(out, "readout_corr.json"), encoding="utf-8"))
     f = lambda v: "   -  " if v is None else f"{v:+.3f}"
     fci = lambda v: "" if not v else f"[{v[0]:+.3f},{v[1]:+.3f}]"
-    print(f"readout corr [{r['population']}] r{r['rank']}: {r['n_eval_cells']} held-out cells, "
+    print(f"readout corr [{r['population']}, betas from {r.get('beta_epochs', '?')} levels] r{r['rank']}: "
+          f"{r['n_eval_cells']} held-out cells, "
           f"{r['n_resolvable']}/{r['n_species']} species resolvable. Noise-free correlation of the LEVEL "
           f"readout of community change with species change (place-specific, pooled):")
     print(f"  {'stratum':14s} {'n':>4s}  {'true community':>26s}  {'DESK':>26s}  DESK~true readout")

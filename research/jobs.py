@@ -141,7 +141,7 @@ def parse_ts(s):
 
 
 def pueue_status():
-    out = subprocess.run(["pueue", "status", "--json"], capture_output=True, text=True)
+    out = subprocess.run([paths.PUEUE, "status", "--json"], capture_output=True, text=True)
     if out.returncode != 0:
         return {}
     try:
@@ -180,7 +180,7 @@ def enqueue(spec_path):
             "eval_version": eval_version(), "enqueued_at": now()}
     atomic_json(out / "spec.json", full)
     group = spec["group"]
-    res = subprocess.run(["pueue", "add", "--group", group, "--label", job, "--print-task-id",
+    res = subprocess.run([paths.PUEUE, "add", "--group", group, "--label", job, "--print-task-id",
                           "--working-directory", str(code), "--",
                           paths.VENV_PY, str(runner / "research" / "jobs.py"), "run", str(out)],
                          capture_output=True, text=True)

@@ -18,6 +18,7 @@ SCRATCH = HOME / "houfin" / "scratch"
 HOUFIN_DATA = f"{SCRATCH}/houfin/data"
 HOUFIN_PROCESSED = f"{TACC_WORK}/houfin/processed"
 VENV_PY = str(HOME / "houfin" / "venv" / "bin" / "python")
+PUEUE = str(HOME / ".local" / "bin" / "pueue")    # `wsl -e` is not a login shell: ~/.local/bin is not on PATH
 CODE_SNAPSHOTS = HOME / "houfin" / "runs" / "code"
 OUT_ROOT = WORK_REAL / "houfin" / "research"      # experiment outputs (real path: works before the symlink)
 CACHE_ROOT = WORK_REAL / "houfin" / "research_cache"

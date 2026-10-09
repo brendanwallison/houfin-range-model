@@ -83,6 +83,40 @@ def test_split_kernel_sees_that_the_signal_is_in_the_change(tmp_path, monkeypatc
     assert r["change"]["space"]["skill_vs_no_change"]["median"] > 0.3
 
 
+def test_planted_cache_calibrates_what_the_fast_arm_can_show(tmp_path, monkeypatch):
+    """Phase 1.4 on the synthetic cache: z readouts are resolvable with positive change skill; a
+    purely static field (mix_0) has (almost) no resolvable change -- the floor any change metric is
+    read against."""
+    import pandas as pd
+    cache = str(tmp_path / "cache")
+    make_cache(cache, seed=4)
+    keys = np.load(os.path.join(cache, "keys.npy"))
+    rng = np.random.default_rng(1)
+    rows = []
+    for (r, c, y) in keys:
+        for k in range(1 + rng.integers(0, 3)):
+            rows.append((840, 1, 1000 * r + 10 * c + k, int(y), int(r), int(c)))
+    pd.DataFrame(rows, columns=["country", "state", "route", "year", "row", "col"]).to_csv(
+        os.path.join(cache, "route_years.csv"), index=False)
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "research", "exp"))
+    import planted
+    out_cache = str(tmp_path / "planted")
+    monkeypatch.setattr(sys, "argv", ["planted", "--cache", cache, "--out", out_cache,
+                                      "--n-per", "6", "--rank", "8"])
+    planted.main()
+    gens = np.load(os.path.join(out_cache, "truth.npz"))["generator"]
+    assert len(gens) == 6 * 6 and set(gens) >= {"z", "spacetime", "mix_0", "mix_0.6"}
+    r = _run(monkeypatch, out_cache, str(tmp_path / "out"))
+    tab = pd.read_csv(tmp_path / "out" / "per_species.csv")
+    g = np.load(os.path.join(out_cache, "truth.npz"))["generator"]
+    sp = tab["species"].astype(str).str.rsplit("_", n=1).str[0].to_numpy()
+    res = tab["resolvable_space"].to_numpy(bool)
+    sk = tab["change_skill_space"].to_numpy()
+    assert res[sp == "z"].mean() > 0.5 and np.nanmedian(sk[(sp == "z") & res]) > 0.2
+    assert res[sp == "mix_0"].mean() < 0.35
+    assert r["change"]["space"]["n_resolvable"] < len(g)
+
+
 def test_time_group_uses_leave_one_out_and_persistence(tmp_path, monkeypatch):
     cache = str(tmp_path / "cache")
     make_cache(cache, withheld=range(1966, 1976), seed=3)

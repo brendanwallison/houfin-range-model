@@ -1,0 +1,25 @@
+{
+ "exp": "E017",
+ "name": "analog-pull-v2-base_trained",
+ "group": "cpu",
+ "cmd": [
+  "python",
+  "research/exp/analog_pull.py",
+  "--cache",
+  "{cache}/gp_species_base",
+  "--out",
+  "{out}",
+  "--population",
+  "trained",
+  "--exclude-km",
+  "200"
+ ],
+ "expected_minutes": 6,
+ "summarize": [
+  "python",
+  "research/exp/analog_pull.py",
+  "--summarize",
+  "{out}"
+ ],
+ "note": "E017b in research/experiments/E017.md"
+}

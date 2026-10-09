@@ -47,6 +47,9 @@ def main():
     ap.add_argument("--rank", type=int, default=24)
     ap.add_argument("--min-years", type=int, default=4)
     ap.add_argument("--n-boot", type=int, default=300)
+    ap.add_argument("--plus-year", type=int, default=None,
+                    help="also train every span on this year (DESK cannot withhold its label year, 2025: this is what a "
+                         "'span' DESK run actually trains on)")
     ap.add_argument("--desk-models", nargs="*", default=(),
                     help="more DESK models as name=cache_subdir:T0:T1 (e.g. a span run)")
     ap.add_argument("--balance-years", action="store_true",
@@ -103,7 +106,8 @@ def main():
         name, rest = spec.split("=")
         sub, m0, m1 = rest.split(":")
         models.append((name, sub, int(m0), int(m1)))
-    res = {"rank": r, "balance_years": bool(a.balance_years), "desk_models": models, "rows": []}
+    res = {"rank": r, "balance_years": bool(a.balance_years), "plus_year": a.plus_year, "desk_models": models,
+           "rows": []}
     for t0, spans in GRID.items():
         ref = (t0, t0 + 9)
         cells_w = {}
@@ -115,7 +119,10 @@ def main():
                  for (name, sub, m0, m1) in models if m0 == t0}
         for L in spans:
             t1 = t0 + L - 1
-            rows = np.where(train_cell & (yr >= t0) & (yr <= t1))[0]
+            in_span = (yr >= t0) & (yr <= t1)
+            if a.plus_year is not None:
+                in_span |= yr == a.plus_year
+            rows = np.where(train_cell & in_span)[0]
             if a.balance_years:
                 per = np.bincount(yr[rows] - t0, minlength=L)
                 k = int(per[per > 0].min())
@@ -186,7 +193,8 @@ def main():
 
 def summarize(out):
     r = json.load(open(os.path.join(out, "span_reach.json"), encoding="utf-8"))
-    print(f"span x reach (r{r['rank']}{', years balanced' if r.get('balance_years') else ''}): change of held-out cells between a backcast window and the first ten trained "
+    print(f"span x reach (r{r['rank']}{', years balanced' if r.get('balance_years') else ''}"
+          f"{', + year ' + str(r['plus_year']) if r.get('plus_year') else ''}): change of held-out cells between a backcast window and the first ten trained "
           f"years; noise-free centered corr (calibration). At fixed T0 and window, only the span changes.")
     for row in sorted(r["rows"], key=lambda x: (-x["t0"], x["reach"], x["span"])):
         parts = [f"{k} {v['corr']:+.3f} ({v['calib']:.2f})" for k, v in row["arms"].items()]

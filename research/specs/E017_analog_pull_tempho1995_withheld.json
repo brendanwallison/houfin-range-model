@@ -1,0 +1,25 @@
+{
+ "exp": "E017",
+ "name": "analog-pull-tempho1995_withheld",
+ "group": "cpu",
+ "cmd": [
+  "python",
+  "research/exp/analog_pull.py",
+  "--cache",
+  "{cache}/desk_tempho_1995",
+  "--out",
+  "{out}",
+  "--population",
+  "withheld",
+  "--exclude-km",
+  "200"
+ ],
+ "expected_minutes": 8,
+ "summarize": [
+  "python",
+  "research/exp/analog_pull.py",
+  "--summarize",
+  "{out}"
+ ],
+ "note": "pre-registered in research/experiments/E017.md"
+}

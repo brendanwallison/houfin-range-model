@@ -1,0 +1,23 @@
+{
+ "exp": "E018",
+ "name": "readout-honesty-base_trained",
+ "group": "cpu",
+ "cmd": [
+  "python",
+  "research/exp/readout_honesty.py",
+  "--cache",
+  "{cache}/gp_species_base",
+  "--out",
+  "{out}",
+  "--population",
+  "trained"
+ ],
+ "expected_minutes": 8,
+ "summarize": [
+  "python",
+  "research/exp/readout_honesty.py",
+  "--summarize",
+  "{out}"
+ ],
+ "note": "pre-registered in research/experiments/E018.md"
+}

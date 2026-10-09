@@ -1066,7 +1066,11 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
     # conversion is not optional in any real run.
     hy_tgt = (_hy_in or None) if _skip_target_conversion else (device_targets(_hy_in, device)
                                                               or None)
-    y2023 = int(max(tgt))                                         # anchor year index in the window
+    # Latest year with TRAINING coverage, mirroring y_deep below: a run whose span ENDS early (years after it withheld)
+    # keeps those years in `tgt` with all-False train masks, and max(tgt) would pair every diagnostic with an untrained
+    # year (empty rotation sets) -- exactly the case the span-vs-reach runs (E024) create.
+    _trained_years = [y for y in tgt if bool(tgt[y][1].any())]
+    y2023 = int(max(_trained_years) if _trained_years else max(tgt))  # anchor year index in the window
 
     # No-skill baselines on the held-out cells (pooled over all supervised years): the Z-MSE
     # of predicting the global mean vector, and of predicting zero. Val(all-yr) must fall well

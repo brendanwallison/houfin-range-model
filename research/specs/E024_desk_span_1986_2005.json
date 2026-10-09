@@ -1,0 +1,21 @@
+{
+ "exp": "E024",
+ "name": "desk-span-1986-2005",
+ "group": "gpu",
+ "overlay": "research/overlays/desk_span_1986_2005.json",
+ "cmd": [
+  "bash",
+  "-c",
+  "set -e; export RESEARCH_OUT={out} TMPDIR={out}/tmp MPLCONFIGDIR={out}/tmp/mpl WANDB_MODE=offline WANDB_DIR={out}; mkdir -p {out}/desk {out}/tmp; {python} scripts/run_encoder.py desk; {python} research/exp/cache.py --out {cache}/desk_span_1986_2005"
+ ],
+ "expected_minutes": 100,
+ "summarize": [
+  "python",
+  "-c",
+  "import json; s=json.load(open('{out}/desk/run_summary.json')); print({k: s.get(k) for k in ('best_epoch','best_val_kernel','best_val_zmse','epochs_run','n_train_cell_years','holdout_years')})"
+ ],
+ "note": "pre-registered in research/experiments/E024.md",
+ "after_jobs": [
+  "E024/desk-span-smoke"
+ ]
+}

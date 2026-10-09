@@ -1,0 +1,24 @@
+{
+ "exp": "E023",
+ "name": "span-reach-desk-spans",
+ "group": "cpu",
+ "overlay": "config/overlays/gp_species_base.json",
+ "after_jobs": [
+  "E024/desk-span-1976-1995",
+  "E024/desk-span-1986-2005",
+  "E024/desk-span-1996-2015"
+ ],
+ "cmd": [
+  "bash",
+  "-c",
+  "{python} research/exp/span_reach.py --out {out} --desk-models s1976_1995=desk_span_1976_1995:1976:1995 s1986_2005=desk_span_1986_2005:1986:2005 s1996_2015=desk_span_1996_2015:1996:2015"
+ ],
+ "expected_minutes": 15,
+ "summarize": [
+  "python",
+  "research/exp/span_reach.py",
+  "--summarize",
+  "{out}"
+ ],
+ "note": "E023b: span x reach with the E024 short-span DESK models (pre-registered in E024.md)"
+}

@@ -36,7 +36,9 @@ from lib import blr, covfeat  # noqa: E402
 CACHE_ROOT = os.path.expanduser("~/houfin/work/houfin/research_cache")
 WINDOWS = [(1966, 1971), (1972, 1977), (1978, 1983), (1984, 1989), (1990, 1995)]
 GRID = {1996: (10, 20, 30), 1986: (10, 20, 30, 40), 1976: (10, 20, 30, 40, 50)}
-DESK_OF_T0 = {1996: "desk_tempho_1995", 1986: "desk_tempho_1985", 1976: "desk_tempho_1975"}
+# DESK models: (name, cache subdir, first trained year, last trained year); --desk-models adds more (E024 span runs)
+DESK_MODELS = [("t1995", "desk_tempho_1995", 1996, 2025), ("t1985", "desk_tempho_1985", 1986, 2025),
+               ("t1975", "desk_tempho_1975", 1976, 2025)]
 
 
 def main():
@@ -45,6 +47,8 @@ def main():
     ap.add_argument("--rank", type=int, default=24)
     ap.add_argument("--min-years", type=int, default=4)
     ap.add_argument("--n-boot", type=int, default=300)
+    ap.add_argument("--desk-models", nargs="*", default=(),
+                    help="more DESK models as name=cache_subdir:T0:T1 (e.g. a span run)")
     ap.add_argument("--balance-years", action="store_true",
                     help="subsample training rows to equal counts per year (BBS coverage grows ~7x 1966-1995, so a long"
                          " span is otherwise dominated by its late years)")
@@ -94,7 +98,12 @@ def main():
     Zobs = np.load(os.path.join(base, "esk_annual.npy"))[:, :r].astype("float64")
     gmean = lambda M, g: np.asarray(M[g], "float64").mean(0)
 
-    res = {"rank": r, "balance_years": bool(a.balance_years), "rows": []}
+    models = list(DESK_MODELS)
+    for spec in a.desk_models:
+        name, rest = spec.split("=")
+        sub, m0, m1 = rest.split(":")
+        models.append((name, sub, int(m0), int(m1)))
+    res = {"rank": r, "balance_years": bool(a.balance_years), "desk_models": models, "rows": []}
     for t0, spans in GRID.items():
         ref = (t0, t0 + 9)
         cells_w = {}
@@ -102,10 +111,8 @@ def main():
             if hi >= t0:
                 continue
             cells_w[(lo, hi)] = [c_ for (c_, l_, h_) in gidx if (l_, h_) == (lo, hi) and (c_, *ref) in gidx]
-        desk = None
-        if t0 in DESK_OF_T0:
-            desk = np.asarray(np.load(os.path.join(CACHE_ROOT, DESK_OF_T0[t0], "z_raw.npy"), mmap_mode="r")[:, :r],
-                              "float64")
+        desks = {name: (np.asarray(np.load(os.path.join(CACHE_ROOT, sub, "z_raw.npy"), mmap_mode="r")[:, :r], "float64"), m1)
+                 for (name, sub, m0, m1) in models if m0 == t0}
         for L in spans:
             t1 = t0 + L - 1
             rows = np.where(train_cell & (yr >= t0) & (yr <= t1))[0]
@@ -128,10 +135,10 @@ def main():
             fits = {"trend": blr.fit(Xt, y, [(0, 24)]),
                     "cov": blr.fit(Xp, y, [(0, Xp.shape[1])]),
                     "cov+trend": blr.fit(np.hstack([Xp, Xt]), y, [(0, Xp.shape[1]), (Xp.shape[1], Xp.shape[1] + 24)])}
-            if desk is not None:
-                # the DESK model itself always trained on [T0, 2025]; only its RECALIBRATION uses the span's rows --
-                # a post-hoc test of weighting the trained years nearest the target
-                fits["desk_recal"] = blr.fit(demean(desk[rows]), y, [(0, r)])
+            for name, (dz, _m1) in desks.items():
+                # recal:<model> -- the DESK model's own training span is fixed; only its RECALIBRATION uses this span's
+                # rows (a post-hoc test of weighting the trained years nearest the target)
+                fits["recal:" + name] = blr.fit(demean(dz[rows]), y, [(0, r)])
             for w, cl in cells_w.items():
                 if len(cl) < 20:
                     continue
@@ -144,11 +151,11 @@ def main():
                 preds = {"trend": (rpos * dyear[:, None]) @ fits["trend"]["coef"].T,
                          "cov": dP @ fits["cov"]["coef"].T,
                          "cov+trend": np.hstack([dP, rpos * dyear[:, None]]) @ fits["cov+trend"]["coef"].T}
-                if "desk_recal" in fits:
-                    dD = np.stack([gmean(desk, g1) - gmean(desk, g2) for g1, g2 in zip(gw, gr)])
-                    if t1 == 2025:
-                        preds["desk"] = dD
-                    preds["desk_recal"] = dD @ fits["desk_recal"]["coef"].T
+                for name, (dz, m1) in desks.items():
+                    dD = np.stack([gmean(dz, g1) - gmean(dz, g2) for g1, g2 in zip(gw, gr)])
+                    if m1 == t1:
+                        preds["raw:" + name] = dD              # the model's own span: its unrecalibrated change
+                    preds["recal:" + name] = dD @ fits["recal:" + name]["coef"].T
                 dT = {h: T[h][jw] - T[h][jr] for h in T}
                 cells_rc = np.array([(c_ // 100000, c_ % 100000) for c_ in cl])
                 blk = (cells_rc[:, 0] // 6) * 100000 + cells_rc[:, 1] // 6
@@ -181,15 +188,10 @@ def summarize(out):
     r = json.load(open(os.path.join(out, "span_reach.json"), encoding="utf-8"))
     print(f"span x reach (r{r['rank']}{', years balanced' if r.get('balance_years') else ''}): change of held-out cells between a backcast window and the first ten trained "
           f"years; noise-free centered corr (calibration). At fixed T0 and window, only the span changes.")
-    arms = ("trend", "cov", "cov+trend", "desk", "desk_recal")
-    print(f"  {'T0':>5s} {'window':>10s} {'reach':>6s} {'span':>5s} {'cells':>5s}  " + "  ".join(f"{a_:>16s}" for a_ in arms))
     for row in sorted(r["rows"], key=lambda x: (-x["t0"], x["reach"], x["span"])):
-        cells = []
-        for a_ in arms:
-            v = row["arms"].get(a_)
-            cells.append(f"{v['corr']:+.3f} ({v['calib']:.2f})" if v else f"{'':>16s}")
-        print(f"  {row['t0']:5d} {row['window'][0]}-{row['window'][1] % 100:02d} {row['reach']:+6.1f} {row['span']:5d} "
-              f"{row['n_cells']:5d}  " + "  ".join(f"{c:>16s}" for c in cells))
+        parts = [f"{k} {v['corr']:+.3f} ({v['calib']:.2f})" for k, v in row["arms"].items()]
+        print(f"  T0 {row['t0']} W {row['window'][0]}-{row['window'][1] % 100:02d} reach {row['reach']:+5.1f} span "
+              f"{row['span']:2d} cells {row['n_cells']:3d} | " + " | ".join(parts))
 
 
 if __name__ == "__main__":

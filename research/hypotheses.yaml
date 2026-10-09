@@ -350,13 +350,16 @@
   stage: B
   priority: 1
   status: testing
-  statement: The readout's level-fitted beta (space) does not transfer to temporal community change - species' temporal responses differ from their spatial associations - so a temporal block whose beta is fitted on long-term within-cell change captures 2-3x more of species change.
+  statement: The readout's level-fitted beta (space) does not transfer to temporal community change - read through spatial betas, z's temporal change predicts species change worse than no change - so the readout needs a separate deviation block whose amplitude (and direction) the data set; under iid-across-all-features the spatial betas are forced onto temporal change. (2026-10-09 revision; the earlier '2-3x more with a change-fitted beta' clause is withdrawn - the placebo arms showed that gain is spatial interpolation of observed change.)
   test: E011 change oracle (level vs change beta on the same features); E012 transfer (temporal beta fitted inside the trained era, applied to the withheld decades); split-kernel variants with a longer reference window.
   kill: A temporal beta learned from trained years captures no more withheld-decade change than the level beta.
   blr: If true, contract change - a separate temporal block (zbar/dz split, iid within block) whose beta the age model learns from BBS-era long-term change; the zbar reference window becomes a design choice.
   parents: [T4, B1]
   evidence:
   - {job: "adhoc:E011-dev", exp: E011, dir: for, strength: weak, note: "level beta 4-10% (base) / -5% (tempho1995 withheld) vs change beta 25-29% of available change, observed and DESK features alike. UNVERIFIED."}
+  - {job: "E011/change-oracle-tempho1995_withheld-e8bd81e6849e", exp: E011, dir: for, strength: moderate, note: "verified (b) and (c) by an independent re-derivation (ridge-LOO, swapped halves): level readout of community change -0.043 to -0.056 captured into withheld decades; planted z species recover 0.98 with the same readout, so it is the species, not the instrument."}
+  - {job: "adhoc:E011-placebo", exp: E011, dir: against, strength: moderate, note: "withdraws the change-fitted gain: position alone 0.30, static community 0.32-0.33, change 0.25-0.26; change adds +0.02 (DESK) / +0.05 (ESK) beyond static. Spatial interpolation of observed change, unavailable for 1902-1939."}
+  - {job: "E012/split-variants-389bd4070d1c", exp: E012, dir: for, strength: weak, note: "split kernel (ref 1996-2025) vs iso, tempho1995 time set, place-specific, prevalence 0.1-0.3 / >=0.3: +0.020 / +0.035 vs -0.021 / -0.039; learned dz/zbar amplitude 0.09 - mostly shrinking the harmful temporal readout. Short reference window (2011-2025) loses it. UNVERIFIED."}
 - id: D0
   stage: T
   priority: 1
@@ -368,3 +371,4 @@
   parents: [E4, T0]
   evidence:
   - {job: "adhoc:E011-dev", exp: E011, dir: for, strength: weak, note: "tempho1995 withheld: desk_raw:chg captured 0.263 (r24) / 0.292 (r64) vs observed esk:chg 0.257 / 0.288; base 0.251 vs 0.257. The atlas's 0.3 correlation with ESK change does not stop it. Comparator is noisy (half window). UNVERIFIED."}
+  - {job: "adhoc:E011-placebo", exp: E011, dir: neutral, strength: moderate, note: "uninformative as tested: neither DESK nor observed change carries much beyond location for real species (chg+static minus static +0.02 / +0.05); the tie measured equal spatial-basis value, not equal temporal information. Needs a test that a placebo cannot pass."}

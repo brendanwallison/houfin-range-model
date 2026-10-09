@@ -14,6 +14,15 @@
   4-10% of available species change (negative into withheld decades); a beta fitted on CHANGE captures
   25-29% from the same features, and DESK's backcast change does as well as the observed community's. New
   hypotheses B7 (space-for-time at the readout) and D0 (DESK's information is not the first bottleneck).
+  CORRECTED later the same morning (placebo arms): position alone captures 0.30 and the static community
+  0.33, so the change-fitted 25-29% is spatial interpolation of where species changed, not species
+  following community change. Survives (verified (b)+(c)): the level readout of community change is worse
+  than no change into withheld decades, while for planted species whose truth is linear in z it
+  recovers 98% -- the failure is the real species' space-for-time mismatch, not the instrument.
+- Split kernel (E012): a separate deviation block with a long reference window turns the common-species
+  backcast from worse than no change (-0.02/-0.04) to modestly better (+0.02/+0.04, CIs exclude 0), place-
+  specific. The data give the deviation block a tenth of the level block's amplitude: it works mostly by
+  NOT forcing spatial betas onto temporal change. A short (2011-2025) reference window loses the gain.
 - Route turnover inflates the change budget by ~3% (dev species), so it is not a major factor (O3).
 - Planted pilot: even a perfect-form readout shows change attenuation 0.2-0.75 depending on prevalence;
   below 10% prevalence the true change is <3% of the observed change variance (E1). E009 adds power.

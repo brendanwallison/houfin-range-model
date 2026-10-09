@@ -543,7 +543,9 @@ def theta_bounds(kind, F, n_theta):
     """Log-lengthscale bounds from the data's extent: [-8, log(20 x extent)] per input. Pure."""
     F = np.asarray(F, "float64")
     rng = np.maximum(F.max(0) - F.min(0), 1e-6)
-    up = lambda r: float(np.log(LENGTHSCALE_EXTENT_MULT * r))
+    # a channel constant over the fitting rows has no usable extent: its lengthscale is irrelevant, but its bound
+    # must still sit above the floor (log(20 x 1e-6) = -10.8 < -8 made L-BFGS-B refuse the whole fit)
+    up = lambda r: max(float(np.log(LENGTHSCALE_EXTENT_MULT * r)), -7.0)
     if kind == "spacetime":
         return [(-8.0, up(rng[:2].max())), (-8.0, up(rng[2]))]
     if kind == "spacetime_sum":

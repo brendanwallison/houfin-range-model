@@ -373,11 +373,34 @@ def status(brief=False, as_json=False):
     return rows
 
 
+def cancel(job_prefix, reason):
+    """Kill (running) or remove (queued) a registry job's pueue task and record a terminal 'cancelled' event, so it
+    neither runs nor stays 'queued' in the registry forever. Never touches its output directory."""
+    st = latest_by_job()
+    hits = [j for j, s in st.items() if j.startswith(job_prefix) and s.get("event") == "queued"]
+    if len(hits) != 1:
+        raise SystemExit(f"cancel: {len(hits)} queued jobs match {job_prefix!r}: {hits}")
+    job = hits[0]
+    tid = str(st[job].get("pueue_id"))
+    t = pueue_status().get(tid, {})
+    raw = t.get("status", {})
+    state = raw if isinstance(raw, str) else next(iter(raw), "")
+    if state == "Running":
+        subprocess.run([paths.PUEUE, "kill", tid], check=False)
+    elif state in ("Queued", "Stashed", "Paused"):
+        subprocess.run([paths.PUEUE, "remove", tid], check=False)
+    append_registry({"event": "cancelled", "job": job, "pueue_id": tid, "reason": reason})
+    print(f"[jobs] cancelled {job} (pueue task {tid}, was {state or 'unknown'}): {reason}")
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     sub = ap.add_subparsers(dest="cmd", required=True)
     e = sub.add_parser("enqueue")
     e.add_argument("spec", nargs="+")
+    cn = sub.add_parser("cancel")
+    cn.add_argument("job")
+    cn.add_argument("--reason", required=True)
     s = sub.add_parser("status")
     s.add_argument("--brief", action="store_true")
     s.add_argument("--json", action="store_true")
@@ -391,6 +414,8 @@ def main():
     if a.cmd == "enqueue":
         for sp in a.spec:
             enqueue(sp)
+    elif a.cmd == "cancel":
+        cancel(a.job, a.reason)
     elif a.cmd == "status":
         status(a.brief, a.json)
     elif a.cmd == "collect":

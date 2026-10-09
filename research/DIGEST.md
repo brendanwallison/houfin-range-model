@@ -16,11 +16,17 @@ SOLID
   structure; it drops route-level idiosyncrasy, temporal or spatial. Truncation is not selectively discarding time.
 
 TENTATIVE (skeptic-reviewed; replications or seeds still pending)
-- DESK's backcast behaves like a space-for-time model (your point 2): along the direction a space-for-time model
-  predicts, its backcast moves align +0.21 (as much as an explicit space-for-time map), real communities ~0. In
-  trained years the alignment is under half. Replications on the 1975/1985 models queued.
-- Space-for-time fails at the covariate stage: coefficients learned by comparing places predict none of the
-  decadal community change; coefficients learned within cells predict it as well as DESK, better calibrated.
+- The pattern across the 1975 / 1985 / 1995 models (1-10, 11-20, 21-30 years of reach) is one dose-response: as
+  DESK reaches further back, its useful temporal signal fades and its movement increasingly follows space-for-time.
+  - DESK's backcast moves along the space-for-time direction (your point 2): alignment +0.02 / +0.16 / +0.21 (the
+    explicit space-for-time map: ~+0.2 everywhere); real communities stay at ~0 or slightly against it.
+  - DESK's change read through the age-model readout: correlation with species change 0.13 / 0.07 / 0.06 (the true
+    community change, read the same way: ~0.24 in all three).
+  - Beyond regional trends, DESK's temporal deviations add +0.02-0.04 of species change skill at 1-20 years of reach
+    and nothing at 21-30.
+- Space-for-time fails at the covariate stage (replicated in all four caches; skeptic review running): coefficients
+  learned by comparing places predict none of the decadal community change (corr -0.00 to 0.03); coefficients
+  learned within cells predict it about as well as DESK (0.27-0.42) and far better calibrated.
 - DESK's backcast degrades steadily with distance from its training years: for the same target decade its
   correlation falls 0.42 -> 0.12 and calibration 0.58 -> 0.20 between 0 and 28 years of reach. It is at most ~10%
   better than no change even in trained years, and 10-20% worse beyond ~15 years. Two more seeds per model queued.

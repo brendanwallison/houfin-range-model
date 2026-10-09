@@ -690,11 +690,17 @@ def test_shape_fit_converges_and_says_so():
     fit = gpk.fit_shared_shape("spacetime", F, Y, np.log([90.0, 15.0]), n_iter=400,
                                verbose=False)
     assert fit["converged"] and fit["n_iterations"] < 400
-    # at the optimum the profiled objective is no better at nearby lengthscales
+    # at the optimum the profiled objective is no better at nearby FEASIBLE lengthscales: a coordinate
+    # at its bound (a lengthscale beyond 20x the data's extent is indistinguishable from infinite) is
+    # only checked inward -- the KKT condition, not interior stationarity
     best = _profiled_total_nll("spacetime", F, Y, fit["theta"])
-    for e in np.eye(2):
+    bnds = gpk.theta_bounds("spacetime", F, 2)
+    for j, e in enumerate(np.eye(2)):
         for h in (-0.05, 0.05):
-            assert _profiled_total_nll("spacetime", F, Y, fit["theta"] + h * e) >= best - 1e-3
+            t = fit["theta"] + h * e
+            if not (bnds[j][0] <= t[j] <= bnds[j][1]):
+                continue
+            assert _profiled_total_nll("spacetime", F, Y, t) >= best - 1e-3
 
 
 def test_regression_scale_is_data_side_so_a_perfect_baseline_cannot_blow_it_up():
@@ -1066,6 +1072,7 @@ def test_multistart_scale_fit_escapes_the_collapsed_amplitude_optimum(monkeypatc
     Yc = Y - Y.mean(0)
     multi = gpk._scales_given_shape(K, Yc)[3]
     monkeypatch.setattr(gpk, "SCALE_STARTS", (0.5,))
+    monkeypatch.setattr(gpk, "SCALE_MULTIPLIERS", (1.0,))
     single = gpk._scales_given_shape(K, Yc)[3]
     assert np.all(multi["nll"] <= single["nll"] + 1e-9)
     assert np.nansum(single["nll"]) - np.nansum(multi["nll"]) > 50.0

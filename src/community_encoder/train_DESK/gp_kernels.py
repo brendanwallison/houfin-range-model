@@ -112,6 +112,11 @@ def species_floor(var_y):
 #: (-340.7). A collapsed amplitude reads as "the kernel explains nothing" when it is an optimizer
 #: artefact, so every start is run and each species keeps its own best.
 SCALE_STARTS = (0.5, 0.1, 0.9)
+#: Amplitude multipliers on top of each share. When a kernel's useful eigenvalues are tiny (long
+#: lengthscales: K is nearly constant and the centred data live in its small eigenvalues), the optimal
+#: s^2 sits orders of magnitude above share * var_y / kappa, and every share-only start converged to
+#: the collapsed optimum (measured: -237.4 summed where the better optimum is -347.8).
+SCALE_MULTIPLIERS = (1.0, 1e3)
 
 
 def _fit_scales_core(nll_parts, var_y, kappa, live, floor, max_iter=500):
@@ -130,8 +135,9 @@ def _fit_scales_core(nll_parts, var_y, kappa, live, floor, max_iter=500):
         return float(nll.sum()), np.concatenate([gs, gn])
 
     best_x, best_nll = None, None
-    for share in SCALE_STARTS:
-        s2_0 = np.maximum(share * var_y[live] / max(kappa, 1e-12), floor[live])
+    for share, mult in [(s, m) for m in SCALE_MULTIPLIERS for s in SCALE_STARTS]:
+        s2_0 = np.minimum(np.maximum(mult * share * var_y[live] / max(kappa, 1e-12), floor[live]),
+                          np.exp(29.0))
         n2_0 = np.maximum((1.0 - share) * var_y[live], floor[live])
         res = minimize(f, np.concatenate([np.log(s2_0), np.log(n2_0)]), jac=True,
                        method="L-BFGS-B", bounds=bounds, options={"maxiter": int(max_iter)})
@@ -527,6 +533,25 @@ def blocked_scales(kind, theta, F_blocks, Y_blocks, ybar, var_y):
     return fit_hyperparameters_blocks([e[3] for e in eig], [e[4] for e in eig], var_y)
 
 
+#: A lengthscale beyond this many times its input's own extent is indistinguishable from infinite,
+#: and letting the optimizer wander there makes K nearly constant -- a degenerate inner problem whose
+#: per-species optima jump between basins (the old bound was e^12 in every unit, ~160,000 km).
+LENGTHSCALE_EXTENT_MULT = 20.0
+
+
+def theta_bounds(kind, F, n_theta):
+    """Log-lengthscale bounds from the data's extent: [-8, log(20 x extent)] per input. Pure."""
+    F = np.asarray(F, "float64")
+    rng = np.maximum(F.max(0) - F.min(0), 1e-6)
+    up = lambda r: float(np.log(LENGTHSCALE_EXTENT_MULT * r))
+    if kind == "spacetime":
+        return [(-8.0, up(rng[:2].max())), (-8.0, up(rng[2]))]
+    if kind == "spacetime_sum":
+        s = up(rng[:2].max())
+        return [(-8.0, s), (-8.0, s), (-8.0, up(rng[2])), (-8.0, 8.0)]
+    return [(-8.0, up(rng[j])) for j in range(n_theta)]
+
+
 def fit_shared_shape(kind, F, Y, theta0, n_iter=400, verbose=True, ybar=None, var_y=None):
     """Fit the shared lengthscales and every species' (s^2, sigma^2). Returns the shape fit.
 
@@ -579,11 +604,13 @@ def fit_shared_shape(kind, F, Y, theta0, n_iter=400, verbose=True, ybar=None, va
                   f"lengthscales {np.round(np.exp(th), 3)[:6]}", flush=True)
         return total, theta.grad.numpy().copy()
 
-    res = _minimize(f, np.asarray(theta0, "float64"), jac=True, method="L-BFGS-B",
-                    bounds=[(-8.0, 12.0)] * len(theta0),
+    bnds = theta_bounds(kind, np.concatenate([np.asarray(f, "float64") for f in F_list]),
+                        len(theta0))
+    x0 = np.clip(np.asarray(theta0, "float64"), [b[0] for b in bnds], [b[1] for b in bnds])
+    res = _minimize(f, x0, jac=True, method="L-BFGS-B", bounds=bnds,
                     options={"maxiter": int(n_iter), "maxfun": 2 * int(n_iter)})
     th = np.asarray(res.x, "float64")
-    at_bound = np.isclose(th, -8.0) | np.isclose(th, 12.0)
+    at_bound = np.array([np.isclose(t, lo) or np.isclose(t, hi) for t, (lo, hi) in zip(th, bnds)])
     if verbose:
         print(f"[gp-{kind}] {'converged' if res.success else 'NOT converged'} after "
               f"{res.nit} iterations ({res.message}); "

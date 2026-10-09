@@ -9,10 +9,10 @@ Row-aligned to ``keys.npy`` (every surveyed cell-year, the suite's ``load_all_sp
     X_comm.npy          (N, n_comm) float32  reference-community counts (route mean per cell-year)
     X_dev.npy           (N, n_dev)  float32  out-of-community DEV species counts
     sealed/X_sealed.npy (N, n_seal) float32  read ONLY by research/adopt.py (research/lib/seal.py)
-    z_ema.npy, z_raw.npy (N, L) float32  DESK at every key (one causal encode from the warm-up)
+    cells.npy, years.npy, z_ema_all.npy, z_raw_all.npy  DENSE (n_cells, n_years, L): DESK for every
+                        surveyed cell in every year of the encoder window, surveyed or not
+    z_ema.npy, z_raw.npy, key_cell_index.npy  the same gathered at every key
     F_cov.npy, F_cov_raw.npy (N, C) float32  covariates as the covariate GPs see them
-    modern_keys.npy, z_ema_modern.npy, z_raw_modern.npy  every cell x year in the modern epoch for
-                        every surveyed cell (the no-change reference, surveyed or not)
     split.npz           holdout / buffer masks, is_train, group, block_id, withheld, common
     route_years.csv     country, state, route, year, row, col (QC route-years: who surveyed what)
     meta.json           run dir, overlay, basis, EMA half-life, code sha, layouts, seal rule, timings
@@ -69,7 +69,7 @@ def main():
 
     from src.config_utils import load_config
     from src.community_encoder.train_DESK import validate_gp_species as vgs
-    from src.community_encoder.train_DESK.validate_bbs_routes import EPOCH_MODERN, desk_z_ema
+    from src.community_encoder.train_DESK.validate_bbs_routes import desk_z_ema
     from src.community_encoder.train_DESK.validation_core import load_holdout_masks, row_splits
 
     cfg = load_config()
@@ -91,21 +91,32 @@ def main():
     print(f"[cache] {len(keys):,} cell-years; {nc} community, {len(dev)} dev, {len(sealed)} sealed",
           flush=True)
 
-    # Every cell x modern-epoch year for every surveyed cell: the no-change reference needs z where
-    # nobody surveyed, and one encode serves both sets.
+    # DENSE z for every surveyed cell in EVERY year of the encoder window, surveyed or not: the
+    # no-change reference, lags, an EMA at another half-life, and a cell mean over a fixed window
+    # all need z where nobody surveyed. One causal encode serves every key.
     cells = np.unique(keys[:, :2], axis=0)
-    my = np.arange(EPOCH_MODERN[0], EPOCH_MODERN[1] + 1)
-    modern = np.array([(r, c, y) for r, c in cells for y in my], "int32")
-    want = np.concatenate([keys, modern]).astype("int32")
-    want_u, inv = np.unique(want, axis=0, return_inverse=True)
+    _dm = np.load(os.path.join(run_dir, "desk_meta.npz"), allow_pickle=True)
+    w0 = int(_dm["ema_warmup_start"]) if "ema_warmup_start" in _dm.files else 1940  # as desk_z_ema
+    w1 = int(keys[:, 2].max())
+    years = np.arange(w0, w1 + 1)
+    grid = np.array([(r, c, y) for r, c in cells for y in years], "int32")
     t1 = time.perf_counter()
-    Zu, zinfo, Zu_raw = desk_z_ema(cfg, want_u, return_raw=True)
+    Zg, zinfo, Zg_raw = desk_z_ema(cfg, grid, return_raw=True)
+    L = Zg.shape[1]
+    z_all = Zg.reshape(len(cells), len(years), L).astype("float32")
+    z_all_raw = Zg_raw.reshape(len(cells), len(years), L).astype("float32")
+    np.save(os.path.join(a.out, "cells.npy"), cells.astype("int32"))
+    np.save(os.path.join(a.out, "years.npy"), years.astype("int32"))
+    np.save(os.path.join(a.out, "z_ema_all.npy"), z_all)
+    np.save(os.path.join(a.out, "z_raw_all.npy"), z_all_raw)
+    # and gathered at every key, for convenience
+    cell_ix = {(int(r), int(c)): i for i, (r, c) in enumerate(cells)}
+    ci = np.array([cell_ix[(int(r), int(c))] for r, c in keys[:, :2]])
+    yi = keys[:, 2] - w0
+    np.save(os.path.join(a.out, "z_ema.npy"), z_all[ci, yi])
+    np.save(os.path.join(a.out, "z_raw.npy"), z_all_raw[ci, yi])
+    np.save(os.path.join(a.out, "key_cell_index.npy"), ci.astype("int32"))
     n = len(keys)
-    np.save(os.path.join(a.out, "z_ema.npy"), Zu[inv[:n]].astype("float32"))
-    np.save(os.path.join(a.out, "z_raw.npy"), Zu_raw[inv[:n]].astype("float32"))
-    np.save(os.path.join(a.out, "modern_keys.npy"), modern)
-    np.save(os.path.join(a.out, "z_ema_modern.npy"), Zu[inv[n:]].astype("float32"))
-    np.save(os.path.join(a.out, "z_raw_modern.npy"), Zu_raw[inv[n:]].astype("float32"))
     timings["encode"] = round(time.perf_counter() - t1, 1)
 
     if not a.skip_covariates:

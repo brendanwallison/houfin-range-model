@@ -21,3 +21,8 @@ readout know when it guesses (leverage vs error, habitat-level coverage, covaria
 backcast error vs distance from the training years (tempho 1975/1985/1995; input to an errors-in-features variance).
 Shrinkage (T10) no longer counts as a fix by itself. Proposed rung 5 for the user's go: age-model MAP under 2-3
 plausible backcasts (DESK, no-change, within-cell surrogate) -- how far do the vital rates move? Awaiting the user's go.
+2026-10-09 evening: E006 (corrected suite) failed on a theta_bounds bug (fixed, re-enqueued behind E010/E022). Its
+spacetime_sum shape fit also took 51 min and ended ABNORMAL with ls_change at the floor (a degenerate change
+component) -- inspect report.json baseline_shapes when the re-run lands; the honest temporal rival may need a
+better-posed fit (A5b). GPU order: E010 r1/r2 (DESK reproduction gate) -> E022 x4 seeds (only if E010 r1 passes) ->
+E006 base/tempho1995. CPU: E019b after the seeds; E018b/c, E021 replications.

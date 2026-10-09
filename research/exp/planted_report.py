@@ -50,7 +50,10 @@ def main():
     per = pd.read_csv(os.path.join(a.arm, "per_species.csv"))
     cols = np.array([name_to_col[s] for s in per["species"]])
     per["generator"] = gen_all[cols]
-    per["prevalence"] = (np.asarray(X)[:, cols] > 0).mean(0)
+    if "prevalence" not in per.columns:
+        # older fast-arm outputs: all rows. fast_arm now writes its own (training-row) prevalence, and
+        # the real-species tiers it reports use that same definition -- tiers must agree to be compared
+        per["prevalence"] = (np.asarray(X)[:, cols] > 0).mean(0)
     cuts = [0.0] + list(a.tiers) + [1.01]
     per["tier"] = pd.cut(per["prevalence"], cuts, right=False,
                          labels=[f"[{lo:g},{hi:g})" for lo, hi in zip(cuts[:-1], cuts[1:])])

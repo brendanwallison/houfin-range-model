@@ -136,11 +136,22 @@ def stage_table(E, i1, i2, ranks, zd1=None, zd2=None, seed=0):
             dbar = 0.5 * ((za[i1] - za[i2]) + (zb[i1] - zb[i2]))
             per_num = (dd * dbar).sum(1)
             num, den = float(per_num.sum()), float(sz.sum())
+            # CENTERED across pairs as well (skeptic, verification d): uncentered sums count the change
+            # every cell shares (the continental mean) as skill. truth_on_desk = cov(truth, DESK) /
+            # var(DESK): the factor a calibrated DESK would be multiplied by (< 1 = DESK over-moves).
+            c = lambda v: v - v.mean(0, keepdims=True)
+            dda, dza, dzb = c(dd), c(za[i1] - za[i2]), c(zb[i1] - zb[i2])
+            num_c = float((dda * 0.5 * (dza + dzb)).sum())
+            den_c = float((dza * dzb).sum())
+            ee_c = float((dda * dda).sum())
             out["desk"][str(r)] = {
                 "slope": num / den if den > 0 else None,
                 "slope_ci": _ratio_ci(per_num, sz, blk, rng),
                 "corr": (num / np.sqrt((dd * dd).sum() * den)) if den > 0 else None,
-                "desk_energy_over_signal": float((dd * dd).sum() / den) if den > 0 else None}
+                "desk_energy_over_signal": float((dd * dd).sum() / den) if den > 0 else None,
+                "slope_centered": num_c / den_c if den_c > 0 else None,
+                "corr_centered": num_c / np.sqrt(ee_c * den_c) if den_c > 0 and ee_c > 0 else None,
+                "truth_on_desk_centered": num_c / ee_c if ee_c > 0 else None}
     return out
 
 
@@ -270,6 +281,10 @@ def summarize(out):
         if d.get("desk"):
             print(f"  DESK {w} held-out temporal ({d['n_pairs']} cells): " + "  ".join(
                 f"r{k} slope {f(v['slope'])} corr {f(v['corr'])}" for k, v in d["desk"].items()))
+            if any("corr_centered" in v for v in d["desk"].values()):
+                print(f"    centered: " + "  ".join(
+                    f"r{k} slope {f(v.get('slope_centered'))} corr {f(v.get('corr_centered'))} "
+                    f"truth-on-DESK {f(v.get('truth_on_desk_centered'))}" for k, v in d["desk"].items()))
     for lag, s in r["spatial"].items():
         if lag.endswith("heldout_desk_raw") and s.get("desk"):
             print(f"  DESK raw held-out spatial lag {lag.split('_')[0]} ({s['n_pairs']}): " + "  ".join(

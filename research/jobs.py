@@ -106,10 +106,18 @@ def snapshot(sha):
     return dest
 
 
+#: Loop STATE files: written continuously by the runner and the agent, never read by a job's code,
+#: so their edits must not count as an uncommitted pre-registration.
+STATE_FILES = ("research/registry.jsonl", "research/ledger.csv", "research/STATE.md",
+               "research/DIGEST.md", "research/intent.md", "research/FINDINGS.md",
+               "research/hypotheses.yaml", "research/PHASE", "research/journal/")
+
+
 def resolve_sha(spec_sha):
     if spec_sha:
         return git("rev-parse", "--verify", f"{spec_sha}^{{commit}}")
-    dirty = git("status", "--porcelain", "--untracked-files=no")
+    dirty = "\n".join(line for line in git("status", "--porcelain", "--untracked-files=no").splitlines()
+                      if not line[3:].startswith(STATE_FILES))
     if dirty:
         raise SystemExit("tracked files are modified; commit (the pre-registration) before enqueue:\n"
                          + dirty)

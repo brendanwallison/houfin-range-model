@@ -1,4 +1,48 @@
-# DIGEST (newest first)
+# DIGEST
+
+## CURRENT STATE (rewritten each round; read this first -- the dated log below keeps the history)
+Last updated 2026-10-09 afternoon. "Solid" = independently re-derived, replicated on a second split or seed, and
+survived a skeptic review. "Tentative" = one run, or checks still pending.
+
+SOLID
+- The local machine reproduces TACC for DESK, the spacetime GP, no-change and the oracle. The covariate-GP baseline
+  does NOT reproduce (fragile optimizer; defect A13) and is not relied on.
+- DESK's temporal change on held-out cells correlates 0.41 with the true community change in trained years and
+  0.21 in withheld decades, and it moves more than that accuracy justifies (a calibrated DESK would be 0.62x /
+  0.37x as large). In absolute terms it moves less than the communities did; the problem is direction.
+- Read through the age model's readout, DESK's change into withheld decades predicts species change worse than
+  assuming no change.
+- ESK (64 dims) keeps the regionally shared part of a 40-year change about as well as comparable spatial
+  structure; it drops route-level idiosyncrasy, temporal or spatial. Truncation is not selectively discarding time.
+
+TENTATIVE (one run; replications and a skeptic review queued)
+- Space-for-time fails at the covariate stage: coefficients learned by comparing places predict none of the
+  decadal community change; coefficients learned within cells predict it as well as DESK, better calibrated.
+- DESK's backcast degrades steadily with distance from its training years: for the same target decade its
+  correlation falls 0.42 -> 0.12 and calibration 0.58 -> 0.20 between 0 and 28 years of reach; beyond ~10 years
+  its backcast is further from the truth than no change.
+- The readout cannot tell when it is guessing: its change intervals are ~3x too narrow (sd) beyond what the
+  instrument itself produces, in trained years too, and leverage does not flag the errors.
+- DESK's backcast errors are not pulled toward space-for-time analog places; they behave like misdirected noise.
+- The 24-dim cut is time-selective (about half of the true temporal change lives in components 25-64), but DESK
+  carries almost nothing there, so a rank-64 readout would add little until DESK's temporal fidelity improves.
+
+OVERTURNED (kept so the corrections are visible)
+- "A change-fitted readout captures 25-29% of species change from community change": spatial interpolation;
+  position alone does as well.
+- "The true community's change, read through spatial betas, is worse than no change": errors-in-variables
+  artifact; it is about zero.
+- "The split kernel works through DESK's temporal information": a placebo with no DESK content does as well.
+- "ESK keeps 23% of temporal change because time is small": confounded by a between-route nugget and by
+  survey effort; superseded by the route-level measurement above.
+
+WHAT IT MEANS FOR 1902-1939 (working view)
+- The target is an honest backcast, not maximal or minimal movement: DESK's pre-BBS deviations probably cost more
+  than they carry unless heavily shrunk, and the readout needs an explicit error term that it does not have today.
+- Next decisive check (needs your go): fit the age model under two or three plausible backcasts and see how far
+  the inferred vital rates move.
+
+---- dated log (newest first) ----
 
 ## 2026-10-09 ~09:40: GATE 0 (reproduction and timing)
 - Reproduction: DESK, the spacetime GP, no-change and the oracle reproduce TACC's reports (base 76/77 medians

@@ -1,0 +1,352 @@
+"""The research job runner: immutable code snapshots, a pueue queue, an append-only registry. Run in WSL.
+
+    python research/jobs.py enqueue research/specs/E001_atlas.json   # snapshot, queue (skips if done)
+    python research/jobs.py status [--brief] [--json]
+    python research/jobs.py collect                                   # finished jobs -> registry + summary
+    python research/jobs.py run <out_dir>                             # internal: what pueue executes
+
+WHY SNAPSHOTS. A job runs from ``git archive <sha>`` of the commit it was pre-registered at, so an edit
+made after enqueue cannot leak into it and every result names the exact code that produced it. The
+RUNNER is a separate snapshot of HEAD at enqueue time, so a job can run code older than this file
+(the reproduction gate runs 86acde3, which has no research/ directory).
+
+WHY WSL GIT FOR ARCHIVES. The Windows checkout is core.autocrlf=true; Windows git archives CRLF shell
+scripts. WSL git emits the stored LF blobs. Cleanliness checks pass ``-c core.autocrlf=true`` so WSL git
+compares like the checkout does instead of reporting every text file modified.
+
+WHY AN APPEND-ONLY REGISTRY. ``research/registry.jsonl`` holds one JSON event per line (queued,
+cached, done, failed, verified, stale, quarantined, ...). A job's state is its last event; no line is
+ever rewritten. Only enqueue/collect (driven by the agent, sequentially) write it; ``run`` never does,
+because concurrent appends over /mnt/c are not guaranteed atomic.
+
+Spec fields: exp, name, group (cpu|gpu|default), cmd (list; "python" -> venv; "{out}", "{code}",
+"{cache}" substituted), optional: sha (default HEAD, tree must be clean), overlay (ESK_DESK_CONFIG,
+relative to the code snapshot), env (dict), expected_minutes, summarize (cmd list, same substitutions),
+note.
+"""
+import argparse
+import datetime as _dt
+import hashlib
+import json
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from lib import paths  # noqa: E402
+
+REGISTRY = paths.RESEARCH / "registry.jsonl"
+EVAL_VERSION_FILE = paths.RESEARCH / "EVAL_VERSION"
+
+
+# ----------------------------- small helpers -----------------------------
+
+def now():
+    return _dt.datetime.now().astimezone().isoformat(timespec="seconds")
+
+
+def git(*args, check=True):
+    out = subprocess.run(["git", "-c", "core.autocrlf=true", "-C", paths.REPO, *args],
+                         capture_output=True, text=True)
+    if check and out.returncode != 0:
+        raise SystemExit(f"git {' '.join(args)} failed: {out.stderr.strip()}")
+    return out.stdout.strip()
+
+
+def eval_version():
+    try:
+        return EVAL_VERSION_FILE.read_text().strip()
+    except FileNotFoundError:
+        return "unversioned"
+
+
+def atomic_json(path, obj):
+    path = Path(path)
+    fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.")
+    with os.fdopen(fd, "w") as fh:
+        json.dump(obj, fh, indent=1, default=str)
+    os.replace(tmp, path)
+
+
+def read_registry():
+    if not REGISTRY.exists():
+        return []
+    return [json.loads(line) for line in REGISTRY.read_text().splitlines() if line.strip()]
+
+
+def append_registry(event):
+    event = {"ts": now(), **event}
+    with open(REGISTRY, "a", encoding="utf-8", newline="\n") as fh:
+        fh.write(json.dumps(event, default=str) + "\n")
+    return event
+
+
+def latest_by_job(events=None):
+    state = {}
+    for e in events if events is not None else read_registry():
+        if "job" in e:
+            state.setdefault(e["job"], {}).update(e)
+    return state
+
+
+def snapshot(sha):
+    """The code at ``sha``, extracted once into CODE_SNAPSHOTS/<sha>. Returns its path."""
+    dest = paths.CODE_SNAPSHOTS / sha
+    if dest.exists():
+        return dest
+    paths.CODE_SNAPSHOTS.mkdir(parents=True, exist_ok=True)
+    tmp = Path(tempfile.mkdtemp(dir=paths.CODE_SNAPSHOTS, prefix=f".{sha[:8]}."))
+    arch = subprocess.run(["git", "-C", paths.REPO, "archive", "--format=tar", sha],
+                          capture_output=True, check=True).stdout
+    subprocess.run(["tar", "-x", "-C", str(tmp)], input=arch, check=True)
+    os.replace(tmp, dest)
+    return dest
+
+
+def resolve_sha(spec_sha):
+    if spec_sha:
+        return git("rev-parse", "--verify", f"{spec_sha}^{{commit}}")
+    dirty = git("status", "--porcelain", "--untracked-files=no")
+    if dirty:
+        raise SystemExit("tracked files are modified; commit (the pre-registration) before enqueue:\n"
+                         + dirty)
+    return git("rev-parse", "HEAD")
+
+
+def cfg_hash(spec, sha):
+    key = {k: spec.get(k) for k in ("exp", "name", "cmd", "overlay", "env", "group")}
+    key["sha"] = sha
+    return hashlib.sha256(json.dumps(key, sort_keys=True).encode()).hexdigest()[:12]
+
+
+def substitute(cmd, out_dir, code_dir):
+    sub = {"{out}": str(out_dir), "{code}": str(code_dir), "{cache}": str(paths.CACHE_ROOT)}
+    res = []
+    for i, a in enumerate(cmd):
+        a = str(a)
+        for k, v in sub.items():
+            a = a.replace(k, v)
+        res.append(paths.VENV_PY if (i == 0 and a == "python") else a)
+    return res
+
+
+def parse_ts(s):
+    """pueue's RFC 3339 timestamps carry nanoseconds; fromisoformat takes at most microseconds."""
+    import re
+    s = re.sub(r"(\.\d{6})\d+", r"\1", s.replace("Z", "+00:00"))
+    return _dt.datetime.fromisoformat(s)
+
+
+def pueue_status():
+    out = subprocess.run(["pueue", "status", "--json"], capture_output=True, text=True)
+    if out.returncode != 0:
+        return {}
+    try:
+        return json.loads(out.stdout).get("tasks", {})
+    except json.JSONDecodeError:
+        return {}
+
+
+# ----------------------------- commands -----------------------------
+
+def enqueue(spec_path):
+    spec = json.loads(Path(spec_path).read_text())
+    for k in ("exp", "name", "group", "cmd"):
+        if k not in spec:
+            raise SystemExit(f"spec {spec_path} lacks {k!r}")
+    sha = resolve_sha(spec.get("sha"))
+    runner_sha = git("rev-parse", "HEAD")
+    code = snapshot(sha)
+    runner = snapshot(runner_sha)
+    h = cfg_hash(spec, sha)
+    job = f"{spec['exp']}/{spec['name']}-{h}"
+    out = paths.OUT_ROOT / spec["exp"] / f"{spec['name']}-{h}"
+    if (out / "DONE.json").exists():
+        append_registry({"event": "cached", "job": job, "out": str(out)})
+        print(f"[jobs] {job}: already done -> {out}")
+        return
+    st = latest_by_job().get(job)
+    if st and st.get("event") == "queued" and not (out / "FAILED.json").exists():
+        print(f"[jobs] {job}: already queued (pueue id {st.get('pueue_id')})")
+        return
+    out.mkdir(parents=True, exist_ok=True)
+    for stale in ("FAILED.json", "RUNNING.json"):
+        if (out / stale).exists():
+            (out / stale).rename(out / f"{stale}.prev")
+    full = {**spec, "sha": sha, "runner_sha": runner_sha, "cfg_hash": h, "job": job,
+            "eval_version": eval_version(), "enqueued_at": now()}
+    atomic_json(out / "spec.json", full)
+    group = spec["group"]
+    res = subprocess.run(["pueue", "add", "--group", group, "--label", job, "--print-task-id",
+                          "--working-directory", str(code), "--",
+                          paths.VENV_PY, str(runner / "research" / "jobs.py"), "run", str(out)],
+                         capture_output=True, text=True)
+    if res.returncode != 0:
+        raise SystemExit(f"pueue add failed: {res.stderr.strip()}")
+    pid = int(res.stdout.strip())
+    append_registry({"event": "queued", "job": job, "exp": spec["exp"], "name": spec["name"],
+                     "sha": sha, "runner_sha": runner_sha, "cfg_hash": h, "group": group,
+                     "pueue_id": pid, "out": str(out), "eval_version": full["eval_version"],
+                     "expected_minutes": spec.get("expected_minutes"), "note": spec.get("note")})
+    print(f"[jobs] queued {job} as pueue task {pid} (code {sha[:10]}, group {group})")
+
+
+def run(out_dir):
+    """Executed by pueue. Never touches the registry (see module docstring)."""
+    out = Path(out_dir)
+    spec = json.loads((out / "spec.json").read_text())
+    code = snapshot(spec["sha"])
+    env = paths.job_env(spec["group"], str(code), spec.get("overlay"), spec.get("env"))
+    cmd = substitute(spec["cmd"], out, code)
+    atomic_json(out / "RUNNING.json", {"started_at": now(), "pid": os.getpid(), "cmd": cmd})
+    t0 = _dt.datetime.now()
+    with open(out / "log.txt", "w") as log:
+        log.write(f"# {now()}  code {spec['sha']}  cmd {' '.join(cmd)}\n")
+        log.flush()
+        rc = subprocess.run(["/usr/bin/time", "-v", "-o", str(out / "time.txt"), *cmd],
+                            cwd=str(code), env=env, stdout=log, stderr=subprocess.STDOUT).returncode
+    wall = (_dt.datetime.now() - t0).total_seconds()
+    rss_kb = None
+    try:
+        for line in (out / "time.txt").read_text().splitlines():
+            if "Maximum resident set size" in line:
+                rss_kb = int(line.split(":")[-1])
+    except (FileNotFoundError, ValueError):
+        pass
+    rec = {"exit": rc, "wall_s": round(wall, 1), "max_rss_gb": rss_kb and round(rss_kb / 2**20, 2),
+           "finished_at": now()}
+    atomic_json(out / ("DONE.json" if rc == 0 else "FAILED.json"), rec)
+    (out / "RUNNING.json").unlink(missing_ok=True)
+    sys.exit(rc)
+
+
+def _tail(path, n):
+    try:
+        lines = Path(path).read_text(errors="replace").splitlines()
+    except FileNotFoundError:
+        return []
+    return lines[-n:]
+
+
+def collect(max_lines=40):
+    st = latest_by_job()
+    pending = [j for j, s in st.items() if s.get("event") == "queued"]
+    n_done = 0
+    for job in sorted(pending):
+        s = st[job]
+        out = Path(s["out"])
+        if (out / "DONE.json").exists():
+            done = json.loads((out / "DONE.json").read_text())
+            spec = json.loads((out / "spec.json").read_text())
+            summary = []
+            if spec.get("summarize"):
+                code = snapshot(spec["sha"])
+                env = paths.job_env("cpu", str(code), spec.get("overlay"), spec.get("env"))
+                r = subprocess.run(substitute(spec["summarize"], out, code), cwd=str(code), env=env,
+                                   capture_output=True, text=True)
+                summary = (r.stdout + (r.stderr if r.returncode else "")).splitlines()
+                (out / "summary.txt").write_text("\n".join(summary) + "\n")
+            append_registry({"event": "done", "job": job, "wall_s": done.get("wall_s"),
+                             "max_rss_gb": done.get("max_rss_gb"),
+                             "summary": str(out / "summary.txt") if summary else None})
+            print(f"=== DONE {job}  ({done.get('wall_s')} s, {done.get('max_rss_gb')} GB)")
+            for line in summary[:max_lines]:
+                print("  " + line)
+            if len(summary) > max_lines:
+                print(f"  ... {len(summary) - max_lines} more lines in {out / 'summary.txt'}")
+            n_done += 1
+        elif (out / "FAILED.json").exists():
+            f = json.loads((out / "FAILED.json").read_text())
+            append_registry({"event": "failed", "job": job, "exit": f.get("exit"),
+                             "wall_s": f.get("wall_s")})
+            print(f"=== FAILED {job}  exit {f.get('exit')} after {f.get('wall_s')} s; log tail:")
+            for line in _tail(out / "log.txt", 25):
+                print("  " + line)
+            n_done += 1
+    if not n_done:
+        print("[jobs] nothing new to collect")
+
+
+def status(brief=False, as_json=False):
+    st = latest_by_job()
+    tasks = pueue_status()
+    by_label = {}
+    for t in tasks.values():
+        lab = t.get("label")
+        if lab:
+            by_label[lab] = t
+    rows = []
+    for job, s in st.items():
+        if s.get("event") not in ("queued",):
+            continue
+        out = Path(s["out"])
+        if (out / "DONE.json").exists() or (out / "FAILED.json").exists():
+            state, eta = ("finished" if (out / "DONE.json").exists() else "FAILED"), None
+        else:
+            t = by_label.get(job, {})
+            raw = t.get("status", {})
+            key = next(iter(raw), "?") if isinstance(raw, dict) else str(raw)
+            state = key.lower()
+            eta = None
+            if state == "running" and s.get("expected_minutes"):
+                start = raw[key].get("start") if isinstance(raw.get(key), dict) else None
+                if start:
+                    try:
+                        t0 = parse_ts(start)
+                        eta = (t0 + _dt.timedelta(minutes=float(s["expected_minutes"]))).astimezone()
+                    except ValueError:
+                        eta = None
+        rows.append({"job": job, "state": state, "group": s.get("group"),
+                     "eta": eta.isoformat(timespec="minutes") if eta else None})
+    if as_json:
+        print(json.dumps(rows, indent=1))
+        return rows
+    counts = {}
+    for r in rows:
+        counts[r["state"]] = counts.get(r["state"], 0) + 1
+    etas = sorted(r["eta"] for r in rows if r["eta"])
+    stop = (paths.RESEARCH / "STOP").exists()
+    lock = (paths.RESEARCH / "LOCK").exists()
+    line = (f"jobs {counts or '{}'} | next_eta {etas[0][11:16] if etas else '-'} | "
+            f"uncollected {counts.get('finished', 0) + counts.get('FAILED', 0)} | "
+            f"STOP {'yes' if stop else 'no'} | LOCK {'yes' if lock else 'no'}")
+    print(line)
+    if not brief:
+        for r in rows:
+            print(f"  {r['state']:9s} {r['group'] or '-':7s} {r['eta'] or '':17s} {r['job']}")
+    return rows
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    e = sub.add_parser("enqueue")
+    e.add_argument("spec", nargs="+")
+    s = sub.add_parser("status")
+    s.add_argument("--brief", action="store_true")
+    s.add_argument("--json", action="store_true")
+    c = sub.add_parser("collect")
+    c.add_argument("--max-lines", type=int, default=40)
+    r = sub.add_parser("run")
+    r.add_argument("out_dir")
+    sn = sub.add_parser("snapshot")
+    sn.add_argument("sha")
+    a = ap.parse_args()
+    if a.cmd == "enqueue":
+        for sp in a.spec:
+            enqueue(sp)
+    elif a.cmd == "status":
+        status(a.brief, a.json)
+    elif a.cmd == "collect":
+        collect(a.max_lines)
+    elif a.cmd == "run":
+        run(a.out_dir)
+    elif a.cmd == "snapshot":
+        print(snapshot(git("rev-parse", "--verify", f"{a.sha}^{{commit}}")))
+
+
+if __name__ == "__main__":
+    main()

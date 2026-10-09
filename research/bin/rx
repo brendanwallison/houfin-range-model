@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+# Windows-side entry point for the research loop: runs research/ tools inside WSL with the venv.
+# The Windows interpreter cannot import the DESK/GP code (desk_training.py: `import resource`).
+#
+#   research/bin/rx jobs status --brief          # research/jobs.py
+#   research/bin/rx tick begin                   # research/tick.py
+#   research/bin/rx py research/exp/atlas.py ... # live checkout + job env (interactive checks only)
+#   research/bin/rx py -m pytest -q tests/...    # module form
+#   research/bin/rx sh 'pueue status'            # anything else, in a login shell
+set -euo pipefail
+REPO=/mnt/c/Dev/houfin-range-model
+PY=/home/breallis/houfin/venv/bin/python
+sub="${1:?usage: rx jobs|tick|py|sh ...}"
+shift
+case "$sub" in
+  jobs|tick) exec wsl -e "$PY" "$REPO/research/$sub.py" "$@" ;;
+  py)        exec wsl -e "$PY" "$REPO/research/lib/launch.py" "$@" ;;
+  sh)        exec wsl -e bash -lc "$*" ;;
+  *)         echo "rx: unknown subcommand $sub" >&2; exit 2 ;;
+esac

@@ -1,0 +1,338 @@
+# Hypothesis register. The loop extends, merges, and retires entries; nothing is deleted (use status).
+# status: open | testing | supported | refuted | superseded | parked
+# priority: 1 = run first (null/instrument + cheapest downstream levers), 2, 3
+# kill: the written criterion that would refute it. blr: what it implies for the downstream regression if true.
+# evidence: list of {job: <registry job id>, exp: EXXX, dir: for|against|neutral, strength: weak|moderate|strong, note}
+# Only VERIFIED results (PROTOCOL.md gate) may move status to supported/refuted.
+
+# ---------------- null and instrument: is there resolvable, habitat-related change to explain? ----------------
+- id: E1
+  stage: E
+  priority: 1
+  status: open
+  statement: Most cell-level change is noise, so no_change is near-unbeatable on RMSE even for a perfect habitat model.
+  test: Planted calibration (Phase 1.4) on the real route-year keys; achievable change skill vs temporal-signal share.
+  kill: A planted perfect-kernel species with realistic temporal share achieves change skill well above the observed DESK skill.
+  blr: If true, change RMSE skill is the wrong headline; use captured share of resolvable change and attenuation slope.
+  parents: []
+  evidence: []
+- id: T0
+  stage: T
+  priority: 1
+  status: open
+  statement: DESK's temporal under-movement is the MSE-optimal shrinkage toward unreliable within-cell targets, not a defect.
+  test: Per-component attenuation slope of DESK dz on ESK dz vs the split-half reliability of ESK dz.
+  kill: Attenuation slopes sit clearly below the reliability (DESK shrinks more than noise justifies).
+  blr: If true, the fix is target reliability (pooling, smoothing, longer windows), not DESK capacity or loss.
+  parents: []
+  evidence: []
+- id: O3
+  stage: O
+  priority: 1
+  status: open
+  statement: Route turnover between epochs survives the ABBA year split and is counted as real change, inflating every ceiling.
+  test: Noise ceiling and atlas on cells with the same routes in both epochs vs all cells.
+  kill: Same-route and all-cell ceilings agree within bootstrap CI.
+  blr: If true, every 'share of available change' denominator is too large; DESK is closer to the real ceiling than reported.
+  parents: []
+  evidence: []
+- id: C1
+  stage: O
+  priority: 1
+  status: open
+  statement: Much same-cell change is a continental shift in total abundance, not composition, and belongs to the K trend.
+  test: Split each cell's change into log-total and composition (relative abundance) parts; map and size each.
+  kill: The composition part carries most of the resolvable change.
+  blr: If true, a time basis (K trend) or per-species trend term, not z, should carry the bulk shift.
+  parents: []
+  evidence: []
+- id: E4
+  stage: E
+  priority: 1
+  status: open
+  statement: The independent oracle is weak partly through errors-in-variables (noisy half-window community features) or off-span projection.
+  test: Oracle on planted species with full vs half windows; report split-half reliability of oracle z and the norm ratio.
+  kill: Half-window oracle skill matches full-window skill on planted species and the norm ratio is near 1.
+  blr: If true, the oracle understates the representational ceiling; 'oracle weak too' is partly an artifact.
+  parents: []
+  evidence: []
+- id: P1
+  stage: O
+  priority: 1
+  status: open
+  statement: Held-out species' decadal change is mostly continental trend plus colonization fronts, which belong to the mechanistic model, not habitat.
+  test: Decompose change into year effects, distance-to-range-edge terms, and local residual; size each per species.
+  kill: The local residual carries most of the resolvable change for range-stable species.
+  blr: If true, grade DESK on range-stable species; fronts are the age model's dispersal job.
+  parents: []
+  evidence: []
+- id: E2
+  stage: E
+  priority: 2
+  status: open
+  statement: The graded species are mostly migrants and niches off the community's selection axes, so pooled medians answer a generality question.
+  test: Stratify every metric by migration class and by distance to the community on its selection axes (community_axes.py).
+  kill: Skill does not differ by stratum.
+  blr: If true, decisions for House Finch use the near-community stratum.
+  parents: []
+  evidence: []
+- id: E3
+  stage: E
+  priority: 2
+  status: open
+  statement: tempho_1975's time group sits 1-10 y from trained data while the downstream gap is 26-64 y, so it flatters DESK and the spacetime GP alike.
+  test: Skill vs years beyond the training edge, pooled across tempho runs; lead with tempho_1995.
+  kill: Skill is flat in reach.
+  blr: If true, only long-reach results speak to 1902-1939.
+  parents: []
+  evidence: []
+
+# ---------------- representation (ESK) ----------------
+- id: R1
+  stage: R
+  priority: 1
+  status: open
+  statement: (user) Spatial turnover dwarfs temporal turnover, so eigen-ordering and truncation keep spatial structure and drop temporal structure.
+  test: Atlas noise-corrected temporal vs spatial retention at r=6/24/64, inside vs outside the top-k subspace, matched at equal exact-kernel distance.
+  kill: At matched exact-kernel distance, temporal retention equals spatial retention (truncation drops small differences, not temporal directions).
+  blr: If true, the positional 24-dim cut and the eigenvalue-proportional prior both discard the backcast signal.
+  parents: []
+  evidence: []
+- id: R2p
+  stage: R
+  priority: 2
+  status: open
+  statement: ||z|| measures how well a community is represented; poorer representation of early or window communities reads as change.
+  test: ||z||^2 by epoch and region; BLR change skill on normalized vs raw z.
+  kill: ||z||^2 is flat across epochs and normalization does not change change skill.
+  blr: If true, part of predicted change is representational artifact.
+  parents: []
+  evidence: []
+- id: R3
+  stage: R
+  priority: 3
+  status: open
+  statement: Landmarks and eigenpairs favour the dense modern, coastal record.
+  test: Nystrom kernel error by era and distance to coast.
+  kill: Kernel error flat by era and coast distance.
+  blr: If true, early-era z is less faithful exactly where backcasts need it.
+  parents: []
+  evidence: []
+- id: R5
+  stage: R
+  priority: 2
+  status: open
+  statement: The 96 reference species do not span out-of-community species' niches.
+  test: Independent oracle and direct regression on the 96 observed abundances, by guild and migration class.
+  kill: Direct regression on the 96 abundances predicts held-out species about as well as the full species pool would.
+  blr: If true, z is the wrong basis for off-axis species regardless of DESK.
+  parents: []
+  evidence: []
+- id: R6
+  stage: R
+  priority: 2
+  status: open
+  statement: The 96 were chosen for spatial discrimination and under-represent temporal change.
+  test: Temporal share of change in the 96 vs all species vs random 96-species draws.
+  kill: The 96 carry a typical temporal share.
+  blr: If true, community choice itself limits temporal signal; a temporally informative community would help.
+  parents: []
+  evidence: []
+
+# ---------------- transfer (DESK) ----------------
+- id: T1
+  stage: T
+  priority: 2
+  status: open
+  statement: L_stab (~90% of loss, equal weight per cell-year) plus almost no same-cell cross-year metric pairs make shrinking temporal deviations optimal.
+  test: DESK error split between/within cells; ridge-surrogate frontier of spatial vs temporal fit as the within-cell weight rises.
+  kill: The surrogate frontier is flat (more within-cell weight buys no temporal fit) or DESK already sits on it.
+  blr: If true, reweighting training toward within-cell change is the lever.
+  parents: []
+  evidence: []
+- id: T2
+  stage: T
+  priority: 3
+  status: open
+  statement: Temporal information exists inside DESK but is suppressed at the head.
+  test: Linear probe from hidden activations vs from z to ESK within-cell deviations.
+  kill: Probe on activations does no better than on z.
+  blr: If true, a head-only retrain could recover temporal signal cheaply.
+  parents: []
+  evidence: []
+- id: T3
+  stage: T
+  priority: 3
+  status: open
+  statement: Standardizing covariates on the 2025 spatial spread makes temporal anomalies tiny inputs, and static streams give a location shortcut.
+  test: Per-channel within/between SD ratios; counterfactual swaps of dynamic streams across years; per-stream Jacobian norms.
+  kill: Dynamic streams drive z change in proportion to their temporal variance.
+  blr: If true, anomaly-standardized inputs or explicit change features are the lever.
+  parents: []
+  evidence: []
+- id: T4
+  stage: T
+  priority: 2
+  status: open
+  statement: Space-for-time mismatch - spatial covariate-to-community slopes differ from temporal slopes.
+  test: Mundlak within/between regression of ESK components on covariates; the sign of the gap predicts over- vs under-movement.
+  kill: Within and between slopes agree.
+  blr: If true, no spatially trained map can backcast correctly without temporal supervision.
+  parents: []
+  evidence: []
+- id: T6
+  stage: T
+  priority: 2
+  status: open
+  statement: Output and input EMAs smooth away change, and the shipped raw z is not what was supervised.
+  test: Temporal spectra of target, z_ema, raw z; grade both with raw z after a fitted lag.
+  kill: Raw z with a fitted lag matches z_ema's skill and the spectra agree.
+  blr: If true, the age model receives a temporally unvalidated object.
+  parents: []
+  evidence: []
+- id: T9
+  stage: T
+  priority: 3
+  status: open
+  statement: 1902-1939 covariates fall outside training support (EMA warm-up from 1940; sparser climate stations; HYDE decadal pre-1951; BUI 5-yearly, CONUS-only).
+  test: Per-year covariate novelty; raw z behaviour 1902-1965.
+  kill: 1902-1939 novelty within the 1966-2025 range and raw z smooth across 1940.
+  blr: If true, backcast uncertainty must grow before 1940 and the BLR has no mechanism for it.
+  parents: []
+  evidence: []
+- id: T5
+  stage: T
+  priority: 3
+  status: open
+  statement: The drivers of real community change are not in the covariates (pesticides, forest maturation, WNV, CRP, feeders, invasions). Testable only by elimination.
+  test: High-capacity delta-covariate to delta-community model vs a covariate-free regional smoother.
+  kill: Covariate-change model explains most resolvable change.
+  blr: If true, a temporal residual term (B5) is mandatory.
+  parents: []
+  evidence: []
+
+# ---------------- readout (BLR): the downstream lever ----------------
+- id: B1
+  stage: B
+  priority: 1
+  status: open
+  statement: The isotropic prior under-weights low-variance (temporal) directions.
+  test: Fast arm with split kernel s_b^2 zbar.zbar' + s_w^2 dz.dz' (zbar over a fixed reference window), ARD, whitened z; learned s_w^2/s_b^2.
+  kill: Learned s_w^2/s_b^2 near 1 and no change-skill gain.
+  blr: If true, adopt a block prior (iid within blocks) - a contract change for the age model.
+  parents: []
+  evidence: []
+- id: B2
+  stage: B
+  priority: 2
+  status: open
+  statement: z.z' implies corr(H(x,1920), H(x,2000)) near 1, producing confident wrong backcasts.
+  test: Implied vs empirical temporal autocorrelation of abundance; interval coverage in withheld decades.
+  kill: Coverage nominal in withheld decades.
+  blr: If true, backcast intervals are overconfident; add a temporal residual or block prior.
+  parents: []
+  evidence: []
+- id: B4
+  stage: B
+  priority: 2
+  status: open
+  statement: A constant per-species mean leaves continental and regional trends to z, which has no time direction.
+  test: Decompose species change and attribute each part; include the K-trend time basis in the fast arm.
+  kill: Adding the time basis changes nothing.
+  blr: If true, the K trend (and analogues for other rates) must carry trends z cannot.
+  parents: [C1]
+  evidence: []
+- id: B5
+  stage: B
+  priority: 3
+  status: open
+  statement: A temporal residual (region x decade, or a long-lengthscale spacetime GP) restores coverage without costing spatial skill.
+  test: Fast arm with and without it.
+  kill: No coverage gain or a spatial cost beyond seed noise.
+  blr: If true, an interpretable residual kernel joins z.z' in the age model.
+  parents: [B2]
+  evidence: []
+- id: B6
+  stage: B
+  priority: 2
+  status: open
+  statement: A persistent spatial residual captures the level structure the spacetime GP exploits, leaving z to carry change.
+  test: Fast arm with and without a static spatial residual; level and change by group.
+  kill: No level gain in the time/space_time groups.
+  blr: If true, 'loses to spacetime GP' is about level, not change; a static residual field fixes it.
+  parents: []
+  evidence: []
+- id: F1
+  stage: B
+  priority: 2
+  status: open
+  statement: A static block plus a few interpretable covariate-change features serves the BLR as well as DESK raw z.
+  test: Fast arm change skill, coverage and backcast slope vs DESK.
+  kill: DESK raw z clearly better on all three.
+  blr: If true, a simpler, interpretable feature map is a candidate downstream input.
+  parents: []
+  evidence: []
+- id: L1
+  stage: B
+  priority: 2
+  status: open
+  statement: Abundance lags habitat; raw z is penalized without a lag while z_ema double-lags against the age model's own dynamics.
+  test: Per-species fitted lag on raw z; compare fitted lags with generation time.
+  kill: Fitted lags near zero.
+  blr: If true, grading raw z unlagged understates it; the age model's dynamics supply the lag.
+  parents: [T6]
+  evidence: []
+- id: I1
+  stage: B
+  priority: 3
+  status: open
+  statement: Raw z's year-to-year weather signal matters for vital rates but epoch means score it as noise.
+  test: Ceiling from splitting routes within each cell-year vs raw-z annual anomalies.
+  kill: Annual anomalies carry no resolvable signal.
+  blr: If true, annual (not epoch) metrics are needed for survival-like rates.
+  parents: []
+  evidence: []
+
+# ---------------- observation ----------------
+- id: O1
+  stage: O
+  priority: 3
+  status: open
+  statement: Observer effects inside a cell manufacture change.
+  test: Observer terms; how much of the ceiling survives.
+  kill: Ceiling unchanged with observer terms.
+  blr: If true, ceilings shrink; part of 'unexplained change' is observation.
+  parents: []
+  evidence: []
+
+# ---------------- downstream proxy ----------------
+- id: D1
+  stage: D
+  priority: 3
+  status: open
+  statement: Absence-only information corrects a backcast only if z has temporal degrees of freedom.
+  test: Reveal withheld-decade absences beyond the range edges of expanding species (mirroring the pseudo-zeros); gain elsewhere in that decade, DESK vs spacetime GP.
+  kill: Absence information improves DESK backcasts as much as the spacetime GP's.
+  blr: If true, the 1902-1939 pseudo-zeros cannot inform habitat change under the current kernel.
+  parents: []
+  evidence: []
+- id: D2
+  stage: D
+  priority: 2
+  status: open
+  statement: The Great Plains barrier - where DESK is weakest (30be46b) and the pseudo-zeros bite - needs every metric separately.
+  test: Every report carries the Great Plains zone split.
+  kill: n/a (reporting rule; becomes a hypothesis once a zone-specific mechanism is proposed).
+  blr: The barrier's temporal change is the downstream's crux.
+  parents: []
+  evidence: []
+- id: D3
+  stage: D
+  priority: 3
+  status: open
+  statement: A temporal habitat block could absorb non-arrival as habitat change instead of dispersal.
+  test: Planted invasion (static habitat + arrival dynamics) fitted by the BLR; bias at pseudo-zero cells; identifiability of s_w^2.
+  kill: s_w^2 stays near zero on planted invasions with static habitat.
+  blr: If true, B1/B5 need a constraint before adoption.
+  parents: [B1]
+  evidence: []

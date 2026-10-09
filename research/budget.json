@@ -1,0 +1,9 @@
+{
+  "_comment": "Caps the loop respects; hitting one escalates rather than continues. Edit freely.",
+  "working_ticks_per_day": 30,
+  "dev_evals_per_question": 10,
+  "gpu_hours_per_day": 22,
+  "disk_gb_max": 150,
+  "noop_tick_tokens_target": 3000,
+  "digest_every_days": 2
+}

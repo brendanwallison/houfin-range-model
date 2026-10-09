@@ -701,6 +701,8 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
                     selection_metric="val_zmse",
                     selection_smooth=0,
                     trajectory_path=None, stop_at_epoch=None, return_info=False,
+                    checkpoint_path=None, checkpoint_every=0, resume=False,
+                    select_on_withheld=False,
                     _skip_target_conversion=False):
     """Train DESK with a learned output-EMA.
 
@@ -740,6 +742,19 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
     epoch, both metrics there, the trajectory path). Behind a flag rather than always, because
     a silent arity change is a failure mode this file has been bitten by -- see
     ``spacetime_metric_pool``'s ``return_pidx`` note.
+
+    ``checkpoint_path`` / ``checkpoint_every`` write the whole loop state (weights, optimizer,
+    schedule, best-so-far, selection history, every RNG the loop draws from) atomically at the top
+    of every ``checkpoint_every``-th epoch, and ``resume`` continues from it. Off-cluster a 6-12 h
+    run is killed by things a scheduler never does (WSL shutdown, sleep, OS updates), and weights
+    were otherwise saved only at the very end. A checkpoint carries a fingerprint of the run's
+    configuration and is set aside, not resumed, when it does not match.
+
+    ``select_on_withheld``: under a temporal holdout both pooled selection metrics (val z-MSE and
+    ``kernel_val``) include held-out cells in WITHHELD years, so the epoch was being chosen partly
+    on the very years the experiment withholds. The default now selects on the trained-year pool
+    (``vs_sp`` / ``vk['sp']``), which is the same rows as before whenever nothing is withheld; True
+    reproduces the archived tempho runs' selection.
     """
     from torch.utils.checkpoint import checkpoint
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -1461,13 +1476,88 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
     # first assigned: the printed line and the JSONL row are emitted EVERY epoch.
     vk, vk_sd, tk, rank_curve, eig = {}, {}, float("nan"), {}, {}
     crit_hist = []
+
+    # ---- checkpoint / resume ---------------------------------------------------------------
+    # The fingerprint is every argument that changes WHICH run this is. Resuming a checkpoint
+    # written under a different configuration would splice two runs into one, so a mismatch
+    # moves the old file aside and trains from scratch.
+    import hashlib
+    _ck_key = {"epochs": int(epochs), "lr": float(lr), "weights": weights, "seed": int(seed),
+               "latent_dim": int(latent_dim), "spatial_kernel": int(spatial_kernel),
+               "dropout": float(dropout), "weight_decay": float(weight_decay),
+               "warmup_epochs": int(warmup_epochs), "min_lr_frac": float(min_lr_frac),
+               "amp": bool(amp), "stream_dims": [int(d) for d in stream_dims],
+               "years": [int(window_years[0]), int(window_years[-1]), len(window_years)],
+               "hidden_width": hidden_width, "mlp_expansion": int(mlp_expansion),
+               "metric_pairs": int(metric_pairs), "n_spatial_tiles": int(n_spatial_tiles),
+               "tiles_per_step": int(tiles_per_step), "selection_metric": str(selection_metric),
+               "select_on_withheld": bool(select_on_withheld),
+               "holdout_years": sorted(int(y) for y in (val_pool_holdout_years or ()))}
+    _ck_fp = hashlib.sha256(json.dumps(_ck_key, sort_keys=True, default=str).encode()).hexdigest()[:16]
+    start_ep = 1
+    if resume and checkpoint_path and os.path.exists(checkpoint_path):
+        _ck = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
+        if _ck.get("fingerprint") != _ck_fp:
+            os.replace(checkpoint_path, checkpoint_path + ".stale")
+            print(f"[desk] checkpoint {checkpoint_path} belongs to a different configuration "
+                  f"(fingerprint {_ck.get('fingerprint')} vs {_ck_fp}); moved to .stale and "
+                  f"training from scratch", flush=True)
+        else:
+            model.load_state_dict(_ck["model"])
+            ema.load_state_dict(_ck["ema"])
+            opt.load_state_dict(_ck["opt"])
+            sched.load_state_dict(_ck["sched"])
+            best_val, best, bad, nonfinite = (_ck["best_val"], _ck["best"], _ck["bad"],
+                                              _ck["nonfinite"])
+            best_epoch, best_zmse, best_kernel = (_ck["best_epoch"], _ck["best_zmse"],
+                                                  _ck["best_kernel"])
+            best_crit_raw, crit_hist = _ck["best_crit_raw"], list(_ck["crit_hist"])
+            torch.set_rng_state(_ck["rng_torch"])
+            if torch.cuda.is_available() and _ck.get("rng_cuda") is not None:
+                torch.cuda.set_rng_state_all(_ck["rng_cuda"])
+            np.random.set_state(_ck["rng_np"])
+            aug_rng.bit_generator.state = _ck["rng_aug"]
+            start_ep = int(_ck["epoch"]) + 1
+            print(f"[desk] RESUMED from {checkpoint_path} after epoch {start_ep - 1} (best so far "
+                  f"epoch {best_epoch}, {selection_metric} {best_val:.5f})", flush=True)
+
+    def _save_checkpoint(ep_done):
+        state = {"epoch": int(ep_done), "fingerprint": _ck_fp,
+                 "model": model.state_dict(), "ema": ema.state_dict(),
+                 "opt": opt.state_dict(), "sched": sched.state_dict(),
+                 "best": best, "best_val": best_val, "bad": bad, "nonfinite": nonfinite,
+                 "best_epoch": best_epoch, "best_zmse": best_zmse, "best_kernel": best_kernel,
+                 "best_crit_raw": best_crit_raw, "crit_hist": list(crit_hist),
+                 "rng_torch": torch.get_rng_state(),
+                 "rng_cuda": torch.cuda.get_rng_state_all() if torch.cuda.is_available() else None,
+                 "rng_np": np.random.get_state(), "rng_aug": aug_rng.bit_generator.state}
+        tmp = checkpoint_path + ".tmp"
+        torch.save(state, tmp)
+        os.replace(tmp, checkpoint_path)          # atomic: a kill mid-save leaves the old one
+
     traj_fh = None
     if trajectory_path:
         os.makedirs(os.path.dirname(os.path.abspath(trajectory_path)), exist_ok=True)
-        # "w", not "a": a resumed or rerun training writes a NEW trajectory, and appending
-        # would interleave two runs' epochs in one file with nothing to separate them -- the
-        # best-epoch argmin would then be taken over a mixture.
-        traj_fh = open(trajectory_path, "w", encoding="utf-8")
+        if start_ep > 1 and os.path.exists(trajectory_path):
+            # A RESUMED run continues its OWN trajectory: keep the rows the checkpoint covers and
+            # drop any the killed tail wrote after it (those epochs are re-run), so the file still
+            # holds exactly one run. A torn last line from the kill is dropped with them.
+            kept = []
+            with open(trajectory_path, encoding="utf-8") as fh:
+                for line in fh:
+                    try:
+                        if int(json.loads(line).get("epoch", 0)) < start_ep:
+                            kept.append(line if line.endswith("\n") else line + "\n")
+                    except (ValueError, TypeError):
+                        continue
+            traj_fh = open(trajectory_path, "w", encoding="utf-8")
+            traj_fh.writelines(kept)
+            traj_fh.flush()
+        else:
+            # "w", not "a": a rerun training writes a NEW trajectory, and appending would
+            # interleave two runs' epochs in one file with nothing to separate them -- the
+            # best-epoch argmin would then be taken over a mixture.
+            traj_fh = open(trajectory_path, "w", encoding="utf-8")
         print(f"[desk] per-epoch trajectory -> {trajectory_path}", flush=True)
     if selection_metric not in ("val_zmse", "val_kernel"):
         raise ValueError(f"desk.selection_metric must be 'val_zmse' or 'val_kernel'; "
@@ -1503,9 +1593,16 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
     except (KeyError, ValueError):
         _slurm_end = None
     _t_first = time.perf_counter()
-    for ep in range(1, epochs + 1):
+    ep = start_ep - 1                     # bound even when a finished run resumes past the budget
+    for ep in range(start_ep, epochs + 1):
+        # At the top of epoch ep, everything epoch ep-1 did -- the step, the selection, the best
+        # state, the RNG draws -- is complete whichever early-exit path it took, so this is the one
+        # place a checkpoint is always consistent.
+        if (checkpoint_path and int(checkpoint_every) > 0 and ep > start_ep
+                and (ep - 1) % int(checkpoint_every) == 0):
+            _save_checkpoint(ep - 1)
         t_ep = time.perf_counter()
-        if ep == 1:
+        if ep == start_ep:
             _t_first = time.perf_counter()
         if device == "cuda":
             torch.cuda.reset_peak_memory_stats()
@@ -2042,7 +2139,13 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
             continue
         # ONE selection signal, named in the config. z-MSE stays logged either way so a run
         # under the new metric is still comparable against every run made under the old one.
-        crit_raw = vs if selection_metric == "val_zmse" else vk.get("pool", float("nan"))
+        # The TRAINED-YEAR pool unless told otherwise: under a temporal holdout "pool" (and the
+        # all-year val z-MSE) include held-out cells in WITHHELD years, which made the withheld
+        # decades part of epoch selection. With nothing withheld, "sp" is the same rows as "pool".
+        if selection_metric == "val_zmse":
+            crit_raw = vs if select_on_withheld else vs_sp
+        else:
+            crit_raw = vk.get("pool" if select_on_withheld else "sp", float("nan"))
         # Optional trailing-median smoothing of the SELECTION signal only (the logged and
         # recorded per-epoch values stay raw). The argmin of a noisy series is not a property of
         # the model: measured on a 30-epoch run, kernel_val swung 2.9x between adjacent epochs
@@ -2090,6 +2193,10 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
             break
     if traj_fh is not None:
         traj_fh.close()
+    if checkpoint_path and os.path.exists(checkpoint_path):
+        # The run finished: keep the last checkpoint for inspection, but under a name a rerun
+        # will not resume from.
+        os.replace(checkpoint_path, checkpoint_path + ".completed")
     if best is not None:
         model.load_state_dict({k: v.to(device) for k, v in best[0].items()})
         ema.load_state_dict({k: v.to(device) for k, v in best[1].items()})
@@ -2130,6 +2237,8 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
             # than a property of the model.
             "warmup_epochs": int(warmup_epochs),
             "selection_smooth": int(selection_smooth),
+            "select_on_withheld": bool(select_on_withheld),
+            "resumed_from_epoch": int(start_ep - 1) if start_ep > 1 else None,
             "best_selection_raw": float(best_crit_raw),
             "min_lr_frac": float(min_lr_frac),
             "restored_best": best is not None}
@@ -2564,6 +2673,12 @@ def run_desk_experiment(config=None):
         selection_smooth=int(desk_cfg.get("selection_smooth", 0)),
         trajectory_path=os.path.join(out_dir, "train_trajectory.jsonl"),
         stop_at_epoch=desk_cfg.get("stop_at_epoch"),
+        # Resume is on by default: the checkpoint's configuration fingerprint refuses a mismatched
+        # run, and a finished run renames its checkpoint so a rerun starts fresh.
+        checkpoint_path=os.path.join(out_dir, "resume_checkpoint.pt"),
+        checkpoint_every=int(desk_cfg.get("checkpoint_every", 10)),
+        resume=bool(desk_cfg.get("resume", True)),
+        select_on_withheld=bool(desk_cfg.get("select_on_withheld", False)),
         return_info=True)
     ema_half_life = float(ema.half_life().item())
     torch.save(ema.state_dict(), os.path.join(out_dir, "output_ema.pth"))

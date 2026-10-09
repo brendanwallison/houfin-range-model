@@ -2774,3 +2774,118 @@ def test_the_esk_reference_rank_curve_is_computed_and_aligned():
     _log3, info3 = run(None)
     assert info3.get("esk_rank_curve") is None
     print(f"aligned -> curve {curve}; misaligned -> skipped; absent -> None")
+
+
+def _resume_fixture(seed=5, withhold=False):
+    """A tiny CPU run with validation cells (so selection happens) and, optionally, a WITHHELD year:
+    a year whose train mask is all False, which is how the trainer defines withheld."""
+    from src.community_encoder.train_DESK import desk_training as D  # noqa: F401
+    sch = _schema()
+    dims = [s["dim"] for s in sch["streams"]]
+    T, H, W, L = 5, 6, 7, 16
+    rng = np.random.default_rng(seed)
+    cov = rng.normal(size=(T, H, W, sch["total_dim"])).astype("float32")
+    va = np.zeros((H, W), bool)
+    va[:2, :3] = True
+    tr = ~va
+    years = list(range(2021, 2026))
+    tgt = {}
+    for y in years[1:]:
+        tr_y = np.zeros((H, W), bool) if (withhold and y == years[1]) else tr
+        tgt[y] = (rng.normal(size=(H, W, L)).astype("float32"), tr_y, va,
+                  np.ones((H, W), dtype="float32"))
+    trained = [y for y in years if not (withhold and y == years[1])]
+    args = (cov, np.ones((T, H, W), bool), years, tgt,
+            _metric_dict(rng.random((H, W, 9)).astype("float32"), tr, trained), tr, va, dims)
+    kw = dict(latent_dim=L, ema_cfg={"earlystop_warmup": 0}, spatial_kernel=3, epochs=6,
+              schema=sch, dropout=0.1, return_info=True)
+    return args, kw
+
+
+def test_a_killed_run_resumed_from_its_checkpoint_ends_exactly_where_the_uninterrupted_run_ends(
+        tmp_path, monkeypatch, request):
+    """Off-cluster, a 6-12 h DESK run is killed by WSL shutdowns, sleep and OS updates, and weights
+    were saved only at the end. The checkpoint must carry EVERYTHING the loop carries -- optimizer,
+    schedule, best-so-far, selection history and every RNG stream -- or a resumed run is a
+    different run. The resumed weights must equal the uninterrupted ones EXACTLY, which only a
+    deterministic backend can show: measured, two uninterrupted runs already differ by ~8e-6 on 8
+    CPU threads (reduction order) and on CUDA, and by exactly 0 on one CPU thread -- where the
+    resumed run differs by exactly 0 too. So the check runs on one CPU thread."""
+    import contextlib
+    import io
+    import shutil
+
+    from src.community_encoder.train_DESK import desk_training as D
+
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: False)
+    n_threads = torch.get_num_threads()
+    torch.set_num_threads(1)
+    request.addfinalizer(lambda: torch.set_num_threads(n_threads))
+
+    args, kw = _resume_fixture()
+    ck = str(tmp_path / "resume_checkpoint.pt")
+    with contextlib.redirect_stdout(io.StringIO()):
+        m_full, e_full, i_full = D.train_model_ema(*args, **kw)
+        # "Killed" during epoch 4: the checkpoint written at the top of epoch 4 holds epoch 3.
+        D.train_model_ema(*args, checkpoint_path=ck, checkpoint_every=1, stop_at_epoch=4, **kw)
+    assert os.path.exists(ck + ".completed") and not os.path.exists(ck)
+    shutil.copy(ck + ".completed", ck)                     # as if the run had died, not finished
+    out = io.StringIO()
+    with contextlib.redirect_stdout(out):
+        m_res, e_res, i_res = D.train_model_ema(*args, checkpoint_path=ck, checkpoint_every=1,
+                                                resume=True, **kw)
+    assert "RESUMED" in out.getvalue() and "after epoch 3" in out.getvalue(), out.getvalue()
+    assert i_res["resumed_from_epoch"] == 3 and i_full["resumed_from_epoch"] is None
+    assert i_res["best_epoch"] == i_full["best_epoch"], (i_res, i_full)
+    for (k, a), b in zip(m_full.state_dict().items(), m_res.state_dict().values()):
+        assert torch.equal(a, b), f"{k} differs after resume"
+    for a, b in zip(e_full.state_dict().values(), e_res.state_dict().values()):
+        assert torch.equal(a, b)
+    print(f"resumed after epoch 3 -> identical weights, best epoch {i_res['best_epoch']}")
+
+
+def test_a_checkpoint_from_a_different_configuration_is_set_aside_not_resumed(tmp_path):
+    """Resuming another configuration's checkpoint would splice two runs into one."""
+    import contextlib
+    import io
+    import shutil
+
+    from src.community_encoder.train_DESK import desk_training as D
+
+    args, kw = _resume_fixture()
+    ck = str(tmp_path / "resume_checkpoint.pt")
+    with contextlib.redirect_stdout(io.StringIO()):
+        D.train_model_ema(*args, checkpoint_path=ck, checkpoint_every=1, stop_at_epoch=3, **kw)
+    shutil.copy(ck + ".completed", ck)
+    out = io.StringIO()
+    with contextlib.redirect_stdout(out):
+        _m, _e, info = D.train_model_ema(*args, checkpoint_path=ck, checkpoint_every=1,
+                                         resume=True, **{**kw, "lr": 5e-4})
+    assert "different configuration" in out.getvalue(), out.getvalue()
+    assert os.path.exists(ck + ".stale")
+    assert info["resumed_from_epoch"] is None
+    print("a mismatched checkpoint is moved to .stale and the run starts fresh")
+
+
+def test_epoch_selection_ignores_withheld_years_unless_told_otherwise(tmp_path):
+    """A9. Under a temporal holdout the pooled selection metrics include held-out cells in the
+    WITHHELD years, so the tempho runs chose their epoch partly on the decades they withhold. The
+    default now selects on the trained-year pool; select_on_withheld=True reproduces the old rule."""
+    import contextlib
+    import io
+
+    from src.community_encoder.train_DESK import desk_training as D
+
+    args, kw = _resume_fixture(seed=7, withhold=True)
+    for legacy, key in ((False, "zmse_val_sp"), (True, "zmse_val")):
+        traj = str(tmp_path / f"traj_{legacy}.jsonl")
+        with contextlib.redirect_stdout(io.StringIO()):
+            _m, _e, info = D.train_model_ema(*args, trajectory_path=traj,
+                                             select_on_withheld=legacy, **kw)
+        rows = {r["epoch"]: r for r in map(json.loads, open(traj, encoding="utf-8"))}
+        best = rows[info["best_epoch"]]
+        assert np.isfinite(best["zmse_val_spt"]), "the fixture must actually withhold a year"
+        assert best["zmse_val"] != best["zmse_val_sp"]
+        assert info["best_selection_raw"] == pytest.approx(best[key]), (legacy, info, best)
+        assert info["select_on_withheld"] is legacy
+    print("selection reads zmse_val_sp by default and zmse_val only when asked")

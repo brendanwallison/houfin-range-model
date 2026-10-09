@@ -265,13 +265,20 @@ def skill_from_sse(sse_model, sse_base):
         return np.where(sb > 0, 1.0 - np.sqrt(sm / np.where(sb > 0, sb, 1.0)), np.nan)
 
 
-def pooled_skill(block_sse_model, block_sse_base, n_boot=1000, seed=0, alpha=0.05):
+def pooled_skill(block_sse_model, block_sse_base, n_boot=1000, seed=0, alpha=0.05,
+                 block_signal=None):
     """Median species skill and share of species above zero, with a two-way bootstrap. Pure.
 
     Inputs are ``(n_blocks, n_species)`` SSE tables. Each draw resamples held-out BLOCKS (the unit
     the split drew, so spatial correlation inside a block stays inside the draw) and, separately,
     SPECIES (the population the claim is about). Skill is recomputed from the resampled block sums,
     not averaged from per-block skills, so a block with little data weighs little.
+
+    ``block_signal`` (``(n_blocks, n_species)``, units where the truth carries signal) applies the
+    undefined-metric rule INSIDE every draw: a draw that misses all of a species' signal-bearing
+    blocks leaves it with a near-zero reference error, and its skill there is noise of any size.
+    The rule used to be applied once, on the full sample, and the draws reintroduced exactly the
+    denominators it had removed.
     """
     sm, sb = np.asarray(block_sse_model), np.asarray(block_sse_base)
     sk = skill_from_sse(sm.sum(0), sb.sum(0))
@@ -285,10 +292,13 @@ def pooled_skill(block_sse_model, block_sse_base, n_boot=1000, seed=0, alpha=0.0
     out["share_above_zero"] = float((sk[defined] > 0).mean())
     rng = np.random.default_rng(seed)
     nb, ns = sm.shape
+    sig = None if block_signal is None else np.asarray(block_signal, "float64")
     W = rng.multinomial(nb, np.full(nb, 1.0 / nb), size=n_boot).astype("float64")
     med, share = np.full(n_boot, np.nan), np.full(n_boot, np.nan)
     for i in range(n_boot):
         s = skill_from_sse(W[i] @ sm, W[i] @ sb)
+        if sig is not None:
+            s = np.where(W[i] @ sig > 0, s, np.nan)
         pick = rng.integers(0, ns, ns)
         v = s[pick]
         v = v[np.isfinite(v)]
@@ -303,13 +313,15 @@ def pooled_skill(block_sse_model, block_sse_base, n_boot=1000, seed=0, alpha=0.0
 
 
 def predicted_raw(mean, var):
-    """Expected count of a new observation under the Gaussian-on-log1p GP. Pure.
+    """Expected count of an observation under the Gaussian-on-log1p model. Pure.
 
-    ``E[x] = E[exp(y)] - 1`` with ``y ~ N(mean, var)``: ``exp(mean + var/2) - 1``. ``var`` is the
-    full predictive variance of a new observation, because the observed log1p includes the noise.
-    This is where the Gaussian's calibration enters the abundance estimand -- and it is
-    miscalibrated (50% intervals covered ~89% in the first run), which is the case for a count
-    likelihood, under which ``E[x]`` is native.
+    ``E[x] = E[exp(y)] - 1`` with ``y ~ N(mean, var)``: ``exp(mean + var/2) - 1``. Callers pass
+    the predictor's per-species OBSERVATION noise as ``var``, not its full predictive variance:
+    the observed log1p includes that noise, so the truth's epoch mean carries its Jensen inflation
+    and the prediction must too -- but the latent function's own uncertainty is not part of a
+    point prediction. Including it (as the first runs did) made a local GP, sure of a cell's
+    present and unsure of its past, predict a decline of ~(v_early - v_modern)/2 that it does not
+    believe in, on every cell, from the back-transform alone.
     """
     return np.expm1(np.asarray(mean, "float64") + 0.5 * np.asarray(var, "float64"))
 
@@ -341,7 +353,7 @@ def direction_by_species(obs_e, obs_m, pred_e, pred_m, noise_sd=None):
     return out
 
 
-def independent_oracle_z(keys, X_comm_raw, z_dir, latent, norm_tol=0.5):
+def independent_oracle_z(keys, X_comm_raw, z_dir, latent, norm_tol=0.5, withheld=()):
     """The INDEPENDENT ESK ceiling: each row's community position from a DISJOINT half of its
     cell-epoch's years. ``(Z (N, L) with NaN where unavailable, info)``.
 
@@ -357,6 +369,14 @@ def independent_oracle_z(keys, X_comm_raw, z_dir, latent, norm_tol=0.5):
     annual communities. If the half-window projections keep less than ``norm_tol`` of the annual
     squared norm, the oracle is refused -- a number computed off-span measures that mismatch, not
     a ceiling.
+
+    WITHHELD YEARS form their own groups. A cell-epoch spanning trained and withheld years (the
+    early epoch 1966-1986 against a 1966-1975 holdout) used to be split as one group, so a TRAINED
+    row's oracle feature could average in withheld-decade communities -- the oracle was fitted on
+    the decade it is then scored on. ``info['half_reliability']`` is the split-half correlation of
+    the two halves' projections: the oracle's features are themselves a noisy half-window
+    measurement, and a low reliability attenuates its skill (errors in variables), so a weak
+    oracle is not by itself evidence that the community cannot predict the species.
     """
     from .esk_kernel import project_points_to_z
     from .validate_bbs_routes import epoch_mean_observed
@@ -364,11 +384,12 @@ def independent_oracle_z(keys, X_comm_raw, z_dir, latent, norm_tol=0.5):
 
     keys = np.asarray(keys)
     yr = keys[:, 2]
+    wh = set(int(y) for y in withheld)
     groups = {}
     for i, (r, c, y) in enumerate(keys):
         for name, (lo, hi) in (("early", EPOCH_EARLY), ("modern", EPOCH_MODERN)):
             if lo <= int(y) <= hi:
-                groups.setdefault((int(r), int(c), name), []).append(i)
+                groups.setdefault((int(r), int(c), name, int(y) in wh), []).append(i)
     glist = list(groups.values())
     A, B, ok = split_half_groups(glist, years=yr)
     A = [a for a, k in zip(A, ok) if k]
@@ -385,9 +406,19 @@ def independent_oracle_z(keys, X_comm_raw, z_dir, latent, norm_tol=0.5):
     z_ann = project_points_to_z(log1p_community(X_comm_raw[sample]), z_dir, latent)
     n_ann = float(np.mean((z_ann ** 2).sum(1)))
     n_half = float(np.mean(np.concatenate([(zA ** 2).sum(1), (zB ** 2).sum(1)])))
+    # Split-half reliability of the projected features: per dimension, the correlation of the two
+    # halves across cell-epochs, averaged with variance weights.
+    za, zb = np.asarray(zA, "float64"), np.asarray(zB, "float64")
+    va = 0.5 * (za.var(0) + zb.var(0))
+    with np.errstate(invalid="ignore", divide="ignore"):
+        cr = np.array([np.corrcoef(za[:, d], zb[:, d])[0, 1] if va[d] > 0 else np.nan
+                       for d in range(za.shape[1])])
+    fin = np.isfinite(cr)
+    rel = float(np.sum(cr[fin] * va[fin]) / max(va[fin].sum(), 1e-300)) if fin.any() else None
     info = {"half_window_norm2": n_half, "annual_norm2": n_ann,
             "norm_ratio": n_half / max(n_ann, 1e-12), "norm_tol": float(norm_tol),
-            "n_cell_epochs_split": len(A), "n_cell_epochs_unsplittable": int((~ok).sum())}
+            "n_cell_epochs_split": len(A), "n_cell_epochs_unsplittable": int((~ok).sum()),
+            "half_reliability": rel, "withheld_years_grouped_separately": bool(wh)}
     if info["norm_ratio"] < norm_tol:
         info["reason"] = (f"refused its representability gate: half-window projections keep "
                           f"{info['norm_ratio']:.2f} of the annual ||z||^2 (< {norm_tol})")
@@ -521,6 +552,41 @@ def mahalanobis_novelty(X_test, X_train):
     return np.sqrt(np.clip(np.einsum("ij,jk,ik->i", D, P, D), 0.0, None))
 
 
+def persistence_prediction(keys, Y, tr_rows, te_rows, modern=EPOCH_MODERN):
+    """Stasis in OBSERVED abundance. ``((mean, var), noise)``. Pure.
+
+    Each predicted row gets its own cell's mean log1p abundance over the cell's TRAINING rows in
+    the modern epoch: a place whose present is observed, backcast as unchanged. That is the honest
+    LEVEL competitor for the ``time`` group, where the spacetime GP has the same information and
+    desk (a pure z readout, like the deployed model) does not. NaN for cells with no modern
+    training rows -- every held-out block cell. Its predicted change is zero by construction, so it
+    is graded on level only. Variance: the pooled within-cell spread of those rows plus the cell
+    mean's own sampling variance; ``noise`` is the within-cell spread.
+    """
+    k = np.asarray(keys)
+    tr = np.asarray(tr_rows)
+    yr = k[tr, 2]
+    sel = tr[(yr >= modern[0]) & (yr <= modern[1])]
+    Yf = np.asarray(Y, "float64")
+    S = Yf.shape[1]
+    cell = lambda rows: k[rows, 0].astype(np.int64) * 100000 + k[rows, 1].astype(np.int64)
+    uc, inv, cnt = np.unique(cell(sel), return_inverse=True, return_counts=True)
+    sums = np.zeros((len(uc), S))
+    np.add.at(sums, inv, Yf[sel])
+    means = sums / cnt[:, None]
+    within = (((Yf[sel] - means[inv]) ** 2).sum(0) / max(len(sel) - len(uc), 1))
+    within = np.maximum(within, gpk.species_floor(Yf[tr].var(0)))
+    tc = cell(np.asarray(te_rows))
+    pos = np.searchsorted(uc, tc)
+    ok = pos < len(uc)
+    ok[ok] = uc[pos[ok]] == tc[ok]
+    mean = np.full((len(te_rows), S), np.nan)
+    var = np.full_like(mean, np.nan)
+    mean[ok] = means[pos[ok]]
+    var[ok] = within[None, :] * (1.0 + 1.0 / cnt[pos[ok]][:, None])
+    return (mean, var), within
+
+
 def thin_rows(rows, frac, rng):
     """A random ``frac`` of training rows, shared by every species and every predictor. Pure.
 
@@ -536,39 +602,102 @@ def thin_rows(rows, frac, rng):
 
 # ----------------------------- fit + predict, every predictor -----------------------------
 
+def spatial_blocks(keys, rows, max_rows=1000):
+    """Partition ``rows`` into spatially contiguous blocks of WHOLE cells. Pure.
+
+    Cells are ordered along a Morton (Z-order) curve over (row, col), so consecutive cells are
+    neighbours, and cut into consecutive runs of at most ``max_rows`` rows. A cell is never split:
+    all its years stay in one block, which is what puts same-cell temporal pairs -- the pairs that
+    identify a temporal lengthscale and a persistent level -- inside the fit. A random subsample
+    of a continent contains almost none of them.
+    """
+    rows = np.asarray(rows)
+    k = np.asarray(keys)[rows]
+    r, c = k[:, 0].astype(np.int64), k[:, 1].astype(np.int64)
+    code = np.zeros(len(rows), np.int64)
+    for i in range(16):
+        code |= (((r >> i) & 1) << (2 * i + 1)) | (((c >> i) & 1) << (2 * i))
+    order = np.lexsort((k[:, 2], code))
+    rs, cs = rows[order], code[order]
+    starts = np.r_[0, np.flatnonzero(np.diff(cs)) + 1]
+    ends = np.r_[starts[1:], len(rs)]
+    blocks, cur, n_cur = [], [], 0
+    for s, e in zip(starts, ends):
+        if n_cur and n_cur + (e - s) > max_rows:
+            blocks.append(np.sort(np.concatenate(cur)))
+            cur, n_cur = [], 0
+        cur.append(rs[s:e])
+        n_cur += e - s
+    if cur:
+        blocks.append(np.sort(np.concatenate(cur)))
+    return blocks
+
+
+def self_index(tr, te):
+    """Position of each predicted row among the (sorted) training rows; -1 where it is not one."""
+    tr, te = np.asarray(tr), np.asarray(te)
+    pos = np.searchsorted(tr, te)
+    ok = pos < len(tr)
+    ok[ok] = tr[pos[ok]] == te[ok]
+    return np.where(ok, pos, -1)
+
+
 def fit_predict_all(D, tr, te, opts, rng, verbose=True):
     """Every predictor fitted on training rows ``tr`` and predicting held-out rows ``te``.
 
     ``D`` holds per-row arrays over a common row set (``Y``, ``Z``, ``Z_nc``, ``F_st``,
-    ``F_cov``, optionally ``Z_oracle``) and ``groups`` for the test rows. Returns
-    ``(preds {name: (mean, var)}, fits)``. Shared by the main run and every thinning fraction, so
-    the two cannot differ in anything but the data.
+    ``F_cov``, ``keys``, optionally ``Z_oracle``) and ``groups`` / ``local_groups`` for the test
+    rows. Returns ``(preds {name: (mean, var)}, fits, noise {name: per-species noise variance})``.
+    Shared by the main run and every thinning fraction, so the two cannot differ in anything but
+    the data.
+
+    In-sample predicted rows (the ``time`` set's modern epoch is the cell's own training rows)
+    get every predictor's exact LEAVE-ONE-OUT prediction, so no predictor is graded on a row it
+    was fitted to: for an exact local GP that row is its own nearest neighbour and the in-sample
+    "prediction" reproduced its noise, which the observed change shares.
+
+    ``noise`` is each predictor's fitted per-species observation variance, what the abundance
+    back-transform needs (``predicted_raw``): the latent function's uncertainty is deliberately
+    left out of a point prediction, or a predictor less certain in the past than in the present
+    predicts a decline it does not believe in.
     """
+    tr = np.sort(np.asarray(tr))
     Ytr = D["Y"][tr].astype("float64")
-    preds, fits = {}, {}
+    sidx = self_index(tr, te)
+    in_tr = sidx >= 0
+    y_self = None
+    if in_tr.any():
+        y_self = np.full((len(te), Ytr.shape[1]), np.nan)
+        y_self[in_tr] = D["Y"][np.asarray(te)[in_tr]]
+    preds, fits, noise = {}, {}, {}
     m = gpk.fit(D["Z"][tr], Ytr)
     fits["desk"] = m
-    preds["desk"] = gpk.predict(m, D["Z"][te])
+    preds["desk"] = gpk.predict(m, D["Z"][te], y_self=y_self)
     preds["no_change"] = gpk.predict(m, D["Z_nc"])
+    noise["desk"] = noise["no_change"] = m["n2"]
     if D.get("Z_raw") is not None:
         mr = gpk.fit(D["Z_raw"][tr], Ytr)
         fits["desk_raw"] = mr
-        preds["desk_raw"] = gpk.predict(mr, D["Z_raw"][te])
+        preds["desk_raw"] = gpk.predict(mr, D["Z_raw"][te], y_self=y_self)
         preds["no_change_raw"] = gpk.predict(mr, D["Z_nc_raw"])
+        noise["desk_raw"] = noise["no_change_raw"] = mr["n2"]
     # Pooled arms: the same kernels with every species' amplitude under one cross-species prior
     # (gp_kernels.fit_pooled_scales). Applied to every model, so pooling cannot tilt a comparison.
     if opts.get("pooled", True):
         mp = gpk.fit(D["Z"][tr], Ytr, pool=True)
         fits["desk_pooled"] = mp
-        preds["desk_pooled"] = gpk.predict(mp, D["Z"][te])
+        preds["desk_pooled"] = gpk.predict(mp, D["Z"][te], y_self=y_self)
+        noise["desk_pooled"] = mp["n2"]
         if D.get("Z_raw") is not None:
             mrp = gpk.fit(D["Z_raw"][tr], Ytr, pool=True)
             fits["desk_raw_pooled"] = mrp
-            preds["desk_raw_pooled"] = gpk.predict(mrp, D["Z_raw"][te])
+            preds["desk_raw_pooled"] = gpk.predict(mrp, D["Z_raw"][te], y_self=y_self)
+            noise["desk_raw_pooled"] = mrp["n2"]
     n = len(tr)
     vy = np.maximum(Ytr.var(0) * (1 + 1 / n), gpk.VAR_FLOOR)
     preds["intercept"] = (np.broadcast_to(Ytr.mean(0), (len(te), Ytr.shape[1])),
                           np.broadcast_to(vy, (len(te), Ytr.shape[1])))
+    noise["intercept"] = vy
     Zo = D.get("Z_oracle")
     if Zo is not None:
         # Only epoch rows with an independent half have an oracle z, so the oracle GP fits on
@@ -578,16 +707,34 @@ def fit_predict_all(D, tr, te, opts, rng, verbose=True):
         ote = np.isfinite(Zo[te]).all(1)
         mo = gpk.fit(Zo[otr], D["Y"][otr].astype("float64"))
         fits["esk_oracle_independent"] = mo
+        noise["esk_oracle_independent"] = mo["n2"]
         mu = np.full((len(te), Ytr.shape[1]), np.nan)
         va = np.full_like(mu, np.nan)
         if ote.any():
-            mu[ote], va[ote] = gpk.predict(mo, Zo[te][ote])
+            ys = None if y_self is None else y_self[ote]
+            if ys is not None:
+                # the oracle's training set is otr, so only rows that are IN otr are in-sample
+                ys = np.where(np.isin(np.asarray(te)[ote], otr)[:, None], ys, np.nan)
+            mu[ote], va[ote] = gpk.predict(mo, Zo[te][ote], y_self=ys)
         preds["esk_oracle_independent"] = (mu, va)
     if opts.get("baselines", True):
-        fit_rows = tr if len(tr) <= opts["n_fit"] else np.sort(rng.choice(tr, opts["n_fit"],
-                                                                          replace=False))
+        ybar = Ytr.mean(0)
+        var_y = Ytr.var(0) * n / max(n - 1, 1)
+        blocks = spatial_blocks(D["keys"], tr, int(opts.get("block_rows", 1000)))
+        # The SHAPE is fitted on random whole blocks totalling ~n_fit rows: contiguous, so a cell's
+        # own other years and its neighbours are in the fit. The per-species SCALES then come from
+        # every training row, block by block (gp_kernels.blocked_scales).
+        shape_blocks, n_sel = [], 0
+        for i in rng.permutation(len(blocks)):
+            shape_blocks.append(blocks[i])
+            n_sel += len(blocks[i])
+            if n_sel >= opts["n_fit"]:
+                break
+        groups = D.get("local_groups", D["groups"])
         th_cov = np.full(D["F_cov"].shape[1], np.log(np.sqrt(max(D["F_cov"].shape[1], 1))))
         arms = [("spacetime", "spacetime", "F_st", np.log([300.0, 20.0])),
+                ("spacetime_sum", "spacetime_sum", "F_st",
+                 np.array([np.log(300.0), np.log(150.0), np.log(20.0), 0.0])),
                 ("covariate", "covariate", "F_cov", th_cov)]
         # The covariate GP matched to RAW z (input-side EMA only), so desk_raw has a like-for-like
         # rival. Main run only: it is a third shape fit, and thinning is about data, not lag.
@@ -595,27 +742,33 @@ def fit_predict_all(D, tr, te, opts, rng, verbose=True):
             arms.append(("covariate_raw", "covariate", "F_cov_raw", th_cov))
         for label, kind, Fkey, th0 in arms:
             t0 = time.perf_counter()
-            shape = gpk.fit_shared_shape(kind, D[Fkey][fit_rows], D["Y"][fit_rows],
-                                         th0, n_iter=opts["shape_iters"], verbose=verbose)
-            # The per-species scales from the fit subsample, but the MEAN from all training rows,
-            # as for desk.
-            shape["ybar"] = Ytr.mean(0)
+            shape = gpk.fit_shared_shape(kind, [D[Fkey][b] for b in shape_blocks],
+                                         [D["Y"][b] for b in shape_blocks], th0,
+                                         n_iter=opts["shape_iters"], verbose=verbose,
+                                         ybar=ybar, var_y=var_y)
+            sc = gpk.blocked_scales(kind, shape["theta"], [D[Fkey][b] for b in blocks],
+                                    [D["Y"][b] for b in blocks], ybar, var_y)
+            shape.update({"s2": sc["s2"], "n2": sc["n2"], "ok": sc["ok"], "ybar": ybar,
+                          "n_scale_blocks": len(blocks)})
             fits[label] = shape
             for k in opts["k_nn"]:
                 name = label if k == opts["k_nn"][0] else f"{label}_k{k}"
-                preds[name] = gpk.predict_local(shape, D[Fkey][tr], Ytr, D[Fkey][te],
-                                                D["groups"], k=k, k_max=opts["k_max"])
+                preds[name] = gpk.predict_local(shape, D[Fkey][tr], Ytr, D[Fkey][te], groups,
+                                                k=k, k_max=opts["k_max"], self_idx=sidx)
+                noise[name] = shape["n2"]
             if opts.get("pooled", True):
+                fit_rows = np.sort(np.concatenate(shape_blocks))
                 ps = gpk.pool_shape_scales(shape, D[Fkey][fit_rows], D["Y"][fit_rows])
-                ps["ybar"] = Ytr.mean(0)
+                ps["ybar"] = ybar
                 fits[f"{label}_pooled"] = ps
                 preds[f"{label}_pooled"] = gpk.predict_local(
-                    ps, D[Fkey][tr], Ytr, D[Fkey][te], D["groups"], k=opts["k_nn"][0],
-                    k_max=opts["k_max"])
+                    ps, D[Fkey][tr], Ytr, D[Fkey][te], groups, k=opts["k_nn"][0],
+                    k_max=opts["k_max"], self_idx=sidx)
+                noise[f"{label}_pooled"] = ps["n2"]
             if verbose:
                 print(f"[gp-species] {label} baseline fitted and predicted in "
                       f"{time.perf_counter() - t0:.0f}s", flush=True)
-    return preds, fits
+    return preds, fits, noise
 
 
 def shape_summary(shape):
@@ -650,6 +803,12 @@ GP_PREDICTOR_ROLES = {
     "intercept": "the level floor: the training mean, which knows nothing about place",
     "spacetime": ("the honest bar: Matern(space) x exponential(time) on OBSERVED abundance from "
                   "training rows only; its strength is neighbours observed in the same years"),
+    "spacetime_sum": ("the honest TEMPORAL rival: a persistent spatial field plus a "
+                      "spatiotemporal one, so a backcast keeps what does not change instead of "
+                      "reverting to the continental mean as the product kernel does"),
+    "persistence": ("stasis in OBSERVED abundance: each cell's own modern-epoch training mean, "
+                    "for every year. Level only (its change is zero); defined only where the cell "
+                    "has modern training rows -- the time group"),
     "covariate": "ARD on DESK's own covariates with DESK's output EMA -- matched to z_ema",
     "covariate_raw": "ARD on DESK's covariates with the input-side EMA only -- matched to z_raw",
     "esk_oracle_independent": ("THE ceiling: the observed community from a DISJOINT half of the "
@@ -665,8 +824,11 @@ SEED_CAVEAT = ("single DESK checkpoint = single training seed. Seed-to-seed spre
                "uncertainty about DESK itself")
 ESTIMAND = ("change and epoch level are log1p of the epoch-MEAN abundance "
             "(validate_bbs_routes.epoch_mean_observed), for truth and prediction alike; a "
-            "prediction's expected count is exp(mean + var/2) - 1 under its Gaussian-on-log1p "
-            "likelihood. Per-row level is RMSE on log1p of the cell-year mean count")
+            "prediction's expected count is exp(mean + sigma^2/2) - 1 with sigma^2 the "
+            "predictor's fitted per-species OBSERVATION noise (its latent uncertainty is not part "
+            "of a point prediction); a negative expected count is clipped to 0 by log1p. Change "
+            "skill is defined only for species whose change is resolvable above split-half noise. "
+            "Per-row level is RMSE on log1p of the cell-year mean count")
 #: Level windows, the route suite's buckets: its DESK skill sits almost entirely in the early one.
 WINDOWS = {"early": EARLY_WINDOW, "mid": (EARLY_WINDOW[1] + 1, MODERN_WINDOW[0] - 1),
            "modern": MODERN_WINDOW}
@@ -675,8 +837,9 @@ WINDOWS = {"early": EARLY_WINDOW, "mid": (EARLY_WINDOW[1] + 1, MODERN_WINDOW[0] 
 def expected_predictors(opts):
     """The predictors this configuration must account for, by name. Pure."""
     names = ["desk", "desk_raw", "no_change", "no_change_raw", "intercept",
-             "esk_oracle_independent"]
-    arms = ["spacetime", "covariate", "covariate_raw"] if opts.get("baselines", True) else []
+             "esk_oracle_independent", "persistence"]
+    arms = (["spacetime", "spacetime_sum", "covariate", "covariate_raw"]
+            if opts.get("baselines", True) else [])
     names += arms
     names += [f"{a}_k{k}" for a in arms for k in opts["k_nn"][1:]]
     if opts.get("pooled", True):
@@ -713,7 +876,8 @@ def comparisons(names):
     if "desk_raw" in names and "no_change_raw" in names:
         pairs.append(("desk_raw", "no_change_raw"))
     # The pooled DESK arms against every pooled rival, like for like.
-    for d, rivals in (("desk_pooled", ("spacetime_pooled", "covariate_pooled")),
+    for d, rivals in (("desk_pooled", ("spacetime_pooled", "spacetime_sum_pooled",
+                                       "covariate_pooled")),
                       ("desk_raw_pooled", ("covariate_raw_pooled",))):
         if d in names:
             pairs += [(d, p) for p in rivals if p in names]
@@ -721,7 +885,7 @@ def comparisons(names):
 
 
 def _pair_table(err, avail, block, region, cell_of, pairs, n_boot, seed, region_ok, bal_kw,
-                truth, regions=True):
+                truth, regions=True, species_ok=None):
     """Pooled skill per pair, on the rows where BOTH predictors exist, with regional balance.
 
     ``err[name]`` is a per-unit squared-error table (rows or cells x species), ``avail[name]`` the
@@ -735,10 +899,18 @@ def _pair_table(err, avail, block, region, cell_of, pairs, n_boot, seed, region_
     change). Elsewhere the reference's error is not zero but merely tiny -- a baseline predicting
     1e-6 where the species is absent -- and a skill computed against it is noise of any size: the
     first audited run reported regional skills of -7 to -1858 from exactly that. The rule is the
-    suite's "undefined metric" rule, applied per region and to the pooled figure alike.
+    suite's "undefined metric" rule, applied per region, to the pooled figure, and inside every
+    bootstrap draw.
+
+    ``species_ok`` restricts the species a skill is defined for (the change tables pass the
+    split-half ``resolvable`` mask): a species whose observed change is indistinguishable from its
+    own noise has nothing to predict, and any predictor that moves scores below no_change on it in
+    expectation. Pooling over such species drags every model's median toward zero whatever the
+    model is -- the first runs' median was over every species with ANY nonzero change.
     """
     from .validate_bbs_routes import balanced_over_strata
     out, per = {}, {}
+    ok_sp = None if species_ok is None else np.asarray(species_ok, bool)
     for a, b in pairs:
         if a not in err or b not in err:
             continue
@@ -749,9 +921,12 @@ def _pair_table(err, avail, block, region, cell_of, pairs, n_boot, seed, region_
             continue
         _, sa = block_sums(err[a][m], block[m])
         _, sb = block_sums(err[b][m], block[m])
-        undefined = ~(np.abs(truth[m]) > 0).any(0)
+        _, sig = block_sums((np.abs(truth[m]) > 0).astype("float64"), block[m])
+        undefined = ~(sig.sum(0) > 0)
+        if ok_sp is not None:
+            undefined |= ~ok_sp
         sa[:, undefined], sb[:, undefined] = 0.0, 0.0      # -> skill NaN: no signal to grade
-        pooled, sk = pooled_skill(sa, sb, n_boot, seed)
+        pooled, sk = pooled_skill(sa, sb, n_boot, seed, block_signal=sig)
         per[key] = sk
         if regions:
             strata = {}
@@ -760,6 +935,8 @@ def _pair_table(err, avail, block, region, cell_of, pairs, n_boot, seed, region_
                 ra, rb = err[a][mm].sum(0), err[b][mm].sum(0)
                 skr = skill_from_sse(ra, rb)
                 skr[~(np.abs(truth[mm]) > 0).any(0)] = np.nan
+                if ok_sp is not None:
+                    skr[~ok_sp] = np.nan
                 fin = np.isfinite(skr)
                 ok, why = region_ok.get(int(rg), (False, "no viability verdict"))
                 strata[str(int(rg))] = {
@@ -967,21 +1144,28 @@ def run(config=None, out_dir=None, n_boot=1000, seed=0, opts=None):
     unavailable = {}
     Z_oracle, oracle_info = independent_oracle_z(
         keys, X_comm_raw, config["desk"]["z_dir"], latent,
-        norm_tol=float(br_cfg.get("oracle_norm_tol", 0.5)))
+        norm_tol=float(br_cfg.get("oracle_norm_tol", 0.5)), withheld=withheld)
     if Z_oracle is None:
         unavailable["esk_oracle_independent"] = oracle_info.get("reason", "unavailable")
     print(f"[gp-species] independent oracle: {oracle_info}")
     if not opts["baselines"]:
-        for a in ("spacetime", "covariate", "covariate_raw"):
+        for a in ("spacetime", "spacetime_sum", "covariate", "covariate_raw"):
             unavailable[a] = "disabled by --no-baselines"
     if not opts.get("pooled", True):
         unavailable["desk_pooled"] = unavailable["desk_raw_pooled"] = "disabled by --no-pooled"
 
     bid = block_id[te_rows]
+    # Local GPs condition each group of test rows on the union of their neighbours, capped at
+    # k_max by distance to the NEAREST test row. Grouping by block alone let a block's many modern
+    # rows crowd its sparse early rows' neighbours out of that cap; grouping by block x decade
+    # keeps every era's support.
+    local_groups = bid * 1000 + (keys[te_rows, 2] // 10)
     D = {"Y": Y_eval, "Z": Z, "Z_nc": Z_nc_all[te_rows], "Z_raw": Z_raw,
          "Z_nc_raw": Z_nc_raw[te_rows], "F_st": F_st, "F_cov": F_cov, "F_cov_raw": F_cov_raw,
-         "Z_oracle": Z_oracle, "groups": bid}
-    preds, fits = fit_predict_all(D, tr_rows, te_rows, opts, rng)
+         "Z_oracle": Z_oracle, "groups": bid, "local_groups": local_groups, "keys": keys}
+    preds, fits, noise = fit_predict_all(D, tr_rows, te_rows, opts, rng)
+    preds["persistence"], noise["persistence"] = persistence_prediction(
+        keys, Y_eval, tr_rows, te_rows)
     Yte = Y_eval[te_rows].astype("float64")
     raw_te = np.expm1(Yte)
     Ytr = Y_eval[tr_rows]
@@ -1024,7 +1208,8 @@ def run(config=None, out_dir=None, n_boot=1000, seed=0, opts=None):
                                                 "species": dropped_species},
            "pooled_priors": {k: v["prior"] for k, v in fits.items() if "prior" in v},
            "baseline_shapes": {k: shape_summary(v) for k, v in fits.items() if "theta" in v},
-           "primary": {}, "change": {}, "level": {}, "level_by_window": {}, "probabilistic": {},
+           "primary": {}, "change": {}, "change_all_defined": {}, "level": {},
+           "level_by_window": {}, "probabilistic": {},
            "direction": {}, "change_noise": {}, "change_viability": {}, "captured": {},
            "decomposition": {}, "epoch_gate": {}}
     per_species = {}
@@ -1088,7 +1273,9 @@ def run(config=None, out_dir=None, n_boot=1000, seed=0, opts=None):
                                           **st_all}
         dpred, err, avail, dirs, cap, dec = {}, {}, {}, {}, {}, {}
         for n_, (mu, var) in preds.items():
-            pe, pm = epoch_values(predicted_raw(mu, var), e_rows, m_rows)
+            if n_ == "persistence":
+                continue                       # zero predicted change by construction: level only
+            pe, pm = epoch_values(predicted_raw(mu, noise[n_][None, :]), e_rows, m_rows)
             dp = pm - pe
             dpred[n_] = dp
             err[n_] = (dp - d_full) ** 2
@@ -1103,9 +1290,16 @@ def run(config=None, out_dir=None, n_boot=1000, seed=0, opts=None):
             dsum, dper = decomposition(dp, d_full, nz["resolvable"])
             dec[n_] = dsum
             per_species.update({f"{k}_{sname}_{n_}": v_ for k, v_ in dper.items()})
-        cpairs = [(a, b) for a, b in pairs if b != "intercept"]
+        cpairs = [(a, b) for a, b in pairs if b != "intercept" and "persistence" not in (a, b)]
+        # Skill is DEFINED only for species whose change is resolvable above its own split-half
+        # noise (A1). The previous definition -- any nonzero change anywhere -- is kept beside it
+        # so older reports can be compared, never as the headline.
         rep["change"][sname], per = _pair_table(err, avail, cell_block, cell_reg, cells, cpairs,
-                                                n_boot, seed, region_ok, bal_kw, truth=d_full)
+                                                n_boot, seed, region_ok, bal_kw, truth=d_full,
+                                                species_ok=nz["resolvable"])
+        rep["change_all_defined"][sname], _ = _pair_table(
+            err, avail, cell_block, cell_reg, cells, cpairs, n_boot, seed, region_ok, bal_kw,
+            truth=d_full, regions=False)
         per_species.update({f"change_skill_{sname}_{k}": v for k, v in per.items()})
         rep["direction"][sname], per = _direction_report(dirs)
         per_species.update({f"direction_skill_{sname}_{k}": v for k, v in per.items()})
@@ -1132,8 +1326,10 @@ def run(config=None, out_dir=None, n_boot=1000, seed=0, opts=None):
     primary_set = "space_time" if withheld else "space"
     if "desk_vs_no_change" in rep["change"].get(primary_set, {}):
         rep["primary"] = {"metric": f"per-species RMSE skill on held-out same-cell change "
-                                    f"({primary_set}), desk vs no_change",
+                                    f"({primary_set}), desk vs no_change, over species whose "
+                                    f"change is resolvable above split-half noise",
                           "set": primary_set,
+                          "n_resolvable": rep["change_noise"][primary_set]["n_resolvable"],
                           "viable": rep["change_viability"][primary_set]["qualified"],
                           **rep["change"][primary_set]["desk_vs_no_change"]}
     else:
@@ -1232,9 +1428,9 @@ def run_thinning(D, tr_rows, te_rows, Yte, scored, e_rows, m_rows, opts, seed, o
         rng = np.random.default_rng(seed + 1000 * (i + 1))
         tr = thin_rows(tr_rows, f, rng)
         print(f"[gp-species] thinning {f:g}: {len(tr):,} training rows", flush=True)
-        preds, _ = fit_predict_all(D, tr, te_rows,
-                                   {**opts, "k_nn": opts["k_nn"][:1], "raw_baseline": False},
-                                   rng, verbose=False)
+        preds, _, pnoise = fit_predict_all(
+            D, tr, te_rows, {**opts, "k_nn": opts["k_nn"][:1], "raw_baseline": False}, rng,
+            verbose=False)
         out["n_train_rows"].append(int(len(tr)))
         out["n_train_detections"].append((D["Y"][tr] > 0).sum(0))
         for name, (mu, var) in preds.items():
@@ -1243,7 +1439,7 @@ def run_thinning(D, tr_rows, te_rows, Yte, scored, e_rows, m_rows, opts, seed, o
             out["level_sse"].setdefault(name, []).append(
                 ((Yte[scored][ok] - mu[scored][ok]) ** 2).sum(0))
             if have_change:
-                pe, pm = epoch_values(predicted_raw(mu, var), e_rows, m_rows)
+                pe, pm = epoch_values(predicted_raw(mu, pnoise[name][None, :]), e_rows, m_rows)
                 dp = pm - pe
                 okc = np.isfinite(dp).all(1)
                 out["change_sse"].setdefault(name, []).append(

@@ -106,40 +106,67 @@ def species_floor(var_y):
     return np.maximum(REL_FLOOR * np.asarray(var_y, "float64"), 1e-14)
 
 
+#: Starting signal shares for the per-species scale fit. The profiled likelihood in (s^2, sigma^2)
+#: is MULTIMODAL: measured on a long-lengthscale spacetime kernel, a single start at share 0.5
+#: left a species at s^2 ~ 0 (NLL -231.9 summed) where a start a hair away found s^2 = 140
+#: (-340.7). A collapsed amplitude reads as "the kernel explains nothing" when it is an optimizer
+#: artefact, so every start is run and each species keeps its own best.
+SCALE_STARTS = (0.5, 0.1, 0.9)
+
+
+def _fit_scales_core(nll_parts, var_y, kappa, live, floor, max_iter=500):
+    """Per-species ``(s^2, sigma^2)`` minimizing ``nll_parts`` from every SCALE_STARTS share. Pure.
+
+    ``nll_parts(log_s2, log_n2) -> (nll, g_s, g_n)`` over the LIVE species. Species are
+    independent, so one L-BFGS run on the summed objective is many separate ones at a fraction of
+    the overhead; the multi-start then picks per species. Returns ``(s2, n2, nll)`` for live ones.
+    """
+    kl = int(live.sum())
+    lo = np.log(floor[live])
+    bounds = [(v, 30.0) for v in np.concatenate([lo, lo])]
+
+    def f(x):
+        nll, gs, gn = nll_parts(x[:kl], x[kl:])
+        return float(nll.sum()), np.concatenate([gs, gn])
+
+    best_x, best_nll = None, None
+    for share in SCALE_STARTS:
+        s2_0 = np.maximum(share * var_y[live] / max(kappa, 1e-12), floor[live])
+        n2_0 = np.maximum((1.0 - share) * var_y[live], floor[live])
+        res = minimize(f, np.concatenate([np.log(s2_0), np.log(n2_0)]), jac=True,
+                       method="L-BFGS-B", bounds=bounds, options={"maxiter": int(max_iter)})
+        nll = nll_parts(res.x[:kl], res.x[kl:])[0]
+        if best_x is None:
+            best_x, best_nll = res.x.copy(), nll
+        else:
+            better = nll < best_nll - 1e-9
+            best_x[:kl][better] = res.x[:kl][better]
+            best_x[kl:][better] = res.x[kl:][better]
+            best_nll = np.where(better, nll, best_nll)
+    return np.exp(best_x[:kl]), np.exp(best_x[kl:]), best_nll
+
+
 def fit_hyperparameters(basis, stats, max_iter=500):
     """Fit ``(s^2, sigma^2)`` for every species jointly by L-BFGS. ``{s2, n2, nll, ok}``. Pure.
 
     Species are independent, so the summed objective has a block-diagonal Hessian and one
     L-BFGS run is equivalent to many separate ones, at a fraction of the overhead. Species with
-    no training variance get the floors and ``ok=False``: there is nothing to fit.
+    no training variance get the floors and ``ok=False``: there is nothing to fit. Every start in
+    ``SCALE_STARTS`` is run and each species keeps its best (the likelihood is multimodal).
     """
     k = stats["yy"].shape[0]
     n = basis["n"]
     var_y = stats["yy"] / max(n - 1, 1)
     live = var_y > 1e-14
     floor = species_floor(var_y)
-    # Start with half the variance explained by the features and half residual.
-    s2_0 = np.maximum(0.5 * var_y / max(float((basis["S"] ** 2).sum()) / n, 1e-12), floor)
-    n2_0 = np.maximum(0.5 * var_y, floor)
-    x0 = np.concatenate([np.log(s2_0), np.log(n2_0)])
     sub = {"ybar": stats["ybar"][live], "yy": stats["yy"][live], "u": stats["u"][:, live]}
-    kl = int(live.sum())
-
-    def f(x):
-        nll, gs, gn = neg_log_marginal(x[:kl], x[kl:], basis, sub)
-        return float(nll.sum()), np.concatenate([gs, gn])
-
-    s2, n2 = np.exp(x0[:k]), np.exp(x0[k:])
+    s2 = np.full(k, VAR_FLOOR)
+    n2 = np.full(k, VAR_FLOOR)
     nll = np.full(k, np.nan)
-    if kl:
-        x0l = np.concatenate([x0[:k][live], x0[k:][live]])
-        lo = np.log(floor[live])
-        res = minimize(f, x0l, jac=True, method="L-BFGS-B",
-                       bounds=[(v, 30.0) for v in np.concatenate([lo, lo])],
-                       options={"maxiter": int(max_iter)})
-        s2[live], n2[live] = np.exp(res.x[:kl]), np.exp(res.x[kl:])
-        nll[live] = neg_log_marginal(res.x[:kl], res.x[kl:], basis, sub)[0]
-    s2[~live], n2[~live] = VAR_FLOOR, VAR_FLOOR
+    if live.any():
+        s2[live], n2[live], nll[live] = _fit_scales_core(
+            lambda a, c: neg_log_marginal(a, c, basis, sub), var_y,
+            float((basis["S"] ** 2).sum()) / n, live, floor, max_iter)
     return {"s2": s2, "n2": n2, "nll": nll, "ok": live}
 
 
@@ -271,17 +298,33 @@ def fit(Z, Y, pool=False):
     return {"basis": basis, "ybar": stats["ybar"], "coef": coef, "wvar": wvar, **hp}
 
 
-def predict(model, Z_new):
+def predict(model, Z_new, y_self=None):
     """Predictive mean and variance of a NEW OBSERVATION at each row of ``Z_new``. Pure.
 
     Returns ``(mean, var)``, both ``(n_new, n_species)``. ``var`` includes the noise, because
     held-out rows are observations rather than the latent function, and it includes the
     intercept's ``sigma^2/n``.
+
+    ``y_self`` (``(n_new, n_species)``, NaN rows where unused) marks rows that are THEMSELVES in
+    the training set and returns their exact leave-one-out prediction instead: a model graded on a
+    row it was fitted to is graded on its own noise draw. For ridge-form BLR the LOO residual is
+    the fitted residual over ``1 - h_ii``, with ``h_ii = sum_k P_ik^2 / (S_k^2 + lambda) + 1/n``
+    per species. At ~80k rows and r=64 ``h_ii`` is ~1e-3, so this barely moves desk; it exists so
+    every predictor answers the same question on the ``time`` set's in-sample rows.
     """
     b = model["basis"]
     P = (np.asarray(Z_new, "float64") - b["zbar"]) @ b["V"]     # (n_new, r)
     mean = model["ybar"][None, :] + P @ model["coef"]
     var = (P ** 2) @ model["wvar"] + model["n2"][None, :] * (1.0 + 1.0 / b["n"])
+    if y_self is not None:
+        ys = np.asarray(y_self, "float64")
+        rows = np.isfinite(ys).all(1)
+        if rows.any():
+            lam = model["n2"][None, :] / model["s2"][None, :]                   # (1, S)
+            S2 = (b["S"] ** 2)[:, None]                                         # (r, 1)
+            h = (P[rows] ** 2) @ (1.0 / (S2 + lam)) + 1.0 / b["n"]              # (m, S)
+            h = np.minimum(h, 1.0 - 1e-9)
+            mean[rows] = ys[rows] - (ys[rows] - mean[rows]) / (1.0 - h)
     return mean, var
 
 
@@ -350,6 +393,26 @@ def spacetime_kernel(A, B, theta):
     return (1.0 + MATERN_SQRT3 * d) * torch.exp(-MATERN_SQRT3 * d) * torch.exp(-dt)
 
 
+def spacetime_sum_kernel(A, B, theta):
+    """A PERSISTENT spatial field plus a spatiotemporal one, unit total amplitude::
+
+        k = (1 - p) M32(d / l_persist) + p M32(d / l_change) exp(-|dt| / l_time),  p = sigmoid(th3)
+
+    ``theta = [log l_persist_km, log l_change_km, log l_time_yr, logit p]``. The product kernel
+    alone forgets a cell's level as |dt| grows and reverts to the continental mean, which is the
+    wrong prior for backcasting a place whose present is observed: most of a species' map persists
+    for decades. This is the honest temporal rival -- it keeps what does not change and
+    extrapolates only what does."""
+    import torch
+    ls_p, ls_c, lt = torch.exp(theta[0]), torch.exp(theta[1]), torch.exp(theta[2])
+    p = torch.sigmoid(theta[3])
+    d = torch.cdist(A[:, :2], B[:, :2])
+    m_p = (1.0 + MATERN_SQRT3 * d / ls_p) * torch.exp(-MATERN_SQRT3 * d / ls_p)
+    m_c = (1.0 + MATERN_SQRT3 * d / ls_c) * torch.exp(-MATERN_SQRT3 * d / ls_c)
+    dt = torch.abs(A[:, 2:3] - B[:, 2:3].T) / lt
+    return (1.0 - p) * m_p + p * m_c * torch.exp(-dt)
+
+
 def ard_rbf_kernel(A, B, theta):
     """Squared-exponential with one lengthscale per input dimension, unit amplitude.
     ``theta`` is the vector of log lengthscales."""
@@ -371,10 +434,17 @@ def scaled_coords(kind, F, theta):
     th = np.asarray(theta, "float64")
     if kind == "spacetime":
         return np.column_stack([F[:, :2] / np.exp(th[0]), F[:, 2:3] / np.exp(th[1])])
+    if kind == "spacetime_sum":
+        # Time matters only through the changing share p: as p -> 0 the field is persistent and
+        # a cell's other decades are as near as its own year.
+        p = 1.0 / (1.0 + np.exp(-th[3]))
+        ls = min(np.exp(th[0]), np.exp(th[1]))
+        return np.column_stack([F[:, :2] / ls, F[:, 2:3] * max(p, 1e-3) / np.exp(th[2])])
     return F / np.exp(th)
 
 
-KERNELS = {"spacetime": spacetime_kernel, "covariate": ard_rbf_kernel}
+KERNELS = {"spacetime": spacetime_kernel, "spacetime_sum": spacetime_sum_kernel,
+           "covariate": ard_rbf_kernel}
 
 
 def _eig_basis(lam, n):
@@ -392,11 +462,81 @@ def _scales_given_shape(K, Yc):
     return Q, np.clip(lam, 0.0, None), U, hp
 
 
-def fit_shared_shape(kind, F, Y, theta0, n_iter=400, verbose=True):
+def fit_hyperparameters_blocks(bases, statss, var_y, max_iter=500):
+    """``(s^2, sigma^2)`` per species maximizing the SUM of per-block marginal likelihoods. Pure.
+
+    The block-diagonal approximation of the full GP likelihood: blocks are spatially contiguous
+    groups of training rows (all years of each cell together), so the near pairs that identify an
+    amplitude are inside blocks and only far pairs, which carry little, are dropped. It is how
+    every training row informs the scales without an n x n solve over all of them. ``var_y`` is
+    each species' variance over ALL training rows, which sets the RELATIVE floors (an absolute
+    floor is not scale-free; see REL_FLOOR) and decides who is fittable at all.
+    """
+    var_y = np.asarray(var_y, "float64")
+    k = len(var_y)
+    live = var_y > 1e-14
+    floor = species_floor(var_y)
+    kappa = float(np.mean([(b["S"] ** 2).sum() / max(b["n"] - 1, 1) for b in bases]))
+    subs = [{"ybar": st["ybar"][live], "yy": st["yy"][live], "u": st["u"][:, live]}
+            for st in statss]
+    kl = int(live.sum())
+
+    def parts(a, c):
+        tot, gs, gn = np.zeros(kl), np.zeros(kl), np.zeros(kl)
+        for b, st in zip(bases, subs):
+            nll, g1, g2 = neg_log_marginal(a, c, b, st)
+            tot, gs, gn = tot + nll, gs + g1, gn + g2
+        return tot, gs, gn
+
+    s2, n2 = floor.copy(), floor.copy()
+    nll = np.full(k, np.nan)
+    if kl:
+        s2[live], n2[live], nll[live] = _fit_scales_core(parts, var_y, kappa, live, floor,
+                                                         max_iter)
+    return {"s2": s2, "n2": n2, "nll": nll, "ok": live}
+
+
+def _block_eig(kern, F_blocks, Yc_blocks, theta_t):
+    """Per block: ``(Q, lam, U, basis, stats)`` at the given (detached) lengthscales."""
+    import torch
+    out = []
+    for Fb, Ycb in zip(F_blocks, Yc_blocks):
+        with torch.no_grad():
+            K = kern(Fb, Fb, theta_t).numpy()
+        lam, Q = np.linalg.eigh(K)
+        lam = np.clip(lam, 0.0, None)
+        U = Q.T @ Ycb
+        out.append((Q, lam, U, _eig_basis(lam, K.shape[0]),
+                    {"ybar": np.zeros(Ycb.shape[1]), "yy": (Ycb * Ycb).sum(0), "u": U}))
+    return out
+
+
+def blocked_scales(kind, theta, F_blocks, Y_blocks, ybar, var_y):
+    """Every species' (s^2, sigma^2) at fixed lengthscales, from ALL the given blocks. Pure.
+
+    The shape is fitted on a subsample for speed, but the per-species scales must not be: the
+    first runs took them from the same 3,000 random rows, and a species with no detection there
+    got the absolute 1e-6 floor -- an unfitted signal-to-noise of 1 and a predictive variance of
+    ~1e-6 -- exactly in the rare-species regime the data-poor claim is about."""
+    import torch
+    kern = KERNELS[kind]
+    th = torch.as_tensor(np.asarray(theta, "float64"))
+    Fb = [torch.as_tensor(np.asarray(f, "float64")) for f in F_blocks]
+    Yc = [np.asarray(y, "float64") - np.asarray(ybar, "float64") for y in Y_blocks]
+    eig = _block_eig(kern, Fb, Yc, th)
+    return fit_hyperparameters_blocks([e[3] for e in eig], [e[4] for e in eig], var_y)
+
+
+def fit_shared_shape(kind, F, Y, theta0, n_iter=400, verbose=True, ybar=None, var_y=None):
     """Fit the shared lengthscales and every species' (s^2, sigma^2). Returns the shape fit.
 
     ``F (n, d)`` are the fitting rows' inputs (a subsample of training rows: this is an n x n
-    eigendecomposition per evaluation), ``Y (n, S)`` log1p abundance.
+    eigendecomposition per evaluation), ``Y (n, S)`` log1p abundance. ``F`` and ``Y`` may instead
+    be LISTS of blocks: the objective is then the sum of per-block NLLs with each species' scales
+    profiled jointly over all blocks, and the envelope gradient is the sum of the per-block terms.
+    Contiguous blocks put a cell's own other years and its neighbours in the fit, which a random
+    subsample of a continent almost never does -- without them a spacetime kernel's short-range
+    structure is unidentified. ``ybar``/``var_y`` default to the fitting rows' own.
 
     L-BFGS-B on the log-lengthscales, minimizing the summed NLL with every species' scales
     PROFILED out, with the envelope gradient described above. Not Adam: the first run used Adam
@@ -409,23 +549,29 @@ def fit_shared_shape(kind, F, Y, theta0, n_iter=400, verbose=True):
     import torch
     from scipy.optimize import minimize as _minimize
     kern = KERNELS[kind]
-    Ft = torch.as_tensor(np.asarray(F, "float64"))
-    Y = np.asarray(Y, "float64")
-    ybar = Y.mean(0)
-    Yc = Y - ybar
+    blocks = isinstance(F, (list, tuple))
+    F_list = list(F) if blocks else [F]
+    Y_list = [np.asarray(y, "float64") for y in (Y if blocks else [Y])]
+    Y_all = np.concatenate(Y_list)
+    ybar = Y_all.mean(0) if ybar is None else np.asarray(ybar, "float64")
+    var_y = Y_all.var(0) * len(Y_all) / max(len(Y_all) - 1, 1) if var_y is None else var_y
+    Ft = [torch.as_tensor(np.asarray(f, "float64")) for f in F_list]
+    Yc = [y - ybar for y in Y_list]
     trace = []
 
     def f(th):
         theta = torch.tensor(th, requires_grad=True)
-        with torch.no_grad():
-            K = kern(Ft, Ft, theta).numpy()
-        Q, lam, U, hp = _scales_given_shape(K, Yc)
+        eig = _block_eig(kern, Ft, Yc, theta.detach())
+        hp = fit_hyperparameters_blocks([e[3] for e in eig], [e[4] for e in eig], var_y)
         live = hp["ok"]
         s2, n2 = hp["s2"][live], hp["n2"][live]
-        D = s2[None, :] * lam[:, None] + n2[None, :]                     # (n, S_live)
-        A = U[:, live] / D                                               # a_s in the eigenbasis
-        M = Q @ (np.diag((s2[None, :] / D).sum(1)) - (A * s2[None, :]) @ A.T) @ Q.T
-        (0.5 * (torch.as_tensor(M) * kern(Ft, Ft, theta)).sum()).backward()
+        obj = 0.0
+        for (Q, lam, U, _b, _s), Fb in zip(eig, Ft):
+            D = s2[None, :] * lam[:, None] + n2[None, :]                 # (n_b, S_live)
+            A = U[:, live] / D                                           # a_s in the eigenbasis
+            M = Q @ (np.diag((s2[None, :] / D).sum(1)) - (A * s2[None, :]) @ A.T) @ Q.T
+            obj = obj + 0.5 * (torch.as_tensor(M) * kern(Fb, Fb, theta)).sum()
+        obj.backward()
         total = float(np.nansum(hp["nll"]))
         trace.append(total)
         if verbose and len(trace) % 10 == 1:
@@ -442,11 +588,12 @@ def fit_shared_shape(kind, F, Y, theta0, n_iter=400, verbose=True):
         print(f"[gp-{kind}] {'converged' if res.success else 'NOT converged'} after "
               f"{res.nit} iterations ({res.message}); "
               f"{int(at_bound.sum())} lengthscale(s) at a bound", flush=True)
-    K = kern(Ft, Ft, torch.as_tensor(th)).numpy()
-    _, _, _, hp = _scales_given_shape(K, Yc)
+    eig = _block_eig(kern, Ft, Yc, torch.as_tensor(th))
+    hp = fit_hyperparameters_blocks([e[3] for e in eig], [e[4] for e in eig], var_y)
     return {"kind": kind, "theta": th, "ybar": ybar, "trace": trace,
             "converged": bool(res.success), "message": str(res.message),
-            "n_iterations": int(res.nit), "at_bound": at_bound.tolist(), **hp}
+            "n_iterations": int(res.nit), "at_bound": at_bound.tolist(),
+            "n_blocks": len(F_list), **hp}
 
 
 def pool_shape_scales(shape, F_fit, Y_fit):
@@ -461,7 +608,11 @@ def pool_shape_scales(shape, F_fit, Y_fit):
     lam, Q = np.linalg.eigh(K)
     basis = _eig_basis(lam, K.shape[0])
     stats = {"ybar": np.zeros(Y.shape[1]), "yy": (Yc * Yc).sum(0), "u": Q.T @ Yc}
-    hp0 = {"s2": shape["s2"], "n2": shape["n2"], "ok": shape["ok"]}
+    # Only species that VARY in these rows can inform or receive the pooled prior here; the rest
+    # keep the scales they came with (fitted on every training row), instead of being driven to
+    # their floors by rows where they are never seen.
+    ok = np.asarray(shape["ok"], bool) & (stats["yy"] > 1e-14)
+    hp0 = {"s2": shape["s2"], "n2": shape["n2"], "ok": ok}
     pooled = fit_pooled_scales(basis, stats, hp0)
     return {**shape, "s2": pooled["s2"], "n2": pooled["n2"], "prior": pooled["prior"]}
 
@@ -491,13 +642,21 @@ def knn_union(Fs_train, Fs_test, k, k_max, device=None):
     return np.sort(idx)
 
 
-def predict_local(shape, F_train, Y_train, F_test, groups, k=32, k_max=4000):
+def predict_local(shape, F_train, Y_train, F_test, groups, k=32, k_max=4000, self_idx=None):
     """Predictive mean and variance of a new observation, conditioning each group of test rows
     on its own local training set. ``(mean, var)``, each ``(n_test, S)``.
 
     ``groups`` labels the test rows (held-out blocks): rows in one group share a conditioning set,
     so one eigendecomposition per group serves every species. The shared shape and per-species
     scales come from ``fit_shared_shape``; nothing is refitted on the local set.
+
+    ``self_idx`` (``(n_test,)``, index into the training rows or -1) marks test rows that ARE
+    training rows -- the ``time`` set's in-sample modern epoch. Such a row is its own nearest
+    neighbour at distance zero, so an exact GP reproduces its observed value, noise included, and
+    the "predicted" modern epoch then shares the target's noise draw. Those rows get the exact
+    leave-one-out prediction from the same conditioning set instead:
+    ``mean = y_i - [C^-1 (y - ybar)]_i / [C^-1]_ii``, ``var = 1 / [C^-1]_ii``, with
+    ``C = s^2 K + sigma^2 I`` per species -- all from the eigendecomposition already in hand.
     """
     import torch
     kern = KERNELS[shape["kind"]]
@@ -511,6 +670,8 @@ def predict_local(shape, F_train, Y_train, F_test, groups, k=32, k_max=4000):
     var = np.empty((len(F_test), S))
     Ftr = np.asarray(F_train, "float64")
     Fte = np.asarray(F_test, "float64")
+    sidx = None if self_idx is None else np.asarray(self_idx, "int64")
+    loo_var = np.zeros((len(F_test), S), bool)
     for g in np.unique(groups):
         rows = np.where(groups == g)[0]
         cidx = knn_union(Fs_tr, Fs_te[rows], k, k_max)
@@ -524,4 +685,17 @@ def predict_local(shape, F_train, Y_train, F_test, groups, k=32, k_max=4000):
         P = Ksc @ Q                                                      # (t, k)
         mean[rows] = ybar + P @ (s2[None, :] * A / D)
         var[rows] = s2[None, :] - (P ** 2) @ (s2[None, :] ** 2 / D) + n2[None, :]
-    return mean, np.maximum(var, n2[None, :])
+        if sidx is not None:
+            own = sidx[rows]
+            pos = np.searchsorted(cidx, own)
+            hit = (own >= 0) & (pos < len(cidx))
+            hit[hit] = cidx[pos[hit]] == own[hit]
+            if hit.any():
+                Qi = Q[pos[hit]]                                         # (m, k)
+                cinv_diag = (Qi ** 2) @ (1.0 / D)                        # (m, S)
+                alpha = Qi @ (A / D)                                     # (m, S)
+                r_hit = rows[hit]
+                mean[r_hit] = Y_train[own[hit]] - alpha / cinv_diag
+                var[r_hit] = 1.0 / cinv_diag
+                loo_var[r_hit] = True
+    return mean, np.where(loo_var, var, np.maximum(var, n2[None, :]))

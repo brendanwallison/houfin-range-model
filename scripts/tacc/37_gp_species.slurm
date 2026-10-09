@@ -32,7 +32,10 @@ python -m src.community_encoder.train_DESK.validate_gp_species --n-boot "${GPSP_
     ${GPSP_ARGS:-}
 # The regressions and thinning curves need only the saved outputs plus AVONET; a failure here
 # leaves the validation itself intact and can be rerun anywhere with the gp_species directory.
-GP_DIR="$(python -c "from src.config_utils import load_config; import os; print(os.path.join(load_config()['paths']['desk_output_dir'], 'gp_species'))")"
+# Community mode writes to gp_species_community (validate_gp_species.run); the analysis must read
+# the directory the run actually wrote, not always gp_species.
+case " ${GPSP_ARGS:-} " in *"--species community"*) GP_SUB=gp_species_community ;; *) GP_SUB=gp_species ;; esac
+GP_DIR="$(python -c "from src.config_utils import load_config; import os; print(os.path.join(load_config()['paths']['desk_output_dir'], '$GP_SUB'))")"
 python -m src.community_encoder.train_DESK.gp_species_analysis "$GP_DIR" || \
     echo "WARNING: gp_species_analysis failed; rerun: python -m src.community_encoder.train_DESK.gp_species_analysis $GP_DIR"
 echo "=== 37_gp_species complete ==="

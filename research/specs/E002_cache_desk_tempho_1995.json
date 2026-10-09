@@ -1,0 +1,10 @@
+{
+  "exp": "E002",
+  "name": "cache-desk_tempho_1995",
+  "group": "gpu",
+  "overlay": "config/overlays/desk_tempho_1995.json",
+  "cmd": ["python", "research/exp/cache.py", "--out", "{cache}/desk_tempho_1995"],
+  "expected_minutes": 30,
+  "summarize": ["python", "-c", "import json; m=json.load(open('{cache}/desk_tempho_1995/meta.json')); print({k: m[k] for k in ('run_dir','n_rows','latent_dim','best_epoch','withheld','timings_s','elapsed_s')}); print('dev', len(m['dev_species']), 'sealed', len(m['sealed_species']), 'community', len(m['community']))"],
+  "note": "Phase 0.4: materialize the desk_tempho_1995 checkpoint's inputs once (species, z at every key and the modern epoch, covariates, splits, route-years)"
+}

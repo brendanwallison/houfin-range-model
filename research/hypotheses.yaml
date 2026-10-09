@@ -317,8 +317,8 @@
   kill: Ceiling unchanged with observer terms.
   blr: If true, ceilings shrink; part of 'unexplained change' is observation.
   parents: []
-  evidence: []
-
+  evidence:
+  - {job: "adhoc:E021-dev", exp: E021, dir: for, strength: moderate, note: "observer turnover is ~29% [25, 33] of species and 28-29% of ESK early->modern change energy (within-modern design by observer continuity); 81% of cells share no observer between epochs. Every change target is diluted by it (defect A14). Found by the skeptic, reproduced."}
 # ---------------- downstream proxy ----------------
 - id: D1
   stage: D
@@ -425,6 +425,7 @@
   parents: [B2, T9, T10]
   evidence:
   - {job: "adhoc:E018-dev", exp: E018, dir: for, strength: moderate, note: "readout change intervals ~3x too narrow (sd) beyond the instrument floor (median R 126 vs 16 at r24), in trained years too; leverage does not flag errors (Spearman -0.08 to -0.27). UNVERIFIED."}
+  - {job: "skeptic:E018", exp: E018, dir: for, strength: moderate, note: "magnitude revised: ~2x in sd (4.5x variance, CI 2.3-7.4x) beyond a stable planted floor; R tracks n; the core claim (intervals do not know the error; leverage does not flag it) survives."}
 - id: S2
   stage: T
   priority: 1
@@ -436,6 +437,7 @@
   parents: [T4, S1]
   evidence:
   - {job: "adhoc:E017-dev", exp: E017, dir: against, strength: weak, note: "DESK backcast moves are not toward covariate analogs (pull/alignment ~0 at r12/24/64, near or > 200 km); its readout neighbours are no worse than no-change. The bias is misdirected noise, not analog-structured. UNVERIFIED."}
+  - {job: "adhoc:E017b-dev", exp: E017, dir: for, strength: moderate, note: "REVERSES the E017 reading. Along the corrected space-for-time direction (analogs of early minus analogs of modern covariates; centered): DESK backcast align +0.21 [0.15, 0.26] (> 200 km), as much as an explicit space-for-time map (+0.21); the truth -0.06; trained years DESK +0.09. Found by the skeptic, reproduced by our re-run; replications queued."}
 - id: S3
   stage: T
   priority: 2

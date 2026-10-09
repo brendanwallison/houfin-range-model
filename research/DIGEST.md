@@ -1,8 +1,8 @@
 # DIGEST
 
 ## CURRENT STATE (rewritten each round; read this first -- the dated log below keeps the history)
-Last updated 2026-10-09 afternoon. "Solid" = independently re-derived, replicated on a second split or seed, and
-survived a skeptic review. "Tentative" = one run, or checks still pending.
+Last updated 2026-10-09 evening, after the second skeptic round. "Solid" = independently re-derived, replicated on
+a second split or seed, and survived a skeptic review. "Tentative" = one run, or checks still pending.
 
 SOLID
 - The local machine reproduces TACC for DESK, the spacetime GP, no-change and the oracle. The covariate-GP baseline
@@ -15,17 +15,22 @@ SOLID
 - ESK (64 dims) keeps the regionally shared part of a 40-year change about as well as comparable spatial
   structure; it drops route-level idiosyncrasy, temporal or spatial. Truncation is not selectively discarding time.
 
-TENTATIVE (one run; replications and a skeptic review queued)
+TENTATIVE (skeptic-reviewed; replications or seeds still pending)
+- DESK's backcast behaves like a space-for-time model (your point 2): along the direction a space-for-time model
+  predicts, its backcast moves align +0.21 (as much as an explicit space-for-time map), real communities ~0. In
+  trained years the alignment is under half. Replications on the 1975/1985 models queued.
 - Space-for-time fails at the covariate stage: coefficients learned by comparing places predict none of the
   decadal community change; coefficients learned within cells predict it as well as DESK, better calibrated.
 - DESK's backcast degrades steadily with distance from its training years: for the same target decade its
-  correlation falls 0.42 -> 0.12 and calibration 0.58 -> 0.20 between 0 and 28 years of reach; beyond ~10 years
-  its backcast is further from the truth than no change.
-- The readout cannot tell when it is guessing: its change intervals are ~3x too narrow (sd) beyond what the
+  correlation falls 0.42 -> 0.12 and calibration 0.58 -> 0.20 between 0 and 28 years of reach. It is at most ~10%
+  better than no change even in trained years, and 10-20% worse beyond ~15 years. Two more seeds per model queued.
+- The readout cannot tell when it is guessing: its change intervals are ~2x too narrow (sd) beyond what the
   instrument itself produces, in trained years too, and leverage does not flag the errors.
-- DESK's backcast errors are not pulled toward space-for-time analog places; they behave like misdirected noise.
-- The 24-dim cut is time-selective (about half of the true temporal change lives in components 25-64), but DESK
-  carries almost nothing there, so a rank-64 readout would add little until DESK's temporal fidelity improves.
+- About 30% of what every change metric counts as "true change" is observer turnover (81% of cells share no observer
+  between epochs). No habitat model should predict it; every ceiling and correlation here is diluted by it.
+- Rank 64 would add little: DESK carries almost nothing in components 25-64. (Half of the measured temporal change
+  sits there, but that share matches the footprint of any diffuse perturbation, so it is not evidence that the
+  24-dim cut discards ecological change.)
 
 OVERTURNED (kept so the corrections are visible)
 - "A change-fitted readout captures 25-29% of species change from community change": spatial interpolation;
@@ -35,10 +40,16 @@ OVERTURNED (kept so the corrections are visible)
 - "The split kernel works through DESK's temporal information": a placebo with no DESK content does as well.
 - "ESK keeps 23% of temporal change because time is small": confounded by a between-route nugget and by
   survey effort; superseded by the route-level measurement above.
+- "DESK's backcast errors are not pulled toward space-for-time analogs" (my first analog test): its direction was
+  ~80% the cell's own quirks; the corrected test shows they are.
+- "Intervals ~3x too narrow": ~2x on a stable floor.
 
 WHAT IT MEANS FOR 1902-1939 (working view)
 - The target is an honest backcast, not maximal or minimal movement: DESK's pre-BBS deviations probably cost more
   than they carry unless heavily shrunk, and the readout needs an explicit error term that it does not have today.
+- Because DESK's backcast error is partly SYSTEMATIC (toward climate-analog places), it will not average out
+  regionally: 1902-1939 habitat would lean toward the habitat of places whose present climate resembles the past
+  -- the over-similarity bias you were worried about.
 - Next decisive check (needs your go): fit the age model under two or three plausible backcasts and see how far
   the inferred vital rates move.
 

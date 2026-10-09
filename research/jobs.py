@@ -135,7 +135,8 @@ def substitute(cmd, out_dir, code_dir, runner_dir=None, env=None):
     snapshot (a job may run code older than research/), {cache} the cache root; then ${VAR} from
     the job environment (e.g. ${HOUFIN_PROCESSED}); a leading "python" is the venv's."""
     sub = {"{out}": str(out_dir), "{code}": str(code_dir), "{cache}": str(paths.CACHE_ROOT),
-           "{runner}": str(runner_dir or code_dir)}
+           "{runner}": str(runner_dir or code_dir), "{python}": paths.VENV_PY,
+           "{outroot}": str(paths.OUT_ROOT)}
     res = []
     for i, a in enumerate(cmd):
         a = str(a)

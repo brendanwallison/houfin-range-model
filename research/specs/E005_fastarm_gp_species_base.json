@@ -2,8 +2,8 @@
   "exp": "E005", "name": "fastarm-gp_species_base", "group": "cpu",
   "after_jobs": ["E002/cache-gp_species_base"],
   "env": {"RESEARCH_EXP": "E005"},
-  "cmd": ["bash", "-c", "set -e; C={cache}/gp_species_base; O={out}; P=python; $P research/exp/fast_arm.py --cache $C --out $O/A0 --tag A0_iso_raw_r24; $P research/exp/fast_arm.py --cache $C --out $O/A1 --features ema --tag A1_iso_ema_r24; $P research/exp/fast_arm.py --cache $C --out $O/A2 --rank 64 --tag A2_iso_raw_r64; $P research/exp/fast_arm.py --cache $C --out $O/A3 --kernel split --tag A3_split_raw_r24; $P research/exp/fast_arm.py --cache $C --out $O/A4 --time-basis 4 --tag A4_iso_raw_r24_tb4; $P research/exp/fast_arm.py --cache $C --out $O/A5 --lag-hl 10 --tag A5_iso_raw_r24_lag10"],
+  "cmd": ["bash", "-c", "set -e; C={cache}/gp_species_base; O={out}; P={python}; $P research/exp/fast_arm.py --cache $C --out $O/A0 --tag A0_iso_raw_r24; $P research/exp/fast_arm.py --cache $C --out $O/A1 --features ema --tag A1_iso_ema_r24; $P research/exp/fast_arm.py --cache $C --out $O/A2 --rank 64 --tag A2_iso_raw_r64; $P research/exp/fast_arm.py --cache $C --out $O/A3 --kernel split --tag A3_split_raw_r24; $P research/exp/fast_arm.py --cache $C --out $O/A4 --time-basis 4 --tag A4_iso_raw_r24_tb4; $P research/exp/fast_arm.py --cache $C --out $O/A5 --lag-hl 10 --tag A5_iso_raw_r24_lag10"],
   "expected_minutes": 20,
-  "summarize": ["bash", "-c", "for a in A0 A1 A2 A3 A4 A5; do python research/exp/fast_arm.py --summarize {out}/$a; done"],
+  "summarize": ["bash", "-c", "for a in A0 A1 A2 A3 A4 A5; do {python} research/exp/fast_arm.py --summarize {out}/$a; done"],
   "note": "pre-registered in research/experiments/E005.md"
 }

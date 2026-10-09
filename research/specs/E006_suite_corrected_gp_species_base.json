@@ -1,8 +1,9 @@
 {
   "exp": "E006", "name": "suite-corrected-gp_species_base", "group": "gpu",
   "overlay": "config/overlays/gp_species_base.json",
+  "after_jobs": ["E001/repro-gpsp-base"],
   "cmd": ["python", "-m", "src.community_encoder.train_DESK.validate_gp_species", "--n-boot", "1000", "--out-dir", "{out}/gp_species"],
   "expected_minutes": 240,
-  "summarize": ["python", "research/exp/compare_reports.py", "{out}/gp_species/report.json", "${HOUFIN_PROCESSED}/sweeps/desk_hp/sweep_t0_f100_base/gp_species/report.json", "--max-rows", "25"],
-  "note": "the audited suite (A1-A8, multi-start scales, bounds) on the same checkpoint: old vs new numbers for the Gate 1 report"
+  "summarize": ["bash", "-c", "{python} research/exp/compare_reports.py {out}/gp_species/report.json $(ls -d {outroot}/E001/repro-gpsp-base-*/gp_species/report.json | head -1) --max-rows 25"],
+  "note": "the audited suite (A1-A8, multi-start scales, bounds) vs the old code's local reproduction on the same data: old-vs-new for the Gate 1 report"
 }

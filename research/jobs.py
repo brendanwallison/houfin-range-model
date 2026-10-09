@@ -261,13 +261,36 @@ def _tail(path, n):
     return lines[-n:]
 
 
+def _pueue_outcome(task_id, tasks):
+    """'success' / 'failed:<why>' / None (not finished) for a pueue task id, from ``status --json``."""
+    t = tasks.get(str(task_id))
+    if not t:
+        return None
+    raw = t.get("status", {})
+    if isinstance(raw, dict) and "Done" in raw:
+        res = raw["Done"].get("result")
+        return "success" if res == "Success" else f"failed:{res}"
+    return None
+
+
 def collect(max_lines=40):
     st = latest_by_job()
     pending = [j for j, s in st.items() if s.get("event") == "queued"]
+    tasks = pueue_status()
     n_done = 0
     for job in sorted(pending):
         s = st[job]
         out = Path(s["out"])
+        outcome = _pueue_outcome(s.get("pueue_id"), tasks)
+        if (outcome and outcome.startswith("failed") and not (out / "DONE.json").exists()
+                and not (out / "FAILED.json").exists()):
+            # killed, or died before the runner could write FAILED.json (e.g. a missing snapshot)
+            append_registry({"event": "failed", "job": job, "exit": None, "reason": outcome})
+            print(f"=== FAILED {job}  (pueue: {outcome}; no runner record)")
+            for line in _tail(out / "log.txt", 10):
+                print("  " + line)
+            n_done += 1
+            continue
         if (out / "DONE.json").exists():
             done = json.loads((out / "DONE.json").read_text())
             spec = json.loads((out / "spec.json").read_text())

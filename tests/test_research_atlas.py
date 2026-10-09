@@ -88,3 +88,8 @@ def test_atlas_recovers_planted_retention_and_desk_attenuation(tmp_path, monkeyp
     assert s["slope_ci"][0] < 1.0 < s["slope_ci"][1]
     share_t = np.array(r["components"]["temporal_share"])
     assert share_t[:4].sum() < 0.05 and share_t[4:].sum() > 0.95
+    # T0 per component: where the change lives (4-7), DESK's planted half-movement reads ~0.5 and the
+    # halves' change is reliable
+    t0 = r["components"]["t0_desk_raw"]
+    assert np.allclose(np.array(t0["desk_slope"])[4:], 0.5, atol=0.1)
+    assert (np.array(t0["reliability"])[4:] > 0.8).all()

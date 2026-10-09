@@ -144,6 +144,21 @@ def stage_table(E, i1, i2, ranks, zd1=None, zd2=None, seed=0):
     return out
 
 
+def component_t0(E, i1, i2, zd1, zd2, r):
+    """T0, per ESK component: split-half reliability of the observed change (corr of the two halves'
+    differences across pairs) and DESK's noise-corrected slope on it. If DESK's under-movement were
+    just MSE-optimal shrinkage toward unreliable targets, slope would track reliability component by
+    component; slopes far below reliability mean DESK shrinks more than the noise justifies."""
+    za, zb = E["z_a"][:, :r], E["z_b"][:, :r]
+    da, db = za[i1] - za[i2], zb[i1] - zb[i2]
+    cross = (da * db).sum(0)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        rel = cross / np.sqrt((da * da).sum(0) * (db * db).sum(0))
+        dd = zd1[:, :r] - zd2[:, :r]
+        slope = (dd * 0.5 * (da + db)).sum(0) / cross
+    return {"reliability": rel.tolist(), "desk_slope": slope.tolist()}
+
+
 def component_energy(E, i1, i2, r):
     za, zb = E["z_a"][:, :r], E["z_b"][:, :r]
     e = ((za[i1] - za[i2]) * (zb[i1] - zb[i2])).sum(0)
@@ -199,6 +214,9 @@ def main():
         if lag == min(a.lags):
             res["components"]["spatial_share"] = component_energy(E, s1, s2, max(ranks)).tolist()
     res["components"]["temporal_share"] = component_energy(E, m_i, e_i, max(ranks)).tolist()
+    for w in ("ema", "raw"):
+        res["components"][f"t0_desk_{w}"] = component_t0(E, e_i[h], m_i[h], desk[w][e_i[h]],
+                                                         desk[w][m_i[h]], max(ranks))
 
     # matched reading: spatial retention as a function of spatial signal size, at the temporal size
     lags = sorted(int(k) for k in res["spatial"] if k.isdigit())

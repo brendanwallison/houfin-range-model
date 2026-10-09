@@ -35,3 +35,8 @@ observer-adjusted change).
 2026-10-09 ~14:30: E010 r1 PASSED (Phase 0.4); r2 segfaulted at epoch 362 (bcba64c8, no resume; watch for recurrence).
 E024 redesigned (DESK cannot withhold its label year 2025 -> "span + 2025"); GPU order: E022 seed (running) -> E024 x3
 (priority) -> E022 x3 -> E006 x2. E023b analyses the span runs (+2025 surrogates for comparison) when they land.
+2026-10-09 ~16:00: GPU memory fixed -- earlier DESK runs reserved 25.6 GB (log "VRAM a/b" = max allocated / reserved)
+and spilled ~4.3 GB into shared system memory; with expandable_segments (paths.job_env, GPU group) the E024 1976-1995 run
+reserves 16.2 GB, no spill, ~6 s/epoch as before. True-span smoke passed (2025 withheld; diagnostic 1976->1995).
+Two void span+2025 runs used the GPU before cancel was fixed: E024/desk-span-plus2025-1976-1995 finished (kept, registry
+says cancelled), 1986-2005 was killed part-way.

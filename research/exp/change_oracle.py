@@ -89,6 +89,8 @@ def main():
     ap.add_argument("--population", default="trained", choices=("trained", "withheld"))
     ap.add_argument("--ranks", type=int, nargs="+", default=(24, 64))
     ap.add_argument("--n-boot", type=int, default=400)
+    ap.add_argument("--species-regex", default=None,
+                    help="grade only dev species whose name matches (planted caches: e.g. '^z_')")
     ap.add_argument("--exp", default=os.environ.get("RESEARCH_EXP", "adhoc"))
     ap.add_argument("--summarize", default=None)
     a = ap.parse_args()
@@ -125,6 +127,9 @@ def main():
     Y = {h: ymean(g) for h, g in (("full", full), ("a", half_a), ("b", half_b))}
     d = {h: Y[h][pairs[:, 1]] - Y[h][pairs[:, 0]] for h in Y}
     keep = (Y["full"][:, :] > 0).any(0)                      # species seen somewhere in the pairs
+    if a.species_regex:
+        import re
+        keep &= np.array([bool(re.search(a.species_regex, s)) for s in meta["dev_species"]])
     d = {h: v[:, keep] for h, v in d.items()}
     Yb = Y["b"][:, keep]
     species = np.asarray(meta["dev_species"])[keep]
@@ -148,18 +153,36 @@ def main():
              "desk_ema": np.load(c("z_ema_all.npy"), mmap_mode="r")}
     ci, y0 = np.load(c("key_cell_index.npy")), int(np.load(c("years.npy"))[0])
     for rank in a.ranks:
+        # PLACEBO: a change-fitted beta on ANY smooth spatial basis can fit "where species changed"
+        # without the features knowing anything about time (planted species whose change is a random
+        # field unrelated to z are captured 17-35% that way). xy = random Fourier features of the
+        # cell's position (300 km), as many as the rank; chg_static = the same regression on the
+        # features' MODERN level instead of their change. chg must beat both to credit the CHANGE.
+        rng = np.random.default_rng(0)
+        xy = cells.astype("float64") * 27.0
+        Rxy = np.sqrt(2.0 / rank) * np.cos(xy @ (rng.normal(size=(2, rank)) / 300.0)
+                                           + rng.uniform(0, 2 * np.pi, rank))
+        m_x = blr.fit(Rxy[tr], d["b"][tr], [(0, rank)])
+        res["arms"][f"xy:chg:r{rank}"] = metrics(blr.predict(m_x, Rxy[ev])[0], d_b_ev, nz_b, blocks,
+                                                 a.n_boot)
         feats = {"esk": (E["z_a"][:, :rank].astype("float64"))}
         for name, za in z_all.items():
             feats[name] = desk_epoch_z(za, ci, y0, keys, full, rank)
         for fname, Fz in feats.items():
             dF = Fz[pairs[:, 1]] - Fz[pairs[:, 0]]
+            Fm = Fz[pairs[:, 1]]
             m_l = blr.fit(Fz[lvl_groups], Yb[lvl_groups], [(0, rank)])
             lvl = dF[ev] @ m_l["coef"].T
             m_c = blr.fit(dF[tr], d["b"][tr], [(0, rank)])
             chg, _ = blr.predict(m_c, dF[ev])
             chg_dev = (dF[ev] - m_c["xbar"]) @ m_c["coef"].T
+            m_s = blr.fit(Fm[tr], d["b"][tr], [(0, rank)])
+            static, _ = blr.predict(m_s, Fm[ev])
+            both_x = np.hstack([dF, Fm])
+            m_b = blr.fit(both_x[tr], d["b"][tr], [(0, rank), (rank, 2 * rank)])
+            both, _ = blr.predict(m_b, both_x[ev])
             for arm, dp in (("lvl", lvl), ("lvl+trend", lvl + trend), ("chg", chg),
-                            ("chg_dev", chg_dev)):
+                            ("chg_dev", chg_dev), ("chg_static", static), ("chg+static", both)):
                 res["arms"][f"{fname}:{arm}:r{rank}"] = metrics(dp, d_b_ev, nz_b, blocks, a.n_boot)
             ledger.log_eval(a.exp, f"change_oracle/{fname}/r{rank}", a.population, "dev",
                             int(nz["resolvable"].sum()), "")

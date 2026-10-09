@@ -1,0 +1,8 @@
+{
+  "exp": "E011", "name": "change-oracle-planted-z", "group": "cpu",
+  "env": {"RESEARCH_EXP": "E011"},
+  "cmd": ["bash", "-c", "set -e; for g in z spacetime mix_0.6 mix_0; do {python} research/exp/change_oracle.py --cache {cache}/planted_v2_tempho1995 --out {out}/$g --population withheld --ranks 24 --species-regex \"^${g}_\" > /dev/null; done"],
+  "expected_minutes": 12,
+  "summarize": ["bash", "-c", "for g in z spacetime mix_0.6 mix_0; do echo \"== $g\"; {python} research/exp/change_oracle.py --summarize {out}/$g; done"],
+  "note": "verification (a) for E011: the oracle and its placebos on planted species with known generators"
+}

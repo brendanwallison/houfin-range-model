@@ -76,12 +76,22 @@ def features(c, args):
     z_nc = z_all[:, mod].mean(1)[ci]                               # cell's modern-epoch mean z
     ref = (years >= args.ref_window[0]) & (years <= args.ref_window[1])
     zbar = z_all[:, ref].mean(1)[ci]
+    split = lambda Z, Zb: (np.hstack([Zb, Z - Zb]), [(0, Z.shape[1]), (Z.shape[1], 2 * Z.shape[1])])
     blocks_of = {"iso": lambda Z, Zb: (Z, [(0, Z.shape[1])]),
-                 "split": lambda Z, Zb: (np.hstack([Zb, Z - Zb]),
-                                         [(0, Z.shape[1]), (Z.shape[1], 2 * Z.shape[1])]),
-                 "ard": lambda Z, Zb: (Z, [(j, j + 1) for j in range(Z.shape[1])])}
+                 "split": split,
+                 "ard": lambda Z, Zb: (Z, [(j, j + 1) for j in range(Z.shape[1])]),
+                 "placebo": lambda Z, Zb: (Zb, [(0, Z.shape[1])]),     # zbar + the placebo block
+                 "split+placebo": split}                                 # zbar + dz + the placebo block
     X, blocks = blocks_of[args.kernel](z, zbar)
     Xnc, _ = blocks_of[args.kernel](z_nc, zbar)
+    if args.kernel in ("placebo", "split+placebo"):
+        # PLACEBO deviation block with no DESK content: smooth position fields x linear time, fitted
+        # in the trained years and extrapolated back exactly as a dz block would be. If it does as well
+        # as DESK's dz, the backcast gain is regional TRENDS, not DESK's temporal information (B8).
+        P_t, P_nc = placebo_block(keys, args.rank, args.placebo_ls)
+        p = X.shape[1]
+        X, Xnc = np.hstack([X, P_t]), np.hstack([Xnc, P_nc])
+        blocks = blocks + [(p, p + P_t.shape[1])]
     if args.time_basis > 0:
         T = time_basis(keys[:, 2], args.time_basis)
         p = X.shape[1]
@@ -91,6 +101,17 @@ def features(c, args):
         Xnc = np.hstack([Xnc, T])
         blocks = blocks + [(p, p + T.shape[1])]
     return X, Xnc, blocks
+
+
+def placebo_block(keys, n, ls_km, cell_km=27.0, t_mid=2010.5, t_span=30.0, seed=0):
+    """``n`` random Fourier position fields (length scale ``ls_km``) times scaled year, at every key; and
+    the same with the year held at the modern epoch's mean (2015), so the no-change predictor stays
+    no-change. Pure."""
+    rng = np.random.default_rng(seed)
+    xy = np.asarray(keys[:, :2], "float64") * cell_km
+    R = np.sqrt(2.0 / n) * np.cos(xy @ (rng.normal(size=(2, n)) / ls_km) + rng.uniform(0, 2 * np.pi, n))
+    t = (np.asarray(keys[:, 2], "float64") - t_mid) / t_span
+    return R * t[:, None], R * ((2015.0 - t_mid) / t_span)
 
 
 def time_basis(years, k, lo=1902, hi=2025):
@@ -155,7 +176,8 @@ def main():
     ap.add_argument("--out")
     ap.add_argument("--features", default="raw", choices=("raw", "ema"))
     ap.add_argument("--rank", type=int, default=24)
-    ap.add_argument("--kernel", default="iso", choices=("iso", "split", "ard"))
+    ap.add_argument("--kernel", default="iso", choices=("iso", "split", "ard", "placebo", "split+placebo"))
+    ap.add_argument("--placebo-ls", type=float, default=400.0, help="placebo position fields, km (B8)")
     ap.add_argument("--ref-window", type=int, nargs=2, default=(1996, 2025))
     ap.add_argument("--time-basis", type=int, default=0)
     ap.add_argument("--lag-hl", type=float, default=0.0)
@@ -212,11 +234,12 @@ def main():
     Yte, g_te, bid = Y[te], group[te], sp["block_id"][te]
     res = {"cache": a.cache, "tag": a.tag, "features": a.features, "rank": a.rank,
            "kernel": a.kernel, "ref_window": list(a.ref_window), "time_basis": a.time_basis,
-           "lag_hl": a.lag_hl, "n_species": int(Y.shape[1]), "withheld": withheld,
+           "lag_hl": a.lag_hl, "placebo_ls": a.placebo_ls if "placebo" in a.kernel else None,
+           "n_species": int(Y.shape[1]), "withheld": withheld,
            "block_amplitude_medians": [float(np.median(model["a"][model["ok"], b]))
                                        for b in range(model["a"].shape[1])],
            "noise_median": float(np.median(model["v"][model["ok"]])), "level": {}, "change": {}}
-    per = {"species": species}
+    per = {"species": species, "prevalence": prevalence}           # training-row detection share
 
     for g, gname in GROUPS.items():
         sel = np.where(g_te == g)[0]

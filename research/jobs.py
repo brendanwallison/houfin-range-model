@@ -48,12 +48,13 @@ def now():
     return _dt.datetime.now().astimezone().isoformat(timespec="seconds")
 
 
-def git(*args, check=True):
+def git(*args, check=True, strip=True):
     out = subprocess.run(["git", "-c", "core.autocrlf=true", "-C", paths.REPO, *args],
                          capture_output=True, text=True)
     if check and out.returncode != 0:
         raise SystemExit(f"git {' '.join(args)} failed: {out.stderr.strip()}")
-    return out.stdout.strip()
+    # porcelain status lines START with a significant space (" M path"): never strip those
+    return out.stdout.strip() if strip else out.stdout
 
 
 def eval_version():
@@ -117,7 +118,7 @@ def resolve_sha(spec_sha):
     if spec_sha:
         return git("rev-parse", "--verify", f"{spec_sha}^{{commit}}")
     dirty = "\n".join(line for line in git("status", "--porcelain", "--untracked-files=no").splitlines()
-                      if not line[3:].startswith(STATE_FILES))
+                      if line.strip() and not line[3:].startswith(STATE_FILES))
     if dirty:
         raise SystemExit("tracked files are modified; commit (the pre-registration) before enqueue:\n"
                          + dirty)

@@ -15,9 +15,18 @@ LEDGER = paths.RESEARCH / "ledger.csv"
 FIELDS = ["ts", "exp", "question", "split", "species_set", "n_species", "note"]
 
 
+def _path():
+    """``RESEARCH_LEDGER`` redirects it (tests do): the module is imported under two names (``lib.ledger``
+    from research/exp scripts, ``research.lib.ledger`` from tests), so patching one attribute misses the
+    other and test runs leaked into the real ledger."""
+    import pathlib
+    return pathlib.Path(os.environ.get("RESEARCH_LEDGER") or LEDGER)
+
+
 def log_eval(exp, question, split, species_set, n_species, note=""):
-    new = not LEDGER.exists()
-    with open(LEDGER, "a", newline="", encoding="utf-8") as fh:
+    path = _path()
+    new = not path.exists()
+    with open(path, "a", newline="", encoding="utf-8") as fh:
         w = csv.DictWriter(fh, FIELDS, lineterminator="\n")
         if new:
             w.writeheader()
@@ -27,9 +36,10 @@ def log_eval(exp, question, split, species_set, n_species, note=""):
 
 
 def count(question):
-    if not LEDGER.exists():
+    path = _path()
+    if not path.exists():
         return 0
-    with open(LEDGER, encoding="utf-8") as fh:
+    with open(path, encoding="utf-8") as fh:
         return sum(1 for r in csv.DictReader(fh) if r["question"] == question)
 
 

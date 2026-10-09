@@ -49,8 +49,8 @@ def make_cache(root, n_side=18, years=range(1966, 2026, 2), L=8, n_dev=8, withhe
 def _run(monkeypatch, cache, out, *extra):
     sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "research", "exp"))
     import fast_arm
-    from research.lib import ledger
-    monkeypatch.setattr(ledger, "LEDGER", __import__("pathlib").Path(out) / "ledger.csv")
+    # the env var, not a module attribute: the ledger is imported as lib.ledger by the scripts
+    monkeypatch.setenv("RESEARCH_LEDGER", os.path.join(os.path.dirname(out), "ledger.csv"))
     monkeypatch.setattr(sys, "argv", ["fast_arm", "--cache", cache, "--out", out, "--n-boot",
                                       "50", "--rank", "8", *extra])
     fast_arm.main()

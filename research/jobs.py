@@ -117,7 +117,8 @@ STATE_FILES = ("research/registry.jsonl", "research/ledger.csv", "research/STATE
 def resolve_sha(spec_sha):
     if spec_sha:
         return git("rev-parse", "--verify", f"{spec_sha}^{{commit}}")
-    dirty = "\n".join(line for line in git("status", "--porcelain", "--untracked-files=no").splitlines()
+    dirty = "\n".join(line for line in git("status", "--porcelain", "--untracked-files=no",
+                                            strip=False).splitlines()
                       if line.strip() and not line[3:].startswith(STATE_FILES))
     if dirty:
         raise SystemExit("tracked files are modified; commit (the pre-registration) before enqueue:\n"

@@ -32,3 +32,6 @@ Mitigations (recalibration, static habitat + reach-dependent uncertainty) are fa
 comes last. Next: E023 span x reach (rung 1: does more training history help at a FIXED reach? the tempho models
 confound span and reach), then lags (S3), temporal supervision in DESK (T1), and the scoreable target (coherent,
 observer-adjusted change).
+2026-10-09 ~14:30: E010 r1 PASSED (Phase 0.4); r2 segfaulted at epoch 362 (bcba64c8, no resume; watch for recurrence).
+E024 redesigned (DESK cannot withhold its label year 2025 -> "span + 2025"); GPU order: E022 seed (running) -> E024 x3
+(priority) -> E022 x3 -> E006 x2. E023b analyses the span runs (+2025 surrogates for comparison) when they land.

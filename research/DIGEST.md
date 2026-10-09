@@ -1,5 +1,17 @@
 # DIGEST (newest first)
 
+## 2026-10-09 ~09:40: GATE 0 (reproduction and timing)
+- Reproduction: DESK, the spacetime GP, no-change and the oracle reproduce TACC's reports (base 76/77 medians
+  SAME or within CI; tempho1995 173/198, every miss in the covariate-GP baseline). The covariate GP's ARD
+  shape fit is fragile across machines (different optimizer terminations; ~0.04 level skill) -- new defect
+  A13. The three concerns are reproducible; DESK-vs-covariate-GP is not, until A13 is fixed.
+- Timing: full suite 38 / 58 min locally vs ~3 h on TACC; a research cache ~60 s; readout arms 3-9 s;
+  route-level variogram 18 s; DESK training reproduction (E010) queued behind the corrected suite.
+- R1 measured directly (E014, replicated): ESK keeps the regionally coherent part of a 40-y change as well
+  as structured spatial differences; it drops route-level idiosyncrasy. Strong form not supported.
+- E016 (development run): covariate->community coefficients learned ACROSS space predict none of the
+  temporal community change; within-cell coefficients predict it as well as DESK, better calibrated.
+
 ## 2026-10-09 ~09:00: the skeptic's review (verification step d) overturns three of the morning's readings
 - R1 is OPEN again. Adjacent-cell pairs are different routes; temporal pairs mostly the same route. The
   spatial curve carries a between-route nugget (fits: 35% of the lag-1 difference, up to 70%) that ESK

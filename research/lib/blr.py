@@ -74,6 +74,7 @@ def fit(X, Y, blocks, max_iter=300, starts=STARTS):
     # mean prior variance contributed per unit amplitude, per block (kappa_b)
     kap = np.array([np.trace((Xc[:, s:e].T @ Xc[:, s:e])) / max(n - 1, 1) for s, e in blocks])
     lo = np.log(floor)
+    hi_a = np.log(1e6 * max(float(var_y.max()), 1e-14) / np.maximum(kap, 1e-12))
 
     def run(x0):
         def f(x):
@@ -86,7 +87,10 @@ def fit(X, Y, blocks, max_iter=300, starts=STARTS):
             return float(tot.detach()), g.reshape(-1)
         bnds = []
         for s in range(S):
-            bnds += [(lo[s], 30.0)] * B + [(lo[s], 30.0)]
+            # a block's prior variance per coefficient is capped at 1e6 x "explains all the variance":
+            # unbounded, L-BFGS-B can step to a ~ e^30, and with collinear features (302 covariate
+            # channels have rank ~255) X'X/v + diag(1/a) then fails Cholesky in float64
+            bnds += [(lo[s], max(lo[s] + 1.0, hi_a[b])) for b in range(B)] + [(lo[s], 30.0)]
         res = minimize(f, x0.reshape(-1), jac=True, method="L-BFGS-B", bounds=bnds,
                        options={"maxiter": int(max_iter)})
         th = res.x.reshape(S, B + 1)

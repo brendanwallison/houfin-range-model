@@ -382,13 +382,28 @@ def cancel(job_prefix, reason):
         raise SystemExit(f"cancel: {len(hits)} queued jobs match {job_prefix!r}: {hits}")
     job = hits[0]
     tid = str(st[job].get("pueue_id"))
-    t = pueue_status().get(tid, {})
-    raw = t.get("status", {})
+    tasks = pueue_status()
+    raw = tasks.get(tid, {}).get("status", {})
     state = raw if isinstance(raw, str) else next(iter(raw), "")
+    # pueue refuses to remove a task another task depends on, and a queued task can start between a kill of its
+    # predecessor and its own removal -- so act, then VERIFY, and fail loudly rather than record a cancel that did
+    # not happen (2026-10-09: two "cancelled" runs went on to use the GPU).
+    deps = [i for i, t in tasks.items() if int(tid) in (t.get("dependencies") or [])
+            and not (isinstance(t.get("status"), dict) and "Done" in t["status"])]
+    if deps:
+        raise SystemExit(f"cancel: pueue task {tid} has live dependants {deps}; cancel those jobs first")
     if state == "Running":
         subprocess.run([paths.PUEUE, "kill", tid], check=False)
     elif state in ("Queued", "Stashed", "Paused"):
         subprocess.run([paths.PUEUE, "remove", tid], check=False)
+        after = pueue_status().get(tid)
+        if after and not (isinstance(after.get("status"), dict) and "Done" in after["status"]):
+            a_raw = after.get("status")
+            a_state = a_raw if isinstance(a_raw, str) else next(iter(a_raw), "")
+            if a_state == "Running":                    # it started meanwhile
+                subprocess.run([paths.PUEUE, "kill", tid], check=False)
+            else:
+                raise SystemExit(f"cancel: pueue task {tid} is still {a_state}; not recording a cancel")
     append_registry({"event": "cancelled", "job": job, "pueue_id": tid, "reason": reason})
     print(f"[jobs] cancelled {job} (pueue task {tid}, was {state or 'unknown'}): {reason}")
 

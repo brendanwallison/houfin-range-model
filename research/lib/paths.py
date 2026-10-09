@@ -45,6 +45,11 @@ def job_env(group="default", code_dir=None, overlay=None, extra=None):
     if group == "cpu":
         # gp_kernels.knn_union defaults to CUDA; a CPU-slot job must not contend for the one GPU.
         env["CUDA_VISIBLE_DEVICES"] = ""
+    else:
+        # The caching allocator grew a DESK run to ~26 GB (21.7 dedicated + 4.3 SHARED system memory, via the Windows
+        # driver's sysmem fallback) while its live tensors peaked at 15.3 GB; on TACC's 16 GB card the same code fit.
+        # Expandable segments keep the reserved pool close to what is live, so it stays in VRAM (2026-10-09).
+        env.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
     if overlay:
         env["ESK_DESK_CONFIG"] = overlay if os.path.isabs(overlay) else f"{code_dir}/{overlay}"
     if extra:

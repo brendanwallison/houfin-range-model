@@ -130,13 +130,20 @@ def cfg_hash(spec, sha):
     return hashlib.sha256(json.dumps(key, sort_keys=True).encode()).hexdigest()[:12]
 
 
-def substitute(cmd, out_dir, code_dir):
-    sub = {"{out}": str(out_dir), "{code}": str(code_dir), "{cache}": str(paths.CACHE_ROOT)}
+def substitute(cmd, out_dir, code_dir, runner_dir=None, env=None):
+    """Placeholders: {out} job dir, {code} the job's code snapshot, {runner} the research-tools
+    snapshot (a job may run code older than research/), {cache} the cache root; then ${VAR} from
+    the job environment (e.g. ${HOUFIN_PROCESSED}); a leading "python" is the venv's."""
+    sub = {"{out}": str(out_dir), "{code}": str(code_dir), "{cache}": str(paths.CACHE_ROOT),
+           "{runner}": str(runner_dir or code_dir)}
     res = []
     for i, a in enumerate(cmd):
         a = str(a)
         for k, v in sub.items():
             a = a.replace(k, v)
+        if env is not None and "$" in a:
+            import string
+            a = string.Template(a).safe_substitute(env)
         res.append(paths.VENV_PY if (i == 0 and a == "python") else a)
     return res
 
@@ -208,7 +215,7 @@ def run(out_dir):
     spec = json.loads((out / "spec.json").read_text())
     code = snapshot(spec["sha"])
     env = paths.job_env(spec["group"], str(code), spec.get("overlay"), spec.get("env"))
-    cmd = substitute(spec["cmd"], out, code)
+    cmd = substitute(spec["cmd"], out, code, snapshot(spec["runner_sha"]), env)
     atomic_json(out / "RUNNING.json", {"started_at": now(), "pid": os.getpid(), "cmd": cmd})
     t0 = _dt.datetime.now()
     with open(out / "log.txt", "w") as log:
@@ -253,7 +260,7 @@ def collect(max_lines=40):
             if spec.get("summarize"):
                 code = snapshot(spec["sha"])
                 env = paths.job_env("cpu", str(code), spec.get("overlay"), spec.get("env"))
-                r = subprocess.run(substitute(spec["summarize"], out, code), cwd=str(code), env=env,
+                r = subprocess.run(substitute(spec["summarize"], out, code, snapshot(spec["runner_sha"]), env), cwd=str(code), env=env,
                                    capture_output=True, text=True)
                 summary = (r.stdout + (r.stderr if r.returncode else "")).splitlines()
                 (out / "summary.txt").write_text("\n".join(summary) + "\n")

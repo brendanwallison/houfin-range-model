@@ -1,0 +1,9 @@
+{
+  "exp": "E000",
+  "name": "pytest-baseline",
+  "group": "cpu",
+  "cmd": ["python", "-m", "pytest", "-q", "-p", "no:cacheprovider", "--durations=25", "-rfE", "tests"],
+  "expected_minutes": 30,
+  "summarize": ["bash", "-c", "grep -E '^(FAILED|ERROR)|passed|failed|^[0-9.]+s (call|setup)' {out}/log.txt | head -45"],
+  "note": "data-free test suite on the research branch, threads capped (the uncapped run spawned 229 threads)"
+}

@@ -27,8 +27,9 @@ STARTS = (0.5, 0.1, 0.9)
 
 
 def _torch():
+    # Never torch.set_default_dtype here: it is process-wide, and setting float64 broke an unrelated
+    # float32 model later in the same test run. Every tensor below takes its dtype explicitly.
     import torch
-    torch.set_default_dtype(torch.float64)
     return torch
 
 
@@ -130,7 +131,7 @@ def predict(model, Xn, y_self=None, chunk=16, device=None):
     mean = Xc @ torch.as_tensor(model["coef"].T, device=dev) + torch.as_tensor(model["ybar"],
                                                                             device=dev)
     S = model["coef"].shape[0]
-    quad = torch.empty((Xc.shape[0], S), device=dev)
+    quad = torch.empty((Xc.shape[0], S), device=dev, dtype=torch.float64)
     for s0 in range(0, S, chunk):
         Ai = torch.as_tensor(model["Ainv"][s0:s0 + chunk], device=dev)        # (c, p, p)
         quad[:, s0:s0 + chunk] = torch.einsum("mp,cpq,mq->mc", Xc, Ai, Xc)

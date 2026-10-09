@@ -1,5 +1,24 @@
 # DIGEST (newest first)
 
+## 2026-10-09 morning: first real-data results (ALL UNVERIFIED -- they steer, they do not conclude)
+- Size, not direction (R1, E004): a cell's 40-year community change (1966-86 -> 2005-25) is smaller than the
+  difference between adjacent 27-km cells. ESK r24 keeps 23% of it, and the same 23% of adjacent-cell
+  differences; r64 keeps 39% of both. Truncation drops small differences, temporal or spatial alike.
+- DESK (held-out cells, r24): its temporal change correlates 0.49 with the truth (slope 0.36) in trained
+  years and 0.30 (slope 0.20) into withheld decades (tempho1995). Small spatial differences fare no better
+  (adjacent cells: slope 0.18, corr 0.30). Given its correlation, DESK moves MORE than a calibrated
+  predictor would, so "under-moves 2-4x" looks like the wrong diagnosis; the limit is information.
+- The age-model readout (BLR, raw z r24, iid prior; E005) captures ~0 of resolvable dev-species change, and
+  into withheld decades is significantly worse than no change (-0.016 [-0.029, -0.008]).
+- The readout FORM looks like the larger loss (E011 development run): a beta fitted on LEVELS captures
+  4-10% of available species change (negative into withheld decades); a beta fitted on CHANGE captures
+  25-29% from the same features, and DESK's backcast change does as well as the observed community's. New
+  hypotheses B7 (space-for-time at the readout) and D0 (DESK's information is not the first bottleneck).
+- Route turnover inflates the change budget by ~3% (dev species), so it is not a major factor (O3).
+- Planted pilot: even a perfect-form readout shows change attenuation 0.2-0.75 depending on prevalence;
+  below 10% prevalence the true change is <3% of the observed change variance (E1). E009 adds power.
+- Queued: E009 planted v2, E011 change oracle x4, E010 DESK reproduction x2 (bcba64c8, ~100 min each).
+
 ## 2026-10-09 (data landed)
 - TACC artifacts transferred and verified: 880 processed files (27 GB on TACC; history_vectors excluded)
   and 93 raw files (BBS 2026 release, AVONET, masks), every one matching its TACC sha256.

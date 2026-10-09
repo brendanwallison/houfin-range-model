@@ -66,7 +66,7 @@ def main():
         d_true = (np.log1p(epoch_mean(L, d["modern_rows"], d["modern_ptr"]))
                   - np.log1p(epoch_mean(L, d["early_rows"], d["early_ptr"])))
         dp, dfull = d["dp_model"], d["d_full"]
-        static = d_true.std(0) < 1e-9 * np.maximum(np.abs(d_true).mean(0), 1e-12)
+        static = d_true.std(0) < 1e-9        # absolute: real changes are 1e-3..1 on this log scale
         d_true[:, static] = np.nan                                   # mix_0: no true change to grade
         per[f"att_true_{sname}"] = slope(dp, d_true)
         per[f"corr_true_{sname}"] = [np.corrcoef(dp[:, j], d_true[:, j])[0, 1]

@@ -1,8 +1,14 @@
-Phase 0. DATA LANDED 2026-10-09 (880 processed + 93 raw files, all sha256 OK); cold copy to /mnt/e/Datasets/houfin running.
-Queued 18 jobs (pueue 7-24): caches -> ESK projection -> atlas | fast arm | planted | route ceiling;
-E001 reproduction runs ef7b6a2 (every TACC gp_species report predates 86acde3: no species_mode key).
-DUE: watch the first real-data runs of cache.py / esk_project.py / fast_arm.py / atlas.py for breakage.
-Gate 0 report when E001 (both) + E002 (base, tempho1995) are done: reproduction verdict + timings.
+Phase 0 (gate 0 pending) with Phase 1 experiments running on cached arrays. Data landed and verified 2026-10-09.
+GATE 0 DUE when E001 base + tempho1995 finish (~08:59 / ~10:15): compare_reports verdicts + timings to the user,
+with the morning's (unverified) results as a preview.
+Live questions (UNVERIFIED leads, see DIGEST 2026-10-09 morning):
+- B7: is the readout's level-fitted beta the main loss of change? E011 x4 queued (1975/1985 pre-registered).
+  If yes -> E012: does a temporal beta learned INSIDE the trained era transfer to withheld decades?
+- D0: DESK backcast change ~ observed community change for the species readout (half-window comparator is
+  noisy -- needs an errors-in-variables-corrected comparator before it can conclude).
+- E1/readout ceiling by prevalence: E009 (planted v2) running.
+Verification debt (none of the above is a FINDING yet): E004 atlas (b) re-derivation, (c) second split,
+(d) skeptic; E011 the same once the jobs land.
+Then: E010 DESK reproduction (GPU, after E006) = Phase 0.4 gate.
 TACC baseline (old suite, A1-diluted): out-of-community primary change skill base +0.0002 (401 spp),
 tempho1975 -0.0007, 1985 -0.0037, 1995 -0.0100; community mode +0.0086/+0.0108/+0.0017/-0.0036 (~91 spp).
-Phase 0.4 DESK rerun: overlay from sweeps/desk_hp/overlays (+ sweep_manifest.json); output to a NEW dir.

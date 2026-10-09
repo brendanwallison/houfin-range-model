@@ -1,9 +1,8 @@
-Phase 0 (local port). Built and tested: env, queue, runner, tick, protocol, register, audited GP suite
-(A1-A8 + multi-start/bounds), DESK resume + A9, cache, ESK projection, fast arm, atlas, planted generator.
-WAITING ON USER: /work symlink (sudo) + TACC transfer (plan Phase 0.2).
-When data lands (DUE: immediately): sha256 -c, cold copy to /mnt/e/Datasets/houfin, then enqueue in order:
-  E001 repro (base, tempho1995) | E002 caches (4) -> E003 esk -> E004 atlas | E005 fast arm | E007 planted
-  E006 corrected suite (after E001) | E008 route ceiling (O3). Gate 0 report when E001 + E002 finish.
-Live questions: does the local run reproduce TACC? where does temporal signal leave (E004)? is the
-downstream readout itself a lever (E005)?
-Phase 0.4 DESK rerun: reproduce sweep_t0_f100_base from its generated overlay (scripts/sweep/generate_overlays.py make_overlay; look in the transferred sweeps/desk_hp/ for the overlay/manifest), output to a NEW dir, 2 seeds; must land within the 6.6% seed floor of the TACC run.
+Phase 0. DATA LANDED 2026-10-09 (880 processed + 93 raw files, all sha256 OK); cold copy to /mnt/e/Datasets/houfin running.
+Queued 18 jobs (pueue 7-24): caches -> ESK projection -> atlas | fast arm | planted | route ceiling;
+E001 reproduction runs ef7b6a2 (every TACC gp_species report predates 86acde3: no species_mode key).
+DUE: watch the first real-data runs of cache.py / esk_project.py / fast_arm.py / atlas.py for breakage.
+Gate 0 report when E001 (both) + E002 (base, tempho1995) are done: reproduction verdict + timings.
+TACC baseline (old suite, A1-diluted): out-of-community primary change skill base +0.0002 (401 spp),
+tempho1975 -0.0007, 1985 -0.0037, 1995 -0.0100; community mode +0.0086/+0.0108/+0.0017/-0.0036 (~91 spp).
+Phase 0.4 DESK rerun: overlay from sweeps/desk_hp/overlays (+ sweep_manifest.json); output to a NEW dir.

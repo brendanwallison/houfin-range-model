@@ -26,3 +26,9 @@ spacetime_sum shape fit also took 51 min and ended ABNORMAL with ls_change at th
 component) -- inspect report.json baseline_shapes when the re-run lands; the honest temporal rival may need a
 better-posed fit (A5b). GPU order: E010 r1/r2 (DESK reproduction gate) -> E022 x4 seeds (only if E010 r1 passes) ->
 E006 base/tempho1995. CPU: E019b after the seeds; E018b/c, E021 replications.
+2026-10-09 late (user): the loop had drifted into mitigation mode and treated the age-model sensitivity fit as next.
+Re-oriented: the program is iterative exploration of what limits extrapolation in time and what would extend it.
+Mitigations (recalibration, static habitat + reach-dependent uncertainty) are fallbacks, not the plan; the rung-5 fit
+comes last. Next: E023 span x reach (rung 1: does more training history help at a FIXED reach? the tempho models
+confound span and reach), then lags (S3), temporal supervision in DESK (T1), and the scoreable target (coherent,
+observer-adjusted change).

@@ -57,18 +57,24 @@ OVERTURNED (kept so the corrections are visible)
   is a regional trend extrapolator (a position x year placebo does as well); its better calibration was the
   recalibration step, which works on DESK too. Withdrawn as a DESK-side lever.
 
-WHAT IT MEANS FOR 1902-1939 (working view)
-- The target is an honest backcast, not maximal or minimal movement: DESK's pre-BBS deviations probably cost more
-  than they carry unless heavily shrunk, and the readout needs an explicit error term that it does not have today.
-- Because DESK's backcast error is partly SYSTEMATIC (toward climate-analog places), it will not average out
-  regionally: 1902-1939 habitat would lean toward the habitat of places whose present climate resembles the past
-  -- the over-similarity bias you were worried about.
-- Little of the decadal change we can score is covariate-driven beyond regional trends (the drivers are mostly not
-  in the covariates, or act on lags the covariates cannot carry -- your point 3). Every candidate backcast for
-  1902-1939 (DESK, a within-cell map, trend persistence) amounts to extrapolating 1966-2025 trends backward.
-- Cheap and supported: recalibrate DESK's temporal deviations on its trained years before the readout sees them.
-- Next decisive check (needs your go): fit the age model under two or three plausible backcasts and see how far
-  the inferred vital rates move.
+WHAT THIS DOES AND DOES NOT TELL US
+- Everything above characterizes the CURRENT DESK and a few linear surrogates on 30-50-year training spans. It is a
+  diagnosis of where today's system loses temporal signal, not a limit on how well extrapolation in time can work.
+- Worth knowing now: DESK's backcast error is partly systematic (toward climate-analog places), so it would not
+  average out regionally -- the over-similarity bias you raised.
+- Fallbacks to keep in view, NOT the plan: recalibrating DESK's temporal deviations on its trained years; holding
+  pre-BBS habitat near its BBS-era state with uncertainty that grows with reach.
+
+OPEN QUESTIONS (the plan: what limits extrapolation in time, and what would extend it)
+1. Training span vs reach. The tempho models confound them (30-50 training years; longer reach always means fewer
+   years); production trains on 60. Does more training history improve a backcast at a FIXED reach? E023 (cheap
+   surrogates, a span x reach grid), then DESK runs on matched spans if it matters.
+2. Lags (your point 3): does covariate history at several timescales carry temporal signal beyond regional trends,
+   where one global 10-year EMA does not?
+3. Temporal supervision: would DESK trained with temporal objectives extract more than trend persistence? (Its loss
+   is ~90% a spatial stability term, with almost no same-cell cross-year pairs.)
+4. The scoreable target: grade against the regionally coherent, observer-adjusted part of change, not the total.
+The age-model sensitivity fit comes last, once there are candidate backcasts worth comparing.
 
 ---- dated log (newest first) ----
 

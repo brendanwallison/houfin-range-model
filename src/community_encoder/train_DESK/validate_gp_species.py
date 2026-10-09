@@ -1132,6 +1132,17 @@ def run(config=None, out_dir=None, n_boot=1000, seed=0, opts=None):
     # held-out blocks. Not a data-poverty filter: one training detection is enough to stay in.
     det_all = (Y_eval[tr_rows] > 0).sum(0)
     keep_sp = det_all > 0
+    # A FIXED species set (A7): each tempho run filters on its OWN training years, so without a
+    # shared list three runs grade three different populations and a cross-run decay curve mixes
+    # them. Listed species that a run cannot grade (no training detection) are reported, not
+    # silently replaced.
+    fixed = opts.get("species_codes")
+    not_gradable = []
+    if fixed is not None:
+        fixed = [str(c) for c in fixed]
+        listed = np.isin(np.asarray(layout["evaluation"]), fixed)
+        not_gradable = [c for c, l, k in zip(layout["evaluation"], listed, keep_sp) if l and not k]
+        keep_sp = keep_sp & listed
     dropped_species = [c for c, k in zip(layout["evaluation"], keep_sp) if not k]
     Y_eval = Y_eval[:, keep_sp]
     layout = {**layout, "evaluation": [c for c, k in zip(layout["evaluation"], keep_sp) if k]}
@@ -1206,6 +1217,9 @@ def run(config=None, out_dir=None, n_boot=1000, seed=0, opts=None):
                     **{GROUPS[g]: int((row_group == g).sum()) for g in GROUPS}},
            "dropped_zero_training_detections": {"n": len(dropped_species),
                                                 "species": dropped_species},
+           "fixed_species_list": ({"n_listed": len(fixed), "n_graded": int(keep_sp.sum()),
+                                   "listed_but_not_gradable": not_gradable}
+                                  if fixed is not None else None),
            "pooled_priors": {k: v["prior"] for k, v in fits.items() if "prior" in v},
            "baseline_shapes": {k: shape_summary(v) for k, v in fits.items() if "theta" in v},
            "primary": {}, "change": {}, "change_all_defined": {}, "level": {},
@@ -1520,6 +1534,9 @@ def main():
                          "to <run>/gp_species_community")
     ap.add_argument("--thin", default="0.3,0.1,0.03",
                     help="training fractions for the data-poor arm; 'none' to skip")
+    ap.add_argument("--species-list", default=None,
+                    help="file of species codes (one per line) to grade, the SAME across runs "
+                         "that are compared (e.g. the three tempho overlays)")
     args = ap.parse_args()
     opts = {"baselines": not args.no_baselines, "pooled": not args.no_pooled,
             "n_fit": args.n_fit,
@@ -1528,6 +1545,9 @@ def main():
             "k_max": args.k_max, "species": args.species,
             "thin": (() if args.thin.strip().lower() in ("", "none", "0")
                      else tuple(float(f) for f in args.thin.split(",") if f))}
+    if args.species_list:
+        with open(args.species_list, encoding="utf-8") as fh:
+            opts["species_codes"] = [ln.strip() for ln in fh if ln.strip() and not ln.startswith("#")]
     run(out_dir=args.out_dir, n_boot=args.n_boot, seed=args.seed, opts=opts)
 
 

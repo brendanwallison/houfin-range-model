@@ -257,7 +257,8 @@ def test_layout_refuses_focal_species_inside_the_community():
 
 # ----------------------------- end to end, with I/O mocked -----------------------------
 
-def _synthetic_run(tmp_path, monkeypatch, withheld=(), common=(), n_comm=2, species=None):
+def _synthetic_run(tmp_path, monkeypatch, withheld=(), common=(), n_comm=2, species=None,
+                   extra_opts=None):
     """The orchestration in ``run`` -- splits, encode bookkeeping, every predictor, the report
     and the saved tables -- on a synthetic grid where half the species are readouts of z."""
     from src.community_encoder.train_DESK import validate_bbs_routes as vbr
@@ -323,7 +324,7 @@ def _synthetic_run(tmp_path, monkeypatch, withheld=(), common=(), n_comm=2, spec
     rep = vgs.run(cfg, out_dir=str(tmp_path / "out"), n_boot=50,
                   opts={"cell_km": 27.0, "n_fit": 400, "shape_iters": 15, "k_nn": (16, 4),
                         "k_max": 800, "thin": (0.3,),
-                        **({"species": species} if species else {})})
+                        **({"species": species} if species else {}), **(extra_opts or {})})
     return rep, n_ev, ho, keys
 
 
@@ -1138,6 +1139,21 @@ def test_spatial_blocks_keep_cells_whole_contiguous_and_bounded():
     perm = np.random.default_rng(0).permutation(256)
     rand = [spread({(int(i) // 16, int(i) % 16) for i in perm[j:j + 20]}) for j in range(0, 240, 20)]
     assert np.mean(ours) < 0.5 * np.mean(rand), (np.mean(ours), np.mean(rand))
+
+
+def test_a_fixed_species_list_grades_the_same_population_and_names_what_it_cannot(
+        tmp_path, monkeypatch):
+    """A7. Without a shared list, each tempho run filtered species on its OWN training years, so a
+    cross-run curve mixed populations. A listed species a run cannot grade is reported."""
+    listed = ["s00", "s01", "s07", "heldonly"]
+    rep, n_ev, _ho, _keys = _synthetic_run(tmp_path, monkeypatch,
+                                           extra_opts={"species_codes": listed, "thin": ()})
+    fx = rep["fixed_species_list"]
+    assert fx["n_listed"] == 4 and fx["n_graded"] == 3
+    assert fx["listed_but_not_gradable"] == ["heldonly"]
+    import json as _json
+    lay = _json.load(open(tmp_path / "out" / "layout.json", encoding="utf-8"))
+    assert lay["evaluation"] == ["s00", "s01", "s07"]
 
 
 def test_the_sum_kernel_backcasts_a_persistent_field_better_than_the_product_kernel():

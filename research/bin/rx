@@ -8,6 +8,9 @@
 #   research/bin/rx py -m pytest -q tests/...    # module form
 #   research/bin/rx sh 'pueue status'            # anything else, in a login shell
 set -euo pipefail
+# Git Bash rewrites POSIX-looking arguments into Windows paths for native .exe targets (wsl.exe), turning
+# /home/... into C:/Program Files/Git/home/...; every argument here is meant for Linux, so turn that off.
+export MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*"
 REPO=/mnt/c/Dev/houfin-range-model
 PY=/home/breallis/houfin/venv/bin/python
 sub="${1:?usage: rx jobs|tick|py|sh ...}"

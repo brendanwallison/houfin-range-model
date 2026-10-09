@@ -1,5 +1,22 @@
 # DIGEST (newest first)
 
+## 2026-10-09 ~09:00: the skeptic's review (verification step d) overturns three of the morning's readings
+- R1 is OPEN again. Adjacent-cell pairs are different routes; temporal pairs mostly the same route. The
+  spatial curve carries a between-route nugget (fits: 35% of the lag-1 difference, up to 70%) that ESK
+  discards. Against the structured spatial part, temporal retention may be LOWER (your hypothesis's strong
+  form), and the 40-y change is ~100 km of structured turnover, not "< 27 km". Next: measure the nugget
+  directly from route-level counts (N1). The retention numbers also depend on years per half (fixing).
+- "Level readout of community change is worse than no change": an errors-in-variables artifact for the
+  TRUE community (it is ~0, not negative). Only DESK's change, read through level betas, harms the
+  backcast -- that is DESK backcast error. E013 says the same with noise-free correlations: 0.23 (true
+  community) vs 0.06 (DESK, inside the planted null band).
+- The split kernel's gain is NOT shrinkage, and a placebo deviation block with no DESK content (regional
+  position x linear time) matches it. So DESK's temporal deviations may add nothing; regional trends may
+  be the whole effect (B8). Testing with a paired placebo arm.
+- DESK's atlas correlations were uncentered; centered: 0.41 (trained), 0.21 (withheld decades).
+- Robust and now the clearest result: DESK over-moves for its information (a calibrated DESK would be
+  shrunk to 0.62x / 0.37x), and the gap to a perfect readout is ~85-90% DESK's backcast, not the readout.
+
 ## 2026-10-09 morning: first real-data results (ALL UNVERIFIED -- they steer, they do not conclude)
 - Size, not direction (R1, E004): a cell's 40-year community change (1966-86 -> 2005-25) is smaller than the
   difference between adjacent 27-km cells. ESK r24 keeps 23% of it, and the same 23% of adjacent-cell

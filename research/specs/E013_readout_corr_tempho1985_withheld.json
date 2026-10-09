@@ -1,0 +1,8 @@
+{
+  "exp": "E013", "name": "readout-corr-tempho1985_withheld", "group": "cpu",
+  "after_jobs": ["E003/esk-desk_tempho_1985"],
+  "cmd": ["bash", "-c", "set -e; for r in 24 64; do {python} research/exp/readout_corr.py --cache {cache}/desk_tempho_1985 --out {out}/r$r --population withheld --rank $r > /dev/null; done"],
+  "expected_minutes": 8,
+  "summarize": ["bash", "-c", "for r in 24 64; do {python} research/exp/readout_corr.py --summarize {out}/r$r; done"],
+  "note": "pre-registered in research/experiments/E013.md"
+}

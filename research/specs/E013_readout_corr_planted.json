@@ -1,0 +1,7 @@
+{
+  "exp": "E013", "name": "readout-corr-planted", "group": "cpu",
+  "cmd": ["bash", "-c", "set -e; for g in z spacetime mix_0.6 mix_0.3; do {python} research/exp/readout_corr.py --cache {cache}/planted_v2_tempho1995 --out {out}/$g --population withheld --species-regex \"^${g}_\" > /dev/null; done"],
+  "expected_minutes": 10,
+  "summarize": ["bash", "-c", "for g in z spacetime mix_0.6 mix_0.3; do echo \"== $g\"; {python} research/exp/readout_corr.py --summarize {out}/$g; done"],
+  "note": "verification (a) for E013: planted generators (z must be recovered, unrelated fields must read ~0)"
+}

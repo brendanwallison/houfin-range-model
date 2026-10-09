@@ -1,0 +1,8 @@
+{
+  "exp": "E019", "name": "reach-curve", "group": "cpu",
+  "overlay": "config/overlays/gp_species_base.json",
+  "cmd": ["python", "research/exp/reach_curve.py", "--out", "{out}", "--ranks", "12", "24", "64"],
+  "expected_minutes": 10,
+  "summarize": ["python", "research/exp/reach_curve.py", "--summarize", "{out}"],
+  "note": "pre-registered in research/experiments/E019.md"
+}

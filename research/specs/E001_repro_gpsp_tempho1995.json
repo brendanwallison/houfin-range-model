@@ -2,10 +2,10 @@
   "exp": "E001",
   "name": "repro-gpsp-tempho1995",
   "group": "gpu",
-  "sha": "86acde3",
+  "sha": "ef7b6a2",
   "overlay": "config/overlays/desk_tempho_1995.json",
-  "cmd": ["python", "-m", "src.community_encoder.train_DESK.validate_gp_species", "--n-boot", "1000", "--out-dir", "{out}/gp_species"],
-  "expected_minutes": 180,
+  "cmd": ["python", "-m", "src.community_encoder.train_DESK.validate_gp_species", "--n-boot", "1000", "--thin", "none", "--out-dir", "{out}/gp_species"],
+  "expected_minutes": 75,
   "summarize": ["python", "{runner}/research/exp/compare_reports.py", "{out}/gp_species/report.json", "${HOUFIN_PROCESSED}/encoder/desk_tempho_1995/gp_species/report.json"],
   "note": "Phase 0.3 reproduction gate on the longest-reach temporal holdout (21-30 y past the training edge); the reference exists only if the suite was run on this overlay on TACC"
 }

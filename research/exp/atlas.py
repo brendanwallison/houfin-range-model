@@ -223,14 +223,25 @@ def main():
     sig = np.array([res["spatial"][str(l)]["signal_exact_mean"] for l in lags])
     t_sig = res["temporal"]["all_cells"]["signal_exact_mean"]
     order = np.argsort(sig)
-    res["matched"] = {"temporal_signal": t_sig,
+    # np.interp clamps: a temporal change SMALLER than the adjacent-cell difference would read as
+    # "27 km" with lag 1's retention. Flag it, and extrapolate linearly from the two smallest sizes.
+    below = bool(t_sig < sig[order][0])
+    res["matched"] = {"temporal_signal": t_sig, "below_smallest_lag": below,
                       "km_equivalent": float(np.interp(t_sig, sig[order],
                                                        np.array(lags)[order] * CELL_KM))}
+
+    def at_size(y):
+        if below and len(order) > 1:
+            s0, s1 = sig[order][:2]
+            return float(y[order][0] + (t_sig - s0) * (y[order][1] - y[order][0]) / (s1 - s0))
+        return float(np.interp(t_sig, sig[order], y[order]))
+    if below:
+        res["matched"]["km_equivalent_extrapolated"] = at_size(np.array(lags, float) * CELL_KM)
     for r in ranks:
         ret = np.array([res["spatial"][str(l)]["esk"][str(r)]["retention"] for l in lags])
         res["matched"][str(r)] = {
             "temporal_retention": res["temporal"]["all_cells"]["esk"][str(r)]["retention"],
-            "spatial_retention_at_temporal_size": float(np.interp(t_sig, sig[order], ret[order]))}
+            "spatial_retention_at_temporal_size": at_size(ret)}
     with open(os.path.join(a.out, "atlas.json"), "w", encoding="utf-8") as fh:
         json.dump(res, fh, indent=1)
     summarize(a.out)
@@ -240,9 +251,12 @@ def summarize(out):
     r = json.load(open(os.path.join(out, "atlas.json"), encoding="utf-8"))
     f = lambda v: "-" if v is None else f"{v:.3f}"
     t = r["temporal"]["all_cells"]
+    m0 = r["matched"]
+    km = (f"less than one cell ({CELL_KM:.0f} km) of spatial turnover, ~"
+          f"{m0['km_equivalent_extrapolated']:.0f} km extrapolated" if m0.get("below_smallest_lag")
+          else f"~{m0['km_equivalent']:.0f} km of spatial turnover")
     print(f"atlas [{r['population']}] temporal pairs {t['n_pairs']}, exact signal "
-          f"{t['signal_exact_mean']:.4f}+-{t['signal_exact_se']:.4f}; "
-          f"~{r['matched']['km_equivalent']:.0f} km of spatial turnover")
+          f"{t['signal_exact_mean']:.4f}+-{t['signal_exact_se']:.4f}; {km}")
     for rk in r["ranks"]:
         m = r["matched"][str(rk)]
         print(f"  ESK r{rk:<3d} retention: temporal {f(m['temporal_retention'])}  spatial-at-same-size "

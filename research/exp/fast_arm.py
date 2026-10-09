@@ -121,6 +121,9 @@ def main():
     ap.add_argument("--n-boot", type=int, default=400)
     ap.add_argument("--tag", default="")
     ap.add_argument("--exp", default=os.environ.get("RESEARCH_EXP", "adhoc"))
+    ap.add_argument("--dump-change", action="store_true",
+                    help="save each change set's per-cell arrays (change_<set>.npz) so a planted run can "
+                         "grade predictions against the noise-free truth")
     ap.add_argument("--summarize", default=None)
     a = ap.parse_args()
     if a.summarize:
@@ -233,6 +236,14 @@ def main():
         out["attenuation_iqr"] = ([float(np.percentile(att[fin], 25)),
                                    float(np.percentile(att[fin], 75))] if fin.any() else None)
         res["change"][sname] = out
+        if a.dump_change:
+            flat = lambda rs: (np.concatenate([te[r] for r in rs]),
+                               np.cumsum([0] + [len(r) for r in rs]))
+            (ef, ep), (mf, mp) = flat(e_rows), flat(m_rows)
+            np.savez(os.path.join(a.out, f"change_{sname}.npz"), cells=cells, d_full=d_full,
+                     dp_model=dp["model"], dp_no_change=dp["no_change"], noise=nz["noise"],
+                     resolvable=nz["resolvable"], early_rows=ef, early_ptr=ep, modern_rows=mf,
+                     modern_ptr=mp, species=species)
         per[f"change_skill_{sname}"] = sk
         per[f"attenuation_{sname}"] = att
         per[f"resolvable_{sname}"] = nz["resolvable"]

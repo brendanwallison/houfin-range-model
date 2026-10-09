@@ -1,0 +1,8 @@
+{
+  "exp": "E009", "name": "planted-v2-tempho1995", "group": "cpu",
+  "env": {"RESEARCH_EXP": "E009"},
+  "cmd": ["bash", "-c", "set -e; {python} research/exp/planted.py --cache {cache}/desk_tempho_1995 --out {cache}/planted_v2_tempho1995 --n-per 60 --seed 1; for arm in A0:iso A3:split; do {python} research/exp/fast_arm.py --cache {cache}/planted_v2_tempho1995 --out {out}/${arm%%:*} --kernel ${arm##*:} --tag planted_v2_${arm%%:*} --dump-change; {python} research/exp/planted_report.py --planted {cache}/planted_v2_tempho1995 --arm {out}/${arm%%:*}; done"],
+  "expected_minutes": 20,
+  "summarize": ["bash", "-c", "{python} research/exp/planted_report.py --summarize {out}/A0; {python} research/exp/planted_report.py --summarize {out}/A3"],
+  "note": "pre-registered in research/experiments/E009.md"
+}

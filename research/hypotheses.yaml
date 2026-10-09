@@ -9,33 +9,36 @@
 - id: E1
   stage: E
   priority: 1
-  status: open
+  status: testing
   statement: Most cell-level change is noise, so no_change is near-unbeatable on RMSE even for a perfect habitat model.
   test: Planted calibration (Phase 1.4) on the real route-year keys; achievable change skill vs temporal-signal share.
   kill: A planted perfect-kernel species with realistic temporal share achieves change skill well above the observed DESK skill.
   blr: If true, change RMSE skill is the wrong headline; use captured share of resolvable change and attenuation slope.
   parents: []
-  evidence: []
+  evidence:
+  - {job: "E007/planted-tempho1995-b3091e48eefb", exp: E007, dir: for, strength: weak, note: "pilot, 12 species/generator: a perfect-form z readout reaches TRUE change attenuation 0.2-0.75, rising with prevalence; below 10% prevalence the true change is <3% of observed change variance. E009 (60/generator) queued. UNVERIFIED."}
 - id: T0
   stage: T
   priority: 1
-  status: open
+  status: testing
   statement: DESK's temporal under-movement is the MSE-optimal shrinkage toward unreliable within-cell targets, not a defect.
   test: Per-component attenuation slope of DESK dz on ESK dz vs the split-half reliability of ESK dz.
   kill: Attenuation slopes sit clearly below the reliability (DESK shrinks more than noise justifies).
   blr: If true, the fix is target reliability (pooling, smoothing, longer windows), not DESK capacity or loss.
   parents: []
-  evidence: []
+  evidence:
+  - {job: "E004/atlas-base-trained-6e20bd69e4b0", exp: E004, dir: against, strength: moderate, note: "per-component change reliability 0.73-0.89 vs DESK raw slope 0.04-0.66 (median ~0.3). Reframe: DESK's temporal energy/signal 0.54 exceeds corr^2 0.24, i.e. it moves MORE than a calibrated predictor with its correlation (0.49) would; the limit is information, not shrinkage. UNVERIFIED."}
 - id: O3
   stage: O
   priority: 1
-  status: open
+  status: testing
   statement: Route turnover between epochs survives the ABBA year split and is counted as real change, inflating every ceiling.
   test: Noise ceiling and atlas on cells with the same routes in both epochs vs all cells.
   kill: Same-route and all-cell ceilings agree within bootstrap CI.
   blr: If true, every 'share of available change' denominator is too large; DESK is closer to the real ceiling than reported.
   parents: []
-  evidence: []
+  evidence:
+  - {job: "E008/route-ceiling-gp_species_base-fd61e474bade", exp: E008, dir: against, strength: moderate, note: "same-route cells carry 11% less real change per cell than route-turnover cells (dev species, block-bootstrap CI excludes 0; community total 19%); removing it lowers the all-cell budget ~3% (dev) / ~6% (total). Detectable, not a big factor. CI from an interactive run; E008 rerun queued. UNVERIFIED."}
 - id: C1
   stage: O
   priority: 1
@@ -49,23 +52,25 @@
 - id: E4
   stage: E
   priority: 1
-  status: open
+  status: testing
   statement: The independent oracle is weak partly through errors-in-variables (noisy half-window community features) or off-span projection.
   test: Oracle on planted species with full vs half windows; report split-half reliability of oracle z and the norm ratio.
   kill: Half-window oracle skill matches full-window skill on planted species and the norm ratio is near 1.
   blr: If true, the oracle understates the representational ceiling; 'oracle weak too' is partly an artifact.
   parents: []
-  evidence: []
+  evidence:
+  - {job: "adhoc:E011-dev", exp: E011, dir: for, strength: weak, note: "observed half-window ESK features read through a level beta do WORSE than DESK z (captured 0.04 vs 0.10, base r24); with change-fitted beta they tie (0.26 vs 0.25). The noisy observed community is a weak oracle. UNVERIFIED."}
 - id: P1
   stage: O
   priority: 1
-  status: open
+  status: testing
   statement: Held-out species' decadal change is mostly continental trend plus colonization fronts, which belong to the mechanistic model, not habitat.
   test: Decompose change into year effects, distance-to-range-edge terms, and local residual; size each per species.
   kill: The local residual carries most of the resolvable change for range-stable species.
   blr: If true, grade DESK on range-stable species; fronts are the age model's dispersal job.
   parents: []
-  evidence: []
+  evidence:
+  - {job: "adhoc:E011-dev", exp: E011, dir: neutral, strength: weak, note: "continental trend alone captures 9% of available change; community-driven change (chg_dev) 17-21%; both 25-29%. >70% of resolvable species change is not linear in community change + trend. UNVERIFIED."}
 - id: E2
   stage: E
   priority: 2
@@ -91,13 +96,14 @@
 - id: R1
   stage: R
   priority: 1
-  status: open
+  status: testing
   statement: (user) Spatial turnover dwarfs temporal turnover, so eigen-ordering and truncation keep spatial structure and drop temporal structure.
   test: Atlas noise-corrected temporal vs spatial retention at r=6/24/64, inside vs outside the top-k subspace, matched at equal exact-kernel distance.
   kill: At matched exact-kernel distance, temporal retention equals spatial retention (truncation drops small differences, not temporal directions).
   blr: If true, the positional 24-dim cut and the eigenvalue-proportional prior both discard the backcast signal.
   parents: []
-  evidence: []
+  evidence:
+  - {job: "E004/atlas-base-trained-6e20bd69e4b0", exp: E004, dir: against, strength: moderate, note: "strong form: at matched exact-kernel size temporal retention r24 0.228 [0.216,0.238] vs spatial (lag 1) 0.232 [0.223,0.241]; r6 0.067 vs 0.084, r64 0.391 vs 0.388. The 40-y change (exact 0.430) is SMALLER than the adjacent-cell difference (0.482), so lag 1 is an upper bound on the matched spatial value. Truncation drops small differences, not temporal directions. UNVERIFIED."}
 - id: R2p
   stage: R
   priority: 2
@@ -173,13 +179,14 @@
 - id: T4
   stage: T
   priority: 2
-  status: open
+  status: testing
   statement: Space-for-time mismatch - spatial covariate-to-community slopes differ from temporal slopes.
   test: Mundlak within/between regression of ESK components on covariates; the sign of the gap predicts over- vs under-movement.
   kill: Within and between slopes agree.
   blr: If true, no spatially trained map can backcast correctly without temporal supervision.
   parents: []
-  evidence: []
+  evidence:
+  - {job: "adhoc:E011-dev", exp: E011, dir: for, strength: weak, note: "the readout analogue (community->species): level-fitted beta on community change captures 4-10% (base) / -5% (tempho1995 withheld) of available species change; change-fitted beta on the SAME features 25-29%. Interactive development run; E011 jobs queued. UNVERIFIED."}
 - id: T6
   stage: T
   priority: 2
@@ -215,13 +222,14 @@
 - id: B1
   stage: B
   priority: 1
-  status: open
+  status: testing
   statement: The isotropic prior under-weights low-variance (temporal) directions.
   test: Fast arm with split kernel s_b^2 zbar.zbar' + s_w^2 dz.dz' (zbar over a fixed reference window), ARD, whitened z; learned s_w^2/s_b^2.
   kill: Learned s_w^2/s_b^2 near 1 and no change-skill gain.
   blr: If true, adopt a block prior (iid within blocks) - a contract change for the age model.
   parents: []
-  evidence: []
+  evidence:
+  - {job: "E005/fastarm-gp_species_base-6969e4d243e8", exp: E005, dir: neutral, strength: weak, note: "split kernel gains change skill (+0.018 [0.005,0.033] vs +0.001 base; +0.002 vs -0.016 tempho1995 time) but learned per-feature amplitude dz/zbar is 0.58 (base) and 0.09 (tempho1995): the data want LESS weight on deviations, not more. The gain is separate coefficients (direction), see B7. UNVERIFIED."}
 - id: B2
   stage: B
   priority: 2
@@ -336,3 +344,27 @@
   blr: If true, B1/B5 need a constraint before adoption.
   parents: [B1]
   evidence: []
+
+# ---------------- added 2026-10-09 from the first real-data results ----------------
+- id: B7
+  stage: B
+  priority: 1
+  status: testing
+  statement: The readout's level-fitted beta (space) does not transfer to temporal community change - species' temporal responses differ from their spatial associations - so a temporal block whose beta is fitted on long-term within-cell change captures 2-3x more of species change.
+  test: E011 change oracle (level vs change beta on the same features); E012 transfer (temporal beta fitted inside the trained era, applied to the withheld decades); split-kernel variants with a longer reference window.
+  kill: A temporal beta learned from trained years captures no more withheld-decade change than the level beta.
+  blr: If true, contract change - a separate temporal block (zbar/dz split, iid within block) whose beta the age model learns from BBS-era long-term change; the zbar reference window becomes a design choice.
+  parents: [T4, B1]
+  evidence:
+  - {job: "adhoc:E011-dev", exp: E011, dir: for, strength: weak, note: "level beta 4-10% (base) / -5% (tempho1995 withheld) vs change beta 25-29% of available change, observed and DESK features alike. UNVERIFIED."}
+- id: D0
+  stage: T
+  priority: 1
+  status: testing
+  statement: For the species readout, DESK's change into withheld decades carries as much linearly usable species-change information as the observed half-window community change - DESK's temporal information is not the first bottleneck.
+  test: E011 desk:chg vs esk:chg across tempho 1975/1985/1995; an errors-in-variables-corrected observed comparator.
+  kill: desk:chg falls below esk:chg beyond CI in the withheld decades, or an EIV-corrected observed comparator beats DESK clearly.
+  blr: If true, improve the readout's temporal beta before DESK's temporal fidelity; DESK work waits on B7.
+  parents: [E4, T0]
+  evidence:
+  - {job: "adhoc:E011-dev", exp: E011, dir: for, strength: weak, note: "tempho1995 withheld: desk_raw:chg captured 0.263 (r24) / 0.292 (r64) vs observed esk:chg 0.257 / 0.288; base 0.251 vs 0.257. The atlas's 0.3 correlation with ESK change does not stop it. Comparator is noisy (half window). UNVERIFIED."}

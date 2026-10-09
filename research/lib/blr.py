@@ -83,7 +83,7 @@ def fit(X, Y, blocks, max_iter=300, starts=STARTS):
             tot.backward()
             g = th.grad.numpy().copy()
             g[~ok] = 0.0
-            return float(tot), g.reshape(-1)
+            return float(tot.detach()), g.reshape(-1)
         bnds = []
         for s in range(S):
             bnds += [(lo[s], 30.0)] * B + [(lo[s], 30.0)]

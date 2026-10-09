@@ -1,3 +1,2 @@
-# research/ shell entry points run under bash (Git Bash and WSL); CRLF would break them.
-research/bin/* text eol=lf
-research/**/*.sh text eol=lf
+# research/ files are appended from WSL (LF) and edited on Windows; keep one line ending.
+research/** text eol=lf

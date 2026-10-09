@@ -18,7 +18,11 @@ sys.path[:0] = [paths.REPO, paths.REPO + "/src"]
 os.chdir(paths.REPO)
 if len(sys.argv) < 2:
     sys.exit(__doc__)
-if sys.argv[1] == "-m":
+if sys.argv[1] == "-c":
+    code = sys.argv[2]
+    sys.argv = ["-c"] + sys.argv[3:]
+    exec(compile(code, "<launch -c>", "exec"), {"__name__": "__main__"})
+elif sys.argv[1] == "-m":
     mod = sys.argv[2]
     sys.argv = [mod] + sys.argv[3:]
     runpy.run_module(mod, run_name="__main__", alter_sys=True)

@@ -102,9 +102,9 @@
   stage: R
   priority: 2
   status: open
-  statement: ||z|| measures how well a community is represented; poorer representation of early or window communities reads as change.
-  test: ||z||^2 by epoch and region; BLR change skill on normalized vs raw z.
-  kill: ||z||^2 is flat across epochs and normalization does not change change skill.
+  statement: "||z|| measures how well a community is represented; poorer representation of early or window communities reads as change."
+  test: "||z||^2 by epoch and region; BLR change skill on normalized vs raw z."
+  kill: "||z||^2 is flat across epochs and normalization does not change change skill."
   blr: If true, part of predicted change is representational artifact.
   parents: []
   evidence: []

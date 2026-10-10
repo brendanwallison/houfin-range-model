@@ -1,0 +1,18 @@
+{
+ "exp": "E029",
+ "name": "downstream-weighted",
+ "group": "cpu",
+ "overlay": "config/overlays/desk_tempho_1985.json",
+ "cmd": [
+  "bash",
+  "-c",
+  "set -e; for c in desk_tempho_1985_s1_yw10 desk_tempho_1985_s2_yw10 desk_tempho_1985_s1_yw20 desk_tempho_1985_s2_yw20; do test -f {cache}/$c/esk_epochs.npz || {python} research/exp/esk_project.py --cache {cache}/$c; mkdir -p {out}/$c/readout_corr {out}/$c/readout_honesty {out}/$c/analog_pull; {python} research/exp/readout_corr.py --cache {cache}/$c --out {out}/$c/readout_corr --population withheld; {python} research/exp/readout_honesty.py --cache {cache}/$c --out {out}/$c/readout_honesty --population withheld; {python} research/exp/analog_pull.py --cache {cache}/$c --out {out}/$c/analog_pull --population withheld --exclude-km 200; done"
+ ],
+ "expected_minutes": 15,
+ "summarize": [
+  "bash",
+  "-c",
+  "for c in desk_tempho_1985_s1_yw10 desk_tempho_1985_s2_yw10 desk_tempho_1985_s1_yw20 desk_tempho_1985_s2_yw20; do echo == $c; {python} research/exp/readout_corr.py --summarize {out}/$c/readout_corr | sed -n 3p; {python} research/exp/readout_honesty.py --summarize {out}/$c/readout_honesty | grep 'r24 total'; {python} research/exp/analog_pull.py --summarize {out}/$c/analog_pull | grep -A3 '^  r24' | grep -E 'truth|desk'; done"
+ ],
+ "note": "E029 decision rule, second clause: readout corr, honesty and space-for-time pull of the time-weighted models vs uniform t1985 s1/s2"
+}

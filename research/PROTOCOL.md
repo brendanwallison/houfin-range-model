@@ -27,6 +27,7 @@ decades is the proxy; `research/downstream_contract.md` freezes the contract the
 | `registry.jsonl` | append-only job events (queued/cached/done/failed/verified/stale/quarantined) | `jobs.py` (+ agent for verified/stale) |
 | `hypotheses.yaml` | register: status, kill criterion, BLR consequence, evidence citing registry jobs | agent |
 | `experiments/EXXX.md` | pre-registration (committed before enqueue), then results/interpretation | agent |
+| `CONSIDERATIONS.md` | the interpretive points to hold in balance (G/M/P items, with sources); read before every pre-registration and interpretation; add new user points the same day | agent |
 | `specs/EXXX_*.json` | job specs (see `jobs.py` docstring) | agent |
 | `exp/*.py` | small single-purpose experiment scripts (≲300 lines) importing the validators' pure functions | agent |
 | `FINDINGS.md` | verified results only (gate below), with CI, caveats, registry job ids | agent |
@@ -56,7 +57,7 @@ Heavy outputs live in `~/houfin/work/houfin/research/<exp>/<name>-<cfghash>/` (W
 3. **Verification gate** for anything that would become a finding (below).
 4. Update `hypotheses.yaml`: status changes cite registry job ids; never retire a hypothesis on an
    unverified result.
-5. **Generate hypotheses.** For each result: what does it rule out; what else would produce it; what would
+5. **Read `CONSIDERATIONS.md`**, then **generate hypotheses.** For each result: what does it rule out; what else would produce it; what would
    separate those; what does it imply for the BLR backcast. Add new entries with `parents`.
 6. **Choose** by value of information ÷ cost: prefer the experiment whose possible outcomes would most
    change *which stage we believe loses temporal signal* or *the downstream design*. If no outcome would
@@ -74,10 +75,13 @@ Heavy outputs live in `~/houfin/work/houfin/research/<exp>/<name>-<cfghash>/` (W
     hypotheses: [R1, T0]     parents: [E00Y]     eval_version: v1     cost: ~N min cpu|gpu
     question: one sentence
     design: data slice, rows/species, arms (with blinded codes), metric(s), seeds/splits
+    considerations: the CONSIDERATIONS.md items this design must respect, and how (e.g. "M1: report corr, k and
+        skill separately; M3: observer-continuous cells as a check; G3: the score's species-whole-change caveat")
     predictions: under each rival hypothesis, the expected sign/size of each metric
     decision rule: which outcome moves which hypothesis where, and what runs next in each case
     ---- (appended after the run) ----
-    results (registry jobs ...), verification a/b/c/d, interpretation, surprises, spawned hypotheses
+    results (registry jobs ...), verification a/b/c/d, interpretation checked against the listed considerations,
+    WHY (established / likely / unknown), surprises, spawned hypotheses
 
 ## Verification gate — a FINDING needs all four
 

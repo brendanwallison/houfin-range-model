@@ -1,0 +1,21 @@
+{
+ "exp": "E024",
+ "name": "desk-span-1986-2005-seed1",
+ "group": "gpu",
+ "overlay": "research/overlays/desk_span_1986_2005_seed1.json",
+ "after_jobs": [
+  "E026/desk-tempho1995-mp262144"
+ ],
+ "cmd": [
+  "bash",
+  "-c",
+  "set -e; export RESEARCH_OUT={out} TMPDIR={out}/tmp MPLCONFIGDIR={out}/tmp/mpl WANDB_MODE=offline WANDB_DIR={out}; mkdir -p {out}/desk {out}/tmp; {python} scripts/run_encoder.py desk; {python} research/exp/cache.py --out {cache}/desk_span_1986_2005_s1; {python} research/exp/epoch_variant.py --run {out} --overlay research/overlays/desk_span_1986_2005_seed1.json --cache-out {cache}/desk_span_1986_2005_s1_late --work {out}/late"
+ ],
+ "expected_minutes": 80,
+ "summarize": [
+  "python",
+  "-c",
+  "import json; s=json.load(open('{out}/desk/run_summary.json')); print({k: s.get(k) for k in ('best_epoch','best_val_kernel','best_val_zmse','epochs_run')})"
+ ],
+ "note": "E024b: second seed of the 1986-2005 span model (the skeptic: E024's NO rests on one seed and one window)"
+}

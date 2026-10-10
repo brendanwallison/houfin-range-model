@@ -40,3 +40,17 @@ and spilled ~4.3 GB into shared system memory; with expandable_segments (paths.j
 reserves 16.2 GB, no spill, ~6 s/epoch as before. True-span smoke passed (2025 withheld; diagnostic 1976->1995).
 Two void span+2025 runs used the GPU before cancel was fixed: E024/desk-span-plus2025-1976-1995 finished (kept, registry
 says cancelled), 1986-2005 was killed part-way.
+2026-10-09 ~21:45 TENTATIVE PLAN after E024 1996-2015 (agreed with the user; decision rules fixed before results):
+Tonight (automatic): E024 1996-2015 resume -> E023b span analysis vs the current-code long-span seeds; backcast re-runs
+(E013/E017/E018/E020) on the seed caches; E006 x2.
+Tomorrow, branch on:
+ 1. E024 rule (short span beats same-T0 long-span seeds by > seed spread in >= 2 of 3): yes -> time-weighted DESK (all
+    years, earliest decades up-weighted via per-cell-year weights; 2 weightings x 2 seeds, tempho1995 setup); borderline ->
+    one more seed per span model first; no -> N2 stays a surrogate-level result, GPU to branch 2.
+ 2. Why current-code retrains backcast ~50% better than the archived tempho models (e.g. 1966-71 from 1996: 0.12 ->
+    0.20/0.18; archived models record no selected epoch): diff their recorded settings vs HEAD and the code history since
+    2026-08-21 (A9 selection, moved defaults); per-epoch withheld-year diagnostics in the training logs; if epoch
+    selection drives it, test selecting on a trained decade held back from selection only.
+ 3. Re-establish the DESK-failure picture on current-code models (space-for-time pull, readout corr, over-movement).
+Then: lags (multi-timescale covariate history vs the trend placebo), temporal supervision in DESK, observer-continuity
+target, and the Gate 1 report once E006 + the re-runs are in.

@@ -17,26 +17,27 @@ SOLID
   structure; it drops route-level idiosyncrasy, temporal or spatial. Truncation is not selectively discarding time.
 
 NEW TONIGHT (tentative: one run each unless noted)
-- Training span vs reach (your question) has two different answers (E023, E024):
+- Training span vs reach (your question), E023 / E024:
   - for cheap linear surrogates, at a fixed reach a SHORTER span next to the target backcasts better -- later
-    decades' trends do not describe earlier ones;
-  - for DESK itself, no: retrained on 20-year spans it backcasts about as well as when trained on 30-40 years from the
-    same start year (better in one window, equal or worse in the others; the pre-registered test failed). DESK's
-    decline with reach is not about how many or which years it trained on, so the planned time-weighted DESK was not
-    run.
-- Where the covariates' temporal signal sits (E027): with all available history (production's setting), slow
-  covariate history (a 30-year moving average) and nonlinear covariate responses keep their backcast skill as the
-  span grows, where linear maps and the regional-trend placebo lose it (+0.07 to +0.11 in correlation at 7.5-17.5
-  years of reach). They do not beat the best short-span fit, and DESK already sits near the nonlinear surrogate.
-  Running now: do they add anything to DESK's own features (E027b)?
+    decades' trends do not describe earlier ones (strong: e.g. 0.22 vs 0.08 for 20- vs 40-year spans);
+  - for DESK itself, much weaker: retrained on 20-year spans, it gains about +0.03 (pooled over windows) at one start
+    year and nothing at another; the third comparison was spoiled by a badly selected run. The pre-registered test
+    said "no", but the skeptic showed it rested on one window and one seed, so a second seed is queued before the
+    time-weighted DESK is ruled in or out.
+- Is there temporal signal in the covariates that DESK misses? (E027, E027b) Mostly no. My first reading of E027
+  ("slow history and nonlinear responses keep their skill at long spans") did not survive the skeptic: it came from a
+  weak 64-component linear reference, a lucky random-feature draw, a 30-year average that was half its 1940 starting
+  value, and the trend placebo fading at long spans. Added to DESK's own features, slow covariate history adds only
+  +0.02-0.05. A cleaner test (a continental-clock placebo) is next.
 - The corrected validation suite on tempho1995 (E006), for your three concerns:
   - DESK is still slightly worse than no change on species change -- and so is the oracle built from the TRUE
     community; on held-out cells DESK beats the oracle. Most of the loss is downstream of DESK (community -> species
     readout, plus noise), as E013 found from the other side.
   - DESK "loses to the spacetime GP" only on trained cells. There the GP's fit degenerated into "each cell's modern
-    quirks were smaller in the past". About half of that win is observer turnover; the other half is real fading of
-    local deviations over decades (E028), which DESK's readout cannot represent. On held-out cells the GP does no
-    better than DESK.
+    quirks were smaller in the past". In cells whose observers changed, about half (~57% after correcting for noise)
+    of that fading is the change of observer; the rest is real fading of local deviations of unknown cause -- it does
+    not track local covariate change (E028, survived the skeptic; 2005-2025 only, earlier eras queued). DESK's readout
+    cannot represent this fading. On held-out cells the GP does no better than DESK.
   - The covariate GP's fit is broken in the corrected suite too (absurd predictions; A13).
 - Replications on fresh seeds of the current code: the decline with reach holds (seed spread 0.02-0.03); the pull
   toward climate analogs, the readout bottleneck and the over-narrow intervals all hold. Current-code models track
@@ -67,7 +68,9 @@ OVERTURNED (kept so the corrections are visible)
 - "Intervals ~3x too narrow": ~2x on a stable floor.
 - "Train DESK on within-cell covariate variation": the within map was a regional-trend extrapolator.
 - "Longer reach fails because the tempho models have fewer training years" (my working assumption before E023/E024):
-  true for linear surrogates, not for DESK.
+  true for linear surrogates; for DESK at most a small effect.
+- "With all history, slow and nonlinear covariate features keep backcast skill where linear maps lose it" (E027,
+  first reading): reference, random-draw and warm-up artifacts.
 
 WHAT THIS DOES AND DOES NOT TELL US
 - Everything above characterizes the current DESK, its readout, and linear or simple nonlinear surrogates on 10-50
@@ -80,8 +83,9 @@ OPEN QUESTIONS (the plan: what limits extrapolation in time, and what would exte
 1. Optimization: does DESK under-learn temporal structure? It takes one optimizer step per epoch (500 in all), and its
    only cross-year supervision is a noisy pair-sampled term. E025 (late epochs) and E026 (4,096 / 262,144 metric
    pairs vs 65,536; the archived models used 4,096) are running.
-2. Covariate history: if E027b shows slow (30-year) history or nonlinear responses add to DESK's features, a DESK
-   with slow covariate streams is the next DESK run; if not, DESK already has what the covariates offer.
+2. Covariate content: DESK already carries most of what simple covariate surrogates extract (E027b). E027c asks
+   whether ANY covariate representation carries cell-specific temporal signal beyond a continental clock; if not,
+   the inputs, not DESK, bound temporal extrapolation at this grain (T5).
 3. The readout: even the true community's change, read through the spatial readout, predicts species change no
    better than no change. A readout that lets local deviations fade with reach (E028: half of that fading is real)
    is a candidate.
@@ -102,6 +106,9 @@ The age-model sensitivity fit comes last, once there are candidate backcasts wor
   -> E025 (late states); archived models trained with 4,096 metric pairs vs 65,536 now -> E026.
 - Archived DESK sweep logs: 16 optimizer steps per epoch (tiles32) and heavier metric weights did not raise held-out
   direction accuracy in trained years (weak evidence against "more steps" for T11).
+- Skeptic round (~00:30): E024's "no" rests on one window and one seed (pooled +0.03 at T0 1986) -> second seed of the
+  1986-2005 span queued; E027's headline withdrawn (weak 64-PC reference, lucky RFF draw, lag30 warm-up, trend decay)
+  -> E027c; E028 survives (observer share ~57% disattenuated) -> earlier-era replication E028b.
 
 
 ## 2026-10-09 ~09:40: GATE 0 (reproduction and timing)

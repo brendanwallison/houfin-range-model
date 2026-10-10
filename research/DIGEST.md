@@ -56,7 +56,8 @@ NEW SINCE YESTERDAY EVENING (tentative unless noted; each finding carries WHY: e
     10 or 20 years away from 1986) recovers about three quarters of that gain: +0.029 [0.013, 0.041] and +0.035
     [0.020, 0.047] over the same seeds unweighted, also at epoch 490, with no loss of spatial fit. DECISION FOR YOU
     (escalation): its production analog is weights rising toward 1966 for the 1900-1940 backcast. One start year, two
-    seeds per weighting; the over-movement and climate-analog checks on these models are running.
+    seeds per weighting. Downstream checks: slightly better species readout (+0.01), slightly less over-confident,
+    and about a third less pull toward climate analogs -- no downside found.
   WHY (likely, not shown for DESK): decadal trends drift; a long span averages in later decades whose trends do not
   describe the earlier ones (shown for the surrogates, E023).
 - Where the covariates' temporal signal is (E027, E027b-d, two skeptic rounds): their backcast skill is largely matched

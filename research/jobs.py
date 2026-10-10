@@ -408,11 +408,43 @@ def cancel(job_prefix, reason):
     print(f"[jobs] cancelled {job} (pueue task {tid}, was {state or 'unknown'}): {reason}")
 
 
+def retry(job_prefix, reason):
+    """Re-run a FAILED job in its OWN output directory (same spec, same code snapshot), so a job that checkpoints
+    (DESK: resume_checkpoint.pt every 10 epochs) resumes instead of restarting. FAILED.json is renamed, never
+    deleted; a fresh 'queued' event is appended for the same job id."""
+    st = latest_by_job()
+    hits = [j for j, s in st.items() if j.startswith(job_prefix) and s.get("event") == "failed"]
+    if len(hits) != 1:
+        raise SystemExit(f"retry: {len(hits)} failed jobs match {job_prefix!r}: {hits}")
+    job = hits[0]
+    out = Path(st[job]["out"])
+    failed = out / "FAILED.json"
+    if failed.exists():
+        n = len(list(out.glob("FAILED.prev*.json")))
+        failed.rename(out / f"FAILED.prev{n}.json")
+    spec = json.loads((out / "spec.json").read_text())
+    runner = snapshot(spec["runner_sha"])
+    cmd = [paths.VENV_PY, str(runner / "research" / "jobs.py"), "run", str(out)]
+    r = subprocess.run([paths.PUEUE, "add", "--group", spec["group"], "--label", job, "--print-task-id",
+                        "--working-directory", str(snapshot(spec["sha"])), "--"] + cmd, capture_output=True, text=True)
+    if r.returncode:
+        raise SystemExit(f"retry: pueue add failed: {r.stderr.strip()}")
+    tid = int(r.stdout.strip())
+    append_registry({"event": "queued", "job": job, "exp": spec.get("exp"), "name": spec.get("name"),
+                     "sha": spec.get("sha"), "runner_sha": spec.get("runner_sha"), "cfg_hash": spec.get("cfg_hash"),
+                     "group": spec["group"], "pueue_id": tid, "out": str(out), "retry_of_failure": True,
+                     "reason": reason})
+    print(f"[jobs] retrying {job} as pueue task {tid} in {out}")
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     sub = ap.add_subparsers(dest="cmd", required=True)
     e = sub.add_parser("enqueue")
     e.add_argument("spec", nargs="+")
+    rt = sub.add_parser("retry")
+    rt.add_argument("job")
+    rt.add_argument("--reason", required=True)
     cn = sub.add_parser("cancel")
     cn.add_argument("job")
     cn.add_argument("--reason", required=True)
@@ -429,6 +461,8 @@ def main():
     if a.cmd == "enqueue":
         for sp in a.spec:
             enqueue(sp)
+    elif a.cmd == "retry":
+        retry(a.job, a.reason)
     elif a.cmd == "cancel":
         cancel(a.job, a.reason)
     elif a.cmd == "status":

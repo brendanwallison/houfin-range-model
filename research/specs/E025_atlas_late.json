@@ -1,0 +1,21 @@
+{
+ "exp": "E025",
+ "name": "atlas-late",
+ "group": "cpu",
+ "overlay": "config/overlays/desk_tempho_1995.json",
+ "after_jobs": [
+  "E025/late-caches"
+ ],
+ "cmd": [
+  "bash",
+  "-c",
+  "set -e; for c in desk_tempho_1995_s1_late desk_tempho_1995_s2_late; do test -f {cache}/$c/esk_epochs.npz || {python} research/exp/esk_project.py --cache {cache}/$c; done; for c in desk_tempho_1995_s1 desk_tempho_1995_s1_late desk_tempho_1995_s2 desk_tempho_1995_s2_late; do mkdir -p {out}/$c; {python} research/exp/atlas.py --cache {cache}/$c --out {out}/$c --population withheld; done"
+ ],
+ "expected_minutes": 10,
+ "summarize": [
+  "bash",
+  "-c",
+  "for c in desk_tempho_1995_s1 desk_tempho_1995_s1_late desk_tempho_1995_s2 desk_tempho_1995_s2_late; do echo == $c; {python} research/exp/atlas.py --summarize {out}/$c | grep -i 'centered\|slope\|corr' | head -8; done"
+ ],
+ "note": "E025: magnitude half -- centered corr and calibration slope (truth on DESK) of withheld-decade change, selected vs late"
+}

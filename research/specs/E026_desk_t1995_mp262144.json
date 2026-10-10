@@ -1,0 +1,21 @@
+{
+ "exp": "E026",
+ "name": "desk-tempho1995-mp262144",
+ "group": "gpu",
+ "overlay": "research/overlays/desk_tempho_1995_mp262144.json",
+ "after_jobs": [
+  "E025/late-caches"
+ ],
+ "cmd": [
+  "bash",
+  "-c",
+  "set -e; export RESEARCH_OUT={out} TMPDIR={out}/tmp MPLCONFIGDIR={out}/tmp/mpl WANDB_MODE=offline WANDB_DIR={out}; mkdir -p {out}/desk {out}/tmp; {python} scripts/run_encoder.py desk; {python} research/exp/cache.py --out {cache}/desk_tempho_1995_mp262144; {python} research/exp/epoch_variant.py --run {out} --overlay research/overlays/desk_tempho_1995_mp262144.json --cache-out {cache}/desk_tempho_1995_mp262144_late --work {out}/late"
+ ],
+ "expected_minutes": 80,
+ "summarize": [
+  "python",
+  "-c",
+  "import json; s=json.load(open('{out}/desk/run_summary.json')); print({k: s.get(k) for k in ('best_epoch','best_val_kernel','best_val_zmse','epochs_run','selection_metric','holdout_years')})"
+ ],
+ "note": "E026: desk_tempho_1995 seed 1 with metric_pairs=262144 (HEAD 65,536; archived 4,096): is the metric term's gradient noise a lever on temporal extrapolation?"
+}

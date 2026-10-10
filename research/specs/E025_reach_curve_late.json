@@ -1,0 +1,22 @@
+{
+ "exp": "E025",
+ "name": "reach-curve-late",
+ "group": "cpu",
+ "overlay": "config/overlays/gp_species_base.json",
+ "after_jobs": [
+  "E025/late-caches"
+ ],
+ "cmd": [
+  "bash",
+  "-c",
+  "{python} research/exp/reach_curve.py --out {out} --ranks 24 64 --extra t1995_s1=desk_tempho_1995_s1:1996 t1995_s1L=desk_tempho_1995_s1_late:1996 t1995_s2=desk_tempho_1995_s2:1996 t1995_s2L=desk_tempho_1995_s2_late:1996 t1985_s1=desk_tempho_1985_s1:1986 t1985_s1L=desk_tempho_1985_s1_late:1986 t1985_s2=desk_tempho_1985_s2:1986 t1985_s2L=desk_tempho_1985_s2_late:1986"
+ ],
+ "expected_minutes": 15,
+ "summarize": [
+  "python",
+  "research/exp/reach_curve.py",
+  "--summarize",
+  "{out}"
+ ],
+ "note": "E025: reach curve of the tempho seed models at their selected vs late (epoch 490) states"
+}

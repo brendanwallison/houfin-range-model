@@ -64,6 +64,10 @@ def main():
                     help="E027: also a NONLINEAR covariate surrogate, this many random Fourier features of the 64 "
                          "covariate PCs (RBF, lengthscale = median pairwise distance): arms rff, rff+trend")
     ap.add_argument("--no-default-desk", action="store_true", help="skip the archived tempho models")
+    ap.add_argument("--desk-plus", nargs="*", default=(),
+                    help="E027b: for every DESK model also recalibrate on its z PLUS these blocks (lags, lag<hl>, rff, "
+                         "trend), each with its own prior: does the block add anything DESK's z does not already carry?")
+    ap.add_argument("--skip-surrogates", action="store_true", help="fit only what the DESK arms need")
     ap.add_argument("--summarize", default=None)
     a = ap.parse_args()
     if a.summarize:
@@ -162,18 +166,36 @@ def main():
             tdev = demean(yr[rows, None].astype(float))[:, 0]
             Xt = Rpos[rows] * tdev[:, None]
             Xp = demean(P[rows])
-            fits = {"trend": blr.fit(Xt, y, [(0, 24)]),
-                    "cov": blr.fit(Xp, y, [(0, Xp.shape[1])]),
-                    "cov+trend": blr.fit(np.hstack([Xp, Xt]), y, [(0, Xp.shape[1]), (Xp.shape[1], Xp.shape[1] + 24)])}
+            fits = {"trend": blr.fit(Xt, y, [(0, 24)])}
+            if not a.skip_surrogates:
+                fits["cov"] = blr.fit(Xp, y, [(0, Xp.shape[1])])
+                fits["cov+trend"] = blr.fit(np.hstack([Xp, Xt]), y, [(0, Xp.shape[1]), (Xp.shape[1], Xp.shape[1] + 24)])
             Xe = {k: demean(v[rows]) for k, v in extra.items()}
-            for k in lag_names:
+
+            def plus_blocks(blk, M, tr):
+                """The feature blocks a --desk-plus name stands for, from the per-row block dict ``M`` (training rows
+                or change rows) and the trend block ``tr``."""
+                if blk == "lags":
+                    return [M[k] for k in lag_names]
+                if blk == "trend":
+                    return [tr]
+                return [M[blk]]
+            for name, (dz, _m1) in desks.items():
+                Xd = demean(dz[rows])
+                for blk in a.desk_plus:
+                    parts = plus_blocks(blk, Xe, Xt)
+                    edges = np.cumsum([r] + [q.shape[1] for q in parts])
+                    fits[f"recal+{blk}:{name}"] = blr.fit(np.hstack([Xd] + parts), y,
+                                                          [(0, r)] + [(int(edges[i]), int(edges[i + 1]))
+                                                                      for i in range(len(parts))])
+            for k in (lag_names if not a.skip_surrogates else []):
                 fits[k] = blr.fit(Xe[k], y, [(0, Xe[k].shape[1])])
-            if lag_names:
+            if lag_names and not a.skip_surrogates:
                 XL = np.hstack([Xe[k] for k in lag_names])
                 bl = [(32 * i, 32 * (i + 1)) for i in range(len(lag_names))]
                 fits["lags"] = blr.fit(XL, y, bl)
                 fits["lags+trend"] = blr.fit(np.hstack([XL, Xt]), y, bl + [(XL.shape[1], XL.shape[1] + 24)])
-            if "rff" in extra:
+            if "rff" in extra and not a.skip_surrogates:
                 k_ = Xe["rff"].shape[1]
                 fits["rff"] = blr.fit(Xe["rff"], y, [(0, k_)])
                 fits["rff+trend"] = blr.fit(np.hstack([Xe["rff"], Xt]), y, [(0, k_), (k_, k_ + 24)])
@@ -190,17 +212,18 @@ def main():
                 dyear = np.array([yr[g1].mean() - yr[g2].mean() for g1, g2 in zip(gw, gr)])
                 rpos = np.stack([Rpos[g1[0]] for g1 in gw])
                 dP = np.stack([gmean(P, g1) - gmean(P, g2) for g1, g2 in zip(gw, gr)])
-                preds = {"trend": (rpos * dyear[:, None]) @ fits["trend"]["coef"].T,
-                         "cov": dP @ fits["cov"]["coef"].T,
-                         "cov+trend": np.hstack([dP, rpos * dyear[:, None]]) @ fits["cov+trend"]["coef"].T}
+                preds = {"trend": (rpos * dyear[:, None]) @ fits["trend"]["coef"].T}
+                if "cov" in fits:
+                    preds["cov"] = dP @ fits["cov"]["coef"].T
+                    preds["cov+trend"] = np.hstack([dP, rpos * dyear[:, None]]) @ fits["cov+trend"]["coef"].T
                 dE = {k: np.stack([gmean(v, g1) - gmean(v, g2) for g1, g2 in zip(gw, gr)]) for k, v in extra.items()}
-                for k in lag_names:
+                for k in (lag_names if not a.skip_surrogates else []):
                     preds[k] = dE[k] @ fits[k]["coef"].T
-                if lag_names:
+                if lag_names and not a.skip_surrogates:
                     dL = np.hstack([dE[k] for k in lag_names])
                     preds["lags"] = dL @ fits["lags"]["coef"].T
                     preds["lags+trend"] = np.hstack([dL, rpos * dyear[:, None]]) @ fits["lags+trend"]["coef"].T
-                if "rff" in extra:
+                if "rff" in fits:
                     preds["rff"] = dE["rff"] @ fits["rff"]["coef"].T
                     preds["rff+trend"] = np.hstack([dE["rff"], rpos * dyear[:, None]]) @ fits["rff+trend"]["coef"].T
                 for name, (dz, m1) in desks.items():
@@ -208,6 +231,9 @@ def main():
                     if m1 == t1:
                         preds["raw:" + name] = dD              # the model's own span: its unrecalibrated change
                     preds["recal:" + name] = dD @ fits["recal:" + name]["coef"].T
+                    for blk in a.desk_plus:
+                        parts = plus_blocks(blk, dE, rpos * dyear[:, None])
+                        preds[f"recal+{blk}:{name}"] = np.hstack([dD] + parts) @ fits[f"recal+{blk}:{name}"]["coef"].T
                 dT = {h: T[h][jw] - T[h][jr] for h in T}
                 cells_rc = np.array([(c_ // 100000, c_ % 100000) for c_ in cl])
                 blk = (cells_rc[:, 0] // 6) * 100000 + cells_rc[:, 1] // 6
@@ -232,7 +258,8 @@ def main():
                                                      float(np.nanpercentile(bs, 97.5))]}
                 # paired differences (same bootstrap draws): what a block adds over the arm it extends
                 row["diffs"] = {}
-                for p1, p0 in PAIRS:
+                pairs = list(PAIRS) + [(f"recal+{blk}:{name}", f"recal:{name}") for name in desks for blk in a.desk_plus]
+                for p1, p0 in pairs:
                     if p1 in preds and p0 in preds:
                         d0 = stats(preds[p1], np.ones(len(cl)))[0] - stats(preds[p0], np.ones(len(cl)))[0]
                         bd = np.array([stats(preds[p1], ww[binv].astype(float))[0]

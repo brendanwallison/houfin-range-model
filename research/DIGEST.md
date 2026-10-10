@@ -40,6 +40,12 @@ NEW SINCE YESTERDAY EVENING (tentative unless noted; each finding carries WHY: e
   - noise: the oracle's half-window features carry survey noise the large coefficients amplify (k -> ~0.4).
   Rare species carry almost no information and pull the median down. DESK in withheld decades has almost none
   (corr 0.07, k 0.19); in trained years it reaches corr 0.22, k 0.70 and beats no change.
+  Is the low information a defect? Mostly not (E031, your test): about 9 in 10 parts of a species' 40-year change
+  are not shared even with the five species it lives with most closely -- its own story, which your population model
+  is meant to carry. The ~1 in 10 that is shared is real (random species share ~0.3%; it survives where the same
+  observer counted throughout) and the community summary already carries most of it (5-7% vs 8-9%). So ESK's loss to
+  no change in the score comes from over-scaling and noise, not from missing habitat. Note: the score asks habitat to
+  predict a species' whole change, which your model does not ask of it.
 - Training span vs reach (your question), E023 / E024 / E024b:
   - cheap linear surrogates: at a fixed reach a SHORTER span next to the target backcasts better (strong: 0.22 vs
     0.08 for 20- vs 40-year spans);

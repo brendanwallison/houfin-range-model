@@ -46,6 +46,15 @@ NEW SINCE YESTERDAY EVENING (tentative unless noted; each finding carries WHY: e
   observer counted throughout) and the community summary already carries most of it (5-7% vs 8-9%). So ESK's loss to
   no change in the score comes from over-scaling and noise, not from missing habitat. Note: the score asks habitat to
   predict a species' whole change, which your model does not ask of it.
+- Readout scaling (E033, E033b; your "all four" round). Two results:
+  - shrinking DESK's change by a factor learned on the BBS years (~1/3) stops the harm: skill goes from about -0.06 to
+    -0.09 up to about 0 to +0.03, close to the most DESK's information allows. The shrink learned in the BBS era is
+    about right for the past (I predicted it would be too weak);
+  - a readout that learns, inside each place, how a species moves with DESK's change looks much better (correlation
+    0.22-0.42, skill up to +0.17) -- but a placebo with NO DESK (smooth position x year) does as well or better, and
+    DESK adds at most +0.03 on top. WHY (established for two models): it learns each species' own regional trend and
+    extrapolates it backwards -- the population model's job (G3), not habitat. The strongest predictor of a species'
+    change in withheld decades is its own regional trend; none of it comes from habitat as DESK represents it.
 - Training span vs reach (your question), E023 / E024 / E024b:
   - cheap linear surrogates: at a fixed reach a SHORTER span next to the target backcasts better (strong: 0.22 vs
     0.08 for 20- vs 40-year spans);

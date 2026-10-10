@@ -1,0 +1,18 @@
+{
+ "exp": "E025",
+ "name": "downstream-late",
+ "group": "cpu",
+ "overlay": "config/overlays/desk_tempho_1995.json",
+ "cmd": [
+  "bash",
+  "-c",
+  "set -e; for c in desk_tempho_1995_s1_late desk_tempho_1995_s2_late desk_tempho_1985_s1_late desk_tempho_1985_s2_late; do test -f {cache}/$c/esk_epochs.npz || {python} research/exp/esk_project.py --cache {cache}/$c; mkdir -p {out}/$c/readout_corr {out}/$c/readout_honesty {out}/$c/analog_pull; {python} research/exp/readout_corr.py --cache {cache}/$c --out {out}/$c/readout_corr --population withheld; {python} research/exp/readout_honesty.py --cache {cache}/$c --out {out}/$c/readout_honesty --population withheld; {python} research/exp/analog_pull.py --cache {cache}/$c --out {out}/$c/analog_pull --population withheld --exclude-km 200; done"
+ ],
+ "expected_minutes": 30,
+ "summarize": [
+  "bash",
+  "-c",
+  "for c in desk_tempho_1995_s1_late desk_tempho_1995_s2_late desk_tempho_1985_s1_late desk_tempho_1985_s2_late; do echo == $c; {python} research/exp/readout_corr.py --summarize {out}/$c/readout_corr | sed -n 3p; {python} research/exp/readout_honesty.py --summarize {out}/$c/readout_honesty | grep 'r24 total'; {python} research/exp/analog_pull.py --summarize {out}/$c/analog_pull | grep -A3 '^  r24' | grep -E 'truth|desk'; done"
+ ],
+ "note": "E025 follow-up (its decision rule): the readout correlation (E013), readout honesty (E018) and space-for-time pull (E017) on the epoch-490 states, against the selected-state seed results"
+}

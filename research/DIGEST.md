@@ -102,7 +102,7 @@ OPEN QUESTIONS (the plan: what limits extrapolation in time, and what would exte
    regional mean; grade on the observer-adjusted part.
 The age-model sensitivity fit comes last, once there are candidate backcasts worth comparing.
 
-## GATE 1 REPORT (2026-10-10 ~03:45, draft for your review; all UNVERIFIED in the protocol's sense unless noted)
+## GATE 1 REPORT (2026-10-10 ~03:24, draft for your review; all UNVERIFIED in the protocol's sense unless noted)
 1. Your three concerns, on the corrected validation suite (E006: audit fixes A1-A8, tempho1995 and the base model):
    - "DESK loses to the spacetime GP": only on TRAINED cells in withheld decades, where the GP's (degenerate) fit
      pulls each cell's modern quirks toward its region -- and about half of that advantage is observer turnover

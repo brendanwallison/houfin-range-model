@@ -1,0 +1,10 @@
+{
+ "exp": "E034",
+ "name": "trend-observer",
+ "group": "cpu",
+ "overlay": "config/overlays/gp_species_base.json",
+ "cmd": ["python", "research/exp/trend_observer.py", "--cache", "{cache}/gp_species_base", "--out", "{out}"],
+ "expected_minutes": 15,
+ "summarize": ["python", "research/exp/trend_observer.py", "--summarize", "{out}"],
+ "note": "E034b: is the position x year trend ecology or observer turnover? graded by observer continuity"
+}

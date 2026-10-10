@@ -46,15 +46,25 @@ NEW SINCE YESTERDAY EVENING (tentative unless noted; each finding carries WHY: e
   observer counted throughout) and the community summary already carries most of it (5-7% vs 8-9%). So ESK's loss to
   no change in the score comes from over-scaling and noise, not from missing habitat. Note: the score asks habitat to
   predict a species' whole change, which your model does not ask of it.
+- WHERE DESK'S BACKCAST GOES WRONG (E035b, new, one model in two training states): re-encoding the withheld years
+  with land use or climate swapped for their later values splits DESK's 1966-86 change in two:
+  - the LAND-USE-driven part is most of it (~90% of its size) and carries ALL of its correlation with the real change
+    (0.25), with no lean toward analog places;
+  - the CLIMATE-driven part tracks nothing real (0.03-0.05) and carries the whole lean toward places that have that
+    climate today (+0.25 to +0.31, far beyond its null).
+  WHY (established for this model): DESK reads a place's climate change through spatial climate gradients -- "become
+  the place that has this climate now" -- and real communities did not change that way over 1966-2025. Its land-use
+  reading points the right way (still over-scaled ~3x). Open: whether the land-use signal is each place's own
+  land-use change or a regional land-use trend; a second model and the species readout of each part are next.
+  This is the first concrete target for extending extrapolation: a backcast in which climate does not drive change.
 - Readout scaling (E033, E033b, skeptic-reviewed):
   - shrinking DESK's change by a factor learned on the BBS years (~1/3) stops the readout doing harm -- but only
     because there is almost no information to lose: DESK's change is about as uninformative in its own trained years
     as in the withheld decades, and almost any shrink would avoid harm (WHY established: the information is flat);
   - a readout that learns, inside each place, how a species moves with DESK's change looks much better (correlation
     0.22-0.42) -- but an adequate placebo with NO DESK (smooth position x year, 96 features) beats it by 0.07-0.12, and
-    DESK adds ~0.01 on top. WHY (established for two models): it learns each species' own regional trend and
-    extrapolates it backwards -- the population model's job (G3), not habitat. (My first numbers came from a lucky
-    random-feature draw; the reading held and got stronger with a better placebo. Rerun with 5 draws queued, E033c.)
+    DESK adds ~0.01 on top. WHY (established for two models; confirmed over five placebo draws, E033c): it learns
+    each species' own regional trend and extrapolates it backwards -- the population model's job (G3), not habitat.
 - What production DESK does before 1940 (E035, descriptive, skeptic-reviewed): its backcast movement is mostly driven by
   LAND USE (HYDE, LUH, BUI), not climate -- swapping 1920s land use for modern values cuts it from 0.33 to 0.08 -- and
   it SATURATES: z's distance from today stops growing around 1960 while the covariates keep drifting, so 1920-39 looks
@@ -65,7 +75,8 @@ NEW SINCE YESTERDAY EVENING (tentative unless noted; each finding carries WHY: e
 - The "kind of place x year" trend vs observers (E034b, skeptic-reviewed): the trend-predictable part of 2005-14 ->
   2016-25 change is the SAME where observers stayed or changed; a change of observer only adds change the trend cannot
   predict. So the trend is not an observer artifact -- but ecology vs a drift common to all observers (e.g. ageing) is
-  not separated (E034c: by observer tenure). About a third of the trend's apparent skill was in-time smoothing.
+  not separated (E034c: the predictable part is ~27% larger where observers had counted longer -- suggestive of some
+  within-observer drift, no CI yet). About a third of the trend's apparent skill was in-time smoothing.
   At a coarser grain (81 km, E034a) a place's own covariate change still adds nothing clear (+0.06 / +0.01 / 0.00, CIs
   spanning 0): grain is not an obvious explanation for why covariate change carries so little.
 - Training span vs reach (your question), E023 / E024 / E024b:

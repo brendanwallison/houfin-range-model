@@ -46,16 +46,17 @@ NEW SINCE YESTERDAY EVENING (tentative unless noted; each finding carries WHY: e
   observer counted throughout) and the community summary already carries most of it (5-7% vs 8-9%). So ESK's loss to
   no change in the score comes from over-scaling and noise, not from missing habitat. Note: the score asks habitat to
   predict a species' whole change, which your model does not ask of it.
-- WHERE DESK'S BACKCAST GOES WRONG (E035b, new, one model in two training states): re-encoding the withheld years
+- WHERE DESK'S BACKCAST GOES WRONG (E035b/E035c, replicated on four models): re-encoding the withheld years
   with land use or climate swapped for their later values splits DESK's 1966-86 change in two:
   - the LAND-USE-driven part is most of it (~90% of its size) and carries ALL of its correlation with the real change
     (0.25), with no lean toward analog places;
   - the CLIMATE-driven part tracks nothing real (0.03-0.05) and carries the whole lean toward places that have that
     climate today (+0.25 to +0.31, far beyond its null).
-  WHY (established for this model): DESK reads a place's climate change through spatial climate gradients -- "become
+  WHY (established across four models): DESK reads a place's climate change through spatial climate gradients -- "become
   the place that has this climate now" -- and real communities did not change that way over 1966-2025. Its land-use
   reading points the right way (still over-scaled ~3x). Open: whether the land-use signal is each place's own
-  land-use change or a regional land-use trend; a second model and the species readout of each part are next.
+  land-use change or a regional land-use trend. At the species level too the land-use part carries the signal
+  (0.06-0.10 vs 0.03); the land-use part has a small lean of its own in two of four models (+0.04, +0.09).
   This is the first concrete target for extending extrapolation: a backcast in which climate does not drive change.
 - Readout scaling (E033, E033b, skeptic-reviewed):
   - shrinking DESK's change by a factor learned on the BBS years (~1/3) stops the readout doing harm -- but only

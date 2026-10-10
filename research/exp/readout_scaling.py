@@ -59,7 +59,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--cache")
     ap.add_argument("--out")
-    ap.add_argument("--t0", type=int, required=True, help="first trained year of the model in the cache")
+    ap.add_argument("--t0", type=int, default=None, help="first trained year of the model in the cache (required to run)")
     ap.add_argument("--rank", type=int, default=24)
     ap.add_argument("--summarize", default=None)
     a = ap.parse_args()

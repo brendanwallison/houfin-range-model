@@ -46,27 +46,28 @@ NEW SINCE YESTERDAY EVENING (tentative unless noted; each finding carries WHY: e
   observer counted throughout) and the community summary already carries most of it (5-7% vs 8-9%). So ESK's loss to
   no change in the score comes from over-scaling and noise, not from missing habitat. Note: the score asks habitat to
   predict a species' whole change, which your model does not ask of it.
-- Readout scaling (E033, E033b; your "all four" round). Two results:
-  - shrinking DESK's change by a factor learned on the BBS years (~1/3) stops the harm: skill goes from about -0.06 to
-    -0.09 up to about 0 to +0.03, close to the most DESK's information allows. The shrink learned in the BBS era is
-    about right for the past (I predicted it would be too weak);
+- Readout scaling (E033, E033b, skeptic-reviewed):
+  - shrinking DESK's change by a factor learned on the BBS years (~1/3) stops the readout doing harm -- but only
+    because there is almost no information to lose: DESK's change is about as uninformative in its own trained years
+    as in the withheld decades, and almost any shrink would avoid harm (WHY established: the information is flat);
   - a readout that learns, inside each place, how a species moves with DESK's change looks much better (correlation
-    0.22-0.42, skill up to +0.17) -- but a placebo with NO DESK (smooth position x year) does as well or better, and
-    DESK adds at most +0.03 on top. WHY (established for two models): it learns each species' own regional trend and
-    extrapolates it backwards -- the population model's job (G3), not habitat. The strongest predictor of a species'
-    change in withheld decades is its own regional trend; none of it comes from habitat as DESK represents it.
-- What production DESK actually does before 1940 (E035, descriptive -- no truth exists then): its 1920-39 backcast
-  sits 1.4x as far from today as its 1966-86 state, and a clear part of that movement points toward places whose
-  TODAY's climate matches the place's 1920s climate (alignment +0.13; it moves ~1/5 of the way toward them). Real
-  communities did not move that way in the BBS era (~-0.05). Production is the epoch-200 state; its BBS-era lean
-  (+0.17) sits between the selected-epoch and epoch-490 tempho models, as expected.
-  WHY: likely the same space-for-time mapping (S2); why the 1920s lean is not stronger than the 1960s' is unknown.
-- The "kind of place x year" trend is not observer turnover (E034b): it predicts the 2005-14 -> 2016-25 change BETTER
-  where the same observers counted throughout (community 0.31 vs 0.23; species 0.23 vs 0.19). WHY (likely): a change
-  of observer adds route-specific change the regional trend cannot predict. Not excluded: drift common to all
-  observers (protocol, skill). At a coarser grain (81 km, E034a) a place's own covariate change still adds
-  nothing clear beyond "kind of place x linear year" (+0.06 / +0.01 / 0.00, CIs spanning 0) -- so grain is not an
-  obvious explanation for why covariate change carries so little.
+    0.22-0.42) -- but an adequate placebo with NO DESK (smooth position x year, 96 features) beats it by 0.07-0.12, and
+    DESK adds ~0.01 on top. WHY (established for two models): it learns each species' own regional trend and
+    extrapolates it backwards -- the population model's job (G3), not habitat. (My first numbers came from a lucky
+    random-feature draw; the reading held and got stronger with a better placebo. Rerun with 5 draws queued, E033c.)
+- What production DESK does before 1940 (E035, descriptive, skeptic-reviewed): its backcast movement is mostly driven by
+  LAND USE (HYDE, LUH, BUI), not climate -- swapping 1920s land use for modern values cuts it from 0.33 to 0.08 -- and
+  it SATURATES: z's distance from today stops growing around 1960 while the covariates keep drifting, so 1920-39 looks
+  like the 1950s. Its lean toward places that look like the past today is marginal for 1920-39 (p ~0.05; +0.05
+  measured like-for-like vs about -0.01 for real communities) and clear for 1966-86 (in-sample). The space-for-time
+  error sits mostly in the small CLIMATE-driven part. WHY it saturates: unknown. Next (E035b): the same swap on a
+  model with withheld decades -- which part of DESK's change tracks the real change, and which carries the error?
+- The "kind of place x year" trend vs observers (E034b, skeptic-reviewed): the trend-predictable part of 2005-14 ->
+  2016-25 change is the SAME where observers stayed or changed; a change of observer only adds change the trend cannot
+  predict. So the trend is not an observer artifact -- but ecology vs a drift common to all observers (e.g. ageing) is
+  not separated (E034c: by observer tenure). About a third of the trend's apparent skill was in-time smoothing.
+  At a coarser grain (81 km, E034a) a place's own covariate change still adds nothing clear (+0.06 / +0.01 / 0.00, CIs
+  spanning 0): grain is not an obvious explanation for why covariate change carries so little.
 - Training span vs reach (your question), E023 / E024 / E024b:
   - cheap linear surrogates: at a fixed reach a SHORTER span next to the target backcasts better (strong: 0.22 vs
     0.08 for 20- vs 40-year spans);

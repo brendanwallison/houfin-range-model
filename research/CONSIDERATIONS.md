@@ -103,5 +103,14 @@ Items are numbered so records can cite them (e.g. "considerations: G3, M1, M6").
   that drifts with time in a place (DESK z, or position x year) lets a readout learn each species' regional trend and
   extrapolate it; that predicts the score well but is the population model's job (G3). Always compare with a
   position x time placebo. (E033b)
-- **M18 Observer turnover LOWERS the predictability of regional trends** rather than creating them (E034b); "shared"
-  or "regional" structure is not automatically an observer artifact -- check, don't assume. (E034b)
+- **M18 Observer turnover ADDS change a regional trend cannot predict** rather than creating the trend: the
+  trend-predictable part is the same where observers stayed (E034b + skeptic). "Shared" or "regional" structure is not
+  automatically an observer artifact -- check, don't assume; a drift common to all observers is still not excluded.
+- **M19 Nulls must keep spatial structure.** Shuffling a spatially smooth field across cells gives a far too narrow
+  null; use spatial shifts or random directions/rotations. (E035 skeptic: p95 0.006 -> ~0.10)
+- **M20 Random-feature placebos need an adequate basis and several draws.** One draw of 24 features was the best of
+  five; 96 features changed the size of the effect. (E033b skeptic)
+- **M21 "Skill >= 0" is a low bar when information is near zero**: any shrink between 0 and twice the optimum gives it.
+  Report the information (corr^2) next to any "stops the harm" claim. (E033 skeptic)
+- **M22 Saturation.** DESK's z stops following covariate drift before ~1960 while covariates keep changing; a
+  backcast's distance from today can plateau, so compare windows on the same part of the curve. (E035 skeptic)

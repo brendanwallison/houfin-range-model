@@ -33,6 +33,9 @@ def main():
     ap.add_argument("--cache")
     ap.add_argument("--out")
     ap.add_argument("--scale-km", type=float, default=150.0)
+    ap.add_argument("--start", type=int, default=2005,
+                    help="first year of epoch 1; epoch 1 = start..start+9, gap year start+10, epoch 2 = start+11..start+20 "
+                         "(default 2005: 2005-14 vs 2016-25, as E021; E028b replicates earlier eras)")
     ap.add_argument("--n-boot", type=int, default=500)
     ap.add_argument("--summarize", default=None)
     a = ap.parse_args()
@@ -56,13 +59,14 @@ def main():
     Xd = np.load(c("X_dev.npy")).astype("float64")
     cid = keys[:, 0].astype(np.int64) * 100000 + keys[:, 1]
     rows_by = {}
-    for i in np.where((yr >= 2005) & (yr <= 2025) & (yr != 2015))[0]:
+    y0, gap, y1 = a.start, a.start + 10, a.start + 20
+    for i in np.where((yr >= y0) & (yr <= y1) & (yr != gap))[0]:
         rows_by.setdefault(cid[i], []).append(i)
     g = {"h1a": [], "h1b": [], "e1": [], "e2": []}
     kind, cells = [], []
     for cc, rows in rows_by.items():
         rows = np.array(sorted(rows, key=lambda i: yr[i]))
-        r1, r2 = rows[yr[rows] < 2015], rows[yr[rows] > 2015]
+        r1, r2 = rows[yr[rows] < gap], rows[yr[rows] > gap]
         if len(r1) < 4 or len(r2) < 4:
             continue
         o1, o2 = obs_of(r1), obs_of(r2)
@@ -103,7 +107,7 @@ def main():
         p = -k * (x - x.mean(0))
         return float(1.0 - ((y - p) ** 2).sum() / (y ** 2).sum())
 
-    res = {"cache": a.cache, "scale_km": a.scale_km, "n_species": int(sp.sum()),
+    res = {"cache": a.cache, "scale_km": a.scale_km, "n_species": int(sp.sum()), "epochs": [y0, gap - 1, gap + 1, y1],
            "n_cells": {k: int((kind == k).sum()) for k in CLASSES}, "classes": {}}
     boots = {k: [] for k in CLASSES}
     for _ in range(a.n_boot):
@@ -131,7 +135,9 @@ def main():
 
 def summarize(out):
     r = json.load(open(os.path.join(out, "persistence_observer.json"), encoding="utf-8"))
-    print(f"damped persistence by observer continuity, 2005-14 -> 2016-25 ({r['n_species']} species, surface "
+    e = r.get("epochs", [2005, 2014, 2016, 2025])
+    print(f"damped persistence by observer continuity, {e[0]}-{e[1] % 100:02d} -> {e[2]}-{e[3] % 100:02d} "
+          f"({r['n_species']} species, surface "
           f"{r['scale_km']:.0f} km): slope of change on the epoch-1 deviation (noise-independent halves); -1 = the "
           f"deviation vanishes, 0 = it persists")
     for k in CLASSES:

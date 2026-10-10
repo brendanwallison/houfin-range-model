@@ -1,0 +1,10 @@
+{
+ "exp": "E028",
+ "name": "persistence-observer-1975",
+ "group": "cpu",
+ "overlay": "config/overlays/gp_species_base.json",
+ "cmd": ["python", "research/exp/persistence_observer.py", "--cache", "{cache}/gp_species_base", "--out", "{out}", "--start", "1975"],
+ "expected_minutes": 5,
+ "summarize": ["python", "research/exp/persistence_observer.py", "--summarize", "{out}"],
+ "note": "E028b: damped persistence by observer continuity, 1975-84 vs 1986-95"
+}

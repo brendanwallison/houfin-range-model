@@ -68,6 +68,19 @@ def main():
                     help="E027b: for every DESK model also recalibrate on its z PLUS these blocks (lags, lag<hl>, rff, "
                          "trend), each with its own prior: does the block add anything DESK's z does not already carry?")
     ap.add_argument("--skip-surrogates", action="store_true", help="fit only what the DESK arms need")
+    # E027c (the skeptic's controls)
+    ap.add_argument("--t0s", type=int, nargs="*", default=(), help="only these start years")
+    ap.add_argument("--span-set", default="all", choices=("all", "ends"), help="ends = the shortest and longest span")
+    ap.add_argument("--cov-pcs-list", type=int, nargs="*", default=(),
+                    help="linear references with only the first k covariate PCs: arms cov<k>, cov<k>+trend")
+    ap.add_argument("--rff-seeds", type=int, nargs="*", default=(),
+                    help="several RFF draws (needs --rff): arms rff_s<seed>, rff_s<seed>+trend, and seed-mean contrasts")
+    ap.add_argument("--rff-clock", action="store_true",
+                    help="covariate-clock placebo: RFF of each cell's MEAN covariates moved only along the continental "
+                         "(training-cell) trajectory -- arms rffclock_s<seed>(+trend), same draws and lengthscale")
+    ap.add_argument("--lag-trend", action="store_true", help="also lag<hl>+trend for every lag block")
+    ap.add_argument("--lag-warmup", type=int, default=None,
+                    help="start the lag EMAs in this year (default: the DESK run's warm-up year, 1940)")
     ap.add_argument("--summarize", default=None)
     a = ap.parse_args()
     if a.summarize:
@@ -116,7 +129,7 @@ def main():
 
     extra = {}                                   # E027 feature blocks: name -> (N, k) at every key
     if a.lag_hls:
-        for hl, F in covfeat.multi_ema_rows(cfg, keys, a.lag_hls).items():
+        for hl, F in covfeat.multi_ema_rows(cfg, keys, a.lag_hls, warm_start=a.lag_warmup).items():
             extra[f"lag{hl:g}"] = np.nan_to_num(covfeat.cov_pcs(F, train_cell & np.isfinite(F).all(1), n_pcs=32))
     if a.rff:
         sub = np.where(train_cell)[0][:: max(1, int(train_cell.sum()) // 2000)]
@@ -124,9 +137,32 @@ def main():
         sq = (Ps * Ps).sum(1)
         d2 = np.maximum(sq[:, None] + sq[None, :] - 2.0 * Ps @ Ps.T, 0.0)
         ls = float(np.sqrt(np.median(d2[np.triu_indices(len(sub), 1)])))
-        extra["rff"] = covfeat.rff(P, a.rff, ls, seed=1)
+        if a.rff_seeds:
+            for sd in a.rff_seeds:
+                extra[f"rff_s{sd}"] = covfeat.rff(P, a.rff, ls, seed=sd)
+        else:
+            extra["rff"] = covfeat.rff(P, a.rff, ls, seed=1)
+        if a.rff_clock:
+            # each cell's mean covariate position, moved only along the continent-wide trajectory of training cells
+            ucell, cinv = np.unique(cid, return_inverse=True)
+            csum = np.zeros((len(ucell), P.shape[1]))
+            np.add.at(csum, cinv, P)
+            cell_mean = (csum / np.bincount(cinv)[:, None])[cinv]
+            yu, yinv = np.unique(yr, return_inverse=True)
+            tsum, tcnt = np.zeros((len(yu), P.shape[1])), np.zeros(len(yu))
+            np.add.at(tsum, yinv[train_cell], P[train_cell])
+            np.add.at(tcnt, yinv[train_cell], 1.0)
+            traj = tsum / np.maximum(tcnt, 1.0)[:, None]
+            traj -= traj[tcnt > 0].mean(0)
+            Pclock = cell_mean + traj[yinv]
+            for sd in (a.rff_seeds or (1,)):
+                extra[f"rffclock_s{sd}"] = covfeat.rff(Pclock, a.rff, ls, seed=sd)
         print(f"[span-reach] rff: {a.rff} features, lengthscale {ls:.2f} (median distance of 64 covariate PCs)", flush=True)
+    for k_ in a.cov_pcs_list:
+        extra[f"cov{k_}"] = np.asarray(P[:, :k_], "float64")
     lag_names = [k for k in extra if k.startswith("lag")]
+    # blocks fitted generically, alone and with the trend placebo
+    solo = [k for k in extra if k.startswith(("rff_s", "rffclock_s", "cov"))]
 
     models = [] if a.no_default_desk else list(DESK_MODELS)
     for spec in a.desk_models:
@@ -136,6 +172,10 @@ def main():
     res = {"rank": r, "balance_years": bool(a.balance_years), "plus_year": a.plus_year, "desk_models": models,
            "rows": []}
     for t0, spans in GRID.items():
+        if a.t0s and t0 not in a.t0s:
+            continue
+        if a.span_set == "ends":
+            spans = (min(spans), max(spans))
         ref = (t0, t0 + 9)
         cells_w = {}
         for (lo, hi) in WINDOWS:
@@ -199,6 +239,13 @@ def main():
                 k_ = Xe["rff"].shape[1]
                 fits["rff"] = blr.fit(Xe["rff"], y, [(0, k_)])
                 fits["rff+trend"] = blr.fit(np.hstack([Xe["rff"], Xt]), y, [(0, k_), (k_, k_ + 24)])
+            for k_ in (solo if not a.skip_surrogates else []):
+                q = Xe[k_].shape[1]
+                fits[k_] = blr.fit(Xe[k_], y, [(0, q)])
+                fits[k_ + "+trend"] = blr.fit(np.hstack([Xe[k_], Xt]), y, [(0, q), (q, q + 24)])
+            for k_ in (lag_names if (a.lag_trend and not a.skip_surrogates) else []):
+                q = Xe[k_].shape[1]
+                fits[k_ + "+trend"] = blr.fit(np.hstack([Xe[k_], Xt]), y, [(0, q), (q, q + 24)])
             for name, (dz, _m1) in desks.items():
                 # recal:<model> -- the DESK model's own training span is fixed; only its RECALIBRATION uses this span's
                 # rows (a post-hoc test of weighting the trained years nearest the target)
@@ -226,6 +273,13 @@ def main():
                 if "rff" in fits:
                     preds["rff"] = dE["rff"] @ fits["rff"]["coef"].T
                     preds["rff+trend"] = np.hstack([dE["rff"], rpos * dyear[:, None]]) @ fits["rff+trend"]["coef"].T
+                for k_ in solo:
+                    if k_ in fits:
+                        preds[k_] = dE[k_] @ fits[k_]["coef"].T
+                        preds[k_ + "+trend"] = np.hstack([dE[k_], rpos * dyear[:, None]]) @ fits[k_ + "+trend"]["coef"].T
+                for k_ in lag_names:
+                    if k_ + "+trend" in fits:
+                        preds[k_ + "+trend"] = np.hstack([dE[k_], rpos * dyear[:, None]]) @ fits[k_ + "+trend"]["coef"].T
                 for name, (dz, m1) in desks.items():
                     dD = np.stack([gmean(dz, g1) - gmean(dz, g2) for g1, g2 in zip(gw, gr)])
                     if m1 == t1:
@@ -259,6 +313,9 @@ def main():
                 # paired differences (same bootstrap draws): what a block adds over the arm it extends
                 row["diffs"] = {}
                 pairs = list(PAIRS) + [(f"recal+{blk}:{name}", f"recal:{name}") for name in desks for blk in a.desk_plus]
+                pairs += [(f"cov{k_}+trend", "cov+trend") for k_ in a.cov_pcs_list]
+                pairs += [(f"lag{h:g}+trend", "lag10.5+trend") for h in a.lag_hls if h != 10.5]
+                pairs += [("lags+trend", "lag10.5+trend")]
                 for p1, p0 in pairs:
                     if p1 in preds and p0 in preds:
                         d0 = stats(preds[p1], np.ones(len(cl)))[0] - stats(preds[p0], np.ones(len(cl)))[0]
@@ -266,6 +323,31 @@ def main():
                                        - stats(preds[p0], ww[binv].astype(float))[0] for ww in W])
                         row["diffs"][f"{p1} - {p0}"] = {"diff": float(d0), "ci": [float(np.nanpercentile(bd, 2.5)),
                                                                                   float(np.nanpercentile(bd, 97.5))]}
+                # seed-mean contrasts: the mean over RFF draws of a paired difference, bootstrapped on the same draws
+                sm = []
+                if a.rff_seeds:
+                    S = list(a.rff_seeds)
+                    sm.append(("rff+trend - cov+trend [seed mean]", [(f"rff_s{x}+trend", "cov+trend") for x in S]))
+                    sm.append(("rff - cov [seed mean]", [(f"rff_s{x}", "cov") for x in S]))
+                    sm += [(f"rff+trend - cov{k_}+trend [seed mean]", [(f"rff_s{x}+trend", f"cov{k_}+trend") for x in S])
+                           for k_ in a.cov_pcs_list]
+                    if a.rff_clock:
+                        sm.append(("rffclock+trend - rff+trend [seed mean]",
+                                   [(f"rffclock_s{x}+trend", f"rff_s{x}+trend") for x in S]))
+                        sm.append(("rffclock - rff [seed mean]", [(f"rffclock_s{x}", f"rff_s{x}") for x in S]))
+                        sm.append(("rffclock+trend - cov+trend [seed mean]",
+                                   [(f"rffclock_s{x}+trend", "cov+trend") for x in S]))
+                for label, lst in sm:
+                    lst = [(p1, p0) for p1, p0 in lst if p1 in preds and p0 in preds]
+                    if not lst:
+                        continue
+                    one = np.ones(len(cl))
+                    d0 = np.mean([stats(preds[p1], one)[0] - stats(preds[p0], one)[0] for p1, p0 in lst])
+                    bd = np.array([np.mean([stats(preds[p1], ww[binv].astype(float))[0]
+                                            - stats(preds[p0], ww[binv].astype(float))[0] for p1, p0 in lst])
+                                   for ww in W])
+                    row["diffs"][label] = {"diff": float(d0), "ci": [float(np.nanpercentile(bd, 2.5)),
+                                                                     float(np.nanpercentile(bd, 97.5))]}
                 res["rows"].append(row)
     with open(os.path.join(a.out, "span_reach.json"), "w", encoding="utf-8") as fh:
         json.dump(res, fh, indent=1)

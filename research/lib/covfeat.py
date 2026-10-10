@@ -18,7 +18,7 @@ def cov_pcs(F, fit_rows, n_pcs=64, max_fit_rows=40000):
     return Fs @ Vt[:n_pcs].T
 
 
-def multi_ema_rows(config, keys, half_lives):
+def multi_ema_rows(config, keys, half_lives, warm_start=None):
     """The covariates DESK sees (its states, channel transforms and training mu/sd, from the run in ``config``) at each
     key, after a causal EMA at each of ``half_lives`` years (0 = none beyond the states' light input-side EMA).
     Returns ``{hl: (N, C) float32}``. The same loader as validate_gp_species.covariates_for_keys, which applies only
@@ -35,6 +35,8 @@ def multi_ema_rows(config, keys, half_lives):
     cio.assert_schema_compatible(schema, cio.load_schema(states_dir), context="covfeat")
     mu, sd = dm["mu"].astype("float32"), dm["sd"].astype("float32")
     warm = int(dm["ema_warmup_start"]) if "ema_warmup_start" in dm.files else 1940
+    if warm_start is not None:
+        warm = int(warm_start)                   # e.g. 1902: a long EMA otherwise keeps a large share of its seed year
     keys = np.asarray(keys)
     cells = np.unique(keys[:, :2], axis=0)
     years = list(range(min(warm, int(keys[:, 2].min())), int(keys[:, 2].max()) + 1))

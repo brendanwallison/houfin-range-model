@@ -1,0 +1,14 @@
+{
+ "exp": "E027",
+ "name": "controls-t0-1986",
+ "group": "cpu",
+ "overlay": "config/overlays/gp_species_base.json",
+ "cmd": [
+  "bash",
+  "-c",
+  "{python} research/exp/span_reach.py --out {out} --no-default-desk --t0s 1986 --span-set ends --rff 512 --rff-seeds 1 2 3 --rff-clock --cov-pcs-list 8 16 32 --lag-hls 0 10.5 30 --lag-trend --lag-warmup 1902"
+ ],
+ "expected_minutes": 40,
+ "summarize": ["python", "research/exp/span_reach.py", "--summarize", "{out}"],
+ "note": "E027c: clock placebo, RFF draws, PC-matched linear references, 1902-warm-up lags (T0 1986)"
+}

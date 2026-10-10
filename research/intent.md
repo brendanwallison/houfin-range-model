@@ -54,7 +54,7 @@ Tomorrow, branch on:
  3. Re-establish the DESK-failure picture on current-code models (space-for-time pull, readout corr, over-movement).
 Then: lags (multi-timescale covariate history vs the trend placebo), temporal supervision in DESK, observer-continuity
 target, and the Gate 1 report once E006 + the re-runs are in.
-2026-10-09 ~23:40 (overnight, user asleep; plan followed/revised per their go-ahead):
+2026-10-09 ~22:55 (overnight, user asleep; plan followed/revised per their go-ahead):
 - E024 decided by its pre-registered rule: NO (1966-71: 1996 short 0.102 vs long seeds 0.122/0.105; 1986 0.143 vs
   0.136/0.112, within the 0.024 spread; 1976 below the archived model). Short spans win only at 1972-77. N2 stays a
   surrogate-level result; time-weighted DESK NOT launched.

@@ -233,6 +233,7 @@
   - {job: "adhoc:skeptic-E027c", exp: E027, dir: for, strength: moderate, note: "skeptic controls: the clock is a time index (random covariate directions do as well; composition-free trajectory is linear in year): the surrogates' backcast skill is matched by static environment position x linear year; no detectable use of a cell's own covariate change (95% bound ~0.05 corr). UNVERIFIED."}
   - {job: "E027/split1-t0-1986-7fc64db6b443", exp: E027, dir: for, strength: weak, note: "second spatial split: cell-specific covariate RFF vs static-environment x linear-year placebo at the farthest windows +0.004 / +0.033 / +0.041 (rff ahead), CIs spanning 0; replication rule not met (inconclusive). Across both splits a cell's own covariate change adds at most ~0.05 in correlation. UNVERIFIED."}
   - {job: "E034/trend-observer-4c5f2ac6542a", exp: E034, dir: for, strength: weak, note: "the position x year trend that carries most predictable change is not observer turnover: it predicts 2005-14 -> 2016-25 change better where observers were unchanged (community 0.31 vs 0.23; species 0.23 vs 0.19). Ecological or a common observation drift. UNVERIFIED."}
+  - {job: "E035/backcast-attribution-63bd84b5379c", exp: E035, dir: against, strength: weak, note: "DESK's land-use-driven change tracks the real 1966-86 -> 2005-25 change (corr 0.25) -- land-use covariates DO carry temporal signal in DESK; climate change does not (as DESK reads it). Whether it is local land-use change or a regional land-use trend is not separated. UNVERIFIED."}
 - id: B1
   stage: B
   priority: 1
@@ -453,6 +454,7 @@
   - {job: "adhoc:E017-dev", exp: E017, dir: against, strength: weak, note: "DESK backcast moves are not toward covariate analogs (pull/alignment ~0 at r12/24/64, near or > 200 km); its readout neighbours are no worse than no-change. The bias is misdirected noise, not analog-structured. UNVERIFIED."}
   - {job: "adhoc:E017b-dev", exp: E017, dir: for, strength: moderate, note: "REVERSES the E017 reading. Along the corrected space-for-time direction (analogs of early minus analogs of modern covariates; centered): DESK backcast align +0.21 [0.15, 0.26] (> 200 km), as much as an explicit space-for-time map (+0.21); the truth -0.06; trained years DESK +0.09. Found by the skeptic, reproduced by our re-run; replications queued."}
   - {job: "E025/downstream-late-e284dcbdccbc", exp: E025, dir: for, strength: moderate, note: "the space-for-time pull halves or more from the selected epoch to epoch 490 (t1995 +0.14/+0.21 -> +0.08/+0.09; t1985 +0.10/+0.15 -> +0.03/+0.04): it is partly a property of the early, spatially selected state. UNVERIFIED."}
+  - {job: "E035/backcast-attribution-63bd84b5379c", exp: E035, dir: for, strength: moderate, note: "MECHANISM: re-encoding withheld years with land use or climate swapped shows DESK's space-for-time lean comes entirely from its CLIMATE-driven change (analog alignment +0.25-0.31 vs null <= 0; corr with real change 0.03-0.05), while its land-use-driven change carries all its real signal (corr 0.25, no lean). tempho1995 s1, selected and late. UNVERIFIED."}
 - id: S3
   stage: T
   priority: 2

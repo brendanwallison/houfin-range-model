@@ -15,7 +15,7 @@
  "summarize": [
   "bash",
   "-c",
-  "for c in desk_tempho_1995_s1 desk_tempho_1995_s1_late desk_tempho_1995_s2 desk_tempho_1995_s2_late; do echo == $c; {python} research/exp/atlas.py --summarize {out}/$c | grep -iE 'centered|slope|corr'\|slope\|corr' | head -8; done"
+  "for c in desk_tempho_1995_s1 desk_tempho_1995_s1_late desk_tempho_1995_s2 desk_tempho_1995_s2_late; do echo == $c; {python} research/exp/atlas.py --summarize {out}/$c | grep -iE 'centered|slope|corr' | head -8; done"
  ],
  "note": "E025: magnitude half -- centered corr and calibration slope (truth on DESK) of withheld-decade change, selected vs late"
 }

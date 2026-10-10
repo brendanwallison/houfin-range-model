@@ -74,6 +74,7 @@
   parents: []
   evidence:
   - {job: "adhoc:E011-dev", exp: E011, dir: neutral, strength: weak, note: "continental trend alone captures 9% of available change; community-driven change (chg_dev) 17-21%; both 25-29%. >70% of resolvable species change is not linear in community change + trend. UNVERIFIED."}
+  - {job: "E031/shared-change-d22db828f447", exp: E031, dir: for, strength: moderate, note: "~90% of a graded species' 40-year change pattern is not shared with its 5 closest spatial associates (shared share 0.084 vs 0.003 random); the shared part survives unchanged observers. Species' own dynamics dominate. UNVERIFIED."}
 - id: E2
   stage: E
   priority: 2
@@ -138,7 +139,8 @@
   kill: Direct regression on the 96 abundances predicts held-out species about as well as the full species pool would.
   blr: If true, z is the wrong basis for off-axis species regardless of DESK.
   parents: []
-  evidence: []
+  evidence:
+  - {job: "E031/shared-change-d22db828f447", exp: E031, dir: against, strength: weak, note: "the community readout (E030, 5-7%) already carries most of what a species' own associates share with it (8-9%): the reference community is not missing much shared signal for out-of-community species. UNVERIFIED."}
 - id: R6
   stage: R
   priority: 2

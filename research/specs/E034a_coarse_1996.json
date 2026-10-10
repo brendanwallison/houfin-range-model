@@ -1,0 +1,15 @@
+{
+ "exp": "E034",
+ "name": "coarse-t0-1996",
+ "group": "cpu",
+ "overlay": "config/overlays/gp_species_base.json",
+ "after_jobs": ["E034/coarsen-3x3"],
+ "cmd": [
+  "bash",
+  "-c",
+  "{python} research/exp/span_reach.py --out {out} --base-cache {cache}/gp_species_base_c3 --cell-km 81 --boot-block 2 --no-default-desk --t0s 1996 --span-set ends --rff 512 --rff-seeds 1 2 3 --rff-lineclock"
+ ],
+ "expected_minutes": 30,
+ "summarize": ["python", "research/exp/span_reach.py", "--summarize", "{out}"],
+ "note": "E034a: 81 km grain; a place's own covariate change vs static environment x linear year (T0 1996)"
+}

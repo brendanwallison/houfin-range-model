@@ -86,6 +86,11 @@ def main():
     ap.add_argument("--rff-lineclock", action="store_true",
                     help="placebo: RFF (same draws) of each cell's MEAN covariate position moved along a RANDOM fixed "
                          "direction at a constant rate -- 'kind of place x linear year' (the skeptic's clean clock)")
+    ap.add_argument("--base-cache", default=None,
+                    help="E034a: a (coarsened) cache to read instead of gp_species_base (keys, split, X_comm, F_cov, "
+                         "esk_annual)")
+    ap.add_argument("--cell-km", type=float, default=27.0, help="grid spacing of --base-cache (81 for 3x3 coarse cells)")
+    ap.add_argument("--boot-block", type=int, default=6, help="bootstrap block size in cells (2 for 3x3 coarse cells)")
     ap.add_argument("--lineclock-rate", type=float, default=0.088,
                     help="PC-space units per year (the composition-free continental trajectory moves ~5.2 in 59 years)")
     ap.add_argument("--lag-warmup", type=int, default=None,
@@ -99,7 +104,7 @@ def main():
     from src.community_encoder.train_DESK.validate_bbs_routes import epoch_mean_observed
     from src.community_encoder.train_DESK.validation_core import split_half_groups
     os.makedirs(a.out, exist_ok=True)
-    base = os.path.join(CACHE_ROOT, "gp_species_base")
+    base = a.base_cache or os.path.join(CACHE_ROOT, "gp_species_base")
     keys = np.load(os.path.join(base, "keys.npy"))
     split = np.load(os.path.join(base, "split.npz"))
     yr = keys[:, 2]
@@ -143,7 +148,7 @@ def main():
     # features at every key
     P = covfeat.cov_pcs(np.load(os.path.join(base, "F_cov.npy"), mmap_mode="r"), train_cell)
     rng = np.random.default_rng(0)
-    xy = keys[:, :2].astype("float64") * 27.0
+    xy = keys[:, :2].astype("float64") * a.cell_km
     Rpos = np.sqrt(2.0 / 24) * np.cos(xy @ (rng.normal(size=(2, 24)) / 300.0) + rng.uniform(0, 2 * np.pi, 24))
     Zobs = np.load(os.path.join(base, "esk_annual.npy"))[:, :r].astype("float64")
     gmean = lambda M, g: np.asarray(M[g], "float64").mean(0)
@@ -323,7 +328,7 @@ def main():
                         preds[f"recal+{blk}:{name}"] = np.hstack([dD] + parts) @ fits[f"recal+{blk}:{name}"]["coef"].T
                 dT = {h: T[h][jw] - T[h][jr] for h in T}
                 cells_rc = np.array([(c_ // 100000, c_ % 100000) for c_ in cl])
-                blk = (cells_rc[:, 0] // 6) * 100000 + cells_rc[:, 1] // 6
+                blk = (cells_rc[:, 0] // a.boot_block) * 100000 + cells_rc[:, 1] // a.boot_block
                 ub, binv = np.unique(blk, return_inverse=True)
                 W = rng.multinomial(len(ub), np.full(len(ub), 1.0 / len(ub)), size=a.n_boot)
 

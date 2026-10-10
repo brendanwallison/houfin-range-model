@@ -1,0 +1,15 @@
+{
+ "exp": "E032",
+ "name": "pooled",
+ "group": "cpu",
+ "overlay": "config/overlays/gp_species_base.json",
+ "after_jobs": ["E032/desk-tempho1995-seed3", "E032/desk-tempho1995-seed3-yw10", "E032/desk-tempho1995-seed4", "E032/desk-tempho1995-seed4-yw10", "E032/desk-tempho1985-seed3", "E032/desk-tempho1985-seed3-yw10", "E032/desk-tempho1985-seed4", "E032/desk-tempho1985-seed4-yw10"],
+ "cmd": [
+  "bash",
+  "-c",
+  "set -e; for t in 1995 1985; do t0=$((t+1)); P=\"{python} research/exp/span_pooled.py --out {out} --t0 $t0\"; $P --tag final4 --short desk_tempho_${t}_s1_yw10_late desk_tempho_${t}_s2_yw10_late desk_tempho_${t}_s3_yw10_late desk_tempho_${t}_s4_yw10_late --long desk_tempho_${t}_s1_late desk_tempho_${t}_s2_late desk_tempho_${t}_s3_late desk_tempho_${t}_s4_late; $P --tag selected4 --short desk_tempho_${t}_s1_yw10 desk_tempho_${t}_s2_yw10 desk_tempho_${t}_s3_yw10 desk_tempho_${t}_s4_yw10 --long desk_tempho_${t}_s1 desk_tempho_${t}_s2 desk_tempho_${t}_s3 desk_tempho_${t}_s4; done"
+ ],
+ "expected_minutes": 10,
+ "summarize": ["python", "research/exp/span_pooled.py", "--summarize", "{out}"],
+ "note": "E032 decision: four-seed weighted minus unweighted at the final epoch (primary) and selected epoch, both start years"
+}

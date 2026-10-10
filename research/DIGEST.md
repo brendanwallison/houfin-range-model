@@ -1,7 +1,7 @@
 # DIGEST
 
 ## CURRENT STATE (rewritten each round; read this first -- the dated log below keeps the history)
-Last updated 2026-10-09 ~23:40, overnight (you said to follow the plan or revise it on the results). "Solid" =
+Last updated 2026-10-10 ~07:50 (overnight run + your 'why' question) (you said to follow the plan or revise it on the results). "Solid" =
 independently re-derived, replicated on a second split or seed, and survived a skeptic review. "Tentative" = one run,
 or checks still pending. Experiment numbers point to research/experiments/EXXX.md.
 
@@ -16,46 +16,57 @@ SOLID
 - ESK (64 dims) keeps the regionally shared part of a 40-year change about as well as comparable spatial
   structure; it drops route-level idiosyncrasy, temporal or spatial. Truncation is not selectively discarding time.
 
-NEW TONIGHT (tentative: one run each unless noted)
-- Training span vs reach (your question), E023 / E024:
-  - for cheap linear surrogates, at a fixed reach a SHORTER span next to the target backcasts better -- later
-    decades' trends do not describe earlier ones (strong: e.g. 0.22 vs 0.08 for 20- vs 40-year spans);
-  - for DESK itself, much weaker: retrained on 20-year spans, it gains about +0.03 (pooled over windows) at one start
-    year and nothing at another; the third comparison was spoiled by a badly selected run. The pre-registered test
-    said "no", but the skeptic showed it rested on one window and one seed, so a second seed is queued before the
-    time-weighted DESK is ruled in or out.
-- Where is the covariates' temporal signal? (E027, E027b, E027c, two skeptic rounds) Not where I first thought. The
-  covariate surrogates' backcast skill is largely matched by a placebo that uses the covariates only as a STATIC
-  position (a place's average environment) times LINEAR YEAR. A place's own covariate change adds little: on a
-  second, independent split of held-out cells it led the placebo by 0.03-0.04 at the farthest-back windows (CIs
-  including zero) -- at most ~0.05 in correlation across both splits. The direction in which the continent's
-  covariates moved does not matter (random directions do as well). Slow (30-year) covariate history adds nothing once the averages start in 1902. DESK's own
-  features already hold most of what the surrogates extract. At this grain, the predictable part of decadal change
-  is a smooth trend that differs by kind of place; the covariates' year-to-year and decade-to-decade changes are not
-  detectably informative. Whether that trend is habitat or observation (observer skill, protocol) is open.
-- The corrected validation suite on tempho1995 (E006), for your three concerns:
-  - DESK is still slightly worse than no change on species change -- and so is the oracle built from the TRUE
-    community; on held-out cells DESK beats the oracle. Most of the loss is downstream of DESK (community -> species
-    readout, plus noise), as E013 found from the other side.
-  - DESK "loses to the spacetime GP" only on trained cells. There the GP's fit degenerated into "each cell's modern
-    quirks were smaller in the past". In cells whose observers changed, about half (~57% after correcting for noise)
-    of that fading is the change of observer; the rest is real fading of local deviations of unknown cause -- it does
-    not track local covariate change (E028, survived the skeptic; 2005-2025 only, earlier eras queued). DESK's readout
-    cannot represent this fading. On held-out cells the GP does no better than DESK.
-  - The covariate GP's fit is broken in the corrected suite too (absurd predictions; A13).
+NEW SINCE YESTERDAY EVENING (tentative unless noted; each finding carries WHY: established / likely / unknown)
+- Why the readout of change does no better than "no change" -- even for the TRUE community (E030, E011, E013).
+  Squared-error skill against no change = (variance of the predicted change / variance of the true change) x (2k - 1),
+  where k is the slope of truth on prediction: a prediction must have k > 1/2 to win, whatever its correlation.
+  WHY (established, one run): three factors multiply --
+  - information: the true community's change carries only ~5-7% of a species' change (corr 0.23-0.27). Species change
+    is strongly regional (a smooth map of the species' own change explains 23% on held-out places), but species-
+    specific: the rest of the community does not share it;
+  - scaling: the readout's coefficients come from differences between places, which are large, so applied to change
+    over time they predict changes ~2x too big for their accuracy (k ~0.5, the break-even point);
+  - noise: the oracle's half-window features carry survey noise the large coefficients amplify (k -> ~0.4).
+  Rare species carry almost no information and pull the median down. DESK in withheld decades has almost none
+  (corr 0.07, k 0.19); in trained years it reaches corr 0.22, k 0.70 and beats no change.
+- Training span vs reach (your question), E023 / E024 / E024b:
+  - cheap linear surrogates: at a fixed reach a SHORTER span next to the target backcasts better (strong: 0.22 vs
+    0.08 for 20- vs 40-year spans);
+  - DESK: two seeds of a 20-year span next to the target beat the 40-year model by +0.038 [0.020, 0.057] at the 1986
+    start year (pre-registered rule met after a second seed overturned my first "no"); nothing at the 1996 start
+    (one seed). A time-weighted DESK (all years, those near the target weighted up) is training now (E029, ~09:00).
+  WHY (likely, not shown for DESK): decadal trends drift; a long span averages in later decades whose trends do not
+  describe the earlier ones (shown for the surrogates, E023).
+- Where the covariates' temporal signal is (E027, E027b-d, two skeptic rounds): their backcast skill is largely matched
+  by a placebo using them only as a STATIC position (a place's average environment) times LINEAR YEAR. A place's own
+  covariate change adds at most ~0.05 in correlation (two independent splits); the direction the continent's
+  covariates moved does not matter; slow 30-year history adds nothing; DESK already holds most of what the surrogates
+  extract.
+  WHY (unknown). Candidates: local covariate change at 27 km is small or smoothed relative to its noise (interpolated
+  products: decadal HYDE, LUH, coarse climate); responses are lagged and heterogeneous (slow averages did not help);
+  the drivers are not in the covariates. Whether the linear trend is habitat or observation is also open.
+- DESK keeps changing after the epoch we select (E025): by epoch 490 its backcast direction is better (+0.01 to
+  +0.08), its pull toward climate analogs halves (+0.14-0.21 -> +0.03-0.09), but it moves even more than its accuracy
+  justifies (squared error vs no change 1.27 -> 1.47 at 27.5 years) and fits held-out places worse. Production ships
+  FINAL-epoch weights.
+  WHY (partly likely): early in training DESK has learned the spatial mapping and moves along it (space-for-time);
+  later epochs add movement in other directions. Why those later directions are better, and why movement keeps
+  outgrowing accuracy, is unknown.
+- The metric term's pair count is not a lever (E026: 4,096 and 262,144 pairs backcast like 65,536).
+  WHY (likely): the term's gradient noise was not what limited temporal learning -- the logged withheld-decade
+  direction accuracy was the same in every run from epoch ~100 on.
+- The corrected validation suite (E006), your three concerns: on HELD-OUT places DESK is the best arm (beats the
+  spacetime GPs and the true-community oracle), but still ~no change on species change; the oracle is also ~no change
+  (WHY: above). DESK "loses to the spacetime GP" only on trained places, where the GP's degenerate fit predicts that
+  each place's modern quirks were smaller in the past.
+  WHY (established, E028/E028b, three eras, skeptic-reviewed): where observers changed, 55-60% of that fading is the
+  change of observer; the rest (~7-8% per 11 years) is real fading of local deviations of unknown cause -- it does not
+  track local covariate change. The covariate GP's fit is broken (A13).
 - Replications on fresh seeds of the current code: the decline with reach holds (seed spread 0.02-0.03); the pull
-  toward climate analogs, the readout bottleneck and the over-narrow intervals all hold. Current-code models track
-  the direction of change better than the archived ones at long reach but are no better than no change in squared
-  error, because they move more.
-- DESK keeps changing after the epoch we select (E025, graded): by epoch 490 its backcast direction is better
-  (+0.01 to +0.08 in correlation, most at 11-20 years of reach) and its pull toward climate analogs halves or more
-  (+0.14-0.21 -> +0.03-0.09), but it moves even more than its accuracy justifies (squared error against no change
-  worse: 1.27 -> 1.47 at 27.5 years) and fits held-out places worse. Early in training DESK has learned the spatial
-  mapping and moves along it; later epochs add movement in better directions. Production ships FINAL-epoch weights,
-  so production should backcast somewhat better in direction, lean less on space-for-time, and over-move more than
-  every model graded so far.
-- The metric term's pair count is not a lever (E026: 4,096 and 262,144 pairs backcast like 65,536). It does not
-  explain why the archived tempho models backcast worse than current-code retrains.
+  toward climate analogs, the readout bottleneck and the over-narrow intervals all hold. Current-code retrains track
+  the direction of change better than the archived ones at long reach, but are no better than no change in squared
+  error. WHY the archived models are worse: unknown -- not the metric-pair count (E026); epoch selection explains at
+  most part of it.
 
 TENTATIVE (earlier, still standing)
 - As DESK reaches further back, its useful temporal signal fades and its movement increasingly follows
@@ -112,8 +123,10 @@ The age-model sensitivity fit comes last, once there are candidate backcasts wor
    - "DESK ~ no change on change": still true: +0.010 (held-out cells, trained years), -0.008 / -0.010 (withheld
      decades).
    - "The oracle is weak too": yes. The oracle built from the TRUE community is also at or below no change (-0.002,
-     -0.014, -0.029), and DESK beats it on held-out cells (+0.025 to +0.034). Most of the loss of species-level change
-     happens downstream of DESK, in the community -> species readout and the noise.
+     -0.014, -0.029), and DESK beats it on held-out cells (+0.025 to +0.034). Why (E030): a species' decadal change is
+     mostly its own regional dynamics -- the community's change carries ~5-7% of it; the readout's coefficients,
+     learned from differences between places, over-scale what little it carries (truth-on-prediction slope ~0.5, the
+     break-even); and the oracle's survey noise, amplified by those coefficients, tips it below no change.
    - The covariate-GP baseline is broken in the corrected suite too (absurd predictions; A13) and must not be quoted.
 2. Which stages lose temporal signal:
    - ESK: no selective loss; it keeps the regionally coherent part of change like comparable spatial structure.

@@ -24,11 +24,18 @@ NEW TONIGHT (tentative: one run each unless noted)
     year and nothing at another; the third comparison was spoiled by a badly selected run. The pre-registered test
     said "no", but the skeptic showed it rested on one window and one seed, so a second seed is queued before the
     time-weighted DESK is ruled in or out.
-- Is there temporal signal in the covariates that DESK misses? (E027, E027b) Mostly no. My first reading of E027
-  ("slow history and nonlinear responses keep their skill at long spans") did not survive the skeptic: it came from a
-  weak 64-component linear reference, a lucky random-feature draw, a 30-year average that was half its 1940 starting
-  value, and the trend placebo fading at long spans. Added to DESK's own features, slow covariate history adds only
-  +0.02-0.05. A cleaner test (a continental-clock placebo) is next.
+- Where is the covariates' temporal signal? (E027, E027b, E027c) My first reading of E027 ("slow history and
+  nonlinear responses keep their skill at long spans") did not survive the skeptic (weak 64-component linear
+  reference, a lucky random-feature draw, a 30-year average that was half its 1940 starting value). The controls that
+  followed say:
+  - a placebo that moves every place's covariates only along the CONTINENT-WIDE trajectory (no local covariate change
+    at all) backcasts as well as the full covariates, sometimes better. What carries signal is "how a place of this
+    kind responds to what the whole continent did"; a place's own covariate change adds nothing measurable;
+  - slow (30-year) covariate history adds nothing once the averages start in 1902;
+  - DESK's own features already hold most of what these surrogates extract (+0.02-0.05 at most on top).
+  If this holds up, local covariate change is not where backcast skill comes from at this grain, and DESK's
+  space-for-time pull is DESK reading local covariate change through spatial relationships. Caveat: a continental
+  trajectory can also absorb continent-wide observation trends, not only habitat.
 - The corrected validation suite on tempho1995 (E006), for your three concerns:
   - DESK is still slightly worse than no change on species change -- and so is the oracle built from the TRUE
     community; on held-out cells DESK beats the oracle. Most of the loss is downstream of DESK (community -> species
@@ -83,9 +90,10 @@ OPEN QUESTIONS (the plan: what limits extrapolation in time, and what would exte
 1. Optimization: does DESK under-learn temporal structure? It takes one optimizer step per epoch (500 in all), and its
    only cross-year supervision is a noisy pair-sampled term. E025 (late epochs) and E026 (4,096 / 262,144 metric
    pairs vs 65,536; the archived models used 4,096) are running.
-2. Covariate content: DESK already carries most of what simple covariate surrogates extract (E027b). E027c asks
-   whether ANY covariate representation carries cell-specific temporal signal beyond a continental clock; if not,
-   the inputs, not DESK, bound temporal extrapolation at this grain (T5).
+2. Covariate content: DESK already carries most of what covariate surrogates extract (E027b), and a place's own
+   covariate change adds nothing beyond a continental trajectory x environment (E027c). Next: is an explicit
+   environment x continental-trajectory model (its 1900-1940 trajectory is known from the covariates) a better
+   backcast than DESK, and how much of the "trajectory" is observation trend rather than habitat?
 3. The readout: even the true community's change, read through the spatial readout, predicts species change no
    better than no change. A readout that lets local deviations fade with reach (E028: half of that fading is real)
    is a candidate.

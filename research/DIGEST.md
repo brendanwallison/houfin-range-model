@@ -74,8 +74,9 @@ NEW SINCE YESTERDAY EVENING (tentative unless noted; each finding carries WHY: e
   the drivers are not in the covariates. Whether the linear trend is habitat or observation is also open.
 - DESK keeps changing after the epoch we select (E025): by epoch 490 its backcast direction is better (+0.01 to
   +0.08), its pull toward climate analogs halves (+0.14-0.21 -> +0.03-0.09), but it moves even more than its accuracy
-  justifies (squared error vs no change 1.27 -> 1.47 at 27.5 years) and fits held-out places worse. Production ships
-  FINAL-epoch weights.
+  justifies (squared error vs no change 1.27 -> 1.47 at 27.5 years) and fits held-out places worse. CORRECTION
+  (2026-10-10): production ships the state at EPOCH 200 of a 500-epoch schedule (production.json), not epoch 490;
+  at epoch 200 the logged direction is near its late plateau and the movement is in between.
   WHY (partly likely): early in training DESK has learned the spatial mapping and moves along it (space-for-time);
   later epochs add movement in other directions. Why those later directions are better, and why movement keeps
   outgrowing accuracy, is unknown.
@@ -172,8 +173,8 @@ The age-model sensitivity fit comes last, once there are candidate backcasts wor
 4. What I would look at next (your call at this gate): (a) T5 directly -- which drivers or which grain would carry
    temporal signal the current covariates do not (e.g. finer land-use or habitat products, or a coarser grain where
    local noise averages out), and whether the "kind of place x year" trend is habitat or observation; (b) the
-   readout, which loses the most; (c) over-movement and epoch selection, since production ships the most
-   over-moving state; (d) the second span seed (E024b, running) and the metric-pair runs (E026, running) settle the
+   readout, which loses the most; (c) over-movement and epoch selection (production ships the epoch-200 state,
+   between the selected epochs and epoch 490); (d) the second span seed (E024b, running) and the metric-pair runs (E026, running) settle the
    time-weighting and optimization questions. (An "environment x continental trajectory" backcast model, which I
    floated earlier tonight, is withdrawn: it reduces to extrapolating a linear trend.)
 

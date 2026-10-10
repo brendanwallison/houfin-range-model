@@ -31,10 +31,11 @@ Items are numbered so records can cite them (e.g. "considerations: G3, M1, M6").
   The right amount of shrinkage is measurable (scale change by its calibration slope). (discussion, 2026-10-10)
 - **G5 Shrinkage fixes magnitude, not direction.** An error pointing the wrong way (toward climate analogs) gets
   smaller when shrunk but still points the wrong way. (discussion, 2026-10-10)
-- **G6 What production actually ships.** The age model consumes RAW instantaneous z, first 24 of 64 dims, 1902-2025;
-  the production checkpoint is the FINAL-epoch state (no validation set), which moves more and leans less on
-  space-for-time than every selected-epoch model graded (E025). In 1902-1939 the only data are pre-invasion
-  pseudo-zeros. (downstream_contract.md; E025)
+- **G6 What production actually ships.** The age model consumes RAW instantaneous z, first 24 of 64 dims, 1902-2025.
+  The production checkpoint is the state at EPOCH 200 of a 500-epoch schedule (config/overlays/production.json:
+  stop_at_epoch 200; no validation set) -- not epoch 490. In the training logs its direction of change is already near
+  the late plateau at epoch 200, while its movement is between the selected epochs (65-162) and epoch 490 (E025).
+  In 1902-1939 the only data are pre-invasion pseudo-zeros. (downstream_contract.md; production.json; E025)
 - **G7 Understanding before score.** The short-term goal is experiments that improve understanding, not "improving
   DESK". Interventions run as tests of a mechanism. Do not jump to mitigation (recalibrate, hold habitat at its
   modern state) or to the age-model sensitivity fit before the exploration has earned it. (user, 2026-10-08/09)

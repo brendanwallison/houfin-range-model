@@ -71,3 +71,10 @@ caches -> E026 mp4096 -> mp262144 -> E024b second seed of the 1986-2005 span (~0
 ~40 min); E025/E024b-first-look/E026 analyses chained. Morning: Gate 1 report (E006 base), then decide among
 (a) time-weighted DESK if E024b says NO is wrong, (b) optimization levers if E025/E026 show late epochs or more pairs
 help, (c) T5/readout direction if E027c's clock placebo matches the covariate surrogates.
+2026-10-10 ~04:45 (overnight, results in): E025 late epochs = better direction, half the space-for-time pull, more
+over-movement (production ships this state); E026 metric pairs null; E027c/d covariates add little beyond "kind of
+place x linear year" (<= ~0.05; inconclusive on a 2nd split); E028/b observer share of damped persistence ~55-60%
+replicated in 3 eras; E006 base: DESK best arm on held-out cells. Gate 1 draft in DIGEST.
+Pending: E024b second span seed (decision ~05:05) -> if NO is wrong, implement per-cell-year time weights in
+desk_training (the bbs first_year_weight path is the template) and queue 2 weightings x 2 seeds; if NO stands, the GPU
+waits for the user's Gate 1 choice. E026 reach-curve retry (task 149).

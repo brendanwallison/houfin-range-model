@@ -326,7 +326,7 @@
   - {job: "skeptic3:E013", exp: E013, dir: for, strength: moderate, note: "observer co-movement inflates the observed-community arm of E013 by 33-45% of its numerator (DESK ~0); adjusted, DESK matches the true community in trained years and reaches 41-52% of it in withheld decades."}
 # ---------------- downstream proxy ----------------
   - {job: "E028/persistence-observer-f55be4d54c07", exp: E028, dir: for, strength: moderate, note: "within-modern fading of cell deviations: slope -0.182 where observers were replaced vs -0.084 unchanged (diff -0.098 [-0.124, -0.073]); about half of the damped persistence that wins on trained cells is observer turnover. UNVERIFIED."}
-
+  - {job: "E028/persistence-observer-1975-eb3ad2ad2eb3", exp: E028, dir: for, strength: moderate, note: "replicated in 1975-95 and 1985-2005: replaced-minus-unchanged slope -0.117 / -0.105 vs -0.098 modern; observer change is 54-63% of the fading where observers were replaced. Survived a skeptic round (route turnover, region, site-type placebo, covariate change, interleaved noise, tenure). UNVERIFIED (b-c pending)."}
 - id: D1
   stage: D
   priority: 3

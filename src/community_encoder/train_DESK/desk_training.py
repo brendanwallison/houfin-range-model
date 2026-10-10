@@ -201,6 +201,26 @@ def kernel_loss_on_pairs(z_by_t, pool_t, pool_flat, pool_x, pairs, rank=None):
 
 
 
+def year_weights(years, anchor, half_life, floor=0.0):
+    """Per-point weight that decays with distance in years from ``anchor``: ``2 ** (-|y - anchor| / half_life)``,
+    floored at ``floor`` (as a fraction of the anchor year's weight) and normalised to a median of 1.0 like
+    :func:`stratum_weights`, so it composes multiplicatively with the stratum and first-year weights.
+
+    Why it exists: a DESK trained on the 20 years next to a backcast target backcast that target better than one
+    trained on 40 (research E024b, +0.04 pooled at T0 1986). This keeps every year in training but puts the
+    trained years nearest the target (the earliest decades, for a backcast) in charge of the temporal behaviour.
+    """
+    y = np.asarray(years, dtype="float64")
+    hl = float(half_life)
+    if not np.isfinite(hl) or hl <= 0:
+        raise ValueError(f"year_weight half_life must be finite and positive; got {half_life}")
+    w = np.power(2.0, -np.abs(y - float(anchor)) / hl)
+    if floor:
+        w = np.maximum(w, float(floor))
+    med = float(np.median(w)) if len(w) else 0.0
+    return w / med if med > 0 else np.ones_like(w)
+
+
 def stratum_weights(labels, n_min=200, cap=5.0, power=0.5):
     """Per-point sampling weight that partly corrects BBS's coast/present bias. ``(N,)`` float.
 
@@ -2569,6 +2589,22 @@ def run_desk_experiment(config=None):
     else:
         print("[desk] rebalance OFF (desk.balance.enabled=false): metric pairs drawn uniformly, "
               "so the objective inherits BBS's coast/present bias")
+    # Time weighting (desk.year_weight: {anchor, half_life, floor}): composed onto the pool weights, which the
+    # composition below also carries into the stabilizing target, so both loss terms agree. Off unless an anchor
+    # is set; every previously reported run is unchanged.
+    _yw = desk_cfg.get("year_weight") or {}
+    if _yw.get("anchor") is not None:
+        ywv = year_weights(_ppidx[:, 2], _yw["anchor"], _yw.get("half_life", 10.0), _yw.get("floor", 0.0))
+        base = pool_w.numpy().astype("float64") if pool_w is not None else np.ones(len(ywv))
+        pool_w = torch.tensor(base * ywv, dtype=torch.float32)
+        _yy = _ppidx[:, 2]
+        _q = np.quantile(_yy, [0.25, 0.75])
+        _wv = pool_w.numpy()
+        print(f"[desk] year weighting ON (anchor {_yw['anchor']}, half-life {float(_yw.get('half_life', 10.0)):g} y, "
+              f"floor {float(_yw.get('floor', 0.0)):g}): effective share of the earliest-quartile pool rows "
+              f"(<= {int(_q[0])}) {((_yy <= _q[0]).mean()):.3f} -> {(_wv[_yy <= _q[0]].sum() / _wv.sum()):.3f}; "
+              f"latest quartile (>= {int(_q[1])}) {((_yy >= _q[1]).mean()):.3f} -> "
+              f"{(_wv[_yy >= _q[1]].sum() / _wv.sum()):.3f}", flush=True)
     np.save(os.path.join(out_dir, "holdout_cells.npy"), holdout)
     # The buffer too: validate's epoch panel must draw its interpolation sources from the
     # SAME training cells the model saw, and buffer cells are in neither set.

@@ -989,6 +989,23 @@ def test_stratum_weights_floor_protects_thin_strata():
     assert w_thin / w_mid < 1.01
 
 
+def test_year_weights_decay_from_the_anchor_and_compose_at_median_one():
+    """Time weighting (research E024b): the trained years nearest the backcast target carry the most weight, a
+    year one half-life away half as much, and the weights are median-normalised like stratum_weights so the two
+    compose without changing the effective learning rate. A floor stops distant years vanishing entirely."""
+    from src.community_encoder.train_DESK.desk_training import year_weights
+    years = np.array([1986, 1996, 2006, 2016, 2025] * 10)
+    w = year_weights(years, anchor=1986, half_life=10.0)
+    assert np.isclose(np.median(w), 1.0)
+    by = {int(y): float(w[years == y][0]) for y in (1986, 1996, 2006)}
+    assert np.isclose(by[1996] / by[1986], 0.5) and np.isclose(by[2006] / by[1986], 0.25)
+    wf = year_weights(years, anchor=1986, half_life=10.0, floor=0.2)
+    far = wf[years == 2025][0] / wf[years == 1986][0]
+    assert np.isclose(far, 0.2), far                     # 2**-3.9 = 0.067 floored to 0.2
+    with pytest.raises(ValueError):
+        year_weights(years, anchor=1986, half_life=0.0)
+
+
 def test_stratum_weights_are_partial_not_full_correction():
     """power=0.5, not 1.0. A sqrt correction removes most of the population tilt while leaving a
     thin stratum a fraction of the pull full inverse-frequency would give it. If this ever became

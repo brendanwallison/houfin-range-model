@@ -1,0 +1,14 @@
+{
+ "exp": "E029",
+ "name": "desk-yw-smoke",
+ "group": "gpu",
+ "overlay": "research/overlays/desk_tempho_1985_yw_smoke.json",
+ "cmd": [
+  "bash",
+  "-c",
+  "set -e; export RESEARCH_OUT={out} TMPDIR={out}/tmp MPLCONFIGDIR={out}/tmp/mpl WANDB_MODE=offline WANDB_DIR={out}; mkdir -p {out}/desk {out}/tmp; {python} scripts/run_encoder.py desk 2>&1 | tee {out}/desk_stdout.txt; grep -q 'year weighting ON' {out}/desk_stdout.txt"
+ ],
+ "expected_minutes": 5,
+ "summarize": ["bash", "-c", "grep -E 'year weighting ON|rebalance ON|stratum weights composed' {out}/desk_stdout.txt | cut -c1-300"],
+ "note": "E029 smoke: the year weighting prints its shares and a 3-epoch run completes"
+}

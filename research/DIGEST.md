@@ -24,18 +24,14 @@ NEW TONIGHT (tentative: one run each unless noted)
     year and nothing at another; the third comparison was spoiled by a badly selected run. The pre-registered test
     said "no", but the skeptic showed it rested on one window and one seed, so a second seed is queued before the
     time-weighted DESK is ruled in or out.
-- Where is the covariates' temporal signal? (E027, E027b, E027c) My first reading of E027 ("slow history and
-  nonlinear responses keep their skill at long spans") did not survive the skeptic (weak 64-component linear
-  reference, a lucky random-feature draw, a 30-year average that was half its 1940 starting value). The controls that
-  followed say:
-  - a placebo that moves every place's covariates only along the CONTINENT-WIDE trajectory (no local covariate change
-    at all) backcasts as well as the full covariates, sometimes better. What carries signal is "how a place of this
-    kind responds to what the whole continent did"; a place's own covariate change adds nothing measurable;
-  - slow (30-year) covariate history adds nothing once the averages start in 1902;
-  - DESK's own features already hold most of what these surrogates extract (+0.02-0.05 at most on top).
-  If this holds up, local covariate change is not where backcast skill comes from at this grain, and DESK's
-  space-for-time pull is DESK reading local covariate change through spatial relationships. Caveat: a continental
-  trajectory can also absorb continent-wide observation trends, not only habitat.
+- Where is the covariates' temporal signal? (E027, E027b, E027c, two skeptic rounds) Not where I first thought. The
+  covariate surrogates' backcast skill is matched by a placebo that uses the covariates only as a STATIC position (a
+  place's average environment) times LINEAR YEAR. A place's own covariate change adds nothing detectable (95% bound
+  ~0.05 in correlation), and the direction in which the continent's covariates moved does not matter either (random
+  directions do as well). Slow (30-year) covariate history adds nothing once the averages start in 1902. DESK's own
+  features already hold most of what the surrogates extract. At this grain, the predictable part of decadal change
+  is a smooth trend that differs by kind of place; the covariates' year-to-year and decade-to-decade changes are not
+  detectably informative. Whether that trend is habitat or observation (observer skill, protocol) is open.
 - The corrected validation suite on tempho1995 (E006), for your three concerns:
   - DESK is still slightly worse than no change on species change -- and so is the oracle built from the TRUE
     community; on held-out cells DESK beats the oracle. Most of the loss is downstream of DESK (community -> species
@@ -79,6 +75,8 @@ OVERTURNED (kept so the corrections are visible)
   true for linear surrogates; for DESK at most a small effect.
 - "With all history, slow and nonlinear covariate features keep backcast skill where linear maps lose it" (E027,
   first reading): reference, random-draw and warm-up artifacts.
+- "A shared continental covariate trajectory x environment carries the signal" (E027c, first reading): survey
+  composition plus linear year; random directions do as well.
 
 WHAT THIS DOES AND DOES NOT TELL US
 - Everything above characterizes the current DESK, its readout, and linear or simple nonlinear surrogates on 10-50
@@ -91,10 +89,8 @@ OPEN QUESTIONS (the plan: what limits extrapolation in time, and what would exte
 1. Optimization: does DESK under-learn temporal structure? It takes one optimizer step per epoch (500 in all), and its
    only cross-year supervision is a noisy pair-sampled term. E025 (late epochs) and E026 (4,096 / 262,144 metric
    pairs vs 65,536; the archived models used 4,096) are running.
-2. Covariate content: DESK already carries most of what covariate surrogates extract (E027b), and a place's own
-   covariate change adds nothing beyond a continental trajectory x environment (E027c). Next: is an explicit
-   environment x continental-trajectory model (its 1900-1940 trajectory is known from the covariates) a better
-   backcast than DESK, and how much of the "trajectory" is observation trend rather than habitat?
+2. Covariate content (T5): the covariates' decadal temporal signal at this grain is not detectable beyond "kind of
+   place x linear year" (E027c). What inputs or grain would carry it, and is the linear trend habitat or observation?
 3. The readout: even the true community's change, read through the spatial readout, predicts species change no
    better than no change. A readout that lets local deviations fade with reach (E028: half of that fading is real)
    is a candidate.
@@ -122,16 +118,19 @@ The age-model sensitivity fit comes last, once there are candidate backcasts wor
      more (E025).
    - Readout: even the true community's change, read through the spatial readout, correlates only ~0.23 with species
      change and is no better than no change in squared error; DESK's reaches 0.07-0.10.
-   - Inputs: a place's own covariate change adds nothing measurable to a backcast beyond a continental trajectory x
-     environment (E027c, one round of controls; a second skeptic look is pending).
+   - Inputs: a place's own covariate change adds nothing detectable to a backcast; covariate surrogates do no better
+     than "kind of place x linear year" (E027c + skeptic). This is the sharpest constraint found so far: at 27 km and
+     decadal scales, the covariates as they are carry no detectable temporal signal beyond a trend surface.
 3. How much real change there is: most species have resolvable change between epochs (323 / 401 and 249 / 372),
    noise ceilings 0.62-0.67; ~30% of change energy is observer turnover (E021); local deviations from the regional
    surface also fade for real, by ~7-8% per 11 years, unrelated to local covariate change (E028).
-4. What I would look at next (your call at this gate): (a) whether an explicit environment x continental-trajectory
-   structure backcasts better than DESK (its 1900-1940 trajectory is known from the covariates), and how much of the
-   trajectory is observation trend; (b) the readout, which loses the most; (c) epoch selection / over-movement, since
-   production ships the most over-moving state; (d) the second span seed (E024b, running) and the metric-pair runs
-   (E026, running) settle the time-weighting and optimization questions.
+4. What I would look at next (your call at this gate): (a) T5 directly -- which drivers or which grain would carry
+   temporal signal the current covariates do not (e.g. finer land-use or habitat products, or a coarser grain where
+   local noise averages out), and whether the "kind of place x year" trend is habitat or observation; (b) the
+   readout, which loses the most; (c) over-movement and epoch selection, since production ships the most
+   over-moving state; (d) the second span seed (E024b, running) and the metric-pair runs (E026, running) settle the
+   time-weighting and optimization questions. (An "environment x continental trajectory" backcast model, which I
+   floated earlier tonight, is withdrawn: it reduces to extrapolating a linear trend.)
 
 ---- dated log (newest first) ----
 

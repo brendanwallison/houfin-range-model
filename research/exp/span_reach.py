@@ -79,6 +79,15 @@ def main():
                     help="covariate-clock placebo: RFF of each cell's MEAN covariates moved only along the continental "
                          "(training-cell) trajectory -- arms rffclock_s<seed>(+trend), same draws and lengthscale")
     ap.add_argument("--lag-trend", action="store_true", help="also lag<hl>+trend for every lag block")
+    # E027d (verification on a second split)
+    ap.add_argument("--split-seed", type=int, default=None,
+                    help="replace the DESK run's spatial split: hold out a random 15%% of 6x6-cell blocks (this seed), "
+                         "buffer their 8-neighbours, train on the rest (surrogate arms only; DESK models stay on theirs)")
+    ap.add_argument("--rff-lineclock", action="store_true",
+                    help="placebo: RFF (same draws) of each cell's MEAN covariate position moved along a RANDOM fixed "
+                         "direction at a constant rate -- 'kind of place x linear year' (the skeptic's clean clock)")
+    ap.add_argument("--lineclock-rate", type=float, default=0.088,
+                    help="PC-space units per year (the composition-free continental trajectory moves ~5.2 in 59 years)")
     ap.add_argument("--lag-warmup", type=int, default=None,
                     help="start the lag EMAs in this year (default: the DESK run's warm-up year, 1940)")
     ap.add_argument("--summarize", default=None)
@@ -97,6 +106,18 @@ def main():
     held = split["holdout"][keys[:, 0], keys[:, 1]]
     train_cell = ~held & ~split["buffer"][keys[:, 0], keys[:, 1]]
     cid = keys[:, 0].astype(np.int64) * 100000 + keys[:, 1]
+    if a.split_seed is not None:
+        # a second, independent spatial split: random 15% of 6x6 blocks held out, 8-neighbour buffer
+        blk_of = (keys[:, 0] // 6) * 100000 + keys[:, 1] // 6
+        ublk = np.unique(blk_of)
+        hb = set(np.random.default_rng(a.split_seed).choice(ublk, int(round(0.15 * len(ublk))), replace=False).tolist())
+        held = np.isin(blk_of, list(hb))
+        hc = set(map(tuple, keys[held, :2].tolist()))
+        nb = {(r_ + dr, c_ + dc) for (r_, c_) in hc for dr in (-1, 0, 1) for dc in (-1, 0, 1)} - hc
+        buf = np.array([(int(r_), int(c_)) in nb for r_, c_ in keys[:, :2]])
+        train_cell = ~held & ~buf
+        print(f"[span-reach] split seed {a.split_seed}: {len(hb)} of {len(ublk)} blocks held out, "
+              f"{len(hc)} held cells, {len(nb)} buffer cells", flush=True)
     r = a.rank
 
     # truth: held-out (cell, window) groups for the backcast windows and the three reference windows
@@ -142,6 +163,18 @@ def main():
                 extra[f"rff_s{sd}"] = covfeat.rff(P, a.rff, ls, seed=sd)
         else:
             extra["rff"] = covfeat.rff(P, a.rff, ls, seed=1)
+        if a.rff_lineclock:
+            # each cell's mean covariate position moved along a random fixed direction at a constant rate: static
+            # environment x linear year, with the prior an RFF map induces (the skeptic's clean clock)
+            ucell, cinv = np.unique(cid, return_inverse=True)
+            csum = np.zeros((len(ucell), P.shape[1]))
+            np.add.at(csum, cinv, P)
+            cmean = (csum / np.bincount(cinv)[:, None])[cinv]
+            for sd in (a.rff_seeds or (1,)):
+                u = np.random.default_rng(1000 + sd).normal(size=P.shape[1])
+                u /= np.linalg.norm(u)
+                Pline = cmean + ((yr - 1995.0) * a.lineclock_rate)[:, None] * u[None, :]
+                extra[f"lineclock_s{sd}"] = covfeat.rff(Pline, a.rff, ls, seed=sd)
         if a.rff_clock:
             # each cell's mean covariate position, moved only along the continent-wide trajectory of training cells
             ucell, cinv = np.unique(cid, return_inverse=True)
@@ -162,7 +195,7 @@ def main():
         extra[f"cov{k_}"] = np.asarray(P[:, :k_], "float64")
     lag_names = [k for k in extra if k.startswith("lag")]
     # blocks fitted generically, alone and with the trend placebo
-    solo = [k for k in extra if k.startswith(("rff_s", "rffclock_s", "cov"))]
+    solo = [k for k in extra if k.startswith(("rff_s", "rffclock_s", "lineclock_s", "cov"))]
 
     models = [] if a.no_default_desk else list(DESK_MODELS)
     for spec in a.desk_models:
@@ -331,6 +364,14 @@ def main():
                     sm.append(("rff - cov [seed mean]", [(f"rff_s{x}", "cov") for x in S]))
                     sm += [(f"rff+trend - cov{k_}+trend [seed mean]", [(f"rff_s{x}+trend", f"cov{k_}+trend") for x in S])
                            for k_ in a.cov_pcs_list]
+                    if a.rff_lineclock:
+                        sm.append(("lineclock+trend - rff+trend [seed mean]",
+                                   [(f"lineclock_s{x}+trend", f"rff_s{x}+trend") for x in S]))
+                        sm.append(("lineclock - rff [seed mean]", [(f"lineclock_s{x}", f"rff_s{x}") for x in S]))
+                        sm.append(("lineclock+trend - cov+trend [seed mean]",
+                                   [(f"lineclock_s{x}+trend", "cov+trend") for x in S]))
+                        sm.append(("lineclock+trend - trend [seed mean]",
+                                   [(f"lineclock_s{x}+trend", "trend") for x in S]))
                     if a.rff_clock:
                         sm.append(("rffclock+trend - rff+trend [seed mean]",
                                    [(f"rffclock_s{x}+trend", f"rff_s{x}+trend") for x in S]))

@@ -51,7 +51,12 @@ NEW SINCE YESTERDAY EVENING (tentative unless noted; each finding carries WHY: e
     0.08 for 20- vs 40-year spans);
   - DESK: two seeds of a 20-year span next to the target beat the 40-year model by +0.038 [0.020, 0.057] at the 1986
     start year (pre-registered rule met after a second seed overturned my first "no"); nothing at the 1996 start
-    (one seed). A time-weighted DESK (all years, those near the target weighted up) is training now (E029, ~09:00).
+    (one seed). 
+  - TIME-WEIGHTED DESK (E029): training on all years but weighting the years near the target (weights halving every
+    10 or 20 years away from 1986) recovers about three quarters of that gain: +0.029 [0.013, 0.041] and +0.035
+    [0.020, 0.047] over the same seeds unweighted, also at epoch 490, with no loss of spatial fit. DECISION FOR YOU
+    (escalation): its production analog is weights rising toward 1966 for the 1900-1940 backcast. One start year, two
+    seeds per weighting; the over-movement and climate-analog checks on these models are running.
   WHY (likely, not shown for DESK): decadal trends drift; a long span averages in later decades whose trends do not
   describe the earlier ones (shown for the surrogates, E023).
 - Where the covariates' temporal signal is (E027, E027b-d, two skeptic rounds): their backcast skill is largely matched

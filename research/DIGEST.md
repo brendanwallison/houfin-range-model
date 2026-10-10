@@ -50,10 +50,11 @@ NEW TONIGHT (tentative: one run each unless noted)
   toward climate analogs, the readout bottleneck and the over-narrow intervals all hold. Current-code models track
   the direction of change better than the archived ones at long reach but are no better than no change in squared
   error, because they move more.
-- DESK keeps changing after the epoch we select. From the selected epoch (65-162, chosen on a spatial score) to the
-  end of training, its direction accuracy on withheld decades is flat to rising while its movement doubles.
-  Production ships FINAL-epoch weights (it had no validation set), so the models we have been grading may not behave
-  like production. Grading the late states now (E025).
+- DESK keeps changing after the epoch we select (E025, graded): by epoch 490 its backcast direction is better
+  (+0.01 to +0.08 in correlation, most at 11-20 years of reach), but it moves even more than its accuracy justifies
+  (squared error against no change worse: 1.27 -> 1.47 at 27.5 years) and fits held-out places worse. Production
+  ships FINAL-epoch weights, so production backcasts somewhat better in direction and over-moves more than every
+  model graded so far.
 
 TENTATIVE (earlier, still standing)
 - As DESK reaches further back, its useful temporal signal fades and its movement increasingly follows
@@ -100,6 +101,37 @@ OPEN QUESTIONS (the plan: what limits extrapolation in time, and what would exte
 4. The scoreable target: observer turnover inflates "true change" and rewards models that predict a return to the
    regional mean; grade on the observer-adjusted part.
 The age-model sensitivity fit comes last, once there are candidate backcasts worth comparing.
+
+## GATE 1 REPORT (2026-10-10 ~03:45, draft for your review; all UNVERIFIED in the protocol's sense unless noted)
+1. Your three concerns, on the corrected validation suite (E006: audit fixes A1-A8, tempho1995 and the base model):
+   - "DESK loses to the spacetime GP": only on TRAINED cells in withheld decades, where the GP's (degenerate) fit
+     pulls each cell's modern quirks toward its region -- and about half of that advantage is observer turnover
+     (E028, replicated in three eras). On HELD-OUT cells, the setting a backcast needs, DESK beats or ties both
+     spacetime GPs: +0.025 to +0.07 in trained years, +0.049 / ~0 in withheld decades.
+   - "DESK ~ no change on change": still true: +0.010 (held-out cells, trained years), -0.008 / -0.010 (withheld
+     decades).
+   - "The oracle is weak too": yes. The oracle built from the TRUE community is also at or below no change (-0.002,
+     -0.014, -0.029), and DESK beats it on held-out cells (+0.025 to +0.034). Most of the loss of species-level change
+     happens downstream of DESK, in the community -> species readout and the noise.
+   - The covariate-GP baseline is broken in the corrected suite too (absurd predictions; A13) and must not be quoted.
+2. Which stages lose temporal signal:
+   - ESK: no selective loss; it keeps the regionally coherent part of change like comparable spatial structure.
+   - DESK: direction of withheld-decade change correlates 0.2-0.4 with the truth, falling with reach; it moves more
+     than its accuracy justifies, leans toward climate analogs, and captures ~5-9% of the noise-free temporal
+     variance. Training longer (production ships final-epoch weights) improves direction a little and over-movement
+     more (E025).
+   - Readout: even the true community's change, read through the spatial readout, correlates only ~0.23 with species
+     change and is no better than no change in squared error; DESK's reaches 0.07-0.10.
+   - Inputs: a place's own covariate change adds nothing measurable to a backcast beyond a continental trajectory x
+     environment (E027c, one round of controls; a second skeptic look is pending).
+3. How much real change there is: most species have resolvable change between epochs (323 / 401 and 249 / 372),
+   noise ceilings 0.62-0.67; ~30% of change energy is observer turnover (E021); local deviations from the regional
+   surface also fade for real, by ~7-8% per 11 years, unrelated to local covariate change (E028).
+4. What I would look at next (your call at this gate): (a) whether an explicit environment x continental-trajectory
+   structure backcasts better than DESK (its 1900-1940 trajectory is known from the covariates), and how much of the
+   trajectory is observation trend; (b) the readout, which loses the most; (c) epoch selection / over-movement, since
+   production ships the most over-moving state; (d) the second span seed (E024b, running) and the metric-pair runs
+   (E026, running) settle the time-weighting and optimization questions.
 
 ---- dated log (newest first) ----
 

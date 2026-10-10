@@ -16,14 +16,25 @@ SOLID
 - ESK (64 dims) keeps the regionally shared part of a 40-year change about as well as comparable spatial
   structure; it drops route-level idiosyncrasy, temporal or spatial. Truncation is not selectively discarding time.
 
+TERMS (fixed 2026-10-10 after you asked):
+- "Change" is always between multi-year AVERAGES (6-21-year windows strip weather and survey noise), never year to
+  year. Gaps between window centres: readout/oracle (E013, E030) and ESK retention 1966-86 vs 2005-25, ~40 years;
+  corrected suite (E006) 1966-75 vs 2005-25, ~45; span/reach backcasts (E023-E029) a 6-year window vs the first ten
+  trained years, ~8-32 (1966-71 vs 1996-2005 = 32); reach curve (E019, E025) vs 2005-25, ~22-46; observer fading
+  (E028) 2005-14 vs 2016-25, 11. "Decadal" below means over one to several decades, mostly 20-45 years.
+- "Regional" = smooth over a few hundred km: the trend placebo and E030's regional field are Gaussian-smooth maps at a
+  300 km scale (places 300 km apart correlate ~0.6, 600 km ~0.14); E028's surface uses 150 km. "Local" = one 27 km
+  cell (one or a few BBS routes). "Continental" = the whole grid.
+
 NEW SINCE YESTERDAY EVENING (tentative unless noted; each finding carries WHY: established / likely / unknown)
 - Why the readout of change does no better than "no change" -- even for the TRUE community (E030, E011, E013).
   Squared-error skill against no change = (variance of the predicted change / variance of the true change) x (2k - 1),
   where k is the slope of truth on prediction: a prediction must have k > 1/2 to win, whatever its correlation.
   WHY (established, one run): three factors multiply --
-  - information: the true community's change carries only ~5-7% of a species' change (corr 0.23-0.27). Species change
-    is strongly regional (a smooth map of the species' own change explains 23% on held-out places), but species-
-    specific: the rest of the community does not share it;
+  - information: the true community's ~40-year change (1966-86 vs 2005-25) carries only ~5-7% of a species' change
+    over the same interval (corr 0.23-0.27). Species change is strongly regional (a 300 km smooth map of the species'
+    own change, fitted on training places, explains 23% on held-out places), but species-specific: the rest of the
+    community does not share it;
   - scaling: the readout's coefficients come from differences between places, which are large, so applied to change
     over time they predict changes ~2x too big for their accuracy (k ~0.5, the break-even point);
   - noise: the oracle's half-window features carry survey noise the large coefficients amplify (k -> ~0.4).

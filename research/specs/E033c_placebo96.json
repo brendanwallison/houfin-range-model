@@ -1,0 +1,14 @@
+{
+ "exp": "E033",
+ "name": "readout-placebo96",
+ "group": "cpu",
+ "overlay": "config/overlays/desk_tempho_1995.json",
+ "cmd": [
+  "bash",
+  "-c",
+  "set -e; for spec in desk_tempho_1995_s1:1996 desk_tempho_1985_s1:1986; do IFS=: read -r cc t0 <<< \"$spec\"; mkdir -p {out}/$cc; {python} research/exp/readout_scaling.py --cache {cache}/$cc --out {out}/$cc --t0 $t0 --n-pos 96 --pos-seeds 1 2 3 4 5; done"
+ ],
+ "expected_minutes": 30,
+ "summarize": ["bash", "-c", "for d in {out}/*/; do {python} research/exp/readout_scaling.py --summarize $d | head -3; done"],
+ "note": "E033c: the position x time placebo with 96 features x 5 draws vs the split readout, paired bootstrap"
+}

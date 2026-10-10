@@ -40,6 +40,8 @@ def main():
     ap.add_argument("--out")
     ap.add_argument("--rank", type=int, default=24)
     ap.add_argument("--n-boot", type=int, default=300)
+    ap.add_argument("--tenure", action="store_true",
+                    help="E034c: also split unchanged-observer cells by the observer's tenure at 2005 (median split)")
     ap.add_argument("--summarize", default=None)
     a = ap.parse_args()
     if a.summarize:
@@ -128,13 +130,14 @@ def main():
         kc = cw(pc, tf).sum() / cw(pc, pc).sum()
         ps, sa, sb, sf = Ps[mask][:, res_sp], Ts["a"][mask][:, res_sp], Ts["b"][mask][:, res_sp], Ts["full"][mask][:, res_sp]
         cs = cw(ps, sf).sum() / np.sqrt(cw(ps, ps).sum() * cw(sa, sb).sum())
-        return float(cc), float(kc), float(cs)
+        covc = cw(pc, tf).sum()
+        return float(cc), float(kc), float(cs), float(covc)
     res = {"cache": a.cache, "n_cells": int(len(G)), "n_species": int(res_sp.sum()), "classes": {}}
     for k in CLASSES:
         msk = kind == k
         if msk.sum() < 30:
             continue
-        cc, kc, cs = stats(msk)
+        cc, kc, cs, _cv = stats(msk)
         u, binv = np.unique(gblk[msk], return_inverse=True)
         bc, bs_ = [], []
         for _ in range(a.n_boot):
@@ -148,6 +151,36 @@ def main():
                              "community_corr_ci": [float(np.nanpercentile(bc, 2.5)), float(np.nanpercentile(bc, 97.5))],
                              "species_corr": cs,
                              "species_corr_ci": [float(np.nanpercentile(bs_, 2.5)), float(np.nanpercentile(bs_, 97.5))]}
+    if a.tenure:
+        # first year each observer appears on each route; a cell's tenure = 2005 minus its observers' earliest start
+        first = runs.groupby(["CountryNum", "StateNum", "Route", "ObsN"])["Year"].min().to_dict()
+        rmap = ry.groupby(["row", "col", "year"])[["country", "state", "route"]].first()
+        ten = np.full(len(G), np.nan)
+        for gi, g in enumerate(G):
+            if kind[gi] != "unchanged":
+                continue
+            starts = []
+            for i in g[1]:
+                kk = (int(keys[i, 0]), int(keys[i, 1]), int(keys[i, 2]))
+                if kk not in rmap.index:
+                    continue
+                ctry, st, rt = rmap.loc[kk]
+                for o in obs.get(kk, ()):
+                    fy = first.get((int(ctry), int(st), int(rt), int(o)))
+                    if fy is not None:
+                        starts.append(fy)
+            if starts:
+                ten[gi] = 2005 - min(starts)
+        un = (kind == "unchanged") & np.isfinite(ten)
+        med = float(np.median(ten[un]))
+        res["tenure_median_years"] = med
+        for lab, msk in (("unchanged_short_tenure", un & (ten < med)), ("unchanged_long_tenure", un & (ten >= med))):
+            if msk.sum() >= 30:
+                cc, kc, cs, cv = stats(msk)
+                res["classes"][lab] = {"n_cells": int(msk.sum()), "community_corr": cc, "community_k": kc,
+                                       "community_corr_ci": [float("nan"), float("nan")], "species_corr": cs,
+                                       "species_corr_ci": [float("nan"), float("nan")],
+                                       "community_cov_per_cell": cv / max(int(msk.sum()), 1)}
     with open(os.path.join(a.out, "trend_observer.json"), "w", encoding="utf-8") as fh:
         json.dump(res, fh, indent=1)
     summarize(a.out)

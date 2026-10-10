@@ -61,6 +61,9 @@ def main():
     ap.add_argument("--out")
     ap.add_argument("--t0", type=int, default=None, help="first trained year of the model in the cache (required to run)")
     ap.add_argument("--rank", type=int, default=24)
+    ap.add_argument("--n-pos", type=int, default=24, help="E033c: position features in the multi-draw placebo")
+    ap.add_argument("--pos-seeds", type=int, nargs="*", default=(), help="E033c: placebo draws (paired bootstrap)")
+    ap.add_argument("--n-boot", type=int, default=300)
     ap.add_argument("--summarize", default=None)
     a = ap.parse_args()
     if a.summarize:
@@ -177,6 +180,51 @@ def main():
     pred2pp = dZ @ fit_pp["coef"][:, r:2 * r].T + Pev @ fit_pp["coef"][:, 2 * r:].T
     pred2t = dyear[:, None] * fit_t["coef"][:, r][None, :]
 
+    # E033c: the placebo with an adequate basis and several draws, paired block bootstrap over held-out cells (M20)
+    seeds_res = None
+    if a.pos_seeds:
+        cblk = (cells[ev, 0] // 6) * 100000 + cells[ev, 1] // 6
+        ubk, binv = np.unique(cblk, return_inverse=True)
+        Wb = np.random.default_rng(11).multinomial(len(ubk), np.full(len(ubk), 1.0 / len(ubk)),
+                                                    size=a.n_boot)[:, binv].astype(float)
+        Wb = np.vstack([np.ones(len(ev)), Wb])                     # row 0 = the point estimate
+
+        def corr_w(pred, w, form, m):
+            if form == "centred":
+                cen = lambda v: v - (w[:, None] * v).sum(0) / w.sum()
+                p_, f_, a_, b_ = cen(pred[:, m]), cen(dfull[:, m]), cen(da[:, m]), cen(db[:, m])
+            else:
+                p_, f_, a_, b_ = pred[:, m], dfull[:, m], da[:, m], db[:, m]
+            C = (w[:, None] * p_ * f_).sum()
+            P = (w[:, None] * p_ * p_).sum()
+            V = (w[:, None] * a_ * b_).sum()
+            return C / np.sqrt(P * V) if P > 0 and V > 0 else np.nan
+        per_seed = []
+        for sd in a.pos_seeds:
+            g = np.random.default_rng(1000 + sd)
+            Wq, bq = g.normal(size=(2, a.n_pos)) / 300.0, g.uniform(0, 2 * np.pi, a.n_pos)
+            posq = lambda cc: np.sqrt(2.0 / a.n_pos) * np.cos(
+                np.stack([cc // 100000, cc % 100000], 1).astype("float64") * 27.0 @ Wq + bq)
+            Xq = posq(cell_w) * tdev[:, None]
+            fq = blr.fit(np.hstack([zbar, Xq])[multi], Yw[multi], [(0, r), (r, r + a.n_pos)])
+            fqq = blr.fit(np.hstack([zbar, Zw - zbar, Xq])[multi], Yw[multi],
+                          [(0, r), (r, 2 * r), (2 * r, 2 * r + a.n_pos)])
+            Pq = posq(ev_cid) * dyear[:, None]
+            per_seed.append((Pq @ fq["coef"][:, r:].T,
+                             dZ @ fqq["coef"][:, r:2 * r].T + Pq @ fqq["coef"][:, 2 * r:].T))
+        seeds_res = {"n_pos": a.n_pos, "seeds": list(a.pos_seeds)}
+        for form in ("centred", "uncentred"):
+            c2 = np.array([corr_w(pred2, w, form, resm) for w in Wb])
+            cp = np.array([[corr_w(p, w, form, resm) for w in Wb] for p, _ in per_seed])
+            cpp = np.array([[corr_w(q, w, form, resm) for w in Wb] for _, q in per_seed])
+            dp = cp.mean(0) - c2                                   # placebo minus split (seed mean)
+            dd = (cpp - cp).mean(0)                                # DESK's increment over the placebo
+            ci = lambda v: [float(np.nanpercentile(v[1:], 2.5)), float(np.nanpercentile(v[1:], 97.5))]
+            seeds_res[form] = {"R2_split": float(c2[0]), "placebo_per_seed": [float(x) for x in cp[:, 0]],
+                               "placebo_mean": float(cp[:, 0].mean()),
+                               "placebo_minus_split": float(dp[0]), "placebo_minus_split_ci": ci(dp),
+                               "desk_increment": float(dd[0]), "desk_increment_ci": ci(dd)}
+
     def all_scores(mask):
         return {"n_species": int(mask.sum()),
                 "R0_level": score(pred0, da, db, dfull, mask),
@@ -189,7 +237,7 @@ def main():
     res = {"cache": a.cache, "t0": a.t0, "rank": r, "n_eval_cells": int(len(ev)), "n_cal_cells": len(G),
            "k_trained_pooled": k_pool, "k_trained_tiers": tiers_k, "n_windows_r2": int(multi.sum()),
            "r2_amplitude_ratio_median": float(np.median(amp[:, 1] / np.maximum(amp[:, 0], 1e-12))),
-           "all": all_scores(resm), "tiers": {}}
+           "all": all_scores(resm), "tiers": {}, "placebo_seeds": seeds_res}
     for lo, hi in zip(TIERS[:-1], TIERS[1:]):
         res["tiers"][f"{lo:g}-{hi:g}"] = all_scores(resm & (prev >= lo) & (prev < hi))
     with open(os.path.join(a.out, "readout_scaling.json"), "w", encoding="utf-8") as fh:
@@ -203,6 +251,15 @@ def summarize(out):
           f"held-out cells; k learned on trained-era change (training cells, {r['n_cal_cells']}): pooled "
           f"{r['k_trained_pooled']:.2f}, tiers " + ", ".join(f"{k} {v:.2f}" for k, v in r["k_trained_tiers"].items())
           + f"; split readout: change-block / place-block amplitude, median {r['r2_amplitude_ratio_median']:.3f}")
+    ps = r.get("placebo_seeds")
+    if ps:
+        for form in ("centred", "uncentred"):
+            v = ps[form]
+            print(f"  placebo x{len(ps['seeds'])} draws ({ps['n_pos']} features) [{form}]: split {v['R2_split']:+.3f} | "
+                  f"placebo mean {v['placebo_mean']:+.3f} (" + " ".join(f"{x:+.3f}" for x in v["placebo_per_seed"])
+                  + f") | placebo - split {v['placebo_minus_split']:+.3f} [{v['placebo_minus_split_ci'][0]:+.3f}, "
+                  f"{v['placebo_minus_split_ci'][1]:+.3f}] | DESK increment over placebo {v['desk_increment']:+.3f} "
+                  f"[{v['desk_increment_ci'][0]:+.3f}, {v['desk_increment_ci'][1]:+.3f}]")
     for name, s in [("all", r["all"])] + [(f"prev {k}", v) for k, v in r["tiers"].items()]:
         for form in ("centred", "uncentred"):
             parts = []

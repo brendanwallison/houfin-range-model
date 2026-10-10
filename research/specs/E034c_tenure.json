@@ -1,0 +1,10 @@
+{
+ "exp": "E034",
+ "name": "trend-observer-tenure",
+ "group": "cpu",
+ "overlay": "config/overlays/gp_species_base.json",
+ "cmd": ["python", "research/exp/trend_observer.py", "--cache", "{cache}/gp_species_base", "--out", "{out}", "--tenure"],
+ "expected_minutes": 15,
+ "summarize": ["python", "research/exp/trend_observer.py", "--summarize", "{out}"],
+ "note": "E034c: the place x year trend in unchanged-observer cells, split by observer tenure"
+}

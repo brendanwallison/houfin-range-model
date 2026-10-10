@@ -474,4 +474,5 @@
   kill: mp4096 and mp262k backcast within the seed spread of the 65,536 seeds.
   blr: If true, the backcast quality the BLR inherits depends on DESK's optimization budget along the temporal axis, which is cheap to raise; the production checkpoint (trained at 65,536 pairs, 500 steps) may be leaving temporal skill unlearned.
   parents: [T1]
-  evidence: []
+  evidence:
+  - {job: "adhoc:desk_hp-trajectories", exp: E026, dir: against, strength: weak, note: "archived sweep logs (trained years, held-out cells): direction cosine plateaus at 0.21-0.22 after epoch ~100 in the base run; 16 optimizer steps per epoch (tiles32, to epoch 260) and metric weights 20-100 do not raise it. Rotation keeps rising. Says nothing yet about withheld years (E025/E026)."}

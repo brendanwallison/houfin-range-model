@@ -106,7 +106,7 @@ The age-model sensitivity fit comes last, once there are candidate backcasts wor
   -> E025 (late states); archived models trained with 4,096 metric pairs vs 65,536 now -> E026.
 - Archived DESK sweep logs: 16 optimizer steps per epoch (tiles32) and heavier metric weights did not raise held-out
   direction accuracy in trained years (weak evidence against "more steps" for T11).
-- Skeptic round (~00:30): E024's "no" rests on one window and one seed (pooled +0.03 at T0 1986) -> second seed of the
+- Skeptic round (~00:00): E024's "no" rests on one window and one seed (pooled +0.03 at T0 1986) -> second seed of the
   1986-2005 span queued; E027's headline withdrawn (weak 64-PC reference, lucky RFF draw, lag30 warm-up, trend decay)
   -> E027c; E028 survives (observer share ~57% disattenuated) -> earlier-era replication E028b.
 

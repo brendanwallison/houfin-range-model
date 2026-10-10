@@ -25,10 +25,11 @@ NEW TONIGHT (tentative: one run each unless noted)
     said "no", but the skeptic showed it rested on one window and one seed, so a second seed is queued before the
     time-weighted DESK is ruled in or out.
 - Where is the covariates' temporal signal? (E027, E027b, E027c, two skeptic rounds) Not where I first thought. The
-  covariate surrogates' backcast skill is matched by a placebo that uses the covariates only as a STATIC position (a
-  place's average environment) times LINEAR YEAR. A place's own covariate change adds nothing detectable (95% bound
-  ~0.05 in correlation), and the direction in which the continent's covariates moved does not matter either (random
-  directions do as well). Slow (30-year) covariate history adds nothing once the averages start in 1902. DESK's own
+  covariate surrogates' backcast skill is largely matched by a placebo that uses the covariates only as a STATIC
+  position (a place's average environment) times LINEAR YEAR. A place's own covariate change adds little: on a
+  second, independent split of held-out cells it led the placebo by 0.03-0.04 at the farthest-back windows (CIs
+  including zero) -- at most ~0.05 in correlation across both splits. The direction in which the continent's
+  covariates moved does not matter (random directions do as well). Slow (30-year) covariate history adds nothing once the averages start in 1902. DESK's own
   features already hold most of what the surrogates extract. At this grain, the predictable part of decadal change
   is a smooth trend that differs by kind of place; the covariates' year-to-year and decade-to-decade changes are not
   detectably informative. Whether that trend is habitat or observation (observer skill, protocol) is open.
@@ -93,8 +94,8 @@ OPEN QUESTIONS (the plan: what limits extrapolation in time, and what would exte
 1. Training state: later epochs give better direction and less space-for-time pull but more over-movement (E025);
    gradient noise in the metric term is not a lever (E026). What sets the over-movement, and can it be calibrated
    out downstream without losing the direction gain?
-2. Covariate content (T5): the covariates' decadal temporal signal at this grain is not detectable beyond "kind of
-   place x linear year" (E027c). What inputs or grain would carry it, and is the linear trend habitat or observation?
+2. Covariate content (T5): the covariates' decadal temporal signal at this grain is small beyond "kind of place x
+   linear year" (E027c/d: at most ~0.05 in correlation). What inputs or grain would carry it, and is the linear trend habitat or observation?
 3. The readout: even the true community's change, read through the spatial readout, predicts species change no
    better than no change. A readout that lets local deviations fade with reach (E028: half of that fading is real)
    is a candidate.
@@ -122,9 +123,9 @@ The age-model sensitivity fit comes last, once there are candidate backcasts wor
      more (E025).
    - Readout: even the true community's change, read through the spatial readout, correlates only ~0.23 with species
      change and is no better than no change in squared error; DESK's reaches 0.07-0.10.
-   - Inputs: a place's own covariate change adds nothing detectable to a backcast; covariate surrogates do no better
-     than "kind of place x linear year" (E027c + skeptic). This is the sharpest constraint found so far: at 27 km and
-     decadal scales, the covariates as they are carry no detectable temporal signal beyond a trend surface.
+   - Inputs: a place's own covariate change adds little to a backcast -- at most ~0.05 in correlation beyond "kind of
+     place x linear year" (E027c + skeptic + a second split, E027d). This is the sharpest constraint found so far: at
+     27 km and decadal scales, the covariates as they are carry little temporal signal beyond a trend surface.
 3. How much real change there is: most species have resolvable change between epochs (323 / 401 and 249 / 372),
    noise ceilings 0.62-0.67; ~30% of change energy is observer turnover (E021); local deviations from the regional
    surface also fade for real, by ~7-8% per 11 years, unrelated to local covariate change (E028).

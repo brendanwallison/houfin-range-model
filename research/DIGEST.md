@@ -47,10 +47,14 @@ NEW TONIGHT (tentative: one run each unless noted)
   the direction of change better than the archived ones at long reach but are no better than no change in squared
   error, because they move more.
 - DESK keeps changing after the epoch we select (E025, graded): by epoch 490 its backcast direction is better
-  (+0.01 to +0.08 in correlation, most at 11-20 years of reach), but it moves even more than its accuracy justifies
-  (squared error against no change worse: 1.27 -> 1.47 at 27.5 years) and fits held-out places worse. Production
-  ships FINAL-epoch weights, so production backcasts somewhat better in direction and over-moves more than every
-  model graded so far.
+  (+0.01 to +0.08 in correlation, most at 11-20 years of reach) and its pull toward climate analogs halves or more
+  (+0.14-0.21 -> +0.03-0.09), but it moves even more than its accuracy justifies (squared error against no change
+  worse: 1.27 -> 1.47 at 27.5 years) and fits held-out places worse. Early in training DESK has learned the spatial
+  mapping and moves along it; later epochs add movement in better directions. Production ships FINAL-epoch weights,
+  so production should backcast somewhat better in direction, lean less on space-for-time, and over-move more than
+  every model graded so far.
+- The metric term's pair count is not a lever (E026: 4,096 and 262,144 pairs backcast like 65,536). It does not
+  explain why the archived tempho models backcast worse than current-code retrains.
 
 TENTATIVE (earlier, still standing)
 - As DESK reaches further back, its useful temporal signal fades and its movement increasingly follows
@@ -86,9 +90,9 @@ WHAT THIS DOES AND DOES NOT TELL US
   pre-BBS habitat near its BBS-era state with uncertainty that grows with reach.
 
 OPEN QUESTIONS (the plan: what limits extrapolation in time, and what would extend it)
-1. Optimization: does DESK under-learn temporal structure? It takes one optimizer step per epoch (500 in all), and its
-   only cross-year supervision is a noisy pair-sampled term. E025 (late epochs) and E026 (4,096 / 262,144 metric
-   pairs vs 65,536; the archived models used 4,096) are running.
+1. Training state: later epochs give better direction and less space-for-time pull but more over-movement (E025);
+   gradient noise in the metric term is not a lever (E026). What sets the over-movement, and can it be calibrated
+   out downstream without losing the direction gain?
 2. Covariate content (T5): the covariates' decadal temporal signal at this grain is not detectable beyond "kind of
    place x linear year" (E027c). What inputs or grain would carry it, and is the linear trend habitat or observation?
 3. The readout: even the true community's change, read through the spatial readout, predicts species change no

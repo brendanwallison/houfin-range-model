@@ -464,6 +464,7 @@
   parents: [S3, E3]
   evidence:
   - {job: "adhoc:E023-dev", exp: E023, dir: for, strength: moderate, note: "surrogates: at fixed (T0, W) longer spans backcast worse (e.g. trend 0.177 / 0.104 / 0.063 for 10 / 20 / 30 years at 27.5 y reach; 0.290 -> 0.094 over 10-50 years at 7.5 y); unchanged with years balanced and at r64. DESK recalibrated on its nearest decade: 0.187 (calib 1.09) vs 0.111 full-span vs 0.057 raw. UNVERIFIED."}
+  - {job: "E023/span-reach-desk-spans-seeds-f490c66f67af", exp: E024, dir: against, strength: moderate, note: "DESK trained on 20-year spans next to the target vs the same-T0 long-span HEAD seeds, raw backcast of 1966-71: 0.102 vs 0.122/0.105 (T0 1996), 0.143 vs 0.136/0.112 (T0 1986), 0.082 vs archived 0.110 (T0 1976). Pre-registered rule (2 of 3 by > seed spread) NOT met; short spans win at 1972-77 (+0.03-0.05) only. DESK does not show the surrogates' strong span dependence. One seed per span model. UNVERIFIED."}
 - id: T11
   stage: T
   priority: 1

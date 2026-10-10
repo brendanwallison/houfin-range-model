@@ -54,3 +54,15 @@ Tomorrow, branch on:
  3. Re-establish the DESK-failure picture on current-code models (space-for-time pull, readout corr, over-movement).
 Then: lags (multi-timescale covariate history vs the trend placebo), temporal supervision in DESK, observer-continuity
 target, and the Gate 1 report once E006 + the re-runs are in.
+2026-10-09 ~23:40 (overnight, user asleep; plan followed/revised per their go-ahead):
+- E024 decided by its pre-registered rule: NO (1966-71: 1996 short 0.102 vs long seeds 0.122/0.105; 1986 0.143 vs
+  0.136/0.112, within the 0.024 spread; 1976 below the archived model). Short spans win only at 1972-77. N2 stays a
+  surrogate-level result; time-weighted DESK NOT launched.
+- Branch 2 started. Training logs (rung 0): after the selected epoch (65-162), the withheld pair's direction cosine is
+  flat-to-rising through epoch 490 while rotation doubles -> E025 grades the epoch-490 states (caches from
+  resume_checkpoint.pt.completed). Recorded difference archived vs HEAD: metric_pairs 4,096 -> 65,536 (a3633d2, Aug 25)
+  -> E026 tempho1995 at 4,096 and 262,144 (T11: optimization-limited temporal learning).
+- GPU order: E006 base (running) -> E025 late caches -> E026 mp4096 -> mp262144. CPU analyses chained.
+- Next decision after E025/E026: if late > selected or mp262k > 65k beyond the seed spread -> replicate (2nd seed, and
+  tempho1985) and test more optimizer steps per epoch (spatial_tiles: DESK takes ONE step per epoch, 500 in all).
+  If null -> lags (S3) and temporal supervision (T1) are next.

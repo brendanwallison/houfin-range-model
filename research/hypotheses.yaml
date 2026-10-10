@@ -227,6 +227,7 @@
   - {job: "skeptic3:E016", exp: E016, dir: for, strength: moderate, note: "covariate change adds only +0.025-0.053 beyond position x time trends in predicting held-out decadal community change; a within map on cell-detrended covariate anomalies scores ~0."}
 # ---------------- readout (BLR): the downstream lever ----------------
   - {job: "E027/desk-plus-covariate-blocks-6977de015080", exp: E027, dir: for, strength: weak, note: "neither nonlinear (RFF) nor multi-timescale covariate surrogates extend the reach beyond the best short-span fit, and they add little to DESK's z: the covariates' decadal temporal content looks largely used already. UNVERIFIED."}
+  - {job: "E027/controls-t0-1986-6ea8f06d0d96", exp: E027, dir: for, strength: moderate, note: "covariate-clock placebo (each cell's mean covariate position moved only along the continental trajectory) matches or beats cell-specific RFF covariate maps at the longest spans (1966-71: +0.017 / +0.025 / -0.020 at T0 1996/1986/1976): a cell's own covariate change adds nothing measurable beyond a shared trajectory x environment. UNVERIFIED."}
 - id: B1
   stage: B
   priority: 1
@@ -460,6 +461,7 @@
   - {job: "adhoc:E019-dev", exp: E019, dir: for, strength: weak, note: "same target window: backcast corr 0.42 -> 0.12, calibration 0.58 -> 0.20 over 0-28 years of reach; beyond ~10 y worse than no change. UNVERIFIED."}
   - {job: "E027/lags-nonlinear-surrogates-8675524399f2", exp: E027, dir: for, strength: moderate, note: "within-cell surrogates: several timescales of covariate history (incl. a 30-y EMA) backcast better than DESK-timescale covariates at long spans (lags+trend - cov+trend +0.07/+0.08 at T0 1986/1976, CI > 0); lag30 is usually the best single timescale; no gain at short spans. UNVERIFIED."}
   - {job: "E027/desk-plus-covariate-blocks-6977de015080", exp: E027, dir: against, strength: weak, note: "added to DESK's own recalibration, slow history adds only +0.02-0.05 (CI mostly spans 0 at the farthest windows): DESK's z already carries most of it. UNVERIFIED."}
+  - {job: "E027/controls-t0-1986-6ea8f06d0d96", exp: E027, dir: against, strength: moderate, note: "with the EMAs started in 1902, lag30+trend - lag10.5+trend is null in 3 of 3 start years at the longest spans (-0.010 / +0.024 / +0.010, CIs span 0): E027's slow-history result was the 1940 warm-up transient. UNVERIFIED."}
 - id: N2
   stage: T
   priority: 1

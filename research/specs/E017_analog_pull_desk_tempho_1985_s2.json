@@ -1,0 +1,28 @@
+{
+ "exp": "E017",
+ "name": "analog-pull-desk_tempho_1985_s2-seedmodel",
+ "group": "cpu",
+ "after_jobs": [
+  "E003/esk-desk_tempho_1985_s2"
+ ],
+ "cmd": [
+  "python",
+  "research/exp/analog_pull.py",
+  "--cache",
+  "{cache}/desk_tempho_1985_s2",
+  "--out",
+  "{out}",
+  "--population",
+  "withheld",
+  "--exclude-km",
+  "200"
+ ],
+ "expected_minutes": 8,
+ "summarize": [
+  "python",
+  "research/exp/analog_pull.py",
+  "--summarize",
+  "{out}"
+ ],
+ "note": "re-run on a current-code seed replicate: the archived tempho models backcast worse than current-code retrains of the same config"
+}

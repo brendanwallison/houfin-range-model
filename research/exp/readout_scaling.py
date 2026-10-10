@@ -157,12 +157,35 @@ def main():
     amp = np.asarray(fit2["a"])                                      # (S, 2) block amplitudes
     pred2 = dZ @ beta2
 
+    # E033b placebos: the change block replaced (R2p) or extended (R2+p) by position x time, or a continental time (R2t)
+    wyear = np.array([yr[rl].mean() for rl in rows_w])
+    ys = np.zeros(len(uc))
+    np.add.at(ys, inv, wyear)
+    tdev = wyear - (ys / cnt)[inv]
+    rng = np.random.default_rng(0)
+    Wf, bf = rng.normal(size=(2, 24)) / 300.0, rng.uniform(0, 2 * np.pi, 24)
+    pos = lambda cc: np.sqrt(2.0 / 24) * np.cos(np.stack([cc // 100000, cc % 100000], 1).astype("float64") * 27.0 @ Wf + bf)
+    Xp = pos(cell_w) * tdev[:, None]
+    fit_p = blr.fit(np.hstack([zbar, Xp])[multi], Yw[multi], [(0, r), (r, r + 24)])
+    fit_pp = blr.fit(np.hstack([zbar, Zw - zbar, Xp])[multi], Yw[multi], [(0, r), (r, 2 * r), (2 * r, 2 * r + 24)])
+    fit_t = blr.fit(np.hstack([zbar, tdev[:, None]])[multi], Yw[multi], [(0, r), (r, r + 1)])
+    # held-out cells: position features and the gap between the two epochs' mean years
+    ev_cid = (cells[ev, 0].astype(np.int64) * 100000 + cells[ev, 1])
+    dyear = np.array([yr[full[pairs[j, 1]]].mean() - yr[full[pairs[j, 0]]].mean() for j in ev])
+    Pev = pos(ev_cid) * dyear[:, None]
+    pred2p = Pev @ fit_p["coef"][:, r:].T
+    pred2pp = dZ @ fit_pp["coef"][:, r:2 * r].T + Pev @ fit_pp["coef"][:, 2 * r:].T
+    pred2t = dyear[:, None] * fit_t["coef"][:, r][None, :]
+
     def all_scores(mask):
         return {"n_species": int(mask.sum()),
                 "R0_level": score(pred0, da, db, dfull, mask),
                 "R1_cal_pooled": score(pred1p, da, db, dfull, mask),
                 "R1_cal_tier": score(pred1t, da, db, dfull, mask),
-                "R2_split": score(pred2, da, db, dfull, mask)}
+                "R2_split": score(pred2, da, db, dfull, mask),
+                "R2p_placebo": score(pred2p, da, db, dfull, mask),
+                "R2pp_desk_plus_placebo": score(pred2pp, da, db, dfull, mask),
+                "R2t_time_only": score(pred2t, da, db, dfull, mask)}
     res = {"cache": a.cache, "t0": a.t0, "rank": r, "n_eval_cells": int(len(ev)), "n_cal_cells": len(G),
            "k_trained_pooled": k_pool, "k_trained_tiers": tiers_k, "n_windows_r2": int(multi.sum()),
            "r2_amplitude_ratio_median": float(np.median(amp[:, 1] / np.maximum(amp[:, 0], 1e-12))),
@@ -183,7 +206,7 @@ def summarize(out):
     for name, s in [("all", r["all"])] + [(f"prev {k}", v) for k, v in r["tiers"].items()]:
         for form in ("centred", "uncentred"):
             parts = []
-            for arm in ("R0_level", "R1_cal_pooled", "R1_cal_tier", "R2_split"):
+            for arm in ("R0_level", "R1_cal_pooled", "R2_split", "R2p_placebo", "R2pp_desk_plus_placebo", "R2t_time_only"):
                 v = s.get(arm, {}).get(form)
                 if v:
                     parts.append(f"{arm} corr {v['corr']:+.3f} k {v['k']:.2f} skill {v['skill']:+.3f}")

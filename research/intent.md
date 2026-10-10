@@ -66,3 +66,8 @@ target, and the Gate 1 report once E006 + the re-runs are in.
 - Next decision after E025/E026: if late > selected or mp262k > 65k beyond the seed spread -> replicate (2nd seed, and
   tempho1985) and test more optimizer steps per epoch (spatial_tiles: DESK takes ONE step per epoch, 500 in all).
   If null -> lags (S3) and temporal supervision (T1) are next.
+2026-10-10 ~00:15: skeptic round on E024/E027/E028 done and recorded. Queue: GPU E006 base (to ~01:05) -> E025 late
+caches -> E026 mp4096 -> mp262144 -> E024b second seed of the 1986-2005 span (~04:00). CPU: E027c controls (3 jobs,
+~40 min); E025/E024b-first-look/E026 analyses chained. Morning: Gate 1 report (E006 base), then decide among
+(a) time-weighted DESK if E024b says NO is wrong, (b) optimization levers if E025/E026 show late epochs or more pairs
+help, (c) T5/readout direction if E027c's clock placebo matches the covariate surrogates.

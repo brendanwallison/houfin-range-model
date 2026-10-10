@@ -149,6 +149,23 @@ def main():
     def align(B, D):
         Bc, Dc = B - B.mean(0), D - D.mean(0)
         return float((Bc * Dc).sum() / np.sqrt((Bc ** 2).sum() * (Dc ** 2).sum()))
+    # species readout of each part: level coefficients from training cells' modern levels (E013/E030), noise-free
+    from lib import blr
+    from src.community_encoder.train_DESK.validate_bbs_routes import epoch_mean_observed
+    from src.community_encoder.train_DESK.validation_core import change_noise
+    Xd = np.load(c("X_dev.npy")).astype("float64")
+    Ys = {h: epoch_mean_observed(Xd, g).astype("float64") for h, g in (("full", full), ("a", half_a), ("b", half_b))}
+    keep = (Ys["full"] > 0).any(0)
+    Ys = {h: v[:, keep] for h, v in Ys.items()}
+    dS = {h: (v[pairs[:, 1]] - v[pairs[:, 0]])[ev] for h, v in Ys.items()}
+    resm = change_noise(dS["full"], dS["a"], dS["b"])["resolvable"]
+    buf = split["buffer"][cells[:, 0], cells[:, 1]]
+    trc = np.where(~held & ~buf)[0]
+    lvl = np.unique(pairs[trc, 1])
+    Fd = desk_epoch_z(zr, ci, y0, keys, full, r)
+    beta = blr.fit(Fd[lvl], Ys["b"][lvl], [(0, r)])["coef"].T
+    vts = ccov(dS["a"][:, resm], dS["b"][:, resm])
+
     # change is modern - early; the backcast change (early - modern) aligns with D, so use -part
     res = {"cache": a.cache, "run_dir": a.run_dir, "n_cells": int(len(ev)), "parts": {}}
     nfull = float(np.linalg.norm(D_full, axis=1).mean())
@@ -157,11 +174,15 @@ def main():
         vp = ccov(Dp, Dp)
         al = align(-Dp, Dir)
         nul = [align(-Dp, Dn) for Dn in nulls]
+        ps = (Dp @ beta)[:, resm]
+        cs, vps = ccov(ps, dS["full"][:, resm]), ccov(ps, ps)
         res["parts"][name] = {"corr_with_truth": float(cov_t / np.sqrt(vp * vt)) if vp > 0 and vt > 0 else None,
                               "k": float(cov_t / vp) if vp > 0 else None,
                               "size_vs_full": float(np.linalg.norm(Dp, axis=1).mean() / nfull),
                               "analog_alignment": al, "analog_null_p95": float(np.percentile(nul, 95)),
-                              "analog_null_mean": float(np.mean(nul))}
+                              "analog_null_mean": float(np.mean(nul)),
+                              "species_corr": float(cs / np.sqrt(vps * vts)) if vps > 0 and vts > 0 else None,
+                              "species_k": float(cs / vps) if vps > 0 else None}
     with open(os.path.join(a.out, "backcast_attribution.json"), "w", encoding="utf-8") as fh:
         json.dump(res, fh, indent=1)
     summarize(a.out)
@@ -174,8 +195,10 @@ def summarize(out):
           f"alignment of the backcast with the analog direction (random-rotation null):")
     for name, v in r["parts"].items():
         c = v["corr_with_truth"]
+        sp = (f" | species corr {v['species_corr']:+.3f} k {v['species_k']:.2f}" if v.get("species_corr") is not None
+              else "")
         print(f"  {name:38s} corr {c:+.3f}  k {v['k']:.2f}  size {v['size_vs_full']:.2f}  analog {v['analog_alignment']:+.3f}"
-              f" (null mean {v['analog_null_mean']:+.3f}, p95 {v['analog_null_p95']:+.3f})")
+              f" (null mean {v['analog_null_mean']:+.3f}, p95 {v['analog_null_p95']:+.3f})" + sp)
 
 
 if __name__ == "__main__":

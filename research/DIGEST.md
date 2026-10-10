@@ -64,7 +64,9 @@ NEW SINCE YESTERDAY EVENING (tentative unless noted; each finding carries WHY: e
 - The "kind of place x year" trend is not observer turnover (E034b): it predicts the 2005-14 -> 2016-25 change BETTER
   where the same observers counted throughout (community 0.31 vs 0.23; species 0.23 vs 0.19). WHY (likely): a change
   of observer adds route-specific change the regional trend cannot predict. Not excluded: drift common to all
-  observers (protocol, skill). Coarser-grain test (E034a) running.
+  observers (protocol, skill). At a coarser grain (81 km, E034a) a place's own covariate change still adds
+  nothing clear beyond "kind of place x linear year" (+0.06 / +0.01 / 0.00, CIs spanning 0) -- so grain is not an
+  obvious explanation for why covariate change carries so little.
 - Training span vs reach (your question), E023 / E024 / E024b:
   - cheap linear surrogates: at a fixed reach a SHORTER span next to the target backcasts better (strong: 0.22 vs
     0.08 for 20- vs 40-year spans);

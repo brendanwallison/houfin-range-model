@@ -1,0 +1,19 @@
+{
+ "exp": "E027",
+ "name": "lags-nonlinear-surrogates",
+ "group": "cpu",
+ "overlay": "config/overlays/gp_species_base.json",
+ "cmd": [
+  "bash",
+  "-c",
+  "{python} research/exp/span_reach.py --out {out} --no-default-desk --lag-hls 0 3 10.5 30 --rff 512"
+ ],
+ "expected_minutes": 20,
+ "summarize": [
+  "python",
+  "research/exp/span_reach.py",
+  "--summarize",
+  "{out}"
+ ],
+ "note": "E027: within-cell covariate surrogates at several timescales (lags) and nonlinear (RFF) vs the trend placebo, with paired differences"
+}

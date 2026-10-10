@@ -37,6 +37,8 @@ CACHE_ROOT = os.path.expanduser("~/houfin/work/houfin/research_cache")
 WINDOWS = [(1966, 1971), (1972, 1977), (1978, 1983), (1984, 1989), (1990, 1995)]
 GRID = {1996: (10, 20, 30), 1986: (10, 20, 30, 40), 1976: (10, 20, 30, 40, 50)}
 # DESK models: (name, cache subdir, first trained year, last trained year); --desk-models adds more (E024 span runs)
+PAIRS = [("cov+trend", "trend"), ("lags+trend", "cov+trend"), ("rff+trend", "cov+trend"), ("lags", "cov"),
+         ("rff", "cov")]
 DESK_MODELS = [("t1995", "desk_tempho_1995", 1996, 2025), ("t1985", "desk_tempho_1985", 1986, 2025),
                ("t1975", "desk_tempho_1975", 1976, 2025)]
 
@@ -55,6 +57,13 @@ def main():
     ap.add_argument("--balance-years", action="store_true",
                     help="subsample training rows to equal counts per year (BBS coverage grows ~7x 1966-1995, so a long"
                          " span is otherwise dominated by its late years)")
+    ap.add_argument("--lag-hls", type=float, nargs="*", default=(),
+                    help="E027: also covariates EMA'd at these half-lives (years; 0 = no EMA beyond the states' own), 32 "
+                         "PCs each: arms lag<hl>, lags (all, one prior block each), lags+trend")
+    ap.add_argument("--rff", type=int, default=0,
+                    help="E027: also a NONLINEAR covariate surrogate, this many random Fourier features of the 64 "
+                         "covariate PCs (RBF, lengthscale = median pairwise distance): arms rff, rff+trend")
+    ap.add_argument("--no-default-desk", action="store_true", help="skip the archived tempho models")
     ap.add_argument("--summarize", default=None)
     a = ap.parse_args()
     if a.summarize:
@@ -101,7 +110,21 @@ def main():
     Zobs = np.load(os.path.join(base, "esk_annual.npy"))[:, :r].astype("float64")
     gmean = lambda M, g: np.asarray(M[g], "float64").mean(0)
 
-    models = list(DESK_MODELS)
+    extra = {}                                   # E027 feature blocks: name -> (N, k) at every key
+    if a.lag_hls:
+        for hl, F in covfeat.multi_ema_rows(cfg, keys, a.lag_hls).items():
+            extra[f"lag{hl:g}"] = np.nan_to_num(covfeat.cov_pcs(F, train_cell & np.isfinite(F).all(1), n_pcs=32))
+    if a.rff:
+        sub = np.where(train_cell)[0][:: max(1, int(train_cell.sum()) // 2000)]
+        Ps = np.asarray(P[sub], "float64")
+        sq = (Ps * Ps).sum(1)
+        d2 = np.maximum(sq[:, None] + sq[None, :] - 2.0 * Ps @ Ps.T, 0.0)
+        ls = float(np.sqrt(np.median(d2[np.triu_indices(len(sub), 1)])))
+        extra["rff"] = covfeat.rff(P, a.rff, ls, seed=1)
+        print(f"[span-reach] rff: {a.rff} features, lengthscale {ls:.2f} (median distance of 64 covariate PCs)", flush=True)
+    lag_names = [k for k in extra if k.startswith("lag")]
+
+    models = [] if a.no_default_desk else list(DESK_MODELS)
     for spec in a.desk_models:
         name, rest = spec.split("=")
         sub, m0, m1 = rest.split(":")
@@ -142,6 +165,18 @@ def main():
             fits = {"trend": blr.fit(Xt, y, [(0, 24)]),
                     "cov": blr.fit(Xp, y, [(0, Xp.shape[1])]),
                     "cov+trend": blr.fit(np.hstack([Xp, Xt]), y, [(0, Xp.shape[1]), (Xp.shape[1], Xp.shape[1] + 24)])}
+            Xe = {k: demean(v[rows]) for k, v in extra.items()}
+            for k in lag_names:
+                fits[k] = blr.fit(Xe[k], y, [(0, Xe[k].shape[1])])
+            if lag_names:
+                XL = np.hstack([Xe[k] for k in lag_names])
+                bl = [(32 * i, 32 * (i + 1)) for i in range(len(lag_names))]
+                fits["lags"] = blr.fit(XL, y, bl)
+                fits["lags+trend"] = blr.fit(np.hstack([XL, Xt]), y, bl + [(XL.shape[1], XL.shape[1] + 24)])
+            if "rff" in extra:
+                k_ = Xe["rff"].shape[1]
+                fits["rff"] = blr.fit(Xe["rff"], y, [(0, k_)])
+                fits["rff+trend"] = blr.fit(np.hstack([Xe["rff"], Xt]), y, [(0, k_), (k_, k_ + 24)])
             for name, (dz, _m1) in desks.items():
                 # recal:<model> -- the DESK model's own training span is fixed; only its RECALIBRATION uses this span's
                 # rows (a post-hoc test of weighting the trained years nearest the target)
@@ -158,6 +193,16 @@ def main():
                 preds = {"trend": (rpos * dyear[:, None]) @ fits["trend"]["coef"].T,
                          "cov": dP @ fits["cov"]["coef"].T,
                          "cov+trend": np.hstack([dP, rpos * dyear[:, None]]) @ fits["cov+trend"]["coef"].T}
+                dE = {k: np.stack([gmean(v, g1) - gmean(v, g2) for g1, g2 in zip(gw, gr)]) for k, v in extra.items()}
+                for k in lag_names:
+                    preds[k] = dE[k] @ fits[k]["coef"].T
+                if lag_names:
+                    dL = np.hstack([dE[k] for k in lag_names])
+                    preds["lags"] = dL @ fits["lags"]["coef"].T
+                    preds["lags+trend"] = np.hstack([dL, rpos * dyear[:, None]]) @ fits["lags+trend"]["coef"].T
+                if "rff" in extra:
+                    preds["rff"] = dE["rff"] @ fits["rff"]["coef"].T
+                    preds["rff+trend"] = np.hstack([dE["rff"], rpos * dyear[:, None]]) @ fits["rff+trend"]["coef"].T
                 for name, (dz, m1) in desks.items():
                     dD = np.stack([gmean(dz, g1) - gmean(dz, g2) for g1, g2 in zip(gw, gr)])
                     if m1 == t1:
@@ -185,6 +230,15 @@ def main():
                     row["arms"][name] = {"corr": float(c0), "calib": float(k0),
                                          "corr_ci": [float(np.nanpercentile(bs, 2.5)),
                                                      float(np.nanpercentile(bs, 97.5))]}
+                # paired differences (same bootstrap draws): what a block adds over the arm it extends
+                row["diffs"] = {}
+                for p1, p0 in PAIRS:
+                    if p1 in preds and p0 in preds:
+                        d0 = stats(preds[p1], np.ones(len(cl)))[0] - stats(preds[p0], np.ones(len(cl)))[0]
+                        bd = np.array([stats(preds[p1], ww[binv].astype(float))[0]
+                                       - stats(preds[p0], ww[binv].astype(float))[0] for ww in W])
+                        row["diffs"][f"{p1} - {p0}"] = {"diff": float(d0), "ci": [float(np.nanpercentile(bd, 2.5)),
+                                                                                  float(np.nanpercentile(bd, 97.5))]}
                 res["rows"].append(row)
     with open(os.path.join(a.out, "span_reach.json"), "w", encoding="utf-8") as fh:
         json.dump(res, fh, indent=1)
@@ -200,6 +254,9 @@ def summarize(out):
         parts = [f"{k} {v['corr']:+.3f} ({v['calib']:.2f})" for k, v in row["arms"].items()]
         print(f"  T0 {row['t0']} W {row['window'][0]}-{row['window'][1] % 100:02d} reach {row['reach']:+5.1f} span "
               f"{row['span']:2d} cells {row['n_cells']:3d} | " + " | ".join(parts))
+        if row.get("diffs"):
+            print("      paired: " + " | ".join(f"{k} {v['diff']:+.3f} [{v['ci'][0]:+.3f},{v['ci'][1]:+.3f}]"
+                                                for k, v in row["diffs"].items()))
 
 
 if __name__ == "__main__":

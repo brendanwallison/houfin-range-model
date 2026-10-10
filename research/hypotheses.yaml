@@ -228,6 +228,7 @@
 # ---------------- readout (BLR): the downstream lever ----------------
   - {job: "E027/desk-plus-covariate-blocks-6977de015080", exp: E027, dir: for, strength: weak, note: "neither nonlinear (RFF) nor multi-timescale covariate surrogates extend the reach beyond the best short-span fit, and they add little to DESK's z: the covariates' decadal temporal content looks largely used already. UNVERIFIED."}
   - {job: "E027/controls-t0-1986-6ea8f06d0d96", exp: E027, dir: for, strength: moderate, note: "covariate-clock placebo (each cell's mean covariate position moved only along the continental trajectory) matches or beats cell-specific RFF covariate maps at the longest spans (1966-71: +0.017 / +0.025 / -0.020 at T0 1996/1986/1976): a cell's own covariate change adds nothing measurable beyond a shared trajectory x environment. UNVERIFIED."}
+  - {job: "adhoc:skeptic-E027c", exp: E027, dir: for, strength: moderate, note: "skeptic controls: the clock is a time index (random covariate directions do as well; composition-free trajectory is linear in year): the surrogates' backcast skill is matched by static environment position x linear year; no detectable use of a cell's own covariate change (95% bound ~0.05 corr). UNVERIFIED."}
 - id: B1
   stage: B
   priority: 1

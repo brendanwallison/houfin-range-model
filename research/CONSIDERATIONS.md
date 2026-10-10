@@ -97,3 +97,11 @@ Items are numbered so records can cite them (e.g. "considerations: G3, M1, M6").
 - **P3 Pre-register before results**; if a rule turns out ambiguous, say so rather than choosing post hoc.
 - **P4 A skeptic round before acting on a surprising result**; several of this project's readings were overturned
   that way (DIGEST "OVERTURNED").
+
+## Added 2026-10-10 (afternoon)
+- **M17 Readouts that learn within-place change can learn a species' own trend.** Over the trained years anything
+  that drifts with time in a place (DESK z, or position x year) lets a readout learn each species' regional trend and
+  extrapolate it; that predicts the score well but is the population model's job (G3). Always compare with a
+  position x time placebo. (E033b)
+- **M18 Observer turnover LOWERS the predictability of regional trends** rather than creating them (E034b); "shared"
+  or "regional" structure is not automatically an observer artifact -- check, don't assume. (E034b)

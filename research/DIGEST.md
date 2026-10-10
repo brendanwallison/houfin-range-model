@@ -55,6 +55,16 @@ NEW SINCE YESTERDAY EVENING (tentative unless noted; each finding carries WHY: e
     DESK adds at most +0.03 on top. WHY (established for two models): it learns each species' own regional trend and
     extrapolates it backwards -- the population model's job (G3), not habitat. The strongest predictor of a species'
     change in withheld decades is its own regional trend; none of it comes from habitat as DESK represents it.
+- What production DESK actually does before 1940 (E035, descriptive -- no truth exists then): its 1920-39 backcast
+  sits 1.4x as far from today as its 1966-86 state, and a clear part of that movement points toward places whose
+  TODAY's climate matches the place's 1920s climate (alignment +0.13; it moves ~1/5 of the way toward them). Real
+  communities did not move that way in the BBS era (~-0.05). Production is the epoch-200 state; its BBS-era lean
+  (+0.17) sits between the selected-epoch and epoch-490 tempho models, as expected.
+  WHY: likely the same space-for-time mapping (S2); why the 1920s lean is not stronger than the 1960s' is unknown.
+- The "kind of place x year" trend is not observer turnover (E034b): it predicts the 2005-14 -> 2016-25 change BETTER
+  where the same observers counted throughout (community 0.31 vs 0.23; species 0.23 vs 0.19). WHY (likely): a change
+  of observer adds route-specific change the regional trend cannot predict. Not excluded: drift common to all
+  observers (protocol, skill). Coarser-grain test (E034a) running.
 - Training span vs reach (your question), E023 / E024 / E024b:
   - cheap linear surrogates: at a fixed reach a SHORTER span next to the target backcasts better (strong: 0.22 vs
     0.08 for 20- vs 40-year spans);

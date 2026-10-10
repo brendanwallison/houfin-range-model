@@ -58,6 +58,10 @@ NEW SINCE YESTERDAY EVENING (tentative unless noted; each finding carries WHY: e
     (escalation): its production analog is weights rising toward 1966 for the 1900-1940 backcast. One start year, two
     seeds per weighting. Downstream checks: slightly better species readout (+0.01), slightly less over-confident,
     and about a third less pull toward climate analogs -- no downside found.
+    REPLICATION at the 1996 start (E029b, your choice): NULL by the pre-set rule (-0.003 at the selected epochs,
+    muddied by one seed selected at epoch 74); at matched training state (epoch 490, what production ships) +0.018
+    [0.002, 0.035]. So: not yet a general lever; a small late-state benefit (+0.02-0.03 at both starts) is suggested
+    but not established.
   WHY (likely, not shown for DESK): decadal trends drift; a long span averages in later decades whose trends do not
   describe the earlier ones (shown for the surrogates, E023).
 - Where the covariates' temporal signal is (E027, E027b-d, two skeptic rounds): their backcast skill is largely matched

@@ -18,6 +18,10 @@ with resolvable change only; paired 6x6-block bootstrap (one draw shared by all 
 E049b (--pooled): ONE map per guild and arm, shared by the guild's species (rows = training cell x species pairs,
 features standardized over the pooled rows, lambda by 6x6-block CV), applied to each species' held-out cells -- the
 "the guild responds alike to what is grown" estimator, far more data per coefficient than per-species maps.
+E049c (--pooled --rival-all, the E047b skeptic's correction): the rival is ALL covariate change DESK sees (every
+standardized F_cov_raw channel), and the null is CropAT's own change field moved in space (shifted / mirrored, each
+cell taking the field of the CONUS cell nearest its moved position -- same smoothness, misaligned), 8 draws. Gain =
+(all + CropAT) - all; reported against the null gains, and in the west / east halves of the held-out cells.
 """
 import argparse
 import json
@@ -47,6 +51,7 @@ def main():
     ap.add_argument("--n-boot", type=int, default=500)
     ap.add_argument("--summarize", default=None)
     ap.add_argument("--pooled", action="store_true", help="E049b: one shared map per guild and arm")
+    ap.add_argument("--rival-all", action="store_true", help="E049c: all-covariate rival + moved-CropAT null")
     a = ap.parse_args()
     if a.summarize:
         return summarize(a.summarize)
@@ -125,6 +130,27 @@ def main():
     X = np.where(np.isfinite(F[:, keep]), (F[:, keep] - mu[keep]) / sd[keep], 0.0)
     _, _, Vt = np.linalg.svd(X[trn][:: max(1, len(trn) // 40000)] - X[trn].mean(0), full_matrices=False)
     Tm = np.hstack([np.ones((len(pairs), 1)), np.asarray(G["full"][1] @ X) @ Vt[:a.n_type].T])
+    if a.rival_all:
+        dXall = chg(X, "full")
+        cidx = np.where(conus)[0]
+        xy = cells[cidx].astype(float)
+        lo, hi = xy.min(0), xy.max(0)
+
+        def moved(V, dr, dc, flip):
+            t = xy.copy()
+            if flip:
+                t[:, 1] = xy[:, 1].max() + xy[:, 1].min() - t[:, 1]
+            t = lo + np.mod(t + np.array([dr, dc]) - lo, hi - lo + 1)
+            src = cidx[((t[:, None, :] - xy[None, :, :]) ** 2).sum(-1).argmin(1)]
+            out = V.copy()
+            out[cidx] = V[src]
+            return out
+        feats = {"all": dXall, "all+cropat11": np.hstack([dXall, dC])}
+        for k, (dr, dc, fl) in enumerate([(0, 40, False), (0, -40, False), (20, 0, False), (-20, 0, False),
+                                          (0, 0, True), (15, 30, False), (-15, -30, False), (10, 0, True)]):
+            feats[f"all+moved{k}"] = np.hstack([dXall, moved(dC, dr, dc, fl)])
+    arm_list = list(feats)
+    west = cells[:, 1] < np.median(cells[ev, 1])
     blk_all = (cells[:, 0] // 6) * 100000 + cells[:, 1] // 6
     lams = [10.0 ** e for e in np.arange(-3, 3.01, 0.5)]
     ub, binv = np.unique(blk_all[ev], return_inverse=True)
@@ -135,7 +161,8 @@ def main():
     for g in GUILDS:
         res["habitat_counts"][g] = int((hab == g).sum())
     for mode in ("type", "type+kloc"):
-        acc = {g: {arm: [] for arm in ARMS} for g in GUILDS}       # per species: (cv, vp, vt) arrays over draws
+        acc = {g: {arm: [] for arm in arm_list} for g in GUILDS}       # per species: (cv, vp, vt) arrays over draws
+        accw = {h: {g: {arm: [] for arm in arm_list} for g in GUILDS} for h in ("west", "east")}
         n_used = {g: 0 for g in GUILDS}
         store = {g: [] for g in GUILDS}
         for s in range(len(codes)):
@@ -164,8 +191,9 @@ def main():
                 continue
             n_used[g] += 1
             if a.pooled:
-                rec = {"ytr": ytr, "blk": blk_all[tcs], "w": w, "ca": ca_, "cb": cb_, "vt": vt, "F": {}}
-                for arm in ARMS:
+                rec = {"ytr": ytr, "blk": blk_all[tcs], "w": w, "ca": ca_, "cb": cb_, "vt": vt, "F": {},
+                       "west": west[evs]}
+                for arm in arm_list:
                     Fx = feats[arm]
                     gF, *_ = np.linalg.lstsq(Tm[tcs], Fx[tcs], rcond=None)
                     Ftr, Fev = Fx[tcs] - Tm[tcs] @ gF, Fx[evs] - Tm[evs] @ gF
@@ -174,7 +202,7 @@ def main():
                     rec["F"][arm] = (Ftr, Fev)
                 store[g].append(rec)
                 continue
-            for arm in ARMS:
+            for arm in arm_list:
                 Fx = feats[arm]
                 gF, *_ = np.linalg.lstsq(Tm[tcs], Fx[tcs], rcond=None)
                 Ftr, Fev = Fx[tcs] - Tm[tcs] @ gF, Fx[evs] - Tm[evs] @ gF
@@ -190,7 +218,7 @@ def main():
             for g in GUILDS:
                 if not store[g]:
                     continue
-                for arm in ARMS:
+                for arm in arm_list:
                     Ftr_all = np.vstack([r_["F"][arm][0] for r_ in store[g]])
                     y_all = np.concatenate([r_["ytr"] for r_ in store[g]])[:, None]
                     b_all = np.concatenate([r_["blk"] for r_ in store[g]])
@@ -203,23 +231,61 @@ def main():
                         cp = p[None, :] - ((w * p[None, :]).sum(1) / w.sum(1))[:, None]
                         acc[g][arm].append((0.5 * ((w * cp * r_["ca"]).sum(1) + (w * cp * r_["cb"]).sum(1)),
                                             (w * cp * cp).sum(1), r_["vt"]))
+                        if a.rival_all:
+                            for h, msk in (("west", r_["west"]), ("east", ~r_["west"])):
+                                if msk.sum() < 10:
+                                    continue
+                                wm = w * msk[None, :]
+                                ctr = lambda M: M - ((wm * M).sum(1) / wm.sum(1))[:, None]
+                                cph = ctr(np.broadcast_to(p[None, :], wm.shape))
+                                cah = ctr(r_["ca"])
+                                cbh = ctr(r_["cb"])
+                                vth = (wm * cah * cbh).sum(1)
+                                if vth[0] <= 0:
+                                    continue
+                                accw[h][g][arm].append((0.5 * ((wm * cph * cah).sum(1) + (wm * cph * cbh).sum(1)),
+                                                        (wm * cph * cph).sum(1), vth))
         out = {}
         for g in GUILDS:
             if n_used[g] == 0:
                 continue
             o = {"n_species": n_used[g]}
             boots = {}
-            for arm in ARMS:
+            for arm in arm_list:
                 cv = np.sum([t[0] for t in acc[g][arm]], 0)
                 vp = np.sum([t[1] for t in acc[g][arm]], 0)
                 vt = np.sum([t[2] for t in acc[g][arm]], 0)
                 r = cv / np.sqrt(vp * vt)
                 boots[arm] = r
                 o[arm] = {"corr": float(r[0]), "ci": [float(np.nanpercentile(r[1:], q)) for q in (2.5, 97.5)]}
-            for x_, y_ in (("cropat11", "luh_crop5"), ("luh33+cropat11", "luh33")):
-                d = boots[x_] - boots[y_]
-                o[f"{x_} - {y_}"] = {"diff": float(d[0]), "ci": [float(np.nanpercentile(d[1:], q)) for q in (2.5, 97.5)]}
-            o["_boot_gain"] = (boots["luh33+cropat11"] - boots["luh33"]).tolist()
+            if a.rival_all:
+                gain = boots["all+cropat11"] - boots["all"]
+                nulls = np.array([boots[k] - boots["all"] for k in arm_list if k.startswith("all+moved")])
+                net = gain - np.median(nulls, 0)
+                o["gain_over_all"] = {"diff": float(gain[0]),
+                                      "ci": [float(np.nanpercentile(gain[1:], q)) for q in (2.5, 97.5)]}
+                o["null_gains"] = [float(v) for v in nulls[:, 0]]
+                o["gain_net_of_null_median"] = {"diff": float(net[0]),
+                                                "ci": [float(np.nanpercentile(net[1:], q)) for q in (2.5, 97.5)]}
+                o["share_of_nulls_below_real"] = float((nulls[:, 0] < gain[0]).mean())
+                for h in ("west", "east"):
+                    if all(accw[h][g][k] for k in ("all", "all+cropat11")):
+                        rr = {}
+                        for k in ("all", "all+cropat11"):
+                            cv = np.sum([t[0] for t in accw[h][g][k]], 0)
+                            vp = np.sum([t[1] for t in accw[h][g][k]], 0)
+                            vt = np.sum([t[2] for t in accw[h][g][k]], 0)
+                            rr[k] = cv / np.sqrt(vp * vt)
+                        dh = rr["all+cropat11"] - rr["all"]
+                        o[f"gain_over_all_{h}"] = {"diff": float(dh[0]),
+                                                   "ci": [float(np.nanpercentile(dh[1:], q)) for q in (2.5, 97.5)]}
+                o["_boot_gain"] = gain.tolist()
+            else:
+                for x_, y_ in (("cropat11", "luh_crop5"), ("luh33+cropat11", "luh33")):
+                    d = boots[x_] - boots[y_]
+                    o[f"{x_} - {y_}"] = {"diff": float(d[0]),
+                                         "ci": [float(np.nanpercentile(d[1:], q)) for q in (2.5, 97.5)]}
+                o["_boot_gain"] = (boots["luh33+cropat11"] - boots["luh33"]).tolist()
             out[g] = o
         if "Grassland" in out and "Forest" in out:
             dg = np.array(out["Grassland"]["_boot_gain"]) - np.array(out["Forest"]["_boot_gain"])
@@ -229,15 +295,15 @@ def main():
             if g in out:
                 out[g].pop("_boot_gain", None)
         res["modes"][mode] = out
-    res["pooled"] = bool(a.pooled)
-    with open(os.path.join(a.out, "guild_dose_pooled.json" if a.pooled else "guild_dose.json"), "w",
-              encoding="utf-8") as fh:
+    res["pooled"], res["rival_all"], res["arms"] = bool(a.pooled), bool(a.rival_all), arm_list
+    fn = "guild_dose_rival.json" if a.rival_all else ("guild_dose_pooled.json" if a.pooled else "guild_dose.json")
+    with open(os.path.join(a.out, fn), "w", encoding="utf-8") as fh:
         json.dump(res, fh, indent=1)
     summarize(a.out)
 
 
 def summarize(out):
-    for fn in ("guild_dose.json", "guild_dose_pooled.json"):
+    for fn in ("guild_dose.json", "guild_dose_pooled.json", "guild_dose_rival.json"):
         if os.path.exists(os.path.join(out, fn)):
             print(f"== {fn}")
             _summ(json.load(open(os.path.join(out, fn), encoding="utf-8")))
@@ -251,6 +317,15 @@ def _summ(r):
             if g not in o:
                 continue
             v = o[g]
+            if r.get("rival_all"):
+                f_ = lambda d: f"{d['diff']:+.3f} [{d['ci'][0]:+.3f},{d['ci'][1]:+.3f}]"
+                extra = " ".join(f"{h} {f_(v[f'gain_over_all_{h}'])}" for h in ("west", "east")
+                                 if f"gain_over_all_{h}" in v)
+                print(f"    {g:14s} ({v['n_species']:3d} spp) all {v['all']['corr']:+.3f} all+CropAT "
+                      f"{v['all+cropat11']['corr']:+.3f} | gain {f_(v['gain_over_all'])}; moved-CropAT null gains "
+                      f"median {np.median(v['null_gains']):+.3f} max {max(v['null_gains']):+.3f} (real beats "
+                      f"{v['share_of_nulls_below_real']:.0%}); net of null {f_(v['gain_net_of_null_median'])} | {extra}")
+                continue
             arms = " | ".join(f"{k} {v[k]['corr']:+.3f}" for k in ARMS)
             dd = v["luh33+cropat11 - luh33"]
             da = v["cropat11 - luh_crop5"]

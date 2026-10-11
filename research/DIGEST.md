@@ -1,7 +1,7 @@
 # DIGEST
 
 ## CURRENT STATE (rewritten each round; read this first -- the dated log below keeps the history)
-Last updated 2026-10-11 14:00 (correction: a regional trend is not evidence of population dynamics -- M6; E039i-n; E039o and E043 running). "Solid" =
+Last updated 2026-10-11 14:22 (E044: the regional community trend is largely covariate-predictable, partly specifically -- not a population-dynamics residue; E043 finishing). "Solid" =
 independently re-derived, replicated on a second split or seed, and survived a skeptic review. "Tentative" = one run,
 or checks still pending. Experiment numbers point to research/experiments/EXXX.md.
 
@@ -27,11 +27,17 @@ WHERE THINGS STAND (2026-10-11 ~11:00, plain summary; details below)
      can be regional HABITAT change, as M6 already says, and community-level change is change shared across
      co-occurring species, the habitat signature. So "DESK ~ placebo" does not mean DESK misses habitat or that the
      trend belongs to population dynamics. It means DESK, from covariates alone, predicts about as much as
-     extrapolating the neighbours' observed trend. NOT established: how much of the regional trend is habitat-driven.
-     Evidence so far points both ways:
-     - DESK reproduces much of it with no bird data;
-     - the part DESK adds runs through regional land-use change (E039m);
-     - but at the species level, ~90% of change is species-specific (E031).
+     extrapolating the neighbours' observed trend.
+   - ANSWERED as far as these data go (E044, E044b, 14:21):
+     - The regional community trend is NOT something the covariates miss. Covariate-only predictors also predict
+       87-97% of what extrapolating the trend predicts. That includes linear maps, which cannot carry a uniform
+       clock. Only 0.00-0.02 of R^2 is trend-only.
+     - Part of that is SPECIFIC: real covariate fields beat smoothness-matched misplaced ones by +0.10 (linear map)
+       and +0.12-0.21 (DESK).
+     - So much of the regional trend tracks the actual covariate (habitat) change at each place, your M6 reading.
+       Correlational, not proof: a covariate can stand in for an unmeasured driver.
+     - Scale: the best predictors explain only 9-22% of community change (noise removed). The rest is predicted
+       by neither.
    - DESK's direction of change does carry information: a readout fitted on within-place change lifts it by
      +0.04-0.07.
    - Beyond the regional trend, DESK adds little.
@@ -47,9 +53,9 @@ WHERE THINGS STAND (2026-10-11 ~11:00, plain summary; details below)
    Implication for the downstream (not a decision now): DESK's temporal value for the age model is at most a small
    increment on top of a regional trend, and it runs through the management trend. That trend is flat before 1950
    (E035/E041), so nothing tested so far supports DESK's movement in the 1902-1939 backcast window. Before 1966
-   there is no observed trend to extrapolate. If regional trends are partly habitat-driven, the covariates are the
-   only route to them, so whether they are habitat-driven is the open question that matters (test pre-registered
-   next).
+   there is no observed trend to extrapolate. E044 says the regional trend's predictable part is largely
+   covariate-carried, so a covariate-driven habitat block is the right route to it. How well that holds before 1950,
+   when the covariates that drive it (management) were flat, is the open question.
    Implication for the downstream (not a decision now): DESK's 64 dimensions beat its 24 by ~0.02-0.04.
 2. DESK's TEMPORAL signal: after 1950 it is mostly the land-use management trend (fertilizer, irrigation) -- partly
    real intensification (it scales with cropland), partly a clock; that trend is flat before 1950. DESK still moves

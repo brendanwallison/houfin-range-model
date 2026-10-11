@@ -1,7 +1,7 @@
 # DIGEST
 
 ## CURRENT STATE (rewritten each round; read this first -- the dated log below keeps the history)
-Last updated 2026-10-11 12:34 (E039h's network-in-time claim withdrawn, E039i; beyond the regional trend DESK adds a small amount, E039k, tentative; E039l and E043 running). "Solid" =
+Last updated 2026-10-11 13:21 (E039i-m: DESK's temporal skill is mostly regional trend; the small late-state remainder rides on land-use management; E039n and E043 running). "Solid" =
 independently re-derived, replicated on a second split or seed, and survived a skeptic review. "Tentative" = one run,
 or checks still pending. Experiment numbers point to research/experiments/EXXX.md.
 
@@ -26,13 +26,19 @@ WHERE THINGS STAND (2026-10-11 ~11:00, plain summary; details below)
      E016 found the same on the TACC models.
    - DESK's direction of change does carry information: a readout fitted on within-place change lifts it by
      +0.04-0.07.
-   - Beyond the regional trend, DESK adds a SMALL amount (E039k, adequate placebo: 96 position features x 5 draws).
-     The gain is +0.01 to +0.04 (selected state; 3 of 4 meet the rule) and +0.03 to +0.06 (late state). A linear
-     map of the covariates adds ~0. Tentative: a skeptic is reviewing it, and E039l (queued) asks whether it is
-     just a linear kind-of-place clock. At the species level, E033c found DESK's increment to be ~+0.01.
-   Implication for the downstream (not a decision now): DESK's temporal value for the age model is a small increment
-   on top of what a regional trend gives. Any readout that learns within-place change will mostly learn trends,
-   which belong to the population dynamics (G3, M17).
+   - Beyond the regional trend, DESK adds little.
+     - At the selected training state (the production one), the gain is +0.01 to +0.04 against an adequate placebo.
+       A skeptic showed a SUPERVISED linear covariate map carries about half of it; against that, 1 of 4 pairs meets
+       the bar (E039k-l + skeptic). The selected-state claim is withdrawn.
+     - At the LATE state, +0.02 to +0.05 survives every rival tried so far. E039n (running) re-tests it against
+       the strong linear base and with a readout fitted next to the held-out cells.
+     - WHERE it comes from (E039m): entirely DESK's response to REGIONAL LAND-USE MANAGEMENT change. The
+       continent-wide intensification shift carries more of it than where it intensified more; climate carries none.
+     - At the species level, E033c found DESK's increment ~+0.01.
+   Implication for the downstream (not a decision now): DESK's temporal value for the age model is at most a small
+   increment on top of a regional trend, and it runs through the management trend. That trend is flat before 1950
+   (E035/E041), so nothing tested so far supports DESK's movement in the 1902-1939 backcast window. Any readout that
+   learns within-place change will mostly learn trends, which belong to the population dynamics (G3, M17).
    Implication for the downstream (not a decision now): DESK's 64 dimensions beat its 24 by ~0.02-0.04.
 2. DESK's TEMPORAL signal: after 1950 it is mostly the land-use management trend (fertilizer, irrigation) -- partly
    real intensification (it scales with cropland), partly a clock; that trend is flat before 1950. DESK still moves

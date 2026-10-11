@@ -96,6 +96,9 @@ NEW SINCE YESTERDAY EVENING (tentative unless noted; each finding carries WHY: e
     muddied by one seed selected at epoch 74); at matched training state (epoch 490, what production ships) +0.018
     [0.002, 0.035]. So: not yet a general lever; a small late-state benefit (+0.02-0.03 at both starts) is suggested
     but not established.
+    SETTLED (E032, four seeds per arm, final epoch): +0.032 [0.012, 0.051] at the 1986 start, +0.016 [0.001, 0.029]
+    at the 1996 start -- real but small and setup-specific (the pre-set bar of +0.02 at both starts is not met).
+    Not a production candidate on this evidence.
   WHY (likely, not shown for DESK): decadal trends drift; a long span averages in later decades whose trends do not
   describe the earlier ones (shown for the surrogates, E023).
 - Where the covariates' temporal signal is (E027, E027b-d, two skeptic rounds): their backcast skill is largely matched

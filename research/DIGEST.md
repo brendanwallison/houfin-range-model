@@ -68,17 +68,20 @@ NEW SINCE YESTERDAY EVENING (tentative unless noted; each finding carries WHY: e
   be reading TIME from these trends and applying it through place-specific responses (as E027c found for the
   covariates in general), not responding to where land use changed. The 300 km "regional" win is then partly built
   in, since smoothing leaves a uniform shift intact.
-  RESULT (E035e, four models): mostly a CLOCK. Re-encoding with only the continent-wide average land-use shift (the
+  RESULT (E035e, four models): mostly a near-uniform trend (a "clock", with a caveat below). Re-encoding with only the continent-wide average land-use shift (the
   same change everywhere) reproduces ~90% of the land-use part's match with real change (0.23-0.32 of 0.24-0.36);
   the management channels carry most of it (0.22-0.33), the class fractions less (0.09-0.16); a placebo that keeps
   only how far each place moves along one common direction gets about half. A real but smaller part follows WHERE
   land use changed more or less than average (0.14-0.27), and that part leans toward analog places. It is not one
   region's (the west contributes little; leaving any zone out changes it by <= 0.05).
-  WHY (established across four models): DESK reads TIME from continent-wide land-use trends -- chiefly fertilizer,
-  irrigation and the age of secondary land -- and turns it into place-specific change through place-specific
-  responses (the same "kind of place x year" structure E027c found in the covariates). Precipitation alone carries no
-  consistent lean, so the moisture lean came from the temperature-derived channels: DESK's space-for-time error is
-  its THERMAL reading.
+  WHY (established across four models): DESK's real signal comes through a near-UNIFORM, continent-wide shift in
+  land-use management (chiefly fertilizer, irrigation, the age of secondary land), turned into place-specific change
+  by place-specific responses (the "kind of place x year" structure E027c found in the covariates). NOT yet
+  established: whether DESK treats that shift as a mere clock (time) or as real intensification -- fertilizer use did
+  rise almost everywhere and plausibly matters to farmland birds. They differ in WHERE the response sits: a clock
+  responds even in forest places with almost no cropland, an intensification effect scales with cropland (test
+  E035g, next). Precipitation alone carries no consistent lean, so the moisture lean came from the
+  temperature-derived channels: DESK's space-for-time error is its THERMAL reading.
   CONSEQUENCE (likely; E035f testing it on production): fertilizer and irrigation are flat from 1902 to ~1950 (0-2
   kg/ha of fertilizer on C3 annual crops until 1950, 77 by 2025), so the clock DESK reads stops before 1950 --
   probably why production's backcast stops changing around 1960, and why it can say little about 1902-1939 change.

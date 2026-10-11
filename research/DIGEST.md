@@ -1,7 +1,7 @@
 # DIGEST
 
 ## CURRENT STATE (rewritten each round; read this first -- the dated log below keeps the history)
-Last updated 2026-10-11 15:58 (E046: late-state DESK gain beyond every linear rival verified at four seeds; E043 closed; levers summary given to you). "Solid" =
+Last updated 2026-10-11 15:51 (E046: late-state DESK gain beyond every linear rival verified at four seeds; E043 closed; levers summary given to you). "Solid" =
 independently re-derived, replicated on a second split or seed, and survived a skeptic review. "Tentative" = one run,
 or checks still pending. Experiment numbers point to research/experiments/EXXX.md.
 

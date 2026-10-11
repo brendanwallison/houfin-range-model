@@ -39,6 +39,10 @@ E039n (--strong-base, the E039k skeptic's fair rival): base = placebo_300 + kind
 fitted by training cell in two folds so training-row features are never in-sample) + 64 F_cov (output-EMA) PCs'
 within-cell deviations; strong+desk_within adds DESK. And the readout LOCATION check: placebo and placebo+desk_within
 fitted on BUFFER rows only (trained years; cells never in DESK's objective, next to the held-out cells).
+E039o (--null-desk, verification a): the DESK block replaced by a CELL-PERMUTED DESK -- each cell takes another random
+cell's whole 1940-2025 z trajectory (training rows and held-out change alike; one permutation per placebo draw) --
+keeping DESK's temporal structure and continent-wide drift but not its place. Gains beyond the placebo and the strong
+base should be ~0; a positive null gain would mean any 24-dim drifting block "helps".
 E043 check (--ref-cache <control cache>, same keys): the control model's DESK arms (desk_ref, desk_ref_within,
 placebo+desk_ref_within) on the same cells and draws, and paired differences treatment - control.
 """
@@ -76,6 +80,7 @@ def main():
     ap.add_argument("--rich-base", action="store_true", help="E039l: gains beyond placebo + kind x time + within map")
     ap.add_argument("--strong-base", action="store_true", help="E039n: supervised cross-fitted within-map base + "
                     "buffer-row readouts")
+    ap.add_argument("--null-desk", action="store_true", help="E039o: cell-permuted DESK block (null)")
     ap.add_argument("--attr", default=None, help="E039m: attribution_cells.npz of this model (drop-part losses)")
     ap.add_argument("--ref-cache", default=None, help="control model's cache (same keys): paired treatment - control")
     a = ap.parse_args()
@@ -249,6 +254,15 @@ def main():
     if a.incremental:
         for sd in a.pos_seeds:
             PL, PLev = keep_feats[f"placebo_300#{sd}"]
+            if a.null_desk:
+                perm = np.random.default_rng(1000 + sd).permutation(zr_all.shape[0])
+                zkp = np.asarray(zr_all[perm[ci_], keys[:, 2] - y0, :r], "float64")
+                dzp = (desk_epoch_z(zr_all, perm[ci_], y0, keys, mod_rows, r)
+                       - desk_epoch_z(zr_all, perm[ci_], y0, keys, early_rows, r))
+                keep_feats["desk_null"] = (zkp - cmean(zkp, w_ty), dzp)
+                q = PL.shape[1]
+                b = blr.fit(np.hstack([PL, keep_feats["desk_null"][0]])[trn], Zd[trn], [(0, q), (q, q + r)])["coef"].T
+                incr[f"placebo+desk_null#{sd}"] = np.hstack([PLev, dzp]) @ b
             for nm in tuple(within_arms) + ("within_raw", "kindxtime_8"):
                 Xf, Xev = keep_feats[nm]
                 q = PL.shape[1]
@@ -271,13 +285,16 @@ def main():
                     b = blr.fit(np.hstack([f for f, _ in ps])[buf], Zd[buf], blocks)["coef"].T
                     incr[f"{tag}#{sd}"] = np.hstack([e for _, e in ps]) @ b
             for bname, parts in bases:
-                for tag, extra in ((bname, []), (bname + "+desk_within", [keep_feats["desk_within"]])):
+                variants = [(bname, []), (bname + "+desk_within", [keep_feats["desk_within"]])]
+                if a.null_desk:
+                    variants.append((bname + "+desk_null", [keep_feats["desk_null"]]))
+                for tag, extra in variants:
                     ps = parts + extra
                     edges = np.cumsum([0] + [f.shape[1] for f, _ in ps])
                     blocks = [(int(edges[i]), int(edges[i + 1])) for i in range(len(ps))]
                     b = blr.fit(np.hstack([f for f, _ in ps])[trn], Zd[trn], blocks)["coef"].T
                     incr[f"{tag}#{sd}"] = np.hstack([e for _, e in ps]) @ b
-                    if extra:
+                    if extra and tag.endswith("+desk_within"):
                         for pn, pv in parts_ev.items():
                             incr[f"{tag}-{pn}#{sd}"] = np.hstack([e for _, e in parts] + [ps[-1][1] - pv]) @ b
         preds.update(incr)
@@ -333,6 +350,8 @@ def main():
                         "loss": float(loss[0]), "ci": [float(np.nanpercentile(loss[1:], q)) for q in (2.5, 97.5)],
                         "share": float(loss[0] / gain[0]) if gain[0] != 0 else None}
         for x, y, key in (("rich+desk_within", "rich", "rich_gain"), ("strong+desk_within", "strong", "strong_gain"),
+                          ("strong+desk_null", "strong", "strong_null_gain"),
+                          ("placebo+desk_null", "placebo_300", "placebo_null_gain"),
                           ("buf:placebo+desk_within", "buf:placebo", "buffer_gain"), ("strong", "placebo_300",
                                                                                       "strong_base_gain")):
             if x in boots and y in boots:
@@ -437,7 +456,9 @@ def summarize(out, fn=None):
     for key, label in (("rich_gain", "DESK gain beyond placebo + kind x time 32 + within map"),
                        ("strong_gain", "DESK gain beyond the STRONG base (placebo + kxt32 + supervised + EMA maps)"),
                        ("buffer_gain", "DESK gain beyond the placebo, readout fitted on BUFFER rows"),
-                       ("strong_base_gain", "strong base minus placebo (what the linear maps add)")):
+                       ("strong_base_gain", "strong base minus placebo (what the linear maps add)"),
+                       ("strong_null_gain", "NULL: cell-permuted DESK beyond the strong base"),
+                       ("placebo_null_gain", "NULL: cell-permuted DESK beyond the placebo")):
         if key in r:
             v = r[key]
             print(f"  {label}: {v['desk_within']:+.3f} [{v['ci'][0]:+.3f},{v['ci'][1]:+.3f}]")

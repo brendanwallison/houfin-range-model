@@ -154,19 +154,16 @@ NEW SINCE YESTERDAY EVENING (tentative unless noted; each finding carries WHY: e
   seed: on new places they beat the nearest-neighbour average (+0.03 to +0.06), on trained places' withheld decades
   they beat each place's own average (+0.06 to +0.07), because a place's lasting quirk fades over ~45-50 years
   rather than persisting forever. Ported (--st-mode repaired).
-- DOES DESK ADD ANYTHING OVER ITS OWN INPUTS? (E039, both models, all baselines repaired; tentative -- skeptic
-  review running). Read through the age model's own readout (a linear regression per species), DESK's features
-  predict out-of-community species at HELD-OUT places about as well as the same readout on a linear projection of
-  DESK's 302 covariates: +0.011 / +0.013 better level skill in trained years (CIs exclude 0; skill itself ~0.06-0.08),
-  +0.003 in withheld decades (n.s.), and a tie on change (+0.007 / -0.003). A spacetime GP on neighbours' observed
-  abundance beats DESK on change at held-out places in both models (-0.039 / -0.032): that is each species' own
-  regional trend read from nearby surveys -- the population model's job (G3), not habitat's. On trained places'
-  withheld decades every local GP (covariate or spacetime) effectively remembers the place (a place's past
-  covariates sit next to its own modern rows), so those comparisons are not counted.
-  WHY (likely): the community structure DESK learned from 96 reference species transfers little extra habitat
-  information to other species beyond what the covariates give linearly. What this means for the downstream: the
-  value of DESK over a direct covariate readout is ~0.01 of level skill at new places; its temporal change carries
-  no more than the covariates' does.
+- DOES DESK ADD ANYTHING OVER ITS OWN INPUTS? (E039, both models, all baselines repaired; skeptic-reviewed).
+  CORRECTED: my first reading ("about a tie") was a median diluted by rare species with no signal. For
+  well-observed species, read through the same linear readout, DESK beats a linear projection of its own 302
+  covariates consistently -- +0.03 to +0.04 of level skill at held-out places, favoured by 84-97% of those species
+  (151 of 204 species overall) -- but modestly: ~95% of DESK's level information is linear in the covariates, and a
+  nonlinear covariate GP closes most of the rest. So DESK is roughly "a good nonlinear model of a place's own
+  covariates". On change both are near zero; a spacetime GP on neighbours' observed abundance beats DESK on change
+  (-0.039 / -0.032) -- each species' own regional trend (G3), not habitat. Untested yet: the regime the age model
+  actually uses (24 dimensions, one species, little data), where a learned compression should matter most -- E039b
+  (minutes, queued next).
 - Readout scaling (E033, E033b, skeptic-reviewed):
   - shrinking DESK's change by a factor learned on the BBS years (~1/3) stops the readout doing harm -- but only
     because there is almost no information to lose: DESK's change is about as uninformative in its own trained years

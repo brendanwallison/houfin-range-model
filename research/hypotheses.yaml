@@ -310,6 +310,7 @@
   parents: []
   evidence:
   - {job: "E039/suite-covrep-gp_species_base-bf5d2a129a51", exp: E039, dir: for, strength: moderate, note: "with the BLR readout held fixed (gpk.fit), a linear readout on 64 whitened covariate PCs ('covariate_linear') nearly matches DESK features at held-out places: DESK +0.011 (base) / +0.013 (t1995) level skill in trained years, +0.003 (n.s.) in withheld decades, tie on change (+0.007 / -0.003). Both models agree. UNVERIFIED (skeptic running)."}
+  - {job: "skeptic:E039", exp: E039, dir: against, strength: moderate, note: "CORRECTS the E039 entry: the median +0.01 was diluted by rare species; for species with >= 5% prevalence desk beats covariate_linear by +0.026-0.044 level skill (84-97% of species), 151/204 overall (sign p ~1e-11) -- modest (~95% of desk's level information linear in covariates; a covariate GP closes most of the rest) but real. The suite's desk arm uses 64 dims of z_ema; the 24-dim, little-data regime the age model uses is untested (E039b)."}
 - id: L1
   stage: B
   priority: 2

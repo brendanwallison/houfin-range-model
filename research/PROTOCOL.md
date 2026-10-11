@@ -69,6 +69,14 @@ Heavy outputs live in `~/houfin/work/houfin/research/<exp>/<name>-<cfghash>/` (W
    `ScheduleWakeup` (next ETA if <30 min away, else 60–120 min). Before an expected idle stretch
    (usage-window end, overnight) front-load the GPU queue.
 
+## Never end a turn blind
+
+Background jobs do not wake the session; only a finishing background command or a user message does. **Before ending
+any turn that leaves jobs running or queued, start `research/bin/wait_any.sh` as a background command** (it exits at
+the first job completion and prints what finished), and when it fires: collect, act, and re-arm it if work remains.
+Without `/loop`, this is the only thing that keeps the work moving while the user is away (2026-10-10: eight GPU runs
+finished unnoticed for ~7 hours because no waiter was armed).
+
 ## Pre-registration template (`experiments/EXXX.md`)
 
     # EXXX <title>

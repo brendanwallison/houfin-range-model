@@ -196,6 +196,7 @@
   - {job: "adhoc:E011-dev", exp: E011, dir: for, strength: weak, note: "the readout analogue (community->species): level-fitted beta on community change captures 4-10% (base) / -5% (tempho1995 withheld) of available species change; change-fitted beta on the SAME features 25-29%. Interactive development run; E011 jobs queued. UNVERIFIED."}
   - {job: "adhoc:E016-dev", exp: E016, dir: for, strength: moderate, note: "covariate->community map fitted in the trained era: between-cell (spatial) coefficients predict NONE of the temporal community change (corr 0.03 trained / 0.02 backcast); within-cell coefficients 0.42 / 0.27, as good as DESK (0.41 / 0.21) and better calibrated (0.91 / 0.75 vs 0.62 / 0.37). UNVERIFIED; replications queued."}
   - {job: "skeptic3:E016", exp: E016, dir: neutral, strength: moderate, note: "pure space-for-time predicts none of the decadal change (single-year cross-section betas -0.03 to +0.01 in every cache; robust). But the within-cell advantage is regional TREND persistence: a position x time placebo with no covariates matches or beats the within map (covariates add +0.03-0.05). The lever is not within-cell coefficients."}
+  - {job: "E035/attribution-luh-split-7463753ad088", exp: E035, dir: for, strength: moderate, note: "DESK's space-for-time error is its THERMAL reading: the temperature part leans +0.29-0.30 toward analogs with corr ~0.00-0.03 (four models, E035d/e); precipitation alone carries no consistent lean (-0.04 to +0.07, size 0.06), so the moisture lean (+0.14-0.17) is the temperature-derived channels (CMD/CMI/PAS/RH). Caveat (skeptic): the analog direction is built mostly from climate channels. UNVERIFIED."}
 - id: T6
   stage: T
   priority: 2
@@ -215,7 +216,8 @@
   kill: 1902-1939 novelty within the 1966-2025 range and raw z smooth across 1940.
   blr: If true, backcast uncertainty must grow before 1940 and the BLR has no mechanism for it.
   parents: []
-  evidence: []
+  evidence:
+  - {job: "adhoc:luh-trajectories", exp: E035, dir: for, strength: weak, note: "LUH fertilizer and irrigation channels are flat from 1902 to ~1950-60 (fertl_c3ann 0-2 kg/ha to 1950, 77 by 2025) while class fractions drift all century; with E035e (DESK's land-use signal is mostly a clock read from these trends) this is a likely mechanism for production's backcast saturating before ~1960: the clock DESK reads stops before 1950. E035f (production freeze) testing. Descriptive."}
 - id: T5
   stage: T
   priority: 3
@@ -235,6 +237,7 @@
   - {job: "E034/trend-observer-4c5f2ac6542a", exp: E034, dir: for, strength: weak, note: "the position x year trend that carries most predictable change is not observer turnover: it predicts 2005-14 -> 2016-25 change better where observers were unchanged (community 0.31 vs 0.23; species 0.23 vs 0.19). Ecological or a common observation drift. UNVERIFIED."}
   - {job: "E035/backcast-attribution-63bd84b5379c", exp: E035, dir: against, strength: weak, note: "DESK's land-use-driven change tracks the real 1966-86 -> 2005-25 change (corr 0.25) -- land-use covariates DO carry temporal signal in DESK; climate change does not (as DESK reads it). Whether it is local land-use change or a regional land-use trend is not separated. UNVERIFIED."}
   - {job: "E035/attribution-families-a9cc5607f0c1", exp: E035, dir: against, strength: moderate, note: "LUH land-use class change carries DESK's real temporal signal (corr 0.24-0.36 with community change; species 0.06-0.09), mostly as regional change; temperature change carries none as DESK reads it. The covariates do carry signal -- in land use, not climate. UNVERIFIED."}
+  - {job: "E035/attribution-luh-split-7463753ad088", exp: E035, dir: for, strength: moderate, note: "CORRECTS the E035d entry: the 'LUH class' family was the whole 33-channel stream. Split (four models): a UNIFORM continent-wide LUH shift alone reproduces 89-95% of the LUH part's corr with real change (0.23-0.32 of 0.24-0.36), management channels carry most (0.22-0.33), class fractions 0.09-0.16; a magnitude-only placebo reaches ~half. Most of DESK's 'land-use signal' is a clock (time read from continent-wide trends through place-specific responses); a smaller share follows where land use changed (0.14-0.27) and leans toward analogs. UNVERIFIED."}
 - id: B1
   stage: B
   priority: 1

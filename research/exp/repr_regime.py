@@ -41,6 +41,7 @@ def main():
     ap.add_argument("--seeds", type=int, nargs="+", default=[0, 1, 2])
     ap.add_argument("--bioclim-dir", default=None,
                     help="E039c: research/exp/bioclim.py output for this cache (19 BIOCLIM + 12 LUH classes, same EMA)")
+    ap.add_argument("--quadratic", action="store_true", help="E039d: add bioclim + squared terms (+ LUH classes)")
     ap.add_argument("--summarize", default=None)
     a = ap.parse_args()
     if a.summarize:
@@ -78,6 +79,12 @@ def main():
         Lc = zs(np.load(os.path.join(a.bioclim_dir, "luh_classes_ema.npy")))
         reps.update({"desk_raw_r19": Zr[:, :19], "cov_pc19": P_all[:, :19], "bioclim19": Bc,
                      "bioclim19_luh12": np.column_stack([Bc, Lc])})
+        if a.quadratic:
+            # E039d: the usual SDM response shape -- linear + squared terms (hump-shaped responses to climate), so a
+            # linear readout does not handicap bioclim
+            Bq = zs(Bc ** 2)
+            reps.update({"bioclim19_quad": np.column_stack([Bc, Bq]),
+                         "bioclim19_quad_luh12": np.column_stack([Bc, Bq, Lc])})
     res = {"cache": a.cache, "n_train_full": int(len(tr_all)), "n_test": int(len(te)), "n_species": int(keep.sum()),
            "tier_edges": TIERS, "tier_counts": [int((tier == k).sum()) for k in range(len(TIERS))],
            "n_cov_pcs_all": int(P_all.shape[1]), "runs": {}}
@@ -103,7 +110,7 @@ def summarize(out):
     tier = np.asarray(r["tier"])
     first = next(iter(r["runs"].values()))["skill"]
     names = [n for n in ["desk_raw_r19", "desk_raw_r24", "desk_raw_r64", "cov_pc19", "cov_pc24", "cov_pc64", "cov_pc_all",
-                         "bioclim19", "bioclim19_luh12"] if n in first]
+                         "bioclim19", "bioclim19_luh12", "bioclim19_quad", "bioclim19_quad_luh12"] if n in first]
     print(f"{os.path.basename(os.path.normpath(r['cache']))}: {r['n_species']} dev species, tiers (prevalence) "
           f"{[f'{lo:.0%}-{hi:.0%}' for lo, hi in r['tier_edges']]} n={r['tier_counts']}; covariate PCs (all) "
           f"{r['n_cov_pcs_all']}; held-out rows {r['n_test']:,}")
@@ -118,7 +125,9 @@ def summarize(out):
             print(f"    {n:14s} " + " ".join(f"{x:+.3f}" for x in row))
         for d, cmp_ in (("desk_raw_r24", "cov_pc24"), ("desk_raw_r24", "cov_pc64"), ("desk_raw_r24", "cov_pc_all"),
                         ("desk_raw_r64", "cov_pc64"), ("desk_raw_r19", "bioclim19"), ("cov_pc19", "bioclim19"),
-                        ("desk_raw_r24", "bioclim19_luh12"), ("bioclim19_luh12", "bioclim19")):
+                        ("desk_raw_r24", "bioclim19_luh12"), ("bioclim19_luh12", "bioclim19"),
+                        ("desk_raw_r24", "bioclim19_quad"), ("desk_raw_r24", "bioclim19_quad_luh12"),
+                        ("bioclim19_quad", "bioclim19")):
             if d not in S or cmp_ not in S:
                 continue
             D = S[d] - S[cmp_]

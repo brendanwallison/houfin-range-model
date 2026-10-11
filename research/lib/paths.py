@@ -46,6 +46,11 @@ def job_env(group="default", code_dir=None, overlay=None, extra=None):
         # gp_kernels.knn_union defaults to CUDA; a CPU-slot job must not contend for the one GPU.
         env["CUDA_VISIBLE_DEVICES"] = ""
     else:
+        # A GPU job must SEE the GPU. pueue captures the enqueuing shell's environment, and the interactive launcher
+        # (launch.py, "rx py") sets CUDA_VISIBLE_DEVICES="" -- so a job enqueued from there silently ran DESK on the
+        # CPU at ~300 s/epoch instead of ~6 s (E048, 2026-10-11). Drop an empty value inherited that way.
+        if env.get("CUDA_VISIBLE_DEVICES") == "":
+            env.pop("CUDA_VISIBLE_DEVICES")
         # The caching allocator grew a DESK run to ~26 GB (21.7 dedicated + 4.3 SHARED system memory, via the Windows
         # driver's sysmem fallback) while its live tensors peaked at 15.3 GB; on TACC's 16 GB card the same code fit.
         # Expandable segments keep the reserved pool close to what is live, so it stays in VRAM (2026-10-09).

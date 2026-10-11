@@ -1,7 +1,7 @@
 # DIGEST
 
 ## CURRENT STATE (rewritten each round; read this first -- the dated log below keeps the history)
-Last updated 2026-10-11 15:10 (E044 revised by skeptic: covariates reach ~2/3 of the predictable regional trend via environment-type patterns; E044d dose-response and E043 evaluations running). "Solid" =
+Last updated 2026-10-11 15:24 (E043: no lever; E044d: small within-type dose-response; regional trend consistent with habitat, not shown to be dynamics). "Solid" =
 independently re-derived, replicated on a second split or seed, and survived a skeptic review. "Tentative" = one run,
 or checks still pending. Experiment numbers point to research/experiments/EXXX.md.
 
@@ -39,9 +39,13 @@ WHERE THINGS STAND (2026-10-11 ~11:00, plain summary; details below)
      - About a third is NOT reached by the covariates.
      - So: nothing shows the trend is dynamics, and nothing yet proves it is habitat.
      - Scale: all predictors together explain only 9-22% of community change (noise removed).
-     - Next (E044d, running): within a type, did places whose land use or climate changed MORE also change more in
-       birds? That is M26's "acts where it acts" signature of a real driver. First look (one start year): yes,
-       modestly. Within type, corr 0.16 for all covariates and 0.08 for land use; within type AND region, ~0.05.
+     - Within a type, places whose covariates changed MORE than typical also changed more in birds (E044d), the
+       "acts where it acts" signature M26 asks for.
+       - Within type: corr 0.16 for all covariates (mostly climate) and 0.08 for land use.
+       - Within type AND region: 0.06-0.08 overall, 0.04-0.06 for land use.
+       - Real but small, and correlational.
+     - So: the evidence is consistent with substantial habitat involvement in the regional trend and is against
+       calling it dynamics. It does not prove habitat.
    - DESK's direction of change does carry information: a readout fitted on within-place change lifts it by
      +0.04-0.07.
    - Beyond the regional trend, DESK adds little.
@@ -70,7 +74,10 @@ WHERE THINGS STAND (2026-10-11 ~11:00, plain summary; details below)
    into the remaining channels and the backcast loses skill (E038b, E041, E042, all measured on one yardstick).
    (The "climate freeze" -- encoding backcast years with climate held at a reference -- is a DIAGNOSTIC, not a
    remedy; you would not use it in production.) A remedy would have to give DESK temporal supervision or change the
-   readout: E043 (running, your choice) over-samples same-place, cross-year pairs in DESK's training loss.
+   readout. E043 (your choice) over-sampled same-place, cross-year pairs in DESK's training loss. NO LEVER: the
+   late-state backcast moved +0.001 to +0.005 (bar +0.02), at a spatial cost in all four runs. Likely reason:
+   DESK's dominant stabilizing term already supervises each cell-year's own target, so extra same-place pairs add
+   little temporal constraint.
 4. BASELINES are repaired: the covariate and spacetime GPs now fit sensibly; a spacetime GP on neighbours' observed
    abundance beats DESK on CHANGE at held-out places. It extrapolates each species' observed regional trend, whatever
    its cause (habitat or dynamics, not separated -- M6).

@@ -162,7 +162,8 @@
   kill: The surrogate frontier is flat (more within-cell weight buys no temporal fit) or DESK already sits on it.
   blr: If true, reweighting training toward within-cell change is the lever.
   parents: []
-  evidence: []
+  evidence:
+  - {job: "E043/evaluation-attribution-724947a125e0", exp: E043, dir: against, strength: moderate, note: "over-sampling same-cell cross-year pairs in DESK's metric loss (10%, 40%; two seeds) does not improve the full backcast at the late state (+0.001..+0.005, 0/4 reach +0.02) and costs spatial fit in all four runs; the stabilizing term already supervises each cell-year's own target, so the pair mix is not the lever for temporal fidelity."}
 - id: T2
   stage: T
   priority: 3
@@ -252,6 +253,7 @@
   - {job: "E039/fair-rivals-e74b27758ef2", exp: E039, dir: for, strength: moderate, note: "withdraws the E039h nonlinearity reading: on held-out cells' backcast change (8 caches, 2 seeds, T0 1996/1986), a covariate-FREE position x time trend (0.29-0.40) and a linear kind-of-place x time term (0.31-0.41) match or beat DESK (0.22-0.37) and the within-cell covariate map (0.27-0.35); best fair rival >= desk - 0.03 in 4/4. The covariates add little beyond a regional trend (E039j: +0.02-0.04 vs a 24-feature placebo; adequate-placebo rerun E039k pending)."}
   - {job: "E039/fair-rivals-parts-f555654cd7b6", exp: E039, dir: for, strength: moderate, note: "E039k-m + skeptic: beyond an adequate position x time trend (96 features x 5 draws), DESK's within-place change adds +0.01-0.04 at the selected state -- about half of which a supervised linear covariate map also gives (selected-state claim withdrawn) -- and +0.02-0.05 at the late state (E039n pending). The remainder rides entirely on DESK's response to regional land-use MANAGEMENT change (continent-wide shift > pattern); DESK's climate-driven change carries none and mildly harms. Most decadal community change is regional trend not explained by the covariates."}
   - {job: "E044/commonality-a58f6a1feef6", exp: E044, dir: against, strength: moderate, note: "at the community level, the change a covariate-free regional-trend extrapolation predicts at held-out cells is 87-97% also predicted by covariate-only maps (linear maps included, which cannot carry a uniform clock); trend-only R^2 0.00-0.02; E044b: a third of the linear map's skill is specific to the real covariate field (smoothness-matched move null). The predictable part of decadal community change is covariate-carried. Caveat: all predictors together explain only R^2 0.09-0.22 of noise-free change -- most change is predicted by nothing tested."}
+  - {job: "E044/type-dose-7d7fb9f34091", exp: E044, dir: against, strength: weak, note: "within an environment type, cells whose covariates changed more than typical also changed more in birds (corr 0.16 all/climate, 0.08 land use; within type+region 0.06-0.08): place-level covariate-change -> community-change relationships exist beyond type-typical patterns and regional trends -- small, correlational."}
 - id: B1
   stage: B
   priority: 1

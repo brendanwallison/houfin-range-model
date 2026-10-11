@@ -184,6 +184,12 @@ NEW SINCE YESTERDAY EVENING (tentative unless noted; each finding carries WHY: e
   hump-shaped (quadratic) responses recovers more. Against the strongest SDM-style set tried -- bioclim + squared terms
   + land cover, 50 variables -- DESK still leads, by ~0.02 for moderately common species and ~0.06 for common ones
   (66-97% of species), with 24 dimensions, and slightly more with little data. Both models agree.
+  CORRECTION (E039f): I had given bioclim DESK's ~10-year output smoothing, which the other arms did not get; with
+  the smoothing matched, bioclim scores 0.01-0.03 lower and DESK's lead over that strongest set is ~0.03 / ~0.08
+  (the smoothed numbers above are what multi-year climate normals would give an SDM user).
+  Spatial context does not explain DESK's edge (E039e): giving the covariate readout each place's 5x5-neighbourhood
+  covariates (DESK's convolution footprint) adds only ~0.01; DESK still leads it by +0.03 to +0.05 for
+  well-observed species. The edge is mostly how DESK orders the covariates' information, not what it sees nearby.
 - Readout scaling (E033, E033b, skeptic-reviewed):
   - shrinking DESK's change by a factor learned on the BBS years (~1/3) stops the readout doing harm -- but only
     because there is almost no information to lose: DESK's change is about as uninformative in its own trained years

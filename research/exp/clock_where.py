@@ -56,7 +56,7 @@ def main():
     cells = np.unique(keys[:, :2], axis=0)
     if a.max_cells:
         cells = cells[:: max(1, len(cells) // a.max_cells)][: a.max_cells]
-    years = np.arange(1966, 2026)
+    years = np.arange(1946, 2026)
     grid = np.array([(r_, c_, y) for r_, c_ in cells for y in years], "int32")
     # crop and forest fractions, 1996-2025 mean, raw state values (fractions of the cell)
     crop = np.zeros(len(cells))
@@ -102,6 +102,22 @@ def main():
                              "ratio_top_over_bottom": med[2] / med[0] if med[0] > 0 else None,
                              "median_removed_lowest_decile_crop": float(np.median(rem[ok & (crop <= np.quantile(crop, 0.1))])),
                              "median_removed_all": float(np.median(rem[ok]))}
+    # E035h: the SHARE of each cell's own movement since 1946-55 that the freeze removes. A clock applied through
+    # place-specific responses scales the removed part with how much a place moves at all (cropland places move
+    # most), so the share stays flat across crop terciles; a response specific to crops makes the share rise with them
+    ref = (years >= 1946) & (years <= 1955)
+    for w, (lo, hi) in WINDOWS.items():
+        sel = (years >= lo) & (years <= hi)
+        za = np.nanmean(Z["actual"][:, sel], 1)
+        mov = np.linalg.norm(za - np.nanmean(Z["actual"][:, ref], 1), axis=1)
+        rem = np.linalg.norm(za - np.nanmean(Z["frozen"][:, sel], 1), axis=1)
+        share = rem / np.maximum(mov, 1e-9)
+        ok = np.isfinite(share) & (mov > 0)
+        med = [float(np.median(share[ok & (terc == k)])) for k in range(3)]
+        mv = [float(np.median(mov[ok & (terc == k)])) for k in range(3)]
+        res["windows"][w].update({"spearman_share_vs_crop": float(spearmanr(share[ok], crop[ok])[0]),
+                                  "median_share_by_crop_tercile": med, "median_movement_by_crop_tercile": mv,
+                                  "spearman_movement_vs_crop": float(spearmanr(mov[ok], crop[ok])[0])})
     np.savez(os.path.join(a.out, "clock_where_cells.npz"), cells=cells, crop=crop, forest=forest)
     with open(os.path.join(a.out, "clock_where.json"), "w", encoding="utf-8") as fh:
         json.dump(res, fh, indent=1)
@@ -121,6 +137,11 @@ def summarize(out):
               f"{v['spearman_removed_vs_forest']:+.3f}; median removed by crop tercile low/mid/high "
               f"{m[0]:.3f} / {m[1]:.3f} / {m[2]:.3f} (ratio {rt:.2f}); lowest-decile-crop cells "
               f"{v['median_removed_lowest_decile_crop']:.3f}; all {v['median_removed_all']:.3f}")
+        if "median_share_by_crop_tercile" in v:
+            sh, mv = v["median_share_by_crop_tercile"], v["median_movement_by_crop_tercile"]
+            print(f"    share of the cell's own movement since 1946-55 removed: by crop tercile {sh[0]:.2f} / {sh[1]:.2f} / "
+                  f"{sh[2]:.2f} (Spearman {v['spearman_share_vs_crop']:+.3f}); movement itself {mv[0]:.3f} / {mv[1]:.3f} / "
+                  f"{mv[2]:.3f} (Spearman {v['spearman_movement_vs_crop']:+.3f})")
 
 
 if __name__ == "__main__":

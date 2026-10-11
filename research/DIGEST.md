@@ -1,7 +1,7 @@
 # DIGEST
 
 ## CURRENT STATE (rewritten each round; read this first -- the dated log below keeps the history)
-Last updated 2026-10-11 12:09 (E039h's interpretation suspended by a skeptic, E039i testing fair rivals; E043 running). "Solid" =
+Last updated 2026-10-11 12:20 (E039h's network-in-time claim withdrawn: fair linear rivals and a trend placebo match DESK, E039i; E039k and E043 running). "Solid" =
 independently re-derived, replicated on a second split or seed, and survived a skeptic review. "Tentative" = one run,
 or checks still pending. Experiment numbers point to research/experiments/EXXX.md.
 
@@ -16,11 +16,19 @@ WHERE THINGS STAND (2026-10-11 ~11:00, plain summary; details below)
    covariates (the 24 linear combinations that best predict the community coordinates DESK is trained on) nearly
    matches DESK spatially -- DESK leads it by only 0.00-0.02 at 24 dims and 0.01-0.03 at 64; robust to leaving out
    any held-out block and to fitting the readout on places DESK never trained on.
-   IN TIME (E039h): that same pooled linear map backcasts community change far worse than DESK. Its match with real
-   change is 0.09-0.11 against DESK's 0.22-0.37, two seeds. CORRECTION (skeptic, ~12:05): that map is a straw man,
-   because fitted across places it is pure space-for-time. E016 had already found that a FAIR linear map, with
-   separate coefficients for change within a place, matches or beats DESK in time. "DESK's network earns its place
-   in time" is therefore SUSPENDED; E039i is testing the fair rivals on the same cells.
+   IN TIME, measured as backcasting held-out places' community change from 2005-25 back to 1966-86 (E039h-i): the
+   pooled linear map does badly (0.09-0.11 against DESK's 0.22-0.37) because it is pure space-for-time.
+   - Fair rivals match or beat DESK in all four model x start-year pairs (E039i): a linear map with separate
+     within-place coefficients (0.27-0.35), a linear "kind of place x time" term (0.31-0.41), and a position x time
+     trend with NO covariates (0.29-0.40).
+   - "DESK's network earns its place in time" (E039h, 12:00) is WITHDRAWN. On this measure, DESK's temporal skill is
+     not beyond extrapolating each region's recent trend. That is the population model's job, not habitat's (G3);
+     E016 found the same on the TACC models.
+   - DESK's direction of change does carry information: a readout fitted on within-place change lifts it by
+     +0.04-0.07.
+   - Whether any of that goes beyond the regional trend is open. Against a small placebo, DESK added +0.03-0.06 (E039j).
+     That placebo is the kind M20 warns is too weak, so E039k (running) re-tests with an adequate one; one model's
+     first look shrinks the gain to ~+0.02.
    Implication for the downstream (not a decision now): DESK's 64 dimensions beat its 24 by ~0.02-0.04.
 2. DESK's TEMPORAL signal: after 1950 it is mostly the land-use management trend (fertilizer, irrigation) -- partly
    real intensification (it scales with cropland), partly a clock; that trend is flat before 1950. DESK still moves

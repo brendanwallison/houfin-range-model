@@ -130,7 +130,9 @@ Items are numbered so records can cite them (e.g. "considerations: G3, M1, M6").
 - **M26 A uniform trend is a clock.** Covariate change that is the same everywhere carries only time; a model can turn
   it into place-specific change through place-specific responses, which looks like "the covariates explain change".
   Swap-attributions must separate the uniform part from the spatial pattern, and smoothing (e.g. 300 km) keeps a
-  uniform shift intact, so "regional beats local" can be built in. (E035d skeptic; E027c)
+  uniform shift intact, so "regional beats local" can be built in. (E035d skeptic; E027c) BUT a near-uniform
+  trend can also be a real driver that changed almost everywhere (fertilizer intensification): separate the two by
+  WHERE the response sits -- a clock responds wherever the channel is defined, a driver where it acts (cropland).
 - **M27 An analog direction inherits its channel mix.** Built from all 302 channels it is mostly climatic, so any
   covariate-only model's climate response aligns with it; compare families' "lean" against per-family directions,
   and rest error claims on a part's correlation with the truth, not only on its lean. (E035d skeptic)

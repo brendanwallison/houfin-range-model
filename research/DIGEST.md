@@ -1,7 +1,7 @@
 # DIGEST
 
 ## CURRENT STATE (rewritten each round; read this first -- the dated log below keeps the history)
-Last updated 2026-10-10 ~21:10 (evening round: covariate-GP repair, E035d skeptic, static-temperature retrain). "Solid" =
+Last updated 2026-10-10 21:04 (evening round: covariate-GP repair, E035d skeptic, static-temperature retrain). "Solid" =
 independently re-derived, replicated on a second split or seed, and survived a skeptic review. "Tentative" = one run,
 or checks still pending. Experiment numbers point to research/experiments/EXXX.md.
 

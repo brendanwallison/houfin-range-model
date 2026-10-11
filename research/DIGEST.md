@@ -1,7 +1,7 @@
 # DIGEST
 
 ## CURRENT STATE (rewritten each round; read this first -- the dated log below keeps the history)
-Last updated 2026-10-11 13:21 (E039i-m: DESK's temporal skill is mostly regional trend; the small late-state remainder rides on land-use management; E039n and E043 running). "Solid" =
+Last updated 2026-10-11 13:40 (E039i-n: DESK's temporal skill is mostly regional trend; a small late-state remainder beyond every linear rival rides on land-use management; E039o and E043 running). "Solid" =
 independently re-derived, replicated on a second split or seed, and survived a skeptic review. "Tentative" = one run,
 or checks still pending. Experiment numbers point to research/experiments/EXXX.md.
 
@@ -30,8 +30,9 @@ WHERE THINGS STAND (2026-10-11 ~11:00, plain summary; details below)
      - At the selected training state (the production one), the gain is +0.01 to +0.04 against an adequate placebo.
        A skeptic showed a SUPERVISED linear covariate map carries about half of it; against that, 1 of 4 pairs meets
        the bar (E039k-l + skeptic). The selected-state claim is withdrawn.
-     - At the LATE state, +0.02 to +0.05 survives every rival tried so far. E039n (running) re-tests it against
-       the strong linear base and with a readout fitted next to the held-out cells.
+     - At the LATE training state, it HOLDS against the strongest linear base (trend + kind-of-place clock +
+       supervised covariate maps), wherever the readout is fitted (E039n). The gain is +0.03-0.04 at T0 1986 and a
+       borderline +0.01-0.02 at T0 1996. A cell-permuted DESK null (E039o, running) is the last check.
      - WHERE it comes from (E039m): entirely DESK's response to REGIONAL LAND-USE MANAGEMENT change. The
        continent-wide intensification shift carries more of it than where it intensified more; climate carries none.
      - At the species level, E033c found DESK's increment ~+0.01.

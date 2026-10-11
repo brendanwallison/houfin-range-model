@@ -1,0 +1,14 @@
+{
+ "exp": "E036",
+ "name": "zone-breakdown",
+ "group": "cpu",
+ "overlay": "config/overlays/gp_species_base.json",
+ "cmd": [
+  "bash",
+  "-c",
+  "set -e; {python} research/exp/zone_breakdown.py --out {out} --t0 1996 --models desk_tempho_1995_s1 desk_tempho_1995_s2 desk_tempho_1995_s1_late desk_tempho_1995_s2_late; {python} research/exp/zone_breakdown.py --out {out} --t0 1986 --models desk_tempho_1985_s1 desk_tempho_1985_s2 desk_tempho_1985_s1_late desk_tempho_1985_s2_late"
+ ],
+ "expected_minutes": 10,
+ "summarize": ["python", "research/exp/zone_breakdown.py", "--summarize", "{out}"],
+ "note": "E036: DESK backcast skill by Great Plains zone (west / barrier / east) with the trend placebo"
+}

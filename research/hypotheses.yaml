@@ -218,6 +218,7 @@
   parents: []
   evidence:
   - {job: "adhoc:luh-trajectories", exp: E035, dir: for, strength: weak, note: "LUH fertilizer and irrigation channels are flat from 1902 to ~1950-60 (fertl_c3ann 0-2 kg/ha to 1950, 77 by 2025) while class fractions drift all century; with E035e (DESK's land-use signal is mostly a clock read from these trends) this is a likely mechanism for production's backcast saturating before ~1960: the clock DESK reads stops before 1950. E035f (production freeze) testing. Descriptive."}
+  - {job: "E035/clock-freeze-0fe1fe59731a", exp: E035, dir: for, strength: moderate, note: "production (3,902 cells): freezing LUH fertilizer + irrigation at 1950 leaves ~half of DESK's movement since 1950 (0.48-0.67 of actual), all LUH a third or less; classes and temperature barely matter; everything frozen = 0.023 flat. Those channels are flat before 1950, so production barely moves before 1950: the saturation is explained (one model). UNVERIFIED."}
 - id: T5
   stage: T
   priority: 3
@@ -238,6 +239,7 @@
   - {job: "E035/backcast-attribution-63bd84b5379c", exp: E035, dir: against, strength: weak, note: "DESK's land-use-driven change tracks the real 1966-86 -> 2005-25 change (corr 0.25) -- land-use covariates DO carry temporal signal in DESK; climate change does not (as DESK reads it). Whether it is local land-use change or a regional land-use trend is not separated. UNVERIFIED."}
   - {job: "E035/attribution-families-a9cc5607f0c1", exp: E035, dir: against, strength: moderate, note: "LUH land-use class change carries DESK's real temporal signal (corr 0.24-0.36 with community change; species 0.06-0.09), mostly as regional change; temperature change carries none as DESK reads it. The covariates do carry signal -- in land use, not climate. UNVERIFIED."}
   - {job: "E035/attribution-luh-split-7463753ad088", exp: E035, dir: for, strength: moderate, note: "CORRECTS the E035d entry: the 'LUH class' family was the whole 33-channel stream. Split (four models): a UNIFORM continent-wide LUH shift alone reproduces 89-95% of the LUH part's corr with real change (0.23-0.32 of 0.24-0.36), management channels carry most (0.22-0.33), class fractions 0.09-0.16; a magnitude-only placebo reaches ~half. Most of DESK's 'land-use signal' is a clock (time read from continent-wide trends through place-specific responses); a smaller share follows where land use changed (0.14-0.27) and leans toward analogs. UNVERIFIED."}
+  - {job: "E035/clock-where-6786947d54eb", exp: E035, dir: against, strength: weak, note: "REVISES the clock reading of E035e: production's fertilizer/irrigation response scales with crop fraction (Spearman +0.65; top/bottom crop tercile 2.48x, 1996-2025) -- by the pre-set rule INTENSIFICATION (real habitat change), with a residual response at ~40% of typical size in cells with <= 0.5% cropland (clock-like or neighbourhood). A covariate DOES carry real change: intensification, concentrated after 1950. UNVERIFIED."}
 - id: B1
   stage: B
   priority: 1

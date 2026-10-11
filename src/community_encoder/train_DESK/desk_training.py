@@ -83,8 +83,36 @@ def true_kernel_loss(z_pred, x_raw, num_pairs=4096):
     return _pair_kernel_loss(z_pred[i], z_pred[j], x_raw[i], x_raw[j])
 
 
+def same_cell_partners(pool_flat, first, generator=None):
+    """For each pool index in ``first``, a DIFFERENT pool point of the same cell (another supervised year of
+    that cell), or -1 where the cell has only one point. Pure apart from the RNG.
+
+    Points are grouped by ``pool_flat`` (one point per supervised cell-year, so two points sharing a flat index
+    are two years of one cell). For a point at position p of a group of size s >= 2 the partner is position
+    (p + 1 + U{0..s-2}) mod s, which is never p itself.
+    """
+    order = torch.argsort(pool_flat, stable=True)
+    sf = pool_flat[order]
+    new = torch.ones_like(sf, dtype=torch.bool)
+    new[1:] = sf[1:] != sf[:-1]
+    gid = torch.cumsum(new.long(), 0) - 1                          # group id of each sorted position
+    starts = torch.nonzero(new).flatten()
+    sizes = torch.diff(torch.cat([starts, torch.tensor([len(sf)], device=sf.device)]))
+    pos_sorted = torch.empty_like(order)
+    pos_sorted[order] = torch.arange(len(order), device=order.device)
+    p = pos_sorted[first]                                          # sorted position of each first point
+    g = gid[p]
+    s = sizes[g]
+    within = p - starts[g]
+    u = torch.floor(torch.rand(len(first), device=first.device, generator=generator)
+                    * torch.clamp(s - 1, min=1)).long()
+    partner_pos = starts[g] + (within + 1 + u) % torch.clamp(s, min=1)
+    partner = order[partner_pos]
+    return torch.where(s >= 2, partner, torch.full_like(partner, -1))
+
+
 def spacetime_kernel_loss(z_by_t, pool_t, pool_flat, pool_x, num_pairs=4096, generator=None,
-                          pool_w=None):
+                          pool_w=None, same_cell_frac=0.0):
     """Kernel loss over pairs drawn from the whole SPACETIME pool of supervised cell-years.
 
     The ESK basis is one joint Ružička kernel-PCA over every ``(cell, year)`` point, so its
@@ -107,6 +135,11 @@ def spacetime_kernel_loss(z_by_t, pool_t, pool_flat, pool_x, num_pairs=4096, gen
 
     ``z_by_t`` is ``(T, H, W, L)``; ``pool_t``/``pool_flat`` index its year and flattened cell
     axes, and ``pool_x`` holds the matching raw communities.
+
+    ``same_cell_frac`` (research, E043; default 0 = the draw above, bit for bit) makes that share of the pairs
+    SAME-CELL, CROSS-YEAR pairs: the first point drawn as usual, its partner another supervised year of the same
+    cell. Uniform draws give same-cell pairs at ~1/n_cells (~0.035% of pairs) -- the only pairs that carry
+    within-place temporal similarity -- so this over-samples the temporal half of the kernel contract.
     """
     N = int(pool_t.shape[0])
     if N < 2:
@@ -125,6 +158,11 @@ def spacetime_kernel_loss(z_by_t, pool_t, pool_flat, pool_x, num_pairs=4096, gen
         idx = torch.multinomial(pool_w, 2 * num_pairs, replacement=True,
                                 generator=generator).view(2, num_pairs)
     i, j = idx[0], idx[1]
+    n_same = int(round(float(same_cell_frac) * num_pairs))
+    if n_same > 0:
+        partner = same_cell_partners(pool_flat, i[:n_same], generator=generator)
+        j = j.clone()
+        j[:n_same] = torch.where(partner >= 0, partner, j[:n_same])   # single-year cells keep their random partner
     zf = z_by_t.reshape(T, H * W, L)
     zi = zf[pool_t[i], pool_flat[i]]
     zj = zf[pool_t[j], pool_flat[j]]
@@ -711,7 +749,7 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
                     direction_withheld_anchor_year=None,
                     hidden_width=None, mlp_expansion=4,
                     val_metric_pool=None, val_pool_holdout_years=(),
-                    metric_pairs=4096,
+                    metric_pairs=4096, metric_same_cell_frac=0.0,
                     eval_kernel_pairs=65536, eval_kernel_draws=1, eval_kernel_ranks=(),
                     eigenbasis_batch=0, eigenbasis_every=0, eigenbasis_ref=None,
                     eigenbasis_draws=1,
@@ -1513,7 +1551,8 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
                "amp": bool(amp), "stream_dims": [int(d) for d in stream_dims],
                "years": [int(window_years[0]), int(window_years[-1]), len(window_years)],
                "hidden_width": hidden_width, "mlp_expansion": int(mlp_expansion),
-               "metric_pairs": int(metric_pairs), "n_spatial_tiles": int(n_spatial_tiles),
+               "metric_pairs": int(metric_pairs), "metric_same_cell_frac": float(metric_same_cell_frac),
+               "n_spatial_tiles": int(n_spatial_tiles),
                "tiles_per_step": int(tiles_per_step), "selection_metric": str(selection_metric),
                "select_on_withheld": bool(select_on_withheld),
                "holdout_years": sorted(int(y) for y in (val_pool_holdout_years or ()))}
@@ -1697,7 +1736,7 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
                 _lf = torch.cat(_lparts) if len(_lparts) > 1 else _lparts[0]
                 _lt = spacetime_kernel_loss(
                     _zcat, pool_t[_rows], _lf, pool_x[_rows],
-                    num_pairs=int(metric_pairs),
+                    num_pairs=int(metric_pairs), same_cell_frac=float(metric_same_cell_frac),
                     pool_w=(None if pool_w_t is None else pool_w_t[_rows]))
                 if len(_grp) > 1:
                     _n = np.array([int(t.numel()) for t in _rparts], dtype=float)
@@ -1794,7 +1833,8 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
             # the model to. Restricting pairs to within a year would enforce only the spatial half
             # of a spatiotemporal kernel.
             loss_true = spacetime_kernel_loss(z_ema, pool_t, pool_flat, pool_x, pool_w=pool_w_t,
-                                              num_pairs=int(metric_pairs))
+                                              num_pairs=int(metric_pairs),
+                                              same_cell_frac=float(metric_same_cell_frac))
             w_stab = weights["stabilizing"] * loss_stab
             w_true = weights["metric"] * loss_true
             w_rec = weights["reconstruction"] * recon_loss
@@ -2698,6 +2738,7 @@ def run_desk_experiment(config=None):
         hidden_width=hidden_width, mlp_expansion=mlp_expansion,
         val_metric_pool=val_metric_pool, val_pool_holdout_years=ho_years,
         metric_pairs=int(desk_cfg.get("metric_pairs", 4096)),
+        metric_same_cell_frac=float(desk_cfg.get("metric_same_cell_frac", 0.0)),
         eval_kernel_pairs=int(desk_cfg.get("eval_kernel_pairs", 65536)),
         eval_kernel_draws=int(desk_cfg.get("eval_kernel_draws", 1)),
         eval_kernel_ranks=tuple(desk_cfg.get("eval_kernel_ranks") or ()),

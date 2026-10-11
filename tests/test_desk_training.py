@@ -2906,3 +2906,38 @@ def test_epoch_selection_ignores_withheld_years_unless_told_otherwise(tmp_path):
         assert info["best_selection_raw"] == pytest.approx(best[key]), (legacy, info, best)
         assert info["select_on_withheld"] is legacy
     print("selection reads zmse_val_sp by default and zmse_val only when asked")
+
+
+def test_same_cell_oversampling_draws_other_years_of_the_same_cell_and_is_a_noop_at_zero():
+    from src.community_encoder.train_DESK import desk_training as dt
+    torch.manual_seed(0)
+    T, H, W, L = 6, 3, 4, 5
+    z = torch.randn(T, H, W, L, requires_grad=True)
+    # pool: 9 cells with 1-6 supervised years each; one cell (flat 11) has a single year
+    pts = [(t, f) for f in range(9) for t in range(1 + f % 6)] + [(2, 11)]
+    pool_t = torch.tensor([p[0] for p in pts])
+    pool_flat = torch.tensor([p[1] for p in pts])
+    pool_x = torch.rand(len(pts), 7)
+    # frac 0: the same draw (and loss) as before, bit for bit
+    g1, g2 = torch.Generator().manual_seed(5), torch.Generator().manual_seed(5)
+    a = dt.spacetime_kernel_loss(z, pool_t, pool_flat, pool_x, num_pairs=64, generator=g1)
+    b = dt.spacetime_kernel_loss(z, pool_t, pool_flat, pool_x, num_pairs=64, generator=g2, same_cell_frac=0.0)
+    assert torch.equal(a, b)
+    # partners: same cell, never the point itself; -1 only for single-year cells
+    first = torch.arange(len(pts))
+    part = dt.same_cell_partners(pool_flat, first, generator=torch.Generator().manual_seed(1))
+    single = torch.tensor([sum(1 for q in pts if q[1] == p[1]) == 1 for p in pts])
+    assert torch.all(part[single] == -1)
+    ok = ~single
+    assert torch.all(pool_flat[part[ok]] == pool_flat[first[ok]])
+    assert torch.all(part[ok] != first[ok])
+    assert torch.all(pool_t[part[ok]] != pool_t[first[ok]])
+    # over many draws every other year of a multi-year cell is reached
+    reached = {int(dt.same_cell_partners(pool_flat, torch.tensor([17]), generator=torch.Generator().manual_seed(s))[0])
+               for s in range(200)}
+    assert reached == {i for i, p in enumerate(pts) if p[1] == pts[17][1] and i != 17}
+    # frac 1: the loss is computed and differentiable
+    loss = dt.spacetime_kernel_loss(z, pool_t, pool_flat, pool_x, num_pairs=64,
+                                    generator=torch.Generator().manual_seed(3), same_cell_frac=1.0)
+    loss.backward()
+    assert torch.isfinite(loss) and z.grad is not None

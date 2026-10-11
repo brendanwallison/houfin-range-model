@@ -123,9 +123,11 @@ NEW SINCE YESTERDAY EVENING (tentative unless noted; each finding carries WHY: e
   trained with the management channels held at each place's average -- can it learn the class-driven change?
   RESULT so far (E041, start year 1996, two seeds): spatial fit unchanged; backcast skill drops -- to about half at
   the late state (0.144 -> 0.070, 0.133 -> 0.061), less at the selected epochs (0.120 -> 0.073, 0.113 -> 0.100) --
-  almost all in the east; the Great Plains and west hold up. DESK compensates partly: its land-use CLASS reading
-  gets stronger (match with real change 0.107 -> 0.166 on the first model) but it also leans harder on temperature
-  (+0.24 toward analogs). So without the management trend DESK does not fully recover its skill from the classes,
+  almost all in the east; the Great Plains and west hold up. DESK compensates partly: on a common yardstick (M28)
+  its land-use CLASS reading gets significantly more truthful (+0.06 / +0.10) and so does its CLIMATE reading
+  (+0.07 / +0.08, with less lean), the full backcast's lean is unchanged, but it loses the clock's real post-1950
+  signal (full match -0.02 / -0.04). (An earlier "leans harder on temperature" was a yardstick artifact.) So
+  without the management trend DESK does not fully recover its skill,
   and it gains NO movement before 1950 (same as the controls): removing the trend costs post-1950 skill and buys
   nothing for 1902-1939. The management trend is not a defect to remove on this evidence. Replication at the 1986
   start running; E042 (temperature AND management static) queued.

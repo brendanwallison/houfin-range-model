@@ -29,6 +29,11 @@ number (the placebo itself, combos, gains, local) is the mean over draws, paired
 E039l (--rich-base): DESK's gain beyond a RICH linear base -- placebo_300 + linear kind x time (32 PCs) + the
 covariate within-map, each its own iid block: rich = that base, rich+desk_within = base + DESK z deviations. If DESK's
 gain survives, it is not a linear kind-of-place clock.
+E039m (--attr <attribution_cells.npz of the same model>): which covariate part of DESK's change carries its gain
+beyond the trend? In the joint fits (placebo+desk_within, and rich+desk_within with --rich-base) DESK's change is
+replaced by its change MINUS one part (backcast_attribution's swap parts: land, climate, luh, luh_mgmt, luh_class,
+luh_uniform = the continent-wide LUH shift (a clock), luh_pattern = where land use changed more or less, ...), same
+coefficients; loss = corr(full) - corr(dropped), paired, and its share of the gain over the base.
 E043 check (--ref-cache <control cache>, same keys): the control model's DESK arms (desk_ref, desk_ref_within,
 placebo+desk_ref_within) on the same cells and draws, and paired differences treatment - control.
 """
@@ -64,6 +69,7 @@ def main():
     ap.add_argument("--pos-seeds", type=int, nargs="+", default=[1], help="placebo draws (results are draw means)")
     ap.add_argument("--tag", default="", help="suffix of the output json")
     ap.add_argument("--rich-base", action="store_true", help="E039l: gains beyond placebo + kind x time + within map")
+    ap.add_argument("--attr", default=None, help="E039m: attribution_cells.npz of this model (drop-part losses)")
     ap.add_argument("--ref-cache", default=None, help="control model's cache (same keys): paired treatment - control")
     a = ap.parse_args()
     if a.summarize:
@@ -199,6 +205,17 @@ def main():
         keep_feats["desk_ref_within"] = (zkr - cmean(zkr, w_ty), dzr)
         within_arms.append("desk_ref_within")
         notes["ref_cache"] = a.ref_cache
+    parts_ev = {}
+    if a.attr:
+        az = np.load(a.attr)
+        posn = {tuple(map(int, cc)): i for i, cc in enumerate(az["cells"])}
+        order = np.array([posn[tuple(map(int, cc))] for cc in cells[ev]])
+        notes["attr_full_vs_desk_maxabs"] = float(np.abs(az["part__full"][order] - D_desk).max())
+        notes["attr_truth_vs_maxabs"] = float(max(np.abs(az["Ta"][order] - Ta).max(), np.abs(az["Tb"][order] - Tb).max()))
+        for nm in ("land", "climate", "luh", "luh_mgmt", "luh_class", "luh_uniform", "luh_pattern", "temperature",
+                   "moisture", "land_local", "land_regional"):
+            if f"part__{nm}_part" in az.files:
+                parts_ev[nm] = az[f"part__{nm}_part"][order]
     incr = {}
     if a.incremental:
         for sd in a.pos_seeds:
@@ -208,6 +225,9 @@ def main():
                 q = PL.shape[1]
                 b = blr.fit(np.hstack([PL, Xf])[trn], Zd[trn], [(0, q), (q, q + Xf.shape[1])])["coef"].T
                 incr[f"placebo+{nm}#{sd}"] = np.hstack([PLev, Xev]) @ b
+                if nm == "desk_within":
+                    for pn, pv in parts_ev.items():
+                        incr[f"placebo+desk_within-{pn}#{sd}"] = np.hstack([PLev, Xev - pv]) @ b
             if a.rich_base:
                 parts = [(PL, PLev), keep_feats["kindxtime_32"], keep_feats["within_raw"]]
                 for tag, extra in (("rich", []), ("rich+desk_within", [keep_feats["desk_within"]])):
@@ -216,6 +236,9 @@ def main():
                     blocks = [(int(edges[i]), int(edges[i + 1])) for i in range(len(ps))]
                     b = blr.fit(np.hstack([f for f, _ in ps])[trn], Zd[trn], blocks)["coef"].T
                     incr[f"{tag}#{sd}"] = np.hstack([e for _, e in ps]) @ b
+                    if extra:
+                        for pn, pv in parts_ev.items():
+                            incr[f"{tag}-{pn}#{sd}"] = np.hstack([e for _, e in parts] + [ps[-1][1] - pv]) @ b
         preds.update(incr)
     m_dp = blr.fit(zk[trn], Z[trn], [(0, r)])
     preds["desk_pooled"] = dz @ m_dp["coef"].T
@@ -255,11 +278,23 @@ def main():
             res["models"][name]["desk_minus_ci"] = [float(np.nanpercentile(d[1:], q)) for q in (2.5, 97.5)]
 
     if a.incremental:
+        if parts_ev:
+            res["drop"] = {}
+            for combo, base in (("placebo+desk_within", "placebo_300"), ("rich+desk_within", "rich")):
+                if combo not in boots:
+                    continue
+                gain = boots[combo] - boots[base]
+                res["drop"][combo] = {"gain": float(gain[0]), "parts": {}}
+                for pn in parts_ev:
+                    loss = boots[combo] - boots[f"{combo}-{pn}"]
+                    res["drop"][combo]["parts"][pn] = {
+                        "loss": float(loss[0]), "ci": [float(np.nanpercentile(loss[1:], q)) for q in (2.5, 97.5)],
+                        "share": float(loss[0] / gain[0]) if gain[0] != 0 else None}
         if a.rich_base:
             d = boots["rich+desk_within"] - boots["rich"]
             res["rich_gain"] = {"desk_within": float(d[0]),
                                 "ci": [float(np.nanpercentile(d[1:], q)) for q in (2.5, 97.5)]}
-        for nm in sorted({n.split("#")[0] for n in incr}):
+        for nm in sorted({n.split("#")[0] for n in incr if "-" not in n}):
             d = boots[nm] - boots["placebo_300"]
             res["models"][nm]["minus_placebo"] = float(d[0])
             res["models"][nm]["minus_placebo_ci"] = [float(np.nanpercentile(d[1:], q)) for q in (2.5, 97.5)]
@@ -282,7 +317,7 @@ def main():
             out = {"truth_local_share": share, "models": {}}
             lb_ = {}
             for nm in (("desk", "desk_within", "within_raw", "kindxtime_8", "placebo_300", "pooled_ridge")
-                       + tuple(sorted({n.split("#")[0] for n in incr}))):
+                       + tuple(sorted({n.split("#")[0] for n in incr if "-" not in n}))):
                 g = np.mean([np.array([lgrade(preds[n], w) for w in W]) for n in members[nm]], 0)
                 lb_[nm] = g
                 out["models"][nm] = {"corr": float(g[0]),
@@ -335,6 +370,8 @@ def summarize(out, fn=None):
           f"r{r['rank']}, {r['n_fit_rows']:,} fit rows; desk keys-vs-epoch max|diff| "
           f"{r['notes']['desk_keys_vs_epoch_z_maxabs']:.2g}")
     for name, v in r["models"].items():
+        if "-" in name:
+            continue
         extra = (f" | desk - it {v['desk_minus_corr']:+.3f} [{v['desk_minus_ci'][0]:+.3f},{v['desk_minus_ci'][1]:+.3f}]"
                  if "desk_minus_corr" in v else "")
         if "minus_placebo" in v:
@@ -348,6 +385,11 @@ def summarize(out, fn=None):
             extra = (f" | desk - it {v['desk_minus']:+.3f} [{v['desk_minus_ci'][0]:+.3f},{v['desk_minus_ci'][1]:+.3f}]"
                      if "desk_minus" in v else "")
             print(f"    {nm:24s} corr {v['corr']:+.3f} [{v['ci'][0]:+.3f},{v['ci'][1]:+.3f}]" + extra)
+    for combo, o in r.get("drop", {}).items():
+        print(f"  DROP-PART losses in {combo} (gain over its base {o['gain']:+.3f}):")
+        for pn, v in o["parts"].items():
+            sh = f"{v['share']:+.2f}" if v["share"] is not None else "  n/a"
+            print(f"    -{pn:14s} loss {v['loss']:+.3f} [{v['ci'][0]:+.3f},{v['ci'][1]:+.3f}]  share of gain {sh}")
     if "rich_gain" in r:
         v = r["rich_gain"]
         print(f"  DESK gain beyond placebo + kind x time 32 + within map: {v['desk_within']:+.3f} "

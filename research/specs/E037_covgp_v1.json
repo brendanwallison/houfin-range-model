@@ -1,0 +1,10 @@
+{
+ "exp": "E037",
+ "name": "covgp-v1",
+ "group": "cpu",
+ "overlay": "config/overlays/gp_species_base.json",
+ "cmd": ["bash", "-c", "{python} research/exp/covgp_harness.py --out {out} --tag v1 --features raw --bounds data --sample blocks"],
+ "expected_minutes": 40,
+ "summarize": ["python", "research/exp/covgp_harness.py", "--summarize", "{out}"],
+ "note": "E037 covariate GP repair, variant v1: --features raw --bounds data --sample blocks"
+}

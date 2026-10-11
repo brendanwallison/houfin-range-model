@@ -1,0 +1,10 @@
+{
+ "exp": "E037",
+ "name": "covgp-v4",
+ "group": "cpu",
+ "overlay": "config/overlays/gp_species_base.json",
+ "cmd": ["bash", "-c", "{python} research/exp/covgp_harness.py --out {out} --tag v4 --features pca --bounds data --sample strat --cap-s2 10"],
+ "expected_minutes": 40,
+ "summarize": ["python", "research/exp/covgp_harness.py", "--summarize", "{out}"],
+ "note": "E037 covariate GP repair, variant v4: --features pca --bounds data --sample strat --cap-s2 10"
+}

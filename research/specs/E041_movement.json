@@ -1,0 +1,14 @@
+{
+ "exp": "E041",
+ "name": "movement-profile",
+ "group": "cpu",
+ "overlay": "config/overlays/production.json",
+ "cmd": [
+  "bash",
+  "-c",
+  "set -e; K={cache}/gp_species_base; {python} research/exp/movement_profile.py --keys-cache $K --out {out} --tag production; for spec in ctrl_s1:E022/desk-tempho1995-seed1-f946971f1b3e:desk_tempho_1995_seed1:none ctrl_s2:E022/desk-tempho1995-seed2-aeb2bee5efae:desk_tempho_1995_seed2:none statMgmt_s1:E041/desk-tempho1995-seed1-statMgmt-1b66eeada8cf:desk_tempho_1995_seed1:luh_mgmt,luh_secage statMgmt_s2:E041/desk-tempho1995-seed2-statMgmt-007a0c180603:desk_tempho_1995_seed2:luh_mgmt,luh_secage statT_s1:E038/desk-tempho1995-seed1-statT-073c34187ddb:desk_tempho_1995_seed1:temperature statT_s2:E038/desk-tempho1995-seed2-statT-e7e26da6a899:desk_tempho_1995_seed2:temperature; do IFS=: read -r tag run ov fam <<< \"$spec\"; export RESEARCH_OUT={outroot}/$run ESK_DESK_CONFIG=research/overlays/$ov.json; if [ $fam = none ]; then {python} research/exp/movement_profile.py --keys-cache $K --out {out} --tag t1995_$tag; else {python} research/exp/static_channels.py --channels ${fam//,/ } --means-cache {outroot}/$run/static_means.npy -- research/exp/movement_profile.py --keys-cache $K --out {out} --tag t1995_$tag; fi; done"
+ ],
+ "expected_minutes": 30,
+ "summarize": ["python", "research/exp/movement_profile.py", "--summarize", "{out}"],
+ "note": "E041 measure (3) (and E038 for comparison): does the backcast keep moving before 1950? Decade profile of |z - z(1946-55)|, production, unweighted controls, static-management and static-temperature models (t1995, selected states)"
+}

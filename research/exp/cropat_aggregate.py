@@ -15,6 +15,10 @@ import sys
 
 import numpy as np
 
+# CropType codes 1-10, in the order of the paper's legend (Ye, Cao & Lu 2024, ESSD 16:3453, Sect. 2)
+TYPE_NAMES = ["corn", "soybean", "winter_wheat", "spring_wheat", "durum_wheat", "cotton", "sorghum", "barley", "rice",
+              "others"]
+
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
@@ -24,6 +28,8 @@ def main():
     ap.add_argument("--pattern", default="density")
     ap.add_argument("--y0", type=int, default=1850)
     ap.add_argument("--y1", type=int, default=2021)
+    ap.add_argument("--types", default=None, help="dir of CropType_YYYY.tif (codes 1-10): also save each type's "
+                    "fraction of cell area (density x [type == k])")
     a = ap.parse_args()
     import rasterio
     from rasterio.warp import Resampling, reproject
@@ -42,6 +48,7 @@ def main():
     if not files:
         sys.exit(f"no files matching {a.pattern!r} with a year under {a.src}")
     years = np.array(sorted(files))
+    types_arr = None
     crop = np.full((len(years), H, W), np.nan, "float32")
     vshare = np.zeros((len(years), H, W), "float32")
     scale = None
@@ -64,7 +71,21 @@ def main():
                           dst_crs=g.crs, resampling=Resampling.average)
         crop[i] = np.where(dst_d > 0.05, dst_n / np.maximum(dst_d, 1e-9), np.nan)
         vshare[i] = dst_d
-    np.savez(a.out, years=years, crop=crop, valid_share=vshare, files=np.array([files[y] for y in years]))
+        if a.types:
+            tf = os.path.join(a.types, f"CropType_{y}.tif")
+            with rasterio.open(tf) as st, rasterio.open(files[y]) as s:
+                assert st.transform == s.transform and st.shape == s.shape, "type and density grids differ"
+                code = np.rint(st.read(1)).astype(int)
+                dens = np.where(valid, arr / scale, 0.0).astype("float32")
+                if types_arr is None:
+                    types_arr = np.full((len(years), len(TYPE_NAMES), H, W), np.nan, "float32")
+                for k in range(1, len(TYPE_NAMES) + 1):
+                    dst_k = np.zeros((H, W), "float32")
+                    reproject(np.where(code == k, dens, 0.0).astype("float32"), dst_k, src_transform=s.transform,
+                              src_crs=s.crs, dst_transform=g.transform, dst_crs=g.crs, resampling=Resampling.average)
+                    types_arr[i, k - 1] = np.where(dst_d > 0.05, dst_k / np.maximum(dst_d, 1e-9), np.nan)
+    extra = {"types": types_arr, "type_names": np.array(TYPE_NAMES)} if a.types else {}
+    np.savez(a.out, years=years, crop=crop, valid_share=vshare, files=np.array([files[y] for y in years]), **extra)
     print(f"[cropat] {len(years)} years {years.min()}-{years.max()} -> {a.out}; CONUS mean crop fraction "
           f"{np.nanmean(crop[0]):.3f} ({years[0]}) -> {np.nanmean(crop[-1]):.3f} ({years[-1]})", flush=True)
 

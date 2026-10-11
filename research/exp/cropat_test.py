@@ -25,7 +25,7 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, _HERE)
 sys.path.insert(0, os.path.dirname(_HERE))
 sys.path.insert(0, os.path.dirname(os.path.dirname(_HERE)))
-from type_dose import wc  # noqa: E402
+from type_dose import ridge_cv, wc  # noqa: E402
 
 LUH_CROP = slice(0, 5)        # c3ann, c3nfx, c3per, c4ann, c4per within the landuse stream
 
@@ -39,6 +39,7 @@ def main():
     ap.add_argument("--n-type", type=int, default=32)
     ap.add_argument("--n-boot", type=int, default=1000)
     ap.add_argument("--summarize", default=None)
+    ap.add_argument("--types", action="store_true", help="E047b: multivariate crop-type (CropAT) vs LUH land-use arms")
     a = ap.parse_args()
     if a.summarize:
         return summarize(a.summarize)
@@ -68,6 +69,8 @@ def main():
     states_dir = os.path.join(cfg["paths"]["hist_dir"], "yearly_states")
     bui_avail = np.load(os.path.join(states_dir, "state_2015.npz"))["bui"][..., 0]
     conus = np.nan_to_num(bui_avail[cells[:, 0], cells[:, 1]]) > 0.5
+    if os.environ.get("CROPAT_ALL_CELLS"):          # diagnostic: keep non-CONUS cells (CropAT arms then invalid)
+        conus[:] = True
     ev, tc = np.where(held & conus)[0], np.where(~held & ~buf & conus)[0]
     n_non_conus = int((~conus & (held | (~held & ~buf))).sum())
     dZ = (E["z_full"][pairs[:, 1], :r] - E["z_full"][pairs[:, 0], :r]).astype("float64")
@@ -90,11 +93,14 @@ def main():
     C_cat = crop[yi, keys[:, 0], keys[:, 1]]
     # LUH crop fraction per key (raw landuse stream)
     C_luh = np.full(N, np.nan)
+    L_all = np.full((N, 33), np.nan) if a.types else None
     for y in np.unique(yr):
         z = np.load(os.path.join(states_dir, f"state_{int(y)}.npz"))
         lu = z["landuse"][..., LUH_CROP].sum(-1)
         sel = yr == y
         C_luh[sel] = lu[keys[sel, 0], keys[sel, 1]]
+        if a.types:
+            L_all[sel] = z["landuse"][keys[sel, 0], keys[sel, 1]]
     ok_rows = np.isfinite(C_cat) & np.isfinite(C_luh)
     C_cat, C_luh = np.where(ok_rows, C_cat, 0.0), np.where(ok_rows, C_luh, 0.0)
     ep = lambda G, v: np.asarray(G @ v[:, None])[:, 0]
@@ -159,12 +165,55 @@ def main():
         d2 = boots["both"] - boots["luh"]
         o["both_minus_luh"] = {"diff": float(d2[0]), "ci": [float(np.nanpercentile(d2[1:], q)) for q in (2.5, 97.5)]}
         res["modes"][mode] = o
-    with open(os.path.join(a.out, "cropat_test.json"), "w", encoding="utf-8") as fh:
+    if a.types:
+        Tk = ca["types"].astype("float64")[yi, :, keys[:, 0], keys[:, 1]]             # (N, 10)
+        Tk = np.where(np.isfinite(Tk) & ok_rows[:, None], Tk, 0.0)
+        L_all = np.where(np.isfinite(L_all) & ok_rows[:, None], L_all, 0.0)
+        epm = lambda G, M: np.asarray(G @ M)
+        dT = epm(Gm, Tk) - epm(Ge, Tk)
+        dLa = epm(Gm, L_all) - epm(Ge, L_all)
+        feats = {"A_cropat_types": dT, "B_luh_crop5": dLa[:, 0:5], "C_luh_all33": dLa,
+                 "D_luh_all33+cropat_types": np.hstack([dLa, dT])}
+        blk_tc = (cells[tc, 0] // 6) * 100000 + cells[tc, 1] // 6
+        lams = [10.0 ** e for e in np.arange(-3, 3.01, 0.5)]
+        res["types"] = {"names": [str(n) for n in ca["type_names"]], "modes": {}}
+        for mode, basis in (("type", Tm), ("type+region", Tm2)):
+            dZ_r, zfit = resid(dZ, basis)
+            Ta_r, Tb_r = Ta[ev] - zfit[ev], Tb[ev] - zfit[ev]
+            preds = {}
+            for nm, Fx in feats.items():
+                Fr, _ = resid(Fx, basis)
+                sdv = Fr[tc].std(0)
+                k_ = sdv > 1e-9
+                Fz = Fr[:, k_] / sdv[k_]
+                B, xm, ym, lam = ridge_cv(Fz[tc], dZ_r[tc], blk_tc, lams)
+                preds[nm] = (Fz[ev] - xm) @ B + ym
+            boots = {k: np.array([corr(D, Ta_r, Tb_r, w) for w in W]) for k, D in preds.items()}
+            o = {k: {"corr": float(v[0]), "ci": [float(np.nanpercentile(v[1:], q)) for q in (2.5, 97.5)]}
+                 for k, v in boots.items()}
+            for x_, y_ in (("A_cropat_types", "B_luh_crop5"), ("D_luh_all33+cropat_types", "C_luh_all33")):
+                d = boots[x_] - boots[y_]
+                o[f"{x_} - {y_}"] = {"diff": float(d[0]), "ci": [float(np.nanpercentile(d[1:], q)) for q in (2.5, 97.5)]}
+            res["types"]["modes"][mode] = o
+    fn = "cropat_types.json" if a.types else "cropat_test.json"
+    with open(os.path.join(a.out, fn), "w", encoding="utf-8") as fh:
         json.dump(res, fh, indent=1)
     summarize(a.out)
 
 
 def summarize(out):
+    if os.path.exists(os.path.join(out, "cropat_types.json")):
+        r = json.load(open(os.path.join(out, "cropat_types.json"), encoding="utf-8"))
+        print(f"{os.path.basename(os.path.normpath(r['cache']))}: E047b crop-type arms ({r['n_heldout']} held-out cells)")
+        for mode, o in r["types"]["modes"].items():
+            arms = " | ".join(f"{k} {v['corr']:+.3f} [{v['ci'][0]:+.3f},{v['ci'][1]:+.3f}]" for k, v in o.items()
+                              if "corr" in v)
+            diffs = " | ".join(f"{k}: {v['diff']:+.3f} [{v['ci'][0]:+.3f},{v['ci'][1]:+.3f}]" for k, v in o.items()
+                               if "diff" in v)
+            print(f"  [{mode:11s}] {arms}")
+            print(f"                {diffs}")
+        if not os.path.exists(os.path.join(out, "cropat_test.json")):
+            return
     r = json.load(open(os.path.join(out, "cropat_test.json"), encoding="utf-8"))
     cc = r["concordance"]
     print(f"{os.path.basename(os.path.normpath(r['cache']))}: {r['n_heldout']} held-out / {r['n_train_cells']} training "

@@ -15,6 +15,9 @@ fitted on training cells), optionally then KERNEL-LOCAL (LOO 150 km within each 
 (lambda by 6x6-block CV) fitted on its training cells, graded on its held-out cells. Guild score = pooled noise-free
 corr over the guild's species (sum of cross-half covariances / sqrt(sum pred var x sum truth noise-free var)), species
 with resolvable change only; paired 6x6-block bootstrap (one draw shared by all species).
+E049b (--pooled): ONE map per guild and arm, shared by the guild's species (rows = training cell x species pairs,
+features standardized over the pooled rows, lambda by 6x6-block CV), applied to each species' held-out cells -- the
+"the guild responds alike to what is grown" estimator, far more data per coefficient than per-species maps.
 """
 import argparse
 import json
@@ -43,6 +46,7 @@ def main():
     ap.add_argument("--n-type", type=int, default=32)
     ap.add_argument("--n-boot", type=int, default=500)
     ap.add_argument("--summarize", default=None)
+    ap.add_argument("--pooled", action="store_true", help="E049b: one shared map per guild and arm")
     a = ap.parse_args()
     if a.summarize:
         return summarize(a.summarize)
@@ -133,6 +137,7 @@ def main():
     for mode in ("type", "type+kloc"):
         acc = {g: {arm: [] for arm in ARMS} for g in GUILDS}       # per species: (cv, vp, vt) arrays over draws
         n_used = {g: 0 for g in GUILDS}
+        store = {g: [] for g in GUILDS}
         for s in range(len(codes)):
             g = hab[s]
             if g not in GUILDS:
@@ -158,6 +163,17 @@ def main():
             if vt[0] <= 0:
                 continue
             n_used[g] += 1
+            if a.pooled:
+                rec = {"ytr": ytr, "blk": blk_all[tcs], "w": w, "ca": ca_, "cb": cb_, "vt": vt, "F": {}}
+                for arm in ARMS:
+                    Fx = feats[arm]
+                    gF, *_ = np.linalg.lstsq(Tm[tcs], Fx[tcs], rcond=None)
+                    Ftr, Fev = Fx[tcs] - Tm[tcs] @ gF, Fx[evs] - Tm[evs] @ gF
+                    if mode == "type+kloc":
+                        Ftr, Fev = ktr(Ftr), kev(Fev)
+                    rec["F"][arm] = (Ftr, Fev)
+                store[g].append(rec)
+                continue
             for arm in ARMS:
                 Fx = feats[arm]
                 gF, *_ = np.linalg.lstsq(Tm[tcs], Fx[tcs], rcond=None)
@@ -170,6 +186,23 @@ def main():
                 p = ((Fev[:, k_] / sdv[k_] - xm) @ B + ym)[:, 0]
                 cp = p[None, :] - wa(p)[:, None]
                 acc[g][arm].append(((0.5 * ((w * cp * ca_).sum(1) + (w * cp * cb_).sum(1))), (w * cp * cp).sum(1), vt))
+        if a.pooled:
+            for g in GUILDS:
+                if not store[g]:
+                    continue
+                for arm in ARMS:
+                    Ftr_all = np.vstack([r_["F"][arm][0] for r_ in store[g]])
+                    y_all = np.concatenate([r_["ytr"] for r_ in store[g]])[:, None]
+                    b_all = np.concatenate([r_["blk"] for r_ in store[g]])
+                    sdv = Ftr_all.std(0)
+                    k_ = sdv > 1e-9
+                    B, xm, ym, _ = ridge_cv(Ftr_all[:, k_] / sdv[k_], y_all, b_all, lams)
+                    for r_ in store[g]:
+                        w = r_["w"]
+                        p = ((r_["F"][arm][1][:, k_] / sdv[k_] - xm) @ B + ym)[:, 0]
+                        cp = p[None, :] - ((w * p[None, :]).sum(1) / w.sum(1))[:, None]
+                        acc[g][arm].append((0.5 * ((w * cp * r_["ca"]).sum(1) + (w * cp * r_["cb"]).sum(1)),
+                                            (w * cp * cp).sum(1), r_["vt"]))
         out = {}
         for g in GUILDS:
             if n_used[g] == 0:
@@ -196,13 +229,21 @@ def main():
             if g in out:
                 out[g].pop("_boot_gain", None)
         res["modes"][mode] = out
-    with open(os.path.join(a.out, "guild_dose.json"), "w", encoding="utf-8") as fh:
+    res["pooled"] = bool(a.pooled)
+    with open(os.path.join(a.out, "guild_dose_pooled.json" if a.pooled else "guild_dose.json"), "w",
+              encoding="utf-8") as fh:
         json.dump(res, fh, indent=1)
     summarize(a.out)
 
 
 def summarize(out):
-    r = json.load(open(os.path.join(out, "guild_dose.json"), encoding="utf-8"))
+    for fn in ("guild_dose.json", "guild_dose_pooled.json"):
+        if os.path.exists(os.path.join(out, fn)):
+            print(f"== {fn}")
+            _summ(json.load(open(os.path.join(out, fn), encoding="utf-8")))
+
+
+def _summ(r):
     print(f"{os.path.basename(os.path.normpath(r['cache']))}: {r['n_species']} species; habitats {r['habitat_counts']}")
     for mode, o in r["modes"].items():
         print(f"  [{mode}]")

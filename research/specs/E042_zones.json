@@ -1,0 +1,22 @@
+{
+ "exp": "E042",
+ "name": "evaluation-zones",
+ "group": "cpu",
+ "overlay": "research/overlays/desk_tempho_1995_seed1.json",
+ "after_jobs": [
+  "E042/desk-tempho1995-seed2-statTM"
+ ],
+ "cmd": [
+  "bash",
+  "-c",
+  "{python} research/exp/zone_breakdown.py --out {out} --t0 1996 --models desk_tempho_1995_s1 desk_tempho_1995_s2 desk_tempho_1995_s1_statTM desk_tempho_1995_s2_statTM desk_tempho_1995_s1_late desk_tempho_1995_s2_late desk_tempho_1995_s1_statTM_late desk_tempho_1995_s2_statTM_late --pairs desk_tempho_1995_s1_statTM:desk_tempho_1995_s1 desk_tempho_1995_s2_statTM:desk_tempho_1995_s2 desk_tempho_1995_s1_statTM_late:desk_tempho_1995_s1_late desk_tempho_1995_s2_statTM_late:desk_tempho_1995_s2_late"
+ ],
+ "expected_minutes": 5,
+ "summarize": [
+  "python",
+  "research/exp/zone_breakdown.py",
+  "--summarize",
+  "{out}"
+ ],
+ "note": "E042: windowed backcast corr by zone with paired CIs vs controls"
+}

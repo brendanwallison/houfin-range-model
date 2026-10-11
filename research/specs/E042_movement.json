@@ -1,0 +1,22 @@
+{
+ "exp": "E042",
+ "name": "evaluation-movement",
+ "group": "cpu",
+ "overlay": "research/overlays/desk_tempho_1995_seed1.json",
+ "after_jobs": [
+  "E042/desk-tempho1995-seed2-statTM"
+ ],
+ "cmd": [
+  "bash",
+  "-c",
+  "set -e; export RESEARCH_OUT={outroot}/E042/desk-tempho1995-seed1-statTM-ffc8bfb92a5e ESK_DESK_CONFIG=research/overlays/desk_tempho_1995_seed1.json; {python} research/exp/static_channels.py --channels temperature luh_mgmt luh_secage --means-cache {outroot}/E042/desk-tempho1995-seed1-statTM-ffc8bfb92a5e/static_means.npy -- research/exp/movement_profile.py --keys-cache {cache}/gp_species_base --out {out} --tag t1995_statTM_s1; export RESEARCH_OUT={outroot}/E042/desk-tempho1995-seed2-statTM-77e1ac2806a8 ESK_DESK_CONFIG=research/overlays/desk_tempho_1995_seed2.json; {python} research/exp/static_channels.py --channels temperature luh_mgmt luh_secage --means-cache {outroot}/E042/desk-tempho1995-seed2-statTM-77e1ac2806a8/static_means.npy -- research/exp/movement_profile.py --keys-cache {cache}/gp_species_base --out {out} --tag t1995_statTM_s2; cp $(ls -d {outroot}/E041/movement-profile-*/ | head -1)movement_t1995_*.json {out}/"
+ ],
+ "expected_minutes": 15,
+ "summarize": [
+  "python",
+  "research/exp/movement_profile.py",
+  "--summarize",
+  "{out}"
+ ],
+ "note": "E042 measure: movement 1902-2025 (pre-1950 movement) of the both-static models, next to E041's controls / static-management / static-temperature rows"
+}

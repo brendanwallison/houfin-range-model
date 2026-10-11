@@ -54,6 +54,16 @@ def families(n_ch):
     return fam
 
 
+def loo_local_op(cells_rc, ell_km, cell_km=27.0):
+    """V -> V - K V, K the row-normalized leave-one-out Gaussian kernel over the given cells (no fitted basis)."""
+    xy = np.asarray(cells_rc, float) * cell_km
+    D2 = ((xy[:, None, :] - xy[None, :, :]) ** 2).sum(-1)
+    K = np.exp(-D2 / (2.0 * ell_km ** 2))
+    np.fill_diagonal(K, 0.0)
+    K /= np.maximum(K.sum(1, keepdims=True), 1e-300)
+    return lambda V: np.asarray(V, float) - K @ np.asarray(V, float)
+
+
 def ridge_cv(X, Y, groups, lams):
     """Ridge with lambda (relative to trace(X'X)/p) chosen by leave-group-out CV; returns (B, intercepts, lam)."""
     xm, ym = X.mean(0), Y.mean(0)
@@ -84,6 +94,8 @@ def main():
     ap.add_argument("--rank", type=int, default=24)
     ap.add_argument("--n-type", type=int, default=32)
     ap.add_argument("--n-boot", type=int, default=1000)
+    ap.add_argument("--kloc-km", type=float, default=150.0, help="LOO Gaussian bandwidth of the kernel-local mode")
+    ap.add_argument("--conus-only", action="store_true", help="keep cells with BUI available in 2015 (CONUS)")
     ap.add_argument("--summarize", default=None)
     a = ap.parse_args()
     if a.summarize:
@@ -108,7 +120,13 @@ def main():
     cells = E["cells"][pairs[:, 0]]
     held = split["holdout"][cells[:, 0], cells[:, 1]].astype(bool)
     buf = split["buffer"][cells[:, 0], cells[:, 1]].astype(bool)
-    ev, tc = np.where(held)[0], np.where(~held & ~buf)[0]
+    keep_cell = np.ones(len(cells), bool)
+    if a.conus_only:
+        from src.config_utils import load_config
+        sdir = os.path.join(load_config()["paths"]["hist_dir"], "yearly_states")
+        bui_avail = np.load(os.path.join(sdir, "state_2015.npz"))["bui"][..., 0]
+        keep_cell = np.nan_to_num(bui_avail[cells[:, 0], cells[:, 1]]) > 0.5
+    ev, tc = np.where(held & keep_cell)[0], np.where(~held & ~buf & keep_cell)[0]
     dZ = (E["z_full"][pairs[:, 1], :r] - E["z_full"][pairs[:, 0], :r]).astype("float64")
     Ta = (E["z_a"][pairs[:, 1], :r] - E["z_a"][pairs[:, 0], :r]).astype("float64")
     Tb = (E["z_b"][pairs[:, 1], :r] - E["z_b"][pairs[:, 0], :r]).astype("float64")
@@ -154,7 +172,12 @@ def main():
             "luh_mgmt": ("luh_mgmt",), "climate": ("climate",)}
     blk_tc = (cells[tc, 0] // 6) * 100000 + cells[tc, 1] // 6
     lams = [10.0 ** e for e in np.arange(-3, 3.01, 0.5)]
-    preds_full, preds_dose, preds_loc, lam_used = {"type": type_pred[ev]}, {}, {}, {}
+    preds_full, preds_dose, preds_loc, preds_kloc, lam_used = {"type": type_pred[ev]}, {}, {}, {}, {}
+    # E047 amendment: a LOCAL mode with no fitted extrapolation -- each cell minus the leave-one-out Gaussian (ell
+    # 150 km) average of its OWN set (training cells among training cells, held-out among held-out), applied after
+    # the type residualization to features, targets, predictions' inputs and both truth halves alike
+    kl_tr, kl_ev = loo_local_op(cells[tc], a.kloc_km), loo_local_op(cells[ev], a.kloc_km)
+    dZk_tr = kl_tr(dZ_res[tc])
     for fn, fs in FAMS.items():
         sel = np.ones(len(colidx), bool) if fs is None else np.isin(famX, fs)
         if sel.sum() == 0:
@@ -165,7 +188,9 @@ def main():
         preds_dose[f"dose:{fn}"] = (dX_res[ev][:, sel] - xmd) @ Bd + ymd
         Bl, xml, yml, laml = ridge_cv(dX_loc[tc][:, sel], dZ_loc[tc], blk_tc, lams)
         preds_loc[f"local:{fn}"] = (dX_loc[ev][:, sel] - xml) @ Bl + yml
-        lam_used[fn] = {"full": lam, "dose": lamd, "local": laml, "n_channels": int(sel.sum())}
+        Bk, xmk, ymk, lamk = ridge_cv(kl_tr(dX_res[tc][:, sel]), dZk_tr, blk_tc, lams)
+        preds_kloc[f"kloc:{fn}"] = (kl_ev(dX_res[ev][:, sel]) - xmk) @ Bk + ymk
+        lam_used[fn] = {"full": lam, "dose": lamd, "local": laml, "kloc": lamk, "n_channels": int(sel.sum())}
     # grading
     Ta_e, Tb_e = Ta[ev], Tb[ev]
     Ta_r, Tb_r = Ta_e - type_pred[ev], Tb_e - type_pred[ev]
@@ -196,6 +221,14 @@ def main():
     for nm, D in preds_loc.items():
         g = np.array([corr(D, Ta_l, Tb_l, w) for w in W])
         res["vs_local_truth"][nm] = {"corr": float(g[0]), "ci": [float(np.nanpercentile(g[1:], q)) for q in (2.5, 97.5)]}
+    Ta_k, Tb_k = kl_ev(Ta_r), kl_ev(Tb_r)
+    res["truth_noise_free_share_kernel_local"] = float(wc(Ta_k, Tb_k, W[0]).sum() / wc(Ta_e, Tb_e, W[0]).sum())
+    res["vs_kernel_local_truth"] = {}
+    for nm, D in preds_kloc.items():
+        g = np.array([corr(D, Ta_k, Tb_k, w) for w in W])
+        res["vs_kernel_local_truth"][nm] = {"corr": float(g[0]),
+                                            "ci": [float(np.nanpercentile(g[1:], q)) for q in (2.5, 97.5)]}
+    res["kloc_km"], res["conus_only"] = a.kloc_km, bool(a.conus_only)
     with open(os.path.join(a.out, "type_dose.json"), "w", encoding="utf-8") as fh:
         json.dump(res, fh, indent=1)
     summarize(a.out)
@@ -217,6 +250,11 @@ def summarize(out):
               f"{r['truth_noise_free_share_typical_for_type_and_region']:.2f})")
     for nm, v in r.get("vs_local_truth", {}).items():
         print(f"  vs WITHIN-TYPE+REGION {nm:13s} {v['corr']:+.3f} [{v['ci'][0]:+.3f},{v['ci'][1]:+.3f}]")
+    if r.get("vs_kernel_local_truth"):
+        print(f"  (kernel-local, LOO {r['kloc_km']:.0f} km within each set; conus_only {r['conus_only']}; truth's "
+              f"noise-free change left {r['truth_noise_free_share_kernel_local']:.2f})")
+    for nm, v in r.get("vs_kernel_local_truth", {}).items():
+        print(f"  vs WITHIN-TYPE, KERNEL-LOCAL {nm:12s} {v['corr']:+.3f} [{v['ci'][0]:+.3f},{v['ci'][1]:+.3f}]")
 
 
 if __name__ == "__main__":

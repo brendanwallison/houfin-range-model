@@ -1,13 +1,13 @@
 # DIGEST
 
 ## CURRENT STATE (rewritten each round; read this first -- the dated log below keeps the history)
-Last updated 2026-10-10 ~07:50 (overnight run + your 'why' question) (you said to follow the plan or revise it on the results). "Solid" =
+Last updated 2026-10-10 ~21:10 (evening round: covariate-GP repair, E035d skeptic, static-temperature retrain). "Solid" =
 independently re-derived, replicated on a second split or seed, and survived a skeptic review. "Tentative" = one run,
 or checks still pending. Experiment numbers point to research/experiments/EXXX.md.
 
 SOLID
 - The local machine reproduces TACC for DESK, the spacetime GP, no-change and the oracle. The covariate-GP baseline
-  does NOT reproduce (fragile optimizer; defect A13) and is not relied on.
+  does NOT reproduce (fragile optimizer; defect A13) and is not relied on -- it is being repaired (E037, below).
 - DESK's temporal change on held-out cells correlates 0.41 with the true community change in trained years and
   0.21 in withheld decades, and it moves more than that accuracy justifies (a calibrated DESK would be 0.62x /
   0.37x as large). In absolute terms it moves less than the communities did; the problem is direction.
@@ -59,9 +59,29 @@ NEW SINCE YESTERDAY EVENING (tentative unless noted; each finding carries WHY: e
   (0.06-0.10 vs 0.03); the land-use part has a small lean of its own in two of four models (+0.04, +0.09).
   Sharper (E035d, per covariate family, four models): the lean is DESK's TEMPERATURE reading (+0.29, corr with the
   real change ~0.01) -- "a place that warmed should look like places that are warm today"; moisture leans less
-  (+0.15, a little species signal); the real signal is LAND-USE CLASS change (LUH; corr 0.24-0.36), mostly its
-  REGIONAL change (300 km average) with a modest local share; population and built-up area carry little.
+  (+0.15, a little species signal); population and built-up area carry little. The real signal sits in the LUH
+  land-use stream (corr 0.24-0.36), mostly in its regional (300 km) change.
+  SKEPTIC (2026-10-10 evening) -- partly WITHDRAWN: I called that stream "land-use classes", but only 12 of its 33
+  channels are class fractions; the rest are management channels (fertilizer, irrigation, harvest, protection) and
+  the age/biomass of secondary land, and those dominate its change -- fertilizer on C3 annual crops alone ~31%,
+  secondary-land age ~24% -- with more than half of it the same shift everywhere. A uniform shift is a clock: DESK may
+  be reading TIME from these trends and applying it through place-specific responses (as E027c found for the
+  covariates in general), not responding to where land use changed. The 300 km "regional" win is then partly built
+  in, since smoothing leaves a uniform shift intact. Test running (E035e: classes / management / secondary land
+  swapped separately, plus a uniform-shift-only version). The temperature finding stands (its part tracks nothing
+  real); the size of its "lean" is qualified because the analog direction is built mostly from climate.
   This is the first concrete target for extending extrapolation: a backcast in which temperature does not drive change.
+  Training-time version running (E038): DESK retrained with each place's temperature held at its own 1966-2025
+  average (temperature can say where a place is, not when), four runs, ~5 GPU-hours.
+- Repairing the covariate GP (E037, your request; criteria fixed in advance: healthy fit, sane predictions, and on
+  NEW places at least as good as a plain linear covariate model, within 0.01). WHY it failed (established): it was
+  fitted on patches of neighbouring places, each patch sitting at its own regional level; centred on the continental
+  average, the only way the fit could absorb a patch-wide offset was a nearly flat kernel with a hugely inflated scale
+  (26x the data's variance) -- in effect a local polynomial that extrapolates wildly. Fitting on random places from
+  across the continent fixed that (scale 0.65x, predictive variance ~1x, skill on new places -0.07 -> +0.28) but left
+  it 0.011 behind the linear model (+0.305): it still trusts each training place's lasting quirks, because ~30 years
+  of the same place look like 30 independent observations. Round 3 (running) gives the GP an explicit same-place
+  term, so repeated years of one place count as one place's quirk.
 - Readout scaling (E033, E033b, skeptic-reviewed):
   - shrinking DESK's change by a factor learned on the BBS years (~1/3) stops the readout doing harm -- but only
     because there is almost no information to lose: DESK's change is about as uninformative in its own trained years

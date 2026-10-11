@@ -21,10 +21,14 @@ if [ -z "$pending" ]; then
   echo "queue empty: nothing running or queued"
   exit 0
 fi
-echo "watching $(echo "$pending" | wc -l) running/queued tasks"
+echo "watching $(echo "$pending" | wc -l) running/queued tasks (and any queued later)"
 while true; do
   sleep "$POLL"
   now=$(snapshot)
+  # tasks enqueued after the waiter started are watched too (2026-10-10: a waiter armed before three new jobs were
+  # queued would have slept through all of them)
+  pending=$(printf '%s\n%s\n' "$pending" "$(echo "$now" | awk -F'\t' '$2=="Running" || $2=="Queued" {print $1}')" \
+            | grep -v '^$' | sort -un)
   done_ids=""
   for id in $pending; do
     line=$(echo "$now" | awk -F'\t' -v id="$id" '$1==id')

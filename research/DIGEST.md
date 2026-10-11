@@ -67,9 +67,23 @@ NEW SINCE YESTERDAY EVENING (tentative unless noted; each finding carries WHY: e
   secondary-land age ~24% -- with more than half of it the same shift everywhere. A uniform shift is a clock: DESK may
   be reading TIME from these trends and applying it through place-specific responses (as E027c found for the
   covariates in general), not responding to where land use changed. The 300 km "regional" win is then partly built
-  in, since smoothing leaves a uniform shift intact. Test running (E035e: classes / management / secondary land
-  swapped separately, plus a uniform-shift-only version). The temperature finding stands (its part tracks nothing
-  real); the size of its "lean" is qualified because the analog direction is built mostly from climate.
+  in, since smoothing leaves a uniform shift intact.
+  RESULT (E035e, four models): mostly a CLOCK. Re-encoding with only the continent-wide average land-use shift (the
+  same change everywhere) reproduces ~90% of the land-use part's match with real change (0.23-0.32 of 0.24-0.36);
+  the management channels carry most of it (0.22-0.33), the class fractions less (0.09-0.16); a placebo that keeps
+  only how far each place moves along one common direction gets about half. A real but smaller part follows WHERE
+  land use changed more or less than average (0.14-0.27), and that part leans toward analog places. It is not one
+  region's (the west contributes little; leaving any zone out changes it by <= 0.05).
+  WHY (established across four models): DESK reads TIME from continent-wide land-use trends -- chiefly fertilizer,
+  irrigation and the age of secondary land -- and turns it into place-specific change through place-specific
+  responses (the same "kind of place x year" structure E027c found in the covariates). Precipitation alone carries no
+  consistent lean, so the moisture lean came from the temperature-derived channels: DESK's space-for-time error is
+  its THERMAL reading.
+  CONSEQUENCE (likely; E035f testing it on production): fertilizer and irrigation are flat from 1902 to ~1950 (0-2
+  kg/ha of fertilizer on C3 annual crops until 1950, 77 by 2025), so the clock DESK reads stops before 1950 --
+  probably why production's backcast stops changing around 1960, and why it can say little about 1902-1939 change.
+  A 40-place code check on production already shows the pattern (freezing fertilizer + irrigation at 1950 removes
+  most of DESK's movement since; freezing temperature or the class fractions removes little).
   This is the first concrete target for extending extrapolation: a backcast in which temperature does not drive change.
   Training-time version running (E038): DESK retrained with each place's temperature held at its own 1966-2025
   average (temperature can say where a place is, not when), four runs, ~5 GPU-hours.

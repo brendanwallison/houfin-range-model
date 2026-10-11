@@ -42,6 +42,9 @@ def main():
     ap.add_argument("--bioclim-dir", default=None,
                     help="E039c: research/exp/bioclim.py output for this cache (19 BIOCLIM + 12 LUH classes, same EMA)")
     ap.add_argument("--quadratic", action="store_true", help="E039d: add bioclim + squared terms (+ LUH classes)")
+    ap.add_argument("--nbr", default=None,
+                    help="E039e: nbr_covariates.py F_nbr.npy -- covariate PCs of each cell's own AND its 5x5 neighbourhood "
+                         "covariates (DESK's spatial context)")
     ap.add_argument("--summarize", default=None)
     a = ap.parse_args()
     if a.summarize:
@@ -68,6 +71,11 @@ def main():
     P_all = covariate_design(F, tr_all, F.shape[1])            # PCA on all training rows (unsupervised)
     reps = {"desk_raw_r24": Zr[:, :24], "desk_raw_r64": Zr[:, :64],
             "cov_pc24": P_all[:, :24], "cov_pc64": P_all[:, :64], "cov_pc_all": P_all}
+    if a.nbr:
+        Fn = np.asarray(np.load(a.nbr), "float64")
+        Fn = np.where(np.isfinite(Fn), Fn, 0.0)
+        P_ctx = covariate_design(np.column_stack([F, Fn]), tr_all, 2 * F.shape[1])
+        reps.update({"cov_ctx_pc24": P_ctx[:, :24], "cov_ctx_pc64": P_ctx[:, :64], "cov_ctx_pc_all": P_ctx})
     if a.bioclim_dir:
         # the standard SDM inputs: 19 BIOCLIM (+ the 12 LUH class fractions), standardized on training rows; matched-N
         # (19) versions of desk and the covariate PCs for an exact comparison
@@ -110,7 +118,8 @@ def summarize(out):
     tier = np.asarray(r["tier"])
     first = next(iter(r["runs"].values()))["skill"]
     names = [n for n in ["desk_raw_r19", "desk_raw_r24", "desk_raw_r64", "cov_pc19", "cov_pc24", "cov_pc64", "cov_pc_all",
-                         "bioclim19", "bioclim19_luh12", "bioclim19_quad", "bioclim19_quad_luh12"] if n in first]
+                         "bioclim19", "bioclim19_luh12", "bioclim19_quad", "bioclim19_quad_luh12",
+                         "cov_ctx_pc24", "cov_ctx_pc64", "cov_ctx_pc_all"] if n in first]
     print(f"{os.path.basename(os.path.normpath(r['cache']))}: {r['n_species']} dev species, tiers (prevalence) "
           f"{[f'{lo:.0%}-{hi:.0%}' for lo, hi in r['tier_edges']]} n={r['tier_counts']}; covariate PCs (all) "
           f"{r['n_cov_pcs_all']}; held-out rows {r['n_test']:,}")
@@ -127,7 +136,9 @@ def summarize(out):
                         ("desk_raw_r64", "cov_pc64"), ("desk_raw_r19", "bioclim19"), ("cov_pc19", "bioclim19"),
                         ("desk_raw_r24", "bioclim19_luh12"), ("bioclim19_luh12", "bioclim19"),
                         ("desk_raw_r24", "bioclim19_quad"), ("desk_raw_r24", "bioclim19_quad_luh12"),
-                        ("bioclim19_quad", "bioclim19")):
+                        ("bioclim19_quad", "bioclim19"), ("desk_raw_r24", "cov_ctx_pc24"),
+                        ("desk_raw_r64", "cov_ctx_pc64"), ("desk_raw_r24", "cov_ctx_pc_all"),
+                        ("cov_ctx_pc24", "cov_pc24")):
             if d not in S or cmp_ not in S:
                 continue
             D = S[d] - S[cmp_]

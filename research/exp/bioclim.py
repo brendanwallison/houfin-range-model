@@ -63,6 +63,8 @@ def main():
     ap.add_argument("--cache")
     ap.add_argument("--out")
     ap.add_argument("--start", type=int, default=1940)
+    ap.add_argument("--no-ema", action="store_true",
+                    help="each year's own values, no output EMA -- matched to the raw-z arm and F_cov_raw (E039e fix)")
     a = ap.parse_args()
     from src.config_utils import load_config
     from src.community_encoder.train_DESK import covariate_io as cio
@@ -72,7 +74,7 @@ def main():
     schema = cio.load_schema(states_dir)
     meta = json.load(open(os.path.join(a.cache, "meta.json"), encoding="utf-8"))
     hl = float(meta["ema"]["ema_half_life"])
-    alpha = 1.0 - 2.0 ** (-1.0 / hl)
+    alpha = 1.0 if a.no_ema else 1.0 - 2.0 ** (-1.0 / hl)   # alpha 1: the EMA is just the current year
     keys = np.load(os.path.join(a.cache, "keys.npy"))
     cells, kc = np.unique(keys[:, :2], axis=0, return_inverse=True)
     kc = kc.ravel()
@@ -106,7 +108,7 @@ def main():
                   flush=True)
     np.save(os.path.join(a.out, "bioclim_ema.npy"), out_b.astype("float32"))
     np.save(os.path.join(a.out, "luh_classes_ema.npy"), out_l.astype("float32"))
-    json.dump({"cache": a.cache, "half_life": hl, "start": a.start, "names": BIO_NAMES, "luh": list(LUH_CLASSES),
+    json.dump({"cache": a.cache, "half_life": None if a.no_ema else hl, "start": a.start, "names": BIO_NAMES, "luh": list(LUH_CLASSES),
                "finite_share": float(np.isfinite(out_b).all(1).mean())},
               open(os.path.join(a.out, "bioclim_meta.json"), "w", encoding="utf-8"), indent=1)
     print(f"[bioclim] {len(keys):,} keys, finite share {np.isfinite(out_b).all(1).mean():.3f}", flush=True)

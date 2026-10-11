@@ -1,7 +1,7 @@
 # DIGEST
 
 ## CURRENT STATE (rewritten each round; read this first -- the dated log below keeps the history)
-Last updated 2026-10-11 12:00 (E039g/h: DESK's network matters in time, not space; E043 over-sampling running). "Solid" =
+Last updated 2026-10-11 12:20 (E039h's interpretation suspended by a skeptic, E039i testing fair rivals; E043 running). "Solid" =
 independently re-derived, replicated on a second split or seed, and survived a skeptic review. "Tentative" = one run,
 or checks still pending. Experiment numbers point to research/experiments/EXXX.md.
 
@@ -16,11 +16,11 @@ WHERE THINGS STAND (2026-10-11 ~11:00, plain summary; details below)
    covariates (the 24 linear combinations that best predict the community coordinates DESK is trained on) nearly
    matches DESK spatially -- DESK leads it by only 0.00-0.02 at 24 dims and 0.01-0.03 at 64; robust to leaving out
    any held-out block and to fitting the readout on places DESK never trained on.
-   BUT IN TIME (E039h, two seeds, two start years, both training states): the same linear map backcasts community
-   change far worse than DESK -- match with real change 0.09-0.11 vs DESK's 0.22-0.37 (DESK ahead by +0.13 to +0.27,
-   every CI far from 0). WHY (likely): DESK's real temporal signal is a near-uniform trend turned into place-specific
-   change; a linear map moves every place the same way under a uniform shift and cannot express that interaction.
-   So DESK's network earns its place in TIME, not space.
+   IN TIME (E039h): that same pooled linear map backcasts community change far worse than DESK. Its match with real
+   change is 0.09-0.11 against DESK's 0.22-0.37, two seeds. CORRECTION (skeptic, 12:10): that map is a straw man,
+   because fitted across places it is pure space-for-time. E016 had already found that a FAIR linear map, with
+   separate coefficients for change within a place, matches or beats DESK in time. "DESK's network earns its place
+   in time" is therefore SUSPENDED; E039i is testing the fair rivals on the same cells.
    Implication for the downstream (not a decision now): DESK's 64 dimensions beat its 24 by ~0.02-0.04.
 2. DESK's TEMPORAL signal: after 1950 it is mostly the land-use management trend (fertilizer, irrigation) -- partly
    real intensification (it scales with cropland), partly a clock; that trend is flat before 1950. DESK still moves

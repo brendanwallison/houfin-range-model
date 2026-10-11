@@ -1,0 +1,232 @@
+"""E039i: does DESK beat FAIR linear rivals in time, or only the pooled (space-for-time) map E039h used?
+
+    python research/exp/fair_rivals.py --cache <tempho research cache> --out <dir> [--rank 24]
+    python research/exp/fair_rivals.py --summarize <dir>
+
+Same estimand, cells, truth halves and bootstrap draws as rrr_backcast.py (E039h): held-out cells' community change
+between the withheld early epoch (1966-86) and 2005-25, noise-free centred corr with the observed ESK change (r24,
+ABBA halves), pooled over dimensions. Every map is fitted on the same rows (training cells x trained years, finite);
+cell means are over a cell's trained-year rows. Arms:
+  desk            raw z (z_raw_all), as E039h
+  pooled_ridge    E039h's linear map (standardized F_cov_raw, ridge) -- reproduction
+  pooled_blr      one BLR coefficient set on 64 PCs (E016's pooled)
+  within_raw      Mundlak within-cell block on 64 PCs of F_cov_raw (each year's state, no output EMA, as raw z)
+  within_ema      the same on F_cov (output-EMA'd covariates, as E016)
+  placebo_300/600 no covariates: position RFF fields x (year - cell mean year), fitted on within-cell ESK deviations
+  kindxtime_8/32  "kind of place x time": [1, top-k PCs of the cell's mean covariates] x (year - cell mean year),
+                  fitted on within-cell ESK deviations -- a LINEAR model of the mechanism E039h proposed
+  desk_within     DESK's own raw z deviations -> ESK deviations (within-cell BLR), applied to DESK's change
+  desk_pooled     DESK's raw z -> ESK through one pooled BLR (the readout form the age model uses)
+Also per-dimension mean corr (M28: a pooled corr can net out signals of both signs) and a SPATIAL level check on the
+same metric family: held-out cells x trained years, pooled-readout predictions of ESK r24 (desk_pooled vs pooled_ridge).
+"""
+import argparse
+import json
+import os
+import sys
+
+import numpy as np
+
+_HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, _HERE)
+sys.path.insert(0, os.path.dirname(_HERE))
+sys.path.insert(0, os.path.dirname(os.path.dirname(_HERE)))
+
+
+def wc(x, y, w):
+    xm = (w[:, None] * x).sum(0) / w.sum()
+    ym = (w[:, None] * y).sum(0) / w.sum()
+    return (w[:, None] * (x - xm) * (y - ym)).sum(0)
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    ap.add_argument("--cache")
+    ap.add_argument("--out")
+    ap.add_argument("--rank", type=int, default=24)
+    ap.add_argument("--n-pcs", type=int, default=64)
+    ap.add_argument("--n-boot", type=int, default=1000)
+    ap.add_argument("--summarize", default=None)
+    a = ap.parse_args()
+    if a.summarize:
+        return summarize(a.summarize)
+    os.environ.setdefault("CUDA_VISIBLE_DEVICES", "")
+    from scipy import sparse
+    from change_oracle import desk_epoch_z, group_rows
+    from lib import blr
+    os.makedirs(a.out, exist_ok=True)
+    c = lambda f: os.path.join(a.cache, f)
+    keys = np.load(c("keys.npy"))
+    N = len(keys)
+    split = np.load(c("split.npz"))
+    withheld = [int(y) for y in split["withheld"]]
+    r = a.rank
+    E, full, half_a, half_b = group_rows(a.cache, keys, withheld)
+    idx = {}
+    for j, (cell, ep, wh) in enumerate(zip(map(tuple, E["cells"]), E["epoch"], E["withheld"])):
+        if ep == 0 and bool(wh):
+            idx.setdefault(cell, [None, None])[0] = j
+        elif ep == 1 and not wh:
+            idx.setdefault(cell, [None, None])[1] = j
+    pairs = np.array([(e, m) for e, m in idx.values() if e is not None and m is not None])
+    cells = E["cells"][pairs[:, 0]]
+    held = split["holdout"][cells[:, 0], cells[:, 1]]
+    ev = np.where(held)[0]
+    Za, Zb = E["z_a"][:, :r].astype("float64"), E["z_b"][:, :r].astype("float64")
+    Ta = (Za[pairs[:, 1]] - Za[pairs[:, 0]])[ev]
+    Tb = (Zb[pairs[:, 1]] - Zb[pairs[:, 0]])[ev]
+    early_rows = [np.asarray(full[pairs[j, 0]]) for j in ev]
+    mod_rows = [np.asarray(full[pairs[j, 1]]) for j in ev]
+    zr_all = np.load(c("z_raw_all.npy"), mmap_mode="r")
+    ci_, y0 = np.load(c("key_cell_index.npy")), int(np.load(c("years.npy"))[0])
+    D_desk = (desk_epoch_z(zr_all, ci_, y0, keys, mod_rows, r) - desk_epoch_z(zr_all, ci_, y0, keys, early_rows, r))
+
+    def gmat(groups):
+        rows = np.concatenate([np.full(len(g), i) for i, g in enumerate(groups)])
+        cols = np.concatenate([np.asarray(g, int) for g in groups])
+        vals = np.concatenate([np.full(len(g), 1.0 / len(g)) for g in groups])
+        return sparse.csr_matrix((vals, (rows, cols)), shape=(len(groups), N))
+    Ge, Gm = gmat(early_rows), gmat(mod_rows)
+    dchg = lambda X: np.asarray(Gm @ np.asarray(X, "float64")) - np.asarray(Ge @ np.asarray(X, "float64"))
+
+    # rows (E039h's): training cells x trained years, finite covariates and ESK
+    F_raw = np.asarray(np.load(c("F_cov_raw.npy"), mmap_mode="r"), "float64")
+    Eann = np.load(c("esk_annual.npy")).astype("float64")
+    yr = keys[:, 2].astype("float64")
+    ho = split["holdout"][keys[:, 0], keys[:, 1]]
+    bf = split["buffer"][keys[:, 0], keys[:, 1]]
+    ty = ~np.isin(keys[:, 2], withheld)
+    trn_mask = ~ho & ~bf & ty & np.isfinite(F_raw).all(1) & np.isfinite(Eann).all(1)
+    trn = np.where(trn_mask)[0]
+    Z = Eann[:, :r]
+    cid = keys[:, 0].astype(np.int64) * 100000 + keys[:, 1]
+    uc, inv = np.unique(cid, return_inverse=True)
+    w_ty = (ty & np.isfinite(Eann).all(1)).astype(float)
+
+    def cmean(X, w):
+        S = sparse.csr_matrix((w, (inv, np.arange(N))), shape=(len(uc), N))
+        cnt = np.asarray(S.sum(1)).ravel()
+        return (np.asarray(S @ X) / np.maximum(cnt, 1e-12)[:, None])[inv]
+
+    def std(F):
+        mu, sd = F[trn].mean(0), F[trn].std(0)
+        keep = sd > 1e-6
+        return np.where(np.isfinite(F[:, keep]), (F[:, keep] - mu[keep]) / sd[keep], 0.0)
+
+    def pcs(S, n):
+        _, _, Vt = np.linalg.svd(S[trn][:: max(1, len(trn) // 40000)] - S[trn].mean(0), full_matrices=False)
+        return S @ Vt[:n].T
+
+    preds, notes = {"desk": D_desk}, {}
+    # E039h's pooled ridge, reproduced exactly
+    X = std(F_raw)
+    Xc, Yc = X[trn] - X[trn].mean(0), Eann[trn, :64] - Eann[trn, :64].mean(0)
+    lam = 1e-3 * np.trace(Xc.T @ Xc) / Xc.shape[1]
+    B = np.linalg.solve(Xc.T @ Xc + lam * np.eye(Xc.shape[1]), Xc.T @ Yc)
+    preds["pooled_ridge"] = (dchg(X) @ B)[:, :r]
+    Zbar = cmean(Z, w_ty)
+    Zd = Z - Zbar
+    t = yr - cmean(yr[:, None], w_ty)[:, 0]
+    dyr = dchg(yr[:, None])[:, 0]
+    k = a.n_pcs
+    for tag, fname in (("raw", "F_cov_raw.npy"), ("ema", "F_cov.npy")):
+        F = F_raw if tag == "raw" else np.asarray(np.load(c(fname), mmap_mode="r"), "float64")
+        P = pcs(std(F), k)
+        Pbar = cmean(P, w_ty)
+        mm = blr.fit(np.hstack([Pbar, P - Pbar])[trn], Z[trn], [(0, k), (k, 2 * k)])
+        dP = dchg(P)
+        preds[f"within_{tag}"] = dP @ mm["coef"][:, k:].T
+        notes[f"within_{tag}_amp_b_w"] = [float(np.median(mm["a"][:, 0])), float(np.median(mm["a"][:, 1]))]
+        if tag == "raw":
+            preds["pooled_blr"] = dP @ blr.fit(P[trn], Z[trn], [(0, k)])["coef"].T
+            # kind of place x time: cell-mean covariate PCs x (year - cell mean year), on within-cell deviations
+            Pbar_ev = np.asarray(Gm @ Pbar)                       # constant within a cell
+            for kk in (8, 32):
+                KT = np.hstack([t[:, None], Pbar[:, :kk] * t[:, None]]) / 10.0
+                g = blr.fit(KT[trn], Zd[trn], [(0, 1), (1, kk + 1)])["coef"].T
+                preds[f"kindxtime_{kk}"] = (np.hstack([np.ones((len(ev), 1)), Pbar_ev[:, :kk]])
+                                            * (dyr / 10.0)[:, None]) @ g
+    # placebo: position x time, no covariates
+    cev = cells[ev].astype(float) * 27.0
+    for ell in (300.0, 600.0):
+        rg = np.random.default_rng(1)
+        m = 24
+        om, ph = rg.normal(size=(2, m)) / ell, rg.uniform(0, 2 * np.pi, m)
+        R = np.sqrt(2.0 / m) * np.cos(keys[:, :2].astype(float) * 27.0 @ om + ph)
+        b_pl = blr.fit((R * (t / 10.0)[:, None])[trn], Zd[trn], [(0, m)])["coef"].T
+        Rc = np.sqrt(2.0 / m) * np.cos(cev @ om + ph)
+        preds[f"placebo_{ell:.0f}"] = (Rc * (dyr / 10.0)[:, None]) @ b_pl
+    # DESK through linear readouts fitted on the same rows (z_raw at keys)
+    zk = np.asarray(np.load(c("z_raw.npy"), mmap_mode="r")[:, :r], "float64")
+    dz = dchg(zk)
+    notes["desk_keys_vs_epoch_z_maxabs"] = float(np.abs(dz - D_desk).max())
+    preds["desk_within"] = dz @ blr.fit((zk - cmean(zk, w_ty))[trn], Zd[trn], [(0, r)])["coef"].T
+    m_dp = blr.fit(zk[trn], Z[trn], [(0, r)])
+    preds["desk_pooled"] = dz @ m_dp["coef"].T
+
+    # grading (E039h's estimand and bootstrap draws)
+    blk = (cells[ev, 0] // 6) * 100000 + cells[ev, 1] // 6
+    ub, binv = np.unique(blk, return_inverse=True)
+    rng = np.random.default_rng(11)
+    W = np.vstack([np.ones(len(ev)), rng.multinomial(len(ub), np.full(len(ub), 1.0 / len(ub)), size=a.n_boot)[:, binv]])
+
+    def grade(D, w):
+        vp, vt = wc(D, D, w), wc(Ta, Tb, w)
+        cv = 0.5 * (wc(D, Ta, w) + wc(D, Tb, w))
+        corr = cv.sum() / np.sqrt(vp.sum() * vt.sum()) if vp.sum() > 0 and vt.sum() > 0 else np.nan
+        ok = (vt > 0) & (vp > 0)
+        per_dim = float(np.mean(cv[ok] / np.sqrt(vp[ok] * vt[ok]))) if ok.any() else np.nan
+        return corr, (cv.sum() / vp.sum() if vp.sum() > 0 else np.nan), per_dim
+    res = {"cache": a.cache, "n_cells": int(len(ev)), "rank": r, "withheld": [min(withheld), max(withheld)],
+           "n_fit_rows": int(len(trn)), "notes": notes, "models": {}}
+    boots = {}
+    for name, D in preds.items():
+        g = np.array([grade(D, w) for w in W])
+        boots[name] = g[:, 0]
+        res["models"][name] = {"corr": float(g[0, 0]), "k": float(g[0, 1]), "per_dim_corr": float(g[0, 2]),
+                               "corr_ci": [float(np.nanpercentile(g[1:, 0], q)) for q in (2.5, 97.5)]}
+    for name in preds:
+        if name != "desk":
+            d = boots["desk"] - boots[name]
+            res["models"][name]["desk_minus_corr"] = float(d[0])
+            res["models"][name]["desk_minus_ci"] = [float(np.nanpercentile(d[1:], q)) for q in (2.5, 97.5)]
+
+    # spatial level on the same metric family: held-out cells x trained years, pooled readouts of ESK r24
+    lev = np.where(ho & ty & np.isfinite(F_raw).all(1) & np.isfinite(Eann).all(1))[0]
+    lv = {"desk_pooled": (zk[lev] - m_dp["xbar"]) @ m_dp["coef"].T,
+          "pooled_ridge": ((X[lev] - X[trn].mean(0)) @ B)[:, :r]}
+    lblk = (keys[lev, 0] // 6) * 100000 + keys[lev, 1] // 6
+    lub, linv = np.unique(lblk, return_inverse=True)
+    rng = np.random.default_rng(12)
+    LW = np.vstack([np.ones(len(lev)), rng.multinomial(len(lub), np.full(len(lub), 1.0 / len(lub)),
+                                                       size=a.n_boot)[:, linv]])
+    lcorr = lambda p, w: float(wc(p, Z[lev], w).sum() / np.sqrt(wc(p, p, w).sum() * wc(Z[lev], Z[lev], w).sum()))
+    lb = {n: np.array([lcorr(p, w) for w in LW]) for n, p in lv.items()}
+    dl = lb["desk_pooled"] - lb["pooled_ridge"]
+    res["space_level"] = {"n_rows": int(len(lev)),
+                          **{n: float(v[0]) for n, v in lb.items()},
+                          "desk_minus_linear": float(dl[0]),
+                          "desk_minus_linear_ci": [float(np.percentile(dl[1:], q)) for q in (2.5, 97.5)]}
+    with open(os.path.join(a.out, "fair_rivals.json"), "w", encoding="utf-8") as fh:
+        json.dump(res, fh, indent=1)
+    summarize(a.out)
+
+
+def summarize(out):
+    r = json.load(open(os.path.join(out, "fair_rivals.json"), encoding="utf-8"))
+    print(f"{os.path.basename(os.path.normpath(r['cache']))}: {r['n_cells']} held-out cells, withheld {r['withheld']}, "
+          f"r{r['rank']}, {r['n_fit_rows']:,} fit rows; desk keys-vs-epoch max|diff| "
+          f"{r['notes']['desk_keys_vs_epoch_z_maxabs']:.2g}")
+    for name, v in r["models"].items():
+        extra = (f" | desk - it {v['desk_minus_corr']:+.3f} [{v['desk_minus_ci'][0]:+.3f},{v['desk_minus_ci'][1]:+.3f}]"
+                 if "desk_minus_corr" in v else "")
+        print(f"  {name:13s} corr {v['corr']:+.3f} [{v['corr_ci'][0]:+.3f},{v['corr_ci'][1]:+.3f}] k {v['k']:5.2f} "
+              f"per-dim {v['per_dim_corr']:+.3f}" + extra)
+    s = r["space_level"]
+    print(f"  SPACE level ({s['n_rows']:,} held-out rows, trained years): desk_pooled {s['desk_pooled']:+.3f} "
+          f"pooled_ridge {s['pooled_ridge']:+.3f}; desk - linear {s['desk_minus_linear']:+.3f} "
+          f"[{s['desk_minus_linear_ci'][0]:+.3f},{s['desk_minus_linear_ci'][1]:+.3f}]")
+
+
+if __name__ == "__main__":
+    main()

@@ -19,6 +19,11 @@ cell means are over a cell's trained-year rows. Arms:
   desk_pooled     DESK's raw z -> ESK through one pooled BLR (the readout form the age model uses)
 Also per-dimension mean corr (M28: a pooled corr can net out signals of both signs) and a SPATIAL level check on the
 same metric family: held-out cells x trained years, pooled-readout predictions of ESK r24 (desk_pooled vs pooled_ridge).
+E039j (--incremental): content BEYOND the trend placebo -- placebo_300 + X fitted jointly on within-cell ESK deviations
+(two iid blocks), X = DESK z deviations / F_cov_raw PC deviations / kind-x-time features; gain = combo - placebo on the
+same draws. And the LOCAL part of change: truth and every prediction minus their leave-one-out Gaussian-weighted
+average over the other held-out cells (150 and 300 km), so a regional trend scores ~0 and only place-specific change
+counts.
 """
 import argparse
 import json
@@ -47,6 +52,7 @@ def main():
     ap.add_argument("--n-pcs", type=int, default=64)
     ap.add_argument("--n-boot", type=int, default=1000)
     ap.add_argument("--summarize", default=None)
+    ap.add_argument("--incremental", action="store_true", help="E039j: gains beyond the placebo, local change")
     a = ap.parse_args()
     if a.summarize:
         return summarize(a.summarize)
@@ -129,6 +135,7 @@ def main():
     t = yr - cmean(yr[:, None], w_ty)[:, 0]
     dyr = dchg(yr[:, None])[:, 0]
     k = a.n_pcs
+    keep_feats = {}
     for tag, fname in (("raw", "F_cov_raw.npy"), ("ema", "F_cov.npy")):
         F = F_raw if tag == "raw" else np.asarray(np.load(c(fname), mmap_mode="r"), "float64")
         P = pcs(std(F), k)
@@ -138,14 +145,16 @@ def main():
         preds[f"within_{tag}"] = dP @ mm["coef"][:, k:].T
         notes[f"within_{tag}_amp_b_w"] = [float(np.median(mm["a"][:, 0])), float(np.median(mm["a"][:, 1]))]
         if tag == "raw":
+            keep_feats["within_raw"] = (P - Pbar, dP)
             preds["pooled_blr"] = dP @ blr.fit(P[trn], Z[trn], [(0, k)])["coef"].T
             # kind of place x time: cell-mean covariate PCs x (year - cell mean year), on within-cell deviations
             Pbar_ev = np.asarray(Gm @ Pbar)                       # constant within a cell
             for kk in (8, 32):
                 KT = np.hstack([t[:, None], Pbar[:, :kk] * t[:, None]]) / 10.0
                 g = blr.fit(KT[trn], Zd[trn], [(0, 1), (1, kk + 1)])["coef"].T
-                preds[f"kindxtime_{kk}"] = (np.hstack([np.ones((len(ev), 1)), Pbar_ev[:, :kk]])
-                                            * (dyr / 10.0)[:, None]) @ g
+                KT_ev = np.hstack([np.ones((len(ev), 1)), Pbar_ev[:, :kk]]) * (dyr / 10.0)[:, None]
+                preds[f"kindxtime_{kk}"] = KT_ev @ g
+                keep_feats[f"kindxtime_{kk}"] = (KT, KT_ev)
     # placebo: position x time, no covariates
     cev = cells[ev].astype(float) * 27.0
     for ell in (300.0, 600.0):
@@ -156,11 +165,22 @@ def main():
         b_pl = blr.fit((R * (t / 10.0)[:, None])[trn], Zd[trn], [(0, m)])["coef"].T
         Rc = np.sqrt(2.0 / m) * np.cos(cev @ om + ph)
         preds[f"placebo_{ell:.0f}"] = (Rc * (dyr / 10.0)[:, None]) @ b_pl
+        keep_feats[f"placebo_{ell:.0f}"] = (R * (t / 10.0)[:, None], Rc * (dyr / 10.0)[:, None])
     # DESK through linear readouts fitted on the same rows (z_raw at keys)
     zk = np.asarray(np.load(c("z_raw.npy"), mmap_mode="r")[:, :r], "float64")
     dz = dchg(zk)
     notes["desk_keys_vs_epoch_z_maxabs"] = float(np.abs(dz - D_desk).max())
     preds["desk_within"] = dz @ blr.fit((zk - cmean(zk, w_ty))[trn], Zd[trn], [(0, r)])["coef"].T
+    keep_feats["desk_within"] = (zk - cmean(zk, w_ty), dz)
+    incr = {}
+    if a.incremental:
+        PL, PLev = keep_feats["placebo_300"]
+        for nm in ("desk_within", "within_raw", "kindxtime_8"):
+            Xf, Xev = keep_feats[nm]
+            q = PL.shape[1]
+            b = blr.fit(np.hstack([PL, Xf])[trn], Zd[trn], [(0, q), (q, q + Xf.shape[1])])["coef"].T
+            incr[f"placebo+{nm}"] = np.hstack([PLev, Xev]) @ b
+        preds.update(incr)
     m_dp = blr.fit(zk[trn], Z[trn], [(0, r)])
     preds["desk_pooled"] = dz @ m_dp["coef"].T
 
@@ -191,6 +211,39 @@ def main():
             res["models"][name]["desk_minus_corr"] = float(d[0])
             res["models"][name]["desk_minus_ci"] = [float(np.nanpercentile(d[1:], q)) for q in (2.5, 97.5)]
 
+    if a.incremental:
+        for nm in incr:
+            d = boots[nm] - boots["placebo_300"]
+            res["models"][nm]["minus_placebo"] = float(d[0])
+            res["models"][nm]["minus_placebo_ci"] = [float(np.nanpercentile(d[1:], q)) for q in (2.5, 97.5)]
+        xy = cells[ev].astype(float) * 27.0
+        D2 = ((xy[:, None, :] - xy[None, :, :]) ** 2).sum(-1)
+        res["local"] = {}
+        for ell in (150.0, 300.0):
+            K = np.exp(-D2 / (2 * ell ** 2))
+            np.fill_diagonal(K, 0.0)
+            K /= np.maximum(K.sum(1, keepdims=True), 1e-300)
+            loc = lambda v: v - K @ v
+            La, Lb = loc(Ta), loc(Tb)
+            share = float(wc(La, Lb, W[0]).sum() / wc(Ta, Tb, W[0]).sum())
+
+            def lgrade(D, w):
+                Dl = loc(D)
+                vp, vt = wc(Dl, Dl, w).sum(), wc(La, Lb, w).sum()
+                cv = 0.5 * (wc(Dl, La, w).sum() + wc(Dl, Lb, w).sum())
+                return cv / np.sqrt(vp * vt) if vp > 0 and vt > 0 else np.nan
+            out = {"truth_local_share": share, "models": {}}
+            lb_ = {}
+            for nm in ("desk", "desk_within", "within_raw", "kindxtime_8", "placebo_300", "pooled_ridge") + tuple(incr):
+                g = np.array([lgrade(preds[nm], w) for w in W])
+                lb_[nm] = g
+                out["models"][nm] = {"corr": float(g[0]),
+                                     "ci": [float(np.nanpercentile(g[1:], q)) for q in (2.5, 97.5)]}
+            for nm in ("within_raw", "kindxtime_8", "placebo_300"):
+                d = lb_["desk"] - lb_[nm]
+                out["models"][nm]["desk_minus"] = float(d[0])
+                out["models"][nm]["desk_minus_ci"] = [float(np.nanpercentile(d[1:], q)) for q in (2.5, 97.5)]
+            res["local"][f"{ell:.0f}"] = out
     # spatial level on the same metric family: held-out cells x trained years, pooled readouts of ESK r24
     lev = np.where(ho & ty & np.isfinite(F_raw).all(1) & np.isfinite(Eann).all(1))[0]
     lv = {"desk_pooled": (zk[lev] - m_dp["xbar"]) @ m_dp["coef"].T,
@@ -207,21 +260,32 @@ def main():
                           **{n: float(v[0]) for n, v in lb.items()},
                           "desk_minus_linear": float(dl[0]),
                           "desk_minus_linear_ci": [float(np.percentile(dl[1:], q)) for q in (2.5, 97.5)]}
-    with open(os.path.join(a.out, "fair_rivals.json"), "w", encoding="utf-8") as fh:
+    with open(os.path.join(a.out, "fair_rivals_incr.json" if a.incremental else "fair_rivals.json"), "w",
+              encoding="utf-8") as fh:
         json.dump(res, fh, indent=1)
     summarize(a.out)
 
 
 def summarize(out):
-    r = json.load(open(os.path.join(out, "fair_rivals.json"), encoding="utf-8"))
+    fn = "fair_rivals_incr.json" if os.path.exists(os.path.join(out, "fair_rivals_incr.json")) else "fair_rivals.json"
+    r = json.load(open(os.path.join(out, fn), encoding="utf-8"))
     print(f"{os.path.basename(os.path.normpath(r['cache']))}: {r['n_cells']} held-out cells, withheld {r['withheld']}, "
           f"r{r['rank']}, {r['n_fit_rows']:,} fit rows; desk keys-vs-epoch max|diff| "
           f"{r['notes']['desk_keys_vs_epoch_z_maxabs']:.2g}")
     for name, v in r["models"].items():
         extra = (f" | desk - it {v['desk_minus_corr']:+.3f} [{v['desk_minus_ci'][0]:+.3f},{v['desk_minus_ci'][1]:+.3f}]"
                  if "desk_minus_corr" in v else "")
+        if "minus_placebo" in v:
+            extra += (f" | - placebo_300 {v['minus_placebo']:+.3f} [{v['minus_placebo_ci'][0]:+.3f},"
+                      f"{v['minus_placebo_ci'][1]:+.3f}]")
         print(f"  {name:13s} corr {v['corr']:+.3f} [{v['corr_ci'][0]:+.3f},{v['corr_ci'][1]:+.3f}] k {v['k']:5.2f} "
               f"per-dim {v['per_dim_corr']:+.3f}" + extra)
+    for ell, o in r.get("local", {}).items():
+        print(f"  LOCAL {ell} km (truth's noise-free change energy that is local: {o['truth_local_share']:.2f})")
+        for nm, v in o["models"].items():
+            extra = (f" | desk - it {v['desk_minus']:+.3f} [{v['desk_minus_ci'][0]:+.3f},{v['desk_minus_ci'][1]:+.3f}]"
+                     if "desk_minus" in v else "")
+            print(f"    {nm:24s} corr {v['corr']:+.3f} [{v['ci'][0]:+.3f},{v['ci'][1]:+.3f}]" + extra)
     s = r["space_level"]
     print(f"  SPACE level ({s['n_rows']:,} held-out rows, trained years): desk_pooled {s['desk_pooled']:+.3f} "
           f"pooled_ridge {s['pooled_ridge']:+.3f}; desk - linear {s['desk_minus_linear']:+.3f} "

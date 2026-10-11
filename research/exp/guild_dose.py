@@ -52,6 +52,8 @@ def main():
     ap.add_argument("--summarize", default=None)
     ap.add_argument("--pooled", action="store_true", help="E049b: one shared map per guild and arm")
     ap.add_argument("--rival-all", action="store_true", help="E049c: all-covariate rival + moved-CropAT null")
+    ap.add_argument("--aux", default=None, help="E050: npz from aux_covariates.py; its --aux-key channels replace CropAT")
+    ap.add_argument("--aux-key", default=None, help="forest | crp")
     a = ap.parse_args()
     if a.summarize:
         return summarize(a.summarize)
@@ -118,6 +120,16 @@ def main():
         Lall[s_] = z["landuse"][keys[s_, 0], keys[s_, 1], :33]
     Lall = np.nan_to_num(Lall, nan=0.0)
     dC, dL = chg(Ck, "full"), chg(Lall, "full")
+    aux_label = "cropat11"
+    if a.aux:
+        za = np.load(a.aux)
+        ay = za["years"].astype(int)
+        amap = {int(y): i for i, y in enumerate(ay)}
+        ai = np.array([amap[min(max(int(y), int(ay.min())), int(ay.max()))] for y in yr])
+        arr = za[a.aux_key]
+        Aux = arr[ai, :, keys[:, 0], keys[:, 1]] if arr.ndim == 4 else arr[ai, keys[:, 0], keys[:, 1]][:, None]
+        dC = chg(np.nan_to_num(Aux.astype("float64"), nan=0.0), "full")     # replaces CropAT in every arm
+        aux_label = a.aux_key
     feats = {"cropat11": dC, "luh_crop5": dL[:, :5], "luh33": dL, "luh33+cropat11": np.hstack([dL, dC])}
     # type basis
     F = np.asarray(np.load(c("F_cov_raw.npy"), mmap_mode="r"), "float64")
@@ -157,7 +169,7 @@ def main():
     rng = np.random.default_rng(11)
     Wev = np.vstack([np.ones(len(ev)), rng.multinomial(len(ub), np.full(len(ub), 1.0 / len(ub)),
                                                        size=a.n_boot)[:, binv]]).astype("float64")
-    res = {"cache": a.cache, "n_species": len(codes), "habitat_counts": {}, "modes": {}}
+    res = {"cache": a.cache, "n_species": len(codes), "habitat_counts": {}, "modes": {}, "aux": aux_label}
     for g in GUILDS:
         res["habitat_counts"][g] = int((hab == g).sum())
     for mode in ("type", "type+kloc"):
@@ -297,20 +309,24 @@ def main():
         res["modes"][mode] = out
     res["pooled"], res["rival_all"], res["arms"] = bool(a.pooled), bool(a.rival_all), arm_list
     fn = "guild_dose_rival.json" if a.rival_all else ("guild_dose_pooled.json" if a.pooled else "guild_dose.json")
+    if a.aux:
+        fn = fn.replace(".json", f"_{aux_label}.json")
     with open(os.path.join(a.out, fn), "w", encoding="utf-8") as fh:
         json.dump(res, fh, indent=1)
     summarize(a.out)
 
 
 def summarize(out):
-    for fn in ("guild_dose.json", "guild_dose_pooled.json", "guild_dose_rival.json"):
+    import glob
+    for fn in sorted(os.path.basename(f) for f in glob.glob(os.path.join(out, "guild_dose*.json"))):
         if os.path.exists(os.path.join(out, fn)):
             print(f"== {fn}")
             _summ(json.load(open(os.path.join(out, fn), encoding="utf-8")))
 
 
 def _summ(r):
-    print(f"{os.path.basename(os.path.normpath(r['cache']))}: {r['n_species']} species; habitats {r['habitat_counts']}")
+    print(f"{os.path.basename(os.path.normpath(r['cache']))}: {r['n_species']} species; habitats {r['habitat_counts']}; "
+          f"tested covariate: {r.get('aux', 'cropat11')} (labelled 'CropAT' in the arm names)")
     for mode, o in r["modes"].items():
         print(f"  [{mode}]")
         for g in GUILDS:

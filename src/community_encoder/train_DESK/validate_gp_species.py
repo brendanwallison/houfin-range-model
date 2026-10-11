@@ -719,6 +719,15 @@ COV_REPAIRED = {"n_pcs": 32, "n_lin": 64, "bound_lo": 0.05, "bound_hi": 20.0, "b
                 "cell": True, "years_per_cell": 4}
 
 
+#: E040, opts["st_mode"] = "repaired": the spacetime kernels fitted on random cells with physical bounds on their
+#: log-parameters (km, years, logit of the changing share) -- the suite's [-8, log 20 x extent] let the spatial
+#: lengthscale collapse to e^-8 km, treating neighbouring places as unrelated.
+ST_BOUNDS = {"spacetime": [(np.log(10.0), np.log(10000.0)), (np.log(1.0), np.log(1000.0))],
+             "spacetime_sum": [(np.log(10.0), np.log(10000.0)), (np.log(10.0), np.log(10000.0)),
+                               (np.log(1.0), np.log(1000.0)), (-6.0, 6.0)]}
+ST_REPAIRED = {"years_per_cell": 4, "block_rows": 1000}
+
+
 def covariate_arm_repaired(D, Fkey, label, tr, te, sidx, y_self, groups, opts, rng, verbose=True):
     """The repaired covariate arm: ``(preds, fits, noise)`` for ``label`` (+ its ``_k``/``_pooled``
     variants) and ``{label}_linear``, the linear model alone. ``tr`` sorted; ``sidx`` and ``y_self``
@@ -901,14 +910,27 @@ def fit_predict_all(D, tr, te, opts, rng, verbose=True):
                     print(f"[gp-species] {label} baseline (repaired) fitted and predicted in "
                           f"{time.perf_counter() - t0:.0f}s", flush=True)
                 continue
-            shape = gpk.fit_shared_shape(kind, [D[Fkey][b] for b in shape_blocks],
-                                         [D["Y"][b] for b in shape_blocks], th0,
+            sb, scb, bnds = shape_blocks, blocks, None
+            if kind in ST_BOUNDS and opts.get("st_mode", "suite") == "repaired":
+                # E040: random CELLS (a few years of each) for the shape and blocks of whole random cells for the
+                # scales -- continental, so no block-wide regional offset, and enough same-cell pairs to identify
+                # the temporal structure -- with physical bounds instead of the fitting rows' extent. The product
+                # kernel also gets its same-cell term (spacetime_cell): without it the field collapses (E040 s1)
+                cell_tr = (D["keys"][tr, 0].astype(np.int64) * 100000 + D["keys"][tr, 1])
+                sb = [tr[random_cell_sample(cell_tr, int(opts["n_fit"]), ST_REPAIRED["years_per_cell"], rng)]]
+                scb = [tr[b] for b in random_cell_blocks(cell_tr, ST_REPAIRED["block_rows"], rng)]
+                bnds = ST_BOUNDS[kind]
+                if kind == "spacetime":
+                    kind = "spacetime_cell"
+                    th0 = np.r_[th0, 0.0, np.log(30.0)]
+                    bnds = bnds + [(-9.0, 5.0), (np.log(1.0), np.log(1000.0))]
+            shape = gpk.fit_shared_shape(kind, [D[Fkey][b] for b in sb], [D["Y"][b] for b in sb], th0,
                                          n_iter=opts["shape_iters"], verbose=verbose,
-                                         ybar=ybar, var_y=var_y)
-            sc = gpk.blocked_scales(kind, shape["theta"], [D[Fkey][b] for b in blocks],
-                                    [D["Y"][b] for b in blocks], ybar, var_y)
+                                         ybar=ybar, var_y=var_y, bounds=bnds)
+            sc = gpk.blocked_scales(kind, shape["theta"], [D[Fkey][b] for b in scb],
+                                    [D["Y"][b] for b in scb], ybar, var_y)
             shape.update({"s2": sc["s2"], "n2": sc["n2"], "ok": sc["ok"], "ybar": ybar,
-                          "n_scale_blocks": len(blocks)})
+                          "n_scale_blocks": len(scb)})
             fits[label] = shape
             for k in opts["k_nn"]:
                 name = label if k == opts["k_nn"][0] else f"{label}_k{k}"
@@ -916,7 +938,7 @@ def fit_predict_all(D, tr, te, opts, rng, verbose=True):
                                                 k=k, k_max=opts["k_max"], self_idx=sidx)
                 noise[name] = shape["n2"]
             if opts.get("pooled", True):
-                fit_rows = np.sort(np.concatenate(shape_blocks))
+                fit_rows = np.sort(np.concatenate(sb))
                 ps = gpk.pool_shape_scales(shape, D[Fkey][fit_rows], D["Y"][fit_rows])
                 ps["ybar"] = ybar
                 fits[f"{label}_pooled"] = ps
@@ -1712,9 +1734,12 @@ def main():
                     help="covariate GP arms: the original fit, or the E037 repair (whitened "
                          "components, linear mean, random continental fitting blocks) plus the "
                          "covariate_linear arms")
+    ap.add_argument("--st-mode", default="suite", choices=("suite", "repaired"),
+                    help="spacetime GP arms: the original fit, or the E040 repair (random-cell fitting, physical "
+                         "bounds)")
     args = ap.parse_args()
     opts = {"baselines": not args.no_baselines, "pooled": not args.no_pooled,
-            "cov_mode": args.cov_mode,
+            "cov_mode": args.cov_mode, "st_mode": args.st_mode,
             "n_fit": args.n_fit,
             "shape_iters": args.shape_iters,
             "k_nn": tuple(int(k) for k in args.k_nn.split(",") if k),

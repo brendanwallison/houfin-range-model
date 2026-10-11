@@ -1228,7 +1228,12 @@ def test_fit_shared_shape_honours_explicit_bounds():
 
 
 def test_run_end_to_end_with_the_repaired_covariate_arm(tmp_path, monkeypatch):
-    rep, n_ev, ho, keys = _synthetic_run(tmp_path, monkeypatch, extra_opts={"cov_mode": "repaired"})
+    rep, n_ev, ho, keys = _synthetic_run(tmp_path, monkeypatch,
+                                         extra_opts={"cov_mode": "repaired", "st_mode": "repaired"})
+    # E040: the spacetime arms fitted on random cells within physical bounds (lengthscales >= 10 km, >= 1 year)
+    for arm in ("spacetime", "spacetime_sum"):
+        ls = rep["baseline_shapes"][arm]["lengthscales"]
+        assert ls[0] >= 10.0 - 1e-6 and min(ls[:2]) >= 1.0 - 1e-6
     lv = rep["level"]["space"]
     for name in ("covariate", "covariate_linear", "covariate_pooled", "covariate_raw_linear"):
         assert f"{name}_vs_intercept" in lv
@@ -1311,3 +1316,28 @@ def test_random_cell_samplers_keep_cells_whole_and_cover_every_row():
     for i, b_ in enumerate(bl):
         for c_ in np.unique(cell[b_]):
             assert owner.setdefault(c_, i) == i            # a cell never straddles two blocks
+
+
+def test_spacetime_cell_kernel_local_prediction_matches_the_dense_gp():
+    import torch
+    rng = np.random.default_rng(6)
+    cells = rng.integers(0, 12, size=(12, 2)) * 27.0
+    idx = rng.integers(0, 12, 80)
+    F = np.column_stack([cells[idx], rng.integers(1970, 2020, 80)]).astype("float64")
+    Y = rng.normal(size=(80, 2)) + np.sin(F[:, :1] / 90.0)
+    Ft = np.column_stack([np.vstack([cells[:3], [[999.0, 999.0]] * 3]), rng.integers(1966, 1976, 6)]).astype("float64")
+    shape = {"kind": "spacetime_cell", "theta": np.log([150.0, 300.0, 0.6, 40.0]), "ybar": Y.mean(0),
+             "s2": np.array([0.9, 0.4]), "n2": np.array([0.2, 0.1])}
+    mean, var = gpk.predict_local(shape, F, Y, Ft, np.zeros(6, int), k=200, k_max=10_000)
+    kern = gpk.KERNELS["spacetime_cell"]
+    th = torch.as_tensor(shape["theta"])
+    K = kern(torch.as_tensor(F), torch.as_tensor(F), th).numpy()
+    Ks = kern(torch.as_tensor(Ft), torch.as_tensor(F), th).numpy()
+    for s in range(2):
+        C = shape["s2"][s] * K + shape["n2"][s] * np.eye(len(F))
+        Ci = np.linalg.inv(C)
+        m = Y[:, s].mean() + shape["s2"][s] * Ks @ Ci @ (Y[:, s] - Y[:, s].mean())
+        v = (shape["s2"][s] * 1.6 - shape["s2"][s] ** 2 * np.einsum("ij,jk,ik->i", Ks, Ci, Ks)
+             + shape["n2"][s])
+        np.testing.assert_allclose(mean[:, s], m, rtol=1e-7, atol=1e-7)
+        np.testing.assert_allclose(var[:, s], v, rtol=1e-7, atol=1e-7)

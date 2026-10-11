@@ -419,6 +419,20 @@ def spacetime_sum_kernel(A, B, theta):
     return (1.0 - p) * m_p + p * m_c * torch.exp(-dt)
 
 
+def spacetime_cell_kernel(A, B, theta):
+    """The product kernel plus a same-cell term ``rho [same cell] exp(-|dt| / l_cell)`` (E040).
+
+    ``theta = [log l_space_km, log l_time_yr, log rho, log l_cell_yr]``; same cell <=> same grid coordinates. Without
+    the cell term a cell's ~30 years -- very persistent -- dominate the fit, and a single Matern field cannot be both
+    that persistent at distance 0 and only moderately correlated between neighbours, so its spatial lengthscale
+    collapsed to the floor and held-out places got the continental mean. With it the field is regional (~400 km)
+    and each place's own lasting departure fades on its own timescale (~50 years)."""
+    import torch
+    same = (torch.cdist(A[:, :2], B[:, :2]) < 1e-6).to(A.dtype)
+    dt = torch.abs(A[:, 2:3] - B[:, 2:3].T)
+    return spacetime_kernel(A, B, theta[:2]) + torch.exp(theta[2]) * same * torch.exp(-dt / torch.exp(theta[3]))
+
+
 def ard_rbf_kernel(A, B, theta):
     """Squared-exponential with one lengthscale per input dimension, unit amplitude.
     ``theta`` is the vector of log lengthscales."""
@@ -444,8 +458,13 @@ def ard_rbf_cell_kernel(A, B, theta):
 
 
 def prior_diag(kind, theta):
-    """``k(x, x)``: 1 for the unit-amplitude kernels; the cell kernel adds its cell variance."""
-    return 1.0 + float(np.exp(np.asarray(theta, "float64")[-1])) if kind == "covariate_cell" else 1.0
+    """``k(x, x)``: 1 for the unit-amplitude kernels; the cell kernels add their cell variance."""
+    th = np.asarray(theta, "float64")
+    if kind == "covariate_cell":
+        return 1.0 + float(np.exp(th[-1]))
+    if kind == "spacetime_cell":
+        return 1.0 + float(np.exp(th[2]))
+    return 1.0
 
 
 def scaled_coords(kind, F, theta):
@@ -458,7 +477,7 @@ def scaled_coords(kind, F, theta):
     """
     F = np.asarray(F, "float64")
     th = np.asarray(theta, "float64")
-    if kind == "spacetime":
+    if kind in ("spacetime", "spacetime_cell"):
         return np.column_stack([F[:, :2] / np.exp(th[0]), F[:, 2:3] / np.exp(th[1])])
     if kind == "spacetime_sum":
         # Time matters only through the changing share p: as p -> 0 the field is persistent and
@@ -473,7 +492,8 @@ def scaled_coords(kind, F, theta):
 
 
 KERNELS = {"spacetime": spacetime_kernel, "spacetime_sum": spacetime_sum_kernel,
-           "covariate": ard_rbf_kernel, "covariate_cell": ard_rbf_cell_kernel}
+           "spacetime_cell": spacetime_cell_kernel, "covariate": ard_rbf_kernel,
+           "covariate_cell": ard_rbf_cell_kernel}
 
 
 def _eig_basis(lam, n):
@@ -571,6 +591,8 @@ def theta_bounds(kind, F, n_theta):
     up = lambda r: max(float(np.log(LENGTHSCALE_EXTENT_MULT * r)), -7.0)
     if kind == "spacetime":
         return [(-8.0, up(rng[:2].max())), (-8.0, up(rng[2]))]
+    if kind == "spacetime_cell":
+        return [(-8.0, up(rng[:2].max())), (-8.0, up(rng[2])), (-9.0, 5.0), (-8.0, up(rng[2]))]
     if kind == "spacetime_sum":
         s = up(rng[:2].max())
         return [(-8.0, s), (-8.0, s), (-8.0, up(rng[2])), (-8.0, 8.0)]

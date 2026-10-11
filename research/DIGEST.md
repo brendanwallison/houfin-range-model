@@ -17,13 +17,12 @@ FOR YOUR ATTENTION (2026-10-11 morning)
   place's lasting quirk onto withheld decades). Both fixed, with tests; the suite re-run (E039) restarted 06:34.
   It also found that GPs with place memory get credit on "change at trained places" from sharing the modern epoch's
   noise -- probably part of why the old spacetime GP "beat" DESK there (E006 corrected).
-- ESCALATION, production candidate (E038; skeptic review running before it counts as verified): training DESK with
-  each place's temperature held at its own 1966-2025 average cuts the backcast's lean toward analog places to 30-47%
-  of the controls' on all four models (two seeds x two start years), while its match with real change holds (mean
-  -0.004; -0.013 on the windowed measure) and spatial fit is unchanged. WHY: the space-for-time error runs through
-  year-to-year temperature; the real signal never did. Open before any decision: whether the lean metric is simply
-  blind to models that cannot move along temperature (the skeptic is checking), and whether the downstream needs
-  year-to-year weather in z (static temperature removes it). Nothing changes in production without you.
+- WITHDRAWN (07:40): the E038 "production candidate" escalation. The skeptic showed I graded the static-temperature
+  models against a different yardstick: the "analog direction" is built from each model's cached covariates, which
+  for the static models had no temperature change -- that alone halves even the controls' lean. On one common
+  yardstick the lean falls only to 48-85% of the controls', and at matched training state (the late epoch) the
+  static models lean MORE and match real change LESS in 4 of 4. The inference-time climate freeze already does at
+  least as well. Being re-measured properly (E038b); until then there is no candidate.
 
 SOLID
 - The local machine reproduces TACC for DESK, the spacetime GP, no-change and the oracle. The covariate-GP baseline
@@ -131,7 +130,8 @@ NEW SINCE YESTERDAY EVENING (tentative unless noted; each finding carries WHY: e
   average (temperature can say where a place is, not when). No loss of spatial fit (at or below every control);
   backcast skill slightly lower (7 of 8 comparisons, mean -0.013, within seed spread); on the first model the
   backcast's lean toward analog places HALVES (+0.153 -> +0.072) while its match with real change barely moves (0.243
-  -> 0.233); on all four it falls to 30-47% of the controls' (ESCALATED above).
+  -> 0.233); on all four it seemed to fall to 30-47% of the controls' -- WITHDRAWN: measured against a yardstick
+  that changed with the treatment (above).
 - Repairing the covariate GP (E037, your request; criteria fixed in advance: healthy fit, sane predictions, and on
   NEW places at least as good as a plain linear covariate model, within 0.01). WHY it failed (established): it was
   fitted on patches of neighbouring places, each patch sitting at its own regional level; centred on the continental

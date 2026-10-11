@@ -26,6 +26,8 @@ average over the other held-out cells (150 and 300 km), so a regional trend scor
 counts.
 E039k (--n-pos 96 --pos-seeds 1 2 3 4 5, M20): the placebo with an adequate basis and several draws; every placebo-based
 number (the placebo itself, combos, gains, local) is the mean over draws, paired on the same bootstrap draws.
+E043 check (--ref-cache <control cache>, same keys): the control model's DESK arms (desk_ref, desk_ref_within,
+placebo+desk_ref_within) on the same cells and draws, and paired differences treatment - control.
 """
 import argparse
 import json
@@ -58,6 +60,7 @@ def main():
     ap.add_argument("--n-pos", type=int, default=24, help="position RFF features in the placebo")
     ap.add_argument("--pos-seeds", type=int, nargs="+", default=[1], help="placebo draws (results are draw means)")
     ap.add_argument("--tag", default="", help="suffix of the output json")
+    ap.add_argument("--ref-cache", default=None, help="control model's cache (same keys): paired treatment - control")
     a = ap.parse_args()
     if a.summarize:
         return summarize(a.summarize)
@@ -178,11 +181,25 @@ def main():
     notes["desk_keys_vs_epoch_z_maxabs"] = float(np.abs(dz - D_desk).max())
     preds["desk_within"] = dz @ blr.fit((zk - cmean(zk, w_ty))[trn], Zd[trn], [(0, r)])["coef"].T
     keep_feats["desk_within"] = (zk - cmean(zk, w_ty), dz)
+    within_arms = ["desk_within"]
+    if a.ref_cache:
+        rc = lambda f: os.path.join(a.ref_cache, f)
+        assert np.array_equal(np.load(rc("keys.npy")), keys), "ref cache keys differ"
+        assert np.array_equal(np.load(rc("key_cell_index.npy")), ci_), "ref cache cell index differs"
+        zr_ref = np.load(rc("z_raw_all.npy"), mmap_mode="r")
+        preds["desk_ref"] = (desk_epoch_z(zr_ref, ci_, y0, keys, mod_rows, r)
+                             - desk_epoch_z(zr_ref, ci_, y0, keys, early_rows, r))
+        zkr = np.asarray(np.load(rc("z_raw.npy"), mmap_mode="r")[:, :r], "float64")
+        dzr = dchg(zkr)
+        preds["desk_ref_within"] = dzr @ blr.fit((zkr - cmean(zkr, w_ty))[trn], Zd[trn], [(0, r)])["coef"].T
+        keep_feats["desk_ref_within"] = (zkr - cmean(zkr, w_ty), dzr)
+        within_arms.append("desk_ref_within")
+        notes["ref_cache"] = a.ref_cache
     incr = {}
     if a.incremental:
         for sd in a.pos_seeds:
             PL, PLev = keep_feats[f"placebo_300#{sd}"]
-            for nm in ("desk_within", "within_raw", "kindxtime_8"):
+            for nm in tuple(within_arms) + ("within_raw", "kindxtime_8"):
                 Xf, Xev = keep_feats[nm]
                 q = PL.shape[1]
                 b = blr.fit(np.hstack([PL, Xf])[trn], Zd[trn], [(0, q), (q, q + Xf.shape[1])])["coef"].T
@@ -259,6 +276,14 @@ def main():
                 out["models"][nm]["desk_minus"] = float(d[0])
                 out["models"][nm]["desk_minus_ci"] = [float(np.nanpercentile(d[1:], q)) for q in (2.5, 97.5)]
             res["local"][f"{ell:.0f}"] = out
+    if a.ref_cache:
+        res["vs_ref"] = {}
+        for x, y in (("desk", "desk_ref"), ("desk_within", "desk_ref_within"),
+                     ("placebo+desk_within", "placebo+desk_ref_within")):
+            if x in boots and y in boots:
+                d = boots[x] - boots[y]
+                res["vs_ref"][f"{x} - {y}"] = {"diff": float(d[0]),
+                                               "ci": [float(np.nanpercentile(d[1:], q)) for q in (2.5, 97.5)]}
     # spatial level on the same metric family: held-out cells x trained years, pooled readouts of ESK r24
     lev = np.where(ho & ty & np.isfinite(F_raw).all(1) & np.isfinite(Eann).all(1))[0]
     lv = {"desk_pooled": (zk[lev] - m_dp["xbar"]) @ m_dp["coef"].T,
@@ -307,6 +332,8 @@ def summarize(out, fn=None):
             extra = (f" | desk - it {v['desk_minus']:+.3f} [{v['desk_minus_ci'][0]:+.3f},{v['desk_minus_ci'][1]:+.3f}]"
                      if "desk_minus" in v else "")
             print(f"    {nm:24s} corr {v['corr']:+.3f} [{v['ci'][0]:+.3f},{v['ci'][1]:+.3f}]" + extra)
+    for nm, v in r.get("vs_ref", {}).items():
+        print(f"  TREATMENT - CONTROL {nm:46s} {v['diff']:+.3f} [{v['ci'][0]:+.3f},{v['ci'][1]:+.3f}]")
     s = r["space_level"]
     print(f"  SPACE level ({s['n_rows']:,} held-out rows, trained years): desk_pooled {s['desk_pooled']:+.3f} "
           f"pooled_ridge {s['pooled_ridge']:+.3f}; desk - linear {s['desk_minus_linear']:+.3f} "

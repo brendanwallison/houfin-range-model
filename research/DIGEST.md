@@ -1,7 +1,7 @@
 # DIGEST
 
 ## CURRENT STATE (rewritten each round; read this first -- the dated log below keeps the history)
-Last updated 2026-10-11 14:22 (E044: the regional community trend is largely covariate-predictable, partly specifically -- not a population-dynamics residue; E043 finishing). "Solid" =
+Last updated 2026-10-11 14:42 (E044/E044b/E044c: most of the predictable regional community trend tracks covariate change, partly specifically; E043 finishing). "Solid" =
 independently re-derived, replicated on a second split or seed, and survived a skeptic review. "Tentative" = one run,
 or checks still pending. Experiment numbers point to research/experiments/EXXX.md.
 
@@ -31,8 +31,10 @@ WHERE THINGS STAND (2026-10-11 ~11:00, plain summary; details below)
    - ANSWERED as far as these data go (E044, E044b, 14:21):
      - The regional community trend is NOT something the covariates miss. Covariate-only predictors also predict
        87-97% of what extrapolating the trend predicts; only 0.00-0.02 of R^2 is trend-only.
-       (Own correction, 14:22: those predictors include an "environment type x year" term, which is a clock form,
-       so the overlap may run partly through it. E044c, running, separates covariate CHANGE from that term.)
+       Own correction (14:22): those predictors include an "environment type x year" term, which is a clock form.
+       E044c separated it. Covariate CHANGE alone (linear, so no clock) still covers 63-76% of what the trend
+       predicts. The environment x year term covers 83-96%; a habitat type's trend and a clock are not separable
+       there.
      - Part of that is SPECIFIC: real covariate fields beat smoothness-matched misplaced ones by +0.10 (linear map)
        and +0.12-0.21 (DESK).
      - So much of the regional trend tracks the actual covariate (habitat) change at each place, your M6 reading.

@@ -43,6 +43,14 @@ E039o (--null-desk, verification a): the DESK block replaced by a CELL-PERMUTED 
 cell's whole 1940-2025 z trajectory (training rows and held-out change alike; one permutation per placebo draw) --
 keeping DESK's temporal structure and continent-wide drift but not its place. Gains beyond the placebo and the strong
 base should be ~0; a positive null gain would mean any 24-dim drifting block "helps".
+E044 (--commonality, with --strong-base): how much of the change the regional TREND predicts do the COVARIATES also
+predict? Covariate-only joint fits (no position-time block): cov_lin = kind x time 32 + supervised within-map + EMA
+within PCs; cov_all = cov_lin + DESK z deviations. Commonality on the noise-free corr^2 scale, per bootstrap draw,
+T = placebo_300 (draw mean):
+    shared(T, C) = R2(T) + R2(C) - R2(T u C)      unique_C = R2(T u C) - R2(T)      unique_T = R2(T u C) - R2(C)
+with T u C = strong (C = cov_lin), strong+desk_within (cov_all), placebo+desk_within (C = desk_within). The shared part
+cannot be attributed to habitat or not; unique_C is a lower bound on covariate-carried change; unique_T is change the
+covariates do not carry (dynamics, observers, OR habitat change missing from the covariates -- T5).
 E043 check (--ref-cache <control cache>, same keys): the control model's DESK arms (desk_ref, desk_ref_within,
 placebo+desk_ref_within) on the same cells and draws, and paired differences treatment - control.
 """
@@ -80,6 +88,8 @@ def main():
     ap.add_argument("--rich-base", action="store_true", help="E039l: gains beyond placebo + kind x time + within map")
     ap.add_argument("--strong-base", action="store_true", help="E039n: supervised cross-fitted within-map base + "
                     "buffer-row readouts")
+    ap.add_argument("--commonality", action="store_true", help="E044: trend vs covariate commonality (needs "
+                    "--strong-base)")
     ap.add_argument("--null-desk", action="store_true", help="E039o: cell-permuted DESK block (null)")
     ap.add_argument("--attr", default=None, help="E039m: attribution_cells.npz of this model (drop-part losses)")
     ap.add_argument("--ref-cache", default=None, help="control model's cache (same keys): paired treatment - control")
@@ -239,6 +249,14 @@ def main():
         preds["within_sup"] = dS @ Bw
         buf = np.where(bf & ty & np.isfinite(F_raw).all(1) & np.isfinite(Eann).all(1))[0]
         notes["n_buffer_rows"] = int(len(buf))
+        if a.commonality:
+            for tag, ps in (("cov_lin", [keep_feats["kindxtime_32"], keep_feats["within_sup"], keep_feats["within_ema"]]),
+                            ("cov_all", [keep_feats["kindxtime_32"], keep_feats["within_sup"], keep_feats["within_ema"],
+                                         keep_feats["desk_within"]])):
+                edges = np.cumsum([0] + [f.shape[1] for f, _ in ps])
+                blocks = [(int(edges[i]), int(edges[i + 1])) for i in range(len(ps))]
+                b = blr.fit(np.hstack([f for f, _ in ps])[trn], Zd[trn], blocks)["coef"].T
+                preds[tag] = np.hstack([e for _, e in ps]) @ b
     parts_ev = {}
     if a.attr:
         az = np.load(a.attr)
@@ -349,6 +367,17 @@ def main():
                     res["drop"][combo]["parts"][pn] = {
                         "loss": float(loss[0]), "ci": [float(np.nanpercentile(loss[1:], q)) for q in (2.5, 97.5)],
                         "share": float(loss[0] / gain[0]) if gain[0] != 0 else None}
+        if a.commonality:
+            res["commonality"] = {}
+            T = boots["placebo_300"]
+            for C, TC in (("desk_within", "placebo+desk_within"), ("cov_lin", "strong"), ("cov_all", "strong+desk_within")):
+                if C not in boots or TC not in boots:
+                    continue
+                rT, rC, rTC = (np.sign(v) * v ** 2 for v in (T, boots[C], boots[TC]))
+                comp = {"R2_T": rT, "R2_C": rC, "R2_TC": rTC, "shared": rT + rC - rTC, "unique_C": rTC - rT,
+                        "unique_T": rTC - rC, "shared_frac_of_T": (rT + rC - rTC) / rT}
+                res["commonality"][C] = {k: {"v": float(v[0]), "ci": [float(np.nanpercentile(v[1:], q))
+                                                                      for q in (2.5, 97.5)]} for k, v in comp.items()}
         for x, y, key in (("rich+desk_within", "rich", "rich_gain"), ("strong+desk_within", "strong", "strong_gain"),
                           ("strong+desk_null", "strong", "strong_null_gain"),
                           ("placebo+desk_null", "placebo_300", "placebo_null_gain"),
@@ -462,6 +491,11 @@ def summarize(out, fn=None):
         if key in r:
             v = r[key]
             print(f"  {label}: {v['desk_within']:+.3f} [{v['ci'][0]:+.3f},{v['ci'][1]:+.3f}]")
+    for C, o in r.get("commonality", {}).items():
+        f = lambda k: f"{o[k]['v']:.3f} [{o[k]['ci'][0]:.3f},{o[k]['ci'][1]:.3f}]"
+        print(f"  COMMONALITY trend vs {C:11s}: R2 trend {f('R2_T')} cov {f('R2_C')} both {f('R2_TC')} | shared "
+              f"{f('shared')} (frac of trend's {f('shared_frac_of_T')}) unique cov {f('unique_C')} unique trend "
+              f"{f('unique_T')}")
     for nm, v in r.get("vs_ref", {}).items():
         print(f"  TREATMENT - CONTROL {nm:46s} {v['diff']:+.3f} [{v['ci'][0]:+.3f},{v['ci'][1]:+.3f}]")
     s = r["space_level"]

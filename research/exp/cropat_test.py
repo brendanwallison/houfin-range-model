@@ -25,7 +25,7 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, _HERE)
 sys.path.insert(0, os.path.dirname(_HERE))
 sys.path.insert(0, os.path.dirname(os.path.dirname(_HERE)))
-from type_dose import ridge_cv, wc  # noqa: E402
+from type_dose import loo_local_op, ridge_cv, wc  # noqa: E402
 
 LUH_CROP = slice(0, 5)        # c3ann, c3nfx, c3per, c4ann, c4per within the landuse stream
 
@@ -146,24 +146,41 @@ def main():
     res["concordance"]["change"] = pcorr(d_cat[allc], d_luh[allc])
     res["levels"] = {"cropat_mean_change": float(d_cat[allc].mean()), "luh_mean_change": float(d_luh[allc].mean()),
                      "cropat_sd_change": float(d_cat[allc].std()), "luh_sd_change": float(d_luh[allc].std())}
-    for mode, basis in (("none", np.ones((len(pairs), 1))), ("type", Tm), ("type+region", Tm2)):
-        dcat_r, _ = resid(d_cat[:, None], basis)
-        dluh_r, _ = resid(d_luh[:, None], basis)
-        dZ_r, zfit = resid(dZ, basis)
-        Ta_r, Tb_r = Ta[ev] - zfit[ev], Tb[ev] - zfit[ev]
-        res["concordance"][f"change_{mode}"] = pcorr(dcat_r[allc, 0], dluh_r[allc, 0])
-        preds = {}
-        for nm, Xf in (("cropat", dcat_r), ("luh", dluh_r), ("both", np.hstack([dcat_r, dluh_r]))):
-            A_ = np.hstack([np.ones((len(tc), 1)), Xf[tc]])
-            B, *_ = np.linalg.lstsq(A_, dZ_r[tc], rcond=None)
-            preds[nm] = np.hstack([np.ones((len(ev), 1)), Xf[ev]]) @ B
+    # E047 amendment (after the fitted-basis region mode proved unstable, E044 method correction): "type+kloc" =
+    # type residualization, then each cell minus the leave-one-out Gaussian (150 km) average of its OWN set
+    kl_tr, kl_ev = loo_local_op(cells[tc], 150.0), loo_local_op(cells[ev], 150.0)
+    MODES = (("none", np.ones((len(pairs), 1)), False), ("type", Tm, False),
+             ("type+region(fitted,UNSTABLE)", Tm2, False), ("type+kloc", Tm, True))
+
+    def prep(V, basis, kloc):
+        Vr, fit = resid(V, basis)
+        return (kl_tr(Vr[tc]), kl_ev(Vr[ev]), fit) if kloc else (Vr[tc], Vr[ev], fit)
+
+    def truth(basis, kloc):
+        Z_tc, _, zfit = prep(dZ, basis, kloc)
+        A_, B_ = Ta[ev] - zfit[ev], Tb[ev] - zfit[ev]
+        return Z_tc, (kl_ev(A_), kl_ev(B_)) if kloc else (A_, B_)
+
+    def grade(preds, Ta_r, Tb_r, pairs_):
         boots = {k: np.array([corr(D, Ta_r, Tb_r, w) for w in W]) for k, D in preds.items()}
         o = {k: {"corr": float(v[0]), "ci": [float(np.nanpercentile(v[1:], q)) for q in (2.5, 97.5)]}
              for k, v in boots.items()}
-        d = boots["cropat"] - boots["luh"]
-        o["cropat_minus_luh"] = {"diff": float(d[0]), "ci": [float(np.nanpercentile(d[1:], q)) for q in (2.5, 97.5)]}
-        d2 = boots["both"] - boots["luh"]
-        o["both_minus_luh"] = {"diff": float(d2[0]), "ci": [float(np.nanpercentile(d2[1:], q)) for q in (2.5, 97.5)]}
+        for x_, y_ in pairs_:
+            d = boots[x_] - boots[y_]
+            o[f"{x_} - {y_}"] = {"diff": float(d[0]), "ci": [float(np.nanpercentile(d[1:], q)) for q in (2.5, 97.5)]}
+        return o
+    for mode, basis, kloc in MODES:
+        Z_tc, (Ta_r, Tb_r) = truth(basis, kloc)
+        cat_tc, cat_ev, _ = prep(d_cat[:, None], basis, kloc)
+        luh_tc, luh_ev, _ = prep(d_luh[:, None], basis, kloc)
+        res["concordance"][f"change_{mode}"] = pcorr(np.r_[cat_tc[:, 0], cat_ev[:, 0]], np.r_[luh_tc[:, 0], luh_ev[:, 0]])
+        preds = {}
+        for nm, (Xtc, Xev) in (("cropat", (cat_tc, cat_ev)), ("luh", (luh_tc, luh_ev)),
+                               ("both", (np.hstack([cat_tc, luh_tc]), np.hstack([cat_ev, luh_ev])))):
+            B, *_ = np.linalg.lstsq(np.hstack([np.ones((len(tc), 1)), Xtc]), Z_tc, rcond=None)
+            preds[nm] = np.hstack([np.ones((len(ev), 1)), Xev]) @ B
+        o = grade(preds, Ta_r, Tb_r, (("cropat", "luh"), ("both", "luh")))
+        o["cropat_minus_luh"], o["both_minus_luh"] = o.pop("cropat - luh"), o.pop("both - luh")
         res["modes"][mode] = o
     if a.types:
         Tk = ca["types"].astype("float64")[yi, :, keys[:, 0], keys[:, 1]]             # (N, 10)
@@ -177,24 +194,17 @@ def main():
         blk_tc = (cells[tc, 0] // 6) * 100000 + cells[tc, 1] // 6
         lams = [10.0 ** e for e in np.arange(-3, 3.01, 0.5)]
         res["types"] = {"names": [str(n) for n in ca["type_names"]], "modes": {}}
-        for mode, basis in (("type", Tm), ("type+region", Tm2)):
-            dZ_r, zfit = resid(dZ, basis)
-            Ta_r, Tb_r = Ta[ev] - zfit[ev], Tb[ev] - zfit[ev]
+        for mode, basis, kloc in MODES[1:]:
+            Z_tc, (Ta_r, Tb_r) = truth(basis, kloc)
             preds = {}
             for nm, Fx in feats.items():
-                Fr, _ = resid(Fx, basis)
-                sdv = Fr[tc].std(0)
+                Ftc, Fev, _ = prep(Fx, basis, kloc)
+                sdv = Ftc.std(0)
                 k_ = sdv > 1e-9
-                Fz = Fr[:, k_] / sdv[k_]
-                B, xm, ym, lam = ridge_cv(Fz[tc], dZ_r[tc], blk_tc, lams)
-                preds[nm] = (Fz[ev] - xm) @ B + ym
-            boots = {k: np.array([corr(D, Ta_r, Tb_r, w) for w in W]) for k, D in preds.items()}
-            o = {k: {"corr": float(v[0]), "ci": [float(np.nanpercentile(v[1:], q)) for q in (2.5, 97.5)]}
-                 for k, v in boots.items()}
-            for x_, y_ in (("A_cropat_types", "B_luh_crop5"), ("D_luh_all33+cropat_types", "C_luh_all33")):
-                d = boots[x_] - boots[y_]
-                o[f"{x_} - {y_}"] = {"diff": float(d[0]), "ci": [float(np.nanpercentile(d[1:], q)) for q in (2.5, 97.5)]}
-            res["types"]["modes"][mode] = o
+                B, xm, ym, lam = ridge_cv(Ftc[:, k_] / sdv[k_], Z_tc, blk_tc, lams)
+                preds[nm] = (Fev[:, k_] / sdv[k_] - xm) @ B + ym
+            res["types"]["modes"][mode] = grade(preds, Ta_r, Tb_r, (("A_cropat_types", "B_luh_crop5"),
+                                                                    ("D_luh_all33+cropat_types", "C_luh_all33")))
     fn = "cropat_types.json" if a.types else "cropat_test.json"
     with open(os.path.join(a.out, fn), "w", encoding="utf-8") as fh:
         json.dump(res, fh, indent=1)
@@ -220,7 +230,7 @@ def summarize(out):
           f"cells (dropped outside CONUS: {r.get('n_cells_dropped_outside_conus')}); CropAT {r['cropat_years']}; rows missing crop "
           f"{r['rows_missing_crop']}")
     print(f"  concordance CropAT vs LUH: modern levels {cc['levels_modern']:+.3f}; change {cc['change']:+.3f}; "
-          f"change within type {cc['change_type']:+.3f}; within type+region {cc['change_type+region']:+.3f}")
+          f"change within type {cc['change_type']:+.3f}; kernel-local {cc['change_type+kloc']:+.3f} (fitted-region, unstable: {cc['change_type+region(fitted,UNSTABLE)']:+.3f})")
     lv = r["levels"]
     print(f"  crop-fraction change mean / sd: CropAT {lv['cropat_mean_change']:+.4f} / {lv['cropat_sd_change']:.4f}; "
           f"LUH {lv['luh_mean_change']:+.4f} / {lv['luh_sd_change']:.4f}")

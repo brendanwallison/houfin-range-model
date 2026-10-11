@@ -56,8 +56,9 @@ def main():
     ap.add_argument("--bounds", default="suite", choices=("suite", "data"))
     ap.add_argument("--bound-lo", type=float, default=0.05)
     ap.add_argument("--bound-hi", type=float, default=20.0)
-    ap.add_argument("--sample", default="blocks", choices=("blocks", "strat", "random"))
-    ap.add_argument("--scale-sample", default="blocks", choices=("blocks", "random"))
+    ap.add_argument("--sample", default="blocks", choices=("blocks", "strat", "random", "randcells"))
+    ap.add_argument("--scale-sample", default="blocks", choices=("blocks", "random", "randcells"))
+    ap.add_argument("--years-per-cell", type=int, default=4)
     ap.add_argument("--resid-linear", action="store_true")
     ap.add_argument("--n-fit", type=int, default=3000)
     ap.add_argument("--cap-s2", type=float, default=None)
@@ -206,14 +207,40 @@ def main():
         for i in rng.permutation(len(blocks))[: max(1, a.n_fit // per)]:
             b = blocks[i]
             shape_blocks.append(np.sort(rng.choice(b, min(per, len(b)), replace=False)))
-    else:
+    elif a.sample == "random":
         # one block of rows drawn from the whole continent: the global mean is then the right centring (a contiguous
         # block sits at its own regional level, which only a flat, inflated kernel can absorb) and a cell rarely
         # appears twice, so a place's lasting quirk falls to the noise rather than to the covariate signal
         shape_blocks = [np.sort(rng.choice(tr, min(a.n_fit, len(tr)), replace=False))]
+    # cells of the training rows, for the random-cell samplers: continental like "random", but a cell's rows come
+    # together, so the same-cell pairs that identify a cell effect are in the fit
+    cell_tr = keys[tr, 0].astype(np.int64) * 100000 + keys[tr, 1]
+    o_ = np.argsort(cell_tr, kind="stable")
+    ucell, st_ = np.unique(cell_tr[o_], return_index=True)
+    cell_rows = np.split(tr[o_], st_[1:])
+    if a.sample == "randcells":
+        sel, n_sel = [], 0
+        for i in rng.permutation(len(ucell)):
+            rr = cell_rows[i]
+            rr = rng.choice(rr, min(a.years_per_cell, len(rr)), replace=False)
+            sel.append(rr)
+            n_sel += len(rr)
+            if n_sel >= a.n_fit:
+                break
+        shape_blocks = [np.sort(np.concatenate(sel))]
     if a.scale_sample == "random":
         perm = rng.permutation(tr)
         scale_blocks = [np.sort(b) for b in np.array_split(perm, max(1, len(perm) // 1000))]
+    elif a.scale_sample == "randcells":
+        scale_blocks, cur, n_cur = [], [], 0
+        for i in rng.permutation(len(ucell)):
+            cur.append(cell_rows[i])
+            n_cur += len(cell_rows[i])
+            if n_cur >= 1000:
+                scale_blocks.append(np.sort(np.concatenate(cur)))
+                cur, n_cur = [], 0
+        if cur:
+            scale_blocks.append(np.sort(np.concatenate(cur)))
     else:
         scale_blocks = blocks
     th0 = np.concatenate([np.full(d, np.log(np.sqrt(d))), np.zeros(n_extra)])
@@ -269,7 +296,7 @@ def main():
            "heldout_linear_skill_median": float(np.nanmedian(skill(Y[te], lin, ybar))),
            "heldout_gp_minus_linear_median": float(np.nanmedian(skill(Y[te], mte, ybar) - skill(Y[te], lin, ybar)))}
     tag = a.tag or (f"{a.features}_{a.bounds}_{a.sample}_cap{a.cap_s2}{'_cell' * a.cell}{'_lin' * a.linear}"
-                    f"{'_scalesrandom' * (a.scale_sample == 'random')}{'_resid' * a.resid_linear}")
+                    f"_scales{a.scale_sample}{'_resid' * a.resid_linear}")
     with open(os.path.join(a.out, f"covgp_{tag}.json"), "w", encoding="utf-8") as fh:
         json.dump(res, fh, indent=1)
     summarize(a.out)

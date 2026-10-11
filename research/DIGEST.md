@@ -1,9 +1,22 @@
 # DIGEST
 
 ## CURRENT STATE (rewritten each round; read this first -- the dated log below keeps the history)
-Last updated 2026-10-10 21:04 (evening round: covariate-GP repair, E035d skeptic, static-temperature retrain). "Solid" =
+Last updated 2026-10-11 06:40 (morning: E038/E041 retrains in; GP port fixed after a skeptic; sealing gap). "Solid" =
 independently re-derived, replicated on a second split or seed, and survived a skeptic review. "Tentative" = one run,
 or checks still pending. Experiment numbers point to research/experiments/EXXX.md.
+
+FOR YOUR ATTENTION (2026-10-11 morning)
+- I stopped mid-task last night (~22:00) without a waiter armed; the GPU sat idle 02:25-06:20 and the CPU ~22:20-06:20.
+  Resumed when you asked. The waiter rule is in memory and PROTOCOL; the slip was ending a turn on an edit.
+- SEALING GAP (escalation): the validation suite reads the raw survey data, not the research cache that keeps the
+  sealed half of the species apart, so every suite run so far (E001, E006) graded the sealed species too (only
+  aggregate medians were seen). From now on every suite run grades only the 273 dev species
+  (research/specs/dev_species.txt). Your call whether the sealed set is still fit for its final-confirmation role.
+- The GP repairs passed in their harnesses, but a skeptic found the suite port was NOT running the validated
+  baselines (shapes fitted on ~460 mostly rare species instead of the 136 validated; the covariate GP carried each
+  place's lasting quirk onto withheld decades). Both fixed, with tests; the suite re-run (E039) restarted 06:34.
+  It also found that GPs with place memory get credit on "change at trained places" from sharing the modern epoch's
+  noise -- probably part of why the old spacetime GP "beat" DESK there (E006 corrected).
 
 SOLID
 - The local machine reproduces TACC for DESK, the spacetime GP, no-change and the oracle. The covariate-GP baseline
@@ -95,9 +108,18 @@ NEW SINCE YESTERDAY EVENING (tentative unless noted; each finding carries WHY: e
   there is partly RIGHT. What DESK may miss is the land-use CLASS change that dominated early change (prairie
   conversion, farm abandonment, regrowth): its class reading tracks real change only weakly. Next (E041, GPU): DESK
   trained with the management channels held at each place's average -- can it learn the class-driven change?
+  RESULT so far (E041, start year 1996, two seeds): spatial fit unchanged; backcast skill drops -- to about half at
+  the late state (0.144 -> 0.070, 0.133 -> 0.061), less at the selected epochs (0.120 -> 0.073, 0.113 -> 0.100) --
+  almost all in the east; the Great Plains and west hold up. DESK compensates partly: its land-use CLASS reading
+  gets stronger (match with real change 0.107 -> 0.166 on the first model) but it also leans harder on temperature
+  (+0.24 toward analogs). So without the management trend DESK does not fully recover its skill from the classes.
+  Replication at the 1986 start running on the GPU.
   This is the first concrete target for extending extrapolation: a backcast in which temperature does not drive change.
-  Training-time version running (E038): DESK retrained with each place's temperature held at its own 1966-2025
-  average (temperature can say where a place is, not when), four runs, ~5 GPU-hours.
+  Training-time version (E038, four runs): DESK retrained with each place's temperature held at its own 1966-2025
+  average (temperature can say where a place is, not when). No loss of spatial fit (at or below every control);
+  backcast skill slightly lower (7 of 8 comparisons, mean -0.013, within seed spread); on the first model the
+  backcast's lean toward analog places HALVES (+0.153 -> +0.072) while its match with real change barely moves (0.243
+  -> 0.233). The other three models' lean measure is running.
 - Repairing the covariate GP (E037, your request; criteria fixed in advance: healthy fit, sane predictions, and on
   NEW places at least as good as a plain linear covariate model, within 0.01). WHY it failed (established): it was
   fitted on patches of neighbouring places, each patch sitting at its own regional level; centred on the continental

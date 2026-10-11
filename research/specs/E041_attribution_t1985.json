@@ -7,9 +7,9 @@
  "cmd": [
   "bash",
   "-c",
-  "set -e; for spec in desk_tempho_1985_s1_statMgmt:E041/desk-tempho1985-seed1-statMgmt-5248f5b5e56c:desk_tempho_1985_seed1 desk_tempho_1985_s2_statMgmt:E041/desk-tempho1985-seed2-statMgmt-3b9e743bedd3:desk_tempho_1985_seed2; do IFS=: read -r cc run ov <<< \"$spec\"; for f in esk_annual.npy esk_epochs.npz; do [ -e {cache}/$cc/$f ] || cp {cache}/desk_tempho_1985_s1/$f {cache}/$cc/$f; done; {python} research/exp/static_channels.py --channels luh_mgmt luh_secage --means-cache {outroot}/$run/static_means.npy -- research/exp/backcast_attribution.py --cache {cache}/$cc --run-dir {outroot}/$run/desk --overlay research/overlays/$ov.json --out {out}/$cc --families --luh-split; done"
+  "set -e; for spec in desk_tempho_1985_s1_statMgmt:E041/desk-tempho1985-seed1-statMgmt-5248f5b5e56c:desk_tempho_1985_seed1 desk_tempho_1985_s2_statMgmt:E041/desk-tempho1985-seed2-statMgmt-3b9e743bedd3:desk_tempho_1985_seed2; do IFS=: read -r cc run ov <<< \"$spec\"; for f in esk_annual.npy esk_epochs.npz; do [ -e {cache}/$cc/$f ] || cp {cache}/desk_tempho_1985_s1/$f {cache}/$cc/$f; done; {python} research/exp/static_channels.py --channels luh_mgmt luh_secage --means-cache {outroot}/$run/static_means.npy -- research/exp/backcast_attribution.py --cache {cache}/$cc --run-dir {outroot}/$run/desk --overlay research/overlays/$ov.json --out {out}/$cc --families --luh-split --dir-cache {cache}/desk_tempho_1985_s1; done"
  ],
  "expected_minutes": 60,
  "summarize": ["bash", "-c", "for d in {out}/*/; do {python} research/exp/backcast_attribution.py --summarize $d; done"],
- "note": "E041 T0 1986 replication, measure (1): attribution of the static-management models (observed-community files copied from the same-split control cache, keys/split identical by construction)"
+ "note": "E041 T0 1986 replication, measure (1), on the common analog direction (--dir-cache, E038 skeptic): attribution of the static-management models (observed-community files copied from the same-split control cache, keys/split identical by construction)"
 }

@@ -91,3 +91,26 @@ def test_a_species_without_variance_is_floored_not_fitted():
     assert not m["ok"][-1] and m["ok"][:-1].all() and np.isnan(m["nll"][-1])
     mean, var = blr.predict(m, X[:4])
     assert np.allclose(mean[:, -1], 0.0) and np.isfinite(var).all()
+
+
+def test_numerically_indefinite_A_is_jittered_for_the_failing_species_only():
+    # X'X with an eigenvalue spread far beyond float64 (near-collinear features) at a tiny v and large a:
+    # A = X'X / v + diag(1/a) is numerically indefinite and Cholesky used to raise; a well-conditioned
+    # species in the same batch must come out exactly as without the fallback
+    torch = blr._torch()
+    rng = np.random.default_rng(0)
+    p = 40
+    U, _ = np.linalg.qr(rng.normal(size=(p, p)))
+    ev = np.r_[1e12, 1e11, np.full(p - 2, 1e-30)]
+    XtX = torch.as_tensor((U * ev) @ U.T)
+    Xty = torch.as_tensor(rng.normal(size=(p, 2)))
+    yy = torch.as_tensor(np.array([10.0, 10.0]))
+    cols = torch.as_tensor(np.zeros(p, int))
+    th = torch.as_tensor(np.array([[np.log(1e10), np.log(1e-8)],      # ill-conditioned
+                                   [np.log(1e-3), np.log(1e14)]]))    # well-conditioned
+    with pytest.raises(Exception):
+        torch.linalg.cholesky(XtX.unsqueeze(0) / 1e-8 + torch.eye(p, dtype=XtX.dtype) * 1e-10)
+    nll, _ = blr._nll(th, XtX, Xty, yy, 100, cols, torch)
+    assert torch.isfinite(nll).all()
+    nll1, _ = blr._nll(th[1:], XtX, Xty[:, 1:], yy[1:], 100, cols, torch)
+    assert nll[1].item() == nll1[0].item()

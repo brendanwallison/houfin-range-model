@@ -40,7 +40,20 @@ def _nll(theta, XtX, Xty, yy, n, cols, torch):
     log_v = theta[:, -1]                                            # (S,)
     v = torch.exp(log_v)
     A = XtX.unsqueeze(0) / v[:, None, None] + torch.diag_embed(torch.exp(-log_a))
-    L = torch.linalg.cholesky(A)
+    L, info = torch.linalg.cholesky_ex(A)
+    if bool((info > 0).any()):
+        # near-collinear features (e.g. 96 random position features) can leave A numerically indefinite at
+        # a small v and large a; add a growing relative jitter to the failing species only -- a fit that
+        # factorizes is never changed, and one that does not would otherwise crash
+        dmean = torch.diagonal(A, dim1=1, dim2=2).mean(1)
+        for rel in (1e-12, 1e-10, 1e-8, 1e-6):
+            bad = (info > 0).to(A.dtype)
+            A = A + torch.diag_embed((rel * dmean * bad)[:, None].expand(-1, A.shape[-1]))
+            L, info = torch.linalg.cholesky_ex(A)
+            if not bool((info > 0).any()):
+                break
+        else:
+            L = torch.linalg.cholesky(A)
     sol = torch.cholesky_solve(Xty.T.unsqueeze(-1), L).squeeze(-1)  # (S, p) = A^-1 X'y
     quad = (Xty.T * sol).sum(1)                                     # y'X A^-1 X'y
     logdetA = 2.0 * torch.log(torch.diagonal(L, dim1=1, dim2=2)).sum(1)

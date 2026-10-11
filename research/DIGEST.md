@@ -1,7 +1,7 @@
 # DIGEST
 
 ## CURRENT STATE (rewritten each round; read this first -- the dated log below keeps the history)
-Last updated 2026-10-11 18:40 (E049: census crop types act on grassland birds; E050: CRP and forest-age back-cast add nothing; E048 training on GPU). "Solid" =
+Last updated 2026-10-11 18:23 (E049: census crop types act on grassland birds; E050: CRP and forest-age back-cast add nothing; E048 training on GPU). "Solid" =
 independently re-derived, replicated on a second split or seed, and survived a skeptic review. "Tentative" = one run,
 or checks still pending. Experiment numbers point to research/experiments/EXXX.md.
 

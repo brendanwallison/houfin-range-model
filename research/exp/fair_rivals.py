@@ -24,6 +24,8 @@ E039j (--incremental): content BEYOND the trend placebo -- placebo_300 + X fitte
 same draws. And the LOCAL part of change: truth and every prediction minus their leave-one-out Gaussian-weighted
 average over the other held-out cells (150 and 300 km), so a regional trend scores ~0 and only place-specific change
 counts.
+E039k (--n-pos 96 --pos-seeds 1 2 3 4 5, M20): the placebo with an adequate basis and several draws; every placebo-based
+number (the placebo itself, combos, gains, local) is the mean over draws, paired on the same bootstrap draws.
 """
 import argparse
 import json
@@ -53,6 +55,9 @@ def main():
     ap.add_argument("--n-boot", type=int, default=1000)
     ap.add_argument("--summarize", default=None)
     ap.add_argument("--incremental", action="store_true", help="E039j: gains beyond the placebo, local change")
+    ap.add_argument("--n-pos", type=int, default=24, help="position RFF features in the placebo")
+    ap.add_argument("--pos-seeds", type=int, nargs="+", default=[1], help="placebo draws (results are draw means)")
+    ap.add_argument("--tag", default="", help="suffix of the output json")
     a = ap.parse_args()
     if a.summarize:
         return summarize(a.summarize)
@@ -158,14 +163,15 @@ def main():
     # placebo: position x time, no covariates
     cev = cells[ev].astype(float) * 27.0
     for ell in (300.0, 600.0):
-        rg = np.random.default_rng(1)
-        m = 24
-        om, ph = rg.normal(size=(2, m)) / ell, rg.uniform(0, 2 * np.pi, m)
-        R = np.sqrt(2.0 / m) * np.cos(keys[:, :2].astype(float) * 27.0 @ om + ph)
-        b_pl = blr.fit((R * (t / 10.0)[:, None])[trn], Zd[trn], [(0, m)])["coef"].T
-        Rc = np.sqrt(2.0 / m) * np.cos(cev @ om + ph)
-        preds[f"placebo_{ell:.0f}"] = (Rc * (dyr / 10.0)[:, None]) @ b_pl
-        keep_feats[f"placebo_{ell:.0f}"] = (R * (t / 10.0)[:, None], Rc * (dyr / 10.0)[:, None])
+        for sd in a.pos_seeds:
+            rg = np.random.default_rng(sd)
+            m = a.n_pos
+            om, ph = rg.normal(size=(2, m)) / ell, rg.uniform(0, 2 * np.pi, m)
+            R = np.sqrt(2.0 / m) * np.cos(keys[:, :2].astype(float) * 27.0 @ om + ph)
+            b_pl = blr.fit((R * (t / 10.0)[:, None])[trn], Zd[trn], [(0, m)])["coef"].T
+            Rc = np.sqrt(2.0 / m) * np.cos(cev @ om + ph)
+            preds[f"placebo_{ell:.0f}#{sd}"] = (Rc * (dyr / 10.0)[:, None]) @ b_pl
+            keep_feats[f"placebo_{ell:.0f}#{sd}"] = (R * (t / 10.0)[:, None], Rc * (dyr / 10.0)[:, None])
     # DESK through linear readouts fitted on the same rows (z_raw at keys)
     zk = np.asarray(np.load(c("z_raw.npy"), mmap_mode="r")[:, :r], "float64")
     dz = dchg(zk)
@@ -174,12 +180,13 @@ def main():
     keep_feats["desk_within"] = (zk - cmean(zk, w_ty), dz)
     incr = {}
     if a.incremental:
-        PL, PLev = keep_feats["placebo_300"]
-        for nm in ("desk_within", "within_raw", "kindxtime_8"):
-            Xf, Xev = keep_feats[nm]
-            q = PL.shape[1]
-            b = blr.fit(np.hstack([PL, Xf])[trn], Zd[trn], [(0, q), (q, q + Xf.shape[1])])["coef"].T
-            incr[f"placebo+{nm}"] = np.hstack([PLev, Xev]) @ b
+        for sd in a.pos_seeds:
+            PL, PLev = keep_feats[f"placebo_300#{sd}"]
+            for nm in ("desk_within", "within_raw", "kindxtime_8"):
+                Xf, Xev = keep_feats[nm]
+                q = PL.shape[1]
+                b = blr.fit(np.hstack([PL, Xf])[trn], Zd[trn], [(0, q), (q, q + Xf.shape[1])])["coef"].T
+                incr[f"placebo+{nm}#{sd}"] = np.hstack([PLev, Xev]) @ b
         preds.update(incr)
     m_dp = blr.fit(zk[trn], Z[trn], [(0, r)])
     preds["desk_pooled"] = dz @ m_dp["coef"].T
@@ -199,20 +206,27 @@ def main():
         return corr, (cv.sum() / vp.sum() if vp.sum() > 0 else np.nan), per_dim
     res = {"cache": a.cache, "n_cells": int(len(ev)), "rank": r, "withheld": [min(withheld), max(withheld)],
            "n_fit_rows": int(len(trn)), "notes": notes, "models": {}}
+    members = {}
+    for name in preds:                                  # placebo-based arms: one member per draw, graded as the mean
+        members.setdefault(name.split("#")[0], []).append(name)
+    G = {name: np.array([grade(D, w) for w in W]) for name, D in preds.items()}
     boots = {}
-    for name, D in preds.items():
-        g = np.array([grade(D, w) for w in W])
-        boots[name] = g[:, 0]
-        res["models"][name] = {"corr": float(g[0, 0]), "k": float(g[0, 1]), "per_dim_corr": float(g[0, 2]),
+    for base, ns in members.items():
+        g = np.mean([G[n] for n in ns], 0)
+        boots[base] = g[:, 0]
+        res["models"][base] = {"corr": float(g[0, 0]), "k": float(g[0, 1]), "per_dim_corr": float(g[0, 2]),
                                "corr_ci": [float(np.nanpercentile(g[1:, 0], q)) for q in (2.5, 97.5)]}
-    for name in preds:
+        if "#" in ns[0]:
+            res["models"][base]["draws"] = [float(G[n][0, 0]) for n in ns]
+    res["placebo"] = {"n_pos": a.n_pos, "seeds": list(a.pos_seeds)}
+    for name in members:
         if name != "desk":
             d = boots["desk"] - boots[name]
             res["models"][name]["desk_minus_corr"] = float(d[0])
             res["models"][name]["desk_minus_ci"] = [float(np.nanpercentile(d[1:], q)) for q in (2.5, 97.5)]
 
     if a.incremental:
-        for nm in incr:
+        for nm in sorted({n.split("#")[0] for n in incr}):
             d = boots[nm] - boots["placebo_300"]
             res["models"][nm]["minus_placebo"] = float(d[0])
             res["models"][nm]["minus_placebo_ci"] = [float(np.nanpercentile(d[1:], q)) for q in (2.5, 97.5)]
@@ -234,8 +248,9 @@ def main():
                 return cv / np.sqrt(vp * vt) if vp > 0 and vt > 0 else np.nan
             out = {"truth_local_share": share, "models": {}}
             lb_ = {}
-            for nm in ("desk", "desk_within", "within_raw", "kindxtime_8", "placebo_300", "pooled_ridge") + tuple(incr):
-                g = np.array([lgrade(preds[nm], w) for w in W])
+            for nm in (("desk", "desk_within", "within_raw", "kindxtime_8", "placebo_300", "pooled_ridge")
+                       + tuple(sorted({n.split("#")[0] for n in incr}))):
+                g = np.mean([np.array([lgrade(preds[n], w) for w in W]) for n in members[nm]], 0)
                 lb_[nm] = g
                 out["models"][nm] = {"corr": float(g[0]),
                                      "ci": [float(np.nanpercentile(g[1:], q)) for q in (2.5, 97.5)]}
@@ -260,15 +275,21 @@ def main():
                           **{n: float(v[0]) for n, v in lb.items()},
                           "desk_minus_linear": float(dl[0]),
                           "desk_minus_linear_ci": [float(np.percentile(dl[1:], q)) for q in (2.5, 97.5)]}
-    with open(os.path.join(a.out, "fair_rivals_incr.json" if a.incremental else "fair_rivals.json"), "w",
-              encoding="utf-8") as fh:
+    fn = ("fair_rivals_incr" if a.incremental else "fair_rivals") + a.tag + ".json"
+    with open(os.path.join(a.out, fn), "w", encoding="utf-8") as fh:
         json.dump(res, fh, indent=1)
-    summarize(a.out)
+    summarize(a.out, fn)
 
 
-def summarize(out):
-    fn = "fair_rivals_incr.json" if os.path.exists(os.path.join(out, "fair_rivals_incr.json")) else "fair_rivals.json"
+def summarize(out, fn=None):
+    if fn is None:
+        import glob
+        for f in sorted(glob.glob(os.path.join(out, "fair_rivals*.json"))):
+            summarize(out, os.path.basename(f))
+        return
     r = json.load(open(os.path.join(out, fn), encoding="utf-8"))
+    pl = r.get("placebo", {"n_pos": 24, "seeds": [1]})
+    print(f"[{fn}; placebo {pl['n_pos']} features x {len(pl['seeds'])} draws]")
     print(f"{os.path.basename(os.path.normpath(r['cache']))}: {r['n_cells']} held-out cells, withheld {r['withheld']}, "
           f"r{r['rank']}, {r['n_fit_rows']:,} fit rows; desk keys-vs-epoch max|diff| "
           f"{r['notes']['desk_keys_vs_epoch_z_maxabs']:.2g}")

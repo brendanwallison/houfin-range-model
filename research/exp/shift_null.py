@@ -1,6 +1,6 @@
 """E044b: is the covariates' alignment with the regional community trend SPECIFIC, or would any equally smooth field do?
 
-    ESK_DESK_CONFIG=<overlay of the cache's model> python research/exp/shift_null.py --cache <cache> --out <dir>
+    python research/exp/shift_null.py --cache <cache> --out <dir>      (normalization from the cache's meta run_dir)
     python research/exp/shift_null.py --summarize <dir>
 
 E044 found that covariate-only maps predict nearly all of the held-out community change that extrapolating the
@@ -140,7 +140,8 @@ def main():
     # moved covariate fields, rebuilt from the yearly states
     cfg = load_config()
     states_dir = os.path.join(cfg["paths"]["hist_dir"], "yearly_states")
-    dm = np.load(os.path.join(cfg["paths"]["desk_output_dir"], "desk_meta.npz"), allow_pickle=True)
+    run_dir = json.load(open(c("meta.json"), encoding="utf-8"))["run_dir"]
+    dm = np.load(os.path.join(run_dir, "desk_meta.npz"), allow_pickle=True)
     schema = json.loads(str(dm["schema"]))
     mu_d, sd_d = dm["mu"].astype("float32"), dm["sd"].astype("float32")
     yrs = np.unique(keys[:, 2])

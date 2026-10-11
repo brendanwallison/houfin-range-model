@@ -1,7 +1,7 @@
 # DIGEST
 
 ## CURRENT STATE (rewritten each round; read this first -- the dated log below keeps the history)
-Last updated 2026-10-11 12:20 (E039h's interpretation suspended by a skeptic, E039i testing fair rivals; E043 running). "Solid" =
+Last updated 2026-10-11 12:09 (E039h's interpretation suspended by a skeptic, E039i testing fair rivals; E043 running). "Solid" =
 independently re-derived, replicated on a second split or seed, and survived a skeptic review. "Tentative" = one run,
 or checks still pending. Experiment numbers point to research/experiments/EXXX.md.
 
@@ -17,7 +17,7 @@ WHERE THINGS STAND (2026-10-11 ~11:00, plain summary; details below)
    matches DESK spatially -- DESK leads it by only 0.00-0.02 at 24 dims and 0.01-0.03 at 64; robust to leaving out
    any held-out block and to fitting the readout on places DESK never trained on.
    IN TIME (E039h): that same pooled linear map backcasts community change far worse than DESK. Its match with real
-   change is 0.09-0.11 against DESK's 0.22-0.37, two seeds. CORRECTION (skeptic, 12:10): that map is a straw man,
+   change is 0.09-0.11 against DESK's 0.22-0.37, two seeds. CORRECTION (skeptic, ~12:05): that map is a straw man,
    because fitted across places it is pure space-for-time. E016 had already found that a FAIR linear map, with
    separate coefficients for change within a place, matches or beats DESK in time. "DESK's network earns its place
    in time" is therefore SUSPENDED; E039i is testing the fair rivals on the same cells.

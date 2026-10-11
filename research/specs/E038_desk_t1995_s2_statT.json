@@ -1,0 +1,14 @@
+{
+ "exp": "E038",
+ "name": "desk-tempho1995-seed2-statT",
+ "group": "gpu",
+ "overlay": "research/overlays/desk_tempho_1995_seed2.json",
+ "cmd": [
+  "bash",
+  "-c",
+  "set -e; export RESEARCH_OUT={out} TMPDIR={out}/tmp MPLCONFIGDIR={out}/tmp/mpl WANDB_MODE=offline WANDB_DIR={out}; mkdir -p {out}/desk {out}/tmp; {python} research/exp/static_channels.py --channels temperature --means-cache {out}/static_means.npy -- scripts/run_encoder.py desk; {python} research/exp/static_channels.py --channels temperature --means-cache {out}/static_means.npy -- research/exp/cache.py --out {cache}/desk_tempho_1995_s2_statT; {python} research/exp/static_channels.py --channels temperature --means-cache {out}/static_means.npy -- research/exp/epoch_variant.py --run {out} --overlay research/overlays/desk_tempho_1995_seed2.json --cache-out {cache}/desk_tempho_1995_s2_statT_late --work {out}/late"
+ ],
+ "expected_minutes": 75,
+ "summarize": ["python", "-c", "import json; s=json.load(open('{out}/desk/run_summary.json')); print({k: s.get(k) for k in ('best_epoch','best_val_kernel','best_val_zmse','epochs_run')})"],
+ "note": "E038: tempho1995 seed 2, temperature channels held at their per-cell 1966-2025 mean"
+}

@@ -22,7 +22,11 @@ FOR YOUR ATTENTION (2026-10-11 morning)
   for the static models had no temperature change -- that alone halves even the controls' lean. On one common
   yardstick the lean falls only to 48-85% of the controls', and at matched training state (the late epoch) the
   static models lean MORE and match real change LESS in 4 of 4. The inference-time climate freeze already does at
-  least as well. Being re-measured properly (E038b); until then there is no candidate.
+  least as well. RE-MEASURED (E038b, one common yardstick, both training states, paired CIs): static temperature
+  trims the lean at the selected epochs (to 0.5-0.75 of the controls') but leans MORE at the late state, and costs a
+  little backcast skill (7 of 8 paired differences negative, 3 significant). Fails its pre-registered rule: NOT a
+  candidate. WHY (likely): temperature is one route to the analog lean; when it is closed, land-use pattern and
+  built-up channels carry it.
 
 SOLID
 - The local machine reproduces TACC for DESK, the spacetime GP, no-change and the oracle. The covariate-GP baseline

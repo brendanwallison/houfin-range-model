@@ -1,0 +1,10 @@
+{
+ "exp": "E039",
+ "name": "rrr-backcast-seed2",
+ "group": "cpu",
+ "overlay": "research/overlays/desk_tempho_1995_seed1.json",
+ "cmd": ["bash", "-c", "set -e; for c in desk_tempho_1995_s2 desk_tempho_1995_s2_late desk_tempho_1985_s2 desk_tempho_1985_s2_late; do {python} research/exp/rrr_backcast.py --cache {cache}/$c --out {out}/$c; done"],
+ "expected_minutes": 15,
+ "summarize": ["bash", "-c", "for c in desk_tempho_1995_s2 desk_tempho_1995_s2_late desk_tempho_1985_s2 desk_tempho_1985_s2_late; do {python} research/exp/rrr_backcast.py --summarize {out}/$c; done"],
+ "note": "E039h verification (c), seed 2: DESK vs a bird-supervised linear covariate map on backcast change at held-out cells (selected and late states, T0 1996 and 1986)"
+}

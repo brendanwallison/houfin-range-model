@@ -1,0 +1,10 @@
+{
+ "exp": "E039",
+ "name": "fair-rivals-rich",
+ "group": "cpu",
+ "overlay": "research/overlays/desk_tempho_1995_seed1.json",
+ "cmd": ["bash", "-c", "set -e; for c in desk_tempho_1995_s1 desk_tempho_1995_s1_late desk_tempho_1985_s1 desk_tempho_1985_s1_late desk_tempho_1995_s2 desk_tempho_1995_s2_late desk_tempho_1985_s2 desk_tempho_1985_s2_late; do {python} research/exp/fair_rivals.py --cache {cache}/$c --out {out}/$c --incremental --n-pos 96 --pos-seeds 1 2 3 4 5 --rich-base --tag _rich; done"],
+ "expected_minutes": 90,
+ "summarize": ["bash", "-c", "for c in desk_tempho_1995_s1 desk_tempho_1995_s1_late desk_tempho_1985_s1 desk_tempho_1985_s1_late desk_tempho_1995_s2 desk_tempho_1995_s2_late desk_tempho_1985_s2 desk_tempho_1985_s2_late; do {python} research/exp/fair_rivals.py --summarize {out}/$c; done"],
+ "note": "E039l: DESK gain beyond a rich linear base (96x5 placebo + kind x time 32 + covariate within-map)"
+}

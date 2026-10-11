@@ -1,7 +1,7 @@
 # DIGEST
 
 ## CURRENT STATE (rewritten each round; read this first -- the dated log below keeps the history)
-Last updated 2026-10-11 15:51 (E046: late-state DESK gain beyond every linear rival verified at four seeds; E043 closed; levers summary given to you). "Solid" =
+Last updated 2026-10-11 16:11 (E047/E047b: county-census crop types add +0.04 within type beyond LUH; LUH's local crop change does not match the census). "Solid" =
 independently re-derived, replicated on a second split or seed, and survived a skeptic review. "Tentative" = one run,
 or checks still pending. Experiment numbers point to research/experiments/EXXX.md.
 
@@ -66,6 +66,15 @@ WHERE THINGS STAND (2026-10-11 ~11:00, plain summary; details below)
    covariate-carried, so a covariate-driven habitat block is the right route to it. How well that holds before 1950,
    when the covariates that drive it (management) were flat, is the open question.
    Implication for the downstream (not a decision now): DESK's 64 dimensions beat its 24 by ~0.02-0.04.
+   NEW COVARIATES, first test (E047/E047b; county-census-based cropland history CropAT-US, 1 km, 1850-2021):
+   - LUH and the county-census record agree on WHERE cropland is (0.94). They do NOT agree on where it CHANGED,
+     1966-86 -> 2005-21 (~0.01).
+   - Net crop amount carries no community-change signal in either source.
+   - Crop TYPE composition (corn, soy, wheats, cotton, ...) adds +0.04 beyond all of LUH's land use within
+     environment type, but nothing at the 150 km local level.
+   - Implication: census-based crop-type history is a real but modest covariate improvement, and it reaches back to
+     1850. Local land-use change at 27 km still barely predicts local community change; land use carries 0.01-0.03
+     locally (E044d method correction).
 2. DESK's TEMPORAL signal: after 1950 it is mostly the land-use management trend (fertilizer, irrigation) -- partly
    real intensification (it scales with cropland), partly a clock; that trend is flat before 1950. DESK still moves
    before 1950 (~0.03/decade vs ~0.05 after) through land-use classes, climate and population, in a different

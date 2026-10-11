@@ -1,0 +1,10 @@
+{
+ "exp": "E040",
+ "name": "stgp-s2",
+ "group": "cpu",
+ "overlay": "config/overlays/desk_tempho_1995.json",
+ "cmd": ["bash", "-c", "{python} research/exp/stgp_harness.py --out {out} --tag s2 --kind spacetime --sample randcells --scale-sample randcells --bounds data --cell"],
+ "expected_minutes": 40,
+ "summarize": ["python", "research/exp/stgp_harness.py", "--summarize", "{out}"],
+ "note": "E040 spacetime GP repair, variant s2: --kind spacetime --sample randcells --scale-sample randcells --bounds data --cell"
+}

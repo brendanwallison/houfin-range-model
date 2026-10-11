@@ -633,6 +633,155 @@ def spatial_blocks(keys, rows, max_rows=1000):
     return blocks
 
 
+def random_blocks(rows, block_rows, rng):
+    """``rows`` shuffled and cut into blocks of ``block_rows`` or a little more. List of sorted arrays.
+
+    The repaired covariate GP's fitting blocks (E037), drawn from the whole continent. A contiguous
+    block (``spatial_blocks``) sits at its own regional level, and a block-diagonal likelihood
+    centred on the continental mean can absorb that offset only with a nearly flat kernel of hugely
+    inflated amplitude -- a local polynomial that extrapolates wildly (measured: s^2 26x the
+    species' variance). It also holds every year of each of its cells, so a place's lasting
+    departure from what its covariates predict reads as covariate signal. In a random block the
+    continental mean is the right centring and a cell rarely repeats, so that departure falls to the
+    noise -- right for a predictor of places it has never seen. The spacetime kernels keep
+    contiguous blocks: for them location IS an input, and same-cell pairs identify its structure.
+    """
+    perm = rng.permutation(np.asarray(rows))
+    return [np.sort(b) for b in np.array_split(perm, max(1, len(perm) // int(block_rows)))]
+
+
+def _cell_groups(cell):
+    order = np.argsort(cell, kind="stable")
+    _, st = np.unique(np.asarray(cell)[order], return_index=True)
+    return np.split(order, st[1:])
+
+
+def random_cell_sample(cell, n_rows, years_per_cell, rng):
+    """Positions of ~``n_rows`` rows from cells taken in random order, at most ``years_per_cell``
+    rows of each. Continental like ``random_blocks``, but with the same-cell pairs that identify a
+    cell effect (the ``covariate_cell`` kernel's rho) inside the fit."""
+    groups = _cell_groups(cell)
+    sel, n = [], 0
+    for i in rng.permutation(len(groups)):
+        g = rng.choice(groups[i], min(int(years_per_cell), len(groups[i])), replace=False)
+        sel.append(g)
+        n += len(g)
+        if n >= n_rows:
+            break
+    return np.sort(np.concatenate(sel))
+
+
+def random_cell_blocks(cell, block_rows, rng):
+    """Positions grouped into blocks of WHOLE cells taken in random order, ~``block_rows`` rows (at
+    least) each: every training row in exactly one block, each block continental."""
+    blocks, cur, n = [], [], 0
+    for g in (lambda gs: [gs[i] for i in rng.permutation(len(gs))])(_cell_groups(cell)):
+        cur.append(g)
+        n += len(g)
+        if n >= block_rows:
+            blocks.append(np.sort(np.concatenate(cur)))
+            cur, n = [], 0
+    if cur:
+        blocks.append(np.sort(np.concatenate(cur)))
+    return blocks
+
+
+def covariate_design(F, tr, n_pcs, sd_floor=1e-6, n_sub=40000):
+    """Whitened principal components of the covariates, fitted on the training rows ``tr``. Pure.
+
+    ``(n, k)`` with ``k = min(n_pcs, channels kept)``, each column mean 0 and sd 1 over ``tr``. The
+    repaired covariate GP's inputs (E037): ARD over 302 collinear channels left the shape fit
+    ill-posed, while the leading components carry the same structure in a few dozen inputs whose
+    lengthscales share one unit. Channels (near-)constant over the training rows are dropped first:
+    standardizing one divides by ~0, so a held-out row where it moves would land absurdly far from
+    every training row (one such channel pinned a lengthscale at 2e-11 and collapsed the fit).
+    """
+    F = np.asarray(F, "float64")
+    tr = np.asarray(tr)
+    mu, sd = F[tr].mean(0), F[tr].std(0)
+    keep = sd > sd_floor
+    Fs = (F[:, keep] - mu[keep]) / sd[keep]
+    sub = tr[:: max(1, len(tr) // int(n_sub))]
+    _, _, Vt = np.linalg.svd(Fs[sub] - Fs[sub].mean(0), full_matrices=False)
+    P = Fs @ Vt[: min(int(n_pcs), Vt.shape[0])].T
+    return (P - P[tr].mean(0)) / (P[tr].std(0) + 1e-12)
+
+
+#: The repaired covariate arm (E037, opts["cov_mode"] = "repaired"): ARD on the leading whitened
+#: components, lengthscales bounded to [bound_lo, bound_hi] x their (unit) spread, OVER a linear
+#: mean -- BLR on more components, the same linear-kernel fit the desk arm makes on z -- so the GP
+#: models only what the linear model leaves. With ``cell`` the kernel carries a same-cell term
+#: (gp_kernels.ard_rbf_cell_kernel) and shape and scales are fitted on random CELLS (the shape on
+#: ``years_per_cell`` rows of each, the scales on blocks of whole cells); without it, on random
+#: rows. Either way the fitting blocks are continental, never contiguous. Overridable per key
+#: through opts["cov_repaired"].
+COV_REPAIRED = {"n_pcs": 32, "n_lin": 64, "bound_lo": 0.05, "bound_hi": 20.0, "block_rows": 1000,
+                "cell": True, "years_per_cell": 4}
+
+
+def covariate_arm_repaired(D, Fkey, label, tr, te, sidx, y_self, groups, opts, rng, verbose=True):
+    """The repaired covariate arm: ``(preds, fits, noise)`` for ``label`` (+ its ``_k``/``_pooled``
+    variants) and ``{label}_linear``, the linear model alone. ``tr`` sorted; ``sidx`` and ``y_self``
+    as in ``fit_predict_all`` (exact leave-one-out for predicted rows that are training rows: the
+    linear part through ``gpk.predict``, the GP part through ``predict_local``)."""
+    cfg = {**COV_REPAIRED, **(opts.get("cov_repaired") or {})}
+    P = covariate_design(D[Fkey], tr, max(int(cfg["n_pcs"]), int(cfg["n_lin"])))
+    Pg, Pl = P[:, :int(cfg["n_pcs"])], P[:, :int(cfg["n_lin"])]
+    Ytr = D["Y"][tr].astype("float64")
+    preds, fits, noise = {}, {}, {}
+    m_lin = gpk.fit(Pl[tr], Ytr)
+    fits[f"{label}_linear"] = m_lin
+    preds[f"{label}_linear"] = gpk.predict(m_lin, Pl[te], y_self=y_self)
+    noise[f"{label}_linear"] = m_lin["n2"]
+    lin_te = preds[f"{label}_linear"][0]
+    R = Ytr - gpk.predict(m_lin, Pl[tr])[0]                # what the linear model leaves
+    n = len(tr)
+    rbar, var_r = R.mean(0), R.var(0) * n / max(n - 1, 1)
+    d = Pg.shape[1]
+    bounds = [(float(np.log(cfg["bound_lo"])), float(np.log(cfg["bound_hi"])))] * d
+    th0 = np.full(d, np.log(np.sqrt(d)))
+    if cfg["cell"]:
+        kind = "covariate_cell"
+        cid = lambda rows: (D["keys"][rows, 0].astype(np.int64) * 100000
+                            + D["keys"][rows, 1]).astype("float64")
+        cell_tr = cid(tr)
+        X_tr, X_te = np.column_stack([Pg[tr], cell_tr]), np.column_stack([Pg[te], cid(te)])
+        fit_pos = random_cell_sample(cell_tr, int(opts["n_fit"]), cfg["years_per_cell"], rng)
+        scale_blocks = random_cell_blocks(cell_tr, cfg["block_rows"], rng)
+        bounds = bounds + [(-9.0, 5.0)]
+        th0 = np.r_[th0, 0.0]
+    else:
+        kind = "covariate"
+        X_tr, X_te = Pg[tr], Pg[te]
+        fit_pos = np.sort(rng.choice(n, min(int(opts["n_fit"]), n), replace=False))
+        scale_blocks = random_blocks(np.arange(n), cfg["block_rows"], rng)
+    shape = gpk.fit_shared_shape(kind, [X_tr[fit_pos]], [R[fit_pos]], th0,
+                                 n_iter=opts["shape_iters"], verbose=verbose, ybar=rbar,
+                                 var_y=var_r, bounds=bounds)
+    sc = gpk.blocked_scales(kind, shape["theta"], [X_tr[b] for b in scale_blocks],
+                            [R[b] for b in scale_blocks], rbar, var_r)
+    shape.update({"s2": sc["s2"], "n2": sc["n2"], "ok": sc["ok"], "ybar": rbar,
+                  "n_scale_blocks": len(scale_blocks), "mean_function": f"{label}_linear",
+                  "n_pcs": d, "n_lin": Pl.shape[1],
+                  "rho_cell": float(np.exp(shape["theta"][-1])) if cfg["cell"] else None})
+    fits[label] = shape
+    for k in opts["k_nn"]:
+        name = label if k == opts["k_nn"][0] else f"{label}_k{k}"
+        m_, v_ = gpk.predict_local(shape, X_tr, R, X_te, groups, k=k, k_max=opts["k_max"],
+                                   self_idx=sidx)
+        preds[name] = (lin_te + m_, v_)
+        noise[name] = shape["n2"]
+    if opts.get("pooled", True):
+        ps = gpk.pool_shape_scales(shape, X_tr[fit_pos], R[fit_pos])
+        ps["ybar"] = rbar
+        fits[f"{label}_pooled"] = ps
+        m_, v_ = gpk.predict_local(ps, X_tr, R, X_te, groups, k=opts["k_nn"][0],
+                                   k_max=opts["k_max"], self_idx=sidx)
+        preds[f"{label}_pooled"] = (lin_te + m_, v_)
+        noise[f"{label}_pooled"] = ps["n2"]
+    return preds, fits, noise
+
+
 def self_index(tr, te):
     """Position of each predicted row among the (sorted) training rows; -1 where it is not one."""
     tr, te = np.asarray(tr), np.asarray(te)
@@ -742,6 +891,16 @@ def fit_predict_all(D, tr, te, opts, rng, verbose=True):
             arms.append(("covariate_raw", "covariate", "F_cov_raw", th_cov))
         for label, kind, Fkey, th0 in arms:
             t0 = time.perf_counter()
+            if kind == "covariate" and opts.get("cov_mode", "suite") == "repaired":
+                p_, f_, n_ = covariate_arm_repaired(D, Fkey, label, tr, te, sidx, y_self, groups,
+                                                    opts, rng, verbose=verbose)
+                preds.update(p_)
+                fits.update(f_)
+                noise.update(n_)
+                if verbose:
+                    print(f"[gp-species] {label} baseline (repaired) fitted and predicted in "
+                          f"{time.perf_counter() - t0:.0f}s", flush=True)
+                continue
             shape = gpk.fit_shared_shape(kind, [D[Fkey][b] for b in shape_blocks],
                                          [D["Y"][b] for b in shape_blocks], th0,
                                          n_iter=opts["shape_iters"], verbose=verbose,
@@ -809,8 +968,14 @@ GP_PREDICTOR_ROLES = {
     "persistence": ("stasis in OBSERVED abundance: each cell's own modern-epoch training mean, "
                     "for every year. Level only (its change is zero); defined only where the cell "
                     "has modern training rows -- the time group"),
-    "covariate": "ARD on DESK's own covariates with DESK's output EMA -- matched to z_ema",
+    "covariate": ("ARD on DESK's own covariates with DESK's output EMA -- matched to z_ema "
+                  "(cov_mode 'repaired': on their leading whitened components, over the "
+                  "covariate_linear mean -- E037)"),
     "covariate_raw": "ARD on DESK's covariates with the input-side EMA only -- matched to z_raw",
+    "covariate_linear": ("BLR on the leading whitened components of DESK's covariates (the "
+                         "repaired covariate arm's mean function): the SAME model class as desk, "
+                         "so desk vs covariate_linear isolates the representation"),
+    "covariate_raw_linear": "the same linear model on the covariates matched to z_raw",
     "esk_oracle_independent": ("THE ceiling: the observed community from a DISJOINT half of the "
                                "same cell-epoch's years, projected into the ESK basis"),
 }
@@ -842,6 +1007,8 @@ def expected_predictors(opts):
             if opts.get("baselines", True) else [])
     names += arms
     names += [f"{a}_k{k}" for a in arms for k in opts["k_nn"][1:]]
+    if arms and opts.get("cov_mode", "suite") == "repaired":
+        names += ["covariate_linear", "covariate_raw_linear"]
     if opts.get("pooled", True):
         names += ["desk_pooled", "desk_raw_pooled"] + [f"{a}_pooled" for a in arms]
     return names
@@ -875,6 +1042,9 @@ def comparisons(names):
     pairs += [("desk", p) for p in models if p != "desk"]
     if "desk_raw" in names and "no_change_raw" in names:
         pairs.append(("desk_raw", "no_change_raw"))
+    # raw z against the covariate models matched to it, like for like
+    if "desk_raw" in names:
+        pairs += [("desk_raw", p) for p in ("covariate_raw", "covariate_raw_linear") if p in names]
     # The pooled DESK arms against every pooled rival, like for like.
     for d, rivals in (("desk_pooled", ("spacetime_pooled", "spacetime_sum_pooled",
                                        "covariate_pooled")),
@@ -1160,7 +1330,8 @@ def run(config=None, out_dir=None, n_boot=1000, seed=0, opts=None):
         unavailable["esk_oracle_independent"] = oracle_info.get("reason", "unavailable")
     print(f"[gp-species] independent oracle: {oracle_info}")
     if not opts["baselines"]:
-        for a in ("spacetime", "spacetime_sum", "covariate", "covariate_raw"):
+        for a in ("spacetime", "spacetime_sum", "covariate", "covariate_raw",
+                  "covariate_linear", "covariate_raw_linear"):
             unavailable[a] = "disabled by --no-baselines"
     if not opts.get("pooled", True):
         unavailable["desk_pooled"] = unavailable["desk_raw_pooled"] = "disabled by --no-pooled"
@@ -1537,8 +1708,13 @@ def main():
     ap.add_argument("--species-list", default=None,
                     help="file of species codes (one per line) to grade, the SAME across runs "
                          "that are compared (e.g. the three tempho overlays)")
+    ap.add_argument("--cov-mode", default="suite", choices=("suite", "repaired"),
+                    help="covariate GP arms: the original fit, or the E037 repair (whitened "
+                         "components, linear mean, random continental fitting blocks) plus the "
+                         "covariate_linear arms")
     args = ap.parse_args()
     opts = {"baselines": not args.no_baselines, "pooled": not args.no_pooled,
+            "cov_mode": args.cov_mode,
             "n_fit": args.n_fit,
             "shape_iters": args.shape_iters,
             "k_nn": tuple(int(k) for k in args.k_nn.split(",") if k),

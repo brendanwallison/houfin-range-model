@@ -1,0 +1,10 @@
+{
+ "exp": "E035",
+ "name": "clock-freeze",
+ "group": "cpu",
+ "overlay": "config/overlays/production.json",
+ "cmd": ["python", "research/exp/clock_freeze.py", "--keys-cache", "{cache}/gp_species_base", "--out", "{out}"],
+ "expected_minutes": 40,
+ "summarize": ["python", "research/exp/clock_freeze.py", "--summarize", "{out}"],
+ "note": "E035f: production DESK movement after 1950 with fertilizer+irrigation / classes / LUH / temperature / all frozen at 1950"
+}

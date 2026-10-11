@@ -1189,3 +1189,125 @@ def test_the_sum_kernel_backcasts_a_persistent_field_better_than_the_product_ker
         mu, _ = gpk.predict_local(shape, F[tr], Y[tr], F[te], cell[te], k=60, k_max=3000)
         out[kind] = float(np.sqrt(np.mean((mu[:, 0] - field[cell[te]]) ** 2)))
     assert out["spacetime_sum"] < 0.8 * out["spacetime"], out
+
+
+# ----------------------------- the repaired covariate arm (E037) -----------------------------
+
+def test_covariate_design_drops_constant_channels_and_whitens():
+    from src.community_encoder.train_DESK.validate_gp_species import covariate_design
+    rng = np.random.default_rng(0)
+    n = 400
+    F = rng.normal(size=(n, 6)) @ rng.normal(size=(6, 6))
+    tr, te = np.arange(300), np.arange(300, n)
+    F[tr, 2] = 0.7                       # constant over the training rows ...
+    F[te, 2] = 0.7 + rng.normal(size=len(te))  # ... but moving on held-out rows
+    P = covariate_design(F, tr, n_pcs=10)
+    assert P.shape == (n, 5)             # the constant channel is gone; k capped at channels kept
+    np.testing.assert_allclose(P[tr].mean(0), 0.0, atol=1e-9)
+    np.testing.assert_allclose(P[tr].std(0), 1.0, atol=1e-6)
+    # without the drop, the held-out rows would sit ~1e6 sd away; with it they look like training rows
+    assert np.abs(P[te]).max() < 10.0
+
+
+def test_random_blocks_partition_every_row_once():
+    from src.community_encoder.train_DESK.validate_gp_species import random_blocks
+    rows = np.arange(10, 2510)
+    bl = random_blocks(rows, 1000, np.random.default_rng(1))
+    assert len(bl) == 2 and all(len(b) >= 1000 for b in bl)
+    np.testing.assert_array_equal(np.sort(np.concatenate(bl)), rows)
+    # continental, not contiguous: each block spans (nearly) the whole range of rows
+    assert all(b.min() < 100 and b.max() > 2400 for b in bl)
+
+
+def test_fit_shared_shape_honours_explicit_bounds():
+    F, Y = _st_data()
+    Fc = F[:, :2] / 100.0
+    fit = gpk.fit_shared_shape("covariate", Fc, Y, np.log([3.0, 3.0]), n_iter=30, verbose=False,
+                               bounds=[(np.log(2.0), np.log(4.0))] * 2)
+    assert np.all(fit["theta"] >= np.log(2.0) - 1e-9) and np.all(fit["theta"] <= np.log(4.0) + 1e-9)
+
+
+def test_run_end_to_end_with_the_repaired_covariate_arm(tmp_path, monkeypatch):
+    rep, n_ev, ho, keys = _synthetic_run(tmp_path, monkeypatch, extra_opts={"cov_mode": "repaired"})
+    lv = rep["level"]["space"]
+    for name in ("covariate", "covariate_linear", "covariate_pooled", "covariate_raw_linear"):
+        assert f"{name}_vs_intercept" in lv
+    assert "desk_vs_covariate_linear" in lv and "desk_raw_vs_covariate_raw_linear" in lv
+    assert rep["completeness_gaps"] == []
+    saved = np.load(tmp_path / "out" / "heldout_predictions.npz", allow_pickle=True)
+    y = saved["y"] if "y" in saved.files else None
+    m = saved["mean_covariate"]
+    assert np.isfinite(m).all()
+    if y is not None:
+        # nothing absurd (the broken fit predicted log1p counts of -50 ... +42), and the GP adds no out-of-range
+        # predictions beyond its own linear mean -- on these clipped synthetic species every linear readout dips
+        # below -1 somewhere (desk ~2.5%, covariate_linear ~0.6%)
+        inr = lambda a: ((a > -1.0) & (a < np.nanmax(y) + 1.0)).mean()
+        assert np.nanmin(m) > -5.0 and np.nanmax(m) < np.nanmax(y) + 5.0
+        assert inr(m) >= inr(saved["mean_covariate_linear"]) - 0.002
+
+
+def test_cell_kernel_stops_copying_a_training_cells_quirk_into_its_neighbours():
+    # No covariate signal at all: each cell has a lasting quirk b, seen in 20 years with near-identical covariates.
+    # A plain kernel that takes the quirk for covariate signal copies a training cell's b into the held-out cell next
+    # to it (error ~ 2 var(b)); the cell kernel discounts the repeats as one place's quirk and predicts ~0 (~ var(b)).
+    rng = np.random.default_rng(3)
+    n_c, n_y = 60, 20
+    x_c = rng.uniform(0, 10, n_c)
+    b = rng.normal(size=n_c)
+    X = np.repeat(x_c, n_y)[:, None] + 0.01 * rng.normal(size=(n_c * n_y, 1))
+    cell = np.repeat(np.arange(n_c), n_y).astype("float64")
+    Y = (np.repeat(b, n_y) + 0.1 * rng.normal(size=n_c * n_y))[:, None]
+    xt = (x_c + 0.02)[:, None]                        # a held-out cell beside every training cell
+    bt = rng.normal(size=n_c)                         # with its own quirk
+    plain = {"kind": "covariate", "theta": np.log([0.05]), "s2": np.array([1.0]),
+             "n2": np.array([0.01]), "ybar": np.array([0.0])}
+    celled = {"kind": "covariate_cell", "theta": np.log([0.05, 100.0]), "s2": np.array([0.01]),
+              "n2": np.array([0.01]), "ybar": np.array([0.0])}
+    groups = np.zeros(n_c, int)
+    mp, _ = gpk.predict_local(plain, X, Y, xt, groups, k=50, k_max=5000)
+    mc, vc = gpk.predict_local(celled, np.column_stack([X, cell]), Y,
+                               np.column_stack([xt, np.full(n_c, -1.0)]), groups, k=50, k_max=5000)
+    err_p, err_c = ((mp[:, 0] - bt) ** 2).mean(), ((mc[:, 0] - bt) ** 2).mean()
+    assert np.abs(mc).max() < 0.2 and err_c < 0.7 * err_p
+    # a new cell's own quirk is unknown: its full variance is in the predictive variance
+    assert np.all(vc[:, 0] > 0.01 * 100.0)
+
+
+def test_cell_kernel_local_prediction_matches_the_dense_gp():
+    import torch
+    rng = np.random.default_rng(4)
+    n = 90
+    X = np.column_stack([rng.normal(size=(n, 2)), rng.integers(0, 15, n)]).astype("float64")
+    Y = rng.normal(size=(n, 2)) + X[:, :1]
+    Xt = np.column_stack([rng.normal(size=(7, 2)), [3, 99, 99, 5, 99, 1, 99]]).astype("float64")
+    shape = {"kind": "covariate_cell", "theta": np.log([1.2, 0.8, 0.5]), "ybar": Y.mean(0),
+             "s2": np.array([0.7, 1.3]), "n2": np.array([0.1, 0.3])}
+    mean, var = gpk.predict_local(shape, X, Y, Xt, np.zeros(7, int), k=200, k_max=10_000)
+    kern = gpk.KERNELS["covariate_cell"]
+    th = torch.as_tensor(shape["theta"])
+    K = kern(torch.as_tensor(X), torch.as_tensor(X), th).numpy()
+    Ks = kern(torch.as_tensor(Xt), torch.as_tensor(X), th).numpy()
+    for s in range(2):
+        C = shape["s2"][s] * K + shape["n2"][s] * np.eye(n)
+        Ci = np.linalg.inv(C)
+        m = Y[:, s].mean() + shape["s2"][s] * Ks @ Ci @ (Y[:, s] - Y[:, s].mean())
+        v = (shape["s2"][s] * 1.5 - shape["s2"][s] ** 2 * np.einsum("ij,jk,ik->i", Ks, Ci, Ks)
+             + shape["n2"][s])
+        np.testing.assert_allclose(mean[:, s], m, rtol=1e-7, atol=1e-7)
+        np.testing.assert_allclose(var[:, s], v, rtol=1e-7, atol=1e-7)
+
+
+def test_random_cell_samplers_keep_cells_whole_and_cover_every_row():
+    from src.community_encoder.train_DESK.validate_gp_species import random_cell_blocks, random_cell_sample
+    rng = np.random.default_rng(2)
+    cell = np.repeat(np.arange(300), rng.integers(5, 30, 300))
+    s = random_cell_sample(cell, 500, 4, rng)
+    _, cnt = np.unique(cell[s], return_counts=True)
+    assert len(s) >= 500 and cnt.max() <= 4 and len(cnt) >= 125
+    bl = random_cell_blocks(cell, 1000, rng)
+    np.testing.assert_array_equal(np.sort(np.concatenate(bl)), np.arange(len(cell)))
+    owner = {}
+    for i, b_ in enumerate(bl):
+        for c_ in np.unique(cell[b_]):
+            assert owner.setdefault(c_, i) == i            # a cell never straddles two blocks

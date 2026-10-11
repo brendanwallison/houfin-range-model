@@ -428,6 +428,26 @@ def ard_rbf_kernel(A, B, theta):
     return torch.exp(-0.5 * d2)
 
 
+def ard_rbf_cell_kernel(A, B, theta):
+    """ARD squared-exponential on every input column but the LAST, plus ``rho [same cell]``.
+
+    The last column is an integer cell id (exact in float64); ``theta = [log lengthscales..., log rho]``.
+    The cell term is a place's lasting departure from what its covariates predict (E037): without it
+    a training cell's ~30 years, with near-identical covariates, count as 30 independent looks at
+    the covariate signal, and the cell's quirk is copied into nearby held-out cells. A held-out cell
+    matches no training cell, so its quirk is unknown -- mean 0, variance ``s^2 rho`` (``prior_diag``).
+    """
+    import torch
+    ell = torch.exp(theta[:-1])
+    d2 = torch.cdist(A[:, :-1] / ell, B[:, :-1] / ell) ** 2
+    return torch.exp(-0.5 * d2) + torch.exp(theta[-1]) * (A[:, -1:] == B[:, -1:].T).to(A.dtype)
+
+
+def prior_diag(kind, theta):
+    """``k(x, x)``: 1 for the unit-amplitude kernels; the cell kernel adds its cell variance."""
+    return 1.0 + float(np.exp(np.asarray(theta, "float64")[-1])) if kind == "covariate_cell" else 1.0
+
+
 def scaled_coords(kind, F, theta):
     """Coordinates in which Euclidean distance tracks the kernel's decay, for neighbour search.
 
@@ -446,11 +466,14 @@ def scaled_coords(kind, F, theta):
         p = 1.0 / (1.0 + np.exp(-th[3]))
         ls = min(np.exp(th[0]), np.exp(th[1]))
         return np.column_stack([F[:, :2] / ls, F[:, 2:3] * max(p, 1e-3) / np.exp(th[2])])
+    if kind == "covariate_cell":
+        # neighbours by covariates alone: the cell id is a label, not a coordinate
+        return F[:, :-1] / np.exp(th[:-1])
     return F / np.exp(th)
 
 
 KERNELS = {"spacetime": spacetime_kernel, "spacetime_sum": spacetime_sum_kernel,
-           "covariate": ard_rbf_kernel}
+           "covariate": ard_rbf_kernel, "covariate_cell": ard_rbf_cell_kernel}
 
 
 def _eig_basis(lam, n):
@@ -551,10 +574,12 @@ def theta_bounds(kind, F, n_theta):
     if kind == "spacetime_sum":
         s = up(rng[:2].max())
         return [(-8.0, s), (-8.0, s), (-8.0, up(rng[2])), (-8.0, 8.0)]
+    if kind == "covariate_cell":
+        return [(-8.0, up(rng[j])) for j in range(n_theta - 1)] + [(-9.0, 5.0)]
     return [(-8.0, up(rng[j])) for j in range(n_theta)]
 
 
-def fit_shared_shape(kind, F, Y, theta0, n_iter=400, verbose=True, ybar=None, var_y=None):
+def fit_shared_shape(kind, F, Y, theta0, n_iter=400, verbose=True, ybar=None, var_y=None, bounds=None):
     """Fit the shared lengthscales and every species' (s^2, sigma^2). Returns the shape fit.
 
     ``F (n, d)`` are the fitting rows' inputs (a subsample of training rows: this is an n x n
@@ -571,7 +596,10 @@ def fit_shared_shape(kind, F, Y, theta0, n_iter=400, verbose=True, ybar=None, va
     lengthscale heading for infinity, an ARD dimension that barely matters), so the covariate GP's
     30-odd lengthscales were still moving when it stopped. L-BFGS-B has a real convergence test
     (projected gradient and relative objective change) and reports whether it met it, which
-    ``converged`` records. ``n_iter`` caps L-BFGS iterations.
+    ``converged`` records. ``n_iter`` caps L-BFGS iterations. ``bounds`` (one ``(lo, hi)`` per
+    log-lengthscale) replaces ``theta_bounds``, whose bounds come from the FITTING rows' extent --
+    wrong for inputs whose spread is known better from all training rows (whitened components:
+    E037).
     """
     import torch
     from scipy.optimize import minimize as _minimize
@@ -606,8 +634,9 @@ def fit_shared_shape(kind, F, Y, theta0, n_iter=400, verbose=True, ybar=None, va
                   f"lengthscales {np.round(np.exp(th), 3)[:6]}", flush=True)
         return total, theta.grad.numpy().copy()
 
-    bnds = theta_bounds(kind, np.concatenate([np.asarray(f, "float64") for f in F_list]),
-                        len(theta0))
+    bnds = (list(bounds) if bounds is not None else
+            theta_bounds(kind, np.concatenate([np.asarray(f, "float64") for f in F_list]),
+                         len(theta0)))
     x0 = np.clip(np.asarray(theta0, "float64"), [b[0] for b in bnds], [b[1] for b in bnds])
     res = _minimize(f, x0, jac=True, method="L-BFGS-B", bounds=bnds,
                     options={"maxiter": int(n_iter), "maxfun": 2 * int(n_iter)})
@@ -701,6 +730,7 @@ def predict_local(shape, F_train, Y_train, F_test, groups, k=32, k_max=4000, sel
     Fte = np.asarray(F_test, "float64")
     sidx = None if self_idx is None else np.asarray(self_idx, "int64")
     loo_var = np.zeros((len(F_test), S), bool)
+    kd = prior_diag(shape["kind"], shape["theta"])
     for g in np.unique(groups):
         rows = np.where(groups == g)[0]
         cidx = knn_union(Fs_tr, Fs_te[rows], k, k_max)
@@ -713,7 +743,7 @@ def predict_local(shape, F_train, Y_train, F_test, groups, k=32, k_max=4000, sel
         A = Q.T @ (Y_train[cidx] - ybar)                                 # (k, S)
         P = Ksc @ Q                                                      # (t, k)
         mean[rows] = ybar + P @ (s2[None, :] * A / D)
-        var[rows] = s2[None, :] - (P ** 2) @ (s2[None, :] ** 2 / D) + n2[None, :]
+        var[rows] = s2[None, :] * kd - (P ** 2) @ (s2[None, :] ** 2 / D) + n2[None, :]
         if sidx is not None:
             own = sidx[rows]
             pos = np.searchsorted(cidx, own)

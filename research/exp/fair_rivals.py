@@ -51,6 +51,9 @@ T = placebo_300 (draw mean):
 with T u C = strong (C = cov_lin), strong+desk_within (cov_all), placebo+desk_within (C = desk_within). The shared part
 cannot be attributed to habitat or not; unique_C is a lower bound on covariate-carried change; unique_T is change the
 covariates do not carry (dynamics, observers, OR habitat change missing from the covariates -- T5).
+E044c: cov_lin contains kind x time (cell-mean covariates x year) -- an environment-indexed CLOCK, not covariate
+change. cov_chg = supervised within-map + EMA within PCs only (covariate CHANGE, linear: a uniform shift cannot reach
+its centred score), with T u C = placebo + cov_chg (per placebo draw).
 E043 check (--ref-cache <control cache>, same keys): the control model's DESK arms (desk_ref, desk_ref_within,
 placebo+desk_ref_within) on the same cells and draws, and paired differences treatment - control.
 """
@@ -250,7 +253,9 @@ def main():
         buf = np.where(bf & ty & np.isfinite(F_raw).all(1) & np.isfinite(Eann).all(1))[0]
         notes["n_buffer_rows"] = int(len(buf))
         if a.commonality:
-            for tag, ps in (("cov_lin", [keep_feats["kindxtime_32"], keep_feats["within_sup"], keep_feats["within_ema"]]),
+            for tag, ps in (("cov_chg", [keep_feats["within_sup"], keep_feats["within_ema"]]),
+                            ("kxt_only", [keep_feats["kindxtime_32"]]),
+                            ("cov_lin", [keep_feats["kindxtime_32"], keep_feats["within_sup"], keep_feats["within_ema"]]),
                             ("cov_all", [keep_feats["kindxtime_32"], keep_feats["within_sup"], keep_feats["within_ema"],
                                          keep_feats["desk_within"]])):
                 edges = np.cumsum([0] + [f.shape[1] for f, _ in ps])
@@ -301,6 +306,13 @@ def main():
                     edges = np.cumsum([0] + [f.shape[1] for f, _ in ps])
                     blocks = [(int(edges[i]), int(edges[i + 1])) for i in range(len(ps))]
                     b = blr.fit(np.hstack([f for f, _ in ps])[buf], Zd[buf], blocks)["coef"].T
+                    incr[f"{tag}#{sd}"] = np.hstack([e for _, e in ps]) @ b
+            if a.commonality:
+                for tag, ps in (("placebo+cov_chg", [(PL, PLev), keep_feats["within_sup"], keep_feats["within_ema"]]),
+                                ("placebo+kxt", [(PL, PLev), keep_feats["kindxtime_32"]])):
+                    edges = np.cumsum([0] + [f.shape[1] for f, _ in ps])
+                    blocks = [(int(edges[i]), int(edges[i + 1])) for i in range(len(ps))]
+                    b = blr.fit(np.hstack([f for f, _ in ps])[trn], Zd[trn], blocks)["coef"].T
                     incr[f"{tag}#{sd}"] = np.hstack([e for _, e in ps]) @ b
             for bname, parts in bases:
                 variants = [(bname, []), (bname + "+desk_within", [keep_feats["desk_within"]])]
@@ -370,7 +382,8 @@ def main():
         if a.commonality:
             res["commonality"] = {}
             T = boots["placebo_300"]
-            for C, TC in (("desk_within", "placebo+desk_within"), ("cov_lin", "strong"), ("cov_all", "strong+desk_within")):
+            for C, TC in (("desk_within", "placebo+desk_within"), ("cov_chg", "placebo+cov_chg"), ("kxt_only", "placebo+kxt"),
+                          ("cov_lin", "strong"), ("cov_all", "strong+desk_within")):
                 if C not in boots or TC not in boots:
                     continue
                 rT, rC, rTC = (np.sign(v) * v ** 2 for v in (T, boots[C], boots[TC]))

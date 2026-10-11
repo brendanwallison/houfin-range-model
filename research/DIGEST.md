@@ -1,7 +1,7 @@
 # DIGEST
 
 ## CURRENT STATE (rewritten each round; read this first -- the dated log below keeps the history)
-Last updated 2026-10-11 14:42 (E044/E044b/E044c: most of the predictable regional community trend tracks covariate change, partly specifically; E043 finishing). "Solid" =
+Last updated 2026-10-11 15:10 (E044 revised by skeptic: covariates reach ~2/3 of the predictable regional trend via environment-type patterns; E044d dose-response and E043 evaluations running). "Solid" =
 independently re-derived, replicated on a second split or seed, and survived a skeptic review. "Tentative" = one run,
 or checks still pending. Experiment numbers point to research/experiments/EXXX.md.
 
@@ -28,19 +28,20 @@ WHERE THINGS STAND (2026-10-11 ~11:00, plain summary; details below)
      co-occurring species, the habitat signature. So "DESK ~ placebo" does not mean DESK misses habitat or that the
      trend belongs to population dynamics. It means DESK, from covariates alone, predicts about as much as
      extrapolating the neighbours' observed trend.
-   - ANSWERED as far as these data go (E044, E044b, 14:21):
-     - The regional community trend is NOT something the covariates miss. Covariate-only predictors also predict
-       87-97% of what extrapolating the trend predicts; only 0.00-0.02 of R^2 is trend-only.
-       Own correction (14:22): those predictors include an "environment type x year" term, which is a clock form.
-       E044c separated it. Covariate CHANGE alone (linear, so no clock) still covers 63-76% of what the trend
-       predicts. The environment x year term covers 83-96%; a habitat type's trend and a clock are not separable
-       there.
-     - Part of that is SPECIFIC: real covariate fields beat smoothness-matched misplaced ones by +0.10 (linear map)
-       and +0.12-0.21 (DESK).
-     - So much of the regional trend tracks the actual covariate (habitat) change at each place, your M6 reading.
-       Correlational, not proof: a covariate can stand in for an unmeasured driver.
-     - Scale: the best predictors explain only 9-22% of community change (noise removed). The rest is predicted
-       by neither.
+   - ANSWER so far, revised by a skeptic (E044/b/c + skeptic, 15:05):
+     - Covariates reach about TWO-THIRDS of the predictable regional trend, mostly through LAND-USE CLASS change
+       (climate less; management adds nothing).
+     - All of that reach runs through the pattern "places of this environment type changed in a typical way".
+       Habitat change structured by habitat type (e.g. abandonment or intensification wherever a land use is) and a
+       type-indexed clock (M26) are not separable from that.
+     - About a third of the trend is reached SPECIFICALLY: beyond equally smooth misplaced fields, size +0.04-0.10,
+       fragile.
+     - About a third is NOT reached by the covariates.
+     - So: nothing shows the trend is dynamics, and nothing yet proves it is habitat.
+     - Scale: all predictors together explain only 9-22% of community change (noise removed).
+     - Next (E044d, running): within a type, did places whose land use or climate changed MORE also change more in
+       birds? That is M26's "acts where it acts" signature of a real driver. First look (one start year): yes,
+       modestly. Within type, corr 0.16 for all covariates and 0.08 for land use; within type AND region, ~0.05.
    - DESK's direction of change does carry information: a readout fitted on within-place change lifts it by
      +0.04-0.07.
    - Beyond the regional trend, DESK adds little.

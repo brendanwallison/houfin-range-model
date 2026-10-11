@@ -138,3 +138,8 @@ Items are numbered so records can cite them (e.g. "considerations: G3, M1, M6").
   and rest error claims on a part's correlation with the truth, not only on its lean. (E035d skeptic)
 - **P5 Interactive runs carry the jobs' thread caps** (OMP/MKL/OPENBLAS=6): an uncapped pytest beside four capped
   jobs pushed the load to 76 on 32 cores and slowed everything. Waiters watch jobs queued after they start.
+- **M28 One yardstick for every arm.** A metric built from a model's own cached inputs (the analog direction from its
+  F_cov) silently changes when the treatment changes the inputs (static channels): E038's static-temperature models
+  were graded against a direction with no temperature change, which alone halves a lean. When a treatment alters
+  inputs, build the metric from a fixed reference (the control's real covariates) and grade every arm on it; and
+  measure at matched training states (selected AND late), with paired CIs. (E038 skeptic, 2026-10-11)

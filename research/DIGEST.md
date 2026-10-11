@@ -1,7 +1,7 @@
 # DIGEST
 
 ## CURRENT STATE (rewritten each round; read this first -- the dated log below keeps the history)
-Last updated 2026-10-11 17:17 (E049: census crop types act on grassland birds, not forest birds, beyond all covariates -- small; E048 training). "Solid" =
+Last updated 2026-10-11 18:40 (E049: census crop types act on grassland birds; E050: CRP and forest-age back-cast add nothing; E048 training on GPU). "Solid" =
 independently re-derived, replicated on a second split or seed, and survived a skeptic review. "Tentative" = one run,
 or checks still pending. Experiment numbers point to research/experiments/EXXX.md.
 
@@ -82,6 +82,12 @@ WHERE THINGS STAND (2026-10-11 ~11:00, plain summary; details below)
    - Implication: census crop-type history is genuine habitat information for open-country birds, at a scale LUH
      misses, back to 1850. It is diluted at the community level, so its value is mainly in the species readout.
      E048 (DESK with CropAT, training) is expected to show <= +0.01 on community change.
+   - E050: two more candidates add NOTHING beyond DESK's covariates for the guilds they should act on:
+     - CRP county enrollment (1986-2008), for grassland birds;
+     - a forest stand-age back-cast (USFS 2011 map), for forest birds. A woodland-bird hint does not meet the bar.
+     - Likely reasons: the CRP map is collinear with the Plains crop and climate patterns; the back-cast's change is
+       mostly uniform aging.
+     - A real succession test needs observed forest-age history: FIA remeasurements, or Annual NLCD 1985+.
 2. DESK's TEMPORAL signal: after 1950 it is mostly the land-use management trend (fertilizer, irrigation) -- partly
    real intensification (it scales with cropland), partly a clock; that trend is flat before 1950. DESK still moves
    before 1950 (~0.03/decade vs ~0.05 after) through land-use classes, climate and population, in a different

@@ -105,8 +105,11 @@ NEW SINCE YESTERDAY EVENING (tentative unless noted; each finding carries WHY: e
   PRODUCTION (E035f/g, all 3,902 places, one model): holding channel groups at their 1950 values, DESK's movement
   since 1950 is mostly its reading of land-use MANAGEMENT -- fertilizer + irrigation alone about half of it, all
   land use two-thirds or more; the class fractions and temperature (180 channels) barely matter. Those channels are
-  flat from 1902 to ~1950 (fertilizer on C3 annual crops 0-2 kg/ha until 1950, 77 by 2025), so production barely
-  moves before 1950: WHY its backcast saturates (established for production).
+  flat from 1902 to ~1950 (fertilizer on C3 annual crops 0-2 kg/ha until 1950, 77 by 2025), so production's
+  pre-1950 movement lacks that signal. CORRECTED (E041 movement profile): production is NOT frozen before 1950 -- it
+  moves ~0.03 per decade from 1902 to 1950 vs ~0.05 after, driven by the channels that change then (classes,
+  climate, population) -- but in a different direction from its post-1950 movement, which is why its distance from
+  TODAY stops growing (the "saturation").
   Clock or intensification? (E035g, rule fixed in advance): the response scales with cropland (correlation +0.65;
   2.5x larger in the most-cropped third of places than the least) -> mostly read as agricultural INTENSIFICATION,
   real habitat change; but places with almost no cropland still respond at ~40% of the typical size (a clock-like part,
@@ -119,8 +122,10 @@ NEW SINCE YESTERDAY EVENING (tentative unless noted; each finding carries WHY: e
   the late state (0.144 -> 0.070, 0.133 -> 0.061), less at the selected epochs (0.120 -> 0.073, 0.113 -> 0.100) --
   almost all in the east; the Great Plains and west hold up. DESK compensates partly: its land-use CLASS reading
   gets stronger (match with real change 0.107 -> 0.166 on the first model) but it also leans harder on temperature
-  (+0.24 toward analogs). So without the management trend DESK does not fully recover its skill from the classes.
-  Replication at the 1986 start running on the GPU.
+  (+0.24 toward analogs). So without the management trend DESK does not fully recover its skill from the classes,
+  and it gains NO movement before 1950 (same as the controls): removing the trend costs post-1950 skill and buys
+  nothing for 1902-1939. The management trend is not a defect to remove on this evidence. Replication at the 1986
+  start running; E042 (temperature AND management static) queued.
   This is the first concrete target for extending extrapolation: a backcast in which temperature does not drive change.
   Training-time version (E038, four runs): DESK retrained with each place's temperature held at its own 1966-2025
   average (temperature can say where a place is, not when). No loss of spatial fit (at or below every control);

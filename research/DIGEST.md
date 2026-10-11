@@ -1,7 +1,7 @@
 # DIGEST
 
 ## CURRENT STATE (rewritten each round; read this first -- the dated log below keeps the history)
-Last updated 2026-10-11 15:24 (E043: no lever; E044d: small within-type dose-response; regional trend consistent with habitat, not shown to be dynamics). "Solid" =
+Last updated 2026-10-11 15:58 (E046: late-state DESK gain beyond every linear rival verified at four seeds; E043 closed; levers summary given to you). "Solid" =
 independently re-derived, replicated on a second split or seed, and survived a skeptic review. "Tentative" = one run,
 or checks still pending. Experiment numbers point to research/experiments/EXXX.md.
 
@@ -54,7 +54,8 @@ WHERE THINGS STAND (2026-10-11 ~11:00, plain summary; details below)
        the bar (E039k-l + skeptic). The selected-state claim is withdrawn.
      - At the LATE training state, it HOLDS against the strongest linear base (trend + kind-of-place clock +
        supervised covariate maps), wherever the readout is fitted (E039n). The gain is +0.03-0.04 at T0 1986 and a
-       borderline +0.01-0.02 at T0 1996. A cell-permuted DESK null (E039o, running) is the last check.
+       borderline +0.01-0.02 at T0 1996. VERIFIED: the cell-permuted null is ~0 (E039o), and it replicates in 8/8
+       pairs over FOUR seeds (E046: +0.02-0.04). At the production-like selected state it is ~0.01.
      - WHERE it comes from (E039m): entirely DESK's response to REGIONAL LAND-USE MANAGEMENT change. The
        continent-wide intensification shift carries more of it than where it intensified more; climate carries none.
      - At the species level, E033c found DESK's increment ~+0.01.

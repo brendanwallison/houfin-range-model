@@ -8,10 +8,12 @@ or checks still pending. Experiment numbers point to research/experiments/EXXX.m
 WHERE THINGS STAND (2026-10-11 ~11:00, plain summary; details below)
 1. DESK as a HABITAT MAP (space): a real but modest improvement over its inputs. Under the age model's own linear
    readout, DESK's 24 dimensions beat the top 24 principal components of its covariates by ~0.03-0.06 of level
-   skill for well-observed species at every data size, beat the 19 bioclim variables by ~0.10 / 0.20, and beat the
-   strongest SDM-style set tried (bioclim + squared terms + land cover, 50 variables) by ~0.03 / 0.08 (moderately
-   common / common species). Not explained by DESK's view of neighbouring cells. Its 64 dimensions beat its 24 by
-   another ~0.02-0.04 -- the age model's cut at 24 leaves skill unused. (Skeptic review of these running.)
+   skill for well-observed species, beat the 19 bioclim variables by ~0.10 / 0.20, and beat the strongest SDM-style
+   set tried (bioclim + squared terms + land cover) by ~0.03 / 0.08. SKEPTIC (corrected): that matched-rank edge is
+   mostly WHICH directions DESK keeps -- bird-relevant ones rather than variance-ordered PCs (compression); with all
+   ~290 covariate components and plenty of data the commonest species tie; the genuinely beyond-linear part is
+   ~0.02-0.04. Whether a bird-supervised LINEAR projection would do as well is the open test (E039g, running).
+   Implication for the downstream (not a decision now): DESK's 64 dimensions beat its 24 by ~0.02-0.04.
 2. DESK's TEMPORAL signal: after 1950 it is mostly the land-use management trend (fertilizer, irrigation) -- partly
    real intensification (it scales with cropland), partly a clock; that trend is flat before 1950. DESK still moves
    before 1950 (~0.03/decade vs ~0.05 after) through land-use classes, climate and population, in a different
@@ -19,16 +21,16 @@ WHERE THINGS STAND (2026-10-11 ~11:00, plain summary; details below)
 3. The SPACE-FOR-TIME LEAN (backcasts drifting toward places that look like the past today) is STRUCTURAL: holding
    temperature, management, or both static at training never removes it at the matched training state -- it moves
    into the remaining channels and the backcast loses skill (E038b, E041, E042, all measured on one yardstick).
-   The only lever with evidence is the inference-time climate freeze, which removes the climate part's lean (not the
-   land part's). Removing a route is not a remedy; a remedy would have to give DESK temporal supervision or fix the
-   readout.
+   (The "climate freeze" -- encoding backcast years with climate held at a reference -- is a DIAGNOSTIC, not a
+   remedy; you would not use it in production.) A remedy would have to give DESK temporal supervision or change the
+   readout: E043 (running, your choice) over-samples same-place, cross-year pairs in DESK's training loss.
 4. BASELINES are repaired: the covariate and spacetime GPs now fit sensibly; a spacetime GP on neighbours' observed
    abundance beats DESK on CHANGE at held-out places (each species' own regional trend -- the population model's
    job, not habitat's).
-DECISIONS FOR YOU: (a) the sealing gap (below); (b) whether the downstream should read 64 DESK dimensions rather than
-24; (c) the inference-time climate freeze (already escalated); (d) direction for the next GPU work -- the
-input-restriction line is closed; the open question is temporal supervision (a DESK loss term on within-place change)
-vs readout-side remedies.
+YOUR ANSWERS (2026-10-11 ~11:25): the sealed species set stays in use for now (revisit later); 32 dimensions is a
+reasonable eventual readout size, but production choices wait for the end of the understanding phase; no climate
+freeze in production; go ahead with the same-place pair over-sampling (E043, queued); address the skeptic's points
+(E039g, queued).
 
 FOR YOUR ATTENTION (2026-10-11 morning)
 - I stopped mid-task last night (~22:00) without a waiter armed; the GPU sat idle 02:25-06:20 and the CPU ~22:20-06:20.

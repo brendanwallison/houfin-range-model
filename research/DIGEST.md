@@ -1,7 +1,7 @@
 # DIGEST
 
 ## CURRENT STATE (rewritten each round; read this first -- the dated log below keeps the history)
-Last updated 2026-10-11 16:11 (E047/E047b: county-census crop types add +0.04 within type beyond LUH; LUH's local crop change does not match the census). "Solid" =
+Last updated 2026-10-11 17:17 (E049: census crop types act on grassland birds, not forest birds, beyond all covariates -- small; E048 training). "Solid" =
 independently re-derived, replicated on a second split or seed, and survived a skeptic review. "Tentative" = one run,
 or checks still pending. Experiment numbers point to research/experiments/EXXX.md.
 
@@ -72,9 +72,16 @@ WHERE THINGS STAND (2026-10-11 ~11:00, plain summary; details below)
    - Net crop amount carries no community-change signal in either source.
    - Crop TYPE composition (corn, soy, wheats, cotton, ...) adds +0.04 beyond all of LUH's land use within
      environment type, but nothing at the 150 km local level.
-   - Implication: census-based crop-type history is a real but modest covariate improvement, and it reaches back to
-     1850. Local land-use change at 27 km still barely predicts local community change; land use carries 0.01-0.03
-     locally (E044d method correction).
+   - Skeptic (E047b): against ALL the covariate change DESK sees, not just LUH, the community-level gain is only
+     ~+0.012-0.016, mostly in the West. CropAT's local information is county-level census totals; below the county it
+     is another allocation.
+   - WHERE IT ACTS (E049b/c, species level): census crop types predict GRASSLAND birds' change beyond all of DESK's
+     covariates. The gain is +0.015-0.018 locally and beats every null in which CropAT's field is moved in space. It is
+     exactly 0 for FOREST birds, at both start years. Against LUH's land use alone the grassland gain is ~+0.12.
+     Small, but it is the ecological signature of a real habitat driver.
+   - Implication: census crop-type history is genuine habitat information for open-country birds, at a scale LUH
+     misses, back to 1850. It is diluted at the community level, so its value is mainly in the species readout.
+     E048 (DESK with CropAT, training) is expected to show <= +0.01 on community change.
 2. DESK's TEMPORAL signal: after 1950 it is mostly the land-use management trend (fertilizer, irrigation) -- partly
    real intensification (it scales with cropland), partly a clock; that trend is flat before 1950. DESK still moves
    before 1950 (~0.03/decade vs ~0.05 after) through land-use classes, climate and population, in a different

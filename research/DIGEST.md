@@ -31,7 +31,7 @@ WHERE THINGS STAND (2026-10-11 ~11:00, plain summary; details below)
    - ANSWERED as far as these data go (E044, E044b, 14:21):
      - The regional community trend is NOT something the covariates miss. Covariate-only predictors also predict
        87-97% of what extrapolating the trend predicts; only 0.00-0.02 of R^2 is trend-only.
-       (Own correction, 14:24: those predictors include an "environment type x year" term, which is a clock form,
+       (Own correction, 14:22: those predictors include an "environment type x year" term, which is a clock form,
        so the overlap may run partly through it. E044c, running, separates covariate CHANGE from that term.)
      - Part of that is SPECIFIC: real covariate fields beat smoothness-matched misplaced ones by +0.10 (linear map)
        and +0.12-0.21 (DESK).

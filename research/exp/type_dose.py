@@ -138,13 +138,23 @@ def main():
     gZ, *_ = np.linalg.lstsq(Tm[tc], dZ[tc], rcond=None)
     dX_res, dZ_res = dX - Tm @ gX, dZ - Tm @ gZ
     type_pred = Tm @ gZ
+    # secondary (added after the T0 1996 smoke run): residualize on type AND position (96 RFF fields at 300 km),
+    # so only change that is local within a type and a region counts
+    rgp = np.random.default_rng(1)
+    om, ph = rgp.normal(size=(2, 96)) / 300.0, rgp.uniform(0, 2 * np.pi, 96)
+    Rpos = np.sqrt(2.0 / 96) * np.cos(cells.astype(float) * 27.0 @ om + ph)
+    Tm2 = np.hstack([Tm, Rpos])
+    gX2, *_ = np.linalg.lstsq(Tm2[tc], dX[tc], rcond=None)
+    gZ2, *_ = np.linalg.lstsq(Tm2[tc], dZ[tc], rcond=None)
+    dX_loc, dZ_loc = dX - Tm2 @ gX2, dZ - Tm2 @ gZ2
+    loc_pred = Tm2 @ gZ2
     share_type_X = 1 - ((dX_res[tc] - dX_res[tc].mean(0)) ** 2).sum() / ((dX[tc] - dX[tc].mean(0)) ** 2).sum()
     famX = families(F.shape[1])[colidx]
     FAMS = {"all": None, "land": ("luh_class", "luh_mgmt", "hyde", "bui"), "luh_class": ("luh_class",),
             "luh_mgmt": ("luh_mgmt",), "climate": ("climate",)}
     blk_tc = (cells[tc, 0] // 6) * 100000 + cells[tc, 1] // 6
     lams = [10.0 ** e for e in np.arange(-3, 3.01, 0.5)]
-    preds_full, preds_dose, lam_used = {"type": type_pred[ev]}, {}, {}
+    preds_full, preds_dose, preds_loc, lam_used = {"type": type_pred[ev]}, {}, {}, {}
     for fn, fs in FAMS.items():
         sel = np.ones(len(colidx), bool) if fs is None else np.isin(famX, fs)
         if sel.sum() == 0:
@@ -153,7 +163,9 @@ def main():
         preds_full[f"full:{fn}"] = (dX[ev][:, sel] - xm) @ B + ym
         Bd, xmd, ymd, lamd = ridge_cv(dX_res[tc][:, sel], dZ_res[tc], blk_tc, lams)
         preds_dose[f"dose:{fn}"] = (dX_res[ev][:, sel] - xmd) @ Bd + ymd
-        lam_used[fn] = {"full": lam, "dose": lamd, "n_channels": int(sel.sum())}
+        Bl, xml, yml, laml = ridge_cv(dX_loc[tc][:, sel], dZ_loc[tc], blk_tc, lams)
+        preds_loc[f"local:{fn}"] = (dX_loc[ev][:, sel] - xml) @ Bl + yml
+        lam_used[fn] = {"full": lam, "dose": lamd, "local": laml, "n_channels": int(sel.sum())}
     # grading
     Ta_e, Tb_e = Ta[ev], Tb[ev]
     Ta_r, Tb_r = Ta_e - type_pred[ev], Tb_e - type_pred[ev]
@@ -169,7 +181,8 @@ def main():
     res = {"cache": a.cache, "n_heldout": int(len(ev)), "n_train_cells": int(len(tc)),
            "share_of_dX_variance_typical_for_type": float(share_type_X),
            "truth_noise_free_share_typical_for_type": float(1 - wc(Ta_r, Tb_r, W[0]).sum() / wc(Ta_e, Tb_e, W[0]).sum()),
-           "lambda": lam_used, "vs_truth": {}, "vs_within_type_truth": {}}
+           "truth_noise_free_share_typical_for_type_and_region": None,
+           "lambda": lam_used, "vs_truth": {}, "vs_within_type_truth": {}, "vs_local_truth": {}}
     for nm, D in {**preds_full, **preds_dose}.items():
         g = np.array([corr(D, Ta_e, Tb_e, w) for w in W])
         res["vs_truth"][nm] = {"corr": float(g[0]), "ci": [float(np.nanpercentile(g[1:], q)) for q in (2.5, 97.5)]}
@@ -177,6 +190,12 @@ def main():
         g = np.array([corr(D, Ta_r, Tb_r, w) for w in W])
         res["vs_within_type_truth"][nm] = {"corr": float(g[0]),
                                            "ci": [float(np.nanpercentile(g[1:], q)) for q in (2.5, 97.5)]}
+    Ta_l, Tb_l = Ta_e - loc_pred[ev], Tb_e - loc_pred[ev]
+    res["truth_noise_free_share_typical_for_type_and_region"] = float(
+        1 - wc(Ta_l, Tb_l, W[0]).sum() / wc(Ta_e, Tb_e, W[0]).sum())
+    for nm, D in preds_loc.items():
+        g = np.array([corr(D, Ta_l, Tb_l, w) for w in W])
+        res["vs_local_truth"][nm] = {"corr": float(g[0]), "ci": [float(np.nanpercentile(g[1:], q)) for q in (2.5, 97.5)]}
     with open(os.path.join(a.out, "type_dose.json"), "w", encoding="utf-8") as fh:
         json.dump(res, fh, indent=1)
     summarize(a.out)
@@ -193,6 +212,11 @@ def summarize(out):
         lam = r["lambda"][nm.split(":")[1]]
         print(f"  vs WITHIN-TYPE    {nm:16s} {v['corr']:+.3f} [{v['ci'][0]:+.3f},{v['ci'][1]:+.3f}]  "
               f"({lam['n_channels']} ch, lambda {lam['dose']:.3g})")
+    if r.get("vs_local_truth"):
+        print(f"  (truth's noise-free change typical for type AND region: "
+              f"{r['truth_noise_free_share_typical_for_type_and_region']:.2f})")
+    for nm, v in r.get("vs_local_truth", {}).items():
+        print(f"  vs WITHIN-TYPE+REGION {nm:13s} {v['corr']:+.3f} [{v['ci'][0]:+.3f},{v['ci'][1]:+.3f}]")
 
 
 if __name__ == "__main__":

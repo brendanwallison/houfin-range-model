@@ -1,0 +1,24 @@
+{
+ "exp": "E038",
+ "name": "attr-commondir-pairs",
+ "group": "cpu",
+ "overlay": "research/overlays/desk_tempho_1995_seed1.json",
+ "after_jobs": [
+  "E038/attr-commondir-t1995-sel",
+  "E038/attr-commondir-t1995-late",
+  "E038/attr-commondir-t1985-sel",
+  "E038/attr-commondir-t1985-late"
+ ],
+ "cmd": [
+  "bash",
+  "-c",
+  "set -e; {python} research/exp/attr_pair.py --a $(ls -d {outroot}/E038/attr-commondir-t1995-sel-*/ | head -1)statT_s1 --b $(ls -d {outroot}/E038/attr-commondir-t1995-sel-*/ | head -1)ctrl_s1 --out {out}/pair_t1995_sel_s1.json --parts full land_part climate_part moisture_part luh_part luh_mgmt_part luh_pattern_part land_local_part bui_part; {python} research/exp/attr_pair.py --a $(ls -d {outroot}/E038/attr-commondir-t1995-sel-*/ | head -1)statT_s2 --b $(ls -d {outroot}/E038/attr-commondir-t1995-sel-*/ | head -1)ctrl_s2 --out {out}/pair_t1995_sel_s2.json --parts full land_part climate_part moisture_part luh_part luh_mgmt_part luh_pattern_part land_local_part bui_part; {python} research/exp/attr_pair.py --a $(ls -d {outroot}/E038/attr-commondir-t1995-late-*/ | head -1)statT_s1 --b $(ls -d {outroot}/E038/attr-commondir-t1995-late-*/ | head -1)ctrl_s1 --out {out}/pair_t1995_late_s1.json --parts full land_part climate_part moisture_part luh_part luh_mgmt_part luh_pattern_part land_local_part bui_part; {python} research/exp/attr_pair.py --a $(ls -d {outroot}/E038/attr-commondir-t1995-late-*/ | head -1)statT_s2 --b $(ls -d {outroot}/E038/attr-commondir-t1995-late-*/ | head -1)ctrl_s2 --out {out}/pair_t1995_late_s2.json --parts full land_part climate_part moisture_part luh_part luh_mgmt_part luh_pattern_part land_local_part bui_part; {python} research/exp/attr_pair.py --a $(ls -d {outroot}/E038/attr-commondir-t1985-sel-*/ | head -1)statT_s1 --b $(ls -d {outroot}/E038/attr-commondir-t1985-sel-*/ | head -1)ctrl_s1 --out {out}/pair_t1985_sel_s1.json --parts full land_part climate_part moisture_part luh_part luh_mgmt_part luh_pattern_part land_local_part bui_part; {python} research/exp/attr_pair.py --a $(ls -d {outroot}/E038/attr-commondir-t1985-sel-*/ | head -1)statT_s2 --b $(ls -d {outroot}/E038/attr-commondir-t1985-sel-*/ | head -1)ctrl_s2 --out {out}/pair_t1985_sel_s2.json --parts full land_part climate_part moisture_part luh_part luh_mgmt_part luh_pattern_part land_local_part bui_part; {python} research/exp/attr_pair.py --a $(ls -d {outroot}/E038/attr-commondir-t1985-late-*/ | head -1)statT_s1 --b $(ls -d {outroot}/E038/attr-commondir-t1985-late-*/ | head -1)ctrl_s1 --out {out}/pair_t1985_late_s1.json --parts full land_part climate_part moisture_part luh_part luh_mgmt_part luh_pattern_part land_local_part bui_part; {python} research/exp/attr_pair.py --a $(ls -d {outroot}/E038/attr-commondir-t1985-late-*/ | head -1)statT_s2 --b $(ls -d {outroot}/E038/attr-commondir-t1985-late-*/ | head -1)ctrl_s2 --out {out}/pair_t1985_late_s2.json --parts full land_part climate_part moisture_part luh_part luh_mgmt_part luh_pattern_part land_local_part bui_part"
+ ],
+ "expected_minutes": 10,
+ "summarize": [
+  "bash",
+  "-c",
+  "{python} research/exp/attr_pair.py --summarize {out}/pair_*.json"
+ ],
+ "note": "E038b: paired block bootstrap of static-temperature minus control (corr with truth, lean on the common Dir), every seed x start year x state"
+}

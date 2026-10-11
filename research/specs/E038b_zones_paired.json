@@ -1,0 +1,19 @@
+{
+ "exp": "E038",
+ "name": "zones-paired",
+ "group": "cpu",
+ "overlay": "research/overlays/desk_tempho_1995_seed1.json",
+ "cmd": [
+  "bash",
+  "-c",
+  "set -e; {python} research/exp/zone_breakdown.py --out {out} --t0 1996 --models desk_tempho_1995_s1 desk_tempho_1995_s2 desk_tempho_1995_s1_statT desk_tempho_1995_s2_statT desk_tempho_1995_s1_late desk_tempho_1995_s2_late desk_tempho_1995_s1_statT_late desk_tempho_1995_s2_statT_late --pairs desk_tempho_1995_s1_statT:desk_tempho_1995_s1 desk_tempho_1995_s2_statT:desk_tempho_1995_s2 desk_tempho_1995_s1_statT_late:desk_tempho_1995_s1_late desk_tempho_1995_s2_statT_late:desk_tempho_1995_s2_late; {python} research/exp/zone_breakdown.py --out {out} --t0 1986 --models desk_tempho_1985_s1 desk_tempho_1985_s2 desk_tempho_1985_s1_statT desk_tempho_1985_s2_statT desk_tempho_1985_s1_late desk_tempho_1985_s2_late desk_tempho_1985_s1_statT_late desk_tempho_1985_s2_statT_late --pairs desk_tempho_1985_s1_statT:desk_tempho_1985_s1 desk_tempho_1985_s2_statT:desk_tempho_1985_s2 desk_tempho_1985_s1_statT_late:desk_tempho_1985_s1_late desk_tempho_1985_s2_statT_late:desk_tempho_1985_s2_late"
+ ],
+ "expected_minutes": 5,
+ "summarize": [
+  "python",
+  "research/exp/zone_breakdown.py",
+  "--summarize",
+  "{out}"
+ ],
+ "note": "E038b: windowed backcast corr with PAIRED CIs (shared bootstrap replicates), static temperature minus control, both states"
+}

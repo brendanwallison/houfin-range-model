@@ -34,6 +34,8 @@ def main():
     ap.add_argument("--models", nargs="+", default=())
     ap.add_argument("--rank", type=int, default=24)
     ap.add_argument("--n-boot", type=int, default=400)
+    ap.add_argument("--pairs", nargs="*", default=(),
+                    help="model_a:model_b -- paired CI of corr(a) - corr(b) from the SAME bootstrap replicates")
     ap.add_argument("--summarize", default=None)
     a = ap.parse_args()
     if a.summarize:
@@ -124,11 +126,19 @@ def main():
             Pt = (pos(rc) * dyear[:, None]) @ btr
             per["trend_placebo"].append(np.array([corr(Pt, wt) for wt in ws]))
         out = {"n_cell_windows": ncell}
+        Cs = {}
         for m, lst in per.items():
             if not lst:
                 continue
             C = np.nanmean(np.vstack(lst), axis=0)
+            Cs[m] = C
             out[m] = {"corr": float(C[0]), "ci": [float(np.nanpercentile(C[1:], 2.5)), float(np.nanpercentile(C[1:], 97.5))]}
+        for pr in a.pairs:
+            ma, mb = pr.split(":")
+            if ma in Cs and mb in Cs:
+                dC = Cs[ma] - Cs[mb]           # same replicates: a paired difference
+                out[f"{ma} - {mb}"] = {"corr": float(dC[0]), "ci": [float(np.nanpercentile(dC[1:], 2.5)),
+                                                                  float(np.nanpercentile(dC[1:], 97.5))]}
         res["zones"][zname] = out
     with open(os.path.join(a.out, f"zone_breakdown_{t0}.json"), "w", encoding="utf-8") as fh:
         json.dump(res, fh, indent=1)
@@ -143,7 +153,7 @@ def summarize(out):
         print(f"T0 {r['t0']}: raw backcast corr by Great Plains zone, pooled over {r['windows']}")
         for z, v in r["zones"].items():
             parts = [f"{m} {v[m]['corr']:+.3f} [{v[m]['ci'][0]:+.3f},{v[m]['ci'][1]:+.3f}]"
-                     for m in list(r["models"]) + ["trend_placebo"] if m in v]
+                     for m in list(r["models"]) + ["trend_placebo"] + [k for k in v if " - " in k] if m in v]
             print(f"  {z:13s} (cell-windows {v['n_cell_windows']:3d}) " + " | ".join(parts))
 
 

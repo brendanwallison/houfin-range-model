@@ -47,6 +47,9 @@ def main():
                     help="E035d: also swap temperature / moisture / LUH / HYDE / BUI separately, and a regional-only "
                          "land-use change (local vs regional)")
     ap.add_argument("--regional-km", type=float, default=300.0)
+    ap.add_argument("--dir-cache", default=None,
+                    help="E038b: build the analog direction from THIS cache's covariates (e.g. a control's dynamic F_cov) "
+                         "instead of the evaluated cache's -- one yardstick for models trained on different inputs")
     ap.add_argument("--luh-split", action="store_true",
                     help="E035e: LUH swapped as 12 class fractions / 19 management channels / secondary age+biomass, "
                          "plus a uniform-only LUH change (continental-mean shift) and precipitation alone")
@@ -184,7 +187,11 @@ def main():
         parts["luh_uniform_part"] = early["luh"] - early["luh_uniform"]         # the continent-wide shift alone
         parts["luh_pattern_part"] = early["luh_uniform"] - early["None"]        # where land use changed more or less
     # analog direction (E017 v2, DESK modern z), covariates from the cache's F_cov at keys
-    F = np.load(c("F_cov.npy"), mmap_mode="r")
+    # the analog direction's covariates: the evaluated cache's own, or a fixed reference (--dir-cache). A model trained
+    # with static channels has them static in its own cache, so its own Dir cannot see their change (E038 skeptic)
+    F = np.load(os.path.join(a.dir_cache, "F_cov.npy") if a.dir_cache else c("F_cov.npy"), mmap_mode="r")
+    if a.dir_cache and not np.array_equal(np.load(os.path.join(a.dir_cache, "keys.npy")), keys):
+        raise SystemExit("--dir-cache has different keys from the evaluated cache")
     allpairs_modern = [np.asarray(full[pairs[j, 1]]) for j in range(len(pairs))]
     cov_early = np.stack([np.asarray(F[np.asarray(full[pairs[j, 0]])], "float64").mean(0) for j in range(len(pairs))])
     cov_mod = np.stack([np.asarray(F[rl], "float64").mean(0) for rl in allpairs_modern])
@@ -270,6 +277,11 @@ def main():
                 "corr_leave_zone_out": {str(int(z)): corr_on(Dp, zone != z) for z in np.unique(zone)},
                 "corr_unit_length": corr_on(Dp / np.maximum(nrm, 1e-12), allc),
                 "corr_magnitude_placebo": corr_on(nrm * u[None, :], allc)})
+    res["dir_cache"] = a.dir_cache
+    # per-cell arrays for paired comparisons between models on the same cells (research/exp/attr_pair.py)
+    np.savez(os.path.join(a.out, "attribution_cells.npz"), cells=cells[ev], Ta=Ta, Tb=Tb, Dir=Dir,
+             **{"part__" + k.replace("(", "").replace(")", "").replace("=", "").replace(" ", "_"): v
+                for k, v in parts.items()})
     with open(os.path.join(a.out, "backcast_attribution.json"), "w", encoding="utf-8") as fh:
         json.dump(res, fh, indent=1)
     summarize(a.out)

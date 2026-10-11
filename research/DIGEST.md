@@ -178,6 +178,12 @@ NEW SINCE YESTERDAY EVENING (tentative unless noted; each finding carries WHY: e
   With all 291 components and plenty of data the covariates nearly catch up for the commonest species; with little
   data they overfit and fall well behind. Side finding: DESK's 64 dimensions beat its 24 by ~0.02-0.04 -- the age
   model's cut at 24 leaves some skill unused (worth your attention for the downstream).
+  AGAINST STANDARD SDM INPUTS (E039c/d, your request): DESK's 19-24 dimensions beat the 19 WorldClim BIOCLIM
+  variables (built from the same states, same smoothing) by +0.06 / +0.16 of level skill for species at 5-20% /
+  >= 20% prevalence (84-100% of species); adding the 12 land-cover classes recovers about half the gap; giving bioclim
+  hump-shaped (quadratic) responses recovers more. Against the strongest SDM-style set tried -- bioclim + squared terms
+  + land cover, 50 variables -- DESK still leads, by ~0.02 for moderately common species and ~0.06 for common ones
+  (66-97% of species), with 24 dimensions, and slightly more with little data. Both models agree.
 - Readout scaling (E033, E033b, skeptic-reviewed):
   - shrinking DESK's change by a factor learned on the BBS years (~1/3) stops the readout doing harm -- but only
     because there is almost no information to lose: DESK's change is about as uninformative in its own trained years

@@ -722,7 +722,8 @@ def knn_union(Fs_train, Fs_test, k, k_max, device=None):
     return np.sort(idx)
 
 
-def predict_local(shape, F_train, Y_train, F_test, groups, k=32, k_max=4000, self_idx=None):
+def predict_local(shape, F_train, Y_train, F_test, groups, k=32, k_max=4000, self_idx=None,
+                  loo_test_kernel=False):
     """Predictive mean and variance of a new observation, conditioning each group of test rows
     on its own local training set. ``(mean, var)``, each ``(n_test, S)``.
 
@@ -737,6 +738,9 @@ def predict_local(shape, F_train, Y_train, F_test, groups, k=32, k_max=4000, sel
     leave-one-out prediction from the same conditioning set instead:
     ``mean = y_i - [C^-1 (y - ybar)]_i / [C^-1]_ii``, ``var = 1 / [C^-1]_ii``, with
     ``C = s^2 K + sigma^2 I`` per species -- all from the eigendecomposition already in hand.
+    ``loo_test_kernel``: the same leave-one-out, but with the TEST row's own kernel vector rather than its
+    training row's -- needed when the two differ, as when a cell kernel's test rows carry an unseen cell id so
+    that a place's own lasting departure is not carried into the prediction (the repaired covariate arm, E037).
     """
     import torch
     kern = KERNELS[shape["kind"]]
@@ -776,7 +780,18 @@ def predict_local(shape, F_train, Y_train, F_test, groups, k=32, k_max=4000, sel
                 cinv_diag = (Qi ** 2) @ (1.0 / D)                        # (m, S)
                 alpha = Qi @ (A / D)                                     # (m, S)
                 r_hit = rows[hit]
-                mean[r_hit] = Y_train[own[hit]] - alpha / cinv_diag
-                var[r_hit] = 1.0 / cinv_diag
+                if loo_test_kernel:
+                    # The test row's OWN kernel vector (it may differ from its training row's -- e.g. a cell
+                    # term withheld so the row is predicted as an unseen place), with the training row itself
+                    # removed from the conditioning set: u_{-i}' C_{-i}^-1 v_{-i} = u'C^-1 v - (u'C^-1 e_i)(e_i'C^-1 v)
+                    # / [C^-1]_ii, all in the eigenbasis already in hand
+                    Ph = P[hit]                                          # (m, k)
+                    cross = (Ph * Qi) @ (1.0 / D)                        # (m, S): k_t' Q D^-1 Q_i'
+                    mean[r_hit] = ybar + s2[None, :] * (Ph @ (A / D) - cross * alpha / cinv_diag)
+                    var[r_hit] = (s2[None, :] * kd + n2[None, :]
+                                  - s2[None, :] ** 2 * ((Ph ** 2) @ (1.0 / D) - cross ** 2 / cinv_diag))
+                else:
+                    mean[r_hit] = Y_train[own[hit]] - alpha / cinv_diag
+                    var[r_hit] = 1.0 / cinv_diag
                 loo_var[r_hit] = True
     return mean, np.where(loo_var, var, np.maximum(var, n2[None, :]))

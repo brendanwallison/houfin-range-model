@@ -716,7 +716,19 @@ def covariate_design(F, tr, n_pcs, sd_floor=1e-6, n_sub=40000):
 #: rows. Either way the fitting blocks are continental, never contiguous. Overridable per key
 #: through opts["cov_repaired"].
 COV_REPAIRED = {"n_pcs": 32, "n_lin": 64, "bound_lo": 0.05, "bound_hi": 20.0, "block_rows": 1000,
-                "cell": True, "years_per_cell": 4}
+                "cell": True, "years_per_cell": 4, "shape_min_prev": 0.01}
+
+
+def shape_species(Ytr, min_prev):
+    """Species that inform the SHARED shape fit: detected in >= ``min_prev`` of the training rows. Pure.
+
+    The repaired baselines were validated with the shape fitted on such species (E037/E040: 136 dev species at
+    1%). The suite grades every species with a detection; fitted on all of them (~460, mostly rare), the summed
+    likelihood is dominated by near-empty columns and the shape went somewhere else entirely (a 2,300 km field with
+    the cell term ~0, the E040 skeptic). Every species still gets its own scales on the fitted shape. Falls back to
+    all species if none qualifies (tiny synthetic sets)."""
+    keep = (np.asarray(Ytr) > 0).mean(0) >= float(min_prev)
+    return keep if keep.any() else np.ones_like(keep)
 
 
 #: E040, opts["st_mode"] = "repaired": the spacetime kernels fitted on random cells with physical bounds on their
@@ -725,7 +737,14 @@ COV_REPAIRED = {"n_pcs": 32, "n_lin": 64, "bound_lo": 0.05, "bound_hi": 20.0, "b
 ST_BOUNDS = {"spacetime": [(np.log(10.0), np.log(10000.0)), (np.log(1.0), np.log(1000.0))],
              "spacetime_sum": [(np.log(10.0), np.log(10000.0)), (np.log(10.0), np.log(10000.0)),
                                (np.log(1.0), np.log(1000.0)), (-6.0, 6.0)]}
-ST_REPAIRED = {"years_per_cell": 4, "block_rows": 1000}
+ST_REPAIRED = {"years_per_cell": 4, "block_rows": 1000, "shape_min_prev": 0.01}
+#: The spacetime arms (and any kernel with a same-cell term) carry a place's lasting departure across years. On the
+#: TIME set the modern epoch of a trained place is in-sample: its leave-one-out predictions still condition on the
+#: place's OTHER modern years, so the predicted modern level shares the observed modern mean's noise, and a decaying
+#: place term turns that into predicted change that shares the observed change's noise -- regression to the mean
+#: scored as skill (E040 skeptic). Their TIME CHANGE comparisons are reported but not interpretable; TIME LEVEL (the
+#: withheld decade is out of sample) and every SPACE / SPACE_TIME comparison are unaffected.
+TIME_CHANGE_SHARES_MODERN_NOISE = ("spacetime", "spacetime_sum")
 
 
 def covariate_arm_repaired(D, Fkey, label, tr, te, sidx, y_self, groups, opts, rng, verbose=True):
@@ -751,10 +770,13 @@ def covariate_arm_repaired(D, Fkey, label, tr, te, sidx, y_self, groups, opts, r
     th0 = np.full(d, np.log(np.sqrt(d)))
     if cfg["cell"]:
         kind = "covariate_cell"
-        cid = lambda rows: (D["keys"][rows, 0].astype(np.int64) * 100000
-                            + D["keys"][rows, 1]).astype("float64")
-        cell_tr = cid(tr)
-        X_tr, X_te = np.column_stack([Pg[tr], cell_tr]), np.column_stack([Pg[te], cid(te)])
+        cell_tr = (D["keys"][tr, 0].astype(np.int64) * 100000 + D["keys"][tr, 1]).astype("float64")
+        # every predicted row is treated as an UNSEEN place (id -1): the cell term discounts a training place's
+        # repeated years, but a place's own lasting departure is never carried into a prediction -- not into a
+        # trained place's withheld decades, not into its in-sample modern rows (exact leave-one-out with the test
+        # row's own kernel, gp_kernels.predict_local loo_test_kernel). The covariate arm is then covariates only,
+        # matched to desk, which has no place memory either (E040 skeptic)
+        X_tr, X_te = np.column_stack([Pg[tr], cell_tr]), np.column_stack([Pg[te], np.full(len(te), -1.0)])
         fit_pos = random_cell_sample(cell_tr, int(opts["n_fit"]), cfg["years_per_cell"], rng)
         scale_blocks = random_cell_blocks(cell_tr, cfg["block_rows"], rng)
         bounds = bounds + [(-9.0, 5.0)]
@@ -764,20 +786,22 @@ def covariate_arm_repaired(D, Fkey, label, tr, te, sidx, y_self, groups, opts, r
         X_tr, X_te = Pg[tr], Pg[te]
         fit_pos = np.sort(rng.choice(n, min(int(opts["n_fit"]), n), replace=False))
         scale_blocks = random_blocks(np.arange(n), cfg["block_rows"], rng)
-    shape = gpk.fit_shared_shape(kind, [X_tr[fit_pos]], [R[fit_pos]], th0,
-                                 n_iter=opts["shape_iters"], verbose=verbose, ybar=rbar,
-                                 var_y=var_r, bounds=bounds)
+    ssp = shape_species(Ytr, cfg["shape_min_prev"])
+    shape = gpk.fit_shared_shape(kind, [X_tr[fit_pos]], [R[fit_pos][:, ssp]], th0,
+                                 n_iter=opts["shape_iters"], verbose=verbose, ybar=rbar[ssp],
+                                 var_y=var_r[ssp], bounds=bounds)
     sc = gpk.blocked_scales(kind, shape["theta"], [X_tr[b] for b in scale_blocks],
                             [R[b] for b in scale_blocks], rbar, var_r)
     shape.update({"s2": sc["s2"], "n2": sc["n2"], "ok": sc["ok"], "ybar": rbar,
                   "n_scale_blocks": len(scale_blocks), "mean_function": f"{label}_linear",
-                  "n_pcs": d, "n_lin": Pl.shape[1],
+                  "n_pcs": d, "n_lin": Pl.shape[1], "n_shape_species": int(ssp.sum()),
                   "rho_cell": float(np.exp(shape["theta"][-1])) if cfg["cell"] else None})
     fits[label] = shape
+    loo_tk = bool(cfg["cell"])
     for k in opts["k_nn"]:
         name = label if k == opts["k_nn"][0] else f"{label}_k{k}"
         m_, v_ = gpk.predict_local(shape, X_tr, R, X_te, groups, k=k, k_max=opts["k_max"],
-                                   self_idx=sidx)
+                                   self_idx=sidx, loo_test_kernel=loo_tk)
         preds[name] = (lin_te + m_, v_)
         noise[name] = shape["n2"]
     if opts.get("pooled", True):
@@ -785,7 +809,7 @@ def covariate_arm_repaired(D, Fkey, label, tr, te, sidx, y_self, groups, opts, r
         ps["ybar"] = rbar
         fits[f"{label}_pooled"] = ps
         m_, v_ = gpk.predict_local(ps, X_tr, R, X_te, groups, k=opts["k_nn"][0],
-                                   k_max=opts["k_max"], self_idx=sidx)
+                                   k_max=opts["k_max"], self_idx=sidx, loo_test_kernel=loo_tk)
         preds[f"{label}_pooled"] = (lin_te + m_, v_)
         noise[f"{label}_pooled"] = ps["n2"]
     return preds, fits, noise
@@ -924,13 +948,16 @@ def fit_predict_all(D, tr, te, opts, rng, verbose=True):
                     kind = "spacetime_cell"
                     th0 = np.r_[th0, 0.0, np.log(30.0)]
                     bnds = bnds + [(-9.0, 5.0), (np.log(1.0), np.log(1000.0))]
-            shape = gpk.fit_shared_shape(kind, [D[Fkey][b] for b in sb], [D["Y"][b] for b in sb], th0,
+                ssp = shape_species(Ytr, ST_REPAIRED["shape_min_prev"])
+            else:
+                ssp = np.ones(Ytr.shape[1], bool)
+            shape = gpk.fit_shared_shape(kind, [D[Fkey][b] for b in sb], [D["Y"][b][:, ssp] for b in sb], th0,
                                          n_iter=opts["shape_iters"], verbose=verbose,
-                                         ybar=ybar, var_y=var_y, bounds=bnds)
+                                         ybar=ybar[ssp], var_y=var_y[ssp], bounds=bnds)
             sc = gpk.blocked_scales(kind, shape["theta"], [D[Fkey][b] for b in scb],
                                     [D["Y"][b] for b in scb], ybar, var_y)
             shape.update({"s2": sc["s2"], "n2": sc["n2"], "ok": sc["ok"], "ybar": ybar,
-                          "n_scale_blocks": len(scb)})
+                          "n_scale_blocks": len(scb), "n_shape_species": int(ssp.sum())})
             fits[label] = shape
             for k in opts["k_nn"]:
                 name = label if k == opts["k_nn"][0] else f"{label}_k{k}"
@@ -1067,6 +1094,9 @@ def comparisons(names):
     # raw z against the covariate models matched to it, like for like
     if "desk_raw" in names:
         pairs += [("desk_raw", p) for p in ("covariate_raw", "covariate_raw_linear") if p in names]
+    # does the covariate GP add anything over its own linear mean? (E037's A4 margin was +0.017-0.026: noise?)
+    pairs += [(a, b) for a, b in (("covariate", "covariate_linear"), ("covariate_raw", "covariate_raw_linear"))
+              if a in names and b in names]
     # The pooled DESK arms against every pooled rival, like for like.
     for d, rivals in (("desk_pooled", ("spacetime_pooled", "spacetime_sum_pooled",
                                        "covariate_pooled")),
@@ -1401,6 +1431,12 @@ def run(config=None, out_dir=None, n_boot=1000, seed=0, opts=None):
            "regions": {"spatial_regions_per_axis": n_regions, "balance": bal_kw},
            "predictors": {p: role_of(p) for p in names},
            "shares_target_noise": {p: GP_SHARES_TARGET_NOISE.get(p, False) for p in names},
+           "time_change_shares_modern_noise": {
+               "predictors": [p for p in names if p.split("_k")[0].replace("_pooled", "")
+                              in TIME_CHANGE_SHARES_MODERN_NOISE],
+               "note": ("their TIME-set CHANGE comparisons share the observed modern epoch's noise through the place's "
+                        "other in-sample modern years (TIME_CHANGE_SHARES_MODERN_NOISE): reported, not interpretable; "
+                        "TIME level and SPACE / SPACE_TIME are unaffected")},
            "unavailable": unavailable, "completeness_gaps": gaps,
            "oracle": oracle_info,
            "options": {k: (list(v) if isinstance(v, tuple) else v) for k, v in opts.items()},

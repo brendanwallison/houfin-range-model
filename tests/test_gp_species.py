@@ -1341,3 +1341,43 @@ def test_spacetime_cell_kernel_local_prediction_matches_the_dense_gp():
              + shape["n2"][s])
         np.testing.assert_allclose(mean[:, s], m, rtol=1e-7, atol=1e-7)
         np.testing.assert_allclose(var[:, s], v, rtol=1e-7, atol=1e-7)
+
+
+def test_loo_with_the_test_rows_own_kernel_matches_the_dense_gp():
+    # A training row predicted as an UNSEEN place (its cell id withheld) with itself left out of the conditioning set
+    # (the repaired covariate arm on in-sample rows): must equal the dense GP on the other rows, with the test row's own
+    # cross-covariance (no cell term) and its prior variance s2 (1 + rho) -- a new place's effect is unknown.
+    import torch
+    rng = np.random.default_rng(8)
+    n = 70
+    X = np.column_stack([rng.normal(size=(n, 2)), rng.integers(0, 10, n)]).astype("float64")
+    Y = rng.normal(size=(n, 2)) + X[:, :1]
+    shape = {"kind": "covariate_cell", "theta": np.log([1.1, 0.7, 0.8]), "ybar": Y.mean(0),
+             "s2": np.array([0.8, 1.2]), "n2": np.array([0.15, 0.3])}
+    own = np.array([3, 17, 40])
+    Xt = X[own].copy()
+    Xt[:, -1] = -1.0
+    mean, var = gpk.predict_local(shape, X, Y, Xt, np.zeros(3, int), k=200, k_max=10_000,
+                                  self_idx=own, loo_test_kernel=True)
+    kern = gpk.KERNELS["covariate_cell"]
+    th = torch.as_tensor(shape["theta"])
+    for j, i in enumerate(own):
+        keep = np.arange(n) != i
+        K = kern(torch.as_tensor(X[keep]), torch.as_tensor(X[keep]), th).numpy()
+        ks = kern(torch.as_tensor(Xt[j:j + 1]), torch.as_tensor(X[keep]), th).numpy()[0]
+        for s in range(2):
+            C = shape["s2"][s] * K + shape["n2"][s] * np.eye(int(keep.sum()))
+            Ci = np.linalg.inv(C)
+            m = Y[:, s].mean() + shape["s2"][s] * ks @ Ci @ (Y[keep, s] - Y[:, s].mean())
+            v = shape["s2"][s] * 1.8 - shape["s2"][s] ** 2 * ks @ Ci @ ks + shape["n2"][s]
+            np.testing.assert_allclose(mean[j, s], m, rtol=1e-7, atol=1e-7)
+            np.testing.assert_allclose(var[j, s], v, rtol=1e-7, atol=1e-7)
+
+
+def test_shape_species_keeps_common_species_and_falls_back_when_none_qualify():
+    from src.community_encoder.train_DESK.validate_gp_species import shape_species
+    Y = np.zeros((1000, 3))
+    Y[:50, 0] = 1.0          # 5% prevalence
+    Y[:5, 1] = 1.0           # 0.5%
+    np.testing.assert_array_equal(shape_species(Y, 0.01), [True, False, False])
+    np.testing.assert_array_equal(shape_species(np.zeros((10, 2)), 0.01), [True, True])

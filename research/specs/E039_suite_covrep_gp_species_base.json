@@ -1,7 +1,7 @@
 {
   "exp": "E039", "name": "suite-covrep-gp_species_base", "group": "cpu",
   "overlay": "config/overlays/gp_species_base.json",
-  "cmd": ["python", "-m", "src.community_encoder.train_DESK.validate_gp_species", "--n-boot", "1000", "--thin", "none", "--cov-mode", "repaired", "--st-mode", "repaired", "--out-dir", "{out}/gp_species"],
+  "cmd": ["python", "-m", "src.community_encoder.train_DESK.validate_gp_species", "--n-boot", "1000", "--thin", "none", "--cov-mode", "repaired", "--st-mode", "repaired", "--species-list", "research/specs/dev_species.txt", "--out-dir", "{out}/gp_species"],
   "expected_minutes": 240,
   "summarize": ["bash", "-c", "{python} research/exp/compare_reports.py {out}/gp_species/report.json {outroot}/E006/suite-corrected-gp_species_base-d2f9869983b1/gp_species/report.json --max-rows 30"],
   "note": "E039: the corrected suite with the repaired covariate arm (E037 v8) and covariate_linear, vs E006 on the same model"

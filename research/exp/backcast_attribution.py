@@ -47,6 +47,9 @@ def main():
                     help="E035d: also swap temperature / moisture / LUH / HYDE / BUI separately, and a regional-only "
                          "land-use change (local vs regional)")
     ap.add_argument("--regional-km", type=float, default=300.0)
+    ap.add_argument("--luh-split", action="store_true",
+                    help="E035e: LUH swapped as 12 class fractions / 19 management channels / secondary age+biomass, "
+                         "plus a uniform-only LUH change (continental-mean shift) and precipitation alone")
     ap.add_argument("--summarize", default=None)
     a = ap.parse_args()
     if a.summarize:
@@ -91,17 +94,37 @@ def main():
     pts = np.concatenate(early_rows)
     pidx = keys[pts].astype("int32")
     schema = cio.load_schema(os.path.join(cfg["paths"]["hist_dir"], "yearly_states"))
-    fam = {"land": [], "climate": [], "temperature": [], "moisture": [], "luh": [], "hyde": [], "bui": []}
+    fam = {"land": [], "climate": [], "temperature": [], "moisture": [], "luh": [], "hyde": [], "bui": [],
+           "luh_class": [], "luh_mgmt": [], "luh_secage": [], "ppt": []}
     TEMP = ("Tave", "Tmax", "Tmin", "DD5", "DD18", "DDsub0", "DDsub18", "NFFD", "Eref")
+    LUH_CLASSES = ("c3ann", "c3nfx", "c3per", "c4ann", "c4per", "pastr", "primf", "primn", "range", "secdf", "secdn",
+                   "urban")
     for s_ in schema["streams"]:
         cols = list(range(int(s_["start"]), int(s_["end"])))
         if s_["name"] == "climate":
             fam["climate"] += cols
             for j, v in enumerate(s_.get("variables", [])):
                 fam["temperature" if v.split("_")[0] in TEMP else "moisture"].append(int(s_["start"]) + j)
+                if v.split("_")[0] == "PPT":
+                    fam["ppt"].append(int(s_["start"]) + j)
         elif s_["name"] in LAND:
             fam["land"] += cols
             fam[{"landuse": "luh"}.get(s_["name"], s_["name"])] += cols
+            if s_["name"] == "landuse":
+                # E035e: the 33 LUH channels are 12 class FRACTIONS, 2 secondary-land state variables (mean age,
+                # biomass) and 19 management channels (fertilizer, irrigation, harvest, flooding, plantation,
+                # protection); the skeptic found the change dominated by near-uniform trends in the last two groups
+                names = s_.get("variables") or []
+                if len(names) != len(cols):
+                    raise SystemExit(f"landuse stream has {len(cols)} channels but {len(names)} names")
+                for j, v in enumerate(names):
+                    g = ("luh_class" if v in LUH_CLASSES else "luh_secage" if v in ("secma", "secmb")
+                         else "luh_mgmt")
+                    fam[g].append(int(s_["start"]) + j)
+    if a.luh_split:
+        print("[attribution] LUH groups: " + "; ".join(f"{g} {len(fam[g])}" for g in ("luh_class", "luh_mgmt",
+                                                                                      "luh_secage")) +
+              f"; ppt {len(fam['ppt'])}", flush=True)
     orig = cio.load_state_stack
     mode = {"which": None}
     sigma_cells = a.regional_km / 27.0
@@ -121,6 +144,13 @@ def main():
                 den = gaussian_filter(ok_.astype("float64"), sigma=(sigma_cells, sigma_cells, 0))
                 ds = np.where(den > 1e-6, num / np.maximum(den, 1e-6), 0.0)
                 x[..., cols] = (y2[..., cols].astype("float64") + ds).astype(x.dtype)
+            elif mode["which"] == "luh_uniform":
+                # LUH change replaced by its CONTINENTAL-MEAN change, channel by channel: later value + uniform shift.
+                # What stays is the part of land-use change that is the same everywhere -- a clock
+                cols = fam["luh"]
+                d = x[..., cols].astype("float64") - y2[..., cols].astype("float64")
+                du = np.nanmean(d.reshape(-1, len(cols)), axis=0)
+                x[..., cols] = (y2[..., cols].astype("float64") + du).astype(x.dtype)
             else:
                 x[..., fam[mode["which"]]] = y2[..., fam[mode["which"]]]
         return x
@@ -128,6 +158,9 @@ def main():
     early = {}
     variants = [None, "land", "climate"] + (["temperature", "moisture", "luh", "hyde", "bui", "land_regional"]
                                            if a.families else [])
+    if a.luh_split:
+        variants += [v for v in ("luh", "luh_class", "luh_mgmt", "luh_secage", "luh_uniform", "ppt")
+                     if v not in variants]
     for which in variants:
         mode["which"] = which
         Zp, ok = encode_points(cfg, pidx)
@@ -145,6 +178,11 @@ def main():
             parts[f"{f}_part"] = early[f] - early["None"]
         parts["land_local_part"] = early["land_regional"] - early["None"]       # local deviation from the regional change
         parts["land_regional_part"] = early["land"] - early["land_regional"]    # the regional land-use change
+    if a.luh_split:
+        for f in ("luh", "luh_class", "luh_mgmt", "luh_secage", "ppt"):
+            parts[f"{f}_part"] = early[f] - early["None"]
+        parts["luh_uniform_part"] = early["luh"] - early["luh_uniform"]         # the continent-wide shift alone
+        parts["luh_pattern_part"] = early["luh_uniform"] - early["None"]        # where land use changed more or less
     # analog direction (E017 v2, DESK modern z), covariates from the cache's F_cov at keys
     F = np.load(c("F_cov.npy"), mmap_mode="r")
     allpairs_modern = [np.asarray(full[pairs[j, 1]]) for j in range(len(pairs))]
@@ -195,6 +233,19 @@ def main():
 
     # change is modern - early; the backcast change (early - modern) aligns with D, so use -part
     res = {"cache": a.cache, "run_dir": a.run_dir, "n_cells": int(len(ev)), "parts": {}}
+    zone = None
+    if a.luh_split:
+        import rasterio
+        zp = os.path.join(os.environ.get("HOUFIN_PROCESSED", ""), "regions", "great_plains_zones_27km.tif")
+        with rasterio.open(zp) as src_:
+            zg = src_.read(1)
+        zone = zg[cells[ev, 0], cells[ev, 1]]
+        res["zone_counts"] = {str(int(z)): int((zone == z).sum()) for z in np.unique(zone)}
+
+    def corr_on(Dp, sel):
+        v_p, v_t = ccov(Dp[sel], Dp[sel]), ccov(Ta[sel], Tb[sel])
+        c_ = 0.5 * (ccov(Dp[sel], Ta[sel]) + ccov(Dp[sel], Tb[sel]))
+        return float(c_ / np.sqrt(v_p * v_t)) if v_p > 0 and v_t > 0 else None
     nfull = float(np.linalg.norm(D_full, axis=1).mean())
     for name, Dp in parts.items():
         cov_t = 0.5 * (ccov(Dp, Ta) + ccov(Dp, Tb))
@@ -210,6 +261,15 @@ def main():
                               "analog_null_mean": float(np.mean(nul)),
                               "species_corr": float(cs / np.sqrt(vps * vts)) if vps > 0 and vts > 0 else None,
                               "species_k": float(cs / vps) if vps > 0 else None}
+        if zone is not None:
+            allc = np.ones(len(ev), bool)
+            nrm = np.linalg.norm(Dp, axis=1, keepdims=True)
+            u = Dp.mean(0) / max(np.linalg.norm(Dp.mean(0)), 1e-12)
+            res["parts"][name].update({
+                "corr_by_zone": {str(int(z)): corr_on(Dp, zone == z) for z in np.unique(zone) if (zone == z).sum() >= 20},
+                "corr_leave_zone_out": {str(int(z)): corr_on(Dp, zone != z) for z in np.unique(zone)},
+                "corr_unit_length": corr_on(Dp / np.maximum(nrm, 1e-12), allc),
+                "corr_magnitude_placebo": corr_on(nrm * u[None, :], allc)})
     with open(os.path.join(a.out, "backcast_attribution.json"), "w", encoding="utf-8") as fh:
         json.dump(res, fh, indent=1)
     summarize(a.out)
@@ -226,6 +286,12 @@ def summarize(out):
               else "")
         print(f"  {name:38s} corr {c:+.3f}  k {v['k']:.2f}  size {v['size_vs_full']:.2f}  analog {v['analog_alignment']:+.3f}"
               f" (null mean {v['analog_null_mean']:+.3f}, p95 {v['analog_null_p95']:+.3f})" + sp)
+        if "corr_by_zone" in v:
+            f_ = lambda x: "  nan" if x is None else f"{x:+.3f}"
+            zs = " ".join(f"z{z} {f_(c_)}" for z, c_ in v["corr_by_zone"].items())
+            lz = " ".join(f"-z{z} {f_(c_)}" for z, c_ in v["corr_leave_zone_out"].items())
+            print(f"  {'':38s}   by zone {zs} | leave-out {lz} | unit-length {f_(v['corr_unit_length'])}"
+                  f" | magnitude-only placebo {f_(v['corr_magnitude_placebo'])}")
 
 
 if __name__ == "__main__":

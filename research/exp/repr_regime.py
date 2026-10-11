@@ -39,6 +39,8 @@ def main():
     ap.add_argument("--out")
     ap.add_argument("--fracs", type=float, nargs="+", default=[1.0, 0.1, 0.03])
     ap.add_argument("--seeds", type=int, nargs="+", default=[0, 1, 2])
+    ap.add_argument("--bioclim-dir", default=None,
+                    help="E039c: research/exp/bioclim.py output for this cache (19 BIOCLIM + 12 LUH classes, same EMA)")
     ap.add_argument("--summarize", default=None)
     a = ap.parse_args()
     if a.summarize:
@@ -65,6 +67,17 @@ def main():
     P_all = covariate_design(F, tr_all, F.shape[1])            # PCA on all training rows (unsupervised)
     reps = {"desk_raw_r24": Zr[:, :24], "desk_raw_r64": Zr[:, :64],
             "cov_pc24": P_all[:, :24], "cov_pc64": P_all[:, :64], "cov_pc_all": P_all}
+    if a.bioclim_dir:
+        # the standard SDM inputs: 19 BIOCLIM (+ the 12 LUH class fractions), standardized on training rows; matched-N
+        # (19) versions of desk and the covariate PCs for an exact comparison
+        def zs(M):
+            M = np.asarray(M, "float64")
+            mu, sd = np.nanmean(M[tr_all], 0), np.nanstd(M[tr_all], 0) + 1e-12
+            return np.where(np.isfinite(M), (M - mu) / sd, 0.0)
+        Bc = zs(np.load(os.path.join(a.bioclim_dir, "bioclim_ema.npy")))
+        Lc = zs(np.load(os.path.join(a.bioclim_dir, "luh_classes_ema.npy")))
+        reps.update({"desk_raw_r19": Zr[:, :19], "cov_pc19": P_all[:, :19], "bioclim19": Bc,
+                     "bioclim19_luh12": np.column_stack([Bc, Lc])})
     res = {"cache": a.cache, "n_train_full": int(len(tr_all)), "n_test": int(len(te)), "n_species": int(keep.sum()),
            "tier_edges": TIERS, "tier_counts": [int((tier == k).sum()) for k in range(len(TIERS))],
            "n_cov_pcs_all": int(P_all.shape[1]), "runs": {}}
@@ -88,7 +101,9 @@ def main():
 def summarize(out):
     r = json.load(open(os.path.join(out, "repr_regime.json"), encoding="utf-8"))
     tier = np.asarray(r["tier"])
-    names = ["desk_raw_r24", "desk_raw_r64", "cov_pc24", "cov_pc64", "cov_pc_all"]
+    first = next(iter(r["runs"].values()))["skill"]
+    names = [n for n in ["desk_raw_r19", "desk_raw_r24", "desk_raw_r64", "cov_pc19", "cov_pc24", "cov_pc64", "cov_pc_all",
+                         "bioclim19", "bioclim19_luh12"] if n in first]
     print(f"{os.path.basename(os.path.normpath(r['cache']))}: {r['n_species']} dev species, tiers (prevalence) "
           f"{[f'{lo:.0%}-{hi:.0%}' for lo, hi in r['tier_edges']]} n={r['tier_counts']}; covariate PCs (all) "
           f"{r['n_cov_pcs_all']}; held-out rows {r['n_test']:,}")
@@ -102,7 +117,10 @@ def summarize(out):
             row = [np.nanmedian(S[n])] + [np.nanmedian(S[n][tier == k]) for k in range(4)]
             print(f"    {n:14s} " + " ".join(f"{x:+.3f}" for x in row))
         for d, cmp_ in (("desk_raw_r24", "cov_pc24"), ("desk_raw_r24", "cov_pc64"), ("desk_raw_r24", "cov_pc_all"),
-                        ("desk_raw_r64", "cov_pc64")):
+                        ("desk_raw_r64", "cov_pc64"), ("desk_raw_r19", "bioclim19"), ("cov_pc19", "bioclim19"),
+                        ("desk_raw_r24", "bioclim19_luh12"), ("bioclim19_luh12", "bioclim19")):
+            if d not in S or cmp_ not in S:
+                continue
             D = S[d] - S[cmp_]
             row = [np.nanmedian(D[tier == k]) for k in range(4)]
             fav = [np.mean(D[(tier == k) & np.isfinite(D)] > 0) for k in range(4)]

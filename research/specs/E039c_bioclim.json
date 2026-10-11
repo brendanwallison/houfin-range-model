@@ -1,0 +1,10 @@
+{
+ "exp": "E039",
+ "name": "repr-bioclim",
+ "group": "cpu",
+ "overlay": "config/overlays/gp_species_base.json",
+ "cmd": ["bash", "-c", "set -e; for c in gp_species_base desk_tempho_1995; do {python} research/exp/bioclim.py --cache {cache}/$c --out {out}/$c/bioclim; {python} research/exp/repr_regime.py --cache {cache}/$c --out {out}/$c --bioclim-dir {out}/$c/bioclim; done"],
+ "expected_minutes": 30,
+ "summarize": ["bash", "-c", "for c in gp_species_base desk_tempho_1995; do {python} research/exp/repr_regime.py --summarize {out}/$c; done"],
+ "note": "E039c: desk vs 19 BIOCLIM (+12 LUH classes), matched N=19, BLR readout, thinned data, by prevalence tier"
+}

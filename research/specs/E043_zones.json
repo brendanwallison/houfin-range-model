@@ -1,0 +1,25 @@
+{
+ "exp": "E043",
+ "name": "evaluation-zones",
+ "group": "cpu",
+ "overlay": "research/overlays/desk_tempho_1995_seed1.json",
+ "after_jobs": [
+  "E043/desk-tempho1995-seed1-sc10",
+  "E043/desk-tempho1995-seed1-sc40",
+  "E043/desk-tempho1995-seed2-sc10",
+  "E043/desk-tempho1995-seed2-sc40"
+ ],
+ "cmd": [
+  "bash",
+  "-c",
+  "{python} research/exp/zone_breakdown.py --out {out} --t0 1996 --models desk_tempho_1995_s1 desk_tempho_1995_s2 desk_tempho_1995_s1_late desk_tempho_1995_s2_late desk_tempho_1995_s1_sc10 desk_tempho_1995_s1_sc10_late desk_tempho_1995_s1_sc40 desk_tempho_1995_s1_sc40_late desk_tempho_1995_s2_sc10 desk_tempho_1995_s2_sc10_late desk_tempho_1995_s2_sc40 desk_tempho_1995_s2_sc40_late --pairs desk_tempho_1995_s1_sc10:desk_tempho_1995_s1 desk_tempho_1995_s1_sc10_late:desk_tempho_1995_s1_late desk_tempho_1995_s1_sc40:desk_tempho_1995_s1 desk_tempho_1995_s1_sc40_late:desk_tempho_1995_s1_late desk_tempho_1995_s2_sc10:desk_tempho_1995_s2 desk_tempho_1995_s2_sc10_late:desk_tempho_1995_s2_late desk_tempho_1995_s2_sc40:desk_tempho_1995_s2 desk_tempho_1995_s2_sc40_late:desk_tempho_1995_s2_late"
+ ],
+ "expected_minutes": 5,
+ "summarize": [
+  "python",
+  "research/exp/zone_breakdown.py",
+  "--summarize",
+  "{out}"
+ ],
+ "note": "E043: windowed backcast corr with paired CIs vs controls"
+}

@@ -1,7 +1,7 @@
 # DIGEST
 
 ## CURRENT STATE (rewritten each round; read this first -- the dated log below keeps the history)
-Last updated 2026-10-11 12:36 (E039h's network-in-time claim withdrawn, E039i; beyond the regional trend DESK adds a small amount, E039k, tentative; E039l and E043 running). "Solid" =
+Last updated 2026-10-11 12:34 (E039h's network-in-time claim withdrawn, E039i; beyond the regional trend DESK adds a small amount, E039k, tentative; E039l and E043 running). "Solid" =
 independently re-derived, replicated on a second split or seed, and survived a skeptic review. "Tentative" = one run,
 or checks still pending. Experiment numbers point to research/experiments/EXXX.md.
 

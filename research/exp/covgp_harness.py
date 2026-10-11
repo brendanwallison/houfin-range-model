@@ -161,9 +161,20 @@ def main():
     mte, vte = gk.predict_local(shape, X[tr], Ytr, X[te], grp(te), k=a.k, k_max=a.k_max)
     self_idx = np.array([pos[r_] for r_ in loo])
     mlo, vlo = gk.predict_local(shape, X[tr], Ytr, X[loo], grp(loo), k=a.k, k_max=a.k_max, self_idx=self_idx)
-    # linear covariate baseline on the same features (one BLR block)
-    bl = blr.fit(X[tr], Ytr, [(0, d)])
-    lin = (X[te] - bl["xbar"]) @ bl["coef"].T + bl["ybar"]
+    # linear covariate baseline: one BLR block on 64 whitened PCs of the covariates (a BLR on the 302 raw, collinear
+    # channels fails its Cholesky -- E015), the same for every variant so the comparison is fixed
+    mu_, sd_ = F[tr].mean(0), F[tr].std(0) + 1e-9
+    Fs_ = (F - mu_) / sd_
+    sub_ = tr[:: max(1, len(tr) // 40000)]
+    _, _, Vt_ = np.linalg.svd(Fs_[sub_] - Fs_[sub_].mean(0), full_matrices=False)
+    L = Fs_ @ Vt_[:64].T
+    L = (L - L[tr].mean(0)) / (L[tr].std(0) + 1e-12)
+    try:
+        bl = blr.fit(L[tr], Ytr, [(0, 64)])
+        lin = (L[te] - bl["xbar"]) @ bl["coef"].T + bl["ybar"]
+    except Exception as e:  # noqa: BLE001 -- the GP results must not be lost to the reference
+        print(f"[covgp] linear baseline failed: {e}", flush=True)
+        lin = np.full_like(mte, np.nan)
     ymax = Ytr.max(0)
     out_range = float(((mte < -1.0) | (mte > ymax[None, :] + 1.0)).mean())
     vratio = np.nanmax(vte, axis=0) / np.maximum(var_y, 1e-12)

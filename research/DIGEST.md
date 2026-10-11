@@ -126,8 +126,11 @@ NEW SINCE YESTERDAY EVENING (tentative unless noted; each finding carries WHY: e
   almost all in the east; the Great Plains and west hold up. DESK compensates partly: on a common yardstick (M28)
   its land-use CLASS reading gets significantly more truthful (+0.06 / +0.10) and so does its CLIMATE reading
   (+0.07 / +0.08, with less lean), the full backcast's lean is unchanged, but it loses the clock's real post-1950
-  signal (full match -0.02 / -0.04). (An earlier "leans harder on temperature" was a yardstick artifact.) So
-  without the management trend DESK does not fully recover its skill,
+  signal (full match -0.02 / -0.04). (An earlier "leans harder on temperature" was a yardstick artifact.) At the
+  matched LATE state the whole backcast is clearly worse (match -0.07 / -0.03) and leans MORE (+0.10 / +0.07): with
+  the management signal gone, the lean-carrying climate part makes up more of it -- the same route substitution as
+  static temperature (E038b). Restricting DESK's inputs moves the space-for-time lean around; it does not remove it.
+  So without the management trend DESK does not fully recover its skill,
   and it gains NO movement before 1950 (same as the controls): removing the trend costs post-1950 skill and buys
   nothing for 1902-1939. The management trend is not a defect to remove on this evidence. Replication at the 1986
   start running; E042 (temperature AND management static) queued.

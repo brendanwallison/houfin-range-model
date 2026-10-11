@@ -34,6 +34,11 @@ beyond the trend? In the joint fits (placebo+desk_within, and rich+desk_within w
 replaced by its change MINUS one part (backcast_attribution's swap parts: land, climate, luh, luh_mgmt, luh_class,
 luh_uniform = the continent-wide LUH shift (a clock), luh_pattern = where land use changed more or less, ...), same
 coefficients; loss = corr(full) - corr(dropped), paired, and its share of the gain over the base.
+E039n (--strong-base, the E039k skeptic's fair rival): base = placebo_300 + kind x time 32 + a SUPERVISED within-map
+(ridge of within-cell ESK deviations on all ~290 standardized F_cov_raw channel deviations -> 24 features, cross-
+fitted by training cell in two folds so training-row features are never in-sample) + 64 F_cov (output-EMA) PCs'
+within-cell deviations; strong+desk_within adds DESK. And the readout LOCATION check: placebo and placebo+desk_within
+fitted on BUFFER rows only (trained years; cells never in DESK's objective, next to the held-out cells).
 E043 check (--ref-cache <control cache>, same keys): the control model's DESK arms (desk_ref, desk_ref_within,
 placebo+desk_ref_within) on the same cells and draws, and paired differences treatment - control.
 """
@@ -69,6 +74,8 @@ def main():
     ap.add_argument("--pos-seeds", type=int, nargs="+", default=[1], help="placebo draws (results are draw means)")
     ap.add_argument("--tag", default="", help="suffix of the output json")
     ap.add_argument("--rich-base", action="store_true", help="E039l: gains beyond placebo + kind x time + within map")
+    ap.add_argument("--strong-base", action="store_true", help="E039n: supervised cross-fitted within-map base + "
+                    "buffer-row readouts")
     ap.add_argument("--attr", default=None, help="E039m: attribution_cells.npz of this model (drop-part losses)")
     ap.add_argument("--ref-cache", default=None, help="control model's cache (same keys): paired treatment - control")
     a = ap.parse_args()
@@ -161,9 +168,9 @@ def main():
         mm = blr.fit(np.hstack([Pbar, P - Pbar])[trn], Z[trn], [(0, k), (k, 2 * k)])
         dP = dchg(P)
         preds[f"within_{tag}"] = dP @ mm["coef"][:, k:].T
+        keep_feats[f"within_{tag}"] = (P - Pbar, dP)
         notes[f"within_{tag}_amp_b_w"] = [float(np.median(mm["a"][:, 0])), float(np.median(mm["a"][:, 1]))]
         if tag == "raw":
-            keep_feats["within_raw"] = (P - Pbar, dP)
             preds["pooled_blr"] = dP @ blr.fit(P[trn], Z[trn], [(0, k)])["coef"].T
             # kind of place x time: cell-mean covariate PCs x (year - cell mean year), on within-cell deviations
             Pbar_ev = np.asarray(Gm @ Pbar)                       # constant within a cell
@@ -205,6 +212,28 @@ def main():
         keep_feats["desk_ref_within"] = (zkr - cmean(zkr, w_ty), dzr)
         within_arms.append("desk_ref_within")
         notes["ref_cache"] = a.ref_cache
+    if a.strong_base:
+        # supervised within-map on all channels -> 24 features, cross-fitted by training cell (2 folds)
+        Sdev = X - cmean(X, w_ty)
+        dS = dchg(X)
+        Xc_ = Sdev[trn]
+        lam_w = 1e-2 * np.trace(Xc_.T @ Xc_) / Xc_.shape[1]
+        Bw = np.linalg.solve(Xc_.T @ Xc_ + lam_w * np.eye(Xc_.shape[1]), Xc_.T @ Zd[trn])
+        cells_tr = np.unique(inv[trn])
+        rgf = np.random.default_rng(7)
+        fold_of = dict(zip(cells_tr.tolist(), rgf.integers(2, size=len(cells_tr)).tolist()))
+        fold = np.array([fold_of.get(int(cc), -1) for cc in inv])
+        WS = Sdev @ Bw                                  # rows outside the training cells: the full fit
+        for f_ in (0, 1):
+            fit_rows = trn[fold[trn] != f_]
+            Xf = Sdev[fit_rows]
+            lam_f = 1e-2 * np.trace(Xf.T @ Xf) / Xf.shape[1]
+            Bf = np.linalg.solve(Xf.T @ Xf + lam_f * np.eye(Xf.shape[1]), Xf.T @ Zd[fit_rows])
+            WS[fold == f_] = Sdev[fold == f_] @ Bf
+        keep_feats["within_sup"] = (WS, dS @ Bw)
+        preds["within_sup"] = dS @ Bw
+        buf = np.where(bf & ty & np.isfinite(F_raw).all(1) & np.isfinite(Eann).all(1))[0]
+        notes["n_buffer_rows"] = int(len(buf))
     parts_ev = {}
     if a.attr:
         az = np.load(a.attr)
@@ -228,9 +257,21 @@ def main():
                 if nm == "desk_within":
                     for pn, pv in parts_ev.items():
                         incr[f"placebo+desk_within-{pn}#{sd}"] = np.hstack([PLev, Xev - pv]) @ b
+            bases = []
             if a.rich_base:
-                parts = [(PL, PLev), keep_feats["kindxtime_32"], keep_feats["within_raw"]]
-                for tag, extra in (("rich", []), ("rich+desk_within", [keep_feats["desk_within"]])):
+                bases.append(("rich", [(PL, PLev), keep_feats["kindxtime_32"], keep_feats["within_raw"]]))
+            if a.strong_base:
+                bases.append(("strong", [(PL, PLev), keep_feats["kindxtime_32"], keep_feats["within_sup"],
+                                         keep_feats["within_ema"]]))
+                q = PL.shape[1]
+                for tag, ps in (("buf:placebo", [(PL, PLev)]), ("buf:placebo+desk_within",
+                                                                [(PL, PLev), keep_feats["desk_within"]])):
+                    edges = np.cumsum([0] + [f.shape[1] for f, _ in ps])
+                    blocks = [(int(edges[i]), int(edges[i + 1])) for i in range(len(ps))]
+                    b = blr.fit(np.hstack([f for f, _ in ps])[buf], Zd[buf], blocks)["coef"].T
+                    incr[f"{tag}#{sd}"] = np.hstack([e for _, e in ps]) @ b
+            for bname, parts in bases:
+                for tag, extra in ((bname, []), (bname + "+desk_within", [keep_feats["desk_within"]])):
                     ps = parts + extra
                     edges = np.cumsum([0] + [f.shape[1] for f, _ in ps])
                     blocks = [(int(edges[i]), int(edges[i + 1])) for i in range(len(ps))]
@@ -280,7 +321,8 @@ def main():
     if a.incremental:
         if parts_ev:
             res["drop"] = {}
-            for combo, base in (("placebo+desk_within", "placebo_300"), ("rich+desk_within", "rich")):
+            for combo, base in (("placebo+desk_within", "placebo_300"), ("rich+desk_within", "rich"),
+                                ("strong+desk_within", "strong")):
                 if combo not in boots:
                     continue
                 gain = boots[combo] - boots[base]
@@ -290,10 +332,12 @@ def main():
                     res["drop"][combo]["parts"][pn] = {
                         "loss": float(loss[0]), "ci": [float(np.nanpercentile(loss[1:], q)) for q in (2.5, 97.5)],
                         "share": float(loss[0] / gain[0]) if gain[0] != 0 else None}
-        if a.rich_base:
-            d = boots["rich+desk_within"] - boots["rich"]
-            res["rich_gain"] = {"desk_within": float(d[0]),
-                                "ci": [float(np.nanpercentile(d[1:], q)) for q in (2.5, 97.5)]}
+        for x, y, key in (("rich+desk_within", "rich", "rich_gain"), ("strong+desk_within", "strong", "strong_gain"),
+                          ("buf:placebo+desk_within", "buf:placebo", "buffer_gain"), ("strong", "placebo_300",
+                                                                                      "strong_base_gain")):
+            if x in boots and y in boots:
+                d = boots[x] - boots[y]
+                res[key] = {"desk_within": float(d[0]), "ci": [float(np.nanpercentile(d[1:], q)) for q in (2.5, 97.5)]}
         for nm in sorted({n.split("#")[0] for n in incr if "-" not in n}):
             d = boots[nm] - boots["placebo_300"]
             res["models"][nm]["minus_placebo"] = float(d[0])
@@ -390,10 +434,13 @@ def summarize(out, fn=None):
         for pn, v in o["parts"].items():
             sh = f"{v['share']:+.2f}" if v["share"] is not None else "  n/a"
             print(f"    -{pn:14s} loss {v['loss']:+.3f} [{v['ci'][0]:+.3f},{v['ci'][1]:+.3f}]  share of gain {sh}")
-    if "rich_gain" in r:
-        v = r["rich_gain"]
-        print(f"  DESK gain beyond placebo + kind x time 32 + within map: {v['desk_within']:+.3f} "
-              f"[{v['ci'][0]:+.3f},{v['ci'][1]:+.3f}]")
+    for key, label in (("rich_gain", "DESK gain beyond placebo + kind x time 32 + within map"),
+                       ("strong_gain", "DESK gain beyond the STRONG base (placebo + kxt32 + supervised + EMA maps)"),
+                       ("buffer_gain", "DESK gain beyond the placebo, readout fitted on BUFFER rows"),
+                       ("strong_base_gain", "strong base minus placebo (what the linear maps add)")):
+        if key in r:
+            v = r[key]
+            print(f"  {label}: {v['desk_within']:+.3f} [{v['ci'][0]:+.3f},{v['ci'][1]:+.3f}]")
     for nm, v in r.get("vs_ref", {}).items():
         print(f"  TREATMENT - CONTROL {nm:46s} {v['diff']:+.3f} [{v['ci'][0]:+.3f},{v['ci'][1]:+.3f}]")
     s = r["space_level"]

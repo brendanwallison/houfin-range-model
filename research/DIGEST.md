@@ -105,8 +105,23 @@ NEW SINCE YESTERDAY EVENING (tentative unless noted; each finding carries WHY: e
   (26x the data's variance) -- in effect a local polynomial that extrapolates wildly. Fitting on random places from
   across the continent fixed that (scale 0.65x, predictive variance ~1x, skill on new places -0.07 -> +0.28) but left
   it 0.011 behind the linear model (+0.305): it still trusts each training place's lasting quirks, because ~30 years
-  of the same place look like 30 independent observations. Round 3 (running) gives the GP an explicit same-place
-  term, so repeated years of one place count as one place's quirk.
+  of the same place look like 30 independent observations. Round 3: an explicit same-place term (repeated years of
+  one place count as one place's quirk), fitted on random places with a few years each, PASSES all four criteria
+  and REPLICATES on a second seed (beats the linear covariate model by +0.017 / +0.026 on new places). Fitting
+  whole places instead (30 years each) ties the linear model: the fit then learns year-to-year wiggles within places.
+  Ported into the suite as an option, with tests, plus a "covariate_linear" arm -- the linear model the age model
+  uses, on covariates instead of DESK features: the clean representation comparison.
+- Repairing the spacetime GPs (E040, same approach, fixed criteria vs simple references). WHY they failed
+  (established): fitted on patches, each place's ~30 very persistent years dominated the fit, and one smooth field
+  cannot be both that persistent within a place and only moderately alike between neighbours -- so the spatial
+  range collapsed to zero and new places got the continental average (skill 0 vs +0.28 for a nearest-neighbour
+  average). Fitting on random places fixes the sum kernel outright; the product kernel also needs the same-place
+  term (its spatial field then lengthens from 77 to ~390 km). Both pass all five criteria and replicate on a second
+  seed: on new places they beat the nearest-neighbour average (+0.03 to +0.06), on trained places' withheld decades
+  they beat each place's own average (+0.06 to +0.07), because a place's lasting quirk fades over ~45-50 years
+  rather than persisting forever. Ported (--st-mode repaired).
+- The suite re-run with ALL baselines repaired (E039, both models, ~3 h, running): the first real test of DESK
+  against working covariate and spacetime models, and of DESK features vs covariates under the same linear readout.
 - Readout scaling (E033, E033b, skeptic-reviewed):
   - shrinking DESK's change by a factor learned on the BBS years (~1/3) stops the readout doing harm -- but only
     because there is almost no information to lose: DESK's change is about as uninformative in its own trained years

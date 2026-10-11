@@ -43,6 +43,10 @@ def main():
     ap.add_argument("--out")
     ap.add_argument("--rank", type=int, default=24)
     ap.add_argument("--n-null", type=int, default=40)
+    ap.add_argument("--families", action="store_true",
+                    help="E035d: also swap temperature / moisture / LUH / HYDE / BUI separately, and a regional-only "
+                         "land-use change (local vs regional)")
+    ap.add_argument("--regional-km", type=float, default=300.0)
     ap.add_argument("--summarize", default=None)
     a = ap.parse_args()
     if a.summarize:
@@ -87,26 +91,44 @@ def main():
     pts = np.concatenate(early_rows)
     pidx = keys[pts].astype("int32")
     schema = cio.load_schema(os.path.join(cfg["paths"]["hist_dir"], "yearly_states"))
-    fam = {"land": [], "climate": []}
+    fam = {"land": [], "climate": [], "temperature": [], "moisture": [], "luh": [], "hyde": [], "bui": []}
+    TEMP = ("Tave", "Tmax", "Tmin", "DD5", "DD18", "DDsub0", "DDsub18", "NFFD", "Eref")
     for s_ in schema["streams"]:
         cols = list(range(int(s_["start"]), int(s_["end"])))
         if s_["name"] == "climate":
             fam["climate"] += cols
+            for j, v in enumerate(s_.get("variables", [])):
+                fam["temperature" if v.split("_")[0] in TEMP else "moisture"].append(int(s_["start"]) + j)
         elif s_["name"] in LAND:
             fam["land"] += cols
+            fam[{"landuse": "luh"}.get(s_["name"], s_["name"])] += cols
     orig = cio.load_state_stack
     mode = {"which": None}
+    sigma_cells = a.regional_km / 27.0
 
     def patched(year, states_dir, schema_):
         x = orig(year, states_dir, schema_)
         if mode["which"] is not None and 1966 <= int(year) <= 1986:
             y2 = orig(int(year) + SHIFT, states_dir, schema_)
             x = x.copy()
-            x[..., fam[mode["which"]]] = y2[..., fam[mode["which"]]]
+            if mode["which"] == "land_regional":
+                # land-use change replaced by its REGIONAL (Gaussian, regional_km) average: later value + smoothed change
+                from scipy.ndimage import gaussian_filter
+                cols = fam["land"]
+                d = x[..., cols].astype("float64") - y2[..., cols].astype("float64")
+                ok_ = np.isfinite(d)
+                num = gaussian_filter(np.where(ok_, d, 0.0), sigma=(sigma_cells, sigma_cells, 0))
+                den = gaussian_filter(ok_.astype("float64"), sigma=(sigma_cells, sigma_cells, 0))
+                ds = np.where(den > 1e-6, num / np.maximum(den, 1e-6), 0.0)
+                x[..., cols] = (y2[..., cols].astype("float64") + ds).astype(x.dtype)
+            else:
+                x[..., fam[mode["which"]]] = y2[..., fam[mode["which"]]]
         return x
     cio.load_state_stack = patched
     early = {}
-    for which in (None, "land", "climate"):
+    variants = [None, "land", "climate"] + (["temperature", "moisture", "luh", "hyde", "bui", "land_regional"]
+                                           if a.families else [])
+    for which in variants:
         mode["which"] = which
         Zp, ok = encode_points(cfg, pidx)
         Zp = Zp[:, :r].astype("float64")
@@ -118,6 +140,11 @@ def main():
     D_noclim = Zmod - early["climate"]
     parts = {"full": D_full, "land_part": D_full - D_noland, "climate_part": D_full - D_noclim,
              "land_swapped(= non-land change)": D_noland, "climate_swapped(= non-climate change)": D_noclim}
+    if a.families:
+        for f in ("temperature", "moisture", "luh", "hyde", "bui"):
+            parts[f"{f}_part"] = early[f] - early["None"]
+        parts["land_local_part"] = early["land_regional"] - early["None"]       # local deviation from the regional change
+        parts["land_regional_part"] = early["land"] - early["land_regional"]    # the regional land-use change
     # analog direction (E017 v2, DESK modern z), covariates from the cache's F_cov at keys
     F = np.load(c("F_cov.npy"), mmap_mode="r")
     allpairs_modern = [np.asarray(full[pairs[j, 1]]) for j in range(len(pairs))]

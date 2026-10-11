@@ -101,8 +101,15 @@ Items are numbered so records can cite them (e.g. "considerations: G3, M1, M6").
 ## Added 2026-10-10 (afternoon)
 - **M17 Readouts that learn within-place change can learn a species' own trend.** Over the trained years anything
   that drifts with time in a place (DESK z, or position x year) lets a readout learn each species' regional trend and
-  extrapolate it; that predicts the score well but is the population model's job (G3). Always compare with a
-  position x time placebo. (E033b)
+  extrapolate it. That predicts the score well, so always compare with a position x time placebo. (E033b)
+  CORRECTED (user, 2026-10-11): the placebo measures PREDICTABILITY, not CAUSE. A regional trend may be regional
+  habitat change (M6) as much as a species' own dynamics; matching the placebo does not make a signal "the
+  population model's job". Calling a trend dynamics needs evidence that it is not habitat-driven:
+  - unshared with co-occurring species (M6, E031);
+  - unaligned with regional covariate change;
+  - or present where no habitat changed.
+  At the COMMUNITY level (ESK coordinates), change is shared across co-occurring species by construction, so a
+  regional community trend is, if anything, habitat-like (or observer-driven, M3/M18).
 - **M18 Observer turnover ADDS change a regional trend cannot predict** rather than creating the trend: the
   trend-predictable part is the same where observers stayed (E034b + skeptic). "Shared" or "regional" structure is not
   automatically an observer artifact -- check, don't assume; a drift common to all observers is still not excluded.

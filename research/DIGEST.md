@@ -1,7 +1,7 @@
 # DIGEST
 
 ## CURRENT STATE (rewritten each round; read this first -- the dated log below keeps the history)
-Last updated 2026-10-11 13:40 (E039i-n: DESK's temporal skill is mostly regional trend; a small late-state remainder beyond every linear rival rides on land-use management; E039o and E043 running). "Solid" =
+Last updated 2026-10-11 14:00 (correction: a regional trend is not evidence of population dynamics -- M6; E039i-n; E039o and E043 running). "Solid" =
 independently re-derived, replicated on a second split or seed, and survived a skeptic review. "Tentative" = one run,
 or checks still pending. Experiment numbers point to research/experiments/EXXX.md.
 
@@ -22,8 +22,16 @@ WHERE THINGS STAND (2026-10-11 ~11:00, plain summary; details below)
      within-place coefficients (0.27-0.35), a linear "kind of place x time" term (0.31-0.41), and a position x time
      trend with NO covariates (0.29-0.40).
    - "DESK's network earns its place in time" (E039h, 12:00) is WITHDRAWN. On this measure, DESK's temporal skill is
-     not beyond extrapolating each region's recent trend. That is the population model's job, not habitat's (G3);
-     E016 found the same on the TACC models.
+     not beyond extrapolating each region's recent trend; E016 found the same on the TACC models.
+   - CORRECTION (your question, 14:00): the trend placebo says nothing about WHY regions changed. A regional trend
+     can be regional HABITAT change, as M6 already says, and community-level change is change shared across
+     co-occurring species, the habitat signature. So "DESK ~ placebo" does not mean DESK misses habitat or that the
+     trend belongs to population dynamics. It means DESK, from covariates alone, predicts about as much as
+     extrapolating the neighbours' observed trend. NOT established: how much of the regional trend is habitat-driven.
+     Evidence so far points both ways:
+     - DESK reproduces much of it with no bird data;
+     - the part DESK adds runs through regional land-use change (E039m);
+     - but at the species level, ~90% of change is species-specific (E031).
    - DESK's direction of change does carry information: a readout fitted on within-place change lifts it by
      +0.04-0.07.
    - Beyond the regional trend, DESK adds little.
@@ -38,8 +46,10 @@ WHERE THINGS STAND (2026-10-11 ~11:00, plain summary; details below)
      - At the species level, E033c found DESK's increment ~+0.01.
    Implication for the downstream (not a decision now): DESK's temporal value for the age model is at most a small
    increment on top of a regional trend, and it runs through the management trend. That trend is flat before 1950
-   (E035/E041), so nothing tested so far supports DESK's movement in the 1902-1939 backcast window. Any readout that
-   learns within-place change will mostly learn trends, which belong to the population dynamics (G3, M17).
+   (E035/E041), so nothing tested so far supports DESK's movement in the 1902-1939 backcast window. Before 1966
+   there is no observed trend to extrapolate. If regional trends are partly habitat-driven, the covariates are the
+   only route to them, so whether they are habitat-driven is the open question that matters (test pre-registered
+   next).
    Implication for the downstream (not a decision now): DESK's 64 dimensions beat its 24 by ~0.02-0.04.
 2. DESK's TEMPORAL signal: after 1950 it is mostly the land-use management trend (fertilizer, irrigation) -- partly
    real intensification (it scales with cropland), partly a clock; that trend is flat before 1950. DESK still moves
@@ -52,8 +62,8 @@ WHERE THINGS STAND (2026-10-11 ~11:00, plain summary; details below)
    remedy; you would not use it in production.) A remedy would have to give DESK temporal supervision or change the
    readout: E043 (running, your choice) over-samples same-place, cross-year pairs in DESK's training loss.
 4. BASELINES are repaired: the covariate and spacetime GPs now fit sensibly; a spacetime GP on neighbours' observed
-   abundance beats DESK on CHANGE at held-out places (each species' own regional trend -- the population model's
-   job, not habitat's).
+   abundance beats DESK on CHANGE at held-out places. It extrapolates each species' observed regional trend, whatever
+   its cause (habitat or dynamics, not separated -- M6).
 YOUR ANSWERS (2026-10-11 ~11:25): the sealed species set stays in use for now (revisit later); 32 dimensions is a
 reasonable eventual readout size, but production choices wait for the end of the understanding phase; no climate
 freeze in production; go ahead with the same-place pair over-sampling (E043, queued); address the skeptic's points

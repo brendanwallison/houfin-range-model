@@ -1,0 +1,10 @@
+{
+ "exp": "E040",
+ "name": "stgp-s1sum-seed1",
+ "group": "cpu",
+ "overlay": "config/overlays/desk_tempho_1995.json",
+ "cmd": ["bash", "-c", "{python} research/exp/stgp_harness.py --out {out} --tag s1sums1 --seed 1 --kind spacetime_sum --sample randcells --scale-sample randcells --bounds data"],
+ "expected_minutes": 20,
+ "summarize": ["python", "research/exp/stgp_harness.py", "--summarize", "{out}"],
+ "note": "E040 verification (c): s1sum on seed 1 (different fitting sample and evaluation rows)"
+}

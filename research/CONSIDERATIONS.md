@@ -114,3 +114,25 @@ Items are numbered so records can cite them (e.g. "considerations: G3, M1, M6").
   Report the information (corr^2) next to any "stops the harm" claim. (E033 skeptic)
 - **M22 Saturation.** DESK's z stops following covariate drift before ~1960 while covariates keep changing; a
   backcast's distance from today can plateau, so compare windows on the same part of the curve. (E035 skeptic)
+
+## Added 2026-10-10 (evening)
+- **M23 Leave-one-out is not transfer.** When a row's own place's other years stay in the conditioning set, a
+  leave-one-out score measures interpolation within a place (every covariate-GP variant scored ~0.77 that way while
+  scoring -0.16 to +0.34 on new places). Judge a predictor for unsurveyed places only on held-out places. (E037)
+- **M24 A fitting sample decides what a model learns.** Blocks of neighbouring places sit at their own regional level
+  (a continental-mean likelihood can then only absorb the offset with a flat, inflated kernel); whole places make the
+  likelihood about year-to-year variation within places; a place's repeated years treated as independent make its
+  lasting quirk look like signal. For a predictor of NEW places, fit on continental samples with a few years per place
+  and model the place explicitly. (E037 v2b / v6 / v8 / v10)
+- **M25 A family's name is not its content.** Before attributing to "land-use classes" or "moisture", check which
+  channels dominate the change: LUH's 33 channels are 12 class fractions, 2 secondary-land states and 19 management
+  channels, and the management trends dominate; 48 of 60 "moisture" channels depend on temperature. (E035d skeptic)
+- **M26 A uniform trend is a clock.** Covariate change that is the same everywhere carries only time; a model can turn
+  it into place-specific change through place-specific responses, which looks like "the covariates explain change".
+  Swap-attributions must separate the uniform part from the spatial pattern, and smoothing (e.g. 300 km) keeps a
+  uniform shift intact, so "regional beats local" can be built in. (E035d skeptic; E027c)
+- **M27 An analog direction inherits its channel mix.** Built from all 302 channels it is mostly climatic, so any
+  covariate-only model's climate response aligns with it; compare families' "lean" against per-family directions,
+  and rest error claims on a part's correlation with the truth, not only on its lean. (E035d skeptic)
+- **P5 Interactive runs carry the jobs' thread caps** (OMP/MKL/OPENBLAS=6): an uncapped pytest beside four capped
+  jobs pushed the load to 76 on 32 cores and slowed everything. Waiters watch jobs queued after they start.

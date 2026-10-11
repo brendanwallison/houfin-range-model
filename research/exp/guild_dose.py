@@ -53,7 +53,8 @@ def main():
     ap.add_argument("--pooled", action="store_true", help="E049b: one shared map per guild and arm")
     ap.add_argument("--rival-all", action="store_true", help="E049c: all-covariate rival + moved-CropAT null")
     ap.add_argument("--aux", default=None, help="E050: npz from aux_covariates.py; its --aux-key channels replace CropAT")
-    ap.add_argument("--aux-key", default=None, help="forest | crp")
+    ap.add_argument("--aux-key", default=None, help="forest | crp | nlcd | nid")
+    ap.add_argument("--epochs", type=int, nargs=4, default=None, help="E052: custom early/modern windows e0 e1 m0 m1")
     a = ap.parse_args()
     if a.summarize:
         return summarize(a.summarize)
@@ -68,15 +69,38 @@ def main():
     split = np.load(c("split.npz"))
     withheld = [int(y) for y in split["withheld"]]
     meta = json.load(open(c("meta.json"), encoding="utf-8"))
-    E, full, half_a, half_b = group_rows(a.cache, keys, withheld)
-    idx = {}
-    for j, (cell, ep, wh) in enumerate(zip(map(tuple, E["cells"]), E["epoch"], E["withheld"])):
-        if ep == 0 and bool(wh):
-            idx.setdefault(cell, [None, None])[0] = j
-        elif ep == 1 and not wh:
-            idx.setdefault(cell, [None, None])[1] = j
-    pairs = np.array([(e, m) for e, m in idx.values() if e is not None and m is not None])
-    cells = E["cells"][pairs[:, 0]]
+    if a.epochs:
+        # E052: custom epochs (e.g. inside the Annual NLCD era); per cell, its rows in each window, ABBA halves by
+        # alternating years (validation_core.split_half_groups); cells need >= 2 rows in each window
+        from src.community_encoder.train_DESK.validation_core import split_half_groups
+        e0, e1, m0, m1 = a.epochs
+        yk = keys[:, 2]
+        cidk = keys[:, 0].astype(np.int64) * 100000 + keys[:, 1]
+        full, cl = [], []
+        for lo, hi in ((e0, e1), (m0, m1)):
+            sel = np.where((yk >= lo) & (yk <= hi))[0]
+            order = sel[np.argsort(cidk[sel], kind="stable")]
+            uc_, start = np.unique(cidk[order], return_index=True)
+            bounds = np.r_[start, len(order)]
+            full.append({int(c): order[bounds[i]:bounds[i + 1]] for i, c in enumerate(uc_)})
+        common = sorted(set(k for k, v in full[0].items() if len(v) >= 2) & set(k for k, v in full[1].items()
+                                                                              if len(v) >= 2))
+        glist = [full[0][c] for c in common] + [full[1][c] for c in common]
+        half_a, half_b, _ok = split_half_groups(glist, years=yk)
+        full = glist
+        nC = len(common)
+        pairs = np.column_stack([np.arange(nC), nC + np.arange(nC)])
+        cells = np.array([(c // 100000, c % 100000) for c in common])
+    else:
+        E, full, half_a, half_b = group_rows(a.cache, keys, withheld)
+        idx = {}
+        for j, (cell, ep, wh) in enumerate(zip(map(tuple, E["cells"]), E["epoch"], E["withheld"])):
+            if ep == 0 and bool(wh):
+                idx.setdefault(cell, [None, None])[0] = j
+            elif ep == 1 and not wh:
+                idx.setdefault(cell, [None, None])[1] = j
+        pairs = np.array([(e, m) for e, m in idx.values() if e is not None and m is not None])
+        cells = E["cells"][pairs[:, 0]]
     held = split["holdout"][cells[:, 0], cells[:, 1]].astype(bool)
     buf = split["buffer"][cells[:, 0], cells[:, 1]].astype(bool)
     cfg = load_config()

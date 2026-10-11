@@ -26,6 +26,9 @@ average over the other held-out cells (150 and 300 km), so a regional trend scor
 counts.
 E039k (--n-pos 96 --pos-seeds 1 2 3 4 5, M20): the placebo with an adequate basis and several draws; every placebo-based
 number (the placebo itself, combos, gains, local) is the mean over draws, paired on the same bootstrap draws.
+E039l (--rich-base): DESK's gain beyond a RICH linear base -- placebo_300 + linear kind x time (32 PCs) + the
+covariate within-map, each its own iid block: rich = that base, rich+desk_within = base + DESK z deviations. If DESK's
+gain survives, it is not a linear kind-of-place clock.
 E043 check (--ref-cache <control cache>, same keys): the control model's DESK arms (desk_ref, desk_ref_within,
 placebo+desk_ref_within) on the same cells and draws, and paired differences treatment - control.
 """
@@ -60,6 +63,7 @@ def main():
     ap.add_argument("--n-pos", type=int, default=24, help="position RFF features in the placebo")
     ap.add_argument("--pos-seeds", type=int, nargs="+", default=[1], help="placebo draws (results are draw means)")
     ap.add_argument("--tag", default="", help="suffix of the output json")
+    ap.add_argument("--rich-base", action="store_true", help="E039l: gains beyond placebo + kind x time + within map")
     ap.add_argument("--ref-cache", default=None, help="control model's cache (same keys): paired treatment - control")
     a = ap.parse_args()
     if a.summarize:
@@ -204,6 +208,14 @@ def main():
                 q = PL.shape[1]
                 b = blr.fit(np.hstack([PL, Xf])[trn], Zd[trn], [(0, q), (q, q + Xf.shape[1])])["coef"].T
                 incr[f"placebo+{nm}#{sd}"] = np.hstack([PLev, Xev]) @ b
+            if a.rich_base:
+                parts = [(PL, PLev), keep_feats["kindxtime_32"], keep_feats["within_raw"]]
+                for tag, extra in (("rich", []), ("rich+desk_within", [keep_feats["desk_within"]])):
+                    ps = parts + extra
+                    edges = np.cumsum([0] + [f.shape[1] for f, _ in ps])
+                    blocks = [(int(edges[i]), int(edges[i + 1])) for i in range(len(ps))]
+                    b = blr.fit(np.hstack([f for f, _ in ps])[trn], Zd[trn], blocks)["coef"].T
+                    incr[f"{tag}#{sd}"] = np.hstack([e for _, e in ps]) @ b
         preds.update(incr)
     m_dp = blr.fit(zk[trn], Z[trn], [(0, r)])
     preds["desk_pooled"] = dz @ m_dp["coef"].T
@@ -243,6 +255,10 @@ def main():
             res["models"][name]["desk_minus_ci"] = [float(np.nanpercentile(d[1:], q)) for q in (2.5, 97.5)]
 
     if a.incremental:
+        if a.rich_base:
+            d = boots["rich+desk_within"] - boots["rich"]
+            res["rich_gain"] = {"desk_within": float(d[0]),
+                                "ci": [float(np.nanpercentile(d[1:], q)) for q in (2.5, 97.5)]}
         for nm in sorted({n.split("#")[0] for n in incr}):
             d = boots[nm] - boots["placebo_300"]
             res["models"][nm]["minus_placebo"] = float(d[0])
@@ -332,6 +348,10 @@ def summarize(out, fn=None):
             extra = (f" | desk - it {v['desk_minus']:+.3f} [{v['desk_minus_ci'][0]:+.3f},{v['desk_minus_ci'][1]:+.3f}]"
                      if "desk_minus" in v else "")
             print(f"    {nm:24s} corr {v['corr']:+.3f} [{v['ci'][0]:+.3f},{v['ci'][1]:+.3f}]" + extra)
+    if "rich_gain" in r:
+        v = r["rich_gain"]
+        print(f"  DESK gain beyond placebo + kind x time 32 + within map: {v['desk_within']:+.3f} "
+              f"[{v['ci'][0]:+.3f},{v['ci'][1]:+.3f}]")
     for nm, v in r.get("vs_ref", {}).items():
         print(f"  TREATMENT - CONTROL {nm:46s} {v['diff']:+.3f} [{v['ci'][0]:+.3f},{v['ci'][1]:+.3f}]")
     s = r["space_level"]

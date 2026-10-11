@@ -165,9 +165,14 @@ NEW SINCE YESTERDAY EVENING (tentative unless noted; each finding carries WHY: e
   (151 of 204 species overall) -- but modestly: ~95% of DESK's level information is linear in the covariates, and a
   nonlinear covariate GP closes most of the rest. So DESK is roughly "a good nonlinear model of a place's own
   covariates". On change both are near zero; a spacetime GP on neighbours' observed abundance beats DESK on change
-  (-0.039 / -0.032) -- each species' own regional trend (G3), not habitat. Untested yet: the regime the age model
-  actually uses (24 dimensions, one species, little data), where a learned compression should matter most -- E039b
-  (minutes, queued next).
+  (-0.039 / -0.032) -- each species' own regional trend (G3), not habitat.
+  IN THE AGE MODEL'S REGIME (E039b: 24 dimensions, the same linear readout, training data cut to 10% and 3%):
+  DESK's 24 dimensions beat the top 24 principal components of its covariates by ~0.03-0.06 of level skill for
+  well-observed species (75-92% of them), the SAME at every data size -- so it is information, not just compression:
+  DESK orders the covariates' information by what matters to bird communities, a better compact habitat summary.
+  With all 291 components and plenty of data the covariates nearly catch up for the commonest species; with little
+  data they overfit and fall well behind. Side finding: DESK's 64 dimensions beat its 24 by ~0.02-0.04 -- the age
+  model's cut at 24 leaves some skill unused (worth your attention for the downstream).
 - Readout scaling (E033, E033b, skeptic-reviewed):
   - shrinking DESK's change by a factor learned on the BBS years (~1/3) stops the readout doing harm -- but only
     because there is almost no information to lose: DESK's change is about as uninformative in its own trained years

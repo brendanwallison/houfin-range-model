@@ -3,7 +3,7 @@
  "name": "attribution-statT",
  "group": "cpu",
  "overlay": "research/overlays/desk_tempho_1995_seed1.json",
- "after_jobs": ["E038/desk-tempho1995-seed1-statT", "E038/desk-tempho1995-seed2-statT", "E038/desk-tempho1985-seed1-statT", "E038/desk-tempho1985-seed2-statT"],
+ 
  "cmd": [
   "bash",
   "-c",
@@ -11,5 +11,5 @@
  ],
  "expected_minutes": 120,
  "summarize": ["bash", "-c", "for d in {out}/*/; do {python} research/exp/backcast_attribution.py --summarize $d; done"],
- "note": "E038 measure (1): backcast attribution of the static-temperature models (encoded under the same static temperature they were trained with); controls = E035e"
+ "note": "E038 measure (1), rerun with the summary fix (a zero part printed as n/a): backcast attribution of the static-temperature models (encoded under the same static temperature they were trained with); controls = E035e"
 }

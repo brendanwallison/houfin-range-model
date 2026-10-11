@@ -10,5 +10,5 @@
  ],
  "expected_minutes": 60,
  "summarize": ["bash", "-c", "for d in {out}/*/; do {python} research/exp/backcast_attribution.py --summarize $d; done"],
- "note": "E041 measure (1): backcast attribution of the static-management models (encoded under the same static channels they were trained with); controls = E035e"
+ "note": "E041 measure (1), rerun with the summary fix: backcast attribution of the static-management models (encoded under the same static channels they were trained with); controls = E035e"
 }

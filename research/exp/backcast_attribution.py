@@ -280,12 +280,15 @@ def summarize(out):
     print(f"backcast attribution [{os.path.basename(os.path.dirname(r['run_dir']))}]: {r['n_cells']} held-out cells, "
           f"withheld 1966-86 vs 2005-25; noise-free centred corr with the observed community change, k, size, and "
           f"alignment of the backcast with the analog direction (random-rotation null):")
+    # a family held static in a model (E038 temperature, E041 management) has a part of exactly zero: its
+    # correlation and slope are undefined (None) and its alignment nan -- print them as such
+    g = lambda x, fmt: "  n/a" if x is None or (isinstance(x, float) and x != x) else format(x, fmt)
     for name, v in r["parts"].items():
-        c = v["corr_with_truth"]
-        sp = (f" | species corr {v['species_corr']:+.3f} k {v['species_k']:.2f}" if v.get("species_corr") is not None
-              else "")
-        print(f"  {name:38s} corr {c:+.3f}  k {v['k']:.2f}  size {v['size_vs_full']:.2f}  analog {v['analog_alignment']:+.3f}"
-              f" (null mean {v['analog_null_mean']:+.3f}, p95 {v['analog_null_p95']:+.3f})" + sp)
+        sp = (f" | species corr {g(v['species_corr'], '+.3f')} k {g(v.get('species_k'), '.2f')}"
+              if v.get("species_corr") is not None else "")
+        print(f"  {name:38s} corr {g(v['corr_with_truth'], '+.3f')}  k {g(v['k'], '.2f')}  size {v['size_vs_full']:.2f}"
+              f"  analog {g(v['analog_alignment'], '+.3f')} (null mean {g(v['analog_null_mean'], '+.3f')}, p95"
+              f" {g(v['analog_null_p95'], '+.3f')})" + sp)
         if "corr_by_zone" in v:
             f_ = lambda x: "  nan" if x is None else f"{x:+.3f}"
             zs = " ".join(f"z{z} {f_(c_)}" for z, c_ in v["corr_by_zone"].items())

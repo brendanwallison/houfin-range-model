@@ -57,7 +57,11 @@ NEW SINCE YESTERDAY EVENING (tentative unless noted; each finding carries WHY: e
   reading points the right way (still over-scaled ~3x). Open: whether the land-use signal is each place's own
   land-use change or a regional land-use trend. At the species level too the land-use part carries the signal
   (0.06-0.10 vs 0.03); the land-use part has a small lean of its own in two of four models (+0.04, +0.09).
-  This is the first concrete target for extending extrapolation: a backcast in which climate does not drive change.
+  Sharper (E035d, per covariate family, four models): the lean is DESK's TEMPERATURE reading (+0.29, corr with the
+  real change ~0.01) -- "a place that warmed should look like places that are warm today"; moisture leans less
+  (+0.15, a little species signal); the real signal is LAND-USE CLASS change (LUH; corr 0.24-0.36), mostly its
+  REGIONAL change (300 km average) with a modest local share; population and built-up area carry little.
+  This is the first concrete target for extending extrapolation: a backcast in which temperature does not drive change.
 - Readout scaling (E033, E033b, skeptic-reviewed):
   - shrinking DESK's change by a factor learned on the BBS years (~1/3) stops the readout doing harm -- but only
     because there is almost no information to lose: DESK's change is about as uninformative in its own trained years

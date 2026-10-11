@@ -234,6 +234,7 @@
   - {job: "E027/split1-t0-1986-7fc64db6b443", exp: E027, dir: for, strength: weak, note: "second spatial split: cell-specific covariate RFF vs static-environment x linear-year placebo at the farthest windows +0.004 / +0.033 / +0.041 (rff ahead), CIs spanning 0; replication rule not met (inconclusive). Across both splits a cell's own covariate change adds at most ~0.05 in correlation. UNVERIFIED."}
   - {job: "E034/trend-observer-4c5f2ac6542a", exp: E034, dir: for, strength: weak, note: "the position x year trend that carries most predictable change is not observer turnover: it predicts 2005-14 -> 2016-25 change better where observers were unchanged (community 0.31 vs 0.23; species 0.23 vs 0.19). Ecological or a common observation drift. UNVERIFIED."}
   - {job: "E035/backcast-attribution-63bd84b5379c", exp: E035, dir: against, strength: weak, note: "DESK's land-use-driven change tracks the real 1966-86 -> 2005-25 change (corr 0.25) -- land-use covariates DO carry temporal signal in DESK; climate change does not (as DESK reads it). Whether it is local land-use change or a regional land-use trend is not separated. UNVERIFIED."}
+  - {job: "E035/attribution-families-a9cc5607f0c1", exp: E035, dir: against, strength: moderate, note: "LUH land-use class change carries DESK's real temporal signal (corr 0.24-0.36 with community change; species 0.06-0.09), mostly as regional change; temperature change carries none as DESK reads it. The covariates do carry signal -- in land use, not climate. UNVERIFIED."}
 - id: B1
   stage: B
   priority: 1
@@ -456,6 +457,7 @@
   - {job: "E025/downstream-late-e284dcbdccbc", exp: E025, dir: for, strength: moderate, note: "the space-for-time pull halves or more from the selected epoch to epoch 490 (t1995 +0.14/+0.21 -> +0.08/+0.09; t1985 +0.10/+0.15 -> +0.03/+0.04): it is partly a property of the early, spatially selected state. UNVERIFIED."}
   - {job: "E035/backcast-attribution-63bd84b5379c", exp: E035, dir: for, strength: moderate, note: "MECHANISM: re-encoding withheld years with land use or climate swapped shows DESK's space-for-time lean comes entirely from its CLIMATE-driven change (analog alignment +0.25-0.31 vs null <= 0; corr with real change 0.03-0.05), while its land-use-driven change carries all its real signal (corr 0.25, no lean). tempho1995 s1, selected and late. UNVERIFIED."}
   - {job: "E035/attribution-replication-6a937fa010a0", exp: E035, dir: for, strength: strong, note: "replicated on four models (tempho1995 s1/s2, tempho1985 s1/s2): the climate-driven part of DESK's withheld-decade change tracks nothing (corr 0.01-0.05) and leans toward analogs +0.31 to +0.34; the land-use part carries all the real signal (0.25-0.36) with at most a small lean. UNVERIFIED (a, b, d pending)."}
+  - {job: "E035/attribution-families-a9cc5607f0c1", exp: E035, dir: for, strength: strong, note: "per family, four models: the analog lean is the TEMPERATURE reading (+0.29, corr with real change ~0.01); moisture leans less (+0.15); land-use classes carry the real signal (corr 0.24-0.36) mostly through their REGIONAL change. UNVERIFIED (a, b, d pending)."}
 - id: S3
   stage: T
   priority: 2

@@ -659,3 +659,4 @@
 {"ts": "2026-10-12T03:38:42-05:00", "event": "done", "job": "E055/desk-tempho1985-seed1-mw40-c734f92e2ccc", "wall_s": 3120.4, "max_rss_gb": 6.87, "summary": "/home/breallis/houfin/work/houfin/research/E055/desk-tempho1985-seed1-mw40-c734f92e2ccc/summary.txt"}
 {"ts": "2026-10-12T03:46:33-05:00", "event": "done", "job": "E055/eval-mw40-a498d6aa5705", "wall_s": 455.7, "max_rss_gb": 3.94, "summary": "/home/breallis/houfin/work/houfin/research/E055/eval-mw40-a498d6aa5705/summary.txt"}
 {"ts": "2026-10-12T04:43:46-05:00", "event": "done", "job": "E055/desk-tempho1995-seed1-aug2-9888c6adce0d", "wall_s": 3893.2, "max_rss_gb": 6.87, "summary": "/home/breallis/houfin/work/houfin/research/E055/desk-tempho1995-seed1-aug2-9888c6adce0d/summary.txt"}
+{"ts": "2026-10-12T04:47:57-05:00", "event": "done", "job": "E055/eval-aug2-681f43a7a210", "wall_s": 228.0, "max_rss_gb": 3.86, "summary": "/home/breallis/houfin/work/houfin/research/E055/eval-aug2-681f43a7a210/summary.txt"}

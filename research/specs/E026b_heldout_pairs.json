@@ -1,0 +1,10 @@
+{
+ "exp": "E026",
+ "name": "heldout-metric-pairs",
+ "group": "cpu",
+ "overlay": "research/overlays/desk_tempho_1995_seed1.json",
+ "cmd": ["bash", "-c", "set -e; for m in mp4096 mp262144 s2; do for st in '' _late; do {python} research/exp/fair_rivals.py --cache {cache}/desk_tempho_1995_$m$st --ref-cache {cache}/desk_tempho_1995_s1$st --out {out}/$m$st --incremental --n-pos 96 --pos-seeds 1 2 3 4 5 --strong-base --tag _p96; done; done"],
+ "expected_minutes": 30,
+ "summarize": ["bash", "-c", "for m in mp4096 mp262144 s2; do for st in '' _late; do echo \"== $m$st\"; {python} -c \"import json; r=json.load(open('{out}/$m$st/fair_rivals_incr_p96.json')); s=r['space_level']; print('space_level desk', round(s['desk_pooled'],4), 'minus linear', round(s['desk_minus_linear'],4), [round(c,4) for c in s['desk_minus_linear_ci']]); [print(k, round(v['diff'],4), [round(c,4) for c in v['ci']]) for k,v in r['vs_ref'].items()]\"; done; done"],
+ "note": "E026b: the pair-count models (4,096 / 262,144) and the 65k seed-2 model vs 65k seed 1, paired on held-out cells: spatial level skill and the E039h backcast estimand, selected and late"
+}

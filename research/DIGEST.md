@@ -656,3 +656,17 @@ spatial skill. Steers only, not verified.)
   - Dropout and weight decay do not change it (sweep). Narrower width and a heavier metric term do.
   - Whether less over-fitting helps WITHHELD-decade extrapolation was never tested: E054 (hidden width 64, both
     T0s) is pre-registered.
+
+2026-10-12 00:25 -- over-fitting program, first results (E054, E055f/f2, E056; steering, not verified)
+- Less capacity (width 64): over-fitting falls (late gap 1.65-1.75x vs 2.12-2.27x) and spatial skill rises
+  (+0.004-0.012). But change prediction FALLS (-0.060 / -0.028 at the selected state). Capacity reduction is not the
+  remedy.
+- Seed ensemble (mean z of 4 seeds) vs the mean single seed:
+  - late state +0.026-0.032 change, +0.012-0.013 beyond the placebo, +0.016 space;
+  - selected +0.016-0.017 change, +0.007 space.
+  - The first lever to improve both.
+- Reading (likely): DESK's temporal increment uses the same spare capacity that over-fits places. Averaging away the
+  seed-specific part keeps it; cutting capacity loses it.
+- Span and time weighting re-scored (E056): nothing beyond the trend placebo (see E023/E024 entry above).
+- Queued overnight: the trajectory with weight averaging (E055a), short schedule, metric weight 40, stronger masking,
+  and the grokking probe.

@@ -670,3 +670,9 @@ spatial skill. Steers only, not verified.)
 - Span and time weighting re-scored (E056): nothing beyond the trend placebo (see E023/E024 entry above).
 - Queued overnight: the trajectory with weight averaging (E055a), short schedule, metric weight 40, stronger masking,
   and the grokking probe.
+- E055a TRAJECTORY (01:38, one seed, snapshots of the control itself): held-out SPACE peaks at epoch ~70 (0.821) and
+  falls to 0.790 by 490. Backcast CHANGE rises monotonically the whole way (0.142 at epoch 40, 0.243 at the selected
+  162, 0.264 at 490; beyond the placebo +0.033 over that range). Space and time trade off along one run: the
+  over-fitting stretch is also where temporal structure is still being learned (likely learning order).
+  - Weight averaging within a run gives nothing (it scores like its middle snapshot).
+  - Averaging SEEDS does help (E055f2).

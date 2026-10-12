@@ -1,7 +1,7 @@
 {
  "exp": "E061",
  "name": "eval-aux-dev-late",
- "group": "cpu",
+ "group": "gpu",
  "after_jobs": [
   "E061/desk-tempho1995-seed1-auxcbc",
   "E061/desk-tempho1995-seed1-auxall3",
@@ -12,9 +12,9 @@
  "cmd": [
   "bash",
   "-c",
-  "set -e; SCORE_TARGETS=dev bash research/bin/score_both.sh {python} {out}/desk_tempho_1995_s1_auxcbc_late --cache {cache}/desk_tempho_1995_s1_auxcbc_late --ref-cache {cache}/desk_tempho_1995_s1_late; SCORE_TARGETS=dev bash research/bin/score_both.sh {python} {out}/desk_tempho_1995_s1_auxall3_late --cache {cache}/desk_tempho_1995_s1_auxall3_late --ref-cache {cache}/desk_tempho_1995_s1_late; SCORE_TARGETS=dev bash research/bin/score_both.sh {python} {out}/desk_tempho_1995_s2_auxcbc_late --cache {cache}/desk_tempho_1995_s2_auxcbc_late --ref-cache {cache}/desk_tempho_1995_s2_late; SCORE_TARGETS=dev bash research/bin/score_both.sh {python} {out}/desk_tempho_1995_s2_auxall3_late --cache {cache}/desk_tempho_1995_s2_auxall3_late --ref-cache {cache}/desk_tempho_1995_s2_late"
+  "set -e; export BLR_DEVICE=cuda; bash research/bin/fill_esk.sh {cache}/desk_tempho_1995_s1 {cache}/desk_tempho_1995_s1_auxcbc {cache}/desk_tempho_1995_s1_auxcbc_late {cache}/desk_tempho_1995_s1_auxall3 {cache}/desk_tempho_1995_s1_auxall3_late; bash research/bin/fill_esk.sh {cache}/desk_tempho_1995_s2 {cache}/desk_tempho_1995_s2_auxcbc {cache}/desk_tempho_1995_s2_auxcbc_late {cache}/desk_tempho_1995_s2_auxall3 {cache}/desk_tempho_1995_s2_auxall3_late; SCORE_TARGETS=dev bash research/bin/score_both.sh {python} {out}/desk_tempho_1995_s1_auxcbc_late --cache {cache}/desk_tempho_1995_s1_auxcbc_late --ref-cache {cache}/desk_tempho_1995_s1_late; SCORE_TARGETS=dev bash research/bin/score_both.sh {python} {out}/desk_tempho_1995_s1_auxall3_late --cache {cache}/desk_tempho_1995_s1_auxall3_late --ref-cache {cache}/desk_tempho_1995_s1_late; SCORE_TARGETS=dev bash research/bin/score_both.sh {python} {out}/desk_tempho_1995_s2_auxcbc_late --cache {cache}/desk_tempho_1995_s2_auxcbc_late --ref-cache {cache}/desk_tempho_1995_s2_late; SCORE_TARGETS=dev bash research/bin/score_both.sh {python} {out}/desk_tempho_1995_s2_auxall3_late --cache {cache}/desk_tempho_1995_s2_auxall3_late --ref-cache {cache}/desk_tempho_1995_s2_late"
  ],
- "expected_minutes": 180,
+ "expected_minutes": 45,
  "summarize": [
   "bash",
   "-c",

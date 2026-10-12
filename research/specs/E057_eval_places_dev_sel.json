@@ -1,7 +1,7 @@
 {
  "exp": "E057",
  "name": "eval-places-dev-sel",
- "group": "cpu",
+ "group": "gpu",
  "after_jobs": [
   "E057/desk-tempho1995-seed1-tf50",
   "E057/desk-tempho1995-seed1-tf25",
@@ -12,9 +12,9 @@
  "cmd": [
   "bash",
   "-c",
-  "set -e; SCORE_TARGETS=dev bash research/bin/score_both.sh {python} {out}/desk_tempho_1995_s1_tf50 --cache {cache}/desk_tempho_1995_s1_tf50 --ref-cache {cache}/desk_tempho_1995_s1; SCORE_TARGETS=dev bash research/bin/score_both.sh {python} {out}/desk_tempho_1995_s1_tf25 --cache {cache}/desk_tempho_1995_s1_tf25 --ref-cache {cache}/desk_tempho_1995_s1; SCORE_TARGETS=dev bash research/bin/score_both.sh {python} {out}/desk_tempho_1995_s2_tf50 --cache {cache}/desk_tempho_1995_s2_tf50 --ref-cache {cache}/desk_tempho_1995_s2; SCORE_TARGETS=dev bash research/bin/score_both.sh {python} {out}/desk_tempho_1995_s2_tf25 --cache {cache}/desk_tempho_1995_s2_tf25 --ref-cache {cache}/desk_tempho_1995_s2"
+  "set -e; export BLR_DEVICE=cuda; bash research/bin/fill_esk.sh {cache}/desk_tempho_1995_s1 {cache}/desk_tempho_1995_s1_tf50 {cache}/desk_tempho_1995_s1_tf50_late {cache}/desk_tempho_1995_s1_tf25 {cache}/desk_tempho_1995_s1_tf25_late; bash research/bin/fill_esk.sh {cache}/desk_tempho_1995_s2 {cache}/desk_tempho_1995_s2_tf50 {cache}/desk_tempho_1995_s2_tf50_late {cache}/desk_tempho_1995_s2_tf25 {cache}/desk_tempho_1995_s2_tf25_late; SCORE_TARGETS=dev bash research/bin/score_both.sh {python} {out}/desk_tempho_1995_s1_tf50 --cache {cache}/desk_tempho_1995_s1_tf50 --ref-cache {cache}/desk_tempho_1995_s1; SCORE_TARGETS=dev bash research/bin/score_both.sh {python} {out}/desk_tempho_1995_s1_tf25 --cache {cache}/desk_tempho_1995_s1_tf25 --ref-cache {cache}/desk_tempho_1995_s1; SCORE_TARGETS=dev bash research/bin/score_both.sh {python} {out}/desk_tempho_1995_s2_tf50 --cache {cache}/desk_tempho_1995_s2_tf50 --ref-cache {cache}/desk_tempho_1995_s2; SCORE_TARGETS=dev bash research/bin/score_both.sh {python} {out}/desk_tempho_1995_s2_tf25 --cache {cache}/desk_tempho_1995_s2_tf25 --ref-cache {cache}/desk_tempho_1995_s2"
  ],
- "expected_minutes": 180,
+ "expected_minutes": 45,
  "summarize": [
   "bash",
   "-c",

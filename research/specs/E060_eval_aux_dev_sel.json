@@ -1,0 +1,24 @@
+{
+ "exp": "E060",
+ "name": "eval-aux-dev-sel",
+ "group": "cpu",
+ "after_jobs": [
+  "E060/desk-tempho1995-seed1-auxsp",
+  "E060/desk-tempho1995-seed1-auxst",
+  "E060/desk-tempho1995-seed2-auxsp",
+  "E060/desk-tempho1995-seed2-auxst"
+ ],
+ "overlay": "research/overlays/desk_tempho_1995_seed1.json",
+ "cmd": [
+  "bash",
+  "-c",
+  "set -e; SCORE_TARGETS=dev bash research/bin/score_both.sh {python} {out}/desk_tempho_1995_s1_auxsp --cache {cache}/desk_tempho_1995_s1_auxsp --ref-cache {cache}/desk_tempho_1995_s1; SCORE_TARGETS=dev bash research/bin/score_both.sh {python} {out}/desk_tempho_1995_s1_auxst --cache {cache}/desk_tempho_1995_s1_auxst --ref-cache {cache}/desk_tempho_1995_s1; SCORE_TARGETS=dev bash research/bin/score_both.sh {python} {out}/desk_tempho_1995_s2_auxsp --cache {cache}/desk_tempho_1995_s2_auxsp --ref-cache {cache}/desk_tempho_1995_s2; SCORE_TARGETS=dev bash research/bin/score_both.sh {python} {out}/desk_tempho_1995_s2_auxst --cache {cache}/desk_tempho_1995_s2_auxst --ref-cache {cache}/desk_tempho_1995_s2"
+ ],
+ "expected_minutes": 180,
+ "summarize": [
+  "bash",
+  "-c",
+  "for d in {out}/*/; do f=$d/fair_rivals_incr_p96dev.json; [ -f $f ] || continue; {python} -c \"import json,sys; r=json.load(open(sys.argv[1])); s=r['space_level']; v=r['vs_ref']; g=lambda k: '%+.3f [%+.3f,%+.3f]' % (v[k]['diff'], *v[k]['ci']); print(sys.argv[2][:30].ljust(30), 'space %.4f (vs lin %+.3f)' % (s['desk_pooled'], s['desk_minus_linear']), '| change', g('desk - desk_ref'), '| beyond placebo', g('placebo+desk_within - placebo+desk_ref_within'))\" $f $(basename $d); done"
+ ],
+ "note": "E060: dev-species target (273 out-of-community species), sel state, paired vs the same-seed control"
+}

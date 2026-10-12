@@ -1,0 +1,24 @@
+{
+ "exp": "E057",
+ "name": "eval-places-dev-late",
+ "group": "cpu",
+ "after_jobs": [
+  "E057/desk-tempho1995-seed1-tf50",
+  "E057/desk-tempho1995-seed1-tf25",
+  "E057/desk-tempho1995-seed2-tf50",
+  "E057/desk-tempho1995-seed2-tf25"
+ ],
+ "overlay": "research/overlays/desk_tempho_1995_seed1.json",
+ "cmd": [
+  "bash",
+  "-c",
+  "set -e; SCORE_TARGETS=dev bash research/bin/score_both.sh {python} {out}/desk_tempho_1995_s1_tf50_late --cache {cache}/desk_tempho_1995_s1_tf50_late --ref-cache {cache}/desk_tempho_1995_s1_late; SCORE_TARGETS=dev bash research/bin/score_both.sh {python} {out}/desk_tempho_1995_s1_tf25_late --cache {cache}/desk_tempho_1995_s1_tf25_late --ref-cache {cache}/desk_tempho_1995_s1_late; SCORE_TARGETS=dev bash research/bin/score_both.sh {python} {out}/desk_tempho_1995_s2_tf50_late --cache {cache}/desk_tempho_1995_s2_tf50_late --ref-cache {cache}/desk_tempho_1995_s2_late; SCORE_TARGETS=dev bash research/bin/score_both.sh {python} {out}/desk_tempho_1995_s2_tf25_late --cache {cache}/desk_tempho_1995_s2_tf25_late --ref-cache {cache}/desk_tempho_1995_s2_late"
+ ],
+ "expected_minutes": 180,
+ "summarize": [
+  "bash",
+  "-c",
+  "for d in {out}/*/; do f=$d/fair_rivals_incr_p96dev.json; [ -f $f ] || continue; {python} -c \"import json,sys; r=json.load(open(sys.argv[1])); s=r['space_level']; v=r['vs_ref']; g=lambda k: '%+.3f [%+.3f,%+.3f]' % (v[k]['diff'], *v[k]['ci']); print(sys.argv[2][:30].ljust(30), 'space %.4f (vs lin %+.3f)' % (s['desk_pooled'], s['desk_minus_linear']), '| change', g('desk - desk_ref'), '| beyond placebo', g('placebo+desk_within - placebo+desk_ref_within'))\" $f $(basename $d); done"
+ ],
+ "note": "E057: dev-species target (273 out-of-community species), late state, paired vs the same-seed control"
+}

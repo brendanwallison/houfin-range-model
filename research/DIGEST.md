@@ -369,7 +369,8 @@ NEW SINCE YESTERDAY EVENING (tentative unless noted; each finding carries WHY: e
   - So neither span nor proximity moves DESK beyond the regional trend. Their earlier raw gains were a near-target
     trend the placebo also has (likely).
   - Your case, adding the decades just before the target, is the withheld window itself: untestable inside BBS. It
-    needs a deeper series (CBC for resident species, calibrated against BBS where both exist).
+    needs a deeper series. Per M29 (user, 2026-10-12): not pre-1966 CBC (its own curators start trends in 1966), but
+    Grinnell resurveys, Breeding Bird Census plots or historical range edges.
 - Where the covariates' temporal signal is (E027, E027b-d, two skeptic rounds): their backcast skill is largely matched
   by a placebo using them only as a STATIC position (a place's average environment) times LINEAR YEAR. A place's own
   covariate change adds at most ~0.05 in correlation (two independent splits); the direction the continent's
@@ -704,5 +705,6 @@ steering, not verified)
   - (2) Selecting the epoch on spatial validation picks a temporally under-trained state.
   - (3) Any training-cell evaluation of change is contaminated by modern-end memorization: use held-out cells or a
     withheld modern epoch.
-  - (4) The span question cannot be settled inside BBS. A deeper series (CBC, calibrated on resident species) is the
+  - (4) The span question cannot be settled inside BBS. A deeper series (per M29: Grinnell resurveys, BBC plots or
+    historical range edges; not pre-1966 CBC) is the
     only test of "train on all of BBS".

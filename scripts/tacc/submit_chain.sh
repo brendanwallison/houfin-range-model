@@ -7,6 +7,7 @@
 #   OVERLAY=config/overlays/map_run19_exchangeable.json bash scripts/tacc/submit_chain.sh
 #   OVERLAY=... PROFILE=standard REFINE_MAX_ITER=12000 bash scripts/tacc/submit_chain.sh
 #   OVERLAY=... SKIP_MAP=1 bash scripts/tacc/submit_chain.sh     # MAP already fitted
+#   OVERLAY=... SKIP_MAP=1 SKIP_REFINE=1 bash scripts/tacc/submit_chain.sh  # viz + probe only
 #
 # Jobs: 30_model_map (float32) -> 34 as age_refine_map (float64, from the float32 MAP)
 # -> 31_model_viz and 34 as age_hmc_probe, both on the refined checkpoint (float64).
@@ -18,6 +19,7 @@ PROFILE="${PROFILE:-quick90}"
 QUEUE="${QUEUE:-gpu-a100-small}"
 REFINE_MAX_ITER="${REFINE_MAX_ITER:-8000}"
 SKIP_MAP="${SKIP_MAP:-0}"
+SKIP_REFINE="${SKIP_REFINE:-0}"   # 1: the refined checkpoint already exists (e.g. a sweep's REFINE=1)
 A=""
 [ -n "${TACC_ALLOCATION:-}" ] && [ "$TACC_ALLOCATION" != "REPLACE_WITH_PROJECT" ] && A="-A $TACC_ALLOCATION"
 [ -f "$OVERLAY" ] || { echo "no such overlay: $OVERLAY" >&2; exit 1; }
@@ -55,10 +57,15 @@ if [ "$SKIP_MAP" != "1" ]; then
           --export=ALL,HOUFIN_MODEL_PRECISION=float32 scripts/tacc/30_model_map.slurm) || exit 1
     echo "MAP      $map"
 fi
-refine=$(submit $A -p "$QUEUE" -t 02:00:00 --parsable $(dep "$map") \
-         --export=ALL,HOUFIN_PROBE_MODULE=src.model.age_refine_map,HOUFIN_MODEL_PRECISION=float64,HOUFIN_HMC_MAP_PRECISION=float32,HOUFIN_REFINE_MAX_ITER=$REFINE_MAX_ITER \
-         scripts/tacc/34_model_hmc_probe.slurm) || exit 1
-echo "refine   $refine  (log houfin_probe.o$refine)"
+refine=""
+if [ "$SKIP_REFINE" != "1" ]; then
+    refine=$(submit $A -p "$QUEUE" -t 02:00:00 --parsable $(dep "$map") \
+             --export=ALL,HOUFIN_PROBE_MODULE=src.model.age_refine_map,HOUFIN_MODEL_PRECISION=float64,HOUFIN_HMC_MAP_PRECISION=float32,HOUFIN_REFINE_MAX_ITER=$REFINE_MAX_ITER \
+             scripts/tacc/34_model_hmc_probe.slurm) || exit 1
+    echo "refine   $refine  (log houfin_probe.o$refine)"
+else
+    [ -f "$REFINED_DIR/map_checkpoint.pkl" ] || { echo "SKIP_REFINE=1 but no refined checkpoint at $REFINED_DIR" >&2; exit 1; }
+fi
 viz=$(submit $A -p "$QUEUE" -t 02:00:00 --parsable $(dep "$refine") \
       --export=ALL,HOUFIN_MODEL_PRECISION=float64,HOUFIN_VIZ_RUN_DIR=$REFINED_DIR \
       scripts/tacc/31_model_viz.slurm) || exit 1

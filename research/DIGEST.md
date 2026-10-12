@@ -676,3 +676,33 @@ spatial skill. Steers only, not verified.)
   over-fitting stretch is also where temporal structure is still being learned (likely learning order).
   - Weight averaging within a run gives nothing (it scores like its middle snapshot).
   - Averaging SEEDS does help (E055f2).
+
+2026-10-12 08:45 -- MORNING SUMMARY: the over-fitting program (E054, E055a-h, E056; one seed per arm unless stated;
+steering, not verified)
+- The SHAPE (E055a, snapshots of the control):
+  - held-out spatial skill peaks at epoch ~70 and falls as DESK over-fits places;
+  - backcast change rises monotonically to epoch 490;
+  - the spatial selection rule stops at 162, temporally under-trained.
+- What does NOT help the backcast:
+  - less capacity (width 64): better space, worse time (-0.06 / -0.03);
+  - a short schedule (150 epochs): stable space, worse time (-0.02 to -0.04);
+  - metric weight 40: earlier selection, worse selected time (-0.06 / -0.14), the same by epoch 490;
+  - stronger masking: the same model at matched epoch;
+  - weight averaging within a run: scores like its middle snapshot;
+  - span / time weighting (E056): nothing beyond the trend placebo.
+- The "grokking" probe (2000 epochs + metric 40 + same-place pairs + weight decay): NO SIGN.
+  - Raw change at held-out cells is flat, and space collapses (0.762).
+  - Its large training-cell "gain" (+0.09) is memorization of the training cells' MODERN communities, which the change
+    estimand rewards there (end-swap diagnostic E055h). The backcast end is no better.
+- What DOES help: a SEED ENSEMBLE (mean z of 4 seeds) vs the mean single seed.
+  - Late state: +0.026-0.032 change, +0.016 space; beyond the strong base +0.005-0.010 (buffer readout).
+  - Selected state: +0.016 change, +0.007 space.
+  - Each seed over-fits differently, so averaging cancels the seed-specific part (likely).
+- Implications (not decisions):
+  - (1) A seed ensemble, especially of late states, is the one candidate that improves both space and time. It needs
+    verification (joint bootstrap vs the mean seed; skeptic).
+  - (2) Selecting the epoch on spatial validation picks a temporally under-trained state.
+  - (3) Any training-cell evaluation of change is contaminated by modern-end memorization: use held-out cells or a
+    withheld modern epoch.
+  - (4) The span question cannot be settled inside BBS. A deeper series (CBC, calibrated on resident species) is the
+    only test of "train on all of BBS".

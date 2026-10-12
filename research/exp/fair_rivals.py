@@ -447,6 +447,15 @@ def main():
                 out["models"][nm]["desk_minus"] = float(d[0])
                 out["models"][nm]["desk_minus_ci"] = [float(np.nanpercentile(d[1:], q)) for q in (2.5, 97.5)]
             res["local"][f"{ell:.0f}"] = out
+    # E059: head-to-head, readout against readout on the same draws (every arm is a linear readout fitted on the
+    # same training rows and target; only the inputs differ)
+    res["head_to_head"] = {}
+    for y in ("strong", "placebo_300", "kindxtime_32", "within_raw", "rich"):
+        for x in ("desk_within", "desk"):
+            if x in boots and y in boots:
+                d = boots[x] - boots[y]
+                res["head_to_head"][f"{x} - {y}"] = {"diff": float(d[0]),
+                                                     "ci": [float(np.nanpercentile(d[1:], q)) for q in (2.5, 97.5)]}
     if a.ref_cache:
         res["vs_ref"] = {}
         for x, y in (("desk", "desk_ref"), ("desk_within", "desk_ref_within"),

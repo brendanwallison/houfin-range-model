@@ -1,0 +1,10 @@
+{
+ "exp": "E059",
+ "name": "head-to-head-t1985",
+ "group": "cpu",
+ "overlay": "research/overlays/desk_tempho_1985_seed1.json",
+ "cmd": ["bash", "-c", "set -e; for c in desk_tempho_1985_s1 desk_tempho_1985_s1_late desk_tempho_1985_ens4 desk_tempho_1985_ens4_late; do {python} research/exp/fair_rivals.py --cache {cache}/$c --out {out}/$c --incremental --n-pos 96 --pos-seeds 1 2 3 4 5 --strong-base --tag _p96; done"],
+ "expected_minutes": 35,
+ "summarize": ["bash", "-c", "for d in {out}/*/; do {python} -c \"import json,sys; r=json.load(open(sys.argv[1])); h=r['head_to_head']; m=r['models']; print(sys.argv[2][:28].ljust(28), 'desk_within %.3f strong %.3f |' % (m['desk_within']['corr'], m['strong']['corr']), ' | '.join('%s %+.3f [%+.3f,%+.3f]' % (k, v['diff'], *v['ci']) for k, v in h.items() if k.startswith('desk_within')))\" $d/fair_rivals_incr_p96.json $(basename $d); done"],
+ "note": "E059: paired head-to-head, readout vs readout: DESK within-readout (single seed 1 and 4-seed ensemble, selected and late) minus the strong base / placebo / kind-x-time / within map, T0 1986"
+}

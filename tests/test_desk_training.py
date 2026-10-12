@@ -3004,7 +3004,7 @@ def test_aux_head_trains_logs_and_resumes(tmp_path):
     import shutil
     done = str(ck) + ".completed"
     state = torch.load(done if os.path.exists(done) else ck, map_location="cpu", weights_only=False)
-    assert "aux_head" in state and state["aux_head"]["weight"].shape == (S, L)
+    assert "aux_heads" in state and state["aux_heads"][0]["weight"].shape == (S, L)
     if os.path.exists(done):
         shutil.copy(done, ck)           # a finished run renames its checkpoint; resume from a copy
     out2 = io.StringIO()
@@ -3042,3 +3042,40 @@ def test_aux_off_leaves_the_checkpoint_fingerprint_unchanged(tmp_path):
         f = str(ck) + ".completed" if os.path.exists(str(ck) + ".completed") else ck
         fps.append(torch.load(f, map_location="cpu", weights_only=False)["fingerprint"])
     assert fps[0] == fps[1]
+
+
+def test_two_aux_heads_each_with_its_own_mask_and_log(tmp_path):
+    """A list of aux targets gets one head each (eBird and CBC cover different cells)."""
+    import contextlib
+    import io
+    import json as _json
+
+    from src.community_encoder.train_DESK import desk_training as D
+
+    sch = _schema()
+    dims = [s["dim"] for s in sch["streams"]]
+    T, H, W, L = 4, 6, 7, 16
+    rng = np.random.default_rng(9)
+    cov = rng.normal(size=(T, H, W, sch["total_dim"])).astype("float32")
+    m = np.ones((H, W), bool)
+    years = list(range(2022, 2026))
+    tgt = {y: (rng.normal(size=(H, W, L)).astype("float32"), m, m,
+               np.ones((H, W), dtype="float32")) for y in years[1:]}
+    m1, m2 = np.zeros((2, H, W), bool), np.zeros((3, H, W), bool)
+    m1[:, :3] = True
+    m2[:, 3:] = True
+    auxl = [{"t_idx": [1, 2], "Y": rng.normal(size=(2, H, W, 4)).astype("float32"), "mask": m1, "weight": 0.2,
+             "label": "a"},
+            {"t_idx": [0, 1, 3], "Y": rng.normal(size=(3, H, W, 6)).astype("float32"), "mask": m2, "weight": 0.1,
+             "label": "b"}]
+    traj = tmp_path / "t.jsonl"
+    out = io.StringIO()
+    with contextlib.redirect_stdout(out):
+        D.train_model_ema(cov, np.ones((T, H, W), bool), years, tgt,
+                          _metric_dict(rng.random((H, W, 9)).astype("float32"), m, years), m, m, dims,
+                          latent_dim=L, ema_cfg={"earlystop_warmup": 0}, spatial_kernel=3, epochs=2, schema=sch,
+                          dropout=0.1, trajectory_path=str(traj), aux_targets=auxl)
+    txt = out.getvalue()
+    assert "AUX head 'a'" in txt and "AUX head 'b'" in txt and "aux 'b' mse" in txt, txt
+    row = _json.loads(open(traj).readline())
+    assert np.isfinite(row["loss_aux_a"]) and np.isfinite(row["loss_aux_b"]), row

@@ -848,22 +848,24 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
     ema = OutputEMA(ema_cfg.get("half_life_bounds", [1.0, 40.0])[0],
                     ema_cfg.get("half_life_bounds", [1.0, 40.0])[1],
                     ema_cfg.get("init_half_life", 8.0)).to(device)
-    aux_head, aux = None, None
-    if aux_targets is not None:
-        if int(n_spatial_tiles) > 1:
-            raise ValueError("aux_targets is implemented for full-grid steps only (spatial_tiles 1)")
-        aux_head = torch.nn.Linear(int(latent_dim), int(aux_targets["Y"].shape[-1])).to(device)
-        aux = {"t": torch.as_tensor(np.asarray(aux_targets["t_idx"]), device=device, dtype=torch.long),
-               "Y": torch.as_tensor(aux_targets["Y"], device=device, dtype=torch.float32),
-               "m": torch.as_tensor(aux_targets["mask"], device=device).bool(),
-               "w": float(aux_targets["weight"]), "label": str(aux_targets.get("label", "aux"))}
-        print(f"[desk] AUX head '{aux['label']}': linear {latent_dim} -> {aux['Y'].shape[-1]}, "
-              f"{int(aux['m'].sum()):,} supervised cell-years over {len(aux_targets['t_idx'])} years, "
-              f"weight {aux['w']:g}", flush=True)
+    # One head per auxiliary target (a dict, or a list of dicts -- e.g. eBird and CBC), each with its
+    # own mask, since the sources cover different cells and years.
+    _aux_in = ([aux_targets] if isinstance(aux_targets, dict) else list(aux_targets or []))
+    aux_heads, auxs = [], []
+    if _aux_in and int(n_spatial_tiles) > 1:
+        raise ValueError("aux_targets is implemented for full-grid steps only (spatial_tiles 1)")
+    for _at in _aux_in:
+        aux_heads.append(torch.nn.Linear(int(latent_dim), int(_at["Y"].shape[-1])).to(device))
+        auxs.append({"t": torch.as_tensor(np.asarray(_at["t_idx"]), device=device, dtype=torch.long),
+                     "Y": torch.as_tensor(_at["Y"], device=device, dtype=torch.float32),
+                     "m": torch.as_tensor(_at["mask"], device=device).bool(),
+                     "w": float(_at["weight"]), "label": str(_at.get("label", f"aux{len(auxs)}"))})
+        print(f"[desk] AUX head '{auxs[-1]['label']}': linear {latent_dim} -> {auxs[-1]['Y'].shape[-1]}, "
+              f"{int(auxs[-1]['m'].sum()):,} supervised cell-years over {len(_at['t_idx'])} years, "
+              f"weight {auxs[-1]['w']:g}", flush=True)
     params = list(model.parameters()) + list(ema.parameters()) + \
-        ([] if aux_head is None else list(aux_head.parameters()))
-    opt = torch.optim.AdamW(_param_groups([model, ema] + ([] if aux_head is None else [aux_head]),
-                                          weight_decay), lr=lr)
+        [p for h in aux_heads for p in h.parameters()]
+    opt = torch.optim.AdamW(_param_groups([model, ema] + aux_heads, weight_decay), lr=lr)
     sched = torch.optim.lr_scheduler.LambdaLR(
         opt, _warmup_cosine(epochs, warmup_epochs, min_lr_frac))
     # Early training is unstable (the metric loss can transiently spike), so clip the global
@@ -1587,9 +1589,10 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
                "tiles_per_step": int(tiles_per_step), "selection_metric": str(selection_metric),
                "select_on_withheld": bool(select_on_withheld),
                "holdout_years": sorted(int(y) for y in (val_pool_holdout_years or ()))}
-    if aux is not None:   # only when on, so every existing run's fingerprint is unchanged
-        _ck_key["aux"] = {"label": aux["label"], "weight": aux["w"], "S": int(aux["Y"].shape[-1]),
-                          "n_years": int(aux["t"].numel()), "n_rows": int(aux["m"].sum())}
+    if auxs:   # only when on, so every existing run's fingerprint is unchanged
+        _fpa = [{"label": a["label"], "weight": a["w"], "S": int(a["Y"].shape[-1]),
+                 "n_years": int(a["t"].numel()), "n_rows": int(a["m"].sum())} for a in auxs]
+        _ck_key["aux"] = _fpa[0] if len(_fpa) == 1 else _fpa
     _ck_fp =hashlib.sha256(json.dumps(_ck_key, sort_keys=True, default=str).encode()).hexdigest()[:16]
     start_ep = 1
     if resume and checkpoint_path and os.path.exists(checkpoint_path):
@@ -1602,8 +1605,8 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
         else:
             model.load_state_dict(_ck["model"])
             ema.load_state_dict(_ck["ema"])
-            if aux_head is not None:
-                aux_head.load_state_dict(_ck["aux_head"])
+            for _h, _sd in zip(aux_heads, _ck.get("aux_heads", [])):
+                _h.load_state_dict(_sd)
             opt.load_state_dict(_ck["opt"])
             sched.load_state_dict(_ck["sched"])
             best_val, best, bad, nonfinite = (_ck["best_val"], _ck["best"], _ck["bad"],
@@ -1630,8 +1633,8 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
                  "rng_torch": torch.get_rng_state(),
                  "rng_cuda": torch.cuda.get_rng_state_all() if torch.cuda.is_available() else None,
                  "rng_np": np.random.get_state(), "rng_aug": aug_rng.bit_generator.state}
-        if aux_head is not None:
-            state["aux_head"] = aux_head.state_dict()
+        if aux_heads:
+            state["aux_heads"] = [h.state_dict() for h in aux_heads]
         tmp = checkpoint_path + ".tmp"
         torch.save(state, tmp)
         os.replace(tmp, checkpoint_path)          # atomic: a kill mid-save leaves the old one
@@ -1892,11 +1895,12 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
             loss = w_stab + w_true + w_rec
             # Auxiliary head (research): per-element MSE of a linear readout of z_ema against the
             # standardized second target, over the caller's mask only.
-            if aux is not None:
-                _pa = aux_head(z_ema[aux["t"]][aux["m"]])
-                loss_aux = torch.mean((_pa - aux["Y"][aux["m"]]) ** 2)
-                w_aux = aux["w"] * loss_aux
-                loss = loss + w_aux
+            if auxs:
+                loss_aux = []
+                for _h, _a in zip(aux_heads, auxs):
+                    _pa = _h(z_ema[_a["t"]][_a["m"]])
+                    loss_aux.append(torch.mean((_pa - _a["Y"][_a["m"]]) ** 2))
+                    loss = loss + _a["w"] * loss_aux[-1]
             # NestedLoRA, as an ADDITIONAL term. Its operator half is itself a kernel-fit term, so it
             # partly duplicates loss_true -- that overlap is deliberate here (both are on, and their
             # relative weight is the thing being tested) but it means the two weights are not
@@ -2148,9 +2152,10 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
                   flush=True)
         if loss_aux is not None and (ep == 1 or ep % 10 == 0 or evaluated):
             _tot = float(loss.detach())
-            print(f"Ep {ep:03d} | aux '{aux['label']}' mse {float(loss_aux.detach()):.4f} weighted "
-                  f"{aux['w'] * float(loss_aux.detach()):.4f} ({aux['w'] * float(loss_aux.detach()) / max(_tot, 1e-12):.0%} "
-                  f"of the total)", flush=True)
+            for _a, _la in zip(auxs, loss_aux):
+                _wl = _a["w"] * float(_la.detach())
+                print(f"Ep {ep:03d} | aux '{_a['label']}' mse {float(_la.detach()):.4f} weighted {_wl:.4f} "
+                      f"({_wl / max(_tot, 1e-12):.0%} of the total)", flush=True)
         if nest_parts is not None:
             _raw = float(nest_parts["raw"])
             # The weight that would give the nesting term a 50% share of the current total, so a
@@ -2194,7 +2199,9 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
                 "loss_stab": float(loss_stab.item()),
                 "loss_metric": float(loss_true.item()),
                 "loss_recon": float(recon_loss.item()),
-                "loss_aux": (float(loss_aux.detach()) if loss_aux is not None else float("nan")),
+                "loss_aux": (float(loss_aux[0].detach()) if loss_aux else float("nan")),
+                **({f"loss_aux_{_a['label']}": float(_la.detach()) for _a, _la in zip(auxs, loss_aux)}
+                   if loss_aux else {}),
                 # NestedLoRA term, when on. half_imbalance is the guard: the split-half estimator
                 # is unbounded below if one half can carry all the magnitude, so a value drifting
                 # far above 1 means the penalty is being evaded, not that training is going well.
@@ -2777,9 +2784,10 @@ def run_desk_experiment(config=None):
     # Supervised on every covariate-valid cell of its footprint EXCEPT held-out, buffer and
     # train_frac-dropped cells, and never in a withheld year -- so it cannot reach any cell or year the
     # validation and the research yardsticks grade. Standardized per target column on those rows only.
-    aux_targets = None
-    _aux_cfg = desk_cfg.get("aux_ebird") or {}
-    if _aux_cfg.get("path"):
+    # desk.aux: a list of {path, weight, label} (one head each); desk.aux_ebird: the single-source form.
+    aux_targets = []
+    _aux_cfgs = list(desk_cfg.get("aux") or []) + ([desk_cfg["aux_ebird"]] if desk_cfg.get("aux_ebird") else [])
+    for _aux_cfg in _aux_cfgs:
         _a = np.load(os.path.expandvars(_aux_cfg["path"]), allow_pickle=False)
         _ayears = [int(y) for y in _a["years"]]
         _keep_y = [y for y in _ayears if y in kept and y not in set(ho_years)]
@@ -2798,10 +2806,10 @@ def run_desk_experiment(config=None):
         _sd = np.where(_sd > 1e-8, _sd, 1.0).astype("float32")
         _Y = np.where(np.isfinite(_Y), (_Y - _mu) / _sd, 0.0).astype("float32")
         assert not (_m & holdout[None]).any() and not (_m & buffer_cells_mask[None]).any()
-        aux_targets = {"t_idx": [_ki[y] for y in _keep_y], "Y": _Y, "mask": _m,
-                       "weight": float(_aux_cfg.get("weight", 0.1)),
-                       "label": str(_aux_cfg.get("label", os.path.basename(_aux_cfg["path"])))}
-        print(f"[desk] aux_ebird: {len(_keep_y)} years {_keep_y[0]}-{_keep_y[-1]}, "
+        aux_targets.append({"t_idx": [_ki[y] for y in _keep_y], "Y": _Y, "mask": _m,
+                            "weight": float(_aux_cfg.get("weight", 0.1)),
+                            "label": str(_aux_cfg.get("label", os.path.basename(_aux_cfg["path"])))})
+        print(f"[desk] aux '{aux_targets[-1]['label']}': {len(_keep_y)} years {_keep_y[0]}-{_keep_y[-1]}, "
               f"{int(_cells.sum())} cells (footprint minus held-out/buffer/dropped), "
               f"{_Y.shape[-1]} target columns", flush=True)
 
@@ -2862,7 +2870,7 @@ def run_desk_experiment(config=None):
         snapshot_every=int(desk_cfg.get("snapshot_every", 0)),
         resume=bool(desk_cfg.get("resume", True)),
         select_on_withheld=bool(desk_cfg.get("select_on_withheld", False)),
-        aux_targets=aux_targets,
+        aux_targets=(aux_targets or None),
         return_info=True)
     ema_half_life = float(ema.half_life().item())
     torch.save(ema.state_dict(), os.path.join(out_dir, "output_ema.pth"))

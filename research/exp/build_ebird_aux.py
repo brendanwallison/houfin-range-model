@@ -5,12 +5,19 @@
 For each of the cache's 96 REFERENCE species (never dev or sealed species -- DESK already trains on the reference set
 through ESK, so no new species information enters the representation; never House Finch) with a breeding or resident
 trend product: the mid-window relative abundance ``abd`` and the per-year trend ``abd_ppy`` are gridded onto the model
-grid by the production rasterizer, and two targets are written, each (n_years, H, W, S) of log1p abundance:
+grid by the production rasterizer, and two targets are written:
 
-  ebird_aux_st.npz  SPATIOTEMPORAL: abd x (1 + ppy/100) ** (year - mid-window) -- the product's own annual path,
-                    inside its window only (never extrapolated outside it, as the August design required);
-  ebird_aux_sp.npz  SPATIAL ONLY: abd in every year -- the same places and species with the temporal part removed,
-                    so the two arms separate "eBird's coverage regularizes" from "eBird's trend helps".
+  ebird_aux_sp.npz  SPATIAL ONLY, (n_years, H, W, S): log1p(abd), the same in every year.
+  ebird_aux_st.npz  SPATIOTEMPORAL, (n_years, H, W, 2S): the SAME S level columns, plus S temporal-deviation columns:
+                    each cell's log1p of the product's own annual path, abd x (1 + ppy/100) ** (year - mid-window),
+                    minus that cell's mean over the years. Inside the product's window only (never extrapolated).
+
+Why separate deviation columns: within a cell the path moves by ~5% of the between-cell spread, so as one column the
+temporal part would vanish under per-column standardization (the trainer standardizes each column on its supervised
+rows). As its own columns it is standardized on its own scale. With the ST arm's weight set to TWICE the SP arm's, the
+level columns carry exactly the SP arm's weight (the loss is a mean over elements) and the ONLY difference between the
+arms is a temporal term of equal per-column weight -- separating "eBird's coverage regularizes" from "eBird's temporal
+change helps".
 
 Years: the window common to every kept species (--years, default 2012-2021: the products' windows are 2011-2021 or
 2012-2022). Footprint: cells where at least one kept species is estimated; inside it, a species without an estimate is
@@ -67,15 +74,17 @@ def main():
     A0 = np.where(np.isfinite(A), np.clip(A, 0, None), 0.0)
     P0 = np.where(np.isfinite(P), np.clip(P, -99.0, None), 0.0)
     mid = np.array(mids)
-    st = np.stack([np.log1p(A0 * (1 + P0 / 100.0) ** (y - mid)) for y in years]).astype("float32")
+    path = np.stack([np.log1p(A0 * (1 + P0 / 100.0) ** (y - mid)) for y in years])          # (n, H, W, S)
+    dev = path - path.mean(0, keepdims=True)
     sp = np.repeat(np.log1p(A0)[None], len(years), axis=0).astype("float32")
+    st = np.concatenate([sp, dev.astype("float32")], axis=-1)
     st[:, ~foot] = np.nan
     sp[:, ~foot] = np.nan
     os.makedirs(a.out_dir, exist_ok=True)
     for name, Y in (("ebird_aux_st.npz", st), ("ebird_aux_sp.npz", sp)):
         np.savez_compressed(os.path.join(a.out_dir, name), years=np.array(years), Y=Y, footprint=foot,
                             species=np.array(kept))
-    within = st[:, foot] - st[:, foot].mean(0, keepdims=True)
+    within = dev[:, foot]
     info = {"species_kept": kept, "skipped": skipped, "years": years, "footprint_cells": int(foot.sum()),
             "grid": [H, W], "zero_filled_share": float(1 - np.isfinite(A[foot]).mean()),
             "st_within_cell_sd": float(within.std()), "sp_between_cell_sd": float(sp[0][foot].std())}

@@ -1,7 +1,7 @@
 # DIGEST
 
 ## CURRENT STATE (rewritten each round; read this first -- the dated log below keeps the history)
-Last updated 2026-10-11 19:02 (E052: observed land-cover change adds ~+0.01-0.03 for open-habitat guilds, not forest; E051 dams and E048 CropAT-DESK running). "Solid" =
+Last updated 2026-10-11 19:05 (covariate tally: crop types and observed land cover +0.01-0.03 in open-habitat guilds; CRP, forest age, reservoirs 0; E048 CropAT-DESK training). "Solid" =
 independently re-derived, replicated on a second split or seed, and survived a skeptic review. "Tentative" = one run,
 or checks still pending. Experiment numbers point to research/experiments/EXXX.md.
 
@@ -94,6 +94,12 @@ WHERE THINGS STAND (2026-10-11 ~11:00, plain summary; details below)
        human-modified species.
      - Rule fails (forest).
      - Even observed land cover at 27 km is a modest lever (~+0.01-0.03), about the size of census crop types.
+   - E051: reservoir creation (92k NID dams by completion year) adds nothing for wetland birds.
+   - TALLY of new covariates tested against everything DESK sees, in the guilds they should act on:
+     - census crop types +0.015-0.02 (grassland);
+     - observed land cover +0.01-0.03 (open-habitat guilds);
+     - CRP 0; forest-age back-cast 0; reservoirs 0.
+     - At 27 km, better land-use inputs move local community-change prediction by a few hundredths at most.
 2. DESK's TEMPORAL signal: after 1950 it is mostly the land-use management trend (fertilizer, irrigation) -- partly
    real intensification (it scales with cropland), partly a clock; that trend is flat before 1950. DESK still moves
    before 1950 (~0.03/decade vs ~0.05 after) through land-use classes, climate and population, in a different

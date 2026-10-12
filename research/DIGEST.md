@@ -81,7 +81,9 @@ WHERE THINGS STAND (2026-10-11 ~11:00, plain summary; details below)
      Small, but it is the ecological signature of a real habitat driver.
    - Implication: census crop-type history is genuine habitat information for open-country birds, at a scale LUH
      misses, back to 1850. It is diluted at the community level, so its value is mainly in the species readout.
-     E048 (DESK with CropAT, training) is expected to show <= +0.01 on community change.
+     E048 (DESK retrained with CropAT, 4 pairs): NO HELP. The backcast is slightly WORSE in all 8 estimates (~-0.02),
+     with no change beyond the placebo. Likely CropAT's post-2006 crop-type shifts act as a clock that misdates the
+     past. Keep CropAT for the species readout, not DESK's inputs.
    - E050: two more candidates add NOTHING beyond DESK's covariates for the guilds they should act on:
      - CRP county enrollment (1986-2008), for grassland birds;
      - a forest stand-age back-cast (USFS 2011 map), for forest birds. A woodland-bird hint does not meet the bar.

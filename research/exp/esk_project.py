@@ -41,6 +41,10 @@ def epoch_groups(keys, withheld, early, modern):
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--cache", required=True)
+    ap.add_argument("--modern", type=int, nargs=2, default=None,
+                    help="E056: a non-default modern epoch; writes esk_epochs_m<Y0>_<Y1>.npz")
+    ap.add_argument("--out-dir", default=None,
+                    help="E056: write the outputs here instead of into the cache (the cache is only read)")
     a = ap.parse_args()
     from src.config_utils import load_config
     from src.community_encoder.train_DESK.esk_kernel import project_points_to_z
@@ -57,10 +61,13 @@ def main():
     split = np.load(os.path.join(a.cache, "split.npz"))
     withheld = [int(y) for y in split["withheld"]]
 
+    od = a.out_dir or a.cache
+    os.makedirs(od, exist_ok=True)
     z_ann = project_points_to_z(log1p_community(X).astype("float32"), zd, L)
-    np.save(os.path.join(a.cache, "esk_annual.npy"), np.asarray(z_ann, "float32"))
+    np.save(os.path.join(od, "esk_annual.npy"), np.asarray(z_ann, "float32"))
+    modern = tuple(a.modern) if a.modern else EPOCH_MODERN
 
-    groups = epoch_groups(keys, withheld, EPOCH_EARLY, EPOCH_MODERN)
+    groups = epoch_groups(keys, withheld, EPOCH_EARLY, modern)
     gk = list(groups)
     glist = [groups[k] for k in gk]
     A, B, ok = split_half_groups(glist, years=keys[:, 2])
@@ -72,7 +79,7 @@ def main():
     proj = lambda v: np.asarray(project_points_to_z(np.asarray(v, "float32"), zd, L), "float32")
     ptr = np.cumsum([0] + [len(f) for f in full]).astype("int64")
     np.savez_compressed(
-        os.path.join(a.cache, "esk_epochs.npz"),
+        os.path.join(od, f"esk_epochs_m{modern[0]}_{modern[1]}.npz" if a.modern else "esk_epochs.npz"),
         rows_flat=np.concatenate(full).astype("int64"), rows_ptr=ptr,
         cells=np.array([gk[i][:2] for i in keep], "int32"),
         epoch=np.array([gk[i][2] for i in keep], "int8"),

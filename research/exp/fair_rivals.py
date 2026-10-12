@@ -88,6 +88,10 @@ def main():
     ap.add_argument("--n-pos", type=int, default=24, help="position RFF features in the placebo")
     ap.add_argument("--pos-seeds", type=int, nargs="+", default=[1], help="placebo draws (results are draw means)")
     ap.add_argument("--tag", default="", help="suffix of the output json")
+    ap.add_argument("--modern", type=int, nargs=2, default=None,
+                    help="E056: modern epoch (default the suite's 2005-25); needs --esk-dir holding "
+                         "esk_epochs_m<Y0>_<Y1>.npz from esk_project.py --modern")
+    ap.add_argument("--esk-dir", default=None, help="E056: read esk_annual / esk_epochs from here, not the cache")
     ap.add_argument("--rich-base", action="store_true", help="E039l: gains beyond placebo + kind x time + within map")
     ap.add_argument("--strong-base", action="store_true", help="E039n: supervised cross-fitted within-map base + "
                     "buffer-row readouts")
@@ -110,7 +114,10 @@ def main():
     split = np.load(c("split.npz"))
     withheld = [int(y) for y in split["withheld"]]
     r = a.rank
-    E, full, half_a, half_b = group_rows(a.cache, keys, withheld)
+    ed = a.esk_dir or a.cache
+    E, full, half_a, half_b = group_rows(
+        a.cache, keys, withheld, modern=a.modern,
+        epochs_file=os.path.join(ed, f"esk_epochs_m{a.modern[0]}_{a.modern[1]}.npz" if a.modern else "esk_epochs.npz"))
     idx = {}
     for j, (cell, ep, wh) in enumerate(zip(map(tuple, E["cells"]), E["epoch"], E["withheld"])):
         if ep == 0 and bool(wh):
@@ -140,7 +147,7 @@ def main():
 
     # rows (E039h's): training cells x trained years, finite covariates and ESK
     F_raw = np.asarray(np.load(c("F_cov_raw.npy"), mmap_mode="r"), "float64")
-    Eann = np.load(c("esk_annual.npy")).astype("float64")
+    Eann = np.load(os.path.join(ed, "esk_annual.npy")).astype("float64")
     yr = keys[:, 2].astype("float64")
     ho = split["holdout"][keys[:, 0], keys[:, 1]]
     bf = split["buffer"][keys[:, 0], keys[:, 1]]
@@ -345,6 +352,7 @@ def main():
         per_dim = float(np.mean(cv[ok] / np.sqrt(vp[ok] * vt[ok]))) if ok.any() else np.nan
         return corr, (cv.sum() / vp.sum() if vp.sum() > 0 else np.nan), per_dim
     res = {"cache": a.cache, "n_cells": int(len(ev)), "rank": r, "withheld": [min(withheld), max(withheld)],
+           "modern": list(a.modern) if a.modern else None, "ref_cache": a.ref_cache,
            "n_fit_rows": int(len(trn)), "notes": notes, "models": {}}
     members = {}
     for name in preds:                                  # placebo-based arms: one member per draw, graded as the mean

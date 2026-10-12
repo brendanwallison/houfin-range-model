@@ -39,13 +39,14 @@ from lib import blr, ledger  # noqa: E402
 BLOCK = 6
 
 
-def group_rows(cache, keys, withheld):
-    """The esk_project groups and their ABBA halves, rebuilt and checked against esk_epochs.npz."""
+def group_rows(cache, keys, withheld, early=None, modern=None, epochs_file=None):
+    """The esk_project groups and their ABBA halves, rebuilt and checked against esk_epochs.npz (or ``epochs_file``,
+    written by esk_project.py --modern for a non-default modern epoch)."""
     from esk_project import epoch_groups
     from src.community_encoder.train_DESK.validate_bbs_routes import EPOCH_EARLY, EPOCH_MODERN
     from src.community_encoder.train_DESK.validation_core import split_half_groups
-    E = dict(np.load(os.path.join(cache, "esk_epochs.npz")))
-    groups = epoch_groups(keys, withheld, EPOCH_EARLY, EPOCH_MODERN)
+    E = dict(np.load(epochs_file or os.path.join(cache, "esk_epochs.npz")))
+    groups = epoch_groups(keys, withheld, tuple(early or EPOCH_EARLY), tuple(modern or EPOCH_MODERN))
     gk = list(groups)
     glist = [groups[k] for k in gk]
     A, B, ok = split_half_groups(glist, years=keys[:, 2])

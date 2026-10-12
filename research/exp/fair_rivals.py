@@ -92,6 +92,10 @@ def main():
                     help="E056: modern epoch (default the suite's 2005-25); needs --esk-dir holding "
                          "esk_epochs_m<Y0>_<Y1>.npz from esk_project.py --modern")
     ap.add_argument("--esk-dir", default=None, help="E056: read esk_annual / esk_epochs from here, not the cache")
+    ap.add_argument("--eval-set", choices=["heldout", "train"], default="heldout",
+                    help="E055g: score held-out cells (default) or TRAINING cells (not held out, not buffer) in the "
+                         "withheld years -- the production case: known places, unknown times; the readout is fitted "
+                         "on those same places' trained years, as the age model's is")
     ap.add_argument("--rich-base", action="store_true", help="E039l: gains beyond placebo + kind x time + within map")
     ap.add_argument("--strong-base", action="store_true", help="E039n: supervised cross-fitted within-map base + "
                     "buffer-row readouts")
@@ -127,7 +131,10 @@ def main():
     pairs = np.array([(e, m) for e, m in idx.values() if e is not None and m is not None])
     cells = E["cells"][pairs[:, 0]]
     held = split["holdout"][cells[:, 0], cells[:, 1]]
-    ev = np.where(held)[0]
+    if a.eval_set == "train":
+        ev = np.where(~held & ~split["buffer"][cells[:, 0], cells[:, 1]])[0]
+    else:
+        ev = np.where(held)[0]
     Za, Zb = E["z_a"][:, :r].astype("float64"), E["z_b"][:, :r].astype("float64")
     Ta = (Za[pairs[:, 1]] - Za[pairs[:, 0]])[ev]
     Tb = (Zb[pairs[:, 1]] - Zb[pairs[:, 0]])[ev]
@@ -352,7 +359,7 @@ def main():
         per_dim = float(np.mean(cv[ok] / np.sqrt(vp[ok] * vt[ok]))) if ok.any() else np.nan
         return corr, (cv.sum() / vp.sum() if vp.sum() > 0 else np.nan), per_dim
     res = {"cache": a.cache, "n_cells": int(len(ev)), "rank": r, "withheld": [min(withheld), max(withheld)],
-           "modern": list(a.modern) if a.modern else None, "ref_cache": a.ref_cache,
+           "modern": list(a.modern) if a.modern else None, "ref_cache": a.ref_cache, "eval_set": a.eval_set,
            "n_fit_rows": int(len(trn)), "notes": notes, "models": {}}
     members = {}
     for name in preds:                                  # placebo-based arms: one member per draw, graded as the mean

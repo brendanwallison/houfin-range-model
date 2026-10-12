@@ -708,3 +708,17 @@ steering, not verified)
   - (4) The span question cannot be settled inside BBS. A deeper series (per M29: Grinnell resurveys, BBC plots or
     historical range edges; not pre-1966 CBC) is the
     only test of "train on all of BBS".
+
+2026-10-12 12:20 -- FIRST VERIFIED FINDING (F1, FINDINGS.md) -- ESCALATION (production implication, not a decision)
+- Averaging the z of several independently trained DESK seeds improves, over the mean single seed on held-out cells:
+  - place-specific backcast change: +0.010-0.015;
+  - spatial level: +0.011-0.026;
+  - DESK's gain beyond the trend placebo, late state: +0.016-0.018.
+- It passed all four checks: a code sanity check, an independent re-derivation, replication on 4 NEW seeds, and a
+  skeptic.
+- The raw-change gain alone is NOT special: a 54 km smoother on one seed matches it.
+- The gain grows like (1 - 1/k) and is mostly reached by 4-6 seeds.
+- WHY: variance reduction (established, arithmetic). The removed variance is seed-specific, cell-scale over-fitting
+  (likely).
+- Implication: the age model could read the mean z of 4-6 DESK seeds (late states best for time) at 4-6x the DESK
+  training cost, with no change to the BLR form. Effects are a few hundredths, not a step change.

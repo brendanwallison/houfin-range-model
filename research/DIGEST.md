@@ -1,7 +1,7 @@
 # DIGEST
 
 ## CURRENT STATE (rewritten each round; read this first -- the dated log below keeps the history)
-Last updated 2026-10-11 18:23 (E049: census crop types act on grassland birds; E050: CRP and forest-age back-cast add nothing; E048 training on GPU). "Solid" =
+Last updated 2026-10-11 19:05 (E052: observed land-cover change adds ~+0.01-0.03 for open-habitat guilds, not forest; E051 dams and E048 CropAT-DESK running). "Solid" =
 independently re-derived, replicated on a second split or seed, and survived a skeptic review. "Tentative" = one run,
 or checks still pending. Experiment numbers point to research/experiments/EXXX.md.
 
@@ -88,6 +88,12 @@ WHERE THINGS STAND (2026-10-11 ~11:00, plain summary; details below)
      - Likely reasons: the CRP map is collinear with the Plains crop and climate patterns; the back-cast's change is
        mostly uniform aging.
      - A real succession test needs observed forest-age history: FIA remeasurements, or Annual NLCD 1985+.
+   - E052, OBSERVED land-cover change (Annual NLCD, satellite, 1990 -> 2019), beyond everything DESK sees:
+     - small, guild-appropriate gains for open-habitat birds: grassland +0.011-0.018, wetland ~+0.025, woodland +0.013;
+     - none for forest birds (cover fraction is probably not what they track: age and structure) or for
+       human-modified species.
+     - Rule fails (forest).
+     - Even observed land cover at 27 km is a modest lever (~+0.01-0.03), about the size of census crop types.
 2. DESK's TEMPORAL signal: after 1950 it is mostly the land-use management trend (fertilizer, irrigation) -- partly
    real intensification (it scales with cropland), partly a clock; that trend is flat before 1950. DESK still moves
    before 1950 (~0.03/decade vs ~0.05 after) through land-use classes, climate and population, in a different

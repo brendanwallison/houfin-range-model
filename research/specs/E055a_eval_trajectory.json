@@ -1,0 +1,21 @@
+{
+ "exp": "E055",
+ "name": "eval-trajectory",
+ "group": "cpu",
+ "after_jobs": [
+  "E055/desk-tempho1995-seed1-traj"
+ ],
+ "overlay": "research/overlays/desk_tempho_1995_seed1.json",
+ "cmd": [
+  "bash",
+  "-c",
+  "set -e; {python} research/exp/verify_cache.py {cache}/desk_tempho_1995_s1 {cache}/desk_tempho_1995_s1_traj {cache}/desk_tempho_1995_s1_traj_ep040 {cache}/desk_tempho_1995_s1_traj_ep070 {cache}/desk_tempho_1995_s1_traj_ep100 {cache}/desk_tempho_1995_s1_traj_ep130 {cache}/desk_tempho_1995_s1_traj_ep160 {cache}/desk_tempho_1995_s1_traj_ep200 {cache}/desk_tempho_1995_s1_traj_ep300 {cache}/desk_tempho_1995_s1_traj_ep490 {cache}/desk_tempho_1995_s1_traj_swa100_160 {cache}/desk_tempho_1995_s1_traj_swa300_490; {python} research/exp/fair_rivals.py --cache {cache}/desk_tempho_1995_s1_traj --ref-cache {cache}/desk_tempho_1995_s1 --out {out}/desk_tempho_1995_s1_traj --incremental --n-pos 96 --pos-seeds 1 2 3 4 5 --strong-base --tag _p96; {python} research/exp/fair_rivals.py --cache {cache}/desk_tempho_1995_s1_traj_ep040 --ref-cache {cache}/desk_tempho_1995_s1 --out {out}/desk_tempho_1995_s1_traj_ep040 --incremental --n-pos 96 --pos-seeds 1 2 3 4 5 --strong-base --tag _p96; {python} research/exp/fair_rivals.py --cache {cache}/desk_tempho_1995_s1_traj_ep070 --ref-cache {cache}/desk_tempho_1995_s1 --out {out}/desk_tempho_1995_s1_traj_ep070 --incremental --n-pos 96 --pos-seeds 1 2 3 4 5 --strong-base --tag _p96; {python} research/exp/fair_rivals.py --cache {cache}/desk_tempho_1995_s1_traj_ep100 --ref-cache {cache}/desk_tempho_1995_s1 --out {out}/desk_tempho_1995_s1_traj_ep100 --incremental --n-pos 96 --pos-seeds 1 2 3 4 5 --strong-base --tag _p96; {python} research/exp/fair_rivals.py --cache {cache}/desk_tempho_1995_s1_traj_ep130 --ref-cache {cache}/desk_tempho_1995_s1 --out {out}/desk_tempho_1995_s1_traj_ep130 --incremental --n-pos 96 --pos-seeds 1 2 3 4 5 --strong-base --tag _p96; {python} research/exp/fair_rivals.py --cache {cache}/desk_tempho_1995_s1_traj_ep160 --ref-cache {cache}/desk_tempho_1995_s1 --out {out}/desk_tempho_1995_s1_traj_ep160 --incremental --n-pos 96 --pos-seeds 1 2 3 4 5 --strong-base --tag _p96; {python} research/exp/fair_rivals.py --cache {cache}/desk_tempho_1995_s1_traj_ep200 --ref-cache {cache}/desk_tempho_1995_s1 --out {out}/desk_tempho_1995_s1_traj_ep200 --incremental --n-pos 96 --pos-seeds 1 2 3 4 5 --strong-base --tag _p96; {python} research/exp/fair_rivals.py --cache {cache}/desk_tempho_1995_s1_traj_ep300 --ref-cache {cache}/desk_tempho_1995_s1 --out {out}/desk_tempho_1995_s1_traj_ep300 --incremental --n-pos 96 --pos-seeds 1 2 3 4 5 --strong-base --tag _p96; {python} research/exp/fair_rivals.py --cache {cache}/desk_tempho_1995_s1_traj_ep490 --ref-cache {cache}/desk_tempho_1995_s1 --out {out}/desk_tempho_1995_s1_traj_ep490 --incremental --n-pos 96 --pos-seeds 1 2 3 4 5 --strong-base --tag _p96; {python} research/exp/fair_rivals.py --cache {cache}/desk_tempho_1995_s1_traj_swa100_160 --ref-cache {cache}/desk_tempho_1995_s1 --out {out}/desk_tempho_1995_s1_traj_swa100_160 --incremental --n-pos 96 --pos-seeds 1 2 3 4 5 --strong-base --tag _p96; {python} research/exp/fair_rivals.py --cache {cache}/desk_tempho_1995_s1_traj_swa300_490 --ref-cache {cache}/desk_tempho_1995_s1 --out {out}/desk_tempho_1995_s1_traj_swa300_490 --incremental --n-pos 96 --pos-seeds 1 2 3 4 5 --strong-base --tag _p96"
+ ],
+ "expected_minutes": 60,
+ "summarize": [
+  "bash",
+  "-c",
+  "for d in {out}/*/; do f=$d/fair_rivals_incr_p96.json; [ -f $f ] || continue; {python} -c \"import json,sys; r=json.load(open(sys.argv[1])); s=r['space_level']; v=r['vs_ref']; g=lambda k: '%+.3f [%+.3f,%+.3f]' % (v[k]['diff'], *v[k]['ci']); print(sys.argv[2][:28].ljust(28), 'space %.4f (vs lin %+.3f)' % (s['desk_pooled'], s['desk_minus_linear']), '| change', g('desk - desk_ref'), '| beyond placebo', g('placebo+desk_within - placebo+desk_ref_within'))\" $f $(basename $d); done"
+ ],
+ "note": "E055a: every trajectory state vs E022 seed 1 SELECTED (common yardstick)"
+}

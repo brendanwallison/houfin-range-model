@@ -1,0 +1,50 @@
+{
+ "_comment": "E055b: 150-epoch budget, so the cosine LR anneals to its floor near the held-out minimum (production: 500, selected epoch lands in the high-LR phase)",
+ "paths": {
+  "desk_output_dir": "${RESEARCH_OUT}/desk"
+ },
+ "desk": {
+  "z_dir": "${HOUFIN_PROCESSED}/encoder/esk_balanced/spacetime",
+  "trend": {
+   "holdout_years": [
+    1966,
+    1967,
+    1968,
+    1969,
+    1970,
+    1971,
+    1972,
+    1973,
+    1974,
+    1975,
+    1976,
+    1977,
+    1978,
+    1979,
+    1980,
+    1981,
+    1982,
+    1983,
+    1984,
+    1985
+   ],
+   "direction_anchor_year": 1996,
+   "direction_withheld_anchor_year": 1975,
+   "common_holdout_years": [
+    1966,
+    1967,
+    1968,
+    1969,
+    1970,
+    1971,
+    1972,
+    1973,
+    1974,
+    1975
+   ]
+  },
+  "seed": 1,
+  "epochs": 150,
+  "patience": 150
+ }
+}

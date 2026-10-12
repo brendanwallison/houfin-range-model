@@ -1,0 +1,21 @@
+{
+ "exp": "E055",
+ "name": "eval-aug2",
+ "group": "cpu",
+ "after_jobs": [
+  "E055/desk-tempho1995-seed1-aug2"
+ ],
+ "overlay": "research/overlays/desk_tempho_1995_seed1.json",
+ "cmd": [
+  "bash",
+  "-c",
+  "set -e; {python} research/exp/verify_cache.py {cache}/desk_tempho_1995_s1 {cache}/desk_tempho_1995_s1_aug2; {python} research/exp/verify_cache.py {cache}/desk_tempho_1995_s1_late {cache}/desk_tempho_1995_s1_aug2_late; {python} research/exp/fair_rivals.py --cache {cache}/desk_tempho_1995_s1_aug2 --ref-cache {cache}/desk_tempho_1995_s1 --out {out}/desk_tempho_1995_s1_aug2 --incremental --n-pos 96 --pos-seeds 1 2 3 4 5 --strong-base --tag _p96; {python} research/exp/fair_rivals.py --cache {cache}/desk_tempho_1995_s1_aug2_late --ref-cache {cache}/desk_tempho_1995_s1_late --out {out}/desk_tempho_1995_s1_aug2_late --incremental --n-pos 96 --pos-seeds 1 2 3 4 5 --strong-base --tag _p96"
+ ],
+ "expected_minutes": 15,
+ "summarize": [
+  "bash",
+  "-c",
+  "for d in {out}/*/; do f=$d/fair_rivals_incr_p96.json; [ -f $f ] || continue; {python} -c \"import json,sys; r=json.load(open(sys.argv[1])); s=r['space_level']; v=r['vs_ref']; g=lambda k: '%+.3f [%+.3f,%+.3f]' % (v[k]['diff'], *v[k]['ci']); print(sys.argv[2][:28].ljust(28), 'space %.4f (vs lin %+.3f)' % (s['desk_pooled'], s['desk_minus_linear']), '| change', g('desk - desk_ref'), '| beyond placebo', g('placebo+desk_within - placebo+desk_ref_within'))\" $f $(basename $d); done"
+ ],
+ "note": "E055e: stronger masking vs E022 seed 1"
+}

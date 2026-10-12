@@ -56,7 +56,7 @@
   "seed": 2,
   "aux": [
    {
-    "path": "/mnt/e/Datasets/houfin/external/cbc_trends_2023/aux/cbc_aux_t0_1996.npz",
+    "path": "/mnt/e/Datasets/houfin/external/cbc_trends_2023/aux/cbc_aux_t0_1996_poly.npz",
     "weight": 0.2,
     "label": "cbc"
    }

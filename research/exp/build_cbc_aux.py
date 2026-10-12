@@ -7,9 +7,11 @@ The CBC product gives, per species, an effort-corrected annual relative-abundanc
 (a state/province x Bird Conservation Region intersection, e.g. US-AZ-33), winters 1966-67 .. 2023-24. A winter count
 ending in January of year y is labelled y (the winter before breeding season y).
 
-Stratum map on the 27 km grid: no BCR polygons are on hand, so every grid cell takes the stratum of its NEAREST BBS
-route start (BBS Routes.csv carries each route's state/province and BCR), within --max-dist-km; farther cells get none.
-Strata are hundreds of km across, so this blurs only their edges. Only strata the CBC file models are kept.
+Stratum map on the 27 km grid: with --strata-shp (the BBS "USGS" stratification polygons, state/province x BCR, field
+ST_12 in CBC's own code format, e.g. US-KY-28; shipped in the bbsBayes R package, inst/maps/BBS_USGS_strata.shp) each
+cell takes the polygon containing its centre; --strata-shp2 (BBS_CWS_strata.shp) fills strata only it carries.
+Without polygons the fallback is the NEAREST BBS route start (Routes.csv: state/province and BCR) within
+--max-dist-km. Only strata the CBC file models are kept.
 
 Species: scientific name -> eBird code through the eBird taxonomy (pooled multi-species rows dropped). Kept: the 96
 REFERENCE species and species that are graded NOWHERE (neither dev nor sealed BBS species -- mostly winter visitors
@@ -63,6 +65,8 @@ def main():
     ap.add_argument("--max-year", type=int, default=2024)
     ap.add_argument("--max-dist-km", type=float, default=150.0)
     ap.add_argument("--min-strata", type=int, default=5)
+    ap.add_argument("--strata-shp", default=None, help="state/province x BCR polygons with an ST_12 field")
+    ap.add_argument("--strata-shp2", default=None, help="second polygon set; fills codes the first lacks")
     a = ap.parse_args()
     import pandas as pd
     import rasterio
@@ -87,8 +91,28 @@ def main():
     gx = tr.c + tr.a * (np.arange(W) + 0.5)
     gy = tr.f + tr.e * (np.arange(H) + 0.5)
     GX, GY = np.meshgrid(gx, gy)
-    dist, idx = cKDTree(np.column_stack([xs, ys])).query(np.column_stack([GX.ravel(), GY.ravel()]))
-    cell_stratum = np.where(dist <= a.max_dist_km * 1000.0, rt["stratum"].to_numpy()[idx], None).reshape(H, W)
+    if a.strata_shp:
+        import geopandas as gpd
+        from rasterio.features import rasterize
+        cell_stratum = np.full((H, W), None, dtype=object)
+        source = {}
+        for shp in [a.strata_shp] + ([a.strata_shp2] if a.strata_shp2 else []):
+            g = gpd.read_file(shp).to_crs(crs)
+            codes = [c for c in g["ST_12"].astype(str).unique() if c not in source]
+            for c in codes:
+                source[c] = os.path.basename(shp)
+            lut = {c: i + 1 for i, c in enumerate(codes)}
+            gs = g[g["ST_12"].astype(str).isin(lut)]
+            ras = rasterize(((geom, lut[str(c)]) for geom, c in zip(gs.geometry, gs["ST_12"])),
+                            out_shape=(H, W), transform=tr, fill=0, dtype="int32", all_touched=False)
+            inv = {v: k for k, v in lut.items()}
+            take = (ras > 0) & np.equal(cell_stratum, None)
+            cell_stratum[take] = [inv[v] for v in ras[take]]
+        print(f"[E061] strata from polygons: {len(source)} codes "
+              f"({sum(v == os.path.basename(a.strata_shp) for v in source.values())} from the first set)", flush=True)
+    else:
+        dist, idx = cKDTree(np.column_stack([xs, ys])).query(np.column_stack([GX.ravel(), GY.ravel()]))
+        cell_stratum = np.where(dist <= a.max_dist_km * 1000.0, rt["stratum"].to_numpy()[idx], None).reshape(H, W)
 
     d = pd.read_csv(a.cbc_csv, encoding="latin-1")
     d = d[(d["region_type"] == "stratum") & d["survey_suitability"].isin(["medium", "high"])]

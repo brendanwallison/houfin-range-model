@@ -2884,6 +2884,29 @@ def test_a_checkpoint_from_a_different_configuration_is_set_aside_not_resumed(tm
     print("a mismatched checkpoint is moved to .stale and the run starts fresh")
 
 
+def test_weight_snapshots_are_kept_at_every_requested_epoch_and_hold_that_epochs_weights(tmp_path):
+    """Research: snapshot_every keeps the weights after every k-th epoch (the resume checkpoint is overwritten), so a
+    run's trajectory can be evaluated afterwards. Off by default; each snapshot loads into the model."""
+    import contextlib
+    import io
+
+    from src.community_encoder.train_DESK import desk_training as D
+
+    assert [e for e in range(0, 9) if D._snapshot_due(e, 2)] == [2, 4, 6, 8]
+    assert not any(D._snapshot_due(e, 0) for e in range(0, 9))
+    args, kw = _resume_fixture()
+    ck = str(tmp_path / "resume_checkpoint.pt")
+    with contextlib.redirect_stdout(io.StringIO()):
+        D.train_model_ema(*args, checkpoint_path=ck, checkpoint_every=1, stop_at_epoch=5, snapshot_every=2, **kw)
+    snaps = sorted(os.listdir(tmp_path / "snapshots"))
+    assert snaps == ["ep0002.pt", "ep0004.pt"], snaps
+    s2, s4 = (torch.load(tmp_path / "snapshots" / f, weights_only=False) for f in snaps)
+    assert (s2["epoch"], s4["epoch"]) == (2, 4)
+    k = next(n for n, v in s2["model"].items() if v.is_floating_point() and v.numel() > 1)
+    assert not torch.equal(s2["model"][k], s4["model"][k]), "the two snapshots should hold different weights"
+    print("snapshots kept at epochs 2 and 4, each with its own weights")
+
+
 def test_epoch_selection_ignores_withheld_years_unless_told_otherwise(tmp_path):
     """A9. Under a temporal holdout the pooled selection metrics include held-out cells in the
     WITHHELD years, so the tempho runs chose their epoch partly on the decades they withhold. The

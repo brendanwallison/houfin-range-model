@@ -719,6 +719,11 @@ def spatial_tiles(h, w, n_tiles, halo, offset=(0, 0)):
     return out
 
 
+def _snapshot_due(ep_done, every):
+    """True when the state after epoch ``ep_done`` should be kept as a weights snapshot (``every`` > 0)."""
+    return int(every) > 0 and int(ep_done) > 0 and int(ep_done) % int(every) == 0
+
+
 def _warmup_cosine(epochs, warmup, min_frac):
     """LR multiplier: linear warmup then cosine decay to ``min_frac``.
 
@@ -760,6 +765,7 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
                     selection_smooth=0,
                     trajectory_path=None, stop_at_epoch=None, return_info=False,
                     checkpoint_path=None, checkpoint_every=0, resume=False,
+                    snapshot_every=0,
                     select_on_withheld=False,
                     _skip_target_conversion=False):
     """Train DESK with a learned output-EMA.
@@ -1598,6 +1604,16 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
         torch.save(state, tmp)
         os.replace(tmp, checkpoint_path)          # atomic: a kill mid-save leaves the old one
 
+    def _save_snapshot(ep_done):
+        # Research: weights only (model + output EMA), kept per epoch so a run's trajectory can be
+        # evaluated after the fact -- the resume checkpoint is overwritten, so it cannot serve.
+        d = os.path.join(os.path.dirname(os.path.abspath(checkpoint_path)), "snapshots")
+        os.makedirs(d, exist_ok=True)
+        tmp = os.path.join(d, f"ep{int(ep_done):04d}.pt.tmp")
+        torch.save({"epoch": int(ep_done), "best_epoch": best_epoch, "model": model.state_dict(),
+                    "ema": ema.state_dict()}, tmp)
+        os.replace(tmp, tmp[:-4])
+
     traj_fh = None
     if trajectory_path:
         os.makedirs(os.path.dirname(os.path.abspath(trajectory_path)), exist_ok=True)
@@ -1664,6 +1680,8 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
         if (checkpoint_path and int(checkpoint_every) > 0 and ep > start_ep
                 and (ep - 1) % int(checkpoint_every) == 0):
             _save_checkpoint(ep - 1)
+        if checkpoint_path and ep > start_ep and _snapshot_due(ep - 1, snapshot_every):
+            _save_snapshot(ep - 1)
         t_ep = time.perf_counter()
         if ep == start_ep:
             _t_first = time.perf_counter()
@@ -2762,6 +2780,7 @@ def run_desk_experiment(config=None):
         # run, and a finished run renames its checkpoint so a rerun starts fresh.
         checkpoint_path=os.path.join(out_dir, "resume_checkpoint.pt"),
         checkpoint_every=int(desk_cfg.get("checkpoint_every", 10)),
+        snapshot_every=int(desk_cfg.get("snapshot_every", 0)),
         resume=bool(desk_cfg.get("resume", True)),
         select_on_withheld=bool(desk_cfg.get("select_on_withheld", False)),
         return_info=True)

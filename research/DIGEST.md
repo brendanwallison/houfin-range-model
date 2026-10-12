@@ -362,6 +362,14 @@ NEW SINCE YESTERDAY EVENING (tentative unless noted; each finding carries WHY: e
     Not a production candidate on this evidence.
   WHY (likely, not shown for DESK): decadal trends drift; a long span averages in later decades whose trends do not
   describe the earlier ones (shown for the surrogates, E023).
+  RE-SCORED ON THE FAIR-RIVAL YARDSTICK (E056, 2026-10-11, prompted by your "full span carries more signal" point):
+  - 20-year spans vs long spans: no difference beyond the trend placebo (-0.009 to +0.004). The raw proximity lean
+    is +0.001 to +0.019, and short spans cost ~0.01 of spatial skill.
+  - Time weighting: ~+0.01 raw at the late state, ~0 beyond the placebo.
+  - So neither span nor proximity moves DESK beyond the regional trend. Their earlier raw gains were a near-target
+    trend the placebo also has (likely).
+  - Your case, adding the decades just before the target, is the withheld window itself: untestable inside BBS. It
+    needs a deeper series (CBC for resident species, calibrated against BBS where both exist).
 - Where the covariates' temporal signal is (E027, E027b-d, two skeptic rounds): their backcast skill is largely matched
   by a placebo using them only as a STATIC position (a place's average environment) times LINEAR YEAR. A place's own
   covariate change adds at most ~0.05 in correlation (two independent splits); the direction the continent's

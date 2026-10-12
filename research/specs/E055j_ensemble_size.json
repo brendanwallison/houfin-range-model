@@ -1,0 +1,24 @@
+{
+ "exp": "E055",
+ "name": "ensemble-size",
+ "group": "cpu",
+ "after_jobs": [
+  "E055/desk-tempho1995-seed5",
+  "E055/desk-tempho1995-seed6",
+  "E055/desk-tempho1995-seed7",
+  "E055/desk-tempho1995-seed8"
+ ],
+ "overlay": "research/overlays/desk_tempho_1995_seed1.json",
+ "cmd": [
+  "bash",
+  "-c",
+  "set -e; {python} research/exp/ensemble_gain.py --members {cache}/desk_tempho_1995_s1 {cache}/desk_tempho_1995_s2 {cache}/desk_tempho_1995_s3 {cache}/desk_tempho_1995_s4 {cache}/desk_tempho_1995_s5 {cache}/desk_tempho_1995_s6 {cache}/desk_tempho_1995_s7 {cache}/desk_tempho_1995_s8 --esk-dir {cache}/desk_tempho_1995_s1 --sizes 2 4 6 --out {out}/all8; {python} research/exp/ensemble_gain.py --members {cache}/desk_tempho_1995_s5 {cache}/desk_tempho_1995_s6 {cache}/desk_tempho_1995_s7 {cache}/desk_tempho_1995_s8 --esk-dir {cache}/desk_tempho_1995_s1 --sizes 2 --out {out}/new4; {python} research/exp/ensemble_gain.py --members {cache}/desk_tempho_1995_s1_late {cache}/desk_tempho_1995_s2_late {cache}/desk_tempho_1995_s3_late {cache}/desk_tempho_1995_s4_late {cache}/desk_tempho_1995_s5_late {cache}/desk_tempho_1995_s6_late {cache}/desk_tempho_1995_s7_late {cache}/desk_tempho_1995_s8_late --esk-dir {cache}/desk_tempho_1995_s1 --sizes 2 4 6 --out {out}/all8_late; {python} research/exp/ensemble_gain.py --members {cache}/desk_tempho_1995_s5_late {cache}/desk_tempho_1995_s6_late {cache}/desk_tempho_1995_s7_late {cache}/desk_tempho_1995_s8_late --esk-dir {cache}/desk_tempho_1995_s1 --sizes 2 --out {out}/new4_late"
+ ],
+ "expected_minutes": 15,
+ "summarize": [
+  "bash",
+  "-c",
+  "for d in {out}/*/; do echo \"== $(basename $d)\"; {python} -c \"import json,sys; r=json.load(open(sys.argv[1])); print('mean single %+.3f' % r['mean_single']); [print(k, '%+.3f [%+.3f,%+.3f]' % (v['diff'], *v['ci'])) for k, v in r['ens_minus_mean_single'].items()]\" $d/ensemble_gain.json; done"
+ ],
+ "note": "E055j: ensemble-size curve (1-8 seeds, T0 1996) and the replication on the 4 NEW seeds alone"
+}

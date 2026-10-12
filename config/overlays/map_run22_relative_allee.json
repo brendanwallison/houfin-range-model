@@ -1,0 +1,37 @@
+{
+  "_comment": [
+    "run_22 = run_21 (single habitat field, occupied-habitat centring, K level 3.0 +/- 1.0) with RELATIVE mate-finding: allee_factor = 1 - exp(-gamma * N/K), n50 a FRACTION of local capacity.",
+    "Why: in every refined variant (run_19..21) cells with lambda_fund > 1 but K below the absolute Allee threshold ('Allee-dead', 20-40% of suitable habitat) were how capacity carved out absence; with N/K, viability depends only on lambda and the one global gamma, never on K, so absence has to come from growth. Not the prior belief (mates are found by absolute density); tested for fit and for the biological implausibilities run_21 showed (fecundity ~10 and flat, juvenile survival 0.93 > adult 0.42).",
+    "n50 prior: median 5% of K (n50_raw_loc = softplus^-1(0.05) = -2.97), scale 1.0 -- at the typical capacity of ~2.6 route counts that is ~0.13 counts, the absolute form's current prior median, so the two agree where most birds live."
+  ],
+  "input_dir": "${HOUFIN_PROCESSED}/model_inputs/numpyro_input",
+  "population_model": {
+    "dispersal_random_enabled": false,
+    "manifold_prior": {
+      "form": "exchangeable",
+      "coupling_target": 0.85,
+      "coupling_logit_scale": 0.15,
+      "amplitude_scale": [
+        1.0263,
+        1.0263,
+        1.0227,
+        1.0263
+      ],
+      "fixed_coupling": 1.0
+    },
+    "habitat_centering": "occupied",
+    "capacity_level_prior": {
+      "target_level_median_route_counts": 3.0,
+      "alpha_k_scale": 1.0
+    },
+    "allee_prior": {
+      "form": "relative",
+      "n50_raw_loc": -2.9706,
+      "n50_raw_scale": 1.0
+    }
+  },
+  "run_names": {
+    "map": "age_map_{precision}_run_22_new_z",
+    "vis_map": "age_map_{precision}_run_22_new_z"
+  }
+}

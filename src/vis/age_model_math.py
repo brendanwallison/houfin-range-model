@@ -135,6 +135,13 @@ def allee_viability(Sa, Sj, Fmax, K, allee_gamma, n_grid=512):
     Sa, Sj, Fmax, K = (np.asarray(x, dtype=float) for x in (Sa, Sj, Fmax, K))
     allee_gamma = np.asarray(allee_gamma, dtype=float)
     Sa, Sj, Fmax, K, allee_gamma = np.broadcast_arrays(Sa, Sj, Fmax, K, allee_gamma)
+    # Relative Allee (allee_prior.form = relative): the factor uses N/K, i.e. an
+    # effective per-cell rate gamma/K on absolute N. Applied here once so every
+    # density below (N = u*K) and the suppression at K follow the model exactly.
+    from src.model.age_priors import ALLEE_RELATIVE
+    if ALLEE_RELATIVE:
+        with np.errstate(divide="ignore", invalid="ignore"):
+            allee_gamma = allee_gamma / K
 
     F_repl = (1.0 - Sa) / (Sa * Sj)
     # Same c as the fitted model, including the 1e-6 guard: it belongs in the

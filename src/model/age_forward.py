@@ -119,6 +119,7 @@ def forward_sim_age_structured(
     allee_gamma,
     target_fraction=0.8,
     allee_exempt_years=0,
+    allee_relative=False,
 ):
     """Run the age-structured simulation for ``time`` years.
 
@@ -218,7 +219,8 @@ def forward_sim_age_structured(
         allee_off = jnp.where((k >= 0) & (k < allee_exempt_years), release_mask, 0.0)
         N_a_new, N_j_new = reproduction_age_structured(
             N_a_post, juvenile_stayers, juvenile_arriving,
-            Sa_g, Sj_g, Fmax_g, K_g, c_g, allee_gamma, allee_off=allee_off
+            Sa_g, Sj_g, Fmax_g, K_g, c_g, allee_gamma, allee_off=allee_off,
+            allee_relative=allee_relative,
         )
             
         # 5. Mask & Final Clip
@@ -238,7 +240,7 @@ def forward_sim_age_structured(
 
 def reproduction_age_structured(
     N_a_post, N_j_stayers, N_j_arrivers,
-    S_a, S_j, F_max, K, c, allee_gamma, eps=1e-12, allee_off=None
+    S_a, S_j, F_max, K, c, allee_gamma, eps=1e-12, allee_off=None, allee_relative=False
     ):
     """Advance one year of survival + reproduction to next-year (N_a, N_j).
 
@@ -251,12 +253,17 @@ def reproduction_age_structured(
     ``allee_off`` (optional, broadcastable to N, values in [0, 1]) removes that share
     of the Allee limitation: 1 = mate-finding never limits (the release cells during
     their exemption window), 0 = the normal Allee factor.
+
+    ``allee_relative`` replaces N by N/K in the Allee factor (mate-finding relative to
+    capacity; see age_priors' allee_prior.form).
     """
     N_total_post = N_a_post + N_j_stayers + N_j_arrivers
     K_safe = jnp.maximum(K, eps)
 
     F_eff = F_max / (1.0 + c * (N_total_post / K_safe))
-    allee_factor = 1.0 - jnp.exp(-allee_gamma * N_total_post)
+    # allee_relative: mate-finding by N/K (age_priors' allee_prior.form = relative).
+    allee_factor = 1.0 - jnp.exp(-allee_gamma * (N_total_post / K_safe if allee_relative
+                                                 else N_total_post))
     if allee_off is not None:
         allee_factor = allee_factor + allee_off * (1.0 - allee_factor)
     F_actual = F_eff * allee_factor

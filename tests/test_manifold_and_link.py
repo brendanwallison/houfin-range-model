@@ -190,3 +190,41 @@ print(json.dumps({"centering": a._HABITAT_CENTERING, "fixed": a._MANIFOLD_PRIOR.
     assert r["centering"] == "occupied" and r["fixed"] == 1.0 and r["scale"] == 1.0
     assert r["level"] == pytest.approx(3.0, rel=1e-6)
     assert "manifold_idio" not in r["sites"] and "manifold_coupling_logit" not in r["sites"]
+
+
+def test_relative_allee_is_invariant_to_capacity_scale(monkeypatch):
+    """Under allee_prior.form = relative, scaling K and N together scales the next year's
+    population by the same factor -- capacity cannot change whether a cell persists. The
+    absolute form is NOT invariant (the property that made Allee-dead cells possible)."""
+    from src.model.age_forward import reproduction_age_structured as rep
+    import src.model.age_priors as ap
+    from src.vis.age_model_math import allee_viability
+    Na, Nj_s, Nj_a = jnp.array([0.02]), jnp.array([0.01]), jnp.array([0.005])
+    args = lambda s: (Na * s, Nj_s * s, Nj_a * s, 0.6, 0.4, 3.0, 0.5 * s, 1.0)  # noqa: E731
+    g = 14.0
+    for rel, invariant in ((True, True), (False, False)):
+        a1, j1 = rep(*args(1.0), g, allee_relative=rel)
+        a10, j10 = rep(*args(10.0), g, allee_relative=rel)
+        assert bool(np.allclose(np.asarray(j10) / 10, np.asarray(j1), rtol=1e-5)) == invariant
+    monkeypatch.setattr(ap, "ALLEE_RELATIVE", True)
+    _, F_at_K_small, _, _ = ap.equilibrium_age_quantities(0.6, 0.4, 3.0, 0.01, g)
+    _, F_at_K_big, _, _ = ap.equilibrium_age_quantities(0.6, 0.4, 3.0, 100.0, g)
+    assert float(F_at_K_small) == pytest.approx(float(F_at_K_big))
+    v_small = allee_viability(0.6, 0.4, 3.0, 0.001, g)
+    v_big = allee_viability(0.6, 0.4, 3.0, 1000.0, g)
+    assert np.asarray(v_small["viable"]).item() == np.asarray(v_big["viable"]).item()
+    np.testing.assert_allclose(np.asarray(v_small["F_peak"]), np.asarray(v_big["F_peak"]), rtol=1e-6)
+
+
+def test_relative_allee_overlay_resolves():
+    probe = """
+import json, math, src.model.age_priors as a
+print(json.dumps({"form": a._ALLEE_FORM, "rel": a.ALLEE_RELATIVE,
+  "n50_median": math.log1p(math.exp(a._ALLEE_PRIOR["n50_raw_loc"])),
+  "fixed": a._MANIFOLD_PRIOR.get("fixed_coupling"), "centering": a._HABITAT_CENTERING}))
+"""
+    env = dict(os.environ, AGE_MODEL_CONFIG=os.path.join(REPO, "config", "overlays", "map_run22_relative_allee.json"))
+    r = json.loads(subprocess.run([sys.executable, "-c", probe], cwd=REPO, env=env, capture_output=True,
+                                  text=True, check=True).stdout.strip().splitlines()[-1])
+    assert r["form"] == "relative" and r["rel"] and r["fixed"] == 1.0 and r["centering"] == "occupied"
+    assert r["n50_median"] == pytest.approx(0.05, rel=1e-3)

@@ -48,6 +48,11 @@ if _K_FORM not in {"field", "crowding"}:
 _DISPERSAL_RANDOM = bool(_POP_SPEC.get("dispersal_random_enabled", True))
 #   habitat_centering         "none" | "occupied" (fields centred at mean occupied-cell Z)
 _HABITAT_CENTERING = str(_POP_SPEC.get("habitat_centering", "none"))
+#   allee_prior.form          "absolute" (mates by density N) | "relative" (by N/K)
+_ALLEE_FORM = str(_ALLEE_PRIOR.get("form", "absolute"))
+if _ALLEE_FORM not in {"absolute", "relative"}:
+    raise ValueError(f"allee_prior.form must be absolute or relative, got {_ALLEE_FORM!r}")
+ALLEE_RELATIVE = _ALLEE_FORM == "relative"
 if _HABITAT_CENTERING not in {"none", "occupied"}:
     raise ValueError(f"habitat_centering must be none or occupied, got {_HABITAT_CENTERING!r}")
 if _MANIFOLD_FORM not in {"rank2", "exchangeable"}:
@@ -180,7 +185,9 @@ def equilibrium_age_quantities(Sa, Sj, Fmax, K, allee_gamma):
     reproduce, so the local projection matrix is ``[[Sa,Sj],[F*Sa,0]]``.
     """
     c = jnp.maximum((Fmax * Sa * Sj) / (1.0 - Sa + 1e-6) - 1.0, 0.0)
-    F_at_K = Fmax / (1.0 + c) * (1.0 - jnp.exp(-allee_gamma * K))
+    # Relative Allee: mate-finding depends on N/K, which is 1 at K.
+    allee_at_K = 1.0 - jnp.exp(-allee_gamma * (1.0 if ALLEE_RELATIVE else K))
+    F_at_K = Fmax / (1.0 + c) * allee_at_K
     lam = (Sa + jnp.sqrt(Sa**2 + 4.0 * F_at_K * Sa * Sj)) / 2.0
     rho = (F_at_K * Sa) / (F_at_K * Sa + lam)
     return c, F_at_K, lam, rho
@@ -730,7 +737,13 @@ def build_model_2d(data, prior_scale=1.0):
     # Convert to the relative [0, 1] scale by multiplying by pop_scalar
     # Since N_relative = N_raw / pop_scalar, 
     # then gamma_relative = gamma_raw * pop_scalar
-    allee_gamma_scaled = priors['gamma_raw'] * data['pop_scalar']
+    # RELATIVE form (allee_prior.form = relative): n50 is a FRACTION OF LOCAL CAPACITY, so
+    # gamma = ln2/n50 multiplies N/K, is dimensionless, and needs no gauge conversion. Then
+    # whether a cell can hold a population depends only on its growth rate and this one
+    # global gamma -- never on K -- so capacity cannot carve out absence ("Allee-dead"
+    # cells, 20-40% of suitable habitat in run_19..21). Less mechanistic than absolute
+    # density (mates are found by density), tested for fit and biological plausibility.
+    allee_gamma_scaled = priors['gamma_raw'] * (1.0 if ALLEE_RELATIVE else data['pop_scalar'])
     priors['allee_gamma'] = numpyro.deterministic("allee_gamma", allee_gamma_scaled)
 
     # Habitat centring: intercepts become "the rate at typical occupied habitat", so a prior
@@ -847,6 +860,7 @@ def build_model_2d(data, prior_scale=1.0):
         priors['allee_gamma'],
         target_fraction=data["dispersal_target_fraction"],
         allee_exempt_years=_RELEASE_ALLEE_EXEMPT_YEARS,
+        allee_relative=ALLEE_RELATIVE,
     )
 
     numpyro.deterministic("simulated_density", densities)

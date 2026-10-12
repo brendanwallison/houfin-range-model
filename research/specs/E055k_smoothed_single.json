@@ -1,0 +1,10 @@
+{
+ "exp": "E055",
+ "name": "smoothed-single",
+ "group": "cpu",
+ "overlay": "research/overlays/desk_tempho_1995_seed1.json",
+ "cmd": ["bash", "-c", "set -e; for t in 1995 1985; do for st in '' _late; do {python} research/exp/smooth_cache.py --src {cache}/desk_tempho_${t}_s1$st --out {cache}/desk_tempho_${t}_s1_sm2$st --h 2; {python} research/exp/fair_rivals.py --cache {cache}/desk_tempho_${t}_s1_sm2$st --ref-cache {cache}/desk_tempho_${t}_s1$st --out {out}/desk_tempho_${t}_s1_sm2$st --incremental --n-pos 96 --pos-seeds 1 2 3 4 5 --strong-base --tag _p96; done; done"],
+ "expected_minutes": 45,
+ "summarize": ["bash", "-c", "for d in {out}/*/; do f=$d/fair_rivals_incr_p96.json; [ -f $f ] || continue; {python} -c \"import json,sys; r=json.load(open(sys.argv[1])); s=r['space_level']; v=r['vs_ref']; g=lambda k: '%+.3f [%+.3f,%+.3f]' % (v[k]['diff'], *v[k]['ci']); h=lambda k: '%+.3f' % r[k]['desk_within'] if isinstance(r.get(k),dict) and 'desk_within' in r[k] else '-'; print(sys.argv[2][:30].ljust(30), 'space %.4f' % s['desk_pooled'], '| change', g('desk - desk_ref'), '| beyond placebo', g('placebo+desk_within - placebo+desk_ref_within'), '| strong', h('strong_gain'), 'buffer', h('buffer_gain'))\" $f $(basename $d); done"],
+ "note": "E055k: the skeptic's null -- seed 1 spatially smoothed (h = 2 cells, within split class) vs seed 1, on the full yardstick; compare with the 4-seed ensemble (E055f)"
+}

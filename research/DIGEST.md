@@ -1,7 +1,7 @@
 # DIGEST
 
 ## CURRENT STATE (rewritten each round; read this first -- the dated log below keeps the history)
-Last updated 2026-10-11 21:01 (route-scale test E053b: no sign the 27 km grid limits covariate gains; covariate tally: crop types and observed land cover +0.01-0.03 in open-habitat guilds; CRP, forest age, reservoirs 0; E048 CropAT-DESK training). "Solid" =
+Last updated 2026-10-11 22:06 (E048 decided: CropAT in DESK NO HELP, all 8 estimates ~-0.02; route-scale test E053b: no sign the 27 km grid limits covariate gains; covariate tally: crop types and observed land cover +0.01-0.03 in open-habitat guilds; CRP, forest age, reservoirs 0; E048 CropAT-DESK training). "Solid" =
 independently re-derived, replicated on a second split or seed, and survived a skeptic review. "Tentative" = one run,
 or checks still pending. Experiment numbers point to research/experiments/EXXX.md.
 

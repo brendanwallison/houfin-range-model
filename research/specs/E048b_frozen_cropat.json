@@ -1,0 +1,11 @@
+{
+ "exp": "E048",
+ "name": "frozen-cropat-s1",
+ "group": "cpu",
+ "overlay": "research/overlays/desk_tempho_1995_seed1_cropat.json",
+ "after_jobs": ["E048/peek-t1995-s1"],
+ "cmd": ["bash", "-c", "set -e; C=$(ls -d {outroot}/E047/cropat-types-*/ | head -1)cropat_27km.npz; {python} -I research/exp/build_cropat_states.py --src ${HOUFIN_PROCESSED}/encoder/states --cropat $C --out {out}/states_frozen --freeze-year 2010; {python} -c \"import json; o=json.load(open('research/overlays/desk_tempho_1995_seed1_cropat.json')); o['paths']['hist_dir']='{out}/states_frozen'; o['latent_cube']['hist_dir']='{out}/states_frozen/yearly_states'; json.dump(o, open('{out}/overlay_frozen.json','w'), indent=1)\"; T=$(ls -d {outroot}/E048/desk-tempho1995-seed1-cropat-90b*/ | head -1); ESK_DESK_CONFIG={out}/overlay_frozen.json RESEARCH_OUT=${T%/} {python} research/exp/cache.py --out {cache}/desk_tempho_1995_s1_cropat_frozen2010; for x in esk_annual.npy esk_epochs.npz; do cp {cache}/desk_tempho_1995_s1/$x {cache}/desk_tempho_1995_s1_cropat_frozen2010/$x; done; {python} research/exp/fair_rivals.py --cache {cache}/desk_tempho_1995_s1_cropat_frozen2010 --ref-cache {cache}/desk_tempho_1995_s1 --out {out}/vs_control --incremental --n-pos 96 --pos-seeds 1 2 3 4 5 --strong-base --tag _p96; {python} research/exp/fair_rivals.py --cache {cache}/desk_tempho_1995_s1_cropat_frozen2010 --ref-cache {cache}/desk_tempho_1995_s1_cropat --out {out}/vs_unfrozen --incremental --n-pos 96 --pos-seeds 1 --tag _p96"],
+ "expected_minutes": 25,
+ "summarize": ["bash", "-c", "for d in vs_control vs_unfrozen; do echo == $d; {python} research/exp/fair_rivals.py --summarize {out}/$d | grep -E 'TREATMENT|  desk '; done"],
+ "note": "E048b diagnostic: trained s1 CropAT model re-encoded with CropAT channels frozen at 2010 (spatial only), backcast vs control and vs unfrozen"
+}

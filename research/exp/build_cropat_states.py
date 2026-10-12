@@ -36,6 +36,8 @@ def main():
     ap.add_argument("--out")
     ap.add_argument("--tau", type=float, default=2.0)
     ap.add_argument("--fill-years", type=int, nargs=2, default=[1940, 2025])
+    ap.add_argument("--freeze-year", type=int, default=None,
+                    help="E048b diagnostic: every year's CropAT channels = this year's (spatial information only)")
     a = ap.parse_args()
     src_ys = os.path.join(a.src, "yearly_states")
     schema = json.load(open(os.path.join(a.src, "state_schema.json")))
@@ -62,6 +64,8 @@ def main():
         state = curr.copy() if state is None else alpha * curr + (1.0 - alpha) * state
         if y in years:
             ema[y] = state.copy()
+    if a.freeze_year is not None:
+        ema = {y: ema[a.freeze_year].copy() for y in years}
     fy = [y for y in years if a.fill_years[0] <= y <= a.fill_years[1]]
     on = avail > 0.5
     fill = np.mean([ema[y][on] for y in fy], axis=(0, 1))   # (11,) CONUS mean per channel
@@ -86,6 +90,7 @@ def main():
     for s in ns["streams"][li + 1:]:
         s["start"], s["end"] = int(s["start"]) + shift, int(s["end"]) + shift
     ns["cropat"] = {"source": os.path.abspath(a.cropat), "tau": a.tau, "fill": fill.tolist(), "variables": NEW_VARS,
+                    "freeze_year": a.freeze_year,
                     "note": "E048: CropAT-US channels folded into landuse; see research/exp/build_cropat_states.py"}
     for k in ("dim", "total_dim", "n_channels"):
         if k in ns:

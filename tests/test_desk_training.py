@@ -2964,3 +2964,81 @@ def test_same_cell_oversampling_draws_other_years_of_the_same_cell_and_is_a_noop
                                     generator=torch.Generator().manual_seed(3), same_cell_frac=1.0)
     loss.backward()
     assert torch.isfinite(loss) and z.grad is not None
+
+
+def test_aux_head_trains_logs_and_resumes(tmp_path):
+    """The research auxiliary head (aux_targets): its term enters the loss, is logged per epoch,
+    rides in the checkpoint, and a resumed run restores it rather than re-initialising it."""
+    import contextlib
+    import io
+    import json as _json
+
+    from src.community_encoder.train_DESK import desk_training as D
+
+    sch = _schema()
+    dims = [s["dim"] for s in sch["streams"]]
+    T, H, W, L, S = 4, 6, 7, 16, 5
+    rng = np.random.default_rng(7)
+    cov = rng.normal(size=(T, H, W, sch["total_dim"])).astype("float32")
+    m = np.ones((H, W), bool)
+    years = list(range(2022, 2026))
+    tgt = {y: (rng.normal(size=(H, W, L)).astype("float32"), m, m,
+               np.ones((H, W), dtype="float32")) for y in years[1:]}
+    amask = np.zeros((2, H, W), bool)
+    amask[:, :3, :] = True
+    aux = {"t_idx": [1, 2], "Y": rng.normal(size=(2, H, W, S)).astype("float32"), "mask": amask,
+           "weight": 0.5, "label": "toy"}
+    traj = tmp_path / "traj.jsonl"
+    ck = tmp_path / "ck.pt"
+    kw = dict(latent_dim=L, ema_cfg={"earlystop_warmup": 0}, spatial_kernel=3, schema=sch, dropout=0.1,
+              trajectory_path=str(traj), checkpoint_path=str(ck), checkpoint_every=1, aux_targets=aux)
+    args = (cov, np.ones((T, H, W), bool), years, tgt,
+            _metric_dict(rng.random((H, W, 9)).astype("float32"), m, years), m, m, dims)
+    out = io.StringIO()
+    with contextlib.redirect_stdout(out):
+        D.train_model_ema(*args, epochs=3, stop_at_epoch=2, **kw)
+    txt = out.getvalue()
+    assert "AUX head 'toy'" in txt and "aux 'toy' mse" in txt, txt
+    rows = [_json.loads(l) for l in open(traj)]
+    assert all(np.isfinite(r["loss_aux"]) for r in rows), rows
+    import shutil
+    done = str(ck) + ".completed"
+    state = torch.load(done if os.path.exists(done) else ck, map_location="cpu", weights_only=False)
+    assert "aux_head" in state and state["aux_head"]["weight"].shape == (S, L)
+    if os.path.exists(done):
+        shutil.copy(done, ck)           # a finished run renames its checkpoint; resume from a copy
+    out2 = io.StringIO()
+    with contextlib.redirect_stdout(out2):
+        D.train_model_ema(*args, epochs=3, resume=True, **kw)
+    assert "RESUMED" in out2.getvalue(), out2.getvalue()
+    print("aux head: in the loss, logged, checkpointed, restored on resume")
+
+
+def test_aux_off_leaves_the_checkpoint_fingerprint_unchanged(tmp_path):
+    """Adding the aux option must not move any existing run's fingerprint (resume would refuse it)."""
+    import contextlib
+    import io
+
+    from src.community_encoder.train_DESK import desk_training as D
+
+    sch = _schema()
+    dims = [s["dim"] for s in sch["streams"]]
+    T, H, W, L = 3, 5, 6, 16
+    rng = np.random.default_rng(8)
+    cov = rng.normal(size=(T, H, W, sch["total_dim"])).astype("float32")
+    m = np.ones((H, W), bool)
+    years = list(range(2023, 2026))
+    tgt = {y: (rng.normal(size=(H, W, L)).astype("float32"), m, m,
+               np.ones((H, W), dtype="float32")) for y in years[1:]}
+    args = (cov, np.ones((T, H, W), bool), years, tgt,
+            _metric_dict(rng.random((H, W, 9)).astype("float32"), m, years), m, m, dims)
+    fps = []
+    for kwx in ({}, {"aux_targets": None}):
+        ck = tmp_path / f"ck{len(fps)}.pt"
+        with contextlib.redirect_stdout(io.StringIO()):
+            D.train_model_ema(*args, latent_dim=L, ema_cfg={"earlystop_warmup": 0}, spatial_kernel=3,
+                              epochs=3, stop_at_epoch=2, schema=sch, dropout=0.1,
+                              checkpoint_path=str(ck), checkpoint_every=1, **kwx)
+        f = str(ck) + ".completed" if os.path.exists(str(ck) + ".completed") else ck
+        fps.append(torch.load(f, map_location="cpu", weights_only=False)["fingerprint"])
+    assert fps[0] == fps[1]

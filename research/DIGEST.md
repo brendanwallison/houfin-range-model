@@ -1,7 +1,7 @@
 # DIGEST
 
 ## CURRENT STATE (rewritten each round; read this first -- the dated log below keeps the history)
-Last updated 2026-10-11 19:05 (covariate tally: crop types and observed land cover +0.01-0.03 in open-habitat guilds; CRP, forest age, reservoirs 0; E048 CropAT-DESK training). "Solid" =
+Last updated 2026-10-11 21:25 (route-scale test E053b: no sign the 27 km grid limits covariate gains; covariate tally: crop types and observed land cover +0.01-0.03 in open-habitat guilds; CRP, forest age, reservoirs 0; E048 CropAT-DESK training). "Solid" =
 independently re-derived, replicated on a second split or seed, and survived a skeptic review. "Tentative" = one run,
 or checks still pending. Experiment numbers point to research/experiments/EXXX.md.
 
@@ -100,6 +100,14 @@ WHERE THINGS STAND (2026-10-11 ~11:00, plain summary; details below)
      - observed land cover +0.01-0.03 (open-habitat guilds);
      - CRP 0; forest-age back-cast 0; reservoirs 0.
      - At 27 km, better land-use inputs move local community-change prediction by a few hundredths at most.
+   - E053/E053b, IS THE 27 km GRID THE LIMIT? Land cover inside each BBS route's 400 m buffer vs the whole 27 km cell,
+     both from Annual NLCD 1990 -> 2019, predicting route-level change in 369 species, beyond all DESK covariates:
+     - 2,121 routes, all scored out-of-fold. Forest birds (70 species, the stable case): route ~ cell ~ 0.
+     - Grassland: E053's route advantage did not replicate (+0.009, CI includes 0).
+     - Shrubland: a route advantage (+0.027 [+0.006, +0.045]), but its moved-route nulls are large too.
+     - Wetland and human-modified: the all-channel baseline was unstable, so they are unreadable. E053c re-runs the
+       test with a 32-PC baseline (queued).
+     - So far: no sign that the grid's coarseness is what holds the covariate gains to a few hundredths. Unverified.
 2. DESK's TEMPORAL signal: after 1950 it is mostly the land-use management trend (fertilizer, irrigation) -- partly
    real intensification (it scales with cropland), partly a clock; that trend is flat before 1950. DESK still moves
    before 1950 (~0.03/decade vs ~0.05 after) through land-use classes, climate and population, in a different

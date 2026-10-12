@@ -1,0 +1,18 @@
+{
+ "exp": "E059",
+ "name": "species-seeds-t1985",
+ "group": "cpu",
+ "overlay": "research/overlays/desk_tempho_1995_seed1.json",
+ "cmd": [
+  "bash",
+  "-c",
+  "set -e; SCORE_TARGETS=dev bash research/bin/score_both.sh {python} {out}/desk_tempho_1985_s2 --cache {cache}/desk_tempho_1985_s2 --ref-cache {cache}/desk_tempho_1985_s1; SCORE_TARGETS=dev bash research/bin/score_both.sh {python} {out}/desk_tempho_1985_s3 --cache {cache}/desk_tempho_1985_s3 --ref-cache {cache}/desk_tempho_1985_s1; SCORE_TARGETS=dev bash research/bin/score_both.sh {python} {out}/desk_tempho_1985_s4 --cache {cache}/desk_tempho_1985_s4 --ref-cache {cache}/desk_tempho_1985_s1; SCORE_TARGETS=dev bash research/bin/score_both.sh {python} {out}/desk_tempho_1985_s2_late --cache {cache}/desk_tempho_1985_s2_late --ref-cache {cache}/desk_tempho_1985_s1_late; SCORE_TARGETS=dev bash research/bin/score_both.sh {python} {out}/desk_tempho_1985_s3_late --cache {cache}/desk_tempho_1985_s3_late --ref-cache {cache}/desk_tempho_1985_s1_late; SCORE_TARGETS=dev bash research/bin/score_both.sh {python} {out}/desk_tempho_1985_s4_late --cache {cache}/desk_tempho_1985_s4_late --ref-cache {cache}/desk_tempho_1985_s1_late"
+ ],
+ "expected_minutes": 150,
+ "summarize": [
+  "bash",
+  "-c",
+  "for d in {out}/*/; do f=$d/fair_rivals_incr_p96dev.json; [ -f $f ] || continue; {python} -c \"import json,sys; r=json.load(open(sys.argv[1])); m=r['models']; s=r['space_level']; v=r.get('vs_ref',{}); h=r.get('head_to_head',{}); g=lambda d: '%+.3f [%+.3f,%+.3f]' % (d['diff'], *d['ci']); print(sys.argv[2][:30].ljust(30), 'desk_within %.3f strong %.3f placebo %.3f' % (m['desk_within']['corr'], m['strong']['corr'], m['placebo_300']['corr']), '| vs strong', g(h['desk_within - strong']) if 'desk_within - strong' in h else '-', '| vs ref', g(v['desk_within - desk_ref_within']) if 'desk_within - desk_ref_within' in v else '-', '| space %.4f' % s['desk_pooled'])\" $f $(basename $d); done"
+ ],
+ "note": "E059b: out-of-community species, seeds and 4-seed ensemble, T0 1986"
+}

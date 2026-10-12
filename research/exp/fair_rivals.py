@@ -92,6 +92,15 @@ def main():
                     help="E056: modern epoch (default the suite's 2005-25); needs --esk-dir holding "
                          "esk_epochs_m<Y0>_<Y1>.npz from esk_project.py --modern")
     ap.add_argument("--esk-dir", default=None, help="E056: read esk_annual / esk_epochs from here, not the cache")
+    ap.add_argument("--lean", action="store_true",
+                    help="E059b: skip the optional arms (placebo_600, placebo+within_raw, placebo+kindxtime_8); every "
+                         "headline number (placebo_300, desk_within, joint gains, strong base, buffer, head-to-head, "
+                         "vs_ref, space) is unchanged. For the costly per-species target")
+    ap.add_argument("--target", choices=["esk", "dev"], default="esk",
+                    help="E059b: what every readout predicts -- the community's ESK coordinates (default) or the 273 "
+                         "OUT-OF-COMMUNITY dev species (log1p counts; truth = log1p of the ABBA half-epoch mean counts). "
+                         "With dev, the raw 'desk' arm (z change, which lives in ESK space) is replaced by DESK's "
+                         "within readout, so every arm is a fitted readout of species")
     ap.add_argument("--eval-set", choices=["heldout", "train"], default="heldout",
                     help="E055g: score held-out cells (default) or TRAINING cells (not held out, not buffer) in the "
                          "withheld years -- the production case: known places, unknown times; the readout is fitted "
@@ -138,6 +147,14 @@ def main():
     Za, Zb = E["z_a"][:, :r].astype("float64"), E["z_b"][:, :r].astype("float64")
     Ta = (Za[pairs[:, 1]] - Za[pairs[:, 0]])[ev]
     Tb = (Zb[pairs[:, 1]] - Zb[pairs[:, 0]])[ev]
+    Xdev = None
+    if a.target == "dev":
+        # out-of-community species: truth = log1p of each ABBA half's epoch-mean counts (the suite's species estimand)
+        from src.community_encoder.train_DESK.validate_bbs_routes import epoch_mean_observed
+        Xdev = np.asarray(np.load(c("X_dev.npy")), "float64")
+        je, jm = pairs[ev, 0], pairs[ev, 1]
+        Ta = epoch_mean_observed(Xdev, [half_a[j] for j in jm]) - epoch_mean_observed(Xdev, [half_a[j] for j in je])
+        Tb = epoch_mean_observed(Xdev, [half_b[j] for j in jm]) - epoch_mean_observed(Xdev, [half_b[j] for j in je])
     early_rows = [np.asarray(full[pairs[j, 0]]) for j in ev]
     mod_rows = [np.asarray(full[pairs[j, 1]]) for j in ev]
     zr_all = np.load(c("z_raw_all.npy"), mmap_mode="r")
@@ -155,13 +172,17 @@ def main():
     # rows (E039h's): training cells x trained years, finite covariates and ESK
     F_raw = np.asarray(np.load(c("F_cov_raw.npy"), mmap_mode="r"), "float64")
     Eann = np.load(os.path.join(ed, "esk_annual.npy")).astype("float64")
+    if Xdev is not None:
+        from src.data.preprocess.bbs_community import log1p_community
+        Eann = np.asarray(log1p_community(Xdev), "float64")         # the readouts' target: species, not ESK
+    rt = Eann.shape[1] if Xdev is not None else r                  # target dimensions
     yr = keys[:, 2].astype("float64")
     ho = split["holdout"][keys[:, 0], keys[:, 1]]
     bf = split["buffer"][keys[:, 0], keys[:, 1]]
     ty = ~np.isin(keys[:, 2], withheld)
     trn_mask = ~ho & ~bf & ty & np.isfinite(F_raw).all(1) & np.isfinite(Eann).all(1)
     trn = np.where(trn_mask)[0]
-    Z = Eann[:, :r]
+    Z = Eann[:, :rt]
     cid = keys[:, 0].astype(np.int64) * 100000 + keys[:, 1]
     uc, inv = np.unique(cid, return_inverse=True)
     w_ty = (ty & np.isfinite(Eann).all(1)).astype(float)
@@ -183,10 +204,11 @@ def main():
     preds, notes = {"desk": D_desk}, {}
     # E039h's pooled ridge, reproduced exactly
     X = std(F_raw)
-    Xc, Yc = X[trn] - X[trn].mean(0), Eann[trn, :64] - Eann[trn, :64].mean(0)
+    ny = Eann.shape[1] if Xdev is not None else 64
+    Xc, Yc = X[trn] - X[trn].mean(0), Eann[trn, :ny] - Eann[trn, :ny].mean(0)
     lam = 1e-3 * np.trace(Xc.T @ Xc) / Xc.shape[1]
     B = np.linalg.solve(Xc.T @ Xc + lam * np.eye(Xc.shape[1]), Xc.T @ Yc)
-    preds["pooled_ridge"] = (dchg(X) @ B)[:, :r]
+    preds["pooled_ridge"] = (dchg(X) @ B)[:, :rt]
     Zbar = cmean(Z, w_ty)
     Zd = Z - Zbar
     t = yr - cmean(yr[:, None], w_ty)[:, 0]
@@ -214,7 +236,7 @@ def main():
                 keep_feats[f"kindxtime_{kk}"] = (KT, KT_ev)
     # placebo: position x time, no covariates
     cev = cells[ev].astype(float) * 27.0
-    for ell in (300.0, 600.0):
+    for ell in ((300.0,) if a.lean else (300.0, 600.0)):
         for sd in a.pos_seeds:
             rg = np.random.default_rng(sd)
             m = a.n_pos
@@ -231,6 +253,8 @@ def main():
     preds["desk_within"] = dz @ blr.fit((zk - cmean(zk, w_ty))[trn], Zd[trn], [(0, r)])["coef"].T
     keep_feats["desk_within"] = (zk - cmean(zk, w_ty), dz)
     within_arms = ["desk_within"]
+    if Xdev is not None:
+        preds["desk"] = preds["desk_within"]          # raw z change lives in ESK space; species need a readout
     if a.ref_cache:
         rc = lambda f: os.path.join(a.ref_cache, f)
         assert np.array_equal(np.load(rc("keys.npy")), keys), "ref cache keys differ"
@@ -241,6 +265,8 @@ def main():
         zkr = np.asarray(np.load(rc("z_raw.npy"), mmap_mode="r")[:, :r], "float64")
         dzr = dchg(zkr)
         preds["desk_ref_within"] = dzr @ blr.fit((zkr - cmean(zkr, w_ty))[trn], Zd[trn], [(0, r)])["coef"].T
+        if Xdev is not None:
+            preds["desk_ref"] = preds["desk_ref_within"]
         keep_feats["desk_ref_within"] = (zkr - cmean(zkr, w_ty), dzr)
         within_arms.append("desk_ref_within")
         notes["ref_cache"] = a.ref_cache
@@ -300,7 +326,7 @@ def main():
                 q = PL.shape[1]
                 b = blr.fit(np.hstack([PL, keep_feats["desk_null"][0]])[trn], Zd[trn], [(0, q), (q, q + r)])["coef"].T
                 incr[f"placebo+desk_null#{sd}"] = np.hstack([PLev, dzp]) @ b
-            for nm in tuple(within_arms) + ("within_raw", "kindxtime_8"):
+            for nm in tuple(within_arms) + (() if a.lean else ("within_raw", "kindxtime_8")):
                 Xf, Xev = keep_feats[nm]
                 q = PL.shape[1]
                 b = blr.fit(np.hstack([PL, Xf])[trn], Zd[trn], [(0, q), (q, q + Xf.shape[1])])["coef"].T
@@ -359,7 +385,7 @@ def main():
         per_dim = float(np.mean(cv[ok] / np.sqrt(vp[ok] * vt[ok]))) if ok.any() else np.nan
         return corr, (cv.sum() / vp.sum() if vp.sum() > 0 else np.nan), per_dim
     res = {"cache": a.cache, "n_cells": int(len(ev)), "rank": r, "withheld": [min(withheld), max(withheld)],
-           "modern": list(a.modern) if a.modern else None, "ref_cache": a.ref_cache, "eval_set": a.eval_set,
+           "modern": list(a.modern) if a.modern else None, "ref_cache": a.ref_cache, "target": a.target, "eval_set": a.eval_set,
            "n_fit_rows": int(len(trn)), "notes": notes, "models": {}}
     members = {}
     for name in preds:                                  # placebo-based arms: one member per draw, graded as the mean
@@ -467,7 +493,7 @@ def main():
     # spatial level on the same metric family: held-out cells x trained years, pooled readouts of ESK r24
     lev = np.where(ho & ty & np.isfinite(F_raw).all(1) & np.isfinite(Eann).all(1))[0]
     lv = {"desk_pooled": (zk[lev] - m_dp["xbar"]) @ m_dp["coef"].T,
-          "pooled_ridge": ((X[lev] - X[trn].mean(0)) @ B)[:, :r]}
+          "pooled_ridge": ((X[lev] - X[trn].mean(0)) @ B)[:, :rt]}
     lblk = (keys[lev, 0] // 6) * 100000 + keys[lev, 1] // 6
     lub, linv = np.unique(lblk, return_inverse=True)
     rng = np.random.default_rng(12)

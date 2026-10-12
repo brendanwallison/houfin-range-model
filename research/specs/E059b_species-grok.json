@@ -1,0 +1,18 @@
+{
+ "exp": "E059",
+ "name": "species-grok",
+ "group": "cpu",
+ "overlay": "research/overlays/desk_tempho_1995_seed1.json",
+ "cmd": [
+  "bash",
+  "-c",
+  "set -e; SCORE_TARGETS=dev bash research/bin/score_both.sh {python} {out}/desk_tempho_1995_s1_grok --cache {cache}/desk_tempho_1995_s1_grok --ref-cache {cache}/desk_tempho_1995_s1; SCORE_TARGETS=dev bash research/bin/score_both.sh {python} {out}/desk_tempho_1995_s1_grok_ep0300 --cache {cache}/desk_tempho_1995_s1_grok_ep0300 --ref-cache {cache}/desk_tempho_1995_s1; SCORE_TARGETS=dev bash research/bin/score_both.sh {python} {out}/desk_tempho_1995_s1_grok_ep0500 --cache {cache}/desk_tempho_1995_s1_grok_ep0500 --ref-cache {cache}/desk_tempho_1995_s1; SCORE_TARGETS=dev bash research/bin/score_both.sh {python} {out}/desk_tempho_1995_s1_grok_ep1000 --cache {cache}/desk_tempho_1995_s1_grok_ep1000 --ref-cache {cache}/desk_tempho_1995_s1; SCORE_TARGETS=dev bash research/bin/score_both.sh {python} {out}/desk_tempho_1995_s1_grok_ep1500 --cache {cache}/desk_tempho_1995_s1_grok_ep1500 --ref-cache {cache}/desk_tempho_1995_s1"
+ ],
+ "expected_minutes": 125,
+ "summarize": [
+  "bash",
+  "-c",
+  "for d in {out}/*/; do f=$d/fair_rivals_incr_p96dev.json; [ -f $f ] || continue; {python} -c \"import json,sys; r=json.load(open(sys.argv[1])); m=r['models']; s=r['space_level']; v=r.get('vs_ref',{}); h=r.get('head_to_head',{}); g=lambda d: '%+.3f [%+.3f,%+.3f]' % (d['diff'], *d['ci']); print(sys.argv[2][:30].ljust(30), 'desk_within %.3f strong %.3f placebo %.3f' % (m['desk_within']['corr'], m['strong']['corr'], m['placebo_300']['corr']), '| vs strong', g(h['desk_within - strong']) if 'desk_within - strong' in h else '-', '| vs ref', g(v['desk_within - desk_ref_within']) if 'desk_within - desk_ref_within' in v else '-', '| space %.4f' % s['desk_pooled'])\" $f $(basename $d); done"
+ ],
+ "note": "E059b: out-of-community species, grokking-probe states"
+}

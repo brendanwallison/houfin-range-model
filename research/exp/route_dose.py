@@ -71,6 +71,7 @@ def main():
     ap.add_argument("--n-type", type=int, default=32)
     ap.add_argument("--n-boot", type=int, default=500)
     ap.add_argument("--summarize", default=None)
+    ap.add_argument("--cv", type=int, default=0, help="E053b: K-fold spatial-block CV over all routes")
     a = ap.parse_args()
     if a.summarize:
         return summarize(a.summarize)
@@ -207,75 +208,110 @@ def main():
     arms = list(feats)
     blk = (row // 6) * 100000 + col // 6
     lams = [10.0 ** e for e in np.arange(-3, 3.01, 0.5)]
-    ub, binv = np.unique(blk[ev], return_inverse=True)
+    if a.cv:
+        # E053b: every route out-of-fold; folds = random assignment of 6x6-cell blocks
+        ublk = np.unique(blk)
+        fold_of = dict(zip(ublk.tolist(), np.random.default_rng(5).integers(a.cv, size=len(ublk)).tolist()))
+        fold = np.array([fold_of[b] for b in blk])
+        folds = [(np.where(fold != f)[0], np.where(fold == f)[0]) for f in range(a.cv)]
+        eval_all, min_ev_fold = np.arange(n), 3
+    else:
+        folds, eval_all, min_ev_fold = [(tc, ev)], ev, 30
+    posmap = np.full(n, -1)
+    posmap[eval_all] = np.arange(len(eval_all))
+    ub, binv = np.unique(blk[eval_all], return_inverse=True)
     rng = np.random.default_rng(11)
-    Wev = np.vstack([np.ones(len(ev)), rng.multinomial(len(ub), np.full(len(ub), 1.0 / len(ub)),
-                                                       size=a.n_boot)[:, binv]]).astype("float64")
-    res = {"n_routes": n, "n_train": int(len(tc)), "n_heldout": int(len(ev)), "n_heldout_same_observer":
-           int(same_obs[ev].sum()), "crosswalk": {k: v for k, v in diag.items() if k != "unmatched_codes"},
+    Wall = np.vstack([np.ones(len(eval_all)), rng.multinomial(len(ub), np.full(len(ub), 1.0 / len(ub)),
+                                                              size=a.n_boot)[:, binv]]).astype("float64")
+    res = {"n_routes": n, "n_train": int(len(tc)), "n_heldout": int(len(ev)), "cv": a.cv,
+           "n_evaluated": int(len(eval_all)), "n_evaluated_same_observer": int(same_obs[eval_all].sum()),
+           "n_heldout_same_observer": int(same_obs[ev].sum()),
+           "crosswalk": {k: v for k, v in diag.items() if k != "unmatched_codes"},
            "epochs": [EARLY, MODERN], "nlcd_years": yrs, "modes": {}}
     for mode in ("type", "type+kloc"):
         out = {}
         for gname in GUILDS:
             spp = [s for s in range(len(codes)) if hab[s] == gname]
-            store = []
-            for s in spp:
-                tcs, evs = tc[pres[tc, s]], ev[pres[ev, s]]
-                if len(tcs) < 60 or len(evs) < 30:
-                    continue
-                sc = dS[tcs, s].std()
-                if sc <= 0:
-                    continue
-                gT, *_ = np.linalg.lstsq(Tm[tcs], dS[tcs, s][:, None], rcond=None)
-                ytr = (dS[tcs, s] - (Tm[tcs] @ gT)[:, 0]) / sc
-                ya = (dA_[evs, s] - (Tm[evs] @ gT)[:, 0]) / sc
-                yb = (dB_[evs, s] - (Tm[evs] @ gT)[:, 0]) / sc
-                if mode == "type+kloc":
-                    ktr, kev = loo_local_op(xy[tcs], 150.0), loo_local_op(xy[evs], 150.0)
-                    ytr, ya, yb = ktr(ytr[:, None])[:, 0], kev(ya[:, None])[:, 0], kev(yb[:, None])[:, 0]
-                ww = Wev[:, np.searchsorted(ev, evs)]
-                wa = lambda v: (ww * v[None, :]).sum(1) / ww.sum(1)
-                ca_, cb_ = ya - wa(ya)[:, None], yb - wa(yb)[:, None]
-                vt = (ww * ca_ * cb_).sum(1)
-                if vt[0] <= 0:
-                    continue
-                rec = {"ytr": ytr, "blk": blk[tcs], "w": ww, "ca": ca_, "cb": cb_, "vt": vt,
-                       "same": same_obs[evs], "F": {}}
-                for arm in arms:
-                    Fx = feats[arm]
-                    gF, *_ = np.linalg.lstsq(Tm[tcs], Fx[tcs], rcond=None)
-                    Ftr, Fev = Fx[tcs] - Tm[tcs] @ gF, Fx[evs] - Tm[evs] @ gF
+            per_s = {}
+            for tcf, evf in folds:
+                store = []
+                for s in spp:
+                    tcs, evs = tcf[pres[tcf, s]], evf[pres[evf, s]]
+                    if len(tcs) < 60 or len(evs) < min_ev_fold:
+                        continue
+                    sc = dS[tcs, s].std()
+                    if sc <= 0:
+                        continue
+                    gT, *_ = np.linalg.lstsq(Tm[tcs], dS[tcs, s][:, None], rcond=None)
+                    ytr = (dS[tcs, s] - (Tm[tcs] @ gT)[:, 0]) / sc
+                    ya = (dA_[evs, s] - (Tm[evs] @ gT)[:, 0]) / sc
+                    yb = (dB_[evs, s] - (Tm[evs] @ gT)[:, 0]) / sc
                     if mode == "type+kloc":
-                        Ftr, Fev = ktr(Ftr), kev(Fev)
-                    rec["F"][arm] = (Ftr, Fev)
-                store.append(rec)
-            if not store:
-                continue
-            boots, boots_same = {}, {}
-            for arm in arms:
-                Ftr_all = np.vstack([r_["F"][arm][0] for r_ in store])
-                sdv = Ftr_all.std(0)
-                k_ = sdv > 1e-9
-                B, xm, ym, _ = ridge_cv(Ftr_all[:, k_] / sdv[k_], np.concatenate([r_["ytr"] for r_ in store])[:, None],
-                                        np.concatenate([r_["blk"] for r_ in store]), lams)
-                tot = np.zeros((3, Wev.shape[0]))
-                tot_s = np.zeros((3, Wev.shape[0]))
+                        ktr, kev = loo_local_op(xy[tcs], 150.0), loo_local_op(xy[evs], 150.0)
+                        ytr, ya, yb = ktr(ytr[:, None])[:, 0], kev(ya[:, None])[:, 0], kev(yb[:, None])[:, 0]
+                    rec = {"s": s, "ytr": ytr, "blk": blk[tcs], "evs": evs, "ya": ya, "yb": yb, "F": {}}
+                    for arm in arms:
+                        Fx = feats[arm]
+                        gF, *_ = np.linalg.lstsq(Tm[tcs], Fx[tcs], rcond=None)
+                        Ftr, Fev = Fx[tcs] - Tm[tcs] @ gF, Fx[evs] - Tm[evs] @ gF
+                        if mode == "type+kloc":
+                            Ftr, Fev = ktr(Ftr), kev(Fev)
+                        rec["F"][arm] = (Ftr, Fev)
+                    store.append(rec)
+                if not store:
+                    continue
                 for r_ in store:
-                    p = ((r_["F"][arm][1][:, k_] / sdv[k_] - xm) @ B + ym)[:, 0]
-                    for msk, acc_ in ((np.ones(len(p), bool), tot), (r_["same"], tot_s)):
-                        if msk.sum() < 5:
-                            continue
-                        wm = r_["w"] * msk[None, :]
+                    d = per_s.setdefault(r_["s"], {"evs": [], "ya": [], "yb": [], "P": {arm: [] for arm in arms}})
+                    d["evs"].append(r_["evs"])
+                    d["ya"].append(r_["ya"])
+                    d["yb"].append(r_["yb"])
+                for arm in arms:
+                    Ftr_all = np.vstack([r_["F"][arm][0] for r_ in store])
+                    sdv = Ftr_all.std(0)
+                    k_ = sdv > 1e-9
+                    B, xm, ym, _ = ridge_cv(Ftr_all[:, k_] / sdv[k_], np.concatenate([r_["ytr"] for r_ in store])[:, None],
+                                            np.concatenate([r_["blk"] for r_ in store]), lams)
+                    for r_ in store:
+                        per_s[r_["s"]]["P"][arm].append(((r_["F"][arm][1][:, k_] / sdv[k_] - xm) @ B + ym)[:, 0])
+            tot = {arm: np.zeros((3, Wall.shape[0])) for arm in arms}
+            tot_s = {arm: np.zeros((3, Wall.shape[0])) for arm in arms}
+            n_used = 0
+            for s_, d in per_s.items():
+                evs = np.concatenate(d["evs"])
+                if len(evs) < 30:
+                    continue
+                ww = Wall[:, posmap[evs]]
+                ya, yb = np.concatenate(d["ya"]), np.concatenate(d["yb"])
+                same = same_obs[evs]
+                ok_s = False
+                for msk, accd in ((np.ones(len(evs), bool), tot), (same, tot_s)):
+                    if msk.sum() < 5:
+                        continue
+                    wm = ww * msk[None, :]
+                    with np.errstate(invalid="ignore", divide="ignore"):
                         ctr = lambda M: M - ((wm * M).sum(1) / wm.sum(1))[:, None]
-                        cp = ctr(np.broadcast_to(p[None, :], wm.shape))
-                        cah, cbh = ctr(r_["ca"]), ctr(r_["cb"])
-                        acc_[0] += 0.5 * ((wm * cp * cah).sum(1) + (wm * cp * cbh).sum(1))
-                        acc_[1] += (wm * cp * cp).sum(1)
-                        acc_[2] += (wm * cah * cbh).sum(1)
-                boots[arm] = tot[0] / np.sqrt(tot[1] * tot[2])
-                boots_same[arm] = tot_s[0] / np.sqrt(np.maximum(tot_s[1] * tot_s[2], 1e-300))
+                        cah = ctr(np.broadcast_to(ya[None, :], wm.shape))
+                        cbh = ctr(np.broadcast_to(yb[None, :], wm.shape))
+                        vth = (wm * cah * cbh).sum(1)
+                        if accd is tot:
+                            if vth[0] <= 0:
+                                break
+                            ok_s = True
+                        for arm in arms:
+                            p = np.concatenate(d["P"][arm])
+                            cp = ctr(np.broadcast_to(p[None, :], wm.shape))
+                            accd[arm][0] += 0.5 * ((wm * cp * cah).sum(1) + (wm * cp * cbh).sum(1))
+                            accd[arm][1] += (wm * cp * cp).sum(1)
+                            accd[arm][2] += vth
+                n_used += int(ok_s)
+            if n_used == 0:
+                continue
+            with np.errstate(invalid="ignore", divide="ignore"):
+                boots = {arm: tot[arm][0] / np.sqrt(tot[arm][1] * tot[arm][2]) for arm in arms}
+                boots_same = {arm: tot_s[arm][0] / np.sqrt(np.maximum(tot_s[arm][1] * tot_s[arm][2], 1e-300))
+                              for arm in arms}
             ci = lambda v: [float(np.nanpercentile(v[1:], q)) for q in (2.5, 97.5)]
-            o = {"n_species": len(store)}
+            o = {"n_species": n_used}
             for arm in ("A", "A+R", "A+C"):
                 o[arm] = {"corr": float(boots[arm][0]), "ci": ci(boots[arm])}
             gR, gC = boots["A+R"] - boots["A"], boots["A+C"] - boots["A"]
@@ -298,8 +334,9 @@ def main():
 
 def summarize(out):
     r = json.load(open(os.path.join(out, "route_dose.json"), encoding="utf-8"))
-    print(f"routes {r['n_routes']} (train {r['n_train']}, held-out {r['n_heldout']}, held-out same observer "
-          f"{r['n_heldout_same_observer']}); crosswalk {r['crosswalk']}; NLCD {r['nlcd_years']}")
+    print(f"routes {r['n_routes']} (train {r['n_train']}, held-out {r['n_heldout']}); cv {r.get('cv')}: evaluated "
+          f"{r.get('n_evaluated', r['n_heldout'])} (same observer {r.get('n_evaluated_same_observer', r['n_heldout_same_observer'])}); "
+          f"crosswalk {r['crosswalk']}; NLCD {r['nlcd_years']}")
     f_ = lambda d: f"{d['diff']:+.3f} [{d['ci'][0]:+.3f},{d['ci'][1]:+.3f}]"
     for mode, o in r["modes"].items():
         print(f"  [{mode}]")

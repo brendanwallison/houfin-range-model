@@ -1,14 +1,14 @@
 {
  "exp": "E059",
  "name": "species-cropat",
- "group": "cpu",
+ "group": "gpu",
  "overlay": "research/overlays/desk_tempho_1995_seed1.json",
  "cmd": [
   "bash",
   "-c",
-  "set -e; SCORE_TARGETS=dev bash research/bin/score_both.sh {python} {out}/desk_tempho_1995_s1_cropat --cache {cache}/desk_tempho_1995_s1_cropat --ref-cache {cache}/desk_tempho_1995_s1; SCORE_TARGETS=dev bash research/bin/score_both.sh {python} {out}/desk_tempho_1995_s1_cropat_late --cache {cache}/desk_tempho_1995_s1_cropat_late --ref-cache {cache}/desk_tempho_1995_s1_late; SCORE_TARGETS=dev bash research/bin/score_both.sh {python} {out}/desk_tempho_1995_s2_cropat --cache {cache}/desk_tempho_1995_s2_cropat --ref-cache {cache}/desk_tempho_1995_s2; SCORE_TARGETS=dev bash research/bin/score_both.sh {python} {out}/desk_tempho_1995_s2_cropat_late --cache {cache}/desk_tempho_1995_s2_cropat_late --ref-cache {cache}/desk_tempho_1995_s2_late; SCORE_TARGETS=dev bash research/bin/score_both.sh {python} {out}/desk_tempho_1985_s1_cropat --cache {cache}/desk_tempho_1985_s1_cropat --ref-cache {cache}/desk_tempho_1985_s1; SCORE_TARGETS=dev bash research/bin/score_both.sh {python} {out}/desk_tempho_1985_s1_cropat_late --cache {cache}/desk_tempho_1985_s1_cropat_late --ref-cache {cache}/desk_tempho_1985_s1_late; SCORE_TARGETS=dev bash research/bin/score_both.sh {python} {out}/desk_tempho_1985_s2_cropat --cache {cache}/desk_tempho_1985_s2_cropat --ref-cache {cache}/desk_tempho_1985_s2; SCORE_TARGETS=dev bash research/bin/score_both.sh {python} {out}/desk_tempho_1985_s2_cropat_late --cache {cache}/desk_tempho_1985_s2_cropat_late --ref-cache {cache}/desk_tempho_1985_s2_late"
+  "set -e; export BLR_DEVICE=cuda; SCORE_TARGETS=dev bash research/bin/score_both.sh {python} {out}/desk_tempho_1995_s1_cropat --cache {cache}/desk_tempho_1995_s1_cropat --ref-cache {cache}/desk_tempho_1995_s1; SCORE_TARGETS=dev bash research/bin/score_both.sh {python} {out}/desk_tempho_1995_s1_cropat_late --cache {cache}/desk_tempho_1995_s1_cropat_late --ref-cache {cache}/desk_tempho_1995_s1_late; SCORE_TARGETS=dev bash research/bin/score_both.sh {python} {out}/desk_tempho_1995_s2_cropat --cache {cache}/desk_tempho_1995_s2_cropat --ref-cache {cache}/desk_tempho_1995_s2; SCORE_TARGETS=dev bash research/bin/score_both.sh {python} {out}/desk_tempho_1995_s2_cropat_late --cache {cache}/desk_tempho_1995_s2_cropat_late --ref-cache {cache}/desk_tempho_1995_s2_late; SCORE_TARGETS=dev bash research/bin/score_both.sh {python} {out}/desk_tempho_1985_s1_cropat --cache {cache}/desk_tempho_1985_s1_cropat --ref-cache {cache}/desk_tempho_1985_s1; SCORE_TARGETS=dev bash research/bin/score_both.sh {python} {out}/desk_tempho_1985_s1_cropat_late --cache {cache}/desk_tempho_1985_s1_cropat_late --ref-cache {cache}/desk_tempho_1985_s1_late; SCORE_TARGETS=dev bash research/bin/score_both.sh {python} {out}/desk_tempho_1985_s2_cropat --cache {cache}/desk_tempho_1985_s2_cropat --ref-cache {cache}/desk_tempho_1985_s2; SCORE_TARGETS=dev bash research/bin/score_both.sh {python} {out}/desk_tempho_1985_s2_cropat_late --cache {cache}/desk_tempho_1985_s2_cropat_late --ref-cache {cache}/desk_tempho_1985_s2_late"
  ],
- "expected_minutes": 200,
+ "expected_minutes": 64,
  "summarize": [
   "bash",
   "-c",

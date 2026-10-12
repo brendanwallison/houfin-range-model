@@ -20,6 +20,8 @@ summed objective (species are independent), several starting signal shares with 
 its best (the scale likelihood is multimodal -- see gp_kernels.SCALE_STARTS). The intercept is a
 plug-in: y and X are centred at their training means.
 """
+import os
+
 import numpy as np
 
 REL_FLOOR = 1e-6
@@ -68,6 +70,9 @@ def fit(X, Y, blocks, max_iter=300, starts=STARTS):
     """
     from scipy.optimize import minimize
     torch = _torch()
+    # E059b: BLR_DEVICE=cuda runs the batched per-species Cholesky on the GPU (273 species x ~200 features is
+    # ~8 CPU-hours per fair_rivals run on the CPU). Default cpu, unchanged.
+    dev = os.environ.get("BLR_DEVICE", "cpu")
     X = np.asarray(X, "float64")
     Y = np.asarray(Y, "float64")
     n, p = X.shape
@@ -76,13 +81,14 @@ def fit(X, Y, blocks, max_iter=300, starts=STARTS):
     assert len(cols) == p, "blocks must cover every column exactly once"
     xbar, ybar = X.mean(0), Y.mean(0)
     Xc, Yc = X - xbar, Y - ybar
-    XtX = torch.as_tensor(Xc.T @ Xc)
-    Xty = torch.as_tensor(Xc.T @ Yc)                                # (p, S)
-    yy = torch.as_tensor((Yc * Yc).sum(0))
+    XtX = torch.as_tensor(Xc.T @ Xc, device=dev)
+    Xty = torch.as_tensor(Xc.T @ Yc, device=dev)                    # (p, S)
+    yy = torch.as_tensor((Yc * Yc).sum(0), device=dev)
     var_y = (Yc * Yc).sum(0) / max(n - 1, 1)
     ok = var_y > 1e-14
     floor = np.maximum(REL_FLOOR * var_y, 1e-14)
-    cols_t = torch.as_tensor(cols)
+    cols_t = torch.as_tensor(cols, device=dev)
+    ok_t = torch.as_tensor(ok, device=dev)
     S = Y.shape[1]
     # mean prior variance contributed per unit amplitude, per block (kappa_b)
     kap = np.array([np.trace((Xc[:, s:e].T @ Xc[:, s:e])) / max(n - 1, 1) for s, e in blocks])
@@ -91,13 +97,13 @@ def fit(X, Y, blocks, max_iter=300, starts=STARTS):
 
     def run(x0):
         def f(x):
-            th = torch.tensor(x.reshape(S, B + 1), requires_grad=True)
+            th = torch.tensor(x.reshape(S, B + 1), requires_grad=True, device=dev)
             nll, _ = _nll(th, XtX, Xty, yy, n, cols_t, torch)
-            tot = nll[torch.as_tensor(ok)].sum()
+            tot = nll[ok_t].sum()
             tot.backward()
-            g = th.grad.numpy().copy()
+            g = th.grad.cpu().numpy().copy()
             g[~ok] = 0.0
-            return float(tot.detach()), g.reshape(-1)
+            return float(tot.detach().cpu()), g.reshape(-1)
         bnds = []
         for s in range(S):
             # a block's prior variance per coefficient is capped at 1e6 x "explains all the variance":
@@ -108,8 +114,8 @@ def fit(X, Y, blocks, max_iter=300, starts=STARTS):
                        options={"maxiter": int(max_iter)})
         th = res.x.reshape(S, B + 1)
         with torch.no_grad():
-            nll, _ = _nll(torch.as_tensor(th), XtX, Xty, yy, n, cols_t, torch)
-        return th, nll.numpy()
+            nll, _ = _nll(torch.as_tensor(th, device=dev), XtX, Xty, yy, n, cols_t, torch)
+        return th, nll.cpu().numpy()
 
     best_th, best_nll = None, None
     for share in starts:
@@ -124,15 +130,15 @@ def fit(X, Y, blocks, max_iter=300, starts=STARTS):
             better = nll < best_nll - 1e-9
             best_th[better], best_nll[better] = th[better], nll[better]
     best_th[~ok] = np.log(floor[~ok])[:, None]
-    th_t = torch.as_tensor(best_th)
+    th_t = torch.as_tensor(best_th, device=dev)
     with torch.no_grad():
         v = torch.exp(th_t[:, -1])
         A = XtX.unsqueeze(0) / v[:, None, None] + torch.diag_embed(torch.exp(-th_t[:, :-1][:, cols_t]))
         Ainv = torch.linalg.inv(A)
         coef = (Ainv @ Xty.T.unsqueeze(-1)).squeeze(-1) / v[:, None]
     return {"xbar": xbar, "ybar": ybar, "blocks": list(blocks), "cols": cols,
-            "a": np.exp(best_th[:, :B]), "v": np.exp(best_th[:, B]), "coef": coef.numpy(),
-            "Ainv": Ainv.numpy(), "nll": np.where(ok, best_nll, np.nan), "ok": ok, "n": n}
+            "a": np.exp(best_th[:, :B]), "v": np.exp(best_th[:, B]), "coef": coef.cpu().numpy(),
+            "Ainv": Ainv.cpu().numpy(), "nll": np.where(ok, best_nll, np.nan), "ok": ok, "n": n}
 
 
 def predict(model, Xn, y_self=None, chunk=16, device=None):

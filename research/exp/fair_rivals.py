@@ -116,7 +116,8 @@ def main():
     a = ap.parse_args()
     if a.summarize:
         return summarize(a.summarize)
-    os.environ.setdefault("CUDA_VISIBLE_DEVICES", "")
+    if os.environ.get("BLR_DEVICE", "cpu") == "cpu":       # E059b: a GPU-group job may run the BLRs on the GPU
+        os.environ.setdefault("CUDA_VISIBLE_DEVICES", "")
     from scipy import sparse
     from change_oracle import desk_epoch_z, group_rows
     from lib import blr

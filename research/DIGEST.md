@@ -575,3 +575,24 @@ The age-model sensitivity fit comes last, once there are candidate backcasts wor
   open question for the corrected-suite run (E006).
 - DESK training can resume from checkpoints; tempho epoch selection no longer reads withheld years (A9).
 - Pre-registered before any data: E004 (atlas) and E005 (downstream-matched readout + kernel variants).
+
+2026-10-11 21:40 -- "Is DESK over-fitting?" (user question; read from existing training logs plus E048's held-out
+spatial skill. Steers only, not verified.)
+- SPACE: yes, classically, after ~100-150 epochs.
+  - Training z-MSE falls 0.17 -> 0.12 (epochs 100-500) while held-out-place error bottoms at epochs 82-114 and rises
+    15-19% by epoch 500 (4 logs: E022 t1985 s1/s2, t1995 s1, E048 t1985 s1).
+  - Early stopping on val_kernel catches most of it. On independent held-out cells, the selected state beats a
+    linear covariate map by +0.03 (0.814-0.820). The late state only ties it (0.785-0.792; 3 E048 models,
+    fair_rivals space_level).
+- SELECTION NOISE:
+  - Mid-training, val_kernel moves epoch to epoch by sd ~0.001, about 12% of its value and ~15x its reported
+    over-cells SE. The noise dies as the learning rate decays (sd 0.00003 at epoch 400-500).
+  - The chosen epoch sits ~15% below the median of its 20 neighbours. So best val_kernel is optimistic, and
+    run-to-run comparisons at the 0.0005 level (E048's tolerance) are within this noise.
+- TIME: over-fitting is not what limits it.
+  - The late, more over-fit state backcasts community change as well or better (+0.01-0.03; E039n/E046).
+  - Year-out error rises only 3-7% after its minimum.
+  - Low-capacity linear rivals match DESK in time (E039i), and regularizing levers did nothing (E026, E043).
+  - Likely limit: the information in the inputs.
+- Implication: the selected state is best for space and the late state for time. No single snapshot gets both.
+  Checkpoint averaging or selection on a smoothed val curve would make production's state less a matter of luck.

@@ -596,3 +596,32 @@ spatial skill. Steers only, not verified.)
   - Likely limit: the information in the inputs.
 - Implication: the selected state is best for space and the late state for time. No single snapshot gets both.
   Checkpoint averaging or selection on a smoothed val curve would make production's state less a matter of luck.
+
+2026-10-11 21:55 -- "Is the metric loss stable? How reliable was E026?" (user question; existing logs only; steers)
+- The metric term trains smoothly. Its training value falls steadily (0.0039 -> 0.0021 over epochs 60-500), and it
+  is ~9% of the total loss throughout.
+- The epoch-to-epoch instability is NOT from the metric term's pair sampling. Mid-training val_kernel jitter
+  (epochs 101-200) is the same at every pair count, although 64x more pairs cut that term's gradient noise ~8x:
+  - 4,096 pairs: 14.6%
+  - 65,536 pairs: 11.9% / 13.1% (two seeds)
+  - 262,144 pairs: 14.0%
+- The jitter tracks the learning rate (likely the step size):
+  - 12-15% at lr 1.4e-3 to 1.1e-3 (epochs 100-200);
+  - ~5% at 6e-4 (200-300);
+  - <1% at <=2.2e-4 (400-500).
+  - DESK takes one optimizer step per epoch, so each epoch is one full Adam step.
+  - Random input-stream masking may add to it (untested).
+  - The selected epochs (104-165) fall in the noisiest phase.
+- E026's reliability:
+  - Sound for what it tested. It found no effect bigger than the ~0.02-0.03 seed spread across a 64x range, on two
+    backcast measures, at both the selected and late states. The training logs agree (withheld direction cosine the
+    same at every epoch), and so do the archived sweeps (16 steps per epoch, or a heavier metric weight, gave no gain).
+  - Limits:
+    - one seed per arm;
+    - the T0 1996 split only;
+    - the older estimands (raw backcast corr, not gain beyond the placebo);
+    - not verified (no skeptic, no replication).
+    - It tested gradient NOISE, not supervision CONTENT. Same-place cross-year pairs stay ~0.035% of pairs at any
+      count. Content was tested separately by E043 (oversampling them): no lever.
+- Implication: weight averaging (EMA/SWA) over the high-lr phase, or a lower peak lr, would make the selected state
+  less a matter of luck. Untested.

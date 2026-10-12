@@ -1,7 +1,7 @@
 # DIGEST
 
 ## CURRENT STATE (rewritten each round; read this first -- the dated log below keeps the history)
-Last updated 2026-10-11 21:25 (route-scale test E053b: no sign the 27 km grid limits covariate gains; covariate tally: crop types and observed land cover +0.01-0.03 in open-habitat guilds; CRP, forest age, reservoirs 0; E048 CropAT-DESK training). "Solid" =
+Last updated 2026-10-11 21:01 (route-scale test E053b: no sign the 27 km grid limits covariate gains; covariate tally: crop types and observed land cover +0.01-0.03 in open-habitat guilds; CRP, forest age, reservoirs 0; E048 CropAT-DESK training). "Solid" =
 independently re-derived, replicated on a second split or seed, and survived a skeptic review. "Tentative" = one run,
 or checks still pending. Experiment numbers point to research/experiments/EXXX.md.
 
@@ -576,7 +576,7 @@ The age-model sensitivity fit comes last, once there are candidate backcasts wor
 - DESK training can resume from checkpoints; tempho epoch selection no longer reads withheld years (A9).
 - Pre-registered before any data: E004 (atlas) and E005 (downstream-matched readout + kernel variants).
 
-2026-10-11 21:40 -- "Is DESK over-fitting?" (user question; read from existing training logs plus E048's held-out
+2026-10-11 21:22 -- "Is DESK over-fitting?" (user question; read from existing training logs plus E048's held-out
 spatial skill. Steers only, not verified.)
 - SPACE: yes, classically, after ~100-150 epochs.
   - Training z-MSE falls 0.17 -> 0.12 (epochs 100-500) while held-out-place error bottoms at epochs 82-114 and rises
@@ -597,7 +597,7 @@ spatial skill. Steers only, not verified.)
 - Implication: the selected state is best for space and the late state for time. No single snapshot gets both.
   Checkpoint averaging or selection on a smoothed val curve would make production's state less a matter of luck.
 
-2026-10-11 21:55 -- "Is the metric loss stable? How reliable was E026?" (user question; existing logs only; steers)
+2026-10-11 21:26 -- "Is the metric loss stable? How reliable was E026?" (user question; existing logs only; steers)
 - The metric term trains smoothly. Its training value falls steadily (0.0039 -> 0.0021 over epochs 60-500), and it
   is ~9% of the total loss throughout.
 - The epoch-to-epoch instability is NOT from the metric term's pair sampling. Mid-training val_kernel jitter
@@ -626,7 +626,7 @@ spatial skill. Steers only, not verified.)
 - Implication: weight averaging (EMA/SWA) over the high-lr phase, or a lower peak lr, would make the selected state
   less a matter of luck. Untested.
 
-2026-10-11 22:30 -- CORRECTION and follow-up (user questions)
+2026-10-11 21:36 -- CORRECTION and follow-up (user questions)
 - WITHDRAWN: "4,096 pairs over-fits slightly less". It rested on one run's late held-out-place error. The training
   error is the same in all four runs (0.114-0.116 at epochs 450-499), so the 4,096 run's lower held-out error
   (0.2518 vs 0.2578-0.2613) is a slightly smaller gap (2.17x vs 2.25-2.29x).

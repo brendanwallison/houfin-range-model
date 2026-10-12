@@ -1,7 +1,7 @@
 # DIGEST
 
 ## CURRENT STATE (rewritten each round; read this first -- the dated log below keeps the history)
-Last updated 2026-10-11 19:05 (E052: observed land-cover change adds ~+0.01-0.03 for open-habitat guilds, not forest; E051 dams and E048 CropAT-DESK running). "Solid" =
+Last updated 2026-10-11 19:02 (E052: observed land-cover change adds ~+0.01-0.03 for open-habitat guilds, not forest; E051 dams and E048 CropAT-DESK running). "Solid" =
 independently re-derived, replicated on a second split or seed, and survived a skeptic review. "Tentative" = one run,
 or checks still pending. Experiment numbers point to research/experiments/EXXX.md.
 

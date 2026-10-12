@@ -72,6 +72,8 @@ def main():
     ap.add_argument("--n-boot", type=int, default=500)
     ap.add_argument("--summarize", default=None)
     ap.add_argument("--cv", type=int, default=0, help="E053b: K-fold spatial-block CV over all routes")
+    ap.add_argument("--rival-pcs", type=int, default=0,
+                    help="E053c: rival block A = this many leading PCs of covariate change (unsupervised, all routes)")
     a = ap.parse_args()
     if a.summarize:
         return summarize(a.summarize)
@@ -189,6 +191,13 @@ def main():
     dA = acc[MODERN] - acc[EARLY]
     keep = dA[tc].std(0) > 1e-9
     dA = dA[:, keep]
+    if a.rival_pcs:
+        # E053c: ~300 raw channels made the pooled baseline unstable (wetland A = -0.50 in E053b); its leading PCs
+        # carry the same change at far fewer degrees of freedom. Unsupervised (no bird data), so fitting on all
+        # routes leaks nothing about the outcome.
+        dAs = (dA - dA.mean(0)) / dA.std(0)
+        _, _, Va = np.linalg.svd(dAs, full_matrices=False)
+        dA = dAs @ Va[:a.rival_pcs].T
     levels = acc[MODERN]
     _, _, Vt = np.linalg.svd(levels[tc] - levels[tc].mean(0), full_matrices=False)
     Tm = np.hstack([np.ones((n, 1)), levels @ Vt[:a.n_type].T])
@@ -223,7 +232,7 @@ def main():
     rng = np.random.default_rng(11)
     Wall = np.vstack([np.ones(len(eval_all)), rng.multinomial(len(ub), np.full(len(ub), 1.0 / len(ub)),
                                                               size=a.n_boot)[:, binv]]).astype("float64")
-    res = {"n_routes": n, "n_train": int(len(tc)), "n_heldout": int(len(ev)), "cv": a.cv,
+    res = {"n_routes": n, "n_train": int(len(tc)), "n_heldout": int(len(ev)), "cv": a.cv, "rival_pcs": a.rival_pcs,
            "n_evaluated": int(len(eval_all)), "n_evaluated_same_observer": int(same_obs[eval_all].sum()),
            "n_heldout_same_observer": int(same_obs[ev].sum()),
            "crosswalk": {k: v for k, v in diag.items() if k != "unmatched_codes"},
@@ -335,7 +344,7 @@ def main():
 def summarize(out):
     r = json.load(open(os.path.join(out, "route_dose.json"), encoding="utf-8"))
     print(f"routes {r['n_routes']} (train {r['n_train']}, held-out {r['n_heldout']}); cv {r.get('cv')}: evaluated "
-          f"{r.get('n_evaluated', r['n_heldout'])} (same observer {r.get('n_evaluated_same_observer', r['n_heldout_same_observer'])}); "
+          f"{r.get('n_evaluated', r['n_heldout'])}, rival PCs {r.get('rival_pcs', 0)} (same observer {r.get('n_evaluated_same_observer', r['n_heldout_same_observer'])}); "
           f"crosswalk {r['crosswalk']}; NLCD {r['nlcd_years']}")
     f_ = lambda d: f"{d['diff']:+.3f} [{d['ci'][0]:+.3f},{d['ci'][1]:+.3f}]"
     for mode, o in r["modes"].items():

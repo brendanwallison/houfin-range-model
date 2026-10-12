@@ -104,10 +104,13 @@ WHERE THINGS STAND (2026-10-11 ~11:00, plain summary; details below)
      both from Annual NLCD 1990 -> 2019, predicting route-level change in 369 species, beyond all DESK covariates:
      - 2,121 routes, all scored out-of-fold. Forest birds (70 species, the stable case): route ~ cell ~ 0.
      - Grassland: E053's route advantage did not replicate (+0.009, CI includes 0).
-     - Shrubland: a route advantage (+0.027 [+0.006, +0.045]), but its moved-route nulls are large too.
-     - Wetland and human-modified: the all-channel baseline was unstable, so they are unreadable. E053c re-runs the
-       test with a 32-PC baseline (queued).
-     - So far: no sign that the grid's coarseness is what holds the covariate gains to a few hundredths. Unverified.
+     - Shrubland: a route advantage (+0.027 in E053b, +0.145 with a 32-PC baseline in E053c). It swings with the
+       baseline, its moved-route nulls are nearly as large, and it vanishes on routes with the same observer in both
+       epochs. An observer-turnover artifact fits all three (likely).
+     - Wetland and human-modified: unreadable under either baseline (corrs past +-1). Likely too little resolvable
+       route-level change.
+     - No sign that the grid's coarseness is what holds the covariate gains to a few hundredths. Steers only; not
+       verified.
 2. DESK's TEMPORAL signal: after 1950 it is mostly the land-use management trend (fertilizer, irrigation) -- partly
    real intensification (it scales with cropland), partly a clock; that trend is flat before 1950. DESK still moves
    before 1950 (~0.03/decade vs ~0.05 after) through land-use classes, climate and population, in a different

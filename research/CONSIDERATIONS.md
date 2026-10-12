@@ -150,3 +150,12 @@ Items are numbered so records can cite them (e.g. "considerations: G3, M1, M6").
   were graded against a direction with no temperature change, which alone halves a lean. When a treatment alters
   inputs, build the metric from a fixed reference (the control's real covariates) and grade every arm on it; and
   measure at matched training states (selected AND late), with paired CIs. (E038 skeptic, 2026-10-11)
+
+## Added 2026-10-12
+- **M29 A deeper series inherits its curators' limits.** Audubon's own CBC trend products start in 1966-67, chosen
+  for sample size and consistent methods; pre-1966 effort (party-hours) is unreliable. Pre-1966 CBC "truth" would
+  bring effort and observer change larger than BBS's (M3), in a winter community ESK was not built on, and BBS-CBC
+  calibration only covers the years we can already test. Judge any pre-1966 validation source by (i) whether its
+  own curators trust that era, (ii) season and community match, (iii) whether it tests what the downstream uses in
+  1902-1939 (absences beyond range edges). Candidates: Grinnell resurveys (site occupancy ~1900-1940 vs 2000s,
+  California and Great Basin), Breeding Bird Census plots (1937+), historical range edges. (user, 2026-10-12)

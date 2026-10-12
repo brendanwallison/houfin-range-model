@@ -625,3 +625,24 @@ spatial skill. Steers only, not verified.)
       count. Content was tested separately by E043 (oversampling them): no lever.
 - Implication: weight averaging (EMA/SWA) over the high-lr phase, or a lower peak lr, would make the selected state
   less a matter of luck. Untested.
+
+2026-10-11 22:30 -- CORRECTION and follow-up (user questions)
+- WITHDRAWN: "4,096 pairs over-fits slightly less". It rested on one run's late held-out-place error. The training
+  error is the same in all four runs (0.114-0.116 at epochs 450-499), so the 4,096 run's lower held-out error
+  (0.2518 vs 0.2578-0.2613) is a slightly smaller gap (2.17x vs 2.25-2.29x).
+  - The user's reading is as consistent with the logs: 65k seed 2 is best on held-out years mid-training (0.2115 vs
+    0.2146-0.2148).
+  - But 65k seed 1 is not (0.2147), so the seed gap is as big as any arm difference.
+  - Correct statement: no difference between pair counts can be read from one seed per arm.
+- WHY THE STABILIZING TERM IS ~76% OF THE LOSS VALUE: it is the per-element MSE between DESK's EMA output and the
+  precomputed ESK coordinates of each training cell-year's observed community.
+  - Its weight (64 per element) is the historical 1.0 on a 64-dim sum, kept for numerical continuity (config
+    comment), not tuned for time.
+  - Its VALUE is large partly because single cell-year targets carry sampling noise that no model should fit
+    (likely). Value share is not gradient share; the gradient shares were never measured.
+  - Heavier metric weights (sweep mw20-100) did not improve held-out direction in trained years.
+- OVER-FITTING REGIME: yes. Held-out-place error is past its minimum by the selected epoch; the gap is 1.5x there
+  and 2.2x at epoch 500.
+  - Dropout and weight decay do not change it (sweep). Narrower width and a heavier metric term do.
+  - Whether less over-fitting helps WITHHELD-decade extrapolation was never tested: E054 (hidden width 64, both
+    T0s) is pre-registered.

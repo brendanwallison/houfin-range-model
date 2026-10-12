@@ -1,0 +1,18 @@
+{
+ "exp": "E054",
+ "name": "desk-tempho1985-seed1-w64",
+ "group": "gpu",
+ "overlay": "research/overlays/desk_tempho_1985_seed1_w64.json",
+ "cmd": [
+  "bash",
+  "-c",
+  "set -e; export RESEARCH_OUT={out} TMPDIR={out}/tmp MPLCONFIGDIR={out}/tmp/mpl WANDB_MODE=offline WANDB_DIR={out}; mkdir -p {out}/desk {out}/tmp; {python} scripts/run_encoder.py desk; {python} research/exp/cache.py --out {cache}/desk_tempho_1985_s1_w64; {python} research/exp/epoch_variant.py --run {out} --overlay research/overlays/desk_tempho_1985_seed1_w64.json --cache-out {cache}/desk_tempho_1985_s1_w64_late --work {out}/late"
+ ],
+ "expected_minutes": 70,
+ "summarize": [
+  "python",
+  "-c",
+  "import json; s=json.load(open('{out}/desk/run_summary.json')); print({k: s.get(k) for k in ('best_epoch','best_val_kernel','best_val_zmse','epochs_run')})"
+ ],
+ "note": "E054: T0 1986 seed 1 at hidden_width 64 (control: E022 desk_tempho_1985_seed1, width 128)"
+}

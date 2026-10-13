@@ -33,3 +33,9 @@ Each entry: title line, registry job ids, number with CI, caveats, eval_version.
   - Effects are a few hundredths. eval_version pre-v1.
 - Downstream (an implication, not a decision): the age model's readout could take the MEAN z of several DESK seeds,
   preferably late-state ones, at k times the training cost. It keeps the BLR form (z is still a linear feature map).
+- CAVEAT (2026-10-13, E059b): F1 holds for the 96-species COMMUNITY composite. For the 273 OUT-OF-COMMUNITY species
+  (the production-relevant case):
+  - the ensemble lifts late-state species change by +0.034 (T0 1986, CI > 0) / +0.017 (T0 1996, CI includes 0)
+    over seed 1, and spatial level by +0.006-0.009;
+  - it adds NOTHING beyond the strong linear base (the same +0.002-0.004 as a single seed);
+  - for these species every DESK configuration trails the trend-plus-covariates base by 0.09-0.13.

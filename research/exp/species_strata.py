@@ -44,6 +44,12 @@ def main():
     ap.add_argument("--runs", nargs="+", required=True)
     ap.add_argument("--tag", default="_p96dev")
     ap.add_argument("--out", default=None)
+    ap.add_argument("--species-filter", default=None,
+                    help="E067: a file of species codes (one per line); strata use only these (an evaluation half)")
+    ap.add_argument("--contrast", action="append", default=[],
+                    help="E067: RUN_A:RUN_B (basenames). Paired per-draw difference A - B of the DESK readout (change) "
+                         "and of the pooled level readout, per stratum. Valid when both runs share the same draws "
+                         "(same held-out cells, same seed)")
     ap.add_argument("--level", action="store_true",
                     help="E059h: also stratify SPATIAL level (species_level<tag>.npz: DESK pooled readout vs linear map)")
     ap.add_argument("--seed-summary", action="store_true",
@@ -52,11 +58,17 @@ def main():
     a = ap.parse_args()
     import pandas as pd
     sim = pd.read_csv(a.similarity)
-    res = {}
+    keep = None
+    if a.species_filter:
+        keep = set(l.strip() for l in open(a.species_filter) if l.strip())
+    res, draws = {}, {}
     for run in a.runs:
         z = np.load(os.path.join(run, f"species_components{a.tag}.npz"))
         cols = [str(c) for c in z["columns"]]
         St = strata(sim, cols)
+        if keep is not None:
+            kmask = np.array([c in keep for c in cols])
+            St = {k: v & kmask for k, v in St.items()}
         vt = z["vt"].astype("float64")
         arms = defaultdict(list)
         for k in z.files:
@@ -71,6 +83,7 @@ def main():
             if m.sum() < 5:
                 continue
             B = {arm: np.mean([corr(mb, m) for mb in mbs], axis=0) for arm, mbs in arms.items()}
+            draws.setdefault(os.path.basename(os.path.normpath(run)), {})[sname] = {"change": B["desk_within"]}
             ci = lambda v: [float(np.nanpercentile(v[1:], q)) for q in (2.5, 97.5)]
             o = {"n_species": int(m.sum()), "arms": {k: {"corr": float(v[0]), "ci": ci(v)} for k, v in B.items()}}
             for x, y in (("desk_within", "strong"), ("desk_within", "placebo_300"), ("strong+desk_within", "strong"),
@@ -87,6 +100,7 @@ def main():
             for sname, m in St.items():
                 if sname in out:
                     dp, pr = lc("desk_pooled", m), lc("pooled_ridge", m)
+                    draws[os.path.basename(os.path.normpath(run))][sname]["level"] = dp
                     ci = lambda v: [float(np.nanpercentile(v[1:], q)) for q in (2.5, 97.5)]
                     out[sname]["level"] = {"desk_pooled": float(dp[0]), "pooled_ridge": float(pr[0]),
                                            "desk - linear": {"diff": float((dp - pr)[0]), "ci": ci(dp - pr)}}
@@ -104,6 +118,25 @@ def main():
                 line += f" | LEVEL desk {o['level']['desk_pooled']:.3f} lin {o['level']['pooled_ridge']:.3f} " \
                         f"{f_(o['level']['desk - linear'])}"
             print(line, flush=True)
+    if a.contrast:
+        print("== CONTRASTS (paired per draw): A - B")
+        res["contrasts"] = {}
+        for ctr in a.contrast:
+            A_, B_ = ctr.split(":")
+            if A_ not in draws or B_ not in draws:
+                print(f"  {ctr}: missing run")
+                continue
+            for sname in draws[A_]:
+                if sname not in draws[B_]:
+                    continue
+                o = {}
+                for what in ("change", "level"):
+                    if what in draws[A_][sname] and what in draws[B_][sname]:
+                        d = draws[A_][sname][what] - draws[B_][sname][what]
+                        o[what] = {"diff": float(d[0]), "ci": [float(np.nanpercentile(d[1:], q)) for q in (2.5, 97.5)]}
+                res["contrasts"].setdefault(ctr, {})[sname] = o
+                txt = " | ".join(f"{w} {v['diff']:+.3f} [{v['ci'][0]:+.3f},{v['ci'][1]:+.3f}]" for w, v in o.items())
+                print(f"  {ctr:34s} {sname:11s} {txt}")
     if a.seed_summary:
         import re
         groups = defaultdict(list)

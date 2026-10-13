@@ -95,6 +95,9 @@ def main():
     ap.add_argument("--early", type=int, nargs=2, default=None,
                     help="E059f: early (backcast) window instead of the suite's 1966-86; needs --esk-dir holding the "
                          "matching esk_epochs file from esk_project.py --early")
+    ap.add_argument("--z-keys-only", action="store_true",
+                    help="E067: the representation exists only at the keys (z_raw.npy), not as a dense z_raw_all; the "
+                         "raw change arm is then dchg(z at keys), identical to the epoch form (max diff ~1e-16)")
     ap.add_argument("--save-species", action="store_true",
                     help="E059g: save per-species bootstrap components (cv, vp, vt per draw) of the key arms, so any "
                          "species stratum (e.g. similarity to the focal) can be scored afterwards with the same draws")
@@ -165,9 +168,12 @@ def main():
         Tb = epoch_mean_observed(Xdev, [half_b[j] for j in jm]) - epoch_mean_observed(Xdev, [half_b[j] for j in je])
     early_rows = [np.asarray(full[pairs[j, 0]]) for j in ev]
     mod_rows = [np.asarray(full[pairs[j, 1]]) for j in ev]
-    zr_all = np.load(c("z_raw_all.npy"), mmap_mode="r")
     ci_, y0 = np.load(c("key_cell_index.npy")), int(np.load(c("years.npy"))[0])
-    D_desk = (desk_epoch_z(zr_all, ci_, y0, keys, mod_rows, r) - desk_epoch_z(zr_all, ci_, y0, keys, early_rows, r))
+    if a.z_keys_only:
+        zr_all, D_desk = None, None                     # set from the keys below
+    else:
+        zr_all = np.load(c("z_raw_all.npy"), mmap_mode="r")
+        D_desk = (desk_epoch_z(zr_all, ci_, y0, keys, mod_rows, r) - desk_epoch_z(zr_all, ci_, y0, keys, early_rows, r))
 
     def gmat(groups):
         rows = np.concatenate([np.full(len(g), i) for i, g in enumerate(groups)])
@@ -257,6 +263,8 @@ def main():
     # DESK through linear readouts fitted on the same rows (z_raw at keys)
     zk = np.asarray(np.load(c("z_raw.npy"), mmap_mode="r")[:, :r], "float64")
     dz = dchg(zk)
+    if D_desk is None:
+        D_desk = preds["desk"] = dz
     notes["desk_keys_vs_epoch_z_maxabs"] = float(np.abs(dz - D_desk).max())
     preds["desk_within"] = dz @ blr.fit((zk - cmean(zk, w_ty))[trn], Zd[trn], [(0, r)])["coef"].T
     keep_feats["desk_within"] = (zk - cmean(zk, w_ty), dz)
@@ -267,11 +275,14 @@ def main():
         rc = lambda f: os.path.join(a.ref_cache, f)
         assert np.array_equal(np.load(rc("keys.npy")), keys), "ref cache keys differ"
         assert np.array_equal(np.load(rc("key_cell_index.npy")), ci_), "ref cache cell index differs"
-        zr_ref = np.load(rc("z_raw_all.npy"), mmap_mode="r")
-        preds["desk_ref"] = (desk_epoch_z(zr_ref, ci_, y0, keys, mod_rows, r)
-                             - desk_epoch_z(zr_ref, ci_, y0, keys, early_rows, r))
         zkr = np.asarray(np.load(rc("z_raw.npy"), mmap_mode="r")[:, :r], "float64")
         dzr = dchg(zkr)
+        if a.z_keys_only:
+            preds["desk_ref"] = dzr
+        else:
+            zr_ref = np.load(rc("z_raw_all.npy"), mmap_mode="r")
+            preds["desk_ref"] = (desk_epoch_z(zr_ref, ci_, y0, keys, mod_rows, r)
+                                 - desk_epoch_z(zr_ref, ci_, y0, keys, early_rows, r))
         preds["desk_ref_within"] = dzr @ blr.fit((zkr - cmean(zkr, w_ty))[trn], Zd[trn], [(0, r)])["coef"].T
         if Xdev is not None:
             preds["desk_ref"] = preds["desk_ref_within"]

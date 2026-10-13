@@ -6,9 +6,9 @@
  "cmd": [
   "bash",
   "-c",
-  "set -e; export BLR_DEVICE=cuda; SCORE_TARGETS=dev bash research/bin/score_both.sh {python} {out}/desk_tempho_1995_s1_grok --cache {cache}/desk_tempho_1995_s1_grok --ref-cache {cache}/desk_tempho_1995_s1; SCORE_TARGETS=dev bash research/bin/score_both.sh {python} {out}/desk_tempho_1995_s1_grok_ep0300 --cache {cache}/desk_tempho_1995_s1_grok_ep0300 --ref-cache {cache}/desk_tempho_1995_s1; SCORE_TARGETS=dev bash research/bin/score_both.sh {python} {out}/desk_tempho_1995_s1_grok_ep0500 --cache {cache}/desk_tempho_1995_s1_grok_ep0500 --ref-cache {cache}/desk_tempho_1995_s1; SCORE_TARGETS=dev bash research/bin/score_both.sh {python} {out}/desk_tempho_1995_s1_grok_ep1000 --cache {cache}/desk_tempho_1995_s1_grok_ep1000 --ref-cache {cache}/desk_tempho_1995_s1; SCORE_TARGETS=dev bash research/bin/score_both.sh {python} {out}/desk_tempho_1995_s1_grok_ep1500 --cache {cache}/desk_tempho_1995_s1_grok_ep1500 --ref-cache {cache}/desk_tempho_1995_s1"
+  "set -e; export BLR_DEVICE=cuda BLR_MAX_ITER=100 BLR_STARTS=0.5; SCORE_TARGETS=dev bash research/bin/score_both.sh {python} {out}/desk_tempho_1995_s1_grok --cache {cache}/desk_tempho_1995_s1_grok --ref-cache {cache}/desk_tempho_1995_s1; SCORE_TARGETS=dev bash research/bin/score_both.sh {python} {out}/desk_tempho_1995_s1_grok_ep0300 --cache {cache}/desk_tempho_1995_s1_grok_ep0300 --ref-cache {cache}/desk_tempho_1995_s1; SCORE_TARGETS=dev bash research/bin/score_both.sh {python} {out}/desk_tempho_1995_s1_grok_ep0500 --cache {cache}/desk_tempho_1995_s1_grok_ep0500 --ref-cache {cache}/desk_tempho_1995_s1; SCORE_TARGETS=dev bash research/bin/score_both.sh {python} {out}/desk_tempho_1995_s1_grok_ep1000 --cache {cache}/desk_tempho_1995_s1_grok_ep1000 --ref-cache {cache}/desk_tempho_1995_s1; SCORE_TARGETS=dev bash research/bin/score_both.sh {python} {out}/desk_tempho_1995_s1_grok_ep1500 --cache {cache}/desk_tempho_1995_s1_grok_ep1500 --ref-cache {cache}/desk_tempho_1995_s1"
  ],
- "expected_minutes": 40,
+ "expected_minutes": 100,
  "summarize": [
   "bash",
   "-c",

@@ -1,0 +1,8 @@
+{
+ "exp": "E066", "name": "e066b-t2-aggregated", "group": "io",
+ "overlay": "research/overlays/desk_tempho_1995_seed1.json",
+ "cmd": ["bash", "-c", "set -e; {python} research/exp/e066_similarity_links.py t2 --agg 1 3 5 10 --real /mnt/e/Datasets/cbc_raw/prepared/cbc_circles_comm.npz --degraded thin=/mnt/e/Datasets/cbc_raw/pseudo_early_thin/prepared omit=/mnt/e/Datasets/cbc_raw/pseudo_early_omit/prepared --out {out}"],
+ "expected_minutes": 10,
+ "summarize": ["bash", "-c", "cat {out}/e066_t2_agg.json"],
+ "note": "E066b: order under degradation when k counts per circle and era are averaged"
+}

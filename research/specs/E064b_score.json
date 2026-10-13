@@ -1,0 +1,9 @@
+{
+ "exp": "E064", "name": "e064b-score", "group": "cpu",
+ "after_jobs": ["E064/cbc-fit-counters-thin"],
+ "overlay": "research/overlays/desk_tempho_1995_seed1.json",
+ "cmd": ["bash", "-c", "set -e; F=$(ls -d $(dirname {out})/cbc-fit-counters-v2-* | head -1); T=$(ls -d $(dirname {out})/cbc-fit-counters-thin-* | head -1); {python} research/exp/e064b_score.py --data /mnt/e/Datasets/cbc_raw/prepared/cbc_circles_v2.npz --fit-full $F/fit_counters.npz --fit-thin $T/fit_counters_thin.npz --out {out}"],
+ "expected_minutes": 3,
+ "summarize": ["bash", "-c", "cat {out}/e064b.json"],
+ "note": "E064b: sparsity vs effort proxy for the pre-1940 predictive shortfall"
+}

@@ -35,6 +35,7 @@ def main():
     ap.add_argument("--sd-a", type=float, default=3.0)
     ap.add_argument("--sd-rw", type=float, default=0.3)
     ap.add_argument("--sd-g", type=float, default=5.0)
+    ap.add_argument("--thin-post1966-to-early", action="store_true")
     a = ap.parse_args()
     import torch
     torch.manual_seed(a.seed)
@@ -47,6 +48,21 @@ def main():
     hold = rng.random(len(Y)) < a.holdout
     fit = ok & ~hold
     yr = D["year_end"]
+    if a.thin_post1966_to_early:
+        # E064b: keep pre-1966 rows; thin post-1966 FIT rows so each stratum has, per decade, as many circle-years as
+        # it had per decade before 1940 (strata with none before 1940 keep none after 1966). Held-out rows untouched.
+        sr = D["stratum_idx"]
+        early = ok & (yr < 1940)
+        per_dec = np.bincount(sr[early], minlength=len(D["strata"])) / 4.0           # 1901-1939: ~4 decades
+        late = np.where(fit & (yr >= 1966))[0]
+        keep = np.zeros(len(Y), bool)
+        dec = yr // 10
+        for (r, d), rows in __import__("pandas").Series(late).groupby([sr[late], dec[late]]):
+            k = int(rng.binomial(1, per_dec[r] % 1)) + int(per_dec[r])
+            if k > 0:
+                keep[rng.choice(rows.to_numpy(), size=min(k, len(rows)), replace=False)] = True
+        fit = fit & ((yr < 1966) | keep)
+        print(f"[E064b] thinned post-1966 fit rows: {int((fit & (yr >= 1966)).sum()):,} kept of {len(late):,}", flush=True)
     years = np.arange(yr.min(), yr.max() + 1)
     T = len(years)
     nC, nR, S = len(D["circles"]), len(D["strata"]), Y.shape[1]

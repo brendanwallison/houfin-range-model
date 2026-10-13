@@ -25,6 +25,16 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(os.path.dirname(_HERE)))
 
 
+def epochs_name(early=None, modern=None):
+    """File name of an esk_epochs variant: the suite's default, a non-default modern epoch (E056), or both (E059f)."""
+    if early is None and modern is None:
+        return "esk_epochs.npz"
+    if early is None:
+        return f"esk_epochs_m{modern[0]}_{modern[1]}.npz"
+    m = modern or (2005, 2025)
+    return f"esk_epochs_e{early[0]}_{early[1]}_m{m[0]}_{m[1]}.npz"
+
+
 def epoch_groups(keys, withheld, early, modern):
     """``{(row, col, epoch, withheld): [row indices in year order]}`` for the two epochs. Pure."""
     wh = set(int(y) for y in withheld)
@@ -41,6 +51,8 @@ def epoch_groups(keys, withheld, early, modern):
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--cache", required=True)
+    ap.add_argument("--early", type=int, nargs=2, default=None,
+                    help="E059f: a non-default EARLY epoch (a backcast window); writes esk_epochs_e<Y0>_<Y1>_m<..>.npz")
     ap.add_argument("--modern", type=int, nargs=2, default=None,
                     help="E056: a non-default modern epoch; writes esk_epochs_m<Y0>_<Y1>.npz")
     ap.add_argument("--out-dir", default=None,
@@ -66,8 +78,9 @@ def main():
     z_ann = project_points_to_z(log1p_community(X).astype("float32"), zd, L)
     np.save(os.path.join(od, "esk_annual.npy"), np.asarray(z_ann, "float32"))
     modern = tuple(a.modern) if a.modern else EPOCH_MODERN
+    early = tuple(a.early) if a.early else EPOCH_EARLY
 
-    groups = epoch_groups(keys, withheld, EPOCH_EARLY, modern)
+    groups = epoch_groups(keys, withheld, early, modern)
     gk = list(groups)
     glist = [groups[k] for k in gk]
     A, B, ok = split_half_groups(glist, years=keys[:, 2])
@@ -79,7 +92,7 @@ def main():
     proj = lambda v: np.asarray(project_points_to_z(np.asarray(v, "float32"), zd, L), "float32")
     ptr = np.cumsum([0] + [len(f) for f in full]).astype("int64")
     np.savez_compressed(
-        os.path.join(od, f"esk_epochs_m{modern[0]}_{modern[1]}.npz" if a.modern else "esk_epochs.npz"),
+        os.path.join(od, epochs_name(a.early, a.modern)),
         rows_flat=np.concatenate(full).astype("int64"), rows_ptr=ptr,
         cells=np.array([gk[i][:2] for i in keep], "int32"),
         epoch=np.array([gk[i][2] for i in keep], "int8"),

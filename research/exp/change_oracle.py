@@ -39,6 +39,16 @@ from lib import blr, ledger  # noqa: E402
 BLOCK = 6
 
 
+def epochs_name(early=None, modern=None):
+    """File name of an esk_epochs variant: the suite's default, a non-default modern epoch (E056), or both (E059f)."""
+    if early is None and modern is None:
+        return "esk_epochs.npz"
+    if early is None:
+        return f"esk_epochs_m{modern[0]}_{modern[1]}.npz"
+    m = modern or (2005, 2025)
+    return f"esk_epochs_e{early[0]}_{early[1]}_m{m[0]}_{m[1]}.npz"
+
+
 def group_rows(cache, keys, withheld, early=None, modern=None, epochs_file=None):
     """The esk_project groups and their ABBA halves, rebuilt and checked against esk_epochs.npz (or ``epochs_file``,
     written by esk_project.py --modern for a non-default modern epoch)."""

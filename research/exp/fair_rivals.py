@@ -92,6 +92,9 @@ def main():
                     help="E056: modern epoch (default the suite's 2005-25); needs --esk-dir holding "
                          "esk_epochs_m<Y0>_<Y1>.npz from esk_project.py --modern")
     ap.add_argument("--esk-dir", default=None, help="E056: read esk_annual / esk_epochs from here, not the cache")
+    ap.add_argument("--early", type=int, nargs=2, default=None,
+                    help="E059f: early (backcast) window instead of the suite's 1966-86; needs --esk-dir holding the "
+                         "matching esk_epochs file from esk_project.py --early")
     ap.add_argument("--lean", action="store_true",
                     help="E059b: skip the optional arms (placebo_600, placebo+within_raw, placebo+kindxtime_8); every "
                          "headline number (placebo_300, desk_within, joint gains, strong base, buffer, head-to-head, "
@@ -129,9 +132,10 @@ def main():
     withheld = [int(y) for y in split["withheld"]]
     r = a.rank
     ed = a.esk_dir or a.cache
+    from change_oracle import epochs_name
     E, full, half_a, half_b = group_rows(
-        a.cache, keys, withheld, modern=a.modern,
-        epochs_file=os.path.join(ed, f"esk_epochs_m{a.modern[0]}_{a.modern[1]}.npz" if a.modern else "esk_epochs.npz"))
+        a.cache, keys, withheld, early=a.early, modern=a.modern,
+        epochs_file=os.path.join(ed, epochs_name(a.early, a.modern)))
     idx = {}
     for j, (cell, ep, wh) in enumerate(zip(map(tuple, E["cells"]), E["epoch"], E["withheld"])):
         if ep == 0 and bool(wh):
@@ -386,7 +390,8 @@ def main():
         per_dim = float(np.mean(cv[ok] / np.sqrt(vp[ok] * vt[ok]))) if ok.any() else np.nan
         return corr, (cv.sum() / vp.sum() if vp.sum() > 0 else np.nan), per_dim
     res = {"cache": a.cache, "n_cells": int(len(ev)), "rank": r, "withheld": [min(withheld), max(withheld)],
-           "modern": list(a.modern) if a.modern else None, "ref_cache": a.ref_cache, "target": a.target, "eval_set": a.eval_set,
+           "modern": list(a.modern) if a.modern else None, "ref_cache": a.ref_cache, "target": a.target,
+           "early": list(a.early) if a.early else None, "eval_set": a.eval_set,
            "n_fit_rows": int(len(trn)), "notes": notes, "models": {}}
     members = {}
     for name in preds:                                  # placebo-based arms: one member per draw, graded as the mean

@@ -95,6 +95,9 @@ def main():
     ap.add_argument("--early", type=int, nargs=2, default=None,
                     help="E059f: early (backcast) window instead of the suite's 1966-86; needs --esk-dir holding the "
                          "matching esk_epochs file from esk_project.py --early")
+    ap.add_argument("--save-species", action="store_true",
+                    help="E059g: save per-species bootstrap components (cv, vp, vt per draw) of the key arms, so any "
+                         "species stratum (e.g. similarity to the focal) can be scored afterwards with the same draws")
     ap.add_argument("--lean", action="store_true",
                     help="E059b: skip the optional arms (placebo_600, placebo+within_raw, placebo+kindxtime_8); every "
                          "headline number (placebo_300, desk_within, joint gains, strong base, buffer, head-to-head, "
@@ -381,6 +384,26 @@ def main():
     ub, binv = np.unique(blk, return_inverse=True)
     rng = np.random.default_rng(11)
     W = np.vstack([np.ones(len(ev)), rng.multinomial(len(ub), np.full(len(ub), 1.0 / len(ub)), size=a.n_boot)[:, binv]])
+
+    if a.save_species:
+        Sw = W.sum(1)
+        mean_ = lambda X: (W @ X) / Sw[:, None]
+        mTa, mTb = mean_(Ta), mean_(Tb)
+        comp = {"vt": (W @ (Ta * Tb)) - Sw[:, None] * mTa * mTb}
+        keyarms = ("desk_within", "desk_ref_within", "desk_pooled", "placebo_300", "strong", "strong+desk_within",
+                   "placebo+desk_within", "placebo+desk_ref_within")
+        for nm, D in preds.items():
+            if nm.split("#")[0] not in keyarms:
+                continue
+            mD = mean_(D)
+            cva = (W @ (D * Ta)) - Sw[:, None] * mD * mTa
+            cvb = (W @ (D * Tb)) - Sw[:, None] * mD * mTb
+            comp[f"{nm}__cv"] = (0.5 * (cva + cvb)).astype("float32")
+            comp[f"{nm}__vp"] = ((W @ (D * D)) - Sw[:, None] * mD * mD).astype("float32")
+        cols = (json.load(open(c("meta.json"), encoding="utf-8"))["dev_species"] if a.target == "dev"
+                else [f"esk{i}" for i in range(Ta.shape[1])])
+        np.savez_compressed(os.path.join(a.out, f"species_components{a.tag}.npz"), columns=np.array(cols),
+                            vt=comp.pop("vt").astype("float32"), **comp)
 
     def grade(D, w):
         vp, vt = wc(D, D, w), wc(Ta, Tb, w)

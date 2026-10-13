@@ -117,3 +117,18 @@ Sources: Johnston et al. 2021 (St Andrews repository; ebird-best-practices on Gi
 al. 2023 (St Andrews repository; ebirdst trends vignette); Link & Sauer 1999 (USGS); Link, Sauer & Niven 2006 (Condor);
 Dunn et al. 2005 (Auk); Soykan et al. 2016 (USGS); Meehan et al. 2019 (Ecosphere); the Condor eBird-BBS comparison;
 the PLOS ONE Massachusetts comparison. Pre-1966 coverage numbers: our own profile of the raw CBC request (2026-10-13).
+
+## 7. Additions (2026-10-13, after discussion with the user)
+- **Community-level early CBC.** Little or no published work uses EARLY CBC for community similarity (community analyses
+  start in the 1970s: composition vs climate, community temperature indices; the early record is used for species
+  trends). Two effort strategies, used side by side and checked against each other where both apply (1950s-60s):
+  (a) MODEL-BASED: assemble each circle-year's community from E064's per-species expected counts at standard effort;
+  (b) COVERAGE-BASED RAREFACTION (Chao & Jost): compare communities at equal estimated sample completeness, estimated
+  from the counts themselves -- no recorded effort needed, which suits pre-1940 counts. Caveats: flock counts violate the
+  independent-individuals assumption (compute coverage from detection incidence across a circle's parties or years, not
+  raw individuals), and rarefaction fixes sample SIZE, not effort TYPE (feeder, nocturnal, boat effort add particular
+  species -- those still need the effort record). Then the community version of E063: does a circle's WINTER community
+  change track the BREEDING community change (BBS ESK) at the same place, against extrapolating BBS's later trend?
+- **Season test (CONSIDERATIONS G11).** House Finches are year-round residents. Test whether CBC-community features
+  predict PROXY residents (sedentary dev species per AVONET, feeder-associated / finch-like preferred; never House Finch
+  data) better than BBS-community features, scored in winter (CBC) and summer (BBS) counts.

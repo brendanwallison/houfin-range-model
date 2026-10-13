@@ -151,6 +151,15 @@ Items are numbered so records can cite them (e.g. "considerations: G3, M1, M6").
   inputs, build the metric from a fixed reference (the control's real covariates) and grade every arm on it; and
   measure at matched training states (selected AND late), with paired CIs. (E038 skeptic, 2026-10-11)
 
+## Added 2026-10-13
+- **G11 Season of the habitat representation.** House Finches are year-round residents; BBS (breeding season) was used
+  for convenience, and winter communities may describe the habitat a resident experiences -- winter survival, feeders,
+  the 1994+ eye-disease spread through feeders -- better than breeding communities. Test, never on House Finch data
+  (contract): proxy residents (sedentary dev species, preferably feeder-associated and finch-like), comparing
+  CBC-community vs BBS-community features for their abundance and change, scored in both seasons. Weigh against the
+  age model being fitted to breeding-season observations: a representation can describe the habitat better and still
+  match the observation season worse. (user, 2026-10-13)
+
 ## Added 2026-10-12
 - **M29 A deeper series inherits its curators' limits.** Audubon's own CBC trend products start in 1966-67, chosen
   for sample size and consistent methods; pre-1966 effort (party-hours) is unreliable. Pre-1966 CBC "truth" would

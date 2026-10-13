@@ -135,6 +135,10 @@ def t2(a):
         n = a.pairs
         out = {"species": len(sp), "early_rows": int(len(E)), "modern_rows": int(len(M)),
                "rel_completeness_tertiles": [float(x) for x in q], "rel_completeness_median": float(np.median(rel[E]))}
+        if a.agg:
+            out["agg"] = {str(k): agg_units(k, E, M, ci, Yt, Yo, rel, q, rng) for k in a.agg}
+            res[mech] = out
+            continue
         mbyc = {}
         for i in M:
             mbyc.setdefault(ci[i], []).append(i)
@@ -162,7 +166,58 @@ def t2(a):
                          "within_bins_min": float(np.min(within)) if within else None,
                          "median_shift_by_bin": shift, "true_similarity_median": float(np.nanmedian(st))}
         res[mech] = out
+    if a.agg:
+        # what real early data offers: counts per circle per decade before 1940
+        yr_r, ci_r = R["year_end"], R["circle_idx"]
+        m = yr_r < 1940
+        n_cd = np.unique(np.column_stack([ci_r[m], yr_r[m] // 10]), axis=0, return_counts=True)[1]
+        res["real_pre1940_counts_per_circle_decade"] = {
+            "circle_decades": int(len(n_cd)), "median": float(np.median(n_cd)),
+            "share_ge3": float((n_cd >= 3).mean()), "share_ge5": float((n_cd >= 5).mean()),
+            "share_of_counts_in_circle_decades_ge5": float(n_cd[n_cd >= 5].sum() / n_cd.sum())}
     return res
+
+
+def agg_units(k, E, M, ci, Yt, Yo, rel, q, rng):
+    """E066b: one unit per circle and era = the mean of k random counts of that circle in the era (circles with >= k
+    counts there); pairs among units as in T2; bins on the unit's mean relative completeness."""
+    def units(rows, degrade):
+        by = {}
+        for i in rows:
+            by.setdefault(ci[i], []).append(i)
+        U = {}
+        for c, L in by.items():
+            if len(L) >= k:
+                s = rng.choice(L, k, replace=False)
+                U[c] = (Yt[s].mean(0), (Yo if degrade else Yt)[s].mean(0), float(np.mean(rel[s])) if degrade else 1.0)
+        return U
+    Ue, Um = units(E, True), units(M, False)
+    ce, cm = list(Ue), list(Um)
+    bin_of = lambda r: int(np.digitize(r, q))
+    out = {"early_units": len(ce), "modern_units": len(cm)}
+    n = 100000
+    designs = {
+        "early_early": [(ce[i], ce[j]) for i, j in rng.integers(len(ce), size=(n, 2)) if i != j],
+        "early_modern": [(ce[i], cm[j]) for i, j in zip(rng.integers(len(ce), size=n), rng.integers(len(cm), size=n))
+                         if ce[i] != cm[j]],
+        "same_circle_cross_era": [(c, c) for c in ce if c in Um],
+    }
+    for kind, P in designs.items():
+        A = Ue; B = Ue if kind == "early_early" else Um
+        st = ruzicka(np.array([A[x][0] for x, _ in P]), np.array([B[y][0] for _, y in P]))
+        so = ruzicka(np.array([A[x][1] for x, _ in P]), np.array([B[y][1] for _, y in P]))
+        bx = np.array([bin_of(A[x][2]) for x, _ in P])
+        key = (np.minimum(bx, [bin_of(B[y][2]) for _, y in P]) * 3 + np.maximum(bx, [bin_of(B[y][2]) for _, y in P])
+               if kind == "early_early" else bx)
+        within, w = [], []
+        for kk in np.unique(key):
+            m = key == kk
+            if m.sum() >= 100:
+                within.append(rho(so[m], st[m])); w.append(m.sum())
+        out[kind] = {"pairs": len(P), "pooled": rho(so, st),
+                     "within_bins": float(np.average(within, weights=w)) if within else None,
+                     "median_shift": float(np.nanmedian(so - st))}
+    return out
 
 
 def main():
@@ -171,11 +226,14 @@ def main():
     ap.add_argument("--cache"); ap.add_argument("--cbc"); ap.add_argument("--real")
     ap.add_argument("--degraded", nargs="*", default=[])
     ap.add_argument("--pairs", type=int, default=100000)
+    ap.add_argument("--agg", type=int, nargs="*", default=[],
+                    help="E066b: average k counts per circle and era before comparing (one run per k)")
     ap.add_argument("--out", required=True)
     a = ap.parse_args()
     os.makedirs(a.out, exist_ok=True)
     res = t1(a) if a.test == "t1" else t2(a)
-    json.dump(res, open(os.path.join(a.out, f"e066_{a.test}.json"), "w"), indent=1)
+    tag = a.test + ("_agg" if a.agg else "")
+    json.dump(res, open(os.path.join(a.out, f"e066_{tag}.json"), "w"), indent=1)
     print(json.dumps(res, indent=1))
 
 

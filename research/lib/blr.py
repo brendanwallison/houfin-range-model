@@ -73,6 +73,12 @@ def fit(X, Y, blocks, max_iter=300, starts=STARTS):
     # E059b: BLR_DEVICE=cuda runs the batched per-species Cholesky on the GPU (273 species x ~200 features is
     # ~8 CPU-hours per fair_rivals run on the CPU). Default cpu, unchanged.
     dev = os.environ.get("BLR_DEVICE", "cpu")
+    # E059b: BLR_MAX_ITER / BLR_STARTS (e.g. "0.5") trade optimizer effort for speed on the 273-species target;
+    # unset = unchanged
+    if "BLR_MAX_ITER" in os.environ:
+        max_iter = int(os.environ["BLR_MAX_ITER"])
+    if "BLR_STARTS" in os.environ:
+        starts = tuple(float(x) for x in os.environ["BLR_STARTS"].split(","))
     X = np.asarray(X, "float64")
     Y = np.asarray(Y, "float64")
     n, p = X.shape

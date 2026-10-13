@@ -35,6 +35,8 @@ def main():
     ap.add_argument("--strata-shp2", default=None)
     ap.add_argument("--cache", required=True)
     ap.add_argument("--out", required=True)
+    ap.add_argument("--species-set", choices=["product", "community"], default="product",
+                    help="product: species with an Audubon trend (E064); community: the cache's reference species (E066)")
     a = ap.parse_args()
     import pandas as pd
     import rasterio
@@ -55,6 +57,10 @@ def main():
     prod = prod[(prod["region_type"] == "stratum") & prod["survey_suitability"].isin(["medium", "high"])]
     prod_codes = {sci2code.get(s) for s in prod["scientific_name"].unique()} - {None}
     species = sorted(prod_codes & allowed)
+    if a.species_set == "community":
+        # E066: the cache's 96 reference (community) species, whether or not Audubon publishes a trend for them --
+        # the species ESK's Ruzicka similarity is computed on
+        species = sorted(meta["community"])
     ref = sorted(set(species) & set(meta["community"]))
     print(f"[E064] species: {len(species)} ({len(ref)} reference) in the product (medium/high) and the cache lists",
           flush=True)

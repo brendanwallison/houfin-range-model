@@ -1,0 +1,8 @@
+{
+ "exp": "E066", "name": "e066-t2-order-degraded", "group": "io",
+ "overlay": "research/overlays/desk_tempho_1995_seed1.json",
+ "cmd": ["bash", "-c", "set -e; {python} research/exp/e066_similarity_links.py t2 --real /mnt/e/Datasets/cbc_raw/prepared/cbc_circles_comm.npz --degraded thin=/mnt/e/Datasets/cbc_raw/pseudo_early_thin/prepared omit=/mnt/e/Datasets/cbc_raw/pseudo_early_omit/prepared --out {out}"],
+ "expected_minutes": 10,
+ "summarize": ["bash", "-c", "cat {out}/e066_t2.json"],
+ "note": "E066 T2: does observed similarity keep the true order under pseudo-early degradation (thin/omit)?"
+}

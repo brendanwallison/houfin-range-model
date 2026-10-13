@@ -46,8 +46,9 @@ def main():
     allowed = set(meta["community"]) | set(meta["dev_species"])
     assert "houfin" not in allowed and not allowed & set(meta["sealed_species"])
     tax = pd.read_csv(os.path.join(dcfg["datasets_root"], "avonet", "eBird_taxonomy.csv"),
-                      usecols=["SCIENTIFIC_NAME", "SPECIES_CODE", "CATEGORY"])
+                      usecols=["SCIENTIFIC_NAME", "COMMON_NAME", "SPECIES_CODE", "CATEGORY"])
     tax = tax[tax["CATEGORY"] == "species"]
+    tax_full = tax
     sci2code = dict(zip(tax["SCIENTIFIC_NAME"], tax["SPECIES_CODE"]))
     prod = pd.read_csv(a.products_csv, encoding="latin-1",
                        usecols=["scientific_name", "region_type", "survey_suitability"])
@@ -60,7 +61,7 @@ def main():
 
     raw = lambda n: os.path.join(a.raw_dir, PRE + n + ".csv")
     sp = pd.read_csv(raw("Circle_Species_Report"), encoding="utf-8-sig",
-                     usecols=["abbrev", "latitude", "longitude", "country_code", "count_yr", "sci_name", "how_many"])
+                     usecols=["abbrev", "latitude", "longitude", "country_code", "count_yr", "sci_name", "com_name", "how_many"])
     cy = sp.drop_duplicates(["abbrev", "count_yr"])[["abbrev", "count_yr", "latitude", "longitude", "country_code"]]
     cy = cy[cy["country_code"].isin(["US", "CA"]) & cy["latitude"].between(24, 53) & cy["longitude"].between(-125, -66)]
     cy = cy.reset_index(drop=True)
@@ -86,7 +87,45 @@ def main():
     cy.loc[~(cy["party_hours"] > 0), "party_hours"] = np.nan
     cy.loc[~(cy["field_counters"] > 0), "field_counters"] = np.nan
 
-    sp["code"] = sp["sci_name"].map(sci2code)
+    # NAME HARMONIZATION (E064 amendment): the raw file uses older scientific names (Anas clypeata, Grus canadensis),
+    # subspecies / form names ("Dark-eyed Junco (Slate-colored)") and historical lumps written with a slash
+    # ("Spotted/Eastern Towhee (Rufous-sided Towhee)"). Resolve: scientific name -> common name -> binomial of a
+    # trinomial -> base common name without the parenthetical. Slash names are NOT resolved; a kept species with >= 2%
+    # of its records under a slash name naming it is flagged split-affected and dropped.
+    com2code = dict(zip(tax_full["COMMON_NAME"], tax_full["SPECIES_CODE"]))
+    names = sp[["sci_name", "com_name"]].drop_duplicates()
+    def resolve(sci, com):
+        sci, com = str(sci), str(com)
+        if "/" in com or " sp." in com or " x " in sci:
+            return None
+        for k, d in ((sci, sci2code), (com, com2code), (" ".join(sci.split()[:2]), sci2code),
+                     (com.split(" (")[0].strip(), com2code)):
+            if k in d:
+                return d[k]
+        return None
+    names["code"] = [resolve(s, c) for s, c in zip(names["sci_name"], names["com_name"])]
+    sp = sp.merge(names, on=["sci_name", "com_name"], how="left")
+    slash = sp[sp["com_name"].astype(str).str.contains("/")]
+    n_by = sp.groupby("code").size()
+    split_affected = []
+    for code in species:
+        cname = tax_full.loc[tax_full["SPECIES_CODE"] == code, "COMMON_NAME"]
+        if cname.empty:
+            continue
+        base = cname.iloc[0].split()[-1]
+        first = cname.iloc[0].split()[0]
+        hit = slash[slash["com_name"].str.contains(first, regex=False) & slash["com_name"].str.contains(base, regex=False)]
+        if len(hit) >= 0.02 * max(int(n_by.get(code, 0)), 1):
+            split_affected.append(code)
+    # Known post-1950 splits / lumps whose earlier records sit under another species' plain name (no slash), so they
+    # cannot be detected above (AOS checklist history): Red-naped and Red-breasted Sapsucker (split from Yellow-bellied
+    # 1983), Spotted Towhee (from Rufous-sided 1995), Eastern Screech-Owl (from "Screech Owl" 1983), Tufted Titmouse
+    # (lumped with Black-crested 1983-2002 in Texas).
+    split_affected = sorted(set(split_affected) | ({"rensap", "rebsap", "spotow", "easowl1", "tuftit"} & set(species)))
+    species = [s for s in species if s not in set(split_affected)]
+    ref = sorted(set(species) & set(meta["community"]))
+    print(f"[E064] names: {int(names['code'].notna().sum())} of {len(names)} name pairs resolved; split-affected dropped: "
+          f"{split_affected}; {len(species)} species remain ({len(ref)} reference)", flush=True)
     sp = sp[sp["code"].isin(set(species))]
     assert "houfin" not in set(sp["code"])
     key = cy[["abbrev", "count_yr"]].reset_index().rename(columns={"index": "k"})
@@ -111,7 +150,7 @@ def main():
         nocturnal_hrs=cy["nocturnal_hrs"].to_numpy(np.float32))
     dec = (cy["year_end"] // 10 * 10)
     info = {"circle_years": int(len(cy)), "circles": int(len(circles)), "strata": int(len(strata)),
-            "species": species, "reference": ref, "years": [int(cy.year_end.min()), int(cy.year_end.max())],
+            "species": species, "reference": ref, "split_affected_dropped": split_affected, "years": [int(cy.year_end.min()), int(cy.year_end.max())],
             "by_decade": {int(d): {"n": int(n), "ph_share": float(cy.loc[dec == d, "party_hours"].notna().mean()),
                                    "counters_share": float(cy.loc[dec == d, "field_counters"].notna().mean())}
                           for d, n in dec.value_counts().sort_index().items()}}

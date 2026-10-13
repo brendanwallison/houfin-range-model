@@ -1,0 +1,9 @@
+{
+ "exp": "E064", "name": "cbc-gates-v2", "group": "cpu",
+ "after_jobs": ["E064/cbc-fit-ph-v2", "E064/cbc-fit-counters-v2"],
+ "overlay": "research/overlays/desk_tempho_1995_seed1.json",
+ "cmd": ["bash", "-c", "set -e; F=$(ls -d $(dirname {out})/cbc-fit-ph-v2-* | head -1); C=$(ls -d $(dirname {out})/cbc-fit-counters-v2-* | head -1); {python} research/exp/cbc_effort_gates.py --data /mnt/e/Datasets/cbc_raw/prepared/cbc_circles_v2.npz --fit-ph $F/fit_ph.npz --fit-counters $C/fit_counters.npz --products-csv '/mnt/e/Datasets/houfin/external/cbc_trends_2023/US and Canada Trends/cbc_indices_version_2023.0_na_web_download.csv' --out {out}"],
+ "expected_minutes": 5,
+ "summarize": ["bash", "-c", "{python} research/exp/cbc_effort_gates.py --summarize {out}"],
+ "note": "E064: gates C-a (vs Audubon) and C-b (counters vs party-hours; early prediction)"
+}

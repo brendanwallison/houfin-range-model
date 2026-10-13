@@ -12,6 +12,7 @@ Strata (pre-registered in E059.md before any stratified number existed; terciles
     phylo_near / phylo_far     lowest / highest tercile of patristic distance to the focal
     morph_near / morph_far     lowest / highest tercile of AVONET trait distance to the focal
     sedentary / migratory      AVONET migration 1 / 3
+    partial / resident         AVONET migration 2 / 1-2 (E067)
     hofi_like     phylo <= median AND trait <= median AND migration <= 2 (close on both selection axes, not a migrant)
 """
 import argparse
@@ -33,6 +34,8 @@ def strata(sim, cols):
          "morph_far": (d.trait_distance >= q("trait_distance", 2 / 3)).values,
          "sedentary": (d.migration == 1).values,
          "migratory": (d.migration == 3).values,
+         "partial": (d.migration == 2).values,
+         "resident": (d.migration <= 2).values,
          "hofi_like": ((d.phylo_distance <= q("phylo_distance", 0.5)) & (d.trait_distance <= q("trait_distance", 0.5))
                        & (d.migration <= 2)).values}
     return {k: np.asarray(v, bool) for k, v in S.items()}

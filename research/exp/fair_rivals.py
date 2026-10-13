@@ -531,6 +531,19 @@ def main():
     lcorr = lambda p, w: float(wc(p, Z[lev], w).sum() / np.sqrt(wc(p, p, w).sum() * wc(Z[lev], Z[lev], w).sum()))
     lb = {n: np.array([lcorr(p, w) for w in LW]) for n, p in lv.items()}
     dl = lb["desk_pooled"] - lb["pooled_ridge"]
+    if a.save_species:
+        # E059h: per-species components of the spatial LEVEL metric too (same LW draws), for stratified level skill
+        Sw = LW.sum(1)
+        T = Z[lev]
+        mT = (LW @ T) / Sw[:, None]
+        lcomp = {"vt": ((LW @ (T * T)) - Sw[:, None] * mT * mT).astype("float32")}
+        for nm, P in lv.items():
+            mP = (LW @ P) / Sw[:, None]
+            lcomp[f"{nm}__cv"] = ((LW @ (P * T)) - Sw[:, None] * mP * mT).astype("float32")
+            lcomp[f"{nm}__vp"] = ((LW @ (P * P)) - Sw[:, None] * mP * mP).astype("float32")
+        cols = (json.load(open(c("meta.json"), encoding="utf-8"))["dev_species"] if a.target == "dev"
+                else [f"esk{i}" for i in range(T.shape[1])])
+        np.savez_compressed(os.path.join(a.out, f"species_level{a.tag}.npz"), columns=np.array(cols), **lcomp)
     res["space_level"] = {"n_rows": int(len(lev)),
                           **{n: float(v[0]) for n, v in lb.items()},
                           "desk_minus_linear": float(dl[0]),

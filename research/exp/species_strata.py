@@ -44,6 +44,11 @@ def main():
     ap.add_argument("--runs", nargs="+", required=True)
     ap.add_argument("--tag", default="_p96dev")
     ap.add_argument("--out", default=None)
+    ap.add_argument("--level", action="store_true",
+                    help="E059h: also stratify SPATIAL level (species_level<tag>.npz: DESK pooled readout vs linear map)")
+    ap.add_argument("--seed-summary", action="store_true",
+                    help="E059h: mean and SD over runs named s<k>_t<T>[_late] / ens4_t<T>[_late] of DESK - strong per "
+                         "stratum, by T0 and state")
     a = ap.parse_args()
     import pandas as pd
     sim = pd.read_csv(a.similarity)
@@ -74,6 +79,17 @@ def main():
                     d = B[x] - B[y]
                     o[f"{x} - {y}"] = {"diff": float(d[0]), "ci": ci(d)}
             out[sname] = o
+        if a.level and os.path.exists(os.path.join(run, f"species_level{a.tag}.npz")):
+            zl = np.load(os.path.join(run, f"species_level{a.tag}.npz"))
+            vtl = zl["vt"].astype("float64")
+            lc = lambda nm, m: (zl[f"{nm}__cv"][:, m].astype("float64").sum(1)
+                                / np.sqrt(zl[f"{nm}__vp"][:, m].astype("float64").sum(1) * vtl[:, m].sum(1)))
+            for sname, m in St.items():
+                if sname in out:
+                    dp, pr = lc("desk_pooled", m), lc("pooled_ridge", m)
+                    ci = lambda v: [float(np.nanpercentile(v[1:], q)) for q in (2.5, 97.5)]
+                    out[sname]["level"] = {"desk_pooled": float(dp[0]), "pooled_ridge": float(pr[0]),
+                                           "desk - linear": {"diff": float((dp - pr)[0]), "ci": ci(dp - pr)}}
         res[os.path.basename(os.path.normpath(run))] = out
         print(f"== {os.path.basename(os.path.normpath(run))}")
         f_ = lambda d: f"{d['diff']:+.3f} [{d['ci'][0]:+.3f},{d['ci'][1]:+.3f}]"
@@ -84,7 +100,32 @@ def main():
                     f" | +desk beyond strong {f_(o['strong+desk_within - strong'])}")
             if "desk_within - desk_ref_within" in o:
                 line += f" | vs ref {f_(o['desk_within - desk_ref_within'])}"
+            if "level" in o:
+                line += f" | LEVEL desk {o['level']['desk_pooled']:.3f} lin {o['level']['pooled_ridge']:.3f} " \
+                        f"{f_(o['level']['desk - linear'])}"
             print(line, flush=True)
+    if a.seed_summary:
+        import re
+        groups = defaultdict(list)
+        for name, out in res.items():
+            mm = re.match(r"(s\d+|ens4)_t(\d{4})(_late)?$", name)
+            if not mm:
+                continue
+            kind = "ensemble" if mm.group(1) == "ens4" else "single"
+            groups[(mm.group(2), "late" if mm.group(3) else "selected", kind)].append(out)
+        summ = {}
+        print("== SEED SUMMARY (DESK - strong, change; DESK - linear, level): mean +- SD over runs")
+        for key in sorted(groups):
+            outs = groups[key]
+            for sname in outs[0]:
+                d = [o[sname]["desk_within - strong"]["diff"] for o in outs if sname in o]
+                lv = [o[sname]["level"]["desk - linear"]["diff"] for o in outs if sname in o and "level" in o[sname]]
+                summ.setdefault("|".join(key), {})[sname] = {"n_runs": len(d), "change_mean": float(np.mean(d)),
+                                                              "change_sd": float(np.std(d)),
+                                                              "level_mean": float(np.mean(lv)) if lv else None}
+                print(f"  T0 {key[0]} {key[1]:8s} {key[2]:8s} {sname:11s} runs {len(d)}: change {np.mean(d):+.3f} "
+                      f"+- {np.std(d):.3f}" + (f" | level {np.mean(lv):+.3f}" if lv else ""))
+        res["seed_summary"] = summ
     if a.out:
         json.dump(res, open(a.out, "w"), indent=1)
 

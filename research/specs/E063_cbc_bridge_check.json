@@ -1,0 +1,10 @@
+{
+ "exp": "E063",
+ "name": "cbc-bridge-check",
+ "group": "cpu",
+ "overlay": "research/overlays/desk_tempho_1995_seed1.json",
+ "cmd": ["bash", "-c", "set -e; {python} research/exp/cbc_bridge_check.py --cache {cache}/desk_tempho_1995_s1 --cbc-csv '/mnt/e/Datasets/houfin/external/cbc_trends_2023/US and Canada Trends/cbc_indices_version_2023.0_na_web_download.csv' --strata-shp /mnt/e/Datasets/houfin/external/bcr/bbsBayes/inst/maps/BBS_USGS_strata.shp --strata-shp2 /mnt/e/Datasets/houfin/external/bcr/bbsBayes/inst/maps/BBS_CWS_strata.shp --out {out} --n-boot 400"],
+ "expected_minutes": 20,
+ "summarize": ["bash", "-c", "{python} research/exp/cbc_bridge_check.py --summarize {out}"],
+ "note": "E063: CBC withheld-era stratum change vs BBS later-trend extrapolation, against withheld-era BBS change"
+}

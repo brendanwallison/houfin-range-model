@@ -159,6 +159,12 @@ Items are numbered so records can cite them (e.g. "considerations: G3, M1, M6").
   CBC-community vs BBS-community features for their abundance and change, scored in both seasons. Weigh against the
   age model being fitted to breeding-season observations: a representation can describe the habitat better and still
   match the observation season worse. (user, 2026-10-13)
+- **M30 Completeness is relative to the site.** Some places are genuinely richer than others, so a sampling-
+  completeness or effort covariate taken from the lists themselves (list length, benchmark species) must be measured
+  against what THAT site records under good, modern sampling -- otherwise a rich site reads as a well-sampled one.
+  Corollaries: sites with no good-era reference borrow a neighbour's (weaker; report the share); and the modern
+  reference itself carries real turnover since the early era, which a completeness covariate can absorb as if it
+  were incompleteness. (user, 2026-10-13; E065)
 
 ## Added 2026-10-12
 - **M29 A deeper series inherits its curators' limits.** Audubon's own CBC trend products start in 1966-67, chosen

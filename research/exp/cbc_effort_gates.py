@@ -50,8 +50,8 @@ def main():
         I, sup = fit["index"], fit["support"]
         e = np.log(_wmean(I, years, w0, w1)); l = np.log(_wmean(I, years, v0, v1))
         se = sup[:, (years >= w0) & (years <= w1)].sum(1); sl = sup[:, (years >= v0) & (years <= v1)].sum(1)
-        ok = (se >= a.min_support) & (sl >= a.min_support)
-        return l - e, ok
+        ok = (se >= a.min_support) & (sl >= a.min_support)          # support is per stratum (all species share it)
+        return l - e, np.broadcast_to(ok[:, None], l.shape)
 
     # ---- C-a vs Audubon
     tax = pd.read_csv(os.path.join(load_data_config()["datasets_root"], "avonet", "eBird_taxonomy.csv"),

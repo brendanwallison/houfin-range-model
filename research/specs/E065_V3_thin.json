@@ -1,0 +1,18 @@
+{
+ "exp": "E065",
+ "name": "e065-fit-V3-thin",
+ "group": "cpu",
+ "overlay": "research/overlays/desk_tempho_1995_seed1.json",
+ "cmd": [
+  "bash",
+  "-c",
+  "set -e; {python} research/exp/cbc_effort_model.py --effort counters --completeness bench --family bern --data /mnt/e/Datasets/cbc_raw/pseudo_early_thin/prepared/cbc_circles.npz --completeness-file /mnt/e/Datasets/cbc_raw/pseudo_early_thin/prepared/completeness.npz --ref-from 1986 --steps 6000 --out {out}/fit_V3_thin.npz"
+ ],
+ "expected_minutes": 25,
+ "summarize": [
+  "bash",
+  "-c",
+  "cat {out}/fit_V3_thin_meta.json"
+ ],
+ "note": "E065: CBC completeness variant V3, part thin"
+}

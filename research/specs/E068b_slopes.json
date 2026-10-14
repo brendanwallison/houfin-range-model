@@ -1,0 +1,8 @@
+{
+ "exp": "E068", "name": "e068b-reporting-slopes", "group": "io",
+ "overlay": "research/overlays/desk_tempho_1995_seed1.json",
+ "cmd": ["bash", "-c", "set -e; {python} research/exp/e068b_reporting_slopes.py --data /mnt/e/Datasets/cbc_raw/prepared/cbc_circles_v2.npz --completeness /mnt/e/Datasets/cbc_raw/prepared/completeness_v3.npz --out {out}"],
+ "expected_minutes": 3,
+ "summarize": ["bash", "-c", "cat {out}/e068b.json"],
+ "note": "E068b: notable-first reporting test via inclusion-vs-list-length slopes, early vs modern"
+}

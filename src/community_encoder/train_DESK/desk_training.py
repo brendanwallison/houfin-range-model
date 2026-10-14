@@ -768,6 +768,7 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
                     snapshot_every=0,
                     select_on_withheld=False,
                     aux_targets=None,
+                    presence_targets=None,
                     _skip_target_conversion=False):
     """Train DESK with a learned output-EMA.
 
@@ -863,9 +864,32 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
         print(f"[desk] AUX head '{auxs[-1]['label']}': linear {latent_dim} -> {auxs[-1]['Y'].shape[-1]}, "
               f"{int(auxs[-1]['m'].sum()):,} supervised cell-years over {len(_at['t_idx'])} years, "
               f"weight {auxs[-1]['w']:g}", flush=True)
+    # Research (E069b): a PRESENCE-ONLY term from CBC lists, conditioned within list. For list i at window year t,
+    # cell (r, c), species s on the list: -log softmax_s(z_ema[t, r, c] @ W + b + delta). W, b are a FIXED readout
+    # (z -> log1p abundance, fitted outside on ESK z), delta a learned per-species offset (winter detectability,
+    # season, reporting), so the term can only be lowered by moving z. A list's own effort and completeness are shared
+    # by its species and cancel; unlisted species enter only through the normaliser. Off by default.
+    pres, pres_mod = None, None
+    if presence_targets is not None:
+        if int(n_spatial_tiles) > 1:
+            raise ValueError("presence_targets is implemented for full-grid steps only (spatial_tiles 1)")
+        _pt = presence_targets
+        pres = {"t": torch.as_tensor(np.asarray(_pt["t_idx"]), device=device, dtype=torch.long),
+                "r": torch.as_tensor(np.asarray(_pt["row"]), device=device, dtype=torch.long),
+                "c": torch.as_tensor(np.asarray(_pt["col"]), device=device, dtype=torch.long),
+                "P": torch.as_tensor(np.asarray(_pt["P"]), device=device, dtype=torch.float32),
+                "W": torch.as_tensor(np.asarray(_pt["W"]), device=device, dtype=torch.float32),
+                "b": torch.as_tensor(np.asarray(_pt["b"]), device=device, dtype=torch.float32),
+                "w": float(_pt["weight"]), "label": str(_pt.get("label", "presence"))}
+        pres_mod = torch.nn.Module()
+        pres_mod.delta = torch.nn.Parameter(torch.zeros(pres["P"].shape[1], device=device))
+        print(f"[desk] PRESENCE term '{pres['label']}': {int(pres['P'].shape[0]):,} lists, "
+              f"{int(pres['P'].shape[1])} species, {int(pres['P'].sum()):,} records, weight {pres['w']:g}", flush=True)
     params = list(model.parameters()) + list(ema.parameters()) + \
-        [p for h in aux_heads for p in h.parameters()]
-    opt = torch.optim.AdamW(_param_groups([model, ema] + aux_heads, weight_decay), lr=lr)
+        [p for h in aux_heads for p in h.parameters()] + \
+        (list(pres_mod.parameters()) if pres_mod is not None else [])
+    opt = torch.optim.AdamW(_param_groups([model, ema] + aux_heads + ([pres_mod] if pres_mod is not None else []),
+                                          weight_decay), lr=lr)
     sched = torch.optim.lr_scheduler.LambdaLR(
         opt, _warmup_cosine(epochs, warmup_epochs, min_lr_frac))
     # Early training is unstable (the metric loss can transiently spike), so clip the global
@@ -1593,6 +1617,9 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
         _fpa = [{"label": a["label"], "weight": a["w"], "S": int(a["Y"].shape[-1]),
                  "n_years": int(a["t"].numel()), "n_rows": int(a["m"].sum())} for a in auxs]
         _ck_key["aux"] = _fpa[0] if len(_fpa) == 1 else _fpa
+    if pres is not None:   # only when on
+        _ck_key["presence"] = {"label": pres["label"], "weight": pres["w"], "S": int(pres["P"].shape[1]),
+                               "n_lists": int(pres["P"].shape[0]), "n_records": int(pres["P"].sum())}
     _ck_fp =hashlib.sha256(json.dumps(_ck_key, sort_keys=True, default=str).encode()).hexdigest()[:16]
     start_ep = 1
     if resume and checkpoint_path and os.path.exists(checkpoint_path):
@@ -1607,6 +1634,8 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
             ema.load_state_dict(_ck["ema"])
             for _h, _sd in zip(aux_heads, _ck.get("aux_heads", [])):
                 _h.load_state_dict(_sd)
+            if pres_mod is not None and "presence" in _ck:
+                pres_mod.load_state_dict(_ck["presence"])
             opt.load_state_dict(_ck["opt"])
             sched.load_state_dict(_ck["sched"])
             best_val, best, bad, nonfinite = (_ck["best_val"], _ck["best"], _ck["bad"],
@@ -1635,6 +1664,8 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
                  "rng_np": np.random.get_state(), "rng_aug": aug_rng.bit_generator.state}
         if aux_heads:
             state["aux_heads"] = [h.state_dict() for h in aux_heads]
+        if pres_mod is not None:
+            state["presence"] = pres_mod.state_dict()
         tmp = checkpoint_path + ".tmp"
         torch.save(state, tmp)
         os.replace(tmp, checkpoint_path)          # atomic: a kill mid-save leaves the old one
@@ -1719,6 +1750,7 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
             _save_snapshot(ep - 1)
         t_ep = time.perf_counter()
         loss_aux = None
+        loss_pres = None
         if ep == start_ep:
             _t_first = time.perf_counter()
         if device == "cuda":
@@ -1901,6 +1933,10 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
                     _pa = _h(z_ema[_a["t"]][_a["m"]])
                     loss_aux.append(torch.mean((_pa - _a["Y"][_a["m"]]) ** 2))
                     loss = loss + _a["w"] * loss_aux[-1]
+            if pres is not None:
+                _eta = z_ema[pres["t"], pres["r"], pres["c"]] @ pres["W"] + pres["b"] + pres_mod.delta
+                loss_pres = -(torch.log_softmax(_eta, dim=-1) * pres["P"]).sum() / pres["P"].sum()
+                loss = loss + pres["w"] * loss_pres
             # NestedLoRA, as an ADDITIONAL term. Its operator half is itself a kernel-fit term, so it
             # partly duplicates loss_true -- that overlap is deliberate here (both are on, and their
             # relative weight is the thing being tested) but it means the two weights are not
@@ -2156,6 +2192,10 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
                 _wl = _a["w"] * float(_la.detach())
                 print(f"Ep {ep:03d} | aux '{_a['label']}' mse {float(_la.detach()):.4f} weighted {_wl:.4f} "
                       f"({_wl / max(_tot, 1e-12):.0%} of the total)", flush=True)
+        if loss_pres is not None and (ep == 1 or ep % 10 == 0 or evaluated):
+            _wl = pres["w"] * float(loss_pres.detach())
+            print(f"Ep {ep:03d} | presence '{pres['label']}' nll {float(loss_pres.detach()):.4f} weighted {_wl:.4f} "
+                  f"({_wl / max(float(loss.detach()), 1e-12):.0%} of the total)", flush=True)
         if nest_parts is not None:
             _raw = float(nest_parts["raw"])
             # The weight that would give the nesting term a 50% share of the current total, so a
@@ -2202,6 +2242,7 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
                 "loss_aux": (float(loss_aux[0].detach()) if loss_aux else float("nan")),
                 **({f"loss_aux_{_a['label']}": float(_la.detach()) for _a, _la in zip(auxs, loss_aux)}
                    if loss_aux else {}),
+                **({"loss_presence": float(loss_pres.detach())} if loss_pres is not None else {}),
                 # NestedLoRA term, when on. half_imbalance is the guard: the split-half estimator
                 # is unbounded below if one half can carry all the magnitude, so a value drifting
                 # far above 1 means the penalty is being evaded, not that training is going well.
@@ -2813,6 +2854,32 @@ def run_desk_experiment(config=None):
               f"{int(_cells.sum())} cells (footprint minus held-out/buffer/dropped), "
               f"{_Y.shape[-1]} target columns", flush=True)
 
+    # --- research (E069b): presence-only CBC term (desk.aux_presence), off unless configured -----
+    # An npz built OUTSIDE this file (research/exp/build_cbc_presence.py): per list year, row, col, P (lists x S,
+    # bool), and the fixed readout W (L x S), b (S). Lists in held-out, buffer or train_frac-dropped cells, or whose
+    # cell-year has invalid covariates, are dropped here. Unlike desk.aux, lists in WITHHELD years are KEPT when
+    # include_withheld is true: the point is supervision from an independent source where BBS is withheld (graded only
+    # on held-out cells).
+    presence_targets = None
+    _pcfg = desk_cfg.get("aux_presence")
+    if _pcfg:
+        _p = np.load(os.path.expandvars(_pcfg["path"]), allow_pickle=False)
+        _ki = {y: i for i, y in enumerate(kept)}
+        _yrs, _r, _c = np.asarray(_p["year"]), np.asarray(_p["row"]), np.asarray(_p["col"])
+        _okc = (~holdout & ~buffer_cells_mask & ~train_drop)
+        _withheld = set(ho_years) if not bool(_pcfg.get("include_withheld", False)) else set()
+        _keep = np.array([(int(y) in _ki) and (int(y) not in _withheld) and bool(_okc[r, c])
+                          and bool(np.asarray(mask_win[_ki[int(y)]], bool)[r, c])
+                          for y, r, c in zip(_yrs, _r, _c)])
+        assert not holdout[_r[_keep], _c[_keep]].any() and not buffer_cells_mask[_r[_keep], _c[_keep]].any()
+        presence_targets = {"t_idx": [_ki[int(y)] for y in _yrs[_keep]], "row": _r[_keep], "col": _c[_keep],
+                            "P": np.asarray(_p["P"])[_keep].astype("float32"), "W": np.asarray(_p["W"], "float32"),
+                            "b": np.asarray(_p["b"], "float32"), "weight": float(_pcfg.get("weight", 0.01)),
+                            "label": str(_pcfg.get("label", "cbc_presence"))}
+        print(f"[desk] aux_presence: {int(_keep.sum()):,} of {len(_keep):,} lists kept (window {kept[0]}-{kept[-1]}, "
+              f"withheld years {'INCLUDED' if not _withheld else 'excluded'}; held-out/buffer/dropped cells excluded)",
+              flush=True)
+
     model, ema, train_info = train_model_ema(
         cov_win, mask_win, kept, targets, metric_pool, m_tr, m_val,
         stream_dims, latent_dim=latent_dim, ema_cfg=ema_cfg,
@@ -2871,6 +2938,7 @@ def run_desk_experiment(config=None):
         resume=bool(desk_cfg.get("resume", True)),
         select_on_withheld=bool(desk_cfg.get("select_on_withheld", False)),
         aux_targets=(aux_targets or None),
+        presence_targets=presence_targets,
         return_info=True)
     ema_half_life = float(ema.half_life().item())
     torch.save(ema.state_dict(), os.path.join(out_dir, "output_ema.pth"))

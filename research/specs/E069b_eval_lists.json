@@ -1,0 +1,23 @@
+{
+ "exp": "E069",
+ "name": "e069b-eval-lists",
+ "group": "cpu",
+ "after_jobs": [
+  "E069/desk-tempho1995-seed1-pres01",
+  "E069/desk-tempho1995-seed2-pres01",
+  "E069/desk-tempho1995-seed1-pres04"
+ ],
+ "overlay": "research/overlays/desk_tempho_1995_seed1.json",
+ "cmd": [
+  "bash",
+  "-c",
+  "set -e; bash research/bin/fill_esk.sh {cache}/desk_tempho_1995_s1 {cache}/desk_tempho_1995_s1_pres01; {python} research/exp/e069b_heldout_lists.py --arm {cache}/desk_tempho_1995_s1_pres01 --control {cache}/desk_tempho_1995_s1 --cbc /mnt/e/Datasets/cbc_raw/prepared/cbc_circles_comm.npz --similarity /home/breallis/houfin/work/houfin/research/E059/species-strata-066f943afb0e/species_similarity.csv --out {out} --label s1_pres01; bash research/bin/fill_esk.sh {cache}/desk_tempho_1995_s1 {cache}/desk_tempho_1995_s1_pres01_late; {python} research/exp/e069b_heldout_lists.py --arm {cache}/desk_tempho_1995_s1_pres01_late --control {cache}/desk_tempho_1995_s1_late --cbc /mnt/e/Datasets/cbc_raw/prepared/cbc_circles_comm.npz --similarity /home/breallis/houfin/work/houfin/research/E059/species-strata-066f943afb0e/species_similarity.csv --out {out} --label s1_pres01_late; bash research/bin/fill_esk.sh {cache}/desk_tempho_1995_s2 {cache}/desk_tempho_1995_s2_pres01; {python} research/exp/e069b_heldout_lists.py --arm {cache}/desk_tempho_1995_s2_pres01 --control {cache}/desk_tempho_1995_s2 --cbc /mnt/e/Datasets/cbc_raw/prepared/cbc_circles_comm.npz --similarity /home/breallis/houfin/work/houfin/research/E059/species-strata-066f943afb0e/species_similarity.csv --out {out} --label s2_pres01; bash research/bin/fill_esk.sh {cache}/desk_tempho_1995_s2 {cache}/desk_tempho_1995_s2_pres01_late; {python} research/exp/e069b_heldout_lists.py --arm {cache}/desk_tempho_1995_s2_pres01_late --control {cache}/desk_tempho_1995_s2_late --cbc /mnt/e/Datasets/cbc_raw/prepared/cbc_circles_comm.npz --similarity /home/breallis/houfin/work/houfin/research/E059/species-strata-066f943afb0e/species_similarity.csv --out {out} --label s2_pres01_late; bash research/bin/fill_esk.sh {cache}/desk_tempho_1995_s1 {cache}/desk_tempho_1995_s1_pres04; {python} research/exp/e069b_heldout_lists.py --arm {cache}/desk_tempho_1995_s1_pres04 --control {cache}/desk_tempho_1995_s1 --cbc /mnt/e/Datasets/cbc_raw/prepared/cbc_circles_comm.npz --similarity /home/breallis/houfin/work/houfin/research/E059/species-strata-066f943afb0e/species_similarity.csv --out {out} --label s1_pres04; bash research/bin/fill_esk.sh {cache}/desk_tempho_1995_s1 {cache}/desk_tempho_1995_s1_pres04_late; {python} research/exp/e069b_heldout_lists.py --arm {cache}/desk_tempho_1995_s1_pres04_late --control {cache}/desk_tempho_1995_s1_late --cbc /mnt/e/Datasets/cbc_raw/prepared/cbc_circles_comm.npz --similarity /home/breallis/houfin/work/houfin/research/E059/species-strata-066f943afb0e/species_similarity.csv --out {out} --label s1_pres04_late"
+ ],
+ "expected_minutes": 30,
+ "summarize": [
+  "bash",
+  "-c",
+  "ls {out}/e069b_lists_*.json"
+ ],
+ "note": "E069b: held-out CBC lists, arm vs same-seed control (selected vs selected, late vs late)"
+}

@@ -49,6 +49,15 @@ def main():
                     help="nb: counts (negative binomial); bern: detection (presence/absence, cloglog link)")
     ap.add_argument("--p-fixed", type=float, default=None,
                     help="E068: one effort exponent for every species, not fitted")
+    ap.add_argument("--persistent-windows", type=int, nargs=4, default=[1910, 1939, 1950, 1965],
+                    help="E070: the two windows (y0 y1 y2 y3) a persistent circle must have counts in")
+    ap.add_argument("--effort2", choices=["none", "distance"], default="none",
+                    help="E070: + q2[s] * centred log party-distance where recorded, + m2[s] where it is missing")
+    ap.add_argument("--circle-prior", choices=["ridge", "neighbour"], default="ridge",
+                    help="E070: circle effects shrink toward 0 (ridge, sd --sd-a) or toward the mean of their --k-nbr "
+                         "nearest circles within --nbr-km (sd --sd-nbr; plus the ridge)")
+    ap.add_argument("--k-nbr", type=int, default=5); ap.add_argument("--nbr-km", type=float, default=150.0)
+    ap.add_argument("--sd-nbr", type=float, default=1.0)
     ap.add_argument("--persistent", type=int, default=0,
                     help="E068c: fit only circles with >= N counts in 1910-39 and >= N in 1950-65")
     ap.add_argument("--half", type=int, choices=[-1, 0, 1], default=-1,
@@ -84,8 +93,9 @@ def main():
     if a.persistent > 0:
         # E068c: only circles with >= N counts in 1910-1939 AND >= N in 1950-1965 (the windows of E065's C check)
         ci_ = D["circle_idx"]
-        n1 = np.bincount(ci_[ok & (yr >= 1910) & (yr <= 1939)], minlength=nC)
-        n2 = np.bincount(ci_[ok & (yr >= 1950) & (yr <= 1965)], minlength=nC)
+        w0, w1, w2, w3 = a.persistent_windows
+        n1 = np.bincount(ci_[ok & (yr >= w0) & (yr <= w1)], minlength=nC)
+        n2 = np.bincount(ci_[ok & (yr >= w2) & (yr <= w3)], minlength=nC)
         keep_c = (n1 >= a.persistent) & (n2 >= a.persistent)
         fit = fit & keep_c[ci_]
         print(f"[E068c] persistent circles (>= {a.persistent} counts in both windows): {int(keep_c.sum())}; "
@@ -143,15 +153,36 @@ def main():
                                                                  ("1966+", 1966, 9999)]), flush=True)
     logE = np.log(np.where(ok, E, 1.0)); logE = logE - logE[fit].mean()
     feed = np.log1p(np.clip(np.nan_to_num(D["feeder_hrs"]), 0, None))     # one record is negative (entry error)
+    if a.effort2 == "distance":
+        km = D["distance_km"]; has = np.isfinite(km) & (km > 0)
+        logD = np.log(np.where(has, km, 1.0)); logD = np.where(has, logD - logD[fit & has].mean(), 0.0)
+        missD = (~has).astype(float)
+        print(f"[E070] distance recorded for {has[fit].mean():.2f} of fit rows", flush=True)
+    else:
+        logD = np.zeros(len(Y)); missD = np.zeros(len(Y))
     noct = np.log1p(np.clip(np.nan_to_num(D["nocturnal_hrs"]), 0, None))
     tt = lambda x, dt=torch.float32: torch.as_tensor(x, dtype=dt, device=dev)
     idx = np.where(fit)[0]
     c_, r_, t_ = tt(D["circle_idx"][idx], torch.long), tt(D["stratum_idx"][idx], torch.long), tt(yr[idx] - years[0], torch.long)
     x_e, x_f, x_n, y = tt(logE[idx]), tt(feed[idx]), tt(noct[idx]), tt(Y[idx])
+    x_d, x_m = tt(logD[idx]), tt(missD[idx])
     z_c = tt(Zc[idx])
     yb = (y > 0).float()
     # circle-years by stratum-year presence: random-walk penalty only links years, data or not
     A = torch.zeros(nC, S, device=dev, requires_grad=True)
+    nbr = None
+    if a.circle_prior == "neighbour":
+        from scipy.spatial import cKDTree
+        clat = np.zeros(nC); clon = np.zeros(nC)
+        clat[D["circle_idx"]] = D["lat"]; clon[D["circle_idx"]] = D["lon"]
+        xy = np.column_stack([clat * 111.0, clon * 111.0 * np.cos(np.radians(clat))])
+        dd, jj = cKDTree(xy).query(xy, k=a.k_nbr + 1)
+        dd, jj = dd[:, 1:], jj[:, 1:]
+        wm = (dd <= a.nbr_km).astype(np.float32)
+        has_n = wm.sum(1) > 0
+        nbr = (tt(jj, torch.long), tt(wm / np.maximum(wm.sum(1, keepdims=True), 1)), tt(has_n.astype(np.float32)))
+        print(f"[E070] neighbour prior: {int(has_n.sum())} of {nC} circles have a neighbour within {a.nbr_km} km",
+              flush=True)
     G = torch.zeros(nR, T, S, device=dev)
     if a.family == "nb":
         mean_log = torch.log(y.mean(0) + 0.1)
@@ -165,12 +196,15 @@ def main():
     Q = torch.zeros(S, device=dev, requires_grad=True)
     K = torch.zeros(S, device=dev, requires_grad=True)            # completeness coefficient
     LT = torch.zeros(S, device=dev, requires_grad=True)           # log theta
-    opt = torch.optim.Adam([A, G, F, Q, K, LT] + ([P] if a.p_fixed is None else []), lr=a.lr)
+    Q2 = torch.zeros(S, device=dev, requires_grad=True)           # distance exponent
+    M2 = torch.zeros(S, device=dev, requires_grad=True)           # distance-missing offset
+    opt = torch.optim.Adam([A, G, F, Q, K, LT, Q2, M2] + ([P] if a.p_fixed is None else []), lr=a.lr)
     n = float(len(idx))
     t0 = time.time()
     for step in range(a.steps):
         opt.zero_grad()
-        eta = A[c_] + G[r_, t_] + P * x_e[:, None] + F * x_f[:, None] + Q * x_n[:, None] + K * z_c
+        eta = (A[c_] + G[r_, t_] + P * x_e[:, None] + F * x_f[:, None] + Q * x_n[:, None] + K * z_c
+               + Q2 * x_d[:, None] + M2 * x_m[:, None])
         if a.family == "nb":
             th = torch.exp(LT)
             # NB2 log-likelihood (theta = size)
@@ -180,7 +214,13 @@ def main():
             lam = torch.exp(eta.clamp(max=15.0))                  # cloglog: P(detect) = 1 - exp(-lam)
             ll = yb * torch.log(-torch.expm1(-lam) + 1e-12) - (1 - yb) * lam
         nll = -ll.sum() / n
-        pen = ((A ** 2).sum() / (2 * a.sd_a ** 2) + ((G[:, 1:] - G[:, :-1]) ** 2).sum() / (2 * a.sd_rw ** 2)
+        if nbr is not None:
+            jn, wn, hn = nbr
+            nb_mean = (A[jn] * wn[:, :, None]).sum(1)
+            pen_nb = (((A - nb_mean) ** 2).sum(1) * hn).sum() / (2 * a.sd_nbr ** 2)
+        else:
+            pen_nb = 0.0
+        pen = (pen_nb + (A ** 2).sum() / (2 * a.sd_a ** 2) + ((G[:, 1:] - G[:, :-1]) ** 2).sum() / (2 * a.sd_rw ** 2)
                + ((G - mean_log) ** 2).sum() / (2 * a.sd_g ** 2)) / n
         loss = nll + pen
         loss.backward()
@@ -191,7 +231,7 @@ def main():
     with torch.no_grad():
         Ah, Gh = A.cpu().numpy(), G.cpu().numpy()
         Pn, Fn, Qn, th = P.cpu().numpy(), F.cpu().numpy(), Q.cpu().numpy(), np.exp(LT.cpu().numpy())
-        Kn = K.cpu().numpy()
+        Kn = K.cpu().numpy(); Q2n, M2n = Q2.cpu().numpy(), M2.cpu().numpy()
     # stratum index at mean effort and mean completeness: NB -> expected count of a typical circle,
     # i.e. exp(g) x mean over the stratum's circles of exp(a); bern -> mean detection probability over its circles
     circ_str = np.full(nC, -1)
@@ -216,7 +256,8 @@ def main():
     if a.half >= 0:
         hidx = hidx[in_half[D["circle_idx"][hidx]] == bool(a.half)]
     eta_h = (Ah[D["circle_idx"][hidx]] + Gh[D["stratum_idx"][hidx], yr[hidx] - years[0]] + Pn * logE[hidx, None]
-             + Fn * feed[hidx, None] + Qn * noct[hidx, None] + Kn * Zc[hidx])
+             + Fn * feed[hidx, None] + Qn * noct[hidx, None] + Kn * Zc[hidx] + Q2n * logD[hidx, None]
+             + M2n * missD[hidx, None])
     if a.family == "nb":
         hold_pred = np.exp(eta_h)
         hold_pdet = 1 - (th / (th + hold_pred)) ** th               # P(count > 0) under NB2

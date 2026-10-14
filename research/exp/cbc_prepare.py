@@ -35,7 +35,8 @@ def main():
     ap.add_argument("--strata-shp2", default=None)
     ap.add_argument("--cache", required=True)
     ap.add_argument("--out", required=True)
-    ap.add_argument("--species-set", choices=["product", "community"], default="product",
+    ap.add_argument("--similarity", default=None, help="E070: species_similarity.csv (species_code, migration)")
+    ap.add_argument("--species-set", choices=["product", "community", "residents"], default="product",
                     help="product: species with an Audubon trend (E064); community: the cache's reference species (E066)")
     a = ap.parse_args()
     import pandas as pd
@@ -57,6 +58,12 @@ def main():
     prod = prod[(prod["region_type"] == "stratum") & prod["survey_suitability"].isin(["medium", "high"])]
     prod_codes = {sci2code.get(s) for s in prod["scientific_name"].unique()} - {None}
     species = sorted(prod_codes & allowed)
+    if a.species_set == "residents":
+        # E070: every RESIDENT (AVONET migration 1-2) community or dev species -- the sedentary focus (user,
+        # 2026-10-14). Sealed species and the House Finch are outside `allowed` by construction.
+        sim = pd.read_csv(a.similarity)
+        mig = dict(zip(sim["species_code"], sim["migration"]))
+        species = sorted(s for s in allowed if mig.get(s) in (1.0, 2.0))
     if a.species_set == "community":
         # E066: the cache's 96 reference (community) species, whether or not Audubon publishes a trend for them --
         # the species ESK's Ruzicka similarity is computed on
@@ -84,13 +91,20 @@ def main():
     cy["stratum"] = [smap[r_, c_] if r_ >= 0 else None for r_, c_ in zip(cy["row"], cy["col"])]
     cy = cy[cy["stratum"].notna()].reset_index(drop=True)
 
-    eff = pd.read_csv(raw("Effort_Many_Types_Report"), encoding="utf-8-sig", usecols=["abbrev", "count_yr", "hours"])
+    eff = pd.read_csv(raw("Effort_Many_Types_Report"), encoding="utf-8-sig",
+                      usecols=["abbrev", "count_yr", "hours", "distance", "distance_unit"])
     ph = eff.groupby(["abbrev", "count_yr"])["hours"].sum().rename("party_hours")
+    # E070: party-distance (km), summed over travel modes -- recorded for ~60% of 1920-39 counts where hours are not
+    eff["km"] = eff["distance"].fillna(0) * np.where(eff["distance_unit"].astype(str).str.lower().str.startswith("mi"),
+                                                     1.609344, 1.0)
+    pkm = eff.groupby(["abbrev", "count_yr"])["km"].sum().rename("distance_km")
+    ph = pd.concat([ph, pkm], axis=1)
     summ = pd.read_csv(raw("Effort_Summary_Report"), encoding="utf-8-sig")
     sm = summ.groupby(["abbrev", "count_yr"])[["field_counters", "feeder_counters", "max_parties", "feeder_hrs",
                                                "nocturnal_hrs"]].max()
     cy = cy.merge(ph, on=["abbrev", "count_yr"], how="left").merge(sm, on=["abbrev", "count_yr"], how="left")
     cy.loc[~(cy["party_hours"] > 0), "party_hours"] = np.nan
+    cy.loc[~(cy["distance_km"] > 0), "distance_km"] = np.nan
     cy.loc[~(cy["field_counters"] > 0), "field_counters"] = np.nan
 
     # NAME HARMONIZATION (E064 amendment): the raw file uses older scientific names (Anas clypeata, Grus canadensis),
@@ -150,7 +164,8 @@ def main():
         circle_idx=cy["abbrev"].map(ci).to_numpy(np.int32), stratum_idx=cy["stratum"].map(sti).to_numpy(np.int32),
         year_end=cy["year_end"].to_numpy(np.int32), row=cy["row"].to_numpy(np.int32), col=cy["col"].to_numpy(np.int32),
         lat=cy["latitude"].to_numpy(), lon=cy["longitude"].to_numpy(),
-        party_hours=cy["party_hours"].to_numpy(np.float32), field_counters=cy["field_counters"].to_numpy(np.float32),
+        party_hours=cy["party_hours"].to_numpy(np.float32), distance_km=cy["distance_km"].to_numpy(np.float32),
+        field_counters=cy["field_counters"].to_numpy(np.float32),
         max_parties=cy["max_parties"].to_numpy(np.float32), feeder_hrs=cy["feeder_hrs"].to_numpy(np.float32),
         feeder_counters=cy["feeder_counters"].to_numpy(np.float32),
         nocturnal_hrs=cy["nocturnal_hrs"].to_numpy(np.float32))

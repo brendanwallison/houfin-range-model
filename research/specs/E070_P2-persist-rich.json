@@ -1,0 +1,18 @@
+{
+ "exp": "E070",
+ "name": "e070-fit-P2-persist-rich",
+ "group": "cpu",
+ "overlay": "research/overlays/desk_tempho_1995_seed1.json",
+ "cmd": [
+  "bash",
+  "-c",
+  "set -e; {python} research/exp/cbc_effort_model.py --effort counters --completeness bench --family bern --effort2 distance --persistent 5 --persistent-windows 1966 1985 2005 2024 --data /mnt/e/Datasets/cbc_raw/pseudo_early2_rich/prepared/cbc_circles_res.npz --completeness-file /mnt/e/Datasets/cbc_raw/pseudo_early2_rich/prepared/completeness_res.npz --ref-from 1986 --steps 6000 --out {out}/fit_P2_persist_rich.npz"
+ ],
+ "expected_minutes": 15,
+ "summarize": [
+  "bash",
+  "-c",
+  "cat {out}/fit_P2_persist_rich_meta.json"
+ ],
+ "note": "E070: P2 persist on pseudo-early2 rich"
+}

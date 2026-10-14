@@ -47,6 +47,8 @@ def main():
                     help="completeness is measured against each circle's own mean over its counts from this year on")
     ap.add_argument("--family", choices=["nb", "bern"], default="nb",
                     help="nb: counts (negative binomial); bern: detection (presence/absence, cloglog link)")
+    ap.add_argument("--p-fixed", type=float, default=None,
+                    help="E068: one effort exponent for every species, not fitted")
     ap.add_argument("--half", type=int, choices=[-1, 0, 1], default=-1,
                     help="fit only circles in a random half (split-half reliability); -1 = all circles")
     a = ap.parse_args()
@@ -147,12 +149,12 @@ def main():
         mean_log = torch.log(-torch.log1p(-pbar))
     G += mean_log
     G.requires_grad_(True)
-    P = torch.full((S,), 0.5, device=dev, requires_grad=True)
+    P = torch.full((S,), 0.5 if a.p_fixed is None else a.p_fixed, device=dev, requires_grad=a.p_fixed is None)
     F = torch.zeros(S, device=dev, requires_grad=True)
     Q = torch.zeros(S, device=dev, requires_grad=True)
     K = torch.zeros(S, device=dev, requires_grad=True)            # completeness coefficient
     LT = torch.zeros(S, device=dev, requires_grad=True)           # log theta
-    opt = torch.optim.Adam([A, G, P, F, Q, K, LT], lr=a.lr)
+    opt = torch.optim.Adam([A, G, F, Q, K, LT] + ([P] if a.p_fixed is None else []), lr=a.lr)
     n = float(len(idx))
     t0 = time.time()
     for step in range(a.steps):

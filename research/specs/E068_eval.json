@@ -1,0 +1,9 @@
+{
+ "exp": "E068", "name": "e068-eval", "group": "cpu",
+ "after_jobs": ["E068/e068-fit-V0-pfixed", "E068/e068-fit-V3-pfixed"],
+ "overlay": "research/overlays/desk_tempho_1995_seed1.json",
+ "cmd": ["bash", "-c", "set -e; F=''; for v in V0 V1 V2 V3; do F=\"$F --fit $v=$(ls /home/breallis/houfin/work/houfin/research/E065/e065-fit-$v-full-*/fit_${v}_full.npz)\"; done; for v in V0 V3; do F=\"$F --fit ${v}_pfixed=$(ls {out}/../e068-fit-$v-pfixed-*/fit_${v}_pfixed.npz)\"; done; {python} research/exp/e068_early_decline.py --data /mnt/e/Datasets/cbc_raw/prepared/cbc_circles_v2.npz --completeness /mnt/e/Datasets/cbc_raw/prepared/completeness_v3.npz $F --out {out}"],
+ "expected_minutes": 3,
+ "summarize": ["bash", "-c", "cat {out}/e068.json"],
+ "note": "E068: effort-extrapolation and selective-reporting diagnostics for the early decline"
+}

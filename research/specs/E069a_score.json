@@ -1,0 +1,8 @@
+{
+ "exp": "E069", "name": "e069a-presence-score", "group": "io",
+ "overlay": "research/overlays/desk_tempho_1995_seed1.json",
+ "cmd": ["bash", "-c", "set -e; {python} research/exp/e069_presence_score.py --cache /home/breallis/houfin/work/houfin/research_cache/desk_tempho_1995_s1 --cbc /mnt/e/Datasets/cbc_raw/prepared/cbc_circles_comm.npz --similarity /home/breallis/houfin/work/houfin/research/E059/species-strata-066f943afb0e/species_similarity.csv --out {out}"],
+ "expected_minutes": 10,
+ "summarize": ["bash", "-c", "cat {out}/e069a.json"],
+ "note": "E069a: within-list presence score of DESK backcast z vs modern / regional placebos, 1940-1995 CBC lists"
+}

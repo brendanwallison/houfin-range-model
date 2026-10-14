@@ -132,3 +132,21 @@ the PLOS ONE Massachusetts comparison. Pre-1966 coverage numbers: our own profil
 - **Season test (CONSIDERATIONS G11).** House Finches are year-round residents. Test whether CBC-community features
   predict PROXY residents (sedentary dev species per AVONET, feeder-associated / finch-like preferred; never House Finch
   data) better than BBS-community features, scored in winter (CBC) and summer (BBS) counts.
+
+## 8. Early-CBC effort and precedents (added 2026-10-13, after E065/E066 and a literature survey)
+- EFFORT IN THE RAW REQUEST, by circle-year (Effort_Many_Types_Report, summed over travel modes): party-HOURS > 0 for
+  0% (1901-19), 6% (1920s), 6% (1930s), 55% (1940s), 94% (1950-65); party-DISTANCE > 0 for 7%, 60%, 59%, 87%, 98%.
+  Distance -- the effort measure Stewart (1954, Wilson Bull. 66:184) preferred and Saunders et al. (2022, GCB,
+  doi:10.1111/gcb.16063) used -- covers most counts from 1920 and has not been used here yet (E064/E065 used counters).
+  The early printed reports (Bird-Lore) carried hours, miles and observers; Wing's 1947 typescript tabulated census
+  hours to 1939 (Root & Weckstein 1994) -- the database copy is incomplete, not the record (likely).
+- PRECEDENTS: Murphy & Jarzyna 2023 (Ecol. Evol., doi:10.1002/ece3.9781): 1919-2018, N-mixture, detection on
+  party-hours with pre-1967 effort IMPUTED per circle from an effort-vs-year curve and the imputation uncertainty
+  propagated. Saunders et al. 2022: 1930-2019, 119 long-running circles, DECADE presence/absence per circle, binomial
+  GAMM with a smooth of log party-distance. Root & Weckstein 1994 (Stud. Avian Biol. 15:191): 1901-40 vs 1960-89 for 58
+  species, each period scaled to its own maximum (relative pattern only). No community-similarity use of pre-1966 CBC
+  was found.
+- CANDIDATES (not yet pre-registered): (i) distance as the effort covariate (with counters), 1920+; (ii) per-circle
+  effort imputation with propagated uncertainty (Murphy & Jarzyna); (iii) decade presence per circle (Saunders) --
+  E066b showed pooling 5 counts restores similarity order under omission; (iv) Chao et al. 2005 similarity estimators
+  correcting for unseen shared species, and coverage-based standardization (Chao & Jost 2012) for the community target.

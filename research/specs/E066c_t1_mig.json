@@ -1,0 +1,8 @@
+{
+ "exp": "E066", "name": "e066c-t1-by-migration", "group": "io",
+ "overlay": "research/overlays/desk_tempho_1995_seed1.json",
+ "cmd": ["bash", "-c", "set -e; S=/home/breallis/houfin/work/houfin/research/E059/species-strata-066f943afb0e/species_similarity.csv; for m in 1 1,2 3; do {python} research/exp/e066_similarity_links.py t1 --cache /home/breallis/houfin/work/houfin/research_cache/desk_tempho_1995_s1 --cbc /mnt/e/Datasets/cbc_raw/prepared/cbc_circles_comm.npz --similarity $S --migration $m --out {out}; done"],
+ "expected_minutes": 30,
+ "summarize": ["bash", "-c", "cat {out}/e066_t1_mig*.json"],
+ "note": "E066c: T1 season link restricted to sedentary / residents / migrants"
+}

@@ -47,6 +47,14 @@ def t1(a):
     D = np.load(a.cbc, allow_pickle=False)
     comm = list(meta["community"]); cs = list(D["species"])
     sp = [s for s in comm if s in cs]
+    if a.migration:
+        # E066c: restrict to AVONET migration classes (1 sedentary, 2 partial, 3 migratory), the classification of
+        # species_similarity.csv used by E059g/E067
+        import pandas as pd
+        sim = pd.read_csv(a.similarity)
+        mig = dict(zip(sim["species_code"], sim["migration"]))
+        want = {float(x) for x in a.migration.split(",")}
+        sp = [s for s in sp if mig.get(s) in want]
     assert "houfin" not in sp
     Xb = Xb[:, [comm.index(s) for s in sp]]
     Yc = D["Y"][:, [cs.index(s) for s in sp]].astype(float)
@@ -226,13 +234,15 @@ def main():
     ap.add_argument("--cache"); ap.add_argument("--cbc"); ap.add_argument("--real")
     ap.add_argument("--degraded", nargs="*", default=[])
     ap.add_argument("--pairs", type=int, default=100000)
+    ap.add_argument("--migration", default=None, help="E066c (t1): AVONET migration classes to keep, e.g. 1 or 1,2")
+    ap.add_argument("--similarity", default=None, help="E066c: species_similarity.csv (species_code, migration)")
     ap.add_argument("--agg", type=int, nargs="*", default=[],
                     help="E066b: average k counts per circle and era before comparing (one run per k)")
     ap.add_argument("--out", required=True)
     a = ap.parse_args()
     os.makedirs(a.out, exist_ok=True)
     res = t1(a) if a.test == "t1" else t2(a)
-    tag = a.test + ("_agg" if a.agg else "")
+    tag = a.test + ("_agg" if a.agg else "") + (f"_mig{a.migration.replace(',', '')}" if a.migration else "")
     json.dump(res, open(os.path.join(a.out, f"e066_{tag}.json"), "w"), indent=1)
     print(json.dumps(res, indent=1))
 

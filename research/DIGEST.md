@@ -722,3 +722,22 @@ steering, not verified)
   (likely).
 - Implication: the age model could read the mean z of 4-6 DESK seeds (late states best for time) at 4-6x the DESK
   training cost, with no change to the BLR form. Effects are a few hundredths, not a step change.
+
+2026-10-14 06:00 -- OUT-OF-COMMUNITY SPECIES SUMMARY (E059b/g/h, E067; the production-relevant case; steering)
+- DESK (single seed, selected) trails the strong base (trend + covariates) by ~0.10 on species change and adds
+  ~+0.005 beyond it.
+- SEDENTARY species: the gap halves (-0.045 / -0.055 vs migratory -0.10 / -0.14; mean over 8 / 4 seeds).
+- Spatial level is slightly BELOW a linear covariate map for every stratum (~-0.02).
+- Community-level gains do NOT transfer to these species:
+  - late training (flat or worse);
+  - grokking probe (-0.07);
+  - CropAT (-0.02);
+  - metric weight 40 (worse).
+- The seed ensemble helps by about its variance gain (+0.016 / +0.024 vs the mean seed), not beyond the base.
+- E067 (surrogates): dropping migrants from the training community does not help sedentary targets. MORE resident
+  species does (+0.06-0.07). The sedentary edge is likely biological, not an artifact of the selection.
+- Production implications:
+  - (1) the split-kernel readout (E059e: species change 0.089 -> 0.22, scale fixed);
+  - (2) selected or early-stopped state, not late; the short 150-epoch schedule is free for species;
+  - (3) DESK's change for out-of-community species needs a trend term or shrinkage. The CBC check (E069a/a2, other
+    session) finds z's backcast shift 3-5x too large even with the split readout.

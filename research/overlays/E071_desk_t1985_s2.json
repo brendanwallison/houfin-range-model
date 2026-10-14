@@ -1,0 +1,54 @@
+{
+ "_comment": "E071: desk_tempho_1985 seed 2 on the 121-species RESIDENT community basis (otherwise identical to the control overlay)",
+ "paths": {
+  "desk_output_dir": "${RESEARCH_OUT}/desk"
+ },
+ "desk": {
+  "z_dir": "${E071_BASIS}/esk/spacetime",
+  "trend": {
+   "holdout_years": [
+    1966,
+    1967,
+    1968,
+    1969,
+    1970,
+    1971,
+    1972,
+    1973,
+    1974,
+    1975,
+    1976,
+    1977,
+    1978,
+    1979,
+    1980,
+    1981,
+    1982,
+    1983,
+    1984,
+    1985
+   ],
+   "direction_anchor_year": 1996,
+   "direction_withheld_anchor_year": 1975,
+   "common_holdout_years": [
+    1966,
+    1967,
+    1968,
+    1969,
+    1970,
+    1971,
+    1972,
+    1973,
+    1974,
+    1975
+   ]
+  },
+  "seed": 2
+ },
+ "trend": {
+  "community_trend_list": "${E071_COMMUNITY}"
+ },
+ "target": {
+  "points_dir": "${E071_BASIS}/bbs_points"
+ }
+}

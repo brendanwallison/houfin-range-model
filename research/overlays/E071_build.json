@@ -1,0 +1,12 @@
+{
+ "trend": {
+  "community_trend_list": "${E071_COMMUNITY}"
+ },
+ "target": {
+  "points_dir": "${E071_BASIS}/bbs_points"
+ },
+ "paths": {
+  "esk_output_dir": "${E071_BASIS}/esk"
+ },
+ "_comment": "E071 build: BBS points + spacetime ESK basis for the 121-species RESIDENT community (research/E071/resident_community.csv), written only under ${E071_BASIS}"
+}

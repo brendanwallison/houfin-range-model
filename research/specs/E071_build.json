@@ -1,0 +1,18 @@
+{
+ "exp": "E071",
+ "name": "build",
+ "group": "gpu",
+ "overlay": "research/overlays/E071_build.json",
+ "cmd": [
+  "bash",
+  "-c",
+  "set -e; export E071_BASIS={outroot}/E071/basis E071_COMMUNITY={code}/research/E071/resident_community.csv; mkdir -p $E071_BASIS; {python} scripts/run_encoder.py bbs-points; {python} scripts/run_encoder.py spacetime-esk; ls -la $E071_BASIS/bbs_points $E071_BASIS/esk/spacetime"
+ ],
+ "expected_minutes": 90,
+ "summarize": [
+  "bash",
+  "-c",
+  "export E071_BASIS={outroot}/E071/basis; python3 -c \"import json; m=json.load(open('$E071_BASIS/bbs_points/points_meta.json')); print({k: m[k] for k in ('n_rows','n_species','n_cells','rows_dropped_all_zero')})\""
+ ],
+ "note": "E071: BBS points + ESK basis for the 121-species resident community"
+}

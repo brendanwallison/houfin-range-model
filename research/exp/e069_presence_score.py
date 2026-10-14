@@ -50,6 +50,34 @@ def ridge_cv(Z, T, groups, lams, k=5, seed=69):
     return (lambda z: (z - mu_z) @ B + mu_t), lam
 
 
+def split_ridge_cv(Zb, Zw, T, groups, lams, k=5, seed=69):
+    """E069a2 (peer E059e): ridge on [cell-mean z, within-cell deviation dz] with SEPARATE penalties, chosen jointly by
+    k-fold CV over spatial blocks. Returns f(zbar, z) = a + zbar Bb + (z - zbar) Bw."""
+    rng = np.random.default_rng(seed)
+    ug = np.unique(groups); fold = dict(zip(ug, rng.integers(k, size=len(ug))))
+    f = np.array([fold[g] for g in groups])
+    F = np.concatenate([Zb, Zw], 1); p = Zb.shape[1]
+
+    def fit(rows, lb, lw):
+        mu_f, mu_t = F[rows].mean(0), T[rows].mean(0)
+        A = (F[rows] - mu_f).T @ (F[rows] - mu_f)
+        tb, tw = np.trace(A[:p, :p]) / p, np.trace(A[p:, p:]) / p
+        pen = np.concatenate([np.full(p, lb * tb), np.full(p, lw * tw)])
+        return mu_f, mu_t, np.linalg.solve(A + np.diag(pen), (F[rows] - mu_f).T @ (T[rows] - mu_t))
+    best = None
+    for lb in lams:
+        for lw in lams:
+            err = 0.0
+            for i in range(k):
+                mu_f, mu_t, B = fit(f != i, lb, lw)
+                err += (((F[f == i] - mu_f) @ B + mu_t - T[f == i]) ** 2).sum()
+            if best is None or err < best[0]:
+                best = (err, lb, lw)
+    mu_f, mu_t, B = fit(np.ones(len(F), bool), best[1], best[2])
+    ratio = float(np.linalg.norm(B[:p]) / max(np.linalg.norm(B[p:]), 1e-12))
+    return (lambda zbar, z: (np.concatenate([zbar, z - zbar], 1) - mu_f) @ B + mu_t), (best[1], best[2]), ratio
+
+
 def list_ll(eta, delta, P):
     """mean log P(species | record) over listed species, per list. eta (n, S), P (n, S) bool presence."""
     s = eta + delta
@@ -85,6 +113,9 @@ def main():
     ap.add_argument("--cache", required=True); ap.add_argument("--cbc", required=True)
     ap.add_argument("--similarity", required=True); ap.add_argument("--out", required=True)
     ap.add_argument("--boot", type=int, default=1000)
+    ap.add_argument("--readout", choices=["level", "split"], default="level",
+                    help="level: ridge on z (E069a); split: ridge on [cell-mean z, z - cell mean] with separate "
+                         "penalties (E069a2, after the peer's E059e)")
     a = ap.parse_args()
     import pandas as pd
     C = a.cache
@@ -102,7 +133,17 @@ def main():
     # readout on BBS training cell-years from trained years
     tr = sp_["is_train"] & (keys[:, 2] >= 1996)
     T = np.log1p(Xc[:, [comm.index(s) for s in sp]])
-    readout, lam = ridge_cv(z_keys[tr].astype(float), T[tr], sp_["block_id"][tr], [1e-4, 1e-3, 1e-2, 1e-1, 1, 10])
+    trained = (years >= 1996) & (years <= 2025)
+    zbar_cell = np.asarray(Zall[:, trained].mean(1), float)          # each cell's mean z over trained years
+    kci = np.load(os.path.join(C, "key_cell_index.npy"))
+    if a.readout == "level":
+        _ro, lam = ridge_cv(z_keys[tr].astype(float), T[tr], sp_["block_id"][tr], [1e-4, 1e-3, 1e-2, 1e-1, 1, 10])
+        readout = lambda cell, z: _ro(z)
+        between_within = None
+    else:
+        _ro, lam, between_within = split_ridge_cv(zbar_cell[kci[tr]], z_keys[tr].astype(float), T[tr],
+                                                  sp_["block_id"][tr], [1e-3, 1e-2, 1e-1, 1, 10, 100])
+        readout = lambda cell, z: _ro(zbar_cell[cell], z)
     # CBC lists in cached cells
     cix = {(int(r), int(c)): i for i, (r, c) in enumerate(cells)}
     ci = np.array([cix.get((int(r), int(c)), -1) for r, c in zip(D["row"], D["col"])])
@@ -113,10 +154,11 @@ def main():
     zt = lambda rows: np.asarray(Zall[ci[rows], yr[rows] - y0], float)
     mod_years = (years >= 2005) & (years <= 2024)
     zmod_cell = np.asarray(Zall[:, mod_years].mean(1), float)
-    res = {"species": len(sp), "residents": int(resident.sum()), "ridge_lambda": lam}
+    res = {"readout": a.readout, "species": len(sp), "residents": int(resident.sum()), "ridge_lambda": lam,
+           "between_over_within_coef_norm": between_within}
     m_mod = ok & (yr >= 2005)
     rows_mod = np.where(m_mod)[0]
-    eta_mod = readout(zt(rows_mod))
+    eta_mod = readout(ci[rows_mod], zt(rows_mod))
     for subset, cols in (("all", np.ones(len(sp), bool)), ("residents", resident)):
         delta = fit_delta(eta_mod[:, cols], P[rows_mod][:, cols])
         out = {"modern_lists_for_delta": int(len(rows_mod))}
@@ -125,8 +167,8 @@ def main():
             Pm = P[rows][:, cols]
             keep = Pm.sum(1) >= 2
             rows, Pm = rows[keep], Pm[keep]
-            eb = readout(zt(rows))[:, cols]
-            em = readout(zmod_cell[ci[rows]])[:, cols]
+            eb = readout(ci[rows], zt(rows))[:, cols]
+            em = readout(ci[rows], zmod_cell[ci[rows]])[:, cols]
             sh = pd.DataFrame(eb - em); sh["k"] = list(zip(D["stratum_idx"][rows], yr[rows]))
             er = em + sh.groupby("k").transform("mean").to_numpy()
             llb, llm, llr = list_ll(eb, delta, Pm), list_ll(em, delta, Pm), list_ll(er, delta, Pm)
@@ -144,10 +186,13 @@ def main():
                         "diff_vs_regional": float((llb - llr).mean()),
                         "diff_vs_regional_ci95": [float(x) for x in np.percentile(bd["regional"], [2.5, 97.5])],
                         "auc_backcast": float(np.nanmean(list_auc(eb + delta, Pm))),
-                        "auc_modern": float(np.nanmean(list_auc(em + delta, Pm)))}
+                        "auc_modern": float(np.nanmean(list_auc(em + delta, Pm))),
+                        # secondary (pre-registered in E069a2): shrinking the backcast shift by alpha
+                        "ll_by_alpha": {str(al): float(list_ll(em + al * (eb - em), delta, Pm).mean())
+                                        for al in (0, 0.1, 0.2, 0.3, 0.5, 0.75, 1.0, 1.5)}}
         res[subset] = out
     os.makedirs(a.out, exist_ok=True)
-    json.dump(res, open(os.path.join(a.out, "e069a.json"), "w"), indent=1)
+    json.dump(res, open(os.path.join(a.out, f"e069a_{a.readout}.json"), "w"), indent=1)
     print(json.dumps(res, indent=1))
 
 

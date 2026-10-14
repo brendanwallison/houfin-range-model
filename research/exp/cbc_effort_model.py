@@ -49,6 +49,8 @@ def main():
                     help="nb: counts (negative binomial); bern: detection (presence/absence, cloglog link)")
     ap.add_argument("--p-fixed", type=float, default=None,
                     help="E068: one effort exponent for every species, not fitted")
+    ap.add_argument("--persistent", type=int, default=0,
+                    help="E068c: fit only circles with >= N counts in 1910-39 and >= N in 1950-65")
     ap.add_argument("--half", type=int, choices=[-1, 0, 1], default=-1,
                     help="fit only circles in a random half (split-half reliability); -1 = all circles")
     a = ap.parse_args()
@@ -79,6 +81,15 @@ def main():
         fit = fit & ((yr < 1966) | keep)
         print(f"[E064b] thinned post-1966 fit rows: {int((fit & (yr >= 1966)).sum()):,} kept of {len(late):,}", flush=True)
     nC = len(D["circles"])
+    if a.persistent > 0:
+        # E068c: only circles with >= N counts in 1910-1939 AND >= N in 1950-1965 (the windows of E065's C check)
+        ci_ = D["circle_idx"]
+        n1 = np.bincount(ci_[ok & (yr >= 1910) & (yr <= 1939)], minlength=nC)
+        n2 = np.bincount(ci_[ok & (yr >= 1950) & (yr <= 1965)], minlength=nC)
+        keep_c = (n1 >= a.persistent) & (n2 >= a.persistent)
+        fit = fit & keep_c[ci_]
+        print(f"[E068c] persistent circles (>= {a.persistent} counts in both windows): {int(keep_c.sum())}; "
+              f"{int(fit.sum()):,} fit rows", flush=True)
     if a.half >= 0:
         in_half = np.random.default_rng(a.seed + 1).random(nC) < 0.5
         fit = fit & (in_half[D["circle_idx"]] == bool(a.half))
@@ -186,8 +197,11 @@ def main():
     circ_str = np.full(nC, -1)
     circ_str[D["circle_idx"]] = D["stratum_idx"]
     index = np.zeros((nR, T, S))
+    # only circles the fit saw (E068c): an unfitted circle's effect stays ~0, which only rescales the count index
+    # (log changes unaffected) but shifts the detection index nonlinearly (E065's V3 half-fits included them)
+    seen = np.bincount(D["circle_idx"][fit], minlength=nC) > 0
     for r in range(nR):
-        m = (circ_str == r)
+        m = (circ_str == r) & seen
         if not m.any():
             continue
         if a.family == "nb":

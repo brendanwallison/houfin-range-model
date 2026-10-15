@@ -1,0 +1,59 @@
+{
+ "_comment": "E073 C3b: desk_tempho_1995 seed 1 with a RANDOM set of whole 6x6 training blocks dropped, as many cells as the C3 cover mask (the matched control for losing 30% of training cells).",
+ "paths": {
+  "desk_output_dir": "${RESEARCH_OUT}/desk"
+ },
+ "desk": {
+  "z_dir": "${HOUFIN_PROCESSED}/encoder/esk_balanced/spacetime",
+  "trend": {
+   "holdout_years": [
+    1966,
+    1967,
+    1968,
+    1969,
+    1970,
+    1971,
+    1972,
+    1973,
+    1974,
+    1975,
+    1976,
+    1977,
+    1978,
+    1979,
+    1980,
+    1981,
+    1982,
+    1983,
+    1984,
+    1985,
+    1986,
+    1987,
+    1988,
+    1989,
+    1990,
+    1991,
+    1992,
+    1993,
+    1994,
+    1995
+   ],
+   "direction_anchor_year": 1996,
+   "direction_withheld_anchor_year": 1975,
+   "common_holdout_years": [
+    1966,
+    1967,
+    1968,
+    1969,
+    1970,
+    1971,
+    1972,
+    1973,
+    1974,
+    1975
+   ],
+   "train_drop_mask": "/home/breallis/houfin/work/houfin/research/E073/c3b_train_drop_mask_random.npy"
+  },
+  "seed": 1
+ }
+}

@@ -809,6 +809,29 @@ def run_covermask(a):
     print(f"[E073 C3] cover-trend threshold {thr:.4f}: drop {int(beyond.sum())} of {int(trn_cells.sum())} training cells")
 
 
+def run_randmask(a):
+    """C3b: a random drop mask of whole 6x6 blocks of TRAINING cells, as many cells as the cover mask dropped."""
+    est = Estimand(a.cache, a.n_boot, a.similarity)
+    keys = est.keys
+    trn_rows = ~est.ho & ~est.bf & est.ty
+    tc = np.unique(keys[trn_rows][:, :2], axis=0)
+    target = json.load(open(a.cover_mask_json))["n_dropped"]
+    blk = (tc[:, 0] // 6) * 100000 + tc[:, 1] // 6
+    ub = np.unique(blk)
+    rng = np.random.default_rng(7)
+    grid = np.zeros(est.split["holdout"].shape, bool)
+    n = 0
+    for b in rng.permutation(ub):
+        sel = tc[blk == b]
+        grid[sel[:, 0], sel[:, 1]] = True
+        n += len(sel)
+        if n >= target:
+            break
+    np.save(os.path.join(a.out, "train_drop_mask_random.npy"), grid)
+    json.dump({"n_dropped": int(n), "target": int(target), "seed": 7}, open(os.path.join(a.out, "train_drop_mask_random.json"), "w"))
+    print(f"[E073 C3b] random drop mask: {n} training cells in whole 6x6 blocks (cover mask: {target})")
+
+
 def run_holdout3(a):
     """C3 step 2: DESK retrained WITHOUT the beyond-range training cells vs its control, on held-out cells beyond /
     inside the cover range; readouts restricted the same way; the covariate delta alongside; a second-seed control
@@ -821,6 +844,12 @@ def run_holdout3(a):
     trn = np.where(~est.ho & ~est.bf & est.ty & fin)[0]
     keep_cell = ~(trn_cells & (np.abs(slope) > thr))
     trn_rest = trn[keep_cell[inv[trn]]]
+    trn_rand = None
+    if a.random_mask:                                     # C3b: the random-drop run's training_mask.npy (H, W)
+        dm = np.load(a.random_mask).astype(bool)          # a DROP mask, as fed to desk.trend.train_drop_mask
+        trn_rand = trn[~dm[keys[trn, 0], keys[trn, 1]]]
+        print(f"[E073 C3] training rows: full {len(trn)}, cover-restricted {len(trn_rest)}, random-restricted "
+              f"{len(trn_rand)}", flush=True)
     ev_cid = est.cells_ev[:, 0].astype(np.int64) * 100000 + est.cells_ev[:, 1]
     sev = slope[np.searchsorted(uc, ev_cid)]
     groups = {"beyond": np.where(np.abs(sev) > thr)[0], "inside": np.where(np.abs(sev) <= thr)[0]}
@@ -834,7 +863,8 @@ def run_holdout3(a):
         zbar = cell_mean(keys, z, est.ty & fin)
         return z - zbar, zbar
     arms = {}
-    for tag, cache in (("ctrl", a.cache), ("restr", a.cache_restricted), ("ctrl_s2", a.cache_seed2)):
+    for tag, cache in (("ctrl", a.cache), ("restr", a.cache_restricted), ("ctrl_s2", a.cache_seed2),
+                       ("rand", a.cache_random)):
         if not cache:
             continue
         zw, zbar = desk_feats(cache)
@@ -846,9 +876,15 @@ def run_holdout3(a):
     P = {}
     for name, blocks in arms.items():
         Fe = np.hstack([est.delta(B) for B in blocks])
-        for rtag, rows in (("full", trn), ("rest", trn_rest)):
-            if "[restr]" in name and rtag == "full":
-                continue                                  # the restricted DESK only makes sense with a restricted readout
+        for rtag, rows in (("full", trn), ("rest", trn_rest), ("randrest", trn_rand)):
+            if rows is None:
+                continue
+            if "[restr]" in name and rtag != "rest":
+                continue                                  # the cover-restricted DESK only with its own readout rows
+            if "[rand]" in name and rtag != "randrest":
+                continue                                  # the random-restricted DESK only with its own readout rows
+            if rtag == "randrest" and not ("[rand]" in name or name == "vcc_h50"):
+                continue
             P[f"{name}|{rtag}"] = Fe @ fit_blocks(blocks, Yw, rows)["coef"].T
             print(f"[E073 C3] {name} readout {rtag}", flush=True)
     out = {"threshold": thr, "n_train_rows": int(len(trn)), "n_train_rows_rest": int(len(trn_rest)),
@@ -862,7 +898,11 @@ def run_holdout3(a):
             pairs = [("desk_within[restr]|rest", "desk_within[ctrl]|full"), ("vcz[restr]|rest", "vcz[ctrl]|full"),
                      ("desk_within[restr]|rest", "desk_within[ctrl]|rest"), ("vcz[restr]|rest", "vcz[ctrl]|rest"),
                      ("vcc_h50|rest", "vcc_h50|full"), ("vcz[restr]|rest", "vcc_h50|rest"),
-                     ("desk_within[ctrl_s2]|full", "desk_within[ctrl]|full"), ("vcz[ctrl_s2]|full", "vcz[ctrl]|full")]
+                     ("desk_within[ctrl_s2]|full", "desk_within[ctrl]|full"), ("vcz[ctrl_s2]|full", "vcz[ctrl]|full"),
+                     # C3b: cover-specific penalty = cover-restricted minus random-restricted (same amount dropped)
+                     ("desk_within[restr]|rest", "desk_within[rand]|randrest"), ("vcz[restr]|rest", "vcz[rand]|randrest"),
+                     ("vcc_h50|rest", "vcc_h50|randrest"), ("desk_within[rand]|randrest", "desk_within[ctrl]|full"),
+                     ("vcc_h50|randrest", "vcc_h50|full")]
             for x, y in pairs:
                 if x in D and y in D:
                     d = D[x][:, 0] - D[y][:, 0]
@@ -1251,7 +1291,7 @@ def run_novelty(a):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("part", choices=("novelty", "score", "score_b2", "score_b3", "score_b4", "holdout", "holdout2", "covermask", "holdout3"))
+    ap.add_argument("part", choices=("novelty", "score", "score_b2", "score_b3", "score_b4", "holdout", "holdout2", "covermask", "randmask", "holdout3"))
     ap.add_argument("--cache", required=True)
     ap.add_argument("--out", required=True)
     ap.add_argument("--similarity", default=None)
@@ -1259,9 +1299,12 @@ def main():
     ap.add_argument("--planted", action="store_true")
     ap.add_argument("--cache-restricted", default=None, help="C3: the DESK cache trained without beyond-range cells")
     ap.add_argument("--cache-seed2", default=None, help="C3: a second-seed control cache (run-to-run yardstick)")
+    ap.add_argument("--cache-random", default=None, help="C3b: DESK retrained with a random 30%% of training blocks dropped")
+    ap.add_argument("--random-mask", default=None, help="C3b: the random DROP mask that run was trained with")
+    ap.add_argument("--cover-mask-json", default=None, help="C3b: the cover mask's json (its n_dropped is matched)")
     a = ap.parse_args()
     os.makedirs(a.out, exist_ok=True)
-    {"novelty": run_novelty, "score": run_score, "score_b2": run_score_b2, "score_b3": run_score_b3, "score_b4": run_score_b4, "covermask": run_covermask, "holdout3": run_holdout3,
+    {"novelty": run_novelty, "score": run_score, "score_b2": run_score_b2, "score_b3": run_score_b3, "score_b4": run_score_b4, "covermask": run_covermask, "randmask": run_randmask, "holdout3": run_holdout3,
      "holdout": run_holdout, "holdout2": run_holdout}[a.part](a)
 
 

@@ -243,7 +243,7 @@ class Estimand:
         W = self.Wb if cells is None else self.Wb[:, cells]
         if cells is not None:
             P, Ta, Tb = P[cells], Ta[cells], Tb[cells]
-        out = np.empty((len(W), 2))
+        out = np.empty((len(W), 3))
         for i, w in enumerate(W):
             sw = w.sum()
             mu = lambda X: (w[:, None] * X).sum(0) / sw
@@ -251,7 +251,9 @@ class Estimand:
             vp = (w[:, None] * Pc * Pc).sum()
             vt = (w[:, None] * Ac * Bc).sum()
             cv = 0.5 * ((w[:, None] * Pc * Ac).sum() + (w[:, None] * Pc * Bc).sum())
-            out[i] = (cv / np.sqrt(vp * vt) if vp > 0 and vt > 0 else np.nan, cv / vp if vp > 0 else np.nan)
+            sse = (w[:, None] * (Pc - Ac) * (Pc - Bc)).sum()
+            out[i] = (cv / np.sqrt(vp * vt) if vp > 0 and vt > 0 else np.nan, cv / vp if vp > 0 else np.nan,
+                      1.0 - sse / vt if vt > 0 else np.nan)
         return out
 
 
@@ -513,6 +515,124 @@ def run_score_b2(a):
         print(f"   zones {o.get('by_zone')}")
 
 
+# ------------------------------------------------------------------------------------------------ part B3
+def species_terms(est, P, m):
+    """Per-species noise-free sums (cv, vp, vt) over held-out cells, centred, for jackknife over species."""
+    Ta, Tb = est.T["dev"]
+    P, Ta, Tb = P[:, m], Ta[:, m], Tb[:, m]
+    Pc, Ac, Bc = P - P.mean(0), Ta - Ta.mean(0), Tb - Tb.mean(0)
+    return 0.5 * ((Pc * Ac).sum(0) + (Pc * Bc).sum(0)), (Pc * Pc).sum(0), (Ac * Bc).sum(0)
+
+
+def jackknife_diff(est, Px, Py, m):
+    """Leave-one-species-out pooled corr difference x - y: min, max, and the species whose removal hurts x most."""
+    cx, px, t = species_terms(est, Px, m)
+    cy, py, _ = species_terms(est, Py, m)
+    names = np.array(est.species)[m]
+    out = []
+    for j in range(len(t)):
+        k = np.ones(len(t), bool)
+        k[j] = False
+        out.append(cx[k].sum() / np.sqrt(px[k].sum() * t[k].sum()) - cy[k].sum() / np.sqrt(py[k].sum() * t[k].sum()))
+    out = np.array(out)
+    return {"min": float(out.min()), "max": float(out.max()), "drop_for_min": str(names[out.argmin()])}
+
+
+def arms_b3(est, cov, Ytgt, extra):
+    """B3 (pre-registered after the E073 skeptic): complementarity of the covariate delta and DESK's change once both
+    have place-dependent slopes; higher-rank community-learned deltas; scale (MSE skill) and species jackknife."""
+    keys, fin = est.keys, cov.fin
+    trn = np.where(~est.ho & ~est.bf & est.ty & fin)[0]
+    Yw = Ytgt - cell_mean(keys, Ytgt, est.ty & fin)
+    P = {}
+
+    def within(name, blocks):
+        m = fit_blocks(blocks, Yw, trn)
+        P[name] = np.hstack([est.delta(B) for B in blocks]) @ m["coef"].T
+        print(f"[E073 B3] {name}: {sum(B.shape[1] for B in blocks)} features", flush=True)
+    z, zbar = extra["z"], extra["zbar"]
+    zw = z - zbar
+    within("desk_within", [zw])
+    ms = fit_blocks([zbar, zw], Ytgt, trn)
+    P["desk_split_level"] = est.delta(z) @ ms["coef"][:, zbar.shape[1]:].T
+    ctx = ctx_feats(cov, extra, "desk", 4, trn)
+    within("vcz", vc_blocks(zw, ctx))                                       # DESK's change, place-dependent slopes
+    for h in (25, 50):
+        W = cov.w(h, "no_clock")
+        within(f"vcc_h{h}", vc_blocks(W, ctx))                              # clock-free covariate delta, same slopes
+        within(f"vcc_h{h}+vcz", vc_blocks(W, ctx) + vc_blocks(zw, ctx))     # both
+    # community-learned clock-free delta (h50) with place-dependent slopes, by rank and target
+    Zfull = np.asarray(np.load(os.path.join(est.cache, "esk_annual.npy"), mmap_mode="r"), "float64")
+    Zw64 = Zfull - cell_mean(keys, Zfull, est.ty & fin)
+    F = np.hstack(vc_blocks(cov.w(50, "no_clock"), ctx))
+    A = F[trn]
+    G = A.T @ A
+    lam = 1e-1 * np.trace(G) / A.shape[1]
+    for nm, T, rank in (("esk24", Zw64[:, :24], 24), ("esk64", Zw64, 64), ("esk64_rr24", Zw64, 24)):
+        Bc = np.linalg.solve(G + lam * np.eye(A.shape[1]), A.T @ T[trn])
+        if nm.endswith("rr24"):                                            # reduced rank: top-24 directions of the fit
+            _, _, Vt = np.linalg.svd(A @ Bc, full_matrices=False)
+            Bc = Bc @ Vt[:rank].T
+        within(f"comm_vcc_h50_{nm}", [F @ Bc])
+    # community-learned delta, then place-dependent slopes in the SPECIES readout (delta x ctx): the buildable form
+    # where DESK outputs a shared delta and the age-model readout carries the place dependence
+    for nm, T in (("esk24", Zw64[:, :24]), ("esk64", Zw64)):
+        Wn = cov.w(50, "no_clock")
+        Bl = np.linalg.solve(Wn[trn].T @ Wn[trn] + 1e-1 * np.trace(Wn[trn].T @ Wn[trn]) / Wn.shape[1]
+                             * np.eye(Wn.shape[1]), Wn[trn].T @ T[trn])
+        dl = Wn @ Bl
+        within(f"comm_lin_h50_{nm}_vcread", vc_blocks(dl, ctx))
+    return P
+
+
+B3_PAIRS = [("vcz", "desk_split_level"), ("vcz", "desk_within"), ("vcc_h50", "desk_split_level"),
+            ("vcc_h25", "vcz"), ("vcc_h50", "vcz"), ("vcc_h25+vcz", "vcz"), ("vcc_h50+vcz", "vcz"),
+            ("vcc_h50+vcz", "vcc_h50"), ("comm_vcc_h50_esk24", "vcc_h50"), ("comm_vcc_h50_esk64", "vcc_h50"),
+            ("comm_vcc_h50_esk64_rr24", "vcc_h50"), ("comm_vcc_h50_esk64", "desk_split_level"),
+            ("comm_lin_h50_esk24_vcread", "vcc_h50"), ("comm_lin_h50_esk64_vcread", "vcc_h50"),
+            ("comm_lin_h50_esk64_vcread", "desk_split_level"), ("comm_lin_h50_esk64_vcread", "vcz")]
+
+
+def run_score_b3(a):
+    est = Estimand(a.cache, a.n_boot, a.similarity)
+    attach_zones(est)
+    cov = Cov(est.keys, ~est.ho & ~est.bf & est.ty, est.ty)
+    z = np.asarray(np.load(os.path.join(a.cache, "z_raw.npy"), mmap_mode="r")[:, :24], "float64")
+    z = np.where(np.isfinite(z), z, 0.0)
+    extra = {"z": z, "zbar": cell_mean(est.keys, z, est.ty & cov.fin)}
+    P = arms_b3(est, cov, est.Y, extra)
+    res = {}
+    for sname, m in est.strata.items():
+        D = {k: est.draws(v, "dev", m) for k, v in P.items()}
+        o = {"n_species": int(m.sum()),
+             "arms": {k: {"corr": float(v[0, 0]), "ci": ci(v[:, 0]), "k": float(v[0, 1]), "mse_skill": float(v[0, 2]),
+                          "mse_ci": ci(v[:, 2])} for k, v in D.items()}, "diffs": {}}
+        for x, y in B3_PAIRS:
+            if x in D and y in D:
+                dc, dm = D[x][:, 0] - D[y][:, 0], D[x][:, 2] - D[y][:, 2]
+                o["diffs"][f"{x} - {y}"] = {"corr": float(dc[0]), "corr_ci": ci(dc), "mse": float(dm[0]),
+                                            "mse_ci": ci(dm)}
+                if sname in ("sedentary", "resident"):
+                    o["diffs"][f"{x} - {y}"]["jackknife_corr"] = jackknife_diff(est, P[x], P[y], m)
+        if getattr(est, "zone", None) is not None:
+            o["by_zone"] = {}
+            for zn in ("west", "great_plains", "east"):
+                cells = np.where(est.zone == zn)[0]
+                if len(cells) >= 15:
+                    o["by_zone"][zn] = {k: float(est.draws(P[k], "dev", m, cells)[0, 0]) for k in P}
+        res[sname] = o
+    np.savez_compressed(os.path.join(a.out, "preds_b3_dev.npz"), **{k.replace("+", "_PLUS_"): v.astype("float32")
+                                                                     for k, v in P.items()})
+    json.dump({"cache": a.cache, "scores": res}, open(os.path.join(a.out, "e073_b3.json"), "w"), indent=1)
+    for sname, o in res.items():
+        print(f"== {sname} (n {o['n_species']}): " + "  ".join(
+            f"{k} {v['corr']:.3f}/k{v['k']:.2f}/mse{v['mse_skill']:+.3f}" for k, v in o["arms"].items()))
+        for k, v in o["diffs"].items():
+            jk = v.get("jackknife_corr")
+            print(f"     {k:44s} corr {v['corr']:+.3f} [{v['corr_ci'][0]:+.3f},{v['corr_ci'][1]:+.3f}] mse {v['mse']:+.3f} "
+                  f"[{v['mse_ci'][0]:+.3f},{v['mse_ci'][1]:+.3f}]" + (f" jk min {jk['min']:+.3f} ({jk['drop_for_min']})" if jk else ""))
+
+
 def report(est, P, target, strata, order_ref="within_all_h10"):
     res = {}
     for sname in strata:
@@ -683,6 +803,9 @@ def run_holdout(a):
                   "within_no_clock_h25": [cov.w(25, "no_clock")],
                   "vc_desk4_no_clock_h25": vc_blocks(cov.w(25, "no_clock"), cdesk),
                   "vc_desk4_all_h25": vc_blocks(cov.w(25, "all"), cdesk),
+                  **({"vcz": vc_blocks(z - zbar, cdesk), "vcc_h50": vc_blocks(cov.w(50, "no_clock"), cdesk),
+                      "vcc_h50+vcz": vc_blocks(cov.w(50, "no_clock"), cdesk) + vc_blocks(z - zbar, cdesk)}
+                     if a.part == "holdout2" else {}),
                   "within_cover_h10": [cov.w(10, "cover")], "within_mgmt_h10": [cov.w(10, "mgmt")],
                   "within_climate_h10": [cov.w(10, "climate")], "lin+rff2_h10": [W10, R], "desk_within": [z - zbar]}
     out = {"cache": a.cache, "splits": {}}
@@ -707,7 +830,10 @@ def run_holdout(a):
             rows_rest = rows_full[keep_cells[inv[rows_full]]]
             res = {"n_train_rows_full": int(len(rows_full)), "n_train_rows_restricted": int(len(rows_rest)),
                    "n_eval": {k: int(v.sum()) for k, v in groups.items()}, "arms": {}}
-            for arm, blocks in list(arm_blocks.items()) + [("comm_delta_no_clock_h10", None)]:
+            arm_list = list(arm_blocks.items()) + [("comm_delta_no_clock_h10", None)]
+            if a.part == "holdout2":                     # C2: only the arms C did not have, plus DESK as reference
+                arm_list = [(k, v) for k, v in arm_list if k in ("desk_within", "vcz", "vcc_h50", "vcc_h50+vcz")]
+            for arm, blocks in arm_list:
                 if blocks is None:                       # community-learned delta, learned on the same rows as the fit
                     Wf = cov.w(10, "no_clock")
                     Zw = est.Zesk - cell_mean(keys, est.Zesk, est.ty & fin)
@@ -740,7 +866,7 @@ def run_holdout(a):
                       f"({v['penalty']:+.3f} [{v['penalty_ci'][0]:+.3f},{v['penalty_ci'][1]:+.3f}]) k {v['k_full']:.2f}->"
                       f"{v['k_restricted']:.2f}" for k, v in ar.items()), flush=True)
             out["splits"][f"{g}|{dname}"] = res
-    json.dump(out, open(os.path.join(a.out, "e073_holdout.json"), "w"), indent=1)
+    json.dump(out, open(os.path.join(a.out, "e073_holdout2.json" if a.part == "holdout2" else "e073_holdout.json"), "w"), indent=1)
 
 
 # ------------------------------------------------------------------------------------------------ part A
@@ -882,7 +1008,7 @@ def run_novelty(a):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("part", choices=("novelty", "score", "score_b2", "holdout"))
+    ap.add_argument("part", choices=("novelty", "score", "score_b2", "score_b3", "holdout", "holdout2"))
     ap.add_argument("--cache", required=True)
     ap.add_argument("--out", required=True)
     ap.add_argument("--similarity", default=None)
@@ -890,7 +1016,8 @@ def main():
     ap.add_argument("--planted", action="store_true")
     a = ap.parse_args()
     os.makedirs(a.out, exist_ok=True)
-    {"novelty": run_novelty, "score": run_score, "score_b2": run_score_b2, "holdout": run_holdout}[a.part](a)
+    {"novelty": run_novelty, "score": run_score, "score_b2": run_score_b2, "score_b3": run_score_b3,
+     "holdout": run_holdout, "holdout2": run_holdout}[a.part](a)
 
 
 if __name__ == "__main__":

@@ -1,4 +1,4 @@
-CURRENT (2026-10-14 ~20:30, session houfin-range-model-9a; older history below):
+CURRENT (2026-10-14 ~19:55, session houfin-range-model-9a; older history below):
 - E073 (anchored delta: z = persistent spatial field + covariate-driven within-place deviation, g(0)=0, no time
   input) RUNNING in pueue group cpu2: planted (501), A-novelty (502), B x4 (t1995/t1985 x s1/s2), C holdout, all after
   planted. Part A: climate 1920-39 in range; mgmt + human same direction as the BBS era but 2.4-2.5x further; physical

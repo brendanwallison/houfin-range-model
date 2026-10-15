@@ -798,3 +798,10 @@ understanding first")
   - the bootstrap term's beyond-range gain is real but fragile (gU 0.2-10), half of it plain change magnitude;
   - the 1920 "corr 0.65-0.77" was corr(H1920, predicted H1920) at a FIXED span, an optimistic upper bound. Span-scaled
     ~0.5; corr(H1920, H2000) including the predicted change ~0.43-0.45 (GP 0.33-0.41).
+- E072c: scaling the change uncertainty by the species' LOCAL abundance (a mid-window level) fixes most of the
+  occupied-cell overconfidence (R_occupied 1.61 -> 1.09-1.15; pooled R_beyond 0.89-0.90). Tails are still heavier
+  than Gaussian (80% intervals cover 73-75%).
+- Honest 1920 numbers (span-scaled, predicted change included): error variance ~0.9-1.2 of the spatial contrast;
+  corr(H1920, H2000) ~0.1-0.3, lowest in the east and GP. 1920 habitat at a place is only weakly constrained by its
+  modern habitat. The readout today assumes ~1. Extrapolation caveats apply (U 7x beyond support; random-walk span
+  scaling untested).

@@ -1,0 +1,21 @@
+{
+ "exp": "E073",
+ "name": "B2-t1995-s1",
+ "group": "cpu2",
+ "env": {
+  "BLR_MAX_ITER": "100",
+  "BLR_STARTS": "0.5"
+ },
+ "cmd": [
+  "bash",
+  "-c",
+  "set -e; {python} research/exp/anchored_delta.py score_b2 --cache {cache}/desk_tempho_1995_s1 --similarity {outroot}/E067/composition-d2e6a98f0eb7/species_similarity.csv --out {out}"
+ ],
+ "expected_minutes": 240,
+ "summarize": [
+  "bash",
+  "-c",
+  "grep -E '^== (sedentary|all)|desk_split_level|_no_clock_h25' {out}/../log.txt | head -60"
+ ],
+ "note": "E073 B2 on desk_tempho_1995_s1: place-dependent-slope delta variants (clock, history, context, +DESK, community-learned)"
+}

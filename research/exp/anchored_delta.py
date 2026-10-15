@@ -61,7 +61,7 @@ def group_cols(stream, names, g):
         else:
             sel |= stream == s
     return np.where(sel)[0]
-HALF_LIVES = (0, 3, 10, 25)
+HALF_LIVES = (0, 3, 10, 25, 50)          # 50 added for B2 (2026-10-14)
 Y0 = 1902
 
 
@@ -392,6 +392,127 @@ def arms_within(est, cov, target, Ytgt, extra=None):
     return P, info
 
 
+# ------------------------------------------------------------------------------------------------ part B2
+def ctx_feats(cov, extra, kind, n, trn):
+    """Context ("kind of place") for varying-coefficient slopes: covariate context = static PCs + cell-mean state PCs
+    (as B4's vc_cov when n = 4); DESK context = the first n dims of DESK's persistent cell-mean z (zbar)."""
+    if kind == "cov":
+        C = np.hstack([cov.static_pcs[:, :(n + 1) // 2], cov.wbar(10)[:, :n // 2]])
+    else:
+        C = extra["zbar"][:, :n]
+    return (C - C[trn].mean(0)) / (C[trn].std(0) + 1e-9)
+
+
+def vc_blocks(W, C):
+    return [W, np.hstack([W * C[:, [j]] for j in range(C.shape[1])])]
+
+
+def arms_b2(est, cov, Ytgt, extra):
+    """B2 (pre-registered after B's seed-1 results): the varying-coefficient (place-dependent slope) delta and its
+    extrapolation-safe variants -- groups all / no_clock x history h10 / h25 / h50 / h10+h25 x context cov / DESK,
+    context size, + DESK, and the community-learned version (premise)."""
+    keys, fin = est.keys, cov.fin
+    trn = np.where(~est.ho & ~est.bf & est.ty & fin)[0]
+    Yw = Ytgt - cell_mean(keys, Ytgt, est.ty & fin)
+    P = {}
+
+    def within(name, blocks):
+        m = fit_blocks(blocks, Yw, trn)
+        P[name] = np.hstack([est.delta(B) for B in blocks]) @ m["coef"].T
+        print(f"[E073 B2] {name}: {sum(B.shape[1] for B in blocks)} features", flush=True)
+    z, zbar = extra["z"], extra["zbar"]
+    zw = z - zbar
+    within("desk_within", [zw])
+    ms = fit_blocks([zbar, zw], Ytgt, trn)
+    P["desk_split_level"] = est.delta(z) @ ms["coef"][:, zbar.shape[1]:].T
+    t = keys[:, 2].astype(float)
+    dt = (t - cell_mean(keys, t[:, None], est.ty & fin)[:, 0]) / 10.0
+    pl = []
+    for sd in (1, 2):
+        rg = np.random.default_rng(sd)
+        om, ph = rg.normal(size=(2, 96)) / 300.0, rg.uniform(0, 2 * np.pi, 96)
+        within("_pl", [np.sqrt(2 / 96) * np.cos(keys[:, :2].astype(float) * 27.0 @ om + ph) * dt[:, None]])
+        pl.append(P.pop("_pl"))
+    P["placebo"] = 0.5 * (pl[0] + pl[1])
+    ctx = {k: ctx_feats(cov, extra, k, 4, trn) for k in ("cov", "desk")}
+    for g in ("all", "no_clock"):
+        for h in (10, 25, 50):
+            W = cov.w(h, g)
+            within(f"within_{g}_h{h}", [W])
+            for ck in ("cov", "desk"):
+                within(f"vc_{ck}4_{g}_h{h}", vc_blocks(W, ctx[ck]))
+        within(f"vc_desk4_{g}_h10+h25", vc_blocks(np.hstack([cov.w(10, g), cov.w(25, g)]), ctx["desk"]))
+    for n in (2, 8):
+        within(f"vc_desk{n}_no_clock_h25", vc_blocks(cov.w(25, "no_clock"), ctx_feats(cov, extra, "desk", n, trn)))
+    Zw = extra["Zesk"] - cell_mean(keys, extra["Zesk"], est.ty & fin)
+    for g in ("all", "no_clock"):
+        within(f"vc_desk4_{g}_h25+desk", vc_blocks(cov.w(25, g), ctx["desk"]) + [zw])
+        # community-learned varying-coefficient delta (24 dims), then the species' own readout on it
+        F = np.hstack(vc_blocks(cov.w(25, g), ctx["desk"]))
+        A = F[trn]
+        lam = 1e-1 * np.trace(A.T @ A) / A.shape[1]
+        dlt = F @ np.linalg.solve(A.T @ A + lam * np.eye(A.shape[1]), A.T @ Zw[trn])
+        within(f"comm_vc_desk4_{g}_h25", [dlt])
+    return P
+
+
+B2_PAIRS = [("vc_desk4_no_clock_h25", "desk_split_level"), ("vc_cov4_no_clock_h25", "desk_split_level"),
+            ("vc_desk4_all_h25", "desk_split_level"), ("comm_vc_desk4_no_clock_h25", "desk_split_level"),
+            ("comm_vc_desk4_all_h25", "desk_split_level"),
+            ("comm_vc_desk4_no_clock_h25", "vc_desk4_no_clock_h25"), ("comm_vc_desk4_all_h25", "vc_desk4_all_h25"),
+            ("vc_desk4_no_clock_h25", "vc_desk4_all_h25"), ("vc_cov4_no_clock_h25", "vc_cov4_all_h25"),
+            ("within_no_clock_h25", "within_all_h25"), ("vc_desk4_no_clock_h25", "within_no_clock_h25"),
+            ("vc_cov4_no_clock_h25", "within_no_clock_h25"), ("vc_desk4_no_clock_h25", "vc_cov4_no_clock_h25"),
+            ("vc_desk4_no_clock_h25+desk", "vc_desk4_no_clock_h25"), ("vc_desk4_all_h25+desk", "vc_desk4_all_h25"),
+            ("vc_desk4_no_clock_h50", "vc_desk4_no_clock_h25"), ("vc_desk4_no_clock_h10", "vc_desk4_no_clock_h25"),
+            ("vc_desk4_no_clock_h10+h25", "vc_desk4_no_clock_h25"), ("vc_desk2_no_clock_h25", "vc_desk4_no_clock_h25"),
+            ("vc_desk8_no_clock_h25", "vc_desk4_no_clock_h25"), ("within_all_h50", "within_all_h25"),
+            ("placebo", "vc_desk4_no_clock_h25")]
+
+
+def report_b2(est, P):
+    res = {}
+    for sname, m in est.strata.items():
+        D = {k: est.draws(v, "dev", m) for k, v in P.items()}
+        o = {"n_species": int(m.sum()),
+             "arms": {k: {"corr": float(v[0, 0]), "ci": ci(v[:, 0]), "k": float(v[0, 1])} for k, v in D.items()},
+             "diffs": {}}
+        for x, y in B2_PAIRS:
+            if x in D and y in D:
+                d = D[x][:, 0] - D[y][:, 0]
+                o["diffs"][f"{x} - {y}"] = {"diff": float(d[0]), "ci": ci(d)}
+        if getattr(est, "zone", None) is not None:
+            o["by_zone"] = {}
+            for zn in ("west", "great_plains", "east"):
+                cells = np.where(est.zone == zn)[0]
+                if len(cells) >= 15:
+                    o["by_zone"][zn] = {k: float(est.draws(P[k], "dev", m, cells)[0, 0]) for k in
+                                        ("desk_split_level", "vc_desk4_no_clock_h25", "vc_cov4_no_clock_h25",
+                                         "comm_vc_desk4_no_clock_h25", "within_no_clock_h25", "placebo") if k in P}
+        res[sname] = o
+    return res
+
+
+def run_score_b2(a):
+    est = Estimand(a.cache, a.n_boot, a.similarity)
+    attach_zones(est)
+    cov = Cov(est.keys, ~est.ho & ~est.bf & est.ty, est.ty)
+    z = np.asarray(np.load(os.path.join(a.cache, "z_raw.npy"), mmap_mode="r")[:, :24], "float64")
+    z = np.where(np.isfinite(z), z, 0.0)
+    extra = {"z": z, "zbar": cell_mean(est.keys, z, est.ty & cov.fin), "Zesk": est.Zesk}
+    P = arms_b2(est, cov, est.Y, extra)
+    out = {"cache": a.cache, "scores": report_b2(est, P)}
+    np.savez_compressed(os.path.join(a.out, "preds_b2_dev.npz"), **{k.replace("+", "_PLUS_"): v.astype("float32")
+                                                                     for k, v in P.items()})
+    json.dump(out, open(os.path.join(a.out, "e073_b2.json"), "w"), indent=1)
+    for sname, o in out["scores"].items():
+        arms = sorted(o["arms"].items(), key=lambda kv: -np.nan_to_num(kv[1]["corr"], nan=-9))
+        print(f"== {sname} (n {o['n_species']}): " + "  ".join(f"{k} {v['corr']:.3f}(k{v['k']:.2f})" for k, v in arms))
+        for k, v in o["diffs"].items():
+            print(f"     {k:52s} {v['diff']:+.3f} [{v['ci'][0]:+.3f},{v['ci'][1]:+.3f}]")
+        print(f"   zones {o.get('by_zone')}")
+
+
 def report(est, P, target, strata, order_ref="within_all_h10"):
     res = {}
     for sname in strata:
@@ -556,7 +677,12 @@ def run_holdout(a):
     om = rng.normal(size=(W10.shape[1], 256)) / 2.0
     ph = rng.uniform(0, 2 * np.pi, 256)
     R = np.sqrt(2 / 256) * (np.cos(W10 @ om + ph) - np.cos(ph))
+    trn_rows = np.where(trn_mask & fin)[0]
+    cdesk = ctx_feats(cov, {"zbar": zbar}, "desk", 4, trn_rows)
     arm_blocks = {"within_all_h10": [W10], "within_no_clock_h10": [cov.w(10, "no_clock")],
+                  "within_no_clock_h25": [cov.w(25, "no_clock")],
+                  "vc_desk4_no_clock_h25": vc_blocks(cov.w(25, "no_clock"), cdesk),
+                  "vc_desk4_all_h25": vc_blocks(cov.w(25, "all"), cdesk),
                   "within_cover_h10": [cov.w(10, "cover")], "within_mgmt_h10": [cov.w(10, "mgmt")],
                   "within_climate_h10": [cov.w(10, "climate")], "lin+rff2_h10": [W10, R], "desk_within": [z - zbar]}
     out = {"cache": a.cache, "splits": {}}
@@ -756,7 +882,7 @@ def run_novelty(a):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("part", choices=("novelty", "score", "holdout"))
+    ap.add_argument("part", choices=("novelty", "score", "score_b2", "holdout"))
     ap.add_argument("--cache", required=True)
     ap.add_argument("--out", required=True)
     ap.add_argument("--similarity", default=None)
@@ -764,7 +890,7 @@ def main():
     ap.add_argument("--planted", action="store_true")
     a = ap.parse_args()
     os.makedirs(a.out, exist_ok=True)
-    {"novelty": run_novelty, "score": run_score, "holdout": run_holdout}[a.part](a)
+    {"novelty": run_novelty, "score": run_score, "score_b2": run_score_b2, "holdout": run_holdout}[a.part](a)
 
 
 if __name__ == "__main__":

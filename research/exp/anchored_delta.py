@@ -40,8 +40,27 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(_HERE)))
 STATES = os.path.expanduser("~/houfin/work/houfin/processed/encoder/states")
 ZONES_TIF = os.path.expanduser("~/houfin/work/houfin/processed/regions/great_plains_zones_27km.tif")
 ZONES = {1: "west", 2: "great_plains", 3: "east"}
-GROUPS = {"climate": ("climate",), "landuse": ("landuse",), "human": ("hyde", "bui")}
-NPC = {"climate": 24, "landuse": 12, "human": 6}
+# Amendment 2026-10-14 (after part A, before any bird-data number): land use split into COVER (the 12 LUH2 state
+# fractions) and the MANAGEMENT CLOCK (E041's 19 management + 2 secondary-land channels: fertilizer, irrigation, harvest,
+# flood, plantations, protection, secondary age / biomass) -- flat before ~1950, a continental clock in 1966-2025.
+# amendment 2: physical cover -- forest = primf + secdf, natural non-forest = primn + secdn (derived in load_states);
+# the primary / secondary accounting channels move to the clock group with management
+COVER = ("c3ann", "c3nfx", "c3per", "c4ann", "c4per", "pastr", "range", "urban", "forest", "natnonforest")
+GROUPS = {"climate": ("climate",), "cover": ("landuse:cover",), "mgmt": ("landuse:mgmt",), "human": ("hyde", "bui")}
+NPC = {"climate": 24, "cover": 8, "mgmt": 8, "human": 6}
+
+
+def group_cols(stream, names, g):
+    """Column indices of stream group g ("landuse:cover" / "landuse:mgmt" split the land-use stream by channel name)."""
+    sel = np.zeros(len(stream), bool)
+    for s in GROUPS[g]:
+        if s == "landuse:cover":
+            sel |= (stream == "landuse") & np.isin(names, COVER)
+        elif s == "landuse:mgmt":
+            sel |= (stream == "landuse") & ~np.isin(names, COVER)
+        else:
+            sel |= stream == s
+    return np.where(sel)[0]
 HALF_LIVES = (0, 3, 10, 25)
 Y0 = 1902
 
@@ -65,7 +84,18 @@ def load_states(cells, y1=2025):
         stream[int(s["start"]):int(s["end"])] = s["name"]
         v = s.get("variables") or [f"{s['name']}_{i}" for i in range(int(s["dim"]))]
         names += list(v) if len(v) == int(s["dim"]) else [f"{s['name']}_{i}" for i in range(int(s["dim"]))]
-    return st, stream, np.array(names), years
+    names = np.array(names)
+    # amendment 2: LUH2's primary / secondary split is land-use ACCOUNTING (land becomes secondary once harvested;
+    # primf falls 0.36 -> 0.09 while primf + secdf stays ~0.38, 1902-2025) -- a clock. Physical cover = the totals.
+    ix = {n: i for i, n in enumerate(names) if True}
+    lu = lambda n: np.where((stream == "landuse") & (names == n))[0][0]
+    forest = st[..., lu("primf")] + st[..., lu("secdf")]
+    natnf = st[..., lu("primn")] + st[..., lu("secdn")]
+    st = np.concatenate([st, forest[..., None], natnf[..., None]], axis=-1)
+    stream = np.concatenate([stream, np.array(["landuse", "landuse"], dtype=object)])
+    names = np.concatenate([names, ["forest", "natnonforest"]])
+    del ix
+    return st, stream, names, years
 
 
 def ema(st, hl):
@@ -116,8 +146,8 @@ class Cov:
             Xb = cell_mean(keys, Xs, ty_mask & fin)
             self.X[hl], self.Xbar[hl] = Xs, Xb
             D = Xs - Xb
-            for g, streams in GROUPS.items():
-                cols = np.where(np.isin(stream, streams))[0]
+            for g in GROUPS:
+                cols = group_cols(stream, names, g)
                 Dg = D[trn][:, cols]
                 _, s_, Vt = np.linalg.svd(Dg[:: max(1, len(Dg) // 40000)], full_matrices=False)
                 V = Vt[: NPC[g]].T
@@ -133,11 +163,13 @@ class Cov:
     def w(self, hl, g="all"):
         if g == "all":
             return np.hstack([self.W[(hl, k)] for k in GROUPS])
+        if g == "no_clock":
+            return np.hstack([self.W[(hl, k)] for k in ("climate", "cover", "human")])
         return self.W[(hl, g)]
 
     def wbar(self, hl, g="all"):
         """Cell means projected on the SAME within loadings (for the between / space-for-time map)."""
-        gs = list(GROUPS) if g == "all" else [g]
+        gs = list(GROUPS) if g == "all" else (["climate", "cover", "human"] if g == "no_clock" else [g])
         out = []
         for k in gs:
             cols, V = self.V[(hl, k)]
@@ -255,7 +287,7 @@ def arms_within(est, cov, target, Ytgt, extra=None):
         return m
 
     # B1 streams (h = 10 as the default history; B2 varies it)
-    for g in ("climate", "landuse", "human", "all"):
+    for g in ("climate", "cover", "mgmt", "human", "all", "no_clock"):
         within(f"within_{g}_h10", [cov.w(10, g)])
     # B2 lag
     for hl in (0, 3, 25):
@@ -272,6 +304,11 @@ def arms_within(est, cov, target, Ytgt, extra=None):
     W10 = cov.w(10)
     dW = est.delta(W10)
     P["s4t_pure"] = dW @ beta_b.T
+    off = 0
+    for g in GROUPS:                                         # per-group space-for-time (coefficients from the joint fit)
+        k = NPC[g]
+        P[f"s4t_{g}"] = dW[:, off:off + k] @ beta_b[:, off:off + k].T
+        off += k
     s4t_rows = np.einsum("nk,sk->ns", W10, beta_b)                               # per species scalar feature
     # anchored: y_w = kappa * (W beta_b) + W gamma; per species its own scalar column -> fit species one at a time
     # in a batched way: BLR needs a shared X, so use the prior-centred form (residual on W) and report kappa by LS
@@ -301,12 +338,23 @@ def arms_within(est, cov, target, Ytgt, extra=None):
         R = np.sqrt(2 / 256) * (np.cos(W10 @ om + ph) - np.cos(ph))
         within(f"rff{ell:g}_h10", [R])
         within(f"lin+rff{ell:g}_h10", [W10, R])
+    # J: delta learned from the COMMUNITY (ESK r24 within deviations ~ W, ridge), then the target's own within readout
+    # on that shared 24-dim delta -- what a two-part DESK would do (one representation, species read out by BLR)
+    if extra is not None and "Zesk" in extra:
+        Zw = extra["Zesk"] - cell_mean(keys, extra["Zesk"], est.ty & fin)
+        for nm, Wf in (("all", W10), ("no_clock", cov.w(10, "no_clock"))):
+            A = Wf[trn]
+            lam = 1e-1 * np.trace(A.T @ A) / A.shape[1]
+            Bc = np.linalg.solve(A.T @ A + lam * np.eye(A.shape[1]), A.T @ Zw[trn])
+            dlt = Wf @ Bc                                                       # (N, 24) community-learned delta
+            within(f"comm_delta_{nm}_h10", [dlt])
     # B6 DESK
     if extra is not None and "z" in extra:
         z, zbar = extra["z"], extra["zbar"]
         zw = z - zbar
         within("desk_within", [zw])
         within("within_all_h10+desk", [W10, zw])
+        within("within_no_clock_h10+desk", [cov.w(10, "no_clock"), zw])
         # production split readout (levels), its within coefficients applied to DESK's change
         ms = fit_blocks([zbar, zw], Ytgt, trn)
         P["desk_split_level"] = est.delta(z) @ ms["coef"][:, zbar.shape[1]:].T
@@ -353,7 +401,10 @@ def report(est, P, target, strata, order_ref="within_all_h10"):
         D = {k: est.draws(v, target, m) for k, v in P.items()}
         o = {"n_species": int(m.sum()) if m is not None else 24,
              "arms": {k: {"corr": float(v[0, 0]), "ci": ci(v[:, 0]), "k": float(v[0, 1])} for k, v in D.items()}}
-        pairs_ = [("within_all_h10", "desk_within"), ("within_all_h10", "desk_split_level"),
+        pairs_ = [("comm_delta_all_h10", "desk_within"), ("comm_delta_no_clock_h10", "desk_within"),
+                  ("comm_delta_all_h10", "within_all_h10"), ("comm_delta_no_clock_h10", "within_no_clock_h10"),
+                  ("comm_delta_no_clock_h10", "desk_split_level"),
+                  ("within_all_h10", "desk_within"), ("within_all_h10", "desk_split_level"),
                   ("within_all_h10+desk", "within_all_h10"), ("within_all_h10+desk", "desk_within"),
                   ("anchored_prior_s4t", "within_all_h10"), ("s4t_pure", "within_all_h10"),
                   ("vc_cov_h10", "within_all_h10"), ("vc_desk_h10", "within_all_h10"),
@@ -361,8 +412,10 @@ def report(est, P, target, strata, order_ref="within_all_h10"):
                   ("lin+rff2_h10", "within_all_h10"), ("within_all_h0+h10", "within_all_h10"),
                   ("placebo+within_all_h10", "placebo"), ("placebo", "within_all_h10"),
                   ("desk_within_covpart", "desk_within"), ("desk_within_residpart", "desk_within")]
-        for g in ("climate", "landuse", "human"):
+        for g in ("climate", "cover", "mgmt", "human", "no_clock"):
             pairs_.append((f"within_{g}_h10", "within_all_h10"))
+        pairs_ += [("within_no_clock_h10", "desk_within"), ("within_no_clock_h10", "desk_split_level"),
+                   ("within_no_clock_h10+desk", "within_no_clock_h10"), ("within_no_clock_h10+desk", "desk_within")]
         for hl in (0, 3, 25):
             pairs_.append((f"within_all_h{hl}", "within_all_h10"))
         o["diffs"] = {}
@@ -370,18 +423,43 @@ def report(est, P, target, strata, order_ref="within_all_h10"):
             if x in D and y in D:
                 d = D[x][:, 0] - D[y][:, 0]
                 o["diffs"][f"{x} - {y}"] = {"diff": float(d[0]), "ci": ci(d)}
+        # F: by Great Plains zone (held-out cells), key arms only
+        if getattr(est, "zone", None) is not None:
+            o["by_zone"] = {}
+            for zn in ("west", "great_plains", "east"):
+                cells = np.where(est.zone == zn)[0]
+                if len(cells) < 15:
+                    continue
+                o["by_zone"][zn] = {"n_cells": int(len(cells))}
+                for k in ("within_all_h10", "within_no_clock_h10", "comm_delta_no_clock_h10", "desk_within",
+                          "desk_split_level", "placebo", "s4t_pure", "anchored_prior_s4t"):
+                    if k in P:
+                        Dz = est.draws(P[k], target, m, cells)
+                        o["by_zone"][zn][k] = {"corr": float(Dz[0, 0]), "ci": ci(Dz[:, 0]), "k": float(Dz[0, 1])}
         res[sname] = o
     return res
 
 
+def attach_zones(est):
+    try:
+        import rasterio
+        with rasterio.open(ZONES_TIF) as src:
+            zg = src.read(1)
+        est.zone = np.array([ZONES.get(int(zg[r, c]), "other") for r, c in est.cells_ev])
+    except Exception as e:                                                    # zones are a report, not a requirement
+        print(f"[E073] zones unavailable: {e}")
+        est.zone = None
+
+
 def run_score(a):
     est = Estimand(a.cache, a.n_boot, a.similarity)
+    attach_zones(est)
     trn_mask = ~est.ho & ~est.bf & est.ty
     cov = Cov(est.keys, trn_mask, est.ty)
     z = np.asarray(np.load(os.path.join(a.cache, "z_raw.npy"), mmap_mode="r")[:, :24], "float64")
     z = np.where(np.isfinite(z), z, 0.0)
     zbar = cell_mean(est.keys, z, est.ty & cov.fin)
-    extra = {"z": z, "zbar": zbar}
+    extra = {"z": z, "zbar": zbar, "Zesk": est.Zesk}
     out = {"cache": a.cache, "n_eval_cells": int(len(est.early)), "planted": bool(a.planted), "targets": {}}
     targets = [("dev", est.Y), ("esk", est.Zesk)]
     if a.planted:
@@ -396,6 +474,8 @@ def run_score(a):
             # B8: share of within_all_h10's predicted change variance by stream, per stratum (pooled over species)
             sh = {}
             for sname in ("all", "sedentary"):
+                if sname not in est.strata:
+                    continue
                 m = est.strata[sname]
                 tot = sum(((v[:, m] - v[:, m].mean(0)) ** 2).sum() for v in contrib.values())
                 sh[sname] = {g: float(((v[:, m] - v[:, m].mean(0)) ** 2).sum() / tot) for g, v in contrib.items()}
@@ -427,7 +507,7 @@ def planted_species(est, cov):
     cid = est.keys[:, 0].astype(np.int64) * 100000 + est.keys[:, 1]
     _, inv = np.unique(cid, return_inverse=True)
     cols = []
-    for g in ("climate", "landuse", "human"):
+    for g in ("climate", "cover", "human"):
         Wg = cov.w(10, g)
         for _ in range(20):
             b = rng.normal(size=Wg.shape[1]) / np.sqrt(Wg.shape[1])
@@ -437,7 +517,7 @@ def planted_species(est, cov):
     S = np.stack(cols, 1)
     est._planted_signal = S
     est.strata = {"all": np.ones(60, bool), "planted_climate": np.arange(60) < 20,
-                  "planted_landuse": (np.arange(60) >= 20) & (np.arange(60) < 40), "planted_human": np.arange(60) >= 40}
+                  "planted_cover": (np.arange(60) >= 20) & (np.arange(60) < 40), "planted_human": np.arange(60) >= 40}
     est.species = [f"planted{i}" for i in range(60)]
     return S + rng.normal(size=S.shape) * 1.0
 
@@ -476,10 +556,11 @@ def run_holdout(a):
     om = rng.normal(size=(W10.shape[1], 256)) / 2.0
     ph = rng.uniform(0, 2 * np.pi, 256)
     R = np.sqrt(2 / 256) * (np.cos(W10 @ om + ph) - np.cos(ph))
-    arm_blocks = {"within_all_h10": [W10], "within_landuse_h10": [cov.w(10, "landuse")],
+    arm_blocks = {"within_all_h10": [W10], "within_no_clock_h10": [cov.w(10, "no_clock")],
+                  "within_cover_h10": [cov.w(10, "cover")], "within_mgmt_h10": [cov.w(10, "mgmt")],
                   "within_climate_h10": [cov.w(10, "climate")], "rff2_h10": [R], "desk_within": [z - zbar]}
     out = {"cache": a.cache, "splits": {}}
-    for g in ("landuse", "climate"):
+    for g in ("cover", "mgmt", "climate"):
         u_proj = cov.W[(10, g)][:, 0]                                            # leading within PC of the group
         # per-cell trend (slope per decade) of the projection over the cell's rows
         tt = t - cell_mean(keys, t[:, None], fin)[:, 0]
@@ -500,10 +581,22 @@ def run_holdout(a):
             rows_rest = rows_full[keep_cells[inv[rows_full]]]
             res = {"n_train_rows_full": int(len(rows_full)), "n_train_rows_restricted": int(len(rows_rest)),
                    "n_eval": {k: int(v.sum()) for k, v in groups.items()}, "arms": {}}
-            for arm, blocks in arm_blocks.items():
-                Fe = np.hstack([est.delta(B) for B in blocks])
-                Pf = Fe @ fit_blocks(blocks, Yw, rows_full)["coef"].T
-                Pr = Fe @ fit_blocks(blocks, Yw, rows_rest)["coef"].T
+            for arm, blocks in list(arm_blocks.items()) + [("comm_delta_no_clock_h10", None)]:
+                if blocks is None:                       # community-learned delta, learned on the same rows as the fit
+                    Wf = cov.w(10, "no_clock")
+                    Zw = est.Zesk - cell_mean(keys, est.Zesk, est.ty & fin)
+
+                    def cd(rows):
+                        A = Wf[rows]
+                        lam = 1e-1 * np.trace(A.T @ A) / A.shape[1]
+                        return Wf @ np.linalg.solve(A.T @ A + lam * np.eye(A.shape[1]), A.T @ Zw[rows])
+                    df, dr = cd(rows_full), cd(rows_rest)
+                    Pf = est.delta(df) @ fit_blocks([df], Yw, rows_full)["coef"].T
+                    Pr = est.delta(dr) @ fit_blocks([dr], Yw, rows_rest)["coef"].T
+                else:
+                    Fe = np.hstack([est.delta(B) for B in blocks])
+                    Pf = Fe @ fit_blocks(blocks, Yw, rows_full)["coef"].T
+                    Pr = Fe @ fit_blocks(blocks, Yw, rows_rest)["coef"].T
                 ar = {}
                 for gname, cm in groups.items():
                     cells = np.where(cm)[0]
@@ -545,8 +638,13 @@ def run_novelty(a):
     Wn = np.stack([np.nanmean(S[yi(*w)], 0) for w in wins])               # (10, cells, C)
     early = np.nanmean(S[yi(1920, 1939)], 0)
     out = {"n_cells": int(len(cells)), "zones": {z: int((zone == z).sum()) for z in ZONES.values()}, "streams": {}}
-    for g, sts in list(GROUPS.items()) + [("all_dynamic", ("climate", "landuse", "hyde", "bui"))]:
-        cols = np.where(np.isin(stream, sts))[0]
+    for g in list(GROUPS) + ["all_dynamic", "no_clock"]:
+        if g == "all_dynamic":
+            cols = np.where(np.isin(stream, ("climate", "landuse", "hyde", "bui")))[0]
+        elif g == "no_clock":
+            cols = np.concatenate([group_cols(stream, names, k) for k in ("climate", "cover", "human")])
+        else:
+            cols = group_cols(stream, names, g)
         Dref = (Wn[:, :, cols] - cm[None, :, cols]).reshape(-1, len(cols))
         Dref = Dref[np.isfinite(Dref).all(1)]
         _, s_, Vt = np.linalg.svd(Dref - Dref.mean(0), full_matrices=False)
@@ -628,11 +726,23 @@ def run_novelty(a):
         top = np.argsort(-np.abs(v))[:8]
         out["landuse_direction"][zname] = {str(names[lu][j]): float(v[j]) for j in top}
     print(f"[E073 A] land use 1920-39 minus 1996-2025 (mean raw units): {json.dumps(out['landuse_direction'])}")
+    # per-channel novelty for land COVER and human channels: 1920-39 deviation from the cell's 1966-2025 mean in units of
+    # the channel's SD of 1966-2025 six-year-window deviations (pooled over cells), median by zone
+    out["channel_novelty_sd"] = {}
+    chans = np.concatenate([group_cols(stream, names, "cover"), group_cols(stream, names, "human")])
+    Dw = (Wn[:, :, chans] - cm[None, :, chans]).reshape(-1, len(chans))
+    sdw = np.nanstd(Dw, 0) + 1e-12
+    De = (early[:, chans] - cm[:, chans]) / sdw
+    for zname in list(ZONES.values()) + ["all"]:
+        zm = (zone == zname) if zname != "all" else np.ones(len(cells), bool)
+        out["channel_novelty_sd"][zname] = {str(names[j]): float(np.nanmedian(De[zm, i])) for i, j in enumerate(chans)}
+    print(f"[E073 A] cover/human channel novelty (median SD units of 1966-2025 window deviations): "
+          f"{json.dumps({z: {k: round(v, 1) for k, v in d.items()} for z, d in out['channel_novelty_sd'].items()})}")
     # does BBS 1966-2025 within-place change already contain the 1920->2000 DIRECTION? cosine of each cell's
     # 1920-39 deviation with its own 1966-71 deviation, per stream group (positive: the BBS era starts partway along it)
     out["direction_overlap"] = {}
-    for g, sts in GROUPS.items():
-        cols = np.where(np.isin(stream, sts))[0]
+    for g in GROUPS:
+        cols = group_cols(stream, names, g)
         A_ = early[:, cols] - cm[:, cols]
         B_ = Wn[0][:, cols] - cm[:, cols]
         ok_ = np.isfinite(A_).all(1) & np.isfinite(B_).all(1)

@@ -1,0 +1,21 @@
+{
+ "exp": "E073",
+ "name": "planted",
+ "group": "cpu2",
+ "env": {
+  "BLR_MAX_ITER": "100",
+  "BLR_STARTS": "0.5"
+ },
+ "cmd": [
+  "bash",
+  "-c",
+  "set -e; {python} research/exp/anchored_delta.py score --planted --cache {cache}/desk_tempho_1995_s1 --similarity {outroot}/E067/composition-d2e6a98f0eb7/species_similarity.csv --out {out} --n-boot 100"
+ ],
+ "expected_minutes": 60,
+ "summarize": [
+  "bash",
+  "-c",
+  "grep -v '^ *$' {out}/../log.txt | tail -80"
+ ],
+ "note": "E073 verification (a): planted linear within responses per stream group must be recovered by the matching arm"
+}

@@ -1,0 +1,24 @@
+{
+ "exp": "E073",
+ "name": "B-t1985-s2",
+ "group": "cpu2",
+ "env": {
+  "BLR_MAX_ITER": "100",
+  "BLR_STARTS": "0.5"
+ },
+ "cmd": [
+  "bash",
+  "-c",
+  "set -e; {python} research/exp/anchored_delta.py score --cache {cache}/desk_tempho_1985_s2 --similarity {outroot}/E067/composition-d2e6a98f0eb7/species_similarity.csv --out {out}"
+ ],
+ "expected_minutes": 180,
+ "summarize": [
+  "bash",
+  "-c",
+  "grep -v '^ *$' {out}/../log.txt | tail -80"
+ ],
+ "note": "E073 part B on desk_tempho_1985_s2: within maps by stream/history, space-for-time, context, nonlinearity, DESK relation, placebo; dev species + ESK",
+ "after_jobs": [
+  "E073/planted"
+ ]
+}

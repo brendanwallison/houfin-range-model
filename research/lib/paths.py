@@ -26,7 +26,7 @@ RESEARCH = Path(REPO) / "research"                # state files, versioned
 
 #: Threads per job by queue group. 4 CPU slots x 6 + 1 GPU slot x 8 slightly oversubscribes 32 threads,
 #: which is fine for BLAS-bound work that rarely runs all slots at once.
-THREADS = {"cpu": 6, "gpu": 8, "default": 8}
+THREADS = {"cpu": 6, "cpu2": 4, "gpu": 8, "default": 8}
 
 
 def job_env(group="default", code_dir=None, overlay=None, extra=None):
@@ -42,7 +42,7 @@ def job_env(group="default", code_dir=None, overlay=None, extra=None):
     })
     if code_dir:
         env["PYTHONPATH"] = f"{code_dir}:{code_dir}/src"
-    if group == "cpu":
+    if group.startswith("cpu"):   # "cpu2": a second CPU lane (E073), same no-GPU rule
         # gp_kernels.knn_union defaults to CUDA; a CPU-slot job must not contend for the one GPU.
         env["CUDA_VISIBLE_DEVICES"] = ""
     else:

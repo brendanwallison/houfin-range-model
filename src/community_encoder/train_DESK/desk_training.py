@@ -2421,6 +2421,16 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
     return (model, ema, info) if return_info else (model, ema)
 
 
+def apply_train_drop_mask(train_drop, mask, split_domain, holdout, buffer_cells):
+    """Add an explicit (H, W) mask of cells to drop from TRAINING (E073 C3). Only training cells can be dropped:
+    held-out and buffer cells, and cells outside the split domain, are never touched, so the validation set is
+    unchanged. Returns ``(new train_drop, number of cells added)``. Pure."""
+    mask = np.asarray(mask).astype(bool)
+    if mask.shape != holdout.shape:
+        raise SystemExit(f"desk.trend.train_drop_mask: shape {mask.shape} != grid {holdout.shape}")
+    add = mask & split_domain & (~holdout) & (~buffer_cells) & (~train_drop)
+    return train_drop | add, int(add.sum())
+
 
 def run_desk_experiment(config=None):
     """Driver: load N-stream states + ESK Z, prepare grids, train DESK, save model+meta.
@@ -2582,6 +2592,15 @@ def run_desk_experiment(config=None):
               f"{int(avail.sum())} available training cells "
               f"({1 - int(train_drop.sum()) / max(int(avail.sum()), 1):.3f} retained) by whole "
               f"{_b}x{_b} blocks; the validation set is UNCHANGED", flush=True)
+    # E073 C3: an explicit (H, W) bool mask of TRAINING cells to drop (e.g. every training cell whose land-cover trend
+    # lies beyond a range), so an extrapolation holdout can withhold the cells from DESK itself, not only from its
+    # readout. Held-out and buffer cells are untouched: the validation set is UNCHANGED.
+    _tdm = _cfg.get("train_drop_mask")
+    if _tdm:
+        _m = np.load(os.path.expandvars(str(_tdm)))
+        train_drop, _n_add = apply_train_drop_mask(train_drop, _m, split_domain, holdout, buffer_cells_mask)
+        print(f"[desk] train_drop_mask: dropped {_n_add} training cells from {_tdm}; the validation set "
+              f"is UNCHANGED", flush=True)
     min_val = int(_cfg.get("min_val_cells", 200))
     if float(_cfg.get("holdout_frac", 0.15)) == 0.0:
         # The production retrain holds nothing out on purpose, so there is no val number to

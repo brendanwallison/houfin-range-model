@@ -773,6 +773,109 @@ def run_score_b4(a):
                   + (f"  vs DESK mse {dd['diff']:+.3f} [{dd['ci'][0]:+.3f},{dd['ci'][1]:+.3f}]" if dd else ""))
 
 
+# ------------------------------------------------------------------------------------------------ part C3
+def cover_trend_groups(est, cov, q=70):
+    """Per cell: slope per decade of the leading cover within-PC (h10) over the cell's TRAINED-year rows; the threshold
+    is the q-th percentile of |slope| over TRAINING cells. Returns (cell ids, slopes, threshold, cid per row)."""
+    keys, fin = est.keys, cov.fin
+    t = keys[:, 2].astype(float)
+    cid = keys[:, 0].astype(np.int64) * 100000 + keys[:, 1]
+    uc, inv = np.unique(cid, return_inverse=True)
+    m = est.ty & fin
+    u = cov.W[(10, "cover")][:, 0]
+    tt = t - cell_mean(keys, t[:, None], m)[:, 0]
+    num = np.bincount(inv, weights=np.where(m, tt * u, 0), minlength=len(uc))
+    den = np.bincount(inv, weights=np.where(m, tt * tt, 0), minlength=len(uc))
+    slope = 10 * num / np.maximum(den, 1e-9)
+    trn_rows = ~est.ho & ~est.bf & m
+    trn_cells = np.zeros(len(uc), bool)
+    trn_cells[np.unique(inv[trn_rows])] = True
+    thr = float(np.percentile(np.abs(slope[trn_cells]), q))
+    return uc, slope, thr, trn_cells, inv
+
+
+def run_covermask(a):
+    """C3 step 1: the (H, W) drop mask of TRAINING cells whose cover trend is beyond the p70 range (trained years)."""
+    est = Estimand(a.cache, a.n_boot, a.similarity)
+    cov = Cov(est.keys, ~est.ho & ~est.bf & est.ty, est.ty)
+    uc, slope, thr, trn_cells, _ = cover_trend_groups(est, cov)
+    grid = np.zeros(est.split["holdout"].shape, bool)
+    beyond = trn_cells & (np.abs(slope) > thr)
+    rows, cols = uc[beyond] // 100000, uc[beyond] % 100000
+    grid[rows, cols] = True
+    np.save(os.path.join(a.out, "train_drop_mask.npy"), grid)
+    json.dump({"threshold": thr, "n_training_cells": int(trn_cells.sum()), "n_dropped": int(beyond.sum()),
+               "cache": a.cache}, open(os.path.join(a.out, "train_drop_mask.json"), "w"), indent=1)
+    print(f"[E073 C3] cover-trend threshold {thr:.4f}: drop {int(beyond.sum())} of {int(trn_cells.sum())} training cells")
+
+
+def run_holdout3(a):
+    """C3 step 2: DESK retrained WITHOUT the beyond-range training cells vs its control, on held-out cells beyond /
+    inside the cover range; readouts restricted the same way; the covariate delta alongside; a second-seed control
+    as the run-to-run yardstick."""
+    est = Estimand(a.cache, a.n_boot, a.similarity)
+    keys = est.keys
+    cov = Cov(keys, ~est.ho & ~est.bf & est.ty, est.ty)
+    fin = cov.fin
+    uc, slope, thr, trn_cells, inv = cover_trend_groups(est, cov)
+    trn = np.where(~est.ho & ~est.bf & est.ty & fin)[0]
+    keep_cell = ~(trn_cells & (np.abs(slope) > thr))
+    trn_rest = trn[keep_cell[inv[trn]]]
+    ev_cid = est.cells_ev[:, 0].astype(np.int64) * 100000 + est.cells_ev[:, 1]
+    sev = slope[np.searchsorted(uc, ev_cid)]
+    groups = {"beyond": np.where(np.abs(sev) > thr)[0], "inside": np.where(np.abs(sev) <= thr)[0]}
+    Yw = est.Y - cell_mean(keys, est.Y, est.ty & fin)
+
+    def desk_feats(cache):
+        k2 = np.load(os.path.join(cache, "keys.npy"))
+        assert k2.shape == keys.shape and (k2 == keys).all(), f"keys differ: {cache}"
+        z = np.asarray(np.load(os.path.join(cache, "z_raw.npy"), mmap_mode="r")[:, :24], "float64")
+        z = np.where(np.isfinite(z), z, 0.0)
+        zbar = cell_mean(keys, z, est.ty & fin)
+        return z - zbar, zbar
+    arms = {}
+    for tag, cache in (("ctrl", a.cache), ("restr", a.cache_restricted), ("ctrl_s2", a.cache_seed2)):
+        if not cache:
+            continue
+        zw, zbar = desk_feats(cache)
+        ctx = ctx_feats(cov, {"zbar": zbar}, "desk", 4, trn)
+        arms[f"desk_within[{tag}]"] = [zw]
+        arms[f"vcz[{tag}]"] = vc_blocks(zw, ctx)
+    zw0, zbar0 = desk_feats(a.cache)
+    arms["vcc_h50"] = vc_blocks(cov.w(50, "no_clock"), ctx_feats(cov, {"zbar": zbar0}, "desk", 4, trn))
+    P = {}
+    for name, blocks in arms.items():
+        Fe = np.hstack([est.delta(B) for B in blocks])
+        for rtag, rows in (("full", trn), ("rest", trn_rest)):
+            if "[restr]" in name and rtag == "full":
+                continue                                  # the restricted DESK only makes sense with a restricted readout
+            P[f"{name}|{rtag}"] = Fe @ fit_blocks(blocks, Yw, rows)["coef"].T
+            print(f"[E073 C3] {name} readout {rtag}", flush=True)
+    out = {"threshold": thr, "n_train_rows": int(len(trn)), "n_train_rows_rest": int(len(trn_rest)),
+           "n_eval": {g: int(len(c)) for g, c in groups.items()}, "scores": {}}
+    for g, cells in groups.items():
+        for sname in ("sedentary", "all"):
+            m = est.strata[sname]
+            D = {k: est.draws(v, "dev", m, cells) for k, v in P.items()}
+            o = {"arms": {k: {"corr": float(v[0, 0]), "ci": ci(v[:, 0]), "k": float(v[0, 1]), "mse": float(v[0, 2])}
+                          for k, v in D.items()}, "diffs": {}}
+            pairs = [("desk_within[restr]|rest", "desk_within[ctrl]|full"), ("vcz[restr]|rest", "vcz[ctrl]|full"),
+                     ("desk_within[restr]|rest", "desk_within[ctrl]|rest"), ("vcz[restr]|rest", "vcz[ctrl]|rest"),
+                     ("vcc_h50|rest", "vcc_h50|full"), ("vcz[restr]|rest", "vcc_h50|rest"),
+                     ("desk_within[ctrl_s2]|full", "desk_within[ctrl]|full"), ("vcz[ctrl_s2]|full", "vcz[ctrl]|full")]
+            for x, y in pairs:
+                if x in D and y in D:
+                    d = D[x][:, 0] - D[y][:, 0]
+                    dm = D[x][:, 2] - D[y][:, 2]
+                    o["diffs"][f"{x} - {y}"] = {"corr": float(d[0]), "ci": ci(d), "mse": float(dm[0]), "mse_ci": ci(dm)}
+            out["scores"][f"{g}|{sname}"] = o
+    json.dump(out, open(os.path.join(a.out, "e073_c3.json"), "w"), indent=1)
+    for key, o in out["scores"].items():
+        print(f"== {key}: " + "  ".join(f"{k} {v['corr']:.3f}/k{v['k']:.2f}" for k, v in o["arms"].items()))
+        for k, v in o["diffs"].items():
+            print(f"     {k:52s} corr {v['corr']:+.3f} [{v['ci'][0]:+.3f},{v['ci'][1]:+.3f}] mse {v['mse']:+.3f}")
+
+
 def report(est, P, target, strata, order_ref="within_all_h10"):
     res = {}
     for sname in strata:
@@ -1148,15 +1251,17 @@ def run_novelty(a):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("part", choices=("novelty", "score", "score_b2", "score_b3", "score_b4", "holdout", "holdout2"))
+    ap.add_argument("part", choices=("novelty", "score", "score_b2", "score_b3", "score_b4", "holdout", "holdout2", "covermask", "holdout3"))
     ap.add_argument("--cache", required=True)
     ap.add_argument("--out", required=True)
     ap.add_argument("--similarity", default=None)
     ap.add_argument("--n-boot", type=int, default=200)
     ap.add_argument("--planted", action="store_true")
+    ap.add_argument("--cache-restricted", default=None, help="C3: the DESK cache trained without beyond-range cells")
+    ap.add_argument("--cache-seed2", default=None, help="C3: a second-seed control cache (run-to-run yardstick)")
     a = ap.parse_args()
     os.makedirs(a.out, exist_ok=True)
-    {"novelty": run_novelty, "score": run_score, "score_b2": run_score_b2, "score_b3": run_score_b3, "score_b4": run_score_b4,
+    {"novelty": run_novelty, "score": run_score, "score_b2": run_score_b2, "score_b3": run_score_b3, "score_b4": run_score_b4, "covermask": run_covermask, "holdout3": run_holdout3,
      "holdout": run_holdout, "holdout2": run_holdout}[a.part](a)
 
 

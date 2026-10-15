@@ -1,0 +1,18 @@
+{
+ "exp": "E073",
+ "name": "C3-desk-ctrl",
+ "group": "gpu",
+ "overlay": "research/overlays/desk_tempho_1995_seed1.json",
+ "cmd": [
+  "bash",
+  "-c",
+  "set -e; export RESEARCH_OUT={out} TMPDIR={out}/tmp MPLCONFIGDIR={out}/tmp/mpl WANDB_MODE=offline WANDB_DIR={out}; mkdir -p {out}/desk {out}/tmp; {python} scripts/run_encoder.py desk; {python} research/exp/cache.py --out {cache}/desk_tempho_1995_s1_ctrl073"
+ ],
+ "expected_minutes": 150,
+ "summarize": [
+  "bash",
+  "-c",
+  "grep -v '^ *$' {out}/../log.txt | tail -40"
+ ],
+ "note": "E073 C3: matched control -- DESK T0 1996 seed 1 retrained with the current code, nothing dropped (+ research cache)"
+}

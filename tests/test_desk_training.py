@@ -3127,3 +3127,28 @@ def test_two_aux_heads_each_with_its_own_mask_and_log(tmp_path):
     assert "AUX head 'a'" in txt and "AUX head 'b'" in txt and "aux 'b' mse" in txt, txt
     row = _json.loads(open(traj).readline())
     assert np.isfinite(row["loss_aux_a"]) and np.isfinite(row["loss_aux_b"]), row
+
+
+def test_train_drop_mask_drops_only_training_cells():
+    """E073 C3: an explicit drop mask may remove TRAINING cells only -- never a held-out, buffer or out-of-domain
+    cell -- so the validation set of an extrapolation holdout stays identical to its control's."""
+    from src.community_encoder.train_DESK.desk_training import apply_train_drop_mask
+    H, W = 5, 6
+    ho = np.zeros((H, W), bool); ho[:, 0] = True
+    buf = np.zeros((H, W), bool); buf[:, 1] = True
+    dom = np.ones((H, W), bool); dom[4, :] = False
+    prior = np.zeros((H, W), bool); prior[0, 5] = True              # e.g. a train_frac block already dropped
+    mask = np.ones((H, W), bool)                                     # ask to drop everything
+    new, n = apply_train_drop_mask(prior, mask, dom, ho, buf)
+    assert not (new & ho).any() and not (new & buf).any(), "held-out or buffer cells were dropped"
+    assert not (new & ~dom).any(), "a cell outside the split domain was marked"
+    assert new[0, 5], "an earlier drop was lost"
+    expect = dom & ~ho & ~buf
+    assert (new == expect).all() and n == int((expect & ~prior).sum())
+    try:
+        apply_train_drop_mask(prior, np.ones((H + 1, W), bool), dom, ho, buf)
+    except SystemExit:
+        pass
+    else:
+        raise AssertionError("a wrong-shaped mask must be refused")
+    print(f"train_drop_mask: {n} training cells added, validation set untouched")

@@ -1,3 +1,13 @@
+CURRENT (2026-10-14 ~20:30, session houfin-range-model-9a; older history below):
+- E073 (anchored delta: z = persistent spatial field + covariate-driven within-place deviation, g(0)=0, no time
+  input) RUNNING in pueue group cpu2: planted (501), A-novelty (502), B x4 (t1995/t1985 x s1/s2), C holdout, all after
+  planted. Part A: climate 1920-39 in range; mgmt + human same direction as the BBS era but 2.4-2.5x further; physical
+  cover novel in a DIFFERENT direction (GP grassland/range accounting). Planted check passed.
+- Next after B: pick the arm (likely comm_delta_no_clock), write its 1902-2025 delta cube for the peer's CBC scoring
+  (e069b_heldout_lists.py), then a network prototype (two-head DESK, g(0)=0) if the decision rules say so.
+- E072 (readout uncertainty kernel, option 2 = DESK-shaped errors-in-variables on delta, scaled by novelty): parked
+  until E073 decides the representation. Script research/exp/uncertainty_kernel.py.
+- Other session (houfin-range-model-52) owns E069b (CBC presence term, GPU), E070 (CPU), and E074+.
 Phase 0 (gate 0 pending) with Phase 1 experiments running on cached arrays. Data landed and verified 2026-10-09.
 GATE 0 DUE when E001 base + tempho1995 finish (~08:59 / ~10:15): compare_reports verdicts + timings to the user,
 with the morning's (unverified) results as a preview.

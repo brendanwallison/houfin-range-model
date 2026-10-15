@@ -215,17 +215,24 @@ MODELS = {"M0_posterior": [], "M1_const": ["1"], "M2_cover": ["1", "nov_cover"],
           "M5_eiv+cover": ["1", "U", "nov_cover"], "M6_eiv_only": ["U"]}
 
 
+def lnov(v):
+    """Novelty enters as log(1 + nov): it is heavy-tailed (up to ~400x the reference beyond the cover range)."""
+    return np.log1p(np.maximum(v, 0.0))
+
+
 def design_matrix(terms, e2, U, V, S, nov, cells, sp):
-    """Cell-level regression: mean over species (in sp) of (e2 - V) / S on the terms."""
-    y = ((e2[np.ix_(cells, sp)] - V[np.ix_(cells, sp)]) / S[sp]).mean(1)
+    """Cell-level regression on RATIOS OF SUMS over species (in sp): sum_s (e2 - V) / sum_s S, so the fit matches the
+    pooled calibration statistic (a mean of per-species ratios is dominated by rare, small-S species)."""
+    SS = S[sp].sum()
+    y = (e2[np.ix_(cells, sp)] - V[np.ix_(cells, sp)]).sum(1) / SS
     cols = []
     for t in terms:
         if t == "1":
             cols.append(np.ones(len(cells)))
         elif t == "U":
-            cols.append((U[np.ix_(cells, sp)] / S[sp]).mean(1))
+            cols.append(U[np.ix_(cells, sp)].sum(1) / SS)
         else:
-            cols.append(nov[t[4:]][cells])
+            cols.append(lnov(nov[t[4:]][cells]))
     return (np.stack(cols, 1) if cols else np.zeros((len(cells), 0))), y
 
 
@@ -237,7 +244,7 @@ def predicted_var(terms, gam, U, V, S, nov):
         elif t == "U":
             out = out + g * U
         else:
-            out = out + g * nov[t[4:]][:, None] * S[None, :]
+            out = out + g * lnov(nov[t[4:]])[:, None] * S[None, :]
     return out
 
 
@@ -284,10 +291,11 @@ def evaluate(est, e2, U, V, S, nov, beyond):
                                        "R_inside": float(e2[np.ix_(~beyond, sp)].sum() / pv[np.ix_(~beyond, sp)].sum())}
             o[mname] = rec
         o["mean_nov"] = {g: [float(nov[g][~beyond].mean()), float(nov[g][beyond].mean())] for g in nov}
-        o["mean_U_over_S"] = [float((U[np.ix_(~beyond, np.where(msp)[0])] / S[msp]).mean()),
-                              float((U[np.ix_(beyond, np.where(msp)[0])] / S[msp]).mean())]
-        o["mean_e2_over_S"] = [float((e2[np.ix_(~beyond, np.where(msp)[0])] / S[msp]).mean()),
-                               float((e2[np.ix_(beyond, np.where(msp)[0])] / S[msp]).mean())]
+        spi = np.where(msp)[0]
+        o["mean_U_over_S"] = [float(U[np.ix_(~beyond, spi)].sum(1).mean() / S[spi].sum()),
+                              float(U[np.ix_(beyond, spi)].sum(1).mean() / S[spi].sum())]
+        o["mean_e2_over_S"] = [float(e2[np.ix_(~beyond, spi)].sum(1).mean() / S[spi].sum()),
+                               float(e2[np.ix_(beyond, spi)].sum(1).mean() / S[spi].sum())]
         out[sname] = o
     return out
 
@@ -298,9 +306,10 @@ def project(est, X1920, B, Bs, coef_ml, coef_sh, nov1920, nov_ev, S, dWall_ev, z
     out = {}
     msp = est.strata["sedentary"] & (S > 0)
     for tag, coef in (("delta", coef_ml), ("delta_shr", coef_sh)):
-        Ub = np.stack([(X1920 @ Bb) @ coef[msp].T for Bb in Bs]).var(0, ddof=1) / S[msp]       # (cells, sp)
-        Ue = np.stack([(dWall_ev @ Bb) @ coef[msp].T for Bb in Bs]).var(0, ddof=1) / S[msp]
-        pred_change = ((X1920 @ B) @ coef[msp].T) ** 2 / S[msp]
+        SS = S[msp].sum()
+        Ub = (np.stack([(X1920 @ Bb) @ coef[msp].T for Bb in Bs]).var(0, ddof=1).sum(1) / SS)[:, None]  # pooled
+        Ue = (np.stack([(dWall_ev @ Bb) @ coef[msp].T for Bb in Bs]).var(0, ddof=1).sum(1) / SS)[:, None]
+        pred_change = (((X1920 @ B) @ coef[msp].T) ** 2).sum(1) / SS
         rec = {"median_U_over_S_1920": float(np.median(Ub)), "median_U_over_S_eval": float(np.median(Ue)),
                "median_pred_change2_over_S_1920": float(np.median(pred_change))}
         for mname in ("M2_cover", "M5_eiv+cover", "M3_novelty", "M4_eiv"):
@@ -308,10 +317,10 @@ def project(est, X1920, B, Bs, coef_ml, coef_sh, nov1920, nov_ev, S, dWall_ev, z
             terms = MODELS[mname]
             v = np.zeros_like(Ub)
             for t, g in zip(terms, gam):
-                v += g * (1.0 if t == "1" else (Ub if t == "U" else nov1920[t[4:]][:, None]))
+                v += g * (1.0 if t == "1" else (Ub if t == "U" else lnov(nov1920[t[4:]])[:, None]))
             ve = np.zeros_like(Ue)
             for t, g in zip(terms, gam):
-                ve += g * (1.0 if t == "1" else (Ue if t == "U" else nov_ev[t[4:]][:, None]))
+                ve += g * (1.0 if t == "1" else (Ue if t == "U" else lnov(nov_ev[t[4:]])[:, None]))
             zr = {}
             if zone_all is not None:
                 for zn in ("west", "great_plains", "east"):

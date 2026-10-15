@@ -38,7 +38,11 @@ def per_list(cache, D, cols_sp, heldout_rows_fn):
     ci = np.array([cix.get((int(r), int(c)), -1) for r, c in zip(D["row"], D["col"])])
     yr = D["year_end"]
     P = D["Y"][:, [cs.index(s) for s in cols_sp]] > 0
-    ho = spl["holdout"] | (spl["buffer"] if CELLS["mode"] == "holdout_buffer" else False)
+    if CELLS.get("mask"):
+        # E076: test cells from a mask (CBC cells withheld from the presence term); offsets from the other cells
+        ho = np.load(CELLS["mask"])["test"]
+    else:
+        ho = spl["holdout"] | (spl["buffer"] if CELLS["mode"] == "holdout_buffer" else False)
     # E075b: "holdout_buffer" adds DESK's buffer cells (excluded from training, so never in the presence term either)
     inho = np.array([bool(ho[r, c]) if r >= 0 else False for r, c in zip(D["row"], D["col"])])
     ok = (ci >= 0) & (yr >= int(years[0])) & (yr <= 2024) & (P.sum(1) >= 2)
@@ -61,10 +65,11 @@ def main():
     ap.add_argument("--boot", type=int, default=1000)
     ap.add_argument("--cells", choices=["holdout", "holdout_buffer"], default="holdout",
                     help="test lists in DESK's held-out cells (E069b) or held-out + buffer cells (E075b)")
+    ap.add_argument("--cells-mask", default=None, help="E076: npz with an (H, W) bool 'test' mask of test cells")
     ap.add_argument("--save-lists", action="store_true",
                     help="E075: also save per-list arrays (rows, arm/control backcast and modern log-likelihoods)")
     a = ap.parse_args()
-    CELLS["mode"] = a.cells
+    CELLS["mode"] = a.cells; CELLS["mask"] = a.cells_mask
     import pandas as pd
     D = np.load(a.cbc, allow_pickle=False)
     meta = json.load(open(os.path.join(a.arm, "meta.json")))

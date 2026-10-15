@@ -783,3 +783,9 @@ understanding first")
   predicted breeding change (+13-28%) and deepens over-prediction where land cover changed most (k 0.52 -> 0.31, 0.82
   -> 0.53; dk -0.21 / -0.29, CI excludes 0). It corrects the winter view but worsens the breeding one exactly in the
   1920-novel zone.
+- E073 F1 (merged grassland = natural non-forest + range) and E080 (other session, county census):
+  - the GP's 1920 "cover novelty" was mostly LUH grazing BOOKKEEPING (64x -> 20x the reference; direction now along
+    the BBS-era one, ~2x further). LUH3 cropland is census-validated; irrigation is broken;
+  - inside BBS, the cover-extrapolation penalty survives with merged cover (-0.10 to -0.22 sedentary): REAL land-cover
+    change, not accounting;
+  - the east is now the most novel zone in cover.

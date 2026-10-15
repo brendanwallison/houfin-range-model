@@ -789,3 +789,6 @@ understanding first")
   - inside BBS, the cover-extrapolation penalty survives with merged cover (-0.10 to -0.22 sedentary): REAL land-cover
     change, not accounting;
   - the east is now the most novel zone in cover.
+- E072b: robust to the grazing-bookkeeping merge. The delta's own bootstrap term already calibrates places far from
+  supervision (an isolation term over-shoots slightly); DESK's seed spread needs one. 1920: corr(H1920, H2000)
+  ~0.65-0.77 by zone, GP lowest.

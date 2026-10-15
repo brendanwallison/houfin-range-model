@@ -78,17 +78,19 @@ def split_ridge_cv(Zb, Zw, T, groups, lams, k=5, seed=69):
     return (lambda zbar, z: (np.concatenate([zbar, z - zbar], 1) - mu_f) @ B + mu_t), (best[1], best[2]), ratio
 
 
-def interact_ridge_cv(Zb, Zw, T, groups, lams, n_kind=4, k=5, seed=69):
+def interact_ridge_cv(Zb, Zw, T, groups, lams, n_kind=4, k=5, seed=69, ctx=None):
     """E074 (peer E073): place-dependent slopes. Ridge on [zbar, dz, dz x s], s = the first n_kind dims of zbar
     standardized on the training rows ("kind of place"), with a separate penalty per block chosen jointly by k-fold CV
-    over spatial blocks. Returns f(zbar, z)."""
-    mu_s, sd_s = Zb[:, :n_kind].mean(0), Zb[:, :n_kind].std(0) + 1e-9
+    over spatial blocks. Returns f(zbar, z, ctx). E074b: ctx (rows x n_kind) supplies the context instead of zbar's
+    first dims (the peer's E073 form: the cell's mean RAW z over its trained-year rows)."""
+    C0 = (Zb if ctx is None else ctx)[:, :n_kind]
+    mu_s, sd_s = C0.mean(0), C0.std(0) + 1e-9
 
-    def feats(zbar, z):
+    def feats(zbar, z, c=None):
         dz = z - zbar
-        s = (zbar[:, :n_kind] - mu_s) / sd_s
+        s = ((zbar if c is None else c)[:, :n_kind] - mu_s) / sd_s
         return np.concatenate([zbar, dz, (dz[:, :, None] * s[:, None, :]).reshape(len(z), -1)], 1)
-    F = feats(Zb, Zw); p = Zb.shape[1]; blocks = [(0, p), (p, 2 * p), (2 * p, F.shape[1])]
+    F = feats(Zb, Zw, ctx); p = Zb.shape[1]; blocks = [(0, p), (p, 2 * p), (2 * p, F.shape[1])]
     rng = np.random.default_rng(seed)
     ug = np.unique(groups); fold = dict(zip(ug, rng.integers(k, size=len(ug))))
     f = np.array([fold[g] for g in groups])
@@ -115,7 +117,7 @@ def interact_ridge_cv(Zb, Zw, T, groups, lams, n_kind=4, k=5, seed=69):
                 if best is None or err < best[0]:
                     best = (err, (l1, l2, l3))
     st = stats(np.ones(len(F), bool)); B = solve(st, best[1])
-    return (lambda zbar, z: (feats(zbar, z) - st[0]) @ B + st[1]), best[1]
+    return (lambda zbar, z, c=None: (feats(zbar, z, c) - st[0]) @ B + st[1]), best[1]
 
 
 def list_ll(eta, delta, P):
@@ -153,6 +155,9 @@ def main():
     ap.add_argument("--cache", required=True); ap.add_argument("--cbc", required=True)
     ap.add_argument("--similarity", required=True); ap.add_argument("--out", required=True)
     ap.add_argument("--boot", type=int, default=1000)
+    ap.add_argument("--context", choices=["ema", "raw"], default="ema",
+                    help="interact readout's place context: ema = first dims of the cell-mean z_ema (E074); raw = the "
+                         "cell's mean RAW z over its trained-year rows (E074b, the peer's E073 form)")
     ap.add_argument("--readout", choices=["level", "split", "interact"], default="level",
                     help="level: ridge on z (E069a); split: ridge on [cell-mean z, z - cell mean] with separate "
                          "penalties (E069a2, after the peer's E059e)")
@@ -181,9 +186,22 @@ def main():
         readout = lambda cell, z: _ro(z)
         between_within = None
     elif a.readout == "interact":
+        ctx_cell = None
+        if a.context == "raw":
+            # E074b: each cell's mean RAW z over its trained-year BBS rows (training keys); cells with none (e.g.
+            # held-out cells) fall back to the dense mean of raw z over the trained years
+            zr_keys = np.load(os.path.join(C, "z_raw.npy")).astype(float)
+            Zr_all = np.load(os.path.join(C, "z_raw_all.npy"), mmap_mode="r")
+            ctx_cell = np.asarray(Zr_all[:, trained].mean(1), float)
+            cnt = np.bincount(kci[tr], minlength=len(ctx_cell)).astype(float)
+            sm = np.zeros_like(ctx_cell); np.add.at(sm, kci[tr], zr_keys[tr])
+            has = cnt > 0
+            ctx_cell[has] = sm[has] / cnt[has, None]
         _ro, lam = interact_ridge_cv(zbar_cell[kci[tr]], z_keys[tr].astype(float), T[tr], sp_["block_id"][tr],
-                                     [1e-3, 1e-2, 1e-1, 1, 10])
-        readout = lambda cell, z: _ro(zbar_cell[cell], z)
+                                     [1e-3, 1e-2, 1e-1, 1, 10],
+                                     ctx=None if ctx_cell is None else ctx_cell[kci[tr]])
+        readout = (lambda cell, z: _ro(zbar_cell[cell], z)) if ctx_cell is None else \
+            (lambda cell, z: _ro(zbar_cell[cell], z, ctx_cell[cell]))
         between_within = None
     else:
         _ro, lam, between_within = split_ridge_cv(zbar_cell[kci[tr]], z_keys[tr].astype(float), T[tr],
@@ -237,7 +255,7 @@ def main():
                                         for al in (0, 0.1, 0.2, 0.3, 0.5, 0.75, 1.0, 1.5)}}
         res[subset] = out
     os.makedirs(a.out, exist_ok=True)
-    json.dump(res, open(os.path.join(a.out, f"e069a_{a.readout}.json"), "w"), indent=1)
+    json.dump(res, open(os.path.join(a.out, f"e069a_{a.readout}{'_raw' if a.context == 'raw' else ''}.json"), "w"), indent=1)
     print(json.dumps(res, indent=1))
 
 

@@ -69,6 +69,10 @@ def t1(a):
         bbs = pd.DataFrame(Xb); bbs["r"], bbs["c"], bbs["y"] = keys[:, 0], keys[:, 1], keys[:, 2]
         bbs = bbs.groupby(["r", "c", "y"]).mean()
         both = cbc.index.intersection(bbs.index)
+        if a.cell_mask:
+            # E079: restrict to cells in a stratum (an (H, W) bool array in an npz, key --cell-mask-key)
+            cm = np.load(a.cell_mask)[a.cell_mask_key]
+            both = both[[bool(cm[int(r_), int(c_)]) for r_, c_, _ in both]]
         cbc, bbs = cbc.loc[both], bbs.loc[both]
         cell = {(r, c) for r, c, _ in both}
         have = set(both)
@@ -235,6 +239,8 @@ def main():
     ap.add_argument("--degraded", nargs="*", default=[])
     ap.add_argument("--pairs", type=int, default=100000)
     ap.add_argument("--migration", default=None, help="E066c (t1): AVONET migration classes to keep, e.g. 1 or 1,2")
+    ap.add_argument("--cell-mask", default=None, help="E079 (t1): npz of (H, W) bool strata masks")
+    ap.add_argument("--cell-mask-key", default=None)
     ap.add_argument("--similarity", default=None, help="E066c: species_similarity.csv (species_code, migration)")
     ap.add_argument("--agg", type=int, nargs="*", default=[],
                     help="E066b: average k counts per circle and era before comparing (one run per k)")
@@ -242,7 +248,7 @@ def main():
     a = ap.parse_args()
     os.makedirs(a.out, exist_ok=True)
     res = t1(a) if a.test == "t1" else t2(a)
-    tag = a.test + ("_agg" if a.agg else "") + (f"_mig{a.migration.replace(',', '')}" if a.migration else "")
+    tag = a.test + ("_agg" if a.agg else "") + (f"_mig{a.migration.replace(',', '')}" if a.migration else "") + (f"_{a.cell_mask_key}" if a.cell_mask else "")
     json.dump(res, open(os.path.join(a.out, f"e066_{tag}.json"), "w"), indent=1)
     print(json.dumps(res, indent=1))
 

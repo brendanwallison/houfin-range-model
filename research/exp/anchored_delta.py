@@ -558,7 +558,7 @@ def run_holdout(a):
     R = np.sqrt(2 / 256) * (np.cos(W10 @ om + ph) - np.cos(ph))
     arm_blocks = {"within_all_h10": [W10], "within_no_clock_h10": [cov.w(10, "no_clock")],
                   "within_cover_h10": [cov.w(10, "cover")], "within_mgmt_h10": [cov.w(10, "mgmt")],
-                  "within_climate_h10": [cov.w(10, "climate")], "rff2_h10": [R], "desk_within": [z - zbar]}
+                  "within_climate_h10": [cov.w(10, "climate")], "lin+rff2_h10": [W10, R], "desk_within": [z - zbar]}
     out = {"cache": a.cache, "splits": {}}
     for g in ("cover", "mgmt", "climate"):
         u_proj = cov.W[(10, g)][:, 0]                                            # leading within PC of the group

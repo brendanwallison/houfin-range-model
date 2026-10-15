@@ -195,3 +195,6 @@ Items are numbered so records can cite them (e.g. "considerations: G3, M1, M6").
   irrigation in 1920-40 and little change after; the irrigation channels should not be trusted for the Great Plains
   backcast (E073's no_clock arm already excludes management). Candidate replacement: county irrigated acreage from the
   Census of Agriculture. (2026-10-15, user question; checked against USGS fact sheets, e.g. pubs.usgs.gov/fs/2007/3029)
+  County-level confirmation (E080): Great Plains census vs LUH3 irrigated share, rank agreement -0.07 (1929) and 0.17
+  (1939), trend 1929-82 x6.2 vs x2.1. LUH3 CROPLAND by contrast agrees well with the census TOTAL cropland (levels
+  0.90-0.95, regional trends within a few percent, county change 0.5-0.7) -- the problem is irrigation, not cover.

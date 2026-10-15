@@ -741,3 +741,19 @@ steering, not verified)
   - (2) selected or early-stopped state, not late; the short 150-epoch schedule is free for species;
   - (3) DESK's change for out-of-community species needs a trend term or shrinkage. The CBC check (E069a/a2, other
     session) finds z's backcast shift 3-5x too large even with the split readout.
+
+2026-10-15 -- E073 ANCHORED-DELTA SUITE: SYNTHESIS (research/experiments/E073.md; the user asked: "test it comprehensively,
+understanding first")
+- 1920 vs the BBS era: climate in range; management and human pressure the same direction ~2.4x further; land COVER
+  novel in direction and size (Great Plains most).
+- A clock-free, linear, community-learned delta of covariate change (no year input, g(0) = 0) carries DESK's change
+  direction and more (all species +0.06-0.07 corr), costs nothing to share across species, and needs 25-50 y of
+  covariate history. Spatial gradients add nothing (kappa ~0).
+- It over-predicts magnitude (estimation variance). Prior shrinkage x~0.1 or in-era CV rescaling fixes most of it
+  without withheld data.
+- Land-cover extrapolation fails for EVERY representation when training lacks places of large cover change (-0.10 to
+  -0.18). DESK's apparent edge came from having seen those places. A random 30% cell loss costs nothing.
+- Place-dependent readout slopes: robust inside BBS reach, but worse on early CBC lists even reach-decayed (E074,
+  other session). Not a backcast tool.
+- Levers that remain: cover-change supervision, and novelty-scaled uncertainty on delta's cover component (E072). A
+  two-part DESK is a structural, not a skill, argument.

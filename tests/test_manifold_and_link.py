@@ -228,3 +228,20 @@ print(json.dumps({"form": a._ALLEE_FORM, "rel": a.ALLEE_RELATIVE,
                                   text=True, check=True).stdout.strip().splitlines()[-1])
     assert r["form"] == "relative" and r["rel"] and r["fixed"] == 1.0 and r["centering"] == "occupied"
     assert r["n50_median"] == pytest.approx(0.05, rel=1e-3)
+
+
+def test_relative_density_is_finite_in_value_and_gradient_at_zero_capacity():
+    """Run_22's MAP died on NaN densities in the forward scan; N/K at K ~ 0 is the culprit
+    the guard targets. Value and gradient must stay finite for K = 0, underflowed K and
+    empty cells, and the ratio must be exact where K is ordinary."""
+    from src.model.age_forward import relative_density, reproduction_age_structured as rep
+    N = jnp.array([0.0, 0.3, 0.3, 0.0, 0.2])
+    K = jnp.array([0.0, 0.0, 1e-30, 1e-30, 0.5])
+    r = np.asarray(relative_density(N, K))
+    assert np.all(np.isfinite(r)) and r[0] == 0 and r[3] == 0 and r[1] == r[2] == 1e4
+    assert r[4] == pytest.approx(0.4)
+    def total(n, k):
+        a, j = rep(n * 0.5, n * 0.3, n * 0.2, 0.6, 0.4, 3.0, k, 1.0, 14.0, allee_relative=True)
+        return (a + j).sum()
+    gN, gK = jax.grad(total, argnums=(0, 1))(N, K)
+    assert np.all(np.isfinite(np.asarray(gN))) and np.all(np.isfinite(np.asarray(gK)))

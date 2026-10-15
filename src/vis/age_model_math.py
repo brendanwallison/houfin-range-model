@@ -140,8 +140,10 @@ def allee_viability(Sa, Sj, Fmax, K, allee_gamma, n_grid=512):
     # density below (N = u*K) and the suppression at K follow the model exactly.
     from src.model.age_priors import ALLEE_RELATIVE
     if ALLEE_RELATIVE:
-        with np.errstate(divide="ignore", invalid="ignore"):
-            allee_gamma = allee_gamma / K
+        # Same floor as age_forward.relative_density: no capacity => mates not limiting.
+        from src.model.age_forward import _RELATIVE_K_FLOOR, _RELATIVE_RATIO_CAP
+        allee_gamma = np.where(K > _RELATIVE_K_FLOOR, allee_gamma / np.where(K > 0, K, 1.0),
+                               allee_gamma * _RELATIVE_RATIO_CAP)
 
     F_repl = (1.0 - Sa) / (Sa * Sj)
     # Same c as the fitted model, including the 1e-6 guard: it belongs in the

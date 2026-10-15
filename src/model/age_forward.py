@@ -238,6 +238,28 @@ def forward_sim_age_structured(
 
     return total_densities, Na_densities, Nj_densities
 
+# Below this capacity (density units; ~2e-7 route counts) N/K is not computed.
+_RELATIVE_K_FLOOR = 1e-8
+# exp(-gamma * ratio) is exactly 0 long before this for any plausible gamma.
+_RELATIVE_RATIO_CAP = 1e4
+
+
+def relative_density(N, K):
+    """N/K for the relative Allee factor, finite in value AND gradient everywhere.
+
+    Run_22's first MAP died with NaN densities inside the forward scan (TACC 3511184).
+    Plain N / max(K, 1e-12) is finite in value, but cells where K underflows to ~0 give
+    ratios ~1e12 whose gradient carries 1/K^2, and 0/0 in empty cells. The double-where
+    keeps the division off those cells entirely: no capacity with birds present means
+    mates are not limiting (ratio at the cap, factor 1); no birds means ratio 0. The cap
+    leaves the factor unchanged (exactly 1) while bounding the argument.
+    """
+    ok = K > _RELATIVE_K_FLOOR
+    ratio = N / jnp.where(ok, K, 1.0)
+    ratio = jnp.where(ok, ratio, jnp.where(N > 0, _RELATIVE_RATIO_CAP, 0.0))
+    return jnp.minimum(ratio, _RELATIVE_RATIO_CAP)
+
+
 def reproduction_age_structured(
     N_a_post, N_j_stayers, N_j_arrivers,
     S_a, S_j, F_max, K, c, allee_gamma, eps=1e-12, allee_off=None, allee_relative=False
@@ -262,8 +284,8 @@ def reproduction_age_structured(
 
     F_eff = F_max / (1.0 + c * (N_total_post / K_safe))
     # allee_relative: mate-finding by N/K (age_priors' allee_prior.form = relative).
-    allee_factor = 1.0 - jnp.exp(-allee_gamma * (N_total_post / K_safe if allee_relative
-                                                 else N_total_post))
+    allee_factor = 1.0 - jnp.exp(-allee_gamma * (relative_density(N_total_post, K)
+                                                 if allee_relative else N_total_post))
     if allee_off is not None:
         allee_factor = allee_factor + allee_off * (1.0 - allee_factor)
     F_actual = F_eff * allee_factor

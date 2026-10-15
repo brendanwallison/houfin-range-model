@@ -82,39 +82,51 @@ def main():
     ap.add_argument("--arm", required=True); ap.add_argument("--control", required=True)
     ap.add_argument("--cover", required=True); ap.add_argument("--out", required=True); ap.add_argument("--label", default="arm")
     ap.add_argument("--boot", type=int, default=1000)
+    ap.add_argument("--similarity", default=None,
+                    help="E077b: species_similarity.csv; species are then split by AVONET migration class")
     a = ap.parse_args()
     M = np.load(a.cover)
     A = prepare(a.arm, M["change"], M["zones"], M["terciles"][1])
     C = prepare(a.control, M["change"], M["zones"], M["terciles"][1])
     assert (A["cells"] == C["cells"]).all()
-    smask = A["nz"] >= 30
-    res = {"label": a.label, "test_cells": int(len(A["cells"])), "species": int(smask.sum()),
-           "lambda_arm": A["lam"], "lambda_control": C["lam"]}
+    base = A["nz"] >= 30
+    classes = {"all_species": base}
+    if a.similarity:
+        import pandas as pd
+        sim = pd.read_csv(a.similarity); mig = dict(zip(sim.species_code, sim.migration))
+        mv = np.array([mig.get(s, np.nan) for s in A["dev"]])
+        classes = {"sedentary": base & (mv == 1), "residents": base & np.isin(mv, (1, 2)),
+                   "migratory": base & (mv == 3), "all_species": base}
+    res = {"label": a.label, "test_cells": int(len(A["cells"])), "lambda_arm": A["lam"], "lambda_control": C["lam"]}
     blocks = A["block"]; ub = np.unique(blocks)
     rng = np.random.default_rng(77)
     boots = [np.concatenate([np.where(blocks == b)[0] for b in rng.choice(ub, len(ub))]) for _ in range(a.boot)]
-    for name, m in (("all", np.ones(len(blocks), bool)), ("cover_top", A["top"] & A["covok"]),
-                    ("cover_rest", ~A["top"] & A["covok"]), ("great_plains", A["gp"]), ("not_gp", ~A["gp"])):
-        ka, ca = k_corr(A["obs"], A["pred"], m, smask)
-        kc, cc = k_corr(C["obs"], C["pred"], m, smask)
-        dk, dc = [], []
-        for bi in boots:
-            idx = bi[m[bi]]                       # resampled blocks, with multiplicity, restricted to the stratum
-            if len(idx) < 5:
-                continue
-            o_a, p_a = A["obs"][idx][:, smask], A["pred"][idx][:, smask]
-            o_c, p_c = C["obs"][idx][:, smask], C["pred"][idx][:, smask]
-            f = lambda o, p: ((o - o.mean(0)) * (p - p.mean(0))).sum()
-            g = lambda p: ((p - p.mean(0)) ** 2).sum()
-            h = lambda o: ((o - o.mean(0)) ** 2).sum()
-            dk.append(f(o_a, p_a) / g(p_a) - f(o_c, p_c) / g(p_c))
-            dc.append(f(o_a, p_a) / np.sqrt(h(o_a) * g(p_a)) - f(o_c, p_c) / np.sqrt(h(o_c) * g(p_c)))
-        res[name] = {"cells": int(m.sum()), "k_arm": ka, "k_control": kc, "corr_arm": ca, "corr_control": cc,
-                     "pred_sd_ratio_arm_over_control": float(np.std(A["pred"][m][:, smask]) / np.std(C["pred"][m][:, smask])),
-                     "dk": ka - kc, "dk_ci95": [float(x) for x in np.percentile(dk, [2.5, 97.5])],
-                     "dcorr": ca - cc, "dcorr_ci95": [float(x) for x in np.percentile(dc, [2.5, 97.5])]}
+    f = lambda o, p: ((o - o.mean(0)) * (p - p.mean(0))).sum()
+    g = lambda p: ((p - p.mean(0)) ** 2).sum()
+    h = lambda o: ((o - o.mean(0)) ** 2).sum()
+    for cname, smask in classes.items():
+        rc = {"species": int(smask.sum())}
+        for name, m in (("all", np.ones(len(blocks), bool)), ("cover_top", A["top"] & A["covok"]),
+                        ("cover_rest", ~A["top"] & A["covok"]), ("great_plains", A["gp"]), ("not_gp", ~A["gp"])):
+            ka, ca = k_corr(A["obs"], A["pred"], m, smask)
+            kc, cc = k_corr(C["obs"], C["pred"], m, smask)
+            dk, dc = [], []
+            for bi in boots:
+                idx = bi[m[bi]]                   # resampled blocks, with multiplicity, restricted to the stratum
+                if len(idx) < 5:
+                    continue
+                o_a, p_a = A["obs"][idx][:, smask], A["pred"][idx][:, smask]
+                o_c, p_c = C["obs"][idx][:, smask], C["pred"][idx][:, smask]
+                dk.append(f(o_a, p_a) / g(p_a) - f(o_c, p_c) / g(p_c))
+                dc.append(f(o_a, p_a) / np.sqrt(h(o_a) * g(p_a)) - f(o_c, p_c) / np.sqrt(h(o_c) * g(p_c)))
+            rc[name] = {"cells": int(m.sum()), "k_arm": ka, "k_control": kc, "corr_arm": ca, "corr_control": cc,
+                        "pred_sd_ratio_arm_over_control": float(np.std(A["pred"][m][:, smask]) /
+                                                                np.std(C["pred"][m][:, smask])),
+                        "dk": ka - kc, "dk_ci95": [float(x) for x in np.percentile(dk, [2.5, 97.5])],
+                        "dcorr": ca - cc, "dcorr_ci95": [float(x) for x in np.percentile(dc, [2.5, 97.5])]}
+        res[cname] = rc
     os.makedirs(a.out, exist_ok=True)
-    json.dump(res, open(os.path.join(a.out, f"e077_{a.label}.json"), "w"), indent=1)
+    json.dump(res, open(os.path.join(a.out, f"e077{'b' if a.similarity else ''}_{a.label}.json"), "w"), indent=1)
     print(json.dumps(res, indent=1))
 
 

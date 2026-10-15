@@ -184,3 +184,14 @@ Items are numbered so records can cite them (e.g. "considerations: G3, M1, M6").
   covariate change, with no time or position-by-time input, extrapolates as far as the covariates do. Early-20th-
   century supervision will at best be weak (CBC), so the structure must carry the extrapolation. Understanding comes
   before performance. (user, 2026-10-14; E073)
+- **M31 LUH3 irrigation over the High Plains is wrong in level AND trend.** The covariates' land-use stream is raw LUH3
+  (no transform). Irrigated cropland (sum over crop types of crop fraction x irrigated fraction) in a box over the High
+  Plains aquifer core (lat 32-43, lon -104 to -97; 1,031 cells) is 7.9 M acres in 1930, 11.0 M in 1949, 15.4 M in 1970,
+  17.1 M in 1980 -- growth x1.6 from 1949 to 1980. USGS (aquifer footprint) reports 2.1 M (1949), 6.1 M (1959), 9.0 M
+  (1969), 13.7 M (1980) -- x6.5, the Ogallala boom. The box is wider than the aquifer, but LUH3 puts several times too
+  much irrigation there before the war and misses most of the post-war growth. Also: LUH3's irrigated fraction is
+  IDENTICAL across the five crop types in every cell (one cell-level fraction copied). Likely cause (not verified): a
+  historical national total allocated by a modern irrigation map. Consequence: DESK sees substantial High Plains
+  irrigation in 1920-40 and little change after; the irrigation channels should not be trusted for the Great Plains
+  backcast (E073's no_clock arm already excludes management). Candidate replacement: county irrigated acreage from the
+  Census of Agriculture. (2026-10-15, user question; checked against USGS fact sheets, e.g. pubs.usgs.gov/fs/2007/3029)

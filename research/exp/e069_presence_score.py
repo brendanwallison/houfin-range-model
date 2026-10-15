@@ -78,6 +78,46 @@ def split_ridge_cv(Zb, Zw, T, groups, lams, k=5, seed=69):
     return (lambda zbar, z: (np.concatenate([zbar, z - zbar], 1) - mu_f) @ B + mu_t), (best[1], best[2]), ratio
 
 
+def interact_ridge_cv(Zb, Zw, T, groups, lams, n_kind=4, k=5, seed=69):
+    """E074 (peer E073): place-dependent slopes. Ridge on [zbar, dz, dz x s], s = the first n_kind dims of zbar
+    standardized on the training rows ("kind of place"), with a separate penalty per block chosen jointly by k-fold CV
+    over spatial blocks. Returns f(zbar, z)."""
+    mu_s, sd_s = Zb[:, :n_kind].mean(0), Zb[:, :n_kind].std(0) + 1e-9
+
+    def feats(zbar, z):
+        dz = z - zbar
+        s = (zbar[:, :n_kind] - mu_s) / sd_s
+        return np.concatenate([zbar, dz, (dz[:, :, None] * s[:, None, :]).reshape(len(z), -1)], 1)
+    F = feats(Zb, Zw); p = Zb.shape[1]; blocks = [(0, p), (p, 2 * p), (2 * p, F.shape[1])]
+    rng = np.random.default_rng(seed)
+    ug = np.unique(groups); fold = dict(zip(ug, rng.integers(k, size=len(ug))))
+    f = np.array([fold[g] for g in groups])
+
+    def stats(rows):
+        mu_f, mu_t = F[rows].mean(0), T[rows].mean(0)
+        Fc = F[rows] - mu_f
+        A = Fc.T @ Fc
+        return mu_f, mu_t, A, Fc.T @ (T[rows] - mu_t), [np.trace(A[a:b, a:b]) / (b - a) for a, b in blocks]
+
+    def solve(st, lb):
+        mu_f, mu_t, A, rhs, tr = st
+        pen = np.concatenate([np.full(b - a, l * t) for (a, b), l, t in zip(blocks, lb, tr)])
+        return np.linalg.solve(A + np.diag(pen), rhs)
+    folds = [(stats(f != i), f == i) for i in range(k)]
+    best = None
+    for l1 in lams:
+        for l2 in lams:
+            for l3 in lams:
+                err = 0.0
+                for st, te in folds:
+                    B = solve(st, (l1, l2, l3))
+                    err += (((F[te] - st[0]) @ B + st[1] - T[te]) ** 2).sum()
+                if best is None or err < best[0]:
+                    best = (err, (l1, l2, l3))
+    st = stats(np.ones(len(F), bool)); B = solve(st, best[1])
+    return (lambda zbar, z: (feats(zbar, z) - st[0]) @ B + st[1]), best[1]
+
+
 def list_ll(eta, delta, P):
     """mean log P(species | record) over listed species, per list. eta (n, S), P (n, S) bool presence."""
     s = eta + delta
@@ -113,7 +153,7 @@ def main():
     ap.add_argument("--cache", required=True); ap.add_argument("--cbc", required=True)
     ap.add_argument("--similarity", required=True); ap.add_argument("--out", required=True)
     ap.add_argument("--boot", type=int, default=1000)
-    ap.add_argument("--readout", choices=["level", "split"], default="level",
+    ap.add_argument("--readout", choices=["level", "split", "interact"], default="level",
                     help="level: ridge on z (E069a); split: ridge on [cell-mean z, z - cell mean] with separate "
                          "penalties (E069a2, after the peer's E059e)")
     a = ap.parse_args()
@@ -139,6 +179,11 @@ def main():
     if a.readout == "level":
         _ro, lam = ridge_cv(z_keys[tr].astype(float), T[tr], sp_["block_id"][tr], [1e-4, 1e-3, 1e-2, 1e-1, 1, 10])
         readout = lambda cell, z: _ro(z)
+        between_within = None
+    elif a.readout == "interact":
+        _ro, lam = interact_ridge_cv(zbar_cell[kci[tr]], z_keys[tr].astype(float), T[tr], sp_["block_id"][tr],
+                                     [1e-3, 1e-2, 1e-1, 1, 10])
+        readout = lambda cell, z: _ro(zbar_cell[cell], z)
         between_within = None
     else:
         _ro, lam, between_within = split_ridge_cv(zbar_cell[kci[tr]], z_keys[tr].astype(float), T[tr],

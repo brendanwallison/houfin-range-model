@@ -757,3 +757,15 @@ understanding first")
   other session). Not a backcast tool.
 - Levers that remain: cover-change supervision, and novelty-scaled uncertainty on delta's cover component (E072). A
   two-part DESK is a structural, not a skill, argument.
+
+2026-10-15 -- E072 HONEST CHANGE UNCERTAINTY (research/experiments/E072.md; the user's option 2; UNVERIFIED)
+- Change errors at held-out places are ~0.25-0.45 of a species' spatial variance (S) over ~35 y, mostly unpredictable
+  at any distance. The readout's posterior is 45-1000x too confident.
+- Honest law: a constant term (~0.3 S per ~35 y) plus the covariate delta's own errors-in-variables (block bootstrap
+  of its community map, x1.4-5). The latter grows beyond the BBS-era cover range and ~7x for 1920, and it calibrates
+  the beyond-range places (R 1.04-1.05, sedentary). Cover novelty adds nothing on top. DESK's seed spread is NOT
+  novelty-aware and fails as an option-2 term.
+- 1920 projection: change-error variance ~0.5-0.6 S (vs 0.26-0.33 inside BBS), i.e. corr(H1920, H2000) ~0.7 relative
+  to the spatial contrast, lowest on the Great Plains (0.68). The predicted 1920->2015 change is about as large as its
+  uncertainty.
+- Strict rule: no model calibrates both sedentary species halves (one half 1.26-1.33): species heterogeneity.

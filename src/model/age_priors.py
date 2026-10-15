@@ -365,7 +365,11 @@ def sample_priors(prior_scale=1.0, M_features=None, time=None,
     # Report the implied correlations (and a 4x4 Cholesky under the historical L_corr name) so
     # diagnostics can read what the fit concluded about how tightly the manifolds move together.
     corr = corr + jnp.diag(1.0 - jnp.diag(corr))
-    numpyro.deterministic("L_corr", jnp.linalg.cholesky(corr))
+    # Reporting only. With fixed_coupling = 1 every pair correlates exactly 1, the matrix is
+    # singular and the bare Cholesky is NaN -- harmless to the fit, but it is the first NaN
+    # JAX_DEBUG_NANS reports, which hid run_22's real failure. A 1e-6 jitter is invisible
+    # in the reported values.
+    numpyro.deterministic("L_corr", jnp.linalg.cholesky(corr + 1e-6 * jnp.eye(4)))
     numpyro.deterministic("rho", corr[0, 1])  # survival-reproduction, the old `rho`
     numpyro.deterministic("env_corr_repro_capacity", corr[1, 2])
     numpyro.deterministic("env_corr_survival_capacity", corr[0, 2])

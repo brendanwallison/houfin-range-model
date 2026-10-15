@@ -53,6 +53,12 @@ _ALLEE_FORM = str(_ALLEE_PRIOR.get("form", "absolute"))
 if _ALLEE_FORM not in {"absolute", "relative"}:
     raise ValueError(f"allee_prior.form must be absolute or relative, got {_ALLEE_FORM!r}")
 ALLEE_RELATIVE = _ALLEE_FORM == "relative"
+#   juvenile_survival.form    "independent" (own sigmoid) | "ratio" (Sj = Sa * sigmoid(...))
+_JUV = dict(_POP_SPEC.get("juvenile_survival", {}))
+_JUV_FORM = str(_JUV.get("form", "independent"))
+if _JUV_FORM not in {"independent", "ratio"}:
+    raise ValueError(f"juvenile_survival.form must be independent or ratio, got {_JUV_FORM!r}")
+JUVENILE_RATIO = _JUV_FORM == "ratio"
 if _HABITAT_CENTERING not in {"none", "occupied"}:
     raise ValueError(f"habitat_centering must be none or occupied, got {_HABITAT_CENTERING!r}")
 if _MANIFOLD_FORM not in {"rank2", "exchangeable"}:
@@ -549,7 +555,13 @@ def sample_priors(prior_scale=1.0, M_features=None, time=None,
     # --- 2. DEMOGRAPHIC INTERCEPTS (Alphas) ---
     # Adult survival baseline > Juvenile survival baseline
     priors['alpha_a'] = numpyro.sample("alpha_a", dist.Normal(0.5, 0.5 * prior_scale)) # ~60%
-    priors['alpha_j'] = numpyro.sample("alpha_j", dist.Normal(-0.5, 0.5 * prior_scale)) # ~40%
+    if JUVENILE_RATIO:
+        # alpha_j is the LOGIT OF THE JUVENILE/ADULT SURVIVAL RATIO at typical habitat:
+        # Sj = Sa * sigmoid(alpha_j + gamma_j*H), so Sj < Sa everywhere by construction.
+        priors['alpha_j'] = numpyro.sample("alpha_j", dist.Normal(
+            float(_JUV.get("ratio_logit_loc", 0.0)), float(_JUV.get("ratio_logit_scale", 0.5)) * prior_scale))
+    else:
+        priors['alpha_j'] = numpyro.sample("alpha_j", dist.Normal(-0.5, 0.5 * prior_scale)) # ~40%
     priors['alpha_f'] = numpyro.sample("alpha_f", dist.Normal(2.0, 0.5 * prior_scale))  # Fecundity
     # CAPACITY LEVEL, declared in expected BBS route counts (see counts_to_relative).
     # SOFTPLUS link: K_counts = softplus(alpha_k + gamma_k*H_k + trend). alpha_k_loc is
@@ -777,6 +789,7 @@ def build_model_2d(data, prior_scale=1.0):
         k_link=k_link,
         capacity=crowding_capacity if _K_FORM == "crowding" else None,
         z_center=z_center,
+        juvenile_ratio=JUVENILE_RATIO,
     )
         
     # Save fields for viz

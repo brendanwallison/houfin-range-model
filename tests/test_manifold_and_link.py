@@ -246,3 +246,31 @@ def test_relative_density_is_finite_in_value_and_gradient_at_zero_capacity():
         return (a + j).sum()
     gN, gK = jax.grad(total, argnums=(0, 1))(N, K)
     assert np.all(np.isfinite(np.asarray(gN))) and np.all(np.isfinite(np.asarray(gK)))
+
+
+def test_juvenile_ratio_keeps_juveniles_below_adults(monkeypatch):
+    import src.model.age_priors as ap
+    from src.vis.age_model_math import rates_from_manifolds
+    p = {"alpha_a": 0.0, "gamma_a": 1.0, "alpha_j": 3.0, "gamma_j": 2.0,
+         "alpha_f": 1.0, "gamma_f": 1.0, "alpha_k": -2.0, "gamma_k": 1.0}
+    H = np.linspace(-3, 3, 13)
+    monkeypatch.setattr(ap, "JUVENILE_RATIO", True)
+    r = rates_from_manifolds(p, H, H, H, H)
+    assert np.all((r["Sj"] > 0) & (r["Sj"] < r["Sa"]) & (r["Sa"] < 1))
+    monkeypatch.setattr(ap, "JUVENILE_RATIO", False)
+    assert np.any(rates_from_manifolds(p, H, H, H, H)["Sj"] > r["Sa"])   # the old form can cross
+
+
+def test_run23a_overlay_resolves():
+    overlay = "map_run23a_weak_allee_juv_ratio.json"
+    probe = """
+import json, math, src.model.age_priors as a
+print(json.dumps({"juv": a.JUVENILE_RATIO, "n50": math.log1p(math.exp(a._ALLEE_PRIOR["n50_raw_loc"])),
+  "n50_scale": a._ALLEE_PRIOR["n50_raw_scale"], "allee": a._ALLEE_FORM,
+  "fixed": a._MANIFOLD_PRIOR.get("fixed_coupling"), "centering": a._HABITAT_CENTERING}))
+"""
+    env = dict(os.environ, AGE_MODEL_CONFIG=os.path.join(REPO, "config", "overlays", overlay))
+    r = json.loads(subprocess.run([sys.executable, "-c", probe], cwd=REPO, env=env, capture_output=True,
+                                  text=True, check=True).stdout.strip().splitlines()[-1])
+    assert r["juv"] and r["allee"] == "absolute" and r["n50_scale"] == 0.25
+    assert r["n50"] == pytest.approx(0.03, rel=1e-3) and r["fixed"] == 1.0 and r["centering"] == "occupied"

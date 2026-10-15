@@ -327,9 +327,13 @@ def rates_from_manifolds(p, H_s, H_sj, H_r, H_k=None):
     error was plausible-looking rather than obvious. A default would let the same
     mistake back in silently.
     """
+    from src.model.age_priors import JUVENILE_RATIO
+    Sa = sigmoid(p["alpha_a"] + p["gamma_a"] * H_s)
+    Sj = sigmoid(p["alpha_j"] + p["gamma_j"] * H_sj)
     out = {
-        "Sa": sigmoid(p["alpha_a"] + p["gamma_a"] * H_s),
-        "Sj": sigmoid(p["alpha_j"] + p["gamma_j"] * H_sj),
+        "Sa": Sa,
+        # juvenile_survival.form = ratio: Sj is a fraction of Sa (see age_fields).
+        "Sj": Sa * Sj if JUVENILE_RATIO else Sj,
         "Fmax": softplus(p["alpha_f"] + p["gamma_f"] * H_r),
     }
     if H_k is not None:

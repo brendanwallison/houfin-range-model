@@ -145,6 +145,7 @@ def project_and_scatter_age_structured(
     k_link=None,      # callable: K = k_link(argument); default softplus
     capacity=None,    # callable (alpha_k, H, trend, Sa, Sj, Fmax) -> K_base; overrides k_link
     z_center=None,    # (M,) feature vector the habitat fields are centred at, or None
+    juvenile_ratio=False,  # Sj = Sa * sigmoid(alpha_j + gamma_j*H_sj) (and Q likewise)
 ):
     """Project Z → (S_a, S_j, F_max, K, Q) for every year, on the land cells.
 
@@ -214,7 +215,11 @@ def project_and_scatter_age_structured(
         # 4. Map H_s and H_r to Demographic Rates using Intercepts and Slopes
         # Survival listens to H_s
         S_a_val = jnn.sigmoid(alpha_a + gamma_a * H_s_local)
+        # juvenile_ratio: juvenile survival is a FRACTION of adult survival, so Sj < Sa at
+        # every habitat value (run_21's fit had Sj 0.93 against Sa 0.42).
         S_j_val = jnn.sigmoid(alpha_j + gamma_j * H_sj_local)
+        if juvenile_ratio:
+            S_j_val = S_a_val * S_j_val
 
         # Reproduction listens to H_r
         F_max_val = jnn.softplus(alpha_f + gamma_f * H_r_local)
@@ -262,6 +267,9 @@ def project_and_scatter_age_structured(
         # This links movement mortality to juvenile local survival mortality -- the same field
         # S_j reads, so Q and S_j can no longer be driven by different spatial patterns.
         Q_val = jnn.sigmoid(alpha_j + gamma_j * H_sj_disp)
+        if juvenile_ratio:
+            # The same juvenile-survival field, evaluated on path habitat.
+            Q_val = jnn.sigmoid(alpha_a + gamma_a * (jnp.dot(z_disp_t, beta_s) - off_s)) * Q_val
 
         # K_base_val is returned as well: severity is a function of it, so exact
         # diagnostics (and the severity map) need the UNDEPRESSED capacity. Using

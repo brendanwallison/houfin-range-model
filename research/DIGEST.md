@@ -792,3 +792,9 @@ understanding first")
 - E072b: robust to the grazing-bookkeeping merge. The delta's own bootstrap term already calibrates places far from
   supervision (an isolation term over-shoots slightly); DESK's seed spread needs one. 1920: corr(H1920, H2000)
   ~0.65-0.77 by zone, GP lowest.
+- E072 SKEPTIC (revision):
+  - the honest law is calibrated only in POOLED sums dominated by ~5 common species; per species and in occupied cells
+    it is ~2x overconfident;
+  - the bootstrap term's beyond-range gain is real but fragile (gU 0.2-10), half of it plain change magnitude;
+  - the 1920 "corr 0.65-0.77" was corr(H1920, predicted H1920) at a FIXED span, an optimistic upper bound. Span-scaled
+    ~0.5; corr(H1920, H2000) including the predicted change ~0.43-0.45 (GP 0.33-0.41).

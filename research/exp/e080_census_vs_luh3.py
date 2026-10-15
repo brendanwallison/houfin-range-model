@@ -41,9 +41,20 @@ def read_part(root, ds, cols):
     f = glob.glob(os.path.join(root, ds, "*-Data.tsv"))[0]
     hdr = pd.read_csv(f, sep="\t", nrows=0).columns
     low = {c.lower(): c for c in hdr}
-    use = [low["fips"], low["level"]] + [low[c.lower()] for c in cols]
-    d = pd.read_csv(f, sep="\t", usecols=use, low_memory=False)
-    d.columns = [c.lower() for c in d.columns]
+    if "fips" not in low:
+        # DS0019 (1940 water) carries only ICPSR state / county codes: map them through the 1940 main part (DS0016)
+        xw = glob.glob(os.path.join(root, "DS0016", "*-Data.tsv"))[0]
+        xh = {c.lower(): c for c in pd.read_csv(xw, sep="\t", nrows=0).columns}
+        x = pd.read_csv(xw, sep="\t", usecols=[xh["state"], xh["county"], xh["fips"]], low_memory=False)
+        x.columns = [c.lower() for c in x.columns]
+        use = [low["state"], low["county"], low["level"]] + [low[c.lower()] for c in cols]
+        d = pd.read_csv(f, sep="\t", usecols=use, low_memory=False)
+        d.columns = [c.lower() for c in d.columns]
+        d = d.merge(x.drop_duplicates(["state", "county"]), on=["state", "county"], how="left")
+    else:
+        use = [low["fips"], low["level"]] + [low[c.lower()] for c in cols]
+        d = pd.read_csv(f, sep="\t", usecols=use, low_memory=False)
+        d.columns = [c.lower() for c in d.columns]
     d = d[pd.to_numeric(d["level"], errors="coerce") == 1]
     for c in cols:
         d[c.lower()] = pd.to_numeric(d[c.lower()], errors="coerce")

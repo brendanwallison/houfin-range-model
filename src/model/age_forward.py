@@ -247,9 +247,10 @@ _RELATIVE_RATIO_CAP = 1e4
 def relative_density(N, K):
     """N/K for the relative Allee factor, finite in value AND gradient everywhere.
 
-    Run_22's first MAP died with NaN densities inside the forward scan (TACC 3511184).
-    Plain N / max(K, 1e-12) is finite in value, but cells where K underflows to ~0 give
-    ratios ~1e12 whose gradient carries 1/K^2, and 0/0 in empty cells. The double-where
+    Run_22's first MAP died inside the forward scan (TACC 3511184/3511695): FFT round-off
+    left N ~ -1e-9 before the post-reproduction clamp, and N / max(K, 1e-12) turned it into
+    a huge negative ratio, so exp(-gamma*ratio) overflowed. Cells where K underflows to ~0
+    also give ratios whose gradient carries 1/K^2, and 0/0 in empty cells. The double-where
     keeps the division off those cells entirely: no capacity with birds present means
     mates are not limiting (ratio at the cap, factor 1); no birds means ratio 0. The cap
     leaves the factor unchanged (exactly 1) while bounding the argument.
@@ -257,7 +258,11 @@ def relative_density(N, K):
     ok = K > _RELATIVE_K_FLOOR
     ratio = N / jnp.where(ok, K, 1.0)
     ratio = jnp.where(ok, ratio, jnp.where(N > 0, _RELATIVE_RATIO_CAP, 0.0))
-    return jnp.minimum(ratio, _RELATIVE_RATIO_CAP)
+    # The FFT dispersal step leaves round-off densities ~ -1e-9 that are clamped only AFTER
+    # reproduction. Under the absolute form exp(+gamma*1e-9) ~ 1 is harmless; divided by a
+    # small K they became a large NEGATIVE ratio and exp(-gamma*ratio) overflowed to inf --
+    # the exact failure JAX_DEBUG_INFS located in run_22 (TACC 3511695). Hence [0, cap].
+    return jnp.clip(ratio, 0.0, _RELATIVE_RATIO_CAP)
 
 
 def reproduction_age_structured(

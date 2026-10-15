@@ -235,11 +235,12 @@ def test_relative_density_is_finite_in_value_and_gradient_at_zero_capacity():
     the guard targets. Value and gradient must stay finite for K = 0, underflowed K and
     empty cells, and the ratio must be exact where K is ordinary."""
     from src.model.age_forward import relative_density, reproduction_age_structured as rep
-    N = jnp.array([0.0, 0.3, 0.3, 0.0, 0.2])
-    K = jnp.array([0.0, 0.0, 1e-30, 1e-30, 0.5])
+    # last two: FFT round-off negatives at a small and an ordinary K (the run_22 overflow)
+    N = jnp.array([0.0, 0.3, 0.3, 0.0, 0.2, -1e-9, -1e-9])
+    K = jnp.array([0.0, 0.0, 1e-30, 1e-30, 0.5, 1e-12, 0.5])
     r = np.asarray(relative_density(N, K))
     assert np.all(np.isfinite(r)) and r[0] == 0 and r[3] == 0 and r[1] == r[2] == 1e4
-    assert r[4] == pytest.approx(0.4)
+    assert r[4] == pytest.approx(0.4) and r[5] == 0 and r[6] == 0
     def total(n, k):
         a, j = rep(n * 0.5, n * 0.3, n * 0.2, 0.6, 0.4, 3.0, k, 1.0, 14.0, allee_relative=True)
         return (a + j).sum()

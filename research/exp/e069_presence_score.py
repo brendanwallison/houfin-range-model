@@ -86,10 +86,13 @@ def interact_ridge_cv(Zb, Zw, T, groups, lams, n_kind=4, k=5, seed=69, ctx=None)
     C0 = (Zb if ctx is None else ctx)[:, :n_kind]
     mu_s, sd_s = C0.mean(0), C0.std(0) + 1e-9
 
-    def feats(zbar, z, c=None):
+    def feats(zbar, z, c=None, scale=None):
         dz = z - zbar
         s = ((zbar if c is None else c)[:, :n_kind] - mu_s) / sd_s
-        return np.concatenate([zbar, dz, (dz[:, :, None] * s[:, None, :]).reshape(len(z), -1)], 1)
+        inter = (dz[:, :, None] * s[:, None, :]).reshape(len(z), -1)
+        if scale is not None:                     # E074c: shrink the interaction block per row (e.g. by reach)
+            inter = inter * np.asarray(scale, float)[:, None]
+        return np.concatenate([zbar, dz, inter], 1)
     F = feats(Zb, Zw, ctx); p = Zb.shape[1]; blocks = [(0, p), (p, 2 * p), (2 * p, F.shape[1])]
     rng = np.random.default_rng(seed)
     ug = np.unique(groups); fold = dict(zip(ug, rng.integers(k, size=len(ug))))
@@ -117,7 +120,7 @@ def interact_ridge_cv(Zb, Zw, T, groups, lams, n_kind=4, k=5, seed=69, ctx=None)
                 if best is None or err < best[0]:
                     best = (err, (l1, l2, l3))
     st = stats(np.ones(len(F), bool)); B = solve(st, best[1])
-    return (lambda zbar, z, c=None: (feats(zbar, z, c) - st[0]) @ B + st[1]), best[1]
+    return (lambda zbar, z, c=None, scale=None: (feats(zbar, z, c, scale) - st[0]) @ B + st[1]), best[1]
 
 
 def list_ll(eta, delta, P):

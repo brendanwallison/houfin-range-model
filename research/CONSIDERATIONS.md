@@ -174,3 +174,13 @@ Items are numbered so records can cite them (e.g. "considerations: G3, M1, M6").
   own curators trust that era, (ii) season and community match, (iii) whether it tests what the downstream uses in
   1902-1939 (absences beyond range edges). Candidates: Grinnell resurveys (site occupancy ~1900-1940 vs 2000s,
   California and Great Basin), Breeding Bird Census plots (1937+), historical range edges. (user, 2026-10-12)
+
+## Added 2026-10-14 (uncertainty and reformulation thread)
+- **G11 Excess dissimilarity is the safer error, but injected uncertainty must not take temporal learning away from
+  DESK.** An additive generic temporal block fitted by marginal likelihood can explain away DESK's change. Uncertainty
+  should sit on top of DESK's (or delta's) own change: errors-in-variables shaped by the representation (the user
+  found option 2 appealing), sized by measured error, growing with reach and novelty. (user, 2026-10-14; E072 parked)
+- **G12 Reformulate for extrapolation, not interpolation.** A persistent spatial field plus deviations driven only by
+  covariate change, with no time or position-by-time input, extrapolates as far as the covariates do. Early-20th-
+  century supervision will at best be weak (CBC), so the structure must carry the extrapolation. Understanding comes
+  before performance. (user, 2026-10-14; E073)

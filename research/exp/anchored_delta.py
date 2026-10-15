@@ -633,6 +633,146 @@ def run_score_b3(a):
                   f"[{v['mse_ci'][0]:+.3f},{v['mse_ci'][1]:+.3f}]" + (f" jk min {jk['min']:+.3f} ({jk['drop_for_min']})" if jk else ""))
 
 
+# ------------------------------------------------------------------------------------------------ part B4
+def group_mean_rows(keys, X, mask, gid):
+    """Mean of X over rows sharing a group id (masked rows only); returns (group rows' representative index, means)."""
+    ug, inv = np.unique(gid[mask], return_inverse=True)
+    sums = np.zeros((len(ug), X.shape[1]))
+    np.add.at(sums, inv, X[mask])
+    cnt = np.bincount(inv, minlength=len(ug))
+    return sums / cnt[:, None], cnt
+
+
+def scaled_coef(Xtr, Ytr, m, mult):
+    """Posterior mean with every block's prior variance multiplied by ``mult`` (noise variance kept): stronger
+    shrinkage than marginal likelihood chose when mult < 1."""
+    Xc, Yc = Xtr - Xtr.mean(0), Ytr - Ytr.mean(0)
+    G = Xc.T @ Xc
+    XtY = Xc.T @ Yc
+    out = np.empty((Ytr.shape[1], Xtr.shape[1]))
+    a_cols = m["a"][:, m["cols"]] * mult                                    # (S, p)
+    for j in range(Ytr.shape[1]):
+        A = G / m["v"][j] + np.diag(1.0 / a_cols[j])
+        out[j] = np.linalg.solve(A, XtY[:, j] / m["v"][j])
+    return out
+
+
+def arms_b4(est, cov, Ytgt, extra):
+    """B4: why does the covariate delta over-move (k < 1)? Prior-shrinkage scan, multi-year window targets, and
+    self-calibration of k by spatial-block cross-validation inside the trained era (no withheld data)."""
+    keys, fin = est.keys, cov.fin
+    trn = np.where(~est.ho & ~est.bf & est.ty & fin)[0]
+    Yw = Ytgt - cell_mean(keys, Ytgt, est.ty & fin)
+    z, zbar = extra["z"], extra["zbar"]
+    zw = z - zbar
+    ctx = ctx_feats(cov, extra, "desk", 4, trn)
+    Zfull = np.asarray(np.load(os.path.join(est.cache, "esk_annual.npy"), mmap_mode="r"), "float64")
+    Zw64 = Zfull - cell_mean(keys, Zfull, est.ty & fin)
+    Wn = cov.w(50, "no_clock")
+    Bl = np.linalg.solve(Wn[trn].T @ Wn[trn] + 1e-1 * np.trace(Wn[trn].T @ Wn[trn]) / Wn.shape[1] * np.eye(Wn.shape[1]),
+                         Wn[trn].T @ Zw64[trn])
+    dl = Wn @ Bl
+    feats = {"vcz": vc_blocks(zw, ctx), "vcc_h50": vc_blocks(Wn, ctx), "comm_lin_h50_esk64_vcread": vc_blocks(dl, ctx)}
+    P, K = {}, {}
+    ms = fit_blocks([zbar, zw], Ytgt, trn)
+    P["desk_split_level"] = est.delta(z) @ ms["coef"][:, zbar.shape[1]:].T
+    # spatial folds over TRAINING cells (6x6 blocks), and an in-era change target for self-calibration
+    yrs = keys[:, 2]
+    ty_years = np.unique(yrs[est.ty])
+    y0, y1 = int(ty_years.min()), int(ty_years.max())
+    span = (y1 - y0 + 1) // 3
+    early_m = est.ty & (yrs <= y0 + span - 1) & fin
+    late_m = est.ty & (yrs >= y1 - span + 1) & fin
+    cid = keys[:, 0].astype(np.int64) * 100000 + keys[:, 1]
+    blk = (keys[:, 0] // 6).astype(np.int64) * 100000 + keys[:, 1] // 6
+    trn_cells = np.unique(cid[trn])
+    rng = np.random.default_rng(13)
+    ub = np.unique(blk[trn])
+    fold_of_blk = dict(zip(ub, rng.integers(5, size=len(ub))))
+    fold = np.array([fold_of_blk.get(b, -1) for b in blk])
+    Ycm = Ytgt
+
+    def in_era_change(F, rows_mask_cells):
+        """Per training cell (in the mask): late-third mean minus early-third mean of F, cells with both."""
+        cells = np.unique(cid[rows_mask_cells])
+        e, ie = group_mean_rows(keys, F, early_m & np.isin(cid, cells), cid)
+        l_, il = group_mean_rows(keys, F, late_m & np.isin(cid, cells), cid)
+        ce = np.unique(cid[early_m & np.isin(cid, cells)])
+        cl = np.unique(cid[late_m & np.isin(cid, cells)])
+        both = np.intersect1d(ce, cl)
+        return l_[np.searchsorted(cl, both)] - e[np.searchsorted(ce, both)]
+
+    for name, blocks in feats.items():
+        X = np.hstack(blocks)
+        m = fit_blocks(blocks, Yw, trn)
+        dX = est.delta(X)
+        P[name] = dX @ m["coef"].T
+        c1 = scaled_coef(X[trn], Yw[trn], m, 1.0)                           # must reproduce the BLR posterior mean
+        rel = np.abs(c1 - m["coef"]).max() / (np.abs(m["coef"]).max() + 1e-12)
+        print(f"[E073 B4] {name}: scaled_coef(1) vs BLR coef max rel diff {rel:.2e}", flush=True)
+        assert rel < 1e-3, "scaled_coef does not reproduce the BLR posterior"
+        for mult in (0.3, 0.1, 0.03):
+            P[f"{name}@prior{mult:g}"] = dX @ scaled_coef(X[trn], Yw[trn], m, mult).T
+        # self-calibration: k by 5-fold spatial CV of the in-era change at TRAINING cells (no withheld data)
+        num = den = 0.0
+        for f in range(5):
+            tr_f = trn[fold[trn] != f]
+            te_mask = np.zeros(len(keys), bool)
+            te_mask[trn[fold[trn] == f]] = True
+            mf = fit_blocks(blocks, Yw, tr_f)
+            dXf = in_era_change(X, te_mask)
+            dYf = in_era_change(Ycm, te_mask)
+            Pf = dXf @ mf["coef"].T
+            Pf, dYf = Pf - Pf.mean(0), dYf - dYf.mean(0)
+            num += (Pf * dYf).sum()
+            den += (Pf * Pf).sum()
+        K[name] = num / den
+        P[f"{name}@selfcal"] = K[name] * P[name]
+        print(f"[E073 B4] {name}: in-era CV k = {K[name]:.3f}", flush=True)
+        # multi-year window target: fit on 5-year window means of within deviations (features and target)
+        wid = cid * 100 + (yrs - 1966) // 5
+        Xm, _ = group_mean_rows(keys, X, np.isin(np.arange(len(keys)), trn), wid)
+        Ym, cnt = group_mean_rows(keys, Yw, np.isin(np.arange(len(keys)), trn), wid)
+        ok = cnt >= 2
+        bnd, s0 = [], 0
+        for B in blocks:
+            bnd.append((s0, s0 + B.shape[1]))
+            s0 += B.shape[1]
+        from lib import blr
+        mw = blr.fit(Xm[ok], Ym[ok], bnd)
+        P[f"{name}@win5"] = dX @ mw["coef"].T
+    return P, K
+
+
+def run_score_b4(a):
+    est = Estimand(a.cache, a.n_boot, a.similarity)
+    cov = Cov(est.keys, ~est.ho & ~est.bf & est.ty, est.ty)
+    z = np.asarray(np.load(os.path.join(a.cache, "z_raw.npy"), mmap_mode="r")[:, :24], "float64")
+    z = np.where(np.isfinite(z), z, 0.0)
+    extra = {"z": z, "zbar": cell_mean(est.keys, z, est.ty & cov.fin)}
+    P, K = arms_b4(est, cov, est.Y, extra)
+    res = {"cache": a.cache, "in_era_cv_k": K, "scores": {}}
+    for sname, m in est.strata.items():
+        D = {k: est.draws(v, "dev", m) for k, v in P.items()}
+        o = {"n_species": int(m.sum()),
+             "arms": {k: {"corr": float(v[0, 0]), "k": float(v[0, 1]), "mse_skill": float(v[0, 2]), "mse_ci": ci(v[:, 2])}
+                      for k, v in D.items()}, "diffs": {}}
+        for k in P:
+            if k != "desk_split_level":
+                d = D[k][:, 2] - D["desk_split_level"][:, 2]
+                o["diffs"][f"{k} - desk_split_level (mse)"] = {"diff": float(d[0]), "ci": ci(d)}
+        res["scores"][sname] = o
+    json.dump(res, open(os.path.join(a.out, "e073_b4.json"), "w"), indent=1)
+    print(f"in-era CV k: {K}")
+    for sname in ("sedentary", "all"):
+        o = res["scores"][sname]
+        print(f"== {sname} (n {o['n_species']})")
+        for k, v in o["arms"].items():
+            dd = o["diffs"].get(f"{k} - desk_split_level (mse)")
+            print(f"   {k:44s} corr {v['corr']:+.3f} k {v['k']:.2f} mse {v['mse_skill']:+.3f}"
+                  + (f"  vs DESK mse {dd['diff']:+.3f} [{dd['ci'][0]:+.3f},{dd['ci'][1]:+.3f}]" if dd else ""))
+
+
 def report(est, P, target, strata, order_ref="within_all_h10"):
     res = {}
     for sname in strata:
@@ -1008,7 +1148,7 @@ def run_novelty(a):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("part", choices=("novelty", "score", "score_b2", "score_b3", "holdout", "holdout2"))
+    ap.add_argument("part", choices=("novelty", "score", "score_b2", "score_b3", "score_b4", "holdout", "holdout2"))
     ap.add_argument("--cache", required=True)
     ap.add_argument("--out", required=True)
     ap.add_argument("--similarity", default=None)
@@ -1016,7 +1156,7 @@ def main():
     ap.add_argument("--planted", action="store_true")
     a = ap.parse_args()
     os.makedirs(a.out, exist_ok=True)
-    {"novelty": run_novelty, "score": run_score, "score_b2": run_score_b2, "score_b3": run_score_b3,
+    {"novelty": run_novelty, "score": run_score, "score_b2": run_score_b2, "score_b3": run_score_b3, "score_b4": run_score_b4,
      "holdout": run_holdout, "holdout2": run_holdout}[a.part](a)
 
 

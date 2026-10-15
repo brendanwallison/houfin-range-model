@@ -883,6 +883,11 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
                 "w": float(_pt["weight"]), "label": str(_pt.get("label", "presence"))}
         pres_mod = torch.nn.Module()
         pres_mod.delta = torch.nn.Parameter(torch.zeros(pres["P"].shape[1], device=device))
+        # E078: optional per-list sampling-completeness covariate with a learned SPECIES-SPECIFIC slope, so composition
+        # shifts that follow list completeness (abundance-dependent detection) are absorbed here, not by z
+        if _pt.get("comp") is not None:
+            pres["comp"] = torch.as_tensor(np.asarray(_pt["comp"]), device=device, dtype=torch.float32)
+            pres_mod.gamma = torch.nn.Parameter(torch.zeros(pres["P"].shape[1], device=device))
         print(f"[desk] PRESENCE term '{pres['label']}': {int(pres['P'].shape[0]):,} lists, "
               f"{int(pres['P'].shape[1])} species, {int(pres['P'].sum()):,} records, weight {pres['w']:g}", flush=True)
     params = list(model.parameters()) + list(ema.parameters()) + \
@@ -1620,6 +1625,8 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
     if pres is not None:   # only when on
         _ck_key["presence"] = {"label": pres["label"], "weight": pres["w"], "S": int(pres["P"].shape[1]),
                                "n_lists": int(pres["P"].shape[0]), "n_records": int(pres["P"].sum())}
+        if "comp" in pres:
+            _ck_key["presence"]["completeness_slopes"] = True
     _ck_fp =hashlib.sha256(json.dumps(_ck_key, sort_keys=True, default=str).encode()).hexdigest()[:16]
     start_ep = 1
     if resume and checkpoint_path and os.path.exists(checkpoint_path):
@@ -1935,6 +1942,8 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
                     loss = loss + _a["w"] * loss_aux[-1]
             if pres is not None:
                 _eta = z_ema[pres["t"], pres["r"], pres["c"]] @ pres["W"] + pres["b"] + pres_mod.delta
+                if "comp" in pres:
+                    _eta = _eta + pres["comp"][:, None] * pres_mod.gamma
                 loss_pres = -(torch.log_softmax(_eta, dim=-1) * pres["P"]).sum() / pres["P"].sum()
                 loss = loss + pres["w"] * loss_pres
             # NestedLoRA, as an ADDITIONAL term. Its operator half is itself a kernel-fit term, so it
@@ -2894,6 +2903,8 @@ def run_desk_experiment(config=None):
         presence_targets = {"t_idx": [_ki[int(y)] for y in _yrs[_keep]], "row": _r[_keep], "col": _c[_keep],
                             "P": np.asarray(_p["P"])[_keep].astype("float32"), "W": np.asarray(_p["W"], "float32"),
                             "b": np.asarray(_p["b"], "float32"), "weight": float(_pcfg.get("weight", 0.01)),
+                            "comp": (np.asarray(_p["comp"], "float32")[_keep]
+                                     if bool(_pcfg.get("completeness_slopes", False)) else None),
                             "label": str(_pcfg.get("label", "cbc_presence"))}
         print(f"[desk] aux_presence: {int(_keep.sum()):,} of {len(_keep):,} lists kept (window {kept[0]}-{kept[-1]}, "
               f"withheld years {'INCLUDED' if not _withheld else 'excluded'}; held-out/buffer/dropped cells excluded)",

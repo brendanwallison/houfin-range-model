@@ -27,6 +27,10 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--cache", required=True); ap.add_argument("--cbc", required=True)
     ap.add_argument("--similarity", required=True); ap.add_argument("--out", required=True)
+    ap.add_argument("--completeness", default=None,
+                    help="E078: completeness npz aligned to --cbc rows (cbc_completeness.py); adds 'comp' per list = "
+                         "logit of benchmark completeness relative to the circle's own mean over its 1966+ counts, "
+                         "centred (0 where unavailable)")
     a = ap.parse_args()
     import pandas as pd
     C = a.cache
@@ -50,7 +54,22 @@ def main():
     P = D["Y"][:, [cs.index(s) for s in sp]] > 0
     yr = D["year_end"]
     ok = (D["row"] >= 0) & (yr >= 1940) & (yr <= 2024) & (P.sum(1) >= 2)
-    np.savez_compressed(a.out, year=yr[ok].astype(np.int32), row=D["row"][ok].astype(np.int32),
+    extra = {}
+    if a.completeness:
+        Cf = np.load(a.completeness)
+        comp = np.where(Cf["bench_n"] > 0, Cf["bench_hit"] / np.maximum(Cf["bench_n"], 1), np.nan)
+        comp = np.clip(comp, 0.02, 0.98); lc = np.log(comp / (1 - comp))
+        ci_ = D["circle_idx"]; late = (yr >= 1966) & np.isfinite(lc)
+        ref = np.bincount(ci_[late], np.where(late, lc, 0)[late], minlength=len(D["circles"])) / np.maximum(
+            np.bincount(ci_[late], minlength=len(D["circles"])), 1)
+        has = np.bincount(ci_[late], minlength=len(D["circles"])) >= 3
+        rel = np.where(np.isfinite(lc) & has[ci_], lc - ref[ci_], np.nan)
+        rel = rel - np.nanmean(rel[ok])
+        extra["comp"] = np.where(np.isfinite(rel), rel, 0.0)[ok].astype(np.float32)
+        print(f"[E078] completeness covariate: available for {np.isfinite(rel[ok]).mean():.2f} of lists; median by decade "
+              + ", ".join(f"{d}s {np.nanmedian(rel[ok & (yr // 10 * 10 == d)]):+.2f}" for d in (1940, 1960, 1980, 2000, 2020)),
+              flush=True)
+    np.savez_compressed(a.out, **extra, year=yr[ok].astype(np.int32), row=D["row"][ok].astype(np.int32),
                         col=D["col"][ok].astype(np.int32), circle=D["circle_idx"][ok].astype(np.int32),
                         P=P[ok], W=B.astype(np.float32), b=b.astype(np.float32), species=np.array(sp))
     dec = (yr[ok] // 10) * 10

@@ -3014,6 +3014,38 @@ def test_aux_head_trains_logs_and_resumes(tmp_path):
     print("aux head: in the loss, logged, checkpointed, restored on resume")
 
 
+def test_presence_term_completeness_slopes(tmp_path):
+    """E078: with a per-list 'comp' covariate the presence term learns a species-specific slope (gamma), checkpointed."""
+    import contextlib
+    import io
+
+    from src.community_encoder.train_DESK import desk_training as D
+
+    sch = _schema()
+    dims = [s["dim"] for s in sch["streams"]]
+    T, H, W, L, S, N = 4, 6, 7, 16, 5, 30
+    rng = np.random.default_rng(10)
+    cov = rng.normal(size=(T, H, W, sch["total_dim"])).astype("float32")
+    m = np.ones((H, W), bool)
+    years = list(range(2022, 2026))
+    tgt = {y: (rng.normal(size=(H, W, L)).astype("float32"), m, m,
+               np.ones((H, W), dtype="float32")) for y in years[1:]}
+    P = (rng.random((N, S)) < 0.4).astype("float32"); P[:, 0] = 1.0
+    pres = {"t_idx": rng.integers(0, T, N), "row": rng.integers(0, H, N), "col": rng.integers(0, W, N), "P": P,
+            "W": rng.normal(size=(L, S)).astype("float32"), "b": np.zeros(S, "float32"), "weight": 0.5,
+            "label": "toy_comp", "comp": rng.normal(size=N).astype("float32")}
+    ck = tmp_path / "ck.pt"
+    args = (cov, np.ones((T, H, W), bool), years, tgt,
+            _metric_dict(rng.random((H, W, 9)).astype("float32"), m, years), m, m, dims)
+    with contextlib.redirect_stdout(io.StringIO()):
+        D.train_model_ema(*args, latent_dim=L, ema_cfg={"earlystop_warmup": 0}, spatial_kernel=3, schema=sch,
+                          dropout=0.1, checkpoint_path=str(ck), checkpoint_every=1, presence_targets=pres,
+                          epochs=3, stop_at_epoch=2)
+    done = str(ck) + ".completed"
+    state = torch.load(done if os.path.exists(done) else ck, map_location="cpu", weights_only=False)
+    assert state["presence"]["gamma"].shape == (S,) and float(state["presence"]["gamma"].abs().sum()) > 0
+
+
 def test_presence_term_trains_logs_and_resumes(tmp_path):
     """The research presence-only term (presence_targets, E069b): enters the loss through a FIXED readout plus a
     learned species offset, is logged per evaluated epoch, rides in the checkpoint, and is restored on resume."""

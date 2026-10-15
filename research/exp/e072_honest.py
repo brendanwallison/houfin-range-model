@@ -44,6 +44,9 @@ from anchored_delta import (GROUPS, Y0, ZONES, ZONES_TIF, Cov, Estimand, cell_me
 
 NC = ("climate", "cover", "human")          # the clock-free groups
 HL = 50
+GSCALE = None
+PRED_CUR = None
+EVAL_MID = 0.5 * (1966 + 1986)          # the evaluation's early-epoch midpoint (change to 2015)
 
 
 def nnls(A, y):
@@ -134,6 +137,25 @@ def modern_level_S(est, Y):
     return ((la - la.mean(0)) * (lb - lb.mean(0))).mean(0)
 
 
+def mid_level_scale(est, Y, y0=1987, y1=2004, kappa=0.1):
+    """E072c: per held-out cell x species, the observed log1p level in a window BETWEEN the early and modern epochs
+    (disjoint from both truth halves), as (L + kappa) normalised to mean 1 per species; cells without rows get 1."""
+    yrs = est.keys[:, 2]
+    cid = est.keys[:, 0].astype(np.int64) * 100000 + est.keys[:, 1]
+    ev_cid = est.cells_ev[:, 0].astype(np.int64) * 100000 + est.cells_ev[:, 1]
+    m = (yrs >= y0) & (yrs <= y1) & np.isin(cid, ev_cid)
+    uc, inv = np.unique(cid[m], return_inverse=True)
+    sums = np.zeros((len(uc), Y.shape[1]))
+    np.add.at(sums, inv, Y[m])
+    L = sums / np.bincount(inv)[:, None]
+    G = np.full((len(ev_cid), Y.shape[1]), np.nan)
+    pos = np.searchsorted(uc, ev_cid)
+    ok = (pos < len(uc)) & (uc[np.minimum(pos, len(uc) - 1)] == ev_cid)
+    G[ok] = L[pos[ok]] + kappa
+    G = G / np.nanmean(G, 0, keepdims=True)
+    return np.where(np.isfinite(G), G, 1.0), ok
+
+
 def run(a):
     est = Estimand(a.cache, a.n_boot, a.similarity)
     keys, Y = est.keys, est.Y
@@ -153,6 +175,11 @@ def run(a):
     dW_ev = {g: est.delta(Wg[g]) for g in NC}
     dWall_ev = np.hstack([dW_ev[g] for g in NC])
     S = modern_level_S(est, Y)
+    global GSCALE
+    GSCALE, _gok = mid_level_scale(est, Y) if a.level_scale else (np.ones((len(est.early), Y.shape[1])), None)
+    if a.level_scale:
+        print(f"[E072c] mid-window level scale: {int(_gok.sum())} of {len(_gok)} held-out cells have 1987-2004 rows",
+              flush=True)
     Ta, Tb = est.T["dev"]
     zs = {}
     for d in [a.cache] + list(a.seed_caches or []):
@@ -199,7 +226,9 @@ def run(a):
                 Vd = np.einsum("cp,spq,cq->cs", est.delta(zw), mk["Ainv"], est.delta(zw))
         reps["desk"] = (Pk[0], np.var(np.stack(Pk), 0, ddof=1) if len(Pk) > 1 else np.zeros_like(Pk[0]), Vd)
         res["designs"][dname] = {"n_rows": int(len(rows)), "reps": {}}
+        global PRED_CUR
         for rname, (P, U, V) in reps.items():
+            PRED_CUR = P
             e2 = (Ta - P) * (Tb - P)
             save[f"{dname}|{rname}|P"], save[f"{dname}|{rname}|U"] = P.astype("float32"), U.astype("float32")
             res["designs"][dname]["reps"][rname] = evaluate(est, e2, U, V, S, nov, beyond)
@@ -233,14 +262,15 @@ def design_matrix(terms, e2, U, V, S, nov, cells, sp):
     pooled calibration statistic (a mean of per-species ratios is dominated by rare, small-S species)."""
     SS = S[sp].sum()
     y = (e2[np.ix_(cells, sp)] - V[np.ix_(cells, sp)]).sum(1) / SS
+    gS = (GSCALE[np.ix_(cells, sp)] * S[sp]).sum(1) / SS          # == 1 without the level scale
     cols = []
     for t in terms:
         if t == "1":
-            cols.append(np.ones(len(cells)))
+            cols.append(gS)
         elif t == "U":
             cols.append(U[np.ix_(cells, sp)].sum(1) / SS)
         else:
-            cols.append(lnov(nov[t[4:]][cells]))
+            cols.append(lnov(nov[t[4:]][cells]) * gS)
     return (np.stack(cols, 1) if cols else np.zeros((len(cells), 0))), y
 
 
@@ -248,11 +278,11 @@ def predicted_var(terms, gam, U, V, S, nov):
     out = V.copy()
     for t, g in zip(terms, gam):
         if t == "1":
-            out = out + g * S[None, :]
+            out = out + g * GSCALE * S[None, :]
         elif t == "U":
             out = out + g * U
         else:
-            out = out + g * lnov(nov[t[4:]])[:, None] * S[None, :]
+            out = out + g * lnov(nov[t[4:]])[:, None] * GSCALE * S[None, :]
     return out
 
 
@@ -294,6 +324,24 @@ def evaluate(est, e2, U, V, S, nov, beyond):
             else:
                 gam = []
             pv = predicted_var(terms, gam, U, V, S, nov)
+            Ta, Tb = est.T["dev"]
+            occ = (Ta != 0) | (Tb != 0)
+            bsp = np.ix_(beyond, sp)
+            o_b, e_b, p_b = occ[bsp], e2[bsp], pv[bsp]
+            per_sp = e_b.sum(0) / np.maximum(p_b.sum(0), 1e-12)
+            nz = ((Ta - Tb) ** 2 / 4.0)[bsp]
+            noise_occ = np.array([nz[o_b[:, j], j].mean() if o_b[:, j].any() else 0.0 for j in range(nz.shape[1])])
+            Pm = 0.5 * (Ta + Tb)[bsp]
+            Pp = PRED_CUR[bsp]
+            z = (Pm - Pp) / np.sqrt(np.maximum(p_b + noise_occ[None, :], 1e-12))
+            rec["coverage_occupied_beyond"] = {"nominal80": float((np.abs(z[o_b]) < 1.2816).mean()),
+                                               "nominal95": float((np.abs(z[o_b]) < 1.96).mean()),
+                                               "sd_z": float(z[o_b].std())}
+            rec["distribution_beyond"] = {
+                "R_occupied": float(e_b[o_b].sum() / p_b[o_b].sum()), "R_empty": float(e_b[~o_b].sum() / p_b[~o_b].sum()),
+                "share_e2_occupied": float(e_b[o_b].sum() / e_b.sum()), "share_var_occupied": float(p_b[o_b].sum() / p_b.sum()),
+                "per_species_R_median": float(np.median(per_sp)), "per_species_R_iqr": [float(np.percentile(per_sp, 25)),
+                                                                                       float(np.percentile(per_sp, 75))]}
             rec["inside_to_beyond"] = {"gamma": [float(g) for g in gam],
                                        "R_beyond": float(e2[np.ix_(beyond, sp)].sum() / pv[np.ix_(beyond, sp)].sum()),
                                        "R_inside": float(e2[np.ix_(~beyond, sp)].sum() / pv[np.ix_(~beyond, sp)].sum())}
@@ -336,8 +384,22 @@ def project(est, X1920, B, Bs, coef_ml, coef_sh, nov1920, nov_ev, S, dWall_ev, z
                     if zm.sum() and ze.sum():
                         zr[zn] = {"var_1920": float(np.median(v[zm])), "var_eval": float(np.median(ve[ze])),
                                   "corr_H1920_H2000": float(1 - np.median(v[zm]) / 2)}
+            span_ratio = (2015.0 - 1929.5) / (2015.0 - EVAL_MID)
+            const_part = gam[terms.index("1")] if "1" in terms else 0.0
+            v_span = v + const_part * (span_ratio - 1.0)
+            tot = v_span + pred_change[:, None]
+            zr2 = {}
+            if zone_all is not None:
+                for zn in ("west", "great_plains", "east"):
+                    zm = zone_all == zn
+                    if zm.sum():
+                        zr2[zn] = {"var_1920_span_scaled": float(np.median(v_span[zm])),
+                                   "corr_H1920_H1920pred_span_scaled": float(1 - np.median(v_span[zm]) / 2),
+                                   "corr_H1920_H2000_span_scaled": float(1 - np.median(tot[zm]) / 2)}
             rec[mname] = {"median_var_1920": float(np.median(v)), "median_var_eval": float(np.median(ve)),
-                          "by_zone": zr}
+                          "by_zone": zr, "span_ratio": float(span_ratio),
+                          "median_var_1920_span_scaled": float(np.median(v_span)),
+                          "corr_H1920_H2000_span_scaled": float(1 - np.median(tot) / 2), "by_zone_span": zr2}
         rec["novelty_1920_median"] = {g: float(np.median(nov1920[g])) for g in nov1920}
         rec["novelty_eval_median"] = {g: float(np.median(nov_ev[g])) for g in nov_ev}
         out[tag] = rec
@@ -372,6 +434,8 @@ def main():
     ap.add_argument("--seed-caches", nargs="*", default=None)
     ap.add_argument("--n-map-boot", type=int, default=30)
     ap.add_argument("--n-boot", type=int, default=20)
+    ap.add_argument("--level-scale", action="store_true",
+                    help="E072c: scale the constant / novelty terms by the species' mid-window (1987-2004) local level")
     a = ap.parse_args()
     os.makedirs(a.out, exist_ok=True)
     run(a)

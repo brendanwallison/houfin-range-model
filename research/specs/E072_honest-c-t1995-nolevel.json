@@ -1,0 +1,22 @@
+{
+ "exp": "E072",
+ "name": "honest-c-t1995-nolevel",
+ "group": "cpu2",
+ "env": {
+  "BLR_MAX_ITER": "100",
+  "BLR_STARTS": "0.5",
+  "E073_COVER": "merged"
+ },
+ "cmd": [
+  "bash",
+  "-c",
+  "set -e; {python} research/exp/e072_honest.py --cache {cache}/desk_tempho_1995_s1 --seed-caches {cache}/desk_tempho_1995_s2 {cache}/desk_tempho_1995_s3 {cache}/desk_tempho_1995_s4 --similarity {outroot}/E067/composition-d2e6a98f0eb7/species_similarity.csv --out {out} --n-map-boot 30"
+ ],
+ "expected_minutes": 120,
+ "summarize": [
+  "bash",
+  "-c",
+  "grep -E '^=====|^--|^   ' {out}/../log.txt | head -60"
+ ],
+ "note": "E072c on desk_tempho_1995_s1 (no level scale): occupied-cell calibration, per-species R, coverage, span-scaled 1920"
+}

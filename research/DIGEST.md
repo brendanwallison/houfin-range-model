@@ -769,3 +769,9 @@ understanding first")
   to the spatial contrast, lowest on the Great Plains (0.68). The predicted 1920->2015 change is about as large as its
   uncertainty.
 - Strict rule: no model calibrates both sedentary species halves (one half 1.26-1.33): species heterogeneity.
+- E073 SKEPTIC 2 revisions:
+  - the covariate delta's "contains DESK" gain is pooled-corr and carried by ~5 widespread species (MSE cost at
+    T0 1996);
+  - over-movement = cross-place overfitting (confirmed, CV-chosen shrinkage fixes it);
+  - the cover-specific extrapolation loss is ~0.10 beyond an equally regional loss (~0.06), not ~0.16;
+  - the DESK leg is inconclusive.

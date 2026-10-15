@@ -1,0 +1,8 @@
+{
+ "exp": "E077", "name": "e077-bbs-change-k", "group": "cpu",
+ "overlay": "research/overlays/desk_tempho_1995_seed1.json",
+ "cmd": ["bash", "-c", "set -e; for x in s1:pres01:_late s2:pres01:_late s1:pres01: s2:pres01: s1:pres01x:_late s2:pres01x:_late; do s=${x%%:*}; r=${x#*:}; t=${r%%:*}; st=${r#*:}; {python} research/exp/e077_bbs_change_k.py --arm {cache}/desk_tempho_1995_${s}_${t}${st} --control {cache}/desk_tempho_1995_${s}${st} --cover /mnt/e/Datasets/cbc_raw/prepared/cover_change_1920_1966.npz --out {out} --label ${s}_${t}${st}; done"],
+ "expected_minutes": 60,
+ "summarize": ["bash", "-c", "ls {out}"],
+ "note": "E077: BBS dev-species change k, presence arms vs controls, by cover tercile and Great Plains"
+}

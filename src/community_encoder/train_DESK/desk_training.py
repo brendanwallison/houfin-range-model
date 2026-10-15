@@ -769,6 +769,7 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
                     select_on_withheld=False,
                     aux_targets=None,
                     presence_targets=None,
+                    ruzicka_targets=None,
                     _skip_target_conversion=False):
     """Train DESK with a learned output-EMA.
 
@@ -890,6 +891,23 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
             pres_mod.gamma = torch.nn.Parameter(torch.zeros(pres["P"].shape[1], device=device))
         print(f"[desk] PRESENCE term '{pres['label']}': {int(pres['P'].shape[0]):,} lists, "
               f"{int(pres['P'].shape[1])} species, {int(pres['P'].sum()):,} records, weight {pres['w']:g}", flush=True)
+    # Research (E081): a CBC RUZICKA term -- pairs of CBC cell-year communities (effort-standardized, resident
+    # species) supervise DESK's similarity through a FIXED calibration: dot(z_i, z_j) ~ a + b * Ruzicka_CBC(i, j)
+    # (a, b fitted outside on ESK z in trained years). No parameters; random pairs each full-grid step. Off by default.
+    ruzt = None
+    if ruzicka_targets is not None:
+        if int(n_spatial_tiles) > 1:
+            raise ValueError("ruzicka_targets is implemented for full-grid steps only (spatial_tiles 1)")
+        _rt = ruzicka_targets
+        ruzt = {"t": torch.as_tensor(np.asarray(_rt["t_idx"]), device=device, dtype=torch.long),
+                "r": torch.as_tensor(np.asarray(_rt["row"]), device=device, dtype=torch.long),
+                "c": torch.as_tensor(np.asarray(_rt["col"]), device=device, dtype=torch.long),
+                "X": torch.log1p(torch.as_tensor(np.asarray(_rt["X"]), device=device, dtype=torch.float32)),
+                "a": float(_rt["a"]), "b": float(_rt["b"]), "w": float(_rt["weight"]),
+                "pairs": int(_rt.get("pairs", 4096)), "label": str(_rt.get("label", "cbc_ruzicka"))}
+        print(f"[desk] RUZICKA term '{ruzt['label']}': {int(ruzt['X'].shape[0]):,} CBC cell-years, "
+              f"{int(ruzt['X'].shape[1])} species, dot ~ {ruzt['a']:+.3f} + {ruzt['b']:.3f} x Ruzicka, "
+              f"{ruzt['pairs']} pairs/step, weight {ruzt['w']:g}", flush=True)
     params = list(model.parameters()) + list(ema.parameters()) + \
         [p for h in aux_heads for p in h.parameters()] + \
         (list(pres_mod.parameters()) if pres_mod is not None else [])
@@ -1627,6 +1645,9 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
                                "n_lists": int(pres["P"].shape[0]), "n_records": int(pres["P"].sum())}
         if "comp" in pres:
             _ck_key["presence"]["completeness_slopes"] = True
+    if ruzt is not None:   # only when on
+        _ck_key["ruzicka"] = {"label": ruzt["label"], "weight": ruzt["w"], "a": ruzt["a"], "b": ruzt["b"],
+                              "n": int(ruzt["X"].shape[0]), "pairs": ruzt["pairs"]}
     _ck_fp =hashlib.sha256(json.dumps(_ck_key, sort_keys=True, default=str).encode()).hexdigest()[:16]
     start_ep = 1
     if resume and checkpoint_path and os.path.exists(checkpoint_path):
@@ -1758,6 +1779,7 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
         t_ep = time.perf_counter()
         loss_aux = None
         loss_pres = None
+        loss_ruz = None
         if ep == start_ep:
             _t_first = time.perf_counter()
         if device == "cuda":
@@ -1946,6 +1968,18 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
                     _eta = _eta + pres["comp"][:, None] * pres_mod.gamma
                 loss_pres = -(torch.log_softmax(_eta, dim=-1) * pres["P"]).sum() / pres["P"].sum()
                 loss = loss + pres["w"] * loss_pres
+            if ruzt is not None:
+                _n = ruzt["X"].shape[0]
+                _ij = torch.randint(0, _n, (2, ruzt["pairs"]), device=device)
+                _i, _j = _ij[0], _ij[1]
+                _zi = z_ema[ruzt["t"][_i], ruzt["r"][_i], ruzt["c"][_i]]
+                _zj = z_ema[ruzt["t"][_j], ruzt["r"][_j], ruzt["c"][_j]]
+                _xi, _xj = ruzt["X"][_i], ruzt["X"][_j]
+                _den = torch.maximum(_xi, _xj).sum(1)
+                _ok = (_den > 1e-6) & (_i != _j)
+                _rz = torch.minimum(_xi, _xj).sum(1) / _den.clamp(min=1e-6)
+                loss_ruz = (((_zi * _zj).sum(1) - (ruzt["a"] + ruzt["b"] * _rz)) ** 2)[_ok].mean()
+                loss = loss + ruzt["w"] * loss_ruz
             # NestedLoRA, as an ADDITIONAL term. Its operator half is itself a kernel-fit term, so it
             # partly duplicates loss_true -- that overlap is deliberate here (both are on, and their
             # relative weight is the thing being tested) but it means the two weights are not
@@ -2201,6 +2235,10 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
                 _wl = _a["w"] * float(_la.detach())
                 print(f"Ep {ep:03d} | aux '{_a['label']}' mse {float(_la.detach()):.4f} weighted {_wl:.4f} "
                       f"({_wl / max(_tot, 1e-12):.0%} of the total)", flush=True)
+        if loss_ruz is not None and (ep == 1 or ep % 10 == 0 or evaluated):
+            _wl = ruzt["w"] * float(loss_ruz.detach())
+            print(f"Ep {ep:03d} | ruzicka '{ruzt['label']}' mse {float(loss_ruz.detach()):.5f} weighted {_wl:.4f} "
+                  f"({_wl / max(float(loss.detach()), 1e-12):.0%} of the total)", flush=True)
         if loss_pres is not None and (ep == 1 or ep % 10 == 0 or evaluated):
             _wl = pres["w"] * float(loss_pres.detach())
             print(f"Ep {ep:03d} | presence '{pres['label']}' nll {float(loss_pres.detach()):.4f} weighted {_wl:.4f} "
@@ -2252,6 +2290,7 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
                 **({f"loss_aux_{_a['label']}": float(_la.detach()) for _a, _la in zip(auxs, loss_aux)}
                    if loss_aux else {}),
                 **({"loss_presence": float(loss_pres.detach())} if loss_pres is not None else {}),
+                **({"loss_ruzicka": float(loss_ruz.detach())} if loss_ruz is not None else {}),
                 # NestedLoRA term, when on. half_imbalance is the guard: the split-half estimator
                 # is unbounded below if one half can carry all the magnitude, so a value drifting
                 # far above 1 means the penalty is being evaded, not that training is going well.
@@ -2910,6 +2949,28 @@ def run_desk_experiment(config=None):
               f"withheld years {'INCLUDED' if not _withheld else 'excluded'}; held-out/buffer/dropped cells excluded)",
               flush=True)
 
+    # --- research (E081): CBC Ruzicka term (desk.aux_ruzicka), off unless configured -----------------
+    # An npz from research/exp/build_cbc_ruzicka.py (year, row, col, X, a, b, weight). Cells: as aux_presence (held-out,
+    # buffer, dropped and invalid cell-years removed; withheld years kept when include_withheld).
+    ruzicka_targets = None
+    _rcfg = desk_cfg.get("aux_ruzicka")
+    if _rcfg:
+        _q = np.load(os.path.expandvars(_rcfg["path"]), allow_pickle=False)
+        _ki = {y: i for i, y in enumerate(kept)}
+        _yrs, _r, _c = np.asarray(_q["year"]), np.asarray(_q["row"]), np.asarray(_q["col"])
+        _okc = (~holdout & ~buffer_cells_mask & ~train_drop)
+        _withheld = set(ho_years) if not bool(_rcfg.get("include_withheld", False)) else set()
+        _keep = np.array([(int(y) in _ki) and (int(y) not in _withheld) and bool(_okc[r, c])
+                          and bool(np.asarray(mask_win[_ki[int(y)]], bool)[r, c])
+                          for y, r, c in zip(_yrs, _r, _c)])
+        assert not holdout[_r[_keep], _c[_keep]].any() and not buffer_cells_mask[_r[_keep], _c[_keep]].any()
+        ruzicka_targets = {"t_idx": [_ki[int(y)] for y in _yrs[_keep]], "row": _r[_keep], "col": _c[_keep],
+                           "X": np.asarray(_q["X"], "float32")[_keep], "a": float(_q["a"]), "b": float(_q["b"]),
+                           "weight": float(_rcfg.get("weight", float(_q["weight"]))),
+                           "pairs": int(_rcfg.get("pairs", 4096)), "label": str(_rcfg.get("label", "cbc_ruzicka"))}
+        print(f"[desk] aux_ruzicka: {int(_keep.sum()):,} of {len(_keep):,} CBC cell-years kept "
+              f"(withheld years {'INCLUDED' if not _withheld else 'excluded'})", flush=True)
+
     model, ema, train_info = train_model_ema(
         cov_win, mask_win, kept, targets, metric_pool, m_tr, m_val,
         stream_dims, latent_dim=latent_dim, ema_cfg=ema_cfg,
@@ -2969,6 +3030,7 @@ def run_desk_experiment(config=None):
         select_on_withheld=bool(desk_cfg.get("select_on_withheld", False)),
         aux_targets=(aux_targets or None),
         presence_targets=presence_targets,
+        ruzicka_targets=ruzicka_targets,
         return_info=True)
     ema_half_life = float(ema.half_life().item())
     torch.save(ema.state_dict(), os.path.join(out_dir, "output_ema.pth"))

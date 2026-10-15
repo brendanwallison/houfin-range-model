@@ -62,6 +62,19 @@ def _nll(theta, XtX, Xty, yy, n, cols, torch):
     return 0.5 * (n * log_v + log_a.sum(1) + logdetA + (yy - quad / v) / v), S
 
 
+def _spd_inverse(A, torch):
+    """Batched inverse of symmetric positive-definite ``A``. A is SPD by construction (X'X/v + a positive diagonal), so
+    the Cholesky route is exact. It is used as the fallback because batched ``torch.linalg.inv`` crashed with an MKL
+    DLASWP error inside some multi-threaded processes (E073 skeptics, 2026-10-14/15)."""
+    try:
+        return torch.linalg.inv(A)
+    except RuntimeError:
+        L, info = torch.linalg.cholesky_ex(A)
+        if bool((info > 0).any()):
+            raise
+        return torch.cholesky_inverse(L)
+
+
 def fit(X, Y, blocks, max_iter=300, starts=STARTS):
     """Fit every species. ``X (n, p)``, ``Y (n, S)``, ``blocks`` = [(start, stop), ...] covering p.
 
@@ -140,7 +153,7 @@ def fit(X, Y, blocks, max_iter=300, starts=STARTS):
     with torch.no_grad():
         v = torch.exp(th_t[:, -1])
         A = XtX.unsqueeze(0) / v[:, None, None] + torch.diag_embed(torch.exp(-th_t[:, :-1][:, cols_t]))
-        Ainv = torch.linalg.inv(A)
+        Ainv = _spd_inverse(A, torch)
         coef = (Ainv @ Xty.T.unsqueeze(-1)).squeeze(-1) / v[:, None]
     return {"xbar": xbar, "ybar": ybar, "blocks": list(blocks), "cols": cols,
             "a": np.exp(best_th[:, :B]), "v": np.exp(best_th[:, B]), "coef": coef.cpu().numpy(),

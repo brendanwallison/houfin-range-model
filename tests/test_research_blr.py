@@ -114,3 +114,15 @@ def test_numerically_indefinite_A_is_jittered_for_the_failing_species_only():
     assert torch.isfinite(nll).all()
     nll1, _ = blr._nll(th[1:], XtX, Xty[:, 1:], yy[1:], 100, cols, torch)
     assert nll[1].item() == nll1[0].item()
+
+
+def test_spd_inverse_cholesky_fallback_matches_inv():
+    """The Cholesky fallback used when batched torch.linalg.inv fails (MKL DLASWP) gives the same inverse."""
+    import torch
+    from research.lib import blr
+    g = torch.Generator().manual_seed(0)
+    M = torch.randn(5, 7, 7, generator=g, dtype=torch.float64)
+    A = M @ M.transpose(1, 2) + 0.5 * torch.eye(7, dtype=torch.float64)
+    L, _ = torch.linalg.cholesky_ex(A)
+    assert torch.allclose(torch.cholesky_inverse(L), torch.linalg.inv(A), atol=1e-10)
+    assert torch.allclose(blr._spd_inverse(A, torch), torch.linalg.inv(A), atol=1e-10)

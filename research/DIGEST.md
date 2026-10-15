@@ -778,3 +778,7 @@ understanding first")
 - E076 (other session): CBC presence supervision TRANSFERS to withheld places (+0.64 / +0.18 on early lists) and
   removes DESK's ~2x larger over-movement where 1920-66 cover changed most (top tercile +0.10 [+0.01,+0.19]). The cover
   problem is excess magnitude, which weak early supervision corrects.
+- E077b (other session; UNVERIFIED; production-relevant caution): for SEDENTARY species, the CBC presence term ENLARGES
+  predicted breeding change (+13-28%) and deepens over-prediction where land cover changed most (k 0.52 -> 0.31, 0.82
+  -> 0.53; dk -0.21 / -0.29, CI excludes 0). It corrects the winter view but worsens the breeding one exactly in the
+  1920-novel zone.

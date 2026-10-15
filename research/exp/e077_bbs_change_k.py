@@ -27,10 +27,13 @@ from e069_presence_score import ridge_cv  # noqa: E402
 W0, W1 = (1966, 1985), (2005, 2024)
 
 
+SPECIES_SET = {"name": "dev"}
+
+
 def load(cache, sp_cols=None):
     meta = json.load(open(os.path.join(cache, "meta.json")))
     keys = np.load(os.path.join(cache, "keys.npy"))
-    X = np.load(os.path.join(cache, "X_dev.npy"), mmap_mode="r")
+    X = np.load(os.path.join(cache, "X_comm.npy" if SPECIES_SET["name"] == "comm" else "X_dev.npy"), mmap_mode="r")
     zk = np.load(os.path.join(cache, "z_ema.npy")).astype(float)
     Z = np.load(os.path.join(cache, "z_ema_all.npy"), mmap_mode="r")
     cells = np.load(os.path.join(cache, "cells.npy")); years = np.load(os.path.join(cache, "years.npy"))
@@ -40,7 +43,7 @@ def load(cache, sp_cols=None):
 
 def prepare(cache, cover, zones, t_top):
     meta, keys, X, zk, Z, cells, years, kci, spl = load(cache)
-    dev = list(meta["dev_species"])
+    dev = list(meta["community"] if SPECIES_SET["name"] == "comm" else meta["dev_species"])
     assert "houfin" not in dev and not set(dev) & set(meta["sealed_species"])
     L = np.log1p(np.asarray(X, float))
     tr = spl["is_train"] & (keys[:, 2] >= 1996)
@@ -82,9 +85,12 @@ def main():
     ap.add_argument("--arm", required=True); ap.add_argument("--control", required=True)
     ap.add_argument("--cover", required=True); ap.add_argument("--out", required=True); ap.add_argument("--label", default="arm")
     ap.add_argument("--boot", type=int, default=1000)
+    ap.add_argument("--species-set", choices=["dev", "comm"], default="dev",
+                    help="E078b: score the community (reference) species instead of the dev species")
     ap.add_argument("--similarity", default=None,
                     help="E077b: species_similarity.csv; species are then split by AVONET migration class")
     a = ap.parse_args()
+    SPECIES_SET["name"] = a.species_set
     M = np.load(a.cover)
     A = prepare(a.arm, M["change"], M["zones"], M["terciles"][1])
     C = prepare(a.control, M["change"], M["zones"], M["terciles"][1])
@@ -126,7 +132,7 @@ def main():
                         "dcorr": ca - cc, "dcorr_ci95": [float(x) for x in np.percentile(dc, [2.5, 97.5])]}
         res[cname] = rc
     os.makedirs(a.out, exist_ok=True)
-    json.dump(res, open(os.path.join(a.out, f"e077{'b' if a.similarity else ''}_{a.label}.json"), "w"), indent=1)
+    json.dump(res, open(os.path.join(a.out, f"e077{'b' if a.similarity else ''}{'_comm' if a.species_set == 'comm' else ''}_{a.label}.json"), "w"), indent=1)
     print(json.dumps(res, indent=1))
 
 

@@ -172,6 +172,12 @@ def run(a):
     for dname, rows in designs.items():
         ref = {g: in_era_change(keys, Wg[g], rows, est.ty) for g in NC}
         nov = {g: novelty(dW_ev[g], ref[g]) for g in NC}
+        # E072b: isolation from supervision (skeptic 2: regional loss costs ~0.06), as a pseudo-novelty "iso" whose
+        # log1p is the distance in cells to the nearest training cell of this design
+        from scipy.spatial import cKDTree
+        tc = np.unique(keys[rows][:, :2], axis=0).astype(float)
+        dist, _ = cKDTree(tc).query(est.cells_ev.astype(float))
+        nov["iso"] = np.expm1(np.maximum(dist - 1.0, 0.0))     # lnov(iso) = max(dist - 1, 0): 0 next to training
         B, Bs = comm_maps(W, Zw, rows, keys, a.n_map_boot)
         dl = W @ B
         m = fit_blocks([dl], Yw, rows)
@@ -201,6 +207,7 @@ def run(a):
         if dname == "full":
             dW1920 = dense_dW(cov, NC, HL)
             nov1920 = {g: novelty(dW1920[g], ref[g]) for g in NC}
+            nov1920["iso"] = np.zeros(len(cov.cells))
             X1920 = np.hstack([dW1920[g] for g in NC])
             res["designs"][dname]["projection_1920"] = project(est, X1920, B, Bs, coef_ml, coef_sh, nov1920, nov, S,
                                                                dWall_ev, zone_all, zone_ev,
@@ -212,7 +219,8 @@ def run(a):
 
 MODELS = {"M0_posterior": [], "M1_const": ["1"], "M2_cover": ["1", "nov_cover"],
           "M3_novelty": ["1", "nov_climate", "nov_cover", "nov_human"], "M4_eiv": ["1", "U"],
-          "M5_eiv+cover": ["1", "U", "nov_cover"], "M6_eiv_only": ["U"]}
+          "M5_eiv+cover": ["1", "U", "nov_cover"], "M6_eiv_only": ["U"],
+          "M7_eiv+iso": ["1", "U", "nov_iso"], "M8_iso": ["1", "nov_iso"]}
 
 
 def lnov(v):
@@ -312,7 +320,7 @@ def project(est, X1920, B, Bs, coef_ml, coef_sh, nov1920, nov_ev, S, dWall_ev, z
         pred_change = (((X1920 @ B) @ coef[msp].T) ** 2).sum(1) / SS
         rec = {"median_U_over_S_1920": float(np.median(Ub)), "median_U_over_S_eval": float(np.median(Ue)),
                "median_pred_change2_over_S_1920": float(np.median(pred_change))}
-        for mname in ("M2_cover", "M5_eiv+cover", "M3_novelty", "M4_eiv"):
+        for mname in ("M2_cover", "M5_eiv+cover", "M3_novelty", "M4_eiv", "M7_eiv+iso"):
             gam = reps_eval[tag]["sedentary"][mname]["inside_to_beyond"]["gamma"]
             terms = MODELS[mname]
             v = np.zeros_like(Ub)

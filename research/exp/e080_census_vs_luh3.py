@@ -33,6 +33,11 @@ SPEC = {1929: ("DS0013", "var13", "var6", ("DS0019", "var2524")),
         1969: ("DS0033", "item01038", "item01004", ("DS0033", "item01057")),
         1982: ("DS0040", "item01016", "item05006", ("DS0040", "item01018"))}
 CHANGES = ((1929, 1949), (1949, 1969), (1929, 1982))
+# E080b (after E080's result): TOTAL cropland (harvested + failed + idle / fallow), which acreage-diversion programs
+# do not move out of cropland; 1939 summed from its parts; 1959 has no total-cropland item and is dropped
+SPEC_TOTAL = {1929: ("DS0013", ["var12"], "var6"), 1939: ("DS0016", ["var10", "var12", "var14"], "var5"),
+              1949: ("DS0021", ["var43"], "var2"), 1969: ("DS0033", ["item01036"], "item01004"),
+              1982: ("DS0040", ["item01014"], "item05006")}
 
 
 def read_part(root, ds, cols):
@@ -65,7 +70,11 @@ def read_part(root, ds, cols):
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--icpsr", required=True); ap.add_argument("--counties", required=True); ap.add_argument("--out", required=True)
+    ap.add_argument("--total-cropland", action="store_true", help="E080b: total instead of harvested cropland")
     a = ap.parse_args()
+    global SPEC, CHANGES
+    if a.total_cropland:
+        SPEC = {y: (ds, crops_, lv, SPEC[y][3]) for y, (ds, crops_, lv) in SPEC_TOTAL.items()}
     import geopandas as gpd
     import rasterio
     from rasterio import features
@@ -110,12 +119,14 @@ def main():
             gf = np.repeat(np.repeat(np.nan_to_num(g), k, 0), k, 1).ravel()
             out[nm] = dict(zip(ids, np.bincount(inv, weights=gf) / np.maximum(cnt, 1)))
         luh[y] = out
-        d = read_part(a.icpsr, ds, [hv, lv]); di = read_part(a.icpsr, ids_, [iv])
+        hvs = hv if isinstance(hv, list) else [hv]
+        d = read_part(a.icpsr, ds, hvs + [lv]); di = read_part(a.icpsr, ids_, [iv])
+        d["crop_acres"] = d[[h.lower() for h in hvs]].sum(1, min_count=len(hvs))
         area = d[lv.lower()]
         ok = area.index.isin(poly_acres.index)
         rel = (area[ok] / poly_acres.reindex(area[ok].index)).between(0.9, 1.1)
         good = area[ok][rel].index
-        cen[y] = {"crop": (d.loc[good, hv.lower()] / area[good]).to_dict(),
+        cen[y] = {"crop": (d.loc[good, "crop_acres"] / area[good]).to_dict(),
                   "irr": (di[iv.lower()].reindex(good) / area[good]).to_dict()}
     res = {}
     for zone_name, zsel in (("great_plains", {2}), ("west", {1}), ("east", {3}), ("all", {1, 2, 3})):
@@ -144,7 +155,7 @@ def main():
             r[var] = {"level": lv_, "change": ch}
         res[zone_name] = r
     os.makedirs(a.out, exist_ok=True)
-    json.dump(res, open(os.path.join(a.out, "e080.json"), "w"), indent=1)
+    json.dump(res, open(os.path.join(a.out, "e080b.json" if a.total_cropland else "e080.json"), "w"), indent=1)
     print(json.dumps(res, indent=1))
 
 

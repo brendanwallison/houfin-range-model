@@ -57,6 +57,8 @@ def main():
     ap.add_argument("--cbc", required=True); ap.add_argument("--similarity", required=True)
     ap.add_argument("--out", required=True); ap.add_argument("--label", default="arm")
     ap.add_argument("--boot", type=int, default=1000)
+    ap.add_argument("--save-lists", action="store_true",
+                    help="E075: also save per-list arrays (rows, arm/control backcast and modern log-likelihoods)")
     a = ap.parse_args()
     import pandas as pd
     D = np.load(a.cbc, allow_pickle=False)
@@ -70,6 +72,13 @@ def main():
     for name, sp in (("residents", res_sp), ("all", allsp)):
         A, C = per_list(a.arm, D, sp, None), per_list(a.control, D, sp, None)
         out = {"species": len(sp)}
+        if a.save_lists:
+            os.makedirs(a.out, exist_ok=True)
+            np.savez_compressed(os.path.join(a.out, f"lists_{a.label}_{name}.npz"),
+                                **{f"{era}_{k}": v for era, _, _ in ERAS
+                                   for k, v in zip(("rows", "lba", "lma"), A[era])},
+                                **{f"{era}_{k}": v for era, _, _ in ERAS
+                                   for k, v in zip(("rows_c", "lbc", "lmc"), C[era])})
         for era, _, _ in ERAS:
             ra, lba, lma = A[era]; rc, lbc, lmc = C[era]
             assert (ra == rc).all()

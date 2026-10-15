@@ -46,6 +46,10 @@ ZONES = {1: "west", 2: "great_plains", 3: "east"}
 # amendment 2: physical cover -- forest = primf + secdf, natural non-forest = primn + secdn (derived in load_states);
 # the primary / secondary accounting channels move to the clock group with management
 COVER = ("c3ann", "c3nfx", "c3per", "c4ann", "c4per", "pastr", "range", "urban", "forest", "natnonforest")
+# follow-up (2026-10-15, CONSIDERATIONS M31): natural non-forest -> rangeland on the Great Plains looks like LUH grazing
+# BOOKKEEPING; E073_COVER=merged uses their sum ("grassland") instead of the two channels
+if os.environ.get("E073_COVER") == "merged":
+    COVER = ("c3ann", "c3nfx", "c3per", "c4ann", "c4per", "pastr", "urban", "forest", "grassland")
 GROUPS = {"climate": ("climate",), "cover": ("landuse:cover",), "mgmt": ("landuse:mgmt",), "human": ("hyde", "bui")}
 NPC = {"climate": 24, "cover": 8, "mgmt": 8, "human": 6}
 
@@ -57,7 +61,10 @@ def group_cols(stream, names, g):
         if s == "landuse:cover":
             sel |= (stream == "landuse") & np.isin(names, COVER)
         elif s == "landuse:mgmt":
-            sel |= (stream == "landuse") & ~np.isin(names, COVER)
+            # derived totals never enter the clock group (so the default grouping is unchanged by adding them); in
+            # merged mode range joins them, as the grassland total replaces it
+            excl = ("forest", "natnonforest", "grassland") + (("range",) if "grassland" in COVER else ())
+            sel |= (stream == "landuse") & ~np.isin(names, COVER) & ~np.isin(names, excl)
         else:
             sel |= stream == s
     return np.where(sel)[0]
@@ -91,9 +98,10 @@ def load_states(cells, y1=2025):
     lu = lambda n: np.where((stream == "landuse") & (names == n))[0][0]
     forest = st[..., lu("primf")] + st[..., lu("secdf")]
     natnf = st[..., lu("primn")] + st[..., lu("secdn")]
-    st = np.concatenate([st, forest[..., None], natnf[..., None]], axis=-1)
-    stream = np.concatenate([stream, np.array(["landuse", "landuse"], dtype=object)])
-    names = np.concatenate([names, ["forest", "natnonforest"]])
+    grass = natnf + st[..., lu("range")]
+    st = np.concatenate([st, forest[..., None], natnf[..., None], grass[..., None]], axis=-1)
+    stream = np.concatenate([stream, np.array(["landuse", "landuse", "landuse"], dtype=object)])
+    names = np.concatenate([names, ["forest", "natnonforest", "grassland"]])
     del ix
     return st, stream, names, years
 

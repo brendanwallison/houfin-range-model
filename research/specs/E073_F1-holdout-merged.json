@@ -1,0 +1,22 @@
+{
+ "exp": "E073",
+ "name": "F1-holdout-merged",
+ "group": "cpu2",
+ "env": {
+  "BLR_MAX_ITER": "100",
+  "BLR_STARTS": "0.5",
+  "E073_COVER": "merged"
+ },
+ "cmd": [
+  "bash",
+  "-c",
+  "set -e; {python} research/exp/anchored_delta.py holdout --cache {cache}/gp_species_base --similarity {outroot}/E067/composition-d2e6a98f0eb7/species_similarity.csv --out {out}"
+ ],
+ "expected_minutes": 180,
+ "summarize": [
+  "bash",
+  "-c",
+  "grep -v '^ *$' {out}/../log.txt | tail -40"
+ ],
+ "note": "E073 F1: part C holdouts with merged grassland cover"
+}

@@ -1,0 +1,22 @@
+{
+ "exp": "E073",
+ "name": "F1-novelty-merged",
+ "group": "cpu2",
+ "env": {
+  "BLR_MAX_ITER": "100",
+  "BLR_STARTS": "0.5",
+  "E073_COVER": "merged"
+ },
+ "cmd": [
+  "bash",
+  "-c",
+  "set -e; {python} research/exp/anchored_delta.py novelty --cache {cache}/desk_tempho_1995_s1 --out {out}"
+ ],
+ "expected_minutes": 20,
+ "summarize": [
+  "bash",
+  "-c",
+  "grep -v '^ *$' {out}/../log.txt | tail -40"
+ ],
+ "note": "E073 F1: part A with merged grassland cover (LUH grazing bookkeeping check)"
+}

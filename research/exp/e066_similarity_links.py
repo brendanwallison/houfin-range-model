@@ -74,6 +74,27 @@ def t1(a):
             cm = np.load(a.cell_mask)[a.cell_mask_key]
             both = both[[bool(cm[int(r_), int(c_)]) for r_, c_, _ in both]]
         cbc, bbs = cbc.loc[both], bbs.loc[both]
+        if a.calibrate:
+            # E082: calibrate CBC counts to the BBS scale per species, estimated on a random HALF of the co-located cells
+            # (seed 82) and scored on the other half only. none = same split, no calibration (the comparable baseline);
+            # scale = one multiplier per species (ratio of means, BBS / CBC); quantile = per-species quantile mapping of
+            # CBC values onto the BBS distribution (mid-ranks for ties).
+            cells_all = sorted({(r, c) for r, c, _ in both})
+            crng = np.random.default_rng(82)
+            calib_cells = {cells_all[i] for i in crng.choice(len(cells_all), len(cells_all) // 2, replace=False)}
+            is_cal = np.array([(r, c) in calib_cells for r, c, _ in both])
+            Cm, Bm = cbc.to_numpy().copy(), bbs.to_numpy()
+            if a.calibrate == "scale":
+                mc, mb = Cm[is_cal].mean(0), Bm[is_cal].mean(0)
+                Cm = Cm * np.where(mc > 0, mb / np.maximum(mc, 1e-12), 1.0)
+            elif a.calibrate == "quantile":
+                for s_ in range(Cm.shape[1]):
+                    cv, bv = np.sort(Cm[is_cal, s_]), np.sort(Bm[is_cal, s_])
+                    q = (np.searchsorted(cv, Cm[:, s_], "left") + np.searchsorted(cv, Cm[:, s_], "right")) / (2.0 * len(cv))
+                    Cm[:, s_] = np.quantile(bv, np.clip(q, 0, 1))
+            cbc = pd.DataFrame(Cm, index=cbc.index, columns=cbc.columns)
+            both = both[~is_cal]
+            cbc, bbs = cbc.loc[both], bbs.loc[both]
         cell = {(r, c) for r, c, _ in both}
         have = set(both)
         # (cell, year) usable as a base point: present at y and y+1 in both seasons
@@ -239,6 +260,8 @@ def main():
     ap.add_argument("--degraded", nargs="*", default=[])
     ap.add_argument("--pairs", type=int, default=100000)
     ap.add_argument("--migration", default=None, help="E066c (t1): AVONET migration classes to keep, e.g. 1 or 1,2")
+    ap.add_argument("--calibrate", choices=["none", "scale", "quantile"], default=None,
+                    help="E082 (t1): per-species CBC calibration, fitted on half the co-located cells, scored on the rest")
     ap.add_argument("--cell-mask", default=None, help="E079 (t1): npz of (H, W) bool strata masks")
     ap.add_argument("--cell-mask-key", default=None)
     ap.add_argument("--similarity", default=None, help="E066c: species_similarity.csv (species_code, migration)")
@@ -248,7 +271,7 @@ def main():
     a = ap.parse_args()
     os.makedirs(a.out, exist_ok=True)
     res = t1(a) if a.test == "t1" else t2(a)
-    tag = a.test + ("_agg" if a.agg else "") + (f"_mig{a.migration.replace(',', '')}" if a.migration else "") + (f"_{a.cell_mask_key}" if a.cell_mask else "")
+    tag = a.test + ("_agg" if a.agg else "") + (f"_mig{a.migration.replace(',', '')}" if a.migration else "") + (f"_{a.cell_mask_key}" if a.cell_mask else "") + (f"_cal{a.calibrate}" if a.calibrate else "")
     json.dump(res, open(os.path.join(a.out, f"e066_{tag}.json"), "w"), indent=1)
     print(json.dumps(res, indent=1))
 

@@ -27,6 +27,20 @@ H7_identifiability:
   claim: only Fmax*Sj (and lambda0) is identified; the split is prior/structure-determined (a degeneracy, not a forcing)
   status: supported
   evidence: [sweep + runs 21/22/23a all keep lambda0 ~2 while the split moves]
+H8_route_heterogeneity:
+  claim: persistent between-route differences within a 27 km cell (route-scale habitat, observers) are
+    missing from the count model; with only cell density + NB noise (conc ~0.4) the fit manufactures
+    between-route spread with extreme cell fields (amplitudes 5-12, K extremes, the K switch)
+  status: open
+  evidence: [run_23a 04 calibration -- high counts heavily under-predicted (decile median fitted log1p
+    ~2.3 at observed ~4), lows over-predicted; 08 residual map mostly over-predicted with scattered
+    large under-predictions]
+H9_early_west_lag:
+  claim: the fit under-predicts the long-established western population when the BBS expands west
+    (1967-68), and catches up only through rising lambda over time -- feeding the century-scale habitat
+    trend (H3) and the fast-growth demand (H2)
+  status: open
+  evidence: [run_23a 04 annual mean -- observed 2.3 (1968) / 4.3 (1974) vs fitted 1.0 / 2.9]
 ruled_out:
   dispersal_distance: [mdd sweep 250-600 -- data hold p0*mdd^2 constant; demography unchanged]
   allee_form: [run_22 relative Allee removes Allee-dead but keeps lambda0 ~2.2]

@@ -31,3 +31,14 @@ Branches (each next step is a warm-start profile unless marked):
    -> strong Allee is a soft optimum; Phase 2 can adopt a weak Allee prior safely.
 Falsification (every ~5 rounds): rerun the leading result from a COLD start (MAP + refine via
 38_model_experiment) and on a second warm start (run_21) to check it is not a warm-start artifact.
+
+Added 2026-10-16 (user points C9-C12):
+- E008 ideal-free settlement (settlement = ideal_free, block 3 then 5): after dispersal each year,
+  each block redistributes its population in proportion to K; zero new parameters. Predicts relief of
+  H2 (fill-in -> lambda0 falls) and H1 (Allee clears locally -> n50 need falls). Queue after E001/E002
+  regardless of their outcome; then repeat with Fmax pinned 3 (does settlement make plausible
+  demography cheap?).
+- Z_disp aggregation (C10): sigmoid(mean path habitat) vs product-of-survival -- needs new path
+  statistics precomputed; Phase 3 unless E008 points at dispersal mortality.
+- Feature sensitivity (C12): leading findings re-run on alternative DESK cubes; needs per-cube model
+  inputs (Z + Z_disp prep, 1-2 h each).

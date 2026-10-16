@@ -123,7 +123,7 @@ from src.config_utils import load_age_model_config, load_data_config
 from src.temporal import load_timeline
 from src.model.age_priors import build_model_2d
 from src.model.age_forward import forward_sim_age_structured
-from src.model.age_priors import ALLEE_RELATIVE
+from src.model.age_priors import ALLEE_RELATIVE, SETTLE_BLOCK
 from src.model.checkpoints import auto_delta_params_to_latents, load_map_params
 from src.model.data_loading import load_data
 from src.model.runtime_diagnostics import memory_snapshot, require_gpu
@@ -1758,6 +1758,7 @@ def simulate_no_invasion_counterfactual(sim, data, drop_disease=True):
         jnp.asarray(sim["allee_gamma"]),
         target_fraction=data["dispersal_target_fraction"],
         allee_relative=ALLEE_RELATIVE,
+        settle_block=SETTLE_BLOCK,
     )
     return np.asarray(jax.block_until_ready(density))
 

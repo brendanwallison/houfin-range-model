@@ -11,3 +11,16 @@
 - C7 The century-scale habitat trend is overfit; temporal-habitat weighting (learned eta) is
   deferred until the DESK experiments settle.
 - C8 Softplus is liked for loose amplitude priors that still discourage absurd K.
+- C9 Simplifying (fewer parameters / more parsimonious structure) needs NO user approval. A simpler model
+  that fits as well is an important data point -- but fit alone never adopts it: simple models can
+  contort into biological implausibility, so read demography and maps, not just U.
+- C10 Limited, biologically reasonable added complexity is fine to TRY; dispersal is a known weak
+  point (the user had no efficient smarter dispersal). Z_disp (path-dependent mortality) is the user's
+  key innovation but imperfect; the user worries about path-AVERAGED features interacting with weights
+  SHARED between Z and Z_disp. (Mechanism: true path survival is a product dominated by the worst
+  stretches; sigmoid(mean path habitat) smooths over barriers.)
+- C11 Multi-step / multi-scale dispersal with "oracle" settlement (redistribute local population in
+  proportion to K or growth after dispersal) is a candidate the user considered; zero extra parameters.
+- C12 DESK features will change (research/desk-temporal). Pin conclusions down now where possible, but
+  instability may come from imperfect features: check leading findings against the alternative DESK
+  cubes precomputed on TACC.

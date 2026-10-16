@@ -299,3 +299,22 @@ print(json.dumps({"pinned": a.PINNED,
                                   text=True, check=True).stdout.strip().splitlines()[-1])
     assert set(r["pinned"]) == pinned and set(r["observed"]) == pinned
     assert r["values"] == pytest.approx(r["pinned"])
+
+
+def test_ideal_free_settlement_conserves_mass_and_follows_capacity():
+    from src.model.age_forward import ideal_free_settle
+    rng = np.random.default_rng(1)
+    K = jnp.asarray(rng.uniform(0.0, 2.0, (7, 10)))
+    K = K.at[0, :].set(0.0)                               # a row with no capacity (ocean)
+    N = jnp.asarray(rng.uniform(0.0, 1.0, (7, 10)))
+    for t in (0, 1):                                      # both block offsets
+        (out,) = ideal_free_settle((N,), K, 3, t)
+        out = np.asarray(out)
+        assert out.sum() == pytest.approx(float(N.sum()), rel=1e-6)
+        assert np.all(out >= 0)
+    # within one interior block (offset 0: rows 3-5, cols 3-5), out is proportional to K
+    (out,) = ideal_free_settle((N,), K, 3, 0)
+    blk = (slice(3, 6), slice(3, 6))
+    r = np.asarray(out)[blk] / np.asarray(K)[blk]
+    np.testing.assert_allclose(r, r.mean(), rtol=1e-6)
+    assert np.asarray(out)[blk].sum() == pytest.approx(float(N[blk].sum()), rel=1e-6)

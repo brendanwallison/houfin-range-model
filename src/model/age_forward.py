@@ -120,6 +120,7 @@ def forward_sim_age_structured(
     target_fraction=0.8,
     allee_exempt_years=0,
     allee_relative=False,
+    settle_block=0,
 ):
     """Run the age-structured simulation for ``time`` years.
 
@@ -214,6 +215,13 @@ def forward_sim_age_structured(
             Q_grid=Q_g, eps=1e-6
         )
         
+        # 3b. Ideal-free settlement (settle_block > 0): within each block of cells, the
+        # post-dispersal population is rearranged in proportion to capacity. See
+        # ideal_free_settle.
+        if settle_block:
+            N_a_post, juvenile_stayers, juvenile_arriving = ideal_free_settle(
+                (N_a_post, juvenile_stayers, juvenile_arriving), K_g, settle_block, t)
+
         # 4. Survival & Reproduction. Release cells skip the Allee factor while
         # exempt (see allee_exempt_years in the docstring).
         allee_off = jnp.where((k >= 0) & (k < allee_exempt_years), release_mask, 0.0)
@@ -237,6 +245,40 @@ def forward_sim_age_structured(
     )
 
     return total_densities, Na_densities, Nj_densities
+
+def ideal_free_settle(fields, K, b, t):
+    """Ideal-free settlement after dispersal: each b x b block's population (each age component
+    separately) is redistributed in proportion to capacity K -- an 'oracle' local settlement step
+    with no parameters beyond the block size.
+
+    Why: every refined fit so far needs lambda0 ~ 2 and a strong Allee effect. Arrivals that settle
+    where capacity is locally highest fill cells and clear mate-finding without either (hypotheses
+    H1/H2). Mass is conserved exactly within every block; blocks with no capacity are left as is.
+    The block grid alternates between offset 0 and b//2 on even/odd years so no block edge is
+    permanent.
+
+    GPU form: the fields are stacked and placed on a FIXED-size zero canvas at a traced offset
+    (dynamic_update_slice), block-summed by reshape, expanded back by broadcast+reshape (no
+    gathers), and cut out again (dynamic_slice) -- one blocking per year, static shapes for lax.scan.
+    """
+    Ny, Nx = K.shape
+    H = -(-(Ny + b // 2) // b) * b
+    W = -(-(Nx + b // 2) // b) * b
+    o = (t % 2) * (b // 2)
+    stack = jnp.stack([K, *fields])                                    # (1 + n, Ny, Nx)
+    canvas = lax.dynamic_update_slice(
+        jnp.zeros((stack.shape[0], H, W), stack.dtype), stack, (0, o, o))
+    blocks = canvas.reshape(-1, H // b, b, W // b, b).sum(axis=(2, 4))  # (1 + n, H/b, W/b)
+    full = jnp.broadcast_to(blocks[:, :, None, :, None],
+                            (blocks.shape[0], H // b, b, W // b, b)).reshape(-1, H, W)
+    wsum, fsum = full[0], full[1:]
+    w = canvas[0]
+    ok = wsum > 1e-12
+    share = jnp.where(ok, w / jnp.where(ok, wsum, 1.0), 0.0)
+    moved = jnp.where(ok[None], share[None] * fsum, canvas[1:])
+    out = lax.dynamic_slice(moved, (0, o, o), (moved.shape[0], Ny, Nx))
+    return tuple(out[i] for i in range(len(fields)))
+
 
 # Below this capacity (density units; ~2e-7 route counts) N/K is not computed.
 _RELATIVE_K_FLOOR = 1e-8

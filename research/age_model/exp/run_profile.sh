@@ -8,6 +8,9 @@
 #   OUT=$WORK/houfin/research/age_model/E001 \
 #   VARIANTS='f3={"alpha_f":2.9486} f5={"alpha_f":4.9933}' bash research/age_model/exp/run_profile.sh
 #
+# PATCH=1: each variant's JSON is instead deep-merged into population_model (e.g.
+#   'ifd3={"settlement":{"form":"ideal_free","block":3}}'); pins then go under "pinned_sites".
+#
 # HOUFIN_HMC_ALLOW_MODEL_DRIFT=1: the research branch adds code (pins) that leaves the unpinned
 # model unchanged, but the drift check sees a different age_priors.py than the warm start's MAP.
 set -uo pipefail
@@ -16,12 +19,17 @@ mkdir -p "$OUT/overlays"
 for v in $VARIANTS; do
     name="${v%%=*}"; pins="${v#*=}"
     ov="$OUT/overlays/$name.json"
-    python - "$BASE_OVERLAY" "$pins" "$ov" <<'PY'
+    python - "$BASE_OVERLAY" "$pins" "$ov" "${PATCH:-0}" <<'PY'
 import json, sys
-base, pins, out = sys.argv[1], json.loads(sys.argv[2]), sys.argv[3]
+from src.config_utils import _deep_merge
+base, spec, out, patch = sys.argv[1], json.loads(sys.argv[2]), sys.argv[3], sys.argv[4] == "1"
 o = json.load(open(base))
-o.setdefault("population_model", {})["pinned_sites"] = {**o["population_model"].get("pinned_sites", {}), **pins}
-o["_comment"] = [f"profile variant: {base} + pinned_sites {pins}"]
+pm = o.setdefault("population_model", {})
+if patch:
+    o["population_model"] = _deep_merge(pm, spec)
+else:
+    pm["pinned_sites"] = {**pm.get("pinned_sites", {}), **spec}
+o["_comment"] = [f"profile variant: {base} + {'population_model patch' if patch else 'pinned_sites'} {spec}"]
 json.dump(o, open(out, "w"), indent=2)
 PY
     echo "=== $name: pins $pins ($(date))"

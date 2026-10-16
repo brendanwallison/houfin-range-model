@@ -65,6 +65,9 @@ JUVENILE_RATIO = _JUV_FORM == "ratio"
 #                             occupied habitat). Pinned sites are not fitted at all.
 PINNED = {k: float(v) for k, v in dict(_POP_SPEC.get("pinned_sites", {})).items()
           if not k.startswith("_")}
+#   settlement                {"form": "none" | "ideal_free", "block": cells}
+_SETTLE = dict(_POP_SPEC.get("settlement", {}))
+SETTLE_BLOCK = int(_SETTLE.get("block", 3)) if _SETTLE.get("form", "none") == "ideal_free" else 0
 if _HABITAT_CENTERING not in {"none", "occupied"}:
     raise ValueError(f"habitat_centering must be none or occupied, got {_HABITAT_CENTERING!r}")
 if _MANIFOLD_FORM not in {"rank2", "exchangeable"}:
@@ -886,6 +889,7 @@ def build_model_2d(data, prior_scale=1.0):
         target_fraction=data["dispersal_target_fraction"],
         allee_exempt_years=_RELEASE_ALLEE_EXEMPT_YEARS,
         allee_relative=ALLEE_RELATIVE,
+        settle_block=SETTLE_BLOCK,
     )
 
     numpyro.deterministic("simulated_density", densities)

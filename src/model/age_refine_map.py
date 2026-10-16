@@ -152,6 +152,15 @@ def run_refine():
 
     device = require_gpu("age-model MAP refinement")
     map_latents, map_ckpt = hc.load_map()
+    # HOUFIN_REFINE_INIT='{"site": value, ...}' overrides the warm start for those sites
+    # (constrained values). Needed for a NEW zero-centred, mean-preserving term (e.g.
+    # subcell_beta_k): its gradient at the nested value is exactly 0, so a refine started there
+    # never leaves it (E017 reruns); start it off zero and let the data decide.
+    init_over = json.loads(os.environ.get("HOUFIN_REFINE_INIT") or "{}")
+    for k, v in init_over.items():
+        map_latents[k] = jnp.asarray(v, dtype=jnp.float64 if hc.PRECISION == "float64" else jnp.float32)
+    if init_over:
+        print(f"[init] overriding warm start: {init_over}")
     hc.check_model_drift(map_ckpt["fingerprint_payload"])
     data = load_data(load_age_model_config()["input_dir"], target_device=device,
                      precision=hc.PRECISION, verbose=False)

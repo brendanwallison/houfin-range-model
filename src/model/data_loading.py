@@ -41,6 +41,39 @@ def occupied_habitat_center(meta):
     return np.asarray(meta["Z_gathered"][pairs[:, 0], pairs[:, 1]], dtype=np.float64).mean(axis=0)
 
 
+def _observation_mask_spec():
+    """population_model.observation_mask from the active config, or None (the default)."""
+    from src.config_utils import load_age_model_config
+    spec = load_age_model_config().get("population_model", {}).get("observation_mask")
+    return dict(spec) if spec else None
+
+
+def transient_observation_weight(meta, window, censor_years=2):
+    """1/0 likelihood weight per observation that DROPS each cell's colonization transient.
+
+    DIAGNOSTIC ONLY (population_model.observation_mask, research/age_model F1): a cell's
+    arrival is its first positive standard-tier count; observations within +-``window`` years
+    of it are dropped. Cells whose first positive comes within ``censor_years`` of their first
+    survey are LEFT-CENSORED (already occupied when surveying began, e.g. the New York area in
+    1966) -- their first positive is not an arrival, so they are kept. Data-derived on purpose:
+    the question is which observations force the fit, not a model of them.
+    """
+    years = np.asarray(meta["years"])[np.asarray(meta["obs_time_indices"])]
+    cell = np.asarray(meta["obs_rows"]).astype(np.int64) * 100000 + np.asarray(meta["obs_cols"])
+    y = np.asarray(meta["observed_results"])
+    q = np.asarray(meta.get("obs_quality", np.zeros_like(y)))
+    _, idx = np.unique(cell, return_inverse=True)
+    big = np.iinfo(np.int64).max
+    first_survey = np.full(idx.max() + 1, big)
+    first_pos = np.full(idx.max() + 1, big)
+    std = q == 0
+    np.minimum.at(first_survey, idx[std], years[std])
+    np.minimum.at(first_pos, idx[std & (y > 0)], years[std & (y > 0)])
+    arrival = (first_pos < big) & (first_pos - first_survey > censor_years)
+    drop = arrival[idx] & (np.abs(years - np.where(arrival, first_pos, 0)[idx]) <= window)
+    return np.where(drop, 0.0, 1.0)
+
+
 def load_data(input_dir, target_device=None, precision="float32", verbose=True):
     """Load model inputs, casting to ``precision`` and placing device arrays.
 
@@ -73,6 +106,13 @@ def load_data(input_dir, target_device=None, precision="float32", verbose=True):
     # decide structurally (whether quality_conc_mult exists) without touching jnp.
     if isinstance(meta.get("obs_quality"), np.ndarray):
         meta["n_obs_quality_tiers"] = int(np.unique(meta["obs_quality"]).size)
+    mask_spec = _observation_mask_spec()
+    if mask_spec:
+        meta["obs_weight"] = transient_observation_weight(
+            meta, int(mask_spec["transient_years"]), int(mask_spec.get("censor_years", 2)))
+        if verbose:
+            print(f"  [mask] transient +-{mask_spec['transient_years']} y: "
+                  f"{int((meta['obs_weight'] == 0).sum())} observations dropped")
     occupied_center = occupied_habitat_center(meta)
     if occupied_center is not None:
         meta["habitat_center_occupied"] = occupied_center

@@ -982,8 +982,12 @@ def build_model_2d(data, prior_scale=1.0):
     else:
         conc_obs = concentration
 
-    numpyro.sample(
-        "obs",
-        dist.NegativeBinomial2(mean=densities_obs, concentration=conc_obs),
-        obs=data["observed_results"]
-    )
+    # population_model.observation_mask (diagnostic): data_loading sets obs_weight 0 on the
+    # dropped observations; they stay in expected_obs, so their fit can still be read.
+    obs_weight = data.get("obs_weight")
+    with numpyro.handlers.mask(mask=(obs_weight > 0.5) if obs_weight is not None else True):
+        numpyro.sample(
+            "obs",
+            dist.NegativeBinomial2(mean=densities_obs, concentration=conc_obs),
+            obs=data["observed_results"]
+        )

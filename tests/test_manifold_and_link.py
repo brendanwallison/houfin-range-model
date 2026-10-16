@@ -421,3 +421,18 @@ def _fitness_gradient_check():
     fd = (f(1.0 + h) - f(1.0 - h)) / (2 * h)
     assert np.isfinite(float(g))
     assert float(g) == pytest.approx(float(fd), rel=1e-3, abs=1e-7)
+
+
+def test_transient_mask_drops_arrivals_and_keeps_left_censored_cells():
+    from src.model.data_loading import transient_observation_weight
+    years = np.arange(1966, 2000)
+    # cell A: surveyed from 1966, first positive 1980 (an arrival); cell B: positive from 1967 (censored)
+    t = np.concatenate([np.arange(34), np.arange(34)])
+    rows = np.array([1] * 34 + [2] * 34); cols = np.zeros(68, int)
+    y = np.concatenate([(years >= 1980) * 3.0, (years >= 1967) * 5.0])
+    meta = {"years": years, "obs_time_indices": t, "obs_rows": rows, "obs_cols": cols,
+            "observed_results": y, "obs_quality": np.zeros(68, int)}
+    w = transient_observation_weight(meta, window=5)
+    a, b = w[:34], w[34:]
+    assert np.all(a[(years >= 1975) & (years <= 1985)] == 0) and np.all(a[(years < 1975) | (years > 1985)] == 1)
+    assert np.all(b == 1)

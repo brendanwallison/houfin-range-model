@@ -14,3 +14,5 @@ date,experiment,variant,run_dir,U,fit_corr,notes,su
 2026-10-16,E010,i3j05,..._ifd3__i3j05,197724.5,,+82 vs ifd3; Sj/Sa .5 cheap under settlement,
 2026-10-16,E010,i3n003,..._ifd3__i3n003,198121.3,,+479 vs ifd3; lam0 1.49; disp slope -12.7,
 2026-10-16,E010,i3dprior,..._ifd3__i3dprior,199502.0,,+1860 vs ifd3; n50 .87 (Allee substitutes for exodus),
+2026-10-16,E014,i3fit,..._ifd3__i3fit,197969.1,,+327 vs ifd3; vital-rate sensitivities -> 0 (collapses to capacity case),
+2026-10-16,E014,i3uni,..._ifd3__i3uni,199467.5,,+1825 vs ifd3; gain was habitat direction not mixing,

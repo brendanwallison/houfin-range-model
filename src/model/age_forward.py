@@ -142,6 +142,7 @@ def forward_sim_age_structured(
     dispersal_adult_offset=0.0,
     crowding_beta=None,
     crowding_kappa=5.0,
+    settle_weight="capacity",
 ):
     """Run the age-structured simulation for ``time`` years.
 
@@ -240,9 +241,17 @@ def forward_sim_age_structured(
         # 3b. Ideal-free settlement (settle_block > 0): within each block of cells, the
         # post-dispersal population is rearranged in proportion to capacity. See
         # ideal_free_settle.
+        # settle_weight: "capacity" (shares in proportion to K), "uniform" (land cells
+        # equally -- habitat-blind mixing, a control), "fitness" (equal realized lambda;
+        # see fitness_settle).
         if settle_block:
-            N_a_post, juvenile_stayers, juvenile_arriving = ideal_free_settle(
-                (N_a_post, juvenile_stayers, juvenile_arriving), K_g, settle_block, t)
+            pools = (N_a_post, juvenile_stayers, juvenile_arriving)
+            if settle_weight == "fitness":
+                pools = fitness_settle(pools, K_g, Sa_g, Sj_g, Fmax_g, c_g, settle_block, t)
+            else:
+                wgt = K_g if settle_weight == "capacity" else jnp.where(K_g > 1e-12, 1.0, 0.0)
+                pools = ideal_free_settle(pools, wgt, settle_block, t)
+            N_a_post, juvenile_stayers, juvenile_arriving = pools
 
         # 4. Survival & Reproduction. Release cells skip the Allee factor while
         # exempt (see allee_exempt_years in the docstring).
@@ -299,6 +308,84 @@ def ideal_free_settle(fields, K, b, t):
     share = jnp.where(ok, w / jnp.where(ok, wsum, 1.0), 0.0)
     moved = jnp.where(ok[None], share[None] * fsum, canvas[1:])
     out = lax.dynamic_slice(moved, (0, o, o), (moved.shape[0], Ny, Nx))
+    return tuple(out[i] for i in range(len(fields)))
+
+
+def _to_blocks(canvas, b):
+    """(n, H, W) -> (n, H/b, W/b, b*b): each block's cells along the last axis (reshape only)."""
+    n, H, W = canvas.shape
+    return canvas.reshape(n, H // b, b, W // b, b).transpose(0, 1, 3, 2, 4).reshape(n, H // b, W // b, b * b)
+
+
+def _from_blocks(blocks, b):
+    n, bh, bw, _ = blocks.shape
+    return blocks.reshape(n, bh, bw, b, b).transpose(0, 1, 3, 2, 4).reshape(n, bh * b, bw * b)
+
+
+def fitness_settle(fields, K, Sa, Sj, Fmax, c, b, t, n_iter=40):
+    """Ideal-free settlement on REALIZED FITNESS: within each b x b block, birds spread until local
+    lambda at the settled density is equal across occupied cells; cells worse than that even when
+    empty receive none.
+
+    lambda_i(N) is the dominant eigenvalue of [[Sa, Sj], [F_i(N) Sa, 0]] with the model's own
+    Beverton-Holt fecundity F_i(N) = Fmax / (1 + c N / K) -- the Allee factor is deliberately left
+    out: with it lambda is humped and the IFD has multiple equilibria, and mate-finding is what
+    settling birds avoid by choosing sites (the departure curve's low-density arm covers it).
+    Its inverse is closed form: F* = w (w - Sa) / (Sa Sj), N_i(w) = (K/c)(Fmax/F* - 1)_+.
+    The block level w* with sum_i N_i(w*) = block total is found by bisection (no gradient) and
+    one Newton step from it (carries the implicit-function gradient). Because c depends only on
+    vital rates, equal vital rates within a block give N_i proportional to K_i: this NESTS the
+    capacity-weighted ideal_free_settle. At w = 1 each viable cell holds exactly K (c is solved
+    so lambda = 1 at K). Mass is conserved exactly (shares of the block total); blocks with no
+    capacity or no birds are left as is. Same fixed canvas / alternating offset as
+    ideal_free_settle; all elementwise, no gathers.
+    """
+    Ny, Nx = K.shape
+    H = -(-(Ny + b // 2) // b) * b
+    W = -(-(Nx + b // 2) // b) * b
+    o = (t % 2) * (b // 2)
+    stack = jnp.stack([K, Sa, Sj, Fmax, c, *fields])
+    canvas = lax.dynamic_update_slice(jnp.zeros((stack.shape[0], H, W), stack.dtype), stack, (0, o, o))
+    blk = _to_blocks(canvas, b)
+    Kb, Sab, Sjb, Fb, cb, fb = blk[0], blk[1], blk[2], blk[3], blk[4], blk[5:]
+    tiny = 1e-12
+    valid = (Kb > tiny) & (Sab > tiny) & (Sjb > tiny) & (Fb > tiny)
+    Sa_s = jnp.where(valid, Sab, 0.5)
+    Sj_s = jnp.where(valid, Sjb, 0.5)
+    F_s = jnp.where(valid, Fb, 1.0)
+    K_s = jnp.where(valid, Kb, 0.0)
+    c_s = jnp.maximum(jnp.where(valid, cb, 1.0), 1e-6)
+    lam0 = 0.5 * (Sa_s + jnp.sqrt(Sa_s ** 2 + 4.0 * F_s * Sa_s * Sj_s))
+    M = fb.sum(axis=(0, -1))                                           # (bh, bw) block totals
+
+    def density(w):                                                    # w (bh, bw) -> (bh, bw, b*b)
+        ww = w[..., None]
+        Fstar = jnp.maximum(ww * (ww - Sa_s) / (Sa_s * Sj_s), tiny)
+        n = (K_s / c_s) * (F_s / Fstar - 1.0)
+        return jnp.where(valid & (ww < lam0) & (ww > Sa_s), jnp.maximum(n, 0.0), 0.0)
+
+    ok = valid.any(-1) & (M > tiny)
+    lo0 = jnp.where(ok, jnp.max(jnp.where(valid, Sa_s, -jnp.inf), -1), 0.0)
+    hi0 = jnp.where(ok, jnp.max(jnp.where(valid, lam0, -jnp.inf), -1), 1.0)
+    Mg = lax.stop_gradient(M)
+
+    def bisect(_, lh):
+        lo, hi = lh
+        mid = 0.5 * (lo + hi)
+        over = density(mid).sum(-1) > Mg                               # too dense -> raise w
+        return jnp.where(over, mid, lo), jnp.where(over, hi, mid)
+
+    lo, hi = lax.fori_loop(0, n_iter, bisect, (lax.stop_gradient(lo0), lax.stop_gradient(hi0)))
+    w0 = lax.stop_gradient(0.5 * (lo + hi))
+    S0, dS = jax.jvp(lambda w: density(w).sum(-1), (w0,), (jnp.ones_like(w0),))
+    step_ok = ok & (dS < -tiny)
+    w = jnp.where(step_ok, w0 - (S0 - M) / jnp.where(step_ok, dS, -1.0), w0)
+    n = density(w)
+    tot = n.sum(-1, keepdims=True)
+    good = ok[..., None] & (tot > tiny)
+    share = jnp.where(good, n / jnp.where(good, tot, 1.0), 0.0)
+    moved = jnp.where(good[None], share[None] * fb.sum(-1, keepdims=True), fb)
+    out = lax.dynamic_slice(_from_blocks(moved, b), (0, o, o), (len(fields), Ny, Nx))
     return tuple(out[i] for i in range(len(fields)))
 
 

@@ -68,6 +68,12 @@ PINNED = {k: float(v) for k, v in dict(_POP_SPEC.get("pinned_sites", {})).items(
 #   settlement                {"form": "none" | "ideal_free", "block": cells}
 _SETTLE = dict(_POP_SPEC.get("settlement", {}))
 SETTLE_BLOCK = int(_SETTLE.get("block", 3)) if _SETTLE.get("form", "none") == "ideal_free" else 0
+#                             "weight": "capacity" (default; shares in proportion to K) |
+#                             "fitness" (equal realized lambda, Allee excluded; nests capacity
+#                             when vital rates are equal within a block) | "uniform" (control)
+SETTLE_WEIGHT = _SETTLE.get("weight", "capacity")
+if SETTLE_WEIGHT not in {"capacity", "fitness", "uniform"}:
+    raise ValueError(f"settlement.weight must be capacity, fitness or uniform, got {SETTLE_WEIGHT!r}")
 #   dispersal_departure       {"form": "shared" | "age", "adult_offset_loc", "adult_offset_scale",
 #                              "crowding_arm": bool, "crowding_scale", "crowding_sharpness"}
 #                             "age" adds a logit offset to the ADULT departure probability
@@ -921,6 +927,7 @@ def build_model_2d(data, prior_scale=1.0):
         allee_exempt_years=_RELEASE_ALLEE_EXEMPT_YEARS,
         allee_relative=ALLEE_RELATIVE,
         settle_block=SETTLE_BLOCK,
+        settle_weight=SETTLE_WEIGHT,
         dispersal_adult_offset=priors['dispersal_logit_adult_offset'],
         crowding_beta=priors['dispersal_crowding_beta'], crowding_kappa=CROWDING_KAPPA,
     )

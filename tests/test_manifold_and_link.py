@@ -351,3 +351,73 @@ def test_crowding_arm_is_off_below_capacity_and_pulses_above():
     assert np.all(gain >= 0) and gain[0] < 0.05 and gain[1] < 0.2       # ~nothing well below K
     assert np.all(np.diff(gain) > 0)                                     # rises with crowding
     assert float(z[-1]) > float(z[3])                                    # U-shape: 3K departs more than K
+
+
+def _rates(shape, rng, Sa=0.55, Sj=0.4, F=6.0):
+    Sa = jnp.full(shape, Sa); Sj = jnp.full(shape, Sj); F = jnp.full(shape, F)
+    c = jnp.maximum(F * Sa * Sj / (1.0 - Sa + 1e-6) - 1.0, 0.0)
+    return Sa, Sj, F, c
+
+
+def test_fitness_settlement_nests_capacity_weighting_under_equal_rates():
+    from src.model.age_forward import fitness_settle, ideal_free_settle
+    rng = np.random.default_rng(3)
+    K = jnp.asarray(rng.uniform(0.0, 2.0, (7, 10))).at[0, :].set(0.0)
+    N1 = jnp.asarray(rng.uniform(0.0, 1.0, (7, 10)))
+    N2 = jnp.asarray(rng.uniform(0.0, 1.0, (7, 10)))
+    Sa, Sj, F, c = _rates(K.shape, rng)
+    for t in (0, 1):
+        a = fitness_settle((N1, N2), K, Sa, Sj, F, c, 3, t)
+        b = ideal_free_settle((N1, N2), K, 3, t)
+        for x, y in zip(a, b):
+            np.testing.assert_allclose(np.asarray(x), np.asarray(y), rtol=1e-5, atol=1e-9)
+        assert float(sum(x.sum() for x in a)) == pytest.approx(float(N1.sum() + N2.sum()), rel=1e-6)
+
+
+def test_fitness_settlement_leaves_poor_cells_empty_until_good_ones_crowd():
+    from src.model.age_forward import fitness_settle
+    K = jnp.ones((3, 3))
+    Sa, Sj, F, c = _rates(K.shape, None)
+    F = F.at[1, 1].set(1.0)                         # lambda0 < 1 there: a sink
+    c = jnp.maximum(F * Sa * Sj / (1.0 - Sa + 1e-6) - 1.0, 0.0)
+    N = jnp.full((3, 3), 8.0 / 9.0)                 # block total = K of the 8 good cells
+    (out,) = fitness_settle((N,), K, Sa, Sj, F, c, 3, 0)
+    out = np.asarray(out)
+    assert out[1, 1] == pytest.approx(0.0, abs=1e-6)
+    good = np.ones((3, 3), bool); good[1, 1] = False
+    np.testing.assert_allclose(out[good], 1.0, rtol=1e-4)   # w* = 1: every viable cell at K
+    # the sink's empty-cell lambda0 is ~0.82: at 1.2x the good cells still do better (lambda ~0.96)
+    # and it stays empty; at 3x they are crowded down to ~0.79 and it takes the spillover
+    (mild,) = fitness_settle((N * 1.2,), K, Sa, Sj, F, c, 3, 0)
+    assert float(np.asarray(mild)[1, 1]) == pytest.approx(0.0, abs=1e-6)
+    (crowded,) = fitness_settle((N * 3.0,), K, Sa, Sj, F, c, 3, 0)
+    assert float(np.asarray(crowded)[1, 1]) > 0.1
+
+
+def test_fitness_settlement_gradient_matches_finite_difference():
+    from jax.experimental import enable_x64
+    with enable_x64():
+        _fitness_gradient_check()
+
+
+def _fitness_gradient_check():
+    from src.model.age_forward import fitness_settle
+    rng = np.random.default_rng(4)
+    K = jnp.asarray(rng.uniform(0.2, 2.0, (6, 6)), dtype=jnp.float64)
+    N = jnp.asarray(rng.uniform(0.0, 1.0, (6, 6)), dtype=jnp.float64)
+    Sa, Sj, _, _ = _rates(K.shape, rng)
+    Sa, Sj = Sa.astype(jnp.float64), Sj.astype(jnp.float64)
+    probe = jnp.asarray(rng.uniform(0.0, 1.0, (6, 6)), dtype=jnp.float64)
+    F0 = jnp.asarray(rng.uniform(3.0, 9.0, (6, 6)), dtype=jnp.float64)
+
+    def f(scale):
+        F = F0 * scale
+        c = jnp.maximum(F * Sa * Sj / (1.0 - Sa + 1e-6) - 1.0, 0.0)
+        (out,) = fitness_settle((N,), K, Sa, Sj, F, c, 3, 0)
+        return jnp.sum(out * probe)
+
+    g = jax.grad(f)(jnp.float64(1.0))
+    h = 1e-6
+    fd = (f(1.0 + h) - f(1.0 - h)) / (2 * h)
+    assert np.isfinite(float(g))
+    assert float(g) == pytest.approx(float(fd), rel=1e-3, abs=1e-7)

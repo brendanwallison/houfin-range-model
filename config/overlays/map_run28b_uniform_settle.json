@@ -1,0 +1,45 @@
+{
+  "_comment": [
+    "run_28b = run_25 with settlement.weight = uniform (habitat-blind block mixing): CONTROL separating 'local lossless mixing' from 'habitat-directed settlement' in E008's gain.",
+    "Why: E008's K-weighted settlement flattened vital rates (fundamental lambda > 1 in 99% of cells) and moved all spatial structure into K -- K decided both how many birds fit AND where they settle (research/age_model E014)."
+  ],
+  "input_dir": "${HOUFIN_PROCESSED}/model_inputs/numpyro_input",
+  "population_model": {
+    "dispersal_random_enabled": false,
+    "manifold_prior": {
+      "form": "exchangeable",
+      "coupling_target": 0.85,
+      "coupling_logit_scale": 0.15,
+      "amplitude_scale": [
+        1.0263,
+        1.0263,
+        1.0227,
+        1.0263
+      ],
+      "fixed_coupling": 1.0
+    },
+    "habitat_centering": "occupied",
+    "capacity_level_prior": {
+      "target_level_median_route_counts": 3.0,
+      "alpha_k_scale": 1.0
+    },
+    "allee_prior": {
+      "n50_raw_loc": -3.4915,
+      "n50_raw_scale": 0.25
+    },
+    "juvenile_survival": {
+      "form": "ratio",
+      "ratio_logit_loc": 0.0,
+      "ratio_logit_scale": 0.5
+    },
+    "settlement": {
+      "form": "ideal_free",
+      "block": 3,
+      "weight": "uniform"
+    }
+  },
+  "run_names": {
+    "map": "age_map_{precision}_run_28b_new_z",
+    "vis_map": "age_map_{precision}_run_28b_new_z"
+  }
+}

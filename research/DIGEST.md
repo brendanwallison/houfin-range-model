@@ -805,3 +805,6 @@ understanding first")
   corr(H1920, H2000) ~0.1-0.3, lowest in the east and GP. 1920 habitat at a place is only weakly constrained by its
   modern habitat. The readout today assumes ~1. Extrapolation caveats apply (U 7x beyond support; random-walk span
   scaling untested).
+- E081 (other session): the sedentary breeding-change harm comes from WINTER CBC supervision itself, whether presence
+  or community-similarity, and early lists or not (-0.16 to -0.21 in the top cover tercile). Reported production
+  implication: no CBC supervision on the current breeding-season representation.

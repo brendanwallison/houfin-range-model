@@ -1,12 +1,14 @@
 # status: open | supported | weakened | ruled_out ; evidence cites ledger rows / experiment ids
 H1_front_pinning:
   claim: a strong absolute Allee effect is needed to stall fronts (Plains / edges) -- the fit's n50 ~0.28
-  status: open
-  evidence: [run_23a pushed n50 9.5 prior sds past a firm weak prior]
+  status: supported (relocated -- the EARLY EASTERN front, not the plains edge)
+  evidence: [run_23a pushed n50 9.5 prior sds past a firm weak prior, E002 n003 +757 nats; east 1966-79
+    zeros -476; dispersal shuts down to compensate (intercept -2.49)]
 H2_fill_in_speed:
   claim: fast low-density growth (lambda0 ~2) is needed for cells to fill after colonization
-  status: open
-  evidence: []
+  status: supported (demand real, but diffuse -- not concentrated just after colonization)
+  evidence: [E001 f3 +630 nats, positives -770 spread over 100-2500 km from release; largest bin
+    5-10 y after first positive]
 H3_temporal_habitat_confound:
   claim: Z's 1950-1990 trend is used to explain the invasion as habitat improvement
   status: deferred (C7)
@@ -31,16 +33,32 @@ H8_route_heterogeneity:
   claim: persistent between-route differences within a 27 km cell (route-scale habitat, observers) are
     missing from the count model; with only cell density + NB noise (conc ~0.4) the fit manufactures
     between-route spread with extreme cell fields (amplitudes 5-12, K extremes, the K switch)
-  status: open
-  evidence: [run_23a 04 calibration -- high counts heavily under-predicted (decile median fitted log1p
+  status: weakened
+  evidence: [baseline_checks on 23a -- within cell-year between-route var/mean 1-4 vs NB conc 0.4
+    implying 2-39: the NB is already MORE dispersed than route spread, it absorbs cell-year mean
+    misfit; calibration table is conditioned on observed counts (regression to the mean),
+    run_23a 04 calibration -- high counts heavily under-predicted (decile median fitted log1p
     ~2.3 at observed ~4), lows over-predicted; 08 residual map mostly over-predicted with scattered
     large under-predictions]
 H9_early_west_lag:
   claim: the fit under-predicts the long-established western population when the BBS expands west
     (1967-68), and catches up only through rising lambda over time -- feeding the century-scale habitat
     trend (H3) and the fast-growth demand (H2)
-  status: open
-  evidence: [run_23a 04 annual mean -- observed 2.3 (1968) / 4.3 (1974) vs fitted 1.0 / 2.9]
+  status: supported (and not only early)
+  evidence: [fixed 109-cell western panel: obs/fit 2.2 (1966) -> 1.3 (1990) -> 2.0 (2020); obs flat then
+    declining, fit RISING 1966-84 with the 1950-90 mean-lambda rise (02_niche_trajectory, 1.10 -> 1.30)
+    -> the west pays for the shared covariate trend (links to H3, deferred until DESK settles),
+    run_23a 04 annual mean -- observed 2.3 (1968) / 4.3 (1974) vs fitted 1.0 / 2.9]
+H10_invasion_curve_shape:
+  claim: the observed eastern invasion is more sigmoid (slower start, faster 1980s surge) than the model
+    produces with plausible demography; strong Allee + suppressed dispersal + lambda0 ~2 is the fit's
+    only way to sharpen it. Unifies H1 and H2. Alternatives that make a lag-then-surge with plausible
+    rates: density-dependent emigration, multiple/serial introductions, BBS detection change, habitat
+    trend along the invasion path (H3).
+  status: open (lead)
+  evidence: [23a obs/fit by region x era -- east .41 / 1.32 / 1.18 / .90; midwest - / 1.62 / 1.10 / .77;
+    plains .60 / .45 / .80 / .79 (persistent over-fill); E001/E002 above. Veit & Lewis 1996 (Am Nat)
+    reached an Allee effect from the same eastern curve]
 ruled_out:
   dispersal_distance: [mdd sweep 250-600 -- data hold p0*mdd^2 constant; demography unchanged]
   allee_form: [run_22 relative Allee removes Allee-dead but keeps lambda0 ~2.2]

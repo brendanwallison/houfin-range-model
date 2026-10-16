@@ -23,7 +23,7 @@ Kill / decision rules:
   targets it (fill-in -> immigration/dispersal structure; recovery -> disease form).
 - Cost diffuse: H4 -> Phase 2 looks at the count model.
 
-Results (2026-10-16, worker job 3514078; decomposition pending -- failed first time on GPU pre-allocation):
+Results (2026-10-16, worker job 3514078):
 | Fmax | dU | lambda0 | Sa | ratio | n50 |
 | free 10.9 | 0 | 2.02 | 0.54 | 0.95 | 0.28 |
 | 8 | +48 | 1.96 | 0.59 | 0.96 | 0.26 |
@@ -33,4 +33,13 @@ Interpretation so far: cost at Fmax 3 is far above the 30-nat kill threshold -> 
 growth; H7 (pure degeneracy) is not sufficient. Compensation runs through adult survival, the
 juvenile ratio pinned at its ceiling (~0.97) throughout -> lambda0 held >= 1.66 even at Fmax 3, with
 juvenile survival 0.71 (still implausible). n50 falls with Fmax, as predicted if fast growth exists
-partly to push fronts through the Allee brake (H1 coupling). WHERE the cost lands: pending.
+partly to push fronts through the Allee brake (H1 coupling). 
+WHERE the cost lands (f3 vs 23a, dll -887 = zeros -117, positives -770; prior gives back ~257):
+- DIFFUSE over positives -> no block > 60%; by km from release: 100-250 -159, 250-500 -194,
+  500-1000 -164, 1000-1500 -191, 1500-2500 -102 (i.e. the whole eastern invasion, not one front).
+- by years since first positive in cell: [5,10) -169 is the largest bin; [-10,0) -255 (cells before
+  their first positive, multi-route cells); [0,5) +7. Not the "just after colonization" H2 shape.
+- by years since disease arrival: spread -20..+25 -> H6 (recovery speed) not singled out.
+Verdict: decision rule "diffuse -> H4" fires, BUT the H8 baseline check (below/DIGEST) shows the
+count model's NB is MORE dispersed than between-route spread, so the diffuse cost is read as the
+TEMPORAL SHAPE of the invasion (H10), not as the count model.

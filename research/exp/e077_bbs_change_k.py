@@ -85,6 +85,7 @@ def main():
     ap.add_argument("--arm", required=True); ap.add_argument("--control", required=True)
     ap.add_argument("--cover", required=True); ap.add_argument("--out", required=True); ap.add_argument("--label", default="arm")
     ap.add_argument("--boot", type=int, default=1000)
+    ap.add_argument("--species-direction", action="store_true", help="E084c: add the species-level direction score")
     ap.add_argument("--species-set", choices=["dev", "comm"], default="dev",
                     help="E078b: score the community (reference) species instead of the dev species")
     ap.add_argument("--similarity", default=None,
@@ -130,6 +131,26 @@ def main():
                                                                 np.std(C["pred"][m][:, smask])),
                         "dk": ka - kc, "dk_ci95": [float(x) for x in np.percentile(dk, [2.5, 97.5])],
                         "dcorr": ca - cc, "dcorr_ci95": [float(x) for x in np.percentile(dc, [2.5, 97.5])]}
+        # E084c: species-level DIRECTION -- per species, mean observed vs mean predicted change over the stratum's
+        # cells; across species, Spearman and sign agreement; arm - control with a bootstrap over species
+        if a.species_direction:
+            from scipy.stats import spearmanr as _sp
+            sd_ = {}
+            for name, m in (("all", np.ones(len(blocks), bool)), ("cover_top", A["top"] & A["covok"])):
+                idx_s = np.where(smask)[0]
+                oa, pa = A["obs"][m][:, idx_s].mean(0), A["pred"][m][:, idx_s].mean(0)
+                oc, pc = C["obs"][m][:, idx_s].mean(0), C["pred"][m][:, idx_s].mean(0)
+                ra, rc_ = _sp(pa, oa).correlation, _sp(pc, oc).correlation
+                sa, sc = float((np.sign(pa) == np.sign(oa)).mean()), float((np.sign(pc) == np.sign(oc)).mean())
+                rs = np.random.default_rng(842)
+                bs = []
+                for _ in range(1000):
+                    b = rs.integers(0, len(idx_s), len(idx_s))
+                    bs.append(_sp(pa[b], oa[b]).correlation - _sp(pc[b], oc[b]).correlation)
+                sd_[name] = {"species": int(len(idx_s)), "spearman_arm": float(ra), "spearman_control": float(rc_),
+                             "dspearman": float(ra - rc_), "dspearman_ci95": [float(x) for x in np.nanpercentile(bs, [2.5, 97.5])],
+                             "sign_agree_arm": sa, "sign_agree_control": sc}
+            rc["species_direction"] = sd_
         res[cname] = rc
     os.makedirs(a.out, exist_ok=True)
     json.dump(res, open(os.path.join(a.out, f"e077{'b' if a.similarity else ''}{'_comm' if a.species_set == 'comm' else ''}_{a.label}.json"), "w"), indent=1)

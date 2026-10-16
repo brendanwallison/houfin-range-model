@@ -63,6 +63,8 @@ def main() -> None:
     b0 = float(np.asarray(out["dispersal_logit_intercept"][0]))
     b1 = float(np.asarray(out["dispersal_logit_slope"][0]))
     off = float(lat.get("dispersal_logit_adult_offset", 0.0))
+    bh = float(lat["dispersal_crowding_beta"]) if "dispersal_crowding_beta" in lat else 0.0
+    from src.model.age_priors import CROWDING_KAPPA as kap
     tf = float(data["dispersal_target_fraction"])
     years = np.asarray(data["years"])
 
@@ -72,8 +74,9 @@ def main() -> None:
     ok = K_d > 1e-8
     x = np.where(ok, N / np.where(ok, K_d, 1.0), 0.0)
     sig = lambda z: 1.0 / (1.0 + np.exp(-np.clip(z, -10, 10)))
-    pj = sig(b0 + b1 * (x - tf))
-    pa = sig(np.clip(b0 + b1 * (x - tf), -10, 10) + off)
+    zf = lambda v: b0 + b1 * (v - tf) + bh * np.logaddexp(0.0, kap * (v - 1.0)) / kap
+    pj = sig(zf(x))
+    pa = sig(np.clip(zf(x), -10, 10) + off)
     dep_a, dep_j = Na_d * pa, Nj_d * pj
 
     with rasterio.open(load_data_config()["grid"]["ref_raster"]) as src:
@@ -88,8 +91,9 @@ def main() -> None:
         return [float(v[o][min(np.searchsorted(c, q), v.size - 1)]) for q in qs]
 
     res = {"run_dir": a.run_dir, "intercept": b0, "slope": b1, "adult_offset": off, "target": tf,
-           "p_at_x": {f"{v:g}": {"juv": float(sig(b0 + b1 * (v - tf))),
-                                 "adult": float(sig(np.clip(b0 + b1 * (v - tf), -10, 10) + off))}
+           "crowding_beta": bh,
+           "p_at_x": {f"{v:g}": {"juv": float(sig(zf(v))),
+                                 "adult": float(sig(np.clip(zf(v), -10, 10) + off))}
                       for v in (0.0, 0.1, 0.3, 0.5, 0.8, 1.0, 1.5, 2.0, 4.0)},
            "x_quantiles_abundance_weighted": {}, "share_above_K": {}, "departures_by_band": {}}
     for rn, lo, hi in REGIONS:
@@ -113,7 +117,8 @@ def main() -> None:
     np.savez_compressed(a.out + ".npz", rows=rows, cols=cols, lon=lon,
                         x_mean=(x * N).sum(0) / wN, dep_adult=dep_a.sum(0), dep_juv=dep_j.sum(0),
                         N_mean=N.mean(0))
-    print(json.dumps({k: res[k] for k in ("intercept", "slope", "adult_offset", "share_above_K",
+    print(json.dumps({k: res[k] for k in ("intercept", "slope", "adult_offset", "crowding_beta", "p_at_x",
+                                          "share_above_K",
                                           "departures_by_band")}, indent=1))
 
 

@@ -338,3 +338,16 @@ def test_adult_departure_offset_only_moves_adults():
     np.testing.assert_allclose(ja2, ja0)
     # fewer adults leave: the adult field moves less under the shift
     assert np.abs(np.asarray(a2) - np.asarray(N_a)).sum() < np.abs(np.asarray(a0) - np.asarray(N_a)).sum()
+
+
+def test_crowding_arm_is_off_below_capacity_and_pulses_above():
+    from src.model.age_forward import departure_logit
+    x = jnp.asarray([0.0, 0.5, 0.9, 1.0, 1.5, 2.0, 3.0])
+    base = departure_logit(x, -4.5, -8.0, 0.8)
+    np.testing.assert_allclose(departure_logit(x, -4.5, -8.0, 0.8, None), base)   # None = one slope
+    np.testing.assert_allclose(departure_logit(x, -4.5, -8.0, 0.8, 0.0), base)    # beta 0 = one slope
+    z = departure_logit(x, -4.5, -8.0, 0.8, 12.0, 5.0)
+    gain = np.asarray(z - base)
+    assert np.all(gain >= 0) and gain[0] < 0.05 and gain[1] < 0.2       # ~nothing well below K
+    assert np.all(np.diff(gain) > 0)                                     # rises with crowding
+    assert float(z[-1]) > float(z[3])                                    # U-shape: 3K departs more than K

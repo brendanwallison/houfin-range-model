@@ -68,15 +68,22 @@ PINNED = {k: float(v) for k, v in dict(_POP_SPEC.get("pinned_sites", {})).items(
 #   settlement                {"form": "none" | "ideal_free", "block": cells}
 _SETTLE = dict(_POP_SPEC.get("settlement", {}))
 SETTLE_BLOCK = int(_SETTLE.get("block", 3)) if _SETTLE.get("form", "none") == "ideal_free" else 0
-#   dispersal_departure       {"form": "shared" | "age", "adult_offset_loc", "adult_offset_scale"}
+#   dispersal_departure       {"form": "shared" | "age", "adult_offset_loc", "adult_offset_scale",
+#                              "crowding_arm": bool, "crowding_scale", "crowding_sharpness"}
 #                             "age" adds a logit offset to the ADULT departure probability
 #                             (breeding dispersal) on top of the shared density-dependent curve,
 #                             so adults can be site-faithful without making juveniles so.
+#                             crowding_arm adds + beta_hi * softplus(kappa (N/K - 1)) / kappa,
+#                             beta_hi >= 0: departure pulses from cells ABOVE capacity, while the
+#                             existing free-sign slope stays the low-density arm. beta_hi = 0 is
+#                             exactly the one-slope curve. kappa (sharpness) is fixed.
 _DEPART = dict(_POP_SPEC.get("dispersal_departure", {}))
 _DEPART_FORM = _DEPART.get("form", "shared")
 if _DEPART_FORM not in {"shared", "age"}:
     raise ValueError(f"dispersal_departure.form must be shared or age, got {_DEPART_FORM!r}")
 DEPART_BY_AGE = _DEPART_FORM == "age"
+CROWDING_ARM = bool(_DEPART.get("crowding_arm", False))
+CROWDING_KAPPA = float(_DEPART.get("crowding_sharpness", 5.0))
 if _HABITAT_CENTERING not in {"none", "occupied"}:
     raise ValueError(f"habitat_centering must be none or occupied, got {_HABITAT_CENTERING!r}")
 if _MANIFOLD_FORM not in {"rank2", "exchangeable"}:
@@ -684,6 +691,12 @@ def sample_priors(prior_scale=1.0, M_features=None, time=None,
                         float(_DEPART.get("adult_offset_scale", 1.5)) * prior_scale))
     else:
         priors['dispersal_logit_adult_offset'] = 0.0
+    # Above-capacity departure pulse. Its logit gain per unit of N/K above 1 is ~beta_hi;
+    # loose half-normal (scale 4 -> a cell at 2K could send most of its birds).
+    priors['dispersal_crowding_beta'] = (numpyro.sample(
+        "dispersal_crowding_beta",
+        dist.HalfNormal(float(_DEPART.get("crowding_scale", 4.0)) * prior_scale))
+        if CROWDING_ARM else None)
     
     # Temporal Annual Noise (Maintained for dispersal probability fluctuations)
     # At sd 0.001 on the logit this moves dispersal by ~0.025%: the probe of run_18 found its
@@ -909,6 +922,7 @@ def build_model_2d(data, prior_scale=1.0):
         allee_relative=ALLEE_RELATIVE,
         settle_block=SETTLE_BLOCK,
         dispersal_adult_offset=priors['dispersal_logit_adult_offset'],
+        crowding_beta=priors['dispersal_crowding_beta'], crowding_kappa=CROWDING_KAPPA,
     )
 
     numpyro.deterministic("simulated_density", densities)

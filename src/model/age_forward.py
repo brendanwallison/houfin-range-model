@@ -64,6 +64,15 @@ def juvenile_dispersal_vectorized(
     successful_settlers = potential_settlers * Q
     return jnp.sum(successful_settlers, axis=0)
 
+def departure_logit(x, intercept, slope, target_fraction, crowding_beta=None, crowding_kappa=5.0):
+    """Departure log-odds at relative density ``x = N/K``: a free-sign linear arm, plus the optional
+    non-negative crowding arm that switches on smoothly above capacity (x > 1)."""
+    z = intercept + slope * (x - target_fraction)
+    if crowding_beta is not None:
+        z = z + crowding_beta * jnn.softplus(crowding_kappa * (x - 1.0)) / crowding_kappa
+    return z
+
+
 def dispersal_step_age_structured(
     N_a, N_j, K, 
     dispersal_logit_intercept, dispersal_logit_slope, target_fraction,
@@ -72,12 +81,17 @@ def dispersal_step_age_structured(
     Q_grid,
     eps=1e-6,
     adult_logit_offset=0.0,
+    crowding_beta=None,
+    crowding_kappa=5.0,
 ):
     """One dispersal step for both age classes, with density-dependent departure.
 
     Departure probability rises logistically with local density relative to K
     (``dispersal_logit_*``, ``target_fraction``); ``adult_logit_offset`` shifts the adult
-    curve only (breeding vs natal dispersal; 0 = shared). Adults use the single isotropic
+    curve only (breeding vs natal dispersal; 0 = shared). ``crowding_beta`` (>= 0, None = off)
+    adds the above-capacity arm ``crowding_beta * softplus(kappa*(N/K - 1)) / kappa``, so a
+    cell over K sends a pulse even when the low-density slope is negative (see
+    departure_logit). Adults use the single isotropic
     kernel; juveniles use the directional/radial stack with journey survival.
     Returns (adults after dispersal, juvenile stayers, juvenile arrivals).
     """
@@ -86,8 +100,9 @@ def dispersal_step_age_structured(
     N_total = N_a + N_j
     
     K_safe = jnp.maximum(K, eps)
-    z_total = dispersal_logit_intercept + dispersal_logit_slope * (N_total / K_safe - target_fraction)
-    z_total = clip_safe(z_total) 
+    z_total = departure_logit(N_total / K_safe, dispersal_logit_intercept, dispersal_logit_slope,
+                              target_fraction, crowding_beta, crowding_kappa)
+    z_total = clip_safe(z_total)
     p_total = jnn.sigmoid(z_total)
     p_adult = jnn.sigmoid(clip_safe(z_total + adult_logit_offset))
 
@@ -125,6 +140,8 @@ def forward_sim_age_structured(
     allee_relative=False,
     settle_block=0,
     dispersal_adult_offset=0.0,
+    crowding_beta=None,
+    crowding_kappa=5.0,
 ):
     """Run the age-structured simulation for ``time`` years.
 
@@ -217,6 +234,7 @@ def forward_sim_age_structured(
             adult_edge_correction, juvenile_edge_correction_stack,
             adult_fft_kernel, juvenile_fft_kernel_stack,
             Q_grid=Q_g, eps=1e-6, adult_logit_offset=dispersal_adult_offset,
+            crowding_beta=crowding_beta, crowding_kappa=crowding_kappa,
         )
         
         # 3b. Ideal-free settlement (settle_block > 0): within each block of cells, the

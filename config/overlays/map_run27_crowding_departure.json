@@ -1,0 +1,50 @@
+{
+  "_comment": [
+    "run_27 = run_25 (ideal-free settlement, block 3) + CROWDING DEPARTURE ARM (dispersal_departure.crowding_arm): departure logit gains beta_hi * softplus(5 (N/K - 1)) / 5, beta_hi ~ HalfNormal(4), on top of the existing free-sign slope (the low-density arm).",
+    "Why: E008/E012 -- the single slope went to -8 (sparse cells empty out) and so gave ZERO departure above K, while 20-50% of birds sit above K in established regions (51% in the post-epizootic east). A crowded patch should send pulses; the one-slope curve cannot express both ends."
+  ],
+  "input_dir": "${HOUFIN_PROCESSED}/model_inputs/numpyro_input",
+  "population_model": {
+    "dispersal_random_enabled": false,
+    "manifold_prior": {
+      "form": "exchangeable",
+      "coupling_target": 0.85,
+      "coupling_logit_scale": 0.15,
+      "amplitude_scale": [
+        1.0263,
+        1.0263,
+        1.0227,
+        1.0263
+      ],
+      "fixed_coupling": 1.0
+    },
+    "habitat_centering": "occupied",
+    "capacity_level_prior": {
+      "target_level_median_route_counts": 3.0,
+      "alpha_k_scale": 1.0
+    },
+    "allee_prior": {
+      "n50_raw_loc": -3.4915,
+      "n50_raw_scale": 0.25
+    },
+    "juvenile_survival": {
+      "form": "ratio",
+      "ratio_logit_loc": 0.0,
+      "ratio_logit_scale": 0.5
+    },
+    "settlement": {
+      "form": "ideal_free",
+      "block": 3
+    },
+    "dispersal_departure": {
+      "form": "shared",
+      "crowding_arm": true,
+      "crowding_scale": 4.0,
+      "crowding_sharpness": 5.0
+    }
+  },
+  "run_names": {
+    "map": "age_map_{precision}_run_27_new_z",
+    "vis_map": "age_map_{precision}_run_27_new_z"
+  }
+}

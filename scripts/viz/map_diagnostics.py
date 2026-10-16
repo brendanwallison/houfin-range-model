@@ -1759,6 +1759,8 @@ def simulate_no_invasion_counterfactual(sim, data, drop_disease=True):
         target_fraction=data["dispersal_target_fraction"],
         allee_relative=ALLEE_RELATIVE,
         settle_block=SETTLE_BLOCK,
+        # Absent unless dispersal_departure.form = age (then the shared curve applies).
+        dispersal_adult_offset=float(np.asarray(latents.get("dispersal_logit_adult_offset", 0.0))),
     )
     return np.asarray(jax.block_until_ready(density))
 

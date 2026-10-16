@@ -18,7 +18,8 @@ import pytest
 REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 OVERLAYS = [None, "map_run19_exchangeable.json", "map_run21_single_field.json",
             "map_run22_relative_allee.json", "map_run23a_weak_allee_juv_ratio.json",
-            "map_run24c_pin_both.json", "map_run25_ideal_free.json"]
+            "map_run24c_pin_both.json", "map_run25_ideal_free.json",
+            "map_run26_age_departure.json"]
 
 
 def synthetic_inputs(T=40, Ny=12, Nx=16, M=24, z_sd=2.0, seed=0):

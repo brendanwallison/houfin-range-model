@@ -70,12 +70,14 @@ def dispersal_step_age_structured(
     adult_edge_correction, juvenile_edge_correction_stack,
     adult_fft_kernel, juvenile_fft_kernel_stack,
     Q_grid,
-    eps=1e-6
+    eps=1e-6,
+    adult_logit_offset=0.0,
 ):
     """One dispersal step for both age classes, with density-dependent departure.
 
     Departure probability rises logistically with local density relative to K
-    (``dispersal_logit_*``, ``target_fraction``). Adults use the single isotropic
+    (``dispersal_logit_*``, ``target_fraction``); ``adult_logit_offset`` shifts the adult
+    curve only (breeding vs natal dispersal; 0 = shared). Adults use the single isotropic
     kernel; juveniles use the directional/radial stack with journey survival.
     Returns (adults after dispersal, juvenile stayers, juvenile arrivals).
     """
@@ -87,9 +89,10 @@ def dispersal_step_age_structured(
     z_total = dispersal_logit_intercept + dispersal_logit_slope * (N_total / K_safe - target_fraction)
     z_total = clip_safe(z_total) 
     p_total = jnn.sigmoid(z_total)
-    
-    adult_dispersers = N_a * p_total
-    adult_stayers = N_a * (1.0 - p_total)
+    p_adult = jnn.sigmoid(clip_safe(z_total + adult_logit_offset))
+
+    adult_dispersers = N_a * p_adult
+    adult_stayers = N_a * (1.0 - p_adult)
     adult_boosted = adult_dispersers / (adult_edge_correction + eps)
     adult_arriving = rightpad_convolution(adult_boosted, adult_fft_kernel)
     
@@ -121,6 +124,7 @@ def forward_sim_age_structured(
     allee_exempt_years=0,
     allee_relative=False,
     settle_block=0,
+    dispersal_adult_offset=0.0,
 ):
     """Run the age-structured simulation for ``time`` years.
 
@@ -212,7 +216,7 @@ def forward_sim_age_structured(
             dispersal_logit_slope, target_fraction,
             adult_edge_correction, juvenile_edge_correction_stack,
             adult_fft_kernel, juvenile_fft_kernel_stack,
-            Q_grid=Q_g, eps=1e-6
+            Q_grid=Q_g, eps=1e-6, adult_logit_offset=dispersal_adult_offset,
         )
         
         # 3b. Ideal-free settlement (settle_block > 0): within each block of cells, the

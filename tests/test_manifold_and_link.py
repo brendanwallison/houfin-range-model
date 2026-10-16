@@ -318,3 +318,23 @@ def test_ideal_free_settlement_conserves_mass_and_follows_capacity():
     r = np.asarray(out)[blk] / np.asarray(K)[blk]
     np.testing.assert_allclose(r, r.mean(), rtol=1e-6)
     assert np.asarray(out)[blk].sum() == pytest.approx(float(N[blk].sum()), rel=1e-6)
+
+
+def test_adult_departure_offset_only_moves_adults():
+    from src.model.age_forward import dispersal_step_age_structured
+    rng = np.random.default_rng(2)
+    Ny, Nx, nk = 8, 8, 2
+    N_a = jnp.asarray(rng.uniform(0.1, 1.0, (Ny, Nx)))
+    N_j = jnp.asarray(rng.uniform(0.1, 1.0, (Ny, Nx)))
+    K = jnp.ones((Ny, Nx))
+    ker = jnp.fft.fft2(jnp.zeros((2 * Ny, 2 * Nx)).at[0, 1].set(1.0))    # shift one column
+    args = (N_a, N_j, K, 0.5, -2.0, 0.8, jnp.ones((Ny, Nx)), jnp.ones((nk, Ny, Nx)),
+            ker, jnp.stack([ker] * nk), jnp.ones((nk, Ny, Nx)))
+    a0, js0, ja0 = dispersal_step_age_structured(*args)
+    a1, js1, ja1 = dispersal_step_age_structured(*args, adult_logit_offset=0.0)
+    np.testing.assert_allclose(a0, a1)                    # offset 0 == shared (default unchanged)
+    a2, js2, ja2 = dispersal_step_age_structured(*args, adult_logit_offset=-3.0)
+    np.testing.assert_allclose(js2, js0)                  # juveniles untouched
+    np.testing.assert_allclose(ja2, ja0)
+    # fewer adults leave: the adult field moves less under the shift
+    assert np.abs(np.asarray(a2) - np.asarray(N_a)).sum() < np.abs(np.asarray(a0) - np.asarray(N_a)).sum()

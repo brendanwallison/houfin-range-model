@@ -68,6 +68,15 @@ PINNED = {k: float(v) for k, v in dict(_POP_SPEC.get("pinned_sites", {})).items(
 #   settlement                {"form": "none" | "ideal_free", "block": cells}
 _SETTLE = dict(_POP_SPEC.get("settlement", {}))
 SETTLE_BLOCK = int(_SETTLE.get("block", 3)) if _SETTLE.get("form", "none") == "ideal_free" else 0
+#   dispersal_departure       {"form": "shared" | "age", "adult_offset_loc", "adult_offset_scale"}
+#                             "age" adds a logit offset to the ADULT departure probability
+#                             (breeding dispersal) on top of the shared density-dependent curve,
+#                             so adults can be site-faithful without making juveniles so.
+_DEPART = dict(_POP_SPEC.get("dispersal_departure", {}))
+_DEPART_FORM = _DEPART.get("form", "shared")
+if _DEPART_FORM not in {"shared", "age"}:
+    raise ValueError(f"dispersal_departure.form must be shared or age, got {_DEPART_FORM!r}")
+DEPART_BY_AGE = _DEPART_FORM == "age"
 if _HABITAT_CENTERING not in {"none", "occupied"}:
     raise ValueError(f"habitat_centering must be none or occupied, got {_HABITAT_CENTERING!r}")
 if _MANIFOLD_FORM not in {"rank2", "exchangeable"}:
@@ -666,6 +675,15 @@ def sample_priors(prior_scale=1.0, M_features=None, time=None,
 
     priors['dispersal_logit_intercept'] = numpyro.sample("dispersal_logit_intercept", dist.Normal(2.0, 1.0 * prior_scale))
     priors['dispersal_logit_slope'] = numpyro.sample("dispersal_logit_slope", dist.Normal(4.0, 1.0 * prior_scale))
+    # Breeding dispersal is far rarer than natal dispersal in passerines; the default loc -2
+    # puts adult departure at ~1/7 the juvenile odds, with a loose scale.
+    if DEPART_BY_AGE:
+        priors['dispersal_logit_adult_offset'] = numpyro.sample(
+            "dispersal_logit_adult_offset",
+            dist.Normal(float(_DEPART.get("adult_offset_loc", -2.0)),
+                        float(_DEPART.get("adult_offset_scale", 1.5)) * prior_scale))
+    else:
+        priors['dispersal_logit_adult_offset'] = 0.0
     
     # Temporal Annual Noise (Maintained for dispersal probability fluctuations)
     # At sd 0.001 on the logit this moves dispersal by ~0.025%: the probe of run_18 found its
@@ -890,6 +908,7 @@ def build_model_2d(data, prior_scale=1.0):
         allee_exempt_years=_RELEASE_ALLEE_EXEMPT_YEARS,
         allee_relative=ALLEE_RELATIVE,
         settle_block=SETTLE_BLOCK,
+        dispersal_adult_offset=priors['dispersal_logit_adult_offset'],
     )
 
     numpyro.deterministic("simulated_density", densities)

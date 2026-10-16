@@ -41,6 +41,12 @@ def occupied_habitat_center(meta):
     return np.asarray(meta["Z_gathered"][pairs[:, 0], pairs[:, 1]], dtype=np.float64).mean(axis=0)
 
 
+def _subcell_enabled():
+    from src.config_utils import load_age_model_config
+    spec = load_age_model_config().get("population_model", {}).get("subcell_strata") or {}
+    return bool(spec.get("enabled", False))
+
+
 def _observation_mask_spec():
     """population_model.observation_mask from the active config, or None (the default)."""
     from src.config_utils import load_age_model_config
@@ -106,6 +112,13 @@ def load_data(input_dir, target_device=None, precision="float32", verbose=True):
     # decide structurally (whether quality_conc_mult exists) without touching jnp.
     if isinstance(meta.get("obs_quality"), np.ndarray):
         meta["n_obs_quality_tiers"] = int(np.unique(meta["obs_quality"]).size)
+    if _subcell_enabled():
+        with np.load(os.path.join(input_dir, "subcell_strata.npz")) as z:
+            if not np.array_equal(np.asarray(z["years"]), np.asarray(meta["years"]).astype(int)):
+                raise ValueError("subcell_strata.npz years do not match the model inputs; rebuild it "
+                                 "(python -m src.data.preprocess.subcell_strata)")
+            meta["strata_u"] = np.asarray(z["u"], dtype=f_type_cpu)
+            meta["strata_a"] = np.asarray(z["a"], dtype=f_type_cpu)
     mask_spec = _observation_mask_spec()
     if mask_spec:
         meta["obs_weight"] = transient_observation_weight(

@@ -123,7 +123,8 @@ from src.config_utils import load_age_model_config, load_data_config
 from src.temporal import load_timeline
 from src.model.age_priors import build_model_2d
 from src.model.age_forward import forward_sim_age_structured
-from src.model.age_priors import ALLEE_RELATIVE, CROWDING_KAPPA, SETTLE_BLOCK, SETTLE_WEIGHT
+from src.model.age_priors import (ALLEE_RELATIVE, CROWDING_KAPPA, SETTLE_BLOCK, SETTLE_WEIGHT,
+                                  SUBCELL)
 from src.model.checkpoints import auto_delta_params_to_latents, load_map_params
 from src.model.data_loading import load_data
 from src.model.runtime_diagnostics import memory_snapshot, require_gpu
@@ -1761,6 +1762,10 @@ def simulate_no_invasion_counterfactual(sim, data, drop_disease=True):
         settle_block=SETTLE_BLOCK,
         settle_weight=SETTLE_WEIGHT,
         settle_tau=float(np.asarray(latents.get("settlement_tau", 0.0))),
+        strata_u=data["strata_u"] if SUBCELL else None,
+        strata_a=data["strata_a"] if SUBCELL else None,
+        subcell_beta_k=float(np.asarray(latents.get("subcell_beta_k", 0.0))),
+        subcell_delta_f=float(np.asarray(latents.get("subcell_delta_f", 0.0))),
         # Absent unless dispersal_departure.form = age (then the shared curve applies).
         dispersal_adult_offset=float(np.asarray(latents.get("dispersal_logit_adult_offset", 0.0))),
         # Absent unless dispersal_departure.crowding_arm (then None = no crowding arm).

@@ -72,6 +72,13 @@ SETTLE_BLOCK = int(_SETTLE.get("block", 3)) if _SETTLE.get("form", "none") == "i
 #                             "fitness" (equal realized lambda, Allee excluded; nests capacity
 #                             when vital rates are equal within a block) | "uniform" (control)
 SETTLE_WEIGHT = _SETTLE.get("weight", "capacity")
+#   subcell_strata            {"enabled": bool, "beta_k_scale", "delta_f_scale"}: split each cell
+#                             into within-cell urbanisation slices (data: subcell_strata.npz from
+#                             src/data/preprocess/subcell_strata.py), fitness ideal-free among them,
+#                             Allee + Beverton-Holt per slice; mean-preserving tilts of K
+#                             (subcell_beta_k) and Fmax (subcell_delta_f), both 0 = the one-slice model.
+_SUBCELL = dict(_POP_SPEC.get("subcell_strata", {}))
+SUBCELL = bool(_SUBCELL.get("enabled", False))
 #                             | "capacity_fitness" (K * lambda0^tau, tau >= 0 learned with prior
 #                             HalfNormal(settlement.tau_scale, default 2); tau = 0 is capacity)
 if SETTLE_WEIGHT not in {"capacity", "fitness", "uniform", "capacity_fitness"}:
@@ -702,6 +709,15 @@ def sample_priors(prior_scale=1.0, M_features=None, time=None,
         priors['dispersal_logit_adult_offset'] = 0.0
     # Above-capacity departure pulse. Its logit gain per unit of N/K above 1 is ~beta_hi;
     # loose half-normal (scale 4 -> a cell at 2K could send most of its birds).
+    # Within-cell urbanisation tilts (per sd of log built-up intensity). Free sign: the data say
+    # whether towns hold more capacity / higher fecundity than the countryside.
+    if SUBCELL:
+        priors['subcell_beta_k'] = numpyro.sample(
+            "subcell_beta_k", dist.Normal(0.0, float(_SUBCELL.get("beta_k_scale", 1.0)) * prior_scale))
+        priors['subcell_delta_f'] = numpyro.sample(
+            "subcell_delta_f", dist.Normal(0.0, float(_SUBCELL.get("delta_f_scale", 0.5)) * prior_scale))
+    else:
+        priors['subcell_beta_k'] = priors['subcell_delta_f'] = 0.0
     # Settlement selectivity: how strongly birds follow empty-cell fitness when settling
     # (E014: perfect fitness sorting was too strong; K-only ignores vital rates entirely).
     priors['settlement_tau'] = (numpyro.sample(
@@ -937,6 +953,9 @@ def build_model_2d(data, prior_scale=1.0):
         settle_block=SETTLE_BLOCK,
         settle_weight=SETTLE_WEIGHT,
         settle_tau=priors['settlement_tau'],
+        strata_u=data["strata_u"] if SUBCELL else None,
+        strata_a=data["strata_a"] if SUBCELL else None,
+        subcell_beta_k=priors['subcell_beta_k'], subcell_delta_f=priors['subcell_delta_f'],
         dispersal_adult_offset=priors['dispersal_logit_adult_offset'],
         crowding_beta=priors['dispersal_crowding_beta'], crowding_kappa=CROWDING_KAPPA,
     )

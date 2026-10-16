@@ -144,6 +144,10 @@ def forward_sim_age_structured(
     crowding_kappa=5.0,
     settle_weight="capacity",
     settle_tau=0.0,
+    strata_u=None,
+    strata_a=None,
+    subcell_beta_k=0.0,
+    subcell_delta_f=0.0,
 ):
     """Run the age-structured simulation for ``time`` years.
 
@@ -264,11 +268,20 @@ def forward_sim_age_structured(
         # 4. Survival & Reproduction. Release cells skip the Allee factor while
         # exempt (see allee_exempt_years in the docstring).
         allee_off = jnp.where((k >= 0) & (k < allee_exempt_years), release_mask, 0.0)
-        N_a_new, N_j_new = reproduction_age_structured(
-            N_a_post, juvenile_stayers, juvenile_arriving,
-            Sa_g, Sj_g, Fmax_g, K_g, c_g, allee_gamma, allee_off=allee_off,
-            allee_relative=allee_relative,
-        )
+        if strata_u is None:
+            N_a_new, N_j_new = reproduction_age_structured(
+                N_a_post, juvenile_stayers, juvenile_arriving,
+                Sa_g, Sj_g, Fmax_g, K_g, c_g, allee_gamma, allee_off=allee_off,
+                allee_relative=allee_relative,
+            )
+        else:
+            # within-cell urbanisation slices (population_model.subcell_strata)
+            u_g = jnp.zeros((strata_u.shape[-1], Ny, Nx), strata_u.dtype).at[
+                :, land_rows, land_cols].set(strata_u[t].T)
+            N_a_new, N_j_new = subcell_reproduction(
+                (N_a_post, juvenile_stayers, juvenile_arriving), Sa_g, Sj_g, Fmax_g, K_g,
+                allee_gamma, u_g, strata_a, subcell_beta_k, subcell_delta_f,
+                allee_off=allee_off, allee_relative=allee_relative)
             
         # 5. Mask & Final Clip
         N_a_new = jnp.maximum(N_a_new * land_mask, 0.0)
@@ -395,6 +408,78 @@ def fitness_settle(fields, K, Sa, Sj, Fmax, c, b, t, n_iter=40):
     moved = jnp.where(good[None], share[None] * fb.sum(-1, keepdims=True), fb)
     out = lax.dynamic_slice(_from_blocks(moved, b), (0, o, o), (len(fields), Ny, Nx))
     return tuple(out[i] for i in range(len(fields)))
+
+
+def subcell_reproduction(pools, Sa, Sj, Fmax, K, allee_gamma, u, a, beta_k, delta_f,
+                         allee_off=None, allee_relative=False, n_iter=40):
+    """Survival + reproduction with the cell split into S within-cell urbanisation slices.
+
+    The cell's birds are first redistributed among its slices by the fitness ideal-free rule
+    (as fitness_settle, Allee excluded), then mate-finding and Beverton-Holt act on each slice's
+    LOCAL density, and the slices are summed back to the cell. DESK's cell-level K and Fmax are
+    preserved exactly: slice s (area a_s, standardised log built-up intensity u_s) gets the
+    MEAN-PRESERVING tilts K_s = K e^{beta_k u_s} / sum_r a_r e^{beta_k u_r}, same for Fmax with
+    delta_f, so sum_s a_s K_s = K. beta_k = delta_f = 0 (or u constant, e.g. cells without BUI
+    coverage) gives every slice the cell's own rates, local density = cell density, and exactly
+    the one-slice model. With delta_f > 0 the towns have the higher empty-cell lambda, so a
+    sparse cell's birds concentrate there (high local density -> no Allee cost) and the
+    countryside fills only once the towns crowd.
+
+    ``pools``: (N_a_post, juvenile_stayers, juvenile_arrivers) cell densities (Ny, Nx);
+    ``u``: (S, Ny, Nx); ``a``: (S,). Returns (N_a_new, N_j_new) cell densities.
+    """
+    a = a[:, None, None]
+    tiny = 1e-12
+
+    def tilt(coef):
+        e = jnp.exp(coef * u)
+        return e / jnp.sum(a * e, axis=0, keepdims=True)
+
+    K_s = K[None] * tilt(beta_k)
+    F_s = Fmax[None] * tilt(delta_f)
+    Sa_ = jnp.broadcast_to(Sa, K_s.shape)
+    Sj_ = jnp.broadcast_to(Sj, K_s.shape)
+    c_s = jnp.maximum((F_s * Sa_ * Sj_) / (1.0 - Sa_ + 1e-6) - 1.0, 0.0)
+    c_f = jnp.maximum(c_s, 1e-6)
+    valid = (K_s > tiny) & (Sa_ > tiny) & (Sj_ > tiny) & (F_s > tiny)
+    Sa_v = jnp.where(valid, Sa_, 0.5)
+    Sj_v = jnp.where(valid, Sj_, 0.5)
+    F_v = jnp.where(valid, F_s, 1.0)
+    lam0 = 0.5 * (Sa_v + jnp.sqrt(Sa_v ** 2 + 4.0 * F_v * Sa_v * Sj_v))
+    M = sum(pools)                                                     # (Ny, Nx) cell density
+
+    def alloc(w):                                                      # cell-unit share per slice
+        ww = w[None]
+        Fstar = jnp.maximum(ww * (ww - Sa_v) / (Sa_v * Sj_v), tiny)
+        n = a * (K_s / c_f) * (F_v / Fstar - 1.0)
+        return jnp.where(valid & (ww < lam0) & (ww > Sa_v), jnp.maximum(n, 0.0), 0.0)
+
+    ok = valid.any(0) & (M > tiny)
+    lo0 = jnp.where(ok, jnp.max(jnp.where(valid, Sa_v, -jnp.inf), 0), 0.0)
+    hi0 = jnp.where(ok, jnp.max(jnp.where(valid, lam0, -jnp.inf), 0), 1.0)
+    Mg = lax.stop_gradient(M)
+
+    def bisect(_, lh):
+        lo, hi = lh
+        mid = 0.5 * (lo + hi)
+        over = alloc(mid).sum(0) > Mg
+        return jnp.where(over, mid, lo), jnp.where(over, hi, mid)
+
+    lo, hi = lax.fori_loop(0, n_iter, bisect, (lax.stop_gradient(lo0), lax.stop_gradient(hi0)))
+    w0 = lax.stop_gradient(0.5 * (lo + hi))
+    S0, dS = jax.jvp(lambda w: alloc(w).sum(0), (w0,), (jnp.ones_like(w0),))
+    step_ok = ok & (dS < -tiny)
+    w = jnp.where(step_ok, w0 - (S0 - M) / jnp.where(step_ok, dS, -1.0), w0)
+    n = alloc(w)
+    tot = n.sum(0, keepdims=True)
+    good = ok[None] & (tot > tiny)
+    # fallback (no birds / no capacity): uniform local density across slices
+    share = jnp.where(good, n / jnp.where(good, tot, 1.0), a)
+    local = [p[None] * share / a for p in pools]                       # slice LOCAL densities
+    Na_s, Nj_s = reproduction_age_structured(
+        local[0], local[1], local[2], Sa_, Sj_, F_s, K_s, c_s, allee_gamma,
+        allee_off=allee_off, allee_relative=allee_relative)
+    return jnp.sum(a * Na_s, axis=0), jnp.sum(a * Nj_s, axis=0)
 
 
 # Below this capacity (density units; ~2e-7 route counts) N/K is not computed.

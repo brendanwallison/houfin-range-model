@@ -22,7 +22,8 @@ OVERLAYS = [None, "map_run19_exchangeable.json", "map_run21_single_field.json",
             "map_run26_age_departure.json",
             "map_run27_crowding_departure.json",
             "map_run28a_fitness_settle.json", "map_run28b_uniform_settle.json",
-            "map_run28c_capacity_fitness_settle.json"]
+            "map_run28c_capacity_fitness_settle.json",
+            "map_run29_subcell_strata.json"]
 
 
 def synthetic_inputs(T=40, Ny=12, Nx=16, M=24, z_sd=2.0, seed=0):
@@ -58,7 +59,12 @@ def synthetic_inputs(T=40, Ny=12, Nx=16, M=24, z_sd=2.0, seed=0):
         obs_quality=(rng.random(nobs) < 0.1).astype(np.int64),
         z_kernel_contract={"kernel": "ruzicka", "centered": False, "feature_prior": "isotropic",
                            "latent_dim": M, "source_latent_dim": 64, "truncation": "top_eigenfeatures"},
-        age_structure_prior={"alpha": 1.01, "beta": 1.01, "effective_sites": 100.0})
+        age_structure_prior={"alpha": 1.01, "beta": 1.01, "effective_sites": 100.0},
+        # within-cell urbanisation slices (only read when population_model.subcell_strata is on);
+        # the last 3 cells uncovered (u = 0 in every slice), as outside BUI's CONUS footprint
+        strata_u=np.concatenate([np.sort(rng.normal(0, 1, (T, n - 3, 6)), axis=-1),
+                                 np.zeros((T, 3, 6))], axis=1).astype(np.float32),
+        strata_a=np.array([0.15, 0.225, 0.25, 0.2, 0.12, 0.055]))
     meta["n_obs_quality_tiers"] = int(np.unique(meta["obs_quality"]).size)
     meta["habitat_center_occupied"] = occupied_habitat_center(meta)
     return {k: (jnp.asarray(v) if isinstance(v, np.ndarray) else v) for k, v in meta.items()}

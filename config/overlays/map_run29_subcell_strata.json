@@ -1,0 +1,49 @@
+{
+  "_comment": [
+    "run_29 = run_25 (block-3 settlement) + SUB-CELL URBANISATION STRATA (population_model.subcell_strata): each 27 km cell is split into 6 within-cell built-up-intensity slices (HISDAC-US BUI quantiles, CONUS only; subcell_strata.npz), the cell's birds are redistributed among them each year by the fitness ideal-free rule, and the Allee factor and Beverton-Holt act per slice on LOCAL density. Mean-preserving tilts of K (subcell_beta_k ~ N(0,1)) and Fmax (subcell_delta_f ~ N(0,0.5)) per sd of log BUI; both 0 = run_25.",
+    "Why (user, 2026-10-16): coarse dispersal + ideal rearrangement among fine pixels; early colonists cluster in towns, bypassing the cell-mean Allee effect -- at the release AND along the front. Targets the strong Allee, the sparse-cell exodus and lambda0 ~2 together (research/age_model E017)."
+  ],
+  "input_dir": "${HOUFIN_PROCESSED}/model_inputs/numpyro_input",
+  "population_model": {
+    "dispersal_random_enabled": false,
+    "manifold_prior": {
+      "form": "exchangeable",
+      "coupling_target": 0.85,
+      "coupling_logit_scale": 0.15,
+      "amplitude_scale": [
+        1.0263,
+        1.0263,
+        1.0227,
+        1.0263
+      ],
+      "fixed_coupling": 1.0
+    },
+    "habitat_centering": "occupied",
+    "capacity_level_prior": {
+      "target_level_median_route_counts": 3.0,
+      "alpha_k_scale": 1.0
+    },
+    "allee_prior": {
+      "n50_raw_loc": -3.4915,
+      "n50_raw_scale": 0.25
+    },
+    "juvenile_survival": {
+      "form": "ratio",
+      "ratio_logit_loc": 0.0,
+      "ratio_logit_scale": 0.5
+    },
+    "settlement": {
+      "form": "ideal_free",
+      "block": 3
+    },
+    "subcell_strata": {
+      "enabled": true,
+      "beta_k_scale": 1.0,
+      "delta_f_scale": 0.5
+    }
+  },
+  "run_names": {
+    "map": "age_map_{precision}_run_29_new_z",
+    "vis_map": "age_map_{precision}_run_29_new_z"
+  }
+}

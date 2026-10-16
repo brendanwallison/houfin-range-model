@@ -436,3 +436,53 @@ def test_transient_mask_drops_arrivals_and_keeps_left_censored_cells():
     a, b = w[:34], w[34:]
     assert np.all(a[(years >= 1975) & (years <= 1985)] == 0) and np.all(a[(years < 1975) | (years > 1985)] == 1)
     assert np.all(b == 1)
+
+
+def _subcell_case(seed=5, S=6, Ny=4, Nx=5, scale=1.0):
+    rng = np.random.default_rng(seed)
+    pools = tuple(jnp.asarray(rng.uniform(0.0, 0.3, (Ny, Nx)) * scale) for _ in range(3))
+    Sa = jnp.asarray(rng.uniform(0.4, 0.6, (Ny, Nx))); Sj = Sa * 0.6
+    F = jnp.asarray(rng.uniform(3.0, 9.0, (Ny, Nx))); K = jnp.asarray(rng.uniform(0.5, 2.0, (Ny, Nx)))
+    u = jnp.asarray(np.sort(rng.normal(0, 1, (S, Ny, Nx)), axis=0))
+    a = jnp.asarray([0.15, 0.225, 0.25, 0.2, 0.12, 0.055])
+    return pools, Sa, Sj, F, K, u, a
+
+
+def test_subcell_reproduction_nests_the_one_slice_model():
+    from src.model.age_forward import reproduction_age_structured, subcell_reproduction
+    pools, Sa, Sj, F, K, u, a = _subcell_case()
+    c = jnp.maximum(F * Sa * Sj / (1.0 - Sa + 1e-6) - 1.0, 0.0)
+    ref = reproduction_age_structured(*pools, Sa, Sj, F, K, c, 3.0)
+    for bk, df, uu in ((0.0, 0.0, u), (1.5, 0.8, jnp.zeros_like(u))):   # no tilt / homogeneous cell
+        out = subcell_reproduction(pools, Sa, Sj, F, K, 3.0, uu, a, bk, df)
+        for x, y in zip(out, ref):
+            np.testing.assert_allclose(np.asarray(x), np.asarray(y), rtol=2e-5, atol=1e-9)
+
+
+def test_subcell_clustering_relieves_the_allee_cost_in_sparse_cells():
+    from src.model.age_forward import reproduction_age_structured, subcell_reproduction
+    pools, Sa, Sj, F, K, u, a = _subcell_case(scale=0.05)                # sparse cells
+    c = jnp.maximum(F * Sa * Sj / (1.0 - Sa + 1e-6) - 1.0, 0.0)
+    gamma = 20.0                                                         # strong mate-finding limit
+    _, j_one = reproduction_age_structured(*pools, Sa, Sj, F, K, c, gamma)
+    _, j_sub = subcell_reproduction(pools, Sa, Sj, F, K, gamma, u, a, 1.0, 0.5)
+    assert float(j_sub.sum()) > 1.2 * float(j_one.sum())                 # clustered birds breed more
+
+
+def test_subcell_gradient_matches_finite_difference():
+    from jax.experimental import enable_x64
+    from src.model.age_forward import subcell_reproduction
+    with enable_x64():
+        pools, Sa, Sj, F, K, u, a = _subcell_case()
+        cast = lambda x: jnp.asarray(x, jnp.float64)
+        pools = tuple(cast(p) for p in pools); Sa, Sj, F, K, u, a = map(cast, (Sa, Sj, F, K, u, a))
+
+        def f(th):
+            na, nj = subcell_reproduction(pools, Sa, Sj, F, K, 3.0, u, a, th[0], th[1])
+            return jnp.sum(na) + 2.0 * jnp.sum(nj)
+
+        th = jnp.asarray([0.7, 0.3])
+        g = np.asarray(jax.grad(f)(th))
+        h = 1e-6
+        fd = [(f(th.at[i].add(h)) - f(th.at[i].add(-h))) / (2 * h) for i in range(2)]
+        np.testing.assert_allclose(g, np.asarray(fd), rtol=1e-4, atol=1e-8)

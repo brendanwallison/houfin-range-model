@@ -80,28 +80,40 @@ def groups(d: dict) -> dict:
     return res
 
 
+def _evaluate(run_dir, config, out):
+    """Evaluate one point in its OWN process: the model reads its config at import, and JAX
+    pre-allocates ~75% of GPU memory per process -- so a parent that evaluated A itself left too
+    little for B's child (TACC E001 f8). Pre-allocation is off here; the parent does no GPU work."""
+    env = dict(os.environ, XLA_PYTHON_CLIENT_PREALLOCATE="false")
+    if config:
+        env["AGE_MODEL_CONFIG"] = config
+    subprocess.run([sys.executable, __file__, "--single", "--run-dir", run_dir, "--out", out],
+                   env=env, check=True)
+    return json.load(open(os.path.join(out, "loglik.json")))["A"]
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--run-dir", required=True)
     ap.add_argument("--compare", default=None)
     ap.add_argument("--compare-config", default=None, help="AGE_MODEL_CONFIG for --compare (default: same)")
     ap.add_argument("--out", required=True)
+    ap.add_argument("--single", action="store_true", help=argparse.SUPPRESS)
     args = ap.parse_args()
     os.makedirs(args.out, exist_ok=True)
-    d = per_observation(args.run_dir)
-    np.savez(os.path.join(args.out, "per_obs_A.npz"), **{k: v for k, v in d.items() if k != "pinned"})
-    report = {"A": {"run_dir": args.run_dir, "config": os.environ.get("AGE_MODEL_CONFIG"), **groups(d)}}
+    if args.single:
+        d = per_observation(args.run_dir)
+        np.savez(os.path.join(args.out, "per_obs_A.npz"), **{k: v for k, v in d.items() if k != "pinned"})
+        json.dump({"A": {"run_dir": args.run_dir, "config": os.environ.get("AGE_MODEL_CONFIG"), **groups(d)}},
+                  open(os.path.join(args.out, "loglik.json"), "w"), indent=1)
+        return
+    a = _evaluate(args.run_dir, None, args.out)
+    report = {"A": a}
     if args.compare:
-        env = dict(os.environ)
-        if args.compare_config:
-            env["AGE_MODEL_CONFIG"] = args.compare_config
-        sub = os.path.join(args.out, "B")
-        subprocess.run([sys.executable, __file__, "--run-dir", args.compare, "--out", sub], env=env, check=True)
-        b = json.load(open(os.path.join(sub, "loglik.json")))["A"]
+        b = _evaluate(args.compare, args.compare_config, os.path.join(args.out, "B"))
         report["B"] = b
-        delta = {k: {"dll": b["by"][k]["ll"] - report["A"]["by"][k]["ll"], "n": b["by"][k]["n"]}
-                 for k in report["A"]["by"]}
-        report["delta_B_minus_A"] = {"total": b["total"] - report["A"]["total"],
+        delta = {k: {"dll": b["by"][k]["ll"] - a["by"][k]["ll"], "n": b["by"][k]["n"]} for k in a["by"]}
+        report["delta_B_minus_A"] = {"total": b["total"] - a["total"],
                                      "by": dict(sorted(delta.items(), key=lambda kv: kv[1]["dll"]))}
     json.dump(report, open(os.path.join(args.out, "loglik.json"), "w"), indent=1)
     print(json.dumps({"A_total": report["A"]["total"],

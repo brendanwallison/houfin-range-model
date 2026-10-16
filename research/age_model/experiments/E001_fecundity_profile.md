@@ -23,4 +23,14 @@ Kill / decision rules:
   targets it (fill-in -> immigration/dispersal structure; recovery -> disease form).
 - Cost diffuse: H4 -> Phase 2 looks at the count model.
 
-Results / interpretation: (to be filled)
+Results (2026-10-16, worker job 3514078; decomposition pending -- failed first time on GPU pre-allocation):
+| Fmax | dU | lambda0 | Sa | ratio | n50 |
+| free 10.9 | 0 | 2.02 | 0.54 | 0.95 | 0.28 |
+| 8 | +48 | 1.96 | 0.59 | 0.96 | 0.26 |
+| 5 | +252 | 1.84 | 0.67 | 0.97 | 0.22 |
+| 3 | +630 | 1.66 | 0.73 | 0.97 | 0.18 |
+Interpretation so far: cost at Fmax 3 is far above the 30-nat kill threshold -> the data DEMAND fast
+growth; H7 (pure degeneracy) is not sufficient. Compensation runs through adult survival, the
+juvenile ratio pinned at its ceiling (~0.97) throughout -> lambda0 held >= 1.66 even at Fmax 3, with
+juvenile survival 0.71 (still implausible). n50 falls with Fmax, as predicted if fast growth exists
+partly to push fronts through the Allee brake (H1 coupling). WHERE the cost lands: pending.

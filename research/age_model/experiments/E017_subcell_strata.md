@@ -31,3 +31,12 @@ so the gradient at beta = delta = 0 is identically zero -- the nested model is a
 the question is second order. Third attempt: start off zero via HOUFIN_REFINE_INIT --
 s_ifd3c (beta_k 0.5, delta_f 0.3), s_ifd3d (beta_k -0.5, delta_f 0.3), s_onlyc (0.5, 0.3),
 s_ifd3_ex0 (0.5, 0.3). Compare U against ifd3 197642.1 / 23a 199370.9.
+
+Off-zero starts (2026-10-16):
+| variant | start (bk, df) | U | dU vs ifd3 | end bk | end df |
+| s_ifd3c | (0.5, 0.3) | 197674.9 | +33 | 0.40 | 0.00 |
+| s_ifd3d | (-0.5, 0.3) | 197637.5 | -5 | -0.04 | 0.00 |
+Reading: from both sides the fecundity tilt goes to 0 and the K tilt to ~0 (the +0.4 start stalls in a
+worse basin). Within-cell BUI clustering is NOT wanted: the fit keeps the cell-mean Allee brake for the
+early eastern front, and clustering (which relieves mate-finding) works against that brake.
+H_cluster (as built: BUI slices, fitness IFD, mean-preserving tilts) -> not supported.

@@ -16,3 +16,11 @@ colonists clear mate-finding locally) and the sparse-cell exodus slope relaxes t
 falls (town slices fill fast, cell totals slower); gain concentrated in the eastern transient
 (+-10 y of first positive, 250-1500 km from release). Null: tilts ~0, nothing moves -> within-cell
 urbanisation is not the missing structure (then F2 detection lag is the main bet).
+
+First runs (2026-10-16) -- VOID as tests of the idea: new sites took init_to_value's random-uniform
+fallback, so the refines began at U ~2.3e6 and stopped in worse basins than the models they nest:
+s_ifd3 U 197729.0 (+87 vs ifd3; beta_k -1.37, delta_f 0.14), s_only 199338.6 (-32 vs 23a; beta_k -0.10,
+delta_f 0.10). Fixed: missing warm-start sites now start at their prior mean (hmc_common.
+init_values_else_mean) -- 0 for both tilts, i.e. exactly the nested model. Re-run as s_ifd3b / s_onlyb.
+Caveat carried to E012/E013/E015 (adult offset, crowding beta, tau): same random init, but those
+ended near their nested values with small gains, so they are less suspect; re-run if they matter.

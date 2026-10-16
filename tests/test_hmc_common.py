@@ -379,3 +379,20 @@ def test_barrier_crossing_departure_without_dispersal_random():
     lat = {"dispersal_logit_intercept": 1.0, "dispersal_logit_slope": 2.0}
     with_zeros = p0({**lat, "dispersal_random": np.zeros(10)}, target_fraction=0.8)
     assert p0(lat, target_fraction=0.8) == pytest.approx(with_zeros)
+
+
+def test_warm_start_initializes_new_sites_at_prior_mean():
+    import numpyro
+    import numpyro.distributions as dist
+    from src.model import hmc_common as hc
+
+    def model(data=None):
+        numpyro.sample("old", dist.Normal(0.0, 1.0))
+        numpyro.sample("new_tilt", dist.Normal(0.0, 1.0))
+        numpyro.sample("new_rate", dist.HalfNormal(2.0))
+
+    z, _, post = hc.potential_with_args(model, {"data": None}, init_values={"old": jnp.asarray(1.7)})
+    v = post(z, {"data": None})
+    assert float(v["old"]) == pytest.approx(1.7, rel=1e-6)
+    assert float(v["new_tilt"]) == pytest.approx(0.0, abs=1e-6)          # nested value, not random
+    assert float(v["new_rate"]) == pytest.approx(2.0 * np.sqrt(2 / np.pi), rel=1e-4)

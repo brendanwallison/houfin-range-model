@@ -35,7 +35,8 @@ if MAP_PRECISION not in {"float32", "float64"}:
 import numpyro                                                     # noqa: E402
 from numpyro.handlers import block                                 # noqa: E402
 from numpyro.infer import MCMC                                     # noqa: E402
-from numpyro.infer.initialization import init_to_value             # noqa: E402
+from functools import partial                                       # noqa: E402
+from numpyro.infer.initialization import init_to_mean, init_to_value             # noqa: E402
 from numpyro.infer.util import initialize_model                    # noqa: E402
 from jax.flatten_util import ravel_pytree                          # noqa: E402
 
@@ -237,6 +238,23 @@ def hide_deterministics(model):
     return blocked
 
 
+def init_values_else_mean(site=None, values=None):
+    """init_to_value for the sites in ``values``; the PRIOR MEAN for any site not in them.
+
+    A warm start from a point fitted without a newly added site (a research variant's new
+    parameter) would otherwise take init_to_value's fallback, init_to_uniform -- a random
+    unconstrained draw in (-2, 2). For a tilt whose nested value is 0 that starts the refine
+    far from the nested model (E017's first runs began at U ~2.3e6 and stopped in a worse
+    basin than the model they nest). The prior mean is the nested value for the zero-centred
+    additions and a deterministic, sensible start for the rest.
+    """
+    if site is None:
+        return partial(init_values_else_mean, values=values)
+    if site["type"] == "sample" and not site["is_observed"] and site["name"] in (values or {}):
+        return values[site["name"]]
+    return init_to_mean(site)
+
+
 def potential_with_args(model, kwargs: dict, init_values=None, rng_seed=0):
     """(z, potential(z, kwargs), postprocess(z, kwargs)): model kwargs as an ARGUMENT.
 
@@ -245,7 +263,7 @@ def potential_with_args(model, kwargs: dict, init_values=None, rng_seed=0):
     Jit ``potential`` with the kwargs passed in, never closed over -- closed-over data
     is compiled in as constants (see split_data).
     """
-    strategy = init_to_value(values=init_values) if init_values is not None else None
+    strategy = init_values_else_mean(values=init_values) if init_values is not None else None
     kw = {} if strategy is None else {"init_strategy": strategy}
     info = initialize_model(jax.random.PRNGKey(rng_seed), model, model_kwargs=kwargs,
                             dynamic_args=True, **kw)
@@ -268,7 +286,7 @@ def unconstrained_setup(model, data, init_values=None, rng_seed=0, kwargs=None):
     ``kwargs`` instead of the default ``{"data": data, "prior_scale": 1}`` for an
     ``array_model``.
     """
-    strategy = init_to_value(values=init_values) if init_values is not None else None
+    strategy = init_values_else_mean(values=init_values) if init_values is not None else None
     kw = {} if strategy is None else {"init_strategy": strategy}
     info = initialize_model(
         jax.random.PRNGKey(rng_seed), model,

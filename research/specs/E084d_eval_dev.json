@@ -1,0 +1,24 @@
+{
+ "exp": "E084",
+ "name": "e084d-eval-dev",
+ "group": "gpu",
+ "after_jobs": [
+  "E084/desk-t1995-s3-full-s4both",
+  "E084/desk-t1995-s4-full-s4both",
+  "E084/desk-t1985-s1-full-s4both",
+  "E084/desk-t1985-s2-full-s4both"
+ ],
+ "overlay": "research/overlays/desk_tempho_1995_seed1.json",
+ "cmd": [
+  "bash",
+  "-c",
+  "set -e; export BLR_DEVICE=cuda BLR_MAX_ITER=100 BLR_STARTS=0.5 SCORE_TARGETS=dev; bash research/bin/fill_esk.sh {cache}/desk_tempho_1995_s1 {cache}/desk_tempho_1995_s3_full_s4both_late; bash research/bin/score_both.sh {python} {out}/both_s3_t1995_late --cache {cache}/desk_tempho_1995_s3_full_s4both_late --ref-cache {cache}/desk_tempho_1995_s1_late; bash research/bin/fill_esk.sh {cache}/desk_tempho_1995_s1 {cache}/desk_tempho_1995_s4_full_s4both_late; bash research/bin/score_both.sh {python} {out}/both_s4_t1995_late --cache {cache}/desk_tempho_1995_s4_full_s4both_late --ref-cache {cache}/desk_tempho_1995_s1_late; bash research/bin/fill_esk.sh {cache}/desk_tempho_1985_s1 {cache}/desk_tempho_1985_s1_full_s4both_late; bash research/bin/score_both.sh {python} {out}/both_s1_t1985_late --cache {cache}/desk_tempho_1985_s1_full_s4both_late; bash research/bin/fill_esk.sh {cache}/desk_tempho_1985_s1 {cache}/desk_tempho_1985_s2_full_s4both_late; bash research/bin/score_both.sh {python} {out}/both_s2_t1985_late --cache {cache}/desk_tempho_1985_s2_full_s4both_late --ref-cache {cache}/desk_tempho_1985_s1_late; {python} research/exp/species_strata.py --similarity /home/breallis/houfin/work/houfin/research/E059/species-strata-066f943afb0e/species_similarity.csv --runs {out}/both_s3_t1995_late /home/breallis/houfin/work/houfin/research/E059/sedentary-verify-a63962b77659/s3_t1995_late {out}/both_s4_t1995_late /home/breallis/houfin/work/houfin/research/E059/sedentary-verify-a63962b77659/s4_t1995_late {out}/both_s1_t1985_late /home/breallis/houfin/work/houfin/research/E059/sedentary-verify-a63962b77659/s1_t1985_late {out}/both_s2_t1985_late /home/breallis/houfin/work/houfin/research/E059/sedentary-verify-a63962b77659/s2_t1985_late --level --contrast both_s3_t1995_late:s3_t1995_late --contrast both_s4_t1995_late:s4_t1995_late --contrast both_s1_t1985_late:s1_t1985_late --contrast both_s2_t1985_late:s2_t1985_late --out {out}/strata.json"
+ ],
+ "expected_minutes": 120,
+ "summarize": [
+  "bash",
+  "-c",
+  "head -c 4000 {out}/strata.json"
+ ],
+ "note": "E084d: standard dev yardstick with strata"
+}

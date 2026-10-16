@@ -3014,6 +3014,49 @@ def test_aux_head_trains_logs_and_resumes(tmp_path):
     print("aux head: in the loss, logged, checkpointed, restored on resume")
 
 
+def test_metric_heads_and_learned_presence(tmp_path):
+    """E084: metric heads (own Ruzicka contract per source) train, log and ride in the checkpoint; the presence term's
+    learned readout (learned_head) gets trainable W, b."""
+    import contextlib
+    import io
+    import json as _json
+
+    from src.community_encoder.train_DESK import desk_training as D
+
+    sch = _schema()
+    dims = [s["dim"] for s in sch["streams"]]
+    T, H, W, L, S, N = 4, 6, 7, 16, 5, 40
+    rng = np.random.default_rng(12)
+    cov = rng.normal(size=(T, H, W, sch["total_dim"])).astype("float32")
+    m = np.ones((H, W), bool)
+    years = list(range(2022, 2026))
+    tgt = {y: (rng.normal(size=(H, W, L)).astype("float32"), m, m,
+               np.ones((H, W), dtype="float32")) for y in years[1:]}
+    heads = [{"t_idx": rng.integers(0, T, N), "row": rng.integers(0, H, N), "col": rng.integers(0, W, N),
+              "X": rng.gamma(1.0, 2.0, size=(N, S)).astype("float32"), "weight": 1.0, "dim": 6, "pairs": 64,
+              "label": lab} for lab in ("toy_cbc", "toy_ebird")]
+    P = (rng.random((N, S)) < 0.4).astype("float32"); P[:, 0] = 1.0
+    pres = {"t_idx": rng.integers(0, T, N), "row": rng.integers(0, H, N), "col": rng.integers(0, W, N), "P": P,
+            "W": rng.normal(size=(L, S)).astype("float32"), "b": np.zeros(S, "float32"), "weight": 0.5,
+            "label": "toy_pres", "learned_head": True}
+    traj = tmp_path / "traj.jsonl"; ck = tmp_path / "ck.pt"
+    args = (cov, np.ones((T, H, W), bool), years, tgt,
+            _metric_dict(rng.random((H, W, 9)).astype("float32"), m, years), m, m, dims)
+    out = io.StringIO()
+    with contextlib.redirect_stdout(out):
+        D.train_model_ema(*args, latent_dim=L, ema_cfg={"earlystop_warmup": 0}, spatial_kernel=3, schema=sch,
+                          dropout=0.1, trajectory_path=str(traj), checkpoint_path=str(ck), checkpoint_every=1,
+                          metric_heads=heads, presence_targets=pres, epochs=3, stop_at_epoch=2)
+    txt = out.getvalue()
+    assert "METRIC HEAD 'toy_cbc'" in txt and "metric head 'toy_ebird' mse" in txt, txt
+    rows = [_json.loads(l) for l in open(traj)]
+    assert rows and all(np.isfinite(r["loss_mhead_toy_cbc"]) for r in rows), rows
+    done = str(ck) + ".completed"
+    state = torch.load(done if os.path.exists(done) else ck, map_location="cpu", weights_only=False)
+    assert len(state["metric_heads"]) == 2 and state["metric_heads"][0]["weight"].shape == (6, L)
+    assert state["presence"]["W"].shape == (L, S)
+
+
 def test_ruzicka_term_trains_and_logs(tmp_path):
     """E081: the CBC Ruzicka term (fixed calibration, random pairs) enters the loss and is logged per evaluated epoch."""
     import contextlib

@@ -770,6 +770,7 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
                     aux_targets=None,
                     presence_targets=None,
                     ruzicka_targets=None,
+                    metric_heads=None,
                     _skip_target_conversion=False):
     """Train DESK with a learned output-EMA.
 
@@ -884,6 +885,11 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
                 "w": float(_pt["weight"]), "label": str(_pt.get("label", "presence"))}
         pres_mod = torch.nn.Module()
         pres_mod.delta = torch.nn.Parameter(torch.zeros(pres["P"].shape[1], device=device))
+        # E084 S5: a LEARNED readout (initialised at the fixed one) instead of the fixed W, b
+        if bool(_pt.get("learned_head", False)):
+            pres_mod.W = torch.nn.Parameter(pres["W"].clone())
+            pres_mod.b = torch.nn.Parameter(pres["b"].clone())
+            pres["learned"] = True
         # E078: optional per-list sampling-completeness covariate with a learned SPECIES-SPECIFIC slope, so composition
         # shifts that follow list completeness (abundance-dependent detection) are absorbed here, not by z
         if _pt.get("comp") is not None:
@@ -908,11 +914,29 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
         print(f"[desk] RUZICKA term '{ruzt['label']}': {int(ruzt['X'].shape[0]):,} CBC cell-years, "
               f"{int(ruzt['X'].shape[1])} species, dot ~ {ruzt['a']:+.3f} + {ruzt['b']:.3f} x Ruzicka, "
               f"{ruzt['pairs']} pairs/step, weight {ruzt['w']:g}", flush=True)
+    # Research (E084): METRIC HEADS -- a linear map H (latent -> d) per source with its OWN similarity contract,
+    # dot(H z_i, H z_j) ~ Ruzicka(log1p X_i, log1p X_j) over pairs of that source's points (random pairs per full-grid
+    # step). Winter (CBC) or eBird structure lives in the head's space, not in z's own geometry. Off by default.
+    mheads, mh_mods = [], []
+    for _mh in (metric_heads or []):
+        if int(n_spatial_tiles) > 1:
+            raise ValueError("metric_heads are implemented for full-grid steps only (spatial_tiles 1)")
+        mh_mods.append(torch.nn.Linear(int(latent_dim), int(_mh.get("dim", 24)), bias=False).to(device))
+        mheads.append({"t": torch.as_tensor(np.asarray(_mh["t_idx"]), device=device, dtype=torch.long),
+                       "r": torch.as_tensor(np.asarray(_mh["row"]), device=device, dtype=torch.long),
+                       "c": torch.as_tensor(np.asarray(_mh["col"]), device=device, dtype=torch.long),
+                       "X": torch.log1p(torch.as_tensor(np.asarray(_mh["X"]), device=device, dtype=torch.float32)),
+                       "w": float(_mh["weight"]), "pairs": int(_mh.get("pairs", 4096)),
+                       "label": str(_mh.get("label", f"head{len(mheads)}"))})
+        print(f"[desk] METRIC HEAD '{mheads[-1]['label']}': linear {latent_dim} -> {int(_mh.get('dim', 24))}, "
+              f"{int(mheads[-1]['X'].shape[0]):,} points, {int(mheads[-1]['X'].shape[1])} species, weight "
+              f"{mheads[-1]['w']:g}", flush=True)
     params = list(model.parameters()) + list(ema.parameters()) + \
         [p for h in aux_heads for p in h.parameters()] + \
-        (list(pres_mod.parameters()) if pres_mod is not None else [])
-    opt = torch.optim.AdamW(_param_groups([model, ema] + aux_heads + ([pres_mod] if pres_mod is not None else []),
-                                          weight_decay), lr=lr)
+        (list(pres_mod.parameters()) if pres_mod is not None else []) + \
+        [p for m_ in mh_mods for p in m_.parameters()]
+    opt = torch.optim.AdamW(_param_groups([model, ema] + aux_heads + ([pres_mod] if pres_mod is not None else [])
+                                          + mh_mods, weight_decay), lr=lr)
     sched = torch.optim.lr_scheduler.LambdaLR(
         opt, _warmup_cosine(epochs, warmup_epochs, min_lr_frac))
     # Early training is unstable (the metric loss can transiently spike), so clip the global
@@ -1645,6 +1669,11 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
                                "n_lists": int(pres["P"].shape[0]), "n_records": int(pres["P"].sum())}
         if "comp" in pres:
             _ck_key["presence"]["completeness_slopes"] = True
+        if pres.get("learned"):
+            _ck_key["presence"]["learned_head"] = True
+    if mheads:   # only when on
+        _ck_key["metric_heads"] = [{"label": h["label"], "weight": h["w"], "n": int(h["X"].shape[0]),
+                                    "pairs": h["pairs"], "dim": int(m_.out_features)} for h, m_ in zip(mheads, mh_mods)]
     if ruzt is not None:   # only when on
         _ck_key["ruzicka"] = {"label": ruzt["label"], "weight": ruzt["w"], "a": ruzt["a"], "b": ruzt["b"],
                               "n": int(ruzt["X"].shape[0]), "pairs": ruzt["pairs"]}
@@ -1664,6 +1693,8 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
                 _h.load_state_dict(_sd)
             if pres_mod is not None and "presence" in _ck:
                 pres_mod.load_state_dict(_ck["presence"])
+            for _m, _sd in zip(mh_mods, _ck.get("metric_heads", [])):
+                _m.load_state_dict(_sd)
             opt.load_state_dict(_ck["opt"])
             sched.load_state_dict(_ck["sched"])
             best_val, best, bad, nonfinite = (_ck["best_val"], _ck["best"], _ck["bad"],
@@ -1694,6 +1725,8 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
             state["aux_heads"] = [h.state_dict() for h in aux_heads]
         if pres_mod is not None:
             state["presence"] = pres_mod.state_dict()
+        if mh_mods:
+            state["metric_heads"] = [m_.state_dict() for m_ in mh_mods]
         tmp = checkpoint_path + ".tmp"
         torch.save(state, tmp)
         os.replace(tmp, checkpoint_path)          # atomic: a kill mid-save leaves the old one
@@ -1780,6 +1813,7 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
         loss_aux = None
         loss_pres = None
         loss_ruz = None
+        loss_mh = None
         if ep == start_ep:
             _t_first = time.perf_counter()
         if device == "cuda":
@@ -1963,7 +1997,10 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
                     loss_aux.append(torch.mean((_pa - _a["Y"][_a["m"]]) ** 2))
                     loss = loss + _a["w"] * loss_aux[-1]
             if pres is not None:
-                _eta = z_ema[pres["t"], pres["r"], pres["c"]] @ pres["W"] + pres["b"] + pres_mod.delta
+                if pres.get("learned"):
+                    _eta = z_ema[pres["t"], pres["r"], pres["c"]] @ pres_mod.W + pres_mod.b + pres_mod.delta
+                else:
+                    _eta = z_ema[pres["t"], pres["r"], pres["c"]] @ pres["W"] + pres["b"] + pres_mod.delta
                 if "comp" in pres:
                     _eta = _eta + pres["comp"][:, None] * pres_mod.gamma
                 loss_pres = -(torch.log_softmax(_eta, dim=-1) * pres["P"]).sum() / pres["P"].sum()
@@ -1980,6 +2017,20 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
                 _rz = torch.minimum(_xi, _xj).sum(1) / _den.clamp(min=1e-6)
                 loss_ruz = (((_zi * _zj).sum(1) - (ruzt["a"] + ruzt["b"] * _rz)) ** 2)[_ok].mean()
                 loss = loss + ruzt["w"] * loss_ruz
+            if mheads:
+                loss_mh = []
+                for _h, _m in zip(mheads, mh_mods):
+                    _n = _h["X"].shape[0]
+                    _ij = torch.randint(0, _n, (2, _h["pairs"]), device=device)
+                    _i, _j = _ij[0], _ij[1]
+                    _hi = _m(z_ema[_h["t"][_i], _h["r"][_i], _h["c"][_i]])
+                    _hj = _m(z_ema[_h["t"][_j], _h["r"][_j], _h["c"][_j]])
+                    _xi, _xj = _h["X"][_i], _h["X"][_j]
+                    _den = torch.maximum(_xi, _xj).sum(1)
+                    _ok = (_den > 1e-6) & (_i != _j)
+                    _rz = torch.minimum(_xi, _xj).sum(1) / _den.clamp(min=1e-6)
+                    loss_mh.append((((_hi * _hj).sum(1) - _rz) ** 2)[_ok].mean())
+                    loss = loss + _h["w"] * loss_mh[-1]
             # NestedLoRA, as an ADDITIONAL term. Its operator half is itself a kernel-fit term, so it
             # partly duplicates loss_true -- that overlap is deliberate here (both are on, and their
             # relative weight is the thing being tested) but it means the two weights are not
@@ -2235,6 +2286,11 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
                 _wl = _a["w"] * float(_la.detach())
                 print(f"Ep {ep:03d} | aux '{_a['label']}' mse {float(_la.detach()):.4f} weighted {_wl:.4f} "
                       f"({_wl / max(_tot, 1e-12):.0%} of the total)", flush=True)
+        if loss_mh is not None and (ep == 1 or ep % 10 == 0 or evaluated):
+            for _h, _l in zip(mheads, loss_mh):
+                _wl = _h["w"] * float(_l.detach())
+                print(f"Ep {ep:03d} | metric head '{_h['label']}' mse {float(_l.detach()):.5f} weighted {_wl:.4f} "
+                      f"({_wl / max(float(loss.detach()), 1e-12):.0%} of the total)", flush=True)
         if loss_ruz is not None and (ep == 1 or ep % 10 == 0 or evaluated):
             _wl = ruzt["w"] * float(loss_ruz.detach())
             print(f"Ep {ep:03d} | ruzicka '{ruzt['label']}' mse {float(loss_ruz.detach()):.5f} weighted {_wl:.4f} "
@@ -2291,6 +2347,8 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
                    if loss_aux else {}),
                 **({"loss_presence": float(loss_pres.detach())} if loss_pres is not None else {}),
                 **({"loss_ruzicka": float(loss_ruz.detach())} if loss_ruz is not None else {}),
+                **({f"loss_mhead_{_h['label']}": float(_l.detach()) for _h, _l in zip(mheads, loss_mh)}
+                   if loss_mh is not None else {}),
                 # NestedLoRA term, when on. half_imbalance is the guard: the split-half estimator
                 # is unbounded below if one half can carry all the magnitude, so a value drifting
                 # far above 1 means the penalty is being evaded, not that training is going well.
@@ -2944,6 +3002,7 @@ def run_desk_experiment(config=None):
                             "b": np.asarray(_p["b"], "float32"), "weight": float(_pcfg.get("weight", 0.01)),
                             "comp": (np.asarray(_p["comp"], "float32")[_keep]
                                      if bool(_pcfg.get("completeness_slopes", False)) else None),
+                            "learned_head": bool(_pcfg.get("learned_head", False)),
                             "label": str(_pcfg.get("label", "cbc_presence"))}
         print(f"[desk] aux_presence: {int(_keep.sum()):,} of {len(_keep):,} lists kept (window {kept[0]}-{kept[-1]}, "
               f"withheld years {'INCLUDED' if not _withheld else 'excluded'}; held-out/buffer/dropped cells excluded)",
@@ -2970,6 +3029,25 @@ def run_desk_experiment(config=None):
                            "pairs": int(_rcfg.get("pairs", 4096)), "label": str(_rcfg.get("label", "cbc_ruzicka"))}
         print(f"[desk] aux_ruzicka: {int(_keep.sum()):,} of {len(_keep):,} CBC cell-years kept "
               f"(withheld years {'INCLUDED' if not _withheld else 'excluded'})", flush=True)
+
+    # --- research (E084): metric heads (desk.aux_metric_heads, a list), off unless configured -----------
+    metric_heads = []
+    for _hcfg in (desk_cfg.get("aux_metric_heads") or []):
+        _q = np.load(os.path.expandvars(_hcfg["path"]), allow_pickle=False)
+        _ki = {y: i for i, y in enumerate(kept)}
+        _yrs, _r, _c = np.asarray(_q["year"]), np.asarray(_q["row"]), np.asarray(_q["col"])
+        _okc = (~holdout & ~buffer_cells_mask & ~train_drop)
+        _withheld = set(ho_years) if not bool(_hcfg.get("include_withheld", False)) else set()
+        _keep = np.array([(int(y) in _ki) and (int(y) not in _withheld) and bool(_okc[r, c])
+                          and bool(np.asarray(mask_win[_ki[int(y)]], bool)[r, c])
+                          for y, r, c in zip(_yrs, _r, _c)])
+        assert not holdout[_r[_keep], _c[_keep]].any() and not buffer_cells_mask[_r[_keep], _c[_keep]].any()
+        metric_heads.append({"t_idx": [_ki[int(y)] for y in _yrs[_keep]], "row": _r[_keep], "col": _c[_keep],
+                             "X": np.asarray(_q["X"], "float32")[_keep], "weight": float(_hcfg.get("weight", 1.0)),
+                             "dim": int(_hcfg.get("dim", 24)), "pairs": int(_hcfg.get("pairs", 4096)),
+                             "label": str(_hcfg.get("label", os.path.basename(_hcfg["path"])))})
+        print(f"[desk] aux_metric_head '{metric_heads[-1]['label']}': {int(_keep.sum()):,} of {len(_keep):,} points kept",
+              flush=True)
 
     model, ema, train_info = train_model_ema(
         cov_win, mask_win, kept, targets, metric_pool, m_tr, m_val,
@@ -3031,6 +3109,7 @@ def run_desk_experiment(config=None):
         aux_targets=(aux_targets or None),
         presence_targets=presence_targets,
         ruzicka_targets=ruzicka_targets,
+        metric_heads=(metric_heads or None),
         return_info=True)
     ema_half_life = float(ema.half_life().item())
     torch.save(ema.state_dict(), os.path.join(out_dir, "output_ema.pth"))

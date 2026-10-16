@@ -1,0 +1,32 @@
+# status: open | supported | weakened | ruled_out ; evidence cites ledger rows / experiment ids
+H1_front_pinning:
+  claim: a strong absolute Allee effect is needed to stall fronts (Plains / edges) -- the fit's n50 ~0.28
+  status: open
+  evidence: [run_23a pushed n50 9.5 prior sds past a firm weak prior]
+H2_fill_in_speed:
+  claim: fast low-density growth (lambda0 ~2) is needed for cells to fill after colonization
+  status: open
+  evidence: []
+H3_temporal_habitat_confound:
+  claim: Z's 1950-1990 trend is used to explain the invasion as habitat improvement
+  status: deferred (C7)
+  evidence: [run_22 mean lambda 0.76 -> 1.22]
+H4_observation_model:
+  claim: the count model (what a BBS count measures; Mexico tier; NB overdispersion) forces demography
+  status: open
+  evidence: []
+H5_initial_conditions:
+  claim: the 1902 native seed or the release pulse shape forces fast growth
+  status: open
+  evidence: []
+H6_disease_dynamics:
+  claim: the speed of the epizootic decline/recovery forces fast growth
+  status: open
+  evidence: []
+H7_identifiability:
+  claim: only Fmax*Sj (and lambda0) is identified; the split is prior/structure-determined (a degeneracy, not a forcing)
+  status: supported
+  evidence: [sweep + runs 21/22/23a all keep lambda0 ~2 while the split moves]
+ruled_out:
+  dispersal_distance: [mdd sweep 250-600 -- data hold p0*mdd^2 constant; demography unchanged]
+  allee_form: [run_22 relative Allee removes Allee-dead but keeps lambda0 ~2.2]

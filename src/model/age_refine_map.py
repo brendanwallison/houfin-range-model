@@ -141,6 +141,11 @@ def run_refine():
         print("[warn] refining in float32: U carries a ~1 nat noise floor, so tol_du below "
               "that cannot be met reliably. Set HOUFIN_MODEL_PRECISION=float64.")
     out_dir = hc.posterior_dir(pcfg, "refine", at_map_precision=True, precision=hc.PRECISION)
+    # HOUFIN_REFINE_TAG: distinct output for warm-started variants refined FROM THE SAME point
+    # (e.g. profiles pinning different values), which would otherwise share one directory.
+    tag = os.environ.get("HOUFIN_REFINE_TAG")
+    if tag:
+        out_dir = f"{out_dir.rstrip(os.sep)}__{tag}"
     hc.archive_if_fresh(out_dir, env="HOUFIN_REFINE_FRESH", files=(STATE_FILE,))
     os.makedirs(out_dir, exist_ok=True)
     print(f"--- L-BFGS refine of {hc.map_dir()} in {hc.PRECISION} | {s} -> {out_dir} ---")

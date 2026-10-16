@@ -256,6 +256,12 @@ def reconstruct_map(data, params):
                  "env_corr_survival_adult_juv", "habitat_center_offsets"):
         if name in sim:
             sim["latents"][name] = sim[name]
+    # Pinned sites (population_model.pinned_sites) are conditioned, not fitted, so they
+    # are absent from the MAP params; readers get the pinned value.
+    from src.model.age_priors import PINNED
+    for name, value in PINNED.items():
+        sim["latents"].setdefault(name, np.asarray(value))
+        sim.setdefault(name, np.asarray(value))
     return sim
 
 

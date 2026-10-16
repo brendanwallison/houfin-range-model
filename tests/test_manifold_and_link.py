@@ -274,3 +274,28 @@ print(json.dumps({"juv": a.JUVENILE_RATIO, "n50": math.log1p(math.exp(a._ALLEE_P
                                   text=True, check=True).stdout.strip().splitlines()[-1])
     assert r["juv"] and r["allee"] == "absolute" and r["n50_scale"] == 0.25
     assert r["n50"] == pytest.approx(0.03, rel=1e-3) and r["fixed"] == 1.0 and r["centering"] == "occupied"
+
+
+@pytest.mark.parametrize("overlay,pinned", [
+    ("map_run24a_pin_allee.json", {"n50_raw"}),
+    ("map_run24b_pin_demography.json", {"alpha_a", "alpha_j", "alpha_f"}),
+    ("map_run24c_pin_both.json", {"alpha_a", "alpha_j", "alpha_f", "n50_raw"}),
+])
+def test_pinned_sites_are_held_fixed_not_fitted(overlay, pinned):
+    """pinned_sites are conditioned: observed in the trace at the pinned value, so AutoDelta
+    never fits them; every other site stays latent."""
+    probe = """
+import json, numpy as np, src.model.age_priors as a
+from numpyro import handlers
+f = handlers.condition(a.sample_priors, data={k: np.asarray(v) for k, v in a.PINNED.items()})
+tr = handlers.trace(handlers.seed(f, 0)).get_trace(prior_scale=1.0, M_features=24, time=10,
+                                                   N_sev_basis=24, N_lag_basis=24)
+print(json.dumps({"pinned": a.PINNED,
+  "observed": sorted(k for k, v in tr.items() if v["type"] == "sample" and v["is_observed"]),
+  "values": {k: float(tr[k]["value"]) for k in a.PINNED}}))
+"""
+    env = dict(os.environ, AGE_MODEL_CONFIG=os.path.join(REPO, "config", "overlays", overlay))
+    r = json.loads(subprocess.run([sys.executable, "-c", probe], cwd=REPO, env=env, capture_output=True,
+                                  text=True, check=True).stdout.strip().splitlines()[-1])
+    assert set(r["pinned"]) == pinned and set(r["observed"]) == pinned
+    assert r["values"] == pytest.approx(r["pinned"])

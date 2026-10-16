@@ -59,6 +59,12 @@ _JUV_FORM = str(_JUV.get("form", "independent"))
 if _JUV_FORM not in {"independent", "ratio"}:
     raise ValueError(f"juvenile_survival.form must be independent or ratio, got {_JUV_FORM!r}")
 JUVENILE_RATIO = _JUV_FORM == "ratio"
+#   pinned_sites              {site: value} held FIXED (numpyro condition) -- for profiling
+#                             what the data resist. Values are on each site's raw scale
+#                             (e.g. alpha_a is a logit; with habitat_centering, at typical
+#                             occupied habitat). Pinned sites are not fitted at all.
+PINNED = {k: float(v) for k, v in dict(_POP_SPEC.get("pinned_sites", {})).items()
+          if not k.startswith("_")}
 if _HABITAT_CENTERING not in {"none", "occupied"}:
     raise ValueError(f"habitat_centering must be none or occupied, got {_HABITAT_CENTERING!r}")
 if _MANIFOLD_FORM not in {"rank2", "exchangeable"}:
@@ -691,9 +697,11 @@ def build_model_2d(data, prior_scale=1.0):
     M = data['Z_gathered'].shape[-1]
     
     # 1. Sample Parameters
-    priors = sample_priors(prior_scale, M, time,
-                           N_sev_basis=data['N_sev_basis'],
-                           N_lag_basis=data['N_lag_basis'])
+    _sample = (numpyro.handlers.condition(sample_priors, data={k: jnp.asarray(v) for k, v in PINNED.items()})
+               if PINNED else sample_priors)
+    priors = _sample(prior_scale, M, time,
+                     N_sev_basis=data['N_sev_basis'],
+                     N_lag_basis=data['N_lag_basis'])
 
     # Native-lineage shape: the SAME dimensionless core/margin map used to seed 1902
     # abundance (see age_priors' initpop comment and bbs.generate_core_margin_init),

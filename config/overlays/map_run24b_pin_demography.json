@@ -1,0 +1,46 @@
+{
+  "_comment": [
+    "run_24b: demography pinned plausible, Allee free. Built on run_23a (single field, occupied centring, juvenile survival as a fraction of adult, K level 3.0 +/- 1.0).",
+    "2x2 factorial on the two demands every fit keeps (lambda0 ~ 2 at typical habitat; strong absolute Allee, n50 ~ 0.28 route counts) -- they survived every structural change and were pushed 6-10 prior sds past firm priors in run_23a. Cells: run_23a (both free), 24a (Allee pinned weak), 24b (demography pinned), 24c (both pinned). Pinned = numpyro condition (population_model.pinned_sites): not fitted; habitat sensitivities stay free, so lambda varies in space around the pinned typical-habitat value.",
+    "Pinned values: adult survival 0.6 (alpha_a = logit 0.6), juvenile/adult ratio 0.5 (alpha_j = 0), fecundity 4 per adult (alpha_f = softplus^-1(4)) -> lambda0 ~ 1.2 at typical occupied habitat; Allee n50 = 0.03 route counts (n50_raw = softplus^-1(0.03)). Read the residual maps (figures 04/08) of each pinned cell for WHERE the data resist."
+  ],
+  "input_dir": "${HOUFIN_PROCESSED}/model_inputs/numpyro_input",
+  "population_model": {
+    "dispersal_random_enabled": false,
+    "manifold_prior": {
+      "form": "exchangeable",
+      "coupling_target": 0.85,
+      "coupling_logit_scale": 0.15,
+      "amplitude_scale": [
+        1.0263,
+        1.0263,
+        1.0227,
+        1.0263
+      ],
+      "fixed_coupling": 1.0
+    },
+    "habitat_centering": "occupied",
+    "capacity_level_prior": {
+      "target_level_median_route_counts": 3.0,
+      "alpha_k_scale": 1.0
+    },
+    "allee_prior": {
+      "n50_raw_loc": -3.4915,
+      "n50_raw_scale": 0.25
+    },
+    "juvenile_survival": {
+      "form": "ratio",
+      "ratio_logit_loc": 0.0,
+      "ratio_logit_scale": 0.5
+    },
+    "pinned_sites": {
+      "alpha_a": 0.4055,
+      "alpha_j": 0.0,
+      "alpha_f": 3.9815
+    }
+  },
+  "run_names": {
+    "map": "age_map_{precision}_run_24b_new_z",
+    "vis_map": "age_map_{precision}_run_24b_new_z"
+  }
+}

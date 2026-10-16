@@ -1,5 +1,12 @@
 # DIGEST (newest first)
 
+## 2026-10-16 E008 ideal-free settlement: -1729 nats (largest gain to date)
+- Block-3 settlement in proportion to K, zero parameters: U 199,371 -> 197,642; west and the early
+  eastern front fit better. The FFT dispersal kernel switches itself OFF (intercept -4.5, slope -8):
+  settlement replaces dispersal. n50 .28 -> .18, lambda0 2.02 -> 1.85, F unchanged ~10.6.
+- Caveat: front speed is now partly a structural constant of the block size; profiles of n50/lambda0
+  must be redone ON the settlement model (E010 queued) before Phase 2 reads them.
+
 ## 2026-10-16 E001/E002 read + baseline checks (lead: H10 invasion-curve shape)
 - Both implausible demands are REAL and large: Fmax 3 costs +630 nats, n50 0.03 costs +757.
 - Fecundity cost is diffuse over the whole eastern invasion's positives; Allee cost sits AT the early

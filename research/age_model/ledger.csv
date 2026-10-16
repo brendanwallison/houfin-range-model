@@ -5,3 +5,5 @@ date,experiment,variant,run_dir,U,fit_corr,notes,su
 2026-10-16,E001,f3,..._23a__f3,200000.6,,+630; lam0 1.66 Sa .73 ratio .97 n50 .18,~0.6 (11 min dev; decomposition failed: GPU preallocation -- fixed and requeued)
 2026-10-16,E002,n010,..._23a__n010,199611.9,,+241; dll -326; lam0 1.69; disp int -0.86,
 2026-10-16,E002,n003,..._23a__n003,200127.9,,+757; dll -876 (east 66-79 zeros -476); lam0 1.84; disp int -2.49,~1.5 cumulative (dev)
+2026-10-16,E008,ifd3,..._23a__ifd3,197642.1,,-1729 vs 23a; dll +1452; disp int -4.52 slope -8 (kernel off); n50 .18 lam0 1.85,
+2026-10-16,E008,ifd5,..._23a__ifd5,197650.9,,-1720; not converged; ratio .57 lam0 1.83,~3.5 cumulative (dev 1.5h)

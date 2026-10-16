@@ -16,10 +16,12 @@ Losses: east 1980-93 zeros (-277), east 1966-79 positives (-200 ifd3 / -375 ifd5
 Interpretation:
 - By far the largest single improvement in the project; predicted direction (H1 relief: n50 falls
   .28 -> .18) holds, H2 relief (lambda0 falls) only weakly (2.02 -> 1.85), fecundity unchanged.
-- The FFT kernel is effectively switched off (ifd3: sigmoid(-4.5) ~1% dispersing, slope -8): block
-  settlement has REPLACED dispersal, at a fixed scale set by b (81 km at b=3) and the alternating
-  offset. So the gain is "habitat-directed short-range movement" vs "habitat-blind kernel + path
-  mortality". Front speed is now partly a structural constant of b -- a caveat for reading n50/lambda0.
+- CORRECTED: the kernel is NOT off. Departure = sigmoid(int + slope*(N/K - 0.8)); at ifd3 that is
+  87% at N/K=0, 18% at 0.4, 1% at 0.8 (23a: flat 31-36%). The fit found STRONG NEGATIVE
+  density-dependent emigration (sparse cells empty out; crowded cells stay), with settlement then
+  gathering leavers into high-K cells. Front cells emptying acts as a front brake -> partly why n50
+  falls. Front speed is also partly a structural constant of b -- a caveat for reading n50/lambda0.
+  Probes: E011 (neg-DD pinned in the no-settlement model; slope 0 on ifd3).
 - ifd5 reaches juvenile/adult ratio 0.57 at almost the same U: the juvenile split becomes free.
 Follow-up: E010 (profiles warm-started from ifd3: n50 0.03, dispersal at prior means, ratio 0.5);
 ifd3_f3 (Fmax 3 under settlement) still running.

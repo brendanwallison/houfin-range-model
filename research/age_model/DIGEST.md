@@ -2,8 +2,8 @@
 
 ## 2026-10-16 E008 ideal-free settlement: -1729 nats (largest gain to date)
 - Block-3 settlement in proportion to K, zero parameters: U 199,371 -> 197,642; west and the early
-  eastern front fit better. The FFT dispersal kernel switches itself OFF (intercept -4.5, slope -8):
-  settlement replaces dispersal. n50 .28 -> .18, lambda0 2.02 -> 1.85, F unchanged ~10.6.
+  eastern front fit better. Dispersal turns strongly NEGATIVELY density-dependent
+  (departure 87% at N/K=0 -> 1% at 0.8; 23a flat ~35%): sparse cells empty, settlement regathers. n50 .28 -> .18, lambda0 2.02 -> 1.85, F unchanged ~10.6.
 - Caveat: front speed is now partly a structural constant of the block size; profiles of n50/lambda0
   must be redone ON the settlement model (E010 queued) before Phase 2 reads them.
 

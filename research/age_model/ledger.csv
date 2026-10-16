@@ -16,3 +16,7 @@ date,experiment,variant,run_dir,U,fit_corr,notes,su
 2026-10-16,E010,i3dprior,..._ifd3__i3dprior,199502.0,,+1860 vs ifd3; n50 .87 (Allee substitutes for exodus),
 2026-10-16,E014,i3fit,..._ifd3__i3fit,197969.1,,+327 vs ifd3; vital-rate sensitivities -> 0 (collapses to capacity case),
 2026-10-16,E014,i3uni,..._ifd3__i3uni,199467.5,,+1825 vs ifd3; gain was habitat direction not mixing,
+2026-10-16,E011,negdd,..._23a__negdd,210658.9,,+11288 vs 23a; ifd3 departure curve WITHOUT settlement is catastrophic (Sa .99 ratio .08; not cleanly converged),
+2026-10-16,E011,i3s0,..._ifd3__i3s0,198904.6,,+1262 vs ifd3 (slope pinned 0); n50 .32,
+2026-10-16,E012,i3age,..._ifd3__i3age,197554.2,,-88 vs ifd3; adult offset -1.86 (~prior); shared slope unchanged -8.03,
+2026-10-16,E015,i3tau,..._ifd3__i3tau,197637.7,,-4 vs ifd3; tau .19 (settlement ignores vital rates),~13 cumulative

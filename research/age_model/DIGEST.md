@@ -1,5 +1,14 @@
 # DIGEST (newest first)
 
+## 2026-10-16 afternoon: what settlement + departure are doing (E010-E015)
+- Habitat-directed (K) settlement is the whole E008 gain (uniform mixing +1825). Settlement does NOT
+  want to follow vital rates: perfect fitness-IFD flattens them (+327), learned selectivity tau -> 0.19 (-4).
+- The negative density-dependent departure (sparse-cell exodus) is worth ~1260 nats under settlement
+  and is catastrophic without it (+11288): exodus + K-regathering act as a pair.
+- It is not adult site fidelity: an adult offset gives -88 with the shared slope unchanged (-8).
+- Crowding pulses are demanded only WITHOUT settlement (U-shape, -1025 vs 23a).
+- Plausible juvenile survival is cheap under settlement (+82); fecundity stays ~10 everywhere.
+
 ## 2026-10-16 E008 ideal-free settlement: -1729 nats (largest gain to date)
 - Block-3 settlement in proportion to K, zero parameters: U 199,371 -> 197,642; west and the early
   eastern front fit better. Dispersal turns strongly NEGATIVELY density-dependent

@@ -51,6 +51,8 @@ def main():
     ap.add_argument("--similarity", required=True); ap.add_argument("--out", required=True)
     ap.add_argument("--dims", type=int, default=24); ap.add_argument("--landmarks", type=int, default=2000)
     ap.add_argument("--boot", type=int, default=300)
+    ap.add_argument("--cv-change", action="store_true", help="E083b: CV over all co-located cells for CHANGE")
+    ap.add_argument("--min-nz", type=int, default=10)
     a = ap.parse_args()
     import pandas as pd
     C = a.cache
@@ -149,8 +151,37 @@ def main():
             r_["species"] = int(sm.sum())
             change[cname] = r_
     res["change"] = change
+    if a.cv_change:
+        # E083b (after E083's result): 5-fold CV over spatial blocks across ALL co-located cells with both windows
+        # (every cell is a test cell once), species with >= --min-nz non-zero changes; species named
+        F_all = {nm: np.array(feat_d[nm]) for nm in arms}
+        folds = np.random.default_rng(831).integers(5, size=len(np.unique(cb)))
+        fmap = dict(zip(np.unique(cb), folds)); fold = np.array([fmap[b] for b in cb])
+        pcv = {nm: np.zeros_like(tgt_d) for nm in arms}
+        for k_ in range(5):
+            trk, tek = fold != k_, fold == k_
+            for nm in arms:
+                ro, lam = ridge_cv(F_all[nm][trk], tgt_d[trk], cb[trk], [1e-3, 1e-2, 1e-1, 1, 10])
+                pcv[nm][tek] = ro(F_all[nm][tek])
+        nzc = (np.abs(tgt_d) > 0).sum(0) >= a.min_nz
+        ubc = np.unique(cb)
+        bidx3 = [np.concatenate([np.where(cb == b)[0] for b in rng.choice(ubc, len(ubc))]) for _ in range(a.boot)]
+        cv = {"cells": int(len(tgt_d))}
+        for cname, cm in classes.items():
+            sm = nzc & cm
+            r_ = {nm: med_spearman(P, tgt_d, sm)[0] for nm, P in pcv.items()}
+            for d1, d0 in (("B+C", "B"), ("B+C", "B+Cs")):
+                bs = [med_spearman(pcv[d1][bi], tgt_d[bi], sm)[0] - med_spearman(pcv[d0][bi], tgt_d[bi], sm)[0]
+                      for bi in bidx3]
+                r_[f"{d1} - {d0}"] = [float(r_[d1] - r_[d0])] + [float(x) for x in np.nanpercentile(bs, [2.5, 97.5])]
+            r_["species"] = [dev[i] for i in np.where(sm)[0]]
+            per = {nm: med_spearman(P, tgt_d, sm)[1] for nm, P in pcv.items()}
+            r_["per_species_B_vs_BC"] = {dev[i]: [float(per["B"][j]), float(per["B+C"][j])]
+                                         for j, i in enumerate(np.where(sm)[0])}
+            cv[cname] = r_
+        res["change_cv"] = cv
     os.makedirs(a.out, exist_ok=True)
-    json.dump(res, open(os.path.join(a.out, "e083.json"), "w"), indent=1)
+    json.dump(res, open(os.path.join(a.out, "e083b.json" if a.cv_change else "e083.json"), "w"), indent=1)
     print(json.dumps(res, indent=1))
 
 

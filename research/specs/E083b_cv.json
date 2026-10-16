@@ -1,0 +1,8 @@
+{
+ "exp": "E083", "name": "e083b-concat-change-cv", "group": "cpu",
+ "overlay": "research/overlays/desk_tempho_1995_seed1.json",
+ "cmd": ["bash", "-c", "set -e; {python} research/exp/e083_concat_readout.py --cache {cache}/desk_tempho_1995_s1 --cbc /mnt/e/Datasets/cbc_raw/prepared/cbc_circles_comm.npz --similarity /home/breallis/houfin/work/houfin/research/E059/species-strata-066f943afb0e/species_similarity.csv --out {out} --cv-change --min-nz 10"],
+ "expected_minutes": 60,
+ "summarize": ["bash", "-c", "cat {out}/e083b.json"],
+ "note": "E083b: CV change test, breeding vs breeding+winter community blocks for sedentary readouts"
+}

@@ -1760,6 +1760,7 @@ def simulate_no_invasion_counterfactual(sim, data, drop_disease=True):
         allee_relative=ALLEE_RELATIVE,
         settle_block=SETTLE_BLOCK,
         settle_weight=SETTLE_WEIGHT,
+        settle_tau=float(np.asarray(latents.get("settlement_tau", 0.0))),
         # Absent unless dispersal_departure.form = age (then the shared curve applies).
         dispersal_adult_offset=float(np.asarray(latents.get("dispersal_logit_adult_offset", 0.0))),
         # Absent unless dispersal_departure.crowding_arm (then None = no crowding arm).

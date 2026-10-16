@@ -143,6 +143,7 @@ def forward_sim_age_structured(
     crowding_beta=None,
     crowding_kappa=5.0,
     settle_weight="capacity",
+    settle_tau=0.0,
 ):
     """Run the age-structured simulation for ``time`` years.
 
@@ -243,13 +244,20 @@ def forward_sim_age_structured(
         # ideal_free_settle.
         # settle_weight: "capacity" (shares in proportion to K), "uniform" (land cells
         # equally -- habitat-blind mixing, a control), "fitness" (equal realized lambda;
-        # see fitness_settle).
+        # see fitness_settle), "capacity_fitness" (shares in proportion to K * lambda0^tau:
+        # IMPERFECT sorting on empty-cell fitness; tau = 0 is capacity).
         if settle_block:
             pools = (N_a_post, juvenile_stayers, juvenile_arriving)
             if settle_weight == "fitness":
                 pools = fitness_settle(pools, K_g, Sa_g, Sj_g, Fmax_g, c_g, settle_block, t)
             else:
-                wgt = K_g if settle_weight == "capacity" else jnp.where(K_g > 1e-12, 1.0, 0.0)
+                if settle_weight == "capacity":
+                    wgt = K_g
+                elif settle_weight == "capacity_fitness":
+                    lam0 = 0.5 * (Sa_g + jnp.sqrt(Sa_g ** 2 + 4.0 * Fmax_g * Sa_g * Sj_g))
+                    wgt = K_g * jnp.exp(settle_tau * jnp.log(jnp.maximum(lam0, 1e-6)))
+                else:
+                    wgt = jnp.where(K_g > 1e-12, 1.0, 0.0)
                 pools = ideal_free_settle(pools, wgt, settle_block, t)
             N_a_post, juvenile_stayers, juvenile_arriving = pools
 

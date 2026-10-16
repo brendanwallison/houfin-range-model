@@ -34,3 +34,9 @@ Reading (prediction for fitness FAILED -- the opposite happened):
   flattening rates is the only escape. Perfect-information IFD is too strong a sorting rule.
 - Next option (needs the user): imperfect sorting, weight = K * lambda(N)^tau with tau >= 0 learned
   (tau = 0 is ifd3) -- one parameter for how strongly settlement follows fitness.
+
+E015 (pre-registered): settlement.weight = capacity_fitness, shares ~ K * lambda0^tau, tau ~ HalfNormal(2),
+warm ifd3 (tau init from the fallback). tau = 0 is ifd3, so dU <= 0 up to optimizer noise.
+- tau clearly > 0 with vital-rate sensitivities kept or grown: settlement follows fitness partially;
+  then viz (sinks in the plains? Allee-dead area?).
+- tau -> 0: the data want settlement blind to vital rates -- K alone carries habitat choice.

@@ -72,8 +72,11 @@ SETTLE_BLOCK = int(_SETTLE.get("block", 3)) if _SETTLE.get("form", "none") == "i
 #                             "fitness" (equal realized lambda, Allee excluded; nests capacity
 #                             when vital rates are equal within a block) | "uniform" (control)
 SETTLE_WEIGHT = _SETTLE.get("weight", "capacity")
-if SETTLE_WEIGHT not in {"capacity", "fitness", "uniform"}:
-    raise ValueError(f"settlement.weight must be capacity, fitness or uniform, got {SETTLE_WEIGHT!r}")
+#                             | "capacity_fitness" (K * lambda0^tau, tau >= 0 learned with prior
+#                             HalfNormal(settlement.tau_scale, default 2); tau = 0 is capacity)
+if SETTLE_WEIGHT not in {"capacity", "fitness", "uniform", "capacity_fitness"}:
+    raise ValueError("settlement.weight must be capacity, fitness, uniform or capacity_fitness, "
+                     f"got {SETTLE_WEIGHT!r}")
 #   dispersal_departure       {"form": "shared" | "age", "adult_offset_loc", "adult_offset_scale",
 #                              "crowding_arm": bool, "crowding_scale", "crowding_sharpness"}
 #                             "age" adds a logit offset to the ADULT departure probability
@@ -699,6 +702,11 @@ def sample_priors(prior_scale=1.0, M_features=None, time=None,
         priors['dispersal_logit_adult_offset'] = 0.0
     # Above-capacity departure pulse. Its logit gain per unit of N/K above 1 is ~beta_hi;
     # loose half-normal (scale 4 -> a cell at 2K could send most of its birds).
+    # Settlement selectivity: how strongly birds follow empty-cell fitness when settling
+    # (E014: perfect fitness sorting was too strong; K-only ignores vital rates entirely).
+    priors['settlement_tau'] = (numpyro.sample(
+        "settlement_tau", dist.HalfNormal(float(_SETTLE.get("tau_scale", 2.0)) * prior_scale))
+        if SETTLE_WEIGHT == "capacity_fitness" else 0.0)
     priors['dispersal_crowding_beta'] = (numpyro.sample(
         "dispersal_crowding_beta",
         dist.HalfNormal(float(_DEPART.get("crowding_scale", 4.0)) * prior_scale))
@@ -928,6 +936,7 @@ def build_model_2d(data, prior_scale=1.0):
         allee_relative=ALLEE_RELATIVE,
         settle_block=SETTLE_BLOCK,
         settle_weight=SETTLE_WEIGHT,
+        settle_tau=priors['settlement_tau'],
         dispersal_adult_offset=priors['dispersal_logit_adult_offset'],
         crowding_beta=priors['dispersal_crowding_beta'], crowding_kappa=CROWDING_KAPPA,
     )

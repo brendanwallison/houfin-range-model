@@ -812,15 +812,33 @@ def build_model_2d(data, prior_scale=1.0):
     # disease_prior's sev_field_budget/sqrt(N_sev_basis)), so adding candidate sites
     # cannot inflate the term's total flexibility -- see config's
     # _invasion_budget_comment.
-    _n_inv_sites = data['inv_locations'].shape[0]
-    _inv_log_sd = (float(_INVASION_PULSE["log_budget"])
-                  / jnp.sqrt(_n_inv_sites * data['inv_window'])) * prior_scale
     _q50_density = float(_INVASION_PULSE["global_q50_route_counts"]) / _POP_SCALAR
-    inv_pop = numpyro.deterministic("inv_pop_relative", _q50_density * jnp.exp(
-        numpyro.sample("log_inv_pulse_fraction",
-                       dist.Normal(jnp.log(float(_INVASION_PULSE["median_fraction_of_global_q50"])),
-                                   _inv_log_sd),
-                       sample_shape=(_n_inv_sites, data['inv_window']))))
+    if _INVASION_PULSE.get("form", "grid") == "single":
+        # form = single (user, 2026-10-16): the record describes ONE release event, so 9 sites x
+        # 10 years = 90 coefficients was an order of magnitude too many. One parameter, the
+        # TOTAL founder number (in fractions of the q50 reference; 1 unit ~ 40 birds by a rough
+        # route-sampling conversion), released at the n_sites nearest candidate cells (nearest-
+        # first from Jones Beach; default 1) in equal shares over the first n_years years of the
+        # window (default 1 = 1940). The Allee exemption then covers only those cells.
+        _k = int(_INVASION_PULSE.get("n_sites", 1))
+        _ny = int(_INVASION_PULSE.get("n_years", 1))
+        inv_locs = data['inv_locations'][:_k]
+        log_total = numpyro.sample(
+            "log_inv_total",
+            dist.Normal(jnp.log(float(_INVASION_PULSE.get("total_median", 1.0))),
+                        float(_INVASION_PULSE.get("total_log_sd", 1.0)) * prior_scale))
+        shape = jnp.zeros((_k, data['inv_window'])).at[:, :_ny].set(1.0 / (_k * _ny))
+        inv_pop = numpyro.deterministic("inv_pop_relative", _q50_density * jnp.exp(log_total) * shape)
+    else:
+        inv_locs = data['inv_locations']
+        _n_inv_sites = inv_locs.shape[0]
+        _inv_log_sd = (float(_INVASION_PULSE["log_budget"])
+                      / jnp.sqrt(_n_inv_sites * data['inv_window'])) * prior_scale
+        inv_pop = numpyro.deterministic("inv_pop_relative", _q50_density * jnp.exp(
+            numpyro.sample("log_inv_pulse_fraction",
+                           dist.Normal(jnp.log(float(_INVASION_PULSE["median_fraction_of_global_q50"])),
+                                       _inv_log_sd),
+                           sample_shape=(_n_inv_sites, data['inv_window']))))
 
     # Convert to the relative [0, 1] scale by multiplying by pop_scalar
     # Since N_relative = N_raw / pop_scalar, 
@@ -944,7 +962,7 @@ def build_model_2d(data, prior_scale=1.0):
         data['adult_fft_kernel'], data['juvenile_fft_kernel_stack'],
         data['adult_edge_correction'], data['juvenile_edge_correction_stack'],
         initpop_seeded, priors['dispersal_random'], inv_pop,
-        time, data['inv_locations'], data['inv_timestep'],
+        time, inv_locs, data['inv_timestep'],
         priors['dispersal_logit_intercept'], priors['dispersal_logit_slope'],
         priors['allee_gamma'],
         target_fraction=data["dispersal_target_fraction"],

@@ -23,7 +23,8 @@ OVERLAYS = [None, "map_run19_exchangeable.json", "map_run21_single_field.json",
             "map_run27_crowding_departure.json",
             "map_run28a_fitness_settle.json", "map_run28b_uniform_settle.json",
             "map_run28c_capacity_fitness_settle.json",
-            "map_run29_subcell_strata.json"]
+            "map_run29_subcell_strata.json",
+            "map_run30_single_release.json"]
 
 
 def synthetic_inputs(T=40, Ny=12, Nx=16, M=24, z_sd=2.0, seed=0):

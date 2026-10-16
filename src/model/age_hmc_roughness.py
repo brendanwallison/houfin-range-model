@@ -90,7 +90,7 @@ def run_roughness():
     rng = np.random.default_rng(0)
     pulse = np.zeros(len(x0))
     off = np.cumsum([0] + laplace["site_sizes"].tolist())
-    i = names.index("log_inv_pulse_fraction")
+    i = names.index("log_inv_pulse_fraction" if "log_inv_pulse_fraction" in names else "log_inv_total")
     pulse[off[i]:off[i + 1]] = 1.0
     raw = {
         "random_1": L @ (u := rng.standard_normal(len(x0))) / np.linalg.norm(u),

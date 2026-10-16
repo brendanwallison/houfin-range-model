@@ -1,0 +1,52 @@
+{
+  "_comment": [
+    "run_30 = run_25 (block-3 settlement) + SINGLE RELEASE (invasion_pulse_prior.form = single): one parameter, total founders ~ LogNormal(log 1, 1) in q50 fractions (1 unit ~ 40 birds, rough), all at the valid cell nearest Jones Beach in 1940; Allee exemption only there.",
+    "Why (user, 2026-10-16): 9 sites x 10 years = 90 founder coefficients is an order of magnitude too many for one documented release; E016 R1 showed the prior-fixed sustained inflow (~360 birds) inflated the fast-growth demand (Fmax-3 cost +314 -> +111 with free founders, which chose ~90 birds)."
+  ],
+  "input_dir": "${HOUFIN_PROCESSED}/model_inputs/numpyro_input",
+  "population_model": {
+    "dispersal_random_enabled": false,
+    "manifold_prior": {
+      "form": "exchangeable",
+      "coupling_target": 0.85,
+      "coupling_logit_scale": 0.15,
+      "amplitude_scale": [
+        1.0263,
+        1.0263,
+        1.0227,
+        1.0263
+      ],
+      "fixed_coupling": 1.0
+    },
+    "habitat_centering": "occupied",
+    "capacity_level_prior": {
+      "target_level_median_route_counts": 3.0,
+      "alpha_k_scale": 1.0
+    },
+    "allee_prior": {
+      "n50_raw_loc": -3.4915,
+      "n50_raw_scale": 0.25
+    },
+    "juvenile_survival": {
+      "form": "ratio",
+      "ratio_logit_loc": 0.0,
+      "ratio_logit_scale": 0.5
+    },
+    "settlement": {
+      "form": "ideal_free",
+      "block": 3
+    },
+    "invasion_pulse_prior": {
+      "form": "single",
+      "n_sites": 1,
+      "n_years": 1,
+      "total_median": 1.0,
+      "total_log_sd": 1.0,
+      "global_q50_route_counts": 0.7083
+    }
+  },
+  "run_names": {
+    "map": "age_map_{precision}_run_30_new_z",
+    "vis_map": "age_map_{precision}_run_30_new_z"
+  }
+}

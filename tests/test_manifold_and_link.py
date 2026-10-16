@@ -486,3 +486,24 @@ def test_subcell_gradient_matches_finite_difference():
         h = 1e-6
         fd = [(f(th.at[i].add(h)) - f(th.at[i].add(-h))) / (2 * h) for i in range(2)]
         np.testing.assert_allclose(g, np.asarray(fd), rtol=1e-4, atol=1e-8)
+
+
+def test_single_release_puts_all_founders_at_the_nearest_site_in_one_year():
+    overlay = "map_run30_single_release.json"
+    probe = r"""
+import json, sys
+sys.path.insert(0, ".")
+from numpyro import handlers
+from tests.test_full_model_smoke import synthetic_inputs
+from src.model.age_priors import build_model_2d
+d = synthetic_inputs()
+tr = handlers.trace(handlers.seed(build_model_2d, 0)).get_trace(data=d, prior_scale=1.0)
+inv = tr["inv_pop_relative"]["value"]
+print(json.dumps({"shape": list(inv.shape), "nonzero": int((inv > 0).sum()),
+                  "has_grid_site": "log_inv_pulse_fraction" in tr, "has_total": "log_inv_total" in tr}))
+"""
+    env = dict(os.environ, AGE_MODEL_CONFIG=os.path.join(REPO, "config", "overlays", overlay))
+    r = json.loads(subprocess.run([sys.executable, "-c", probe], cwd=REPO, env=env, capture_output=True,
+                                  text=True, check=True).stdout.strip().splitlines()[-1])
+    assert r["shape"][0] == 1 and r["nonzero"] == 1
+    assert r["has_total"] and not r["has_grid_site"]

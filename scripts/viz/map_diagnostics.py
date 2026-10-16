@@ -1753,7 +1753,8 @@ def simulate_no_invasion_counterfactual(sim, data, drop_disease=True):
         # Absent when dispersal_random_enabled is false (the model then uses zeros).
         jnp.asarray(latents.get("dispersal_random", np.zeros(int(data["time"])))),
         inv_pop_zero,
-        int(data["time"]), data["inv_locations"], data["inv_timestep"],
+        # invasion_pulse_prior.form = single releases at only the first rows of inv_locations
+        int(data["time"]), data["inv_locations"][:inv_pop_zero.shape[0]], data["inv_timestep"],
         float(np.asarray(latents["dispersal_logit_intercept"])),
         float(np.asarray(latents["dispersal_logit_slope"])),
         jnp.asarray(sim["allee_gamma"]),

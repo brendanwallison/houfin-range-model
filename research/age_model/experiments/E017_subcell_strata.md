@@ -24,3 +24,10 @@ delta_f 0.10). Fixed: missing warm-start sites now start at their prior mean (hm
 init_values_else_mean) -- 0 for both tilts, i.e. exactly the nested model. Re-run as s_ifd3b / s_onlyb.
 Caveat carried to E012/E013/E015 (adult offset, crowding beta, tau): same random init, but those
 ended near their nested values with small gains, so they are less suspect; re-run if they matter.
+
+Reruns from the nested point (s_ifd3b, s_onlyb): tilts stay EXACTLY 0 (21 iterations, dU ~0). Not a
+verdict either: with mean-preserving tilts every first-order effect cancels in the area-weighted sum,
+so the gradient at beta = delta = 0 is identically zero -- the nested model is a stationary point and
+the question is second order. Third attempt: start off zero via HOUFIN_REFINE_INIT --
+s_ifd3c (beta_k 0.5, delta_f 0.3), s_ifd3d (beta_k -0.5, delta_f 0.3), s_onlyc (0.5, 0.3),
+s_ifd3_ex0 (0.5, 0.3). Compare U against ifd3 197642.1 / 23a 199370.9.

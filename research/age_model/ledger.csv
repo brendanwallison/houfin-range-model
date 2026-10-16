@@ -9,3 +9,5 @@ date,experiment,variant,run_dir,U,fit_corr,notes,su
 2026-10-16,E008,ifd5,..._23a__ifd5,197650.9,,-1720; not converged; ratio .57 lam0 1.83,~3.5 cumulative (dev 1.5h)
 2026-10-16,E008,ifd3_f3,..._23a__ifd3_f3,197956.3,,+314 vs ifd3 (Fmax 3 under settlement; +630 without); 4000 its not converged,
 2026-10-16,E009,f3n003,..._23a__f3n003,200377.3,,+1006 vs 23a (additive would be +1387 -> 27% sub-additive); dll -1242; east 66-79 zeros -656,
+2026-10-16,E013,i3crowd,..._ifd3__i3crowd,197640.7,,-1.4 vs ifd3; beta_hi .19 (not demanded with settlement),
+2026-10-16,E013,c23crowd,..._23a__c23crowd,198345.7,,-1025 vs 23a; beta_hi 6.98 U-shape (p .81/.14/.48 at N/K 0/1/2); +704 vs ifd3,~10 cumulative (dev 2h + small 2h + earlier)

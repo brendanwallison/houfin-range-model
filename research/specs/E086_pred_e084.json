@@ -1,0 +1,13 @@
+{
+ "exp": "E086",
+ "name": "e086-predictability-e084",
+ "group": "cpu",
+ "overlay": "research/overlays/desk_tempho_1995_seed1.json",
+ "cmd": [
+  "bash",
+  "-c",
+  "set -e; bash research/bin/fill_esk.sh {cache}/desk_tempho_1985_s1 {cache}/desk_tempho_1985_s1_full_s4both_late {cache}/desk_tempho_1985_s2_full_s4both_late {cache}/desk_tempho_1985_s1_late {cache}/desk_tempho_1985_s2_late; {python} research/exp/e086_predictability.py --cache {cache}/desk_tempho_1995_s1_full_s4both_late --cache {cache}/desk_tempho_1995_s2_full_s4both_late --cache {cache}/desk_tempho_1995_s3_full_s4both_late --cache {cache}/desk_tempho_1995_s4_full_s4both_late --cache {cache}/desk_tempho_1985_s1_full_s4both_late --cache {cache}/desk_tempho_1985_s2_full_s4both_late --cache {cache}/desk_tempho_1995_s1_late --cache {cache}/desk_tempho_1995_s2_late --cache {cache}/desk_tempho_1995_s3_late --cache {cache}/desk_tempho_1995_s4_late --cache {cache}/desk_tempho_1985_s1_late --cache {cache}/desk_tempho_1985_s2_late --out {out}"
+ ],
+ "expected_minutes": 10,
+ "note": "E086 predictability-by-rank curve on the E084 both-heads models and their controls"
+}

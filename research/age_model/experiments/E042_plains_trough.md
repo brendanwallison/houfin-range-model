@@ -17,3 +17,12 @@ broadly realistic demography; Allee-dead was uncommon. It is the L-BFGS REFINEME
 arrangements to eke out likelihood. E042 only shows the refined basin is sticky. The goal: a model whose
 REFINED optimum stays biologically realistic. Next: E044 -- run_40 MAP point viz + decomposition of the
 MAP -> refined gain (which observations the contortion buys).
+
+LOCAL SURVEY (2026-10-17) of every source/sink field on disk, CONUS zones (W / Plains / E):
+- MAP points (runs 16, 17, 18; juv-mdd sweep 200-350): plains sink .45-.76 vs west .16-.48; K-weighted plains
+  .42-.66 vs west .05-.25; median lam_f plains .84-1.03 < west 1.02-1.19; plains Allee-dead 0-9%. Realistic.
+- Refined points (runs 19-23a, single-field sweep, E-series): the trough vanishes or inverts (run 19 plains .36
+  < west .49; run 19e K-weighted west .89).
+- HMC draw near the run-18 MAP is ALSO inverted (plains .34 vs west .51, plains lam 1.23): the realistic
+  quick90 MAP state is a waypoint on Adam's path, not where the posterior mass sits -- the LIKELIHOOD rewards
+  the contortion, so the fix must be structural (E044: what does the realistic configuration get wrong?).

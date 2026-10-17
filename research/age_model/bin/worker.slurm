@@ -5,7 +5,9 @@
 # with nothing pending -- so queued work starts the moment the node does and no SU is spent idle.
 # Tasks are plain bash, executed from the research worktree with env.sh's environment.
 #
-#   sbatch -A DEB23008 -p gpu-a100-dev -t 02:00:00 research/age_model/bin/worker.slurm
+#   sbatch -A DEB23008 -p gpu-a100-small -t 24:00:00 research/age_model/bin/worker.slurm
+#   (only gpu-a100-dev is capped at 2 h; small/normal take long limits -- the worker exits when
+#   idle, so a long limit costs nothing and stops tasks being cut off mid-refine)
 #
 # Several workers (any partitions) may share one QUEUE_DIR: tasks are claimed atomically.
 #----------------------------------------------------------------------

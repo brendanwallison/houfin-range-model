@@ -18,7 +18,7 @@ Rules (adapted from research/desk-temporal's PROTOCOL.md):
    goes to the user before adoption.
 6. Every evaluation is logged in ledger.csv (counts forking paths). DIGEST.md, newest first, for the user.
 7. Budget: DEB23008 ONLY (DEB23007 is off limits); it had 381 SU on 2026-10-16, shared with the
-   user's other work. Overall age-model research <= 100 SU; Phase 1 = one ~12 h SSH window, <= 50 SU (raised from 25 by the user 2026-10-16),
+   user's other work. Overall age-model research <= 100 SU; Phase 1 = one ~12 h SSH window, <= 75 SU (raised from 25, then 50, by the user 2026-10-16),
    diagnostic only. Prefer one gpu-a100-small reservation (~1.5 SU/h) over dev (full-node rate); hold a
    node only while experiments run. SU logged per experiment in ledger.csv.
 

@@ -84,3 +84,5 @@ date,experiment,variant,run_dir,U,fit_corr,notes,su
 2026-10-17,E047,F1_hab result,,,,habitat frozen keeps realism (P .67 sinks med .85; W Kw-sink .13); missing gain = east positives 1980+ (~2.2k) + modern plains positives (~0.8k),
 2026-10-17,E047,F3_both,..._run_40__F3_both,192497.0,,habitat+demog frozen: 49% of the gain, source/sink = MAP; half the refinement gain is non-contorting,~100 cumulative
 2026-10-17,E048,MAP comparison,,,,rank 48/64 MAPs ~2.6-2.7k nats better than rank 24 at the same Adam schedule; float32 refines stall (noise floor),~102 cumulative
+2026-10-17,E047,F2_demog,..._run_40__F2_demog,187669.0,,demog frozen habitat free: 87% of gain but high-K sinks everywhere (W Kw .69 P .76 E .49),
+2026-10-17,E048,r64 f64z32,..._run_40_r64__f64z32,187516.4,,rank 64 float64 refine: 187,516 (worse than rank-24 186,051; likely poorer basin),~104 cumulative

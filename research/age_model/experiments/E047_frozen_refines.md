@@ -24,3 +24,9 @@ F3 RESULT (habitat pattern AND demographic levels frozen): U 198,699.9 -> 192,49
 fields identical to the MAP. F1 adds only ~230 nats by also freeing demography. => about HALF the refinement gain is
 non-contorting (K level, dispersal, settlement, disease, observation, release); the other half comes entirely from
 reshaping the habitat field (east 1980+ and modern plains positives).
+
+F2 RESULT (demographic levels frozen, habitat FREE): U 198,699.9 -> 187,669.0 (87% of the gap) but every region becomes
+mostly high-K SINKS: W .66/.69/.97, P .81/.76/.85, E .61/.49/.91. Confirms the habitat field is the contortion engine:
+free to reshape, it builds an implausible immigration-dependent geography.
+Summary: frozen habitat (F1, F3) keeps realism with ~50% of the gain; free habitat (F2, full) gains the rest by distorting
+the source/sink map.

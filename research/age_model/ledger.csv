@@ -77,3 +77,7 @@ date,experiment,variant,run_dir,U,fit_corr,notes,su
 2026-10-17,E042,c40_plains3,..._run_40__c40_plains3,227538.8,,(weighted; U not comparable) n50 .06; viz pending,~81 cumulative
 2026-10-17,E043,c40_kern/_juv,..._run_40__c40_kern|_juv,186901.7|186877.6,,literature kernel (departure 98%): +827-851 (unconverged); adult offset -2.3; outer tail cut x0.07 -- 330 km juvenile mdd too long once everyone disperses,~84 cumulative
 2026-10-17,E045,c40_nokt/eta/nokt_eta,..._run_40__c40_*,186116.0|185989.1|187267.6,,+65/-62/+1217; plains trough NOT restored; lambda change persists; west high-K sinks persist,~92 cumulative
+2026-10-17,E046,c40_pz,..._run_40__c40_pz,186097.8,,+47; 40,820 extra 1940-65 zeros; demography and plains unchanged (P .41/.44/1.05),
+2026-10-17,E048,rank48 MAP,age_map_float32_run_40_r48_quick90,,,MAP realistic like rank 24 (plains .66 sinks / median .88); float64 refine OOM -> requeued at mem .95,
+2026-10-17,E048,rank64,,,,MAP done; float64 refine OOM (12.2 GiB alloc) even at .95 -> float32 refine queued,
+2026-10-17,E047,F1_hab,..._run_40__F1_hab,192266.5,,habitat pattern frozen at MAP: recovers ~51% of the 12.6k refinement gain (198700 -> 192267); viz/decomp pending,~97 cumulative

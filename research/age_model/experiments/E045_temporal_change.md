@@ -14,3 +14,13 @@ Read: does the REFINED optimum keep the plains trough (sink share / K-weighted /
 realistic demography, and at what likelihood cost; per-region decomposition vs cold run_40.
 VRAM (for a later higher-rank test): M=24 float64 refine loads ~9.6 GB (Z_disp 4.9 GB) of a 29.6 GB limit; M=48
 fits; M=64 needs mem fraction ~.95 or float32 Z_disp or host residency.
+
+Results (2026-10-17), W/P/E as sink share / K-weighted sink / median lam_f; dlam = mean |dlambda| since 1902:
+| cold40 MAP | -- | W .36/.16/1.11 | P .70/.47/.85 | E .43/.14/1.09 | .17 |
+| cold40 refined | 0 | W .37/.55/1.08 | P .42/.45/1.05 | E .34/.36/1.31 | .25 |
+| c40_nokt (k_trend off) | +65 | W .37/.56/1.08 | P .44/.46/1.04 | E .34/.36/1.29 | .25 |
+| c40_eta (Beta(4,5); eta .74) | -62 | W .41/.57/1.06 | P .46/.48/1.02 | E .35/.38/1.28 | .24 |
+| c40_nokt_eta (eta .47) | +1217 | W .43/.59/1.04 | P .54/.51/.98 | E .34/.41/1.23 | .26 |
+Reading: temporal freedom is NOT what lets refinement contort. Shrinking Z change does not shrink the modelled
+lambda change (.24-.26 even at eta .47 -- the fit compensates, presumably via larger habitat sensitivities); the
+western high-K sinks (K-weighted ~.57 vs .16 at the MAP) persist in every variant. -> E047 (frozen blocks) / E048 (rank).

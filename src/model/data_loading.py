@@ -41,6 +41,12 @@ def occupied_habitat_center(meta):
     return np.asarray(meta["Z_gathered"][pairs[:, 0], pairs[:, 1]], dtype=np.float64).mean(axis=0)
 
 
+def _habitat_shrink_enabled():
+    from src.config_utils import load_age_model_config
+    spec = load_age_model_config().get("population_model", {}).get("habitat_change") or {}
+    return spec.get("shrink") == "learned"
+
+
 def _subcell_enabled():
     from src.config_utils import load_age_model_config
     spec = load_age_model_config().get("population_model", {}).get("subcell_strata") or {}
@@ -112,6 +118,10 @@ def load_data(input_dir, target_device=None, precision="float32", verbose=True):
     # decide structurally (whether quality_conc_mult exists) without touching jnp.
     if isinstance(meta.get("obs_quality"), np.ndarray):
         meta["n_obs_quality_tiers"] = int(np.unique(meta["obs_quality"]).size)
+    if _habitat_shrink_enabled():
+        # per-cell long-run means for population_model.habitat_change (host, one pass)
+        meta["Z_mean"] = meta["Z_gathered"].mean(axis=0)
+        meta["Z_disp_mean"] = meta["Z_disp_gathered"].mean(axis=0)
     if _subcell_enabled():
         with np.load(os.path.join(input_dir, "subcell_strata.npz")) as z:
             if not np.array_equal(np.asarray(z["years"]), np.asarray(meta["years"]).astype(int)):

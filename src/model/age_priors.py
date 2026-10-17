@@ -111,6 +111,11 @@ _OBS_SPEC = dict(_POP_SPEC.get("observation", {}))
 OBS_BREEDING = _OBS_SPEC.get("form", "post_breeding") == "breeding"
 _YEAR_FX = dict(_POP_SPEC.get("year_effects", {}))
 YEAR_EFFECTS = bool(_YEAR_FX.get("enabled", False))
+#   habitat_change            {"shrink": "learned", "eta_a", "eta_b"}: Z_eff(t) = Z_mean + eta*(Z(t) - Z_mean),
+#                             eta ~ Beta(a, b) learned (1 = raw covariates, 0 = static habitat); applied
+#                             to local and path features alike. Default off.
+_HABCHG = dict(_POP_SPEC.get("habitat_change", {}))
+HABITAT_SHRINK = _HABCHG.get("shrink") == "learned"
 _SUBCELL = dict(_POP_SPEC.get("subcell_strata", {}))
 SUBCELL = bool(_SUBCELL.get("enabled", False))
 #                             | "capacity_fitness" (K * lambda0^tau, tau >= 0 learned with prior
@@ -923,6 +928,10 @@ def build_model_2d(data, prior_scale=1.0):
         z_center=z_center,
         juvenile_ratio=JUVENILE_RATIO,
         disease_target=DISEASE_TARGET,
+        z_shrink=(numpyro.sample("habitat_change_eta", dist.Beta(
+            float(_HABCHG.get("eta_a", 2.0)), float(_HABCHG.get("eta_b", 2.0))))
+            if HABITAT_SHRINK else None),
+        Z_mean=data.get("Z_mean"), Z_disp_mean=data.get("Z_disp_mean"),
     )
     if BAND_WEIGHTS:
         _nb = data['juvenile_fft_kernel_stack'].shape[0] // 4

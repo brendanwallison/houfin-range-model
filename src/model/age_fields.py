@@ -170,6 +170,9 @@ def project_and_scatter_age_structured(
     z_center=None,    # (M,) feature vector the habitat fields are centred at, or None
     juvenile_ratio=False,  # Sj = Sa * sigmoid(alpha_j + gamma_j*H_sj) (and Q likewise)
     disease_target="capacity",  # "capacity" (K depression) | "survival" (K disease-free)
+    z_shrink=None,    # habitat_change: eta in (0,1) -- Z_eff = Z_mean + eta*(Z_t - Z_mean); None = raw Z
+    Z_mean=None,      # (N_land, M) per-cell long-run mean of Z
+    Z_disp_mean=None, # (N_land, K, M) same for the path features
 ):
     """Project Z → (S_a, S_j, F_max, K, Q) for every year, on the land cells.
 
@@ -207,6 +210,11 @@ def project_and_scatter_age_structured(
         # 1. Pull slices from CPU RAM -> GPU VRAM
         z_t = jnp.take(Z_gathered, t_idx, axis=0)
         z_disp_t = jnp.take(Z_disp_gathered, t_idx, axis=0)
+        if z_shrink is not None:
+            # Learned shrinkage of covariate CHANGE toward each cell's long-run mean (the DESK
+            # features over-move in time ~2.2x against observed abundance change).
+            z_t = Z_mean + z_shrink * (z_t - Z_mean)
+            z_disp_t = Z_disp_mean + z_shrink * (z_disp_t - Z_disp_mean)
 
         # 2. Compute the 4 Correlated Habitat Manifolds (H_s, H_sj, H_r, H_k) --
         # purely covariate-driven (Z.beta), no spatiotemporal term mixed in.

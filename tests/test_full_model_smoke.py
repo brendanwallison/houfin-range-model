@@ -34,7 +34,8 @@ OVERLAYS = [None, "map_run19_exchangeable.json", "map_run21_single_field.json",
             "map_run37a_r0_settle.json", "map_run37b_pure_r0_settle.json",
             "map_run38_habitat_shrink.json",
             "map_run39_nb_density_conc.json",
-            "map_run40_phase1.json"]
+            "map_run40_phase1.json",
+            "map_run41_route_effects.json"]
 
 
 def synthetic_inputs(T=40, Ny=12, Nx=16, M=24, z_sd=2.0, seed=0):
@@ -76,6 +77,8 @@ def synthetic_inputs(T=40, Ny=12, Nx=16, M=24, z_sd=2.0, seed=0):
         strata_u=np.concatenate([np.sort(rng.normal(0, 1, (T, n - 3, 6)), axis=-1),
                                  np.zeros((T, 3, 6))], axis=1).astype(np.float32),
         strata_a=np.array([0.15, 0.225, 0.25, 0.2, 0.12, 0.055]))
+    meta["obs_route"] = np.where(rng.random(nobs) < 0.2, -1, rng.integers(0, 40, nobs))  # route_effects
+    meta["n_routes"] = 40
     meta["Z_mean"] = meta["Z_gathered"].mean(axis=0)              # habitat_change (when enabled)
     meta["Z_disp_mean"] = meta["Z_disp_gathered"].mean(axis=0)
     meta["n_obs_quality_tiers"] = int(np.unique(meta["obs_quality"]).size)

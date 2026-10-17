@@ -1071,6 +1071,17 @@ def build_model_2d(data, prior_scale=1.0):
         densities_obs = jnp.maximum((breeders + phi * Nj_grid[t_idx, rows, cols]) * data["pop_scalar"], 1e-6)
     else:
         densities_obs = jnp.maximum(densities[t_idx, rows, cols] * data["pop_scalar"], 1e-6)
+    # observation.route_effects: PERSISTENT per-route multipliers on expected counts (a route
+    # through a town with finches stays high every year) -- patchiness as a fixed route offset
+    # learned from repeated years, instead of extra per-observation noise (kappa), so each
+    # observation keeps its information about the cell mean. Pseudo-zeros (route -1) get none.
+    if _OBS_SPEC.get("route_effects"):
+        _sr = numpyro.sample("obs_route_sd", dist.HalfNormal(
+            float(_OBS_SPEC.get("route_sd_scale", 0.5)) * prior_scale))
+        _zr = numpyro.sample("obs_route_raw", dist.Normal(0.0, 1.0).expand([int(data["n_routes"])]))
+        _ri = data["obs_route"]
+        route_fx = jnp.where(_ri >= 0, _sr * _zr[jnp.maximum(_ri, 0)], 0.0)
+        densities_obs = densities_obs * jnp.exp(route_fx)
     if YEAR_EFFECTS:
         _sd = numpyro.sample("obs_year_sd",
                              dist.HalfNormal(float(_YEAR_FX.get("sd_scale", 0.3)) * prior_scale))

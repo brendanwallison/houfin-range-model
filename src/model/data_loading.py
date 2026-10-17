@@ -47,6 +47,12 @@ def _habitat_shrink_enabled():
     return spec.get("shrink") == "learned"
 
 
+def _route_effects_enabled():
+    from src.config_utils import load_age_model_config
+    spec = load_age_model_config().get("population_model", {}).get("observation") or {}
+    return bool(spec.get("route_effects", False))
+
+
 def _subcell_enabled():
     from src.config_utils import load_age_model_config
     spec = load_age_model_config().get("population_model", {}).get("subcell_strata") or {}
@@ -122,6 +128,13 @@ def load_data(input_dir, target_device=None, precision="float32", verbose=True):
         # per-cell long-run means for population_model.habitat_change (host, one pass)
         meta["Z_mean"] = meta["Z_gathered"].mean(axis=0)
         meta["Z_disp_mean"] = meta["Z_disp_gathered"].mean(axis=0)
+    if _route_effects_enabled():
+        with np.load(os.path.join(input_dir, "obs_route_ids.npz")) as z:
+            if z["route"].shape[0] != np.asarray(meta["observed_results"]).shape[0]:
+                raise ValueError("obs_route_ids.npz does not match the observations; rebuild it "
+                                 "(research/age_model/exp/build_route_ids.py)")
+            meta["obs_route"] = np.asarray(z["route"]).astype(np.int64)
+            meta["n_routes"] = int(z["n_routes"])        # a plain int: it sets a sample shape
     if _subcell_enabled():
         with np.load(os.path.join(input_dir, "subcell_strata.npz")) as z:
             if not np.array_equal(np.asarray(z["years"]), np.asarray(meta["years"]).astype(int)):

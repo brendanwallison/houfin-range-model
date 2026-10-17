@@ -27,3 +27,15 @@ R1 results (2026-10-16):
    ~65% of the remaining fast-growth demand. The fit wants FEWER founders at low fecundity (2.2 vs 6.7):
    the prior-fixed seed (~9 q50 of sustained immigration over 10 y into 9 cells) was too large, and
    the pre-BBS population had to be braked/grown around it. Supports the user's release hypothesis.
+
+R2 / F1 results (2026-10-16), all vs ifd3 197642.1 (Fmax 10.6, lam0 1.85, n50 .18):
+| variant | U | dU | Sa | Sj | F | lam0 | n50 |
+| exempt0 | 197288.2 | -354 | .62 | .51 | 9.2 | 2.06 | .22 |
+| exempt26 | 197689.0 | +47 | .50 | .44 | 9.3 | 1.69 | .13 |
+| mask5 (U not comparable) | 171491.2 | -- | .53 | .46 | 8.7 | 1.75 | .16 |
+| mask10 (U not comparable) | 152057.8 | -- | .56 | .47 | 6.4 | 1.62 | .13 |
+- Removing the 9-cell, 10-year Allee exemption fits 354 nats BETTER (with the 90-coef founders) -- the
+  same order as the single release's -335: both say the old release block was the distortion. Untested:
+  single release WITH exemption 0.
+- Masking the colonization transient lowers fecundity (10.6 -> 8.7 at +-5 y, 6.4 at +-10 y) and lambda0
+  (1.85 -> 1.62) but never to plausible values: most of the fast-growth demand is outside the transient.

@@ -64,3 +64,4 @@ date,experiment,variant,run_dir,U,fit_corr,notes,su
 2026-10-17,E035,dsk,..._ds_rho__dsk,188353.2,,NEW BEST: dispersers-only + coupling free + kappa; -950 vs rk; Sa .70 Sj .51 F 5.7 lam0 1.83 n50 .034 (unconverged; continuing),
 2026-10-17,E035,dsk_hab,..._ds_rho__dsk_hab,189063.2,,+710 vs dsk: habitat shrink hurts once kappa present (eta .69),
 2026-10-17,E034,ds_rho_hab,..._ct_ds_r0__ds_rho_hab,193110.5,,-688 vs ds_rho (eta .89; unconverged),~63 cumulative
+2026-10-17,E035,dsk viz,,,,plains 97% source / 3% sink / 1% Allee-dead, median lam_f 1.65 (widespread-sources contortion persists),~66 cumulative

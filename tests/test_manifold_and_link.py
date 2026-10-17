@@ -507,3 +507,37 @@ print(json.dumps({"shape": list(inv.shape), "nonzero": int((inv > 0).sum()),
                                   text=True, check=True).stdout.strip().splitlines()[-1])
     assert r["shape"][0] == 1 and r["nonzero"] == 1
     assert r["has_total"] and not r["has_grid_site"]
+
+
+def test_disease_mortality_lowers_equilibrium_and_density_dependence_eases_it():
+    """forward_sim with disease_m_amp: zero amplitude == no disease; endemic mortality settles the
+    population BELOW K (c is from disease-free rates); mortality is weaker at low density."""
+    from src.model.age_forward import forward_sim_age_structured
+    import tests.test_full_model_smoke as sm
+    d = sm.synthetic_inputs(T=40)
+    n = int(d["N_land"]); T = int(d["time"])
+    Sa = jnp.full((T, n), 0.55); Sj = jnp.full((T, n), 0.3); F = jnp.full((T, n), 5.0)
+    K = jnp.full((T, n), 1.0); c = F * Sa * Sj / (1 - Sa + 1e-6) - 1.0
+    Q = jnp.ones((T, n, d["juvenile_fft_kernel_stack"].shape[0]))
+
+    def run(amp, seed_level=1.0, kh=0.5):
+        tot, _, _ = forward_sim_age_structured(
+            Sa, Sj, F, K, c, Q, d["land_rows"], d["land_cols"], d["land_mask"],
+            d["adult_fft_kernel"], d["juvenile_fft_kernel_stack"],
+            d["adult_edge_correction"], d["juvenile_edge_correction_stack"],
+            d["land_mask"] * seed_level, jnp.zeros(T), jnp.zeros((2, 10)), T, d["inv_locations"], 12,
+            -3.0, 0.0, 200.0, disease_m_amp=amp, disease_k_half=kh, disease_hill_n=2.0)  # Allee ~off
+        return np.asarray(tot)
+
+    base = run(None)
+    np.testing.assert_allclose(run(jnp.zeros((T, n))), base, rtol=1e-6, atol=1e-9)
+    amp = jnp.where(jnp.arange(T)[:, None] >= 20, 0.4, 0.0) * jnp.ones((T, n))
+    sick = run(amp)
+    land = np.asarray(d["land_mask"]) > 0
+    assert sick[-1][land].mean() < 0.9 * base[-1][land].mean()        # equilibrium lowered
+    assert np.allclose(sick[:20], base[:20])                           # nothing before onset
+    # density dependence: a sparse population loses a smaller FRACTION in the first sick year
+    lo_b, lo_s = run(None, 0.02, kh=0.5), run(amp, 0.02, kh=0.5)
+    hi_frac = 1 - sick[20][land].sum() / base[20][land].sum()
+    lo_frac = 1 - lo_s[20][land].sum() / lo_b[20][land].sum()
+    assert lo_frac < hi_frac

@@ -18,7 +18,8 @@ import numpyro
 import numpyro.distributions as dist
 
 from src.config_utils import load_age_model_config
-from src.model.age_fields import disease_severity, project_and_scatter_age_structured
+from src.model.age_fields import (disease_mortality_amplitude, disease_severity,
+                                  project_and_scatter_age_structured)
 from src.model.age_forward import forward_sim_age_structured
 
 # Prior settings read from config so they can be retuned without editing model
@@ -72,6 +73,16 @@ SETTLE_BLOCK = int(_SETTLE.get("block", 3)) if _SETTLE.get("form", "none") == "i
 #                             "fitness" (equal realized lambda, Allee excluded; nests capacity
 #                             when vital rates are equal within a block) | "uniform" (control)
 SETTLE_WEIGHT = _SETTLE.get("weight", "capacity")
+#   disease_prior.target      "capacity" (default: the epizootic depresses K) | "survival" (it is ADDED
+#                             MORTALITY on adults and juveniles, Hill on CURRENT density, host
+#                             resistance via rec/tau_rec; K disease-free; ceiling =
+#                             disease_prior.mortality_ceiling, default 0.8)
+_DISEASE_SPEC = dict(_POP_SPEC.get("disease_prior", {}))
+DISEASE_TARGET = _DISEASE_SPEC.get("target", "capacity")
+if DISEASE_TARGET not in {"capacity", "survival"}:
+    raise ValueError(f"disease_prior.target must be capacity or survival, got {DISEASE_TARGET!r}")
+_DISEASE_CEILING = float(_DISEASE_SPEC.get("mortality_ceiling", 0.8) if DISEASE_TARGET == "survival"
+                         else _DISEASE_SPEC.get("severity_ceiling", 0.5))
 #   subcell_strata            {"enabled": bool, "beta_k_scale", "delta_f_scale"}: split each cell
 #                             into within-cell urbanisation slices (data: subcell_strata.npz from
 #                             src/data/preprocess/subcell_strata.py), fitness ideal-free among them,
@@ -550,7 +561,9 @@ def sample_priors(prior_scale=1.0, M_features=None, time=None,
     # Enforcing this structurally means the ceiling and the steepness cannot drift
     # into an unidentifiable combination: raising the ceiling automatically tightens
     # the allowed steepness, which a LogNormal prior would happily ignore.
-    _n_max = 0.85 * (4.0 / float(_p["severity_ceiling"]) - 2.0)
+    # (disease_prior.target = survival: the same monotonicity argument applies to survivors
+    # S*N*(1 - m(N)) in N, with the mortality ceiling in place of the severity ceiling.)
+    _n_max = 0.85 * (4.0 / _DISEASE_CEILING - 2.0)
     _n_min = 0.5
     _n_med = float(_p["hill_n_median"])
     _n_raw_loc = math.log((_n_med - _n_min) / (_n_max - _n_med))
@@ -791,7 +804,7 @@ def build_model_2d(data, prior_scale=1.0):
         "lag0": priors['disease_lag0'],
         "w_lag": priors['disease_w_lag'],
         "tau": priors['disease_tau'],
-        "ceiling": float(_DISEASE_PRIOR["severity_ceiling"]),
+        "ceiling": _DISEASE_CEILING,
         "k_half": priors['disease_k_half'],
         "hill_n": priors['disease_hill_n'],
         "rec": priors['disease_rec'],
@@ -880,7 +893,15 @@ def build_model_2d(data, prior_scale=1.0):
         capacity=crowding_capacity if _K_FORM == "crowding" else None,
         z_center=z_center,
         juvenile_ratio=JUVENILE_RATIO,
+        disease_target=DISEASE_TARGET,
     )
+    if DISEASE_TARGET == "survival":
+        _tt = jnp.arange(time, dtype=Sa_flat.dtype)[:, None]
+        disease_m_amp = numpyro.deterministic("disease_mortality_amp", jnp.where(
+            _tt >= data['disease_timestep'],
+            disease_mortality_amplitude(disease, _tt), 0.0))
+    else:
+        disease_m_amp = None
         
     # Save fields for viz
     numpyro.deterministic("Sa_flat", Sa_flat)
@@ -976,6 +997,8 @@ def build_model_2d(data, prior_scale=1.0):
         subcell_beta_k=priors['subcell_beta_k'], subcell_delta_f=priors['subcell_delta_f'],
         dispersal_adult_offset=priors['dispersal_logit_adult_offset'],
         crowding_beta=priors['dispersal_crowding_beta'], crowding_kappa=CROWDING_KAPPA,
+        disease_m_amp=disease_m_amp, disease_k_half=priors['disease_k_half'],
+        disease_hill_n=priors['disease_hill_n'],
     )
 
     numpyro.deterministic("simulated_density", densities)

@@ -124,6 +124,7 @@ from src.temporal import load_timeline
 from src.model.age_priors import build_model_2d
 from src.model.age_forward import forward_sim_age_structured
 from src.model.age_priors import (ALLEE_RELATIVE, CROWDING_KAPPA, SETTLE_BLOCK, SETTLE_WEIGHT,
+                                  counts_to_relative,
                                   SUBCELL)
 from src.model.checkpoints import auto_delta_params_to_latents, load_map_params
 from src.model.data_loading import load_data
@@ -232,6 +233,8 @@ def reconstruct_map(data, params):
               "disease_severity_map", "disease_mu_sev", "disease_b_late",
               "disease_w_lag", "disease_lag0", "disease_tau", "disease_rec",
               "disease_tau_rec", "Na_grid", "Nj_grid",
+              # disease_prior.target = survival only: the epizootic's added-mortality amplitude.
+              "disease_mortality_amp",
               # Present only with habitat_centering="occupied"; Predictive drops absent names.
               "habitat_center_offsets"]
     predictive = Predictive(build_model_2d, posterior_samples=posterior, return_sites=needed)
@@ -1773,6 +1776,12 @@ def simulate_no_invasion_counterfactual(sim, data, drop_disease=True):
         crowding_beta=(float(np.asarray(latents["dispersal_crowding_beta"]))
                        if "dispersal_crowding_beta" in latents else None),
         crowding_kappa=CROWDING_KAPPA,
+        # disease_prior.target = survival: the epizootic is mortality, not a K cut, so the
+        # "keep disease" world needs it back (dropping it = no amplitude).
+        **({} if drop_disease or "disease_mortality_amp" not in sim else dict(
+            disease_m_amp=jnp.asarray(sim["disease_mortality_amp"]),
+            disease_k_half=float(counts_to_relative(np.asarray(sim["disease_k_half_route_counts"]))),
+            disease_hill_n=float(np.asarray(sim["disease_hill_n"])))),
     )
     return np.asarray(jax.block_until_ready(density))
 

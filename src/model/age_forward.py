@@ -148,6 +148,9 @@ def forward_sim_age_structured(
     strata_a=None,
     subcell_beta_k=0.0,
     subcell_delta_f=0.0,
+    disease_m_amp=None,
+    disease_k_half=1.0,
+    disease_hill_n=1.0,
 ):
     """Run the age-structured simulation for ``time`` years.
 
@@ -268,6 +271,18 @@ def forward_sim_age_structured(
         # 4. Survival & Reproduction. Release cells skip the Allee factor while
         # exempt (see allee_exempt_years in the docstring).
         allee_off = jnp.where((k >= 0) & (k < allee_exempt_years), release_mask, 0.0)
+        # Epizootic ADDED MORTALITY (disease_prior.target = survival): m = amplitude(cell, t)
+        # * hill(current local density). Applied to the survival of adults, juvenile stayers
+        # and arrivers alike; c (computed upstream from the disease-free rates) is left
+        # alone, so endemic mortality LOWERS the equilibrium below K instead of moving K.
+        if disease_m_amp is not None:
+            amp_g = zero_grid.at[land_rows, land_cols].set(disease_m_amp[t])
+            Nloc = N_a_post + juvenile_stayers + juvenile_arriving
+            hn = jnp.power(jnp.maximum(Nloc, 0.0) + 1e-12, disease_hill_n)
+            m_g = amp_g * hn / (hn + disease_k_half ** disease_hill_n)
+            Sa_g = Sa_g * (1.0 - m_g)
+            Sj_g = Sj_g * (1.0 - m_g)
+            juvenile_arriving = juvenile_arriving * (1.0 - m_g)
         if strata_u is None:
             N_a_new, N_j_new = reproduction_age_structured(
                 N_a_post, juvenile_stayers, juvenile_arriving,

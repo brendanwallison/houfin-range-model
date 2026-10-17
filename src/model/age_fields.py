@@ -92,6 +92,29 @@ def disease_severity(disease, K_base):
     return disease["ceiling"] * modifier * density_term
 
 
+def disease_mortality_amplitude(disease, t_idx, onset_t=None):
+    """Density-free part of the epizootic's ADDED MORTALITY (disease_prior.target = survival).
+
+    m(cell, t, N) = ceiling * modifier(x) * gate(t - onset) * (1 - r(t - onset)) * hill(N): this
+    returns everything but hill(N), which the forward simulation evaluates on the CURRENT local
+    density (transmission needs hosts now, so mortality eases as a population thins and rises
+    again if it rebounds). r is HOST RESISTANCE/TOLERANCE building with years since local
+    arrival -- the same rec / tau_rec parameters disease_k_fraction calls recovery, here acting
+    on per-capita mortality; one-way and density-blind, which is what separates it from the
+    density easing. Shape (..., N_land) for scalar or broadcastable ``t_idx``.
+    """
+    onset_t = disease_onset_timestep(disease) if onset_t is None else onset_t
+    modifier = jnn.sigmoid(
+        disease["mu_sev"]
+        + disease["b_late"] * disease["onset_decades"]
+        + disease["b_native"] * disease["native_shape"]
+        + jnp.dot(disease["sev_basis"].T, disease["w_sev"]))
+    gate = jnn.sigmoid((t_idx - onset_t) / disease["tau"])
+    age = jnp.maximum(t_idx - onset_t, 0.0)
+    resisted = disease["rec"] * (-jnp.expm1(-age / disease["tau_rec"]))
+    return disease["ceiling"] * modifier * gate * (1.0 - resisted)
+
+
 def disease_onset_timestep(disease):
     """Per-cell front arrival in model-timestep units, with fitted slack.
 
@@ -146,6 +169,7 @@ def project_and_scatter_age_structured(
     capacity=None,    # callable (alpha_k, H, trend, Sa, Sj, Fmax) -> K_base; overrides k_link
     z_center=None,    # (M,) feature vector the habitat fields are centred at, or None
     juvenile_ratio=False,  # Sj = Sa * sigmoid(alpha_j + gamma_j*H_sj) (and Q likewise)
+    disease_target="capacity",  # "capacity" (K depression) | "survival" (K disease-free)
 ):
     """Project Z → (S_a, S_j, F_max, K, Q) for every year, on the land cells.
 
@@ -256,12 +280,17 @@ def project_and_scatter_age_structured(
         # module docstring for why the earlier additive-inside-softplus form
         # annihilated eastern K instead of rescaling it). The severity and onset
         # fields are time-independent, so they are hoisted out of the scan.
-        k_fraction = jnp.where(
-            t_idx >= disease_timestep,
-            disease_k_fraction(disease, t_idx, K_base_val, onset_t=onset_t),
-            0.0,
-        )
-        K_val = K_base_val * (1.0 - k_fraction)
+        # (disease_target = survival: K stays disease-free; the epizootic is added
+        # mortality applied in the forward simulation -- see disease_mortality_amplitude.)
+        if disease_target == "survival":
+            K_val = K_base_val
+        else:
+            k_fraction = jnp.where(
+                t_idx >= disease_timestep,
+                disease_k_fraction(disease, t_idx, K_base_val, onset_t=onset_t),
+                0.0,
+            )
+            K_val = K_base_val * (1.0 - k_fraction)
 
         # 5. Map path habitat to Journey Survival (Q) using the JUVENILE manifold and rules.
         # This links movement mortality to juvenile local survival mortality -- the same field

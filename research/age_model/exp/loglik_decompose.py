@@ -46,7 +46,7 @@ def per_observation(run_dir: str) -> dict:
     lat = {k: np.asarray(v) for k, v in auto_delta_params_to_latents(params).items()}
     post = {k: jax.numpy.asarray(v)[None] for k, v in lat.items()}
     out = Predictive(build_model_2d, posterior_samples=post,
-                     return_sites=["expected_obs", "concentration", "quality_conc_mult"])(
+                     return_sites=["expected_obs", "concentration", "quality_conc_mult", "obs_conc_kappa"])(
         jax.random.PRNGKey(0), data=data, prior_scale=1.0)
     mu = np.asarray(out["expected_obs"][0], dtype=np.float64)
     conc = float(np.asarray(out["concentration"][0]))
@@ -54,6 +54,8 @@ def per_observation(run_dir: str) -> dict:
     y = np.asarray(data["observed_results"], dtype=np.float64)
     quality = np.asarray(data["obs_quality"]) if data.get("obs_quality") is not None else np.zeros_like(y)
     conc_obs = conc * q ** quality
+    if "obs_conc_kappa" in out:     # observation.conc_density_power: phi(mu) = phi0 * mu^kappa
+        conc_obs = conc_obs * np.maximum(mu, 1e-3) ** float(np.asarray(out["obs_conc_kappa"][0]))
     ll = np.asarray(dist.NegativeBinomial2(mean=mu, concentration=conc_obs).log_prob(y), dtype=np.float64)
     rows, cols = np.asarray(data["obs_rows"]), np.asarray(data["obs_cols"])
     years = np.asarray(data["years"])[np.asarray(data["obs_time_indices"])]

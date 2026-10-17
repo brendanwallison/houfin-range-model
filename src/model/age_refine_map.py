@@ -129,6 +129,22 @@ def lbfgs_minimize(f, x0, kw, s: dict, state_path: str, run_fingerprint: str, lo
     return x, history, reason
 
 
+def _compact_run_dir(path, max_len=200):
+    """Refining a refined point prefixes another ``refined_<precision>__`` each time; a long
+    warm-start lineage overflowed the 255-byte filename limit (E032). Keep one prefix, and if
+    the tag chain is still too long, replace its middle with a short hash (ends kept readable)."""
+    import hashlib
+    import re
+    head, base = os.path.split(path.rstrip(os.sep))
+    base = re.sub(r"^(refined_float(?:32|64)__)+", lambda m: m.group(1)[: m.group(1).index("__") + 2], base)
+    if len(base) > max_len:
+        parts = base.split("__")
+        keep_head, keep_tail = parts[:2], parts[-3:]
+        mid = "__".join(parts[2:-3])
+        base = "__".join(keep_head + [hashlib.sha1(mid.encode()).hexdigest()[:10]] + keep_tail)
+    return os.path.join(head, base)
+
+
 def run_refine():
     from src.config_utils import load_age_model_config
     from src.model.age_priors import build_model_2d
@@ -146,6 +162,7 @@ def run_refine():
     tag = os.environ.get("HOUFIN_REFINE_TAG")
     if tag:
         out_dir = f"{out_dir.rstrip(os.sep)}__{tag}"
+    out_dir = _compact_run_dir(out_dir)
     hc.archive_if_fresh(out_dir, env="HOUFIN_REFINE_FRESH", files=(STATE_FILE,))
     os.makedirs(out_dir, exist_ok=True)
     print(f"--- L-BFGS refine of {hc.map_dir()} in {hc.PRECISION} | {s} -> {out_dir} ---")

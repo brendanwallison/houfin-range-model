@@ -1105,6 +1105,14 @@ def build_model_2d(data, prior_scale=1.0):
         conc_obs = concentration * jnp.power(q_mult, obs_quality)
     else:
         conc_obs = concentration
+    # observation.conc_density_power: NB2 concentration falls at low expected count,
+    # phi(mu) = phi0 * mu^kappa, kappa ~ HalfNormal(scale) >= 0 (0 = one global phi). Sparse
+    # populations are PATCHY (mostly zero routes, locally dense at a few); with one global phi
+    # the cheapest fit is thin, widespread presence (plains: predicted P(0) .85 vs observed .93).
+    if _OBS_SPEC.get("conc_density_power"):
+        kappa = numpyro.sample("obs_conc_kappa", dist.HalfNormal(
+            float(_OBS_SPEC.get("conc_density_power_scale", 0.5)) * prior_scale))
+        conc_obs = conc_obs * jnp.power(jnp.maximum(densities_obs, 1e-3), kappa)
 
     # population_model.observation_mask (diagnostic): data_loading sets obs_weight 0 on the
     # dropped observations; they stay in expected_obs, so their fit can still be read.

@@ -47,6 +47,9 @@ def load_cache(cache):
     c = {k: np.load(j(f"{k}.npy"), mmap_mode="r") for k in
          ("keys", "X_dev", "cells", "years", "z_raw_all", "z_ema_all", "key_cell_index")}
     c["split"] = dict(np.load(j("split.npz")))
+    for k in ("zpriv_ema_all", "zpriv_raw_all"):   # E086: private dims, when the model has them
+        if os.path.exists(j(f"{k}.npy")):
+            c[k] = np.load(j(f"{k}.npy"), mmap_mode="r")
     c["meta"] = json.load(open(j("meta.json"), encoding="utf-8"))
     return c
 
@@ -67,6 +70,10 @@ def features(c, args):
     if args.lag_hl > 0:
         z_all = causal_ema(z_all, args.lag_hl)
     z_full = z_all                                     # all latent dims, for the head blocks (E085)
+    pk = "zpriv_ema_all" if args.features == "ema" else "zpriv_raw_all"
+    p_all = np.asarray(c[pk], "float64") if pk in c else None     # E086 private dims
+    if p_all is not None and args.lag_hl > 0:
+        p_all = causal_ema(p_all, args.lag_hl)
     z_all = z_all[:, :, : args.rank]
     years = np.asarray(c["years"])
     keys = np.asarray(c["keys"])
@@ -104,7 +111,20 @@ def features(c, args):
             raise SystemExit(f"--head-ckpt {args.head_ckpt}: no metric_heads in the checkpoint")
         zf = z_full[ci, yi]
         zf_nc = z_full[:, mod].mean(1)[ci]
-        for Wh in heads:
+        L_ = zf.shape[1]
+        a0 = 0
+        hin = []
+        for Wh in heads:   # E086: a head with a private block reads [z, its slice of the private dims], in head order
+            pk_ = Wh.shape[1] - L_
+            if pk_ > 0:
+                if p_all is None:
+                    raise SystemExit("--head-ckpt has private-dim heads but the cache has no zpriv_*_all.npy")
+                hin.append((np.hstack([zf, p_all[ci, yi, a0:a0 + pk_]]),
+                            np.hstack([zf_nc, p_all[:, mod, a0:a0 + pk_].mean(1)[ci]])))
+            else:
+                hin.append((zf, zf_nc))
+            a0 += max(pk_, 0)
+        for Wh, (zf, zf_nc) in zip(heads, hin):
             p = X.shape[1]
             X, Xnc = np.hstack([X, zf @ Wh.T]), np.hstack([Xnc, zf_nc @ Wh.T])
             blocks = blocks + [(p, p + Wh.shape[0])]

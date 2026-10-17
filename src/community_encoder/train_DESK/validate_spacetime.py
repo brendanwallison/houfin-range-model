@@ -409,7 +409,8 @@ def _load_model(config):
         # Scalar OR per-stream list -- one reader for both, so a per-stream checkpoint
         # cannot train fine and then fail every validation stage that reloads it.
         hidden_width=hidden_width_from_meta(dm),
-        mlp_expansion=(int(dm["mlp_expansion"]) if "mlp_expansion" in dm else 4))
+        mlp_expansion=(int(dm["mlp_expansion"]) if "mlp_expansion" in dm else 4),
+        private_dim=(int(dm["private_dim"]) if "private_dim" in dm.files else 0))
     # Put the net on the accelerator. This path used to load with map_location="cpu" and never
     # call .to(device), so all 60 whole-grid forwards ran on CPU (~480 ms each, ~87% of this
     # path's measured cost) on a job submitted to a GPU queue. The CPU fallback is retained so
@@ -423,10 +424,11 @@ def _load_model(config):
             int(dm["latent_dim"]), device)
 
 
-def encode_points(config, point_index):
+def encode_points(config, point_index, with_private=False):
     """Encode each ``(row,col,year)`` point with the eBird-only DESK → ``(N, latent)``.
 
-    Returns ``(Z, ok)`` where ``ok`` masks points whose covariates were finite.
+    Returns ``(Z, ok)`` where ``ok`` masks points whose covariates were finite; ``with_private`` (research, E086)
+    also returns the model's private dims ``(N, private_dim)`` as a third value (empty width for a model without).
     """
     import torch
     from . import covariate_io as cio
@@ -438,6 +440,8 @@ def encode_points(config, point_index):
                                  context="validate_spacetime")
     rows, cols, years = point_index[:, 0], point_index[:, 1], point_index[:, 2]
     Z = np.full((len(point_index), latent), np.nan, dtype="float32")
+    _pd = int(getattr(model, "private_dim", 0)) if with_private else 0
+    Pv = np.full((len(point_index), _pd), np.nan, dtype="float32")
     # Grid-native: encode each year's WHOLE grid (so the spatial residual conv sees
     # neighbours -- the same function the cube applies) and gather the points from it.
     for y in np.unique(years):
@@ -446,11 +450,19 @@ def encode_points(config, point_index):
         xg = torch.tensor(covn[None], dtype=torch.float32, device=device)
         mg = torch.tensor(valid[None], device=device)
         with torch.no_grad():
-            zz, _ = model(xg, mg)                        # (1, H, W, L)
+            if _pd:
+                zz, _, pp = model(xg, mg, True)
+                pc = pp[0].float().cpu().numpy()
+            else:
+                zz, _ = model(xg, mg)                    # (1, H, W, L)
         zc = zz[0].float().cpu().numpy()
         for k in sel:
             if valid[rows[k], cols[k]]:
                 Z[k] = zc[rows[k], cols[k]]
+                if _pd:
+                    Pv[k] = pc[rows[k], cols[k]]
+    if with_private:
+        return Z, ~np.isnan(Z).any(1), Pv
     return Z, ~np.isnan(Z).any(1)
 
 

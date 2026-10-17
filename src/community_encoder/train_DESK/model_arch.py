@@ -232,9 +232,13 @@ class MultiStreamAutoencoder(nn.Module):
     """
 
     def __init__(self, dims, latent_dim, spatial_kernel=3, dropout=0.5,
-                 hidden_width=None, mlp_expansion=4):
+                 hidden_width=None, mlp_expansion=4, private_dim=0):
         super().__init__()
         self.dims = list(dims)
+        # Research (E086): PRIVATE dims -- extra point-wise outputs from the mixer's hidden layer that no BBS loss
+        # sees; only the metric heads read them, so a winter / eBird source can carry structure z does not. 0 = off,
+        # and then the state_dict and every output are exactly as before.
+        self.private_dim = int(private_dim)
         self.dropout = float(dropout)
         n = len(self.dims)
         self.hidden_widths = resolve_hidden_widths(hidden_width, n, latent_dim)
@@ -259,6 +263,8 @@ class MultiStreamAutoencoder(nn.Module):
             nn.Linear(hsum, hsum), nn.GELU(),
             nn.Linear(hsum, latent_dim),
         )
+        if self.private_dim > 0:
+            self.private_out = nn.Linear(hsum, self.private_dim)
         self.decoder = nn.Sequential(
             nn.Linear(latent_dim, hsum), nn.GELU(),
             nn.Linear(hsum, sum(self.dims)),
@@ -278,17 +284,32 @@ class MultiStreamAutoencoder(nn.Module):
             raise ValueError(f"expected {len(self.encoders)} streams (dims={self.dims}), "
                              f"got input width {x.shape[1]}")
         h = torch.cat([enc(p) for enc, p in zip(self.encoders, parts)], dim=1)
+        if getattr(self, "_want_private", False):
+            h1 = self.mixer[1](self.mixer[0](h))
+            return self.mixer[2](h1), self.private_out(h1)
         return self.mixer(h)
 
-    def forward(self, x, mask):
+    def forward(self, x, mask, with_private=False):
         """``x``: covariate grid ``(B, H, W, C)``; ``mask``: ``(B, H, W)`` (1=valid).
 
-        Returns ``z (B, H, W, latent)`` and ``recon (B, H, W, C)``.
+        Returns ``z (B, H, W, latent)`` and ``recon (B, H, W, C)``; with ``with_private`` (needs private_dim > 0)
+        also the private dims ``(B, H, W, private_dim)`` (point-wise; not in the spatial residual or the decoder).
         """
         if x.dim() != 4:
             raise ValueError(f"expected grid input (B,H,W,C), got {tuple(x.shape)}")
         B, H, W, C = x.shape
-        z_point = self._pointwise_latent(x.reshape(B * H * W, C))       # (B*H*W, L)
+        priv = None
+        if with_private:
+            if self.private_dim <= 0:
+                raise ValueError("with_private=True needs a model built with private_dim > 0")
+            self._want_private = True
+            try:
+                z_point, priv = self._pointwise_latent(x.reshape(B * H * W, C))
+            finally:
+                self._want_private = False
+            priv = priv.reshape(B, H, W, self.private_dim)
+        else:
+            z_point = self._pointwise_latent(x.reshape(B * H * W, C))   # (B*H*W, L)
         L = z_point.shape[1]
         z_grid = z_point.reshape(B, H, W, L).permute(0, 3, 1, 2)         # (B, L, H, W)
 
@@ -300,6 +321,8 @@ class MultiStreamAutoencoder(nn.Module):
 
         z = z_grid.permute(0, 2, 3, 1).contiguous()                      # (B, H, W, L)
         recon = self.decoder(z.reshape(B * H * W, L)).reshape(B, H, W, C)
+        if with_private:
+            return z, recon, priv
         return z, recon
 
 

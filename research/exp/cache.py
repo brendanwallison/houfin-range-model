@@ -101,7 +101,13 @@ def main():
     years = np.arange(w0, w1 + 1)
     grid = np.array([(r, c, y) for r, c in cells for y in years], "int32")
     t1 = time.perf_counter()
-    Zg, zinfo, Zg_raw = desk_z_ema(cfg, grid, return_raw=True)
+    _pdim = int(_dm["private_dim"]) if "private_dim" in _dm.files else 0
+    if _pdim:   # E086: private dims (read only by the metric heads), smoothed and saved alongside z
+        Zg, zinfo, Zg_raw, Pg, Pg_raw = desk_z_ema(cfg, grid, return_raw=True, return_private=True)
+        np.save(os.path.join(a.out, "zpriv_ema_all.npy"), Pg.reshape(len(cells), len(years), _pdim).astype("float32"))
+        np.save(os.path.join(a.out, "zpriv_raw_all.npy"), Pg_raw.reshape(len(cells), len(years), _pdim).astype("float32"))
+    else:
+        Zg, zinfo, Zg_raw = desk_z_ema(cfg, grid, return_raw=True)
     L = Zg.shape[1]
     z_all = Zg.reshape(len(cells), len(years), L).astype("float32")
     z_all_raw = Zg_raw.reshape(len(cells), len(years), L).astype("float32")

@@ -3057,6 +3057,60 @@ def test_metric_heads_and_learned_presence(tmp_path):
     assert state["presence"]["W"].shape == (L, S)
 
 
+def test_private_dims_for_metric_heads(tmp_path):
+    """E086: per-head PRIVATE dims -- the model grows private outputs only the heads read; z keeps its width, the
+    plain forward is unchanged, each head's weight is (d, L + its private width), the orthogonality term runs, and
+    the private gradient reaches the model's private layer."""
+    import contextlib
+    import io
+
+    from src.community_encoder.train_DESK import desk_training as D
+    from src.community_encoder.train_DESK.model_arch import MultiStreamAutoencoder
+
+    sch = _schema()
+    dims = [s["dim"] for s in sch["streams"]]
+    T, H, W, L, S, N = 4, 6, 7, 16, 5, 40
+    rng = np.random.default_rng(13)
+    # the model: plain forward identical to a private_dim=0 net's outputs shape-wise; with_private adds the block
+    net = MultiStreamAutoencoder(dims, L, 3, 0.0, private_dim=5).eval()
+    x = torch.randn(1, H, W, sch["total_dim"]); mk = torch.ones(1, H, W)
+    z0, r0 = net(x, mk)
+    z1, r1, pv = net(x, mk, True)
+    assert z0.shape == (1, H, W, L) and pv.shape == (1, H, W, 5)
+    assert torch.allclose(z0, z1) and torch.allclose(r0, r1)
+    with pytest.raises(ValueError):
+        MultiStreamAutoencoder(dims, L, 3, 0.0)(x, mk, True)
+    cov = rng.normal(size=(T, H, W, sch["total_dim"])).astype("float32")
+    m = np.ones((H, W), bool)
+    years = list(range(2022, 2026))
+    tgt = {y: (rng.normal(size=(H, W, L)).astype("float32"), m, m,
+               np.ones((H, W), dtype="float32")) for y in years[1:]}
+    heads = [{"t_idx": rng.integers(0, T, N), "row": rng.integers(0, H, N), "col": rng.integers(0, W, N),
+              "X": rng.gamma(1.0, 2.0, size=(N, S)).astype("float32"), "weight": 1.0, "dim": 6, "pairs": 64,
+              "label": lab, "private": pk} for lab, pk in (("toy_cbc", 3), ("toy_ebird", 2))]
+    ck = tmp_path / "ck.pt"
+    args = (cov, np.ones((T, H, W), bool), years, tgt,
+            _metric_dict(rng.random((H, W, 9)).astype("float32"), m, years), m, m, dims)
+    out = io.StringIO()
+    with contextlib.redirect_stdout(out):
+        model, _ema = D.train_model_ema(*args, latent_dim=L, ema_cfg={"earlystop_warmup": 0}, spatial_kernel=3,
+                                        schema=sch, dropout=0.1, checkpoint_path=str(ck), checkpoint_every=1,
+                                        metric_heads=heads, private_orth=0.5, epochs=3, stop_at_epoch=2)[:2]
+    assert "linear 16+3 private" in out.getvalue() and "private orthogonality mean sq corr" in out.getvalue()
+    assert model.private_dim == 5
+    done = str(ck) + ".completed"
+    state = torch.load(done if os.path.exists(done) else ck, map_location="cpu", weights_only=False)
+    assert state["metric_heads"][0]["weight"].shape == (6, L + 3)
+    assert state["metric_heads"][1]["weight"].shape == (6, L + 2)
+    assert "private_out.weight" in state["model"]
+    # the private layer TRAINED: the trainer seeds (0) and builds the net first, so its init is reproducible here,
+    # and only the head loss can move private_out
+    torch.manual_seed(0)
+    fresh = MultiStreamAutoencoder(dims, L, 3, 0.1, private_dim=5)
+    w = state["model"]["private_out.weight"]
+    assert torch.isfinite(w).all() and not torch.allclose(fresh.private_out.weight, w)
+
+
 def test_ruzicka_term_trains_and_logs(tmp_path):
     """E081: the CBC Ruzicka term (fixed calibration, random pairs) enters the loss and is logged per evaluated epoch."""
     import contextlib

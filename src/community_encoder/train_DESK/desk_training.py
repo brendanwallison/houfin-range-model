@@ -771,6 +771,7 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
                     presence_targets=None,
                     ruzicka_targets=None,
                     metric_heads=None,
+                    private_orth=0.0,
                     _skip_target_conversion=False):
     """Train DESK with a learned output-EMA.
 
@@ -846,8 +847,11 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
     np.random.seed(seed)
     aug_rng = np.random.default_rng(seed)
 
+    # Research (E086): PRIVATE dims, one block per metric head (its "private" entry), read only by that head.
+    _pdims = [int(_mh.get("private", 0)) for _mh in (metric_heads or [])]
+    private_dim = int(sum(_pdims))
     model = MultiStreamAutoencoder(stream_dims, latent_dim, spatial_kernel, dropout,
-                                   hidden_width, mlp_expansion).to(device)
+                                   hidden_width, mlp_expansion, private_dim=private_dim).to(device)
     ema = OutputEMA(ema_cfg.get("half_life_bounds", [1.0, 40.0])[0],
                     ema_cfg.get("half_life_bounds", [1.0, 40.0])[1],
                     ema_cfg.get("init_half_life", 8.0)).to(device)
@@ -918,17 +922,21 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
     # dot(H z_i, H z_j) ~ Ruzicka(log1p X_i, log1p X_j) over pairs of that source's points (random pairs per full-grid
     # step). Winter (CBC) or eBird structure lives in the head's space, not in z's own geometry. Off by default.
     mheads, mh_mods = [], []
-    for _mh in (metric_heads or []):
+    _p0 = 0
+    for _hk, _mh in enumerate(metric_heads or []):
         if int(n_spatial_tiles) > 1:
             raise ValueError("metric_heads are implemented for full-grid steps only (spatial_tiles 1)")
-        mh_mods.append(torch.nn.Linear(int(latent_dim), int(_mh.get("dim", 24)), bias=False).to(device))
+        # A head reads [z, its own private block]; with no private block it reads z alone, as in E084.
+        _pk = _pdims[_hk]
+        mh_mods.append(torch.nn.Linear(int(latent_dim) + _pk, int(_mh.get("dim", 24)), bias=False).to(device))
         mheads.append({"t": torch.as_tensor(np.asarray(_mh["t_idx"]), device=device, dtype=torch.long),
                        "r": torch.as_tensor(np.asarray(_mh["row"]), device=device, dtype=torch.long),
                        "c": torch.as_tensor(np.asarray(_mh["col"]), device=device, dtype=torch.long),
                        "X": torch.log1p(torch.as_tensor(np.asarray(_mh["X"]), device=device, dtype=torch.float32)),
                        "w": float(_mh["weight"]), "pairs": int(_mh.get("pairs", 4096)),
-                       "label": str(_mh.get("label", f"head{len(mheads)}"))})
-        print(f"[desk] METRIC HEAD '{mheads[-1]['label']}': linear {latent_dim} -> {int(_mh.get('dim', 24))}, "
+                       "label": str(_mh.get("label", f"head{len(mheads)}")), "pslice": (_p0, _p0 + _pk)})
+        _p0 += _pk
+        print(f"[desk] METRIC HEAD '{mheads[-1]['label']}': linear {latent_dim}+{_pk} private -> {int(_mh.get('dim', 24))}, "
               f"{int(mheads[-1]['X'].shape[0]):,} points, {int(mheads[-1]['X'].shape[1])} species, weight "
               f"{mheads[-1]['w']:g}", flush=True)
     params = list(model.parameters()) + list(ema.parameters()) + \
@@ -1268,6 +1276,8 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
     except Exception as exc:                       # diagnostic only; never block training
         print(f"[desk] spatial-interpolation baseline unavailable ({exc})", flush=True)
 
+    _priv = {"ema": None}
+
     def _forward_window(train_mode, mask_inputs, want_raw=False, box=None):
         """Forward the whole year window -> ``(z_ema, recon_loss[, z_raw])``.
 
@@ -1284,6 +1294,8 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
         cv, mk = cov[:, r0:r1, c0:c1], msk[:, r0:r1, c0:c1]
         hw = (cv.shape[1], cv.shape[2])
         z_raw, rl = [], torch.zeros((), device=device)
+        p_raw = []
+        _wp = private_dim > 0 and train_mode and box is None
         # Drawn ONCE for the whole window, so the groups it drops are missing in EVERY year --
         # the shape real missingness has (a CONUS-only covariate, a product that ends before the
         # timeline does). Hoisted out of the year loop for exactly that reason; a per-year draw
@@ -1301,7 +1313,10 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
                 # in-place mask would permanently destroy that year for every later epoch.
                 xt = xt * keep
             with autocast():
-                if train_mode:
+                if _wp:
+                    zt, rt, pt = checkpoint(model, xt, mk[t:t + 1], True, use_reentrant=False)
+                    p_raw.append(pt[0].float())
+                elif train_mode:
                     zt, rt = checkpoint(model, xt, mk[t:t + 1], use_reentrant=False)
                 else:
                     zt, rt = model(xt, mk[t:t + 1])
@@ -1309,6 +1324,8 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
             # Target is the CLEAN grid even when the input was masked -> denoising objective.
             rl = rl + F.mse_loss(rt[0][mk[t]].float(), cv[t][mk[t]])
         stack = torch.stack(z_raw, 0)
+        # E086: the private block is smoothed by the SAME output EMA as z (heads read it at z_ema's time)
+        _priv["ema"] = ema(torch.stack(p_raw, 0)) if p_raw else None
         out = (ema(stack), rl / cv.shape[0])
         return out + (stack,) if want_raw else out
 
@@ -1674,6 +1691,9 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
     if mheads:   # only when on
         _ck_key["metric_heads"] = [{"label": h["label"], "weight": h["w"], "n": int(h["X"].shape[0]),
                                     "pairs": h["pairs"], "dim": int(m_.out_features)} for h, m_ in zip(mheads, mh_mods)]
+        if private_dim > 0:   # only when on, so E084-style runs keep their fingerprint
+            _ck_key["private_dims"] = [int(h["pslice"][1] - h["pslice"][0]) for h in mheads]
+            _ck_key["private_orth"] = float(private_orth)
     if ruzt is not None:   # only when on
         _ck_key["ruzicka"] = {"label": ruzt["label"], "weight": ruzt["w"], "a": ruzt["a"], "b": ruzt["b"],
                               "n": int(ruzt["X"].shape[0]), "pairs": ruzt["pairs"]}
@@ -1814,6 +1834,7 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
         loss_pres = None
         loss_ruz = None
         loss_mh = None
+        loss_orth = []
         if ep == start_ep:
             _t_first = time.perf_counter()
         if device == "cuda":
@@ -2023,8 +2044,22 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
                     _n = _h["X"].shape[0]
                     _ij = torch.randint(0, _n, (2, _h["pairs"]), device=device)
                     _i, _j = _ij[0], _ij[1]
-                    _hi = _m(z_ema[_h["t"][_i], _h["r"][_i], _h["c"][_i]])
-                    _hj = _m(z_ema[_h["t"][_j], _h["r"][_j], _h["c"][_j]])
+                    _zi = z_ema[_h["t"][_i], _h["r"][_i], _h["c"][_i]]
+                    _zj = z_ema[_h["t"][_j], _h["r"][_j], _h["c"][_j]]
+                    _a0, _a1 = _h["pslice"]
+                    if _a1 > _a0:   # E086: [z, this head's private block]
+                        _pe = _priv["ema"]
+                        _pi = _pe[_h["t"][_i], _h["r"][_i], _h["c"][_i], _a0:_a1]
+                        _pj = _pe[_h["t"][_j], _h["r"][_j], _h["c"][_j], _a0:_a1]
+                        if private_orth > 0:
+                            # decorrelate the private block from z over this head's points, so it holds what z
+                            # does not (squared cross-correlation, mean over the 64 x P pairs)
+                            _zc = _zi - _zi.mean(0); _pc = _pi - _pi.mean(0)
+                            _cc = (_zc / (_zc.norm(dim=0) + 1e-6)).T @ (_pc / (_pc.norm(dim=0) + 1e-6))
+                            loss_orth.append((_cc ** 2).mean())
+                            loss = loss + private_orth * loss_orth[-1]
+                        _zi, _zj = torch.cat([_zi, _pi], 1), torch.cat([_zj, _pj], 1)
+                    _hi, _hj = _m(_zi), _m(_zj)
                     _xi, _xj = _h["X"][_i], _h["X"][_j]
                     _den = torch.maximum(_xi, _xj).sum(1)
                     _ok = (_den > 1e-6) & (_i != _j)
@@ -2291,6 +2326,9 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
                 _wl = _h["w"] * float(_l.detach())
                 print(f"Ep {ep:03d} | metric head '{_h['label']}' mse {float(_l.detach()):.5f} weighted {_wl:.4f} "
                       f"({_wl / max(float(loss.detach()), 1e-12):.0%} of the total)", flush=True)
+            if loss_orth:
+                print(f"Ep {ep:03d} | private orthogonality mean sq corr "
+                      f"{sum(float(_o.detach()) for _o in loss_orth) / len(loss_orth):.5f}", flush=True)
         if loss_ruz is not None and (ep == 1 or ep % 10 == 0 or evaluated):
             _wl = ruzt["w"] * float(loss_ruz.detach())
             print(f"Ep {ep:03d} | ruzicka '{ruzt['label']}' mse {float(loss_ruz.detach()):.5f} weighted {_wl:.4f} "
@@ -2349,6 +2387,8 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
                 **({"loss_ruzicka": float(loss_ruz.detach())} if loss_ruz is not None else {}),
                 **({f"loss_mhead_{_h['label']}": float(_l.detach()) for _h, _l in zip(mheads, loss_mh)}
                    if loss_mh is not None else {}),
+                **({"private_orth_sqcorr": sum(float(_o.detach()) for _o in loss_orth) / len(loss_orth)}
+                   if loss_orth else {}),
                 # NestedLoRA term, when on. half_imbalance is the guard: the split-half estimator
                 # is unbounded below if one half can carry all the magnitude, so a value drifting
                 # far above 1 means the penalty is being evaded, not that training is going well.
@@ -3045,6 +3085,7 @@ def run_desk_experiment(config=None):
         metric_heads.append({"t_idx": [_ki[int(y)] for y in _yrs[_keep]], "row": _r[_keep], "col": _c[_keep],
                              "X": np.asarray(_q["X"], "float32")[_keep], "weight": float(_hcfg.get("weight", 1.0)),
                              "dim": int(_hcfg.get("dim", 24)), "pairs": int(_hcfg.get("pairs", 4096)),
+                             "private": int(_hcfg.get("private", 0)),
                              "label": str(_hcfg.get("label", os.path.basename(_hcfg["path"])))})
         print(f"[desk] aux_metric_head '{metric_heads[-1]['label']}': {int(_keep.sum()):,} of {len(_keep):,} points kept",
               flush=True)
@@ -3110,6 +3151,7 @@ def run_desk_experiment(config=None):
         presence_targets=presence_targets,
         ruzicka_targets=ruzicka_targets,
         metric_heads=(metric_heads or None),
+        private_orth=float(desk_cfg.get("private_orth", 0.0)),
         return_info=True)
     ema_half_life = float(ema.half_life().item())
     torch.save(ema.state_dict(), os.path.join(out_dir, "output_ema.pth"))
@@ -3140,6 +3182,8 @@ def run_desk_experiment(config=None):
                            if model.hidden_width is not None
                            else np.array(model.hidden_widths, dtype=np.int64)),
              mlp_expansion=int(model.mlp_expansion),
+             # E086: private dims (read only by the metric heads); 0 for every other run
+             private_dim=int(getattr(model, "private_dim", 0)),
              # The best epoch was recorded NOWHERE. The weights were restored from it, but the
              # only print sat in the early-stop branch, which cannot fire while patience equals
              # epochs (both 500) -- so every run's chosen epoch had to be inferred from a log,

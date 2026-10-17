@@ -1,0 +1,18 @@
+{
+ "exp": "E086",
+ "name": "desk-t1995-s1-full-p8o",
+ "group": "gpu",
+ "overlay": "research/overlays/desk_tempho_1995_seed1_full_p8o.json",
+ "cmd": [
+  "bash",
+  "-c",
+  "set -e; export RESEARCH_OUT={out} TMPDIR={out}/tmp MPLCONFIGDIR={out}/tmp/mpl WANDB_MODE=offline WANDB_DIR={out}; mkdir -p {out}/desk {out}/tmp; {python} scripts/run_encoder.py desk; {python} research/exp/cache.py --out {cache}/desk_tempho_1995_s1_full_p8o; {python} research/exp/epoch_variant.py --run {out} --overlay research/overlays/desk_tempho_1995_seed1_full_p8o.json --cache-out {cache}/desk_tempho_1995_s1_full_p8o_late --work {out}/late"
+ ],
+ "expected_minutes": 85,
+ "summarize": [
+  "python",
+  "-c",
+  "import json; s=json.load(open('{out}/desk/run_summary.json')); print({k: s.get(k) for k in ('best_epoch','epochs_run')})"
+ ],
+ "note": "E086: private dims 8/head, orth 0.5, seed 1"
+}

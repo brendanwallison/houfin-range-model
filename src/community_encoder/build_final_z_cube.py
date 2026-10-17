@@ -230,7 +230,8 @@ def build_spacetime_cube(config: Optional[Union[Dict[str, Any], str, os.PathLike
     print(f"Loading N-stream model ({stream_dims}, spatial_kernel={spatial_kernel}) from {model_path}...")
     model = MultiStreamAutoencoder(stream_dims, latent_dim, spatial_kernel,
                                    hidden_width=hidden_width,
-                                   mlp_expansion=mlp_expansion).to(device)
+                                   mlp_expansion=mlp_expansion,
+                                   private_dim=(int(dm["private_dim"]) if "private_dim" in dm.files else 0)).to(device)
     model.load_state_dict(torch.load(model_path, map_location=device))
     model.eval()
 

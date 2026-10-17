@@ -30,3 +30,6 @@ date,experiment,variant,run_dir,U,fit_corr,notes,su
 2026-10-16,E016,exempt0,..._ifd3__exempt0,197288.2,,-354 vs ifd3; no release exemption fits better,
 2026-10-16,E016,exempt26,..._ifd3__exempt26,197689.0,,+47 vs ifd3,
 2026-10-16,E016,mask5/mask10,..._ifd3__mask5|10,171491.2|152057.8,,F 8.7/6.4 lam0 1.75/1.62 (transient carries part only),~23 cumulative
+2026-10-16,E020,dm,..._sr__dm,195911.8,,-1395 vs sr; disease as mortality; lam0 1.80 F 9.9 n50 .14,
+2026-10-16,E020,dm_f3,..._sr__dm_f3,196009.3,,+98 vs dm (unconverged); Sa .80,
+2026-10-16,E021,sr_crowd,..._sr__sr_crowd,197303.6,,-4; beta stuck at start; irrelevant,~26 cumulative

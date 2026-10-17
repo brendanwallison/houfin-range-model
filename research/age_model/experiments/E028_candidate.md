@@ -16,3 +16,10 @@ true-sink share > 0 and Allee-dead small; NE crash/recovery vs Hochachka prevale
 which cds to the MAIN checkout (main-branch code, no research features); re-queued as a task that runs
 map -> refine -> viz explicitly from the research worktree.
 E027 up2 (Sa .60, F 6, Sj .39, lambda0 1.52): +57 -- lambda0 ~1.5 still cheap; ~1.3 costs ~1800.
+
+cand_warm (2026-10-17): U 195422.4; FREE demography drifted back: Sa .56, Sj .43 (ratio .76), F 9.2,
+lambda0 1.78, n50 .10, rec .04. CORRECTION to E027: up1's -1 nat was prior-assisted -- the old
+fecundity prior (median 2.1, sd .5) penalised F 8.2 ~40 nats more than F 6; in LIKELIHOOD terms the
+data prefer F ~8-9 over F 6 / Sa .65 by ~40 nats (small, but it beats a sd-0.75 prior). A plausible
+split therefore has to be carried by the prior. Queued: cand_tight (fecundity sd 0.3 around 5) and
+the full viz/readout of cand_warm. Cold start running (MAP ~40 min).

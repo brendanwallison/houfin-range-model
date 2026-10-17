@@ -636,7 +636,12 @@ def sample_priors(prior_scale=1.0, M_features=None, time=None,
             float(_JUV.get("ratio_logit_loc", 0.0)), float(_JUV.get("ratio_logit_scale", 0.5)) * prior_scale))
     else:
         priors['alpha_j'] = numpyro.sample("alpha_j", dist.Normal(-0.5, 0.5 * prior_scale)) # ~40%
-    priors['alpha_f'] = numpyro.sample("alpha_f", dist.Normal(2.0, 0.5 * prior_scale))  # Fecundity
+    # Fecundity at typical habitat, softplus scale. Default N(2.0, 0.5) (median F ~2.1);
+    # population_model.fecundity_prior {"loc", "scale"} overrides (E027: the data are flat along the
+    # fecundity/survival ridge at lambda0 ~1.6, so this prior is what sets the split).
+    _fp = dict(_POP_SPEC.get("fecundity_prior", {}))
+    priors['alpha_f'] = numpyro.sample("alpha_f", dist.Normal(
+        float(_fp.get("loc", 2.0)), float(_fp.get("scale", 0.5)) * prior_scale))  # Fecundity
     # CAPACITY LEVEL, declared in expected BBS route counts (see counts_to_relative).
     # SOFTPLUS link: K_counts = softplus(alpha_k + gamma_k*H_k + trend). alpha_k_loc is
     # solved by _softplus_loc_for_median so the POST-TRANSFORMATION prior MEDIAN of the

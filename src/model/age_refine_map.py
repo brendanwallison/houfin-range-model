@@ -194,7 +194,22 @@ def run_refine():
     payload = {"settings": defining, "precision": hc.PRECISION, "map_fingerprint": map_ckpt["fingerprint"],
                "versions": hc.versions(), "sources": hc.source_identities([__file__])}
     run_fp = hc.fingerprint(payload)
-    f = lambda x, kw_: potential(unravel(x), kw_)                  # noqa: E731
+    # HOUFIN_REFINE_FREEZE="site,site,...": hold those sites at their warm-start values (their
+    # coordinates are fed from x0 under stop_gradient, so L-BFGS never moves them). Diagnostic:
+    # which parameter blocks must move for the refinement gain (research/age_model E047).
+    frozen = [n for n in (os.environ.get("HOUFIN_REFINE_FREEZE") or "").split(",") if n]
+    if frozen:
+        missing = [n for n in frozen if n not in names]
+        if missing:
+            raise ValueError(f"HOUFIN_REFINE_FREEZE names unknown sites: {missing}")
+        mask = jnp.concatenate([jnp.full(int(np.size(z0[n])), n in frozen) for n in names])
+        x_ref = jnp.asarray(x0)
+        f = lambda x, kw_: potential(unravel(jnp.where(mask, jax.lax.stop_gradient(x_ref), x)), kw_)  # noqa: E731
+        payload["frozen"] = sorted(frozen)
+        run_fp = hc.fingerprint(payload)
+        print(f"[freeze] holding {len(frozen)} sites ({int(mask.sum())} coordinates) at warm-start values")
+    else:
+        f = lambda x, kw_: potential(unravel(x), kw_)              # noqa: E731
     x, history, reason = lbfgs_minimize(f, x0, kw, s, os.path.join(out_dir, STATE_FILE), run_fp)
     print(f"[stop] {reason}")
 

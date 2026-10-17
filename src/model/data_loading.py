@@ -53,6 +53,12 @@ def _route_effects_enabled():
     return bool(spec.get("route_effects", False))
 
 
+def _extra_pseudo_zeros_enabled():
+    from src.config_utils import load_age_model_config
+    spec = load_age_model_config().get("population_model", {}).get("observation") or {}
+    return bool(spec.get("extra_pseudo_zeros", False))
+
+
 def _subcell_enabled():
     from src.config_utils import load_age_model_config
     spec = load_age_model_config().get("population_model", {}).get("subcell_strata") or {}
@@ -180,6 +186,20 @@ def load_data(input_dir, target_device=None, precision="float32", verbose=True):
                                  "(research/age_model/exp/build_route_ids.py)")
             meta["obs_route"] = np.asarray(z["route"]).astype(np.int64)
             meta["n_routes"] = int(z["n_routes"])        # a plain int: it sets a sample shape
+    if _extra_pseudo_zeros_enabled():
+        # Appended as standard-tier zero counts with no route (research/age_model/exp/
+        # build_extra_pseudo_zeros.py): pre-BBS absences 1940-1965 far from the release.
+        with np.load(os.path.join(input_dir, "extra_pseudo_zeros.npz")) as z:
+            n_new = int(z["rows"].shape[0])
+            meta["obs_rows"] = np.concatenate([np.asarray(meta["obs_rows"]), z["rows"]])
+            meta["obs_cols"] = np.concatenate([np.asarray(meta["obs_cols"]), z["cols"]])
+            meta["obs_time_indices"] = np.concatenate([np.asarray(meta["obs_time_indices"]), z["time_idx"]])
+            meta["observed_results"] = np.concatenate(
+                [np.asarray(meta["observed_results"]), np.zeros(n_new, np.asarray(meta["observed_results"]).dtype)])
+            if isinstance(meta.get("obs_quality"), np.ndarray):
+                meta["obs_quality"] = np.concatenate([meta["obs_quality"], np.zeros(n_new, meta["obs_quality"].dtype)])
+            if "obs_route" in meta:
+                meta["obs_route"] = np.concatenate([meta["obs_route"], np.full(n_new, -1, np.int64)])
     if _subcell_enabled():
         with np.load(os.path.join(input_dir, "subcell_strata.npz")) as z:
             if not np.array_equal(np.asarray(z["years"]), np.asarray(meta["years"]).astype(int)):

@@ -20,3 +20,14 @@ Reading: the historical single release fits BETTER than 90 free coefficients and
 The strong Allee is no longer demanded at plausible fecundity. Fast growth remains: lambda0 >= 1.5 in
 every plausible-fecundity fit, now carried by adult survival .76-.85 (implausible) -- the residual
 problem is lambda0 itself, not its split.
+
+Great Plains barrier corridor (great_plains_zones code 2, CONUS lat < 49; 3395 cells) -- the region the
+user cares about (not boreal Canada):
+| fit | true sink | Allee-dead | viable source | median lam_f |
+| 23a | .39 | .25 | .36 | 1.18 |
+| ifd3 | .02 | .26 | .72 | 1.52 |
+| sr | .03 | .30 | .67 | 1.67 |
+| sr_f3j05n010 | .27 | .10 | .63 | 1.12 |
+The release fix alone leaves the plains Allee-dead share (~30%); plausible demography (n50 .10) cuts it to
+10% and restores true sinks (27%, a High Plains / Rockies-front / west-Texas band) -- closest yet to the SDM
+benchmark (plains mean lambda ~0.90). Still carried by Sa .85.

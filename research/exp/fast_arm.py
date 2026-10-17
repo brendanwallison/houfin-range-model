@@ -112,6 +112,10 @@ def features(c, args):
         zf = z_full[ci, yi]
         zf_nc = z_full[:, mod].mean(1)[ci]
         L_ = zf.shape[1]
+        if getattr(args, "head_z_rank", 0):     # E086c: heads see only z's first r dims (is the tail what they add?)
+            zf, zf_nc = zf.copy(), zf_nc.copy()
+            zf[:, args.head_z_rank:] = 0.0
+            zf_nc[:, args.head_z_rank:] = 0.0
         a0 = 0
         hin = []
         for Wh in heads:   # E086: a head with a private block reads [z, its slice of the private dims], in head order
@@ -215,6 +219,8 @@ def main():
     ap.add_argument("--kernel", default="iso", choices=("iso", "split", "ard", "placebo", "split+placebo"))
     ap.add_argument("--placebo-ls", type=float, default=400.0, help="placebo position fields, km (B8)")
     ap.add_argument("--ref-window", type=int, nargs=2, default=(1996, 2025))
+    ap.add_argument("--head-z-rank", type=int, default=0,
+                    help="E086c: with --head-ckpt, zero z dims beyond this rank in the HEAD inputs only")
     ap.add_argument("--head-ckpt", default=None,
                     help="E085: a DESK checkpoint with metric_heads; each head's output on the full z is added as its "
                          "own block (sum-of-Ruzickas readout)")
@@ -272,7 +278,7 @@ def main():
              "persistence": pnoise}
     Yte, g_te, bid = Y[te], group[te], sp["block_id"][te]
     res = {"cache": a.cache, "tag": a.tag, "features": a.features, "rank": a.rank,
-           "kernel": a.kernel, "head_ckpt": a.head_ckpt, "ref_window": list(a.ref_window), "time_basis": a.time_basis,
+           "kernel": a.kernel, "head_ckpt": a.head_ckpt, "head_z_rank": a.head_z_rank, "ref_window": list(a.ref_window), "time_basis": a.time_basis,
            "lag_hl": a.lag_hl, "placebo_ls": a.placebo_ls if "placebo" in a.kernel else None,
            "n_species": int(Y.shape[1]), "withheld": withheld,
            "block_amplitude_medians": [float(np.median(model["a"][model["ok"], b]))

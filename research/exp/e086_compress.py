@@ -21,7 +21,10 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--cache", required=True); ap.add_argument("--head-ckpt", required=True)
     ap.add_argument("--amps", required=True, help="fast_arm results.json of the sum readout (block_amplitude_medians)")
-    ap.add_argument("--k", type=int, required=True); ap.add_argument("--z-rank", type=int, default=24)
+    ap.add_argument("--k", type=int, required=True, help="components kept; 0 = all (the exact fixed-metric equivalent)")
+    ap.add_argument("--z-rank", type=int, default=24)
+    ap.add_argument("--order", choices=("energy", "within"), default="energy",
+                    help="E086c: rank directions by total uncentred energy (V3) or by WITHIN-cell (over-years) energy")
     ap.add_argument("--out", required=True)
     a = ap.parse_args()
     import torch
@@ -50,10 +53,16 @@ def main():
     C, Y, D = F.shape
     Ff = F.reshape(-1, D)
     Ff = Ff[np.isfinite(Ff).all(1)]
-    G = Ff.T @ Ff / len(Ff)                       # uncentred second moment
+    if a.order == "within":                       # E086c: deviations of each cell from its own mean over years
+        Fw = F - np.nanmean(F, axis=1, keepdims=True)
+        Ff = Fw.reshape(-1, D)
+        Ff = Ff[np.isfinite(Ff).all(1)]
+    G = Ff.T @ Ff / len(Ff)                       # uncentred second moment (of levels, or of within-cell deviations)
     ev, V = np.linalg.eigh(G)
     order = np.argsort(ev)[::-1]
     ev, V = ev[order], V[:, order]
+    if a.k <= 0:
+        a.k = D
     Vk = V[:, : a.k]
     os.makedirs(a.out, exist_ok=True)
     for f in os.listdir(a.cache):
@@ -67,7 +76,7 @@ def main():
         np.save(os.path.join(a.out, f"z_{kind}_all.npy"), S)
         np.save(os.path.join(a.out, f"z_{kind}.npy"), S[ci, yi])
     info = {"source_cache": a.cache, "head_ckpt": a.head_ckpt, "amps": amps[: 1 + len(heads)], "k": a.k,
-            "z_rank": a.z_rank, "stack_dim": int(D), "energy_at_k": float(ev[: a.k].sum() / ev.sum()),
+            "z_rank": a.z_rank, "stack_dim": int(D), "order": a.order, "energy_at_k": float(ev[: a.k].sum() / ev.sum()),
             "energy_cum": (np.cumsum(ev) / ev.sum()).tolist(),
             "block_dims": [a.z_rank] + [int(W.shape[0]) for W in heads]}
     json.dump(info, open(os.path.join(a.out, "compress.json"), "w"), indent=1)

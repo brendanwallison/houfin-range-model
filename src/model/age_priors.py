@@ -73,6 +73,9 @@ SETTLE_BLOCK = int(_SETTLE.get("block", 3)) if _SETTLE.get("form", "none") == "i
 #                             "fitness" (equal realized lambda, Allee excluded; nests capacity
 #                             when vital rates are equal within a block) | "uniform" (control)
 SETTLE_WEIGHT = _SETTLE.get("weight", "capacity")
+#                             "apply_to": "all" (default: every bird in the block is rearranged each
+#                             year) | "dispersers" (only this year's arrivals; residents stay put)
+SETTLE_DISPERSERS = _SETTLE.get("apply_to", "all") == "dispersers"
 #   disease_prior.target      "capacity" (default: the epizootic depresses K) | "survival" (it is ADDED
 #                             MORTALITY on adults and juveniles, Hill on CURRENT density, host
 #                             resistance via rec/tau_rec; K disease-free; ceiling =
@@ -112,9 +115,10 @@ _SUBCELL = dict(_POP_SPEC.get("subcell_strata", {}))
 SUBCELL = bool(_SUBCELL.get("enabled", False))
 #                             | "capacity_fitness" (K * lambda0^tau, tau >= 0 learned with prior
 #                             HalfNormal(settlement.tau_scale, default 2); tau = 0 is capacity)
-if SETTLE_WEIGHT not in {"capacity", "fitness", "uniform", "capacity_fitness"}:
-    raise ValueError("settlement.weight must be capacity, fitness, uniform or capacity_fitness, "
-                     f"got {SETTLE_WEIGHT!r}")
+#                             | "capacity_r0" (K * R0^tau, R0 = Fmax*Sj/(1-Sa), tau learned) | "r0" (R0)
+if SETTLE_WEIGHT not in {"capacity", "fitness", "uniform", "capacity_fitness", "capacity_r0", "r0"}:
+    raise ValueError("settlement.weight must be capacity, fitness, uniform, capacity_fitness, "
+                     f"capacity_r0 or r0, got {SETTLE_WEIGHT!r}")
 #   dispersal_departure       {"form": "shared" | "age", "adult_offset_loc", "adult_offset_scale",
 #                              "crowding_arm": bool, "crowding_scale", "crowding_sharpness"}
 #                             "age" adds a logit offset to the ADULT departure probability
@@ -760,7 +764,7 @@ def sample_priors(prior_scale=1.0, M_features=None, time=None,
     # (E014: perfect fitness sorting was too strong; K-only ignores vital rates entirely).
     priors['settlement_tau'] = (numpyro.sample(
         "settlement_tau", dist.HalfNormal(float(_SETTLE.get("tau_scale", 2.0)) * prior_scale))
-        if SETTLE_WEIGHT == "capacity_fitness" else 0.0)
+        if SETTLE_WEIGHT in ("capacity_fitness", "capacity_r0") else 0.0)
     priors['dispersal_crowding_beta'] = (numpyro.sample(
         "dispersal_crowding_beta",
         dist.HalfNormal(float(_DEPART.get("crowding_scale", 4.0)) * prior_scale))
@@ -1025,6 +1029,7 @@ def build_model_2d(data, prior_scale=1.0):
         allee_relative=ALLEE_RELATIVE,
         settle_block=SETTLE_BLOCK,
         settle_weight=SETTLE_WEIGHT,
+        settle_dispersers_only=SETTLE_DISPERSERS,
         settle_tau=priors['settlement_tau'],
         strata_u=data["strata_u"] if SUBCELL else None,
         strata_a=data["strata_a"] if SUBCELL else None,

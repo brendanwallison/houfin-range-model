@@ -29,7 +29,9 @@ OVERLAYS = [None, "map_run19_exchangeable.json", "map_run21_single_field.json",
             "map_run32_kernel_tail.json",
             "map_run33_year_effects.json",
             "map_run34_breeding_obs.json",
-            "map_run35_candidate.json"]
+            "map_run35_candidate.json",
+            "map_run36_disperser_settlement.json",
+            "map_run37a_r0_settle.json", "map_run37b_pure_r0_settle.json"]
 
 
 def synthetic_inputs(T=40, Ny=12, Nx=16, M=24, z_sd=2.0, seed=0):

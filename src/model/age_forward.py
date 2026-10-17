@@ -108,6 +108,7 @@ def dispersal_step_age_structured(
     crowding_beta=None,
     crowding_kappa=5.0,
     kernel_weights=None,
+    return_adult_arrivals=False,
 ):
     """One dispersal step for both age classes, with density-dependent departure.
 
@@ -149,6 +150,8 @@ def dispersal_step_age_structured(
         kernel_weights=kernel_weights,
     )
 
+    if return_adult_arrivals:       # settlement.apply_to = dispersers needs arrivals apart
+        return N_a_post, juvenile_stayers, juvenile_arriving, adult_arriving
     return N_a_post, juvenile_stayers, juvenile_arriving
 
 def forward_sim_age_structured(
@@ -178,6 +181,7 @@ def forward_sim_age_structured(
     disease_k_half=1.0,
     disease_hill_n=1.0,
     juvenile_kernel_weights=None,
+    settle_dispersers_only=False,
 ):
     """Run the age-structured simulation for ``time`` years.
 
@@ -263,7 +267,7 @@ def forward_sim_age_structured(
         )
 
         # 3. Dispersal
-        N_a_post, juvenile_stayers, juvenile_arriving = dispersal_step_age_structured(
+        _disp = dispersal_step_age_structured(
             N_a, N_j, K_g, 
             dispersal_logit_intercept + dispersal_random[t],
             dispersal_logit_slope, target_fraction,
@@ -272,7 +276,12 @@ def forward_sim_age_structured(
             Q_grid=Q_g, eps=1e-6, adult_logit_offset=dispersal_adult_offset,
             crowding_beta=crowding_beta, crowding_kappa=crowding_kappa,
             kernel_weights=juvenile_kernel_weights,
+            return_adult_arrivals=settle_dispersers_only,
         )
+        if settle_dispersers_only:
+            N_a_post, juvenile_stayers, juvenile_arriving, adult_arriving = _disp
+        else:
+            N_a_post, juvenile_stayers, juvenile_arriving = _disp
         
         # 3b. Ideal-free settlement (settle_block > 0): within each block of cells, the
         # post-dispersal population is rearranged in proportion to capacity. See
@@ -282,7 +291,15 @@ def forward_sim_age_structured(
         # see fitness_settle), "capacity_fitness" (shares in proportion to K * lambda0^tau:
         # IMPERFECT sorting on empty-cell fitness; tau = 0 is capacity).
         if settle_block:
-            pools = (N_a_post, juvenile_stayers, juvenile_arriving)
+            # settle_dispersers_only (settlement.apply_to = dispersers): only the birds that
+            # moved this year -- adult and juvenile ARRIVALS -- are allocated within the block;
+            # residents keep their cells (site fidelity), so local vital rates accumulate in
+            # each cell's own abundance instead of being re-averaged away every year.
+            if settle_dispersers_only:
+                adult_stay = N_a_post - adult_arriving
+                pools = (adult_arriving, jnp.zeros_like(juvenile_stayers), juvenile_arriving)
+            else:
+                pools = (N_a_post, juvenile_stayers, juvenile_arriving)
             if settle_weight == "fitness":
                 pools = fitness_settle(pools, K_g, Sa_g, Sj_g, Fmax_g, c_g, settle_block, t)
             else:
@@ -291,10 +308,22 @@ def forward_sim_age_structured(
                 elif settle_weight == "capacity_fitness":
                     lam0 = 0.5 * (Sa_g + jnp.sqrt(Sa_g ** 2 + 4.0 * Fmax_g * Sa_g * Sj_g))
                     wgt = K_g * jnp.exp(settle_tau * jnp.log(jnp.maximum(lam0, 1e-6)))
+                elif settle_weight in ("capacity_r0", "r0"):
+                    # R0 = Fmax * Sj / (1 - Sa): recruits per recruit at low density, the simplest
+                    # closed-form breeding-quality signal a settler could follow.
+                    r0 = jnp.maximum(Fmax_g * Sj_g / jnp.maximum(1.0 - Sa_g, 1e-6), 1e-6)
+                    if settle_weight == "r0":
+                        wgt = jnp.where(K_g > 1e-12, r0, 0.0)
+                    else:
+                        wgt = K_g * jnp.exp(settle_tau * jnp.log(r0))
                 else:
                     wgt = jnp.where(K_g > 1e-12, 1.0, 0.0)
                 pools = ideal_free_settle(pools, wgt, settle_block, t)
-            N_a_post, juvenile_stayers, juvenile_arriving = pools
+            if settle_dispersers_only:
+                N_a_post = adult_stay + pools[0]
+                juvenile_arriving = pools[2]
+            else:
+                N_a_post, juvenile_stayers, juvenile_arriving = pools
 
         # 4. Survival & Reproduction. Release cells skip the Allee factor while
         # exempt (see allee_exempt_years in the docstring).

@@ -581,3 +581,30 @@ print(json.dumps({"maxrel": float(np.max(np.abs(got[ok] - exp_[ok]) / exp_[ok]))
     r = json.loads(subprocess.run([sys.executable, "-c", probe], cwd=REPO, env=env, capture_output=True,
                                   text=True, check=True).stdout.strip().splitlines()[-1])
     assert 0.0 < r["phi"] < 1.0 and r["maxrel"] < 1e-4
+
+
+def test_settling_dispersers_only_leaves_residents_in_place():
+    from src.model.age_forward import forward_sim_age_structured
+    import tests.test_full_model_smoke as sm
+    d = sm.synthetic_inputs(T=12)
+    n = int(d["N_land"]); T = int(d["time"])
+    rng = np.random.default_rng(7)
+    Sa = jnp.full((T, n), 0.55); Sj = jnp.full((T, n), 0.3); F = jnp.full((T, n), 5.0)
+    K = jnp.asarray(rng.uniform(0.2, 2.0, (T, n))); c = F * Sa * Sj / (1 - Sa + 1e-6) - 1.0
+    Q = jnp.ones((T, n, d["juvenile_fft_kernel_stack"].shape[0]))
+
+    def run(**kw):
+        tot, _, _ = forward_sim_age_structured(
+            Sa, Sj, F, K, c, Q, d["land_rows"], d["land_cols"], d["land_mask"],
+            d["adult_fft_kernel"], d["juvenile_fft_kernel_stack"],
+            d["adult_edge_correction"], d["juvenile_edge_correction_stack"],
+            d["land_mask"] * jnp.asarray(rng.uniform(0.1, 1.0, d["land_mask"].shape)) if False else
+            d["land_mask"] * 0.5, jnp.zeros(T), jnp.zeros((2, 10)), T, d["inv_locations"], 12,
+            -10.0, 0.0, 200.0, **kw)      # intercept -10: essentially nobody disperses
+        return np.asarray(tot)
+
+    none = run()
+    disp_only = run(settle_block=3, settle_dispersers_only=True)
+    everyone = run(settle_block=3)
+    np.testing.assert_allclose(disp_only, none, rtol=2e-3, atol=1e-6)   # ~no movers -> ~no change (0.005% still leave at the clip)
+    assert np.abs(everyone - none).max() > 1e-3                         # "all" reshuffles residents

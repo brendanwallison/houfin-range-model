@@ -55,3 +55,4 @@ date,experiment,variant,run_dir,U,fit_corr,notes,su
 2026-10-17,E029,ct_rho,..._cand_tight__ct_rho,194555.5,,-910 vs cand_tight; coupling free rho .74; Sa .60 Sj .40 F 7.0 lam0 1.64; plains obs/fit .50/.70/1.12/.92,
 2026-10-17,E030,ct_ds,..._cand_tight__ct_ds,203094.6,,+7629: dispersers-only settlement breaks the exodus regime (warm start in exodus; retest from positive DD queued),
 2026-10-17,E031,ct_hab,..._cand_tight__ct_hab,195356.1,,-109; habitat change shrunk eta .62; plains .45/.60/1.02/.88,~53 cumulative
+2026-10-17,E030,ct_ds_pr0,..._cand_tight__ct_ds_pr0,202137.9,,+6673; dispersers-only settle by R0 alone, warm in exodus regime; Sa .87,

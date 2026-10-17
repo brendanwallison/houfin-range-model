@@ -16,6 +16,7 @@
 set -uo pipefail
 : "${BASE_OVERLAY:?}" "${WARM_DIR:?}" "${OUT:?}" "${VARIANTS:?}"
 mkdir -p "$OUT/overlays"
+failed=0
 for v in $VARIANTS; do
     name="${v%%=*}"; pins="${v#*=}"
     ov="$OUT/overlays/$name.json"
@@ -37,7 +38,7 @@ PY
     env AGE_MODEL_CONFIG="$ov" HOUFIN_MODEL_PRECISION=float64 HOUFIN_HMC_MAP_PRECISION=float64 \
         HOUFIN_HMC_MAP_DIR="$WARM_DIR" HOUFIN_REFINE_TAG="$name" HOUFIN_HMC_ALLOW_MODEL_DRIFT=1 \
         HOUFIN_REFINE_MAX_ITER="${REFINE_MAX_ITER:-4000}" \
-        python -m src.model.age_refine_map > "$OUT/$name.refine.log" 2>&1 || { echo "  refine FAILED (see $OUT/$name.refine.log)"; continue; }
+        python -m src.model.age_refine_map > "$OUT/$name.refine.log" 2>&1 || { echo "  refine FAILED (see $OUT/$name.refine.log)"; failed=1; continue; }
     rdir=$(grep -Eo "use HOUFIN_HMC_MAP_DIR=[^ ]+" "$OUT/$name.refine.log" | tail -1 | cut -d= -f2)
     grep -E "\[stop\]|\[done\]" "$OUT/$name.refine.log" | sed 's/^/  /'
     env AGE_MODEL_CONFIG="$BASE_OVERLAY" HOUFIN_MODEL_PRECISION=float64 \
@@ -45,3 +46,5 @@ PY
         --compare "$rdir" --compare-config "$ov" --out "$OUT/$name.decomp" 2>&1 | grep -v -i "warn" | tail -3 | sed 's/^/  /'
     echo "  ($(( ($(date +%s) - t0) / 60 )) min)"
 done
+# a failed refine must fail the task, so the worker files it under failed/ rather than done/
+exit $failed

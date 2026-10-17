@@ -637,7 +637,12 @@ def sample_priors(prior_scale=1.0, M_features=None, time=None,
 
     # --- 2. DEMOGRAPHIC INTERCEPTS (Alphas) ---
     # Adult survival baseline > Juvenile survival baseline
-    priors['alpha_a'] = numpyro.sample("alpha_a", dist.Normal(0.5, 0.5 * prior_scale)) # ~60%
+    # Adult survival at typical habitat (logit). Default N(0.5, 0.5) (median ~0.62);
+    # population_model.adult_survival_prior {"loc", "scale"} overrides (E037: with the fecundity
+    # prior firmed, the loose Sa prior absorbed the growth demand -- Sa drifted to ~0.84).
+    _ap = dict(_POP_SPEC.get("adult_survival_prior", {}))
+    priors['alpha_a'] = numpyro.sample("alpha_a", dist.Normal(
+        float(_ap.get("loc", 0.5)), float(_ap.get("scale", 0.5)) * prior_scale))
     if JUVENILE_RATIO:
         # alpha_j is the LOGIT OF THE JUVENILE/ADULT SURVIVAL RATIO at typical habitat:
         # Sj = Sa * sigmoid(alpha_j + gamma_j*H), so Sj < Sa everywhere by construction.

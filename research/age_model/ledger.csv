@@ -81,3 +81,4 @@ date,experiment,variant,run_dir,U,fit_corr,notes,su
 2026-10-17,E048,rank48 MAP,age_map_float32_run_40_r48_quick90,,,MAP realistic like rank 24 (plains .66 sinks / median .88); float64 refine OOM -> requeued at mem .95,
 2026-10-17,E048,rank64,,,,MAP done; float64 refine OOM (12.2 GiB alloc) even at .95 -> float32 refine queued,
 2026-10-17,E047,F1_hab,..._run_40__F1_hab,192266.5,,habitat pattern frozen at MAP: recovers ~51% of the 12.6k refinement gain (198700 -> 192267); viz/decomp pending,~97 cumulative
+2026-10-17,E047,F1_hab result,,,,habitat frozen keeps realism (P .67 sinks med .85; W Kw-sink .13); missing gain = east positives 1980+ (~2.2k) + modern plains positives (~0.8k),

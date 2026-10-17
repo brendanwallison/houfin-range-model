@@ -9,3 +9,13 @@ Block-frozen L-BFGS refines from the run_40 MAP (HOUFIN_REFINE_FREEZE holds site
 Free in all: K level, k_trend, dispersal, settlement, disease, observation (kappa, phi0, fledgling share), release.
 Read: share of the 12,813 recovered; plains trough kept (viz); where the remaining gap sits (decomposition).
 If F3 recovers most of it with the trough intact, the contortion is opportunistic -> a modest constraint suffices.
+
+F1 RESULT (habitat-field pattern frozen at the run_40 MAP): U 198,699.9 -> 192,266.5 (~51% of the 12,650 MAP->refined
+gap). Source/sink KEPT REALISTIC: W .31/.13/1.17, P .67/.44/.85, E .41/.13/1.16 (sink / K-weighted sink / median lam_f)
+vs full refine W .37/.55/1.08, P .42/.45/1.05.
+F1 - full (zeros/positives): east positives 1980-93 -379, 1994-07 -841, 2008-25 -1021; plains positives 1994-07 -328,
+2008-25 -457; west spread. => The contortion lives in RESHAPING THE HABITAT FIELD, and what it buys is (1) eastern
+abundance 1980+ (~2.2k nats) and (2) modern plains positives (~0.8k): an east that outperforms its covariates and a
+trough that softens recently (user: urbanisation speckle). Needed: a time-varying, spatially local channel (urban /
+anthropogenic) reaching the east and the modern plains WITHOUT moving the static pattern -- higher DESK rank (E048)
+or a direct term.

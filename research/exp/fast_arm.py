@@ -279,6 +279,10 @@ def main():
                                        for b in range(model["a"].shape[1])],
            "noise_median": float(np.median(model["v"][model["ok"]])), "level": {}, "change": {}}
     per = {"species": species, "prevalence": prevalence}           # training-row detection share
+    # E092: each species' fitted block amplitudes and noise (the readout's prior shape per species)
+    for _b in range(model["a"].shape[1]):
+        per[f"amp_b{_b}"] = model["a"][:, _b]
+    per["noise_v"], per["fit_ok"] = model["v"], model["ok"]
 
     for g, gname in GROUPS.items():
         sel = np.where(g_te == g)[0]

@@ -25,3 +25,9 @@ r64 float64 (Z float32) refine: U 195,814.9 -> 187,516.4 in 651 its (stopped ear
 REFINED: W .51/.41/.99 | P .61/.57/.90 | E .48/.18/1.07 -- the PLAINS TROUGH SURVIVES REFINEMENT at rank 64 (plains worst:
 median .90 < W .99 < E 1.07), unlike rank 24 (P .42/.45/1.05). West still drifts toward sinks (K-weighted .41 vs .20 at MAP).
 r64 MAP: W .39/.20/1.09 | P .64/.46/.86 | E .49/.14/1.02. r48 refine near convergence at 184,509 (best of the project).
+
+r48 float64 (Z float32) refine: U 195,395 -> 184,477.3 in 2456 its (BEST FIT OF THE PROJECT; log1p corr .816), lambda0
+1.68 (Sa .48, Sj .46, F 9.1), n50 .017. Source/sink REFINED: W .41/.57/1.09 | P .24/.25/1.29 | E .34/.24/1.31 -- the plains
+trough is INVERTED (plains median lam 1.29 > west 1.09), west core still K-weighted sinks .57. More rank = more room for
+the habitat field to contort (user's concern), not a clean urban channel. Rank 64 kept the trough only in an early-stopped,
+worse basin (187,516). Higher rank does lower lambda0 (2.02 -> 1.68 -> 1.41).

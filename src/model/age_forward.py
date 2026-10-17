@@ -36,12 +36,34 @@ def rightpad_convolution(pop, dispersal_kernel_pad):
     conv = jnp.fft.ifft2(jnp.fft.fft2(pop_pad) * dispersal_kernel_pad)
     return jnp.real(conv)[:pop.shape[0], :pop.shape[1]]
 
+N_DIRECTIONS = 4   # build_kernels.make_radial_directional_kernels: index = direction * n_bands + band
+
+
+def juvenile_band_weights(juvenile_fft_kernel_stack, band_logw):
+    """Per-kernel multipliers that reweight the juvenile kernel's RADIAL BANDS, mass-preserving.
+
+    ``band_logw`` (n_bands - 1,) are log-weights of the outer bands relative to the innermost
+    (fixed 0). Band b's weight is w_b = exp(theta_b) / sum_b M_b exp(theta_b), M_b its current
+    mass (every kernel's mass is the zero-frequency term of its FFT), so the reweighted kernel
+    still integrates to 1 and theta = 0 is the current kernel exactly. Raising an outer band's
+    weight fattens the tail -- long jumps that seed satellites ahead of the front -- WITHOUT new
+    path features: each band keeps its own precomputed journey survival Q.
+    """
+    K = juvenile_fft_kernel_stack.shape[0]
+    n_bands = K // N_DIRECTIONS
+    mass = jnp.real(juvenile_fft_kernel_stack[:, 0, 0]).reshape(N_DIRECTIONS, n_bands).sum(0)
+    theta = jnp.concatenate([jnp.zeros((1,), band_logw.dtype), band_logw])
+    w = jnp.exp(theta) / jnp.sum(mass * jnp.exp(theta))
+    return jnp.tile(w, N_DIRECTIONS)                                   # (K,), direction-major
+
+
 def juvenile_dispersal_vectorized(
     juvenile_dispersers: jnp.ndarray,       
     juvenile_fft_kernels: jnp.ndarray,      
     Q: jnp.ndarray,                         
     juvenile_edge_correction_stack: jnp.ndarray,
-    eps: float = 1e-6
+    eps: float = 1e-6,
+    kernel_weights=None,
 ):
     """Disperse juveniles through the directional/radial kernel stack.
 
@@ -62,6 +84,8 @@ def juvenile_dispersal_vectorized(
     )
     
     successful_settlers = potential_settlers * Q
+    if kernel_weights is not None:          # radial-band reweighting (juvenile_band_weights)
+        successful_settlers = successful_settlers * kernel_weights[:, None, None]
     return jnp.sum(successful_settlers, axis=0)
 
 def departure_logit(x, intercept, slope, target_fraction, crowding_beta=None, crowding_kappa=5.0):
@@ -83,6 +107,7 @@ def dispersal_step_age_structured(
     adult_logit_offset=0.0,
     crowding_beta=None,
     crowding_kappa=5.0,
+    kernel_weights=None,
 ):
     """One dispersal step for both age classes, with density-dependent departure.
 
@@ -120,7 +145,8 @@ def dispersal_step_age_structured(
         juvenile_fft_kernel_stack,
         Q_grid,
         juvenile_edge_correction_stack,
-        eps
+        eps,
+        kernel_weights=kernel_weights,
     )
 
     return N_a_post, juvenile_stayers, juvenile_arriving
@@ -151,6 +177,7 @@ def forward_sim_age_structured(
     disease_m_amp=None,
     disease_k_half=1.0,
     disease_hill_n=1.0,
+    juvenile_kernel_weights=None,
 ):
     """Run the age-structured simulation for ``time`` years.
 
@@ -244,6 +271,7 @@ def forward_sim_age_structured(
             adult_fft_kernel, juvenile_fft_kernel_stack,
             Q_grid=Q_g, eps=1e-6, adult_logit_offset=dispersal_adult_offset,
             crowding_beta=crowding_beta, crowding_kappa=crowding_kappa,
+            kernel_weights=juvenile_kernel_weights,
         )
         
         # 3b. Ideal-free settlement (settle_block > 0): within each block of cells, the

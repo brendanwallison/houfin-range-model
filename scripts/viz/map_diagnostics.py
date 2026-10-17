@@ -122,7 +122,7 @@ from numpyro.infer import Predictive
 from src.config_utils import load_age_model_config, load_data_config
 from src.temporal import load_timeline
 from src.model.age_priors import build_model_2d
-from src.model.age_forward import forward_sim_age_structured
+from src.model.age_forward import forward_sim_age_structured, juvenile_band_weights
 from src.model.age_priors import (ALLEE_RELATIVE, CROWDING_KAPPA, SETTLE_BLOCK, SETTLE_WEIGHT,
                                   counts_to_relative,
                                   SUBCELL)
@@ -1776,6 +1776,10 @@ def simulate_no_invasion_counterfactual(sim, data, drop_disease=True):
         crowding_beta=(float(np.asarray(latents["dispersal_crowding_beta"]))
                        if "dispersal_crowding_beta" in latents else None),
         crowding_kappa=CROWDING_KAPPA,
+        # dispersal_kernel.band_weights: the fitted radial-band reweighting
+        juvenile_kernel_weights=(juvenile_band_weights(data["juvenile_fft_kernel_stack"],
+                                                       jnp.asarray(latents["dispersal_band_logw"]))
+                                 if "dispersal_band_logw" in latents else None),
         # disease_prior.target = survival: the epizootic is mortality, not a K cut, so the
         # "keep disease" world needs it back (dropping it = no amplitude).
         **({} if drop_disease or "disease_mortality_amp" not in sim else dict(

@@ -20,7 +20,7 @@ import numpyro.distributions as dist
 from src.config_utils import load_age_model_config
 from src.model.age_fields import (disease_mortality_amplitude, disease_severity,
                                   project_and_scatter_age_structured)
-from src.model.age_forward import forward_sim_age_structured
+from src.model.age_forward import forward_sim_age_structured, juvenile_band_weights
 
 # Prior settings read from config so they can be retuned without editing model
 # code -- these are the knobs most likely to be revisited between runs. See
@@ -88,6 +88,11 @@ _DISEASE_CEILING = float(_DISEASE_SPEC.get("mortality_ceiling", 0.8) if DISEASE_
 #                             src/data/preprocess/subcell_strata.py), fitness ideal-free among them,
 #                             Allee + Beverton-Holt per slice; mean-preserving tilts of K
 #                             (subcell_beta_k) and Fmax (subcell_delta_f), both 0 = the one-slice model.
+#   dispersal_kernel          {"band_weights": bool, "band_logw_scale"}: learn the juvenile kernel's
+#                             radial-band weights (mass-preserving; 0 = current kernel) -- tail
+#                             weight without new path features (age_forward.juvenile_band_weights)
+_KERNEL_SPEC = dict(_POP_SPEC.get("dispersal_kernel", {}))
+BAND_WEIGHTS = bool(_KERNEL_SPEC.get("band_weights", False))
 _SUBCELL = dict(_POP_SPEC.get("subcell_strata", {}))
 SUBCELL = bool(_SUBCELL.get("enabled", False))
 #                             | "capacity_fitness" (K * lambda0^tau, tau >= 0 learned with prior
@@ -895,6 +900,15 @@ def build_model_2d(data, prior_scale=1.0):
         juvenile_ratio=JUVENILE_RATIO,
         disease_target=DISEASE_TARGET,
     )
+    if BAND_WEIGHTS:
+        _nb = data['juvenile_fft_kernel_stack'].shape[0] // 4
+        band_logw = numpyro.sample("dispersal_band_logw", dist.Normal(
+            0.0, float(_KERNEL_SPEC.get("band_logw_scale", 1.0)) * prior_scale).expand([_nb - 1]))
+        juv_w = juvenile_band_weights(data['juvenile_fft_kernel_stack'], band_logw)
+        _mass = jnp.real(data['juvenile_fft_kernel_stack'][:, 0, 0]) * juv_w
+        numpyro.deterministic("dispersal_band_mass", _mass.reshape(4, _nb).sum(0))
+    else:
+        juv_w = None
     if DISEASE_TARGET == "survival":
         _tt = jnp.arange(time, dtype=Sa_flat.dtype)[:, None]
         disease_m_amp = numpyro.deterministic("disease_mortality_amp", jnp.where(
@@ -999,6 +1013,7 @@ def build_model_2d(data, prior_scale=1.0):
         crowding_beta=priors['dispersal_crowding_beta'], crowding_kappa=CROWDING_KAPPA,
         disease_m_amp=disease_m_amp, disease_k_half=priors['disease_k_half'],
         disease_hill_n=priors['disease_hill_n'],
+        juvenile_kernel_weights=juv_w,
     )
 
     numpyro.deterministic("simulated_density", densities)

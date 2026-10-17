@@ -541,3 +541,18 @@ def test_disease_mortality_lowers_equilibrium_and_density_dependence_eases_it():
     hi_frac = 1 - sick[20][land].sum() / base[20][land].sum()
     lo_frac = 1 - lo_s[20][land].sum() / lo_b[20][land].sum()
     assert lo_frac < hi_frac
+
+
+def test_band_weights_nest_preserve_mass_and_shift_the_tail():
+    from src.model.age_forward import juvenile_band_weights
+    import tests.test_full_model_smoke as sm
+    d = sm.synthetic_inputs()
+    st = d["juvenile_fft_kernel_stack"]
+    mass = np.real(np.asarray(st[:, 0, 0]))
+    nb = st.shape[0] // 4
+    w0 = np.asarray(juvenile_band_weights(st, jnp.zeros(nb - 1)))
+    np.testing.assert_allclose(w0, 1.0, rtol=1e-5)                        # logw 0 = current kernel
+    w = np.asarray(juvenile_band_weights(st, jnp.asarray([0.0] * (nb - 2) + [1.0])))
+    assert float((w * mass).sum()) == pytest.approx(float(mass.sum()), rel=1e-5)   # mass kept
+    band = np.tile(np.arange(nb), 4)
+    assert (w * mass)[band == nb - 1].sum() > mass[band == nb - 1].sum()           # fatter tail

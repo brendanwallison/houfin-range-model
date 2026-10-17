@@ -54,6 +54,12 @@ def main():
     ap.add_argument("--rival-all", action="store_true", help="E049c: all-covariate rival + moved-CropAT null")
     ap.add_argument("--aux", default=None, help="E050: npz from aux_covariates.py; its --aux-key channels replace CropAT")
     ap.add_argument("--aux-key", default=None, help="forest | crp | nlcd | nid")
+    ap.add_argument("--migration", type=int, nargs="+", default=None,
+                    help="keep only species whose AVONET Migration class is in this list (1 = sedentary, the primary "
+                         "stratum); others are dropped from every guild")
+    ap.add_argument("--aux-mask-key", default=None,
+                    help="E090/E091: (H, W) bool in the --aux npz; only cells it covers are trained, scored and used by "
+                         "the moved nulls (a source with partial coverage must not enter as zero change elsewhere)")
     ap.add_argument("--epochs", type=int, nargs=4, default=None, help="E052: custom early/modern windows e0 e1 m0 m1")
     a = ap.parse_args()
     if a.summarize:
@@ -107,6 +113,9 @@ def main():
     states_dir = os.path.join(cfg["paths"]["hist_dir"], "yearly_states")
     bui_avail = np.load(os.path.join(states_dir, "state_2015.npz"))["bui"][..., 0]
     conus = np.nan_to_num(bui_avail[cells[:, 0], cells[:, 1]]) > 0.5
+    if a.aux and a.aux_mask_key:
+        conus &= np.asarray(np.load(a.aux)[a.aux_mask_key], bool)[cells[:, 0], cells[:, 1]]
+        print(f"[guild] {a.aux_mask_key}: {int(conus.sum())} cells covered", flush=True)
     ev, tc = np.where(held & conus)[0], np.where(~held & ~buf & conus)[0]
 
     def gmat(groups):
@@ -122,8 +131,13 @@ def main():
     Xs = np.hstack([np.load(c("X_comm.npy"), mmap_mode="r"), np.load(c("X_dev.npy"), mmap_mode="r")]).astype("float32")
     assert Xs.shape[1] == len(codes)
     tax = pd.read_csv(a.taxonomy).set_index("SPECIES_CODE")["SCIENTIFIC_NAME"]
-    av = pd.read_csv(a.avonet, encoding="latin-1").set_index("Species1")["Habitat"]
+    avt = pd.read_csv(a.avonet, encoding="latin-1").set_index("Species1")
+    av = avt["Habitat"]
     hab = np.array([av.get(tax.get(cd), None) for cd in codes], dtype=object)
+    if a.migration:
+        mig = np.array([avt["Migration"].get(tax.get(cd), np.nan) for cd in codes], dtype=float)
+        hab[~np.isin(mig, a.migration)] = None
+        print(f"[guild] migration {a.migration}: {int(np.isin(mig, a.migration).sum())} species kept", flush=True)
     L = np.log1p(np.nan_to_num(Xs, nan=0.0))
     dS = {h: chg(L, h) for h in ("full", "a", "b")}
     P0 = (Xs > 0).astype("float32")

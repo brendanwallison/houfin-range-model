@@ -48,3 +48,4 @@ date,experiment,variant,run_dir,U,fit_corr,notes,su
 2026-10-17,E024,db_b4,..._dm_band__db_b4,196152.1,,+424 vs dm_band; block 2-3 is the scale,~39 cumulative
 2026-10-17,E027,up1,..._db_obs__up1,195515.7,,-1 vs db_obs: Sa .65 F 6 Sj .39 lam0 1.60 n50 .08 -- plausible split is FREE,
 2026-10-17,E026,db_obs_f5/plaus,..._dm_band__db_obs_f5|plaus,197458.2|197329.1,,lam0 forced 1.30-1.47: +1800-1950 (unconverged odd basins),~41 cumulative
+2026-10-17,E027,up2,..._db_obs__up2,195573.6,,+57 vs db_obs: Sa .60 F 6 Sj .39 lam0 1.52 n50 .065,

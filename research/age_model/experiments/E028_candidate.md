@@ -11,3 +11,8 @@ along the ridge, so the priors set the split.
 Falsification: cold lands within ~50 nats of warm with similar demography -> not a warm-start artifact.
 Plausibility targets: Sa ~.55-.7, Sj ~.3-.45, F ~4-6, lambda0 ~1.5-1.6, n50 < ~.1; plains corridor
 true-sink share > 0 and Allee-dead small; NE crash/recovery vs Hochachka prevalence.
+
+2026-10-17 01:31: first cold attempt FAILED harmlessly -- scripts/tacc/38_model_experiment sources env.sh,
+which cds to the MAIN checkout (main-branch code, no research features); re-queued as a task that runs
+map -> refine -> viz explicitly from the research worktree.
+E027 up2 (Sa .60, F 6, Sj .39, lambda0 1.52): +57 -- lambda0 ~1.5 still cheap; ~1.3 costs ~1800.

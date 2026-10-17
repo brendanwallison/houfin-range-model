@@ -67,3 +67,6 @@ date,experiment,variant,run_dir,U,fit_corr,notes,su
 2026-10-17,E035,dsk viz,,,,plains 97% source / 3% sink / 1% Allee-dead, median lam_f 1.65 (widespread-sources contortion persists),~66 cumulative
 2026-10-17,E035,dsk (cont.),..._ds_rho__dsk,187459.7,,-894 more (still capped); demography DRIFTS: Sa .84 lam0 1.92 -- loose Sa prior absorbs the growth demand,
 2026-10-17,E037,natal60,..._dsk__natal60,187947.9,,-405 vs its start: realistic natal dispersal (juv 60% at target, 37% at K; adults offset -7.4 = site-faithful) is FREE; lam0 2.03 Sj .56,~70 cumulative
+2026-10-17,E038,dsk_route/_k,..._dsk__dsk_route|_k,170337.3|166280.3,,ROUTE SD ~7.5 (prior .5): route effects absorb everything -- total off-switch; NOT usable; U not comparable (+4951 latents),
+2026-10-17,E040,c2_route/_k,..._natal60__c2_route|_k,170106.7|166084.7,,same route-sd pathology (7.8); Sa .74-.78 Sj .60 lam0 2.07,
+2026-10-17,E036,cold run40,refined_float64__age_map_float32_run_40_phase1_quick90,186050.7,,COLD BEATS WARM (-1409 vs dsk cont.): near-flat dispersal (13-19%), NO exodus; plains 42% sink 0% Allee-dead median lam_f 1.05; log1p corr .808; F 10.8 drifts,~76 cumulative

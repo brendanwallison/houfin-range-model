@@ -57,6 +57,10 @@ def main():
     ap.add_argument("--migration", type=int, nargs="+", default=None,
                     help="keep only species whose AVONET Migration class is in this list (1 = sedentary, the primary "
                          "stratum); others are dropped from every guild")
+    ap.add_argument("--swap-split", action="store_true",
+                    help="E090b: an independent second split -- fit on the HELD-OUT cells, grade on the former training "
+                         "cells (buffer still excluded); the two start-year caches share one split, so they are not "
+                         "replications of each other")
     ap.add_argument("--aux-mask-key", default=None,
                     help="E090/E091: (H, W) bool in the --aux npz; only cells it covers are trained, scored and used by "
                          "the moved nulls (a source with partial coverage must not enter as zero change elsewhere)")
@@ -117,6 +121,9 @@ def main():
         conus &= np.asarray(np.load(a.aux)[a.aux_mask_key], bool)[cells[:, 0], cells[:, 1]]
         print(f"[guild] {a.aux_mask_key}: {int(conus.sum())} cells covered", flush=True)
     ev, tc = np.where(held & conus)[0], np.where(~held & ~buf & conus)[0]
+    if a.swap_split:
+        ev, tc = tc, ev
+        print(f"[guild] swapped split: fit on {len(tc)} held-out cells, grade {len(ev)} former training cells", flush=True)
 
     def gmat(groups):
         rows = np.concatenate([np.full(len(g), i) for i, g in enumerate(groups)])

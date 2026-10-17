@@ -31,6 +31,11 @@ NAMES = ("crop_nopast", "harvested", "pasture", "woodland", "hay", "rowcrop", "s
          "fert", "irrigated", "cattle", "crp")
 LAND = ("crop_nopast", "harvested", "pasture", "woodland", "hay", "rowcrop", "smallgrain", "irrigated", "cattle", "crp")
 CHEM = ("insect", "herbicide", "fert")
+# E090b channel families (attribution); single chemical channels are keys of their own
+FAMILIES = {"census_livestock": ("cattle", "pasture"),
+            "census_crops": ("crop_nopast", "harvested", "hay", "rowcrop", "smallgrain", "irrigated"),
+            "census_woodcrp": ("woodland", "crp"),
+            "census_insect": ("insect",), "census_herbicide": ("herbicide",), "census_fert": ("fert",)}
 E78 = {"cropland": ["item01014"], "cpast": ["item05037"], "harvested": ["item01016"], "pasture": ["item05061"],
        "woodland": ["item05049"], "hay": ["item01107"],
        "rowcrop": ["item01056", "item01059", "item01086", "item01062", "item01080"],
@@ -135,7 +140,8 @@ def main():
     info = {"national_sums_Macres": sums, "counties_matched": matched, "cells": int(mask.sum()),
             "early_years": EARLY, "modern_years": MODERN}
     np.savez(a.out, years=years, census=arr, census_land=arr[:, li], census_chem=arr[:, ci], census_mask=mask,
-             census_names=np.array(NAMES), info=np.array(json.dumps(info)))
+             census_names=np.array(NAMES), info=np.array(json.dumps(info)),
+             **{k: arr[:, [NAMES.index(n) for n in v]] for k, v in FAMILIES.items()})
     print(f"[census] -> {a.out}: cells {int(mask.sum())}, counties matched {matched}")
     print(pd.DataFrame(sums).to_string())
     for k_, nm in enumerate(NAMES):

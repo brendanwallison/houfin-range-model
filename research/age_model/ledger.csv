@@ -70,3 +70,8 @@ date,experiment,variant,run_dir,U,fit_corr,notes,su
 2026-10-17,E038,dsk_route/_k,..._dsk__dsk_route|_k,170337.3|166280.3,,ROUTE SD ~7.5 (prior .5): route effects absorb everything -- total off-switch; NOT usable; U not comparable (+4951 latents),
 2026-10-17,E040,c2_route/_k,..._natal60__c2_route|_k,170106.7|166084.7,,same route-sd pathology (7.8); Sa .74-.78 Sj .60 lam0 2.07,
 2026-10-17,E036,cold run40,refined_float64__age_map_float32_run_40_phase1_quick90,186050.7,,COLD BEATS WARM (-1409 vs dsk cont.): near-flat dispersal (13-19%), NO exodus; plains 42% sink 0% Allee-dead median lam_f 1.05; log1p corr .808; F 10.8 drifts,~76 cumulative
+2026-10-17,E041,c40_bio,..._run_40__c40_bio,186123.1,,+72 vs cold40 with firm F/Sa priors: F 8.1 (10 sd out) Sj .56 lam0 1.95 -- lambda0 ~2 is data-driven,
+2026-10-17,E041,c40_route05,..._run_40__c40_route05,170219.2,,route sd pinned .5: phi0 .18 -> 1.57 -- route heterogeneity is most of the overdispersion; lam0 1.75 (U not comparable),
+2026-10-17,E041,c40_bio_natal,..._run_40__c40_bio_natal,186137.0,,juv 60% at target, adult offset -5.3; kernel TAIL shrinks (band logw -.81/-1.58); lam0 1.90,
+2026-10-17,E042,c40_rho95,..._run_40__c40_rho95,186127.5,,coupling prior .95 -> fitted rho .77 (+77); demography unchanged,
+2026-10-17,E042,c40_plains3,..._run_40__c40_plains3,227538.8,,(weighted; U not comparable) n50 .06; viz pending,~81 cumulative

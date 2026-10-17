@@ -35,3 +35,6 @@ date,experiment,variant,run_dir,U,fit_corr,notes,su
 2026-10-16,E021,sr_crowd,..._sr__sr_crowd,197303.6,,-4; beta stuck at start; irrelevant,~26 cumulative
 2026-10-16,E021,sr_n010,..._sr__sr_n010,197391.9,,+85 vs sr; weak Allee alone; F 9.8 lam0 1.79,
 2026-10-16,E021,sr_b2,..._sr__sr_b2,197196.9,,-110 vs sr; block 2 (54 km) beats block 3; lam0 2.36,
+2026-10-16,E020,dm_corner,..._sr__dm_corner,196039.7,,+128 vs dm (fully plausible corner; Sa .84),
+2026-10-16,E023,dm_band,..._dm__dm_band,195728.2,,-184 vs dm; tail logw .89/1.74; lam0 1.68 F 8.7 Sj/Sa .5 free,
+2026-10-16,E023,dm_band_t,..._dm__dm_band_t,195843.9,,-68 vs dm; other basin (start outer 1.0),~30 cumulative

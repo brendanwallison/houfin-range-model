@@ -23,3 +23,7 @@ date,experiment,variant,run_dir,U,fit_corr,notes,su
 2026-10-16,E017,s_ifd3c/d,..._ifd3__s_ifd3c|d,197674.9|197637.5,,tilts -> ~0 from both sides (delta_f 0.00); BUI clustering not wanted,
 2026-10-16,E016,budget10,..._ifd3__budget10,197701.7,,dll +3; founders unchanged (6.7),
 2026-10-16,E016,budget10_f3,..._ifd3__budget10_f3,197812.9,,Fmax 3 costs +111 with free founders (vs +314); founders fall to 2.2; lam0 1.69 n50 .14,~17 cumulative
+2026-10-16,E019,sr,..._ifd3__sr,197307.3,,-335 vs ifd3; single release ~74 birds; lam0 2.24,
+2026-10-16,E019,sr_f3,..._ifd3__sr_f3,197611.2,,+304 vs sr; Sa .76,
+2026-10-16,E019,sr_f3j05n010,..._ifd3__sr_f3j05n010,197903.2,,+596 vs sr; Sa .85 Sj .42 lam0 1.54,
+2026-10-16,E018,f3j05/n010,..._budget10_f3__f3j05|n010,198117.0|198117.5,,n50 0.10 costs +0.5 with free founders,~20 cumulative

@@ -1,5 +1,11 @@
 # DIGEST (newest first)
 
+## 2026-10-16 evening: the release was a real distortion (E016 R1, E018, E019)
+- Single historical release (1 parameter) fits 335 nats BETTER than the 90-coefficient grid and infers
+  ~50-75 founders. Under it (or free founders) the strong Allee is no longer demanded (n50 0.10: +0.5).
+- Residual problem: lambda0 >= 1.5 at plausible fecundity, carried by adult survival .76-.85.
+- Within-cell BUI clustering (E017) not wanted: tilts -> 0 from both sides.
+
 ## 2026-10-16 afternoon: what settlement + departure are doing (E010-E015)
 - Habitat-directed (K) settlement is the whole E008 gain (uniform mixing +1825). Settlement does NOT
   want to follow vital rates: perfect fitness-IFD flattens them (+327), learned selectivity tau -> 0.19 (-4).

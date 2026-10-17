@@ -50,3 +50,4 @@ date,experiment,variant,run_dir,U,fit_corr,notes,su
 2026-10-17,E026,db_obs_f5/plaus,..._dm_band__db_obs_f5|plaus,197458.2|197329.1,,lam0 forced 1.30-1.47: +1800-1950 (unconverged odd basins),~41 cumulative
 2026-10-17,E027,up2,..._db_obs__up2,195573.6,,+57 vs db_obs: Sa .60 F 6 Sj .39 lam0 1.52 n50 .065,
 2026-10-17,E028,cand_warm,..._up1__cand_warm,195422.4,,candidate priors; F drifts to 9.2 (likelihood prefers F~9 over 6 by ~40 nats),~44 cumulative
+2026-10-17,E028,cand_tight,..._up1__cand_tight,195465.2,,fecundity sd .3: Sa .62 Sj .43 F 6.8 lam0 1.70 n50 .10,

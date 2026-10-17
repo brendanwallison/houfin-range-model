@@ -23,3 +23,10 @@ fecundity prior (median 2.1, sd .5) penalised F 8.2 ~40 nats more than F 6; in L
 data prefer F ~8-9 over F 6 / Sa .65 by ~40 nats (small, but it beats a sd-0.75 prior). A plausible
 split therefore has to be carried by the prior. Queued: cand_tight (fecundity sd 0.3 around 5) and
 the full viz/readout of cand_warm. Cold start running (MAP ~40 min).
+
+cand_warm viz (Great Plains corridor, CONUS): true sink .09, Allee-dead .08, viable .83, median lam_f 1.38
+(vs 23a .39/.25/.36/1.18; ifd3 .02/.26/.72/1.52; sr .03/.30/.67/1.67). Continental Allee-dead 11% (mostly
+boreal). Disease (survival form): peak added mortality ~40-50% NE, ~0 native west, resistance 4%.
+NOTE: 09_disease_diagnostics titles still say "fraction of K removed" -- viz labels predate target=survival.
+cand_tight (fecundity sd 0.3 @ 5): U 195465.2 (+43 vs cand_warm incl. prior change), Sa .62 Sj .43
+(ratio .70) F 6.8 lambda0 1.70 n50 .10 -- vaguely plausible.

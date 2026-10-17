@@ -15,3 +15,8 @@ transpose duplicates f64 Z_disp [206508,124,48] = 9.8 GB); rank 64 float64 OOM (
 rank 64 float32 refine stopped at 166 its on float32 noise (U rose 25.7 over the 20-it window), U 188830 (unconverged).
 Re-queued all three ranks (24/48/64) as float32 refines from their MAPs with a noise-tolerant stop (tol_du 1.0 over
 200 its) for an apples-to-apples comparison + viz.
+
+Float32 refines (tol 1.0 / 200 its) make no progress (r24 197844 -> 197844; r48 195244 -> 198029, worse; r64 195126 -> 195123):
+float32 L-BFGS sits on its noise floor, as found in the HMC work. BUT the MAP stage (same Adam schedule) is informative:
+rank 48 / 64 MAPs are ~2,600-2,700 nats better than rank 24 (float32 U 195,244 / 195,126 vs 197,844), and the rank-48
+MAP stays realistic. Next: float64 refines with HOUFIN_Z_FLOAT32=1 (Z kept float32 -- lossless, halves memory).

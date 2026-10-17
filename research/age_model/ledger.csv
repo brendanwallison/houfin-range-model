@@ -83,3 +83,4 @@ date,experiment,variant,run_dir,U,fit_corr,notes,su
 2026-10-17,E047,F1_hab,..._run_40__F1_hab,192266.5,,habitat pattern frozen at MAP: recovers ~51% of the 12.6k refinement gain (198700 -> 192267); viz/decomp pending,~97 cumulative
 2026-10-17,E047,F1_hab result,,,,habitat frozen keeps realism (P .67 sinks med .85; W Kw-sink .13); missing gain = east positives 1980+ (~2.2k) + modern plains positives (~0.8k),
 2026-10-17,E047,F3_both,..._run_40__F3_both,192497.0,,habitat+demog frozen: 49% of the gain, source/sink = MAP; half the refinement gain is non-contorting,~100 cumulative
+2026-10-17,E048,MAP comparison,,,,rank 48/64 MAPs ~2.6-2.7k nats better than rank 24 at the same Adam schedule; float32 refines stall (noise floor),~102 cumulative

@@ -93,6 +93,12 @@ _DISEASE_CEILING = float(_DISEASE_SPEC.get("mortality_ceiling", 0.8) if DISEASE_
 #                             weight without new path features (age_forward.juvenile_band_weights)
 _KERNEL_SPEC = dict(_POP_SPEC.get("dispersal_kernel", {}))
 BAND_WEIGHTS = bool(_KERNEL_SPEC.get("band_weights", False))
+#   year_effects              {"enabled": bool, "sd_scale"}: continental per-year multipliers on expected
+#                             counts (survey-wide fluctuation: weather, observer turnover), sd learned
+#                             ~ HalfNormal(sd_scale), centred over observed years -- so a deterministic
+#                             model need not chase annual swings with fast dynamics.
+_YEAR_FX = dict(_POP_SPEC.get("year_effects", {}))
+YEAR_EFFECTS = bool(_YEAR_FX.get("enabled", False))
 _SUBCELL = dict(_POP_SPEC.get("subcell_strata", {}))
 SUBCELL = bool(_SUBCELL.get("enabled", False))
 #                             | "capacity_fitness" (K * lambda0^tau, tau >= 0 learned with prior
@@ -1030,6 +1036,14 @@ def build_model_2d(data, prior_scale=1.0):
     
     # densities output should be the sum of adult + juvenile (N_total)
     densities_obs = jnp.maximum(densities[t_idx, rows, cols] * data["pop_scalar"], 1e-6)
+    if YEAR_EFFECTS:
+        _sd = numpyro.sample("obs_year_sd",
+                             dist.HalfNormal(float(_YEAR_FX.get("sd_scale", 0.3)) * prior_scale))
+        _raw = numpyro.sample("obs_year_raw", dist.Normal(0.0, 1.0).expand([time]))
+        _w = jnp.bincount(t_idx, length=time).astype(_raw.dtype)
+        _raw_c = _raw - jnp.sum(_w * _raw) / jnp.sum(_w)          # centred over OBSERVED years
+        year_fx = numpyro.deterministic("obs_year_effect", _sd * _raw_c)
+        densities_obs = densities_obs * jnp.exp(year_fx[t_idx])
     
     numpyro.deterministic("expected_obs", densities_obs)
     # NB2 overdispersion: var = mean + mean^2 / concentration, so a LOWER

@@ -19,3 +19,8 @@ abundance 1980+ (~2.2k nats) and (2) modern plains positives (~0.8k): an east th
 trough that softens recently (user: urbanisation speckle). Needed: a time-varying, spatially local channel (urban /
 anthropogenic) reaching the east and the modern plains WITHOUT moving the static pattern -- higher DESK rank (E048)
 or a direct term.
+
+F3 RESULT (habitat pattern AND demographic levels frozen): U 198,699.9 -> 192,497.0 (~49% of the gap) with source/sink
+fields identical to the MAP. F1 adds only ~230 nats by also freeing demography. => about HALF the refinement gain is
+non-contorting (K level, dispersal, settlement, disease, observation, release); the other half comes entirely from
+reshaping the habitat field (east 1980+ and modern plains positives).

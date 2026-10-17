@@ -237,8 +237,15 @@ def load_data(input_dir, target_device=None, precision="float32", verbose=True):
     if verbose:
         print(f"Iterating through metadata and casting to {precision} on device: {target_device}...")
 
-    def _to_device(value):
+    # HOUFIN_Z_FLOAT32=1: keep the large covariate inputs (Z, Z_disp) in float32 even in a float64
+    # run. They are float32 on disk, so float64 storage adds memory and no information; the model's
+    # dot products promote per-year slices to float64. Lets rank-48/64 float64 refines fit (E048).
+    z32 = os.environ.get("HOUFIN_Z_FLOAT32") == "1"
+
+    def _to_device(value, key=None):
         if np.issubdtype(value.dtype, np.floating):
+            if z32 and key in LARGE_INPUT_KEYS:
+                return jnp.array(value).astype(jnp.float32)
             return jnp.array(value).astype(f_type_target)
         elif np.issubdtype(value.dtype, np.integer):
             return jnp.array(value).astype(i_type_target)
@@ -252,9 +259,9 @@ def load_data(input_dir, target_device=None, precision="float32", verbose=True):
                     print(f"  [HOST, experimental] {key}: {meta[key].nbytes / 1e9:.2f} GB")
             else:
                 if target_device is not None:
-                    meta[key] = jax.device_put(_to_device(value), target_device)
+                    meta[key] = jax.device_put(_to_device(value, key), target_device)
                 else:
-                    meta[key] = _to_device(value)
+                    meta[key] = _to_device(value, key)
                 if verbose:
                     print(f"  [DEVICE] {key}: {meta[key].nbytes / 1e6:.1f} MB")
 

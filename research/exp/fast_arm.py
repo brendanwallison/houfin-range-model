@@ -66,6 +66,7 @@ def features(c, args):
     z_all = np.asarray(c["z_ema_all"] if args.features == "ema" else c["z_raw_all"], "float64")
     if args.lag_hl > 0:
         z_all = causal_ema(z_all, args.lag_hl)
+    z_full = z_all                                     # all latent dims, for the head blocks (E085)
     z_all = z_all[:, :, : args.rank]
     years = np.asarray(c["years"])
     keys = np.asarray(c["keys"])
@@ -92,6 +93,21 @@ def features(c, args):
         p = X.shape[1]
         X, Xnc = np.hstack([X, P_t]), np.hstack([Xnc, P_nc])
         blocks = blocks + [(p, p + P_t.shape[1])]
+    if getattr(args, "head_ckpt", None):
+        # E085: SUM-OF-RUZICKAS readout -- each trained metric head (CBC, eBird) applied to the FULL z is its own
+        # block with its own amplitude, so the readout kernel is a_B zz' + sum_h a_h (H_h z)(H_h z)', each term the
+        # (approximate) Ruzicka similarity of one source; amplitudes by marginal likelihood per species.
+        import torch
+        st = torch.load(args.head_ckpt, map_location="cpu", weights_only=False)
+        heads = [h["weight"].numpy().astype("float64") for h in st.get("metric_heads", [])]
+        if not heads:
+            raise SystemExit(f"--head-ckpt {args.head_ckpt}: no metric_heads in the checkpoint")
+        zf = z_full[ci, yi]
+        zf_nc = z_full[:, mod].mean(1)[ci]
+        for Wh in heads:
+            p = X.shape[1]
+            X, Xnc = np.hstack([X, zf @ Wh.T]), np.hstack([Xnc, zf_nc @ Wh.T])
+            blocks = blocks + [(p, p + Wh.shape[0])]
     if args.time_basis > 0:
         T = time_basis(keys[:, 2], args.time_basis)
         p = X.shape[1]
@@ -179,6 +195,9 @@ def main():
     ap.add_argument("--kernel", default="iso", choices=("iso", "split", "ard", "placebo", "split+placebo"))
     ap.add_argument("--placebo-ls", type=float, default=400.0, help="placebo position fields, km (B8)")
     ap.add_argument("--ref-window", type=int, nargs=2, default=(1996, 2025))
+    ap.add_argument("--head-ckpt", default=None,
+                    help="E085: a DESK checkpoint with metric_heads; each head's output on the full z is added as its "
+                         "own block (sum-of-Ruzickas readout)")
     ap.add_argument("--time-basis", type=int, default=0)
     ap.add_argument("--lag-hl", type=float, default=0.0)
     ap.add_argument("--n-boot", type=int, default=400)
@@ -233,7 +252,7 @@ def main():
              "persistence": pnoise}
     Yte, g_te, bid = Y[te], group[te], sp["block_id"][te]
     res = {"cache": a.cache, "tag": a.tag, "features": a.features, "rank": a.rank,
-           "kernel": a.kernel, "ref_window": list(a.ref_window), "time_basis": a.time_basis,
+           "kernel": a.kernel, "head_ckpt": a.head_ckpt, "ref_window": list(a.ref_window), "time_basis": a.time_basis,
            "lag_hl": a.lag_hl, "placebo_ls": a.placebo_ls if "placebo" in a.kernel else None,
            "n_species": int(Y.shape[1]), "withheld": withheld,
            "block_amplitude_medians": [float(np.median(model["a"][model["ok"], b]))

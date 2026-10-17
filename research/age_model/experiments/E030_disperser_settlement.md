@@ -11,3 +11,7 @@ block; residents keep their cells (site fidelity). Weights (user: R0 is the simp
 Base cand_tight (Sa .62 Sj .43 F 6.8 lambda0 1.70, single field coupling 1).
 Predictions: vital-rate habitat sensitivities RECOVER; plains true-sink share rises; the exodus may
 weaken (residents no longer need to be regathered). Fit vs cand_tight (195465.2) is the cost/benefit.
+
+ct_ds (K weight, warm in the exodus regime): U 203094.6 (+7629) -- dispersers-only settlement BREAKS the
+sparse-cell exodus (it relies on regathering residents). Not a fair test: retest ct_ds_pos with dispersal
+reset to the cold-start mode (int .8 / slope +1.2).

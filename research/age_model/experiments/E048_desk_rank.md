@@ -20,3 +20,8 @@ Float32 refines (tol 1.0 / 200 its) make no progress (r24 197844 -> 197844; r48 
 float32 L-BFGS sits on its noise floor, as found in the HMC work. BUT the MAP stage (same Adam schedule) is informative:
 rank 48 / 64 MAPs are ~2,600-2,700 nats better than rank 24 (float32 U 195,244 / 195,126 vs 197,844), and the rank-48
 MAP stays realistic. Next: float64 refines with HOUFIN_Z_FLOAT32=1 (Z kept float32 -- lossless, halves memory).
+
+r64 float64 (Z float32) refine: U 195,814.9 -> 187,516.4 in 651 its (stopped early; worse than r24's 186,051). Source/sink
+REFINED: W .51/.41/.99 | P .61/.57/.90 | E .48/.18/1.07 -- the PLAINS TROUGH SURVIVES REFINEMENT at rank 64 (plains worst:
+median .90 < W .99 < E 1.07), unlike rank 24 (P .42/.45/1.05). West still drifts toward sinks (K-weighted .41 vs .20 at MAP).
+r64 MAP: W .39/.20/1.09 | P .64/.46/.86 | E .49/.14/1.02. r48 refine near convergence at 184,509 (best of the project).

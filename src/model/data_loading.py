@@ -59,6 +59,51 @@ def _subcell_enabled():
     return bool(spec.get("enabled", False))
 
 
+def _observation_weighting_spec():
+    from src.config_utils import load_age_model_config
+    spec = load_age_model_config().get("population_model", {}).get("observation_weighting")
+    return dict(spec) if spec else None
+
+
+def observation_weights(meta, spec):
+    """DIAGNOSTIC likelihood weights (population_model.observation_weighting) -- never production:
+    a weighted likelihood is not a posterior. Re-score fits UNWEIGHTED to compare them.
+
+    {"plains": w}: CONUS Great Plains barrier-corridor observations (great_plains_zones code 2,
+        lat < 49) get weight w.
+    {"sparse": {"c": 1, "p": 1, "w_max": 5, "from_year": 1966}}: each observation gets
+        clip(w_max * (c / (m + c))^p, 1, w_max), m = its cell's mean OBSERVED count since from_year
+        (data-derived, so the weights cannot move with the fit): empty cells w_max, dense cells 1.
+    """
+    rows, cols = np.asarray(meta["obs_rows"]), np.asarray(meta["obs_cols"])
+    w = np.ones(rows.shape, dtype=np.float64)
+    if "plains" in spec:
+        import rasterio
+        from rasterio.warp import transform as crs_transform
+        from src.config_utils import load_data_config
+        dcfg = load_data_config()
+        with rasterio.open(os.path.expandvars(dcfg["regions"]["great_plains_zones"])) as src:
+            zones = src.read(1)
+        with rasterio.open(os.path.expandvars(dcfg["grid"]["ref_raster"])) as src:
+            xs, ys = rasterio.transform.xy(src.transform, rows, cols, offset="center")
+            _, lat = crs_transform(src.crs, "EPSG:4326", list(xs), list(ys))
+        plains = (zones[rows, cols] == 2) & (np.asarray(lat) < 49.0)
+        w = np.where(plains, float(spec["plains"]), w)
+    if "sparse" in spec:
+        sp = dict(spec["sparse"])
+        c, pw, wmax = float(sp.get("c", 1.0)), float(sp.get("p", 1.0)), float(sp.get("w_max", 5.0))
+        years = np.asarray(meta["years"])[np.asarray(meta["obs_time_indices"])]
+        y = np.asarray(meta["observed_results"], dtype=np.float64)
+        cell = rows.astype(np.int64) * 100000 + cols
+        _, idx = np.unique(cell, return_inverse=True)
+        era = years >= int(sp.get("from_year", 1966))
+        s = np.bincount(idx[era], weights=y[era], minlength=idx.max() + 1)
+        n = np.bincount(idx[era], minlength=idx.max() + 1)
+        m = np.where(n > 0, s / np.maximum(n, 1), 0.0)[idx]
+        w = w * np.clip(wmax * (c / (m + c)) ** pw, 1.0, wmax)
+    return w
+
+
 def _observation_mask_spec():
     """population_model.observation_mask from the active config, or None (the default)."""
     from src.config_utils import load_age_model_config
@@ -149,6 +194,13 @@ def load_data(input_dir, target_device=None, precision="float32", verbose=True):
         if verbose:
             print(f"  [mask] transient +-{mask_spec['transient_years']} y: "
                   f"{int((meta['obs_weight'] == 0).sum())} observations dropped")
+    wspec = _observation_weighting_spec()
+    if wspec:
+        w = observation_weights(meta, wspec)
+        meta["obs_weight"] = meta.get("obs_weight", np.ones_like(w)) * w
+        if verbose:
+            print(f"  [weights] {wspec}: mean {w.mean():.2f}, max {w.max():.2f}, "
+                  f"share of obs upweighted {np.mean(w > 1.0):.1%}")
     occupied_center = occupied_habitat_center(meta)
     if occupied_center is not None:
         meta["habitat_center_occupied"] = occupied_center

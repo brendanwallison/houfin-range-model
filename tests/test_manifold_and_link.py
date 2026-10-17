@@ -608,3 +608,30 @@ def test_settling_dispersers_only_leaves_residents_in_place():
     everyone = run(settle_block=3)
     np.testing.assert_allclose(disp_only, none, rtol=2e-3, atol=1e-6)   # ~no movers -> ~no change (0.005% still leave at the clip)
     assert np.abs(everyone - none).max() > 1e-3                         # "all" reshuffles residents
+
+
+def test_sparse_weights_upweight_empty_cells_only():
+    from src.model.data_loading import observation_weights
+    years = np.arange(1966, 1976)
+    t = np.tile(np.arange(10), 2); rows = np.array([1] * 10 + [2] * 10); cols = np.zeros(20, int)
+    y = np.concatenate([np.zeros(10), np.full(10, 20.0)])            # cell 1 empty, cell 2 dense
+    meta = {"years": years, "obs_time_indices": t, "obs_rows": rows, "obs_cols": cols, "observed_results": y}
+    w = observation_weights(meta, {"sparse": {"c": 1.0, "p": 1.0, "w_max": 5.0}})
+    assert np.allclose(w[:10], 5.0) and np.allclose(w[10:], 1.0)
+
+
+def test_weighted_likelihood_scales_log_density():
+    import numpyro.distributions as dist
+    from numpyro import handlers
+    from src.model import age_priors  # noqa: F401  (ensures the model module imports cleanly)
+    y = jnp.asarray([0.0, 3.0]); mu = jnp.asarray([0.5, 2.0]); w = jnp.asarray([3.0, 1.0])
+
+    def m():
+        with handlers.mask(mask=w > 0.0), handlers.scale(scale=jnp.where(w > 0.0, w, 1.0)):
+            import numpyro
+            numpyro.sample("obs", dist.NegativeBinomial2(mu, 0.5), obs=y)
+    tr = handlers.trace(m).get_trace()
+    s = tr["obs"]
+    lp = (s["scale"] * s["fn"].log_prob(y)).sum()
+    ref = (w * dist.NegativeBinomial2(mu, 0.5).log_prob(y)).sum()
+    assert float(lp) == pytest.approx(float(ref), rel=1e-6)

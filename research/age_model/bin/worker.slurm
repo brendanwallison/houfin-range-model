@@ -25,7 +25,21 @@ export PYTHONPATH="$WT:$WT/src:${PYTHONPATH:-}"
 mkdir -p "$QUEUE_DIR"/{pending,running,done,failed,logs}
 echo "[worker] $(hostname) job $SLURM_JOB_ID start $(date); worktree $WT @ $(git rev-parse --short HEAD)"
 idle_since=$(date +%s)
+# A task whose worker hit its time limit is left in running/. Each claim records its owning job in
+# running/<name>.owner; any worker returns tasks whose owner is no longer running to pending/.
+recover_orphans() {
+    for o in "$QUEUE_DIR"/running/*.owner; do
+        [ -e "$o" ] || continue
+        owner=$(cat "$o"); n=$(basename "$o" .owner)
+        if ! squeue -h -j "$owner" -t R,CG 2>/dev/null | grep -q .; then
+            mv "$QUEUE_DIR/running/$n.sh" "$QUEUE_DIR/pending/" 2>/dev/null && \
+                echo "[worker] requeued orphan $n (owner job $owner gone) $(date)"
+            rm -f "$o"
+        fi
+    done
+}
 while :; do
+    recover_orphans
     task=$(ls "$QUEUE_DIR"/pending/*.sh 2>/dev/null | sort | head -1)
     if [ -z "$task" ]; then
         if [ $(( $(date +%s) - idle_since )) -ge $(( IDLE_MIN * 60 )) ]; then
@@ -37,12 +51,14 @@ while :; do
     # one wins a task; the losers' mv fails and they look again.
     name=$(basename "$task" .sh); claimed="$QUEUE_DIR/running/$name.sh"
     mv "$task" "$claimed" 2>/dev/null || continue
+    echo "$SLURM_JOB_ID" > "$QUEUE_DIR/running/$name.owner"
     echo "[worker] START $name $(date)"; t0=$(date +%s)
     if bash "$claimed" > "$QUEUE_DIR/logs/$name.log" 2>&1; then
         mv "$claimed" "$QUEUE_DIR/done/"; st=done
     else
         mv "$claimed" "$QUEUE_DIR/failed/"; st=FAILED
     fi
+    rm -f "$QUEUE_DIR/running/$name.owner"
     echo "[worker] $st $name ($(( ($(date +%s) - t0) / 60 )) min)"
     idle_since=$(date +%s)
 done

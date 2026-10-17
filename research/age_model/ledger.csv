@@ -43,3 +43,6 @@ date,experiment,variant,run_dir,U,fit_corr,notes,su
 2026-10-16,E025,db_yr,..._dm_band__db_yr,195474.6,,-254 vs dm_band but yr sd .69; lam0 1.64 unchanged,
 2026-10-16,E025,db_yr_plaus,..._dm_band__db_yr_plaus,197334.3,,yr sd 2.25 (absorbing trends); rejected as lam0 fix,
 2026-10-16,E020,dm_n010,..._sr__dm_n010,195863.4,,-48 vs dm (unconverged); n50 .10 free of cost under disease mortality,~36 cumulative
+2026-10-17,E024,db_plaus,..._dm_band__db_plaus,197576.1,,+1848 vs dm_band (lam0 forced 1.30),
+2026-10-17,E026,db_obs,..._dm_band__db_obs,195516.7,,-212 vs dm_band; breeding obs phi .79; lam0 1.72; NEW BEST,
+2026-10-17,E024,db_b4,..._dm_band__db_b4,196152.1,,+424 vs dm_band; block 2-3 is the scale,~39 cumulative

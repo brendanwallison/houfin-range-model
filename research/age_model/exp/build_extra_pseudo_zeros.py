@@ -29,6 +29,10 @@ def main() -> None:
     input_dir = load_age_model_config()["input_dir"]
     ap = argparse.ArgumentParser()
     ap.add_argument("--buffer-km", type=float, default=700.0)
+    ap.add_argument("--schedule", default=None,
+                    help="time-varying buffer, e.g. '1940:150,1950:300,1960:450' (km from that year on); "
+                         "overrides --buffer-km. Default history-based use: ~2x the documented radius "
+                         "(1940s ~3.5 km/yr; ~21 km/yr from 1962; PA in the 1960s)")
     ap.add_argument("--end-year", type=int, default=1965)
     ap.add_argument("--cell-km", type=float, default=27.0)
     ap.add_argument("--out", default=os.path.join(input_dir, "extra_pseudo_zeros.npz"))
@@ -44,15 +48,21 @@ def main() -> None:
     sites = np.unique(np.stack([rows[pre], cols[pre]], axis=1), axis=0)
     r0, c0 = (int(v) for v in np.asarray(meta["inv_locations"])[0])
     dist_km = np.hypot(sites[:, 0] - r0, sites[:, 1] - c0) * a.cell_km
-    keep = sites[dist_km > a.buffer_km]
+    sched = ([(int(k), float(v)) for k, v in (kv.split(":") for kv in a.schedule.split(","))]
+             if a.schedule else [(inv_year, a.buffer_km)])
+    def buffer_for(yy):
+        return [b for y0, b in sorted(sched) if yy >= y0][-1]
     window = [i for i, yy in enumerate(years) if inv_year <= yy <= a.end_year]
-    out_r = np.repeat(keep[:, 0][None], len(window), 0).ravel()
-    out_c = np.repeat(keep[:, 1][None], len(window), 0).ravel()
-    out_t = np.repeat(np.asarray(window)[:, None], len(keep), 1).ravel()
+    out_r, out_c, out_t = [], [], []
+    for i in window:
+        keep = sites[dist_km > buffer_for(int(years[i]))]
+        out_r.append(keep[:, 0]); out_c.append(keep[:, 1]); out_t.append(np.full(len(keep), i))
+    out_r, out_c, out_t = (np.concatenate(x) for x in (out_r, out_c, out_t))
+    keep = sites[dist_km > buffer_for(int(years[window[-1]]))]
     np.savez_compressed(a.out, rows=out_r.astype(np.int64), cols=out_c.astype(np.int64), time_idx=out_t.astype(np.int64),
-                        buffer_km=a.buffer_km, years=np.asarray([inv_year, a.end_year]))
-    print(f"[extra_pseudo_zeros] {a.out}: {len(sites)} pre-invasion sites, {len(keep)} beyond {a.buffer_km:.0f} km of "
-          f"the release cell ({r0},{c0}); {len(window)} years {inv_year}-{a.end_year} -> {len(out_t)} zero observations")
+                        schedule=np.asarray(sched, dtype=float), years=np.asarray([inv_year, a.end_year]))
+    print(f"[extra_pseudo_zeros] {a.out}: {len(sites)} pre-invasion sites; schedule {sched}; at {a.end_year} "
+          f"{len(keep)} sites beyond buffer of release cell ({r0},{c0}); {len(window)} years -> {len(out_t)} zeros")
 
 
 if __name__ == "__main__":

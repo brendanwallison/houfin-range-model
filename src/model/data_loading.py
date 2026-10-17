@@ -59,6 +59,12 @@ def _extra_pseudo_zeros_enabled():
     return bool(spec.get("extra_pseudo_zeros", False))
 
 
+def _extra_pseudo_zeros_file():
+    from src.config_utils import load_age_model_config
+    v = (load_age_model_config().get("population_model", {}).get("observation") or {}).get("extra_pseudo_zeros")
+    return v if isinstance(v, str) else "extra_pseudo_zeros.npz"
+
+
 def _subcell_enabled():
     from src.config_utils import load_age_model_config
     spec = load_age_model_config().get("population_model", {}).get("subcell_strata") or {}
@@ -189,7 +195,7 @@ def load_data(input_dir, target_device=None, precision="float32", verbose=True):
     if _extra_pseudo_zeros_enabled():
         # Appended as standard-tier zero counts with no route (research/age_model/exp/
         # build_extra_pseudo_zeros.py): pre-BBS absences 1940-1965 far from the release.
-        with np.load(os.path.join(input_dir, "extra_pseudo_zeros.npz")) as z:
+        with np.load(os.path.join(input_dir, _extra_pseudo_zeros_file())) as z:
             n_new = int(z["rows"].shape[0])
             meta["obs_rows"] = np.concatenate([np.asarray(meta["obs_rows"]), z["rows"]])
             meta["obs_cols"] = np.concatenate([np.asarray(meta["obs_cols"]), z["cols"]])

@@ -38,3 +38,5 @@ date,experiment,variant,run_dir,U,fit_corr,notes,su
 2026-10-16,E020,dm_corner,..._sr__dm_corner,196039.7,,+128 vs dm (fully plausible corner; Sa .84),
 2026-10-16,E023,dm_band,..._dm__dm_band,195728.2,,-184 vs dm; tail logw .89/1.74; lam0 1.68 F 8.7 Sj/Sa .5 free,
 2026-10-16,E023,dm_band_t,..._dm__dm_band_t,195843.9,,-68 vs dm; other basin (start outer 1.0),~30 cumulative
+2026-10-16,E024,db_f5,..._dm_band__db_f5,195744.2,,+16 vs dm_band (F 5, Sj/Sa .5); Sa .75 Sj .38 lam0 ~1.63,
+2026-10-16,E024,db_corner,..._dm_band__db_corner,195929.0,,+201 vs dm_band (F 3, Sj/Sa .5, n50 .1); Sa .83,

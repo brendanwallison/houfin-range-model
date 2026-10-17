@@ -9,3 +9,9 @@ Read vs rank-24 cold run_40 (MAP: plains 70% sinks, lam .85; refined U 186,050.7
 whether refinement still erases the plains trough (more flexibility could capture urban signal OR give refinement
 more room to contort); demography; east under-prediction at the MAP.
 Budget: Phase 1 cap raised to 150 SU (DEB23008 at 309 SU on 2026-10-17 afternoon).
+
+2026-10-17: rank 48 MAP realistic (P .66 sinks / median .88; W .55/.25/.96). Rank 48 float64 refine OOM twice (a
+transpose duplicates f64 Z_disp [206508,124,48] = 9.8 GB); rank 64 float64 OOM (12.2 GB alloc) even at mem .95;
+rank 64 float32 refine stopped at 166 its on float32 noise (U rose 25.7 over the 20-it window), U 188830 (unconverged).
+Re-queued all three ranks (24/48/64) as float32 refines from their MAPs with a noise-tolerant stop (tol_du 1.0 over
+200 its) for an apples-to-apples comparison + viz.

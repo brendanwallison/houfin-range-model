@@ -30,3 +30,14 @@ boreal). Disease (survival form): peak added mortality ~40-50% NE, ~0 native wes
 NOTE: 09_disease_diagnostics titles still say "fraction of K removed" -- viz labels predate target=survival.
 cand_tight (fecundity sd 0.3 @ 5): U 195465.2 (+43 vs cand_warm incl. prior change), Sa .62 Sj .43
 (ratio .70) F 6.8 lambda0 1.70 n50 .10 -- vaguely plausible.
+
+FALSIFICATION RESULT (cand_cold, 2026-10-17 03:2x): cold start (MAP quick90 -> refine 6510 its -> viz) lands in
+a DIFFERENT, worse mode: U 196888.4 (+1466 vs cand_warm 195422.4). Cold mode: ordinary POSITIVE density-
+dependent departure (int .81 / slope +1.19), founders ~390 birds (T 9.74), mid-band (155-483 km) up, tail
+down (logw 2.51/0.80), Sa .40, Sj .37, F 8.7, lambda0 1.36. Warm mode: sparse-cell exodus (-7.61/-9.74),
+~70 founders, tail up, Sa .56, F 9.2, lambda0 1.78.
+Reading: the posterior is MULTIMODAL in the dispersal regime. The exodus mode (inherited along the warm
+lineage from ifd3) is ~1470 nats better but unreachable from a cold start; the best model rests on the
+inverse-density-dependent exodus (flagged by the user as questionable). Phase 2 must settle the dispersal
+functional form -- justify the exodus (conspecific attraction) or find what it substitutes for; the cold
+mode's lambda0 1.36 suggests part of the warm lambda0 demand is tied to the exodus regime.

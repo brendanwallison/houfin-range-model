@@ -51,3 +51,4 @@ date,experiment,variant,run_dir,U,fit_corr,notes,su
 2026-10-17,E027,up2,..._db_obs__up2,195573.6,,+57 vs db_obs: Sa .60 F 6 Sj .39 lam0 1.52 n50 .065,
 2026-10-17,E028,cand_warm,..._up1__cand_warm,195422.4,,candidate priors; F drifts to 9.2 (likelihood prefers F~9 over 6 by ~40 nats),~44 cumulative
 2026-10-17,E028,cand_tight,..._up1__cand_tight,195465.2,,fecundity sd .3: Sa .62 Sj .43 F 6.8 lam0 1.70 n50 .10,
+2026-10-17,E028,cand_cold,refined_float64__age_map_float32_run_35_candidate_quick90,196888.4,,COLD: other mode +1466; positive DD dispersal; lam0 1.36; Sa .40,~48 cumulative

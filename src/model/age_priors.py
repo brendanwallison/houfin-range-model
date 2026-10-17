@@ -97,6 +97,15 @@ BAND_WEIGHTS = bool(_KERNEL_SPEC.get("band_weights", False))
 #                             counts (survey-wide fluctuation: weather, observer turnover), sd learned
 #                             ~ HalfNormal(sd_scale), centred over observed years -- so a deterministic
 #                             model need not chase annual swings with fast dynamics.
+#   observation               {"form": "post_breeding" (default: count ~ adults + ALL of the year's new
+#                             juveniles) | "breeding" (count ~ the BREEDING population of year t -- the
+#                             previous year's end-of-year total, all of breeding age -- plus a learned
+#                             fraction phi ~ Beta(a, b) of year t's fledglings)}. BBS runs in June and
+#                             counts mostly breeding adults; under post_breeding, juveniles outnumber
+#                             adults ~F*Sa:1 at low density, so modelled counts in a colonising cell grow
+#                             SLOWER than the breeders and the fit needs a higher lambda0.
+_OBS_SPEC = dict(_POP_SPEC.get("observation", {}))
+OBS_BREEDING = _OBS_SPEC.get("form", "post_breeding") == "breeding"
 _YEAR_FX = dict(_POP_SPEC.get("year_effects", {}))
 YEAR_EFFECTS = bool(_YEAR_FX.get("enabled", False))
 _SUBCELL = dict(_POP_SPEC.get("subcell_strata", {}))
@@ -1035,7 +1044,14 @@ def build_model_2d(data, prior_scale=1.0):
     t_idx, rows, cols = data["obs_time_indices"], data["obs_rows"], data["obs_cols"]
     
     # densities output should be the sum of adult + juvenile (N_total)
-    densities_obs = jnp.maximum(densities[t_idx, rows, cols] * data["pop_scalar"], 1e-6)
+    if OBS_BREEDING:
+        phi = numpyro.sample("obs_fledgling_weight", dist.Beta(
+            float(_OBS_SPEC.get("fledgling_weight_a", 1.0)), float(_OBS_SPEC.get("fledgling_weight_b", 4.0))))
+        breeders = jnp.where(t_idx > 0, densities[jnp.maximum(t_idx - 1, 0), rows, cols],
+                             initpop_seeded[rows, cols])
+        densities_obs = jnp.maximum((breeders + phi * Nj_grid[t_idx, rows, cols]) * data["pop_scalar"], 1e-6)
+    else:
+        densities_obs = jnp.maximum(densities[t_idx, rows, cols] * data["pop_scalar"], 1e-6)
     if YEAR_EFFECTS:
         _sd = numpyro.sample("obs_year_sd",
                              dist.HalfNormal(float(_YEAR_FX.get("sd_scale", 0.3)) * prior_scale))

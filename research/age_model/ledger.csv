@@ -40,3 +40,6 @@ date,experiment,variant,run_dir,U,fit_corr,notes,su
 2026-10-16,E023,dm_band_t,..._dm__dm_band_t,195843.9,,-68 vs dm; other basin (start outer 1.0),~30 cumulative
 2026-10-16,E024,db_f5,..._dm_band__db_f5,195744.2,,+16 vs dm_band (F 5, Sj/Sa .5); Sa .75 Sj .38 lam0 ~1.63,
 2026-10-16,E024,db_corner,..._dm_band__db_corner,195929.0,,+201 vs dm_band (F 3, Sj/Sa .5, n50 .1); Sa .83,
+2026-10-16,E025,db_yr,..._dm_band__db_yr,195474.6,,-254 vs dm_band but yr sd .69; lam0 1.64 unchanged,
+2026-10-16,E025,db_yr_plaus,..._dm_band__db_yr_plaus,197334.3,,yr sd 2.25 (absorbing trends); rejected as lam0 fix,
+2026-10-16,E020,dm_n010,..._sr__dm_n010,195863.4,,-48 vs dm (unconverged); n50 .10 free of cost under disease mortality,~36 cumulative

@@ -556,3 +556,28 @@ def test_band_weights_nest_preserve_mass_and_shift_the_tail():
     assert float((w * mass).sum()) == pytest.approx(float(mass.sum()), rel=1e-5)   # mass kept
     band = np.tile(np.arange(nb), 4)
     assert (w * mass)[band == nb - 1].sum() > mass[band == nb - 1].sum()           # fatter tail
+
+
+def test_breeding_observation_counts_previous_total_plus_fledgling_share():
+    overlay = "map_run34_breeding_obs.json"
+    probe = r"""
+import json, sys
+sys.path.insert(0, ".")
+import numpy as np
+from numpyro import handlers
+from tests.test_full_model_smoke import synthetic_inputs
+from src.model.age_priors import build_model_2d
+d = synthetic_inputs()
+tr = handlers.trace(handlers.seed(build_model_2d, 0)).get_trace(data=d, prior_scale=1.0)
+dens = np.asarray(tr["simulated_density"]["value"]); nj = np.asarray(tr["Nj_grid"]["value"])
+phi = float(tr["obs_fledgling_weight"]["value"])
+t, r, c = (np.asarray(d[k]) for k in ("obs_time_indices", "obs_rows", "obs_cols"))
+exp_ = (dens[t - 1, r, c] + phi * nj[t, r, c]) * float(d["pop_scalar"])
+got = np.asarray(tr["expected_obs"]["value"])
+ok = exp_ > 1e-5
+print(json.dumps({"maxrel": float(np.max(np.abs(got[ok] - exp_[ok]) / exp_[ok])), "phi": phi}))
+"""
+    env = dict(os.environ, AGE_MODEL_CONFIG=os.path.join(REPO, "config", "overlays", overlay))
+    r = json.loads(subprocess.run([sys.executable, "-c", probe], cwd=REPO, env=env, capture_output=True,
+                                  text=True, check=True).stdout.strip().splitlines()[-1])
+    assert 0.0 < r["phi"] < 1.0 and r["maxrel"] < 1e-4

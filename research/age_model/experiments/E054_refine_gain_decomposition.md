@@ -7,3 +7,21 @@ Regroup per_obs.npz offline by GP corridor zone (west/plains/east, lat<49), era,
 Questions: is the gain concentrated (few routes/years, e.g. early eastern invasion front or modern plains positives, as
 E047 found) or diffuse? Is it the same observations across all four refines (then it is one data feature the structure
 lacks) or different ones?
+
+## Result (2026-10-18). Per-obs NB loglik, refined minus MAP; zones = GP corridor (lat<49); nats as pos/zero counts.
+TWO REGIMES, split by a float32/float64 disagreement at the MAP point (quick90 float32 loss vs float64 U at the same
+params, from the refine logs): 51a 196,987 vs 197,002 and 53b 197,654 vs 197,660 AGREE; 50a 204k vs 234k, 50b +15k,
+50c 206k vs 462k, 52a +11k, 53a 205k vs 303k DISAGREE (50d +7k, 51b/52b <1k).
+- Disagreeing runs (50a, 53a): loglik gain 47k / 117k, 57% / 80% of it EASTERN POSITIVES 1980-1993 (26.7k / 93.3k);
+  top 1% of obs carry 60-75%. The float64 trajectory at the float32 MAP params misses the eastern expansion; the
+  refine is mostly repairing that, not contorting a good fit. Per-obs gains correlate .82 between 50a and 53a.
+- Agreeing runs (51a, 53b): gain ~11k, broad (top 1% carry 31%), the SAME observations in both (per-obs corr .86):
+  east 5.4k (positives 1980+), west 3.1-3.7k (zeros 1994+, positives 1966-79), plains 1.5-1.9k almost all ZEROS.
+  MAP UNDER-predicts the early native west (mean y 21.9 vs mu 13.7, 1966-79; refined 18.0) -- the west halves over
+  the record (21.9 -> 9.9) faster than MAP's dynamics allow -- and OVER-predicts the plains (y .30/.49 vs mu .59/.72
+  in 1966-93); the refine buys plains zeros by lowering plains K (median .156 -> .010 in 51a) with Allee-dead
+  patchwork -- a cell-level way to make sparse occupancy, i.e. the speckle/sub-cell heterogeneity hypothesis.
+Implications: (1) "MAP realistic, refine contorts" is confounded with float32 numerics in 6 of 10 E050-E053 runs;
+only 51a/53b are clean. (2) In the clean runs the refine's targets are a regional TEMPORAL decline in the west (drift /
+K trend, E056-E057) and plains ZEROS (sub-cell/route heterogeneity, E058/E059). E054b (float32 vs float64 per-obs at
+the 53a and 50c MAPs) queued to localise the numerics.

@@ -157,6 +157,15 @@ DRIFT_FIELDS = ("adult_survival", "fecundity", "capacity", "juvenile_survival")
 _DRIFT_ON_FIELDS = tuple(_DRIFT.get("fields", DRIFT_FIELDS)) if DRIFT_ON else ()
 if not set(_DRIFT_ON_FIELDS) <= set(DRIFT_FIELDS):
     raise ValueError(f"covariate_drift.fields must be a subset of {DRIFT_FIELDS}")
+#   numerics                  {"fft_pad": float, "fft_floor_ulps": float | null}: zero-pad the dispersal FFT
+#                             (legacy pads 1e-9, a pseudo-zero immigration) and drop convolution output
+#                             below the FFT's resolution (float32 phantom floor, E054c). Absent = legacy.
+_NUMERICS = dict(_POP_SPEC.get("numerics", {}))
+if _NUMERICS:
+    import src.model.age_forward as _af
+    _af.FFT_PAD_VALUE = float(_NUMERICS.get("fft_pad", 1e-9))
+    _af.FFT_FLOOR_ULPS = (None if _NUMERICS.get("fft_floor_ulps") is None
+                          else float(_NUMERICS["fft_floor_ulps"]))
 _REPRO = dict(_POP_SPEC.get("reproduction", {}))
 VEIT_REPRO = _REPRO.get("form", "standard") == "veit"
 YEARLING = bool(_REPRO.get("yearling_breeding", False)) or VEIT_REPRO

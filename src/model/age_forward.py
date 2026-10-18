@@ -25,6 +25,16 @@ def rightpad(A, Lx, Ly, pad_value=1e-9):
     return jnp.pad(A, ((0, pad_y), (0, pad_x)), constant_values=pad_value)
 
 
+# population_model.numerics (set by age_priors at import; defaults = the legacy behaviour).
+#   FFT_PAD_VALUE: what the linear-convolution padding is filled with. Legacy 1e-9 is a pseudo-zero:
+#     the kernel spreads it back into the grid every step -- a continent-wide trickle of immigration.
+#   FFT_FLOOR_ULPS: if set, convolution output below FFT_FLOOR_ULPS * eps(dtype) * max(output) is set
+#     to 0 -- values the FFT cannot resolve. float32 round-off otherwise leaves a positive floor
+#     (~1e-6..3e-5 per land cell) that acts as phantom immigration ahead of the front (E054c).
+FFT_PAD_VALUE = 1e-9
+FFT_FLOOR_ULPS = None
+
+
 def rightpad_convolution(pop, dispersal_kernel_pad):
     """Convolve a population grid with a (pre-FFT'd, padded) dispersal kernel.
 
@@ -32,9 +42,13 @@ def rightpad_convolution(pop, dispersal_kernel_pad):
     is a *linear* convolution, then crops back to the original grid shape.
     """
     Ly, Lx = dispersal_kernel_pad.shape
-    pop_pad = rightpad(pop, Lx, Ly, 1e-9)
+    pop_pad = rightpad(pop, Lx, Ly, FFT_PAD_VALUE)
     conv = jnp.fft.ifft2(jnp.fft.fft2(pop_pad) * dispersal_kernel_pad)
-    return jnp.real(conv)[:pop.shape[0], :pop.shape[1]]
+    out = jnp.real(conv)[:pop.shape[0], :pop.shape[1]]
+    if FFT_FLOOR_ULPS is not None:
+        tol = FFT_FLOOR_ULPS * jnp.finfo(out.dtype).eps * lax.stop_gradient(jnp.max(jnp.abs(out)))
+        out = jnp.where(out > tol, out, 0.0)
+    return out
 
 N_DIRECTIONS = 4   # build_kernels.make_radial_directional_kernels: index = direction * n_bands + band
 

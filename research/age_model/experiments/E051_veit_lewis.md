@@ -12,3 +12,15 @@ Changes: model_inputs guard ignores the adult kernel keys (Z_disp uses only the 
 - 51a: V&L dispersal (kernels incl. adult fix; eq. 18 departure; no settlement), demography free under biology priors.
 - 51b: 51a with demography pinned to the V&L equivalent: Sa .72, Sj .64, Fmax 1.40 -> lambda0 ~1.24.
 Cold-started: MAP -> MAP viz -> float64 refine -> refined viz. Compare with E050 (literature kernels, departure fixed .98).
+
+## Result (2026-10-18; 51a MAP+refine, 51b MAP). CONUS lat<49 corridor zones.
+| run | U | Sa | Sj | F | lam0 | n50 | corr | plains sink / med lam_f | west | east | Allee-dead (P) |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| 51a MAP | (196,987) | .57 | .31 | 5.21 | 1.28 | .058 | .759 | .68 / .86 | .49 / 1.01 | .46 / 1.06 | 0 |
+| 51a ref | 186,068 (CONVERGED, 3508 it) | .66 | .29 | 14.40 | 2.02 | .063 | .810 | .53 / 1.00 | .53 / 1.00 | .43 / 1.19 | .18 |
+| 51b MAP (V&L pinned) | (201,162) | .72 | .64 | 1.40 | 1.24 | .042 | .733 | .70 / .86 | .39 / 1.07 | .44 / 1.07 | 0 |
+V&L dispersal (adult shape fixed + eq. 18 departure) gives the best MAP loss of any literature-dispersal run (~7.5k better
+than 50a) and its refine CONVERGES to 186,068 -- matching run_40's 186,051 with NO learned dispersal. MAP trough is shallower
+than E050's (.68 vs .9 sinks) but still plains-worst. Refinement again flattens plains to = west, Allee-dead .18, F 14.4.
+51b: V&L's own demography (pinned) fits only ~4k worse than free at MAP with the same landscape -- the data do not demand
+F ~5 at MAP; the F 14 demand arises only in refinement.

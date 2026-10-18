@@ -90,3 +90,6 @@ date,experiment,variant,run_dir,U,fit_corr,notes,su
 2026-10-18,E050,50a,run_50a,187729.5,,lit dispersal: MAP plains .91 sinks med .66 Sa.55 Sj.27 F4.75 (realistic); refine flattens trough (.42) F 11.8 Allee-dead .22,
 2026-10-18,E050,50b,run_50b,186938.6,,no settlement: MAP same as 50a; refine Sa.86 Sj.07 F15.3 plains .49 sinks,
 2026-10-18,E050,50c,run_50c,188202.7,,mdd 250: MAP like 50a; refine plains .33 sinks med 1.14 F10.6 Allee-dead .19,
+2026-10-18,E050,50d,run_50d,,,mdd 450 MAP: best E050 MAP loss 199748; plains .81 sinks med .68; refine pending,
+2026-10-18,E051,51a,run_51a,186068.5,,V&L dispersal: refine CONVERGED 186068 (=run_40 w/o learned dispersal); MAP plains .68 sinks; refine flattens (P=W) F14.4 Allee-dead .18,
+2026-10-18,E051,51b MAP,run_51b,,,V&L demography pinned: MAP loss 201162 (+4k vs free); plains .70 sinks med .86,

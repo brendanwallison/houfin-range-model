@@ -29,3 +29,5 @@ is the delayed-maturity artefact.
 | 50c ref (mdd 250) | 188,203 (unconverged) | .62 | .27 | 10.56 | 1.68 | .104 | .33 / 1.14 | .34 / 1.10 | .35 / 1.27 | .19 |
 50c refine: same contortion (plains trough fully gone, Allee-dead .19, F 10.6) with shorter juvenile dispersal -- kernel
 reach (250 vs 330 km) does not change the refined basin.
+| 50d MAP (mdd 450) | (199,748) | .58 | .27 | 5.07 | 1.23 | .043 | .81 / .68 | .29 / 1.19 | .52 / .97 | 0 |
+Longer juvenile dispersal (450 km) gives the best E050 MAP loss and log1p corr .75, trough intact.

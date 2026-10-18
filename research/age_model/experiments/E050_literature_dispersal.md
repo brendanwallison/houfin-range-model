@@ -31,3 +31,6 @@ is the delayed-maturity artefact.
 reach (250 vs 330 km) does not change the refined basin.
 | 50d MAP (mdd 450) | (199,748) | .58 | .27 | 5.07 | 1.23 | .043 | .81 / .68 | .29 / 1.19 | .52 / .97 | 0 |
 Longer juvenile dispersal (450 km) gives the best E050 MAP loss and log1p corr .75, trough intact.
+| 50d ref (mdd 450) | 187,415 (unconverged) | .84 | .07 | 13.18 | 1.42 | .143 | .47 / 1.01 | .29 / 1.01 | .49 / 1.01 | .19 |
+E050 verdict: all four MAPs realistic (plains .81-.91 sinks, med .64-.74, demography in range, no Allee-dead); all refines
+contort (F 10.6-15.3, Allee-dead .19-.25, trough gone or flattened) regardless of juvenile mdd 250/330/450 or settlement.

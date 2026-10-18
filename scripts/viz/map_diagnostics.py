@@ -123,7 +123,7 @@ from src.config_utils import load_age_model_config, load_data_config
 from src.temporal import load_timeline
 from src.model.age_priors import build_model_2d
 from src.model.age_forward import forward_sim_age_structured, juvenile_band_weights
-from src.model.age_priors import (ALLEE_RELATIVE, CROWDING_KAPPA, SETTLE_BLOCK, SETTLE_DISPERSERS,
+from src.model.age_priors import (OCCUPANCY, OCC_BIRDS_PER_COUNT, ALLEE_RELATIVE, CROWDING_KAPPA, SETTLE_BLOCK, SETTLE_DISPERSERS,
                                   VEIT_DEPARTURE, VEIT_REPRO, YEARLING,
                                   SETTLE_WEIGHT,
                                   counts_to_relative,
@@ -237,6 +237,8 @@ def reconstruct_map(data, params):
               "disease_tau_rec", "Na_grid", "Nj_grid",
               # disease_prior.target = survival only: the epizootic's added-mortality amplitude.
               "disease_mortality_amp",
+              # population_model.occupancy only (E063).
+              "occupancy_grid",
               # population_model.covariate_drift only (E057 P0).
               "covariate_drift", "covariate_drift_w",
               # Present only with habitat_centering="occupied"; Predictive drops absent names.
@@ -1815,7 +1817,8 @@ def simulate_no_invasion_counterfactual(sim, data, drop_disease=True):
             disease_m_amp=jnp.asarray(sim["disease_mortality_amp"]),
             disease_k_half=float(counts_to_relative(np.asarray(sim["disease_k_half_route_counts"]))),
             disease_hill_n=float(np.asarray(sim["disease_hill_n"])))),
-    )
+        occupancy_b=(float(data['pop_scalar']) * OCC_BIRDS_PER_COUNT) if OCCUPANCY else None,
+    )[:3]
     return np.asarray(jax.block_until_ready(density))
 
 

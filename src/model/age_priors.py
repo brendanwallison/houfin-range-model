@@ -166,6 +166,14 @@ if _NUMERICS:
     _af.FFT_PAD_VALUE = float(_NUMERICS.get("fft_pad", 1e-9))
     _af.FFT_FLOOR_ULPS = (None if _NUMERICS.get("fft_floor_ulps") is None
                           else float(_NUMERICS["fft_floor_ulps"]))
+#   occupancy                 {"enabled": bool, "birds_per_route_count": float}: E063 occupancy closure --
+#                             each cell carries psi = P(>= 1 bird) across realisations; departure, disease and
+#                             reproduction act on the occupied-conditional density m = N / psi; arrivals
+#                             establish by Poisson chance. birds_per_route_count: birds in a 27-km cell per
+#                             unit of expected route count (default 58 = 729/25 km2 sampled / detection .5).
+_OCC = dict(_POP_SPEC.get("occupancy", {}))
+OCCUPANCY = bool(_OCC.get("enabled", False))
+OCC_BIRDS_PER_COUNT = float(_OCC.get("birds_per_route_count", 58.0))
 _REPRO = dict(_POP_SPEC.get("reproduction", {}))
 VEIT_REPRO = _REPRO.get("form", "standard") == "veit"
 YEARLING = bool(_REPRO.get("yearling_breeding", False)) or VEIT_REPRO
@@ -296,6 +304,9 @@ def age_structure_log_prior(rho_k, alpha=1.01, beta=1.01, effective_sites=100.0)
     return float(effective_sites) * jnp.mean(
         dist.Beta(float(alpha), float(beta)).log_prob(rho_safe))
 
+
+if OCCUPANCY and (SETTLE_BLOCK or SUBCELL):
+    raise NotImplementedError("occupancy is not wired into ideal-free settlement or subcell_strata")
 
 # Paths whose growth algebra still assumes adult-only breeding (lambda0 from the 2x2 delayed-
 # maturity matrix): refuse them rather than mix life cycles silently.
@@ -1102,7 +1113,7 @@ def build_model_2d(data, prior_scale=1.0):
         ),
     )
 
-    densities, Na_grid, Nj_grid = forward_sim_age_structured(
+    _sim = forward_sim_age_structured(
         Sa_flat, Sj_flat, Fmax_flat, K_flat, c_flat, Q_flat,
         land_rows, land_cols,
         data['land_mask'],
@@ -1129,7 +1140,12 @@ def build_model_2d(data, prior_scale=1.0):
         disease_m_amp=disease_m_amp, disease_k_half=priors['disease_k_half'],
         disease_hill_n=priors['disease_hill_n'],
         juvenile_kernel_weights=juv_w,
+        occupancy_b=(data['pop_scalar'] * OCC_BIRDS_PER_COUNT) if OCCUPANCY else None,
     )
+    densities, Na_grid, Nj_grid = _sim[:3]
+    if OCCUPANCY:
+        # psi per cell and year (post-step): occupied-conditional density is simulated_density / psi.
+        numpyro.deterministic("occupancy_grid", _sim[3])
 
     numpyro.deterministic("simulated_density", densities)
     # Realized age-class pools (adults/juveniles separately, full grid, all

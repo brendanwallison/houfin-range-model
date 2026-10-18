@@ -33,6 +33,41 @@ def rightpad(A, Lx, Ly, pad_value=1e-9):
 #     (~1e-6..3e-5 per land cell) that acts as phantom immigration ahead of the front (E054c).
 FFT_PAD_VALUE = 1e-9
 FFT_FLOOR_ULPS = None
+# Occupancy (E063): below this psi a cell is treated as empty (m = 0). Together with the closure's own
+# consistency psi >= 1 - exp(-b N) (enforced in occupied_density) m stays <= ~1/b birds wherever N > 0,
+# even when float32 rounding breaks the identity or underflows psi.
+_PSI_FLOOR = 1e-30
+
+
+def occupied_density(N, psi, b):
+    """(psi_c, m): psi made consistent with N (psi >= 1 - exp(-b N)) and the occupied-conditional density
+    m = N / psi_c, 0 where the cell is effectively empty -- safe for values and gradients."""
+    psi_c = jnp.clip(jnp.maximum(psi, -jnp.expm1(-b * jnp.maximum(N, 0.0))), 0.0, 1.0)
+    ok = psi_c > _PSI_FLOOR
+    m = jnp.where(ok, N / jnp.where(ok, psi_c, 1.0), 0.0)
+    return psi_c, m
+
+
+def pairing_fraction(birds_occupied, n_iter=12):
+    """Fraction of birds that can form a pair in an OCCUPIED realisation holding on average
+    ``birds_occupied`` (>= 1) birds -- sex-ratio stochasticity at the scale of individual birds.
+
+    Birds are Poisson(lam) with random sexes, conditioned on >= 1 bird, so the occupied mean is
+    lam / (1 - exp(-lam)); lam solves lam = x (1 - exp(-lam)) (x = 1 -> lam = 0), by Newton from
+    lam0 = 2 (x - 1) near one bird (the root's expansion there) and lam0 = x above.
+    Males and females are independent Poisson(lam/2); pairs = min(M, F), and
+    E[2 min(M, F)] / E[M + F] = 1 - exp(-lam) (I0(lam) + I1(lam))  (Skellam). A lone bird -> 0; large
+    groups -> 1 - sqrt(2 / (pi lam)) -> 1, so the mean-field model is recovered as b -> infinity.
+    """
+    from jax.scipy.special import i0e, i1e
+    x = jnp.maximum(birds_occupied, 1.0)
+    lam = jnp.where(x < 2.0, 2.0 * (x - 1.0), x)
+    for _ in range(n_iter):
+        f = lam + x * jnp.expm1(-lam)
+        df = jnp.maximum(1.0 - x * jnp.exp(-lam), 1e-6)
+        lam = jnp.maximum(lam - f / df, 0.0)
+    lam = jnp.maximum(lam, 1e-12)
+    return jnp.clip(1.0 - i0e(lam) - i1e(lam), 0.0, 1.0)
 
 
 def rightpad_convolution(pop, dispersal_kernel_pad):
@@ -124,6 +159,7 @@ def dispersal_step_age_structured(
     kernel_weights=None,
     return_adult_arrivals=False,
     veit_departure=False,
+    departure_density=None,
 ):
     """One dispersal step for both age classes, with density-dependent departure.
 
@@ -139,9 +175,12 @@ def dispersal_step_age_structured(
     N_a = jnp.maximum(N_a, 0.0)
     N_j = jnp.maximum(N_j, 0.0)
     N_total = N_a + N_j
-    
+    # population_model.occupancy: birds decide on the density where they actually are (the
+    # occupied-conditional m), while the emigrant COUNTS stay expected values (N * p).
+    N_dep = N_total if departure_density is None else departure_density
+
     K_safe = jnp.maximum(K, eps)
-    z_total = departure_logit(N_total / K_safe, dispersal_logit_intercept, dispersal_logit_slope,
+    z_total = departure_logit(N_dep / K_safe, dispersal_logit_intercept, dispersal_logit_slope,
                               target_fraction, crowding_beta, crowding_kappa)
     z_total = clip_safe(z_total)
     p_total = jnn.sigmoid(z_total)
@@ -150,7 +189,7 @@ def dispersal_step_age_structured(
         # Veit & Lewis (1996) eq. 18: p(N) = N / N* below capacity, 1 at or above it, both ages --
         # sparse populations stay together (mates), dense ones disperse. Smoothed (k = 10) for
         # gradients; no parameters.
-        x = N_total / K_safe
+        x = N_dep / K_safe
         p_v = jnp.clip(x - jnn.softplus(10.0 * (x - 1.0)) / 10.0, 1e-6, 1.0)
         p_total = p_adult = p_v
 
@@ -207,6 +246,7 @@ def forward_sim_age_structured(
     veit_departure=False,
     yearling_breeding=False,
     veit_reproduction=False,
+    occupancy_b=None,
 ):
     """Run the age-structured simulation for ``time`` years.
 
@@ -251,6 +291,10 @@ def forward_sim_age_structured(
 
     init_N_a = initpop_latent * 0.5
     init_N_j = initpop_latent * 0.5
+    # population_model.occupancy (E063): psi = P(cell holds >= 1 bird) across realisations, with
+    # birds Poisson at occupancy_b birds per density unit; seeded from the initial densities.
+    occ = occupancy_b is not None
+    init_psi = -jnp.expm1(-occupancy_b * (init_N_a + init_N_j)) if occ else jnp.zeros_like(init_N_a)
     
     # Pre-allocate zero grid for scattering to avoid repeated memory allocations
     zero_grid = jnp.zeros((Ny, Nx))
@@ -275,7 +319,7 @@ def forward_sim_age_structured(
 
     # The step function inside lax.scan
     def step(pools, t):
-        N_a, N_j = pools
+        N_a, N_j, psi = pools
         
         # 1. Invasion: one pulse value per site, this year, scattered to every
         # candidate site cell at once (a no-op add of 0 at every site outside the
@@ -285,6 +329,9 @@ def forward_sim_age_structured(
         val = jnp.where(is_invading, inv_pop[:, jnp.minimum(jnp.maximum(0, k), inv_pop.shape[1]-1)], 0.0)
         N_a = N_a.at[inv_rows, inv_cols].add(val * 0.5)
         N_j = N_j.at[inv_rows, inv_cols].add(val * 0.5)
+        if occ:     # released birds arrive as a Poisson group like any other arrivals
+            psi = psi.at[inv_rows, inv_cols].set(
+                1.0 - (1.0 - psi[inv_rows, inv_cols]) * jnp.exp(-occupancy_b * val))
 
         # 2. Scatter Parameters (Updated to include c_flat index)
         Sa_g, Sj_g, Fmax_g, K_g, c_g, Q_g = scatter_t(
@@ -301,10 +348,11 @@ def forward_sim_age_structured(
             Q_grid=Q_g, eps=1e-6, adult_logit_offset=dispersal_adult_offset,
             crowding_beta=crowding_beta, crowding_kappa=crowding_kappa,
             kernel_weights=juvenile_kernel_weights,
-            return_adult_arrivals=settle_dispersers_only,
+            return_adult_arrivals=settle_dispersers_only or occ,
             veit_departure=veit_departure,
+            departure_density=occupied_density(N_a + N_j, psi, occupancy_b)[1] if occ else None,
         )
-        if settle_dispersers_only:
+        if settle_dispersers_only or occ:
             N_a_post, juvenile_stayers, juvenile_arriving, adult_arriving = _disp
         else:
             N_a_post, juvenile_stayers, juvenile_arriving = _disp
@@ -351,6 +399,18 @@ def forward_sim_age_structured(
             else:
                 N_a_post, juvenile_stayers, juvenile_arriving = pools
 
+        # 3c. Occupancy merge (E063). Arrivals land in every realisation; an empty one becomes occupied
+        # if >= 1 bird arrives (Poisson, mean b * arrivals). Expected densities are untouched; the
+        # local dynamics below act on the occupied-conditional densities m = N / psi.
+        if occ:
+            arrivals = adult_arriving + juvenile_arriving
+            psi = psi + (1.0 - psi) * (-jnp.expm1(-occupancy_b * jnp.maximum(arrivals, 0.0)))
+            psi, _ = occupied_density(N_a_post + juvenile_stayers + juvenile_arriving, psi, occupancy_b)
+            ok = psi > _PSI_FLOOR
+            inv_psi = jnp.where(ok, 1.0 / jnp.where(ok, psi, 1.0), 0.0)
+            N_a_post, juvenile_stayers, juvenile_arriving = (
+                N_a_post * inv_psi, juvenile_stayers * inv_psi, juvenile_arriving * inv_psi)
+
         # 4. Survival & Reproduction. Release cells skip the Allee factor while
         # exempt (see allee_exempt_years in the docstring).
         allee_off = jnp.where((k >= 0) & (k < allee_exempt_years), release_mask, 0.0)
@@ -372,6 +432,8 @@ def forward_sim_age_structured(
                 Sa_g, Sj_g, Fmax_g, K_g, c_g, allee_gamma, allee_off=allee_off,
                 allee_relative=allee_relative, yearling_breeding=yearling_breeding,
                 veit=veit_reproduction,
+                mate_factor=(pairing_fraction(occupancy_b * (N_a_post + juvenile_stayers + juvenile_arriving))
+                             if occ else None),
             )
         else:
             # within-cell urbanisation slices (population_model.subcell_strata)
@@ -386,16 +448,25 @@ def forward_sim_age_structured(
         # 5. Mask & Final Clip
         N_a_new = jnp.maximum(N_a_new * land_mask, 0.0)
         N_j_new = jnp.maximum(N_j_new * land_mask, 0.0)
+        if occ:
+            # back to expected densities, then chance extinction: an occupied realisation holding
+            # Poisson(b * m) birds is empty with probability exp(-b * m). Empty realisations hold no
+            # birds, so expected density is unchanged -- only psi falls and m rises.
+            N_a_new, N_j_new = N_a_new * psi, N_j_new * psi
+            psi, m_tot = occupied_density(N_a_new + N_j_new, psi, occupancy_b)
+            psi = psi * (-jnp.expm1(-occupancy_b * m_tot)) * land_mask
         N_total_new = N_a_new + N_j_new
 
-        return (N_a_new, N_j_new), (N_total_new, N_a_new, N_j_new)
+        return (N_a_new, N_j_new, psi), (N_total_new, N_a_new, N_j_new, psi)
 
     checkpointed_step = jax.checkpoint(step)
 
-    _, (total_densities, Na_densities, Nj_densities) = lax.scan(
-        checkpointed_step, (init_N_a, init_N_j), jnp.arange(time)
+    _, (total_densities, Na_densities, Nj_densities, psi_t) = lax.scan(
+        checkpointed_step, (init_N_a, init_N_j, init_psi), jnp.arange(time)
     )
 
+    if occ:
+        return total_densities, Na_densities, Nj_densities, psi_t
     return total_densities, Na_densities, Nj_densities
 
 def ideal_free_settle(fields, K, b, t):
@@ -614,7 +685,7 @@ def relative_density(N, K):
 def reproduction_age_structured(
     N_a_post, N_j_stayers, N_j_arrivers,
     S_a, S_j, F_max, K, c, allee_gamma, eps=1e-12, allee_off=None, allee_relative=False,
-    yearling_breeding=False, veit=False,
+    yearling_breeding=False, veit=False, mate_factor=None,
     ):
     """Advance one year of survival + reproduction to next-year (N_a, N_j).
 
@@ -641,6 +712,8 @@ def reproduction_age_structured(
     if allee_off is not None:
         allee_factor = allee_factor + allee_off * (1.0 - allee_factor)
     F_actual = F_eff * allee_factor
+    if mate_factor is not None:      # occupancy: pairing stochasticity at the scale of birds (E063)
+        F_actual = F_actual * mate_factor
 
     surviving_adults = N_a_post * S_a
     surviving_stayers = N_j_stayers * S_j      
@@ -663,7 +736,7 @@ def reproduction_age_structured(
         if allee_off is not None:
             P = P + allee_off * (0.5 * B - P)
         H = P / (1.0 + 2.0 * P / jnp.maximum(K, eps))
-        N_j_new = 2.0 * F_max * H
+        N_j_new = 2.0 * F_max * H * (1.0 if mate_factor is None else mate_factor)
     elif yearling_breeding:
         # reproduction.yearling_breeding: yearlings breed in their first summer (House Finch),
         # so births come from ALL winter survivors; lambda = Sa + Sj*F (c re-solved upstream).

@@ -12,3 +12,15 @@ Read: MAP vs refined plains/west/east sinks + median lam_f, Allee-dead, Sa/Sj/F,
 Prediction: pinned n50 removes Allee-dead at both MAP and refine; if the refine still contorts it relocates into vital rates
 or K level (then the pressure is elsewhere -- E054). Loosened K trend: if the contortion shrinks, the missing mechanism is
 temporal and E057 (covariate-effect drift) is the regional generalisation.
+
+## Results so far (2026-10-18)
+| run | MAP f32 / f64 | U ref | Sa/Sj/F | lam0 | plains sink / med lam / med K | west | east | Allee-dead W/P/E | corr |
+|---|---|---|---|---|---|---|---|---|---|
+| 55a MAP | 197,774 / 197,778 (clean) | | .57/.31/5.20 | 1.28 | .67 / .87 / .169 | .49 / 1.01 | .45 / 1.07 | 0/0/0 | .757 |
+| 55a ref | | 186,101 (conv. 2689 it) | .64/.31/14.67 | 2.06 | .49 / 1.00 / .012 | .52 / 1.00 | .42 / 1.20 | .16/.18/.01 | .809 |
+| 55b MAP (V&L repro) | 201,694 / pending | | .51/.24/4.51 | 1.60 | .73 / .72 / .077 | .16 / 1.56 | .40 / 1.21 | .10/.09/.09 | .730 |
+| 55c MAP (n50 x1/3) | 198,243 / pending | | .57/.30/5.16 | 1.26 | .70 / .84 / .161 | .46 / 1.03 | .48 / 1.03 | 0/0/0 | .755 |
+Pinning n50 at the V&L value (.059) changes ~nothing: free 51a fitted ~.06 anyway. The refine still makes Allee-dead
+cells (.16-.18 W/P) -- by dropping K 14x (plains .169 -> .012) instead of raising n50. As predicted, the absence
+switch relocates into K; 55e (relative Allee, where K alone cannot kill a cell) is the decisive arm. K trend still
+13 prior sds at MAP.

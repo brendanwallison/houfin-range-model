@@ -101,3 +101,4 @@ date,experiment,variant,run_dir,U,fit_corr,notes,su
 2026-10-18,E053,53b MAP,run_53b,,,V&L reproduction+demography pinned: MAP loss 197654 (7.5k better than free 53a); plains .66 sinks med .90,
 2026-10-18,E053,53b ref,run_53b,186995.2,,V&L repro+demography pinned: no Allee-dead, no absurd rate; but every region med lam ~.95 (trough dissolved),
 2026-10-18,E054,decomp,50a/51a/53a/53b,,,refine gain: 50a/53a = float32-MAP vs float64 mismatch repairing eastern 1980-93 positives (47k/117k); 51a/53b clean ~11k broad: west early positives + west late zeros + plains zeros,
+2026-10-18,E055,55a,run_55a,186101.3,,n50 pinned V&L .059: refine same as 51a (F14.7, plains K .012, Allee-dead .18) -- absence switch moves to K,

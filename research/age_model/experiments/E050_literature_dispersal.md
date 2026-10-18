@@ -26,3 +26,6 @@ weak Allee. Refinement contorts it again: plains trough flattened to ~W/E, Allee
 Settlement (a vs b) barely matters at MAP. Refine gain is the usual ~17k nats. Not structural (cf. refinement-drives-contortion):
 the question is now WHAT the refine buys with the contorted demography -- E052 (yearling breeding) tests whether the F demand
 is the delayed-maturity artefact.
+| 50c ref (mdd 250) | 188,203 (unconverged) | .62 | .27 | 10.56 | 1.68 | .104 | .33 / 1.14 | .34 / 1.10 | .35 / 1.27 | .19 |
+50c refine: same contortion (plains trough fully gone, Allee-dead .19, F 10.6) with shorter juvenile dispersal -- kernel
+reach (250 vs 330 km) does not change the refined basin.

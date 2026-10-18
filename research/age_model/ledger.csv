@@ -89,3 +89,4 @@ date,experiment,variant,run_dir,U,fit_corr,notes,su
 2026-10-17,E048,r48 f64z32,..._run_40_r48__f64z32,184477.3,,BEST U (corr .816) but plains trough INVERTED (P .24 sinks med 1.29 > W 1.09); lam0 1.68,~106 cumulative
 2026-10-18,E050,50a,run_50a,187729.5,,lit dispersal: MAP plains .91 sinks med .66 Sa.55 Sj.27 F4.75 (realistic); refine flattens trough (.42) F 11.8 Allee-dead .22,
 2026-10-18,E050,50b,run_50b,186938.6,,no settlement: MAP same as 50a; refine Sa.86 Sj.07 F15.3 plains .49 sinks,
+2026-10-18,E050,50c,run_50c,188202.7,,mdd 250: MAP like 50a; refine plains .33 sinks med 1.14 F10.6 Allee-dead .19,

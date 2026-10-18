@@ -191,6 +191,8 @@ def forward_sim_age_structured(
     juvenile_kernel_weights=None,
     settle_dispersers_only=False,
     veit_departure=False,
+    yearling_breeding=False,
+    veit_reproduction=False,
 ):
     """Run the age-structured simulation for ``time`` years.
 
@@ -354,7 +356,8 @@ def forward_sim_age_structured(
             N_a_new, N_j_new = reproduction_age_structured(
                 N_a_post, juvenile_stayers, juvenile_arriving,
                 Sa_g, Sj_g, Fmax_g, K_g, c_g, allee_gamma, allee_off=allee_off,
-                allee_relative=allee_relative,
+                allee_relative=allee_relative, yearling_breeding=yearling_breeding,
+                veit=veit_reproduction,
             )
         else:
             # within-cell urbanisation slices (population_model.subcell_strata)
@@ -363,7 +366,8 @@ def forward_sim_age_structured(
             N_a_new, N_j_new = subcell_reproduction(
                 (N_a_post, juvenile_stayers, juvenile_arriving), Sa_g, Sj_g, Fmax_g, K_g,
                 allee_gamma, u_g, strata_a, subcell_beta_k, subcell_delta_f,
-                allee_off=allee_off, allee_relative=allee_relative)
+                allee_off=allee_off, allee_relative=allee_relative,
+                yearling_breeding=yearling_breeding, veit=veit_reproduction)
             
         # 5. Mask & Final Clip
         N_a_new = jnp.maximum(N_a_new * land_mask, 0.0)
@@ -493,7 +497,8 @@ def fitness_settle(fields, K, Sa, Sj, Fmax, c, b, t, n_iter=40):
 
 
 def subcell_reproduction(pools, Sa, Sj, Fmax, K, allee_gamma, u, a, beta_k, delta_f,
-                         allee_off=None, allee_relative=False, n_iter=40):
+                         allee_off=None, allee_relative=False, n_iter=40,
+                         yearling_breeding=False, veit=False):
     """Survival + reproduction with the cell split into S within-cell urbanisation slices.
 
     The cell's birds are first redistributed among its slices by the fitness ideal-free rule
@@ -560,7 +565,8 @@ def subcell_reproduction(pools, Sa, Sj, Fmax, K, allee_gamma, u, a, beta_k, delt
     local = [p[None] * share / a for p in pools]                       # slice LOCAL densities
     Na_s, Nj_s = reproduction_age_structured(
         local[0], local[1], local[2], Sa_, Sj_, F_s, K_s, c_s, allee_gamma,
-        allee_off=allee_off, allee_relative=allee_relative)
+        allee_off=allee_off, allee_relative=allee_relative,
+        yearling_breeding=yearling_breeding, veit=veit)
     return jnp.sum(a * Na_s, axis=0), jnp.sum(a * Nj_s, axis=0)
 
 
@@ -593,7 +599,8 @@ def relative_density(N, K):
 
 def reproduction_age_structured(
     N_a_post, N_j_stayers, N_j_arrivers,
-    S_a, S_j, F_max, K, c, allee_gamma, eps=1e-12, allee_off=None, allee_relative=False
+    S_a, S_j, F_max, K, c, allee_gamma, eps=1e-12, allee_off=None, allee_relative=False,
+    yearling_breeding=False, veit=False,
     ):
     """Advance one year of survival + reproduction to next-year (N_a, N_j).
 
@@ -626,6 +633,28 @@ def reproduction_age_structured(
     surviving_arrivers = N_j_arrivers          
 
     N_a_new = surviving_adults + surviving_stayers + surviving_arrivers
-    N_j_new = surviving_adults * F_actual
+    if veit:
+        # reproduction.form = veit (Veit & Lewis 1996 eqs. 5-8): ALL winter survivors breed
+        # (yearlings included). Breeders B form pairs by random search, P = B^2/(r + 2B) with
+        # r = 2*n50 (half of breeders mated at B = n50); pairs compete for nest sites,
+        # H = P/(1 + P/delta) with delta = K/2 site-pairs (K is the habitat's site capacity in
+        # breeder units, NOT the population equilibrium -- that is emergent); births = 2*Fmax*H,
+        # so Fmax is per-breeder output when neither mates nor sites limit. The release
+        # exemption sets the mated fraction to 1 (P = B/2).
+        B = N_a_new
+        r = 2.0 * jnp.log(2.0) / jnp.maximum(allee_gamma, eps)
+        if allee_relative:          # n50 declared in N/K units
+            r = r * K
+        P = B * B / (r + 2.0 * B + eps)
+        if allee_off is not None:
+            P = P + allee_off * (0.5 * B - P)
+        H = P / (1.0 + 2.0 * P / jnp.maximum(K, eps))
+        N_j_new = 2.0 * F_max * H
+    elif yearling_breeding:
+        # reproduction.yearling_breeding: yearlings breed in their first summer (House Finch),
+        # so births come from ALL winter survivors; lambda = Sa + Sj*F (c re-solved upstream).
+        N_j_new = N_a_new * F_actual
+    else:
+        N_j_new = surviving_adults * F_actual
 
     return N_a_new, N_j_new

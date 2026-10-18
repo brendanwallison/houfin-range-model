@@ -27,6 +27,9 @@ def local_growth_lambda(Sa, Sj, F):
     dispersal-free, Allee-free -- the FUNDAMENTAL-niche quantity.
     """
     Sa, Sj, F = np.asarray(Sa), np.asarray(Sj), np.asarray(F)
+    from src.model.age_priors import YEARLING
+    if YEARLING:      # yearlings breed (reproduction.yearling_breeding or form = veit)
+        return Sa + Sj * F
     return (Sa + np.sqrt(np.maximum(Sa ** 2 + 4.0 * F * Sa * Sj, 0.0))) / 2.0
 
 
@@ -145,11 +148,12 @@ def allee_viability(Sa, Sj, Fmax, K, allee_gamma, n_grid=512):
         allee_gamma = np.where(K > _RELATIVE_K_FLOOR, allee_gamma / np.where(K > 0, K, 1.0),
                                allee_gamma * _RELATIVE_RATIO_CAP)
 
-    F_repl = (1.0 - Sa) / (Sa * Sj)
+    from src.model.age_priors import VEIT_REPRO, YEARLING
+    F_repl = (1.0 - Sa) / (Sj if YEARLING else Sa * Sj)
     # Same c as the fitted model, including the 1e-6 guard: it belongs in the
     # forward simulation (it protects Sa -> 1) and must stay bit-identical here.
     # It just no longer decides a class boundary.
-    c = np.maximum((Fmax * Sa * Sj) / (1.0 - Sa + 1e-6) - 1.0, 0.0)
+    c = np.maximum((Fmax * (Sj if YEARLING else Sa * Sj)) / (1.0 - Sa + 1e-6) - 1.0, 0.0)
 
     with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
         # N = u*K, u log-spaced over [1e-5, 10]. The peak lies in (0, ~K]: for
@@ -157,14 +161,21 @@ def allee_viability(Sa, Sj, Fmax, K, allee_gamma, n_grid=512):
         # a fraction of K. Six decades covers both without a per-cell grid.
         u = np.logspace(-5.0, 1.0, int(n_grid)).reshape((-1,) + (1,) * Sa.ndim)
         N = u * K
-        F = Fmax / (1.0 + c * u) * (-np.expm1(-allee_gamma * N))
+        if VEIT_REPRO:
+            # per-breeder births under pairs + nest sites (age_forward veit form)
+            # (allee_gamma is already per-absolute-N here, relative form folded in above)
+            r = 2.0 * np.log(2.0) / np.maximum(allee_gamma, 1e-12)
+            P = N * N / (r + 2.0 * N)
+            F = Fmax * 2.0 * P / (1.0 + 2.0 * P / K) / N
+        else:
+            F = Fmax / (1.0 + c * u) * (-np.expm1(-allee_gamma * N))
         F = np.where(np.isfinite(F), F, -np.inf)
         k_peak = np.argmax(F, axis=0)
         F_peak = np.take_along_axis(F, k_peak[None], axis=0)[0]
         N_peak = np.take_along_axis(N, k_peak[None], axis=0)[0]
         suppression = np.exp(-allee_gamma * K)
 
-    fundamental_viable = c > 0.0
+    fundamental_viable = (Fmax > F_repl) if VEIT_REPRO else (c > 0.0)
     # A cell with c == 0 fails replacement at ANY density (F <= Fmax <= F_repl),
     # so the scan already excludes it; the explicit conjunction just documents that
     # viability is fundamental suitability AND Allee escape, never Allee alone.

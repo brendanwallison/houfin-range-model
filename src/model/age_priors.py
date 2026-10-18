@@ -140,6 +140,14 @@ _DEPART_FORM = _DEPART.get("form", "shared")
 if _DEPART_FORM not in {"shared", "age", "veit"}:
     raise ValueError(f"dispersal_departure.form must be shared, age or veit, got {_DEPART_FORM!r}")
 VEIT_DEPARTURE = _DEPART_FORM == "veit"
+#   reproduction              {"form": "standard" | "veit", "yearling_breeding": bool}. standard: Beverton-
+#                             Holt on fecundity with K the no-dispersal equilibrium; yearling_breeding lets
+#                             yearlings breed (House Finch; the default lets only adults breed, i.e. first
+#                             breeding at ~2 y). veit: Veit & Lewis 1996 pair formation + nest-site limitation
+#                             (K = site capacity, equilibrium emergent; yearlings breed).
+_REPRO = dict(_POP_SPEC.get("reproduction", {}))
+VEIT_REPRO = _REPRO.get("form", "standard") == "veit"
+YEARLING = bool(_REPRO.get("yearling_breeding", False)) or VEIT_REPRO
 DEPART_BY_AGE = _DEPART_FORM == "age"
 CROWDING_ARM = bool(_DEPART.get("crowding_arm", False))
 CROWDING_KAPPA = float(_DEPART.get("crowding_sharpness", 5.0))
@@ -268,15 +276,39 @@ def age_structure_log_prior(rho_k, alpha=1.01, beta=1.01, effective_sites=100.0)
         dist.Beta(float(alpha), float(beta)).log_prob(rho_safe))
 
 
+# Paths whose growth algebra still assumes adult-only breeding (lambda0 from the 2x2 delayed-
+# maturity matrix): refuse them rather than mix life cycles silently.
+if YEARLING and (SETTLE_WEIGHT not in ("capacity", "uniform") or SUBCELL or _K_FORM == "crowding"):
+    raise NotImplementedError(
+        "reproduction.yearling_breeding / form=veit is not wired into fitness/r0 settlement, "
+        "subcell_strata or crowding capacity (they assume adult-only breeding)")
+
+
 def equilibrium_age_quantities(Sa, Sj, Fmax, K, allee_gamma):
     """Return density brake, fecundity-at-K, growth rate, and juvenile fraction.
 
     Algebra matches :func:`reproduction_age_structured`: surviving adults
     reproduce, so the local projection matrix is ``[[Sa,Sj],[F*Sa,0]]``.
     """
-    c = jnp.maximum((Fmax * Sa * Sj) / (1.0 - Sa + 1e-6) - 1.0, 0.0)
     # Relative Allee: mate-finding depends on N/K, which is 1 at K.
     allee_at_K = 1.0 - jnp.exp(-allee_gamma * (1.0 if ALLEE_RELATIVE else K))
+    if VEIT_REPRO:
+        # pairs + nest sites: per-breeder births at B = K (K is site capacity, not N*)
+        r = 2.0 * jnp.log(2.0) / allee_gamma * (K if ALLEE_RELATIVE else 1.0)
+        P = K * K / (r + 2.0 * K + 1e-12)
+        F_at_K = 2.0 * Fmax * P / (1.0 + 2.0 * P / jnp.maximum(K, 1e-12)) / jnp.maximum(K, 1e-12)
+        c = jnp.maximum((Fmax * Sj) / (1.0 - Sa + 1e-6) - 1.0, 0.0)
+        lam = Sa + Sj * F_at_K
+        return c, F_at_K, lam, F_at_K / (1.0 + F_at_K)
+    if YEARLING:
+        # yearlings breed: lambda = Sa + Sj*F, replacement F = (1 - Sa)/Sj. (Under veit the
+        # brake c is unused by the forward model; reported for the age-structure prior only.)
+        c = jnp.maximum((Fmax * Sj) / (1.0 - Sa + 1e-6) - 1.0, 0.0)
+        F_at_K = Fmax / (1.0 + c) * allee_at_K
+        lam = Sa + Sj * F_at_K
+        rho = F_at_K / (1.0 + F_at_K)
+        return c, F_at_K, lam, rho
+    c = jnp.maximum((Fmax * Sa * Sj) / (1.0 - Sa + 1e-6) - 1.0, 0.0)
     F_at_K = Fmax / (1.0 + c) * allee_at_K
     lam = (Sa + jnp.sqrt(Sa**2 + 4.0 * F_at_K * Sa * Sj)) / 2.0
     rho = (F_at_K * Sa) / (F_at_K * Sa + lam)
@@ -1048,6 +1080,7 @@ def build_model_2d(data, prior_scale=1.0):
         settle_weight=SETTLE_WEIGHT,
         settle_dispersers_only=SETTLE_DISPERSERS,
         veit_departure=VEIT_DEPARTURE,
+        yearling_breeding=YEARLING and not VEIT_REPRO, veit_reproduction=VEIT_REPRO,
         settle_tau=priors['settlement_tau'],
         strata_u=data["strata_u"] if SUBCELL else None,
         strata_a=data["strata_a"] if SUBCELL else None,

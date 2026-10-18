@@ -99,3 +99,4 @@ date,experiment,variant,run_dir,U,fit_corr,notes,su
 2026-10-18,E053,53a ref,run_53a,185944.3,,V&L reproduction: BEST U; F 2.9 but Sa .95 and plains INVERTED (1.31 vs W 1.00); Allee-dead .13 P,
 2026-10-18,E052,52b ref,run_52b,185976.0,,yearling+V&L dispersal: U 185976 but Sj .07 F13.8 plains K .003 Allee-dead .17,
 2026-10-18,E053,53b MAP,run_53b,,,V&L reproduction+demography pinned: MAP loss 197654 (7.5k better than free 53a); plains .66 sinks med .90,
+2026-10-18,E053,53b ref,run_53b,186995.2,,V&L repro+demography pinned: no Allee-dead, no absurd rate; but every region med lam ~.95 (trough dissolved),

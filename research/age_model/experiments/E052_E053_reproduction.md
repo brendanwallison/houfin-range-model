@@ -44,3 +44,14 @@ west 1.00). Each structural change relocates the refine's distortion (F -> Sj ->
 52b refine: contortion moves back to Sj .07 / F 13.8 with plains K .003 and Allee-dead .17-.21 (W, P).
 53b MAP: pinning V&L's own demography gives a MAP loss 7.5k BETTER than free 53a (197,654 vs 205,106) -- the quick90 Adam
 stage does not find the best demography on its own, so free-vs-pinned MAP losses are not a measure of what the data demand.
+| 53b ref (veit repro, V&L pinned) | 186,995 (8000 it, unconverged) | .72 | .64 | .75 | 1.20 | .014 | .805 | .76 / .98 / .355 | .80 / .98 | .56 / .94 | .02/.03/.02 |
+53b refine: with V&L demography pinned there is no Allee-dead and no absurd vital rate, and U is within ~1k of the best --
+but the refine levels the growth field: every region median lam_f ~.94-.98 (plains = west), i.e. the trough dissolves into a
+continent-wide near-replacement landscape held up by immigration.
+
+## Verdict E050-E053 (2026-10-18)
+Every MAP is realistic (plains the worst region, demography in range). Every refine buys ~11-18k nats and pays for it with a
+biologically wrong structure, whose LOCATION depends on what is left free: F (E050), Sj (50d, 52b), the west field (51b), Sa
+(53a), a flattened near-replacement landscape (53b). Dispersal kernel, settlement, yearling breeding and V&L reproduction do
+not remove the pressure. Next: find WHAT the refine's nats are (loglik decomposition by region/year/route, MAP vs refined,
+for 51a/53a/53b) before another structural change.

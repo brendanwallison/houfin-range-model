@@ -35,3 +35,7 @@ Yearling breeding does NOT fix the refine: 52a refined is 1.8k nats WORSE than 5
 (F 8.4, Sa .49, n50 .21, Allee-dead .27 in the plains, plains trough flattened). F demand drops (8.4 vs 11.8) only because
 lam0 per unit F is higher. NEW NEGATIVE: at MAP, yearling breeding cuts median K ~7x (plains .0125 vs .0885 in 50a) and
 Allee-dead cells appear even before refinement (E .10-.14). MAP plains trough survives in all three (.77-.81 sinks).
+| 53a ref (veit repro) | 185,944 (CONVERGED 5033 it) -- BEST U of any run | .95 | .35 | 2.90 | 1.96 | .127 | .809 | .34 / 1.31 / .017 | .49 / 1.00 | .45 / 1.08 | .08/.13/.04 |
+53a refine: the V&L reproduction form gives the best objective yet (beats run_40 by ~100 nats with no learned dispersal),
+F stays modest (2.9) -- but the contortion moves to ADULT SURVIVAL .95 (absurd) and the trough INVERTS (plains med 1.31 >
+west 1.00). Each structural change relocates the refine's distortion (F -> Sj -> west field -> Sa) rather than removing it.

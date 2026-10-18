@@ -35,7 +35,8 @@ OVERLAYS = [None, "map_run19_exchangeable.json", "map_run21_single_field.json",
             "map_run38_habitat_shrink.json",
             "map_run39_nb_density_conc.json",
             "map_run40_phase1.json",
-            "map_run41_route_effects.json"]
+            "map_run41_route_effects.json",
+            "map_run50a_lit_dispersal.json", "map_run50b_lit_dispersal.json"]
 
 
 def synthetic_inputs(T=40, Ny=12, Nx=16, M=24, z_sd=2.0, seed=0):

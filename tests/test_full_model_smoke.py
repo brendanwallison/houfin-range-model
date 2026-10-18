@@ -42,7 +42,9 @@ OVERLAYS = [None, "map_run19_exchangeable.json", "map_run21_single_field.json",
             "map_run53a_veit_repro.json", "map_run53b_veit_repro.json",
             "map_run55a_allee_pinned.json", "map_run55b_allee_pinned.json", "map_run55c_allee_pinned.json",
             "map_run55d_allee_pinned.json", "map_run55e_allee_pinned.json",
-            "map_run56a_ktrend_loose.json", "map_run56b_ktrend_loose.json"]
+            "map_run56a_ktrend_loose.json", "map_run56b_ktrend_loose.json",
+            "map_run58a_subcell.json", "map_run59a_route_pinned.json", "map_run60a_k_amp.json",
+            "map_run60b_coupling.json", "map_run61a_fitness_settle.json"]
 
 
 def synthetic_inputs(T=40, Ny=12, Nx=16, M=24, z_sd=2.0, seed=0):

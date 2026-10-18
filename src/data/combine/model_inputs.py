@@ -261,7 +261,13 @@ def ingest_data():
     if source_contract.get("temporal_output") != "raw_instantaneous":
         raise ValueError("age model requires instantaneous raw DESK Z; rebuild the cube/path "
                          f"features (got temporal_output={source_contract.get('temporal_output')!r})")
-    if path_meta.get("dispersal") != DISPERSAL_SPEC:
+    # Path features (Z_disp) are built from the JUVENILE kernel stack only
+    # (generate_all_path_features uses make_juvenile_kernel_stack), so the adult kernel's keys are
+    # excluded here: changing the adult kernel (e.g. Veit & Lewis 1996's a_A = 0.859) must not force a
+    # 124-year Z_disp rebuild. Every juvenile/path key is still compared exactly.
+    _ADULT = ("adult_mdd_km", "adult_shape")
+    _strip = lambda d: {k: v for k, v in (d or {}).items() if k not in _ADULT}     # noqa: E731
+    if _strip(path_meta.get("dispersal")) != _strip(DISPERSAL_SPEC):
         raise ValueError("path-feature dispersal specification differs from age_model_config; "
                          "regenerate Z_disp before ingestion")
     if int(path_meta.get("integration_steps", -1)) != DISPERSAL_SPEC["path_integration_steps"]:

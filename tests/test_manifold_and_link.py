@@ -635,3 +635,18 @@ def test_weighted_likelihood_scales_log_density():
     lp = (s["scale"] * s["fn"].log_prob(y)).sum()
     ref = (w * dist.NegativeBinomial2(mu, 0.5).log_prob(y)).sum()
     assert float(lp) == pytest.approx(float(ref), rel=1e-6)
+
+
+def test_veit_departure_is_density_over_capacity_capped_at_one():
+    from src.model.age_forward import dispersal_step_age_structured
+    Ny, Nx, nk = 4, 4, 2
+    K = jnp.ones((Ny, Nx))
+    ker = jnp.fft.fft2(jnp.zeros((2 * Ny, 2 * Nx)).at[0, 1].set(1.0))
+    for level, p_expected in ((0.0, 0.0), (0.3, 0.3), (0.6, 0.6), (3.0, 1.0)):
+        Na = jnp.full((Ny, Nx), level / 2); Nj = jnp.full((Ny, Nx), level / 2)
+        a_post, j_stay, _ = dispersal_step_age_structured(
+            Na, Nj, K, 0.0, 0.0, 0.8, jnp.ones((Ny, Nx)), jnp.ones((nk, Ny, Nx)),
+            ker, jnp.stack([ker] * nk), jnp.ones((nk, Ny, Nx)), veit_departure=True)
+        if level > 0:
+            p = 1.0 - float(j_stay[0, 0]) / float(Nj[0, 0])
+            assert p == pytest.approx(p_expected, abs=0.02)

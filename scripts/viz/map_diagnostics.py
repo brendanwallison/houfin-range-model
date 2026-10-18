@@ -124,6 +124,7 @@ from src.temporal import load_timeline
 from src.model.age_priors import build_model_2d
 from src.model.age_forward import forward_sim_age_structured, juvenile_band_weights
 from src.model.age_priors import (ALLEE_RELATIVE, CROWDING_KAPPA, SETTLE_BLOCK, SETTLE_DISPERSERS,
+                                  VEIT_DEPARTURE,
                                   SETTLE_WEIGHT,
                                   counts_to_relative,
                                   SUBCELL)
@@ -1767,6 +1768,7 @@ def simulate_no_invasion_counterfactual(sim, data, drop_disease=True):
         settle_block=SETTLE_BLOCK,
         settle_weight=SETTLE_WEIGHT,
         settle_dispersers_only=SETTLE_DISPERSERS,
+        veit_departure=VEIT_DEPARTURE,
         settle_tau=float(np.asarray(latents.get("settlement_tau", 0.0))),
         strata_u=data["strata_u"] if SUBCELL else None,
         strata_a=data["strata_a"] if SUBCELL else None,

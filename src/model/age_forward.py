@@ -109,6 +109,7 @@ def dispersal_step_age_structured(
     crowding_kappa=5.0,
     kernel_weights=None,
     return_adult_arrivals=False,
+    veit_departure=False,
 ):
     """One dispersal step for both age classes, with density-dependent departure.
 
@@ -131,6 +132,13 @@ def dispersal_step_age_structured(
     z_total = clip_safe(z_total)
     p_total = jnn.sigmoid(z_total)
     p_adult = jnn.sigmoid(clip_safe(z_total + adult_logit_offset))
+    if veit_departure:
+        # Veit & Lewis (1996) eq. 18: p(N) = N / N* below capacity, 1 at or above it, both ages --
+        # sparse populations stay together (mates), dense ones disperse. Smoothed (k = 10) for
+        # gradients; no parameters.
+        x = N_total / K_safe
+        p_v = jnp.clip(x - jnn.softplus(10.0 * (x - 1.0)) / 10.0, 1e-6, 1.0)
+        p_total = p_adult = p_v
 
     adult_dispersers = N_a * p_adult
     adult_stayers = N_a * (1.0 - p_adult)
@@ -182,6 +190,7 @@ def forward_sim_age_structured(
     disease_hill_n=1.0,
     juvenile_kernel_weights=None,
     settle_dispersers_only=False,
+    veit_departure=False,
 ):
     """Run the age-structured simulation for ``time`` years.
 
@@ -277,6 +286,7 @@ def forward_sim_age_structured(
             crowding_beta=crowding_beta, crowding_kappa=crowding_kappa,
             kernel_weights=juvenile_kernel_weights,
             return_adult_arrivals=settle_dispersers_only,
+            veit_departure=veit_departure,
         )
         if settle_dispersers_only:
             N_a_post, juvenile_stayers, juvenile_arriving, adult_arriving = _disp

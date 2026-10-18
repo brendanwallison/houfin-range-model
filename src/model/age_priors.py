@@ -135,8 +135,11 @@ if SETTLE_WEIGHT not in {"capacity", "fitness", "uniform", "capacity_fitness", "
 #                             exactly the one-slope curve. kappa (sharpness) is fixed.
 _DEPART = dict(_POP_SPEC.get("dispersal_departure", {}))
 _DEPART_FORM = _DEPART.get("form", "shared")
-if _DEPART_FORM not in {"shared", "age"}:
-    raise ValueError(f"dispersal_departure.form must be shared or age, got {_DEPART_FORM!r}")
+#                             | "veit" (Veit & Lewis 1996 eq. 18: p = min(N/K, 1) for both ages, no
+#                             parameters; the logit intercept/slope sites are then unused)
+if _DEPART_FORM not in {"shared", "age", "veit"}:
+    raise ValueError(f"dispersal_departure.form must be shared, age or veit, got {_DEPART_FORM!r}")
+VEIT_DEPARTURE = _DEPART_FORM == "veit"
 DEPART_BY_AGE = _DEPART_FORM == "age"
 CROWDING_ARM = bool(_DEPART.get("crowding_arm", False))
 CROWDING_KAPPA = float(_DEPART.get("crowding_sharpness", 5.0))
@@ -1044,6 +1047,7 @@ def build_model_2d(data, prior_scale=1.0):
         settle_block=SETTLE_BLOCK,
         settle_weight=SETTLE_WEIGHT,
         settle_dispersers_only=SETTLE_DISPERSERS,
+        veit_departure=VEIT_DEPARTURE,
         settle_tau=priors['settlement_tau'],
         strata_u=data["strata_u"] if SUBCELL else None,
         strata_a=data["strata_a"] if SUBCELL else None,

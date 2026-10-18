@@ -24,3 +24,9 @@ than 50a) and its refine CONVERGES to 186,068 -- matching run_40's 186,051 with 
 than E050's (.68 vs .9 sinks) but still plains-worst. Refinement again flattens plains to = west, Allee-dead .18, F 14.4.
 51b: V&L's own demography (pinned) fits only ~4k worse than free at MAP with the same landscape -- the data do not demand
 F ~5 at MAP; the F 14 demand arises only in refinement.
+| 51b ref (V&L pinned) | 187,397 (CONVERGED, 2530 it) | .72 | .64 | 1.40 | 1.24 | .010 | .626 | .82 / .88 | .80 / .91 | .47 / 1.03 | 0 |
+51b refine: with demography pinned the refine cannot buy F, and lands only 1.3k nats behind free 51a with NO Allee-dead
+cells and the plains a deep sink -- but the WEST collapses to a sink too (.80, med .91; native range sustained by
+immigration?) and log1p corr falls to .63. So pinning removes the Allee/F contortion and the refine moves the distortion
+into the west's growth field instead. Same signal as E047: the refine wants something the demographic structure cannot
+provide honestly; read E052/E053 before choosing.

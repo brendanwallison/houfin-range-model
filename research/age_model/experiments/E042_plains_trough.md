@@ -26,3 +26,5 @@ LOCAL SURVEY (2026-10-17) of every source/sink field on disk, CONUS zones (W / P
 - HMC draw near the run-18 MAP is ALSO inverted (plains .34 vs west .51, plains lam 1.23): the realistic
   quick90 MAP state is a waypoint on Adam's path, not where the posterior mass sits -- the LIKELIHOOD rewards
   the contortion, so the fix must be structural (E044: what does the realistic configuration get wrong?).
+
+**CONDITIONAL (2026-10-17):** E042-E044 ran on the run_40 base whose learned departure clamped dispersal (~13-19%, E043). Superseded by E050 (literature dispersal, fixed).

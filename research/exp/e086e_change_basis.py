@@ -133,6 +133,15 @@ def main():
     Dd = np.stack([desk_epoch(m) - desk_epoch(e) for e, m in hp])
     res["desk_per_direction"] = {"U": [nf_corr((Dd @ U[:, [q]]), DA @ U[:, [q]], DB @ U[:, [q]]) for q in range(16)],
                                  "ESK": [nf_corr(Dd[:, [q]], DA[:, [q]], DB[:, [q]]) for q in range(16)]}
+    # (d) EXTRAPOLATION COVERAGE (the user: the design must extrapolate in time without early supervision). DESK's own
+    # covariate-driven change BEFORE the BBS era (mean z_raw 1940-1955 minus 1966-1986, every cached cell): the share of
+    # its across-cell variance inside U_k vs ESK_k. A change block truncated to BBS-era change directions loses the rest.
+    pre = (yrs >= 1940) & (yrs <= 1955); bas = (yrs >= 1966) & (yrs <= 1986)
+    Dpre = np.asarray(zr[:, pre].mean(1) - zr[:, bas].mean(1), "float64")
+    Dpre = Dpre[np.isfinite(Dpre).all(1)]
+    Cpre = Dpre.T @ Dpre / len(Dpre)                    # uncentred: a uniform shift is change too
+    res["pre_bbs_change_captured"] = {f"k{k}": {"U": float(np.trace(U[:, :k].T @ Cpre @ U[:, :k]) / np.trace(Cpre)),
+                                                "ESK": float(np.trace(Cpre[:k, :k]) / np.trace(Cpre))} for k in a.ks}
     os.makedirs(a.out, exist_ok=True)
     json.dump(res, open(os.path.join(a.out, "e086e_change_basis.json"), "w"), indent=1)
     print(f"[e086e] {os.path.basename(a.cache.rstrip('/'))}: {len(dA)} training cells (window split at {mid}), "
@@ -145,6 +154,9 @@ def main():
     d = res["desk_per_direction"]
     print("  DESK per direction (U 1-8):  " + " ".join(f"{x:+.2f}" for x in d["U"][:8]))
     print("  DESK per direction (ESK 1-8): " + " ".join(f"{x:+.2f}" for x in d["ESK"][:8]))
+    for k in a.ks:
+        pc_ = res["pre_bbs_change_captured"][f"k{k}"]
+        print(f"  k={k:2d} PRE-BBS DESK change (1940-55 vs 1966-86) captured: U {pc_['U']:.3f}  ESK {pc_['ESK']:.3f}")
     print("  U_j mass in ESK 1-24 (j=1..8): " + " ".join(f"{x:.2f}" for x in res["U_mass_in_esk_1_24"][:8]))
 
 

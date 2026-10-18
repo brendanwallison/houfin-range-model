@@ -30,3 +30,5 @@ mostly high-K SINKS: W .66/.69/.97, P .81/.76/.85, E .61/.49/.91. Confirms the h
 free to reshape, it builds an implausible immigration-dependent geography.
 Summary: frozen habitat (F1, F3) keeps realism with ~50% of the gain; free habitat (F2, full) gains the rest by distorting
 the source/sink map.
+
+**CONDITIONAL (2026-10-17):** run on the run_40 base whose learned departure clamped dispersal to ~13-19% (E043). Not a viable model; conclusions about refinement contortion may be downstream of the clamp. Superseded by E050.

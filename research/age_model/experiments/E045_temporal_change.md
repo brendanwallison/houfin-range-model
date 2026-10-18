@@ -24,3 +24,5 @@ Results (2026-10-17), W/P/E as sink share / K-weighted sink / median lam_f; dlam
 Reading: temporal freedom is NOT what lets refinement contort. Shrinking Z change does not shrink the modelled
 lambda change (.24-.26 even at eta .47 -- the fit compensates, presumably via larger habitat sensitivities); the
 western high-K sinks (K-weighted ~.57 vs .16 at the MAP) persist in every variant. -> E047 (frozen blocks) / E048 (rank).
+
+**CONDITIONAL (2026-10-17):** run on the run_40 base whose learned departure clamped dispersal to ~13-19% (E043). Not a viable model; conclusions about refinement contortion may be downstream of the clamp. Superseded by E050.

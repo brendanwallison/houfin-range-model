@@ -31,3 +31,5 @@ r48 float64 (Z float32) refine: U 195,395 -> 184,477.3 in 2456 its (BEST FIT OF 
 trough is INVERTED (plains median lam 1.29 > west 1.09), west core still K-weighted sinks .57. More rank = more room for
 the habitat field to contort (user's concern), not a clean urban channel. Rank 64 kept the trough only in an early-stopped,
 worse basin (187,516). Higher rank does lower lambda0 (2.02 -> 1.68 -> 1.41).
+
+**CONDITIONAL (2026-10-17):** run on the run_40 base whose learned departure clamped dispersal to ~13-19% (E043). Not a viable model; conclusions about refinement contortion may be downstream of the clamp. Superseded by E050.

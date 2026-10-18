@@ -143,6 +143,7 @@ def main():
     res["pre_bbs_change_captured"] = {f"k{k}": {"U": float(np.trace(U[:, :k].T @ Cpre @ U[:, :k]) / np.trace(Cpre)),
                                                 "ESK": float(np.trace(Cpre[:k, :k]) / np.trace(Cpre))} for k in a.ks}
     os.makedirs(a.out, exist_ok=True)
+    np.savez(os.path.join(a.out, "change_basis.npz"), U=U, ev=ev)     # stage 2 reads it (training data only)
     json.dump(res, open(os.path.join(a.out, "e086e_change_basis.json"), "w"), indent=1)
     print(f"[e086e] {os.path.basename(a.cache.rstrip('/'))}: {len(dA)} training cells (window split at {mid}), "
           f"{len(hp)} held-out cells")

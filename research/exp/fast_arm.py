@@ -92,6 +92,25 @@ def features(c, args):
                  "split+placebo": split}                                 # zbar + dz + the placebo block
     X, blocks = blocks_of[args.kernel](z, zbar)
     Xnc, _ = blocks_of[args.kernel](z_nc, zbar)
+    if getattr(args, "within_basis", None) and args.kernel == "split":
+        # E086e stage 2: FACTORIZED readout -- between block = zbar at --rank (space pinned down); within block = the
+        # FULL 64-dim deviation from zbar rotated into the observed CHANGE basis U (change_basis.npz, built from training
+        # cells / trained years only), not truncated (extrapolation: E086e (d)). Prior shape on the change directions:
+        #   flat    one amplitude (rotation-invariant: = a 64-dim within block)
+        #   eig     prior variance proportional to U's noise-free change variance (floored at 1e-3 x max)
+        #   blocks8 two amplitudes: U_1..8 and U_9..64
+        Bz = np.load(args.within_basis)
+        U, ev = Bz["U"], Bz["ev"]
+        zbf = z_full[:, ref].mean(1)[ci]
+        W = (z_full[ci, yi] - zbf) @ U
+        Wnc = (z_full[:, mod].mean(1)[ci] - zbf) @ U
+        if args.within_prior == "eig":
+            sc = np.sqrt(np.clip(ev, 1e-3 * ev.max(), None)); sc = sc / np.sqrt((sc ** 2).mean())
+            W, Wnc = W * sc, Wnc * sc
+        r_ = zbar.shape[1]
+        X, Xnc = np.hstack([zbar, W]), np.hstack([zbar, Wnc])
+        blocks = ([(0, r_), (r_, r_ + 8), (r_ + 8, r_ + W.shape[1])] if args.within_prior == "blocks8"
+                  else [(0, r_), (r_, r_ + W.shape[1])])
     if args.kernel in ("placebo", "split+placebo"):
         # PLACEBO deviation block with no DESK content: smooth position fields x linear time, fitted
         # in the trained years and extrapolated back exactly as a dz block would be. If it does as well
@@ -219,6 +238,8 @@ def main():
     ap.add_argument("--kernel", default="iso", choices=("iso", "split", "ard", "placebo", "split+placebo"))
     ap.add_argument("--placebo-ls", type=float, default=400.0, help="placebo position fields, km (B8)")
     ap.add_argument("--ref-window", type=int, nargs=2, default=(1996, 2025))
+    ap.add_argument("--within-basis", default=None, help="E086e: change_basis.npz -> factorized split readout")
+    ap.add_argument("--within-prior", default="flat", choices=("flat", "eig", "blocks8"))
     ap.add_argument("--head-z-rank", type=int, default=0,
                     help="E086c: with --head-ckpt, zero z dims beyond this rank in the HEAD inputs only")
     ap.add_argument("--head-ckpt", default=None,
@@ -278,7 +299,7 @@ def main():
              "persistence": pnoise}
     Yte, g_te, bid = Y[te], group[te], sp["block_id"][te]
     res = {"cache": a.cache, "tag": a.tag, "features": a.features, "rank": a.rank,
-           "kernel": a.kernel, "head_ckpt": a.head_ckpt, "head_z_rank": a.head_z_rank, "ref_window": list(a.ref_window), "time_basis": a.time_basis,
+           "kernel": a.kernel, "head_ckpt": a.head_ckpt, "head_z_rank": a.head_z_rank, "within_basis": a.within_basis, "within_prior": a.within_prior, "ref_window": list(a.ref_window), "time_basis": a.time_basis,
            "lag_hl": a.lag_hl, "placebo_ls": a.placebo_ls if "placebo" in a.kernel else None,
            "n_species": int(Y.shape[1]), "withheld": withheld,
            "block_amplitude_medians": [float(np.median(model["a"][model["ok"], b]))

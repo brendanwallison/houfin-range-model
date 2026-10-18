@@ -1,0 +1,40 @@
+# Plummer, Risely, Toms & Siriwardena 2019 Nat Commun 10:2088, Fig. 1: number of unique garden bird food products
+# advertised in RSPB Birds magazine (autumn editions), UK, 1973-2005. Digitised 2026-10-18 from the PMC figure
+# (PMC6529538, 668x499 px): dot centroids, axis calibrated on tick marks, values rounded to integer counts.
+# method: auto = dot detection; manual = dots touching the fitted curve or leader lines, read off a 5-unit grid
+# and checked against an overlay of all points on the figure. Precision ~+-1.
+# Specialist foods (sunflower hearts, niger, fat balls, suet) first advertised 1990s; finch mix 2001 (figure labels).
+year,n_products,method
+1973,9,manual
+1974,10,auto
+1975,9,auto
+1976,9,manual
+1977,9,manual
+1978,9,auto
+1979,11,manual
+1980,11,manual
+1981,11,manual
+1982,11,auto
+1983,11,auto
+1984,11,auto
+1985,17,manual
+1986,17,manual
+1987,20,manual
+1988,22,manual
+1989,23,manual
+1990,31,auto
+1991,29,auto
+1992,19,auto
+1993,30,manual
+1994,33,manual
+1995,44,auto
+1996,40,manual
+1997,46,auto
+1998,54,auto
+1999,47,auto
+2000,83,auto
+2001,28,auto
+2002,40,auto
+2003,100,auto
+2004,116,auto
+2005,127,auto

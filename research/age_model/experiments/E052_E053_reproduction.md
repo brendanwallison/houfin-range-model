@@ -23,3 +23,15 @@ Runs (cold start: MAP -> viz -> float64 refine -> viz):
 Predictions: yearling breeding lowers fitted Fmax toward 4-6 (vs E050/E051) at similar U; veit gives a weaker effective
 Allee (mate-finding only below n50) and K-limited births rather than K-limited fecundity, so the plains can be sinks
 through survival without high-K contortion. Read: MAP vs refined plains sink share / median lambda vs W and E, Sa/Sj/F.
+
+## Results so far (2026-10-18). lam0 = Sa + Sj*F (yearlings breed). CONUS lat<49 corridor zones.
+| run | U | Sa | Sj | F | lam0 | n50 | corr | plains sink / med lam_f / med K | west | east | Allee-dead W/P/E |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| 52a MAP | (204,733) | .66 | .26 | 3.93 | 1.67 | .064 | .734 | .81 / .73 / .0125 | .28 / 1.19 | .32 / 1.30 | .02/.01/.10 |
+| 52a ref | 189,546 (CONVERGED 3374 it) | .49 | .18 | 8.42 | 2.01 | .206 | .743 | .38 / 1.18 / .053 | .19 / 1.58 | .38 / 1.44 | .23/.27/.01 |
+| 52b MAP | (203,535) | .64 | .23 | 3.93 | 1.53 | .090 | .729 | .77 / .79 / .0117 | .20 / 1.31 | .32 / 1.30 | .07/.04/.14 |
+| 53a MAP (veit repro) | (205,106) | .52 | .26 | 4.49 | 1.68 | .031 | .724 | .78 / .63 / .067 | .17 / 1.60 | .36 / 1.28 | .06/.07/.08 |
+Yearling breeding does NOT fix the refine: 52a refined is 1.8k nats WORSE than 50a (189,546 vs 187,729) and still contorts
+(F 8.4, Sa .49, n50 .21, Allee-dead .27 in the plains, plains trough flattened). F demand drops (8.4 vs 11.8) only because
+lam0 per unit F is higher. NEW NEGATIVE: at MAP, yearling breeding cuts median K ~7x (plains .0125 vs .0885 in 50a) and
+Allee-dead cells appear even before refinement (E .10-.14). MAP plains trough survives in all three (.77-.81 sinks).

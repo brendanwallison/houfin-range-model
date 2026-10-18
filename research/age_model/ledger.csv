@@ -95,3 +95,4 @@ date,experiment,variant,run_dir,U,fit_corr,notes,su
 2026-10-18,E051,51b MAP,run_51b,,,V&L demography pinned: MAP loss 201162 (+4k vs free); plains .70 sinks med .86,
 2026-10-18,E051,51b ref,run_51b,187396.6,,V&L demography pinned refine: U only +1.3k vs free; no Allee-dead; plains .82 sinks but WEST .80 sinks; corr .63,
 2026-10-18,E050,50d ref,run_50d,187414.9,,mdd 450 refine: Sa.84 Sj.07 F13.2 Allee-dead .19 plains=W=E lam 1.01,
+2026-10-18,E052,52a ref,run_52a,189546.3,,yearling breeding: refine CONVERGED but +1.8k vs 50a; still contorts F8.4 Allee-dead .27 P; MAP K 7x lower with Allee-dead at MAP,

@@ -53,6 +53,36 @@ def _route_effects_enabled():
     return bool(spec.get("route_effects", False))
 
 
+def covariate_drift_spec():
+    """population_model.covariate_drift from the active config, or None (off, the default)."""
+    from src.config_utils import load_age_model_config
+    spec = load_age_model_config().get("population_model", {}).get("covariate_drift") or {}
+    return dict(spec) if spec.get("form") else None
+
+
+def covariate_drift_basis(years, obs_time_indices, n_basis, window_start=1966):
+    """(n_basis, T) smooth time basis for population_model.covariate_drift.
+
+    cos(m*pi*s), m = 1..n_basis, with s running 0 -> 1 over [window_start, last year] and held at 0
+    before it: the drift is defined only where BBS observes it, so the unobserved early decades
+    cannot use it to manufacture the invasion. Each row is centred by the OBSERVATION-weighted
+    mean over the window, so the static coefficients keep meaning "the average relationship over
+    the data" and the drift is the departure from it.
+    """
+    years = np.asarray(years, dtype=float)
+    s = np.clip((years - window_start) / max(years[-1] - window_start, 1.0), 0.0, 1.0)
+    w = np.bincount(np.asarray(obs_time_indices), minlength=years.size).astype(float)
+    w = np.where(years >= window_start, w, 0.0)
+    if w.sum() == 0:
+        raise ValueError(f"covariate_drift: no observations at or after {window_start}")
+    w = w / w.sum()
+    rows = []
+    for m in range(1, int(n_basis) + 1):
+        b = np.cos(m * np.pi * s)
+        rows.append(b - (w * b).sum())
+    return np.stack(rows, axis=0)
+
+
 def _extra_pseudo_zeros_enabled():
     from src.config_utils import load_age_model_config
     spec = load_age_model_config().get("population_model", {}).get("observation") or {}
@@ -213,6 +243,24 @@ def load_data(input_dir, target_device=None, precision="float32", verbose=True):
                                  "(python -m src.data.preprocess.subcell_strata)")
             meta["strata_u"] = np.asarray(z["u"], dtype=f_type_cpu)
             meta["strata_a"] = np.asarray(z["a"], dtype=f_type_cpu)
+    syn = os.environ.get("HOUFIN_SYNTHETIC_OBS")
+    if syn:
+        # Null-calibration / recovery runs (research/age_model/exp/simulate_observations.py): the
+        # counts are replaced by a simulated set drawn at a known parameter point; everything else
+        # (cells, years, quality tiers, routes, extra zeros) is the real design.
+        with np.load(syn) as z:
+            y_syn = np.asarray(z["y"])
+        if y_syn.shape != np.asarray(meta["observed_results"]).shape:
+            raise ValueError(f"HOUFIN_SYNTHETIC_OBS has {y_syn.shape} counts, the design has "
+                             f"{np.asarray(meta['observed_results']).shape}")
+        meta["observed_results"] = y_syn.astype(np.asarray(meta["observed_results"]).dtype)
+        if verbose:
+            print(f"  [synthetic] observed counts replaced from {syn}")
+    dspec = covariate_drift_spec()
+    if dspec:
+        meta["drift_basis"] = covariate_drift_basis(
+            meta["years"], meta["obs_time_indices"], int(dspec.get("n_basis", 3)),
+            int(dspec.get("window_start", 1966))).astype(f_type_cpu)
     mask_spec = _observation_mask_spec()
     if mask_spec:
         meta["obs_weight"] = transient_observation_weight(

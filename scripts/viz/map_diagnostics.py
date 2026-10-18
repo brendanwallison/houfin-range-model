@@ -237,6 +237,8 @@ def reconstruct_map(data, params):
               "disease_tau_rec", "Na_grid", "Nj_grid",
               # disease_prior.target = survival only: the epizootic's added-mortality amplitude.
               "disease_mortality_amp",
+              # population_model.covariate_drift only (E057 P0).
+              "covariate_drift", "covariate_drift_w",
               # Present only with habitat_centering="occupied"; Predictive drops absent names.
               "habitat_center_offsets"]
     predictive = Predictive(build_model_2d, posterior_samples=posterior, return_sites=needed)
@@ -1080,6 +1082,28 @@ def _k_trend_metrics(data, sim):
             "k_multiplier_max_deviation": float(np.abs(mult - 1.0).max()),
             # True = a real temporal signal is going unexplained by the mechanisms.
             "safety_valve_tripped": bool(z > 3.0 or np.abs(mult - 1.0).max() > 0.15)}
+
+
+def _covariate_drift_metrics(data, sim):
+    """Per-field link-scale drift (population_model.covariate_drift), or None when off.
+
+    Like the K trend, the prior-sd multiple reads itself: a drift far outside its weak prior is
+    absorbing dynamics (or something else unmodelled), not a finding about proxies.
+    """
+    if "covariate_drift" not in sim:
+        return None
+    from src.model.age_priors import DRIFT_FIELDS, _DRIFT, _DRIFT_ON_FIELDS
+    d = np.asarray(sim["covariate_drift"])                     # (time, 4)
+    w = np.asarray(sim["covariate_drift_w"])
+    sd = float(_DRIFT.get("budget", 0.2)) / np.sqrt(w.shape[-1])
+    years = np.asarray(data["years"])
+    obs = years >= int(_DRIFT.get("window_start", 1966))
+    out = {"fields": list(_DRIFT_ON_FIELDS), "max_prior_sd_multiple": float(np.abs(w).max() / sd)}
+    for i, f in enumerate(DRIFT_FIELDS):
+        if f in _DRIFT_ON_FIELDS:
+            out[f] = {"start": float(d[obs][0, i]), "end": float(d[obs][-1, i]),
+                      "range": float(np.ptp(d[obs][:, i]))}
+    return out
 
 
 def plot_disease_diagnostics(data, sim, years, rows, cols, shape, out, era):
@@ -2240,6 +2264,8 @@ def main():
         # prior. Reported as the multiplier on K (exp of the trend, since K sits
         # near softplus's exponential regime) at each end of the timeline.
         "k_trend": _k_trend_metrics(data, sim),
+        # covariate_drift (E057): the per-field link-scale drift and its weights against their prior.
+        "covariate_drift": _covariate_drift_metrics(data, sim),
         # K's bounded dynamic range. If a large share of land sits at the floor, the
         # covariates are pushing capacity as low as the bound permits -- the same
         # pathology as a saturated disease ceiling, one route over.

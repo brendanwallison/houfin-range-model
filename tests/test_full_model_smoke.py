@@ -44,7 +44,8 @@ OVERLAYS = [None, "map_run19_exchangeable.json", "map_run21_single_field.json",
             "map_run55d_allee_pinned.json", "map_run55e_allee_pinned.json",
             "map_run56a_ktrend_loose.json", "map_run56b_ktrend_loose.json",
             "map_run58a_subcell.json", "map_run59a_route_pinned.json", "map_run60a_k_amp.json",
-            "map_run60b_coupling.json", "map_run61a_fitness_settle.json"]
+            "map_run60b_coupling.json", "map_run61a_fitness_settle.json",
+            "map_run57a_drift_p0.json", "map_run57n_drift_null.json", "map_run57r_drift_recovery.json"]
 
 
 def synthetic_inputs(T=40, Ny=12, Nx=16, M=24, z_sd=2.0, seed=0):
@@ -91,6 +92,9 @@ def synthetic_inputs(T=40, Ny=12, Nx=16, M=24, z_sd=2.0, seed=0):
     meta["Z_mean"] = meta["Z_gathered"].mean(axis=0)              # habitat_change (when enabled)
     meta["Z_disp_mean"] = meta["Z_disp_gathered"].mean(axis=0)
     meta["n_obs_quality_tiers"] = int(np.unique(meta["obs_quality"]).size)
+    from src.model.data_loading import covariate_drift_basis           # covariate_drift (when enabled)
+    meta["years"] = np.arange(1946, 1946 + T)
+    meta["drift_basis"] = covariate_drift_basis(meta["years"], t_idx, 3, 1966)
     meta["habitat_center_occupied"] = occupied_habitat_center(meta)
     return {k: (jnp.asarray(v) if isinstance(v, np.ndarray) else v) for k, v in meta.items()}
 

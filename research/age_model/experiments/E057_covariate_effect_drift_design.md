@@ -64,3 +64,18 @@ Not identifiable from these data alone. Partial levers:
 - Prediction if drift is the missing mechanism: refined demography stays near its MAP values, the plains trough
   survives refinement, the drift is modest and loads on human covariates. Failure: drift outside its prior (absorbing
   dynamics) or demography still contorting.
+
+## P0 BUILT + pre-registered (2026-10-18)
+`population_model.covariate_drift = {form: intercept, fields, n_basis 3, budget .2, window_start 1966}`: per-field
+link-scale shift d_j(t) = W_j . B(t); B = cos(m pi s) over 1966-last year, held at its 1966 value before, centred by
+the observation-weighted mean over the window (data_loading.covariate_drift_basis). Replaces k_trend when capacity is
+drifted. Diagnostics: metrics.json covariate_drift (per-field start/end/range on the link scale, prior-sd multiple).
+Null/recovery machinery: exp/simulate_observations.py draws NB2 counts on the real design at a fitted point with --set
+values for latents the point lacks; HOUFIN_SYNTHETIC_OBS=<npz> swaps them in at load. Rehearsed on CPU toy inputs.
+Truth point = 55a refined with its k_trend dropped (57's structure has none) -- recorded in the npz.
+- 57n NULL: drift_w = 0. Pass: every field's fitted drift range < ~2 prior sds' worth and no field's start-end change
+  exceeds the recovery injection's 1/3.
+- 57r RECOVERY: capacity w = [-0.3, 0, 0] (K argument +0.6 over 1966-2023). Pass: capacity range recovered within
+  ~30% with the right sign; other fields stay null-like.
+- 57a REAL: 55a + P0 on the real counts. Read only if 57n passes. Compare to 55a and 56a (loosened k_trend): is the
+  temporal signal per-field (survival vs fecundity vs capacity), and does the refine contortion shrink?

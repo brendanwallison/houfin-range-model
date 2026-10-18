@@ -173,6 +173,7 @@ def project_and_scatter_age_structured(
     z_shrink=None,    # habitat_change: eta in (0,1) -- Z_eff = Z_mean + eta*(Z_t - Z_mean); None = raw Z
     Z_mean=None,      # (N_land, M) per-cell long-run mean of Z
     Z_disp_mean=None, # (N_land, K, M) same for the path features
+    field_drift=None, # (time, 4) covariate_drift on the LINK scale, [adult surv, fecundity, capacity, juv surv]
 ):
     """Project Z → (S_a, S_j, F_max, K, Q) for every year, on the land cells.
 
@@ -244,23 +245,30 @@ def project_and_scatter_age_structured(
         # future-work item.
         H_sj_disp = jnp.dot(z_disp_t, beta_sj) - off_sj
 
+        # population_model.covariate_drift (P0, intercept form): a smooth, spatially uniform shift of
+        # each rate's linear predictor -- the zero-order case of a drifting proxy -> niche relation.
+        if field_drift is None:
+            d_s = d_r = d_k = d_sj = 0.0
+        else:
+            d_s, d_r, d_k, d_sj = (field_drift[t_idx, i] for i in range(4))
+
         # 4. Map H_s and H_r to Demographic Rates using Intercepts and Slopes
         # Survival listens to H_s
-        S_a_val = jnn.sigmoid(alpha_a + gamma_a * H_s_local)
+        S_a_val = jnn.sigmoid(alpha_a + gamma_a * H_s_local + d_s)
         # juvenile_ratio: juvenile survival is a FRACTION of adult survival, so Sj < Sa at
         # every habitat value (run_21's fit had Sj 0.93 against Sa 0.42).
-        S_j_val = jnn.sigmoid(alpha_j + gamma_j * H_sj_local)
+        S_j_val = jnn.sigmoid(alpha_j + gamma_j * H_sj_local + d_sj)
         if juvenile_ratio:
             S_j_val = S_a_val * S_j_val
 
         # Reproduction listens to H_r
-        F_max_val = jnn.softplus(alpha_f + gamma_f * H_r_local)
+        F_max_val = jnn.softplus(alpha_f + gamma_f * H_r_local + d_r)
 
         # Continental, spatially uniform capacity drift. Time-centered basis, so
         # k_level still owns the level; this exists so "modern K below 1970s K" has
         # somewhere to go other than the disease term. Its prior is deliberately
         # near-zero -- it is a safety valve, not a mechanism.
-        k_trend_t = jnp.dot(jnp.take(k_trend_basis, t_idx, axis=1), w_k_trend)
+        k_trend_t = jnp.dot(jnp.take(k_trend_basis, t_idx, axis=1), w_k_trend) + d_k
 
         # Baseline K with a SOFTPLUS link, applied in DENSITY space:
         #     K_base = softplus(alpha_k + gamma_k*H_k + trend)
@@ -303,10 +311,10 @@ def project_and_scatter_age_structured(
         # 5. Map path habitat to Journey Survival (Q) using the JUVENILE manifold and rules.
         # This links movement mortality to juvenile local survival mortality -- the same field
         # S_j reads, so Q and S_j can no longer be driven by different spatial patterns.
-        Q_val = jnn.sigmoid(alpha_j + gamma_j * H_sj_disp)
+        Q_val = jnn.sigmoid(alpha_j + gamma_j * H_sj_disp + d_sj)
         if juvenile_ratio:
             # The same juvenile-survival field, evaluated on path habitat.
-            Q_val = jnn.sigmoid(alpha_a + gamma_a * (jnp.dot(z_disp_t, beta_s) - off_s)) * Q_val
+            Q_val = jnn.sigmoid(alpha_a + gamma_a * (jnp.dot(z_disp_t, beta_s) - off_s) + d_s) * Q_val
 
         # K_base_val is returned as well: severity is a function of it, so exact
         # diagnostics (and the severity map) need the UNDEPRESSED capacity. Using

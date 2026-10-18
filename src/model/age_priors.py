@@ -145,6 +145,18 @@ VEIT_DEPARTURE = _DEPART_FORM == "veit"
 #                             yearlings breed (House Finch; the default lets only adults breed, i.e. first
 #                             breeding at ~2 y). veit: Veit & Lewis 1996 pair formation + nest-site limitation
 #                             (K = site capacity, equilibrium emergent; yearlings breed).
+#   covariate_drift           {"form": "intercept", "fields": [...], "n_basis", "budget", "window_start"}: a
+#                             weak, smooth, time-varying shift of each listed rate's linear predictor
+#                             (fields from adult_survival, fecundity, capacity, juvenile_survival). P0 of
+#                             the E057 proxy-drift ladder; REPLACES k_trend when capacity is listed.
+_DRIFT = dict(_POP_SPEC.get("covariate_drift", {}))
+DRIFT_ON = bool(_DRIFT.get("form"))
+if DRIFT_ON and _DRIFT["form"] != "intercept":
+    raise NotImplementedError(f"covariate_drift.form {_DRIFT['form']!r}: only 'intercept' (P0) is built")
+DRIFT_FIELDS = ("adult_survival", "fecundity", "capacity", "juvenile_survival")
+_DRIFT_ON_FIELDS = tuple(_DRIFT.get("fields", DRIFT_FIELDS)) if DRIFT_ON else ()
+if not set(_DRIFT_ON_FIELDS) <= set(DRIFT_FIELDS):
+    raise ValueError(f"covariate_drift.fields must be a subset of {DRIFT_FIELDS}")
 _REPRO = dict(_POP_SPEC.get("reproduction", {}))
 VEIT_REPRO = _REPRO.get("form", "standard") == "veit"
 YEARLING = bool(_REPRO.get("yearling_breeding", False)) or VEIT_REPRO
@@ -523,10 +535,14 @@ def sample_priors(prior_scale=1.0, M_features=None, time=None,
     # year-to-year wiggle.
     k_trend_budget = float(_K_TREND["budget"]) * prior_scale
     n_k_trend = int(_K_TREND["n_basis"])
-    priors['w_k_trend'] = numpyro.sample(
-        "w_k_trend",
-        dist.Normal(0.0, k_trend_budget / jnp.sqrt(n_k_trend)).expand([n_k_trend]),
-    )
+    if "capacity" in _DRIFT_ON_FIELDS:
+        # covariate_drift owns K's temporal intercept; never both (two names for one direction).
+        priors['w_k_trend'] = numpyro.deterministic("w_k_trend", jnp.zeros(n_k_trend))
+    else:
+        priors['w_k_trend'] = numpyro.sample(
+            "w_k_trend",
+            dist.Normal(0.0, k_trend_budget / jnp.sqrt(n_k_trend)).expand([n_k_trend]),
+        )
 
     # --- 1b. MYCOPLASMAL-CONJUNCTIVITIS EFFECT ON K ---
     # K = K_base * (1 - severity(x) * gate(x,t) * (1 - recovery(t - arrival))).
@@ -951,6 +967,19 @@ def build_model_2d(data, prior_scale=1.0):
             jnp.dot(z_center, priors['beta_s']), jnp.dot(z_center, priors['beta_r']),
             jnp.dot(z_center, priors['beta_k']), jnp.dot(z_center, priors['beta_sj'])]))
 
+    field_drift = None
+    if DRIFT_ON:
+        # Prior sd per weight = budget/sqrt(n_basis) on the LINK scale (logit for survival, softplus
+        # argument for fecundity and capacity), as k_trend. Weak by construction: the default 0.2
+        # moves a survival logit ~0.2 (a few % of survival) over the window.
+        nb = data['drift_basis'].shape[0]
+        sd = float(_DRIFT.get("budget", 0.2)) / jnp.sqrt(nb) * prior_scale
+        w_on = numpyro.sample("covariate_drift_w", dist.Normal(0.0, sd).expand([len(_DRIFT_ON_FIELDS), nb]))
+        W = jnp.zeros((4, nb), dtype=w_on.dtype)
+        for i, f in enumerate(_DRIFT_ON_FIELDS):
+            W = W.at[DRIFT_FIELDS.index(f)].set(w_on[i])
+        field_drift = numpyro.deterministic("covariate_drift", (W @ data['drift_basis']).T)   # (time, 4)
+
     # 1. Compute Biological Fields (2D Manifold -> Demographic Rates)
     # Notice we now pass beta_s and beta_r instead of a single beta_h
     Sa_flat, Sj_flat, Fmax_flat, K_flat, Q_flat, Kbase_flat = project_and_scatter_age_structured(
@@ -972,6 +1001,7 @@ def build_model_2d(data, prior_scale=1.0):
             float(_HABCHG.get("eta_a", 2.0)), float(_HABCHG.get("eta_b", 2.0))))
             if HABITAT_SHRINK else None),
         Z_mean=data.get("Z_mean"), Z_disp_mean=data.get("Z_disp_mean"),
+        field_drift=field_drift,
     )
     if BAND_WEIGHTS:
         _nb = data['juvenile_fft_kernel_stack'].shape[0] // 4

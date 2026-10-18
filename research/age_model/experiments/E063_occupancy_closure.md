@@ -21,3 +21,12 @@ Runs (base 62b = 55a + numerics; settlement off by design):
 - 63a/63b/63c: 58 / 29 / 116 birds per route count (detection .5 / 1 / .25), cold MAP -> refine.
 Read: f32 MAP loss vs f64 U agreement; plains/west/east sinks and median lam (fundamental) + occupied-conditional
 realised lam; Allee-dead; psi maps (plains speckle?); does the refine still need lam0 ~2 and plains K -> .01?
+
+## Forward check RESULT (2026-10-18): occupancy removes the precision hypersensitivity
+Eastern-third population, 50c MAP params, f32 vs f64: numerics-only ratio f64/f32 = 1.76 (1966), 3.6 (1974), 17.9
+(1982), 61.7 (1990), 18.4 (1998); under occupancy (63f) the ratio is 1.00-1.01 in EVERY year. The front is no longer
+ill-conditioned. But at these (mean-field-fitted) params the eastern invasion never takes off under occupancy (east
+.076 in 1966 -> .15 peak; legacy f32 reached 585): with pairing stochasticity and independent arrivals, a sparse
+front cannot establish at mean-field parameters. No land cell is below psi 1e-6 (the fat kernel tail gives every cell
+a tiny occupancy). The refits 63a-c ask whether ANY parameters reproduce the eastern expansion with honest low-density
+dynamics; if not, the candidates are clumped (flock) arrivals and the release size/clustering.

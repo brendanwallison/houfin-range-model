@@ -39,3 +39,8 @@ Allee-dead cells appear even before refinement (E .10-.14). MAP plains trough su
 53a refine: the V&L reproduction form gives the best objective yet (beats run_40 by ~100 nats with no learned dispersal),
 F stays modest (2.9) -- but the contortion moves to ADULT SURVIVAL .95 (absurd) and the trough INVERTS (plains med 1.31 >
 west 1.00). Each structural change relocates the refine's distortion (F -> Sj -> west field -> Sa) rather than removing it.
+| 52b ref (yearling, V&L dispersal) | 185,976 (CONVERGED 7016 it) | .62 | .07 | 13.80 | 1.53 | .033 | .809 | .64 / .98 / .003 | .33 / 1.02 | .40 / 1.10 | .21/.17/.03 |
+| 53b MAP (veit repro, V&L demography pinned) | (197,654) | .72 | .64 | .75 | 1.20 | .047 | .759 | .66 / .90 / .315 | .40 / 1.07 | .46 / 1.04 | .07/.06/.04 |
+52b refine: contortion moves back to Sj .07 / F 13.8 with plains K .003 and Allee-dead .17-.21 (W, P).
+53b MAP: pinning V&L's own demography gives a MAP loss 7.5k BETTER than free 53a (197,654 vs 205,106) -- the quick90 Adam
+stage does not find the best demography on its own, so free-vs-pinned MAP losses are not a measure of what the data demand.

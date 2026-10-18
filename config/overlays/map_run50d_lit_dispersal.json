@@ -1,0 +1,83 @@
+{
+  "_comment": [
+    "run_50d = run_50a at juvenile mdd 450 km (literature-sensitivity; inputs/path features from the Oct-2026 juv_mdd_single_field sweep, derived tercile splits).",
+    "Why (user, 2026-10-17): the kernels are literature-based and already encode staying; the learned departure layer clamped dispersal to ~13-19% (E043). Literature dispersal is fixed, not learned; sensitivity around it instead."
+  ],
+  "input_dir": "${HOUFIN_PROCESSED}/sweeps/juv_mdd_single_field/mdd450/numpyro_input",
+  "population_model": {
+    "dispersal_random_enabled": false,
+    "manifold_prior": {
+      "form": "exchangeable",
+      "coupling_target": 0.85,
+      "coupling_logit_scale": 0.15,
+      "amplitude_scale": [
+        1.0263,
+        1.0263,
+        1.0227,
+        1.0263
+      ],
+      "fixed_coupling": null
+    },
+    "habitat_centering": "occupied",
+    "capacity_level_prior": {
+      "target_level_median_route_counts": 3.0,
+      "alpha_k_scale": 1.0
+    },
+    "allee_prior": {
+      "n50_raw_loc": -3.4915,
+      "n50_raw_scale": 0.25
+    },
+    "juvenile_survival": {
+      "form": "ratio",
+      "ratio_logit_loc": 0.405,
+      "ratio_logit_scale": 0.5
+    },
+    "settlement": {
+      "form": "ideal_free",
+      "block": 3,
+      "apply_to": "dispersers"
+    },
+    "invasion_pulse_prior": {
+      "form": "single",
+      "n_sites": 1,
+      "n_years": 1,
+      "total_median": 1.0,
+      "total_log_sd": 1.0,
+      "global_q50_route_counts": 0.7083
+    },
+    "dispersal_kernel": {
+      "band_weights": false
+    },
+    "disease_prior": {
+      "target": "survival",
+      "mortality_ceiling": 0.8
+    },
+    "observation": {
+      "form": "breeding",
+      "fledgling_weight_a": 1.0,
+      "fledgling_weight_b": 4.0,
+      "conc_density_power": true,
+      "conc_density_power_scale": 0.5
+    },
+    "fecundity_prior": {
+      "loc": 4.993,
+      "scale": 0.75
+    },
+    "pinned_sites": {
+      "dispersal_logit_intercept": 4.0,
+      "dispersal_logit_slope": 0.0
+    }
+  },
+  "run_names": {
+    "map": "age_map_{precision}_run_50d",
+    "vis_map": "age_map_{precision}_run_50d"
+  },
+  "dispersal": {
+    "juvenile_mdd_km": 450.0,
+    "juvenile_radial_splits_km": "derive"
+  },
+  "path_features": {
+    "output_dir": "${HOUFIN_PROCESSED}/sweeps/juv_mdd_single_field/mdd450/latent_avian_paths"
+  },
+  "raw_z_dir": "${HOUFIN_PROCESSED}/sweeps/juv_mdd_single_field/mdd450/latent_avian_paths"
+}

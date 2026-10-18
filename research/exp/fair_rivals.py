@@ -101,6 +101,13 @@ def main():
     ap.add_argument("--save-species", action="store_true",
                     help="E059g: save per-species bootstrap components (cv, vp, vt per draw) of the key arms, so any "
                          "species stratum (e.g. similarity to the focal) can be scored afterwards with the same draws")
+    ap.add_argument("--thin", type=float, default=1.0,
+                    help="E086g (dev target): keep this fraction of the TARGET species' training data -- rows (cell-years) "
+                         "or whole cells (--thin-unit); DESK, covariates and the held-out truth are untouched")
+    ap.add_argument("--thin-unit", choices=("row", "cell"), default="row")
+    ap.add_argument("--thin-detect", type=float, default=1.0,
+                    help="E086g: binomially thin the target's TRAINING counts (lower effort / detection); truth untouched")
+    ap.add_argument("--thin-seed", type=int, default=0)
     ap.add_argument("--lean", action="store_true",
                     help="E059b: skip the optional arms (placebo_600, placebo+within_raw, placebo+kindxtime_8); every "
                          "headline number (placebo_300, desk_within, joint gains, strong base, buffer, head-to-head, "
@@ -186,20 +193,39 @@ def main():
     # rows (E039h's): training cells x trained years, finite covariates and ESK
     F_raw = np.asarray(np.load(c("F_cov_raw.npy"), mmap_mode="r"), "float64")
     Eann = np.load(os.path.join(ed, "esk_annual.npy")).astype("float64")
+    thin_rng = np.random.default_rng(1000 + a.thin_seed)
+    tr0 = ~split["holdout"][keys[:, 0], keys[:, 1]] & ~split["buffer"][keys[:, 0], keys[:, 1]] & ~np.isin(keys[:, 2], withheld)
     if Xdev is not None:
         from src.data.preprocess.bbs_community import log1p_community
-        Eann = np.asarray(log1p_community(Xdev), "float64")         # the readouts' target: species, not ESK
+        Xfit = Xdev
+        if a.thin_detect < 1.0:     # E086g: fewer individuals detected on the training surveys (truth Ta / Tb already set)
+            Xfit = Xdev.copy()
+            Xfit[tr0] = thin_rng.binomial(np.round(np.clip(Xdev[tr0], 0, None)).astype(np.int64), a.thin_detect)
+        Eann = np.asarray(log1p_community(Xfit), "float64")         # the readouts' target: species, not ESK
     rt = Eann.shape[1] if Xdev is not None else r                  # target dimensions
     yr = keys[:, 2].astype("float64")
     ho = split["holdout"][keys[:, 0], keys[:, 1]]
     bf = split["buffer"][keys[:, 0], keys[:, 1]]
     ty = ~np.isin(keys[:, 2], withheld)
     trn_mask = ~ho & ~bf & ty & np.isfinite(F_raw).all(1) & np.isfinite(Eann).all(1)
+    thin_drop = np.zeros(N, bool)
+    if Xdev is not None and a.thin < 1.0:
+        # E086g: the target species' training record shrinks to a sparse scatter (historical-like); dropped training rows
+        # also leave the target's cell means (w_ty below), so nothing of the dropped data survives
+        if a.thin_unit == "row":
+            drop = trn_mask & (thin_rng.random(N) >= a.thin)
+        else:
+            cid0 = keys[:, 0].astype(np.int64) * 100000 + keys[:, 1]
+            uc0 = np.unique(cid0[trn_mask])
+            keep_c = set(uc0[thin_rng.random(len(uc0)) < a.thin].tolist())
+            drop = trn_mask & ~np.isin(cid0, list(keep_c))
+        trn_mask = trn_mask & ~drop
+        thin_drop = drop                                             # zero weight in every cell mean below (w_ty)
     trn = np.where(trn_mask)[0]
     Z = Eann[:, :rt]
     cid = keys[:, 0].astype(np.int64) * 100000 + keys[:, 1]
     uc, inv = np.unique(cid, return_inverse=True)
-    w_ty = (ty & np.isfinite(Eann).all(1)).astype(float)
+    w_ty = (ty & np.isfinite(Eann).all(1) & ~thin_drop).astype(float)   # E086g: dropped target rows leave the means
 
     def cmean(X, w):
         S = sparse.csr_matrix((w, (inv, np.arange(N))), shape=(len(uc), N))

@@ -24,3 +24,21 @@ Pinning n50 at the V&L value (.059) changes ~nothing: free 51a fitted ~.06 anywa
 cells (.16-.18 W/P) -- by dropping K 14x (plains .169 -> .012) instead of raising n50. As predicted, the absence
 switch relocates into K; 55e (relative Allee, where K alone cannot kill a cell) is the decisive arm. K trend still
 13 prior sds at MAP.
+
+## E055b-e + E056a refined (2026-10-18). All MAPs clean (f32 loss = f64 U within ~30 nats).
+| run | U ref | Sa/Sj/F | lam0 | plains sink / med lam / med K | west | east | Allee-dead W/P/E | K trend first/last (z) |
+|---|---|---|---|---|---|---|---|---|
+| 55a n50 .059 | 186,101 | .64/.31/14.7 | 2.06 | .49/1.00/.012 | 1.00 | 1.20 | .16/.18/.01 | |
+| 55c n50 .020 | 186,175 | .60/.32/14.2 | 1.98 | .65/.98/.021 | .99 | 1.14 | .04/.03/0 | .81/1.34 (5.5) |
+| 55d n50 .098 | 186,133 | .66/.29/14.9 | 2.03 | .45/1.01/.017 | 1.00 | 1.23 | .20/.21/.02 | .87/1.39 (5.9) |
+| 55e RELATIVE | 187,024 | .45/.44/14.5 | 1.94 | .51/.98/.035 | 1.00 | 1.06 | 0/0/0 | 1.10/1.60 (9.9) |
+| 55b V&L repro | 186,366 | .27/.26/11.8 | 3.32 | .45/1.10/.036 | 1.44 | 1.08 | .26/.24/.11 | |
+| 56a K trend x10 | 185,806 | .55/.43/15.9 | 2.23 | .60/.98/.038 | .99 | 1.19 | .03/.02/0 | .12/7.87 (6.5) |
+- n50 x1/3..x5/3 moves U by <75 nats: the Allee strength is unidentified, as the user said -- pinning is right.
+- Relative Allee removes Allee-dead entirely (by construction) for +900 nats; the refine then distorts DEMOGRAPHY
+  instead (Sj = Sa = .44, F 14.5).
+- Loosened K trend: best clean U (185,806); Allee-dead nearly gone; but K rises 65x over 1902-2025 (x.12 -> x7.9),
+  6.5 sds out even under the 10x prior -- the full-timeline trend is shaping invasion TIMING through the unobserved
+  early decades (exactly the confound E057's window-hold exists for).
+Common thread: every refine wants lam0 ~2 / F ~15 and a timing lever (K trend, Allee, K). With E062's finding that the
+front is ill-conditioned, the dominant pressure is the spread dynamics -- E063 (occupancy) is the direct test.

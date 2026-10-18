@@ -18,7 +18,7 @@ Rules (adapted from research/desk-temporal's PROTOCOL.md):
    goes to the user before adoption.
 6. Every evaluation is logged in ledger.csv (counts forking paths). DIGEST.md, newest first, for the user.
 7. Budget: DEB23008 ONLY (DEB23007 is off limits); it had 381 SU on 2026-10-16, shared with the
-   user's other work. Budgets (user, 2026-10-17): Phase 1 <= 300 SU, Phase 2 <= 150 SU (separately); Phase 1 = iterative diagnostic rounds (cap raised 25 -> 50 -> 75 -> 100 -> 150 -> 300 on 2026-10-18, allocation renewal pending),
+   user's other work. Budgets (user, 2026-10-17): Phase 1 <= 600 SU, Phase 2 <= 150 SU (separately); Phase 1 = iterative diagnostic rounds (cap raised 25 -> 50 -> 75 -> 100 -> 150 -> 300 -> 600 on 2026-10-18; DEB23008 renewed to 6252 SU, user: "the budget can be increased", 600 is my provisional figure),
    diagnostic only. Prefer one gpu-a100-small reservation (~1.5 SU/h) over dev (full-node rate); hold a
    node only while experiments run. SU logged per experiment in ledger.csv.
 

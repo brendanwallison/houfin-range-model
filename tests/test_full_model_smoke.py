@@ -93,7 +93,7 @@ def synthetic_inputs(T=40, Ny=12, Nx=16, M=24, z_sd=2.0, seed=0):
     meta["Z_disp_mean"] = meta["Z_disp_gathered"].mean(axis=0)
     meta["n_obs_quality_tiers"] = int(np.unique(meta["obs_quality"]).size)
     from src.model.data_loading import covariate_drift_basis           # covariate_drift (when enabled)
-    meta["years"] = np.arange(1946, 1946 + T)
+    meta["years"] = np.arange(2024 - T, 2024)
     meta["drift_basis"] = covariate_drift_basis(meta["years"], t_idx, 3, 1966)
     meta["habitat_center_occupied"] = occupied_habitat_center(meta)
     return {k: (jnp.asarray(v) if isinstance(v, np.ndarray) else v) for k, v in meta.items()}

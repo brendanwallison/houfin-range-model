@@ -18,7 +18,7 @@
 #SBATCH -n 1
 set -uo pipefail
 WT="${RESEARCH_WORKTREE:-$WORK/houfin/age-research}"
-QUEUE_DIR="${QUEUE_DIR:-$WORK/houfin/research/age_model/queue}"
+QUEUE_DIR="${QUEUE_DIR:-$WORK/houfin/research/age_model/queue2}"   # queue2 is the live queue; queue/ is retired
 IDLE_MIN="${IDLE_MIN:-15}"
 source "$WT/scripts/tacc/env.sh"          # sets HOUFIN_* and cd's to the MAIN repo ...
 cd "$WT"                                   # ... so come back to the research worktree

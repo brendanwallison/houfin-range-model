@@ -25,3 +25,17 @@ Implications: (1) "MAP realistic, refine contorts" is confounded with float32 nu
 only 51a/53b are clean. (2) In the clean runs the refine's targets are a regional TEMPORAL decline in the west (drift /
 K trend, E056-E057) and plains ZEROS (sub-cell/route heterogeneity, E058/E059). E054b (float32 vs float64 per-obs at
 the 53a and 50c MAPs) queued to localise the numerics.
+
+## E054c -- float32 phantom floor CONFIRMED (2026-10-18; 50c MAP params, forward sim in both precisions)
+Eastern-third population (relative units): 1966 f32 .82 vs f64 .34; 1974 7.3 vs .46; 1982 93 vs 1.1; 1990 380 vs 4.9;
+1998 585 vs 58; converging only after 2006. Minimum positive land density: f32 jumps from ~1e-13 to 4e-7 (1974) and
+3e-5 (2000s) -- EVERY land cell carries a floor -- while f64 keeps ~1e-12 tails and 4% of cells at (0, 1e-6] through
+the 1980s. The float32 FFT round-off floor acts as phantom immigration ahead of the front; under a weak Allee effect
+it grows, and the float32 MAP's eastern expansion is ~20 years faster than the same parameters in exact arithmetic.
+Consequences: (1) the 50-series / 52a / 53a MAP fits owe their eastern fit to the floor; in float64 their spread is far
+too slow, and the refine compensates with lam0 1.4-2.0 (the "F 10-15" demand) -- the spread-rate deficit hypothesis
+(2d) in concrete form. (2) Clean runs (51a/53b/55a: V&L density-dependent departure) do not need the floor -- but even
+float64 tails (1e-13) are atto-foxes: fractions of a bird that regrow under a weak Allee effect.
+Fix to decide (methodology): an extinction threshold in BIRD units (density below ~1 bird per 27-km cell -> 0), the
+standard cure for the atto-fox problem, makes both precisions agree and the front speed honest. Then re-check
+every MAP's f32/f64 agreement.

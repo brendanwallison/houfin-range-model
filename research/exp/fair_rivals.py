@@ -316,7 +316,10 @@ def main():
                             ("kxt_only", [keep_feats["kindxtime_32"]]),
                             ("cov_lin", [keep_feats["kindxtime_32"], keep_feats["within_sup"], keep_feats["within_ema"]]),
                             ("cov_all", [keep_feats["kindxtime_32"], keep_feats["within_sup"], keep_feats["within_ema"],
-                                         keep_feats["desk_within"]])):
+                                         keep_feats["desk_within"]]),
+                            # E086f: the CLOCK-FREE contest -- covariate change alone, and with DESK added
+                            ("cov_chg+desk_within", [keep_feats["within_sup"], keep_feats["within_ema"],
+                                                     keep_feats["desk_within"]])):
                 edges = np.cumsum([0] + [f.shape[1] for f, _ in ps])
                 blocks = [(int(edges[i]), int(edges[i + 1])) for i in range(len(ps))]
                 b = blr.fit(np.hstack([f for f, _ in ps])[trn], Zd[trn], blocks)["coef"].T
@@ -402,7 +405,7 @@ def main():
         mTa, mTb = mean_(Ta), mean_(Tb)
         comp = {"vt": (W @ (Ta * Tb)) - Sw[:, None] * mTa * mTb}
         keyarms = ("desk_within", "desk_ref_within", "desk_pooled", "placebo_300", "strong", "strong+desk_within",
-                   "placebo+desk_within", "placebo+desk_ref_within")
+                   "placebo+desk_within", "placebo+desk_ref_within", "cov_chg", "cov_chg+desk_within")
         for nm, D in preds.items():
             if nm.split("#")[0] not in keyarms:
                 continue

@@ -1,0 +1,13 @@
+{
+ "exp": "E086",
+ "name": "e086f-clockfree",
+ "group": "gpu",
+ "overlay": "research/overlays/desk_tempho_1995_seed1.json",
+ "cmd": [
+  "bash",
+  "-c",
+  "set -e; export BLR_DEVICE=cuda BLR_MAX_ITER=100 BLR_STARTS=0.5 SCORE_TARGETS=dev; bash research/bin/score_both.sh {python} {out}/r64/s1_t1995_late --cache {cache}/desk_tempho_1995_s1_late --rank 64 --commonality; bash research/bin/score_both.sh {python} {out}/r64/s2_t1995_late --cache {cache}/desk_tempho_1995_s2_late --rank 64 --commonality; bash research/bin/score_both.sh {python} {out}/r64/s3_t1995_late --cache {cache}/desk_tempho_1995_s3_late --rank 64 --commonality; bash research/bin/score_both.sh {python} {out}/r64/s4_t1995_late --cache {cache}/desk_tempho_1995_s4_late --rank 64 --commonality; bash research/bin/score_both.sh {python} {out}/r64/s1_t1985_late --cache {cache}/desk_tempho_1985_s1_late --rank 64 --commonality; bash research/bin/score_both.sh {python} {out}/r64/s2_t1985_late --cache {cache}/desk_tempho_1985_s2_late --rank 64 --commonality; bash research/bin/score_both.sh {python} {out}/r64/ens4_t1995 --cache {cache}/desk_tempho_1995_ens4_late --rank 64 --commonality; bash research/bin/score_both.sh {python} {out}/r64/ens4_t1985 --cache {cache}/desk_tempho_1985_ens4_late --rank 64 --commonality; bash research/bin/score_both.sh {python} {out}/r24/s1_t1995_late --cache {cache}/desk_tempho_1995_s1_late --rank 24 --commonality; bash research/bin/score_both.sh {python} {out}/r24/s2_t1995_late --cache {cache}/desk_tempho_1995_s2_late --rank 24 --commonality; bash research/bin/score_both.sh {python} {out}/r24/s3_t1995_late --cache {cache}/desk_tempho_1995_s3_late --rank 24 --commonality; bash research/bin/score_both.sh {python} {out}/r24/s4_t1995_late --cache {cache}/desk_tempho_1995_s4_late --rank 24 --commonality; bash research/bin/score_both.sh {python} {out}/r24/s1_t1985_late --cache {cache}/desk_tempho_1985_s1_late --rank 24 --commonality; bash research/bin/score_both.sh {python} {out}/r24/s2_t1985_late --cache {cache}/desk_tempho_1985_s2_late --rank 24 --commonality; bash research/bin/score_both.sh {python} {out}/r24/ens4_t1995 --cache {cache}/desk_tempho_1995_ens4_late --rank 24 --commonality; bash research/bin/score_both.sh {python} {out}/r24/ens4_t1985 --cache {cache}/desk_tempho_1985_ens4_late --rank 24 --commonality"
+ ],
+ "expected_minutes": 150,
+ "note": "E086f: DESK vs clock-free covariate change (cov_chg) and cov_chg + DESK, r24 / r64, 6 controls + 2 ensembles"
+}

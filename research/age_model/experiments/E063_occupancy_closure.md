@@ -43,3 +43,15 @@ x1.5: 1998 .77 vs 1.29 (1.7x), 2025 244 vs 340 (1.4x); >= x2 within ~1-3.5%. Bot
 threshold; worst sampled ratio ~18x vs ~1.7x, but the coarse grid samples each transition at different depths.
 Some sensitivity is unavoidable at a deterministic bifurcation. Fine sweep queued (10 points across each model's own
 window) to compare the WIDTH and WORST-CASE ratio of the sensitive window like for like.
+
+## FINE knife-edge sweep RESULT (2026-10-18) -- occupancy does NOT improve conditioning at the threshold
+Worst f64/f32 eastern-population ratio across each model's own transition window (10 F values each):
+numerics-only F x.9-1.35: 6.4x (.9), 2.3x (.95), 18x (1.0), 2.9x (1.05), 1.7x (1.1), ~1.1x (>= 1.3);
+occupancy F x1.4-2.0: 10x (1.47), 2.5x (1.53), 1.9x (1.6), 2.0x (1.73), 5.6x (1.8), ~1.1x (>= 1.93).
+Window widths ("never" -> "established before 1966") are equal: ~x1.5 in F for both.
+Reading: the float32 effect is SYSTEMATIC -- f32 always invades later, matching f64 at ~2-3% lower fecundity in BOTH
+models. The sensitivity is a steep but smooth timing response (~20 y per 5% of F), not chaos. In parameter terms the
+f32/f64 gap is a ~2% effective offset: it explains the MAP f32-vs-f64 U mismatches, not the refine's F 5 -> 14.
+CORRECTS both earlier readings ("cures it" -- off threshold; "~10x better" -- coarse grid). Occupancy's case now
+rests on biology (lone birds cannot breed; stochastic establishment) and on whether 63a-c fit better, NOT on
+numerical conditioning. For HMC: expect a narrow curved ridge in F (and its trade-offs), tractable with a good metric.

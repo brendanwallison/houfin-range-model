@@ -68,3 +68,10 @@ MAP clean (189,751 / 189,771). Refined 165,876 (59a 169,804: -3.9k). K trend x.2
 remains. Refined Sa/Sj/F .67/.50/6.7, lam0 1.86 (F closest to 4-6 of any refine); plains .49 sinks med 1.01 vs west
 1.14 (plains still below west), east 1.76 with K 1.4; Allee-dead .11 in the west only. The temporal K demand is real
 and continental-scale: E057's window-held drifts are the principled version.
+
+## E058b RESULT (2026-10-18): town survival tilt -- refine STALLED in the most realistic state yet
+MAP 202,177 (f64 202,578). Refine stopped on the tolerance rule after 254 iterations at 200,332 (others reach ~186k):
+plains .71 sinks med .78 vs west 1.10, east 1.04; Allee-dead 0; Sa/Sj/F .57/.30/5.1, lam0 1.26 -- all in range.
+The survival tilt is unused (sigma .00); the K tilt went NEGATIVE (beta_k -.50: towns hold LESS capacity).
+Continuation queued (0037h: warm from this point, tol_du .005, 8000 it): local optimum or plateau before the usual
+contortion? If it holds near 200k the town structure has made a realistic basin locally stable.

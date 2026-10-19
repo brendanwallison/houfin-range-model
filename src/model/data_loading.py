@@ -113,6 +113,47 @@ def _subcell_enabled():
     return bool(spec.get("enabled", False))
 
 
+def _subcell_moderator(input_dir, meta, spec, strata_u, strata_a):
+    """Build a fixed (time, land-cell) habitat moderator for a sub-cell tilt.
+
+    ``covariates`` maps named, already-standardised covariates to weights.  The
+    special name ``builtup`` is the area-weighted mean of the sub-cell BUI
+    slices; other names come from ``drift_covariates.npz``.  With
+    ``positive_only`` (the experimental default), only the hypothesised deficit
+    tail is active.  RMS scaling makes a coefficient the effect in a typical
+    targeted cell while preserving exact zeros outside that tail.
+    """
+    weights = dict(spec.get("covariates") or {})
+    if not weights:
+        raise ValueError("subcell moderator requires a non-empty covariates mapping")
+    panel = None
+    raw = np.zeros((int(meta["time"]), int(meta["N_land"])), dtype=np.float64)
+    for name, weight in weights.items():
+        if name == "builtup":
+            x = (np.asarray(strata_u) * np.asarray(strata_a)[None, None, :]).sum(-1)
+        else:
+            if panel is None:
+                path = os.path.join(input_dir, "drift_covariates.npz")
+                with np.load(path) as z:
+                    if not np.array_equal(np.asarray(z["years"]), np.asarray(meta["years"]).astype(int)):
+                        raise ValueError("drift_covariates.npz years do not match the model inputs")
+                    names = [str(n.item() if hasattr(n, "item") else n) for n in z["names"]]
+                    panel = {n: np.asarray(z["x"])[..., i] for i, n in enumerate(names)}
+            if name not in panel:
+                raise ValueError(f"subcell moderator: {name!r} not in drift_covariates.npz "
+                                 f"({sorted(panel)})")
+            x = panel[name]
+        raw += float(weight) * np.asarray(x)
+    if bool(spec.get("positive_only", True)):
+        raw = np.maximum(raw, 0.0)
+    elif bool(spec.get("center", True)):
+        raw = raw - raw.mean()
+    rms = float(np.sqrt(np.mean(raw * raw)))
+    if not rms > 0:
+        raise ValueError(f"subcell moderator has no variation: {weights}")
+    return raw / rms
+
+
 def _observation_weighting_spec():
     from src.config_utils import load_age_model_config
     spec = load_age_model_config().get("population_model", {}).get("observation_weighting")
@@ -257,6 +298,14 @@ def load_data(input_dir, target_device=None, precision="float32", verbose=True):
             meta["strata_a"] = np.asarray(z["a"], dtype=f_type_cpu)
         from src.config_utils import load_age_model_config
         _sc = load_age_model_config().get("population_model", {}).get("subcell_strata") or {}
+        if _sc.get("capacity_moderator"):
+            meta["subcell_capacity_moderator"] = _subcell_moderator(
+                input_dir, meta, _sc["capacity_moderator"], meta["strata_u"], meta["strata_a"]
+            ).astype(f_type_cpu)
+        if _sc.get("survival_moderator"):
+            meta["subcell_survival_moderator"] = _subcell_moderator(
+                input_dir, meta, _sc["survival_moderator"], meta["strata_u"], meta["strata_a"]
+            ).astype(f_type_cpu)
         if float(_sc.get("sigma_s_drift_scale", 0.0)) > 0:
             # linear time shape for the town-survival-tilt drift (as covariate_drift's "linear")
             ws = int(_sc.get("drift_window_start", 1966))

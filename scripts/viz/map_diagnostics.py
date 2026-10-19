@@ -239,8 +239,8 @@ def reconstruct_map(data, params):
               "disease_mortality_amp",
               # population_model.occupancy only (E063).
               "occupancy_grid",
-              # subcell_strata town survival tilt (per year).
-              "subcell_sigma_s_t",
+              # subcell_strata habitat-specific tilts (per year and land cell).
+              "subcell_beta_k_t", "subcell_sigma_s_t",
               # population_model.covariate_drift only (E057 P0).
               "covariate_drift", "covariate_drift_w",
               # Present only with habitat_centering="occupied"; Predictive drops absent names.
@@ -1811,7 +1811,9 @@ def simulate_no_invasion_counterfactual(sim, data, drop_disease=True):
         settle_tau=float(np.asarray(latents.get("settlement_tau", 0.0))),
         strata_u=data["strata_u"] if SUBCELL else None,
         strata_a=data["strata_a"] if SUBCELL else None,
-        subcell_beta_k=float(np.asarray(latents.get("subcell_beta_k", 0.0))),
+        subcell_beta_k=(jnp.asarray(sim["subcell_beta_k_t"])
+                        if "subcell_beta_k_t" in sim else
+                        float(np.asarray(latents.get("subcell_beta_k", 0.0)))),
         subcell_delta_f=float(np.asarray(latents.get("subcell_delta_f", 0.0))),
         subcell_sigma_s=(jnp.asarray(sim["subcell_sigma_s_t"]) if "subcell_sigma_s_t" in sim else None),
         # Absent unless dispersal_departure.form = age (then the shared curve applies).
@@ -2233,6 +2235,28 @@ def main():
         out / "17b_q_asymmetry_attribution.png", modern_era, names=z_names)
     n50_raw = float(np.asarray(sim["n50_raw"])); n50 = float(np.logaddexp(0.0, n50_raw))
     transition_land = np.isfinite(transition)
+    subcell_metrics = None
+    if "subcell_beta_k_t" in sim:
+        lat = sim["latents"]
+        subcell_metrics = {
+            "beta_k": float(np.asarray(lat.get("subcell_beta_k", 0.0))),
+            "delta_f": float(np.asarray(lat.get("subcell_delta_f", 0.0))),
+            "beta_k_moderator": float(np.asarray(lat.get("subcell_beta_k_mod", 0.0))),
+            "sigma_s": (float(np.asarray(lat["subcell_sigma_s"]))
+                        if "subcell_sigma_s" in lat else None),
+            "sigma_s_moderator": float(np.asarray(lat.get("subcell_sigma_s_mod", 0.0))),
+            "beta_k_effective_p05_p50_p95": [float(x) for x in np.percentile(
+                np.asarray(sim["subcell_beta_k_t"]), [5, 50, 95])],
+            "sigma_s_effective_p05_p50_p95": ([float(x) for x in np.percentile(
+                np.asarray(sim["subcell_sigma_s_t"]), [5, 50, 95])]
+                if "subcell_sigma_s_t" in sim else None),
+            "capacity_target_fraction": (float(np.mean(np.asarray(
+                data["subcell_capacity_moderator"]) > 0))
+                if "subcell_capacity_moderator" in data else None),
+            "survival_target_fraction": (float(np.mean(np.asarray(
+                data["subcell_survival_moderator"]) > 0))
+                if "subcell_survival_moderator" in data else None),
+        }
     metrics = {
         "profile": args.profile, "checkpoint_step": int(checkpoint["step"]),
         "years": [int(years[0]), int(years[-1])],
@@ -2282,6 +2306,7 @@ def main():
         "k_trend": _k_trend_metrics(data, sim),
         # covariate_drift (E057): the per-field link-scale drift and its weights against their prior.
         "covariate_drift": _covariate_drift_metrics(data, sim),
+        "subcell_strata": subcell_metrics,
         # K's bounded dynamic range. If a large share of land sits at the floor, the
         # covariates are pushing capacity as low as the bound permits -- the same
         # pathology as a saturated disease ceiling, one route over.

@@ -50,3 +50,18 @@ def test_smooth_allocation_gives_descent_gradients_near_thresholds():
         np.testing.assert_allclose(np.asarray(g), fd, rtol=1e-4, atol=1e-8)
     finally:
         af.SMOOTH_ALLOC = old
+
+
+def test_smooth_positive_part_stays_finite_at_tiny_capacity_scale():
+    import src.model.age_forward as af
+    old = af.SMOOTH_ALLOC
+    af.SMOOTH_ALLOC = 1e-3
+    try:
+        x = jnp.array([-1e10, 1e10, 0.0])
+        scale = jnp.array([0.0, 1e-38, 0.0])
+        y, pullback = jax.vjp(lambda q: af._positive_part(q, scale), x)
+        g = pullback(jnp.ones_like(y))[0]
+        assert np.all(np.isfinite(np.asarray(y)))
+        assert np.all(np.isfinite(np.asarray(g)))
+    finally:
+        af.SMOOTH_ALLOC = old

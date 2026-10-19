@@ -1,0 +1,14 @@
+{
+  "_extends": "map_run64d_survival_only.json",
+  "_comment": ["E064h: urban survival benefit can strengthen in a combined cold-and-snow winter deficit."],
+  "population_model": {
+    "subcell_strata": {
+      "survival_moderator": {
+        "covariates": {"tmin_q10": -0.70710678, "snow_q50": 0.70710678},
+        "positive_only": true,
+        "coefficient_scale": 0.35
+      }
+    }
+  },
+  "run_names": {"map": "age_map_{precision}_run_64h", "vis_map": "age_map_{precision}_run_64h"}
+}

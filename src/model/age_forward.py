@@ -34,7 +34,7 @@ def rightpad(A, Lx, Ly, pad_value=1e-9):
 FFT_PAD_VALUE = 1e-9
 FFT_FLOOR_ULPS = None
 #   SMOOTH_ALLOC: if set, the fitness ideal-free allocations (fitness_settle, subcell_reproduction) use a
-#     smooth positive part, width * softplus(n / width) with width = SMOOTH_ALLOC x the cell's (K/c) scale,
+#     compact C1 positive part with width = SMOOTH_ALLOC x the cell's (K/c) scale,
 #     instead of max(n, 0) switched off at each cell's lambda0. The hard version puts a corner in the
 #     allocation at every cell/slice threshold; L-BFGS stalled on such corners with |grad| ~1e6 along a
 #     non-descent direction (E058b/c gradient anatomy).
@@ -42,11 +42,17 @@ SMOOTH_ALLOC = None
 
 
 def _positive_part(n, scale):
-    """max(n, 0), or its softplus smoothing at SMOOTH_ALLOC x ``scale`` when that switch is on."""
+    """max(n, 0), or compact C1 smoothing at SMOOTH_ALLOC x ``scale`` when enabled."""
     if SMOOTH_ALLOC is None:
         return jnp.maximum(n, 0.0)
-    w = jnp.maximum(SMOOTH_ALLOC * scale, 1e-30)
-    return w * jnn.softplus(n / w)
+    w = jnp.maximum(SMOOTH_ALLOC * scale, 1e-12)
+    # Compact C1 smoothing: unlike softplus this is EXACTLY zero below -w, so an
+    # empty/near-zero-capacity slice cannot acquire a continent-wide numerical
+    # population tail.  Clip before evaluating the quadratic so unselected
+    # branches cannot overflow and poison reverse-mode through 0 * inf.
+    nm = jnp.clip(n, -w, w)
+    transition = (nm + w) ** 2 / (4.0 * w)
+    return jnp.where(n >= w, n, jnp.where(n <= -w, 0.0, transition))
 # Occupancy (E063): below this psi a cell is treated as empty (m = 0). Together with the closure's own
 # consistency psi >= 1 - exp(-b N) (enforced in occupied_density) m stays <= ~1/b birds wherever N > 0,
 # even when float32 rounding breaks the identity or underflows psi.
@@ -454,12 +460,25 @@ def forward_sim_age_structured(
             # within-cell urbanisation slices (population_model.subcell_strata)
             u_g = jnp.zeros((strata_u.shape[-1], Ny, Nx), strata_u.dtype).at[
                 :, land_rows, land_cols].set(strata_u[t].T)
+            def _subcell_effect_grid(value):
+                """Scatter a time/cell interaction; preserve scalar/legacy-time inputs."""
+                value = jnp.asarray(value)
+                if value.ndim == 0:
+                    return value
+                if value.ndim == 1 and value.shape[0] == time:
+                    return value[t]
+                cell_value = value if value.ndim == 1 else value[t]
+                return jnp.zeros((Ny, Nx), cell_value.dtype).at[
+                    land_rows, land_cols].set(cell_value)
+            beta_k_g = _subcell_effect_grid(subcell_beta_k)
+            sigma_s_g = (None if subcell_sigma_s is None else
+                         _subcell_effect_grid(subcell_sigma_s))
             N_a_new, N_j_new = subcell_reproduction(
                 (N_a_post, juvenile_stayers, juvenile_arriving), Sa_g, Sj_g, Fmax_g, K_g,
-                allee_gamma, u_g, strata_a, subcell_beta_k, subcell_delta_f,
+                allee_gamma, u_g, strata_a, beta_k_g, subcell_delta_f,
                 allee_off=allee_off, allee_relative=allee_relative,
                 yearling_breeding=yearling_breeding, veit=veit_reproduction,
-                sigma_s=None if subcell_sigma_s is None else subcell_sigma_s[t])
+                sigma_s=sigma_s_g)
             
         # 5. Mask & Final Clip
         N_a_new = jnp.maximum(N_a_new * land_mask, 0.0)

@@ -1,0 +1,14 @@
+{
+  "_extends": "map_run64d_survival_only.json",
+  "_comment": ["E064g: urban survival benefit can strengthen specifically in snowy-winter cells."],
+  "population_model": {
+    "subcell_strata": {
+      "survival_moderator": {
+        "covariates": {"snow_q50": 1.0},
+        "positive_only": true,
+        "coefficient_scale": 0.35
+      }
+    }
+  },
+  "run_names": {"map": "age_map_{precision}_run_64g", "vis_map": "age_map_{precision}_run_64g"}
+}

@@ -68,6 +68,33 @@ def _load_json(path: Path) -> Dict[str, Any]:
         return json.load(handle)
 
 
+def _load_overlay(path: Path, seen=None) -> Dict[str, Any]:
+    """Load an overlay, recursively resolving an optional ``_extends`` parent.
+
+    Parent paths are relative to the child overlay.  This keeps experiment arms
+    small and makes their common baseline explicit without changing the shipped
+    default configuration.
+    """
+    path = path.expanduser().resolve()
+    seen = set() if seen is None else set(seen)
+    if path in seen:
+        chain = " -> ".join(str(p) for p in [*seen, path])
+        raise ValueError(f"cyclic config _extends chain: {chain}")
+    seen.add(path)
+    overlay = _load_json(path)
+    parent = overlay.pop("_extends", None)
+    if parent is None:
+        return overlay
+    parents = [parent] if isinstance(parent, str) else list(parent)
+    inherited = {}
+    for parent_name in parents:
+        parent_path = Path(parent_name).expanduser()
+        if not parent_path.is_absolute():
+            parent_path = path.parent / parent_path
+        inherited = _deep_merge(inherited, _load_overlay(parent_path, seen))
+    return _deep_merge(inherited, overlay)
+
+
 def load_config(
     config_path: Optional[Union[str, Path]] = None,
     *,
@@ -91,7 +118,7 @@ def load_config(
     if overlay_path:
         overlay_path = Path(overlay_path).expanduser()
         if overlay_path.resolve() != base_path.resolve():
-            merged = _deep_merge(merged, _load_json(overlay_path))
+            merged = _deep_merge(merged, _load_overlay(overlay_path))
 
     return _expandvars(merged)
 

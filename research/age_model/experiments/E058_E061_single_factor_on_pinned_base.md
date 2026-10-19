@@ -79,3 +79,12 @@ contortion? If it holds near 200k the town structure has made a realistic basin 
 vs west 1.13, east 1.00; Allee-dead 0; Sa/Sj/F .56/.28/4.98. sigma and its drift both 0 (unused). 58b and 58c (both
 with the survival-tilt parameters, unused) stall in the same realistic region while 58a went on to the usual
 contortion; continuations from the stalled points (copied, 10x tighter tolerance) queued as 0037h.
+
+## E058b/c continuation RESULT (2026-10-19): the stalls are OPTIMISER FAILURES, not optima
+Continued from copies of the stalled points (tol_du .005): 58b moved .00026 nats in 21 it, 58c 10 nats in 60 it --
+with gradient norms ~2.0e6 / 1.3e6 (genuine refined optima: 55a 271, 58a 557). L-BFGS cannot find a descent step
+along a huge gradient: the gradient is inconsistent with the function. Suspect: the town survival tilt (slice-varying
+Sa/Sj) inside subcell_reproduction's allocation, whose gradient is an approximate implicit one (stop_gradient bisection
++ one Newton step); 58a without the tilt refined normally. The "realistic stalled state" is WITHDRAWN as evidence.
+Fix before reuse: check the allocation's gradient against finite differences with sigma != 0 (unit test), and if it
+fails, make the implicit derivative exact (envelope/IFT through the equal-lambda level) or tilt survival outside it.

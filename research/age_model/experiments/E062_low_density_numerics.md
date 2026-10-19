@@ -23,3 +23,9 @@ puts real kernel mass everywhere each year -- atto-foxes are built into the kern
 Implication: precision agreement is not achievable by cleaning numerics; the front itself is ill-conditioned. The
 occupancy closure (E063) replaces threshold dynamics on sub-bird expected densities with smooth occupancy
 probabilities and should reduce the sensitivity -- test it directly by the same f32/f64 forward comparison.
+
+## 62b RESULT (2026-10-18; re-refined with the drift override after the mid-task pull)
+55a + numerics. MAP f32 199,408 / f64 199,585 (near-clean). Refined 186,171 (55a: 186,101); Sa/Sj/F .66/.32/14.1,
+lam0 2.08; plains K .014, Allee-dead .08/.10/.01 (55a .16/.18/.01). Removing the pad and floor roughly HALVES the
+Allee-dead share but leaves the contortion otherwise intact (F 14, K collapse, trough flattened): the numerical
+floors were feeding part of the absence switch, not driving the refine.

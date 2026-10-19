@@ -49,3 +49,10 @@ Refined 186,220: Allee-dead ~0 (.03 plains) and plains K KEPT (.105) -- like rou
 zeros a home -- the town tilt grows to beta_k .76 (towns hold e^.76 = 2.1x capacity per sd of built-up). But the WEST
 collapses to a sink (.65, med .83 = plains .83), Sa = Sj = .35 and F 13.4: the contortion moves to demography and
 the native west.
+
+## E058b/c pre-registered (2026-10-18): town SURVIVAL tilt (user: feeders act on survival)
+subcell_strata.sigma_s_scale: adult + juvenile survival in slice s shift on the logit scale by sigma (u_s - area-mean u)
+(cell mean ~preserved); optional sigma_s_drift_scale: sigma(t) = sigma0 + sigma1 g(t), g linear 1966-2023 (held
+before, obs-centred). 58b = 58a + tilt (N(0,.5)); 58c = 58b + drift (N(0,.2)). Read vs 58a: does a town survival
+advantage (and its growth) let the refine keep the west a source and Sa/Sj realistic, instead of 58a's west sink and
+Sa = Sj = .35? Sign and size of sigma0, sigma1.

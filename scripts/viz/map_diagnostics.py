@@ -239,6 +239,8 @@ def reconstruct_map(data, params):
               "disease_mortality_amp",
               # population_model.occupancy only (E063).
               "occupancy_grid",
+              # subcell_strata town survival tilt (per year).
+              "subcell_sigma_s_t",
               # population_model.covariate_drift only (E057 P0).
               "covariate_drift", "covariate_drift_w",
               # Present only with habitat_centering="occupied"; Predictive drops absent names.
@@ -1811,6 +1813,7 @@ def simulate_no_invasion_counterfactual(sim, data, drop_disease=True):
         strata_a=data["strata_a"] if SUBCELL else None,
         subcell_beta_k=float(np.asarray(latents.get("subcell_beta_k", 0.0))),
         subcell_delta_f=float(np.asarray(latents.get("subcell_delta_f", 0.0))),
+        subcell_sigma_s=(jnp.asarray(sim["subcell_sigma_s_t"]) if "subcell_sigma_s_t" in sim else None),
         # Absent unless dispersal_departure.form = age (then the shared curve applies).
         dispersal_adult_offset=float(np.asarray(latents.get("dispersal_logit_adult_offset", 0.0))),
         # Absent unless dispersal_departure.crowding_arm (then None = no crowding arm).

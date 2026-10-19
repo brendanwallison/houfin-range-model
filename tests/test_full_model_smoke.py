@@ -51,7 +51,8 @@ OVERLAYS = [None, "map_run19_exchangeable.json", "map_run21_single_field.json",
             "map_run59b_route_ktrend.json",
             "map_run57p_popd_cap.json", "map_run57q_popd_surv.json", "map_run57b_builtup_cap.json",
             "map_run57g_popd_cap_cosine.json", "map_run57z_builtup_cap_plummer.json", "map_run57x_panel.json",
-            "map_run57xn_panel_null.json", "map_run57xr_panel_recovery.json"]
+            "map_run57xn_panel_null.json", "map_run57xr_panel_recovery.json",
+            "map_run58b_subcell_surv.json", "map_run58c_subcell_surv.json"]
 
 
 def _DRIFT_C():
@@ -108,6 +109,8 @@ def synthetic_inputs(T=40, Ny=12, Nx=16, M=24, z_sd=2.0, seed=0):
     from src.model.data_loading import covariate_drift_basis           # covariate_drift (when enabled)
     meta["years"] = np.arange(2024 - T, 2024)
     meta["drift_basis"] = covariate_drift_basis(meta["years"], t_idx, 3, 1966)
+    from src.model.data_loading import covariate_drift_ramp
+    meta["subcell_drift_g"] = covariate_drift_ramp(meta["years"], t_idx, 1966, float(meta["years"][-1]), 1966)[0]
     # P2 covariates (T, N_land, C): column 0 = built-up (from the strata); the panel arms use 3 columns
     _bu = (meta["strata_u"] * meta["strata_a"][None, None, :]).sum(-1)
     meta["drift_x"] = np.stack([_bu] + [rng.normal(0, 1, _bu.shape) for _ in range(_DRIFT_C() - 1)], -1)

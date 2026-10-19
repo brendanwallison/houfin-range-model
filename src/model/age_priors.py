@@ -842,8 +842,18 @@ def sample_priors(prior_scale=1.0, M_features=None, time=None,
             "subcell_beta_k", dist.Normal(0.0, float(_SUBCELL.get("beta_k_scale", 1.0)) * prior_scale))
         priors['subcell_delta_f'] = numpyro.sample(
             "subcell_delta_f", dist.Normal(0.0, float(_SUBCELL.get("delta_f_scale", 0.5)) * prior_scale))
+        # Town SURVIVAL tilt (feeders act mainly on overwinter survival); optional linear drift in time.
+        if float(_SUBCELL.get("sigma_s_scale", 0.0)) > 0:
+            s0 = numpyro.sample("subcell_sigma_s", dist.Normal(0.0, float(_SUBCELL["sigma_s_scale"]) * prior_scale))
+            s1 = (numpyro.sample("subcell_sigma_s_drift", dist.Normal(
+                0.0, float(_SUBCELL["sigma_s_drift_scale"]) * prior_scale))
+                if float(_SUBCELL.get("sigma_s_drift_scale", 0.0)) > 0 else 0.0)
+            priors['subcell_sigma_s'] = (s0, s1)          # -> per-year tilt in build_model_2d
+        else:
+            priors['subcell_sigma_s'] = None
     else:
         priors['subcell_beta_k'] = priors['subcell_delta_f'] = 0.0
+        priors['subcell_sigma_s'] = None
     # Settlement selectivity: how strongly birds follow empty-cell fitness when settling
     # (E014: perfect fitness sorting was too strong; K-only ignores vital rates entirely).
     priors['settlement_tau'] = (numpyro.sample(
@@ -1160,6 +1170,9 @@ def build_model_2d(data, prior_scale=1.0):
         strata_u=data["strata_u"] if SUBCELL else None,
         strata_a=data["strata_a"] if SUBCELL else None,
         subcell_beta_k=priors['subcell_beta_k'], subcell_delta_f=priors['subcell_delta_f'],
+        subcell_sigma_s=(None if priors['subcell_sigma_s'] is None else numpyro.deterministic(
+            "subcell_sigma_s_t", priors['subcell_sigma_s'][0] + priors['subcell_sigma_s'][1] *
+            (data["subcell_drift_g"] if "subcell_drift_g" in data else jnp.zeros(time)))),
         dispersal_adult_offset=priors['dispersal_logit_adult_offset'],
         crowding_beta=priors['dispersal_crowding_beta'], crowding_kappa=CROWDING_KAPPA,
         disease_m_amp=disease_m_amp, disease_k_half=priors['disease_k_half'],

@@ -238,6 +238,7 @@ def forward_sim_age_structured(
     strata_a=None,
     subcell_beta_k=0.0,
     subcell_delta_f=0.0,
+    subcell_sigma_s=None,
     disease_m_amp=None,
     disease_k_half=1.0,
     disease_hill_n=1.0,
@@ -443,7 +444,8 @@ def forward_sim_age_structured(
                 (N_a_post, juvenile_stayers, juvenile_arriving), Sa_g, Sj_g, Fmax_g, K_g,
                 allee_gamma, u_g, strata_a, subcell_beta_k, subcell_delta_f,
                 allee_off=allee_off, allee_relative=allee_relative,
-                yearling_breeding=yearling_breeding, veit=veit_reproduction)
+                yearling_breeding=yearling_breeding, veit=veit_reproduction,
+                sigma_s=None if subcell_sigma_s is None else subcell_sigma_s[t])
             
         # 5. Mask & Final Clip
         N_a_new = jnp.maximum(N_a_new * land_mask, 0.0)
@@ -583,7 +585,7 @@ def fitness_settle(fields, K, Sa, Sj, Fmax, c, b, t, n_iter=40):
 
 def subcell_reproduction(pools, Sa, Sj, Fmax, K, allee_gamma, u, a, beta_k, delta_f,
                          allee_off=None, allee_relative=False, n_iter=40,
-                         yearling_breeding=False, veit=False):
+                         yearling_breeding=False, veit=False, sigma_s=None):
     """Survival + reproduction with the cell split into S within-cell urbanisation slices.
 
     The cell's birds are first redistributed among its slices by the fitness ideal-free rule
@@ -596,6 +598,10 @@ def subcell_reproduction(pools, Sa, Sj, Fmax, K, allee_gamma, u, a, beta_k, delt
     the one-slice model. With delta_f > 0 the towns have the higher empty-cell lambda, so a
     sparse cell's birds concentrate there (high local density -> no Allee cost) and the
     countryside fills only once the towns crowd.
+
+    ``sigma_s`` (scalar, this year's value; None = off): the TOWN SURVIVAL tilt -- adult and juvenile
+    survival in slice s shift on the logit scale by sigma_s (u_s - sum_r a_r u_r), so towns can be where
+    birds survive the winter (feeders) while the cell's area-mean survival stays ~DESK's.
 
     ``pools``: (N_a_post, juvenile_stayers, juvenile_arrivers) cell densities (Ny, Nx);
     ``u``: (S, Ny, Nx); ``a``: (S,). Returns (N_a_new, N_j_new) cell densities.
@@ -611,6 +617,11 @@ def subcell_reproduction(pools, Sa, Sj, Fmax, K, allee_gamma, u, a, beta_k, delt
     F_s = Fmax[None] * tilt(delta_f)
     Sa_ = jnp.broadcast_to(Sa, K_s.shape)
     Sj_ = jnp.broadcast_to(Sj, K_s.shape)
+    if sigma_s is not None:
+        du = sigma_s * (u - jnp.sum(a * u, axis=0, keepdims=True))
+        logit = lambda p: jnp.log(jnp.clip(p, 1e-6, 1 - 1e-6)) - jnp.log1p(-jnp.clip(p, 1e-6, 1 - 1e-6))
+        Sa_ = jnn.sigmoid(logit(Sa_) + du)
+        Sj_ = jnn.sigmoid(logit(Sj_) + du)
     c_s = jnp.maximum((F_s * Sa_ * Sj_) / (1.0 - Sa_ + 1e-6) - 1.0, 0.0)
     c_f = jnp.maximum(c_s, 1e-6)
     valid = (K_s > tiny) & (Sa_ > tiny) & (Sj_ > tiny) & (F_s > tiny)

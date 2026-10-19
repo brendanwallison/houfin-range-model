@@ -255,6 +255,13 @@ def load_data(input_dir, target_device=None, precision="float32", verbose=True):
                                  "(python -m src.data.preprocess.subcell_strata)")
             meta["strata_u"] = np.asarray(z["u"], dtype=f_type_cpu)
             meta["strata_a"] = np.asarray(z["a"], dtype=f_type_cpu)
+        from src.config_utils import load_age_model_config
+        _sc = load_age_model_config().get("population_model", {}).get("subcell_strata") or {}
+        if float(_sc.get("sigma_s_drift_scale", 0.0)) > 0:
+            # linear time shape for the town-survival-tilt drift (as covariate_drift's "linear")
+            ws = int(_sc.get("drift_window_start", 1966))
+            meta["subcell_drift_g"] = covariate_drift_ramp(
+                meta["years"], meta["obs_time_indices"], ws, float(np.asarray(meta["years"])[-1]), ws)[0].astype(f_type_cpu)
     syn = os.environ.get("HOUFIN_SYNTHETIC_OBS")
     if syn:
         # Null-calibration / recovery runs (research/age_model/exp/simulate_observations.py): the

@@ -112,3 +112,5 @@ date,experiment,variant,run_dir,U,fit_corr,notes,su
 2026-10-18,E061,61a,run_61a,226873.7,,fitness settlement on V&L base: MAP pathological (2.74M); not interpretable,
 2026-10-18,E059,59b,run_59b,165876.0,,route + loose K trend: K x.26->x3.31 (demand cut from 56a x65 to x13); F 6.7 Sa .67 Sj .50; plains 1.01 < west 1.14; east 1.76,
 2026-10-18,E058,58b,run_58b,200331.8,,town survival tilt: refine stalled at 254 it in realistic state (P .78 vs W 1.10; F5.1; Allee-dead 0); sigma 0, beta_k -.50; continuation queued,
+2026-10-18,E057,57a,run_57a,186294.1,,P0 intercept drift: refine uses it hard (fecundity/capacity/juv surv rise 1966->2023, 5.3 sd) but contortion unchanged; provisional pending 57n,
+2026-10-18,E058,58c,run_58c,204522.9,,tilt+drift: stalled 180 it in realistic state (P .71 vs W 1.13; F5; no Allee-dead); sigma 0; continuation queued,

@@ -75,3 +75,7 @@ plains .71 sinks med .78 vs west 1.10, east 1.04; Allee-dead 0; Sa/Sj/F .57/.30/
 The survival tilt is unused (sigma .00); the K tilt went NEGATIVE (beta_k -.50: towns hold LESS capacity).
 Continuation queued (0037h: warm from this point, tol_du .005, 8000 it): local optimum or plateau before the usual
 contortion? If it holds near 200k the town structure has made a realistic basin locally stable.
+## E058c RESULT: tilt + drift -- also stalled early (180 it, U 204,523) in a realistic state: plains .82 sinks med .71
+vs west 1.13, east 1.00; Allee-dead 0; Sa/Sj/F .56/.28/4.98. sigma and its drift both 0 (unused). 58b and 58c (both
+with the survival-tilt parameters, unused) stall in the same realistic region while 58a went on to the usual
+contortion; continuations from the stalled points (copied, 10x tighter tolerance) queued as 0037h.

@@ -98,3 +98,11 @@ Base 59a (V&L dispersal, n50 pinned, route effects sd .7).
   within ~30% with the other 32 near 0. Single-covariate arms are read against the same null logic.
 Later: STATIC safety-valve arm (time-constant panel effects, residualised on Z) -- separate, so time-varying and
 static signals are not confounded in the first test.
+
+## 57a RESULT (P0 intercept drift on 55a; real data; READ PROVISIONALLY until 57n/57r report)
+MAP 199,179 (f64 199,214, clean); MAP drift small (<= 1.4 prior scales). Refined 186,294 (8000 it, unconverged; 55a
+186,101): the drift is used hard -- link-scale change 1966 -> 2023: fecundity -.50 -> +.75, capacity -.77 -> +.36,
+juvenile survival -1.03 -> +.13, adult survival ~0; 5.3 prior sds out. Every rate but adult survival RISES over the
+record. But the contortion is unchanged (F 15.1, lam0 2.14, plains K .0076, Allee-dead .15/.15/.02): a continental
+intercept drift absorbs a temporal signal without relieving the refine. Whether the drift is real or absorbs
+dynamics is exactly 57n's question.

@@ -88,3 +88,8 @@ Sa/Sj) inside subcell_reproduction's allocation, whose gradient is an approximat
 + one Newton step); 58a without the tilt refined normally. The "realistic stalled state" is WITHDRAWN as evidence.
 Fix before reuse: check the allocation's gradient against finite differences with sigma != 0 (unit test), and if it
 fails, make the implicit derivative exact (envelope/IFT through the equal-lambda level) or tilt survival outside it.
+Follow-up: the subcell allocation's gradients match finite differences exactly (sigma 0-1, beta_k 0/-.5, dense and
+sparse; local test), so the implicit-gradient suspect is cleared. Leading hypothesis now: a KINK -- the allocation
+switches slices on/off as the equal-lambda level crosses their thresholds, making U continuous but non-smooth; L-BFGS
+stalls on a kink with a large gradient. 0037i (gradient anatomy) reports per-site |grad| and U along steepest descent
+at 1e-7..1e-1 for the 58b stall and 58a's optimum.

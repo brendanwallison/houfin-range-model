@@ -30,3 +30,8 @@ ill-conditioned. But at these (mean-field-fitted) params the eastern invasion ne
 front cannot establish at mean-field parameters. No land cell is below psi 1e-6 (the fat kernel tail gives every cell
 a tiny occupancy). The refits 63a-c ask whether ANY parameters reproduce the eastern expansion with honest low-density
 dynamics; if not, the candidates are clumped (flock) arrivals and the release size/clustering.
+CORRECTION (user, 2026-10-18): the 1.00 f32/f64 agreement above is NOT evidence that occupancy cures the precision
+sensitivity -- at those params nothing invades, and a population far from the invasion threshold is insensitive in
+any formulation. The sensitivity lives at the knife edge. Proper test queued (0034h): fecundity x1..x6 sweep through
+the eastern-invasion threshold, f32 vs f64 at each value, numerics-only (62a) vs occupancy (63f). Pass: f32/f64
+agree AT the transition under occupancy while the numerics-only model diverges there.

@@ -41,3 +41,11 @@ regardless (hypothesis 1a closed in this form). Contrast E059a: giving the zeros
 Refined U 185,993; Sa/Sj/F .66/.28/14.87, lam0 2.03; plains K .0095, Allee-dead .15/.18/.01 -- the base refine again.
 Decoupling K's field from the growth fields is not the lever either. Both E060 arms closed; the route-level
 heterogeneity (E059a) is what moved the refine.
+
+## E058a RESULT (2026-10-18; re-refined with the drift override): within-cell urban strata
+MAP f32 205,568 / f64 206,134 (+566). MAP: plains .82 sinks, med lam .76 vs west 1.16, east 1.05 -- the deepest
+clean-MAP trough so far; Sa/Sj/F .56/.28/4.94; town tilt of K beta_k .19.
+Refined 186,220: Allee-dead ~0 (.03 plains) and plains K KEPT (.105) -- like route effects, sub-cell structure gives the
+zeros a home -- the town tilt grows to beta_k .76 (towns hold e^.76 = 2.1x capacity per sd of built-up). But the WEST
+collapses to a sink (.65, med .83 = plains .83), Sa = Sj = .35 and F 13.4: the contortion moves to demography and
+the native west.

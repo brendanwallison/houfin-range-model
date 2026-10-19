@@ -27,3 +27,26 @@ def test_positive_tilt_helps_a_sparse_cell_and_has_finite_gradient():
     assert town > base            # birds sort into the towns, where survival is now higher
     g = jax.grad(lambda s: sum(subcell_reproduction(sparse, *args, sigma_s=s)).sum())(0.5)
     assert np.isfinite(float(g))
+
+
+def test_smooth_allocation_gives_descent_gradients_near_thresholds():
+    # Heterogeneous cells/slices put the equal-lambda level near slice thresholds (the hard max(n, 0) corners
+    # that stalled L-BFGS in E058b/c). With the smoothed positive part, a small step along -grad must lower U.
+    import src.model.age_forward as af
+    rng = np.random.default_rng(0)
+    u_h = jnp.asarray(rng.normal(0, 1.2, (S, Ny, Nx)))
+    pl = tuple(jnp.asarray(rng.uniform(0.001, 0.4, (Ny, Nx))) for _ in range(3))
+    old = af.SMOOTH_ALLOC
+    af.SMOOTH_ALLOC = 1e-3
+    try:
+        def f(th):
+            a2 = list(args); a2[5] = u_h; a2[7] = th[0]; a2[8] = th[1]
+            return sum(subcell_reproduction(pl, *a2, sigma_s=th[2])).sum()
+        th = jnp.array([-0.5, 0.2, 0.4])
+        g = jax.grad(f)(th)
+        for h in (1e-6, 1e-5):
+            assert float(f(th - h * g / jnp.linalg.norm(g))) < float(f(th))
+        fd = np.array([(float(f(th.at[i].add(1e-6))) - float(f(th.at[i].add(-1e-6)))) / 2e-6 for i in range(3)])
+        np.testing.assert_allclose(np.asarray(g), fd, rtol=1e-4, atol=1e-8)
+    finally:
+        af.SMOOTH_ALLOC = old

@@ -160,7 +160,7 @@ _DRIFT_GROUPS = tuple(tuple(g) if isinstance(g, (list, tuple)) else (g,)
 _DRIFT_ON_FIELDS = tuple(f for g in _DRIFT_GROUPS for f in g)
 if not set(_DRIFT_ON_FIELDS) <= set(DRIFT_FIELDS):
     raise ValueError(f"covariate_drift.fields must be a subset of {DRIFT_FIELDS}")
-#   numerics                  {"fft_pad": float, "fft_floor_ulps": float | null}: zero-pad the dispersal FFT
+#   numerics                  {"fft_pad", "fft_floor_ulps", "smooth_allocation"}: zero-pad the dispersal FFT
 #                             (legacy pads 1e-9, a pseudo-zero immigration) and drop convolution output
 #                             below the FFT's resolution (float32 phantom floor, E054c). Absent = legacy.
 _NUMERICS = dict(_POP_SPEC.get("numerics", {}))
@@ -169,6 +169,8 @@ if _NUMERICS:
     _af.FFT_PAD_VALUE = float(_NUMERICS.get("fft_pad", 1e-9))
     _af.FFT_FLOOR_ULPS = (None if _NUMERICS.get("fft_floor_ulps") is None
                           else float(_NUMERICS["fft_floor_ulps"]))
+    _af.SMOOTH_ALLOC = (None if _NUMERICS.get("smooth_allocation") is None
+                        else float(_NUMERICS["smooth_allocation"]))
 #   occupancy                 {"enabled": bool, "birds_per_route_count": float}: E063 occupancy closure --
 #                             each cell carries psi = P(>= 1 bird) across realisations; departure, disease and
 #                             reproduction act on the occupied-conditional density m = N / psi; arrivals

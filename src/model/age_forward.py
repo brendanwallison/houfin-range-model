@@ -33,6 +33,20 @@ def rightpad(A, Lx, Ly, pad_value=1e-9):
 #     (~1e-6..3e-5 per land cell) that acts as phantom immigration ahead of the front (E054c).
 FFT_PAD_VALUE = 1e-9
 FFT_FLOOR_ULPS = None
+#   SMOOTH_ALLOC: if set, the fitness ideal-free allocations (fitness_settle, subcell_reproduction) use a
+#     smooth positive part, width * softplus(n / width) with width = SMOOTH_ALLOC x the cell's (K/c) scale,
+#     instead of max(n, 0) switched off at each cell's lambda0. The hard version puts a corner in the
+#     allocation at every cell/slice threshold; L-BFGS stalled on such corners with |grad| ~1e6 along a
+#     non-descent direction (E058b/c gradient anatomy).
+SMOOTH_ALLOC = None
+
+
+def _positive_part(n, scale):
+    """max(n, 0), or its softplus smoothing at SMOOTH_ALLOC x ``scale`` when that switch is on."""
+    if SMOOTH_ALLOC is None:
+        return jnp.maximum(n, 0.0)
+    w = jnp.maximum(SMOOTH_ALLOC * scale, 1e-30)
+    return w * jnn.softplus(n / w)
 # Occupancy (E063): below this psi a cell is treated as empty (m = 0). Together with the closure's own
 # consistency psi >= 1 - exp(-b N) (enforced in occupied_density) m stays <= ~1/b birds wherever N > 0,
 # even when float32 rounding breaks the identity or underflows psi.
@@ -556,6 +570,8 @@ def fitness_settle(fields, K, Sa, Sj, Fmax, c, b, t, n_iter=40):
         ww = w[..., None]
         Fstar = jnp.maximum(ww * (ww - Sa_s) / (Sa_s * Sj_s), tiny)
         n = (K_s / c_s) * (F_s / Fstar - 1.0)
+        if SMOOTH_ALLOC is not None:
+            return jnp.where(valid & (ww > Sa_s), _positive_part(n, K_s / c_s), 0.0)
         return jnp.where(valid & (ww < lam0) & (ww > Sa_s), jnp.maximum(n, 0.0), 0.0)
 
     ok = valid.any(-1) & (M > tiny)
@@ -635,6 +651,8 @@ def subcell_reproduction(pools, Sa, Sj, Fmax, K, allee_gamma, u, a, beta_k, delt
         ww = w[None]
         Fstar = jnp.maximum(ww * (ww - Sa_v) / (Sa_v * Sj_v), tiny)
         n = a * (K_s / c_f) * (F_v / Fstar - 1.0)
+        if SMOOTH_ALLOC is not None:
+            return jnp.where(valid & (ww > Sa_v), _positive_part(n, a * K_s / c_f), 0.0)
         return jnp.where(valid & (ww < lam0) & (ww > Sa_v), jnp.maximum(n, 0.0), 0.0)
 
     ok = valid.any(0) & (M > tiny)

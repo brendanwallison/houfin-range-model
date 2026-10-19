@@ -24,9 +24,11 @@ tilt by cell and year; it does not directly add birds or change the cell-mean DE
 
 ## Design
 
-All arms use the E055a pinned-Allee/Veit-dispersal baseline and smooth the sub-cell allocation
-positive part at 0.001 (the E058b/c hard-threshold gradient failure). Route arms pin route-effect
-SD at 0.7; it cannot become the observation-model off switch seen when that SD was free.
+All arms use the E055a pinned-Allee/Veit-dispersal baseline and the same `quick90` 400-step
+continuation MAP used by E050--E063, followed by float64 L-BFGS refinement. They smooth the
+sub-cell allocation positive part at 0.001 (the E058b/c hard-threshold gradient failure). Route
+arms pin route-effect SD at 0.7; it cannot become the observation-model off switch seen when that
+SD was free.
 
 | Arm | Process heterogeneity | Route effect |
 |---|---|---|

@@ -9,6 +9,10 @@ mkdir -p "$OUT"
 export AGE_MODEL_CONFIG="$OVERLAY"
 export HOUFIN_MODEL_PRECISION=float32
 export HOUFIN_MAP_LOG_EVERY=50
+# E064 is a diagnostic round, directly comparable to E050--E063: a short
+# continuation MAP supplies the basin, then float64 L-BFGS finds the optimum.
+# Never silently inherit the 1,800-step production default.
+export HOUFIN_MAP_PROFILE="${HOUFIN_MAP_PROFILE:-quick90}"
 
 python - <<'PY' > "$OUT/resolved_config.json"
 import json
@@ -19,8 +23,13 @@ git rev-parse HEAD > "$OUT/git_commit.txt"
 
 MAP_DIR=$(python - <<'PY'
 from src.config_utils import load_age_model_config
+import os
 c = load_age_model_config()
-print(c["results_dir"] + "/" + c["run_names"]["map"].format(precision="float32"))
+name = c["run_names"]["map"].format(precision="float32")
+profile = os.environ["HOUFIN_MAP_PROFILE"]
+if profile != "standard":
+    name += "_" + profile
+print(c["results_dir"] + "/" + name)
 PY
 )
 echo "[$ARM] cold MAP -> $MAP_DIR"

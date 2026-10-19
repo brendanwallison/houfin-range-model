@@ -56,3 +56,15 @@ subcell_strata.sigma_s_scale: adult + juvenile survival in slice s shift on the 
 before, obs-centred). 58b = 58a + tilt (N(0,.5)); 58c = 58b + drift (N(0,.2)). Read vs 58a: does a town survival
 advantage (and its growth) let the refine keep the west a source and Sa/Sj realistic, instead of 58a's west sink and
 Sa = Sj = .35? Sign and size of sigma0, sigma1.
+
+## E061a RESULT (2026-10-18): fitness settlement on the V&L base -- MAP failed
+MAP loss 2,743,226 (f64 U 2,935,882), log1p corr .22, plains .20 sinks / east .02 -- a pathological basin; refine
+stopped at 226,874 after 277 iterations. Fitness ideal-free settlement + V&L density-dependent departure did not fit
+from a cold start (earlier ifd3 runs used the learned/fixed departure). Not interpretable; not pursued unless needed.
+
+## E059b RESULT (2026-10-18): route effects + K trend loosened x10
+MAP clean (189,751 / 189,771). Refined 165,876 (59a 169,804: -3.9k). K trend x.26 -> x3.31 over 1902-2025
+(z 2.8 under the loose prior) -- route effects cut the demand from 56a's x.12 -> x7.9 but a ~13x continental rise
+remains. Refined Sa/Sj/F .67/.50/6.7, lam0 1.86 (F closest to 4-6 of any refine); plains .49 sinks med 1.01 vs west
+1.14 (plains still below west), east 1.76 with K 1.4; Allee-dead .11 in the west only. The temporal K demand is real
+and continental-scale: E057's window-held drifts are the principled version.

@@ -109,3 +109,5 @@ date,experiment,variant,run_dir,U,fit_corr,notes,su
 2026-10-18,E060,60b,run_60b,185993.3,,coupling .5: identical to base (plains K .0095, Allee-dead .18, F14.9); closed,
 2026-10-18,E062,62b,run_62b,186170.9,,55a+numerics: refine as 55a but Allee-dead halved (.10 vs .18); F14.1 lam0 2.08 plains K .014,
 2026-10-18,E058,58a,run_58a,186219.7,,subcell strata: MAP deepest clean trough (P .76 vs W 1.16); refine no Allee-dead, plains K kept, beta_k .76; but west -> sink (.83), Sa=Sj .35, F13.4,
+2026-10-18,E061,61a,run_61a,226873.7,,fitness settlement on V&L base: MAP pathological (2.74M); not interpretable,
+2026-10-18,E059,59b,run_59b,165876.0,,route + loose K trend: K x.26->x3.31 (demand cut from 56a x65 to x13); F 6.7 Sa .67 Sj .50; plains 1.01 < west 1.14; east 1.76,

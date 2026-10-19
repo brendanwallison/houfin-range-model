@@ -115,3 +115,5 @@ date,experiment,variant,run_dir,U,fit_corr,notes,su
 2026-10-18,E057,57a,run_57a,186294.1,,P0 intercept drift: refine uses it hard (fecundity/capacity/juv surv rise 1966->2023, 5.3 sd) but contortion unchanged; provisional pending 57n,
 2026-10-18,E058,58c,run_58c,204522.9,,tilt+drift: stalled 180 it in realistic state (P .71 vs W 1.13; F5; no Allee-dead); sigma 0; continuation queued,
 2026-10-19,E058,58b/c continue,,200331.8/204513.0,,stalls are optimiser failures (grad norm ~1e6 vs ~300-550 at optima); survival tilt breaks the allocation's implicit gradient; withdrawn,
+2026-10-19,E057,57n null,run_57n,185582.5,,PASS: refined drift .69 sd, changes <=.16 (real 57a: 5.3 sd, +1.1-1.3): real temporal signal,
+2026-10-19,E058,grad anatomy,,,,58b stall gradient = subcell sigma_s/delta_f (1.9e6/6.9e5); -grad not a descent direction at 1e-7; Newton correction near dS->0 suspect,

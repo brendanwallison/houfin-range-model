@@ -93,3 +93,9 @@ sparse; local test), so the implicit-gradient suspect is cleared. Leading hypoth
 switches slices on/off as the equal-lambda level crosses their thresholds, making U continuous but non-smooth; L-BFGS
 stalls on a kink with a large gradient. 0037i (gradient anatomy) reports per-site |grad| and U along steepest descent
 at 1e-7..1e-1 for the 58b stall and 58a's optimum.
+## Gradient anatomy RESULT (0037i): at the 58b stall |grad| 2.03e6 is almost all subcell_sigma_s (1.91e6) and
+subcell_delta_f (6.9e5); every other site < 3e3. A 1e-7 step along -grad RAISES U (+.18 vs -.20 predicted): the
+gradient for the two tilt parameters is wrong there. Mechanism (likely): the allocation's single Newton correction
+w - (S - M)/dS -- where the allocation curve is nearly flat dS -> 0 and the derivative explodes ~1/dS^2 (the local FD
+test used uniform cells and never hit it). Strata results with sigma_s or delta_f free are suspect until the
+correction is guarded/smoothed (e.g. stop the correction when |dS| is small relative to M, or soft masks in alloc).

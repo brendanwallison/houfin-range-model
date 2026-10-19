@@ -106,3 +106,10 @@ juvenile survival -1.03 -> +.13, adult survival ~0; 5.3 prior sds out. Every rat
 record. But the contortion is unchanged (F 15.1, lam0 2.14, plains K .0076, Allee-dead .15/.15/.02): a continental
 intercept drift absorbs a temporal signal without relieving the refine. Whether the drift is real or absorbs
 dynamics is exactly 57n's question.
+
+## 57n NULL RESULT (2026-10-19): PASS
+Synthetic counts at 55a's refined point, no drift (mean 2.94 vs real 3.06, zeros .760 = real). Refined 185,583:
+drift max .69 prior sds; change 1966 -> 2023 fecundity +.16, capacity -.02, survivals ~0 (vs real 57a: 5.3 sds,
+fecundity +1.26, capacity +1.14, juvenile survival +1.16). The structure does not manufacture drift from the
+invasion/disease dynamics it is given: 57a's rise is a real temporal signal in the BBS record (not yet attributed to a
+covariate -- P2). 57r recovery (capacity +.6 injected) refined to 176,816; readout pending its viz.

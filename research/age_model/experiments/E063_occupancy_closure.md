@@ -35,3 +35,11 @@ sensitivity -- at those params nothing invades, and a population far from the in
 any formulation. The sensitivity lives at the knife edge. Proper test queued (0034h): fecundity x1..x6 sweep through
 the eastern-invasion threshold, f32 vs f64 at each value, numerics-only (62a) vs occupancy (63f). Pass: f32/f64
 agree AT the transition under occupancy while the numerics-only model diverges there.
+
+## Knife-edge sweep RESULT (coarse, 2026-10-18; 50c params, fecundity x1..x6, f32 vs f64 eastern population)
+Numerics-only: transition near x1-1.25 -- x1: 1982 .86 vs 15.4 (18x), 1998 23 vs 420; x1.25: 1966 183 vs 320
+(1.75x); >= x1.5 agree within ~1%. Occupancy: threshold moves up (lone birds cannot breed) -- x1, x1.25 no invasion;
+x1.5: 1998 .77 vs 1.29 (1.7x), 2025 244 vs 340 (1.4x); >= x2 within ~1-3.5%. Both are sensitive only at their own
+threshold; worst sampled ratio ~18x vs ~1.7x, but the coarse grid samples each transition at different depths.
+Some sensitivity is unavoidable at a deterministic bifurcation. Fine sweep queued (10 points across each model's own
+window) to compare the WIDTH and WORST-CASE ratio of the sensitive window like for like.

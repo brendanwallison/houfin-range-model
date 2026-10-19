@@ -18,3 +18,16 @@ Combinations only after single factors read, and only informed pairs (e.g. 58a x
   feeder_hrs as effort covariate (recorded ~1975+), own scale and concentration.
 - MAP optimisation adequacy: pinned V&L demography beat free at MAP by 7.5k (53b vs 53a) -> quick90 MAP is not a
   reliable optimum; free-vs-pinned MAP losses are not evidence.
+
+## E059a RESULT (2026-10-18): bounded route effects remove most of the refine's contortion
+Route effects, sd pinned 0.7 (log scale; fitted raw effects sd ~1, i.e. effects ~0.7). MAP clean (189,743 f32 / 189,755 f64).
+| | U | Sa/Sj/F | lam0 | plains sink / med lam / med K | west | east | Allee-dead | corr | K trend z |
+|---|---|---|---|---|---|---|---|---|---|
+| 55a ref (base) | 186,101 | .64/.31/14.7 | 2.06 | .49/1.00/.012 | .52/1.00 | .42/1.20 | .16/.18/.01 | .809 | 5.6 |
+| 59a MAP | (189,743) | .57/.31/5.16 | 1.28 | .67/.88/.147 | .45/1.04 | .43/1.10 | 0 | .862 | 7.8 |
+| 59a ref | 169,804 (conv. 597 it) | .49/.44/8.44 | 1.62 | .50/1.00/.137 | .42/1.06 | .37/1.39 | 0/0/0 | .898 | 2.8 |
+Giving route-scale heterogeneity a bounded home: NO Allee-dead cells after refinement, plains K stays at its MAP
+level (.137 vs base .012), F demand roughly halves (8.4 vs 14.7), the K-trend pressure drops (z 2.8), and the refine
+converges in 597 iterations. Confirms E054: the plains zeros the base refine bought with K-collapse are route-level
+heterogeneity. Remaining distortions: Sj ~ Sa (.44 / .49), F still above 4-6, eastern lam 1.39, plains trough
+shallower than at MAP (.50 vs .67 sinks). (U not comparable with the base: different likelihood.)

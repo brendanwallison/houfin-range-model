@@ -83,6 +83,18 @@ def covariate_drift_basis(years, obs_time_indices, n_basis, window_start=1966):
     return np.stack(rows, axis=0)
 
 
+def covariate_drift_ramp(years, obs_time_indices, start, end, window_start=1966):
+    """(1, T) ramp shape for the covariate drift: 0 before ``start``, 1 after ``end``, linear between,
+    held before ``window_start``, centred by the observation-weighted mean over the window (as the cosine
+    basis). The default start/end 1979.5-2005 is the hinge-exponential fit to Plummer et al. 2019's
+    UK bird-food product counts (log products flat to 1979.5, then +0.090/yr; reference/plummer2019...)."""
+    years = np.asarray(years, dtype=float)
+    g = np.clip((np.maximum(years, window_start) - start) / (end - start), 0.0, 1.0)
+    w = np.bincount(np.asarray(obs_time_indices), minlength=years.size).astype(float)
+    w = np.where(years >= window_start, w, 0.0); w = w / w.sum()
+    return (g - (w * g).sum())[None, :]
+
+
 def _extra_pseudo_zeros_enabled():
     from src.config_utils import load_age_model_config
     spec = load_age_model_config().get("population_model", {}).get("observation") or {}
@@ -258,9 +270,40 @@ def load_data(input_dir, target_device=None, precision="float32", verbose=True):
             print(f"  [synthetic] observed counts replaced from {syn}")
     dspec = covariate_drift_spec()
     if dspec:
-        meta["drift_basis"] = covariate_drift_basis(
-            meta["years"], meta["obs_time_indices"], int(dspec.get("n_basis", 3)),
-            int(dspec.get("window_start", 1966))).astype(f_type_cpu)
+        ws = int(dspec.get("window_start", 1966))
+        shape = dspec.get("shape", "cosine")
+        if shape in ("ramp", "linear"):
+            # linear = a straight line in time over the whole observed window (the parsimonious default)
+            s0, s1 = ([ws, float(np.asarray(meta["years"])[-1])] if shape == "linear"
+                      else dspec.get("ramp", [1979.5, 2005.0]))
+            meta["drift_basis"] = covariate_drift_ramp(
+                meta["years"], meta["obs_time_indices"], float(s0), float(s1), ws).astype(f_type_cpu)
+        else:
+            meta["drift_basis"] = covariate_drift_basis(
+                meta["years"], meta["obs_time_indices"], int(dspec.get("n_basis", 3)), ws).astype(f_type_cpu)
+        if dspec["form"] == "covariate":
+            # E057 P2: the drifting covariate. builtup = cell-mean standardised log1p(HISDAC-US built-up
+            # intensity) from subcell_strata.npz (CONUS; 0 = the pooled mean, and outside CONUS).
+            covs = dspec.get("covariates", [dspec.get("covariate", "builtup")])
+            cols = []
+            panel = None
+            for c in covs:
+                if c == "builtup":
+                    with np.load(os.path.join(input_dir, "subcell_strata.npz")) as z:
+                        if not np.array_equal(np.asarray(z["years"]), np.asarray(meta["years"]).astype(int)):
+                            raise ValueError("subcell_strata.npz years do not match the model inputs")
+                        cols.append((np.asarray(z["u"]) * np.asarray(z["a"])[None, None, :]).sum(-1))
+                else:
+                    # raw-covariate panel (src/data/preprocess/drift_covariates.py)
+                    if panel is None:
+                        with np.load(os.path.join(input_dir, "drift_covariates.npz")) as z:
+                            if not np.array_equal(np.asarray(z["years"]), np.asarray(meta["years"]).astype(int)):
+                                raise ValueError("drift_covariates.npz years do not match the model inputs")
+                            panel = {str(n): np.asarray(z["x"])[..., i] for i, n in enumerate(z["names"])}
+                    if c not in panel:
+                        raise ValueError(f"covariate_drift: {c!r} not in drift_covariates.npz ({sorted(panel)})")
+                    cols.append(panel[c])
+            meta["drift_x"] = np.stack(cols, axis=-1).astype(f_type_cpu)          # (time, N_land, C)
     mask_spec = _observation_mask_spec()
     if mask_spec:
         meta["obs_weight"] = transient_observation_weight(

@@ -1089,22 +1089,32 @@ def _k_trend_metrics(data, sim):
 def _covariate_drift_metrics(data, sim):
     """Per-field link-scale drift (population_model.covariate_drift), or None when off.
 
-    Like the K trend, the prior-sd multiple reads itself: a drift far outside its weak prior is
-    absorbing dynamics (or something else unmodelled), not a finding about proxies.
+    Like the K trend, the prior-scale multiple reads itself: a drift far outside its weak prior is
+    absorbing dynamics (or something else unmodelled), not a finding about proxies. P2 (form covariate)
+    reports per covariate x field: the change over the observed window per sd of the covariate.
     """
     if "covariate_drift" not in sim:
         return None
     from src.model.age_priors import DRIFT_FIELDS, _DRIFT, _DRIFT_ON_FIELDS
-    d = np.asarray(sim["covariate_drift"])                     # (time, 4)
+    d = np.asarray(sim["covariate_drift"])                     # (time, 4) or (time, C, 4)
     w = np.asarray(sim["covariate_drift_w"])
-    sd = float(_DRIFT.get("budget", 0.2)) / np.sqrt(w.shape[-1])
+    if _DRIFT.get("prior", "normal") == "cauchy":
+        scale = float(_DRIFT.get("cauchy_scale", 0.02))
+    else:
+        scale = float(_DRIFT.get("budget", 0.2)) / np.sqrt(w.shape[-1])
     years = np.asarray(data["years"])
     obs = years >= int(_DRIFT.get("window_start", 1966))
-    out = {"fields": list(_DRIFT_ON_FIELDS), "max_prior_sd_multiple": float(np.abs(w).max() / sd)}
-    for i, f in enumerate(DRIFT_FIELDS):
-        if f in _DRIFT_ON_FIELDS:
-            out[f] = {"start": float(d[obs][0, i]), "end": float(d[obs][-1, i]),
-                      "range": float(np.ptp(d[obs][:, i]))}
+    out = {"fields": list(_DRIFT_ON_FIELDS), "max_prior_scale_multiple": float(np.abs(w).max() / scale)}
+    if d.ndim == 2:
+        for i, f in enumerate(DRIFT_FIELDS):
+            if f in _DRIFT_ON_FIELDS:
+                out[f] = {"start": float(d[obs][0, i]), "end": float(d[obs][-1, i]),
+                          "range": float(np.ptp(d[obs][:, i]))}
+        return out
+    names = _DRIFT.get("covariates", [_DRIFT.get("covariate", "builtup")])
+    for c, name in enumerate(names):
+        out[name] = {f: float(d[obs][-1, c, i] - d[obs][0, c, i])
+                     for i, f in enumerate(DRIFT_FIELDS) if f in _DRIFT_ON_FIELDS}
     return out
 
 

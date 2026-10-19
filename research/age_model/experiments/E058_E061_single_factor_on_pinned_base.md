@@ -31,3 +31,13 @@ level (.137 vs base .012), F demand roughly halves (8.4 vs 14.7), the K-trend pr
 converges in 597 iterations. Confirms E054: the plains zeros the base refine bought with K-collapse are route-level
 heterogeneity. Remaining distortions: Sj ~ Sa (.44 / .49), F still above 4-6, eastern lam 1.39, plains trough
 shallower than at MAP (.50 vs .67 sinks). (U not comparable with the base: different likelihood.)
+
+## E060a RESULT (2026-10-18): K-field amplitude prior cut to .3 changes nothing
+Refined U 186,160 (base 186,101); Sa/Sj/F .66/.29/14.65, lam0 2.03; plains K .0099, Allee-dead .15/.17/.01 -- the
+base refine almost exactly. The capacity manifold's amplitude prior is not the lever: the plains K collapse happens
+regardless (hypothesis 1a closed in this form). Contrast E059a: giving the zeros a ROUTE-level home removed it.
+
+## E060b RESULT (2026-10-18): manifold coupling .85 -> .5 changes nothing
+Refined U 185,993; Sa/Sj/F .66/.28/14.87, lam0 2.03; plains K .0095, Allee-dead .15/.18/.01 -- the base refine again.
+Decoupling K's field from the growth fields is not the lever either. Both E060 arms closed; the route-level
+heterogeneity (E059a) is what moved the refine.

@@ -105,3 +105,5 @@ date,experiment,variant,run_dir,U,fit_corr,notes,su
 2026-10-18,E055,55c/d/e,,186175/186133/187024,,n50 x1/3 x5/3 within 75 nats (unidentified); relative Allee: no Allee-dead but Sj=Sa .44 F14.5,
 2026-10-18,E056,56a,run_56a,185805.9,,K trend x10: best clean U; K x0.12->x7.9 over the century (timing lever via unobserved early decades); Allee-dead ~0,
 2026-10-18,E059,59a,run_59a,169804.1,,route effects sd pinned .7: refine NO Allee-dead, plains K kept .137, F 8.4 (vs 14.7), K trend z 2.8; Sj~Sa .44/.49; east lam 1.39,
+2026-10-18,E060,60a,run_60a,186159.8,,K amplitude prior .3: identical to base (plains K .0099, Allee-dead .17, F14.65); hypothesis 1a closed,
+2026-10-18,E060,60b,run_60b,185993.3,,coupling .5: identical to base (plains K .0095, Allee-dead .18, F14.9); closed,

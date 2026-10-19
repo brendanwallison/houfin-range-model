@@ -48,7 +48,17 @@ OVERLAYS = [None, "map_run19_exchangeable.json", "map_run21_single_field.json",
             "map_run57a_drift_p0.json", "map_run57n_drift_null.json", "map_run57r_drift_recovery.json",
             "map_run62a_numerics.json", "map_run62b_numerics.json",
             "map_run63a_occupancy.json", "map_run63b_occupancy.json", "map_run63c_occupancy.json", "map_run63f_occupancy.json",
-            "map_run59b_route_ktrend.json"]
+            "map_run59b_route_ktrend.json",
+            "map_run57p_popd_cap.json", "map_run57q_popd_surv.json", "map_run57b_builtup_cap.json",
+            "map_run57g_popd_cap_cosine.json", "map_run57z_builtup_cap_plummer.json", "map_run57x_panel.json",
+            "map_run57xn_panel_null.json", "map_run57xr_panel_recovery.json"]
+
+
+def _DRIFT_C():
+    """Columns of the synthetic drift panel the active overlay asks for (1 for single-covariate arms)."""
+    from src.config_utils import load_age_model_config
+    spec = load_age_model_config().get("population_model", {}).get("covariate_drift") or {}
+    return max(1, len(spec.get("covariates", [spec.get("covariate", "builtup")])))
 
 
 def synthetic_inputs(T=40, Ny=12, Nx=16, M=24, z_sd=2.0, seed=0):
@@ -98,6 +108,9 @@ def synthetic_inputs(T=40, Ny=12, Nx=16, M=24, z_sd=2.0, seed=0):
     from src.model.data_loading import covariate_drift_basis           # covariate_drift (when enabled)
     meta["years"] = np.arange(2024 - T, 2024)
     meta["drift_basis"] = covariate_drift_basis(meta["years"], t_idx, 3, 1966)
+    # P2 covariates (T, N_land, C): column 0 = built-up (from the strata); the panel arms use 3 columns
+    _bu = (meta["strata_u"] * meta["strata_a"][None, None, :]).sum(-1)
+    meta["drift_x"] = np.stack([_bu] + [rng.normal(0, 1, _bu.shape) for _ in range(_DRIFT_C() - 1)], -1)
     meta["habitat_center_occupied"] = occupied_habitat_center(meta)
     return {k: (jnp.asarray(v) if isinstance(v, np.ndarray) else v) for k, v in meta.items()}
 

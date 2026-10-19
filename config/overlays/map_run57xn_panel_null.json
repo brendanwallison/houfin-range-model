@@ -1,0 +1,109 @@
+{
+  "_comment": [
+    "run_57xn: 57x's structure fitted to SYNTHETIC counts drawn at 59a's refined point with ALL drift slopes 0 (HOUFIN_SYNTHETIC_OBS): null calibration -- no slope should leave the Cauchy core.",
+    "E057 P2 (proxy drift): the effect of a named covariate on a vital rate changes over time, sum_c a_c,field * x_c(cell,t) * g(t); x standardised (sd units); g held before 1966 and observation-centred. Base 59a (V&L dispersal, n50 pinned, route effects sd .7)."
+  ],
+  "input_dir": "${HOUFIN_PROCESSED}/model_inputs/numpyro_input_vl",
+  "population_model": {
+    "dispersal_random_enabled": false,
+    "manifold_prior": {
+      "form": "exchangeable",
+      "coupling_target": 0.85,
+      "coupling_logit_scale": 0.15,
+      "amplitude_scale": [
+        1.0263,
+        1.0263,
+        1.0227,
+        1.0263
+      ],
+      "fixed_coupling": null
+    },
+    "habitat_centering": "occupied",
+    "capacity_level_prior": {
+      "target_level_median_route_counts": 3.0,
+      "alpha_k_scale": 1.0
+    },
+    "allee_prior": {
+      "n50_raw_loc": -3.4915,
+      "n50_raw_scale": 0.25
+    },
+    "juvenile_survival": {
+      "form": "ratio",
+      "ratio_logit_loc": 0.405,
+      "ratio_logit_scale": 0.5
+    },
+    "settlement": {
+      "form": "none"
+    },
+    "invasion_pulse_prior": {
+      "form": "single",
+      "n_sites": 1,
+      "n_years": 1,
+      "total_median": 1.0,
+      "total_log_sd": 1.0,
+      "global_q50_route_counts": 0.7083
+    },
+    "dispersal_kernel": {
+      "band_weights": false
+    },
+    "disease_prior": {
+      "target": "survival",
+      "mortality_ceiling": 0.8
+    },
+    "observation": {
+      "form": "breeding",
+      "fledgling_weight_a": 1.0,
+      "fledgling_weight_b": 4.0,
+      "conc_density_power": true,
+      "conc_density_power_scale": 0.5,
+      "route_effects": true
+    },
+    "fecundity_prior": {
+      "loc": 4.993,
+      "scale": 0.75
+    },
+    "pinned_sites": {
+      "n50_raw": -2.7969046060186082,
+      "obs_route_sd": 0.7
+    },
+    "dispersal_departure": {
+      "form": "veit"
+    },
+    "covariate_drift": {
+      "form": "covariate",
+      "window_start": 1966,
+      "shape": "linear",
+      "budget": 0.2,
+      "covariates": [
+        "log_popd",
+        "log_urban_pop",
+        "builtup",
+        "cropland",
+        "pasture",
+        "rangeland",
+        "urban_land",
+        "forest",
+        "tmin_q10",
+        "ppt_q50",
+        "snow_q50"
+      ],
+      "fields": [
+        [
+          "adult_survival",
+          "juvenile_survival"
+        ],
+        "fecundity",
+        "capacity"
+      ],
+      "prior": "cauchy",
+      "cauchy_scale": 0.02
+    }
+  },
+  "run_names": {
+    "map": "age_map_{precision}_run_57xn",
+    "vis_map": "age_map_{precision}_run_57xn"
+  },
+  "dispersal": {
+    "adult_shape": 0.859
+  }
+}

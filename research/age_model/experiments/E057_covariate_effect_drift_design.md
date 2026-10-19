@@ -79,3 +79,22 @@ Truth point = 55a refined with its k_trend dropped (57's structure has none) -- 
   ~30% with the right sign; other fields stay null-like.
 - 57a REAL: 55a + P0 on the real counts. Read only if 57n passes. Compare to 55a and 56a (loosened k_trend): is the
   temporal signal per-field (survival vs fecundity vs capacity), and does the refine contortion shrink?
+
+## P2 BUILT + pre-registered (2026-10-18; REDESIGNED after user review -- Plummer is a reference arm only)
+form "covariate": per-cell link-scale drift sum_c a_c,field * x_c(cell,t) * g(t). Covariates standardised (sd units):
+"builtup" (HISDAC-US, CONUS) or the raw panel (src/data/preprocess/drift_covariates.py -> drift_covariates.npz):
+log_popd, log_urban_pop (HYDE 3.5), cropland, pasture, rangeland, urban_land, forest (LUH3), tmin_q10, ppt_q50,
+snow_q50 (climate). Default shape LINEAR in time over 1966-2023 (one slope per covariate x field); "cosine" and the
+Plummer "ramp" (1979.5-2005, hinge fit to the digitised products) are alternatives. Held before 1966, obs-centred.
+Prior: Normal(0, budget) for single-covariate arms; Cauchy(0, .02) per slope for the panel -- heavy-tailed and
+peaked at 0 so weak effects shrink to ~0 and strong ones escape (a MAP/L-BFGS-friendly stand-in for a horseshoe,
+whose hierarchical funnel collapses under point optimisation; horseshoe for HMC later).
+Base 59a (V&L dispersal, n50 pinned, route effects sd .7).
+- 57p popd x capacity; 57q popd x survival (tied); 57b built-up x capacity -- linear, the specific hypothesis.
+- 57g popd x capacity, 2 cosines (shape check). 57z built-up x capacity, Plummer ramp (REFERENCE only).
+- 57x PANEL: 11 covariates x {survival (tied), fecundity, capacity}, linear, Cauchy.
+- 57xn NULL (truth 59a refined, all 33 slopes 0) and 57xr RECOVERY (only log_popd x capacity = 0.3) on 57x's
+  structure. Read the panel only if no 57xn slope leaves the Cauchy core (|a| < ~5 scales) and 57xr recovers .3
+  within ~30% with the other 32 near 0. Single-covariate arms are read against the same null logic.
+Later: STATIC safety-valve arm (time-constant panel effects, residualised on Z) -- separate, so time-varying and
+static signals are not confounded in the first test.

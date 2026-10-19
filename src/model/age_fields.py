@@ -174,6 +174,7 @@ def project_and_scatter_age_structured(
     Z_mean=None,      # (N_land, M) per-cell long-run mean of Z
     Z_disp_mean=None, # (N_land, K, M) same for the path features
     field_drift=None, # (time, 4) covariate_drift on the LINK scale, [adult surv, fecundity, capacity, juv surv]
+    covariate_drift=None,  # (x (time, N_land, C), G (time, C, 4)): per-cell link-scale drift sum_c x[t,cell,c] G[t,c,field]
 ):
     """Project Z → (S_a, S_j, F_max, K, Q) for every year, on the land cells.
 
@@ -251,6 +252,11 @@ def project_and_scatter_age_structured(
             d_s = d_r = d_k = d_sj = 0.0
         else:
             d_s, d_r, d_k, d_sj = (field_drift[t_idx, i] for i in range(4))
+        if covariate_drift is not None:
+            # E057 P2: the covariate's effect drifts -- x(cell, t) * a_field * g(t) (proxy -> niche relation).
+            x_t = jnp.take(covariate_drift[0], t_idx, axis=0)          # (N_land, C)
+            dd = x_t @ covariate_drift[1][t_idx]                       # (N_land, 4)
+            d_s, d_r, d_k, d_sj = d_s + dd[:, 0], d_r + dd[:, 1], d_k + dd[:, 2], d_sj + dd[:, 3]
 
         # 4. Map H_s and H_r to Demographic Rates using Intercepts and Slopes
         # Survival listens to H_s
@@ -311,10 +317,13 @@ def project_and_scatter_age_structured(
         # 5. Map path habitat to Journey Survival (Q) using the JUVENILE manifold and rules.
         # This links movement mortality to juvenile local survival mortality -- the same field
         # S_j reads, so Q and S_j can no longer be driven by different spatial patterns.
-        Q_val = jnn.sigmoid(alpha_j + gamma_j * H_sj_disp + d_sj)
+        # per-cell drifts (P2) are (N_land,); path habitat is (N_land, K_kernels)
+        q_sj = d_sj[..., None] if jnp.ndim(d_sj) else d_sj
+        q_s = d_s[..., None] if jnp.ndim(d_s) else d_s
+        Q_val = jnn.sigmoid(alpha_j + gamma_j * H_sj_disp + q_sj)
         if juvenile_ratio:
             # The same juvenile-survival field, evaluated on path habitat.
-            Q_val = jnn.sigmoid(alpha_a + gamma_a * (jnp.dot(z_disp_t, beta_s) - off_s) + d_s) * Q_val
+            Q_val = jnn.sigmoid(alpha_a + gamma_a * (jnp.dot(z_disp_t, beta_s) - off_s) + q_s) * Q_val
 
         # K_base_val is returned as well: severity is a function of it, so exact
         # diagnostics (and the severity map) need the UNDEPRESSED capacity. Using

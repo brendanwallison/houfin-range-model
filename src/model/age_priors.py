@@ -151,10 +151,13 @@ VEIT_DEPARTURE = _DEPART_FORM == "veit"
 #                             the E057 proxy-drift ladder; REPLACES k_trend when capacity is listed.
 _DRIFT = dict(_POP_SPEC.get("covariate_drift", {}))
 DRIFT_ON = bool(_DRIFT.get("form"))
-if DRIFT_ON and _DRIFT["form"] != "intercept":
-    raise NotImplementedError(f"covariate_drift.form {_DRIFT['form']!r}: only 'intercept' (P0) is built")
+if DRIFT_ON and _DRIFT["form"] not in ("intercept", "covariate"):
+    raise NotImplementedError(f"covariate_drift.form {_DRIFT['form']!r}: 'intercept' (P0) or 'covariate' (P2)")
 DRIFT_FIELDS = ("adult_survival", "fecundity", "capacity", "juvenile_survival")
-_DRIFT_ON_FIELDS = tuple(_DRIFT.get("fields", DRIFT_FIELDS)) if DRIFT_ON else ()
+# "fields" entries may be lists: a list is a TIED group sharing one set of weights (e.g. both survivals).
+_DRIFT_GROUPS = tuple(tuple(g) if isinstance(g, (list, tuple)) else (g,)
+                      for g in (_DRIFT.get("fields", DRIFT_FIELDS) if DRIFT_ON else ()))
+_DRIFT_ON_FIELDS = tuple(f for g in _DRIFT_GROUPS for f in g)
 if not set(_DRIFT_ON_FIELDS) <= set(DRIFT_FIELDS):
     raise ValueError(f"covariate_drift.fields must be a subset of {DRIFT_FIELDS}")
 #   numerics                  {"fft_pad": float, "fft_floor_ulps": float | null}: zero-pad the dispersal FFT
@@ -555,7 +558,7 @@ def sample_priors(prior_scale=1.0, M_features=None, time=None,
     # year-to-year wiggle.
     k_trend_budget = float(_K_TREND["budget"]) * prior_scale
     n_k_trend = int(_K_TREND["n_basis"])
-    if "capacity" in _DRIFT_ON_FIELDS:
+    if "capacity" in _DRIFT_ON_FIELDS and _DRIFT.get("form") == "intercept":
         # covariate_drift owns K's temporal intercept; never both (two names for one direction).
         priors['w_k_trend'] = numpyro.deterministic("w_k_trend", jnp.zeros(n_k_trend))
     else:
@@ -988,17 +991,38 @@ def build_model_2d(data, prior_scale=1.0):
             jnp.dot(z_center, priors['beta_k']), jnp.dot(z_center, priors['beta_sj'])]))
 
     field_drift = None
+    covariate_drift_in = None
     if DRIFT_ON:
         # Prior sd per weight = budget/sqrt(n_basis) on the LINK scale (logit for survival, softplus
         # argument for fecundity and capacity), as k_trend. Weak by construction: the default 0.2
         # moves a survival logit ~0.2 (a few % of survival) over the window.
         nb = data['drift_basis'].shape[0]
         sd = float(_DRIFT.get("budget", 0.2)) / jnp.sqrt(nb) * prior_scale
-        w_on = numpyro.sample("covariate_drift_w", dist.Normal(0.0, sd).expand([len(_DRIFT_ON_FIELDS), nb]))
-        W = jnp.zeros((4, nb), dtype=w_on.dtype)
-        for i, f in enumerate(_DRIFT_ON_FIELDS):
-            W = W.at[DRIFT_FIELDS.index(f)].set(w_on[i])
-        field_drift = numpyro.deterministic("covariate_drift", (W @ data['drift_basis']).T)   # (time, 4)
+        if _DRIFT["form"] == "intercept":
+            w_on = numpyro.sample("covariate_drift_w", dist.Normal(0.0, sd).expand([len(_DRIFT_GROUPS), nb]))
+            W = jnp.zeros((4, nb), dtype=w_on.dtype)
+            for i, grp in enumerate(_DRIFT_GROUPS):
+                for f in grp:
+                    W = W.at[DRIFT_FIELDS.index(f)].set(w_on[i])
+            field_drift = numpyro.deterministic("covariate_drift", (W @ data['drift_basis']).T)   # (time, 4)
+        else:
+            # P2: weights per (covariate, field group, basis fn), per sd of the covariate. prior "normal"
+            # (sd = budget/sqrt(nb)) or "cauchy" (scale = cauchy_scale): heavy-tailed, strongly peaked at 0, so
+            # weak effects shrink to ~0 while strong signals escape -- a MAP/L-BFGS-friendly stand-in for a
+            # horseshoe (whose hierarchical funnel collapses under point optimisation).
+            C = data['drift_x'].shape[-1]
+            shape = [C, len(_DRIFT_GROUPS), nb]
+            if _DRIFT.get("prior", "normal") == "cauchy":
+                w_on = numpyro.sample("covariate_drift_w", dist.Cauchy(
+                    0.0, float(_DRIFT.get("cauchy_scale", 0.02)) * prior_scale).expand(shape))
+            else:
+                w_on = numpyro.sample("covariate_drift_w", dist.Normal(0.0, sd).expand(shape))
+            W = jnp.zeros((C, 4, nb), dtype=w_on.dtype)
+            for i, grp in enumerate(_DRIFT_GROUPS):
+                for f in grp:
+                    W = W.at[:, DRIFT_FIELDS.index(f)].set(w_on[:, i])
+            G = numpyro.deterministic("covariate_drift", jnp.einsum("cfb,bt->tcf", W, data['drift_basis']))
+            covariate_drift_in = (data['drift_x'], G)                                # G (time, C, 4)
 
     # 1. Compute Biological Fields (2D Manifold -> Demographic Rates)
     # Notice we now pass beta_s and beta_r instead of a single beta_h
@@ -1022,6 +1046,7 @@ def build_model_2d(data, prior_scale=1.0):
             if HABITAT_SHRINK else None),
         Z_mean=data.get("Z_mean"), Z_disp_mean=data.get("Z_disp_mean"),
         field_drift=field_drift,
+        covariate_drift=covariate_drift_in,
     )
     if BAND_WEIGHTS:
         _nb = data['juvenile_fft_kernel_stack'].shape[0] // 4

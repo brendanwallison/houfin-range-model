@@ -318,6 +318,15 @@ _REFINE = {"max_iter": 200, "memory": 10, "tol_du": 1e-10, "tol_window": 5, "tol
            "ckpt_every": 3, "log_every": 1000}
 
 
+def test_refine_convergence_never_calls_an_objective_increase_a_small_drop():
+    from src.model.age_refine_map import converged
+    s = {**_REFINE, "tol_du": 0.05, "tol_window": 2, "tol_grad": 1e-6}
+    worse = [(0, 10.0, 100.0), (1, 9.9, 100.0), (2, 10.01, 100.0)]
+    small_improvement = [(0, 10.0, 100.0), (1, 9.98, 100.0), (2, 9.97, 100.0)]
+    assert converged(worse, s) is None
+    assert "U fell 0.03" in converged(small_improvement, s)
+
+
 def test_lbfgs_refine_reaches_the_optimum_of_an_ill_conditioned_potential(tmp_path):
     from src.model.age_refine_map import lbfgs_minimize
     f, kw, exact = _quad()

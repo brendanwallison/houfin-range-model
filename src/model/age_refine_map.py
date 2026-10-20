@@ -58,9 +58,14 @@ def converged(history: list, s: dict):
     if history[-1][2] < s["tol_grad"]:
         return f"|grad| {history[-1][2]:.3g} < tol_grad {s['tol_grad']}"
     w = s["tol_window"]
-    if len(history) > w and history[-w - 1][1] - history[-1][1] < s["tol_du"]:
-        return (f"U fell {history[-w - 1][1] - history[-1][1]:.3g} < tol_du {s['tol_du']} "
-                f"over {w} iterations")
+    if len(history) > w:
+        drop = history[-w - 1][1] - history[-1][1]
+        # A negative "drop" means the latest point is WORSE.  The old one-sided
+        # test accepted every increase as convergence; E064a therefore stopped
+        # with |grad| ~= 99,000 after U rose slightly over its final window.
+        if 0.0 <= drop < s["tol_du"]:
+            return (f"U fell {drop:.3g} < tol_du {s['tol_du']} "
+                    f"over {w} iterations")
     return None
 
 

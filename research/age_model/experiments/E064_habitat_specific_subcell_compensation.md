@@ -173,3 +173,17 @@ west 1.04, east 1.17; Sa/Sj/F .58/.33/5.1; no Allee-dead. Refine stalled (median
 172,051 in 1,201 it). The stalled point already shows the old 59a signature (Sa/Sj/F .49/.45/8.75, lam0 1.65), so
 E059a's pattern may survive a genuinely bounded route effect -- pending a valid refine: continuation from a copy of the
 stalled point + plots queued (0313). 64l (route + loose K trend) refining.
+
+## 64k CONVERGED (continuation, 2026-10-20): bounded route effects fix the absence switch, not the demography
+Continued from a copy of the stalled point: 172,051 -> 172,035 in 239 it (passes the gate). Refined: Allee-dead 2%
+(W .01 / P .03 / E 0); plains K .057 (no-route refines ~.01); plains / west / east med lam .96 / 1.01 / 1.50; Sa/Sj/F
+.50/.45/8.8, lam0 1.67; K trend 3.0 sds; corr .90. West-sink audit: 54% of the west fundamental sink, one 1.73M km2
+component (129-105 W, 33-55 N) holding 356 positive-BBS cells and ~50% of the native seed -- a broad contortion by
+E064's criteria. A genuinely bounded route effect relieves the SPATIAL-ABSENCE pressure (E059a's K/Allee claim holds
+in that respect) but not the DEMOGRAPHIC/TIMING pressure (F ~9, Sj -> Sa) nor the western sink.
+CORRECTION (user check of the maps, 2026-10-20): the broad western sink is ALREADY at 64k's MAP -- west fundamental sink
+49.6% vs 54.4% refined, the same 1.73M km2 component, native seed in sink 47.6% vs 49.8%. It is not a refine contortion
+but a feature of this base at MAP (a habitat-field / DESK question). The plains trough mostly survives refinement
+(sinks .63 -> .54, med lam .92 -> .96; plains stay below the west 1.04 -> 1.01). What refinement changes in 64k is
+demography (F 5 -> 9, Sj -> Sa), eastern growth (med lam 1.17 -> 1.50) and plains K (.14 -> .06). The E064 "western sinks
+are contortions" reading should likewise be checked against each arm's MAP audit before it stands.

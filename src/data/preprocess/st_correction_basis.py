@@ -57,6 +57,8 @@ def build(input_dir, n_freq, out_path):
     zg[0, rows, cols, :] = np.asarray(zmem[t0, :, :4])
     rebuilt = np.asarray(integrate_paths(jnp.asarray(zg), kernel_stack, jnp.asarray(land_mask_np),
                                          steps=int(disp["path_integration_steps"])))[0][rows, cols]
+    # integrate_paths returns (..., M, K); model inputs store Z_disp as (N_land, K, M) (model_inputs transposes)
+    rebuilt = np.transpose(rebuilt, (0, 2, 1))
     stored = np.asarray(zdmem[t0, :, :, :4])
     err = float(np.max(np.abs(rebuilt - stored)) / (np.max(np.abs(stored)) + 1e-12))
     print(f"[st_correction_basis] operator check vs stored Z_disp: max rel err {err:.2e}")
@@ -66,7 +68,7 @@ def build(input_dir, n_freq, out_path):
     grid[0, rows, cols, :] = S.T
     S_disp_grid = integrate_paths(jnp.asarray(grid), kernel_stack, jnp.asarray(land_mask_np),
                                   steps=int(disp["path_integration_steps"]))          # (1, Ny, Nx, K, nb)
-    S_disp = np.asarray(S_disp_grid)[0][rows, cols]                                   # (N_land, K, nb)
+    S_disp = np.transpose(np.asarray(S_disp_grid)[0][rows, cols], (0, 2, 1))          # (N_land, nb, K) -> (N_land, K, nb)
     np.savez_compressed(out_path, S=S.astype(np.float32), S_disp=S_disp.astype(np.float32),
                         n_freq=int(n_freq), labels=np.asarray(labels))
     print(f"[st_correction_basis] {out_path}: S {S.shape}, S_disp {S_disp.shape}")

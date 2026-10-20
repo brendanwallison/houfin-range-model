@@ -25,6 +25,12 @@ source "$REPO/research/age_model/bin/task_header.sh"
 export OVERLAY="$TWT/config/overlays/$FILE"
 export ARM="$CODE"
 export OUT_ROOT="$WORK/houfin/research/age_model/E064"
+# Repair tasks named *fresh* deliberately archive an incompatible/invalid
+# L-BFGS state and restart refinement from the verified quick MAP.  Ordinary
+# retries remain resumable.
+if [[ "$JOB" == *fresh* ]]; then
+  export HOUFIN_REFINE_FRESH=1
+fi
 
 if [[ "$CODE" == 64n || "$CODE" == 64r ]]; then
   mkdir -p "$OUT_ROOT/$CODE"

@@ -1243,8 +1243,17 @@ def build_model_2d(data, prior_scale=1.0):
     # learned from repeated years, instead of extra per-observation noise (kappa), so each
     # observation keeps its information about the cell mean. Pseudo-zeros (route -1) get none.
     if _OBS_SPEC.get("route_effects"):
-        _sr = numpyro.sample("obs_route_sd", dist.HalfNormal(
-            float(_OBS_SPEC.get("route_sd_scale", 0.5)) * prior_scale))
+        # Most PINNED sites are sampled by sample_priors(), which is conditioned above.
+        # This likelihood-level site lives outside that handler, so condition it here as
+        # well.  E059/E064 route arms exposed the omission: their resolved configs said
+        # obs_route_sd=0.7 was fixed, but AutoDelta/L-BFGS were actually free to fit it.
+        # Record a deterministic at the fixed value so Predictive diagnostics can still
+        # request the named quantity without adding an optimizable coordinate.
+        if "obs_route_sd" in PINNED:
+            _sr = numpyro.deterministic("obs_route_sd", jnp.asarray(PINNED["obs_route_sd"]))
+        else:
+            _sr = numpyro.sample("obs_route_sd", dist.HalfNormal(
+                float(_OBS_SPEC.get("route_sd_scale", 0.5)) * prior_scale))
         _zr = numpyro.sample("obs_route_raw", dist.Normal(0.0, 1.0).expand([int(data["n_routes"])]))
         _ri = data["obs_route"]
         route_fx = jnp.where(_ri >= 0, _sr * _zr[jnp.maximum(_ri, 0)], 0.0)

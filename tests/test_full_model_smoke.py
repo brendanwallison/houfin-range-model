@@ -139,6 +139,9 @@ def _start_like_age_run_map():
     state = svi.init(jax.random.PRNGKey(41), data=data, prior_scale=0.1)
     state, loss = svi.update(state, data=data, prior_scale=0.1)
     assert np.isfinite(float(loss))
+    if os.environ.get("ASSERT_PINNED_ROUTE_SD") == "1":
+        params = svi.get_params(state)
+        assert "obs_route_sd_auto_loc" not in params, sorted(params)
     print("SMOKE_OK", float(loss))
 
 
@@ -148,6 +151,17 @@ def test_full_model_starts_nan_free(overlay):
     env.pop("AGE_MODEL_CONFIG", None)
     if overlay:
         env["AGE_MODEL_CONFIG"] = os.path.join(REPO, "config", "overlays", overlay)
+    r = subprocess.run([sys.executable, os.path.abspath(__file__)], cwd=REPO, env=env,
+                       capture_output=True, text=True)
+    assert "SMOKE_OK" in r.stdout, (r.stdout[-2000:] + r.stderr[-4000:])
+
+
+def test_pinned_route_sd_is_not_fitted():
+    """Likelihood-level pins must be excluded from AutoDelta just like prior-level pins."""
+    env = dict(os.environ,
+               AGE_MODEL_CONFIG=os.path.join(REPO, "config", "overlays",
+                                             "map_run64b_subcell_route.json"),
+               ASSERT_PINNED_ROUTE_SD="1")
     r = subprocess.run([sys.executable, os.path.abspath(__file__)], cwd=REPO, env=env,
                        capture_output=True, text=True)
     assert "SMOKE_OK" in r.stdout, (r.stdout[-2000:] + r.stderr[-4000:])

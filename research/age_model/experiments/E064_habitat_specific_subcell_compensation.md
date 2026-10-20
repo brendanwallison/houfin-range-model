@@ -187,3 +187,10 @@ but a feature of this base at MAP (a habitat-field / DESK question). The plains 
 (sinks .63 -> .54, med lam .92 -> .96; plains stay below the west 1.04 -> 1.01). What refinement changes in 64k is
 demography (F 5 -> 9, Sj -> Sa), eastern growth (med lam 1.17 -> 1.50) and plains K (.14 -> .06). The E064 "western sinks
 are contortions" reading should likewise be checked against each arm's MAP audit before it stands.
+
+## 64l RESULT (2026-10-20): route SD .7 + loose K trend -- refine unconverged at 8000 it (170,938)
+MAP: plains .65 sinks med .92 vs west 1.02, east 1.19; Sa/Sj/F .58/.34/5.1; K trend x.28 -> x2.15 (z 3.6); west sink
+.535 (audit). Refined (unconverged): plains .63 sinks med .85, west .60 sinks med .94, east 1.44; Sa/Sj/F .50/.48/8.4,
+lam0 1.70; K trend x.09 -> x3.34 (37x over 1902-2025, z 4.8); west sink .642; Allee-dead 1%. With a truly bounded
+route effect the plains stay the worst region, but the demographic pull (F 8.4, Sj ~ Sa), eastern growth (1.44) and
+a large continental K rise remain, and the west deepens as a sink. Not converged: provisional.

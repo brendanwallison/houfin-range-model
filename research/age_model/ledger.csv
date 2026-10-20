@@ -127,3 +127,4 @@ date,experiment,variant,run_dir,U,fit_corr,notes,su
 2026-10-20,E065,65r recovery,run_65r,278789.5,,FAIL: truth +.5/+.5/+.25/+.35 recovered as -.21/-1.47/-.28/-.74; sub-cell compensation not identified; E064/E065 moderators uninterpretable,
 2026-10-20,E064,64k,run_64k,172050.8,,corrected route control: MAP realistic (P .92 vs W 1.04); refine stalled at gate (1.08e4); stalled point ~59a (Sa .49 Sj .45 F 8.75); continuation queued,
 2026-10-20,E064,64k converged,run_64k,172035.1,,route SD truly .7: Allee-dead 2%, plains K .057 kept; but Sa .50 Sj .45 F 8.8, east lam 1.50, west 54% sink (1.7M km2, 50% native seed),
+2026-10-20,E064,64l,run_64l,170938.1,,route .7 + loose K trend (unconverged): plains .85 still worst; Sa .50 Sj .48 F 8.4; K x.09->x3.34; west sink .54->.64,

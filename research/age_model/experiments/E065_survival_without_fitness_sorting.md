@@ -50,3 +50,19 @@ generic survival 0.25, and survival moderator 0.35; 65n sets all four to zero.
   than inferred after diagnostics.
 - Western sinks are judged by extent, connected components, native-seed overlap, and
   positive-BBS overlap exactly as in E064; their existence alone is not a failure.
+
+## Results so far (read 2026-10-20; 65n/65r running, 65j failed the plateau gate -- median |grad| 2.4e4)
+All five no-route arms converge (2,444-3,569 it). Refined:
+| arm | U | sigma_s / sigma_s_mod (beta_k / mod) | Sa/Sj/F | lam0 | plains / west / east med lam | Allee-dead W/P/E | K trend z |
+|---|---|---|---|---|---|---|---|
+| 65d generic | 186,344 | -.045 | .74/.11/11.0 | 1.39 | .99 / 1.00 / 1.22 | .13/.10/.05 | 5.0 |
+| 65f x cold | 186,309 | +.337 / +.800 | .65/.18/10.9 | 1.51 | .99 / .98 / 1.18 | .04/.15/.04 | 5.5 |
+| 65g x snow | 186,249 | -.146 / -.177 | .75/.13/10.7 | 1.44 | 1.00 / 1.00 / 1.14 | .18/.15/.03 | 3.7 |
+| 65h x harsh | 186,204 | -.080 / -.355 | .72/.14/10.3 | 1.45 | 1.00 / 1.00 / 1.17 | .15/.19/.03 | 4.3 |
+| 65i both | 186,426 | -.247 / +.603 (+.281 / +.172) | .72/.18/9.6 | 1.52 | 1.00 / 1.00 / 1.21 | .11/.19/.03 | 4.7 |
+Reading (provisional until 65n/65r): (1) the winter moderator's SIGN is unstable -- positive under cold (+.80), negative
+under snow (-.18) and the combined index (-.36), positive again in 65i -- exactly the preregistered warning that the
+index exploits covariance rather than winter severity; (2) the generic urban survival effect is ~0 or negative; (3) none
+of it relieves the refine: Sj .11-.18 (juvenile survival at a fraction of adult), F 9.6-11, Allee-dead 10-19%, the
+plains trough flattened to the west's level, K trend 3.7-5.5 sds. No support for urban winter compensation as the
+missing mechanism. MAP-stage plots for these arms are being backfilled (0310).

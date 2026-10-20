@@ -31,6 +31,13 @@ export OUT_ROOT="$WORK/houfin/research/age_model/E064"
 if [[ "$JOB" == *fresh* ]]; then
   export HOUFIN_REFINE_FRESH=1
 fi
+# Explicitly named exception for a reusable upstream MAP after a source edit that
+# cannot affect that arm's density (for example, the route-only pin fix while
+# repairing no-route 64a).  Never infer this from *fresh*: most source changes do
+# require a new MAP.
+if [[ "$JOB" == *allowdrift* ]]; then
+  export HOUFIN_HMC_ALLOW_MODEL_DRIFT=1
+fi
 if [[ "$JOB" == *fullfresh* ]]; then
   export HOUFIN_MAP_FRESH=1
   # Preserve the invalid run's task-level evidence as well as the model checkpoints

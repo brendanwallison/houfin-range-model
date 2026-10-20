@@ -1,0 +1,5 @@
+{
+  "_extends": "map_run62b_numerics.json",
+  "_comment": ["E068a: 62b's structure fitted (cold MAP -> refine) to SYNTHETIC counts drawn at 62b's MAP point -- a plausible truth (Sa .57 Sj .31 F 5.1, plains trough). Does the refine still contort when the data come from the model itself?"],
+  "run_names": {"map": "age_map_{precision}_run_68a", "vis_map": "age_map_{precision}_run_68a"}
+}

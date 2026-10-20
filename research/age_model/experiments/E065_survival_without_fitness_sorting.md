@@ -83,3 +83,18 @@ magnitudes. With 65n returning beta_k ~ -.3 from no effect, the within-cell comp
 as specified (the sub-cell tilts trade off against the other fields). Per the preregistered gate, NO real-data E064/
 E065 moderator estimate is interpretable. Caveat (as for 65n): the truth point fitted route SD 1.29 vs the tested .7.
 Not pursued further without a reformulation that is identifiable on synthetic data first.
+
+## MAP vs refined (backfilled MAP plots, 2026-10-20) -- the sub-cell machinery is inert at MAP; every refine contorts alike
+| arm | MAP Sa/Sj/F | MAP P/W/E med lam | ref Sa/Sj/F | ref P/W/E med lam | ref Allee-dead |
+|---|---|---|---|---|---|
+| 64c | .57/.31/5.2 | .86/1.01/1.07 | .75/.10/12.3 | .99/1.00/1.14 | .11 |
+| 64e | .58/.31/5.3 | .86/1.02/1.08 | .73/.13/10.7 | 1.00/1.00/1.15 | .12 |
+| 65d | .57/.31/5.2 | .86/1.01/1.07 | .74/.11/11.0 | .99/1.00/1.22 | .09 |
+| 65f | .57/.31/5.3 | .86/1.02/1.08 | .65/.18/10.9 | .99/.98/1.18 | .07 |
+| 65g | .58/.31/5.3 | .86/1.02/1.09 | .75/.13/10.7 | 1.00/1.00/1.14 | .11 |
+| 65h | .57/.31/5.3 | .86/1.02/1.08 | .72/.14/10.3 | 1.00/1.00/1.17 | .11 |
+| 65i | .58/.31/5.3 | .85/1.01/1.08 | .72/.18/9.6 | 1.00/1.00/1.21 | .10 |
+Every MAP is the same plausible model (plains trough .86 vs west 1.01, no Allee-dead); every refine doubles F, flattens
+the plains to exactly the west's lam ~1.00, and kills ~10% of cells. Juvenile survival collapses here (strata) while it
+rises to ~Sa under route effects (64k/59a) -- different routes to the same higher reproductive turnover. The
+demographic/timing pressure is insensitive to the sub-cell structure.

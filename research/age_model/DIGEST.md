@@ -1,6 +1,12 @@
 # DIGEST (newest first)
 
 ## 2026-10-20 E064 interim: capacity compensation rejected; survival probe numerically invalid
+- A direct evaluation of corrected 64b's saved checkpoint found U=179,318.44 and
+  |grad|=7,331, rather than the report's 179,318.95/70,861. Refinement bookkeeping
+  reported the point before its final L-BFGS update; this is now fixed and regression
+  tested. The route-effect gradient is only 479, while fecundity/demographic/process
+  terms dominate, so corrected route controls 64k/l remain informative. Arm 64b is
+  still only borderline numerically and requires a clean continuation.
 - Valid no-route fits reject the breeding-site hypothesis as implemented. Capacity-only
   64c estimates urban beta_k=-.353; deficit-targeted 64e estimates generic -.0019 and
   moderator +.023. Both retain Sj .10-.13, F 10.7-12.3, K-trend safety-valve trips,

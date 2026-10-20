@@ -152,8 +152,13 @@ the source of the numerical failures. E065 preregisters the physiological mechan
 without survival-informed sorting; failed E064 outputs remain archived evidence and
 will not be relabeled as biological results.
 
-Corrected 64b did enforce route SD=0.7, but stalled at U=179,318.95 with final
-gradient 70,861. A gradient-anatomy task is queued before the corrected route-only
-controls 64k/l; if `obs_route_raw` dominates, those controls require an observation-
-effect optimizer/parameterization fix rather than repeated L-BFGS starts. If a process
-site dominates, 64k/l remain informative as written.
+Corrected 64b did enforce route SD=0.7. A direct evaluation of its saved checkpoint
+found U=179,318.44 and gradient norm 7,331, rather than the report's
+179,318.95/70,861. The report described the point before the final L-BFGS update; the
+refinement loop now stops and checkpoints the same evaluated point, with a regression
+test. `obs_route_raw` contributes only 479 to the gradient, while
+`subcell_delta_f` (4,612), `alpha_a` (4,258), `manifold_factor` (2,351), and
+`alpha_j` (1,962) dominate. Thus the route random effect is not the optimizer
+bottleneck and corrected controls 64k/l remain informative as written. Arm 64b is
+still only borderline numerically relative to the cleaner fits and requires a fresh
+continuation before biological interpretation.

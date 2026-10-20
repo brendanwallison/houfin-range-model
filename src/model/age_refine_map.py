@@ -108,6 +108,11 @@ def lbfgs_minimize(f, x0, kw, s: dict, state_path: str, run_fingerprint: str, lo
     else:
         x, state, history = jnp.asarray(x0), opt.init(jnp.asarray(x0)), []
 
+    # The optimizer returns an update together with U/grad evaluated at the point
+    # *before* that update. Keep the last evaluated finite point explicitly: stop
+    # decisions and reports must describe the same x that is returned and saved.
+    last_finite_x, last_finite_state = x, state
+
     def save(reason=None, terminal=False):
         save_pickle_atomic({"fingerprint": run_fingerprint, "x": np.asarray(x),
                             "opt_state": jax.device_get(state), "history": history,
@@ -119,11 +124,13 @@ def lbfgs_minimize(f, x0, kw, s: dict, state_path: str, run_fingerprint: str, lo
         value, gnorm = float(value), float(jnp.linalg.norm(grad))
         if not (np.isfinite(value) and np.isfinite(gnorm)):
             reason = f"non-finite U or grad at iteration {len(history)}; kept last finite point"
+            x, state = last_finite_x, last_finite_state
             save(reason, terminal=True)
             return x, history, reason
-        # value/grad belong to x (the point before this update): record, then advance.
+        # value/grad belong to x (the point before this update). Record and decide
+        # whether to stop BEFORE advancing so the checkpoint and report stay aligned.
+        last_finite_x, last_finite_state = x, state
         history.append((len(history), value, gnorm))
-        x, state = x_new, state_new
         n = len(history)
         if n % s["log_every"] == 0 or n == it0 + 1:
             rate = (n - it0) / max(time.time() - t0, 1e-9)
@@ -134,6 +141,7 @@ def lbfgs_minimize(f, x0, kw, s: dict, state_path: str, run_fingerprint: str, lo
         if reason:
             save(reason, terminal=True)
             return x, history, reason
+        x, state = x_new, state_new
         if n % s["ckpt_every"] == 0:
             save()
     reason = f"max_iter {s['max_iter']} reached (not converged; raise HOUFIN_REFINE_MAX_ITER to continue)"

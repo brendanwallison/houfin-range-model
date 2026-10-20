@@ -343,6 +343,9 @@ def test_lbfgs_refine_reaches_the_optimum_of_an_ill_conditioned_potential(tmp_pa
                                      log=lambda *_: None)
     np.testing.assert_allclose(np.asarray(x), np.asarray(exact), rtol=1e-4, atol=1e-8)
     assert reason and "max_iter" not in reason
+    value, grad = jax.value_and_grad(lambda q: f(q, kw))(x)
+    assert float(value) == pytest.approx(hist[-1][1], rel=1e-12, abs=1e-12)
+    assert float(jnp.linalg.norm(grad)) == pytest.approx(hist[-1][2], rel=1e-10)
 
 
 def test_lbfgs_refine_resumes_exactly(tmp_path):

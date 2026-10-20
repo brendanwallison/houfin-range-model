@@ -109,3 +109,10 @@ gradient for the two tilt parameters is wrong there. Mechanism (likely): the all
 w - (S - M)/dS -- where the allocation curve is nearly flat dS -> 0 and the derivative explodes ~1/dS^2 (the local FD
 test used uniform cells and never hit it). Strata results with sigma_s or delta_f free are suspect until the
 correction is guarded/smoothed (e.g. stop the correction when |dS| is small relative to M, or soft masks in alloc).
+
+## FD pinpoint RESULT (0039a, read 2026-10-20): the 58b stall is a CORNER at sigma = 0
+Hard allocation: along subcell_sigma_s and subcell_delta_f, U RISES in BOTH directions at h = 1e-7 (+.70/+7.7 and
++2.9/+5.0) and the FD estimate changes sign with h -- a non-differentiable point (the refine had driven sigma to exactly
+0). beta_k and alpha_f are smooth (AD = FD to 4 digits). With smooth_allocation 1e-3, AD matches FD at small h
+(sigma 54,685 vs 54,766) though curvature stays steep. Consistent with E064/E065's diagnosis (survival tilt inside the
+equal-fitness allocation root) and their fix (compact C1 smoothing; survival not used for sorting).

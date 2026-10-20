@@ -117,3 +117,7 @@ date,experiment,variant,run_dir,U,fit_corr,notes,su
 2026-10-19,E058,58b/c continue,,200331.8/204513.0,,stalls are optimiser failures (grad norm ~1e6 vs ~300-550 at optima); survival tilt breaks the allocation's implicit gradient; withdrawn,
 2026-10-19,E057,57n null,run_57n,185582.5,,PASS: refined drift .69 sd, changes <=.16 (real 57a: 5.3 sd, +1.1-1.3): real temporal signal,
 2026-10-19,E058,grad anatomy,,,,58b stall gradient = subcell sigma_s/delta_f (1.9e6/6.9e5); -grad not a descent direction at 1e-7; Newton correction near dS->0 suspect,
+2026-10-20,E063,63a/b/c,,186283/186139/186149,,occupancy refits contort like the base (F10-15, Allee-dead .09-.18; 63a Sj=Sa .45 + west sink); not a fix,
+2026-10-20,E057,57r,run_57r,176816.1,,recovery PASS: capacity +.546 of +.6; P0 calibrated,
+2026-10-20,E057,P2 arms,,,,NOT interpretable: route SD not actually pinned (59a base) + refine stalls; rerun on corrected base,
+2026-10-20,E058,fd pinpoint,,,,58b stall = corner at sigma 0 (U rises both ways at 1e-7); smoothing restores AD=FD,

@@ -7,12 +7,13 @@ REPO=/work/07980/bwa386/ls6/houfin/age-research
 TWT=$SCRATCH/age_wt/$(basename "$0" .sh)
 # Several workers often claim tasks in the same second. Git's worktree metadata is
 # shared, so concurrent prune/add operations race and one task can exit before it even
-# writes a log. Serialize only this short setup section. The main checkout is deployed
-# explicitly by the monitor; a per-task network pull is both unnecessary and another
-# shared-repository race.
+# writes a log. Serialize only this short setup section (including the pull from origin,
+# which would otherwise race the same metadata).
 mkdir -p "$SCRATCH/age_wt"
 exec 9>"$SCRATCH/age_wt/.setup.lock"
 flock 9
+# Deploy from origin (the record of what ran): fast-forward the shared checkout under the lock.
+git -C "$REPO" pull -q --ff-only 2>/dev/null || echo "[task_header] WARNING: pull failed; running $(git -C "$REPO" rev-parse --short HEAD)"
 git -C "$REPO" worktree prune
 rm -rf "$TWT"
 git -C "$REPO" worktree add -f --detach "$TWT" HEAD >/dev/null 2>&1 || exit 1

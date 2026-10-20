@@ -113,3 +113,12 @@ drift max .69 prior sds; change 1966 -> 2023 fecundity +.16, capacity -.02, surv
 fecundity +1.26, capacity +1.14, juvenile survival +1.16). The structure does not manufacture drift from the
 invasion/disease dynamics it is given: 57a's rise is a real temporal signal in the BBS record (not yet attributed to a
 covariate -- P2). 57r recovery (capacity +.6 injected) refined to 176,816; readout pending its viz.
+
+## 57r RECOVERY RESULT (read 2026-10-20): PASS -- P0 is calibrated
+Injected capacity drift +.60 (1966 -> 2023) recovered as +.546 (91%); fecundity +.15, survivals ~0; max 2.6 sds.
+With 57n's null pass, 57a's real temporal signal (fecundity/capacity/juvenile survival rising ~1.1-1.3) stands.
+
+## P2 arms (57b/g/p/q/z/x/xn/xr) -- NOT INTERPRETABLE (2026-10-20)
+All used base 59a, whose nominally pinned route SD was actually fitted (E064 audit: 1.02-2.52 in these arms), and the
+single-covariate refines stopped with gradients 3.8e3-7.7e4 after 577-964 iterations (stalls under the new plateau
+gate); 57x/57xr hit max_iter unconverged. They must be rerun on a corrected base (no route, or route SD truly fixed).

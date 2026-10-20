@@ -55,3 +55,14 @@ f32/f64 gap is a ~2% effective offset: it explains the MAP f32-vs-f64 U mismatch
 CORRECTS both earlier readings ("cures it" -- off threshold; "~10x better" -- coarse grid). Occupancy's case now
 rests on biology (lone birds cannot breed; stochastic establishment) and on whether 63a-c fit better, NOT on
 numerical conditioning. For HMC: expect a narrow curved ridge in F (and its trade-offs), tractable with a good metric.
+
+## 63a-c RESULT (read 2026-10-20): occupancy does not prevent the refine contortion
+Base 62b (55a + numerics) + occupancy at 58 / 29 / 116 birds per route count. All refines converge (grad 70-280).
+| run | U ref | Sa/Sj/F | lam0 | plains / west / east med lam | Allee-dead (frac suitable) |
+|---|---|---|---|---|---|
+| 63a MAP | | | | .93 / 1.07 / 1.16 | 0 |
+| 63a ref (58) | 186,283 | .45/.45/10.3 | 1.70 | .76 / .72 / 1.01 | .105 |
+| 63b ref (29) | 186,139 | .64/.43/10.5 | 2.06 | 1.06 / .99 / 1.24 | .085 |
+| 63c ref (116) | 186,149 | .66/.31/15.2 | 2.13 | 1.01 / 1.00 / 1.26 | .178 |
+The familiar distortions return (F 10-15, Sj = Sa in 63a, Allee-dead, a western sink in 63a); U equals the base's
+(~186.1k). Occupancy is not the missing piece for the refine's pull; its biological case stands but it is not a fix.

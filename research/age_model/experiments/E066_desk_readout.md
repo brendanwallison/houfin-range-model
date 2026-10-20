@@ -67,3 +67,10 @@ both manifold blocks (level 7.2e5/4.7e5, within 3.5e5/2.3e5), w_k_trend (3.3e5),
 by ~+.45 at BOTH 1e-7 and 1e-5 -- a JUMP (discontinuity), not a corner. 66a (r24) at its optimum: |grad| 639, small
 non-descent wobble only. Suspect: the hard FFT floor in numerics (fft_floor_ulps zeroes sub-threshold convolution output,
 so values crossing the threshold make U jump); B1 carries it. Test queued (0321bx: same point, floor on vs off).
+
+## 66m RESULT (2026-10-20): calibrated deviation prior is overruled; contortion unchanged
+MAP 203,102: plains .82 sinks med .77 vs west 1.07, east 1.00; Sa/Sj/F .55/.28/4.89; deviation/level .22-.38.
+Refined (converged, 5,620 it; 184,639): Sa/Sj/F .51/.46/16.2, lam0 2.21; plains .99 / west .94 / east 1.11; west sink
+.41 -> .63; deviation/level 1.7-3.3 -- ~3 log-sds ABOVE the DESK-centred prior (.14). The data push DESK's temporal
+deviations to outweigh its spatial level, the opposite of DESK's own measured split, and the contortion is the same as
+66a's. Constraining DESK's temporal channel does not remove the pressure; the refine overrides the prior to get it.

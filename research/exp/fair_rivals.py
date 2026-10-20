@@ -108,6 +108,9 @@ def main():
     ap.add_argument("--thin-detect", type=float, default=1.0,
                     help="E086g: binomially thin the target's TRAINING counts (lower effort / detection); truth untouched")
     ap.add_argument("--thin-seed", type=int, default=0)
+    ap.add_argument("--desk-split", type=int, default=0,
+                    help="E086i: DESK's block in every fit split into dims [0, K) and [K, rank), each its OWN amplitude (a "
+                         "rank-structured prior: the readout can keep or shrink the tail per species); 0 = one block")
     ap.add_argument("--lean", action="store_true",
                     help="E059b: skip the optional arms (placebo_600, placebo+within_raw, placebo+kindxtime_8); every "
                          "headline number (placebo_300, desk_within, joint gains, strong base, buffer, head-to-head, "
@@ -292,8 +295,14 @@ def main():
     if D_desk is None:
         D_desk = preds["desk"] = dz
     notes["desk_keys_vs_epoch_z_maxabs"] = float(np.abs(dz - D_desk).max())
-    preds["desk_within"] = dz @ blr.fit((zk - cmean(zk, w_ty))[trn], Zd[trn], [(0, r)])["coef"].T
+    _K = a.desk_split if 0 < a.desk_split < r else 0
+    _dblocks = [(0, _K), (_K, r)] if _K else [(0, r)]
+    preds["desk_within"] = dz @ blr.fit((zk - cmean(zk, w_ty))[trn], Zd[trn], _dblocks)["coef"].T
     keep_feats["desk_within"] = (zk - cmean(zk, w_ty), dz)
+    DK = [keep_feats["desk_within"]]
+    if _K:                                   # E086i: head and tail of DESK as two blocks wherever DESK enters a fit
+        _Xd, _Ed = keep_feats["desk_within"]
+        DK = [(_Xd[:, :_K], _Ed[:, :_K]), (_Xd[:, _K:], _Ed[:, _K:])]
     within_arms = ["desk_within"]
     if Xdev is not None:
         preds["desk"] = preds["desk_within"]          # raw z change lives in ESK space; species need a readout
@@ -342,10 +351,9 @@ def main():
                             ("kxt_only", [keep_feats["kindxtime_32"]]),
                             ("cov_lin", [keep_feats["kindxtime_32"], keep_feats["within_sup"], keep_feats["within_ema"]]),
                             ("cov_all", [keep_feats["kindxtime_32"], keep_feats["within_sup"], keep_feats["within_ema"],
-                                         keep_feats["desk_within"]]),
+                                         *DK]),
                             # E086f: the CLOCK-FREE contest -- covariate change alone, and with DESK added
-                            ("cov_chg+desk_within", [keep_feats["within_sup"], keep_feats["within_ema"],
-                                                     keep_feats["desk_within"]])):
+                            ("cov_chg+desk_within", [keep_feats["within_sup"], keep_feats["within_ema"], *DK])):
                 edges = np.cumsum([0] + [f.shape[1] for f, _ in ps])
                 blocks = [(int(edges[i]), int(edges[i + 1])) for i in range(len(ps))]
                 b = blr.fit(np.hstack([f for f, _ in ps])[trn], Zd[trn], blocks)["coef"].T
@@ -390,7 +398,7 @@ def main():
                                          keep_feats["within_ema"]]))
                 q = PL.shape[1]
                 for tag, ps in (("buf:placebo", [(PL, PLev)]), ("buf:placebo+desk_within",
-                                                                [(PL, PLev), keep_feats["desk_within"]])):
+                                                                [(PL, PLev), *DK])):
                     edges = np.cumsum([0] + [f.shape[1] for f, _ in ps])
                     blocks = [(int(edges[i]), int(edges[i + 1])) for i in range(len(ps))]
                     b = blr.fit(np.hstack([f for f, _ in ps])[buf], Zd[buf], blocks)["coef"].T
@@ -403,7 +411,7 @@ def main():
                     b = blr.fit(np.hstack([f for f, _ in ps])[trn], Zd[trn], blocks)["coef"].T
                     incr[f"{tag}#{sd}"] = np.hstack([e for _, e in ps]) @ b
             for bname, parts in bases:
-                variants = [(bname, []), (bname + "+desk_within", [keep_feats["desk_within"]])]
+                variants = [(bname, []), (bname + "+desk_within", list(DK))]
                 if a.null_desk:
                     variants.append((bname + "+desk_null", [keep_feats["desk_null"]]))
                 for tag, extra in variants:

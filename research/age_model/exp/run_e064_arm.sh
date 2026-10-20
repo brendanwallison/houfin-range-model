@@ -46,6 +46,14 @@ else
   python -m src.model.age_run_map > "$OUT/map.log" 2>&1
 fi
 
+# MAP-stage diagnostics: the MAP-vs-refined comparison is the core readout (refinement is where
+# contortion appears), so every arm plots its MAP basin too. float64 evaluation of the float32 MAP params.
+echo "[$ARM] MAP diagnostics -> $OUT/viz_map"
+python scripts/viz/map_diagnostics.py --precision float64 --run-dir "$MAP_DIR" \
+  --out "$OUT/viz_map" > "$OUT/viz_map.log" 2>&1
+python research/age_model/exp/west_sink_audit.py --viz-dir "$OUT/viz_map" \
+  --out "$OUT/viz_map/west_sink_audit.json" > "$OUT/west_sink_audit_map.log" 2>&1
+
 echo "[$ARM] float64 refinement"
 export HOUFIN_MODEL_PRECISION=float64
 export HOUFIN_HMC_MAP_PRECISION=float32

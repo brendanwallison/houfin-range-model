@@ -439,7 +439,8 @@ def main():
         mTa, mTb = mean_(Ta), mean_(Tb)
         comp = {"vt": (W @ (Ta * Tb)) - Sw[:, None] * mTa * mTb}
         keyarms = ("desk_within", "desk_ref_within", "desk_pooled", "placebo_300", "strong", "strong+desk_within",
-                   "placebo+desk_within", "placebo+desk_ref_within", "cov_chg", "cov_chg+desk_within")
+                   "placebo+desk_within", "placebo+desk_ref_within", "cov_chg", "cov_chg+desk_within",
+                   "pooled_blr", "pooled_ridge")      # E086j: the LEVEL-fitted covariate rivals of desk_pooled
         for nm, D in preds.items():
             if nm.split("#")[0] not in keyarms:
                 continue

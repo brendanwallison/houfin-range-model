@@ -166,3 +166,10 @@ continuation before biological interpretation.
 ## Note added 2026-10-20 (Claude): E065's null (65n) returns beta_k = -.293 with no true effect, so 64c's beta_k -.353 is
 not distinguishable from a structural artifact; the "capacity compensation rejected" reading should rest on the
 deficit moderator (~0) and the absence of improvement, not on the sign of beta_k.
+
+## 64k RESULT (Claude, 2026-10-20): corrected route control -- refine stalled just over the gate
+Route SD truly fixed .7 (no obs_route_sd site; fitted raw effects sd ~1.1). MAP 180,462: plains .63 sinks med .92 vs
+west 1.04, east 1.17; Sa/Sj/F .58/.33/5.1; no Allee-dead. Refine stalled (median |grad| 1.08e4 > 1e4; U 180,514 ->
+172,051 in 1,201 it). The stalled point already shows the old 59a signature (Sa/Sj/F .49/.45/8.75, lam0 1.65), so
+E059a's pattern may survive a genuinely bounded route effect -- pending a valid refine: continuation from a copy of the
+stalled point + plots queued (0313). 64l (route + loose K trend) refining.

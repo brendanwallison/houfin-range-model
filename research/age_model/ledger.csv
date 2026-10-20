@@ -125,3 +125,4 @@ date,experiment,variant,run_dir,U,fit_corr,notes,su
 2026-10-20,E064,64k/64l,,,,corrected route controls were never queued by Codex; queued 2026-10-20,
 2026-10-20,E065,65n null,run_65n,211111.4,,null returns beta_k -.29 (= 64c's -.35: artifact); only cold sigma_mod (+.80) exceeds null; null truth point mildly misspecified (route SD),
 2026-10-20,E065,65r recovery,run_65r,278789.5,,FAIL: truth +.5/+.5/+.25/+.35 recovered as -.21/-1.47/-.28/-.74; sub-cell compensation not identified; E064/E065 moderators uninterpretable,
+2026-10-20,E064,64k,run_64k,172050.8,,corrected route control: MAP realistic (P .92 vs W 1.04); refine stalled at gate (1.08e4); stalled point ~59a (Sa .49 Sj .45 F 8.75); continuation queued,

@@ -1,0 +1,5 @@
+{
+  "_extends": "map_run65j_compensation_route_nosort.json",
+  "_comment": ["E065r: synthetic signal recovery for the no-survival-sorting full structure."],
+  "run_names": {"map": "age_map_{precision}_run_65r", "vis_map": "age_map_{precision}_run_65r"}
+}

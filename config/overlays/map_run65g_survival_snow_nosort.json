@@ -1,0 +1,6 @@
+{
+  "_extends": "map_run64g_survival_snow.json",
+  "_comment": ["E065g: snow-moderated urban survival, without survival-informed sorting."],
+  "population_model": {"subcell_strata": {"survival_affects_allocation": false}},
+  "run_names": {"map": "age_map_{precision}_run_65g", "vis_map": "age_map_{precision}_run_65g"}
+}

@@ -315,6 +315,7 @@ def _quad():
 
 
 _REFINE = {"max_iter": 200, "memory": 10, "tol_du": 1e-10, "tol_window": 5, "tol_grad": 1e-8,
+           "plateau_grad_max": 1e4,
            "ckpt_every": 3, "log_every": 1000}
 
 
@@ -325,6 +326,14 @@ def test_refine_convergence_never_calls_an_objective_increase_a_small_drop():
     small_improvement = [(0, 10.0, 100.0), (1, 9.98, 100.0), (2, 9.97, 100.0)]
     assert converged(worse, s) is None
     assert "U fell 0.03" in converged(small_improvement, s)
+
+
+def test_refine_flat_objective_with_large_gradient_is_stalled_not_converged():
+    from src.model.age_refine_map import converged
+    s = {**_REFINE, "tol_du": 0.05, "tol_window": 2, "tol_grad": 1.0,
+         "plateau_grad_max": 1e4}
+    history = [(0, 10.0, 8e4), (1, 9.99, 7e4), (2, 9.98, 9e4)]
+    assert converged(history, s).startswith("optimizer stalled:")
 
 
 def test_lbfgs_refine_reaches_the_optimum_of_an_ill_conditioned_potential(tmp_path):

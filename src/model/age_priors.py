@@ -118,6 +118,8 @@ _HABCHG = dict(_POP_SPEC.get("habitat_change", {}))
 HABITAT_SHRINK = _HABCHG.get("shrink") == "learned"
 _SUBCELL = dict(_POP_SPEC.get("subcell_strata", {}))
 SUBCELL = bool(_SUBCELL.get("enabled", False))
+SUBCELL_SURVIVAL_AFFECTS_ALLOCATION = bool(
+    _SUBCELL.get("survival_affects_allocation", True))
 #                             | "capacity_fitness" (K * lambda0^tau, tau >= 0 learned with prior
 #                             HalfNormal(settlement.tau_scale, default 2); tau = 0 is capacity)
 #                             | "capacity_r0" (K * R0^tau, R0 = Fmax*Sj/(1-Sa), tau learned) | "r0" (R0)
@@ -1205,6 +1207,7 @@ def build_model_2d(data, prior_scale=1.0):
         strata_a=data["strata_a"] if SUBCELL else None,
         subcell_beta_k=subcell_beta_k_t, subcell_delta_f=priors['subcell_delta_f'],
         subcell_sigma_s=subcell_sigma_s_t,
+        subcell_survival_affects_allocation=SUBCELL_SURVIVAL_AFFECTS_ALLOCATION,
         dispersal_adult_offset=priors['dispersal_logit_adult_offset'],
         crowding_beta=priors['dispersal_crowding_beta'], crowding_kappa=CROWDING_KAPPA,
         disease_m_amp=disease_m_amp, disease_k_half=priors['disease_k_half'],

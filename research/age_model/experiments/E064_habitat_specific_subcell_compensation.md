@@ -113,3 +113,41 @@ a production model.
   the plumbing failure, before fitting either corrected control; they test whether the
   reported removal of capacity collapse and temporal pressure survives a genuinely
   bounded route effect.
+
+## Interim results (2026-10-20)
+
+Only 64c, 64e, and 64r currently pass numerical validation. The apparent completions
+of 64b/d/f/g/i/n are invalid optimizer stops; 64h/j failed during MAP, and the 64a
+repair failed before refinement because its reusable MAP was still sent through the
+resume fingerprint check. The runner now treats high-gradient plateaus and non-finite
+refinements as failures, and the explicit 64a reuse path verifies and skips its finished
+MAP.
+
+| Arm | U | fitted sub-cell effects | typical Sa / Sj / F | K trend max z | western fundamental / Allee-dead |
+|---|---:|---|---|---:|---|
+| 64c capacity only | 186,225.5 | beta_k **-0.353** | .750 / .098 / 12.25 | 5.16 (trip) | .586 / .150 |
+| 64e capacity deficit | 186,197.8 | beta_k -.0019; moderator +.0231 | .729 / .131 / 10.67 | 4.10 (trip) | .582 / .128 |
+| 64r injected recovery | 305,499.0 | K .521/.541; S .259/.344 (truth .5/.5/.25/.35) | .503 / .417 / 7.28 | 3.01 (trip) | synthetic |
+
+Capacity-only 64c reverses the proposed sign: urban strata hold *less* capacity. In
+64e the generic effect and deficit-targeted moderator both collapse to essentially
+zero, improving U by only 28 nats while leaving the same demographic and K-trend
+contortions. Thus these valid fits reject the proposed breeding-site compensation in
+its current form.
+
+The western sinks in 64c/e are not compact ecological patches. Their largest connected
+fundamental-sink components cover 2.22/2.23 million km2, span roughly 129--101 W and
+23--55 N, contain 407--417 positive BBS cells, and classify 53.6--54.0% of the western
+native seed as fundamentally unsuitable. A further 16.0--19.9% of the native seed is
+Allee-dead. On location and extent, these are model contortions.
+
+Synthetic recovery 64r is excellent, but null 64n became non-finite. The preregistered
+identifiability gate therefore fails: recovery shows that a strong supplied signal can
+be found, but does not establish null calibration or license interpreting real-data
+survival moderators.
+
+The survival-bearing E064 arms unintentionally combine feeding/shelter physiology with
+perfect survival-informed ideal-free sorting inside each cell. That implicit root is
+the source of the numerical failures. E065 preregisters the physiological mechanism
+without survival-informed sorting; failed E064 outputs remain archived evidence and
+will not be relabeled as biological results.

@@ -33,7 +33,18 @@ print(c["results_dir"] + "/" + name)
 PY
 )
 echo "[$ARM] cold MAP -> $MAP_DIR"
-python -m src.model.age_run_map > "$OUT/map.log" 2>&1
+if [[ "${HOUFIN_MAP_REUSE:-0}" == 1 ]]; then
+  python - "$MAP_DIR/map_checkpoint.pkl" > "$OUT/map.log" 2>&1 <<'PY'
+import pickle, sys
+p = sys.argv[1]
+with open(p, "rb") as fh:
+    ckpt = pickle.load(fh)
+assert int(ckpt.get("step", -1)) >= 400, f"reusable quick MAP is incomplete: {ckpt.get('step')}"
+print(f"[reuse] verified completed MAP checkpoint: {p} step={ckpt['step']}")
+PY
+else
+  python -m src.model.age_run_map > "$OUT/map.log" 2>&1
+fi
 
 echo "[$ARM] float64 refinement"
 export HOUFIN_MODEL_PRECISION=float64

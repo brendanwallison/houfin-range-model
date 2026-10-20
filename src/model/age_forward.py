@@ -259,6 +259,7 @@ def forward_sim_age_structured(
     subcell_beta_k=0.0,
     subcell_delta_f=0.0,
     subcell_sigma_s=None,
+    subcell_survival_affects_allocation=True,
     disease_m_amp=None,
     disease_k_half=1.0,
     disease_hill_n=1.0,
@@ -478,7 +479,8 @@ def forward_sim_age_structured(
                 allee_gamma, u_g, strata_a, beta_k_g, subcell_delta_f,
                 allee_off=allee_off, allee_relative=allee_relative,
                 yearling_breeding=yearling_breeding, veit=veit_reproduction,
-                sigma_s=sigma_s_g)
+                sigma_s=sigma_s_g,
+                survival_affects_allocation=subcell_survival_affects_allocation)
             
         # 5. Mask & Final Clip
         N_a_new = jnp.maximum(N_a_new * land_mask, 0.0)
@@ -620,7 +622,8 @@ def fitness_settle(fields, K, Sa, Sj, Fmax, c, b, t, n_iter=40):
 
 def subcell_reproduction(pools, Sa, Sj, Fmax, K, allee_gamma, u, a, beta_k, delta_f,
                          allee_off=None, allee_relative=False, n_iter=40,
-                         yearling_breeding=False, veit=False, sigma_s=None):
+                         yearling_breeding=False, veit=False, sigma_s=None,
+                         survival_affects_allocation=True):
     """Survival + reproduction with the cell split into S within-cell urbanisation slices.
 
     The cell's birds are first redistributed among its slices by the fitness ideal-free rule
@@ -650,18 +653,29 @@ def subcell_reproduction(pools, Sa, Sj, Fmax, K, allee_gamma, u, a, beta_k, delt
 
     K_s = K[None] * tilt(beta_k)
     F_s = Fmax[None] * tilt(delta_f)
-    Sa_ = jnp.broadcast_to(Sa, K_s.shape)
-    Sj_ = jnp.broadcast_to(Sj, K_s.shape)
+    Sa_base = jnp.broadcast_to(Sa, K_s.shape)
+    Sj_base = jnp.broadcast_to(Sj, K_s.shape)
+    Sa_, Sj_ = Sa_base, Sj_base
     if sigma_s is not None:
         du = sigma_s * (u - jnp.sum(a * u, axis=0, keepdims=True))
         logit = lambda p: jnp.log(jnp.clip(p, 1e-6, 1 - 1e-6)) - jnp.log1p(-jnp.clip(p, 1e-6, 1 - 1e-6))
         Sa_ = jnn.sigmoid(logit(Sa_) + du)
         Sj_ = jnn.sigmoid(logit(Sj_) + du)
     c_s = jnp.maximum((F_s * Sa_ * Sj_) / (1.0 - Sa_ + 1e-6) - 1.0, 0.0)
-    c_f = jnp.maximum(c_s, 1e-6)
-    valid = (K_s > tiny) & (Sa_ > tiny) & (Sj_ > tiny) & (F_s > tiny)
-    Sa_v = jnp.where(valid, Sa_, 0.5)
-    Sj_v = jnp.where(valid, Sj_, 0.5)
+    # Feeding/shelter can change survival without implying that birds know and
+    # instantaneously ideal-free-sort on that survival difference.  Keeping the
+    # allocation rates at their cell-level values isolates the physiological
+    # mechanism and removes sigma_s from the implicit equal-fitness root.  E064's
+    # survival-sorted version produced NaNs or gradients of 1e9--1e27; the no-sort
+    # option is deliberately opt-in so historical models retain their semantics.
+    Sa_alloc = Sa_ if survival_affects_allocation else Sa_base
+    Sj_alloc = Sj_ if survival_affects_allocation else Sj_base
+    c_alloc = jnp.maximum((F_s * Sa_alloc * Sj_alloc) /
+                          (1.0 - Sa_alloc + 1e-6) - 1.0, 0.0)
+    c_f = jnp.maximum(c_alloc, 1e-6)
+    valid = (K_s > tiny) & (Sa_alloc > tiny) & (Sj_alloc > tiny) & (F_s > tiny)
+    Sa_v = jnp.where(valid, Sa_alloc, 0.5)
+    Sj_v = jnp.where(valid, Sj_alloc, 0.5)
     F_v = jnp.where(valid, F_s, 1.0)
     lam0 = 0.5 * (Sa_v + jnp.sqrt(Sa_v ** 2 + 4.0 * F_v * Sa_v * Sj_v))
     M = sum(pools)                                                     # (Ny, Nx) cell density

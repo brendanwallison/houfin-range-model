@@ -65,3 +65,26 @@ def test_smooth_positive_part_stays_finite_at_tiny_capacity_scale():
         assert np.all(np.isfinite(np.asarray(g)))
     finally:
         af.SMOOTH_ALLOC = old
+
+
+def test_survival_without_fitness_sorting_has_stable_gradient_under_extreme_heterogeneity():
+    """The physiological survival probe must not differentiate through the allocation root."""
+    import src.model.age_forward as af
+    rng = np.random.default_rng(64)
+    u_h = jnp.asarray(rng.normal(0, 2.5, (S, Ny, Nx)))
+    pl = tuple(jnp.asarray(10 ** rng.uniform(-8, 0, (Ny, Nx))) for _ in range(3))
+    a2 = list(args); a2[5] = u_h
+    old = af.SMOOTH_ALLOC
+    af.SMOOTH_ALLOC = 1e-3
+    try:
+        def f(s):
+            return sum(subcell_reproduction(
+                pl, *a2, sigma_s=s, survival_affects_allocation=False)).sum()
+        for s in (-2.0, -0.5, 0.0, 0.5, 2.0):
+            value, grad = jax.value_and_grad(f)(s)
+            assert np.isfinite(float(value)) and np.isfinite(float(grad))
+            h = 1e-5
+            fd = (float(f(s + h)) - float(f(s - h))) / (2 * h)
+            np.testing.assert_allclose(float(grad), fd, rtol=2e-3, atol=1e-7)
+    finally:
+        af.SMOOTH_ALLOC = old

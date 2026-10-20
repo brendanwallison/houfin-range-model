@@ -55,7 +55,9 @@ OVERLAYS = [None, "map_run19_exchangeable.json", "map_run21_single_field.json",
             "map_run58b_subcell_surv.json", "map_run58c_subcell_surv.json",
             "map_run64a_subcell_smooth.json", "map_run64h_survival_harsh.json",
             "map_run64j_compensation_route.json", "map_run64k_route_control.json",
-            "map_run64l_route_ktrend_control.json"]
+            "map_run64l_route_ktrend_control.json",
+            "map_run65d_survival_nosort.json", "map_run65h_survival_harsh_nosort.json",
+            "map_run65j_compensation_route_nosort.json"]
 
 
 def _DRIFT_C():

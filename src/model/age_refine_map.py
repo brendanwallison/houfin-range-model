@@ -46,6 +46,8 @@ def refine_settings(pcfg: dict) -> dict:
         "tol_du": hc.setting(r, "tol_du", "HOUFIN_REFINE_TOL_DU", float),
         "tol_window": hc.setting(r, "tol_window", "HOUFIN_REFINE_TOL_WINDOW", int),
         "tol_grad": hc.setting(r, "tol_grad", "HOUFIN_REFINE_TOL_GRAD", float),
+        "plateau_grad_max": hc.setting(r, "plateau_grad_max",
+                                       "HOUFIN_REFINE_PLATEAU_GRAD_MAX", float),
         "ckpt_every": hc.setting(r, "ckpt_every", "HOUFIN_REFINE_CKPT_EVERY", int),
         "log_every": hc.setting(r, "log_every", "HOUFIN_REFINE_LOG_EVERY", int),
     }
@@ -64,6 +66,11 @@ def converged(history: list, s: dict):
         # test accepted every increase as convergence; E064a therefore stopped
         # with |grad| ~= 99,000 after U rose slightly over its final window.
         if 0.0 <= drop < s["tol_du"]:
+            recent_grad = float(np.median([h[2] for h in history[-w - 1:]]))
+            if recent_grad > s["plateau_grad_max"]:
+                return (f"optimizer stalled: U fell {drop:.3g} < tol_du {s['tol_du']} "
+                        f"over {w} iterations but recent median |grad| {recent_grad:.3g} "
+                        f"> plateau_grad_max {s['plateau_grad_max']}")
             return (f"U fell {drop:.3g} < tol_du {s['tol_du']} "
                     f"over {w} iterations")
     return None
@@ -235,8 +242,12 @@ def run_refine():
 
     dx = np.asarray(x, np.float64) - np.asarray(x0, np.float64)
     off = np.cumsum([0] + [int(np.size(z0[k])) for k in names])
+    status = ("stalled" if reason.startswith("optimizer stalled:") else
+              "failed" if reason.startswith("non-finite") else
+              "not_converged" if reason.startswith("max_iter") else "converged")
     report = {
         "source_map_dir": hc.map_dir(), "out_dir": out_dir, "reason": reason,
+        "status": status, "valid": status == "converged",
         "iterations": len(history), "U_start": history[0][1] if history else None,
         "U_end": history[-1][1] if history else None,
         "grad_norm_start": history[0][2] if history else None,
@@ -246,6 +257,8 @@ def run_refine():
     }
     with open(os.path.join(out_dir, "refine_report.json"), "w") as fh:
         json.dump(report, fh, indent=2)
+    if status in {"stalled", "failed"}:
+        raise RuntimeError(f"invalid refinement ({status}): {reason}; outputs retained for diagnosis")
     print(f"[done] U {report['U_start']:.2f} -> {report['U_end']:.2f} in {len(history)} "
           f"iterations; use HOUFIN_HMC_MAP_DIR={out_dir}")
 

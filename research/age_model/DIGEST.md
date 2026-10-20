@@ -1,5 +1,21 @@
 # DIGEST (newest first)
 
+## 2026-10-20 E064 interim: capacity compensation rejected; survival probe numerically invalid
+- Valid no-route fits reject the breeding-site hypothesis as implemented. Capacity-only
+  64c estimates urban beta_k=-.353; deficit-targeted 64e estimates generic -.0019 and
+  moderator +.023. Both retain Sj .10-.13, F 10.7-12.3, K-trend safety-valve trips,
+  and ~58% of the west as a fundamental sink.
+- Those western sinks are genuine contortions on extent/location: the largest connected
+  components are ~2.22 million km2, span nearly the whole west, contain >400 positive
+  BBS cells, and overlap 54% of the native seed (plus 16-20% Allee-dead).
+- Injected-signal 64r recovers K .521/.541 and survival .259/.344 from truth
+  .5/.5/.25/.35, but null 64n becomes non-finite. The synthetic gate fails, so no real
+  survival interaction is interpretable yet.
+- E064's survival effect also controlled ideal-free allocation, unintentionally coupling
+  feeding physiology to perfect survival-informed sorting; gradients reached 1e9-1e27
+  and two MAPs became NaN. E065 is preregistered to retain the survival mechanism while
+  allocating on capacity/fecundity only. High-gradient plateaus now fail automatically.
+
 ## 2026-10-19 E064 execution audit: earlier "pinned" route evidence withdrawn
 - `obs_route_sd` was sampled in the likelihood outside the conditioned prior block, so
   every `pinned_sites: {obs_route_sd: 0.7}` experiment still fitted it. Checkpoint audit:

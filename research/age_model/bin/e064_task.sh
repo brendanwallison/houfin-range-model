@@ -39,6 +39,7 @@ fi
 # require a new MAP.
 if [[ "$JOB" == *allowdrift* ]]; then
   export HOUFIN_HMC_ALLOW_MODEL_DRIFT=1
+  export HOUFIN_MAP_REUSE=1
 fi
 if [[ "$JOB" == *fullfresh* ]]; then
   export HOUFIN_MAP_FRESH=1

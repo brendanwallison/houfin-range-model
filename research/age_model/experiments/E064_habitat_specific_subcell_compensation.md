@@ -92,3 +92,16 @@ western sink overlapping the native/observed core. Do not promote habitat-specif
 the synthetic guards fail. This round is complete when all arms have cold MAP, float64 refine,
 standard diagnostics, and the spatial sink audit; its outcome is a narrower next hypothesis, not
 a production model.
+
+## Execution amendments
+
+- 2026-10-19: the first 64b execution is invalid. `obs_route_sd` is sampled in the
+  likelihood, outside the conditioned `sample_priors` block, so the nominal
+  `pinned_sites: {obs_route_sd: 0.7}` did not pin it. Its MAP and refinement fitted the
+  scale; the refinement then stalled at U=176,272.69 with gradient norm 123,441. The
+  code now makes a pinned likelihood-level route scale a non-optimizable deterministic,
+  with a full-model regression test. A cold `fullfresh` 64b repair was placed ahead of
+  the remaining queue; its invalid outputs and checkpoints are archived. This plumbing
+  bug also makes earlier claims that E057/E059 route scales were *pinned* conditional on
+  rerunning them under the fix, although their evidence that persistent route structure
+  matters remains a hypothesis worth retesting.

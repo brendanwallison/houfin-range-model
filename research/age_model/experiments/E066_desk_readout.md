@@ -60,3 +60,10 @@ Read: fitted ratios (do the data insist beyond the prior?), and whether the refi
 demography. If 66m holds where 66a contorted, the over-free deviation block drove 66a; if it contorts alike, the
 pressure is independent of DESK's temporal channel (pointing to E067). Later, the principled long-run version is an
 empirical-Bayes Mercer-space prior from DESK's per-direction out-of-community errors (route 1).
+
+## 66b/66c (split r32 / r64, B1) -- refines STALLED (median |grad| 2.1e6 / 1.5e5); 66g/h/k/l on hold
+Gradient anatomy at the 66b stall (U 184,940 -- lower than 66a's 185,061): |grad| 1.45e6 spread over alpha_a (9.8e5),
+both manifold blocks (level 7.2e5/4.7e5, within 3.5e5/2.3e5), w_k_trend (3.3e5), alpha_k, alpha_j. Along -grad, U RISES
+by ~+.45 at BOTH 1e-7 and 1e-5 -- a JUMP (discontinuity), not a corner. 66a (r24) at its optimum: |grad| 639, small
+non-descent wobble only. Suspect: the hard FFT floor in numerics (fft_floor_ulps zeroes sub-threshold convolution output,
+so values crossing the threshold make U jump); B1 carries it. Test queued (0321bx: same point, floor on vs off).

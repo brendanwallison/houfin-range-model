@@ -21,3 +21,9 @@ Arms (cold quick90 MAP -> MAP plots -> float64 refine -> plots + sink audit):
 Read (only if 67n/67r pass): does the refine keep MAP-like demography (F, Sj) and the plains trough; where and when h
 is large (regional timing it took over); K-trend pressure; west-sink audit. Compare with E068 (same truth, no
 correction) to separate "the correction absorbs real misspecification" from "the refine contorts regardless".
+
+Execution note (2026-10-20): the basis build's operator guard first failed (shape order: integrate_paths returns
+(..., M, K), stored Z_disp is (N, K, M) -- fixed for both the check and S_disp), then on max error (.47). The operator
+diagnostic (0321ca) showed rebuilt vs stored Z_disp corr .99999, slope 1.000, p99 rel err ~1e-7; only 11-16 of 17,209
+cells (islands; the land-weight normaliser at its 1e-10 cut-off) differ. Local and path habitat are consistent. The
+guard is now robust (p99.9 < 1e-3 and < .2% outlier cells).

@@ -51,3 +51,12 @@ plains 1.00 / west .93 / east 1.07 -- trough INVERTED; Allee-dead 3-5%; within/l
 fecundity, capacity, juv survival) -- NOT << 1 as the DESK work expected (~1/50). The refine leans on DESK's temporal
 deviations and contorts harder: more weight on poorly aimed DESK change needs more compensation. Extra DESK temporal
 freedom is not the missing signal (cf. E068: the data do demand one).
+
+Amendment (2026-10-20, after 66a, before any 66m fit; user-approved "route 3"): 66a gave the deviation block the level
+block's prior and the refine pushed deviation/level to .25-1.2 while contorting. 66m = 66a with the deviation
+amplitude tied to the level: w_scale_within = w_scale x ratio, ratio ~ LogNormal(log .14, .7) per field -- centred on
+DESK's measured split (E059e: kernel variances ~50x apart -> sd ratio sqrt(1/50) ~ .14), 95% prior mass ~.035-.55.
+Read: fitted ratios (do the data insist beyond the prior?), and whether the refine keeps 66a's MAP trough and plausible
+demography. If 66m holds where 66a contorted, the over-free deviation block drove 66a; if it contorts alike, the
+pressure is independent of DESK's temporal channel (pointing to E067). Later, the principled long-run version is an
+empirical-Bayes Mercer-space prior from DESK's per-direction out-of-community errors (route 1).

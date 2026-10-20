@@ -1,0 +1,6 @@
+{
+  "_extends": "map_run66a_readout.json",
+  "_comment": ["E066m: 66a (split readout, rank 24, B1) with the deviation amplitude CALIBRATED to DESK: w_scale_within = w_scale x ratio, ratio ~ LogNormal(log .14, .7) per field (DESK E059e between/within kernel variances ~50x apart -> sd ratio ~.14; 95% prior mass ~.035-.55). In 66a the deviation block had the level block's prior and the refine pushed the ratio to .25-1.2 while contorting (F 15, Sj .52, trough inverted). Route 3 of the Mercer-prior discussion (user, 2026-10-20)."],
+  "population_model": {"readout": {"within_ratio_prior": {"loc_log": -1.966, "scale_log": 0.7}}},
+  "run_names": {"map": "age_map_{precision}_run_66m", "vis_map": "age_map_{precision}_run_66m"}
+}

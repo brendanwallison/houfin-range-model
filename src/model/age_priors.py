@@ -553,10 +553,20 @@ def sample_priors(prior_scale=1.0, M_features=None, time=None,
         # OWN amplitudes, same prior as the level block -- the data decide how much the deviation counts.
         if _MANIFOLD_FORM != "exchangeable":
             raise NotImplementedError("readout.split is wired for manifold_prior.form = exchangeable")
-        w_scale_w = numpyro.deterministic("w_scale_within", jnn.softplus(numpyro.sample(
-            "w_scale_within_raw",
-            dist.Normal(jnp.asarray(_m["amplitude_loc"], dtype=float),
-                        jnp.asarray(_m["amplitude_scale"], dtype=float) * prior_scale))))
+        _wr = _READOUT.get("within_ratio_prior")
+        if _wr:
+            # Deviation amplitude = level amplitude x ratio, ratio ~ LogNormal centred on DESK's measured
+            # between/within split (E059e: kernel variances ~50x apart -> sd ratio ~ sqrt(1/50) ~ .14). DESK's change is
+            # poorly aimed, so the deviation block should count for much less than the level unless the data insist.
+            ratio = numpyro.deterministic("within_ratio", jnp.exp(numpyro.sample(
+                "within_ratio_log", dist.Normal(float(_wr.get("loc_log", math.log(0.14))),
+                                                float(_wr.get("scale_log", 0.7)) * prior_scale).expand([4]))))
+            w_scale_w = numpyro.deterministic("w_scale_within", w_scale * ratio)
+        else:
+            w_scale_w = numpyro.deterministic("w_scale_within", jnn.softplus(numpyro.sample(
+                "w_scale_within_raw",
+                dist.Normal(jnp.asarray(_m["amplitude_loc"], dtype=float),
+                            jnp.asarray(_m["amplitude_scale"], dtype=float) * prior_scale))))
         rho_w = corr[0, 1]                 # the level block's coupling rho (exchangeable: every off-diagonal)
         with numpyro.plate("env_features_within", M_features, dim=-2):
             f_w = numpyro.sample("manifold_factor_within", dist.Normal(0.0, 1.0))

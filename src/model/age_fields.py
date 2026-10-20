@@ -176,6 +176,7 @@ def project_and_scatter_age_structured(
     field_drift=None, # (time, 4) covariate_drift on the LINK scale, [adult surv, fecundity, capacity, juv surv]
     covariate_drift=None,  # (x (time, N_land, C), G (time, C, 4)): per-cell link-scale drift sum_c x[t,cell,c] G[t,c,field]
     split_readout=None,    # (Z_ref (N,M), Z_disp_ref (N,K,M), (beta_s_w, beta_r_w, beta_k_w, beta_sj_w)) -- readout.split
+    st_correction=None,    # (S (N,nb), S_disp (N,K,nb), Gw (time,nb)) -- E067 shared habitat correction h = S.Gw[t]
 ):
     """Project Z → (S_a, S_j, F_max, K, Q) for every year, on the land cells.
 
@@ -272,6 +273,15 @@ def project_and_scatter_age_structured(
             d_s = d_r = d_k = d_sj = 0.0
         else:
             d_s, d_r, d_k, d_sj = (field_drift[t_idx, i] for i in range(4))
+        if st_correction is not None:
+            # E067: one smooth spatiotemporal correction to habitat quality, shared by all four fields, and its path
+            # image for journey survival (the correction is linear, so the path operator is applied to its basis).
+            gw_t = st_correction[2][t_idx]
+            h_loc = jnp.dot(st_correction[0], gw_t)                     # (N_land,)
+            h_path = jnp.dot(st_correction[1], gw_t)                    # (N_land, K)
+            d_s, d_r, d_k, d_sj = d_s + h_loc, d_r + h_loc, d_k + h_loc, d_sj + h_loc
+        else:
+            h_path = 0.0
         if covariate_drift is not None:
             # E057 P2: the covariate's effect drifts -- x(cell, t) * a_field * g(t) (proxy -> niche relation).
             x_t = jnp.take(covariate_drift[0], t_idx, axis=0)          # (N_land, C)
@@ -338,8 +348,11 @@ def project_and_scatter_age_structured(
         # This links movement mortality to juvenile local survival mortality -- the same field
         # S_j reads, so Q and S_j can no longer be driven by different spatial patterns.
         # per-cell drifts (P2) are (N_land,); path habitat is (N_land, K_kernels)
-        q_sj = d_sj[..., None] if jnp.ndim(d_sj) else d_sj
-        q_s = d_s[..., None] if jnp.ndim(d_s) else d_s
+        # the local correction h does not belong on path habitat; its path image h_path does
+        q_sj = (d_sj - (h_loc if st_correction is not None else 0.0))
+        q_s = (d_s - (h_loc if st_correction is not None else 0.0))
+        q_sj = (q_sj[..., None] if jnp.ndim(q_sj) else q_sj) + h_path
+        q_s = (q_s[..., None] if jnp.ndim(q_s) else q_s) + h_path
         Q_val = jnn.sigmoid(alpha_j + gamma_j * H_sj_disp + q_sj)
         if juvenile_ratio:
             # The same juvenile-survival field, evaluated on path habitat.

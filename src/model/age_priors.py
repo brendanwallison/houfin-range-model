@@ -184,6 +184,11 @@ if _NUMERICS:
 #                             coefficients the spatial ones). rank: leading DESK features used (data_loading).
 _READOUT = dict(_POP_SPEC.get("readout", {}))
 SPLIT_READOUT = bool(_READOUT.get("split", False))
+#   st_correction             {"enabled", "scale", "time": "linear"|"cosine", "n_time", "window_start"}: E067 smooth
+#                             spatiotemporal habitat correction h(cell,t) = sum_b S_b(cell) w_b(t), shared by all four
+#                             fields, carried into path habitat through the path operator; held before window_start.
+_ST = dict(_POP_SPEC.get("st_correction", {}))
+ST_CORRECTION = bool(_ST.get("enabled", False))
 _OCC = dict(_POP_SPEC.get("occupancy", {}))
 OCCUPANCY = bool(_OCC.get("enabled", False))
 OCC_BIRDS_PER_COUNT = float(_OCC.get("birds_per_route_count", 58.0))
@@ -1041,6 +1046,13 @@ def build_model_2d(data, prior_scale=1.0):
             jnp.dot(z_center, priors['beta_s']), jnp.dot(z_center, priors['beta_r']),
             jnp.dot(z_center, priors['beta_k']), jnp.dot(z_center, priors['beta_sj'])]))
 
+    st_in = None
+    if ST_CORRECTION:
+        nb, nt = data['st_S'].shape[-1], data['st_g'].shape[0]
+        st_w = numpyro.sample("st_correction_w", dist.Normal(
+            0.0, float(_ST.get("scale", 0.1)) * prior_scale).expand([nb, nt]))
+        Gw = numpyro.deterministic("st_correction_gw", (st_w @ data['st_g']).T)          # (time, nb)
+        st_in = (data['st_S'], data['st_S_disp'], Gw)
     field_drift = None
     covariate_drift_in = None
     if DRIFT_ON:
@@ -1098,6 +1110,7 @@ def build_model_2d(data, prior_scale=1.0):
         Z_mean=data.get("Z_mean"), Z_disp_mean=data.get("Z_disp_mean"),
         field_drift=field_drift,
         covariate_drift=covariate_drift_in,
+        st_correction=st_in,
         split_readout=((data['Z_ref'], data['Z_disp_ref'],
                         (priors['beta_s_w'], priors['beta_r_w'], priors['beta_k_w'], priors['beta_sj_w']))
                        if SPLIT_READOUT else None),

@@ -358,6 +358,21 @@ def load_data(input_dir, target_device=None, precision="float32", verbose=True):
         meta["observed_results"] = y_syn.astype(np.asarray(meta["observed_results"]).dtype)
         if verbose:
             print(f"  [synthetic] observed counts replaced from {syn}")
+    from src.config_utils import load_age_model_config as _lamc
+    stspec = dict((_lamc().get("population_model", {}) or {}).get("st_correction") or {})
+    if stspec.get("enabled"):
+        # E067 smooth spatiotemporal habitat correction: spatial basis + its path image
+        # (src/data/preprocess/st_correction_basis.py) and a time basis held before window_start.
+        with np.load(os.path.join(input_dir, "st_correction_basis.npz")) as z:
+            meta["st_S"] = np.asarray(z["S"]).T.astype(f_type_cpu)                 # (N_land, nb)
+            meta["st_S_disp"] = np.asarray(z["S_disp"]).astype(f_type_cpu)         # (N_land, K, nb)
+        ws_st = int(stspec.get("window_start", 1966))
+        if stspec.get("time", "linear") == "linear":
+            meta["st_g"] = covariate_drift_ramp(meta["years"], meta["obs_time_indices"], ws_st,
+                                                float(np.asarray(meta["years"])[-1]), ws_st).astype(f_type_cpu)
+        else:
+            meta["st_g"] = covariate_drift_basis(meta["years"], meta["obs_time_indices"],
+                                                 int(stspec.get("n_time", 2)), ws_st).astype(f_type_cpu)
     dspec = covariate_drift_spec()
     if dspec:
         ws = int(dspec.get("window_start", 1966))

@@ -241,6 +241,8 @@ def reconstruct_map(data, params):
               "occupancy_grid",
               # readout.split: the within-cell deviation block's amplitudes (vs w_scale, the level block).
               "w_scale_within", "w_scale", "w_env_within", "w_env",
+              # st_correction (E067)
+              "st_correction_gw", "st_correction_w",
               # subcell_strata habitat-specific tilts (per year and land cell).
               "subcell_beta_k_t", "subcell_sigma_s_t",
               # population_model.covariate_drift only (E057 P0).
@@ -1088,6 +1090,19 @@ def _k_trend_metrics(data, sim):
             "k_multiplier_max_deviation": float(np.abs(mult - 1.0).max()),
             # True = a real temporal signal is going unexplained by the mechanisms.
             "safety_valve_tripped": bool(z > 3.0 or np.abs(mult - 1.0).max() > 0.15)}
+
+
+def _st_correction_metrics(data, sim):
+    """E067 shared habitat correction: land RMS and range of h by year, and |w| against its prior scale."""
+    if "st_correction_gw" not in sim or "st_S" not in data:
+        return None
+    from src.model.age_priors import _ST
+    h = np.asarray(data["st_S"], dtype=np.float64) @ np.asarray(sim["st_correction_gw"], dtype=np.float64).T  # (N, T)
+    years = np.asarray(data["years"])
+    pick = {y: int(np.argmin(np.abs(years - y))) for y in (1966, 1980, 1996, 2010, 2023)}
+    return {"max_abs_w_over_scale": float(np.abs(np.asarray(sim["st_correction_w"])).max() / float(_ST.get("scale", 0.1))),
+            "land_rms_h": {y: float(np.sqrt(np.mean(h[:, i] ** 2))) for y, i in pick.items()},
+            "h_p05_p95": {y: [float(np.percentile(h[:, i], 5)), float(np.percentile(h[:, i], 95))] for y, i in pick.items()}}
 
 
 def _split_readout_metrics(data, sim):
@@ -2330,6 +2345,8 @@ def main():
         # readout.split (E066): amplitudes of the deviation vs level blocks, and the LAND-MEAN deviation term
         # per field over time -- the continental trend the deviation block carries (competes with P0 / K trend).
         "split_readout": _split_readout_metrics(data, sim),
+        # st_correction (E067): size and timing of the shared smooth habitat correction h(cell, t).
+        "st_correction": _st_correction_metrics(data, sim),
         "subcell_strata": subcell_metrics,
         # K's bounded dynamic range. If a large share of land sits at the floor, the
         # covariates are pushing capacity as low as the bound permits -- the same

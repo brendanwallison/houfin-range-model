@@ -1,6 +1,6 @@
 #!/bin/bash
 # Queue entry for E066 (DESK readout: split level/deviation x rank, on three bases). The filename selects
-# the arm (66a..66l) or the input build ("build_vl_r64"); copy into queue2/pending under such a name.
+# the arm (66a..66m) or the input build ("build_vl_r64"); copy into queue2/pending under such a name.
 set -euo pipefail
 JOB=$(basename "$0" .sh)
 REPO=/work/07980/bwa386/ls6/houfin/age-research
@@ -13,8 +13,8 @@ if [[ "$JOB" == *build_vl_r64* ]]; then
   ls "$P/numpyro_input_vl_r64"
   exit 0
 fi
-CODE=$(printf '%s' "$JOB" | sed -E 's/.*(66[a-l]).*/\1/')
-[[ "$CODE" =~ ^66[a-l]$ ]] || { echo "E066 arm not encoded in task filename: $JOB" >&2; exit 2; }
+CODE=$(printf '%s' "$JOB" | sed -E 's/.*(66[a-m]).*/\1/')
+[[ "$CODE" =~ ^66[a-m]$ ]] || { echo "E066 arm not encoded in task filename: $JOB" >&2; exit 2; }
 # wait for the rank-64 input build (arms that use it)
 for i in $(seq 1 240); do [ -f "$HOUFIN_PROCESSED/model_inputs/numpyro_input_vl_r64/metadata.pkl" ] && break; sleep 60; done
 export OVERLAY="$TWT/config/overlays/map_run${CODE}_readout.json"

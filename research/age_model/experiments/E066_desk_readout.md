@@ -43,3 +43,11 @@ that annihilated eastern K) -- motivated by DESK's finding that change is spatia
 determined and that a no-DESK position x time placebo matched the split's gain; (b) a separate, smaller amplitude for
 pre-1996 (backcast) deviations, motivated by DESK's backcast change being 3-5x too large on early CBC lists. Each
 with null + recovery guards.
+
+## 66a RESULT (split r24 on B1, 2026-10-20): best MAP, among the worst refines
+MAP: plains .76 sinks med .81 vs west 1.08, east 1.03 (deepest trough yet); Sa/Sj/F .56/.28/4.92; within/level
+amplitude ratios .82-.90. Refined (converged, 1,183 it; 185,061 = -1.1k vs 62b): Sa/Sj/F .57/.52/15.2, lam0 2.41;
+plains 1.00 / west .93 / east 1.07 -- trough INVERTED; Allee-dead 3-5%; within/level .96/.25/1.16/.42 (survival,
+fecundity, capacity, juv survival) -- NOT << 1 as the DESK work expected (~1/50). The refine leans on DESK's temporal
+deviations and contorts harder: more weight on poorly aimed DESK change needs more compensation. Extra DESK temporal
+freedom is not the missing signal (cf. E068: the data do demand one).

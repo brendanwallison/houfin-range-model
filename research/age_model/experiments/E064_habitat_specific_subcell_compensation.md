@@ -151,3 +151,9 @@ perfect survival-informed ideal-free sorting inside each cell. That implicit roo
 the source of the numerical failures. E065 preregisters the physiological mechanism
 without survival-informed sorting; failed E064 outputs remain archived evidence and
 will not be relabeled as biological results.
+
+Corrected 64b did enforce route SD=0.7, but stalled at U=179,318.95 with final
+gradient 70,861. A gradient-anatomy task is queued before the corrected route-only
+controls 64k/l; if `obs_route_raw` dominates, those controls require an observation-
+effect optimizer/parameterization fix rather than repeated L-BFGS starts. If a process
+site dominates, 64k/l remain informative as written.

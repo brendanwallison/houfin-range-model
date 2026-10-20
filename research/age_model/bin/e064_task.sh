@@ -1,9 +1,9 @@
 #!/bin/bash
-# Copy this file into queue2/pending under a name containing 64a..64j, 64n or
+# Copy this file into queue2/pending under a name containing 64a..64l, 64n or
 # 64r. worker.slurm calls it with bash; the filename selects the preregistered arm.
 set -euo pipefail
 JOB=$(basename "$0" .sh)
-CODE=$(printf '%s' "$JOB" | sed -E 's/.*(64[a-jnr]).*/\1/')
+CODE=$(printf '%s' "$JOB" | sed -E 's/.*(64[a-lnr]).*/\1/')
 case "$CODE" in
   64a) FILE=map_run64a_subcell_smooth.json ;;
   64b) FILE=map_run64b_subcell_route.json ;;
@@ -15,6 +15,8 @@ case "$CODE" in
   64h) FILE=map_run64h_survival_harsh.json ;;
   64i) FILE=map_run64i_compensation_both.json ;;
   64j) FILE=map_run64j_compensation_route.json ;;
+  64k) FILE=map_run64k_route_control.json ;;
+  64l) FILE=map_run64l_route_ktrend_control.json ;;
   64n) FILE=map_run64n_compensation_null.json ;;
   64r) FILE=map_run64r_compensation_recovery.json ;;
   *) echo "E064 arm not encoded in task filename: $JOB" >&2; exit 2 ;;

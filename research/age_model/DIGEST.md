@@ -1,5 +1,18 @@
 # DIGEST (newest first)
 
+## 2026-10-19 E064 execution audit: earlier "pinned" route evidence withdrawn
+- `obs_route_sd` was sampled in the likelihood outside the conditioned prior block, so
+  every `pinned_sites: {obs_route_sd: 0.7}` experiment still fitted it. Checkpoint audit:
+  E059a 1.288, E059b 8.731, E057 route-panel arms 1.02--2.52. The E059 claim that a
+  *bounded* route effect removed capacity/Allee contortion is withdrawn.
+- The model now represents a pinned route SD as a non-optimizable deterministic, covered
+  by a full-model regression test. E064b is rerunning cold; new corrected controls 64k
+  (route only) and 64l (route + loose K trend) retest the two E059 claims. E064j/n/r will
+  inherit the fix. No-route E064 arms are unaffected.
+- The first 64a/64b refinements are also invalid optimizer stops (large gradients);
+  repaired runs are queued and invalid outputs retained. Do not interpret their apparent
+  fit or western-sink maps until the repairs finish.
+
 ## 2026-10-16 evening: the release was a real distortion (E016 R1, E018, E019)
 - Single historical release (1 parameter) fits 335 nats BETTER than the 90-coefficient grid and infers
   ~50-75 founders. Under it (or free founders) the strong Allee is no longer demanded (n50 0.10: +0.5).

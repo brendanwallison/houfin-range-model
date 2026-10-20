@@ -105,3 +105,11 @@ a production model.
   bug also makes earlier claims that E057/E059 route scales were *pinned* conditional on
   rerunning them under the fix, although their evidence that persistent route structure
   matters remains a hypothesis worth retesting.
+- 2026-10-19 post-discovery controls: checkpoint audit found that the nominally pinned
+  route scale actually fitted to 1.288 in E059a, 8.731 in E059b, and 1.02--2.52 in the
+  E057 route-panel arms. The E059 conclusions are therefore withdrawn, not merely
+  caveated. Added 64k (E059a route-only control, SD truly fixed 0.7) and 64l (the same
+  with the loose K-trend prior) as corrected cold reruns. These were added after seeing
+  the plumbing failure, before fitting either corrected control; they test whether the
+  reported removal of capacity collapse and temporal pressure survives a genuinely
+  bounded route effect.

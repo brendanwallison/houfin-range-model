@@ -20,6 +20,11 @@ Combinations only after single factors read, and only informed pairs (e.g. 58a x
   reliable optimum; free-vs-pinned MAP losses are not evidence.
 
 ## E059a RESULT (2026-10-18): bounded route effects remove most of the refine's contortion
+**WITHDRAWN 2026-10-19:** `obs_route_sd` is sampled outside the conditioned prior block,
+so `pinned_sites` never fixed it. The refined checkpoint fitted SD 1.288 rather than 0.7.
+The apparent route-effect rescue is therefore not evidence for a bounded 0.7 effect;
+corrected cold control 64k is queued.
+
 Route effects, sd pinned 0.7 (log scale; fitted raw effects sd ~1, i.e. effects ~0.7). MAP clean (189,743 f32 / 189,755 f64).
 | | U | Sa/Sj/F | lam0 | plains sink / med lam / med K | west | east | Allee-dead | corr | K trend z |
 |---|---|---|---|---|---|---|---|---|---|
@@ -63,6 +68,11 @@ stopped at 226,874 after 277 iterations. Fitness ideal-free settlement + V&L den
 from a cold start (earlier ifd3 runs used the learned/fixed departure). Not interpretable; not pursued unless needed.
 
 ## E059b RESULT (2026-10-18): route effects + K trend loosened x10
+**WITHDRAWN 2026-10-19:** the nominally pinned route SD actually fitted to 8.731, an
+observation-model off switch. Corrected cold control 64l is queued with SD truly fixed
+at 0.7. Neither the objective gain nor the claimed reduction in K-trend pressure below
+is interpretable as a bounded-route result.
+
 MAP clean (189,751 / 189,771). Refined 165,876 (59a 169,804: -3.9k). K trend x.26 -> x3.31 over 1902-2025
 (z 2.8 under the loose prior) -- route effects cut the demand from 56a's x.12 -> x7.9 but a ~13x continental rise
 remains. Refined Sa/Sj/F .67/.50/6.7, lam0 1.86 (F closest to 4-6 of any refine); plains .49 sinks med 1.01 vs west

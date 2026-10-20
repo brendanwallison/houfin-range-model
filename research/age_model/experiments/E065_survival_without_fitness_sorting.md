@@ -75,3 +75,11 @@ evidence. Of the survival moderators only cold (+.80) clearly exceeds the null, 
 inconsistent signs -- not a coherent winter-compensation signal. Caveat: the null's truth point (59a refined) fitted
 route SD 1.29 while 65j's structure fixes .7 -- a mild misspecification that may inflate null estimates; a clean
 truth point (64k or the E066 B3 baseline) would remove it. 65r recovery still running.
+
+## 65r RECOVERY RESULT (2026-10-20): FAIL -- the gate blocks every E064/E065 moderator reading
+Truth beta_k .5, beta_k_mod .5, sigma_s .25, sigma_s_mod .35 (synthetic counts at 59a's refined point). Refined
+278,790 (1,831 it): beta_k -.21, beta_k_mod -1.47, sigma_s -.28, sigma_s_mod -.74 -- every sign wrong, two by large
+magnitudes. With 65n returning beta_k ~ -.3 from no effect, the within-cell compensation structure is not identified
+as specified (the sub-cell tilts trade off against the other fields). Per the preregistered gate, NO real-data E064/
+E065 moderator estimate is interpretable. Caveat (as for 65n): the truth point fitted route SD 1.29 vs the tested .7.
+Not pursued further without a reformulation that is identifiable on synthetic data first.

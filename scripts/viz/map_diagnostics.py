@@ -239,6 +239,8 @@ def reconstruct_map(data, params):
               "disease_mortality_amp",
               # population_model.occupancy only (E063).
               "occupancy_grid",
+              # readout.split: the within-cell deviation block's amplitudes (vs w_scale, the level block).
+              "w_scale_within", "w_scale", "w_env_within", "w_env",
               # subcell_strata habitat-specific tilts (per year and land cell).
               "subcell_beta_k_t", "subcell_sigma_s_t",
               # population_model.covariate_drift only (E057 P0).
@@ -1086,6 +1088,25 @@ def _k_trend_metrics(data, sim):
             "k_multiplier_max_deviation": float(np.abs(mult - 1.0).max()),
             # True = a real temporal signal is going unexplained by the mechanisms.
             "safety_valve_tripped": bool(z > 3.0 or np.abs(mult - 1.0).max() > 0.15)}
+
+
+def _split_readout_metrics(data, sim):
+    """readout.split diagnostics, or None when the readout is single-amplitude."""
+    if "w_env_within" not in sim or "Z_ref" not in data:
+        return None
+    Z = np.asarray(data["Z_gathered"], dtype=np.float64)
+    dz = Z - np.asarray(data["Z_ref"], dtype=np.float64)[None]
+    bw = np.asarray(sim["w_env_within"], dtype=np.float64)              # (M, 4)
+    land_mean = (dz.mean(axis=1)) @ bw                                  # (time, 4): land-mean deviation term
+    years = np.asarray(data["years"])
+    names = ["adult_survival", "fecundity", "capacity", "juvenile_survival"]
+    out = {"w_scale_level": [float(x) for x in np.asarray(sim["w_scale"])],
+           "w_scale_within": [float(x) for x in np.asarray(sim["w_scale_within"])]}
+    out["within_over_level"] = [w / max(l, 1e-12) for w, l in zip(out["w_scale_within"], out["w_scale_level"])]
+    for i, n in enumerate(names):
+        sel = {y: float(land_mean[np.argmin(np.abs(years - y)), i]) for y in (1940, 1966, 1980, 1996, 2010, 2023)}
+        out[f"land_mean_deviation_{n}"] = sel
+    return out
 
 
 def _covariate_drift_metrics(data, sim):
@@ -2306,6 +2327,9 @@ def main():
         "k_trend": _k_trend_metrics(data, sim),
         # covariate_drift (E057): the per-field link-scale drift and its weights against their prior.
         "covariate_drift": _covariate_drift_metrics(data, sim),
+        # readout.split (E066): amplitudes of the deviation vs level blocks, and the LAND-MEAN deviation term
+        # per field over time -- the continental trend the deviation block carries (competes with P0 / K trend).
+        "split_readout": _split_readout_metrics(data, sim),
         "subcell_strata": subcell_metrics,
         # K's bounded dynamic range. If a large share of land sits at the floor, the
         # covariates are pushing capacity as low as the bound permits -- the same

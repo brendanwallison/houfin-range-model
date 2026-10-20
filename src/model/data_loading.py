@@ -53,6 +53,12 @@ def _route_effects_enabled():
     return bool(spec.get("route_effects", False))
 
 
+def readout_spec():
+    """population_model.readout from the active config ({} = the single-amplitude readout)."""
+    from src.config_utils import load_age_model_config
+    return dict(load_age_model_config().get("population_model", {}).get("readout") or {})
+
+
 def covariate_drift_spec():
     """population_model.covariate_drift from the active config, or None (off, the default)."""
     from src.config_utils import load_age_model_config
@@ -260,6 +266,34 @@ def load_data(input_dir, target_device=None, precision="float32", verbose=True):
 
     meta["Z_gathered"] = np.asarray(z_mem, dtype=f_type_cpu)
     meta["Z_disp_gathered"] = np.asarray(z_disp_mem, dtype=f_type_cpu)
+    rspec = readout_spec()
+    if rspec.get("rank"):
+        # population_model.readout.rank: use the leading `rank` DESK features of a wider input
+        # (features are ordered by eigenvalue, so this is the same top-eigenfeature truncation the
+        # builder does), so ranks 24/32/64 share ONE input directory.
+        r = int(rspec["rank"])
+        if r > meta["Z_gathered"].shape[-1]:
+            raise ValueError(f"readout.rank {r} > input width {meta['Z_gathered'].shape[-1]}")
+        meta["Z_gathered"] = np.ascontiguousarray(meta["Z_gathered"][..., :r])
+        meta["Z_disp_gathered"] = np.ascontiguousarray(meta["Z_disp_gathered"][..., :r])
+        meta["M"] = r
+        c = dict(meta.get("z_kernel_contract") or {})
+        if c:
+            c["latent_dim"] = r
+            if int(c.get("source_latent_dim", r)) > r:
+                c["truncation"] = "top_eigenfeatures"
+            meta["z_kernel_contract"] = c
+    if rspec.get("split"):
+        # population_model.readout.split: the cell's long-run level z-bar (mean over the reference
+        # window, default 1996-2025 -- the DESK E012/E059e choice; a recent window erases the gain)
+        # and the within-cell deviation z(t) - z-bar get SEPARATE weights/amplitudes (split kernel).
+        y0, y1 = rspec.get("ref_window", [1996, 2025])
+        yrs = np.asarray(meta["years"]).astype(int)
+        win = (yrs >= int(y0)) & (yrs <= int(y1))
+        if not win.any():
+            raise ValueError(f"readout.ref_window {y0}-{y1} has no model years")
+        meta["Z_ref"] = meta["Z_gathered"][win].mean(axis=0)
+        meta["Z_disp_ref"] = meta["Z_disp_gathered"][win].mean(axis=0)
     # A plain int, computed from the HOST array before device placement, so the model can
     # decide structurally (whether quality_conc_mult exists) without touching jnp.
     if isinstance(meta.get("obs_quality"), np.ndarray):

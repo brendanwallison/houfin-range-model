@@ -57,7 +57,8 @@ OVERLAYS = [None, "map_run19_exchangeable.json", "map_run21_single_field.json",
             "map_run64j_compensation_route.json", "map_run64k_route_control.json",
             "map_run64l_route_ktrend_control.json",
             "map_run65d_survival_nosort.json", "map_run65h_survival_harsh_nosort.json",
-            "map_run65j_compensation_route_nosort.json"]
+            "map_run65j_compensation_route_nosort.json",
+            "map_run66a_readout.json", "map_run66b_readout.json", "map_run66c_readout.json", "map_run66d_readout.json", "map_run66e_readout.json", "map_run66f_readout.json", "map_run66g_readout.json", "map_run66h_readout.json", "map_run66i_readout.json", "map_run66j_readout.json", "map_run66k_readout.json", "map_run66l_readout.json"]
 
 
 def _DRIFT_C():
@@ -111,6 +112,8 @@ def synthetic_inputs(T=40, Ny=12, Nx=16, M=24, z_sd=2.0, seed=0):
     meta["Z_mean"] = meta["Z_gathered"].mean(axis=0)              # habitat_change (when enabled)
     meta["Z_disp_mean"] = meta["Z_disp_gathered"].mean(axis=0)
     meta["n_obs_quality_tiers"] = int(np.unique(meta["obs_quality"]).size)
+    meta["Z_ref"] = meta["Z_gathered"].mean(axis=0)                 # readout.split (when enabled)
+    meta["Z_disp_ref"] = meta["Z_disp_gathered"].mean(axis=0)
     from src.model.data_loading import covariate_drift_basis           # covariate_drift (when enabled)
     meta["years"] = np.arange(2024 - T, 2024)
     meta["drift_basis"] = covariate_drift_basis(meta["years"], t_idx, 3, 1966)

@@ -178,6 +178,12 @@ if _NUMERICS:
 #                             reproduction act on the occupied-conditional density m = N / psi; arrivals
 #                             establish by Poisson chance. birds_per_route_count: birds in a 27-km cell per
 #                             unit of expected route count (default 58 = 729/25 km2 sampled / detection .5).
+#   readout                   {"split": bool, "ref_window": [y0, y1], "rank": int}: SPLIT readout -- the cell's
+#                             long-run DESK level z-bar and its within-cell deviation z(t) - z-bar get separate
+#                             manifold weights and amplitudes (DESK E059e/E012: one amplitude makes the temporal
+#                             coefficients the spatial ones). rank: leading DESK features used (data_loading).
+_READOUT = dict(_POP_SPEC.get("readout", {}))
+SPLIT_READOUT = bool(_READOUT.get("split", False))
 _OCC = dict(_POP_SPEC.get("occupancy", {}))
 OCCUPANCY = bool(_OCC.get("enabled", False))
 OCC_BIRDS_PER_COUNT = float(_OCC.get("birds_per_route_count", 58.0))
@@ -537,6 +543,24 @@ def sample_priors(prior_scale=1.0, M_features=None, time=None,
     # The new one: adult vs juvenile survival, the pair this rank-2 extension exists to couple.
     numpyro.deterministic("env_corr_survival_adult_juv", corr[0, 3])
 
+    if SPLIT_READOUT:
+        # Within-cell deviation block: an independent exchangeable draw (same coupling rho) with its
+        # OWN amplitudes, same prior as the level block -- the data decide how much the deviation counts.
+        if _MANIFOLD_FORM != "exchangeable":
+            raise NotImplementedError("readout.split is wired for manifold_prior.form = exchangeable")
+        w_scale_w = numpyro.deterministic("w_scale_within", jnn.softplus(numpyro.sample(
+            "w_scale_within_raw",
+            dist.Normal(jnp.asarray(_m["amplitude_loc"], dtype=float),
+                        jnp.asarray(_m["amplitude_scale"], dtype=float) * prior_scale))))
+        rho_w = corr[0, 1]                 # the level block's coupling rho (exchangeable: every off-diagonal)
+        with numpyro.plate("env_features_within", M_features, dim=-2):
+            f_w = numpyro.sample("manifold_factor_within", dist.Normal(0.0, 1.0))
+            with numpyro.plate("manifolds_within", 4, dim=-1):
+                e_w = numpyro.sample("manifold_idio_within", dist.Normal(0.0, 1.0))
+        w_env_w = numpyro.deterministic(
+            "w_env_within", w_scale_w[None, :] * (jnp.sqrt(rho_w) * f_w + jnp.sqrt(1.0 - rho_w) * e_w))
+        priors['beta_s_w'], priors['beta_r_w'] = w_env_w[:, 0], w_env_w[:, 1]
+        priors['beta_k_w'], priors['beta_sj_w'] = w_env_w[:, 2], w_env_w[:, 3]
     priors['beta_s'] = w_env[:, 0]   # Adult survival suitability weights
     priors['beta_r'] = w_env[:, 1]   # Reproductive suitability weights
     priors['beta_k'] = w_env[:, 2]   # Carrying-capacity weights
@@ -1074,6 +1098,9 @@ def build_model_2d(data, prior_scale=1.0):
         Z_mean=data.get("Z_mean"), Z_disp_mean=data.get("Z_disp_mean"),
         field_drift=field_drift,
         covariate_drift=covariate_drift_in,
+        split_readout=((data['Z_ref'], data['Z_disp_ref'],
+                        (priors['beta_s_w'], priors['beta_r_w'], priors['beta_k_w'], priors['beta_sj_w']))
+                       if SPLIT_READOUT else None),
     )
     if BAND_WEIGHTS:
         _nb = data['juvenile_fft_kernel_stack'].shape[0] // 4

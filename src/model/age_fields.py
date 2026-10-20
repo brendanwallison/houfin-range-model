@@ -175,6 +175,7 @@ def project_and_scatter_age_structured(
     Z_disp_mean=None, # (N_land, K, M) same for the path features
     field_drift=None, # (time, 4) covariate_drift on the LINK scale, [adult surv, fecundity, capacity, juv surv]
     covariate_drift=None,  # (x (time, N_land, C), G (time, C, 4)): per-cell link-scale drift sum_c x[t,cell,c] G[t,c,field]
+    split_readout=None,    # (Z_ref (N,M), Z_disp_ref (N,K,M), (beta_s_w, beta_r_w, beta_k_w, beta_sj_w)) -- readout.split
 ):
     """Project Z → (S_a, S_j, F_max, K, Q) for every year, on the land cells.
 
@@ -205,6 +206,17 @@ def project_and_scatter_age_structured(
         off_s, off_r = jnp.dot(z_center, beta_s), jnp.dot(z_center, beta_r)
         off_k, off_sj = jnp.dot(z_center, beta_k), jnp.dot(z_center, beta_sj)
 
+    # readout.split: H = z_ref.beta (level, centred as before) + (z_t - z_ref).beta_w (within-cell deviation,
+    # its own weights/amplitude). The level part is time-invariant, so it is computed once here.
+    if split_readout is not None:
+        if z_shrink is not None:
+            raise NotImplementedError("readout.split and habitat_change.shrink are alternatives, not both")
+        Z_ref, Z_disp_ref, (bs_w, br_w, bk_w, bsj_w) = split_readout
+        lvl_s, lvl_r = jnp.dot(Z_ref, beta_s), jnp.dot(Z_ref, beta_r)
+        lvl_k, lvl_sj = jnp.dot(Z_ref, beta_k), jnp.dot(Z_ref, beta_sj)
+        lvl_sj_disp = jnp.dot(Z_disp_ref, beta_sj)
+        lvl_s_disp = jnp.dot(Z_disp_ref, beta_s)
+
     # Checkpoint: don't store this function's large intermediates for the
     # backward pass; recompute them instead.
     @checkpoint
@@ -220,18 +232,25 @@ def project_and_scatter_age_structured(
 
         # 2. Compute the 4 Correlated Habitat Manifolds (H_s, H_sj, H_r, H_k) --
         # purely covariate-driven (Z.beta), no spatiotemporal term mixed in.
-        H_s_local = jnp.dot(z_t, beta_s) - off_s
-        H_r_local = jnp.dot(z_t, beta_r) - off_r
+        if split_readout is None:
+            H_s_local = jnp.dot(z_t, beta_s) - off_s
+            H_r_local = jnp.dot(z_t, beta_r) - off_r
+        else:
+            dz_t = z_t - Z_ref
+            H_s_local = lvl_s - off_s + jnp.dot(dz_t, bs_w)
+            H_r_local = lvl_r - off_r + jnp.dot(dz_t, br_w)
         # Juvenile survival reads its OWN manifold. It used to reuse H_s_local with only a
         # scalar shift (alpha_j) and scale (gamma_j), so "where juveniles survive" could not
         # differ in PATTERN from "where adults survive" -- zero independent spatial degrees of
         # freedom. The two are still tightly coupled, but now through a PRIOR on their
         # correlation (rank-2 manifold prior, target 0.85) rather than by identity.
-        H_sj_local = jnp.dot(z_t, beta_sj) - off_sj
+        H_sj_local = (jnp.dot(z_t, beta_sj) - off_sj if split_readout is None
+                      else lvl_sj - off_sj + jnp.dot(dz_t, bsj_w))
         # Capacity reads its OWN manifold. It used to reuse H_r, making K a strictly
         # monotone function of Fmax, so the disease term was the only way their
         # spatial patterns could differ -- see the module docstring.
-        H_k_local = jnp.dot(z_t, beta_k) - off_k
+        H_k_local = (jnp.dot(z_t, beta_k) - off_k if split_readout is None
+                     else lvl_k - off_k + jnp.dot(dz_t, bk_w))
 
         # 3. Path-Integrated Survival Suitability
         # z_disp_t is (N_land, K_kernels, M) -> dot with beta_s (M,) gives (N_land, K_kernels)
@@ -244,7 +263,8 @@ def project_and_scatter_age_structured(
         # existed. The exact GP-kernel interpretation remains only approximate on the dispersal
         # block. See kernel_contract note in model_inputs.py and the "dispersal-block prior"
         # future-work item.
-        H_sj_disp = jnp.dot(z_disp_t, beta_sj) - off_sj
+        H_sj_disp = (jnp.dot(z_disp_t, beta_sj) - off_sj if split_readout is None
+                     else lvl_sj_disp - off_sj + jnp.dot(z_disp_t - Z_disp_ref, bsj_w))
 
         # population_model.covariate_drift (P0, intercept form): a smooth, spatially uniform shift of
         # each rate's linear predictor -- the zero-order case of a drifting proxy -> niche relation.
@@ -323,7 +343,9 @@ def project_and_scatter_age_structured(
         Q_val = jnn.sigmoid(alpha_j + gamma_j * H_sj_disp + q_sj)
         if juvenile_ratio:
             # The same juvenile-survival field, evaluated on path habitat.
-            Q_val = jnn.sigmoid(alpha_a + gamma_a * (jnp.dot(z_disp_t, beta_s) - off_s) + q_s) * Q_val
+            Hs_disp = (jnp.dot(z_disp_t, beta_s) - off_s if split_readout is None
+                       else lvl_s_disp - off_s + jnp.dot(z_disp_t - Z_disp_ref, bs_w))
+            Q_val = jnn.sigmoid(alpha_a + gamma_a * Hs_disp + q_s) * Q_val
 
         # K_base_val is returned as well: severity is a function of it, so exact
         # diagnostics (and the severity map) need the UNDEPRESSED capacity. Using

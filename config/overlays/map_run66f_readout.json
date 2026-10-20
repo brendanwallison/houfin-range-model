@@ -1,0 +1,21 @@
+{
+  "_extends": "map_run66_b2_base.json",
+  "_comment": [
+    "E066 66f: B2 +drift x readout SPLIT at rank 24."
+  ],
+  "run_names": {
+    "map": "age_map_{precision}_run_66f",
+    "vis_map": "age_map_{precision}_run_66f"
+  },
+  "input_dir": "${HOUFIN_PROCESSED}/model_inputs/numpyro_input_vl_r64",
+  "population_model": {
+    "readout": {
+      "split": true,
+      "ref_window": [
+        1996,
+        2025
+      ],
+      "rank": 24
+    }
+  }
+}

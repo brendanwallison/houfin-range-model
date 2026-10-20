@@ -1,0 +1,10 @@
+{
+  "_extends": "map_run66_b3_base.json",
+  "_comment": [
+    "E066 66i: B3 +route x readout single-amplitude at rank 24."
+  ],
+  "run_names": {
+    "map": "age_map_{precision}_run_66i",
+    "vis_map": "age_map_{precision}_run_66i"
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "_extends": "map_run51a_veit.json",
+  "_comment": [
+    "Input build only: the V&L inputs (adult shape .859) at DESK rank 64, for E066's readout variants (ranks 24/32/64 sliced from it)."
+  ],
+  "input_dir": "${HOUFIN_PROCESSED}/model_inputs/numpyro_input_vl_r64",
+  "latent_dim": 64
+}

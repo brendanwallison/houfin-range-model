@@ -33,6 +33,13 @@ if [[ "$JOB" == *fresh* ]]; then
 fi
 if [[ "$JOB" == *fullfresh* ]]; then
   export HOUFIN_MAP_FRESH=1
+  # Preserve the invalid run's task-level evidence as well as the model checkpoints
+  # archived by age_run_map/age_refine_map.  The repair cannot start until a worker
+  # has finished the old task, so this move never races a writer.
+  if [[ -d "$OUT_ROOT/$CODE" ]]; then
+    STAMP=$(date +%Y%m%dT%H%M%S)
+    mv "$OUT_ROOT/$CODE" "$OUT_ROOT/${CODE}_before_fullfresh_${STAMP}"
+  fi
 fi
 
 if [[ "$CODE" == 64n || "$CODE" == 64r ]]; then

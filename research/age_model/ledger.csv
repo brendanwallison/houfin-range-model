@@ -123,3 +123,4 @@ date,experiment,variant,run_dir,U,fit_corr,notes,su
 2026-10-20,E058,fd pinpoint,,,,58b stall = corner at sigma 0 (U rises both ways at 1e-7); smoothing restores AD=FD,
 2026-10-20,E065,65d/f/g/h/i,,186204-186426,,survival w/o sorting: winter moderator sign unstable (cold +.8, snow -.18, harsh -.36); contortion unchanged (Sj .11-.18 F 10-11 Allee-dead .1-.19); provisional pending 65n/r,
 2026-10-20,E064,64k/64l,,,,corrected route controls were never queued by Codex; queued 2026-10-20,
+2026-10-20,E065,65n null,run_65n,211111.4,,null returns beta_k -.29 (= 64c's -.35: artifact); only cold sigma_mod (+.80) exceeds null; null truth point mildly misspecified (route SD),

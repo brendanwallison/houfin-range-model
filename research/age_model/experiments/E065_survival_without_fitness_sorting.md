@@ -66,3 +66,12 @@ index exploits covariance rather than winter severity; (2) the generic urban sur
 of it relieves the refine: Sj .11-.18 (juvenile survival at a fraction of adult), F 9.6-11, Allee-dead 10-19%, the
 plains trough flattened to the west's level, K trend 3.7-5.5 sds. No support for urban winter compensation as the
 missing mechanism. MAP-stage plots for these arms are being backfilled (0310).
+
+## 65n NULL RESULT (2026-10-20): the structure manufactures a negative capacity tilt
+Truth: all four sub-cell effects 0 (synthetic counts at 59a's refined point). Refined 211,111 (4,222 it): beta_k -.293,
+beta_k_mod -.109, sigma_s -.077, sigma_s_mod -.144. So beta_k ~ -.3 is what the structure returns with NO effect:
+E064c's real beta_k -.353 ("urban strata hold less capacity") is indistinguishable from this artifact and is not
+evidence. Of the survival moderators only cold (+.80) clearly exceeds the null, and it is one of three indices with
+inconsistent signs -- not a coherent winter-compensation signal. Caveat: the null's truth point (59a refined) fitted
+route SD 1.29 while 65j's structure fixes .7 -- a mild misspecification that may inflate null estimates; a clean
+truth point (64k or the E066 B3 baseline) would remove it. 65r recovery still running.

@@ -162,3 +162,7 @@ test. `obs_route_raw` contributes only 479 to the gradient, while
 bottleneck and corrected controls 64k/l remain informative as written. Arm 64b is
 still only borderline numerically relative to the cleaner fits and requires a fresh
 continuation before biological interpretation.
+
+## Note added 2026-10-20 (Claude): E065's null (65n) returns beta_k = -.293 with no true effect, so 64c's beta_k -.353 is
+not distinguishable from a structural artifact; the "capacity compensation rejected" reading should rest on the
+deficit moderator (~0) and the absence of improvement, not on the sign of beta_k.

@@ -1,0 +1,13 @@
+{
+ "exp": "E086",
+ "name": "e086l-oracle-level",
+ "group": "cpu",
+ "overlay": "research/overlays/desk_tempho_1995_seed1.json",
+ "cmd": [
+  "bash",
+  "-c",
+  "set -e; export OMP_NUM_THREADS=12; {python} research/exp/e086l_oracle_level.py --cache {cache}/desk_tempho_1995_s1 --esk /home/breallis/houfin/work/houfin/research/E086/e086k-rank128-71a2619bf6a3/desk_tempho_1995_s1/esk128_annual.npy --similarity /home/breallis/houfin/work/houfin/research/E059/species-strata-066f943afb0e/species_similarity.csv --out {out}/desk_tempho_1995_s1; {python} research/exp/e086l_oracle_level.py --cache {cache}/desk_tempho_1985_s1 --esk /home/breallis/houfin/work/houfin/research/E086/e086k-rank128-71a2619bf6a3/desk_tempho_1985_s1/esk128_annual.npy --similarity /home/breallis/houfin/work/houfin/research/E059/species-strata-066f943afb0e/species_similarity.csv --out {out}/desk_tempho_1985_s1"
+ ],
+ "expected_minutes": 20,
+ "note": "E086l: production-form readout on observed ESK at k = 24-128"
+}

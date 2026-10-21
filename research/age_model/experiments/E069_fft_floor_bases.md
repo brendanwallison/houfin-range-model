@@ -47,3 +47,7 @@ MAP 180,428: .58/.33/5.15, lam0 1.32; plains .93 < west 1.04 < east 1.17; west s
 64k (hard floor: .50/.45/8.8, 172,035): on B3 the floor changes nothing.
 vs 67c2 (+ st_correction): -319 nats; west sink .54 -> .22 and the plains stay lowest, but F RISES 8.7 -> 10.7 and Sa
 falls .49 -> .44 -- the persistent correction worsens the demographic contortion while fixing the spatial one.
+
+## 69b RESULT (smooth floor): as predicted, = 62b / 69a
+MAP .58/.32/5.35, plains .86 vs west 1.00. Refined 186,068 (3,512 it; 69a 186,066, 62b 186,171): .66/.29/14.4;
+plains = west 1.00; plains K .010; Allee-dead .15/.18/.01. All three floor variants land on the same contortion.

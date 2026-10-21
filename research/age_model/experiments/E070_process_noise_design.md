@@ -111,3 +111,15 @@ IMPORTANT: the contorted refine predicts withheld data BETTER than the plausible
 +.095 nats per observation). The contortion is not overfitting: it captures real, generalisable structure that the
 plausible demography misses (consistent with 68b). The bar E070 arms must clear is therefore twofold: plausible
 demography (G2-G3) AND held-out density at least as good as 70z refined (-1.818 / -1.178).
+
+## 70b RESULT (sigma .05 from 1902, real; read 2026-10-21): NOT VIABLE -- the contortion changes form, not size
+MAP: .55/.28/4.96, lam0 1.19; plains .84, west .97, EAST .93 (east sink .55: at MAP the noise carries part of eastern
+growth); RMS u .62 (cumulative-eps RMS 1.16 in 1993-2018). Holdout temporal -1.910, spatial -1.248.
+Refined (3,855 it): Sa .78 / Sj .11 / F 9.8, lam0 1.40 -- juvenile survival COLLAPSES instead of F exploding; plains
+1.00 = west .99 < east 1.19; plains K .005; Allee-dead .10/.23/.05; west sink .70. RMS u .48 (max 2.2), noise
+concentrated after 1966. Holdout temporal -1.824 / spatial -1.180 = 70z refined (-1.818 / -1.178): no predictive gain.
+Gates: fails G2 (Sj .11, Sj << Sa), G3 (Allee-dead .23 plains; plains not below west), G5 (Sa +.23, Sj -.17).
+Note: U is not comparable with 70z (the 1,860 N(0,1) noise coefficients add their normalising constant, ~1,700 nats).
+Reading: at sigma .05 the noise is used (RMS .5, conservative per 70r) but does not take over the timing load the vital
+rates were carrying; the refine still distorts demography, along a different direction (Sa up / Sj down rather than
+F up). 70a/70c/70d pending.

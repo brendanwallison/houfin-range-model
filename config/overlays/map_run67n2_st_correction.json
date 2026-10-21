@@ -1,0 +1,18 @@
+{
+  "_extends": "map_run69a_b1_nofloor.json",
+  "_comment": [
+    "67n2 (E067 v2, floor removed): NULL: B1 no-floor + st_correction on synthetic counts at 62b's MAP (no correction)."
+  ],
+  "population_model": {
+    "st_correction": {
+      "enabled": true,
+      "scale": 0.1,
+      "time": "linear",
+      "window_start": 1966
+    }
+  },
+  "run_names": {
+    "map": "age_map_{precision}_run_67n2",
+    "vis_map": "age_map_{precision}_run_67n2"
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "_extends": "map_run62b_numerics.json",
+  "_comment": [
+    "E069a: B1 (62b) WITHOUT the hard FFT floor (zero padding kept). The floor makes U discontinuous (66b stall: +.45 nat jumps along -grad at steps >= 1e-8, smooth with the floor off) and the refine exploits it (~100 nats). Baseline for E067 v2."
+  ],
+  "population_model": {
+    "numerics": {
+      "fft_floor_ulps": null
+    }
+  },
+  "run_names": {
+    "map": "age_map_{precision}_run_69a",
+    "vis_map": "age_map_{precision}_run_69a"
+  }
+}

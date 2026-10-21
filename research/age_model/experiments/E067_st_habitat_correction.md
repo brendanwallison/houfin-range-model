@@ -27,3 +27,11 @@ Execution note (2026-10-20): the basis build's operator guard first failed (shap
 diagnostic (0321ca) showed rebuilt vs stored Z_disp corr .99999, slope 1.000, p99 rel err ~1e-7; only 11-16 of 17,209
 cells (islands; the land-weight normaliser at its 1e-10 cut-off) differ. Local and path habitat are consistent. The
 guard is now robust (p99.9 < 1e-3 and < .2% outlier cells).
+
+## v2 (2026-10-20): restarted WITHOUT the hard FFT floor
+The floor test at the 66b stall (0321bx) showed numerics.fft_floor_ulps makes U discontinuous: with it, U jumps +.45
+along -grad at every step >= 1e-8 (|grad| 1.45e6); without it U is smooth and matches the linear prediction exactly
+(|grad| 7.4e4), and U differs by ~100 nats at the same point -- the refine was exploiting the floor. Every 62b-based run
+(E063, E066, E067 v1, E068) carries it. E067 v1 arms were stopped at the MAP stage. v2 = same design on no-floor bases
+(zero padding kept): 67a2 (B1), 67c2 (B3), 67n2 / 67r2 (null / recovery; truth 62b MAP), plus the no-floor B1 baseline
+69a. Converged 62b-based results (66a, 66m, 68a, 63a-c) need re-checking without the floor before they stand.

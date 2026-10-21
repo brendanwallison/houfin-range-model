@@ -1,0 +1,11 @@
+{
+  "_extends": "map_run66_b3_base.json",
+  "_comment": [
+    "B3 (62b + route SD .7) without the hard FFT floor."
+  ],
+  "population_model": {
+    "numerics": {
+      "fft_floor_ulps": null
+    }
+  }
+}

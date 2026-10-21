@@ -57,4 +57,4 @@ and the plains stay the lowest region after refinement (64k/69a: plains = west).
 IMPROVE over 1966-2023 and parts of the east decline: regional timing carried by habitat, as intended. But the
 demographic contortion is only reduced, not removed (F 10.7 vs 8.8 in 64k, Sj -> Sa, east lam 1.50), and the weights
 sit 4.4 prior sds out -- the data want more correction than the N(0, .1) budget allows. The 64k comparison mixes the
-floor change; 69c (B3 no floor) queued as the clean baseline.
+numerics (64k: legacy 1e-9 pad, not the hard floor -- corrected 2026-10-21); 69c (B3 no floor) is the clean baseline.

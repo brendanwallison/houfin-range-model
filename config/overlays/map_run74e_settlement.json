@@ -1,0 +1,21 @@
+{
+  "_extends": "map_run70z_holdout_base.json",
+  "_comment": [
+    "E074e: fitness ideal-free settlement of dispersers (E061a failed cold on the legacy pad with the unsmoothed equal-fitness root) with numerics.smooth_allocation .001 (the E064 smoothing)."
+  ],
+  "population_model": {
+    "settlement": {
+      "form": "ideal_free",
+      "block": 3,
+      "apply_to": "dispersers",
+      "weight": "fitness"
+    },
+    "numerics": {
+      "smooth_allocation": 0.001
+    }
+  },
+  "run_names": {
+    "map": "age_map_{precision}_run_74e",
+    "vis_map": "age_map_{precision}_run_74e"
+  }
+}

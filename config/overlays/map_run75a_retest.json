@@ -1,0 +1,16 @@
+{
+  "_extends": "map_run70z_holdout_base.json",
+  "_comment": [
+    "E075 retest of E063 occupancy (tested only under the hard floor, whose exact extinction is the very regime occupancy addresses) on the 70z holdout base, no floor."
+  ],
+  "population_model": {
+    "occupancy": {
+      "enabled": true,
+      "birds_per_route_count": 58.0
+    }
+  },
+  "run_names": {
+    "map": "age_map_{precision}_run_75a",
+    "vis_map": "age_map_{precision}_run_75a"
+  }
+}

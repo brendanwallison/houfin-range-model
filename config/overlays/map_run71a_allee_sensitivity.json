@@ -1,0 +1,15 @@
+{
+  "_extends": "map_run70z_holdout_base.json",
+  "_comment": [
+    "E071 Allee sensitivity on the 70z base (holdout, no floor, no noise): n50 / 4 (weaker Allee); n50 0.014803 route counts (pinned; literature pin 0.05921)."
+  ],
+  "population_model": {
+    "pinned_sites": {
+      "n50_raw": -4.205539858944576
+    }
+  },
+  "run_names": {
+    "map": "age_map_{precision}_run_71a",
+    "vis_map": "age_map_{precision}_run_71a"
+  }
+}

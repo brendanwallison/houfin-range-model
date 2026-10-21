@@ -131,3 +131,27 @@ def test_holdout_score_matches_scipy_nb(monkeypatch):
     t = np.isin(m["years"][m["obs_time_indices"]], [2024, 2025])
     np.testing.assert_allclose(out["temporal"]["mean_lpd"], lp[t].mean(), rtol=1e-10)
     assert out["temporal"]["n"] + out["spatial"]["n"] + out["fitted"]["n"] == n
+
+
+def test_holdout_score_matches_scipy_zinb(monkeypatch):
+    sys.path.insert(0, os.path.join(REPO, "scripts", "viz"))
+    import map_diagnostics as md
+    import src.model.data_loading as dl
+    from scipy.stats import nbinom
+    m = _meta(3)
+    spec = {"holdout_years": [2024, 2025]}
+    monkeypatch.setattr(dl, "_observation_mask_spec", lambda: spec)
+    rng = np.random.default_rng(4)
+    n = m["obs_rows"].size
+    mu, phi = rng.gamma(1.0, 1.0, n), np.full(n, 1.3)
+    gate = np.exp(-mu / 0.4)
+    y = rng.poisson(mu)
+    data = dict(m, observed_results=y, obs_holdout=dl.holdout_observation_mask(m, spec))
+    out = md._holdout_metrics(data, {"expected_obs": mu, "obs_concentration": phi, "obs_zero_gate": gate,
+                                     "route_occupancy_log_m": np.log(0.4)})
+    mo = mu / (1 - gate)
+    lp = np.log1p(-gate) + nbinom.logpmf(y, phi, phi / (phi + mo))
+    lp = np.where(y == 0, np.log(gate + np.exp(lp)), lp)
+    t = np.isin(m["years"][m["obs_time_indices"]], [2024, 2025])
+    np.testing.assert_allclose(out["temporal"]["mean_lpd"], lp[t].mean(), rtol=1e-10)
+    np.testing.assert_allclose(out["route_occupancy_m"], 0.4)

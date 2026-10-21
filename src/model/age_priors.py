@@ -109,6 +109,21 @@ BAND_WEIGHTS = bool(_KERNEL_SPEC.get("band_weights", False))
 #                             SLOWER than the breeders and the fit needs a higher lambda0.
 _OBS_SPEC = dict(_POP_SPEC.get("observation", {}))
 OBS_BREEDING = _OBS_SPEC.get("form", "post_breeding") == "breeding"
+#   observation.route_occupancy {"enabled", "m_loc", "m_scale"} (E072): mean-preserving route-level zero inflation.
+#   A route samples a patch of its 27 km cell; with cell mean mu (route counts) the route is EMPTY with probability
+#   pi = exp(-mu / m) (Poisson patches of mean size m counts), and an occupied route counts NB with mean mu / (1 - pi),
+#   so E[y] = mu is unchanged: sparse cells may show mostly empty routes without their capacity collapsing.
+#   log m ~ Normal(log m_loc, m_scale).
+_ROUTE_OCC = dict(_OBS_SPEC.get("route_occupancy") or {})
+ROUTE_OCCUPANCY = bool(_ROUTE_OCC.get("enabled", False))
+
+
+def route_occupancy_parts(mu, m):
+    """(gate, occupied-route mean, gate logits) for observation.route_occupancy; finite in value and gradient as
+    mu -> 0. The logits are exact (gate is within 1e-11 of 1 in empty cells, where 1 - gate loses its digits)."""
+    x = jnp.maximum(mu, 1e-12) / m
+    occ = -jnp.expm1(-x)                                   # 1 - pi, accurate for small x
+    return 1.0 - occ, m * x / occ, -x - jnp.log(occ)       # mu / (1 - pi) -> m as mu -> 0
 _YEAR_FX = dict(_POP_SPEC.get("year_effects", {}))
 YEAR_EFFECTS = bool(_YEAR_FX.get("enabled", False))
 #   habitat_change            {"shrink": "learned", "eta_a", "eta_b"}: Z_eff(t) = Z_mean + eta*(Z(t) - Z_mean),
@@ -1374,12 +1389,18 @@ def build_model_2d(data, prior_scale=1.0):
     # population_model.observation_mask (diagnostic): data_loading sets obs_weight 0 on the
     # dropped observations; they stay in expected_obs, so their fit can still be read.
     # observation_weighting (diagnostic): positive weights SCALE each observation's log-likelihood.
+    if ROUTE_OCCUPANCY:
+        log_m = numpyro.sample("route_occupancy_log_m", dist.Normal(
+            jnp.log(float(_ROUTE_OCC.get("m_loc", 0.3))), float(_ROUTE_OCC.get("m_scale", 1.0)) * prior_scale))
+        gate, mu_occ, gate_logits = route_occupancy_parts(densities_obs, jnp.exp(log_m))
+        numpyro.deterministic("obs_zero_gate", gate)
+        obs_dist = dist.ZeroInflatedNegativeBinomial2(mean=mu_occ, concentration=conc_obs, gate_logits=gate_logits)
+    else:
+        obs_dist = dist.NegativeBinomial2(mean=densities_obs, concentration=conc_obs)
     obs_weight = data.get("obs_weight")
     if obs_weight is None:
-        numpyro.sample("obs", dist.NegativeBinomial2(mean=densities_obs, concentration=conc_obs),
-                       obs=data["observed_results"])
+        numpyro.sample("obs", obs_dist, obs=data["observed_results"])
     else:
         with numpyro.handlers.mask(mask=obs_weight > 0.0), \
                 numpyro.handlers.scale(scale=jnp.where(obs_weight > 0.0, obs_weight, 1.0)):
-            numpyro.sample("obs", dist.NegativeBinomial2(mean=densities_obs, concentration=conc_obs),
-                           obs=data["observed_results"])
+            numpyro.sample("obs", obs_dist, obs=data["observed_results"])

@@ -72,7 +72,8 @@ def main():
             raise SystemExit(f"latent {n!r} is in neither the fitted point nor --set")
     post = {k: jnp.asarray(v)[None] for k, v in post.items()}
     out = Predictive(build_model_2d, posterior_samples=post,
-                     return_sites=["expected_obs", "concentration", "quality_conc_mult", "obs_conc_kappa"])(
+                     return_sites=["expected_obs", "concentration", "quality_conc_mult", "obs_conc_kappa",
+                                   "route_occupancy_log_m"])(
         jax.random.PRNGKey(0), data=data, prior_scale=1.0)
 
     # Same NB2 construction as the likelihood (and research/age_model/exp/loglik_decompose.py).
@@ -83,8 +84,14 @@ def main():
     conc_obs = conc * q ** quality
     if "obs_conc_kappa" in out:
         conc_obs = conc_obs * np.maximum(mu, 1e-3) ** float(np.asarray(out["obs_conc_kappa"][0]))
-    y = np.asarray(dist.NegativeBinomial2(mean=jnp.asarray(mu), concentration=jnp.asarray(conc_obs)).sample(
-        jax.random.PRNGKey(a.seed)))
+    if "route_occupancy_log_m" in out:      # observation.route_occupancy (E072): same ZINB as the likelihood
+        from src.model.age_priors import route_occupancy_parts
+        _, mu_occ, logits = route_occupancy_parts(jnp.asarray(mu), jnp.exp(out["route_occupancy_log_m"][0]))
+        obs_dist = dist.ZeroInflatedNegativeBinomial2(mean=mu_occ, concentration=jnp.asarray(conc_obs),
+                                                      gate_logits=logits)
+    else:
+        obs_dist = dist.NegativeBinomial2(mean=jnp.asarray(mu), concentration=jnp.asarray(conc_obs))
+    y = np.asarray(obs_dist.sample(jax.random.PRNGKey(a.seed)))
     os.makedirs(os.path.dirname(os.path.abspath(a.out)), exist_ok=True)
     np.savez(a.out, y=y, mu=mu, seed=a.seed, run_dir=a.run_dir,
              **{f"set_{k}": v for k, v in fixed.items()})

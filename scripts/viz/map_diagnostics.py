@@ -249,6 +249,8 @@ def reconstruct_map(data, params):
               "st_correction_gw", "st_correction_w",
               # process_noise (E070) and the per-observation NB concentration (held-out scoring).
               "process_noise_u", "process_noise_rms_t", "obs_concentration",
+              # observation.route_occupancy (E072): per-observation structural-zero probability.
+              "obs_zero_gate", "route_occupancy_log_m",
               # subcell_strata habitat-specific tilts (per year and land cell).
               "subcell_beta_k_t", "subcell_sigma_s_t",
               # population_model.covariate_drift only (E057 P0).
@@ -1172,8 +1174,14 @@ def _holdout_metrics(data, sim):
     y = np.asarray(data["observed_results"], dtype=np.float64)
     mu = np.maximum(np.asarray(sim["expected_obs"], dtype=np.float64), 1e-12)
     phi = np.asarray(sim["obs_concentration"], dtype=np.float64)
+    gate = np.asarray(sim["obs_zero_gate"], dtype=np.float64) if "obs_zero_gate" in sim else None
+    # route_occupancy: occupied routes count NB with mean mu / (1 - gate); mu itself stays the expected count
+    mu_nb = mu / np.maximum(1.0 - gate, 1e-300) if gate is not None else mu
     lp = (gammaln(y + phi) - gammaln(phi) - gammaln(y + 1.0)
-          + phi * np.log(phi / (phi + mu)) + y * np.log(mu / (phi + mu)))
+          + phi * np.log(phi / (phi + mu_nb)) + y * np.log(mu_nb / (phi + mu_nb)))
+    if gate is not None:
+        lp = np.where(y == 0, np.logaddexp(np.log(np.maximum(gate, 1e-300)), np.log1p(-gate) + lp),
+                      np.log1p(-gate) + lp)
     meta = {k: np.asarray(data[k]) for k in ("years", "obs_time_indices", "obs_rows", "obs_cols")}
     temporal = (holdout_observation_mask(meta, {"holdout_years": spec.get("holdout_years")})
                 if spec.get("holdout_years") else np.zeros(y.shape, bool))
@@ -1186,7 +1194,11 @@ def _holdout_metrics(data, sim):
             return None
         return {"n": int(m.sum()), "mean_lpd": float(lp[m].mean()),
                 "log1p_rmse": float(np.sqrt(np.mean((np.log1p(y[m]) - np.log1p(mu[m])) ** 2)))}
-    return {"temporal": score(temporal), "spatial": score(spatial), "fitted": score(fitted)}
+    out = {"temporal": score(temporal), "spatial": score(spatial), "fitted": score(fitted)}
+    if "route_occupancy_log_m" in sim:
+        out["route_occupancy_m"] = float(np.exp(np.asarray(sim["route_occupancy_log_m"])))
+        out["mean_zero_gate"] = float(gate.mean())
+    return out
 
 
 def _split_readout_metrics(data, sim):

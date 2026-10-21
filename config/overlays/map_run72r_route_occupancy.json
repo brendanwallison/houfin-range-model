@@ -1,0 +1,10 @@
+{
+  "_extends": "map_run72a_route_occupancy.json",
+  "_comment": [
+    "E072 RECOVERY: synthetic counts at 69a MAP WITH zero inflation m = .3, fitted with 72a's structure."
+  ],
+  "run_names": {
+    "map": "age_map_{precision}_run_72r",
+    "vis_map": "age_map_{precision}_run_72r"
+  }
+}

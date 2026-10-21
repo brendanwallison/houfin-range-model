@@ -123,3 +123,10 @@ Note: U is not comparable with 70z (the 1,860 N(0,1) noise coefficients add thei
 Reading: at sigma .05 the noise is used (RMS .5, conservative per 70r) but does not take over the timing load the vital
 rates were carrying; the refine still distorts demography, along a different direction (Sa up / Sj down rather than
 F up). 70a/70c/70d pending.
+
+## 70c (sigma .10 from 1902; read 2026-10-21): refine STALLED (gate) -- direction as 70b, more extreme
+MAP .54/.27/4.80; plains .82 < west 1.05, EAST .88 (east sink .63 -- the noise carries eastern growth at MAP); RMS u
+.57; holdout temporal -1.923, spatial -1.249. Refine stopped invalid at 2,769 it (U 145,889 -> 138,390; median |grad|
+1.25e4 > 1e4 gate, |grad| jumping 770 -> 1.25e4 in the last 10 iterations) at Sa .89 / Sj .05 / F 10.1, RMS u .52.
+Unconverged: not interpretable as an optimum, but the trajectory continues 70b's direction (Sa up, Sj collapse). A
+looser noise prior did not let realistic vital rates survive the refine.

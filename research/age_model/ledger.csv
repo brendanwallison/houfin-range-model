@@ -143,3 +143,4 @@ date,experiment,variant,run_dir,U,fit_corr,notes,su
 2026-10-21,E070,70r,run_70r,149508.6,,RECOVERY: pulse detected (4x null) right sign but 29% amplitude (<70% bar); no leakage into demography,
 2026-10-21,E070,70z,run_70z,137835.4,,holdout baseline: contorted refine (F 14.7) predicts held-out BETTER than plausible MAP (temporal -1.818 vs -1.917; spatial -1.178 vs -1.273),
 2026-10-21,E070,70b,run_70b,138735.4,,sigma .05: refine Sa .78 Sj .11 F 9.8; AD .23 plains; holdout = 70z (no gain); not viable,
+2026-10-21,E070,70c,run_70c,138389.9,,sigma .10: refine stalled at gate; heading Sa .89 Sj .05 F 10 (70b's direction); MAP east carried by noise,

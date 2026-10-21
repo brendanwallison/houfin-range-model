@@ -137,3 +137,28 @@ Sa .77 / Sj .16 / F 9.9; plains = west 1.00, east 1.13; Allee-dead .15/.14/.03; 
 -1.823 / -1.179 (70z -1.818 / -1.178). Even a nearly-off noise term moves the refine from 70z's F-up basin to the
 Sa-up / Sj-down basin, with the same held-out density: the two are near-equivalent demographic solutions, and the
 noise does not touch what they share (plains = west, K collapse + Allee-dead in the plains/west).
+
+## 70d RESULT (sigma .05 from 1966): = 70b
+MAP .54/.27/4.79 (east .93, noise carries eastern growth); refined 138,747 (8,000 it = max_iter): .77/.12/10.1;
+plains = west 1.00, east 1.10; Allee-dead .16/.20/.02; plains K .006; holdout -1.822 / -1.179.
+
+## STAGE 1 CONCLUSION (2026-10-21): process noise on abundance does not release the contortion
+| arm | refined Sa/Sj/F | plains/west/east lam | AD w/p/e | holdout temp/spat |
+| 70z none | .50/.43/14.7 | .90/.99/1.10 | .07/.06/0 | -1.818/-1.178 |
+| 70a .02 | .77/.16/9.9 | 1.00/1.00/1.13 | .15/.14/.03 | -1.823/-1.179 |
+| 70b .05 | .78/.11/9.8 | 1.00/.99/1.19 | .10/.23/.05 | -1.824/-1.180 |
+| 70c .10 | stalled .89/.05/10.1 | -- | -- | -- |
+| 70d .05 1966 | .77/.12/10.1 | 1.00/1.00/1.10 | .16/.20/.02 | -1.822/-1.179 |
+No arm passes G2/G3; none beats 70z on held-out density (all within .006 nats/obs). Guards: null pass, recovery
+detected-but-shrunk (70r).
+What every refine shares, with or without noise, whatever the demographic route (F up, or Sa up / Sj down): the plains
+rise to replacement (= west), K collapses in the plains and west (median .006-.03 vs MAP .12-.36), and Allee-dead
+cells appear (14-23% of suitable plains). The demographic distortion is NON-UNIQUE (two routes, equal held-out
+density) and is the by-product; the consistent demand is SPATIAL: very low abundance over large plains/west areas
+whose habitat the model rates as viable, i.e. many zero routes where lam_f >= 1. Transient abundance noise cannot
+supply that (it is multiplicative and mean-zero; it cannot make a viable region persistently near-empty).
+Failure pattern -> next suspects (design "Open"): (1) the observation process -- route-level zero inflation /
+patchiness in sparse regions (the conc_density_power note: plains predicted P(0) .85 vs observed .93; 64k's genuinely
+bounded route effect was the one arm that kept plains K); (2) the Allee term itself, which every refine leans on to
+make viable habitat empty (an Allee sensitivity arm -- user-sanctioned literature-pin + sensitivity); (3) stage 2's
+persistent lambda(t) term (67c2 fixed the west sink but raised F).

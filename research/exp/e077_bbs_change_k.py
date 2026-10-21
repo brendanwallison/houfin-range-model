@@ -117,7 +117,7 @@ def main():
                         ("cover_rest", ~A["top"] & A["covok"]), ("great_plains", A["gp"]), ("not_gp", ~A["gp"])):
             ka, ca = k_corr(A["obs"], A["pred"], m, smask)
             kc, cc = k_corr(C["obs"], C["pred"], m, smask)
-            dk, dc = [], []
+            dk, dc, dkm = [], [], []
             for bi in boots:
                 idx = bi[m[bi]]                   # resampled blocks, with multiplicity, restricted to the stratum
                 if len(idx) < 5:
@@ -126,11 +126,18 @@ def main():
                 o_c, p_c = C["obs"][idx][:, smask], C["pred"][idx][:, smask]
                 dk.append(f(o_a, p_a) / g(p_a) - f(o_c, p_c) / g(p_c))
                 dc.append(f(o_a, p_a) / np.sqrt(h(o_a) * g(p_a)) - f(o_c, p_c) / np.sqrt(h(o_c) * g(p_c)))
+                # E086o: MAGNITUDE-MATCHED slope -- the arm's predictions rescaled to the control's spread (a
+                # prediction-only quantity, no truth used): k_a * sd_a / sd_c = f(o_a, p_a) / sqrt(g(p_a) g(p_c))
+                dkm.append(f(o_a, p_a) / np.sqrt(g(p_a) * g(p_c)) - f(o_c, p_c) / g(p_c))
             rc[name] = {"cells": int(m.sum()), "k_arm": ka, "k_control": kc, "corr_arm": ca, "corr_control": cc,
                         "pred_sd_ratio_arm_over_control": float(np.std(A["pred"][m][:, smask]) /
                                                                 np.std(C["pred"][m][:, smask])),
                         "dk": ka - kc, "dk_ci95": [float(x) for x in np.percentile(dk, [2.5, 97.5])],
-                        "dcorr": ca - cc, "dcorr_ci95": [float(x) for x in np.percentile(dc, [2.5, 97.5])]}
+                        "dcorr": ca - cc, "dcorr_ci95": [float(x) for x in np.percentile(dc, [2.5, 97.5])],
+                        "dk_magnitude_matched": float(f(A["obs"][m][:, smask], A["pred"][m][:, smask])
+                                                      / np.sqrt(g(A["pred"][m][:, smask]) * g(C["pred"][m][:, smask]))
+                                                      - f(C["obs"][m][:, smask], C["pred"][m][:, smask]) / g(C["pred"][m][:, smask])),
+                        "dk_magnitude_matched_ci95": [float(x) for x in np.percentile(dkm, [2.5, 97.5])]}
         # E084c: species-level DIRECTION -- per species, mean observed vs mean predicted change over the stratum's
         # cells; across species, Spearman and sign agreement; arm - control with a bootstrap over species
         if a.species_direction:

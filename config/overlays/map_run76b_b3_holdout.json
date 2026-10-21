@@ -1,0 +1,26 @@
+{
+  "_extends": "map_run67c2_st_correction.json",
+  "_comment": [
+    "E076: 67c2 (B3 + smooth habitat correction from 1966) refitted with the E070 holdout mask (same as 70z), so route-effect models are scored on held-out routes and years like the B1 arms."
+  ],
+  "population_model": {
+    "observation_mask": {
+      "holdout_years": [
+        2021,
+        2022,
+        2023,
+        2024,
+        2025
+      ],
+      "holdout_blocks": {
+        "block_cells": 8,
+        "fraction": 0.1,
+        "seed": 70
+      }
+    }
+  },
+  "run_names": {
+    "map": "age_map_{precision}_run_76b",
+    "vis_map": "age_map_{precision}_run_76b"
+  }
+}

@@ -35,3 +35,11 @@ along -grad at every step >= 1e-8 (|grad| 1.45e6); without it U is smooth and ma
 (E063, E066, E067 v1, E068) carries it. E067 v1 arms were stopped at the MAP stage. v2 = same design on no-floor bases
 (zero padding kept): 67a2 (B1), 67c2 (B3), 67n2 / 67r2 (null / recovery; truth 62b MAP), plus the no-floor B1 baseline
 69a. Converged 62b-based results (66a, 66m, 68a, 63a-c) need re-checking without the floor before they stand.
+
+## 67n2 / 67r2 GUARDS (no-floor base; read 2026-10-20): BOTH PASS
+- 67n2 NULL (truth 62b MAP, w = 0): refined in 1808 it (tol_du stop, |grad| 43). Max |w| .115 = 1.15 prior sds
+  (MAP 1.33); land-RMS h <= .07. No spurious correction from invasion/disease dynamics.
+- 67r2 RECOVERY (w[0] = .5 on cos(pi x)): refined in 802 it (|grad| 32). w[0] = .38 (76%, inside the 30% band, right
+  sign, the largest weight); other 14 weights <= .117, i.e. the null's noise level. Shrinkage toward 0 under the
+  N(0, .1) prior is expected and is why recovery is low rather than high.
+The real-data arms 67a2 (B1) and 67c2 (B3) are readable against 69a (no-floor baseline) when they land.

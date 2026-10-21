@@ -171,6 +171,7 @@ if _NUMERICS:
     _af.FFT_PAD_VALUE = float(_NUMERICS.get("fft_pad", 1e-9))
     _af.FFT_FLOOR_ULPS = (None if _NUMERICS.get("fft_floor_ulps") is None
                           else float(_NUMERICS["fft_floor_ulps"]))
+    _af.FFT_FLOOR_SMOOTH = bool(_NUMERICS.get("fft_floor_smooth", False))
     _af.SMOOTH_ALLOC = (None if _NUMERICS.get("smooth_allocation") is None
                         else float(_NUMERICS["smooth_allocation"]))
 #   occupancy                 {"enabled": bool, "birds_per_route_count": float}: E063 occupancy closure --

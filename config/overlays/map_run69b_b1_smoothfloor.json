@@ -1,0 +1,6 @@
+{
+  "_extends": "map_run62b_numerics.json",
+  "_comment": ["E069b: B1 (62b) with the FFT floor made SMOOTH (numerics.fft_floor_smooth: x^3/(x^2+tol^2), tol = 10 ulps x max): keeps the floor's purpose (no float32 phantom immigration) with a continuous U. Third leg of hard floor (62b) / no floor (69a) / smooth floor (69b)."],
+  "population_model": {"numerics": {"fft_floor_smooth": true}},
+  "run_names": {"map": "age_map_{precision}_run_69b", "vis_map": "age_map_{precision}_run_69b"}
+}

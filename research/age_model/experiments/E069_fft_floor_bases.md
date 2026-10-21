@@ -15,3 +15,10 @@ east 1.20; plains K .011; Allee-dead west .16 / plains .19 / east .01 (62b .08/.
 The floor's discontinuity caused stalls (66b/66c) but does NOT drive the contortion: without it the refine lands at
 the same F ~15, flattened trough and K collapse, with somewhat more Allee-dead cells.
 Consequence: E068's "refine stays at the plausible truth" was obtained WITH the hard floor -> rerun as 68b.
+
+## 0321ja probe: the smooth floor does NOT remove the 66b jump (2026-10-20)
+At the 66b stall point the smooth floor gives the hard floor's numbers to 6 digits (U 184,940.1157; dU +.108 at 1e-8,
++.454 at 1e-7..1e-5); no floor: smooth, linear, U +100. So the discontinuity is not the threshold's step: smoothing it
+changes nothing measurable. What both floors share and no-floor lacks is that negative round-off becomes EXACTLY 0;
+something downstream reacts discontinuously to that. Probe 0321jbz decomposes dlogp by site / observation / density
+cell at step 1e-7 (smooth vs no floor). 69b (smooth floor, running) is therefore expected to behave like 62b.

@@ -1,0 +1,10 @@
+{
+  "_extends": "map_run73h_lambda_t.json",
+  "_comment": [
+    "E073 CROSS-RECOVERY: truth 69a MAP + H (w[0] = .5 on cos(pi x)), no noise; fitted with 73h -> noise must stay at null level."
+  ],
+  "run_names": {
+    "map": "age_map_{precision}_run_73xh",
+    "vis_map": "age_map_{precision}_run_73xh"
+  }
+}

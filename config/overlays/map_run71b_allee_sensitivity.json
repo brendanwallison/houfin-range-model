@@ -1,11 +1,16 @@
 {
   "_extends": "map_run70z_holdout_base.json",
   "_comment": [
-    "E071 Allee sensitivity on the 70z base (holdout, no floor, no noise): n50 / 100 (Allee effectively off); n50 0.00059211 route counts (pinned; literature pin 0.05921)."
+    "E071 Allee sensitivity on the 70z base (holdout, no floor, no noise): n50 / 100 (Allee effectively off); n50 0.00059211 route counts (pinned; literature pin 0.05921).",
+    "Allee off leaves nothing to kill float32 round-off seeds (phantom immigration), so the float32 MAP stage uses the 10-ulp floor; the float64 refine does not (fft_floor_float32_only)."
   ],
   "population_model": {
     "pinned_sites": {
       "n50_raw": -7.43153006225871
+    },
+    "numerics": {
+      "fft_floor_ulps": 10.0,
+      "fft_floor_float32_only": true
     }
   },
   "run_names": {

@@ -187,6 +187,7 @@ if _NUMERICS:
     _af.FFT_FLOOR_ULPS = (None if _NUMERICS.get("fft_floor_ulps") is None
                           else float(_NUMERICS["fft_floor_ulps"]))
     _af.FFT_FLOOR_SMOOTH = bool(_NUMERICS.get("fft_floor_smooth", False))
+    _af.FFT_FLOOR_FLOAT32_ONLY = bool(_NUMERICS.get("fft_floor_float32_only", False))
     _af.SMOOTH_ALLOC = (None if _NUMERICS.get("smooth_allocation") is None
                         else float(_NUMERICS["smooth_allocation"]))
 #   occupancy                 {"enabled": bool, "birds_per_route_count": float}: E063 occupancy closure --
@@ -205,7 +206,7 @@ SPLIT_READOUT = bool(_READOUT.get("split", False))
 #                             fields, carried into path habitat through the path operator; held before window_start.
 _ST = dict(_POP_SPEC.get("st_correction", {}))
 ST_CORRECTION = bool(_ST.get("enabled", False))
-#   process_noise             {"enabled", "sigma", "n_freq", "window_start", "window_end"}: E070 process error on
+#   process_noise             {"enabled", "sigma", "n_freq", "window_start", "window_end", "detrend_degree"}: E070 process error on
 #                             abundance, N <- N * exp(eps_t), eps_t = sum_b S_b u_{b,t}, S a land-centred cosine basis
 #                             scaled to unit land-RMS (data_loading), u iid N(0, sigma^2) per year inside the window
 #                             (zero outside, and in held-out forecast years). sigma is PINNED (point estimates collapse or
@@ -1090,7 +1091,10 @@ def build_model_2d(data, prior_scale=1.0):
     if PROCESS_NOISE:
         u_raw = numpyro.sample("process_noise_u", dist.Normal(0.0, 1.0).expand(
             [data['pn_active'].shape[0], data['pn_S'].shape[-1]]))                          # (time, nb)
-        process_noise = (float(_PN.get("sigma", 0.05)) * u_raw * data['pn_active'][:, None]) @ data['pn_S'].T
+        u_act = u_raw * data['pn_active'][:, None]
+        if "pn_P" in data:      # detrend_degree: no sustained regional trend in eps (stage 2: that is lambda(t)'s job)
+            u_act = data['pn_P'] @ u_act
+        process_noise = (float(_PN.get("sigma", 0.05)) * u_act) @ data['pn_S'].T
         numpyro.deterministic("process_noise_rms_t", jnp.sqrt(jnp.mean(process_noise ** 2, axis=1)))
     field_drift = None
     covariate_drift_in = None

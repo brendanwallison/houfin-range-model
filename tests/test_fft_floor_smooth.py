@@ -1,5 +1,6 @@
 """numerics.fft_floor_smooth: the soft FFT floor removes sub-resolution values but keeps the output continuous."""
 import jax
+import jax.experimental
 import jax.numpy as jnp
 import numpy as np
 
@@ -40,3 +41,18 @@ def test_smooth_floor_is_continuous_and_still_kills_the_floor():
         np.testing.assert_allclose(out[3, 3], 0.6, rtol=1e-5)   # real mass untouched
     finally:
         af.FFT_FLOOR_ULPS, af.FFT_FLOOR_SMOOTH, af.FFT_PAD_VALUE = old
+
+
+def test_floor_float32_only():
+    old = (af.FFT_FLOOR_ULPS, af.FFT_FLOOR_SMOOTH, af.FFT_PAD_VALUE, af.FFT_FLOOR_FLOAT32_ONLY)
+    try:
+        af.FFT_PAD_VALUE, af.FFT_FLOOR_ULPS, af.FFT_FLOOR_SMOOTH, af.FFT_FLOOR_FLOAT32_ONLY = 0.0, 10.0, False, True
+        with jax.experimental.enable_x64():
+            k64 = jnp.zeros((15, 15), jnp.float64).at[0, 0].set(0.6).at[0, 1].set(0.2).at[1, 0].set(0.2)
+            pop64 = jnp.zeros((8, 8), jnp.float64).at[3, 3].set(1.0).at[5, 5].set(1e-14)
+            out64 = np.asarray(af.rightpad_convolution(pop64, jnp.fft.fft2(k64)))
+            assert out64[5, 5] > 1e-15                       # float64: tiny values kept (no exact extinction)
+        out32 = np.asarray(_conv(jnp.zeros((8, 8), jnp.float32).at[3, 3].set(1.0).at[5, 5].set(1e-7)))
+        assert out32[5, 5] == 0.0                            # float32: below 10 ulps x max -> floored
+    finally:
+        af.FFT_FLOOR_ULPS, af.FFT_FLOOR_SMOOTH, af.FFT_PAD_VALUE, af.FFT_FLOOR_FLOAT32_ONLY = old

@@ -1,0 +1,18 @@
+{
+  "_extends": "map_run70z_holdout_base.json",
+  "_comment": [
+    "E074 settlement on the 70z holdout base (no floor): dispersers-only, capacity-weighted, 5x5 blocks (~135 km). Settlement was dropped at E050 on one unconverged pair (50a/50b, legacy-pad era)."
+  ],
+  "population_model": {
+    "settlement": {
+      "form": "ideal_free",
+      "block": 5,
+      "apply_to": "dispersers",
+      "weight": "capacity"
+    }
+  },
+  "run_names": {
+    "map": "age_map_{precision}_run_74d",
+    "vis_map": "age_map_{precision}_run_74d"
+  }
+}

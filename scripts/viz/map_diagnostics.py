@@ -1107,7 +1107,7 @@ def _st_correction_metrics(data, sim):
     from src.model.age_priors import _ST
     h = np.asarray(data["st_S"], dtype=np.float64) @ np.asarray(sim["st_correction_gw"], dtype=np.float64).T  # (N, T)
     years = np.asarray(data["years"])
-    pick = {y: int(np.argmin(np.abs(years - y))) for y in (1966, 1980, 1996, 2010, 2023)}
+    pick = {y: int(np.argmin(np.abs(years - y))) for y in (1902, 1940, 1966, 1980, 1996, 2010, 2023)}
     return {"max_abs_w_over_scale": float(np.abs(np.asarray(sim["st_correction_w"])).max() / float(_ST.get("scale", 0.1))),
             "land_rms_h": {y: float(np.sqrt(np.mean(h[:, i] ** 2))) for y, i in pick.items()},
             "h_p05_p95": {y: [float(np.percentile(h[:, i], 5)), float(np.percentile(h[:, i], 95))] for y, i in pick.items()}}
@@ -1119,6 +1119,8 @@ def _process_noise_eps(data, sim):
         return None
     from src.model.age_priors import _PN
     u = np.asarray(sim["process_noise_u"], dtype=np.float64) * np.asarray(data["pn_active"], dtype=np.float64)[:, None]
+    if "pn_P" in data:
+        u = np.asarray(data["pn_P"], dtype=np.float64) @ u
     return float(_PN.get("sigma", 0.05)) * u @ np.asarray(data["pn_S"], dtype=np.float64).T
 
 

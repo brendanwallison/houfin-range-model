@@ -263,6 +263,15 @@ def run_refine():
         "rms_change_by_site": {k: float(np.sqrt(np.mean(dx[off[i]:off[i + 1]] ** 2)))
                                for i, k in enumerate(names)},
     }
+    # VRAM headroom: peak device memory against the device limit (None where the backend does not report it, e.g. CPU).
+    try:
+        ms = jax.devices()[0].memory_stats() or {}
+        report["peak_gpu_bytes"], report["gpu_bytes_limit"] = ms.get("peak_bytes_in_use"), ms.get("bytes_limit")
+        if report["peak_gpu_bytes"] and report["gpu_bytes_limit"]:
+            print(f"[memory] peak {report['peak_gpu_bytes'] / 2**30:.1f} GiB of {report['gpu_bytes_limit'] / 2**30:.1f} GiB "
+                  f"({report['peak_gpu_bytes'] / report['gpu_bytes_limit']:.0%})")
+    except Exception as e:                                   # never let a diagnostic fail a refine
+        print(f"[memory] unavailable: {e}")
     with open(os.path.join(out_dir, "refine_report.json"), "w") as fh:
         json.dump(report, fh, indent=2)
     if status in {"stalled", "failed"}:

@@ -1,0 +1,10 @@
+{
+  "_extends": "map_run73h_lambda_t.json",
+  "_comment": [
+    "E073 CROSS-RECOVERY: truth 69a MAP + noise pulse (u_raw +2.5, basis 0, 1975-1985, detrended as fitted), H = 0; fitted with 73h -> H must stay ~0."
+  ],
+  "run_names": {
+    "map": "age_map_{precision}_run_73xe",
+    "vis_map": "age_map_{precision}_run_73xe"
+  }
+}

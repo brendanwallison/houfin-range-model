@@ -37,6 +37,10 @@ FFT_FLOOR_ULPS = None
 #     ~x well above tol, ~x^3/tol^2 (effectively 0) well below. Same purpose (no float32 phantom floor), but U stays
 #     continuous: the hard version made U jump (+.45 nats along -grad at the 66b stall) and the refine exploited it.
 FFT_FLOOR_SMOOTH = False
+#   FFT_FLOOR_FLOAT32_ONLY: apply the floor only to float32 convolutions (the MAP stage, where the round-off floor is
+#     phantom immigration) and never in float64 (the refine), where exact extinction creates the Allee establishment
+#     switch the optimiser exploits (E069) and the ~1e-16 round-off is suppressed by the Allee factor anyway.
+FFT_FLOOR_FLOAT32_ONLY = False
 #   SMOOTH_ALLOC: if set, the fitness ideal-free allocations (fitness_settle, subcell_reproduction) use a
 #     compact C1 positive part with width = SMOOTH_ALLOC x the cell's (K/c) scale,
 #     instead of max(n, 0) switched off at each cell's lambda0. The hard version puts a corner in the
@@ -104,7 +108,7 @@ def rightpad_convolution(pop, dispersal_kernel_pad):
     pop_pad = rightpad(pop, Lx, Ly, FFT_PAD_VALUE)
     conv = jnp.fft.ifft2(jnp.fft.fft2(pop_pad) * dispersal_kernel_pad)
     out = jnp.real(conv)[:pop.shape[0], :pop.shape[1]]
-    if FFT_FLOOR_ULPS is not None:
+    if FFT_FLOOR_ULPS is not None and not (FFT_FLOOR_FLOAT32_ONLY and out.dtype != jnp.float32):
         tol = FFT_FLOOR_ULPS * jnp.finfo(out.dtype).eps * lax.stop_gradient(jnp.max(jnp.abs(out)))
         if FFT_FLOOR_SMOOTH:
             pos = jnp.maximum(out, 0.0)

@@ -1,0 +1,24 @@
+{
+  "_extends": "map_run70z_holdout_base.json",
+  "_comment": [
+    "E073 (E070 stage 2) 73s0: split readout (DESK-calibrated deviation/level prior .14), no noise -- ablation. Holdout base 70z."
+  ],
+  "population_model": {
+    "readout": {
+      "split": true,
+      "ref_window": [
+        1996,
+        2025
+      ],
+      "rank": 24,
+      "within_ratio_prior": {
+        "loc_log": -1.966,
+        "scale_log": 0.7
+      }
+    }
+  },
+  "run_names": {
+    "map": "age_map_{precision}_run_73s0",
+    "vis_map": "age_map_{precision}_run_73s0"
+  }
+}

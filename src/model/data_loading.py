@@ -255,6 +255,19 @@ def process_noise_basis(meta, spec):
     return S, active.astype(float)
 
 
+def process_noise_detrend(years, active, degree):
+    """(T, T) projector removing a polynomial trend (degree 0 = mean, 1 = mean + linear, ...) from each noise
+    coefficient's series over the active years, and zeroing inactive years (process_noise.detrend_degree, E070
+    stage 2). Applied to the yearly coefficients, it leaves eps no sustained regional trend: any persistent change must
+    come from habitat (the lambda(t) term) or from the dynamics."""
+    a = np.asarray(active) > 0
+    yrs = np.asarray(years, dtype=float)
+    s = (yrs - yrs[a].min()) / max(yrs[a].max() - yrs[a].min(), 1.0)
+    G = np.stack([s ** k for k in range(int(degree) + 1)], axis=1) * a[:, None]       # (T, degree+1)
+    P = np.diag(a.astype(float)) - G @ np.linalg.pinv(G)
+    return P
+
+
 def transient_observation_weight(meta, window, censor_years=2):
     """1/0 likelihood weight per observation that DROPS each cell's colonization transient.
 
@@ -420,6 +433,8 @@ def load_data(input_dir, target_device=None, precision="float32", verbose=True):
     if pspec.get("enabled"):
         S_pn, active = process_noise_basis(meta, pspec)
         meta["pn_S"], meta["pn_active"] = S_pn.astype(f_type_cpu), active.astype(f_type_cpu)
+        if pspec.get("detrend_degree") is not None:
+            meta["pn_P"] = process_noise_detrend(meta["years"], active, int(pspec["detrend_degree"])).astype(f_type_cpu)
         if verbose:
             yrs = np.asarray(meta["years"]).astype(int)[active > 0]
             print(f"  [process_noise] {S_pn.shape[1]} basis functions, sigma {pspec.get('sigma', 0.05)}, "

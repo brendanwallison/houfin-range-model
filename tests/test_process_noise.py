@@ -155,3 +155,19 @@ def test_holdout_score_matches_scipy_zinb(monkeypatch):
     t = np.isin(m["years"][m["obs_time_indices"]], [2024, 2025])
     np.testing.assert_allclose(out["temporal"]["mean_lpd"], lp[t].mean(), rtol=1e-10)
     np.testing.assert_allclose(out["route_occupancy_m"], 0.4)
+
+
+def test_detrend_projector():
+    from src.model.data_loading import process_noise_detrend
+    years = np.arange(1902, 2026)
+    active = ((years >= 1902) & (years < 2021)).astype(float)
+    P = process_noise_detrend(years, active, 1)
+    rng = np.random.default_rng(5)
+    u = rng.normal(0, 1, (years.size, 4))
+    v = P @ u
+    a = active > 0
+    s = years[a] - years[a].mean()
+    np.testing.assert_allclose(v[a].sum(0), 0.0, atol=1e-9)                # no mean
+    np.testing.assert_allclose((s[:, None] * v[a]).sum(0), 0.0, atol=1e-7)  # no linear trend
+    assert np.all(v[~a] == 0.0)
+    np.testing.assert_allclose(P @ P, P, atol=1e-10)                         # a projector

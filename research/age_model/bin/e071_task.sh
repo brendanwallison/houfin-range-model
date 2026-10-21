@@ -5,9 +5,9 @@ set -euo pipefail
 JOB=$(basename "$0" .sh)
 REPO=/work/07980/bwa386/ls6/houfin/age-research
 source "$REPO/research/age_model/bin/task_header.sh"
-CODE=$(printf '%s' "$JOB" | sed -E 's/.*(7[12][abnr]).*/\1/')
+CODE=$(printf '%s' "$JOB" | sed -E 's/.*(7[12][abcnr]).*/\1/')
 case "$CODE" in
-  71a|71b) F="map_run${CODE}_allee_sensitivity.json"; EXP=E071 ;;
+  71a|71b|71c) F="map_run${CODE}_allee_sensitivity.json"; EXP=E071 ;;
   72a|72n|72r) F="map_run${CODE}_route_occupancy.json"; EXP=E072 ;;
   *) echo "arm not encoded in task filename: $JOB" >&2; exit 2 ;;
 esac

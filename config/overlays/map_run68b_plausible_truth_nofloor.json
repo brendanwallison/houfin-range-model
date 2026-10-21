@@ -1,0 +1,5 @@
+{
+  "_extends": "map_run69a_b1_nofloor.json",
+  "_comment": ["E068b: E068a without the hard FFT floor (whose U jumps could have pinned 68a's refine at the truth). 69a's structure fitted cold to SYNTHETIC counts drawn at 69a's MAP point (Sa .57 Sj .31 F 5.2, plains trough)."],
+  "run_names": {"map": "age_map_{precision}_run_68b", "vis_map": "age_map_{precision}_run_68b"}
+}

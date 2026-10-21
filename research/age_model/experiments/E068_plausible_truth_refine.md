@@ -14,3 +14,9 @@ Truth 62b MAP (Sa/Sj/F .57/.31/5.12, lam0 1.28). Refit: MAP .55/.29/4.96 (lam0 1
 U 201,706 -> 200,662 (~1k gain vs ~13k on real data); plains / west / east med lam .86 / 1.04 / 1.08; Allee-dead 0.
 The optimiser and identifiability do not produce the F ~10-15 pull. The real data contain something this structure
 cannot represent and the refine fakes it with demography -- supports the correction-term direction (E066/E067).
+
+## 68b (pre-registered 2026-10-20): 68a without the hard floor
+69a showed the hard floor's U jumps are exploitable; they could also have PINNED 68a's refine at the truth. 68b repeats
+68a on the no-floor structure (truth = 69a MAP, Sa .57 Sj .31 F 5.2). Same read: if the refine stays near the truth,
+68a's conclusion (the real data demand the contortion) stands; if it contorts, the contortion is (partly) an
+optimiser/identifiability artifact and E068's reading is withdrawn.

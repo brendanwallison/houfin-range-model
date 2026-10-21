@@ -130,3 +130,10 @@ MAP .54/.27/4.80; plains .82 < west 1.05, EAST .88 (east sink .63 -- the noise c
 1.25e4 > 1e4 gate, |grad| jumping 770 -> 1.25e4 in the last 10 iterations) at Sa .89 / Sj .05 / F 10.1, RMS u .52.
 Unconverged: not interpretable as an optimum, but the trajectory continues 70b's direction (Sa up, Sj collapse). A
 looser noise prior did not let realistic vital rates survive the refine.
+
+## 70a RESULT (sigma .02 from 1902; read 2026-10-21): = 70b
+MAP .56/.29/5.13; plains .85 < west 1.00 ~ east 1.01; holdout -1.911 / -1.259. Refined 138,945 (4,835 it, converged):
+Sa .77 / Sj .16 / F 9.9; plains = west 1.00, east 1.13; Allee-dead .15/.14/.03; plains K .017; RMS u .36. Holdout
+-1.823 / -1.179 (70z -1.818 / -1.178). Even a nearly-off noise term moves the refine from 70z's F-up basin to the
+Sa-up / Sj-down basin, with the same held-out density: the two are near-equivalent demographic solutions, and the
+noise does not touch what they share (plains = west, K collapse + Allee-dead in the plains/west).

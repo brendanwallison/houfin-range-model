@@ -141,3 +141,4 @@ date,experiment,variant,run_dir,U,fit_corr,notes,su
 2026-10-20,E069,69b,run_69b,186068.2,,smooth floor = 62b/69a (F 14.4; plains=west; AD .15/.18); floor variants closed,
 2026-10-21,E070,70n,run_70n,148842.4,,NULL pass: rms u .17; demography at truth (.53/.26/5.8),
 2026-10-21,E070,70r,run_70r,149508.6,,RECOVERY: pulse detected (4x null) right sign but 29% amplitude (<70% bar); no leakage into demography,
+2026-10-21,E070,70z,run_70z,137835.4,,holdout baseline: contorted refine (F 14.7) predicts held-out BETTER than plausible MAP (temporal -1.818 vs -1.917; spatial -1.178 vs -1.273),

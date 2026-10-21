@@ -102,3 +102,12 @@ coefficient dominates. The noise term is therefore conservative: it will under-a
 manufacture it, and what it does not absorb goes unfitted (not into the vital rates). By the letter of G1, sigma .05
 fails; whether amplitude recovery is the right bar for a random effect (vs detection + specificity + no leakage)
 is a decision for the user -- not changed here.
+
+## 70z BASELINE (69a + holdout mask; read 2026-10-21)
+MAP .57/.31/5.22 (= 69a); plains .85 < west 1.03 < east 1.07. Refined 137,835 (5,686 it): .50/.43/14.7, lam0 2.04;
+plains .90, west .99, east 1.10; Allee-dead .07/.06/0; plains K .033; west sink .58 -- the familiar contortion.
+Held-out mean lpd (MAP -> refined): temporal -1.917 -> -1.818, spatial -1.273 -> -1.178, fitted -.928 -> -.872.
+IMPORTANT: the contorted refine predicts withheld data BETTER than the plausible MAP, on both holdouts (+.10 and
++.095 nats per observation). The contortion is not overfitting: it captures real, generalisable structure that the
+plausible demography misses (consistent with 68b). The bar E070 arms must clear is therefore twofold: plausible
+demography (G2-G3) AND held-out density at least as good as 70z refined (-1.818 / -1.178).

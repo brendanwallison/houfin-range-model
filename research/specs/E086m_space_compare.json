@@ -1,0 +1,13 @@
+{
+ "exp": "E086",
+ "name": "e086m-space-compare",
+ "group": "cpu",
+ "overlay": "research/overlays/desk_tempho_1995_seed1.json",
+ "cmd": [
+  "bash",
+  "-c",
+  "set -e; export OMP_NUM_THREADS=12; {python} research/exp/e086m_space_compare.py --cache {cache}/desk_tempho_1995_s1 --out {out}/desk_tempho_1995_s1; {python} research/exp/e086m_space_compare.py --cache {cache}/desk_tempho_1985_s1 --out {out}/desk_tempho_1985_s1"
+ ],
+ "expected_minutes": 15,
+ "note": "E086m: DESK vs RRR vs covariate PCA vs observed ESK as spaces, by rank"
+}

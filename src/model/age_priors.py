@@ -190,6 +190,13 @@ SPLIT_READOUT = bool(_READOUT.get("split", False))
 #                             fields, carried into path habitat through the path operator; held before window_start.
 _ST = dict(_POP_SPEC.get("st_correction", {}))
 ST_CORRECTION = bool(_ST.get("enabled", False))
+#   process_noise             {"enabled", "sigma", "n_freq", "window_start", "window_end"}: E070 process error on
+#                             abundance, N <- N * exp(eps_t), eps_t = sum_b S_b u_{b,t}, S a land-centred cosine basis
+#                             scaled to unit land-RMS (data_loading), u iid N(0, sigma^2) per year inside the window
+#                             (zero outside, and in held-out forecast years). sigma is PINNED (point estimates collapse or
+#                             explode a learned noise scale); sampled non-centred as u = sigma * u_raw.
+_PN = dict(_POP_SPEC.get("process_noise", {}))
+PROCESS_NOISE = bool(_PN.get("enabled", False))
 _OCC = dict(_POP_SPEC.get("occupancy", {}))
 OCCUPANCY = bool(_OCC.get("enabled", False))
 OCC_BIRDS_PER_COUNT = float(_OCC.get("birds_per_route_count", 58.0))
@@ -1064,6 +1071,12 @@ def build_model_2d(data, prior_scale=1.0):
             0.0, float(_ST.get("scale", 0.1)) * prior_scale).expand([nb, nt]))
         Gw = numpyro.deterministic("st_correction_gw", (st_w @ data['st_g']).T)          # (time, nb)
         st_in = (data['st_S'], data['st_S_disp'], Gw)
+    process_noise = None
+    if PROCESS_NOISE:
+        u_raw = numpyro.sample("process_noise_u", dist.Normal(0.0, 1.0).expand(
+            [data['pn_active'].shape[0], data['pn_S'].shape[-1]]))                          # (time, nb)
+        process_noise = (float(_PN.get("sigma", 0.05)) * u_raw * data['pn_active'][:, None]) @ data['pn_S'].T
+        numpyro.deterministic("process_noise_rms_t", jnp.sqrt(jnp.mean(process_noise ** 2, axis=1)))
     field_drift = None
     covariate_drift_in = None
     if DRIFT_ON:
@@ -1265,6 +1278,7 @@ def build_model_2d(data, prior_scale=1.0):
         disease_hill_n=priors['disease_hill_n'],
         juvenile_kernel_weights=juv_w,
         occupancy_b=(data['pop_scalar'] * OCC_BIRDS_PER_COUNT) if OCCUPANCY else None,
+        process_noise=process_noise,
     )
     densities, Na_grid, Nj_grid = _sim[:3]
     if OCCUPANCY:
@@ -1355,6 +1369,8 @@ def build_model_2d(data, prior_scale=1.0):
             float(_OBS_SPEC.get("conc_density_power_scale", 0.5)) * prior_scale))
         conc_obs = conc_obs * jnp.power(jnp.maximum(densities_obs, 1e-3), kappa)
 
+    # Held-out scoring (observation_mask holdouts, E070) needs the per-observation concentration.
+    numpyro.deterministic("obs_concentration", jnp.broadcast_to(conc_obs, densities_obs.shape))
     # population_model.observation_mask (diagnostic): data_loading sets obs_weight 0 on the
     # dropped observations; they stay in expected_obs, so their fit can still be read.
     # observation_weighting (diagnostic): positive weights SCALE each observation's log-likelihood.

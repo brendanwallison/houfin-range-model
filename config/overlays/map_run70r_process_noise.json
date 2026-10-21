@@ -1,0 +1,10 @@
+{
+  "_extends": "map_run70b_process_noise.json",
+  "_comment": [
+    "E070 guard RECOVERY: 69a MAP + an injected pulse u[1975-1985, basis 0 (cos pi x)] = +2.5, fitted with 70b's structure."
+  ],
+  "run_names": {
+    "map": "age_map_{precision}_run_70r",
+    "vis_map": "age_map_{precision}_run_70r"
+  }
+}

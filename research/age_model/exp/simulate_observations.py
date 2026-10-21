@@ -2,7 +2,7 @@
 
     AGE_MODEL_CONFIG=<overlay WITH the structure under test> HOUFIN_MODEL_PRECISION=float64 \\
       python research/age_model/exp/simulate_observations.py --run-dir <fitted point> --out <y.npz> \\
-        [--set covariate_drift_w=0] [--set covariate_drift_w=<json array>] [--seed 0]
+        [--set covariate_drift_w=0] [--set covariate_drift_w=<json array>] [--set site=@values.npy] [--seed 0]
 
 The fitted point supplies every latent it has; ``--set`` fixes the others (e.g. the drift weights
 for a structure the point was not fitted with) -- a missing latent is an error, never a prior draw.
@@ -56,7 +56,7 @@ def main():
     fixed = {}
     for s in a.set:
         k, v = s.split("=", 1)
-        fixed[k] = np.asarray(json.loads(v), dtype=float)
+        fixed[k] = np.asarray(np.load(v[1:]) if v.startswith("@") else json.loads(v), dtype=float)
 
     # Every latent of THIS model must come from the point or --set; broadcast scalar --set values.
     tr = handlers.trace(handlers.seed(build_model_2d, 0)).get_trace(data=data, prior_scale=1.0)

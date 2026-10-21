@@ -67,3 +67,17 @@ held-out scores; gate table. One summary table across arms.
 ## Open
 If no arm passes G2-G3 even with eps, the remaining structural suspects are the observation process (route effects
 and BBS detection) and the age structure; record which gates fail per arm so the failure pattern points to it.
+
+## Stage 1 BUILT (2026-10-20)
+- population_model.process_noise {enabled, sigma, n_freq, window_start, window_end}: u_raw (time, nb) ~ N(0, 1),
+  eps = sigma * (u_raw * active) @ S^T, S scaled to unit land mean-square (sigma = land-RMS nudge per year); applied in
+  forward_sim_age_structured after the end-of-year clip. Off from the first held-out year onward.
+- observation_mask.holdout_years / holdout_blocks (data_loading.holdout_observation_mask): data run to 2025, so the
+  temporal holdout is 2021-2025 (the contiguous tail after the cancelled 2020 season; ~12k obs); spatial = 10% of
+  8-cell (~216 km) blocks, seed 70, all years. 70z = 69a refitted with the mask: the baseline every arm is ranked against.
+- Diagnostics: metrics.json process_noise (rms/max u_raw for G4, era means) + 18_process_noise.png; holdout
+  (mean NB log density and log1p RMSE on temporal / spatial / fitted sets).
+- Change from the design: the recovery pulse is +2.5 u_raw on basis 0 (cos pi x) over 1975-1985, not 1950-1960:
+  observations start in 1966, so a 1950s pulse is visible only through its after-effects. Pass: fitted mean u_raw over
+  the pulse >= 1.75 (70%), other coefficients at the null's level.
+Queue: 70z, 70n, 70r, 70b, then 70a, 70c, 70d (tasks/e070_task.sh).

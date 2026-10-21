@@ -1,0 +1,26 @@
+{
+  "_extends": "map_run69a_b1_nofloor.json",
+  "_comment": [
+    "E070 baseline: 69a (B1, no FFT floor) fitted with the E070 holdout mask -- temporal 2021-2025, spatial 10% of 8-cell (~216 km) blocks, seed 70. Every E070 arm uses this same mask."
+  ],
+  "population_model": {
+    "observation_mask": {
+      "holdout_years": [
+        2021,
+        2022,
+        2023,
+        2024,
+        2025
+      ],
+      "holdout_blocks": {
+        "block_cells": 8,
+        "fraction": 0.1,
+        "seed": 70
+      }
+    }
+  },
+  "run_names": {
+    "map": "age_map_{precision}_run_70z",
+    "vis_map": "age_map_{precision}_run_70z"
+  }
+}

@@ -60,7 +60,7 @@ OVERLAYS = [None, "map_run19_exchangeable.json", "map_run21_single_field.json",
             "map_run65j_compensation_route_nosort.json",
             "map_run66a_readout.json", "map_run66b_readout.json", "map_run66c_readout.json", "map_run66d_readout.json", "map_run66e_readout.json", "map_run66f_readout.json", "map_run66g_readout.json", "map_run66h_readout.json", "map_run66i_readout.json", "map_run66j_readout.json", "map_run66k_readout.json", "map_run66l_readout.json",
             "map_run67a_st_correction.json", "map_run67c_st_correction.json", "map_run67n_st_correction.json",
-            "map_run67r_st_correction.json", "map_run66m_readout.json", "map_run69a_b1_nofloor.json", "map_run69b_b1_smoothfloor.json", "map_run68b_plausible_truth_nofloor.json", "map_run69c_b3_nofloor.json",
+            "map_run67r_st_correction.json", "map_run66m_readout.json", "map_run69a_b1_nofloor.json", "map_run69b_b1_smoothfloor.json", "map_run68b_plausible_truth_nofloor.json", "map_run69c_b3_nofloor.json", "map_run70z_holdout_base.json", "map_run70b_process_noise.json", "map_run70d_process_noise.json",
             "map_run67a2_st_correction.json", "map_run67c2_st_correction.json", "map_run67n2_st_correction.json", "map_run67r2_st_correction.json"]
 
 
@@ -69,6 +69,11 @@ def _DRIFT_C():
     from src.config_utils import load_age_model_config
     spec = load_age_model_config().get("population_model", {}).get("covariate_drift") or {}
     return max(1, len(spec.get("covariates", [spec.get("covariate", "builtup")])))
+
+
+def load_age_model_config_pn():
+    from src.config_utils import load_age_model_config
+    return dict(load_age_model_config().get("population_model", {}).get("process_noise") or {"n_freq": 2})
 
 
 def synthetic_inputs(T=40, Ny=12, Nx=16, M=24, z_sd=2.0, seed=0):
@@ -126,6 +131,9 @@ def synthetic_inputs(T=40, Ny=12, Nx=16, M=24, z_sd=2.0, seed=0):
     meta["st_S"] = rng.normal(0, 1, (n, _nb)).astype(np.float32)
     meta["st_S_disp"] = rng.normal(0, 1, (n, nk, _nb)).astype(np.float32)
     meta["st_g"] = covariate_drift_ramp(meta["years"], t_idx, 1966, float(meta["years"][-1]), 1966)
+    from src.model.data_loading import process_noise_basis            # process_noise (when enabled)
+    _pn = load_age_model_config_pn()
+    meta["pn_S"], meta["pn_active"] = process_noise_basis(dict(meta, Ny=Ny, Nx=Nx), _pn)
     # P2 covariates (T, N_land, C): column 0 = built-up (from the strata); the panel arms use 3 columns
     _bu = (meta["strata_u"] * meta["strata_a"][None, None, :]).sum(-1)
     meta["drift_x"] = np.stack([_bu] + [rng.normal(0, 1, _bu.shape) for _ in range(_DRIFT_C() - 1)], -1)

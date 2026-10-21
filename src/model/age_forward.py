@@ -277,6 +277,7 @@ def forward_sim_age_structured(
     yearling_breeding=False,
     veit_reproduction=False,
     occupancy_b=None,
+    process_noise=None,
 ):
     """Run the age-structured simulation for ``time`` years.
 
@@ -314,6 +315,11 @@ def forward_sim_age_structured(
     only get materialized when explicitly requested via
     ``Predictive(..., return_sites=[...])`` for post-hoc age-structure
     diagnostics (see scripts/viz/map_diagnostics.py).
+
+    ``process_noise`` (optional, (time, N_land)): log multipliers eps applied to both age
+    classes at the end of each year, N <- N * exp(eps) (population_model.process_noise, E070).
+    Multiplicative, so it can only rescale birds that are already there -- it cannot seed
+    empty cells, and spread stays the dispersal kernel's job.
     """
     Ny, Nx = land_mask.shape
     inv_locations = jnp.asarray(inv_locations)
@@ -493,6 +499,9 @@ def forward_sim_age_structured(
         # 5. Mask & Final Clip
         N_a_new = jnp.maximum(N_a_new * land_mask, 0.0)
         N_j_new = jnp.maximum(N_j_new * land_mask, 0.0)
+        if process_noise is not None:
+            mult = jnp.ones((Ny, Nx), N_a_new.dtype).at[land_rows, land_cols].set(jnp.exp(process_noise[t]))
+            N_a_new, N_j_new = N_a_new * mult, N_j_new * mult
         if occ:
             # back to expected densities, then chance extinction: an occupied realisation holding
             # Poisson(b * m) birds is empty with probability exp(-b * m). Empty realisations hold no

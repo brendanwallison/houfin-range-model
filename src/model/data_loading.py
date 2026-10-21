@@ -212,6 +212,49 @@ def _observation_mask_spec():
     return dict(spec) if spec else None
 
 
+def holdout_observation_mask(meta, spec):
+    """True per observation HELD OUT by population_model.observation_mask (E070 model comparison).
+
+    ``holdout_years``: every observation in those years (the temporal forecast test).
+    ``holdout_blocks`` {"block_cells", "fraction", "seed"}: square blocks of ``block_cells`` grid cells; a random
+    ``fraction`` of the blocks that hold observations is withheld in ALL years (the spatial test). Deterministic in
+    the seed, so every arm of a comparison withholds the same observations.
+    """
+    years = np.asarray(meta["years"])[np.asarray(meta["obs_time_indices"])].astype(int)
+    out = np.zeros(years.shape, dtype=bool)
+    if spec.get("holdout_years"):
+        out |= np.isin(years, np.asarray(spec["holdout_years"], dtype=int))
+    blk = spec.get("holdout_blocks")
+    if blk:
+        b = int(blk.get("block_cells", 8))
+        bid = (np.asarray(meta["obs_rows"]).astype(np.int64) // b) * 100000 + np.asarray(meta["obs_cols"]) // b
+        ids = np.unique(bid)
+        rng = np.random.default_rng(int(blk.get("seed", 70)))
+        pick = rng.choice(ids, size=max(1, int(round(float(blk.get("fraction", 0.1)) * ids.size))), replace=False)
+        out |= np.isin(bid, pick)
+    return out
+
+
+def process_noise_basis(meta, spec):
+    """(N_land, nb) basis for population_model.process_noise and the (time,) 0/1 window it acts in.
+
+    Land-centred cosines (model_inputs.generate_spatial_basis), scaled so that iid unit-variance coefficients give
+    unit mean-square eps over land: sigma is then the land-RMS of the yearly log-abundance nudge. The window is
+    [window_start, window_end]; held-out forecast years (observation_mask.holdout_years) and every year after the
+    first of them are switched off, so a forecast cannot lean on noise it would not have.
+    """
+    from src.data.combine.model_inputs import generate_spatial_basis
+    S = generate_spatial_basis(int(meta["Ny"]), int(meta["Nx"]), np.asarray(meta["land_rows"]),
+                               np.asarray(meta["land_cols"]), int(spec.get("n_freq", 3)), label=" (process_noise)").T
+    S = S / np.sqrt(np.mean(np.sum(S ** 2, axis=1)))
+    years = np.asarray(meta["years"]).astype(int)
+    active = (years >= int(spec.get("window_start", years[0]))) & (years <= int(spec.get("window_end", years[-1])))
+    hold = (_observation_mask_spec() or {}).get("holdout_years")
+    if hold:
+        active &= years < min(int(y) for y in hold)
+    return S, active.astype(float)
+
+
 def transient_observation_weight(meta, window, censor_years=2):
     """1/0 likelihood weight per observation that DROPS each cell's colonization transient.
 
@@ -373,6 +416,14 @@ def load_data(input_dir, target_device=None, precision="float32", verbose=True):
         else:
             meta["st_g"] = covariate_drift_basis(meta["years"], meta["obs_time_indices"],
                                                  int(stspec.get("n_time", 2)), ws_st).astype(f_type_cpu)
+    pspec = dict((_lamc().get("population_model", {}) or {}).get("process_noise") or {})
+    if pspec.get("enabled"):
+        S_pn, active = process_noise_basis(meta, pspec)
+        meta["pn_S"], meta["pn_active"] = S_pn.astype(f_type_cpu), active.astype(f_type_cpu)
+        if verbose:
+            yrs = np.asarray(meta["years"]).astype(int)[active > 0]
+            print(f"  [process_noise] {S_pn.shape[1]} basis functions, sigma {pspec.get('sigma', 0.05)}, "
+                  f"active {yrs.min()}-{yrs.max()} ({active.sum():.0f} y)")
     dspec = covariate_drift_spec()
     if dspec:
         ws = int(dspec.get("window_start", 1966))
@@ -411,11 +462,19 @@ def load_data(input_dir, target_device=None, precision="float32", verbose=True):
             meta["drift_x"] = np.stack(cols, axis=-1).astype(f_type_cpu)          # (time, N_land, C)
     mask_spec = _observation_mask_spec()
     if mask_spec:
-        meta["obs_weight"] = transient_observation_weight(
-            meta, int(mask_spec["transient_years"]), int(mask_spec.get("censor_years", 2)))
-        if verbose:
-            print(f"  [mask] transient +-{mask_spec['transient_years']} y: "
-                  f"{int((meta['obs_weight'] == 0).sum())} observations dropped")
+        w = np.ones(np.asarray(meta["observed_results"]).shape, dtype=f_type_cpu)
+        if "transient_years" in mask_spec:
+            w = w * transient_observation_weight(
+                meta, int(mask_spec["transient_years"]), int(mask_spec.get("censor_years", 2)))
+            if verbose:
+                print(f"  [mask] transient +-{mask_spec['transient_years']} y: {int((w == 0).sum())} observations dropped")
+        if mask_spec.get("holdout_years") or mask_spec.get("holdout_blocks"):
+            held = holdout_observation_mask(meta, mask_spec)
+            w = np.where(held, 0.0, w).astype(f_type_cpu)
+            meta["obs_holdout"] = held
+            if verbose:
+                print(f"  [mask] holdout: {int(held.sum())} observations withheld ({held.mean():.1%})")
+        meta["obs_weight"] = w
     wspec = _observation_weighting_spec()
     if wspec:
         w = observation_weights(meta, wspec)

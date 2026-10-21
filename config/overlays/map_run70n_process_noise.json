@@ -1,0 +1,10 @@
+{
+  "_extends": "map_run70b_process_noise.json",
+  "_comment": [
+    "E070 guard NULL: synthetic counts at 69a MAP (no noise), fitted with 70b's structure."
+  ],
+  "run_names": {
+    "map": "age_map_{precision}_run_70n",
+    "vis_map": "age_map_{precision}_run_70n"
+  }
+}

@@ -63,6 +63,10 @@ returns None and says why when the raster is absent, and ``metrics.json`` carrie
 ``barrier_crossing: null``. A missing optional input must never cost a whole
 diagnostics run.
 
+``18_process_noise.png`` (population_model.process_noise only, E070) maps the mean
+yearly abundance nudge eps per era: where and when the deterministic dynamics needed
+help. Source/sink and lambda figures never include eps -- they show the skeleton.
+
 ``10_age_structure.png`` compares theoretical equilibrium age structure
 (local rho implied by the fitted vital rates, assuming the system has
 settled -- no invasion-front/transient history) against REALIZED age
@@ -243,6 +247,8 @@ def reconstruct_map(data, params):
               "w_scale_within", "w_scale", "w_env_within", "w_env",
               # st_correction (E067)
               "st_correction_gw", "st_correction_w",
+              # process_noise (E070) and the per-observation NB concentration (held-out scoring).
+              "process_noise_u", "process_noise_rms_t", "obs_concentration",
               # subcell_strata habitat-specific tilts (per year and land cell).
               "subcell_beta_k_t", "subcell_sigma_s_t",
               # population_model.covariate_drift only (E057 P0).
@@ -1103,6 +1109,84 @@ def _st_correction_metrics(data, sim):
     return {"max_abs_w_over_scale": float(np.abs(np.asarray(sim["st_correction_w"])).max() / float(_ST.get("scale", 0.1))),
             "land_rms_h": {y: float(np.sqrt(np.mean(h[:, i] ** 2))) for y, i in pick.items()},
             "h_p05_p95": {y: [float(np.percentile(h[:, i], 5)), float(np.percentile(h[:, i], 95))] for y, i in pick.items()}}
+
+
+def _process_noise_eps(data, sim):
+    """(time, N_land) eps of population_model.process_noise at this point, or None."""
+    if "process_noise_u" not in sim or "pn_S" not in data:
+        return None
+    from src.model.age_priors import _PN
+    u = np.asarray(sim["process_noise_u"], dtype=np.float64) * np.asarray(data["pn_active"], dtype=np.float64)[:, None]
+    return float(_PN.get("sigma", 0.05)) * u @ np.asarray(data["pn_S"], dtype=np.float64).T
+
+
+_PN_ERAS = ((1902, 1939), (1940, 1965), (1966, 1992), (1993, 2018))
+
+
+def plot_process_noise(data, sim, years, rows, cols, shape, out):
+    """E070: where and when the deterministic skeleton needed nudging (mean eps per era), and the gate numbers.
+
+    eps > 0: the skeleton under-predicts abundance there and then. Mean eps per era shows systematic structure;
+    noise that is genuinely random averages out. Returns metrics (None without process noise).
+    """
+    eps = _process_noise_eps(data, sim)
+    if eps is None:
+        return None
+    u = np.asarray(sim["process_noise_u"])[np.asarray(data["pn_active"]) > 0]
+    years = np.asarray(years)
+    eras = [(a, b) for a, b in _PN_ERAS if ((years >= a) & (years <= b)).any()]
+    fig, ax = _map_grid(2, 2, shape, panel_w=5.0, header=0.85, cbar_frac=0.17)
+    era_means = {}
+    lim = max(float(np.percentile(np.abs([eps[(years >= a) & (years <= b)].mean(0) for a, b in eras]), 98)), 1e-6)
+    for axis in ax.flat[len(eras):]:
+        axis.axis("off")
+    for axis, (a, b) in zip(ax.flat, eras):
+        sel = (years >= a) & (years <= b)
+        m = eps[sel].mean(0)
+        era_means[f"{a}-{b}"] = {"land_mean": float(m.mean()), "land_rms": float(np.sqrt(np.mean(m ** 2))),
+                                  "cum_rms": float(np.sqrt(np.mean(eps[sel].sum(0) ** 2)))}
+        image = axis.imshow(_grid(m[None], rows, cols, shape)[0], cmap="RdBu_r", vmin=-lim, vmax=lim)
+        axis.set_title(f"{a}–{b}"); axis.axis("off")
+        fig.colorbar(image, ax=axis, fraction=.046, label="mean ε (log abundance / yr)")
+    fig.suptitle("Process noise: mean yearly nudge to abundance (ε > 0: the dynamics under-predict)")
+    _snap_map_height(fig)
+    fig.savefig(out, dpi=180, bbox_inches="tight"); plt.close(fig)
+    rms_t = np.sqrt(np.mean(eps ** 2, axis=1))
+    return {"rms_u_raw": float(np.sqrt(np.mean(u ** 2))) if u.size else 0.0,   # G4: realised / pinned sigma
+            "max_abs_u_raw": float(np.abs(u).max()) if u.size else 0.0,
+            "max_land_rms_eps": float(rms_t.max()),
+            "eras": era_means}
+
+
+def _holdout_metrics(data, sim):
+    """E070 model comparison: NB2 log predictive density per observation on the held-out sets vs the fitted set.
+
+    Temporal = observation_mask.holdout_years; spatial = holdout blocks outside those years. Mean log density per
+    observation (higher is better) plus log1p RMSE; compare arms fitted with the SAME mask only.
+    """
+    if "obs_holdout" not in data or "obs_concentration" not in sim:
+        return None
+    from scipy.special import gammaln
+    from src.model.data_loading import _observation_mask_spec, holdout_observation_mask
+    spec = _observation_mask_spec() or {}
+    y = np.asarray(data["observed_results"], dtype=np.float64)
+    mu = np.maximum(np.asarray(sim["expected_obs"], dtype=np.float64), 1e-12)
+    phi = np.asarray(sim["obs_concentration"], dtype=np.float64)
+    lp = (gammaln(y + phi) - gammaln(phi) - gammaln(y + 1.0)
+          + phi * np.log(phi / (phi + mu)) + y * np.log(mu / (phi + mu)))
+    meta = {k: np.asarray(data[k]) for k in ("years", "obs_time_indices", "obs_rows", "obs_cols")}
+    temporal = (holdout_observation_mask(meta, {"holdout_years": spec.get("holdout_years")})
+                if spec.get("holdout_years") else np.zeros(y.shape, bool))
+    spatial = (holdout_observation_mask(meta, {"holdout_blocks": spec.get("holdout_blocks")}) & ~temporal
+               if spec.get("holdout_blocks") else np.zeros(y.shape, bool))
+    fitted = ~np.asarray(data["obs_holdout"]).astype(bool)
+
+    def score(m):
+        if not m.any():
+            return None
+        return {"n": int(m.sum()), "mean_lpd": float(lp[m].mean()),
+                "log1p_rmse": float(np.sqrt(np.mean((np.log1p(y[m]) - np.log1p(mu[m])) ** 2)))}
+    return {"temporal": score(temporal), "spatial": score(spatial), "fitted": score(fitted)}
 
 
 def _split_readout_metrics(data, sim):
@@ -2221,6 +2305,8 @@ def main():
     disease_metrics = plot_disease_diagnostics(
         data, sim, years, rows, cols, shape, out / "09_disease_diagnostics.png",
         modern_era)
+    process_noise_metrics = plot_process_noise(data, sim, years, rows, cols, shape,
+                                               out / "18_process_noise.png")
     land_mask_arr = np.asarray(data["land_mask"])
     age_structure_metrics = plot_age_structure(
         sim, years, rows, cols, shape, land_mask_arr, out / "10_age_structure.png", modern_era)
@@ -2347,6 +2433,10 @@ def main():
         "split_readout": _split_readout_metrics(data, sim),
         # st_correction (E067): size and timing of the shared smooth habitat correction h(cell, t).
         "st_correction": _st_correction_metrics(data, sim),
+        # process_noise (E070): realised noise vs its pinned sigma, and its era structure (figure 18).
+        "process_noise": process_noise_metrics,
+        # observation_mask holdouts (E070): held-out log predictive density, the ranking criterion.
+        "holdout": _holdout_metrics(data, sim),
         "subcell_strata": subcell_metrics,
         # K's bounded dynamic range. If a large share of land sits at the floor, the
         # covariates are pushing capacity as low as the bound permits -- the same

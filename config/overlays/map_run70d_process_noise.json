@@ -1,0 +1,18 @@
+{
+  "_extends": "map_run70z_holdout_base.json",
+  "_comment": [
+    "E070 stage 1: process noise on abundance, sigma 0.05 (pinned), from 1966; 15 land cosines (n_freq 3)."
+  ],
+  "population_model": {
+    "process_noise": {
+      "enabled": true,
+      "sigma": 0.05,
+      "n_freq": 3,
+      "window_start": 1966
+    }
+  },
+  "run_names": {
+    "map": "age_map_{precision}_run_70d",
+    "vis_map": "age_map_{precision}_run_70d"
+  }
+}

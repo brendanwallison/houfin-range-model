@@ -81,3 +81,11 @@ and BBS detection) and the age structure; record which gates fail per arm so the
   observations start in 1966, so a 1950s pulse is visible only through its after-effects. Pass: fitted mean u_raw over
   the pulse >= 1.75 (70%), other coefficients at the null's level.
 Queue: 70z, 70n, 70r, 70b, then 70a, 70c, 70d (tasks/e070_task.sh).
+
+## 70n NULL (read 2026-10-21): PASS
+Truth 69a MAP (.57/.31/5.22; plains .87 / west 1.01 / east 1.07; no noise); synthetic mean 2.69, zeros .746. Fitted
+with 70b's structure (sigma .05, 1902-2020 active; holdout 34,752 obs = 18.1%). Refined 148,842 (1,409 it):
+.53/.26/5.78, lam0 1.20; plains .85 / west .99 / east 1.07; no Allee-dead. Noise: RMS u_raw .17 (MAP .32), max |u|
+.98, land-RMS eps <= .025/yr; era RMS u .05/.10/.21/.26 (grows where data are dense, still far below the prior's 1).
+G1 null: noise stays small, demography within the truth's band (F +11%, Sj -.05). Holdout lpd (refined): temporal
+-1.747, spatial -1.189, fitted -.934 -- the reference scale for a correctly specified fit.

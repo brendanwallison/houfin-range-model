@@ -89,3 +89,16 @@ with 70b's structure (sigma .05, 1902-2020 active; holdout 34,752 obs = 18.1%). 
 .98, land-RMS eps <= .025/yr; era RMS u .05/.10/.21/.26 (grows where data are dense, still far below the prior's 1).
 G1 null: noise stays small, demography within the truth's band (F +11%, Sj -.05). Holdout lpd (refined): temporal
 -1.747, spatial -1.189, fitted -.934 -- the reference scale for a correctly specified fit.
+
+## 70r RECOVERY (read 2026-10-21): FAILS the pre-registered amplitude bar; passes detection and specificity
+Injected u_raw +2.5 on basis 0 (cos pi x) over 1975-1985 at 69a's MAP (synthetic mean 2.75, zeros .745). Refined
+149,509 (1,531 it). Pulse recovered as mean u_raw .72 (29% of 2.5; bar was 70%), right sign in 10 of 11 years, per
+year .48 .78 .86 1.04 1.13 1.06 .94 1.01 .72 .24 -.30 (the final year is absorbed by later dynamics). Specificity:
+outside the pulse RMS u .17 (b0 .19, the null's level); other basis functions inside the pulse RMS .30. No leakage into
+demography: .53/.26/5.63 (null .53/.26/5.78); plains .86 / west 1.00 / east 1.06.
+Reading: the pulse is DETECTED (~4x the null level, right place and time) but shrunk ~70% toward 0. At sigma .05 the
+pulse is +-.03-.05 log units per year per cell -- weak against NB noise -- and the N(0,1) prior on each yearly
+coefficient dominates. The noise term is therefore conservative: it will under-absorb transient error rather than
+manufacture it, and what it does not absorb goes unfitted (not into the vital rates). By the letter of G1, sigma .05
+fails; whether amplitude recovery is the right bar for a random effect (vs detection + specificity + no leakage)
+is a decision for the user -- not changed here.

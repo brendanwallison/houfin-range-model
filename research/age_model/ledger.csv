@@ -139,3 +139,5 @@ date,experiment,variant,run_dir,U,fit_corr,notes,su
 2026-10-20,E068,68b,run_68b,194350.8,,no-floor plausible truth: refine stays at truth (.52/.29/5.6; trough kept) -> contortion is data-demanded,
 2026-10-20,E069,69c,run_69c,172157.1,,B3 no floor = 64k (.49/.45/8.7; west sink .54); 67c2 gains 319 nats but F 8.7->10.7,
 2026-10-20,E069,69b,run_69b,186068.2,,smooth floor = 62b/69a (F 14.4; plains=west; AD .15/.18); floor variants closed,
+2026-10-21,E070,70n,run_70n,148842.4,,NULL pass: rms u .17; demography at truth (.53/.26/5.8),
+2026-10-21,E070,70r,run_70r,149508.6,,RECOVERY: pulse detected (4x null) right sign but 29% amplitude (<70% bar); no leakage into demography,

@@ -136,3 +136,5 @@ date,experiment,variant,run_dir,U,fit_corr,notes,su
 2026-10-20,E067,67n2/67r2,,,,st_correction guards PASS on no-floor base: null max|w| 1.15 sd; recovery w0 .38 of .5 (76%) others at null level,
 2026-10-20,E067,67c2,run_67c2,171838.3,,B3+st_correction (no floor): west sink .54->.22; plains stays lowest (1.07<W 1.29<E 1.50); F 10.7 Sj .41 Sa .44; |w| 4.4 sd; 69c baseline queued,
 2026-10-20,E066,66d,run_66d,,,refine stalled (|grad| 2.7e4) on the hard-floor base -- the Allee establishment switch (E069); 66e/f/i/j held: confounded the same way; split readout returns in E070 stage 2,
+2026-10-20,E068,68b,run_68b,194350.8,,no-floor plausible truth: refine stays at truth (.52/.29/5.6; trough kept) -> contortion is data-demanded,
+2026-10-20,E069,69c,run_69c,172157.1,,B3 no floor = 64k (.49/.45/8.7; west sink .54); 67c2 gains 319 nats but F 8.7->10.7,

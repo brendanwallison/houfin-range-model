@@ -40,3 +40,10 @@ and with the floor the deterministic Allee model is a switch the optimiser explo
 switch seen as "Allee-dead" cells -- now located mechanistically. (3) Process noise (E070) does not remove a
 deterministic separatrix at MAP; stochastic establishment (E063 occupancy, which blurs the threshold over Poisson
 realisations) is the structural remedy. E070 runs on no-floor bases, so it is not exposed to the switch.
+
+## 69c RESULT (B3 no floor; the clean baseline for 67c2)
+MAP 180,428: .58/.33/5.15, lam0 1.32; plains .93 < west 1.04 < east 1.17; west sink .51. Refined 172,157 (948 it):
+.49/.45/8.69, lam0 1.65; plains .96, west 1.02, east 1.49; Allee-dead .01/.02/0; west sink .54 -- the same point as
+64k (hard floor: .50/.45/8.8, 172,035): on B3 the floor changes nothing.
+vs 67c2 (+ st_correction): -319 nats; west sink .54 -> .22 and the plains stay lowest, but F RISES 8.7 -> 10.7 and Sa
+falls .49 -> .44 -- the persistent correction worsens the demographic contortion while fixing the spatial one.

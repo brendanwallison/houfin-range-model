@@ -20,3 +20,10 @@ cannot represent and the refine fakes it with demography -- supports the correct
 68a on the no-floor structure (truth = 69a MAP, Sa .57 Sj .31 F 5.2). Same read: if the refine stays near the truth,
 68a's conclusion (the real data demand the contortion) stands; if it contorts, the contortion is (partly) an
 optimiser/identifiability artifact and E068's reading is withdrawn.
+
+## 68b RESULT (2026-10-20): E068's conclusion STANDS without the floor
+Truth = 69a MAP (Sa .57 Sj .31 F 5.22; plains .87 vs west 1.01). Synthetic counts mean 2.68 (real 3.06), zeros .748
+(.760). Cold MAP .54/.28/5.04; refined (1,474 it; U 194,572 -> 194,351) .52/.29/5.59, lam0 1.22; plains .86 (sink
+.68) vs west 1.00, east 1.08; no Allee-dead; west sink .56 (truth's own structure). The refine stays at the truth
+with no floor to pin it, so the real-data contortion (69a: F 15.2, plains = west) is DEMANDED BY THE DATA: real
+misspecification, not an optimiser or numerical artifact. Supports E070 (process error) as the right direction.

@@ -135,3 +135,4 @@ date,experiment,variant,run_dir,U,fit_corr,notes,su
 2026-10-20,E069,69a,run_69a,186065.7,,no FFT floor: refine contorts as 62b (F 15.2 lam0 2.03; plains=west 1.00; AD .16/.19/.01) -> floor not the driver; 68b reruns E068 without it,
 2026-10-20,E067,67n2/67r2,,,,st_correction guards PASS on no-floor base: null max|w| 1.15 sd; recovery w0 .38 of .5 (76%) others at null level,
 2026-10-20,E067,67c2,run_67c2,171838.3,,B3+st_correction (no floor): west sink .54->.22; plains stays lowest (1.07<W 1.29<E 1.50); F 10.7 Sj .41 Sa .44; |w| 4.4 sd; 69c baseline queued,
+2026-10-20,E066,66d,run_66d,,,refine stalled (|grad| 2.7e4) on the hard-floor base -- the Allee establishment switch (E069); 66e/f/i/j held: confounded the same way; split readout returns in E070 stage 2,

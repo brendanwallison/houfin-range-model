@@ -80,7 +80,8 @@ def main():
     rep_e, rep_m = {}, {}
     rep_e["desk"] = np.stack([desk_epoch(i) for i in ce]); rep_m["desk"] = np.stack([desk_epoch(i) for i in cm])
     Xe = np.stack([allm(X, i) for i in ce]) - xm; Xm = np.stack([allm(X, i) for i in cm]) - xm
-    rep_e["rrr"] = Xe @ B @ Vt.T; rep_m["rrr"] = Xm @ B @ Vt.T              # coordinates in the RRR-ordered basis
+    ybar = Eann[trn].mean(0)
+    rrr_k = lambda Xs, k: ybar + (Xs @ B) @ Vt[:k].T @ Vt[:k]              # rank-k RRR prediction IN ESK coordinates (+ mean)
     rep_e["covpca"] = Xe @ Pt.T; rep_m["covpca"] = Xm @ Pt.T
     rep_e["esk"] = np.stack([half(Eann, i, 1) for i in ce]); rep_m["esk"] = np.stack([half(Eann, i, 1) for i in cm])
     Oe, Om = np.stack([half(Lc, i, 1) for i in ce]), np.stack([half(Lc, i, 1) for i in cm])   # odd-year communities
@@ -98,12 +99,19 @@ def main():
     obs_sim = ruz(Om[i1], Em[i2])
     obs_d2 = ruz(Oe, Ee) + ruz(Om, Em) - 2 * ruz(Oe, Em)
     T_all = np.vstack([Te, Tm])
-    res = {"n_heldout_cells": int(n), "ranks": a.ks, "spatial_kernel_fidelity": {}, "change_fidelity": {}, "cka": {}}
+    obs_pd2 = ruz(Om[i1], Em[i1]) + ruz(Om[i2], Em[i2]) - 2 * ruz(Om[i1], Em[i2])     # observed kernel distance, places
+    res = {"n_heldout_cells": int(n), "ranks": a.ks, "spatial_kernel_fidelity": {}, "spatial_distance_fidelity": {},
+           "change_fidelity": {}, "cka": {}}
     for name in ("desk", "rrr", "covpca", "esk"):
-        for d in ("spatial_kernel_fidelity", "change_fidelity", "cka"):
+        for d in ("spatial_kernel_fidelity", "spatial_distance_fidelity", "change_fidelity", "cka"):
             res[d][name] = []
         for k in a.ks:
-            Re, Rm = rep_e[name][:, :k], rep_m[name][:, :k]
+            if name == "rrr":
+                Re, Rm = rrr_k(Xe[ok], k), rrr_k(Xm[ok], k)
+            else:
+                Re, Rm = rep_e[name][:, :k], rep_m[name][:, :k]
+            pd2 = ((Rm[i1] - Rm[i2]) ** 2).sum(1)
+            res["spatial_distance_fidelity"][name].append(float(np.corrcoef(pd2, obs_pd2)[0, 1]))
             sim = (Rm[i1] * Rm[i2]).sum(1)
             res["spatial_kernel_fidelity"][name].append(float(np.corrcoef(sim, obs_sim)[0, 1]))
             d2 = ((Rm - Re) ** 2).sum(1)
@@ -112,7 +120,7 @@ def main():
     os.makedirs(a.out, exist_ok=True)
     json.dump(res, open(os.path.join(a.out, "e086m.json"), "w"), indent=1)
     print(f"[e086m] {os.path.basename(a.cache.rstrip('/'))}: {n} held-out cells; ranks {a.ks}")
-    for d in ("spatial_kernel_fidelity", "change_fidelity", "cka"):
+    for d in ("spatial_kernel_fidelity", "spatial_distance_fidelity", "change_fidelity", "cka"):
         print(f"  {d}")
         for name in ("desk", "rrr", "covpca", "esk"):
             print(f"    {name:7s} " + "  ".join(f"k{k}:{v:+.3f}" for k, v in zip(a.ks, res[d][name])))

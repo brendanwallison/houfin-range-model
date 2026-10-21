@@ -43,3 +43,18 @@ along -grad at every step >= 1e-8 (|grad| 1.45e6); without it U is smooth and ma
   sign, the largest weight); other 14 weights <= .117, i.e. the null's noise level. Shrinkage toward 0 under the
   N(0, .1) prior is expected and is why recovery is low rather than high.
 The real-data arms 67a2 (B1) and 67c2 (B3) are readable against 69a (no-floor baseline) when they land.
+
+## 67c2 RESULT (B3 no-floor + correction, real; 2026-10-20)
+Spatial pattern below = sum_b S_b w_b; h(t) = pattern x g(t), g rising ~-.55 (1966) -> ~+.45 (2023), so a positive
+pattern means habitat IMPROVING over the record.
+- MAP 187,538: Sa/Sj/F .56/.30/4.98, lam0 1.25; plains lam_f .92 (sink .63) < east 1.07 < west 1.18; no Allee-dead;
+  west sink .27 (64k MAP .50). |w| 2.8 prior sds. Pattern: west +.25, plains +.15, east -.21.
+- Refined 171,838 (1,185 it, tol_du stop; 64k hard-floor B3 172,035): Sa/Sj/F .44/.41/10.7, lam0 1.63; plains 1.07 <
+  west 1.29 < east 1.50; Allee-dead .05/.05/0; west sink .22 (64k .54); plains K .067. |w| 4.4 sds, land-RMS h .38
+  (1966) / .27 (2023). Pattern sd .67: west +.48 (p90 +1.05), plains +.19, east -.16 (p10 -1.03).
+Read: the correction does real work -- the western sink (54% of the west in 64k, already at MAP) largely disappears,
+and the plains stay the lowest region after refinement (64k/69a: plains = west). It does so by letting western habitat
+IMPROVE over 1966-2023 and parts of the east decline: regional timing carried by habitat, as intended. But the
+demographic contortion is only reduced, not removed (F 10.7 vs 8.8 in 64k, Sj -> Sa, east lam 1.50), and the weights
+sit 4.4 prior sds out -- the data want more correction than the N(0, .1) budget allows. The 64k comparison mixes the
+floor change; 69c (B3 no floor) queued as the clean baseline.

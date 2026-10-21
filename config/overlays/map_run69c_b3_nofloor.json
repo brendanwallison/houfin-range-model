@@ -1,11 +1,15 @@
 {
   "_extends": "map_run66_b3_base.json",
   "_comment": [
-    "B3 (62b + route SD .7) without the hard FFT floor."
+    "E069c: B3 (62b + route SD .7) without the hard FFT floor -- the clean baseline for 67c2."
   ],
   "population_model": {
     "numerics": {
       "fft_floor_ulps": null
     }
+  },
+  "run_names": {
+    "map": "age_map_{precision}_run_69c",
+    "vis_map": "age_map_{precision}_run_69c"
   }
 }

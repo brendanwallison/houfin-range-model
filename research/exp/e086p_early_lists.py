@@ -68,6 +68,9 @@ def per_list(cache, ext, D, cols_sp, cell_type):
     ok = (yr >= int(yx[0])) & (yr <= 2024) & (P.sum(1) >= 2)
     zt = lambda rr: np.asarray(Zx[ci[rr], yr[rr] - int(yx[0])], float)
     zmod = np.asarray(Zx[:, (yx >= 2005) & (yx <= 2024)].mean(1), float)
+    # circles outside the covariate grid (Canada, coast) have no z: drop their lists (every year of a cell is NaN or not)
+    finite_cell = np.isfinite(np.asarray(Zx[:, 0, 0], float)) & np.isfinite(zmod).all(1)
+    ok &= finite_cell[ci]
     test = cell_type != "bbs_trained"
     rm = np.where(ok & ~test & (yr >= 2005))[0]                  # offsets from modern lists at BBS-trained cells
     delta = fit_delta(ro(zt(rm)), P[rm])

@@ -131,3 +131,4 @@ date,experiment,variant,run_dir,U,fit_corr,notes,su
 2026-10-20,E068,68a,run_68a,200662.0,,PLAUSIBLE TRUTH: refine stays at truth (F 5.6, Sj .28, plains .86 vs W 1.04, no AD; ~1k gain) -- real-data contortion is demanded by the data, not an artifact,
 2026-10-20,E066,66a,run_66a,185061.5,,split r24 B1: best MAP (P .81 vs W 1.08) but refine Sj .52 F 15.2 lam0 2.41, trough inverted; within/level .25-1.16 not <<1,
 2026-10-20,E066,66m,run_66m,184638.7,,calibrated deviation prior (.14) overruled -> 1.7-3.3; F 16.2 Sj .46; plains=west; DESK temporal channel not the fix,
+2026-10-20,E066/E067,floor test,,,,hard FFT floor makes U discontinuous (+.45 jumps; smooth without; ~100 nats exploited); E067 restarted as v2 on no-floor bases + 69a baseline; 62b-based results need recheck,

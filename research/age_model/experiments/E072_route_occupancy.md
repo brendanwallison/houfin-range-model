@@ -12,3 +12,14 @@ gate on observations with mu > .5 below .1). 72r RECOVERY (counts at 69a MAP wit
 demography within the truth's band.
 Read with E070's gates/ranking; key outputs: m, mean gate by region, plains/west K vs 70z, held-out density (scored
 with the ZINB) vs 70z refined.
+
+## RESULTS (2026-10-21)
+- 72n NULL: PASS. m pulled from the .3 prior to .013 (3.1 log-sds below); demography .57/.28/4.86 vs truth .57/.31/5.22.
+  (Mean gate over ALL observations .42 is dominated by near-empty cells where any gate is 1; not the criterion.)
+- 72r RECOVERY: PASS. m .286 vs .3 injected; demography .61/.24/5.07 (Sj slightly low).
+- 72a REAL: the data use the zero inflation (m 2.1 at MAP, .66 refined -- larger patches than the prior median).
+  MAP .57/.32/5.25 with the best MAP holdout of any arm (-1.882 / -1.229 vs 70z MAP -1.917 / -1.273). Refined
+  (3,365 it): .58/.44/13.6, plains .95 < west .99 < east 1.19, Allee-dead .09/.08/.01, plains K .029 -- the usual
+  contortion; holdout -1.824 / -1.189 (no better than 70z refined).
+Reading: route-level zero inflation is real in the data and helps the plausible MAP predict, but does not remove the
+refine's demand; the refine's gain over the MAP is something else.

@@ -146,3 +146,8 @@ date,experiment,variant,run_dir,U,fit_corr,notes,su
 2026-10-21,E070,70c,run_70c,138389.9,,sigma .10: refine stalled at gate; heading Sa .89 Sj .05 F 10 (70b's direction); MAP east carried by noise,
 2026-10-21,E070,70a,run_70a,138945.4,,sigma .02: refine Sa .77 Sj .16 F 9.9 (as 70b); AD .14-.15; holdout = 70z,
 2026-10-21,E070,70d,run_70d,138747.0,,sigma .05 from 1966 = 70b; STAGE 1: noise does not release contortion; shared demand is spatial (plains/west K collapse + Allee-dead),
+2026-10-21,E071,71b,run_71b,137909.0,,Allee OFF: .60/.60/7.0 lowest F; plains .83 trough kept; AD 0; holdout -1.835/-1.182,
+2026-10-21,E071,71c,run_71c,137783.2,,relative Allee: .70/.49/11.9; plains .98; AD 0; holdout -1.825/-1.187,
+2026-10-21,E071,71a,run_71a,,,n50/4: refine stalled (1.9e5),
+2026-10-21,E072,72a,run_72a,137765.0,,route zero inflation used (m .66) best MAP holdout; refine contorts .58/.44/13.6; holdout -1.824/-1.189; guards pass,
+2026-10-21,E076,probe2,,,,west smoothing 2.4x selection control (B1); route effects absorb it; weak edge dependence; modern east over-predicted 15-26%,

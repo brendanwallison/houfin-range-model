@@ -27,3 +27,21 @@ Per-observation NB log density from the obs site (no priors; conditional on rout
   -1.6..-1.9 after 1995) in every run.
 - Held-out entries in this probe read 0: masked observations score 0 inside the trace (numpyro mask); the valid
   held-out densities are E070's (metrics.json holdout).
+
+## Probe 2 RESULT: residual structure (2026-10-21; cell-decade means, cells with >= 5 obs)
+log(obs/pred) by observed-density quintile (low -> high), refined points:
+| run | west | plains | east |
+| 68b CONTROL (correctly specified) | -.30 -.25 -.17 -.10 +.21 (spread .51) | -.08 .. +.05 | -.02 .. +.05 |
+| 69a (B1) | -.79 -.84 -.48 +.06 +.39 (1.18) | -.21 .. +.29 | -.08 .. -.03 |
+| 70z (B1 holdout) | -.84 -.89 -.52 +.03 +.45 (1.29) | -.20 .. +.24 | -.07 .. -.12 |
+| 69c (B3 route effects) | -.36 -.37 -.10 +.01 +.11 (.47) | -.10 .. +.15 | -.05 .. -.00 |
+- WEST SMOOTHING CONFIRMED for B1: the density-bin spread is 2.3-2.5x the selection artifact -- sparse western cells
+  over-predicted, dense ones under-predicted. Route effects (B3) absorb it to the control's level: the heterogeneity
+  is fine-scale (sub-cell / route), consistent with dispersal smoothing or sub-27 km patchiness.
+- Habitat-edge dependence is WEAK (B1 west by edge quartile -.32 -.25 -.38 -.41 vs control flat -.12): the error is
+  not concentrated at sharp habitat edges, so it is not simply the kernel blurring an edge the habitat field draws.
+- Era x region: per-observation log density tracks count scale -- the post-1995 rise in misfit is matched by the
+  control (east 1995-2009: 69a -2.009 vs 68b -2.001), so it is NOT evidence against the disease term. But the MODERN
+  EAST is over-predicted in B1 (2010-25: 69a mu 3.96 vs y 3.36; 70z 3.30 vs 2.62, +26%) -- the continued eastern
+  decline is under-represented; 69c much less (3.61 vs 3.36).
+- West mean level under-predicted 7-18% in every era in B1 (69a 1966-79: y 20.2 vs mu 16.6).

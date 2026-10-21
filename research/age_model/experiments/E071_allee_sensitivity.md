@@ -16,3 +16,14 @@ contort as 70z with the emptiness carried by K alone, the demand is K-level abse
 - 71b numerics (2026-10-21): with the Allee term off nothing kills float32 round-off seeds, so 71b's float32 MAP uses
   the 10-ulp floor and the float64 refine does not (numerics.fft_floor_float32_only, new): the MAP is protected from
   phantom immigration, the refine from the exact-extinction switch.
+
+## RESULTS (2026-10-21; refined unless noted; 70z refined: .50/.43/14.7, plains .90/.99/1.10, AD .07/.06/0, holdout -1.818/-1.178)
+- 71a n50/4: refine STALLED (median |grad| 1.9e5) heading .40/.40/11.2 -- not interpretable.
+- 71b Allee OFF (f32-only floor at MAP): .60/.60/7.0; plains .83 < west .95, east .97 (TROUGH KEPT, plains lowest);
+  Allee-dead 0 (by construction); plains K .033; west sink .61 (west median lam below 1); holdout -1.835 / -1.182
+  (slightly worse than 70z). F far lower than any Allee arm, but Sj = Sa.
+- 71c RELATIVE Allee: .70/.49/11.9; plains .98, west 1.00, east 1.11; Allee-dead 0; plains K .037; holdout
+  -1.825 / -1.187. Same picture as 55e on the old base.
+Reading: removing the Allee term entirely keeps the plains trough and the lowest F of any refine (7.0), at a small
+held-out cost; the demographic distortion moves into Sj = Sa. The Allee term is a lever the refine uses (F, trough
+flattening) but not the root of the contortion.

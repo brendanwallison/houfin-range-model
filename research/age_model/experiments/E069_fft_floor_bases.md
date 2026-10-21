@@ -22,3 +22,21 @@ At the 66b stall point the smooth floor gives the hard floor's numbers to 6 digi
 changes nothing measurable. What both floors share and no-floor lacks is that negative round-off becomes EXACTLY 0;
 something downstream reacts discontinuously to that. Probe 0321jbz decomposes dlogp by site / observation / density
 cell at step 1e-7 (smooth vs no floor). 69b (smooth floor, running) is therefore expected to behave like 62b.
+
+## 0321jbz RESULT: the jump is an Allee establishment switch, not the floor's arithmetic (2026-10-20)
+At the 66b stall, step 1e-7 along -grad (smooth floor; hard floor identical): dU +.4536, ALL of it in the obs site
+(priors ~1e-6). Density: max relative change .986 -- one cell (row 62, col 103; central plains) in 1987 goes .135 ->
+.0019, and 55,996 cell-years move by > .1% (its spread); the affected observations are 1991-1996 routes nearby
+(mu .21 -> .14, 1.97 -> 1.46, ...). No floor, same step: max relative change .0003, no cell-year above .1%, dU linear.
+Reading: with an Allee factor, a thin founding population sits on a separatrix -- above it the cell establishes,
+below it the population dies out. The floor makes dying out REAL (sub-resolution densities are exactly ~0, so FFT
+round-off can no longer rescue them), which is what it was built for (no phantom immigration). The refine then parks
+founding populations ON the separatrix, where an infinitesimal parameter change flips establishment: a jump of
+~.45 nats over a step of ~1e-8. Smoothing the threshold cannot help -- the dynamics are continuous but bistable, and
+over decades the switch is effectively discontinuous. Without the floor, round-off immigration (~1e-16 x max in
+float64) keeps every cell marginally seeded and blurs the separatrix (and in float32 it was phantom immigration).
+Consequences: (1) 69b (smooth floor) will behave as 62b; the floor question is really "should extinction be exact",
+and with the floor the deterministic Allee model is a switch the optimiser exploits. (2) This is the same absence
+switch seen as "Allee-dead" cells -- now located mechanistically. (3) Process noise (E070) does not remove a
+deterministic separatrix at MAP; stochastic establishment (E063 occupancy, which blurs the threshold over Poisson
+realisations) is the structural remedy. E070 runs on no-floor bases, so it is not exposed to the switch.

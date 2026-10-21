@@ -101,6 +101,11 @@ def score(a):
     for name, sp in (("residents", res_sp), ("all", allsp)):
         A = per_list(a.arm, a.arm_ext, D, sp, cell_type); C = per_list(a.control, a.control_ext, D, sp, cell_type)
         out = {"species": len(sp)}
+        if a.save_lists:   # E086p addendum: per-list arrays for the effort-stratified check
+            os.makedirs(a.out, exist_ok=True)
+            np.savez_compressed(os.path.join(a.out, f"lists_{a.label}_{name}.npz"),
+                                **{f"{k[0]}|{k[1]}|{nm}": v for k in A for nm, v in zip(("rows", "lba", "lma"), A[k])},
+                                **{f"{k[0]}|{k[1]}|{nm}": v for k in C for nm, v in zip(("rows_c", "lbc", "lmc"), C[k])})
         for key in A:
             ra, lba, lma = A[key]; rc, lbc, lmc = C[key]
             assert (ra == rc).all()
@@ -140,6 +145,7 @@ def main():
     for k in ("--arm", "--arm-ext", "--control", "--control-ext", "--cbc", "--similarity", "--out"):
         s.add_argument(k, required=True)
     s.add_argument("--label", default="arm"); s.add_argument("--boot", type=int, default=500)
+    s.add_argument("--save-lists", action="store_true")
     a = ap.parse_args()
     encode(a) if a.cmd == "encode" else score(a)
 

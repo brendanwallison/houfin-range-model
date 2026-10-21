@@ -211,6 +211,12 @@ ST_CORRECTION = bool(_ST.get("enabled", False))
 #                             scaled to unit land-RMS (data_loading), u iid N(0, sigma^2) per year inside the window
 #                             (zero outside, and in held-out forecast years). sigma is PINNED (point estimates collapse or
 #                             explode a learned noise scale); sampled non-centred as u = sigma * u_raw.
+#   native_departure          {"enabled", "beta_a", "beta_b"} (E077): departure probability x (1 - r w(x)), w = the
+#                             native core/margin map scaled to [0, 1], r ~ Beta(a, b). Western House Finches are largely
+#                             sedentary; the continental kernel (Veit & Lewis) comes from the eastern invasion, whose
+#                             population became partly migratory. r = 0 is the current model.
+_NATDEP = dict(_POP_SPEC.get("native_departure", {}))
+NATIVE_DEPARTURE = bool(_NATDEP.get("enabled", False))
 _PN = dict(_POP_SPEC.get("process_noise", {}))
 PROCESS_NOISE = bool(_PN.get("enabled", False))
 _OCC = dict(_POP_SPEC.get("occupancy", {}))
@@ -1267,6 +1273,12 @@ def build_model_2d(data, prior_scale=1.0):
                                      data["subcell_survival_moderator"])
             subcell_sigma_s_t = numpyro.deterministic("subcell_sigma_s_t", subcell_sigma_s_t)
 
+    departure_scale = None
+    if NATIVE_DEPARTURE:
+        r_nat = numpyro.sample("native_departure_r", dist.Beta(float(_NATDEP.get("beta_a", 1.5)),
+                                                               float(_NATDEP.get("beta_b", 1.5))))
+        w_nat = native_shape / jnp.maximum(jnp.max(native_shape), 1e-12)
+        departure_scale = 1.0 - r_nat * w_nat
     _sim = forward_sim_age_structured(
         Sa_flat, Sj_flat, Fmax_flat, K_flat, c_flat, Q_flat,
         land_rows, land_cols,
@@ -1298,6 +1310,7 @@ def build_model_2d(data, prior_scale=1.0):
         juvenile_kernel_weights=juv_w,
         occupancy_b=(data['pop_scalar'] * OCC_BIRDS_PER_COUNT) if OCCUPANCY else None,
         process_noise=process_noise,
+        departure_scale=departure_scale,
     )
     densities, Na_grid, Nj_grid = _sim[:3]
     if OCCUPANCY:

@@ -1956,6 +1956,12 @@ def simulate_no_invasion_counterfactual(sim, data, drop_disease=True):
         crowding_beta=(float(np.asarray(latents["dispersal_crowding_beta"]))
                        if "dispersal_crowding_beta" in latents else None),
         crowding_kappa=CROWDING_KAPPA,
+        # population_model.native_departure (E077): the same native-range departure scaling as the fit.
+        departure_scale=(None if "native_departure_r" not in latents else
+                         1.0 - float(np.asarray(latents["native_departure_r"])) * (
+                             np.asarray(data["initpop_latent"])[np.asarray(data["land_rows"]), np.asarray(data["land_cols"])]
+                             / max(float(np.max(np.asarray(data["initpop_latent"])[np.asarray(data["land_rows"]),
+                                                                                   np.asarray(data["land_cols"])])), 1e-12))),
         # dispersal_kernel.band_weights: the fitted radial-band reweighting
         juvenile_kernel_weights=(juvenile_band_weights(data["juvenile_fft_kernel_stack"],
                                                        jnp.asarray(latents["dispersal_band_logw"]))

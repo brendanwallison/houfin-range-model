@@ -1,0 +1,10 @@
+{
+  "_extends": "map_run77a_native_departure.json",
+  "_comment": [
+    "E077 RECOVERY: synthetic counts at 69a MAP with r = .6, fitted with 77a's structure."
+  ],
+  "run_names": {
+    "map": "age_map_{precision}_run_77r",
+    "vis_map": "age_map_{precision}_run_77r"
+  }
+}

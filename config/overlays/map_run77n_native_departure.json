@@ -1,0 +1,10 @@
+{
+  "_extends": "map_run77a_native_departure.json",
+  "_comment": [
+    "E077 NULL: synthetic counts at 69a MAP (r = 0), fitted with 77a's structure."
+  ],
+  "run_names": {
+    "map": "age_map_{precision}_run_77n",
+    "vis_map": "age_map_{precision}_run_77n"
+  }
+}

@@ -192,6 +192,7 @@ def dispersal_step_age_structured(
     return_adult_arrivals=False,
     veit_departure=False,
     departure_density=None,
+    departure_scale=None,
 ):
     """One dispersal step for both age classes, with density-dependent departure.
 
@@ -224,6 +225,8 @@ def dispersal_step_age_structured(
         x = N_dep / K_safe
         p_v = jnp.clip(x - jnn.softplus(10.0 * (x - 1.0)) / 10.0, 1e-6, 1.0)
         p_total = p_adult = p_v
+    if departure_scale is not None:     # population_model.native_departure (E077): fewer leave the native range
+        p_total, p_adult = p_total * departure_scale, p_adult * departure_scale
 
     adult_dispersers = N_a * p_adult
     adult_stayers = N_a * (1.0 - p_adult)
@@ -282,6 +285,7 @@ def forward_sim_age_structured(
     veit_reproduction=False,
     occupancy_b=None,
     process_noise=None,
+    departure_scale=None,
 ):
     """Run the age-structured simulation for ``time`` years.
 
@@ -320,6 +324,9 @@ def forward_sim_age_structured(
     ``Predictive(..., return_sites=[...])`` for post-hoc age-structure
     diagnostics (see scripts/viz/map_diagnostics.py).
 
+    ``departure_scale`` (optional, (N_land,)): static multiplier on departure probability, both ages
+    (population_model.native_departure, E077).
+
     ``process_noise`` (optional, (time, N_land)): log multipliers eps applied to both age
     classes at the end of each year, N <- N * exp(eps) (population_model.process_noise, E070).
     Multiplicative, so it can only rescale birds that are already there -- it cannot seed
@@ -340,6 +347,9 @@ def forward_sim_age_structured(
     zero_grid = jnp.zeros((Ny, Nx))
     release_mask = zero_grid.at[inv_rows, inv_cols].set(1.0)
     
+    dep_scale_g = (None if departure_scale is None else
+                   jnp.ones((Ny, Nx), departure_scale.dtype).at[land_rows, land_cols].set(departure_scale))
+
     # Pre-allocate the Q-grid to avoid creating it inside the scan loop
     K_kernels = Q_flat.shape[-1]
     zero_Q_grid = jnp.zeros((K_kernels, Ny, Nx))
@@ -391,6 +401,7 @@ def forward_sim_age_structured(
             return_adult_arrivals=settle_dispersers_only or occ,
             veit_departure=veit_departure,
             departure_density=occupied_density(N_a + N_j, psi, occupancy_b)[1] if occ else None,
+            departure_scale=dep_scale_g,
         )
         if settle_dispersers_only or occ:
             N_a_post, juvenile_stayers, juvenile_arriving, adult_arriving = _disp

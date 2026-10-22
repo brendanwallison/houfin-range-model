@@ -20,6 +20,11 @@ CBC value: per list, presence (count > 0), residualized per species on [log part
 least squares over all lists 1966+ (missing effort -> that year's median); averaged over a cell's lists per winter
 (year_end), then over the epoch's winters. --cbc-keep < 1 keeps each list with that probability (sparse winter data;
 the evaluation cell set is fixed from the full list set, cells left without a kept list in an epoch get no CBC change).
+--weights halfsplit (E086r-b): the combination weights are instead fitted on an EPOCH-SCALE change inside the
+trained years at training cells (trained span split into halves; per cell with >= 1 kept BBS row and >= 1 kept CBC
+list in each half, the BBS half-mean change regressed per species, no intercept, on [DESK's predicted change = the
+readout's coefficients x the cell's z change between halves, the CBC change between halves]); desk_cal = a'_s x DESK
+fitted the same way alone; < --min-fit-cells fitting cells -> unavailable (NaN).
 Scored on held-out cells with >= 3 CBC lists in each epoch: noise-free pooled corr (odd / even-year halves of the BBS
 change), 6x6-block bootstrap over cells, paired differences combo - desk and cbc - desk.
 """
@@ -49,6 +54,8 @@ def main():
     ap.add_argument("--thin-seeds", type=int, nargs="+", default=[1, 2])
     ap.add_argument("--cbc-keep", type=float, nargs="+", default=[1.0, 0.2])
     ap.add_argument("--min-lists", type=int, default=3); ap.add_argument("--n-boot", type=int, default=1000)
+    ap.add_argument("--weights", choices=("deviation", "halfsplit"), default="deviation")
+    ap.add_argument("--min-fit-cells", type=int, default=20)
     a = ap.parse_args()
     import pandas as pd
     j = lambda f: os.path.join(a.cache, f)
@@ -116,7 +123,8 @@ def main():
             Pc, Ac, Bc = P[:, m] - mean(P[:, m]), SA[:, m] - mean(SA[:, m]), SB[:, m] - mean(SB[:, m])
             out.append((w @ (Pc * Bc)).sum() / np.sqrt((w @ (Pc * Pc)).sum() * max((w @ (Ac * Bc)).sum(), 1e-12)))
         return np.array(out)
-    res = {"cache": a.cache, "rank": a.rank, "withheld": [w0, w1], "n_species": S, "n_eval_cells": int(len(hcid)),
+    ty = np.unique(y[is_tr]); half1 = y < ty[0] + len(ty) // 2      # E086r-b: trained span split into halves
+    res = {"cache": a.cache, "rank": a.rank, "weights": a.weights, "halves": [int(ty[0]), int(ty[0] + len(ty) // 2), int(ty[-1])], "withheld": [w0, w1], "n_species": S, "n_eval_cells": int(len(hcid)),
            "n_eval_blocks": int(len(ub)), "strata_n": {k: int(v.sum()) for k, v in strata.items()},
            "effort_beta_median": [float(np.median(beta[k])) for k in (1, 2)], "regimes": {}}
     print(f"[e086r] {os.path.basename(a.cache.rstrip('/'))}: {S} species, {len(hcid)} held-out CBC cells "
@@ -170,27 +178,64 @@ def main():
             abl = lsq(np.stack([one.T, Dm.T, Cm.T], 2), Ym2.T); bl1 = lsq(np.stack([one.T, Cm.T], 2), Ym2.T)[:, 1]
             P_l = {"desk": dZ @ Bl.T, "cbc": dC * bl1, "combo": (dZ @ Bl.T) * abl[:, 1] + dC * abl[:, 2]}
             out.update({"train_rows": int(keep_row.sum()), "within_pairs": int(g.sum()), "level_cbc_cells": int(len(u2))})
+            if a.weights == "halfsplit":
+                # per training cell: half means of z and BBS over kept rows, of CBC over the half's winters
+                hk = {}
+                for h, hm_ in ((0, half1), (1, ~half1)):
+                    rr = np.where(keep_row & hm_)[0]
+                    uh, ih = np.unique(cid[rr], return_inverse=True); nh = np.bincount(ih)
+                    zz = np.zeros((len(uh), a.rank)); np.add.at(zz, ih, Z[rr]); zz /= nh[:, None]
+                    yy = np.zeros((len(uh), S)); np.add.at(yy, ih, Ld[rr]); yy /= nh[:, None]
+                    hy = cy_year < ty[0] + len(ty) // 2 if h == 0 else cy_year >= ty[0] + len(ty) // 2
+                    hy &= (cy_year >= ty[0]) & (cy_year <= ty[-1])
+                    uc, icc = np.unique(cy_cell[hy], return_inverse=True); nc_ = np.bincount(icc)
+                    cc_ = np.zeros((len(uc), S)); np.add.at(cc_, icc, cy[hy]); cc_ /= nc_[:, None]
+                    hk[h] = (uh, zz, yy, uc, cc_)
+                cells_ok = np.intersect1d(np.intersect1d(hk[0][0], hk[1][0]), np.intersect1d(hk[0][3], hk[1][3]))
+                pick = lambda h, k, U: hk[h][k][np.searchsorted(hk[h][0 if k < 3 else 3], U)]
+                dzf = pick(1, 1, cells_ok) - pick(0, 1, cells_ok); dyf = pick(1, 2, cells_ok) - pick(0, 2, cells_ok)
+                dcf = pick(1, 4, cells_ok) - pick(0, 4, cells_ok)
+                out["halfsplit_fit_cells"] = int(len(cells_ok))
+                def hs(B):
+                    if len(cells_ok) < a.min_fit_cells:
+                        nanv = np.full(S, np.nan); return {"combo": (nanv, nanv), "cal": nanv, "cbc": nanv}
+                    dd = dzf @ B.T
+                    abh = lsq(np.stack([dd.T, dcf.T], 2), dyf.T)
+                    return {"combo": (abh[:, 0], abh[:, 1]), "cal": lsq(dd.T[..., None], dyf.T)[:, 0],
+                            "cbc": lsq(dcf.T[..., None], dyf.T)[:, 0]}
+                hw, hl = hs(Bw), hs(Bl)
+                P_w = {"desk": dZ @ Bw.T}; P_l = {"desk": dZ @ Bl.T}
+                for P_, h_ in ((P_w, hw), (P_l, hl)):
+                    P_["desk_cal"] = P_["desk"] * h_["cal"]; P_["cbc"] = dC * h_["cbc"]
+                    P_["combo"] = P_["desk"] * h_["combo"][0] + dC * h_["combo"][1]
+                ab, abl = np.stack(hw["combo"], 1), np.stack([np.zeros(S)] + list(hl["combo"]), 1)
             for ro_name, P, wts in (("within", P_w, (ab[:, 0], ab[:, 1])), ("level", P_l, (abl[:, 1], abl[:, 2]))):
                 blockout = {}
                 for st, m in strata.items():
                     if m.sum() == 0:
                         continue
-                    dr = {k: nfcorr(v, m) for k, v in P.items()}
+                    dr = {k: nfcorr(v, m) if np.isfinite(v[:, m]).all() else np.full(len(W), np.nan) for k, v in P.items()}
                     blockout[st] = {"skill": {k: float(v[0]) for k, v in dr.items()},
                                     "combo_minus_desk": [float((dr["combo"] - dr["desk"])[0])] +
                                     [float(x) for x in np.percentile((dr["combo"] - dr["desk"])[1:], [2.5, 97.5])],
                                     "cbc_minus_desk": [float((dr["cbc"] - dr["desk"])[0])] +
                                     [float(x) for x in np.percentile((dr["cbc"] - dr["desk"])[1:], [2.5, 97.5])],
                                     "median_weight_desk": float(np.median(wts[0][m])), "median_weight_cbc": float(np.median(wts[1][m]))}
+                    if "desk_cal" in dr:
+                        dd_ = dr["combo"] - dr["desk_cal"]
+                        blockout[st]["combo_minus_desk_cal"] = [float(dd_[0])] + [float(x) for x in np.percentile(dd_[1:], [2.5, 97.5])]
                 out[ro_name] = blockout
                 sc = blockout["sed_common"]
                 print(f"  cbc_keep {keep:.2f} {rname:9s} {ro_name:6s} sed_common desk {sc['skill']['desk']:+.3f} cbc "
                       f"{sc['skill']['cbc']:+.3f} combo {sc['skill']['combo']:+.3f} | combo-desk {sc['combo_minus_desk'][0]:+.3f} "
                       f"[{sc['combo_minus_desk'][1]:+.3f},{sc['combo_minus_desk'][2]:+.3f}] | weights a {sc['median_weight_desk']:+.2f} "
-                      f"b {sc['median_weight_cbc']:+.2f}", flush=True)
+                      f"b {sc['median_weight_cbc']:+.2f}" + (f" | combo-desk_cal {sc['combo_minus_desk_cal'][0]:+.3f} "
+                      f"[{sc['combo_minus_desk_cal'][1]:+.3f},{sc['combo_minus_desk_cal'][2]:+.3f}] desk_cal "
+                      f"{sc['skill']['desk_cal']:+.3f} fit cells {out.get('halfsplit_fit_cells')}" if "combo_minus_desk_cal" in sc else ""),
+                      flush=True)
             res["regimes"][f"keep{keep:.2f}|{rname}"] = out
     os.makedirs(a.out, exist_ok=True)
-    json.dump(res, open(os.path.join(a.out, "e086r.json"), "w"), indent=1)
+    json.dump(res, open(os.path.join(a.out, "e086r.json" if a.weights == "deviation" else "e086r_b.json"), "w"), indent=1)
 
 
 if __name__ == "__main__":

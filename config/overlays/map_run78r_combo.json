@@ -1,0 +1,18 @@
+{
+  "_extends": "map_run75c_retest.json",
+  "_comment": [
+    "E078r: 75c (split readout rank 32) + persistent route effects, SD pinned .7 (B3's observation model; 76a had the best temporal holdout)."
+  ],
+  "population_model": {
+    "observation": {
+      "route_effects": true
+    },
+    "pinned_sites": {
+      "obs_route_sd": 0.7
+    }
+  },
+  "run_names": {
+    "map": "age_map_{precision}_run_78r",
+    "vis_map": "age_map_{precision}_run_78r"
+  }
+}

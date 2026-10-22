@@ -1,0 +1,17 @@
+{
+  "_extends": "map_run78r_combo.json",
+  "_comment": [
+    "E078q: 78r + sedentary native range (77a)."
+  ],
+  "population_model": {
+    "native_departure": {
+      "enabled": true,
+      "beta_a": 1.5,
+      "beta_b": 1.5
+    }
+  },
+  "run_names": {
+    "map": "age_map_{precision}_run_78q",
+    "vis_map": "age_map_{precision}_run_78q"
+  }
+}

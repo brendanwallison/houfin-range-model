@@ -10,3 +10,5 @@ Read with E070's gates; 78a/78c succeed if they keep 75c's demography AND 77a's 
 holdout >= 70z (-1.817/-1.178). 78s: same basin (+-.05 on Sa/Sj, F within 20%) or a different one.
 Also (dev probe): jump localisation at the 76b refine stall (clean regime, |grad| 1e5) -- 73h0, 75d, 76b all stalled
 without the floor; and float64 diagnostics for 73h (its spatial holdout -1.79 came from float32 diagnostics).
+- Added (user, 2026-10-22): 78r = 75c + route effects (SD pinned .7; B3's observation model, best temporal holdout in
+  76a and absorbs the fine-scale western heterogeneity of E076 probe 2); 78q = 78r + sedentary native range.

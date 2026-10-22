@@ -15,6 +15,7 @@ from src.model.build_kernels import (
     resolve_radial_splits,
     toroidal_distance_grid,
 )
+from src.model.dispersal_spec import require_inputs_match_config
 from src.model.build_path_features import integrate_paths
 
 
@@ -80,6 +81,30 @@ def test_committed_config_still_resolves_to_the_pinned_baseline():
         "adult_mdd_km", "adult_shape", "juvenile_mdd_km", "juvenile_shape",
         "juvenile_radial_splits_km", "path_integration_steps", "path_operator",
     }
+
+
+def test_committed_kernels_are_veit_lewis_1996():
+    # Veit & Lewis 1996 (Am Nat 148:255-274), fitted to Massachusetts band recoveries:
+    # juvenile a = .468 (mean 329 km), adult a = .859 (mean 98 km). The base config carried
+    # the juvenile shape for adults until E051, and the fix lived only in overlays, so the
+    # wrong value kept being re-read as fact. See docs/PRIORS.md#dispersal-kernels.
+    spec = dispersal_spec(load_age_model_config())
+    assert spec["adult_shape"] == 0.859
+    assert spec["juvenile_shape"] == 0.468
+    assert spec["adult_mdd_km"] == 100.0
+    assert spec["juvenile_mdd_km"] == 330.0
+
+
+def test_inputs_built_under_other_kernels_are_refused():
+    # Kernels are baked into the inputs at ingest; a config edit never reaches them.
+    cfg = load_age_model_config()
+    recorded = dispersal_spec(copy.deepcopy(cfg))
+    require_inputs_match_config(recorded, cfg)
+    stale = dict(recorded, adult_shape=0.468)
+    with pytest.raises(ValueError, match="adult_shape: inputs 0.468 vs config 0.859"):
+        require_inputs_match_config(stale, cfg)
+    with pytest.raises(ValueError, match="record no dispersal_spec"):
+        require_inputs_match_config(None, cfg)
 
 
 def test_dispersal_spec_is_deterministic_and_idempotent():

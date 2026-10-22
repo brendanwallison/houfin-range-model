@@ -303,6 +303,9 @@ def load_data(input_dir, target_device=None, precision="float32", verbose=True):
     meta_path = os.path.join(input_dir, "metadata.pkl")
     with open(meta_path, "rb") as f:
         meta = pickle.load(f)
+    from src.config_utils import load_age_model_config
+    from src.model.dispersal_spec import require_inputs_match_config
+    require_inputs_match_config(meta.get("dispersal_spec"), load_age_model_config())
 
     f_type_cpu = np.float32 if precision == "float32" else np.float64
     f_type_target = jnp.float32 if precision == "float32" else jnp.float64

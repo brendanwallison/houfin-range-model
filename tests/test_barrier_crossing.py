@@ -17,7 +17,7 @@ def _fixture(ny=16, nx=36, mdd=330.0, q_east=0.55, q_west=0.55, fmax_barrier=0.8
     from src.model.build_kernels import build_simulation_struct
 
     land = np.ones((ny, nx))
-    ss = build_simulation_struct(jnp.asarray(land), 27.0, 100.0, mdd, 0.468, 0.468,
+    ss = build_simulation_struct(jnp.asarray(land), 27.0, 100.0, mdd, 0.859, 0.468,
                                  [0.0, 0.402 * mdd, 1.002 * mdd, 1e9])
     labels = [str(s) for s in ss["labels"]]
     n_k = len(labels)

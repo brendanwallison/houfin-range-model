@@ -146,3 +146,27 @@ def dispersal_spec(config):
         "path_integration_steps": int(d["path_integration_steps"]),
         "path_operator": str(d["path_operator"]),
     }
+
+
+def require_inputs_match_config(recorded, config):
+    """Raise unless an input build's recorded spec equals the active config's.
+
+    The forward model's kernels are built ONCE, at ingest, and stored in the input
+    directory; nothing downstream rebuilds them from the config. So a config edit (or
+    an overlay pointing ``input_dir`` at a build made under other kernels) never
+    reaches the simulation, and the run silently uses whatever kernels were baked in
+    while every record of it reports the config's. That is how the adult shape stayed
+    0.468 in places after E051 (see docs/PRIORS.md#dispersal-kernels). ``recorded`` is
+    ``metadata.pkl``'s ``dispersal_spec``; every key is compared exactly.
+    """
+    expected = dispersal_spec(config)
+    if recorded is None:
+        raise ValueError("model inputs record no dispersal_spec; rebuild them (model-ingest)")
+    diff = sorted(k for k in set(expected) | set(recorded)
+                  if expected.get(k) != recorded.get(k))
+    if diff:
+        detail = "; ".join(f"{k}: inputs {recorded.get(k)!r} vs config {expected.get(k)!r}"
+                           for k in diff)
+        raise ValueError("model inputs were built under a different dispersal spec than the "
+                         f"active config ({detail}). Point input_dir at a matching build or "
+                         "rebuild with model-ingest.")

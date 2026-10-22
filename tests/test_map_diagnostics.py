@@ -123,7 +123,7 @@ def _counterfactual_fixture(T=40, Ny=14, Nx=20, disp_int=0.5, k_mult=8.0):
     from src.vis.age_model_math import realized_equilibrium
 
     land = np.ones((Ny, Nx)); land[:, :2] = 0.0
-    ss = build_simulation_struct(jnp.asarray(land), 27.0, 100.0, 330.0, 0.468, 0.468,
+    ss = build_simulation_struct(jnp.asarray(land), 27.0, 100.0, 330.0, 0.859, 0.468,
                                 [0.0, 132.6, 330.7, 1e9])
     nk = ss["juvenile_fft_kernel_stack"].shape[0]
     rows, cols = np.nonzero(land); n = rows.size

@@ -82,7 +82,7 @@ def synthetic_inputs(T=40, Ny=12, Nx=16, M=24, z_sd=2.0, seed=0):
     from src.model.data_loading import occupied_habitat_center
     rng = np.random.default_rng(seed)
     land = np.ones((Ny, Nx)); land[:, :2] = 0.0; land[:2, -4:] = 0.0
-    ss = build_simulation_struct(jnp.asarray(land), 27.0, 100.0, 330.0, 0.468, 0.468,
+    ss = build_simulation_struct(jnp.asarray(land), 27.0, 100.0, 330.0, 0.859, 0.468,
                                  [0.0, 132.6, 330.7, 1e9])
     nk = ss["juvenile_fft_kernel_stack"].shape[0]
     rows, cols = np.nonzero(land); n = rows.size

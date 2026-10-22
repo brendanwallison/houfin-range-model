@@ -21,3 +21,4 @@ cell-years move by > .1%. The Allee establishment switch (E069) persists WITHOUT
 separatrix. This explains the clean-regime stalls (73h0, 75d, 76b). Structural remedies: stochastic establishment
 (occupancy, 78o) or a weaker/absent Allee term (71b, Allee off, never stalled).
 73h float64 diagnostics: holdout -1.825 / -1.171 (best spatial so far); the earlier -1.79 was the float32 artifact.
+- 78t (added 2026-10-22): rank-64 twin of 78r (75d's r64 fit 25 of 37.5 GiB; 1,700 nats below 75c at its stall).

@@ -1,0 +1,15 @@
+{
+  "_extends": "map_run78r_combo.json",
+  "_comment": [
+    "E078t: rank-64 twin of 78r (split readout rank 64 + route effects). 75d (r64, no routes) used 25 of 37.5 GiB and was 1,700 nats lower than 75c after 358 iterations before an Allee-switch stall."
+  ],
+  "population_model": {
+    "readout": {
+      "rank": 64
+    }
+  },
+  "run_names": {
+    "map": "age_map_{precision}_run_78t",
+    "vis_map": "age_map_{precision}_run_78t"
+  }
+}

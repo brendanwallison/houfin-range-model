@@ -2257,6 +2257,10 @@ def main():
                              "config's MAP run (e.g. an HMC draw written by "
                              "scripts/diagnostics/export_hmc_draw.py)")
     args = parser.parse_args()
+    # --precision float64 must ENABLE x64: without it JAX silently truncates every array to float32, and a float64
+    # refined point re-simulated in float32 (no FFT floor) picks up round-off phantom immigration -- 67c2's refined
+    # diagnostics reported RMSE .88 against .45 recomputed in float64 (E076).
+    jax.config.update("jax_enable_x64", args.precision == "float64")
     if args.window_years is not None and args.window_years < 1:
         raise ValueError("--window-years must be positive")
 

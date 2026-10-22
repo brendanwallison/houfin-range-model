@@ -12,3 +12,12 @@ Also (dev probe): jump localisation at the 76b refine stall (clean regime, |grad
 without the floor; and float64 diagnostics for 73h (its spatial holdout -1.79 came from float32 diagnostics).
 - Added (user, 2026-10-22): 78r = 75c + route effects (SD pinned .7; B3's observation model, best temporal holdout in
   76a and absorbs the fine-scale western heterogeneity of E076 probe 2); 78q = 78r + sedentary native range.
+
+## Stall probe (0326f, 76b refine stall, no floor; 2026-10-22)
+U along -grad: step 1e-9 linear; 1e-8 +.0018 (linear -.0009); 1e-7 +.167; 1e-6 +.68; 1e-5 +4.86 -- all in the obs
+site (priors ~1e-6). One cell (row 56, col 108; central plains) in 1987 drops .0109 -> .0037 (-66%); 28,617
+cell-years move by > .1%. The Allee establishment switch (E069) persists WITHOUT the floor in float64 -- smoother
+(no exact extinction) but still near-discontinuous on the scale L-BFGS probes: a thin founding population on the Allee
+separatrix. This explains the clean-regime stalls (73h0, 75d, 76b). Structural remedies: stochastic establishment
+(occupancy, 78o) or a weaker/absent Allee term (71b, Allee off, never stalled).
+73h float64 diagnostics: holdout -1.825 / -1.171 (best spatial so far); the earlier -1.79 was the float32 artifact.

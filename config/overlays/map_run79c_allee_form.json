@@ -1,0 +1,18 @@
+{
+  "_extends": "map_run78r_combo.json",
+  "_comment": [
+    "E079c: 78r with the RELATIVE (N/K, scale-free) Allee, n50/K = .0197 pinned (as 71c)."
+  ],
+  "population_model": {
+    "allee_prior": {
+      "form": "relative"
+    },
+    "pinned_sites": {
+      "n50_raw": -3.915383580222545
+    }
+  },
+  "run_names": {
+    "map": "age_map_{precision}_run_79c",
+    "vis_map": "age_map_{precision}_run_79c"
+  }
+}

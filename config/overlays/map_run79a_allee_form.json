@@ -1,0 +1,15 @@
+{
+  "_extends": "map_run78r_combo.json",
+  "_comment": [
+    "E079a: 78r (split readout r32 + route effects) with mate-finding averaged over within-cell aggregation, k = 1 (hyperbolic x/(1+x)); V&L gamma kept."
+  ],
+  "population_model": {
+    "allee_prior": {
+      "aggregation_k": 1.0
+    }
+  },
+  "run_names": {
+    "map": "age_map_{precision}_run_79a",
+    "vis_map": "age_map_{precision}_run_79a"
+  }
+}

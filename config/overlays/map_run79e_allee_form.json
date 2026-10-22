@@ -1,0 +1,15 @@
+{
+  "_extends": "map_run78t_combo.json",
+  "_comment": [
+    "E079e (79a at rank 64): split readout r64 + route effects + aggregated mate finding k = 1 -- does the smoother Allee let rank 64 converge?"
+  ],
+  "population_model": {
+    "allee_prior": {
+      "aggregation_k": 1.0
+    }
+  },
+  "run_names": {
+    "map": "age_map_{precision}_run_79e",
+    "vis_map": "age_map_{precision}_run_79e"
+  }
+}

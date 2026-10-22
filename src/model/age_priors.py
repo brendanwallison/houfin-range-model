@@ -20,7 +20,7 @@ import numpyro.distributions as dist
 from src.config_utils import load_age_model_config
 from src.model.age_fields import (disease_mortality_amplitude, disease_severity,
                                   project_and_scatter_age_structured)
-from src.model.age_forward import forward_sim_age_structured, juvenile_band_weights
+from src.model.age_forward import allee_mated_fraction, forward_sim_age_structured, juvenile_band_weights
 
 # Prior settings read from config so they can be retuned without editing model
 # code -- these are the knobs most likely to be revisited between runs. See
@@ -54,6 +54,9 @@ _ALLEE_FORM = str(_ALLEE_PRIOR.get("form", "absolute"))
 if _ALLEE_FORM not in {"absolute", "relative"}:
     raise ValueError(f"allee_prior.form must be absolute or relative, got {_ALLEE_FORM!r}")
 ALLEE_RELATIVE = _ALLEE_FORM == "relative"
+#   allee_prior.aggregation_k   None (default) = Poisson-encounter mate finding; k > 0 = encounter averaged over
+#                               negative-binomial within-cell aggregation (k = 1: hyperbolic). See age_forward.allee_mated_fraction.
+ALLEE_AGG_K = None if _ALLEE_PRIOR.get("aggregation_k") is None else float(_ALLEE_PRIOR["aggregation_k"])
 #   juvenile_survival.form    "independent" (own sigmoid) | "ratio" (Sj = Sa * sigmoid(...))
 _JUV = dict(_POP_SPEC.get("juvenile_survival", {}))
 _JUV_FORM = str(_JUV.get("form", "independent"))
@@ -190,6 +193,8 @@ if _NUMERICS:
     _af.FFT_FLOOR_FLOAT32_ONLY = bool(_NUMERICS.get("fft_floor_float32_only", False))
     _af.SMOOTH_ALLOC = (None if _NUMERICS.get("smooth_allocation") is None
                         else float(_NUMERICS["smooth_allocation"]))
+import src.model.age_forward as _af_allee                    # allee_prior.aggregation_k (always set: no stale value)
+_af_allee.ALLEE_AGG_K = ALLEE_AGG_K
 #   occupancy                 {"enabled": bool, "birds_per_route_count": float}: E063 occupancy closure --
 #                             each cell carries psi = P(>= 1 bird) across realisations; departure, disease and
 #                             reproduction act on the occupied-conditional density m = N / psi; arrivals
@@ -371,7 +376,7 @@ def equilibrium_age_quantities(Sa, Sj, Fmax, K, allee_gamma):
     reproduce, so the local projection matrix is ``[[Sa,Sj],[F*Sa,0]]``.
     """
     # Relative Allee: mate-finding depends on N/K, which is 1 at K.
-    allee_at_K = 1.0 - jnp.exp(-allee_gamma * (1.0 if ALLEE_RELATIVE else K))
+    allee_at_K = allee_mated_fraction(allee_gamma * (1.0 if ALLEE_RELATIVE else K))   # default: 1 - exp(-x), as before
     if VEIT_REPRO:
         # pairs + nest sites: per-breeder births at B = K (K is site capacity, not N*)
         r = 2.0 * jnp.log(2.0) / allee_gamma * (K if ALLEE_RELATIVE else 1.0)

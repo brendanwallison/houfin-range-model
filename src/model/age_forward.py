@@ -749,6 +749,25 @@ def subcell_reproduction(pools, Sa, Sj, Fmax, K, allee_gamma, u, a, beta_k, delt
     return jnp.sum(a * Na_s, axis=0), jnp.sum(a * Nj_s, axis=0)
 
 
+# allee_prior.aggregation_k (set by age_priors at import; None = the Poisson-encounter form).
+ALLEE_AGG_K = None
+
+
+def allee_mated_fraction(x, k=None):
+    """Mate-finding success at encounter intensity ``x`` (= gamma * N, or gamma * N/K for the relative form).
+
+    k None: random search with birds spread evenly in the cell, 1 - exp(-x) (Dennis 1989; the original form).
+    k > 0: the same search averaged over CLUMPED local densities (gamma-distributed with shape k about the cell mean,
+    i.e. negative-binomial aggregation): E[1 - exp(-gamma X)] = 1 - (1 + x/k)^(-k). k -> inf recovers the Poisson
+    form; k = 1 is exactly the hyperbolic x / (1 + x) (Michaelis-Menten). Same slope at x -> 0 (still a strong Allee
+    effect), but a broader, shallower transition -- birds do not experience the 27 km cell mean.
+    """
+    k = ALLEE_AGG_K if k is None else k
+    if k is None:
+        return 1.0 - jnp.exp(-x)          # bit-identical to the original expression (comparability with earlier runs)
+    return -jnp.expm1(-k * jnp.log1p(x / k))
+
+
 # Below this capacity (density units; ~2e-7 route counts) N/K is not computed.
 _RELATIVE_K_FLOOR = 1e-8
 # exp(-gamma * ratio) is exactly 0 long before this for any plausible gamma.
@@ -801,8 +820,8 @@ def reproduction_age_structured(
 
     F_eff = F_max / (1.0 + c * (N_total_post / K_safe))
     # allee_relative: mate-finding by N/K (age_priors' allee_prior.form = relative).
-    allee_factor = 1.0 - jnp.exp(-allee_gamma * (relative_density(N_total_post, K)
-                                                 if allee_relative else N_total_post))
+    allee_factor = allee_mated_fraction(allee_gamma * (relative_density(N_total_post, K)
+                                                      if allee_relative else N_total_post))
     if allee_off is not None:
         allee_factor = allee_factor + allee_off * (1.0 - allee_factor)
     F_actual = F_eff * allee_factor

@@ -1,0 +1,19 @@
+{
+  "_extends": "map_run78r_combo.json",
+  "_comment": [
+    "E079d: 78r with the Allee effectively off (n50/100, as 71b) and the float32-only floor at the MAP stage."
+  ],
+  "population_model": {
+    "pinned_sites": {
+      "n50_raw": -7.43153006225871
+    },
+    "numerics": {
+      "fft_floor_ulps": 10.0,
+      "fft_floor_float32_only": true
+    }
+  },
+  "run_names": {
+    "map": "age_map_{precision}_run_79d",
+    "vis_map": "age_map_{precision}_run_79d"
+  }
+}

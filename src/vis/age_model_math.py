@@ -148,7 +148,10 @@ def allee_viability(Sa, Sj, Fmax, K, allee_gamma, n_grid=512):
         allee_gamma = np.where(K > _RELATIVE_K_FLOOR, allee_gamma / np.where(K > 0, K, 1.0),
                                allee_gamma * _RELATIVE_RATIO_CAP)
 
-    from src.model.age_priors import VEIT_REPRO, YEARLING
+    from src.model.age_priors import ALLEE_AGG_K, VEIT_REPRO, YEARLING
+    # Mate-finding success exactly as the forward model (age_forward.allee_mated_fraction), in numpy.
+    _mated = ((lambda x: -np.expm1(-x)) if ALLEE_AGG_K is None else
+              (lambda x: -np.expm1(-ALLEE_AGG_K * np.log1p(x / ALLEE_AGG_K))))
     F_repl = (1.0 - Sa) / (Sj if YEARLING else Sa * Sj)
     # Same c as the fitted model, including the 1e-6 guard: it belongs in the
     # forward simulation (it protects Sa -> 1) and must stay bit-identical here.
@@ -168,12 +171,12 @@ def allee_viability(Sa, Sj, Fmax, K, allee_gamma, n_grid=512):
             P = N * N / (r + 2.0 * N)
             F = Fmax * 2.0 * P / (1.0 + 2.0 * P / K) / N
         else:
-            F = Fmax / (1.0 + c * u) * (-np.expm1(-allee_gamma * N))
+            F = Fmax / (1.0 + c * u) * _mated(allee_gamma * N)
         F = np.where(np.isfinite(F), F, -np.inf)
         k_peak = np.argmax(F, axis=0)
         F_peak = np.take_along_axis(F, k_peak[None], axis=0)[0]
         N_peak = np.take_along_axis(N, k_peak[None], axis=0)[0]
-        suppression = np.exp(-allee_gamma * K)
+        suppression = (np.exp(-allee_gamma * K) if ALLEE_AGG_K is None else 1.0 - _mated(allee_gamma * K))
 
     fundamental_viable = (Fmax > F_repl) if VEIT_REPRO else (c > 0.0)
     # A cell with c == 0 fails replacement at ANY density (F <= Fmax <= F_repl),

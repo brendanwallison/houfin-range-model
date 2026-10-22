@@ -151,3 +151,6 @@ date,experiment,variant,run_dir,U,fit_corr,notes,su
 2026-10-21,E071,71a,run_71a,,,n50/4: refine stalled (1.9e5),
 2026-10-21,E072,72a,run_72a,137765.0,,route zero inflation used (m .66) best MAP holdout; refine contorts .58/.44/13.6; holdout -1.824/-1.189; guards pass,
 2026-10-21,E076,probe2,,,,west smoothing 2.4x selection control (B1); route effects absorb it; weak edge dependence; modern east over-predicted 15-26%,
+2026-10-21,E073,73xh/73xe,,,,cross-recovery: no trading either way (H w0 58% shrunk; H ~0 under noise pulse),
+2026-10-21,E073,73s0,run_73s0,136572.3,,split readout only: best spatial holdout -1.170; refine .46/.44/13.9 trough inverted; ratio overruled .9-2.5,
+2026-10-21,E073,73h0,run_73h0,,,H from 1902: stalled at it 210 in clean regime; continuation queued,

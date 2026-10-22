@@ -20,3 +20,16 @@ DEVIATION from E070's design (recorded, not hidden): H's prior scale is NOT yet 
 temporal error; it is 67's .1 per weight. Reason: the calibration needs DESK's century habitat change in link units
 on the full Z, a separate computation. R3 compares H's realised size (st_correction metrics, 1902-2023) with the DESK-driven change (z_attribution_since_early, figure 01a), so the
 size can be judged after the fact; a calibrated rerun follows if H is used heavily.
+
+## RESULTS so far (2026-10-21)
+- 73xh CROSS-RECOVERY (inject H w0 = .5): H recovered w0 .29 (58%; bar 70% -> FAILS amplitude, like 70r: shrinkage
+  under the N(0, .1) prior); other H weights <= .13; noise RMS u .16 (null level; PASS -- noise does not absorb H).
+  Demography .52/.27/5.81 (truth .57/.31/5.22).
+- 73xe CROSS-RECOVERY (inject noise pulse): H stays ~0 (w0 .02, max |w| .07): PASS -- H does not absorb a transient.
+  Noise RMS u .18. Demography .55/.23/6.07.
+  -> The two terms do not trade in either direction; H is shrunk (58%), the noise likewise (70r 29%).
+- 73s0 SPLIT READOUT ONLY (no noise): MAP .55/.28/4.87 with the strongest plains trough of any MAP (plains .75 vs
+  west 1.07, east .99; deviation/level ratio .19-.27 ~ DESK's .14) but poor MAP holdout (-1.997 / -1.332).
+  Refined (2,533 it) .46/.44/13.9; plains .99 > west .93, east .97 (trough INVERTED); ratio overruled to .9-2.5
+  (as 66m); holdout -1.820 / -1.170 -- the best SPATIAL held-out density of any arm (70z -1.178), temporal = 70z.
+- 73h0 H only: refine STALLED at iteration 210 (|grad| 1.7e4-4.8e4) in the clean regime; continuation queued.

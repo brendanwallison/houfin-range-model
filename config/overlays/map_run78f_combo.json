@@ -1,0 +1,16 @@
+{
+  "_extends": "map_run74e_settlement.json",
+  "_comment": [
+    "E078f: 74e fitness settlement (smooth allocation) rerun with the float32-only floor (74e MAP NaN at step 13)."
+  ],
+  "population_model": {
+    "numerics": {
+      "fft_floor_ulps": 10.0,
+      "fft_floor_float32_only": true
+    }
+  },
+  "run_names": {
+    "map": "age_map_{precision}_run_78f",
+    "vis_map": "age_map_{precision}_run_78f"
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "_extends": "map_run77a_native_departure.json",
+  "_comment": [
+    "E078b: 77a (sedentary native range) + 74c settlement (dispersers, K x R0^tau: kept plains K .21)."
+  ],
+  "population_model": {
+    "settlement": {
+      "form": "ideal_free",
+      "block": 3,
+      "apply_to": "dispersers",
+      "weight": "capacity_r0",
+      "tau_scale": 2.0
+    }
+  },
+  "run_names": {
+    "map": "age_map_{precision}_run_78b",
+    "vis_map": "age_map_{precision}_run_78b"
+  }
+}

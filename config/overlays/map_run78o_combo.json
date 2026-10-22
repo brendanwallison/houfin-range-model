@@ -1,0 +1,16 @@
+{
+  "_extends": "map_run75a_retest.json",
+  "_comment": [
+    "E078o: 75a occupancy rerun with the float32-only floor (75a MAP went NaN at step 10 on float32 negative round-off)."
+  ],
+  "population_model": {
+    "numerics": {
+      "fft_floor_ulps": 10.0,
+      "fft_floor_float32_only": true
+    }
+  },
+  "run_names": {
+    "map": "age_map_{precision}_run_78o",
+    "vis_map": "age_map_{precision}_run_78o"
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "_extends": "map_run75c_retest.json",
+  "_comment": [
+    "E078a: 75c (split readout rank 32: plausible demography) + 77a (sedentary native range: no plains K collapse)."
+  ],
+  "population_model": {
+    "native_departure": {
+      "enabled": true,
+      "beta_a": 1.5,
+      "beta_b": 1.5
+    }
+  },
+  "run_names": {
+    "map": "age_map_{precision}_run_78a",
+    "vis_map": "age_map_{precision}_run_78a"
+  }
+}

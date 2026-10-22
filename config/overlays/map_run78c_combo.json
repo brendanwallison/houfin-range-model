@@ -1,0 +1,24 @@
+{
+  "_extends": "map_run75c_retest.json",
+  "_comment": [
+    "E078c: 75c + 77a + 74c (split r32 + sedentary native range + dispersers' settlement)."
+  ],
+  "population_model": {
+    "native_departure": {
+      "enabled": true,
+      "beta_a": 1.5,
+      "beta_b": 1.5
+    },
+    "settlement": {
+      "form": "ideal_free",
+      "block": 3,
+      "apply_to": "dispersers",
+      "weight": "capacity_r0",
+      "tau_scale": 2.0
+    }
+  },
+  "run_names": {
+    "map": "age_map_{precision}_run_78c",
+    "vis_map": "age_map_{precision}_run_78c"
+  }
+}

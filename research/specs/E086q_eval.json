@@ -1,0 +1,19 @@
+{
+ "exp": "E086",
+ "name": "e086q-eval",
+ "group": "gpu",
+ "overlay": "research/overlays/desk_tempho_1995_seed1.json",
+ "after_jobs": [
+  "E086/desk-tempho1995-seed3-auxcbc",
+  "E086/desk-tempho1995-seed4-auxcbc",
+  "E086/desk-tempho1985-seed1-auxcbc",
+  "E086/desk-tempho1985-seed2-auxcbc"
+ ],
+ "cmd": [
+  "bash",
+  "-c",
+  "set -e; export BLR_DEVICE=cuda BLR_MAX_ITER=100 BLR_STARTS=0.5 SCORE_TARGETS=dev; bash research/bin/fill_esk.sh {cache}/desk_tempho_1995_s1 {cache}/desk_tempho_1995_s3_auxcbc_late || true; bash research/bin/fill_esk.sh {cache}/desk_tempho_1995_s1 {cache}/desk_tempho_1995_s4_auxcbc_late || true; bash research/bin/fill_esk.sh {cache}/desk_tempho_1985_s1 {cache}/desk_tempho_1985_s1_auxcbc_late || true; bash research/bin/fill_esk.sh {cache}/desk_tempho_1985_s1 {cache}/desk_tempho_1985_s2_auxcbc_late || true; bash research/bin/fill_esk.sh {cache}/desk_tempho_1985_s1 {cache}/desk_tempho_1985_s1_late || true; bash research/bin/fill_esk.sh {cache}/desk_tempho_1985_s1 {cache}/desk_tempho_1985_s2_late || true; bash research/bin/score_both.sh {python} {out}/full/auxcbc_t1995_s3 --cache {cache}/desk_tempho_1995_s3_auxcbc_late --rank 24; bash research/bin/score_both.sh {python} {out}/full/auxcbc_t1995_s4 --cache {cache}/desk_tempho_1995_s4_auxcbc_late --rank 24; bash research/bin/score_both.sh {python} {out}/full/auxcbc_t1985_s1 --cache {cache}/desk_tempho_1985_s1_auxcbc_late --rank 24; bash research/bin/score_both.sh {python} {out}/full/auxcbc_t1985_s2 --cache {cache}/desk_tempho_1985_s2_auxcbc_late --rank 24; bash research/bin/score_both.sh {python} {out}/full/ctl_t1985_s1 --cache {cache}/desk_tempho_1985_s1_late --rank 24; bash research/bin/score_both.sh {python} {out}/full/ctl_t1985_s2 --cache {cache}/desk_tempho_1985_s2_late --rank 24; bash research/bin/score_both.sh {python} {out}/row03t1/auxcbc_t1995_s3 --cache {cache}/desk_tempho_1995_s3_auxcbc_late --rank 24 --thin 0.03 --thin-unit row --thin-seed 1; bash research/bin/score_both.sh {python} {out}/row03t1/auxcbc_t1995_s4 --cache {cache}/desk_tempho_1995_s4_auxcbc_late --rank 24 --thin 0.03 --thin-unit row --thin-seed 1; bash research/bin/score_both.sh {python} {out}/row03t1/auxcbc_t1985_s1 --cache {cache}/desk_tempho_1985_s1_auxcbc_late --rank 24 --thin 0.03 --thin-unit row --thin-seed 1; bash research/bin/score_both.sh {python} {out}/row03t1/auxcbc_t1985_s2 --cache {cache}/desk_tempho_1985_s2_auxcbc_late --rank 24 --thin 0.03 --thin-unit row --thin-seed 1; bash research/bin/score_both.sh {python} {out}/row03t1/ctl_t1985_s1 --cache {cache}/desk_tempho_1985_s1_late --rank 24 --thin 0.03 --thin-unit row --thin-seed 1; bash research/bin/score_both.sh {python} {out}/row03t1/ctl_t1985_s2 --cache {cache}/desk_tempho_1985_s2_late --rank 24 --thin 0.03 --thin-unit row --thin-seed 1; bash research/bin/score_both.sh {python} {out}/row03t2/auxcbc_t1995_s3 --cache {cache}/desk_tempho_1995_s3_auxcbc_late --rank 24 --thin 0.03 --thin-unit row --thin-seed 2; bash research/bin/score_both.sh {python} {out}/row03t2/auxcbc_t1995_s4 --cache {cache}/desk_tempho_1995_s4_auxcbc_late --rank 24 --thin 0.03 --thin-unit row --thin-seed 2; bash research/bin/score_both.sh {python} {out}/row03t2/auxcbc_t1985_s1 --cache {cache}/desk_tempho_1985_s1_auxcbc_late --rank 24 --thin 0.03 --thin-unit row --thin-seed 2; bash research/bin/score_both.sh {python} {out}/row03t2/auxcbc_t1985_s2 --cache {cache}/desk_tempho_1985_s2_auxcbc_late --rank 24 --thin 0.03 --thin-unit row --thin-seed 2; bash research/bin/score_both.sh {python} {out}/row03t2/ctl_t1985_s1 --cache {cache}/desk_tempho_1985_s1_late --rank 24 --thin 0.03 --thin-unit row --thin-seed 2; bash research/bin/score_both.sh {python} {out}/row03t2/ctl_t1985_s2 --cache {cache}/desk_tempho_1985_s2_late --rank 24 --thin 0.03 --thin-unit row --thin-seed 2"
+ ],
+ "expected_minutes": 160,
+ "note": "E086q: trend-head replication scored like E086n"
+}

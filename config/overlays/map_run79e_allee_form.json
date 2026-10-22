@@ -1,7 +1,7 @@
 {
-  "_extends": "map_run78t_combo.json",
+  "_extends": "map_run75d_retest.json",
   "_comment": [
-    "E079e (79a at rank 64): split readout r64 + route effects + aggregated mate finding k = 1 -- does the smoother Allee let rank 64 converge?"
+    "E079e: 79a at rank 64 (75d base: split readout r64, no route effects -- 75d stalled on the Allee switch) + aggregated mate finding k = 1."
   ],
   "population_model": {
     "allee_prior": {

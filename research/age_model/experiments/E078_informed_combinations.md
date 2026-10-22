@@ -22,3 +22,9 @@ separatrix. This explains the clean-regime stalls (73h0, 75d, 76b). Structural r
 (occupancy, 78o) or a weaker/absent Allee term (71b, Allee off, never stalled).
 73h float64 diagnostics: holdout -1.825 / -1.171 (best spatial so far); the earlier -1.79 was the float32 artifact.
 - 78t (added 2026-10-22): rank-64 twin of 78r (75d's r64 fit 25 of 37.5 GiB; 1,700 nats below 75c at its stall).
+
+## 78r RESULT (dev, 2026-10-22): route effects undo 75c's demography
+Refined (8,000 it = cap, still improving): .59/.57/8.3 (Sj = Sa), plains 1.04 < west 1.28, east 1.13 (plains lowest
+again; west mostly source, sink .30), Allee-dead .23 W / .10 P, plains K .025, ratio ~1 (sane), holdout -1.735 / -1.315
+(= 76a: best temporal, poor spatial -- route memorisation). Peak 12.5 GiB. Not a sound base for E079; E079 re-targeted
+to 75c.

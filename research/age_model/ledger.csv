@@ -161,3 +161,4 @@ date,experiment,variant,run_dir,U,fit_corr,notes,su
 2026-10-22,E076,76a,run_76a,,,B3 holdout: best temporal -1.737, worst spatial -1.318 (route memorisation); 76b stalled,
 2026-10-22,E077,77a,run_77a,,,sedentary native range r .65 (guards pass); no plains K collapse; demography still contorts,
 2026-10-22,E078,stall probe,,,,clean-regime stalls = Allee establishment switch without floor (one plains founder cell -66%); 73h f64 holdout -1.825/-1.171,
+2026-10-22,E078,78r,run_78r,126972.3,,split r32 + route effects (dev): demography lost .59/.57/8.3; AD .23 W; holdout -1.735/-1.315; E079 re-targeted to 75c base,

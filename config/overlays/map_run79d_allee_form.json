@@ -1,7 +1,7 @@
 {
-  "_extends": "map_run78r_combo.json",
+  "_extends": "map_run75c_retest.json",
   "_comment": [
-    "E079d: 78r with the Allee effectively off (n50/100, as 71b) and the float32-only floor at the MAP stage."
+    "E079d: 75c with the Allee effectively off (n50/100, as 71b) and the float32-only floor at the MAP stage."
   ],
   "population_model": {
     "pinned_sites": {

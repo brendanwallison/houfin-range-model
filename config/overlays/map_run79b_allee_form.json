@@ -1,7 +1,7 @@
 {
-  "_extends": "map_run78r_combo.json",
+  "_extends": "map_run75c_retest.json",
   "_comment": [
-    "E079b: 78r with aggregated mate finding, k = 3 (intermediate)."
+    "E079b: 75c with aggregated mate finding, k = 3 (intermediate)."
   ],
   "population_model": {
     "allee_prior": {

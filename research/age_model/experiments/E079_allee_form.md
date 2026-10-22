@@ -17,3 +17,8 @@ Read: stalls (does the refine converge?), E070 gates, holdout vs 78r and 70z, Al
 HMC-readiness probe at each refined point (U along random directions at small steps; kinks / jumps counted).
 The floor ("paired on arrival") arm waits for a literature check on House Finch pair-formation timing.
 - 79e (added 2026-10-22): 79a at rank 64 (78t base + k = 1) -- does the smoother Allee let rank 64 converge?
+
+RE-TARGETED (user, 2026-10-22, after 78r): 78r (split r32 + route effects) lost 75c's plausible demography (.59/.57/8.3,
+Allee-dead .23 W, holdout spatial -1.315), so E079 runs on the 75c base (split readout r32, NO route effects) -- the
+only base with plausible demography -- after 78s (75c seed replicate) checks that basin. 79e = k = 1 on the 75d base
+(r64, no routes). Run on gpu-a100-dev (small queue ~1 day out; dev 2 nodes/user, ~1.5 h per arm).

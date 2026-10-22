@@ -33,3 +33,11 @@ size can be judged after the fact; a calibrated rerun follows if H is used heavi
   Refined (2,533 it) .46/.44/13.9; plains .99 > west .93, east .97 (trough INVERTED); ratio overruled to .9-2.5
   (as 66m); holdout -1.820 / -1.170 -- the best SPATIAL held-out density of any arm (70z -1.178), temporal = 70z.
 - 73h0 H only: refine STALLED at iteration 210 (|grad| 1.7e4-4.8e4) in the clean regime; continuation queued.
+
+## Stage 2 arms (read 2026-10-22; 70z refined: .50/.43/14.7, plains .90/.99/1.10, holdout -1.817/-1.178)
+| arm | refined Sa/Sj/F | plains/west/east | AD w/p/e | holdout t/s | notes |
+| 73s N+S | .65/.16/13.9 | 1.00/.99/.88 | .05/.11/.03 | -1.827/-1.180 | ratio .2 -> 1.4-3.9 |
+| 73h N+H | .37/.36/13.0 | .86/.96/.96 | .09/.16/0 | -1.830/-1.790 | spatial holdout collapses (check: pre-f64-viz-fix?) |
+| 73sh N+S+H | .61/.39/13.1 | .99/.98/.92 | .03/.03/.01 | -1.815/-1.228 | best temporal by .002; spatial worse |
+| 73h0 H | stalled at it 210; continuation stalled again (|grad| 1.8e5) | | | | |
+None viable (G2 fails everywhere). Stage 2 as designed does not release the contortion either.

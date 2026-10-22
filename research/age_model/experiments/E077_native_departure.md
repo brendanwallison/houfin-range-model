@@ -15,3 +15,11 @@ Prediction if dispersal smoothing is the problem: r well above 0; western core u
 habitat amplitudes and western K collapse relax; held-out density improves on 70z (-1.818 / -1.178).
 Companion diagnostic (E076 probe 2): western residuals by observed density and habitat edge, with 68b as the
 selection-artifact control.
+
+## RESULTS (2026-10-22)
+- 77n NULL: PASS (r .27 at MAP -> .06 refined; demography .59/.27/4.92 vs truth .57/.31/5.22).
+- 77r RECOVERY: PASS (r .56 vs .6; demography .59/.28/4.98).
+- 77a REAL: r = .38 at MAP, .65 refined -- the data want a markedly more sedentary native range (departure in the core
+  reduced ~65%). Refined .41/.40/12.7 (contorts), plains .92 / west .93 / east 1.04, Allee-dead .00/.03, plains K
+  .153 = its MAP (.144) -- NO plains K collapse, the first refine without it -- holdout -1.826/-1.183 (~70z); the
+  release's share of the modern population rises to .15 (the West fills the East less).

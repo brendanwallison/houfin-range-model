@@ -45,3 +45,9 @@ log(obs/pred) by observed-density quintile (low -> high), refined points:
   EAST is over-predicted in B1 (2010-25: 69a mu 3.96 vs y 3.36; 70z 3.30 vs 2.62, +26%) -- the continued eastern
   decline is under-represented; 69c much less (3.61 vs 3.36).
 - West mean level under-predicted 7-18% in every era in B1 (69a 1966-79: y 20.2 vs mu 16.6).
+
+## 76a (69c B3 on the holdout mask; 2026-10-22)
+Refined .51/.46/8.0; plains .90 / west 1.01 / east 1.36; holdout TEMPORAL -1.737 (best of any arm by .08; 70z -1.817)
+but SPATIAL -1.318 (worst bar 74b-MAP; 70z -1.178): route effects carry persistent route offsets forward in time, but
+withheld blocks' routes get no effect, and the level the effects absorb is missing there. B3's in-sample gain is
+partly route memorisation. 76b (67c2 on the mask) refine stalled (|grad| 1.0e5).

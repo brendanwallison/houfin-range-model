@@ -14,3 +14,13 @@ Retests on the 70z holdout base (no floor; same gates and held-out bar -1.818 / 
 - (E074e) fitness settlement with smooth allocation (E061a failed cold with the unsmoothed equal-fitness root).
 Deferred: E057 P2 covariate drift (never validly run; do on a split readout after 75c/d), E065 guards on a clean
 truth point, Veit reproduction (E053/55b).
+
+## RESULTS (2026-10-22)
+- 75a occupancy: MAP NaN at step 10 (float32 negative round-off without the floor); rerun with float32-only floor.
+- 75b yearling breeding: MAP K low (.010 plains) with Allee-dead at MAP (as 52a); refined .57/.13/10.5, Allee-dead
+  .19/.19, holdout -1.825/-1.191. The 52a rejection STANDS on clean numerics.
+- 75c SPLIT READOUT RANK 32: refined Sa .55 / Sj .37 / F 6.47, lam0 ~1.46 -- the FIRST real-data refine inside G2
+  (plausible demography). Plains 1.04 / west .94 / east 1.02 (trough flattened, west lowest; G3 fails on the trough);
+  Allee-dead .00/.02; plains K .088; holdout -1.833/-1.183 (~70z). Deviation/level ratio wild (6.9 survival, .25
+  fecundity). G5 marginal (Sj +.09, F +33%).
+- 75d split readout rank 64: refine STALLED (|grad| 1.4e5).

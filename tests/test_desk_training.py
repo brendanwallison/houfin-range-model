@@ -3111,8 +3111,10 @@ def test_private_dims_for_metric_heads(tmp_path):
     assert torch.isfinite(w).all() and not torch.allclose(fresh.private_out.weight, w)
 
 
-def test_ruzicka_term_trains_and_logs(tmp_path):
-    """E081: the CBC Ruzicka term (fixed calibration, random pairs) enters the loss and is logged per evaluated epoch."""
+@pytest.mark.parametrize("same_frac", [0.0, 0.5])
+def test_ruzicka_term_trains_and_logs(tmp_path, same_frac):
+    """E081: the CBC Ruzicka term (fixed calibration, random pairs) enters the loss and is logged per evaluated epoch.
+    E086s: also with half the pairs same-cell, cross-year."""
     import contextlib
     import io
     import json as _json
@@ -3130,7 +3132,7 @@ def test_ruzicka_term_trains_and_logs(tmp_path):
                np.ones((H, W), dtype="float32")) for y in years[1:]}
     rz = {"t_idx": rng.integers(0, T, N), "row": rng.integers(0, H, N), "col": rng.integers(0, W, N),
           "X": rng.gamma(1.0, 2.0, size=(N, S)).astype("float32"), "a": -0.05, "b": 0.7, "weight": 1.0,
-          "pairs": 64, "label": "toy_ruz"}
+          "pairs": 64, "label": "toy_ruz", "same_cell_frac": same_frac, "same_cell_min_gap": 1}
     traj = tmp_path / "traj.jsonl"
     args = (cov, np.ones((T, H, W), bool), years, tgt,
             _metric_dict(rng.random((H, W, 9)).astype("float32"), m, years), m, m, dims)
@@ -3142,6 +3144,33 @@ def test_ruzicka_term_trains_and_logs(tmp_path):
     assert "RUZICKA term 'toy_ruz'" in txt and "ruzicka 'toy_ruz' mse" in txt, txt
     rows = [_json.loads(l) for l in open(traj)]
     assert rows and all(np.isfinite(r["loss_ruzicka"]) for r in rows), rows
+    assert ("same-cell share" in txt) == (same_frac > 0), txt
+
+
+def test_ruzicka_same_cell_pairs():
+    """E086s: with same_frac > 0 the first share of the pairs are same-cell, the gap mask holds, the rest are uniform;
+    with same_frac 0 the draw is exactly the E081 one (same generator state -> same indices)."""
+    import torch
+
+    from src.community_encoder.train_DESK import desk_training as D
+
+    rng = np.random.default_rng(3)
+    N = 200
+    r = torch.as_tensor(rng.integers(0, 4, N)); c = torch.as_tensor(rng.integers(0, 5, N))
+    t = torch.as_tensor(rng.integers(0, 40, N))
+    base = {"X": torch.zeros(N, 3), "t": t, "r": r, "c": c, "pairs": 500}
+    torch.manual_seed(0); ij = torch.randint(0, N, (2, 500))
+    torch.manual_seed(0); i0, j0, ok0 = D.ruzicka_pairs({**base, "same_frac": 0.0}, N)
+    assert torch.equal(i0, ij[0]) and torch.equal(j0, ij[1]) and bool(ok0.all())
+    ruzt = {**base, "same_frac": 0.4, "min_gap": 10, **D.ruzicka_cell_groups(r, c)}
+    i, j, ok = D.ruzicka_pairs(ruzt, N)
+    ns = 200
+    assert i.shape == (500,) and j.shape == (500,)
+    assert bool(((r[i[:ns]] == r[j[:ns]]) & (c[i[:ns]] == c[j[:ns]])).all())          # same cell
+    assert torch.equal(ok[:ns], (t[i[:ns]] - t[j[:ns]]).abs() >= 10) and bool(ok[ns:].all())
+    assert 0 < int(ok[:ns].sum()) < ns
+    # partners cover the cell's cell-years, not one fixed entry
+    assert len(set(zip(i[:ns].tolist(), j[:ns].tolist()))) > ns // 2
 
 
 def test_presence_term_completeness_slopes(tmp_path):

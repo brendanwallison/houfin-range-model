@@ -170,6 +170,42 @@ def spacetime_kernel_loss(z_by_t, pool_t, pool_flat, pool_x, num_pairs=4096, gen
 
 
 
+def ruzicka_cell_groups(r, c):
+    """E086s: index structure for drawing a same-cell partner of each CBC cell-year (``r``, ``c`` long tensors).
+    Returns ``order`` (entries sorted by cell), each entry's group start / count in that order, and the entries
+    whose cell holds >= 2 cell-years (the only ones that can start a same-cell pair)."""
+    import torch
+    cell = r * 100000 + c
+    order = torch.argsort(cell)
+    _, inv, cnt = torch.unique(cell[order], return_inverse=True, return_counts=True)
+    start = torch.cumsum(cnt, 0) - cnt
+    pos = torch.empty_like(order)
+    pos[order] = torch.arange(order.numel(), device=order.device)
+    g = inv[pos]
+    return {"order": order, "g_start": start[g], "g_cnt": cnt[g], "eligible": torch.nonzero(cnt[g] >= 2).squeeze(1)}
+
+
+def ruzicka_pairs(ruzt, n):
+    """The CBC Ruzicka term's pair draw: ``ruzt['pairs']`` uniform pairs over the ``n`` cell-years; with
+    ``same_frac`` > 0 (E086s) the first round(same_frac * pairs) are replaced by SAME-CELL pairs (partner uniform
+    over the cell's cell-years), kept only when >= ``min_gap`` year-steps apart. Returns (i, j, gap_ok). With
+    same_frac 0 this is exactly the E081 draw (one randint, no other generator calls)."""
+    import torch
+    dev = ruzt["X"].device
+    ij = torch.randint(0, n, (2, ruzt["pairs"]), device=dev)
+    i, j = ij[0], ij[1]
+    gap_ok = torch.ones_like(i, dtype=torch.bool)
+    if ruzt.get("same_frac", 0.0) > 0:
+        ns = int(round(ruzt["same_frac"] * ruzt["pairs"]))
+        el = ruzt["eligible"]
+        si = el[torch.randint(0, el.numel(), (ns,), device=dev)]
+        off = (torch.rand(ns, device=dev) * ruzt["g_cnt"][si]).long()
+        sj = ruzt["order"][ruzt["g_start"][si] + torch.minimum(off, ruzt["g_cnt"][si] - 1)]
+        i = torch.cat([si, i[ns:]]); j = torch.cat([sj, j[ns:]])
+        gap_ok = torch.cat([(ruzt["t"][si] - ruzt["t"][sj]).abs() >= ruzt["min_gap"], gap_ok[ns:]])
+    return i, j, gap_ok
+
+
 def fixed_kernel_pairs(n_points, num_pairs, seed):
     """A FIXED ``(2, num_pairs)`` index draw over a pool -- the pairs an eval metric scores.
 
@@ -914,10 +950,17 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
                 "c": torch.as_tensor(np.asarray(_rt["col"]), device=device, dtype=torch.long),
                 "X": torch.log1p(torch.as_tensor(np.asarray(_rt["X"]), device=device, dtype=torch.float32)),
                 "a": float(_rt["a"]), "b": float(_rt["b"]), "w": float(_rt["weight"]),
-                "pairs": int(_rt.get("pairs", 4096)), "label": str(_rt.get("label", "cbc_ruzicka"))}
+                "pairs": int(_rt.get("pairs", 4096)), "label": str(_rt.get("label", "cbc_ruzicka")),
+                "same_frac": float(_rt.get("same_cell_frac", 0.0)), "min_gap": int(_rt.get("same_cell_min_gap", 1))}
+        # E086s: a share of the pairs SAME-CELL, CROSS-YEAR (>= min_gap years apart): random pairs are almost all
+        # spatial, so these are the term's only within-place temporal contrasts. Off (0) by default: the draw is unchanged.
+        if ruzt["same_frac"] > 0:
+            ruzt.update(ruzicka_cell_groups(ruzt["r"], ruzt["c"]))
         print(f"[desk] RUZICKA term '{ruzt['label']}': {int(ruzt['X'].shape[0]):,} CBC cell-years, "
               f"{int(ruzt['X'].shape[1])} species, dot ~ {ruzt['a']:+.3f} + {ruzt['b']:.3f} x Ruzicka, "
-              f"{ruzt['pairs']} pairs/step, weight {ruzt['w']:g}", flush=True)
+              f"{ruzt['pairs']} pairs/step, weight {ruzt['w']:g}"
+              + (f", same-cell share {ruzt['same_frac']:g} (gap >= {ruzt['min_gap']} y; "
+                 f"{int(ruzt['eligible'].numel()):,} eligible cell-years)" if ruzt["same_frac"] > 0 else ""), flush=True)
     # Research (E084): METRIC HEADS -- a linear map H (latent -> d) per source with its OWN similarity contract,
     # dot(H z_i, H z_j) ~ Ruzicka(log1p X_i, log1p X_j) over pairs of that source's points (random pairs per full-grid
     # step). Winter (CBC) or eBird structure lives in the head's space, not in z's own geometry. Off by default.
@@ -1697,6 +1740,8 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
     if ruzt is not None:   # only when on
         _ck_key["ruzicka"] = {"label": ruzt["label"], "weight": ruzt["w"], "a": ruzt["a"], "b": ruzt["b"],
                               "n": int(ruzt["X"].shape[0]), "pairs": ruzt["pairs"]}
+        if ruzt["same_frac"] > 0:   # E086s, only when on
+            _ck_key["ruzicka"].update({"same_cell_frac": ruzt["same_frac"], "same_cell_min_gap": ruzt["min_gap"]})
     _ck_fp =hashlib.sha256(json.dumps(_ck_key, sort_keys=True, default=str).encode()).hexdigest()[:16]
     start_ep = 1
     if resume and checkpoint_path and os.path.exists(checkpoint_path):
@@ -2028,13 +2073,12 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
                 loss = loss + pres["w"] * loss_pres
             if ruzt is not None:
                 _n = ruzt["X"].shape[0]
-                _ij = torch.randint(0, _n, (2, ruzt["pairs"]), device=device)
-                _i, _j = _ij[0], _ij[1]
+                _i, _j, _gap_ok = ruzicka_pairs(ruzt, _n)
                 _zi = z_ema[ruzt["t"][_i], ruzt["r"][_i], ruzt["c"][_i]]
                 _zj = z_ema[ruzt["t"][_j], ruzt["r"][_j], ruzt["c"][_j]]
                 _xi, _xj = ruzt["X"][_i], ruzt["X"][_j]
                 _den = torch.maximum(_xi, _xj).sum(1)
-                _ok = (_den > 1e-6) & (_i != _j)
+                _ok = (_den > 1e-6) & (_i != _j) & _gap_ok
                 _rz = torch.minimum(_xi, _xj).sum(1) / _den.clamp(min=1e-6)
                 loss_ruz = (((_zi * _zj).sum(1) - (ruzt["a"] + ruzt["b"] * _rz)) ** 2)[_ok].mean()
                 loss = loss + ruzt["w"] * loss_ruz
@@ -3066,7 +3110,9 @@ def run_desk_experiment(config=None):
         ruzicka_targets = {"t_idx": [_ki[int(y)] for y in _yrs[_keep]], "row": _r[_keep], "col": _c[_keep],
                            "X": np.asarray(_q["X"], "float32")[_keep], "a": float(_q["a"]), "b": float(_q["b"]),
                            "weight": float(_rcfg.get("weight", float(_q["weight"]))),
-                           "pairs": int(_rcfg.get("pairs", 4096)), "label": str(_rcfg.get("label", "cbc_ruzicka"))}
+                           "pairs": int(_rcfg.get("pairs", 4096)), "label": str(_rcfg.get("label", "cbc_ruzicka")),
+                           "same_cell_frac": float(_rcfg.get("same_cell_frac", 0.0)),
+                           "same_cell_min_gap": int(_rcfg.get("same_cell_min_gap", 1))}
         print(f"[desk] aux_ruzicka: {int(_keep.sum()):,} of {len(_keep):,} CBC cell-years kept "
               f"(withheld years {'INCLUDED' if not _withheld else 'excluded'})", flush=True)
 

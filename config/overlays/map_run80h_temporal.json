@@ -1,0 +1,22 @@
+{
+  "_extends": "map_run79b_allee_form.json",
+  "_comment": [
+    "E080h CORRELATED: deviation amplitude fixed .14 x level; direction u_dev = r u_level + sqrt(1-r^2) u_own with r ~ Beta(8,2) per field (prior mean .8) -- temporal effects default to the spatial relationship, departures allowed if the data insist. Smooth Allee k = 3 base, K trend off."
+  ],
+  "population_model": {
+    "readout": {
+      "within_ratio_fixed": 0.14,
+      "within_corr": {
+        "a": 8.0,
+        "b": 2.0
+      }
+    },
+    "k_trend": {
+      "enabled": false
+    }
+  },
+  "run_names": {
+    "map": "age_map_{precision}_run_80h",
+    "vis_map": "age_map_{precision}_run_80h"
+  }
+}

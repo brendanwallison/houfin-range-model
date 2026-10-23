@@ -588,34 +588,53 @@ def sample_priors(prior_scale=1.0, M_features=None, time=None,
         # OWN amplitudes, same prior as the level block -- the data decide how much the deviation counts.
         if _MANIFOLD_FORM != "exchangeable":
             raise NotImplementedError("readout.split is wired for manifold_prior.form = exchangeable")
-        _wr = _READOUT.get("within_ratio_prior")
-        if _READOUT.get("within_ratio_fixed") is not None:
-            # Deviation amplitude FIXED at ratio x level (E080): 0 = STATIC habitat (each cell keeps its long-run DESK
-            # level; no temporal habitat change through the readout); .14 = DESK's own measured between/within split.
-            w_scale_w = numpyro.deterministic(
-                "w_scale_within", w_scale * float(_READOUT["within_ratio_fixed"]) * jnp.ones(4))
-        elif _wr:
-            # Deviation amplitude = level amplitude x ratio, ratio ~ LogNormal centred on DESK's measured
-            # between/within split (E059e: kernel variances ~50x apart -> sd ratio ~ sqrt(1/50) ~ .14). DESK's change is
-            # poorly aimed, so the deviation block should count for much less than the level unless the data insist.
-            ratio = numpyro.deterministic("within_ratio", jnp.exp(numpyro.sample(
-                "within_ratio_log", dist.Normal(float(_wr.get("loc_log", math.log(0.14))),
-                                                float(_wr.get("scale_log", 0.7)) * prior_scale).expand([4]))))
-            w_scale_w = numpyro.deterministic("w_scale_within", w_scale * ratio)
+        if _READOUT.get("within_tied"):
+            # TIED deviation readout (E080g): beta_dev = c * beta_level, c = within_ratio_fixed -- a scaled-down
+            # space-for-time substitution. A cell's change in DESK features over time acts on habitat exactly as the
+            # same feature difference does across space, at strength c; nothing about the temporal relationship is fitted.
+            if _READOUT.get("within_ratio_fixed") is None:
+                raise ValueError("readout.within_tied needs readout.within_ratio_fixed (the scaling c)")
+            w_env_w = numpyro.deterministic("w_env_within", float(_READOUT["within_ratio_fixed"]) * w_env)
+            numpyro.deterministic("w_scale_within", w_scale * float(_READOUT["within_ratio_fixed"]))
+            priors['beta_s_w'], priors['beta_r_w'] = w_env_w[:, 0], w_env_w[:, 1]
+            priors['beta_k_w'], priors['beta_sj_w'] = w_env_w[:, 2], w_env_w[:, 3]
         else:
-            w_scale_w = numpyro.deterministic("w_scale_within", jnn.softplus(numpyro.sample(
-                "w_scale_within_raw",
-                dist.Normal(jnp.asarray(_m["amplitude_loc"], dtype=float),
-                            jnp.asarray(_m["amplitude_scale"], dtype=float) * prior_scale))))
-        rho_w = corr[0, 1]                 # the level block's coupling rho (exchangeable: every off-diagonal)
-        with numpyro.plate("env_features_within", M_features, dim=-2):
-            f_w = numpyro.sample("manifold_factor_within", dist.Normal(0.0, 1.0))
-            with numpyro.plate("manifolds_within", 4, dim=-1):
-                e_w = numpyro.sample("manifold_idio_within", dist.Normal(0.0, 1.0))
-        w_env_w = numpyro.deterministic(
-            "w_env_within", w_scale_w[None, :] * (jnp.sqrt(rho_w) * f_w + jnp.sqrt(1.0 - rho_w) * e_w))
-        priors['beta_s_w'], priors['beta_r_w'] = w_env_w[:, 0], w_env_w[:, 1]
-        priors['beta_k_w'], priors['beta_sj_w'] = w_env_w[:, 2], w_env_w[:, 3]
+            _wr = _READOUT.get("within_ratio_prior")
+            if _READOUT.get("within_ratio_fixed") is not None:
+                # Deviation amplitude FIXED at ratio x level (E080): 0 = STATIC habitat (each cell keeps its long-run DESK
+                # level; no temporal habitat change through the readout); .14 = DESK's own measured between/within split.
+                w_scale_w = numpyro.deterministic(
+                    "w_scale_within", w_scale * float(_READOUT["within_ratio_fixed"]) * jnp.ones(4))
+            elif _wr:
+                # Deviation amplitude = level amplitude x ratio, ratio ~ LogNormal centred on DESK's measured
+                # between/within split (E059e: kernel variances ~50x apart -> sd ratio ~ sqrt(1/50) ~ .14). DESK's change is
+                # poorly aimed, so the deviation block should count for much less than the level unless the data insist.
+                ratio = numpyro.deterministic("within_ratio", jnp.exp(numpyro.sample(
+                    "within_ratio_log", dist.Normal(float(_wr.get("loc_log", math.log(0.14))),
+                                                    float(_wr.get("scale_log", 0.7)) * prior_scale).expand([4]))))
+                w_scale_w = numpyro.deterministic("w_scale_within", w_scale * ratio)
+            else:
+                w_scale_w = numpyro.deterministic("w_scale_within", jnn.softplus(numpyro.sample(
+                    "w_scale_within_raw",
+                    dist.Normal(jnp.asarray(_m["amplitude_loc"], dtype=float),
+                                jnp.asarray(_m["amplitude_scale"], dtype=float) * prior_scale))))
+            rho_w = corr[0, 1]                 # the level block's coupling rho (exchangeable: every off-diagonal)
+            with numpyro.plate("env_features_within", M_features, dim=-2):
+                f_w = numpyro.sample("manifold_factor_within", dist.Normal(0.0, 1.0))
+                with numpyro.plate("manifolds_within", 4, dim=-1):
+                    e_w = numpyro.sample("manifold_idio_within", dist.Normal(0.0, 1.0))
+            u_w = jnp.sqrt(rho_w) * f_w + jnp.sqrt(1.0 - rho_w) * e_w           # unit-scale own directions
+            _wc = _READOUT.get("within_corr")
+            if _wc:
+                # CORRELATED deviation readout (E080h): the temporal coefficients lean on the spatial ones,
+                # u_dev = r u_level + sqrt(1 - r^2) u_own, r ~ Beta(a, b) per field (r = 1 tied, r = 0 independent).
+                r_w = numpyro.sample("within_level_corr", dist.Beta(float(_wc.get("a", 8.0)),
+                                                                     float(_wc.get("b", 2.0))).expand([4]))
+                u_level = w_env / jnp.maximum(w_scale[None, :], 1e-12)
+                u_w = r_w[None, :] * u_level + jnp.sqrt(1.0 - r_w[None, :] ** 2) * u_w
+            w_env_w = numpyro.deterministic("w_env_within", w_scale_w[None, :] * u_w)
+            priors['beta_s_w'], priors['beta_r_w'] = w_env_w[:, 0], w_env_w[:, 1]
+            priors['beta_k_w'], priors['beta_sj_w'] = w_env_w[:, 2], w_env_w[:, 3]
     priors['beta_s'] = w_env[:, 0]   # Adult survival suitability weights
     priors['beta_r'] = w_env[:, 1]   # Reproductive suitability weights
     priors['beta_k'] = w_env[:, 2]   # Carrying-capacity weights

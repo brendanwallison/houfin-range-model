@@ -27,3 +27,13 @@ habitat change and we look at where it acts.
 RERUN on the 79b base -- smooth aggregated-encounter Allee k = 3 (converged in 410 it; keeps mate limitation, which the
 user requires -- the near-zero-Allee 79d base was cancelled): 80d static, 80e calibrated .14, 80f free (K trend off in all).
 Note: building 80a-c on the absolute-Allee base after E078/E079 had located the stall was an avoidable error.
+
+## Full ladder (2026-10-23; all on the smooth k = 3 base, K trend off)
+| arm | temporal habitat change |
+| 80d | static (deviation amplitude 0) |
+| 80g | TIED: beta_dev = .14 x beta_level -- scaled space-for-time, nothing temporal fitted |
+| 80h | CORRELATED: amplitude .14 x level, direction r u_level + sqrt(1-r^2) u_own, r ~ Beta(8,2) per field |
+| 80e | calibrated amplitude .14, INDEPENDENT direction (asserts no spatial-temporal relationship -- user: a strong claim) |
+| 80f | free amplitude, independent direction |
+Tests: tied with c = 1 reproduces the unsplit readout exactly; correlated with r = 1 reproduces tied.
+Read: holdout (temporal first), demography, plains corridor at MAP vs refined and by era, fitted r (80h), deviation ratios.

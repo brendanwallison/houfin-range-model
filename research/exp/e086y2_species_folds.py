@@ -36,6 +36,7 @@ def main():
     ap.add_argument("--similarity", required=True); ap.add_argument("--out", required=True)
     ap.add_argument("--ranks", type=int, nargs="+", default=[24, 64]); ap.add_argument("--folds", type=int, default=5)
     ap.add_argument("--n-land", type=int, default=3000); ap.add_argument("--n-boot", type=int, default=300)
+    ap.add_argument("--extra-pools", action="store_true", help="E086y2-b: add pools all (U) and rand174; drop sed")
     a = ap.parse_args()
     import pandas as pd
     j = lambda f: os.path.join(a.cache, f)
@@ -58,6 +59,10 @@ def main():
     pools = {"ref": set(range(len(comm))), "sed": {k for k in U if sed[k]},
              "res": {k for k in U if mig.get(names[k]) in (1.0, 2.0)}}
     pools["rand"] = set(rng.choice(U, len(pools["sed"]), replace=False).tolist())
+    if a.extra_pools:   # E086y2-b
+        pools["all"] = set(U)
+        pools["rand174"] = set(np.random.default_rng(87).choice(U, len(pools["res"]), replace=False).tolist())
+        pools.pop("sed", None)
     # winter: CBC counts of every U species the file carries, party-hour standardized, 1966+
     D = np.load(a.cbc, allow_pickle=False); cs = list(D["species"])
     ph, yr = D["party_hours"].astype(float), D["year_end"]
@@ -131,15 +136,17 @@ def main():
                             p_, a_, b_ = Pc_ - mu(Pc_), A_ - mu(A_), B_ - mu(B_)
                             cors.append((w @ (p_ * b_)).sum() / np.sqrt((w @ (p_ * p_)).sum() * max((w @ (a_ * b_)).sum(), 1e-12)))
                         out[st] = {"corr": float(cors[0]), "corr_ci": [float(x) for x in np.percentile(cors[1:], [2.5, 97.5])],
-                                   "capture": float(Pc_.mean() / B_.mean()), "mean_obs": float(B_.mean()), "n_species": int(len(m))}
+                                   "capture": float(Pc_.mean() / B_.mean()), "mean_obs": float(B_.mean()), "n_species": int(len(m)),
+                                   "species_mean_slope": float(np.polyfit(B_.mean(0), Pc_.mean(0), 1)[0]),
+                                   "species_mean_abs_err": float(np.abs(Pc_.mean(0) - B_.mean(0)).mean())}
                     res["results"][f"r{rk}|{pn}|{kn}|{ro}"] = out
                     o = out["sed_common"]
                     print(f"  r{rk:<3d} pool {pn:5s} {kn:5s} {ro:6s} sed_common corr {o['corr']:+.3f} "
                           f"[{o['corr_ci'][0]:+.3f},{o['corr_ci'][1]:+.3f}] capture {o['capture']:+.2f} (obs {o['mean_obs']:+.3f}, "
-                          f"{o['n_species']} sp) | sedentary corr {out['sedentary']['corr']:+.3f} capture {out['sedentary']['capture']:+.2f}",
+                          f"{o['n_species']} sp) slope {o['species_mean_slope']:+.2f} mae {o['species_mean_abs_err']:.3f} | sedentary corr {out['sedentary']['corr']:+.3f} capture {out['sedentary']['capture']:+.2f}",
                           flush=True)
             os.makedirs(a.out, exist_ok=True)
-            json.dump(res, open(os.path.join(a.out, "e086y2.json"), "w"), indent=1)
+            json.dump(res, open(os.path.join(a.out, "e086y2b.json" if a.extra_pools else "e086y2.json"), "w"), indent=1)
 
 
 if __name__ == "__main__":

@@ -17,7 +17,7 @@
    "init_half_life": 10.0
   },
   "aux_presence": {
-   "path": "${HOUFIN_PROCESSED}/encoder/cbc_aux/cbc_presence_res_comp_1902_1965.npz",
+   "path": "${HOUFIN_PROCESSED}/encoder/cbc_aux/cbc_presence_res_comp_1902_1965_wop.npz",
    "weight": 0.01,
    "label": "cbc_presence_early",
    "include_withheld": true,

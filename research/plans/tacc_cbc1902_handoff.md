@@ -1,5 +1,10 @@
 # TACC handoff: DESK trained from 1902 with CBC supervision (E086w)
 
+> **Status (2026-10-23): HOLD -- do not submit yet.** The set-up below is complete, but two local checks bear on it and
+> report within ~1 day: E086x (does a CBC-only -> BBS + CBC handoff leave an artifact in z?) and E086v / E086v-b
+> (do pre-1940-quality lists carry the gain through the presence route, with the breeding readout vs the winter
+> operator?). The data can be uploaded now; the overlays may change.
+
 ## What to run
 
 Two DESK trainings on TACC, each followed by the cube stage:
@@ -18,7 +23,12 @@ What the CBC build changes relative to production:
   1902-2025, not 1940-2025.
 - **CBC presence term on 1902-1965 lists.** This is the E069b / E078 presence-only term with per-species completeness
   slopes, weight 0.01, on 15,378 resident-species CBC lists. Early CBC enters only as presence with completeness,
-  because E070 found count-based similarity does not survive pre-1940 damage.
+  because E070 found count-based similarity does not survive pre-1940 damage. Its z -> species map is a WINTER
+  observation operator (`build_cbc_presence.py --readout-target cbc --fit-years 1966 2024`): fitted by the presence
+  likelihood on 1966-2024 lists at training cells, where both seasons are observed, then frozen. The trainer learns
+  only a per-species offset and completeness slopes on top. This replaces the E069b breeding readout (a ridge to BBS
+  abundance), which fits winter lists much worse (held-out list nll 3.40 vs 2.87) and would let z absorb the season
+  difference as a shift in the early years.
 - **CBC Ruzicka term on 1966-2024 winters.** This is the E081 recipe, weight 2.36 with fixed calibration
   dot = -0.045 + 0.707 x Ruzicka, on 81,795 cell-years.
 
@@ -38,7 +48,7 @@ Both files are on the local machine in `E:\Datasets\cbc_raw\prepared\tacc_1902\`
 
 | File | Size | sha256 |
 |---|---|---|
-| `cbc_presence_res_comp_1902_1965.npz` | 157 KB | `40579970e82340bba97c045cb6e09f175e098c6e0f36760d9666bd4568831595` |
+| `cbc_presence_res_comp_1902_1965_wop.npz` | 157 KB | `569678b1f16e0ff08bd336acca2cd709cb67a00c3300da3e6523a93897cbe73c` |
 | `cbc_ruzicka_res.npz` | 4.1 MB | `3cb9a6be5462c04186777154c89cb27b6cfcf71a8ae64701a692de8aac7d3058` |
 
 Verify with `sha256sum` after the copy. Neither file contains House Finch data or any sealed species. Both use only
@@ -108,6 +118,10 @@ age model. They are large, so copy them only if the downstream run happens local
   skill: +0.06 at 3% target data at the selected state, 4 / 4 seeds, no CI below 0, plus +0.05 in the level readout.
   It also repairs the pre-1940 winter backcast (E086p). The sparse-data gain needs CBC winters inside the target era
   (E086u: 21% of it survives without them), which is why the early-era lists are in training at all.
+- **Why one z with season operators, not separate summer / winter channels.** With free per-season channels, early
+  winter supervision lands entirely in the winter channel and nothing reaches the habitat (E084 / E086n separate heads:
+  safe, small gains, and a worse early backcast in E086p). With frozen operators the only way to fit early winter lists
+  is to change z itself. The assumption made explicit: the summer-winter relation is stable over time.
 - **Early lists as a presence term with completeness slopes are NOT yet established.** E086v (running locally) tests
   whether 1966-95 winters degraded to pre-1940 quality still carry the gain, through this same presence route. Until
   it reports, the 1902-1965 presence term in this build is a reasoned choice: it is the only route E070 found to

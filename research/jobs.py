@@ -207,7 +207,11 @@ def enqueue(spec_path):
         hits = [s for j, s in st_all.items() if j.startswith(dep + "-") or j == dep]
         if not hits:
             raise SystemExit(f"after_jobs: {dep!r} was never queued")
-        live = [s for s in hits if s.get("event") == "queued" and s.get("pueue_id") is not None]
+        # 2026-10-23: a task that already FINISHED in pueue is not live, even if the registry still says "queued"
+        # (a failed earlier attempt of the same job made every re-queued dependant fail as DependencyFailed)
+        ps = pueue_status()
+        done = lambda tid: isinstance((ps.get(str(tid)) or {}).get("status"), dict) and "Done" in ps[str(tid)]["status"]
+        live = [s for s in hits if s.get("event") == "queued" and s.get("pueue_id") is not None and not done(s["pueue_id"])]
         after += [str(s["pueue_id"]) for s in live]
     res = subprocess.run([paths.PUEUE, "add", "--group", group, "--label", job, "--print-task-id",
                           "--working-directory", str(code)]

@@ -34,6 +34,8 @@ def main():
     ap.add_argument("--years", type=int, nargs=2, default=[1940, 2024], help="E086v: list years kept (winter end year)")
     ap.add_argument("--comp-ref-from", type=int, default=1966,
                     help="E086v: the completeness reference is the circle's mean over counts from this year on")
+    ap.add_argument("--comp-center-ref", action="store_true",
+                    help="E086v: centre the covariate on reference-era lists, not on the kept lists")
     a = ap.parse_args()
     import pandas as pd
     C = a.cache
@@ -67,7 +69,10 @@ def main():
             np.bincount(ci_[late], minlength=len(D["circles"])), 1)
         has = np.bincount(ci_[late], minlength=len(D["circles"])) >= 3
         rel = np.where(np.isfinite(lc) & has[ci_], lc - ref[ci_], np.nan)
-        rel = rel - np.nanmean(rel[ok])
+        # E086v: with --years restricting the lists, centre on the REFERENCE-era lists (yr >= --comp-ref-from), as the
+        # 1940-2024 build effectively did (mostly modern lists); centring on a degraded window would zero its deficit
+        cen = ok if not a.comp_center_ref else ((D["row"] >= 0) & (yr >= a.comp_ref_from) & (yr <= 2024) & (P.sum(1) >= 2))
+        rel = rel - np.nanmean(rel[cen])
         extra["comp"] = np.where(np.isfinite(rel), rel, 0.0)[ok].astype(np.float32)
         print(f"[E078] completeness covariate: available for {np.isfinite(rel[ok]).mean():.2f} of lists; median by decade "
               + ", ".join(f"{d}s {np.nanmedian(rel[ok & (yr // 10 * 10 == d)]):+.2f}" for d in (1940, 1960, 1980, 2000, 2020)),

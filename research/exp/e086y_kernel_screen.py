@@ -54,13 +54,16 @@ def main():
     ap.add_argument("--similarity", required=True); ap.add_argument("--out", required=True)
     ap.add_argument("--ranks", type=int, nargs="+", default=[24, 64]); ap.add_argument("--n-land", type=int, default=3000)
     ap.add_argument("--n-boot", type=int, default=500)
+    ap.add_argument("--transform", choices=("log1p", "sqrt", "raw"), default="log1p",
+                    help="E086y-b: transform of the REFERENCE counts inside the Ruzicka kernel (targets stay log1p)")
     a = ap.parse_args()
     import pandas as pd
     j = lambda f: os.path.join(a.cache, f)
     meta = json.load(open(j("meta.json"))); comm, dev = list(meta["community"]), list(meta["dev_species"])
     assert "houfin" not in comm and "houfin" not in dev
     keys = np.load(j("keys.npy")); r, c, y = keys[:, 0], keys[:, 1], keys[:, 2]
-    Xc = np.log1p(np.load(j("X_comm.npy")).astype(np.float64))
+    TF = {"log1p": np.log1p, "sqrt": np.sqrt, "raw": lambda v: v}[a.transform]
+    Xc = TF(np.load(j("X_comm.npy")).astype(np.float64))
     Xd = np.asarray(np.load(j("X_dev.npy"), mmap_mode="r")); Ld = np.log1p(Xd.astype(np.float64))
     sim = pd.read_csv(a.similarity); mig = dict(zip(sim.species_code, sim.migration))
     pc_ref = (np.load(j("X_comm.npy")) > 0).mean(0); pc_dev = (Xd > 0).mean(0)
@@ -72,7 +75,7 @@ def main():
     Yw = D["Y"][okc][:, [cs.index(s) for s in wsp]].astype(float) * ((np.median(ph[okc]) / ph[okc])[:, None] ** 0.8)
     df = pd.DataFrame(Yw); df["r"], df["c"], df["y"] = D["row"][okc], D["col"][okc], yr[okc]
     g = df.groupby(["r", "c", "y"]).mean()
-    wr, wc, wy = (np.array([k[i] for k in g.index]) for i in range(3)); Xw = np.log1p(g.to_numpy())
+    wr, wc, wy = (np.array([k[i] for k in g.index]) for i in range(3)); Xw = TF(g.to_numpy())
     # joint cells: BBS rows and CBC winters in both epochs
     ep = lambda yy: np.where(yy <= 1995, 0, 1)
     bcell = r.astype(np.int64) * 1000 + c; wcell = wr.astype(np.int64) * 1000 + wc
@@ -152,7 +155,8 @@ def main():
                   f"{o['change|sed_common']['capture']:+.2f} | sedentary change corr {o['change|sedentary']['corr']:+.3f} "
                   f"(obs mean {o['level|sed_common']['mean_obs']:+.3f}, n {int(ok.sum())})", flush=True)
     os.makedirs(a.out, exist_ok=True)
-    json.dump(res, open(os.path.join(a.out, "e086y.json"), "w"), indent=1)
+    res["transform"] = a.transform
+    json.dump(res, open(os.path.join(a.out, "e086y.json" if a.transform == "log1p" else f"e086y_{a.transform}.json"), "w"), indent=1)
 
 
 if __name__ == "__main__":

@@ -1,0 +1,9 @@
+{
+ "exp": "E086",
+ "name": "e086y-kernel-screen-sqrt",
+ "group": "cpu",
+ "overlay": "research/overlays/desk_tempho_1995_seed1.json",
+ "cmd": ["bash", "-c", "set -e; export OMP_NUM_THREADS=8 CUDA_VISIBLE_DEVICES=; {python} research/exp/e086y_kernel_screen.py --cache {cache}/desk_tempho_1995_s1 --cbc /mnt/e/Datasets/cbc_raw/prepared/cbc_circles_comm.npz --similarity /home/breallis/houfin/work/houfin/research/E059/species-strata-066f943afb0e/species_similarity.csv --out {out} --transform sqrt"],
+ "expected_minutes": 45,
+ "note": "E086y-b (sqrt): observed-community screen of reference kernels (breed / winter / sum / sedentary-common) for sedentary-common change"
+}

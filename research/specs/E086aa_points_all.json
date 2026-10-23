@@ -1,0 +1,9 @@
+{
+ "exp": "E086",
+ "name": "e086aa-points-all",
+ "group": "cpu",
+ "overlay": "research/overlays/desk_tempho_1995_seed1.json",
+ "cmd": ["bash", "-c", "set -e; export OMP_NUM_THREADS=8 CUDA_VISIBLE_DEVICES=; {python} -m src.community_encoder.train_DESK.bbs_community_points --community /mnt/e/Datasets/houfin/scratch_houfin/data/avonet/community_all_nonsealed.csv --out-dir /work/07980/bwa386/ls6/houfin/processed/encoder/bbs_points_all369 --no-ebird"],
+ "expected_minutes": 30,
+ "note": "E086aa step 1: BBS community points for ALL 369 non-sealed species (summer half of the all-species basis)"
+}

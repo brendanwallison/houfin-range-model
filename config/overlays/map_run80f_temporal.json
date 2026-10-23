@@ -1,0 +1,15 @@
+{
+  "_extends": "map_run79d_allee_form.json",
+  "_comment": [
+    "E080 rerun on the 79d base (split r32, Allee ~off n50/100 -- converged in 79d; 80b/80c stalled on the absolute-Allee switch): FREE control temporal habitat change, K trend off."
+  ],
+  "population_model": {
+    "k_trend": {
+      "enabled": false
+    }
+  },
+  "run_names": {
+    "map": "age_map_{precision}_run_80f",
+    "vis_map": "age_map_{precision}_run_80f"
+  }
+}

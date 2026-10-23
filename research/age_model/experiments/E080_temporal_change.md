@@ -17,3 +17,11 @@ the central-plains corridor at MAP vs refined and by era (1902-15 / 1940-55 / 20
 Decision rule: if 80a or 80b predicts withheld data within ~.01 nats/obs of 80c, the free temporal channel is not
 earning its keep -> adopt the calibrated (or static) form; if 80c is clearly better on the TEMPORAL holdout, the data need
 habitat change and we look at where it acts.
+
+## First pass (2026-10-23): 80a read, 80b/80c STALLED
+- 80a STATIC (8,000 it = cap): .54/.18/11.7; plains .74 < west 1.06, east 1.07 -- deep trough, NO bridge; lambda flat
+  .88 1902-2025 by construction; Allee-dead .11 W; holdout -1.822 / -1.194 vs free 75c -1.833/-1.183 and 78s
+  -1.813/-1.186: temporal about equal, spatial ~.01 worse. The temporal channel buys little prediction for a lot of
+  habitat change; the F demand does not come from temporal habitat.
+- 80b (.14) stalled |grad| 3.4e6; 80c (free) stalled 5.1e4 -- the absolute-Allee establishment switch on the 75c base.
+RERUN on the 79d base (Allee ~off, converged there): 80d static, 80e calibrated .14, 80f free (K trend off in all).

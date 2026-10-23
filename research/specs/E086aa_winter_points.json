@@ -1,0 +1,9 @@
+{
+ "exp": "E086",
+ "name": "e086aa-winter-points",
+ "group": "cpu",
+ "overlay": "research/overlays/desk_tempho_1995_seed1.json",
+ "cmd": ["bash", "-c", "set -e; export OMP_NUM_THREADS=8 CUDA_VISIBLE_DEVICES=; X=/mnt/e/Datasets/houfin/external; {python} research/exp/cbc_prepare.py --raw-dir /mnt/e/Datasets/cbc_raw/20250205_FullSet_AllCountries_AllYears_CBC_Data_Request --products-csv \"$X/cbc_trends_2023/US and Canada Trends/cbc_indices_version_2023.0_na_web_download.csv\" --strata-shp $X/bcr/bbsBayes/inst/maps/BBS_USGS_strata.shp --strata-shp2 $X/bcr/bbsBayes/inst/maps/BBS_CWS_strata.shp --cache {cache}/desk_tempho_1995_s1 --species-set all --out /mnt/e/Datasets/cbc_raw/prepared/cbc_circles_all.npz; {python} research/exp/e086aa_winter_points.py --cbc /mnt/e/Datasets/cbc_raw/prepared/cbc_circles_all.npz --species /mnt/e/Datasets/houfin/scratch_houfin/data/avonet/community_all_nonsealed.csv --out-dir /work/07980/bwa386/ls6/houfin/processed/encoder/cbc_points_all369"],
+ "expected_minutes": 40,
+ "note": "E086aa step 2: CBC winter community points for all non-sealed species (winter half of the all-species basis)"
+}

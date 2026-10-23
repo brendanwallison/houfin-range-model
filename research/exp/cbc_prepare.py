@@ -36,7 +36,7 @@ def main():
     ap.add_argument("--cache", required=True)
     ap.add_argument("--out", required=True)
     ap.add_argument("--similarity", default=None, help="E070: species_similarity.csv (species_code, migration)")
-    ap.add_argument("--species-set", choices=["product", "community", "residents"], default="product",
+    ap.add_argument("--species-set", choices=["product", "community", "residents", "all"], default="product",
                     help="product: species with an Audubon trend (E064); community: the cache's reference species (E066)")
     a = ap.parse_args()
     import pandas as pd
@@ -64,6 +64,10 @@ def main():
         sim = pd.read_csv(a.similarity)
         mig = dict(zip(sim["species_code"], sim["migration"]))
         species = sorted(s for s in allowed if mig.get(s) in (1.0, 2.0))
+    if a.species_set == "all":
+        # E086aa: EVERY non-sealed cache species (community + dev) -- the all-species basis (user, 2026-10-23). Sealed
+        # species and the House Finch are outside `allowed` by construction.
+        species = sorted(allowed)
     if a.species_set == "community":
         # E066: the cache's 96 reference (community) species, whether or not Audubon publishes a trend for them --
         # the species ESK's Ruzicka similarity is computed on

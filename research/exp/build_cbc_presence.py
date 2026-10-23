@@ -31,6 +31,9 @@ def main():
                     help="E078: completeness npz aligned to --cbc rows (cbc_completeness.py); adds 'comp' per list = "
                          "logit of benchmark completeness relative to the circle's own mean over its 1966+ counts, "
                          "centred (0 where unavailable)")
+    ap.add_argument("--years", type=int, nargs=2, default=[1940, 2024], help="E086v: list years kept (winter end year)")
+    ap.add_argument("--comp-ref-from", type=int, default=1966,
+                    help="E086v: the completeness reference is the circle's mean over counts from this year on")
     a = ap.parse_args()
     import pandas as pd
     C = a.cache
@@ -53,13 +56,13 @@ def main():
     b = mu_t - mu_z @ B
     P = D["Y"][:, [cs.index(s) for s in sp]] > 0
     yr = D["year_end"]
-    ok = (D["row"] >= 0) & (yr >= 1940) & (yr <= 2024) & (P.sum(1) >= 2)
+    ok = (D["row"] >= 0) & (yr >= a.years[0]) & (yr <= a.years[1]) & (P.sum(1) >= 2)
     extra = {}
     if a.completeness:
         Cf = np.load(a.completeness)
         comp = np.where(Cf["bench_n"] > 0, Cf["bench_hit"] / np.maximum(Cf["bench_n"], 1), np.nan)
         comp = np.clip(comp, 0.02, 0.98); lc = np.log(comp / (1 - comp))
-        ci_ = D["circle_idx"]; late = (yr >= 1966) & np.isfinite(lc)
+        ci_ = D["circle_idx"]; late = (yr >= a.comp_ref_from) & np.isfinite(lc)
         ref = np.bincount(ci_[late], np.where(late, lc, 0)[late], minlength=len(D["circles"])) / np.maximum(
             np.bincount(ci_[late], minlength=len(D["circles"])), 1)
         has = np.bincount(ci_[late], minlength=len(D["circles"])) >= 3

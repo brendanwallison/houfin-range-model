@@ -1,0 +1,13 @@
+{
+ "exp": "E086",
+ "name": "e086v-data",
+ "group": "cpu",
+ "overlay": "research/overlays/desk_tempho_1995_seed1.json",
+ "cmd": [
+  "bash",
+  "-c",
+  "set -e; export OMP_NUM_THREADS=8 CUDA_VISIBLE_DEVICES=; RAW=/mnt/e/Datasets/cbc_raw/20250205_FullSet_AllCountries_AllYears_CBC_Data_Request; P=/mnt/e/Datasets/cbc_raw/prepared; D=/mnt/e/Datasets/cbc_raw/pseudo_early3_w6695; X=/mnt/e/Datasets/houfin/external; SIM=/home/breallis/houfin/work/houfin/research/E059/species-strata-066f943afb0e/species_similarity.csv; TAX=/mnt/e/Datasets/houfin/scratch_houfin/data/avonet/eBird_taxonomy.csv; mkdir -p $D/prepared; [ -f $D/pseudo_early2.json ] || {python} research/exp/cbc_pseudo_early2.py --raw-dir $RAW --out-dir $D --place random --years 1966 1995 --early-only-share 0; {python} research/exp/cbc_prepare.py --raw-dir $D --products-csv \"$X/cbc_trends_2023/US and Canada Trends/cbc_indices_version_2023.0_na_web_download.csv\" --strata-shp $X/bcr/bbsBayes/inst/maps/BBS_USGS_strata.shp --strata-shp2 $X/bcr/bbsBayes/inst/maps/BBS_CWS_strata.shp --cache {cache}/desk_tempho_1995_s1 --species-set community --out $D/prepared/cbc_circles_comm.npz; {python} research/exp/cbc_completeness.py --raw-dir $D --prepared $D/prepared/cbc_circles_comm.npz --out $D/prepared/completeness.npz --bench-from 1996 --taxonomy $TAX; {python} research/exp/build_cbc_presence.py --cache {cache}/desk_tempho_1995_s1 --cbc $D/prepared/cbc_circles_comm.npz --similarity $SIM --completeness $D/prepared/completeness.npz --comp-ref-from 1996 --years 1966 1995 --out $D/prepared/cbc_presence_res_comp_w6695_deg.npz; {python} research/exp/build_cbc_presence.py --cache {cache}/desk_tempho_1995_s1 --cbc $P/cbc_circles_comm.npz --similarity $SIM --completeness $P/completeness_v3.npz --comp-ref-from 1996 --years 1966 1995 --out $D/prepared/cbc_presence_res_comp_w6695_clean.npz; {python} research/exp/e086v_build_ruzd.py --base $P/cbc_ruzicka_res.npz --cbc $D/prepared/cbc_circles_comm.npz --years 1966 1995 --out $D/prepared/cbc_ruzicka_res_deg.npz"
+ ],
+ "expected_minutes": 60,
+ "note": "E086v data: pseudo-early copy of the 1966-1995 CBC winters (no place manipulation) and its supervision targets"
+}

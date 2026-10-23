@@ -104,7 +104,8 @@ def main():
         w = np.ones(len(circles))
     order = rng.choice(len(circles), len(circles), replace=False, p=w / w.sum())
     cum = np.cumsum(per_c.to_numpy()[order]) / per_c.sum()
-    chosen = set(circles[order[: int(np.searchsorted(cum, a.early_only_share)) + 1]])
+    # E086v: --early-only-share 0 leaves every circle's later counts untouched
+    chosen = set(circles[order[: int(np.searchsorted(cum, a.early_only_share)) + 1]]) if a.early_only_share > 0 else set()
     drop |= (sp["abbrev"].isin(chosen) & (yr > a.years[1])).to_numpy()
     sp[~drop].to_csv(os.path.join(a.out_dir, PRE + "Circle_Species_Report.csv"), index=False, encoding="utf-8-sig")
     # DISTANCE / HOURS missingness in the degraded window

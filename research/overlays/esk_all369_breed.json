@@ -1,0 +1,9 @@
+{
+ "_comment": "E086aa: spacetime ESK basis, breed half, ALL 369 non-sealed species (reference community = entire community, user 2026-10-23).",
+ "paths": {
+  "esk_output_dir": "${HOUFIN_PROCESSED}/encoder/esk_all369_breed"
+ },
+ "target": {
+  "points_dir": "${HOUFIN_PROCESSED}/encoder/bbs_points_all369"
+ }
+}

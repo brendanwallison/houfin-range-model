@@ -41,6 +41,7 @@ def main():
     np.save(os.path.join(a.out_dir, "X_points.npy"), X[nz]); np.save(os.path.join(a.out_dir, "point_index.npy"), idx[nz])
     np.save(os.path.join(a.out_dir, "point_weights.npy"), np.ones(int(nz.sum()), np.float32))
     meta = {"source": "cbc_winter", "species": keep, "n_species": len(keep), "n_rows": int(nz.sum()),
+            "n_hist": int(nz.sum()), "n_recent": 0, "recent_year": int(a.years[1]),
             "absent_from_cbc": [c for c in codes if c not in cs], "years": a.years, "ruzicka_log1p": True,
             "effort": "party-hours^0.8 to the median", "cbc_file": a.cbc}
     json.dump(meta, open(os.path.join(a.out_dir, "points_meta.json"), "w"), indent=1)

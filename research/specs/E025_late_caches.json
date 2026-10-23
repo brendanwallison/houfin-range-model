@@ -1,0 +1,21 @@
+{
+ "exp": "E025",
+ "name": "late-caches",
+ "group": "gpu",
+ "overlay": "config/overlays/gp_species_base.json",
+ "after_jobs": [
+  "E024/desk-span-1996-2015"
+ ],
+ "cmd": [
+  "bash",
+  "-c",
+  "set -e; for spec in t1985s1:E022/desk-tempho1985-seed1-581ee4a21fc2:desk_tempho_1985_seed1:desk_tempho_1985_s1 t1985s2:E022/desk-tempho1985-seed2-945e69ec063c:desk_tempho_1985_seed2:desk_tempho_1985_s2 t1995s1:E022/desk-tempho1995-seed1-f946971f1b3e:desk_tempho_1995_seed1:desk_tempho_1995_s1 t1995s2:E022/desk-tempho1995-seed2-aeb2bee5efae:desk_tempho_1995_seed2:desk_tempho_1995_s2 s1976:E024/desk-span-1976-1995-fe833205ef85:desk_span_1976_1995:desk_span_1976_1995 s1986:E024/desk-span-1986-2005-5e4cfb0c3fc9:desk_span_1986_2005:desk_span_1986_2005 s1996:E024/desk-span-1996-2015-f822a69390e4:desk_span_1996_2015:desk_span_1996_2015; do IFS=: read -r nm run ov cdir <<< \"$spec\"; {python} research/exp/epoch_variant.py --run {outroot}/$run --overlay research/overlays/$ov.json --cache-out {cache}/${cdir}_late --work {out}/$nm; done"
+ ],
+ "expected_minutes": 20,
+ "summarize": [
+  "bash",
+  "-c",
+  "for f in {out}/*/desk_late/late_epoch.json; do cat $f; echo; done"
+ ],
+ "note": "E025: research caches of the 7 HEAD DESK runs' last checkpoints (epoch 490), for selected-vs-late backcast grading"
+}

@@ -1,0 +1,10 @@
+{
+ "exp": "E053",
+ "name": "route-dose-cv",
+ "group": "cpu",
+ "overlay": "research/overlays/desk_tempho_1995_seed1.json",
+ "cmd": ["bash", "-c", "set -e; N=/mnt/e/Datasets/houfin/external/annual_nlcd/extracted; NC=$(ls -d {outroot}/E052/nlcd-guild-*/ | head -1)nlcd_27km.npz; D=${HOUFIN_DATA}/avonet; {python} research/exp/route_dose.py --cache {cache}/desk_tempho_1995_s1 --routes /mnt/e/Datasets/houfin/external/bbs_routes/shp/bbsrtsl020.shp --bbs ${HOUFIN_DATA}/bbs_2026_release --nlcd 1990=$N/Annual_NLCD_LndCov_1990_CU_C1V1.tif --nlcd 2019=$N/Annual_NLCD_LndCov_2019_CU_C1V1.tif --nlcd-cells $NC --avonet $D/TraitData/AVONET1_BirdLife.csv --taxonomy $D/eBird_taxonomy.csv --out {out} --cv 5"],
+ "expected_minutes": 60,
+ "summarize": ["bash", "-c", "{python} research/exp/route_dose.py --summarize {out}"],
+ "note": "E053b: route-buffer vs cell NLCD, every route out-of-fold (5-fold spatial-block CV)"
+}

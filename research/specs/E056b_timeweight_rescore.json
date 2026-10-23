@@ -1,0 +1,10 @@
+{
+ "exp": "E056",
+ "name": "timeweight-rescore",
+ "group": "cpu",
+ "overlay": "research/overlays/desk_tempho_1985_seed1.json",
+ "cmd": ["bash", "-c", "set -e; for t in 1985 1995; do for k in 1 2 3 4; do for st in '' _late; do {python} research/exp/fair_rivals.py --cache {cache}/desk_tempho_${t}_s${k}_yw10$st --ref-cache {cache}/desk_tempho_${t}_s$k$st --esk-dir {cache}/desk_tempho_${t}_s1 --out {out}/yw10_t${t}_s$k$st --incremental --n-pos 96 --pos-seeds 1 2 3 4 5 --strong-base --tag _p96; done; done; done"],
+ "expected_minutes": 80,
+ "summarize": ["bash", "-c", "for d in {out}/yw10*/; do f=$d/fair_rivals_incr_p96.json; [ -f $f ] || continue; {python} -c \"import json,sys; r=json.load(open(sys.argv[1])); s=r['space_level']; v=r['vs_ref']; g=lambda k: '%+.3f [%+.3f,%+.3f]' % (v[k]['diff'], *v[k]['ci']); print(sys.argv[2][:24].ljust(24), '| space %.4f' % s['desk_pooled'], '| weighted-uniform change', g('desk - desk_ref'), '| beyond placebo', g('placebo+desk_within - placebo+desk_ref_within'))\" $f $(basename $d); done"],
+ "note": "E056b: E032's time-weighted DESK (half-life 10 y toward T0) vs uniform, seed-matched, 4 seeds x 2 T0 x 2 states, on the fair-rival yardstick"
+}

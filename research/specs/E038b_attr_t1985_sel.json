@@ -1,0 +1,18 @@
+{
+ "exp": "E038",
+ "name": "attr-commondir-t1985-sel",
+ "group": "cpu",
+ "overlay": "research/overlays/desk_tempho_1985_seed1.json",
+ "cmd": [
+  "bash",
+  "-c",
+  "set -e; D={cache}/desk_tempho_1985_s1; for spec in 'ctrl_s1|{cache}/desk_tempho_1985_s1|{outroot}/E022/desk-tempho1985-seed1-581ee4a21fc2/desk|desk_tempho_1985_seed1|none' 'statT_s1|{cache}/desk_tempho_1985_s1_statT|{outroot}/E038/desk-tempho1985-seed1-statT-0de857c2b8e1/desk|desk_tempho_1985_seed1|{outroot}/E038/desk-tempho1985-seed1-statT-0de857c2b8e1/static_means.npy' 'ctrl_s2|{cache}/desk_tempho_1985_s2|{outroot}/E022/desk-tempho1985-seed2-945e69ec063c/desk|desk_tempho_1985_seed2|none' 'statT_s2|{cache}/desk_tempho_1985_s2_statT|{outroot}/E038/desk-tempho1985-seed2-statT-dee3cbeac21f/desk|desk_tempho_1985_seed2|{outroot}/E038/desk-tempho1985-seed2-statT-dee3cbeac21f/static_means.npy'; do IFS='|' read -r tag cc run ov means <<< \"$spec\"; A=\"research/exp/backcast_attribution.py --cache $cc --run-dir $run --overlay research/overlays/$ov.json --out {out}/$tag --families --luh-split --dir-cache $D\"; if [ \"$means\" = none ]; then {python} $A; else {python} research/exp/static_channels.py --channels temperature --means-cache $means -- $A; fi; done"
+ ],
+ "expected_minutes": 60,
+ "summarize": [
+  "bash",
+  "-c",
+  "for d in {out}/*/; do {python} research/exp/backcast_attribution.py --summarize $d; done"
+ ],
+ "note": "E038b: attribution on ONE analog direction (the control's dynamic covariates), T0 1985, sel state, controls and static-temperature models"
+}

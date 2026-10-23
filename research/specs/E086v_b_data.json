@@ -1,0 +1,13 @@
+{
+ "exp": "E086",
+ "name": "e086vb-data",
+ "group": "cpu",
+ "overlay": "research/overlays/desk_tempho_1995_seed1.json",
+ "cmd": [
+  "bash",
+  "-c",
+  "set -e; export OMP_NUM_THREADS=8 CUDA_VISIBLE_DEVICES=; P=/mnt/e/Datasets/cbc_raw/prepared; D=/mnt/e/Datasets/cbc_raw/pseudo_early3_w6695/prepared; SIM=/home/breallis/houfin/work/houfin/research/E059/species-strata-066f943afb0e/species_similarity.csv; {python} research/exp/build_cbc_presence.py --cache {cache}/desk_tempho_1995_s1 --cbc $D/cbc_circles_comm.npz --similarity $SIM --completeness $D/completeness.npz --comp-ref-from 1996 --comp-center-ref --years 1966 1995 --readout-target cbc --fit-years 1996 2024 --out $D/cbc_presence_res_comp_w6695_deg_wop.npz; {python} research/exp/build_cbc_presence.py --cache {cache}/desk_tempho_1995_s1 --cbc $P/cbc_circles_comm.npz --similarity $SIM --completeness $P/completeness_v3.npz --comp-ref-from 1996 --comp-center-ref --years 1966 1995 --readout-target cbc --fit-years 1996 2024 --out $D/cbc_presence_res_comp_w6695_clean_wop.npz"
+ ],
+ "expected_minutes": 20,
+ "note": "E086v-b data: winter-operator presence files (operator fitted on 1996-2024 lists) for degraded and clean 1966-95 lists"
+}

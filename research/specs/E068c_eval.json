@@ -1,0 +1,9 @@
+{
+ "exp": "E068", "name": "e068c-eval", "group": "cpu",
+ "after_jobs": ["E068/e068c-fit-V0-persist", "E068/e068c-fit-V3-persist", "E065/e065x-fit-V3-h0", "E065/e065x-fit-V3-h1"],
+ "overlay": "research/overlays/desk_tempho_1995_seed1.json",
+ "cmd": ["bash", "-c", "set -e; F=''; for v in V0 V3; do F=\"$F --fit ${v}_all=$(ls /home/breallis/houfin/work/houfin/research/E065/e065-fit-$v-full-*/fit_${v}_full.npz) --fit ${v}_persist=$(ls {out}/../e068c-fit-$v-persist-*/fit_${v}_persist.npz)\"; done; {python} research/exp/e068_early_decline.py --data /mnt/e/Datasets/cbc_raw/prepared/cbc_circles_v2.npz --completeness /mnt/e/Datasets/cbc_raw/prepared/completeness_v3.npz $F --out {out}; G=\"--fit V3:full=$(ls /home/breallis/houfin/work/houfin/research/E065/e065-fit-V3-full-*/fit_V3_full.npz) --fit V3:h0=$(ls /home/breallis/houfin/work/houfin/research/E065/e065x-fit-V3-h0-*/fit_V3_h0.npz) --fit V3:h1=$(ls /home/breallis/houfin/work/houfin/research/E065/e065x-fit-V3-h1-*/fit_V3_h1.npz)\"; {python} research/exp/e065_eval.py --data /mnt/e/Datasets/cbc_raw/prepared/cbc_circles_v2.npz --products-csv '/mnt/e/Datasets/houfin/external/cbc_trends_2023/US and Canada Trends/cbc_indices_version_2023.0_na_web_download.csv' --taxonomy /mnt/e/Datasets/houfin/scratch_houfin/data/avonet/eBird_taxonomy.csv $G --out {out}/e065x"],
+ "expected_minutes": 5,
+ "summarize": ["bash", "-c", "cat {out}/e068.json; grep -A4 B_early {out}/e065x/e065.json"],
+ "note": "E068c: early decline in persistent circles; E065 erratum: V3 split-half re-read"
+}

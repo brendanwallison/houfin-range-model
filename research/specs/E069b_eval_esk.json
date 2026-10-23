@@ -1,0 +1,23 @@
+{
+ "exp": "E069",
+ "name": "e069b-eval-esk",
+ "group": "cpu",
+ "after_jobs": [
+  "E069/desk-tempho1995-seed1-pres01",
+  "E069/desk-tempho1995-seed2-pres01",
+  "E069/desk-tempho1995-seed1-pres04"
+ ],
+ "overlay": "research/overlays/desk_tempho_1995_seed1.json",
+ "cmd": [
+  "bash",
+  "-c",
+  "set -e; bash research/bin/fill_esk.sh {cache}/desk_tempho_1995_s1 {cache}/desk_tempho_1995_s1_pres01 {cache}/desk_tempho_1995_s1_pres01_late {cache}/desk_tempho_1995_s1_pres04 {cache}/desk_tempho_1995_s1_pres04_late; bash research/bin/fill_esk.sh {cache}/desk_tempho_1995_s2 {cache}/desk_tempho_1995_s2_pres01 {cache}/desk_tempho_1995_s2_pres01_late; {python} research/exp/verify_cache.py {cache}/desk_tempho_1995_s1 {cache}/desk_tempho_1995_s1_pres01; {python} research/exp/fair_rivals.py --cache {cache}/desk_tempho_1995_s1_pres01 --ref-cache {cache}/desk_tempho_1995_s1 --out {out}/desk_tempho_1995_s1_pres01 --incremental --n-pos 96 --pos-seeds 1 2 3 4 5 --strong-base --tag _p96; {python} research/exp/verify_cache.py {cache}/desk_tempho_1995_s1_late {cache}/desk_tempho_1995_s1_pres01_late; {python} research/exp/fair_rivals.py --cache {cache}/desk_tempho_1995_s1_pres01_late --ref-cache {cache}/desk_tempho_1995_s1_late --out {out}/desk_tempho_1995_s1_pres01_late --incremental --n-pos 96 --pos-seeds 1 2 3 4 5 --strong-base --tag _p96; {python} research/exp/verify_cache.py {cache}/desk_tempho_1995_s2 {cache}/desk_tempho_1995_s2_pres01; {python} research/exp/fair_rivals.py --cache {cache}/desk_tempho_1995_s2_pres01 --ref-cache {cache}/desk_tempho_1995_s2 --out {out}/desk_tempho_1995_s2_pres01 --incremental --n-pos 96 --pos-seeds 1 2 3 4 5 --strong-base --tag _p96; {python} research/exp/verify_cache.py {cache}/desk_tempho_1995_s2_late {cache}/desk_tempho_1995_s2_pres01_late; {python} research/exp/fair_rivals.py --cache {cache}/desk_tempho_1995_s2_pres01_late --ref-cache {cache}/desk_tempho_1995_s2_late --out {out}/desk_tempho_1995_s2_pres01_late --incremental --n-pos 96 --pos-seeds 1 2 3 4 5 --strong-base --tag _p96; {python} research/exp/verify_cache.py {cache}/desk_tempho_1995_s1 {cache}/desk_tempho_1995_s1_pres04; {python} research/exp/fair_rivals.py --cache {cache}/desk_tempho_1995_s1_pres04 --ref-cache {cache}/desk_tempho_1995_s1 --out {out}/desk_tempho_1995_s1_pres04 --incremental --n-pos 96 --pos-seeds 1 2 3 4 5 --strong-base --tag _p96; {python} research/exp/verify_cache.py {cache}/desk_tempho_1995_s1_late {cache}/desk_tempho_1995_s1_pres04_late; {python} research/exp/fair_rivals.py --cache {cache}/desk_tempho_1995_s1_pres04_late --ref-cache {cache}/desk_tempho_1995_s1_late --out {out}/desk_tempho_1995_s1_pres04_late --incremental --n-pos 96 --pos-seeds 1 2 3 4 5 --strong-base --tag _p96"
+ ],
+ "expected_minutes": 60,
+ "summarize": [
+  "bash",
+  "-c",
+  "ls {out}"
+ ],
+ "note": "E069b: community target vs same-seed control"
+}

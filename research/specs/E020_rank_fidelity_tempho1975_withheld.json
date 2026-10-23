@@ -1,0 +1,26 @@
+{
+ "exp": "E020",
+ "name": "rank-fidelity-tempho1975_withheld",
+ "group": "cpu",
+ "cmd": [
+  "python",
+  "research/exp/rank_fidelity.py",
+  "--cache",
+  "{cache}/desk_tempho_1975",
+  "--out",
+  "{out}",
+  "--population",
+  "withheld"
+ ],
+ "expected_minutes": 8,
+ "summarize": [
+  "python",
+  "research/exp/rank_fidelity.py",
+  "--summarize",
+  "{out}"
+ ],
+ "note": "pre-registered in research/experiments/E020.md",
+ "after_jobs": [
+  "E003/esk-desk_tempho_1975"
+ ]
+}

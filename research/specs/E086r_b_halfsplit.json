@@ -1,0 +1,13 @@
+{
+ "exp": "E086",
+ "name": "e086r-b-halfsplit",
+ "group": "cpu",
+ "overlay": "research/overlays/desk_tempho_1995_seed1.json",
+ "cmd": [
+  "bash",
+  "-c",
+  "set -e; export OMP_NUM_THREADS=4 CUDA_VISIBLE_DEVICES=; for m in desk_tempho_1995_s1 desk_tempho_1995_s2 desk_tempho_1985_s1 desk_tempho_1985_s2; do {python} research/exp/e086r_obs_conditioned.py --cache {cache}/$m --cbc /mnt/e/Datasets/cbc_raw/prepared/cbc_circles_res.npz --similarity /home/breallis/houfin/work/houfin/research/E059/species-strata-066f943afb0e/species_similarity.csv --out {out}/$m --rank 24 --weights halfsplit; done"
+ ],
+ "expected_minutes": 30,
+ "note": "E086r-b: epoch-scale combination weights (halfsplit), 4 selected-state controls"
+}

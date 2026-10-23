@@ -1,0 +1,22 @@
+{
+ "exp": "E021",
+ "name": "observer-turnover-base",
+ "group": "cpu",
+ "overlay": "config/overlays/gp_species_base.json",
+ "cmd": [
+  "python",
+  "research/exp/observer_turnover.py",
+  "--cache",
+  "{cache}/gp_species_base",
+  "--out",
+  "{out}"
+ ],
+ "expected_minutes": 8,
+ "summarize": [
+  "python",
+  "research/exp/observer_turnover.py",
+  "--summarize",
+  "{out}"
+ ],
+ "note": "pre-registered in research/experiments/E021.md"
+}

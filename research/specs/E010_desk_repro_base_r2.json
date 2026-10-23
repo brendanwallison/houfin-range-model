@@ -1,0 +1,7 @@
+{
+  "exp": "E010", "name": "desk-repro-base-r2", "group": "gpu", "sha": "bcba64c8",
+  "cmd": ["bash", "-c", "set -e; mkdir -p {out}/desk/tmp; printf '%s' '{\"desk\": {\"selection_metric\": \"val_kernel\", \"trend\": {\"seed\": 0, \"buffer_floor\": 2, \"direction_anchor_year\": 1996, \"direction_withheld_anchor_year\": 1975, \"holdout_years\": [], \"common_holdout_years\": []}}, \"paths\": {\"desk_output_dir\": \"{out}/desk\"}}' > {out}/overlay.json; export ESK_DESK_CONFIG={out}/overlay.json TMPDIR={out}/desk/tmp MPLCONFIGDIR={out}/desk/tmp/mpl WANDB_MODE=offline WANDB_DIR={out}/desk; {python} scripts/run_encoder.py desk"],
+  "expected_minutes": 100,
+  "summarize": ["python", "{runner}/research/exp/compare_desk_run.py", "{out}/desk", "${HOUFIN_PROCESSED}/sweeps/desk_hp/sweep_t0_f100_base"],
+  "note": "Phase 0.4: rerun of sweep_t0_f100_base with the code that trained it (bcba64c8; no training seed plumbed then, so r1/r2 also show local run-to-run spread). Gate: best val_kernel within the 6.6% seed floor of TACC's 0.006956."
+}

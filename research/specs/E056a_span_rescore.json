@@ -1,0 +1,10 @@
+{
+ "exp": "E056",
+ "name": "span-rescore",
+ "group": "cpu",
+ "overlay": "research/overlays/desk_tempho_1985_seed1.json",
+ "cmd": ["bash", "-c", "set -e; for t in 1985 1995; do {python} research/exp/esk_project.py --cache {cache}/desk_tempho_${t}_s1 --modern 1996 2005 --out-dir {out}/esk_t$t; done; FR='--incremental --n-pos 96 --pos-seeds 1 2 3 4 5 --strong-base --tag _p96 --modern 1996 2005'; for st in '' _late; do {python} research/exp/fair_rivals.py --cache {cache}/desk_span_1986_2005$st --ref-cache {cache}/desk_tempho_1985_s2$st --esk-dir {out}/esk_t1985 --out {out}/span1986_s0_vs_long_s2$st $FR; {python} research/exp/fair_rivals.py --cache {cache}/desk_span_1986_2005_s1$st --ref-cache {cache}/desk_tempho_1985_s1$st --esk-dir {out}/esk_t1985 --out {out}/span1986_s1_vs_long_s1$st $FR; {python} research/exp/fair_rivals.py --cache {cache}/desk_span_1996_2015$st --ref-cache {cache}/desk_tempho_1995_s1$st --esk-dir {out}/esk_t1995 --out {out}/span1996_s0_vs_long_s1$st $FR; {python} research/exp/fair_rivals.py --cache {cache}/desk_span_1996_2015$st --ref-cache {cache}/desk_tempho_1995_s2$st --esk-dir {out}/esk_t1995 --out {out}/span1996_s0_vs_long_s2$st $FR; done"],
+ "expected_minutes": 45,
+ "summarize": ["bash", "-c", "for d in {out}/span*/; do f=$d/fair_rivals_incr_p96.json; [ -f $f ] || continue; {python} -c \"import json,sys; r=json.load(open(sys.argv[1])); s=r['space_level']; v=r['vs_ref']; g=lambda k: '%+.3f [%+.3f,%+.3f]' % (v[k]['diff'], *v[k]['ci']); print(sys.argv[2][:30].ljust(30), 'modern', r.get('modern'), '| space %.4f' % s['desk_pooled'], '| short-long change', g('desk - desk_ref'), '| beyond placebo', g('placebo+desk_within - placebo+desk_ref_within'))\" $f $(basename $d); done"],
+ "note": "E056a: E024's 20-year-span DESK models vs the same-T0 long-span models on the fair-rival yardstick, modern reference epoch 1996-2005 (trained by every model)"
+}

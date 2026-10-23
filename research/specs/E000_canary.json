@@ -1,0 +1,9 @@
+{
+  "exp": "E000",
+  "name": "canary",
+  "group": "cpu",
+  "cmd": ["python", "-c", "import os; print('cwd', os.getcwd()); print('HOUFIN_PROCESSED', os.environ['HOUFIN_PROCESSED']); print('CUDA_VISIBLE_DEVICES', repr(os.environ.get('CUDA_VISIBLE_DEVICES'))); print('threads', os.environ['OMP_NUM_THREADS']); open('{out}/result.txt','w').write('42')"],
+  "expected_minutes": 1,
+  "summarize": ["python", "-c", "print('result =', open('{out}/result.txt').read())"],
+  "note": "infrastructure dry run: snapshot, queue, run, collect"
+}

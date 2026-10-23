@@ -1,0 +1,18 @@
+{
+ "exp": "E070",
+ "name": "e070-fit-C1-ridge-rich",
+ "group": "cpu",
+ "overlay": "research/overlays/desk_tempho_1995_seed1.json",
+ "cmd": [
+  "bash",
+  "-c",
+  "set -e; {python} research/exp/cbc_effort_model.py --effort counters --completeness none --data /mnt/e/Datasets/cbc_raw/pseudo_early2_rich/prepared/cbc_circles_res.npz --completeness-file /mnt/e/Datasets/cbc_raw/pseudo_early2_rich/prepared/completeness_res.npz --ref-from 1986 --steps 6000 --out {out}/fit_C1_ridge_rich.npz"
+ ],
+ "expected_minutes": 30,
+ "summarize": [
+  "bash",
+  "-c",
+  "cat {out}/fit_C1_ridge_rich_meta.json"
+ ],
+ "note": "E070: C1 ridge on pseudo-early2 rich"
+}

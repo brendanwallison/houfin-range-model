@@ -1,0 +1,18 @@
+{
+ "exp": "E082",
+ "name": "e082-calibrated-season-link",
+ "group": "io",
+ "overlay": "research/overlays/desk_tempho_1995_seed1.json",
+ "cmd": [
+  "bash",
+  "-c",
+  "set -e; {python} research/exp/e066_similarity_links.py t1 --cache {cache}/desk_tempho_1995_s1 --cbc /mnt/e/Datasets/cbc_raw/prepared/cbc_circles_comm.npz --similarity /home/breallis/houfin/work/houfin/research/E059/species-strata-066f943afb0e/species_similarity.csv --migration 1 --calibrate none --pairs 50000 --out {out}; {python} research/exp/e066_similarity_links.py t1 --cache {cache}/desk_tempho_1995_s1 --cbc /mnt/e/Datasets/cbc_raw/prepared/cbc_circles_comm.npz --similarity /home/breallis/houfin/work/houfin/research/E059/species-strata-066f943afb0e/species_similarity.csv --migration 1 --calibrate scale --pairs 50000 --out {out}; {python} research/exp/e066_similarity_links.py t1 --cache {cache}/desk_tempho_1995_s1 --cbc /mnt/e/Datasets/cbc_raw/prepared/cbc_circles_comm.npz --similarity /home/breallis/houfin/work/houfin/research/E059/species-strata-066f943afb0e/species_similarity.csv --migration 1 --calibrate quantile --pairs 50000 --out {out}; {python} research/exp/e066_similarity_links.py t1 --cache {cache}/desk_tempho_1995_s1 --cbc /mnt/e/Datasets/cbc_raw/prepared/cbc_circles_comm.npz --similarity /home/breallis/houfin/work/houfin/research/E059/species-strata-066f943afb0e/species_similarity.csv --migration 1,2 --calibrate none --pairs 50000 --out {out}; {python} research/exp/e066_similarity_links.py t1 --cache {cache}/desk_tempho_1995_s1 --cbc /mnt/e/Datasets/cbc_raw/prepared/cbc_circles_comm.npz --similarity /home/breallis/houfin/work/houfin/research/E059/species-strata-066f943afb0e/species_similarity.csv --migration 1,2 --calibrate scale --pairs 50000 --out {out}; {python} research/exp/e066_similarity_links.py t1 --cache {cache}/desk_tempho_1995_s1 --cbc /mnt/e/Datasets/cbc_raw/prepared/cbc_circles_comm.npz --similarity /home/breallis/houfin/work/houfin/research/E059/species-strata-066f943afb0e/species_similarity.csv --migration 1,2 --calibrate quantile --pairs 50000 --out {out}"
+ ],
+ "expected_minutes": 15,
+ "summarize": [
+  "bash",
+  "-c",
+  "ls {out}"
+ ],
+ "note": "E082: season link with per-species CBC calibration"
+}

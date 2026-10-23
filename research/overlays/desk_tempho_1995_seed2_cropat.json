@@ -1,0 +1,62 @@
+{
+ "_comment": "E048: desk_tempho_1995 seed 2 with CropAT-US crop density + 10 crop-type fractions + cropat_avail folded into the landuse stream (research/exp/build_cropat_states.py); otherwise identical to desk_tempho_1995_seed2.json (split, seed, schedule); output via RESEARCH_OUT.",
+ "paths": {
+  "desk_output_dir": "${RESEARCH_OUT}/desk",
+  "hist_dir": "${WORK}/houfin/research/E048/build-cropat-states-9a9ab9e8c9cf/states"
+ },
+ "desk": {
+  "z_dir": "${HOUFIN_PROCESSED}/encoder/esk_balanced/spacetime",
+  "trend": {
+   "holdout_years": [
+    1966,
+    1967,
+    1968,
+    1969,
+    1970,
+    1971,
+    1972,
+    1973,
+    1974,
+    1975,
+    1976,
+    1977,
+    1978,
+    1979,
+    1980,
+    1981,
+    1982,
+    1983,
+    1984,
+    1985,
+    1986,
+    1987,
+    1988,
+    1989,
+    1990,
+    1991,
+    1992,
+    1993,
+    1994,
+    1995
+   ],
+   "direction_anchor_year": 1996,
+   "direction_withheld_anchor_year": 1975,
+   "common_holdout_years": [
+    1966,
+    1967,
+    1968,
+    1969,
+    1970,
+    1971,
+    1972,
+    1973,
+    1974,
+    1975
+   ]
+  },
+  "seed": 2
+ },
+ "latent_cube": {
+  "hist_dir": "${WORK}/houfin/research/E048/build-cropat-states-9a9ab9e8c9cf/states/yearly_states"
+ }
+}

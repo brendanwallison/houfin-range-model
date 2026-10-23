@@ -1,0 +1,10 @@
+{
+ "exp": "E037",
+ "name": "covgp-v8",
+ "group": "cpu",
+ "overlay": "config/overlays/gp_species_base.json",
+ "cmd": ["bash", "-c", "{python} research/exp/covgp_harness.py --out {out} --tag v8 --features pca --bounds data --sample randcells --scale-sample randcells --resid-linear --cell --years-per-cell 4"],
+ "expected_minutes": 40,
+ "summarize": ["python", "research/exp/covgp_harness.py", "--summarize", "{out}"],
+ "note": "E037 round 3, variant v8: --features pca --bounds data --sample randcells --scale-sample randcells --resid-linear --cell --years-per-cell 4"
+}

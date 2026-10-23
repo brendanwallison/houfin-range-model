@@ -1,0 +1,34 @@
+{
+ "_comment": "E086w: production DESK with the training window from 1902; z supervised by CBC PRESENCE (completeness slopes, E078) on 1902-1965 lists and CBC RUZICKA (E081) on 1966-2024 winters. See research/plans/tacc_cbc1902_handoff.md.",
+ "paths": {
+  "desk_output_dir": "${HOUFIN_PROCESSED}/encoder/desk_cbc1902"
+ },
+ "latent_cube": {
+  "model_path": "${HOUFIN_PROCESSED}/encoder/desk_cbc1902/env_model_semisup.pth",
+  "output_dir": "${HOUFIN_PROCESSED}/encoder/cube_desk_cbc1902"
+ },
+ "desk": {
+  "output_ema": {
+   "half_life_bounds": [
+    1.0,
+    40.0
+   ],
+   "warmup_start": 1902,
+   "init_half_life": 10.0
+  },
+  "aux_presence": {
+   "path": "${HOUFIN_PROCESSED}/encoder/cbc_aux/cbc_presence_res_comp_1902_1965_wop.npz",
+   "weight": 0.01,
+   "label": "cbc_presence_early",
+   "include_withheld": true,
+   "completeness_slopes": true
+  },
+  "aux_ruzicka": {
+   "path": "${HOUFIN_PROCESSED}/encoder/cbc_aux/cbc_ruzicka_res.npz",
+   "weight": 2.36,
+   "label": "cbc_ruzicka_modern",
+   "include_withheld": true,
+   "pairs": 4096
+  }
+ }
+}

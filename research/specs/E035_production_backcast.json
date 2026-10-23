@@ -1,0 +1,10 @@
+{
+ "exp": "E035",
+ "name": "production-backcast",
+ "group": "cpu",
+ "overlay": "config/overlays/production.json",
+ "cmd": ["python", "research/exp/production_backcast.py", "--keys-cache", "{cache}/gp_species_base", "--out", "{out}"],
+ "expected_minutes": 30,
+ "summarize": ["python", "research/exp/production_backcast.py", "--summarize", "{out}"],
+ "note": "E035: production DESK's 1902-1939 backcast: movement and space-for-time alignment (descriptive)"
+}

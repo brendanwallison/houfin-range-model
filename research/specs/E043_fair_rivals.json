@@ -1,0 +1,11 @@
+{
+ "exp": "E043",
+ "name": "evaluation-fair-rivals",
+ "group": "cpu",
+ "overlay": "research/overlays/desk_tempho_1995_seed1.json",
+ "after_jobs": ["E043/evaluation-attribution"],
+ "cmd": ["bash", "-c", "set -e; for s in 1 2; do for sc in 10 40; do for st in '' _late; do {python} research/exp/fair_rivals.py --cache {cache}/desk_tempho_1995_s${s}_sc${sc}${st} --ref-cache {cache}/desk_tempho_1995_s${s}${st} --out {out}/desk_tempho_1995_s${s}_sc${sc}${st} --incremental --n-pos 96 --pos-seeds 1 2 3 4 5 --tag _p96; done; done; done"],
+ "expected_minutes": 100,
+ "summarize": ["bash", "-c", "for s in 1 2; do for sc in 10 40; do for st in '' _late; do {python} research/exp/fair_rivals.py --summarize {out}/desk_tempho_1995_s${s}_sc${sc}${st} | grep -E 'TREATMENT|features x|^desk_tempho'; done; done; done"],
+ "note": "E043 amendment: over-sampled models vs same-seed controls on E039h's estimand -- raw change, within readout, and the gain beyond the adequate (96x5) trend placebo, paired"
+}

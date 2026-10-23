@@ -1,0 +1,10 @@
+{
+ "exp": "E041",
+ "name": "zones-statMgmt",
+ "group": "cpu",
+ "overlay": "research/overlays/desk_tempho_1995_seed1.json",
+ "cmd": ["bash", "-c", "{python} research/exp/zone_breakdown.py --out {out} --t0 1996 --models desk_tempho_1995_s1 desk_tempho_1995_s2 desk_tempho_1995_s1_statMgmt desk_tempho_1995_s2_statMgmt desk_tempho_1995_s1_late desk_tempho_1995_s2_late desk_tempho_1995_s1_statMgmt_late desk_tempho_1995_s2_statMgmt_late"],
+ "expected_minutes": 5,
+ "summarize": ["python", "research/exp/zone_breakdown.py", "--summarize", "{out}"],
+ "note": "E041 measure (1b): pooled raw backcast corr by zone, static-management models vs unweighted controls"
+}

@@ -1,0 +1,8 @@
+{
+ "exp": "E068", "name": "e068-fit-V3-pfixed", "group": "cpu",
+ "overlay": "research/overlays/desk_tempho_1995_seed1.json",
+ "cmd": ["bash", "-c", "set -e; {python} research/exp/cbc_effort_model.py --effort counters --completeness bench --family bern --data /mnt/e/Datasets/cbc_raw/prepared/cbc_circles_v2.npz --completeness-file /mnt/e/Datasets/cbc_raw/prepared/completeness_v3.npz --p-fixed 0.32 --steps 6000 --out {out}/fit_V3_pfixed.npz"],
+ "expected_minutes": 25,
+ "summarize": ["bash", "-c", "cat {out}/fit_V3_pfixed_meta.json"],
+ "note": "E068: V3 with one fixed effort exponent (0.32) for all species"
+}

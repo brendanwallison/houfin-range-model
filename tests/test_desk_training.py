@@ -989,6 +989,23 @@ def test_stratum_weights_floor_protects_thin_strata():
     assert w_thin / w_mid < 1.01
 
 
+def test_year_weights_decay_from_the_anchor_and_compose_at_median_one():
+    """Time weighting (research E024b): the trained years nearest the backcast target carry the most weight, a
+    year one half-life away half as much, and the weights are median-normalised like stratum_weights so the two
+    compose without changing the effective learning rate. A floor stops distant years vanishing entirely."""
+    from src.community_encoder.train_DESK.desk_training import year_weights
+    years = np.array([1986, 1996, 2006, 2016, 2025] * 10)
+    w = year_weights(years, anchor=1986, half_life=10.0)
+    assert np.isclose(np.median(w), 1.0)
+    by = {int(y): float(w[years == y][0]) for y in (1986, 1996, 2006)}
+    assert np.isclose(by[1996] / by[1986], 0.5) and np.isclose(by[2006] / by[1986], 0.25)
+    wf = year_weights(years, anchor=1986, half_life=10.0, floor=0.2)
+    far = wf[years == 2025][0] / wf[years == 1986][0]
+    assert np.isclose(far, 0.2), far                     # 2**-3.9 = 0.067 floored to 0.2
+    with pytest.raises(ValueError):
+        year_weights(years, anchor=1986, half_life=0.0)
+
+
 def test_stratum_weights_are_partial_not_full_correction():
     """power=0.5, not 1.0. A sqrt correction removes most of the population tilt while leaving a
     thin stratum a fraction of the pull full inverse-frequency would give it. If this ever became
@@ -2774,3 +2791,555 @@ def test_the_esk_reference_rank_curve_is_computed_and_aligned():
     _log3, info3 = run(None)
     assert info3.get("esk_rank_curve") is None
     print(f"aligned -> curve {curve}; misaligned -> skipped; absent -> None")
+
+
+def _resume_fixture(seed=5, withhold=False):
+    """A tiny CPU run with validation cells (so selection happens) and, optionally, a WITHHELD year:
+    a year whose train mask is all False, which is how the trainer defines withheld."""
+    from src.community_encoder.train_DESK import desk_training as D  # noqa: F401
+    sch = _schema()
+    dims = [s["dim"] for s in sch["streams"]]
+    T, H, W, L = 5, 6, 7, 16
+    rng = np.random.default_rng(seed)
+    cov = rng.normal(size=(T, H, W, sch["total_dim"])).astype("float32")
+    va = np.zeros((H, W), bool)
+    va[:2, :3] = True
+    tr = ~va
+    years = list(range(2021, 2026))
+    tgt = {}
+    for y in years[1:]:
+        tr_y = np.zeros((H, W), bool) if (withhold and y == years[1]) else tr
+        tgt[y] = (rng.normal(size=(H, W, L)).astype("float32"), tr_y, va,
+                  np.ones((H, W), dtype="float32"))
+    trained = [y for y in years if not (withhold and y == years[1])]
+    args = (cov, np.ones((T, H, W), bool), years, tgt,
+            _metric_dict(rng.random((H, W, 9)).astype("float32"), tr, trained), tr, va, dims)
+    kw = dict(latent_dim=L, ema_cfg={"earlystop_warmup": 0}, spatial_kernel=3, epochs=6,
+              schema=sch, dropout=0.1, return_info=True)
+    return args, kw
+
+
+def test_a_killed_run_resumed_from_its_checkpoint_ends_exactly_where_the_uninterrupted_run_ends(
+        tmp_path, monkeypatch, request):
+    """Off-cluster, a 6-12 h DESK run is killed by WSL shutdowns, sleep and OS updates, and weights
+    were saved only at the end. The checkpoint must carry EVERYTHING the loop carries -- optimizer,
+    schedule, best-so-far, selection history and every RNG stream -- or a resumed run is a
+    different run. The resumed weights must equal the uninterrupted ones EXACTLY, which only a
+    deterministic backend can show: measured, two uninterrupted runs already differ by ~8e-6 on 8
+    CPU threads (reduction order) and on CUDA, and by exactly 0 on one CPU thread -- where the
+    resumed run differs by exactly 0 too. So the check runs on one CPU thread."""
+    import contextlib
+    import io
+    import shutil
+
+    from src.community_encoder.train_DESK import desk_training as D
+
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: False)
+    n_threads = torch.get_num_threads()
+    torch.set_num_threads(1)
+    request.addfinalizer(lambda: torch.set_num_threads(n_threads))
+
+    args, kw = _resume_fixture()
+    ck = str(tmp_path / "resume_checkpoint.pt")
+    with contextlib.redirect_stdout(io.StringIO()):
+        m_full, e_full, i_full = D.train_model_ema(*args, **kw)
+        # "Killed" during epoch 4: the checkpoint written at the top of epoch 4 holds epoch 3.
+        D.train_model_ema(*args, checkpoint_path=ck, checkpoint_every=1, stop_at_epoch=4, **kw)
+    assert os.path.exists(ck + ".completed") and not os.path.exists(ck)
+    shutil.copy(ck + ".completed", ck)                     # as if the run had died, not finished
+    out = io.StringIO()
+    with contextlib.redirect_stdout(out):
+        m_res, e_res, i_res = D.train_model_ema(*args, checkpoint_path=ck, checkpoint_every=1,
+                                                resume=True, **kw)
+    assert "RESUMED" in out.getvalue() and "after epoch 3" in out.getvalue(), out.getvalue()
+    assert i_res["resumed_from_epoch"] == 3 and i_full["resumed_from_epoch"] is None
+    assert i_res["best_epoch"] == i_full["best_epoch"], (i_res, i_full)
+    for (k, a), b in zip(m_full.state_dict().items(), m_res.state_dict().values()):
+        assert torch.equal(a, b), f"{k} differs after resume"
+    for a, b in zip(e_full.state_dict().values(), e_res.state_dict().values()):
+        assert torch.equal(a, b)
+    print(f"resumed after epoch 3 -> identical weights, best epoch {i_res['best_epoch']}")
+
+
+def test_a_checkpoint_from_a_different_configuration_is_set_aside_not_resumed(tmp_path):
+    """Resuming another configuration's checkpoint would splice two runs into one."""
+    import contextlib
+    import io
+    import shutil
+
+    from src.community_encoder.train_DESK import desk_training as D
+
+    args, kw = _resume_fixture()
+    ck = str(tmp_path / "resume_checkpoint.pt")
+    with contextlib.redirect_stdout(io.StringIO()):
+        D.train_model_ema(*args, checkpoint_path=ck, checkpoint_every=1, stop_at_epoch=3, **kw)
+    shutil.copy(ck + ".completed", ck)
+    out = io.StringIO()
+    with contextlib.redirect_stdout(out):
+        _m, _e, info = D.train_model_ema(*args, checkpoint_path=ck, checkpoint_every=1,
+                                         resume=True, **{**kw, "lr": 5e-4})
+    assert "different configuration" in out.getvalue(), out.getvalue()
+    assert os.path.exists(ck + ".stale")
+    assert info["resumed_from_epoch"] is None
+    print("a mismatched checkpoint is moved to .stale and the run starts fresh")
+
+
+def test_weight_snapshots_are_kept_at_every_requested_epoch_and_hold_that_epochs_weights(tmp_path):
+    """Research: snapshot_every keeps the weights after every k-th epoch (the resume checkpoint is overwritten), so a
+    run's trajectory can be evaluated afterwards. Off by default; each snapshot loads into the model."""
+    import contextlib
+    import io
+
+    from src.community_encoder.train_DESK import desk_training as D
+
+    assert [e for e in range(0, 9) if D._snapshot_due(e, 2)] == [2, 4, 6, 8]
+    assert not any(D._snapshot_due(e, 0) for e in range(0, 9))
+    args, kw = _resume_fixture()
+    ck = str(tmp_path / "resume_checkpoint.pt")
+    with contextlib.redirect_stdout(io.StringIO()):
+        D.train_model_ema(*args, checkpoint_path=ck, checkpoint_every=1, stop_at_epoch=5, snapshot_every=2, **kw)
+    snaps = sorted(os.listdir(tmp_path / "snapshots"))
+    assert snaps == ["ep0002.pt", "ep0004.pt"], snaps
+    s2, s4 = (torch.load(tmp_path / "snapshots" / f, weights_only=False) for f in snaps)
+    assert (s2["epoch"], s4["epoch"]) == (2, 4)
+    k = next(n for n, v in s2["model"].items() if v.is_floating_point() and v.numel() > 1)
+    assert not torch.equal(s2["model"][k], s4["model"][k]), "the two snapshots should hold different weights"
+    print("snapshots kept at epochs 2 and 4, each with its own weights")
+
+
+def test_epoch_selection_ignores_withheld_years_unless_told_otherwise(tmp_path):
+    """A9. Under a temporal holdout the pooled selection metrics include held-out cells in the
+    WITHHELD years, so the tempho runs chose their epoch partly on the decades they withhold. The
+    default now selects on the trained-year pool; select_on_withheld=True reproduces the old rule."""
+    import contextlib
+    import io
+
+    from src.community_encoder.train_DESK import desk_training as D
+
+    args, kw = _resume_fixture(seed=7, withhold=True)
+    for legacy, key in ((False, "zmse_val_sp"), (True, "zmse_val")):
+        traj = str(tmp_path / f"traj_{legacy}.jsonl")
+        with contextlib.redirect_stdout(io.StringIO()):
+            _m, _e, info = D.train_model_ema(*args, trajectory_path=traj,
+                                             select_on_withheld=legacy, **kw)
+        rows = {r["epoch"]: r for r in map(json.loads, open(traj, encoding="utf-8"))}
+        best = rows[info["best_epoch"]]
+        assert np.isfinite(best["zmse_val_spt"]), "the fixture must actually withhold a year"
+        assert best["zmse_val"] != best["zmse_val_sp"]
+        assert info["best_selection_raw"] == pytest.approx(best[key]), (legacy, info, best)
+        assert info["select_on_withheld"] is legacy
+    print("selection reads zmse_val_sp by default and zmse_val only when asked")
+
+
+def test_same_cell_oversampling_draws_other_years_of_the_same_cell_and_is_a_noop_at_zero():
+    from src.community_encoder.train_DESK import desk_training as dt
+    torch.manual_seed(0)
+    T, H, W, L = 6, 3, 4, 5
+    z = torch.randn(T, H, W, L, requires_grad=True)
+    # pool: 9 cells with 1-6 supervised years each; one cell (flat 11) has a single year
+    pts = [(t, f) for f in range(9) for t in range(1 + f % 6)] + [(2, 11)]
+    pool_t = torch.tensor([p[0] for p in pts])
+    pool_flat = torch.tensor([p[1] for p in pts])
+    pool_x = torch.rand(len(pts), 7)
+    # frac 0: the same draw (and loss) as before, bit for bit
+    g1, g2 = torch.Generator().manual_seed(5), torch.Generator().manual_seed(5)
+    a = dt.spacetime_kernel_loss(z, pool_t, pool_flat, pool_x, num_pairs=64, generator=g1)
+    b = dt.spacetime_kernel_loss(z, pool_t, pool_flat, pool_x, num_pairs=64, generator=g2, same_cell_frac=0.0)
+    assert torch.equal(a, b)
+    # partners: same cell, never the point itself; -1 only for single-year cells
+    first = torch.arange(len(pts))
+    part = dt.same_cell_partners(pool_flat, first, generator=torch.Generator().manual_seed(1))
+    single = torch.tensor([sum(1 for q in pts if q[1] == p[1]) == 1 for p in pts])
+    assert torch.all(part[single] == -1)
+    ok = ~single
+    assert torch.all(pool_flat[part[ok]] == pool_flat[first[ok]])
+    assert torch.all(part[ok] != first[ok])
+    assert torch.all(pool_t[part[ok]] != pool_t[first[ok]])
+    # over many draws every other year of a multi-year cell is reached
+    reached = {int(dt.same_cell_partners(pool_flat, torch.tensor([17]), generator=torch.Generator().manual_seed(s))[0])
+               for s in range(200)}
+    assert reached == {i for i, p in enumerate(pts) if p[1] == pts[17][1] and i != 17}
+    # frac 1: the loss is computed and differentiable
+    loss = dt.spacetime_kernel_loss(z, pool_t, pool_flat, pool_x, num_pairs=64,
+                                    generator=torch.Generator().manual_seed(3), same_cell_frac=1.0)
+    loss.backward()
+    assert torch.isfinite(loss) and z.grad is not None
+
+
+def test_aux_head_trains_logs_and_resumes(tmp_path):
+    """The research auxiliary head (aux_targets): its term enters the loss, is logged per epoch,
+    rides in the checkpoint, and a resumed run restores it rather than re-initialising it."""
+    import contextlib
+    import io
+    import json as _json
+
+    from src.community_encoder.train_DESK import desk_training as D
+
+    sch = _schema()
+    dims = [s["dim"] for s in sch["streams"]]
+    T, H, W, L, S = 4, 6, 7, 16, 5
+    rng = np.random.default_rng(7)
+    cov = rng.normal(size=(T, H, W, sch["total_dim"])).astype("float32")
+    m = np.ones((H, W), bool)
+    years = list(range(2022, 2026))
+    tgt = {y: (rng.normal(size=(H, W, L)).astype("float32"), m, m,
+               np.ones((H, W), dtype="float32")) for y in years[1:]}
+    amask = np.zeros((2, H, W), bool)
+    amask[:, :3, :] = True
+    aux = {"t_idx": [1, 2], "Y": rng.normal(size=(2, H, W, S)).astype("float32"), "mask": amask,
+           "weight": 0.5, "label": "toy"}
+    traj = tmp_path / "traj.jsonl"
+    ck = tmp_path / "ck.pt"
+    kw = dict(latent_dim=L, ema_cfg={"earlystop_warmup": 0}, spatial_kernel=3, schema=sch, dropout=0.1,
+              trajectory_path=str(traj), checkpoint_path=str(ck), checkpoint_every=1, aux_targets=aux)
+    args = (cov, np.ones((T, H, W), bool), years, tgt,
+            _metric_dict(rng.random((H, W, 9)).astype("float32"), m, years), m, m, dims)
+    out = io.StringIO()
+    with contextlib.redirect_stdout(out):
+        D.train_model_ema(*args, epochs=3, stop_at_epoch=2, **kw)
+    txt = out.getvalue()
+    assert "AUX head 'toy'" in txt and "aux 'toy' mse" in txt, txt
+    rows = [_json.loads(l) for l in open(traj)]
+    assert all(np.isfinite(r["loss_aux"]) for r in rows), rows
+    import shutil
+    done = str(ck) + ".completed"
+    state = torch.load(done if os.path.exists(done) else ck, map_location="cpu", weights_only=False)
+    assert "aux_heads" in state and state["aux_heads"][0]["weight"].shape == (S, L)
+    if os.path.exists(done):
+        shutil.copy(done, ck)           # a finished run renames its checkpoint; resume from a copy
+    out2 = io.StringIO()
+    with contextlib.redirect_stdout(out2):
+        D.train_model_ema(*args, epochs=3, resume=True, **kw)
+    assert "RESUMED" in out2.getvalue(), out2.getvalue()
+    print("aux head: in the loss, logged, checkpointed, restored on resume")
+
+
+def test_metric_heads_and_learned_presence(tmp_path):
+    """E084: metric heads (own Ruzicka contract per source) train, log and ride in the checkpoint; the presence term's
+    learned readout (learned_head) gets trainable W, b."""
+    import contextlib
+    import io
+    import json as _json
+
+    from src.community_encoder.train_DESK import desk_training as D
+
+    sch = _schema()
+    dims = [s["dim"] for s in sch["streams"]]
+    T, H, W, L, S, N = 4, 6, 7, 16, 5, 40
+    rng = np.random.default_rng(12)
+    cov = rng.normal(size=(T, H, W, sch["total_dim"])).astype("float32")
+    m = np.ones((H, W), bool)
+    years = list(range(2022, 2026))
+    tgt = {y: (rng.normal(size=(H, W, L)).astype("float32"), m, m,
+               np.ones((H, W), dtype="float32")) for y in years[1:]}
+    heads = [{"t_idx": rng.integers(0, T, N), "row": rng.integers(0, H, N), "col": rng.integers(0, W, N),
+              "X": rng.gamma(1.0, 2.0, size=(N, S)).astype("float32"), "weight": 1.0, "dim": 6, "pairs": 64,
+              "label": lab} for lab in ("toy_cbc", "toy_ebird")]
+    P = (rng.random((N, S)) < 0.4).astype("float32"); P[:, 0] = 1.0
+    pres = {"t_idx": rng.integers(0, T, N), "row": rng.integers(0, H, N), "col": rng.integers(0, W, N), "P": P,
+            "W": rng.normal(size=(L, S)).astype("float32"), "b": np.zeros(S, "float32"), "weight": 0.5,
+            "label": "toy_pres", "learned_head": True}
+    traj = tmp_path / "traj.jsonl"; ck = tmp_path / "ck.pt"
+    args = (cov, np.ones((T, H, W), bool), years, tgt,
+            _metric_dict(rng.random((H, W, 9)).astype("float32"), m, years), m, m, dims)
+    out = io.StringIO()
+    with contextlib.redirect_stdout(out):
+        D.train_model_ema(*args, latent_dim=L, ema_cfg={"earlystop_warmup": 0}, spatial_kernel=3, schema=sch,
+                          dropout=0.1, trajectory_path=str(traj), checkpoint_path=str(ck), checkpoint_every=1,
+                          metric_heads=heads, presence_targets=pres, epochs=3, stop_at_epoch=2)
+    txt = out.getvalue()
+    assert "METRIC HEAD 'toy_cbc'" in txt and "metric head 'toy_ebird' mse" in txt, txt
+    rows = [_json.loads(l) for l in open(traj)]
+    assert rows and all(np.isfinite(r["loss_mhead_toy_cbc"]) for r in rows), rows
+    done = str(ck) + ".completed"
+    state = torch.load(done if os.path.exists(done) else ck, map_location="cpu", weights_only=False)
+    assert len(state["metric_heads"]) == 2 and state["metric_heads"][0]["weight"].shape == (6, L)
+    assert state["presence"]["W"].shape == (L, S)
+
+
+def test_private_dims_for_metric_heads(tmp_path):
+    """E086: per-head PRIVATE dims -- the model grows private outputs only the heads read; z keeps its width, the
+    plain forward is unchanged, each head's weight is (d, L + its private width), the orthogonality term runs, and
+    the private gradient reaches the model's private layer."""
+    import contextlib
+    import io
+
+    from src.community_encoder.train_DESK import desk_training as D
+    from src.community_encoder.train_DESK.model_arch import MultiStreamAutoencoder
+
+    sch = _schema()
+    dims = [s["dim"] for s in sch["streams"]]
+    T, H, W, L, S, N = 4, 6, 7, 16, 5, 40
+    rng = np.random.default_rng(13)
+    # the model: plain forward identical to a private_dim=0 net's outputs shape-wise; with_private adds the block
+    net = MultiStreamAutoencoder(dims, L, 3, 0.0, private_dim=5).eval()
+    x = torch.randn(1, H, W, sch["total_dim"]); mk = torch.ones(1, H, W)
+    z0, r0 = net(x, mk)
+    z1, r1, pv = net(x, mk, True)
+    assert z0.shape == (1, H, W, L) and pv.shape == (1, H, W, 5)
+    assert torch.allclose(z0, z1) and torch.allclose(r0, r1)
+    with pytest.raises(ValueError):
+        MultiStreamAutoencoder(dims, L, 3, 0.0)(x, mk, True)
+    cov = rng.normal(size=(T, H, W, sch["total_dim"])).astype("float32")
+    m = np.ones((H, W), bool)
+    years = list(range(2022, 2026))
+    tgt = {y: (rng.normal(size=(H, W, L)).astype("float32"), m, m,
+               np.ones((H, W), dtype="float32")) for y in years[1:]}
+    heads = [{"t_idx": rng.integers(0, T, N), "row": rng.integers(0, H, N), "col": rng.integers(0, W, N),
+              "X": rng.gamma(1.0, 2.0, size=(N, S)).astype("float32"), "weight": 1.0, "dim": 6, "pairs": 64,
+              "label": lab, "private": pk} for lab, pk in (("toy_cbc", 3), ("toy_ebird", 2))]
+    ck = tmp_path / "ck.pt"
+    args = (cov, np.ones((T, H, W), bool), years, tgt,
+            _metric_dict(rng.random((H, W, 9)).astype("float32"), m, years), m, m, dims)
+    out = io.StringIO()
+    with contextlib.redirect_stdout(out):
+        model, _ema = D.train_model_ema(*args, latent_dim=L, ema_cfg={"earlystop_warmup": 0}, spatial_kernel=3,
+                                        schema=sch, dropout=0.1, checkpoint_path=str(ck), checkpoint_every=1,
+                                        metric_heads=heads, private_orth=0.5, epochs=3, stop_at_epoch=2)[:2]
+    assert "linear 16+3 private" in out.getvalue() and "private orthogonality mean sq corr" in out.getvalue()
+    assert model.private_dim == 5
+    done = str(ck) + ".completed"
+    state = torch.load(done if os.path.exists(done) else ck, map_location="cpu", weights_only=False)
+    assert state["metric_heads"][0]["weight"].shape == (6, L + 3)
+    assert state["metric_heads"][1]["weight"].shape == (6, L + 2)
+    assert "private_out.weight" in state["model"]
+    # the private layer TRAINED: the trainer seeds (0) and builds the net first, so its init is reproducible here,
+    # and only the head loss can move private_out
+    torch.manual_seed(0)
+    fresh = MultiStreamAutoencoder(dims, L, 3, 0.1, private_dim=5)
+    w = state["model"]["private_out.weight"]
+    assert torch.isfinite(w).all() and not torch.allclose(fresh.private_out.weight, w)
+
+
+@pytest.mark.parametrize("same_frac", [0.0, 0.5])
+def test_ruzicka_term_trains_and_logs(tmp_path, same_frac):
+    """E081: the CBC Ruzicka term (fixed calibration, random pairs) enters the loss and is logged per evaluated epoch.
+    E086s: also with half the pairs same-cell, cross-year."""
+    import contextlib
+    import io
+    import json as _json
+
+    from src.community_encoder.train_DESK import desk_training as D
+
+    sch = _schema()
+    dims = [s["dim"] for s in sch["streams"]]
+    T, H, W, L, S, N = 4, 6, 7, 16, 5, 40
+    rng = np.random.default_rng(11)
+    cov = rng.normal(size=(T, H, W, sch["total_dim"])).astype("float32")
+    m = np.ones((H, W), bool)
+    years = list(range(2022, 2026))
+    tgt = {y: (rng.normal(size=(H, W, L)).astype("float32"), m, m,
+               np.ones((H, W), dtype="float32")) for y in years[1:]}
+    rz = {"t_idx": rng.integers(0, T, N), "row": rng.integers(0, H, N), "col": rng.integers(0, W, N),
+          "X": rng.gamma(1.0, 2.0, size=(N, S)).astype("float32"), "a": -0.05, "b": 0.7, "weight": 1.0,
+          "pairs": 64, "label": "toy_ruz", "same_cell_frac": same_frac, "same_cell_min_gap": 1}
+    traj = tmp_path / "traj.jsonl"
+    args = (cov, np.ones((T, H, W), bool), years, tgt,
+            _metric_dict(rng.random((H, W, 9)).astype("float32"), m, years), m, m, dims)
+    out = io.StringIO()
+    with contextlib.redirect_stdout(out):
+        D.train_model_ema(*args, latent_dim=L, ema_cfg={"earlystop_warmup": 0}, spatial_kernel=3, schema=sch,
+                          dropout=0.1, trajectory_path=str(traj), ruzicka_targets=rz, epochs=3, stop_at_epoch=2)
+    txt = out.getvalue()
+    assert "RUZICKA term 'toy_ruz'" in txt and "ruzicka 'toy_ruz' mse" in txt, txt
+    rows = [_json.loads(l) for l in open(traj)]
+    assert rows and all(np.isfinite(r["loss_ruzicka"]) for r in rows), rows
+    assert ("same-cell share" in txt) == (same_frac > 0), txt
+
+
+def test_ruzicka_same_cell_pairs():
+    """E086s: with same_frac > 0 the first share of the pairs are same-cell, the gap mask holds, the rest are uniform;
+    with same_frac 0 the draw is exactly the E081 one (same generator state -> same indices)."""
+    import torch
+
+    from src.community_encoder.train_DESK import desk_training as D
+
+    rng = np.random.default_rng(3)
+    N = 200
+    r = torch.as_tensor(rng.integers(0, 4, N)); c = torch.as_tensor(rng.integers(0, 5, N))
+    t = torch.as_tensor(rng.integers(0, 40, N))
+    base = {"X": torch.zeros(N, 3), "t": t, "r": r, "c": c, "pairs": 500}
+    torch.manual_seed(0); ij = torch.randint(0, N, (2, 500))
+    torch.manual_seed(0); i0, j0, ok0 = D.ruzicka_pairs({**base, "same_frac": 0.0}, N)
+    assert torch.equal(i0, ij[0]) and torch.equal(j0, ij[1]) and bool(ok0.all())
+    ruzt = {**base, "same_frac": 0.4, "min_gap": 10, **D.ruzicka_cell_groups(r, c)}
+    i, j, ok = D.ruzicka_pairs(ruzt, N)
+    ns = 200
+    assert i.shape == (500,) and j.shape == (500,)
+    assert bool(((r[i[:ns]] == r[j[:ns]]) & (c[i[:ns]] == c[j[:ns]])).all())          # same cell
+    assert torch.equal(ok[:ns], (t[i[:ns]] - t[j[:ns]]).abs() >= 10) and bool(ok[ns:].all())
+    assert 0 < int(ok[:ns].sum()) < ns
+    # partners cover the cell's cell-years, not one fixed entry
+    assert len(set(zip(i[:ns].tolist(), j[:ns].tolist()))) > ns // 2
+
+
+def test_presence_term_completeness_slopes(tmp_path):
+    """E078: with a per-list 'comp' covariate the presence term learns a species-specific slope (gamma), checkpointed."""
+    import contextlib
+    import io
+
+    from src.community_encoder.train_DESK import desk_training as D
+
+    sch = _schema()
+    dims = [s["dim"] for s in sch["streams"]]
+    T, H, W, L, S, N = 4, 6, 7, 16, 5, 30
+    rng = np.random.default_rng(10)
+    cov = rng.normal(size=(T, H, W, sch["total_dim"])).astype("float32")
+    m = np.ones((H, W), bool)
+    years = list(range(2022, 2026))
+    tgt = {y: (rng.normal(size=(H, W, L)).astype("float32"), m, m,
+               np.ones((H, W), dtype="float32")) for y in years[1:]}
+    P = (rng.random((N, S)) < 0.4).astype("float32"); P[:, 0] = 1.0
+    pres = {"t_idx": rng.integers(0, T, N), "row": rng.integers(0, H, N), "col": rng.integers(0, W, N), "P": P,
+            "W": rng.normal(size=(L, S)).astype("float32"), "b": np.zeros(S, "float32"), "weight": 0.5,
+            "label": "toy_comp", "comp": rng.normal(size=N).astype("float32")}
+    ck = tmp_path / "ck.pt"
+    args = (cov, np.ones((T, H, W), bool), years, tgt,
+            _metric_dict(rng.random((H, W, 9)).astype("float32"), m, years), m, m, dims)
+    with contextlib.redirect_stdout(io.StringIO()):
+        D.train_model_ema(*args, latent_dim=L, ema_cfg={"earlystop_warmup": 0}, spatial_kernel=3, schema=sch,
+                          dropout=0.1, checkpoint_path=str(ck), checkpoint_every=1, presence_targets=pres,
+                          epochs=3, stop_at_epoch=2)
+    done = str(ck) + ".completed"
+    state = torch.load(done if os.path.exists(done) else ck, map_location="cpu", weights_only=False)
+    assert state["presence"]["gamma"].shape == (S,) and float(state["presence"]["gamma"].abs().sum()) > 0
+
+
+def test_presence_term_trains_logs_and_resumes(tmp_path):
+    """The research presence-only term (presence_targets, E069b): enters the loss through a FIXED readout plus a
+    learned species offset, is logged per evaluated epoch, rides in the checkpoint, and is restored on resume."""
+    import contextlib
+    import io
+    import json as _json
+    import shutil
+
+    from src.community_encoder.train_DESK import desk_training as D
+
+    sch = _schema()
+    dims = [s["dim"] for s in sch["streams"]]
+    T, H, W, L, S, N = 4, 6, 7, 16, 5, 30
+    rng = np.random.default_rng(9)
+    cov = rng.normal(size=(T, H, W, sch["total_dim"])).astype("float32")
+    m = np.ones((H, W), bool)
+    years = list(range(2022, 2026))
+    tgt = {y: (rng.normal(size=(H, W, L)).astype("float32"), m, m,
+               np.ones((H, W), dtype="float32")) for y in years[1:]}
+    P = (rng.random((N, S)) < 0.4).astype("float32")
+    P[:, 0] = 1.0                                         # every list records something
+    pres = {"t_idx": rng.integers(0, T, N), "row": rng.integers(0, H, N), "col": rng.integers(0, W, N), "P": P,
+            "W": rng.normal(size=(L, S)).astype("float32"), "b": np.zeros(S, "float32"), "weight": 0.5,
+            "label": "toy_presence"}
+    traj = tmp_path / "traj.jsonl"
+    ck = tmp_path / "ck.pt"
+    kw = dict(latent_dim=L, ema_cfg={"earlystop_warmup": 0}, spatial_kernel=3, schema=sch, dropout=0.1,
+              trajectory_path=str(traj), checkpoint_path=str(ck), checkpoint_every=1, presence_targets=pres)
+    args = (cov, np.ones((T, H, W), bool), years, tgt,
+            _metric_dict(rng.random((H, W, 9)).astype("float32"), m, years), m, m, dims)
+    out = io.StringIO()
+    with contextlib.redirect_stdout(out):
+        D.train_model_ema(*args, epochs=3, stop_at_epoch=2, **kw)
+    txt = out.getvalue()
+    assert "PRESENCE term 'toy_presence'" in txt and "presence 'toy_presence' nll" in txt, txt
+    rows = [_json.loads(l) for l in open(traj)]
+    assert rows and all(np.isfinite(r["loss_presence"]) for r in rows), rows
+    done = str(ck) + ".completed"
+    state = torch.load(done if os.path.exists(done) else ck, map_location="cpu", weights_only=False)
+    assert "presence" in state and state["presence"]["delta"].shape == (S,)
+    if os.path.exists(done):
+        shutil.copy(done, ck)
+    out2 = io.StringIO()
+    with contextlib.redirect_stdout(out2):
+        D.train_model_ema(*args, epochs=3, resume=True, **kw)
+    assert "RESUMED" in out2.getvalue(), out2.getvalue()
+
+
+def test_aux_off_leaves_the_checkpoint_fingerprint_unchanged(tmp_path):
+    """Adding the aux option must not move any existing run's fingerprint (resume would refuse it)."""
+    import contextlib
+    import io
+
+    from src.community_encoder.train_DESK import desk_training as D
+
+    sch = _schema()
+    dims = [s["dim"] for s in sch["streams"]]
+    T, H, W, L = 3, 5, 6, 16
+    rng = np.random.default_rng(8)
+    cov = rng.normal(size=(T, H, W, sch["total_dim"])).astype("float32")
+    m = np.ones((H, W), bool)
+    years = list(range(2023, 2026))
+    tgt = {y: (rng.normal(size=(H, W, L)).astype("float32"), m, m,
+               np.ones((H, W), dtype="float32")) for y in years[1:]}
+    args = (cov, np.ones((T, H, W), bool), years, tgt,
+            _metric_dict(rng.random((H, W, 9)).astype("float32"), m, years), m, m, dims)
+    fps = []
+    for kwx in ({}, {"aux_targets": None}):
+        ck = tmp_path / f"ck{len(fps)}.pt"
+        with contextlib.redirect_stdout(io.StringIO()):
+            D.train_model_ema(*args, latent_dim=L, ema_cfg={"earlystop_warmup": 0}, spatial_kernel=3,
+                              epochs=3, stop_at_epoch=2, schema=sch, dropout=0.1,
+                              checkpoint_path=str(ck), checkpoint_every=1, **kwx)
+        f = str(ck) + ".completed" if os.path.exists(str(ck) + ".completed") else ck
+        fps.append(torch.load(f, map_location="cpu", weights_only=False)["fingerprint"])
+    assert fps[0] == fps[1]
+
+
+def test_two_aux_heads_each_with_its_own_mask_and_log(tmp_path):
+    """A list of aux targets gets one head each (eBird and CBC cover different cells)."""
+    import contextlib
+    import io
+    import json as _json
+
+    from src.community_encoder.train_DESK import desk_training as D
+
+    sch = _schema()
+    dims = [s["dim"] for s in sch["streams"]]
+    T, H, W, L = 4, 6, 7, 16
+    rng = np.random.default_rng(9)
+    cov = rng.normal(size=(T, H, W, sch["total_dim"])).astype("float32")
+    m = np.ones((H, W), bool)
+    years = list(range(2022, 2026))
+    tgt = {y: (rng.normal(size=(H, W, L)).astype("float32"), m, m,
+               np.ones((H, W), dtype="float32")) for y in years[1:]}
+    m1, m2 = np.zeros((2, H, W), bool), np.zeros((3, H, W), bool)
+    m1[:, :3] = True
+    m2[:, 3:] = True
+    auxl = [{"t_idx": [1, 2], "Y": rng.normal(size=(2, H, W, 4)).astype("float32"), "mask": m1, "weight": 0.2,
+             "label": "a"},
+            {"t_idx": [0, 1, 3], "Y": rng.normal(size=(3, H, W, 6)).astype("float32"), "mask": m2, "weight": 0.1,
+             "label": "b"}]
+    traj = tmp_path / "t.jsonl"
+    out = io.StringIO()
+    with contextlib.redirect_stdout(out):
+        D.train_model_ema(cov, np.ones((T, H, W), bool), years, tgt,
+                          _metric_dict(rng.random((H, W, 9)).astype("float32"), m, years), m, m, dims,
+                          latent_dim=L, ema_cfg={"earlystop_warmup": 0}, spatial_kernel=3, epochs=2, schema=sch,
+                          dropout=0.1, trajectory_path=str(traj), aux_targets=auxl)
+    txt = out.getvalue()
+    assert "AUX head 'a'" in txt and "AUX head 'b'" in txt and "aux 'b' mse" in txt, txt
+    row = _json.loads(open(traj).readline())
+    assert np.isfinite(row["loss_aux_a"]) and np.isfinite(row["loss_aux_b"]), row
+
+
+def test_train_drop_mask_drops_only_training_cells():
+    """E073 C3: an explicit drop mask may remove TRAINING cells only -- never a held-out, buffer or out-of-domain
+    cell -- so the validation set of an extrapolation holdout stays identical to its control's."""
+    from src.community_encoder.train_DESK.desk_training import apply_train_drop_mask
+    H, W = 5, 6
+    ho = np.zeros((H, W), bool); ho[:, 0] = True
+    buf = np.zeros((H, W), bool); buf[:, 1] = True
+    dom = np.ones((H, W), bool); dom[4, :] = False
+    prior = np.zeros((H, W), bool); prior[0, 5] = True              # e.g. a train_frac block already dropped
+    mask = np.ones((H, W), bool)                                     # ask to drop everything
+    new, n = apply_train_drop_mask(prior, mask, dom, ho, buf)
+    assert not (new & ho).any() and not (new & buf).any(), "held-out or buffer cells were dropped"
+    assert not (new & ~dom).any(), "a cell outside the split domain was marked"
+    assert new[0, 5], "an earlier drop was lost"
+    expect = dom & ~ho & ~buf
+    assert (new == expect).all() and n == int((expect & ~prior).sum())
+    try:
+        apply_train_drop_mask(prior, np.ones((H + 1, W), bool), dom, ho, buf)
+    except SystemExit:
+        pass
+    else:
+        raise AssertionError("a wrong-shaped mask must be refused")
+    print(f"train_drop_mask: {n} training cells added, validation set untouched")

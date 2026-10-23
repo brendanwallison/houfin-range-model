@@ -1834,7 +1834,7 @@ def load_observed(config):
     return log1p_community(X_raw), keys, meta, X_raw
 
 
-def desk_z_ema(config, keys, return_raw=False):
+def desk_z_ema(config, keys, return_raw=False, return_private=False):
     """DESK ``z_ema`` for every row of ``keys`` → ``(N, latent)``.
 
     ``return_raw=True`` also returns the RAW z at the same keys, from the same single encode, as a
@@ -1874,7 +1874,10 @@ def desk_z_ema(config, keys, return_raw=False):
         grid[s:s + len(cells), :2] = cells
         grid[s:s + len(cells), 2] = y
     t0 = time.perf_counter()
-    Z, ok = encode_points(config, grid)
+    if return_private:   # research (E086): the private dims, smoothed by the same EMA, as a final value
+        Z, ok, Pv = encode_points(config, grid, with_private=True)
+    else:
+        Z, ok = encode_points(config, grid)
     print(f"[bbs-routes] encoded {len(cells)} cells x {len(years)} yr "
           f"({years[0]}-{years[-1]}) in {time.perf_counter() - t0:.1f}s", flush=True)
 
@@ -1895,12 +1898,17 @@ def desk_z_ema(config, keys, return_raw=False):
     ti = np.array([year_ix[int(y)] for y in keys[:, 2]])
     ci = np.array([cell_ix[(int(r), int(c))] for r, c in keys[:, :2]])
     Zout = stack[ti, ci].astype("float32")
+    extra = ()
+    if return_private:
+        pst = Pv.reshape(len(years), len(cells), Pv.shape[1])
+        p_ema = apply_output_ema(pst, hl, valid=valid) if (ema_on and np.isfinite(hl)) else pst
+        extra = (p_ema[ti, ci].astype("float32"), pst[ti, ci].astype("float32"))
     info = {"output_ema_applied": bool(ema_on and np.isfinite(hl)),
             "ema_half_life": hl if np.isfinite(hl) else None,
             "ema_warmup_start": warm, "encode_years": [years[0], years[-1]]}
     if return_raw:
-        return Zout, info, raw_stack[ti, ci].astype("float32")
-    return Zout, info
+        return (Zout, info, raw_stack[ti, ci].astype("float32")) + extra
+    return (Zout, info) + extra
 
 
 def build_spacetime_bar(config, keys, X_raw_all, latent_dim):

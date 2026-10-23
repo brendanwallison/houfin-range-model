@@ -1,0 +1,14 @@
+{
+ "exp": "E035",
+ "name": "attribution-replication",
+ "group": "cpu",
+ "overlay": "research/overlays/desk_tempho_1995_seed1.json",
+ "cmd": [
+  "bash",
+  "-c",
+  "set -e; for spec in desk_tempho_1995_s1:E022/desk-tempho1995-seed1-f946971f1b3e:desk_tempho_1995_seed1 desk_tempho_1995_s2:E022/desk-tempho1995-seed2-aeb2bee5efae:desk_tempho_1995_seed2 desk_tempho_1985_s1:E022/desk-tempho1985-seed1-581ee4a21fc2:desk_tempho_1985_seed1 desk_tempho_1985_s2:E022/desk-tempho1985-seed2-945e69ec063c:desk_tempho_1985_seed2; do IFS=: read -r cc run ov <<< \"$spec\"; {python} research/exp/backcast_attribution.py --cache {cache}/$cc --run-dir {outroot}/$run/desk --overlay research/overlays/$ov.json --out {out}/$cc; done"
+ ],
+ "expected_minutes": 60,
+ "summarize": ["bash", "-c", "for d in {out}/*/; do {python} research/exp/backcast_attribution.py --summarize $d; done"],
+ "note": "E035c: land-use vs climate parts of DESK's withheld-decade change on four models, with the species readout"
+}

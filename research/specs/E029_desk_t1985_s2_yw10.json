@@ -1,0 +1,15 @@
+{
+ "exp": "E029",
+ "name": "desk-tempho1985-seed2-yw10",
+ "group": "gpu",
+ "overlay": "research/overlays/desk_tempho_1985_seed2_yw10.json",
+ "after_jobs": ["E029/desk-yw-smoke"],
+ "cmd": [
+  "bash",
+  "-c",
+  "set -e; export RESEARCH_OUT={out} TMPDIR={out}/tmp MPLCONFIGDIR={out}/tmp/mpl WANDB_MODE=offline WANDB_DIR={out}; mkdir -p {out}/desk {out}/tmp; {python} scripts/run_encoder.py desk; {python} research/exp/cache.py --out {cache}/desk_tempho_1985_s2_yw10; {python} research/exp/epoch_variant.py --run {out} --overlay research/overlays/desk_tempho_1985_seed2_yw10.json --cache-out {cache}/desk_tempho_1985_s2_yw10_late --work {out}/late"
+ ],
+ "expected_minutes": 75,
+ "summarize": ["python", "-c", "import json; s=json.load(open('{out}/desk/run_summary.json')); print({k: s.get(k) for k in ('best_epoch','best_val_kernel','best_val_zmse','epochs_run')})"],
+ "note": "E029: tempho1985 seed 2, year weights from 1986 with half-life 10 y"
+}

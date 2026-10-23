@@ -1,0 +1,62 @@
+"""Where everything lives, in one place. Every research/ script imports this; nothing hardcodes a path.
+
+The data tree mirrors TACC's: ``/work/07980/bwa386/ls6`` is a symlink to ``~/houfin/work`` (created once,
+with sudo), so ``HOUFIN_PROCESSED`` is byte-for-byte the string the checkpoints recorded on TACC and
+``model_arch.check_basis_matches`` accepts them without edits. ``SCRATCH`` is local, so ``HOUFIN_DATA``
+differs from TACC's -- nothing compares that one as a string.
+
+Run everything inside WSL (the Windows interpreter cannot import ``desk_training``: ``import resource``).
+"""
+import os
+from pathlib import Path
+
+HOME = Path(os.path.expanduser("~"))
+REPO = "/mnt/c/Dev/houfin-range-model"            # the Windows checkout the IDE edits, seen from WSL
+TACC_WORK = "/work/07980/bwa386/ls6"              # symlink -> ~/houfin/work
+WORK_REAL = HOME / "houfin" / "work"
+SCRATCH = HOME / "houfin" / "scratch"
+HOUFIN_DATA = f"{SCRATCH}/houfin/data"
+HOUFIN_PROCESSED = f"{TACC_WORK}/houfin/processed"
+VENV_PY = str(HOME / "houfin" / "venv" / "bin" / "python")
+PUEUE = str(HOME / ".local" / "bin" / "pueue")    # `wsl -e` is not a login shell: ~/.local/bin is not on PATH
+CODE_SNAPSHOTS = HOME / "houfin" / "runs" / "code"
+OUT_ROOT = WORK_REAL / "houfin" / "research"      # experiment outputs (real path: works before the symlink)
+CACHE_ROOT = WORK_REAL / "houfin" / "research_cache"
+RESEARCH = Path(REPO) / "research"                # state files, versioned
+
+#: Threads per job by queue group. 4 CPU slots x 6 + 1 GPU slot x 8 slightly oversubscribes 32 threads,
+#: which is fine for BLAS-bound work that rarely runs all slots at once.
+THREADS = {"cpu": 6, "cpu2": 4, "gpu": 8, "default": 8}
+
+
+def job_env(group="default", code_dir=None, overlay=None, extra=None):
+    """The environment a research job runs in. Pure apart from reading os.environ."""
+    env = dict(os.environ)
+    n = str(THREADS.get(group, 8))
+    env.update({
+        "WORK": TACC_WORK, "SCRATCH": str(SCRATCH),
+        "HOUFIN_DATA": HOUFIN_DATA, "HOUFIN_PROCESSED": HOUFIN_PROCESSED,
+        "PYTHONUNBUFFERED": "1", "MPLBACKEND": "Agg",
+        "OMP_NUM_THREADS": n, "OPENBLAS_NUM_THREADS": n, "MKL_NUM_THREADS": n,
+        "NUMEXPR_NUM_THREADS": n,
+    })
+    if code_dir:
+        env["PYTHONPATH"] = f"{code_dir}:{code_dir}/src"
+    if group.startswith("cpu"):   # "cpu2": a second CPU lane (E073), same no-GPU rule
+        # gp_kernels.knn_union defaults to CUDA; a CPU-slot job must not contend for the one GPU.
+        env["CUDA_VISIBLE_DEVICES"] = ""
+    else:
+        # A GPU job must SEE the GPU. pueue captures the enqueuing shell's environment, and the interactive launcher
+        # (launch.py, "rx py") sets CUDA_VISIBLE_DEVICES="" -- so a job enqueued from there silently ran DESK on the
+        # CPU at ~300 s/epoch instead of ~6 s (E048, 2026-10-11). Drop an empty value inherited that way.
+        if env.get("CUDA_VISIBLE_DEVICES") == "":
+            env.pop("CUDA_VISIBLE_DEVICES")
+        # The caching allocator grew a DESK run to ~26 GB (21.7 dedicated + 4.3 SHARED system memory, via the Windows
+        # driver's sysmem fallback) while its live tensors peaked at 15.3 GB; on TACC's 16 GB card the same code fit.
+        # Expandable segments keep the reserved pool close to what is live, so it stays in VRAM (2026-10-09).
+        env.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
+    if overlay:
+        env["ESK_DESK_CONFIG"] = overlay if os.path.isabs(overlay) else f"{code_dir}/{overlay}"
+    if extra:
+        env.update({k: str(v) for k, v in extra.items()})
+    return env

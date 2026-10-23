@@ -1,0 +1,9 @@
+{
+  "exp": "E012", "name": "placebo-paired-gp_species_base", "group": "cpu",
+  "env": {"RESEARCH_EXP": "E012"},
+  
+  "cmd": ["bash", "-c", "set -e; for spec in 'C0 --kernel iso' 'C1 --kernel split' 'P --kernel placebo' 'CP --kernel split+placebo'; do set -- $spec; n=$1; shift; {python} research/exp/fast_arm.py --cache {cache}/gp_species_base --out {out}/$n --tag E012c_$n --dump-change \"$@\" > /dev/null; done; for pr in 'C1 P' 'CP P' 'C1 C0' 'P C0'; do set -- $pr; {python} research/exp/paired_arms.py {out}/$1 {out}/$2 --out {out}/paired_$1_vs_$2.json > /dev/null; done"],
+  "expected_minutes": 10,
+  "summarize": ["bash", "-c", "for pr in 'C1 P' 'CP P' 'C1 C0' 'P C0'; do set -- $pr; {python} research/exp/paired_arms.py {out}/$1 {out}/$2 2>/dev/null | grep -E 'paired|(time|space)[a-z_ ]+(place|total)/(0.1|0.3)'; done"],
+  "note": "pre-registered in research/experiments/E012.md (E012c)"
+}

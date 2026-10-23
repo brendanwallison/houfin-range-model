@@ -1,0 +1,10 @@
+{
+ "exp": "E031",
+ "name": "shared-change",
+ "group": "cpu",
+ "overlay": "config/overlays/gp_species_base.json",
+ "cmd": ["python", "research/exp/shared_change.py", "--cache", "{cache}/gp_species_base", "--out", "{out}", "--k", "5"],
+ "expected_minutes": 10,
+ "summarize": ["python", "research/exp/shared_change.py", "--summarize", "{out}"],
+ "note": "E031: shared-with-associates vs unique species change (habitat-like vs species dynamics), with an observer check"
+}

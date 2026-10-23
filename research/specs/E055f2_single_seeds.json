@@ -1,0 +1,10 @@
+{
+ "exp": "E055",
+ "name": "single-seed-reference",
+ "group": "cpu",
+ "overlay": "research/overlays/desk_tempho_1995_seed1.json",
+ "cmd": ["bash", "-c", "set -e; for t in 1995 1985; do for k in 2 3 4; do for st in '' _late; do {python} research/exp/fair_rivals.py --cache {cache}/desk_tempho_${t}_s$k$st --ref-cache {cache}/desk_tempho_${t}_s1$st --out {out}/desk_tempho_${t}_s$k$st --incremental --n-pos 96 --pos-seeds 1 2 3 4 5 --strong-base --tag _p96; done; done; done"],
+ "expected_minutes": 60,
+ "summarize": ["bash", "-c", "for d in {out}/*/; do f=$d/fair_rivals_incr_p96.json; [ -f $f ] || continue; {python} -c \"import json,sys; r=json.load(open(sys.argv[1])); s=r['space_level']; v=r['vs_ref']; g=lambda k: '%+.3f [%+.3f,%+.3f]' % (v[k]['diff'], *v[k]['ci']); print(sys.argv[2][:28].ljust(28), 'space %.4f (vs lin %+.3f)' % (s['desk_pooled'], s['desk_minus_linear']), '| change', g('desk - desk_ref'), '| beyond placebo', g('placebo+desk_within - placebo+desk_ref_within'))\" $f $(basename $d); done"],
+ "note": "E055f2: seeds 2-4 alone vs seed 1 (both T0s, selected and late): the single-seed reference for the E055f ensemble"
+}

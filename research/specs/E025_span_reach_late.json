@@ -1,0 +1,22 @@
+{
+ "exp": "E025",
+ "name": "span-reach-late",
+ "group": "cpu",
+ "overlay": "config/overlays/gp_species_base.json",
+ "after_jobs": [
+  "E025/late-caches"
+ ],
+ "cmd": [
+  "bash",
+  "-c",
+  "{python} research/exp/span_reach.py --out {out} --desk-models t1985s1=desk_tempho_1985_s1:1986:2025 t1985s1L=desk_tempho_1985_s1_late:1986:2025 t1985s2=desk_tempho_1985_s2:1986:2025 t1985s2L=desk_tempho_1985_s2_late:1986:2025 t1995s1=desk_tempho_1995_s1:1996:2025 t1995s1L=desk_tempho_1995_s1_late:1996:2025 t1995s2=desk_tempho_1995_s2:1996:2025 t1995s2L=desk_tempho_1995_s2_late:1996:2025 s1976=desk_span_1976_1995:1976:1995 s1976L=desk_span_1976_1995_late:1976:1995 s1986=desk_span_1986_2005:1986:2005 s1986L=desk_span_1986_2005_late:1986:2005 s1996=desk_span_1996_2015:1996:2015 s1996L=desk_span_1996_2015_late:1996:2015"
+ ],
+ "expected_minutes": 30,
+ "summarize": [
+  "python",
+  "research/exp/span_reach.py",
+  "--summarize",
+  "{out}"
+ ],
+ "note": "E025: selected (epoch 65-162) vs late (epoch 490) states of the 7 HEAD DESK runs, raw and recalibrated backcast, same draws"
+}

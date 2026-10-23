@@ -1,0 +1,11 @@
+{
+ "exp": "E067",
+ "name": "composition",
+ "group": "gpu",
+ "after_jobs": ["E059/sedentary-verify"],
+ "overlay": "research/overlays/desk_tempho_1995_seed1.json",
+ "cmd": ["bash", "-c", "set -e; export BLR_DEVICE=cuda BLR_MAX_ITER=100 BLR_STARTS=0.5; {python} research/exp/species_similarity.py --cache {cache}/desk_tempho_1995_s1 --out {out}/species_similarity.csv; for t in 1995 1985; do {python} research/exp/composition_rrr.py --cache {cache}/desk_tempho_${t}_s1 --similarity {out}/species_similarity.csv --out-root {out}/surr_t$t; for s in C96 Cres C96_migA C96_A Cres_resA; do {python} research/exp/fair_rivals.py --cache {out}/surr_t$t/$s --out {out}/${s}_t$t --incremental --n-pos 96 --pos-seeds 1 2 --strong-base --lean --tag _p96dev --target dev --save-species --z-keys-only; done; done; for t in 1995 1985; do {python} research/exp/species_strata.py --similarity {out}/species_similarity.csv --species-filter {out}/surr_t$t/eval_species_B.txt --level --runs {out}/C96_t$t {out}/Cres_t$t {out}/C96_migA_t$t {out}/C96_A_t$t {out}/Cres_resA_t$t {outroot}/E059/sedentary-verify-a63962b77659/s1_t$t --contrast Cres_t$t:C96_t$t --contrast C96_migA_t$t:C96_t$t --contrast C96_A_t$t:C96_t$t --contrast Cres_resA_t$t:Cres_t$t --contrast C96_t$t:s1_t$t --out {out}/strata_t$t.json; done"],
+ "expected_minutes": 90,
+ "summarize": ["bash", "-c", "for t in 1995 1985; do echo \"== T0 $t\"; {python} research/exp/species_strata.py --similarity {out}/species_similarity.csv --species-filter {out}/surr_t$t/eval_species_B.txt --level --runs {out}/C96_t$t {out}/Cres_t$t {out}/C96_migA_t$t {out}/C96_A_t$t {out}/Cres_resA_t$t {outroot}/E059/sedentary-verify-a63962b77659/s1_t$t --contrast Cres_t$t:C96_t$t --contrast C96_migA_t$t:C96_t$t --contrast C96_A_t$t:C96_t$t --contrast Cres_resA_t$t:Cres_t$t --contrast C96_t$t:s1_t$t | grep -E 'CONTRASTS|sedentary|resident|all ' ; done"],
+ "note": "E067: training-community composition vs sedentary out-of-community targets (reduced-rank surrogates; eval half B; paired contrasts vs C96)"
+}

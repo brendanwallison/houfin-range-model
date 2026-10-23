@@ -1,0 +1,18 @@
+{
+ "exp": "E070",
+ "name": "e070-fit-P1-truth",
+ "group": "cpu",
+ "overlay": "research/overlays/desk_tempho_1995_seed1.json",
+ "cmd": [
+  "bash",
+  "-c",
+  "set -e; {python} research/exp/cbc_effort_model.py --effort counters --completeness bench --family bern --data /mnt/e/Datasets/cbc_raw/prepared/cbc_circles_res.npz --completeness-file /mnt/e/Datasets/cbc_raw/prepared/completeness_res.npz --steps 6000 --out {out}/fit_P1_truth.npz"
+ ],
+ "expected_minutes": 30,
+ "summarize": [
+  "bash",
+  "-c",
+  "cat {out}/fit_P1_truth_meta.json"
+ ],
+ "note": "E070 truth: P1 ridge on real data (residents)"
+}

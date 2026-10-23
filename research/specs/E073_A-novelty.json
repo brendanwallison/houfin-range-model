@@ -1,0 +1,21 @@
+{
+ "exp": "E073",
+ "name": "A-novelty",
+ "group": "cpu2",
+ "env": {
+  "BLR_MAX_ITER": "100",
+  "BLR_STARTS": "0.5"
+ },
+ "cmd": [
+  "bash",
+  "-c",
+  "set -e; {python} research/exp/anchored_delta.py novelty --cache {cache}/desk_tempho_1995_s1 --out {out}"
+ ],
+ "expected_minutes": 20,
+ "summarize": [
+  "bash",
+  "-c",
+  "grep -v '^ *$' {out}/../log.txt | tail -80"
+ ],
+ "note": "E073 part A: exposure and 1920-39 novelty of covariate deviations (cover / mgmt clock / climate / human), analog support, direction (no bird data)"
+}

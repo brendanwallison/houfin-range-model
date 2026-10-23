@@ -1,0 +1,26 @@
+{
+ "exp": "E020",
+ "name": "rank-fidelity-desk_tempho_1995_s2-seedmodel",
+ "group": "cpu",
+ "after_jobs": [
+  "E003/esk-desk_tempho_1995_s2"
+ ],
+ "cmd": [
+  "python",
+  "research/exp/rank_fidelity.py",
+  "--cache",
+  "{cache}/desk_tempho_1995_s2",
+  "--out",
+  "{out}",
+  "--population",
+  "withheld"
+ ],
+ "expected_minutes": 8,
+ "summarize": [
+  "python",
+  "research/exp/rank_fidelity.py",
+  "--summarize",
+  "{out}"
+ ],
+ "note": "re-run on a current-code seed replicate: the archived tempho models backcast worse than current-code retrains of the same config"
+}

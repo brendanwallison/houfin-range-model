@@ -1,0 +1,21 @@
+{
+ "exp": "E073",
+ "name": "C3-desk-coverdrop",
+ "group": "gpu",
+ "overlay": "research/overlays/E073_C3_desk_t1995_s1_coverdrop.json",
+ "after_jobs": [
+  "E073/C3-mask"
+ ],
+ "cmd": [
+  "bash",
+  "-c",
+  "set -e; export RESEARCH_OUT={out} TMPDIR={out}/tmp MPLCONFIGDIR={out}/tmp/mpl WANDB_MODE=offline WANDB_DIR={out}; mkdir -p {out}/desk {out}/tmp; {python} scripts/run_encoder.py desk; {python} research/exp/cache.py --out {cache}/desk_tempho_1995_s1_coverdrop"
+ ],
+ "expected_minutes": 150,
+ "summarize": [
+  "bash",
+  "-c",
+  "grep -v '^ *$' {out}/../log.txt | tail -40"
+ ],
+ "note": "E073 C3: DESK T0 1996 seed 1 retrained WITHOUT the beyond-range cover-trend training cells (+ research cache)"
+}

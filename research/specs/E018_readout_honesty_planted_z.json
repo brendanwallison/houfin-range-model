@@ -1,0 +1,25 @@
+{
+ "exp": "E018",
+ "name": "readout-honesty-planted-z",
+ "group": "cpu",
+ "cmd": [
+  "python",
+  "research/exp/readout_honesty.py",
+  "--cache",
+  "{cache}/planted_v2_tempho1995",
+  "--out",
+  "{out}",
+  "--population",
+  "withheld",
+  "--species-regex",
+  "^z_"
+ ],
+ "expected_minutes": 8,
+ "summarize": [
+  "python",
+  "research/exp/readout_honesty.py",
+  "--summarize",
+  "{out}"
+ ],
+ "note": "the instrument's floor for E018 (truth linear in DESK z)"
+}

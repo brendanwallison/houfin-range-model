@@ -1,0 +1,10 @@
+{
+ "exp": "E039",
+ "name": "fair-rivals-strong",
+ "group": "cpu",
+ "overlay": "research/overlays/desk_tempho_1995_seed1.json",
+ "cmd": ["bash", "-c", "set -e; for t in 1995 1985; do for s in 1 2; do for st in sel late; do if [ $st = sel ]; then c=desk_tempho_${t}_s${s}; else c=desk_tempho_${t}_s${s}_late; fi; A=$(ls -d {outroot}/E038/attr-commondir-t${t}-${st}-*/ | head -1)ctrl_s${s}/attribution_cells.npz; {python} research/exp/fair_rivals.py --cache {cache}/$c --out {out}/$c --incremental --n-pos 96 --pos-seeds 1 2 3 4 5 --strong-base --attr $A --tag _strong; done; done; done"],
+ "expected_minutes": 60,
+ "summarize": ["bash", "-c", "for c in desk_tempho_1995_s1 desk_tempho_1995_s1_late desk_tempho_1985_s1 desk_tempho_1985_s1_late desk_tempho_1995_s2 desk_tempho_1995_s2_late desk_tempho_1985_s2 desk_tempho_1985_s2_late; do echo == $c; {python} research/exp/fair_rivals.py --summarize {out}/$c | grep -E 'DESK gain|strong base|DROP|-land |-luh_uniform|-luh_pattern|-climate|-luh_mgmt'; done"],
+ "note": "E039n: DESK gain beyond the strong linear base (placebo + kxt32 + supervised cross-fitted within map + EMA within PCs) and with a buffer-fitted readout; drop parts under the strong base"
+}

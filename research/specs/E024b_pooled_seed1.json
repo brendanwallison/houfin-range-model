@@ -1,0 +1,17 @@
+{
+ "exp": "E024",
+ "name": "span-pooled-seed1",
+ "group": "cpu",
+ "overlay": "config/overlays/gp_species_base.json",
+ "after_jobs": [
+  "E024/desk-span-1986-2005-seed1"
+ ],
+ "cmd": [
+  "bash",
+  "-c",
+  "set -e; P='{python} research/exp/span_pooled.py --out {out}'; $P --t0 1986 --short desk_span_1986_2005 desk_span_1986_2005_s1 --long desk_tempho_1985_s1 desk_tempho_1985_s2; $P --t0 1986 --tag late --short desk_span_1986_2005_late desk_span_1986_2005_s1_late --long desk_tempho_1985_s1_late desk_tempho_1985_s2_late"
+ ],
+ "expected_minutes": 10,
+ "summarize": ["python", "research/exp/span_pooled.py", "--summarize", "{out}"],
+ "note": "E024b decision: pooled short-minus-long with two short-span seeds"
+}

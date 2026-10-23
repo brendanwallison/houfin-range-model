@@ -1,0 +1,13 @@
+{
+ "exp": "E092",
+ "name": "trait-gate",
+ "group": "cpu",
+ "overlay": "research/overlays/desk_tempho_1995_seed1.json",
+ "cmd": [
+  "bash",
+  "-c",
+  "set -e; {python} research/exp/fast_arm.py --cache {cache}/desk_tempho_1995_s1 --kernel split --out {out}/t1995_s1 --tag t1995_s1_split --exp E092 --n-boot 50; {python} research/exp/fast_arm.py --cache {cache}/desk_tempho_1995_s2 --kernel split --out {out}/t1995_s2 --tag t1995_s2_split --exp E092 --n-boot 50; {python} research/exp/fast_arm.py --cache {cache}/desk_tempho_1995_s3 --kernel split --out {out}/t1995_s3 --tag t1995_s3_split --exp E092 --n-boot 50; {python} research/exp/fast_arm.py --cache {cache}/desk_tempho_1995_s4 --kernel split --out {out}/t1995_s4 --tag t1995_s4_split --exp E092 --n-boot 50; {python} research/exp/fast_arm.py --cache {cache}/desk_tempho_1985_s1 --kernel split --out {out}/t1985_s1 --tag t1985_s1_split --exp E092 --n-boot 50; {python} research/exp/fast_arm.py --cache {cache}/desk_tempho_1985_s2 --kernel split --out {out}/t1985_s2 --tag t1985_s2_split --exp E092 --n-boot 50; {python} research/exp/e092_trait_gate.py --run t1995_s1={out}/t1995_s1 --run t1995_s2={out}/t1995_s2 --run t1995_s3={out}/t1995_s3 --run t1995_s4={out}/t1995_s4 --run t1985_s1={out}/t1985_s1 --run t1985_s2={out}/t1985_s2 --avonet ${HOUFIN_DATA}/avonet/TraitData/AVONET1_BirdLife.csv --taxonomy ${HOUFIN_DATA}/avonet/eBird_taxonomy.csv --out {out}/gate --perms 500"
+ ],
+ "expected_minutes": 40,
+ "note": "E092 stage 0: AVONET traits vs per-species split-readout amplitudes (between / within), CV R2 vs permutations"
+}

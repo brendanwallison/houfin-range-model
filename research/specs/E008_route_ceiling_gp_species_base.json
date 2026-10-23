@@ -1,0 +1,8 @@
+{
+  "exp": "E008", "name": "route-ceiling-gp_species_base", "group": "cpu",
+  "after_jobs": ["E002/cache-gp_species_base"],
+  "cmd": ["python", "research/exp/route_ceiling.py", "--cache", "{cache}/gp_species_base", "--out", "{out}"],
+  "expected_minutes": 5,
+  "summarize": ["python", "research/exp/route_ceiling.py", "--summarize", "{out}"],
+  "note": "O3 null check (Phase 1.2): split-half change budget on same-route cells vs all vs a size-matched random subset"
+}

@@ -1,0 +1,71 @@
+{
+ "_comment": "E055e: input masking roughly doubled (p_base .15->.3, p_month .15->.3, span_prob .3->.5, p_stream .1->.2)",
+ "paths": {
+  "desk_output_dir": "${RESEARCH_OUT}/desk"
+ },
+ "desk": {
+  "z_dir": "${HOUFIN_PROCESSED}/encoder/esk_balanced/spacetime",
+  "trend": {
+   "holdout_years": [
+    1966,
+    1967,
+    1968,
+    1969,
+    1970,
+    1971,
+    1972,
+    1973,
+    1974,
+    1975,
+    1976,
+    1977,
+    1978,
+    1979,
+    1980,
+    1981,
+    1982,
+    1983,
+    1984,
+    1985,
+    1986,
+    1987,
+    1988,
+    1989,
+    1990,
+    1991,
+    1992,
+    1993,
+    1994,
+    1995
+   ],
+   "direction_anchor_year": 1996,
+   "direction_withheld_anchor_year": 1975,
+   "common_holdout_years": [
+    1966,
+    1967,
+    1968,
+    1969,
+    1970,
+    1971,
+    1972,
+    1973,
+    1974,
+    1975
+   ]
+  },
+  "seed": 1
+ },
+ "augment": {
+  "enabled": true,
+  "p_base": 0.3,
+  "p_month": 0.3,
+  "span_prob": 0.5,
+  "span_max": 3,
+  "p_level": 0.1,
+  "p_stream": 0.2,
+  "max_masked_frac": 0.5,
+  "_tile_comment": "tile_cells sets the SPATIAL granularity of the masking. 0 = one draw shared by the whole grid, which gives temporal diversity but none spatially: every cell sees the same variables missing, so nothing teaches the encoder that different regions must cope with losing different ones. Since the holdout is spatially BLOCKED, spatial generalization is exactly what is measured -- and the observed gap is a 4.8x train/val MSE ratio with rotation at ~1.00 on train and ~0.86 on val. Kept at or below trend.block_cells so the masking varies at a scale no coarser than the evaluation unit: at 6 a tile IS a holdout block. Costs ~0.83 s/epoch (874 draws/mask) vs 0.37 s at 12 and 0 when disabled -- ~7 min over 500 epochs, measured. 0 restores the old grid-wide behaviour.",
+  "tile_cells": 6,
+  "_persist_comment": "PERSISTENCE tier -- a second draw taken ONCE per optimizer step and held across all years of the window, multiplied into the per-year draw, so a group goes missing for the WHOLE window rather than one year. MEASURED AND TURNED OFF; do not re-enable without new evidence. Ablation at 500 epochs, single change, everything else fixed: WITH persist Val 0.0827 / rot va 0.58 / raw va 1.05 / train 0.0575; WITHOUT Val 0.0796 / rot va 0.64 / raw va 1.12 / train 0.0544. Both splits improved without it, so the train/val ratio was unchanged at ~1.45x -- it cost temporal amplitude and bought no generalization. The rationale does not survive scrutiny either: it was meant to teach the encoder to cope with a structurally absent covariate (BUI is CONUS-only), but BUI absence is ALREADY a real observed regime in every training year over ~63% of cells, flagged by bui_avail. Augmentation is for missingness the model would NOT otherwise see; the same point applies to LUH-3 post-2024 and HYDE pre-1951. The machinery stays -- tested, zero cost when off, and legitimate for a covariate complete in training but absent at inference, which none here are. To re-enable, add a persist block with nonzero rates; augment.persist defaults to all-zero."
+ }
+}

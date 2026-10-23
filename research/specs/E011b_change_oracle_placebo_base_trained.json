@@ -1,0 +1,9 @@
+{
+  "exp": "E011", "name": "change-oracle-placebo-base_trained", "group": "cpu",
+  "env": {"RESEARCH_EXP": "E011"},
+  
+  "cmd": ["python", "research/exp/change_oracle.py", "--cache", "{cache}/gp_species_base", "--out", "{out}", "--population", "trained", "--ranks", "24", "64"],
+  "expected_minutes": 8,
+  "summarize": ["python", "research/exp/change_oracle.py", "--summarize", "{out}"],
+  "note": "E011 with placebo arms (position basis, static features): research/experiments/E011.md PLACEBO CONTROL"
+}

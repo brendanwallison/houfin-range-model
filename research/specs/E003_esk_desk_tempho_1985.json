@@ -1,0 +1,9 @@
+{
+  "exp": "E003", "name": "esk-desk_tempho_1985", "group": "gpu",
+  "overlay": "config/overlays/desk_tempho_1985.json",
+  "after_jobs": ["E002/cache-desk_tempho_1985"],
+  "cmd": ["python", "research/exp/esk_project.py", "--cache", "{cache}/desk_tempho_1985"],
+  "expected_minutes": 5,
+  "summarize": ["python", "-c", "import numpy as np; E=np.load('{cache}/desk_tempho_1985/esk_epochs.npz'); print('cell-epochs', len(E['cells']), 'withheld', int(E['withheld'].sum()), 'median years', float(np.median(E['n_years'])))"],
+  "note": "ESK coordinates of the observed community per cell-year and per ABBA half of each cell-epoch (input of E011)"
+}

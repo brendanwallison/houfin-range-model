@@ -1,0 +1,10 @@
+{
+ "exp": "E045",
+ "name": "change-map",
+ "group": "cpu",
+ "overlay": "research/overlays/desk_tempho_1995_seed1.json",
+ "cmd": ["bash", "-c", "set -e; for s in 1 2; do for st in '' _late; do {python} research/exp/change_map.py --cache {cache}/desk_tempho_1995_s${s}${st} --out {out}/desk_tempho_1995_s${s}${st} --w1 1996 2005 --w2 2016 2025; {python} research/exp/change_map.py --cache {cache}/desk_tempho_1985_s${s}${st} --out {out}/desk_tempho_1985_s${s}${st} --w1 1986 1995 --w2 2016 2025; done; done"],
+ "expected_minutes": 10,
+ "summarize": ["bash", "-c", "for d in {out}/desk_tempho_*; do {python} research/exp/change_map.py --summarize $d; done"],
+ "note": "E045: cross-place covariate-change -> community-change maps fitted inside the trained era, applied to held-out cells' backcast change, vs DESK"
+}

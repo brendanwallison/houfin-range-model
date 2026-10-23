@@ -1,0 +1,18 @@
+{
+ "exp": "E084",
+ "name": "desk-t1995-s2-ep150-s5presl",
+ "group": "gpu",
+ "overlay": "research/overlays/desk_tempho_1995_seed2_ep150_s5presl.json",
+ "cmd": [
+  "bash",
+  "-c",
+  "set -e; export RESEARCH_OUT={out} TMPDIR={out}/tmp MPLCONFIGDIR={out}/tmp/mpl WANDB_MODE=offline WANDB_DIR={out}; mkdir -p {out}/desk {out}/tmp; {python} scripts/run_encoder.py desk; {python} research/exp/cache.py --out {cache}/desk_tempho_1995_s2_ep150_s5presl; {python} research/exp/epoch_variant.py --run {out} --overlay research/overlays/desk_tempho_1995_seed2_ep150_s5presl.json --cache-out {cache}/desk_tempho_1995_s2_ep150_s5presl_late --work {out}/late"
+ ],
+ "expected_minutes": 30,
+ "summarize": [
+  "python",
+  "-c",
+  "import json; s=json.load(open('{out}/desk/run_summary.json')); print({k: s.get(k) for k in ('best_epoch','epochs_run')})"
+ ],
+ "note": "E084: 150-epoch s5presl seed 2"
+}

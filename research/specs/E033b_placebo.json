@@ -1,0 +1,14 @@
+{
+ "exp": "E033",
+ "name": "readout-scaling-placebo",
+ "group": "cpu",
+ "overlay": "config/overlays/desk_tempho_1995.json",
+ "cmd": [
+  "bash",
+  "-c",
+  "set -e; for spec in desk_tempho_1995_s1:1996 desk_tempho_1985_s1:1986; do IFS=: read -r cc t0 <<< \"$spec\"; mkdir -p {out}/$cc; {python} research/exp/readout_scaling.py --cache {cache}/$cc --out {out}/$cc --t0 $t0; done"
+ ],
+ "expected_minutes": 10,
+ "summarize": ["bash", "-c", "for d in {out}/*/; do {python} research/exp/readout_scaling.py --summarize $d | head -3; done"],
+ "note": "E033b: the split readout against a position x time placebo, DESK + placebo, and a continental-time-only block"
+}

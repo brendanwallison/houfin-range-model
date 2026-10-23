@@ -1,0 +1,532 @@
+# Hypothesis register. The loop extends, merges, and retires entries; nothing is deleted (use status).
+# status: open | testing | supported | refuted | superseded | parked
+# priority: 1 = run first (null/instrument + cheapest downstream levers), 2, 3
+# kill: the written criterion that would refute it. blr: what it implies for the downstream regression if true.
+# evidence: list of {job: <registry job id>, exp: EXXX, dir: for|against|neutral, strength: weak|moderate|strong, note}
+# Only VERIFIED results (PROTOCOL.md gate) may move status to supported/refuted.
+
+# ---------------- null and instrument: is there resolvable, habitat-related change to explain? ----------------
+- id: E1
+  stage: E
+  priority: 1
+  status: testing
+  statement: Most cell-level change is noise, so no_change is near-unbeatable on RMSE even for a perfect habitat model.
+  test: Planted calibration (Phase 1.4) on the real route-year keys; achievable change skill vs temporal-signal share.
+  kill: A planted perfect-kernel species with realistic temporal share achieves change skill well above the observed DESK skill.
+  blr: If true, change RMSE skill is the wrong headline; use captured share of resolvable change and attenuation slope.
+  parents: []
+  evidence:
+  - {job: "E007/planted-tempho1995-b3091e48eefb", exp: E007, dir: for, strength: weak, note: "pilot, 12 species/generator: a perfect-form z readout reaches TRUE change attenuation 0.2-0.75, rising with prevalence; below 10% prevalence the true change is <3% of observed change variance. E009 (60/generator) queued. UNVERIFIED."}
+  - {job: "skeptic:E009", exp: E009, dir: neutral, strength: moderate, note: "the E009 ceiling is a perfect DESK (z generator = DESK z). Species linear in the smoothed OBSERVED community, seen through DESK, reach only 0.04-0.09 true attenuation; real species sit at 0.02-0.25x of that. ~85-90% of the gap to E009 ceiling is DESK backcast."}
+- id: T0
+  stage: T
+  priority: 1
+  status: testing
+  statement: DESK's temporal under-movement is the MSE-optimal shrinkage toward unreliable within-cell targets, not a defect.
+  test: Per-component attenuation slope of DESK dz on ESK dz vs the split-half reliability of ESK dz.
+  kill: Attenuation slopes sit clearly below the reliability (DESK shrinks more than noise justifies).
+  blr: If true, the fix is target reliability (pooling, smoothing, longer windows), not DESK capacity or loss.
+  parents: []
+  evidence:
+  - {job: "E004/atlas-base-trained-6e20bd69e4b0", exp: E004, dir: against, strength: moderate, note: "per-component change reliability 0.73-0.89 vs DESK raw slope 0.04-0.66 (median ~0.3). Reframe: DESK's temporal energy/signal 0.54 exceeds corr^2 0.24, i.e. it moves MORE than a calibrated predictor with its correlation (0.49) would; the limit is information, not shrinkage. UNVERIFIED."}
+  - {job: "skeptic:E004", exp: E004, dir: against, strength: moderate, note: "robust to centering: slope of truth on DESK 0.425 vs corr^2 0.165 (trained), 0.331 vs 0.045 (withheld) - DESK over-moves for its information; a calibrated DESK would be shrunk x0.62 / x0.37."}
+- id: O3
+  stage: O
+  priority: 1
+  status: testing
+  statement: Route turnover between epochs survives the ABBA year split and is counted as real change, inflating every ceiling.
+  test: Noise ceiling and atlas on cells with the same routes in both epochs vs all cells.
+  kill: Same-route and all-cell ceilings agree within bootstrap CI.
+  blr: If true, every 'share of available change' denominator is too large; DESK is closer to the real ceiling than reported.
+  parents: []
+  evidence:
+  - {job: "E008/route-ceiling-gp_species_base-fd61e474bade", exp: E008, dir: against, strength: moderate, note: "same-route cells carry 11% less real change per cell than route-turnover cells (dev species, block-bootstrap CI excludes 0; community total 19%); removing it lowers the all-cell budget ~3% (dev) / ~6% (total). Detectable, not a big factor. CI from an interactive run; E008 rerun queued. UNVERIFIED."}
+- id: C1
+  stage: O
+  priority: 1
+  status: open
+  statement: Much same-cell change is a continental shift in total abundance, not composition, and belongs to the K trend.
+  test: Split each cell's change into log-total and composition (relative abundance) parts; map and size each.
+  kill: The composition part carries most of the resolvable change.
+  blr: If true, a time basis (K trend) or per-species trend term, not z, should carry the bulk shift.
+  parents: []
+  evidence: []
+- id: E4
+  stage: E
+  priority: 1
+  status: testing
+  statement: The independent oracle is weak partly through errors-in-variables (noisy half-window community features) or off-span projection.
+  test: Oracle on planted species with full vs half windows; report split-half reliability of oracle z and the norm ratio.
+  kill: Half-window oracle skill matches full-window skill on planted species and the norm ratio is near 1.
+  blr: If true, the oracle understates the representational ceiling; 'oracle weak too' is partly an artifact.
+  parents: []
+  evidence:
+  - {job: "adhoc:E011-dev", exp: E011, dir: for, strength: weak, note: "observed half-window ESK features read through a level beta do WORSE than DESK z (captured 0.04 vs 0.10, base r24); with change-fitted beta they tie (0.26 vs 0.25). The noisy observed community is a weak oracle. UNVERIFIED."}
+  - {job: "skeptic:E011", exp: E011, dir: for, strength: moderate, note: "errors-in-variables confirmed and sized: half-A noise turns the true-community level readout from ~0/+0.09 into -0.05/+0.04 (tempho1995/base)."}
+- id: P1
+  stage: O
+  priority: 1
+  status: testing
+  statement: Held-out species' decadal change is mostly continental trend plus colonization fronts, which belong to the mechanistic model, not habitat.
+  test: Decompose change into year effects, distance-to-range-edge terms, and local residual; size each per species.
+  kill: The local residual carries most of the resolvable change for range-stable species.
+  blr: If true, grade DESK on range-stable species; fronts are the age model's dispersal job.
+  parents: []
+  evidence:
+  - {job: "adhoc:E011-dev", exp: E011, dir: neutral, strength: weak, note: "continental trend alone captures 9% of available change; community-driven change (chg_dev) 17-21%; both 25-29%. >70% of resolvable species change is not linear in community change + trend. UNVERIFIED."}
+  - {job: "E031/shared-change-d22db828f447", exp: E031, dir: for, strength: moderate, note: "~90% of a graded species' 40-year change pattern is not shared with its 5 closest spatial associates (shared share 0.084 vs 0.003 random); the shared part survives unchanged observers. Species' own dynamics dominate. UNVERIFIED."}
+- id: E2
+  stage: E
+  priority: 2
+  status: open
+  statement: The graded species are mostly migrants and niches off the community's selection axes, so pooled medians answer a generality question.
+  test: Stratify every metric by migration class and by distance to the community on its selection axes (community_axes.py).
+  kill: Skill does not differ by stratum.
+  blr: If true, decisions for House Finch use the near-community stratum.
+  parents: []
+  evidence: []
+- id: E3
+  stage: E
+  priority: 2
+  status: open
+  statement: tempho_1975's time group sits 1-10 y from trained data while the downstream gap is 26-64 y, so it flatters DESK and the spacetime GP alike.
+  test: Skill vs years beyond the training edge, pooled across tempho runs; lead with tempho_1995.
+  kill: Skill is flat in reach.
+  blr: If true, only long-reach results speak to 1902-1939.
+  parents: []
+  evidence: []
+
+# ---------------- representation (ESK) ----------------
+- id: R1
+  stage: R
+  priority: 1
+  status: testing
+  statement: (user) Spatial turnover dwarfs temporal turnover, so eigen-ordering and truncation keep spatial structure and drop temporal structure.
+  test: Atlas noise-corrected temporal vs spatial retention at r=6/24/64, inside vs outside the top-k subspace, matched at equal exact-kernel distance.
+  kill: At matched exact-kernel distance, temporal retention equals spatial retention (truncation drops small differences, not temporal directions).
+  blr: If true, the positional 24-dim cut and the eigenvalue-proportional prior both discard the backcast signal.
+  parents: []
+  evidence:
+  - {job: "E004/atlas-base-trained-6e20bd69e4b0", exp: E004, dir: against, strength: moderate, note: "strong form: at matched exact-kernel size temporal retention r24 0.228 [0.216,0.238] vs spatial (lag 1) 0.232 [0.223,0.241]; r6 0.067 vs 0.084, r64 0.391 vs 0.388. The 40-y change (exact 0.430) is SMALLER than the adjacent-cell difference (0.482), so lag 1 is an upper bound on the matched spatial value. Truncation drops small differences, not temporal directions. UNVERIFIED."}
+  - {job: "skeptic:E004", exp: E004, dir: for, strength: weak, note: "the matched-size equality is confounded by a between-route spatial nugget (fits 0.14-0.30 of lag 1; ESK keeps ~none): against the STRUCTURED spatial part r24 retention is 0.36-0.62 vs temporal 0.23-0.31 (ratio 0.4-0.7, strong form), and the 40-y change is ~90-110 km, not < 27 km. Undetermined until the nugget is measured directly (N1)."}
+  - {job: "adhoc:E014-dev", exp: E014, dir: against, strength: moderate, note: "route-level, effort-matched: the nugget is large (0.29 at < 10 km) but ESK keeps ~24% of it; temporal retention equals spatial at the same raw size (0.280 vs 0.273); the regionally coherent part of the 40-y change is kept at 45-71% (r24), as well as structured spatial differences; only the route-specific remainder is dropped (~6%). Strong form not supported. UNVERIFIED; replication queued."}
+- id: R2p
+  stage: R
+  priority: 2
+  status: open
+  statement: "||z|| measures how well a community is represented; poorer representation of early or window communities reads as change."
+  test: "||z||^2 by epoch and region; BLR change skill on normalized vs raw z."
+  kill: "||z||^2 is flat across epochs and normalization does not change change skill."
+  blr: If true, part of predicted change is representational artifact.
+  parents: []
+  evidence: []
+- id: R3
+  stage: R
+  priority: 3
+  status: open
+  statement: Landmarks and eigenpairs favour the dense modern, coastal record.
+  test: Nystrom kernel error by era and distance to coast.
+  kill: Kernel error flat by era and coast distance.
+  blr: If true, early-era z is less faithful exactly where backcasts need it.
+  parents: []
+  evidence: []
+- id: R5
+  stage: R
+  priority: 2
+  status: open
+  statement: The 96 reference species do not span out-of-community species' niches.
+  test: Independent oracle and direct regression on the 96 observed abundances, by guild and migration class.
+  kill: Direct regression on the 96 abundances predicts held-out species about as well as the full species pool would.
+  blr: If true, z is the wrong basis for off-axis species regardless of DESK.
+  parents: []
+  evidence:
+  - {job: "E031/shared-change-d22db828f447", exp: E031, dir: against, strength: weak, note: "the community readout (E030, 5-7%) already carries most of what a species' own associates share with it (8-9%): the reference community is not missing much shared signal for out-of-community species. UNVERIFIED."}
+- id: R6
+  stage: R
+  priority: 2
+  status: open
+  statement: The 96 were chosen for spatial discrimination and under-represent temporal change.
+  test: Temporal share of change in the 96 vs all species vs random 96-species draws.
+  kill: The 96 carry a typical temporal share.
+  blr: If true, community choice itself limits temporal signal; a temporally informative community would help.
+  parents: []
+  evidence: []
+
+# ---------------- transfer (DESK) ----------------
+- id: T1
+  stage: T
+  priority: 2
+  status: open
+  statement: L_stab (~90% of loss, equal weight per cell-year) plus almost no same-cell cross-year metric pairs make shrinking temporal deviations optimal.
+  test: DESK error split between/within cells; ridge-surrogate frontier of spatial vs temporal fit as the within-cell weight rises.
+  kill: The surrogate frontier is flat (more within-cell weight buys no temporal fit) or DESK already sits on it.
+  blr: If true, reweighting training toward within-cell change is the lever.
+  parents: []
+  evidence:
+  - {job: "E043/evaluation-attribution-724947a125e0", exp: E043, dir: against, strength: moderate, note: "over-sampling same-cell cross-year pairs in DESK's metric loss (10%, 40%; two seeds) does not improve the full backcast at the late state (+0.001..+0.005, 0/4 reach +0.02) and costs spatial fit in all four runs; the stabilizing term already supervises each cell-year's own target, so the pair mix is not the lever for temporal fidelity."}
+- id: T2
+  stage: T
+  priority: 3
+  status: open
+  statement: Temporal information exists inside DESK but is suppressed at the head.
+  test: Linear probe from hidden activations vs from z to ESK within-cell deviations.
+  kill: Probe on activations does no better than on z.
+  blr: If true, a head-only retrain could recover temporal signal cheaply.
+  parents: []
+  evidence: []
+- id: T3
+  stage: T
+  priority: 3
+  status: open
+  statement: Standardizing covariates on the 2025 spatial spread makes temporal anomalies tiny inputs, and static streams give a location shortcut.
+  test: Per-channel within/between SD ratios; counterfactual swaps of dynamic streams across years; per-stream Jacobian norms.
+  kill: Dynamic streams drive z change in proportion to their temporal variance.
+  blr: If true, anomaly-standardized inputs or explicit change features are the lever.
+  parents: []
+  evidence: []
+- id: T4
+  stage: T
+  priority: 2
+  status: testing
+  statement: Space-for-time mismatch - spatial covariate-to-community slopes differ from temporal slopes.
+  test: Mundlak within/between regression of ESK components on covariates; the sign of the gap predicts over- vs under-movement.
+  kill: Within and between slopes agree.
+  blr: If true, no spatially trained map can backcast correctly without temporal supervision.
+  parents: []
+  evidence:
+  - {job: "adhoc:E011-dev", exp: E011, dir: for, strength: weak, note: "the readout analogue (community->species): level-fitted beta on community change captures 4-10% (base) / -5% (tempho1995 withheld) of available species change; change-fitted beta on the SAME features 25-29%. Interactive development run; E011 jobs queued. UNVERIFIED."}
+  - {job: "adhoc:E016-dev", exp: E016, dir: for, strength: moderate, note: "covariate->community map fitted in the trained era: between-cell (spatial) coefficients predict NONE of the temporal community change (corr 0.03 trained / 0.02 backcast); within-cell coefficients 0.42 / 0.27, as good as DESK (0.41 / 0.21) and better calibrated (0.91 / 0.75 vs 0.62 / 0.37). UNVERIFIED; replications queued."}
+  - {job: "skeptic3:E016", exp: E016, dir: neutral, strength: moderate, note: "pure space-for-time predicts none of the decadal change (single-year cross-section betas -0.03 to +0.01 in every cache; robust). But the within-cell advantage is regional TREND persistence: a position x time placebo with no covariates matches or beats the within map (covariates add +0.03-0.05). The lever is not within-cell coefficients."}
+  - {job: "E035/attribution-luh-split-7463753ad088", exp: E035, dir: for, strength: moderate, note: "DESK's space-for-time error is its THERMAL reading: the temperature part leans +0.29-0.30 toward analogs with corr ~0.00-0.03 (four models, E035d/e); precipitation alone carries no consistent lean (-0.04 to +0.07, size 0.06), so the moisture lean (+0.14-0.17) is the temperature-derived channels (CMD/CMI/PAS/RH). Caveat (skeptic): the analog direction is built mostly from climate channels. UNVERIFIED."}
+  - {job: "E038/attribution-statT-c353d73c439e", exp: E038, dir: for, strength: moderate, note: "TRAINING-time test of the thermal route: DESK retrained with temperature held at each place's 1966-2025 mean (four models, two start years): the backcast's lean toward analog places falls to 30-47% of the seed-matched controls' while its match with real change holds (mean -0.004) and spatial fit is unchanged. The space-for-time error runs through year-to-year temperature; residual lean likely via temperature-derived moisture channels. UNVERIFIED (skeptic pending)."}
+  - {job: "skeptic:E038", exp: E038, dir: against, strength: moderate, note: "WITHDRAWS the E038 entry: the lean reduction was mostly a yardstick change (Dir built from each model's own cached covariates, static temperature in the static models). On a common dynamic Dir the static models lean 0.48-0.85x the controls' at selected states and MORE than them at late states (4 of 4), with lower corr at late states (4 of 4). Scratch check by the skeptic; E038b re-measures."}
+  - {job: "E042/evaluation-attribution-ece17a9df62d", exp: E042, dir: for, strength: moderate, note: "input restriction does not remove the space-for-time lean: with temperature AND management static the late-state backcast leans MORE than controls (+0.08/+0.10, common yardstick, paired) and matches real change less (-0.05/-0.08); E038b (temperature) and E041 (management) show the same. The lean moves into the remaining channels and their combination: structural to a covariate-to-community map learned from spatial variation. UNVERIFIED."}
+  - {job: "E039/fair-rivals-e74b27758ef2", exp: E039, dir: for, strength: moderate, note: "same estimand, same rows: pooled covariate maps (one coefficient set, between-dominated) score 0.05-0.11 while the Mundlak within block scores 0.27-0.35 -- the space-for-time mismatch replicates on the local seed-1/2 models (E016 did it on TACC models)."}
+- id: T6
+  stage: T
+  priority: 2
+  status: open
+  statement: Output and input EMAs smooth away change, and the shipped raw z is not what was supervised.
+  test: Temporal spectra of target, z_ema, raw z; grade both with raw z after a fitted lag.
+  kill: Raw z with a fitted lag matches z_ema's skill and the spectra agree.
+  blr: If true, the age model receives a temporally unvalidated object.
+  parents: []
+  evidence: []
+- id: T9
+  stage: T
+  priority: 3
+  status: open
+  statement: 1902-1939 covariates fall outside training support (EMA warm-up from 1940; sparser climate stations; HYDE decadal pre-1951; BUI 5-yearly, CONUS-only).
+  test: Per-year covariate novelty; raw z behaviour 1902-1965.
+  kill: 1902-1939 novelty within the 1966-2025 range and raw z smooth across 1940.
+  blr: If true, backcast uncertainty must grow before 1940 and the BLR has no mechanism for it.
+  parents: []
+  evidence:
+  - {job: "adhoc:luh-trajectories", exp: E035, dir: for, strength: weak, note: "LUH fertilizer and irrigation channels are flat from 1902 to ~1950-60 (fertl_c3ann 0-2 kg/ha to 1950, 77 by 2025) while class fractions drift all century; with E035e (DESK's land-use signal is mostly a clock read from these trends) this is a likely mechanism for production's backcast saturating before ~1960: the clock DESK reads stops before 1950. E035f (production freeze) testing. Descriptive."}
+  - {job: "E035/clock-freeze-0fe1fe59731a", exp: E035, dir: for, strength: moderate, note: "production (3,902 cells): freezing LUH fertilizer + irrigation at 1950 leaves ~half of DESK's movement since 1950 (0.48-0.67 of actual), all LUH a third or less; classes and temperature barely matter; everything frozen = 0.023 flat. Those channels are flat before 1950, so production barely moves before 1950: the saturation is explained (one model). UNVERIFIED."}
+  - {job: "E041/movement-profile-a5c44d15e124", exp: E041, dir: against, strength: moderate, note: "REFINES the E035f entry: measured from 1946-55, production moves ~0.03/decade 1902-1950 vs ~0.05 after (|z(1902-11) - z(1946-55)| 0.142 vs 0.331 for 2016-25) -- not frozen; its distance from today plateaus because pre-1950 movement runs in a different direction. Static-management models move before 1950 exactly as much as controls; static temperature ~20% less in both eras. UNVERIFIED."}
+- id: T5
+  stage: T
+  priority: 3
+  status: open
+  statement: The drivers of real community change are not in the covariates (pesticides, forest maturation, WNV, CRP, feeders, invasions). Testable only by elimination.
+  test: High-capacity delta-covariate to delta-community model vs a covariate-free regional smoother.
+  kill: Covariate-change model explains most resolvable change.
+  blr: If true, a temporal residual term (B5) is mandatory.
+  parents: []
+  evidence:
+  - {job: "skeptic3:E016", exp: E016, dir: for, strength: moderate, note: "covariate change adds only +0.025-0.053 beyond position x time trends in predicting held-out decadal community change; a within map on cell-detrended covariate anomalies scores ~0."}
+# ---------------- readout (BLR): the downstream lever ----------------
+  - {job: "E027/desk-plus-covariate-blocks-6977de015080", exp: E027, dir: for, strength: weak, note: "neither nonlinear (RFF) nor multi-timescale covariate surrogates extend the reach beyond the best short-span fit, and they add little to DESK's z: the covariates' decadal temporal content looks largely used already. UNVERIFIED."}
+  - {job: "E027/controls-t0-1986-6ea8f06d0d96", exp: E027, dir: for, strength: moderate, note: "covariate-clock placebo (each cell's mean covariate position moved only along the continental trajectory) matches or beats cell-specific RFF covariate maps at the longest spans (1966-71: +0.017 / +0.025 / -0.020 at T0 1996/1986/1976): a cell's own covariate change adds nothing measurable beyond a shared trajectory x environment. UNVERIFIED."}
+  - {job: "adhoc:skeptic-E027c", exp: E027, dir: for, strength: moderate, note: "skeptic controls: the clock is a time index (random covariate directions do as well; composition-free trajectory is linear in year): the surrogates' backcast skill is matched by static environment position x linear year; no detectable use of a cell's own covariate change (95% bound ~0.05 corr). UNVERIFIED."}
+  - {job: "E027/split1-t0-1986-7fc64db6b443", exp: E027, dir: for, strength: weak, note: "second spatial split: cell-specific covariate RFF vs static-environment x linear-year placebo at the farthest windows +0.004 / +0.033 / +0.041 (rff ahead), CIs spanning 0; replication rule not met (inconclusive). Across both splits a cell's own covariate change adds at most ~0.05 in correlation. UNVERIFIED."}
+  - {job: "E034/trend-observer-4c5f2ac6542a", exp: E034, dir: for, strength: weak, note: "the position x year trend that carries most predictable change is not observer turnover: it predicts 2005-14 -> 2016-25 change better where observers were unchanged (community 0.31 vs 0.23; species 0.23 vs 0.19). Ecological or a common observation drift. UNVERIFIED."}
+  - {job: "E035/backcast-attribution-63bd84b5379c", exp: E035, dir: against, strength: weak, note: "DESK's land-use-driven change tracks the real 1966-86 -> 2005-25 change (corr 0.25) -- land-use covariates DO carry temporal signal in DESK; climate change does not (as DESK reads it). Whether it is local land-use change or a regional land-use trend is not separated. UNVERIFIED."}
+  - {job: "E035/attribution-families-a9cc5607f0c1", exp: E035, dir: against, strength: moderate, note: "LUH land-use class change carries DESK's real temporal signal (corr 0.24-0.36 with community change; species 0.06-0.09), mostly as regional change; temperature change carries none as DESK reads it. The covariates do carry signal -- in land use, not climate. UNVERIFIED."}
+  - {job: "E035/attribution-luh-split-7463753ad088", exp: E035, dir: for, strength: moderate, note: "CORRECTS the E035d entry: the 'LUH class' family was the whole 33-channel stream. Split (four models): a UNIFORM continent-wide LUH shift alone reproduces 89-95% of the LUH part's corr with real change (0.23-0.32 of 0.24-0.36), management channels carry most (0.22-0.33), class fractions 0.09-0.16; a magnitude-only placebo reaches ~half. Most of DESK's 'land-use signal' is a clock (time read from continent-wide trends through place-specific responses); a smaller share follows where land use changed (0.14-0.27) and leans toward analogs. UNVERIFIED."}
+  - {job: "E035/clock-where-6786947d54eb", exp: E035, dir: against, strength: weak, note: "REVISES the clock reading of E035e: production's fertilizer/irrigation response scales with crop fraction (Spearman +0.65; top/bottom crop tercile 2.48x, 1996-2025) -- by the pre-set rule INTENSIFICATION (real habitat change), with a residual response at ~40% of typical size in cells with <= 0.5% cropland (clock-like or neighbourhood). A covariate DOES carry real change: intensification, concentrated after 1950. UNVERIFIED."}
+  - {job: "E035/clock-share-4228059d1380", exp: E035, dir: neutral, strength: weak, note: "E035g's confound tested: the fertilizer/irrigation freeze removes 69% / 80% / 94% of each place's own movement by crop tercile (Spearman +0.58) -- MIXED by the pre-set rule: the management trend drives most of production's movement even where crops are scarce (clock-like) and more where they are (intensification-like). UNVERIFIED."}
+  - {job: "E041/attribution-statMgmt-9ef5c955e853", exp: E041, dir: neutral, strength: weak, note: "denied the management trend (T0 1996, two seeds), DESK's land-use CLASS reading strengthens (corr with real change 0.107/0.086 -> 0.166/0.182) but full backcast corr drops 0.02-0.04 (late-state windowed skill halves), temperature reliance rises (lean +0.24-0.31), and pre-1950 movement is unchanged. The class fractions carry some real temporal signal DESK under-uses when the management trend is available. UNVERIFIED; T0 1986 replication running."}
+  - {job: "E039/suite-covrep-desk_tempho_1995-d43a92e9018f", exp: E039, dir: for, strength: weak, note: "a spacetime GP on neighbours' observed abundance beats DESK on change at held-out places (base -0.039 [-0.067,-0.012]; t1995 SPACE_TIME -0.032 [-0.077,-0.023]) while tying it on level: the predictable change is in species' own regional trends seen in nearby surveys, not in what the covariates (or DESK) carry. UNVERIFIED."}
+  - {job: "E039/rrr-backcast-343f7580b9e8", exp: E039, dir: neutral, strength: moderate, note: "a bird-supervised linear covariate map backcasts held-out cells' change with corr 0.09-0.11 vs DESK 0.22-0.37 (+0.13 to +0.27, two seeds, T0 1996/1986, selected and late; CIs far from 0) while nearly matching DESK spatially (E039g): the covariates' temporal signal reaches the community only through a nonlinear, place-specific response (a near-uniform trend x kind of place) that a linear map cannot express. UNVERIFIED (skeptic pending). SKEPTIC ~12:05: rival was the POOLED (space-for-time) map; E016 found a within-cell linear map >= DESK on this estimand and a position x time placebo >= both -- the nonlinearity reading is SUSPENDED pending E039i (fair rivals)."}
+  - {job: "E039/fair-rivals-e74b27758ef2", exp: E039, dir: for, strength: moderate, note: "withdraws the E039h nonlinearity reading: on held-out cells' backcast change (8 caches, 2 seeds, T0 1996/1986), a covariate-FREE position x time trend (0.29-0.40) and a linear kind-of-place x time term (0.31-0.41) match or beat DESK (0.22-0.37) and the within-cell covariate map (0.27-0.35); best fair rival >= desk - 0.03 in 4/4. The covariates add little beyond a regional trend (E039j: +0.02-0.04 vs a 24-feature placebo; adequate-placebo rerun E039k pending)."}
+  - {job: "E039/fair-rivals-parts-f555654cd7b6", exp: E039, dir: for, strength: moderate, note: "E039k-m + skeptic: beyond an adequate position x time trend (96 features x 5 draws), DESK's within-place change adds +0.01-0.04 at the selected state -- about half of which a supervised linear covariate map also gives (selected-state claim withdrawn) -- and +0.02-0.05 at the late state (E039n pending). The remainder rides entirely on DESK's response to regional land-use MANAGEMENT change (continent-wide shift > pattern); DESK's climate-driven change carries none and mildly harms. Most decadal community change is regional trend not explained by the covariates."}
+  - {job: "E044/commonality-a58f6a1feef6", exp: E044, dir: against, strength: moderate, note: "at the community level, the change a covariate-free regional-trend extrapolation predicts at held-out cells is 87-97% also predicted by covariate-only maps (linear maps included, which cannot carry a uniform clock); trend-only R^2 0.00-0.02; E044b: a third of the linear map's skill is specific to the real covariate field (smoothness-matched move null). The predictable part of decadal community change is covariate-carried. Caveat: all predictors together explain only R^2 0.09-0.22 of noise-free change -- most change is predicted by nothing tested."}
+  - {job: "E044/type-dose-7d7fb9f34091", exp: E044, dir: against, strength: weak, note: "within an environment type, cells whose covariates changed more than typical also changed more in birds (corr 0.16 all/climate, 0.08 land use; within type+region 0.06-0.08): place-level covariate-change -> community-change relationships exist beyond type-typical patterns and regional trends -- small, correlational."}
+- id: B1
+  stage: B
+  priority: 1
+  status: testing
+  statement: The isotropic prior under-weights low-variance (temporal) directions.
+  test: Fast arm with split kernel s_b^2 zbar.zbar' + s_w^2 dz.dz' (zbar over a fixed reference window), ARD, whitened z; learned s_w^2/s_b^2.
+  kill: Learned s_w^2/s_b^2 near 1 and no change-skill gain.
+  blr: If true, adopt a block prior (iid within blocks) - a contract change for the age model.
+  parents: []
+  evidence:
+  - {job: "E005/fastarm-gp_species_base-6969e4d243e8", exp: E005, dir: neutral, strength: weak, note: "split kernel gains change skill (+0.018 [0.005,0.033] vs +0.001 base; +0.002 vs -0.016 tempho1995 time) but learned per-feature amplitude dz/zbar is 0.58 (base) and 0.09 (tempho1995): the data want LESS weight on deviations, not more. The gain is separate coefficients (direction), see B7. UNVERIFIED."}
+- id: B2
+  stage: B
+  priority: 2
+  status: open
+  statement: z.z' implies corr(H(x,1920), H(x,2000)) near 1, producing confident wrong backcasts.
+  test: Implied vs empirical temporal autocorrelation of abundance; interval coverage in withheld decades.
+  kill: Coverage nominal in withheld decades.
+  blr: If true, backcast intervals are overconfident; add a temporal residual or block prior.
+  parents: []
+  evidence: []
+- id: B4
+  stage: B
+  priority: 2
+  status: open
+  statement: A constant per-species mean leaves continental and regional trends to z, which has no time direction.
+  test: Decompose species change and attribute each part; include the K-trend time basis in the fast arm.
+  kill: Adding the time basis changes nothing.
+  blr: If true, the K trend (and analogues for other rates) must carry trends z cannot.
+  parents: [C1]
+  evidence: []
+- id: B5
+  stage: B
+  priority: 3
+  status: open
+  statement: A temporal residual (region x decade, or a long-lengthscale spacetime GP) restores coverage without costing spatial skill.
+  test: Fast arm with and without it.
+  kill: No coverage gain or a spatial cost beyond seed noise.
+  blr: If true, an interpretable residual kernel joins z.z' in the age model.
+  parents: [B2]
+  evidence:
+  - {job: "E028/persistence-observer-f55be4d54c07", exp: E028, dir: for, strength: weak, note: "local deviations from the regional surface fade by ~8% per 11 years even with the same observers: a damped cell residual would carry real (if small) backcast information. UNVERIFIED."}
+
+- id: B6
+  stage: B
+  priority: 2
+  status: open
+  statement: A persistent spatial residual captures the level structure the spacetime GP exploits, leaving z to carry change.
+  test: Fast arm with and without a static spatial residual; level and change by group.
+  kill: No level gain in the time/space_time groups.
+  blr: If true, 'loses to spacetime GP' is about level, not change; a static residual field fixes it.
+  parents: []
+  evidence: []
+- id: F1
+  stage: B
+  priority: 2
+  status: open
+  statement: A static block plus a few interpretable covariate-change features serves the BLR as well as DESK raw z.
+  test: Fast arm change skill, coverage and backcast slope vs DESK.
+  kill: DESK raw z clearly better on all three.
+  blr: If true, a simpler, interpretable feature map is a candidate downstream input.
+  parents: []
+  evidence:
+  - {job: "E039/suite-covrep-gp_species_base-bf5d2a129a51", exp: E039, dir: for, strength: moderate, note: "with the BLR readout held fixed (gpk.fit), a linear readout on 64 whitened covariate PCs ('covariate_linear') nearly matches DESK features at held-out places: DESK +0.011 (base) / +0.013 (t1995) level skill in trained years, +0.003 (n.s.) in withheld decades, tie on change (+0.007 / -0.003). Both models agree. UNVERIFIED (skeptic running)."}
+  - {job: "skeptic:E039", exp: E039, dir: against, strength: moderate, note: "CORRECTS the E039 entry: the median +0.01 was diluted by rare species; for species with >= 5% prevalence desk beats covariate_linear by +0.026-0.044 level skill (84-97% of species), 151/204 overall (sign p ~1e-11) -- modest (~95% of desk's level information linear in covariates; a covariate GP closes most of the rest) but real. The suite's desk arm uses 64 dims of z_ema; the 24-dim, little-data regime the age model uses is untested (E039b)."}
+  - {job: "E039/repr-regime-e7d6ae3529ed", exp: E039, dir: against, strength: moderate, note: "in the age model's regime (BLR, 24 dims, thinned data), desk raw z r24 beats the top-24 covariate PCs by ~0.03-0.06 level skill for species with >= 5% prevalence at every data size (flat: information, not compression; 75-92% of species), and beats all 291 PCs by 0.05-0.11 with little data (they overfit); with full data all PCs nearly match for the commonest species. DESK is a better compact habitat summary than covariate PCs. Both models agree. UNVERIFIED."}
+  - {job: "E039/repr-bioclim-quad-21da208c02c6", exp: E039, dir: against, strength: moderate, note: "vs standard SDM inputs under the BLR readout: desk r24 beats 19 BIOCLIM by +0.06/+0.16 (5-20%/>=20% prevalence), bioclim+LUH12 by +0.04/+0.09, bioclim+squares+LUH12 (50 vars) by +0.02/+0.06 (66-97% of species), both models, robust to 3% data. DESK is a better habitat representation than a well-built SDM input set, modestly so for moderately common species. UNVERIFIED."}
+  - {job: "E039/repr-checks-ac600824d09f", exp: E039, dir: for, strength: moderate, note: "a bird-supervised LINEAR projection (reduced-rank regression of observed ESK coordinates on the standardized covariates) nearly matches DESK under the BLR readout at 24 dims: desk_r24 - rrr24 +0.011/+0.018 (base), -0.006/+0.002 (t1995 s1); block-bootstrap CIs; same with buffer-only readouts and with 400-100 training cells (RRR wins at 50). DESK's spatial edge over covariates is mostly the supervised choice of directions, not nonlinearity (+0.00-0.03). UNVERIFIED."}
+- id: L1
+  stage: B
+  priority: 2
+  status: open
+  statement: Abundance lags habitat; raw z is penalized without a lag while z_ema double-lags against the age model's own dynamics.
+  test: Per-species fitted lag on raw z; compare fitted lags with generation time.
+  kill: Fitted lags near zero.
+  blr: If true, grading raw z unlagged understates it; the age model's dynamics supply the lag.
+  parents: [T6]
+  evidence: []
+- id: I1
+  stage: B
+  priority: 3
+  status: open
+  statement: Raw z's year-to-year weather signal matters for vital rates but epoch means score it as noise.
+  test: Ceiling from splitting routes within each cell-year vs raw-z annual anomalies.
+  kill: Annual anomalies carry no resolvable signal.
+  blr: If true, annual (not epoch) metrics are needed for survival-like rates.
+  parents: []
+  evidence: []
+
+# ---------------- observation ----------------
+- id: O1
+  stage: O
+  priority: 3
+  status: open
+  statement: Observer effects inside a cell manufacture change.
+  test: Observer terms; how much of the ceiling survives.
+  kill: Ceiling unchanged with observer terms.
+  blr: If true, ceilings shrink; part of 'unexplained change' is observation.
+  parents: []
+  evidence:
+  - {job: "adhoc:E021-dev", exp: E021, dir: for, strength: moderate, note: "observer turnover is ~29% [25, 33] of species and 28-29% of ESK early->modern change energy (within-modern design by observer continuity); 81% of cells share no observer between epochs. Every change target is diluted by it (defect A14). Found by the skeptic, reproduced."}
+  - {job: "skeptic3:E013", exp: E013, dir: for, strength: moderate, note: "observer co-movement inflates the observed-community arm of E013 by 33-45% of its numerator (DESK ~0); adjusted, DESK matches the true community in trained years and reaches 41-52% of it in withheld decades."}
+# ---------------- downstream proxy ----------------
+  - {job: "E028/persistence-observer-f55be4d54c07", exp: E028, dir: for, strength: moderate, note: "within-modern fading of cell deviations: slope -0.182 where observers were replaced vs -0.084 unchanged (diff -0.098 [-0.124, -0.073]); about half of the damped persistence that wins on trained cells is observer turnover. UNVERIFIED."}
+  - {job: "E028/persistence-observer-1975-eb3ad2ad2eb3", exp: E028, dir: for, strength: moderate, note: "replicated in 1975-95 and 1985-2005: replaced-minus-unchanged slope -0.117 / -0.105 vs -0.098 modern; observer change is 54-63% of the fading where observers were replaced. Survived a skeptic round (route turnover, region, site-type placebo, covariate change, interleaved noise, tenure). UNVERIFIED (b-c pending)."}
+- id: D1
+  stage: D
+  priority: 3
+  status: open
+  statement: Absence-only information corrects a backcast only if z has temporal degrees of freedom.
+  test: Reveal withheld-decade absences beyond the range edges of expanding species (mirroring the pseudo-zeros); gain elsewhere in that decade, DESK vs spacetime GP.
+  kill: Absence information improves DESK backcasts as much as the spacetime GP's.
+  blr: If true, the 1902-1939 pseudo-zeros cannot inform habitat change under the current kernel.
+  parents: []
+  evidence: []
+- id: D2
+  stage: D
+  priority: 2
+  status: open
+  statement: The Great Plains barrier - where DESK is weakest (30be46b) and the pseudo-zeros bite - needs every metric separately.
+  test: Every report carries the Great Plains zone split.
+  kill: n/a (reporting rule; becomes a hypothesis once a zone-specific mechanism is proposed).
+  blr: The barrier's temporal change is the downstream's crux.
+  parents: []
+  evidence: []
+- id: D3
+  stage: D
+  priority: 3
+  status: open
+  statement: A temporal habitat block could absorb non-arrival as habitat change instead of dispersal.
+  test: Planted invasion (static habitat + arrival dynamics) fitted by the BLR; bias at pseudo-zero cells; identifiability of s_w^2.
+  kill: s_w^2 stays near zero on planted invasions with static habitat.
+  blr: If true, B1/B5 need a constraint before adoption.
+  parents: [B1]
+  evidence: []
+
+# ---------------- added 2026-10-09 from the first real-data results ----------------
+- id: B7
+  stage: B
+  priority: 1
+  status: testing
+  statement: The readout's level-fitted beta (space) does not transfer to temporal community change - read through spatial betas, z's temporal change predicts species change worse than no change - so the readout needs a separate deviation block whose amplitude (and direction) the data set; under iid-across-all-features the spatial betas are forced onto temporal change. (2026-10-09 revision; the earlier '2-3x more with a change-fitted beta' clause is withdrawn - the placebo arms showed that gain is spatial interpolation of observed change.)
+  test: E011 change oracle (level vs change beta on the same features); E012 transfer (temporal beta fitted inside the trained era, applied to the withheld decades); split-kernel variants with a longer reference window.
+  kill: A temporal beta learned from trained years captures no more withheld-decade change than the level beta.
+  blr: If true, contract change - a separate temporal block (zbar/dz split, iid within block) whose beta the age model learns from BBS-era long-term change; the zbar reference window becomes a design choice.
+  parents: [T4, B1]
+  evidence:
+  - {job: "adhoc:E011-dev", exp: E011, dir: for, strength: weak, note: "level beta 4-10% (base) / -5% (tempho1995 withheld) vs change beta 25-29% of available change, observed and DESK features alike. UNVERIFIED."}
+  - {job: "E011/change-oracle-tempho1995_withheld-e8bd81e6849e", exp: E011, dir: for, strength: moderate, note: "verified (b) and (c) by an independent re-derivation (ridge-LOO, swapped halves): level readout of community change -0.043 to -0.056 captured into withheld decades; planted z species recover 0.98 with the same readout, so it is the species, not the instrument."}
+  - {job: "adhoc:E011-placebo", exp: E011, dir: against, strength: moderate, note: "withdraws the change-fitted gain: position alone 0.30, static community 0.32-0.33, change 0.25-0.26; change adds +0.02 (DESK) / +0.05 (ESK) beyond static. Spatial interpolation of observed change, unavailable for 1902-1939."}
+  - {job: "E012/split-variants-389bd4070d1c", exp: E012, dir: for, strength: weak, note: "split kernel (ref 1996-2025) vs iso, tempho1995 time set, place-specific, prevalence 0.1-0.3 / >=0.3: +0.020 / +0.035 vs -0.021 / -0.039; learned dz/zbar amplitude 0.09 - mostly shrinking the harmful temporal readout. Short reference window (2011-2025) loses it. UNVERIFIED."}
+  - {job: "skeptic:E012", exp: E012, dir: against, strength: moderate, note: "the split kernel gain is matched by a placebo deviation block with no DESK content (24 position fields x linear time, extrapolated back): 0.033/0.038 vs C1 0.020/0.035; and it is not shrinkage (shrunk C0 scores <= +0.001). The ESK level readout is ~0, not negative, once half-A noise is removed: only DESK change read through level betas harms the backcast."}
+  - {job: "E039/fair-rivals-e74b27758ef2", exp: E039, dir: for, strength: weak, note: "at the ESK-coordinate level, a trained-era within-cell readout of DESK's own z deviations (desk_within) beats DESK's raw change by +0.04-0.07 (4/4, CIs > 0); a pooled readout (the age model's form) equals raw DESK. M17 caveat: a within-cell readout can learn trends; DESK's increment beyond a 24-feature placebo is +0.03-0.06 (E039j) and pending the adequate placebo (E039k); at the species level E033c found ~+0.01."}
+  - {job: "E039/fair-rivals-parts-f555654cd7b6", exp: E039, dir: neutral, strength: moderate, note: "a within-place readout of DESK's change mostly learns regional trend (a covariate-free placebo matches it); what it adds beyond the trend is small and management-driven. A deviation block in the age model would mostly carry species' regional trends (G3/M17), not habitat."}
+  - {job: "E044/shift-null-2fe68a1a3beb", exp: E044, dir: neutral, strength: moderate, note: "corrects the B7/E039 reading that a within-place readout 'learns trends that belong to the dynamics': the regional trend it learns is largely covariate-predictable (E044) and partly specific to real covariate change (E044b) -- habitat-like, not a dynamics residue. Identification of cause remains correlational (M6, corrected M17)."}
+- id: D0
+  stage: T
+  priority: 1
+  status: testing
+  statement: For the species readout, DESK's change into withheld decades carries as much linearly usable species-change information as the observed half-window community change - DESK's temporal information is not the first bottleneck.
+  test: E011 desk:chg vs esk:chg across tempho 1975/1985/1995; an errors-in-variables-corrected observed comparator.
+  kill: desk:chg falls below esk:chg beyond CI in the withheld decades, or an EIV-corrected observed comparator beats DESK clearly.
+  blr: If true, improve the readout's temporal beta before DESK's temporal fidelity; DESK work waits on B7.
+  parents: [E4, T0]
+  evidence:
+  - {job: "adhoc:E011-dev", exp: E011, dir: for, strength: weak, note: "tempho1995 withheld: desk_raw:chg captured 0.263 (r24) / 0.292 (r64) vs observed esk:chg 0.257 / 0.288; base 0.251 vs 0.257. The atlas's 0.3 correlation with ESK change does not stop it. Comparator is noisy (half window). UNVERIFIED."}
+  - {job: "adhoc:E011-placebo", exp: E011, dir: neutral, strength: moderate, note: "uninformative as tested: neither DESK nor observed change carries much beyond location for real species (chg+static minus static +0.02 / +0.05); the tie measured equal spatial-basis value, not equal temporal information. Needs a test that a placebo cannot pass."}
+- id: N1
+  stage: E
+  priority: 1
+  status: open
+  statement: Adjacent-cell differences contain a between-route nugget (sub-cell habitat, observer) that ESK discards and the same-route temporal change lacks, so matched-size comparisons of temporal vs spatial retention must use the structured spatial part.
+  test: Direct nugget - Ruzicka cross-half differences between DIFFERENT routes in the SAME cell and years (route-level counts), and its ESK retention; or same- vs different-observer temporal pairs at matched dt.
+  kill: The within-cell between-route difference is small (< 0.05 of the lag-1 signal) or ESK retains it like the structured part.
+  blr: Decides R1. If the nugget is large, the 40-y change is ~100 km of structured turnover and truncation drops temporal directions (strong form) - a temporal-deviation basis becomes worth testing.
+  parents: [R1, O3]
+  evidence:
+  - {job: "skeptic:E004", exp: E004, dir: for, strength: weak, note: "power-law variogram fits give a spatial nugget of 0.14-0.17 (35-38% of lag 1; admissible to 0.30); temporal intercept ~0."}
+- id: B8
+  stage: B
+  priority: 1
+  status: open
+  statement: What the split kernel gains in the backcast is regional temporal TRENDS extrapolated back, not DESK's temporal deviations - a position x time block with no DESK content does as well.
+  test: fast_arm placebo deviation block (position RFF x linear time) alone and alongside DESK's dz; C1 - placebo and (dz + placebo) - placebo by paired block bootstrap; tempho 1975/1985/1995.
+  kill: DESK's dz adds significantly beyond the placebo block in at least two of three tempho caches.
+  blr: If true, DESK's temporal deviations carry no transferable species information into withheld decades; a regional trend block would, but extrapolating trends 26-64 years back to 1902-1939 is its own risk - the age model's K trend is the place for it, with wide priors.
+  parents: [B7, B5, B4]
+  evidence:
+  - {job: "skeptic:E012", exp: E012, dir: for, strength: weak, note: "placebo 0.033/0.038 (400 km) vs C1 0.020/0.035, time set; captured 0.127/0.069 vs 0.107/0.070; CIs overlap."}
+- id: T10
+  stage: T
+  priority: 1
+  status: testing
+  statement: DESK's temporal predictions are miscalibrated - they move more than their correlation with the truth justifies, increasingly so into withheld decades - so reading them at face value adds noise to any backcast.
+  test: Slope of the truth on DESK (centered, cross-half) by component, trained vs withheld; a per-component calibration shrink fitted in trained years and applied to withheld decades.
+  kill: Truth-on-DESK slope near 1 once centered.
+  blr: If true, DESK's temporal deviations need shrinkage before the age model sees them (or a block prior that can learn it); the readout should never inherit DESK's temporal amplitude as-is.
+  parents: [T0]
+  evidence:
+  - {job: "skeptic:E004", exp: E004, dir: for, strength: moderate, note: "centered slope of truth on DESK 0.62 (trained) / 0.37 (withheld) equivalent; independent of target noise."}
+  - {job: "adhoc:E016-dev", exp: E016, dir: for, strength: weak, note: "a linear within-cell map is calibrated (truth-on-prediction 0.75-0.91) where DESK is not (0.37-0.62): the over-movement is DESK-specific, not inherent to the task."}
+  - {job: "skeptic3:E016", exp: E016, dir: neutral, strength: moderate, note: "CORRECTS the DESK-specific reading: DESK z deviations recalibrated by a trained-era within-cell BLR score 0.30-0.45 with slopes 0.88-1.05 -- the calibration gap was the recalibration step. A trained-era recalibration of DESK is cheap and carries calibration into withheld decades."}
+# ---------------- added 2026-10-09 from the user's over/under-movement speculations ----------------
+- id: S1
+  stage: B
+  priority: 1
+  status: testing
+  statement: (user, refined) Over-estimated similarity biases inference while under-estimated similarity only widens intervals. Refinement - in the age model's finite-rank readout (H = z.beta, beta pinned by modern data) a site-time's interval widens only with its leverage (distance outside the cloud of training z's), so a wrong z gives a confidently wrong habitat in either direction unless it leaves the cloud; under-movement (a modern map) is a bias too.
+  test: Leverage of backcast z's vs training z's; coverage of the readout's habitat-level backcast intervals (B2); whether novel early covariates become high-leverage z's or are mapped into familiar territory (T9).
+  kill: Backcast leverage rises in proportion to backcast error and habitat-level coverage is near nominal.
+  blr: If the refinement holds, the backcast needs explicit feature uncertainty (an errors-in-variables variance growing with distance from the training years); accuracy alone is not the target.
+  parents: [B2, T9, T10]
+  evidence:
+  - {job: "adhoc:E018-dev", exp: E018, dir: for, strength: moderate, note: "readout change intervals ~3x too narrow (sd) beyond the instrument floor (median R 126 vs 16 at r24), in trained years too; leverage does not flag errors (Spearman -0.08 to -0.27). UNVERIFIED."}
+  - {job: "skeptic:E018", exp: E018, dir: for, strength: moderate, note: "magnitude revised: ~2x in sd (4.5x variance, CI 2.3-7.4x) beyond a stable planted floor; R tracks n; the core claim (intervals do not know the error; leverage does not flag it) survives."}
+- id: S2
+  stage: T
+  priority: 1
+  status: testing
+  statement: (user) DESK's misdirected movement does not only make a cell-year dissimilar to its own past; it moves it toward other places' states - plausibly toward space-for-time analogs (places whose modern covariates match the cell's past covariates) - producing the over-similarity bias of S1.
+  test: Alignment of DESK's backcast error with the analog direction (toward the modern states of covariate analogs) vs the true change's alignment; false-neighbour rate (DESK's nearest modern site-times vs the truth's).
+  kill: DESK's backcast error is no more aligned with the analog direction than the true change is, and neighbour sets agree as well as noise allows.
+  blr: If true, the backcast is confidently biased toward analog habitats; mitigations are direction (within-cell supervision, E016) and honest uncertainty, not shrinkage.
+  parents: [T4, S1]
+  evidence:
+  - {job: "adhoc:E017-dev", exp: E017, dir: against, strength: weak, note: "DESK backcast moves are not toward covariate analogs (pull/alignment ~0 at r12/24/64, near or > 200 km); its readout neighbours are no worse than no-change. The bias is misdirected noise, not analog-structured. UNVERIFIED."}
+  - {job: "adhoc:E017b-dev", exp: E017, dir: for, strength: moderate, note: "REVERSES the E017 reading. Along the corrected space-for-time direction (analogs of early minus analogs of modern covariates; centered): DESK backcast align +0.21 [0.15, 0.26] (> 200 km), as much as an explicit space-for-time map (+0.21); the truth -0.06; trained years DESK +0.09. Found by the skeptic, reproduced by our re-run; replications queued."}
+  - {job: "E025/downstream-late-e284dcbdccbc", exp: E025, dir: for, strength: moderate, note: "the space-for-time pull halves or more from the selected epoch to epoch 490 (t1995 +0.14/+0.21 -> +0.08/+0.09; t1985 +0.10/+0.15 -> +0.03/+0.04): it is partly a property of the early, spatially selected state. UNVERIFIED."}
+  - {job: "E035/backcast-attribution-63bd84b5379c", exp: E035, dir: for, strength: moderate, note: "MECHANISM: re-encoding withheld years with land use or climate swapped shows DESK's space-for-time lean comes entirely from its CLIMATE-driven change (analog alignment +0.25-0.31 vs null <= 0; corr with real change 0.03-0.05), while its land-use-driven change carries all its real signal (corr 0.25, no lean). tempho1995 s1, selected and late. UNVERIFIED."}
+  - {job: "E035/attribution-replication-6a937fa010a0", exp: E035, dir: for, strength: strong, note: "replicated on four models (tempho1995 s1/s2, tempho1985 s1/s2): the climate-driven part of DESK's withheld-decade change tracks nothing (corr 0.01-0.05) and leans toward analogs +0.31 to +0.34; the land-use part carries all the real signal (0.25-0.36) with at most a small lean. UNVERIFIED (a, b, d pending)."}
+  - {job: "E035/attribution-families-a9cc5607f0c1", exp: E035, dir: for, strength: strong, note: "per family, four models: the analog lean is the TEMPERATURE reading (+0.29, corr with real change ~0.01); moisture leans less (+0.15); land-use classes carry the real signal (corr 0.24-0.36) mostly through their REGIONAL change. UNVERIFIED (a, b, d pending)."}
+- id: S3
+  stage: T
+  priority: 2
+  status: testing
+  statement: (user) Community responses lag covariates heterogeneously (places, times, covariates; up to century-scale vegetation processes), while spatial turnover is an equilibrium of mixed lags, so temporal extrapolation from spatial turnover is fraught for ANY covariate-based habitat model; a single global lag is always locally miscalibrated. Not solvable; must be respected.
+  test: E016 (spatial vs within-cell coefficients on decadal change); a distributed-lag within-cell surrogate (covariates smoothed at several timescales); backcast error vs distance from the training years (tempho 1975/1985/1995).
+  kill: Spatial and within-cell coefficients agree on decadal change, and one lag explains it as well as several.
+  blr: Honest uncertainty for 1902-1939, and a sensitivity analysis of the vital-rate inference to the habitat backcast (rung 5, human-gated).
+  parents: [T4, L1, T9]
+  evidence:
+  - {job: "adhoc:E016-dev", exp: E016, dir: for, strength: weak, note: "coefficients learned across space predict none of the decadal community change (corr 0.02-0.03); within-cell coefficients 0.27-0.42. UNVERIFIED."}
+  - {job: "adhoc:E019-dev", exp: E019, dir: for, strength: weak, note: "same target window: backcast corr 0.42 -> 0.12, calibration 0.58 -> 0.20 over 0-28 years of reach; beyond ~10 y worse than no change. UNVERIFIED."}
+  - {job: "E027/lags-nonlinear-surrogates-8675524399f2", exp: E027, dir: for, strength: moderate, note: "within-cell surrogates: several timescales of covariate history (incl. a 30-y EMA) backcast better than DESK-timescale covariates at long spans (lags+trend - cov+trend +0.07/+0.08 at T0 1986/1976, CI > 0); lag30 is usually the best single timescale; no gain at short spans. UNVERIFIED."}
+  - {job: "E027/desk-plus-covariate-blocks-6977de015080", exp: E027, dir: against, strength: weak, note: "added to DESK's own recalibration, slow history adds only +0.02-0.05 (CI mostly spans 0 at the farthest windows): DESK's z already carries most of it. UNVERIFIED."}
+  - {job: "E027/controls-t0-1986-6ea8f06d0d96", exp: E027, dir: against, strength: moderate, note: "with the EMAs started in 1902, lag30+trend - lag10.5+trend is null in 3 of 3 start years at the longest spans (-0.010 / +0.024 / +0.010, CIs span 0): E027's slow-history result was the 1940 warm-up transient. UNVERIFIED."}
+- id: N2
+  stage: T
+  priority: 1
+  status: testing
+  statement: Decadal temporal relationships (community trends, covariate -> community change) are non-stationary, so the trained years NEAREST the target carry the transferable temporal information and long training spans dilute it -- the backcast depends on where the training mass sits, not on how much history there is (user, 2026-10-09, asked whether long-reach failures are reach or short training).
+  test: E023 span x reach with surrogates (and DESK recalibrated per span); E024 DESK trained on short spans near the target vs long spans, matched reach.
+  kill: At fixed reach, longer spans backcast as well or better (surrogates and DESK).
+  blr: If true, whatever learns the temporal mapping (DESK, its recalibration, the readout's temporal block) should weight the earliest BBS decades for a 1902-1939 backcast; 60 years of history by itself will not help.
+  parents: [S3, E3]
+  evidence:
+  - {job: "adhoc:E023-dev", exp: E023, dir: for, strength: moderate, note: "surrogates: at fixed (T0, W) longer spans backcast worse (e.g. trend 0.177 / 0.104 / 0.063 for 10 / 20 / 30 years at 27.5 y reach; 0.290 -> 0.094 over 10-50 years at 7.5 y); unchanged with years balanced and at r64. DESK recalibrated on its nearest decade: 0.187 (calib 1.09) vs 0.111 full-span vs 0.057 raw. UNVERIFIED."}
+  - {job: "E023/span-reach-desk-spans-seeds-f490c66f67af", exp: E024, dir: against, strength: moderate, note: "DESK trained on 20-year spans next to the target vs the same-T0 long-span HEAD seeds, raw backcast of 1966-71: 0.102 vs 0.122/0.105 (T0 1996), 0.143 vs 0.136/0.112 (T0 1986), 0.082 vs archived 0.110 (T0 1976). Pre-registered rule (2 of 3 by > seed spread) NOT met; short spans win at 1972-77 (+0.03-0.05) only. DESK does not show the surrogates' strong span dependence. One seed per span model. UNVERIFIED."}
+  - {job: "E029/pooled-4101a45a5b66", exp: E029, dir: for, strength: moderate, note: "DESK trained on all years with weights decaying away from the target-side anchor (half-life 10 / 20 y) backcasts 1966-83 better than uniform: +0.029 / +0.035 pooled (CIs above 0), ~3/4 of the 20-year-span gain, no spatial cost; also less space-for-time pull. One start year (1986), two seeds. UNVERIFIED."}
+  - {job: "E032/pooled-76b517a19b0a", exp: E032, dir: for, strength: weak, note: "four seeds per arm, final epoch: time weighting +0.032 [+0.012, +0.051] at the 1986 start, +0.016 [+0.001, +0.029] at the 1996 start -- real but small and setup-specific (larger with the longer 40-year span). Pre-set general-lever bar not met. UNVERIFIED."}
+- id: T11
+  stage: T
+  priority: 1
+  status: testing
+  statement: DESK's temporal extrapolation is optimization-limited -- one optimizer step per epoch (500 in all) and a noisy metric-term gradient (the only cross-year supervision) leave temporal structure under-learned, so less gradient noise (more metric pairs) or more steps would extend backcasts. Candidate explanation for why current-code retrains (65,536 pairs) backcast ~50-100% better than the archived tempho models (4,096 pairs).
+  test: E026 tempho1995 at metric_pairs 4,096 / 65,536 / 262,144, backcast by span_reach and reach_curve; E025 selected vs late epochs (does more training keep improving the temporal direction?).
+  kill: mp4096 and mp262k backcast within the seed spread of the 65,536 seeds.
+  blr: If true, the backcast quality the BLR inherits depends on DESK's optimization budget along the temporal axis, which is cheap to raise; the production checkpoint (trained at 65,536 pairs, 500 steps) may be leaving temporal skill unlearned.
+  parents: [T1]
+  evidence:
+  - {job: "adhoc:desk_hp-trajectories", exp: E026, dir: against, strength: weak, note: "archived sweep logs (trained years, held-out cells): direction cosine plateaus at 0.21-0.22 after epoch ~100 in the base run; 16 optimizer steps per epoch (tiles32, to epoch 260) and metric weights 20-100 do not raise it. Rotation keeps rising. Says nothing yet about withheld years (E025/E026)."}
+  - {job: "E026/span-reach-metric-pairs-037c0dbc8790", exp: E026, dir: against, strength: moderate, note: "tempho1995 at 4,096 and 262,144 metric pairs backcasts within the 65,536 seeds' range at every window, selected and late (1966-71: 0.118 / 0.115 vs 0.122 / 0.105): pair count is not a lever. UNVERIFIED."}
+  - {job: "E025/span-reach-late-461eafa8f75e", exp: E025, dir: for, strength: weak, note: "training on past the spatially selected epoch improves backcast direction (+0.01 to +0.08) but over-movement grows faster: an optimization-state effect, not a gradient-noise one. UNVERIFIED."}
+  - {job: "E026/heldout-metric-pairs-fb9453138fe2", exp: E026, dir: against, strength: moderate, note: "E026b, fair-rival yardstick, nearly paired by seed: pair count moves the backcast by <= ~0.01 vs 0.024 seed-to-seed. UNVERIFIED."}
+  - {job: "E055/eval-trajectory-7a81ec4f3c3e", exp: E055, dir: for, strength: moderate, note: "E055a: along one run (snapshots of the control) held-out space peaks at epoch ~70 and falls; backcast change rises monotonically to 490 (0.142 -> 0.264; beyond placebo +0.033). Temporal structure is learned late, with the capacity that also over-fits places. One seed. UNVERIFIED."}
+  - {job: "E055/eval-grok-9d52ccc11d65", exp: E055, dir: against, strength: moderate, note: "E055d/g/h: 4x the steps + metric weight 40 + same-place pairs + weight decay: raw change at held-out cells flat; the training-cell gain is modern-end memorization (end swap). More optimization past 500 epochs does not improve the backcast. One seed. UNVERIFIED."}

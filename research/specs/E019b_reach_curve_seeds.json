@@ -1,0 +1,25 @@
+{
+ "exp": "E019",
+ "name": "reach-curve-seeds",
+ "group": "cpu",
+ "overlay": "config/overlays/gp_species_base.json",
+ "after_jobs": [
+  "E022/desk-tempho1995-seed1",
+  "E022/desk-tempho1995-seed2",
+  "E022/desk-tempho1985-seed1",
+  "E022/desk-tempho1985-seed2"
+ ],
+ "cmd": [
+  "bash",
+  "-c",
+  "{python} research/exp/reach_curve.py --out {out} --ranks 24 64 --extra t1995_s1=desk_tempho_1995_s1:1996 t1995_s2=desk_tempho_1995_s2:1996 t1985_s1=desk_tempho_1985_s1:1986 t1985_s2=desk_tempho_1985_s2:1986"
+ ],
+ "expected_minutes": 15,
+ "summarize": [
+  "python",
+  "research/exp/reach_curve.py",
+  "--summarize",
+  "{out}"
+ ],
+ "note": "E019b: the reach curve with two more seeds of tempho1995 and tempho1985 (pre-registered in E019.md)"
+}

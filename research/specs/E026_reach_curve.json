@@ -1,0 +1,23 @@
+{
+ "exp": "E026",
+ "name": "reach-curve-metric-pairs",
+ "group": "cpu",
+ "overlay": "config/overlays/gp_species_base.json",
+ "after_jobs": [
+  "E026/desk-tempho1995-mp4096",
+  "E026/desk-tempho1995-mp262144"
+ ],
+ "cmd": [
+  "bash",
+  "-c",
+  "{python} research/exp/reach_curve.py --out {out} --ranks 24 64 --extra t1995_s1=desk_tempho_1995_s1:1996 t1995_s2=desk_tempho_1995_s2:1996 mp4096=desk_tempho_1995_mp4096:1996 mp262k=desk_tempho_1995_mp262144:1996 mp4096L=desk_tempho_1995_mp4096_late:1996 mp262kL=desk_tempho_1995_mp262144_late:1996"
+ ],
+ "expected_minutes": 15,
+ "summarize": [
+  "python",
+  "research/exp/reach_curve.py",
+  "--summarize",
+  "{out}"
+ ],
+ "note": "E026: reach curve of tempho1995 at metric_pairs 4,096 / 65,536 / 262,144 (selected and late)"
+}

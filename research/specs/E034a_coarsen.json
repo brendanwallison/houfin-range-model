@@ -1,0 +1,9 @@
+{
+ "exp": "E034",
+ "name": "coarsen-3x3",
+ "group": "cpu",
+ "cmd": ["python", "research/exp/coarsen_cache.py", "--cache", "{cache}/gp_species_base", "--out", "{cache}/gp_species_base_c3", "--k", "3"],
+ "expected_minutes": 3,
+ "summarize": ["bash", "-c", "cat {cache}/gp_species_base_c3/coarsen.json"],
+ "note": "E034a: 3x3-coarsened copy of the base cache (81 km cells)"
+}

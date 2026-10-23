@@ -1,0 +1,9 @@
+{
+  "exp": "E012", "name": "split-variants-tempho1975", "group": "cpu",
+  "env": {"RESEARCH_EXP": "E012"},
+  "after_jobs": ["E002/cache-desk_tempho_1975"],
+  "cmd": ["bash", "-c", "set -e; for spec in 'C0 --kernel iso' 'C1 --kernel split' 'C4 --kernel split --rank 64' 'C7 --kernel split --ref-window 1976 2025'; do set -- $spec; n=$1; shift; {python} research/exp/fast_arm.py --cache {cache}/desk_tempho_1975 --out {out}/$n --tag E012b_$n \"$@\" > /dev/null; done"],
+  "expected_minutes": 5,
+  "summarize": ["python", "research/exp/compare_arms.py", "{out}"],
+  "note": "pre-registered in research/experiments/E012.md (E012b section)"
+}

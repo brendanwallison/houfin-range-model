@@ -1,0 +1,8 @@
+{
+  "exp": "E004", "name": "atlas-base-trained", "group": "cpu",
+  "after_jobs": ["E003/esk-gp_species_base"],
+  "cmd": ["python", "research/exp/atlas.py", "--cache", "{cache}/gp_species_base", "--out", "{out}", "--population", "trained"],
+  "expected_minutes": 15,
+  "summarize": ["python", "research/exp/atlas.py", "--summarize", "{out}"],
+  "note": "pre-registered in research/experiments/E004.md"
+}

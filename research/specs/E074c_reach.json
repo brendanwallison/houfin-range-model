@@ -1,0 +1,8 @@
+{
+ "exp": "E074", "name": "e074c-reach-shrink", "group": "cpu",
+ "overlay": "research/overlays/desk_tempho_1995_seed1.json",
+ "cmd": ["bash", "-c", "set -e; for s in s1 s2; do {python} research/exp/e074c_reach_shrink.py --cache {cache}/desk_tempho_1995_$s --cbc /mnt/e/Datasets/cbc_raw/prepared/cbc_circles_comm.npz --out {out}/$s; done"],
+ "expected_minutes": 30,
+ "summarize": ["bash", "-c", "cat {out}/s1/e074c.json {out}/s2/e074c.json"],
+ "note": "E074c: interaction readout block shrunk by reach (peer suggestion)"
+}

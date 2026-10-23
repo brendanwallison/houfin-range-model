@@ -1,0 +1,20 @@
+{
+ "_comment": "E086w matched control: production DESK with the training window from 1902, no CBC terms.",
+ "paths": {
+  "desk_output_dir": "${HOUFIN_PROCESSED}/encoder/desk_ctl1902"
+ },
+ "latent_cube": {
+  "model_path": "${HOUFIN_PROCESSED}/encoder/desk_ctl1902/env_model_semisup.pth",
+  "output_dir": "${HOUFIN_PROCESSED}/encoder/cube_desk_ctl1902"
+ },
+ "desk": {
+  "output_ema": {
+   "half_life_bounds": [
+    1.0,
+    40.0
+   ],
+   "warmup_start": 1902,
+   "init_half_life": 10.0
+  }
+ }
+}

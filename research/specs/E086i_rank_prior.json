@@ -1,0 +1,13 @@
+{
+ "exp": "E086",
+ "name": "e086i-rank-prior",
+ "group": "gpu",
+ "overlay": "research/overlays/desk_tempho_1995_seed1.json",
+ "cmd": [
+  "bash",
+  "-c",
+  "set -e; export BLR_DEVICE=cuda BLR_MAX_ITER=100 BLR_STARTS=0.5 SCORE_TARGETS=dev; bash research/bin/score_both.sh {python} {out}/split/t1995_full --cache {cache}/desk_tempho_1995_s1_late --rank 64 --commonality --desk-split 24; bash research/bin/score_both.sh {python} {out}/split/t1995_row03_s1 --cache {cache}/desk_tempho_1995_s1_late --rank 64 --commonality --desk-split 24 --thin 0.03 --thin-unit row --thin-seed 1; bash research/bin/score_both.sh {python} {out}/split/t1995_row03_s2 --cache {cache}/desk_tempho_1995_s1_late --rank 64 --commonality --desk-split 24 --thin 0.03 --thin-unit row --thin-seed 2; bash research/bin/score_both.sh {python} {out}/split/t1995_cell10_s1 --cache {cache}/desk_tempho_1995_s1_late --rank 64 --commonality --desk-split 24 --thin 0.10 --thin-unit cell --thin-seed 1; bash research/bin/score_both.sh {python} {out}/split/t1995_cell10_s2 --cache {cache}/desk_tempho_1995_s1_late --rank 64 --commonality --desk-split 24 --thin 0.10 --thin-unit cell --thin-seed 2; bash research/bin/score_both.sh {python} {out}/split/t1985_full --cache {cache}/desk_tempho_1985_s1_late --rank 64 --commonality --desk-split 24; bash research/bin/score_both.sh {python} {out}/split/t1985_row03_s1 --cache {cache}/desk_tempho_1985_s1_late --rank 64 --commonality --desk-split 24 --thin 0.03 --thin-unit row --thin-seed 1; bash research/bin/score_both.sh {python} {out}/split/t1985_row03_s2 --cache {cache}/desk_tempho_1985_s1_late --rank 64 --commonality --desk-split 24 --thin 0.03 --thin-unit row --thin-seed 2; bash research/bin/score_both.sh {python} {out}/split/t1985_cell10_s1 --cache {cache}/desk_tempho_1985_s1_late --rank 64 --commonality --desk-split 24 --thin 0.10 --thin-unit cell --thin-seed 1; bash research/bin/score_both.sh {python} {out}/split/t1985_cell10_s2 --cache {cache}/desk_tempho_1985_s1_late --rank 64 --commonality --desk-split 24 --thin 0.10 --thin-unit cell --thin-seed 2"
+ ],
+ "expected_minutes": 90,
+ "note": "E086i: DESK dims 1-24 / 25-64 as two prior blocks, full data and sparse regimes"
+}

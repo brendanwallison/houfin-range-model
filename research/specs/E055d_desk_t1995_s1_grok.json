@@ -1,0 +1,18 @@
+{
+ "exp": "E055",
+ "name": "desk-tempho1995-seed1-grok",
+ "group": "gpu",
+ "overlay": "research/overlays/desk_tempho_1995_seed1_grok.json",
+ "cmd": [
+  "bash",
+  "-c",
+  "set -e; export RESEARCH_OUT={out} TMPDIR={out}/tmp MPLCONFIGDIR={out}/tmp/mpl WANDB_MODE=offline WANDB_DIR={out}; mkdir -p {out}/desk {out}/tmp; {python} scripts/run_encoder.py desk; {python} research/exp/cache.py --out {cache}/desk_tempho_1995_s1_grok; {python} research/exp/epoch_variant.py --run {out} --overlay research/overlays/desk_tempho_1995_seed1_grok.json --checkpoint {out}/desk/snapshots/ep0300.pt --cache-out {cache}/desk_tempho_1995_s1_grok_ep0300 --work {out}/ep0300; {python} research/exp/epoch_variant.py --run {out} --overlay research/overlays/desk_tempho_1995_seed1_grok.json --checkpoint {out}/desk/snapshots/ep0500.pt --cache-out {cache}/desk_tempho_1995_s1_grok_ep0500 --work {out}/ep0500; {python} research/exp/epoch_variant.py --run {out} --overlay research/overlays/desk_tempho_1995_seed1_grok.json --checkpoint {out}/desk/snapshots/ep1000.pt --cache-out {cache}/desk_tempho_1995_s1_grok_ep1000 --work {out}/ep1000; {python} research/exp/epoch_variant.py --run {out} --overlay research/overlays/desk_tempho_1995_seed1_grok.json --checkpoint {out}/desk/snapshots/ep1500.pt --cache-out {cache}/desk_tempho_1995_s1_grok_ep1500 --work {out}/ep1500; {python} research/exp/epoch_variant.py --run {out} --overlay research/overlays/desk_tempho_1995_seed1_grok.json --checkpoint {out}/desk/snapshots/ep1900.pt --cache-out {cache}/desk_tempho_1995_s1_grok_ep1900 --work {out}/ep1900"
+ ],
+ "expected_minutes": 240,
+ "summarize": [
+  "python",
+  "-c",
+  "import json; s=json.load(open('{out}/desk/run_summary.json')); print({k: s.get(k) for k in ('best_epoch','best_val_kernel','best_val_zmse','epochs_run')})"
+ ],
+ "note": "E055d: grokking probe (T0 1996 seed 1): heavy metric + same-place pairs + weight decay + 2000 epochs"
+}

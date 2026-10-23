@@ -1,0 +1,14 @@
+{
+ "exp": "E027",
+ "name": "split1-t0-1996",
+ "group": "cpu",
+ "overlay": "config/overlays/gp_species_base.json",
+ "cmd": [
+  "bash",
+  "-c",
+  "{python} research/exp/span_reach.py --out {out} --no-default-desk --split-seed 1 --t0s 1996 --span-set ends --rff 512 --rff-seeds 1 2 3 --rff-lineclock"
+ ],
+ "expected_minutes": 40,
+ "summarize": ["python", "research/exp/span_reach.py", "--summarize", "{out}"],
+ "note": "E027d: second spatial split; static-environment x linear-year placebo vs cell-specific covariate RFF (T0 1996)"
+}

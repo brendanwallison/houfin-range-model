@@ -1,0 +1,22 @@
+{
+ "exp": "E023",
+ "name": "span-reach-desk-spans-seeds",
+ "group": "cpu",
+ "overlay": "config/overlays/gp_species_base.json",
+ "after_jobs": [
+  "E024/desk-span-1996-2015"
+ ],
+ "cmd": [
+  "bash",
+  "-c",
+  "{python} research/exp/span_reach.py --out {out} --desk-models s1976=desk_span_1976_1995:1976:1995 s1986=desk_span_1986_2005:1986:2005 s1996=desk_span_1996_2015:1996:2015 t1985s1=desk_tempho_1985_s1:1986:2025 t1985s2=desk_tempho_1985_s2:1986:2025 t1995s1=desk_tempho_1995_s1:1996:2025 t1995s2=desk_tempho_1995_s2:1996:2025"
+ ],
+ "expected_minutes": 15,
+ "summarize": [
+  "python",
+  "research/exp/span_reach.py",
+  "--summarize",
+  "{out}"
+ ],
+ "note": "E023b: span x reach with the E024 span models AND the current-code seed replicates of the long-span models (fair comparators)"
+}

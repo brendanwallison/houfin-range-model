@@ -1,0 +1,14 @@
+{
+ "exp": "E030",
+ "name": "readout-why",
+ "group": "cpu",
+ "overlay": "config/overlays/desk_tempho_1995.json",
+ "cmd": [
+  "bash",
+  "-c",
+  "set -e; for c in desk_tempho_1995_s1:withheld desk_tempho_1995_s1_late:withheld gp_species_base:trained; do IFS=: read -r cc pop <<< \"$c\"; mkdir -p {out}/$cc; {python} research/exp/readout_why.py --cache {cache}/$cc --out {out}/$cc --population $pop; done"
+ ],
+ "expected_minutes": 10,
+ "summarize": ["bash", "-c", "for d in {out}/*/; do echo == $d; {python} research/exp/readout_why.py --summarize $d | head -9; done"],
+ "note": "E030: information x scaling x noise decomposition of the readout's change skill (oracle, DESK, regional field)"
+}

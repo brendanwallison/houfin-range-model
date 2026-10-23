@@ -1,0 +1,26 @@
+{
+ "exp": "E013",
+ "name": "readout-corr-desk_tempho_1995_s2-seedmodel",
+ "group": "cpu",
+ "after_jobs": [
+  "E003/esk-desk_tempho_1995_s2"
+ ],
+ "cmd": [
+  "python",
+  "research/exp/readout_corr.py",
+  "--cache",
+  "{cache}/desk_tempho_1995_s2",
+  "--out",
+  "{out}",
+  "--population",
+  "withheld"
+ ],
+ "expected_minutes": 8,
+ "summarize": [
+  "python",
+  "research/exp/readout_corr.py",
+  "--summarize",
+  "{out}"
+ ],
+ "note": "re-run on a current-code seed replicate: the archived tempho models backcast worse than current-code retrains of the same config"
+}

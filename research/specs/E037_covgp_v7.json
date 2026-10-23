@@ -1,0 +1,10 @@
+{
+ "exp": "E037",
+ "name": "covgp-v7",
+ "group": "cpu",
+ "overlay": "config/overlays/gp_species_base.json",
+ "cmd": ["bash", "-c", "{python} research/exp/covgp_harness.py --out {out} --tag v7 --features raw --bounds data --sample random --scale-sample random --resid-linear"],
+ "expected_minutes": 40,
+ "summarize": ["python", "research/exp/covgp_harness.py", "--summarize", "{out}"],
+ "note": "E037 round 2, variant v7: --features raw --bounds data --sample random --scale-sample random --resid-linear"
+}

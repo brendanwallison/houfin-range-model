@@ -1,0 +1,13 @@
+{
+ "exp": "E038",
+ "name": "statT-smoke",
+ "group": "gpu",
+ "overlay": "research/overlays/desk_tempho_1985_yw_smoke.json",
+ "cmd": [
+  "bash",
+  "-c",
+  "set -e; export RESEARCH_OUT={out} TMPDIR={out}/tmp MPLCONFIGDIR={out}/tmp/mpl WANDB_MODE=offline WANDB_DIR={out}; mkdir -p {out}/desk {out}/tmp; {python} research/exp/static_channels.py --channels temperature --means-cache {out}/static_means.npy -- scripts/run_encoder.py desk; {python} research/exp/static_channels.py --channels temperature --means-cache {out}/static_means.npy -- research/exp/cache.py --out {out}/cache_sel; {python} research/exp/static_channels.py --channels temperature --means-cache {out}/static_means.npy -- research/exp/epoch_variant.py --run {out} --overlay research/overlays/desk_tempho_1985_yw_smoke.json --cache-out {out}/cache_late --work {out}/late; ls {out}/cache_sel {out}/cache_late | head"
+ ],
+ "expected_minutes": 15,
+ "note": "E038 wrapper smoke: 3-epoch DESK, selected + late caches, all under static temperature"
+}

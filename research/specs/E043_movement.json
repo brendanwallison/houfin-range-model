@@ -1,0 +1,25 @@
+{
+ "exp": "E043",
+ "name": "evaluation-movement",
+ "group": "cpu",
+ "overlay": "research/overlays/desk_tempho_1995_seed1.json",
+ "after_jobs": [
+  "E043/desk-tempho1995-seed1-sc10",
+  "E043/desk-tempho1995-seed1-sc40",
+  "E043/desk-tempho1995-seed2-sc10",
+  "E043/desk-tempho1995-seed2-sc40"
+ ],
+ "cmd": [
+  "bash",
+  "-c",
+  "set -e; export RESEARCH_OUT=$(ls -d {outroot}/E043/desk-tempho1995-seed1-sc10-*/ | head -1) ESK_DESK_CONFIG=research/overlays/desk_tempho_1995_seed1_sc10.json; {python} research/exp/movement_profile.py --keys-cache {cache}/gp_species_base --out {out} --tag t1995_sc10_s1; export RESEARCH_OUT=$(ls -d {outroot}/E043/desk-tempho1995-seed1-sc40-*/ | head -1) ESK_DESK_CONFIG=research/overlays/desk_tempho_1995_seed1_sc40.json; {python} research/exp/movement_profile.py --keys-cache {cache}/gp_species_base --out {out} --tag t1995_sc40_s1; export RESEARCH_OUT=$(ls -d {outroot}/E043/desk-tempho1995-seed2-sc10-*/ | head -1) ESK_DESK_CONFIG=research/overlays/desk_tempho_1995_seed2_sc10.json; {python} research/exp/movement_profile.py --keys-cache {cache}/gp_species_base --out {out} --tag t1995_sc10_s2; export RESEARCH_OUT=$(ls -d {outroot}/E043/desk-tempho1995-seed2-sc40-*/ | head -1) ESK_DESK_CONFIG=research/overlays/desk_tempho_1995_seed2_sc40.json; {python} research/exp/movement_profile.py --keys-cache {cache}/gp_species_base --out {out} --tag t1995_sc40_s2; cp $(ls -d {outroot}/E041/movement-profile-*/ | head -1)movement_t1995_ctrl_*.json {out}/"
+ ],
+ "expected_minutes": 15,
+ "summarize": [
+  "python",
+  "research/exp/movement_profile.py",
+  "--summarize",
+  "{out}"
+ ],
+ "note": "E043: movement 1902-2025 of the over-sampled models next to the controls"
+}

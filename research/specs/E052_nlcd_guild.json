@@ -1,0 +1,10 @@
+{
+ "exp": "E052",
+ "name": "nlcd-guild",
+ "group": "cpu",
+ "overlay": "research/overlays/desk_tempho_1995_seed1.json",
+ "cmd": ["bash", "-c", "set -e; X=/mnt/e/Datasets/houfin/external/annual_nlcd/extracted; {python} -I research/exp/nlcd_aggregate.py --grid ${HOUFIN_DATA}/ref_grid_27km.tif --out {out}/nlcd_27km.npz --tif 1990=$X/Annual_NLCD_LndCov_1990_CU_C1V1.tif --tif 2019=$X/Annual_NLCD_LndCov_2019_CU_C1V1.tif --y0 1985 --y1 2025; C=$(ls -d {outroot}/E047/cropat-types-*/ | head -1)cropat_27km.npz; D=${HOUFIN_DATA}/avonet; {python} research/exp/guild_dose.py --cache {cache}/desk_tempho_1995_s1 --cropat $C --avonet $D/TraitData/AVONET1_BirdLife.csv --taxonomy $D/eBird_taxonomy.csv --out {out}/desk_tempho_1995_s1 --pooled --rival-all --aux {out}/nlcd_27km.npz --aux-key nlcd --epochs 1986 1995 2014 2023"],
+ "expected_minutes": 60,
+ "summarize": ["bash", "-c", "grep -F '[nlcd]' {out}/log.txt; {python} research/exp/guild_dose.py --summarize {out}/desk_tempho_1995_s1 | grep -E 'tested|type|Grassland|Forest|Woodland|Shrubland|Wetland|Human|grassland gain'"],
+ "note": "E052: observed land-cover change (Annual NLCD 1990 -> 2019, 14 classes) vs local bird change by guild, epochs 1986-95 vs 2014-23, beyond all covariate change, moved nulls"
+}

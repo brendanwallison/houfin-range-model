@@ -257,7 +257,8 @@ def test_layout_refuses_focal_species_inside_the_community():
 
 # ----------------------------- end to end, with I/O mocked -----------------------------
 
-def _synthetic_run(tmp_path, monkeypatch, withheld=(), common=(), n_comm=2, species=None):
+def _synthetic_run(tmp_path, monkeypatch, withheld=(), common=(), n_comm=2, species=None,
+                   extra_opts=None):
     """The orchestration in ``run`` -- splits, encode bookkeeping, every predictor, the report
     and the saved tables -- on a synthetic grid where half the species are readouts of z."""
     from src.community_encoder.train_DESK import validate_bbs_routes as vbr
@@ -323,7 +324,7 @@ def _synthetic_run(tmp_path, monkeypatch, withheld=(), common=(), n_comm=2, spec
     rep = vgs.run(cfg, out_dir=str(tmp_path / "out"), n_boot=50,
                   opts={"cell_km": 27.0, "n_fit": 400, "shape_iters": 15, "k_nn": (16, 4),
                         "k_max": 800, "thin": (0.3,),
-                        **({"species": species} if species else {})})
+                        **({"species": species} if species else {}), **(extra_opts or {})})
     return rep, n_ev, ho, keys
 
 
@@ -338,8 +339,17 @@ def test_run_end_to_end_on_a_synthetic_grid(tmp_path, monkeypatch):
 
     assert rep["rows"]["space"] == int(ho[keys[:, 0], keys[:, 1]].sum())
     assert rep["primary"]["set"] == "space"
-    assert rep["primary"]["n_species_defined"] == n_ev
-    assert 0.3 <= rep["primary"]["share_above_zero"] <= 0.7    # half the species are blind
+    # A1: the primary is defined over species whose change is RESOLVABLE above split-half noise --
+    # here the z-driven half; the blind half's "change" is pure noise and no longer drags the median.
+    import pandas as _pd
+    _res = _pd.read_csv(tmp_path / "out" / "per_species.csv")["resolvable_space"].to_numpy(bool)
+    assert _res[: n_ev // 2].all()
+    assert rep["primary"]["n_species_defined"] == rep["primary"]["n_resolvable"] == int(_res.sum())
+    assert rep["primary"]["share_above_zero"] == 1.0
+    # the old definition, kept beside it, still mixes in the blind species
+    legacy = rep["change_all_defined"]["space"]["desk_vs_no_change"]
+    assert legacy["n_species_defined"] == n_ev
+    assert 0.3 <= legacy["share_above_zero"] <= 0.7
     assert rep["direction"]["space"]["no_change"]["n_species_scored"] == 0   # never commits
     assert rep["completeness_gaps"] == []
     assert ("esk_oracle_independent" in rep["predictors"]
@@ -351,7 +361,10 @@ def test_run_end_to_end_on_a_synthetic_grid(tmp_path, monkeypatch):
     import pandas as pd
     tab = pd.read_csv(tmp_path / "out" / "per_species.csv")
     sk = tab["change_skill_space_desk_vs_no_change"].to_numpy()
-    assert (sk[: n_ev // 2] > 0.3).all() and (sk[n_ev // 2:] < 0.1).all()
+    res = tab["resolvable_space"].to_numpy(bool)
+    assert (sk[: n_ev // 2] > 0.3).all()
+    # blind species: their observed change is noise, so a skill is UNDEFINED, not small (A1)
+    assert np.isnan(sk[~res]).all() and (np.isnan(sk[n_ev // 2:]) | (sk[n_ev // 2:] < 0.1)).all()
     saved = np.load(tmp_path / "out" / "heldout_predictions.npz", allow_pickle=True)
     n_pred = rep["rows"]["predicted"]
     assert saved["mean_desk"].shape == (n_pred, n_ev)
@@ -677,11 +690,17 @@ def test_shape_fit_converges_and_says_so():
     fit = gpk.fit_shared_shape("spacetime", F, Y, np.log([90.0, 15.0]), n_iter=400,
                                verbose=False)
     assert fit["converged"] and fit["n_iterations"] < 400
-    # at the optimum the profiled objective is no better at nearby lengthscales
+    # at the optimum the profiled objective is no better at nearby FEASIBLE lengthscales: a coordinate
+    # at its bound (a lengthscale beyond 20x the data's extent is indistinguishable from infinite) is
+    # only checked inward -- the KKT condition, not interior stationarity
     best = _profiled_total_nll("spacetime", F, Y, fit["theta"])
-    for e in np.eye(2):
+    bnds = gpk.theta_bounds("spacetime", F, 2)
+    for j, e in enumerate(np.eye(2)):
         for h in (-0.05, 0.05):
-            assert _profiled_total_nll("spacetime", F, Y, fit["theta"] + h * e) >= best - 1e-3
+            t = fit["theta"] + h * e
+            if not (bnds[j][0] <= t[j] <= bnds[j][1]):
+                continue
+            assert _profiled_total_nll("spacetime", F, Y, t) >= best - 1e-3
 
 
 def test_regression_scale_is_data_side_so_a_perfect_baseline_cannot_blow_it_up():
@@ -955,3 +974,410 @@ def test_trait_distance_excludes_the_species_itself():
     T = np.array([[0.0, 0.0], [3.0, 4.0]])
     mn, _ = trait_distance_to_set(T, T, self_index=[0, 1])
     np.testing.assert_allclose(mn, [5.0, 5.0])
+
+
+# ----------------------------- audit fixes (research/desk-temporal, Phase 1.1) -----------------------------
+
+def test_blr_leave_one_out_matches_an_explicit_refit_without_the_row():
+    """A4. An in-sample row's prediction must be the one a model fitted WITHOUT it would make."""
+    Z, Y = _toy(n=80, r=5, k=2, seed=3)
+    m = gpk.fit(Z, Y)
+    i = 17
+    y_self = np.full_like(Y, np.nan)
+    y_self[i] = Y[i]
+    loo, _ = gpk.predict(m, Z, y_self=y_self)
+    # explicit ridge-with-intercept refit on the other rows, same design (centering), same scales
+    zc = Z - m["basis"]["zbar"]
+    keep = np.arange(len(Z)) != i
+    for s in range(Y.shape[1]):
+        X = np.column_stack([np.ones(keep.sum()), zc[keep]])
+        prec = np.diag([0.0] + [1.0 / m["s2"][s]] * zc.shape[1])
+        beta = np.linalg.solve(X.T @ X / m["n2"][s] + prec, X.T @ Y[keep, s] / m["n2"][s])
+        np.testing.assert_allclose(loo[i, s], np.r_[1.0, zc[i]] @ beta, rtol=1e-8, atol=1e-8)
+    full, _ = gpk.predict(m, Z)
+    np.testing.assert_array_equal(np.delete(loo, i, 0), np.delete(full, i, 0))
+
+
+def test_local_gp_leave_one_out_matches_conditioning_on_the_other_rows():
+    """A4. Before the fix an exact local GP at a training row reproduced that row's noisy value;
+    with ``self_idx`` it must equal the GP conditioned on every OTHER row."""
+    import torch
+    F, Y = _st_data(n=90)
+    shape = {"kind": "spacetime", "theta": np.log([80.0, 20.0]), "ybar": Y.mean(0),
+             "s2": np.array([0.8, 1.1, 0.5]), "n2": np.array([0.05, 0.2, 0.1])}
+    rows = np.array([3, 40, 77])
+    mean, var = gpk.predict_local(shape, F, Y, F[rows], np.zeros(3, int), k=500, k_max=10_000,
+                                  self_idx=rows)
+    raw, _ = gpk.predict_local(shape, F, Y, F[rows], np.zeros(3, int), k=500, k_max=10_000)
+    kern = gpk.KERNELS["spacetime"]
+    th = torch.as_tensor(shape["theta"])
+    for j, i in enumerate(rows):
+        keep = np.arange(len(F)) != i
+        K = kern(torch.as_tensor(F[keep]), torch.as_tensor(F[keep]), th).numpy()
+        ks = kern(torch.as_tensor(F[i:i + 1]), torch.as_tensor(F[keep]), th).numpy()[0]
+        for s in range(3):
+            C = shape["s2"][s] * K + shape["n2"][s] * np.eye(keep.sum())
+            w = np.linalg.solve(C, Y[keep, s] - shape["ybar"][s])
+            m_ = shape["ybar"][s] + shape["s2"][s] * ks @ w
+            v_ = (shape["s2"][s] - shape["s2"][s] ** 2 * ks @ np.linalg.solve(C, ks)
+                  + shape["n2"][s])
+            np.testing.assert_allclose(mean[j, s], m_, rtol=1e-6, atol=1e-8)
+            np.testing.assert_allclose(var[j, s], v_, rtol=1e-6, atol=1e-8)
+    # and the in-sample prediction it replaces sat on top of the row's own observation
+    assert np.abs(raw - Y[rows]).mean() < np.abs(mean - Y[rows]).mean()
+
+
+def test_noise_only_back_transform_does_not_manufacture_change():
+    """A2. Same latent mean in both epochs, more latent uncertainty in the past: the full-variance
+    back-transform predicts a decline the model does not believe in; the noise-only one does not."""
+    from src.community_encoder.train_DESK.validate_gp_species import predicted_raw
+    from src.community_encoder.train_DESK.validation_core import epoch_values
+    mu = np.full((8, 1), 1.0)
+    latent = np.r_[np.full(4, 0.6), np.full(4, 0.05)][:, None]     # unsure early, sure modern
+    noise = np.array([0.2])
+    e_rows, m_rows = [np.arange(4)], [np.arange(4, 8)]
+    pe, pm = epoch_values(predicted_raw(mu, latent + noise), e_rows, m_rows)
+    assert (pm - pe)[0, 0] < -0.1                                    # the old, spurious decline
+    pe, pm = epoch_values(predicted_raw(mu, noise[None, :]), e_rows, m_rows)
+    np.testing.assert_allclose(pm - pe, 0.0, atol=1e-12)
+
+
+def test_scales_come_from_every_training_block_not_the_shape_sample():
+    """A3. A species never detected in the shape-fit rows used to get an absolute 1e-6 floor (an
+    unfitted SNR of 1 and a near-zero variance); its scales must come from the rows that see it."""
+    F, Y = _st_data(n=160, S=3, seed=4)
+    Y[:80, 2] = 0.0                                                   # species 2 absent in block 1
+    Y[80:, 2] = (np.sin(F[80:, 0] / 60) + 0.1
+                 + 0.1 * np.random.default_rng(9).normal(size=80))
+    b1, b2 = np.arange(80), np.arange(80, 160)
+    shape = gpk.fit_shared_shape("spacetime", [F[b1]], [Y[b1]], np.log([80.0, 20.0]),
+                                 n_iter=30, verbose=False)
+    assert not shape["ok"][2]                                        # unfittable from block 1 alone
+    var_y = Y.var(0) * len(Y) / (len(Y) - 1)
+    sc = gpk.blocked_scales("spacetime", shape["theta"], [F[b1], F[b2]], [Y[b1], Y[b2]],
+                            Y.mean(0), var_y)
+    assert sc["ok"][2] and sc["s2"][2] > 100 * gpk.species_floor(var_y[2])
+    assert sc["n2"][2] > gpk.species_floor(var_y[2])
+
+
+def test_multistart_scale_fit_escapes_the_collapsed_amplitude_optimum(monkeypatch):
+    """The per-species likelihood is multimodal: measured, one start left a species' amplitude at
+    ~0 where another found a far better optimum. Every start must be run, each species keeping its
+    best -- otherwise an optimizer artefact reads as 'the kernel explains nothing'."""
+    import torch
+    F, Y = _st_data()
+    Y = Y + np.sin(F[:, 2] / 4.0)[:, None]
+    th = torch.as_tensor(np.array([7.27, 8.07]))                     # long lengthscales
+    K = gpk.spacetime_kernel(torch.as_tensor(F), torch.as_tensor(F), th).numpy()
+    Yc = Y - Y.mean(0)
+    multi = gpk._scales_given_shape(K, Yc)[3]
+    monkeypatch.setattr(gpk, "SCALE_STARTS", (0.5,))
+    monkeypatch.setattr(gpk, "SCALE_MULTIPLIERS", (1.0,))
+    single = gpk._scales_given_shape(K, Yc)[3]
+    assert np.all(multi["nll"] <= single["nll"] + 1e-9)
+    assert np.nansum(single["nll"]) - np.nansum(multi["nll"]) > 50.0
+    assert single["s2"][1] < 1e-3 < multi["s2"][1]
+
+
+def test_bootstrap_draws_that_miss_a_species_signal_leave_it_undefined():
+    """A6. A species with signal in one block only: a draw without that block leaves a near-zero
+    reference error, and its skill there is noise of any size unless the draw re-applies the rule."""
+    nb, ns = 30, 12
+    rng = np.random.default_rng(2)
+    sb = rng.uniform(1, 2, (nb, ns))
+    sm = sb * 0.64
+    sb[1:, 0], sm[1:, 0] = 1e-12, 1e-6                               # species 0: signal in block 0
+    sig = np.ones((nb, ns))
+    sig[1:, 0] = 0.0
+    loose, _ = pooled_skill(sm, sb, n_boot=300, seed=4)
+    tight, _ = pooled_skill(sm, sb, n_boot=300, seed=4, block_signal=sig)
+    assert tight["median_ci"][0] > 0.15                              # the clean species dominate
+    assert loose["share_above_zero_ci"][0] < tight["share_above_zero_ci"][0]
+
+
+def test_oracle_keeps_withheld_years_out_of_trained_rows_features(monkeypatch):
+    """A8. A cell-epoch straddling trained and withheld years used to be split as one group, so a
+    TRAINED row's oracle feature averaged in withheld-decade communities."""
+    from src.community_encoder.train_DESK import esk_kernel
+    from src.community_encoder.train_DESK.validate_gp_species import independent_oracle_z
+    monkeypatch.setattr(esk_kernel, "project_points_to_z",
+                        lambda X, zd, l: np.asarray(X, "float32"))
+    years = [1970, 1971, 1972, 1973, 1980, 1981, 1982, 1983]
+    keys = np.array([[0, 0, y] for y in years])
+    X = np.array([[1.0], [1.0], [1.0], [1.0], [50.0], [50.0], [50.0], [50.0]])
+    Z, info = independent_oracle_z(keys, X, "zd", 1, norm_tol=0.0, withheld=range(1966, 1976))
+    # trained rows (1980s) see only trained-year halves; withheld rows only withheld-year halves
+    np.testing.assert_allclose(Z[4:, 0], np.log1p(50.0), rtol=1e-6)
+    np.testing.assert_allclose(Z[:4, 0], np.log1p(1.0), rtol=1e-6)
+    assert info["withheld_years_grouped_separately"] and info["half_reliability"] is not None
+
+
+def test_persistence_is_the_cells_own_modern_training_mean():
+    from src.community_encoder.train_DESK.validate_gp_species import persistence_prediction
+    keys = np.array([[0, 0, 1970], [0, 0, 2010], [0, 0, 2012], [1, 1, 2011], [2, 2, 1972]])
+    Y = np.array([[9.0], [1.0], [3.0], [5.0], [7.0]])
+    tr = np.array([1, 2, 3])
+    te = np.array([0, 4])
+    (mean, var), noise = persistence_prediction(keys, Y, tr, te)
+    assert mean[0, 0] == pytest.approx(2.0)                          # cell (0,0): mean of 1 and 3
+    assert np.isnan(mean[1]).all()                                   # cell (2,2): no modern training
+    assert noise[0] == pytest.approx(2.0) and var[0, 0] == pytest.approx(2.0 * 1.5)
+
+
+def test_spatial_blocks_keep_cells_whole_contiguous_and_bounded():
+    from src.community_encoder.train_DESK.validate_gp_species import spatial_blocks
+    keys = np.array([(r, c, y) for r in range(16) for c in range(16) for y in range(10)])
+    rows = np.arange(len(keys))
+    blocks = spatial_blocks(keys, rows, max_rows=200)
+    assert sorted(np.concatenate(blocks).tolist()) == rows.tolist()
+
+    def spread(cells):
+        c = np.array(sorted(cells), "float64")
+        return np.abs(c[:, None, :] - c[None, :, :]).max(-1).mean()
+
+    ours = []
+    for b in blocks:
+        assert len(b) <= 200
+        cells = {tuple(k) for k in keys[b, :2]}
+        assert len(b) == 10 * len(cells)                              # every year of every cell
+        ours.append(spread(cells))
+    # A Morton run can straddle a quadrant boundary (two compact pieces), so "local" is relative:
+    # far tighter than a random partition into blocks of the same size.
+    perm = np.random.default_rng(0).permutation(256)
+    rand = [spread({(int(i) // 16, int(i) % 16) for i in perm[j:j + 20]}) for j in range(0, 240, 20)]
+    assert np.mean(ours) < 0.5 * np.mean(rand), (np.mean(ours), np.mean(rand))
+
+
+def test_a_fixed_species_list_grades_the_same_population_and_names_what_it_cannot(
+        tmp_path, monkeypatch):
+    """A7. Without a shared list, each tempho run filtered species on its OWN training years, so a
+    cross-run curve mixed populations. A listed species a run cannot grade is reported."""
+    listed = ["s00", "s01", "s07", "heldonly"]
+    rep, n_ev, _ho, _keys = _synthetic_run(tmp_path, monkeypatch,
+                                           extra_opts={"species_codes": listed, "thin": ()})
+    fx = rep["fixed_species_list"]
+    assert fx["n_listed"] == 4 and fx["n_graded"] == 3
+    assert fx["listed_but_not_gradable"] == ["heldonly"]
+    import json as _json
+    lay = _json.load(open(tmp_path / "out" / "layout.json", encoding="utf-8"))
+    assert lay["evaluation"] == ["s00", "s01", "s07"]
+
+
+def test_the_sum_kernel_backcasts_a_persistent_field_better_than_the_product_kernel():
+    """A5. With short-lived temporal fluctuations in the trained years, the product kernel fits a
+    short time lengthscale and forgets each place's level decades back; the persistent+changing sum
+    keeps it. That is the honest rival for backcasting, so it must win this planted case."""
+    rng = np.random.default_rng(11)
+    n_cells, years = 80, np.arange(1966, 2026)
+    xy = rng.uniform(0, 600, (n_cells, 2))
+    field = np.sin(xy[:, 0] / 90) + np.cos(xy[:, 1] / 120)
+    F = np.array([[x, y, t] for (x, y) in xy for t in years], "float64")
+    cell = np.repeat(np.arange(n_cells), len(years))
+    ar = np.zeros((n_cells, len(years)))
+    for t in range(1, len(years)):
+        ar[:, t] = 0.6 * ar[:, t - 1] + 0.5 * rng.normal(size=n_cells)
+    Y = (field[cell] + ar.reshape(-1) + 0.1 * rng.normal(size=len(F)))[:, None]
+    tr = F[:, 2] >= 1996
+    te = F[:, 2] <= 1975
+    out = {}
+    for kind, th0 in (("spacetime", np.log([200.0, 10.0])),
+                      ("spacetime_sum", np.array([np.log(200.0), np.log(100.0), np.log(5.0), 0.0]))):
+        idx = np.where(tr)[0]
+        sub = idx[np.isin(cell[idx], np.arange(0, n_cells, 3))]       # whole cells, all years
+        shape = gpk.fit_shared_shape(kind, [F[sub]], [Y[sub]], th0, n_iter=60, verbose=False)
+        shape["ybar"] = Y[tr].mean(0)
+        mu, _ = gpk.predict_local(shape, F[tr], Y[tr], F[te], cell[te], k=60, k_max=3000)
+        out[kind] = float(np.sqrt(np.mean((mu[:, 0] - field[cell[te]]) ** 2)))
+    assert out["spacetime_sum"] < 0.8 * out["spacetime"], out
+
+
+# ----------------------------- the repaired covariate arm (E037) -----------------------------
+
+def test_covariate_design_drops_constant_channels_and_whitens():
+    from src.community_encoder.train_DESK.validate_gp_species import covariate_design
+    rng = np.random.default_rng(0)
+    n = 400
+    F = rng.normal(size=(n, 6)) @ rng.normal(size=(6, 6))
+    tr, te = np.arange(300), np.arange(300, n)
+    F[tr, 2] = 0.7                       # constant over the training rows ...
+    F[te, 2] = 0.7 + rng.normal(size=len(te))  # ... but moving on held-out rows
+    P = covariate_design(F, tr, n_pcs=10)
+    assert P.shape == (n, 5)             # the constant channel is gone; k capped at channels kept
+    np.testing.assert_allclose(P[tr].mean(0), 0.0, atol=1e-9)
+    np.testing.assert_allclose(P[tr].std(0), 1.0, atol=1e-6)
+    # without the drop, the held-out rows would sit ~1e6 sd away; with it they look like training rows
+    assert np.abs(P[te]).max() < 10.0
+
+
+def test_random_blocks_partition_every_row_once():
+    from src.community_encoder.train_DESK.validate_gp_species import random_blocks
+    rows = np.arange(10, 2510)
+    bl = random_blocks(rows, 1000, np.random.default_rng(1))
+    assert len(bl) == 2 and all(len(b) >= 1000 for b in bl)
+    np.testing.assert_array_equal(np.sort(np.concatenate(bl)), rows)
+    # continental, not contiguous: each block spans (nearly) the whole range of rows
+    assert all(b.min() < 100 and b.max() > 2400 for b in bl)
+
+
+def test_fit_shared_shape_honours_explicit_bounds():
+    F, Y = _st_data()
+    Fc = F[:, :2] / 100.0
+    fit = gpk.fit_shared_shape("covariate", Fc, Y, np.log([3.0, 3.0]), n_iter=30, verbose=False,
+                               bounds=[(np.log(2.0), np.log(4.0))] * 2)
+    assert np.all(fit["theta"] >= np.log(2.0) - 1e-9) and np.all(fit["theta"] <= np.log(4.0) + 1e-9)
+
+
+def test_run_end_to_end_with_the_repaired_covariate_arm(tmp_path, monkeypatch):
+    rep, n_ev, ho, keys = _synthetic_run(tmp_path, monkeypatch,
+                                         extra_opts={"cov_mode": "repaired", "st_mode": "repaired"})
+    # E040: the spacetime arms fitted on random cells within physical bounds (lengthscales >= 10 km, >= 1 year)
+    for arm in ("spacetime", "spacetime_sum"):
+        ls = rep["baseline_shapes"][arm]["lengthscales"]
+        assert ls[0] >= 10.0 - 1e-6 and min(ls[:2]) >= 1.0 - 1e-6
+    lv = rep["level"]["space"]
+    for name in ("covariate", "covariate_linear", "covariate_pooled", "covariate_raw_linear"):
+        assert f"{name}_vs_intercept" in lv
+    assert "desk_vs_covariate_linear" in lv and "desk_raw_vs_covariate_raw_linear" in lv
+    assert rep["completeness_gaps"] == []
+    saved = np.load(tmp_path / "out" / "heldout_predictions.npz", allow_pickle=True)
+    y = saved["y"] if "y" in saved.files else None
+    m = saved["mean_covariate"]
+    assert np.isfinite(m).all()
+    if y is not None:
+        # nothing absurd (the broken fit predicted log1p counts of -50 ... +42), and the GP adds no out-of-range
+        # predictions beyond its own linear mean -- on these clipped synthetic species every linear readout dips
+        # below -1 somewhere (desk ~2.5%, covariate_linear ~0.6%)
+        inr = lambda a: ((a > -1.0) & (a < np.nanmax(y) + 1.0)).mean()
+        assert np.nanmin(m) > -5.0 and np.nanmax(m) < np.nanmax(y) + 5.0
+        assert inr(m) >= inr(saved["mean_covariate_linear"]) - 0.002
+
+
+def test_cell_kernel_stops_copying_a_training_cells_quirk_into_its_neighbours():
+    # No covariate signal at all: each cell has a lasting quirk b, seen in 20 years with near-identical covariates.
+    # A plain kernel that takes the quirk for covariate signal copies a training cell's b into the held-out cell next
+    # to it (error ~ 2 var(b)); the cell kernel discounts the repeats as one place's quirk and predicts ~0 (~ var(b)).
+    rng = np.random.default_rng(3)
+    n_c, n_y = 60, 20
+    x_c = rng.uniform(0, 10, n_c)
+    b = rng.normal(size=n_c)
+    X = np.repeat(x_c, n_y)[:, None] + 0.01 * rng.normal(size=(n_c * n_y, 1))
+    cell = np.repeat(np.arange(n_c), n_y).astype("float64")
+    Y = (np.repeat(b, n_y) + 0.1 * rng.normal(size=n_c * n_y))[:, None]
+    xt = (x_c + 0.02)[:, None]                        # a held-out cell beside every training cell
+    bt = rng.normal(size=n_c)                         # with its own quirk
+    plain = {"kind": "covariate", "theta": np.log([0.05]), "s2": np.array([1.0]),
+             "n2": np.array([0.01]), "ybar": np.array([0.0])}
+    celled = {"kind": "covariate_cell", "theta": np.log([0.05, 100.0]), "s2": np.array([0.01]),
+              "n2": np.array([0.01]), "ybar": np.array([0.0])}
+    groups = np.zeros(n_c, int)
+    mp, _ = gpk.predict_local(plain, X, Y, xt, groups, k=50, k_max=5000)
+    mc, vc = gpk.predict_local(celled, np.column_stack([X, cell]), Y,
+                               np.column_stack([xt, np.full(n_c, -1.0)]), groups, k=50, k_max=5000)
+    err_p, err_c = ((mp[:, 0] - bt) ** 2).mean(), ((mc[:, 0] - bt) ** 2).mean()
+    assert np.abs(mc).max() < 0.2 and err_c < 0.7 * err_p
+    # a new cell's own quirk is unknown: its full variance is in the predictive variance
+    assert np.all(vc[:, 0] > 0.01 * 100.0)
+
+
+def test_cell_kernel_local_prediction_matches_the_dense_gp():
+    import torch
+    rng = np.random.default_rng(4)
+    n = 90
+    X = np.column_stack([rng.normal(size=(n, 2)), rng.integers(0, 15, n)]).astype("float64")
+    Y = rng.normal(size=(n, 2)) + X[:, :1]
+    Xt = np.column_stack([rng.normal(size=(7, 2)), [3, 99, 99, 5, 99, 1, 99]]).astype("float64")
+    shape = {"kind": "covariate_cell", "theta": np.log([1.2, 0.8, 0.5]), "ybar": Y.mean(0),
+             "s2": np.array([0.7, 1.3]), "n2": np.array([0.1, 0.3])}
+    mean, var = gpk.predict_local(shape, X, Y, Xt, np.zeros(7, int), k=200, k_max=10_000)
+    kern = gpk.KERNELS["covariate_cell"]
+    th = torch.as_tensor(shape["theta"])
+    K = kern(torch.as_tensor(X), torch.as_tensor(X), th).numpy()
+    Ks = kern(torch.as_tensor(Xt), torch.as_tensor(X), th).numpy()
+    for s in range(2):
+        C = shape["s2"][s] * K + shape["n2"][s] * np.eye(n)
+        Ci = np.linalg.inv(C)
+        m = Y[:, s].mean() + shape["s2"][s] * Ks @ Ci @ (Y[:, s] - Y[:, s].mean())
+        v = (shape["s2"][s] * 1.5 - shape["s2"][s] ** 2 * np.einsum("ij,jk,ik->i", Ks, Ci, Ks)
+             + shape["n2"][s])
+        np.testing.assert_allclose(mean[:, s], m, rtol=1e-7, atol=1e-7)
+        np.testing.assert_allclose(var[:, s], v, rtol=1e-7, atol=1e-7)
+
+
+def test_random_cell_samplers_keep_cells_whole_and_cover_every_row():
+    from src.community_encoder.train_DESK.validate_gp_species import random_cell_blocks, random_cell_sample
+    rng = np.random.default_rng(2)
+    cell = np.repeat(np.arange(300), rng.integers(5, 30, 300))
+    s = random_cell_sample(cell, 500, 4, rng)
+    _, cnt = np.unique(cell[s], return_counts=True)
+    assert len(s) >= 500 and cnt.max() <= 4 and len(cnt) >= 125
+    bl = random_cell_blocks(cell, 1000, rng)
+    np.testing.assert_array_equal(np.sort(np.concatenate(bl)), np.arange(len(cell)))
+    owner = {}
+    for i, b_ in enumerate(bl):
+        for c_ in np.unique(cell[b_]):
+            assert owner.setdefault(c_, i) == i            # a cell never straddles two blocks
+
+
+def test_spacetime_cell_kernel_local_prediction_matches_the_dense_gp():
+    import torch
+    rng = np.random.default_rng(6)
+    cells = rng.integers(0, 12, size=(12, 2)) * 27.0
+    idx = rng.integers(0, 12, 80)
+    F = np.column_stack([cells[idx], rng.integers(1970, 2020, 80)]).astype("float64")
+    Y = rng.normal(size=(80, 2)) + np.sin(F[:, :1] / 90.0)
+    Ft = np.column_stack([np.vstack([cells[:3], [[999.0, 999.0]] * 3]), rng.integers(1966, 1976, 6)]).astype("float64")
+    shape = {"kind": "spacetime_cell", "theta": np.log([150.0, 300.0, 0.6, 40.0]), "ybar": Y.mean(0),
+             "s2": np.array([0.9, 0.4]), "n2": np.array([0.2, 0.1])}
+    mean, var = gpk.predict_local(shape, F, Y, Ft, np.zeros(6, int), k=200, k_max=10_000)
+    kern = gpk.KERNELS["spacetime_cell"]
+    th = torch.as_tensor(shape["theta"])
+    K = kern(torch.as_tensor(F), torch.as_tensor(F), th).numpy()
+    Ks = kern(torch.as_tensor(Ft), torch.as_tensor(F), th).numpy()
+    for s in range(2):
+        C = shape["s2"][s] * K + shape["n2"][s] * np.eye(len(F))
+        Ci = np.linalg.inv(C)
+        m = Y[:, s].mean() + shape["s2"][s] * Ks @ Ci @ (Y[:, s] - Y[:, s].mean())
+        v = (shape["s2"][s] * 1.6 - shape["s2"][s] ** 2 * np.einsum("ij,jk,ik->i", Ks, Ci, Ks)
+             + shape["n2"][s])
+        np.testing.assert_allclose(mean[:, s], m, rtol=1e-7, atol=1e-7)
+        np.testing.assert_allclose(var[:, s], v, rtol=1e-7, atol=1e-7)
+
+
+def test_loo_with_the_test_rows_own_kernel_matches_the_dense_gp():
+    # A training row predicted as an UNSEEN place (its cell id withheld) with itself left out of the conditioning set
+    # (the repaired covariate arm on in-sample rows): must equal the dense GP on the other rows, with the test row's own
+    # cross-covariance (no cell term) and its prior variance s2 (1 + rho) -- a new place's effect is unknown.
+    import torch
+    rng = np.random.default_rng(8)
+    n = 70
+    X = np.column_stack([rng.normal(size=(n, 2)), rng.integers(0, 10, n)]).astype("float64")
+    Y = rng.normal(size=(n, 2)) + X[:, :1]
+    shape = {"kind": "covariate_cell", "theta": np.log([1.1, 0.7, 0.8]), "ybar": Y.mean(0),
+             "s2": np.array([0.8, 1.2]), "n2": np.array([0.15, 0.3])}
+    own = np.array([3, 17, 40])
+    Xt = X[own].copy()
+    Xt[:, -1] = -1.0
+    mean, var = gpk.predict_local(shape, X, Y, Xt, np.zeros(3, int), k=200, k_max=10_000,
+                                  self_idx=own, loo_test_kernel=True)
+    kern = gpk.KERNELS["covariate_cell"]
+    th = torch.as_tensor(shape["theta"])
+    for j, i in enumerate(own):
+        keep = np.arange(n) != i
+        K = kern(torch.as_tensor(X[keep]), torch.as_tensor(X[keep]), th).numpy()
+        ks = kern(torch.as_tensor(Xt[j:j + 1]), torch.as_tensor(X[keep]), th).numpy()[0]
+        for s in range(2):
+            C = shape["s2"][s] * K + shape["n2"][s] * np.eye(int(keep.sum()))
+            Ci = np.linalg.inv(C)
+            m = Y[:, s].mean() + shape["s2"][s] * ks @ Ci @ (Y[keep, s] - Y[:, s].mean())
+            v = shape["s2"][s] * 1.8 - shape["s2"][s] ** 2 * ks @ Ci @ ks + shape["n2"][s]
+            np.testing.assert_allclose(mean[j, s], m, rtol=1e-7, atol=1e-7)
+            np.testing.assert_allclose(var[j, s], v, rtol=1e-7, atol=1e-7)
+
+
+def test_shape_species_keeps_common_species_and_falls_back_when_none_qualify():
+    from src.community_encoder.train_DESK.validate_gp_species import shape_species
+    Y = np.zeros((1000, 3))
+    Y[:50, 0] = 1.0          # 5% prevalence
+    Y[:5, 1] = 1.0           # 0.5%
+    np.testing.assert_array_equal(shape_species(Y, 0.01), [True, False, False])
+    np.testing.assert_array_equal(shape_species(np.zeros((10, 2)), 0.01), [True, True])

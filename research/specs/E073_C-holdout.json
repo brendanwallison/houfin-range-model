@@ -1,0 +1,24 @@
+{
+ "exp": "E073",
+ "name": "C-holdout",
+ "group": "cpu2",
+ "env": {
+  "BLR_MAX_ITER": "100",
+  "BLR_STARTS": "0.5"
+ },
+ "cmd": [
+  "bash",
+  "-c",
+  "set -e; {python} research/exp/anchored_delta.py holdout --cache {cache}/gp_species_base --similarity {outroot}/E067/composition-d2e6a98f0eb7/species_similarity.csv --out {out}"
+ ],
+ "expected_minutes": 180,
+ "summarize": [
+  "bash",
+  "-c",
+  "grep -v '^ *$' {out}/../log.txt | tail -80"
+ ],
+ "note": "E073 part C: covariate-extrapolation holdouts (magnitude / sign along cover, mgmt, climate within PCs) on the base cache",
+ "after_jobs": [
+  "E073/planted"
+ ]
+}

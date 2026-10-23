@@ -1,0 +1,18 @@
+{
+ "exp": "E084",
+ "name": "desk-t1995-s2-full-s3ebh",
+ "group": "gpu",
+ "overlay": "research/overlays/desk_tempho_1995_seed2_full_s3ebh.json",
+ "cmd": [
+  "bash",
+  "-c",
+  "set -e; export RESEARCH_OUT={out} TMPDIR={out}/tmp MPLCONFIGDIR={out}/tmp/mpl WANDB_MODE=offline WANDB_DIR={out}; mkdir -p {out}/desk {out}/tmp; {python} scripts/run_encoder.py desk; {python} research/exp/cache.py --out {cache}/desk_tempho_1995_s2_full_s3ebh; {python} research/exp/epoch_variant.py --run {out} --overlay research/overlays/desk_tempho_1995_seed2_full_s3ebh.json --cache-out {cache}/desk_tempho_1995_s2_full_s3ebh_late --work {out}/late"
+ ],
+ "expected_minutes": 80,
+ "summarize": [
+  "python",
+  "-c",
+  "import json; s=json.load(open('{out}/desk/run_summary.json')); print({k: s.get(k) for k in ('best_epoch','epochs_run')})"
+ ],
+ "note": "E084b: full-length s3ebh seed 2"
+}

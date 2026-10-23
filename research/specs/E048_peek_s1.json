@@ -1,0 +1,10 @@
+{
+ "exp": "E048",
+ "name": "peek-t1995-s1",
+ "group": "cpu",
+ "overlay": "research/overlays/desk_tempho_1995_seed1.json",
+ "cmd": ["bash", "-c", "set -e; for st in '' _late; do {python} research/exp/fair_rivals.py --cache {cache}/desk_tempho_1995_s1_cropat$st --ref-cache {cache}/desk_tempho_1995_s1$st --out {out}/desk_tempho_1995_s1_cropat$st --incremental --n-pos 96 --pos-seeds 1 2 3 4 5 --strong-base --tag _p96; done"],
+ "expected_minutes": 15,
+ "summarize": ["bash", "-c", "for st in '' _late; do {python} research/exp/fair_rivals.py --summarize {out}/desk_tempho_1995_s1_cropat$st | grep -E 'TREATMENT|DESK gain|^desk_tempho|  desk '; done"],
+ "note": "E048 peek: T0 1996 seed 1 CropAT-DESK vs its control, paired (raw change, within readout, beyond placebo, beyond strong base)"
+}

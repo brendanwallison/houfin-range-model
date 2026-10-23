@@ -1,0 +1,21 @@
+{
+ "exp": "E073",
+ "name": "C3b-desk-randdrop",
+ "group": "gpu",
+ "overlay": "research/overlays/E073_C3b_desk_t1995_s1_randdrop.json",
+ "after_jobs": [
+  "E073/C3b-mask"
+ ],
+ "cmd": [
+  "bash",
+  "-c",
+  "set -e; export RESEARCH_OUT={out} TMPDIR={out}/tmp MPLCONFIGDIR={out}/tmp/mpl WANDB_MODE=offline WANDB_DIR={out}; mkdir -p {out}/desk {out}/tmp; {python} scripts/run_encoder.py desk; {python} research/exp/cache.py --out {cache}/desk_tempho_1995_s1_randdrop; ln -sfn {cache}/desk_tempho_1995_s1/esk_epochs.npz {cache}/desk_tempho_1995_s1_randdrop/esk_epochs.npz"
+ ],
+ "expected_minutes": 150,
+ "summarize": [
+  "bash",
+  "-c",
+  "grep -v '^ *$' {out}/../log.txt | tail -40"
+ ],
+ "note": "E073 C3b: DESK T0 1996 seed 1 retrained with a random 30% of training cells dropped (matched control for C3)"
+}

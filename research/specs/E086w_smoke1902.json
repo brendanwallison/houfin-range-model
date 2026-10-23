@@ -1,0 +1,13 @@
+{
+ "exp": "E086",
+ "name": "e086w-smoke1902",
+ "group": "gpu",
+ "overlay": "research/overlays/desk_e086w_smoke1902.json",
+ "cmd": [
+  "bash",
+  "-c",
+  "set -e; export RESEARCH_OUT={out} TMPDIR={out}/tmp MPLCONFIGDIR={out}/tmp/mpl WANDB_MODE=offline WANDB_DIR={out}; mkdir -p {out}/desk {out}/tmp; {python} scripts/run_encoder.py desk"
+ ],
+ "expected_minutes": 15,
+ "note": "E086w smoke: 1902 window VRAM and epoch time"
+}

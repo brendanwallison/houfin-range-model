@@ -1,0 +1,11 @@
+{
+ "exp": "E041",
+ "name": "zones-statMgmt-t1985",
+ "group": "cpu",
+ "overlay": "research/overlays/desk_tempho_1985_seed1.json",
+ "after_jobs": ["E041/desk-tempho1985-seed1-statMgmt", "E041/desk-tempho1985-seed2-statMgmt"],
+ "cmd": ["bash", "-c", "{python} research/exp/zone_breakdown.py --out {out} --t0 1986 --models desk_tempho_1985_s1 desk_tempho_1985_s2 desk_tempho_1985_s1_statMgmt desk_tempho_1985_s2_statMgmt desk_tempho_1985_s1_late desk_tempho_1985_s2_late desk_tempho_1985_s1_statMgmt_late desk_tempho_1985_s2_statMgmt_late"],
+ "expected_minutes": 5,
+ "summarize": ["python", "research/exp/zone_breakdown.py", "--summarize", "{out}"],
+ "note": "E041 T0 1986 replication, measure (1b): pooled raw backcast corr by zone vs unweighted controls"
+}

@@ -1,0 +1,8 @@
+{
+  "exp": "E023", "name": "span-reach-default", "group": "cpu",
+  "overlay": "config/overlays/gp_species_base.json",
+  "cmd": ["python", "research/exp/span_reach.py", "--out", "{out}"],
+  "expected_minutes": 10,
+  "summarize": ["python", "research/exp/span_reach.py", "--summarize", "{out}"],
+  "note": "pre-registered in research/experiments/E023.md"
+}

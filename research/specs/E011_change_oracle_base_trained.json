@@ -1,0 +1,9 @@
+{
+  "exp": "E011", "name": "change-oracle-base_trained", "group": "cpu",
+  "env": {"RESEARCH_EXP": "E011"},
+  
+  "cmd": ["python", "research/exp/change_oracle.py", "--cache", "{cache}/gp_species_base", "--out", "{out}", "--population", "trained"],
+  "expected_minutes": 5,
+  "summarize": ["python", "research/exp/change_oracle.py", "--summarize", "{out}"],
+  "note": "pre-registered in research/experiments/E011.md"
+}

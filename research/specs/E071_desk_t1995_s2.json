@@ -1,0 +1,21 @@
+{
+ "exp": "E071",
+ "name": "desk-tempho1995-seed2-res121",
+ "group": "gpu",
+ "overlay": "research/overlays/E071_desk_t1995_s2.json",
+ "after_jobs": [
+  "E071/build"
+ ],
+ "cmd": [
+  "bash",
+  "-c",
+  "set -e; export E071_BASIS={outroot}/E071/basis E071_COMMUNITY={code}/research/E071/resident_community.csv; export RESEARCH_OUT={out} TMPDIR={out}/tmp MPLCONFIGDIR={out}/tmp/mpl WANDB_MODE=offline WANDB_DIR={out}; mkdir -p {out}/desk {out}/tmp; {python} scripts/run_encoder.py desk; {python} research/exp/cache.py --out {cache}/desk_tempho_1995_s2_res121; {python} research/exp/esk_project.py --cache {cache}/desk_tempho_1995_s2_res121; {python} research/exp/epoch_variant.py --run {out} --overlay research/overlays/E071_desk_t1995_s2.json --cache-out {cache}/desk_tempho_1995_s2_res121_late --work {out}/late; {python} research/exp/esk_project.py --cache {cache}/desk_tempho_1995_s2_res121_late"
+ ],
+ "expected_minutes": 80,
+ "summarize": [
+  "python",
+  "-c",
+  "import json; s=json.load(open('{out}/desk/run_summary.json')); print({k: s.get(k) for k in ('best_epoch','best_val_kernel','best_val_zmse','epochs_run')})"
+ ],
+ "note": "E071: T0 1996 seed 2, 121-species resident community"
+}

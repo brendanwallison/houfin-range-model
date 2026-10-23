@@ -1,0 +1,48 @@
+{
+ "exp": "E070",
+ "name": "e070-eval",
+ "group": "cpu",
+ "after_jobs": [
+  "E070/e070-fit-C1-truth",
+  "E070/e070-fit-C1-ridge-rich",
+  "E070/e070-fit-C1-ridge-random",
+  "E070/e070-fit-C1-neighbour-rich",
+  "E070/e070-fit-C1-neighbour-random",
+  "E070/e070-fit-C1-persist-rich",
+  "E070/e070-fit-C1-persist-random",
+  "E070/e070-fit-C2-truth",
+  "E070/e070-fit-C2-ridge-rich",
+  "E070/e070-fit-C2-ridge-random",
+  "E070/e070-fit-C2-neighbour-rich",
+  "E070/e070-fit-C2-neighbour-random",
+  "E070/e070-fit-C2-persist-rich",
+  "E070/e070-fit-C2-persist-random",
+  "E070/e070-fit-P1-truth",
+  "E070/e070-fit-P1-ridge-rich",
+  "E070/e070-fit-P1-ridge-random",
+  "E070/e070-fit-P1-neighbour-rich",
+  "E070/e070-fit-P1-neighbour-random",
+  "E070/e070-fit-P1-persist-rich",
+  "E070/e070-fit-P1-persist-random",
+  "E070/e070-fit-P2-truth",
+  "E070/e070-fit-P2-ridge-rich",
+  "E070/e070-fit-P2-ridge-random",
+  "E070/e070-fit-P2-neighbour-rich",
+  "E070/e070-fit-P2-neighbour-random",
+  "E070/e070-fit-P2-persist-rich",
+  "E070/e070-fit-P2-persist-random"
+ ],
+ "overlay": "research/overlays/desk_tempho_1995_seed1.json",
+ "cmd": [
+  "bash",
+  "-c",
+  "set -e; A=''; for f in $(ls $(dirname {out})/e070-fit-*/fit_*.npz); do b=$(basename $f .npz); b=${b#fit_}; case $b in *_truth) A=\"$A --truth ${b%_truth}=$f\";; *) v=${b%%_*}; r=${b#*_}; h=${r%_*}; c=${r##*_}; A=\"$A --fit $v:$h:$c=$f\";; esac; done; {python} research/exp/e070_eval.py --similarity /home/breallis/houfin/work/houfin/research/E059/species-strata-066f943afb0e/species_similarity.csv $A --out {out}"
+ ],
+ "expected_minutes": 5,
+ "summarize": [
+  "bash",
+  "-c",
+  "head -c 3000 {out}/e070.json"
+ ],
+ "note": "E070: species and Ruzicka routes under calibrated early damage with place"
+}

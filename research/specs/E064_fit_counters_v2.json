@@ -1,0 +1,8 @@
+{
+ "exp": "E064", "name": "cbc-fit-counters-v2", "group": "cpu",
+ "overlay": "research/overlays/desk_tempho_1995_seed1.json",
+ "cmd": ["bash", "-c", "set -e; {python} research/exp/cbc_effort_model.py --data /mnt/e/Datasets/cbc_raw/prepared/cbc_circles_v2.npz --effort counters --out {out}/fit_counters.npz --steps 6000"],
+ "expected_minutes": 25,
+ "summarize": ["bash", "-c", "cat {out}/fit_counters_meta.json"],
+ "note": "E064: raw-CBC effort model, effort = counters"
+}

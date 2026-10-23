@@ -1,0 +1,22 @@
+{
+ "exp": "E028",
+ "name": "persistence-observer",
+ "group": "cpu",
+ "overlay": "config/overlays/gp_species_base.json",
+ "cmd": [
+  "python",
+  "research/exp/persistence_observer.py",
+  "--cache",
+  "{cache}/gp_species_base",
+  "--out",
+  "{out}"
+ ],
+ "expected_minutes": 5,
+ "summarize": [
+  "python",
+  "research/exp/persistence_observer.py",
+  "--summarize",
+  "{out}"
+ ],
+ "note": "E028: damped persistence of cell deviations by observer continuity (habitat vs observer)"
+}

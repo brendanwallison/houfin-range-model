@@ -1,0 +1,40 @@
+{
+ "exp": "E065",
+ "name": "e065-eval",
+ "group": "cpu",
+ "after_jobs": [
+  "E065/e065-fit-V0-full",
+  "E065/e065-fit-V0-h0",
+  "E065/e065-fit-V0-h1",
+  "E065/e065-fit-V0-thin",
+  "E065/e065-fit-V0-omit",
+  "E065/e065-fit-V1-full",
+  "E065/e065-fit-V1-h0",
+  "E065/e065-fit-V1-h1",
+  "E065/e065-fit-V1-thin",
+  "E065/e065-fit-V1-omit",
+  "E065/e065-fit-V2-full",
+  "E065/e065-fit-V2-h0",
+  "E065/e065-fit-V2-h1",
+  "E065/e065-fit-V2-thin",
+  "E065/e065-fit-V2-omit",
+  "E065/e065-fit-V3-full",
+  "E065/e065-fit-V3-h0",
+  "E065/e065-fit-V3-h1",
+  "E065/e065-fit-V3-thin",
+  "E065/e065-fit-V3-omit"
+ ],
+ "overlay": "research/overlays/desk_tempho_1995_seed1.json",
+ "cmd": [
+  "bash",
+  "-c",
+  "set -e; ARGS=''; for f in $(ls $(dirname {out})/e065-fit-*/fit_V*_*.npz); do b=$(basename $f .npz); b=${b#fit_}; ARGS=\"$ARGS --fit ${b%%_*}:${b#*_}=$f\"; done; {python} research/exp/e065_eval.py --data /mnt/e/Datasets/cbc_raw/prepared/cbc_circles_v2.npz --products-csv '/mnt/e/Datasets/houfin/external/cbc_trends_2023/US and Canada Trends/cbc_indices_version_2023.0_na_web_download.csv' --taxonomy /mnt/e/Datasets/houfin/scratch_houfin/data/avonet/eBird_taxonomy.csv $ARGS --degraded-data thin=/mnt/e/Datasets/cbc_raw/pseudo_early_thin/prepared/cbc_circles.npz omit=/mnt/e/Datasets/cbc_raw/pseudo_early_omit/prepared/cbc_circles.npz --out {out}"
+ ],
+ "expected_minutes": 8,
+ "summarize": [
+  "bash",
+  "-c",
+  "cat {out}/e065.json"
+ ],
+ "note": "E065: pseudo-early recovery, split-half reliability, effort artifact, modern guard"
+}

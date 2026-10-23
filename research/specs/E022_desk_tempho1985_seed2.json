@@ -1,0 +1,21 @@
+{
+ "exp": "E022",
+ "name": "desk-tempho1985-seed2",
+ "group": "gpu",
+ "overlay": "research/overlays/desk_tempho_1985_seed2.json",
+ "after_jobs": [
+  "E010/desk-repro-base-r1"
+ ],
+ "cmd": [
+  "bash",
+  "-c",
+  "set -e; export RESEARCH_OUT={out} TMPDIR={out}/tmp MPLCONFIGDIR={out}/tmp/mpl WANDB_MODE=offline WANDB_DIR={out}; mkdir -p {out}/desk {out}/tmp; {python} scripts/run_encoder.py desk; {python} research/exp/cache.py --out {cache}/desk_tempho_1985_s2"
+ ],
+ "expected_minutes": 150,
+ "summarize": [
+  "python",
+  "-c",
+  "import json; s=json.load(open('{out}/desk/run_summary.json')); print({k: s.get(k) for k in ('best_epoch','best_val_kernel','best_val_zmse','epochs_run','selection_metric','holdout_years')})"
+ ],
+ "note": "E022: seed replicate of desk_tempho_1985 for the E019 reach curve (skeptic: seed spread under extrapolation unmeasured)"
+}

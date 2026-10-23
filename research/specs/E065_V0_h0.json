@@ -1,0 +1,18 @@
+{
+ "exp": "E065",
+ "name": "e065-fit-V0-h0",
+ "group": "cpu",
+ "overlay": "research/overlays/desk_tempho_1995_seed1.json",
+ "cmd": [
+  "bash",
+  "-c",
+  "set -e; {python} research/exp/cbc_effort_model.py --effort counters --completeness none --data /mnt/e/Datasets/cbc_raw/prepared/cbc_circles_v2.npz --completeness-file /mnt/e/Datasets/cbc_raw/prepared/completeness_v3.npz --half 0 --steps 6000 --out {out}/fit_V0_h0.npz"
+ ],
+ "expected_minutes": 14,
+ "summarize": [
+  "bash",
+  "-c",
+  "cat {out}/fit_V0_h0_meta.json"
+ ],
+ "note": "E065: CBC completeness variant V0, part h0"
+}

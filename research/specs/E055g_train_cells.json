@@ -1,0 +1,10 @@
+{
+ "exp": "E055",
+ "name": "train-cells",
+ "group": "cpu",
+ "overlay": "research/overlays/desk_tempho_1995_seed1.json",
+ "cmd": ["bash", "-c", "set -e; FR='--incremental --n-pos 96 --pos-seeds 1 2 3 4 5 --strong-base --tag _p96 --eval-set train'; for c in desk_tempho_1995_s1_grok desk_tempho_1995_s1_grok_ep0500 desk_tempho_1995_s1_grok_ep1000 desk_tempho_1995_s1_grok_ep1900 desk_tempho_1995_s1_late; do {python} research/exp/fair_rivals.py --cache {cache}/$c --ref-cache {cache}/desk_tempho_1995_s1 --esk-dir {cache}/desk_tempho_1995_s1 --out {out}/$c $FR; done; for t in 1995 1985; do for st in '' _late; do {python} research/exp/fair_rivals.py --cache {cache}/desk_tempho_${t}_ens4$st --ref-cache {cache}/desk_tempho_${t}_s1$st --out {out}/desk_tempho_${t}_ens4$st $FR; done; done"],
+ "expected_minutes": 90,
+ "summarize": ["bash", "-c", "for d in {out}/*/; do f=$d/fair_rivals_incr_p96.json; [ -f $f ] || continue; {python} -c \"import json,sys; r=json.load(open(sys.argv[1])); v=r['vs_ref']; g=lambda k: '%+.3f [%+.3f,%+.3f]' % (v[k]['diff'], *v[k]['ci']); h=lambda k: '%+.3f' % r[k]['desk_within'] if isinstance(r.get(k),dict) and 'desk_within' in r[k] else '-'; print(sys.argv[2][:32].ljust(32), r['n_cells'], 'train cells | change', g('desk - desk_ref'), '| beyond placebo', g('placebo+desk_within - placebo+desk_ref_within'), '| strong', h('strong_gain'), 'buffer', h('buffer_gain'))\" $f $(basename $d); done"],
+ "note": "E055g: the production case -- TRAINING cells in the withheld years (readout on their trained years): grokking-probe states, control late, seed ensembles, paired vs seed 1"
+}

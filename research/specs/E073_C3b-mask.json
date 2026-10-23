@@ -1,0 +1,17 @@
+{
+ "exp": "E073",
+ "name": "C3b-mask",
+ "group": "cpu2",
+ "cmd": [
+  "bash",
+  "-c",
+  "set -e; {python} research/exp/anchored_delta.py randmask --cache {cache}/desk_tempho_1995_s1 --similarity {outroot}/E067/composition-d2e6a98f0eb7/species_similarity.csv --cover-mask-json {outroot}/E073/c3_train_drop_mask.json --out {out}; cp {out}/train_drop_mask_random.npy {outroot}/E073/c3b_train_drop_mask_random.npy"
+ ],
+ "expected_minutes": 20,
+ "summarize": [
+  "bash",
+  "-c",
+  "grep -v '^ *$' {out}/../log.txt | tail -40"
+ ],
+ "note": "E073 C3b: random drop mask (whole 6x6 training blocks, as many cells as the cover mask)"
+}

@@ -1,0 +1,10 @@
+{
+ "exp": "E035",
+ "name": "clock-where",
+ "group": "cpu",
+ "overlay": "config/overlays/production.json",
+ "cmd": ["python", "research/exp/clock_where.py", "--keys-cache", "{cache}/gp_species_base", "--out", "{out}"],
+ "expected_minutes": 30,
+ "summarize": ["python", "research/exp/clock_where.py", "--summarize", "{out}"],
+ "note": "E035g: does production DESK's response to the fertilizer+irrigation trend sit where cropland is (intensification) or everywhere (clock)?"
+}

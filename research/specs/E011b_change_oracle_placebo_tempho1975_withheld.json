@@ -1,0 +1,9 @@
+{
+  "exp": "E011", "name": "change-oracle-placebo-tempho1975_withheld", "group": "cpu",
+  "env": {"RESEARCH_EXP": "E011"},
+  "after_jobs": ["E003/esk-desk_tempho_1975"],
+  "cmd": ["python", "research/exp/change_oracle.py", "--cache", "{cache}/desk_tempho_1975", "--out", "{out}", "--population", "withheld", "--ranks", "24", "64"],
+  "expected_minutes": 8,
+  "summarize": ["python", "research/exp/change_oracle.py", "--summarize", "{out}"],
+  "note": "E011 with placebo arms (position basis, static features): research/experiments/E011.md PLACEBO CONTROL"
+}

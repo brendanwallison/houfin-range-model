@@ -1,0 +1,17 @@
+{
+ "exp": "E024",
+ "name": "span-pooled-first-look",
+ "group": "cpu",
+ "overlay": "config/overlays/gp_species_base.json",
+ "after_jobs": [
+  "E025/late-caches"
+ ],
+ "cmd": [
+  "bash",
+  "-c",
+  "set -e; P='{python} research/exp/span_pooled.py --out {out}'; $P --t0 1986 --short desk_span_1986_2005 --long desk_tempho_1985_s1 desk_tempho_1985_s2; $P --t0 1986 --tag late --short desk_span_1986_2005_late --long desk_tempho_1985_s1_late desk_tempho_1985_s2_late; $P --t0 1996 --short desk_span_1996_2015 --long desk_tempho_1995_s1 desk_tempho_1995_s2; $P --t0 1996 --tag late --short desk_span_1996_2015_late --long desk_tempho_1995_s1_late desk_tempho_1995_s2_late; $P --t0 1976 --tag late_vs_archived --short desk_span_1976_1995_late desk_span_1976_1995 --long desk_tempho_1975"
+ ],
+ "expected_minutes": 10,
+ "summarize": ["python", "research/exp/span_pooled.py", "--summarize", "{out}"],
+ "note": "E024b first look: the pre-declared pooled statistic on the selected and epoch-490 states (no new training)"
+}

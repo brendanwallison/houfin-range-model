@@ -83,8 +83,36 @@ def true_kernel_loss(z_pred, x_raw, num_pairs=4096):
     return _pair_kernel_loss(z_pred[i], z_pred[j], x_raw[i], x_raw[j])
 
 
+def same_cell_partners(pool_flat, first, generator=None):
+    """For each pool index in ``first``, a DIFFERENT pool point of the same cell (another supervised year of
+    that cell), or -1 where the cell has only one point. Pure apart from the RNG.
+
+    Points are grouped by ``pool_flat`` (one point per supervised cell-year, so two points sharing a flat index
+    are two years of one cell). For a point at position p of a group of size s >= 2 the partner is position
+    (p + 1 + U{0..s-2}) mod s, which is never p itself.
+    """
+    order = torch.argsort(pool_flat, stable=True)
+    sf = pool_flat[order]
+    new = torch.ones_like(sf, dtype=torch.bool)
+    new[1:] = sf[1:] != sf[:-1]
+    gid = torch.cumsum(new.long(), 0) - 1                          # group id of each sorted position
+    starts = torch.nonzero(new).flatten()
+    sizes = torch.diff(torch.cat([starts, torch.tensor([len(sf)], device=sf.device)]))
+    pos_sorted = torch.empty_like(order)
+    pos_sorted[order] = torch.arange(len(order), device=order.device)
+    p = pos_sorted[first]                                          # sorted position of each first point
+    g = gid[p]
+    s = sizes[g]
+    within = p - starts[g]
+    u = torch.floor(torch.rand(len(first), device=first.device, generator=generator)
+                    * torch.clamp(s - 1, min=1)).long()
+    partner_pos = starts[g] + (within + 1 + u) % torch.clamp(s, min=1)
+    partner = order[partner_pos]
+    return torch.where(s >= 2, partner, torch.full_like(partner, -1))
+
+
 def spacetime_kernel_loss(z_by_t, pool_t, pool_flat, pool_x, num_pairs=4096, generator=None,
-                          pool_w=None):
+                          pool_w=None, same_cell_frac=0.0):
     """Kernel loss over pairs drawn from the whole SPACETIME pool of supervised cell-years.
 
     The ESK basis is one joint Ružička kernel-PCA over every ``(cell, year)`` point, so its
@@ -107,6 +135,11 @@ def spacetime_kernel_loss(z_by_t, pool_t, pool_flat, pool_x, num_pairs=4096, gen
 
     ``z_by_t`` is ``(T, H, W, L)``; ``pool_t``/``pool_flat`` index its year and flattened cell
     axes, and ``pool_x`` holds the matching raw communities.
+
+    ``same_cell_frac`` (research, E043; default 0 = the draw above, bit for bit) makes that share of the pairs
+    SAME-CELL, CROSS-YEAR pairs: the first point drawn as usual, its partner another supervised year of the same
+    cell. Uniform draws give same-cell pairs at ~1/n_cells (~0.035% of pairs) -- the only pairs that carry
+    within-place temporal similarity -- so this over-samples the temporal half of the kernel contract.
     """
     N = int(pool_t.shape[0])
     if N < 2:
@@ -125,11 +158,52 @@ def spacetime_kernel_loss(z_by_t, pool_t, pool_flat, pool_x, num_pairs=4096, gen
         idx = torch.multinomial(pool_w, 2 * num_pairs, replacement=True,
                                 generator=generator).view(2, num_pairs)
     i, j = idx[0], idx[1]
+    n_same = int(round(float(same_cell_frac) * num_pairs))
+    if n_same > 0:
+        partner = same_cell_partners(pool_flat, i[:n_same], generator=generator)
+        j = j.clone()
+        j[:n_same] = torch.where(partner >= 0, partner, j[:n_same])   # single-year cells keep their random partner
     zf = z_by_t.reshape(T, H * W, L)
     zi = zf[pool_t[i], pool_flat[i]]
     zj = zf[pool_t[j], pool_flat[j]]
     return _pair_kernel_loss(zi, zj, pool_x[i], pool_x[j])
 
+
+
+def ruzicka_cell_groups(r, c):
+    """E086s: index structure for drawing a same-cell partner of each CBC cell-year (``r``, ``c`` long tensors).
+    Returns ``order`` (entries sorted by cell), each entry's group start / count in that order, and the entries
+    whose cell holds >= 2 cell-years (the only ones that can start a same-cell pair)."""
+    import torch
+    cell = r * 100000 + c
+    order = torch.argsort(cell)
+    _, inv, cnt = torch.unique(cell[order], return_inverse=True, return_counts=True)
+    start = torch.cumsum(cnt, 0) - cnt
+    pos = torch.empty_like(order)
+    pos[order] = torch.arange(order.numel(), device=order.device)
+    g = inv[pos]
+    return {"order": order, "g_start": start[g], "g_cnt": cnt[g], "eligible": torch.nonzero(cnt[g] >= 2).squeeze(1)}
+
+
+def ruzicka_pairs(ruzt, n):
+    """The CBC Ruzicka term's pair draw: ``ruzt['pairs']`` uniform pairs over the ``n`` cell-years; with
+    ``same_frac`` > 0 (E086s) the first round(same_frac * pairs) are replaced by SAME-CELL pairs (partner uniform
+    over the cell's cell-years), kept only when >= ``min_gap`` year-steps apart. Returns (i, j, gap_ok). With
+    same_frac 0 this is exactly the E081 draw (one randint, no other generator calls)."""
+    import torch
+    dev = ruzt["X"].device
+    ij = torch.randint(0, n, (2, ruzt["pairs"]), device=dev)
+    i, j = ij[0], ij[1]
+    gap_ok = torch.ones_like(i, dtype=torch.bool)
+    if ruzt.get("same_frac", 0.0) > 0:
+        ns = int(round(ruzt["same_frac"] * ruzt["pairs"]))
+        el = ruzt["eligible"]
+        si = el[torch.randint(0, el.numel(), (ns,), device=dev)]
+        off = (torch.rand(ns, device=dev) * ruzt["g_cnt"][si]).long()
+        sj = ruzt["order"][ruzt["g_start"][si] + torch.minimum(off, ruzt["g_cnt"][si] - 1)]
+        i = torch.cat([si, i[ns:]]); j = torch.cat([sj, j[ns:]])
+        gap_ok = torch.cat([(ruzt["t"][si] - ruzt["t"][sj]).abs() >= ruzt["min_gap"], gap_ok[ns:]])
+    return i, j, gap_ok
 
 
 def fixed_kernel_pairs(n_points, num_pairs, seed):
@@ -199,6 +273,26 @@ def kernel_loss_on_pairs(z_by_t, pool_t, pool_flat, pool_x, pairs, rank=None):
         zi, zj = zi[:, :int(rank)], zj[:, :int(rank)]
     return _pair_kernel_loss(zi, zj, pool_x[i], pool_x[j])
 
+
+
+def year_weights(years, anchor, half_life, floor=0.0):
+    """Per-point weight that decays with distance in years from ``anchor``: ``2 ** (-|y - anchor| / half_life)``,
+    floored at ``floor`` (as a fraction of the anchor year's weight) and normalised to a median of 1.0 like
+    :func:`stratum_weights`, so it composes multiplicatively with the stratum and first-year weights.
+
+    Why it exists: a DESK trained on the 20 years next to a backcast target backcast that target better than one
+    trained on 40 (research E024b, +0.04 pooled at T0 1986). This keeps every year in training but puts the
+    trained years nearest the target (the earliest decades, for a backcast) in charge of the temporal behaviour.
+    """
+    y = np.asarray(years, dtype="float64")
+    hl = float(half_life)
+    if not np.isfinite(hl) or hl <= 0:
+        raise ValueError(f"year_weight half_life must be finite and positive; got {half_life}")
+    w = np.power(2.0, -np.abs(y - float(anchor)) / hl)
+    if floor:
+        w = np.maximum(w, float(floor))
+    med = float(np.median(w)) if len(w) else 0.0
+    return w / med if med > 0 else np.ones_like(w)
 
 
 def stratum_weights(labels, n_min=200, cap=5.0, power=0.5):
@@ -661,6 +755,11 @@ def spatial_tiles(h, w, n_tiles, halo, offset=(0, 0)):
     return out
 
 
+def _snapshot_due(ep_done, every):
+    """True when the state after epoch ``ep_done`` should be kept as a weights snapshot (``every`` > 0)."""
+    return int(every) > 0 and int(ep_done) > 0 and int(ep_done) % int(every) == 0
+
+
 def _warmup_cosine(epochs, warmup, min_frac):
     """LR multiplier: linear warmup then cosine decay to ``min_frac``.
 
@@ -691,7 +790,7 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
                     direction_withheld_anchor_year=None,
                     hidden_width=None, mlp_expansion=4,
                     val_metric_pool=None, val_pool_holdout_years=(),
-                    metric_pairs=4096,
+                    metric_pairs=4096, metric_same_cell_frac=0.0,
                     eval_kernel_pairs=65536, eval_kernel_draws=1, eval_kernel_ranks=(),
                     eigenbasis_batch=0, eigenbasis_every=0, eigenbasis_ref=None,
                     eigenbasis_draws=1,
@@ -701,6 +800,14 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
                     selection_metric="val_zmse",
                     selection_smooth=0,
                     trajectory_path=None, stop_at_epoch=None, return_info=False,
+                    checkpoint_path=None, checkpoint_every=0, resume=False,
+                    snapshot_every=0,
+                    select_on_withheld=False,
+                    aux_targets=None,
+                    presence_targets=None,
+                    ruzicka_targets=None,
+                    metric_heads=None,
+                    private_orth=0.0,
                     _skip_target_conversion=False):
     """Train DESK with a learned output-EMA.
 
@@ -740,6 +847,29 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
     epoch, both metrics there, the trajectory path). Behind a flag rather than always, because
     a silent arity change is a failure mode this file has been bitten by -- see
     ``spacetime_metric_pool``'s ``return_pidx`` note.
+
+    ``checkpoint_path`` / ``checkpoint_every`` write the whole loop state (weights, optimizer,
+    schedule, best-so-far, selection history, every RNG the loop draws from) atomically at the top
+    of every ``checkpoint_every``-th epoch, and ``resume`` continues from it. Off-cluster a 6-12 h
+    run is killed by things a scheduler never does (WSL shutdown, sleep, OS updates), and weights
+    were otherwise saved only at the very end. A checkpoint carries a fingerprint of the run's
+    configuration and is set aside, not resumed, when it does not match.
+
+    ``select_on_withheld``: under a temporal holdout both pooled selection metrics (val z-MSE and
+    ``kernel_val``) include held-out cells in WITHHELD years, so the epoch was being chosen partly
+    on the very years the experiment withholds. The default now selects on the trained-year pool
+    (``vs_sp`` / ``vk['sp']``), which is the same rows as before whenever nothing is withheld; True
+    reproduces the archived tempho runs' selection.
+
+    ``aux_targets`` (research, default None = off and bit-identical to before): an AUXILIARY head,
+    a linear map from z_ema to a second target -- e.g. eBird Status & Trends log abundance of the
+    reference species -- on cells and years the BBS target does not cover. A dict with ``t_idx``
+    (window indices of the target years), ``Y`` (n_years, H, W, S, standardized), ``mask``
+    (n_years, H, W bool: which cell-years carry the target; the caller excludes held-out and
+    buffer cells) and ``weight``. Its own head, not the shared latent: the August test (b6e451d)
+    showed one latent cannot hold BBS and eBird as the same target. The head is discarded after
+    training, so z's shape and every downstream reader are unchanged. Linear, so z must carry the
+    target the same way the age model's readout reads it. Full-grid steps only.
     """
     from torch.utils.checkpoint import checkpoint
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -753,13 +883,111 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
     np.random.seed(seed)
     aug_rng = np.random.default_rng(seed)
 
+    # Research (E086): PRIVATE dims, one block per metric head (its "private" entry), read only by that head.
+    _pdims = [int(_mh.get("private", 0)) for _mh in (metric_heads or [])]
+    private_dim = int(sum(_pdims))
     model = MultiStreamAutoencoder(stream_dims, latent_dim, spatial_kernel, dropout,
-                                   hidden_width, mlp_expansion).to(device)
+                                   hidden_width, mlp_expansion, private_dim=private_dim).to(device)
     ema = OutputEMA(ema_cfg.get("half_life_bounds", [1.0, 40.0])[0],
                     ema_cfg.get("half_life_bounds", [1.0, 40.0])[1],
                     ema_cfg.get("init_half_life", 8.0)).to(device)
-    params = list(model.parameters()) + list(ema.parameters())
-    opt = torch.optim.AdamW(_param_groups([model, ema], weight_decay), lr=lr)
+    # One head per auxiliary target (a dict, or a list of dicts -- e.g. eBird and CBC), each with its
+    # own mask, since the sources cover different cells and years.
+    _aux_in = ([aux_targets] if isinstance(aux_targets, dict) else list(aux_targets or []))
+    aux_heads, auxs = [], []
+    if _aux_in and int(n_spatial_tiles) > 1:
+        raise ValueError("aux_targets is implemented for full-grid steps only (spatial_tiles 1)")
+    for _at in _aux_in:
+        aux_heads.append(torch.nn.Linear(int(latent_dim), int(_at["Y"].shape[-1])).to(device))
+        auxs.append({"t": torch.as_tensor(np.asarray(_at["t_idx"]), device=device, dtype=torch.long),
+                     "Y": torch.as_tensor(_at["Y"], device=device, dtype=torch.float32),
+                     "m": torch.as_tensor(_at["mask"], device=device).bool(),
+                     "w": float(_at["weight"]), "label": str(_at.get("label", f"aux{len(auxs)}"))})
+        print(f"[desk] AUX head '{auxs[-1]['label']}': linear {latent_dim} -> {auxs[-1]['Y'].shape[-1]}, "
+              f"{int(auxs[-1]['m'].sum()):,} supervised cell-years over {len(_at['t_idx'])} years, "
+              f"weight {auxs[-1]['w']:g}", flush=True)
+    # Research (E069b): a PRESENCE-ONLY term from CBC lists, conditioned within list. For list i at window year t,
+    # cell (r, c), species s on the list: -log softmax_s(z_ema[t, r, c] @ W + b + delta). W, b are a FIXED readout
+    # (z -> log1p abundance, fitted outside on ESK z), delta a learned per-species offset (winter detectability,
+    # season, reporting), so the term can only be lowered by moving z. A list's own effort and completeness are shared
+    # by its species and cancel; unlisted species enter only through the normaliser. Off by default.
+    pres, pres_mod = None, None
+    if presence_targets is not None:
+        if int(n_spatial_tiles) > 1:
+            raise ValueError("presence_targets is implemented for full-grid steps only (spatial_tiles 1)")
+        _pt = presence_targets
+        pres = {"t": torch.as_tensor(np.asarray(_pt["t_idx"]), device=device, dtype=torch.long),
+                "r": torch.as_tensor(np.asarray(_pt["row"]), device=device, dtype=torch.long),
+                "c": torch.as_tensor(np.asarray(_pt["col"]), device=device, dtype=torch.long),
+                "P": torch.as_tensor(np.asarray(_pt["P"]), device=device, dtype=torch.float32),
+                "W": torch.as_tensor(np.asarray(_pt["W"]), device=device, dtype=torch.float32),
+                "b": torch.as_tensor(np.asarray(_pt["b"]), device=device, dtype=torch.float32),
+                "w": float(_pt["weight"]), "label": str(_pt.get("label", "presence"))}
+        pres_mod = torch.nn.Module()
+        pres_mod.delta = torch.nn.Parameter(torch.zeros(pres["P"].shape[1], device=device))
+        # E084 S5: a LEARNED readout (initialised at the fixed one) instead of the fixed W, b
+        if bool(_pt.get("learned_head", False)):
+            pres_mod.W = torch.nn.Parameter(pres["W"].clone())
+            pres_mod.b = torch.nn.Parameter(pres["b"].clone())
+            pres["learned"] = True
+        # E078: optional per-list sampling-completeness covariate with a learned SPECIES-SPECIFIC slope, so composition
+        # shifts that follow list completeness (abundance-dependent detection) are absorbed here, not by z
+        if _pt.get("comp") is not None:
+            pres["comp"] = torch.as_tensor(np.asarray(_pt["comp"]), device=device, dtype=torch.float32)
+            pres_mod.gamma = torch.nn.Parameter(torch.zeros(pres["P"].shape[1], device=device))
+        print(f"[desk] PRESENCE term '{pres['label']}': {int(pres['P'].shape[0]):,} lists, "
+              f"{int(pres['P'].shape[1])} species, {int(pres['P'].sum()):,} records, weight {pres['w']:g}", flush=True)
+    # Research (E081): a CBC RUZICKA term -- pairs of CBC cell-year communities (effort-standardized, resident
+    # species) supervise DESK's similarity through a FIXED calibration: dot(z_i, z_j) ~ a + b * Ruzicka_CBC(i, j)
+    # (a, b fitted outside on ESK z in trained years). No parameters; random pairs each full-grid step. Off by default.
+    ruzt = None
+    if ruzicka_targets is not None:
+        if int(n_spatial_tiles) > 1:
+            raise ValueError("ruzicka_targets is implemented for full-grid steps only (spatial_tiles 1)")
+        _rt = ruzicka_targets
+        ruzt = {"t": torch.as_tensor(np.asarray(_rt["t_idx"]), device=device, dtype=torch.long),
+                "r": torch.as_tensor(np.asarray(_rt["row"]), device=device, dtype=torch.long),
+                "c": torch.as_tensor(np.asarray(_rt["col"]), device=device, dtype=torch.long),
+                "X": torch.log1p(torch.as_tensor(np.asarray(_rt["X"]), device=device, dtype=torch.float32)),
+                "a": float(_rt["a"]), "b": float(_rt["b"]), "w": float(_rt["weight"]),
+                "pairs": int(_rt.get("pairs", 4096)), "label": str(_rt.get("label", "cbc_ruzicka")),
+                "same_frac": float(_rt.get("same_cell_frac", 0.0)), "min_gap": int(_rt.get("same_cell_min_gap", 1))}
+        # E086s: a share of the pairs SAME-CELL, CROSS-YEAR (>= min_gap years apart): random pairs are almost all
+        # spatial, so these are the term's only within-place temporal contrasts. Off (0) by default: the draw is unchanged.
+        if ruzt["same_frac"] > 0:
+            ruzt.update(ruzicka_cell_groups(ruzt["r"], ruzt["c"]))
+        print(f"[desk] RUZICKA term '{ruzt['label']}': {int(ruzt['X'].shape[0]):,} CBC cell-years, "
+              f"{int(ruzt['X'].shape[1])} species, dot ~ {ruzt['a']:+.3f} + {ruzt['b']:.3f} x Ruzicka, "
+              f"{ruzt['pairs']} pairs/step, weight {ruzt['w']:g}"
+              + (f", same-cell share {ruzt['same_frac']:g} (gap >= {ruzt['min_gap']} y; "
+                 f"{int(ruzt['eligible'].numel()):,} eligible cell-years)" if ruzt["same_frac"] > 0 else ""), flush=True)
+    # Research (E084): METRIC HEADS -- a linear map H (latent -> d) per source with its OWN similarity contract,
+    # dot(H z_i, H z_j) ~ Ruzicka(log1p X_i, log1p X_j) over pairs of that source's points (random pairs per full-grid
+    # step). Winter (CBC) or eBird structure lives in the head's space, not in z's own geometry. Off by default.
+    mheads, mh_mods = [], []
+    _p0 = 0
+    for _hk, _mh in enumerate(metric_heads or []):
+        if int(n_spatial_tiles) > 1:
+            raise ValueError("metric_heads are implemented for full-grid steps only (spatial_tiles 1)")
+        # A head reads [z, its own private block]; with no private block it reads z alone, as in E084.
+        _pk = _pdims[_hk]
+        mh_mods.append(torch.nn.Linear(int(latent_dim) + _pk, int(_mh.get("dim", 24)), bias=False).to(device))
+        mheads.append({"t": torch.as_tensor(np.asarray(_mh["t_idx"]), device=device, dtype=torch.long),
+                       "r": torch.as_tensor(np.asarray(_mh["row"]), device=device, dtype=torch.long),
+                       "c": torch.as_tensor(np.asarray(_mh["col"]), device=device, dtype=torch.long),
+                       "X": torch.log1p(torch.as_tensor(np.asarray(_mh["X"]), device=device, dtype=torch.float32)),
+                       "w": float(_mh["weight"]), "pairs": int(_mh.get("pairs", 4096)),
+                       "label": str(_mh.get("label", f"head{len(mheads)}")), "pslice": (_p0, _p0 + _pk)})
+        _p0 += _pk
+        print(f"[desk] METRIC HEAD '{mheads[-1]['label']}': linear {latent_dim}+{_pk} private -> {int(_mh.get('dim', 24))}, "
+              f"{int(mheads[-1]['X'].shape[0]):,} points, {int(mheads[-1]['X'].shape[1])} species, weight "
+              f"{mheads[-1]['w']:g}", flush=True)
+    params = list(model.parameters()) + list(ema.parameters()) + \
+        [p for h in aux_heads for p in h.parameters()] + \
+        (list(pres_mod.parameters()) if pres_mod is not None else []) + \
+        [p for m_ in mh_mods for p in m_.parameters()]
+    opt = torch.optim.AdamW(_param_groups([model, ema] + aux_heads + ([pres_mod] if pres_mod is not None else [])
+                                          + mh_mods, weight_decay), lr=lr)
     sched = torch.optim.lr_scheduler.LambdaLR(
         opt, _warmup_cosine(epochs, warmup_epochs, min_lr_frac))
     # Early training is unstable (the metric loss can transiently spike), so clip the global
@@ -1051,7 +1279,11 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
     # conversion is not optional in any real run.
     hy_tgt = (_hy_in or None) if _skip_target_conversion else (device_targets(_hy_in, device)
                                                               or None)
-    y2023 = int(max(tgt))                                         # anchor year index in the window
+    # Latest year with TRAINING coverage, mirroring y_deep below: a run whose span ENDS early (years after it withheld)
+    # keeps those years in `tgt` with all-False train masks, and max(tgt) would pair every diagnostic with an untrained
+    # year (empty rotation sets) -- exactly the case the span-vs-reach runs (E024) create.
+    _trained_years = [y for y in tgt if bool(tgt[y][1].any())]
+    y2023 = int(max(_trained_years) if _trained_years else max(tgt))  # anchor year index in the window
 
     # No-skill baselines on the held-out cells (pooled over all supervised years): the Z-MSE
     # of predicting the global mean vector, and of predicting zero. Val(all-yr) must fall well
@@ -1087,6 +1319,8 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
     except Exception as exc:                       # diagnostic only; never block training
         print(f"[desk] spatial-interpolation baseline unavailable ({exc})", flush=True)
 
+    _priv = {"ema": None}
+
     def _forward_window(train_mode, mask_inputs, want_raw=False, box=None):
         """Forward the whole year window -> ``(z_ema, recon_loss[, z_raw])``.
 
@@ -1103,6 +1337,8 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
         cv, mk = cov[:, r0:r1, c0:c1], msk[:, r0:r1, c0:c1]
         hw = (cv.shape[1], cv.shape[2])
         z_raw, rl = [], torch.zeros((), device=device)
+        p_raw = []
+        _wp = private_dim > 0 and train_mode and box is None
         # Drawn ONCE for the whole window, so the groups it drops are missing in EVERY year --
         # the shape real missingness has (a CONUS-only covariate, a product that ends before the
         # timeline does). Hoisted out of the year loop for exactly that reason; a per-year draw
@@ -1120,7 +1356,10 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
                 # in-place mask would permanently destroy that year for every later epoch.
                 xt = xt * keep
             with autocast():
-                if train_mode:
+                if _wp:
+                    zt, rt, pt = checkpoint(model, xt, mk[t:t + 1], True, use_reentrant=False)
+                    p_raw.append(pt[0].float())
+                elif train_mode:
                     zt, rt = checkpoint(model, xt, mk[t:t + 1], use_reentrant=False)
                 else:
                     zt, rt = model(xt, mk[t:t + 1])
@@ -1128,6 +1367,8 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
             # Target is the CLEAN grid even when the input was masked -> denoising objective.
             rl = rl + F.mse_loss(rt[0][mk[t]].float(), cv[t][mk[t]])
         stack = torch.stack(z_raw, 0)
+        # E086: the private block is smoothed by the SAME output EMA as z (heads read it at z_ema's time)
+        _priv["ema"] = ema(torch.stack(p_raw, 0)) if p_raw else None
         out = (ema(stack), rl / cv.shape[0])
         return out + (stack,) if want_raw else out
 
@@ -1461,13 +1702,133 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
     # first assigned: the printed line and the JSONL row are emitted EVERY epoch.
     vk, vk_sd, tk, rank_curve, eig = {}, {}, float("nan"), {}, {}
     crit_hist = []
+
+    # ---- checkpoint / resume ---------------------------------------------------------------
+    # The fingerprint is every argument that changes WHICH run this is. Resuming a checkpoint
+    # written under a different configuration would splice two runs into one, so a mismatch
+    # moves the old file aside and trains from scratch.
+    import hashlib
+    _ck_key = {"epochs": int(epochs), "lr": float(lr), "weights": weights, "seed": int(seed),
+               "latent_dim": int(latent_dim), "spatial_kernel": int(spatial_kernel),
+               "dropout": float(dropout), "weight_decay": float(weight_decay),
+               "warmup_epochs": int(warmup_epochs), "min_lr_frac": float(min_lr_frac),
+               "amp": bool(amp), "stream_dims": [int(d) for d in stream_dims],
+               "years": [int(window_years[0]), int(window_years[-1]), len(window_years)],
+               "hidden_width": hidden_width, "mlp_expansion": int(mlp_expansion),
+               "metric_pairs": int(metric_pairs), "metric_same_cell_frac": float(metric_same_cell_frac),
+               "n_spatial_tiles": int(n_spatial_tiles),
+               "tiles_per_step": int(tiles_per_step), "selection_metric": str(selection_metric),
+               "select_on_withheld": bool(select_on_withheld),
+               "holdout_years": sorted(int(y) for y in (val_pool_holdout_years or ()))}
+    if auxs:   # only when on, so every existing run's fingerprint is unchanged
+        _fpa = [{"label": a["label"], "weight": a["w"], "S": int(a["Y"].shape[-1]),
+                 "n_years": int(a["t"].numel()), "n_rows": int(a["m"].sum())} for a in auxs]
+        _ck_key["aux"] = _fpa[0] if len(_fpa) == 1 else _fpa
+    if pres is not None:   # only when on
+        _ck_key["presence"] = {"label": pres["label"], "weight": pres["w"], "S": int(pres["P"].shape[1]),
+                               "n_lists": int(pres["P"].shape[0]), "n_records": int(pres["P"].sum())}
+        if "comp" in pres:
+            _ck_key["presence"]["completeness_slopes"] = True
+        if pres.get("learned"):
+            _ck_key["presence"]["learned_head"] = True
+    if mheads:   # only when on
+        _ck_key["metric_heads"] = [{"label": h["label"], "weight": h["w"], "n": int(h["X"].shape[0]),
+                                    "pairs": h["pairs"], "dim": int(m_.out_features)} for h, m_ in zip(mheads, mh_mods)]
+        if private_dim > 0:   # only when on, so E084-style runs keep their fingerprint
+            _ck_key["private_dims"] = [int(h["pslice"][1] - h["pslice"][0]) for h in mheads]
+            _ck_key["private_orth"] = float(private_orth)
+    if ruzt is not None:   # only when on
+        _ck_key["ruzicka"] = {"label": ruzt["label"], "weight": ruzt["w"], "a": ruzt["a"], "b": ruzt["b"],
+                              "n": int(ruzt["X"].shape[0]), "pairs": ruzt["pairs"]}
+        if ruzt["same_frac"] > 0:   # E086s, only when on
+            _ck_key["ruzicka"].update({"same_cell_frac": ruzt["same_frac"], "same_cell_min_gap": ruzt["min_gap"]})
+    _ck_fp =hashlib.sha256(json.dumps(_ck_key, sort_keys=True, default=str).encode()).hexdigest()[:16]
+    start_ep = 1
+    if resume and checkpoint_path and os.path.exists(checkpoint_path):
+        _ck = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
+        if _ck.get("fingerprint") != _ck_fp:
+            os.replace(checkpoint_path, checkpoint_path + ".stale")
+            print(f"[desk] checkpoint {checkpoint_path} belongs to a different configuration "
+                  f"(fingerprint {_ck.get('fingerprint')} vs {_ck_fp}); moved to .stale and "
+                  f"training from scratch", flush=True)
+        else:
+            model.load_state_dict(_ck["model"])
+            ema.load_state_dict(_ck["ema"])
+            for _h, _sd in zip(aux_heads, _ck.get("aux_heads", [])):
+                _h.load_state_dict(_sd)
+            if pres_mod is not None and "presence" in _ck:
+                pres_mod.load_state_dict(_ck["presence"])
+            for _m, _sd in zip(mh_mods, _ck.get("metric_heads", [])):
+                _m.load_state_dict(_sd)
+            opt.load_state_dict(_ck["opt"])
+            sched.load_state_dict(_ck["sched"])
+            best_val, best, bad, nonfinite = (_ck["best_val"], _ck["best"], _ck["bad"],
+                                              _ck["nonfinite"])
+            best_epoch, best_zmse, best_kernel = (_ck["best_epoch"], _ck["best_zmse"],
+                                                  _ck["best_kernel"])
+            best_crit_raw, crit_hist = _ck["best_crit_raw"], list(_ck["crit_hist"])
+            torch.set_rng_state(_ck["rng_torch"])
+            if torch.cuda.is_available() and _ck.get("rng_cuda") is not None:
+                torch.cuda.set_rng_state_all(_ck["rng_cuda"])
+            np.random.set_state(_ck["rng_np"])
+            aug_rng.bit_generator.state = _ck["rng_aug"]
+            start_ep = int(_ck["epoch"]) + 1
+            print(f"[desk] RESUMED from {checkpoint_path} after epoch {start_ep - 1} (best so far "
+                  f"epoch {best_epoch}, {selection_metric} {best_val:.5f})", flush=True)
+
+    def _save_checkpoint(ep_done):
+        state = {"epoch": int(ep_done), "fingerprint": _ck_fp,
+                 "model": model.state_dict(), "ema": ema.state_dict(),
+                 "opt": opt.state_dict(), "sched": sched.state_dict(),
+                 "best": best, "best_val": best_val, "bad": bad, "nonfinite": nonfinite,
+                 "best_epoch": best_epoch, "best_zmse": best_zmse, "best_kernel": best_kernel,
+                 "best_crit_raw": best_crit_raw, "crit_hist": list(crit_hist),
+                 "rng_torch": torch.get_rng_state(),
+                 "rng_cuda": torch.cuda.get_rng_state_all() if torch.cuda.is_available() else None,
+                 "rng_np": np.random.get_state(), "rng_aug": aug_rng.bit_generator.state}
+        if aux_heads:
+            state["aux_heads"] = [h.state_dict() for h in aux_heads]
+        if pres_mod is not None:
+            state["presence"] = pres_mod.state_dict()
+        if mh_mods:
+            state["metric_heads"] = [m_.state_dict() for m_ in mh_mods]
+        tmp = checkpoint_path + ".tmp"
+        torch.save(state, tmp)
+        os.replace(tmp, checkpoint_path)          # atomic: a kill mid-save leaves the old one
+
+    def _save_snapshot(ep_done):
+        # Research: weights only (model + output EMA), kept per epoch so a run's trajectory can be
+        # evaluated after the fact -- the resume checkpoint is overwritten, so it cannot serve.
+        d = os.path.join(os.path.dirname(os.path.abspath(checkpoint_path)), "snapshots")
+        os.makedirs(d, exist_ok=True)
+        tmp = os.path.join(d, f"ep{int(ep_done):04d}.pt.tmp")
+        torch.save({"epoch": int(ep_done), "best_epoch": best_epoch, "model": model.state_dict(),
+                    "ema": ema.state_dict()}, tmp)
+        os.replace(tmp, tmp[:-4])
+
     traj_fh = None
     if trajectory_path:
         os.makedirs(os.path.dirname(os.path.abspath(trajectory_path)), exist_ok=True)
-        # "w", not "a": a resumed or rerun training writes a NEW trajectory, and appending
-        # would interleave two runs' epochs in one file with nothing to separate them -- the
-        # best-epoch argmin would then be taken over a mixture.
-        traj_fh = open(trajectory_path, "w", encoding="utf-8")
+        if start_ep > 1 and os.path.exists(trajectory_path):
+            # A RESUMED run continues its OWN trajectory: keep the rows the checkpoint covers and
+            # drop any the killed tail wrote after it (those epochs are re-run), so the file still
+            # holds exactly one run. A torn last line from the kill is dropped with them.
+            kept = []
+            with open(trajectory_path, encoding="utf-8") as fh:
+                for line in fh:
+                    try:
+                        if int(json.loads(line).get("epoch", 0)) < start_ep:
+                            kept.append(line if line.endswith("\n") else line + "\n")
+                    except (ValueError, TypeError):
+                        continue
+            traj_fh = open(trajectory_path, "w", encoding="utf-8")
+            traj_fh.writelines(kept)
+            traj_fh.flush()
+        else:
+            # "w", not "a": a rerun training writes a NEW trajectory, and appending would
+            # interleave two runs' epochs in one file with nothing to separate them -- the
+            # best-epoch argmin would then be taken over a mixture.
+            traj_fh = open(trajectory_path, "w", encoding="utf-8")
         print(f"[desk] per-epoch trajectory -> {trajectory_path}", flush=True)
     if selection_metric not in ("val_zmse", "val_kernel"):
         raise ValueError(f"desk.selection_metric must be 'val_zmse' or 'val_kernel'; "
@@ -1503,9 +1864,23 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
     except (KeyError, ValueError):
         _slurm_end = None
     _t_first = time.perf_counter()
-    for ep in range(1, epochs + 1):
+    ep = start_ep - 1                     # bound even when a finished run resumes past the budget
+    for ep in range(start_ep, epochs + 1):
+        # At the top of epoch ep, everything epoch ep-1 did -- the step, the selection, the best
+        # state, the RNG draws -- is complete whichever early-exit path it took, so this is the one
+        # place a checkpoint is always consistent.
+        if (checkpoint_path and int(checkpoint_every) > 0 and ep > start_ep
+                and (ep - 1) % int(checkpoint_every) == 0):
+            _save_checkpoint(ep - 1)
+        if checkpoint_path and ep > start_ep and _snapshot_due(ep - 1, snapshot_every):
+            _save_snapshot(ep - 1)
         t_ep = time.perf_counter()
-        if ep == 1:
+        loss_aux = None
+        loss_pres = None
+        loss_ruz = None
+        loss_mh = None
+        loss_orth = []
+        if ep == start_ep:
             _t_first = time.perf_counter()
         if device == "cuda":
             torch.cuda.reset_peak_memory_stats()
@@ -1576,7 +1951,7 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
                 _lf = torch.cat(_lparts) if len(_lparts) > 1 else _lparts[0]
                 _lt = spacetime_kernel_loss(
                     _zcat, pool_t[_rows], _lf, pool_x[_rows],
-                    num_pairs=int(metric_pairs),
+                    num_pairs=int(metric_pairs), same_cell_frac=float(metric_same_cell_frac),
                     pool_w=(None if pool_w_t is None else pool_w_t[_rows]))
                 if len(_grp) > 1:
                     _n = np.array([int(t.numel()) for t in _rparts], dtype=float)
@@ -1673,11 +2048,68 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
             # the model to. Restricting pairs to within a year would enforce only the spatial half
             # of a spatiotemporal kernel.
             loss_true = spacetime_kernel_loss(z_ema, pool_t, pool_flat, pool_x, pool_w=pool_w_t,
-                                              num_pairs=int(metric_pairs))
+                                              num_pairs=int(metric_pairs),
+                                              same_cell_frac=float(metric_same_cell_frac))
             w_stab = weights["stabilizing"] * loss_stab
             w_true = weights["metric"] * loss_true
             w_rec = weights["reconstruction"] * recon_loss
             loss = w_stab + w_true + w_rec
+            # Auxiliary head (research): per-element MSE of a linear readout of z_ema against the
+            # standardized second target, over the caller's mask only.
+            if auxs:
+                loss_aux = []
+                for _h, _a in zip(aux_heads, auxs):
+                    _pa = _h(z_ema[_a["t"]][_a["m"]])
+                    loss_aux.append(torch.mean((_pa - _a["Y"][_a["m"]]) ** 2))
+                    loss = loss + _a["w"] * loss_aux[-1]
+            if pres is not None:
+                if pres.get("learned"):
+                    _eta = z_ema[pres["t"], pres["r"], pres["c"]] @ pres_mod.W + pres_mod.b + pres_mod.delta
+                else:
+                    _eta = z_ema[pres["t"], pres["r"], pres["c"]] @ pres["W"] + pres["b"] + pres_mod.delta
+                if "comp" in pres:
+                    _eta = _eta + pres["comp"][:, None] * pres_mod.gamma
+                loss_pres = -(torch.log_softmax(_eta, dim=-1) * pres["P"]).sum() / pres["P"].sum()
+                loss = loss + pres["w"] * loss_pres
+            if ruzt is not None:
+                _n = ruzt["X"].shape[0]
+                _i, _j, _gap_ok = ruzicka_pairs(ruzt, _n)
+                _zi = z_ema[ruzt["t"][_i], ruzt["r"][_i], ruzt["c"][_i]]
+                _zj = z_ema[ruzt["t"][_j], ruzt["r"][_j], ruzt["c"][_j]]
+                _xi, _xj = ruzt["X"][_i], ruzt["X"][_j]
+                _den = torch.maximum(_xi, _xj).sum(1)
+                _ok = (_den > 1e-6) & (_i != _j) & _gap_ok
+                _rz = torch.minimum(_xi, _xj).sum(1) / _den.clamp(min=1e-6)
+                loss_ruz = (((_zi * _zj).sum(1) - (ruzt["a"] + ruzt["b"] * _rz)) ** 2)[_ok].mean()
+                loss = loss + ruzt["w"] * loss_ruz
+            if mheads:
+                loss_mh = []
+                for _h, _m in zip(mheads, mh_mods):
+                    _n = _h["X"].shape[0]
+                    _ij = torch.randint(0, _n, (2, _h["pairs"]), device=device)
+                    _i, _j = _ij[0], _ij[1]
+                    _zi = z_ema[_h["t"][_i], _h["r"][_i], _h["c"][_i]]
+                    _zj = z_ema[_h["t"][_j], _h["r"][_j], _h["c"][_j]]
+                    _a0, _a1 = _h["pslice"]
+                    if _a1 > _a0:   # E086: [z, this head's private block]
+                        _pe = _priv["ema"]
+                        _pi = _pe[_h["t"][_i], _h["r"][_i], _h["c"][_i], _a0:_a1]
+                        _pj = _pe[_h["t"][_j], _h["r"][_j], _h["c"][_j], _a0:_a1]
+                        if private_orth > 0:
+                            # decorrelate the private block from z over this head's points, so it holds what z
+                            # does not (squared cross-correlation, mean over the 64 x P pairs)
+                            _zc = _zi - _zi.mean(0); _pc = _pi - _pi.mean(0)
+                            _cc = (_zc / (_zc.norm(dim=0) + 1e-6)).T @ (_pc / (_pc.norm(dim=0) + 1e-6))
+                            loss_orth.append((_cc ** 2).mean())
+                            loss = loss + private_orth * loss_orth[-1]
+                        _zi, _zj = torch.cat([_zi, _pi], 1), torch.cat([_zj, _pj], 1)
+                    _hi, _hj = _m(_zi), _m(_zj)
+                    _xi, _xj = _h["X"][_i], _h["X"][_j]
+                    _den = torch.maximum(_xi, _xj).sum(1)
+                    _ok = (_den > 1e-6) & (_i != _j)
+                    _rz = torch.minimum(_xi, _xj).sum(1) / _den.clamp(min=1e-6)
+                    loss_mh.append((((_hi * _hj).sum(1) - _rz) ** 2)[_ok].mean())
+                    loss = loss + _h["w"] * loss_mh[-1]
             # NestedLoRA, as an ADDITIONAL term. Its operator half is itself a kernel-fit term, so it
             # partly duplicates loss_true -- that overlap is deliberate here (both are on, and their
             # relative weight is the thing being tested) but it means the two weights are not
@@ -1927,6 +2359,28 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
                   f"half-life {ema.half_life().item():.1f}y | "
                   f"lr {opt.param_groups[0]['lr']:.2e} | {dt:.1f}s{vram} | RSS {rss:.1f}G",
                   flush=True)
+        if loss_aux is not None and (ep == 1 or ep % 10 == 0 or evaluated):
+            _tot = float(loss.detach())
+            for _a, _la in zip(auxs, loss_aux):
+                _wl = _a["w"] * float(_la.detach())
+                print(f"Ep {ep:03d} | aux '{_a['label']}' mse {float(_la.detach()):.4f} weighted {_wl:.4f} "
+                      f"({_wl / max(_tot, 1e-12):.0%} of the total)", flush=True)
+        if loss_mh is not None and (ep == 1 or ep % 10 == 0 or evaluated):
+            for _h, _l in zip(mheads, loss_mh):
+                _wl = _h["w"] * float(_l.detach())
+                print(f"Ep {ep:03d} | metric head '{_h['label']}' mse {float(_l.detach()):.5f} weighted {_wl:.4f} "
+                      f"({_wl / max(float(loss.detach()), 1e-12):.0%} of the total)", flush=True)
+            if loss_orth:
+                print(f"Ep {ep:03d} | private orthogonality mean sq corr "
+                      f"{sum(float(_o.detach()) for _o in loss_orth) / len(loss_orth):.5f}", flush=True)
+        if loss_ruz is not None and (ep == 1 or ep % 10 == 0 or evaluated):
+            _wl = ruzt["w"] * float(loss_ruz.detach())
+            print(f"Ep {ep:03d} | ruzicka '{ruzt['label']}' mse {float(loss_ruz.detach()):.5f} weighted {_wl:.4f} "
+                  f"({_wl / max(float(loss.detach()), 1e-12):.0%} of the total)", flush=True)
+        if loss_pres is not None and (ep == 1 or ep % 10 == 0 or evaluated):
+            _wl = pres["w"] * float(loss_pres.detach())
+            print(f"Ep {ep:03d} | presence '{pres['label']}' nll {float(loss_pres.detach()):.4f} weighted {_wl:.4f} "
+                  f"({_wl / max(float(loss.detach()), 1e-12):.0%} of the total)", flush=True)
         if nest_parts is not None:
             _raw = float(nest_parts["raw"])
             # The weight that would give the nesting term a 50% share of the current total, so a
@@ -1970,6 +2424,15 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
                 "loss_stab": float(loss_stab.item()),
                 "loss_metric": float(loss_true.item()),
                 "loss_recon": float(recon_loss.item()),
+                "loss_aux": (float(loss_aux[0].detach()) if loss_aux else float("nan")),
+                **({f"loss_aux_{_a['label']}": float(_la.detach()) for _a, _la in zip(auxs, loss_aux)}
+                   if loss_aux else {}),
+                **({"loss_presence": float(loss_pres.detach())} if loss_pres is not None else {}),
+                **({"loss_ruzicka": float(loss_ruz.detach())} if loss_ruz is not None else {}),
+                **({f"loss_mhead_{_h['label']}": float(_l.detach()) for _h, _l in zip(mheads, loss_mh)}
+                   if loss_mh is not None else {}),
+                **({"private_orth_sqcorr": sum(float(_o.detach()) for _o in loss_orth) / len(loss_orth)}
+                   if loss_orth else {}),
                 # NestedLoRA term, when on. half_imbalance is the guard: the split-half estimator
                 # is unbounded below if one half can carry all the magnitude, so a value drifting
                 # far above 1 means the penalty is being evaded, not that training is going well.
@@ -2042,7 +2505,13 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
             continue
         # ONE selection signal, named in the config. z-MSE stays logged either way so a run
         # under the new metric is still comparable against every run made under the old one.
-        crit_raw = vs if selection_metric == "val_zmse" else vk.get("pool", float("nan"))
+        # The TRAINED-YEAR pool unless told otherwise: under a temporal holdout "pool" (and the
+        # all-year val z-MSE) include held-out cells in WITHHELD years, which made the withheld
+        # decades part of epoch selection. With nothing withheld, "sp" is the same rows as "pool".
+        if selection_metric == "val_zmse":
+            crit_raw = vs if select_on_withheld else vs_sp
+        else:
+            crit_raw = vk.get("pool" if select_on_withheld else "sp", float("nan"))
         # Optional trailing-median smoothing of the SELECTION signal only (the logged and
         # recorded per-epoch values stay raw). The argmin of a noisy series is not a property of
         # the model: measured on a 30-epoch run, kernel_val swung 2.9x between adjacent epochs
@@ -2090,6 +2559,10 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
             break
     if traj_fh is not None:
         traj_fh.close()
+    if checkpoint_path and os.path.exists(checkpoint_path):
+        # The run finished: keep the last checkpoint for inspection, but under a name a rerun
+        # will not resume from.
+        os.replace(checkpoint_path, checkpoint_path + ".completed")
     if best is not None:
         model.load_state_dict({k: v.to(device) for k, v in best[0].items()})
         ema.load_state_dict({k: v.to(device) for k, v in best[1].items()})
@@ -2130,11 +2603,23 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
             # than a property of the model.
             "warmup_epochs": int(warmup_epochs),
             "selection_smooth": int(selection_smooth),
+            "select_on_withheld": bool(select_on_withheld),
+            "resumed_from_epoch": int(start_ep - 1) if start_ep > 1 else None,
             "best_selection_raw": float(best_crit_raw),
             "min_lr_frac": float(min_lr_frac),
             "restored_best": best is not None}
     return (model, ema, info) if return_info else (model, ema)
 
+
+def apply_train_drop_mask(train_drop, mask, split_domain, holdout, buffer_cells):
+    """Add an explicit (H, W) mask of cells to drop from TRAINING (E073 C3). Only training cells can be dropped:
+    held-out and buffer cells, and cells outside the split domain, are never touched, so the validation set is
+    unchanged. Returns ``(new train_drop, number of cells added)``. Pure."""
+    mask = np.asarray(mask).astype(bool)
+    if mask.shape != holdout.shape:
+        raise SystemExit(f"desk.trend.train_drop_mask: shape {mask.shape} != grid {holdout.shape}")
+    add = mask & split_domain & (~holdout) & (~buffer_cells) & (~train_drop)
+    return train_drop | add, int(add.sum())
 
 
 def run_desk_experiment(config=None):
@@ -2297,6 +2782,15 @@ def run_desk_experiment(config=None):
               f"{int(avail.sum())} available training cells "
               f"({1 - int(train_drop.sum()) / max(int(avail.sum()), 1):.3f} retained) by whole "
               f"{_b}x{_b} blocks; the validation set is UNCHANGED", flush=True)
+    # E073 C3: an explicit (H, W) bool mask of TRAINING cells to drop (e.g. every training cell whose land-cover trend
+    # lies beyond a range), so an extrapolation holdout can withhold the cells from DESK itself, not only from its
+    # readout. Held-out and buffer cells are untouched: the validation set is UNCHANGED.
+    _tdm = _cfg.get("train_drop_mask")
+    if _tdm:
+        _m = np.load(os.path.expandvars(str(_tdm)))
+        train_drop, _n_add = apply_train_drop_mask(train_drop, _m, split_domain, holdout, buffer_cells_mask)
+        print(f"[desk] train_drop_mask: dropped {_n_add} training cells from {_tdm}; the validation set "
+              f"is UNCHANGED", flush=True)
     min_val = int(_cfg.get("min_val_cells", 200))
     if float(_cfg.get("holdout_frac", 0.15)) == 0.0:
         # The production retrain holds nothing out on purpose, so there is no val number to
@@ -2357,8 +2851,12 @@ def run_desk_experiment(config=None):
     m_val = mask_sup & holdout
 
     # Computed here, above the pool, because the pool must exclude these years -- see
-    # spacetime_metric_pool. The anchor is never withheld; it carries the metric loss.
-    ho_years = [int(y) for y in (tr_cfg.get("holdout_years") or []) if int(y) != label_year]
+    # spacetime_metric_pool. Every listed year is honoured, label_year included: the old rule "the anchor is never
+    # withheld; it carries the metric loss" dates from when the metric loss read the anchor year's community. It now
+    # draws pairs across the whole spacetime pool (there is no anchor year), and label_year only fixes the covariate
+    # normalization and the end of the forward window -- neither needs the year to be TRAINED. Keeping the filter
+    # silently trained every span run on 2025 (E024 smoke test, 2026-10-09).
+    ho_years = [int(y) for y in (tr_cfg.get("holdout_years") or [])]
     _py, _pf, _px, _ppidx = spacetime_metric_pool(pip, Xp, sup_rows, m_tr, W,
                                                   exclude_years=ho_years, return_pidx=True)
     metric_pool = (_py, _pf, _px)
@@ -2452,6 +2950,22 @@ def run_desk_experiment(config=None):
     else:
         print("[desk] rebalance OFF (desk.balance.enabled=false): metric pairs drawn uniformly, "
               "so the objective inherits BBS's coast/present bias")
+    # Time weighting (desk.year_weight: {anchor, half_life, floor}): composed onto the pool weights, which the
+    # composition below also carries into the stabilizing target, so both loss terms agree. Off unless an anchor
+    # is set; every previously reported run is unchanged.
+    _yw = desk_cfg.get("year_weight") or {}
+    if _yw.get("anchor") is not None:
+        ywv = year_weights(_ppidx[:, 2], _yw["anchor"], _yw.get("half_life", 10.0), _yw.get("floor", 0.0))
+        base = pool_w.numpy().astype("float64") if pool_w is not None else np.ones(len(ywv))
+        pool_w = torch.tensor(base * ywv, dtype=torch.float32)
+        _yy = _ppidx[:, 2]
+        _q = np.quantile(_yy, [0.25, 0.75])
+        _wv = pool_w.numpy()
+        print(f"[desk] year weighting ON (anchor {_yw['anchor']}, half-life {float(_yw.get('half_life', 10.0)):g} y, "
+              f"floor {float(_yw.get('floor', 0.0)):g}): effective share of the earliest-quartile pool rows "
+              f"(<= {int(_q[0])}) {((_yy <= _q[0]).mean()):.3f} -> {(_wv[_yy <= _q[0]].sum() / _wv.sum()):.3f}; "
+              f"latest quartile (>= {int(_q[1])}) {((_yy >= _q[1]).mean()):.3f} -> "
+              f"{(_wv[_yy >= _q[1]].sum() / _wv.sum()):.3f}", flush=True)
     np.save(os.path.join(out_dir, "holdout_cells.npy"), holdout)
     # The buffer too: validate's epoch panel must draw its interpolation sources from the
     # SAME training cells the model saw, and buffer cells are in neither set.
@@ -2480,8 +2994,8 @@ def run_desk_experiment(config=None):
 
     # Temporal holdout: withhold a contiguous span of supervised years from the objective and
     # score them separately. The spatial split says nothing about extrapolation THROUGH TIME,
-    # which is what DESK exists to do. The anchor (label_year) is never withheld -- it carries
-    # the eBird metric loss. Diagnostic only; model selection stays on the spatial metric so
+    # which is what DESK exists to do. Any listed year may be withheld, label_year included (see ho_years above).
+    # Diagnostic only; model selection stays on the spatial metric so
     # there is exactly one selection signal.
     # --- item 5: make the two loss terms agree ---------------------------------------------------
     # loss_stab was weighted (first_year_weight) and loss_true was not, so the two halves of the
@@ -2515,6 +3029,113 @@ def run_desk_experiment(config=None):
         print(f"[desk] temporal holdout years (diagnostic, excluded from the objective): "
               f"{sorted(year_val)}", flush=True)
 
+    # --- research: auxiliary second target (desk.aux_ebird), off unless configured -------------
+    # A gridded npz (years, Y (n,H,W,S) on the model grid, footprint (H,W)) built OUTSIDE this file.
+    # Supervised on every covariate-valid cell of its footprint EXCEPT held-out, buffer and
+    # train_frac-dropped cells, and never in a withheld year -- so it cannot reach any cell or year the
+    # validation and the research yardsticks grade. Standardized per target column on those rows only.
+    # desk.aux: a list of {path, weight, label} (one head each); desk.aux_ebird: the single-source form.
+    aux_targets = []
+    _aux_cfgs = list(desk_cfg.get("aux") or []) + ([desk_cfg["aux_ebird"]] if desk_cfg.get("aux_ebird") else [])
+    for _aux_cfg in _aux_cfgs:
+        _a = np.load(os.path.expandvars(_aux_cfg["path"]), allow_pickle=False)
+        _ayears = [int(y) for y in _a["years"]]
+        _keep_y = [y for y in _ayears if y in kept and y not in set(ho_years)]
+        if not _keep_y:
+            raise SystemExit(f"desk.aux_ebird: none of {_ayears} is a trained year in the window")
+        _ai = [_ayears.index(y) for y in _keep_y]
+        _Y = np.asarray(_a["Y"], dtype="float32")[_ai]
+        if _Y.shape[1:3] != holdout.shape:
+            raise SystemExit(f"desk.aux_ebird grid {_Y.shape[1:3]} != model grid {holdout.shape}")
+        _cells = np.asarray(_a["footprint"], bool) & ~holdout & ~buffer_cells_mask & ~train_drop
+        _ki = {y: i for i, y in enumerate(kept)}
+        _m = np.stack([_cells & np.asarray(mask_win[_ki[y]], bool) & np.isfinite(_Y[j]).all(-1)
+                       for j, y in enumerate(_keep_y)])
+        _mu = np.array([_Y[..., s][_m].mean() for s in range(_Y.shape[-1])], dtype="float32")
+        _sd = np.array([_Y[..., s][_m].std() for s in range(_Y.shape[-1])], dtype="float32")
+        _sd = np.where(_sd > 1e-8, _sd, 1.0).astype("float32")
+        _Y = np.where(np.isfinite(_Y), (_Y - _mu) / _sd, 0.0).astype("float32")
+        assert not (_m & holdout[None]).any() and not (_m & buffer_cells_mask[None]).any()
+        aux_targets.append({"t_idx": [_ki[y] for y in _keep_y], "Y": _Y, "mask": _m,
+                            "weight": float(_aux_cfg.get("weight", 0.1)),
+                            "label": str(_aux_cfg.get("label", os.path.basename(_aux_cfg["path"])))})
+        print(f"[desk] aux '{aux_targets[-1]['label']}': {len(_keep_y)} years {_keep_y[0]}-{_keep_y[-1]}, "
+              f"{int(_cells.sum())} cells (footprint minus held-out/buffer/dropped), "
+              f"{_Y.shape[-1]} target columns", flush=True)
+
+    # --- research (E069b): presence-only CBC term (desk.aux_presence), off unless configured -----
+    # An npz built OUTSIDE this file (research/exp/build_cbc_presence.py): per list year, row, col, P (lists x S,
+    # bool), and the fixed readout W (L x S), b (S). Lists in held-out, buffer or train_frac-dropped cells, or whose
+    # cell-year has invalid covariates, are dropped here. Unlike desk.aux, lists in WITHHELD years are KEPT when
+    # include_withheld is true: the point is supervision from an independent source where BBS is withheld (graded only
+    # on held-out cells).
+    presence_targets = None
+    _pcfg = desk_cfg.get("aux_presence")
+    if _pcfg:
+        _p = np.load(os.path.expandvars(_pcfg["path"]), allow_pickle=False)
+        _ki = {y: i for i, y in enumerate(kept)}
+        _yrs, _r, _c = np.asarray(_p["year"]), np.asarray(_p["row"]), np.asarray(_p["col"])
+        _okc = (~holdout & ~buffer_cells_mask & ~train_drop)
+        _withheld = set(ho_years) if not bool(_pcfg.get("include_withheld", False)) else set()
+        _keep = np.array([(int(y) in _ki) and (int(y) not in _withheld) and bool(_okc[r, c])
+                          and bool(np.asarray(mask_win[_ki[int(y)]], bool)[r, c])
+                          for y, r, c in zip(_yrs, _r, _c)])
+        assert not holdout[_r[_keep], _c[_keep]].any() and not buffer_cells_mask[_r[_keep], _c[_keep]].any()
+        presence_targets = {"t_idx": [_ki[int(y)] for y in _yrs[_keep]], "row": _r[_keep], "col": _c[_keep],
+                            "P": np.asarray(_p["P"])[_keep].astype("float32"), "W": np.asarray(_p["W"], "float32"),
+                            "b": np.asarray(_p["b"], "float32"), "weight": float(_pcfg.get("weight", 0.01)),
+                            "comp": (np.asarray(_p["comp"], "float32")[_keep]
+                                     if bool(_pcfg.get("completeness_slopes", False)) else None),
+                            "learned_head": bool(_pcfg.get("learned_head", False)),
+                            "label": str(_pcfg.get("label", "cbc_presence"))}
+        print(f"[desk] aux_presence: {int(_keep.sum()):,} of {len(_keep):,} lists kept (window {kept[0]}-{kept[-1]}, "
+              f"withheld years {'INCLUDED' if not _withheld else 'excluded'}; held-out/buffer/dropped cells excluded)",
+              flush=True)
+
+    # --- research (E081): CBC Ruzicka term (desk.aux_ruzicka), off unless configured -----------------
+    # An npz from research/exp/build_cbc_ruzicka.py (year, row, col, X, a, b, weight). Cells: as aux_presence (held-out,
+    # buffer, dropped and invalid cell-years removed; withheld years kept when include_withheld).
+    ruzicka_targets = None
+    _rcfg = desk_cfg.get("aux_ruzicka")
+    if _rcfg:
+        _q = np.load(os.path.expandvars(_rcfg["path"]), allow_pickle=False)
+        _ki = {y: i for i, y in enumerate(kept)}
+        _yrs, _r, _c = np.asarray(_q["year"]), np.asarray(_q["row"]), np.asarray(_q["col"])
+        _okc = (~holdout & ~buffer_cells_mask & ~train_drop)
+        _withheld = set(ho_years) if not bool(_rcfg.get("include_withheld", False)) else set()
+        _keep = np.array([(int(y) in _ki) and (int(y) not in _withheld) and bool(_okc[r, c])
+                          and bool(np.asarray(mask_win[_ki[int(y)]], bool)[r, c])
+                          for y, r, c in zip(_yrs, _r, _c)])
+        assert not holdout[_r[_keep], _c[_keep]].any() and not buffer_cells_mask[_r[_keep], _c[_keep]].any()
+        ruzicka_targets = {"t_idx": [_ki[int(y)] for y in _yrs[_keep]], "row": _r[_keep], "col": _c[_keep],
+                           "X": np.asarray(_q["X"], "float32")[_keep], "a": float(_q["a"]), "b": float(_q["b"]),
+                           "weight": float(_rcfg.get("weight", float(_q["weight"]))),
+                           "pairs": int(_rcfg.get("pairs", 4096)), "label": str(_rcfg.get("label", "cbc_ruzicka")),
+                           "same_cell_frac": float(_rcfg.get("same_cell_frac", 0.0)),
+                           "same_cell_min_gap": int(_rcfg.get("same_cell_min_gap", 1))}
+        print(f"[desk] aux_ruzicka: {int(_keep.sum()):,} of {len(_keep):,} CBC cell-years kept "
+              f"(withheld years {'INCLUDED' if not _withheld else 'excluded'})", flush=True)
+
+    # --- research (E084): metric heads (desk.aux_metric_heads, a list), off unless configured -----------
+    metric_heads = []
+    for _hcfg in (desk_cfg.get("aux_metric_heads") or []):
+        _q = np.load(os.path.expandvars(_hcfg["path"]), allow_pickle=False)
+        _ki = {y: i for i, y in enumerate(kept)}
+        _yrs, _r, _c = np.asarray(_q["year"]), np.asarray(_q["row"]), np.asarray(_q["col"])
+        _okc = (~holdout & ~buffer_cells_mask & ~train_drop)
+        _withheld = set(ho_years) if not bool(_hcfg.get("include_withheld", False)) else set()
+        _keep = np.array([(int(y) in _ki) and (int(y) not in _withheld) and bool(_okc[r, c])
+                          and bool(np.asarray(mask_win[_ki[int(y)]], bool)[r, c])
+                          for y, r, c in zip(_yrs, _r, _c)])
+        assert not holdout[_r[_keep], _c[_keep]].any() and not buffer_cells_mask[_r[_keep], _c[_keep]].any()
+        metric_heads.append({"t_idx": [_ki[int(y)] for y in _yrs[_keep]], "row": _r[_keep], "col": _c[_keep],
+                             "X": np.asarray(_q["X"], "float32")[_keep], "weight": float(_hcfg.get("weight", 1.0)),
+                             "dim": int(_hcfg.get("dim", 24)), "pairs": int(_hcfg.get("pairs", 4096)),
+                             "private": int(_hcfg.get("private", 0)),
+                             "label": str(_hcfg.get("label", os.path.basename(_hcfg["path"])))})
+        print(f"[desk] aux_metric_head '{metric_heads[-1]['label']}': {int(_keep.sum()):,} of {len(_keep):,} points kept",
+              flush=True)
+
     model, ema, train_info = train_model_ema(
         cov_win, mask_win, kept, targets, metric_pool, m_tr, m_val,
         stream_dims, latent_dim=latent_dim, ema_cfg=ema_cfg,
@@ -2545,6 +3166,7 @@ def run_desk_experiment(config=None):
         hidden_width=hidden_width, mlp_expansion=mlp_expansion,
         val_metric_pool=val_metric_pool, val_pool_holdout_years=ho_years,
         metric_pairs=int(desk_cfg.get("metric_pairs", 4096)),
+        metric_same_cell_frac=float(desk_cfg.get("metric_same_cell_frac", 0.0)),
         eval_kernel_pairs=int(desk_cfg.get("eval_kernel_pairs", 65536)),
         eval_kernel_draws=int(desk_cfg.get("eval_kernel_draws", 1)),
         eval_kernel_ranks=tuple(desk_cfg.get("eval_kernel_ranks") or ()),
@@ -2564,6 +3186,18 @@ def run_desk_experiment(config=None):
         selection_smooth=int(desk_cfg.get("selection_smooth", 0)),
         trajectory_path=os.path.join(out_dir, "train_trajectory.jsonl"),
         stop_at_epoch=desk_cfg.get("stop_at_epoch"),
+        # Resume is on by default: the checkpoint's configuration fingerprint refuses a mismatched
+        # run, and a finished run renames its checkpoint so a rerun starts fresh.
+        checkpoint_path=os.path.join(out_dir, "resume_checkpoint.pt"),
+        checkpoint_every=int(desk_cfg.get("checkpoint_every", 10)),
+        snapshot_every=int(desk_cfg.get("snapshot_every", 0)),
+        resume=bool(desk_cfg.get("resume", True)),
+        select_on_withheld=bool(desk_cfg.get("select_on_withheld", False)),
+        aux_targets=(aux_targets or None),
+        presence_targets=presence_targets,
+        ruzicka_targets=ruzicka_targets,
+        metric_heads=(metric_heads or None),
+        private_orth=float(desk_cfg.get("private_orth", 0.0)),
         return_info=True)
     ema_half_life = float(ema.half_life().item())
     torch.save(ema.state_dict(), os.path.join(out_dir, "output_ema.pth"))
@@ -2594,6 +3228,8 @@ def run_desk_experiment(config=None):
                            if model.hidden_width is not None
                            else np.array(model.hidden_widths, dtype=np.int64)),
              mlp_expansion=int(model.mlp_expansion),
+             # E086: private dims (read only by the metric heads); 0 for every other run
+             private_dim=int(getattr(model, "private_dim", 0)),
              # The best epoch was recorded NOWHERE. The weights were restored from it, but the
              # only print sat in the early-stop branch, which cannot fire while patience equals
              # epochs (both 500) -- so every run's chosen epoch had to be inferred from a log,

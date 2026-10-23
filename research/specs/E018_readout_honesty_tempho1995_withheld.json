@@ -1,0 +1,23 @@
+{
+ "exp": "E018",
+ "name": "readout-honesty-tempho1995_withheld",
+ "group": "cpu",
+ "cmd": [
+  "python",
+  "research/exp/readout_honesty.py",
+  "--cache",
+  "{cache}/desk_tempho_1995",
+  "--out",
+  "{out}",
+  "--population",
+  "withheld"
+ ],
+ "expected_minutes": 8,
+ "summarize": [
+  "python",
+  "research/exp/readout_honesty.py",
+  "--summarize",
+  "{out}"
+ ],
+ "note": "pre-registered in research/experiments/E018.md"
+}

@@ -1,0 +1,23 @@
+{
+ "exp": "E026",
+ "name": "span-reach-metric-pairs",
+ "group": "cpu",
+ "overlay": "config/overlays/gp_species_base.json",
+ "after_jobs": [
+  "E026/desk-tempho1995-mp4096",
+  "E026/desk-tempho1995-mp262144"
+ ],
+ "cmd": [
+  "bash",
+  "-c",
+  "{python} research/exp/span_reach.py --out {out} --desk-models t1995s1=desk_tempho_1995_s1:1996:2025 t1995s2=desk_tempho_1995_s2:1996:2025 mp4096=desk_tempho_1995_mp4096:1996:2025 mp262k=desk_tempho_1995_mp262144:1996:2025 t1995s1L=desk_tempho_1995_s1_late:1996:2025 t1995s2L=desk_tempho_1995_s2_late:1996:2025 mp4096L=desk_tempho_1995_mp4096_late:1996:2025 mp262kL=desk_tempho_1995_mp262144_late:1996:2025"
+ ],
+ "expected_minutes": 30,
+ "summarize": [
+  "python",
+  "research/exp/span_reach.py",
+  "--summarize",
+  "{out}"
+ ],
+ "note": "E026: tempho1995 backcast at metric_pairs 4,096 / 65,536 (two seeds) / 262,144, selected and late states"
+}

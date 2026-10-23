@@ -1,0 +1,15 @@
+{
+ "exp": "E029",
+ "name": "pooled-1996",
+ "group": "cpu",
+ "overlay": "config/overlays/gp_species_base.json",
+ "after_jobs": ["E029/desk-tempho1995-seed1-yw10", "E029/desk-tempho1995-seed2-yw10"],
+ "cmd": [
+  "bash",
+  "-c",
+  "set -e; P='{python} research/exp/span_pooled.py --out {out} --t0 1996'; $P --tag yw10 --short desk_tempho_1995_s1_yw10 desk_tempho_1995_s2_yw10 --long desk_tempho_1995_s1 desk_tempho_1995_s2; $P --tag yw10_late --short desk_tempho_1995_s1_yw10_late desk_tempho_1995_s2_yw10_late --long desk_tempho_1995_s1_late desk_tempho_1995_s2_late"
+ ],
+ "expected_minutes": 5,
+ "summarize": ["python", "research/exp/span_pooled.py", "--summarize", "{out}"],
+ "note": "E029b decision: weighted minus uniform at the 1996 start, pooled over 1966-83, selected and late"
+}

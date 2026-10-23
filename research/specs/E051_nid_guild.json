@@ -1,0 +1,10 @@
+{
+ "exp": "E051",
+ "name": "nid-guild",
+ "group": "cpu",
+ "overlay": "research/overlays/desk_tempho_1995_seed1.json",
+ "cmd": ["bash", "-c", "set -e; {python} -I research/exp/nid_covariates.py --states /mnt/e/Datasets/houfin/external/nid/states --grid ${HOUFIN_DATA}/ref_grid_27km.tif --out {out}/nid_27km.npz --y0 1940 --y1 2025; C=$(ls -d {outroot}/E047/cropat-types-*/ | head -1)cropat_27km.npz; D=${HOUFIN_DATA}/avonet; for c in desk_tempho_1995_s1 desk_tempho_1985_s1; do {python} research/exp/guild_dose.py --cache {cache}/$c --cropat $C --avonet $D/TraitData/AVONET1_BirdLife.csv --taxonomy $D/eBird_taxonomy.csv --out {out}/$c --pooled --rival-all --aux {out}/nid_27km.npz --aux-key nid; done"],
+ "expected_minutes": 20,
+ "summarize": ["bash", "-c", "grep -F '[nid]' {out}/log.txt; for c in desk_tempho_1995_s1 desk_tempho_1985_s1; do {python} research/exp/guild_dose.py --summarize {out}/$c | grep -E 'tested|type|Grassland|Forest|Woodland|Wetland|grassland gain'; done"],
+ "note": "E051: reservoir creation (NID: cumulative surface, storage, count by completion year) vs wetland/other guilds beyond all covariates, moved nulls"
+}

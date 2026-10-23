@@ -1,0 +1,8 @@
+{
+ "exp": "E080", "name": "e080b-census-total-cropland", "group": "cpu",
+ "overlay": "research/overlays/desk_tempho_1995_seed1.json",
+ "cmd": ["bash", "-c", "set -e; {python} research/exp/e080_census_vs_luh3.py --icpsr /mnt/e/Datasets/ICPSR_agriculture/ICPSR_35206-V4/ICPSR_35206 --counties /mnt/e/Datasets/houfin/external/census_counties/shp/cb_2018_us_county_500k.shp --out {out} --total-cropland"],
+ "expected_minutes": 20,
+ "summarize": ["bash", "-c", "head -c 4000 {out}/e080b.json"],
+ "note": "E080b: LUH3 TOTAL cropland and irrigation vs county agricultural census, 1929-1982"
+}

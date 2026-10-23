@@ -1,0 +1,9 @@
+{
+  "exp": "E000",
+  "name": "pytest-suite",
+  "group": "cpu",
+  "cmd": ["python", "-m", "pytest", "-q", "-p", "no:cacheprovider", "--durations=25", "-rfE", "tests"],
+  "expected_minutes": 30,
+  "summarize": ["bash", "-c", "grep -E '^(FAILED|ERROR)|passed|failed|^[0-9.]+s (call|setup)' {out}/log.txt | head -45"],
+  "note": "full data-free test suite at the current commit, threads capped, CUDA hidden"
+}

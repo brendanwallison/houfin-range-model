@@ -1,0 +1,2 @@
+# research/ files are appended from WSL (LF) and edited on Windows; keep one line ending.
+research/** text eol=lf

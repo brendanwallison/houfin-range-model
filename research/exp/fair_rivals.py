@@ -1,0 +1,662 @@
+"""E039i: does DESK beat FAIR linear rivals in time, or only the pooled (space-for-time) map E039h used?
+
+    python research/exp/fair_rivals.py --cache <tempho research cache> --out <dir> [--rank 24]
+    python research/exp/fair_rivals.py --summarize <dir>
+
+Same estimand, cells, truth halves and bootstrap draws as rrr_backcast.py (E039h): held-out cells' community change
+between the withheld early epoch (1966-86) and 2005-25, noise-free centred corr with the observed ESK change (r24,
+ABBA halves), pooled over dimensions. Every map is fitted on the same rows (training cells x trained years, finite);
+cell means are over a cell's trained-year rows. Arms:
+  desk            raw z (z_raw_all), as E039h
+  pooled_ridge    E039h's linear map (standardized F_cov_raw, ridge) -- reproduction
+  pooled_blr      one BLR coefficient set on 64 PCs (E016's pooled)
+  within_raw      Mundlak within-cell block on 64 PCs of F_cov_raw (each year's state, no output EMA, as raw z)
+  within_ema      the same on F_cov (output-EMA'd covariates, as E016)
+  placebo_300/600 no covariates: position RFF fields x (year - cell mean year), fitted on within-cell ESK deviations
+  kindxtime_8/32  "kind of place x time": [1, top-k PCs of the cell's mean covariates] x (year - cell mean year),
+                  fitted on within-cell ESK deviations -- a LINEAR model of the mechanism E039h proposed
+  desk_within     DESK's own raw z deviations -> ESK deviations (within-cell BLR), applied to DESK's change
+  desk_pooled     DESK's raw z -> ESK through one pooled BLR (the readout form the age model uses)
+Also per-dimension mean corr (M28: a pooled corr can net out signals of both signs) and a SPATIAL level check on the
+same metric family: held-out cells x trained years, pooled-readout predictions of ESK r24 (desk_pooled vs pooled_ridge).
+E039j (--incremental): content BEYOND the trend placebo -- placebo_300 + X fitted jointly on within-cell ESK deviations
+(two iid blocks), X = DESK z deviations / F_cov_raw PC deviations / kind-x-time features; gain = combo - placebo on the
+same draws. And the LOCAL part of change: truth and every prediction minus their leave-one-out Gaussian-weighted
+average over the other held-out cells (150 and 300 km), so a regional trend scores ~0 and only place-specific change
+counts.
+E039k (--n-pos 96 --pos-seeds 1 2 3 4 5, M20): the placebo with an adequate basis and several draws; every placebo-based
+number (the placebo itself, combos, gains, local) is the mean over draws, paired on the same bootstrap draws.
+E039l (--rich-base): DESK's gain beyond a RICH linear base -- placebo_300 + linear kind x time (32 PCs) + the
+covariate within-map, each its own iid block: rich = that base, rich+desk_within = base + DESK z deviations. If DESK's
+gain survives, it is not a linear kind-of-place clock.
+E039m (--attr <attribution_cells.npz of the same model>): which covariate part of DESK's change carries its gain
+beyond the trend? In the joint fits (placebo+desk_within, and rich+desk_within with --rich-base) DESK's change is
+replaced by its change MINUS one part (backcast_attribution's swap parts: land, climate, luh, luh_mgmt, luh_class,
+luh_uniform = the continent-wide LUH shift (a clock), luh_pattern = where land use changed more or less, ...), same
+coefficients; loss = corr(full) - corr(dropped), paired, and its share of the gain over the base.
+E039n (--strong-base, the E039k skeptic's fair rival): base = placebo_300 + kind x time 32 + a SUPERVISED within-map
+(ridge of within-cell ESK deviations on all ~290 standardized F_cov_raw channel deviations -> 24 features, cross-
+fitted by training cell in two folds so training-row features are never in-sample) + 64 F_cov (output-EMA) PCs'
+within-cell deviations; strong+desk_within adds DESK. And the readout LOCATION check: placebo and placebo+desk_within
+fitted on BUFFER rows only (trained years; cells never in DESK's objective, next to the held-out cells).
+E039o (--null-desk, verification a): the DESK block replaced by a CELL-PERMUTED DESK -- each cell takes another random
+cell's whole 1940-2025 z trajectory (training rows and held-out change alike; one permutation per placebo draw) --
+keeping DESK's temporal structure and continent-wide drift but not its place. Gains beyond the placebo and the strong
+base should be ~0; a positive null gain would mean any 24-dim drifting block "helps".
+E044 (--commonality, with --strong-base): how much of the change the regional TREND predicts do the COVARIATES also
+predict? Covariate-only joint fits (no position-time block): cov_lin = kind x time 32 + supervised within-map + EMA
+within PCs; cov_all = cov_lin + DESK z deviations. Commonality on the noise-free corr^2 scale, per bootstrap draw,
+T = placebo_300 (draw mean):
+    shared(T, C) = R2(T) + R2(C) - R2(T u C)      unique_C = R2(T u C) - R2(T)      unique_T = R2(T u C) - R2(C)
+with T u C = strong (C = cov_lin), strong+desk_within (cov_all), placebo+desk_within (C = desk_within). The shared part
+cannot be attributed to habitat or not; unique_C is a lower bound on covariate-carried change; unique_T is change the
+covariates do not carry (dynamics, observers, OR habitat change missing from the covariates -- T5).
+E044c: cov_lin contains kind x time (cell-mean covariates x year) -- an environment-indexed CLOCK, not covariate
+change. cov_chg = supervised within-map + EMA within PCs only (covariate CHANGE, linear: a uniform shift cannot reach
+its centred score), with T u C = placebo + cov_chg (per placebo draw).
+E043 check (--ref-cache <control cache>, same keys): the control model's DESK arms (desk_ref, desk_ref_within,
+placebo+desk_ref_within) on the same cells and draws, and paired differences treatment - control.
+"""
+import argparse
+import json
+import os
+import sys
+
+import numpy as np
+
+_HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, _HERE)
+sys.path.insert(0, os.path.dirname(_HERE))
+sys.path.insert(0, os.path.dirname(os.path.dirname(_HERE)))
+
+
+def wc(x, y, w):
+    xm = (w[:, None] * x).sum(0) / w.sum()
+    ym = (w[:, None] * y).sum(0) / w.sum()
+    return (w[:, None] * (x - xm) * (y - ym)).sum(0)
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    ap.add_argument("--cache")
+    ap.add_argument("--out")
+    ap.add_argument("--rank", type=int, default=24)
+    ap.add_argument("--n-pcs", type=int, default=64)
+    ap.add_argument("--n-boot", type=int, default=1000)
+    ap.add_argument("--summarize", default=None)
+    ap.add_argument("--incremental", action="store_true", help="E039j: gains beyond the placebo, local change")
+    ap.add_argument("--n-pos", type=int, default=24, help="position RFF features in the placebo")
+    ap.add_argument("--pos-seeds", type=int, nargs="+", default=[1], help="placebo draws (results are draw means)")
+    ap.add_argument("--tag", default="", help="suffix of the output json")
+    ap.add_argument("--modern", type=int, nargs=2, default=None,
+                    help="E056: modern epoch (default the suite's 2005-25); needs --esk-dir holding "
+                         "esk_epochs_m<Y0>_<Y1>.npz from esk_project.py --modern")
+    ap.add_argument("--esk-dir", default=None, help="E056: read esk_annual / esk_epochs from here, not the cache")
+    ap.add_argument("--early", type=int, nargs=2, default=None,
+                    help="E059f: early (backcast) window instead of the suite's 1966-86; needs --esk-dir holding the "
+                         "matching esk_epochs file from esk_project.py --early")
+    ap.add_argument("--z-keys-only", action="store_true",
+                    help="E067: the representation exists only at the keys (z_raw.npy), not as a dense z_raw_all; the "
+                         "raw change arm is then dchg(z at keys), identical to the epoch form (max diff ~1e-16)")
+    ap.add_argument("--save-species", action="store_true",
+                    help="E059g: save per-species bootstrap components (cv, vp, vt per draw) of the key arms, so any "
+                         "species stratum (e.g. similarity to the focal) can be scored afterwards with the same draws")
+    ap.add_argument("--thin", type=float, default=1.0,
+                    help="E086g (dev target): keep this fraction of the TARGET species' training data -- rows (cell-years) "
+                         "or whole cells (--thin-unit); DESK, covariates and the held-out truth are untouched")
+    ap.add_argument("--thin-unit", choices=("row", "cell"), default="row")
+    ap.add_argument("--thin-detect", type=float, default=1.0,
+                    help="E086g: binomially thin the target's TRAINING counts (lower effort / detection); truth untouched")
+    ap.add_argument("--thin-seed", type=int, default=0)
+    ap.add_argument("--desk-split", type=int, default=0,
+                    help="E086i: DESK's block in every fit split into dims [0, K) and [K, rank), each its OWN amplitude (a "
+                         "rank-structured prior: the readout can keep or shrink the tail per species); 0 = one block")
+    ap.add_argument("--lean", action="store_true",
+                    help="E059b: skip the optional arms (placebo_600, placebo+within_raw, placebo+kindxtime_8); every "
+                         "headline number (placebo_300, desk_within, joint gains, strong base, buffer, head-to-head, "
+                         "vs_ref, space) is unchanged. For the costly per-species target")
+    ap.add_argument("--target", choices=["esk", "dev"], default="esk",
+                    help="E059b: what every readout predicts -- the community's ESK coordinates (default) or the 273 "
+                         "OUT-OF-COMMUNITY dev species (log1p counts; truth = log1p of the ABBA half-epoch mean counts). "
+                         "With dev, the raw 'desk' arm (z change, which lives in ESK space) is replaced by DESK's "
+                         "within readout, so every arm is a fitted readout of species")
+    ap.add_argument("--eval-set", choices=["heldout", "train"], default="heldout",
+                    help="E055g: score held-out cells (default) or TRAINING cells (not held out, not buffer) in the "
+                         "withheld years -- the production case: known places, unknown times; the readout is fitted "
+                         "on those same places' trained years, as the age model's is")
+    ap.add_argument("--rich-base", action="store_true", help="E039l: gains beyond placebo + kind x time + within map")
+    ap.add_argument("--strong-base", action="store_true", help="E039n: supervised cross-fitted within-map base + "
+                    "buffer-row readouts")
+    ap.add_argument("--commonality", action="store_true", help="E044: trend vs covariate commonality (needs "
+                    "--strong-base)")
+    ap.add_argument("--null-desk", action="store_true", help="E039o: cell-permuted DESK block (null)")
+    ap.add_argument("--attr", default=None, help="E039m: attribution_cells.npz of this model (drop-part losses)")
+    ap.add_argument("--ref-cache", default=None, help="control model's cache (same keys): paired treatment - control")
+    a = ap.parse_args()
+    if a.summarize:
+        return summarize(a.summarize)
+    if os.environ.get("BLR_DEVICE", "cpu") == "cpu":       # E059b: a GPU-group job may run the BLRs on the GPU
+        os.environ.setdefault("CUDA_VISIBLE_DEVICES", "")
+    from scipy import sparse
+    from change_oracle import desk_epoch_z, group_rows
+    from lib import blr
+    os.makedirs(a.out, exist_ok=True)
+    c = lambda f: os.path.join(a.cache, f)
+    keys = np.load(c("keys.npy"))
+    N = len(keys)
+    split = np.load(c("split.npz"))
+    withheld = [int(y) for y in split["withheld"]]
+    r = a.rank
+    ed = a.esk_dir or a.cache
+    from change_oracle import epochs_name
+    E, full, half_a, half_b = group_rows(
+        a.cache, keys, withheld, early=a.early, modern=a.modern,
+        epochs_file=os.path.join(ed, epochs_name(a.early, a.modern)))
+    idx = {}
+    for j, (cell, ep, wh) in enumerate(zip(map(tuple, E["cells"]), E["epoch"], E["withheld"])):
+        if ep == 0 and bool(wh):
+            idx.setdefault(cell, [None, None])[0] = j
+        elif ep == 1 and not wh:
+            idx.setdefault(cell, [None, None])[1] = j
+    pairs = np.array([(e, m) for e, m in idx.values() if e is not None and m is not None])
+    cells = E["cells"][pairs[:, 0]]
+    held = split["holdout"][cells[:, 0], cells[:, 1]]
+    if a.eval_set == "train":
+        ev = np.where(~held & ~split["buffer"][cells[:, 0], cells[:, 1]])[0]
+    else:
+        ev = np.where(held)[0]
+    Za, Zb = E["z_a"][:, :r].astype("float64"), E["z_b"][:, :r].astype("float64")
+    Ta = (Za[pairs[:, 1]] - Za[pairs[:, 0]])[ev]
+    Tb = (Zb[pairs[:, 1]] - Zb[pairs[:, 0]])[ev]
+    Xdev = None
+    if a.target == "dev":
+        # out-of-community species: truth = log1p of each ABBA half's epoch-mean counts (the suite's species estimand)
+        from src.community_encoder.train_DESK.validate_bbs_routes import epoch_mean_observed
+        Xdev = np.asarray(np.load(c("X_dev.npy")), "float64")
+        je, jm = pairs[ev, 0], pairs[ev, 1]
+        Ta = epoch_mean_observed(Xdev, [half_a[j] for j in jm]) - epoch_mean_observed(Xdev, [half_a[j] for j in je])
+        Tb = epoch_mean_observed(Xdev, [half_b[j] for j in jm]) - epoch_mean_observed(Xdev, [half_b[j] for j in je])
+    early_rows = [np.asarray(full[pairs[j, 0]]) for j in ev]
+    mod_rows = [np.asarray(full[pairs[j, 1]]) for j in ev]
+    ci_, y0 = np.load(c("key_cell_index.npy")), int(np.load(c("years.npy"))[0])
+    if a.z_keys_only:
+        zr_all, D_desk = None, None                     # set from the keys below
+    else:
+        zr_all = np.load(c("z_raw_all.npy"), mmap_mode="r")
+        D_desk = (desk_epoch_z(zr_all, ci_, y0, keys, mod_rows, r) - desk_epoch_z(zr_all, ci_, y0, keys, early_rows, r))
+
+    def gmat(groups):
+        rows = np.concatenate([np.full(len(g), i) for i, g in enumerate(groups)])
+        cols = np.concatenate([np.asarray(g, int) for g in groups])
+        vals = np.concatenate([np.full(len(g), 1.0 / len(g)) for g in groups])
+        return sparse.csr_matrix((vals, (rows, cols)), shape=(len(groups), N))
+    Ge, Gm = gmat(early_rows), gmat(mod_rows)
+    dchg = lambda X: np.asarray(Gm @ np.asarray(X, "float64")) - np.asarray(Ge @ np.asarray(X, "float64"))
+
+    # rows (E039h's): training cells x trained years, finite covariates and ESK
+    F_raw = np.asarray(np.load(c("F_cov_raw.npy"), mmap_mode="r"), "float64")
+    Eann = np.load(os.path.join(ed, "esk_annual.npy")).astype("float64")
+    thin_rng = np.random.default_rng(1000 + a.thin_seed)
+    tr0 = ~split["holdout"][keys[:, 0], keys[:, 1]] & ~split["buffer"][keys[:, 0], keys[:, 1]] & ~np.isin(keys[:, 2], withheld)
+    if Xdev is not None:
+        from src.data.preprocess.bbs_community import log1p_community
+        Xfit = Xdev
+        if a.thin_detect < 1.0:     # E086g: fewer individuals detected on the training surveys (truth Ta / Tb already set)
+            Xfit = Xdev.copy()
+            Xfit[tr0] = thin_rng.binomial(np.round(np.clip(Xdev[tr0], 0, None)).astype(np.int64), a.thin_detect)
+        Eann = np.asarray(log1p_community(Xfit), "float64")         # the readouts' target: species, not ESK
+    rt = Eann.shape[1] if Xdev is not None else r                  # target dimensions
+    yr = keys[:, 2].astype("float64")
+    ho = split["holdout"][keys[:, 0], keys[:, 1]]
+    bf = split["buffer"][keys[:, 0], keys[:, 1]]
+    ty = ~np.isin(keys[:, 2], withheld)
+    trn_mask = ~ho & ~bf & ty & np.isfinite(F_raw).all(1) & np.isfinite(Eann).all(1)
+    thin_drop = np.zeros(N, bool)
+    if Xdev is not None and a.thin < 1.0:
+        # E086g: the target species' training record shrinks to a sparse scatter (historical-like); dropped training rows
+        # also leave the target's cell means (w_ty below), so nothing of the dropped data survives
+        if a.thin_unit == "row":
+            drop = trn_mask & (thin_rng.random(N) >= a.thin)
+        else:
+            cid0 = keys[:, 0].astype(np.int64) * 100000 + keys[:, 1]
+            uc0 = np.unique(cid0[trn_mask])
+            keep_c = set(uc0[thin_rng.random(len(uc0)) < a.thin].tolist())
+            drop = trn_mask & ~np.isin(cid0, list(keep_c))
+        trn_mask = trn_mask & ~drop
+        thin_drop = drop                                             # zero weight in every cell mean below (w_ty)
+    trn = np.where(trn_mask)[0]
+    Z = Eann[:, :rt]
+    cid = keys[:, 0].astype(np.int64) * 100000 + keys[:, 1]
+    uc, inv = np.unique(cid, return_inverse=True)
+    w_ty = (ty & np.isfinite(Eann).all(1) & ~thin_drop).astype(float)   # E086g: dropped target rows leave the means
+
+    def cmean(X, w):
+        S = sparse.csr_matrix((w, (inv, np.arange(N))), shape=(len(uc), N))
+        cnt = np.asarray(S.sum(1)).ravel()
+        return (np.asarray(S @ X) / np.maximum(cnt, 1e-12)[:, None])[inv]
+
+    def std(F):
+        mu, sd = F[trn].mean(0), F[trn].std(0)
+        keep = sd > 1e-6
+        return np.where(np.isfinite(F[:, keep]), (F[:, keep] - mu[keep]) / sd[keep], 0.0)
+
+    def pcs(S, n):
+        _, _, Vt = np.linalg.svd(S[trn][:: max(1, len(trn) // 40000)] - S[trn].mean(0), full_matrices=False)
+        return S @ Vt[:n].T
+
+    preds, notes = {"desk": D_desk}, {}
+    # E039h's pooled ridge, reproduced exactly
+    X = std(F_raw)
+    ny = Eann.shape[1] if Xdev is not None else 64
+    Xc, Yc = X[trn] - X[trn].mean(0), Eann[trn, :ny] - Eann[trn, :ny].mean(0)
+    lam = 1e-3 * np.trace(Xc.T @ Xc) / Xc.shape[1]
+    B = np.linalg.solve(Xc.T @ Xc + lam * np.eye(Xc.shape[1]), Xc.T @ Yc)
+    preds["pooled_ridge"] = (dchg(X) @ B)[:, :rt]
+    Zbar = cmean(Z, w_ty)
+    Zd = Z - Zbar
+    t = yr - cmean(yr[:, None], w_ty)[:, 0]
+    dyr = dchg(yr[:, None])[:, 0]
+    k = a.n_pcs
+    keep_feats = {}
+    for tag, fname in (("raw", "F_cov_raw.npy"), ("ema", "F_cov.npy")):
+        F = F_raw if tag == "raw" else np.asarray(np.load(c(fname), mmap_mode="r"), "float64")
+        P = pcs(std(F), k)
+        Pbar = cmean(P, w_ty)
+        mm = blr.fit(np.hstack([Pbar, P - Pbar])[trn], Z[trn], [(0, k), (k, 2 * k)])
+        dP = dchg(P)
+        preds[f"within_{tag}"] = dP @ mm["coef"][:, k:].T
+        keep_feats[f"within_{tag}"] = (P - Pbar, dP)
+        notes[f"within_{tag}_amp_b_w"] = [float(np.median(mm["a"][:, 0])), float(np.median(mm["a"][:, 1]))]
+        if tag == "raw":
+            preds["pooled_blr"] = dP @ blr.fit(P[trn], Z[trn], [(0, k)])["coef"].T
+            # kind of place x time: cell-mean covariate PCs x (year - cell mean year), on within-cell deviations
+            Pbar_ev = np.asarray(Gm @ Pbar)                       # constant within a cell
+            for kk in (8, 32):
+                KT = np.hstack([t[:, None], Pbar[:, :kk] * t[:, None]]) / 10.0
+                g = blr.fit(KT[trn], Zd[trn], [(0, 1), (1, kk + 1)])["coef"].T
+                KT_ev = np.hstack([np.ones((len(ev), 1)), Pbar_ev[:, :kk]]) * (dyr / 10.0)[:, None]
+                preds[f"kindxtime_{kk}"] = KT_ev @ g
+                keep_feats[f"kindxtime_{kk}"] = (KT, KT_ev)
+    # placebo: position x time, no covariates
+    cev = cells[ev].astype(float) * 27.0
+    for ell in ((300.0,) if a.lean else (300.0, 600.0)):
+        for sd in a.pos_seeds:
+            rg = np.random.default_rng(sd)
+            m = a.n_pos
+            om, ph = rg.normal(size=(2, m)) / ell, rg.uniform(0, 2 * np.pi, m)
+            R = np.sqrt(2.0 / m) * np.cos(keys[:, :2].astype(float) * 27.0 @ om + ph)
+            b_pl = blr.fit((R * (t / 10.0)[:, None])[trn], Zd[trn], [(0, m)])["coef"].T
+            Rc = np.sqrt(2.0 / m) * np.cos(cev @ om + ph)
+            preds[f"placebo_{ell:.0f}#{sd}"] = (Rc * (dyr / 10.0)[:, None]) @ b_pl
+            keep_feats[f"placebo_{ell:.0f}#{sd}"] = (R * (t / 10.0)[:, None], Rc * (dyr / 10.0)[:, None])
+    # DESK through linear readouts fitted on the same rows (z_raw at keys)
+    zk = np.asarray(np.load(c("z_raw.npy"), mmap_mode="r")[:, :r], "float64")
+    dz = dchg(zk)
+    if D_desk is None:
+        D_desk = preds["desk"] = dz
+    notes["desk_keys_vs_epoch_z_maxabs"] = float(np.abs(dz - D_desk).max())
+    _K = a.desk_split if 0 < a.desk_split < r else 0
+    _dblocks = [(0, _K), (_K, r)] if _K else [(0, r)]
+    preds["desk_within"] = dz @ blr.fit((zk - cmean(zk, w_ty))[trn], Zd[trn], _dblocks)["coef"].T
+    keep_feats["desk_within"] = (zk - cmean(zk, w_ty), dz)
+    DK = [keep_feats["desk_within"]]
+    if _K:                                   # E086i: head and tail of DESK as two blocks wherever DESK enters a fit
+        _Xd, _Ed = keep_feats["desk_within"]
+        DK = [(_Xd[:, :_K], _Ed[:, :_K]), (_Xd[:, _K:], _Ed[:, _K:])]
+    within_arms = ["desk_within"]
+    if Xdev is not None:
+        preds["desk"] = preds["desk_within"]          # raw z change lives in ESK space; species need a readout
+    if a.ref_cache:
+        rc = lambda f: os.path.join(a.ref_cache, f)
+        assert np.array_equal(np.load(rc("keys.npy")), keys), "ref cache keys differ"
+        assert np.array_equal(np.load(rc("key_cell_index.npy")), ci_), "ref cache cell index differs"
+        zkr = np.asarray(np.load(rc("z_raw.npy"), mmap_mode="r")[:, :r], "float64")
+        dzr = dchg(zkr)
+        if a.z_keys_only:
+            preds["desk_ref"] = dzr
+        else:
+            zr_ref = np.load(rc("z_raw_all.npy"), mmap_mode="r")
+            preds["desk_ref"] = (desk_epoch_z(zr_ref, ci_, y0, keys, mod_rows, r)
+                                 - desk_epoch_z(zr_ref, ci_, y0, keys, early_rows, r))
+        preds["desk_ref_within"] = dzr @ blr.fit((zkr - cmean(zkr, w_ty))[trn], Zd[trn], [(0, r)])["coef"].T
+        if Xdev is not None:
+            preds["desk_ref"] = preds["desk_ref_within"]
+        keep_feats["desk_ref_within"] = (zkr - cmean(zkr, w_ty), dzr)
+        within_arms.append("desk_ref_within")
+        notes["ref_cache"] = a.ref_cache
+    if a.strong_base:
+        # supervised within-map on all channels -> 24 features, cross-fitted by training cell (2 folds)
+        Sdev = X - cmean(X, w_ty)
+        dS = dchg(X)
+        Xc_ = Sdev[trn]
+        lam_w = 1e-2 * np.trace(Xc_.T @ Xc_) / Xc_.shape[1]
+        Bw = np.linalg.solve(Xc_.T @ Xc_ + lam_w * np.eye(Xc_.shape[1]), Xc_.T @ Zd[trn])
+        cells_tr = np.unique(inv[trn])
+        rgf = np.random.default_rng(7)
+        fold_of = dict(zip(cells_tr.tolist(), rgf.integers(2, size=len(cells_tr)).tolist()))
+        fold = np.array([fold_of.get(int(cc), -1) for cc in inv])
+        WS = Sdev @ Bw                                  # rows outside the training cells: the full fit
+        for f_ in (0, 1):
+            fit_rows = trn[fold[trn] != f_]
+            Xf = Sdev[fit_rows]
+            lam_f = 1e-2 * np.trace(Xf.T @ Xf) / Xf.shape[1]
+            Bf = np.linalg.solve(Xf.T @ Xf + lam_f * np.eye(Xf.shape[1]), Xf.T @ Zd[fit_rows])
+            WS[fold == f_] = Sdev[fold == f_] @ Bf
+        keep_feats["within_sup"] = (WS, dS @ Bw)
+        preds["within_sup"] = dS @ Bw
+        buf = np.where(bf & ty & np.isfinite(F_raw).all(1) & np.isfinite(Eann).all(1))[0]
+        notes["n_buffer_rows"] = int(len(buf))
+        if a.commonality:
+            for tag, ps in (("cov_chg", [keep_feats["within_sup"], keep_feats["within_ema"]]),
+                            ("kxt_only", [keep_feats["kindxtime_32"]]),
+                            ("cov_lin", [keep_feats["kindxtime_32"], keep_feats["within_sup"], keep_feats["within_ema"]]),
+                            ("cov_all", [keep_feats["kindxtime_32"], keep_feats["within_sup"], keep_feats["within_ema"],
+                                         *DK]),
+                            # E086f: the CLOCK-FREE contest -- covariate change alone, and with DESK added
+                            ("cov_chg+desk_within", [keep_feats["within_sup"], keep_feats["within_ema"], *DK])):
+                edges = np.cumsum([0] + [f.shape[1] for f, _ in ps])
+                blocks = [(int(edges[i]), int(edges[i + 1])) for i in range(len(ps))]
+                b = blr.fit(np.hstack([f for f, _ in ps])[trn], Zd[trn], blocks)["coef"].T
+                preds[tag] = np.hstack([e for _, e in ps]) @ b
+    parts_ev = {}
+    if a.attr:
+        az = np.load(a.attr)
+        posn = {tuple(map(int, cc)): i for i, cc in enumerate(az["cells"])}
+        order = np.array([posn[tuple(map(int, cc))] for cc in cells[ev]])
+        notes["attr_full_vs_desk_maxabs"] = float(np.abs(az["part__full"][order] - D_desk).max())
+        notes["attr_truth_vs_maxabs"] = float(max(np.abs(az["Ta"][order] - Ta).max(), np.abs(az["Tb"][order] - Tb).max()))
+        for nm in ("land", "climate", "luh", "luh_mgmt", "luh_class", "luh_uniform", "luh_pattern", "temperature",
+                   "moisture", "land_local", "land_regional"):
+            if f"part__{nm}_part" in az.files:
+                parts_ev[nm] = az[f"part__{nm}_part"][order]
+    incr = {}
+    if a.incremental:
+        for sd in a.pos_seeds:
+            PL, PLev = keep_feats[f"placebo_300#{sd}"]
+            if a.null_desk:
+                perm = np.random.default_rng(1000 + sd).permutation(zr_all.shape[0])
+                zkp = np.asarray(zr_all[perm[ci_], keys[:, 2] - y0, :r], "float64")
+                dzp = (desk_epoch_z(zr_all, perm[ci_], y0, keys, mod_rows, r)
+                       - desk_epoch_z(zr_all, perm[ci_], y0, keys, early_rows, r))
+                keep_feats["desk_null"] = (zkp - cmean(zkp, w_ty), dzp)
+                q = PL.shape[1]
+                b = blr.fit(np.hstack([PL, keep_feats["desk_null"][0]])[trn], Zd[trn], [(0, q), (q, q + r)])["coef"].T
+                incr[f"placebo+desk_null#{sd}"] = np.hstack([PLev, dzp]) @ b
+            for nm in tuple(within_arms) + (() if a.lean else ("within_raw", "kindxtime_8")):
+                Xf, Xev = keep_feats[nm]
+                q = PL.shape[1]
+                b = blr.fit(np.hstack([PL, Xf])[trn], Zd[trn], [(0, q), (q, q + Xf.shape[1])])["coef"].T
+                incr[f"placebo+{nm}#{sd}"] = np.hstack([PLev, Xev]) @ b
+                if nm == "desk_within":
+                    for pn, pv in parts_ev.items():
+                        incr[f"placebo+desk_within-{pn}#{sd}"] = np.hstack([PLev, Xev - pv]) @ b
+            bases = []
+            if a.rich_base:
+                bases.append(("rich", [(PL, PLev), keep_feats["kindxtime_32"], keep_feats["within_raw"]]))
+            if a.strong_base:
+                bases.append(("strong", [(PL, PLev), keep_feats["kindxtime_32"], keep_feats["within_sup"],
+                                         keep_feats["within_ema"]]))
+                q = PL.shape[1]
+                for tag, ps in (("buf:placebo", [(PL, PLev)]), ("buf:placebo+desk_within",
+                                                                [(PL, PLev), *DK])):
+                    edges = np.cumsum([0] + [f.shape[1] for f, _ in ps])
+                    blocks = [(int(edges[i]), int(edges[i + 1])) for i in range(len(ps))]
+                    b = blr.fit(np.hstack([f for f, _ in ps])[buf], Zd[buf], blocks)["coef"].T
+                    incr[f"{tag}#{sd}"] = np.hstack([e for _, e in ps]) @ b
+            if a.commonality:
+                for tag, ps in (("placebo+cov_chg", [(PL, PLev), keep_feats["within_sup"], keep_feats["within_ema"]]),
+                                ("placebo+kxt", [(PL, PLev), keep_feats["kindxtime_32"]])):
+                    edges = np.cumsum([0] + [f.shape[1] for f, _ in ps])
+                    blocks = [(int(edges[i]), int(edges[i + 1])) for i in range(len(ps))]
+                    b = blr.fit(np.hstack([f for f, _ in ps])[trn], Zd[trn], blocks)["coef"].T
+                    incr[f"{tag}#{sd}"] = np.hstack([e for _, e in ps]) @ b
+            for bname, parts in bases:
+                variants = [(bname, []), (bname + "+desk_within", list(DK))]
+                if a.null_desk:
+                    variants.append((bname + "+desk_null", [keep_feats["desk_null"]]))
+                for tag, extra in variants:
+                    ps = parts + extra
+                    edges = np.cumsum([0] + [f.shape[1] for f, _ in ps])
+                    blocks = [(int(edges[i]), int(edges[i + 1])) for i in range(len(ps))]
+                    b = blr.fit(np.hstack([f for f, _ in ps])[trn], Zd[trn], blocks)["coef"].T
+                    incr[f"{tag}#{sd}"] = np.hstack([e for _, e in ps]) @ b
+                    if extra and tag.endswith("+desk_within"):
+                        for pn, pv in parts_ev.items():
+                            incr[f"{tag}-{pn}#{sd}"] = np.hstack([e for _, e in parts] + [ps[-1][1] - pv]) @ b
+        preds.update(incr)
+    m_dp = blr.fit(zk[trn], Z[trn], [(0, r)])
+    preds["desk_pooled"] = dz @ m_dp["coef"].T
+
+    # grading (E039h's estimand and bootstrap draws)
+    blk = (cells[ev, 0] // 6) * 100000 + cells[ev, 1] // 6
+    ub, binv = np.unique(blk, return_inverse=True)
+    rng = np.random.default_rng(11)
+    W = np.vstack([np.ones(len(ev)), rng.multinomial(len(ub), np.full(len(ub), 1.0 / len(ub)), size=a.n_boot)[:, binv]])
+
+    if a.save_species:
+        Sw = W.sum(1)
+        mean_ = lambda X: (W @ X) / Sw[:, None]
+        mTa, mTb = mean_(Ta), mean_(Tb)
+        comp = {"vt": (W @ (Ta * Tb)) - Sw[:, None] * mTa * mTb}
+        keyarms = ("desk_within", "desk_ref_within", "desk_pooled", "placebo_300", "strong", "strong+desk_within",
+                   "placebo+desk_within", "placebo+desk_ref_within", "cov_chg", "cov_chg+desk_within",
+                   "pooled_blr", "pooled_ridge")      # E086j: the LEVEL-fitted covariate rivals of desk_pooled
+        for nm, D in preds.items():
+            if nm.split("#")[0] not in keyarms:
+                continue
+            mD = mean_(D)
+            cva = (W @ (D * Ta)) - Sw[:, None] * mD * mTa
+            cvb = (W @ (D * Tb)) - Sw[:, None] * mD * mTb
+            comp[f"{nm}__cv"] = (0.5 * (cva + cvb)).astype("float32")
+            comp[f"{nm}__vp"] = ((W @ (D * D)) - Sw[:, None] * mD * mD).astype("float32")
+        cols = (json.load(open(c("meta.json"), encoding="utf-8"))["dev_species"] if a.target == "dev"
+                else [f"esk{i}" for i in range(Ta.shape[1])])
+        np.savez_compressed(os.path.join(a.out, f"species_components{a.tag}.npz"), columns=np.array(cols),
+                            vt=comp.pop("vt").astype("float32"), **comp)
+
+    def grade(D, w):
+        vp, vt = wc(D, D, w), wc(Ta, Tb, w)
+        cv = 0.5 * (wc(D, Ta, w) + wc(D, Tb, w))
+        corr = cv.sum() / np.sqrt(vp.sum() * vt.sum()) if vp.sum() > 0 and vt.sum() > 0 else np.nan
+        ok = (vt > 0) & (vp > 0)
+        per_dim = float(np.mean(cv[ok] / np.sqrt(vp[ok] * vt[ok]))) if ok.any() else np.nan
+        return corr, (cv.sum() / vp.sum() if vp.sum() > 0 else np.nan), per_dim
+    res = {"cache": a.cache, "n_cells": int(len(ev)), "rank": r, "withheld": [min(withheld), max(withheld)],
+           "modern": list(a.modern) if a.modern else None, "ref_cache": a.ref_cache, "target": a.target,
+           "early": list(a.early) if a.early else None, "eval_set": a.eval_set,
+           "n_fit_rows": int(len(trn)), "notes": notes, "models": {}}
+    members = {}
+    for name in preds:                                  # placebo-based arms: one member per draw, graded as the mean
+        members.setdefault(name.split("#")[0], []).append(name)
+    G = {name: np.array([grade(D, w) for w in W]) for name, D in preds.items()}
+    boots = {}
+    for base, ns in members.items():
+        g = np.mean([G[n] for n in ns], 0)
+        boots[base] = g[:, 0]
+        res["models"][base] = {"corr": float(g[0, 0]), "k": float(g[0, 1]), "per_dim_corr": float(g[0, 2]),
+                               "corr_ci": [float(np.nanpercentile(g[1:, 0], q)) for q in (2.5, 97.5)]}
+        if "#" in ns[0]:
+            res["models"][base]["draws"] = [float(G[n][0, 0]) for n in ns]
+    res["placebo"] = {"n_pos": a.n_pos, "seeds": list(a.pos_seeds)}
+    for name in members:
+        if name != "desk":
+            d = boots["desk"] - boots[name]
+            res["models"][name]["desk_minus_corr"] = float(d[0])
+            res["models"][name]["desk_minus_ci"] = [float(np.nanpercentile(d[1:], q)) for q in (2.5, 97.5)]
+
+    if a.incremental:
+        if parts_ev:
+            res["drop"] = {}
+            for combo, base in (("placebo+desk_within", "placebo_300"), ("rich+desk_within", "rich"),
+                                ("strong+desk_within", "strong")):
+                if combo not in boots:
+                    continue
+                gain = boots[combo] - boots[base]
+                res["drop"][combo] = {"gain": float(gain[0]), "parts": {}}
+                for pn in parts_ev:
+                    loss = boots[combo] - boots[f"{combo}-{pn}"]
+                    res["drop"][combo]["parts"][pn] = {
+                        "loss": float(loss[0]), "ci": [float(np.nanpercentile(loss[1:], q)) for q in (2.5, 97.5)],
+                        "share": float(loss[0] / gain[0]) if gain[0] != 0 else None}
+        if a.commonality:
+            res["commonality"] = {}
+            T = boots["placebo_300"]
+            for C, TC in (("desk_within", "placebo+desk_within"), ("cov_chg", "placebo+cov_chg"), ("kxt_only", "placebo+kxt"),
+                          ("cov_lin", "strong"), ("cov_all", "strong+desk_within")):
+                if C not in boots or TC not in boots:
+                    continue
+                rT, rC, rTC = (np.sign(v) * v ** 2 for v in (T, boots[C], boots[TC]))
+                comp = {"R2_T": rT, "R2_C": rC, "R2_TC": rTC, "shared": rT + rC - rTC, "unique_C": rTC - rT,
+                        "unique_T": rTC - rC, "shared_frac_of_T": (rT + rC - rTC) / rT}
+                res["commonality"][C] = {k: {"v": float(v[0]), "ci": [float(np.nanpercentile(v[1:], q))
+                                                                      for q in (2.5, 97.5)]} for k, v in comp.items()}
+        for x, y, key in (("rich+desk_within", "rich", "rich_gain"), ("strong+desk_within", "strong", "strong_gain"),
+                          ("strong+desk_null", "strong", "strong_null_gain"),
+                          ("placebo+desk_null", "placebo_300", "placebo_null_gain"),
+                          ("buf:placebo+desk_within", "buf:placebo", "buffer_gain"), ("strong", "placebo_300",
+                                                                                      "strong_base_gain")):
+            if x in boots and y in boots:
+                d = boots[x] - boots[y]
+                res[key] = {"desk_within": float(d[0]), "ci": [float(np.nanpercentile(d[1:], q)) for q in (2.5, 97.5)]}
+        for nm in sorted({n.split("#")[0] for n in incr if "-" not in n}):
+            d = boots[nm] - boots["placebo_300"]
+            res["models"][nm]["minus_placebo"] = float(d[0])
+            res["models"][nm]["minus_placebo_ci"] = [float(np.nanpercentile(d[1:], q)) for q in (2.5, 97.5)]
+        xy = cells[ev].astype(float) * 27.0
+        D2 = ((xy[:, None, :] - xy[None, :, :]) ** 2).sum(-1)
+        res["local"] = {}
+        for ell in (150.0, 300.0):
+            K = np.exp(-D2 / (2 * ell ** 2))
+            np.fill_diagonal(K, 0.0)
+            K /= np.maximum(K.sum(1, keepdims=True), 1e-300)
+            loc = lambda v: v - K @ v
+            La, Lb = loc(Ta), loc(Tb)
+            share = float(wc(La, Lb, W[0]).sum() / wc(Ta, Tb, W[0]).sum())
+
+            def lgrade(D, w):
+                Dl = loc(D)
+                vp, vt = wc(Dl, Dl, w).sum(), wc(La, Lb, w).sum()
+                cv = 0.5 * (wc(Dl, La, w).sum() + wc(Dl, Lb, w).sum())
+                return cv / np.sqrt(vp * vt) if vp > 0 and vt > 0 else np.nan
+            out = {"truth_local_share": share, "models": {}}
+            lb_ = {}
+            for nm in (("desk", "desk_within", "within_raw", "kindxtime_8", "placebo_300", "pooled_ridge")
+                       + tuple(sorted({n.split("#")[0] for n in incr if "-" not in n}))):
+                g = np.mean([np.array([lgrade(preds[n], w) for w in W]) for n in members[nm]], 0)
+                lb_[nm] = g
+                out["models"][nm] = {"corr": float(g[0]),
+                                     "ci": [float(np.nanpercentile(g[1:], q)) for q in (2.5, 97.5)]}
+            for nm in ("within_raw", "kindxtime_8", "placebo_300"):
+                d = lb_["desk"] - lb_[nm]
+                out["models"][nm]["desk_minus"] = float(d[0])
+                out["models"][nm]["desk_minus_ci"] = [float(np.nanpercentile(d[1:], q)) for q in (2.5, 97.5)]
+            res["local"][f"{ell:.0f}"] = out
+    # E059: head-to-head, readout against readout on the same draws (every arm is a linear readout fitted on the
+    # same training rows and target; only the inputs differ)
+    res["head_to_head"] = {}
+    for y in ("strong", "placebo_300", "kindxtime_32", "within_raw", "rich"):
+        for x in ("desk_within", "desk"):
+            if x in boots and y in boots:
+                d = boots[x] - boots[y]
+                res["head_to_head"][f"{x} - {y}"] = {"diff": float(d[0]),
+                                                     "ci": [float(np.nanpercentile(d[1:], q)) for q in (2.5, 97.5)]}
+    if a.ref_cache:
+        res["vs_ref"] = {}
+        for x, y in (("desk", "desk_ref"), ("desk_within", "desk_ref_within"),
+                     ("placebo+desk_within", "placebo+desk_ref_within")):
+            if x in boots and y in boots:
+                d = boots[x] - boots[y]
+                res["vs_ref"][f"{x} - {y}"] = {"diff": float(d[0]),
+                                               "ci": [float(np.nanpercentile(d[1:], q)) for q in (2.5, 97.5)]}
+    # spatial level on the same metric family: held-out cells x trained years, pooled readouts of ESK r24
+    lev = np.where(ho & ty & np.isfinite(F_raw).all(1) & np.isfinite(Eann).all(1))[0]
+    lv = {"desk_pooled": (zk[lev] - m_dp["xbar"]) @ m_dp["coef"].T,
+          "pooled_ridge": ((X[lev] - X[trn].mean(0)) @ B)[:, :rt]}
+    lblk = (keys[lev, 0] // 6) * 100000 + keys[lev, 1] // 6
+    lub, linv = np.unique(lblk, return_inverse=True)
+    rng = np.random.default_rng(12)
+    LW = np.vstack([np.ones(len(lev)), rng.multinomial(len(lub), np.full(len(lub), 1.0 / len(lub)),
+                                                       size=a.n_boot)[:, linv]])
+    lcorr = lambda p, w: float(wc(p, Z[lev], w).sum() / np.sqrt(wc(p, p, w).sum() * wc(Z[lev], Z[lev], w).sum()))
+    lb = {n: np.array([lcorr(p, w) for w in LW]) for n, p in lv.items()}
+    dl = lb["desk_pooled"] - lb["pooled_ridge"]
+    if a.save_species:
+        # E059h: per-species components of the spatial LEVEL metric too (same LW draws), for stratified level skill
+        Sw = LW.sum(1)
+        T = Z[lev]
+        mT = (LW @ T) / Sw[:, None]
+        lcomp = {"vt": ((LW @ (T * T)) - Sw[:, None] * mT * mT).astype("float32")}
+        for nm, P in lv.items():
+            mP = (LW @ P) / Sw[:, None]
+            lcomp[f"{nm}__cv"] = ((LW @ (P * T)) - Sw[:, None] * mP * mT).astype("float32")
+            lcomp[f"{nm}__vp"] = ((LW @ (P * P)) - Sw[:, None] * mP * mP).astype("float32")
+        cols = (json.load(open(c("meta.json"), encoding="utf-8"))["dev_species"] if a.target == "dev"
+                else [f"esk{i}" for i in range(T.shape[1])])
+        np.savez_compressed(os.path.join(a.out, f"species_level{a.tag}.npz"), columns=np.array(cols), **lcomp)
+    res["space_level"] = {"n_rows": int(len(lev)),
+                          **{n: float(v[0]) for n, v in lb.items()},
+                          "desk_minus_linear": float(dl[0]),
+                          "desk_minus_linear_ci": [float(np.percentile(dl[1:], q)) for q in (2.5, 97.5)]}
+    fn = ("fair_rivals_incr" if a.incremental else "fair_rivals") + a.tag + ".json"
+    with open(os.path.join(a.out, fn), "w", encoding="utf-8") as fh:
+        json.dump(res, fh, indent=1)
+    summarize(a.out, fn)
+
+
+def summarize(out, fn=None):
+    if fn is None:
+        import glob
+        for f in sorted(glob.glob(os.path.join(out, "fair_rivals*.json"))):
+            summarize(out, os.path.basename(f))
+        return
+    r = json.load(open(os.path.join(out, fn), encoding="utf-8"))
+    pl = r.get("placebo", {"n_pos": 24, "seeds": [1]})
+    print(f"[{fn}; placebo {pl['n_pos']} features x {len(pl['seeds'])} draws]")
+    print(f"{os.path.basename(os.path.normpath(r['cache']))}: {r['n_cells']} held-out cells, withheld {r['withheld']}, "
+          f"r{r['rank']}, {r['n_fit_rows']:,} fit rows; desk keys-vs-epoch max|diff| "
+          f"{r['notes']['desk_keys_vs_epoch_z_maxabs']:.2g}")
+    for name, v in r["models"].items():
+        if "-" in name:
+            continue
+        extra = (f" | desk - it {v['desk_minus_corr']:+.3f} [{v['desk_minus_ci'][0]:+.3f},{v['desk_minus_ci'][1]:+.3f}]"
+                 if "desk_minus_corr" in v else "")
+        if "minus_placebo" in v:
+            extra += (f" | - placebo_300 {v['minus_placebo']:+.3f} [{v['minus_placebo_ci'][0]:+.3f},"
+                      f"{v['minus_placebo_ci'][1]:+.3f}]")
+        print(f"  {name:13s} corr {v['corr']:+.3f} [{v['corr_ci'][0]:+.3f},{v['corr_ci'][1]:+.3f}] k {v['k']:5.2f} "
+              f"per-dim {v['per_dim_corr']:+.3f}" + extra)
+    for ell, o in r.get("local", {}).items():
+        print(f"  LOCAL {ell} km (truth's noise-free change energy that is local: {o['truth_local_share']:.2f})")
+        for nm, v in o["models"].items():
+            extra = (f" | desk - it {v['desk_minus']:+.3f} [{v['desk_minus_ci'][0]:+.3f},{v['desk_minus_ci'][1]:+.3f}]"
+                     if "desk_minus" in v else "")
+            print(f"    {nm:24s} corr {v['corr']:+.3f} [{v['ci'][0]:+.3f},{v['ci'][1]:+.3f}]" + extra)
+    for combo, o in r.get("drop", {}).items():
+        print(f"  DROP-PART losses in {combo} (gain over its base {o['gain']:+.3f}):")
+        for pn, v in o["parts"].items():
+            sh = f"{v['share']:+.2f}" if v["share"] is not None else "  n/a"
+            print(f"    -{pn:14s} loss {v['loss']:+.3f} [{v['ci'][0]:+.3f},{v['ci'][1]:+.3f}]  share of gain {sh}")
+    for key, label in (("rich_gain", "DESK gain beyond placebo + kind x time 32 + within map"),
+                       ("strong_gain", "DESK gain beyond the STRONG base (placebo + kxt32 + supervised + EMA maps)"),
+                       ("buffer_gain", "DESK gain beyond the placebo, readout fitted on BUFFER rows"),
+                       ("strong_base_gain", "strong base minus placebo (what the linear maps add)"),
+                       ("strong_null_gain", "NULL: cell-permuted DESK beyond the strong base"),
+                       ("placebo_null_gain", "NULL: cell-permuted DESK beyond the placebo")):
+        if key in r:
+            v = r[key]
+            print(f"  {label}: {v['desk_within']:+.3f} [{v['ci'][0]:+.3f},{v['ci'][1]:+.3f}]")
+    for C, o in r.get("commonality", {}).items():
+        f = lambda k: f"{o[k]['v']:.3f} [{o[k]['ci'][0]:.3f},{o[k]['ci'][1]:.3f}]"
+        print(f"  COMMONALITY trend vs {C:11s}: R2 trend {f('R2_T')} cov {f('R2_C')} both {f('R2_TC')} | shared "
+              f"{f('shared')} (frac of trend's {f('shared_frac_of_T')}) unique cov {f('unique_C')} unique trend "
+              f"{f('unique_T')}")
+    for nm, v in r.get("vs_ref", {}).items():
+        print(f"  TREATMENT - CONTROL {nm:46s} {v['diff']:+.3f} [{v['ci'][0]:+.3f},{v['ci'][1]:+.3f}]")
+    s = r["space_level"]
+    print(f"  SPACE level ({s['n_rows']:,} held-out rows, trained years): desk_pooled {s['desk_pooled']:+.3f} "
+          f"pooled_ridge {s['pooled_ridge']:+.3f}; desk - linear {s['desk_minus_linear']:+.3f} "
+          f"[{s['desk_minus_linear_ci'][0]:+.3f},{s['desk_minus_linear_ci'][1]:+.3f}]")
+
+
+if __name__ == "__main__":
+    main()

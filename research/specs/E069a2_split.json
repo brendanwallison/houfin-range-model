@@ -1,0 +1,8 @@
+{
+ "exp": "E069", "name": "e069a2-split-readout", "group": "io",
+ "overlay": "research/overlays/desk_tempho_1995_seed1.json",
+ "cmd": ["bash", "-c", "set -e; for r in split level; do {python} research/exp/e069_presence_score.py --readout $r --cache /home/breallis/houfin/work/houfin/research_cache/desk_tempho_1995_s1 --cbc /mnt/e/Datasets/cbc_raw/prepared/cbc_circles_comm.npz --similarity /home/breallis/houfin/work/houfin/research/E059/species-strata-066f943afb0e/species_similarity.csv --out {out}; done"],
+ "expected_minutes": 20,
+ "summarize": ["bash", "-c", "cat {out}/e069a_split.json"],
+ "note": "E069a2: split (between/within) readout vs level readout for the CBC presence score"
+}

@@ -1,0 +1,10 @@
+{
+ "exp": "E091",
+ "name": "fia-guild",
+ "group": "cpu",
+ "overlay": "research/overlays/desk_tempho_1995_seed1.json",
+ "cmd": ["bash", "-c", "set -e; F=/mnt/e/Datasets/fia/fia_27km.npz; C=$(ls -d {outroot}/E047/cropat-types-*/ | head -1)cropat_27km.npz; D=${HOUFIN_DATA}/avonet; for c in desk_tempho_1995_s1 desk_tempho_1985_s1; do {python} research/exp/guild_dose.py --cache {cache}/$c --cropat $C --avonet $D/TraitData/AVONET1_BirdLife.csv --taxonomy $D/eBird_taxonomy.csv --out {out}/${c}_sed --pooled --rival-all --aux $F --aux-key fia --aux-mask-key fia_mask --migration 1; {python} research/exp/guild_dose.py --cache {cache}/$c --cropat $C --avonet $D/TraitData/AVONET1_BirdLife.csv --taxonomy $D/eBird_taxonomy.csv --out {out}/${c}_all --pooled --rival-all --aux $F --aux-key fia --aux-mask-key fia_mask; done"],
+ "expected_minutes": 60,
+ "summarize": ["bash", "-c", "for d in {out}/*_sed {out}/*_all; do echo == $d; {python} research/exp/guild_dose.py --summarize $d | grep -E 'tested|type|Grassland|Forest|Woodland|Shrubland|Human'; done"],
+ "note": "E091: FIA stand structure change (periodic ~1976 vs annual 2010s), guild-pooled gain beyond ALL covariate change, moved nulls, FIA-covered cells only; sedentary primary"
+}

@@ -1,0 +1,19 @@
+{
+ "exp": "E003",
+ "name": "esk-desk_tempho_1995_s1",
+ "group": "cpu",
+ "overlay": "config/overlays/desk_tempho_1995.json",
+ "cmd": [
+  "python",
+  "research/exp/esk_project.py",
+  "--cache",
+  "{cache}/desk_tempho_1995_s1"
+ ],
+ "expected_minutes": 5,
+ "summarize": [
+  "python",
+  "-c",
+  "import numpy as np; E=np.load('{cache}/desk_tempho_1995_s1/esk_epochs.npz'); print('cell-epochs', len(E['cells']), 'withheld', int(E['withheld'].sum()))"
+ ],
+ "note": "observed-community ESK projections for a current-code seed cache (input of E013/E017/E018/E020 re-runs)"
+}

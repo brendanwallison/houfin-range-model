@@ -1,0 +1,21 @@
+{
+ "exp": "E048",
+ "name": "desk-tempho1985-seed1-cropat",
+ "group": "gpu",
+ "overlay": "research/overlays/desk_tempho_1985_seed1_cropat.json",
+ "after_jobs": [
+  "E048/build-cropat-states"
+ ],
+ "cmd": [
+  "bash",
+  "-c",
+  "set -e; export RESEARCH_OUT={out} TMPDIR={out}/tmp MPLCONFIGDIR={out}/tmp/mpl WANDB_MODE=offline WANDB_DIR={out}; mkdir -p {out}/desk {out}/tmp; {python} scripts/run_encoder.py desk; {python} research/exp/cache.py --out {cache}/desk_tempho_1985_s1_cropat; {python} research/exp/epoch_variant.py --run {out} --overlay research/overlays/desk_tempho_1985_seed1_cropat.json --cache-out {cache}/desk_tempho_1985_s1_cropat_late --work {out}/late"
+ ],
+ "expected_minutes": 70,
+ "summarize": [
+  "python",
+  "-c",
+  "import json; s=json.load(open('{out}/desk/run_summary.json')); print({k: s.get(k) for k in ('best_epoch','best_val_kernel','best_val_zmse','epochs_run')})"
+ ],
+ "note": "E048: tempho1985 seed 1 with CropAT-US crop channels in the landuse stream (control: desk_tempho_1985_seed1)"
+}

@@ -1,0 +1,15 @@
+{
+ "exp": "E038",
+ "name": "zones-statT",
+ "group": "cpu",
+ "overlay": "research/overlays/desk_tempho_1995_seed1.json",
+ "after_jobs": ["E038/desk-tempho1995-seed1-statT", "E038/desk-tempho1995-seed2-statT", "E038/desk-tempho1985-seed1-statT", "E038/desk-tempho1985-seed2-statT"],
+ "cmd": [
+  "bash",
+  "-c",
+  "set -e; {python} research/exp/zone_breakdown.py --out {out} --t0 1996 --models desk_tempho_1995_s1 desk_tempho_1995_s2 desk_tempho_1995_s1_statT desk_tempho_1995_s2_statT desk_tempho_1995_s1_late desk_tempho_1995_s2_late desk_tempho_1995_s1_statT_late desk_tempho_1995_s2_statT_late; {python} research/exp/zone_breakdown.py --out {out} --t0 1986 --models desk_tempho_1985_s1 desk_tempho_1985_s2 desk_tempho_1985_s1_statT desk_tempho_1985_s2_statT desk_tempho_1985_s1_late desk_tempho_1985_s2_late desk_tempho_1985_s1_statT_late desk_tempho_1985_s2_statT_late"
+ ],
+ "expected_minutes": 10,
+ "summarize": ["python", "research/exp/zone_breakdown.py", "--summarize", "{out}"],
+ "note": "E038 measure (2): pooled raw backcast corr by Great Plains zone, static-temperature models vs the unweighted controls (selected and late states)"
+}

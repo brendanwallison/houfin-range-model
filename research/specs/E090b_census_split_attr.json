@@ -1,0 +1,18 @@
+{
+ "exp": "E090",
+ "name": "census-split-attr",
+ "group": "cpu",
+ "overlay": "research/overlays/desk_tempho_1995_seed1.json",
+ "cmd": [
+  "bash",
+  "-c",
+  "set -e; F=/mnt/e/Datasets/ICPSR_agriculture/census_27km_v2.npz; C=$(ls -d {outroot}/E047/cropat-types-*/ | head -1)cropat_27km.npz; D=${HOUFIN_DATA}/avonet; G=\"--cache {cache}/desk_tempho_1995_s1 --cropat $C --avonet $D/TraitData/AVONET1_BirdLife.csv --taxonomy $D/eBird_taxonomy.csv --pooled --rival-all --aux $F --aux-mask-key census_mask\"; for k in census_land census census_chem; do {python} research/exp/guild_dose.py $G --aux-key $k --swap-split --out {out}/swap_${k}_all; {python} research/exp/guild_dose.py $G --aux-key $k --swap-split --migration 1 --out {out}/swap_${k}_sed; done; for k in census_livestock census_crops census_woodcrp census_insect census_herbicide census_fert; do {python} research/exp/guild_dose.py $G --aux-key $k --out {out}/attr_${k}_all; {python} research/exp/guild_dose.py $G --aux-key $k --migration 1 --out {out}/attr_${k}_sed; done"
+ ],
+ "expected_minutes": 40,
+ "summarize": [
+  "bash",
+  "-c",
+  "for d in {out}/swap_* {out}/attr_*; do echo == $d; {python} research/exp/guild_dose.py --summarize $d | grep -E 'type|Grassland|Forest|Human' | sed -E 's/ west.*//'; done"
+ ],
+ "note": "E090b: swapped-split replication (farmstead land signal, grassland chem) and channel-family attribution"
+}

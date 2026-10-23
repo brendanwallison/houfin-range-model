@@ -1,0 +1,19 @@
+{
+ "exp": "E027",
+ "name": "desk-plus-covariate-blocks",
+ "group": "cpu",
+ "overlay": "config/overlays/gp_species_base.json",
+ "cmd": [
+  "bash",
+  "-c",
+  "{python} research/exp/span_reach.py --out {out} --no-default-desk --skip-surrogates --lag-hls 0 3 10.5 30 --rff 512 --desk-plus lags lag30 rff trend --desk-models t1995s1=desk_tempho_1995_s1:1996:2025 t1995s2=desk_tempho_1995_s2:1996:2025 t1985s1=desk_tempho_1985_s1:1986:2025 t1985s2=desk_tempho_1985_s2:1986:2025"
+ ],
+ "expected_minutes": 45,
+ "summarize": [
+  "python",
+  "research/exp/span_reach.py",
+  "--summarize",
+  "{out}"
+ ],
+ "note": "E027b: DESK recalibration plus lag / RFF / trend blocks -- does surrogate covariate history add to DESK's z?"
+}

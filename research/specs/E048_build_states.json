@@ -1,0 +1,10 @@
+{
+ "exp": "E048",
+ "name": "build-cropat-states",
+ "group": "cpu",
+ "overlay": "research/overlays/desk_tempho_1995_seed1.json",
+ "cmd": ["bash", "-c", "set -e; C=$(ls -d {outroot}/E047/cropat-types-*/ | head -1)cropat_27km.npz; {python} -I research/exp/build_cropat_states.py --src ${HOUFIN_PROCESSED}/encoder/states --cropat $C --out {out}/states"],
+ "expected_minutes": 20,
+ "summarize": ["bash", "-c", "grep cropat-states {out}/log.txt; du -sh {out}/states"],
+ "note": "E048: new states dir = existing yearly states + 12 CropAT channels folded into landuse (read-only on the source states)"
+}

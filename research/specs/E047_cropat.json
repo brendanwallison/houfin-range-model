@@ -1,0 +1,10 @@
+{
+ "exp": "E047",
+ "name": "cropat-test",
+ "group": "cpu",
+ "overlay": "research/overlays/desk_tempho_1995_seed1.json",
+ "cmd": ["bash", "-c", "set -e; {python} -I research/exp/cropat_aggregate.py --src /mnt/e/Datasets/houfin/external/cropat_us/extracted/CropDensity --grid ${HOUFIN_DATA}/ref_grid_27km.tif --out {out}/cropat_27km.npz --pattern CropDensity --y0 1850 --y1 2021; for c in desk_tempho_1995_s1 desk_tempho_1985_s1; do {python} research/exp/cropat_test.py --cache {cache}/$c --cropat {out}/cropat_27km.npz --out {out}/$c; done"],
+ "expected_minutes": 20,
+ "summarize": ["bash", "-c", "for c in desk_tempho_1995_s1 desk_tempho_1985_s1; do {python} research/exp/cropat_test.py --summarize {out}/$c; done"],
+ "note": "E047: CropAT-US (county-census-based 1 km cropland 1850-2021) aggregated to 27 km; does its cropland change carry within-type / within-type+region community-change signal that LUH's does not?"
+}

@@ -1,0 +1,14 @@
+{
+ "exp": "E035",
+ "name": "backcast-attribution",
+ "group": "cpu",
+ "overlay": "research/overlays/desk_tempho_1995_seed1.json",
+ "cmd": [
+  "bash",
+  "-c",
+  "set -e; R={outroot}/E022/desk-tempho1995-seed1-f946971f1b3e; {python} research/exp/backcast_attribution.py --cache {cache}/desk_tempho_1995_s1 --run-dir $R/desk --overlay research/overlays/desk_tempho_1995_seed1.json --out {out}/selected; L=$(ls -d {outroot}/E025/late-caches-*)/t1995s1/desk_late; {python} research/exp/backcast_attribution.py --cache {cache}/desk_tempho_1995_s1_late --run-dir $L --overlay research/overlays/desk_tempho_1995_seed1.json --out {out}/late"
+ ],
+ "expected_minutes": 30,
+ "summarize": ["bash", "-c", "for d in {out}/selected {out}/late; do {python} research/exp/backcast_attribution.py --summarize $d; done"],
+ "note": "E035b: land-use vs climate parts of DESK's withheld-decade change: which tracks the truth, which leans to analogs"
+}

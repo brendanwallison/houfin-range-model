@@ -1,0 +1,10 @@
+{
+ "exp": "E090",
+ "name": "census-guild",
+ "group": "cpu",
+ "overlay": "research/overlays/desk_tempho_1995_seed1.json",
+ "cmd": ["bash", "-c", "set -e; F=/mnt/e/Datasets/ICPSR_agriculture/census_27km.npz; C=$(ls -d {outroot}/E047/cropat-types-*/ | head -1)cropat_27km.npz; D=${HOUFIN_DATA}/avonet; for k in census census_land census_chem; do for c in desk_tempho_1995_s1 desk_tempho_1985_s1; do {python} research/exp/guild_dose.py --cache {cache}/$c --cropat $C --avonet $D/TraitData/AVONET1_BirdLife.csv --taxonomy $D/eBird_taxonomy.csv --out {out}/${k}_${c}_sed --pooled --rival-all --aux $F --aux-key $k --aux-mask-key census_mask --migration 1; {python} research/exp/guild_dose.py --cache {cache}/$c --cropat $C --avonet $D/TraitData/AVONET1_BirdLife.csv --taxonomy $D/eBird_taxonomy.csv --out {out}/${k}_${c}_all --pooled --rival-all --aux $F --aux-key $k --aux-mask-key census_mask; done; done"],
+ "expected_minutes": 30,
+ "summarize": ["bash", "-c", "for d in {out}/census*; do echo == $d; {python} research/exp/guild_dose.py --summarize $d | grep -E 'type|Grassland|Forest|Shrubland|Wetland|Human'; done"],
+ "note": "E090: county ag census by type and practice (1978/82 vs 2002-12), guild-pooled gain beyond ALL covariate change, moved nulls; sedentary first"
+}

@@ -1,0 +1,18 @@
+{
+  "_extends": "map_run75c_retest.json",
+  "_comment": [
+    "E080b DESK-CALIBRATED change: deviation amplitude FIXED at .14 x level (DESK's measured between/within split), no K trend -- temporal change allowed at DESK's own credible size, not free."
+  ],
+  "population_model": {
+    "readout": {
+      "within_ratio_fixed": 0.14
+    },
+    "k_trend": {
+      "enabled": false
+    }
+  },
+  "run_names": {
+    "map": "age_map_{precision}_run_80b",
+    "vis_map": "age_map_{precision}_run_80b"
+  }
+}

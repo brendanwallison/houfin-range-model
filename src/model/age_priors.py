@@ -589,7 +589,12 @@ def sample_priors(prior_scale=1.0, M_features=None, time=None,
         if _MANIFOLD_FORM != "exchangeable":
             raise NotImplementedError("readout.split is wired for manifold_prior.form = exchangeable")
         _wr = _READOUT.get("within_ratio_prior")
-        if _wr:
+        if _READOUT.get("within_ratio_fixed") is not None:
+            # Deviation amplitude FIXED at ratio x level (E080): 0 = STATIC habitat (each cell keeps its long-run DESK
+            # level; no temporal habitat change through the readout); .14 = DESK's own measured between/within split.
+            w_scale_w = numpyro.deterministic(
+                "w_scale_within", w_scale * float(_READOUT["within_ratio_fixed"]) * jnp.ones(4))
+        elif _wr:
             # Deviation amplitude = level amplitude x ratio, ratio ~ LogNormal centred on DESK's measured
             # between/within split (E059e: kernel variances ~50x apart -> sd ratio ~ sqrt(1/50) ~ .14). DESK's change is
             # poorly aimed, so the deviation block should count for much less than the level unless the data insist.
@@ -636,8 +641,9 @@ def sample_priors(prior_scale=1.0, M_features=None, time=None,
     # year-to-year wiggle.
     k_trend_budget = float(_K_TREND["budget"]) * prior_scale
     n_k_trend = int(_K_TREND["n_basis"])
-    if "capacity" in _DRIFT_ON_FIELDS and _DRIFT.get("form") == "intercept":
+    if ("capacity" in _DRIFT_ON_FIELDS and _DRIFT.get("form") == "intercept") or _K_TREND.get("enabled", True) is False:
         # covariate_drift owns K's temporal intercept; never both (two names for one direction).
+        # k_trend.enabled = false (E080 static habitat): no continental K trend at all.
         priors['w_k_trend'] = numpyro.deterministic("w_k_trend", jnp.zeros(n_k_trend))
     else:
         priors['w_k_trend'] = numpyro.sample(

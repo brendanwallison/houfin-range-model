@@ -1,0 +1,18 @@
+{
+  "_extends": "map_run75c_retest.json",
+  "_comment": [
+    "E080a STATIC habitat: 75c base (split readout r32) with the temporal-deviation block off (within_ratio_fixed 0) and no continental K trend -- habitat varies in space only; disease is the only temporal mechanism."
+  ],
+  "population_model": {
+    "readout": {
+      "within_ratio_fixed": 0.0
+    },
+    "k_trend": {
+      "enabled": false
+    }
+  },
+  "run_names": {
+    "map": "age_map_{precision}_run_80a",
+    "vis_map": "age_map_{precision}_run_80a"
+  }
+}

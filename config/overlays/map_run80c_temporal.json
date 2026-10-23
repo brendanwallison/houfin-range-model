@@ -1,0 +1,15 @@
+{
+  "_extends": "map_run75c_retest.json",
+  "_comment": [
+    "E080c FREE control: 75c with only the K trend removed (deviation amplitudes free, as 75c) -- isolates the K trend's share of the temporal change."
+  ],
+  "population_model": {
+    "k_trend": {
+      "enabled": false
+    }
+  },
+  "run_names": {
+    "map": "age_map_{precision}_run_80c",
+    "vis_map": "age_map_{precision}_run_80c"
+  }
+}

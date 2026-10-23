@@ -1,0 +1,13 @@
+{
+ "exp": "E086",
+ "name": "e086w-tacc-smoke",
+ "group": "cpu",
+ "overlay": "research/overlays/desk_e086w_tacc_smoke.json",
+ "cmd": [
+  "bash",
+  "-c",
+  "set -e; export CUDA_VISIBLE_DEVICES= OMP_NUM_THREADS=8 RESEARCH_OUT={out} TMPDIR={out}/tmp MPLCONFIGDIR={out}/tmp/mpl WANDB_MODE=offline WANDB_DIR={out}; mkdir -p {out}/desk {out}/tmp; {python} scripts/run_encoder.py desk"
+ ],
+ "expected_minutes": 40,
+ "note": "E086w: 1-epoch CPU smoke of the TACC CBC-1902 overlay (loaders, window, terms)"
+}

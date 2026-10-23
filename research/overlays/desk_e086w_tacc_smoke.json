@@ -1,0 +1,36 @@
+{
+ "_comment": "E086w TACC smoke (local, CPU, 1 epoch): config/overlays/desk_cbc1902.json with outputs redirected to the job dir.",
+ "paths": {
+  "desk_output_dir": "${RESEARCH_OUT}/desk"
+ },
+ "latent_cube": {
+  "model_path": "${RESEARCH_OUT}/desk/env_model_semisup.pth",
+  "output_dir": "${RESEARCH_OUT}/cube"
+ },
+ "desk": {
+  "output_ema": {
+   "half_life_bounds": [
+    1.0,
+    40.0
+   ],
+   "warmup_start": 1902,
+   "init_half_life": 10.0
+  },
+  "aux_presence": {
+   "path": "${HOUFIN_PROCESSED}/encoder/cbc_aux/cbc_presence_res_comp_1902_1965_wop.npz",
+   "weight": 0.01,
+   "label": "cbc_presence_early",
+   "include_withheld": true,
+   "completeness_slopes": true
+  },
+  "aux_ruzicka": {
+   "path": "${HOUFIN_PROCESSED}/encoder/cbc_aux/cbc_ruzicka_res.npz",
+   "weight": 2.36,
+   "label": "cbc_ruzicka_modern",
+   "include_withheld": true,
+   "pairs": 4096
+  },
+  "epochs": 1,
+  "patience": 1
+ }
+}

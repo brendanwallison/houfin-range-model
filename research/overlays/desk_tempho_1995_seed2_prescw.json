@@ -1,0 +1,72 @@
+{
+ "_comment": "E086v-b: prescw T0 1996 seed 2 (from desk_tempho_1995_seed2_ruzx.json; winter observation operator).",
+ "paths": {
+  "desk_output_dir": "${RESEARCH_OUT}/desk"
+ },
+ "desk": {
+  "z_dir": "${HOUFIN_PROCESSED}/encoder/esk_balanced/spacetime",
+  "trend": {
+   "holdout_years": [
+    1966,
+    1967,
+    1968,
+    1969,
+    1970,
+    1971,
+    1972,
+    1973,
+    1974,
+    1975,
+    1976,
+    1977,
+    1978,
+    1979,
+    1980,
+    1981,
+    1982,
+    1983,
+    1984,
+    1985,
+    1986,
+    1987,
+    1988,
+    1989,
+    1990,
+    1991,
+    1992,
+    1993,
+    1994,
+    1995
+   ],
+   "direction_anchor_year": 1996,
+   "direction_withheld_anchor_year": 1975,
+   "common_holdout_years": [
+    1966,
+    1967,
+    1968,
+    1969,
+    1970,
+    1971,
+    1972,
+    1973,
+    1974,
+    1975
+   ]
+  },
+  "seed": 2,
+  "aux_ruzicka": {
+   "path": "/mnt/e/Datasets/cbc_raw/prepared/cbc_ruzicka_res.npz",
+   "weight": 2.36,
+   "label": "cbc_ruzicka_x",
+   "include_withheld": false,
+   "pairs": 4096
+  },
+  "aux_presence": {
+   "path": "/mnt/e/Datasets/cbc_raw/pseudo_early3_w6695/prepared/cbc_presence_res_comp_w6695_clean_wop.npz",
+   "weight": 0.01,
+   "label": "cbc_presence_prescw",
+   "include_withheld": true,
+   "completeness_slopes": true
+  }
+ }
+}

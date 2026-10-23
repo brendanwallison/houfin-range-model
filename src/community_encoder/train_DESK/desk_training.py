@@ -971,13 +971,23 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
             raise ValueError("metric_heads are implemented for full-grid steps only (spatial_tiles 1)")
         # A head reads [z, its own private block]; with no private block it reads z alone, as in E084.
         _pk = _pdims[_hk]
-        mh_mods.append(torch.nn.Linear(int(latent_dim) + _pk, int(_mh.get("dim", 24)), bias=False).to(device))
+        # E086z: "private_only" -> the head reads its private block ALONE (not z); "identity" -> no map H, the
+        # private block IS the head's space (dim must equal private). Together they make the private block a
+        # second kernel half, z_w with dot(z_w,i, z_w,j) ~ Ruzicka of this source: the SUM-kernel design.
+        _po, _idn = bool(_mh.get("private_only", False)), bool(_mh.get("identity", False))
+        if (_po or _idn) and _pk <= 0:
+            raise ValueError("metric head private_only / identity need a private block")
+        if _idn and int(_mh.get("dim", _pk)) != _pk:
+            raise ValueError("metric head identity needs dim == private")
+        mh_mods.append(torch.nn.Identity() if _idn else
+                       torch.nn.Linear((0 if _po else int(latent_dim)) + _pk, int(_mh.get("dim", 24)), bias=False).to(device))
         mheads.append({"t": torch.as_tensor(np.asarray(_mh["t_idx"]), device=device, dtype=torch.long),
                        "r": torch.as_tensor(np.asarray(_mh["row"]), device=device, dtype=torch.long),
                        "c": torch.as_tensor(np.asarray(_mh["col"]), device=device, dtype=torch.long),
                        "X": torch.log1p(torch.as_tensor(np.asarray(_mh["X"]), device=device, dtype=torch.float32)),
                        "w": float(_mh["weight"]), "pairs": int(_mh.get("pairs", 4096)),
-                       "label": str(_mh.get("label", f"head{len(mheads)}")), "pslice": (_p0, _p0 + _pk)})
+                       "label": str(_mh.get("label", f"head{len(mheads)}")), "pslice": (_p0, _p0 + _pk),
+                       "private_only": _po, "identity": _idn})
         _p0 += _pk
         print(f"[desk] METRIC HEAD '{mheads[-1]['label']}': linear {latent_dim}+{_pk} private -> {int(_mh.get('dim', 24))}, "
               f"{int(mheads[-1]['X'].shape[0]):,} points, {int(mheads[-1]['X'].shape[1])} species, weight "
@@ -1733,9 +1743,11 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
             _ck_key["presence"]["learned_head"] = True
     if mheads:   # only when on
         _ck_key["metric_heads"] = [{"label": h["label"], "weight": h["w"], "n": int(h["X"].shape[0]),
-                                    "pairs": h["pairs"], "dim": int(m_.out_features)} for h, m_ in zip(mheads, mh_mods)]
+                                    "pairs": h["pairs"], "dim": int(getattr(m_, "out_features", h["pslice"][1] - h["pslice"][0]))} for h, m_ in zip(mheads, mh_mods)]
         if private_dim > 0:   # only when on, so E084-style runs keep their fingerprint
             _ck_key["private_dims"] = [int(h["pslice"][1] - h["pslice"][0]) for h in mheads]
+            if any(h["private_only"] or h["identity"] for h in mheads):   # E086z, only when on
+                _ck_key["head_modes"] = [[bool(h["private_only"]), bool(h["identity"])] for h in mheads]
             _ck_key["private_orth"] = float(private_orth)
     if ruzt is not None:   # only when on
         _ck_key["ruzicka"] = {"label": ruzt["label"], "weight": ruzt["w"], "a": ruzt["a"], "b": ruzt["b"],
@@ -2102,7 +2114,7 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
                             _cc = (_zc / (_zc.norm(dim=0) + 1e-6)).T @ (_pc / (_pc.norm(dim=0) + 1e-6))
                             loss_orth.append((_cc ** 2).mean())
                             loss = loss + private_orth * loss_orth[-1]
-                        _zi, _zj = torch.cat([_zi, _pi], 1), torch.cat([_zj, _pj], 1)
+                        _zi, _zj = (_pi, _pj) if _h["private_only"] else (torch.cat([_zi, _pi], 1), torch.cat([_zj, _pj], 1))
                     _hi, _hj = _m(_zi), _m(_zj)
                     _xi, _xj = _h["X"][_i], _h["X"][_j]
                     _den = torch.maximum(_xi, _xj).sum(1)
@@ -3132,6 +3144,8 @@ def run_desk_experiment(config=None):
                              "X": np.asarray(_q["X"], "float32")[_keep], "weight": float(_hcfg.get("weight", 1.0)),
                              "dim": int(_hcfg.get("dim", 24)), "pairs": int(_hcfg.get("pairs", 4096)),
                              "private": int(_hcfg.get("private", 0)),
+                             "private_only": bool(_hcfg.get("private_only", False)),
+                             "identity": bool(_hcfg.get("identity", False)),
                              "label": str(_hcfg.get("label", os.path.basename(_hcfg["path"])))})
         print(f"[desk] aux_metric_head '{metric_heads[-1]['label']}': {int(_keep.sum()):,} of {len(_keep):,} points kept",
               flush=True)

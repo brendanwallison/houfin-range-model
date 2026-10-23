@@ -3057,6 +3057,48 @@ def test_metric_heads_and_learned_presence(tmp_path):
     assert state["presence"]["W"].shape == (L, S)
 
 
+def test_sum_kernel_winter_half(tmp_path):
+    """E086z: a metric head with private_only + identity makes its private block a second kernel half: no map H,
+    the pair loss acts on the private block alone, the private layer trains, and a bad config is refused."""
+    import contextlib
+    import io
+
+    from src.community_encoder.train_DESK import desk_training as D
+    from src.community_encoder.train_DESK.model_arch import MultiStreamAutoencoder
+
+    sch = _schema()
+    dims = [s["dim"] for s in sch["streams"]]
+    T, H, W, L, S, N = 4, 6, 7, 16, 5, 40
+    rng = np.random.default_rng(17)
+    cov = rng.normal(size=(T, H, W, sch["total_dim"])).astype("float32")
+    m = np.ones((H, W), bool)
+    years = list(range(2022, 2026))
+    tgt = {y: (rng.normal(size=(H, W, L)).astype("float32"), m, m,
+               np.ones((H, W), dtype="float32")) for y in years[1:]}
+    head = lambda **kw: [{"t_idx": rng.integers(0, T, N), "row": rng.integers(0, H, N), "col": rng.integers(0, W, N),
+                          "X": rng.gamma(1.0, 2.0, size=(N, S)).astype("float32"), "weight": 1.0, "dim": 4, "pairs": 64,
+                          "label": "toy_winter", "private": 4, "private_only": True, "identity": True, **kw}]
+    args = (cov, np.ones((T, H, W), bool), years, tgt,
+            _metric_dict(rng.random((H, W, 9)).astype("float32"), m, years), m, m, dims)
+    ck = tmp_path / "ck.pt"
+    out = io.StringIO()
+    with contextlib.redirect_stdout(out):
+        model, _ema = D.train_model_ema(*args, latent_dim=L, ema_cfg={"earlystop_warmup": 0}, spatial_kernel=3,
+                                        schema=sch, dropout=0.1, checkpoint_path=str(ck), checkpoint_every=1,
+                                        metric_heads=head(), epochs=3, stop_at_epoch=2)[:2]
+    assert model.private_dim == 4
+    done = str(ck) + ".completed"
+    state = torch.load(done if os.path.exists(done) else ck, map_location="cpu", weights_only=False)
+    assert state["metric_heads"][0] == {}                      # Identity: no parameters
+    torch.manual_seed(0)
+    fresh = MultiStreamAutoencoder(dims, L, 3, 0.1, private_dim=4)
+    assert not torch.allclose(fresh.private_out.weight, state["model"]["private_out.weight"])
+    with pytest.raises(ValueError):
+        with contextlib.redirect_stdout(io.StringIO()):
+            D.train_model_ema(*args, latent_dim=L, ema_cfg={"earlystop_warmup": 0}, spatial_kernel=3, schema=sch,
+                              dropout=0.1, metric_heads=head(dim=6), epochs=1, stop_at_epoch=1)
+
+
 def test_private_dims_for_metric_heads(tmp_path):
     """E086: per-head PRIVATE dims -- the model grows private outputs only the heads read; z keeps its width, the
     plain forward is unchanged, each head's weight is (d, L + its private width), the orthogonality term runs, and

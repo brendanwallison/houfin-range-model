@@ -1,7 +1,7 @@
 {
-  "_extends": "map_run79d_allee_form.json",
+  "_extends": "map_run79b_allee_form.json",
   "_comment": [
-    "E080 rerun on the 79d base (split r32, Allee ~off n50/100 -- converged in 79d; 80b/80c stalled on the absolute-Allee switch): STATIC temporal habitat change, K trend off."
+    "E080 rerun on the 79b base (split r32, smooth aggregated-encounter Allee k = 3 -- converged in 79b; 80b/80c stalled on the absolute-Allee switch): STATIC temporal habitat change, K trend off."
   ],
   "population_model": {
     "k_trend": {

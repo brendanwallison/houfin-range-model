@@ -24,4 +24,6 @@ habitat change and we look at where it acts.
   -1.813/-1.186: temporal about equal, spatial ~.01 worse. The temporal channel buys little prediction for a lot of
   habitat change; the F demand does not come from temporal habitat.
 - 80b (.14) stalled |grad| 3.4e6; 80c (free) stalled 5.1e4 -- the absolute-Allee establishment switch on the 75c base.
-RERUN on the 79d base (Allee ~off, converged there): 80d static, 80e calibrated .14, 80f free (K trend off in all).
+RERUN on the 79b base -- smooth aggregated-encounter Allee k = 3 (converged in 410 it; keeps mate limitation, which the
+user requires -- the near-zero-Allee 79d base was cancelled): 80d static, 80e calibrated .14, 80f free (K trend off in all).
+Note: building 80a-c on the absolute-Allee base after E078/E079 had located the stall was an avoidable error.

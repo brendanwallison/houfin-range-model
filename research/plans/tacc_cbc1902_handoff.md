@@ -85,6 +85,22 @@ resubmit with `QUEUE=gpu-a100`. Wall time should be about 1.5x a normal producti
 
 ## Checks in the log (`houfin_encoder.o<jobid>`)
 
+A local 1-epoch CPU smoke of this exact overlay (outputs redirected; job E086/e086w-tacc-smoke-13d263ecac44,
+2026-10-23) printed the following. The TACC run should match these counts exactly, since the split, states and files
+are the same:
+
+```
+[desk] aux_presence: 13,077 of 15,378 lists kept (window 1902-2025, withheld years INCLUDED; ...)
+[desk] aux_ruzicka: 70,802 of 81,795 CBC cell-years kept (withheld years INCLUDED)
+[desk] PRESENCE term 'cbc_presence_early': 13,077 lists, 59 species, 90,846 records, weight 0.01
+[desk] RUZICKA term 'cbc_ruzicka_modern': 70,802 CBC cell-years, 59 species, dot ~ -0.045 + 0.707 x Ruzicka, 4096 pairs/step, weight 2.36
+--- Training DESK+outputEMA (124yr window 1902..2025, 59 supervised years, ...) ---
+Ep 001 | ruzicka 'cbc_ruzicka_modern' mse 0.01877 weighted 0.0443 (3% of the total)
+Ep 001 | presence 'cbc_presence_early' nll 3.7477 weighted 0.0375 (3% of the total)
+```
+
+`k_val_spt nan` is expected (production has no withheld years).
+
 Early in the run:
 
 - `[desk] aux_presence: N of 15,378 lists kept (window 1902-2025, ...)`. The window must start at **1902**; if it

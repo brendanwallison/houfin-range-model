@@ -229,7 +229,7 @@ def build_spacetime_cube(config: Optional[Union[Dict[str, Any], str, os.PathLike
     if include_private:
         z_dim = latent_dim + _pdim
         print(f"[cube] include_private: exporting [z ({latent_dim}), private ({_pdim})] = {z_dim} dims", flush=True)
-    z_static_grid = np.full((H, W, z_dim), np.nan, dtype=np.float32)
+    z_static_grid = np.full((H, W, latent_dim), np.nan, dtype=np.float32)   # the basis's own dims (summer half when include_private)
     z_static_grid[z_ref_mask] = z_ref_flat
     z_static_valid = ~np.isnan(z_static_grid).any(axis=-1)
 

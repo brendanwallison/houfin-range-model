@@ -162,3 +162,4 @@ date,experiment,variant,run_dir,U,fit_corr,notes,su
 2026-10-22,E077,77a,run_77a,,,sedentary native range r .65 (guards pass); no plains K collapse; demography still contorts,
 2026-10-22,E078,stall probe,,,,clean-regime stalls = Allee establishment switch without floor (one plains founder cell -66%); 73h f64 holdout -1.825/-1.171,
 2026-10-22,E078,78r,run_78r,126972.3,,split r32 + route effects (dev): demography lost .59/.57/8.3; AD .23 W; holdout -1.735/-1.315; E079 re-targeted to 75c base,
+2026-10-24,E080,80d/80f,run_80d,137619.3,,static (k=3): corridor .30 vs free .77; holdout temporal = free, spatial -.017; F 12.5; 80f free stalled 2.4e4,

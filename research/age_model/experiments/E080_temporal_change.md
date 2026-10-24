@@ -37,3 +37,14 @@ Note: building 80a-c on the absolute-Allee base after E078/E079 had located the 
 | 80f | free amplitude, independent direction |
 Tests: tied with c = 1 reproduces the unsplit readout exactly; correlated with r = 1 reproduces tied.
 Read: holdout (temporal first), demography, plains corridor at MAP vs refined and by era, fitted r (80h), deviation ratios.
+
+## 80d / 80f (smooth k = 3 base; 2026-10-24)
+- 80d STATIC (8,000 it = cap): .49/.18/12.5; central-plains source share (34-40N) .11 MAP -> .30 refined (79b free:
+  .25 -> .77); holdout -1.818 / -1.192 vs 79b (free, K trend on) -1.820 / -1.175: temporal EQUAL, spatial .017 worse
+  (just past the .01 rule). lambda flat .83.
+- 80f FREE (K trend off) STALLED (median |grad| 2.4e4) -- the k = 3 Allee is smoother but not stall-proof; 79b is the
+  usable free twin.
+Reading: the central-plains corridor is created by temporal habitat change; static habitat keeps the barrier and
+forecasts 2021-25 as well, losing a little on unseen places. Static does not fix the demography (F 12.5).
+80g (tied) / 80h (correlated) decide whether a constrained space-for-time channel recovers the spatial gain without
+the corridor.

@@ -223,6 +223,12 @@ def build_spacetime_cube(config: Optional[Union[Dict[str, Any], str, os.PathLike
         raise ValueError(f"ESK z_ref has {z_ref_flat.shape[1]} dims < desk_meta latent_dim {latent_dim}")
     z_ref_flat = z_ref_flat[:, :latent_dim]
     z_dim = latent_dim
+    # E086final (v2, equal summer / winter halves): export [z, the model's private block] when asked; off by default
+    _pdim = int(dm["private_dim"]) if "private_dim" in dm.files else 0
+    include_private = bool(cube_cfg.get("include_private", False)) and _pdim > 0
+    if include_private:
+        z_dim = latent_dim + _pdim
+        print(f"[cube] include_private: exporting [z ({latent_dim}), private ({_pdim})] = {z_dim} dims", flush=True)
     z_static_grid = np.full((H, W, z_dim), np.nan, dtype=np.float32)
     z_static_grid[z_ref_mask] = z_ref_flat
     z_static_valid = ~np.isnan(z_static_grid).any(axis=-1)
@@ -258,7 +264,11 @@ def build_spacetime_cube(config: Optional[Union[Dict[str, Any], str, os.PathLike
             xg = torch.tensor(covn[None], dtype=torch.float32, device=device)
             mg = torch.tensor(valid_pixels[None], device=device)
             with torch.no_grad():
-                z_out, _ = model(xg, mg)                       # (1, H, W, L)
+                if include_private:
+                    z_out, _, p_out = model(xg, mg, True)
+                    z_out = torch.cat([z_out, p_out], dim=-1)  # (1, H, W, L + P)
+                else:
+                    z_out, _ = model(xg, mg)                   # (1, H, W, L)
             z_year[valid_pixels] = z_out[0].cpu().numpy()[valid_pixels]
         years.append(year); z_raws.append(z_year); valids.append(valid_pixels)
 
@@ -279,7 +289,10 @@ def build_spacetime_cube(config: Optional[Union[Dict[str, Any], str, os.PathLike
             land_mask,
             radius_px=radius_px,
         )
-        z_s2, mask_s2 = fill_gaps_stage2_static(z_s1, mask_s1, land_mask, z_static_grid, z_static_valid)
+        if include_private:   # the static reference covers the summer dims only; nearest-neighbour (stage 3) fills all
+            z_s2, mask_s2 = z_s1, mask_s1
+        else:
+            z_s2, mask_s2 = fill_gaps_stage2_static(z_s1, mask_s1, land_mask, z_static_grid, z_static_valid)
         z_final = fill_gaps_stage3_nearest(z_s2, mask_s2, land_mask)
         z_final[~land_mask] = np.nan
 

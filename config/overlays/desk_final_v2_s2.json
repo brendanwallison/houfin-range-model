@@ -1,0 +1,63 @@
+{
+ "_comment": "FINAL DESK candidate v2, seed 2: EQUAL summer / winter halves, z = [z_summer 64, z_winter 64]. Summer: all-species BBS basis (stabilizing target + Ruzicka pairs, production). Winter: 64 private dims, identity head -- CBC Ruzicka pairs (all 333 species, 1966-2024) + coordinate target on the all-species CBC winter basis, weights equal to the summer half's (metric 5, stabilizing 64). Early (1902-1965) CBC presence through a winter operator reading the WINTER half. Cross-season CBC Ruzicka on z_summer kept. Cube exports [z, private] (latent_cube.include_private). See research/experiments/FINAL.md.",
+ "paths": {
+  "desk_output_dir": "${HOUFIN_PROCESSED}/encoder/desk_final_v2_s2"
+ },
+ "latent_cube": {
+  "z_dir": "${HOUFIN_PROCESSED}/encoder/esk_all369_breed/spacetime",
+  "z_ref_path": "${HOUFIN_PROCESSED}/encoder/esk_all369_breed/spacetime/Z.npy",
+  "mask_ref_path": "${HOUFIN_PROCESSED}/encoder/esk_all369_breed/spacetime/valid_mask.npy",
+  "model_path": "${HOUFIN_PROCESSED}/encoder/desk_final_v2_s2/env_model_semisup.pth",
+  "output_dir": "${HOUFIN_PROCESSED}/encoder/cube_desk_final_v2_s2",
+  "include_private": true
+ },
+ "target": {
+  "points_dir": "${HOUFIN_PROCESSED}/encoder/bbs_points_all369"
+ },
+ "trend": {
+  "community_trend_list": "${HOUFIN_PROCESSED}/encoder/cbc_aux_final/community_all_nonsealed.csv"
+ },
+ "desk": {
+  "z_dir": "${HOUFIN_PROCESSED}/encoder/esk_all369_breed/spacetime",
+  "seed": 2,
+  "output_ema": {
+   "half_life_bounds": [
+    1.0,
+    40.0
+   ],
+   "warmup_start": 1902,
+   "init_half_life": 10.0
+  },
+  "aux_ruzicka": {
+   "path": "${HOUFIN_PROCESSED}/encoder/cbc_aux_final/cbc_ruzicka.npz",
+   "label": "cbc_ruzicka_all",
+   "include_withheld": true,
+   "pairs": 4096
+  },
+  "aux_presence": {
+   "path": "${HOUFIN_PROCESSED}/encoder/cbc_aux_final_v2/cbc_presence_early_w.npz",
+   "weight": 0.01,
+   "label": "cbc_presence_early_winter",
+   "include_withheld": true,
+   "completeness_slopes": true,
+   "read_private": 0
+  },
+  "aux_metric_heads": [
+   {
+    "path": "${HOUFIN_PROCESSED}/encoder/cbc_aux_final/cbc_ruzicka.npz",
+    "label": "winter_half",
+    "weight": 5.0,
+    "dim": 64,
+    "private": 64,
+    "private_only": true,
+    "identity": true,
+    "pairs": 4096,
+    "include_withheld": true,
+    "coord_target": {
+     "path": "${HOUFIN_PROCESSED}/encoder/cbc_aux_final_v2/winter_coords.npz",
+     "weight": 64.0
+    }
+   }
+  ]
+ }
+}

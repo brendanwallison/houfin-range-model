@@ -1,0 +1,11 @@
+{
+  "_extends": "map_run79b_allee_form.json",
+  "_comment": [
+    "E081 control: 79b / 81a twin (free temporal) on the matched-control DESK (ctl1902) -- isolates what CBC supervision changes."
+  ],
+  "input_dir": "${HOUFIN_PROCESSED}/model_inputs/numpyro_input_ctl1902_r64",
+  "run_names": {
+    "map": "age_map_{precision}_run_81d",
+    "vis_map": "age_map_{precision}_run_81d"
+  }
+}

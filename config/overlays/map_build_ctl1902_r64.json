@@ -1,0 +1,14 @@
+{
+  "_extends": "map_build_vl_r64.json",
+  "_comment": [
+    "Input build only (E081): age-model inputs from the MATCHED-CONTROL DESK (E086w ctl1902: trained from 1902, no CBC terms; encoder/cube_desk_ctl1902), width 64. Isolated paths."
+  ],
+  "path_features": {
+    "input_dir": "${HOUFIN_PROCESSED}/encoder/cube_desk_ctl1902",
+    "output_dir": "${HOUFIN_PROCESSED}/latent_avian_paths_ctl1902"
+  },
+  "raw_z_dir": "${HOUFIN_PROCESSED}/latent_avian_paths_ctl1902",
+  "input_dir": "${HOUFIN_PROCESSED}/model_inputs/numpyro_input_ctl1902_r64",
+  "latent_dim": 64,
+  "source_latent_dim": 64
+}

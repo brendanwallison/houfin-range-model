@@ -1,0 +1,11 @@
+{
+  "_extends": "map_run80d_temporal.json",
+  "_comment": [
+    "E081 control: 80d / 81c twin (static) on the matched-control DESK (ctl1902) -- isolates what CBC supervision changes."
+  ],
+  "input_dir": "${HOUFIN_PROCESSED}/model_inputs/numpyro_input_ctl1902_r64",
+  "run_names": {
+    "map": "age_map_{precision}_run_81f",
+    "vis_map": "age_map_{precision}_run_81f"
+  }
+}

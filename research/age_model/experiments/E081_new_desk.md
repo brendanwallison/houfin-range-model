@@ -11,3 +11,10 @@ Arms (holdout mask, smooth Allee k = 3; each mirrors a production-DESK twin):
 Read: twin-by-twin -- held-out density, demography, plains corridor at MAP vs refined and by era, temporal lambda swing,
 deviation/level ratios. The temporal swing and the corridor are the main questions: does a DESK supervised over 1902-2025
 change less implausibly over time than production?
+- Added (user, 2026-10-23): the matched-control DESK (ctl1902; no CBC terms) gets the same three arms -- 81d/81e/81f =
+  twins of 81a/81b/81c -- isolating what CBC supervision changes. Its build is enqueued when its cube exists
+  (cube_desk_ctl1902/cube_meta.json); the ctl1902 DESK training was orphaned once by the dev 2 h limit.
+- NOT run on the age model: the E086z seed fits (tempho T0 1996 + winter sum kernel). They hold out 1966-1995 from DESK
+  training and add 24 private winter dims -- DESK validation fits, not production builds. The production ensemble
+  members get builds when trained on the full window (ensemble = mean kernel: stack members' features / sqrt(n), top-64
+  eigenfeatures).

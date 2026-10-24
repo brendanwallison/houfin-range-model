@@ -1,0 +1,9 @@
+{
+ "exp": "E086",
+ "name": "final-v2-smoke-cube",
+ "group": "cpu",
+ "overlay": "research/overlays/desk_final_v2_smoke.json",
+ "cmd": ["bash", "-c", "set -e; export CUDA_VISIBLE_DEVICES= OMP_NUM_THREADS=8 RESEARCH_OUT=/home/breallis/houfin/work/houfin/research/E086/final-v2-smoke-5b9fc1be068e; {python} scripts/run_encoder.py cube; {python} -c \"import numpy as np; z=np.load('/home/breallis/houfin/work/houfin/research/E086/final-v2-smoke-5b9fc1be068e/cube/Z_latent_1902.npy'); w=np.load('/home/breallis/houfin/work/houfin/research/E086/final-v2-smoke-5b9fc1be068e/cube/Z_latent_2025.npy'); print('cube shape', z.shape, 'finite share', float(np.isfinite(z).mean()), 'winter-half sd 1902 vs 2025', float(np.nanstd(z[...,64:])), float(np.nanstd(w[...,64:])))\""],
+ "expected_minutes": 20,
+ "note": "v2 smoke: cube export with include_private on the smoke model"
+}

@@ -3099,6 +3099,48 @@ def test_sum_kernel_winter_half(tmp_path):
                               dropout=0.1, metric_heads=head(dim=6), epochs=1, stop_at_epoch=1)
 
 
+def test_winter_half_coordinate_target_and_presence(tmp_path):
+    """E086final: the winter half gets a COORDINATE target (logged, weighted) and the presence term can read the
+    winter half instead of z; both train without error and move the private layer."""
+    import contextlib
+    import io
+
+    from src.community_encoder.train_DESK import desk_training as D
+    from src.community_encoder.train_DESK.model_arch import MultiStreamAutoencoder
+
+    sch = _schema()
+    dims = [s["dim"] for s in sch["streams"]]
+    T, H, W, L, S, N, Pk = 4, 6, 7, 16, 5, 40, 4
+    rng = np.random.default_rng(19)
+    cov = rng.normal(size=(T, H, W, sch["total_dim"])).astype("float32")
+    m = np.ones((H, W), bool)
+    years = list(range(2022, 2026))
+    tgt = {y: (rng.normal(size=(H, W, L)).astype("float32"), m, m, np.ones((H, W), dtype="float32")) for y in years[1:]}
+    t_i, r_i, c_i = rng.integers(0, T, N), rng.integers(0, H, N), rng.integers(0, W, N)
+    head = [{"t_idx": t_i, "row": r_i, "col": c_i, "X": rng.gamma(1.0, 2.0, size=(N, S)).astype("float32"),
+             "weight": 1.0, "dim": Pk, "pairs": 64, "label": "toy_winter", "private": Pk, "private_only": True,
+             "identity": True, "coord_target": {"t_idx": t_i, "row": r_i, "col": c_i,
+                                                "Z": rng.normal(size=(N, Pk)).astype("float32"), "weight": 64.0}}]
+    pres = {"t_idx": t_i, "row": r_i, "col": c_i, "P": (rng.random((N, S)) < 0.4).astype("float32"),
+            "W": rng.normal(size=(Pk, S)).astype("float32"), "b": np.zeros(S, "float32"), "weight": 0.5,
+            "comp": None, "label": "toy_presence", "read_private": 0}
+    args = (cov, np.ones((T, H, W), bool), years, tgt,
+            _metric_dict(rng.random((H, W, 9)).astype("float32"), m, years), m, m, dims)
+    ck = tmp_path / "ck.pt"
+    out = io.StringIO()
+    with contextlib.redirect_stdout(out):
+        D.train_model_ema(*args, latent_dim=L, ema_cfg={"earlystop_warmup": 0}, spatial_kernel=3, schema=sch,
+                          dropout=0.1, checkpoint_path=str(ck), checkpoint_every=1, metric_heads=head,
+                          presence_targets=pres, epochs=3, stop_at_epoch=2)
+    txt = out.getvalue()
+    assert "COORDINATE target" in txt and "coordinate mse" in txt, txt
+    done = str(ck) + ".completed"
+    state = torch.load(done if os.path.exists(done) else ck, map_location="cpu", weights_only=False)
+    torch.manual_seed(0)
+    fresh = MultiStreamAutoencoder(dims, L, 3, 0.1, private_dim=Pk)
+    assert not torch.allclose(fresh.private_out.weight, state["model"]["private_out.weight"])
+
+
 def test_private_dims_for_metric_heads(tmp_path):
     """E086: per-head PRIVATE dims -- the model grows private outputs only the heads read; z keeps its width, the
     plain forward is unchanged, each head's weight is (d, L + its private width), the orthogonality term runs, and

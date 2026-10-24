@@ -1,0 +1,9 @@
+{
+ "exp": "E086",
+ "name": "final-v2-aux",
+ "group": "gpu",
+ "overlay": "research/overlays/desk_tempho_1995_seed1.json",
+ "cmd": ["bash", "-c", "set -e; export OMP_NUM_THREADS=8; P=/work/07980/bwa386/ls6/houfin/processed/encoder; {python} research/exp/final_v2_aux.py --winter-z-dir $P/esk_all369_winter/spacetime --winter-points $P/cbc_points_all369 --cbc /mnt/e/Datasets/cbc_raw/prepared/cbc_circles_all.npz --completeness /mnt/e/Datasets/cbc_raw/prepared/completeness_v3.npz --holdout $P/desk_cbc1902_meta/holdout_cells.npy --buffer $P/desk_cbc1902_meta/buffer_cells.npy --v1-aux $P/cbc_aux_final --out-dir $P/cbc_aux_final_v2"],
+ "expected_minutes": 30,
+ "note": "Final candidate v2: winter-half inputs (winter coords, winter-coordinate presence operator)"
+}

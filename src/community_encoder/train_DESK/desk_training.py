@@ -922,7 +922,8 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
                 "P": torch.as_tensor(np.asarray(_pt["P"]), device=device, dtype=torch.float32),
                 "W": torch.as_tensor(np.asarray(_pt["W"]), device=device, dtype=torch.float32),
                 "b": torch.as_tensor(np.asarray(_pt["b"]), device=device, dtype=torch.float32),
-                "w": float(_pt["weight"]), "label": str(_pt.get("label", "presence"))}
+                "w": float(_pt["weight"]), "label": str(_pt.get("label", "presence")),
+                "read_private": _pt.get("read_private")}
         pres_mod = torch.nn.Module()
         pres_mod.delta = torch.nn.Parameter(torch.zeros(pres["P"].shape[1], device=device))
         # E084 S5: a LEARNED readout (initialised at the fixed one) instead of the fixed W, b
@@ -988,6 +989,19 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
                        "w": float(_mh["weight"]), "pairs": int(_mh.get("pairs", 4096)),
                        "label": str(_mh.get("label", f"head{len(mheads)}")), "pslice": (_p0, _p0 + _pk),
                        "private_only": _po, "identity": _idn})
+        # E086final: a COORDINATE target for the private block (the winter half's analogue of the stabilizing term):
+        # MSE (per element) between the private block's z_ema and fixed coordinates at the given cell-years
+        _ct = _mh.get("coord_target")
+        if _ct is not None:
+            if _pk <= 0:
+                raise ValueError("coord_target needs a private block")
+            mheads[-1]["coord"] = {"t": torch.as_tensor(np.asarray(_ct["t_idx"]), device=device, dtype=torch.long),
+                                   "r": torch.as_tensor(np.asarray(_ct["row"]), device=device, dtype=torch.long),
+                                   "c": torch.as_tensor(np.asarray(_ct["col"]), device=device, dtype=torch.long),
+                                   "Z": torch.as_tensor(np.asarray(_ct["Z"])[:, :_pk], device=device, dtype=torch.float32),
+                                   "w": float(_ct["weight"])}
+            print(f"[desk] head '{mheads[-1]['label']}' COORDINATE target: {int(mheads[-1]['coord']['Z'].shape[0]):,} "
+                  f"cell-years x {_pk} dims, weight {float(_ct['weight']):g}", flush=True)
         _p0 += _pk
         print(f"[desk] METRIC HEAD '{mheads[-1]['label']}': linear {latent_dim}+{_pk} private -> {int(_mh.get('dim', 24))}, "
               f"{int(mheads[-1]['X'].shape[0]):,} points, {int(mheads[-1]['X'].shape[1])} species, weight "
@@ -1741,6 +1755,8 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
             _ck_key["presence"]["completeness_slopes"] = True
         if pres.get("learned"):
             _ck_key["presence"]["learned_head"] = True
+        if pres.get("read_private") is not None:   # E086final
+            _ck_key["presence"]["read_private"] = int(pres["read_private"])
     if mheads:   # only when on
         _ck_key["metric_heads"] = [{"label": h["label"], "weight": h["w"], "n": int(h["X"].shape[0]),
                                     "pairs": h["pairs"], "dim": int(getattr(m_, "out_features", h["pslice"][1] - h["pslice"][0]))} for h, m_ in zip(mheads, mh_mods)]
@@ -1748,6 +1764,8 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
             _ck_key["private_dims"] = [int(h["pslice"][1] - h["pslice"][0]) for h in mheads]
             if any(h["private_only"] or h["identity"] for h in mheads):   # E086z, only when on
                 _ck_key["head_modes"] = [[bool(h["private_only"]), bool(h["identity"])] for h in mheads]
+            if any("coord" in h for h in mheads):   # E086final, only when on
+                _ck_key["head_coord"] = [[int(h["coord"]["Z"].shape[0]), h["coord"]["w"]] if "coord" in h else None for h in mheads]
             _ck_key["private_orth"] = float(private_orth)
     if ruzt is not None:   # only when on
         _ck_key["ruzicka"] = {"label": ruzt["label"], "weight": ruzt["w"], "a": ruzt["a"], "b": ruzt["b"],
@@ -2075,10 +2093,14 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
                     loss_aux.append(torch.mean((_pa - _a["Y"][_a["m"]]) ** 2))
                     loss = loss + _a["w"] * loss_aux[-1]
             if pres is not None:
+                _zsrc = z_ema[pres["t"], pres["r"], pres["c"]]
+                if pres.get("read_private") is not None:   # E086final: the presence operator reads a head's private block
+                    _a0, _a1 = mheads[int(pres["read_private"])]["pslice"]
+                    _zsrc = _priv["ema"][pres["t"], pres["r"], pres["c"], _a0:_a1]
                 if pres.get("learned"):
-                    _eta = z_ema[pres["t"], pres["r"], pres["c"]] @ pres_mod.W + pres_mod.b + pres_mod.delta
+                    _eta = _zsrc @ pres_mod.W + pres_mod.b + pres_mod.delta
                 else:
-                    _eta = z_ema[pres["t"], pres["r"], pres["c"]] @ pres["W"] + pres["b"] + pres_mod.delta
+                    _eta = _zsrc @ pres["W"] + pres["b"] + pres_mod.delta
                 if "comp" in pres:
                     _eta = _eta + pres["comp"][:, None] * pres_mod.gamma
                 loss_pres = -(torch.log_softmax(_eta, dim=-1) * pres["P"]).sum() / pres["P"].sum()
@@ -2122,6 +2144,11 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
                     _rz = torch.minimum(_xi, _xj).sum(1) / _den.clamp(min=1e-6)
                     loss_mh.append((((_hi * _hj).sum(1) - _rz) ** 2)[_ok].mean())
                     loss = loss + _h["w"] * loss_mh[-1]
+                    if "coord" in _h:   # E086final
+                        _c = _h["coord"]; _a0, _a1 = _h["pslice"]
+                        _pc = _priv["ema"][_c["t"], _c["r"], _c["c"], _a0:_a1]
+                        _h["coord_loss"] = ((_pc - _c["Z"]) ** 2).mean()
+                        loss = loss + _c["w"] * _h["coord_loss"]
             # NestedLoRA, as an ADDITIONAL term. Its operator half is itself a kernel-fit term, so it
             # partly duplicates loss_true -- that overlap is deliberate here (both are on, and their
             # relative weight is the thing being tested) but it means the two weights are not
@@ -2382,6 +2409,10 @@ def train_model_ema(cov_window, mask_window, window_years, targets, metric_pool,
                 _wl = _h["w"] * float(_l.detach())
                 print(f"Ep {ep:03d} | metric head '{_h['label']}' mse {float(_l.detach()):.5f} weighted {_wl:.4f} "
                       f"({_wl / max(float(loss.detach()), 1e-12):.0%} of the total)", flush=True)
+                if "coord_loss" in _h:   # E086final
+                    _wc = _h["coord"]["w"] * float(_h["coord_loss"].detach())
+                    print(f"Ep {ep:03d} | head '{_h['label']}' coordinate mse {float(_h['coord_loss'].detach()):.5f} "
+                          f"weighted {_wc:.4f} ({_wc / max(float(loss.detach()), 1e-12):.0%} of the total)", flush=True)
             if loss_orth:
                 print(f"Ep {ep:03d} | private orthogonality mean sq corr "
                       f"{sum(float(_o.detach()) for _o in loss_orth) / len(loss_orth):.5f}", flush=True)
@@ -3099,7 +3130,8 @@ def run_desk_experiment(config=None):
                             "comp": (np.asarray(_p["comp"], "float32")[_keep]
                                      if bool(_pcfg.get("completeness_slopes", False)) else None),
                             "learned_head": bool(_pcfg.get("learned_head", False)),
-                            "label": str(_pcfg.get("label", "cbc_presence"))}
+                            "label": str(_pcfg.get("label", "cbc_presence")),
+                            "read_private": _pcfg.get("read_private")}
         print(f"[desk] aux_presence: {int(_keep.sum()):,} of {len(_keep):,} lists kept (window {kept[0]}-{kept[-1]}, "
               f"withheld years {'INCLUDED' if not _withheld else 'excluded'}; held-out/buffer/dropped cells excluded)",
               flush=True)
@@ -3147,6 +3179,17 @@ def run_desk_experiment(config=None):
                              "private_only": bool(_hcfg.get("private_only", False)),
                              "identity": bool(_hcfg.get("identity", False)),
                              "label": str(_hcfg.get("label", os.path.basename(_hcfg["path"])))})
+        _ctc = _hcfg.get("coord_target")
+        if _ctc:   # E086final: coordinates for the private block, same cell / year filtering as the head's points
+            _cq = np.load(os.path.expandvars(_ctc["path"]), allow_pickle=False)
+            _cy, _cr, _cc = np.asarray(_cq["year"]), np.asarray(_cq["row"]), np.asarray(_cq["col"])
+            _ck = np.array([(int(y) in _ki) and (int(y) not in _withheld) and bool(_okc[r, c])
+                            and bool(np.asarray(mask_win[_ki[int(y)]], bool)[r, c]) for y, r, c in zip(_cy, _cr, _cc)])
+            assert not holdout[_cr[_ck], _cc[_ck]].any()
+            metric_heads[-1]["coord_target"] = {"t_idx": [_ki[int(y)] for y in _cy[_ck]], "row": _cr[_ck], "col": _cc[_ck],
+                                                "Z": np.asarray(_cq["Z"], "float32")[_ck],
+                                                "weight": float(_ctc.get("weight", 64.0))}
+            print(f"[desk] head coordinate target: {int(_ck.sum()):,} of {len(_ck):,} cell-years kept", flush=True)
         print(f"[desk] aux_metric_head '{metric_heads[-1]['label']}': {int(_keep.sum()):,} of {len(_keep):,} points kept",
               flush=True)
 

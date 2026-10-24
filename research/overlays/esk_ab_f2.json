@@ -1,0 +1,9 @@
+{
+ "_comment": "E086ab fold 2: all-species summer ESK basis without fold 2's species.",
+ "paths": {
+  "esk_output_dir": "${HOUFIN_PROCESSED}/encoder/esk_ab_f2"
+ },
+ "target": {
+  "points_dir": "${HOUFIN_PROCESSED}/encoder/e086ab/fold2/bbs_points"
+ }
+}

@@ -18,8 +18,11 @@ def is_sealed(code):
     return int(hashlib.sha256((SALT + str(code).lower()).encode()).hexdigest(), 16) % 2 == 1
 
 
-def split(codes):
-    """``(dev, sealed)`` lists, order preserved."""
-    dev = [c for c in codes if not is_sealed(c)]
-    sealed = [c for c in codes if is_sealed(c)]
+def split(codes, exempt=()):
+    """``(dev, sealed)`` lists, order preserved. ``exempt`` (E086ab, 2026-10-24): species that were never out-of-community
+    -- the ORIGINAL 96-species reference set, inside every basis since the start -- are never sealed, even when a
+    species-fold community leaves them out. The sealed set of the original out-of-community species is unchanged."""
+    ex = {str(c).lower() for c in exempt}
+    dev = [c for c in codes if str(c).lower() in ex or not is_sealed(c)]
+    sealed = [c for c in codes if str(c).lower() not in ex and is_sealed(c)]
     return dev, sealed

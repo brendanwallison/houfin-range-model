@@ -79,7 +79,12 @@ def main():
 
     X_raw, keys, layout = vgs.load_all_species(cfg)
     nc = layout["n_community"]
-    dev, sealed = seal.split(layout["evaluation"])
+    # E086ab: the ORIGINAL reference species (data_config community_trend_list) were never sealed; a species-fold
+    # community that leaves some of them out must not seal them now
+    import pandas as _pd
+    from src.config_utils import load_data_config
+    _orig = [str(c).lower() for c in _pd.read_csv(load_data_config()["community_trend_list"])["species_code"]]
+    dev, sealed = seal.split(layout["evaluation"], exempt=_orig)
     ev_ix = {c: i for i, c in enumerate(layout["evaluation"])}
     np.save(os.path.join(a.out, "keys.npy"), keys.astype("int32"))
     np.save(os.path.join(a.out, "X_comm.npy"), X_raw[:, :nc].astype("float32"))

@@ -1,0 +1,14 @@
+{
+ "exp": "E086",
+ "name": "e086ab-cache-f0-s",
+ "group": "gpu",
+ "overlay": "research/overlays/desk_tempho_1995_seed1_ab_f0_s.json",
+ "after_jobs": [],
+ "cmd": [
+  "bash",
+  "-c",
+  "set -e; export RESEARCH_OUT=/home/breallis/houfin/work/houfin/research/E086/tacc_e086ab/e086ab_f0_s TMPDIR={out}/tmp; mkdir -p {out}/tmp; {python} research/exp/cache.py --out {cache}/desk_tempho_1995_s1_ab_f0_s; {python} research/exp/epoch_variant.py --run /home/breallis/houfin/work/houfin/research/E086/tacc_e086ab/e086ab_f0_s --overlay research/overlays/desk_tempho_1995_seed1_ab_f0_s.json --cache-out {cache}/desk_tempho_1995_s1_ab_f0_s_late --work {out}/late"
+ ],
+ "expected_minutes": 15,
+ "note": "E086ab: research caches (selected + late) for fold 0 arm s (trained on TACC)"
+}

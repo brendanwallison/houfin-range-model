@@ -47,3 +47,23 @@ the selected state. The candidate ships the selected state.
 - 1902 CBC build vs its matched control (E086w): early-era and modern change, to be scored once the age model needs it.
 - Secondary, "anything that works" (user, 2026-10-24): a fixed smooth regional correction on top of DESK; an extremely
   smooth half-century human-bird trend term inside DESK (a stand-in for feeding). Not started.
+
+## Candidate v2 (queued on TACC 2026-10-24: tasks 02_final_v2_s1..s4) -- EQUAL summer / winter halves
+
+User (2026-10-24): several data sources, high rank, and no assumption that summer > winter -- equal unless proven
+otherwise. z = [z_summer 64, z_winter 64]; the cube exports all 128 dims (`latent_cube.include_private`), so the age model
+can read 32 + 32 or 64 + 64 by position within each half.
+
+| | Summer half (z, 64) | Winter half (private block, 64) |
+|---|---|---|
+| Basis | all-species BBS spacetime ESK (`esk_all369_breed`) | all-species CBC spacetime ESK (`esk_all369_winter`, 333 species, 1966-2024) |
+| Coordinate target | stabilizing term, weight 64 | coordinate target on 81,794 CBC cell-years (70,801 kept), weight 64 |
+| Ruzicka pairs | BBS, weight 5 | CBC (identity head on the private block), weight 5 |
+| Early years 1902-1965 | covariate extrapolation (+ cross-season term from 1966) | CBC presence lists (13,379 kept), winter operator fitted FROM WINTER COORDINATES (74,115 lists, held-out nll 4.09 vs uniform 5.81) |
+| Cross-season | CBC Ruzicka on z_summer, 1966-2024 (the E086s / E086u term) | -- |
+
+Smoke (local CPU, 1 epoch + cube, jobs final-v2-smoke / final-v2-smoke-cube): every term loads and trains (epoch 1:
+winter coordinate 38% of the loss, winter pairs 7%, presence 2%); cube (133, 224, 128), winter half varies in 1902 and 2025.
+
+Evidence for v2's design so far: E086ab-b (r64) -- a winter half improves the level readout +0.03 (CI > 0) and costs the
+within readout -0.024; untested with equal 64 + 64 halves and a winter coordinate target. Compare v1 vs v2 once built.

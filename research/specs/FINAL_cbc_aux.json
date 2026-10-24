@@ -1,0 +1,9 @@
+{
+ "exp": "E086",
+ "name": "final-cbc-aux",
+ "group": "gpu",
+ "overlay": "research/overlays/desk_tempho_1995_seed1.json",
+ "cmd": ["bash", "-c", "set -e; export OMP_NUM_THREADS=8; P=/work/07980/bwa386/ls6/houfin/processed/encoder; {python} research/exp/final_cbc_aux.py --z-dir $P/esk_all369_breed/spacetime --points $P/bbs_points_all369 --cbc /mnt/e/Datasets/cbc_raw/prepared/cbc_circles_all.npz --completeness /mnt/e/Datasets/cbc_raw/prepared/completeness_v3.npz --holdout $P/desk_cbc1902_meta/holdout_cells.npy --buffer $P/desk_cbc1902_meta/buffer_cells.npy --out-dir $P/cbc_aux_final"],
+ "expected_minutes": 30,
+ "note": "Final DESK candidate: CBC Ruzicka + early presence (winter operator) refit to the all-species basis"
+}

@@ -1,0 +1,11 @@
+{
+  "_extends": "map_run80d_temporal.json",
+  "_comment": [
+    "E081: 80d (static habitat, K trend off) on inputs built from the NEW DESK (cube_desk_cbc1902: trained from 1902, CBC-supervised). Direct comparison with its production-DESK twin."
+  ],
+  "input_dir": "${HOUFIN_PROCESSED}/model_inputs/numpyro_input_cbc1902_r64",
+  "run_names": {
+    "map": "age_map_{precision}_run_81c",
+    "vis_map": "age_map_{precision}_run_81c"
+  }
+}

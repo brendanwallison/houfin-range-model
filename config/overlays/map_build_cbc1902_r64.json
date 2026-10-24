@@ -1,0 +1,14 @@
+{
+  "_extends": "map_build_vl_r64.json",
+  "_comment": [
+    "Input build only (E081): age-model inputs from the NEW DESK cube trained from 1902 with CBC supervision (desk-temporal E086w, encoder/cube_desk_cbc1902), full width 64, same dispersal spec as numpyro_input_vl_r64. Isolated paths: production cube / path features / inputs untouched."
+  ],
+  "path_features": {
+    "input_dir": "${HOUFIN_PROCESSED}/encoder/cube_desk_cbc1902",
+    "output_dir": "${HOUFIN_PROCESSED}/latent_avian_paths_cbc1902"
+  },
+  "raw_z_dir": "${HOUFIN_PROCESSED}/latent_avian_paths_cbc1902",
+  "input_dir": "${HOUFIN_PROCESSED}/model_inputs/numpyro_input_cbc1902_r64",
+  "latent_dim": 64,
+  "source_latent_dim": 64
+}

@@ -1,0 +1,44 @@
+{
+ "_comment": "FINAL DESK candidate, seed 2 of a 4-seed ensemble: all-species (369 non-sealed) BBS basis rank 64; window 1902-2025; CBC Ruzicka (all 333 CBC species, 1966-2024, calibration refit to this basis) + CBC presence on 1902-1965 lists through a winter observation operator; production recipe otherwise. See research/experiments/FINAL.md.",
+ "paths": {
+  "desk_output_dir": "${HOUFIN_PROCESSED}/encoder/desk_final_s2"
+ },
+ "latent_cube": {
+  "z_dir": "${HOUFIN_PROCESSED}/encoder/esk_all369_breed/spacetime",
+  "z_ref_path": "${HOUFIN_PROCESSED}/encoder/esk_all369_breed/spacetime/Z.npy",
+  "mask_ref_path": "${HOUFIN_PROCESSED}/encoder/esk_all369_breed/spacetime/valid_mask.npy",
+  "model_path": "${HOUFIN_PROCESSED}/encoder/desk_final_s2/env_model_semisup.pth",
+  "output_dir": "${HOUFIN_PROCESSED}/encoder/cube_desk_final_s2"
+ },
+ "target": {
+  "points_dir": "${HOUFIN_PROCESSED}/encoder/bbs_points_all369"
+ },
+ "trend": {
+  "community_trend_list": "${HOUFIN_PROCESSED}/encoder/cbc_aux_final/community_all_nonsealed.csv"
+ },
+ "desk": {
+  "z_dir": "${HOUFIN_PROCESSED}/encoder/esk_all369_breed/spacetime",
+  "seed": 2,
+  "output_ema": {
+   "half_life_bounds": [
+    1.0,
+    40.0
+   ],
+   "warmup_start": 1902,
+   "init_half_life": 10.0
+  },
+  "aux_ruzicka": {
+   "path": "${HOUFIN_PROCESSED}/encoder/cbc_aux_final/cbc_ruzicka.npz",
+   "label": "cbc_ruzicka_all",
+   "include_withheld": true,
+   "pairs": 4096
+  },
+  "aux_presence": {
+   "path": "${HOUFIN_PROCESSED}/encoder/cbc_aux_final/cbc_presence_early.npz",
+   "weight": 0.01,
+   "label": "cbc_presence_early",
+   "include_withheld": true,
+   "completeness_slopes": true
+  }
+ }
+}

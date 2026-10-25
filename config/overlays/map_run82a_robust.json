@@ -1,0 +1,10 @@
+{
+  "_extends": "map_run80e_temporal.json",
+  "_comment": [
+    "E082a: 80e seed replicate (HOUFIN_MAP_SEED 7) -- is the leading calibrated basin robust (75c's was not)?"
+  ],
+  "run_names": {
+    "map": "age_map_{precision}_run_82a",
+    "vis_map": "age_map_{precision}_run_82a"
+  }
+}

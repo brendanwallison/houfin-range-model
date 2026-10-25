@@ -1,0 +1,15 @@
+{
+  "_extends": "map_run80h_temporal.json",
+  "_comment": [
+    "E082c: 80h with aggregated Allee k = 1 (Allee-form sensitivity of the preferred readout)."
+  ],
+  "population_model": {
+    "allee_prior": {
+      "aggregation_k": 1.0
+    }
+  },
+  "run_names": {
+    "map": "age_map_{precision}_run_82c",
+    "vis_map": "age_map_{precision}_run_82c"
+  }
+}

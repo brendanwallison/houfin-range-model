@@ -1,0 +1,10 @@
+{
+  "_extends": "map_run80h_temporal.json",
+  "_comment": [
+    "E082b: 80h seed replicate (HOUFIN_MAP_SEED 7)."
+  ],
+  "run_names": {
+    "map": "age_map_{precision}_run_82b",
+    "vis_map": "age_map_{precision}_run_82b"
+  }
+}

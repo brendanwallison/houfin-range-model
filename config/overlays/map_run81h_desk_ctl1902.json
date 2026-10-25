@@ -1,0 +1,11 @@
+{
+  "_extends": "map_run80h_temporal.json",
+  "_comment": [
+    "E081: 80h twin (correlated temporal readout, the principled default) on the ctl1902 DESK."
+  ],
+  "input_dir": "${HOUFIN_PROCESSED}/model_inputs/numpyro_input_ctl1902_r64",
+  "run_names": {
+    "map": "age_map_{precision}_run_81h",
+    "vis_map": "age_map_{precision}_run_81h"
+  }
+}

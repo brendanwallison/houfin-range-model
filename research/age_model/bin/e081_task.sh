@@ -11,7 +11,7 @@ Q=$WORK/houfin/research/age_model/queue2
 P=$HOUFIN_PROCESSED/model_inputs
 if [[ "$JOB" == *build_* ]]; then
   TAG=$(printf '%s' "$JOB" | sed -E 's/.*build_([a-z0-9]+).*/\1/')            # cbc1902 | ctl1902
-  case "$TAG" in cbc1902) ARMS="a b c" ;; ctl1902) ARMS="d e f" ;; *) echo "unknown build tag $TAG" >&2; exit 2 ;; esac
+  case "$TAG" in cbc1902) ARMS="a b c g" ;; ctl1902) ARMS="d e f h" ;; *) echo "unknown build tag $TAG" >&2; exit 2 ;; esac
   export AGE_MODEL_CONFIG="$TWT/config/overlays/map_build_${TAG}_r64.json"
   [ -f "$HOUFIN_PROCESSED/encoder/cube_desk_${TAG}/cube_meta.json" ] || { echo "cube_desk_${TAG} not built yet" >&2; exit 3; }
   python -c "from src.config_utils import load_age_model_config as l; c=l(); print('[build]', c['path_features'], c['raw_z_dir'], c['input_dir'], c['latent_dim'])"
@@ -23,10 +23,10 @@ if [[ "$JOB" == *build_* ]]; then
   chmod +x "$Q"/pending/*.sh; echo "[build] enqueued arms 81{$ARMS} for $TAG"
   exit 0
 fi
-CODE=$(printf '%s' "$JOB" | sed -E 's/.*(81[a-f]).*/\1/')
-[[ "$CODE" =~ ^81[a-f]$ ]] || { echo "E081 arm not encoded in task filename: $JOB" >&2; exit 2; }
+CODE=$(printf '%s' "$JOB" | sed -E 's/.*(81[a-h]).*/\1/')
+[[ "$CODE" =~ ^81[a-h]$ ]] || { echo "E081 arm not encoded in task filename: $JOB" >&2; exit 2; }
 export HOUFIN_Z_FLOAT32=1 XLA_PYTHON_CLIENT_MEM_FRACTION=0.95
-case "$CODE" in 81[abc]) DT=cbc1902 ;; *) DT=ctl1902 ;; esac
+case "$CODE" in 81[abcg]) DT=cbc1902 ;; *) DT=ctl1902 ;; esac
 export OVERLAY="$TWT/config/overlays/map_run${CODE}_desk_${DT}.json" ARM="$CODE" OUT_ROOT="$WORK/houfin/research/age_model/E081"
 unset HOUFIN_SYNTHETIC_OBS
 bash research/age_model/exp/run_e064_arm.sh

@@ -108,7 +108,7 @@ def main():
             "storage_root":str(artifacts),"max_storage_bytes":150*1024**3,"min_free_bytes":5*1024**3,"tasks":tasks}
     atomic_json(args.out / "plan.json",plan)
     print(json.dumps({"plan":str(args.out / "plan.json"),"tasks":len(tasks),
-                      "adopted":[{"id":t["id"],"identity":t["adopt"]} for t in tasks if t.get("adopt")}))
+                      "adopted":[{"id":t["id"],"identity":t["adopt"]} for t in tasks if t.get("adopt")]}))
 
 
 if __name__ == "__main__":

@@ -27,7 +27,8 @@ success. All direct growth-change priors remain off these primary structural run
   The active agent continues collecting, interpreting and registering the next
   discriminating work; no user reply is a dependency.
 
-Verification before activation: 14 tests pass, including a real worker surviving
+Verification before activation: 15 tests pass, including the actual plan-generator
+CLI and dependency graph, a real worker surviving
 supervisor restart without duplicate launch, pending dependencies across ticks,
 sticky failures, source drift, single-writer exclusion, budget admission, PID
 reuse, lost-worker child adoption and artifact recovery, output-owner lease

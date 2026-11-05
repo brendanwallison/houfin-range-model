@@ -1,52 +1,68 @@
 {
-  "goal_status": "active; first goal turn made verified progress",
-  "canonical_worktree": "C:/Dev/houfin-range-model/.worktrees/takeover-baseline",
-  "canonical_branch": "research/local-baseline-reconstruction",
-  "recovered_baseline_commit": "75e441b",
-  "foundation_branch": "research/local-takeover-foundation",
-  "foundation_commits": ["f726f6a", "edfa0e7"],
-  "original_checkout_policy": "Preserve the 24 remaining unrelated modified tracked paths and untracked scientific work; never blanket-stage or reset",
-  "verified": [
-    "Original and reconstructed step43 GPU replay objective 135590.79802835 and matching held-out scores",
-    "Within-launch exact finite-state canaries",
-    "Trace accounting and exact likelihood factor/amplitude rescaling invariance",
-    "Finite real-data derivatives for 29 sites / 19275 entries; logistic departure data gradients exactly zero",
-    "R104 process terminated normally with completed artifacts; its stationarity is not established",
-    "Six takeover tooling tests passed",
-    "Initial mechanism suite 85 passed, 3 dependency failures, 1 skipped; corrected affected subset 62 passed, 1 skipped",
-    "Actual feature and metadata hashes; occupied center uses held-out positive cell-years too",
-    "391 original sandbox summaries indexed, 224 parameter checkpoints, 335 terminal traces"
-  ],
-  "r104": {
-    "process_state": "terminal; PID 343703 disappeared and saved completion artifacts were collected",
-    "objective": 135881.25341215718,
-    "last_gradient_norm": 384.0291009110714,
-    "occupied_east_lambda_1966": 0.5445478039376246,
-    "occupied_east_lambda_2010": 1.3493254567814805,
-    "modern_east_disease_mortality": 0.2590051779260777,
-    "interpretation": "Expanded partial fit with direct change prior; diagnostic only"
-  },
-  "next_actions": [
-    "Read canonical execution map and compact evidence; inspect current git state and live processes before using this snapshot",
-    "Finish native encoder/export and kernel/path provenance plus historical intervention novelty audit; keep unavailable causal attribution explicit",
-    "Close scientific launch gate with actual source/equation/likelihood accounting, not just summary text",
-    "Create structural experiment branch/worktree from recovered baseline; explicit capacity-versus-shared-demography field construction",
-    "Test bounded-duration local disease onset, keeping geographic arrival uncertainty distinct; match controls to the old sharpness tests",
-    "Keep direct lambda-change penalties off primary structural arms; compare raw likelihood profiles, transfer, starts and biological decomposition",
-    "Continue organizing remaining original local changes into dependency-coherent commits"
-  ],
-  "runtime": {
-    "runner": "research/bin/local_takeover_run.sh in canonical worktree",
-    "wsl": "Ubuntu; wsl commands require escalation in this environment",
-    "python": "/home/breallis/houfin/venv/bin/python",
-    "artifacts": ".research_runtime/takeover under original workspace",
-    "temporary_files": "RAM-backed /dev/shm; persistent caches on C; WSL root only 14 GiB free",
-    "known_resource_inventory": "32 CPUs, 176 GiB WSL RAM, RTX 3090 24 GiB",
-    "git": "Use native Windows Git for worktree mutations. WSL read-only Git needs core.autocrlf=true and translated gitdir for Windows-created worktrees."
-  },
-  "publication": {
-    "state": "Push rejected by automatic approval review; asynchronous destination approval pending",
-    "destination": "github.com/brendanwallison/houfin-range-model",
-    "restriction": "Do not bypass rejection or retry without new authorization/evidence. Continue local work."
-  }
+    "goal_status":  "active; structural implementations committed and mechanics validated; no new scientific fits",
+    "canonical_worktree":  "C:/Dev/houfin-range-model/.worktrees/takeover-baseline",
+    "canonical_branch":  "research/local-baseline-reconstruction",
+    "recovered_baseline_commit":  "75e441b",
+    "foundation_branch":  "research/local-takeover-foundation",
+    "foundation_commits":  [
+                               "f726f6a",
+                               "edfa0e7"
+                           ],
+    "original_checkout_policy":  "Preserve the 24 remaining unrelated modified tracked paths and untracked scientific work; never blanket-stage or reset",
+    "verified":  [
+                     "Original and reconstructed step43 GPU replay objective 135590.79802835 and matching held-out scores",
+                     "Within-launch exact finite-state canaries",
+                     "Trace accounting and exact likelihood factor/amplitude rescaling invariance",
+                     "Finite real-data derivatives for 29 sites / 19275 entries; logistic departure data gradients exactly zero",
+                     "R104 process terminated normally with completed artifacts; its stationarity is not established",
+                     "Six takeover tooling tests passed",
+                     "Initial mechanism suite 85 passed, 3 dependency failures, 1 skipped; corrected affected subset 62 passed, 1 skipped",
+                     "Actual feature and metadata hashes; occupied center uses held-out positive cell-years too",
+                     "391 original sandbox summaries indexed, 224 parameter checkpoints, 335 terminal traces",
+                     "New field/onset mechanics batch: 71 passed; targeted rerun with extra matched-width check: 18 passed (overlap)",
+                     "Correlation-one full GPU replay matches original objective, scores and trajectories",
+                     "Independent capacity coefficients mapped to reference give identical count/nest likelihood; extra factor prior adds 85.121084",
+                     "Compact onset finite on actual inputs and removes disease_tau_raw",
+                     "R101 independent CPU replay objective 135539.5215810099 matches saved continuation",
+                     "Prepared path metadata uses .0001 land-share own-cell fallback, absent from frozen generator; retain hashed prepared arrays"
+                 ],
+    "r104":  {
+                 "process_state":  "terminal; PID 343703 disappeared and saved completion artifacts were collected",
+                 "objective":  135881.25341215718,
+                 "last_gradient_norm":  384.0291009110714,
+                 "occupied_east_lambda_1966":  0.5445478039376246,
+                 "occupied_east_lambda_2010":  1.3493254567814805,
+                 "modern_east_disease_mortality":  0.2590051779260777,
+                 "interpretation":  "Expanded partial fit with direct change prior; diagnostic only"
+             },
+    "next_actions":  [
+                         "Read field-geometry execution-map additions, preregistration and compact structural validation; check live ownership/resources",
+                         "Complete remaining historical anchors: early fixed-amplitude ladder, exponential capacity link, disease cap, R97 and R103b using actual source/config and saved parameters; classify unreproducible cases explicitly",
+                         "Build support-respecting all-active-site comparison fitter with explicit constrained-MAP objective, separate data/prior scoring, checkpoint-before-QC and immutable source/input manifests",
+                         "Exclude inactive Veit logistic coordinates; keep all co-adapting habitat, disease, observation and NestWatch sites free",
+                         "Launch preregistered F0/F2 by original/compact-onset matrix only after launch gate closes; no direct growth-change priors in primary arms",
+                         "Interpret compact onset with midpoint and matched 10-90% sigmoid controls; full joint refits and starts before biological verdict",
+                         "Continue scoped organization of original 24 tracked changes and untracked scientific dependencies; GitHub destination approval still pending"
+                     ],
+    "runtime":  {
+                    "runner":  "research/bin/local_takeover_run.sh in canonical worktree",
+                    "wsl":  "Ubuntu; wsl commands require escalation in this environment",
+                    "python":  "/home/breallis/houfin/venv/bin/python",
+                    "artifacts":  ".research_runtime/takeover under original workspace",
+                    "temporary_files":  "RAM-backed /dev/shm; persistent caches on C; WSL root only 14 GiB free",
+                    "known_resource_inventory":  "32 CPUs, 176 GiB WSL RAM, RTX 3090 24 GiB",
+                    "git":  "Use native Windows Git for worktree mutations. WSL read-only Git needs core.autocrlf=true and translated gitdir for Windows-created worktrees."
+                },
+    "publication":  {
+                        "state":  "Push rejected by automatic approval review; asynchronous destination approval pending",
+                        "destination":  "github.com/brendanwallison/houfin-range-model",
+                        "restriction":  "Do not bypass rejection or retry without new authorization/evidence. Continue local work."
+                    },
+    "structural_worktree":  "C:/Dev/houfin-range-model/.worktrees/field-geometry",
+    "structural_branch":  "research/habitat-field-geometry",
+    "structural_commits":  [
+                               "148b428",
+                               "42a0c1c"
+                           ],
+    "current_processes":  "All validation and replay sessions finished; recheck before new launches"
 }

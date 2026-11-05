@@ -2,6 +2,19 @@
 
 Prepared November 5, 2026. Planning only: no fits launched, running jobs stopped, branches switched, or commits pushed by this review.
 
+Implementation status, later November 5: the original statement above describes
+the planning review. Subsequent autonomous work preserved the original checkout,
+created foundation and recovered-baseline branches, and numerically reproduced
+the frozen model. Structural branch `research/habitat-field-geometry` contains
+committed capacity-versus-demography and bounded-onset implementations plus
+preregistration and mechanics/replay evidence (`148b428`, `42a0c1c`). No new
+scientific fits have launched. The 391-result index is an artifact inventory;
+remaining historical anchor and inference audits must not be called complete.
+See that branch's execution map and `TAKEOVER_FIELD_ONSET_DESIGN_20261105.md`.
+The original checkout still has 24 unrelated modified tracked paths, preserved.
+Publication to the existing GitHub origin was rejected by automatic approval
+review pending exact-destination authorization; local work continues.
+
 ## Objective and interpretation
 
 Understand and improve the model's likelihood geometry and biological decomposition while retaining real historical habitat change, invasion timing, abundance, and source–sink behavior. A small lambda swing is not the selection objective. Direct priors on historical rate change are diagnostic comparators, not the presumed final solution.

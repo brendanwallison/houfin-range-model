@@ -61,6 +61,8 @@ def main():
                                if args.params else None),
               "effective_coefficients_max_error": w_error if not args.params else None,
               "active_sites": active, "onset_spec": ap.DISEASE_ONSET_SPEC,
+              "active_disease_target": ap.DISEASE_TARGET,
+              "active_disease_ceiling": ap._DISEASE_CEILING,
               "manifold_spec": spec, "checks": checks,
               "source_hashes": {str(p.resolve().relative_to(Path.cwd())): hashlib.sha256(p.read_bytes()).hexdigest()
                                 for p in [Path(ap.__file__), Path("src/model/age_fields.py"),

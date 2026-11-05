@@ -11,7 +11,7 @@ from numpyro.distributions.transforms import AffineTransform, biject_to
 
 
 class MapCoordinates:
-    def __init__(self, trace, exclude=()):
+    def __init__(self, trace, exclude=(), whiten_normal=True):
         self.transforms, self.fixed, self.initial = {}, {}, {}
         for name, site in trace.items():
             if site["type"] != "sample" or site.get("is_observed", False):
@@ -26,7 +26,7 @@ class MapCoordinates:
             base_fn = fn
             while hasattr(base_fn, "base_dist"):
                 base_fn = base_fn.base_dist
-            transform = (AffineTransform(fn.mean, jnp.sqrt(fn.variance)) if type(base_fn).__name__ == "Normal"
+            transform = (AffineTransform(fn.mean, jnp.sqrt(fn.variance)) if whiten_normal and type(base_fn).__name__ == "Normal"
                          else biject_to(fn.support))
             unconstrained = transform.inv(value)
             if not np.isfinite(np.asarray(unconstrained)).all():

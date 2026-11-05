@@ -1,0 +1,5 @@
+{
+  "_extends": "grid54_step43_factor_p2_veit_s41.json",
+  "_comment": "Historical R90 anchor: also changes Hill-exponent support through the original prior construction.",
+  "population_model": {"disease_prior": {"mortality_ceiling": 0.25}}
+}

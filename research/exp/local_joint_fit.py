@@ -15,9 +15,11 @@ import time
 import jax
 import jax.numpy as jnp
 import numpy as np
+import numpyro
 from numpyro import handlers
 from numpyro.infer.util import log_density
 from scipy.optimize import minimize
+import scipy
 
 from harness import Sandbox, ap
 from src.config_utils import load_age_model_config
@@ -119,6 +121,8 @@ def main():
                 "initial_override_sha256": digest(args.init) if args.init else None,
                 "initial_params_sha256": digest(args.out / "initial_params.npz"),
                 "command": sys.argv, "devices": [str(d) for d in jax.devices()],
+                "versions": {"python": sys.version, "jax": jax.__version__, "numpy": np.__version__,
+                             "numpyro": numpyro.__version__, "scipy": scipy.__version__},
                 "n_coordinates": int(x0.size), "started_unix": started}
     write_json(args.out / "manifest.json", manifest)
     trace_file = (args.out / "trace.jsonl").open("x")

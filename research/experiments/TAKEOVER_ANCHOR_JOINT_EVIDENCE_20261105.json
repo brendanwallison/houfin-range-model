@@ -1,0 +1,334 @@
+{
+    "scope":  "Historical and joint-objective validation; no new fit",
+    "tests":  "22 targeted checks passed",
+    "anchors":  [
+                    {
+                        "objective":  136119.72246556683,
+                        "data_log_density":  {
+                                                 "obs":  -112585.0054955101,
+                                                 "nest_loglik":  -1971.0159162764357
+                                             },
+                        "name":  "exp",
+                        "checks":  {
+                                       "finite_objective":  true,
+                                       "onset_active_sites":  true,
+                                       "saved_objective":  true
+                                   },
+                        "parameter_identity":  {
+                                                   "path":  "/mnt/e/Datasets/houfin/grid54/sandbox/KLINK/refit_single_exp_params.npz",
+                                                   "sha256":  "6d888e8708305467dce12574ac37521c35d9d37a708a456ed1107e8835c8bff2"
+                                               }
+                    },
+                    {
+                        "objective":  136701.04340493673,
+                        "data_log_density":  {
+                                                 "obs":  -113187.01307375374,
+                                                 "nest_loglik":  -1932.0323970020831
+                                             },
+                        "name":  "cap025_corrected",
+                        "checks":  {
+                                       "finite_objective":  true,
+                                       "onset_active_sites":  true,
+                                       "saved_objective":  true
+                                   },
+                        "parameter_identity":  {
+                                                   "path":  "/mnt/e/Datasets/houfin/grid54/sandbox/R90_ceiling/refit_single_c0.25_c2_params.npz",
+                                                   "sha256":  "89b1fa283f8c09934c383fe114e171d39d2fa5d0aa76d71abeef273df7cfd424"
+                                               }
+                    },
+                    {
+                        "objective":  135539.5215810099,
+                        "data_log_density":  {
+                                                 "obs":  -111752.23911426542,
+                                                 "nest_loglik":  -1886.4071545860234
+                                             },
+                        "name":  "r101",
+                        "checks":  {
+                                       "finite_objective":  true,
+                                       "onset_active_sites":  true,
+                                       "saved_objective":  true
+                                   },
+                        "parameter_identity":  {
+                                                   "path":  "/mnt/e/Datasets/houfin/grid54/sandbox/R101_exchangeable/refit_exchangeable_exch_c2_params.npz",
+                                                   "sha256":  "c516091762a9ce43356198c667eced523cdc7ce9e8d96a451a1d9fa51f021488"
+                                               }
+                    },
+                    {
+                        "bbs_error":  -0.00000016094,
+                        "name":  "r97",
+                        "source_summary_sha256":  "4707be5a99a4d7c5e3e9682a7b48bfe2cf531a6fcb691b0a12e6b600329e293d",
+                        "objective_error":  -0.00000019025,
+                        "replay_summary_sha256":  "bcd0c2055facda0db8f3f260704e57c6d286c700e0eb2779dcf3cd00b0fd4c0c",
+                        "objective":  135667.06573986827,
+                        "original_objective":  135667.06574005852
+                    },
+                    {
+                        "bbs_error":  0.00000038386,
+                        "name":  "r103b",
+                        "source_summary_sha256":  "61744b2bbe19270d46112b9386fbf93707d2e0db4aa660fd4331c68ceabdbbe5",
+                        "objective_error":  0.00000092861,
+                        "replay_summary_sha256":  "ce1f1aa556410e121535d1efa4be376309d71b6c3231f7e7ecb60e1a7e1ae3c4",
+                        "objective":  135890.30247631797,
+                        "original_objective":  135890.30247538936
+                    },
+                    {
+                        "result":  {
+                                       "constrained_site_objective":  135526.20131154452,
+                                       "support_log_jacobian":  -6.614197392029201,
+                                       "historical_hmc_objective":  135532.81550893653,
+                                       "expected_hmc_rounded":  135532.82,
+                                       "factor_norm":  21.641497591478345,
+                                       "model_source":  "/mnt/e/Datasets/houfin/grid54/runs/step4_amp1/code/src/model/age_priors.py"
+                                   },
+                        "name":  "step4_amp1"
+                    }
+                ],
+    "joint_evaluations":  [
+                              {
+                                  "n_coordinates":  19273,
+                                  "name":  "f0",
+                                  "actual_source_hashes":  {
+                                                               "src.config_utils":  {
+                                                                                        "path":  "/mnt/c/Dev/houfin-range-model/.worktrees/field-geometry/src/config_utils.py",
+                                                                                        "sha256":  "b6691273bda88b679f44fb6dd44d72e6bb44093b4708290d94397abcd88a2911"
+                                                                                    },
+                                                               "src.model":  {
+                                                                                 "path":  "/mnt/c/Dev/houfin-range-model/.worktrees/field-geometry/src/model/__init__.py",
+                                                                                 "sha256":  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+                                                                             },
+                                                               "src.model.disease_onset":  {
+                                                                                               "path":  "/mnt/c/Dev/houfin-range-model/.worktrees/field-geometry/src/model/disease_onset.py",
+                                                                                               "sha256":  "17e0ca50c299d6044488fcc19e42778229dee7b7704547663f6d5c0868dd2575"
+                                                                                           },
+                                                               "src.model.age_fields":  {
+                                                                                            "path":  "/mnt/c/Dev/houfin-range-model/.worktrees/field-geometry/src/model/age_fields.py",
+                                                                                            "sha256":  "e0a32cca15a8306bc611fdb589955651013d2cdfdfa0c8e8524c0e92750a3577"
+                                                                                        },
+                                                               "src.model.density_regulation":  {
+                                                                                                    "path":  "/mnt/c/Dev/houfin-range-model/.worktrees/field-geometry/src/model/density_regulation.py",
+                                                                                                    "sha256":  "34876f4ad2bc3b35d2b068b7227c80451d97b929ad499c848e39cd6a5ebc10f3"
+                                                                                                },
+                                                               "src.model.priority_overflow":  {
+                                                                                                   "path":  "/mnt/c/Dev/houfin-range-model/.worktrees/field-geometry/src/model/priority_overflow.py",
+                                                                                                   "sha256":  "d3da1f9e87585d78a2ae76706c8765885dee68e945c3f952a7e5bcc963d5f42f"
+                                                                                               },
+                                                               "src.model.age_forward":  {
+                                                                                             "path":  "/mnt/c/Dev/houfin-range-model/.worktrees/field-geometry/src/model/age_forward.py",
+                                                                                             "sha256":  "d542eaa3e702f9f27334777f57f9880e920f4ca75c6f81fb5c7e8fd7b71110e6"
+                                                                                         },
+                                                               "src.model.habitat_geometry":  {
+                                                                                                  "path":  "/mnt/c/Dev/houfin-range-model/.worktrees/field-geometry/src/model/habitat_geometry.py",
+                                                                                                  "sha256":  "8986edabe6ef252f3291f3061022b324fca91b1eb0515463081444a7d3d57eb7"
+                                                                                              },
+                                                               "src.model.age_priors":  {
+                                                                                            "path":  "/mnt/c/Dev/houfin-range-model/.worktrees/field-geometry/src/model/age_priors.py",
+                                                                                            "sha256":  "f233c26b58f0c42c033b18013969fd6c63c23b2bb61e9a7d8f4b3f4ce8245186"
+                                                                                        },
+                                                               "src.model.data_loading":  {
+                                                                                              "path":  "/mnt/c/Dev/houfin-range-model/.worktrees/field-geometry/src/model/data_loading.py",
+                                                                                              "sha256":  "71ed135f2b93ada3a0bab6962215a22da9567a6988ba853bed1b1803c8118c2b"
+                                                                                          },
+                                                               "src.model.checkpoints":  {
+                                                                                             "path":  "/mnt/c/Dev/houfin-range-model/.worktrees/field-geometry/src/model/checkpoints.py",
+                                                                                             "sha256":  "ce5b514039a68364f37c43e92e03b9a14139f87885c1dc1af2b2dcb272db662f"
+                                                                                         },
+                                                               "src.model.hmc_common":  {
+                                                                                            "path":  "/mnt/c/Dev/houfin-range-model/.worktrees/field-geometry/src/model/hmc_common.py",
+                                                                                            "sha256":  "cbe0d5bdafd0e04a6c760bb6c7c9204eef6c5d3f56e3b18686b41512bd656f6d"
+                                                                                        },
+                                                               "src.model.dispersal_spec":  {
+                                                                                                "path":  "/mnt/c/Dev/houfin-range-model/.worktrees/field-geometry/src/model/dispersal_spec.py",
+                                                                                                "sha256":  "0a317a837775c48d2a694c301441e60937d7b65b9f6c9dc56427beac65dd17e7"
+                                                                                            },
+                                                               "src.community_encoder":  {
+                                                                                             "path":  "/mnt/c/Dev/houfin-range-model/.worktrees/field-geometry/src/community_encoder/__init__.py",
+                                                                                             "sha256":  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+                                                                                         },
+                                                               "src.community_encoder.cube_contract":  {
+                                                                                                           "path":  "/mnt/c/Dev/houfin-range-model/.worktrees/field-geometry/src/community_encoder/cube_contract.py",
+                                                                                                           "sha256":  "88e4bf2b5dc8a16d5cb139aa5f3614aa0f9c983a67fa557cb76452f18b6b9639"
+                                                                                                       },
+                                                               "local_joint_fit.py":  {
+                                                                                          "path":  "/mnt/c/Dev/houfin-range-model/.worktrees/field-geometry/research/exp/local_joint_fit.py",
+                                                                                          "sha256":  "e10de329ce66065e33a70e288488db97063d0b15d6d6efbe5b6cbac73a94ed6f"
+                                                                                      },
+                                                               "local_map_coordinates.py":  {
+                                                                                                "path":  "/mnt/c/Dev/houfin-range-model/.worktrees/field-geometry/research/exp/local_map_coordinates.py",
+                                                                                                "sha256":  "55425b209e5742df25ab8bbedb6562741eafdb4114a1379ad436fb4f5cf46818"
+                                                                                            }
+                                                           },
+                                  "result":  {
+                                                 "objective":  135590.7980283494,
+                                                 "evaluations":  1,
+                                                 "iterations":  0,
+                                                 "data_nll":  {
+                                                                  "obs":  112057.68490377949,
+                                                                  "nest_loglik":  1965.8004470463977
+                                                              },
+                                                 "prior_and_regularizer_cost":  21567.31267752353,
+                                                 "gradient_l2":  70.96140378360452,
+                                                 "gradient_max":  39.937714595049364,
+                                                 "seconds":  22.36397099494934,
+                                                 "state":  "evaluated",
+                                                 "reason":  "evaluation only",
+                                                 "optimizer_success":  false,
+                                                 "stationarity_demonstrated":  false,
+                                                 "final_counts":  {
+                                                                      "evaluations":  1,
+                                                                      "iterations":  0
+                                                                  },
+                                                 "seconds_total":  22.443790912628174
+                                             },
+                                  "inputs":  [
+                                                 {
+                                                     "path":  "/mnt/e/Datasets/houfin/grid54/inputs/established1951/metadata.pkl",
+                                                     "bytes":  16847312,
+                                                     "sha256":  "aea08dc922c26a1a3478f180a4680e3c75b2866068cc4c10c3c3d17a379d3574"
+                                                 },
+                                                 {
+                                                     "path":  "/home/breallis/houfin/work/houfin/processed/field54/stageF/model_inputs/numpyro_input_field54prod_ema_s64_grid54_obsroute/Z_gathered_25df44453bf0448a902a24270b301627.dat",
+                                                     "bytes":  137070592,
+                                                     "sha256":  "b8e709386b6b026185335a4c56123572a94b57df3d161015898921cace77fa62"
+                                                 },
+                                                 {
+                                                     "path":  "/home/breallis/houfin/work/houfin/processed/field54/stageF/model_inputs/numpyro_input_field54prod_ema_s64_grid54_obsroute/Z_disp_gathered_25df44453bf0448a902a24270b301627.dat",
+                                                     "bytes":  1644847104,
+                                                     "sha256":  "a45d68756c948d3c6ff0f69d429149a8366186e1f422b4ac732d440c0fe51d29"
+                                                 },
+                                                 {
+                                                     "path":  "/mnt/e/Datasets/houfin/grid54/nestwatch/nests_hofi_v6.npz",
+                                                     "bytes":  412828,
+                                                     "sha256":  "d468ee05e046b9dc3ed512104a8cec985ab0c0a05ae3773f4e4590f657d8d50f"
+                                                 }
+                                             ],
+                                  "fixed_inactive":  [
+                                                         "dispersal_logit_intercept",
+                                                         "dispersal_logit_slope"
+                                                     ],
+                                  "objective_measure":  "negative constrained-site log posterior; no coordinate Jacobian"
+                              },
+                              {
+                                  "n_coordinates":  19336,
+                                  "name":  "f2_compact",
+                                  "actual_source_hashes":  {
+                                                               "src.config_utils":  {
+                                                                                        "path":  "/mnt/c/Dev/houfin-range-model/.worktrees/field-geometry/src/config_utils.py",
+                                                                                        "sha256":  "b6691273bda88b679f44fb6dd44d72e6bb44093b4708290d94397abcd88a2911"
+                                                                                    },
+                                                               "src.model":  {
+                                                                                 "path":  "/mnt/c/Dev/houfin-range-model/.worktrees/field-geometry/src/model/__init__.py",
+                                                                                 "sha256":  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+                                                                             },
+                                                               "src.model.disease_onset":  {
+                                                                                               "path":  "/mnt/c/Dev/houfin-range-model/.worktrees/field-geometry/src/model/disease_onset.py",
+                                                                                               "sha256":  "17e0ca50c299d6044488fcc19e42778229dee7b7704547663f6d5c0868dd2575"
+                                                                                           },
+                                                               "src.model.age_fields":  {
+                                                                                            "path":  "/mnt/c/Dev/houfin-range-model/.worktrees/field-geometry/src/model/age_fields.py",
+                                                                                            "sha256":  "e0a32cca15a8306bc611fdb589955651013d2cdfdfa0c8e8524c0e92750a3577"
+                                                                                        },
+                                                               "src.model.density_regulation":  {
+                                                                                                    "path":  "/mnt/c/Dev/houfin-range-model/.worktrees/field-geometry/src/model/density_regulation.py",
+                                                                                                    "sha256":  "34876f4ad2bc3b35d2b068b7227c80451d97b929ad499c848e39cd6a5ebc10f3"
+                                                                                                },
+                                                               "src.model.priority_overflow":  {
+                                                                                                   "path":  "/mnt/c/Dev/houfin-range-model/.worktrees/field-geometry/src/model/priority_overflow.py",
+                                                                                                   "sha256":  "d3da1f9e87585d78a2ae76706c8765885dee68e945c3f952a7e5bcc963d5f42f"
+                                                                                               },
+                                                               "src.model.age_forward":  {
+                                                                                             "path":  "/mnt/c/Dev/houfin-range-model/.worktrees/field-geometry/src/model/age_forward.py",
+                                                                                             "sha256":  "d542eaa3e702f9f27334777f57f9880e920f4ca75c6f81fb5c7e8fd7b71110e6"
+                                                                                         },
+                                                               "src.model.habitat_geometry":  {
+                                                                                                  "path":  "/mnt/c/Dev/houfin-range-model/.worktrees/field-geometry/src/model/habitat_geometry.py",
+                                                                                                  "sha256":  "8986edabe6ef252f3291f3061022b324fca91b1eb0515463081444a7d3d57eb7"
+                                                                                              },
+                                                               "src.model.age_priors":  {
+                                                                                            "path":  "/mnt/c/Dev/houfin-range-model/.worktrees/field-geometry/src/model/age_priors.py",
+                                                                                            "sha256":  "f233c26b58f0c42c033b18013969fd6c63c23b2bb61e9a7d8f4b3f4ce8245186"
+                                                                                        },
+                                                               "src.model.data_loading":  {
+                                                                                              "path":  "/mnt/c/Dev/houfin-range-model/.worktrees/field-geometry/src/model/data_loading.py",
+                                                                                              "sha256":  "71ed135f2b93ada3a0bab6962215a22da9567a6988ba853bed1b1803c8118c2b"
+                                                                                          },
+                                                               "src.model.checkpoints":  {
+                                                                                             "path":  "/mnt/c/Dev/houfin-range-model/.worktrees/field-geometry/src/model/checkpoints.py",
+                                                                                             "sha256":  "ce5b514039a68364f37c43e92e03b9a14139f87885c1dc1af2b2dcb272db662f"
+                                                                                         },
+                                                               "src.model.hmc_common":  {
+                                                                                            "path":  "/mnt/c/Dev/houfin-range-model/.worktrees/field-geometry/src/model/hmc_common.py",
+                                                                                            "sha256":  "cbe0d5bdafd0e04a6c760bb6c7c9204eef6c5d3f56e3b18686b41512bd656f6d"
+                                                                                        },
+                                                               "src.model.dispersal_spec":  {
+                                                                                                "path":  "/mnt/c/Dev/houfin-range-model/.worktrees/field-geometry/src/model/dispersal_spec.py",
+                                                                                                "sha256":  "0a317a837775c48d2a694c301441e60937d7b65b9f6c9dc56427beac65dd17e7"
+                                                                                            },
+                                                               "src.community_encoder":  {
+                                                                                             "path":  "/mnt/c/Dev/houfin-range-model/.worktrees/field-geometry/src/community_encoder/__init__.py",
+                                                                                             "sha256":  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+                                                                                         },
+                                                               "src.community_encoder.cube_contract":  {
+                                                                                                           "path":  "/mnt/c/Dev/houfin-range-model/.worktrees/field-geometry/src/community_encoder/cube_contract.py",
+                                                                                                           "sha256":  "88e4bf2b5dc8a16d5cb139aa5f3614aa0f9c983a67fa557cb76452f18b6b9639"
+                                                                                                       },
+                                                               "local_joint_fit.py":  {
+                                                                                          "path":  "/mnt/c/Dev/houfin-range-model/.worktrees/field-geometry/research/exp/local_joint_fit.py",
+                                                                                          "sha256":  "e10de329ce66065e33a70e288488db97063d0b15d6d6efbe5b6cbac73a94ed6f"
+                                                                                      },
+                                                               "local_map_coordinates.py":  {
+                                                                                                "path":  "/mnt/c/Dev/houfin-range-model/.worktrees/field-geometry/research/exp/local_map_coordinates.py",
+                                                                                                "sha256":  "9936dd076496fd963e492a9c628114a97947d7d3db609b31ca81b525af4034ad"
+                                                                                            }
+                                                           },
+                                  "result":  {
+                                                 "objective":  137315.34360666948,
+                                                 "evaluations":  1,
+                                                 "iterations":  0,
+                                                 "data_nll":  {
+                                                                  "obs":  113708.46183952646,
+                                                                  "nest_loglik":  1974.0679982227703
+                                                              },
+                                                 "prior_and_regularizer_cost":  21632.813768920256,
+                                                 "gradient_l2":  6978.354062534932,
+                                                 "gradient_max":  3788.6603784807426,
+                                                 "seconds":  21.647454023361206,
+                                                 "state":  "evaluated",
+                                                 "reason":  "evaluation only",
+                                                 "optimizer_success":  false,
+                                                 "stationarity_demonstrated":  false,
+                                                 "final_counts":  {
+                                                                      "evaluations":  1,
+                                                                      "iterations":  0
+                                                                  },
+                                                 "seconds_total":  21.740278959274292
+                                             },
+                                  "inputs":  [
+                                                 {
+                                                     "path":  "/mnt/e/Datasets/houfin/grid54/inputs/established1951/metadata.pkl",
+                                                     "bytes":  16847312,
+                                                     "sha256":  "aea08dc922c26a1a3478f180a4680e3c75b2866068cc4c10c3c3d17a379d3574"
+                                                 },
+                                                 {
+                                                     "path":  "/home/breallis/houfin/work/houfin/processed/field54/stageF/model_inputs/numpyro_input_field54prod_ema_s64_grid54_obsroute/Z_gathered_25df44453bf0448a902a24270b301627.dat",
+                                                     "bytes":  137070592,
+                                                     "sha256":  "b8e709386b6b026185335a4c56123572a94b57df3d161015898921cace77fa62"
+                                                 },
+                                                 {
+                                                     "path":  "/home/breallis/houfin/work/houfin/processed/field54/stageF/model_inputs/numpyro_input_field54prod_ema_s64_grid54_obsroute/Z_disp_gathered_25df44453bf0448a902a24270b301627.dat",
+                                                     "bytes":  1644847104,
+                                                     "sha256":  "a45d68756c948d3c6ff0f69d429149a8366186e1f422b4ac732d440c0fe51d29"
+                                                 },
+                                                 {
+                                                     "path":  "/mnt/e/Datasets/houfin/grid54/nestwatch/nests_hofi_v6.npz",
+                                                     "bytes":  412828,
+                                                     "sha256":  "d468ee05e046b9dc3ed512104a8cec985ab0c0a05ae3773f4e4590f657d8d50f"
+                                                 }
+                                             ],
+                                  "fixed_inactive":  [
+                                                         "dispersal_logit_intercept",
+                                                         "dispersal_logit_slope"
+                                                     ],
+                                  "objective_measure":  "negative constrained-site log posterior; no coordinate Jacobian"
+                              }
+                          ]
+}

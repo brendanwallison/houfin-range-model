@@ -52,3 +52,13 @@ def test_discrete_and_unknown_exclusions_are_errors():
         MapCoordinates(tr)
     with pytest.raises(ValueError, match="Excluded"):
         MapCoordinates({}, exclude=["typo"])
+
+
+def test_native_support_coordinates_exclude_whitening_jacobian():
+    def model():
+        numpyro.sample("normal", dist.Normal(10., .02).expand([2]))
+    tr = handlers.trace(handlers.seed(model, 0)).get_trace()
+    native = MapCoordinates(tr, whiten_normal=False)
+    whitened = MapCoordinates(tr)
+    assert float(native.log_jacobian(native.x0)) == 0.
+    np.testing.assert_allclose(whitened.log_jacobian(whitened.x0), 2*np.log(.02), rtol=1e-6)

@@ -213,3 +213,50 @@ Original per-run code identity is not imputed from today's mutable sandbox code.
   optimization. Remove inactive/unused experimental coordinates structurally.
 - Preregister the smallest informative structural comparisons and output-level
   likelihood profiles, then launch the committed designs with measured resources.
+
+## Fixed-input first-campaign launch disposition
+
+The active equations, source/import identity, actual inputs and first-campaign
+historical novelty are now sufficient for the registered downstream screens.
+This closes that scientific launch gate, not a claim that every old fit or the
+upstream encoder can be regenerated locally. Missing native checkpoint/component
+attribution and the path-generator mismatch remain explicit limits; neither is
+changed in the first campaign. All arms use the same hashed prepared arrays and
+inherited centering. No direct historical-output penalty is enabled.
+
+Mandatory historical anchors now reproduce: reference, fixed-amplitude step4
+amp1 under its own frozen code, exponential K, mortality-cap R90, R97 late-change
+restriction, R101 and R103b. Step4's historical objective is the support-transformed
+HMC potential, not the raw constrained-site posterior: 135526.201312 minus a
+log-Jacobian of -6.614197 gives 135532.815509, matching its rounded report. Its
+factor norm is 21.6415 despite fixed amplitudes, confirming the compensation.
+
+R97 requires all 11 disease sites in addition to habitat and its establishment
+vector (195 optimized entries total). R103b also requires observer_route_eps
+(19,322 entries total), the exponential capacity link, and the per-cell penalty.
+R97 objective agrees within 2e-7; R103b within 1e-6 and BBS NLL within 4e-7.
+Their parameter files contain selected optimized sites, not complete standalone
+states. The title/summary alone omits needed settings. Initial reconstructions
+that omitted co-adapting sites or used softplus for R103b are invalid replays,
+not evidence against the historical biological mechanism.
+
+For survival-target disease, mortality_ceiling is active and severity_ceiling
+is obsolete. The corrected R90 .25 mortality-cap replay agrees within 2e-8;
+the earlier severity-key reconstruction was an inactive intervention and is
+discarded. The Hill-support confound remains part of R90's interpretation.
+
+The replacement joint fitter passes explicit support/measure tests and real-data
+evaluation. Reference objective 135590.7980283494 matches the independent replay;
+27 free sites / 19,273 coordinates have finite gradients. Compact onset plus
+independent K has 19,336 coordinates and finite gradients. Normal sites are
+whitened, other supports transformed; no coordinate Jacobian is added to the
+constrained-site MAP objective. All other active continuous model sites remain
+free. Only the two verified inactive Veit logistic sites are held fixed. The
+runner passes large input arrays as JIT arguments and preserves finite evaluated
+checkpoints, objective/data/prior accounting and actual source/input hashes.
+
+First-start screens use one GPU owner, at most 500 L-BFGS iterations per arm,
+the same mapped-reference initialization and original nominal priors. The queue
+fingerprints source/config and aborts remaining work on a change. Screens do
+not establish stationarity, likelihood-profile identification or a biological
+negative result; refinement, starts and controls remain required afterward.

@@ -1,0 +1,4 @@
+{
+  "_extends": "grid54_step43_factor_p2_veit_s41.json",
+  "population_model": {"capacity_level_prior": {"link": "exp"}}
+}

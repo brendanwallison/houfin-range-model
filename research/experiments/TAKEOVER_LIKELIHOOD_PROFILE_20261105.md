@@ -48,3 +48,12 @@ After these checks, repeat informative contrasts with joint nuisance refits,
 proper nuisance regularization/integration and recovery/transfer verification.
 The model answer remains structural evidence with honest uncertainty; attaining
 a chosen lambda value is never the promotion rule.
+
+Activation checks: 23 profile/coordinate/controller/graph tests pass. Actual-data
+evaluation reproduces the reference posterior 135590.798028349 and its likelihood
+blocks. The conditional coefficient gauge passes an independent before/after
+count/nest-likelihood identity check; a three-iteration real-data constrained
+BFGS smoke run is finite. It is a mechanics check, not a profile result.
+The profile supervisor is chained after the numerical control's verified
+termination and also checks its workers/children, so two GPU owners cannot
+overlap. The compact unconstrained conditional fit runs concurrently on CPU.

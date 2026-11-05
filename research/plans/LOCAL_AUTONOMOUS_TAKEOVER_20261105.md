@@ -12,8 +12,18 @@ scientific fits have launched. The 391-result index is an artifact inventory;
 remaining historical anchor and inference audits must not be called complete.
 See that branch's execution map and `TAKEOVER_FIELD_ONSET_DESIGN_20261105.md`.
 The original checkout still has 24 unrelated modified tracked paths, preserved.
-Publication to the existing GitHub origin was rejected by automatic approval
-review pending exact-destination authorization; local work continues.
+Publication initially required exact-destination authorization. The user has now
+explicitly approved the existing GitHub destination and the foundation,
+recovered-baseline, habitat-field-geometry and structural-readouts branches have
+been pushed successfully. No main merge or force-push has occurred.
+
+Later progress: the fixed-input scientific launch gate closed with reproduced
+historical anchors and a validated joint fitter. Campaign 01 completed four
+finite, capped fits with exact forward-state diagnostic checks. Its report is
+on `research/structural-readouts` at `642404c`; no stationarity or identification
+claim is made. Campaign 02 is running the registered onset-date/width controls
+and matched refinements (`b92694b`), alongside a dispersed CPU compact-onset start.
+The previous statement that no new fits had launched is an earlier status only.
 
 ## Objective and interpretation
 

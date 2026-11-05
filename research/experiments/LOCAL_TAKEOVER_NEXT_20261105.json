@@ -1,5 +1,5 @@
 {
-    "goal_status":  "active; structural implementations committed and mechanics validated; no new scientific fits",
+    "goal_status":  "active; previous goal turn made verified progress: anchors reproduced, joint runner validated, four structural fits and exact readouts completed, branches published",
     "canonical_worktree":  "C:/Dev/houfin-range-model/.worktrees/takeover-baseline",
     "canonical_branch":  "research/local-baseline-reconstruction",
     "recovered_baseline_commit":  "75e441b",
@@ -24,7 +24,13 @@
                      "Independent capacity coefficients mapped to reference give identical count/nest likelihood; extra factor prior adds 85.121084",
                      "Compact onset finite on actual inputs and removes disease_tau_raw",
                      "R101 independent CPU replay objective 135539.5215810099 matches saved continuation",
-                     "Prepared path metadata uses .0001 land-share own-cell fallback, absent from frozen generator; retain hashed prepared arrays"
+                     "Prepared path metadata uses .0001 land-share own-cell fallback, absent from frozen generator; retain hashed prepared arrays",
+                     "All mandatory historical anchors reproduce, including early amplitude HMC measure versus constrained measure and R103b exp-link/disease/observer settings",
+                     "22 targeted structural and objective-measure tests pass",
+                     "Four campaign_01 joint fits finished at iteration caps; diagnostic states exactly match original forward scans",
+                     "Mortality readout is independently reconstructed at actual post-dispersal density; planted disease-off control exactly zero",
+                     "Reference occupied-East 2011-25 stage mortality .264 versus old end-density approximation .310; prior toll summaries need qualification",
+                     "Explicit GitHub destination approval received and four branches pushed successfully"
                  ],
     "r104":  {
                  "process_state":  "terminal; PID 343703 disappeared and saved completion artifacts were collected",
@@ -36,13 +42,14 @@
                  "interpretation":  "Expanded partial fit with direct change prior; diagnostic only"
              },
     "next_actions":  [
-                         "Read field-geometry execution-map additions, preregistration and compact structural validation; check live ownership/resources",
-                         "Complete remaining historical anchors: early fixed-amplitude ladder, exponential capacity link, disease cap, R97 and R103b using actual source/config and saved parameters; classify unreproducible cases explicitly",
-                         "Build support-respecting all-active-site comparison fitter with explicit constrained-MAP objective, separate data/prior scoring, checkpoint-before-QC and immutable source/input manifests",
-                         "Exclude inactive Veit logistic coordinates; keep all co-adapting habitat, disease, observation and NestWatch sites free",
-                         "Launch preregistered F0/F2 by original/compact-onset matrix only after launch gate closes; no direct growth-change priors in primary arms",
-                         "Interpret compact onset with midpoint and matched 10-90% sigmoid controls; full joint refits and starts before biological verdict",
-                         "Continue scoped organization of original 24 tracked changes and untracked scientific dependencies; GitHub destination approval still pending"
+                         "Read the completed campaign_01 report and compact evidence in structural-readouts; maintain active objective, not just implementation milestones",
+                         "Collect campaign_02 matched-width sigmoid, compact-midpoint and warm refinements; collector is armed. Revalidate specific process/session identities first",
+                         "Collect dispersed CPU compact-start fit on completion, then run matching readout; standalone CPU start is not in campaign_02 collector cases",
+                         "Compare onset timing, disease recovery and severity, actual-stage mortality, raw data likelihood and prediction before interpreting sharpness. All existing heldouts are development evidence",
+                         "Refine informative arms and add the third dispersed start; use output-level likelihood profiles to distinguish structural shape from prior selection",
+                         "Independent capacity still merits lower-growth profiling despite an increased MAP swing; do not adopt or reject solely on smaller lambda",
+                         "Keep original 24 unrelated modified paths and scientific untracked work preserved; continue dependency-coherent organization. Published branches are available on origin",
+                         "Consider adding shell-runner/runtime-flag hashes to future campaign guards after the running queue finishes; do not mutate active queued sources"
                      ],
     "runtime":  {
                     "runner":  "research/bin/local_takeover_run.sh in canonical worktree",
@@ -54,15 +61,66 @@
                     "git":  "Use native Windows Git for worktree mutations. WSL read-only Git needs core.autocrlf=true and translated gitdir for Windows-created worktrees."
                 },
     "publication":  {
-                        "state":  "Push rejected by automatic approval review; asynchronous destination approval pending",
                         "destination":  "github.com/brendanwallison/houfin-range-model",
-                        "restriction":  "Do not bypass rejection or retry without new authorization/evidence. Continue local work."
+                        "restriction":  "Continue scoped staging; never force-push or merge main autonomously",
+                        "branches":  [
+                                         "research/local-takeover-foundation",
+                                         "research/local-baseline-reconstruction",
+                                         "research/habitat-field-geometry",
+                                         "research/structural-readouts"
+                                     ],
+                        "state":  "Explicit destination approval received; four reviewed branches published successfully"
                     },
     "structural_worktree":  "C:/Dev/houfin-range-model/.worktrees/field-geometry",
     "structural_branch":  "research/habitat-field-geometry",
     "structural_commits":  [
                                "148b428",
-                               "42a0c1c"
+                               "42a0c1c",
+                               "d74b386",
+                               "3d33f31",
+                               "b92694b"
                            ],
-    "current_processes":  "All validation and replay sessions finished; recheck before new launches"
+    "current_processes":  {
+                              "cpu_start2":  {
+                                                 "source":  "field-geometry at b92694b",
+                                                 "out":  ".research_runtime/takeover/cpu_compact_start2",
+                                                 "pid":  379275,
+                                                 "cores":  "16-31",
+                                                 "tool_session":  62235,
+                                                 "start_ticks":  16688838
+                                             },
+                              "policy":  "Revalidate exact handles/PIDs and start ticks; never restart from stale logs or observation timeout",
+                              "campaign02":  {
+                                                 "later_cases":  [
+                                                                     "f0_d1_refine",
+                                                                     "f0_d0_refine"
+                                                                 ],
+                                                 "parent_pid":  377982,
+                                                 "source":  "field-geometry at b92694b; do not edit queued model/runner sources",
+                                                 "tool_session":  58702,
+                                                 "active_case_at_check":  "f0_sigmoid_matched",
+                                                 "child_pid":  378799
+                                             },
+                              "checked_unix":  1793891790,
+                              "cpu_monitor":  {
+                                                  "heartbeat":  ".research_runtime/takeover/watch/cpu_compact_start2/heartbeat.json",
+                                                  "pid":  379648,
+                                                  "tool_session":  23919
+                                              },
+                              "collector":  {
+                                                "root":  ".research_runtime/takeover/campaign_02_readouts",
+                                                "pid":  379280,
+                                                "tool_session":  13638,
+                                                "cores":  "8-15 for readout children"
+                                            }
+                          },
+    "readout_worktree":  "C:/Dev/houfin-range-model/.worktrees/structural-readouts",
+    "readout_commit":  "642404c",
+    "campaign_01":  {
+                        "root":  ".research_runtime/takeover/campaign_01",
+                        "evidence":  ".worktrees/structural-readouts/research/experiments/TAKEOVER_CAMPAIGN_01_EVIDENCE_20261105.json",
+                        "report":  ".worktrees/structural-readouts/research/experiments/TAKEOVER_CAMPAIGN_01_SCREEN_20261105.md",
+                        "interpretation":  "Independent K improves spatial prediction but raises growth swing. Compact onset reduces swing without a direct output prior; onset controls and refinement required.",
+                        "state":  "All four capped fits and CPU readouts terminal; not stationary"
+                    }
 }

@@ -1,0 +1,94 @@
+{
+  "files": [
+    {
+      "name": "metadata.pkl",
+      "resolved_path": "/mnt/e/Datasets/houfin/grid54/inputs/established1951/metadata.pkl",
+      "bytes": 16847312,
+      "sha256": "aea08dc922c26a1a3478f180a4680e3c75b2866068cc4c10c3c3d17a379d3574"
+    },
+    {
+      "name": "Z_gathered_25df44453bf0448a902a24270b301627.dat",
+      "resolved_path": "/home/breallis/houfin/work/houfin/processed/field54/stageF/model_inputs/numpyro_input_field54prod_ema_s64_grid54_obsroute/Z_gathered_25df44453bf0448a902a24270b301627.dat",
+      "bytes": 137070592,
+      "sha256": "b8e709386b6b026185335a4c56123572a94b57df3d161015898921cace77fa62"
+    },
+    {
+      "name": "Z_disp_gathered_25df44453bf0448a902a24270b301627.dat",
+      "resolved_path": "/home/breallis/houfin/work/houfin/processed/field54/stageF/model_inputs/numpyro_input_field54prod_ema_s64_grid54_obsroute/Z_disp_gathered_25df44453bf0448a902a24270b301627.dat",
+      "bytes": 1644847104,
+      "sha256": "a45d68756c948d3c6ff0f69d429149a8366186e1f422b4ac732d440c0fe51d29"
+    }
+  ],
+  "kernel_contract": {
+    "kernel": "ruzicka",
+    "centered": false,
+    "feature_prior": "isotropic",
+    "latent_dim": 64,
+    "source_latent_dim": 64,
+    "truncation": "none",
+    "disp_kernel_note": "exact for raw-Z (local); z_disp=A.Z is a smoothed A.K.A^T",
+    "desk_checkpoint": {
+      "name": "env_model_semisup.pth",
+      "size": 10577051,
+      "content_sha256": "81c912a69266424b9b0cab40042cc061dfa807f7a8bfb054b58c499177bc3bf0"
+    },
+    "esk_basis_dir": "/work/07980/bwa386/ls6/houfin/research/field54/runs/field54_prod/teachers/production/summer/spacetime",
+    "feature_blocks": [
+      {
+        "name": "summer",
+        "start": 0,
+        "stop": 64,
+        "kernel": "ruzicka",
+        "centered": false,
+        "esk_basis_dir": "/work/07980/bwa386/ls6/houfin/research/field54/runs/field54_prod/teachers/production/summer/spacetime",
+        "coordinate_target": "bbs_esk",
+        "basis_identity": {
+          "meta.json": {
+            "name": "meta.json",
+            "size": 1345,
+            "content_sha256": "21510b4a1fe044be767b95cfa8e7e145afdb397da707778e41b9f7ae276aa136"
+          },
+          "esk_projmat.npy": {
+            "name": "esk_projmat.npy",
+            "size": 4096128,
+            "content_sha256": "8f92a26751de2217f3c8040077c409c8a6d0312c87fcd00484be6ccbf2faaa9a"
+          },
+          "esk_landmarks.npy": {
+            "name": "esk_landmarks.npy",
+            "size": 42560128,
+            "content_sha256": "da9e11377ddfc828e9801c64828de3661e2ffcc5047a9f7fb7f239c4433ac102"
+          }
+        }
+      }
+    ],
+    "ensemble_members": null,
+    "ensemble_method": null
+  },
+  "dispersal_spec": {
+    "adult_mdd_km": 100.0,
+    "adult_shape": 0.859,
+    "juvenile_mdd_km": 330.0,
+    "juvenile_shape": 0.468,
+    "juvenile_radial_splits_km": [
+      0.0,
+      155.36162529769288,
+      482.7446923028151,
+      1000000000.0
+    ],
+    "path_integration_steps": 20,
+    "path_operator": "land_conditioned_neighborhood"
+  },
+  "input_time": 124,
+  "input_land_cells": 4318,
+  "input_features": 64,
+  "input_kernel_count": 12,
+  "initialization_year": 1951,
+  "centering_support_counts": {
+    "all_positive": 33519,
+    "training_positive": 25600
+  },
+  "used_center_error_vs_all_positive": 0.0,
+  "used_center_error_vs_training_positive": 0.007482518926387606,
+  "center_difference_l2": 0.01718503905462899,
+  "seconds": 4.107856512069702
+}

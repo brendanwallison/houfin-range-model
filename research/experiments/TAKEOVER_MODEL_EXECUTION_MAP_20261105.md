@@ -142,6 +142,12 @@ does not imply zero chronic disease or forced recovery.
 
 ## Remaining gate work
 
+The original-artifact index now covers 391 summaries with no parse errors; 224
+have matched saved parameter files and 335 have terminal optimizer trace entries.
+The compact CSV preserves hashes and optimizer diagnostics. It is a crosswalk,
+not a pooled comparison: bases, likelihoods and diagnostic definitions differ.
+Original per-run code identity is not imputed from today's mutable sandbox code.
+
 - Complete upstream native encoder/export, kernel/path, mask/centering and raw
   input provenance audits; confirm source support of external biological anchors.
 - Finish the historical code/artifact crosswalk and explicit novelty checks for

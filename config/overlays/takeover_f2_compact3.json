@@ -1,0 +1,8 @@
+{
+  "_extends": "takeover_f2_independent.json",
+  "population_model": {
+    "disease_prior": {
+      "onset_gate": {"form": "compact_start", "duration_years": 3.0}
+    }
+  }
+}

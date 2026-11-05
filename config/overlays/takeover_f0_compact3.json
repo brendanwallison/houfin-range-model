@@ -1,0 +1,9 @@
+{
+  "_extends": "grid54_step43_factor_p2_veit_s41.json",
+  "_comment": "Research sensitivity: three-year finite local onset; onset map marks start, geographic lag and chronic disease remain fitted.",
+  "population_model": {
+    "disease_prior": {
+      "onset_gate": {"form": "compact_start", "duration_years": 3.0}
+    }
+  }
+}

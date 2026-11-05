@@ -29,7 +29,9 @@ import jax.numpy as jnp
 import jax.nn as jnn
 from jax import lax, checkpoint
 from src.config_utils import load_age_model_config
+from src.model.disease_onset import onset_gate, resolve_onset_spec
 _FLOOR = float(load_age_model_config()['population_model'].get('capacity_floor_internal',0.))
+DISEASE_ONSET_SPEC = resolve_onset_spec(load_age_model_config()['population_model']['disease_prior'])
 
 
 def disease_severity(disease, K_base):
@@ -111,7 +113,7 @@ def disease_mortality_amplitude(disease, t_idx, onset_t=None):
         + disease["b_late"] * disease["onset_decades"]
         + disease["b_native"] * disease["native_shape"]
         + jnp.dot(disease["sev_basis"].T, disease["w_sev"]))
-    gate = jnn.sigmoid((t_idx - onset_t) / disease["tau"])
+    gate = onset_gate(t_idx - onset_t, disease["tau"], DISEASE_ONSET_SPEC)
     age = jnp.maximum(t_idx - onset_t, 0.0)
     resisted = disease["rec"] * (-jnp.expm1(-age / disease["tau_rec"]))
     return disease["ceiling"] * modifier * gate * (1.0 - resisted)
@@ -146,7 +148,7 @@ def disease_k_fraction(disease, t_idx, K_base, onset_t=None, severity=None):
     """
     onset_t = disease_onset_timestep(disease) if onset_t is None else onset_t
     severity = disease_severity(disease, K_base) if severity is None else severity
-    gate = jnn.sigmoid((t_idx - onset_t) / disease["tau"])
+    gate = onset_gate(t_idx - onset_t, disease["tau"], DISEASE_ONSET_SPEC)
     age = jnp.maximum(t_idx - onset_t, 0.0)
     recovered = disease["rec"] * (-jnp.expm1(-age / disease["tau_rec"]))
     return severity * gate * (1.0 - recovered)

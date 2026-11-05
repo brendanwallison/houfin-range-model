@@ -1,0 +1,10 @@
+{
+  "_extends": "grid54_step43_factor_p2_veit_s41.json",
+  "_comment": "Mechanics-only identity control: the new field construction at correlation one.",
+  "population_model": {
+    "manifold_prior": {
+      "form": "capacity_demography",
+      "fixed_capacity_correlation": 1.0
+    }
+  }
+}

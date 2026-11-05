@@ -1,0 +1,10 @@
+{
+  "_extends": "grid54_step43_factor_p2_veit_s41.json",
+  "_comment": "Research F2: independent capacity direction; Sa, Fmax and Sj retain one shared direction. No direct growth-change penalty.",
+  "population_model": {
+    "manifold_prior": {
+      "form": "capacity_demography",
+      "fixed_capacity_correlation": 0.0
+    }
+  }
+}

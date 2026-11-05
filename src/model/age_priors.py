@@ -19,9 +19,10 @@ import numpyro
 import numpyro.distributions as dist
 
 from src.config_utils import load_age_model_config
-from src.model.age_fields import (disease_mortality_amplitude, disease_severity,
+from src.model.age_fields import (DISEASE_ONSET_SPEC, disease_mortality_amplitude, disease_severity,
                                   project_and_scatter_age_structured)
 from src.model.age_forward import allee_mated_fraction, forward_sim_age_structured, juvenile_band_weights
+from src.model.habitat_geometry import capacity_demography_coefficients, capacity_demography_loadings
 
 # Prior settings read from config so they can be retuned without editing model
 # code -- these are the knobs most likely to be revisited between runs. See
@@ -414,8 +415,8 @@ CROWDING_ARM = bool(_DEPART.get("crowding_arm", False))
 CROWDING_KAPPA = float(_DEPART.get("crowding_sharpness", 5.0))
 if _HABITAT_CENTERING not in {"none", "occupied"}:
     raise ValueError(f"habitat_centering must be none or occupied, got {_HABITAT_CENTERING!r}")
-if _MANIFOLD_FORM not in {"rank2", "exchangeable"}:
-    raise ValueError(f"manifold_prior.form must be rank2 or exchangeable, got {_MANIFOLD_FORM!r}")
+if _MANIFOLD_FORM not in {"rank2", "exchangeable", "capacity_demography"}:
+    raise ValueError(f"unsupported manifold_prior.form: {_MANIFOLD_FORM!r}")
 if _K_LINK not in {"softplus", "exp"}:
     raise ValueError(f"capacity_level_prior.link must be softplus or exp, got {_K_LINK!r}")
 # THE GAUGE. Every absolute-scale prior is declared in expected BBS ROUTE COUNTS in
@@ -657,6 +658,43 @@ def _exchangeable_w_env(M_features, w_scale, prior_scale):
     return w_env, L_load @ L_load.T
 
 
+def _capacity_demography_w_env(M_features, w_scale, prior_scale):
+    """One shared demographic direction and a distinct capacity direction.
+
+    Unlike exchangeable, only K can depart from the demographic direction.
+    Unlike rank2, Fmax stays with survival. Existing fixed_coupling settings do
+    not configure this form: its separate correlation must be explicit.
+    """
+    spec = _MANIFOLD_PRIOR
+    fixed = spec.get("fixed_capacity_correlation")
+    if fixed is not None:
+        if not 0.0 <= float(fixed) <= 1.0:
+            raise ValueError("fixed_capacity_correlation must be in [0, 1]")
+        r = jnp.asarray(float(fixed))
+    else:
+        target = float(spec["capacity_correlation_target"])
+        if not 0.0 < target < 1.0:
+            raise ValueError("capacity_correlation_target must be in (0, 1)")
+        scale = float(spec["capacity_correlation_logit_scale"])
+        if scale <= 0.0:
+            raise ValueError("capacity_correlation_logit_scale must be positive")
+        r = jnn.sigmoid(numpyro.sample(
+            "capacity_correlation_logit",
+            dist.Normal(math.log(target / (1.0 - target)), scale * prior_scale)))
+    r = numpyro.deterministic("capacity_demography_correlation", r)
+    with numpyro.plate("env_features", M_features, dim=-2):
+        shared = numpyro.sample("manifold_factor", dist.Normal(0.0, 1.0))
+        # At r=1 the old single-field model is recovered with identical sites.
+        # Do not leave an unused capacity factor in the optimizer vector.
+        capacity = (numpyro.sample("capacity_factor", dist.Normal(0.0, 1.0))
+                    if fixed is None or float(fixed) < 1.0 else jnp.zeros_like(shared))
+    loadings = numpyro.deterministic("manifold_loadings", capacity_demography_loadings(r))
+    numpyro.deterministic("manifold_communality", jnp.ones(4))
+    weights = numpyro.deterministic(
+        "w_env", capacity_demography_coefficients(shared, capacity, w_scale, r))
+    return weights, loadings @ loadings.T
+
+
 def sample_priors(prior_scale=1.0, M_features=None, time=None,
                   N_sev_basis=None, N_lag_basis=None):
     """Sample every model parameter and return them in a dict.
@@ -776,6 +814,8 @@ def sample_priors(prior_scale=1.0, M_features=None, time=None,
                                 + jnp.sqrt(1.0 - (L_load ** 2).sum(-1))[None, :] * eps_idio),
         )
         corr = L_load @ L_load.T
+    elif _MANIFOLD_FORM == "capacity_demography":
+        w_env, corr = _capacity_demography_w_env(M_features, w_scale, prior_scale)
     else:
         w_env, corr = _exchangeable_w_env(M_features, w_scale, prior_scale)
 
@@ -996,8 +1036,10 @@ def sample_priors(prior_scale=1.0, M_features=None, time=None,
         # function, whose gradient w.r.t. the lag terms vanishes everywhere the
         # front is not exactly at t. Also absorbs per-cell timing scatter that the
         # smooth regional lag field cannot resolve, by widening the front.
-        jnn.softplus(numpyro.sample("disease_tau_raw",
-                                    dist.Normal(0.5, 0.5 * prior_scale))) + 0.25,
+        (jnn.softplus(numpyro.sample("disease_tau_raw",
+                                    dist.Normal(0.5, 0.5 * prior_scale))) + 0.25
+         if DISEASE_ONSET_SPEC == {"form": "sigmoid"}
+         else jnp.asarray(DISEASE_ONSET_SPEC.get("tau_years", 1.0))),
     )
 
     # RECOVERY: slowly increasing resilience after local arrival (exposure, not

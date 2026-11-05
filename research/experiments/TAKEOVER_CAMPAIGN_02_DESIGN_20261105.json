@@ -1,0 +1,12 @@
+{
+  "purpose": "Onset date/width controls and matched warm refinements after campaign_01; no direct growth-change penalty",
+  "interpretation": "Independent first-start controls followed by warm refinements; no stationarity, multistart or identification claim from iteration cap",
+  "cases": [
+    {"name": "f0_compact_midpoint", "overlay": "takeover_f0_compact3_midpoint.json", "maxiter": 500},
+    {"name": "f0_sigmoid_matched", "overlay": "takeover_f0_sigmoid_matched.json", "maxiter": 500},
+    {"name": "f0_d1_refine", "overlay": "takeover_f0_compact3.json", "maxiter": 1000,
+     "init": "${TAKEOVER_ARTIFACT_ROOT}/campaign_01/f0_d1/best_params.npz"},
+    {"name": "f0_d0_refine", "overlay": "grid54_step43_factor_p2_veit_s41.json", "maxiter": 1000,
+     "init": "${TAKEOVER_ARTIFACT_ROOT}/campaign_01/f0_d0/best_params.npz"}
+  ]
+}

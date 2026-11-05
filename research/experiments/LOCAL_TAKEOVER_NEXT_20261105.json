@@ -1,5 +1,5 @@
 {
-    "goal_status":  "active; previous goal turn made verified progress: anchors reproduced, joint runner validated, four structural fits and exact readouts completed, branches published",
+    "goal_status":  "active; durable detached autonomous supervisor deployed and verified; research objective remains incomplete",
     "canonical_worktree":  "C:/Dev/houfin-range-model/.worktrees/takeover-baseline",
     "canonical_branch":  "research/local-baseline-reconstruction",
     "recovered_baseline_commit":  "75e441b",
@@ -30,7 +30,10 @@
                      "Four campaign_01 joint fits finished at iteration caps; diagnostic states exactly match original forward scans",
                      "Mortality readout is independently reconstructed at actual post-dispersal density; planted disease-off control exactly zero",
                      "Reference occupied-East 2011-25 stage mortality .264 versus old end-density approximation .310; prior toll summaries need qualification",
-                     "Explicit GitHub destination approval received and four branches pushed successfully"
+                     "Explicit GitHub destination approval received and four branches pushed successfully",
+                     "Detached supervisor f3cd15e has 14 explicit tasks, adopted live CPU PID379275/start_ticks16688838 and launched duration2 GPU fit PID387273",
+                     "Supervisor and worker have independent sessions; repeated launch safely reported already_live",
+                     "15 controller/generator/selection tests passed; actual runtime source guards and lane ownership verified"
                  ],
     "r104":  {
                  "process_state":  "terminal; PID 343703 disappeared and saved completion artifacts were collected",
@@ -42,11 +45,13 @@
                  "interpretation":  "Expanded partial fit with direct change prior; diagnostic only"
              },
     "next_actions":  [
-                         "Revalidate campaign_03 GPU process/session 48959, its collector 71618 and CPU start2 PID379275/session62235/start_ticks16688838; do not restart from stale logs",
-                         "Campaign_02 is complete: compact-midpoint and matched-width sigmoid give similar first-cap results; warm compact-start has East potential medians .615 to1.209 versus original .481 to1.527. Collect full likelihood/prediction/timing details before inference",
-                         "Collect third dispersed GPU start and CPU start2, then refined independent-capacity arms; compare starts with same likelihood and diagnostics",
-                         "Develop output-level likelihood profiles next; direct output penalties remain diagnostics only, not primary structural solutions",
-                         "Keep original local changes preserved and continue coherent Git organization; all reviewed branches and latest preregistration are published"
+                         "Read autonomous supervisor state/events first. It owns GPU and readout dispatch; never launch a competing GPU job while its lane is running",
+                         "The local loop runs independently of replies. Keep the active goal moving through analysis and new preregistered plans, not only fixed-queue execution",
+                         "Do not modify frozen local-loop-control sources or active model worktrees; develop output-level likelihood profiles in a new worktree",
+                         "Collect/compare campaign_02, campaign_03 and CPU start2 with exact-stage readouts; supervisor will collect CPU start and execute duration2/duration6 plus matched-control and selected-start refinements",
+                         "Review source/receipt failures autonomously; never restart from stale logs or observation timeouts. Queue drained is not goal complete",
+                         "Continue likelihood-profile and recovery/transfer checks before structural verdict; output-change priors stay diagnostic",
+                         "Keep original 24 unrelated tracked changes preserved and continue reviewed dependency-coherent Git organization; five branches published"
                      ],
     "runtime":  {
                     "runner":  "research/bin/local_takeover_run.sh in canonical worktree",
@@ -64,7 +69,8 @@
                                          "research/local-takeover-foundation",
                                          "research/local-baseline-reconstruction",
                                          "research/habitat-field-geometry",
-                                         "research/structural-readouts"
+                                         "research/structural-readouts",
+                                         "research/local-loop-control"
                                      ],
                         "state":  "Explicit destination approval received; four reviewed branches published successfully"
                     },
@@ -104,13 +110,15 @@
                                                 "cores":  "8-15"
                                             },
                               "campaign03":  {
-                                                 "root":  ".research_runtime/takeover/campaign_03",
-                                                 "parent_pid":  382611,
-                                                 "source":  "field-geometry at 8a9a1af; immutable while queue runs",
-                                                 "case_at_launch":  "f0_d1_start3",
-                                                 "tool_session":  48959,
-                                                 "child_at_launch":  382614
-                                             }
+                                                 "state":  "terminal; parent and collector absent, all three fits and readouts collected",
+                                                 "root":  ".research_runtime/takeover/campaign_03"
+                                             },
+                              "autonomous_supervisor":  {
+                                                            "state":  ".research_runtime/takeover/autonomous_day_20261105/control/state.json",
+                                                            "pid":  387271,
+                                                            "mode":  "detached; adopted and queued work advances without chat replies",
+                                                            "start_ticks":  17168004
+                                                        }
                           },
     "readout_worktree":  "C:/Dev/houfin-range-model/.worktrees/structural-readouts",
     "readout_commit":  "642404c",
@@ -120,5 +128,24 @@
                         "report":  ".worktrees/structural-readouts/research/experiments/TAKEOVER_CAMPAIGN_01_SCREEN_20261105.md",
                         "interpretation":  "Independent K improves spatial prediction but raises growth swing. Compact onset reduces swing without a direct output prior; onset controls and refinement required.",
                         "state":  "All four capped fits and CPU readouts terminal; not stationary"
-                    }
+                    },
+    "autonomous_loop":  {
+                            "branch":  "research/local-loop-control",
+                            "plan_sha256":  "4d30c98bd87cb6ca66407d8320eece068317e27f1be687bded29ee6fe03576fb",
+                            "task_count":  14,
+                            "detachment":  "Supervisor SID equals PID; worker SID equals worker PID; stdin closed; repeat launcher reports already_live",
+                            "worktree":  "C:/Dev/houfin-range-model/.worktrees/local-loop-control",
+                            "plan":  ".research_runtime/takeover/autonomous_day_20261105/plan.json",
+                            "state":  ".research_runtime/takeover/autonomous_day_20261105/control/state.json",
+                            "commit":  "f3cd15e",
+                            "supervisor":  {
+                                               "pid":  387271,
+                                               "start_ticks":  17168004,
+                                               "state":  "R"
+                                           },
+                            "owns":  "GPU, CPU-fit and readout lanes, including adopted live CPU start",
+                            "tests":  "15 passed; actual generator CLI, worker restart, leases, PID reuse, guards and same-model selection",
+                            "guard_policy":  "Do not edit this worktree source/config/runner/local or structural helper scripts while tasks remain. Use a new worktree for profiles.",
+                            "monitor_session":  7901
+                        }
 }

@@ -10,7 +10,7 @@ df -h / /mnt/c /mnt/e
 printf '\nGPU\n'
 nvidia-smi --query-gpu=name,memory.total,memory.used,utilization.gpu --format=csv
 printf '\nPython experiment processes\n'
-experiment_pattern='[p]ython.*(invasion_sandbox|local_takeover|local_joint_fit|local_structural|local_model|structural_fit_readout|structural_campaign_collect|field[-_]geometry)'
+experiment_pattern='[p]ython.*(invasion_sandbox|local_takeover|local_joint_fit|local_structural|local_model|local_loop|local_day_plan|local_refine_selected|structural_fit_readout|structural_campaign_collect|field[-_]geometry)'
 ps -eo pid,ppid,etimes,pcpu,pmem,args --sort=-pcpu | awk -v pattern="$experiment_pattern" 'NR == 1 || $0 ~ pattern'
 printf '\nExperiment CPU affinity and whitelisted runtime flags\n'
 for pid in $(pgrep -f "$experiment_pattern" || true); do

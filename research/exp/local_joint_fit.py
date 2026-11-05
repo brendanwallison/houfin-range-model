@@ -57,6 +57,7 @@ def main():
     parser.add_argument("--seed", type=int, default=20261105)
     parser.add_argument("--jitter", type=float, default=0.)
     parser.add_argument("--evaluate-only", action="store_true")
+    parser.add_argument("--maxcor", type=int, default=20, help="L-BFGS curvature-history size; model/objective unchanged")
     args = parser.parse_args()
     args.out.mkdir(parents=True, exist_ok=False)
     started = time.time()
@@ -124,6 +125,7 @@ def main():
                 "versions": {"python": sys.version, "jax": jax.__version__, "numpy": np.__version__,
                              "numpyro": numpyro.__version__, "scipy": scipy.__version__},
                 "n_coordinates": int(x0.size), "started_unix": started}
+    manifest["optimizer"] = {"method":"L-BFGS-B", "maxcor":args.maxcor,"ftol":1e-12,"gtol":1e-4}
     write_json(args.out / "manifest.json", manifest)
     trace_file = (args.out / "trace.jsonl").open("x")
     best = {"objective": float("inf")}
@@ -160,7 +162,7 @@ def main():
         write_json(args.out / "initial.json", {k: v for k, v in best.items() if k not in ("x", "gradient")})
         if not args.evaluate_only:
             result = minimize(evaluate, x0, jac=True, method="L-BFGS-B", callback=callback,
-                              options={"maxiter": args.maxiter, "maxls": 40, "maxcor": 20,
+                              options={"maxiter": args.maxiter, "maxls": 40, "maxcor": args.maxcor,
                                        "ftol": 1e-12, "gtol": 1e-4})
             evaluate(result.x)
     except FloatingPointError as error:

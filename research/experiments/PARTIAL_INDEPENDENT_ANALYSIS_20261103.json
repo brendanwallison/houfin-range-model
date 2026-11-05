@@ -1,0 +1,125 @@
+{
+  "epoch": 1793762475.0680814,
+  "validation": [
+    {
+      "step": "step39_kfloor4p0_s42",
+      "flat_normal_components_match_export": true,
+      "max_potential_growth_error": 7.105427357601002e-15
+    },
+    {
+      "step": "step45_regional_s010_s41",
+      "flat_normal_components_match_export": true,
+      "max_potential_growth_error": 7.105427357601002e-15
+    }
+  ],
+  "records": [
+    {
+      "step": "step45_cell_iid_s005_s41",
+      "checkpoint_iteration": 1450,
+      "terminal": false,
+      "stop_reason": null,
+      "accepted_export_present": false,
+      "scope": "Saved unconstrained Normal components; exact potential growth independently validated against two exported fits. No population replay, source/sink or prediction claim.",
+      "u_rms": 0.003589294618618655,
+      "active_log_innovation_rms": 2.1881702128302266e-05,
+      "max_abs_log_innovation": 0.0011467823494457048,
+      "cumulative_log_innovation_q10_50_90": [
+        -0.0007478900645366075,
+        -0.0006875016682432458,
+        -0.0006281182337409774
+      ],
+      "regions": {
+        "east": {
+          "early": 0.2818040341757195,
+          "modern": 1.5194957395151658,
+          "historical_change": 1.2376917053394463,
+          "post1966_change": 0.8819942004438834,
+          "active_log_innovation_rms": 2.2411132287748968e-05,
+          "cumulative_log_innovation_q10_50_90": [
+            -0.0007736375247860333,
+            -0.0006874995853606944,
+            -0.0005874731574705327
+          ]
+        },
+        "plains": {
+          "early": 0.28278603372525224,
+          "modern": 0.9799208357569985,
+          "historical_change": 0.6971348020317463,
+          "post1966_change": 0.47050592708703665,
+          "active_log_innovation_rms": 1.4822458325909329e-05,
+          "cumulative_log_innovation_q10_50_90": [
+            -0.0007432785699800085,
+            -0.0006878360669788229,
+            -0.000636028080706571
+          ]
+        },
+        "west": {
+          "early": 0.6183300431109633,
+          "modern": 1.434097930468584,
+          "historical_change": 0.8157678873576206,
+          "post1966_change": 0.3781561050635327,
+          "active_log_innovation_rms": 2.700916780538503e-05,
+          "cumulative_log_innovation_q10_50_90": [
+            -0.0007626722474885104,
+            -0.0006899066004332419,
+            -0.0006206521884634948
+          ]
+        }
+      }
+    },
+    {
+      "step": "step45_cell_iid_s010_s41",
+      "checkpoint_iteration": 1252,
+      "terminal": true,
+      "stop_reason": "U fell 0.049 < tol_du 0.05 over 20 iterations",
+      "accepted_export_present": false,
+      "scope": "Saved unconstrained Normal components; exact potential growth independently validated against two exported fits. No population replay, source/sink or prediction claim.",
+      "u_rms": 0.007406362212821098,
+      "active_log_innovation_rms": 8.942589976460014e-05,
+      "max_abs_log_innovation": 0.004380637827023338,
+      "cumulative_log_innovation_q10_50_90": [
+        -0.0029970633644942693,
+        -0.002750000900763735,
+        -0.002515725896549364
+      ],
+      "regions": {
+        "east": {
+          "early": 0.19698279656691675,
+          "modern": 1.685879817914804,
+          "historical_change": 1.4888970213478872,
+          "post1966_change": 1.1275602339557247,
+          "active_log_innovation_rms": 9.310697564141857e-05,
+          "cumulative_log_innovation_q10_50_90": [
+            -0.0031317198634595424,
+            -0.002750195830341618,
+            -0.002386220687145066
+          ]
+        },
+        "plains": {
+          "early": 0.22089107828164173,
+          "modern": 1.113096829623853,
+          "historical_change": 0.8922057513422113,
+          "post1966_change": 0.6476652822372309,
+          "active_log_innovation_rms": 6.059142489489561e-05,
+          "cumulative_log_innovation_q10_50_90": [
+            -0.0029961374029444823,
+            -0.002752381441469943,
+            -0.0025294121262525305
+          ]
+        },
+        "west": {
+          "early": 0.5963324645514398,
+          "modern": 1.508866982239129,
+          "historical_change": 0.9125345176876891,
+          "post1966_change": 0.4552565203493648,
+          "active_log_innovation_rms": 0.00010957976426740358,
+          "cumulative_log_innovation_q10_50_90": [
+            -0.003029323014223569,
+            -0.0027528570869046146,
+            -0.0024834785363329437
+          ]
+        }
+      }
+    }
+  ]
+}

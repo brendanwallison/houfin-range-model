@@ -1,0 +1,166 @@
+{
+  "interpretation": "Feature-only geometry at BBS training cells, excluding encoder holdout/buffer. No outcome-based metric fitted. Covariance ratios describe motion, not ecological credibility or a calibrated readout amplitude.",
+  "source_sha256": "5c3f1c7ddd48d13be0f6fa96698576a42653b6e7608d9c49ad34ad275e36014b",
+  "arms": {
+    "v1_r64": {
+      "training_cells": 2791,
+      "between_trace": 0.3671625950442859,
+      "between_effective_rank": 9.987852993553451,
+      "windows": {
+        "1996_2005__2016_2025": {
+          "change_energy": 0.01655853579129759,
+          "change_to_between_rms": 0.21236441723709423,
+          "continental_mean_share": 0.21146360083885632,
+          "change_effective_rank": 6.930931280473041,
+          "largest_generalized_change_ratio": 6.711239345676464,
+          "generalized_ratio_regularization": "between eigenvalue floor=1e-6 times maximum; diagnostic only"
+        },
+        "1966_1975__2006_2015": {
+          "change_energy": 0.06468872224162817,
+          "change_to_between_rms": 0.41974455497049157,
+          "continental_mean_share": 0.2350156630275315,
+          "change_effective_rank": 5.196371998336728,
+          "largest_generalized_change_ratio": 48.70528791149742,
+          "generalized_ratio_regularization": "between eigenvalue floor=1e-6 times maximum; diagnostic only"
+        },
+        "1902_1911__1932_1941": {
+          "change_energy": 0.02318702360685934,
+          "change_to_between_rms": 0.2513004618339271,
+          "continental_mean_share": 0.13247935452336776,
+          "change_effective_rank": 8.190919973806695,
+          "largest_generalized_change_ratio": 3.1512108515833948,
+          "generalized_ratio_regularization": "between eigenvalue floor=1e-6 times maximum; diagnostic only"
+        },
+        "1902_1911__2006_2015": {
+          "change_energy": 0.14401593657365952,
+          "change_to_between_rms": 0.626290841930857,
+          "continental_mean_share": 0.2719850933260052,
+          "change_effective_rank": 5.1910171532096,
+          "largest_generalized_change_ratio": 120.49999469139559,
+          "generalized_ratio_regularization": "between eigenvalue floor=1e-6 times maximum; diagnostic only"
+        }
+      },
+      "feature_manifest_sha256": "5986ccfbbdd5820734695fd3f39f9f8293e6a46c568166f00ba70c1cd07f58e5"
+    },
+    "v2_s64": {
+      "training_cells": 2791,
+      "between_trace": 0.3760291586498382,
+      "between_effective_rank": 9.6679298352541,
+      "windows": {
+        "1996_2005__2016_2025": {
+          "change_energy": 0.016221459714430005,
+          "change_to_between_rms": 0.2076989039262533,
+          "continental_mean_share": 0.19650608682407134,
+          "change_effective_rank": 7.941705789465176,
+          "largest_generalized_change_ratio": 6.741839668817795,
+          "generalized_ratio_regularization": "between eigenvalue floor=1e-6 times maximum; diagnostic only"
+        },
+        "1966_1975__2006_2015": {
+          "change_energy": 0.06673650996491107,
+          "change_to_between_rms": 0.42128013806115305,
+          "continental_mean_share": 0.2365686398305093,
+          "change_effective_rank": 5.004275754498739,
+          "largest_generalized_change_ratio": 53.525328490562615,
+          "generalized_ratio_regularization": "between eigenvalue floor=1e-6 times maximum; diagnostic only"
+        },
+        "1902_1911__1932_1941": {
+          "change_energy": 0.023212805038862902,
+          "change_to_between_rms": 0.2484580374406554,
+          "continental_mean_share": 0.1482832713353894,
+          "change_effective_rank": 7.288381819930692,
+          "largest_generalized_change_ratio": 3.960605498871489,
+          "generalized_ratio_regularization": "between eigenvalue floor=1e-6 times maximum; diagnostic only"
+        },
+        "1902_1911__2006_2015": {
+          "change_energy": 0.14362108855836708,
+          "change_to_between_rms": 0.6180140458018951,
+          "continental_mean_share": 0.25779631767372013,
+          "change_effective_rank": 5.106293451999172,
+          "largest_generalized_change_ratio": 123.17740018488252,
+          "generalized_ratio_regularization": "between eigenvalue floor=1e-6 times maximum; diagnostic only"
+        }
+      },
+      "feature_manifest_sha256": "bb80f9c3453cbdd2b2e9ff423ef493d66dec45e07968f3b3a362d1692bf2f288"
+    },
+    "v2_w64": {
+      "training_cells": 2791,
+      "between_trace": 0.34938130241934606,
+      "between_effective_rank": 7.700300396747481,
+      "windows": {
+        "1996_2005__2016_2025": {
+          "change_energy": 0.019240561969222872,
+          "change_to_between_rms": 0.23467079605057117,
+          "continental_mean_share": 0.24590823581851373,
+          "change_effective_rank": 5.723186808463858,
+          "largest_generalized_change_ratio": 14.059792318971262,
+          "generalized_ratio_regularization": "between eigenvalue floor=1e-6 times maximum; diagnostic only"
+        },
+        "1966_1975__2006_2015": {
+          "change_energy": 0.06319084098561564,
+          "change_to_between_rms": 0.42528223136065557,
+          "continental_mean_share": 0.2189853173358422,
+          "change_effective_rank": 5.311182620225193,
+          "largest_generalized_change_ratio": 60.19584510138836,
+          "generalized_ratio_regularization": "between eigenvalue floor=1e-6 times maximum; diagnostic only"
+        },
+        "1902_1911__1932_1941": {
+          "change_energy": 0.01757044809557129,
+          "change_to_between_rms": 0.2242547181054689,
+          "continental_mean_share": 0.14003083772363878,
+          "change_effective_rank": 9.40418524648605,
+          "largest_generalized_change_ratio": 4.449855884336379,
+          "generalized_ratio_regularization": "between eigenvalue floor=1e-6 times maximum; diagnostic only"
+        },
+        "1902_1911__2006_2015": {
+          "change_energy": 0.17381621584756007,
+          "change_to_between_rms": 0.7053348063251036,
+          "continental_mean_share": 0.4211627080662828,
+          "change_effective_rank": 3.591633399277683,
+          "largest_generalized_change_ratio": 147.363293385414,
+          "generalized_ratio_regularization": "between eigenvalue floor=1e-6 times maximum; diagnostic only"
+        }
+      },
+      "feature_manifest_sha256": "bb80f9c3453cbdd2b2e9ff423ef493d66dec45e07968f3b3a362d1692bf2f288"
+    },
+    "v2_r128": {
+      "training_cells": 2791,
+      "between_trace": 0.7254104610691845,
+      "between_effective_rank": 9.23021492741705,
+      "windows": {
+        "1996_2005__2016_2025": {
+          "change_energy": 0.035462021683652874,
+          "change_to_between_rms": 0.22110055788955832,
+          "continental_mean_share": 0.22331011727726233,
+          "change_effective_rank": 6.962184808071109,
+          "largest_generalized_change_ratio": 24.898096845438836,
+          "generalized_ratio_regularization": "between eigenvalue floor=1e-6 times maximum; diagnostic only"
+        },
+        "1966_1975__2006_2015": {
+          "change_energy": 0.12992735095052674,
+          "change_to_between_rms": 0.42321240087942463,
+          "continental_mean_share": 0.2280168997416777,
+          "change_effective_rank": 5.415624477309389,
+          "largest_generalized_change_ratio": 100.12765690228372,
+          "generalized_ratio_regularization": "between eigenvalue floor=1e-6 times maximum; diagnostic only"
+        },
+        "1902_1911__1932_1941": {
+          "change_energy": 0.04078325313443419,
+          "change_to_between_rms": 0.23710953857410574,
+          "continental_mean_share": 0.14472791600462528,
+          "change_effective_rank": 9.040512896385328,
+          "largest_generalized_change_ratio": 12.136631806946017,
+          "generalized_ratio_regularization": "between eigenvalue floor=1e-6 times maximum; diagnostic only"
+        },
+        "1902_1911__2006_2015": {
+          "change_energy": 0.31743730440592716,
+          "change_to_between_rms": 0.6615110059303113,
+          "continental_mean_share": 0.3472493447142945,
+          "change_effective_rank": 4.6032821393717915,
+          "largest_generalized_change_ratio": 289.93638036363984,
+          "generalized_ratio_regularization": "between eigenvalue floor=1e-6 times maximum; diagnostic only"
+        }
+      },
+      "feature_manifest_sha256": "bb80f9c3453cbdd2b2e9ff423ef493d66dec45e07968f3b3a362d1692bf2f288"
+    }
+  }
+}

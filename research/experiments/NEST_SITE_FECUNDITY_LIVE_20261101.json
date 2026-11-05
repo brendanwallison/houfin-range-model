@@ -1,0 +1,1204 @@
+[
+  {
+    "step": "step29_yb_native",
+    "n_attempts": 1089,
+    "annual_offspring_at_nest_sites_mean": 3.070861233512222,
+    "annual_offspring_q10_50_90": [
+      0.9981711654172414,
+      3.2378933470781797,
+      4.404275379815372
+    ],
+    "scope": "Realized annual output at identical training nest cell-years, not fledglings per attempt or an independently fitted nest likelihood"
+  },
+  {
+    "step": "step29_yb_native_s42",
+    "n_attempts": 1089,
+    "annual_offspring_at_nest_sites_mean": 3.0816948062732425,
+    "annual_offspring_q10_50_90": [
+      1.0209344064026937,
+      3.2435696479537612,
+      4.424807700467815
+    ],
+    "scope": "Realized annual output at identical training nest cell-years, not fledglings per attempt or an independently fitted nest likelihood"
+  },
+  {
+    "step": "step31_nest",
+    "n_attempts": 1089,
+    "annual_offspring_at_nest_sites_mean": 3.5939379389731547,
+    "annual_offspring_q10_50_90": [
+      1.7926031455895046,
+      3.7859008635484326,
+      4.743447124134438
+    ],
+    "scope": "Realized annual output at identical training nest cell-years, not fledglings per attempt or an independently fitted nest likelihood",
+    "mean_parity_error": 3.077538224260934e-13
+  },
+  {
+    "step": "step31_nest_bloose",
+    "n_attempts": 1089,
+    "annual_offspring_at_nest_sites_mean": 3.5509007646178743,
+    "annual_offspring_q10_50_90": [
+      1.5766815083207903,
+      3.805441395560413,
+      4.755663447215952
+    ],
+    "scope": "Realized annual output at identical training nest cell-years, not fledglings per attempt or an independently fitted nest likelihood",
+    "mean_parity_error": 3.9879211044535623e-13
+  },
+  {
+    "step": "step31_nestonly",
+    "n_attempts": 1089,
+    "annual_offspring_at_nest_sites_mean": 3.596511004447229,
+    "annual_offspring_q10_50_90": [
+      1.810581045811184,
+      3.791626779902754,
+      4.758270911890437
+    ],
+    "scope": "Realized annual output at identical training nest cell-years, not fledglings per attempt or an independently fitted nest likelihood",
+    "mean_parity_error": 5.200284647344233e-13
+  },
+  {
+    "step": "step32_cbc_yb",
+    "n_attempts": 1089,
+    "annual_offspring_at_nest_sites_mean": 3.549039808968564,
+    "annual_offspring_q10_50_90": [
+      2.050218344444,
+      3.7038401166744164,
+      5.065455534541926
+    ],
+    "scope": "Realized annual output at identical training nest cell-years, not fledglings per attempt or an independently fitted nest likelihood"
+  },
+  {
+    "step": "step32_cbchi_yb",
+    "n_attempts": 1089,
+    "annual_offspring_at_nest_sites_mean": 4.114752046271219,
+    "annual_offspring_q10_50_90": [
+      2.7564114003857445,
+      4.360942387778212,
+      5.462732383100673
+    ],
+    "scope": "Realized annual output at identical training nest cell-years, not fledglings per attempt or an independently fitted nest likelihood"
+  },
+  {
+    "step": "step32_cbclo_yb",
+    "n_attempts": 1089,
+    "annual_offspring_at_nest_sites_mean": 3.613902558597675,
+    "annual_offspring_q10_50_90": [
+      2.1456594792570667,
+      3.77078950192017,
+      5.161871681724031
+    ],
+    "scope": "Realized annual output at identical training nest cell-years, not fledglings per attempt or an independently fitted nest likelihood"
+  },
+  {
+    "step": "step33_nestcbc_abs_s41",
+    "n_attempts": 1089,
+    "annual_offspring_at_nest_sites_mean": 3.5691993959372317,
+    "annual_offspring_q10_50_90": [
+      1.7587466929822981,
+      3.7215512421338026,
+      4.831868292483543
+    ],
+    "scope": "Realized annual output at identical training nest cell-years, not fledglings per attempt or an independently fitted nest likelihood",
+    "mean_parity_error": 1.4210854715202004e-13
+  },
+  {
+    "step": "step33_nestcbc_natdep_s41",
+    "n_attempts": 1089,
+    "annual_offspring_at_nest_sites_mean": 3.756484567958055,
+    "annual_offspring_q10_50_90": [
+      1.8731858422481669,
+      4.034195929900941,
+      5.0155330398064395
+    ],
+    "scope": "Realized annual output at identical training nest cell-years, not fledglings per attempt or an independently fitted nest likelihood",
+    "mean_parity_error": 2.753353101070388e-13
+  },
+  {
+    "step": "step33_nestcbc_natdep_s42",
+    "n_attempts": 1089,
+    "annual_offspring_at_nest_sites_mean": 3.7655729128035316,
+    "annual_offspring_q10_50_90": [
+      1.896302200345758,
+      4.0480155459687985,
+      5.020786294889279
+    ],
+    "scope": "Realized annual output at identical training nest cell-years, not fledglings per attempt or an independently fitted nest likelihood",
+    "mean_parity_error": 3.1663560662309465e-13
+  },
+  {
+    "step": "step33_nestcbc_s41",
+    "n_attempts": 1089,
+    "annual_offspring_at_nest_sites_mean": 3.5813579069093184,
+    "annual_offspring_q10_50_90": [
+      1.7860821560885927,
+      3.77182508485121,
+      4.726479651335809
+    ],
+    "scope": "Realized annual output at identical training nest cell-years, not fledglings per attempt or an independently fitted nest likelihood",
+    "mean_parity_error": 5.551115123125783e-13
+  },
+  {
+    "step": "step33_nestcbc_s42",
+    "n_attempts": 1089,
+    "annual_offspring_at_nest_sites_mean": 3.5884291820002057,
+    "annual_offspring_q10_50_90": [
+      1.7879004002318066,
+      3.785003201051431,
+      4.7324768497589
+    ],
+    "scope": "Realized annual output at identical training nest cell-years, not fledglings per attempt or an independently fitted nest likelihood",
+    "mean_parity_error": 2.8954616482224083e-13
+  },
+  {
+    "step": "step34_abs_broodhi",
+    "n_attempts": 1089,
+    "annual_offspring_at_nest_sites_mean": 3.507608227278707,
+    "annual_offspring_q10_50_90": [
+      1.8979000889134892,
+      3.63447726058058,
+      4.560612774528363
+    ],
+    "scope": "Realized annual output at identical training nest cell-years, not fledglings per attempt or an independently fitted nest likelihood",
+    "mean_parity_error": 6.004086117172847e-13
+  },
+  {
+    "step": "step34_abs_broodlo",
+    "n_attempts": 1089,
+    "annual_offspring_at_nest_sites_mean": 2.8390472495265073,
+    "annual_offspring_q10_50_90": [
+      1.458233992234996,
+      2.8997972823584757,
+      3.8303464914845433
+    ],
+    "scope": "Realized annual output at identical training nest cell-years, not fledglings per attempt or an independently fitted nest likelihood",
+    "mean_parity_error": 5.000444502911705e-13
+  },
+  {
+    "step": "step34_abs_comp_natdep_s41",
+    "n_attempts": 1089,
+    "annual_offspring_at_nest_sites_mean": 4.154676470681375,
+    "annual_offspring_q10_50_90": [
+      2.1778095576681986,
+      4.414165187776243,
+      5.8189806005348395
+    ],
+    "scope": "Realized annual output at identical training nest cell-years, not fledglings per attempt or an independently fitted nest likelihood",
+    "mean_parity_error": 3.009237303785994e-11
+  },
+  {
+    "step": "step34_abs_comp_natdep_s42",
+    "n_attempts": 1089,
+    "annual_offspring_at_nest_sites_mean": 3.804738940776857,
+    "annual_offspring_q10_50_90": [
+      1.8399370286666752,
+      4.1107318040505385,
+      5.09163352454311
+    ],
+    "scope": "Realized annual output at identical training nest cell-years, not fledglings per attempt or an independently fitted nest likelihood",
+    "mean_parity_error": 1.0580203380072817e-10
+  },
+  {
+    "step": "step34_abs_comp_s42",
+    "n_attempts": 1089,
+    "annual_offspring_at_nest_sites_mean": 3.6414640827873637,
+    "annual_offspring_q10_50_90": [
+      1.8051275894291368,
+      3.8069053729217117,
+      4.930043438317009
+    ],
+    "scope": "Realized annual output at identical training nest cell-years, not fledglings per attempt or an independently fitted nest likelihood",
+    "mean_parity_error": 3.7468428359943573e-10
+  },
+  {
+    "step": "step34_abs_foundhi",
+    "n_attempts": 1089,
+    "annual_offspring_at_nest_sites_mean": 3.470731742044923,
+    "annual_offspring_q10_50_90": [
+      1.7668694035045678,
+      3.5791372281318927,
+      4.680310330345022
+    ],
+    "scope": "Realized annual output at identical training nest cell-years, not fledglings per attempt or an independently fitted nest likelihood",
+    "mean_parity_error": 1.7830181775480014e-12
+  },
+  {
+    "step": "step34_abs_foundlo",
+    "n_attempts": 1089,
+    "annual_offspring_at_nest_sites_mean": 3.572790198747826,
+    "annual_offspring_q10_50_90": [
+      1.7446663415691388,
+      3.731127888688701,
+      4.85000358502478
+    ],
+    "scope": "Realized annual output at identical training nest cell-years, not fledglings per attempt or an independently fitted nest likelihood",
+    "mean_parity_error": 3.3661962106634746e-13
+  },
+  {
+    "step": "step34_abs_hazard_natdep_s41",
+    "n_attempts": 1089,
+    "annual_offspring_at_nest_sites_mean": 4.167461461923538,
+    "annual_offspring_q10_50_90": [
+      2.203890324336746,
+      4.4375556833542475,
+      5.818760959194818
+    ],
+    "scope": "Realized annual output at identical training nest cell-years, not fledglings per attempt or an independently fitted nest likelihood",
+    "mean_parity_error": 4.1300296516055823e-13
+  },
+  {
+    "step": "step34_abs_hazard_natdep_s42",
+    "n_attempts": 1089,
+    "annual_offspring_at_nest_sites_mean": 3.8150788720618536,
+    "annual_offspring_q10_50_90": [
+      1.8724817882511546,
+      4.115903637261738,
+      5.087579605523371
+    ],
+    "scope": "Realized annual output at identical training nest cell-years, not fledglings per attempt or an independently fitted nest likelihood",
+    "mean_parity_error": 2.9309887850104133e-13
+  },
+  {
+    "step": "step34_abs_hazard_s41",
+    "n_attempts": 1089,
+    "annual_offspring_at_nest_sites_mean": 3.597048524604989,
+    "annual_offspring_q10_50_90": [
+      1.7662538890282584,
+      3.756320630518756,
+      4.8719501596742445
+    ],
+    "scope": "Realized annual output at identical training nest cell-years, not fledglings per attempt or an independently fitted nest likelihood",
+    "mean_parity_error": 6.88338275267597e-14
+  },
+  {
+    "step": "step34_abs_hazard_s42",
+    "n_attempts": 1089,
+    "annual_offspring_at_nest_sites_mean": 3.59233002048498,
+    "annual_offspring_q10_50_90": [
+      1.7786116675284818,
+      3.756816474578842,
+      4.877467124543695
+    ],
+    "scope": "Realized annual output at identical training nest cell-years, not fledglings per attempt or an independently fitted nest likelihood",
+    "mean_parity_error": 1.8962609260597674e-13
+  },
+  {
+    "step": "step34_abs_natdep_s41",
+    "n_attempts": 1089,
+    "annual_offspring_at_nest_sites_mean": 3.7980501167684033,
+    "annual_offspring_q10_50_90": [
+      1.89674594736967,
+      4.0323990630174364,
+      5.127211020212527
+    ],
+    "scope": "Realized annual output at identical training nest cell-years, not fledglings per attempt or an independently fitted nest likelihood",
+    "mean_parity_error": 2.824407374646398e-13
+  },
+  {
+    "step": "step34_abs_natdep_s42",
+    "n_attempts": 1089,
+    "annual_offspring_at_nest_sites_mean": 4.002573019133678,
+    "annual_offspring_q10_50_90": [
+      2.157074364016679,
+      4.245144883899057,
+      5.57985407698586
+    ],
+    "scope": "Realized annual output at identical training nest cell-years, not fledglings per attempt or an independently fitted nest likelihood",
+    "mean_parity_error": 1.9095836023552692e-13
+  },
+  {
+    "step": "step34_abs_s42",
+    "n_attempts": 1089,
+    "annual_offspring_at_nest_sites_mean": 3.583584284634362,
+    "annual_offspring_q10_50_90": [
+      1.7644664037554576,
+      3.7341606050848535,
+      4.85926534464409
+    ],
+    "scope": "Realized annual output at identical training nest cell-years, not fledglings per attempt or an independently fitted nest likelihood",
+    "mean_parity_error": 2.042810365310288e-14
+  },
+  {
+    "step": "step34_abs_v2_hazard_s41",
+    "n_attempts": 1089,
+    "annual_offspring_at_nest_sites_mean": 3.291725275752671,
+    "annual_offspring_q10_50_90": [
+      1.7635492158379302,
+      3.4144861109523963,
+      4.3818605980620156
+    ],
+    "scope": "Realized annual output at identical training nest cell-years, not fledglings per attempt or an independently fitted nest likelihood",
+    "mean_parity_error": 8.79740724712974e-13
+  },
+  {
+    "step": "step34_abs_v2_hazard_s42",
+    "n_attempts": 1089,
+    "annual_offspring_at_nest_sites_mean": 3.526386143918405,
+    "annual_offspring_q10_50_90": [
+      1.720973010705865,
+      3.722508121766602,
+      4.766124544854423
+    ],
+    "scope": "Realized annual output at identical training nest cell-years, not fledglings per attempt or an independently fitted nest likelihood",
+    "mean_parity_error": 4.3076653355456074e-13
+  },
+  {
+    "step": "step34_abs_v2_natdep_s41",
+    "n_attempts": 1089,
+    "annual_offspring_at_nest_sites_mean": 3.4066388371590057,
+    "annual_offspring_q10_50_90": [
+      1.776768058421843,
+      3.6435281383688354,
+      4.5538275990254204
+    ],
+    "scope": "Realized annual output at identical training nest cell-years, not fledglings per attempt or an independently fitted nest likelihood",
+    "mean_parity_error": 1.3944401189291966e-13
+  },
+  {
+    "step": "step34_abs_v2_natdep_s42",
+    "n_attempts": 1089,
+    "annual_offspring_at_nest_sites_mean": 3.579080854064433,
+    "annual_offspring_q10_50_90": [
+      1.788399864100518,
+      3.8630836938836737,
+      4.772693774393912
+    ],
+    "scope": "Realized annual output at identical training nest cell-years, not fledglings per attempt or an independently fitted nest likelihood",
+    "mean_parity_error": 4.75175454539567e-14
+  },
+  {
+    "step": "step34_abs_v2_s41",
+    "n_attempts": 1089,
+    "annual_offspring_at_nest_sites_mean": 3.26455661801952,
+    "annual_offspring_q10_50_90": [
+      1.7291520720690476,
+      3.3841386309879673,
+      4.351924753828323
+    ],
+    "scope": "Realized annual output at identical training nest cell-years, not fledglings per attempt or an independently fitted nest likelihood",
+    "mean_parity_error": 7.620570841027074e-13
+  },
+  {
+    "step": "step34_abs_v2_s42",
+    "n_attempts": 1089,
+    "annual_offspring_at_nest_sites_mean": 3.524250613622167,
+    "annual_offspring_q10_50_90": [
+      1.7164102665479137,
+      3.7152586475291884,
+      4.7729997886184945
+    ],
+    "scope": "Realized annual output at identical training nest cell-years, not fledglings per attempt or an independently fitted nest likelihood",
+    "mean_parity_error": 6.301625887772389e-13
+  },
+  {
+    "step": "step34_broodhi",
+    "n_attempts": 1089,
+    "annual_offspring_at_nest_sites_mean": 4.076016428480369,
+    "annual_offspring_q10_50_90": [
+      2.163274176483807,
+      4.286797102969879,
+      5.287389326318644
+    ],
+    "scope": "Realized annual output at identical training nest cell-years, not fledglings per attempt or an independently fitted nest likelihood",
+    "mean_parity_error": 3.1796787425264483e-13
+  },
+  {
+    "step": "step34_broodlo",
+    "n_attempts": 1089,
+    "annual_offspring_at_nest_sites_mean": 3.0876926577001047,
+    "annual_offspring_q10_50_90": [
+      1.4671312147894002,
+      3.2305851790758706,
+      4.135915413543387
+    ],
+    "scope": "Realized annual output at identical training nest cell-years, not fledglings per attempt or an independently fitted nest likelihood",
+    "mean_parity_error": 3.659295089164516e-13
+  },
+  {
+    "step": "step34_foundhi",
+    "n_attempts": 1089,
+    "annual_offspring_at_nest_sites_mean": 3.5119042045049564,
+    "annual_offspring_q10_50_90": [
+      1.6708767538919982,
+      3.685994166792213,
+      4.681814130111328
+    ],
+    "scope": "Realized annual output at identical training nest cell-years, not fledglings per attempt or an independently fitted nest likelihood",
+    "mean_parity_error": 2.4868995751603507e-12
+  },
+  {
+    "step": "step34_foundlo",
+    "n_attempts": 1089,
+    "annual_offspring_at_nest_sites_mean": 3.584878740889576,
+    "annual_offspring_q10_50_90": [
+      1.7898324748436039,
+      3.774497112284834,
+      4.728285632986425
+    ],
+    "scope": "Realized annual output at identical training nest cell-years, not fledglings per attempt or an independently fitted nest likelihood",
+    "mean_parity_error": 1.3145040611561853e-13
+  },
+  {
+    "step": "step34_rel_comp_natdep_s41",
+    "n_attempts": 1089,
+    "annual_offspring_at_nest_sites_mean": 3.7672596769987448,
+    "annual_offspring_q10_50_90": [
+      1.8577854205688964,
+      4.046002905490361,
+      5.060699055720412
+    ],
+    "scope": "Realized annual output at identical training nest cell-years, not fledglings per attempt or an independently fitted nest likelihood",
+    "mean_parity_error": 1.518341008477364e-12
+  },
+  {
+    "step": "step34_rel_comp_natdep_s42",
+    "n_attempts": 1089,
+    "annual_offspring_at_nest_sites_mean": 3.9733758055242236,
+    "annual_offspring_q10_50_90": [
+      2.2014968351135975,
+      4.1552258091018,
+      5.354188731762163
+    ],
+    "scope": "Realized annual output at identical training nest cell-years, not fledglings per attempt or an independently fitted nest likelihood",
+    "mean_parity_error": 1.1181766623735712e-10
+  },
+  {
+    "step": "step34_rel_comp_s41",
+    "n_attempts": 1089,
+    "annual_offspring_at_nest_sites_mean": 3.6039675393879835,
+    "annual_offspring_q10_50_90": [
+      1.8048154503227092,
+      3.7944743087361856,
+      4.756158651587394
+    ],
+    "scope": "Realized annual output at identical training nest cell-years, not fledglings per attempt or an independently fitted nest likelihood",
+    "mean_parity_error": 3.603961573617198e-11
+  },
+  {
+    "step": "step34_rel_hazard_natdep_s41",
+    "n_attempts": 1089,
+    "annual_offspring_at_nest_sites_mean": 3.7547352288341105,
+    "annual_offspring_q10_50_90": [
+      1.8521375986107471,
+      4.040133773026392,
+      5.044838923097761
+    ],
+    "scope": "Realized annual output at identical training nest cell-years, not fledglings per attempt or an independently fitted nest likelihood",
+    "mean_parity_error": 3.419486915845482e-13
+  },
+  {
+    "step": "step34_rel_hazard_natdep_s42",
+    "n_attempts": 1089,
+    "annual_offspring_at_nest_sites_mean": 3.7608298207109208,
+    "annual_offspring_q10_50_90": [
+      1.8756765383313452,
+      4.027261683392631,
+      5.033153585476367
+    ],
+    "scope": "Realized annual output at identical training nest cell-years, not fledglings per attempt or an independently fitted nest likelihood",
+    "mean_parity_error": 3.3306690738754696e-13
+  },
+  {
+    "step": "step34_rel_hazard_s41",
+    "n_attempts": 1089,
+    "annual_offspring_at_nest_sites_mean": 3.6010095732681364,
+    "annual_offspring_q10_50_90": [
+      1.8036579393835732,
+      3.7866056341801695,
+      4.753498385022432
+    ],
+    "scope": "Realized annual output at identical training nest cell-years, not fledglings per attempt or an independently fitted nest likelihood",
+    "mean_parity_error": 2.9043434324194095e-13
+  },
+  {
+    "step": "step34_rel_hazard_s42",
+    "n_attempts": 1089,
+    "annual_offspring_at_nest_sites_mean": 3.5911886165495726,
+    "annual_offspring_q10_50_90": [
+      1.777861460497378,
+      3.7844965483965662,
+      4.739558290220582
+    ],
+    "scope": "Realized annual output at identical training nest cell-years, not fledglings per attempt or an independently fitted nest likelihood",
+    "mean_parity_error": 4.991562718714704e-13
+  },
+  {
+    "step": "step34_rel_v2_hazard_s41",
+    "n_attempts": 1089,
+    "annual_offspring_at_nest_sites_mean": 3.5872696536273243,
+    "annual_offspring_q10_50_90": [
+      1.9099058156553967,
+      3.780623931072562,
+      4.76030169092091
+    ],
+    "scope": "Realized annual output at identical training nest cell-years, not fledglings per attempt or an independently fitted nest likelihood",
+    "mean_parity_error": 3.9612757518625585e-13
+  },
+  {
+    "step": "step34_rel_v2_hazard_s42",
+    "n_attempts": 1089,
+    "annual_offspring_at_nest_sites_mean": 3.4487432694983147,
+    "annual_offspring_q10_50_90": [
+      1.7611158507702938,
+      3.6305883045330223,
+      4.5665288882736315
+    ],
+    "scope": "Realized annual output at identical training nest cell-years, not fledglings per attempt or an independently fitted nest likelihood",
+    "mean_parity_error": 2.495781359357352e-13
+  },
+  {
+    "step": "step34_rel_v2_natdep_s41",
+    "n_attempts": 1089,
+    "annual_offspring_at_nest_sites_mean": 3.7838292590859983,
+    "annual_offspring_q10_50_90": [
+      1.8970752867932648,
+      4.058190696426794,
+      5.049356632868797
+    ],
+    "scope": "Realized annual output at identical training nest cell-years, not fledglings per attempt or an independently fitted nest likelihood",
+    "mean_parity_error": 2.19824158875781e-13
+  },
+  {
+    "step": "step34_rel_v2_natdep_s42",
+    "n_attempts": 1089,
+    "annual_offspring_at_nest_sites_mean": 3.8014660887921945,
+    "annual_offspring_q10_50_90": [
+      1.9041597526652456,
+      4.05237440094658,
+      5.111031731232225
+    ],
+    "scope": "Realized annual output at identical training nest cell-years, not fledglings per attempt or an independently fitted nest likelihood",
+    "mean_parity_error": 3.1885605267234496e-13
+  },
+  {
+    "step": "step34_rel_v2_s41",
+    "n_attempts": 1089,
+    "annual_offspring_at_nest_sites_mean": 3.5824761928582327,
+    "annual_offspring_q10_50_90": [
+      1.9101820998241814,
+      3.7758500070404595,
+      4.757726083090372
+    ],
+    "scope": "Realized annual output at identical training nest cell-years, not fledglings per attempt or an independently fitted nest likelihood",
+    "mean_parity_error": 5.737632591262809e-13
+  },
+  {
+    "step": "step35_est1951_ctl_hi_s41",
+    "n_attempts": 1089,
+    "annual_offspring_at_nest_sites_mean": 2.9405340225476952,
+    "annual_offspring_q10_50_90": [
+      1.4685221571137543,
+      3.0412835970703167,
+      3.899451800786835
+    ],
+    "scope": "Realized annual output at identical training nest cell-years, not fledglings per attempt or an independently fitted nest likelihood",
+    "mean_parity_error": 2.313704783318826e-13
+  },
+  {
+    "step": "step35_est1951_ctl_lo_s41",
+    "n_attempts": 1089,
+    "annual_offspring_at_nest_sites_mean": 2.9882712630637984,
+    "annual_offspring_q10_50_90": [
+      1.558139489349446,
+      3.0731757318767965,
+      3.9169732884511594
+    ],
+    "scope": "Realized annual output at identical training nest cell-years, not fledglings per attempt or an independently fitted nest likelihood",
+    "mean_parity_error": 5.702105454474804e-13
+  },
+  {
+    "step": "step35_est1951_ctl_mid_s41",
+    "n_attempts": 1089,
+    "annual_offspring_at_nest_sites_mean": 2.998182544468393,
+    "annual_offspring_q10_50_90": [
+      1.5085024197957242,
+      3.105594613524843,
+      3.963760319569918
+    ],
+    "scope": "Realized annual output at identical training nest cell-years, not fledglings per attempt or an independently fitted nest likelihood",
+    "mean_parity_error": 5.329070518200751e-12
+  },
+  {
+    "step": "step35_est1951_ctl_mid_s42",
+    "n_attempts": 1089,
+    "annual_offspring_at_nest_sites_mean": 3.0468936930828114,
+    "annual_offspring_q10_50_90": [
+      1.575068078450813,
+      3.1447404439824904,
+      4.0202562289455805
+    ],
+    "scope": "Realized annual output at identical training nest cell-years, not fledglings per attempt or an independently fitted nest likelihood",
+    "mean_parity_error": 5.243805389909539e-12
+  },
+  {
+    "step": "step35_est1951_nat_hi_s41",
+    "n_attempts": 1089,
+    "annual_offspring_at_nest_sites_mean": 3.43591175913266,
+    "annual_offspring_q10_50_90": [
+      1.7206481722358495,
+      3.704330110121159,
+      4.616274033049168
+    ],
+    "scope": "Realized annual output at identical training nest cell-years, not fledglings per attempt or an independently fitted nest likelihood",
+    "mean_parity_error": 7.327471962526033e-14
+  },
+  {
+    "step": "step35_est1951_nat_lo_s41",
+    "n_attempts": 1089,
+    "annual_offspring_at_nest_sites_mean": 3.3423847824064445,
+    "annual_offspring_q10_50_90": [
+      1.7559034706516057,
+      3.5856060141761072,
+      4.408177504615043
+    ],
+    "scope": "Realized annual output at identical training nest cell-years, not fledglings per attempt or an independently fitted nest likelihood",
+    "mean_parity_error": 1.7008616737257398e-13
+  },
+  {
+    "step": "step35_est1951_nat_mid_s41",
+    "n_attempts": 1089,
+    "annual_offspring_at_nest_sites_mean": 3.5273980698885263,
+    "annual_offspring_q10_50_90": [
+      1.764502052710525,
+      3.7707462446044775,
+      4.762229175333879
+    ],
+    "scope": "Realized annual output at identical training nest cell-years, not fledglings per attempt or an independently fitted nest likelihood",
+    "mean_parity_error": 2.786215702599293e-12
+  },
+  {
+    "step": "step35_est1951_nat_mid_s42",
+    "n_attempts": 1089,
+    "annual_offspring_at_nest_sites_mean": 3.663828090212536,
+    "annual_offspring_q10_50_90": [
+      1.8400257585488407,
+      3.9148590602571187,
+      4.902857778150612
+    ],
+    "scope": "Realized annual output at identical training nest cell-years, not fledglings per attempt or an independently fitted nest likelihood",
+    "mean_parity_error": 2.3225865675158275e-12
+  },
+  {
+    "step": "step36_est1951_nonest_ctl_s41",
+    "n_attempts": 1089,
+    "annual_offspring_at_nest_sites_mean": 3.1364990867886187,
+    "annual_offspring_q10_50_90": [
+      0.9775301665664264,
+      3.2812805181890012,
+      4.582493112982211
+    ],
+    "scope": "Realized annual output at identical training nest cell-years, not fledglings per attempt or an independently fitted nest likelihood"
+  },
+  {
+    "step": "step36_nonest_ctl_s41",
+    "n_attempts": 1089,
+    "annual_offspring_at_nest_sites_mean": 3.343508959659593,
+    "annual_offspring_q10_50_90": [
+      1.2186108851994866,
+      3.572751413863698,
+      4.814818032597383
+    ],
+    "scope": "Realized annual output at identical training nest cell-years, not fledglings per attempt or an independently fitted nest likelihood"
+  },
+  {
+    "step": "step36_nonest_ctl_s42",
+    "n_attempts": 1089,
+    "annual_offspring_at_nest_sites_mean": 3.3761594032648365,
+    "annual_offspring_q10_50_90": [
+      1.2647999795356715,
+      3.5986409007299986,
+      4.843397166715922
+    ],
+    "scope": "Realized annual output at identical training nest cell-years, not fledglings per attempt or an independently fitted nest likelihood"
+  },
+  {
+    "step": "step36_nonest_nat_s41",
+    "n_attempts": 1089,
+    "annual_offspring_at_nest_sites_mean": 4.239597489505629,
+    "annual_offspring_q10_50_90": [
+      1.8195837849544405,
+      4.342071894515096,
+      6.580177629477364
+    ],
+    "scope": "Realized annual output at identical training nest cell-years, not fledglings per attempt or an independently fitted nest likelihood"
+  },
+  {
+    "step": "step36_nonest_nat_s42",
+    "n_attempts": 1089,
+    "annual_offspring_at_nest_sites_mean": 3.65651044883769,
+    "annual_offspring_q10_50_90": [
+      1.5283156870745693,
+      3.8779523807647607,
+      5.576341219526618
+    ],
+    "scope": "Realized annual output at identical training nest cell-years, not fledglings per attempt or an independently fitted nest likelihood"
+  },
+  {
+    "step": "step38_cbc1951_broods_free_s41",
+    "n_attempts": 1089,
+    "annual_offspring_at_nest_sites_mean": 6.421832761106661,
+    "annual_offspring_q10_50_90": [
+      4.098332738325104,
+      6.6784150593660945,
+      8.234924896336409
+    ],
+    "scope": "Realized annual output at identical training nest cell-years, not fledglings per attempt or an independently fitted nest likelihood",
+    "mean_parity_error": 0.0
+  },
+  {
+    "step": "step38_cbc1951_circle2_free_s41",
+    "n_attempts": 1089,
+    "annual_offspring_at_nest_sites_mean": 5.578489314874953,
+    "annual_offspring_q10_50_90": [
+      3.610397324239034,
+      5.711375176516662,
+      7.466286353685342
+    ],
+    "scope": "Realized annual output at identical training nest cell-years, not fledglings per attempt or an independently fitted nest likelihood",
+    "mean_parity_error": 0.0
+  },
+  {
+    "step": "step38_cbc1951_free_s41",
+    "n_attempts": 1089,
+    "annual_offspring_at_nest_sites_mean": 5.6191802614074655,
+    "annual_offspring_q10_50_90": [
+      3.597606546462144,
+      5.795170330095228,
+      7.377761003828162
+    ],
+    "scope": "Realized annual output at identical training nest cell-years, not fledglings per attempt or an independently fitted nest likelihood",
+    "mean_parity_error": 0.0
+  },
+  {
+    "step": "step38_cbc1951_free_s42",
+    "n_attempts": 1089,
+    "annual_offspring_at_nest_sites_mean": 5.446125326705395,
+    "annual_offspring_q10_50_90": [
+      3.3981140864814328,
+      5.624458535981228,
+      7.252628814746227
+    ],
+    "scope": "Realized annual output at identical training nest cell-years, not fledglings per attempt or an independently fitted nest likelihood",
+    "mean_parity_error": 0.0
+  },
+  {
+    "step": "step38_cbc1951_lo_s41",
+    "n_attempts": 1089,
+    "annual_offspring_at_nest_sites_mean": 5.465021526094071,
+    "annual_offspring_q10_50_90": [
+      3.115385561777826,
+      5.750606812745916,
+      7.261455891182927
+    ],
+    "scope": "Realized annual output at identical training nest cell-years, not fledglings per attempt or an independently fitted nest likelihood",
+    "mean_parity_error": 0.0
+  },
+  {
+    "step": "step38_cbc1951_mid_s41",
+    "n_attempts": 1089,
+    "annual_offspring_at_nest_sites_mean": 5.296913791727868,
+    "annual_offspring_q10_50_90": [
+      2.9029094431583466,
+      5.56310183497024,
+      7.223494689502415
+    ],
+    "scope": "Realized annual output at identical training nest cell-years, not fledglings per attempt or an independently fitted nest likelihood",
+    "mean_parity_error": 0.0
+  },
+  {
+    "step": "step38_cbc1951_mid_s42",
+    "n_attempts": 1089,
+    "annual_offspring_at_nest_sites_mean": 5.389572604660105,
+    "annual_offspring_q10_50_90": [
+      3.2353140737690196,
+      5.6244178821782205,
+      7.1887928306033
+    ],
+    "scope": "Realized annual output at identical training nest cell-years, not fledglings per attempt or an independently fitted nest likelihood",
+    "mean_parity_error": 0.0
+  },
+  {
+    "step": "step38_cbc1951_noncbc_free_s41",
+    "n_attempts": 1089,
+    "annual_offspring_at_nest_sites_mean": 3.5741814984815834,
+    "annual_offspring_q10_50_90": [
+      1.7702618545098288,
+      3.7243226979475548,
+      4.86233462361193
+    ],
+    "scope": "Realized annual output at identical training nest cell-years, not fledglings per attempt or an independently fitted nest likelihood",
+    "mean_parity_error": 0.0
+  },
+  {
+    "step": "step38_cbc1951_noncbc_free_s42",
+    "n_attempts": 1089,
+    "annual_offspring_at_nest_sites_mean": 3.5689548729296203,
+    "annual_offspring_q10_50_90": [
+      1.746407415406361,
+      3.7279874971501017,
+      4.860803326735613
+    ],
+    "scope": "Realized annual output at identical training nest cell-years, not fledglings per attempt or an independently fitted nest likelihood",
+    "mean_parity_error": 0.0
+  },
+  {
+    "step": "step39_adult_priority_fixed_s41",
+    "n_attempts": 1089,
+    "annual_offspring_at_nest_sites_mean": 1.2872217944260766,
+    "annual_offspring_q10_50_90": [
+      0.4178436974197008,
+      1.3891087662032218,
+      1.959904839837968
+    ],
+    "scope": "Realized annual output at identical training nest cell-years, not fledglings per attempt or an independently fitted nest likelihood",
+    "mean_parity_error": 0.0
+  },
+  {
+    "step": "step39_adult_priority_fixed_s42",
+    "n_attempts": 1089,
+    "annual_offspring_at_nest_sites_mean": 1.4573871427742877,
+    "annual_offspring_q10_50_90": [
+      0.4830898746746052,
+      1.5771586378516296,
+      2.235631427153458
+    ],
+    "scope": "Realized annual output at identical training nest cell-years, not fledglings per attempt or an independently fitted nest likelihood",
+    "mean_parity_error": 0.0
+  },
+  {
+    "step": "step39_kfloor1p25_s41",
+    "n_attempts": 1089,
+    "annual_offspring_at_nest_sites_mean": 3.5970185826055117,
+    "annual_offspring_q10_50_90": [
+      1.7471114590016994,
+      3.732978248689285,
+      4.906792757626952
+    ],
+    "scope": "Realized annual output at identical training nest cell-years, not fledglings per attempt or an independently fitted nest likelihood",
+    "mean_parity_error": 0.0
+  },
+  {
+    "step": "step39_kfloor1p25_s42",
+    "n_attempts": 1089,
+    "annual_offspring_at_nest_sites_mean": 3.5954734785521327,
+    "annual_offspring_q10_50_90": [
+      1.7447501981348135,
+      3.7222631330988154,
+      4.905714833608292
+    ],
+    "scope": "Realized annual output at identical training nest cell-years, not fledglings per attempt or an independently fitted nest likelihood",
+    "mean_parity_error": 0.0
+  },
+  {
+    "step": "step39_kfloor4p0_s41",
+    "n_attempts": 1089,
+    "annual_offspring_at_nest_sites_mean": 3.0437828461038725,
+    "annual_offspring_q10_50_90": [
+      1.6163941159633555,
+      3.1183522560406143,
+      3.981370835959947
+    ],
+    "scope": "Realized annual output at identical training nest cell-years, not fledglings per attempt or an independently fitted nest likelihood",
+    "mean_parity_error": 0.0
+  },
+  {
+    "step": "step39_kfloor4p0_s42",
+    "n_attempts": 1089,
+    "annual_offspring_at_nest_sites_mean": 3.6559869725073386,
+    "annual_offspring_q10_50_90": [
+      1.7484750698625715,
+      3.8049533055195774,
+      4.971407986182598
+    ],
+    "scope": "Realized annual output at identical training nest cell-years, not fledglings per attempt or an independently fitted nest likelihood",
+    "mean_parity_error": 0.0
+  },
+  {
+    "step": "step39_shared_fixed_s41",
+    "n_attempts": 1089,
+    "annual_offspring_at_nest_sites_mean": 1.6185587198465359,
+    "annual_offspring_q10_50_90": [
+      0.5067542325711658,
+      1.7829930730070451,
+      2.5092964089011454
+    ],
+    "scope": "Realized annual output at identical training nest cell-years, not fledglings per attempt or an independently fitted nest likelihood",
+    "mean_parity_error": 0.0
+  },
+  {
+    "step": "step39_shared_fixed_s42",
+    "n_attempts": 1089,
+    "annual_offspring_at_nest_sites_mean": 1.685332475380733,
+    "annual_offspring_q10_50_90": [
+      0.5361156162521963,
+      1.8094415515196351,
+      2.6222748052140092
+    ],
+    "scope": "Realized annual output at identical training nest cell-years, not fledglings per attempt or an independently fitted nest likelihood",
+    "mean_parity_error": 0.0
+  },
+  {
+    "step": "step39_veit_fixed_s41",
+    "n_attempts": 1089,
+    "annual_offspring_at_nest_sites_mean": 3.571666462668292,
+    "annual_offspring_q10_50_90": [
+      1.7513194955597895,
+      3.7270830748612456,
+      4.859903889477468
+    ],
+    "scope": "Realized annual output at identical training nest cell-years, not fledglings per attempt or an independently fitted nest likelihood",
+    "mean_parity_error": 0.0
+  },
+  {
+    "step": "step39_veit_fixed_s42",
+    "n_attempts": 1089,
+    "annual_offspring_at_nest_sites_mean": 3.576562685450059,
+    "annual_offspring_q10_50_90": [
+      1.7517943153837805,
+      3.734164271874191,
+      4.866717829596003
+    ],
+    "scope": "Realized annual output at identical training nest cell-years, not fledglings per attempt or an independently fitted nest likelihood",
+    "mean_parity_error": 0.0
+  },
+  {
+    "step": "step40_rangev2_historical_s41",
+    "n_attempts": 1089,
+    "annual_offspring_at_nest_sites_mean": 3.520595370839594,
+    "annual_offspring_q10_50_90": [
+      1.7866952295590373,
+      3.6739360801674006,
+      4.744818221762683
+    ],
+    "scope": "Realized annual output at identical training nest cell-years, not fledglings per attempt or an independently fitted nest likelihood",
+    "mean_parity_error": 0.0
+  },
+  {
+    "step": "step40_rangev2_historical_s42",
+    "n_attempts": 1089,
+    "annual_offspring_at_nest_sites_mean": 3.486768053218603,
+    "annual_offspring_q10_50_90": [
+      1.7701973428800524,
+      3.6448084697533,
+      4.722528609773845
+    ],
+    "scope": "Realized annual output at identical training nest cell-years, not fledglings per attempt or an independently fitted nest likelihood",
+    "mean_parity_error": 0.0
+  },
+  {
+    "step": "step40_rangev2_invasion_s41",
+    "n_attempts": 1089,
+    "annual_offspring_at_nest_sites_mean": 3.505827884721472,
+    "annual_offspring_q10_50_90": [
+      1.8923850932181652,
+      3.654670207062214,
+      4.672288530243226
+    ],
+    "scope": "Realized annual output at identical training nest cell-years, not fledglings per attempt or an independently fitted nest likelihood",
+    "mean_parity_error": 0.0
+  },
+  {
+    "step": "step40_rangev2_invasion_s42",
+    "n_attempts": 1089,
+    "annual_offspring_at_nest_sites_mean": 3.565908181705004,
+    "annual_offspring_q10_50_90": [
+      1.9064573396592832,
+      3.7024735964679296,
+      4.752777705061355
+    ],
+    "scope": "Realized annual output at identical training nest cell-years, not fledglings per attempt or an independently fitted nest likelihood",
+    "mean_parity_error": 0.0
+  },
+  {
+    "step": "step41_rational_adult20_s41",
+    "n_attempts": 1089,
+    "annual_offspring_at_nest_sites_mean": 2.806483273702947,
+    "annual_offspring_q10_50_90": [
+      1.3371299730775321,
+      2.967382849347981,
+      3.908546069009924
+    ],
+    "scope": "Realized annual output at identical training nest cell-years, not fledglings per attempt or an independently fitted nest likelihood",
+    "mean_parity_error": 0.0
+  },
+  {
+    "step": "step41_rational_adult20_s42",
+    "n_attempts": 1089,
+    "annual_offspring_at_nest_sites_mean": 2.8203406110476927,
+    "annual_offspring_q10_50_90": [
+      1.3568039766888147,
+      2.982036205907894,
+      3.926752262584045
+    ],
+    "scope": "Realized annual output at identical training nest cell-years, not fledglings per attempt or an independently fitted nest likelihood",
+    "mean_parity_error": 0.0
+  },
+  {
+    "step": "step41_rational_shared_s41",
+    "n_attempts": 1089,
+    "annual_offspring_at_nest_sites_mean": 2.985891687010802,
+    "annual_offspring_q10_50_90": [
+      1.4735448387291172,
+      3.1127357143647307,
+      4.108994312894808
+    ],
+    "scope": "Realized annual output at identical training nest cell-years, not fledglings per attempt or an independently fitted nest likelihood",
+    "mean_parity_error": 0.0
+  },
+  {
+    "step": "step41_rational_shared_s42",
+    "n_attempts": 1089,
+    "annual_offspring_at_nest_sites_mean": 2.914272413751449,
+    "annual_offspring_q10_50_90": [
+      1.4163995357922867,
+      3.054085686457477,
+      4.026526236975111
+    ],
+    "scope": "Realized annual output at identical training nest cell-years, not fledglings per attempt or an independently fitted nest likelihood",
+    "mean_parity_error": 0.0
+  },
+  {
+    "step": "step41_veit_adult20_s41",
+    "n_attempts": 1089,
+    "annual_offspring_at_nest_sites_mean": 3.552669068178985,
+    "annual_offspring_q10_50_90": [
+      1.6403289013659812,
+      3.7003362154508554,
+      4.839291974461541
+    ],
+    "scope": "Realized annual output at identical training nest cell-years, not fledglings per attempt or an independently fitted nest likelihood",
+    "mean_parity_error": 0.0
+  },
+  {
+    "step": "step41_veit_adult20_s42",
+    "n_attempts": 1089,
+    "annual_offspring_at_nest_sites_mean": 3.552581845646248,
+    "annual_offspring_q10_50_90": [
+      1.6519724104472933,
+      3.696008432820596,
+      4.839039522889201
+    ],
+    "scope": "Realized annual output at identical training nest cell-years, not fledglings per attempt or an independently fitted nest likelihood",
+    "mean_parity_error": 0.0
+  },
+  {
+    "step": "step42_power2_rational_adult20_s41",
+    "n_attempts": 1089,
+    "annual_offspring_at_nest_sites_mean": 3.0797446123234296,
+    "annual_offspring_q10_50_90": [
+      1.1299034300034798,
+      3.2815110596426993,
+      4.60466673572163
+    ],
+    "scope": "Realized annual output at identical training nest cell-years, not fledglings per attempt or an independently fitted nest likelihood",
+    "mean_parity_error": 0.0
+  },
+  {
+    "step": "step42_power2_rational_adult20_s42",
+    "n_attempts": 1089,
+    "annual_offspring_at_nest_sites_mean": 3.100627732278208,
+    "annual_offspring_q10_50_90": [
+      1.1399988053260506,
+      3.300238210836424,
+      4.6319289852720615
+    ],
+    "scope": "Realized annual output at identical training nest cell-years, not fledglings per attempt or an independently fitted nest likelihood",
+    "mean_parity_error": 0.0
+  },
+  {
+    "step": "step42_power2_veit_s41",
+    "n_attempts": 1089,
+    "annual_offspring_at_nest_sites_mean": 3.268840906696442,
+    "annual_offspring_q10_50_90": [
+      1.317827236779516,
+      3.5447620074989903,
+      4.474050398070471
+    ],
+    "scope": "Realized annual output at identical training nest cell-years, not fledglings per attempt or an independently fitted nest likelihood",
+    "mean_parity_error": 0.0
+  },
+  {
+    "step": "step42_power2_veit_s42",
+    "n_attempts": 1089,
+    "annual_offspring_at_nest_sites_mean": 3.2878216572254186,
+    "annual_offspring_q10_50_90": [
+      1.3933564045796982,
+      3.541673524417945,
+      4.480646894892272
+    ],
+    "scope": "Realized annual output at identical training nest cell-years, not fledglings per attempt or an independently fitted nest likelihood",
+    "mean_parity_error": 0.0
+  },
+  {
+    "step": "step43_factor_p1_rational_adult20_s41",
+    "n_attempts": 1089,
+    "annual_offspring_at_nest_sites_mean": 2.8440245228570555,
+    "annual_offspring_q10_50_90": [
+      1.3564037885758087,
+      2.9988904103497998,
+      3.9501625413547004
+    ],
+    "scope": "Realized annual output at identical training nest cell-years, not fledglings per attempt or an independently fitted nest likelihood",
+    "mean_parity_error": 0.0
+  },
+  {
+    "step": "step43_factor_p1_rational_adult20_s42",
+    "n_attempts": 1089,
+    "annual_offspring_at_nest_sites_mean": 2.819963197735415,
+    "annual_offspring_q10_50_90": [
+      1.352466032266835,
+      2.9779130273443988,
+      3.9164750361674465
+    ],
+    "scope": "Realized annual output at identical training nest cell-years, not fledglings per attempt or an independently fitted nest likelihood",
+    "mean_parity_error": 0.0
+  },
+  {
+    "step": "step43_factor_p2_rational_adult20_s41",
+    "n_attempts": 1089,
+    "annual_offspring_at_nest_sites_mean": 3.0670890806325257,
+    "annual_offspring_q10_50_90": [
+      1.133588521116407,
+      3.2647848219988496,
+      4.595747856465516
+    ],
+    "scope": "Realized annual output at identical training nest cell-years, not fledglings per attempt or an independently fitted nest likelihood",
+    "mean_parity_error": 0.0
+  },
+  {
+    "step": "step43_factor_p2_rational_adult20_s42",
+    "n_attempts": 1089,
+    "annual_offspring_at_nest_sites_mean": 3.127193643688657,
+    "annual_offspring_q10_50_90": [
+      1.1695039700560679,
+      3.322377518773024,
+      4.681060688270111
+    ],
+    "scope": "Realized annual output at identical training nest cell-years, not fledglings per attempt or an independently fitted nest likelihood",
+    "mean_parity_error": 0.0
+  },
+  {
+    "step": "step43_factor_p2_veit_s41",
+    "n_attempts": 1089,
+    "annual_offspring_at_nest_sites_mean": 3.3272748519705653,
+    "annual_offspring_q10_50_90": [
+      1.2824623070659182,
+      3.623945368956125,
+      4.592177534724922
+    ],
+    "scope": "Realized annual output at identical training nest cell-years, not fledglings per attempt or an independently fitted nest likelihood",
+    "mean_parity_error": 0.0
+  },
+  {
+    "step": "step43_factor_p2_veit_s42",
+    "n_attempts": 1089,
+    "annual_offspring_at_nest_sites_mean": 3.3207358799272004,
+    "annual_offspring_q10_50_90": [
+      1.3196129375018344,
+      3.6200369512025663,
+      4.559855987377803
+    ],
+    "scope": "Realized annual output at identical training nest cell-years, not fledglings per attempt or an independently fitted nest likelihood",
+    "mean_parity_error": 0.0
+  }
+]

@@ -1,0 +1,59 @@
+{
+  "runs": [
+    {
+      "step": "step34_abs_comp_natdep_s41",
+      "cells": 380,
+      "C_mean": 0.8412003711104418,
+      "adult_component_mean": 0.34771692890234535,
+      "offspring_component_mean": 0.4934834422080965,
+      "retained_component_mean": 0.39621690401815246,
+      "exported_component_mean": 0.44498346709228936,
+      "sink_cells": 246,
+      "below_08_cells": 137,
+      "near_one_cells": 106
+    },
+    {
+      "step": "step34_broodhi",
+      "cells": 380,
+      "C_mean": 0.6660659113846874,
+      "adult_component_mean": 0.15589146201015047,
+      "offspring_component_mean": 0.5101744493745369,
+      "retained_component_mean": 0.47333728027576494,
+      "exported_component_mean": 0.19272863110892252,
+      "sink_cells": 344,
+      "below_08_cells": 215,
+      "near_one_cells": 61
+    },
+    {
+      "step": "step35_est1951_ctl_mid_s41",
+      "cells": 380,
+      "C_mean": 0.6512910935673473,
+      "adult_component_mean": 0.1986584015654464,
+      "offspring_component_mean": 0.4526326920019009,
+      "retained_component_mean": 0.48165565016363643,
+      "exported_component_mean": 0.16963544340371078,
+      "sink_cells": 333,
+      "below_08_cells": 223,
+      "near_one_cells": 58
+    },
+    {
+      "step": "step35_est1951_nat_mid_s41",
+      "cells": 380,
+      "C_mean": 0.7650587414452154,
+      "adult_component_mean": 0.2006935148587528,
+      "offspring_component_mean": 0.5643652265864626,
+      "retained_component_mean": 0.4872071191355891,
+      "exported_component_mean": 0.2778516223096263,
+      "sink_cells": 290,
+      "below_08_cells": 173,
+      "near_one_cells": 100
+    }
+  ],
+  "extreme_contrast": {
+    "left": "step34_abs_comp_natdep_s41",
+    "right": "step34_broodhi",
+    "mean_abs_change": 0.1787775501849876,
+    "exact_crossings": 102,
+    "crossings_beyond_05": 27
+  }
+}

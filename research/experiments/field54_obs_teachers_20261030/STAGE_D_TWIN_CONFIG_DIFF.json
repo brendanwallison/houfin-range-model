@@ -1,0 +1,322 @@
+{
+ "changed": [
+  {
+   "key": "augment.tile_cells",
+   "from_27km": 6,
+   "to_54km": 3,
+   "reason": "covariate-masking tile in cells: 162 km kept"
+  },
+  {
+   "key": "desk.aux_metric_heads.0.coord_target.basis_dir",
+   "from_27km": "/work/07980/bwa386/ls6/houfin/research/z_repair_20261026/teachers/backcast40/winter_full/spacetime",
+   "to_54km": "/work/07980/bwa386/ls6/houfin/research/field54/runs/field54_eval/teachers/backcast40/winter_full/spacetime",
+   "reason": "54 km winter teacher (Stage C)"
+  },
+  {
+   "key": "desk.aux_metric_heads.0.coord_target.path",
+   "from_27km": "/work/07980/bwa386/ls6/houfin/research/z_repair_20261026/aux/backcast40/full/winter_coords.npz",
+   "to_54km": "/work/07980/bwa386/ls6/houfin/research/field54/runs/field54_eval/aux/backcast40/full/winter_coords.npz",
+   "reason": "54 km winter auxiliaries (Stage C)"
+  },
+  {
+   "key": "desk.aux_metric_heads.0.path",
+   "from_27km": "/work/07980/bwa386/ls6/houfin/research/z_repair_20261026/aux/backcast40/full/cbc_ruzicka.npz",
+   "to_54km": "/work/07980/bwa386/ls6/houfin/research/field54/runs/field54_eval/aux/backcast40/full/cbc_ruzicka.npz",
+   "reason": "54 km winter auxiliaries (Stage C)"
+  },
+  {
+   "key": "desk.aux_presence.path",
+   "from_27km": "/work/07980/bwa386/ls6/houfin/research/z_repair_20261026/aux/backcast40/full/cbc_presence_early_w.npz",
+   "to_54km": "/work/07980/bwa386/ls6/houfin/research/field54/runs/field54_eval/aux/backcast40/full/cbc_presence_early_w.npz",
+   "reason": "54 km winter auxiliaries (Stage C)"
+  },
+  {
+   "key": "desk.aux_ruzicka.path",
+   "from_27km": "/work/07980/bwa386/ls6/houfin/research/z_repair_20261026/aux/backcast40/full/cbc_ruzicka.npz",
+   "to_54km": "/work/07980/bwa386/ls6/houfin/research/field54/runs/field54_eval/aux/backcast40/full/cbc_ruzicka.npz",
+   "reason": "54 km winter auxiliaries (Stage C)"
+  },
+  {
+   "key": "desk.spatial_conv.kernel",
+   "from_27km": 5,
+   "to_54km": 3,
+   "reason": "conv kernel in cells: 135 km -> 162 km (odd kernel; nearest)"
+  },
+  {
+   "key": "desk.z_dir",
+   "from_27km": "/work/07980/bwa386/ls6/houfin/research/z_repair_20261026/teachers/backcast40/summer/spacetime",
+   "to_54km": "/work/07980/bwa386/ls6/houfin/research/field54/runs/field54_eval/teachers/backcast40/summer/spacetime",
+   "reason": "54 km summer teacher (Stage C)"
+  },
+  {
+   "key": "latent_cube.data_dir",
+   "from_27km": "/scratch/07980/bwa386/houfin/data",
+   "to_54km": "/scratch/07980/bwa386/houfin/data54",
+   "reason": "54 km data root"
+  },
+  {
+   "key": "latent_cube.hist_dir",
+   "from_27km": "/work/07980/bwa386/ls6/houfin/processed/encoder/states/yearly_states",
+   "to_54km": "/work/07980/bwa386/ls6/houfin/processed/field54/states/yearly_states",
+   "reason": "54 km covariate states"
+  },
+  {
+   "key": "latent_cube.mask_ref_path",
+   "from_27km": "/work/07980/bwa386/ls6/houfin/research/z_repair_20261026/teachers/backcast40/summer/spacetime/valid_mask.npy",
+   "to_54km": "/work/07980/bwa386/ls6/houfin/research/field54/runs/field54_eval/teachers/backcast40/summer/spacetime/valid_mask.npy",
+   "reason": "54 km summer teacher"
+  },
+  {
+   "key": "latent_cube.model_path",
+   "from_27km": "/work/07980/bwa386/ls6/houfin/research/z_repair_20261026/models/backcast40/interp_s1/env_model_semisup.pth",
+   "to_54km": "/work/07980/bwa386/ls6/houfin/research/field54/runs/field54_eval/models/backcast40/interp_s1/env_model_semisup.pth",
+   "reason": "54 km build output"
+  },
+  {
+   "key": "latent_cube.output_dir",
+   "from_27km": "/work/07980/bwa386/ls6/houfin/research/z_repair_20261026/cubes/backcast40/desk_interp_s1",
+   "to_54km": "/work/07980/bwa386/ls6/houfin/research/field54/runs/field54_eval/cubes/backcast40/desk_interp_s1",
+   "reason": "54 km build output"
+  },
+  {
+   "key": "latent_cube.water_mask_path",
+   "from_27km": "/scratch/07980/bwa386/houfin/data/land_mask/ocean_mask_27km.tif",
+   "to_54km": "/scratch/07980/bwa386/houfin/data54/land_mask/ocean_mask_54km.tif",
+   "reason": "54 km land mask (Stage A)"
+  },
+  {
+   "key": "latent_cube.z_dir",
+   "from_27km": "/work/07980/bwa386/ls6/houfin/research/z_repair_20261026/teachers/backcast40/summer/spacetime",
+   "to_54km": "/work/07980/bwa386/ls6/houfin/research/field54/runs/field54_eval/teachers/backcast40/summer/spacetime",
+   "reason": "54 km summer teacher"
+  },
+  {
+   "key": "latent_cube.z_ref_path",
+   "from_27km": "/work/07980/bwa386/ls6/houfin/research/z_repair_20261026/teachers/backcast40/summer/spacetime/Z.npy",
+   "to_54km": "/work/07980/bwa386/ls6/houfin/research/field54/runs/field54_eval/teachers/backcast40/summer/spacetime/Z.npy",
+   "reason": "54 km summer teacher"
+  },
+  {
+   "key": "paths.data_dir",
+   "from_27km": "/scratch/07980/bwa386/houfin/data",
+   "to_54km": "/scratch/07980/bwa386/houfin/data54",
+   "reason": "54 km data root (Stage A)"
+  },
+  {
+   "key": "paths.desk_output_dir",
+   "from_27km": "/work/07980/bwa386/ls6/houfin/research/z_repair_20261026/models/backcast40/interp_s1",
+   "to_54km": "/work/07980/bwa386/ls6/houfin/research/field54/runs/field54_eval/models/backcast40/interp_s1",
+   "reason": "54 km build output"
+  },
+  {
+   "key": "paths.hist_dir",
+   "from_27km": "/work/07980/bwa386/ls6/houfin/processed/encoder/states",
+   "to_54km": "/work/07980/bwa386/ls6/houfin/processed/field54/states",
+   "reason": "54 km covariate states (Stage A build_states)"
+  },
+  {
+   "key": "states.streams.0.grid_dir",
+   "from_27km": "/scratch/07980/bwa386/houfin/data/climate_grid_monthly",
+   "to_54km": "/scratch/07980/bwa386/houfin/data54/climate_grid_monthly",
+   "reason": "54 km covariate grids (= config/overlays/field54_states.json)"
+  },
+  {
+   "key": "states.streams.1.grid_dir",
+   "from_27km": "/scratch/07980/bwa386/houfin/data/luh3_grid",
+   "to_54km": "/scratch/07980/bwa386/houfin/data54/luh3_grid",
+   "reason": "54 km covariate grids (= config/overlays/field54_states.json)"
+  },
+  {
+   "key": "states.streams.2.grid_dir",
+   "from_27km": "/scratch/07980/bwa386/houfin/data/hyde35_grid",
+   "to_54km": "/scratch/07980/bwa386/houfin/data54/hyde35_grid",
+   "reason": "54 km covariate grids (= config/overlays/field54_states.json)"
+  },
+  {
+   "key": "states.streams.3.grid_dir",
+   "from_27km": "/scratch/07980/bwa386/houfin/data/bui_grid",
+   "to_54km": "/scratch/07980/bwa386/houfin/data54/bui_grid",
+   "reason": "54 km covariate grids (= config/overlays/field54_states.json)"
+  },
+  {
+   "key": "states.streams.4.grid_dir",
+   "from_27km": "/scratch/07980/bwa386/houfin/data/soilgrids_grid",
+   "to_54km": "/scratch/07980/bwa386/houfin/data54/soilgrids_grid",
+   "reason": "54 km covariate grids (= config/overlays/field54_states.json)"
+  },
+  {
+   "key": "states.streams.5.grid_dir",
+   "from_27km": "/scratch/07980/bwa386/houfin/data/elevation",
+   "to_54km": "/scratch/07980/bwa386/houfin/data54/elevation",
+   "reason": "54 km covariate grids (= config/overlays/field54_states.json)"
+  },
+  {
+   "key": "target.points_dir",
+   "from_27km": "/work/07980/bwa386/ls6/houfin/research/z_repair_20261026/data/backcast40_interp/summer_train_points",
+   "to_54km": "/work/07980/bwa386/ls6/houfin/research/field54/runs/field54_eval/data/backcast40_interp/summer_train_points",
+   "reason": "54 km twin training rows + pre-1996 training-place rows (identical construction to 27 km interp)"
+  },
+  {
+   "key": "trend.community_trend_list",
+   "from_27km": "/work/07980/bwa386/ls6/houfin/research/z_repair_20261026/data/backcast40/summer_species.csv",
+   "to_54km": "/work/07980/bwa386/ls6/houfin/research/field54/runs/field54_eval/data/backcast40/summer_species.csv",
+   "reason": "54 km package species list"
+  },
+  {
+   "key": "trend.smooth_sigma_cells",
+   "from_27km": 1.0,
+   "to_54km": 0.5,
+   "reason": "smoothing sigma in cells halved (27 km km-extent kept); not read by DESK training or the cube (trend_community only)"
+  },
+  {
+   "key": "z_repair.arm",
+   "from_27km": "desk_interp",
+   "to_54km": "field54_desk_interp",
+   "reason": "provenance block: 54 km package, task, arm label"
+  },
+  {
+   "key": "z_repair.data_package",
+   "from_27km": "/work/07980/bwa386/ls6/houfin/research/z_repair_20261026/data/DONE.json",
+   "to_54km": "/work/07980/bwa386/ls6/houfin/research/field54/runs/field54_eval/data/DONE.json",
+   "reason": "provenance block: 54 km package, task, arm label"
+  },
+  {
+   "key": "z_repair.field54.grid",
+   "from_27km": "<absent>",
+   "to_54km": "54 km native",
+   "reason": "provenance block: 54 km package, task, arm label"
+  },
+  {
+   "key": "z_repair.field54.plan",
+   "from_27km": "<absent>",
+   "to_54km": "FIELD54_NATIVE_PLAN_2026-10-29.md Stage D",
+   "reason": "provenance block: 54 km package, task, arm label"
+  },
+  {
+   "key": "z_repair.field54.source_config_root",
+   "from_27km": "<absent>",
+   "to_54km": "/work/07980/bwa386/ls6/houfin/research/z_repair_20261026",
+   "reason": "provenance block: 54 km package, task, arm label"
+  }
+ ],
+ "cell_counted_unchanged": [
+  {
+   "key": "desk.trend.block_cells",
+   "value": 6,
+   "reason": "validation blocks; inert: desk.trend.holdout_frac = 0 (no internal validation split), so no block is drawn"
+  },
+  {
+   "key": "bbs.smooth_sigma_s",
+   "value": 2.0,
+   "reason": "old BBS smoother; not read by DESK training or the cube"
+  },
+  {
+   "key": "latent_cube.radius_km",
+   "value": 100,
+   "reason": "cube gap-fill radius is set in KM (100) and converted with the data config resolution: round(100/27) = 4 px at 27 km, round(100/54) = 2 px at 54 km -- already km-scaled, so no change"
+  }
+ ],
+ "unchanged_27km_paths_not_read_by_desk_or_cube": [
+  {
+   "key": "paths.data_dir",
+   "value": "/scratch/07980/bwa386/houfin/data54"
+  },
+  {
+   "key": "paths.ebird_folder",
+   "value": "/scratch/07980/bwa386/houfin/data/ebird_weekly_2023_grid"
+  },
+  {
+   "key": "paths.esk_output_dir",
+   "value": "/work/07980/bwa386/ls6/houfin/processed/encoder/esk_balanced"
+  },
+  {
+   "key": "states.streams.0.grid_dir",
+   "value": "/scratch/07980/bwa386/houfin/data54/climate_grid_monthly"
+  },
+  {
+   "key": "states.streams.1.grid_dir",
+   "value": "/scratch/07980/bwa386/houfin/data54/luh3_grid"
+  },
+  {
+   "key": "states.streams.2.grid_dir",
+   "value": "/scratch/07980/bwa386/houfin/data54/hyde35_grid"
+  },
+  {
+   "key": "states.streams.3.grid_dir",
+   "value": "/scratch/07980/bwa386/houfin/data54/bui_grid"
+  },
+  {
+   "key": "states.streams.4.grid_dir",
+   "value": "/scratch/07980/bwa386/houfin/data54/soilgrids_grid"
+  },
+  {
+   "key": "states.streams.5.grid_dir",
+   "value": "/scratch/07980/bwa386/houfin/data54/elevation"
+  },
+  {
+   "key": "trend_reference.points_dir",
+   "value": "/work/07980/bwa386/ls6/houfin/processed/encoder/trend_reference_points"
+  },
+  {
+   "key": "trend.points_dir",
+   "value": "/work/07980/bwa386/ls6/houfin/processed/encoder/esk_spacetime"
+  },
+  {
+   "key": "bbs.species_list",
+   "value": "/scratch/07980/bwa386/houfin/data/bbs_2026_release/SpeciesList.csv"
+  },
+  {
+   "key": "bbs.community_matrix",
+   "value": "/scratch/07980/bwa386/houfin/data/bbs/community_matrix.npz"
+  },
+  {
+   "key": "bbs.ebird_stack_cache",
+   "value": "/work/07980/bwa386/ls6/houfin/processed/encoder/ebird_stack.npz"
+  },
+  {
+   "key": "latent_cube.data_dir",
+   "value": "/scratch/07980/bwa386/houfin/data54"
+  },
+  {
+   "key": "latent_cube.water_mask_path",
+   "value": "/scratch/07980/bwa386/houfin/data54/land_mask/ocean_mask_54km.tif"
+  },
+  {
+   "key": "single_year_analysis.esk_feature_path",
+   "value": "/work/07980/bwa386/ls6/houfin/processed/encoder/esk/sigma_0.5/Z.npy"
+  },
+  {
+   "key": "single_year_analysis.desk_feature_path",
+   "value": "/work/07980/bwa386/ls6/houfin/processed/encoder/cube/Z_latent_2023.npy"
+  },
+  {
+   "key": "single_year_analysis.mask_path",
+   "value": "/work/07980/bwa386/ls6/houfin/processed/encoder/esk/sigma_0.5/valid_mask.npy"
+  },
+  {
+   "key": "single_year_analysis.response_path",
+   "value": "/scratch/07980/bwa386/houfin/data/ebird_weekly_2023_grid/houfin_abundance_seasonal_year_round_mean_2023_grid.tif"
+  },
+  {
+   "key": "single_year_analysis.output_dir",
+   "value": "/work/07980/bwa386/ls6/houfin/processed/encoder/analysis/single_year"
+  },
+  {
+   "key": "single_year_analysis.comparison_output_dir",
+   "value": "/work/07980/bwa386/ls6/houfin/processed/encoder/analysis/esk_desk_comparison"
+  }
+ ],
+ "source_config": "/work/07980/bwa386/ls6/houfin/research/z_repair_20261026/coord_code/config/z_coord_interp.json",
+ "source_config_sha256": "c9acacbbd91f8d9a20d0d6d514bb2b8bcf62060b43f76155857319a9a521ad80",
+ "source_code_identical_to_27km_frozen": true,
+ "added_files": [
+  "research/exp/field54_desk.py",
+  "research/exp/z_ema_cube.py",
+  "config/field54_data.json"
+ ],
+ "renamed_27km_configs": [
+  "config/z_coord_interp_27km_source.json",
+  "config/z_coord_interp_coord_27km_source.json",
+  "config/z_repair_control_27km_source.json"
+ ]
+}

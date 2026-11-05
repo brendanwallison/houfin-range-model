@@ -1,0 +1,256 @@
+{
+  "reference_concentration": 0.43724203275856455,
+  "reference_fledgling_weight": 0.26590135085998406,
+  "old_pseudozero_rows": 68932,
+  "old_effective_weight": 60610.0,
+  "derived_effective_weight": 60610.00000000001,
+  "old_cells": 1595,
+  "derived_cells": 2107,
+  "grid_cell_area_km2": 2916,
+  "extent": {
+    "east": {
+      "old_constrained_cells": 515,
+      "new_constrained_cells": 677,
+      "intersection": 515,
+      "old_only": 0,
+      "new_only": 162,
+      "old_effective_weight": 19570.0,
+      "new_effective_weight": 18746.84084001089,
+      "new_supported_by_CBC": 358,
+      "full_old_cells": 677,
+      "geometric_new_only": 0,
+      "geometric_old_only": 0
+    },
+    "great_plains": {
+      "old_constrained_cells": 95,
+      "new_constrained_cells": 154,
+      "intersection": 95,
+      "old_only": 0,
+      "new_only": 59,
+      "old_effective_weight": 3610.0,
+      "new_effective_weight": 4169.498656355447,
+      "new_supported_by_CBC": 109,
+      "full_old_cells": 129,
+      "geometric_new_only": 25,
+      "geometric_old_only": 0
+    },
+    "west": {
+      "old_constrained_cells": 133,
+      "new_constrained_cells": 260,
+      "intersection": 133,
+      "old_only": 0,
+      "new_only": 127,
+      "old_effective_weight": 5054.0,
+      "new_effective_weight": 3912.324143272524,
+      "new_supported_by_CBC": 113,
+      "full_old_cells": 177,
+      "geometric_new_only": 83,
+      "geometric_old_only": 0
+    },
+    "other": {
+      "old_constrained_cells": 852,
+      "new_constrained_cells": 1016,
+      "intersection": 852,
+      "old_only": 0,
+      "new_only": 164,
+      "old_effective_weight": 32376.0,
+      "new_effective_weight": 33781.336360361136,
+      "new_supported_by_CBC": 730,
+      "full_old_cells": 978,
+      "geometric_new_only": 38,
+      "geometric_old_only": 0
+    }
+  },
+  "matched_density_strength": [
+    {
+      "total_population_route_scale": 0.0,
+      "young_fraction": 0.0,
+      "original_total_zero_loss": 0.060583824344608225,
+      "derived_total_zero_loss": 0.0,
+      "original_gradient_wrt_total": 0.0,
+      "derived_gradient_wrt_total": 60610.0
+    },
+    {
+      "total_population_route_scale": 0.0,
+      "young_fraction": 0.5,
+      "original_total_zero_loss": 0.060583824344608225,
+      "derived_total_zero_loss": 0.0,
+      "original_gradient_wrt_total": 0.0,
+      "derived_gradient_wrt_total": 60610.0
+    },
+    {
+      "total_population_route_scale": 0.0,
+      "young_fraction": 0.8,
+      "original_total_zero_loss": 0.060583824344608225,
+      "derived_total_zero_loss": 0.0,
+      "original_gradient_wrt_total": 0.0,
+      "derived_gradient_wrt_total": 60610.0
+    },
+    {
+      "total_population_route_scale": 0.0001,
+      "young_fraction": 0.0,
+      "original_total_zero_loss": 5.813267652054095,
+      "derived_total_zero_loss": 6.060307011268519,
+      "original_gradient_wrt_total": 55788.541671111445,
+      "derived_gradient_wrt_total": 60596.141281774886
+    },
+    {
+      "total_population_route_scale": 0.0001,
+      "young_fraction": 0.5,
+      "original_total_zero_loss": 6.551085313960083,
+      "derived_total_zero_loss": 6.060307011268519,
+      "original_gradient_wrt_total": 62544.19364161883,
+      "derived_gradient_wrt_total": 60596.141281774886
+    },
+    {
+      "total_population_route_scale": 0.0001,
+      "young_fraction": 0.8,
+      "original_total_zero_loss": 6.990078549638895,
+      "derived_total_zero_loss": 6.060307011268519,
+      "original_gradient_wrt_total": 66530.13580195603,
+      "derived_gradient_wrt_total": 60596.141281774886
+    },
+    {
+      "total_population_route_scale": 0.001,
+      "young_fraction": 0.0,
+      "original_total_zero_loss": 43.68134965782595,
+      "derived_total_zero_loss": 60.540796056753265,
+      "original_gradient_wrt_total": 32511.941463168936,
+      "derived_gradient_wrt_total": 60471.697428659485
+    },
+    {
+      "total_population_route_scale": 0.001,
+      "young_fraction": 0.5,
+      "original_total_zero_loss": 49.26559873673718,
+      "derived_total_zero_loss": 60.540796056753265,
+      "original_gradient_wrt_total": 47471.94413800228,
+      "derived_gradient_wrt_total": 60471.697428659485
+    },
+    {
+      "total_population_route_scale": 0.001,
+      "young_fraction": 0.8,
+      "original_total_zero_loss": 52.603511681767024,
+      "derived_total_zero_loss": 60.540796056753265,
+      "original_gradient_wrt_total": 50677.28000634223,
+      "derived_gradient_wrt_total": 60471.697428659485
+    },
+    {
+      "total_population_route_scale": 0.01,
+      "young_fraction": 0.0,
+      "original_total_zero_loss": 398.7073774576833,
+      "derived_total_zero_loss": 599.2729526701308,
+      "original_gradient_wrt_total": 38143.097002553644,
+      "derived_gradient_wrt_total": 59254.80537247001
+    },
+    {
+      "total_population_route_scale": 0.01,
+      "young_fraction": 0.5,
+      "original_total_zero_loss": 449.2677352808261,
+      "derived_total_zero_loss": 599.2729526701308,
+      "original_gradient_wrt_total": 42961.77030040337,
+      "derived_gradient_wrt_total": 59254.80537247001
+    },
+    {
+      "total_population_route_scale": 0.01,
+      "young_fraction": 0.8,
+      "original_total_zero_loss": 479.4677726679474,
+      "derived_total_zero_loss": 599.2729526701308,
+      "original_gradient_wrt_total": 45839.03565305053,
+      "derived_gradient_wrt_total": 59254.80537247001
+    },
+    {
+      "total_population_route_scale": 0.1,
+      "young_fraction": 0.0,
+      "original_total_zero_loss": 3577.1657271849085,
+      "derived_total_zero_loss": 5458.243362716387,
+      "original_gradient_wrt_total": 33950.076146041974,
+      "derived_gradient_wrt_total": 49328.306404882875
+    },
+    {
+      "total_population_route_scale": 0.1,
+      "young_fraction": 0.5,
+      "original_total_zero_loss": 4026.9689873452808,
+      "derived_total_zero_loss": 5458.243362716387,
+      "original_gradient_wrt_total": 38202.38798537054,
+      "derived_gradient_wrt_total": 49328.306404882875
+    },
+    {
+      "total_population_route_scale": 0.1,
+      "young_fraction": 0.8,
+      "original_total_zero_loss": 4295.442287103335,
+      "derived_total_zero_loss": 5458.243362716387,
+      "original_gradient_wrt_total": 40739.60508579545,
+      "derived_gradient_wrt_total": 49328.306404882875
+    },
+    {
+      "total_population_route_scale": 1.0,
+      "young_fraction": 0.0,
+      "original_total_zero_loss": 31536.3269518318,
+      "derived_total_zero_loss": 31536.3269518318,
+      "original_gradient_wrt_total": 29691.14857709137,
+      "derived_gradient_wrt_total": 18438.953914137586
+    },
+    {
+      "total_population_route_scale": 1.0,
+      "young_fraction": 0.5,
+      "original_total_zero_loss": 35468.20763513762,
+      "derived_total_zero_loss": 31536.3269518318,
+      "original_gradient_wrt_total": 33378.580887431526,
+      "derived_gradient_wrt_total": 18438.953914137586
+    },
+    {
+      "total_population_route_scale": 1.0,
+      "young_fraction": 0.8,
+      "original_total_zero_loss": 37813.3325421581,
+      "derived_total_zero_loss": 31536.3269518318,
+      "original_gradient_wrt_total": 35577.18897035248,
+      "derived_gradient_wrt_total": 18438.953914137586
+    },
+    {
+      "total_population_route_scale": 10.0,
+      "young_fraction": 0.0,
+      "original_total_zero_loss": 273280.2346728698,
+      "derived_total_zero_loss": 84079.12499792132,
+      "original_gradient_wrt_total": 25528.916408055964,
+      "derived_gradient_wrt_total": 2539.10367531185
+    },
+    {
+      "total_population_route_scale": 10.0,
+      "young_fraction": 0.5,
+      "original_total_zero_loss": 307071.74556533137,
+      "derived_total_zero_loss": 84079.12499792132,
+      "original_gradient_wrt_total": 28673.771816342305,
+      "derived_gradient_wrt_total": 2539.10367531185
+    },
+    {
+      "total_population_route_scale": 10.0,
+      "young_fraction": 0.8,
+      "original_total_zero_loss": 327212.5221917272,
+      "derived_total_zero_loss": 84079.12499792132,
+      "original_gradient_wrt_total": 30547.62476154844,
+      "derived_gradient_wrt_total": 2539.10367531185
+    }
+  ],
+  "interpretation": "Old extent is actual weighted sampled pseudozero support, not the unsampled continuous old hull mask. Old breeding readout uses previous total plus phi*current young; comparison assumes temporally constant population.",
+  "calibration": "Fixed to the accepted no-CBC seed41 NB2 concentration. Evaluate additional concentration scenarios in sensitivity analysis; not an estimate of CBC detection.",
+  "original_density_dispersion_power": 0.8591184377638162,
+  "full_cached_old_geometry": {
+    "cells": 1961,
+    "new_cells": 2107,
+    "intersection": 1961,
+    "old_only": 0,
+    "new_only": 146,
+    "distinction": "Full cached coarse BBS pseudozero support before 1814-site model-input subsampling and observation masks"
+  },
+  "matched_reference_trajectory": {
+    "original_pseudozero_loss": 7.462331234270601,
+    "derived_range_absence_loss": 81.83835448390829,
+    "derived_range_presence_loss": 139.79529277937553,
+    "old_pseudozero_weight_remaining": 0.0,
+    "derived_absence_by_support": {
+      "original_active_cells": 5.3891340843845,
+      "old_full_footprint_but_not_active": 1.5021799696936688,
+      "genuinely_new_geographic_cells": 74.94704042983015
+    }
+  }
+}

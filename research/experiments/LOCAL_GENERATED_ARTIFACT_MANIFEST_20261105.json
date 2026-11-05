@@ -1,0 +1,56 @@
+﻿{
+    "date":  "2026-11-05",
+    "description":  "Generated diagnostic payloads retained at their original local paths and excluded from Git; hashes describe the preservation snapshot, not a remote artifact archive.",
+    "files":  [
+                  {
+                      "path":  "research/experiments/CROSS_MODEL_PROCESS_AUDIT_20261101.json",
+                      "bytes":  59366329,
+                      "sha256":  "f78874d248051d88c33c106b8879cfefbdf74a21dc1c1932ae2a970759a7b5db"
+                  },
+                  {
+                      "path":  "research/experiments/FULL_PATHOLOGY_AUDIT_20261101.json",
+                      "bytes":  10954180,
+                      "sha256":  "2e6971f51585a6f9f993f5a39015114137cf1b6ae76e84afb6ca88d76377d5a7"
+                  },
+                  {
+                      "path":  "research/experiments/FULL_PATHOLOGY_AUDIT_20261101_AFTERNOON.json",
+                      "bytes":  15376940,
+                      "sha256":  "b44df6022c4ff05c009d77a447588a30be4e46a602d5da8f89bc8b99ed0633a6"
+                  },
+                  {
+                      "path":  "research/experiments/FULL_PATHOLOGY_AUDIT_20261101_CONTRIBUTION.json",
+                      "bytes":  36237610,
+                      "sha256":  "587358c3c0fe98785c0d246145369e0413a085edcf98261f354a698801b08438"
+                  },
+                  {
+                      "path":  "research/experiments/FULL_PATHOLOGY_AUDIT_LIVE_20261101.json",
+                      "bytes":  29384132,
+                      "sha256":  "db2b254ca773793a61528ce8dc629f0768df63725cf5dfcf3eb6f9788cbdc7ec"
+                  },
+                  {
+                      "path":  "research/experiments/FUNCTIONAL_STABILITY_20261101.json",
+                      "bytes":  3182674,
+                      "sha256":  "6c153b553fc2b47473767f2dc6741fe2cc4ee1b8ed3ffa65f39364e256f7b6ed"
+                  },
+                  {
+                      "path":  "research/experiments/MISSPECIFICATION_RESULTS_20261104.json",
+                      "bytes":  2029192,
+                      "sha256":  "aefd7b751d281e7dcc1a6c32af6a42c802cdde1b6f017534112e7e29fd2863bf"
+                  },
+                  {
+                      "path":  "research/experiments/PLAINS_SOURCE_CONNECTIVITY_20261101.json",
+                      "bytes":  17329324,
+                      "sha256":  "fcf3a92cea070e65a17a97a80ddb75cbe9236f3baeaac701a1d28f87147c0b2d"
+                  },
+                  {
+                      "path":  "research/experiments/RETROSPECTIVE_LOCAL_20261031.json",
+                      "bytes":  3397872,
+                      "sha256":  "6d033366bdac688a28cd7d5bb6ae6edd65e1cdbcf9e95da5aff464c3024b5809"
+                  },
+                  {
+                      "path":  "research/experiments/RETROSPECTIVE_TACC_20261031.json",
+                      "bytes":  2914046,
+                      "sha256":  "2bd4042a88a835deb080dbbd7d225bc01d206a21fe7cae9df11ff61226d6ad9f"
+                  }
+              ]
+}

@@ -1,0 +1,1211 @@
+{
+  "scope": "Initial paired-change observation-space diagnostic. Outer panels already opened; exploratory. Not an instantaneous population Z export.",
+  "baseline": "Control observation EMA, using its trained half-life; no lag selected on evaluation.",
+  "training_pairs": 2303,
+  "arms": {
+    "cov10": {
+      "readout_lambda": 0.01,
+      "panels": {
+        "k2_known": {
+          "corr": {
+            "point": 0.13476841983783128,
+            "valid_bootstraps": 500,
+            "ci95": [
+              0.12071399315088886,
+              0.14929890751322922
+            ]
+          },
+          "truth_on_prediction_slope": {
+            "point": 0.6448983078935113,
+            "valid_bootstraps": 500,
+            "ci95": [
+              0.579392361272064,
+              0.7107561149457345
+            ]
+          },
+          "mse_gain_over_no_change": {
+            "point": 0.00436367998079984,
+            "valid_bootstraps": 500,
+            "ci95": [
+              0.003448877570271387,
+              0.005374132401768105
+            ]
+          },
+          "truth_centered_signal": {
+            "point": 25.443757721253792,
+            "valid_bootstraps": 500,
+            "ci95": [
+              24.464281908860052,
+              26.402049346066654
+            ]
+          },
+          "historical_observed_mse": 0.10687968832539506,
+          "modern_observed_mse": 0.06091834938780763,
+          "paired_difference": {
+            "corr": {
+              "point": -0.08888537378538,
+              "valid_bootstraps": 500,
+              "ci95": [
+                -0.10478238111134253,
+                -0.07118744941203993
+              ]
+            },
+            "mse_gain_over_no_change": {
+              "point": 0.028133944208408954,
+              "valid_bootstraps": 500,
+              "ci95": [
+                0.024972130108462103,
+                0.031890025578954095
+              ]
+            },
+            "historical_mse": {
+              "point": -0.022660054656063425,
+              "valid_bootstraps": 500,
+              "ci95": [
+                -0.02606935104448837,
+                -0.019630645121526295
+              ]
+            },
+            "modern_mse": {
+              "point": 0.0004495664535663684,
+              "valid_bootstraps": 500,
+              "ci95": [
+                0.0003511308119383952,
+                0.0005461040501684284
+              ]
+            }
+          },
+          "teacher_change_corr": {
+            "point": 0.15368685078543784,
+            "valid_bootstraps": 500,
+            "ci95": [
+              0.1256179999156198,
+              0.18095071694507012
+            ]
+          }
+        },
+        "k2_spatial": {
+          "corr": {
+            "point": 0.11213704113130978,
+            "valid_bootstraps": 500,
+            "ci95": [
+              0.08195707206335173,
+              0.1411392455848225
+            ]
+          },
+          "truth_on_prediction_slope": {
+            "point": 0.5618095043887977,
+            "valid_bootstraps": 500,
+            "ci95": [
+              0.41415112282596,
+              0.7032293665022744
+            ]
+          },
+          "mse_gain_over_no_change": {
+            "point": 0.0035904138670059494,
+            "valid_bootstraps": 500,
+            "ci95": [
+              0.0020098008769858385,
+              0.005223635344198888
+            ]
+          },
+          "truth_centered_signal": {
+            "point": 28.561425176256087,
+            "valid_bootstraps": 500,
+            "ci95": [
+              25.35127832333326,
+              31.604814787707628
+            ]
+          },
+          "historical_observed_mse": 0.15386227234691072,
+          "modern_observed_mse": 0.11677934896937411,
+          "paired_difference": {
+            "corr": {
+              "point": -0.044006405489648806,
+              "valid_bootstraps": 500,
+              "ci95": [
+                -0.10436774952792591,
+                0.006012893553671955
+              ]
+            },
+            "mse_gain_over_no_change": {
+              "point": 0.028940338884647192,
+              "valid_bootstraps": 500,
+              "ci95": [
+                0.019941766429358014,
+                0.03656128901500106
+              ]
+            },
+            "historical_mse": {
+              "point": -0.028420107247700308,
+              "valid_bootstraps": 500,
+              "ci95": [
+                -0.038782928881620334,
+                -0.017277022575128587
+              ]
+            },
+            "modern_mse": {
+              "point": -0.000298227004517037,
+              "valid_bootstraps": 500,
+              "ci95": [
+                -0.0007968243280134874,
+                0.00021162971517029914
+              ]
+            }
+          },
+          "teacher_change_corr": {
+            "point": 0.1360596992334252,
+            "valid_bootstraps": 500,
+            "ci95": [
+              0.05924578410557621,
+              0.19756555939661638
+            ]
+          }
+        },
+        "k4_known": {
+          "corr": {
+            "point": 0.1317854418635461,
+            "valid_bootstraps": 500,
+            "ci95": [
+              0.11852766674346388,
+              0.14544257443660102
+            ]
+          },
+          "truth_on_prediction_slope": {
+            "point": 0.6420130332060017,
+            "valid_bootstraps": 500,
+            "ci95": [
+              0.5769342694183782,
+              0.7096941720666395
+            ]
+          },
+          "mse_gain_over_no_change": {
+            "point": 0.004904806113494071,
+            "valid_bootstraps": 500,
+            "ci95": [
+              0.003986076327342781,
+              0.00595534883653525
+            ]
+          },
+          "truth_centered_signal": {
+            "point": 25.78757582073075,
+            "valid_bootstraps": 500,
+            "ci95": [
+              24.646025261533833,
+              26.960097071950358
+            ]
+          },
+          "historical_observed_mse": 0.09252175604579428,
+          "modern_observed_mse": 0.045282841490972364,
+          "paired_difference": {
+            "corr": {
+              "point": -0.0963109460468711,
+              "valid_bootstraps": 500,
+              "ci95": [
+                -0.11675869973374838,
+                -0.07602765164663007
+              ]
+            },
+            "mse_gain_over_no_change": {
+              "point": 0.029330405798618862,
+              "valid_bootstraps": 500,
+              "ci95": [
+                0.025470350637266274,
+                0.03367137935438751
+              ]
+            },
+            "historical_mse": {
+              "point": -0.02715341940677761,
+              "valid_bootstraps": 500,
+              "ci95": [
+                -0.031269852019197304,
+                -0.02331522163023139
+              ]
+            },
+            "modern_mse": {
+              "point": 0.0003568908464237741,
+              "valid_bootstraps": 500,
+              "ci95": [
+                0.00026919645898060187,
+                0.0004379097472715852
+              ]
+            }
+          }
+        },
+        "k4_spatial": {
+          "corr": {
+            "point": 0.11734967245171238,
+            "valid_bootstraps": 500,
+            "ci95": [
+              0.07937362522418745,
+              0.147765199584994
+            ]
+          },
+          "truth_on_prediction_slope": {
+            "point": 0.5790861659280867,
+            "valid_bootstraps": 500,
+            "ci95": [
+              0.38627600650474914,
+              0.7625667140368041
+            ]
+          },
+          "mse_gain_over_no_change": {
+            "point": 0.004078517317585383,
+            "valid_bootstraps": 500,
+            "ci95": [
+              0.0021965621837967486,
+              0.0058499566513953195
+            ]
+          },
+          "truth_centered_signal": {
+            "point": 27.354019289632514,
+            "valid_bootstraps": 500,
+            "ci95": [
+              24.230397873346188,
+              30.071253220549984
+            ]
+          },
+          "historical_observed_mse": 0.13642819472448175,
+          "modern_observed_mse": 0.09782087499150667,
+          "paired_difference": {
+            "corr": {
+              "point": -0.0415505922906525,
+              "valid_bootstraps": 500,
+              "ci95": [
+                -0.10832504248296697,
+                0.01491976523339773
+              ]
+            },
+            "mse_gain_over_no_change": {
+              "point": 0.03188522980489537,
+              "valid_bootstraps": 500,
+              "ci95": [
+                0.020751008156211292,
+                0.040879813371492664
+              ]
+            },
+            "historical_mse": {
+              "point": -0.03343178324597132,
+              "valid_bootstraps": 500,
+              "ci95": [
+                -0.04469538100612241,
+                -0.020517077737829174
+              ]
+            },
+            "modern_mse": {
+              "point": -0.00010108516567615362,
+              "valid_bootstraps": 500,
+              "ci95": [
+                -0.0005499896502587175,
+                0.00029851371583941284
+              ]
+            }
+          }
+        }
+      }
+    },
+    "cov25": {
+      "readout_lambda": 0.01,
+      "panels": {
+        "k2_known": {
+          "corr": {
+            "point": 0.202867513056735,
+            "valid_bootstraps": 500,
+            "ci95": [
+              0.18769545410749494,
+              0.2185836357026381
+            ]
+          },
+          "truth_on_prediction_slope": {
+            "point": 0.8602337812336223,
+            "valid_bootstraps": 500,
+            "ci95": [
+              0.8033568626838415,
+              0.9185384279597576
+            ]
+          },
+          "mse_gain_over_no_change": {
+            "point": 0.006890322294651805,
+            "valid_bootstraps": 500,
+            "ci95": [
+              0.005701628813134483,
+              0.008112591866646654
+            ]
+          },
+          "truth_centered_signal": {
+            "point": 25.443757721253792,
+            "valid_bootstraps": 500,
+            "ci95": [
+              24.464281908860052,
+              26.402049346066654
+            ]
+          },
+          "historical_observed_mse": 0.10429128138280151,
+          "modern_observed_mse": 0.060910965416568326,
+          "paired_difference": {
+            "corr": {
+              "point": -0.020786280566476273,
+              "valid_bootstraps": 500,
+              "ci95": [
+                -0.036337633553983714,
+                -0.0036623201611650303
+              ]
+            },
+            "mse_gain_over_no_change": {
+              "point": 0.03066058652226092,
+              "valid_bootstraps": 500,
+              "ci95": [
+                0.027505511297445183,
+                0.03435174154520342
+              ]
+            },
+            "historical_mse": {
+              "point": -0.02524846159865694,
+              "valid_bootstraps": 500,
+              "ci95": [
+                -0.028594936604205343,
+                -0.022218302719864497
+              ]
+            },
+            "modern_mse": {
+              "point": 0.00044218248232706555,
+              "valid_bootstraps": 500,
+              "ci95": [
+                0.0003420875945637967,
+                0.000541652291614209
+              ]
+            }
+          },
+          "teacher_change_corr": {
+            "point": 0.29077910790469286,
+            "valid_bootstraps": 500,
+            "ci95": [
+              0.27014433891178946,
+              0.3110697568797218
+            ]
+          }
+        },
+        "k2_spatial": {
+          "corr": {
+            "point": 0.15109283001310225,
+            "valid_bootstraps": 500,
+            "ci95": [
+              0.1267405550181884,
+              0.17236089172034305
+            ]
+          },
+          "truth_on_prediction_slope": {
+            "point": 0.6919394278206991,
+            "valid_bootstraps": 500,
+            "ci95": [
+              0.5874107492432706,
+              0.8009833028664847
+            ]
+          },
+          "mse_gain_over_no_change": {
+            "point": 0.005041313082803637,
+            "valid_bootstraps": 500,
+            "ci95": [
+              0.0032306457660184707,
+              0.006903978208754394
+            ]
+          },
+          "truth_centered_signal": {
+            "point": 28.561425176256087,
+            "valid_bootstraps": 500,
+            "ci95": [
+              25.35127832333326,
+              31.604814787707628
+            ]
+          },
+          "historical_observed_mse": 0.15249341363499438,
+          "modern_observed_mse": 0.11679318499130104,
+          "paired_difference": {
+            "corr": {
+              "point": -0.005050616607856329,
+              "valid_bootstraps": 500,
+              "ci95": [
+                -0.05425918247902396,
+                0.04197883793279002
+              ]
+            },
+            "mse_gain_over_no_change": {
+              "point": 0.03039123810044488,
+              "valid_bootstraps": 500,
+              "ci95": [
+                0.02169708707923502,
+                0.03801400517871114
+              ]
+            },
+            "historical_mse": {
+              "point": -0.029788965959616633,
+              "valid_bootstraps": 500,
+              "ci95": [
+                -0.0403875748530879,
+                -0.018392095154449725
+              ]
+            },
+            "modern_mse": {
+              "point": -0.0002843909825901489,
+              "valid_bootstraps": 500,
+              "ci95": [
+                -0.0007742678050282572,
+                0.0002052611996895562
+              ]
+            }
+          },
+          "teacher_change_corr": {
+            "point": 0.2170470397761364,
+            "valid_bootstraps": 500,
+            "ci95": [
+              0.1710088068550011,
+              0.25665637588906043
+            ]
+          }
+        },
+        "k4_known": {
+          "corr": {
+            "point": 0.19902709372979122,
+            "valid_bootstraps": 500,
+            "ci95": [
+              0.18393143842512916,
+              0.21284397345882458
+            ]
+          },
+          "truth_on_prediction_slope": {
+            "point": 0.8555426282040492,
+            "valid_bootstraps": 500,
+            "ci95": [
+              0.7955221196785262,
+              0.9087133252619558
+            ]
+          },
+          "mse_gain_over_no_change": {
+            "point": 0.00760209105269521,
+            "valid_bootstraps": 500,
+            "ci95": [
+              0.006430989749998531,
+              0.008961701636360868
+            ]
+          },
+          "truth_centered_signal": {
+            "point": 25.78757582073075,
+            "valid_bootstraps": 500,
+            "ci95": [
+              24.646025261533833,
+              26.960097071950358
+            ]
+          },
+          "historical_observed_mse": 0.08970050965888185,
+          "modern_observed_mse": 0.04528397602449303,
+          "paired_difference": {
+            "corr": {
+              "point": -0.029069294180625982,
+              "valid_bootstraps": 500,
+              "ci95": [
+                -0.04930263438266317,
+                -0.010538025945579033
+              ]
+            },
+            "mse_gain_over_no_change": {
+              "point": 0.032027690737820004,
+              "valid_bootstraps": 500,
+              "ci95": [
+                0.02815041405701594,
+                0.0364249340667235
+              ]
+            },
+            "historical_mse": {
+              "point": -0.029974665793690052,
+              "valid_bootstraps": 500,
+              "ci95": [
+                -0.03402555447479896,
+                -0.026157397983442188
+              ]
+            },
+            "modern_mse": {
+              "point": 0.0003580253799444318,
+              "valid_bootstraps": 500,
+              "ci95": [
+                0.0002726498144611452,
+                0.0004400355861822575
+              ]
+            }
+          }
+        },
+        "k4_spatial": {
+          "corr": {
+            "point": 0.15238961230557302,
+            "valid_bootstraps": 500,
+            "ci95": [
+              0.11777229896149949,
+              0.17827438378468655
+            ]
+          },
+          "truth_on_prediction_slope": {
+            "point": 0.6896993455830873,
+            "valid_bootstraps": 500,
+            "ci95": [
+              0.5347051825154122,
+              0.8452130052504533
+            ]
+          },
+          "mse_gain_over_no_change": {
+            "point": 0.005533278931950692,
+            "valid_bootstraps": 500,
+            "ci95": [
+              0.003419456469046297,
+              0.007576955237437929
+            ]
+          },
+          "truth_centered_signal": {
+            "point": 27.354019289632514,
+            "valid_bootstraps": 500,
+            "ci95": [
+              24.230397873346188,
+              30.071253220549984
+            ]
+          },
+          "historical_observed_mse": 0.13509098934276548,
+          "modern_observed_mse": 0.09784816507290517,
+          "paired_difference": {
+            "corr": {
+              "point": -0.006510652436791858,
+              "valid_bootstraps": 500,
+              "ci95": [
+                -0.06729735144394183,
+                0.04419601601712568
+              ]
+            },
+            "mse_gain_over_no_change": {
+              "point": 0.033339991419260674,
+              "valid_bootstraps": 500,
+              "ci95": [
+                0.022509176717957807,
+                0.04233621403979156
+              ]
+            },
+            "historical_mse": {
+              "point": -0.034768988627687604,
+              "valid_bootstraps": 500,
+              "ci95": [
+                -0.04614419786394183,
+                -0.021897977390895065
+              ]
+            },
+            "modern_mse": {
+              "point": -7.37950842776656e-05,
+              "valid_bootstraps": 500,
+              "ci95": [
+                -0.0005342565487320404,
+                0.0003310154646684174
+              ]
+            }
+          }
+        }
+      }
+    },
+    "cov25_winter4": {
+      "readout_lambda": 0.01,
+      "panels": {
+        "k2_known": {
+          "corr": {
+            "point": 0.2218235413781336,
+            "valid_bootstraps": 500,
+            "ci95": [
+              0.2056809917922088,
+              0.23751712230661104
+            ]
+          },
+          "truth_on_prediction_slope": {
+            "point": 0.9035620274428735,
+            "valid_bootstraps": 500,
+            "ci95": [
+              0.8470486706941982,
+              0.9528244680719741
+            ]
+          },
+          "mse_gain_over_no_change": {
+            "point": 0.007481213800085919,
+            "valid_bootstraps": 500,
+            "ci95": [
+              0.006320898184268619,
+              0.00870397255801255
+            ]
+          },
+          "truth_centered_signal": {
+            "point": 25.443757721253792,
+            "valid_bootstraps": 500,
+            "ci95": [
+              24.464281908860052,
+              26.402049346066654
+            ]
+          },
+          "historical_observed_mse": 0.10359569337906503,
+          "modern_observed_mse": 0.060892110340695985,
+          "paired_difference": {
+            "corr": {
+              "point": -0.0018302522450776848,
+              "valid_bootstraps": 500,
+              "ci95": [
+                -0.017294597804193786,
+                0.014859129985107671
+              ]
+            },
+            "mse_gain_over_no_change": {
+              "point": 0.03125147802769503,
+              "valid_bootstraps": 500,
+              "ci95": [
+                0.028084145870454942,
+                0.034921744653700314
+              ]
+            },
+            "historical_mse": {
+              "point": -0.02594404960239341,
+              "valid_bootstraps": 500,
+              "ci95": [
+                -0.029277931399344287,
+                -0.022915599590053657
+              ]
+            },
+            "modern_mse": {
+              "point": 0.0004233274064547297,
+              "valid_bootstraps": 500,
+              "ci95": [
+                0.0003238969701823246,
+                0.0005195300399421003
+              ]
+            }
+          },
+          "teacher_change_corr": {
+            "point": 0.32618160573066907,
+            "valid_bootstraps": 500,
+            "ci95": [
+              0.3061007470948822,
+              0.34605311251007104
+            ]
+          }
+        },
+        "k2_spatial": {
+          "corr": {
+            "point": 0.1693750954689858,
+            "valid_bootstraps": 500,
+            "ci95": [
+              0.14250181312843882,
+              0.193498337201057
+            ]
+          },
+          "truth_on_prediction_slope": {
+            "point": 0.7572431696065279,
+            "valid_bootstraps": 500,
+            "ci95": [
+              0.6453969878253637,
+              0.8797737351267993
+            ]
+          },
+          "mse_gain_over_no_change": {
+            "point": 0.005704726670793106,
+            "valid_bootstraps": 500,
+            "ci95": [
+              0.003953299874684443,
+              0.007662553214089149
+            ]
+          },
+          "truth_centered_signal": {
+            "point": 28.561425176256087,
+            "valid_bootstraps": 500,
+            "ci95": [
+              25.35127832333326,
+              31.604814787707628
+            ]
+          },
+          "historical_observed_mse": 0.1517980802939665,
+          "modern_observed_mse": 0.11679598938298434,
+          "paired_difference": {
+            "corr": {
+              "point": 0.013231648848027217,
+              "valid_bootstraps": 500,
+              "ci95": [
+                -0.02841002210111159,
+                0.0554690098539718
+              ]
+            },
+            "mse_gain_over_no_change": {
+              "point": 0.031054651688434347,
+              "valid_bootstraps": 500,
+              "ci95": [
+                0.02246361430752337,
+                0.03854870187638671
+              ]
+            },
+            "historical_mse": {
+              "point": -0.030484299300644526,
+              "valid_bootstraps": 500,
+              "ci95": [
+                -0.040928465200439,
+                -0.019317463253413176
+              ]
+            },
+            "modern_mse": {
+              "point": -0.00028158659090683357,
+              "valid_bootstraps": 500,
+              "ci95": [
+                -0.0007788139505533005,
+                0.00021799733332327723
+              ]
+            }
+          },
+          "teacher_change_corr": {
+            "point": 0.26178222250912475,
+            "valid_bootstraps": 500,
+            "ci95": [
+              0.21832471691982608,
+              0.3003681799940357
+            ]
+          }
+        },
+        "k4_known": {
+          "corr": {
+            "point": 0.21939313924111964,
+            "valid_bootstraps": 500,
+            "ci95": [
+              0.20273557692586378,
+              0.23397477356654217
+            ]
+          },
+          "truth_on_prediction_slope": {
+            "point": 0.9044687126537548,
+            "valid_bootstraps": 500,
+            "ci95": [
+              0.8494067190787031,
+              0.9605284226049464
+            ]
+          },
+          "mse_gain_over_no_change": {
+            "point": 0.008218392197047016,
+            "valid_bootstraps": 500,
+            "ci95": [
+              0.006975602897406005,
+              0.009556619665487499
+            ]
+          },
+          "truth_centered_signal": {
+            "point": 25.78757582073075,
+            "valid_bootstraps": 500,
+            "ci95": [
+              24.646025261533833,
+              26.960097071950358
+            ]
+          },
+          "historical_observed_mse": 0.089042500778768,
+          "modern_observed_mse": 0.045273732407584574,
+          "paired_difference": {
+            "corr": {
+              "point": -0.008703248669297559,
+              "valid_bootstraps": 500,
+              "ci95": [
+                -0.027083019958788188,
+                0.00812997775610263
+              ]
+            },
+            "mse_gain_over_no_change": {
+              "point": 0.032643991882171805,
+              "valid_bootstraps": 500,
+              "ci95": [
+                0.02882299624521077,
+                0.03704887971475193
+              ]
+            },
+            "historical_mse": {
+              "point": -0.030632674673803904,
+              "valid_bootstraps": 500,
+              "ci95": [
+                -0.034561404114555744,
+                -0.026868723035157485
+              ]
+            },
+            "modern_mse": {
+              "point": 0.00034778176303598614,
+              "valid_bootstraps": 500,
+              "ci95": [
+                0.0002629459743184901,
+                0.00042918623178328253
+              ]
+            }
+          }
+        },
+        "k4_spatial": {
+          "corr": {
+            "point": 0.17249809559684157,
+            "valid_bootstraps": 500,
+            "ci95": [
+              0.137644022723862,
+              0.20197373425247248
+            ]
+          },
+          "truth_on_prediction_slope": {
+            "point": 0.7601629100846168,
+            "valid_bootstraps": 500,
+            "ci95": [
+              0.6085507172673609,
+              0.9290375051137952
+            ]
+          },
+          "mse_gain_over_no_change": {
+            "point": 0.006122534183163396,
+            "valid_bootstraps": 500,
+            "ci95": [
+              0.004146262127516832,
+              0.008257135956617074
+            ]
+          },
+          "truth_centered_signal": {
+            "point": 27.354019289632514,
+            "valid_bootstraps": 500,
+            "ci95": [
+              24.230397873346188,
+              30.071253220549984
+            ]
+          },
+          "historical_observed_mse": 0.13442844028956863,
+          "modern_observed_mse": 0.09784262179762335,
+          "paired_difference": {
+            "corr": {
+              "point": 0.013597830854476689,
+              "valid_bootstraps": 500,
+              "ci95": [
+                -0.039372007019340995,
+                0.05909393604765593
+              ]
+            },
+            "mse_gain_over_no_change": {
+              "point": 0.03392924667047338,
+              "valid_bootstraps": 500,
+              "ci95": [
+                0.023334530798961754,
+                0.042984735451646154
+              ]
+            },
+            "historical_mse": {
+              "point": -0.035431537680884445,
+              "valid_bootstraps": 500,
+              "ci95": [
+                -0.04671226312931101,
+                -0.02293557847303387
+              ]
+            },
+            "modern_mse": {
+              "point": -7.933835955947272e-05,
+              "valid_bootstraps": 500,
+              "ci95": [
+                -0.0005353916171009877,
+                0.0003350385952810257
+              ]
+            }
+          }
+        }
+      }
+    },
+    "winter4": {
+      "readout_lambda": 0.01,
+      "panels": {
+        "k2_known": {
+          "corr": {
+            "point": 0.2053206455819157,
+            "valid_bootstraps": 500,
+            "ci95": [
+              0.1851307387487897,
+              0.22460118258290807
+            ]
+          },
+          "truth_on_prediction_slope": {
+            "point": 0.7335535916021994,
+            "valid_bootstraps": 500,
+            "ci95": [
+              0.6712210036338636,
+              0.7924872699937261
+            ]
+          },
+          "mse_gain_over_no_change": {
+            "point": 0.005473320481411384,
+            "valid_bootstraps": 500,
+            "ci95": [
+              0.004236870052105315,
+              0.006745852311158302
+            ]
+          },
+          "truth_centered_signal": {
+            "point": 25.443757721253792,
+            "valid_bootstraps": 500,
+            "ci95": [
+              24.464281908860052,
+              26.402049346066654
+            ]
+          },
+          "historical_observed_mse": 0.10537804902887507,
+          "modern_observed_mse": 0.06091848200696636,
+          "paired_difference": {
+            "corr": {
+              "point": -0.01833314804129557,
+              "valid_bootstraps": 500,
+              "ci95": [
+                -0.03453358220115676,
+                -0.0007255132001402001
+              ]
+            },
+            "mse_gain_over_no_change": {
+              "point": 0.029243584709020498,
+              "valid_bootstraps": 500,
+              "ci95": [
+                0.02627719250584245,
+                0.032725665349070863
+              ]
+            },
+            "historical_mse": {
+              "point": -0.02416169395258338,
+              "valid_bootstraps": 500,
+              "ci95": [
+                -0.027278754629059515,
+                -0.021300726087961727
+              ]
+            },
+            "modern_mse": {
+              "point": 0.0004496990727250982,
+              "valid_bootstraps": 500,
+              "ci95": [
+                0.00035256152528818837,
+                0.0005416162435110029
+              ]
+            }
+          },
+          "teacher_change_corr": {
+            "point": 0.2878799968692712,
+            "valid_bootstraps": 500,
+            "ci95": [
+              0.26449152068144693,
+              0.30837868601731255
+            ]
+          }
+        },
+        "k2_spatial": {
+          "corr": {
+            "point": 0.14959631387065928,
+            "valid_bootstraps": 500,
+            "ci95": [
+              0.10591622564250977,
+              0.19397119404425345
+            ]
+          },
+          "truth_on_prediction_slope": {
+            "point": 0.6124886022680783,
+            "valid_bootstraps": 500,
+            "ci95": [
+              0.4569242555103887,
+              0.79047762913023
+            ]
+          },
+          "mse_gain_over_no_change": {
+            "point": 0.0034812631241039355,
+            "valid_bootstraps": 500,
+            "ci95": [
+              0.0015267548216382374,
+              0.006019231246600608
+            ]
+          },
+          "truth_centered_signal": {
+            "point": 28.561425176256087,
+            "valid_bootstraps": 500,
+            "ci95": [
+              25.35127832333326,
+              31.604814787707628
+            ]
+          },
+          "historical_observed_mse": 0.15334471161197652,
+          "modern_observed_mse": 0.11675603359708507,
+          "paired_difference": {
+            "corr": {
+              "point": -0.006547132750299306,
+              "valid_bootstraps": 500,
+              "ci95": [
+                -0.04538647181416627,
+                0.03176384951866438
+              ]
+            },
+            "mse_gain_over_no_change": {
+              "point": 0.02883118814174518,
+              "valid_bootstraps": 500,
+              "ci95": [
+                0.02090441086060432,
+                0.03585811331322679
+              ]
+            },
+            "historical_mse": {
+              "point": -0.028937667982634505,
+              "valid_bootstraps": 500,
+              "ci95": [
+                -0.03780701849886505,
+                -0.019902051111527774
+              ]
+            },
+            "modern_mse": {
+              "point": -0.00032154237680608874,
+              "valid_bootstraps": 500,
+              "ci95": [
+                -0.0008740851483929437,
+                0.0002201286231239146
+              ]
+            }
+          },
+          "teacher_change_corr": {
+            "point": 0.23513122371095094,
+            "valid_bootstraps": 500,
+            "ci95": [
+              0.17680127060744483,
+              0.2989119836629373
+            ]
+          }
+        },
+        "k4_known": {
+          "corr": {
+            "point": 0.20246538456752644,
+            "valid_bootstraps": 500,
+            "ci95": [
+              0.18255008981561846,
+              0.22095478314671116
+            ]
+          },
+          "truth_on_prediction_slope": {
+            "point": 0.7277483192715726,
+            "valid_bootstraps": 500,
+            "ci95": [
+              0.6644124117859894,
+              0.7880324545505505
+            ]
+          },
+          "mse_gain_over_no_change": {
+            "point": 0.006077191160028066,
+            "valid_bootstraps": 500,
+            "ci95": [
+              0.004773001555898016,
+              0.007448589532065693
+            ]
+          },
+          "truth_centered_signal": {
+            "point": 25.78757582073075,
+            "valid_bootstraps": 500,
+            "ci95": [
+              24.646025261533833,
+              26.960097071950358
+            ]
+          },
+          "historical_observed_mse": 0.09112184592431662,
+          "modern_observed_mse": 0.04527221231801309,
+          "paired_difference": {
+            "corr": {
+              "point": -0.025631003342890757,
+              "valid_bootstraps": 500,
+              "ci95": [
+                -0.04375552130602341,
+                -0.008413496848834688
+              ]
+            },
+            "mse_gain_over_no_change": {
+              "point": 0.03050279084515286,
+              "valid_bootstraps": 500,
+              "ci95": [
+                0.026858233152399245,
+                0.03470721396648827
+              ]
+            },
+            "historical_mse": {
+              "point": -0.028553329528255296,
+              "valid_bootstraps": 500,
+              "ci95": [
+                -0.0324019189166348,
+                -0.025016367702436572
+              ]
+            },
+            "modern_mse": {
+              "point": 0.00034626167346449283,
+              "valid_bootstraps": 500,
+              "ci95": [
+                0.0002624021809228849,
+                0.0004295750393174006
+              ]
+            }
+          }
+        },
+        "k4_spatial": {
+          "corr": {
+            "point": 0.15740621117198136,
+            "valid_bootstraps": 500,
+            "ci95": [
+              0.11806234226296258,
+              0.2030345162702122
+            ]
+          },
+          "truth_on_prediction_slope": {
+            "point": 0.6247299565203699,
+            "valid_bootstraps": 500,
+            "ci95": [
+              0.485268486306719,
+              0.8230534657500369
+            ]
+          },
+          "mse_gain_over_no_change": {
+            "point": 0.0037263769352760194,
+            "valid_bootstraps": 500,
+            "ci95": [
+              0.0017363268538700622,
+              0.006874199971873523
+            ]
+          },
+          "truth_centered_signal": {
+            "point": 27.354019289632514,
+            "valid_bootstraps": 500,
+            "ci95": [
+              24.230397873346188,
+              30.071253220549984
+            ]
+          },
+          "historical_observed_mse": 0.1363830304046735,
+          "modern_observed_mse": 0.0978476361831158,
+          "paired_difference": {
+            "corr": {
+              "point": -0.0014940535703835134,
+              "valid_bootstraps": 500,
+              "ci95": [
+                -0.04664709041735525,
+                0.04982761750760986
+              ]
+            },
+            "mse_gain_over_no_change": {
+              "point": 0.031533089422586,
+              "valid_bootstraps": 500,
+              "ci95": [
+                0.021899768138435662,
+                0.040084236160658634
+              ]
+            },
+            "historical_mse": {
+              "point": -0.03347694756577959,
+              "valid_bootstraps": 500,
+              "ci95": [
+                -0.04413412069416904,
+                -0.022854698347334987
+              ]
+            },
+            "modern_mse": {
+              "point": -7.432397406702548e-05,
+              "valid_bootstraps": 500,
+              "ci95": [
+                -0.0005247800748917729,
+                0.0003416207202947976
+              ]
+            }
+          }
+        }
+      }
+    }
+  }
+}

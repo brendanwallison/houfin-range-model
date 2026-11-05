@@ -1,0 +1,108 @@
+[
+  {
+    "mode": "geometry",
+    "step": "step33_nestcbc_s41",
+    "target": "full unconstrained nominal posterior including Jacobians and observer nuisance parameters",
+    "geometry_steps": 48,
+    "prior_scale_draws": 256,
+    "time_limit_seconds": 7200,
+    "sampling": null,
+    "scope": "comparison/screening, not certification of inference"
+  },
+  {
+    "mode": "geometry",
+    "step": "step33_nestcbc_abs_s41",
+    "target": "full unconstrained nominal posterior including Jacobians and observer nuisance parameters",
+    "geometry_steps": 48,
+    "prior_scale_draws": 256,
+    "time_limit_seconds": 7200,
+    "sampling": null,
+    "scope": "comparison/screening, not certification of inference"
+  },
+  {
+    "mode": "geometry",
+    "step": "step34_abs_natdep_s41",
+    "target": "full unconstrained nominal posterior including Jacobians and observer nuisance parameters",
+    "geometry_steps": 48,
+    "prior_scale_draws": 256,
+    "time_limit_seconds": 7200,
+    "sampling": null,
+    "scope": "comparison/screening, not certification of inference"
+  },
+  {
+    "mode": "geometry",
+    "step": "step34_abs_v2_natdep_s41",
+    "target": "full unconstrained nominal posterior including Jacobians and observer nuisance parameters",
+    "geometry_steps": 48,
+    "prior_scale_draws": 256,
+    "time_limit_seconds": 7200,
+    "sampling": null,
+    "scope": "comparison/screening, not certification of inference"
+  },
+  {
+    "mode": "nuts",
+    "step": "step33_nestcbc_abs_s41",
+    "target": "full unconstrained nominal posterior including Jacobians and observer nuisance parameters",
+    "geometry_steps": null,
+    "prior_scale_draws": null,
+    "time_limit_seconds": 21600,
+    "sampling": {
+      "chains": 2,
+      "warmup_per_chain": 128,
+      "draws_per_chain": 128,
+      "max_depth": 6,
+      "target_accept": 0.9
+    },
+    "scope": "comparison/screening, not certification of inference"
+  },
+  {
+    "mode": "nuts",
+    "step": "step34_abs_natdep_s41",
+    "target": "full unconstrained nominal posterior including Jacobians and observer nuisance parameters",
+    "geometry_steps": null,
+    "prior_scale_draws": null,
+    "time_limit_seconds": 21600,
+    "sampling": {
+      "chains": 2,
+      "warmup_per_chain": 128,
+      "draws_per_chain": 128,
+      "max_depth": 6,
+      "target_accept": 0.9
+    },
+    "scope": "comparison/screening, not certification of inference"
+  },
+  {
+    "mode": "nuts_block",
+    "step": "step33_nestcbc_abs_s41",
+    "target": "full unconstrained nominal posterior including Jacobians and observer nuisance parameters",
+    "geometry_steps": null,
+    "prior_scale_draws": null,
+    "time_limit_seconds": 21600,
+    "sampling": {
+      "chains": 2,
+      "warmup_per_chain": 512,
+      "draws_per_chain": 128,
+      "max_depth": 6,
+      "target_accept": 0.9,
+      "metric": "block"
+    },
+    "scope": "comparison/screening, not certification of inference"
+  },
+  {
+    "mode": "nuts_block",
+    "step": "step34_abs_natdep_s41",
+    "target": "full unconstrained nominal posterior including Jacobians and observer nuisance parameters",
+    "geometry_steps": null,
+    "prior_scale_draws": null,
+    "time_limit_seconds": 21600,
+    "sampling": {
+      "chains": 2,
+      "warmup_per_chain": 512,
+      "draws_per_chain": 128,
+      "max_depth": 6,
+      "target_accept": 0.9,
+      "metric": "block"
+    },
+    "scope": "comparison/screening, not certification of inference"
+  }
+]

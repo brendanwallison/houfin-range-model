@@ -1,0 +1,38 @@
+[
+  {
+    "step": "step36_nonest_ctl_s41",
+    "parent": "step33_nestcbc_abs_s41",
+    "seed": 41,
+    "native_departure": false,
+    "nest_likelihood": false,
+    "input_observations_features_and_all_other_biological_settings_unchanged": true,
+    "purpose": "Matched absolute-Allee NestWatch off/on comparison conditional on existing initialization; not a claim that 1940 founder treatment is validated"
+  },
+  {
+    "step": "step36_nonest_ctl_s42",
+    "parent": "step34_abs_s42",
+    "seed": 42,
+    "native_departure": false,
+    "nest_likelihood": false,
+    "input_observations_features_and_all_other_biological_settings_unchanged": true,
+    "purpose": "Matched absolute-Allee NestWatch off/on comparison conditional on existing initialization; not a claim that 1940 founder treatment is validated"
+  },
+  {
+    "step": "step36_nonest_nat_s41",
+    "parent": "step34_abs_natdep_s41",
+    "seed": 41,
+    "native_departure": true,
+    "nest_likelihood": false,
+    "input_observations_features_and_all_other_biological_settings_unchanged": true,
+    "purpose": "Matched absolute-Allee NestWatch off/on comparison conditional on existing initialization; not a claim that 1940 founder treatment is validated"
+  },
+  {
+    "step": "step36_nonest_nat_s42",
+    "parent": "step34_abs_natdep_s42",
+    "seed": 42,
+    "native_departure": true,
+    "nest_likelihood": false,
+    "input_observations_features_and_all_other_biological_settings_unchanged": true,
+    "purpose": "Matched absolute-Allee NestWatch off/on comparison conditional on existing initialization; not a claim that 1940 founder treatment is validated"
+  }
+]

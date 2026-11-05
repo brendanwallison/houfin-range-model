@@ -1,0 +1,14 @@
+
+-----------------------------------------------------------------
+           Welcome to the Lonestar6 Supercomputer                
+-----------------------------------------------------------------
+
+No reservation for this job
+--> Verifying valid submit host (login2)...OK
+--> Verifying valid jobname...OK
+--> Verifying valid ssh keys...OK
+--> Verifying access to desired queue (gpu-a100-dev)...OK
+--> Checking available allocation (DEB23008)...OK
+--> Verifying that quota for filesystem /home1/07980/bwa386 is at 36.56% allocated...OK
+--> Verifying that quota for filesystem /work/07980/bwa386/ls6 is at 53.01% allocated...OK
+3535014

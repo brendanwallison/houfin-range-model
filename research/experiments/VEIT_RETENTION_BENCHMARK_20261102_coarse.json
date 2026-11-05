@@ -1,0 +1,2015 @@
+{
+  "paper_parameters": {
+    "s": 0.67,
+    "c": 1.5,
+    "delta": 1.5,
+    "r": 0.15
+  },
+  "stable_equilibrium": 3.758314556780273,
+  "unstable_equilibrium": 0.05986726140154608,
+  "peak_growth": 1.2398101949859686,
+  "departure_table": [
+    {
+      "fraction": 0.25,
+      "ramp": 0.25,
+      "overflow": 6.117767715397113e-08
+    },
+    {
+      "fraction": 0.5,
+      "ramp": 0.5,
+      "overflow": 4.5398899123288345e-06
+    },
+    {
+      "fraction": 0.75,
+      "ramp": 0.75,
+      "overflow": 0.0004476898992744944
+    },
+    {
+      "fraction": 0.9,
+      "ramp": 0.9,
+      "overflow": 0.007051556169054026
+    },
+    {
+      "fraction": 1.0,
+      "ramp": 1.0,
+      "overflow": 0.03465735902799718
+    }
+  ],
+  "runs": {
+    "ramp_mortality_1.0": {
+      "history": [
+        {
+          "year": 0,
+          "radius_km": 10.0,
+          "core_density": 0.5,
+          "line_integrated_population": 10.0
+        },
+        {
+          "year": 1,
+          "radius_km": 10.0,
+          "core_density": 0.5431861481526619,
+          "line_integrated_population": 12.258944566352671
+        },
+        {
+          "year": 2,
+          "radius_km": 10.0,
+          "core_density": 0.5826826289313989,
+          "line_integrated_population": 14.507051032244467
+        },
+        {
+          "year": 3,
+          "radius_km": 10.0,
+          "core_density": 0.6176318342985435,
+          "line_integrated_population": 16.814864112061258
+        },
+        {
+          "year": 4,
+          "radius_km": 10.0,
+          "core_density": 0.6477481872701947,
+          "line_integrated_population": 19.212387412260057
+        },
+        {
+          "year": 5,
+          "radius_km": 10.0,
+          "core_density": 0.673223288446477,
+          "line_integrated_population": 21.705767515393273
+        },
+        {
+          "year": 6,
+          "radius_km": 10.0,
+          "core_density": 0.6945491945499612,
+          "line_integrated_population": 24.28734433701086
+        },
+        {
+          "year": 7,
+          "radius_km": 10.0,
+          "core_density": 0.7123344563362031,
+          "line_integrated_population": 26.945059098234204
+        },
+        {
+          "year": 8,
+          "radius_km": 10.0,
+          "core_density": 0.727167949766024,
+          "line_integrated_population": 29.672375387972856
+        },
+        {
+          "year": 9,
+          "radius_km": 10.0,
+          "core_density": 0.7395512865297238,
+          "line_integrated_population": 32.47775934496731
+        },
+        {
+          "year": 10,
+          "radius_km": 10.0,
+          "core_density": 0.7498902467239899,
+          "line_integrated_population": 35.39242164714108
+        },
+        {
+          "year": 11,
+          "radius_km": 20.0,
+          "core_density": 0.7585202432356671,
+          "line_integrated_population": 38.47586519919249
+        },
+        {
+          "year": 12,
+          "radius_km": 30.0,
+          "core_density": 0.765741687373412,
+          "line_integrated_population": 41.819779133329085
+        },
+        {
+          "year": 13,
+          "radius_km": 40.0,
+          "core_density": 0.7718515821651402,
+          "line_integrated_population": 45.55115450877945
+        },
+        {
+          "year": 14,
+          "radius_km": 50.0,
+          "core_density": 0.7771686778503051,
+          "line_integrated_population": 49.83505100451836
+        },
+        {
+          "year": 15,
+          "radius_km": 60.0,
+          "core_density": 0.7820553920279004,
+          "line_integrated_population": 54.87663655591504
+        },
+        {
+          "year": 16,
+          "radius_km": 60.0,
+          "core_density": 0.7869393681447597,
+          "line_integrated_population": 60.92153689842515
+        },
+        {
+          "year": 17,
+          "radius_km": 70.0,
+          "core_density": 0.792332669306838,
+          "line_integrated_population": 68.25368736807432
+        },
+        {
+          "year": 18,
+          "radius_km": 80.0,
+          "core_density": 0.798840192589489,
+          "line_integrated_population": 77.19102834392233
+        },
+        {
+          "year": 19,
+          "radius_km": 90.0,
+          "core_density": 0.80714556293563,
+          "line_integrated_population": 88.08118836105618
+        },
+        {
+          "year": 20,
+          "radius_km": 100.0,
+          "core_density": 0.8179676567561412,
+          "line_integrated_population": 101.30067078280946
+        },
+        {
+          "year": 21,
+          "radius_km": 120.0,
+          "core_density": 0.8319945536775124,
+          "line_integrated_population": 117.26079563337979
+        },
+        {
+          "year": 22,
+          "radius_km": 130.0,
+          "core_density": 0.8498155926847004,
+          "line_integrated_population": 136.42162072302364
+        },
+        {
+          "year": 23,
+          "radius_km": 150.0,
+          "core_density": 0.871874553237226,
+          "line_integrated_population": 159.31256583856992
+        },
+        {
+          "year": 24,
+          "radius_km": 170.0,
+          "core_density": 0.8984559309161547,
+          "line_integrated_population": 186.55692164577295
+        },
+        {
+          "year": 25,
+          "radius_km": 190.0,
+          "core_density": 0.9297019696142447,
+          "line_integrated_population": 218.8970671279301
+        },
+        {
+          "year": 26,
+          "radius_km": 220.0,
+          "core_density": 0.9656500308550255,
+          "line_integrated_population": 257.2173157713179
+        },
+        {
+          "year": 27,
+          "radius_km": 250.0,
+          "core_density": 1.0062783282605392,
+          "line_integrated_population": 302.5613516117027
+        },
+        {
+          "year": 28,
+          "radius_km": 280.0,
+          "core_density": 1.0515486435895207,
+          "line_integrated_population": 356.14145367341393
+        },
+        {
+          "year": 29,
+          "radius_km": 320.0,
+          "core_density": 1.101435302608195,
+          "line_integrated_population": 419.33772267795064
+        },
+        {
+          "year": 30,
+          "radius_km": 360.0,
+          "core_density": 1.1559319283416747,
+          "line_integrated_population": 493.68745962256645
+        },
+        {
+          "year": 31,
+          "radius_km": 400.0,
+          "core_density": 1.2150333738151105,
+          "line_integrated_population": 580.8669843861771
+        },
+        {
+          "year": 32,
+          "radius_km": 450.0,
+          "core_density": 1.2786991140284352,
+          "line_integrated_population": 682.6692949622611
+        },
+        {
+          "year": 33,
+          "radius_km": 500.0,
+          "core_density": 1.346812067915808,
+          "line_integrated_population": 800.9803111063386
+        },
+        {
+          "year": 34,
+          "radius_km": 560.0,
+          "core_density": 1.4191484067523437,
+          "line_integrated_population": 937.7545218167368
+        },
+        {
+          "year": 35,
+          "radius_km": 630.0,
+          "core_density": 1.4953681041135207,
+          "line_integrated_population": 1094.9890278099363
+        },
+        {
+          "year": 36,
+          "radius_km": 700.0,
+          "core_density": 1.5750266090531269,
+          "line_integrated_population": 1274.6942726887971
+        },
+        {
+          "year": 37,
+          "radius_km": 770.0,
+          "core_density": 1.6576006772908127,
+          "line_integrated_population": 1478.8602116635377
+        },
+        {
+          "year": 38,
+          "radius_km": 860.0,
+          "core_density": 1.7425190514418272,
+          "line_integrated_population": 1709.4176643236797
+        },
+        {
+          "year": 39,
+          "radius_km": 940.0,
+          "core_density": 1.8291905777198703,
+          "line_integrated_population": 1968.1956009972732
+        },
+        {
+          "year": 40,
+          "radius_km": 1040.0,
+          "core_density": 1.9170259679384398,
+          "line_integrated_population": 2256.8759223311263
+        },
+        {
+          "year": 41,
+          "radius_km": 1140.0,
+          "core_density": 2.0054526425646624,
+          "line_integrated_population": 2576.947909149856
+        },
+        {
+          "year": 42,
+          "radius_km": 1240.0,
+          "core_density": 2.093923979682394,
+          "line_integrated_population": 2929.6649586448293
+        },
+        {
+          "year": 43,
+          "radius_km": 1350.0,
+          "core_density": 2.181924870139405,
+          "line_integrated_population": 3316.006443499601
+        },
+        {
+          "year": 44,
+          "radius_km": 1460.0,
+          "core_density": 2.2689752319101446,
+          "line_integrated_population": 3736.647459149226
+        },
+        {
+          "year": 45,
+          "radius_km": 1570.0,
+          "core_density": 2.3546325880122807,
+          "line_integrated_population": 4191.9388066212
+        },
+        {
+          "year": 46,
+          "radius_km": 1680.0,
+          "core_density": 2.4384942871871935,
+          "line_integrated_population": 4681.898805662867
+        },
+        {
+          "year": 47,
+          "radius_km": 1800.0,
+          "core_density": 2.5201995628637905,
+          "line_integrated_population": 5206.217539281875
+        },
+        {
+          "year": 48,
+          "radius_km": 1920.0,
+          "core_density": 2.59943138689952,
+          "line_integrated_population": 5764.2730539609865
+        },
+        {
+          "year": 49,
+          "radius_km": 2040.0,
+          "core_density": 2.6759179504605584,
+          "line_integrated_population": 6355.158055793514
+        },
+        {
+          "year": 50,
+          "radius_km": 2160.0,
+          "core_density": 2.7494335663671503,
+          "line_integrated_population": 6977.7148976577655
+        },
+        {
+          "year": 51,
+          "radius_km": 2290.0,
+          "core_density": 2.8197988114740236,
+          "line_integrated_population": 7630.576229114995
+        },
+        {
+          "year": 52,
+          "radius_km": 2410.0,
+          "core_density": 2.8868797921185045,
+          "line_integrated_population": 8312.208589786389
+        },
+        {
+          "year": 53,
+          "radius_km": 2540.0,
+          "core_density": 2.9505864990685833,
+          "line_integrated_population": 9020.956420070946
+        },
+        {
+          "year": 54,
+          "radius_km": 2660.0,
+          "core_density": 3.0108703019418863,
+          "line_integrated_population": 9755.084356838852
+        },
+        {
+          "year": 55,
+          "radius_km": 2790.0,
+          "core_density": 3.0677207027077444,
+          "line_integrated_population": 10512.816183381594
+        },
+        {
+          "year": 56,
+          "radius_km": 2920.0,
+          "core_density": 3.1211615156028927,
+          "line_integrated_population": 11292.369329629882
+        },
+        {
+          "year": 57,
+          "radius_km": 3040.0,
+          "core_density": 3.1712466643457704,
+          "line_integrated_population": 12091.984308417996
+        },
+        {
+          "year": 58,
+          "radius_km": 3170.0,
+          "core_density": 3.2180557891302612,
+          "line_integrated_population": 12909.948887969604
+        },
+        {
+          "year": 59,
+          "radius_km": 3300.0,
+          "core_density": 3.2616898403773735,
+          "line_integrated_population": 13744.617122567934
+        },
+        {
+          "year": 60,
+          "radius_km": 3430.0,
+          "core_density": 3.302266809458487,
+          "line_integrated_population": 14594.423591370078
+        },
+        {
+          "year": 61,
+          "radius_km": 3560.0,
+          "core_density": 3.339917714139908,
+          "line_integrated_population": 15457.893338720078
+        },
+        {
+          "year": 62,
+          "radius_km": 3690.0,
+          "core_density": 3.3747829228963253,
+          "line_integrated_population": 16333.648082673677
+        },
+        {
+          "year": 63,
+          "radius_km": 3810.0,
+          "core_density": 3.4070088707734225,
+          "line_integrated_population": 17220.40927794901
+        },
+        {
+          "year": 64,
+          "radius_km": 3940.0,
+          "core_density": 3.4367451921619128,
+          "line_integrated_population": 18116.998600471365
+        },
+        {
+          "year": 65,
+          "radius_km": 4070.0,
+          "core_density": 3.4641422736344287,
+          "line_integrated_population": 19022.336376146082
+        },
+        {
+          "year": 66,
+          "radius_km": 4200.0,
+          "core_density": 3.489349213065228,
+          "line_integrated_population": 19935.43841675476
+        },
+        {
+          "year": 67,
+          "radius_km": 4330.0,
+          "core_density": 3.512512159251885,
+          "line_integrated_population": 20855.41165863648
+        },
+        {
+          "year": 68,
+          "radius_km": 4460.0,
+          "core_density": 3.5337729985435007,
+          "line_integrated_population": 21781.448931264757
+        },
+        {
+          "year": 69,
+          "radius_km": 4590.0,
+          "core_density": 3.5532683507811864,
+          "line_integrated_population": 22712.823119673165
+        },
+        {
+          "year": 70,
+          "radius_km": 4720.0,
+          "core_density": 3.5711288353920825,
+          "line_integrated_population": 23648.88093650669
+        },
+        {
+          "year": 71,
+          "radius_km": 4840.0,
+          "core_density": 3.5874785690298707,
+          "line_integrated_population": 24589.03649767842
+        },
+        {
+          "year": 72,
+          "radius_km": 4970.0,
+          "core_density": 3.6024348581062355,
+          "line_integrated_population": 25532.764903393392
+        },
+        {
+          "year": 73,
+          "radius_km": 5100.0,
+          "core_density": 3.616108052418243,
+          "line_integrated_population": 26479.596042469693
+        },
+        {
+          "year": 74,
+          "radius_km": 5230.0,
+          "core_density": 3.628601529470842,
+          "line_integrated_population": 27429.10881797974
+        },
+        {
+          "year": 75,
+          "radius_km": 5360.0,
+          "core_density": 3.640011782721136,
+          "line_integrated_population": 28380.925912441133
+        },
+        {
+          "year": 76,
+          "radius_km": 5490.0,
+          "core_density": 3.650428590563591,
+          "line_integrated_population": 29334.70911219457
+        },
+        {
+          "year": 77,
+          "radius_km": 5620.0,
+          "core_density": 3.659935246246691,
+          "line_integrated_population": 30290.155150952443
+        },
+        {
+          "year": 78,
+          "radius_km": 5740.0,
+          "core_density": 3.6686088319950723,
+          "line_integrated_population": 31246.99200505786
+        },
+        {
+          "year": 79,
+          "radius_km": 5870.0,
+          "core_density": 3.676520523406607,
+          "line_integrated_population": 32204.97553752709
+        },
+        {
+          "year": 80,
+          "radius_km": 6000.0,
+          "core_density": 3.683735912687098,
+          "line_integrated_population": 33163.8863397904
+        }
+      ],
+      "closed_population_equilibrium": 3.7583145567802743,
+      "equilibrium_over_original_K": 1.0000000000000004,
+      "departure_at_closed_equilibrium": 1.0
+    },
+    "overflow_mortality_1.0": {
+      "history": [
+        {
+          "year": 0,
+          "radius_km": 10.0,
+          "core_density": 0.5,
+          "line_integrated_population": 10.0
+        },
+        {
+          "year": 1,
+          "radius_km": 10.0,
+          "core_density": 0.619810120228484,
+          "line_integrated_population": 12.258944639316754
+        },
+        {
+          "year": 2,
+          "radius_km": 10.0,
+          "core_density": 0.765419445229887,
+          "line_integrated_population": 15.08582937924142
+        },
+        {
+          "year": 3,
+          "radius_km": 10.0,
+          "core_density": 0.9370818689530306,
+          "line_integrated_population": 18.554377523202543
+        },
+        {
+          "year": 4,
+          "radius_km": 10.0,
+          "core_density": 1.1325943275409451,
+          "line_integrated_population": 22.711150002098222
+        },
+        {
+          "year": 5,
+          "radius_km": 10.0,
+          "core_density": 1.3471982633255977,
+          "line_integrated_population": 27.56158080472009
+        },
+        {
+          "year": 6,
+          "radius_km": 10.0,
+          "core_density": 1.5741008015820463,
+          "line_integrated_population": 33.05943865515417
+        },
+        {
+          "year": 7,
+          "radius_km": 10.0,
+          "core_density": 1.8054824923040336,
+          "line_integrated_population": 39.10286430604305
+        },
+        {
+          "year": 8,
+          "radius_km": 10.0,
+          "core_density": 2.0336530822357064,
+          "line_integrated_population": 45.53953909964794
+        },
+        {
+          "year": 9,
+          "radius_km": 10.0,
+          "core_density": 2.2520023581649014,
+          "line_integrated_population": 52.181748570607226
+        },
+        {
+          "year": 10,
+          "radius_km": 10.0,
+          "core_density": 2.455542683312259,
+          "line_integrated_population": 58.82886659614704
+        },
+        {
+          "year": 11,
+          "radius_km": 10.0,
+          "core_density": 2.641024778236341,
+          "line_integrated_population": 65.29163897314629
+        },
+        {
+          "year": 12,
+          "radius_km": 10.0,
+          "core_density": 2.806728932069263,
+          "line_integrated_population": 71.41193313384426
+        },
+        {
+          "year": 13,
+          "radius_km": 10.0,
+          "core_density": 2.952076249264273,
+          "line_integrated_population": 77.07391583088283
+        },
+        {
+          "year": 14,
+          "radius_km": 10.0,
+          "core_density": 3.077205511149892,
+          "line_integrated_population": 82.20617616450122
+        },
+        {
+          "year": 15,
+          "radius_km": 10.0,
+          "core_density": 3.182649836477848,
+          "line_integrated_population": 86.77699963083036
+        },
+        {
+          "year": 16,
+          "radius_km": 10.0,
+          "core_density": 3.2692145354625906,
+          "line_integrated_population": 90.7859771240286
+        },
+        {
+          "year": 17,
+          "radius_km": 10.0,
+          "core_density": 3.338069345572284,
+          "line_integrated_population": 94.2547865888271
+        },
+        {
+          "year": 18,
+          "radius_km": 10.0,
+          "core_density": 3.3909269647585343,
+          "line_integrated_population": 97.21904753640985
+        },
+        {
+          "year": 19,
+          "radius_km": 10.0,
+          "core_density": 3.4300892950351405,
+          "line_integrated_population": 99.72214081724312
+        },
+        {
+          "year": 20,
+          "radius_km": 10.0,
+          "core_density": 3.4582332134566247,
+          "line_integrated_population": 101.81109520269766
+        },
+        {
+          "year": 21,
+          "radius_km": 10.0,
+          "core_density": 3.4780259538329137,
+          "line_integrated_population": 103.53419135542251
+        },
+        {
+          "year": 22,
+          "radius_km": 10.0,
+          "core_density": 3.4917822440283524,
+          "line_integrated_population": 104.93970082415451
+        },
+        {
+          "year": 23,
+          "radius_km": 10.0,
+          "core_density": 3.501302699900808,
+          "line_integrated_population": 106.07501056256417
+        },
+        {
+          "year": 24,
+          "radius_km": 10.0,
+          "core_density": 3.5078875281533386,
+          "line_integrated_population": 106.98549103727657
+        },
+        {
+          "year": 25,
+          "radius_km": 10.0,
+          "core_density": 3.5124399607852808,
+          "line_integrated_population": 107.7130184138832
+        },
+        {
+          "year": 26,
+          "radius_km": 10.0,
+          "core_density": 3.5155812533500583,
+          "line_integrated_population": 108.29460602016039
+        },
+        {
+          "year": 27,
+          "radius_km": 10.0,
+          "core_density": 3.5177411152478264,
+          "line_integrated_population": 108.76162899481535
+        },
+        {
+          "year": 28,
+          "radius_km": 10.0,
+          "core_density": 3.5192192879125606,
+          "line_integrated_population": 109.13977310627646
+        },
+        {
+          "year": 29,
+          "radius_km": 10.0,
+          "core_density": 3.520225787902355,
+          "line_integrated_population": 109.44952902642552
+        },
+        {
+          "year": 30,
+          "radius_km": 10.0,
+          "core_density": 3.520907661155343,
+          "line_integrated_population": 109.70696222548627
+        },
+        {
+          "year": 31,
+          "radius_km": 10.0,
+          "core_density": 3.521367412458753,
+          "line_integrated_population": 109.92454374702375
+        },
+        {
+          "year": 32,
+          "radius_km": 10.0,
+          "core_density": 3.521676051741197,
+          "line_integrated_population": 110.1119184275228
+        },
+        {
+          "year": 33,
+          "radius_km": 10.0,
+          "core_density": 3.5218824375962066,
+          "line_integrated_population": 110.27655933307165
+        },
+        {
+          "year": 34,
+          "radius_km": 10.0,
+          "core_density": 3.522019966025037,
+          "line_integrated_population": 110.42429998772451
+        },
+        {
+          "year": 35,
+          "radius_km": 10.0,
+          "core_density": 3.5221113258249734,
+          "line_integrated_population": 110.55975646426619
+        },
+        {
+          "year": 36,
+          "radius_km": 10.0,
+          "core_density": 3.5221718480160216,
+          "line_integrated_population": 110.68665879255711
+        },
+        {
+          "year": 37,
+          "radius_km": 10.0,
+          "core_density": 3.522211842377546,
+          "line_integrated_population": 110.80811203855944
+        },
+        {
+          "year": 38,
+          "radius_km": 10.0,
+          "core_density": 3.522238212868667,
+          "line_integrated_population": 110.9268056889991
+        },
+        {
+          "year": 39,
+          "radius_km": 10.0,
+          "core_density": 3.522255565640939,
+          "line_integrated_population": 111.04518765087518
+        },
+        {
+          "year": 40,
+          "radius_km": 10.0,
+          "core_density": 3.522266963780241,
+          "line_integrated_population": 111.16561720550226
+        },
+        {
+          "year": 41,
+          "radius_km": 10.0,
+          "core_density": 3.522274438347804,
+          "line_integrated_population": 111.29051009483419
+        },
+        {
+          "year": 42,
+          "radius_km": 10.0,
+          "core_density": 3.5222793326275106,
+          "line_integrated_population": 111.42248880686569
+        },
+        {
+          "year": 43,
+          "radius_km": 10.0,
+          "core_density": 3.5222825329821177,
+          "line_integrated_population": 111.56455226612253
+        },
+        {
+          "year": 44,
+          "radius_km": 10.0,
+          "core_density": 3.5222846230655027,
+          "line_integrated_population": 111.72028176119423
+        },
+        {
+          "year": 45,
+          "radius_km": 10.0,
+          "core_density": 3.522285986484953,
+          "line_integrated_population": 111.89410435044407
+        },
+        {
+          "year": 46,
+          "radius_km": 10.0,
+          "core_density": 3.522286874939691,
+          "line_integrated_population": 112.09164148554837
+        },
+        {
+          "year": 47,
+          "radius_km": 10.0,
+          "core_density": 3.5222874533244757,
+          "line_integrated_population": 112.3201793111317
+        },
+        {
+          "year": 48,
+          "radius_km": 10.0,
+          "core_density": 3.5222878295141666,
+          "line_integrated_population": 112.5893075410323
+        },
+        {
+          "year": 49,
+          "radius_km": 20.0,
+          "core_density": 3.522288073990073,
+          "line_integrated_population": 112.91178390688998
+        },
+        {
+          "year": 50,
+          "radius_km": 20.0,
+          "core_density": 3.5222882327476284,
+          "line_integrated_population": 113.30468552612544
+        },
+        {
+          "year": 51,
+          "radius_km": 20.0,
+          "core_density": 3.522288335770563,
+          "line_integrated_population": 113.79089564634315
+        },
+        {
+          "year": 52,
+          "radius_km": 20.0,
+          "core_density": 3.5222884025855996,
+          "line_integrated_population": 114.4009231196123
+        },
+        {
+          "year": 53,
+          "radius_km": 20.0,
+          "core_density": 3.5222884458983246,
+          "line_integrated_population": 115.17493048674021
+        },
+        {
+          "year": 54,
+          "radius_km": 20.0,
+          "core_density": 3.5222884739702116,
+          "line_integrated_population": 116.16461712640186
+        },
+        {
+          "year": 55,
+          "radius_km": 20.0,
+          "core_density": 3.5222884921714295,
+          "line_integrated_population": 117.43424695165041
+        },
+        {
+          "year": 56,
+          "radius_km": 20.0,
+          "core_density": 3.522288503995694,
+          "line_integrated_population": 119.05967617988779
+        },
+        {
+          "year": 57,
+          "radius_km": 20.0,
+          "core_density": 3.5222885117269755,
+          "line_integrated_population": 121.123925748351
+        },
+        {
+          "year": 58,
+          "radius_km": 30.0,
+          "core_density": 3.5222885168883815,
+          "line_integrated_population": 123.70806426057443
+        },
+        {
+          "year": 59,
+          "radius_km": 30.0,
+          "core_density": 3.522288520577458,
+          "line_integrated_population": 126.87744314858506
+        },
+        {
+          "year": 60,
+          "radius_km": 30.0,
+          "core_density": 3.5222885238203867,
+          "line_integrated_population": 130.66584195648727
+        },
+        {
+          "year": 61,
+          "radius_km": 30.0,
+          "core_density": 3.522288528262491,
+          "line_integrated_population": 135.06294578724072
+        },
+        {
+          "year": 62,
+          "radius_km": 30.0,
+          "core_density": 3.5222885382605513,
+          "line_integrated_population": 140.01160461152875
+        },
+        {
+          "year": 63,
+          "radius_km": 30.0,
+          "core_density": 3.5222885682772245,
+          "line_integrated_population": 145.4185042500364
+        },
+        {
+          "year": 64,
+          "radius_km": 30.0,
+          "core_density": 3.522288669657393,
+          "line_integrated_population": 151.17586855974736
+        },
+        {
+          "year": 65,
+          "radius_km": 30.0,
+          "core_density": 3.5222890239977294,
+          "line_integrated_population": 157.18630797309805
+        },
+        {
+          "year": 66,
+          "radius_km": 30.0,
+          "core_density": 3.5222902419922444,
+          "line_integrated_population": 163.38148029902018
+        },
+        {
+          "year": 67,
+          "radius_km": 30.0,
+          "core_density": 3.522294203696406,
+          "line_integrated_population": 169.72811982410997
+        },
+        {
+          "year": 68,
+          "radius_km": 30.0,
+          "core_density": 3.5223060492280998,
+          "line_integrated_population": 176.21991544573123
+        },
+        {
+          "year": 69,
+          "radius_km": 30.0,
+          "core_density": 3.522337975575765,
+          "line_integrated_population": 182.85854397679262
+        },
+        {
+          "year": 70,
+          "radius_km": 30.0,
+          "core_density": 3.522414650945683,
+          "line_integrated_population": 189.6309429121476
+        },
+        {
+          "year": 71,
+          "radius_km": 30.0,
+          "core_density": 3.5225777898806987,
+          "line_integrated_population": 196.49174665614595
+        },
+        {
+          "year": 72,
+          "radius_km": 30.0,
+          "core_density": 3.522884500979052,
+          "line_integrated_population": 203.3582827403798
+        },
+        {
+          "year": 73,
+          "radius_km": 30.0,
+          "core_density": 3.5233934467288694,
+          "line_integrated_population": 210.12027300554251
+        },
+        {
+          "year": 74,
+          "radius_km": 30.0,
+          "core_density": 3.5241388841138352,
+          "line_integrated_population": 216.6599018357166
+        },
+        {
+          "year": 75,
+          "radius_km": 40.0,
+          "core_density": 3.5251051340180544,
+          "line_integrated_population": 222.87417035354892
+        },
+        {
+          "year": 76,
+          "radius_km": 40.0,
+          "core_density": 3.5262214849463227,
+          "line_integrated_population": 228.69229839816035
+        },
+        {
+          "year": 77,
+          "radius_km": 40.0,
+          "core_density": 3.527386009666109,
+          "line_integrated_population": 234.08477713145243
+        },
+        {
+          "year": 78,
+          "radius_km": 40.0,
+          "core_density": 3.5285042907807638,
+          "line_integrated_population": 239.064619485773
+        },
+        {
+          "year": 79,
+          "radius_km": 40.0,
+          "core_density": 3.5295208406774057,
+          "line_integrated_population": 243.6835188181264
+        },
+        {
+          "year": 80,
+          "radius_km": 40.0,
+          "core_density": 3.530432185181644,
+          "line_integrated_population": 248.0256966195391
+        }
+      ],
+      "closed_population_equilibrium": 3.7583145567802743,
+      "equilibrium_over_original_K": 1.0000000000000004,
+      "departure_at_closed_equilibrium": 0.034657359027997346
+    },
+    "ramp_mortality_0.95": {
+      "history": [
+        {
+          "year": 0,
+          "radius_km": 10.0,
+          "core_density": 0.5,
+          "line_integrated_population": 10.0
+        },
+        {
+          "year": 1,
+          "radius_km": 10.0,
+          "core_density": 0.5160268407450287,
+          "line_integrated_population": 11.645997338035038
+        },
+        {
+          "year": 2,
+          "radius_km": 10.0,
+          "core_density": 0.5302598177249869,
+          "line_integrated_population": 13.076815093896998
+        },
+        {
+          "year": 3,
+          "radius_km": 10.0,
+          "core_density": 0.5428231520426805,
+          "line_integrated_population": 14.400168967927877
+        },
+        {
+          "year": 4,
+          "radius_km": 10.0,
+          "core_density": 0.5538868275862217,
+          "line_integrated_population": 15.671695521785526
+        },
+        {
+          "year": 5,
+          "radius_km": 10.0,
+          "core_density": 0.56364186341081,
+          "line_integrated_population": 16.91988415558525
+        },
+        {
+          "year": 6,
+          "radius_km": 10.0,
+          "core_density": 0.5722788444840998,
+          "line_integrated_population": 18.157233260384274
+        },
+        {
+          "year": 7,
+          "radius_km": 10.0,
+          "core_density": 0.5799716402263528,
+          "line_integrated_population": 19.38646232930137
+        },
+        {
+          "year": 8,
+          "radius_km": 10.0,
+          "core_density": 0.5868671990751138,
+          "line_integrated_population": 20.604646004595708
+        },
+        {
+          "year": 9,
+          "radius_km": 10.0,
+          "core_density": 0.5930814285387501,
+          "line_integrated_population": 21.80629687539623
+        },
+        {
+          "year": 10,
+          "radius_km": 10.0,
+          "core_density": 0.5987003571277376,
+          "line_integrated_population": 22.985730295596
+        },
+        {
+          "year": 11,
+          "radius_km": 10.0,
+          "core_density": 0.6037851116861818,
+          "line_integrated_population": 24.138794346642356
+        },
+        {
+          "year": 12,
+          "radius_km": 10.0,
+          "core_density": 0.6083788995237557,
+          "line_integrated_population": 25.26400386465987
+        },
+        {
+          "year": 13,
+          "radius_km": 10.0,
+          "core_density": 0.6125142627742629,
+          "line_integrated_population": 26.363158212691875
+        },
+        {
+          "year": 14,
+          "radius_km": 10.0,
+          "core_density": 0.6162193162356558,
+          "line_integrated_population": 27.441574166445115
+        },
+        {
+          "year": 15,
+          "radius_km": 10.0,
+          "core_density": 0.6195223007295924,
+          "line_integrated_population": 28.508090515141316
+        },
+        {
+          "year": 16,
+          "radius_km": 10.0,
+          "core_density": 0.6224543684585698,
+          "line_integrated_population": 29.574992245297338
+        },
+        {
+          "year": 17,
+          "radius_km": 10.0,
+          "core_density": 0.6250509246036802,
+          "line_integrated_population": 30.657969095787063
+        },
+        {
+          "year": 18,
+          "radius_km": 20.0,
+          "core_density": 0.6273520443766494,
+          "line_integrated_population": 31.776179472172494
+        },
+        {
+          "year": 19,
+          "radius_km": 20.0,
+          "core_density": 0.6294025071784421,
+          "line_integrated_population": 32.9524458897804
+        },
+        {
+          "year": 20,
+          "radius_km": 20.0,
+          "core_density": 0.6312519073584771,
+          "line_integrated_population": 34.21356627893572
+        },
+        {
+          "year": 21,
+          "radius_km": 30.0,
+          "core_density": 0.6329551714043766,
+          "line_integrated_population": 35.590687183384645
+        },
+        {
+          "year": 22,
+          "radius_km": 30.0,
+          "core_density": 0.63457366263693,
+          "line_integrated_population": 37.11965103937506
+        },
+        {
+          "year": 23,
+          "radius_km": 30.0,
+          "core_density": 0.6361768862934988,
+          "line_integrated_population": 38.841205275876995
+        },
+        {
+          "year": 24,
+          "radius_km": 40.0,
+          "core_density": 0.6378446038887314,
+          "line_integrated_population": 40.80095681774738
+        },
+        {
+          "year": 25,
+          "radius_km": 40.0,
+          "core_density": 0.6396689176153534,
+          "line_integrated_population": 43.04898682455446
+        },
+        {
+          "year": 26,
+          "radius_km": 50.0,
+          "core_density": 0.6417556266136669,
+          "line_integrated_population": 45.63911912281156
+        },
+        {
+          "year": 27,
+          "radius_km": 50.0,
+          "core_density": 0.6442239917471928,
+          "line_integrated_population": 48.62795796770171
+        },
+        {
+          "year": 28,
+          "radius_km": 50.0,
+          "core_density": 0.6472041401059827,
+          "line_integrated_population": 52.07394547588633
+        },
+        {
+          "year": 29,
+          "radius_km": 60.0,
+          "core_density": 0.6508318320956696,
+          "line_integrated_population": 56.036780644249305
+        },
+        {
+          "year": 30,
+          "radius_km": 60.0,
+          "core_density": 0.6552411543025213,
+          "line_integrated_population": 60.577536236373994
+        },
+        {
+          "year": 31,
+          "radius_km": 70.0,
+          "core_density": 0.660556561680206,
+          "line_integrated_population": 65.75969395775518
+        },
+        {
+          "year": 32,
+          "radius_km": 70.0,
+          "core_density": 0.6668861031931057,
+          "line_integrated_population": 71.65113939603361
+        },
+        {
+          "year": 33,
+          "radius_km": 80.0,
+          "core_density": 0.6743173647758087,
+          "line_integrated_population": 78.32699604668265
+        },
+        {
+          "year": 34,
+          "radius_km": 80.0,
+          "core_density": 0.6829168367807941,
+          "line_integrated_population": 85.8730898957547
+        },
+        {
+          "year": 35,
+          "radius_km": 90.0,
+          "core_density": 0.6927325313120543,
+          "line_integrated_population": 94.38982514555065
+        },
+        {
+          "year": 36,
+          "radius_km": 100.0,
+          "core_density": 0.7037991095124153,
+          "line_integrated_population": 103.99627913108202
+        },
+        {
+          "year": 37,
+          "radius_km": 110.0,
+          "core_density": 0.7161445947783565,
+          "line_integrated_population": 114.83434658568001
+        },
+        {
+          "year": 38,
+          "radius_km": 120.0,
+          "core_density": 0.7297977911929769,
+          "line_integrated_population": 127.07275782059092
+        },
+        {
+          "year": 39,
+          "radius_km": 130.0,
+          "core_density": 0.7447956103257642,
+          "line_integrated_population": 140.91076732911378
+        },
+        {
+          "year": 40,
+          "radius_km": 150.0,
+          "core_density": 0.7611895274556912,
+          "line_integrated_population": 156.58128417887855
+        },
+        {
+          "year": 41,
+          "radius_km": 160.0,
+          "core_density": 0.7790503351912077,
+          "line_integrated_population": 174.35322565634812
+        },
+        {
+          "year": 42,
+          "radius_km": 180.0,
+          "core_density": 0.7984703129396687,
+          "line_integrated_population": 194.53294478740776
+        },
+        {
+          "year": 43,
+          "radius_km": 200.0,
+          "core_density": 0.8195620041612738,
+          "line_integrated_population": 217.4647107769481
+        },
+        {
+          "year": 44,
+          "radius_km": 220.0,
+          "core_density": 0.8424531047356553,
+          "line_integrated_population": 243.5303770032084
+        },
+        {
+          "year": 45,
+          "radius_km": 240.0,
+          "core_density": 0.8672775599517671,
+          "line_integrated_population": 273.1484957225765
+        },
+        {
+          "year": 46,
+          "radius_km": 260.0,
+          "core_density": 0.8941637571228043,
+          "line_integrated_population": 306.7731725892303
+        },
+        {
+          "year": 47,
+          "radius_km": 290.0,
+          "core_density": 0.9232214549294526,
+          "line_integrated_population": 344.89287081793873
+        },
+        {
+          "year": 48,
+          "radius_km": 310.0,
+          "core_density": 0.9545295160308603,
+          "line_integrated_population": 388.0292017194354
+        },
+        {
+          "year": 49,
+          "radius_km": 340.0,
+          "core_density": 0.9881264003130816,
+          "line_integrated_population": 436.73554649360267
+        },
+        {
+          "year": 50,
+          "radius_km": 370.0,
+          "core_density": 1.0240047400838757,
+          "line_integrated_population": 491.5952201023929
+        },
+        {
+          "year": 51,
+          "radius_km": 400.0,
+          "core_density": 1.06211038380233,
+          "line_integrated_population": 553.2188543308326
+        },
+        {
+          "year": 52,
+          "radius_km": 440.0,
+          "core_density": 1.1023453888769146,
+          "line_integrated_population": 622.240738356328
+        },
+        {
+          "year": 53,
+          "radius_km": 480.0,
+          "core_density": 1.1445738321724837,
+          "line_integrated_population": 699.3139728956714
+        },
+        {
+          "year": 54,
+          "radius_km": 520.0,
+          "core_density": 1.1886290957578323,
+          "line_integrated_population": 785.1044233951327
+        },
+        {
+          "year": 55,
+          "radius_km": 560.0,
+          "core_density": 1.2343214252605599,
+          "line_integrated_population": 880.2835663488219
+        },
+        {
+          "year": 56,
+          "radius_km": 610.0,
+          "core_density": 1.2814449088810878,
+          "line_integrated_population": 985.5203962642804
+        },
+        {
+          "year": 57,
+          "radius_km": 660.0,
+          "core_density": 1.3297834316984212,
+          "line_integrated_population": 1101.4725995205458
+        },
+        {
+          "year": 58,
+          "radius_km": 710.0,
+          "core_density": 1.3791155043658592,
+          "line_integrated_population": 1228.777215056173
+        },
+        {
+          "year": 59,
+          "radius_km": 770.0,
+          "core_density": 1.4292180878473009,
+          "line_integrated_population": 1368.0410038119771
+        },
+        {
+          "year": 60,
+          "radius_km": 830.0,
+          "core_density": 1.4798696315319622,
+          "line_integrated_population": 1519.8307512498336
+        },
+        {
+          "year": 61,
+          "radius_km": 890.0,
+          "core_density": 1.530852542365472,
+          "line_integrated_population": 1684.6637372933217
+        },
+        {
+          "year": 62,
+          "radius_km": 950.0,
+          "core_density": 1.5819552522968585,
+          "line_integrated_population": 1862.9986263630503
+        },
+        {
+          "year": 63,
+          "radius_km": 1020.0,
+          "core_density": 1.632973989439239,
+          "line_integrated_population": 2055.2270516294234
+        },
+        {
+          "year": 64,
+          "radius_km": 1090.0,
+          "core_density": 1.683714308570614,
+          "line_integrated_population": 2261.666183533145
+        },
+        {
+          "year": 65,
+          "radius_km": 1160.0,
+          "core_density": 1.733992406780037,
+          "line_integrated_population": 2482.5525738760534
+        },
+        {
+          "year": 66,
+          "radius_km": 1240.0,
+          "core_density": 1.783636237292056,
+          "line_integrated_population": 2718.0375462671273
+        },
+        {
+          "year": 67,
+          "radius_km": 1310.0,
+          "core_density": 1.8324864316031046,
+          "line_integrated_population": 2968.184358066701
+        },
+        {
+          "year": 68,
+          "radius_km": 1390.0,
+          "core_density": 1.8803970403715073,
+          "line_integrated_population": 3232.9672892802114
+        },
+        {
+          "year": 69,
+          "radius_km": 1470.0,
+          "core_density": 1.9272361030470715,
+          "line_integrated_population": 3512.2727253786124
+        },
+        {
+          "year": 70,
+          "radius_km": 1550.0,
+          "core_density": 1.972886053837601,
+          "line_integrated_population": 3805.9022022270187
+        },
+        {
+          "year": 71,
+          "radius_km": 1630.0,
+          "core_density": 2.0172439679776932,
+          "line_integrated_population": 4113.577282311252
+        },
+        {
+          "year": 72,
+          "radius_km": 1720.0,
+          "core_density": 2.0602216488094154,
+          "line_integrated_population": 4434.94604231449
+        },
+        {
+          "year": 73,
+          "radius_km": 1800.0,
+          "core_density": 2.101745554204733,
+          "line_integrated_population": 4769.590881195329
+        },
+        {
+          "year": 74,
+          "radius_km": 1890.0,
+          "core_density": 2.1417565610905465,
+          "line_integrated_population": 5117.037310827935
+        },
+        {
+          "year": 75,
+          "radius_km": 1970.0,
+          "core_density": 2.180209569347622,
+          "line_integrated_population": 5476.763370236002
+        },
+        {
+          "year": 76,
+          "radius_km": 2060.0,
+          "core_density": 2.2170729506682134,
+          "line_integrated_population": 5848.209308537043
+        },
+        {
+          "year": 77,
+          "radius_km": 2150.0,
+          "core_density": 2.2523278532748714,
+          "line_integrated_population": 6230.787207388486
+        },
+        {
+          "year": 78,
+          "radius_km": 2240.0,
+          "core_density": 2.2859673788364727,
+          "line_integrated_population": 6623.890255801611
+        },
+        {
+          "year": 79,
+          "radius_km": 2320.0,
+          "core_density": 2.3179956526773435,
+          "line_integrated_population": 7026.901442771891
+        },
+        {
+          "year": 80,
+          "radius_km": 2410.0,
+          "core_density": 2.348426811888059,
+          "line_integrated_population": 7439.201490519234
+        }
+      ],
+      "closed_population_equilibrium": 2.799972182600366,
+      "equilibrium_over_original_K": 0.7450074069901925,
+      "departure_at_closed_equilibrium": 0.7450074069901925
+    },
+    "overflow_mortality_0.95": {
+      "history": [
+        {
+          "year": 0,
+          "radius_km": 10.0,
+          "core_density": 0.5,
+          "line_integrated_population": 10.0
+        },
+        {
+          "year": 1,
+          "radius_km": 10.0,
+          "core_density": 0.5888196142170598,
+          "line_integrated_population": 11.645997407350917
+        },
+        {
+          "year": 2,
+          "radius_km": 10.0,
+          "core_density": 0.6917368177042827,
+          "line_integrated_population": 13.606532726964453
+        },
+        {
+          "year": 3,
+          "radius_km": 10.0,
+          "core_density": 0.8083725177633112,
+          "line_integrated_population": 15.909488910401489
+        },
+        {
+          "year": 4,
+          "radius_km": 10.0,
+          "core_density": 0.9373377539919295,
+          "line_integrated_population": 18.571887893662073
+        },
+        {
+          "year": 5,
+          "radius_km": 10.0,
+          "core_density": 1.0762365658405908,
+          "line_integrated_population": 21.595982799883092
+        },
+        {
+          "year": 6,
+          "radius_km": 10.0,
+          "core_density": 1.2218495262003444,
+          "line_integrated_population": 24.96613708634101
+        },
+        {
+          "year": 7,
+          "radius_km": 10.0,
+          "core_density": 1.3704680446656843,
+          "line_integrated_population": 28.646985098497684
+        },
+        {
+          "year": 8,
+          "radius_km": 10.0,
+          "core_density": 1.5183010856650034,
+          "line_integrated_population": 32.58337132442839
+        },
+        {
+          "year": 9,
+          "radius_km": 10.0,
+          "core_density": 1.6618593435937792,
+          "line_integrated_population": 36.70254763730136
+        },
+        {
+          "year": 10,
+          "radius_km": 10.0,
+          "core_density": 1.798241711252286,
+          "line_integrated_population": 40.91886388431799
+        },
+        {
+          "year": 11,
+          "radius_km": 10.0,
+          "core_density": 1.925289738985708,
+          "line_integrated_population": 45.14060512557777
+        },
+        {
+          "year": 12,
+          "radius_km": 10.0,
+          "core_density": 2.041616085933228,
+          "line_integrated_population": 49.277907760901044
+        },
+        {
+          "year": 13,
+          "radius_km": 10.0,
+          "core_density": 2.1465384657886646,
+          "line_integrated_population": 53.25024324026565
+        },
+        {
+          "year": 14,
+          "radius_km": 10.0,
+          "core_density": 2.239958593347945,
+          "line_integrated_population": 56.99207914778789
+        },
+        {
+          "year": 15,
+          "radius_km": 10.0,
+          "core_density": 2.3222210935576353,
+          "line_integrated_population": 60.45593797299819
+        },
+        {
+          "year": 16,
+          "radius_km": 10.0,
+          "core_density": 2.3939770917184493,
+          "line_integrated_population": 63.61283308578443
+        },
+        {
+          "year": 17,
+          "radius_km": 10.0,
+          "core_density": 2.456066481696011,
+          "line_integrated_population": 66.45063666048281
+        },
+        {
+          "year": 18,
+          "radius_km": 10.0,
+          "core_density": 2.5094243710750357,
+          "line_integrated_population": 68.97118258613139
+        },
+        {
+          "year": 19,
+          "radius_km": 10.0,
+          "core_density": 2.5550116626297625,
+          "line_integrated_population": 71.18687205726206
+        },
+        {
+          "year": 20,
+          "radius_km": 10.0,
+          "core_density": 2.5937667933671493,
+          "line_integrated_population": 73.11735772608522
+        },
+        {
+          "year": 21,
+          "radius_km": 10.0,
+          "core_density": 2.6265745587863463,
+          "line_integrated_population": 74.78665293642024
+        },
+        {
+          "year": 22,
+          "radius_km": 10.0,
+          "core_density": 2.65424794868268,
+          "line_integrated_population": 76.22081718894107
+        },
+        {
+          "year": 23,
+          "radius_km": 10.0,
+          "core_density": 2.677519440230721,
+          "line_integrated_population": 77.44623359081372
+        },
+        {
+          "year": 24,
+          "radius_km": 10.0,
+          "core_density": 2.697038875540121,
+          "line_integrated_population": 78.48841641600742
+        },
+        {
+          "year": 25,
+          "radius_km": 10.0,
+          "core_density": 2.713375709132608,
+          "line_integrated_population": 79.37125305641251
+        },
+        {
+          "year": 26,
+          "radius_km": 10.0,
+          "core_density": 2.727023973113567,
+          "line_integrated_population": 80.11657892311985
+        },
+        {
+          "year": 27,
+          "radius_km": 10.0,
+          "core_density": 2.7384087606251803,
+          "line_integrated_population": 80.74399344214709
+        },
+        {
+          "year": 28,
+          "radius_km": 10.0,
+          "core_density": 2.7478933818694147,
+          "line_integrated_population": 81.27084131355743
+        },
+        {
+          "year": 29,
+          "radius_km": 10.0,
+          "core_density": 2.75578661793179,
+          "line_integrated_population": 81.7123003192654
+        },
+        {
+          "year": 30,
+          "radius_km": 10.0,
+          "core_density": 2.762349701300397,
+          "line_integrated_population": 82.081532416327
+        },
+        {
+          "year": 31,
+          "radius_km": 10.0,
+          "core_density": 2.7678028015243807,
+          "line_integrated_population": 82.38986755663788
+        },
+        {
+          "year": 32,
+          "radius_km": 10.0,
+          "core_density": 2.7723309010290222,
+          "line_integrated_population": 82.64699949954378
+        },
+        {
+          "year": 33,
+          "radius_km": 10.0,
+          "core_density": 2.7760890192344,
+          "line_integrated_population": 82.86118015658893
+        },
+        {
+          "year": 34,
+          "radius_km": 10.0,
+          "core_density": 2.779206790933002,
+          "line_integrated_population": 83.03940421083006
+        },
+        {
+          "year": 35,
+          "radius_km": 10.0,
+          "core_density": 2.781792434122955,
+          "line_integrated_population": 83.18757937012107
+        },
+        {
+          "year": 36,
+          "radius_km": 10.0,
+          "core_density": 2.7839361585931375,
+          "line_integrated_population": 83.31068005979594
+        },
+        {
+          "year": 37,
+          "radius_km": 10.0,
+          "core_density": 2.7857130737091578,
+          "line_integrated_population": 83.41288396447773
+        },
+        {
+          "year": 38,
+          "radius_km": 10.0,
+          "core_density": 2.7871856551794196,
+          "line_integrated_population": 83.49769184010225
+        },
+        {
+          "year": 39,
+          "radius_km": 10.0,
+          "core_density": 2.7884058283335587,
+          "line_integrated_population": 83.56803161813855
+        },
+        {
+          "year": 40,
+          "radius_km": 10.0,
+          "core_density": 2.7894167211804013,
+          "line_integrated_population": 83.62634814574349
+        },
+        {
+          "year": 41,
+          "radius_km": 10.0,
+          "core_density": 2.7902541352742256,
+          "line_integrated_population": 83.67468004150581
+        },
+        {
+          "year": 42,
+          "radius_km": 10.0,
+          "core_density": 2.7909477768798494,
+          "line_integrated_population": 83.7147251621417
+        },
+        {
+          "year": 43,
+          "radius_km": 10.0,
+          "core_density": 2.7915222855022606,
+          "line_integrated_population": 83.747896116703
+        },
+        {
+          "year": 44,
+          "radius_km": 10.0,
+          "core_density": 2.791998091771168,
+          "line_integrated_population": 83.77536716298704
+        },
+        {
+          "year": 45,
+          "radius_km": 10.0,
+          "core_density": 2.7923921320642355,
+          "line_integrated_population": 83.7981136971915
+        },
+        {
+          "year": 46,
+          "radius_km": 10.0,
+          "core_density": 2.7927184431591043,
+          "line_integrated_population": 83.81694541651387
+        },
+        {
+          "year": 47,
+          "radius_km": 10.0,
+          "core_density": 2.7929886566222,
+          "line_integrated_population": 83.83253410438302
+        },
+        {
+          "year": 48,
+          "radius_km": 10.0,
+          "core_density": 2.793212409543621,
+          "line_integrated_population": 83.84543686480075
+        },
+        {
+          "year": 49,
+          "radius_km": 10.0,
+          "core_density": 2.793397685570537,
+          "line_integrated_population": 83.8561155189295
+        },
+        {
+          "year": 50,
+          "radius_km": 10.0,
+          "core_density": 2.793551097928882,
+          "line_integrated_population": 83.864952774992
+        },
+        {
+          "year": 51,
+          "radius_km": 10.0,
+          "core_density": 2.79367812420659,
+          "line_integrated_population": 83.87226569210566
+        },
+        {
+          "year": 52,
+          "radius_km": 10.0,
+          "core_density": 2.793783301055213,
+          "line_integrated_population": 83.87831687951562
+        },
+        {
+          "year": 53,
+          "radius_km": 10.0,
+          "core_density": 2.7938703856079865,
+          "line_integrated_population": 83.88332380409497
+        },
+        {
+          "year": 54,
+          "radius_km": 10.0,
+          "core_density": 2.7939424892735207,
+          "line_integrated_population": 83.88746652000123
+        },
+        {
+          "year": 55,
+          "radius_km": 10.0,
+          "core_density": 2.79400218861167,
+          "line_integrated_population": 83.89089408399995
+        },
+        {
+          "year": 56,
+          "radius_km": 10.0,
+          "core_density": 2.7940516172028405,
+          "line_integrated_population": 83.89372987715433
+        },
+        {
+          "year": 57,
+          "radius_km": 10.0,
+          "core_density": 2.7940925417590043,
+          "line_integrated_population": 83.8960760173638
+        },
+        {
+          "year": 58,
+          "radius_km": 10.0,
+          "core_density": 2.7941264251726463,
+          "line_integrated_population": 83.8980170167049
+        },
+        {
+          "year": 59,
+          "radius_km": 10.0,
+          "core_density": 2.7941544787406727,
+          "line_integrated_population": 83.89962281187222
+        },
+        {
+          "year": 60,
+          "radius_km": 10.0,
+          "core_density": 2.7941777054186496,
+          "line_integrated_population": 83.90095127451018
+        },
+        {
+          "year": 61,
+          "radius_km": 10.0,
+          "core_density": 2.794196935643745,
+          "line_integrated_population": 83.90205029023848
+        },
+        {
+          "year": 62,
+          "radius_km": 10.0,
+          "core_density": 2.794212857001581,
+          "line_integrated_population": 83.90295948015252
+        },
+        {
+          "year": 63,
+          "radius_km": 10.0,
+          "core_density": 2.794226038793856,
+          "line_integrated_population": 83.9037116260576
+        },
+        {
+          "year": 64,
+          "radius_km": 10.0,
+          "core_density": 2.794236952382488,
+          "line_integrated_population": 83.9043338502683
+        },
+        {
+          "year": 65,
+          "radius_km": 10.0,
+          "core_density": 2.7942459880358435,
+          "line_integrated_population": 83.90484859213046
+        },
+        {
+          "year": 66,
+          "radius_km": 10.0,
+          "core_density": 2.794253468878122,
+          "line_integrated_population": 83.90527441621573
+        },
+        {
+          "year": 67,
+          "radius_km": 10.0,
+          "core_density": 2.794259662439797,
+          "line_integrated_population": 83.90562668115197
+        },
+        {
+          "year": 68,
+          "radius_km": 10.0,
+          "core_density": 2.794264790221501,
+          "line_integrated_population": 83.9059180930856
+        },
+        {
+          "year": 69,
+          "radius_km": 10.0,
+          "core_density": 2.794269035612905,
+          "line_integrated_population": 83.90615916365141
+        },
+        {
+          "year": 70,
+          "radius_km": 10.0,
+          "core_density": 2.794272550449449,
+          "line_integrated_population": 83.90635858890847
+        },
+        {
+          "year": 71,
+          "radius_km": 10.0,
+          "core_density": 2.7942754604411837,
+          "line_integrated_population": 83.90652356286975
+        },
+        {
+          "year": 72,
+          "radius_km": 10.0,
+          "core_density": 2.7942778696676958,
+          "line_integrated_population": 83.90666003690663
+        },
+        {
+          "year": 73,
+          "radius_km": 10.0,
+          "core_density": 2.7942798642997455,
+          "line_integrated_population": 83.90677293436647
+        },
+        {
+          "year": 74,
+          "radius_km": 10.0,
+          "core_density": 2.7942815156806353,
+          "line_integrated_population": 83.90686632813201
+        },
+        {
+          "year": 75,
+          "radius_km": 10.0,
+          "core_density": 2.794282882877445,
+          "line_integrated_population": 83.90694358751871
+        },
+        {
+          "year": 76,
+          "radius_km": 10.0,
+          "core_density": 2.7942840147933263,
+          "line_integrated_population": 83.90700749980306
+        },
+        {
+          "year": 77,
+          "radius_km": 10.0,
+          "core_density": 2.794284951916372,
+          "line_integrated_population": 83.90706037076203
+        },
+        {
+          "year": 78,
+          "radius_km": 10.0,
+          "core_density": 2.7942857277675826,
+          "line_integrated_population": 83.9071041078475
+        },
+        {
+          "year": 79,
+          "radius_km": 10.0,
+          "core_density": 2.7942863700996936,
+          "line_integrated_population": 83.90714028899438
+        },
+        {
+          "year": 80,
+          "radius_km": 10.0,
+          "core_density": 2.7942869018897354,
+          "line_integrated_population": 83.90717021954347
+        }
+      ],
+      "closed_population_equilibrium": 2.799972182600366,
+      "equilibrium_over_original_K": 0.7450074069901925,
+      "departure_at_closed_equilibrium": 0.00040799153865026807
+    }
+  },
+  "scope": "1-D controlled mechanism experiment; not a two-dimensional range reconstruction, numerical reproduction of the paper, or calibrated project fit",
+  "dx_km": 10.0,
+  "half_domain_km": 8000.0
+}

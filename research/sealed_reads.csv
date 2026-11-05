@@ -1,0 +1,14 @@
+ts,cache,reason
+2026-10-25T08:12:41-05:00,raw CBC completeness,FINAL_HELDOUT: audit indirect sealed-species completeness influence before confirmation
+2026-10-25T08:13:13-05:00,/mnt/e/Datasets/cbc_raw/20250205_FullSet_AllCountries_AllYears_CBC_Data_Request,"FINAL_HELDOUT: fixed v1/v2 summer-winter confirmation, no encoder tuning"
+2026-10-25T08:20:57-05:00,/home/breallis/houfin/work/houfin/research/FINAL_HOLDOUT_20261025/sealed/cbc_circles.npz,"FINAL_HELDOUT: fixed winter confirmation, modern training-circle readout, held-out circles by era"
+2026-10-25T08:21:00-05:00,/home/breallis/houfin/work/houfin/research/FINAL_HOLDOUT_20261025/adapters/v2_w64,"FINAL_HELDOUT: predeclared final-candidate summer comparison, no encoder tuning"
+2026-10-25T08:25:33-05:00,/home/breallis/houfin/work/houfin/research/FINAL_HOLDOUT_20261025/sealed/cbc_circles.npz,FINAL_HELDOUT: winter confirmation with every test circle excluded from readout calibration
+2026-10-25T08:28:20-05:00,raw CBC benchmark membership,FINAL_HELDOUT: quantify recognized sealed and focal species contributions to the unchanged training completeness
+2026-10-25T08:36:26-05:00,/mnt/e/Datasets/cbc_raw/pseudo_early3_w6695,FINAL_HELDOUT: fixed-readout check against existing E086v pseudo-early observation damage
+2026-10-25T08:36:45-05:00,/home/breallis/houfin/work/houfin/research/FINAL_HOLDOUT_20261025/sealed/pseudo/cbc_circles.npz,"FINAL_HELDOUT: fixed-readout pseudo-early observation-damage check, no model selection"
+2026-10-25T08:39:32-05:00,/mnt/e/Datasets/cbc_raw/pseudo_early3_w6695,FINAL_HELDOUT: fixed-readout check against existing E086v pseudo-early observation damage
+2026-10-25T08:39:46-05:00,/home/breallis/houfin/work/houfin/research/FINAL_HOLDOUT_20261025/adapters/v2_w64,"FINAL_HELDOUT: predeclared final-candidate summer comparison, no encoder tuning"
+2026-10-25T08:39:50-05:00,/home/breallis/houfin/work/houfin/research/FINAL_HOLDOUT_20261025/sealed/pseudo_fixed_taxonomy/cbc_circles.npz,"FINAL_HELDOUT: fixed-readout pseudo-early observation-damage check, no model selection"
+2026-10-25T08:44:18-05:00,/home/breallis/houfin/work/houfin/research/FINAL_HOLDOUT_20261025/adapters/v2_w64,"FINAL_HELDOUT: predeclared final-candidate summer comparison, no encoder tuning"
+2026-10-30T08:57:01-05:00,/home/breallis/houfin/work/houfin/research/FINAL_HOLDOUT_20261025/sealed/cbc_circles.npz + BBS raw (sealed species) on TACC,"FIELD54 production build (FIELD54_NATIVE_PLAN 2026-10-29; user: production = all species except House Finch, sealed included): sealed-species BBS rows and CBC lists enter production points/teachers only; no scoring"

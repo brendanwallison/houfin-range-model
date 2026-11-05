@@ -1,0 +1,183 @@
+{
+  "source_point": "/work/07980/bwa386/ls6/houfin/processed/model_results/age_map_float32_shared_clean_w64_quick90",
+  "exact_state": null,
+  "roundtrip_U": 144766.46320283858,
+  "U": 144766.46320283858,
+  "grad_norm": 4397.278608213916,
+  "repeat_U": [
+    144766.46320283858,
+    144766.46320283858,
+    144766.46320283858
+  ],
+  "blocks": {
+    "alpha_a": {
+      "norm": 3364.2623880408228,
+      "max_abs": 3364.2623880408228,
+      "size": 1
+    },
+    "alpha_f": {
+      "norm": 578.6600613208126,
+      "max_abs": 578.6600613208126,
+      "size": 1
+    },
+    "alpha_j": {
+      "norm": 1229.4397049577644,
+      "max_abs": 1229.4397049577644,
+      "size": 1
+    },
+    "alpha_k": {
+      "norm": 422.7179614490799,
+      "max_abs": 422.7179614490799,
+      "size": 1
+    },
+    "concentration": {
+      "norm": 29.895686917710584,
+      "max_abs": 29.895686917710584,
+      "size": 1
+    },
+    "disease_b_late": {
+      "norm": 5.788984847860419,
+      "max_abs": 5.788984847860419,
+      "size": 1
+    },
+    "disease_b_native_raw": {
+      "norm": 0.30655847766311184,
+      "max_abs": 0.30655847766311184,
+      "size": 1
+    },
+    "disease_hill_n_raw": {
+      "norm": 33.43575381715023,
+      "max_abs": 33.43575381715023,
+      "size": 1
+    },
+    "disease_lag0": {
+      "norm": 2.806149013416504,
+      "max_abs": 2.806149013416504,
+      "size": 1
+    },
+    "disease_log_k_half_counts": {
+      "norm": 43.68291799230452,
+      "max_abs": 43.68291799230452,
+      "size": 1
+    },
+    "disease_log_tau_rec": {
+      "norm": 0.39994002006460816,
+      "max_abs": 0.39994002006460816,
+      "size": 1
+    },
+    "disease_mu_sev": {
+      "norm": 25.450474079209368,
+      "max_abs": 25.450474079209368,
+      "size": 1
+    },
+    "disease_rec_raw": {
+      "norm": 1.8260138310266538,
+      "max_abs": 1.8260138310266538,
+      "size": 1
+    },
+    "disease_tau_raw": {
+      "norm": 1.1093960898784163,
+      "max_abs": 1.1093960898784163,
+      "size": 1
+    },
+    "disease_w_lag": {
+      "norm": 6.288286254512385,
+      "max_abs": 3.614584447161669,
+      "size": 24
+    },
+    "disease_w_sev": {
+      "norm": 14.6317211050859,
+      "max_abs": 7.8599725482596305,
+      "size": 24
+    },
+    "dispersal_logit_intercept": {
+      "norm": 2.384185791015625e-07,
+      "max_abs": 2.384185791015625e-07,
+      "size": 1
+    },
+    "dispersal_logit_slope": {
+      "norm": 2.384185791015625e-07,
+      "max_abs": 2.384185791015625e-07,
+      "size": 1
+    },
+    "log_inv_total": {
+      "norm": 111.741176326943,
+      "max_abs": 111.741176326943,
+      "size": 1
+    },
+    "manifold_coupling_logit": {
+      "norm": 17.10983739858581,
+      "max_abs": 17.10983739858581,
+      "size": 1
+    },
+    "manifold_factor": {
+      "norm": 2092.942556711263,
+      "max_abs": 1007.3486046349741,
+      "size": 64
+    },
+    "manifold_idio": {
+      "norm": 965.9235223292027,
+      "max_abs": 353.93947997233226,
+      "size": 256
+    },
+    "obs_conc_kappa": {
+      "norm": 610.9624116108303,
+      "max_abs": 610.9624116108303,
+      "size": 1
+    },
+    "obs_fledgling_weight": {
+      "norm": 94.20039917028915,
+      "max_abs": 94.20039917028915,
+      "size": 1
+    },
+    "quality_conc_mult": {
+      "norm": 4.228323072515757,
+      "max_abs": 4.228323072515757,
+      "size": 1
+    },
+    "w_scale_raw": {
+      "norm": 528.6852141796326,
+      "max_abs": 485.4353941253399,
+      "size": 4
+    }
+  },
+  "finite_difference": [
+    {
+      "direction": "gradient_unit",
+      "step": 1e-09,
+      "autodiff": 4397.278608213916,
+      "central_difference": 4394.474672153592,
+      "U_plus": 144766.4632072249,
+      "U_minus": 144766.46319843596,
+      "relative_error": 0.0006376525824601331
+    },
+    {
+      "direction": "coordinate_0_alpha_a",
+      "step": 1e-09,
+      "autodiff": -3364.2623880408228,
+      "central_difference": -3365.1740523055196,
+      "U_plus": 144766.46319946792,
+      "U_minus": 144766.46320619827,
+      "relative_error": 0.00027091147457060014
+    },
+    {
+      "direction": "coordinate_2_alpha_j",
+      "step": 1e-09,
+      "autodiff": -1229.4397049577644,
+      "central_difference": -1231.4849300310016,
+      "U_plus": 144766.46320160257,
+      "U_minus": 144766.46320406554,
+      "relative_error": 0.001660779619272846
+    },
+    {
+      "direction": "coordinate_70_manifold_factor",
+      "step": 1e-09,
+      "autodiff": -1007.3486046349741,
+      "central_difference": -1006.4250091090797,
+      "U_plus": 144766.4632018274,
+      "U_minus": 144766.46320384025,
+      "relative_error": 0.0009168578996831462
+    }
+  ],
+  "interpretation": "Diagnostic only; no convergence gate or model changed."
+}

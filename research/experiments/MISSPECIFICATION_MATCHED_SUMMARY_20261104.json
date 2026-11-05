@@ -1,0 +1,559 @@
+{
+  "support": "Equal land cells 25\u201349N; East >=95W, Plains 100\u201395W, West <100W.",
+  "fixed_arrival_threshold": 0.008027860278758616,
+  "records": [
+    {
+      "step": "step48_ctl_full_s41",
+      "growth_change": {
+        "east": 1.2457255530623195,
+        "plains": 0.7330341284286472,
+        "west": 0.8165512271410917
+      },
+      "adult_survival_median": 0.576232173861251,
+      "juvenile_adult_ratio_median": 0.4469751494764687,
+      "juvenile_ratio_ceiling_population_share": 0.0,
+      "Fmax_median": 8.641327754590307,
+      "realized_reproduction_at_nests": 3.679245763222983,
+      "regions": {
+        "east": {
+          "cells": 1308,
+          "C_mean": 0.6833315936895671,
+          "C_sink_share": 0.7186544342507645,
+          "local_replacement_mean": 0.6044894489986651,
+          "local_sink_share": 0.9862385321100917,
+          "immigrant_share_mean": 0.5769690723106544,
+          "K_Allee_nonviability_share": 0.012996941896024464,
+          "potential_sink_share": 0.45565749235474007,
+          "heldout_LPD": -2.1302827869488534,
+          "training_LPD": -1.1089768886861857,
+          "annual_abundance_log_adjustment_RMS": 0.0,
+          "establishment_log_adjustment_RMS": 0.0
+        },
+        "plains": {
+          "cells": 380,
+          "C_mean": 0.6741280645481239,
+          "C_sink_share": 0.7894736842105263,
+          "local_replacement_mean": 0.6158976960926866,
+          "local_sink_share": 0.968421052631579,
+          "immigrant_share_mean": 0.6353983824141207,
+          "K_Allee_nonviability_share": 0.007894736842105263,
+          "potential_sink_share": 0.5947368421052631,
+          "heldout_LPD": -0.9000204699404241,
+          "training_LPD": -0.6408721025691289,
+          "annual_abundance_log_adjustment_RMS": 0.0,
+          "establishment_log_adjustment_RMS": 0.0
+        },
+        "west": {
+          "cells": 1566,
+          "C_mean": 0.7499291941704376,
+          "C_sink_share": 0.7343550446998723,
+          "local_replacement_mean": 0.6112081910968309,
+          "local_sink_share": 0.9259259259259259,
+          "immigrant_share_mean": 0.716617649899043,
+          "K_Allee_nonviability_share": 0.01277139208173691,
+          "potential_sink_share": 0.4763729246487867,
+          "heldout_LPD": -2.6407360050857283,
+          "training_LPD": -1.6689462980411256,
+          "annual_abundance_log_adjustment_RMS": 0.0,
+          "establishment_log_adjustment_RMS": 0.0
+        }
+      },
+      "full_fixed_threshold_front": {
+        "cells": 782,
+        "median_offset": -3.0,
+        "never_fraction": 0.06777493606138107,
+        "share_earlier_5": 0.32225063938618925
+      },
+      "skeleton_fixed_threshold_front": {
+        "cells": 782,
+        "median_offset": -3.0,
+        "never_fraction": 0.06777493606138107,
+        "share_earlier_5": 0.32225063938618925
+      }
+    },
+    {
+      "step": "step48_ctl_weak_s41",
+      "growth_change": {
+        "east": 0.307718351142826,
+        "plains": 0.21938134299259066,
+        "west": 0.24412913553922666
+      },
+      "adult_survival_median": 0.3561110561502816,
+      "juvenile_adult_ratio_median": 0.9442489682533285,
+      "juvenile_ratio_ceiling_population_share": 0.4729863496989702,
+      "Fmax_median": 5.434518200883784,
+      "realized_reproduction_at_nests": 3.256277059278191,
+      "regions": {
+        "east": {
+          "cells": 1308,
+          "C_mean": 0.6491687061596324,
+          "C_sink_share": 0.7668195718654435,
+          "local_replacement_mean": 0.5053818673448534,
+          "local_sink_share": 0.9678899082568807,
+          "immigrant_share_mean": 0.6545541367875657,
+          "K_Allee_nonviability_share": 0.0007645259938837921,
+          "potential_sink_share": 0.6269113149847095,
+          "heldout_LPD": -2.1155288461086004,
+          "training_LPD": -1.1107508733740203,
+          "annual_abundance_log_adjustment_RMS": 0.0,
+          "establishment_log_adjustment_RMS": 0.0
+        },
+        "plains": {
+          "cells": 380,
+          "C_mean": 0.619738790260636,
+          "C_sink_share": 0.8631578947368421,
+          "local_replacement_mean": 0.4941474814263399,
+          "local_sink_share": 0.9710526315789474,
+          "immigrant_share_mean": 0.6806276520097079,
+          "K_Allee_nonviability_share": 0.002631578947368421,
+          "potential_sink_share": 0.7710526315789473,
+          "heldout_LPD": -0.9098304278896655,
+          "training_LPD": -0.6402864704219633,
+          "annual_abundance_log_adjustment_RMS": 0.0,
+          "establishment_log_adjustment_RMS": 0.0
+        },
+        "west": {
+          "cells": 1566,
+          "C_mean": 0.7183518099489314,
+          "C_sink_share": 0.7452107279693486,
+          "local_replacement_mean": 0.5608218833336434,
+          "local_sink_share": 0.9086845466155811,
+          "immigrant_share_mean": 0.7343977630764155,
+          "K_Allee_nonviability_share": 0.006385696040868455,
+          "potential_sink_share": 0.5491698595146871,
+          "heldout_LPD": -2.6204716244287622,
+          "training_LPD": -1.671421376127701,
+          "annual_abundance_log_adjustment_RMS": 0.0,
+          "establishment_log_adjustment_RMS": 0.0
+        }
+      },
+      "full_fixed_threshold_front": {
+        "cells": 782,
+        "median_offset": -3.0,
+        "never_fraction": 0.043478260869565216,
+        "share_earlier_5": 0.37851662404092073
+      },
+      "skeleton_fixed_threshold_front": {
+        "cells": 782,
+        "median_offset": -3.0,
+        "never_fraction": 0.043478260869565216,
+        "share_earlier_5": 0.37851662404092073
+      }
+    },
+    {
+      "step": "step48_ab_ar05_weak_s41",
+      "growth_change": {
+        "east": 0.3508665585966465,
+        "plains": 0.22977738670847425,
+        "west": 0.25256855292741487
+      },
+      "adult_survival_median": 0.37336445575618527,
+      "juvenile_adult_ratio_median": 0.9337183062923389,
+      "juvenile_ratio_ceiling_population_share": 0.4513321509877743,
+      "Fmax_median": 4.907323050292267,
+      "realized_reproduction_at_nests": 3.2301842010646435,
+      "regions": {
+        "east": {
+          "cells": 1308,
+          "C_mean": 0.6675486237007899,
+          "C_sink_share": 0.7270642201834863,
+          "local_replacement_mean": 0.5740193372343888,
+          "local_sink_share": 0.8295107033639144,
+          "immigrant_share_mean": 0.577516165561419,
+          "K_Allee_nonviability_share": 0.0007645259938837921,
+          "potential_sink_share": 0.6001529051987767,
+          "heldout_LPD": -2.0979964197192515,
+          "training_LPD": -1.1060075317377507,
+          "annual_abundance_log_adjustment_RMS": 0.04970016307478514,
+          "establishment_log_adjustment_RMS": 0.0
+        },
+        "plains": {
+          "cells": 380,
+          "C_mean": 0.6158956288598744,
+          "C_sink_share": 0.868421052631579,
+          "local_replacement_mean": 0.5071479241404688,
+          "local_sink_share": 0.9,
+          "immigrant_share_mean": 0.6412030604406189,
+          "K_Allee_nonviability_share": 0.0,
+          "potential_sink_share": 0.7947368421052632,
+          "heldout_LPD": -0.9116353164313268,
+          "training_LPD": -0.6391686878217228,
+          "annual_abundance_log_adjustment_RMS": 0.05518723009979937,
+          "establishment_log_adjustment_RMS": 0.0
+        },
+        "west": {
+          "cells": 1566,
+          "C_mean": 0.7367605788383174,
+          "C_sink_share": 0.7273307790549169,
+          "local_replacement_mean": 0.5607174328951552,
+          "local_sink_share": 0.8901660280970626,
+          "immigrant_share_mean": 0.7003032249047716,
+          "K_Allee_nonviability_share": 0.0019157088122605363,
+          "potential_sink_share": 0.5791826309067688,
+          "heldout_LPD": -2.6566104174842655,
+          "training_LPD": -1.6648464383642012,
+          "annual_abundance_log_adjustment_RMS": 0.08108748130519046,
+          "establishment_log_adjustment_RMS": 0.0
+        }
+      },
+      "full_fixed_threshold_front": {
+        "cells": 782,
+        "median_offset": -4.0,
+        "never_fraction": 0.030690537084398978,
+        "share_earlier_5": 0.4053708439897698
+      },
+      "skeleton_fixed_threshold_front": {
+        "cells": 782,
+        "median_offset": -11.0,
+        "never_fraction": 0.017902813299232736,
+        "share_earlier_5": 0.9616368286445013
+      }
+    },
+    {
+      "step": "step48_ab_ar15_weak_s41",
+      "growth_change": {
+        "east": 0.3527547693846478,
+        "plains": 0.257501880798417,
+        "west": 0.32332190114226966
+      },
+      "adult_survival_median": 0.5164337943973806,
+      "juvenile_adult_ratio_median": 0.9587992927264616,
+      "juvenile_ratio_ceiling_population_share": 0.5233513321358526,
+      "Fmax_median": 4.661863996883186,
+      "realized_reproduction_at_nests": 2.5843486571986376,
+      "regions": {
+        "east": {
+          "cells": 1308,
+          "C_mean": 0.7195821432263846,
+          "C_sink_share": 0.7117737003058104,
+          "local_replacement_mean": 0.5799154644362384,
+          "local_sink_share": 0.8126911314984709,
+          "immigrant_share_mean": 0.5900080665809463,
+          "K_Allee_nonviability_share": 0.0022935779816513763,
+          "potential_sink_share": 0.5856269113149847,
+          "heldout_LPD": -2.1875559049022217,
+          "training_LPD": -1.1021578543301542,
+          "annual_abundance_log_adjustment_RMS": 0.10939066204487062,
+          "establishment_log_adjustment_RMS": 0.0
+        },
+        "plains": {
+          "cells": 380,
+          "C_mean": 0.6896542713860853,
+          "C_sink_share": 0.8631578947368421,
+          "local_replacement_mean": 0.5313809548647768,
+          "local_sink_share": 0.8736842105263158,
+          "immigrant_share_mean": 0.651747596228164,
+          "K_Allee_nonviability_share": 0.002631578947368421,
+          "potential_sink_share": 0.7894736842105263,
+          "heldout_LPD": -0.9404986837879088,
+          "training_LPD": -0.6356404273638959,
+          "annual_abundance_log_adjustment_RMS": 0.17222970804786078,
+          "establishment_log_adjustment_RMS": 0.0
+        },
+        "west": {
+          "cells": 1566,
+          "C_mean": 0.8909055001834341,
+          "C_sink_share": 0.60727969348659,
+          "local_replacement_mean": 0.7726730049938624,
+          "local_sink_share": 0.6794380587484036,
+          "immigrant_share_mean": 0.5705278775387569,
+          "K_Allee_nonviability_share": 0.005108556832694764,
+          "potential_sink_share": 0.4054916985951469,
+          "heldout_LPD": -2.8425607362250433,
+          "training_LPD": -1.6624433196618107,
+          "annual_abundance_log_adjustment_RMS": 0.38569758997640413,
+          "establishment_log_adjustment_RMS": 0.0
+        }
+      },
+      "full_fixed_threshold_front": {
+        "cells": 782,
+        "median_offset": -4.0,
+        "never_fraction": 0.023017902813299233,
+        "share_earlier_5": 0.3976982097186701
+      },
+      "skeleton_fixed_threshold_front": {
+        "cells": 782,
+        "median_offset": -19.0,
+        "never_fraction": 0.043478260869565216,
+        "share_earlier_5": 0.9475703324808185
+      }
+    },
+    {
+      "step": "step48_est_static10_full_s41",
+      "growth_change": {
+        "east": 0.5680140735984013,
+        "plains": 0.39709442486463264,
+        "west": 0.3941542920697607
+      },
+      "adult_survival_median": 0.5446370293298275,
+      "juvenile_adult_ratio_median": 0.3385583850217065,
+      "juvenile_ratio_ceiling_population_share": 0.0,
+      "Fmax_median": 6.144216428796234,
+      "realized_reproduction_at_nests": 4.18245016621135,
+      "regions": {
+        "east": {
+          "cells": 1308,
+          "C_mean": 0.6933121240393283,
+          "C_sink_share": 0.7599388379204893,
+          "local_replacement_mean": 0.6790443663069288,
+          "local_sink_share": 0.841743119266055,
+          "immigrant_share_mean": 0.37322666882822525,
+          "K_Allee_nonviability_share": 0.0,
+          "potential_sink_share": 0.40672782874617736,
+          "heldout_LPD": -2.1779266100741252,
+          "training_LPD": -1.100454641430261,
+          "annual_abundance_log_adjustment_RMS": 0.0,
+          "establishment_log_adjustment_RMS": 0.3429423151312546
+        },
+        "plains": {
+          "cells": 380,
+          "C_mean": 0.7004228337662612,
+          "C_sink_share": 0.8921052631578947,
+          "local_replacement_mean": 0.6887114312754656,
+          "local_sink_share": 0.9052631578947369,
+          "immigrant_share_mean": 0.36523641946500557,
+          "K_Allee_nonviability_share": 0.0,
+          "potential_sink_share": 0.5,
+          "heldout_LPD": -0.9227341279805559,
+          "training_LPD": -0.6336725127866923,
+          "annual_abundance_log_adjustment_RMS": 0.0,
+          "establishment_log_adjustment_RMS": 0.19545657333784155
+        },
+        "west": {
+          "cells": 1566,
+          "C_mean": 0.7393118907942058,
+          "C_sink_share": 0.735632183908046,
+          "local_replacement_mean": 0.6914412490591265,
+          "local_sink_share": 0.8492975734355045,
+          "immigrant_share_mean": 0.5471955224207901,
+          "K_Allee_nonviability_share": 0.0019157088122605363,
+          "potential_sink_share": 0.5466155810983397,
+          "heldout_LPD": -2.6845230306485734,
+          "training_LPD": -1.6666542501735908,
+          "annual_abundance_log_adjustment_RMS": 0.0,
+          "establishment_log_adjustment_RMS": 0.09551726361000594
+        }
+      },
+      "full_fixed_threshold_front": {
+        "cells": 782,
+        "median_offset": -1.0,
+        "never_fraction": 0.09846547314578005,
+        "share_earlier_5": 0.18030690537084398
+      },
+      "skeleton_fixed_threshold_front": {
+        "cells": 782,
+        "median_offset": -1.0,
+        "never_fraction": 0.09846547314578005,
+        "share_earlier_5": 0.22762148337595908
+      }
+    },
+    {
+      "step": "step48_arrival10_full_s41",
+      "growth_change": {
+        "east": 0.5966218437493974,
+        "plains": 0.43477204977905215,
+        "west": 0.3593758112695534
+      },
+      "adult_survival_median": 0.5824608954705994,
+      "juvenile_adult_ratio_median": 0.2739751966272663,
+      "juvenile_ratio_ceiling_population_share": 0.0,
+      "Fmax_median": 6.495342014126415,
+      "realized_reproduction_at_nests": 4.4302226071105695,
+      "regions": {
+        "east": {
+          "cells": 1308,
+          "C_mean": 0.7066602282602277,
+          "C_sink_share": 0.7821100917431193,
+          "local_replacement_mean": 0.692477003392475,
+          "local_sink_share": 0.8707951070336392,
+          "immigrant_share_mean": 0.34494847048301946,
+          "K_Allee_nonviability_share": 0.0007645259938837921,
+          "potential_sink_share": 0.37844036697247707,
+          "heldout_LPD": -2.155291145404445,
+          "training_LPD": -1.0982575646095856,
+          "annual_abundance_log_adjustment_RMS": 0.0,
+          "establishment_log_adjustment_RMS": 0.0
+        },
+        "plains": {
+          "cells": 380,
+          "C_mean": 0.7373912583820835,
+          "C_sink_share": 0.9078947368421053,
+          "local_replacement_mean": 0.7256192848124764,
+          "local_sink_share": 0.9289473684210526,
+          "immigrant_share_mean": 0.31045659968163064,
+          "K_Allee_nonviability_share": 0.0,
+          "potential_sink_share": 0.4394736842105263,
+          "heldout_LPD": -0.9380469560221071,
+          "training_LPD": -0.6273161815179231,
+          "annual_abundance_log_adjustment_RMS": 0.0,
+          "establishment_log_adjustment_RMS": 0.0
+        },
+        "west": {
+          "cells": 1566,
+          "C_mean": 0.7408227956537156,
+          "C_sink_share": 0.7490421455938697,
+          "local_replacement_mean": 0.6994967097794523,
+          "local_sink_share": 0.8422733077905492,
+          "immigrant_share_mean": 0.5018065179937966,
+          "K_Allee_nonviability_share": 0.0,
+          "potential_sink_share": 0.541507024265645,
+          "heldout_LPD": -2.6860991091323214,
+          "training_LPD": -1.6617610333057073,
+          "annual_abundance_log_adjustment_RMS": 0.0,
+          "establishment_log_adjustment_RMS": 0.0
+        }
+      },
+      "full_fixed_threshold_front": {
+        "cells": 782,
+        "median_offset": -1.0,
+        "never_fraction": 0.09718670076726342,
+        "share_earlier_5": 0.16240409207161124
+      },
+      "skeleton_fixed_threshold_front": {
+        "cells": 782,
+        "median_offset": 1.0,
+        "never_fraction": 0.12276214833759591,
+        "share_earlier_5": 0.12148337595907928
+      }
+    },
+    {
+      "step": "step48_hurdle_ctl_s41",
+      "growth_change": {
+        "east": 0.9740520991540038,
+        "plains": 0.7177481550534003,
+        "west": 0.48803129601695816
+      },
+      "adult_survival_median": 0.5210570300508195,
+      "juvenile_adult_ratio_median": 0.443920766636639,
+      "juvenile_ratio_ceiling_population_share": 0.0,
+      "Fmax_median": 5.462882620879693,
+      "realized_reproduction_at_nests": 3.031755433416402,
+      "regions": {
+        "east": {
+          "cells": 1308,
+          "C_mean": 0.9364785894997288,
+          "C_sink_share": 0.4938837920489297,
+          "local_replacement_mean": 0.7753919711397088,
+          "local_sink_share": 0.9984709480122325,
+          "immigrant_share_mean": 0.5804334558299569,
+          "K_Allee_nonviability_share": 0.0045871559633027525,
+          "potential_sink_share": 0.2209480122324159,
+          "heldout_LPD": -2.489667323721903,
+          "training_LPD": -1.2093148125523954,
+          "annual_abundance_log_adjustment_RMS": 0.0,
+          "establishment_log_adjustment_RMS": 0.0
+        },
+        "plains": {
+          "cells": 380,
+          "C_mean": 0.9474295513043266,
+          "C_sink_share": 0.6605263157894737,
+          "local_replacement_mean": 0.7436540656621788,
+          "local_sink_share": 1.0,
+          "immigrant_share_mean": 0.7061433268243722,
+          "K_Allee_nonviability_share": 0.005263157894736842,
+          "potential_sink_share": 0.23157894736842105,
+          "heldout_LPD": -1.0639597723180945,
+          "training_LPD": -0.6773985383673197,
+          "annual_abundance_log_adjustment_RMS": 0.0,
+          "establishment_log_adjustment_RMS": 0.0
+        },
+        "west": {
+          "cells": 1566,
+          "C_mean": 0.9524419882781033,
+          "C_sink_share": 0.5542784163473818,
+          "local_replacement_mean": 0.7568431050245975,
+          "local_sink_share": 0.9814814814814815,
+          "immigrant_share_mean": 0.8052102984900693,
+          "K_Allee_nonviability_share": 0.0038314176245210726,
+          "potential_sink_share": 0.29821200510855683,
+          "heldout_LPD": -5.226576872940097,
+          "training_LPD": -1.9187937801954273,
+          "annual_abundance_log_adjustment_RMS": 0.0,
+          "establishment_log_adjustment_RMS": 0.0
+        }
+      },
+      "full_fixed_threshold_front": {
+        "cells": 782,
+        "median_offset": -12.0,
+        "never_fraction": 0.0,
+        "share_earlier_5": 0.9373401534526854
+      },
+      "skeleton_fixed_threshold_front": {
+        "cells": 782,
+        "median_offset": -12.0,
+        "never_fraction": 0.0,
+        "share_earlier_5": 0.9373401534526854
+      }
+    },
+    {
+      "step": "step48_hurdle_ab_s41",
+      "growth_change": {
+        "east": 0.20228312067002918,
+        "plains": 0.1947739874037363,
+        "west": 0.10509257448254217
+      },
+      "adult_survival_median": 0.4033576395095191,
+      "juvenile_adult_ratio_median": 0.6887243848425169,
+      "juvenile_ratio_ceiling_population_share": 0.09148262287722574,
+      "Fmax_median": 3.780242752028938,
+      "realized_reproduction_at_nests": 2.9995696021773295,
+      "regions": {
+        "east": {
+          "cells": 1308,
+          "C_mean": 0.9444077012501476,
+          "C_sink_share": 0.6613149847094801,
+          "local_replacement_mean": 0.6981630760421768,
+          "local_sink_share": 0.985474006116208,
+          "immigrant_share_mean": 0.6243619656372071,
+          "K_Allee_nonviability_share": 0.0045871559633027525,
+          "potential_sink_share": 0.45642201834862384,
+          "heldout_LPD": -2.63269222032039,
+          "training_LPD": -1.1977323656123209,
+          "annual_abundance_log_adjustment_RMS": 0.10720448965893728,
+          "establishment_log_adjustment_RMS": 0.0
+        },
+        "plains": {
+          "cells": 380,
+          "C_mean": 0.9758544267703517,
+          "C_sink_share": 0.55,
+          "local_replacement_mean": 0.6755588130987474,
+          "local_sink_share": 1.0,
+          "immigrant_share_mean": 0.742566067218551,
+          "K_Allee_nonviability_share": 0.007894736842105263,
+          "potential_sink_share": 0.6263157894736842,
+          "heldout_LPD": -1.0700499221580224,
+          "training_LPD": -0.6698815271788677,
+          "annual_abundance_log_adjustment_RMS": 0.15334720095849788,
+          "establishment_log_adjustment_RMS": 0.0
+        },
+        "west": {
+          "cells": 1566,
+          "C_mean": 1.009702433618179,
+          "C_sink_share": 0.4897828863346105,
+          "local_replacement_mean": 0.8566285555361992,
+          "local_sink_share": 0.7911877394636015,
+          "immigrant_share_mean": 0.6618176704946765,
+          "K_Allee_nonviability_share": 0.0070242656449553,
+          "potential_sink_share": 0.18710089399744573,
+          "heldout_LPD": -5.818036905130281,
+          "training_LPD": -1.8995959974580685,
+          "annual_abundance_log_adjustment_RMS": 0.22551658150749346,
+          "establishment_log_adjustment_RMS": 0.0
+        }
+      },
+      "full_fixed_threshold_front": {
+        "cells": 782,
+        "median_offset": -16.0,
+        "never_fraction": 0.0,
+        "share_earlier_5": 0.9820971867007673
+      },
+      "skeleton_fixed_threshold_front": {
+        "cells": 782,
+        "median_offset": -21.0,
+        "never_fraction": 0.0,
+        "share_earlier_5": 1.0
+      }
+    }
+  ],
+  "scope": "One optimizer seed completed; no posterior-identifiability or overall winner claim. Raw heldout scores lack paired uncertainty."
+}

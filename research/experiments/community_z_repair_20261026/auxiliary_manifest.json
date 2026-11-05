@@ -1,0 +1,19 @@
+{
+  "source_sha256": "04da4e57aca9f32c0145237575410f2f3a3b83e2485820687f25c01c09de95c9",
+  "task": "backcast40",
+  "winter": "full",
+  "calibration_cell_years": 4159,
+  "cross_season_calibration": {
+    "a": 0.008484674504417379,
+    "b": 0.8247039168987562,
+    "mse": 0.010561837352517924,
+    "weight": 2.8404148822503927
+  },
+  "operator_lambda": 1e-06,
+  "early_lists": 13379,
+  "training_only_lists": 87088,
+  "modern_completeness_reference": "training lists only",
+  "observation_operator": "Existing E086x winter_operator and scalar relative completeness, unchanged.",
+  "leave_one_species_out_completeness_used": false,
+  "scope": "Matched first emulation control; no House Finch data and no evaluation records."
+}

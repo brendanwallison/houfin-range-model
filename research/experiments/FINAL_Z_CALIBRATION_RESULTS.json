@@ -1,0 +1,1251 @@
+{
+  "timestamp": "2026-10-26T12:21:39.143334+00:00",
+  "source_sha256": "6520bc775870d1a8cc99e7ca118a81ea81d3e4e9e0c5f59a88b0f78e704be655",
+  "feature_manifest_sha256": "bb80f9c3453cbdd2b2e9ff423ef493d66dec45e07968f3b3a362d1692bf2f288",
+  "interpretation": "Exploratory development calibration; modern training cells only; no production adoption or confirmed geometry correction.",
+  "support": {
+    "cells": 1548,
+    "spatial_blocks": 332,
+    "epochs": [
+      [
+        1996,
+        2005
+      ],
+      [
+        2016,
+        2025
+      ]
+    ],
+    "calibration_species": [
+      "ambduc",
+      "amered",
+      "amerob",
+      "aplfal",
+      "astfly",
+      "baispa",
+      "banswa",
+      "barswa",
+      "bewwre",
+      "bkhgro",
+      "blkgui",
+      "blkrai",
+      "blkski",
+      "blkvul",
+      "bnhcow",
+      "bnhnut",
+      "boboli",
+      "brdowl",
+      "brnboo",
+      "brnowl",
+      "brnpel",
+      "brtcur",
+      "brthum",
+      "btywar",
+      "bubhum",
+      "budger",
+      "burowl",
+      "calgul",
+      "canwre",
+      "carwre",
+      "caster1",
+      "categr1",
+      "cerwar",
+      "chclon",
+      "cintea",
+      "cogdov",
+      "comloo",
+      "commur",
+      "comyel",
+      "coshum",
+      "coukin",
+      "cowscj1",
+      "dunlin",
+      "dusfly",
+      "eargre",
+      "elfowl",
+      "empgoo",
+      "euhgul1",
+      "eursta",
+      "eurwig",
+      "flaowl",
+      "flsjay",
+      "fotfly",
+      "gcrfin",
+      "gockin",
+      "gofwoo",
+      "gowwar",
+      "grcfly",
+      "grecor",
+      "grycat",
+      "gycthr",
+      "harduc",
+      "herthr",
+      "herwar",
+      "horlar",
+      "horpuf",
+      "issjay",
+      "kenwar",
+      "killde",
+      "laugul",
+      "leabit",
+      "leasan",
+      "leater1",
+      "lessca",
+      "lewwoo",
+      "litgul",
+      "lotjae",
+      "magwar",
+      "manshe",
+      "manwar1",
+      "margod",
+      "mexchi",
+      "mexjay4",
+      "mouchi",
+      "neocor",
+      "norful",
+      "norpar",
+      "norsho",
+      "norwat",
+      "oaktit",
+      "olispa",
+      "olsfly",
+      "orabis1",
+      "orcwar",
+      "parjae",
+      "perfal",
+      "pipplo",
+      "prafal",
+      "rebmer",
+      "rebnut",
+      "rebtro",
+      "redegr",
+      "redpha1",
+      "reevir1",
+      "retloo",
+      "rewbla",
+      "rinduc",
+      "rinkin1",
+      "rocpta1",
+      "rolhaw",
+      "rosspo1",
+      "rthhum",
+      "rudduc",
+      "sabgul",
+      "sancra",
+      "sheowl",
+      "smbani",
+      "smilon",
+      "snakit",
+      "snoegr",
+      "soogro1",
+      "spbori",
+      "speeid",
+      "steeid",
+      "stisan",
+      "subfly",
+      "sursco",
+      "swathr",
+      "swawar",
+      "thbmur",
+      "treswa",
+      "tufpuf",
+      "tuftit",
+      "veery",
+      "virrai",
+      "virwar",
+      "weskin",
+      "wesmea",
+      "whiibi",
+      "whiwag",
+      "whthaw",
+      "wilplo",
+      "wooscj2",
+      "woosto",
+      "woothr",
+      "y00475",
+      "y00678",
+      "yebloo",
+      "yecpar",
+      "yeejun",
+      "yehbla",
+      "yelrai"
+    ],
+    "validation_species": [
+      "acafly",
+      "acowoo",
+      "afcdov1",
+      "amedip",
+      "ameoys",
+      "antnig",
+      "baisan",
+      "batpig1",
+      "bcrfin",
+      "belspa2",
+      "bkcchi",
+      "bkcvir1",
+      "bkhpar",
+      "bkrfin",
+      "bktgna",
+      "bktspa",
+      "blkoys",
+      "blksco2",
+      "blktur",
+      "bncfly",
+      "bongul",
+      "bracor",
+      "britit",
+      "brwhaw",
+      "bubfly",
+      "buffle",
+      "cacgoo1",
+      "calhum",
+      "canwar",
+      "carchi",
+      "caskin",
+      "chispa",
+      "chwwid",
+      "comblh1",
+      "comgre",
+      "comnig",
+      "compea",
+      "compoo",
+      "comrav",
+      "conwar",
+      "daejun",
+      "dusgro",
+      "dusthr2",
+      "eawpew",
+      "eletro2",
+      "ferhaw",
+      "forter",
+      "fragul",
+      "gadwal",
+      "gbbgul",
+      "gilfli",
+      "grnkin",
+      "gusgro",
+      "gwfgoo",
+      "hoowar",
+      "kitmur",
+      "leafly",
+      "leagre",
+      "lesyel",
+      "lotduc",
+      "maghum1",
+      "mallar3",
+      "mancuc",
+      "marmur",
+      "miskit",
+      "monpar",
+      "monqua",
+      "moudov",
+      "mouplo",
+      "mouwar",
+      "nohowl",
+      "norfli",
+      "norhar2",
+      "orcori",
+      "osprey",
+      "pacloo",
+      "pecsan",
+      "pelcor",
+      "pibgre",
+      "plsvir",
+      "prawar",
+      "prowar",
+      "rebpig1",
+      "rebsap",
+      "recpar",
+      "redkno",
+      "rehwoo",
+      "reshaw",
+      "rethaw",
+      "rocsan",
+      "royter1",
+      "rudtur",
+      "ruff",
+      "sagspa1",
+      "sander",
+      "sctfly",
+      "shbdow",
+      "shicow",
+      "shthaw",
+      "slbgul",
+      "snoowl1",
+      "snoplo5",
+      "souwpw1",
+      "sposan",
+      "sprpip",
+      "stejay",
+      "swaspa",
+      "swiwhe1",
+      "tenwar",
+      "towwar",
+      "tufduc",
+      "vichum",
+      "wesblu",
+      "whevir",
+      "whrsan",
+      "whtpta1",
+      "whwsco2",
+      "wilpha",
+      "wlswar",
+      "woewar1",
+      "yebcuc"
+    ]
+  },
+  "selection": "minimum calibration-species spatial CV change loss with spatial excess<=.05 target Gram mean-square",
+  "selected": "summer_share_1",
+  "eligible": [
+    "identity",
+    "summer_share_0.5",
+    "summer_share_0.75",
+    "summer_share_1"
+  ],
+  "scores": [
+    {
+      "fold": 0,
+      "candidate": "identity",
+      "species_set": "calibration",
+      "kind": "level",
+      "pairs": 19946,
+      "loss": -0.07740632722312432,
+      "target_gram_mean_square": 0.14451295137405396
+    },
+    {
+      "fold": 0,
+      "candidate": "identity",
+      "species_set": "validation",
+      "kind": "level",
+      "pairs": 19946,
+      "loss": -0.0995589011897507,
+      "target_gram_mean_square": 0.14996811747550964
+    },
+    {
+      "fold": 0,
+      "candidate": "identity",
+      "species_set": "calibration",
+      "kind": "change",
+      "pairs": 19946,
+      "loss": -3.561125743768441e-06,
+      "target_gram_mean_square": 0.0028826871421188116
+    },
+    {
+      "fold": 0,
+      "candidate": "identity",
+      "species_set": "validation",
+      "kind": "change",
+      "pairs": 19946,
+      "loss": -8.244261785330774e-05,
+      "target_gram_mean_square": 0.005051315762102604
+    },
+    {
+      "fold": 0,
+      "candidate": "summer_share_0",
+      "species_set": "calibration",
+      "kind": "level",
+      "pairs": 19946,
+      "loss": -0.039033814418335436,
+      "target_gram_mean_square": 0.14451295137405396
+    },
+    {
+      "fold": 0,
+      "candidate": "summer_share_0",
+      "species_set": "validation",
+      "kind": "level",
+      "pairs": 19946,
+      "loss": -0.07732513103731492,
+      "target_gram_mean_square": 0.14996811747550964
+    },
+    {
+      "fold": 0,
+      "candidate": "summer_share_0",
+      "species_set": "calibration",
+      "kind": "change",
+      "pairs": 19946,
+      "loss": 0.0001570580917011396,
+      "target_gram_mean_square": 0.0028826871421188116
+    },
+    {
+      "fold": 0,
+      "candidate": "summer_share_0",
+      "species_set": "validation",
+      "kind": "change",
+      "pairs": 19946,
+      "loss": 4.805864176668001e-05,
+      "target_gram_mean_square": 0.005051315762102604
+    },
+    {
+      "fold": 0,
+      "candidate": "summer_share_0.25",
+      "species_set": "calibration",
+      "kind": "level",
+      "pairs": 19946,
+      "loss": -0.06013352433769967,
+      "target_gram_mean_square": 0.14451295137405396
+    },
+    {
+      "fold": 0,
+      "candidate": "summer_share_0.25",
+      "species_set": "validation",
+      "kind": "level",
+      "pairs": 19946,
+      "loss": -0.0905932347074684,
+      "target_gram_mean_square": 0.14996811747550964
+    },
+    {
+      "fold": 0,
+      "candidate": "summer_share_0.25",
+      "species_set": "calibration",
+      "kind": "change",
+      "pairs": 19946,
+      "loss": 6.667461789427332e-05,
+      "target_gram_mean_square": 0.0028826871421188116
+    },
+    {
+      "fold": 0,
+      "candidate": "summer_share_0.25",
+      "species_set": "validation",
+      "kind": "change",
+      "pairs": 19946,
+      "loss": -2.7709567902448722e-05,
+      "target_gram_mean_square": 0.005051315762102604
+    },
+    {
+      "fold": 0,
+      "candidate": "summer_share_0.5",
+      "species_set": "calibration",
+      "kind": "level",
+      "pairs": 19946,
+      "loss": -0.07655946446737193,
+      "target_gram_mean_square": 0.14451295137405396
+    },
+    {
+      "fold": 0,
+      "candidate": "summer_share_0.5",
+      "species_set": "validation",
+      "kind": "level",
+      "pairs": 19946,
+      "loss": -0.0991875685879299,
+      "target_gram_mean_square": 0.14996811747550964
+    },
+    {
+      "fold": 0,
+      "candidate": "summer_share_0.5",
+      "species_set": "calibration",
+      "kind": "change",
+      "pairs": 19946,
+      "loss": -2.5270232296962465e-07,
+      "target_gram_mean_square": 0.0028826871421188116
+    },
+    {
+      "fold": 0,
+      "candidate": "summer_share_0.5",
+      "species_set": "validation",
+      "kind": "change",
+      "pairs": 19946,
+      "loss": -8.00216239819541e-05,
+      "target_gram_mean_square": 0.005051315762102604
+    },
+    {
+      "fold": 0,
+      "candidate": "summer_share_0.75",
+      "species_set": "calibration",
+      "kind": "level",
+      "pairs": 19946,
+      "loss": -0.0883116348073522,
+      "target_gram_mean_square": 0.14451295137405396
+    },
+    {
+      "fold": 0,
+      "candidate": "summer_share_0.75",
+      "species_set": "validation",
+      "kind": "level",
+      "pairs": 19946,
+      "loss": -0.1031081326786994,
+      "target_gram_mean_square": 0.14996811747550964
+    },
+    {
+      "fold": 0,
+      "candidate": "summer_share_0.75",
+      "species_set": "calibration",
+      "kind": "change",
+      "pairs": 19946,
+      "loss": -4.3723868950589246e-05,
+      "target_gram_mean_square": 0.0028826871421188116
+    },
+    {
+      "fold": 0,
+      "candidate": "summer_share_0.75",
+      "species_set": "validation",
+      "kind": "change",
+      "pairs": 19946,
+      "loss": -0.00010887752647183619,
+      "target_gram_mean_square": 0.005051315762102604
+    },
+    {
+      "fold": 0,
+      "candidate": "summer_share_1",
+      "species_set": "calibration",
+      "kind": "level",
+      "pairs": 19946,
+      "loss": -0.09539003535764051,
+      "target_gram_mean_square": 0.14451295137405396
+    },
+    {
+      "fold": 0,
+      "candidate": "summer_share_1",
+      "species_set": "validation",
+      "kind": "level",
+      "pairs": 19946,
+      "loss": -0.10235492697977695,
+      "target_gram_mean_square": 0.14996811747550964
+    },
+    {
+      "fold": 0,
+      "candidate": "summer_share_1",
+      "species_set": "calibration",
+      "kind": "change",
+      "pairs": 19946,
+      "loss": -6.373888198858556e-05,
+      "target_gram_mean_square": 0.0028826871421188116
+    },
+    {
+      "fold": 0,
+      "candidate": "summer_share_1",
+      "species_set": "validation",
+      "kind": "change",
+      "pairs": 19946,
+      "loss": -0.00011427727537209492,
+      "target_gram_mean_square": 0.005051315762102604
+    },
+    {
+      "fold": 1,
+      "candidate": "identity",
+      "species_set": "calibration",
+      "kind": "level",
+      "pairs": 19948,
+      "loss": -0.08500456697345814,
+      "target_gram_mean_square": 0.14123547077178955
+    },
+    {
+      "fold": 1,
+      "candidate": "identity",
+      "species_set": "validation",
+      "kind": "level",
+      "pairs": 19948,
+      "loss": -0.09988810754000028,
+      "target_gram_mean_square": 0.1476411521434784
+    },
+    {
+      "fold": 1,
+      "candidate": "identity",
+      "species_set": "calibration",
+      "kind": "change",
+      "pairs": 19948,
+      "loss": -5.5366161400958514e-05,
+      "target_gram_mean_square": 0.002395629184320569
+    },
+    {
+      "fold": 1,
+      "candidate": "identity",
+      "species_set": "validation",
+      "kind": "change",
+      "pairs": 19948,
+      "loss": -0.00010742840408727501,
+      "target_gram_mean_square": 0.004125973675400019
+    },
+    {
+      "fold": 1,
+      "candidate": "summer_share_0",
+      "species_set": "calibration",
+      "kind": "level",
+      "pairs": 19948,
+      "loss": -0.05746092488311524,
+      "target_gram_mean_square": 0.14123547077178955
+    },
+    {
+      "fold": 1,
+      "candidate": "summer_share_0",
+      "species_set": "validation",
+      "kind": "level",
+      "pairs": 19948,
+      "loss": -0.08146326213167002,
+      "target_gram_mean_square": 0.1476411521434784
+    },
+    {
+      "fold": 1,
+      "candidate": "summer_share_0",
+      "species_set": "calibration",
+      "kind": "change",
+      "pairs": 19948,
+      "loss": 0.00015869446832395595,
+      "target_gram_mean_square": 0.002395629184320569
+    },
+    {
+      "fold": 1,
+      "candidate": "summer_share_0",
+      "species_set": "validation",
+      "kind": "change",
+      "pairs": 19948,
+      "loss": 9.004673683379656e-05,
+      "target_gram_mean_square": 0.004125973675400019
+    },
+    {
+      "fold": 1,
+      "candidate": "summer_share_0.25",
+      "species_set": "calibration",
+      "kind": "level",
+      "pairs": 19948,
+      "loss": -0.07269310189619298,
+      "target_gram_mean_square": 0.14123547077178955
+    },
+    {
+      "fold": 1,
+      "candidate": "summer_share_0.25",
+      "species_set": "validation",
+      "kind": "level",
+      "pairs": 19948,
+      "loss": -0.09227031128852628,
+      "target_gram_mean_square": 0.1476411521434784
+    },
+    {
+      "fold": 1,
+      "candidate": "summer_share_0.25",
+      "species_set": "calibration",
+      "kind": "change",
+      "pairs": 19948,
+      "loss": 4.109873354476772e-05,
+      "target_gram_mean_square": 0.002395629184320569
+    },
+    {
+      "fold": 1,
+      "candidate": "summer_share_0.25",
+      "species_set": "validation",
+      "kind": "change",
+      "pairs": 19948,
+      "loss": -1.950046796119905e-05,
+      "target_gram_mean_square": 0.004125973675400019
+    },
+    {
+      "fold": 1,
+      "candidate": "summer_share_0.5",
+      "species_set": "calibration",
+      "kind": "level",
+      "pairs": 19948,
+      "loss": -0.08440694160547349,
+      "target_gram_mean_square": 0.14123547077178955
+    },
+    {
+      "fold": 1,
+      "candidate": "summer_share_0.5",
+      "species_set": "validation",
+      "kind": "level",
+      "pairs": 19948,
+      "loss": -0.0995590231415853,
+      "target_gram_mean_square": 0.1476411521434784
+    },
+    {
+      "fold": 1,
+      "candidate": "summer_share_0.5",
+      "species_set": "calibration",
+      "kind": "change",
+      "pairs": 19948,
+      "loss": -5.063189052584046e-05,
+      "target_gram_mean_square": 0.002395629184320569
+    },
+    {
+      "fold": 1,
+      "candidate": "summer_share_0.5",
+      "species_set": "validation",
+      "kind": "change",
+      "pairs": 19948,
+      "loss": -0.0001031825620476146,
+      "target_gram_mean_square": 0.004125973675400019
+    },
+    {
+      "fold": 1,
+      "candidate": "summer_share_0.75",
+      "species_set": "calibration",
+      "kind": "level",
+      "pairs": 19948,
+      "loss": -0.09260244401095677,
+      "target_gram_mean_square": 0.14123547077178955
+    },
+    {
+      "fold": 1,
+      "candidate": "summer_share_0.75",
+      "species_set": "validation",
+      "kind": "level",
+      "pairs": 19948,
+      "loss": -0.1033293976908471,
+      "target_gram_mean_square": 0.1476411521434784
+    },
+    {
+      "fold": 1,
+      "candidate": "summer_share_0.75",
+      "species_set": "calibration",
+      "kind": "change",
+      "pairs": 19948,
+      "loss": -0.0001164974038878688,
+      "target_gram_mean_square": 0.002395629184320569
+    },
+    {
+      "fold": 1,
+      "candidate": "summer_share_0.75",
+      "species_set": "validation",
+      "kind": "change",
+      "pairs": 19948,
+      "loss": -0.00016099954542545032,
+      "target_gram_mean_square": 0.004125973675400019
+    },
+    {
+      "fold": 1,
+      "candidate": "summer_share_1",
+      "species_set": "calibration",
+      "kind": "level",
+      "pairs": 19948,
+      "loss": -0.09727960911264283,
+      "target_gram_mean_square": 0.14123547077178955
+    },
+    {
+      "fold": 1,
+      "candidate": "summer_share_1",
+      "species_set": "validation",
+      "kind": "level",
+      "pairs": 19948,
+      "loss": -0.10358143493631168,
+      "target_gram_mean_square": 0.1476411521434784
+    },
+    {
+      "fold": 1,
+      "candidate": "summer_share_1",
+      "species_set": "calibration",
+      "kind": "change",
+      "pairs": 19948,
+      "loss": -0.00015649780654131723,
+      "target_gram_mean_square": 0.002395629184320569
+    },
+    {
+      "fold": 1,
+      "candidate": "summer_share_1",
+      "species_set": "validation",
+      "kind": "change",
+      "pairs": 19948,
+      "loss": -0.00019295141809470614,
+      "target_gram_mean_square": 0.004125973675400019
+    },
+    {
+      "fold": 2,
+      "candidate": "identity",
+      "species_set": "calibration",
+      "kind": "level",
+      "pairs": 19957,
+      "loss": -0.08613057317562353,
+      "target_gram_mean_square": 0.13825494050979614
+    },
+    {
+      "fold": 2,
+      "candidate": "identity",
+      "species_set": "validation",
+      "kind": "level",
+      "pairs": 19957,
+      "loss": -0.08579161433049408,
+      "target_gram_mean_square": 0.1284399777650833
+    },
+    {
+      "fold": 2,
+      "candidate": "identity",
+      "species_set": "calibration",
+      "kind": "change",
+      "pairs": 19957,
+      "loss": -3.7963415616077255e-05,
+      "target_gram_mean_square": 0.002364942105486989
+    },
+    {
+      "fold": 2,
+      "candidate": "identity",
+      "species_set": "validation",
+      "kind": "change",
+      "pairs": 19957,
+      "loss": -0.00020739764228557266,
+      "target_gram_mean_square": 0.00431290315464139
+    },
+    {
+      "fold": 2,
+      "candidate": "summer_share_0",
+      "species_set": "calibration",
+      "kind": "level",
+      "pairs": 19957,
+      "loss": -0.06529970602641329,
+      "target_gram_mean_square": 0.13825494050979614
+    },
+    {
+      "fold": 2,
+      "candidate": "summer_share_0",
+      "species_set": "validation",
+      "kind": "level",
+      "pairs": 19957,
+      "loss": -0.07061566595048599,
+      "target_gram_mean_square": 0.1284399777650833
+    },
+    {
+      "fold": 2,
+      "candidate": "summer_share_0",
+      "species_set": "calibration",
+      "kind": "change",
+      "pairs": 19957,
+      "loss": 0.0001646002823690385,
+      "target_gram_mean_square": 0.002364942105486989
+    },
+    {
+      "fold": 2,
+      "candidate": "summer_share_0",
+      "species_set": "validation",
+      "kind": "change",
+      "pairs": 19957,
+      "loss": -6.048661615080764e-05,
+      "target_gram_mean_square": 0.00431290315464139
+    },
+    {
+      "fold": 2,
+      "candidate": "summer_share_0.25",
+      "species_set": "calibration",
+      "kind": "level",
+      "pairs": 19957,
+      "loss": -0.07682537744376892,
+      "target_gram_mean_square": 0.13825494050979614
+    },
+    {
+      "fold": 2,
+      "candidate": "summer_share_0.25",
+      "species_set": "validation",
+      "kind": "level",
+      "pairs": 19957,
+      "loss": -0.0794017295790219,
+      "target_gram_mean_square": 0.1284399777650833
+    },
+    {
+      "fold": 2,
+      "candidate": "summer_share_0.25",
+      "species_set": "calibration",
+      "kind": "change",
+      "pairs": 19957,
+      "loss": 5.3336604803602266e-05,
+      "target_gram_mean_square": 0.002364942105486989
+    },
+    {
+      "fold": 2,
+      "candidate": "summer_share_0.25",
+      "species_set": "validation",
+      "kind": "change",
+      "pairs": 19957,
+      "loss": -0.00014478854598960766,
+      "target_gram_mean_square": 0.00431290315464139
+    },
+    {
+      "fold": 2,
+      "candidate": "summer_share_0.5",
+      "species_set": "calibration",
+      "kind": "level",
+      "pairs": 19957,
+      "loss": -0.0856561744523527,
+      "target_gram_mean_square": 0.13825494050979614
+    },
+    {
+      "fold": 2,
+      "candidate": "summer_share_0.5",
+      "species_set": "validation",
+      "kind": "level",
+      "pairs": 19957,
+      "loss": -0.08549291879878596,
+      "target_gram_mean_square": 0.1284399777650833
+    },
+    {
+      "fold": 2,
+      "candidate": "summer_share_0.5",
+      "species_set": "calibration",
+      "kind": "change",
+      "pairs": 19957,
+      "loss": -3.325210246103294e-05,
+      "target_gram_mean_square": 0.002364942105486989
+    },
+    {
+      "fold": 2,
+      "candidate": "summer_share_0.5",
+      "species_set": "validation",
+      "kind": "change",
+      "pairs": 19957,
+      "loss": -0.00020441550552760662,
+      "target_gram_mean_square": 0.00431290315464139
+    },
+    {
+      "fold": 2,
+      "candidate": "summer_share_0.75",
+      "species_set": "calibration",
+      "kind": "level",
+      "pairs": 19957,
+      "loss": -0.09179209705216464,
+      "target_gram_mean_square": 0.13825494050979614
+    },
+    {
+      "fold": 2,
+      "candidate": "summer_share_0.75",
+      "species_set": "validation",
+      "kind": "level",
+      "pairs": 19957,
+      "loss": -0.08888923360977817,
+      "target_gram_mean_square": 0.1284399777650833
+    },
+    {
+      "fold": 2,
+      "candidate": "summer_share_0.75",
+      "species_set": "calibration",
+      "kind": "change",
+      "pairs": 19957,
+      "loss": -9.516583942486736e-05,
+      "target_gram_mean_square": 0.002364942105486989
+    },
+    {
+      "fold": 2,
+      "candidate": "summer_share_0.75",
+      "species_set": "validation",
+      "kind": "change",
+      "pairs": 19957,
+      "loss": -0.00023936749476480485,
+      "target_gram_mean_square": 0.00431290315464139
+    },
+    {
+      "fold": 2,
+      "candidate": "summer_share_1",
+      "species_set": "calibration",
+      "kind": "level",
+      "pairs": 19957,
+      "loss": -0.09523314524320473,
+      "target_gram_mean_square": 0.13825494050979614
+    },
+    {
+      "fold": 2,
+      "candidate": "summer_share_1",
+      "species_set": "validation",
+      "kind": "level",
+      "pairs": 19957,
+      "loss": -0.08959067401199852,
+      "target_gram_mean_square": 0.1284399777650833
+    },
+    {
+      "fold": 2,
+      "candidate": "summer_share_1",
+      "species_set": "calibration",
+      "kind": "change",
+      "pairs": 19957,
+      "loss": -0.0001324046060879008,
+      "target_gram_mean_square": 0.002364942105486989
+    },
+    {
+      "fold": 2,
+      "candidate": "summer_share_1",
+      "species_set": "validation",
+      "kind": "change",
+      "pairs": 19957,
+      "loss": -0.0002496445137012021,
+      "target_gram_mean_square": 0.00431290315464139
+    },
+    {
+      "fold": 3,
+      "candidate": "identity",
+      "species_set": "calibration",
+      "kind": "level",
+      "pairs": 19952,
+      "loss": -0.05593126375118199,
+      "target_gram_mean_square": 0.11092760413885117
+    },
+    {
+      "fold": 3,
+      "candidate": "identity",
+      "species_set": "validation",
+      "kind": "level",
+      "pairs": 19952,
+      "loss": -0.07195664756036528,
+      "target_gram_mean_square": 0.11333146691322327
+    },
+    {
+      "fold": 3,
+      "candidate": "identity",
+      "species_set": "calibration",
+      "kind": "change",
+      "pairs": 19952,
+      "loss": -7.785246695871358e-05,
+      "target_gram_mean_square": 0.0027236826717853546
+    },
+    {
+      "fold": 3,
+      "candidate": "identity",
+      "species_set": "validation",
+      "kind": "change",
+      "pairs": 19952,
+      "loss": 2.7286610274433425e-05,
+      "target_gram_mean_square": 0.0038791631814092398
+    },
+    {
+      "fold": 3,
+      "candidate": "summer_share_0",
+      "species_set": "calibration",
+      "kind": "level",
+      "pairs": 19952,
+      "loss": -0.018433774651030566,
+      "target_gram_mean_square": 0.11092760413885117
+    },
+    {
+      "fold": 3,
+      "candidate": "summer_share_0",
+      "species_set": "validation",
+      "kind": "level",
+      "pairs": 19952,
+      "loss": -0.04283874359789064,
+      "target_gram_mean_square": 0.11333146691322327
+    },
+    {
+      "fold": 3,
+      "candidate": "summer_share_0",
+      "species_set": "calibration",
+      "kind": "change",
+      "pairs": 19952,
+      "loss": 0.00018095724815853095,
+      "target_gram_mean_square": 0.0027236826717853546
+    },
+    {
+      "fold": 3,
+      "candidate": "summer_share_0",
+      "species_set": "validation",
+      "kind": "change",
+      "pairs": 19952,
+      "loss": 0.00026889262062069883,
+      "target_gram_mean_square": 0.0038791631814092398
+    },
+    {
+      "fold": 3,
+      "candidate": "summer_share_0.25",
+      "species_set": "calibration",
+      "kind": "level",
+      "pairs": 19952,
+      "loss": -0.03896203897692018,
+      "target_gram_mean_square": 0.11092760413885117
+    },
+    {
+      "fold": 3,
+      "candidate": "summer_share_0.25",
+      "species_set": "validation",
+      "kind": "level",
+      "pairs": 19952,
+      "loss": -0.05934911643766458,
+      "target_gram_mean_square": 0.11333146691322327
+    },
+    {
+      "fold": 3,
+      "candidate": "summer_share_0.25",
+      "species_set": "calibration",
+      "kind": "change",
+      "pairs": 19952,
+      "loss": 4.0899645144841435e-05,
+      "target_gram_mean_square": 0.0027236826717853546
+    },
+    {
+      "fold": 3,
+      "candidate": "summer_share_0.25",
+      "species_set": "validation",
+      "kind": "change",
+      "pairs": 19952,
+      "loss": 0.00013708394852581714,
+      "target_gram_mean_square": 0.0038791631814092398
+    },
+    {
+      "fold": 3,
+      "candidate": "summer_share_0.5",
+      "species_set": "calibration",
+      "kind": "level",
+      "pairs": 19952,
+      "loss": -0.054794597660509294,
+      "target_gram_mean_square": 0.11092760413885117
+    },
+    {
+      "fold": 3,
+      "candidate": "summer_share_0.5",
+      "species_set": "validation",
+      "kind": "level",
+      "pairs": 19952,
+      "loss": -0.07116378363513803,
+      "target_gram_mean_square": 0.11333146691322327
+    },
+    {
+      "fold": 3,
+      "candidate": "summer_share_0.5",
+      "species_set": "calibration",
+      "kind": "change",
+      "pairs": 19952,
+      "loss": -6.975023584599046e-05,
+      "target_gram_mean_square": 0.0027236826717853546
+    },
+    {
+      "fold": 3,
+      "candidate": "summer_share_0.5",
+      "species_set": "validation",
+      "kind": "change",
+      "pairs": 19952,
+      "loss": 3.4682998453793105e-05,
+      "target_gram_mean_square": 0.0038791631814092398
+    },
+    {
+      "fold": 3,
+      "candidate": "summer_share_0.75",
+      "species_set": "calibration",
+      "kind": "level",
+      "pairs": 19952,
+      "loss": -0.06593145070179791,
+      "target_gram_mean_square": 0.11092760413885117
+    },
+    {
+      "fold": 3,
+      "candidate": "summer_share_0.75",
+      "species_set": "validation",
+      "kind": "level",
+      "pairs": 19952,
+      "loss": -0.07828274519031098,
+      "target_gram_mean_square": 0.11333146691322327
+    },
+    {
+      "fold": 3,
+      "candidate": "summer_share_0.75",
+      "species_set": "calibration",
+      "kind": "change",
+      "pairs": 19952,
+      "loss": -0.00015099239481396475,
+      "target_gram_mean_square": 0.0027236826717853546
+    },
+    {
+      "fold": 3,
+      "candidate": "summer_share_0.75",
+      "species_set": "validation",
+      "kind": "change",
+      "pairs": 19952,
+      "loss": -3.831022959537334e-05,
+      "target_gram_mean_square": 0.0038791631814092398
+    },
+    {
+      "fold": 3,
+      "candidate": "summer_share_1",
+      "species_set": "calibration",
+      "kind": "level",
+      "pairs": 19952,
+      "loss": -0.072372598100786,
+      "target_gram_mean_square": 0.11092760413885117
+    },
+    {
+      "fold": 3,
+      "candidate": "summer_share_1",
+      "species_set": "validation",
+      "kind": "level",
+      "pairs": 19952,
+      "loss": -0.0807060011031834,
+      "target_gram_mean_square": 0.11333146691322327
+    },
+    {
+      "fold": 3,
+      "candidate": "summer_share_1",
+      "species_set": "calibration",
+      "kind": "change",
+      "pairs": 19952,
+      "loss": -0.00020282683175908126,
+      "target_gram_mean_square": 0.0027236826717853546
+    },
+    {
+      "fold": 3,
+      "candidate": "summer_share_1",
+      "species_set": "validation",
+      "kind": "change",
+      "pairs": 19952,
+      "loss": -8.189573562168205e-05,
+      "target_gram_mean_square": 0.0038791631814092398
+    }
+  ],
+  "validation_bootstrap": {
+    "level": {
+      "selected_minus_identity_loss": -0.004759582487620447,
+      "ci95": [
+        -0.007123254597488337,
+        -0.0025039905817533336
+      ],
+      "interpretation": "Conditional paired6x6 spatial-block bootstrap on validation species; selected metric, targets and fold normalizations held fixed. Not full fitting uncertainty."
+    },
+    "change": {
+      "selected_minus_identity_loss": -6.719689911971954e-05,
+      "ci95": [
+        -0.0001112920561751235,
+        -2.265639905900816e-05
+      ],
+      "interpretation": "Conditional paired6x6 spatial-block bootstrap on validation species; selected metric, targets and fold normalizations held fixed. Not full fitting uncertainty."
+    }
+  },
+  "summary": {
+    "identity": {
+      "calibration": {
+        "level": -0.07611818278084699,
+        "change": -4.3685792429879445e-05
+      },
+      "validation": {
+        "level": -0.08929881765515259,
+        "change": -9.24955134879305e-05
+      }
+    },
+    "summer_share_0": {
+      "calibration": {
+        "level": -0.045057054994723636,
+        "change": 0.00016532752263816625
+      },
+      "validation": {
+        "level": -0.06806070067934039,
+        "change": 8.662784576759194e-05
+      }
+    },
+    "summer_share_0.25": {
+      "calibration": {
+        "level": -0.06215351066364544,
+        "change": 5.0502400346871186e-05
+      },
+      "validation": {
+        "level": -0.08040359800317029,
+        "change": -1.3728658331859575e-05
+      }
+    },
+    "summer_share_0.5": {
+      "calibration": {
+        "level": -0.07535429454642685,
+        "change": -3.847173278895837e-05
+      },
+      "validation": {
+        "level": -0.0888508235408598,
+        "change": -8.823417327584554e-05
+      }
+    },
+    "summer_share_0.75": {
+      "calibration": {
+        "level": -0.08465940664306787,
+        "change": -0.00010159487676932254
+      },
+      "validation": {
+        "level": -0.09340237729240891,
+        "change": -0.00013688869906436618
+      }
+    },
+    "summer_share_1": {
+      "calibration": {
+        "level": -0.09006884695356851,
+        "change": -0.0001388670315942212
+      },
+      "validation": {
+        "level": -0.09405825925781763,
+        "change": -0.0001596922356974213
+      }
+    }
+  }
+}

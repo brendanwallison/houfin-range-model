@@ -1,0 +1,37 @@
+{
+  "scope": "Score the learned observation EMA separately from instantaneous population Z.\n\nThe original raw results are retained. This does not change any population\nexport or select an EMA timescale on evaluation outcomes.\n",
+  "source_sha256": "dba4aff1a8f909041d60814ca06943e9ad0e10ee659ee61b075f6db0e14c51b2",
+  "training_ema_half_life": 10.839556694030762,
+  "warmup_start": 1902,
+  "timescale_selected_on_evaluation": false,
+  "teacher_change": {
+    "known": {
+      "cells": 1262,
+      "blocks": 316,
+      "predicted_signal": 0.0702177381392892,
+      "target_signal": 0.060560856296104915,
+      "corr": {
+        "point": 0.3261193950844211,
+        "ci95": [
+          0.3064994429158383,
+          0.3443535072519835
+        ]
+      },
+      "prediction_is_deterministic": true
+    },
+    "spatial": {
+      "cells": 284,
+      "blocks": 53,
+      "predicted_signal": 0.06333842981991329,
+      "target_signal": 0.06534827272950268,
+      "corr": {
+        "point": 0.21799921884774612,
+        "ci95": [
+          0.1585116728464927,
+          0.28397550595088555
+        ]
+      },
+      "prediction_is_deterministic": true
+    }
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "epoch": 1793629460.596355,
+  "dev_job": "3546708",
+  "existing_small_job": "3544518",
+  "development_gpu_lanes": 3,
+  "development_walltime_hours": 2,
+  "small_HMC_priority": "0604",
+  "held_redundant_CBC": [
+    "0634_step38_cbc1951_mid_s43.sh",
+    "0632_step38_cbc1951_sw600_mid_s41.sh",
+    "0629_step38_cbc1951_sw600_free_s42.sh",
+    "0628_step38_cbc1951_hi_s42.sh",
+    "0630_step38_cbc1951_circle2_free_s42.sh",
+    "0622_step38_cbc1951_hi_s41.sh",
+    "0627_step38_cbc1951_lo_s42.sh",
+    "0626_step38_cbc1951_free_s43.sh",
+    "0631_step38_cbc1951_broods_free_s42.sh",
+    "0633_step38_cbc1951_sw600_mid_s42.sh"
+  ],
+  "development_jobs": [
+    "3546708"
+  ]
+}

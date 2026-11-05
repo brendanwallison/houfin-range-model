@@ -1,0 +1,44 @@
+[
+  {
+    "step": "step45_cell_iid_s010_s41",
+    "point": "map",
+    "checkpoint_sha256": "6b6f9ae5a5f6ac33b5491ed3ab567209ab1876301c333752619fa7e3a5517a72",
+    "raw_shape": [
+      55,
+      4318
+    ],
+    "eps_shape": [
+      124,
+      4318
+    ],
+    "finite": true,
+    "inactive_years_exactly_zero": true,
+    "metrics": {
+      "rms_u_raw": 0.005035905167460442,
+      "max_abs_u_raw": 0.4038422405719757,
+      "max_land_rms_eps": 8.735992751456823e-05,
+      "eras": {
+        "1902-1939": {
+          "land_mean": 0.0,
+          "land_rms": 0.0,
+          "cum_rms": 0.0
+        },
+        "1940-1965": {
+          "land_mean": 0.0,
+          "land_rms": 0.0,
+          "cum_rms": 0.0
+        },
+        "1966-1992": {
+          "land_mean": -4.3410284398806066e-05,
+          "land_rms": 5.457867262648438e-05,
+          "cum_rms": 0.0014736241609150786
+        },
+        "1993-2018": {
+          "land_mean": -5.010976926241563e-05,
+          "land_rms": 5.539734307516909e-05,
+          "cum_rms": 0.0014403309199543962
+        }
+      }
+    }
+  }
+]

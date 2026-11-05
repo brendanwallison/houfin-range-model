@@ -1,0 +1,112 @@
+{
+  "npz": "${HOUFIN_DATA}/bbs_2026_release/bbs_data_obsroute_for_python.npz",
+  "min_years": 3,
+  "species": "House Finch (AOU 5190), US/Canada tier 0",
+  "bbsBayes2_sdobs_prior": {
+    "form": "half-normal(0, 0.3)",
+    "median": 0.20235,
+    "q95": 0.588
+  },
+  "results": [
+    {
+      "reference": "cell_year",
+      "n_obs": 8656,
+      "n_ref": 4171,
+      "n_obsroutes": 1218,
+      "n_cells": 299,
+      "sigma": 0.7349704666649943,
+      "eta": 0.013888613039087986,
+      "phi": 57.56896484903917,
+      "converged": true,
+      "fit_seconds": 2.0,
+      "calibration": [
+        {
+          "sigma_true": 0.7349704666649943,
+          "sim_sigma_mean": 0.5394592473327843,
+          "sim_sigma_sd": 0.020019979298624844,
+          "sim_eta_mean": 0.006134450363585826,
+          "eta_true": 0.013888613039087986
+        },
+        {
+          "sigma_true": 1.001339006682241,
+          "sim_sigma_mean": 0.7635876889322673,
+          "sim_sigma_sd": 0.027774444234038347,
+          "sim_eta_mean": 0.02413871600957816,
+          "eta_true": 0.013888613039087986
+        },
+        {
+          "sigma_true": 0.963811501545031,
+          "sim_sigma_mean": 0.7296600737292838,
+          "sim_sigma_sd": 0.021811012307669315,
+          "sim_eta_mean": 0.02267238889074755,
+          "eta_true": 0.013888613039087986
+        }
+      ],
+      "sigma_calibrated": 0.9708260251203751,
+      "calibration_factor": 1.320904810673006,
+      "boot_sigma_ci95": [
+        0.6501768117368838,
+        0.8117317547708827
+      ],
+      "boot_eta_ci95": [
+        -0.07350205965832864,
+        0.1036753505847138
+      ],
+      "boot_sigma_sd": 0.040542751994565314,
+      "boot_sigma_ci95_calibrated": [
+        0.8588216784112871,
+        1.0722203798528995
+      ]
+    },
+    {
+      "reference": "cell_block5",
+      "n_obs": 17962,
+      "n_ref": 2882,
+      "n_obsroutes": 3614,
+      "n_cells": 1212,
+      "sigma": 0.5467916680624555,
+      "eta": -0.018755918563232825,
+      "phi": 4.6547066683675755,
+      "converged": true,
+      "fit_seconds": 2.0,
+      "calibration": [
+        {
+          "sigma_true": 0.5467916680624555,
+          "sim_sigma_mean": 0.32875318180094526,
+          "sim_sigma_sd": 0.011233559023550868,
+          "sim_eta_mean": -0.015586802236731482,
+          "eta_true": -0.018755918563232825
+        },
+        {
+          "sigma_true": 0.9094394969036398,
+          "sim_sigma_mean": 0.6145185652119883,
+          "sim_sigma_sd": 0.01469007040445027,
+          "sim_eta_mean": -0.01610011453898822,
+          "eta_true": -0.018755918563232825
+        },
+        {
+          "sigma_true": 0.8092089770180966,
+          "sim_sigma_mean": 0.5281771071086613,
+          "sim_sigma_sd": 0.010553632073043093,
+          "sim_eta_mean": -0.013225679139037596,
+          "eta_true": -0.018755918563232825
+        }
+      ],
+      "sigma_calibrated": 0.8377279522336618,
+      "calibration_factor": 1.53207885409471,
+      "boot_sigma_ci95": [
+        0.4919753029796069,
+        0.5881931515502813
+      ],
+      "boot_eta_ci95": [
+        -0.05212660399981484,
+        0.023938703392453745
+      ],
+      "boot_sigma_sd": 0.024544184370793316,
+      "boot_sigma_ci95_calibrated": [
+        0.7537449584318938,
+        0.901158289613511
+      ]
+    }
+  ]
+}

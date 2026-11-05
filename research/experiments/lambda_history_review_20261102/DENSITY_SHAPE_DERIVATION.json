@@ -1,0 +1,37 @@
+{
+  "scope": "Illustrative, not fitted",
+  "records": [
+    {
+      "theta": 1,
+      "Sa": 0.55,
+      "Sj": 0.25,
+      "replacement_output": 1.7999999999999998,
+      "R": 3.0,
+      "Fmax": 5.3999999999999995,
+      "potential_growth": 1.9,
+      "matched_density": 0.5,
+      "matched_output": 2.6999999999999997,
+      "fixed_density_projection_at_match": 1.225,
+      "equilibrium_feedback_eigenvalues": [
+        0.7441944724244611,
+        -0.1727659010191088
+      ]
+    },
+    {
+      "theta": 2,
+      "Sa": 0.55,
+      "Sj": 0.25,
+      "replacement_output": 1.7999999999999998,
+      "R": 1.8,
+      "Fmax": 3.2399999999999998,
+      "potential_growth": 1.3599999999999999,
+      "matched_density": 0.5,
+      "matched_output": 2.6999999999999997,
+      "fixed_density_projection_at_match": 1.225,
+      "equilibrium_feedback_eigenvalues": [
+        0.6804905391540225,
+        -0.25191911069715267
+      ]
+    }
+  ]
+}

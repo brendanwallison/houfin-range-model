@@ -1,0 +1,13 @@
+# Local absolute-Allee numerical audit
+
+Uses the actual age_forward.reproduction_age_structured implementation with absolute-density aggregated mate finding k=3. No model or fit was changed. Source hashes and all cases: FINAL_ALLEE_LOCAL_AUDIT.json.
+
+The coarse audit covers480 cases:80 starting log densities ×3 fecundities ×2 precisions, each simulated80years without dispersal or immigration. All terminal values and derivatives are finite; exact-zero populations remain extinct. Float64 finite differences agree within1% at an available step for all coarse cases with meaningful nonzero gradients. This alone misses narrow establishment boundaries.
+
+A separate bisection locates each finite-horizon establishment transition in float64, then probes its neighborhood. For illustrative fecundity8 (Sa=.65,Sj=.35,K=100,c=2,gamma=.5), the transition is near log initial abundance−0.80452347. At its midpoint, terminal log1p abundance is2.6759 in float64 but0.00235 in float32. The float64 derivative with respect to log initial abundance is~3.84e7; a centered difference at step1e-10 agrees to~1.1e-6 relative error. Perturbations of±1e-8 change float64 terminal log1p abundance from2.2415 to3.0168, while both round to the same float32 starting value.
+
+Thus a smooth absolute-density encounter curve can produce an extremely steep but locally differentiable multi-decadal establishment transition. Finite precision can land on different outcomes; a coarse finite-difference step can falsely suggest an incorrect AD gradient. This supports auditing launch/precision separately from the readout. It does not prove that a particular fitted stall occurs at this boundary, establish that relative Allee is biologically justified, or validate the complete simulator's FFT, occupancy, allocation or observation thresholds.
+
+Next numerical comparison: exact retained fitted points and targeted launch directions across precision/step sizes, with the current absolute model unchanged. Compare inherited production numerical settings to proposed changes only after locating the responsible operation. The toy parameters are illustrative, not estimated House Finch demography and not evidence for a new biological calibration.
+
+The resolved round1 configuration has FFT padding0, no FFT floor, no settlement and no subcell strata. Therefore hard FFT-floor or subcell-allocation switches described elsewhere in the source are not explanations to assume for these fits. The configured release-cell Allee exemption lasts10years; the reproduction-only audit omits that exemption and dispersal. The full-model follow-up must inspect the post-exemption release trajectory and establishment at other cells, not infer a release failure directly from this subsystem example.

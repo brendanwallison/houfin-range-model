@@ -1,0 +1,27 @@
+[
+  {
+    "package": "scipy",
+    "file": "/home/breallis/houfin/venv/lib/python3.12/site-packages/scipy/ndimage/_ni_label.cpython-312-x86_64-linux-gnu.so",
+    "matches_installed_record": true
+  },
+  {
+    "package": "jaxlib",
+    "file": "/home/breallis/houfin/venv/lib/python3.12/site-packages/jaxlib/_jax.so",
+    "matches_installed_record": true
+  },
+  {
+    "package": "jaxlib",
+    "file": "/home/breallis/houfin/venv/lib/python3.12/site-packages/jaxlib/libjax_common.so",
+    "matches_installed_record": true
+  },
+  {
+    "package": "jax-cuda12-plugin",
+    "file": "/home/breallis/houfin/work/houfin/research/FINAL_LOCAL_JAX_20261025/runtime/jax_cuda12_plugin/cuda_plugin_extension.so",
+    "matches_installed_record": true
+  },
+  {
+    "package": "jax-cuda12-pjrt",
+    "file": "/home/breallis/houfin/work/houfin/research/FINAL_LOCAL_JAX_20261025/runtime/jax_plugins/xla_cuda12/xla_cuda_plugin.so",
+    "matches_installed_record": true
+  }
+]

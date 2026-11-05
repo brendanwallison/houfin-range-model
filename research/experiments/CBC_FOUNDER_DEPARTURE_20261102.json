@@ -1,0 +1,110 @@
+[
+  {
+    "step": "step38_cbc1951_free_s41",
+    "veit_active": true,
+    "native_multiplier_present": false,
+    "release_cell": {
+      "row": 27,
+      "col": 89
+    },
+    "selected_years": [
+      {
+        "year": 1951,
+        "N_before_dispersal": 0.06543653641182688,
+        "K": 0.13286832787258307,
+        "N_over_K": 0.4924916077410009,
+        "departure_fraction": 0.491868496929503
+      },
+      {
+        "year": 1952,
+        "N_before_dispersal": 0.05872620806800128,
+        "K": 0.13811350979588422,
+        "N_over_K": 0.4252024885530157,
+        "departure_fraction": 0.4248840728251197
+      },
+      {
+        "year": 1955,
+        "N_before_dispersal": 0.06277161038230895,
+        "K": 0.15750838297134445,
+        "N_over_K": 0.3985286954138118,
+        "departure_fraction": 0.39828473831491656
+      },
+      {
+        "year": 1960,
+        "N_before_dispersal": 0.09189973177517075,
+        "K": 0.2030668001191537,
+        "N_over_K": 0.45255911710455204,
+        "departure_fraction": 0.4521407229524402
+      },
+      {
+        "year": 1965,
+        "N_before_dispersal": 0.13625602132317158,
+        "K": 0.2542429900931318,
+        "N_over_K": 0.535928330898168,
+        "departure_fraction": 0.53496788017581
+      },
+      {
+        "year": 1970,
+        "N_before_dispersal": 0.21977590523306892,
+        "K": 0.34213555390192,
+        "N_over_K": 0.6423650004409424,
+        "departure_fraction": 0.639605659773931
+      }
+    ],
+    "first_year_at_80pct_capacity": 1977
+  },
+  {
+    "step": "step38_cbc1951_noncbc_free_s41",
+    "veit_active": true,
+    "native_multiplier_present": false,
+    "release_cell": {
+      "row": 27,
+      "col": 89
+    },
+    "selected_years": [
+      {
+        "year": 1951,
+        "N_before_dispersal": 0.0345099637544688,
+        "K": 0.07413215070535566,
+        "N_over_K": 0.46551952730511614,
+        "departure_fraction": 0.46504337440145416
+      },
+      {
+        "year": 1952,
+        "N_before_dispersal": 0.031670611108934175,
+        "K": 0.07879571745060533,
+        "N_over_K": 0.4019331523796015,
+        "departure_fraction": 0.4016807575238672
+      },
+      {
+        "year": 1955,
+        "N_before_dispersal": 0.020622396351916976,
+        "K": 0.09702806058489075,
+        "N_over_K": 0.21254053958827973,
+        "departure_fraction": 0.21250251850802615
+      },
+      {
+        "year": 1960,
+        "N_before_dispersal": 0.02996261256827369,
+        "K": 0.13855468532276952,
+        "N_over_K": 0.2162511682551507,
+        "departure_fraction": 0.21621171013538118
+      },
+      {
+        "year": 1965,
+        "N_before_dispersal": 0.052530075221600095,
+        "K": 0.18640620689657988,
+        "N_over_K": 0.2818043245241524,
+        "departure_fraction": 0.2817283355128964
+      },
+      {
+        "year": 1970,
+        "N_before_dispersal": 0.08055810013077386,
+        "K": 0.2239167577667498,
+        "N_over_K": 0.35976807155581375,
+        "departure_fraction": 0.3596024379925048
+      }
+    ],
+    "first_year_at_80pct_capacity": 1984
+  }
+]

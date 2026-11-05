@@ -1,0 +1,831 @@
+{
+  "checked_utc": "2026-10-31T21:54:37.190200+00:00",
+  "arms": {
+    "step3_obsroute": {
+      "status": "no refine report"
+    },
+    "step27_dirch": {
+      "report": {
+        "source_map_dir": "/work/07980/bwa386/ls6/houfin/processed/model_results/age_map_float32_grid54_step27_dirch_quick90",
+        "out_dir": "/work/07980/bwa386/ls6/houfin/processed/model_results/refined_float64__age_map_float32_grid54_step27_dirch_quick90",
+        "reason": "U fell 0.0492 < tol_du 0.05 over 20 iterations",
+        "status": "converged",
+        "valid": true,
+        "iterations": 1201,
+        "U_start": 146397.47714894245,
+        "U_end": 134972.51906633694,
+        "grad_norm_start": 4382.901777585688,
+        "grad_norm_end": 16.462381680300908,
+        "rms_change_by_site": {
+          "alpha_a": 0.18607327454880665,
+          "alpha_f": 4.197598701230662,
+          "alpha_j": 2.383565763684193,
+          "alpha_k": 0.22539742169861432,
+          "concentration": 0.7935207577188688,
+          "directional_choice_kappa": 3.027345215594923,
+          "disease_b_late": 0.5425512780482433,
+          "disease_b_native_raw": 0.4077767250540256,
+          "disease_hill_n_raw": 3.2922265354323548,
+          "disease_lag0": 0.24844637975574302,
+          "disease_log_k_half_counts": 1.5412582146370617,
+          "disease_log_tau_rec": 0.9967220061681363,
+          "disease_mu_sev": 0.8809339851891869,
+          "disease_rec_raw": 1.034966792667837,
+          "disease_tau_raw": 2.423659908812551,
+          "disease_w_lag": 0.5134838996595512,
+          "disease_w_sev": 0.16539856592556423,
+          "dispersal_logit_intercept": 1.1879972849904163e-07,
+          "dispersal_logit_slope": 1.9008025597955225e-06,
+          "log_inv_total": 0.022785456910562107,
+          "manifold_factor": 1.084121164446951,
+          "obs_conc_kappa": 2.9971354934537158,
+          "obs_fledgling_weight": 1.0093839285694997,
+          "observer_first_year_eta": 0.036595475850130274,
+          "observer_route_eps": 0.4129299776820798,
+          "quality_conc_mult": 0.9017078993993239,
+          "w_scale_raw": 3.9160268720417584
+        },
+        "peak_gpu_bytes": 7022789888,
+        "gpu_bytes_limit": 40286558112
+      },
+      "source": "/work/07980/bwa386/ls6/houfin/processed/model_results/refined_float64__age_map_float32_grid54_step27_dirch_quick90",
+      "scalars": {
+        "alpha_a_auto_loc": 0.15747401005431225,
+        "alpha_f_auto_loc": 9.366479640714305,
+        "alpha_j_auto_loc": 2.6266729782542386,
+        "alpha_k_auto_loc": -0.9697967034768618,
+        "concentration_auto_loc": 0.39778141425239893,
+        "directional_choice_kappa_auto_loc": 1.446987404165862,
+        "disease_b_late_auto_loc": -0.40951299769333377,
+        "disease_b_native_raw_auto_loc": 1.8089714167120456,
+        "disease_hill_n_raw_auto_loc": 1.878452402703778,
+        "disease_lag0_auto_loc": 0.6080505894172268,
+        "disease_log_k_half_counts_auto_loc": -0.9223316299164501,
+        "disease_log_tau_rec_auto_loc": 2.497527337703934,
+        "disease_mu_sev_auto_loc": -0.41727922864316636,
+        "disease_rec_raw_auto_loc": -3.02723046740386,
+        "disease_tau_raw_auto_loc": 3.4409717202596943,
+        "dispersal_logit_intercept_auto_loc": 1.999999999590439,
+        "dispersal_logit_slope_auto_loc": 4.000000006546073,
+        "log_inv_total_auto_loc": -1.253426702752542,
+        "obs_conc_kappa_auto_loc": 0.8886641334952878,
+        "obs_fledgling_weight_auto_loc": 0.19033792387154355,
+        "observer_first_year_eta_auto_loc": 0.013989622694874955,
+        "quality_conc_mult_auto_loc": 0.4256321541568258,
+        "w_scale_raw_auto_loc": [
+          0.5243511506622527,
+          7.569584706154888,
+          3.0832067175903934,
+          4.888775262228515
+        ]
+      },
+      "metrics": {
+        "early_mean_lambda": 0.5104277696345034,
+        "modern_mean_lambda": 1.1668223200570456,
+        "early_suitable_fraction": 0.11556276053728579,
+        "modern_suitable_fraction": 0.5074108383510885,
+        "holdout": {
+          "temporal": {
+            "n": 12204,
+            "mean_lpd": -1.8358857563246804,
+            "log1p_rmse": 0.7001523704410666
+          },
+          "spatial": {
+            "n": 22846,
+            "mean_lpd": -1.4714400198393047,
+            "log1p_rmse": 0.6369361965158287
+          },
+          "fitted": {
+            "n": 157073,
+            "mean_lpd": -0.7174517624474257,
+            "log1p_rmse": 0.37460228918682004
+          },
+          "observer_effect": {
+            "sigma_u": 0.97,
+            "eta": 0.013989622694874955,
+            "temporal": {
+              "n": 12204,
+              "unseen_obsroute_share": 0.3940511307767945,
+              "conditional_mean_lpd": -1.7282839665775849,
+              "marginal_mean_lpd": -1.8406668142625444
+            },
+            "spatial": {
+              "n": 22846,
+              "unseen_obsroute_share": 0.6357349207738773,
+              "conditional_mean_lpd": -1.213034833987308,
+              "marginal_mean_lpd": -1.213034833987308
+            }
+          }
+        }
+      }
+    },
+    "step27_dirchnull": {
+      "report": {
+        "source_map_dir": "/work/07980/bwa386/ls6/houfin/processed/model_results/age_map_float32_grid54_step27_dirchnull_quick90",
+        "out_dir": "/work/07980/bwa386/ls6/houfin/processed/model_results/refined_float64__age_map_float32_grid54_step27_dirchnull_quick90",
+        "reason": "U fell 0.05 < tol_du 0.05 over 20 iterations",
+        "status": "converged",
+        "valid": true,
+        "iterations": 1185,
+        "U_start": 150471.94558093275,
+        "U_end": 137677.46850023887,
+        "grad_norm_start": 4746.13459118827,
+        "grad_norm_end": 28.421992328958225,
+        "rms_change_by_site": {
+          "alpha_a": 0.041945193970317485,
+          "alpha_f": 3.907953872121473,
+          "alpha_j": 1.6595634432260282,
+          "alpha_k": 0.18325340571073268,
+          "concentration": 0.9540361359613885,
+          "directional_choice_kappa": 1.244451812385095,
+          "disease_b_late": 0.5876755451788358,
+          "disease_b_native_raw": 0.6782929158141582,
+          "disease_hill_n_raw": 3.1185160418616418,
+          "disease_lag0": 0.1610120620655299,
+          "disease_log_k_half_counts": 1.1580309522942676,
+          "disease_log_tau_rec": 0.9681693077015345,
+          "disease_mu_sev": 0.8909289521856837,
+          "disease_rec_raw": 1.0769186389728573,
+          "disease_tau_raw": 2.878183193664949,
+          "disease_w_lag": 0.48976412383208207,
+          "disease_w_sev": 0.1694978668485323,
+          "dispersal_logit_intercept": 0.0,
+          "dispersal_logit_slope": 2.841837399181202e-06,
+          "log_inv_total": 0.44543543619310855,
+          "manifold_factor": 1.1330334234251662,
+          "obs_conc_kappa": 3.1012185083122636,
+          "obs_fledgling_weight": 0.8307939619770508,
+          "observer_first_year_eta": 0.07421759548290188,
+          "observer_route_eps": 0.43404399730228355,
+          "quality_conc_mult": 1.5398679143297742,
+          "w_scale_raw": 4.161340670344686
+        },
+        "peak_gpu_bytes": 7023341312,
+        "gpu_bytes_limit": 12722071647
+      },
+      "source": "/work/07980/bwa386/ls6/houfin/processed/model_results/refined_float64__age_map_float32_grid54_step27_dirchnull_quick90",
+      "scalars": {
+        "alpha_a_auto_loc": 0.31123315814722097,
+        "alpha_f_auto_loc": 9.087383403218885,
+        "alpha_j_auto_loc": 1.9043779583398588,
+        "alpha_k_auto_loc": -0.9537659901175144,
+        "concentration_auto_loc": 0.3460442090575717,
+        "directional_choice_kappa_auto_loc": 0.21370381893291215,
+        "disease_b_late_auto_loc": -0.4145382905374118,
+        "disease_b_native_raw_auto_loc": 2.113382623188731,
+        "disease_hill_n_raw_auto_loc": 1.761847450362313,
+        "disease_lag0_auto_loc": 0.11886129640810497,
+        "disease_log_k_half_counts_auto_loc": -0.5030427826241626,
+        "disease_log_tau_rec_auto_loc": 2.5616814136577184,
+        "disease_mu_sev_auto_loc": -0.4465121013804011,
+        "disease_rec_raw_auto_loc": -3.038478530673602,
+        "disease_tau_raw_auto_loc": 2.8041829766444373,
+        "dispersal_logit_intercept_auto_loc": 2.0,
+        "dispersal_logit_slope_auto_loc": 4.00000001918555,
+        "log_inv_total_auto_loc": -1.9364674405494928,
+        "obs_conc_kappa_auto_loc": 1.0465444144276002,
+        "obs_fledgling_weight_auto_loc": 0.1869157395820561,
+        "observer_first_year_eta_auto_loc": 0.037915442461804706,
+        "quality_conc_mult_auto_loc": 0.27811328088610904,
+        "w_scale_raw_auto_loc": [
+          0.7152310777027333,
+          7.221144067266177,
+          3.6485706402718563,
+          6.0038298642610375
+        ]
+      },
+      "metrics": {
+        "early_mean_lambda": 0.4978409762805664,
+        "modern_mean_lambda": 1.1462835539247453,
+        "early_suitable_fraction": 0.10421491431218156,
+        "modern_suitable_fraction": 0.4423344140805929,
+        "holdout": {
+          "temporal": {
+            "n": 12204,
+            "mean_lpd": -1.5187155107028119,
+            "log1p_rmse": 0.6525680117300034
+          },
+          "spatial": {
+            "n": 22846,
+            "mean_lpd": -0.9285379420417196,
+            "log1p_rmse": 0.4556244728025666
+          },
+          "fitted": {
+            "n": 157073,
+            "mean_lpd": -0.7415943570114093,
+            "log1p_rmse": 0.3929277806900877
+          },
+          "observer_effect": {
+            "sigma_u": 0.97,
+            "eta": 0.037915442461804706,
+            "temporal": {
+              "n": 12204,
+              "unseen_obsroute_share": 0.3940511307767945,
+              "conditional_mean_lpd": -1.5365523271153412,
+              "marginal_mean_lpd": -1.6196687004454082
+            },
+            "spatial": {
+              "n": 22846,
+              "unseen_obsroute_share": 0.6357349207738773,
+              "conditional_mean_lpd": -0.9734002589050575,
+              "marginal_mean_lpd": -0.9734002589050575
+            }
+          }
+        }
+      }
+    },
+    "step27_dirchrec": {
+      "report": {
+        "source_map_dir": "/work/07980/bwa386/ls6/houfin/processed/model_results/age_map_float32_grid54_step27_dirchrec_quick90",
+        "out_dir": "/work/07980/bwa386/ls6/houfin/processed/model_results/refined_float64__age_map_float32_grid54_step27_dirchrec_quick90",
+        "reason": "U fell 0.0486 < tol_du 0.05 over 20 iterations",
+        "status": "converged",
+        "valid": true,
+        "iterations": 1172,
+        "U_start": 147480.40620828175,
+        "U_end": 133904.47358225487,
+        "grad_norm_start": 4711.599625144339,
+        "grad_norm_end": 28.26418445200445,
+        "rms_change_by_site": {
+          "alpha_a": 0.12187841899632401,
+          "alpha_f": 3.837876862057689,
+          "alpha_j": 1.9727505904374185,
+          "alpha_k": 0.19891501123032485,
+          "concentration": 0.8703460774850493,
+          "directional_choice_kappa": 2.1921797470671884,
+          "disease_b_late": 0.5797057574975404,
+          "disease_b_native_raw": 0.46864309035181906,
+          "disease_hill_n_raw": 3.04624279974343,
+          "disease_lag0": 0.32934715849647084,
+          "disease_log_k_half_counts": 1.0918186104066578,
+          "disease_log_tau_rec": 0.9736792903407916,
+          "disease_mu_sev": 0.8258089661827677,
+          "disease_rec_raw": 0.995311582739375,
+          "disease_tau_raw": 3.080578893774672,
+          "disease_w_lag": 0.5601235456919229,
+          "disease_w_sev": 0.19491516300588022,
+          "dispersal_logit_intercept": 0.0,
+          "dispersal_logit_slope": 2.8464307444409087e-06,
+          "log_inv_total": 0.4319102006034836,
+          "manifold_factor": 1.1095947421079475,
+          "obs_conc_kappa": 3.1750582882817584,
+          "obs_fledgling_weight": 0.5119646770015231,
+          "observer_first_year_eta": 0.06552087666959558,
+          "observer_route_eps": 0.45419782729293035,
+          "quality_conc_mult": 0.8155363789978207,
+          "w_scale_raw": 4.04148864744725
+        },
+        "peak_gpu_bytes": 7022790656,
+        "gpu_bytes_limit": 12722071647
+      },
+      "source": "/work/07980/bwa386/ls6/houfin/processed/model_results/refined_float64__age_map_float32_grid54_step27_dirchrec_quick90",
+      "scalars": {
+        "alpha_a_auto_loc": 0.2365512215352159,
+        "alpha_f_auto_loc": 9.014365261563304,
+        "alpha_j_auto_loc": 2.218389467590815,
+        "alpha_k_auto_loc": -0.8809487754670629,
+        "concentration_auto_loc": 0.3549670740368557,
+        "directional_choice_kappa_auto_loc": 0.7372436439176029,
+        "disease_b_late_auto_loc": -0.46407588064790645,
+        "disease_b_native_raw_auto_loc": 1.8987672539794436,
+        "disease_hill_n_raw_auto_loc": 1.6909011268460912,
+        "disease_lag0_auto_loc": 0.3125477216143326,
+        "disease_log_k_half_counts_auto_loc": -0.49079630730225726,
+        "disease_log_tau_rec_auto_loc": 2.6220853466526166,
+        "disease_mu_sev_auto_loc": -0.4235556066265695,
+        "disease_rec_raw_auto_loc": -3.020498121435664,
+        "disease_tau_raw_auto_loc": 3.014755159968062,
+        "dispersal_logit_intercept_auto_loc": 2.0,
+        "dispersal_logit_slope_auto_loc": 4.000000014592205,
+        "log_inv_total_auto_loc": -1.6768087582664475,
+        "obs_conc_kappa_auto_loc": 1.0264784144318244,
+        "obs_fledgling_weight_auto_loc": 0.1495579268344264,
+        "observer_first_year_eta_auto_loc": 0.041357423761198865,
+        "quality_conc_mult_auto_loc": 0.483471171214977,
+        "w_scale_raw_auto_loc": [
+          0.5841984712249848,
+          7.126836284428958,
+          3.6055233481636275,
+          5.923223862155573
+        ]
+      },
+      "metrics": {
+        "early_mean_lambda": 0.4684667828515719,
+        "modern_mean_lambda": 1.1087910550912405,
+        "early_suitable_fraction": 0.10097267253358036,
+        "modern_suitable_fraction": 0.44025011579434925,
+        "holdout": {
+          "temporal": {
+            "n": 12204,
+            "mean_lpd": -1.4784823204828341,
+            "log1p_rmse": 0.641062304781932
+          },
+          "spatial": {
+            "n": 22846,
+            "mean_lpd": -0.9080028658820098,
+            "log1p_rmse": 0.4442078823994582
+          },
+          "fitted": {
+            "n": 157073,
+            "mean_lpd": -0.7186648298923103,
+            "log1p_rmse": 0.3833382983179269
+          },
+          "observer_effect": {
+            "sigma_u": 0.97,
+            "eta": 0.041357423761198865,
+            "temporal": {
+              "n": 12204,
+              "unseen_obsroute_share": 0.3940511307767945,
+              "conditional_mean_lpd": -1.4991281040981774,
+              "marginal_mean_lpd": -1.5750969043854537
+            },
+            "spatial": {
+              "n": 22846,
+              "unseen_obsroute_share": 0.6357349207738773,
+              "conditional_mean_lpd": -0.9502187690686891,
+              "marginal_mean_lpd": -0.9502187690686891
+            }
+          }
+        }
+      }
+    },
+    "step27_dirchxj2": {
+      "report": {
+        "source_map_dir": "/work/07980/bwa386/ls6/houfin/processed/model_results/age_map_float32_grid54_step27_dirchxj2_quick90",
+        "out_dir": "/work/07980/bwa386/ls6/houfin/processed/model_results/refined_float64__age_map_float32_grid54_step27_dirchxj2_quick90",
+        "reason": "U fell 0.0496 < tol_du 0.05 over 20 iterations",
+        "status": "converged",
+        "valid": true,
+        "iterations": 1225,
+        "U_start": 146921.18428982235,
+        "U_end": 134538.00550799005,
+        "grad_norm_start": 4487.265681870668,
+        "grad_norm_end": 47.8373221026846,
+        "rms_change_by_site": {
+          "alpha_a": 0.04293597675479871,
+          "alpha_f": 3.134524598251536,
+          "alpha_j": 1.7925281953466374,
+          "alpha_k": 0.18660592187916247,
+          "concentration": 0.937690675001239,
+          "directional_choice_kappa": 0.8467923715720538,
+          "disease_b_late": 0.5435185764088521,
+          "disease_b_native_raw": 0.3173195258581687,
+          "disease_hill_n_raw": 3.0230180164149907,
+          "disease_lag0": 0.03168996709392302,
+          "disease_log_k_half_counts": 1.14075092780585,
+          "disease_log_tau_rec": 0.9762759894747477,
+          "disease_mu_sev": 0.8567091408676443,
+          "disease_rec_raw": 1.1171984366369738,
+          "disease_tau_raw": 2.804148797272588,
+          "disease_w_lag": 0.49206535812264385,
+          "disease_w_sev": 0.1681939061310989,
+          "dispersal_logit_intercept": 0.0,
+          "dispersal_logit_slope": 4.716525143777517e-07,
+          "log_inv_total": 0.4803936646099245,
+          "manifold_factor": 1.0815564911558946,
+          "obs_conc_kappa": 3.0843670193767463,
+          "obs_fledgling_weight": 1.1053012628353232,
+          "observer_first_year_eta": 0.07144671920751447,
+          "observer_route_eps": 0.4329649871514729,
+          "quality_conc_mult": 0.7462433143601079,
+          "w_scale_raw": 4.000964113163775
+        },
+        "peak_gpu_bytes": 7022790656,
+        "gpu_bytes_limit": 12722071647
+      },
+      "source": "/work/07980/bwa386/ls6/houfin/processed/model_results/refined_float64__age_map_float32_grid54_step27_dirchxj2_quick90",
+      "scalars": {
+        "alpha_a_auto_loc": 0.31299092434726733,
+        "alpha_f_auto_loc": 8.308766617904856,
+        "alpha_j_auto_loc": 2.0377190243852574,
+        "alpha_k_auto_loc": -1.0031435574146608,
+        "concentration_auto_loc": 0.3511371202704417,
+        "directional_choice_kappa_auto_loc": 0.14091013339439235,
+        "disease_b_late_auto_loc": -0.45976456663466586,
+        "disease_b_native_raw_auto_loc": 1.704981578966384,
+        "disease_hill_n_raw_auto_loc": 1.673671259479871,
+        "disease_lag0_auto_loc": 0.1423043637256407,
+        "disease_log_k_half_counts_auto_loc": -0.5032545160054654,
+        "disease_log_tau_rec_auto_loc": 2.561234167156722,
+        "disease_mu_sev_auto_loc": -0.4487895849651632,
+        "disease_rec_raw_auto_loc": -3.0650447300863757,
+        "disease_tau_raw_auto_loc": 2.9925162534703267,
+        "dispersal_logit_intercept_auto_loc": 2.0,
+        "dispersal_logit_slope_auto_loc": 4.000000005184644,
+        "log_inv_total_auto_loc": -1.901552574407593,
+        "obs_conc_kappa_auto_loc": 1.0416972945611858,
+        "obs_fledgling_weight_auto_loc": 0.22253345863560572,
+        "observer_first_year_eta_auto_loc": 0.047700279020417874,
+        "quality_conc_mult_auto_loc": 0.49555133263122564,
+        "w_scale_raw_auto_loc": [
+          0.6904871309970187,
+          6.821483816738675,
+          3.7543448367949455,
+          6.005860125497599
+        ]
+      },
+      "metrics": {
+        "early_mean_lambda": 0.4650309282376622,
+        "modern_mean_lambda": 1.1130226353634256,
+        "early_suitable_fraction": 0.0998147290412228,
+        "modern_suitable_fraction": 0.44187123668364986,
+        "holdout": {
+          "temporal": {
+            "n": 12204,
+            "mean_lpd": -1.509197168225131,
+            "log1p_rmse": 0.6528482086568952
+          },
+          "spatial": {
+            "n": 22846,
+            "mean_lpd": -0.9017081632781567,
+            "log1p_rmse": 0.4469643116021027
+          },
+          "fitted": {
+            "n": 157073,
+            "mean_lpd": -0.7223214803199006,
+            "log1p_rmse": 0.38814567301220715
+          },
+          "observer_effect": {
+            "sigma_u": 0.97,
+            "eta": 0.047700279020417874,
+            "temporal": {
+              "n": 12204,
+              "unseen_obsroute_share": 0.3940511307767945,
+              "conditional_mean_lpd": -1.5301992902864958,
+              "marginal_mean_lpd": -1.6035363960853843
+            },
+            "spatial": {
+              "n": 22846,
+              "unseen_obsroute_share": 0.6357349207738773,
+              "conditional_mean_lpd": -0.9426594815727191,
+              "marginal_mean_lpd": -0.9426594815727191
+            }
+          }
+        }
+      }
+    },
+    "step30_comp": {
+      "report": {
+        "source_map_dir": "/work/07980/bwa386/ls6/houfin/processed/model_results/age_map_float32_grid54_step30_comp_quick90",
+        "out_dir": "/work/07980/bwa386/ls6/houfin/processed/model_results/refined_float64__age_map_float32_grid54_step30_comp_quick90",
+        "reason": "U fell 0.0476 < tol_du 0.05 over 20 iterations",
+        "status": "converged",
+        "valid": true,
+        "iterations": 1268,
+        "U_start": 146424.52705565226,
+        "U_end": 134993.95966891153,
+        "grad_norm_start": 4394.007534313163,
+        "grad_norm_end": 33.403874836305896,
+        "rms_change_by_site": {
+          "alpha_a": 0.13591994517291875,
+          "alpha_f": 5.905170240145267,
+          "alpha_j": 2.2487779216289607,
+          "alpha_k": 0.247081814123977,
+          "concentration": 0.7959114483072574,
+          "disease_b_late": 0.5866694952725795,
+          "disease_b_native_raw": 0.3921722324218282,
+          "disease_hill_n_raw": 3.397737756092062,
+          "disease_lag0": 0.49567092023535153,
+          "disease_log_k_half_counts": 1.3976542152202214,
+          "disease_log_tau_rec": 1.0242961776941142,
+          "disease_mu_sev": 0.7781471693329405,
+          "disease_rec_raw": 1.0901932155099248,
+          "disease_tau_raw": 2.7289462656615786,
+          "disease_w_lag": 0.5403135117476201,
+          "disease_w_sev": 0.16291099402745454,
+          "dispersal_logit_intercept": 0.0,
+          "dispersal_logit_slope": 1.4244170385424582e-06,
+          "log_inv_total": 0.2729481017170494,
+          "manifold_factor": 1.2197742841254688,
+          "obs_conc_kappa": 2.994301392028351,
+          "obs_fledgling_weight": 0.380585316050591,
+          "observer_first_year_eta": 0.03833942396451264,
+          "observer_route_eps": 0.4107619144189975,
+          "path_compounding_lambda": 0.9478722139687035,
+          "quality_conc_mult": 1.0169958876147016,
+          "w_scale_raw": 4.658632479002985
+        },
+        "peak_gpu_bytes": 14959292416,
+        "gpu_bytes_limit": 38166212416
+      },
+      "source": "/work/07980/bwa386/ls6/houfin/processed/model_results/refined_float64__age_map_float32_grid54_step30_comp_quick90",
+      "scalars": {
+        "alpha_a_auto_loc": 0.2114874256328216,
+        "alpha_f_auto_loc": 11.083064355593265,
+        "alpha_j_auto_loc": 2.491595994067201,
+        "alpha_k_auto_loc": -0.946703734086167,
+        "concentration_auto_loc": 0.39819082471551903,
+        "disease_b_late_auto_loc": -0.36186433775430654,
+        "disease_b_native_raw_auto_loc": 1.8098399789657125,
+        "disease_hill_n_raw_auto_loc": 1.9805684235877894,
+        "disease_lag0_auto_loc": 0.8391589578215637,
+        "disease_log_k_half_counts_auto_loc": -0.7900651491916263,
+        "disease_log_tau_rec_auto_loc": 2.487019168070046,
+        "disease_mu_sev_auto_loc": -0.3112281942181181,
+        "disease_rec_raw_auto_loc": -3.1023804580178593,
+        "disease_tau_raw_auto_loc": 3.748200592481952,
+        "dispersal_logit_intercept_auto_loc": 2.0,
+        "dispersal_logit_slope_auto_loc": 4.000000006094436,
+        "log_inv_total_auto_loc": -1.0418413126887733,
+        "obs_conc_kappa_auto_loc": 0.888313112033004,
+        "obs_fledgling_weight_auto_loc": 0.1112365217623671,
+        "observer_first_year_eta_auto_loc": 0.015579209680450255,
+        "path_compounding_lambda_auto_loc": 0.004610518259686416,
+        "quality_conc_mult_auto_loc": 0.39750580806732605,
+        "w_scale_raw_auto_loc": [
+          0.5558104641060411,
+          8.310657657786887,
+          3.015291792332707,
+          6.55159865861387
+        ]
+      },
+      "metrics": {
+        "early_mean_lambda": 0.4534886078558882,
+        "modern_mean_lambda": 1.198344519850691,
+        "early_suitable_fraction": 0.1032885595182955,
+        "modern_suitable_fraction": 0.4590088003705419,
+        "holdout": {
+          "temporal": {
+            "n": 12204,
+            "mean_lpd": -1.8424506099793518,
+            "log1p_rmse": 0.706249260778843
+          },
+          "spatial": {
+            "n": 22846,
+            "mean_lpd": -1.488652922163751,
+            "log1p_rmse": 0.6415438033845922
+          },
+          "fitted": {
+            "n": 157073,
+            "mean_lpd": -0.7172527420678572,
+            "log1p_rmse": 0.37450211600897665
+          },
+          "observer_effect": {
+            "sigma_u": 0.97,
+            "eta": 0.015579209680450255,
+            "temporal": {
+              "n": 12204,
+              "unseen_obsroute_share": 0.3940511307767945,
+              "conditional_mean_lpd": -1.7306864492299963,
+              "marginal_mean_lpd": -1.8435257596182708
+            },
+            "spatial": {
+              "n": 22846,
+              "unseen_obsroute_share": 0.6357349207738773,
+              "conditional_mean_lpd": -1.2181120082561525,
+              "marginal_mean_lpd": -1.2181120082561525
+            }
+          }
+        }
+      }
+    },
+    "step30_compnull": {
+      "report": {
+        "source_map_dir": "/work/07980/bwa386/ls6/houfin/processed/model_results/age_map_float32_grid54_step30_compnull_quick90",
+        "out_dir": "/work/07980/bwa386/ls6/houfin/processed/model_results/refined_float64__age_map_float32_grid54_step30_compnull_quick90",
+        "reason": "U fell 0.0498 < tol_du 0.05 over 20 iterations",
+        "status": "converged",
+        "valid": true,
+        "iterations": 1245,
+        "U_start": 150529.9531156424,
+        "U_end": 137687.62797423612,
+        "grad_norm_start": 4554.500294970581,
+        "grad_norm_end": 25.51999117208821,
+        "rms_change_by_site": {
+          "alpha_a": 0.04412033074485022,
+          "alpha_f": 4.2132378860163495,
+          "alpha_j": 1.7875071211829145,
+          "alpha_k": 0.19486540253812956,
+          "concentration": 0.9518958632556554,
+          "disease_b_late": 0.584401651086991,
+          "disease_b_native_raw": 0.6431900303151936,
+          "disease_hill_n_raw": 3.120635969193504,
+          "disease_lag0": 0.2644617813276199,
+          "disease_log_k_half_counts": 1.1870970763056667,
+          "disease_log_tau_rec": 0.9553694534763135,
+          "disease_mu_sev": 0.8792978043547415,
+          "disease_rec_raw": 1.0761843302309866,
+          "disease_tau_raw": 2.8880057102940113,
+          "disease_w_lag": 0.48921169108189433,
+          "disease_w_sev": 0.16735993788628062,
+          "dispersal_logit_intercept": 0.0,
+          "dispersal_logit_slope": 4.719029176314393e-07,
+          "log_inv_total": 0.5389132042070286,
+          "manifold_factor": 1.1648357770872846,
+          "obs_conc_kappa": 3.1049999416769603,
+          "obs_fledgling_weight": 0.7067924347235321,
+          "observer_first_year_eta": 0.0748881072754394,
+          "observer_route_eps": 0.429366006998961,
+          "path_compounding_lambda": 0.5918093087324037,
+          "quality_conc_mult": 1.5293954047300566,
+          "w_scale_raw": 4.328961010254413
+        },
+        "peak_gpu_bytes": 14959292416,
+        "gpu_bytes_limit": 38166212416
+      },
+      "source": "/work/07980/bwa386/ls6/houfin/processed/model_results/refined_float64__age_map_float32_grid54_step30_compnull_quick90",
+      "scalars": {
+        "alpha_a_auto_loc": 0.3132736194790725,
+        "alpha_f_auto_loc": 9.396242742125969,
+        "alpha_j_auto_loc": 2.0357842042221983,
+        "alpha_k_auto_loc": -0.9301916987115653,
+        "concentration_auto_loc": 0.3450263781063678,
+        "disease_b_late_auto_loc": -0.4201256793115685,
+        "disease_b_native_raw_auto_loc": 2.0587474148061604,
+        "disease_hill_n_raw_auto_loc": 1.7645712919550398,
+        "disease_lag0_auto_loc": 0.2358881360488084,
+        "disease_log_k_half_counts_auto_loc": -0.5343830622523221,
+        "disease_log_tau_rec_auto_loc": 2.569682378722783,
+        "disease_mu_sev_auto_loc": -0.43462185215862026,
+        "disease_rec_raw_auto_loc": -3.035128293281829,
+        "disease_tau_raw_auto_loc": 2.8237650982043774,
+        "dispersal_logit_intercept_auto_loc": 2.0,
+        "dispersal_logit_slope_auto_loc": 4.000000004934241,
+        "log_inv_total_auto_loc": -2.061802579893674,
+        "obs_conc_kappa_auto_loc": 1.0479259223445165,
+        "obs_fledgling_weight_auto_loc": 0.17096445976276456,
+        "observer_first_year_eta_auto_loc": 0.03788149813361277,
+        "path_compounding_lambda_auto_loc": 0.00652341236391024,
+        "quality_conc_mult_auto_loc": 0.2790749403703052,
+        "w_scale_raw_auto_loc": [
+          0.748296431476092,
+          7.419185531253751,
+          3.599612207941403,
+          6.351960735740352
+        ]
+      },
+      "metrics": {
+        "early_mean_lambda": 0.4839297859622201,
+        "modern_mean_lambda": 1.1552172522977635,
+        "early_suitable_fraction": 0.10259379342288097,
+        "modern_suitable_fraction": 0.4367762853172765,
+        "holdout": {
+          "temporal": {
+            "n": 12204,
+            "mean_lpd": -1.5174983981949706,
+            "log1p_rmse": 0.6522839600771695
+          },
+          "spatial": {
+            "n": 22846,
+            "mean_lpd": -0.9261992288609445,
+            "log1p_rmse": 0.4544972208910024
+          },
+          "fitted": {
+            "n": 157073,
+            "mean_lpd": -0.7415934091866423,
+            "log1p_rmse": 0.3930339254903033
+          },
+          "observer_effect": {
+            "sigma_u": 0.97,
+            "eta": 0.03788149813361277,
+            "temporal": {
+              "n": 12204,
+              "unseen_obsroute_share": 0.3940511307767945,
+              "conditional_mean_lpd": -1.5360396645515615,
+              "marginal_mean_lpd": -1.6191431765589182
+            },
+            "spatial": {
+              "n": 22846,
+              "unseen_obsroute_share": 0.6357349207738773,
+              "conditional_mean_lpd": -0.9729299914779609,
+              "marginal_mean_lpd": -0.9729299914779609
+            }
+          }
+        }
+      }
+    },
+    "step30_comprec": {
+      "report": {
+        "source_map_dir": "/work/07980/bwa386/ls6/houfin/processed/model_results/age_map_float32_grid54_step30_comprec_quick90",
+        "out_dir": "/work/07980/bwa386/ls6/houfin/processed/model_results/refined_float64__age_map_float32_grid54_step30_comprec_quick90",
+        "reason": "U fell 0.0468 < tol_du 0.05 over 20 iterations",
+        "status": "converged",
+        "valid": true,
+        "iterations": 1173,
+        "U_start": 144680.11923071704,
+        "U_end": 131893.54029438464,
+        "grad_norm_start": 4615.727425376633,
+        "grad_norm_end": 21.083013572351497,
+        "rms_change_by_site": {
+          "alpha_a": 0.09787550064291367,
+          "alpha_f": 3.5676152367805187,
+          "alpha_j": 2.2610339012496246,
+          "alpha_k": 0.2764225347603564,
+          "concentration": 0.897348972721465,
+          "disease_b_late": 0.5459669796976215,
+          "disease_b_native_raw": 0.3961744390457318,
+          "disease_hill_n_raw": 3.1094004293492996,
+          "disease_lag0": 0.09608505764919051,
+          "disease_log_k_half_counts": 1.016547248406578,
+          "disease_log_tau_rec": 1.0777306920214151,
+          "disease_mu_sev": 0.8524795359469526,
+          "disease_rec_raw": 0.9420109436597301,
+          "disease_tau_raw": 3.0492646076791834,
+          "disease_w_lag": 0.5662843576194763,
+          "disease_w_sev": 0.20499507801134342,
+          "dispersal_logit_intercept": 0.0,
+          "dispersal_logit_slope": 3.3004191797303406e-06,
+          "log_inv_total": 0.5214426031784025,
+          "manifold_factor": 1.1349388214518137,
+          "obs_conc_kappa": 3.1264218753717326,
+          "obs_fledgling_weight": 0.3640930026998017,
+          "observer_first_year_eta": 0.056720211633655315,
+          "observer_route_eps": 0.44787997561631576,
+          "path_compounding_lambda": 2.2566955343754214,
+          "quality_conc_mult": 0.7768131905667669,
+          "w_scale_raw": 4.278732160830687
+        },
+        "peak_gpu_bytes": 14959292416,
+        "gpu_bytes_limit": 38166212416
+      },
+      "source": "/work/07980/bwa386/ls6/houfin/processed/model_results/refined_float64__age_map_float32_grid54_step30_comprec_quick90",
+      "scalars": {
+        "alpha_a_auto_loc": 0.26227468756471267,
+        "alpha_f_auto_loc": 8.74815961315381,
+        "alpha_j_auto_loc": 2.492344566857077,
+        "alpha_k_auto_loc": -0.8827182905112501,
+        "concentration_auto_loc": 0.35191836362708234,
+        "disease_b_late_auto_loc": -0.4575064213720196,
+        "disease_b_native_raw_auto_loc": 1.800478943440263,
+        "disease_hill_n_raw_auto_loc": 1.745817341428157,
+        "disease_lag0_auto_loc": 0.4171253899665428,
+        "disease_log_k_half_counts_auto_loc": -0.4916107511951219,
+        "disease_log_tau_rec_auto_loc": 2.5906357401685263,
+        "disease_mu_sev_auto_loc": -0.4307034498549574,
+        "disease_rec_raw_auto_loc": -3.007322852381654,
+        "disease_tau_raw_auto_loc": 2.951422786068256,
+        "dispersal_logit_intercept_auto_loc": 2.0,
+        "dispersal_logit_slope_auto_loc": 4.000000037440928,
+        "log_inv_total_auto_loc": -1.7384958973602262,
+        "obs_conc_kappa_auto_loc": 1.0344581731538975,
+        "obs_fledgling_weight_auto_loc": 0.14114936241392745,
+        "observer_first_year_eta_auto_loc": 0.04507130803278375,
+        "path_compounding_lambda_auto_loc": 0.14013023928297003,
+        "quality_conc_mult_auto_loc": 0.49425443191084634,
+        "w_scale_raw_auto_loc": [
+          0.5858820656538632,
+          7.014632575307359,
+          3.5322466837428363,
+          6.714504012605722
+        ]
+      },
+      "metrics": {
+        "early_mean_lambda": 0.45890441621233147,
+        "modern_mean_lambda": 1.1068393907238285,
+        "early_suitable_fraction": 0.09865678554886521,
+        "modern_suitable_fraction": 0.42728114867994443,
+        "holdout": {
+          "temporal": {
+            "n": 12204,
+            "mean_lpd": -1.4774095439326853,
+            "log1p_rmse": 0.6454500864730467
+          },
+          "spatial": {
+            "n": 22846,
+            "mean_lpd": -0.8899067011103103,
+            "log1p_rmse": 0.44321995715892115
+          },
+          "fitted": {
+            "n": 157073,
+            "mean_lpd": -0.7060140910924222,
+            "log1p_rmse": 0.38292820659299565
+          },
+          "observer_effect": {
+            "sigma_u": 0.97,
+            "eta": 0.04507130803278375,
+            "temporal": {
+              "n": 12204,
+              "unseen_obsroute_share": 0.3940511307767945,
+              "conditional_mean_lpd": -1.498062606690776,
+              "marginal_mean_lpd": -1.5716587636150665
+            },
+            "spatial": {
+              "n": 22846,
+              "unseen_obsroute_share": 0.6357349207738773,
+              "conditional_mean_lpd": -0.9309844747847517,
+              "marginal_mean_lpd": -0.9309844747847517
+            }
+          }
+        }
+      }
+    },
+    "step30_compxfec": {
+      "status": "no refine report"
+    },
+    "step30_compcur": {
+      "status": "no refine report"
+    },
+    "step32_cbc_yb": {
+      "status": "no refine report"
+    },
+    "step32_cbc_native": {
+      "status": "no refine report"
+    },
+    "step32_cbclo_yb": {
+      "status": "no refine report"
+    },
+    "step32_cbchi_yb": {
+      "status": "no refine report"
+    }
+  }
+}

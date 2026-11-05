@@ -1,0 +1,15 @@
+# Abundance-noise diagnostic correction — November 3
+
+The independent cell-year sigma .01 seed-41 fit finished all 400 initial MAP steps on TACC. Its post-MAP plotting routine then failed before refinement because it tried to multiply the compact `(55, 4318)` innovation array by a full `(124, 1)` time mask. A second line indexed those same compact rows with a 124-year Boolean mask. This was diagnostic incompatibility, not optimizer convergence failure. The earlier full-data likelihood/gradient/replay smokes did not exercise this plotting routine.
+
+The plotting readout now uses the model's compact-year scatter helper for independent innovations and its normalized-regional helper for regional innovations. This also restores the mean-one lognormal subtraction omitted by the old regional plotting readout. The likelihood already included that subtraction; this correction changes the readout, not the fitted dynamics.
+
+All 18 abundance-noise diagnostic sources were amended with explicit provenance. Each original diagnostic and manifest is retained under the run's `diagnostic_amendments/noise_v1`. The updated manifests and validation receipt record that model/likelihood sources, configurations and checkpoints were not changed by this amendment. Existing completed outputs that used the previous diagnostic version remain distinguishable through these receipts. Future staging now includes the correction.
+
+Six small numerical checks compare both forms at all three sigma values with independent expected arrays. The actual independent sigma-.01 MAP checkpoint also passed the full corrected noise plotting function, with all inactive years exactly zero. Both initial and refined actual checkpoints of the completed regional sigma-.01 fit passed; its affected PNGs and process-noise metric entries were regenerated while retaining originals. Those validations ran on spare CPUs within the existing TACC allocation. No local scientific computation or new allocation was used.
+
+The independent sigma-.01 task was returned to pending with its completed MAP preserved. To prioritize this warm recovery in the remaining allocation, the lower-priority independent sigma-.02 cold start was interrupted at a saved step-75 checkpoint and returned to pending. The priority-preemption receipt distinguishes this scheduling action from a model/optimizer failure.
+
+Five fits now have FIT_DONE and contribution READY: the third-seed shared control, private-K SD .10, private-K SD .25, all-field rho .99, and regional abundance sigma .01 (new variants at seed 41). This does not certify biological improvement. The matched pathology and predictive comparisons still determine interpretation.
+
+Evidence: NOISE_DIAGNOSTIC_AMENDMENT_20261103.json; remote per-run original/updated source manifests and `actual_checkpoint_validation.json`; `PRIORITY_PREEMPTION_20261103.json`; allocation 3548968 lane logs. The independent correction's repaired job must still complete refinement and the remaining diagnostics.

@@ -1,0 +1,182 @@
+[
+  {
+    "step": "step35_est1951_ctl_lo_s41",
+    "parent": "step33_nestcbc_abs_s41",
+    "seed": 41,
+    "initialization_year": 1951,
+    "total_injection_units": 2.7237354085603114,
+    "conditional_bird_equivalent": 280.0,
+    "conversion_birds_per_unit": 102.8,
+    "conversion_status": "conditional gauge, not observed census or confidence interval",
+    "state_brackets": "fixed broad sensitivity, not founder-count priors",
+    "native_departure": false,
+    "release_allee_exemption_years": 0,
+    "cbc_backcast_used": false,
+    "input_contract": {
+      "parent": "/work/07980/bwa386/ls6/houfin/processed/field54/stageF/model_inputs/numpyro_input_field54prod_ema_s64_grid54_obsroute",
+      "derived": "/work/07980/bwa386/ls6/houfin/research/grid54/inputs/established1951",
+      "changed_metadata_keys": [
+        "inv_timestep"
+      ],
+      "old_year": 1940,
+      "new_year": 1951,
+      "old_index": 38,
+      "new_index": 49,
+      "old_metadata_sha256": "4ca59c93086b0728f94b58680f2b0ab4d34a96d254ade91aba039d602fe2f7a2",
+      "new_metadata_sha256": "aea08dc922c26a1a3478f180a4680e3c75b2866068cc4c10c3c3d17a379d3574",
+      "observations_features_grid_years_unchanged": true,
+      "interpretation": "Initialize already established within-cell population before documented outside-cell expansion; not a reconstruction of the cage release. Spatial within-cell occupancy remains unresolved at this grid scale."
+    },
+    "age_split": "inherited 50/50 adult and young initialization; annual maturation and breeding unchanged"
+  },
+  {
+    "step": "step35_est1951_ctl_mid_s41",
+    "parent": "step33_nestcbc_abs_s41",
+    "seed": 41,
+    "initialization_year": 1951,
+    "total_injection_units": 5.447470817120623,
+    "conditional_bird_equivalent": 560.0,
+    "conversion_birds_per_unit": 102.8,
+    "conversion_status": "conditional gauge, not observed census or confidence interval",
+    "state_brackets": "fixed broad sensitivity, not founder-count priors",
+    "native_departure": false,
+    "release_allee_exemption_years": 0,
+    "cbc_backcast_used": false,
+    "input_contract": {
+      "parent": "/work/07980/bwa386/ls6/houfin/processed/field54/stageF/model_inputs/numpyro_input_field54prod_ema_s64_grid54_obsroute",
+      "derived": "/work/07980/bwa386/ls6/houfin/research/grid54/inputs/established1951",
+      "changed_metadata_keys": [
+        "inv_timestep"
+      ],
+      "old_year": 1940,
+      "new_year": 1951,
+      "old_index": 38,
+      "new_index": 49,
+      "old_metadata_sha256": "4ca59c93086b0728f94b58680f2b0ab4d34a96d254ade91aba039d602fe2f7a2",
+      "new_metadata_sha256": "aea08dc922c26a1a3478f180a4680e3c75b2866068cc4c10c3c3d17a379d3574",
+      "observations_features_grid_years_unchanged": true,
+      "interpretation": "Initialize already established within-cell population before documented outside-cell expansion; not a reconstruction of the cage release. Spatial within-cell occupancy remains unresolved at this grid scale."
+    },
+    "age_split": "inherited 50/50 adult and young initialization; annual maturation and breeding unchanged"
+  },
+  {
+    "step": "step35_est1951_ctl_hi_s41",
+    "parent": "step33_nestcbc_abs_s41",
+    "seed": 41,
+    "initialization_year": 1951,
+    "total_injection_units": 10.894941634241246,
+    "conditional_bird_equivalent": 1120.0,
+    "conversion_birds_per_unit": 102.8,
+    "conversion_status": "conditional gauge, not observed census or confidence interval",
+    "state_brackets": "fixed broad sensitivity, not founder-count priors",
+    "native_departure": false,
+    "release_allee_exemption_years": 0,
+    "cbc_backcast_used": false,
+    "input_contract": {
+      "parent": "/work/07980/bwa386/ls6/houfin/processed/field54/stageF/model_inputs/numpyro_input_field54prod_ema_s64_grid54_obsroute",
+      "derived": "/work/07980/bwa386/ls6/houfin/research/grid54/inputs/established1951",
+      "changed_metadata_keys": [
+        "inv_timestep"
+      ],
+      "old_year": 1940,
+      "new_year": 1951,
+      "old_index": 38,
+      "new_index": 49,
+      "old_metadata_sha256": "4ca59c93086b0728f94b58680f2b0ab4d34a96d254ade91aba039d602fe2f7a2",
+      "new_metadata_sha256": "aea08dc922c26a1a3478f180a4680e3c75b2866068cc4c10c3c3d17a379d3574",
+      "observations_features_grid_years_unchanged": true,
+      "interpretation": "Initialize already established within-cell population before documented outside-cell expansion; not a reconstruction of the cage release. Spatial within-cell occupancy remains unresolved at this grid scale."
+    },
+    "age_split": "inherited 50/50 adult and young initialization; annual maturation and breeding unchanged"
+  },
+  {
+    "step": "step35_est1951_nat_lo_s41",
+    "parent": "step34_abs_natdep_s41",
+    "seed": 41,
+    "initialization_year": 1951,
+    "total_injection_units": 2.7237354085603114,
+    "conditional_bird_equivalent": 280.0,
+    "conversion_birds_per_unit": 102.8,
+    "conversion_status": "conditional gauge, not observed census or confidence interval",
+    "state_brackets": "fixed broad sensitivity, not founder-count priors",
+    "native_departure": true,
+    "release_allee_exemption_years": 0,
+    "cbc_backcast_used": false,
+    "input_contract": {
+      "parent": "/work/07980/bwa386/ls6/houfin/processed/field54/stageF/model_inputs/numpyro_input_field54prod_ema_s64_grid54_obsroute",
+      "derived": "/work/07980/bwa386/ls6/houfin/research/grid54/inputs/established1951",
+      "changed_metadata_keys": [
+        "inv_timestep"
+      ],
+      "old_year": 1940,
+      "new_year": 1951,
+      "old_index": 38,
+      "new_index": 49,
+      "old_metadata_sha256": "4ca59c93086b0728f94b58680f2b0ab4d34a96d254ade91aba039d602fe2f7a2",
+      "new_metadata_sha256": "aea08dc922c26a1a3478f180a4680e3c75b2866068cc4c10c3c3d17a379d3574",
+      "observations_features_grid_years_unchanged": true,
+      "interpretation": "Initialize already established within-cell population before documented outside-cell expansion; not a reconstruction of the cage release. Spatial within-cell occupancy remains unresolved at this grid scale."
+    },
+    "age_split": "inherited 50/50 adult and young initialization; annual maturation and breeding unchanged"
+  },
+  {
+    "step": "step35_est1951_nat_mid_s41",
+    "parent": "step34_abs_natdep_s41",
+    "seed": 41,
+    "initialization_year": 1951,
+    "total_injection_units": 5.447470817120623,
+    "conditional_bird_equivalent": 560.0,
+    "conversion_birds_per_unit": 102.8,
+    "conversion_status": "conditional gauge, not observed census or confidence interval",
+    "state_brackets": "fixed broad sensitivity, not founder-count priors",
+    "native_departure": true,
+    "release_allee_exemption_years": 0,
+    "cbc_backcast_used": false,
+    "input_contract": {
+      "parent": "/work/07980/bwa386/ls6/houfin/processed/field54/stageF/model_inputs/numpyro_input_field54prod_ema_s64_grid54_obsroute",
+      "derived": "/work/07980/bwa386/ls6/houfin/research/grid54/inputs/established1951",
+      "changed_metadata_keys": [
+        "inv_timestep"
+      ],
+      "old_year": 1940,
+      "new_year": 1951,
+      "old_index": 38,
+      "new_index": 49,
+      "old_metadata_sha256": "4ca59c93086b0728f94b58680f2b0ab4d34a96d254ade91aba039d602fe2f7a2",
+      "new_metadata_sha256": "aea08dc922c26a1a3478f180a4680e3c75b2866068cc4c10c3c3d17a379d3574",
+      "observations_features_grid_years_unchanged": true,
+      "interpretation": "Initialize already established within-cell population before documented outside-cell expansion; not a reconstruction of the cage release. Spatial within-cell occupancy remains unresolved at this grid scale."
+    },
+    "age_split": "inherited 50/50 adult and young initialization; annual maturation and breeding unchanged"
+  },
+  {
+    "step": "step35_est1951_nat_hi_s41",
+    "parent": "step34_abs_natdep_s41",
+    "seed": 41,
+    "initialization_year": 1951,
+    "total_injection_units": 10.894941634241246,
+    "conditional_bird_equivalent": 1120.0,
+    "conversion_birds_per_unit": 102.8,
+    "conversion_status": "conditional gauge, not observed census or confidence interval",
+    "state_brackets": "fixed broad sensitivity, not founder-count priors",
+    "native_departure": true,
+    "release_allee_exemption_years": 0,
+    "cbc_backcast_used": false,
+    "input_contract": {
+      "parent": "/work/07980/bwa386/ls6/houfin/processed/field54/stageF/model_inputs/numpyro_input_field54prod_ema_s64_grid54_obsroute",
+      "derived": "/work/07980/bwa386/ls6/houfin/research/grid54/inputs/established1951",
+      "changed_metadata_keys": [
+        "inv_timestep"
+      ],
+      "old_year": 1940,
+      "new_year": 1951,
+      "old_index": 38,
+      "new_index": 49,
+      "old_metadata_sha256": "4ca59c93086b0728f94b58680f2b0ab4d34a96d254ade91aba039d602fe2f7a2",
+      "new_metadata_sha256": "aea08dc922c26a1a3478f180a4680e3c75b2866068cc4c10c3c3d17a379d3574",
+      "observations_features_grid_years_unchanged": true,
+      "interpretation": "Initialize already established within-cell population before documented outside-cell expansion; not a reconstruction of the cage release. Spatial within-cell occupancy remains unresolved at this grid scale."
+    },
+    "age_split": "inherited 50/50 adult and young initialization; annual maturation and breeding unchanged"
+  }
+]

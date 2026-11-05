@@ -1,0 +1,9 @@
+{
+  "epoch": 1793673878.5159695,
+  "regular_gpu_jobs": [
+    "3548331"
+  ],
+  "gpu_lanes": 3,
+  "walltime_hours": 4,
+  "reason": "18 authorized floor combinations plus existing backlog; bounded additional12GPU-hour capacity request"
+}

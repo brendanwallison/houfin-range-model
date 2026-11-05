@@ -1,0 +1,105 @@
+{
+  "passed": true,
+  "scope": "Small-grid identities and gradients; full-data smoke deferred to each allocated GPU task.",
+  "checks": {
+    "control_zero_identity": true,
+    "abundance_zero_identity": true,
+    "abundance_finite_nonzero_probe": {
+      "value": 1873.7159634325196,
+      "gradient": 4658.026224035606
+    },
+    "abundance_accounting": {
+      "BIDE_error": 5.684341886080802e-14,
+      "replay_adult_error": 1.872433301744334e-14,
+      "replay_juvenile_error": 1.9608315241958787e-14
+    },
+    "establishment_zero_identity": true,
+    "establishment_finite_nonzero_probe": {
+      "value": 1130.2933782741634,
+      "gradient": 38.07241420583835
+    },
+    "establishment_accounting": {
+      "BIDE_error": 1.4210854715202004e-14,
+      "replay_adult_error": 7.105427357601002e-15,
+      "replay_juvenile_error": 1.0658141036401503e-14
+    },
+    "arrival_zero_identity": true,
+    "arrival_finite_nonzero_probe": {
+      "value": 1123.9337454127963,
+      "gradient": 5.532271369894146
+    },
+    "arrival_weights_finite": true,
+    "arrival_accounting": {
+      "BIDE_error": 1.4210854715202004e-14,
+      "replay_adult_error": 1.4210854715202004e-14,
+      "replay_juvenile_error": 1.0658141036401503e-14
+    },
+    "shooting_exact_continuity_identity": true,
+    "shooting_cuts_trajectory_gradient": true,
+    "shooting_accounting": {
+      "BIDE_error": 2.842170943040401e-14,
+      "replay_adult_error": 1.4210854715202004e-14,
+      "replay_juvenile_error": 1.4210854715202004e-14
+    },
+    "bounded_identity_and_ar1": true,
+    "hurdle_exact_decomposition_and_replacement": true,
+    "control_numpyro_wrapper_and_capture": {
+      "value": 54.564942304632304,
+      "gradient": 37.62522271818148
+    },
+    "abundance_numpyro_wrapper_and_capture": {
+      "value": 61.61326952417455,
+      "gradient": 37.975679721157704
+    },
+    "establishment_numpyro_wrapper_and_capture": {
+      "value": 60.31037872065941,
+      "gradient": 37.69273297186737
+    },
+    "arrival_numpyro_wrapper_and_capture": {
+      "value": 60.2261547197875,
+      "gradient": 37.634621609835214
+    },
+    "shooting_numpyro_wrapper_and_capture": {
+      "value": 46.51532371169388,
+      "gradient": 132.86783641579837
+    }
+  },
+  "manifests": {
+    "step48_ctl_full_s41": "4707625c1943e102422096834a20acd57ba9c5a4b45fab5f0fe2cfdf60b30907",
+    "step48_ctl_weak_s41": "4c8128d6404092423fe137077fce9be84ead7b36b67db8f82e14a7f2fdb4a4f8",
+    "step48_ctl_frozen_s41": "8d51991a0ada6e6ea107fbef6c82cf11d23c97953cfedfc0b35a4abf78e7b09f",
+    "step48_ab_ar05_weak_s41": "61f9d227e0788df53a694cbd5a567413b9fa413e1f5c1bbb1474bb504ab5705f",
+    "step48_ab_ar15_weak_s41": "f755fb537d72f83bdd2737a15e63c9745ed8ac58e248893b39221b599c3e1ae7",
+    "step48_ab_ar15_frozen_s41": "c3885f2d22b1f7853b5a7b39929fac2174832ca94e5b73edfa04e09c31964585",
+    "step48_ab_blocks15_weak_s41": "245e3ee2441c682a96716e2986e6a086c19c0b5f062d85d27f2a32c2aa35f3f4",
+    "step48_ab_ar15_full_s41": "cf9276f4dc021155c7d7f947180fa7f6362927b374868a2250be9ae439ad271e",
+    "step48_est_static05_full_s41": "b634b96cd766b1e14216d4ad14d641d36e54e16671ab2752ff52e0e61de5068f",
+    "step48_est_static10_full_s41": "987d3b4ab6055560a6560e98a5f61586b292245b1b9630aa6a179fbbec8fba6c",
+    "step48_est_static10_frozen_s41": "bff812600c2cc1a0f45f1be6dd3873f726ec15b63eb57267c18487aa4871b6ab",
+    "step48_arrival10_full_s41": "b3ee8dd019a8c1c2fe64ec6c87ef0dc14fdef9b03e273b3355e4f7a0e4b202d6",
+    "step48_shoot10_weak_s41": "17f9e77509d02d121bd707f68907cf10f6ae1978ed2be37681b2a98e04f58bb4",
+    "step48_shoot10_wide_weak_s41": "7b98c5ca68580c7ff29e68323aebe254bc8e0147271b77230c0eba8663f5edd4",
+    "step48_shoot5_weak_s41": "d9bae618bae8bf446c602b0187b9906dba3b23977b4a2c4f3a19e55e25b4e608",
+    "step48_hurdle_ctl_s41": "061ce3576f02cdfe315a70f4d8aee5b0882fd03aaa11d1b17bfa373b2ee968ea",
+    "step48_hurdle_ab_s41": "34fab2a431ba20fa72d5491381e08cec644600ddf8cc1d47a4d51dd561c6b8ab",
+    "step48_hurdle_est_s41": "cc5154c56a59be4b7b00ee64eb4ef7b5c75b2ccedaf55509d7b3615ab4ef2ac7",
+    "step48_ctl_full_s42": "83b9222e63acdaddc2d12640df03af5cdf71fced6caaf2b3829cf043a57da9f9",
+    "step48_ctl_weak_s42": "325248858bc77c9baade12a3d8755ff7ac1aac40fdcd93c1f3cd91d4ab04fc5b",
+    "step48_ctl_frozen_s42": "983a4019ea7d8753275805b30e8c84899b9c9ce7ef3cc810ab71b7f0b855ec4f",
+    "step48_ab_ar05_weak_s42": "8f8e890f8ed294e0a41dfffc6ba28592083a865c40072e193786c9df301ce2bf",
+    "step48_ab_ar15_weak_s42": "67340b7eee2687532d360ad2fdabdebb98b9af8390c380fc4f1a2c6e57aa7c23",
+    "step48_ab_ar15_frozen_s42": "8d9a5470e1cfa49b2ff51a3d70e00409ffc12a8bab3c9abb9e9e25453203e82b",
+    "step48_ab_blocks15_weak_s42": "e5ede91d8fd6a12e152bccf2b269feda57730c7b9544ffd50ceb059f432e35f2",
+    "step48_ab_ar15_full_s42": "dbfb9281c6834fe4dee582feff216d9b3b821930398c332be23dded0ff9cd82b",
+    "step48_est_static05_full_s42": "c7b4bfde7e9154fb3ddd402c5be304c5603876ba8aff45edb10fed4fe131d774",
+    "step48_est_static10_full_s42": "14d991e181ae086fea0b38dad02b11fa4ec5a45f78e5ed8c4070e05b15f87ac4",
+    "step48_est_static10_frozen_s42": "0ea2fe8f98cb079e00ce92970d6d9e784695b8190524fc364ce1ae72efc99bbe",
+    "step48_arrival10_full_s42": "634f204a275969b73568eb587b2bfce685c18b325a1b9052e713ae7e85d04f44",
+    "step48_shoot10_weak_s42": "3ff7e4e03f7e5b488c628a4ce74c8afefa6c2fd348c2a562bcfad39365374300",
+    "step48_shoot10_wide_weak_s42": "fa3576ca394648acdf31a4220068b60eba9dc124a44dedde118c89bb8e240fff",
+    "step48_shoot5_weak_s42": "4de0b37b2b7d2f14059c488de51574f8def7390ec138a47f329c8741f15223bf",
+    "step48_hurdle_ctl_s42": "8df8818058e00d6d2868bc75ba048cf691df7cb3ba96451964ba58dc38a884b9",
+    "step48_hurdle_ab_s42": "91144f6ca885b221b2242d6f38a62ac59425de1fc131214c51a4332bd035f5b2",
+    "step48_hurdle_est_s42": "7780f0287838c957fac96aec12b0e5ca385d28361d2f5d89a38806070fb1845b"
+  }
+}

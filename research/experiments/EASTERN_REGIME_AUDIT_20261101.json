@@ -1,0 +1,4972 @@
+{
+  "levels": [
+    {
+      "step": "step33_nestcbc_abs_s41",
+      "era": "1951-1965",
+      "metric": "C",
+      "cells": 437,
+      "mean": 0.14986403092657244,
+      "median": 0.10294890796125167,
+      "sink_cells": 436,
+      "source_cells": 1,
+      "deep_deficit_cells": 436,
+      "large_surplus_cells": 1
+    },
+    {
+      "step": "step33_nestcbc_abs_s41",
+      "era": "1951-1965",
+      "metric": "potential_lambda",
+      "cells": 438,
+      "mean": 0.4291033832321294,
+      "median": 0.1767855249491173,
+      "sink_cells": 363,
+      "source_cells": 75,
+      "deep_deficit_cells": 340,
+      "large_surplus_cells": 53
+    },
+    {
+      "step": "step33_nestcbc_abs_s41",
+      "era": "1966-1985",
+      "metric": "C",
+      "cells": 438,
+      "mean": 0.4894644968789829,
+      "median": 0.21888609163473033,
+      "sink_cells": 332,
+      "source_cells": 106,
+      "deep_deficit_cells": 314,
+      "large_surplus_cells": 83
+    },
+    {
+      "step": "step33_nestcbc_abs_s41",
+      "era": "1966-1985",
+      "metric": "potential_lambda",
+      "cells": 438,
+      "mean": 0.6235863167905543,
+      "median": 0.2541091833950681,
+      "sink_cells": 329,
+      "source_cells": 109,
+      "deep_deficit_cells": 304,
+      "large_surplus_cells": 94
+    },
+    {
+      "step": "step33_nestcbc_abs_s41",
+      "era": "2010-2025",
+      "metric": "C",
+      "cells": 438,
+      "mean": 0.5207299941728584,
+      "median": 0.42346479789276265,
+      "sink_cells": 365,
+      "source_cells": 73,
+      "deep_deficit_cells": 251,
+      "large_surplus_cells": 0
+    },
+    {
+      "step": "step33_nestcbc_abs_s41",
+      "era": "2010-2025",
+      "metric": "potential_lambda",
+      "cells": 438,
+      "mean": 1.2391347632281373,
+      "median": 0.5534594032088835,
+      "sink_cells": 259,
+      "source_cells": 179,
+      "deep_deficit_cells": 247,
+      "large_surplus_cells": 171
+    },
+    {
+      "step": "step33_nestcbc_s41",
+      "era": "1951-1965",
+      "metric": "C",
+      "cells": 424,
+      "mean": 0.14717947736993867,
+      "median": 0.12753015636343068,
+      "sink_cells": 423,
+      "source_cells": 1,
+      "deep_deficit_cells": 423,
+      "large_surplus_cells": 1
+    },
+    {
+      "step": "step33_nestcbc_s41",
+      "era": "1951-1965",
+      "metric": "potential_lambda",
+      "cells": 438,
+      "mean": 0.3361270341589806,
+      "median": 0.1218505071005414,
+      "sink_cells": 392,
+      "source_cells": 46,
+      "deep_deficit_cells": 374,
+      "large_surplus_cells": 30
+    },
+    {
+      "step": "step33_nestcbc_s41",
+      "era": "1966-1985",
+      "metric": "C",
+      "cells": 438,
+      "mean": 0.49335705427537957,
+      "median": 0.1747423945310414,
+      "sink_cells": 331,
+      "source_cells": 107,
+      "deep_deficit_cells": 316,
+      "large_surplus_cells": 85
+    },
+    {
+      "step": "step33_nestcbc_s41",
+      "era": "1966-1985",
+      "metric": "potential_lambda",
+      "cells": 438,
+      "mean": 0.6113976730182938,
+      "median": 0.14133294676561098,
+      "sink_cells": 337,
+      "source_cells": 101,
+      "deep_deficit_cells": 326,
+      "large_surplus_cells": 88
+    },
+    {
+      "step": "step33_nestcbc_s41",
+      "era": "2010-2025",
+      "metric": "C",
+      "cells": 438,
+      "mean": 0.5380339565893457,
+      "median": 0.5193904267330486,
+      "sink_cells": 363,
+      "source_cells": 75,
+      "deep_deficit_cells": 258,
+      "large_surplus_cells": 0
+    },
+    {
+      "step": "step33_nestcbc_s41",
+      "era": "2010-2025",
+      "metric": "potential_lambda",
+      "cells": 438,
+      "mean": 1.7924317868305404,
+      "median": 0.6147787795337962,
+      "sink_cells": 247,
+      "source_cells": 191,
+      "deep_deficit_cells": 233,
+      "large_surplus_cells": 186
+    },
+    {
+      "step": "step34_abs_natdep_s41",
+      "era": "1951-1965",
+      "metric": "C",
+      "cells": 436,
+      "mean": 0.22565027949504243,
+      "median": 0.21818493910083459,
+      "sink_cells": 435,
+      "source_cells": 1,
+      "deep_deficit_cells": 435,
+      "large_surplus_cells": 1
+    },
+    {
+      "step": "step34_abs_natdep_s41",
+      "era": "1951-1965",
+      "metric": "potential_lambda",
+      "cells": 438,
+      "mean": 0.5051407675652131,
+      "median": 0.255503750189649,
+      "sink_cells": 356,
+      "source_cells": 82,
+      "deep_deficit_cells": 331,
+      "large_surplus_cells": 62
+    },
+    {
+      "step": "step34_abs_natdep_s41",
+      "era": "1966-1985",
+      "metric": "C",
+      "cells": 438,
+      "mean": 0.5662729610866218,
+      "median": 0.31427459533246555,
+      "sink_cells": 322,
+      "source_cells": 116,
+      "deep_deficit_cells": 297,
+      "large_surplus_cells": 89
+    },
+    {
+      "step": "step34_abs_natdep_s41",
+      "era": "1966-1985",
+      "metric": "potential_lambda",
+      "cells": 438,
+      "mean": 0.7167980697732179,
+      "median": 0.3403843848741175,
+      "sink_cells": 314,
+      "source_cells": 124,
+      "deep_deficit_cells": 283,
+      "large_surplus_cells": 104
+    },
+    {
+      "step": "step34_abs_natdep_s41",
+      "era": "2010-2025",
+      "metric": "C",
+      "cells": 438,
+      "mean": 0.5577673796948259,
+      "median": 0.5005715913203264,
+      "sink_cells": 360,
+      "source_cells": 78,
+      "deep_deficit_cells": 245,
+      "large_surplus_cells": 0
+    },
+    {
+      "step": "step34_abs_natdep_s41",
+      "era": "2010-2025",
+      "metric": "potential_lambda",
+      "cells": 438,
+      "mean": 1.34234176247513,
+      "median": 0.6653405370325012,
+      "sink_cells": 247,
+      "source_cells": 191,
+      "deep_deficit_cells": 232,
+      "large_surplus_cells": 178
+    },
+    {
+      "step": "step34_abs_natdep_s42",
+      "era": "1951-1965",
+      "metric": "C",
+      "cells": 436,
+      "mean": 0.2659765485711355,
+      "median": 0.2698746518223666,
+      "sink_cells": 435,
+      "source_cells": 1,
+      "deep_deficit_cells": 435,
+      "large_surplus_cells": 1
+    },
+    {
+      "step": "step34_abs_natdep_s42",
+      "era": "1951-1965",
+      "metric": "potential_lambda",
+      "cells": 438,
+      "mean": 0.601506427941166,
+      "median": 0.31991524650524045,
+      "sink_cells": 334,
+      "source_cells": 104,
+      "deep_deficit_cells": 301,
+      "large_surplus_cells": 80
+    },
+    {
+      "step": "step34_abs_natdep_s42",
+      "era": "1966-1985",
+      "metric": "C",
+      "cells": 438,
+      "mean": 0.597082923600573,
+      "median": 0.3740064914338521,
+      "sink_cells": 323,
+      "source_cells": 115,
+      "deep_deficit_cells": 286,
+      "large_surplus_cells": 89
+    },
+    {
+      "step": "step34_abs_natdep_s42",
+      "era": "1966-1985",
+      "metric": "potential_lambda",
+      "cells": 438,
+      "mean": 0.8132195965742517,
+      "median": 0.4122012521117032,
+      "sink_cells": 288,
+      "source_cells": 150,
+      "deep_deficit_cells": 263,
+      "large_surplus_cells": 120
+    },
+    {
+      "step": "step34_abs_natdep_s42",
+      "era": "2010-2025",
+      "metric": "C",
+      "cells": 438,
+      "mean": 0.5761053241846724,
+      "median": 0.5505265820250735,
+      "sink_cells": 359,
+      "source_cells": 79,
+      "deep_deficit_cells": 244,
+      "large_surplus_cells": 0
+    },
+    {
+      "step": "step34_abs_natdep_s42",
+      "era": "2010-2025",
+      "metric": "potential_lambda",
+      "cells": 438,
+      "mean": 1.394219864251269,
+      "median": 0.7832874413762356,
+      "sink_cells": 236,
+      "source_cells": 202,
+      "deep_deficit_cells": 220,
+      "large_surplus_cells": 190
+    },
+    {
+      "step": "step34_abs_s42",
+      "era": "1951-1965",
+      "metric": "C",
+      "cells": 437,
+      "mean": 0.15423711056981818,
+      "median": 0.10896270549133723,
+      "sink_cells": 436,
+      "source_cells": 1,
+      "deep_deficit_cells": 436,
+      "large_surplus_cells": 1
+    },
+    {
+      "step": "step34_abs_s42",
+      "era": "1951-1965",
+      "metric": "potential_lambda",
+      "cells": 438,
+      "mean": 0.43785922968911295,
+      "median": 0.18772571177416425,
+      "sink_cells": 362,
+      "source_cells": 76,
+      "deep_deficit_cells": 340,
+      "large_surplus_cells": 57
+    },
+    {
+      "step": "step34_abs_s42",
+      "era": "1966-1985",
+      "metric": "C",
+      "cells": 438,
+      "mean": 0.49167414493317213,
+      "median": 0.22529281914296456,
+      "sink_cells": 332,
+      "source_cells": 106,
+      "deep_deficit_cells": 314,
+      "large_surplus_cells": 83
+    },
+    {
+      "step": "step34_abs_s42",
+      "era": "1966-1985",
+      "metric": "potential_lambda",
+      "cells": 438,
+      "mean": 0.6312964202354416,
+      "median": 0.26329921810371715,
+      "sink_cells": 329,
+      "source_cells": 109,
+      "deep_deficit_cells": 303,
+      "large_surplus_cells": 96
+    },
+    {
+      "step": "step34_abs_s42",
+      "era": "2010-2025",
+      "metric": "C",
+      "cells": 438,
+      "mean": 0.5227782414247295,
+      "median": 0.41488175628254603,
+      "sink_cells": 362,
+      "source_cells": 76,
+      "deep_deficit_cells": 250,
+      "large_surplus_cells": 0
+    },
+    {
+      "step": "step34_abs_s42",
+      "era": "2010-2025",
+      "metric": "potential_lambda",
+      "cells": 438,
+      "mean": 1.2489963946275342,
+      "median": 0.5586174255960217,
+      "sink_cells": 261,
+      "source_cells": 177,
+      "deep_deficit_cells": 245,
+      "large_surplus_cells": 170
+    },
+    {
+      "step": "step34_abs_v2_natdep_s41",
+      "era": "1951-1965",
+      "metric": "C",
+      "cells": 436,
+      "mean": 0.18034171059376203,
+      "median": 0.17729672807899702,
+      "sink_cells": 435,
+      "source_cells": 1,
+      "deep_deficit_cells": 435,
+      "large_surplus_cells": 1
+    },
+    {
+      "step": "step34_abs_v2_natdep_s41",
+      "era": "1951-1965",
+      "metric": "potential_lambda",
+      "cells": 438,
+      "mean": 0.4353397641978728,
+      "median": 0.2051262172683112,
+      "sink_cells": 371,
+      "source_cells": 67,
+      "deep_deficit_cells": 345,
+      "large_surplus_cells": 42
+    },
+    {
+      "step": "step34_abs_v2_natdep_s41",
+      "era": "1966-1985",
+      "metric": "C",
+      "cells": 438,
+      "mean": 0.5247146472712031,
+      "median": 0.2550484458246699,
+      "sink_cells": 334,
+      "source_cells": 104,
+      "deep_deficit_cells": 311,
+      "large_surplus_cells": 77
+    },
+    {
+      "step": "step34_abs_v2_natdep_s41",
+      "era": "1966-1985",
+      "metric": "potential_lambda",
+      "cells": 438,
+      "mean": 0.636638878483572,
+      "median": 0.2585608594890073,
+      "sink_cells": 328,
+      "source_cells": 110,
+      "deep_deficit_cells": 309,
+      "large_surplus_cells": 93
+    },
+    {
+      "step": "step34_abs_v2_natdep_s41",
+      "era": "2010-2025",
+      "metric": "C",
+      "cells": 438,
+      "mean": 0.5310222662892077,
+      "median": 0.4280197715400894,
+      "sink_cells": 381,
+      "source_cells": 57,
+      "deep_deficit_cells": 259,
+      "large_surplus_cells": 0
+    },
+    {
+      "step": "step34_abs_v2_natdep_s41",
+      "era": "2010-2025",
+      "metric": "potential_lambda",
+      "cells": 438,
+      "mean": 1.2384894800853732,
+      "median": 0.5386648229599149,
+      "sink_cells": 260,
+      "source_cells": 178,
+      "deep_deficit_cells": 244,
+      "large_surplus_cells": 168
+    },
+    {
+      "step": "step35_est1951_ctl_hi_s41",
+      "era": "1951-1965",
+      "metric": "C",
+      "cells": 438,
+      "mean": 0.14366849722123728,
+      "median": 0.11240151724612966,
+      "sink_cells": 437,
+      "source_cells": 1,
+      "deep_deficit_cells": 435,
+      "large_surplus_cells": 1
+    },
+    {
+      "step": "step35_est1951_ctl_hi_s41",
+      "era": "1951-1965",
+      "metric": "potential_lambda",
+      "cells": 438,
+      "mean": 0.27660466075577084,
+      "median": 0.11972342374709637,
+      "sink_cells": 416,
+      "source_cells": 22,
+      "deep_deficit_cells": 398,
+      "large_surplus_cells": 10
+    },
+    {
+      "step": "step35_est1951_ctl_hi_s41",
+      "era": "1966-1985",
+      "metric": "C",
+      "cells": 438,
+      "mean": 0.4735094430244126,
+      "median": 0.19459996600600887,
+      "sink_cells": 338,
+      "source_cells": 100,
+      "deep_deficit_cells": 323,
+      "large_surplus_cells": 74
+    },
+    {
+      "step": "step35_est1951_ctl_hi_s41",
+      "era": "1966-1985",
+      "metric": "potential_lambda",
+      "cells": 438,
+      "mean": 0.5209059012770507,
+      "median": 0.1773430222264864,
+      "sink_cells": 344,
+      "source_cells": 94,
+      "deep_deficit_cells": 331,
+      "large_surplus_cells": 71
+    },
+    {
+      "step": "step35_est1951_ctl_hi_s41",
+      "era": "2010-2025",
+      "metric": "C",
+      "cells": 438,
+      "mean": 0.5220585573043596,
+      "median": 0.4187070151192176,
+      "sink_cells": 358,
+      "source_cells": 80,
+      "deep_deficit_cells": 265,
+      "large_surplus_cells": 0
+    },
+    {
+      "step": "step35_est1951_ctl_hi_s41",
+      "era": "2010-2025",
+      "metric": "potential_lambda",
+      "cells": 438,
+      "mean": 1.5277390329101268,
+      "median": 0.6112963809255537,
+      "sink_cells": 247,
+      "source_cells": 191,
+      "deep_deficit_cells": 237,
+      "large_surplus_cells": 178
+    },
+    {
+      "step": "step35_est1951_ctl_lo_s41",
+      "era": "1951-1965",
+      "metric": "C",
+      "cells": 435,
+      "mean": 0.1447155115364217,
+      "median": 0.12060526208478183,
+      "sink_cells": 434,
+      "source_cells": 1,
+      "deep_deficit_cells": 433,
+      "large_surplus_cells": 0
+    },
+    {
+      "step": "step35_est1951_ctl_lo_s41",
+      "era": "1951-1965",
+      "metric": "potential_lambda",
+      "cells": 438,
+      "mean": 0.32271979924358,
+      "median": 0.1242939026777628,
+      "sink_cells": 401,
+      "source_cells": 37,
+      "deep_deficit_cells": 378,
+      "large_surplus_cells": 24
+    },
+    {
+      "step": "step35_est1951_ctl_lo_s41",
+      "era": "1966-1985",
+      "metric": "C",
+      "cells": 438,
+      "mean": 0.4795485400718962,
+      "median": 0.18756641506420002,
+      "sink_cells": 336,
+      "source_cells": 102,
+      "deep_deficit_cells": 322,
+      "large_surplus_cells": 75
+    },
+    {
+      "step": "step35_est1951_ctl_lo_s41",
+      "era": "1966-1985",
+      "metric": "potential_lambda",
+      "cells": 438,
+      "mean": 0.5474523141375146,
+      "median": 0.17649858654540607,
+      "sink_cells": 340,
+      "source_cells": 98,
+      "deep_deficit_cells": 325,
+      "large_surplus_cells": 76
+    },
+    {
+      "step": "step35_est1951_ctl_lo_s41",
+      "era": "2010-2025",
+      "metric": "C",
+      "cells": 438,
+      "mean": 0.5199786409326912,
+      "median": 0.41367428724179667,
+      "sink_cells": 366,
+      "source_cells": 72,
+      "deep_deficit_cells": 265,
+      "large_surplus_cells": 0
+    },
+    {
+      "step": "step35_est1951_ctl_lo_s41",
+      "era": "2010-2025",
+      "metric": "potential_lambda",
+      "cells": 438,
+      "mean": 1.4082041532177445,
+      "median": 0.54670923465139,
+      "sink_cells": 252,
+      "source_cells": 186,
+      "deep_deficit_cells": 244,
+      "large_surplus_cells": 175
+    },
+    {
+      "step": "step35_est1951_ctl_mid_s41",
+      "era": "1951-1965",
+      "metric": "C",
+      "cells": 438,
+      "mean": 0.14386183014844653,
+      "median": 0.11594647977116551,
+      "sink_cells": 437,
+      "source_cells": 1,
+      "deep_deficit_cells": 435,
+      "large_surplus_cells": 1
+    },
+    {
+      "step": "step35_est1951_ctl_mid_s41",
+      "era": "1951-1965",
+      "metric": "potential_lambda",
+      "cells": 438,
+      "mean": 0.3030150613466486,
+      "median": 0.12444998048077442,
+      "sink_cells": 407,
+      "source_cells": 31,
+      "deep_deficit_cells": 387,
+      "large_surplus_cells": 17
+    },
+    {
+      "step": "step35_est1951_ctl_mid_s41",
+      "era": "1966-1985",
+      "metric": "C",
+      "cells": 438,
+      "mean": 0.4781279610912289,
+      "median": 0.19250440206544983,
+      "sink_cells": 336,
+      "source_cells": 102,
+      "deep_deficit_cells": 322,
+      "large_surplus_cells": 77
+    },
+    {
+      "step": "step35_est1951_ctl_mid_s41",
+      "era": "1966-1985",
+      "metric": "potential_lambda",
+      "cells": 438,
+      "mean": 0.5384910662880139,
+      "median": 0.17624644838187423,
+      "sink_cells": 343,
+      "source_cells": 95,
+      "deep_deficit_cells": 329,
+      "large_surplus_cells": 78
+    },
+    {
+      "step": "step35_est1951_ctl_mid_s41",
+      "era": "2010-2025",
+      "metric": "C",
+      "cells": 438,
+      "mean": 0.5180887866871067,
+      "median": 0.4000679254006139,
+      "sink_cells": 363,
+      "source_cells": 75,
+      "deep_deficit_cells": 261,
+      "large_surplus_cells": 0
+    },
+    {
+      "step": "step35_est1951_ctl_mid_s41",
+      "era": "2010-2025",
+      "metric": "potential_lambda",
+      "cells": 438,
+      "mean": 1.4298392729678289,
+      "median": 0.5630393427228308,
+      "sink_cells": 254,
+      "source_cells": 184,
+      "deep_deficit_cells": 243,
+      "large_surplus_cells": 174
+    },
+    {
+      "step": "step35_est1951_ctl_mid_s42",
+      "era": "1951-1965",
+      "metric": "C",
+      "cells": 438,
+      "mean": 0.1429777968436783,
+      "median": 0.11527822699155219,
+      "sink_cells": 437,
+      "source_cells": 1,
+      "deep_deficit_cells": 435,
+      "large_surplus_cells": 1
+    },
+    {
+      "step": "step35_est1951_ctl_mid_s42",
+      "era": "1951-1965",
+      "metric": "potential_lambda",
+      "cells": 438,
+      "mean": 0.30464406785429315,
+      "median": 0.12472396219093572,
+      "sink_cells": 406,
+      "source_cells": 32,
+      "deep_deficit_cells": 387,
+      "large_surplus_cells": 17
+    },
+    {
+      "step": "step35_est1951_ctl_mid_s42",
+      "era": "1966-1985",
+      "metric": "C",
+      "cells": 438,
+      "mean": 0.4746540852042422,
+      "median": 0.18881977267727168,
+      "sink_cells": 338,
+      "source_cells": 100,
+      "deep_deficit_cells": 324,
+      "large_surplus_cells": 76
+    },
+    {
+      "step": "step35_est1951_ctl_mid_s42",
+      "era": "1966-1985",
+      "metric": "potential_lambda",
+      "cells": 438,
+      "mean": 0.5361304320267013,
+      "median": 0.1788156988579438,
+      "sink_cells": 343,
+      "source_cells": 95,
+      "deep_deficit_cells": 331,
+      "large_surplus_cells": 78
+    },
+    {
+      "step": "step35_est1951_ctl_mid_s42",
+      "era": "2010-2025",
+      "metric": "C",
+      "cells": 438,
+      "mean": 0.5144351691984034,
+      "median": 0.3902890951749748,
+      "sink_cells": 362,
+      "source_cells": 76,
+      "deep_deficit_cells": 262,
+      "large_surplus_cells": 0
+    },
+    {
+      "step": "step35_est1951_ctl_mid_s42",
+      "era": "2010-2025",
+      "metric": "potential_lambda",
+      "cells": 438,
+      "mean": 1.3977327244813051,
+      "median": 0.5451243808558459,
+      "sink_cells": 258,
+      "source_cells": 180,
+      "deep_deficit_cells": 246,
+      "large_surplus_cells": 173
+    },
+    {
+      "step": "step35_est1951_nat_hi_s41",
+      "era": "1951-1965",
+      "metric": "C",
+      "cells": 438,
+      "mean": 0.1540809498620101,
+      "median": 0.12105322581623978,
+      "sink_cells": 436,
+      "source_cells": 2,
+      "deep_deficit_cells": 434,
+      "large_surplus_cells": 1
+    },
+    {
+      "step": "step35_est1951_nat_hi_s41",
+      "era": "1951-1965",
+      "metric": "potential_lambda",
+      "cells": 438,
+      "mean": 0.3550193588492192,
+      "median": 0.1627677207408597,
+      "sink_cells": 398,
+      "source_cells": 40,
+      "deep_deficit_cells": 370,
+      "large_surplus_cells": 15
+    },
+    {
+      "step": "step35_est1951_nat_hi_s41",
+      "era": "1966-1985",
+      "metric": "C",
+      "cells": 438,
+      "mean": 0.5117852957325576,
+      "median": 0.233521925225395,
+      "sink_cells": 331,
+      "source_cells": 107,
+      "deep_deficit_cells": 313,
+      "large_surplus_cells": 84
+    },
+    {
+      "step": "step35_est1951_nat_hi_s41",
+      "era": "1966-1985",
+      "metric": "potential_lambda",
+      "cells": 438,
+      "mean": 0.6057496329870254,
+      "median": 0.2676571125010935,
+      "sink_cells": 329,
+      "source_cells": 109,
+      "deep_deficit_cells": 311,
+      "large_surplus_cells": 90
+    },
+    {
+      "step": "step35_est1951_nat_hi_s41",
+      "era": "2010-2025",
+      "metric": "C",
+      "cells": 438,
+      "mean": 0.5278865934287879,
+      "median": 0.4689188052419679,
+      "sink_cells": 359,
+      "source_cells": 79,
+      "deep_deficit_cells": 247,
+      "large_surplus_cells": 0
+    },
+    {
+      "step": "step35_est1951_nat_hi_s41",
+      "era": "2010-2025",
+      "metric": "potential_lambda",
+      "cells": 438,
+      "mean": 1.4666601380913034,
+      "median": 0.6801756820276585,
+      "sink_cells": 243,
+      "source_cells": 195,
+      "deep_deficit_cells": 229,
+      "large_surplus_cells": 180
+    },
+    {
+      "step": "step35_est1951_nat_lo_s41",
+      "era": "1951-1965",
+      "metric": "C",
+      "cells": 438,
+      "mean": 0.1600185397415209,
+      "median": 0.14697311560991405,
+      "sink_cells": 437,
+      "source_cells": 1,
+      "deep_deficit_cells": 435,
+      "large_surplus_cells": 0
+    },
+    {
+      "step": "step35_est1951_nat_lo_s41",
+      "era": "1951-1965",
+      "metric": "potential_lambda",
+      "cells": 438,
+      "mean": 0.3835938372783134,
+      "median": 0.18279303620610354,
+      "sink_cells": 392,
+      "source_cells": 46,
+      "deep_deficit_cells": 363,
+      "large_surplus_cells": 28
+    },
+    {
+      "step": "step35_est1951_nat_lo_s41",
+      "era": "1966-1985",
+      "metric": "C",
+      "cells": 438,
+      "mean": 0.5097219983424608,
+      "median": 0.23803953804374972,
+      "sink_cells": 336,
+      "source_cells": 102,
+      "deep_deficit_cells": 316,
+      "large_surplus_cells": 77
+    },
+    {
+      "step": "step35_est1951_nat_lo_s41",
+      "era": "1966-1985",
+      "metric": "potential_lambda",
+      "cells": 438,
+      "mean": 0.6000316718575938,
+      "median": 0.2594835230700683,
+      "sink_cells": 338,
+      "source_cells": 100,
+      "deep_deficit_cells": 317,
+      "large_surplus_cells": 84
+    },
+    {
+      "step": "step35_est1951_nat_lo_s41",
+      "era": "2010-2025",
+      "metric": "C",
+      "cells": 438,
+      "mean": 0.5261047868760378,
+      "median": 0.4447102866245792,
+      "sink_cells": 373,
+      "source_cells": 65,
+      "deep_deficit_cells": 260,
+      "large_surplus_cells": 0
+    },
+    {
+      "step": "step35_est1951_nat_lo_s41",
+      "era": "2010-2025",
+      "metric": "potential_lambda",
+      "cells": 438,
+      "mean": 1.2986960537639582,
+      "median": 0.55238786103587,
+      "sink_cells": 259,
+      "source_cells": 179,
+      "deep_deficit_cells": 244,
+      "large_surplus_cells": 170
+    },
+    {
+      "step": "step35_est1951_nat_mid_s41",
+      "era": "1951-1965",
+      "metric": "C",
+      "cells": 438,
+      "mean": 0.13676605296798774,
+      "median": 0.1111229369748466,
+      "sink_cells": 437,
+      "source_cells": 1,
+      "deep_deficit_cells": 434,
+      "large_surplus_cells": 1
+    },
+    {
+      "step": "step35_est1951_nat_mid_s41",
+      "era": "1951-1965",
+      "metric": "potential_lambda",
+      "cells": 438,
+      "mean": 0.36551662519221023,
+      "median": 0.1649291477626555,
+      "sink_cells": 389,
+      "source_cells": 49,
+      "deep_deficit_cells": 359,
+      "large_surplus_cells": 20
+    },
+    {
+      "step": "step35_est1951_nat_mid_s41",
+      "era": "1966-1985",
+      "metric": "C",
+      "cells": 438,
+      "mean": 0.503302369152088,
+      "median": 0.21235714905758363,
+      "sink_cells": 332,
+      "source_cells": 106,
+      "deep_deficit_cells": 319,
+      "large_surplus_cells": 83
+    },
+    {
+      "step": "step35_est1951_nat_mid_s41",
+      "era": "1966-1985",
+      "metric": "potential_lambda",
+      "cells": 438,
+      "mean": 0.6121717478649888,
+      "median": 0.25764823566918243,
+      "sink_cells": 330,
+      "source_cells": 108,
+      "deep_deficit_cells": 310,
+      "large_surplus_cells": 90
+    },
+    {
+      "step": "step35_est1951_nat_mid_s41",
+      "era": "2010-2025",
+      "metric": "C",
+      "cells": 438,
+      "mean": 0.5157274049349805,
+      "median": 0.4215676416347308,
+      "sink_cells": 360,
+      "source_cells": 78,
+      "deep_deficit_cells": 252,
+      "large_surplus_cells": 0
+    },
+    {
+      "step": "step35_est1951_nat_mid_s41",
+      "era": "2010-2025",
+      "metric": "potential_lambda",
+      "cells": 438,
+      "mean": 1.434771150649977,
+      "median": 0.5711229929539998,
+      "sink_cells": 255,
+      "source_cells": 183,
+      "deep_deficit_cells": 233,
+      "large_surplus_cells": 175
+    },
+    {
+      "step": "step35_est1951_nat_mid_s42",
+      "era": "1951-1965",
+      "metric": "C",
+      "cells": 438,
+      "mean": 0.14053766013559416,
+      "median": 0.11932970467177392,
+      "sink_cells": 436,
+      "source_cells": 2,
+      "deep_deficit_cells": 434,
+      "large_surplus_cells": 1
+    },
+    {
+      "step": "step35_est1951_nat_mid_s42",
+      "era": "1951-1965",
+      "metric": "potential_lambda",
+      "cells": 438,
+      "mean": 0.3731194473529555,
+      "median": 0.17086616194451643,
+      "sink_cells": 390,
+      "source_cells": 48,
+      "deep_deficit_cells": 360,
+      "large_surplus_cells": 24
+    },
+    {
+      "step": "step35_est1951_nat_mid_s42",
+      "era": "1966-1985",
+      "metric": "C",
+      "cells": 438,
+      "mean": 0.5151922582422589,
+      "median": 0.23533686770600806,
+      "sink_cells": 331,
+      "source_cells": 107,
+      "deep_deficit_cells": 313,
+      "large_surplus_cells": 86
+    },
+    {
+      "step": "step35_est1951_nat_mid_s42",
+      "era": "1966-1985",
+      "metric": "potential_lambda",
+      "cells": 438,
+      "mean": 0.6364370461059019,
+      "median": 0.27831583279116223,
+      "sink_cells": 328,
+      "source_cells": 110,
+      "deep_deficit_cells": 302,
+      "large_surplus_cells": 93
+    },
+    {
+      "step": "step35_est1951_nat_mid_s42",
+      "era": "2010-2025",
+      "metric": "C",
+      "cells": 438,
+      "mean": 0.5227764681708484,
+      "median": 0.4625428924713094,
+      "sink_cells": 360,
+      "source_cells": 78,
+      "deep_deficit_cells": 249,
+      "large_surplus_cells": 0
+    },
+    {
+      "step": "step35_est1951_nat_mid_s42",
+      "era": "2010-2025",
+      "metric": "potential_lambda",
+      "cells": 438,
+      "mean": 1.5089084430616522,
+      "median": 0.6607457290747984,
+      "sink_cells": 246,
+      "source_cells": 192,
+      "deep_deficit_cells": 230,
+      "large_surplus_cells": 180
+    },
+    {
+      "step": "step36_est1951_nonest_ctl_s41",
+      "era": "1951-1965",
+      "metric": "C",
+      "cells": 438,
+      "mean": 0.12264995891588769,
+      "median": 0.08984241714588553,
+      "sink_cells": 438,
+      "source_cells": 0,
+      "deep_deficit_cells": 435,
+      "large_surplus_cells": 0
+    },
+    {
+      "step": "step36_est1951_nonest_ctl_s41",
+      "era": "1951-1965",
+      "metric": "potential_lambda",
+      "cells": 438,
+      "mean": 0.2836388888268844,
+      "median": 0.10167802365454104,
+      "sink_cells": 408,
+      "source_cells": 30,
+      "deep_deficit_cells": 390,
+      "large_surplus_cells": 14
+    },
+    {
+      "step": "step36_est1951_nonest_ctl_s41",
+      "era": "1966-1985",
+      "metric": "C",
+      "cells": 438,
+      "mean": 0.47377569636328243,
+      "median": 0.17937781479997406,
+      "sink_cells": 336,
+      "source_cells": 102,
+      "deep_deficit_cells": 325,
+      "large_surplus_cells": 84
+    },
+    {
+      "step": "step36_est1951_nonest_ctl_s41",
+      "era": "1966-1985",
+      "metric": "potential_lambda",
+      "cells": 438,
+      "mean": 0.5869794218007344,
+      "median": 0.1834892803654051,
+      "sink_cells": 337,
+      "source_cells": 101,
+      "deep_deficit_cells": 323,
+      "large_surplus_cells": 86
+    },
+    {
+      "step": "step36_est1951_nonest_ctl_s41",
+      "era": "2010-2025",
+      "metric": "C",
+      "cells": 438,
+      "mean": 0.5216513661169667,
+      "median": 0.4557997236007776,
+      "sink_cells": 346,
+      "source_cells": 92,
+      "deep_deficit_cells": 245,
+      "large_surplus_cells": 0
+    },
+    {
+      "step": "step36_est1951_nonest_ctl_s41",
+      "era": "2010-2025",
+      "metric": "potential_lambda",
+      "cells": 438,
+      "mean": 1.8045121224181564,
+      "median": 0.6610905174722801,
+      "sink_cells": 244,
+      "source_cells": 194,
+      "deep_deficit_cells": 233,
+      "large_surplus_cells": 182
+    },
+    {
+      "step": "step36_nonest_ctl_s41",
+      "era": "1951-1965",
+      "metric": "C",
+      "cells": 435,
+      "mean": 0.17571883246205072,
+      "median": 0.1489724704487082,
+      "sink_cells": 434,
+      "source_cells": 1,
+      "deep_deficit_cells": 434,
+      "large_surplus_cells": 1
+    },
+    {
+      "step": "step36_nonest_ctl_s41",
+      "era": "1951-1965",
+      "metric": "potential_lambda",
+      "cells": 438,
+      "mean": 0.39086161331754343,
+      "median": 0.15371687912289592,
+      "sink_cells": 377,
+      "source_cells": 61,
+      "deep_deficit_cells": 354,
+      "large_surplus_cells": 39
+    },
+    {
+      "step": "step36_nonest_ctl_s41",
+      "era": "1966-1985",
+      "metric": "C",
+      "cells": 438,
+      "mean": 0.5059631251299568,
+      "median": 0.24123749229299116,
+      "sink_cells": 333,
+      "source_cells": 105,
+      "deep_deficit_cells": 320,
+      "large_surplus_cells": 84
+    },
+    {
+      "step": "step36_nonest_ctl_s41",
+      "era": "1966-1985",
+      "metric": "potential_lambda",
+      "cells": 438,
+      "mean": 0.6536517390799879,
+      "median": 0.2528251795844668,
+      "sink_cells": 326,
+      "source_cells": 112,
+      "deep_deficit_cells": 315,
+      "large_surplus_cells": 97
+    },
+    {
+      "step": "step36_nonest_ctl_s41",
+      "era": "2010-2025",
+      "metric": "C",
+      "cells": 438,
+      "mean": 0.5378982227182959,
+      "median": 0.46089091515880576,
+      "sink_cells": 354,
+      "source_cells": 84,
+      "deep_deficit_cells": 246,
+      "large_surplus_cells": 0
+    },
+    {
+      "step": "step36_nonest_ctl_s41",
+      "era": "2010-2025",
+      "metric": "potential_lambda",
+      "cells": 438,
+      "mean": 1.5332562871387805,
+      "median": 0.6186386223615032,
+      "sink_cells": 249,
+      "source_cells": 189,
+      "deep_deficit_cells": 236,
+      "large_surplus_cells": 177
+    },
+    {
+      "step": "step36_nonest_nat_s41",
+      "era": "1951-1965",
+      "metric": "C",
+      "cells": 436,
+      "mean": 0.40075950422071527,
+      "median": 0.40557464646866,
+      "sink_cells": 435,
+      "source_cells": 1,
+      "deep_deficit_cells": 435,
+      "large_surplus_cells": 1
+    },
+    {
+      "step": "step36_nonest_nat_s41",
+      "era": "1951-1965",
+      "metric": "potential_lambda",
+      "cells": 438,
+      "mean": 0.6303055933075519,
+      "median": 0.4061553894635931,
+      "sink_cells": 354,
+      "source_cells": 84,
+      "deep_deficit_cells": 329,
+      "large_surplus_cells": 67
+    },
+    {
+      "step": "step36_nonest_nat_s41",
+      "era": "1966-1985",
+      "metric": "C",
+      "cells": 438,
+      "mean": 0.6913288312439225,
+      "median": 0.4464978227320044,
+      "sink_cells": 325,
+      "source_cells": 113,
+      "deep_deficit_cells": 292,
+      "large_surplus_cells": 91
+    },
+    {
+      "step": "step36_nonest_nat_s41",
+      "era": "1966-1985",
+      "metric": "potential_lambda",
+      "cells": 438,
+      "mean": 0.8757708490395703,
+      "median": 0.44031890771293913,
+      "sink_cells": 309,
+      "source_cells": 129,
+      "deep_deficit_cells": 279,
+      "large_surplus_cells": 114
+    },
+    {
+      "step": "step36_nonest_nat_s41",
+      "era": "2010-2025",
+      "metric": "C",
+      "cells": 438,
+      "mean": 0.6623025870471094,
+      "median": 0.6009312926181387,
+      "sink_cells": 344,
+      "source_cells": 94,
+      "deep_deficit_cells": 244,
+      "large_surplus_cells": 0
+    },
+    {
+      "step": "step36_nonest_nat_s41",
+      "era": "2010-2025",
+      "metric": "potential_lambda",
+      "cells": 438,
+      "mean": 1.5278677440405986,
+      "median": 0.7790125991910752,
+      "sink_cells": 240,
+      "source_cells": 198,
+      "deep_deficit_cells": 222,
+      "large_surplus_cells": 187
+    }
+  ],
+  "temporal_transitions": [
+    {
+      "step": "step33_nestcbc_abs_s41",
+      "metric": "C",
+      "cells": 437,
+      "sink_to_source_cells": 73,
+      "source_to_sink_cells": 1,
+      "below_08_to_above_12_cells": 0
+    },
+    {
+      "step": "step33_nestcbc_abs_s41",
+      "metric": "potential_lambda",
+      "cells": 438,
+      "sink_to_source_cells": 104,
+      "source_to_sink_cells": 0,
+      "below_08_to_above_12_cells": 73
+    },
+    {
+      "step": "step33_nestcbc_s41",
+      "metric": "C",
+      "cells": 424,
+      "sink_to_source_cells": 74,
+      "source_to_sink_cells": 0,
+      "below_08_to_above_12_cells": 0
+    },
+    {
+      "step": "step33_nestcbc_s41",
+      "metric": "potential_lambda",
+      "cells": 438,
+      "sink_to_source_cells": 145,
+      "source_to_sink_cells": 0,
+      "below_08_to_above_12_cells": 122
+    },
+    {
+      "step": "step34_abs_natdep_s41",
+      "metric": "C",
+      "cells": 436,
+      "sink_to_source_cells": 77,
+      "source_to_sink_cells": 0,
+      "below_08_to_above_12_cells": 0
+    },
+    {
+      "step": "step34_abs_natdep_s41",
+      "metric": "potential_lambda",
+      "cells": 438,
+      "sink_to_source_cells": 109,
+      "source_to_sink_cells": 0,
+      "below_08_to_above_12_cells": 71
+    },
+    {
+      "step": "step34_abs_natdep_s42",
+      "metric": "C",
+      "cells": 436,
+      "sink_to_source_cells": 78,
+      "source_to_sink_cells": 0,
+      "below_08_to_above_12_cells": 0
+    },
+    {
+      "step": "step34_abs_natdep_s42",
+      "metric": "potential_lambda",
+      "cells": 438,
+      "sink_to_source_cells": 98,
+      "source_to_sink_cells": 0,
+      "below_08_to_above_12_cells": 55
+    },
+    {
+      "step": "step34_abs_s42",
+      "metric": "C",
+      "cells": 437,
+      "sink_to_source_cells": 76,
+      "source_to_sink_cells": 1,
+      "below_08_to_above_12_cells": 0
+    },
+    {
+      "step": "step34_abs_s42",
+      "metric": "potential_lambda",
+      "cells": 438,
+      "sink_to_source_cells": 101,
+      "source_to_sink_cells": 0,
+      "below_08_to_above_12_cells": 72
+    },
+    {
+      "step": "step34_abs_v2_natdep_s41",
+      "metric": "C",
+      "cells": 436,
+      "sink_to_source_cells": 56,
+      "source_to_sink_cells": 0,
+      "below_08_to_above_12_cells": 0
+    },
+    {
+      "step": "step34_abs_v2_natdep_s41",
+      "metric": "potential_lambda",
+      "cells": 438,
+      "sink_to_source_cells": 111,
+      "source_to_sink_cells": 0,
+      "below_08_to_above_12_cells": 75
+    },
+    {
+      "step": "step35_est1951_ctl_hi_s41",
+      "metric": "C",
+      "cells": 438,
+      "sink_to_source_cells": 79,
+      "source_to_sink_cells": 0,
+      "below_08_to_above_12_cells": 0
+    },
+    {
+      "step": "step35_est1951_ctl_hi_s41",
+      "metric": "potential_lambda",
+      "cells": 438,
+      "sink_to_source_cells": 169,
+      "source_to_sink_cells": 0,
+      "below_08_to_above_12_cells": 138
+    },
+    {
+      "step": "step35_est1951_ctl_lo_s41",
+      "metric": "C",
+      "cells": 435,
+      "sink_to_source_cells": 71,
+      "source_to_sink_cells": 0,
+      "below_08_to_above_12_cells": 0
+    },
+    {
+      "step": "step35_est1951_ctl_lo_s41",
+      "metric": "potential_lambda",
+      "cells": 438,
+      "sink_to_source_cells": 149,
+      "source_to_sink_cells": 0,
+      "below_08_to_above_12_cells": 115
+    },
+    {
+      "step": "step35_est1951_ctl_mid_s41",
+      "metric": "C",
+      "cells": 438,
+      "sink_to_source_cells": 74,
+      "source_to_sink_cells": 0,
+      "below_08_to_above_12_cells": 0
+    },
+    {
+      "step": "step35_est1951_ctl_mid_s41",
+      "metric": "potential_lambda",
+      "cells": 438,
+      "sink_to_source_cells": 153,
+      "source_to_sink_cells": 0,
+      "below_08_to_above_12_cells": 123
+    },
+    {
+      "step": "step35_est1951_ctl_mid_s42",
+      "metric": "C",
+      "cells": 438,
+      "sink_to_source_cells": 75,
+      "source_to_sink_cells": 0,
+      "below_08_to_above_12_cells": 0
+    },
+    {
+      "step": "step35_est1951_ctl_mid_s42",
+      "metric": "potential_lambda",
+      "cells": 438,
+      "sink_to_source_cells": 148,
+      "source_to_sink_cells": 0,
+      "below_08_to_above_12_cells": 122
+    },
+    {
+      "step": "step35_est1951_nat_hi_s41",
+      "metric": "C",
+      "cells": 438,
+      "sink_to_source_cells": 77,
+      "source_to_sink_cells": 0,
+      "below_08_to_above_12_cells": 0
+    },
+    {
+      "step": "step35_est1951_nat_hi_s41",
+      "metric": "potential_lambda",
+      "cells": 438,
+      "sink_to_source_cells": 155,
+      "source_to_sink_cells": 0,
+      "below_08_to_above_12_cells": 112
+    },
+    {
+      "step": "step35_est1951_nat_lo_s41",
+      "metric": "C",
+      "cells": 438,
+      "sink_to_source_cells": 64,
+      "source_to_sink_cells": 0,
+      "below_08_to_above_12_cells": 0
+    },
+    {
+      "step": "step35_est1951_nat_lo_s41",
+      "metric": "potential_lambda",
+      "cells": 438,
+      "sink_to_source_cells": 133,
+      "source_to_sink_cells": 0,
+      "below_08_to_above_12_cells": 95
+    },
+    {
+      "step": "step35_est1951_nat_mid_s41",
+      "metric": "C",
+      "cells": 438,
+      "sink_to_source_cells": 77,
+      "source_to_sink_cells": 0,
+      "below_08_to_above_12_cells": 0
+    },
+    {
+      "step": "step35_est1951_nat_mid_s41",
+      "metric": "potential_lambda",
+      "cells": 438,
+      "sink_to_source_cells": 134,
+      "source_to_sink_cells": 0,
+      "below_08_to_above_12_cells": 96
+    },
+    {
+      "step": "step35_est1951_nat_mid_s42",
+      "metric": "C",
+      "cells": 438,
+      "sink_to_source_cells": 76,
+      "source_to_sink_cells": 0,
+      "below_08_to_above_12_cells": 0
+    },
+    {
+      "step": "step35_est1951_nat_mid_s42",
+      "metric": "potential_lambda",
+      "cells": 438,
+      "sink_to_source_cells": 144,
+      "source_to_sink_cells": 0,
+      "below_08_to_above_12_cells": 102
+    },
+    {
+      "step": "step36_est1951_nonest_ctl_s41",
+      "metric": "C",
+      "cells": 438,
+      "sink_to_source_cells": 92,
+      "source_to_sink_cells": 0,
+      "below_08_to_above_12_cells": 0
+    },
+    {
+      "step": "step36_est1951_nonest_ctl_s41",
+      "metric": "potential_lambda",
+      "cells": 438,
+      "sink_to_source_cells": 164,
+      "source_to_sink_cells": 0,
+      "below_08_to_above_12_cells": 134
+    },
+    {
+      "step": "step36_nonest_ctl_s41",
+      "metric": "C",
+      "cells": 435,
+      "sink_to_source_cells": 83,
+      "source_to_sink_cells": 0,
+      "below_08_to_above_12_cells": 0
+    },
+    {
+      "step": "step36_nonest_ctl_s41",
+      "metric": "potential_lambda",
+      "cells": 438,
+      "sink_to_source_cells": 128,
+      "source_to_sink_cells": 0,
+      "below_08_to_above_12_cells": 93
+    },
+    {
+      "step": "step36_nonest_nat_s41",
+      "metric": "C",
+      "cells": 436,
+      "sink_to_source_cells": 93,
+      "source_to_sink_cells": 0,
+      "below_08_to_above_12_cells": 0
+    },
+    {
+      "step": "step36_nonest_nat_s41",
+      "metric": "potential_lambda",
+      "cells": 438,
+      "sink_to_source_cells": 114,
+      "source_to_sink_cells": 0,
+      "below_08_to_above_12_cells": 78
+    }
+  ],
+  "cross_fit": [
+    {
+      "left": "step35_est1951_ctl_mid_s41",
+      "right": "step35_est1951_ctl_lo_s41",
+      "contrast": "initial abundance",
+      "era": "1951-1965",
+      "metric": "C",
+      "coverage": 0.9931506849315068,
+      "cells": 435,
+      "weighted_pearson": 0.9448760617862371,
+      "spearman": 0.9990376667244951,
+      "mean_abs_change": 0.01007806129297288,
+      "rms_change": 0.04072297139715446,
+      "q50_abs_change": 0.0033517259944219058,
+      "categories": {
+        "0.0": {
+          "agreement": 0.9954022988505747,
+          "source_sink_reversal_cells": 2,
+          "source_sink_reversal": 0.004597701149425287,
+          "sink_jaccard": 0.9954022988505747
+        },
+        "0.01": {
+          "agreement": 0.9954022988505747,
+          "source_sink_reversal_cells": 2,
+          "source_sink_reversal": 0.004597701149425287,
+          "sink_jaccard": 0.9954022988505747
+        },
+        "0.05": {
+          "agreement": 0.9954022988505747,
+          "source_sink_reversal_cells": 1,
+          "source_sink_reversal": 0.0022988505747126436,
+          "sink_jaccard": 0.9954022988505747
+        }
+      }
+    },
+    {
+      "left": "step35_est1951_ctl_mid_s41",
+      "right": "step35_est1951_ctl_lo_s41",
+      "contrast": "initial abundance",
+      "era": "1951-1965",
+      "metric": "potential_lambda",
+      "coverage": 1.0,
+      "cells": 438,
+      "weighted_pearson": 0.9973088170896701,
+      "spearman": 0.9992165397232997,
+      "mean_abs_change": 0.02250639253630106,
+      "rms_change": 0.04699438927562189,
+      "q50_abs_change": 0.0034024104135170208,
+      "categories": {
+        "0.0": {
+          "agreement": 0.9863013698630136,
+          "source_sink_reversal_cells": 6,
+          "source_sink_reversal": 0.0136986301369863,
+          "sink_jaccard": 0.9852579852579852
+        },
+        "0.01": {
+          "agreement": 0.9794520547945206,
+          "source_sink_reversal_cells": 6,
+          "source_sink_reversal": 0.0136986301369863,
+          "sink_jaccard": 0.9803439803439803
+        },
+        "0.05": {
+          "agreement": 0.9657534246575342,
+          "source_sink_reversal_cells": 2,
+          "source_sink_reversal": 0.0045662100456621,
+          "sink_jaccard": 0.9777227722772277
+        }
+      }
+    },
+    {
+      "left": "step35_est1951_ctl_mid_s41",
+      "right": "step35_est1951_ctl_lo_s41",
+      "contrast": "initial abundance",
+      "era": "1966-1985",
+      "metric": "C",
+      "coverage": 1.0,
+      "cells": 438,
+      "weighted_pearson": 0.9992167003879316,
+      "spearman": 0.9994694577236707,
+      "mean_abs_change": 0.01112020292486969,
+      "rms_change": 0.020166475773020758,
+      "q50_abs_change": 0.0036407840687263174,
+      "categories": {
+        "0.0": {
+          "agreement": 0.9954337899543378,
+          "source_sink_reversal_cells": 2,
+          "source_sink_reversal": 0.0045662100456621,
+          "sink_jaccard": 0.9940652818991098
+        },
+        "0.01": {
+          "agreement": 0.9931506849315068,
+          "source_sink_reversal_cells": 1,
+          "source_sink_reversal": 0.00228310502283105,
+          "sink_jaccard": 0.9910979228486647
+        },
+        "0.05": {
+          "agreement": 0.9908675799086758,
+          "source_sink_reversal_cells": 0,
+          "source_sink_reversal": 0.0,
+          "sink_jaccard": 0.9910179640718563
+        }
+      }
+    },
+    {
+      "left": "step35_est1951_ctl_mid_s41",
+      "right": "step35_est1951_ctl_lo_s41",
+      "contrast": "initial abundance",
+      "era": "1966-1985",
+      "metric": "potential_lambda",
+      "coverage": 1.0,
+      "cells": 438,
+      "weighted_pearson": 0.998417814982833,
+      "spearman": 0.9993709182430067,
+      "mean_abs_change": 0.02195011325920775,
+      "rms_change": 0.04506537158249696,
+      "q50_abs_change": 0.005408413037669396,
+      "categories": {
+        "0.0": {
+          "agreement": 0.9931506849315068,
+          "source_sink_reversal_cells": 3,
+          "source_sink_reversal": 0.00684931506849315,
+          "sink_jaccard": 0.9912536443148688
+        },
+        "0.01": {
+          "agreement": 0.9908675799086758,
+          "source_sink_reversal_cells": 3,
+          "source_sink_reversal": 0.00684931506849315,
+          "sink_jaccard": 0.9883381924198251
+        },
+        "0.05": {
+          "agreement": 0.9885844748858448,
+          "source_sink_reversal_cells": 0,
+          "source_sink_reversal": 0.0,
+          "sink_jaccard": 0.9970501474926253
+        }
+      }
+    },
+    {
+      "left": "step35_est1951_ctl_mid_s41",
+      "right": "step35_est1951_ctl_lo_s41",
+      "contrast": "initial abundance",
+      "era": "2010-2025",
+      "metric": "C",
+      "coverage": 1.0,
+      "cells": 438,
+      "weighted_pearson": 0.9995090004159505,
+      "spearman": 0.9995801361258659,
+      "mean_abs_change": 0.007866430755930494,
+      "rms_change": 0.013317072271781975,
+      "q50_abs_change": 0.003968241208570453,
+      "categories": {
+        "0.0": {
+          "agreement": 0.9931506849315068,
+          "source_sink_reversal_cells": 3,
+          "source_sink_reversal": 0.00684931506849315,
+          "sink_jaccard": 0.9918032786885246
+        },
+        "0.01": {
+          "agreement": 0.9908675799086758,
+          "source_sink_reversal_cells": 0,
+          "source_sink_reversal": 0.0,
+          "sink_jaccard": 0.9971988795518207
+        },
+        "0.05": {
+          "agreement": 0.9748858447488584,
+          "source_sink_reversal_cells": 0,
+          "source_sink_reversal": 0.0,
+          "sink_jaccard": 0.9730538922155688
+        }
+      }
+    },
+    {
+      "left": "step35_est1951_ctl_mid_s41",
+      "right": "step35_est1951_ctl_lo_s41",
+      "contrast": "initial abundance",
+      "era": "2010-2025",
+      "metric": "potential_lambda",
+      "coverage": 1.0,
+      "cells": 438,
+      "weighted_pearson": 0.99897767628703,
+      "spearman": 0.9994636024791675,
+      "mean_abs_change": 0.05364976823728541,
+      "rms_change": 0.08853011740092828,
+      "q50_abs_change": 0.02165597161963631,
+      "categories": {
+        "0.0": {
+          "agreement": 0.9908675799086758,
+          "source_sink_reversal_cells": 4,
+          "source_sink_reversal": 0.0091324200913242,
+          "sink_jaccard": 0.984313725490196
+        },
+        "0.01": {
+          "agreement": 0.9885844748858448,
+          "source_sink_reversal_cells": 4,
+          "source_sink_reversal": 0.0091324200913242,
+          "sink_jaccard": 0.9803921568627451
+        },
+        "0.05": {
+          "agreement": 0.9863013698630136,
+          "source_sink_reversal_cells": 1,
+          "source_sink_reversal": 0.00228310502283105,
+          "sink_jaccard": 0.9880952380952381
+        }
+      }
+    },
+    {
+      "left": "step35_est1951_ctl_mid_s41",
+      "right": "step35_est1951_ctl_hi_s41",
+      "contrast": "initial abundance",
+      "era": "1951-1965",
+      "metric": "C",
+      "coverage": 1.0,
+      "cells": 438,
+      "weighted_pearson": 0.9630396367818499,
+      "spearman": 0.9974825304852947,
+      "mean_abs_change": 0.00785980233369365,
+      "rms_change": 0.033966150104024734,
+      "q50_abs_change": 0.003607417456974571,
+      "categories": {
+        "0.0": {
+          "agreement": 0.9954337899543378,
+          "source_sink_reversal_cells": 2,
+          "source_sink_reversal": 0.0045662100456621,
+          "sink_jaccard": 0.9954337899543378
+        },
+        "0.01": {
+          "agreement": 0.9954337899543378,
+          "source_sink_reversal_cells": 2,
+          "source_sink_reversal": 0.0045662100456621,
+          "sink_jaccard": 0.9954337899543378
+        },
+        "0.05": {
+          "agreement": 0.9954337899543378,
+          "source_sink_reversal_cells": 2,
+          "source_sink_reversal": 0.0045662100456621,
+          "sink_jaccard": 0.9954337899543378
+        }
+      }
+    },
+    {
+      "left": "step35_est1951_ctl_mid_s41",
+      "right": "step35_est1951_ctl_hi_s41",
+      "contrast": "initial abundance",
+      "era": "1951-1965",
+      "metric": "potential_lambda",
+      "coverage": 1.0,
+      "cells": 438,
+      "weighted_pearson": 0.9940607581137221,
+      "spearman": 0.9973659968385963,
+      "mean_abs_change": 0.030361614250983295,
+      "rms_change": 0.05754308685154788,
+      "q50_abs_change": 0.007209366967185202,
+      "categories": {
+        "0.0": {
+          "agreement": 0.9794520547945206,
+          "source_sink_reversal_cells": 9,
+          "source_sink_reversal": 0.02054794520547945,
+          "sink_jaccard": 0.9783653846153846
+        },
+        "0.01": {
+          "agreement": 0.9771689497716894,
+          "source_sink_reversal_cells": 8,
+          "source_sink_reversal": 0.0182648401826484,
+          "sink_jaccard": 0.9759615384615384
+        },
+        "0.05": {
+          "agreement": 0.9703196347031964,
+          "source_sink_reversal_cells": 4,
+          "source_sink_reversal": 0.0091324200913242,
+          "sink_jaccard": 0.9782082324455206
+        }
+      }
+    },
+    {
+      "left": "step35_est1951_ctl_mid_s41",
+      "right": "step35_est1951_ctl_hi_s41",
+      "contrast": "initial abundance",
+      "era": "1966-1985",
+      "metric": "C",
+      "coverage": 1.0,
+      "cells": 438,
+      "weighted_pearson": 0.999312852315341,
+      "spearman": 0.9985794605591801,
+      "mean_abs_change": 0.012691083460297682,
+      "rms_change": 0.019655153287741187,
+      "q50_abs_change": 0.006333606360634458,
+      "categories": {
+        "0.0": {
+          "agreement": 0.9954337899543378,
+          "source_sink_reversal_cells": 2,
+          "source_sink_reversal": 0.0045662100456621,
+          "sink_jaccard": 0.9940828402366864
+        },
+        "0.01": {
+          "agreement": 0.9931506849315068,
+          "source_sink_reversal_cells": 1,
+          "source_sink_reversal": 0.00228310502283105,
+          "sink_jaccard": 0.9940652818991098
+        },
+        "0.05": {
+          "agreement": 0.9931506849315068,
+          "source_sink_reversal_cells": 0,
+          "source_sink_reversal": 0.0,
+          "sink_jaccard": 0.9970149253731343
+        }
+      }
+    },
+    {
+      "left": "step35_est1951_ctl_mid_s41",
+      "right": "step35_est1951_ctl_hi_s41",
+      "contrast": "initial abundance",
+      "era": "1966-1985",
+      "metric": "potential_lambda",
+      "coverage": 1.0,
+      "cells": 438,
+      "weighted_pearson": 0.9978012205802006,
+      "spearman": 0.9980861919124935,
+      "mean_abs_change": 0.028186782642039054,
+      "rms_change": 0.0522678125243058,
+      "q50_abs_change": 0.007892207262974845,
+      "categories": {
+        "0.0": {
+          "agreement": 0.9931506849315068,
+          "source_sink_reversal_cells": 3,
+          "source_sink_reversal": 0.00684931506849315,
+          "sink_jaccard": 0.991304347826087
+        },
+        "0.01": {
+          "agreement": 0.9885844748858448,
+          "source_sink_reversal_cells": 2,
+          "source_sink_reversal": 0.0045662100456621,
+          "sink_jaccard": 0.9941860465116279
+        },
+        "0.05": {
+          "agreement": 0.9748858447488584,
+          "source_sink_reversal_cells": 1,
+          "source_sink_reversal": 0.00228310502283105,
+          "sink_jaccard": 0.9912280701754386
+        }
+      }
+    },
+    {
+      "left": "step35_est1951_ctl_mid_s41",
+      "right": "step35_est1951_ctl_hi_s41",
+      "contrast": "initial abundance",
+      "era": "2010-2025",
+      "metric": "C",
+      "coverage": 1.0,
+      "cells": 438,
+      "weighted_pearson": 0.9981358565262507,
+      "spearman": 0.9986225894333257,
+      "mean_abs_change": 0.013189250538164395,
+      "rms_change": 0.025183616143324587,
+      "q50_abs_change": 0.0060405078293944425,
+      "categories": {
+        "0.0": {
+          "agreement": 0.9885844748858448,
+          "source_sink_reversal_cells": 5,
+          "source_sink_reversal": 0.01141552511415525,
+          "sink_jaccard": 0.9862258953168044
+        },
+        "0.01": {
+          "agreement": 0.9840182648401826,
+          "source_sink_reversal_cells": 0,
+          "source_sink_reversal": 0.0,
+          "sink_jaccard": 0.9971910112359551
+        },
+        "0.05": {
+          "agreement": 0.9726027397260274,
+          "source_sink_reversal_cells": 0,
+          "source_sink_reversal": 0.0,
+          "sink_jaccard": 0.981651376146789
+        }
+      }
+    },
+    {
+      "left": "step35_est1951_ctl_mid_s41",
+      "right": "step35_est1951_ctl_hi_s41",
+      "contrast": "initial abundance",
+      "era": "2010-2025",
+      "metric": "potential_lambda",
+      "coverage": 1.0,
+      "cells": 438,
+      "weighted_pearson": 0.9989814646066251,
+      "spearman": 0.9986608627388591,
+      "mean_abs_change": 0.10477568605494567,
+      "rms_change": 0.16130363443550821,
+      "q50_abs_change": 0.05963491008787808,
+      "categories": {
+        "0.0": {
+          "agreement": 0.9840182648401826,
+          "source_sink_reversal_cells": 7,
+          "source_sink_reversal": 0.01598173515981735,
+          "sink_jaccard": 0.9724409448818898
+        },
+        "0.01": {
+          "agreement": 0.9794520547945206,
+          "source_sink_reversal_cells": 6,
+          "source_sink_reversal": 0.0136986301369863,
+          "sink_jaccard": 0.9645669291338582
+        },
+        "0.05": {
+          "agreement": 0.9680365296803652,
+          "source_sink_reversal_cells": 0,
+          "source_sink_reversal": 0.0,
+          "sink_jaccard": 0.9641434262948207
+        }
+      }
+    },
+    {
+      "left": "step35_est1951_ctl_mid_s41",
+      "right": "step35_est1951_ctl_mid_s42",
+      "contrast": "later-state seed",
+      "era": "1951-1965",
+      "metric": "C",
+      "coverage": 1.0,
+      "cells": 438,
+      "weighted_pearson": 0.9999360140245471,
+      "spearman": 0.99991388506255,
+      "mean_abs_change": 0.001154728186160121,
+      "rms_change": 0.0016605781048299585,
+      "q50_abs_change": 0.0007965508819577326,
+      "categories": {
+        "0.0": {
+          "agreement": 1.0,
+          "source_sink_reversal_cells": 0,
+          "source_sink_reversal": 0.0,
+          "sink_jaccard": 1.0
+        },
+        "0.01": {
+          "agreement": 1.0,
+          "source_sink_reversal_cells": 0,
+          "source_sink_reversal": 0.0,
+          "sink_jaccard": 1.0
+        },
+        "0.05": {
+          "agreement": 1.0,
+          "source_sink_reversal_cells": 0,
+          "source_sink_reversal": 0.0,
+          "sink_jaccard": 1.0
+        }
+      }
+    },
+    {
+      "left": "step35_est1951_ctl_mid_s41",
+      "right": "step35_est1951_ctl_mid_s42",
+      "contrast": "later-state seed",
+      "era": "1951-1965",
+      "metric": "potential_lambda",
+      "coverage": 1.0,
+      "cells": 438,
+      "weighted_pearson": 0.9998305329246554,
+      "spearman": 0.9999017461410189,
+      "mean_abs_change": 0.0038633380140307262,
+      "rms_change": 0.00711475218063897,
+      "q50_abs_change": 0.0010925478161358734,
+      "categories": {
+        "0.0": {
+          "agreement": 0.997716894977169,
+          "source_sink_reversal_cells": 1,
+          "source_sink_reversal": 0.00228310502283105,
+          "sink_jaccard": 0.9975429975429976
+        },
+        "0.01": {
+          "agreement": 0.9954337899543378,
+          "source_sink_reversal_cells": 0,
+          "source_sink_reversal": 0.0,
+          "sink_jaccard": 0.9975429975429976
+        },
+        "0.05": {
+          "agreement": 0.9954337899543378,
+          "source_sink_reversal_cells": 0,
+          "source_sink_reversal": 0.0,
+          "sink_jaccard": 0.9975247524752475
+        }
+      }
+    },
+    {
+      "left": "step35_est1951_ctl_mid_s41",
+      "right": "step35_est1951_ctl_mid_s42",
+      "contrast": "later-state seed",
+      "era": "1966-1985",
+      "metric": "C",
+      "coverage": 1.0,
+      "cells": 438,
+      "weighted_pearson": 0.9999007585745898,
+      "spearman": 0.9999523011789248,
+      "mean_abs_change": 0.0043661321845189505,
+      "rms_change": 0.00818586640285726,
+      "q50_abs_change": 0.001567997401258757,
+      "categories": {
+        "0.0": {
+          "agreement": 0.9954337899543378,
+          "source_sink_reversal_cells": 2,
+          "source_sink_reversal": 0.0045662100456621,
+          "sink_jaccard": 0.9940828402366864
+        },
+        "0.01": {
+          "agreement": 0.9954337899543378,
+          "source_sink_reversal_cells": 1,
+          "source_sink_reversal": 0.00228310502283105,
+          "sink_jaccard": 0.9970326409495549
+        },
+        "0.05": {
+          "agreement": 0.9954337899543378,
+          "source_sink_reversal_cells": 0,
+          "source_sink_reversal": 0.0,
+          "sink_jaccard": 0.9970149253731343
+        }
+      }
+    },
+    {
+      "left": "step35_est1951_ctl_mid_s41",
+      "right": "step35_est1951_ctl_mid_s42",
+      "contrast": "later-state seed",
+      "era": "1966-1985",
+      "metric": "potential_lambda",
+      "coverage": 1.0,
+      "cells": 438,
+      "weighted_pearson": 0.9998594559216919,
+      "spearman": 0.9999094579264621,
+      "mean_abs_change": 0.006565298254047609,
+      "rms_change": 0.011708363933055707,
+      "q50_abs_change": 0.0014372799382951287,
+      "categories": {
+        "0.0": {
+          "agreement": 1.0,
+          "source_sink_reversal_cells": 0,
+          "source_sink_reversal": 0.0,
+          "sink_jaccard": 1.0
+        },
+        "0.01": {
+          "agreement": 0.9954337899543378,
+          "source_sink_reversal_cells": 0,
+          "source_sink_reversal": 0.0,
+          "sink_jaccard": 1.0
+        },
+        "0.05": {
+          "agreement": 0.997716894977169,
+          "source_sink_reversal_cells": 0,
+          "source_sink_reversal": 0.0,
+          "sink_jaccard": 1.0
+        }
+      }
+    },
+    {
+      "left": "step35_est1951_ctl_mid_s41",
+      "right": "step35_est1951_ctl_mid_s42",
+      "contrast": "later-state seed",
+      "era": "2010-2025",
+      "metric": "C",
+      "coverage": 1.0,
+      "cells": 438,
+      "weighted_pearson": 0.9999080117912392,
+      "spearman": 0.9999351638779397,
+      "mean_abs_change": 0.004289960799322823,
+      "rms_change": 0.006658670204744181,
+      "q50_abs_change": 0.0024187313198843763,
+      "categories": {
+        "0.0": {
+          "agreement": 0.997716894977169,
+          "source_sink_reversal_cells": 1,
+          "source_sink_reversal": 0.00228310502283105,
+          "sink_jaccard": 0.9972451790633609
+        },
+        "0.01": {
+          "agreement": 0.9931506849315068,
+          "source_sink_reversal_cells": 0,
+          "source_sink_reversal": 0.0,
+          "sink_jaccard": 0.994413407821229
+        },
+        "0.05": {
+          "agreement": 0.9885844748858448,
+          "source_sink_reversal_cells": 0,
+          "source_sink_reversal": 0.0,
+          "sink_jaccard": 0.9878419452887538
+        }
+      }
+    },
+    {
+      "left": "step35_est1951_ctl_mid_s41",
+      "right": "step35_est1951_ctl_mid_s42",
+      "contrast": "later-state seed",
+      "era": "2010-2025",
+      "metric": "potential_lambda",
+      "coverage": 1.0,
+      "cells": 438,
+      "weighted_pearson": 0.9997747933307681,
+      "spearman": 0.9999135994408669,
+      "mean_abs_change": 0.03333614809884802,
+      "rms_change": 0.05254143222205052,
+      "q50_abs_change": 0.01379256853984931,
+      "categories": {
+        "0.0": {
+          "agreement": 0.9908675799086758,
+          "source_sink_reversal_cells": 4,
+          "source_sink_reversal": 0.0091324200913242,
+          "sink_jaccard": 0.9844961240310077
+        },
+        "0.01": {
+          "agreement": 0.9885844748858448,
+          "source_sink_reversal_cells": 4,
+          "source_sink_reversal": 0.0091324200913242,
+          "sink_jaccard": 0.9844961240310077
+        },
+        "0.05": {
+          "agreement": 0.9908675799086758,
+          "source_sink_reversal_cells": 0,
+          "source_sink_reversal": 0.0,
+          "sink_jaccard": 0.9920948616600791
+        }
+      }
+    },
+    {
+      "left": "step35_est1951_ctl_mid_s41",
+      "right": "step36_est1951_nonest_ctl_s41",
+      "contrast": "later-state NestWatch",
+      "era": "1951-1965",
+      "metric": "C",
+      "coverage": 1.0,
+      "cells": 438,
+      "weighted_pearson": 0.9878493132855651,
+      "spearman": 0.9976042053222886,
+      "mean_abs_change": 0.02220104349128336,
+      "rms_change": 0.028485073198574726,
+      "q50_abs_change": 0.023566716741219833,
+      "categories": {
+        "0.0": {
+          "agreement": 0.997716894977169,
+          "source_sink_reversal_cells": 1,
+          "source_sink_reversal": 0.00228310502283105,
+          "sink_jaccard": 0.997716894977169
+        },
+        "0.01": {
+          "agreement": 0.997716894977169,
+          "source_sink_reversal_cells": 1,
+          "source_sink_reversal": 0.00228310502283105,
+          "sink_jaccard": 0.997716894977169
+        },
+        "0.05": {
+          "agreement": 0.997716894977169,
+          "source_sink_reversal_cells": 1,
+          "source_sink_reversal": 0.00228310502283105,
+          "sink_jaccard": 0.997716894977169
+        }
+      }
+    },
+    {
+      "left": "step35_est1951_ctl_mid_s41",
+      "right": "step36_est1951_nonest_ctl_s41",
+      "contrast": "later-state NestWatch",
+      "era": "1951-1965",
+      "metric": "potential_lambda",
+      "coverage": 1.0,
+      "cells": 438,
+      "weighted_pearson": 0.9932827423952276,
+      "spearman": 0.9974435431255537,
+      "mean_abs_change": 0.03492820233300492,
+      "rms_change": 0.04607513164580113,
+      "q50_abs_change": 0.02612354798445738,
+      "categories": {
+        "0.0": {
+          "agreement": 0.9840182648401826,
+          "source_sink_reversal_cells": 7,
+          "source_sink_reversal": 0.01598173515981735,
+          "sink_jaccard": 0.9829683698296837
+        },
+        "0.01": {
+          "agreement": 0.9840182648401826,
+          "source_sink_reversal_cells": 6,
+          "source_sink_reversal": 0.0136986301369863,
+          "sink_jaccard": 0.9829683698296837
+        },
+        "0.05": {
+          "agreement": 0.9771689497716894,
+          "source_sink_reversal_cells": 2,
+          "source_sink_reversal": 0.0045662100456621,
+          "sink_jaccard": 0.9852941176470589
+        }
+      }
+    },
+    {
+      "left": "step35_est1951_ctl_mid_s41",
+      "right": "step36_est1951_nonest_ctl_s41",
+      "contrast": "later-state NestWatch",
+      "era": "1966-1985",
+      "metric": "C",
+      "coverage": 1.0,
+      "cells": 438,
+      "weighted_pearson": 0.9969572349195814,
+      "spearman": 0.9962069440486402,
+      "mean_abs_change": 0.03588887500782148,
+      "rms_change": 0.046584556931033805,
+      "q50_abs_change": 0.025586881093204106,
+      "categories": {
+        "0.0": {
+          "agreement": 0.9954337899543378,
+          "source_sink_reversal_cells": 2,
+          "source_sink_reversal": 0.0045662100456621,
+          "sink_jaccard": 0.9940652818991098
+        },
+        "0.01": {
+          "agreement": 0.9931506849315068,
+          "source_sink_reversal_cells": 2,
+          "source_sink_reversal": 0.0045662100456621,
+          "sink_jaccard": 0.9940652818991098
+        },
+        "0.05": {
+          "agreement": 0.9794520547945206,
+          "source_sink_reversal_cells": 1,
+          "source_sink_reversal": 0.00228310502283105,
+          "sink_jaccard": 0.9851632047477745
+        }
+      }
+    },
+    {
+      "left": "step35_est1951_ctl_mid_s41",
+      "right": "step36_est1951_nonest_ctl_s41",
+      "contrast": "later-state NestWatch",
+      "era": "1966-1985",
+      "metric": "potential_lambda",
+      "coverage": 1.0,
+      "cells": 438,
+      "weighted_pearson": 0.9963243902379343,
+      "spearman": 0.9981975843688963,
+      "mean_abs_change": 0.07663165095265961,
+      "rms_change": 0.13620102374954182,
+      "q50_abs_change": 0.026242885347051374,
+      "categories": {
+        "0.0": {
+          "agreement": 0.9817351598173516,
+          "source_sink_reversal_cells": 8,
+          "source_sink_reversal": 0.0182648401826484,
+          "sink_jaccard": 0.9767441860465116
+        },
+        "0.01": {
+          "agreement": 0.9817351598173516,
+          "source_sink_reversal_cells": 8,
+          "source_sink_reversal": 0.0182648401826484,
+          "sink_jaccard": 0.9767441860465116
+        },
+        "0.05": {
+          "agreement": 0.9726027397260274,
+          "source_sink_reversal_cells": 2,
+          "source_sink_reversal": 0.0045662100456621,
+          "sink_jaccard": 0.9794117647058823
+        }
+      }
+    },
+    {
+      "left": "step35_est1951_ctl_mid_s41",
+      "right": "step36_est1951_nonest_ctl_s41",
+      "contrast": "later-state NestWatch",
+      "era": "2010-2025",
+      "metric": "C",
+      "coverage": 1.0,
+      "cells": 438,
+      "weighted_pearson": 0.9952325645186267,
+      "spearman": 0.9918523558683365,
+      "mean_abs_change": 0.03375597527593151,
+      "rms_change": 0.04622003298286545,
+      "q50_abs_change": 0.02444834869207656,
+      "categories": {
+        "0.0": {
+          "agreement": 0.9337899543378996,
+          "source_sink_reversal_cells": 29,
+          "source_sink_reversal": 0.06621004566210045,
+          "sink_jaccard": 0.9214092140921409
+        },
+        "0.01": {
+          "agreement": 0.91324200913242,
+          "source_sink_reversal_cells": 8,
+          "source_sink_reversal": 0.0182648401826484,
+          "sink_jaccard": 0.9382022471910112
+        },
+        "0.05": {
+          "agreement": 0.908675799086758,
+          "source_sink_reversal_cells": 0,
+          "source_sink_reversal": 0.0,
+          "sink_jaccard": 0.9323076923076923
+        }
+      }
+    },
+    {
+      "left": "step35_est1951_ctl_mid_s41",
+      "right": "step36_est1951_nonest_ctl_s41",
+      "contrast": "later-state NestWatch",
+      "era": "2010-2025",
+      "metric": "potential_lambda",
+      "coverage": 1.0,
+      "cells": 438,
+      "weighted_pearson": 0.9967885256125106,
+      "spearman": 0.998591313859028,
+      "mean_abs_change": 0.40456131255834893,
+      "rms_change": 0.7243245511318684,
+      "q50_abs_change": 0.07231448528876469,
+      "categories": {
+        "0.0": {
+          "agreement": 0.9771689497716894,
+          "source_sink_reversal_cells": 10,
+          "source_sink_reversal": 0.0228310502283105,
+          "sink_jaccard": 0.9606299212598425
+        },
+        "0.01": {
+          "agreement": 0.9771689497716894,
+          "source_sink_reversal_cells": 10,
+          "source_sink_reversal": 0.0228310502283105,
+          "sink_jaccard": 0.9606299212598425
+        },
+        "0.05": {
+          "agreement": 0.9634703196347032,
+          "source_sink_reversal_cells": 5,
+          "source_sink_reversal": 0.01141552511415525,
+          "sink_jaccard": 0.9603174603174603
+        }
+      }
+    },
+    {
+      "left": "step35_est1951_nat_mid_s41",
+      "right": "step35_est1951_nat_lo_s41",
+      "contrast": "initial abundance",
+      "era": "1951-1965",
+      "metric": "C",
+      "coverage": 1.0,
+      "cells": 438,
+      "weighted_pearson": 0.9619635966182603,
+      "spearman": 0.9970819460747689,
+      "mean_abs_change": 0.03223480057589798,
+      "rms_change": 0.043131838672610556,
+      "q50_abs_change": 0.02960854842121196,
+      "categories": {
+        "0.0": {
+          "agreement": 1.0,
+          "source_sink_reversal_cells": 0,
+          "source_sink_reversal": 0.0,
+          "sink_jaccard": 1.0
+        },
+        "0.01": {
+          "agreement": 1.0,
+          "source_sink_reversal_cells": 0,
+          "source_sink_reversal": 0.0,
+          "sink_jaccard": 1.0
+        },
+        "0.05": {
+          "agreement": 0.9954337899543378,
+          "source_sink_reversal_cells": 0,
+          "source_sink_reversal": 0.0,
+          "sink_jaccard": 0.9954233409610984
+        }
+      }
+    },
+    {
+      "left": "step35_est1951_nat_mid_s41",
+      "right": "step35_est1951_nat_lo_s41",
+      "contrast": "initial abundance",
+      "era": "1951-1965",
+      "metric": "potential_lambda",
+      "coverage": 1.0,
+      "cells": 438,
+      "weighted_pearson": 0.9898439448152969,
+      "spearman": 0.997289021795005,
+      "mean_abs_change": 0.041305056096464995,
+      "rms_change": 0.06203920072515706,
+      "q50_abs_change": 0.026674907933737984,
+      "categories": {
+        "0.0": {
+          "agreement": 0.9703196347031964,
+          "source_sink_reversal_cells": 13,
+          "source_sink_reversal": 0.02968036529680365,
+          "sink_jaccard": 0.9672544080604534
+        },
+        "0.01": {
+          "agreement": 0.9680365296803652,
+          "source_sink_reversal_cells": 11,
+          "source_sink_reversal": 0.02511415525114155,
+          "sink_jaccard": 0.9672544080604534
+        },
+        "0.05": {
+          "agreement": 0.9657534246575342,
+          "source_sink_reversal_cells": 4,
+          "source_sink_reversal": 0.0091324200913242,
+          "sink_jaccard": 0.969309462915601
+        }
+      }
+    },
+    {
+      "left": "step35_est1951_nat_mid_s41",
+      "right": "step35_est1951_nat_lo_s41",
+      "contrast": "initial abundance",
+      "era": "1966-1985",
+      "metric": "C",
+      "coverage": 1.0,
+      "cells": 438,
+      "weighted_pearson": 0.9970955542102181,
+      "spearman": 0.998111612242288,
+      "mean_abs_change": 0.036948161848953436,
+      "rms_change": 0.04618801400086024,
+      "q50_abs_change": 0.028396019536098622,
+      "categories": {
+        "0.0": {
+          "agreement": 0.9863013698630136,
+          "source_sink_reversal_cells": 6,
+          "source_sink_reversal": 0.0136986301369863,
+          "sink_jaccard": 0.9821958456973294
+        },
+        "0.01": {
+          "agreement": 0.9840182648401826,
+          "source_sink_reversal_cells": 6,
+          "source_sink_reversal": 0.0136986301369863,
+          "sink_jaccard": 0.9821958456973294
+        },
+        "0.05": {
+          "agreement": 0.9726027397260274,
+          "source_sink_reversal_cells": 1,
+          "source_sink_reversal": 0.00228310502283105,
+          "sink_jaccard": 0.9820359281437125
+        }
+      }
+    },
+    {
+      "left": "step35_est1951_nat_mid_s41",
+      "right": "step35_est1951_nat_lo_s41",
+      "contrast": "initial abundance",
+      "era": "1966-1985",
+      "metric": "potential_lambda",
+      "coverage": 1.0,
+      "cells": 438,
+      "weighted_pearson": 0.9939509975147048,
+      "spearman": 0.9975363701725561,
+      "mean_abs_change": 0.05548948940581346,
+      "rms_change": 0.08301543365708675,
+      "q50_abs_change": 0.02958555138980762,
+      "categories": {
+        "0.0": {
+          "agreement": 0.9726027397260274,
+          "source_sink_reversal_cells": 12,
+          "source_sink_reversal": 0.0273972602739726,
+          "sink_jaccard": 0.9647058823529412
+        },
+        "0.01": {
+          "agreement": 0.9680365296803652,
+          "source_sink_reversal_cells": 10,
+          "source_sink_reversal": 0.0228310502283105,
+          "sink_jaccard": 0.9704142011834319
+        },
+        "0.05": {
+          "agreement": 0.954337899543379,
+          "source_sink_reversal_cells": 4,
+          "source_sink_reversal": 0.0091324200913242,
+          "sink_jaccard": 0.9640718562874252
+        }
+      }
+    },
+    {
+      "left": "step35_est1951_nat_mid_s41",
+      "right": "step35_est1951_nat_lo_s41",
+      "contrast": "initial abundance",
+      "era": "2010-2025",
+      "metric": "C",
+      "coverage": 1.0,
+      "cells": 438,
+      "weighted_pearson": 0.9980106607001635,
+      "spearman": 0.9975757859648217,
+      "mean_abs_change": 0.030565325247242463,
+      "rms_change": 0.03682004721258411,
+      "q50_abs_change": 0.0284684320530799,
+      "categories": {
+        "0.0": {
+          "agreement": 0.9703196347031964,
+          "source_sink_reversal_cells": 13,
+          "source_sink_reversal": 0.02968036529680365,
+          "sink_jaccard": 0.9651474530831099
+        },
+        "0.01": {
+          "agreement": 0.952054794520548,
+          "source_sink_reversal_cells": 4,
+          "source_sink_reversal": 0.0091324200913242,
+          "sink_jaccard": 0.9697802197802198
+        },
+        "0.05": {
+          "agreement": 0.954337899543379,
+          "source_sink_reversal_cells": 0,
+          "source_sink_reversal": 0.0,
+          "sink_jaccard": 0.9583333333333334
+        }
+      }
+    },
+    {
+      "left": "step35_est1951_nat_mid_s41",
+      "right": "step35_est1951_nat_lo_s41",
+      "contrast": "initial abundance",
+      "era": "2010-2025",
+      "metric": "potential_lambda",
+      "coverage": 1.0,
+      "cells": 438,
+      "weighted_pearson": 0.996676729326889,
+      "spearman": 0.9980276394674611,
+      "mean_abs_change": 0.1816089397221155,
+      "rms_change": 0.29003040488657494,
+      "q50_abs_change": 0.062275067871506246,
+      "categories": {
+        "0.0": {
+          "agreement": 0.9863013698630136,
+          "source_sink_reversal_cells": 6,
+          "source_sink_reversal": 0.0136986301369863,
+          "sink_jaccard": 0.9769230769230769
+        },
+        "0.01": {
+          "agreement": 0.9840182648401826,
+          "source_sink_reversal_cells": 6,
+          "source_sink_reversal": 0.0136986301369863,
+          "sink_jaccard": 0.9730769230769231
+        },
+        "0.05": {
+          "agreement": 0.9726027397260274,
+          "source_sink_reversal_cells": 2,
+          "source_sink_reversal": 0.0045662100456621,
+          "sink_jaccard": 0.9725490196078431
+        }
+      }
+    },
+    {
+      "left": "step35_est1951_nat_mid_s41",
+      "right": "step35_est1951_nat_hi_s41",
+      "contrast": "initial abundance",
+      "era": "1951-1965",
+      "metric": "C",
+      "coverage": 1.0,
+      "cells": 438,
+      "weighted_pearson": 0.9784598123954429,
+      "spearman": 0.9974796742684638,
+      "mean_abs_change": 0.018360889399034467,
+      "rms_change": 0.03793554809570473,
+      "q50_abs_change": 0.009243480386751782,
+      "categories": {
+        "0.0": {
+          "agreement": 0.997716894977169,
+          "source_sink_reversal_cells": 1,
+          "source_sink_reversal": 0.00228310502283105,
+          "sink_jaccard": 0.9977116704805492
+        },
+        "0.01": {
+          "agreement": 0.997716894977169,
+          "source_sink_reversal_cells": 1,
+          "source_sink_reversal": 0.00228310502283105,
+          "sink_jaccard": 0.9977116704805492
+        },
+        "0.05": {
+          "agreement": 0.997716894977169,
+          "source_sink_reversal_cells": 1,
+          "source_sink_reversal": 0.00228310502283105,
+          "sink_jaccard": 0.9977064220183486
+        }
+      }
+    },
+    {
+      "left": "step35_est1951_nat_mid_s41",
+      "right": "step35_est1951_nat_hi_s41",
+      "contrast": "initial abundance",
+      "era": "1951-1965",
+      "metric": "potential_lambda",
+      "coverage": 1.0,
+      "cells": 438,
+      "weighted_pearson": 0.9951569707103783,
+      "spearman": 0.9978072823389615,
+      "mean_abs_change": 0.026710376141884058,
+      "rms_change": 0.046592823563237254,
+      "q50_abs_change": 0.007708892976455932,
+      "categories": {
+        "0.0": {
+          "agreement": 0.9748858447488584,
+          "source_sink_reversal_cells": 11,
+          "source_sink_reversal": 0.02511415525114155,
+          "sink_jaccard": 0.9724310776942355
+        },
+        "0.01": {
+          "agreement": 0.9703196347031964,
+          "source_sink_reversal_cells": 7,
+          "source_sink_reversal": 0.01598173515981735,
+          "sink_jaccard": 0.9748743718592965
+        },
+        "0.05": {
+          "agreement": 0.9680365296803652,
+          "source_sink_reversal_cells": 1,
+          "source_sink_reversal": 0.00228310502283105,
+          "sink_jaccard": 0.9795918367346939
+        }
+      }
+    },
+    {
+      "left": "step35_est1951_nat_mid_s41",
+      "right": "step35_est1951_nat_hi_s41",
+      "contrast": "initial abundance",
+      "era": "1966-1985",
+      "metric": "C",
+      "coverage": 1.0,
+      "cells": 438,
+      "weighted_pearson": 0.9978907971574614,
+      "spearman": 0.9987516904340799,
+      "mean_abs_change": 0.01895281788790569,
+      "rms_change": 0.0352205995858621,
+      "q50_abs_change": 0.00883969845642918,
+      "categories": {
+        "0.0": {
+          "agreement": 0.997716894977169,
+          "source_sink_reversal_cells": 1,
+          "source_sink_reversal": 0.00228310502283105,
+          "sink_jaccard": 0.9969879518072289
+        },
+        "0.01": {
+          "agreement": 0.9954337899543378,
+          "source_sink_reversal_cells": 1,
+          "source_sink_reversal": 0.00228310502283105,
+          "sink_jaccard": 0.9939759036144579
+        },
+        "0.05": {
+          "agreement": 0.9931506849315068,
+          "source_sink_reversal_cells": 0,
+          "source_sink_reversal": 0.0,
+          "sink_jaccard": 0.9939577039274925
+        }
+      }
+    },
+    {
+      "left": "step35_est1951_nat_mid_s41",
+      "right": "step35_est1951_nat_hi_s41",
+      "contrast": "initial abundance",
+      "era": "1966-1985",
+      "metric": "potential_lambda",
+      "coverage": 1.0,
+      "cells": 438,
+      "weighted_pearson": 0.9973212196684266,
+      "spearman": 0.9982979803905004,
+      "mean_abs_change": 0.03379748079139412,
+      "rms_change": 0.06230272649917654,
+      "q50_abs_change": 0.010212246701994422,
+      "categories": {
+        "0.0": {
+          "agreement": 0.9885844748858448,
+          "source_sink_reversal_cells": 5,
+          "source_sink_reversal": 0.01141552511415525,
+          "sink_jaccard": 0.9849397590361446
+        },
+        "0.01": {
+          "agreement": 0.9840182648401826,
+          "source_sink_reversal_cells": 4,
+          "source_sink_reversal": 0.0091324200913242,
+          "sink_jaccard": 0.9849397590361446
+        },
+        "0.05": {
+          "agreement": 0.9817351598173516,
+          "source_sink_reversal_cells": 0,
+          "source_sink_reversal": 0.0,
+          "sink_jaccard": 0.9938837920489296
+        }
+      }
+    },
+    {
+      "left": "step35_est1951_nat_mid_s41",
+      "right": "step35_est1951_nat_hi_s41",
+      "contrast": "initial abundance",
+      "era": "2010-2025",
+      "metric": "C",
+      "coverage": 1.0,
+      "cells": 438,
+      "weighted_pearson": 0.9985401783263539,
+      "spearman": 0.9976116314860488,
+      "mean_abs_change": 0.016948097780324998,
+      "rms_change": 0.026095905189042288,
+      "q50_abs_change": 0.009634025712484597,
+      "categories": {
+        "0.0": {
+          "agreement": 0.9885844748858448,
+          "source_sink_reversal_cells": 5,
+          "source_sink_reversal": 0.01141552511415525,
+          "sink_jaccard": 0.9861878453038674
+        },
+        "0.01": {
+          "agreement": 0.9726027397260274,
+          "source_sink_reversal_cells": 0,
+          "source_sink_reversal": 0.0,
+          "sink_jaccard": 0.9830985915492958
+        },
+        "0.05": {
+          "agreement": 0.9680365296803652,
+          "source_sink_reversal_cells": 0,
+          "source_sink_reversal": 0.0,
+          "sink_jaccard": 0.9722222222222222
+        }
+      }
+    },
+    {
+      "left": "step35_est1951_nat_mid_s41",
+      "right": "step35_est1951_nat_hi_s41",
+      "contrast": "initial abundance",
+      "era": "2010-2025",
+      "metric": "potential_lambda",
+      "coverage": 1.0,
+      "cells": 438,
+      "weighted_pearson": 0.9971402651626675,
+      "spearman": 0.9986198760273366,
+      "mean_abs_change": 0.07923923850263377,
+      "rms_change": 0.13625741693581414,
+      "q50_abs_change": 0.03407748340197497,
+      "categories": {
+        "0.0": {
+          "agreement": 0.9726027397260274,
+          "source_sink_reversal_cells": 12,
+          "source_sink_reversal": 0.0273972602739726,
+          "sink_jaccard": 0.9529411764705882
+        },
+        "0.01": {
+          "agreement": 0.9703196347031964,
+          "source_sink_reversal_cells": 11,
+          "source_sink_reversal": 0.02511415525114155,
+          "sink_jaccard": 0.952755905511811
+        },
+        "0.05": {
+          "agreement": 0.9657534246575342,
+          "source_sink_reversal_cells": 1,
+          "source_sink_reversal": 0.00228310502283105,
+          "sink_jaccard": 0.967741935483871
+        }
+      }
+    },
+    {
+      "left": "step35_est1951_nat_mid_s41",
+      "right": "step35_est1951_nat_mid_s42",
+      "contrast": "later-state seed",
+      "era": "1951-1965",
+      "metric": "C",
+      "coverage": 1.0,
+      "cells": 438,
+      "weighted_pearson": 0.9977769599369761,
+      "spearman": 0.9973290088306368,
+      "mean_abs_change": 0.00745402581523596,
+      "rms_change": 0.009853752111674653,
+      "q50_abs_change": 0.006009956936609981,
+      "categories": {
+        "0.0": {
+          "agreement": 0.997716894977169,
+          "source_sink_reversal_cells": 1,
+          "source_sink_reversal": 0.00228310502283105,
+          "sink_jaccard": 0.9977116704805492
+        },
+        "0.01": {
+          "agreement": 0.997716894977169,
+          "source_sink_reversal_cells": 1,
+          "source_sink_reversal": 0.00228310502283105,
+          "sink_jaccard": 0.9977116704805492
+        },
+        "0.05": {
+          "agreement": 1.0,
+          "source_sink_reversal_cells": 0,
+          "source_sink_reversal": 0.0,
+          "sink_jaccard": 1.0
+        }
+      }
+    },
+    {
+      "left": "step35_est1951_nat_mid_s41",
+      "right": "step35_est1951_nat_mid_s42",
+      "contrast": "later-state seed",
+      "era": "1951-1965",
+      "metric": "potential_lambda",
+      "coverage": 1.0,
+      "cells": 438,
+      "weighted_pearson": 0.9955267669950459,
+      "spearman": 0.9981428878165856,
+      "mean_abs_change": 0.024319071471151824,
+      "rms_change": 0.04090868622058945,
+      "q50_abs_change": 0.009314864570218753,
+      "categories": {
+        "0.0": {
+          "agreement": 0.9840182648401826,
+          "source_sink_reversal_cells": 7,
+          "source_sink_reversal": 0.01598173515981735,
+          "sink_jaccard": 0.9821882951653944
+        },
+        "0.01": {
+          "agreement": 0.9771689497716894,
+          "source_sink_reversal_cells": 3,
+          "source_sink_reversal": 0.00684931506849315,
+          "sink_jaccard": 0.9820971867007673
+        },
+        "0.05": {
+          "agreement": 0.958904109589041,
+          "source_sink_reversal_cells": 0,
+          "source_sink_reversal": 0.0,
+          "sink_jaccard": 0.9691516709511568
+        }
+      }
+    },
+    {
+      "left": "step35_est1951_nat_mid_s41",
+      "right": "step35_est1951_nat_mid_s42",
+      "contrast": "later-state seed",
+      "era": "1966-1985",
+      "metric": "C",
+      "coverage": 1.0,
+      "cells": 438,
+      "weighted_pearson": 0.9981059029865944,
+      "spearman": 0.9987676852483325,
+      "mean_abs_change": 0.01990841357772727,
+      "rms_change": 0.034947994192288265,
+      "q50_abs_change": 0.0074780841225956796,
+      "categories": {
+        "0.0": {
+          "agreement": 0.9931506849315068,
+          "source_sink_reversal_cells": 3,
+          "source_sink_reversal": 0.00684931506849315,
+          "sink_jaccard": 0.990990990990991
+        },
+        "0.01": {
+          "agreement": 0.9908675799086758,
+          "source_sink_reversal_cells": 2,
+          "source_sink_reversal": 0.0045662100456621,
+          "sink_jaccard": 0.990990990990991
+        },
+        "0.05": {
+          "agreement": 0.9908675799086758,
+          "source_sink_reversal_cells": 0,
+          "source_sink_reversal": 0.0,
+          "sink_jaccard": 0.9909638554216867
+        }
+      }
+    },
+    {
+      "left": "step35_est1951_nat_mid_s41",
+      "right": "step35_est1951_nat_mid_s42",
+      "contrast": "later-state seed",
+      "era": "1966-1985",
+      "metric": "potential_lambda",
+      "coverage": 1.0,
+      "cells": 438,
+      "weighted_pearson": 0.9977090164769568,
+      "spearman": 0.9984856338362869,
+      "mean_abs_change": 0.03553329112022864,
+      "rms_change": 0.05948095940842624,
+      "q50_abs_change": 0.010677499276398071,
+      "categories": {
+        "0.0": {
+          "agreement": 0.9908675799086758,
+          "source_sink_reversal_cells": 4,
+          "source_sink_reversal": 0.0091324200913242,
+          "sink_jaccard": 0.9879154078549849
+        },
+        "0.01": {
+          "agreement": 0.9908675799086758,
+          "source_sink_reversal_cells": 3,
+          "source_sink_reversal": 0.00684931506849315,
+          "sink_jaccard": 0.9878787878787879
+        },
+        "0.05": {
+          "agreement": 0.9726027397260274,
+          "source_sink_reversal_cells": 0,
+          "source_sink_reversal": 0.0,
+          "sink_jaccard": 0.9785276073619632
+        }
+      }
+    },
+    {
+      "left": "step35_est1951_nat_mid_s41",
+      "right": "step35_est1951_nat_mid_s42",
+      "contrast": "later-state seed",
+      "era": "2010-2025",
+      "metric": "C",
+      "coverage": 1.0,
+      "cells": 438,
+      "weighted_pearson": 0.9984359753296597,
+      "spearman": 0.9979540918840669,
+      "mean_abs_change": 0.013112193640794832,
+      "rms_change": 0.024712159117944364,
+      "q50_abs_change": 0.006599246731554962,
+      "categories": {
+        "0.0": {
+          "agreement": 0.9863013698630136,
+          "source_sink_reversal_cells": 6,
+          "source_sink_reversal": 0.0136986301369863,
+          "sink_jaccard": 0.9834710743801653
+        },
+        "0.01": {
+          "agreement": 0.9794520547945206,
+          "source_sink_reversal_cells": 0,
+          "source_sink_reversal": 0.0,
+          "sink_jaccard": 0.9887640449438202
+        },
+        "0.05": {
+          "agreement": 0.9703196347031964,
+          "source_sink_reversal_cells": 0,
+          "source_sink_reversal": 0.0,
+          "sink_jaccard": 0.9692307692307692
+        }
+      }
+    },
+    {
+      "left": "step35_est1951_nat_mid_s41",
+      "right": "step35_est1951_nat_mid_s42",
+      "contrast": "later-state seed",
+      "era": "2010-2025",
+      "metric": "potential_lambda",
+      "coverage": 1.0,
+      "cells": 438,
+      "weighted_pearson": 0.9974599574922554,
+      "spearman": 0.9988220961789602,
+      "mean_abs_change": 0.08889999592679398,
+      "rms_change": 0.15322249559139903,
+      "q50_abs_change": 0.026285592492749255,
+      "categories": {
+        "0.0": {
+          "agreement": 0.9794520547945206,
+          "source_sink_reversal_cells": 9,
+          "source_sink_reversal": 0.02054794520547945,
+          "sink_jaccard": 0.9647058823529412
+        },
+        "0.01": {
+          "agreement": 0.9748858447488584,
+          "source_sink_reversal_cells": 8,
+          "source_sink_reversal": 0.0182648401826484,
+          "sink_jaccard": 0.9645669291338582
+        },
+        "0.05": {
+          "agreement": 0.95662100456621,
+          "source_sink_reversal_cells": 3,
+          "source_sink_reversal": 0.00684931506849315,
+          "sink_jaccard": 0.9596774193548387
+        }
+      }
+    },
+    {
+      "left": "step33_nestcbc_abs_s41",
+      "right": "step34_abs_s42",
+      "contrast": "original absolute seed",
+      "era": "1951-1965",
+      "metric": "C",
+      "coverage": 0.997716894977169,
+      "cells": 437,
+      "weighted_pearson": 0.999812024516001,
+      "spearman": 0.9998500233951999,
+      "mean_abs_change": 0.004383744485559783,
+      "rms_change": 0.005807347769705562,
+      "q50_abs_change": 0.003754240884728463,
+      "categories": {
+        "0.0": {
+          "agreement": 1.0,
+          "source_sink_reversal_cells": 0,
+          "source_sink_reversal": 0.0,
+          "sink_jaccard": 1.0
+        },
+        "0.01": {
+          "agreement": 1.0,
+          "source_sink_reversal_cells": 0,
+          "source_sink_reversal": 0.0,
+          "sink_jaccard": 1.0
+        },
+        "0.05": {
+          "agreement": 1.0,
+          "source_sink_reversal_cells": 0,
+          "source_sink_reversal": 0.0,
+          "sink_jaccard": 1.0
+        }
+      }
+    },
+    {
+      "left": "step33_nestcbc_abs_s41",
+      "right": "step34_abs_s42",
+      "contrast": "original absolute seed",
+      "era": "1951-1965",
+      "metric": "potential_lambda",
+      "coverage": 1.0,
+      "cells": 438,
+      "weighted_pearson": 0.9997880653096846,
+      "spearman": 0.9998541901307854,
+      "mean_abs_change": 0.009686187415099592,
+      "rms_change": 0.015665685888948823,
+      "q50_abs_change": 0.00396818116123375,
+      "categories": {
+        "0.0": {
+          "agreement": 0.997716894977169,
+          "source_sink_reversal_cells": 1,
+          "source_sink_reversal": 0.00228310502283105,
+          "sink_jaccard": 0.9972451790633609
+        },
+        "0.01": {
+          "agreement": 0.9931506849315068,
+          "source_sink_reversal_cells": 0,
+          "source_sink_reversal": 0.0,
+          "sink_jaccard": 0.9972375690607734
+        },
+        "0.05": {
+          "agreement": 0.9885844748858448,
+          "source_sink_reversal_cells": 0,
+          "source_sink_reversal": 0.0,
+          "sink_jaccard": 0.9916201117318436
+        }
+      }
+    },
+    {
+      "left": "step33_nestcbc_abs_s41",
+      "right": "step34_abs_s42",
+      "contrast": "original absolute seed",
+      "era": "1966-1985",
+      "metric": "C",
+      "coverage": 1.0,
+      "cells": 438,
+      "weighted_pearson": 0.9999438772668464,
+      "spearman": 0.9998880363002309,
+      "mean_abs_change": 0.0037470646754699127,
+      "rms_change": 0.005984963021582325,
+      "q50_abs_change": 0.0022206470497144956,
+      "categories": {
+        "0.0": {
+          "agreement": 1.0,
+          "source_sink_reversal_cells": 0,
+          "source_sink_reversal": 0.0,
+          "sink_jaccard": 1.0
+        },
+        "0.01": {
+          "agreement": 0.9954337899543378,
+          "source_sink_reversal_cells": 0,
+          "source_sink_reversal": 0.0,
+          "sink_jaccard": 0.9969788519637462
+        },
+        "0.05": {
+          "agreement": 1.0,
+          "source_sink_reversal_cells": 0,
+          "source_sink_reversal": 0.0,
+          "sink_jaccard": 1.0
+        }
+      }
+    },
+    {
+      "left": "step33_nestcbc_abs_s41",
+      "right": "step34_abs_s42",
+      "contrast": "original absolute seed",
+      "era": "1966-1985",
+      "metric": "potential_lambda",
+      "coverage": 1.0,
+      "cells": 438,
+      "weighted_pearson": 0.999900587965806,
+      "spearman": 0.9998863225701323,
+      "mean_abs_change": 0.008981594461462869,
+      "rms_change": 0.01471603679584926,
+      "q50_abs_change": 0.0038129355050013775,
+      "categories": {
+        "0.0": {
+          "agreement": 1.0,
+          "source_sink_reversal_cells": 0,
+          "source_sink_reversal": 0.0,
+          "sink_jaccard": 1.0
+        },
+        "0.01": {
+          "agreement": 0.9931506849315068,
+          "source_sink_reversal_cells": 0,
+          "source_sink_reversal": 0.0,
+          "sink_jaccard": 0.9908814589665653
+        },
+        "0.05": {
+          "agreement": 0.997716894977169,
+          "source_sink_reversal_cells": 0,
+          "source_sink_reversal": 0.0,
+          "sink_jaccard": 1.0
+        }
+      }
+    },
+    {
+      "left": "step33_nestcbc_abs_s41",
+      "right": "step34_abs_s42",
+      "contrast": "original absolute seed",
+      "era": "2010-2025",
+      "metric": "C",
+      "coverage": 1.0,
+      "cells": 438,
+      "weighted_pearson": 0.9999282840748114,
+      "spearman": 0.9994957349185145,
+      "mean_abs_change": 0.0035416831422725023,
+      "rms_change": 0.005596997413175114,
+      "q50_abs_change": 0.0017922116087766282,
+      "categories": {
+        "0.0": {
+          "agreement": 0.9931506849315068,
+          "source_sink_reversal_cells": 3,
+          "source_sink_reversal": 0.00684931506849315,
+          "sink_jaccard": 0.9917808219178083
+        },
+        "0.01": {
+          "agreement": 0.9771689497716894,
+          "source_sink_reversal_cells": 0,
+          "source_sink_reversal": 0.0,
+          "sink_jaccard": 0.9854227405247813
+        },
+        "0.05": {
+          "agreement": 0.9771689497716894,
+          "source_sink_reversal_cells": 0,
+          "source_sink_reversal": 0.0,
+          "sink_jaccard": 0.9638989169675091
+        }
+      }
+    },
+    {
+      "left": "step33_nestcbc_abs_s41",
+      "right": "step34_abs_s42",
+      "contrast": "original absolute seed",
+      "era": "2010-2025",
+      "metric": "potential_lambda",
+      "coverage": 1.0,
+      "cells": 438,
+      "weighted_pearson": 0.9999151588896252,
+      "spearman": 0.9999008892759697,
+      "mean_abs_change": 0.014557213396090979,
+      "rms_change": 0.02396816151632737,
+      "q50_abs_change": 0.007369670861443106,
+      "categories": {
+        "0.0": {
+          "agreement": 0.9954337899543378,
+          "source_sink_reversal_cells": 2,
+          "source_sink_reversal": 0.0045662100456621,
+          "sink_jaccard": 0.9923371647509579
+        },
+        "0.01": {
+          "agreement": 0.997716894977169,
+          "source_sink_reversal_cells": 0,
+          "source_sink_reversal": 0.0,
+          "sink_jaccard": 1.0
+        },
+        "0.05": {
+          "agreement": 0.997716894977169,
+          "source_sink_reversal_cells": 0,
+          "source_sink_reversal": 0.0,
+          "sink_jaccard": 0.9961240310077519
+        }
+      }
+    },
+    {
+      "left": "step34_abs_natdep_s41",
+      "right": "step34_abs_natdep_s42",
+      "contrast": "original native seed",
+      "era": "1951-1965",
+      "metric": "C",
+      "coverage": 0.9954337899543378,
+      "cells": 436,
+      "weighted_pearson": 0.9966040965057579,
+      "spearman": 0.9973615799536253,
+      "mean_abs_change": 0.040326269076093116,
+      "rms_change": 0.042087975462575006,
+      "q50_abs_change": 0.03908154001918207,
+      "categories": {
+        "0.0": {
+          "agreement": 1.0,
+          "source_sink_reversal_cells": 0,
+          "source_sink_reversal": 0.0,
+          "sink_jaccard": 1.0
+        },
+        "0.01": {
+          "agreement": 1.0,
+          "source_sink_reversal_cells": 0,
+          "source_sink_reversal": 0.0,
+          "sink_jaccard": 1.0
+        },
+        "0.05": {
+          "agreement": 1.0,
+          "source_sink_reversal_cells": 0,
+          "source_sink_reversal": 0.0,
+          "sink_jaccard": 1.0
+        }
+      }
+    },
+    {
+      "left": "step34_abs_natdep_s41",
+      "right": "step34_abs_natdep_s42",
+      "contrast": "original native seed",
+      "era": "1951-1965",
+      "metric": "potential_lambda",
+      "coverage": 1.0,
+      "cells": 438,
+      "weighted_pearson": 0.9950174399093218,
+      "spearman": 0.9970032573010793,
+      "mean_abs_change": 0.09650267471667587,
+      "rms_change": 0.1272805985250494,
+      "q50_abs_change": 0.05483769180694037,
+      "categories": {
+        "0.0": {
+          "agreement": 0.9497716894977168,
+          "source_sink_reversal_cells": 22,
+          "source_sink_reversal": 0.0502283105022831,
+          "sink_jaccard": 0.9382022471910112
+        },
+        "0.01": {
+          "agreement": 0.9474885844748858,
+          "source_sink_reversal_cells": 20,
+          "source_sink_reversal": 0.045662100456621,
+          "sink_jaccard": 0.943502824858757
+        },
+        "0.05": {
+          "agreement": 0.9360730593607306,
+          "source_sink_reversal_cells": 9,
+          "source_sink_reversal": 0.02054794520547945,
+          "sink_jaccard": 0.9538904899135446
+        }
+      }
+    },
+    {
+      "left": "step34_abs_natdep_s41",
+      "right": "step34_abs_natdep_s42",
+      "contrast": "original native seed",
+      "era": "1966-1985",
+      "metric": "C",
+      "coverage": 1.0,
+      "cells": 438,
+      "weighted_pearson": 0.9969439729801369,
+      "spearman": 0.9981875876099884,
+      "mean_abs_change": 0.04336901072358358,
+      "rms_change": 0.05171192090776067,
+      "q50_abs_change": 0.03505513787806698,
+      "categories": {
+        "0.0": {
+          "agreement": 0.9885844748858448,
+          "source_sink_reversal_cells": 5,
+          "source_sink_reversal": 0.01141552511415525,
+          "sink_jaccard": 0.9846153846153847
+        },
+        "0.01": {
+          "agreement": 0.9794520547945206,
+          "source_sink_reversal_cells": 4,
+          "source_sink_reversal": 0.0091324200913242,
+          "sink_jaccard": 0.9753846153846154
+        },
+        "0.05": {
+          "agreement": 0.958904109589041,
+          "source_sink_reversal_cells": 0,
+          "source_sink_reversal": 0.0,
+          "sink_jaccard": 0.9716088328075709
+        }
+      }
+    },
+    {
+      "left": "step34_abs_natdep_s41",
+      "right": "step34_abs_natdep_s42",
+      "contrast": "original native seed",
+      "era": "1966-1985",
+      "metric": "potential_lambda",
+      "coverage": 1.0,
+      "cells": 438,
+      "weighted_pearson": 0.9959237311034758,
+      "spearman": 0.9972229003753711,
+      "mean_abs_change": 0.09823270070166144,
+      "rms_change": 0.13037553309084968,
+      "q50_abs_change": 0.051759200578450404,
+      "categories": {
+        "0.0": {
+          "agreement": 0.9360730593607306,
+          "source_sink_reversal_cells": 28,
+          "source_sink_reversal": 0.0639269406392694,
+          "sink_jaccard": 0.9111111111111111
+        },
+        "0.01": {
+          "agreement": 0.9337899543378996,
+          "source_sink_reversal_cells": 25,
+          "source_sink_reversal": 0.05707762557077625,
+          "sink_jaccard": 0.9111111111111111
+        },
+        "0.05": {
+          "agreement": 0.9246575342465754,
+          "source_sink_reversal_cells": 15,
+          "source_sink_reversal": 0.03424657534246575,
+          "sink_jaccard": 0.9223300970873787
+        }
+      }
+    },
+    {
+      "left": "step34_abs_natdep_s41",
+      "right": "step34_abs_natdep_s42",
+      "contrast": "original native seed",
+      "era": "2010-2025",
+      "metric": "C",
+      "coverage": 1.0,
+      "cells": 438,
+      "weighted_pearson": 0.9974707411803511,
+      "spearman": 0.9950651713705105,
+      "mean_abs_change": 0.02742435366879511,
+      "rms_change": 0.03586984152262751,
+      "q50_abs_change": 0.02371033740514627,
+      "categories": {
+        "0.0": {
+          "agreement": 0.9657534246575342,
+          "source_sink_reversal_cells": 15,
+          "source_sink_reversal": 0.03424657534246575,
+          "sink_jaccard": 0.9591280653950953
+        },
+        "0.01": {
+          "agreement": 0.9406392694063926,
+          "source_sink_reversal_cells": 3,
+          "source_sink_reversal": 0.00684931506849315,
+          "sink_jaccard": 0.95
+        },
+        "0.05": {
+          "agreement": 0.9497716894977168,
+          "source_sink_reversal_cells": 0,
+          "source_sink_reversal": 0.0,
+          "sink_jaccard": 0.9565217391304348
+        }
+      }
+    },
+    {
+      "left": "step34_abs_natdep_s41",
+      "right": "step34_abs_natdep_s42",
+      "contrast": "original native seed",
+      "era": "2010-2025",
+      "metric": "potential_lambda",
+      "coverage": 1.0,
+      "cells": 438,
+      "weighted_pearson": 0.9973581744378459,
+      "spearman": 0.998108184782091,
+      "mean_abs_change": 0.08326306464021849,
+      "rms_change": 0.11680832380781486,
+      "q50_abs_change": 0.04395584125234672,
+      "categories": {
+        "0.0": {
+          "agreement": 0.9703196347031964,
+          "source_sink_reversal_cells": 13,
+          "source_sink_reversal": 0.02968036529680365,
+          "sink_jaccard": 0.9475806451612904
+        },
+        "0.01": {
+          "agreement": 0.9680365296803652,
+          "source_sink_reversal_cells": 11,
+          "source_sink_reversal": 0.02511415525114155,
+          "sink_jaccard": 0.9473684210526315
+        },
+        "0.05": {
+          "agreement": 0.95662100456621,
+          "source_sink_reversal_cells": 6,
+          "source_sink_reversal": 0.0136986301369863,
+          "sink_jaccard": 0.9423868312757202
+        }
+      }
+    },
+    {
+      "left": "step33_nestcbc_abs_s41",
+      "right": "step35_est1951_ctl_mid_s41",
+      "contrast": "initialization formulation",
+      "era": "1951-1965",
+      "metric": "C",
+      "coverage": 0.997716894977169,
+      "cells": 437,
+      "weighted_pearson": 0.8773031591559423,
+      "spearman": 0.9934713444029393,
+      "mean_abs_change": 0.042683677486506526,
+      "rms_change": 0.07119605238672151,
+      "q50_abs_change": 0.028644006319423043,
+      "categories": {
+        "0.0": {
+          "agreement": 0.9954233409610984,
+          "source_sink_reversal_cells": 2,
+          "source_sink_reversal": 0.004576659038901602,
+          "sink_jaccard": 0.9954233409610984
+        },
+        "0.01": {
+          "agreement": 0.9954233409610984,
+          "source_sink_reversal_cells": 2,
+          "source_sink_reversal": 0.004576659038901602,
+          "sink_jaccard": 0.9954233409610984
+        },
+        "0.05": {
+          "agreement": 0.9954233409610984,
+          "source_sink_reversal_cells": 2,
+          "source_sink_reversal": 0.004576659038901602,
+          "sink_jaccard": 0.9954233409610984
+        }
+      }
+    },
+    {
+      "left": "step33_nestcbc_abs_s41",
+      "right": "step35_est1951_ctl_mid_s41",
+      "contrast": "initialization formulation",
+      "era": "1951-1965",
+      "metric": "potential_lambda",
+      "coverage": 1.0,
+      "cells": 438,
+      "weighted_pearson": 0.979123102720191,
+      "spearman": 0.9941918830744803,
+      "mean_abs_change": 0.14883585256449813,
+      "rms_change": 0.21981559473800916,
+      "q50_abs_change": 0.05072031570173595,
+      "categories": {
+        "0.0": {
+          "agreement": 0.8995433789954338,
+          "source_sink_reversal_cells": 44,
+          "source_sink_reversal": 0.1004566210045662,
+          "sink_jaccard": 0.8918918918918919
+        },
+        "0.01": {
+          "agreement": 0.8949771689497716,
+          "source_sink_reversal_cells": 42,
+          "source_sink_reversal": 0.0958904109589041,
+          "sink_jaccard": 0.8894348894348895
+        },
+        "0.05": {
+          "agreement": 0.8789954337899544,
+          "source_sink_reversal_cells": 36,
+          "source_sink_reversal": 0.0821917808219178,
+          "sink_jaccard": 0.8861386138613861
+        }
+      }
+    },
+    {
+      "left": "step33_nestcbc_abs_s41",
+      "right": "step35_est1951_ctl_mid_s41",
+      "contrast": "initialization formulation",
+      "era": "1966-1985",
+      "metric": "C",
+      "coverage": 1.0,
+      "cells": 438,
+      "weighted_pearson": 0.9954258349660275,
+      "spearman": 0.9916311418747877,
+      "mean_abs_change": 0.040976534947727135,
+      "rms_change": 0.05368867274615922,
+      "q50_abs_change": 0.03065003916220293,
+      "categories": {
+        "0.0": {
+          "agreement": 0.9908675799086758,
+          "source_sink_reversal_cells": 4,
+          "source_sink_reversal": 0.0091324200913242,
+          "sink_jaccard": 0.9880952380952381
+        },
+        "0.01": {
+          "agreement": 0.9863013698630136,
+          "source_sink_reversal_cells": 3,
+          "source_sink_reversal": 0.00684931506849315,
+          "sink_jaccard": 0.9851190476190477
+        },
+        "0.05": {
+          "agreement": 0.9703196347031964,
+          "source_sink_reversal_cells": 2,
+          "source_sink_reversal": 0.0045662100456621,
+          "sink_jaccard": 0.9760479041916168
+        }
+      }
+    },
+    {
+      "left": "step33_nestcbc_abs_s41",
+      "right": "step35_est1951_ctl_mid_s41",
+      "contrast": "initialization formulation",
+      "era": "1966-1985",
+      "metric": "potential_lambda",
+      "coverage": 1.0,
+      "cells": 438,
+      "weighted_pearson": 0.9940548530267733,
+      "spearman": 0.9966660809041983,
+      "mean_abs_change": 0.10905407273900918,
+      "rms_change": 0.14804824856639814,
+      "q50_abs_change": 0.05499024103722095,
+      "categories": {
+        "0.0": {
+          "agreement": 0.9680365296803652,
+          "source_sink_reversal_cells": 14,
+          "source_sink_reversal": 0.0319634703196347,
+          "sink_jaccard": 0.9591836734693877
+        },
+        "0.01": {
+          "agreement": 0.9657534246575342,
+          "source_sink_reversal_cells": 14,
+          "source_sink_reversal": 0.0319634703196347,
+          "sink_jaccard": 0.956268221574344
+        },
+        "0.05": {
+          "agreement": 0.954337899543379,
+          "source_sink_reversal_cells": 7,
+          "source_sink_reversal": 0.01598173515981735,
+          "sink_jaccard": 0.9587020648967551
+        }
+      }
+    },
+    {
+      "left": "step33_nestcbc_abs_s41",
+      "right": "step35_est1951_ctl_mid_s41",
+      "contrast": "initialization formulation",
+      "era": "2010-2025",
+      "metric": "C",
+      "coverage": 1.0,
+      "cells": 438,
+      "weighted_pearson": 0.9910250199896846,
+      "spearman": 0.9735792802604926,
+      "mean_abs_change": 0.044102346655306074,
+      "rms_change": 0.0613064792192942,
+      "q50_abs_change": 0.03349937093185332,
+      "categories": {
+        "0.0": {
+          "agreement": 0.9269406392694064,
+          "source_sink_reversal_cells": 32,
+          "source_sink_reversal": 0.0730593607305936,
+          "sink_jaccard": 0.9157894736842105
+        },
+        "0.01": {
+          "agreement": 0.8789954337899544,
+          "source_sink_reversal_cells": 7,
+          "source_sink_reversal": 0.01598173515981735,
+          "sink_jaccard": 0.9175824175824175
+        },
+        "0.05": {
+          "agreement": 0.8356164383561644,
+          "source_sink_reversal_cells": 3,
+          "source_sink_reversal": 0.00684931506849315,
+          "sink_jaccard": 0.8492307692307692
+        }
+      }
+    },
+    {
+      "left": "step33_nestcbc_abs_s41",
+      "right": "step35_est1951_ctl_mid_s41",
+      "contrast": "initialization formulation",
+      "era": "2010-2025",
+      "metric": "potential_lambda",
+      "coverage": 1.0,
+      "cells": 438,
+      "weighted_pearson": 0.9980888046804162,
+      "spearman": 0.997165204795388,
+      "mean_abs_change": 0.20292747921258458,
+      "rms_change": 0.3155919175159204,
+      "q50_abs_change": 0.06613483335149736,
+      "categories": {
+        "0.0": {
+          "agreement": 0.9885844748858448,
+          "source_sink_reversal_cells": 5,
+          "source_sink_reversal": 0.01141552511415525,
+          "sink_jaccard": 0.9806949806949807
+        },
+        "0.01": {
+          "agreement": 0.9863013698630136,
+          "source_sink_reversal_cells": 4,
+          "source_sink_reversal": 0.0091324200913242,
+          "sink_jaccard": 0.9844961240310077
+        },
+        "0.05": {
+          "agreement": 0.9771689497716894,
+          "source_sink_reversal_cells": 1,
+          "source_sink_reversal": 0.00228310502283105,
+          "sink_jaccard": 0.9728682170542635
+        }
+      }
+    },
+    {
+      "left": "step34_abs_natdep_s41",
+      "right": "step35_est1951_nat_mid_s41",
+      "contrast": "initialization formulation",
+      "era": "1951-1965",
+      "metric": "C",
+      "coverage": 0.9954337899543378,
+      "cells": 436,
+      "weighted_pearson": 0.8365689973491652,
+      "spearman": 0.994799751259088,
+      "mean_abs_change": 0.09711093231569368,
+      "rms_change": 0.11765097018777462,
+      "q50_abs_change": 0.10164025046403641,
+      "categories": {
+        "0.0": {
+          "agreement": 0.9954128440366973,
+          "source_sink_reversal_cells": 2,
+          "source_sink_reversal": 0.0045871559633027525,
+          "sink_jaccard": 0.9954128440366973
+        },
+        "0.01": {
+          "agreement": 0.9954128440366973,
+          "source_sink_reversal_cells": 2,
+          "source_sink_reversal": 0.0045871559633027525,
+          "sink_jaccard": 0.9954128440366973
+        },
+        "0.05": {
+          "agreement": 0.9931192660550459,
+          "source_sink_reversal_cells": 2,
+          "source_sink_reversal": 0.0045871559633027525,
+          "sink_jaccard": 0.9931192660550459
+        }
+      }
+    },
+    {
+      "left": "step34_abs_natdep_s41",
+      "right": "step35_est1951_nat_mid_s41",
+      "contrast": "initialization formulation",
+      "era": "1951-1965",
+      "metric": "potential_lambda",
+      "coverage": 1.0,
+      "cells": 438,
+      "weighted_pearson": 0.9936927582436356,
+      "spearman": 0.9950146163326046,
+      "mean_abs_change": 0.13962414237300289,
+      "rms_change": 0.1876933821950129,
+      "q50_abs_change": 0.08697672295946188,
+      "categories": {
+        "0.0": {
+          "agreement": 0.9246575342465754,
+          "source_sink_reversal_cells": 33,
+          "source_sink_reversal": 0.07534246575342465,
+          "sink_jaccard": 0.9151670951156813
+        },
+        "0.01": {
+          "agreement": 0.910958904109589,
+          "source_sink_reversal_cells": 32,
+          "source_sink_reversal": 0.0730593607305936,
+          "sink_jaccard": 0.910025706940874
+        },
+        "0.05": {
+          "agreement": 0.8858447488584474,
+          "source_sink_reversal_cells": 24,
+          "source_sink_reversal": 0.0547945205479452,
+          "sink_jaccard": 0.9036458333333334
+        }
+      }
+    },
+    {
+      "left": "step34_abs_natdep_s41",
+      "right": "step35_est1951_nat_mid_s41",
+      "contrast": "initialization formulation",
+      "era": "1966-1985",
+      "metric": "C",
+      "coverage": 1.0,
+      "cells": 438,
+      "weighted_pearson": 0.9914619310299859,
+      "spearman": 0.9953799264652695,
+      "mean_abs_change": 0.06835596707417697,
+      "rms_change": 0.0930311095738004,
+      "q50_abs_change": 0.04873496646167022,
+      "categories": {
+        "0.0": {
+          "agreement": 0.9771689497716894,
+          "source_sink_reversal_cells": 10,
+          "source_sink_reversal": 0.0228310502283105,
+          "sink_jaccard": 0.9698795180722891
+        },
+        "0.01": {
+          "agreement": 0.9748858447488584,
+          "source_sink_reversal_cells": 10,
+          "source_sink_reversal": 0.0228310502283105,
+          "sink_jaccard": 0.9668674698795181
+        },
+        "0.05": {
+          "agreement": 0.9497716894977168,
+          "source_sink_reversal_cells": 7,
+          "source_sink_reversal": 0.01598173515981735,
+          "sink_jaccard": 0.945619335347432
+        }
+      }
+    },
+    {
+      "left": "step34_abs_natdep_s41",
+      "right": "step35_est1951_nat_mid_s41",
+      "contrast": "initialization formulation",
+      "era": "1966-1985",
+      "metric": "potential_lambda",
+      "coverage": 1.0,
+      "cells": 438,
+      "weighted_pearson": 0.9949297798825141,
+      "spearman": 0.9960668466130873,
+      "mean_abs_change": 0.10490861235352425,
+      "rms_change": 0.13973621234098726,
+      "q50_abs_change": 0.06794956155658012,
+      "categories": {
+        "0.0": {
+          "agreement": 0.9634703196347032,
+          "source_sink_reversal_cells": 16,
+          "source_sink_reversal": 0.0365296803652968,
+          "sink_jaccard": 0.9515151515151515
+        },
+        "0.01": {
+          "agreement": 0.9611872146118722,
+          "source_sink_reversal_cells": 15,
+          "source_sink_reversal": 0.03424657534246575,
+          "sink_jaccard": 0.9515151515151515
+        },
+        "0.05": {
+          "agreement": 0.9429223744292238,
+          "source_sink_reversal_cells": 7,
+          "source_sink_reversal": 0.01598173515981735,
+          "sink_jaccard": 0.9478527607361963
+        }
+      }
+    },
+    {
+      "left": "step34_abs_natdep_s41",
+      "right": "step35_est1951_nat_mid_s41",
+      "contrast": "initialization formulation",
+      "era": "2010-2025",
+      "metric": "C",
+      "coverage": 1.0,
+      "cells": 438,
+      "weighted_pearson": 0.9967464626212329,
+      "spearman": 0.9945437689880401,
+      "mean_abs_change": 0.04718480759327196,
+      "rms_change": 0.05919893142758834,
+      "q50_abs_change": 0.043030972743004804,
+      "categories": {
+        "0.0": {
+          "agreement": 0.9634703196347032,
+          "source_sink_reversal_cells": 16,
+          "source_sink_reversal": 0.0365296803652968,
+          "sink_jaccard": 0.9565217391304348
+        },
+        "0.01": {
+          "agreement": 0.95662100456621,
+          "source_sink_reversal_cells": 4,
+          "source_sink_reversal": 0.0091324200913242,
+          "sink_jaccard": 0.9663865546218487
+        },
+        "0.05": {
+          "agreement": 0.9315068493150684,
+          "source_sink_reversal_cells": 0,
+          "source_sink_reversal": 0.0,
+          "sink_jaccard": 0.9451219512195121
+        }
+      }
+    },
+    {
+      "left": "step34_abs_natdep_s41",
+      "right": "step35_est1951_nat_mid_s41",
+      "contrast": "initialization formulation",
+      "era": "2010-2025",
+      "metric": "potential_lambda",
+      "coverage": 1.0,
+      "cells": 438,
+      "weighted_pearson": 0.9925954701364537,
+      "spearman": 0.9957792255782213,
+      "mean_abs_change": 0.20192927255454268,
+      "rms_change": 0.3379034429445075,
+      "q50_abs_change": 0.0715426708539518,
+      "categories": {
+        "0.0": {
+          "agreement": 0.9817351598173516,
+          "source_sink_reversal_cells": 8,
+          "source_sink_reversal": 0.0182648401826484,
+          "sink_jaccard": 0.9686274509803922
+        },
+        "0.01": {
+          "agreement": 0.9771689497716894,
+          "source_sink_reversal_cells": 8,
+          "source_sink_reversal": 0.0182648401826484,
+          "sink_jaccard": 0.9607843137254902
+        },
+        "0.05": {
+          "agreement": 0.9703196347031964,
+          "source_sink_reversal_cells": 3,
+          "source_sink_reversal": 0.00684931506849315,
+          "sink_jaccard": 0.964
+        }
+      }
+    },
+    {
+      "left": "step33_nestcbc_abs_s41",
+      "right": "step34_abs_natdep_s41",
+      "contrast": "native departure",
+      "era": "1951-1965",
+      "metric": "C",
+      "coverage": 0.9954337899543378,
+      "cells": 436,
+      "weighted_pearson": 0.973827940647311,
+      "spearman": 0.9945734520475157,
+      "mean_abs_change": 0.0759379955892564,
+      "rms_change": 0.08257507794742117,
+      "q50_abs_change": 0.07563886986802652,
+      "categories": {
+        "0.0": {
+          "agreement": 1.0,
+          "source_sink_reversal_cells": 0,
+          "source_sink_reversal": 0.0,
+          "sink_jaccard": 1.0
+        },
+        "0.01": {
+          "agreement": 1.0,
+          "source_sink_reversal_cells": 0,
+          "source_sink_reversal": 0.0,
+          "sink_jaccard": 1.0
+        },
+        "0.05": {
+          "agreement": 1.0,
+          "source_sink_reversal_cells": 0,
+          "source_sink_reversal": 0.0,
+          "sink_jaccard": 1.0
+        }
+      }
+    },
+    {
+      "left": "step33_nestcbc_abs_s41",
+      "right": "step34_abs_natdep_s41",
+      "contrast": "native departure",
+      "era": "1951-1965",
+      "metric": "potential_lambda",
+      "coverage": 1.0,
+      "cells": 438,
+      "weighted_pearson": 0.9877741731242796,
+      "spearman": 0.9944960701669651,
+      "mean_abs_change": 0.09264993145827102,
+      "rms_change": 0.11063583406188714,
+      "q50_abs_change": 0.0780247836369425,
+      "categories": {
+        "0.0": {
+          "agreement": 0.9703196347031964,
+          "source_sink_reversal_cells": 13,
+          "source_sink_reversal": 0.02968036529680365,
+          "sink_jaccard": 0.9644808743169399
+        },
+        "0.01": {
+          "agreement": 0.9611872146118722,
+          "source_sink_reversal_cells": 11,
+          "source_sink_reversal": 0.02511415525114155,
+          "sink_jaccard": 0.9562841530054644
+        },
+        "0.05": {
+          "agreement": 0.9406392694063926,
+          "source_sink_reversal_cells": 7,
+          "source_sink_reversal": 0.01598173515981735,
+          "sink_jaccard": 0.9421487603305785
+        }
+      }
+    },
+    {
+      "left": "step33_nestcbc_abs_s41",
+      "right": "step34_abs_natdep_s41",
+      "contrast": "native departure",
+      "era": "1966-1985",
+      "metric": "C",
+      "coverage": 1.0,
+      "cells": 438,
+      "weighted_pearson": 0.9920798371445702,
+      "spearman": 0.9968477362946399,
+      "mean_abs_change": 0.08059604021165295,
+      "rms_change": 0.1012668449883165,
+      "q50_abs_change": 0.07107673099938144,
+      "categories": {
+        "0.0": {
+          "agreement": 0.9771689497716894,
+          "source_sink_reversal_cells": 10,
+          "source_sink_reversal": 0.0228310502283105,
+          "sink_jaccard": 0.9698795180722891
+        },
+        "0.01": {
+          "agreement": 0.9726027397260274,
+          "source_sink_reversal_cells": 9,
+          "source_sink_reversal": 0.02054794520547945,
+          "sink_jaccard": 0.9697885196374623
+        },
+        "0.05": {
+          "agreement": 0.9611872146118722,
+          "source_sink_reversal_cells": 4,
+          "source_sink_reversal": 0.0091324200913242,
+          "sink_jaccard": 0.9601226993865031
+        }
+      }
+    },
+    {
+      "left": "step33_nestcbc_abs_s41",
+      "right": "step34_abs_natdep_s41",
+      "contrast": "native departure",
+      "era": "1966-1985",
+      "metric": "potential_lambda",
+      "coverage": 1.0,
+      "cells": 438,
+      "weighted_pearson": 0.9934900526335858,
+      "spearman": 0.9963434712131544,
+      "mean_abs_change": 0.1025393050164177,
+      "rms_change": 0.1289841418848868,
+      "q50_abs_change": 0.07835910846763752,
+      "categories": {
+        "0.0": {
+          "agreement": 0.9657534246575342,
+          "source_sink_reversal_cells": 15,
+          "source_sink_reversal": 0.03424657534246575,
+          "sink_jaccard": 0.9544072948328267
+        },
+        "0.01": {
+          "agreement": 0.9657534246575342,
+          "source_sink_reversal_cells": 13,
+          "source_sink_reversal": 0.02968036529680365,
+          "sink_jaccard": 0.9573170731707317
+        },
+        "0.05": {
+          "agreement": 0.9474885844748858,
+          "source_sink_reversal_cells": 6,
+          "source_sink_reversal": 0.0136986301369863,
+          "sink_jaccard": 0.9507692307692308
+        }
+      }
+    },
+    {
+      "left": "step33_nestcbc_abs_s41",
+      "right": "step34_abs_natdep_s41",
+      "contrast": "native departure",
+      "era": "2010-2025",
+      "metric": "C",
+      "coverage": 1.0,
+      "cells": 438,
+      "weighted_pearson": 0.9956321585168556,
+      "spearman": 0.9860536644583586,
+      "mean_abs_change": 0.053975702664835166,
+      "rms_change": 0.06375003318181338,
+      "q50_abs_change": 0.05380776323007142,
+      "categories": {
+        "0.0": {
+          "agreement": 0.9383561643835616,
+          "source_sink_reversal_cells": 27,
+          "source_sink_reversal": 0.06164383561643835,
+          "sink_jaccard": 0.9281914893617021
+        },
+        "0.01": {
+          "agreement": 0.8995433789954338,
+          "source_sink_reversal_cells": 7,
+          "source_sink_reversal": 0.01598173515981735,
+          "sink_jaccard": 0.9220055710306406
+        },
+        "0.05": {
+          "agreement": 0.8470319634703196,
+          "source_sink_reversal_cells": 2,
+          "source_sink_reversal": 0.0045662100456621,
+          "sink_jaccard": 0.8675078864353313
+        }
+      }
+    },
+    {
+      "left": "step33_nestcbc_abs_s41",
+      "right": "step34_abs_natdep_s41",
+      "contrast": "native departure",
+      "era": "2010-2025",
+      "metric": "potential_lambda",
+      "coverage": 1.0,
+      "cells": 438,
+      "weighted_pearson": 0.9928120150023368,
+      "spearman": 0.9958977585767014,
+      "mean_abs_change": 0.13298661417934327,
+      "rms_change": 0.20042465272138132,
+      "q50_abs_change": 0.07477760834689014,
+      "categories": {
+        "0.0": {
+          "agreement": 0.9726027397260274,
+          "source_sink_reversal_cells": 12,
+          "source_sink_reversal": 0.0273972602739726,
+          "sink_jaccard": 0.9536679536679536
+        },
+        "0.01": {
+          "agreement": 0.9680365296803652,
+          "source_sink_reversal_cells": 11,
+          "source_sink_reversal": 0.02511415525114155,
+          "sink_jaccard": 0.9534883720930233
+        },
+        "0.05": {
+          "agreement": 0.954337899543379,
+          "source_sink_reversal_cells": 9,
+          "source_sink_reversal": 0.02054794520547945,
+          "sink_jaccard": 0.9418604651162791
+        }
+      }
+    },
+    {
+      "left": "step35_est1951_ctl_mid_s41",
+      "right": "step35_est1951_nat_mid_s41",
+      "contrast": "later-state native departure",
+      "era": "1951-1965",
+      "metric": "C",
+      "coverage": 1.0,
+      "cells": 438,
+      "weighted_pearson": 0.9900474722151921,
+      "spearman": 0.9934267025854973,
+      "mean_abs_change": 0.013378791448189636,
+      "rms_change": 0.019417563831154266,
+      "q50_abs_change": 0.008805956552037579,
+      "categories": {
+        "0.0": {
+          "agreement": 1.0,
+          "source_sink_reversal_cells": 0,
+          "source_sink_reversal": 0.0,
+          "sink_jaccard": 1.0
+        },
+        "0.01": {
+          "agreement": 1.0,
+          "source_sink_reversal_cells": 0,
+          "source_sink_reversal": 0.0,
+          "sink_jaccard": 1.0
+        },
+        "0.05": {
+          "agreement": 0.997716894977169,
+          "source_sink_reversal_cells": 0,
+          "source_sink_reversal": 0.0,
+          "sink_jaccard": 0.9977116704805492
+        }
+      }
+    },
+    {
+      "left": "step35_est1951_ctl_mid_s41",
+      "right": "step35_est1951_nat_mid_s41",
+      "contrast": "later-state native departure",
+      "era": "1951-1965",
+      "metric": "potential_lambda",
+      "coverage": 1.0,
+      "cells": 438,
+      "weighted_pearson": 0.96911516860599,
+      "spearman": 0.9937931552048946,
+      "mean_abs_change": 0.0768527455932897,
+      "rms_change": 0.12144864086225017,
+      "q50_abs_change": 0.027260694375490946,
+      "categories": {
+        "0.0": {
+          "agreement": 0.954337899543379,
+          "source_sink_reversal_cells": 20,
+          "source_sink_reversal": 0.045662100456621,
+          "sink_jaccard": 0.9509803921568627
+        },
+        "0.01": {
+          "agreement": 0.952054794520548,
+          "source_sink_reversal_cells": 16,
+          "source_sink_reversal": 0.0365296803652968,
+          "sink_jaccard": 0.9509803921568627
+        },
+        "0.05": {
+          "agreement": 0.9315068493150684,
+          "source_sink_reversal_cells": 12,
+          "source_sink_reversal": 0.0273972602739726,
+          "sink_jaccard": 0.9361179361179361
+        }
+      }
+    },
+    {
+      "left": "step35_est1951_ctl_mid_s41",
+      "right": "step35_est1951_nat_mid_s41",
+      "contrast": "later-state native departure",
+      "era": "1966-1985",
+      "metric": "C",
+      "coverage": 1.0,
+      "cells": 438,
+      "weighted_pearson": 0.995547179215804,
+      "spearman": 0.9951978426423032,
+      "mean_abs_change": 0.03865244016977479,
+      "rms_change": 0.05761210483816248,
+      "q50_abs_change": 0.018066042907673004,
+      "categories": {
+        "0.0": {
+          "agreement": 0.9863013698630136,
+          "source_sink_reversal_cells": 6,
+          "source_sink_reversal": 0.0136986301369863,
+          "sink_jaccard": 0.9821958456973294
+        },
+        "0.01": {
+          "agreement": 0.9840182648401826,
+          "source_sink_reversal_cells": 6,
+          "source_sink_reversal": 0.0136986301369863,
+          "sink_jaccard": 0.9821958456973294
+        },
+        "0.05": {
+          "agreement": 0.9794520547945206,
+          "source_sink_reversal_cells": 2,
+          "source_sink_reversal": 0.0045662100456621,
+          "sink_jaccard": 0.9850746268656716
+        }
+      }
+    },
+    {
+      "left": "step35_est1951_ctl_mid_s41",
+      "right": "step35_est1951_nat_mid_s41",
+      "contrast": "later-state native departure",
+      "era": "1966-1985",
+      "metric": "potential_lambda",
+      "coverage": 1.0,
+      "cells": 438,
+      "weighted_pearson": 0.9893275189866964,
+      "spearman": 0.9964390116661461,
+      "mean_abs_change": 0.09082295348715673,
+      "rms_change": 0.135560633954283,
+      "q50_abs_change": 0.04166092029890267,
+      "categories": {
+        "0.0": {
+          "agreement": 0.9657534246575342,
+          "source_sink_reversal_cells": 15,
+          "source_sink_reversal": 0.03424657534246575,
+          "sink_jaccard": 0.9563953488372093
+        },
+        "0.01": {
+          "agreement": 0.9634703196347032,
+          "source_sink_reversal_cells": 15,
+          "source_sink_reversal": 0.03424657534246575,
+          "sink_jaccard": 0.9563953488372093
+        },
+        "0.05": {
+          "agreement": 0.9497716894977168,
+          "source_sink_reversal_cells": 8,
+          "source_sink_reversal": 0.0182648401826484,
+          "sink_jaccard": 0.9558823529411765
+        }
+      }
+    },
+    {
+      "left": "step35_est1951_ctl_mid_s41",
+      "right": "step35_est1951_nat_mid_s41",
+      "contrast": "later-state native departure",
+      "era": "2010-2025",
+      "metric": "C",
+      "coverage": 1.0,
+      "cells": 438,
+      "weighted_pearson": 0.996207534295916,
+      "spearman": 0.9932974587739017,
+      "mean_abs_change": 0.026566901157564105,
+      "rms_change": 0.03928976379559778,
+      "q50_abs_change": 0.017075611880366603,
+      "categories": {
+        "0.0": {
+          "agreement": 0.9748858447488584,
+          "source_sink_reversal_cells": 11,
+          "source_sink_reversal": 0.02511415525114155,
+          "sink_jaccard": 0.9700272479564033
+        },
+        "0.01": {
+          "agreement": 0.9452054794520548,
+          "source_sink_reversal_cells": 2,
+          "source_sink_reversal": 0.0045662100456621,
+          "sink_jaccard": 0.9777158774373259
+        },
+        "0.05": {
+          "agreement": 0.9497716894977168,
+          "source_sink_reversal_cells": 0,
+          "source_sink_reversal": 0.0,
+          "sink_jaccard": 0.9606060606060606
+        }
+      }
+    },
+    {
+      "left": "step35_est1951_ctl_mid_s41",
+      "right": "step35_est1951_nat_mid_s41",
+      "contrast": "later-state native departure",
+      "era": "2010-2025",
+      "metric": "potential_lambda",
+      "coverage": 1.0,
+      "cells": 438,
+      "weighted_pearson": 0.9965343931508216,
+      "spearman": 0.9968614461354279,
+      "mean_abs_change": 0.09643465836728211,
+      "rms_change": 0.14656666779290112,
+      "q50_abs_change": 0.04662440540247306,
+      "categories": {
+        "0.0": {
+          "agreement": 0.9840182648401826,
+          "source_sink_reversal_cells": 7,
+          "source_sink_reversal": 0.01598173515981735,
+          "sink_jaccard": 0.9728682170542635
+        },
+        "0.01": {
+          "agreement": 0.9817351598173516,
+          "source_sink_reversal_cells": 7,
+          "source_sink_reversal": 0.01598173515981735,
+          "sink_jaccard": 0.9689922480620154
+        },
+        "0.05": {
+          "agreement": 0.9726027397260274,
+          "source_sink_reversal_cells": 0,
+          "source_sink_reversal": 0.0,
+          "sink_jaccard": 0.9880478087649402
+        }
+      }
+    },
+    {
+      "left": "step34_abs_natdep_s41",
+      "right": "step34_abs_v2_natdep_s41",
+      "contrast": "DESK basis",
+      "era": "1951-1965",
+      "metric": "C",
+      "coverage": 0.9954337899543378,
+      "cells": 436,
+      "weighted_pearson": 0.9793753734706512,
+      "spearman": 0.9958165774669402,
+      "mean_abs_change": 0.050292094468571795,
+      "rms_change": 0.06457250985988527,
+      "q50_abs_change": 0.0430989844809459,
+      "categories": {
+        "0.0": {
+          "agreement": 1.0,
+          "source_sink_reversal_cells": 0,
+          "source_sink_reversal": 0.0,
+          "sink_jaccard": 1.0
+        },
+        "0.01": {
+          "agreement": 1.0,
+          "source_sink_reversal_cells": 0,
+          "source_sink_reversal": 0.0,
+          "sink_jaccard": 1.0
+        },
+        "0.05": {
+          "agreement": 1.0,
+          "source_sink_reversal_cells": 0,
+          "source_sink_reversal": 0.0,
+          "sink_jaccard": 1.0
+        }
+      }
+    },
+    {
+      "left": "step34_abs_natdep_s41",
+      "right": "step34_abs_v2_natdep_s41",
+      "contrast": "DESK basis",
+      "era": "1951-1965",
+      "metric": "potential_lambda",
+      "coverage": 1.0,
+      "cells": 438,
+      "weighted_pearson": 0.9857067377911116,
+      "spearman": 0.9957520915183283,
+      "mean_abs_change": 0.08051354403389067,
+      "rms_change": 0.11904003235595478,
+      "q50_abs_change": 0.03785879691315781,
+      "categories": {
+        "0.0": {
+          "agreement": 0.9657534246575342,
+          "source_sink_reversal_cells": 15,
+          "source_sink_reversal": 0.03424657534246575,
+          "sink_jaccard": 0.9595687331536388
+        },
+        "0.01": {
+          "agreement": 0.95662100456621,
+          "source_sink_reversal_cells": 13,
+          "source_sink_reversal": 0.02968036529680365,
+          "sink_jaccard": 0.9540540540540541
+        },
+        "0.05": {
+          "agreement": 0.9269406392694064,
+          "source_sink_reversal_cells": 8,
+          "source_sink_reversal": 0.0182648401826484,
+          "sink_jaccard": 0.9427792915531336
+        }
+      }
+    },
+    {
+      "left": "step34_abs_natdep_s41",
+      "right": "step34_abs_v2_natdep_s41",
+      "contrast": "DESK basis",
+      "era": "1966-1985",
+      "metric": "C",
+      "coverage": 1.0,
+      "cells": 438,
+      "weighted_pearson": 0.9938892411179492,
+      "spearman": 0.9968140329360359,
+      "mean_abs_change": 0.04914035565351753,
+      "rms_change": 0.07262782336803866,
+      "q50_abs_change": 0.031041272439975898,
+      "categories": {
+        "0.0": {
+          "agreement": 0.9726027397260274,
+          "source_sink_reversal_cells": 12,
+          "source_sink_reversal": 0.0273972602739726,
+          "sink_jaccard": 0.9640718562874252
+        },
+        "0.01": {
+          "agreement": 0.9680365296803652,
+          "source_sink_reversal_cells": 12,
+          "source_sink_reversal": 0.0273972602739726,
+          "sink_jaccard": 0.9610778443113772
+        },
+        "0.05": {
+          "agreement": 0.9474885844748858,
+          "source_sink_reversal_cells": 5,
+          "source_sink_reversal": 0.01141552511415525,
+          "sink_jaccard": 0.9427710843373494
+        }
+      }
+    },
+    {
+      "left": "step34_abs_natdep_s41",
+      "right": "step34_abs_v2_natdep_s41",
+      "contrast": "DESK basis",
+      "era": "1966-1985",
+      "metric": "potential_lambda",
+      "coverage": 1.0,
+      "cells": 438,
+      "weighted_pearson": 0.9921414542106587,
+      "spearman": 0.9972434651365532,
+      "mean_abs_change": 0.09026581138420443,
+      "rms_change": 0.1329218423664764,
+      "q50_abs_change": 0.046715762158795374,
+      "categories": {
+        "0.0": {
+          "agreement": 0.9680365296803652,
+          "source_sink_reversal_cells": 14,
+          "source_sink_reversal": 0.0319634703196347,
+          "sink_jaccard": 0.9573170731707317
+        },
+        "0.01": {
+          "agreement": 0.9680365296803652,
+          "source_sink_reversal_cells": 12,
+          "source_sink_reversal": 0.0273972602739726,
+          "sink_jaccard": 0.9602446483180428
+        },
+        "0.05": {
+          "agreement": 0.9497716894977168,
+          "source_sink_reversal_cells": 5,
+          "source_sink_reversal": 0.01141552511415525,
+          "sink_jaccard": 0.9596273291925466
+        }
+      }
+    },
+    {
+      "left": "step34_abs_natdep_s41",
+      "right": "step34_abs_v2_natdep_s41",
+      "contrast": "DESK basis",
+      "era": "2010-2025",
+      "metric": "C",
+      "coverage": 1.0,
+      "cells": 438,
+      "weighted_pearson": 0.995561210188974,
+      "spearman": 0.9952642496836203,
+      "mean_abs_change": 0.034287280416506014,
+      "rms_change": 0.04653927404536635,
+      "q50_abs_change": 0.027008433331391565,
+      "categories": {
+        "0.0": {
+          "agreement": 0.952054794520548,
+          "source_sink_reversal_cells": 21,
+          "source_sink_reversal": 0.04794520547945205,
+          "sink_jaccard": 0.9448818897637795
+        },
+        "0.01": {
+          "agreement": 0.9292237442922374,
+          "source_sink_reversal_cells": 7,
+          "source_sink_reversal": 0.01598173515981735,
+          "sink_jaccard": 0.9380053908355795
+        },
+        "0.05": {
+          "agreement": 0.9018264840182648,
+          "source_sink_reversal_cells": 0,
+          "source_sink_reversal": 0.0,
+          "sink_jaccard": 0.9186046511627907
+        }
+      }
+    },
+    {
+      "left": "step34_abs_natdep_s41",
+      "right": "step34_abs_v2_natdep_s41",
+      "contrast": "DESK basis",
+      "era": "2010-2025",
+      "metric": "potential_lambda",
+      "coverage": 1.0,
+      "cells": 438,
+      "weighted_pearson": 0.992983393242284,
+      "spearman": 0.9971077948370881,
+      "mean_abs_change": 0.12862450751070634,
+      "rms_change": 0.20645468860906804,
+      "q50_abs_change": 0.05726608726644972,
+      "categories": {
+        "0.0": {
+          "agreement": 0.9703196347031964,
+          "source_sink_reversal_cells": 13,
+          "source_sink_reversal": 0.02968036529680365,
+          "sink_jaccard": 0.95
+        },
+        "0.01": {
+          "agreement": 0.9657534246575342,
+          "source_sink_reversal_cells": 12,
+          "source_sink_reversal": 0.0273972602739726,
+          "sink_jaccard": 0.9498069498069498
+        },
+        "0.05": {
+          "agreement": 0.958904109589041,
+          "source_sink_reversal_cells": 7,
+          "source_sink_reversal": 0.01598173515981735,
+          "sink_jaccard": 0.94921875
+        }
+      }
+    },
+    {
+      "left": "step33_nestcbc_abs_s41",
+      "right": "step36_nonest_ctl_s41",
+      "contrast": "NestWatch",
+      "era": "1951-1965",
+      "metric": "C",
+      "coverage": 0.9931506849315068,
+      "cells": 435,
+      "weighted_pearson": 0.9932779198690056,
+      "spearman": 0.997834932362593,
+      "mean_abs_change": 0.027876011698802602,
+      "rms_change": 0.03131435331557662,
+      "q50_abs_change": 0.027606028502514535,
+      "categories": {
+        "0.0": {
+          "agreement": 1.0,
+          "source_sink_reversal_cells": 0,
+          "source_sink_reversal": 0.0,
+          "sink_jaccard": 1.0
+        },
+        "0.01": {
+          "agreement": 1.0,
+          "source_sink_reversal_cells": 0,
+          "source_sink_reversal": 0.0,
+          "sink_jaccard": 1.0
+        },
+        "0.05": {
+          "agreement": 1.0,
+          "source_sink_reversal_cells": 0,
+          "source_sink_reversal": 0.0,
+          "sink_jaccard": 1.0
+        }
+      }
+    },
+    {
+      "left": "step33_nestcbc_abs_s41",
+      "right": "step36_nonest_ctl_s41",
+      "contrast": "NestWatch",
+      "era": "1951-1965",
+      "metric": "potential_lambda",
+      "coverage": 1.0,
+      "cells": 438,
+      "weighted_pearson": 0.993623154795255,
+      "spearman": 0.9978718328393387,
+      "mean_abs_change": 0.05941033707606736,
+      "rms_change": 0.08137099077887469,
+      "q50_abs_change": 0.030993530541703403,
+      "categories": {
+        "0.0": {
+          "agreement": 0.9680365296803652,
+          "source_sink_reversal_cells": 14,
+          "source_sink_reversal": 0.0319634703196347,
+          "sink_jaccard": 0.9628647214854111
+        },
+        "0.01": {
+          "agreement": 0.958904109589041,
+          "source_sink_reversal_cells": 11,
+          "source_sink_reversal": 0.02511415525114155,
+          "sink_jaccard": 0.9627659574468085
+        },
+        "0.05": {
+          "agreement": 0.9429223744292238,
+          "source_sink_reversal_cells": 3,
+          "source_sink_reversal": 0.00684931506849315,
+          "sink_jaccard": 0.9649595687331537
+        }
+      }
+    },
+    {
+      "left": "step33_nestcbc_abs_s41",
+      "right": "step36_nonest_ctl_s41",
+      "contrast": "NestWatch",
+      "era": "1966-1985",
+      "metric": "C",
+      "coverage": 1.0,
+      "cells": 438,
+      "weighted_pearson": 0.9964808964131268,
+      "spearman": 0.997424120851104,
+      "mean_abs_change": 0.03934925416671748,
+      "rms_change": 0.04700135191459466,
+      "q50_abs_change": 0.03445429466296451,
+      "categories": {
+        "0.0": {
+          "agreement": 0.9885844748858448,
+          "source_sink_reversal_cells": 5,
+          "source_sink_reversal": 0.01141552511415525,
+          "sink_jaccard": 0.9850746268656716
+        },
+        "0.01": {
+          "agreement": 0.9840182648401826,
+          "source_sink_reversal_cells": 2,
+          "source_sink_reversal": 0.0045662100456621,
+          "sink_jaccard": 0.9850299401197605
+        },
+        "0.05": {
+          "agreement": 0.9817351598173516,
+          "source_sink_reversal_cells": 0,
+          "source_sink_reversal": 0.0,
+          "sink_jaccard": 0.9878787878787879
+        }
+      }
+    },
+    {
+      "left": "step33_nestcbc_abs_s41",
+      "right": "step36_nonest_ctl_s41",
+      "contrast": "NestWatch",
+      "era": "1966-1985",
+      "metric": "potential_lambda",
+      "coverage": 1.0,
+      "cells": 438,
+      "weighted_pearson": 0.9966098814946743,
+      "spearman": 0.9984223686334837,
+      "mean_abs_change": 0.0554896395414709,
+      "rms_change": 0.09002974750872664,
+      "q50_abs_change": 0.029606076924153815,
+      "categories": {
+        "0.0": {
+          "agreement": 0.9931506849315068,
+          "source_sink_reversal_cells": 3,
+          "source_sink_reversal": 0.00684931506849315,
+          "sink_jaccard": 0.9908814589665653
+        },
+        "0.01": {
+          "agreement": 0.9931506849315068,
+          "source_sink_reversal_cells": 2,
+          "source_sink_reversal": 0.0045662100456621,
+          "sink_jaccard": 0.9939024390243902
+        },
+        "0.05": {
+          "agreement": 0.9840182648401826,
+          "source_sink_reversal_cells": 1,
+          "source_sink_reversal": 0.00228310502283105,
+          "sink_jaccard": 0.9938650306748467
+        }
+      }
+    },
+    {
+      "left": "step33_nestcbc_abs_s41",
+      "right": "step36_nonest_ctl_s41",
+      "contrast": "NestWatch",
+      "era": "2010-2025",
+      "metric": "C",
+      "coverage": 1.0,
+      "cells": 438,
+      "weighted_pearson": 0.9944210057403059,
+      "spearman": 0.9842869515376407,
+      "mean_abs_change": 0.03693624262859529,
+      "rms_change": 0.050655381218268604,
+      "q50_abs_change": 0.02564403210518968,
+      "categories": {
+        "0.0": {
+          "agreement": 0.952054794520548,
+          "source_sink_reversal_cells": 21,
+          "source_sink_reversal": 0.04794520547945205,
+          "sink_jaccard": 0.9432432432432433
+        },
+        "0.01": {
+          "agreement": 0.9200913242009132,
+          "source_sink_reversal_cells": 5,
+          "source_sink_reversal": 0.01141552511415525,
+          "sink_jaccard": 0.9373219373219374
+        },
+        "0.05": {
+          "agreement": 0.908675799086758,
+          "source_sink_reversal_cells": 1,
+          "source_sink_reversal": 0.00228310502283105,
+          "sink_jaccard": 0.9006622516556292
+        }
+      }
+    },
+    {
+      "left": "step33_nestcbc_abs_s41",
+      "right": "step36_nonest_ctl_s41",
+      "contrast": "NestWatch",
+      "era": "2010-2025",
+      "metric": "potential_lambda",
+      "coverage": 1.0,
+      "cells": 438,
+      "weighted_pearson": 0.9980844591492162,
+      "spearman": 0.998509911679349,
+      "mean_abs_change": 0.29840211960775126,
+      "rms_change": 0.5028940528991594,
+      "q50_abs_change": 0.07683489540113331,
+      "categories": {
+        "0.0": {
+          "agreement": 0.9771689497716894,
+          "source_sink_reversal_cells": 10,
+          "source_sink_reversal": 0.0228310502283105,
+          "sink_jaccard": 0.9613899613899614
+        },
+        "0.01": {
+          "agreement": 0.9748858447488584,
+          "source_sink_reversal_cells": 6,
+          "source_sink_reversal": 0.0136986301369863,
+          "sink_jaccard": 0.9651162790697675
+        },
+        "0.05": {
+          "agreement": 0.9634703196347032,
+          "source_sink_reversal_cells": 5,
+          "source_sink_reversal": 0.01141552511415525,
+          "sink_jaccard": 0.9534883720930233
+        }
+      }
+    },
+    {
+      "left": "step34_abs_natdep_s41",
+      "right": "step36_nonest_nat_s41",
+      "contrast": "NestWatch",
+      "era": "1951-1965",
+      "metric": "C",
+      "coverage": 0.9954337899543378,
+      "cells": 436,
+      "weighted_pearson": 0.9889555315133607,
+      "spearman": 0.9949911572460993,
+      "mean_abs_change": 0.1751092247256728,
+      "rms_change": 0.1802893284294615,
+      "q50_abs_change": 0.18823612932832184,
+      "categories": {
+        "0.0": {
+          "agreement": 1.0,
+          "source_sink_reversal_cells": 0,
+          "source_sink_reversal": 0.0,
+          "sink_jaccard": 1.0
+        },
+        "0.01": {
+          "agreement": 1.0,
+          "source_sink_reversal_cells": 0,
+          "source_sink_reversal": 0.0,
+          "sink_jaccard": 1.0
+        },
+        "0.05": {
+          "agreement": 1.0,
+          "source_sink_reversal_cells": 0,
+          "source_sink_reversal": 0.0,
+          "sink_jaccard": 1.0
+        }
+      }
+    },
+    {
+      "left": "step34_abs_natdep_s41",
+      "right": "step36_nonest_nat_s41",
+      "contrast": "NestWatch",
+      "era": "1951-1965",
+      "metric": "potential_lambda",
+      "coverage": 1.0,
+      "cells": 438,
+      "weighted_pearson": 0.9855235721335912,
+      "spearman": 0.9951278653299477,
+      "mean_abs_change": 0.13756952153890017,
+      "rms_change": 0.159376139397266,
+      "q50_abs_change": 0.1686350353493992,
+      "categories": {
+        "0.0": {
+          "agreement": 0.9817351598173516,
+          "source_sink_reversal_cells": 8,
+          "source_sink_reversal": 0.0182648401826484,
+          "sink_jaccard": 0.9777158774373259
+        },
+        "0.01": {
+          "agreement": 0.9748858447488584,
+          "source_sink_reversal_cells": 7,
+          "source_sink_reversal": 0.01598173515981735,
+          "sink_jaccard": 0.9721448467966574
+        },
+        "0.05": {
+          "agreement": 0.9771689497716894,
+          "source_sink_reversal_cells": 1,
+          "source_sink_reversal": 0.00228310502283105,
+          "sink_jaccard": 0.98
+        }
+      }
+    },
+    {
+      "left": "step34_abs_natdep_s41",
+      "right": "step36_nonest_nat_s41",
+      "contrast": "NestWatch",
+      "era": "1966-1985",
+      "metric": "C",
+      "coverage": 1.0,
+      "cells": 438,
+      "weighted_pearson": 0.9897173304399606,
+      "spearman": 0.9960322863894341,
+      "mean_abs_change": 0.13925579536498395,
+      "rms_change": 0.15916915782034957,
+      "q50_abs_change": 0.15682195984604042,
+      "categories": {
+        "0.0": {
+          "agreement": 0.9748858447488584,
+          "source_sink_reversal_cells": 11,
+          "source_sink_reversal": 0.02511415525114155,
+          "sink_jaccard": 0.9665653495440729
+        },
+        "0.01": {
+          "agreement": 0.9703196347031964,
+          "source_sink_reversal_cells": 10,
+          "source_sink_reversal": 0.0228310502283105,
+          "sink_jaccard": 0.9664634146341463
+        },
+        "0.05": {
+          "agreement": 0.958904109589041,
+          "source_sink_reversal_cells": 3,
+          "source_sink_reversal": 0.00684931506849315,
+          "sink_jaccard": 0.9658385093167702
+        }
+      }
+    },
+    {
+      "left": "step34_abs_natdep_s41",
+      "right": "step36_nonest_nat_s41",
+      "contrast": "NestWatch",
+      "era": "1966-1985",
+      "metric": "potential_lambda",
+      "coverage": 1.0,
+      "cells": 438,
+      "weighted_pearson": 0.9936966674122794,
+      "spearman": 0.9961194010027749,
+      "mean_abs_change": 0.163129188451388,
+      "rms_change": 0.18162075986104392,
+      "q50_abs_change": 0.19526401937902238,
+      "categories": {
+        "0.0": {
+          "agreement": 0.9840182648401826,
+          "source_sink_reversal_cells": 7,
+          "source_sink_reversal": 0.01598173515981735,
+          "sink_jaccard": 0.9777777777777777
+        },
+        "0.01": {
+          "agreement": 0.9726027397260274,
+          "source_sink_reversal_cells": 7,
+          "source_sink_reversal": 0.01598173515981735,
+          "sink_jaccard": 0.9682539682539683
+        },
+        "0.05": {
+          "agreement": 0.9657534246575342,
+          "source_sink_reversal_cells": 2,
+          "source_sink_reversal": 0.0045662100456621,
+          "sink_jaccard": 0.9646302250803859
+        }
+      }
+    },
+    {
+      "left": "step34_abs_natdep_s41",
+      "right": "step36_nonest_nat_s41",
+      "contrast": "NestWatch",
+      "era": "2010-2025",
+      "metric": "C",
+      "coverage": 1.0,
+      "cells": 438,
+      "weighted_pearson": 0.9904882859715308,
+      "spearman": 0.9867797147767592,
+      "mean_abs_change": 0.11534819280760084,
+      "rms_change": 0.1458416381180204,
+      "q50_abs_change": 0.11664765598345372,
+      "categories": {
+        "0.0": {
+          "agreement": 0.9406392694063926,
+          "source_sink_reversal_cells": 26,
+          "source_sink_reversal": 0.0593607305936073,
+          "sink_jaccard": 0.9287671232876712
+        },
+        "0.01": {
+          "agreement": 0.9315068493150684,
+          "source_sink_reversal_cells": 13,
+          "source_sink_reversal": 0.02968036529680365,
+          "sink_jaccard": 0.9431818181818182
+        },
+        "0.05": {
+          "agreement": 0.9178082191780822,
+          "source_sink_reversal_cells": 1,
+          "source_sink_reversal": 0.00228310502283105,
+          "sink_jaccard": 0.9380804953560371
+        }
+      }
+    },
+    {
+      "left": "step34_abs_natdep_s41",
+      "right": "step36_nonest_nat_s41",
+      "contrast": "NestWatch",
+      "era": "2010-2025",
+      "metric": "potential_lambda",
+      "coverage": 1.0,
+      "cells": 438,
+      "weighted_pearson": 0.997497834373858,
+      "spearman": 0.9969778369712847,
+      "mean_abs_change": 0.18919241662076913,
+      "rms_change": 0.2114736597473725,
+      "q50_abs_change": 0.2098705101602989,
+      "categories": {
+        "0.0": {
+          "agreement": 0.9840182648401826,
+          "source_sink_reversal_cells": 7,
+          "source_sink_reversal": 0.01598173515981735,
+          "sink_jaccard": 0.97165991902834
+        },
+        "0.01": {
+          "agreement": 0.9840182648401826,
+          "source_sink_reversal_cells": 5,
+          "source_sink_reversal": 0.01141552511415525,
+          "sink_jaccard": 0.975609756097561
+        },
+        "0.05": {
+          "agreement": 0.9748858447488584,
+          "source_sink_reversal_cells": 3,
+          "source_sink_reversal": 0.00684931506849315,
+          "sink_jaccard": 0.9753086419753086
+        }
+      }
+    },
+    {
+      "left": "step33_nestcbc_s41",
+      "right": "step33_nestcbc_abs_s41",
+      "contrast": "Allee law",
+      "era": "1951-1965",
+      "metric": "C",
+      "coverage": 0.9680365296803652,
+      "cells": 424,
+      "weighted_pearson": 0.9615534089504848,
+      "spearman": 0.9943053030124133,
+      "mean_abs_change": 0.04540384971444077,
+      "rms_change": 0.056368333816315605,
+      "q50_abs_change": 0.038030699723019756,
+      "categories": {
+        "0.0": {
+          "agreement": 1.0,
+          "source_sink_reversal_cells": 0,
+          "source_sink_reversal": 0.0,
+          "sink_jaccard": 1.0
+        },
+        "0.01": {
+          "agreement": 1.0,
+          "source_sink_reversal_cells": 0,
+          "source_sink_reversal": 0.0,
+          "sink_jaccard": 1.0
+        },
+        "0.05": {
+          "agreement": 1.0,
+          "source_sink_reversal_cells": 0,
+          "source_sink_reversal": 0.0,
+          "sink_jaccard": 1.0
+        }
+      }
+    },
+    {
+      "left": "step33_nestcbc_s41",
+      "right": "step33_nestcbc_abs_s41",
+      "contrast": "Allee law",
+      "era": "1951-1965",
+      "metric": "potential_lambda",
+      "coverage": 1.0,
+      "cells": 438,
+      "weighted_pearson": 0.952666837215476,
+      "spearman": 0.9952736751991621,
+      "mean_abs_change": 0.13364629101553743,
+      "rms_change": 0.18541119852289,
+      "q50_abs_change": 0.050870691740877855,
+      "categories": {
+        "0.0": {
+          "agreement": 0.9337899543378996,
+          "source_sink_reversal_cells": 29,
+          "source_sink_reversal": 0.06621004566210045,
+          "sink_jaccard": 0.9260204081632653
+        },
+        "0.01": {
+          "agreement": 0.9292237442922374,
+          "source_sink_reversal_cells": 27,
+          "source_sink_reversal": 0.06164383561643835,
+          "sink_jaccard": 0.923469387755102
+        },
+        "0.05": {
+          "agreement": 0.908675799086758,
+          "source_sink_reversal_cells": 16,
+          "source_sink_reversal": 0.0365296803652968,
+          "sink_jaccard": 0.9322916666666666
+        }
+      }
+    },
+    {
+      "left": "step33_nestcbc_s41",
+      "right": "step33_nestcbc_abs_s41",
+      "contrast": "Allee law",
+      "era": "1966-1985",
+      "metric": "C",
+      "coverage": 1.0,
+      "cells": 438,
+      "weighted_pearson": 0.9915048778744686,
+      "spearman": 0.9885044413100637,
+      "mean_abs_change": 0.0537320481800535,
+      "rms_change": 0.06841170367332416,
+      "q50_abs_change": 0.03935336161430249,
+      "categories": {
+        "0.0": {
+          "agreement": 0.9885844748858448,
+          "source_sink_reversal_cells": 5,
+          "source_sink_reversal": 0.01141552511415525,
+          "sink_jaccard": 0.9850299401197605
+        },
+        "0.01": {
+          "agreement": 0.9863013698630136,
+          "source_sink_reversal_cells": 4,
+          "source_sink_reversal": 0.0091324200913242,
+          "sink_jaccard": 0.987987987987988
+        },
+        "0.05": {
+          "agreement": 0.9771689497716894,
+          "source_sink_reversal_cells": 1,
+          "source_sink_reversal": 0.00228310502283105,
+          "sink_jaccard": 0.9818731117824774
+        }
+      }
+    },
+    {
+      "left": "step33_nestcbc_s41",
+      "right": "step33_nestcbc_abs_s41",
+      "contrast": "Allee law",
+      "era": "1966-1985",
+      "metric": "potential_lambda",
+      "coverage": 1.0,
+      "cells": 438,
+      "weighted_pearson": 0.9758012058657574,
+      "spearman": 0.9961438216566785,
+      "mean_abs_change": 0.13458635245970482,
+      "rms_change": 0.20541821195168394,
+      "q50_abs_change": 0.05030420231336557,
+      "categories": {
+        "0.0": {
+          "agreement": 0.9771689497716894,
+          "source_sink_reversal_cells": 10,
+          "source_sink_reversal": 0.0228310502283105,
+          "sink_jaccard": 0.9704142011834319
+        },
+        "0.01": {
+          "agreement": 0.9726027397260274,
+          "source_sink_reversal_cells": 8,
+          "source_sink_reversal": 0.0182648401826484,
+          "sink_jaccard": 0.9732142857142857
+        },
+        "0.05": {
+          "agreement": 0.9634703196347032,
+          "source_sink_reversal_cells": 4,
+          "source_sink_reversal": 0.0091324200913242,
+          "sink_jaccard": 0.9730538922155688
+        }
+      }
+    },
+    {
+      "left": "step33_nestcbc_s41",
+      "right": "step33_nestcbc_abs_s41",
+      "contrast": "Allee law",
+      "era": "2010-2025",
+      "metric": "C",
+      "coverage": 1.0,
+      "cells": 438,
+      "weighted_pearson": 0.9871600224771824,
+      "spearman": 0.9752960093866709,
+      "mean_abs_change": 0.05435987270021028,
+      "rms_change": 0.07590519308119238,
+      "q50_abs_change": 0.041291218525123484,
+      "categories": {
+        "0.0": {
+          "agreement": 0.9452054794520548,
+          "source_sink_reversal_cells": 24,
+          "source_sink_reversal": 0.0547945205479452,
+          "sink_jaccard": 0.9361702127659575
+        },
+        "0.01": {
+          "agreement": 0.9018264840182648,
+          "source_sink_reversal_cells": 4,
+          "source_sink_reversal": 0.0091324200913242,
+          "sink_jaccard": 0.930939226519337
+        },
+        "0.05": {
+          "agreement": 0.8287671232876712,
+          "source_sink_reversal_cells": 3,
+          "source_sink_reversal": 0.00684931506849315,
+          "sink_jaccard": 0.8288288288288288
+        }
+      }
+    },
+    {
+      "left": "step33_nestcbc_s41",
+      "right": "step33_nestcbc_abs_s41",
+      "contrast": "Allee law",
+      "era": "2010-2025",
+      "metric": "potential_lambda",
+      "coverage": 1.0,
+      "cells": 438,
+      "weighted_pearson": 0.9929626993843432,
+      "spearman": 0.9964867104872213,
+      "mean_abs_change": 0.5641578791618238,
+      "rms_change": 0.9254398213565698,
+      "q50_abs_change": 0.10705234771430427,
+      "categories": {
+        "0.0": {
+          "agreement": 0.9726027397260274,
+          "source_sink_reversal_cells": 12,
+          "source_sink_reversal": 0.0273972602739726,
+          "sink_jaccard": 0.9536679536679536
+        },
+        "0.01": {
+          "agreement": 0.9680365296803652,
+          "source_sink_reversal_cells": 11,
+          "source_sink_reversal": 0.02511415525114155,
+          "sink_jaccard": 0.9534883720930233
+        },
+        "0.05": {
+          "agreement": 0.952054794520548,
+          "source_sink_reversal_cells": 10,
+          "source_sink_reversal": 0.0228310502283105,
+          "sink_jaccard": 0.937984496124031
+        }
+      }
+    }
+  ]
+}

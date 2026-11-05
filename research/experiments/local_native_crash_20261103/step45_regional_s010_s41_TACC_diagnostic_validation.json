@@ -1,0 +1,86 @@
+[
+  {
+    "step": "step45_regional_s010_s41",
+    "point": "map",
+    "checkpoint_sha256": "5b1aec10894853d69bde49aef9a09822692cc5b422cc9832905e8236f7a7602b",
+    "raw_shape": [
+      124,
+      8
+    ],
+    "eps_shape": [
+      124,
+      4318
+    ],
+    "finite": true,
+    "inactive_years_exactly_zero": true,
+    "metrics": {
+      "rms_u_raw": 0.6731282472610474,
+      "max_abs_u_raw": 2.411993980407715,
+      "max_land_rms_eps": 0.013921518471220811,
+      "eras": {
+        "1902-1939": {
+          "land_mean": 0.0,
+          "land_rms": 0.0,
+          "cum_rms": 0.0
+        },
+        "1940-1965": {
+          "land_mean": 0.0,
+          "land_rms": 0.0,
+          "cum_rms": 0.0
+        },
+        "1966-1992": {
+          "land_mean": 0.0002628353388213886,
+          "land_rms": 0.00566078961828413,
+          "cum_rms": 0.15284131969367148
+        },
+        "1993-2018": {
+          "land_mean": -1.9013687245442736e-05,
+          "land_rms": 0.0031305876351922475,
+          "cum_rms": 0.08139527851499843
+        }
+      }
+    }
+  },
+  {
+    "step": "step45_regional_s010_s41",
+    "point": "refined",
+    "checkpoint_sha256": "bbf2d28576927fa55874b68185b6a151943f9301ac9480f375dfe472b159d101",
+    "raw_shape": [
+      124,
+      8
+    ],
+    "eps_shape": [
+      124,
+      4318
+    ],
+    "finite": true,
+    "inactive_years_exactly_zero": true,
+    "metrics": {
+      "rms_u_raw": 0.4581760991432496,
+      "max_abs_u_raw": 2.020126255280041,
+      "max_land_rms_eps": 0.011063989457192282,
+      "eras": {
+        "1902-1939": {
+          "land_mean": 0.0,
+          "land_rms": 0.0,
+          "cum_rms": 0.0
+        },
+        "1940-1965": {
+          "land_mean": 0.0,
+          "land_rms": 0.0,
+          "cum_rms": 0.0
+        },
+        "1966-1992": {
+          "land_mean": -4.060294450648555e-05,
+          "land_rms": 0.0008803588658154823,
+          "cum_rms": 0.02376968937701802
+        },
+        "1993-2018": {
+          "land_mean": -3.6220232963947526e-05,
+          "land_rms": 0.0004546966004073208,
+          "cum_rms": 0.01182211161059034
+        }
+      }
+    }
+  }
+]

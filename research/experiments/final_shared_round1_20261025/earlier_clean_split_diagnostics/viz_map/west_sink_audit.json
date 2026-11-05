@@ -1,0 +1,332 @@
+{
+  "source_fields": "/work/07980/bwa386/ls6/houfin/research/final_age_handoff_20261025/dev_diagnostics_clean2/viz_map/07_source_sink_fields.npz",
+  "modern_window": [
+    2010,
+    2025
+  ],
+  "definitions": {
+    "fundamental_sink": "Allee-free lambda <= 1",
+    "allee_dead": "Allee-free lambda > 1 but no positive equilibrium",
+    "viable": "positive equilibrium exists"
+  },
+  "west": {
+    "cells": 5497,
+    "area_km2": 4007313.0
+  },
+  "classes": {
+    "fundamental_sink": {
+      "cells": 3307,
+      "area_km2": 2410803.0,
+      "fraction_of_west": 0.6016008732035656,
+      "native_seed_cells": 1990,
+      "positive_bbs_cells": 450
+    },
+    "allee_dead": {
+      "cells": 0,
+      "area_km2": 0.0,
+      "fraction_of_west": 0.0,
+      "native_seed_cells": 0,
+      "positive_bbs_cells": 0
+    },
+    "viable": {
+      "cells": 2190,
+      "area_km2": 1596510.0,
+      "fraction_of_west": 0.3983991267964344,
+      "native_seed_cells": 1416,
+      "positive_bbs_cells": 397
+    }
+  },
+  "native_seed": {
+    "west_cells": 3406,
+    "fraction_in_fundamental_sink": 0.5842630651790958,
+    "fraction_allee_dead": 0.0
+  },
+  "observations": {
+    "early_bbs": {
+      "years": [
+        1966,
+        1979
+      ],
+      "positive_records": 1674,
+      "positive_cells": 326,
+      "record_fraction_fundamental_sink": 0.35185185185185186,
+      "record_fraction_allee_dead": 0.0,
+      "count_fraction_fundamental_sink": 0.16968898443188515,
+      "count_fraction_allee_dead": 0.0
+    },
+    "modern_bbs": {
+      "years": [
+        2010,
+        2025
+      ],
+      "positive_records": 4639,
+      "positive_cells": 675,
+      "record_fraction_fundamental_sink": 0.42681612416469067,
+      "record_fraction_allee_dead": 0.0,
+      "count_fraction_fundamental_sink": 0.1878337507679221,
+      "count_fraction_allee_dead": 0.0
+    }
+  },
+  "largest_components": [
+    {
+      "class": "fundamental_sink",
+      "component": 1,
+      "cells": 2639,
+      "area_km2": 1923831.0,
+      "centroid_lon": -116.11776335172802,
+      "centroid_lat": 44.25288686577071,
+      "lon_min": -128.54376778685153,
+      "lon_max": -104.81471891258957,
+      "lat_min": 33.73559389848089,
+      "lat_max": 55.03639856845032,
+      "positive_bbs_cells": 393
+    },
+    {
+      "class": "fundamental_sink",
+      "component": 13,
+      "cells": 374,
+      "area_km2": 272646.0,
+      "centroid_lon": -110.39764201420691,
+      "centroid_lat": 28.749137891937263,
+      "lon_min": -116.16594153981586,
+      "lon_max": -104.78466391177699,
+      "lat_min": 23.35567851294596,
+      "lat_max": 35.050533072917744,
+      "positive_bbs_cells": 25
+    },
+    {
+      "class": "fundamental_sink",
+      "component": 26,
+      "cells": 133,
+      "area_km2": 96957.0,
+      "centroid_lon": -112.54111538469802,
+      "centroid_lat": 26.627338114575796,
+      "lon_min": -115.67301520231429,
+      "lon_max": -109.49062209305296,
+      "lat_min": 22.91297864906337,
+      "lat_max": 29.964686046396803,
+      "positive_bbs_cells": 3
+    },
+    {
+      "class": "fundamental_sink",
+      "component": 18,
+      "cells": 33,
+      "area_km2": 24057.0,
+      "centroid_lon": -108.54300736974285,
+      "centroid_lat": 33.9835982906942,
+      "lon_min": -109.82472419234348,
+      "lon_max": -107.41378791913758,
+      "lat_min": 33.01332742498227,
+      "lat_max": 35.200521201173515,
+      "positive_bbs_cells": 8
+    },
+    {
+      "class": "fundamental_sink",
+      "component": 28,
+      "cells": 28,
+      "area_km2": 20412.0,
+      "centroid_lon": -102.39314149067606,
+      "centroid_lat": 29.686764451423382,
+      "lon_min": -103.71529307283271,
+      "lon_max": -101.49755823759573,
+      "lat_min": 28.796234093620622,
+      "lat_max": 31.051581506203686,
+      "positive_bbs_cells": 8
+    },
+    {
+      "class": "fundamental_sink",
+      "component": 37,
+      "cells": 22,
+      "area_km2": 16038.0,
+      "centroid_lon": -103.2487641252376,
+      "centroid_lat": 26.046689475574166,
+      "lon_min": -104.27935667709284,
+      "lon_max": -102.06417193904694,
+      "lat_min": 25.37403200458999,
+      "lat_max": 26.825957527482245,
+      "positive_bbs_cells": 1
+    },
+    {
+      "class": "fundamental_sink",
+      "component": 32,
+      "cells": 14,
+      "area_km2": 10206.0,
+      "centroid_lon": -107.74622076922932,
+      "centroid_lat": 28.001246440607684,
+      "lon_min": -108.36140912670241,
+      "lon_max": -107.31205469393856,
+      "lat_min": 26.974878485050308,
+      "lat_max": 28.61439061318607,
+      "positive_bbs_cells": 0
+    },
+    {
+      "class": "fundamental_sink",
+      "component": 8,
+      "cells": 6,
+      "area_km2": 4374.0,
+      "centroid_lon": -119.51390075211202,
+      "centroid_lat": 34.77188595439395,
+      "lon_min": -120.06931952209058,
+      "lon_max": -118.98512975920706,
+      "lat_min": 34.548078492573445,
+      "lat_max": 35.0726698079959,
+      "positive_bbs_cells": 3
+    },
+    {
+      "class": "fundamental_sink",
+      "component": 9,
+      "cells": 5,
+      "area_km2": 3645.0,
+      "centroid_lon": -116.10690569070623,
+      "centroid_lat": 35.62906723590122,
+      "lon_min": -116.56930663637304,
+      "lon_max": -115.56160155570252,
+      "lat_min": 35.4263708055987,
+      "lat_max": 35.79782008918888,
+      "positive_bbs_cells": 2
+    },
+    {
+      "class": "fundamental_sink",
+      "component": 4,
+      "cells": 4,
+      "area_km2": 2916.0,
+      "centroid_lon": -121.51316076108547,
+      "centroid_lat": 36.136384158838595,
+      "lon_min": -121.78003876844512,
+      "lon_max": -121.24719055520173,
+      "lat_min": 35.81959091790875,
+      "lat_max": 36.452992820601594,
+      "positive_bbs_cells": 1
+    },
+    {
+      "class": "fundamental_sink",
+      "component": 11,
+      "cells": 4,
+      "area_km2": 2916.0,
+      "centroid_lon": -109.12770047996042,
+      "centroid_lat": 36.07641294812497,
+      "lon_min": -109.27768730472806,
+      "lon_max": -108.97804556936053,
+      "lat_min": 35.8210255353207,
+      "lat_max": 36.33182235052331,
+      "positive_bbs_cells": 0
+    },
+    {
+      "class": "fundamental_sink",
+      "component": 2,
+      "cells": 3,
+      "area_km2": 2187.0,
+      "centroid_lon": -122.20882931656634,
+      "centroid_lat": 37.359270951648206,
+      "lon_min": -122.40600399297372,
+      "lon_max": -122.02672648624429,
+      "lat_min": 37.14927305157576,
+      "lat_max": 37.613061549179285,
+      "positive_bbs_cells": 1
+    },
+    {
+      "class": "fundamental_sink",
+      "component": 19,
+      "cells": 3,
+      "area_km2": 2187.0,
+      "centroid_lon": -105.54206236637407,
+      "centroid_lat": 33.0211930771529,
+      "lon_min": -105.57124255673159,
+      "lon_max": -105.51294134544953,
+      "lat_min": 32.78047185586903,
+      "lat_max": 33.26188247377377,
+      "positive_bbs_cells": 0
+    },
+    {
+      "class": "fundamental_sink",
+      "component": 35,
+      "cells": 3,
+      "area_km2": 2187.0,
+      "centroid_lon": -101.85769042319676,
+      "centroid_lat": 27.912081164179067,
+      "lon_min": -101.96545009262167,
+      "lon_max": -101.65931063616199,
+      "lat_min": 27.677905827422315,
+      "lat_max": 28.151173420186183,
+      "positive_bbs_cells": 0
+    },
+    {
+      "class": "fundamental_sink",
+      "component": 6,
+      "cells": 2,
+      "area_km2": 1458.0,
+      "centroid_lon": -115.84141895693163,
+      "centroid_lat": 36.488166269343225,
+      "lon_min": -115.87294247339686,
+      "lon_max": -115.8098954404664,
+      "lat_min": 36.3702682264407,
+      "lat_max": 36.60606431224575,
+      "positive_bbs_cells": 0
+    },
+    {
+      "class": "fundamental_sink",
+      "component": 14,
+      "cells": 2,
+      "area_km2": 1458.0,
+      "centroid_lon": -118.16822805361596,
+      "centroid_lat": 33.84011060014013,
+      "lon_min": -118.20219166500601,
+      "lon_max": -118.13426444222593,
+      "lat_min": 33.722561410522104,
+      "lat_max": 33.957659789758154,
+      "positive_bbs_cells": 1
+    },
+    {
+      "class": "fundamental_sink",
+      "component": 17,
+      "cells": 2,
+      "area_km2": 1458.0,
+      "centroid_lon": -109.0908261247835,
+      "centroid_lat": 34.98480634760693,
+      "lon_min": -109.11130161956119,
+      "lon_max": -109.07035063000582,
+      "lat_min": 34.86528835895927,
+      "lat_max": 35.104324336254585,
+      "positive_bbs_cells": 0
+    },
+    {
+      "class": "fundamental_sink",
+      "component": 20,
+      "cells": 2,
+      "area_km2": 1458.0,
+      "centroid_lon": -111.71344451145683,
+      "centroid_lat": 32.331288367643594,
+      "lon_min": -111.85562628667968,
+      "lon_max": -111.57126273623399,
+      "lat_min": 32.311356668243505,
+      "lat_max": 32.35122006704368,
+      "positive_bbs_cells": 0
+    },
+    {
+      "class": "fundamental_sink",
+      "component": 22,
+      "cells": 2,
+      "area_km2": 1458.0,
+      "centroid_lon": -114.71157074670573,
+      "centroid_lat": 30.755171024495475,
+      "lon_min": -114.73922453792385,
+      "lon_max": -114.68391695548762,
+      "lat_min": 30.636062553950946,
+      "lat_max": 30.874279495040003,
+      "positive_bbs_cells": 0
+    },
+    {
+      "class": "fundamental_sink",
+      "component": 24,
+      "cells": 2,
+      "area_km2": 1458.0,
+      "centroid_lon": -103.3880942942645,
+      "centroid_lat": 31.84536131188744,
+      "lon_min": -103.3992216780089,
+      "lon_max": -103.37696691052012,
+      "lat_min": 31.724528666307386,
+      "lat_max": 31.966193957467496,
+      "positive_bbs_cells": 0
+    }
+  ]
+}

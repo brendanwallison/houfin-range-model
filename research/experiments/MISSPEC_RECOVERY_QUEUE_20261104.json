@@ -1,0 +1,17 @@
+{
+  "epoch": 1793828368.4766579,
+  "new_dev_job": "3552642",
+  "additional_gpu_hour_ceiling": 6,
+  "arrival_smoke_requeued": "060108_step48_arrival10_full_s41.sh",
+  "summary_recovery": "060099_step48_hurdle_est_summary_recovery_s41.sh",
+  "note": "No fit/model/checkpoint changed. Shooting remains excluded after invalid refinement; negative-flow QC remains unchanged.",
+  "automatic_continuation": {
+    "epoch": 1793828381.4319582,
+    "first_job": "3552642",
+    "maximum_new_waves": 5,
+    "maximum_new_gpu_hours": 30,
+    "scope": "Existing authorized queued backlog; conditional on pending tasks; no local compute"
+  },
+  "audit_guard_validated": true,
+  "released_to_scheduler": true
+}

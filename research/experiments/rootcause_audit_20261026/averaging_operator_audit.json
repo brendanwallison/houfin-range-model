@@ -1,0 +1,18 @@
+{
+  "desk_tempho_1995_s1": {
+    "cells": 306,
+    "mean_annual_projection_vs_projection_epoch_mean_count": {
+      "r24": 0.950814924833242,
+      "r64": 0.9283855502976457
+    },
+    "interpretation": "Same-data averaging-operator agreement, not predictive skill or an independent noise ceiling."
+  },
+  "desk_tempho_1985_s1": {
+    "cells": 304,
+    "mean_annual_projection_vs_projection_epoch_mean_count": {
+      "r24": 0.9519653993409057,
+      "r64": 0.9297346717871604
+    },
+    "interpretation": "Same-data averaging-operator agreement, not predictive skill or an independent noise ceiling."
+  }
+}

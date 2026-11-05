@@ -1,0 +1,10 @@
+{
+  "n_route_epochs": 5589,
+  "n_routes": 1513,
+  "same_route_energy": 0.35522376768325875,
+  "coherence_below_10km": 0.5581380731193527,
+  "n_pairs": 37,
+  "original_artifact": "/home/breallis/houfin/work/houfin/research/E014/route-nugget-k3s0-7c784bd6a1c0/route_nugget.json",
+  "original_same_route_energy": 0.35522376768325875,
+  "original_coherence_below_10km": 0.5581380731193526
+}

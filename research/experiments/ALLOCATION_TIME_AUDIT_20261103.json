@@ -1,0 +1,86 @@
+{
+  "window_start_CST": "2026-11-03 01:11:11",
+  "window_end_CST": "2026-11-03 06:03:59",
+  "total_allocated_SU": 9.700833333333334,
+  "small_CPU_only_tail_seconds": 1477.558827638626,
+  "dev_CPU_only_GPU_seconds": 209.6732361316681,
+  "dev_unoccupied_lane_GPU_seconds": 183.1719000339508,
+  "identifiable_GPU_capacity_overhead_SU": 0.7247731604509884,
+  "last_checkpoint_step": 200,
+  "unsaved_interval_seconds": 555.0,
+  "unsaved_interval_SU": 0.23125,
+  "dev_requested_but_unallocated_remaining_seconds": 4343.0,
+  "details": [
+    {
+      "step": "step41_rational_shared_s42",
+      "end_epoch": 1793692924.4905906,
+      "cpu_only_tail_seconds": 73.49059057235718
+    },
+    {
+      "step": "step41_veit_adult20_s41",
+      "end_epoch": 1793693040.4612324,
+      "cpu_only_tail_seconds": 70.0
+    },
+    {
+      "step": "step41_veit_adult20_s42",
+      "end_epoch": 1793692979.1826456,
+      "cpu_only_tail_seconds": 66.18264555931091
+    },
+    {
+      "step": "step41_rational_shared_s41",
+      "end_epoch": 1793692801.0471997,
+      "cpu_only_tail_seconds": 129.04719972610474
+    },
+    {
+      "step": "step42_power2_rational_adult20_s41",
+      "end_epoch": 1793693801.8871174,
+      "cpu_only_tail_seconds": 118.88711738586426
+    },
+    {
+      "step": "step42_power2_rational_adult20_s42",
+      "end_epoch": 1793694751.9043992,
+      "cpu_only_tail_seconds": 119.90439915657043
+    },
+    {
+      "step": "step42_power2_veit_s42",
+      "end_epoch": 1793698622.532418,
+      "cpu_only_tail_seconds": 120.53241801261902
+    },
+    {
+      "step": "step42_power2_veit_s41",
+      "end_epoch": 1793699589.1713276,
+      "cpu_only_tail_seconds": 120.17132759094238
+    },
+    {
+      "step": "step43_factor_p1_rational_adult20_s41",
+      "end_epoch": 1793700531.7124894,
+      "cpu_only_tail_seconds": 119.71248936653137
+    },
+    {
+      "step": "step43_factor_p1_rational_adult20_s42",
+      "end_epoch": 1793701522.5723867,
+      "cpu_only_tail_seconds": 120.57238674163818
+    },
+    {
+      "step": "step43_factor_p2_rational_adult20_s41",
+      "end_epoch": 1793702554.658703,
+      "cpu_only_tail_seconds": 141.65870308876038
+    },
+    {
+      "step": "step43_factor_p2_rational_adult20_s42",
+      "end_epoch": 1793703529.044945,
+      "cpu_only_tail_seconds": 121.04494500160217
+    },
+    {
+      "step": "step43_factor_p2_veit_s41",
+      "end_epoch": 1793704492.3801746,
+      "cpu_only_tail_seconds": 120.38017463684082
+    },
+    {
+      "step": "step43_factor_p2_veit_s42",
+      "end_epoch": 1793705470.823638,
+      "cpu_only_tail_seconds": 125.82363796234131
+    }
+  ],
+  "caveat": "Not a full GPU utilization audit. CPU-only tails do useful diagnostics but could be offloaded; marker mtimes have one-second granularity. No paid empty-queue interval identified. Window excludes earlier evening use. SU values are calculated from Slurm durations and published rates, not an itemized accounting invoice."
+}

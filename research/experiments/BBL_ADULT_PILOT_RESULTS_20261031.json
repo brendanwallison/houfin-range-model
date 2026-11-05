@@ -1,0 +1,185 @@
+{
+  "manifest": {
+    "source": "/mnt/e/Datasets/houfin/bbl/raw_2025/NABBP_2025_grp_37.csv",
+    "sha256": "3a9b18307987cdad6871039d3b75a87f56b1168eafdd6c2d2c89a990badaaad1",
+    "cutoff": "2024-12-31",
+    "start_year": 1960,
+    "regions": [
+      "west",
+      "plains",
+      "central_east",
+      "east"
+    ],
+    "adult_bands": [
+      171151,
+      6588,
+      40299,
+      78858
+    ],
+    "dead_recoveries": [
+      430,
+      15,
+      90,
+      247
+    ],
+    "ambiguous_release_keys_excluded": 120,
+    "bad_chronology_birds_excluded": 2,
+    "handling_mortality_birds_excluded": 19,
+    "assumptions": [
+      "month-midpoint release",
+      "death assigned to encounter month",
+      "constant survival within origin region",
+      "reporting varies by death era",
+      "breeding-season bandings outside West",
+      "no routine live-recapture likelihood"
+    ],
+    "status": "adult diagnostic only; not population-model likelihood"
+  },
+  "regions": {
+    "west": {
+      "annual_survival": 0.48755139776488376,
+      "conditional_reporting_by_era": [
+        0.0039442996426305,
+        0.0015781042201644814,
+        0.0024336678654227587,
+        0.0020234167134597887
+      ],
+      "nll": 4615.46607500388,
+      "success": true,
+      "start_nll_spread": 1.454174707760103e-06,
+      "profile_grid_support": [
+        0.475,
+        0.5
+      ],
+      "sensitivity_survival": {
+        "adult_fit_fraction0.25_constant0": 0.4822088820692603,
+        "adult_fit_fraction0.5_constant1": 0.4849859819171552,
+        "adult_fit_fraction0.75_constant0": 0.49279328355346247
+      },
+      "sampling_guards": {
+        "41": {
+          "annual_survival": 0.5496185543675882,
+          "truth_delta_nll": 0.000265152552856307,
+          "truth_in_approx95_profile": true,
+          "success": true
+        },
+        "42": {
+          "annual_survival": 0.5505331157114839,
+          "truth_delta_nll": 0.0005374455668061273,
+          "truth_in_approx95_profile": true,
+          "success": true
+        }
+      }
+    },
+    "plains": {
+      "annual_survival": 0.6691888890666885,
+      "conditional_reporting_by_era": [
+        6.144174602214718e-06,
+        0.0031458297554790367,
+        0.002207854205015023,
+        0.0013981893926203193
+      ],
+      "nll": 170.45362663588622,
+      "success": true,
+      "start_nll_spread": 7.617160235895426e-09,
+      "profile_grid_support": [
+        0.5249999999999999,
+        0.8
+      ],
+      "sensitivity_survival": {
+        "adult_fit_fraction0.25_constant0": 0.66656109766634,
+        "adult_fit_fraction0.5_constant1": 0.6517187937210278,
+        "adult_fit_fraction0.75_constant0": 0.6717812617928484
+      },
+      "sampling_guards": {
+        "41": {
+          "annual_survival": 0.2918462429191737,
+          "truth_delta_nll": 2.4974138235726855,
+          "truth_in_approx95_profile": false,
+          "success": true
+        },
+        "42": {
+          "annual_survival": 0.5247233913221162,
+          "truth_delta_nll": 0.039989633558121795,
+          "truth_in_approx95_profile": true,
+          "success": true
+        }
+      }
+    },
+    "central_east": {
+      "annual_survival": 0.5135151664852811,
+      "conditional_reporting_by_era": [
+        0.0097685375291273,
+        0.0020098612938265767,
+        0.001665604860456113,
+        0.003939755778605687
+      ],
+      "nll": 984.566918814634,
+      "success": true,
+      "start_nll_spread": 2.3795882952981628e-07,
+      "profile_grid_support": [
+        0.44999999999999996,
+        0.575
+      ],
+      "sensitivity_survival": {
+        "adult_fit_fraction0.25_constant0": 0.508702778860505,
+        "adult_fit_fraction0.5_constant1": 0.5113944650846065,
+        "adult_fit_fraction0.75_constant0": 0.5182402913882421
+      },
+      "sampling_guards": {
+        "41": {
+          "annual_survival": 0.5047040701161779,
+          "truth_delta_nll": 0.9321796914391598,
+          "truth_in_approx95_profile": true,
+          "success": true
+        },
+        "42": {
+          "annual_survival": 0.5778826337663001,
+          "truth_delta_nll": 0.3082383701428171,
+          "truth_in_approx95_profile": true,
+          "success": true
+        }
+      }
+    },
+    "east": {
+      "annual_survival": 0.5890720629709346,
+      "conditional_reporting_by_era": [
+        0.00454696231461245,
+        0.0027106474376227163,
+        0.0026232866537783182,
+        0.0050446543918558516
+      ],
+      "nll": 2678.967763296677,
+      "success": true,
+      "start_nll_spread": 1.4069105418457184e-06,
+      "profile_grid_support": [
+        0.55,
+        0.625
+      ],
+      "sensitivity_survival": {
+        "adult_fit_fraction0.25_constant0": 0.5854582735640899,
+        "adult_fit_fraction0.5_constant1": 0.5807913079745887,
+        "adult_fit_fraction0.75_constant0": 0.5926275640574235
+      },
+      "sampling_guards": {
+        "41": {
+          "annual_survival": 0.5563752669940172,
+          "truth_delta_nll": 0.04388606200927825,
+          "truth_in_approx95_profile": true,
+          "success": true
+        },
+        "42": {
+          "annual_survival": 0.5263979332178045,
+          "truth_delta_nll": 0.6249858929131733,
+          "truth_in_approx95_profile": true,
+          "success": true
+        }
+      }
+    }
+  },
+  "code_sha256": {
+    "research/exp/bbl_survival.py": "525514588785899c310a5afc6920f335c90f4dbb093c5e5c42fa6b9df06cf802",
+    "tests/test_bbl_survival.py": "fd74d57b6d9aa16cb06cdbd849b5c046b8518b62711b7e35b1977fcf2a3fba67",
+    "tests/test_bbl_forward_transition.py": "2e79ba850a53254066abd581aa404617d97dabb9690469ad6a38292d95799fa7"
+  }
+}

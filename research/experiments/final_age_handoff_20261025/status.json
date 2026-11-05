@@ -1,0 +1,2576 @@
+{
+  "timestamp": "2026-10-25T17:45:41.699120-05:00",
+  "tasks": {
+    "9942": [
+      "done",
+      "9942_recover_81a_finite.sh"
+    ],
+    "9943": [
+      "done",
+      "9943_final_age_build_v1.sh"
+    ],
+    "9944": [
+      "done",
+      "9944_final_age_build_v2.sh"
+    ],
+    "9950": [
+      "failed",
+      "9950_final_age_fit_fd_control64.sh"
+    ],
+    "9951": [
+      "failed",
+      "9951_final_age_fit_fd_v1_r64.sh"
+    ],
+    "9952": [
+      "failed",
+      "9952_final_age_fit_fd_v2_r128.sh"
+    ],
+    "9953": [
+      "failed",
+      "9953_final_age_fit_fd_v2_r64.sh"
+    ],
+    "9954": [
+      "failed",
+      "9954_recover_fd_control64.sh"
+    ],
+    "9955": [
+      "failed",
+      "9955_recover_fd_v1_r64.sh"
+    ],
+    "9956": [
+      "failed",
+      "9956_recover_fd_v2_r128.sh"
+    ],
+    "9957": [
+      "failed",
+      "9957_hostcast_recover_fd_control64.sh"
+    ],
+    "9958": [
+      "done",
+      "9958_hostcast_recover_fd_v1_r64.sh"
+    ],
+    "9959": [
+      "failed",
+      "9959_hostcast_recover_fd_v2_r128.sh"
+    ],
+    "9960": [
+      "done",
+      "9960_final_clean_v1_s1.sh"
+    ],
+    "9961": [
+      "done",
+      "9961_final_clean_v1_s2.sh"
+    ],
+    "9962": [
+      "done",
+      "9962_final_clean_v2_s1.sh"
+    ],
+    "9963": [
+      "done",
+      "9963_final_clean_v2_s2.sh"
+    ],
+    "9964": [
+      "failed",
+      "9964_recover_fd_v2_r64.sh"
+    ],
+    "9965": [
+      "done",
+      "9965_gradient_audit_fd_control64.sh"
+    ],
+    "9966": [
+      "done",
+      "9966_gradient_audit_fd_v2_r128.sh"
+    ],
+    "9967": [
+      "done",
+      "9967_gradient_audit_fd_v1_r64.sh"
+    ],
+    "9968": [
+      "done",
+      "9968_gradient_audit_control64_exact.sh"
+    ],
+    "9970": [
+      "failed",
+      "9970_preconditioned_control64.sh"
+    ],
+    "9971": [
+      "done",
+      "9971_fine_gradient_fd_v2_r128.sh"
+    ],
+    "9972": [
+      "done",
+      "9972_fine_gradient_fd_v1_r64.sh"
+    ],
+    "9973": [
+      "done",
+      "9973_clean_v2_mean2_age_inputs.sh"
+    ],
+    "9974": [
+      "failed",
+      "9974_clean_v2_mean2_housefinch.sh"
+    ]
+  },
+  "arms": {
+    "fd_control64": {
+      "complete": false,
+      "logs": {
+        "map.log": [
+          "",
+          "MAP: 100%|\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588| 400/400 [45:24<00:00,  6.70s/it, prior_scale=1, loss=151195.6094]",
+          "MAP: 100%|\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588| 400/400 [45:24<00:00,  6.81s/it, prior_scale=1, loss=151195.6094]",
+          "Final loss: 151100.3438 -> /work/07980/bwa386/ls6/houfin/processed/model_results/age_map_float32_fd_control64_quick90/map_params.pkl"
+        ],
+        "refine.log": [
+          "    run_refine()",
+          "  File \"/work/07980/bwa386/ls6/houfin/research/final_age_handoff_20261025/code/src/model/age_refine_map.py\", line 278, in run_refine",
+          "    raise RuntimeError(f\"invalid refinement ({status}): {reason}; outputs retained for diagnosis\")",
+          "RuntimeError: invalid refinement (stalled): optimizer stalled: U fell 0.0462 < tol_du 0.05 over 20 iterations but recent median |grad| 1.61e+04 > plateau_grad_max 10000.0; outputs retained for diagnosis"
+        ],
+        "finite_restart1/refine.log": [
+          "    run_refine()",
+          "  File \"/work/07980/bwa386/ls6/houfin/research/final_age_handoff_20261025/code_memoryfix1/src/model/age_refine_map.py\", line 278, in run_refine",
+          "    raise RuntimeError(f\"invalid refinement ({status}): {reason}; outputs retained for diagnosis\")",
+          "RuntimeError: invalid refinement (stalled): optimizer stalled: U fell 0.00507 < tol_du 0.05 over 20 iterations but recent median |grad| 1.11e+04 > plateau_grad_max 10000.0; outputs retained for diagnosis"
+        ],
+        "blockscale1/refine.log": [
+          "[lbfgs] iter 2000 U=140951.4624 |grad|=4.36e+04 drop over last 20=1.52 (2.17 it/s)",
+          "[stop] max_iter 2000 reached (not converged; raise HOUFIN_REFINE_MAX_ITER to continue)",
+          "[memory] peak 12.7 GiB of 37.5 GiB (34%)",
+          "[done] U 141371.48 -> 140951.46 in 2000 iterations; use HOUFIN_HMC_MAP_DIR=/work/07980/bwa386/ls6/houfin/processed/model_results/refined_float64__age_map_float32_fd_control64_quick90__finite_restart1__blockscale1"
+        ],
+        "blockscale1/refine_continue8000.log": [
+          "[lbfgs] iter 4290 U=140621.6144 |grad|=2.33e+05 drop over last 20=3.26 (2.14 it/s)",
+          "[lbfgs] iter 4300 U=140620.8985 |grad|=2.02e+05 drop over last 20=1.24 (2.14 it/s)",
+          "[lbfgs] iter 4310 U=140619.1052 |grad|=1.94e+04 drop over last 20=2.51 (2.14 it/s)",
+          "[lbfgs] iter 4320 U=140617.9989 |grad|=1.91e+05 drop over last 20=2.9 (2.14 it/s)"
+        ]
+      }
+    },
+    "fd_v1_r64": {
+      "complete": false,
+      "logs": {
+        "map.log": [
+          "",
+          "MAP: 100%|\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588| 400/400 [46:16<00:00,  6.90s/it, prior_scale=1, loss=148957.1562]",
+          "MAP: 100%|\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588| 400/400 [46:16<00:00,  6.94s/it, prior_scale=1, loss=148957.1562]",
+          "Final loss: 148896.3594 -> /work/07980/bwa386/ls6/houfin/processed/model_results/age_map_float32_fd_v1_r64_quick90/map_params.pkl"
+        ],
+        "refine.log": [
+          "    run_refine()",
+          "  File \"/work/07980/bwa386/ls6/houfin/research/final_age_handoff_20261025/code/src/model/age_refine_map.py\", line 278, in run_refine",
+          "    raise RuntimeError(f\"invalid refinement ({status}): {reason}; outputs retained for diagnosis\")",
+          "RuntimeError: invalid refinement (stalled): optimizer stalled: U fell 0.0415 < tol_du 0.05 over 20 iterations but recent median |grad| 1.32e+04 > plateau_grad_max 10000.0; outputs retained for diagnosis"
+        ],
+        "finite_restart1/refine.log": [
+          "[lbfgs] iter 30 U=136319.3170 |grad|=1.13e+04 drop over last 20=0.138 (0.29 it/s)",
+          "[stop] U fell 0.0345 < tol_du 0.05 over 20 iterations",
+          "[memory] peak 12.8 GiB of 37.5 GiB (34%)",
+          "[done] U 136319.47 -> 136319.32 in 31 iterations; use HOUFIN_HMC_MAP_DIR=/work/07980/bwa386/ls6/houfin/processed/model_results/refined_float64__age_map_float32_fd_v1_r64_quick90__finite_restart1"
+        ],
+        "finite_restart1/viz_ref.log": [
+          "[memory:map-viz-counterfactual] device_in_use=6.78 GiB device_peak=12.75 GiB device_limit=37.52 GiB largest_free=0.00 GiB process_maxrss=26.58 GiB",
+          "[map-viz] FFMpeg unavailable ([Errno 2] No such file or directory: 'ffmpeg'); falling back to GIF: /work/07980/bwa386/ls6/houfin/research/age_model/FINAL_DESK_MAP/fd_v1_r64/finite_restart1/viz_ref/16_counterfactual_animation.gif",
+          "[map-viz] FFMpeg unavailable ([Errno 2] No such file or directory: 'ffmpeg'); falling back to GIF: /work/07980/bwa386/ls6/houfin/research/age_model/FINAL_DESK_MAP/fd_v1_r64/finite_restart1/viz_ref/16_counterfactual_animation_linear.gif",
+          "[map-viz] complete -> /work/07980/bwa386/ls6/houfin/research/age_model/FINAL_DESK_MAP/fd_v1_r64/finite_restart1/viz_ref"
+        ]
+      }
+    },
+    "fd_v2_r128": {
+      "complete": false,
+      "logs": {
+        "map.log": [
+          "",
+          "MAP: 100%|\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588| 400/400 [48:11<00:00,  7.15s/it, prior_scale=1, loss=144451.5938]",
+          "MAP: 100%|\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588| 400/400 [48:11<00:00,  7.23s/it, prior_scale=1, loss=144451.5938]",
+          "Final loss: 144431.5312 -> /work/07980/bwa386/ls6/houfin/processed/model_results/age_map_float32_fd_v2_r128_quick90/map_params.pkl"
+        ],
+        "finite_restart1/refine.log": [
+          "    run_refine()",
+          "  File \"/work/07980/bwa386/ls6/houfin/research/final_age_handoff_20261025/code_memoryfix1/src/model/age_refine_map.py\", line 278, in run_refine",
+          "    raise RuntimeError(f\"invalid refinement ({status}): {reason}; outputs retained for diagnosis\")",
+          "RuntimeError: invalid refinement (stalled): optimizer stalled: U fell 0.0386 < tol_du 0.05 over 20 iterations but recent median |grad| 1.02e+05 > plateau_grad_max 10000.0; outputs retained for diagnosis"
+        ]
+      }
+    },
+    "fd_v2_r64": {
+      "complete": false,
+      "logs": {
+        "map.log": [
+          "",
+          "MAP: 100%|\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588| 400/400 [45:38<00:00,  6.82s/it, prior_scale=1, loss=146081.4375]",
+          "MAP: 100%|\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588| 400/400 [45:38<00:00,  6.85s/it, prior_scale=1, loss=146081.4375]",
+          "Final loss: 146036.2188 -> /work/07980/bwa386/ls6/houfin/processed/model_results/age_map_float32_fd_v2_r64_quick90/map_params.pkl"
+        ],
+        "refine.log": [
+          "    run_refine()",
+          "  File \"/work/07980/bwa386/ls6/houfin/research/final_age_handoff_20261025/code/src/model/age_refine_map.py\", line 278, in run_refine",
+          "    raise RuntimeError(f\"invalid refinement ({status}): {reason}; outputs retained for diagnosis\")",
+          "RuntimeError: invalid refinement (stalled): optimizer stalled: U fell 0.0481 < tol_du 0.05 over 20 iterations but recent median |grad| 1.06e+04 > plateau_grad_max 10000.0; outputs retained for diagnosis"
+        ],
+        "finite_restart1/refine.log": [
+          "    run_refine()",
+          "  File \"/work/07980/bwa386/ls6/houfin/research/final_age_handoff_20261025/code_memoryfix1/src/model/age_refine_map.py\", line 278, in run_refine",
+          "    raise RuntimeError(f\"invalid refinement ({status}): {reason}; outputs retained for diagnosis\")",
+          "RuntimeError: invalid refinement (stalled): optimizer stalled: U fell 0.0084 < tol_du 0.05 over 20 iterations but recent median |grad| 2.25e+04 > plateau_grad_max 10000.0; outputs retained for diagnosis"
+        ]
+      }
+    },
+    "fd_clean_v2_m2_r128": {
+      "complete": false,
+      "logs": {
+        "map.log": [
+          "",
+          "MAP: 100%|\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588| 400/400 [48:07<00:00,  7.24s/it, prior_scale=1, loss=144661.9844]",
+          "MAP: 100%|\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588| 400/400 [48:07<00:00,  7.22s/it, prior_scale=1, loss=144661.9844]",
+          "Final loss: 144619.8750 -> /work/07980/bwa386/ls6/houfin/processed/model_results/age_map_float32_fd_clean_v2_m2_r128_quick90/map_params.pkl"
+        ],
+        "refine.log": [
+          "    run_refine()",
+          "  File \"/work/07980/bwa386/ls6/houfin/research/final_age_handoff_20261025/code_clean2/src/model/age_refine_map.py\", line 278, in run_refine",
+          "    raise RuntimeError(f\"invalid refinement ({status}): {reason}; outputs retained for diagnosis\")",
+          "RuntimeError: invalid refinement (stalled): optimizer stalled: U fell 0.0408 < tol_du 0.05 over 20 iterations but recent median |grad| 1.96e+04 > plateau_grad_max 10000.0; outputs retained for diagnosis"
+        ]
+      }
+    }
+  },
+  "refinement_reports": {
+    "refined_float64__age_map_float32_fd_control64_quick90__finite_restart1": {
+      "source_map_dir": "/work/07980/bwa386/ls6/houfin/processed/model_results/refined_float64__age_map_float32_fd_control64_quick90",
+      "out_dir": "/work/07980/bwa386/ls6/houfin/processed/model_results/refined_float64__age_map_float32_fd_control64_quick90__finite_restart1",
+      "reason": "optimizer stalled: U fell 0.00507 < tol_du 0.05 over 20 iterations but recent median |grad| 1.11e+04 > plateau_grad_max 10000.0",
+      "status": "stalled",
+      "valid": false,
+      "iterations": 21,
+      "U_start": 141371.4814963257,
+      "U_end": 141371.47642474176,
+      "grad_norm_start": 6713.400254664887,
+      "grad_norm_end": 59406.28534872759,
+      "rms_change_by_site": {
+        "alpha_a": 5.586068242691145e-07,
+        "alpha_f": 2.6305592104591824e-07,
+        "alpha_j": 1.5856826962590276e-07,
+        "alpha_k": 1.4647453772664853e-06,
+        "concentration": 2.3742779009516823e-07,
+        "disease_b_late": 4.22941481392769e-07,
+        "disease_b_native_raw": 8.62921567534869e-09,
+        "disease_hill_n_raw": 4.7057743474132607e-07,
+        "disease_lag0": 1.0679692175052935e-07,
+        "disease_log_k_half_counts": 4.863924418785359e-08,
+        "disease_log_tau_rec": 2.273522747842094e-08,
+        "disease_mu_sev": 1.007115399201397e-07,
+        "disease_rec_raw": 6.438061350699797e-08,
+        "disease_tau_raw": 1.5392184277152055e-07,
+        "disease_w_lag": 7.496457435462004e-08,
+        "disease_w_sev": 2.909723438499405e-07,
+        "dispersal_logit_intercept": 0.0,
+        "dispersal_logit_slope": 8.881784197001252e-16,
+        "log_inv_total": 7.266864253674399e-07,
+        "manifold_coupling_logit": 1.1355957476588685e-06,
+        "manifold_factor": 6.25471670083589e-07,
+        "manifold_factor_within": 7.639871103128867e-08,
+        "manifold_idio": 2.0097194162669575e-07,
+        "manifold_idio_within": 1.6228438754639277e-08,
+        "obs_conc_kappa": 1.2831785828337772e-06,
+        "obs_fledgling_weight": 1.8486631647718355e-07,
+        "quality_conc_mult": 2.61016239899714e-07,
+        "w_scale_raw": 1.1211710742868552e-06,
+        "within_level_corr": 7.814144489440417e-08
+      },
+      "peak_gpu_bytes": 13690322176,
+      "gpu_bytes_limit": 40286558112
+    },
+    "refined_float64__age_map_float32_fd_v2_r64_quick90": {
+      "source_map_dir": "/work/07980/bwa386/ls6/houfin/processed/model_results/age_map_float32_fd_v2_r64_quick90",
+      "out_dir": "/work/07980/bwa386/ls6/houfin/processed/model_results/refined_float64__age_map_float32_fd_v2_r64_quick90",
+      "reason": "optimizer stalled: U fell 0.0481 < tol_du 0.05 over 20 iterations but recent median |grad| 1.06e+04 > plateau_grad_max 10000.0",
+      "status": "stalled",
+      "valid": false,
+      "iterations": 2108,
+      "U_start": 146087.7490376714,
+      "U_end": 139894.87484152886,
+      "grad_norm_start": 23354.077152321457,
+      "grad_norm_end": 10591.030982529022,
+      "rms_change_by_site": {
+        "alpha_a": 0.19279433340175023,
+        "alpha_f": 0.418289880532015,
+        "alpha_j": 0.25551333002626286,
+        "alpha_k": 0.4202018134529887,
+        "concentration": 0.851308835300938,
+        "disease_b_late": 0.1553692285766224,
+        "disease_b_native_raw": 0.09225710906134044,
+        "disease_hill_n_raw": 0.3545316508870793,
+        "disease_lag0": 0.34247041197404404,
+        "disease_log_k_half_counts": 0.1667772298891026,
+        "disease_log_tau_rec": 0.013716329083892642,
+        "disease_mu_sev": 0.519822213858407,
+        "disease_rec_raw": 0.02926437183193653,
+        "disease_tau_raw": 0.3893348947392139,
+        "disease_w_lag": 0.12817273438073315,
+        "disease_w_sev": 0.11456596494241796,
+        "dispersal_logit_intercept": 0.0,
+        "dispersal_logit_slope": 0.0,
+        "log_inv_total": 0.08469153063113485,
+        "manifold_coupling_logit": 0.6013642180042257,
+        "manifold_factor": 0.464891203175038,
+        "manifold_factor_within": 0.04875699507635315,
+        "manifold_idio": 0.19613893072647054,
+        "manifold_idio_within": 0.012869146362059223,
+        "obs_conc_kappa": 2.804840307225907,
+        "obs_fledgling_weight": 0.8942873446234445,
+        "quality_conc_mult": 0.2136410145670392,
+        "w_scale_raw": 0.7815491011529965,
+        "within_level_corr": 0.08799951907588563
+      },
+      "peak_gpu_bytes": 26801103360,
+      "gpu_bytes_limit": 40286558112
+    },
+    "refined_float64__age_map_float32_fd_control64_quick90": {
+      "source_map_dir": "/work/07980/bwa386/ls6/houfin/processed/model_results/age_map_float32_fd_control64_quick90",
+      "out_dir": "/work/07980/bwa386/ls6/houfin/processed/model_results/refined_float64__age_map_float32_fd_control64_quick90",
+      "reason": "optimizer stalled: U fell 0.0462 < tol_du 0.05 over 20 iterations but recent median |grad| 1.61e+04 > plateau_grad_max 10000.0",
+      "status": "stalled",
+      "valid": false,
+      "iterations": 2544,
+      "U_start": 153098.17209702457,
+      "U_end": 141371.48149630323,
+      "grad_norm_start": 380076.91716325504,
+      "grad_norm_end": 6715.261941202088,
+      "rms_change_by_site": {
+        "alpha_a": 0.29183092631495305,
+        "alpha_f": 0.5717152426970191,
+        "alpha_j": 1.140066635523673,
+        "alpha_k": 0.9060876603215644,
+        "concentration": 0.6827027821787921,
+        "disease_b_late": 0.8653424764364774,
+        "disease_b_native_raw": 0.29293523421512746,
+        "disease_hill_n_raw": 0.5669006706819715,
+        "disease_lag0": 0.005170759255837654,
+        "disease_log_k_half_counts": 0.6031635109063895,
+        "disease_log_tau_rec": 0.05989447747028631,
+        "disease_mu_sev": 1.0062724838337294,
+        "disease_rec_raw": 0.09811828009292545,
+        "disease_tau_raw": 0.18149178446936948,
+        "disease_w_lag": 0.111888945299738,
+        "disease_w_sev": 0.12301980040794579,
+        "dispersal_logit_intercept": 2.8188581246979538e-08,
+        "dispersal_logit_slope": 1.982983999226917e-08,
+        "log_inv_total": 0.2945768718078241,
+        "manifold_coupling_logit": 0.4972985213952079,
+        "manifold_factor": 0.5661506714883175,
+        "manifold_factor_within": 0.16630432280341917,
+        "manifold_idio": 0.15655969716062534,
+        "manifold_idio_within": 0.02912925060563694,
+        "obs_conc_kappa": 3.313563034643802,
+        "obs_fledgling_weight": 0.5566616653402718,
+        "quality_conc_mult": 0.04408630747385822,
+        "w_scale_raw": 0.9549631640635818,
+        "within_level_corr": 0.41014067046378433
+      },
+      "peak_gpu_bytes": 26800062720,
+      "gpu_bytes_limit": 40286558112
+    },
+    "refined_float64__age_map_float32_fd_v2_r64_quick90__finite_restart1": {
+      "source_map_dir": "/work/07980/bwa386/ls6/houfin/processed/model_results/refined_float64__age_map_float32_fd_v2_r64_quick90",
+      "out_dir": "/work/07980/bwa386/ls6/houfin/processed/model_results/refined_float64__age_map_float32_fd_v2_r64_quick90__finite_restart1",
+      "reason": "optimizer stalled: U fell 0.0084 < tol_du 0.05 over 20 iterations but recent median |grad| 2.25e+04 > plateau_grad_max 10000.0",
+      "status": "stalled",
+      "valid": false,
+      "iterations": 21,
+      "U_start": 139894.87484126448,
+      "U_end": 139894.86643948915,
+      "grad_norm_start": 10616.81652139718,
+      "grad_norm_end": 108075.70834866217,
+      "rms_change_by_site": {
+        "alpha_a": 3.698050355938065e-07,
+        "alpha_f": 4.036569301035797e-09,
+        "alpha_j": 2.1508138697834411e-07,
+        "alpha_k": 6.604098758411503e-07,
+        "concentration": 7.904543288805854e-07,
+        "disease_b_late": 1.5372110628852909e-07,
+        "disease_b_native_raw": 1.498146795508859e-08,
+        "disease_hill_n_raw": 1.1238428754278829e-07,
+        "disease_lag0": 8.030786147195101e-08,
+        "disease_log_k_half_counts": 7.05712392079505e-07,
+        "disease_log_tau_rec": 6.09983850097251e-08,
+        "disease_mu_sev": 2.3515507888149934e-07,
+        "disease_rec_raw": 8.41216927227606e-08,
+        "disease_tau_raw": 4.095983840990414e-08,
+        "disease_w_lag": 2.9713647087805725e-08,
+        "disease_w_sev": 1.395690269642063e-07,
+        "dispersal_logit_intercept": 0.0,
+        "dispersal_logit_slope": 0.0,
+        "log_inv_total": 1.9641120255301523e-07,
+        "manifold_coupling_logit": 1.4012565122956122e-06,
+        "manifold_factor": 6.037213135085465e-07,
+        "manifold_factor_within": 3.211862801899028e-08,
+        "manifold_idio": 1.9714994264831228e-07,
+        "manifold_idio_within": 1.1815722002700475e-08,
+        "obs_conc_kappa": 1.4822584650242554e-06,
+        "obs_fledgling_weight": 5.325640450859481e-08,
+        "quality_conc_mult": 1.448047175500733e-07,
+        "w_scale_raw": 1.282046463696346e-06,
+        "within_level_corr": 3.570659642962313e-08
+      },
+      "peak_gpu_bytes": 13690322176,
+      "gpu_bytes_limit": 40286558112
+    },
+    "refined_float64__age_map_float32_fd_v1_r64_quick90__finite_restart1": {
+      "source_map_dir": "/work/07980/bwa386/ls6/houfin/processed/model_results/refined_float64__age_map_float32_fd_v1_r64_quick90",
+      "out_dir": "/work/07980/bwa386/ls6/houfin/processed/model_results/refined_float64__age_map_float32_fd_v1_r64_quick90__finite_restart1",
+      "reason": "U fell 0.0345 < tol_du 0.05 over 20 iterations",
+      "status": "converged",
+      "valid": true,
+      "iterations": 31,
+      "U_start": 136319.46698878054,
+      "U_end": 136319.3153267656,
+      "grad_norm_start": 1706.8519486336502,
+      "grad_norm_end": 65378.766575372,
+      "rms_change_by_site": {
+        "alpha_a": 3.3968125200956045e-06,
+        "alpha_f": 2.3532088913924554e-05,
+        "alpha_j": 0.00011924127401696794,
+        "alpha_k": 1.759526521882826e-05,
+        "concentration": 5.21104254735949e-05,
+        "disease_b_late": 7.08032121647939e-05,
+        "disease_b_native_raw": 5.693751645774459e-06,
+        "disease_hill_n_raw": 9.881678083578649e-06,
+        "disease_lag0": 1.6722594742279995e-06,
+        "disease_log_k_half_counts": 2.021291480613918e-05,
+        "disease_log_tau_rec": 6.4813807281183244e-06,
+        "disease_mu_sev": 0.00014541185732652728,
+        "disease_rec_raw": 1.0376217958185663e-05,
+        "disease_tau_raw": 1.210025059017461e-05,
+        "disease_w_lag": 1.986828052501388e-06,
+        "disease_w_sev": 3.864614817308709e-05,
+        "dispersal_logit_intercept": 5.200284647344233e-13,
+        "dispersal_logit_slope": 1.9895196601282805e-13,
+        "log_inv_total": 1.780811032014995e-05,
+        "manifold_coupling_logit": 0.00014949981945522328,
+        "manifold_factor": 7.92491772150755e-05,
+        "manifold_factor_within": 7.865808746755807e-06,
+        "manifold_idio": 2.4317488314243514e-05,
+        "manifold_idio_within": 2.146680593602277e-06,
+        "obs_conc_kappa": 5.096122695880112e-05,
+        "obs_fledgling_weight": 2.199750452902549e-07,
+        "quality_conc_mult": 2.7315742976430357e-06,
+        "w_scale_raw": 1.4706508078973196e-05,
+        "within_level_corr": 4.939147347533541e-06
+      },
+      "peak_gpu_bytes": 13690322176,
+      "gpu_bytes_limit": 40286558112
+    },
+    "refined_float64__age_map_float32_fd_clean_v2_m2_r128_quick90": {
+      "source_map_dir": "/work/07980/bwa386/ls6/houfin/processed/model_results/age_map_float32_fd_clean_v2_m2_r128_quick90",
+      "out_dir": "/work/07980/bwa386/ls6/houfin/processed/model_results/refined_float64__age_map_float32_fd_clean_v2_m2_r128_quick90",
+      "reason": "optimizer stalled: U fell 0.0408 < tol_du 0.05 over 20 iterations but recent median |grad| 1.96e+04 > plateau_grad_max 10000.0",
+      "status": "stalled",
+      "valid": false,
+      "iterations": 291,
+      "U_start": 144639.05851007949,
+      "U_end": 140199.92155039182,
+      "grad_norm_start": 8071.340522620763,
+      "grad_norm_end": 50571.71999748741,
+      "rms_change_by_site": {
+        "alpha_a": 0.06201986893966982,
+        "alpha_f": 0.03171895707360495,
+        "alpha_j": 0.2890718178871569,
+        "alpha_k": 0.33022372253668364,
+        "concentration": 0.8644023100604219,
+        "disease_b_late": 0.053650425327521845,
+        "disease_b_native_raw": 0.03730352123858682,
+        "disease_hill_n_raw": 0.17609161952947694,
+        "disease_lag0": 0.09129652710483094,
+        "disease_log_k_half_counts": 0.08666124974720857,
+        "disease_log_tau_rec": 0.019883643418268537,
+        "disease_mu_sev": 0.2433578184436132,
+        "disease_rec_raw": 0.00549993565506357,
+        "disease_tau_raw": 0.12175980137902775,
+        "disease_w_lag": 0.04425971303497422,
+        "disease_w_sev": 0.025638206377111398,
+        "dispersal_logit_intercept": 0.0,
+        "dispersal_logit_slope": 4.791226970723983e-09,
+        "log_inv_total": 0.020314116002562416,
+        "manifold_coupling_logit": 0.36316057497615173,
+        "manifold_factor": 0.12999156524230315,
+        "manifold_factor_within": 0.013509658248293463,
+        "manifold_idio": 0.038971415399764085,
+        "manifold_idio_within": 0.0035584389195674683,
+        "obs_conc_kappa": 2.6812621440975155,
+        "obs_fledgling_weight": 0.08018738460928043,
+        "quality_conc_mult": 0.06400438022542343,
+        "w_scale_raw": 0.35734858269992803,
+        "within_level_corr": 0.013205888282704232
+      },
+      "peak_gpu_bytes": 27347398656,
+      "gpu_bytes_limit": 40286558112
+    },
+    "refined_float64__age_map_float32_fd_v1_r64_quick90": {
+      "source_map_dir": "/work/07980/bwa386/ls6/houfin/processed/model_results/age_map_float32_fd_v1_r64_quick90",
+      "out_dir": "/work/07980/bwa386/ls6/houfin/processed/model_results/refined_float64__age_map_float32_fd_v1_r64_quick90",
+      "reason": "optimizer stalled: U fell 0.0415 < tol_du 0.05 over 20 iterations but recent median |grad| 1.32e+04 > plateau_grad_max 10000.0",
+      "status": "stalled",
+      "valid": false,
+      "iterations": 2321,
+      "U_start": 149344.54673854733,
+      "U_end": 136319.46698878054,
+      "grad_norm_start": 100089.59194255697,
+      "grad_norm_end": 1706.8519486366392,
+      "rms_change_by_site": {
+        "alpha_a": 0.08072838479623473,
+        "alpha_f": 8.53902138412572,
+        "alpha_j": 1.33213196364161,
+        "alpha_k": 0.14838887501374964,
+        "concentration": 0.5539815734805387,
+        "disease_b_late": 0.054881147531129715,
+        "disease_b_native_raw": 0.37651823587734806,
+        "disease_hill_n_raw": 0.727116821676666,
+        "disease_lag0": 3.068985061004985,
+        "disease_log_k_half_counts": 3.663379516453203,
+        "disease_log_tau_rec": 0.7723310268239869,
+        "disease_mu_sev": 2.2033102324522336,
+        "disease_rec_raw": 1.5912162276441708,
+        "disease_tau_raw": 2.0551015151772587,
+        "disease_w_lag": 0.29799152117122363,
+        "disease_w_sev": 0.16247520304373617,
+        "dispersal_logit_intercept": 1.0006571362630723e-06,
+        "dispersal_logit_slope": 9.974164818515874e-07,
+        "log_inv_total": 1.3114236072873888,
+        "manifold_coupling_logit": 0.314052019157091,
+        "manifold_factor": 0.7204395349273829,
+        "manifold_factor_within": 1.2829726781551125,
+        "manifold_idio": 1.2204108242658553,
+        "manifold_idio_within": 0.4987936948376696,
+        "obs_conc_kappa": 3.4405388833008548,
+        "obs_fledgling_weight": 4.42471523346264,
+        "quality_conc_mult": 1.3845061736619428,
+        "w_scale_raw": 6.364665729560823,
+        "within_level_corr": 0.8361752297330146
+      },
+      "peak_gpu_bytes": 26801103360,
+      "gpu_bytes_limit": 40286558112
+    },
+    "refined_float64__age_map_float32_fd_control64_quick90__finite_restart1__blockscale1": {
+      "source_map_dir": "/work/07980/bwa386/ls6/houfin/processed/model_results/refined_float64__age_map_float32_fd_control64_quick90__finite_restart1",
+      "out_dir": "/work/07980/bwa386/ls6/houfin/processed/model_results/refined_float64__age_map_float32_fd_control64_quick90__finite_restart1__blockscale1",
+      "reason": "max_iter 2000 reached (not converged; raise HOUFIN_REFINE_MAX_ITER to continue)",
+      "status": "not_converged",
+      "valid": false,
+      "iterations": 2000,
+      "U_start": 141371.47642474176,
+      "U_end": 140951.4624016621,
+      "grad_norm_start": 59406.28534863107,
+      "grad_norm_end": 43590.61956422848,
+      "coordinate_scale_by_site": {
+        "alpha_a": 1.2500832710305865e-06,
+        "alpha_f": 6.341389794643886e-06,
+        "alpha_j": 5.845809429420215e-06,
+        "alpha_k": 3.902061158830525e-05,
+        "concentration": 0.0008232450564473039,
+        "disease_b_late": 0.002658224451739166,
+        "disease_b_native_raw": 0.02922472058174724,
+        "disease_hill_n_raw": 0.0027206458564039723,
+        "disease_lag0": 0.009172431032514033,
+        "disease_log_k_half_counts": 0.0020500505521042723,
+        "disease_log_tau_rec": 0.005962487994045667,
+        "disease_mu_sev": 0.0011428299294971853,
+        "disease_rec_raw": 0.008371301592265599,
+        "disease_tau_raw": 0.009732118873266098,
+        "disease_w_lag": 0.008802332703651938,
+        "disease_w_sev": 0.008097907487196132,
+        "dispersal_logit_intercept": 1.0,
+        "dispersal_logit_slope": 1.0,
+        "log_inv_total": 0.000539792077808523,
+        "manifold_coupling_logit": 3.366466900144647e-05,
+        "manifold_factor": 2.850713449545669e-05,
+        "manifold_factor_within": 0.00018644631920932835,
+        "manifold_idio": 8.152029386605903e-05,
+        "manifold_idio_within": 0.00024024581113157617,
+        "obs_conc_kappa": 0.001597848657912439,
+        "obs_fledgling_weight": 0.0012289311883364894,
+        "quality_conc_mult": 0.10878011412353454,
+        "w_scale_raw": 1.4402649199731435e-05,
+        "within_level_corr": 0.0002005285571988441
+      },
+      "rms_change_by_site": {
+        "alpha_a": 0.0009756937775673297,
+        "alpha_f": 0.003445330864797924,
+        "alpha_j": 0.003742431576635008,
+        "alpha_k": 0.027287459491769417,
+        "concentration": 0.07095624134829204,
+        "disease_b_late": 1.0075734850393425,
+        "disease_b_native_raw": 0.40897238146432746,
+        "disease_hill_n_raw": 2.906469210613159,
+        "disease_lag0": 1.304626495213843,
+        "disease_log_k_half_counts": 5.807279388967102,
+        "disease_log_tau_rec": 0.7386006334279629,
+        "disease_mu_sev": 2.18920014072262,
+        "disease_rec_raw": 2.6028802895764156,
+        "disease_tau_raw": 0.1835410358822744,
+        "disease_w_lag": 0.3899033620704678,
+        "disease_w_sev": 0.19563570350657514,
+        "dispersal_logit_intercept": 0.23694000230646317,
+        "dispersal_logit_slope": 0.16607198424657277,
+        "log_inv_total": 0.8699225623530046,
+        "manifold_coupling_logit": 0.0351879322850811,
+        "manifold_factor": 0.010975371990675003,
+        "manifold_factor_within": 0.04560390629007973,
+        "manifold_idio": 0.02867770157395857,
+        "manifold_idio_within": 0.016266511301225996,
+        "obs_conc_kappa": 0.040987920535093314,
+        "obs_fledgling_weight": 0.9882388432716173,
+        "quality_conc_mult": 1.1689731303790554,
+        "w_scale_raw": 0.0041830578651742235,
+        "within_level_corr": 0.04772974177883531
+      },
+      "peak_gpu_bytes": 13689281536,
+      "gpu_bytes_limit": 40286558112
+    },
+    "refined_float64__age_map_float32_fd_v2_r128_quick90__finite_restart1": {
+      "source_map_dir": "/work/07980/bwa386/ls6/houfin/processed/model_results/age_map_float32_fd_v2_r128_quick90",
+      "out_dir": "/work/07980/bwa386/ls6/houfin/processed/model_results/refined_float64__age_map_float32_fd_v2_r128_quick90__finite_restart1",
+      "reason": "optimizer stalled: U fell 0.0386 < tol_du 0.05 over 20 iterations but recent median |grad| 1.02e+05 > plateau_grad_max 10000.0",
+      "status": "stalled",
+      "valid": false,
+      "iterations": 331,
+      "U_start": 144438.58713278998,
+      "U_end": 141651.64023293238,
+      "grad_norm_start": 1894.511207411531,
+      "grad_norm_end": 21318.120414989888,
+      "rms_change_by_site": {
+        "alpha_a": 0.19942811580212155,
+        "alpha_f": 0.04466612516811175,
+        "alpha_j": 0.31591031572547124,
+        "alpha_k": 0.7897092740674596,
+        "concentration": 0.6729648363943288,
+        "disease_b_late": 0.022976927168472994,
+        "disease_b_native_raw": 0.026543214529763937,
+        "disease_hill_n_raw": 0.22063301106653155,
+        "disease_lag0": 0.016115194197263483,
+        "disease_log_k_half_counts": 0.258831908570321,
+        "disease_log_tau_rec": 0.0036732823397152004,
+        "disease_mu_sev": 0.10796295902573444,
+        "disease_rec_raw": 0.015146632031207918,
+        "disease_tau_raw": 0.04797386026305539,
+        "disease_w_lag": 0.013016632257450212,
+        "disease_w_sev": 0.021057714946686127,
+        "dispersal_logit_intercept": 6.736127211581788e-10,
+        "dispersal_logit_slope": 1.3472254423163577e-09,
+        "log_inv_total": 0.036030562587940906,
+        "manifold_coupling_logit": 0.6363758898584214,
+        "manifold_factor": 0.11284684376735352,
+        "manifold_factor_within": 0.013070827222151537,
+        "manifold_idio": 0.03419667201670153,
+        "manifold_idio_within": 0.002436047178972942,
+        "obs_conc_kappa": 2.271061455399281,
+        "obs_fledgling_weight": 0.24447671866785592,
+        "quality_conc_mult": 0.03561632859067504,
+        "w_scale_raw": 0.7039521345029429,
+        "within_level_corr": 0.04553104344768914
+      },
+      "peak_gpu_bytes": 27346358016,
+      "gpu_bytes_limit": 40286558112
+    },
+    "refined_float64__age_map_float32_run_81a_quick90__finite_restart1": {
+      "source_map_dir": "/work/07980/bwa386/ls6/houfin/processed/model_results/refined_float64__age_map_float32_run_81a_quick90",
+      "out_dir": "/work/07980/bwa386/ls6/houfin/processed/model_results/refined_float64__age_map_float32_run_81a_quick90__finite_restart1",
+      "reason": "U fell 0.0495 < tol_du 0.05 over 20 iterations",
+      "status": "converged",
+      "valid": true,
+      "iterations": 4056,
+      "U_start": 144094.7171325632,
+      "U_end": 136656.98144321374,
+      "grad_norm_start": 3132.229795688254,
+      "grad_norm_end": 97.99090257206026,
+      "rms_change_by_site": {
+        "alpha_a": 0.25388806796872476,
+        "alpha_f": 4.50379122181607,
+        "alpha_j": 0.4705012092488743,
+        "alpha_k": 0.3090165529387684,
+        "concentration": 0.18994004325573077,
+        "disease_b_late": 0.1277363135643218,
+        "disease_b_native_raw": 0.42296385895139776,
+        "disease_hill_n_raw": 2.610679573888503,
+        "disease_lag0": 2.832469042945042,
+        "disease_log_k_half_counts": 3.0056971346146883,
+        "disease_log_tau_rec": 0.6210262214656623,
+        "disease_mu_sev": 1.394759492367345,
+        "disease_rec_raw": 1.813745990920426,
+        "disease_tau_raw": 0.8618465372524722,
+        "disease_w_lag": 0.3108655348468505,
+        "disease_w_sev": 0.2032245806159485,
+        "dispersal_logit_intercept": 1.069142960608005e-06,
+        "dispersal_logit_slope": 5.2269149017902805e-06,
+        "log_inv_total": 1.8811989723720783,
+        "manifold_coupling_logit": 0.410723363281558,
+        "manifold_factor": 0.8071482052061549,
+        "manifold_factor_within": 0.6426307911932045,
+        "manifold_idio": 1.4939775418675156,
+        "manifold_idio_within": 1.2353086689225088,
+        "obs_conc_kappa": 0.15734046572445082,
+        "obs_fledgling_weight": 2.9836859418820505,
+        "quality_conc_mult": 1.997484333190517,
+        "w_k_trend": 0.12869236377772472,
+        "w_scale_raw": 7.129061206564746,
+        "w_scale_within_raw": 5.968326160859972
+      },
+      "peak_gpu_bytes": 13416135680,
+      "gpu_bytes_limit": 40286558112
+    }
+  },
+  "task_owners": {},
+  "active_worker_jobs": [
+    "3530555"
+  ],
+  "gradient_audits": {
+    "fd_control64.json": {
+      "source_point": "/work/07980/bwa386/ls6/houfin/processed/model_results/refined_float64__age_map_float32_fd_control64_quick90__finite_restart1",
+      "U": 141371.47642474176,
+      "grad_norm": 59406.285348253885,
+      "repeat_U": [
+        141371.47642474176,
+        141371.47642474176,
+        141371.47642474176
+      ],
+      "blocks": {
+        "alpha_a": {
+          "norm": 53314.07781735982,
+          "max_abs": 53314.07781735982,
+          "size": 1
+        },
+        "alpha_f": {
+          "norm": 6673.353215239698,
+          "max_abs": 6673.353215239698,
+          "size": 1
+        },
+        "alpha_j": {
+          "norm": 9871.25781107091,
+          "max_abs": 9871.25781107091,
+          "size": 1
+        },
+        "alpha_k": {
+          "norm": 4498.264173029853,
+          "max_abs": 4498.264173029853,
+          "size": 1
+        },
+        "concentration": {
+          "norm": 28.19962298430013,
+          "max_abs": 28.19962298430013,
+          "size": 1
+        },
+        "disease_b_late": {
+          "norm": 52.07010730234889,
+          "max_abs": 52.07010730234889,
+          "size": 1
+        },
+        "disease_b_native_raw": {
+          "norm": 1.0625472105322076,
+          "max_abs": 1.0625472105322076,
+          "size": 1
+        },
+        "disease_hill_n_raw": {
+          "norm": 57.927417383521416,
+          "max_abs": 57.927417383521416,
+          "size": 1
+        },
+        "disease_lag0": {
+          "norm": 13.224166574367025,
+          "max_abs": 13.224166574367025,
+          "size": 1
+        },
+        "disease_log_k_half_counts": {
+          "norm": 6.206304453827935,
+          "max_abs": 6.206304453827935,
+          "size": 1
+        },
+        "disease_log_tau_rec": {
+          "norm": 2.7930281601183893,
+          "max_abs": 2.7930281601183893,
+          "size": 1
+        },
+        "disease_mu_sev": {
+          "norm": 12.50469708924016,
+          "max_abs": 12.50469708924016,
+          "size": 1
+        },
+        "disease_rec_raw": {
+          "norm": 7.92540764453765,
+          "max_abs": 7.92540764453765,
+          "size": 1
+        },
+        "disease_tau_raw": {
+          "norm": 18.942862276522092,
+          "max_abs": 18.942862276522092,
+          "size": 1
+        },
+        "disease_w_lag": {
+          "norm": 45.31021434310014,
+          "max_abs": 23.2785018195634,
+          "size": 24
+        },
+        "disease_w_sev": {
+          "norm": 175.67501893162577,
+          "max_abs": 83.07940533165623,
+          "size": 24
+        },
+        "dispersal_logit_intercept": {
+          "norm": 1.4023228933623955e-06,
+          "max_abs": 1.4023228933623955e-06,
+          "size": 1
+        },
+        "dispersal_logit_slope": {
+          "norm": 4.986960320252365e-06,
+          "max_abs": 4.986960320252365e-06,
+          "size": 1
+        },
+        "log_inv_total": {
+          "norm": 87.7416288283581,
+          "max_abs": 87.7416288283581,
+          "size": 1
+        },
+        "manifold_coupling_logit": {
+          "norm": 2179.8338719588874,
+          "max_abs": 2179.8338719588874,
+          "size": 1
+        },
+        "manifold_factor": {
+          "norm": 20563.6135796286,
+          "max_abs": 12142.258098456203,
+          "size": 64
+        },
+        "manifold_factor_within": {
+          "norm": 2040.5308384745751,
+          "max_abs": 595.6777632730997,
+          "size": 64
+        },
+        "manifold_idio": {
+          "norm": 8108.757759292564,
+          "max_abs": 3615.6912147034595,
+          "size": 256
+        },
+        "manifold_idio_within": {
+          "norm": 944.6482721422608,
+          "max_abs": 277.92212099548027,
+          "size": 256
+        },
+        "obs_conc_kappa": {
+          "norm": 157.7780701849469,
+          "max_abs": 157.7780701849469,
+          "size": 1
+        },
+        "obs_fledgling_weight": {
+          "norm": 23.060732379733647,
+          "max_abs": 23.060732379733647,
+          "size": 1
+        },
+        "quality_conc_mult": {
+          "norm": 32.160560314106135,
+          "max_abs": 32.160560314106135,
+          "size": 1
+        },
+        "w_scale_raw": {
+          "norm": 5094.37293962932,
+          "max_abs": 3839.598283126464,
+          "size": 4
+        },
+        "within_level_corr": {
+          "norm": 238.24658739436242,
+          "max_abs": 182.1376639013384,
+          "size": 4
+        }
+      },
+      "finite_difference": [
+        {
+          "direction": "gradient_unit",
+          "step": 0.0001,
+          "autodiff": 59406.28534825388,
+          "central_difference": -4741691.273396864,
+          "U_plus": 141788.30558424903,
+          "U_minus": 142736.6438389284,
+          "relative_error": 1.0125285013137721
+        },
+        {
+          "direction": "gradient_unit",
+          "step": 1e-05,
+          "autodiff": 59406.28534825388,
+          "central_difference": 373655.00876039726,
+          "U_plus": 141421.52075059537,
+          "U_minus": 141414.04765042017,
+          "relative_error": 0.8410130094459738
+        },
+        {
+          "direction": "gradient_unit",
+          "step": 1e-06,
+          "autodiff": 59406.28534825388,
+          "central_difference": 70619.25414018333,
+          "U_plus": 141372.0871363643,
+          "U_minus": 141371.94589785603,
+          "relative_error": 0.15878061767221524
+        },
+        {
+          "direction": "gradient_unit",
+          "step": 1e-07,
+          "autodiff": 59406.28534825388,
+          "central_difference": 59515.790053410456,
+          "U_plus": 141371.48778056214,
+          "U_minus": 141371.47587740413,
+          "relative_error": 0.001839926934655604
+        },
+        {
+          "direction": "coordinate_0_alpha_a",
+          "step": 0.0001,
+          "autodiff": -53314.07781735982,
+          "central_difference": 3937980.1770029007,
+          "U_plus": 142572.4630543632,
+          "U_minus": 141784.86701896263,
+          "relative_error": 1.013538432247248
+        },
+        {
+          "direction": "coordinate_0_alpha_a",
+          "step": 1e-05,
+          "autodiff": -53314.07781735982,
+          "central_difference": -360411.96754376864,
+          "U_plus": 141406.37221156328,
+          "U_minus": 141413.58045091416,
+          "relative_error": 0.8520746184409502
+        },
+        {
+          "direction": "coordinate_0_alpha_a",
+          "step": 1e-06,
+          "autodiff": -53314.07781735982,
+          "central_difference": -61433.79882269073,
+          "U_plus": 141371.84892228438,
+          "U_minus": 141371.97178988202,
+          "relative_error": 0.1321702574305379
+        },
+        {
+          "direction": "coordinate_0_alpha_a",
+          "step": 1e-07,
+          "autodiff": -53314.07781735982,
+          "central_difference": -53388.794185593724,
+          "U_plus": 141371.475427039,
+          "U_minus": 141371.48610479783,
+          "relative_error": 0.001399476601291413
+        },
+        {
+          "direction": "coordinate_66_manifold_factor",
+          "step": 0.0001,
+          "autodiff": 12142.258098456203,
+          "central_difference": -21626.64244446205,
+          "U_plus": 141522.48027544114,
+          "U_minus": 141526.80560393003,
+          "relative_error": 1.5614490612510903
+        },
+        {
+          "direction": "coordinate_66_manifold_factor",
+          "step": 1e-05,
+          "autodiff": 12142.258098456203,
+          "central_difference": 20733.73043240281,
+          "U_plus": 141373.9888480778,
+          "U_minus": 141373.57417346915,
+          "relative_error": 0.4143717582302409
+        },
+        {
+          "direction": "coordinate_66_manifold_factor",
+          "step": 1e-06,
+          "autodiff": 12142.258098456203,
+          "central_difference": 12230.556560098194,
+          "U_plus": 141371.51176390488,
+          "U_minus": 141371.48730279176,
+          "relative_error": 0.007219496611467523
+        },
+        {
+          "direction": "coordinate_66_manifold_factor",
+          "step": 1e-07,
+          "autodiff": 12142.258098456203,
+          "central_difference": 12141.60438394174,
+          "U_plus": 141371.4778696142,
+          "U_minus": 141371.47544129333,
+          "relative_error": 5.3837968947975606e-05
+        },
+        {
+          "direction": "coordinate_68_manifold_factor",
+          "step": 0.0001,
+          "autodiff": -9880.614506648231,
+          "central_difference": 1783.0542771844193,
+          "U_plus": 141481.05728504906,
+          "U_minus": 141480.70067419362,
+          "relative_error": 1.1804598566197153
+        },
+        {
+          "direction": "coordinate_68_manifold_factor",
+          "step": 1e-05,
+          "autodiff": -9880.614506648231,
+          "central_difference": -14511.267785564994,
+          "U_plus": 141372.89474229547,
+          "U_minus": 141373.18496765118,
+          "relative_error": 0.3191074237857481
+        },
+        {
+          "direction": "coordinate_68_manifold_factor",
+          "step": 1e-06,
+          "autodiff": -9880.614506648231,
+          "central_difference": -9927.343649906106,
+          "U_plus": 141371.48216769716,
+          "U_minus": 141371.50202238446,
+          "relative_error": 0.004707114501704284
+        },
+        {
+          "direction": "coordinate_68_manifold_factor",
+          "step": 1e-07,
+          "autodiff": -9880.614506648231,
+          "central_difference": -9878.182172542438,
+          "U_plus": 141371.4755933767,
+          "U_minus": 141371.47756901314,
+          "relative_error": 0.00024617235134078
+        }
+      ],
+      "interpretation": "Diagnostic only; no convergence gate or model changed."
+    },
+    "fd_v2_r128_fine.json": {
+      "source_point": "/work/07980/bwa386/ls6/houfin/processed/model_results/refined_float64__age_map_float32_fd_v2_r128_quick90__finite_restart1",
+      "exact_state": {
+        "path": "/work/07980/bwa386/ls6/houfin/processed/model_results/refined_float64__age_map_float32_fd_v2_r128_quick90__finite_restart1/refine_state.pkl",
+        "last_U": 141651.64023293238,
+        "roundtrip_max_abs_difference": 2.7755575615628914e-16
+      },
+      "roundtrip_U": 141651.64023293238,
+      "U": 141651.64023293238,
+      "grad_norm": 21318.120414936056,
+      "repeat_U": [
+        141651.64023293238,
+        141651.64023293238,
+        141651.64023293238
+      ],
+      "blocks": {
+        "alpha_a": {
+          "norm": 17172.714672658243,
+          "max_abs": 17172.714672658243,
+          "size": 1
+        },
+        "alpha_f": {
+          "norm": 2484.387609047596,
+          "max_abs": 2484.387609047596,
+          "size": 1
+        },
+        "alpha_j": {
+          "norm": 5091.135225132654,
+          "max_abs": 5091.135225132654,
+          "size": 1
+        },
+        "alpha_k": {
+          "norm": 1581.7006839061246,
+          "max_abs": 1581.7006839061246,
+          "size": 1
+        },
+        "concentration": {
+          "norm": 291.53629034063573,
+          "max_abs": 291.53629034063573,
+          "size": 1
+        },
+        "disease_b_late": {
+          "norm": 88.65291993700916,
+          "max_abs": 88.65291993700916,
+          "size": 1
+        },
+        "disease_b_native_raw": {
+          "norm": 2.519420309942139,
+          "max_abs": 2.519420309942139,
+          "size": 1
+        },
+        "disease_hill_n_raw": {
+          "norm": 61.86520618976734,
+          "max_abs": 61.86520618976734,
+          "size": 1
+        },
+        "disease_lag0": {
+          "norm": 50.54855328319671,
+          "max_abs": 50.54855328319671,
+          "size": 1
+        },
+        "disease_log_k_half_counts": {
+          "norm": 590.0602692743134,
+          "max_abs": 590.0602692743134,
+          "size": 1
+        },
+        "disease_log_tau_rec": {
+          "norm": 62.540892057355656,
+          "max_abs": 62.540892057355656,
+          "size": 1
+        },
+        "disease_mu_sev": {
+          "norm": 369.1453230722381,
+          "max_abs": 369.1453230722381,
+          "size": 1
+        },
+        "disease_rec_raw": {
+          "norm": 61.91594863439552,
+          "max_abs": 61.91594863439552,
+          "size": 1
+        },
+        "disease_tau_raw": {
+          "norm": 85.62334491253674,
+          "max_abs": 85.62334491253674,
+          "size": 1
+        },
+        "disease_w_lag": {
+          "norm": 100.28578096036783,
+          "max_abs": 38.535381285222485,
+          "size": 24
+        },
+        "disease_w_sev": {
+          "norm": 619.8506673502852,
+          "max_abs": 345.06675368915694,
+          "size": 24
+        },
+        "dispersal_logit_intercept": {
+          "norm": 2.3774496638040432e-07,
+          "max_abs": 2.3774496638040432e-07,
+          "size": 1
+        },
+        "dispersal_logit_slope": {
+          "norm": 4.7548993276080864e-07,
+          "max_abs": 4.7548993276080864e-07,
+          "size": 1
+        },
+        "log_inv_total": {
+          "norm": 78.9829467882257,
+          "max_abs": 78.9829467882257,
+          "size": 1
+        },
+        "manifold_coupling_logit": {
+          "norm": 518.6043874860454,
+          "max_abs": 518.6043874860454,
+          "size": 1
+        },
+        "manifold_factor": {
+          "norm": 9424.519861387651,
+          "max_abs": 3902.15089586761,
+          "size": 128
+        },
+        "manifold_factor_within": {
+          "norm": 839.779666352221,
+          "max_abs": 259.4909002447125,
+          "size": 128
+        },
+        "manifold_idio": {
+          "norm": 5028.3275310522295,
+          "max_abs": 1494.0076537299788,
+          "size": 512
+        },
+        "manifold_idio_within": {
+          "norm": 505.5695153153347,
+          "max_abs": 145.93641613463538,
+          "size": 512
+        },
+        "obs_conc_kappa": {
+          "norm": 501.5064956461058,
+          "max_abs": 501.5064956461058,
+          "size": 1
+        },
+        "obs_fledgling_weight": {
+          "norm": 202.03758514656445,
+          "max_abs": 202.03758514656445,
+          "size": 1
+        },
+        "quality_conc_mult": {
+          "norm": 23.253306474153725,
+          "max_abs": 23.253306474153725,
+          "size": 1
+        },
+        "w_scale_raw": {
+          "norm": 2837.7186578767128,
+          "max_abs": 1677.451692843631,
+          "size": 4
+        },
+        "within_level_corr": {
+          "norm": 535.0656651648696,
+          "max_abs": 499.6504440676828,
+          "size": 4
+        }
+      },
+      "finite_difference": [
+        {
+          "direction": "gradient_unit",
+          "step": 1e-08,
+          "autodiff": 21318.120414936056,
+          "central_difference": 28358.639974612743,
+          "U_plus": 141651.6441411782,
+          "U_minus": 141651.6435740054,
+          "relative_error": 0.2482671794549918
+        },
+        {
+          "direction": "gradient_unit",
+          "step": 1e-09,
+          "autodiff": 21318.120414936056,
+          "central_difference": 21159.197785891593,
+          "U_plus": 141651.64029036797,
+          "U_minus": 141651.64024804957,
+          "relative_error": 0.007454814305914064
+        },
+        {
+          "direction": "gradient_unit",
+          "step": 1e-10,
+          "autodiff": 21318.120414936056,
+          "central_difference": 22084.56862717867,
+          "U_plus": 141651.64023559212,
+          "U_minus": 141651.6402311752,
+          "relative_error": 0.034705147525470464
+        },
+        {
+          "direction": "coordinate_0_alpha_a",
+          "step": 1e-08,
+          "autodiff": 17172.714672658243,
+          "central_difference": 21863.006986677647,
+          "U_plus": 141651.64314174833,
+          "U_minus": 141651.6427044882,
+          "relative_error": 0.21453097997349865
+        },
+        {
+          "direction": "coordinate_0_alpha_a",
+          "step": 1e-09,
+          "autodiff": 17172.714672658243,
+          "central_difference": 17342.172213830054,
+          "U_plus": 141651.64027720928,
+          "U_minus": 141651.64024252494,
+          "relative_error": 0.009771413816123415
+        },
+        {
+          "direction": "coordinate_0_alpha_a",
+          "step": 1e-10,
+          "autodiff": 17172.714672658243,
+          "central_difference": 17249.403754249215,
+          "U_plus": 141651.64023497867,
+          "U_minus": 141651.64023152879,
+          "relative_error": 0.00444589753266575
+        },
+        {
+          "direction": "coordinate_2_alpha_j",
+          "step": 1e-08,
+          "autodiff": 5091.135225132654,
+          "central_difference": 5208.504444453865,
+          "U_plus": 141651.64044220845,
+          "U_minus": 141651.64033803836,
+          "relative_error": 0.022534149787697383
+        },
+        {
+          "direction": "coordinate_2_alpha_j",
+          "step": 1e-09,
+          "autodiff": 5091.135225132654,
+          "central_difference": 5289.839464239776,
+          "U_plus": 141651.64023978336,
+          "U_minus": 141651.64022920368,
+          "relative_error": 0.03756337795322459
+        },
+        {
+          "direction": "coordinate_2_alpha_j",
+          "step": 1e-10,
+          "autodiff": 5091.135225132654,
+          "central_difference": 5428.883014246821,
+          "U_plus": 141651.64023350662,
+          "U_minus": 141651.64023242085,
+          "relative_error": 0.06221312712538247
+        },
+        {
+          "direction": "coordinate_68_manifold_factor",
+          "step": 1e-08,
+          "autodiff": -3902.15089586761,
+          "central_difference": -3900.131559930742,
+          "U_plus": 141651.64025832288,
+          "U_minus": 141651.6403363255,
+          "relative_error": 0.0005174930418520352
+        },
+        {
+          "direction": "coordinate_68_manifold_factor",
+          "step": 1e-09,
+          "autodiff": -3902.15089586761,
+          "central_difference": -3837.5001167878504,
+          "U_plus": 141651.64022989277,
+          "U_minus": 141651.64023756777,
+          "relative_error": 0.016567985402159854
+        },
+        {
+          "direction": "coordinate_68_manifold_factor",
+          "step": 1e-10,
+          "autodiff": -3902.15089586761,
+          "central_difference": -4063.6223275214434,
+          "U_plus": 141651.64023268525,
+          "U_minus": 141651.64023349798,
+          "relative_error": 0.039735836315359783
+        }
+      ],
+      "interpretation": "Diagnostic only; no convergence gate or model changed."
+    },
+    "fd_v1_r64_fine.json": {
+      "source_point": "/work/07980/bwa386/ls6/houfin/processed/model_results/refined_float64__age_map_float32_fd_v1_r64_quick90__finite_restart1",
+      "exact_state": {
+        "path": "/work/07980/bwa386/ls6/houfin/processed/model_results/refined_float64__age_map_float32_fd_v1_r64_quick90__finite_restart1/refine_state.pkl",
+        "last_U": 136319.3153267656,
+        "roundtrip_max_abs_difference": 1.3322676295501878e-15
+      },
+      "roundtrip_U": 136319.3153267656,
+      "U": 136319.3153267656,
+      "grad_norm": 65378.76657538365,
+      "repeat_U": [
+        136319.3153267656,
+        136319.3153267656,
+        136319.3153267656
+      ],
+      "blocks": {
+        "alpha_a": {
+          "norm": 20545.72751100544,
+          "max_abs": 20545.72751100544,
+          "size": 1
+        },
+        "alpha_f": {
+          "norm": 1126.0501302223731,
+          "max_abs": 1126.0501302223731,
+          "size": 1
+        },
+        "alpha_j": {
+          "norm": 1076.1682191848513,
+          "max_abs": 1076.1682191848513,
+          "size": 1
+        },
+        "alpha_k": {
+          "norm": 4291.666716804357,
+          "max_abs": 4291.666716804357,
+          "size": 1
+        },
+        "concentration": {
+          "norm": 14.60598994081076,
+          "max_abs": 14.60598994081076,
+          "size": 1
+        },
+        "disease_b_late": {
+          "norm": 26.465782856710316,
+          "max_abs": 26.465782856710316,
+          "size": 1
+        },
+        "disease_b_native_raw": {
+          "norm": 2.3467860249333388,
+          "max_abs": 2.3467860249333388,
+          "size": 1
+        },
+        "disease_hill_n_raw": {
+          "norm": 3.6207845406419183,
+          "max_abs": 3.6207845406419183,
+          "size": 1
+        },
+        "disease_lag0": {
+          "norm": 0.6948978377749233,
+          "max_abs": 0.6948978377749233,
+          "size": 1
+        },
+        "disease_log_k_half_counts": {
+          "norm": 7.648507002445769,
+          "max_abs": 7.648507002445769,
+          "size": 1
+        },
+        "disease_log_tau_rec": {
+          "norm": 2.275490765755536,
+          "max_abs": 2.275490765755536,
+          "size": 1
+        },
+        "disease_mu_sev": {
+          "norm": 51.057073265538946,
+          "max_abs": 51.057073265538946,
+          "size": 1
+        },
+        "disease_rec_raw": {
+          "norm": 3.593666561401398,
+          "max_abs": 3.593666561401398,
+          "size": 1
+        },
+        "disease_tau_raw": {
+          "norm": 4.2544358350870555,
+          "max_abs": 4.2544358350870555,
+          "size": 1
+        },
+        "disease_w_lag": {
+          "norm": 3.3085363492925524,
+          "max_abs": 1.064104983589498,
+          "size": 24
+        },
+        "disease_w_sev": {
+          "norm": 63.57153146221536,
+          "max_abs": 27.785010523461338,
+          "size": 24
+        },
+        "dispersal_logit_intercept": {
+          "norm": 4.29853818317838e-07,
+          "max_abs": 4.29853818317838e-07,
+          "size": 1
+        },
+        "dispersal_logit_slope": {
+          "norm": 4.330947938058216e-07,
+          "max_abs": 4.330947938058216e-07,
+          "size": 1
+        },
+        "log_inv_total": {
+          "norm": 3.98980526426489,
+          "max_abs": 3.98980526426489,
+          "size": 1
+        },
+        "manifold_coupling_logit": {
+          "norm": 483.30812731288734,
+          "max_abs": 483.30812731288734,
+          "size": 1
+        },
+        "manifold_factor": {
+          "norm": 54323.36138603195,
+          "max_abs": 38833.4889136655,
+          "size": 64
+        },
+        "manifold_factor_within": {
+          "norm": 7131.14394917255,
+          "max_abs": 4037.565308689129,
+          "size": 64
+        },
+        "manifold_idio": {
+          "norm": 28269.319264180223,
+          "max_abs": 21002.867743009134,
+          "size": 256
+        },
+        "manifold_idio_within": {
+          "norm": 3850.8517461244514,
+          "max_abs": 2177.4996041378176,
+          "size": 256
+        },
+        "obs_conc_kappa": {
+          "norm": 11.940362540765902,
+          "max_abs": 11.940362540765902,
+          "size": 1
+        },
+        "obs_fledgling_weight": {
+          "norm": 0.18334924429638477,
+          "max_abs": 0.18334924429638477,
+          "size": 1
+        },
+        "quality_conc_mult": {
+          "norm": 0.8934336888712979,
+          "max_abs": 0.8934336888712979,
+          "size": 1
+        },
+        "w_scale_raw": {
+          "norm": 2625.1455227131646,
+          "max_abs": 2565.112597194035,
+          "size": 4
+        },
+        "within_level_corr": {
+          "norm": 2900.7879843593423,
+          "max_abs": 2888.2946947616792,
+          "size": 4
+        }
+      },
+      "finite_difference": [
+        {
+          "direction": "gradient_unit",
+          "step": 1e-08,
+          "autodiff": 65378.766575383655,
+          "central_difference": 68655.72358947247,
+          "U_plus": 136319.3162169316,
+          "U_minus": 136319.31484381712,
+          "relative_error": 0.04773028150840579
+        },
+        {
+          "direction": "gradient_unit",
+          "step": 1e-09,
+          "autodiff": 65378.766575383655,
+          "central_difference": 65403.14643643796,
+          "U_plus": 136319.3153941982,
+          "U_minus": 136319.3152633919,
+          "relative_error": 0.0003727628162048028
+        },
+        {
+          "direction": "gradient_unit",
+          "step": 1e-10,
+          "autodiff": 65378.766575383655,
+          "central_difference": 65273.488871753216,
+          "U_plus": 136319.3153332945,
+          "U_minus": 136319.3153202398,
+          "relative_error": 0.0016102736277389285
+        },
+        {
+          "direction": "coordinate_67_manifold_factor",
+          "step": 1e-08,
+          "autodiff": 38833.4889136655,
+          "central_difference": 39517.31196139008,
+          "U_plus": 136319.31579305432,
+          "U_minus": 136319.31500270808,
+          "relative_error": 0.01730439176613791
+        },
+        {
+          "direction": "coordinate_67_manifold_factor",
+          "step": 1e-09,
+          "autodiff": 38833.4889136655,
+          "central_difference": 38847.196265123785,
+          "U_plus": 136319.31536633876,
+          "U_minus": 136319.31528864437,
+          "relative_error": 0.0003528530441357543
+        },
+        {
+          "direction": "coordinate_67_manifold_factor",
+          "step": 1e-10,
+          "autodiff": 38833.4889136655,
+          "central_difference": 39435.69026887417,
+          "U_plus": 136319.31533069233,
+          "U_minus": 136319.3153228052,
+          "relative_error": 0.01527046568990775
+        },
+        {
+          "direction": "coordinate_198_manifold_idio",
+          "step": 1e-08,
+          "autodiff": 21002.867743009134,
+          "central_difference": 21111.869136802852,
+          "U_plus": 136319.31555861657,
+          "U_minus": 136319.31513637918,
+          "relative_error": 0.005163038530004137
+        },
+        {
+          "direction": "coordinate_198_manifold_idio",
+          "step": 1e-09,
+          "autodiff": 21002.867743009134,
+          "central_difference": 21015.643142163754,
+          "U_plus": 136319.31534799072,
+          "U_minus": 136319.31530595943,
+          "relative_error": 0.0006078995093416075
+        },
+        {
+          "direction": "coordinate_198_manifold_idio",
+          "step": 1e-10,
+          "autodiff": 21002.867743009134,
+          "central_difference": 21253.363229334354,
+          "U_plus": 136319.315328901,
+          "U_minus": 136319.31532465032,
+          "relative_error": 0.01178615749527497
+        },
+        {
+          "direction": "coordinate_0_alpha_a",
+          "step": 1e-08,
+          "autodiff": 20545.72751100544,
+          "central_difference": 20644.346659537405,
+          "U_plus": 136319.31555295613,
+          "U_minus": 136319.3151400692,
+          "relative_error": 0.004777053503236168
+        },
+        {
+          "direction": "coordinate_0_alpha_a",
+          "step": 1e-09,
+          "autodiff": 20545.72751100544,
+          "central_difference": 20533.7128136307,
+          "U_plus": 136319.31534748612,
+          "U_minus": 136319.3153064187,
+          "relative_error": 0.0005847783860807014
+        },
+        {
+          "direction": "coordinate_0_alpha_a",
+          "step": 1e-10,
+          "autodiff": 20545.72751100544,
+          "central_difference": 20708.5395231843,
+          "U_plus": 136319.31532884084,
+          "U_minus": 136319.31532469913,
+          "relative_error": 0.007862071199979271
+        }
+      ],
+      "interpretation": "Diagnostic only; no convergence gate or model changed."
+    },
+    "fd_v2_r128_exact.json": {
+      "source_point": "/work/07980/bwa386/ls6/houfin/processed/model_results/refined_float64__age_map_float32_fd_v2_r128_quick90__finite_restart1",
+      "exact_state": {
+        "path": "/work/07980/bwa386/ls6/houfin/processed/model_results/refined_float64__age_map_float32_fd_v2_r128_quick90__finite_restart1/refine_state.pkl",
+        "last_U": 141651.64023293238,
+        "roundtrip_max_abs_difference": 2.7755575615628914e-16
+      },
+      "roundtrip_U": 141651.64023293238,
+      "U": 141651.64023293238,
+      "grad_norm": 21318.120414914956,
+      "repeat_U": [
+        141651.64023293238,
+        141651.64023293238,
+        141651.64023293238
+      ],
+      "blocks": {
+        "alpha_a": {
+          "norm": 17172.714672644794,
+          "max_abs": 17172.714672644794,
+          "size": 1
+        },
+        "alpha_f": {
+          "norm": 2484.3876090459567,
+          "max_abs": 2484.3876090459567,
+          "size": 1
+        },
+        "alpha_j": {
+          "norm": 5091.135225125095,
+          "max_abs": 5091.135225125095,
+          "size": 1
+        },
+        "alpha_k": {
+          "norm": 1581.7006839066323,
+          "max_abs": 1581.7006839066323,
+          "size": 1
+        },
+        "concentration": {
+          "norm": 291.53629034063573,
+          "max_abs": 291.53629034063573,
+          "size": 1
+        },
+        "disease_b_late": {
+          "norm": 88.65291993700222,
+          "max_abs": 88.65291993700222,
+          "size": 1
+        },
+        "disease_b_native_raw": {
+          "norm": 2.5194203099412764,
+          "max_abs": 2.5194203099412764,
+          "size": 1
+        },
+        "disease_hill_n_raw": {
+          "norm": 61.86520618976787,
+          "max_abs": 61.86520618976787,
+          "size": 1
+        },
+        "disease_lag0": {
+          "norm": 50.54855328319752,
+          "max_abs": 50.54855328319752,
+          "size": 1
+        },
+        "disease_log_k_half_counts": {
+          "norm": 590.0602692743122,
+          "max_abs": 590.0602692743122,
+          "size": 1
+        },
+        "disease_log_tau_rec": {
+          "norm": 62.540892057355485,
+          "max_abs": 62.540892057355485,
+          "size": 1
+        },
+        "disease_mu_sev": {
+          "norm": 369.14532307223294,
+          "max_abs": 369.14532307223294,
+          "size": 1
+        },
+        "disease_rec_raw": {
+          "norm": 61.91594863439537,
+          "max_abs": 61.91594863439537,
+          "size": 1
+        },
+        "disease_tau_raw": {
+          "norm": 85.62334491253674,
+          "max_abs": 85.62334491253674,
+          "size": 1
+        },
+        "disease_w_lag": {
+          "norm": 100.2857809603683,
+          "max_abs": 38.53538128522346,
+          "size": 24
+        },
+        "disease_w_sev": {
+          "norm": 619.8506673502857,
+          "max_abs": 345.06675368915785,
+          "size": 24
+        },
+        "dispersal_logit_intercept": {
+          "norm": 2.3774496638040432e-07,
+          "max_abs": 2.3774496638040432e-07,
+          "size": 1
+        },
+        "dispersal_logit_slope": {
+          "norm": 4.7548993276080864e-07,
+          "max_abs": 4.7548993276080864e-07,
+          "size": 1
+        },
+        "log_inv_total": {
+          "norm": 78.98294678822572,
+          "max_abs": 78.98294678822572,
+          "size": 1
+        },
+        "manifold_coupling_logit": {
+          "norm": 518.6043874933102,
+          "max_abs": 518.6043874933102,
+          "size": 1
+        },
+        "manifold_factor": {
+          "norm": 9424.519861372284,
+          "max_abs": 3902.1508958644813,
+          "size": 128
+        },
+        "manifold_factor_within": {
+          "norm": 839.7796663518271,
+          "max_abs": 259.4909002445207,
+          "size": 128
+        },
+        "manifold_idio": {
+          "norm": 5028.3275310461,
+          "max_abs": 1494.0076537284199,
+          "size": 512
+        },
+        "manifold_idio_within": {
+          "norm": 505.5695153151477,
+          "max_abs": 145.93641613462532,
+          "size": 512
+        },
+        "obs_conc_kappa": {
+          "norm": 501.5064956461058,
+          "max_abs": 501.5064956461058,
+          "size": 1
+        },
+        "obs_fledgling_weight": {
+          "norm": 202.03758514656445,
+          "max_abs": 202.03758514656445,
+          "size": 1
+        },
+        "quality_conc_mult": {
+          "norm": 23.253306474153725,
+          "max_abs": 23.253306474153725,
+          "size": 1
+        },
+        "w_scale_raw": {
+          "norm": 2837.718657875116,
+          "max_abs": 1677.4516928445978,
+          "size": 4
+        },
+        "within_level_corr": {
+          "norm": 535.0656651643436,
+          "max_abs": 499.6504440672293,
+          "size": 4
+        }
+      },
+      "finite_difference": [
+        {
+          "direction": "gradient_unit",
+          "step": 0.0001,
+          "autodiff": 21318.12041491496,
+          "central_difference": 53341229.44271701,
+          "U_plus": 152422.5484224934,
+          "U_minus": 141754.30253395,
+          "relative_error": 0.9996003444120498
+        },
+        {
+          "direction": "gradient_unit",
+          "step": 1e-05,
+          "autodiff": 21318.12041491496,
+          "central_difference": 48263729.19444256,
+          "U_plus": 142712.27386463835,
+          "U_minus": 141746.9992807495,
+          "relative_error": 0.9995582993529358
+        },
+        {
+          "direction": "gradient_unit",
+          "step": 1e-06,
+          "autodiff": 21318.12041491496,
+          "central_difference": 19123224.069960997,
+          "U_plus": 141697.02291367418,
+          "U_minus": 141658.77646553426,
+          "relative_error": 0.9988852235200024
+        },
+        {
+          "direction": "gradient_unit",
+          "step": 1e-07,
+          "autodiff": 21318.12041491496,
+          "central_difference": 717208.9135565329,
+          "U_plus": 141652.07377726774,
+          "U_minus": 141651.93033548503,
+          "relative_error": 0.9702762751382976
+        },
+        {
+          "direction": "coordinate_0_alpha_a",
+          "step": 0.0001,
+          "autodiff": 17172.714672644794,
+          "central_difference": 51277570.75263391,
+          "U_plus": 152010.24542013422,
+          "U_minus": 141754.73126960744,
+          "relative_error": 0.9996651028038069
+        },
+        {
+          "direction": "coordinate_0_alpha_a",
+          "step": 1e-05,
+          "autodiff": 17172.714672644794,
+          "central_difference": 42705751.164311364,
+          "U_plus": 142599.28742354937,
+          "U_minus": 141745.17240026314,
+          "relative_error": 0.9995978828564196
+        },
+        {
+          "direction": "coordinate_0_alpha_a",
+          "step": 1e-06,
+          "autodiff": 17172.714672644794,
+          "central_difference": 14768815.987656126,
+          "U_plus": 141687.66403283906,
+          "U_minus": 141658.12640086375,
+          "relative_error": 0.9988372314553179
+        },
+        {
+          "direction": "coordinate_0_alpha_a",
+          "step": 1e-07,
+          "autodiff": 17172.714672644794,
+          "central_difference": 445723.67187356576,
+          "U_plus": 141651.95336440636,
+          "U_minus": 141651.864219672,
+          "relative_error": 0.9614722848340977
+        },
+        {
+          "direction": "coordinate_2_alpha_j",
+          "step": 0.0001,
+          "autodiff": 5091.135225125095,
+          "central_difference": 16087983.500756526,
+          "U_plus": 144971.0324825738,
+          "U_minus": 141753.4357824225,
+          "relative_error": 0.999683544228841
+        },
+        {
+          "direction": "coordinate_2_alpha_j",
+          "step": 1e-05,
+          "autodiff": 5091.135225125095,
+          "central_difference": 5592918.329614622,
+          "U_plus": 141787.37545216893,
+          "U_minus": 141675.51708557663,
+          "relative_error": 0.9990897175812192
+        },
+        {
+          "direction": "coordinate_2_alpha_j",
+          "step": 1e-06,
+          "autodiff": 5091.135225125095,
+          "central_difference": 537619.3277043058,
+          "U_plus": 141653.74437177478,
+          "U_minus": 141652.66913311937,
+          "relative_error": 0.9905302228495675
+        },
+        {
+          "direction": "coordinate_2_alpha_j",
+          "step": 1e-07,
+          "autodiff": 5091.135225125095,
+          "central_difference": 11104.224977316335,
+          "U_plus": 141651.65717776804,
+          "U_minus": 141651.65495692304,
+          "relative_error": 0.5415136819070899
+        },
+        {
+          "direction": "coordinate_68_manifold_factor",
+          "step": 0.0001,
+          "autodiff": -3902.1508958644813,
+          "central_difference": -8237367.6018900005,
+          "U_plus": 141751.67540217144,
+          "U_minus": 143399.14892254944,
+          "relative_error": 0.9995262866628691
+        },
+        {
+          "direction": "coordinate_68_manifold_factor",
+          "step": 1e-05,
+          "autodiff": -3902.1508958644813,
+          "central_difference": -2944535.047837416,
+          "U_plus": 141663.16462958022,
+          "U_minus": 141722.05533053697,
+          "relative_error": 0.9986747819834134
+        },
+        {
+          "direction": "coordinate_68_manifold_factor",
+          "step": 1e-06,
+          "autodiff": -3902.1508958644813,
+          "central_difference": -157614.49602723587,
+          "U_plus": 141652.1229719309,
+          "U_minus": 141652.43820092294,
+          "relative_error": 0.9752424364876301
+        },
+        {
+          "direction": "coordinate_68_manifold_factor",
+          "step": 1e-07,
+          "autodiff": -3902.1508958644813,
+          "central_difference": -5524.876614799723,
+          "U_plus": 141651.64611622237,
+          "U_minus": 141651.6472211977,
+          "relative_error": 0.29371257171397763
+        }
+      ],
+      "interpretation": "Diagnostic only; no convergence gate or model changed."
+    },
+    "fd_v1_r64_exact.json": {
+      "source_point": "/work/07980/bwa386/ls6/houfin/processed/model_results/refined_float64__age_map_float32_fd_v1_r64_quick90__finite_restart1",
+      "exact_state": {
+        "path": "/work/07980/bwa386/ls6/houfin/processed/model_results/refined_float64__age_map_float32_fd_v1_r64_quick90__finite_restart1/refine_state.pkl",
+        "last_U": 136319.3153267656,
+        "roundtrip_max_abs_difference": 1.3322676295501878e-15
+      },
+      "roundtrip_U": 136319.3153267656,
+      "U": 136319.3153267656,
+      "grad_norm": 65378.76657538447,
+      "repeat_U": [
+        136319.3153267656,
+        136319.3153267656,
+        136319.3153267656
+      ],
+      "blocks": {
+        "alpha_a": {
+          "norm": 20545.727510962497,
+          "max_abs": 20545.727510962497,
+          "size": 1
+        },
+        "alpha_f": {
+          "norm": 1126.0501302207983,
+          "max_abs": 1126.0501302207983,
+          "size": 1
+        },
+        "alpha_j": {
+          "norm": 1076.1682191730688,
+          "max_abs": 1076.1682191730688,
+          "size": 1
+        },
+        "alpha_k": {
+          "norm": 4291.6667168051645,
+          "max_abs": 4291.6667168051645,
+          "size": 1
+        },
+        "concentration": {
+          "norm": 14.60598994081076,
+          "max_abs": 14.60598994081076,
+          "size": 1
+        },
+        "disease_b_late": {
+          "norm": 26.465782856700667,
+          "max_abs": 26.465782856700667,
+          "size": 1
+        },
+        "disease_b_native_raw": {
+          "norm": 2.346786024931871,
+          "max_abs": 2.346786024931871,
+          "size": 1
+        },
+        "disease_hill_n_raw": {
+          "norm": 3.6207845406419343,
+          "max_abs": 3.6207845406419343,
+          "size": 1
+        },
+        "disease_lag0": {
+          "norm": 0.6948978377732544,
+          "max_abs": 0.6948978377732544,
+          "size": 1
+        },
+        "disease_log_k_half_counts": {
+          "norm": 7.648507002446018,
+          "max_abs": 7.648507002446018,
+          "size": 1
+        },
+        "disease_log_tau_rec": {
+          "norm": 2.275490765755507,
+          "max_abs": 2.275490765755507,
+          "size": 1
+        },
+        "disease_mu_sev": {
+          "norm": 51.057073265532026,
+          "max_abs": 51.057073265532026,
+          "size": 1
+        },
+        "disease_rec_raw": {
+          "norm": 3.5936665614013954,
+          "max_abs": 3.5936665614013954,
+          "size": 1
+        },
+        "disease_tau_raw": {
+          "norm": 4.254435835087636,
+          "max_abs": 4.254435835087636,
+          "size": 1
+        },
+        "disease_w_lag": {
+          "norm": 3.3085363492921704,
+          "max_abs": 1.0641049835887053,
+          "size": 24
+        },
+        "disease_w_sev": {
+          "norm": 63.57153146221631,
+          "max_abs": 27.785010523460834,
+          "size": 24
+        },
+        "dispersal_logit_intercept": {
+          "norm": 4.29853818317838e-07,
+          "max_abs": 4.29853818317838e-07,
+          "size": 1
+        },
+        "dispersal_logit_slope": {
+          "norm": 4.330947938058216e-07,
+          "max_abs": 4.330947938058216e-07,
+          "size": 1
+        },
+        "log_inv_total": {
+          "norm": 3.9898052642648403,
+          "max_abs": 3.9898052642648403,
+          "size": 1
+        },
+        "manifold_coupling_logit": {
+          "norm": 483.30812733897307,
+          "max_abs": 483.30812733897307,
+          "size": 1
+        },
+        "manifold_factor": {
+          "norm": 54323.36138604359,
+          "max_abs": 38833.48891372403,
+          "size": 64
+        },
+        "manifold_factor_within": {
+          "norm": 7131.143949169244,
+          "max_abs": 4037.565308687527,
+          "size": 64
+        },
+        "manifold_idio": {
+          "norm": 28269.319264192232,
+          "max_abs": 21002.86774303535,
+          "size": 256
+        },
+        "manifold_idio_within": {
+          "norm": 3850.8517461229153,
+          "max_abs": 2177.49960413703,
+          "size": 256
+        },
+        "obs_conc_kappa": {
+          "norm": 11.940362540765902,
+          "max_abs": 11.940362540765902,
+          "size": 1
+        },
+        "obs_fledgling_weight": {
+          "norm": 0.18334924429638477,
+          "max_abs": 0.18334924429638477,
+          "size": 1
+        },
+        "quality_conc_mult": {
+          "norm": 0.8934336888712979,
+          "max_abs": 0.8934336888712979,
+          "size": 1
+        },
+        "w_scale_raw": {
+          "norm": 2625.1455227100364,
+          "max_abs": 2565.1125971909237,
+          "size": 4
+        },
+        "within_level_corr": {
+          "norm": 2900.787984359446,
+          "max_abs": 2888.294694761777,
+          "size": 4
+        }
+      },
+      "finite_difference": [
+        {
+          "direction": "gradient_unit",
+          "step": 0.0001,
+          "autodiff": 65378.766575384456,
+          "central_difference": 20798802.13651835,
+          "U_plus": 140479.38109645623,
+          "U_minus": 136319.62066915256,
+          "relative_error": 0.9968566090418932
+        },
+        {
+          "direction": "gradient_unit",
+          "step": 1e-05,
+          "autodiff": 65378.766575384456,
+          "central_difference": 144525264.0989871,
+          "U_plus": 139209.82856801132,
+          "U_minus": 136319.32328603158,
+          "relative_error": 0.9995476308797429
+        },
+        {
+          "direction": "gradient_unit",
+          "step": 1e-06,
+          "autodiff": 65378.766575384456,
+          "central_difference": 956134182.5004057,
+          "U_plus": 138231.5866060372,
+          "U_minus": 136319.31824103638,
+          "relative_error": 0.9999316217663045
+        },
+        {
+          "direction": "gradient_unit",
+          "step": 1e-07,
+          "autodiff": 65378.766575384456,
+          "central_difference": 2891801.929072244,
+          "U_plus": 136319.89370277265,
+          "U_minus": 136319.31534238684,
+          "relative_error": 0.9773916858142634
+        },
+        {
+          "direction": "coordinate_67_manifold_factor",
+          "step": 0.0001,
+          "autodiff": 38833.48891372403,
+          "central_difference": 19163028.58938332,
+          "U_plus": 140151.98564813423,
+          "U_minus": 136319.37993025756,
+          "relative_error": 0.997973520274596
+        },
+        {
+          "direction": "coordinate_67_manifold_factor",
+          "step": 1e-05,
+          "autodiff": 38833.48891372403,
+          "central_difference": 133598628.8803804,
+          "U_plus": 138991.3026364568,
+          "U_minus": 136319.33005884918,
+          "relative_error": 0.9997093271896638
+        },
+        {
+          "direction": "coordinate_67_manifold_factor",
+          "step": 1e-06,
+          "autodiff": 38833.48891372403,
+          "central_difference": 825349722.5406463,
+          "U_plus": 137970.01815173167,
+          "U_minus": 136319.31870665037,
+          "relative_error": 0.9999529490495324
+        },
+        {
+          "direction": "coordinate_67_manifold_factor",
+          "step": 1e-07,
+          "autodiff": 38833.48891372403,
+          "central_difference": 160525.55438363925,
+          "U_plus": 136319.34689053125,
+          "U_minus": 136319.31478542037,
+          "relative_error": 0.7580853150588345
+        },
+        {
+          "direction": "coordinate_198_manifold_idio",
+          "step": 0.0001,
+          "autodiff": 21002.86774303535,
+          "central_difference": 17341605.105400667,
+          "U_plus": 139787.6691359424,
+          "U_minus": 136319.34811486225,
+          "relative_error": 0.9987888740623846
+        },
+        {
+          "direction": "coordinate_198_manifold_idio",
+          "step": 1e-05,
+          "autodiff": 21002.86774303535,
+          "central_difference": 121115167.62934624,
+          "U_plus": 138741.62723921175,
+          "U_minus": 136319.32388662483,
+          "relative_error": 0.9998265876342812
+        },
+        {
+          "direction": "coordinate_198_manifold_idio",
+          "step": 1e-06,
+          "autodiff": 21002.86774303535,
+          "central_difference": 639330707.5781631,
+          "U_plus": 137597.97881603992,
+          "U_minus": 136319.3174008836,
+          "relative_error": 0.9999671486642295
+        },
+        {
+          "direction": "coordinate_198_manifold_idio",
+          "step": 1e-07,
+          "autodiff": 21002.86774303535,
+          "central_difference": 33554.10051881336,
+          "U_plus": 136319.32125562645,
+          "U_minus": 136319.31454480634,
+          "relative_error": 0.37405958084737484
+        },
+        {
+          "direction": "coordinate_0_alpha_a",
+          "step": 0.0001,
+          "autodiff": 20545.727510962497,
+          "central_difference": 17340159.555089194,
+          "U_plus": 139787.97431112526,
+          "U_minus": 136319.94240010742,
+          "relative_error": 0.9988151361903165
+        },
+        {
+          "direction": "coordinate_0_alpha_a",
+          "step": 1e-05,
+          "autodiff": 20545.727510962497,
+          "central_difference": 120657524.68466961,
+          "U_plus": 138732.47725038967,
+          "U_minus": 136319.32675669627,
+          "relative_error": 0.99982971863906
+        },
+        {
+          "direction": "coordinate_0_alpha_a",
+          "step": 1e-06,
+          "autodiff": 20545.727510962497,
+          "central_difference": 630313628.9144895,
+          "U_plus": 137579.94470236002,
+          "U_minus": 136319.31744453104,
+          "relative_error": 0.9999674039611894
+        },
+        {
+          "direction": "coordinate_0_alpha_a",
+          "step": 1e-07,
+          "autodiff": 20545.727510962497,
+          "central_difference": 32184.335577767342,
+          "U_plus": 136319.32097642,
+          "U_minus": 136319.31453955287,
+          "relative_error": 0.3616233754051674
+        }
+      ],
+      "interpretation": "Diagnostic only; no convergence gate or model changed."
+    },
+    "fd_control64_scale.json": {
+      "source_point": "/work/07980/bwa386/ls6/houfin/processed/model_results/refined_float64__age_map_float32_fd_control64_quick90__finite_restart1",
+      "exact_state": {
+        "path": "/work/07980/bwa386/ls6/houfin/processed/model_results/refined_float64__age_map_float32_fd_control64_quick90__finite_restart1/refine_state.pkl",
+        "last_U": 141371.47642474176,
+        "roundtrip_max_abs_difference": 2.7755575615628914e-16
+      },
+      "roundtrip_U": 141371.47642474176,
+      "U": 141371.47642474176,
+      "grad_norm": 59406.28534861874,
+      "repeat_U": [
+        141371.47642474176,
+        141371.47642474176,
+        141371.47642474176
+      ],
+      "blocks": {
+        "alpha_a": {
+          "norm": 53314.0778176885,
+          "max_abs": 53314.0778176885,
+          "size": 1
+        },
+        "alpha_f": {
+          "norm": 6673.353215286511,
+          "max_abs": 6673.353215286511,
+          "size": 1
+        },
+        "alpha_j": {
+          "norm": 9871.257811128433,
+          "max_abs": 9871.257811128433,
+          "size": 1
+        },
+        "alpha_k": {
+          "norm": 4498.264173039521,
+          "max_abs": 4498.264173039521,
+          "size": 1
+        },
+        "concentration": {
+          "norm": 28.199622984300014,
+          "max_abs": 28.199622984300014,
+          "size": 1
+        },
+        "disease_b_late": {
+          "norm": 52.070107302333405,
+          "max_abs": 52.070107302333405,
+          "size": 1
+        },
+        "disease_b_native_raw": {
+          "norm": 1.0625472105319393,
+          "max_abs": 1.0625472105319393,
+          "size": 1
+        },
+        "disease_hill_n_raw": {
+          "norm": 57.92741738352225,
+          "max_abs": 57.92741738352225,
+          "size": 1
+        },
+        "disease_lag0": {
+          "norm": 13.224166574369155,
+          "max_abs": 13.224166574369155,
+          "size": 1
+        },
+        "disease_log_k_half_counts": {
+          "norm": 6.2063044538332885,
+          "max_abs": 6.2063044538332885,
+          "size": 1
+        },
+        "disease_log_tau_rec": {
+          "norm": 2.7930281601180598,
+          "max_abs": 2.7930281601180598,
+          "size": 1
+        },
+        "disease_mu_sev": {
+          "norm": 12.504697089251692,
+          "max_abs": 12.504697089251692,
+          "size": 1
+        },
+        "disease_rec_raw": {
+          "norm": 7.925407644537382,
+          "max_abs": 7.925407644537382,
+          "size": 1
+        },
+        "disease_tau_raw": {
+          "norm": 18.942862276522547,
+          "max_abs": 18.942862276522547,
+          "size": 1
+        },
+        "disease_w_lag": {
+          "norm": 45.31021434309971,
+          "max_abs": 23.27850181956552,
+          "size": 24
+        },
+        "disease_w_sev": {
+          "norm": 175.6750189316222,
+          "max_abs": 83.07940533166749,
+          "size": 24
+        },
+        "dispersal_logit_intercept": {
+          "norm": 1.4023228933623955e-06,
+          "max_abs": 1.4023228933623955e-06,
+          "size": 1
+        },
+        "dispersal_logit_slope": {
+          "norm": 4.986960320252365e-06,
+          "max_abs": 4.986960320252365e-06,
+          "size": 1
+        },
+        "log_inv_total": {
+          "norm": 87.74162882835807,
+          "max_abs": 87.74162882835807,
+          "size": 1
+        },
+        "manifold_coupling_logit": {
+          "norm": 2179.8338719307944,
+          "max_abs": 2179.8338719307944,
+          "size": 1
+        },
+        "manifold_factor": {
+          "norm": 20563.61357974569,
+          "max_abs": 12142.258098613029,
+          "size": 64
+        },
+        "manifold_factor_within": {
+          "norm": 2040.5308384795014,
+          "max_abs": 595.6777632754984,
+          "size": 64
+        },
+        "manifold_idio": {
+          "norm": 8108.757759330598,
+          "max_abs": 3615.6912147719486,
+          "size": 256
+        },
+        "manifold_idio_within": {
+          "norm": 944.6482721441926,
+          "max_abs": 277.92212099485835,
+          "size": 256
+        },
+        "obs_conc_kappa": {
+          "norm": 157.7780701849469,
+          "max_abs": 157.7780701849469,
+          "size": 1
+        },
+        "obs_fledgling_weight": {
+          "norm": 23.060732379733636,
+          "max_abs": 23.060732379733636,
+          "size": 1
+        },
+        "quality_conc_mult": {
+          "norm": 32.160560314106135,
+          "max_abs": 32.160560314106135,
+          "size": 1
+        },
+        "w_scale_raw": {
+          "norm": 5094.372939739337,
+          "max_abs": 3839.598283236547,
+          "size": 4
+        },
+        "within_level_corr": {
+          "norm": 238.24658739892593,
+          "max_abs": 182.13766390269728,
+          "size": 4
+        }
+      },
+      "finite_difference": [
+        {
+          "direction": "gradient_unit",
+          "step": 0.0001,
+          "autodiff": 59406.28534861875,
+          "central_difference": -4741691.615274321,
+          "U_plus": 141788.30558332457,
+          "U_minus": 142736.64390637944,
+          "relative_error": 1.01252850041054
+        },
+        {
+          "direction": "gradient_unit",
+          "step": 1e-05,
+          "autodiff": 59406.28534861875,
+          "central_difference": 373653.4599825972,
+          "U_plus": 141421.52075269632,
+          "U_minus": 141414.04768349667,
+          "relative_error": 0.8410123504506406
+        },
+        {
+          "direction": "gradient_unit",
+          "step": 1e-06,
+          "autodiff": 59406.28534861875,
+          "central_difference": 70620.59934833087,
+          "U_plus": 141372.08713958945,
+          "U_minus": 141371.94589839075,
+          "relative_error": 0.15879664153511847
+        },
+        {
+          "direction": "gradient_unit",
+          "step": 1e-07,
+          "autodiff": 59406.28534861875,
+          "central_difference": 59516.18106337264,
+          "U_plus": 141371.48778056217,
+          "U_minus": 141371.47587732595,
+          "relative_error": 0.001846484649895007
+        },
+        {
+          "direction": "coordinate_0_alpha_a",
+          "step": 0.0001,
+          "autodiff": -53314.0778176885,
+          "central_difference": 3937980.1770029007,
+          "U_plus": 142572.4630543632,
+          "U_minus": 141784.86701896263,
+          "relative_error": 1.0135384322473315
+        },
+        {
+          "direction": "coordinate_0_alpha_a",
+          "step": 1e-05,
+          "autodiff": -53314.0778176885,
+          "central_difference": -360411.96754522383,
+          "U_plus": 141406.37221156326,
+          "U_minus": 141413.58045091416,
+          "relative_error": 0.8520746184406355
+        },
+        {
+          "direction": "coordinate_0_alpha_a",
+          "step": 1e-06,
+          "autodiff": -53314.0778176885,
+          "central_difference": -61433.79880813882,
+          "U_plus": 141371.84892228438,
+          "U_minus": 141371.971789882,
+          "relative_error": 0.13217025721962367
+        },
+        {
+          "direction": "coordinate_0_alpha_a",
+          "step": 1e-07,
+          "autodiff": -53314.0778176885,
+          "central_difference": -53388.79433111288,
+          "U_plus": 141371.475427039,
+          "U_minus": 141371.48610479786,
+          "relative_error": 0.0013994793169703605
+        },
+        {
+          "direction": "coordinate_66_manifold_factor",
+          "step": 0.0001,
+          "autodiff": 12142.258098613029,
+          "central_difference": -21626.64244431653,
+          "U_plus": 141522.48027544116,
+          "U_minus": 141526.80560393003,
+          "relative_error": 1.5614490612621195
+        },
+        {
+          "direction": "coordinate_66_manifold_factor",
+          "step": 1e-05,
+          "autodiff": 12142.258098613029,
+          "central_difference": 20733.73043240281,
+          "U_plus": 141373.9888480778,
+          "U_minus": 141373.57417346915,
+          "relative_error": 0.41437175822267713
+        },
+        {
+          "direction": "coordinate_66_manifold_factor",
+          "step": 1e-06,
+          "autodiff": 12142.258098613029,
+          "central_difference": 12230.556560098194,
+          "U_plus": 141371.51176390488,
+          "U_minus": 141371.48730279176,
+          "relative_error": 0.00721949659864505
+        },
+        {
+          "direction": "coordinate_66_manifold_factor",
+          "step": 1e-07,
+          "autodiff": 12142.258098613029,
+          "central_difference": 12141.60438394174,
+          "U_plus": 141371.4778696142,
+          "U_minus": 141371.47544129333,
+          "relative_error": 5.383798186299898e-05
+        },
+        {
+          "direction": "coordinate_68_manifold_factor",
+          "step": 0.0001,
+          "autodiff": -9880.614506710743,
+          "central_difference": 1783.0542773299385,
+          "U_plus": 141481.05728504906,
+          "U_minus": 141480.7006741936,
+          "relative_error": 1.1804598566333013
+        },
+        {
+          "direction": "coordinate_68_manifold_factor",
+          "step": 1e-05,
+          "autodiff": -9880.614506710743,
+          "central_difference": -14511.267785564994,
+          "U_plus": 141372.89474229547,
+          "U_minus": 141373.18496765118,
+          "relative_error": 0.3191074237814403
+        },
+        {
+          "direction": "coordinate_68_manifold_factor",
+          "step": 1e-06,
+          "autodiff": -9880.614506710743,
+          "central_difference": -9927.343649906106,
+          "U_plus": 141371.48216769716,
+          "U_minus": 141371.50202238446,
+          "relative_error": 0.004707114495407394
+        },
+        {
+          "direction": "coordinate_68_manifold_factor",
+          "step": 1e-07,
+          "autodiff": -9880.614506710743,
+          "central_difference": -9878.18231806159,
+          "U_plus": 141371.47559337667,
+          "U_minus": 141371.47756901314,
+          "relative_error": 0.0002461576299227767
+        }
+      ],
+      "interpretation": "Diagnostic only; no convergence gate or model changed.",
+      "curvature_probes": 16,
+      "curvature_seed": 20261025,
+      "block_mean_diagonal_curvature": {
+        "alpha_a": 639914738984.5011,
+        "alpha_f": -24867441289.452427,
+        "alpha_j": 29262450568.765633,
+        "alpha_k": -656767805.9338408,
+        "concentration": 1475508.5725797634,
+        "disease_b_late": -141519.6360095417,
+        "disease_b_native_raw": -1170.8446204910206,
+        "disease_hill_n_raw": -135100.19391696976,
+        "disease_lag0": -11885.873123350582,
+        "disease_log_k_half_counts": -237941.8638187039,
+        "disease_log_tau_rec": 28128.395825879794,
+        "disease_mu_sev": -765661.4629526171,
+        "disease_rec_raw": 14269.673063589144,
+        "disease_tau_raw": 10558.085874130335,
+        "disease_w_lag": -12906.379788310694,
+        "disease_w_sev": -15249.456944183557,
+        "dispersal_logit_intercept": 1.0,
+        "dispersal_logit_slope": 1.0,
+        "log_inv_total": -3431997.692692184,
+        "manifold_coupling_logit": -882371155.1517043,
+        "manifold_factor": -1230531882.5355804,
+        "manifold_factor_within": -28766854.184356958,
+        "manifold_idio": 150476446.5301561,
+        "manifold_idio_within": -17325602.719591722,
+        "obs_conc_kappa": 391677.5824635207,
+        "obs_fledgling_weight": 662132.4429949105,
+        "quality_conc_mult": -84.508614146625,
+        "w_scale_raw": -4820756930.484521,
+        "within_level_corr": 24868382.6843974
+      },
+      "coordinate_scale_by_site": {
+        "alpha_a": 1.2500832710305865e-06,
+        "alpha_f": 6.341389794643886e-06,
+        "alpha_j": 5.845809429420215e-06,
+        "alpha_k": 3.902061158830525e-05,
+        "concentration": 0.0008232450564473039,
+        "disease_b_late": 0.002658224451739166,
+        "disease_b_native_raw": 0.02922472058174724,
+        "disease_hill_n_raw": 0.0027206458564039723,
+        "disease_lag0": 0.009172431032514033,
+        "disease_log_k_half_counts": 0.0020500505521042723,
+        "disease_log_tau_rec": 0.005962487994045667,
+        "disease_mu_sev": 0.0011428299294971853,
+        "disease_rec_raw": 0.008371301592265599,
+        "disease_tau_raw": 0.009732118873266098,
+        "disease_w_lag": 0.008802332703651938,
+        "disease_w_sev": 0.008097907487196132,
+        "dispersal_logit_intercept": 1.0,
+        "dispersal_logit_slope": 1.0,
+        "log_inv_total": 0.000539792077808523,
+        "manifold_coupling_logit": 3.366466900144647e-05,
+        "manifold_factor": 2.850713449545669e-05,
+        "manifold_factor_within": 0.00018644631920932835,
+        "manifold_idio": 8.152029386605903e-05,
+        "manifold_idio_within": 0.00024024581113157617,
+        "obs_conc_kappa": 0.001597848657912439,
+        "obs_fledgling_weight": 0.0012289311883364894,
+        "quality_conc_mult": 0.10878011412353454,
+        "w_scale_raw": 1.4402649199731435e-05,
+        "within_level_corr": 0.0002005285571988441
+      }
+    }
+  },
+  "builds_done": {
+    "v1": true,
+    "v2": true
+  }
+}

@@ -1,0 +1,88 @@
+{
+  "source": "/mnt/e/Datasets/houfin/joint_observations_20261102/cbc_1902_1966",
+  "scope": "Raw surveyed circle-year coverage, not verified historical absences; winter labels use January year",
+  "coverage": [
+    {
+      "period": "1902-1939",
+      "region": "East",
+      "survey_rows": 2887,
+      "circles": 641,
+      "positive_rows": 0,
+      "missing_count_rows": 0,
+      "measured_effort_rows": 103
+    },
+    {
+      "period": "1902-1939",
+      "region": "Great Plains",
+      "survey_rows": 321,
+      "circles": 79,
+      "positive_rows": 4,
+      "missing_count_rows": 0,
+      "measured_effort_rows": 12
+    },
+    {
+      "period": "1902-1939",
+      "region": "West",
+      "survey_rows": 472,
+      "circles": 147,
+      "positive_rows": 241,
+      "missing_count_rows": 0,
+      "measured_effort_rows": 26
+    },
+    {
+      "period": "1940-1950",
+      "region": "East",
+      "survey_rows": 1259,
+      "circles": 311,
+      "positive_rows": 4,
+      "missing_count_rows": 0,
+      "measured_effort_rows": 700
+    },
+    {
+      "period": "1940-1950",
+      "region": "Great Plains",
+      "survey_rows": 218,
+      "circles": 71,
+      "positive_rows": 3,
+      "missing_count_rows": 0,
+      "measured_effort_rows": 129
+    },
+    {
+      "period": "1940-1950",
+      "region": "West",
+      "survey_rows": 538,
+      "circles": 154,
+      "positive_rows": 291,
+      "missing_count_rows": 0,
+      "measured_effort_rows": 306
+    },
+    {
+      "period": "1951-1966",
+      "region": "East",
+      "survey_rows": 2901,
+      "circles": 362,
+      "positive_rows": 234,
+      "missing_count_rows": 0,
+      "measured_effort_rows": 2815
+    },
+    {
+      "period": "1951-1966",
+      "region": "Great Plains",
+      "survey_rows": 883,
+      "circles": 141,
+      "positive_rows": 54,
+      "missing_count_rows": 0,
+      "measured_effort_rows": 837
+    },
+    {
+      "period": "1951-1966",
+      "region": "West",
+      "survey_rows": 1690,
+      "circles": 286,
+      "positive_rows": 1183,
+      "missing_count_rows": 0,
+      "measured_effort_rows": 1622
+    }
+  ],
+  "pre_1940_eastern_positive_records": []
+}

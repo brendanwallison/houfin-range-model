@@ -1,0 +1,11 @@
+{
+  "epoch": 1793758381.8768272,
+  "job": "3550613",
+  "partition": "gpu-a100-dev",
+  "gpus": 3,
+  "wall_hours": 2,
+  "backlog": 49,
+  "bounded_replacement": true,
+  "reason": "Local scientific compute released to Claude; continue validated/checkpointed TACC backlog while regular and small requests wait",
+  "old_completed_dev": "3548968"
+}

@@ -1,0 +1,240 @@
+{
+  "interpretation": "Original four-seed encoders; fixed3%,10%,100% calibration, reused heldouts. Confidence intervals condition on each fitted readout; this is not clean training or fresh confirmation.",
+  "evaluation_windows": {
+    "early": [
+      1966,
+      1986
+    ],
+    "modern": [
+      2005,
+      2025
+    ],
+    "calibration": [
+      1996,
+      2025
+    ]
+  },
+  "source_sha256": "e1f0b10ccac4312b602426f4b6d2dbe143966f3c8f96aba54ee8bba839440273",
+  "entries": [
+    {
+      "fraction": 0.03,
+      "thinning_seed": 1,
+      "fit_rows": 1518,
+      "test_cells": 306,
+      "differences": {
+        "v2_r64": {
+          "desk_within": {
+            "value": 0.02300051522852356,
+            "ci95": [
+              -0.001287287866400443,
+              0.04629463401601864
+            ],
+            "valid_bootstrap_share": 1.0
+          },
+          "desk_pooled": {
+            "value": -0.012312638383280394,
+            "ci95": [
+              -0.027894577195697913,
+              0.002323549871904302
+            ],
+            "valid_bootstrap_share": 1.0
+          }
+        },
+        "v2_r128": {
+          "desk_within": {
+            "value": -0.003952340857559716,
+            "ci95": [
+              -0.02467469327465246,
+              0.01754797122865002
+            ],
+            "valid_bootstrap_share": 1.0
+          },
+          "desk_pooled": {
+            "value": 0.02069845337728138,
+            "ci95": [
+              0.00554091294650475,
+              0.035159900961947835
+            ],
+            "valid_bootstrap_share": 1.0
+          }
+        }
+      }
+    },
+    {
+      "fraction": 0.03,
+      "thinning_seed": 2,
+      "fit_rows": 1445,
+      "test_cells": 306,
+      "differences": {
+        "v2_r64": {
+          "desk_within": {
+            "value": 0.0018794173427352234,
+            "ci95": [
+              -0.020016473216863246,
+              0.025775740320502276
+            ],
+            "valid_bootstrap_share": 1.0
+          },
+          "desk_pooled": {
+            "value": -0.0020366836548681155,
+            "ci95": [
+              -0.015360954498998108,
+              0.010886072852762274
+            ],
+            "valid_bootstrap_share": 1.0
+          }
+        },
+        "v2_r128": {
+          "desk_within": {
+            "value": -0.04095203851812472,
+            "ci95": [
+              -0.06201579955798856,
+              -0.016809847832344498
+            ],
+            "valid_bootstrap_share": 1.0
+          },
+          "desk_pooled": {
+            "value": 0.02087840460253526,
+            "ci95": [
+              0.003646290480267778,
+              0.03860413626717779
+            ],
+            "valid_bootstrap_share": 1.0
+          }
+        }
+      }
+    },
+    {
+      "fraction": 0.1,
+      "thinning_seed": 1,
+      "fit_rows": 4895,
+      "test_cells": 306,
+      "differences": {
+        "v2_r64": {
+          "desk_within": {
+            "value": 0.005093902134417794,
+            "ci95": [
+              -0.013348572696499132,
+              0.02307516288091734
+            ],
+            "valid_bootstrap_share": 1.0
+          },
+          "desk_pooled": {
+            "value": -0.018721939309276042,
+            "ci95": [
+              -0.032844580201392165,
+              -0.005720491230649983
+            ],
+            "valid_bootstrap_share": 1.0
+          }
+        },
+        "v2_r128": {
+          "desk_within": {
+            "value": 0.01209630779580878,
+            "ci95": [
+              -0.0035803404151498793,
+              0.02782026133503343
+            ],
+            "valid_bootstrap_share": 1.0
+          },
+          "desk_pooled": {
+            "value": 0.04083976066496839,
+            "ci95": [
+              0.0253224454506769,
+              0.05448509820345926
+            ],
+            "valid_bootstrap_share": 1.0
+          }
+        }
+      }
+    },
+    {
+      "fraction": 0.1,
+      "thinning_seed": 2,
+      "fit_rows": 4814,
+      "test_cells": 306,
+      "differences": {
+        "v2_r64": {
+          "desk_within": {
+            "value": 0.021501128065243846,
+            "ci95": [
+              0.0037556759135275735,
+              0.0392155560900464
+            ],
+            "valid_bootstrap_share": 1.0
+          },
+          "desk_pooled": {
+            "value": -0.016705863479415745,
+            "ci95": [
+              -0.03026684057936974,
+              -0.004333985600357412
+            ],
+            "valid_bootstrap_share": 1.0
+          }
+        },
+        "v2_r128": {
+          "desk_within": {
+            "value": 0.026780879688249104,
+            "ci95": [
+              0.012412421784268213,
+              0.04068202448001193
+            ],
+            "valid_bootstrap_share": 1.0
+          },
+          "desk_pooled": {
+            "value": 0.03223340471254815,
+            "ci95": [
+              0.016265692924711944,
+              0.04824369698079198
+            ],
+            "valid_bootstrap_share": 1.0
+          }
+        }
+      }
+    },
+    {
+      "fraction": 1.0,
+      "thinning_seed": 1,
+      "fit_rows": 48844,
+      "test_cells": 306,
+      "differences": {
+        "v2_r64": {
+          "desk_within": {
+            "value": 0.022227530307071863,
+            "ci95": [
+              0.0032529989293847332,
+              0.03851843314120403
+            ],
+            "valid_bootstrap_share": 1.0
+          },
+          "desk_pooled": {
+            "value": -0.021590517686416427,
+            "ci95": [
+              -0.039670076461270166,
+              -0.005161048157156895
+            ],
+            "valid_bootstrap_share": 1.0
+          }
+        },
+        "v2_r128": {
+          "desk_within": {
+            "value": 0.028257072508164893,
+            "ci95": [
+              0.010513408912000272,
+              0.045569439293604366
+            ],
+            "valid_bootstrap_share": 1.0
+          },
+          "desk_pooled": {
+            "value": 0.04740981119266982,
+            "ci95": [
+              0.029893213223369255,
+              0.06314708373544103
+            ],
+            "valid_bootstrap_share": 1.0
+          }
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "epoch": 1793873088.4529939,
+  "held": [
+    "step48_shoot10_weak_s42",
+    "step48_shoot10_wide_weak_s42",
+    "step48_shoot5_weak_s42"
+  ],
+  "hold_reason": "All three matched seed-41 shooting designs stalled with gradients 1e8\u20131e9; retain seed-42 queue files pending conditioning repair.",
+  "next_dev_job": "3556610",
+  "existing_pending_dev": [],
+  "development_wave_limit": 9,
+  "budget_unchanged": true
+}

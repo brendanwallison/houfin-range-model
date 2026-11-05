@@ -1,0 +1,31 @@
+{
+  "correction": "The earlier jobs were not corrected resubmissions. Corrections submitted 2026-10-26.",
+  "tacc_audit": {
+    "job": 3535014,
+    "purpose": "Correct audit --steps CLI mismatch",
+    "last_state": "PENDING"
+  },
+  "tacc_shared128": {
+    "job": 3535018,
+    "purpose": "Data-slice barrier projection memory correction; shared coefficients",
+    "last_state": "PENDING"
+  },
+  "local_winter64": {
+    "task": 784,
+    "state": "Running; past former OOM into L-BFGS"
+  },
+  "local_summer64": {
+    "task": 785,
+    "state": "Queued"
+  },
+  "Z_repair": {
+    "validated_replacement": false,
+    "modern_seasonal_pilot_complete": true,
+    "historical_winter_calibration_implemented": false,
+    "direction_dependent_calibration_implemented": false
+  },
+  "source": {
+    "age_fields_sha256": "4cef51bbfe4c14d9d715cd9b298b50eb1c412023305749b2b76d6d01b96b6cba"
+  },
+  "checks": "Projection toy value/gradient/Hessian agree; actual winter64 MAP gradient and sampled finite differences pass with <0.2% discrepancy. Does not certify convergence or ecology."
+}

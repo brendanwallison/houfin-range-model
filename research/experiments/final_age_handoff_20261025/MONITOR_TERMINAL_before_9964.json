@@ -1,0 +1,467 @@
+{
+  "timestamp": "2026-10-25T14:22:33.708587-05:00",
+  "tasks": {
+    "9942": [
+      "done",
+      "9942_recover_81a_finite.sh"
+    ],
+    "9943": [
+      "done",
+      "9943_final_age_build_v1.sh"
+    ],
+    "9944": [
+      "done",
+      "9944_final_age_build_v2.sh"
+    ],
+    "9950": [
+      "failed",
+      "9950_final_age_fit_fd_control64.sh"
+    ],
+    "9951": [
+      "failed",
+      "9951_final_age_fit_fd_v1_r64.sh"
+    ],
+    "9952": [
+      "failed",
+      "9952_final_age_fit_fd_v2_r128.sh"
+    ],
+    "9953": [
+      "failed",
+      "9953_final_age_fit_fd_v2_r64.sh"
+    ],
+    "9954": [
+      "failed",
+      "9954_recover_fd_control64.sh"
+    ],
+    "9955": [
+      "failed",
+      "9955_recover_fd_v1_r64.sh"
+    ],
+    "9956": [
+      "failed",
+      "9956_recover_fd_v2_r128.sh"
+    ],
+    "9957": [
+      "failed",
+      "9957_hostcast_recover_fd_control64.sh"
+    ],
+    "9958": [
+      "done",
+      "9958_hostcast_recover_fd_v1_r64.sh"
+    ],
+    "9959": [
+      "failed",
+      "9959_hostcast_recover_fd_v2_r128.sh"
+    ]
+  },
+  "arms": {
+    "fd_control64": {
+      "complete": false,
+      "logs": {
+        "map.log": [
+          "",
+          "MAP: 100%|\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588| 400/400 [45:24<00:00,  6.70s/it, prior_scale=1, loss=151195.6094]",
+          "MAP: 100%|\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588| 400/400 [45:24<00:00,  6.81s/it, prior_scale=1, loss=151195.6094]",
+          "Final loss: 151100.3438 -> /work/07980/bwa386/ls6/houfin/processed/model_results/age_map_float32_fd_control64_quick90/map_params.pkl"
+        ],
+        "refine.log": [
+          "    run_refine()",
+          "  File \"/work/07980/bwa386/ls6/houfin/research/final_age_handoff_20261025/code/src/model/age_refine_map.py\", line 278, in run_refine",
+          "    raise RuntimeError(f\"invalid refinement ({status}): {reason}; outputs retained for diagnosis\")",
+          "RuntimeError: invalid refinement (stalled): optimizer stalled: U fell 0.0462 < tol_du 0.05 over 20 iterations but recent median |grad| 1.61e+04 > plateau_grad_max 10000.0; outputs retained for diagnosis"
+        ],
+        "finite_restart1/refine.log": [
+          "    run_refine()",
+          "  File \"/work/07980/bwa386/ls6/houfin/research/final_age_handoff_20261025/code_memoryfix1/src/model/age_refine_map.py\", line 278, in run_refine",
+          "    raise RuntimeError(f\"invalid refinement ({status}): {reason}; outputs retained for diagnosis\")",
+          "RuntimeError: invalid refinement (stalled): optimizer stalled: U fell 0.00507 < tol_du 0.05 over 20 iterations but recent median |grad| 1.11e+04 > plateau_grad_max 10000.0; outputs retained for diagnosis"
+        ]
+      }
+    },
+    "fd_v1_r64": {
+      "complete": false,
+      "logs": {
+        "map.log": [
+          "",
+          "MAP: 100%|\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588| 400/400 [46:16<00:00,  6.90s/it, prior_scale=1, loss=148957.1562]",
+          "MAP: 100%|\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588| 400/400 [46:16<00:00,  6.94s/it, prior_scale=1, loss=148957.1562]",
+          "Final loss: 148896.3594 -> /work/07980/bwa386/ls6/houfin/processed/model_results/age_map_float32_fd_v1_r64_quick90/map_params.pkl"
+        ],
+        "refine.log": [
+          "    run_refine()",
+          "  File \"/work/07980/bwa386/ls6/houfin/research/final_age_handoff_20261025/code/src/model/age_refine_map.py\", line 278, in run_refine",
+          "    raise RuntimeError(f\"invalid refinement ({status}): {reason}; outputs retained for diagnosis\")",
+          "RuntimeError: invalid refinement (stalled): optimizer stalled: U fell 0.0415 < tol_du 0.05 over 20 iterations but recent median |grad| 1.32e+04 > plateau_grad_max 10000.0; outputs retained for diagnosis"
+        ],
+        "finite_restart1/refine.log": [
+          "[lbfgs] iter 30 U=136319.3170 |grad|=1.13e+04 drop over last 20=0.138 (0.29 it/s)",
+          "[stop] U fell 0.0345 < tol_du 0.05 over 20 iterations",
+          "[memory] peak 12.8 GiB of 37.5 GiB (34%)",
+          "[done] U 136319.47 -> 136319.32 in 31 iterations; use HOUFIN_HMC_MAP_DIR=/work/07980/bwa386/ls6/houfin/processed/model_results/refined_float64__age_map_float32_fd_v1_r64_quick90__finite_restart1"
+        ],
+        "finite_restart1/viz_ref.log": [
+          "[memory:map-viz-counterfactual] device_in_use=6.78 GiB device_peak=12.75 GiB device_limit=37.52 GiB largest_free=0.00 GiB process_maxrss=26.58 GiB",
+          "[map-viz] FFMpeg unavailable ([Errno 2] No such file or directory: 'ffmpeg'); falling back to GIF: /work/07980/bwa386/ls6/houfin/research/age_model/FINAL_DESK_MAP/fd_v1_r64/finite_restart1/viz_ref/16_counterfactual_animation.gif",
+          "[map-viz] FFMpeg unavailable ([Errno 2] No such file or directory: 'ffmpeg'); falling back to GIF: /work/07980/bwa386/ls6/houfin/research/age_model/FINAL_DESK_MAP/fd_v1_r64/finite_restart1/viz_ref/16_counterfactual_animation_linear.gif",
+          "[map-viz] complete -> /work/07980/bwa386/ls6/houfin/research/age_model/FINAL_DESK_MAP/fd_v1_r64/finite_restart1/viz_ref"
+        ]
+      }
+    },
+    "fd_v2_r128": {
+      "complete": false,
+      "logs": {
+        "map.log": [
+          "",
+          "MAP: 100%|\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588| 400/400 [48:11<00:00,  7.15s/it, prior_scale=1, loss=144451.5938]",
+          "MAP: 100%|\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588| 400/400 [48:11<00:00,  7.23s/it, prior_scale=1, loss=144451.5938]",
+          "Final loss: 144431.5312 -> /work/07980/bwa386/ls6/houfin/processed/model_results/age_map_float32_fd_v2_r128_quick90/map_params.pkl"
+        ],
+        "finite_restart1/refine.log": [
+          "    run_refine()",
+          "  File \"/work/07980/bwa386/ls6/houfin/research/final_age_handoff_20261025/code_memoryfix1/src/model/age_refine_map.py\", line 278, in run_refine",
+          "    raise RuntimeError(f\"invalid refinement ({status}): {reason}; outputs retained for diagnosis\")",
+          "RuntimeError: invalid refinement (stalled): optimizer stalled: U fell 0.0386 < tol_du 0.05 over 20 iterations but recent median |grad| 1.02e+05 > plateau_grad_max 10000.0; outputs retained for diagnosis"
+        ]
+      }
+    },
+    "fd_v2_r64": {
+      "complete": false,
+      "logs": {
+        "map.log": [
+          "",
+          "MAP: 100%|\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588| 400/400 [45:38<00:00,  6.82s/it, prior_scale=1, loss=146081.4375]",
+          "MAP: 100%|\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588| 400/400 [45:38<00:00,  6.85s/it, prior_scale=1, loss=146081.4375]",
+          "Final loss: 146036.2188 -> /work/07980/bwa386/ls6/houfin/processed/model_results/age_map_float32_fd_v2_r64_quick90/map_params.pkl"
+        ],
+        "refine.log": [
+          "    run_refine()",
+          "  File \"/work/07980/bwa386/ls6/houfin/research/final_age_handoff_20261025/code/src/model/age_refine_map.py\", line 278, in run_refine",
+          "    raise RuntimeError(f\"invalid refinement ({status}): {reason}; outputs retained for diagnosis\")",
+          "RuntimeError: invalid refinement (stalled): optimizer stalled: U fell 0.0481 < tol_du 0.05 over 20 iterations but recent median |grad| 1.06e+04 > plateau_grad_max 10000.0; outputs retained for diagnosis"
+        ]
+      }
+    }
+  },
+  "refinement_reports": {
+    "refined_float64__age_map_float32_fd_control64_quick90__finite_restart1": {
+      "source_map_dir": "/work/07980/bwa386/ls6/houfin/processed/model_results/refined_float64__age_map_float32_fd_control64_quick90",
+      "out_dir": "/work/07980/bwa386/ls6/houfin/processed/model_results/refined_float64__age_map_float32_fd_control64_quick90__finite_restart1",
+      "reason": "optimizer stalled: U fell 0.00507 < tol_du 0.05 over 20 iterations but recent median |grad| 1.11e+04 > plateau_grad_max 10000.0",
+      "status": "stalled",
+      "valid": false,
+      "iterations": 21,
+      "U_start": 141371.4814963257,
+      "U_end": 141371.47642474176,
+      "grad_norm_start": 6713.400254664887,
+      "grad_norm_end": 59406.28534872759,
+      "rms_change_by_site": {
+        "alpha_a": 5.586068242691145e-07,
+        "alpha_f": 2.6305592104591824e-07,
+        "alpha_j": 1.5856826962590276e-07,
+        "alpha_k": 1.4647453772664853e-06,
+        "concentration": 2.3742779009516823e-07,
+        "disease_b_late": 4.22941481392769e-07,
+        "disease_b_native_raw": 8.62921567534869e-09,
+        "disease_hill_n_raw": 4.7057743474132607e-07,
+        "disease_lag0": 1.0679692175052935e-07,
+        "disease_log_k_half_counts": 4.863924418785359e-08,
+        "disease_log_tau_rec": 2.273522747842094e-08,
+        "disease_mu_sev": 1.007115399201397e-07,
+        "disease_rec_raw": 6.438061350699797e-08,
+        "disease_tau_raw": 1.5392184277152055e-07,
+        "disease_w_lag": 7.496457435462004e-08,
+        "disease_w_sev": 2.909723438499405e-07,
+        "dispersal_logit_intercept": 0.0,
+        "dispersal_logit_slope": 8.881784197001252e-16,
+        "log_inv_total": 7.266864253674399e-07,
+        "manifold_coupling_logit": 1.1355957476588685e-06,
+        "manifold_factor": 6.25471670083589e-07,
+        "manifold_factor_within": 7.639871103128867e-08,
+        "manifold_idio": 2.0097194162669575e-07,
+        "manifold_idio_within": 1.6228438754639277e-08,
+        "obs_conc_kappa": 1.2831785828337772e-06,
+        "obs_fledgling_weight": 1.8486631647718355e-07,
+        "quality_conc_mult": 2.61016239899714e-07,
+        "w_scale_raw": 1.1211710742868552e-06,
+        "within_level_corr": 7.814144489440417e-08
+      },
+      "peak_gpu_bytes": 13690322176,
+      "gpu_bytes_limit": 40286558112
+    },
+    "refined_float64__age_map_float32_fd_v2_r64_quick90": {
+      "source_map_dir": "/work/07980/bwa386/ls6/houfin/processed/model_results/age_map_float32_fd_v2_r64_quick90",
+      "out_dir": "/work/07980/bwa386/ls6/houfin/processed/model_results/refined_float64__age_map_float32_fd_v2_r64_quick90",
+      "reason": "optimizer stalled: U fell 0.0481 < tol_du 0.05 over 20 iterations but recent median |grad| 1.06e+04 > plateau_grad_max 10000.0",
+      "status": "stalled",
+      "valid": false,
+      "iterations": 2108,
+      "U_start": 146087.7490376714,
+      "U_end": 139894.87484152886,
+      "grad_norm_start": 23354.077152321457,
+      "grad_norm_end": 10591.030982529022,
+      "rms_change_by_site": {
+        "alpha_a": 0.19279433340175023,
+        "alpha_f": 0.418289880532015,
+        "alpha_j": 0.25551333002626286,
+        "alpha_k": 0.4202018134529887,
+        "concentration": 0.851308835300938,
+        "disease_b_late": 0.1553692285766224,
+        "disease_b_native_raw": 0.09225710906134044,
+        "disease_hill_n_raw": 0.3545316508870793,
+        "disease_lag0": 0.34247041197404404,
+        "disease_log_k_half_counts": 0.1667772298891026,
+        "disease_log_tau_rec": 0.013716329083892642,
+        "disease_mu_sev": 0.519822213858407,
+        "disease_rec_raw": 0.02926437183193653,
+        "disease_tau_raw": 0.3893348947392139,
+        "disease_w_lag": 0.12817273438073315,
+        "disease_w_sev": 0.11456596494241796,
+        "dispersal_logit_intercept": 0.0,
+        "dispersal_logit_slope": 0.0,
+        "log_inv_total": 0.08469153063113485,
+        "manifold_coupling_logit": 0.6013642180042257,
+        "manifold_factor": 0.464891203175038,
+        "manifold_factor_within": 0.04875699507635315,
+        "manifold_idio": 0.19613893072647054,
+        "manifold_idio_within": 0.012869146362059223,
+        "obs_conc_kappa": 2.804840307225907,
+        "obs_fledgling_weight": 0.8942873446234445,
+        "quality_conc_mult": 0.2136410145670392,
+        "w_scale_raw": 0.7815491011529965,
+        "within_level_corr": 0.08799951907588563
+      },
+      "peak_gpu_bytes": 26801103360,
+      "gpu_bytes_limit": 40286558112
+    },
+    "refined_float64__age_map_float32_fd_control64_quick90": {
+      "source_map_dir": "/work/07980/bwa386/ls6/houfin/processed/model_results/age_map_float32_fd_control64_quick90",
+      "out_dir": "/work/07980/bwa386/ls6/houfin/processed/model_results/refined_float64__age_map_float32_fd_control64_quick90",
+      "reason": "optimizer stalled: U fell 0.0462 < tol_du 0.05 over 20 iterations but recent median |grad| 1.61e+04 > plateau_grad_max 10000.0",
+      "status": "stalled",
+      "valid": false,
+      "iterations": 2544,
+      "U_start": 153098.17209702457,
+      "U_end": 141371.48149630323,
+      "grad_norm_start": 380076.91716325504,
+      "grad_norm_end": 6715.261941202088,
+      "rms_change_by_site": {
+        "alpha_a": 0.29183092631495305,
+        "alpha_f": 0.5717152426970191,
+        "alpha_j": 1.140066635523673,
+        "alpha_k": 0.9060876603215644,
+        "concentration": 0.6827027821787921,
+        "disease_b_late": 0.8653424764364774,
+        "disease_b_native_raw": 0.29293523421512746,
+        "disease_hill_n_raw": 0.5669006706819715,
+        "disease_lag0": 0.005170759255837654,
+        "disease_log_k_half_counts": 0.6031635109063895,
+        "disease_log_tau_rec": 0.05989447747028631,
+        "disease_mu_sev": 1.0062724838337294,
+        "disease_rec_raw": 0.09811828009292545,
+        "disease_tau_raw": 0.18149178446936948,
+        "disease_w_lag": 0.111888945299738,
+        "disease_w_sev": 0.12301980040794579,
+        "dispersal_logit_intercept": 2.8188581246979538e-08,
+        "dispersal_logit_slope": 1.982983999226917e-08,
+        "log_inv_total": 0.2945768718078241,
+        "manifold_coupling_logit": 0.4972985213952079,
+        "manifold_factor": 0.5661506714883175,
+        "manifold_factor_within": 0.16630432280341917,
+        "manifold_idio": 0.15655969716062534,
+        "manifold_idio_within": 0.02912925060563694,
+        "obs_conc_kappa": 3.313563034643802,
+        "obs_fledgling_weight": 0.5566616653402718,
+        "quality_conc_mult": 0.04408630747385822,
+        "w_scale_raw": 0.9549631640635818,
+        "within_level_corr": 0.41014067046378433
+      },
+      "peak_gpu_bytes": 26800062720,
+      "gpu_bytes_limit": 40286558112
+    },
+    "refined_float64__age_map_float32_fd_v1_r64_quick90__finite_restart1": {
+      "source_map_dir": "/work/07980/bwa386/ls6/houfin/processed/model_results/refined_float64__age_map_float32_fd_v1_r64_quick90",
+      "out_dir": "/work/07980/bwa386/ls6/houfin/processed/model_results/refined_float64__age_map_float32_fd_v1_r64_quick90__finite_restart1",
+      "reason": "U fell 0.0345 < tol_du 0.05 over 20 iterations",
+      "status": "converged",
+      "valid": true,
+      "iterations": 31,
+      "U_start": 136319.46698878054,
+      "U_end": 136319.3153267656,
+      "grad_norm_start": 1706.8519486336502,
+      "grad_norm_end": 65378.766575372,
+      "rms_change_by_site": {
+        "alpha_a": 3.3968125200956045e-06,
+        "alpha_f": 2.3532088913924554e-05,
+        "alpha_j": 0.00011924127401696794,
+        "alpha_k": 1.759526521882826e-05,
+        "concentration": 5.21104254735949e-05,
+        "disease_b_late": 7.08032121647939e-05,
+        "disease_b_native_raw": 5.693751645774459e-06,
+        "disease_hill_n_raw": 9.881678083578649e-06,
+        "disease_lag0": 1.6722594742279995e-06,
+        "disease_log_k_half_counts": 2.021291480613918e-05,
+        "disease_log_tau_rec": 6.4813807281183244e-06,
+        "disease_mu_sev": 0.00014541185732652728,
+        "disease_rec_raw": 1.0376217958185663e-05,
+        "disease_tau_raw": 1.210025059017461e-05,
+        "disease_w_lag": 1.986828052501388e-06,
+        "disease_w_sev": 3.864614817308709e-05,
+        "dispersal_logit_intercept": 5.200284647344233e-13,
+        "dispersal_logit_slope": 1.9895196601282805e-13,
+        "log_inv_total": 1.780811032014995e-05,
+        "manifold_coupling_logit": 0.00014949981945522328,
+        "manifold_factor": 7.92491772150755e-05,
+        "manifold_factor_within": 7.865808746755807e-06,
+        "manifold_idio": 2.4317488314243514e-05,
+        "manifold_idio_within": 2.146680593602277e-06,
+        "obs_conc_kappa": 5.096122695880112e-05,
+        "obs_fledgling_weight": 2.199750452902549e-07,
+        "quality_conc_mult": 2.7315742976430357e-06,
+        "w_scale_raw": 1.4706508078973196e-05,
+        "within_level_corr": 4.939147347533541e-06
+      },
+      "peak_gpu_bytes": 13690322176,
+      "gpu_bytes_limit": 40286558112
+    },
+    "refined_float64__age_map_float32_fd_v1_r64_quick90": {
+      "source_map_dir": "/work/07980/bwa386/ls6/houfin/processed/model_results/age_map_float32_fd_v1_r64_quick90",
+      "out_dir": "/work/07980/bwa386/ls6/houfin/processed/model_results/refined_float64__age_map_float32_fd_v1_r64_quick90",
+      "reason": "optimizer stalled: U fell 0.0415 < tol_du 0.05 over 20 iterations but recent median |grad| 1.32e+04 > plateau_grad_max 10000.0",
+      "status": "stalled",
+      "valid": false,
+      "iterations": 2321,
+      "U_start": 149344.54673854733,
+      "U_end": 136319.46698878054,
+      "grad_norm_start": 100089.59194255697,
+      "grad_norm_end": 1706.8519486366392,
+      "rms_change_by_site": {
+        "alpha_a": 0.08072838479623473,
+        "alpha_f": 8.53902138412572,
+        "alpha_j": 1.33213196364161,
+        "alpha_k": 0.14838887501374964,
+        "concentration": 0.5539815734805387,
+        "disease_b_late": 0.054881147531129715,
+        "disease_b_native_raw": 0.37651823587734806,
+        "disease_hill_n_raw": 0.727116821676666,
+        "disease_lag0": 3.068985061004985,
+        "disease_log_k_half_counts": 3.663379516453203,
+        "disease_log_tau_rec": 0.7723310268239869,
+        "disease_mu_sev": 2.2033102324522336,
+        "disease_rec_raw": 1.5912162276441708,
+        "disease_tau_raw": 2.0551015151772587,
+        "disease_w_lag": 0.29799152117122363,
+        "disease_w_sev": 0.16247520304373617,
+        "dispersal_logit_intercept": 1.0006571362630723e-06,
+        "dispersal_logit_slope": 9.974164818515874e-07,
+        "log_inv_total": 1.3114236072873888,
+        "manifold_coupling_logit": 0.314052019157091,
+        "manifold_factor": 0.7204395349273829,
+        "manifold_factor_within": 1.2829726781551125,
+        "manifold_idio": 1.2204108242658553,
+        "manifold_idio_within": 0.4987936948376696,
+        "obs_conc_kappa": 3.4405388833008548,
+        "obs_fledgling_weight": 4.42471523346264,
+        "quality_conc_mult": 1.3845061736619428,
+        "w_scale_raw": 6.364665729560823,
+        "within_level_corr": 0.8361752297330146
+      },
+      "peak_gpu_bytes": 26801103360,
+      "gpu_bytes_limit": 40286558112
+    },
+    "refined_float64__age_map_float32_fd_v2_r128_quick90__finite_restart1": {
+      "source_map_dir": "/work/07980/bwa386/ls6/houfin/processed/model_results/age_map_float32_fd_v2_r128_quick90",
+      "out_dir": "/work/07980/bwa386/ls6/houfin/processed/model_results/refined_float64__age_map_float32_fd_v2_r128_quick90__finite_restart1",
+      "reason": "optimizer stalled: U fell 0.0386 < tol_du 0.05 over 20 iterations but recent median |grad| 1.02e+05 > plateau_grad_max 10000.0",
+      "status": "stalled",
+      "valid": false,
+      "iterations": 331,
+      "U_start": 144438.58713278998,
+      "U_end": 141651.64023293238,
+      "grad_norm_start": 1894.511207411531,
+      "grad_norm_end": 21318.120414989888,
+      "rms_change_by_site": {
+        "alpha_a": 0.19942811580212155,
+        "alpha_f": 0.04466612516811175,
+        "alpha_j": 0.31591031572547124,
+        "alpha_k": 0.7897092740674596,
+        "concentration": 0.6729648363943288,
+        "disease_b_late": 0.022976927168472994,
+        "disease_b_native_raw": 0.026543214529763937,
+        "disease_hill_n_raw": 0.22063301106653155,
+        "disease_lag0": 0.016115194197263483,
+        "disease_log_k_half_counts": 0.258831908570321,
+        "disease_log_tau_rec": 0.0036732823397152004,
+        "disease_mu_sev": 0.10796295902573444,
+        "disease_rec_raw": 0.015146632031207918,
+        "disease_tau_raw": 0.04797386026305539,
+        "disease_w_lag": 0.013016632257450212,
+        "disease_w_sev": 0.021057714946686127,
+        "dispersal_logit_intercept": 6.736127211581788e-10,
+        "dispersal_logit_slope": 1.3472254423163577e-09,
+        "log_inv_total": 0.036030562587940906,
+        "manifold_coupling_logit": 0.6363758898584214,
+        "manifold_factor": 0.11284684376735352,
+        "manifold_factor_within": 0.013070827222151537,
+        "manifold_idio": 0.03419667201670153,
+        "manifold_idio_within": 0.002436047178972942,
+        "obs_conc_kappa": 2.271061455399281,
+        "obs_fledgling_weight": 0.24447671866785592,
+        "quality_conc_mult": 0.03561632859067504,
+        "w_scale_raw": 0.7039521345029429,
+        "within_level_corr": 0.04553104344768914
+      },
+      "peak_gpu_bytes": 27346358016,
+      "gpu_bytes_limit": 40286558112
+    },
+    "refined_float64__age_map_float32_run_81a_quick90__finite_restart1": {
+      "source_map_dir": "/work/07980/bwa386/ls6/houfin/processed/model_results/refined_float64__age_map_float32_run_81a_quick90",
+      "out_dir": "/work/07980/bwa386/ls6/houfin/processed/model_results/refined_float64__age_map_float32_run_81a_quick90__finite_restart1",
+      "reason": "U fell 0.0495 < tol_du 0.05 over 20 iterations",
+      "status": "converged",
+      "valid": true,
+      "iterations": 4056,
+      "U_start": 144094.7171325632,
+      "U_end": 136656.98144321374,
+      "grad_norm_start": 3132.229795688254,
+      "grad_norm_end": 97.99090257206026,
+      "rms_change_by_site": {
+        "alpha_a": 0.25388806796872476,
+        "alpha_f": 4.50379122181607,
+        "alpha_j": 0.4705012092488743,
+        "alpha_k": 0.3090165529387684,
+        "concentration": 0.18994004325573077,
+        "disease_b_late": 0.1277363135643218,
+        "disease_b_native_raw": 0.42296385895139776,
+        "disease_hill_n_raw": 2.610679573888503,
+        "disease_lag0": 2.832469042945042,
+        "disease_log_k_half_counts": 3.0056971346146883,
+        "disease_log_tau_rec": 0.6210262214656623,
+        "disease_mu_sev": 1.394759492367345,
+        "disease_rec_raw": 1.813745990920426,
+        "disease_tau_raw": 0.8618465372524722,
+        "disease_w_lag": 0.3108655348468505,
+        "disease_w_sev": 0.2032245806159485,
+        "dispersal_logit_intercept": 1.069142960608005e-06,
+        "dispersal_logit_slope": 5.2269149017902805e-06,
+        "log_inv_total": 1.8811989723720783,
+        "manifold_coupling_logit": 0.410723363281558,
+        "manifold_factor": 0.8071482052061549,
+        "manifold_factor_within": 0.6426307911932045,
+        "manifold_idio": 1.4939775418675156,
+        "manifold_idio_within": 1.2353086689225088,
+        "obs_conc_kappa": 0.15734046572445082,
+        "obs_fledgling_weight": 2.9836859418820505,
+        "quality_conc_mult": 1.997484333190517,
+        "w_k_trend": 0.12869236377772472,
+        "w_scale_raw": 7.129061206564746,
+        "w_scale_within_raw": 5.968326160859972
+      },
+      "peak_gpu_bytes": 13416135680,
+      "gpu_bytes_limit": 40286558112
+    }
+  },
+  "builds_done": {
+    "v1": true,
+    "v2": true
+  }
+}

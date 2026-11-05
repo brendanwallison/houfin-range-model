@@ -1,0 +1,48 @@
+{
+  "token": "4d76f4eea6b74dbdb7e856744ec3ed78",
+  "completed": [
+    "step41_rational_shared_s41",
+    "step42_power2_rational_adult20_s41",
+    "step42_power2_rational_adult20_s42",
+    "step42_power2_veit_s41",
+    "step43_factor_p1_rational_adult20_s41",
+    "step43_factor_p1_rational_adult20_s42",
+    "step43_factor_p2_rational_adult20_s41",
+    "step43_factor_p2_rational_adult20_s42",
+    "step43_factor_p2_veit_s41",
+    "step43_factor_p2_veit_s42",
+    "step43_reprovar_floor0_s42",
+    "step43_reprovar_floor4_s41",
+    "step43_reprovar_floor4_s42",
+    "step43_settlement_floor0_s41",
+    "step43_settlement_floor0_s42",
+    "step43_settlement_floor4_s41"
+  ],
+  "failed": [
+    "step43_reprovar_floor0_s41",
+    "step44_shared_s43",
+    "step45_cell_iid_s010_s41"
+  ],
+  "active": {
+    "step": "step44_kprivate10_s41",
+    "name": "0609_step44_kprivate10_s41.sh",
+    "seed": 41,
+    "token": "4d76f4eea6b74dbdb7e856744ec3ed78",
+    "state": "local_running",
+    "epoch": 1793712218.793246,
+    "heartbeat": 1793712218.793247,
+    "manifest_sha256": "3c2a4d586996a48c8e70351f9ebc44d0c527a3365c92d55c704f90a415325231"
+  },
+  "deadline_epoch": 1793721600.0,
+  "worker_pid": 490999,
+  "last_event": {
+    "epoch": 1793712294.7614386,
+    "event": "map_running",
+    "step": "step44_kprivate10_s41",
+    "seed": 41,
+    "log": "/mnt/e/Datasets/houfin/grid54/runs/step44_kprivate10_s41/out/local3090_map.log"
+  },
+  "heartbeat": 1793713316.6342556,
+  "minor_flexibility_protocol": true,
+  "child_pid": 499564
+}

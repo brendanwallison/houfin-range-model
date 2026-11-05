@@ -1,0 +1,38 @@
+{
+ "epochs": 2,
+ "train_s": 401.2,
+ "cube_s": 20.4,
+ "losses": [
+  {
+   "epoch": 1,
+   "loss_total": 2.5110034942626953,
+   "loss_metric": 0.019326506182551384,
+   "loss_recon": 1.7790658473968506,
+   "loss_presence": 5.047868728637695,
+   "loss_ruzicka": 0.017164601013064384,
+   "loss_mhead_winter_half": 0.034353211522102356
+  },
+  {
+   "epoch": 2,
+   "loss_total": 2.1889309883117676,
+   "loss_metric": 0.01732533425092697,
+   "loss_recon": 1.7773423194885254,
+   "loss_presence": 4.8855767250061035,
+   "loss_ruzicka": 0.015205137431621552,
+   "loss_mhead_winter_half": 0.02499249204993248
+  }
+ ],
+ "n_train_cells": 1825,
+ "n_train_cell_years": 43246,
+ "n_params": 2635311,
+ "spatial_kernel": 3,
+ "ema_half_life": 10.001558303833008,
+ "cube_shape": [
+  67,
+  112,
+  128
+ ],
+ "cube_land_cells_finite": 4318,
+ "checkpoint_written": true,
+ "data_config_res_m": 54000
+}

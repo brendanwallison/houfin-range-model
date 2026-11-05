@@ -1,0 +1,72 @@
+{
+  "step33_nestcbc_s41": {
+    "step": "step33_nestcbc_s41",
+    "seed": 41,
+    "source_commit": "d4435fb",
+    "config_sha256": "83277cb3dbae57d4142c8a126c64eef033540396ae1cdcbf751ce76992369473",
+    "changes": {
+      "registration": "PARSIMONIOUS_CANDIDATES_20261031.md",
+      "source_commit": "d4435fb",
+      "seed": 41,
+      "cbc_founder_pin": -0.283,
+      "native_departure": false,
+      "absolute_allee_sensitivity": false
+    }
+  },
+  "step33_nestcbc_s42": {
+    "step": "step33_nestcbc_s42",
+    "seed": 42,
+    "source_commit": "d4435fb",
+    "config_sha256": "142c978c1f530397c91e18cd6b3331a72ebc727e148d1368d108546359c82bba",
+    "changes": {
+      "registration": "PARSIMONIOUS_CANDIDATES_20261031.md",
+      "source_commit": "d4435fb",
+      "seed": 42,
+      "cbc_founder_pin": -0.283,
+      "native_departure": false,
+      "absolute_allee_sensitivity": false
+    }
+  },
+  "step33_nestcbc_natdep_s41": {
+    "step": "step33_nestcbc_natdep_s41",
+    "seed": 41,
+    "source_commit": "d4435fb",
+    "config_sha256": "7aad485933982e870d7315cdc54872a77061d85a28d5292bf51772d08cdcfa4b",
+    "changes": {
+      "registration": "PARSIMONIOUS_CANDIDATES_20261031.md",
+      "source_commit": "d4435fb",
+      "seed": 41,
+      "cbc_founder_pin": -0.283,
+      "native_departure": true,
+      "absolute_allee_sensitivity": false
+    }
+  },
+  "step33_nestcbc_natdep_s42": {
+    "step": "step33_nestcbc_natdep_s42",
+    "seed": 42,
+    "source_commit": "d4435fb",
+    "config_sha256": "f1f464653c0396c2e3d7d7f9a0123da4f8c281e2b2f6eb713f42ed9187a7c4d3",
+    "changes": {
+      "registration": "PARSIMONIOUS_CANDIDATES_20261031.md",
+      "source_commit": "d4435fb",
+      "seed": 42,
+      "cbc_founder_pin": -0.283,
+      "native_departure": true,
+      "absolute_allee_sensitivity": false
+    }
+  },
+  "step33_nestcbc_abs_s41": {
+    "step": "step33_nestcbc_abs_s41",
+    "seed": 41,
+    "source_commit": "d4435fb",
+    "config_sha256": "f37a07d55657cd08d649956f8e757f85c8bdea923269f64f335f85d3e5ab2333",
+    "changes": {
+      "registration": "PARSIMONIOUS_CANDIDATES_20261031.md",
+      "source_commit": "d4435fb",
+      "seed": 41,
+      "cbc_founder_pin": -0.283,
+      "native_departure": false,
+      "absolute_allee_sensitivity": true
+    }
+  }
+}

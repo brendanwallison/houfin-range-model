@@ -1,0 +1,310 @@
+{
+  "source_point": "/work/07980/bwa386/ls6/houfin/processed/model_results/refined_float64__age_map_float32_fd_v2_r128_quick90__finite_restart1",
+  "exact_state": {
+    "path": "/work/07980/bwa386/ls6/houfin/processed/model_results/refined_float64__age_map_float32_fd_v2_r128_quick90__finite_restart1/refine_state.pkl",
+    "last_U": 141651.64023293238,
+    "roundtrip_max_abs_difference": 2.7755575615628914e-16
+  },
+  "roundtrip_U": 141651.64023293238,
+  "U": 141651.64023293238,
+  "grad_norm": 21318.120414914956,
+  "repeat_U": [
+    141651.64023293238,
+    141651.64023293238,
+    141651.64023293238
+  ],
+  "blocks": {
+    "alpha_a": {
+      "norm": 17172.714672644794,
+      "max_abs": 17172.714672644794,
+      "size": 1
+    },
+    "alpha_f": {
+      "norm": 2484.3876090459567,
+      "max_abs": 2484.3876090459567,
+      "size": 1
+    },
+    "alpha_j": {
+      "norm": 5091.135225125095,
+      "max_abs": 5091.135225125095,
+      "size": 1
+    },
+    "alpha_k": {
+      "norm": 1581.7006839066323,
+      "max_abs": 1581.7006839066323,
+      "size": 1
+    },
+    "concentration": {
+      "norm": 291.53629034063573,
+      "max_abs": 291.53629034063573,
+      "size": 1
+    },
+    "disease_b_late": {
+      "norm": 88.65291993700222,
+      "max_abs": 88.65291993700222,
+      "size": 1
+    },
+    "disease_b_native_raw": {
+      "norm": 2.5194203099412764,
+      "max_abs": 2.5194203099412764,
+      "size": 1
+    },
+    "disease_hill_n_raw": {
+      "norm": 61.86520618976787,
+      "max_abs": 61.86520618976787,
+      "size": 1
+    },
+    "disease_lag0": {
+      "norm": 50.54855328319752,
+      "max_abs": 50.54855328319752,
+      "size": 1
+    },
+    "disease_log_k_half_counts": {
+      "norm": 590.0602692743122,
+      "max_abs": 590.0602692743122,
+      "size": 1
+    },
+    "disease_log_tau_rec": {
+      "norm": 62.540892057355485,
+      "max_abs": 62.540892057355485,
+      "size": 1
+    },
+    "disease_mu_sev": {
+      "norm": 369.14532307223294,
+      "max_abs": 369.14532307223294,
+      "size": 1
+    },
+    "disease_rec_raw": {
+      "norm": 61.91594863439537,
+      "max_abs": 61.91594863439537,
+      "size": 1
+    },
+    "disease_tau_raw": {
+      "norm": 85.62334491253674,
+      "max_abs": 85.62334491253674,
+      "size": 1
+    },
+    "disease_w_lag": {
+      "norm": 100.2857809603683,
+      "max_abs": 38.53538128522346,
+      "size": 24
+    },
+    "disease_w_sev": {
+      "norm": 619.8506673502857,
+      "max_abs": 345.06675368915785,
+      "size": 24
+    },
+    "dispersal_logit_intercept": {
+      "norm": 2.3774496638040432e-07,
+      "max_abs": 2.3774496638040432e-07,
+      "size": 1
+    },
+    "dispersal_logit_slope": {
+      "norm": 4.7548993276080864e-07,
+      "max_abs": 4.7548993276080864e-07,
+      "size": 1
+    },
+    "log_inv_total": {
+      "norm": 78.98294678822572,
+      "max_abs": 78.98294678822572,
+      "size": 1
+    },
+    "manifold_coupling_logit": {
+      "norm": 518.6043874933102,
+      "max_abs": 518.6043874933102,
+      "size": 1
+    },
+    "manifold_factor": {
+      "norm": 9424.519861372284,
+      "max_abs": 3902.1508958644813,
+      "size": 128
+    },
+    "manifold_factor_within": {
+      "norm": 839.7796663518271,
+      "max_abs": 259.4909002445207,
+      "size": 128
+    },
+    "manifold_idio": {
+      "norm": 5028.3275310461,
+      "max_abs": 1494.0076537284199,
+      "size": 512
+    },
+    "manifold_idio_within": {
+      "norm": 505.5695153151477,
+      "max_abs": 145.93641613462532,
+      "size": 512
+    },
+    "obs_conc_kappa": {
+      "norm": 501.5064956461058,
+      "max_abs": 501.5064956461058,
+      "size": 1
+    },
+    "obs_fledgling_weight": {
+      "norm": 202.03758514656445,
+      "max_abs": 202.03758514656445,
+      "size": 1
+    },
+    "quality_conc_mult": {
+      "norm": 23.253306474153725,
+      "max_abs": 23.253306474153725,
+      "size": 1
+    },
+    "w_scale_raw": {
+      "norm": 2837.718657875116,
+      "max_abs": 1677.4516928445978,
+      "size": 4
+    },
+    "within_level_corr": {
+      "norm": 535.0656651643436,
+      "max_abs": 499.6504440672293,
+      "size": 4
+    }
+  },
+  "finite_difference": [
+    {
+      "direction": "gradient_unit",
+      "step": 0.0001,
+      "autodiff": 21318.12041491496,
+      "central_difference": 53341229.44271701,
+      "U_plus": 152422.5484224934,
+      "U_minus": 141754.30253395,
+      "relative_error": 0.9996003444120498
+    },
+    {
+      "direction": "gradient_unit",
+      "step": 1e-05,
+      "autodiff": 21318.12041491496,
+      "central_difference": 48263729.19444256,
+      "U_plus": 142712.27386463835,
+      "U_minus": 141746.9992807495,
+      "relative_error": 0.9995582993529358
+    },
+    {
+      "direction": "gradient_unit",
+      "step": 1e-06,
+      "autodiff": 21318.12041491496,
+      "central_difference": 19123224.069960997,
+      "U_plus": 141697.02291367418,
+      "U_minus": 141658.77646553426,
+      "relative_error": 0.9988852235200024
+    },
+    {
+      "direction": "gradient_unit",
+      "step": 1e-07,
+      "autodiff": 21318.12041491496,
+      "central_difference": 717208.9135565329,
+      "U_plus": 141652.07377726774,
+      "U_minus": 141651.93033548503,
+      "relative_error": 0.9702762751382976
+    },
+    {
+      "direction": "coordinate_0_alpha_a",
+      "step": 0.0001,
+      "autodiff": 17172.714672644794,
+      "central_difference": 51277570.75263391,
+      "U_plus": 152010.24542013422,
+      "U_minus": 141754.73126960744,
+      "relative_error": 0.9996651028038069
+    },
+    {
+      "direction": "coordinate_0_alpha_a",
+      "step": 1e-05,
+      "autodiff": 17172.714672644794,
+      "central_difference": 42705751.164311364,
+      "U_plus": 142599.28742354937,
+      "U_minus": 141745.17240026314,
+      "relative_error": 0.9995978828564196
+    },
+    {
+      "direction": "coordinate_0_alpha_a",
+      "step": 1e-06,
+      "autodiff": 17172.714672644794,
+      "central_difference": 14768815.987656126,
+      "U_plus": 141687.66403283906,
+      "U_minus": 141658.12640086375,
+      "relative_error": 0.9988372314553179
+    },
+    {
+      "direction": "coordinate_0_alpha_a",
+      "step": 1e-07,
+      "autodiff": 17172.714672644794,
+      "central_difference": 445723.67187356576,
+      "U_plus": 141651.95336440636,
+      "U_minus": 141651.864219672,
+      "relative_error": 0.9614722848340977
+    },
+    {
+      "direction": "coordinate_2_alpha_j",
+      "step": 0.0001,
+      "autodiff": 5091.135225125095,
+      "central_difference": 16087983.500756526,
+      "U_plus": 144971.0324825738,
+      "U_minus": 141753.4357824225,
+      "relative_error": 0.999683544228841
+    },
+    {
+      "direction": "coordinate_2_alpha_j",
+      "step": 1e-05,
+      "autodiff": 5091.135225125095,
+      "central_difference": 5592918.329614622,
+      "U_plus": 141787.37545216893,
+      "U_minus": 141675.51708557663,
+      "relative_error": 0.9990897175812192
+    },
+    {
+      "direction": "coordinate_2_alpha_j",
+      "step": 1e-06,
+      "autodiff": 5091.135225125095,
+      "central_difference": 537619.3277043058,
+      "U_plus": 141653.74437177478,
+      "U_minus": 141652.66913311937,
+      "relative_error": 0.9905302228495675
+    },
+    {
+      "direction": "coordinate_2_alpha_j",
+      "step": 1e-07,
+      "autodiff": 5091.135225125095,
+      "central_difference": 11104.224977316335,
+      "U_plus": 141651.65717776804,
+      "U_minus": 141651.65495692304,
+      "relative_error": 0.5415136819070899
+    },
+    {
+      "direction": "coordinate_68_manifold_factor",
+      "step": 0.0001,
+      "autodiff": -3902.1508958644813,
+      "central_difference": -8237367.6018900005,
+      "U_plus": 141751.67540217144,
+      "U_minus": 143399.14892254944,
+      "relative_error": 0.9995262866628691
+    },
+    {
+      "direction": "coordinate_68_manifold_factor",
+      "step": 1e-05,
+      "autodiff": -3902.1508958644813,
+      "central_difference": -2944535.047837416,
+      "U_plus": 141663.16462958022,
+      "U_minus": 141722.05533053697,
+      "relative_error": 0.9986747819834134
+    },
+    {
+      "direction": "coordinate_68_manifold_factor",
+      "step": 1e-06,
+      "autodiff": -3902.1508958644813,
+      "central_difference": -157614.49602723587,
+      "U_plus": 141652.1229719309,
+      "U_minus": 141652.43820092294,
+      "relative_error": 0.9752424364876301
+    },
+    {
+      "direction": "coordinate_68_manifold_factor",
+      "step": 1e-07,
+      "autodiff": -3902.1508958644813,
+      "central_difference": -5524.876614799723,
+      "U_plus": 141651.64611622237,
+      "U_minus": 141651.6472211977,
+      "relative_error": 0.29371257171397763
+    }
+  ],
+  "interpretation": "Diagnostic only; no convergence gate or model changed."
+}

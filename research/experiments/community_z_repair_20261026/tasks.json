@@ -1,0 +1,253 @@
+{
+  "786": {
+    "command": "bash /mnt/c/Dev/houfin-range-model/research/bin/z_repair_teacher_cpu.sh backcast40 summer",
+    "status": {
+      "Done": {
+        "enqueued_at": "2026-10-26T11:21:41.953291351-05:00",
+        "start": "2026-10-26T11:21:42.121865892-05:00",
+        "end": "2026-10-26T11:23:38.741258034-05:00",
+        "result": "Success"
+      }
+    }
+  },
+  "787": {
+    "command": "bash /mnt/c/Dev/houfin-range-model/research/bin/z_repair_teacher_cpu.sh backcast40 winter_full",
+    "status": {
+      "Done": {
+        "enqueued_at": "2026-10-26T11:21:42.063485365-05:00",
+        "start": "2026-10-26T11:21:42.129611943-05:00",
+        "end": "2026-10-26T11:24:19.781158036-05:00",
+        "result": "Success"
+      }
+    }
+  },
+  "788": {
+    "command": "bash /mnt/c/Dev/houfin-range-model/research/bin/z_repair_aux_cpu.sh backcast40 full",
+    "status": {
+      "Done": {
+        "enqueued_at": "2026-10-26T11:29:14.485211550-05:00",
+        "start": "2026-10-26T11:29:14.613630231-05:00",
+        "end": "2026-10-26T11:41:56.907201179-05:00",
+        "result": "Success"
+      }
+    }
+  },
+  "789": {
+    "command": "bash /mnt/c/Dev/houfin-range-model/research/bin/z_repair_control_gpu.sh",
+    "status": {
+      "Done": {
+        "enqueued_at": "2026-10-26T11:32:46.248220961-05:00",
+        "start": "2026-10-26T16:13:05.969051292-05:00",
+        "end": "2026-10-27T02:39:11.907838388-05:00",
+        "result": "Success"
+      }
+    }
+  },
+  "790": {
+    "command": "bash /mnt/c/Dev/houfin-range-model/research/bin/z_repair_time_gpu.sh",
+    "status": {
+      "Running": {
+        "enqueued_at": "2026-10-26T11:40:03.471996083-05:00",
+        "start": "2026-10-27T02:39:11.922340287-05:00"
+      }
+    }
+  },
+  "791": {
+    "command": "bash /mnt/c/Dev/houfin-range-model/research/bin/z_repair_residual_cpu.sh",
+    "status": {
+      "Done": {
+        "enqueued_at": "2026-10-26T11:42:44.468186374-05:00",
+        "start": "2026-10-27T02:39:11.931266365-05:00",
+        "end": "2026-10-27T02:39:27.613611500-05:00",
+        "result": "Success"
+      }
+    }
+  },
+  "792": {
+    "command": "bash research/bin/z_repair_evaluate_cpu.sh control",
+    "status": {
+      "Done": {
+        "enqueued_at": "2026-10-26T12:24:14.417386913-05:00",
+        "start": "2026-10-27T02:39:11.941673050-05:00",
+        "end": "2026-10-27T02:40:23.396751460-05:00",
+        "result": "Success"
+      }
+    }
+  },
+  "793": {
+    "command": "bash research/bin/z_repair_evaluate_cpu.sh time_r2",
+    "status": {
+      "Queued": {
+        "enqueued_at": "2026-10-26T12:24:14.525255387-05:00"
+      }
+    }
+  },
+  "794": {
+    "command": "bash research/bin/z_repair_evaluate_cpu.sh residual_r2",
+    "status": {
+      "Done": {
+        "enqueued_at": "2026-10-26T12:24:14.634478669-05:00",
+        "start": "2026-10-27T02:39:27.622475350-05:00",
+        "end": "2026-10-27T02:40:43.588036429-05:00",
+        "result": "Success"
+      }
+    }
+  },
+  "795": {
+    "command": "bash research/bin/z_repair_compare_cpu.sh",
+    "status": {
+      "Queued": {
+        "enqueued_at": "2026-10-26T12:27:10.268182542-05:00"
+      }
+    }
+  },
+  "796": {
+    "command": "bash research/bin/z_repair_teacher_cpu.sh backcast20 summer",
+    "status": {
+      "Done": {
+        "enqueued_at": "2026-10-26T12:27:10.374782471-05:00",
+        "start": "2026-10-26T12:27:10.449743511-05:00",
+        "end": "2026-10-26T12:29:20.844999636-05:00",
+        "result": "Success"
+      }
+    }
+  },
+  "797": {
+    "command": "bash research/bin/z_repair_teacher_cpu.sh backcast40 winter_sparse10",
+    "status": {
+      "Done": {
+        "enqueued_at": "2026-10-26T12:27:10.483186400-05:00",
+        "start": "2026-10-26T12:27:10.759062014-05:00",
+        "end": "2026-10-26T12:29:11.496979232-05:00",
+        "result": "Success"
+      }
+    }
+  },
+  "798": {
+    "command": "bash research/bin/z_repair_teacher_cpu.sh backcast40 winter_no_target",
+    "status": {
+      "Done": {
+        "enqueued_at": "2026-10-26T12:27:10.592042050-05:00",
+        "start": "2026-10-26T12:27:10.767804642-05:00",
+        "end": "2026-10-26T12:29:54.541857363-05:00",
+        "result": "Success"
+      }
+    }
+  },
+  "799": {
+    "command": "bash research/bin/z_repair_aux_cpu.sh backcast40 sparse10",
+    "status": {
+      "Done": {
+        "enqueued_at": "2026-10-26T12:35:45.803100354-05:00",
+        "start": "2026-10-26T12:35:46.036332243-05:00",
+        "end": "2026-10-26T12:38:14.264877924-05:00",
+        "result": "Success"
+      }
+    }
+  },
+  "800": {
+    "command": "bash research/bin/z_repair_aux_cpu.sh backcast40 no_target",
+    "status": {
+      "Done": {
+        "enqueued_at": "2026-10-26T12:35:45.914348135-05:00",
+        "start": "2026-10-26T12:35:46.044574609-05:00",
+        "end": "2026-10-26T12:48:10.288084132-05:00",
+        "result": "Success"
+      }
+    }
+  },
+  "801": {
+    "command": "bash research/bin/z_repair_aux_cpu.sh backcast20 full /mnt/c/Dev/houfin-range-model/.research_runtime/community_z_repair_20261026/aux/backcast40/full",
+    "status": {
+      "Done": {
+        "enqueued_at": "2026-10-26T12:35:46.024680211-05:00",
+        "start": "2026-10-26T12:35:46.052733108-05:00",
+        "end": "2026-10-26T12:36:59.143439973-05:00",
+        "result": "Success"
+      }
+    }
+  },
+  "802": {
+    "command": "bash /mnt/c/Dev/houfin-range-model/research/bin/z_repair_regional_cpu.sh",
+    "status": {
+      "Queued": {
+        "enqueued_at": "2026-10-26T12:41:43.735565149-05:00"
+      }
+    }
+  },
+  "803": {
+    "command": "bash -c cd /mnt/c/Dev/houfin-range-model; CUDA_VISIBLE_DEVICES= OMP_NUM_THREADS=6 OPENBLAS_NUM_THREADS=6 /home/breallis/houfin/venv/bin/python -u research/exp/z_repair_teacher_bottleneck.py --root /mnt/c/Dev/houfin-range-model/.research_runtime/community_z_repair_20261026 --base /home/breallis/houfin/work/houfin/research_cache/desk_tempho_1995_s1 > /mnt/c/Dev/houfin-range-model/.research_runtime/community_z_repair_20261026/teacher_bottleneck/run.log 2>&1",
+    "status": {
+      "Done": {
+        "enqueued_at": "2026-10-27T03:27:30.386698612-05:00",
+        "start": "2026-10-27T03:27:30.510882551-05:00",
+        "end": "2026-10-27T03:27:32.929490596-05:00",
+        "result": {
+          "Failed": 1
+        }
+      }
+    }
+  },
+  "804": {
+    "command": "bash -c cd /mnt/c/Dev/houfin-range-model; CUDA_VISIBLE_DEVICES= OMP_NUM_THREADS=6 OPENBLAS_NUM_THREADS=6 /home/breallis/houfin/venv/bin/python -u research/exp/z_repair_teacher_bottleneck.py --root /mnt/c/Dev/houfin-range-model/.research_runtime/community_z_repair_20261026 --base /home/breallis/houfin/work/houfin/research_cache/desk_tempho_1995_s1 > /mnt/c/Dev/houfin-range-model/.research_runtime/community_z_repair_20261026/teacher_bottleneck/run_log1p.log 2>&1",
+    "status": {
+      "Done": {
+        "enqueued_at": "2026-10-27T03:28:05.100448674-05:00",
+        "start": "2026-10-27T03:28:05.170295871-05:00",
+        "end": "2026-10-27T03:28:17.246390570-05:00",
+        "result": "Success"
+      }
+    }
+  },
+  "805": {
+    "command": "bash /mnt/c/Dev/houfin-range-model/research/bin/z_change_cpu.sh",
+    "status": {
+      "Done": {
+        "enqueued_at": "2026-10-27T03:57:49.041030212-05:00",
+        "start": "2026-10-27T03:57:49.103339368-05:00",
+        "end": "2026-10-27T03:58:38.530315938-05:00",
+        "result": {
+          "Failed": 1
+        }
+      }
+    }
+  },
+  "806": {
+    "command": "bash -c cd /mnt/c/Dev/houfin-range-model/.research_runtime/community_z_repair_20261026/ema_audit_code; CUDA_VISIBLE_DEVICES= OMP_NUM_THREADS=6 OPENBLAS_NUM_THREADS=6 PYTHONPATH=$PWD:$PWD/src /home/breallis/houfin/venv/bin/python -u research/exp/z_repair_ema_audit.py --root /mnt/c/Dev/houfin-range-model/.research_runtime/community_z_repair_20261026 --base /home/breallis/houfin/work/houfin/research_cache/desk_tempho_1995_s1 > /mnt/c/Dev/houfin-range-model/.research_runtime/community_z_repair_20261026/ema_contract_audit.log 2>&1",
+    "status": {
+      "Done": {
+        "enqueued_at": "2026-10-27T04:02:23.606155951-05:00",
+        "start": "2026-10-27T04:02:23.627871220-05:00",
+        "end": "2026-10-27T04:02:34.775947406-05:00",
+        "result": "Success"
+      }
+    }
+  },
+  "807": {
+    "command": "bash -c cd /mnt/c/Dev/houfin-range-model/.research_runtime/community_z_repair_20261026/change_cpu_code_fix1; CUDA_VISIBLE_DEVICES= OMP_NUM_THREADS=6 OPENBLAS_NUM_THREADS=6 PYTHONPATH=$PWD:$PWD/src /home/breallis/houfin/venv/bin/python -u research/exp/z_change_cpu.py --root /mnt/c/Dev/houfin-range-model/.research_runtime/community_z_repair_20261026 --base /home/breallis/houfin/work/houfin/research_cache/desk_tempho_1995_s1 > /mnt/c/Dev/houfin-range-model/.research_runtime/community_z_repair_20261026/change_cpu/evaluation_fix1.log 2>&1",
+    "status": {
+      "Done": {
+        "enqueued_at": "2026-10-27T04:02:23.723059831-05:00",
+        "start": "2026-10-27T04:02:34.784818413-05:00",
+        "end": "2026-10-27T04:02:47.448166096-05:00",
+        "result": "Success"
+      }
+    }
+  },
+  "808": {
+    "command": "bash /mnt/c/Dev/houfin-range-model/research/bin/z_change_neural_gpu.sh change100",
+    "status": {
+      "Queued": {
+        "enqueued_at": "2026-10-27T07:26:38.516490129-05:00"
+      }
+    }
+  },
+  "809": {
+    "command": "bash /mnt/c/Dev/houfin-range-model/research/bin/z_change_neural_gpu.sh continue100",
+    "status": {
+      "Queued": {
+        "enqueued_at": "2026-10-27T07:26:38.627475876-05:00"
+      }
+    }
+  }
+}

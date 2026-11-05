@@ -1,0 +1,2926 @@
+[
+  {
+    "step": "step10_pn05",
+    "regions": {
+      "all_land": {
+        "land_cells": 4318,
+        "dead_cells": 1,
+        "dead_land_fraction": 0.0002315886984715146,
+        "positive_records": 17581,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.0
+      },
+      "plains_100W_95W": {
+        "land_cells": 472,
+        "dead_cells": 0,
+        "dead_land_fraction": 0.0,
+        "positive_records": 1115,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.0
+      },
+      "broad_plains_105W_95W_25N_49N": {
+        "land_cells": 787,
+        "dead_cells": 1,
+        "dead_land_fraction": 0.0012706480304955528,
+        "positive_records": 2213,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.0
+      }
+    },
+    "input_invasion_year": null,
+    "release_allee_exemption_years": 10
+  },
+  {
+    "step": "step10_pn10",
+    "regions": {
+      "all_land": {
+        "land_cells": 4318,
+        "dead_cells": 4,
+        "dead_land_fraction": 0.0009263547938860583,
+        "positive_records": 17581,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.0003981571014163017
+      },
+      "plains_100W_95W": {
+        "land_cells": 472,
+        "dead_cells": 0,
+        "dead_land_fraction": 0.0,
+        "positive_records": 1115,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.0
+      },
+      "broad_plains_105W_95W_25N_49N": {
+        "land_cells": 787,
+        "dead_cells": 2,
+        "dead_land_fraction": 0.0025412960609911056,
+        "positive_records": 2213,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.0
+      }
+    },
+    "input_invasion_year": null,
+    "release_allee_exemption_years": 10
+  },
+  {
+    "step": "step10_pn20",
+    "regions": {
+      "all_land": {
+        "land_cells": 4318,
+        "dead_cells": 2,
+        "dead_land_fraction": 0.0004631773969430292,
+        "positive_records": 17581,
+        "dead_positive_records": 23,
+        "dead_positive_fraction": 0.001308230476082134,
+        "K_low_positive_fraction": 0.0
+      },
+      "plains_100W_95W": {
+        "land_cells": 472,
+        "dead_cells": 0,
+        "dead_land_fraction": 0.0,
+        "positive_records": 1115,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.0
+      },
+      "broad_plains_105W_95W_25N_49N": {
+        "land_cells": 787,
+        "dead_cells": 0,
+        "dead_land_fraction": 0.0,
+        "positive_records": 2213,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.0
+      }
+    },
+    "input_invasion_year": null,
+    "release_allee_exemption_years": 10
+  },
+  {
+    "step": "step12_lam10",
+    "regions": {
+      "all_land": {
+        "land_cells": 4318,
+        "dead_cells": 4,
+        "dead_land_fraction": 0.0009263547938860583,
+        "positive_records": 17581,
+        "dead_positive_records": 19,
+        "dead_positive_fraction": 0.001080712132415676,
+        "K_low_positive_fraction": 0.0
+      },
+      "plains_100W_95W": {
+        "land_cells": 472,
+        "dead_cells": 0,
+        "dead_land_fraction": 0.0,
+        "positive_records": 1115,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.0
+      },
+      "broad_plains_105W_95W_25N_49N": {
+        "land_cells": 787,
+        "dead_cells": 2,
+        "dead_land_fraction": 0.0025412960609911056,
+        "positive_records": 2213,
+        "dead_positive_records": 7,
+        "dead_positive_fraction": 0.0031631269769543608,
+        "K_low_positive_fraction": 0.0
+      }
+    },
+    "input_invasion_year": null,
+    "release_allee_exemption_years": 10
+  },
+  {
+    "step": "step12_lam10_s42",
+    "regions": {
+      "all_land": {
+        "land_cells": 4318,
+        "dead_cells": 1,
+        "dead_land_fraction": 0.0002315886984715146,
+        "positive_records": 17581,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.0007963142028326034
+      },
+      "plains_100W_95W": {
+        "land_cells": 472,
+        "dead_cells": 0,
+        "dead_land_fraction": 0.0,
+        "positive_records": 1115,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.0
+      },
+      "broad_plains_105W_95W_25N_49N": {
+        "land_cells": 787,
+        "dead_cells": 0,
+        "dead_land_fraction": 0.0,
+        "positive_records": 2213,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.0
+      }
+    },
+    "input_invasion_year": null,
+    "release_allee_exemption_years": 10
+  },
+  {
+    "step": "step12_lam10_s43",
+    "regions": {
+      "all_land": {
+        "land_cells": 4318,
+        "dead_cells": 2,
+        "dead_land_fraction": 0.0004631773969430292,
+        "positive_records": 17581,
+        "dead_positive_records": 1,
+        "dead_positive_fraction": 5.6879585916614524e-05,
+        "K_low_positive_fraction": 0.0003981571014163017
+      },
+      "plains_100W_95W": {
+        "land_cells": 472,
+        "dead_cells": 1,
+        "dead_land_fraction": 0.00211864406779661,
+        "positive_records": 1115,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.0
+      },
+      "broad_plains_105W_95W_25N_49N": {
+        "land_cells": 787,
+        "dead_cells": 0,
+        "dead_land_fraction": 0.0,
+        "positive_records": 2213,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.0
+      }
+    },
+    "input_invasion_year": null,
+    "release_allee_exemption_years": 10
+  },
+  {
+    "step": "step13_obsreg",
+    "regions": {
+      "all_land": {
+        "land_cells": 4318,
+        "dead_cells": 1,
+        "dead_land_fraction": 0.0002315886984715146,
+        "positive_records": 17581,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.0
+      },
+      "plains_100W_95W": {
+        "land_cells": 472,
+        "dead_cells": 1,
+        "dead_land_fraction": 0.00211864406779661,
+        "positive_records": 1115,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.0
+      },
+      "broad_plains_105W_95W_25N_49N": {
+        "land_cells": 787,
+        "dead_cells": 1,
+        "dead_land_fraction": 0.0012706480304955528,
+        "positive_records": 2213,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.0
+      }
+    },
+    "input_invasion_year": null,
+    "release_allee_exemption_years": 10
+  },
+  {
+    "step": "step14b_dispera",
+    "regions": {
+      "all_land": {
+        "land_cells": 4318,
+        "dead_cells": 1,
+        "dead_land_fraction": 0.0002315886984715146,
+        "positive_records": 17581,
+        "dead_positive_records": 4,
+        "dead_positive_fraction": 0.0002275183436664581,
+        "K_low_positive_fraction": 0.0003981571014163017
+      },
+      "plains_100W_95W": {
+        "land_cells": 472,
+        "dead_cells": 0,
+        "dead_land_fraction": 0.0,
+        "positive_records": 1115,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.0
+      },
+      "broad_plains_105W_95W_25N_49N": {
+        "land_cells": 787,
+        "dead_cells": 0,
+        "dead_land_fraction": 0.0,
+        "positive_records": 2213,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.0
+      }
+    },
+    "input_invasion_year": null,
+    "release_allee_exemption_years": 10
+  },
+  {
+    "step": "step15_lowdens",
+    "regions": {
+      "all_land": {
+        "land_cells": 4318,
+        "dead_cells": 1,
+        "dead_land_fraction": 0.0002315886984715146,
+        "positive_records": 17581,
+        "dead_positive_records": 1,
+        "dead_positive_fraction": 5.6879585916614524e-05,
+        "K_low_positive_fraction": 0.00011375917183322905
+      },
+      "plains_100W_95W": {
+        "land_cells": 472,
+        "dead_cells": 0,
+        "dead_land_fraction": 0.0,
+        "positive_records": 1115,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.0
+      },
+      "broad_plains_105W_95W_25N_49N": {
+        "land_cells": 787,
+        "dead_cells": 0,
+        "dead_land_fraction": 0.0,
+        "positive_records": 2213,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.0
+      }
+    },
+    "input_invasion_year": null,
+    "release_allee_exemption_years": 10
+  },
+  {
+    "step": "step16_sthab",
+    "regions": {
+      "all_land": {
+        "land_cells": 4318,
+        "dead_cells": 2,
+        "dead_land_fraction": 0.0004631773969430292,
+        "positive_records": 17581,
+        "dead_positive_records": 9,
+        "dead_positive_fraction": 0.0005119162732495307,
+        "K_low_positive_fraction": 0.0017063875774984358
+      },
+      "plains_100W_95W": {
+        "land_cells": 472,
+        "dead_cells": 1,
+        "dead_land_fraction": 0.00211864406779661,
+        "positive_records": 1115,
+        "dead_positive_records": 2,
+        "dead_positive_fraction": 0.0017937219730941704,
+        "K_low_positive_fraction": 0.0008968609865470852
+      },
+      "broad_plains_105W_95W_25N_49N": {
+        "land_cells": 787,
+        "dead_cells": 2,
+        "dead_land_fraction": 0.0025412960609911056,
+        "positive_records": 2213,
+        "dead_positive_records": 9,
+        "dead_positive_fraction": 0.004066877541798464,
+        "K_low_positive_fraction": 0.00045187528242205153
+      }
+    },
+    "input_invasion_year": null,
+    "release_allee_exemption_years": 10
+  },
+  {
+    "step": "step17_r64_regpen",
+    "regions": {
+      "all_land": {
+        "land_cells": 4318,
+        "dead_cells": 1,
+        "dead_land_fraction": 0.0002315886984715146,
+        "positive_records": 17581,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.0007963142028326034
+      },
+      "plains_100W_95W": {
+        "land_cells": 472,
+        "dead_cells": 0,
+        "dead_land_fraction": 0.0,
+        "positive_records": 1115,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.0
+      },
+      "broad_plains_105W_95W_25N_49N": {
+        "land_cells": 787,
+        "dead_cells": 0,
+        "dead_land_fraction": 0.0,
+        "positive_records": 2213,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.0
+      }
+    },
+    "input_invasion_year": null,
+    "release_allee_exemption_years": 10
+  },
+  {
+    "step": "step17_r64_total",
+    "regions": {
+      "all_land": {
+        "land_cells": 4318,
+        "dead_cells": 3,
+        "dead_land_fraction": 0.0006947660954145438,
+        "positive_records": 17581,
+        "dead_positive_records": 49,
+        "dead_positive_fraction": 0.002787099709914112,
+        "K_low_positive_fraction": 0.0007963142028326034
+      },
+      "plains_100W_95W": {
+        "land_cells": 472,
+        "dead_cells": 0,
+        "dead_land_fraction": 0.0,
+        "positive_records": 1115,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.0
+      },
+      "broad_plains_105W_95W_25N_49N": {
+        "land_cells": 787,
+        "dead_cells": 1,
+        "dead_land_fraction": 0.0012706480304955528,
+        "positive_records": 2213,
+        "dead_positive_records": 13,
+        "dead_positive_fraction": 0.00587437867148667,
+        "K_low_positive_fraction": 0.0
+      }
+    },
+    "input_invasion_year": null,
+    "release_allee_exemption_years": 10
+  },
+  {
+    "step": "step19b_anchor64",
+    "regions": {
+      "all_land": {
+        "land_cells": 4318,
+        "dead_cells": 2,
+        "dead_land_fraction": 0.0004631773969430292,
+        "positive_records": 17581,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.001194471304248905
+      },
+      "plains_100W_95W": {
+        "land_cells": 472,
+        "dead_cells": 1,
+        "dead_land_fraction": 0.00211864406779661,
+        "positive_records": 1115,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.0008968609865470852
+      },
+      "broad_plains_105W_95W_25N_49N": {
+        "land_cells": 787,
+        "dead_cells": 1,
+        "dead_land_fraction": 0.0012706480304955528,
+        "positive_records": 2213,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.00045187528242205153
+      }
+    },
+    "input_invasion_year": null,
+    "release_allee_exemption_years": 10
+  },
+  {
+    "step": "step19b_anchor64pen",
+    "regions": {
+      "all_land": {
+        "land_cells": 4318,
+        "dead_cells": 2,
+        "dead_land_fraction": 0.0004631773969430292,
+        "positive_records": 17581,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.0007963142028326034
+      },
+      "plains_100W_95W": {
+        "land_cells": 472,
+        "dead_cells": 0,
+        "dead_land_fraction": 0.0,
+        "positive_records": 1115,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.0
+      },
+      "broad_plains_105W_95W_25N_49N": {
+        "land_cells": 787,
+        "dead_cells": 0,
+        "dead_land_fraction": 0.0,
+        "positive_records": 2213,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.0
+      }
+    },
+    "input_invasion_year": null,
+    "release_allee_exemption_years": 10
+  },
+  {
+    "step": "step20_jboth",
+    "regions": {
+      "all_land": {
+        "land_cells": 4318,
+        "dead_cells": 2,
+        "dead_land_fraction": 0.0004631773969430292,
+        "positive_records": 17581,
+        "dead_positive_records": 11,
+        "dead_positive_fraction": 0.0006256754450827598,
+        "K_low_positive_fraction": 0.00034127751549968717
+      },
+      "plains_100W_95W": {
+        "land_cells": 472,
+        "dead_cells": 1,
+        "dead_land_fraction": 0.00211864406779661,
+        "positive_records": 1115,
+        "dead_positive_records": 11,
+        "dead_positive_fraction": 0.009865470852017937,
+        "K_low_positive_fraction": 0.0
+      },
+      "broad_plains_105W_95W_25N_49N": {
+        "land_cells": 787,
+        "dead_cells": 1,
+        "dead_land_fraction": 0.0012706480304955528,
+        "positive_records": 2213,
+        "dead_positive_records": 11,
+        "dead_positive_fraction": 0.004970628106642567,
+        "K_low_positive_fraction": 0.0
+      }
+    },
+    "input_invasion_year": null,
+    "release_allee_exemption_years": 10
+  },
+  {
+    "step": "step20_jcost",
+    "regions": {
+      "all_land": {
+        "land_cells": 4318,
+        "dead_cells": 0,
+        "dead_land_fraction": 0.0,
+        "positive_records": 17581,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.0007963142028326034
+      },
+      "plains_100W_95W": {
+        "land_cells": 472,
+        "dead_cells": 0,
+        "dead_land_fraction": 0.0,
+        "positive_records": 1115,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.0
+      },
+      "broad_plains_105W_95W_25N_49N": {
+        "land_cells": 787,
+        "dead_cells": 0,
+        "dead_land_fraction": 0.0,
+        "positive_records": 2213,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.0
+      }
+    },
+    "input_invasion_year": null,
+    "release_allee_exemption_years": 10
+  },
+  {
+    "step": "step20_jdec",
+    "regions": {
+      "all_land": {
+        "land_cells": 4318,
+        "dead_cells": 3,
+        "dead_land_fraction": 0.0006947660954145438,
+        "positive_records": 17581,
+        "dead_positive_records": 22,
+        "dead_positive_fraction": 0.0012513508901655197,
+        "K_low_positive_fraction": 0.0005687958591661453
+      },
+      "plains_100W_95W": {
+        "land_cells": 472,
+        "dead_cells": 0,
+        "dead_land_fraction": 0.0,
+        "positive_records": 1115,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.0
+      },
+      "broad_plains_105W_95W_25N_49N": {
+        "land_cells": 787,
+        "dead_cells": 1,
+        "dead_land_fraction": 0.0012706480304955528,
+        "positive_records": 2213,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.0
+      }
+    },
+    "input_invasion_year": null,
+    "release_allee_exemption_years": 10
+  },
+  {
+    "step": "step21_j1",
+    "regions": {
+      "all_land": {
+        "land_cells": 4318,
+        "dead_cells": 3,
+        "dead_land_fraction": 0.0006947660954145438,
+        "positive_records": 17581,
+        "dead_positive_records": 26,
+        "dead_positive_fraction": 0.0014788692338319777,
+        "K_low_positive_fraction": 0.0007963142028326034
+      },
+      "plains_100W_95W": {
+        "land_cells": 472,
+        "dead_cells": 0,
+        "dead_land_fraction": 0.0,
+        "positive_records": 1115,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.0
+      },
+      "broad_plains_105W_95W_25N_49N": {
+        "land_cells": 787,
+        "dead_cells": 0,
+        "dead_land_fraction": 0.0,
+        "positive_records": 2213,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.0
+      }
+    },
+    "input_invasion_year": null,
+    "release_allee_exemption_years": 10
+  },
+  {
+    "step": "step22_b44",
+    "regions": {
+      "all_land": {
+        "land_cells": 4318,
+        "dead_cells": 2,
+        "dead_land_fraction": 0.0004631773969430292,
+        "positive_records": 17581,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.0005687958591661453
+      },
+      "plains_100W_95W": {
+        "land_cells": 472,
+        "dead_cells": 0,
+        "dead_land_fraction": 0.0,
+        "positive_records": 1115,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.0
+      },
+      "broad_plains_105W_95W_25N_49N": {
+        "land_cells": 787,
+        "dead_cells": 1,
+        "dead_land_fraction": 0.0012706480304955528,
+        "positive_records": 2213,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.0
+      }
+    },
+    "input_invasion_year": null,
+    "release_allee_exemption_years": 10
+  },
+  {
+    "step": "step22_j2",
+    "regions": {
+      "all_land": {
+        "land_cells": 4318,
+        "dead_cells": 4,
+        "dead_land_fraction": 0.0009263547938860583,
+        "positive_records": 17581,
+        "dead_positive_records": 30,
+        "dead_positive_fraction": 0.0017063875774984358,
+        "K_low_positive_fraction": 0.0007963142028326034
+      },
+      "plains_100W_95W": {
+        "land_cells": 472,
+        "dead_cells": 0,
+        "dead_land_fraction": 0.0,
+        "positive_records": 1115,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.0
+      },
+      "broad_plains_105W_95W_25N_49N": {
+        "land_cells": 787,
+        "dead_cells": 0,
+        "dead_land_fraction": 0.0,
+        "positive_records": 2213,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.0
+      }
+    },
+    "input_invasion_year": null,
+    "release_allee_exemption_years": 10
+  },
+  {
+    "step": "step24_attr",
+    "regions": {
+      "all_land": {
+        "land_cells": 4318,
+        "dead_cells": 4,
+        "dead_land_fraction": 0.0009263547938860583,
+        "positive_records": 17581,
+        "dead_positive_records": 1,
+        "dead_positive_fraction": 5.6879585916614524e-05,
+        "K_low_positive_fraction": 0.0006825550309993743
+      },
+      "plains_100W_95W": {
+        "land_cells": 472,
+        "dead_cells": 0,
+        "dead_land_fraction": 0.0,
+        "positive_records": 1115,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.0
+      },
+      "broad_plains_105W_95W_25N_49N": {
+        "land_cells": 787,
+        "dead_cells": 0,
+        "dead_land_fraction": 0.0,
+        "positive_records": 2213,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.0
+      }
+    },
+    "input_invasion_year": null,
+    "release_allee_exemption_years": 10
+  },
+  {
+    "step": "step25_natdep",
+    "regions": {
+      "all_land": {
+        "land_cells": 4318,
+        "dead_cells": 3,
+        "dead_land_fraction": 0.0006947660954145438,
+        "positive_records": 17581,
+        "dead_positive_records": 20,
+        "dead_positive_fraction": 0.0011375917183322906,
+        "K_low_positive_fraction": 0.0007963142028326034
+      },
+      "plains_100W_95W": {
+        "land_cells": 472,
+        "dead_cells": 0,
+        "dead_land_fraction": 0.0,
+        "positive_records": 1115,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.0
+      },
+      "broad_plains_105W_95W_25N_49N": {
+        "land_cells": 787,
+        "dead_cells": 0,
+        "dead_land_fraction": 0.0,
+        "positive_records": 2213,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.0
+      }
+    },
+    "input_invasion_year": null,
+    "release_allee_exemption_years": 10
+  },
+  {
+    "step": "step26_mdd110",
+    "regions": {
+      "all_land": {
+        "land_cells": 4318,
+        "dead_cells": 2,
+        "dead_land_fraction": 0.0004631773969430292,
+        "positive_records": 17581,
+        "dead_positive_records": 1,
+        "dead_positive_fraction": 5.6879585916614524e-05,
+        "K_low_positive_fraction": 0.03549286161196746
+      },
+      "plains_100W_95W": {
+        "land_cells": 472,
+        "dead_cells": 0,
+        "dead_land_fraction": 0.0,
+        "positive_records": 1115,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.09775784753363229
+      },
+      "broad_plains_105W_95W_25N_49N": {
+        "land_cells": 787,
+        "dead_cells": 1,
+        "dead_land_fraction": 0.0012706480304955528,
+        "positive_records": 2213,
+        "dead_positive_records": 1,
+        "dead_positive_fraction": 0.00045187528242205153,
+        "K_low_positive_fraction": 0.05693628558517849
+      }
+    },
+    "input_invasion_year": null,
+    "release_allee_exemption_years": 10
+  },
+  {
+    "step": "step26_mdd200",
+    "regions": {
+      "all_land": {
+        "land_cells": 4318,
+        "dead_cells": 6,
+        "dead_land_fraction": 0.0013895321908290875,
+        "positive_records": 17581,
+        "dead_positive_records": 4,
+        "dead_positive_fraction": 0.0002275183436664581,
+        "K_low_positive_fraction": 0.004322848529662704
+      },
+      "plains_100W_95W": {
+        "land_cells": 472,
+        "dead_cells": 1,
+        "dead_land_fraction": 0.00211864406779661,
+        "positive_records": 1115,
+        "dead_positive_records": 2,
+        "dead_positive_fraction": 0.0017937219730941704,
+        "K_low_positive_fraction": 0.0008968609865470852
+      },
+      "broad_plains_105W_95W_25N_49N": {
+        "land_cells": 787,
+        "dead_cells": 0,
+        "dead_land_fraction": 0.0,
+        "positive_records": 2213,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.00045187528242205153
+      }
+    },
+    "input_invasion_year": null,
+    "release_allee_exemption_years": 10
+  },
+  {
+    "step": "step27_dirch",
+    "regions": {
+      "all_land": {
+        "land_cells": 4318,
+        "dead_cells": 8,
+        "dead_land_fraction": 0.0018527095877721167,
+        "positive_records": 17581,
+        "dead_positive_records": 36,
+        "dead_positive_fraction": 0.002047665092998123,
+        "K_low_positive_fraction": 0.0006825550309993743
+      },
+      "plains_100W_95W": {
+        "land_cells": 472,
+        "dead_cells": 1,
+        "dead_land_fraction": 0.00211864406779661,
+        "positive_records": 1115,
+        "dead_positive_records": 1,
+        "dead_positive_fraction": 0.0008968609865470852,
+        "K_low_positive_fraction": 0.0
+      },
+      "broad_plains_105W_95W_25N_49N": {
+        "land_cells": 787,
+        "dead_cells": 0,
+        "dead_land_fraction": 0.0,
+        "positive_records": 2213,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.0
+      }
+    },
+    "input_invasion_year": null,
+    "release_allee_exemption_years": 10
+  },
+  {
+    "step": "step29_yb_native",
+    "regions": {
+      "all_land": {
+        "land_cells": 4318,
+        "dead_cells": 2,
+        "dead_land_fraction": 0.0004631773969430292,
+        "positive_records": 17581,
+        "dead_positive_records": 12,
+        "dead_positive_fraction": 0.0006825550309993743,
+        "K_low_positive_fraction": 0.002616460952164268
+      },
+      "plains_100W_95W": {
+        "land_cells": 472,
+        "dead_cells": 0,
+        "dead_land_fraction": 0.0,
+        "positive_records": 1115,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.0017937219730941704
+      },
+      "broad_plains_105W_95W_25N_49N": {
+        "land_cells": 787,
+        "dead_cells": 0,
+        "dead_land_fraction": 0.0,
+        "positive_records": 2213,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.00045187528242205153
+      }
+    },
+    "input_invasion_year": null,
+    "release_allee_exemption_years": 10
+  },
+  {
+    "step": "step29_yb_native_s42",
+    "regions": {
+      "all_land": {
+        "land_cells": 4318,
+        "dead_cells": 3,
+        "dead_land_fraction": 0.0006947660954145438,
+        "positive_records": 17581,
+        "dead_positive_records": 8,
+        "dead_positive_fraction": 0.0004550366873329162,
+        "K_low_positive_fraction": 0.002616460952164268
+      },
+      "plains_100W_95W": {
+        "land_cells": 472,
+        "dead_cells": 1,
+        "dead_land_fraction": 0.00211864406779661,
+        "positive_records": 1115,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.0017937219730941704
+      },
+      "broad_plains_105W_95W_25N_49N": {
+        "land_cells": 787,
+        "dead_cells": 1,
+        "dead_land_fraction": 0.0012706480304955528,
+        "positive_records": 2213,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.00045187528242205153
+      }
+    },
+    "input_invasion_year": null,
+    "release_allee_exemption_years": 10
+  },
+  {
+    "step": "step30_comp",
+    "regions": {
+      "all_land": {
+        "land_cells": 4318,
+        "dead_cells": 1,
+        "dead_land_fraction": 0.0002315886984715146,
+        "positive_records": 17581,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.0007963142028326034
+      },
+      "plains_100W_95W": {
+        "land_cells": 472,
+        "dead_cells": 1,
+        "dead_land_fraction": 0.00211864406779661,
+        "positive_records": 1115,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.0
+      },
+      "broad_plains_105W_95W_25N_49N": {
+        "land_cells": 787,
+        "dead_cells": 1,
+        "dead_land_fraction": 0.0012706480304955528,
+        "positive_records": 2213,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.0
+      }
+    },
+    "input_invasion_year": null,
+    "release_allee_exemption_years": 10
+  },
+  {
+    "step": "step31_nest",
+    "regions": {
+      "all_land": {
+        "land_cells": 4318,
+        "dead_cells": 1,
+        "dead_land_fraction": 0.0002315886984715146,
+        "positive_records": 17581,
+        "dead_positive_records": 1,
+        "dead_positive_fraction": 5.6879585916614524e-05,
+        "K_low_positive_fraction": 0.0018201467493316648
+      },
+      "plains_100W_95W": {
+        "land_cells": 472,
+        "dead_cells": 0,
+        "dead_land_fraction": 0.0,
+        "positive_records": 1115,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.0008968609865470852
+      },
+      "broad_plains_105W_95W_25N_49N": {
+        "land_cells": 787,
+        "dead_cells": 1,
+        "dead_land_fraction": 0.0012706480304955528,
+        "positive_records": 2213,
+        "dead_positive_records": 1,
+        "dead_positive_fraction": 0.00045187528242205153,
+        "K_low_positive_fraction": 0.0
+      }
+    },
+    "input_invasion_year": null,
+    "release_allee_exemption_years": 10
+  },
+  {
+    "step": "step31_nest_bloose",
+    "regions": {
+      "all_land": {
+        "land_cells": 4318,
+        "dead_cells": 5,
+        "dead_land_fraction": 0.001157943492357573,
+        "positive_records": 17581,
+        "dead_positive_records": 32,
+        "dead_positive_fraction": 0.0018201467493316648,
+        "K_low_positive_fraction": 0.001194471304248905
+      },
+      "plains_100W_95W": {
+        "land_cells": 472,
+        "dead_cells": 2,
+        "dead_land_fraction": 0.00423728813559322,
+        "positive_records": 1115,
+        "dead_positive_records": 16,
+        "dead_positive_fraction": 0.014349775784753363,
+        "K_low_positive_fraction": 0.0008968609865470852
+      },
+      "broad_plains_105W_95W_25N_49N": {
+        "land_cells": 787,
+        "dead_cells": 2,
+        "dead_land_fraction": 0.0025412960609911056,
+        "positive_records": 2213,
+        "dead_positive_records": 16,
+        "dead_positive_fraction": 0.0072300045187528245,
+        "K_low_positive_fraction": 0.0
+      }
+    },
+    "input_invasion_year": null,
+    "release_allee_exemption_years": 10
+  },
+  {
+    "step": "step31_nestonly",
+    "regions": {
+      "all_land": {
+        "land_cells": 4318,
+        "dead_cells": 3,
+        "dead_land_fraction": 0.0006947660954145438,
+        "positive_records": 17581,
+        "dead_positive_records": 6,
+        "dead_positive_fraction": 0.00034127751549968717,
+        "K_low_positive_fraction": 0.001194471304248905
+      },
+      "plains_100W_95W": {
+        "land_cells": 472,
+        "dead_cells": 0,
+        "dead_land_fraction": 0.0,
+        "positive_records": 1115,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.0008968609865470852
+      },
+      "broad_plains_105W_95W_25N_49N": {
+        "land_cells": 787,
+        "dead_cells": 2,
+        "dead_land_fraction": 0.0025412960609911056,
+        "positive_records": 2213,
+        "dead_positive_records": 3,
+        "dead_positive_fraction": 0.0013556258472661546,
+        "K_low_positive_fraction": 0.0
+      }
+    },
+    "input_invasion_year": null,
+    "release_allee_exemption_years": 10
+  },
+  {
+    "step": "step32_cbc_native",
+    "regions": {
+      "all_land": {
+        "land_cells": 4318,
+        "dead_cells": 2,
+        "dead_land_fraction": 0.0004631773969430292,
+        "positive_records": 17581,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.00011375917183322905
+      },
+      "plains_100W_95W": {
+        "land_cells": 472,
+        "dead_cells": 0,
+        "dead_land_fraction": 0.0,
+        "positive_records": 1115,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.0
+      },
+      "broad_plains_105W_95W_25N_49N": {
+        "land_cells": 787,
+        "dead_cells": 0,
+        "dead_land_fraction": 0.0,
+        "positive_records": 2213,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.0
+      }
+    },
+    "input_invasion_year": null,
+    "release_allee_exemption_years": 10
+  },
+  {
+    "step": "step32_cbc_yb",
+    "regions": {
+      "all_land": {
+        "land_cells": 4318,
+        "dead_cells": 2,
+        "dead_land_fraction": 0.0004631773969430292,
+        "positive_records": 17581,
+        "dead_positive_records": 9,
+        "dead_positive_fraction": 0.0005119162732495307,
+        "K_low_positive_fraction": 0.0005687958591661453
+      },
+      "plains_100W_95W": {
+        "land_cells": 472,
+        "dead_cells": 1,
+        "dead_land_fraction": 0.00211864406779661,
+        "positive_records": 1115,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.0
+      },
+      "broad_plains_105W_95W_25N_49N": {
+        "land_cells": 787,
+        "dead_cells": 1,
+        "dead_land_fraction": 0.0012706480304955528,
+        "positive_records": 2213,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.0
+      }
+    },
+    "input_invasion_year": null,
+    "release_allee_exemption_years": 10
+  },
+  {
+    "step": "step32_cbchi_yb",
+    "regions": {
+      "all_land": {
+        "land_cells": 4318,
+        "dead_cells": 3,
+        "dead_land_fraction": 0.0006947660954145438,
+        "positive_records": 17581,
+        "dead_positive_records": 6,
+        "dead_positive_fraction": 0.00034127751549968717,
+        "K_low_positive_fraction": 0.00017063875774984359
+      },
+      "plains_100W_95W": {
+        "land_cells": 472,
+        "dead_cells": 1,
+        "dead_land_fraction": 0.00211864406779661,
+        "positive_records": 1115,
+        "dead_positive_records": 6,
+        "dead_positive_fraction": 0.0053811659192825115,
+        "K_low_positive_fraction": 0.0
+      },
+      "broad_plains_105W_95W_25N_49N": {
+        "land_cells": 787,
+        "dead_cells": 1,
+        "dead_land_fraction": 0.0012706480304955528,
+        "positive_records": 2213,
+        "dead_positive_records": 6,
+        "dead_positive_fraction": 0.0027112516945323093,
+        "K_low_positive_fraction": 0.0
+      }
+    },
+    "input_invasion_year": null,
+    "release_allee_exemption_years": 10
+  },
+  {
+    "step": "step32_cbclo_yb",
+    "regions": {
+      "all_land": {
+        "land_cells": 4318,
+        "dead_cells": 1,
+        "dead_land_fraction": 0.0002315886984715146,
+        "positive_records": 17581,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.00017063875774984359
+      },
+      "plains_100W_95W": {
+        "land_cells": 472,
+        "dead_cells": 0,
+        "dead_land_fraction": 0.0,
+        "positive_records": 1115,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.0
+      },
+      "broad_plains_105W_95W_25N_49N": {
+        "land_cells": 787,
+        "dead_cells": 0,
+        "dead_land_fraction": 0.0,
+        "positive_records": 2213,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.0
+      }
+    },
+    "input_invasion_year": null,
+    "release_allee_exemption_years": 10
+  },
+  {
+    "step": "step33_nestcbc_abs_s41",
+    "regions": {
+      "all_land": {
+        "land_cells": 4318,
+        "dead_cells": 60,
+        "dead_land_fraction": 0.013895321908290875,
+        "positive_records": 17581,
+        "dead_positive_records": 178,
+        "dead_positive_fraction": 0.010124566293157385,
+        "K_low_positive_fraction": 0.013252943518571186
+      },
+      "plains_100W_95W": {
+        "land_cells": 472,
+        "dead_cells": 6,
+        "dead_land_fraction": 0.012711864406779662,
+        "positive_records": 1115,
+        "dead_positive_records": 4,
+        "dead_positive_fraction": 0.003587443946188341,
+        "K_low_positive_fraction": 0.010762331838565023
+      },
+      "broad_plains_105W_95W_25N_49N": {
+        "land_cells": 787,
+        "dead_cells": 13,
+        "dead_land_fraction": 0.016518424396442185,
+        "positive_records": 2213,
+        "dead_positive_records": 24,
+        "dead_positive_fraction": 0.010845006778129237,
+        "K_low_positive_fraction": 0.004518752824220515
+      }
+    },
+    "input_invasion_year": null,
+    "release_allee_exemption_years": 10
+  },
+  {
+    "step": "step33_nestcbc_natdep_s41",
+    "regions": {
+      "all_land": {
+        "land_cells": 4318,
+        "dead_cells": 3,
+        "dead_land_fraction": 0.0006947660954145438,
+        "positive_records": 17581,
+        "dead_positive_records": 1,
+        "dead_positive_fraction": 5.6879585916614524e-05,
+        "K_low_positive_fraction": 0.0006825550309993743
+      },
+      "plains_100W_95W": {
+        "land_cells": 472,
+        "dead_cells": 1,
+        "dead_land_fraction": 0.00211864406779661,
+        "positive_records": 1115,
+        "dead_positive_records": 1,
+        "dead_positive_fraction": 0.0008968609865470852,
+        "K_low_positive_fraction": 0.0008968609865470852
+      },
+      "broad_plains_105W_95W_25N_49N": {
+        "land_cells": 787,
+        "dead_cells": 1,
+        "dead_land_fraction": 0.0012706480304955528,
+        "positive_records": 2213,
+        "dead_positive_records": 1,
+        "dead_positive_fraction": 0.00045187528242205153,
+        "K_low_positive_fraction": 0.0
+      }
+    },
+    "input_invasion_year": null,
+    "release_allee_exemption_years": 10
+  },
+  {
+    "step": "step33_nestcbc_natdep_s42",
+    "regions": {
+      "all_land": {
+        "land_cells": 4318,
+        "dead_cells": 5,
+        "dead_land_fraction": 0.001157943492357573,
+        "positive_records": 17581,
+        "dead_positive_records": 9,
+        "dead_positive_fraction": 0.0005119162732495307,
+        "K_low_positive_fraction": 0.0006825550309993743
+      },
+      "plains_100W_95W": {
+        "land_cells": 472,
+        "dead_cells": 0,
+        "dead_land_fraction": 0.0,
+        "positive_records": 1115,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.0008968609865470852
+      },
+      "broad_plains_105W_95W_25N_49N": {
+        "land_cells": 787,
+        "dead_cells": 2,
+        "dead_land_fraction": 0.0025412960609911056,
+        "positive_records": 2213,
+        "dead_positive_records": 1,
+        "dead_positive_fraction": 0.00045187528242205153,
+        "K_low_positive_fraction": 0.0
+      }
+    },
+    "input_invasion_year": null,
+    "release_allee_exemption_years": 10
+  },
+  {
+    "step": "step33_nestcbc_s41",
+    "regions": {
+      "all_land": {
+        "land_cells": 4318,
+        "dead_cells": 1,
+        "dead_land_fraction": 0.0002315886984715146,
+        "positive_records": 17581,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.0016495079915818214
+      },
+      "plains_100W_95W": {
+        "land_cells": 472,
+        "dead_cells": 0,
+        "dead_land_fraction": 0.0,
+        "positive_records": 1115,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.0008968609865470852
+      },
+      "broad_plains_105W_95W_25N_49N": {
+        "land_cells": 787,
+        "dead_cells": 0,
+        "dead_land_fraction": 0.0,
+        "positive_records": 2213,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.0
+      }
+    },
+    "input_invasion_year": null,
+    "release_allee_exemption_years": 10
+  },
+  {
+    "step": "step33_nestcbc_s42",
+    "regions": {
+      "all_land": {
+        "land_cells": 4318,
+        "dead_cells": 0,
+        "dead_land_fraction": 0.0,
+        "positive_records": 17581,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.0018201467493316648
+      },
+      "plains_100W_95W": {
+        "land_cells": 472,
+        "dead_cells": 0,
+        "dead_land_fraction": 0.0,
+        "positive_records": 1115,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.0008968609865470852
+      },
+      "broad_plains_105W_95W_25N_49N": {
+        "land_cells": 787,
+        "dead_cells": 0,
+        "dead_land_fraction": 0.0,
+        "positive_records": 2213,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.0
+      }
+    },
+    "input_invasion_year": null,
+    "release_allee_exemption_years": 10
+  },
+  {
+    "step": "step34_abs_broodhi",
+    "regions": {
+      "all_land": {
+        "land_cells": 4318,
+        "dead_cells": 8,
+        "dead_land_fraction": 0.0018527095877721167,
+        "positive_records": 17581,
+        "dead_positive_records": 47,
+        "dead_positive_fraction": 0.002673340538080883,
+        "K_low_positive_fraction": 0.0018201467493316648
+      },
+      "plains_100W_95W": {
+        "land_cells": 472,
+        "dead_cells": 0,
+        "dead_land_fraction": 0.0,
+        "positive_records": 1115,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.0008968609865470852
+      },
+      "broad_plains_105W_95W_25N_49N": {
+        "land_cells": 787,
+        "dead_cells": 0,
+        "dead_land_fraction": 0.0,
+        "positive_records": 2213,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.0
+      }
+    },
+    "input_invasion_year": null,
+    "release_allee_exemption_years": 10
+  },
+  {
+    "step": "step34_abs_broodlo",
+    "regions": {
+      "all_land": {
+        "land_cells": 4318,
+        "dead_cells": 12,
+        "dead_land_fraction": 0.002779064381658175,
+        "positive_records": 17581,
+        "dead_positive_records": 44,
+        "dead_positive_fraction": 0.0025027017803310393,
+        "K_low_positive_fraction": 0.003754052670496559
+      },
+      "plains_100W_95W": {
+        "land_cells": 472,
+        "dead_cells": 4,
+        "dead_land_fraction": 0.00847457627118644,
+        "positive_records": 1115,
+        "dead_positive_records": 12,
+        "dead_positive_fraction": 0.010762331838565023,
+        "K_low_positive_fraction": 0.0017937219730941704
+      },
+      "broad_plains_105W_95W_25N_49N": {
+        "land_cells": 787,
+        "dead_cells": 8,
+        "dead_land_fraction": 0.010165184243964422,
+        "positive_records": 2213,
+        "dead_positive_records": 37,
+        "dead_positive_fraction": 0.016719385449615907,
+        "K_low_positive_fraction": 0.00045187528242205153
+      }
+    },
+    "input_invasion_year": null,
+    "release_allee_exemption_years": 10
+  },
+  {
+    "step": "step34_abs_comp_natdep_s41",
+    "regions": {
+      "all_land": {
+        "land_cells": 4318,
+        "dead_cells": 375,
+        "dead_land_fraction": 0.08684576192681798,
+        "positive_records": 17581,
+        "dead_positive_records": 876,
+        "dead_positive_fraction": 0.049826517262954326,
+        "K_low_positive_fraction": 0.0071099482395768155
+      },
+      "plains_100W_95W": {
+        "land_cells": 472,
+        "dead_cells": 69,
+        "dead_land_fraction": 0.1461864406779661,
+        "positive_records": 1115,
+        "dead_positive_records": 119,
+        "dead_positive_fraction": 0.10672645739910314,
+        "K_low_positive_fraction": 0.016143497757847534
+      },
+      "broad_plains_105W_95W_25N_49N": {
+        "land_cells": 787,
+        "dead_cells": 108,
+        "dead_land_fraction": 0.1372299872935197,
+        "positive_records": 2213,
+        "dead_positive_records": 169,
+        "dead_positive_fraction": 0.0763669227293267,
+        "K_low_positive_fraction": 0.0076818798011748755
+      }
+    },
+    "input_invasion_year": null,
+    "release_allee_exemption_years": 10
+  },
+  {
+    "step": "step34_abs_comp_natdep_s42",
+    "regions": {
+      "all_land": {
+        "land_cells": 4318,
+        "dead_cells": 93,
+        "dead_land_fraction": 0.021537748957850857,
+        "positive_records": 17581,
+        "dead_positive_records": 232,
+        "dead_positive_fraction": 0.01319606393265457,
+        "K_low_positive_fraction": 0.002787099709914112
+      },
+      "plains_100W_95W": {
+        "land_cells": 472,
+        "dead_cells": 17,
+        "dead_land_fraction": 0.036016949152542374,
+        "positive_records": 1115,
+        "dead_positive_records": 30,
+        "dead_positive_fraction": 0.026905829596412557,
+        "K_low_positive_fraction": 0.0017937219730941704
+      },
+      "broad_plains_105W_95W_25N_49N": {
+        "land_cells": 787,
+        "dead_cells": 27,
+        "dead_land_fraction": 0.03430749682337993,
+        "positive_records": 2213,
+        "dead_positive_records": 45,
+        "dead_positive_fraction": 0.02033438770899232,
+        "K_low_positive_fraction": 0.00045187528242205153
+      }
+    },
+    "input_invasion_year": null,
+    "release_allee_exemption_years": 10
+  },
+  {
+    "step": "step34_abs_comp_s42",
+    "regions": {
+      "all_land": {
+        "land_cells": 4318,
+        "dead_cells": 62,
+        "dead_land_fraction": 0.014358499305233904,
+        "positive_records": 17581,
+        "dead_positive_records": 195,
+        "dead_positive_fraction": 0.011091519253739832,
+        "K_low_positive_fraction": 0.013537341448154258
+      },
+      "plains_100W_95W": {
+        "land_cells": 472,
+        "dead_cells": 11,
+        "dead_land_fraction": 0.023305084745762712,
+        "positive_records": 1115,
+        "dead_positive_records": 28,
+        "dead_positive_fraction": 0.025112107623318385,
+        "K_low_positive_fraction": 0.010762331838565023
+      },
+      "broad_plains_105W_95W_25N_49N": {
+        "land_cells": 787,
+        "dead_cells": 20,
+        "dead_land_fraction": 0.025412960609911054,
+        "positive_records": 2213,
+        "dead_positive_records": 102,
+        "dead_positive_fraction": 0.04609127880704925,
+        "K_low_positive_fraction": 0.004518752824220515
+      }
+    },
+    "input_invasion_year": null,
+    "release_allee_exemption_years": 10
+  },
+  {
+    "step": "step34_abs_foundhi",
+    "regions": {
+      "all_land": {
+        "land_cells": 4318,
+        "dead_cells": 41,
+        "dead_land_fraction": 0.009495136637332098,
+        "positive_records": 17581,
+        "dead_positive_records": 135,
+        "dead_positive_fraction": 0.007678744098742961,
+        "K_low_positive_fraction": 0.011375917183322905
+      },
+      "plains_100W_95W": {
+        "land_cells": 472,
+        "dead_cells": 6,
+        "dead_land_fraction": 0.012711864406779662,
+        "positive_records": 1115,
+        "dead_positive_records": 6,
+        "dead_positive_fraction": 0.0053811659192825115,
+        "K_low_positive_fraction": 0.008071748878923767
+      },
+      "broad_plains_105W_95W_25N_49N": {
+        "land_cells": 787,
+        "dead_cells": 8,
+        "dead_land_fraction": 0.010165184243964422,
+        "positive_records": 2213,
+        "dead_positive_records": 13,
+        "dead_positive_fraction": 0.00587437867148667,
+        "K_low_positive_fraction": 0.0036150022593764122
+      }
+    },
+    "input_invasion_year": null,
+    "release_allee_exemption_years": 10
+  },
+  {
+    "step": "step34_abs_foundlo",
+    "regions": {
+      "all_land": {
+        "land_cells": 4318,
+        "dead_cells": 63,
+        "dead_land_fraction": 0.014590088003705419,
+        "positive_records": 17581,
+        "dead_positive_records": 232,
+        "dead_positive_fraction": 0.01319606393265457,
+        "K_low_positive_fraction": 0.012911666003071498
+      },
+      "plains_100W_95W": {
+        "land_cells": 472,
+        "dead_cells": 9,
+        "dead_land_fraction": 0.019067796610169493,
+        "positive_records": 1115,
+        "dead_positive_records": 5,
+        "dead_positive_fraction": 0.004484304932735426,
+        "K_low_positive_fraction": 0.010762331838565023
+      },
+      "broad_plains_105W_95W_25N_49N": {
+        "land_cells": 787,
+        "dead_cells": 18,
+        "dead_land_fraction": 0.022871664548919948,
+        "positive_records": 2213,
+        "dead_positive_records": 69,
+        "dead_positive_fraction": 0.031179394487121554,
+        "K_low_positive_fraction": 0.004518752824220515
+      }
+    },
+    "input_invasion_year": null,
+    "release_allee_exemption_years": 10
+  },
+  {
+    "step": "step34_abs_hazard_natdep_s41",
+    "regions": {
+      "all_land": {
+        "land_cells": 4318,
+        "dead_cells": 358,
+        "dead_land_fraction": 0.08290875405280222,
+        "positive_records": 17581,
+        "dead_positive_records": 788,
+        "dead_positive_fraction": 0.04482111370229225,
+        "K_low_positive_fraction": 0.006370513622660827
+      },
+      "plains_100W_95W": {
+        "land_cells": 472,
+        "dead_cells": 61,
+        "dead_land_fraction": 0.1292372881355932,
+        "positive_records": 1115,
+        "dead_positive_records": 107,
+        "dead_positive_fraction": 0.09596412556053811,
+        "K_low_positive_fraction": 0.010762331838565023
+      },
+      "broad_plains_105W_95W_25N_49N": {
+        "land_cells": 787,
+        "dead_cells": 100,
+        "dead_land_fraction": 0.12706480304955528,
+        "positive_records": 2213,
+        "dead_positive_records": 154,
+        "dead_positive_fraction": 0.06958879349299593,
+        "K_low_positive_fraction": 0.004970628106642567
+      }
+    },
+    "input_invasion_year": null,
+    "release_allee_exemption_years": 10
+  },
+  {
+    "step": "step34_abs_hazard_natdep_s42",
+    "regions": {
+      "all_land": {
+        "land_cells": 4318,
+        "dead_cells": 85,
+        "dead_land_fraction": 0.01968503937007874,
+        "positive_records": 17581,
+        "dead_positive_records": 224,
+        "dead_positive_fraction": 0.012741027245321654,
+        "K_low_positive_fraction": 0.0031852568113304135
+      },
+      "plains_100W_95W": {
+        "land_cells": 472,
+        "dead_cells": 16,
+        "dead_land_fraction": 0.03389830508474576,
+        "positive_records": 1115,
+        "dead_positive_records": 24,
+        "dead_positive_fraction": 0.021524663677130046,
+        "K_low_positive_fraction": 0.007174887892376682
+      },
+      "broad_plains_105W_95W_25N_49N": {
+        "land_cells": 787,
+        "dead_cells": 25,
+        "dead_land_fraction": 0.03176620076238882,
+        "positive_records": 2213,
+        "dead_positive_records": 42,
+        "dead_positive_fraction": 0.018978761861726163,
+        "K_low_positive_fraction": 0.0031631269769543608
+      }
+    },
+    "input_invasion_year": null,
+    "release_allee_exemption_years": 10
+  },
+  {
+    "step": "step34_abs_hazard_s41",
+    "regions": {
+      "all_land": {
+        "land_cells": 4318,
+        "dead_cells": 56,
+        "dead_land_fraction": 0.012968967114404817,
+        "positive_records": 17581,
+        "dead_positive_records": 207,
+        "dead_positive_fraction": 0.011774074284739207,
+        "K_low_positive_fraction": 0.012911666003071498
+      },
+      "plains_100W_95W": {
+        "land_cells": 472,
+        "dead_cells": 9,
+        "dead_land_fraction": 0.019067796610169493,
+        "positive_records": 1115,
+        "dead_positive_records": 25,
+        "dead_positive_fraction": 0.02242152466367713,
+        "K_low_positive_fraction": 0.010762331838565023
+      },
+      "broad_plains_105W_95W_25N_49N": {
+        "land_cells": 787,
+        "dead_cells": 17,
+        "dead_land_fraction": 0.021601016518424398,
+        "positive_records": 2213,
+        "dead_positive_records": 54,
+        "dead_positive_fraction": 0.024401265250790782,
+        "K_low_positive_fraction": 0.004518752824220515
+      }
+    },
+    "input_invasion_year": null,
+    "release_allee_exemption_years": 10
+  },
+  {
+    "step": "step34_abs_hazard_s42",
+    "regions": {
+      "all_land": {
+        "land_cells": 4318,
+        "dead_cells": 59,
+        "dead_land_fraction": 0.01366373320981936,
+        "positive_records": 17581,
+        "dead_positive_records": 253,
+        "dead_positive_fraction": 0.014390535236903475,
+        "K_low_positive_fraction": 0.01319606393265457
+      },
+      "plains_100W_95W": {
+        "land_cells": 472,
+        "dead_cells": 9,
+        "dead_land_fraction": 0.019067796610169493,
+        "positive_records": 1115,
+        "dead_positive_records": 16,
+        "dead_positive_fraction": 0.014349775784753363,
+        "K_low_positive_fraction": 0.013452914798206279
+      },
+      "broad_plains_105W_95W_25N_49N": {
+        "land_cells": 787,
+        "dead_cells": 19,
+        "dead_land_fraction": 0.0241423125794155,
+        "positive_records": 2213,
+        "dead_positive_records": 84,
+        "dead_positive_fraction": 0.037957523723452326,
+        "K_low_positive_fraction": 0.00587437867148667
+      }
+    },
+    "input_invasion_year": null,
+    "release_allee_exemption_years": 10
+  },
+  {
+    "step": "step34_abs_natdep_s41",
+    "regions": {
+      "all_land": {
+        "land_cells": 4318,
+        "dead_cells": 124,
+        "dead_land_fraction": 0.02871699861046781,
+        "positive_records": 17581,
+        "dead_positive_records": 326,
+        "dead_positive_fraction": 0.018542745008816336,
+        "K_low_positive_fraction": 0.004095330185996246
+      },
+      "plains_100W_95W": {
+        "land_cells": 472,
+        "dead_cells": 23,
+        "dead_land_fraction": 0.048728813559322036,
+        "positive_records": 1115,
+        "dead_positive_records": 59,
+        "dead_positive_fraction": 0.05291479820627803,
+        "K_low_positive_fraction": 0.008071748878923767
+      },
+      "broad_plains_105W_95W_25N_49N": {
+        "land_cells": 787,
+        "dead_cells": 41,
+        "dead_land_fraction": 0.052096569250317665,
+        "positive_records": 2213,
+        "dead_positive_records": 82,
+        "dead_positive_fraction": 0.03705377315860822,
+        "K_low_positive_fraction": 0.0031631269769543608
+      }
+    },
+    "input_invasion_year": null,
+    "release_allee_exemption_years": 10
+  },
+  {
+    "step": "step34_abs_natdep_s42",
+    "regions": {
+      "all_land": {
+        "land_cells": 4318,
+        "dead_cells": 333,
+        "dead_land_fraction": 0.07711903659101436,
+        "positive_records": 17581,
+        "dead_positive_records": 806,
+        "dead_positive_fraction": 0.04584494624879131,
+        "K_low_positive_fraction": 0.00540356066207838
+      },
+      "plains_100W_95W": {
+        "land_cells": 472,
+        "dead_cells": 55,
+        "dead_land_fraction": 0.11652542372881355,
+        "positive_records": 1115,
+        "dead_positive_records": 106,
+        "dead_positive_fraction": 0.09506726457399103,
+        "K_low_positive_fraction": 0.008071748878923767
+      },
+      "broad_plains_105W_95W_25N_49N": {
+        "land_cells": 787,
+        "dead_cells": 86,
+        "dead_land_fraction": 0.10927573062261753,
+        "positive_records": 2213,
+        "dead_positive_records": 147,
+        "dead_positive_fraction": 0.06642566651604158,
+        "K_low_positive_fraction": 0.0031631269769543608
+      }
+    },
+    "input_invasion_year": null,
+    "release_allee_exemption_years": 10
+  },
+  {
+    "step": "step34_abs_s42",
+    "regions": {
+      "all_land": {
+        "land_cells": 4318,
+        "dead_cells": 62,
+        "dead_land_fraction": 0.014358499305233904,
+        "positive_records": 17581,
+        "dead_positive_records": 244,
+        "dead_positive_fraction": 0.013878618963653945,
+        "K_low_positive_fraction": 0.01319606393265457
+      },
+      "plains_100W_95W": {
+        "land_cells": 472,
+        "dead_cells": 10,
+        "dead_land_fraction": 0.0211864406779661,
+        "positive_records": 1115,
+        "dead_positive_records": 20,
+        "dead_positive_fraction": 0.017937219730941704,
+        "K_low_positive_fraction": 0.013452914798206279
+      },
+      "broad_plains_105W_95W_25N_49N": {
+        "land_cells": 787,
+        "dead_cells": 19,
+        "dead_land_fraction": 0.0241423125794155,
+        "positive_records": 2213,
+        "dead_positive_records": 81,
+        "dead_positive_fraction": 0.036601897876186174,
+        "K_low_positive_fraction": 0.00587437867148667
+      }
+    },
+    "input_invasion_year": null,
+    "release_allee_exemption_years": 10
+  },
+  {
+    "step": "step34_abs_v2_hazard_s41",
+    "regions": {
+      "all_land": {
+        "land_cells": 4318,
+        "dead_cells": 11,
+        "dead_land_fraction": 0.0025474756831866605,
+        "positive_records": 17581,
+        "dead_positive_records": 14,
+        "dead_positive_fraction": 0.0007963142028326034,
+        "K_low_positive_fraction": 0.0036971730845799444
+      },
+      "plains_100W_95W": {
+        "land_cells": 472,
+        "dead_cells": 0,
+        "dead_land_fraction": 0.0,
+        "positive_records": 1115,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.0017937219730941704
+      },
+      "broad_plains_105W_95W_25N_49N": {
+        "land_cells": 787,
+        "dead_cells": 2,
+        "dead_land_fraction": 0.0025412960609911056,
+        "positive_records": 2213,
+        "dead_positive_records": 2,
+        "dead_positive_fraction": 0.0009037505648441031,
+        "K_low_positive_fraction": 0.00045187528242205153
+      }
+    },
+    "input_invasion_year": null,
+    "release_allee_exemption_years": 10
+  },
+  {
+    "step": "step34_abs_v2_hazard_s42",
+    "regions": {
+      "all_land": {
+        "land_cells": 4318,
+        "dead_cells": 67,
+        "dead_land_fraction": 0.015516442797591477,
+        "positive_records": 17581,
+        "dead_positive_records": 324,
+        "dead_positive_fraction": 0.018428985836983106,
+        "K_low_positive_fraction": 0.01655195950173483
+      },
+      "plains_100W_95W": {
+        "land_cells": 472,
+        "dead_cells": 9,
+        "dead_land_fraction": 0.019067796610169493,
+        "positive_records": 1115,
+        "dead_positive_records": 18,
+        "dead_positive_fraction": 0.016143497757847534,
+        "K_low_positive_fraction": 0.017937219730941704
+      },
+      "broad_plains_105W_95W_25N_49N": {
+        "land_cells": 787,
+        "dead_cells": 21,
+        "dead_land_fraction": 0.026683608640406607,
+        "positive_records": 2213,
+        "dead_positive_records": 92,
+        "dead_positive_fraction": 0.04157252598282874,
+        "K_low_positive_fraction": 0.008133755083596927
+      }
+    },
+    "input_invasion_year": null,
+    "release_allee_exemption_years": 10
+  },
+  {
+    "step": "step34_abs_v2_natdep_s41",
+    "regions": {
+      "all_land": {
+        "land_cells": 4318,
+        "dead_cells": 31,
+        "dead_land_fraction": 0.007179249652616952,
+        "positive_records": 17581,
+        "dead_positive_records": 41,
+        "dead_positive_fraction": 0.0023320630225811957,
+        "K_low_positive_fraction": 0.0018201467493316648
+      },
+      "plains_100W_95W": {
+        "land_cells": 472,
+        "dead_cells": 5,
+        "dead_land_fraction": 0.01059322033898305,
+        "positive_records": 1115,
+        "dead_positive_records": 5,
+        "dead_positive_fraction": 0.004484304932735426,
+        "K_low_positive_fraction": 0.0017937219730941704
+      },
+      "broad_plains_105W_95W_25N_49N": {
+        "land_cells": 787,
+        "dead_cells": 7,
+        "dead_land_fraction": 0.008894536213468869,
+        "positive_records": 2213,
+        "dead_positive_records": 5,
+        "dead_positive_fraction": 0.0022593764121102574,
+        "K_low_positive_fraction": 0.00045187528242205153
+      }
+    },
+    "input_invasion_year": null,
+    "release_allee_exemption_years": 10
+  },
+  {
+    "step": "step34_abs_v2_natdep_s42",
+    "regions": {
+      "all_land": {
+        "land_cells": 4318,
+        "dead_cells": 58,
+        "dead_land_fraction": 0.013432144511347846,
+        "positive_records": 17581,
+        "dead_positive_records": 196,
+        "dead_positive_fraction": 0.011148398839656447,
+        "K_low_positive_fraction": 0.0025595813662476537
+      },
+      "plains_100W_95W": {
+        "land_cells": 472,
+        "dead_cells": 12,
+        "dead_land_fraction": 0.025423728813559324,
+        "positive_records": 1115,
+        "dead_positive_records": 45,
+        "dead_positive_fraction": 0.04035874439461883,
+        "K_low_positive_fraction": 0.0017937219730941704
+      },
+      "broad_plains_105W_95W_25N_49N": {
+        "land_cells": 787,
+        "dead_cells": 20,
+        "dead_land_fraction": 0.025412960609911054,
+        "positive_records": 2213,
+        "dead_positive_records": 63,
+        "dead_positive_fraction": 0.028468142792589246,
+        "K_low_positive_fraction": 0.00045187528242205153
+      }
+    },
+    "input_invasion_year": null,
+    "release_allee_exemption_years": 10
+  },
+  {
+    "step": "step34_abs_v2_s41",
+    "regions": {
+      "all_land": {
+        "land_cells": 4318,
+        "dead_cells": 12,
+        "dead_land_fraction": 0.002779064381658175,
+        "positive_records": 17581,
+        "dead_positive_records": 36,
+        "dead_positive_fraction": 0.002047665092998123,
+        "K_low_positive_fraction": 0.004038450600079632
+      },
+      "plains_100W_95W": {
+        "land_cells": 472,
+        "dead_cells": 1,
+        "dead_land_fraction": 0.00211864406779661,
+        "positive_records": 1115,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.0017937219730941704
+      },
+      "broad_plains_105W_95W_25N_49N": {
+        "land_cells": 787,
+        "dead_cells": 2,
+        "dead_land_fraction": 0.0025412960609911056,
+        "positive_records": 2213,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.00045187528242205153
+      }
+    },
+    "input_invasion_year": null,
+    "release_allee_exemption_years": 10
+  },
+  {
+    "step": "step34_abs_v2_s42",
+    "regions": {
+      "all_land": {
+        "land_cells": 4318,
+        "dead_cells": 67,
+        "dead_land_fraction": 0.015516442797591477,
+        "positive_records": 17581,
+        "dead_positive_records": 287,
+        "dead_positive_fraction": 0.01632444115806837,
+        "K_low_positive_fraction": 0.017632671634150502
+      },
+      "plains_100W_95W": {
+        "land_cells": 472,
+        "dead_cells": 10,
+        "dead_land_fraction": 0.0211864406779661,
+        "positive_records": 1115,
+        "dead_positive_records": 18,
+        "dead_positive_fraction": 0.016143497757847534,
+        "K_low_positive_fraction": 0.017937219730941704
+      },
+      "broad_plains_105W_95W_25N_49N": {
+        "land_cells": 787,
+        "dead_cells": 22,
+        "dead_land_fraction": 0.02795425667090216,
+        "positive_records": 2213,
+        "dead_positive_records": 92,
+        "dead_positive_fraction": 0.04157252598282874,
+        "K_low_positive_fraction": 0.008133755083596927
+      }
+    },
+    "input_invasion_year": null,
+    "release_allee_exemption_years": 10
+  },
+  {
+    "step": "step34_broodhi",
+    "regions": {
+      "all_land": {
+        "land_cells": 4318,
+        "dead_cells": 0,
+        "dead_land_fraction": 0.0,
+        "positive_records": 17581,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.001308230476082134
+      },
+      "plains_100W_95W": {
+        "land_cells": 472,
+        "dead_cells": 0,
+        "dead_land_fraction": 0.0,
+        "positive_records": 1115,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.0008968609865470852
+      },
+      "broad_plains_105W_95W_25N_49N": {
+        "land_cells": 787,
+        "dead_cells": 0,
+        "dead_land_fraction": 0.0,
+        "positive_records": 2213,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.0
+      }
+    },
+    "input_invasion_year": null,
+    "release_allee_exemption_years": 10
+  },
+  {
+    "step": "step34_broodlo",
+    "regions": {
+      "all_land": {
+        "land_cells": 4318,
+        "dead_cells": 7,
+        "dead_land_fraction": 0.001621120889300602,
+        "positive_records": 17581,
+        "dead_positive_records": 27,
+        "dead_positive_fraction": 0.0015357488197485923,
+        "K_low_positive_fraction": 0.0022183038507479665
+      },
+      "plains_100W_95W": {
+        "land_cells": 472,
+        "dead_cells": 0,
+        "dead_land_fraction": 0.0,
+        "positive_records": 1115,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.0008968609865470852
+      },
+      "broad_plains_105W_95W_25N_49N": {
+        "land_cells": 787,
+        "dead_cells": 1,
+        "dead_land_fraction": 0.0012706480304955528,
+        "positive_records": 2213,
+        "dead_positive_records": 1,
+        "dead_positive_fraction": 0.00045187528242205153,
+        "K_low_positive_fraction": 0.0
+      }
+    },
+    "input_invasion_year": null,
+    "release_allee_exemption_years": 10
+  },
+  {
+    "step": "step34_foundhi",
+    "regions": {
+      "all_land": {
+        "land_cells": 4318,
+        "dead_cells": 2,
+        "dead_land_fraction": 0.0004631773969430292,
+        "positive_records": 17581,
+        "dead_positive_records": 1,
+        "dead_positive_fraction": 5.6879585916614524e-05,
+        "K_low_positive_fraction": 0.0017063875774984358
+      },
+      "plains_100W_95W": {
+        "land_cells": 472,
+        "dead_cells": 0,
+        "dead_land_fraction": 0.0,
+        "positive_records": 1115,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.0008968609865470852
+      },
+      "broad_plains_105W_95W_25N_49N": {
+        "land_cells": 787,
+        "dead_cells": 1,
+        "dead_land_fraction": 0.0012706480304955528,
+        "positive_records": 2213,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.0
+      }
+    },
+    "input_invasion_year": null,
+    "release_allee_exemption_years": 10
+  },
+  {
+    "step": "step34_foundlo",
+    "regions": {
+      "all_land": {
+        "land_cells": 4318,
+        "dead_cells": 3,
+        "dead_land_fraction": 0.0006947660954145438,
+        "positive_records": 17581,
+        "dead_positive_records": 1,
+        "dead_positive_fraction": 5.6879585916614524e-05,
+        "K_low_positive_fraction": 0.0016495079915818214
+      },
+      "plains_100W_95W": {
+        "land_cells": 472,
+        "dead_cells": 0,
+        "dead_land_fraction": 0.0,
+        "positive_records": 1115,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.0008968609865470852
+      },
+      "broad_plains_105W_95W_25N_49N": {
+        "land_cells": 787,
+        "dead_cells": 1,
+        "dead_land_fraction": 0.0012706480304955528,
+        "positive_records": 2213,
+        "dead_positive_records": 1,
+        "dead_positive_fraction": 0.00045187528242205153,
+        "K_low_positive_fraction": 0.0
+      }
+    },
+    "input_invasion_year": null,
+    "release_allee_exemption_years": 10
+  },
+  {
+    "step": "step34_rel_comp_natdep_s41",
+    "regions": {
+      "all_land": {
+        "land_cells": 4318,
+        "dead_cells": 2,
+        "dead_land_fraction": 0.0004631773969430292,
+        "positive_records": 17581,
+        "dead_positive_records": 10,
+        "dead_positive_fraction": 0.0005687958591661453,
+        "K_low_positive_fraction": 0.0006825550309993743
+      },
+      "plains_100W_95W": {
+        "land_cells": 472,
+        "dead_cells": 0,
+        "dead_land_fraction": 0.0,
+        "positive_records": 1115,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.0008968609865470852
+      },
+      "broad_plains_105W_95W_25N_49N": {
+        "land_cells": 787,
+        "dead_cells": 0,
+        "dead_land_fraction": 0.0,
+        "positive_records": 2213,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.0
+      }
+    },
+    "input_invasion_year": null,
+    "release_allee_exemption_years": 10
+  },
+  {
+    "step": "step34_rel_comp_natdep_s42",
+    "regions": {
+      "all_land": {
+        "land_cells": 4318,
+        "dead_cells": 2,
+        "dead_land_fraction": 0.0004631773969430292,
+        "positive_records": 17581,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.0007963142028326034
+      },
+      "plains_100W_95W": {
+        "land_cells": 472,
+        "dead_cells": 0,
+        "dead_land_fraction": 0.0,
+        "positive_records": 1115,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.0008968609865470852
+      },
+      "broad_plains_105W_95W_25N_49N": {
+        "land_cells": 787,
+        "dead_cells": 0,
+        "dead_land_fraction": 0.0,
+        "positive_records": 2213,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.0
+      }
+    },
+    "input_invasion_year": null,
+    "release_allee_exemption_years": 10
+  },
+  {
+    "step": "step34_rel_comp_s41",
+    "regions": {
+      "all_land": {
+        "land_cells": 4318,
+        "dead_cells": 3,
+        "dead_land_fraction": 0.0006947660954145438,
+        "positive_records": 17581,
+        "dead_positive_records": 31,
+        "dead_positive_fraction": 0.0017632671634150504,
+        "K_low_positive_fraction": 0.0018201467493316648
+      },
+      "plains_100W_95W": {
+        "land_cells": 472,
+        "dead_cells": 0,
+        "dead_land_fraction": 0.0,
+        "positive_records": 1115,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.0008968609865470852
+      },
+      "broad_plains_105W_95W_25N_49N": {
+        "land_cells": 787,
+        "dead_cells": 1,
+        "dead_land_fraction": 0.0012706480304955528,
+        "positive_records": 2213,
+        "dead_positive_records": 1,
+        "dead_positive_fraction": 0.00045187528242205153,
+        "K_low_positive_fraction": 0.0
+      }
+    },
+    "input_invasion_year": null,
+    "release_allee_exemption_years": 10
+  },
+  {
+    "step": "step34_rel_hazard_natdep_s41",
+    "regions": {
+      "all_land": {
+        "land_cells": 4318,
+        "dead_cells": 3,
+        "dead_land_fraction": 0.0006947660954145438,
+        "positive_records": 17581,
+        "dead_positive_records": 11,
+        "dead_positive_fraction": 0.0006256754450827598,
+        "K_low_positive_fraction": 0.0006825550309993743
+      },
+      "plains_100W_95W": {
+        "land_cells": 472,
+        "dead_cells": 0,
+        "dead_land_fraction": 0.0,
+        "positive_records": 1115,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.0008968609865470852
+      },
+      "broad_plains_105W_95W_25N_49N": {
+        "land_cells": 787,
+        "dead_cells": 0,
+        "dead_land_fraction": 0.0,
+        "positive_records": 2213,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.0
+      }
+    },
+    "input_invasion_year": null,
+    "release_allee_exemption_years": 10
+  },
+  {
+    "step": "step34_rel_hazard_natdep_s42",
+    "regions": {
+      "all_land": {
+        "land_cells": 4318,
+        "dead_cells": 5,
+        "dead_land_fraction": 0.001157943492357573,
+        "positive_records": 17581,
+        "dead_positive_records": 1,
+        "dead_positive_fraction": 5.6879585916614524e-05,
+        "K_low_positive_fraction": 0.0006825550309993743
+      },
+      "plains_100W_95W": {
+        "land_cells": 472,
+        "dead_cells": 1,
+        "dead_land_fraction": 0.00211864406779661,
+        "positive_records": 1115,
+        "dead_positive_records": 1,
+        "dead_positive_fraction": 0.0008968609865470852,
+        "K_low_positive_fraction": 0.0008968609865470852
+      },
+      "broad_plains_105W_95W_25N_49N": {
+        "land_cells": 787,
+        "dead_cells": 4,
+        "dead_land_fraction": 0.005082592121982211,
+        "positive_records": 2213,
+        "dead_positive_records": 1,
+        "dead_positive_fraction": 0.00045187528242205153,
+        "K_low_positive_fraction": 0.0
+      }
+    },
+    "input_invasion_year": null,
+    "release_allee_exemption_years": 10
+  },
+  {
+    "step": "step34_rel_hazard_s41",
+    "regions": {
+      "all_land": {
+        "land_cells": 4318,
+        "dead_cells": 4,
+        "dead_land_fraction": 0.0009263547938860583,
+        "positive_records": 17581,
+        "dead_positive_records": 36,
+        "dead_positive_fraction": 0.002047665092998123,
+        "K_low_positive_fraction": 0.0012513508901655197
+      },
+      "plains_100W_95W": {
+        "land_cells": 472,
+        "dead_cells": 2,
+        "dead_land_fraction": 0.00423728813559322,
+        "positive_records": 1115,
+        "dead_positive_records": 7,
+        "dead_positive_fraction": 0.006278026905829596,
+        "K_low_positive_fraction": 0.0008968609865470852
+      },
+      "broad_plains_105W_95W_25N_49N": {
+        "land_cells": 787,
+        "dead_cells": 3,
+        "dead_land_fraction": 0.0038119440914866584,
+        "positive_records": 2213,
+        "dead_positive_records": 10,
+        "dead_positive_fraction": 0.004518752824220515,
+        "K_low_positive_fraction": 0.0
+      }
+    },
+    "input_invasion_year": null,
+    "release_allee_exemption_years": 10
+  },
+  {
+    "step": "step34_rel_hazard_s42",
+    "regions": {
+      "all_land": {
+        "land_cells": 4318,
+        "dead_cells": 2,
+        "dead_land_fraction": 0.0004631773969430292,
+        "positive_records": 17581,
+        "dead_positive_records": 4,
+        "dead_positive_fraction": 0.0002275183436664581,
+        "K_low_positive_fraction": 0.002161424264831352
+      },
+      "plains_100W_95W": {
+        "land_cells": 472,
+        "dead_cells": 0,
+        "dead_land_fraction": 0.0,
+        "positive_records": 1115,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.0008968609865470852
+      },
+      "broad_plains_105W_95W_25N_49N": {
+        "land_cells": 787,
+        "dead_cells": 0,
+        "dead_land_fraction": 0.0,
+        "positive_records": 2213,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.0
+      }
+    },
+    "input_invasion_year": null,
+    "release_allee_exemption_years": 10
+  },
+  {
+    "step": "step34_rel_v2_hazard_s41",
+    "regions": {
+      "all_land": {
+        "land_cells": 4318,
+        "dead_cells": 3,
+        "dead_land_fraction": 0.0006947660954145438,
+        "positive_records": 17581,
+        "dead_positive_records": 11,
+        "dead_positive_fraction": 0.0006256754450827598,
+        "K_low_positive_fraction": 0.0009100733746658324
+      },
+      "plains_100W_95W": {
+        "land_cells": 472,
+        "dead_cells": 1,
+        "dead_land_fraction": 0.00211864406779661,
+        "positive_records": 1115,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.0008968609865470852
+      },
+      "broad_plains_105W_95W_25N_49N": {
+        "land_cells": 787,
+        "dead_cells": 1,
+        "dead_land_fraction": 0.0012706480304955528,
+        "positive_records": 2213,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.0
+      }
+    },
+    "input_invasion_year": null,
+    "release_allee_exemption_years": 10
+  },
+  {
+    "step": "step34_rel_v2_hazard_s42",
+    "regions": {
+      "all_land": {
+        "land_cells": 4318,
+        "dead_cells": 3,
+        "dead_land_fraction": 0.0006947660954145438,
+        "positive_records": 17581,
+        "dead_positive_records": 4,
+        "dead_positive_fraction": 0.0002275183436664581,
+        "K_low_positive_fraction": 0.0023320630225811957
+      },
+      "plains_100W_95W": {
+        "land_cells": 472,
+        "dead_cells": 1,
+        "dead_land_fraction": 0.00211864406779661,
+        "positive_records": 1115,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.0008968609865470852
+      },
+      "broad_plains_105W_95W_25N_49N": {
+        "land_cells": 787,
+        "dead_cells": 1,
+        "dead_land_fraction": 0.0012706480304955528,
+        "positive_records": 2213,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.0
+      }
+    },
+    "input_invasion_year": null,
+    "release_allee_exemption_years": 10
+  },
+  {
+    "step": "step34_rel_v2_natdep_s41",
+    "regions": {
+      "all_land": {
+        "land_cells": 4318,
+        "dead_cells": 4,
+        "dead_land_fraction": 0.0009263547938860583,
+        "positive_records": 17581,
+        "dead_positive_records": 3,
+        "dead_positive_fraction": 0.00017063875774984359,
+        "K_low_positive_fraction": 0.0011375917183322906
+      },
+      "plains_100W_95W": {
+        "land_cells": 472,
+        "dead_cells": 1,
+        "dead_land_fraction": 0.00211864406779661,
+        "positive_records": 1115,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.0008968609865470852
+      },
+      "broad_plains_105W_95W_25N_49N": {
+        "land_cells": 787,
+        "dead_cells": 2,
+        "dead_land_fraction": 0.0025412960609911056,
+        "positive_records": 2213,
+        "dead_positive_records": 3,
+        "dead_positive_fraction": 0.0013556258472661546,
+        "K_low_positive_fraction": 0.0
+      }
+    },
+    "input_invasion_year": null,
+    "release_allee_exemption_years": 10
+  },
+  {
+    "step": "step34_rel_v2_natdep_s42",
+    "regions": {
+      "all_land": {
+        "land_cells": 4318,
+        "dead_cells": 4,
+        "dead_land_fraction": 0.0009263547938860583,
+        "positive_records": 17581,
+        "dead_positive_records": 23,
+        "dead_positive_fraction": 0.001308230476082134,
+        "K_low_positive_fraction": 0.0011375917183322906
+      },
+      "plains_100W_95W": {
+        "land_cells": 472,
+        "dead_cells": 1,
+        "dead_land_fraction": 0.00211864406779661,
+        "positive_records": 1115,
+        "dead_positive_records": 11,
+        "dead_positive_fraction": 0.009865470852017937,
+        "K_low_positive_fraction": 0.0008968609865470852
+      },
+      "broad_plains_105W_95W_25N_49N": {
+        "land_cells": 787,
+        "dead_cells": 2,
+        "dead_land_fraction": 0.0025412960609911056,
+        "positive_records": 2213,
+        "dead_positive_records": 11,
+        "dead_positive_fraction": 0.004970628106642567,
+        "K_low_positive_fraction": 0.0
+      }
+    },
+    "input_invasion_year": null,
+    "release_allee_exemption_years": 10
+  },
+  {
+    "step": "step34_rel_v2_s41",
+    "regions": {
+      "all_land": {
+        "land_cells": 4318,
+        "dead_cells": 1,
+        "dead_land_fraction": 0.0002315886984715146,
+        "positive_records": 17581,
+        "dead_positive_records": 2,
+        "dead_positive_fraction": 0.00011375917183322905,
+        "K_low_positive_fraction": 0.0009100733746658324
+      },
+      "plains_100W_95W": {
+        "land_cells": 472,
+        "dead_cells": 0,
+        "dead_land_fraction": 0.0,
+        "positive_records": 1115,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.0008968609865470852
+      },
+      "broad_plains_105W_95W_25N_49N": {
+        "land_cells": 787,
+        "dead_cells": 0,
+        "dead_land_fraction": 0.0,
+        "positive_records": 2213,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.0
+      }
+    },
+    "input_invasion_year": null,
+    "release_allee_exemption_years": 10
+  },
+  {
+    "step": "step3_native",
+    "regions": {
+      "all_land": {
+        "land_cells": 4318,
+        "dead_cells": 0,
+        "dead_land_fraction": 0.0,
+        "positive_records": 17581,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.00028439792958307266
+      },
+      "plains_100W_95W": {
+        "land_cells": 472,
+        "dead_cells": 0,
+        "dead_land_fraction": 0.0,
+        "positive_records": 1115,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.0008968609865470852
+      },
+      "broad_plains_105W_95W_25N_49N": {
+        "land_cells": 787,
+        "dead_cells": 0,
+        "dead_land_fraction": 0.0,
+        "positive_records": 2213,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.0
+      }
+    },
+    "input_invasion_year": null,
+    "release_allee_exemption_years": 10
+  },
+  {
+    "step": "step3_native_s42",
+    "regions": {
+      "all_land": {
+        "land_cells": 4318,
+        "dead_cells": 1,
+        "dead_land_fraction": 0.0002315886984715146,
+        "positive_records": 17581,
+        "dead_positive_records": 4,
+        "dead_positive_fraction": 0.0002275183436664581,
+        "K_low_positive_fraction": 0.003355895569080257
+      },
+      "plains_100W_95W": {
+        "land_cells": 472,
+        "dead_cells": 0,
+        "dead_land_fraction": 0.0,
+        "positive_records": 1115,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.0008968609865470852
+      },
+      "broad_plains_105W_95W_25N_49N": {
+        "land_cells": 787,
+        "dead_cells": 0,
+        "dead_land_fraction": 0.0,
+        "positive_records": 2213,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.0
+      }
+    },
+    "input_invasion_year": null,
+    "release_allee_exemption_years": 10
+  },
+  {
+    "step": "step3_native_v2",
+    "regions": {
+      "all_land": {
+        "land_cells": 4318,
+        "dead_cells": 2,
+        "dead_land_fraction": 0.0004631773969430292,
+        "positive_records": 17581,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.00011375917183322905
+      },
+      "plains_100W_95W": {
+        "land_cells": 472,
+        "dead_cells": 0,
+        "dead_land_fraction": 0.0,
+        "positive_records": 1115,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.0
+      },
+      "broad_plains_105W_95W_25N_49N": {
+        "land_cells": 787,
+        "dead_cells": 0,
+        "dead_land_fraction": 0.0,
+        "positive_records": 2213,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.0
+      }
+    },
+    "input_invasion_year": null,
+    "release_allee_exemption_years": 10
+  },
+  {
+    "step": "step3_native_v2_s42",
+    "regions": {
+      "all_land": {
+        "land_cells": 4318,
+        "dead_cells": 0,
+        "dead_land_fraction": 0.0,
+        "positive_records": 17581,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.003754052670496559
+      },
+      "plains_100W_95W": {
+        "land_cells": 472,
+        "dead_cells": 0,
+        "dead_land_fraction": 0.0,
+        "positive_records": 1115,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.0017937219730941704
+      },
+      "broad_plains_105W_95W_25N_49N": {
+        "land_cells": 787,
+        "dead_cells": 0,
+        "dead_land_fraction": 0.0,
+        "positive_records": 2213,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.00045187528242205153
+      }
+    },
+    "input_invasion_year": null,
+    "release_allee_exemption_years": 10
+  },
+  {
+    "step": "step3_seed43",
+    "regions": {
+      "all_land": {
+        "land_cells": 4318,
+        "dead_cells": 0,
+        "dead_land_fraction": 0.0,
+        "positive_records": 17581,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.0007963142028326034
+      },
+      "plains_100W_95W": {
+        "land_cells": 472,
+        "dead_cells": 0,
+        "dead_land_fraction": 0.0,
+        "positive_records": 1115,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.0
+      },
+      "broad_plains_105W_95W_25N_49N": {
+        "land_cells": 787,
+        "dead_cells": 0,
+        "dead_land_fraction": 0.0,
+        "positive_records": 2213,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.0
+      }
+    },
+    "input_invasion_year": null,
+    "release_allee_exemption_years": 10
+  },
+  {
+    "step": "step4_amp8",
+    "regions": {
+      "all_land": {
+        "land_cells": 4318,
+        "dead_cells": 2,
+        "dead_land_fraction": 0.0004631773969430292,
+        "positive_records": 17581,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.0
+      },
+      "plains_100W_95W": {
+        "land_cells": 472,
+        "dead_cells": 0,
+        "dead_land_fraction": 0.0,
+        "positive_records": 1115,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.0
+      },
+      "broad_plains_105W_95W_25N_49N": {
+        "land_cells": 787,
+        "dead_cells": 1,
+        "dead_land_fraction": 0.0012706480304955528,
+        "positive_records": 2213,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.0
+      }
+    },
+    "input_invasion_year": null,
+    "release_allee_exemption_years": 10
+  },
+  {
+    "step": "step8a_kernel_s42",
+    "regions": {
+      "all_land": {
+        "land_cells": 4318,
+        "dead_cells": 0,
+        "dead_land_fraction": 0.0,
+        "positive_records": 17581,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.0007394346169159889
+      },
+      "plains_100W_95W": {
+        "land_cells": 472,
+        "dead_cells": 0,
+        "dead_land_fraction": 0.0,
+        "positive_records": 1115,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.0008968609865470852
+      },
+      "broad_plains_105W_95W_25N_49N": {
+        "land_cells": 787,
+        "dead_cells": 0,
+        "dead_land_fraction": 0.0,
+        "positive_records": 2213,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.00045187528242205153
+      }
+    },
+    "input_invasion_year": null,
+    "release_allee_exemption_years": 10
+  },
+  {
+    "step": "step8a_native",
+    "regions": {
+      "all_land": {
+        "land_cells": 4318,
+        "dead_cells": 2,
+        "dead_land_fraction": 0.0004631773969430292,
+        "positive_records": 17581,
+        "dead_positive_records": 29,
+        "dead_positive_fraction": 0.0016495079915818214,
+        "K_low_positive_fraction": 0.0007963142028326034
+      },
+      "plains_100W_95W": {
+        "land_cells": 472,
+        "dead_cells": 0,
+        "dead_land_fraction": 0.0,
+        "positive_records": 1115,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.0008968609865470852
+      },
+      "broad_plains_105W_95W_25N_49N": {
+        "land_cells": 787,
+        "dead_cells": 0,
+        "dead_land_fraction": 0.0,
+        "positive_records": 2213,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.0
+      }
+    },
+    "input_invasion_year": null,
+    "release_allee_exemption_years": 10
+  },
+  {
+    "step": "step8a_native_v2",
+    "regions": {
+      "all_land": {
+        "land_cells": 4318,
+        "dead_cells": 3,
+        "dead_land_fraction": 0.0006947660954145438,
+        "positive_records": 17581,
+        "dead_positive_records": 22,
+        "dead_positive_fraction": 0.0012513508901655197,
+        "K_low_positive_fraction": 0.0009100733746658324
+      },
+      "plains_100W_95W": {
+        "land_cells": 472,
+        "dead_cells": 0,
+        "dead_land_fraction": 0.0,
+        "positive_records": 1115,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.0008968609865470852
+      },
+      "broad_plains_105W_95W_25N_49N": {
+        "land_cells": 787,
+        "dead_cells": 1,
+        "dead_land_fraction": 0.0012706480304955528,
+        "positive_records": 2213,
+        "dead_positive_records": 6,
+        "dead_positive_fraction": 0.0027112516945323093,
+        "K_low_positive_fraction": 0.0
+      }
+    },
+    "input_invasion_year": null,
+    "release_allee_exemption_years": 10
+  },
+  {
+    "step": "step9_seed42",
+    "regions": {
+      "all_land": {
+        "land_cells": 4318,
+        "dead_cells": 3,
+        "dead_land_fraction": 0.0006947660954145438,
+        "positive_records": 17581,
+        "dead_positive_records": 15,
+        "dead_positive_fraction": 0.0008531937887492179,
+        "K_low_positive_fraction": 0.0025027017803310393
+      },
+      "plains_100W_95W": {
+        "land_cells": 472,
+        "dead_cells": 0,
+        "dead_land_fraction": 0.0,
+        "positive_records": 1115,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.0
+      },
+      "broad_plains_105W_95W_25N_49N": {
+        "land_cells": 787,
+        "dead_cells": 0,
+        "dead_land_fraction": 0.0,
+        "positive_records": 2213,
+        "dead_positive_records": 0,
+        "dead_positive_fraction": 0.0,
+        "K_low_positive_fraction": 0.0
+      }
+    },
+    "input_invasion_year": null,
+    "release_allee_exemption_years": 10
+  }
+]

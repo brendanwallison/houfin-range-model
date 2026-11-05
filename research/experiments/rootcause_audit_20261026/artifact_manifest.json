@@ -1,0 +1,46 @@
+{
+  "/home/breallis/houfin/work/houfin/research/E055/end-swap-scratch/desk_tempho_1995_s1_grok_ep1900_train/end_swap.json": {
+    "sha256": "165b57360adc147fc801c8638497ad7fa5ba7b0a789511444facde55898f40e1",
+    "keys": [
+      "treat",
+      "ctrl",
+      "eval_set",
+      "n_cells",
+      "rank",
+      "corr",
+      "minus_ctrl"
+    ]
+  },
+  "/home/breallis/houfin/work/houfin/research/E086/e086m-space-compare-308b23a3723b/desk_tempho_1995_s1/e086m.json": {
+    "sha256": "dee8eab19e9ffea9eb6426358ceb1710d5bc5e7c4f446ca3c039f60ed0c72a6e",
+    "keys": [
+      "n_heldout_cells",
+      "ranks",
+      "spatial_kernel_fidelity",
+      "spatial_distance_fidelity",
+      "change_fidelity",
+      "cka"
+    ]
+  },
+  "/home/breallis/houfin/work/houfin/research/E086/e086c-decomposition-3a1dcc0c4ad5/summary/e086_summary.json": {
+    "sha256": "c59f5fa70482d59e97dfc854a177f0710a218b87003a16fc967bfb584fd8f010",
+    "keys": [
+      "t1995_s1",
+      "t1995_s2",
+      "t1995_s3",
+      "t1995_s4",
+      "t1985_s1",
+      "t1985_s2",
+      "p8_s1",
+      "p8_s2"
+    ]
+  },
+  "/home/breallis/houfin/work/houfin/research/E086/e086y-kernel-screen-bc633eab5d35/e086y.json": {
+    "sha256": "a9482de7db88d605d746ba33a5275a41443b05c234c50ed79bdc170b9b073fd6",
+    "keys": [
+      "n_cells",
+      "ref_sedentary_common",
+      "results"
+    ]
+  }
+}

@@ -1,0 +1,374 @@
+{
+  "source_point": "/work/07980/bwa386/ls6/houfin/processed/model_results/refined_float64__age_map_float32_fd_control64_quick90__finite_restart1",
+  "exact_state": {
+    "path": "/work/07980/bwa386/ls6/houfin/processed/model_results/refined_float64__age_map_float32_fd_control64_quick90__finite_restart1/refine_state.pkl",
+    "last_U": 141371.47642474176,
+    "roundtrip_max_abs_difference": 2.7755575615628914e-16
+  },
+  "roundtrip_U": 141371.47642474176,
+  "U": 141371.47642474176,
+  "grad_norm": 59406.28534861874,
+  "repeat_U": [
+    141371.47642474176,
+    141371.47642474176,
+    141371.47642474176
+  ],
+  "blocks": {
+    "alpha_a": {
+      "norm": 53314.0778176885,
+      "max_abs": 53314.0778176885,
+      "size": 1
+    },
+    "alpha_f": {
+      "norm": 6673.353215286511,
+      "max_abs": 6673.353215286511,
+      "size": 1
+    },
+    "alpha_j": {
+      "norm": 9871.257811128433,
+      "max_abs": 9871.257811128433,
+      "size": 1
+    },
+    "alpha_k": {
+      "norm": 4498.264173039521,
+      "max_abs": 4498.264173039521,
+      "size": 1
+    },
+    "concentration": {
+      "norm": 28.199622984300014,
+      "max_abs": 28.199622984300014,
+      "size": 1
+    },
+    "disease_b_late": {
+      "norm": 52.070107302333405,
+      "max_abs": 52.070107302333405,
+      "size": 1
+    },
+    "disease_b_native_raw": {
+      "norm": 1.0625472105319393,
+      "max_abs": 1.0625472105319393,
+      "size": 1
+    },
+    "disease_hill_n_raw": {
+      "norm": 57.92741738352225,
+      "max_abs": 57.92741738352225,
+      "size": 1
+    },
+    "disease_lag0": {
+      "norm": 13.224166574369155,
+      "max_abs": 13.224166574369155,
+      "size": 1
+    },
+    "disease_log_k_half_counts": {
+      "norm": 6.2063044538332885,
+      "max_abs": 6.2063044538332885,
+      "size": 1
+    },
+    "disease_log_tau_rec": {
+      "norm": 2.7930281601180598,
+      "max_abs": 2.7930281601180598,
+      "size": 1
+    },
+    "disease_mu_sev": {
+      "norm": 12.504697089251692,
+      "max_abs": 12.504697089251692,
+      "size": 1
+    },
+    "disease_rec_raw": {
+      "norm": 7.925407644537382,
+      "max_abs": 7.925407644537382,
+      "size": 1
+    },
+    "disease_tau_raw": {
+      "norm": 18.942862276522547,
+      "max_abs": 18.942862276522547,
+      "size": 1
+    },
+    "disease_w_lag": {
+      "norm": 45.31021434309971,
+      "max_abs": 23.27850181956552,
+      "size": 24
+    },
+    "disease_w_sev": {
+      "norm": 175.6750189316222,
+      "max_abs": 83.07940533166749,
+      "size": 24
+    },
+    "dispersal_logit_intercept": {
+      "norm": 1.4023228933623955e-06,
+      "max_abs": 1.4023228933623955e-06,
+      "size": 1
+    },
+    "dispersal_logit_slope": {
+      "norm": 4.986960320252365e-06,
+      "max_abs": 4.986960320252365e-06,
+      "size": 1
+    },
+    "log_inv_total": {
+      "norm": 87.74162882835807,
+      "max_abs": 87.74162882835807,
+      "size": 1
+    },
+    "manifold_coupling_logit": {
+      "norm": 2179.8338719307944,
+      "max_abs": 2179.8338719307944,
+      "size": 1
+    },
+    "manifold_factor": {
+      "norm": 20563.61357974569,
+      "max_abs": 12142.258098613029,
+      "size": 64
+    },
+    "manifold_factor_within": {
+      "norm": 2040.5308384795014,
+      "max_abs": 595.6777632754984,
+      "size": 64
+    },
+    "manifold_idio": {
+      "norm": 8108.757759330598,
+      "max_abs": 3615.6912147719486,
+      "size": 256
+    },
+    "manifold_idio_within": {
+      "norm": 944.6482721441926,
+      "max_abs": 277.92212099485835,
+      "size": 256
+    },
+    "obs_conc_kappa": {
+      "norm": 157.7780701849469,
+      "max_abs": 157.7780701849469,
+      "size": 1
+    },
+    "obs_fledgling_weight": {
+      "norm": 23.060732379733636,
+      "max_abs": 23.060732379733636,
+      "size": 1
+    },
+    "quality_conc_mult": {
+      "norm": 32.160560314106135,
+      "max_abs": 32.160560314106135,
+      "size": 1
+    },
+    "w_scale_raw": {
+      "norm": 5094.372939739337,
+      "max_abs": 3839.598283236547,
+      "size": 4
+    },
+    "within_level_corr": {
+      "norm": 238.24658739892593,
+      "max_abs": 182.13766390269728,
+      "size": 4
+    }
+  },
+  "finite_difference": [
+    {
+      "direction": "gradient_unit",
+      "step": 0.0001,
+      "autodiff": 59406.28534861875,
+      "central_difference": -4741691.615274321,
+      "U_plus": 141788.30558332457,
+      "U_minus": 142736.64390637944,
+      "relative_error": 1.01252850041054
+    },
+    {
+      "direction": "gradient_unit",
+      "step": 1e-05,
+      "autodiff": 59406.28534861875,
+      "central_difference": 373653.4599825972,
+      "U_plus": 141421.52075269632,
+      "U_minus": 141414.04768349667,
+      "relative_error": 0.8410123504506406
+    },
+    {
+      "direction": "gradient_unit",
+      "step": 1e-06,
+      "autodiff": 59406.28534861875,
+      "central_difference": 70620.59934833087,
+      "U_plus": 141372.08713958945,
+      "U_minus": 141371.94589839075,
+      "relative_error": 0.15879664153511847
+    },
+    {
+      "direction": "gradient_unit",
+      "step": 1e-07,
+      "autodiff": 59406.28534861875,
+      "central_difference": 59516.18106337264,
+      "U_plus": 141371.48778056217,
+      "U_minus": 141371.47587732595,
+      "relative_error": 0.001846484649895007
+    },
+    {
+      "direction": "coordinate_0_alpha_a",
+      "step": 0.0001,
+      "autodiff": -53314.0778176885,
+      "central_difference": 3937980.1770029007,
+      "U_plus": 142572.4630543632,
+      "U_minus": 141784.86701896263,
+      "relative_error": 1.0135384322473315
+    },
+    {
+      "direction": "coordinate_0_alpha_a",
+      "step": 1e-05,
+      "autodiff": -53314.0778176885,
+      "central_difference": -360411.96754522383,
+      "U_plus": 141406.37221156326,
+      "U_minus": 141413.58045091416,
+      "relative_error": 0.8520746184406355
+    },
+    {
+      "direction": "coordinate_0_alpha_a",
+      "step": 1e-06,
+      "autodiff": -53314.0778176885,
+      "central_difference": -61433.79880813882,
+      "U_plus": 141371.84892228438,
+      "U_minus": 141371.971789882,
+      "relative_error": 0.13217025721962367
+    },
+    {
+      "direction": "coordinate_0_alpha_a",
+      "step": 1e-07,
+      "autodiff": -53314.0778176885,
+      "central_difference": -53388.79433111288,
+      "U_plus": 141371.475427039,
+      "U_minus": 141371.48610479786,
+      "relative_error": 0.0013994793169703605
+    },
+    {
+      "direction": "coordinate_66_manifold_factor",
+      "step": 0.0001,
+      "autodiff": 12142.258098613029,
+      "central_difference": -21626.64244431653,
+      "U_plus": 141522.48027544116,
+      "U_minus": 141526.80560393003,
+      "relative_error": 1.5614490612621195
+    },
+    {
+      "direction": "coordinate_66_manifold_factor",
+      "step": 1e-05,
+      "autodiff": 12142.258098613029,
+      "central_difference": 20733.73043240281,
+      "U_plus": 141373.9888480778,
+      "U_minus": 141373.57417346915,
+      "relative_error": 0.41437175822267713
+    },
+    {
+      "direction": "coordinate_66_manifold_factor",
+      "step": 1e-06,
+      "autodiff": 12142.258098613029,
+      "central_difference": 12230.556560098194,
+      "U_plus": 141371.51176390488,
+      "U_minus": 141371.48730279176,
+      "relative_error": 0.00721949659864505
+    },
+    {
+      "direction": "coordinate_66_manifold_factor",
+      "step": 1e-07,
+      "autodiff": 12142.258098613029,
+      "central_difference": 12141.60438394174,
+      "U_plus": 141371.4778696142,
+      "U_minus": 141371.47544129333,
+      "relative_error": 5.383798186299898e-05
+    },
+    {
+      "direction": "coordinate_68_manifold_factor",
+      "step": 0.0001,
+      "autodiff": -9880.614506710743,
+      "central_difference": 1783.0542773299385,
+      "U_plus": 141481.05728504906,
+      "U_minus": 141480.7006741936,
+      "relative_error": 1.1804598566333013
+    },
+    {
+      "direction": "coordinate_68_manifold_factor",
+      "step": 1e-05,
+      "autodiff": -9880.614506710743,
+      "central_difference": -14511.267785564994,
+      "U_plus": 141372.89474229547,
+      "U_minus": 141373.18496765118,
+      "relative_error": 0.3191074237814403
+    },
+    {
+      "direction": "coordinate_68_manifold_factor",
+      "step": 1e-06,
+      "autodiff": -9880.614506710743,
+      "central_difference": -9927.343649906106,
+      "U_plus": 141371.48216769716,
+      "U_minus": 141371.50202238446,
+      "relative_error": 0.004707114495407394
+    },
+    {
+      "direction": "coordinate_68_manifold_factor",
+      "step": 1e-07,
+      "autodiff": -9880.614506710743,
+      "central_difference": -9878.18231806159,
+      "U_plus": 141371.47559337667,
+      "U_minus": 141371.47756901314,
+      "relative_error": 0.0002461576299227767
+    }
+  ],
+  "interpretation": "Diagnostic only; no convergence gate or model changed.",
+  "curvature_probes": 16,
+  "curvature_seed": 20261025,
+  "block_mean_diagonal_curvature": {
+    "alpha_a": 639914738984.5011,
+    "alpha_f": -24867441289.452427,
+    "alpha_j": 29262450568.765633,
+    "alpha_k": -656767805.9338408,
+    "concentration": 1475508.5725797634,
+    "disease_b_late": -141519.6360095417,
+    "disease_b_native_raw": -1170.8446204910206,
+    "disease_hill_n_raw": -135100.19391696976,
+    "disease_lag0": -11885.873123350582,
+    "disease_log_k_half_counts": -237941.8638187039,
+    "disease_log_tau_rec": 28128.395825879794,
+    "disease_mu_sev": -765661.4629526171,
+    "disease_rec_raw": 14269.673063589144,
+    "disease_tau_raw": 10558.085874130335,
+    "disease_w_lag": -12906.379788310694,
+    "disease_w_sev": -15249.456944183557,
+    "dispersal_logit_intercept": 1.0,
+    "dispersal_logit_slope": 1.0,
+    "log_inv_total": -3431997.692692184,
+    "manifold_coupling_logit": -882371155.1517043,
+    "manifold_factor": -1230531882.5355804,
+    "manifold_factor_within": -28766854.184356958,
+    "manifold_idio": 150476446.5301561,
+    "manifold_idio_within": -17325602.719591722,
+    "obs_conc_kappa": 391677.5824635207,
+    "obs_fledgling_weight": 662132.4429949105,
+    "quality_conc_mult": -84.508614146625,
+    "w_scale_raw": -4820756930.484521,
+    "within_level_corr": 24868382.6843974
+  },
+  "coordinate_scale_by_site": {
+    "alpha_a": 1.2500832710305865e-06,
+    "alpha_f": 6.341389794643886e-06,
+    "alpha_j": 5.845809429420215e-06,
+    "alpha_k": 3.902061158830525e-05,
+    "concentration": 0.0008232450564473039,
+    "disease_b_late": 0.002658224451739166,
+    "disease_b_native_raw": 0.02922472058174724,
+    "disease_hill_n_raw": 0.0027206458564039723,
+    "disease_lag0": 0.009172431032514033,
+    "disease_log_k_half_counts": 0.0020500505521042723,
+    "disease_log_tau_rec": 0.005962487994045667,
+    "disease_mu_sev": 0.0011428299294971853,
+    "disease_rec_raw": 0.008371301592265599,
+    "disease_tau_raw": 0.009732118873266098,
+    "disease_w_lag": 0.008802332703651938,
+    "disease_w_sev": 0.008097907487196132,
+    "dispersal_logit_intercept": 1.0,
+    "dispersal_logit_slope": 1.0,
+    "log_inv_total": 0.000539792077808523,
+    "manifold_coupling_logit": 3.366466900144647e-05,
+    "manifold_factor": 2.850713449545669e-05,
+    "manifold_factor_within": 0.00018644631920932835,
+    "manifold_idio": 8.152029386605903e-05,
+    "manifold_idio_within": 0.00024024581113157617,
+    "obs_conc_kappa": 0.001597848657912439,
+    "obs_fledgling_weight": 0.0012289311883364894,
+    "quality_conc_mult": 0.10878011412353454,
+    "w_scale_raw": 1.4402649199731435e-05,
+    "within_level_corr": 0.0002005285571988441
+  }
+}

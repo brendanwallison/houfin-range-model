@@ -1,0 +1,15 @@
+# Implemented later established-state comparison — November 1, 2026
+
+Six immutable cold fits are launched on the existing TACC shared workers, with no new allocations requested. Source and exact input/config specifications are in LATER_ESTABLISHED_STATE_RUNS_20261101.json; actual job states update in LATER_ESTABLISHED_STATE_STATUS_20261101.md.
+
+The annual yearling-breeding/shared-field/absolute-Allee/NestWatch model is unchanged. An established release-cell population is initialized in 1951, before the recorded outside-cell expansion discussed in NESTWATCH_CBC_INTERACTION_20261101.md (first next-cell CBC in 1953). This is a test of beginning the coarse-grid invasion model after local establishment, not a model of the initial cage release. It does not reconstruct within-cell settlement or migration.
+
+The founder-cell Allee exemption is zero. Three fixed abundance levels correspond to 280, 560 and 1,120 bird-equivalents under the previously documented conditional conversion of 102.8 birds per founder unit. They are broad sensitivity scenarios, not direct censuses, confidence limits or informative founder priors. Each is fitted with native departure off/on; all six use seed 41 initially. The existing 50/50 adult/young injection split is inherited and remains an initialization assumption.
+
+The historical CBC backcast pin is replaced by each scenario's later-state abundance. Its prior median/precision is removed in favor of an inert broad reference on the pinned parameter. No historical CBC observation likelihood is added, and the same records are not reused as a second constraint. This comparison does not replace the separately ongoing CBC observation-model work.
+
+A derived metadata file changes only inv_timestep (1940→1951); all observation arrays, habitat features, modeled years, grid and other metadata remain identical. Bytewise per-key pickle comparisons and the derived metadata SHA256 passed locally. Large features are linked, not duplicated. The candidate data-config timeline also labels initialization as 1951 to keep diagnostics consistent. Parent source manifests were checked before copying; every candidate has its own new source/config manifest.
+
+The date, abundance brackets, zero exemption and old-backcast removal together define the alternative initialization hypothesis. A score difference cannot be attributed to calendar timing alone. Interpretation will use the complete pathology checklist and matched held-out scores, not only demographic rates or total likelihood.
+
+Every fit runs the existing MAP→float64 refinement→map/front diagnostics, followed by the implemented contribution/BIDE/isolation audit on its allocated node. Each task is supervised with a two-hour limit and an immutable attempt marker; failures are retained rather than silently retried. A persistent local watcher collects completed contribution outputs and queues matched held-out scoring. Comparisons of successful permanent distances/tails and local establishment are being applied across the stored current-model archive as well.

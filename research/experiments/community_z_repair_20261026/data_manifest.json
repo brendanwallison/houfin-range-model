@@ -1,0 +1,127 @@
+{
+  "source_sha256": {
+    "/mnt/c/Dev/houfin-range-model/research/exp/z_repair_data.py": "21e93b6ec3d5a39858d47cb64c13aadd099d1901bcbdaf01d43253968ca4380d",
+    "/home/breallis/houfin/work/houfin/research_cache/desk_tempho_1995_s1/meta.json": "12f4e47ff83972ad2e4748ddd1d8e19f7e86c5a2665bb5617380b5a26e6aac0a",
+    "/home/breallis/houfin/work/houfin/processed/encoder/bbs_points_all369/points_meta.json": "be2af9843896aecc35cf82d3a0d0af0cafc3f79a71485573b0b63b663b1a2c98",
+    "/home/breallis/houfin/work/houfin/processed/encoder/bbs_points_all369/point_index.npy": "b03a9321e3ca2b0d198fb48cfb0f0d3a12dd3eddeb5a1d66291362e9d13bd977",
+    "/home/breallis/houfin/work/houfin/processed/encoder/bbs_points_all369/X_points.npy": "1f6736fa55903e5c5a6afc0d89bd0a117040d15a0f67521e318344b0e8097b12",
+    "/home/breallis/houfin/work/houfin/processed/encoder/bbs_points_all369/point_weights.npy": "99b93f05c21dddd3ad0bba11f38ff56b78569cb8fe05af63fbec15dd665314fb",
+    "/mnt/e/Datasets/cbc_raw/prepared/cbc_circles_all.npz": "57eb1a5826789efef5732ecc71e5711aad929f74717597e6219a91540c278316",
+    "/home/breallis/houfin/work/houfin/research/FINAL_CLEAN_20261025/original_masks/holdout_cells.npy": "cc90032986765aa1b9974c03d0068370a29dc2c5ca3ddf0b64450336de94dd5c",
+    "/home/breallis/houfin/work/houfin/research/FINAL_CLEAN_20261025/original_masks/buffer_cells.npy": "e4bf83d4a0ec8dc0a0555dcfcae948c453d04e5fb565484c7fc44f0bbfd1e0e4"
+  },
+  "tasks": {
+    "backcast40": {
+      "specification": {
+        "target": [
+          1966,
+          1985
+        ],
+        "summer_start": 1996
+      },
+      "summer_training_rows": 24600,
+      "summer_panel_known_cells": 1262,
+      "summer_panel_spatial_cells": 284,
+      "summer_role_counts": {
+        "train": 24600,
+        "modern_a": 15668,
+        "modern_b": 15668,
+        "historical_a": 10399,
+        "historical_b": 10399
+      },
+      "winter": {
+        "full": {
+          "training_lists": 87088,
+          "evaluation_lists": 6353,
+          "training_circles": 4046,
+          "count_cell_years": 70763,
+          "effort_reference": 49.5,
+          "target_era_training_lists": 17028,
+          "early1902_1939_training_lists": 4191,
+          "benchmark_fit": "only training lists, years>=1950; >=5 years; prevalence>=0.5; nonsealed species only",
+          "existing_auxiliary_files_reused": false
+        },
+        "sparse10": {
+          "training_lists": 9820,
+          "evaluation_lists": 6353,
+          "training_circles": 427,
+          "count_cell_years": 8228,
+          "effort_reference": 49.0,
+          "target_era_training_lists": 2027,
+          "early1902_1939_training_lists": 447,
+          "benchmark_fit": "only training lists, years>=1950; >=5 years; prevalence>=0.5; nonsealed species only",
+          "existing_auxiliary_files_reused": false
+        },
+        "no_target": {
+          "training_lists": 70060,
+          "evaluation_lists": 6353,
+          "training_circles": 3762,
+          "count_cell_years": 54429,
+          "effort_reference": 50.5,
+          "target_era_training_lists": 0,
+          "early1902_1939_training_lists": 4191,
+          "benchmark_fit": "only training lists, years>=1950; >=5 years; prevalence>=0.5; nonsealed species only",
+          "existing_auxiliary_files_reused": false
+        }
+      }
+    },
+    "backcast20": {
+      "specification": {
+        "target": [
+          1986,
+          2005
+        ],
+        "summer_start": 2006
+      },
+      "summer_training_rows": 16857,
+      "summer_panel_known_cells": 1855,
+      "summer_panel_spatial_cells": 410,
+      "summer_role_counts": {
+        "train": 16857,
+        "modern_a": 9725,
+        "modern_b": 9725,
+        "historical_a": 17052,
+        "historical_b": 17052
+      },
+      "winter": {
+        "full": {
+          "training_lists": 87088,
+          "evaluation_lists": 6353,
+          "training_circles": 4046,
+          "count_cell_years": 70763,
+          "effort_reference": 49.5,
+          "target_era_training_lists": 25281,
+          "early1902_1939_training_lists": 4191,
+          "benchmark_fit": "only training lists, years>=1950; >=5 years; prevalence>=0.5; nonsealed species only",
+          "existing_auxiliary_files_reused": false
+        },
+        "sparse10": {
+          "training_lists": 9820,
+          "evaluation_lists": 6353,
+          "training_circles": 427,
+          "count_cell_years": 8228,
+          "effort_reference": 49.0,
+          "target_era_training_lists": 2855,
+          "early1902_1939_training_lists": 447,
+          "benchmark_fit": "only training lists, years>=1950; >=5 years; prevalence>=0.5; nonsealed species only",
+          "existing_auxiliary_files_reused": false
+        },
+        "no_target": {
+          "training_lists": 61807,
+          "evaluation_lists": 6353,
+          "training_circles": 3934,
+          "count_cell_years": 46329,
+          "effort_reference": 48.0,
+          "target_era_training_lists": 0,
+          "early1902_1939_training_lists": 4191,
+          "benchmark_fit": "only training lists, years>=1950; >=5 years; prevalence>=0.5; nonsealed species only",
+          "existing_auxiliary_files_reused": false
+        }
+      }
+    }
+  },
+  "encoder_initialization": "random; current final checkpoints prohibited for masked emulation",
+  "status": "Training-only sources prepared; new teachers/heads/encoders not yet fitted.",
+  "modern_split": "Nested existing ABBA: training half, then two disjoint evaluation halves.",
+  "known_evaluation_holdouts_reused": true
+}

@@ -1,0 +1,302 @@
+[
+  {
+    "name": "E001_fecundity_profile.md",
+    "source": "/home/breallis/houfin/work/houfin/research/GRID54_LADDER_20261029/code/research/age_model/experiments/E001_fecundity_profile.md",
+    "sha256": "cc74a04a9578ae3787a6f4807844ea3e6beaed1f50ac524c2df858ca072c675f"
+  },
+  {
+    "name": "E002_allee_profile.md",
+    "source": "/home/breallis/houfin/work/houfin/research/GRID54_LADDER_20261029/code/research/age_model/experiments/E002_allee_profile.md",
+    "sha256": "8163d0f2f1b0fb78aa7b40804f2a3be7a6b9b40ae415f265e7effd125569360d"
+  },
+  {
+    "name": "E004_E009_dispersal_and_joint.md",
+    "source": "/home/breallis/houfin/work/houfin/research/GRID54_LADDER_20261029/code/research/age_model/experiments/E004_E009_dispersal_and_joint.md",
+    "sha256": "c0c21d61b245afc2337f651ac3df099191c0b70ab9c6094ee5e612de0e7d4f3d"
+  },
+  {
+    "name": "E008_settlement.md",
+    "source": "/home/breallis/houfin/work/houfin/research/GRID54_LADDER_20261029/code/research/age_model/experiments/E008_settlement.md",
+    "sha256": "71d6360154d4d535cd92e795267f8f265cbc261f25137461fd08a8054d7b068a"
+  },
+  {
+    "name": "E010_ifd3_profiles.md",
+    "source": "/home/breallis/houfin/work/houfin/research/GRID54_LADDER_20261029/code/research/age_model/experiments/E010_ifd3_profiles.md",
+    "sha256": "a7d29239d31c54d14e1646659191ed2560a8293fbf25b3640b5d1a1c9c72ffce"
+  },
+  {
+    "name": "E012_departure_by_age.md",
+    "source": "/home/breallis/houfin/work/houfin/research/GRID54_LADDER_20261029/code/research/age_model/experiments/E012_departure_by_age.md",
+    "sha256": "5deb5575d3e1197eb34314e1327b741277b7777b184463a7254be79cf4d96971"
+  },
+  {
+    "name": "E013_crowding_departure.md",
+    "source": "/home/breallis/houfin/work/houfin/research/GRID54_LADDER_20261029/code/research/age_model/experiments/E013_crowding_departure.md",
+    "sha256": "7b90240d06a9e8e661682c7304eabbab3e8173d8358b42ffb206239acbdfa35f"
+  },
+  {
+    "name": "E014_settlement_weight.md",
+    "source": "/home/breallis/houfin/work/houfin/research/GRID54_LADDER_20261029/code/research/age_model/experiments/E014_settlement_weight.md",
+    "sha256": "a1759efe011c5e414d02a5d4005c3010b5e94886822dcbbd84ab998c1102cdf7"
+  },
+  {
+    "name": "E016_release_and_transient.md",
+    "source": "/home/breallis/houfin/work/houfin/research/GRID54_LADDER_20261029/code/research/age_model/experiments/E016_release_and_transient.md",
+    "sha256": "580305bcf683bb883b93bfde5354944e67221826e26733b255fb8042477a46d1"
+  },
+  {
+    "name": "E017_subcell_strata.md",
+    "source": "/home/breallis/houfin/work/houfin/research/GRID54_LADDER_20261029/code/research/age_model/experiments/E017_subcell_strata.md",
+    "sha256": "1c0a8a7d00f7ea91c88c576fac3beee335e3fe4c72b0506c43bc78c0546ea657"
+  },
+  {
+    "name": "E019_single_release.md",
+    "source": "/home/breallis/houfin/work/houfin/research/GRID54_LADDER_20261029/code/research/age_model/experiments/E019_single_release.md",
+    "sha256": "76c502eea3477639b607189a96ec04eb224856952ae3dd4da9dd8a13e05a89c2"
+  },
+  {
+    "name": "E020_disease_mortality.md",
+    "source": "/home/breallis/houfin/work/houfin/research/GRID54_LADDER_20261029/code/research/age_model/experiments/E020_disease_mortality.md",
+    "sha256": "d2ee49548a93fc433e38263061609af1d3f48378cb85e288ad0e6c59676d7efb"
+  },
+  {
+    "name": "E021_sr_variations.md",
+    "source": "/home/breallis/houfin/work/houfin/research/GRID54_LADDER_20261029/code/research/age_model/experiments/E021_sr_variations.md",
+    "sha256": "efb9a831d7f36dd7f32c31943d4e9d942253c6dfc1a456025a12d215b5ec9ab3"
+  },
+  {
+    "name": "E022_kernel_tail.md",
+    "source": "/home/breallis/houfin/work/houfin/research/GRID54_LADDER_20261029/code/research/age_model/experiments/E022_kernel_tail.md",
+    "sha256": "ac9269fd95732b5b0ed1d69d67e88e6d266d4213273029c5bbebe341c2ae6846"
+  },
+  {
+    "name": "E025_year_effects.md",
+    "source": "/home/breallis/houfin/work/houfin/research/GRID54_LADDER_20261029/code/research/age_model/experiments/E025_year_effects.md",
+    "sha256": "88db6fba30b1092ea850dead073766fb231c34731b02e9167fe2256848472664"
+  },
+  {
+    "name": "E026_breeding_observation.md",
+    "source": "/home/breallis/houfin/work/houfin/research/GRID54_LADDER_20261029/code/research/age_model/experiments/E026_breeding_observation.md",
+    "sha256": "6a9350b0954361fc98e3822686c6a60e2c2154c4c9e6ad6756ad754cb95dbc8d"
+  },
+  {
+    "name": "E027_upper_plausible.md",
+    "source": "/home/breallis/houfin/work/houfin/research/GRID54_LADDER_20261029/code/research/age_model/experiments/E027_upper_plausible.md",
+    "sha256": "7316faec68eed58bb96df182a0730a997b180e262e342769ec4be5f2f7a7f886"
+  },
+  {
+    "name": "E028_candidate.md",
+    "source": "/home/breallis/houfin/work/houfin/research/GRID54_LADDER_20261029/code/research/age_model/experiments/E028_candidate.md",
+    "sha256": "7f79ae3d0f26c8919b98f384d5baec98570059dc578ae90ad79efcd84971a087"
+  },
+  {
+    "name": "E029_coupling.md",
+    "source": "/home/breallis/houfin/work/houfin/research/GRID54_LADDER_20261029/code/research/age_model/experiments/E029_coupling.md",
+    "sha256": "2d190140b1a5c3ec853ac4a4509c6103a790a9436f8301e5a5298597c120f73d"
+  },
+  {
+    "name": "E030_disperser_settlement.md",
+    "source": "/home/breallis/houfin/work/houfin/research/GRID54_LADDER_20261029/code/research/age_model/experiments/E030_disperser_settlement.md",
+    "sha256": "b959d5f61f5181442e4ef22de1bef26caf5dd4911693ff96f1e562271921e62a"
+  },
+  {
+    "name": "E031_habitat_shrink.md",
+    "source": "/home/breallis/houfin/work/houfin/research/GRID54_LADDER_20261029/code/research/age_model/experiments/E031_habitat_shrink.md",
+    "sha256": "5979a6b2f5923d7378a33a0844a7b8e4d7211bc59f366a2fe79f865925af05ab"
+  },
+  {
+    "name": "E034_dispersers_combo.md",
+    "source": "/home/breallis/houfin/work/houfin/research/GRID54_LADDER_20261029/code/research/age_model/experiments/E034_dispersers_combo.md",
+    "sha256": "d20e0d41b82b30b3b0f09042e51a1cf2b11187be7608ec4fdb095c3d098a7c92"
+  },
+  {
+    "name": "E037_natal_dispersal.md",
+    "source": "/home/breallis/houfin/work/houfin/research/GRID54_LADDER_20261029/code/research/age_model/experiments/E037_natal_dispersal.md",
+    "sha256": "1e76cb59850c885d0947aa06bc2f26119471cfaf3cbcc456702208d4a9a3840a"
+  },
+  {
+    "name": "E038_route_effects.md",
+    "source": "/home/breallis/houfin/work/houfin/research/GRID54_LADDER_20261029/code/research/age_model/experiments/E038_route_effects.md",
+    "sha256": "8c4920441ad4ce4553b0dd0d8bf2104ba808218427970d703abd90f22fa55704"
+  },
+  {
+    "name": "E039_upweight_sparse.md",
+    "source": "/home/breallis/houfin/work/houfin/research/GRID54_LADDER_20261029/code/research/age_model/experiments/E039_upweight_sparse.md",
+    "sha256": "04836716ad689c9c47d1463289752ed4ba710b1ae0e9ff860a19216586fac31b"
+  },
+  {
+    "name": "E040_candidate2.md",
+    "source": "/home/breallis/houfin/work/houfin/research/GRID54_LADDER_20261029/code/research/age_model/experiments/E040_candidate2.md",
+    "sha256": "2159075e220a39373355f6ef582f91881aee96ec9ae7b2daa7693b9c5f02a478"
+  },
+  {
+    "name": "E041_cold40_round.md",
+    "source": "/home/breallis/houfin/work/houfin/research/GRID54_LADDER_20261029/code/research/age_model/experiments/E041_cold40_round.md",
+    "sha256": "c17a316eb38bc0b3a0c53a151cdb1cdd5912e000dc7fd121b1d68e923073f29b"
+  },
+  {
+    "name": "E042_plains_trough.md",
+    "source": "/home/breallis/houfin/work/houfin/research/GRID54_LADDER_20261029/code/research/age_model/experiments/E042_plains_trough.md",
+    "sha256": "d7f56532d854d03ffabd823677434a26ba28268dbac57e6eb3ff55f30af44a50"
+  },
+  {
+    "name": "E043_kernel_is_dispersal.md",
+    "source": "/home/breallis/houfin/work/houfin/research/GRID54_LADDER_20261029/code/research/age_model/experiments/E043_kernel_is_dispersal.md",
+    "sha256": "b38cc6177ae6748da5a5afe2798f51fbabcadab792d23a625dd460bc93cfc4d4"
+  },
+  {
+    "name": "E045_temporal_change.md",
+    "source": "/home/breallis/houfin/work/houfin/research/GRID54_LADDER_20261029/code/research/age_model/experiments/E045_temporal_change.md",
+    "sha256": "fb65ae4e7cf5c46084fab4a3743dbbe2619cfd04f1778c08b95808d9e56e0768"
+  },
+  {
+    "name": "E046_extra_pseudo_zeros.md",
+    "source": "/home/breallis/houfin/work/houfin/research/GRID54_LADDER_20261029/code/research/age_model/experiments/E046_extra_pseudo_zeros.md",
+    "sha256": "d79c8838da3a938fdfd7c0fd49d90abf8be5514725509a4f33ca6dac54cdd189"
+  },
+  {
+    "name": "E047_frozen_refines.md",
+    "source": "/home/breallis/houfin/work/houfin/research/GRID54_LADDER_20261029/code/research/age_model/experiments/E047_frozen_refines.md",
+    "sha256": "6a05c6a32a601430ec68072a877838251dcd8ece117ce08b33fadeb7a0925228"
+  },
+  {
+    "name": "E048_desk_rank.md",
+    "source": "/home/breallis/houfin/work/houfin/research/GRID54_LADDER_20261029/code/research/age_model/experiments/E048_desk_rank.md",
+    "sha256": "5da7bdec5b8570ecabe13c6f49c220c35e16bd55c6d2e28fc4f1721cef6f5907"
+  },
+  {
+    "name": "E050_literature_dispersal.md",
+    "source": "/home/breallis/houfin/work/houfin/research/GRID54_LADDER_20261029/code/research/age_model/experiments/E050_literature_dispersal.md",
+    "sha256": "66ee944be3824a5d89cad10b4b051fc00eebe28b83df6a8ee2f2ec3c33d2d1e4"
+  },
+  {
+    "name": "E051_veit_lewis.md",
+    "source": "/home/breallis/houfin/work/houfin/research/GRID54_LADDER_20261029/code/research/age_model/experiments/E051_veit_lewis.md",
+    "sha256": "fc2d0b104bda65f24960777827ffcaec867785e0fd77f3c1f1ad718cfa2d1e1c"
+  },
+  {
+    "name": "E052_E053_reproduction.md",
+    "source": "/home/breallis/houfin/work/houfin/research/GRID54_LADDER_20261029/code/research/age_model/experiments/E052_E053_reproduction.md",
+    "sha256": "27bb5db9b364c638afe6213b1444575253a862a7ca89fdb067dbbb6384e05c92"
+  },
+  {
+    "name": "E054_refine_gain_decomposition.md",
+    "source": "/home/breallis/houfin/work/houfin/research/GRID54_LADDER_20261029/code/research/age_model/experiments/E054_refine_gain_decomposition.md",
+    "sha256": "fbce5837cf05e2824495ef9d96c0a094c2cd5b19ced233fb69e4c30332af288f"
+  },
+  {
+    "name": "E055_E056_allee_pinned_ktrend.md",
+    "source": "/home/breallis/houfin/work/houfin/research/GRID54_LADDER_20261029/code/research/age_model/experiments/E055_E056_allee_pinned_ktrend.md",
+    "sha256": "8dd87774047a4a53f347d72c25ab160a7cc74f9f7a90230ff0ce43c0efe59ad6"
+  },
+  {
+    "name": "E057_covariate_effect_drift_design.md",
+    "source": "/home/breallis/houfin/work/houfin/research/GRID54_LADDER_20261029/code/research/age_model/experiments/E057_covariate_effect_drift_design.md",
+    "sha256": "6ada4ac2a960a52987b636d7812f75185b9476a08cc2aaf66d677327995916cc"
+  },
+  {
+    "name": "E058_E061_single_factor_on_pinned_base.md",
+    "source": "/home/breallis/houfin/work/houfin/research/GRID54_LADDER_20261029/code/research/age_model/experiments/E058_E061_single_factor_on_pinned_base.md",
+    "sha256": "c33d4320407a8bb96b95a102e8e31ec192e082d66c0a3b5b6040490d72f7fe32"
+  },
+  {
+    "name": "E062_low_density_numerics.md",
+    "source": "/home/breallis/houfin/work/houfin/research/GRID54_LADDER_20261029/code/research/age_model/experiments/E062_low_density_numerics.md",
+    "sha256": "82a90f5d5c917d6d166224df2c7914f10cc8c79939ec9121034c4a413f174772"
+  },
+  {
+    "name": "E063_occupancy_closure.md",
+    "source": "/home/breallis/houfin/work/houfin/research/GRID54_LADDER_20261029/code/research/age_model/experiments/E063_occupancy_closure.md",
+    "sha256": "93c3866e23ef7266308ebad0213e45ef30b84446b7a739978ed1885a4b039bb8"
+  },
+  {
+    "name": "E064_habitat_specific_subcell_compensation.md",
+    "source": "/home/breallis/houfin/work/houfin/research/GRID54_LADDER_20261029/code/research/age_model/experiments/E064_habitat_specific_subcell_compensation.md",
+    "sha256": "1c345bb10f9eb016945f2113fe640987edd621ebc0ddc26dfab9c4eb6683cd09"
+  },
+  {
+    "name": "E065_survival_without_fitness_sorting.md",
+    "source": "/home/breallis/houfin/work/houfin/research/GRID54_LADDER_20261029/code/research/age_model/experiments/E065_survival_without_fitness_sorting.md",
+    "sha256": "b2de94fa2b430941d350e912e8b915e08c559a3befcc67a0c42d9e81014ad02a"
+  },
+  {
+    "name": "E066_desk_readout.md",
+    "source": "/home/breallis/houfin/work/houfin/research/GRID54_LADDER_20261029/code/research/age_model/experiments/E066_desk_readout.md",
+    "sha256": "f4e53f9e0235c2e321766fe0bae467bcd50ca8da1b70e7fbd446233f3c8ab88f"
+  },
+  {
+    "name": "E067_st_habitat_correction.md",
+    "source": "/home/breallis/houfin/work/houfin/research/GRID54_LADDER_20261029/code/research/age_model/experiments/E067_st_habitat_correction.md",
+    "sha256": "9ab0ddde055938802e2811e4c4704d441b5c61b334c03b060e3eb3f39769ac72"
+  },
+  {
+    "name": "E068_plausible_truth_refine.md",
+    "source": "/home/breallis/houfin/work/houfin/research/GRID54_LADDER_20261029/code/research/age_model/experiments/E068_plausible_truth_refine.md",
+    "sha256": "bb6427d9e3254f9ab3e28bf3882d8238e1e2f48c28f0dffc3f3eca748a2ece62"
+  },
+  {
+    "name": "E069_fft_floor_bases.md",
+    "source": "/home/breallis/houfin/work/houfin/research/GRID54_LADDER_20261029/code/research/age_model/experiments/E069_fft_floor_bases.md",
+    "sha256": "50fdfefa0b2e34818d579a74f094ff968f35de5546827467096e53281a5da351"
+  },
+  {
+    "name": "E070_process_noise_design.md",
+    "source": "/home/breallis/houfin/work/houfin/research/GRID54_LADDER_20261029/code/research/age_model/experiments/E070_process_noise_design.md",
+    "sha256": "76da4906050ee4547a4644db48f7edf1dff8db5713a1678cc1a5a58795f17a92"
+  },
+  {
+    "name": "E071_allee_sensitivity.md",
+    "source": "/home/breallis/houfin/work/houfin/research/GRID54_LADDER_20261029/code/research/age_model/experiments/E071_allee_sensitivity.md",
+    "sha256": "029daba311cc997fb1a696666aaedb5b5cf171c35bd3739bf646b3e8aba3f68a"
+  },
+  {
+    "name": "E072_route_occupancy.md",
+    "source": "/home/breallis/houfin/work/houfin/research/GRID54_LADDER_20261029/code/research/age_model/experiments/E072_route_occupancy.md",
+    "sha256": "40718985292e37c88dfd812ee2aa63c2262389c077e7593ec555c1f12aa94e64"
+  },
+  {
+    "name": "E073_lambda_t_stage2.md",
+    "source": "/home/breallis/houfin/work/houfin/research/GRID54_LADDER_20261029/code/research/age_model/experiments/E073_lambda_t_stage2.md",
+    "sha256": "ef594aeb5d85d95c7364ef4fcdebc9b6ff79b22edbf88153c1297baa5ab98fc1"
+  },
+  {
+    "name": "E074_settlement_revisited.md",
+    "source": "/home/breallis/houfin/work/houfin/research/GRID54_LADDER_20261029/code/research/age_model/experiments/E074_settlement_revisited.md",
+    "sha256": "86b52cb41c15e05e2c76c5862a8c3fb33136c7144af08fe6e95cf4cccd81cf53"
+  },
+  {
+    "name": "E075_numerics_retests.md",
+    "source": "/home/breallis/houfin/work/houfin/research/GRID54_LADDER_20261029/code/research/age_model/experiments/E075_numerics_retests.md",
+    "sha256": "17381d9793479b211696cc1e3e209df56638b6c8653b65b0fe3b050916d3467d"
+  },
+  {
+    "name": "E076_fit_comparison.md",
+    "source": "/home/breallis/houfin/work/houfin/research/GRID54_LADDER_20261029/code/research/age_model/experiments/E076_fit_comparison.md",
+    "sha256": "82d135bbf6e7edbc718c0bcb6d90722fff1a07df6441fa1811b75a3336a15a83"
+  },
+  {
+    "name": "E077_native_departure.md",
+    "source": "/home/breallis/houfin/work/houfin/research/GRID54_LADDER_20261029/code/research/age_model/experiments/E077_native_departure.md",
+    "sha256": "86adc4305623f9ddf9b1bf9599419122934a82cbb1db6260bb43dd38c2038d43"
+  },
+  {
+    "name": "E078_informed_combinations.md",
+    "source": "/home/breallis/houfin/work/houfin/research/GRID54_LADDER_20261029/code/research/age_model/experiments/E078_informed_combinations.md",
+    "sha256": "3e4d0f29f0f6bacd1fca9792fb616721b963c764eccfbfe3f5f20be03fc2b502"
+  },
+  {
+    "name": "E079_allee_form.md",
+    "source": "/home/breallis/houfin/work/houfin/research/GRID54_LADDER_20261029/code/research/age_model/experiments/E079_allee_form.md",
+    "sha256": "016fc9b0d88679a19ea61e49672956a8a633bb2400f009479937080e2db11517"
+  },
+  {
+    "name": "E080_temporal_change.md",
+    "source": "/home/breallis/houfin/work/houfin/research/GRID54_LADDER_20261029/code/research/age_model/experiments/E080_temporal_change.md",
+    "sha256": "ad0e79a5197a0f99143df2079735c16bca5f5806175a4601cbdd8b9e1ff0d1fe"
+  },
+  {
+    "name": "E081_new_desk.md",
+    "source": "/home/breallis/houfin/work/houfin/research/GRID54_LADDER_20261029/code/research/age_model/experiments/E081_new_desk.md",
+    "sha256": "dcdaf2be4e6b70673caad3dae67ac7266dafd61caa047d7fe8f8fbc10417a261"
+  }
+]

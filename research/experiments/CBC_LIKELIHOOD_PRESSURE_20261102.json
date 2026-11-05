@@ -1,0 +1,30 @@
+{
+  "point": "step38_cbc1951_free_s41",
+  "parameter_order": [
+    "alpha_a",
+    "alpha_j",
+    "alpha_f",
+    "log_inv_total"
+  ],
+  "CBC_negative_loglik": 290281.38396439,
+  "remaining_negative_logdensity": 143475.21132119617,
+  "CBC_gradient": [
+    -9278.58035121263,
+    -2184.1401410390936,
+    -1218.0722895162598,
+    -252.8224507136115
+  ],
+  "remaining_gradient": [
+    9296.825039647545,
+    2183.476781476286,
+    1220.9291477080792,
+    256.1079527557624
+  ],
+  "total_gradient": [
+    18.244688434915588,
+    -0.6633595628077273,
+    2.856858191819356,
+    3.285502042150938
+  ],
+  "interpretation": "Positive loss derivative means that likelihood alone favors lowering the named raw parameter, holding all other parameters fixed. Local directional pressure is not a global causal explanation or a profile likelihood."
+}

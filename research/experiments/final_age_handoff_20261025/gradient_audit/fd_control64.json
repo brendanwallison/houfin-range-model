@@ -1,0 +1,304 @@
+{
+  "source_point": "/work/07980/bwa386/ls6/houfin/processed/model_results/refined_float64__age_map_float32_fd_control64_quick90__finite_restart1",
+  "U": 141371.47642474176,
+  "grad_norm": 59406.285348253885,
+  "repeat_U": [
+    141371.47642474176,
+    141371.47642474176,
+    141371.47642474176
+  ],
+  "blocks": {
+    "alpha_a": {
+      "norm": 53314.07781735982,
+      "max_abs": 53314.07781735982,
+      "size": 1
+    },
+    "alpha_f": {
+      "norm": 6673.353215239698,
+      "max_abs": 6673.353215239698,
+      "size": 1
+    },
+    "alpha_j": {
+      "norm": 9871.25781107091,
+      "max_abs": 9871.25781107091,
+      "size": 1
+    },
+    "alpha_k": {
+      "norm": 4498.264173029853,
+      "max_abs": 4498.264173029853,
+      "size": 1
+    },
+    "concentration": {
+      "norm": 28.19962298430013,
+      "max_abs": 28.19962298430013,
+      "size": 1
+    },
+    "disease_b_late": {
+      "norm": 52.07010730234889,
+      "max_abs": 52.07010730234889,
+      "size": 1
+    },
+    "disease_b_native_raw": {
+      "norm": 1.0625472105322076,
+      "max_abs": 1.0625472105322076,
+      "size": 1
+    },
+    "disease_hill_n_raw": {
+      "norm": 57.927417383521416,
+      "max_abs": 57.927417383521416,
+      "size": 1
+    },
+    "disease_lag0": {
+      "norm": 13.224166574367025,
+      "max_abs": 13.224166574367025,
+      "size": 1
+    },
+    "disease_log_k_half_counts": {
+      "norm": 6.206304453827935,
+      "max_abs": 6.206304453827935,
+      "size": 1
+    },
+    "disease_log_tau_rec": {
+      "norm": 2.7930281601183893,
+      "max_abs": 2.7930281601183893,
+      "size": 1
+    },
+    "disease_mu_sev": {
+      "norm": 12.50469708924016,
+      "max_abs": 12.50469708924016,
+      "size": 1
+    },
+    "disease_rec_raw": {
+      "norm": 7.92540764453765,
+      "max_abs": 7.92540764453765,
+      "size": 1
+    },
+    "disease_tau_raw": {
+      "norm": 18.942862276522092,
+      "max_abs": 18.942862276522092,
+      "size": 1
+    },
+    "disease_w_lag": {
+      "norm": 45.31021434310014,
+      "max_abs": 23.2785018195634,
+      "size": 24
+    },
+    "disease_w_sev": {
+      "norm": 175.67501893162577,
+      "max_abs": 83.07940533165623,
+      "size": 24
+    },
+    "dispersal_logit_intercept": {
+      "norm": 1.4023228933623955e-06,
+      "max_abs": 1.4023228933623955e-06,
+      "size": 1
+    },
+    "dispersal_logit_slope": {
+      "norm": 4.986960320252365e-06,
+      "max_abs": 4.986960320252365e-06,
+      "size": 1
+    },
+    "log_inv_total": {
+      "norm": 87.7416288283581,
+      "max_abs": 87.7416288283581,
+      "size": 1
+    },
+    "manifold_coupling_logit": {
+      "norm": 2179.8338719588874,
+      "max_abs": 2179.8338719588874,
+      "size": 1
+    },
+    "manifold_factor": {
+      "norm": 20563.6135796286,
+      "max_abs": 12142.258098456203,
+      "size": 64
+    },
+    "manifold_factor_within": {
+      "norm": 2040.5308384745751,
+      "max_abs": 595.6777632730997,
+      "size": 64
+    },
+    "manifold_idio": {
+      "norm": 8108.757759292564,
+      "max_abs": 3615.6912147034595,
+      "size": 256
+    },
+    "manifold_idio_within": {
+      "norm": 944.6482721422608,
+      "max_abs": 277.92212099548027,
+      "size": 256
+    },
+    "obs_conc_kappa": {
+      "norm": 157.7780701849469,
+      "max_abs": 157.7780701849469,
+      "size": 1
+    },
+    "obs_fledgling_weight": {
+      "norm": 23.060732379733647,
+      "max_abs": 23.060732379733647,
+      "size": 1
+    },
+    "quality_conc_mult": {
+      "norm": 32.160560314106135,
+      "max_abs": 32.160560314106135,
+      "size": 1
+    },
+    "w_scale_raw": {
+      "norm": 5094.37293962932,
+      "max_abs": 3839.598283126464,
+      "size": 4
+    },
+    "within_level_corr": {
+      "norm": 238.24658739436242,
+      "max_abs": 182.1376639013384,
+      "size": 4
+    }
+  },
+  "finite_difference": [
+    {
+      "direction": "gradient_unit",
+      "step": 0.0001,
+      "autodiff": 59406.28534825388,
+      "central_difference": -4741691.273396864,
+      "U_plus": 141788.30558424903,
+      "U_minus": 142736.6438389284,
+      "relative_error": 1.0125285013137721
+    },
+    {
+      "direction": "gradient_unit",
+      "step": 1e-05,
+      "autodiff": 59406.28534825388,
+      "central_difference": 373655.00876039726,
+      "U_plus": 141421.52075059537,
+      "U_minus": 141414.04765042017,
+      "relative_error": 0.8410130094459738
+    },
+    {
+      "direction": "gradient_unit",
+      "step": 1e-06,
+      "autodiff": 59406.28534825388,
+      "central_difference": 70619.25414018333,
+      "U_plus": 141372.0871363643,
+      "U_minus": 141371.94589785603,
+      "relative_error": 0.15878061767221524
+    },
+    {
+      "direction": "gradient_unit",
+      "step": 1e-07,
+      "autodiff": 59406.28534825388,
+      "central_difference": 59515.790053410456,
+      "U_plus": 141371.48778056214,
+      "U_minus": 141371.47587740413,
+      "relative_error": 0.001839926934655604
+    },
+    {
+      "direction": "coordinate_0_alpha_a",
+      "step": 0.0001,
+      "autodiff": -53314.07781735982,
+      "central_difference": 3937980.1770029007,
+      "U_plus": 142572.4630543632,
+      "U_minus": 141784.86701896263,
+      "relative_error": 1.013538432247248
+    },
+    {
+      "direction": "coordinate_0_alpha_a",
+      "step": 1e-05,
+      "autodiff": -53314.07781735982,
+      "central_difference": -360411.96754376864,
+      "U_plus": 141406.37221156328,
+      "U_minus": 141413.58045091416,
+      "relative_error": 0.8520746184409502
+    },
+    {
+      "direction": "coordinate_0_alpha_a",
+      "step": 1e-06,
+      "autodiff": -53314.07781735982,
+      "central_difference": -61433.79882269073,
+      "U_plus": 141371.84892228438,
+      "U_minus": 141371.97178988202,
+      "relative_error": 0.1321702574305379
+    },
+    {
+      "direction": "coordinate_0_alpha_a",
+      "step": 1e-07,
+      "autodiff": -53314.07781735982,
+      "central_difference": -53388.794185593724,
+      "U_plus": 141371.475427039,
+      "U_minus": 141371.48610479783,
+      "relative_error": 0.001399476601291413
+    },
+    {
+      "direction": "coordinate_66_manifold_factor",
+      "step": 0.0001,
+      "autodiff": 12142.258098456203,
+      "central_difference": -21626.64244446205,
+      "U_plus": 141522.48027544114,
+      "U_minus": 141526.80560393003,
+      "relative_error": 1.5614490612510903
+    },
+    {
+      "direction": "coordinate_66_manifold_factor",
+      "step": 1e-05,
+      "autodiff": 12142.258098456203,
+      "central_difference": 20733.73043240281,
+      "U_plus": 141373.9888480778,
+      "U_minus": 141373.57417346915,
+      "relative_error": 0.4143717582302409
+    },
+    {
+      "direction": "coordinate_66_manifold_factor",
+      "step": 1e-06,
+      "autodiff": 12142.258098456203,
+      "central_difference": 12230.556560098194,
+      "U_plus": 141371.51176390488,
+      "U_minus": 141371.48730279176,
+      "relative_error": 0.007219496611467523
+    },
+    {
+      "direction": "coordinate_66_manifold_factor",
+      "step": 1e-07,
+      "autodiff": 12142.258098456203,
+      "central_difference": 12141.60438394174,
+      "U_plus": 141371.4778696142,
+      "U_minus": 141371.47544129333,
+      "relative_error": 5.3837968947975606e-05
+    },
+    {
+      "direction": "coordinate_68_manifold_factor",
+      "step": 0.0001,
+      "autodiff": -9880.614506648231,
+      "central_difference": 1783.0542771844193,
+      "U_plus": 141481.05728504906,
+      "U_minus": 141480.70067419362,
+      "relative_error": 1.1804598566197153
+    },
+    {
+      "direction": "coordinate_68_manifold_factor",
+      "step": 1e-05,
+      "autodiff": -9880.614506648231,
+      "central_difference": -14511.267785564994,
+      "U_plus": 141372.89474229547,
+      "U_minus": 141373.18496765118,
+      "relative_error": 0.3191074237857481
+    },
+    {
+      "direction": "coordinate_68_manifold_factor",
+      "step": 1e-06,
+      "autodiff": -9880.614506648231,
+      "central_difference": -9927.343649906106,
+      "U_plus": 141371.48216769716,
+      "U_minus": 141371.50202238446,
+      "relative_error": 0.004707114501704284
+    },
+    {
+      "direction": "coordinate_68_manifold_factor",
+      "step": 1e-07,
+      "autodiff": -9880.614506648231,
+      "central_difference": -9878.182172542438,
+      "U_plus": 141371.4755933767,
+      "U_minus": 141371.47756901314,
+      "relative_error": 0.00024617235134078
+    }
+  ],
+  "interpretation": "Diagnostic only; no convergence gate or model changed."
+}

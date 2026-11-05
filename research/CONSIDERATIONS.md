@@ -1,5 +1,10 @@
 # Considerations: what success means and how to read results
 
+## Added 2026-11-03: House Finch mechanism synthesis
+
+- **G13 Historical lambda inflation has a specific meaning.** It is excessive change in potential growth through time. High modern growth potential is a separate concern; neither substitutes for the other. Compare fixed cells and equal weights across eras and model versions, with East, Great Plains and West explicit. Report geographic masks, including whether "East" means the Northeast or all land east of the Plains. (User clarification, November 3.)
+- **P6 Explain joint compensations before prioritizing a mechanism.** Even when reducing temporal lambda inflation is the objective, do not rank experiments by that metric alone. Use changes in establishment, K/Allee failure, survival, reproduction, source-sink processes, immigration, movement, correction use and predictive transfer to infer what a mechanism supplies and where its cost goes. An unsuccessful configuration can supply evidence for a useful component combination. Mark the inference and its competing explanation, then specify a test that separates them. (User, November 3; MECHANISM_SYNTHESIS_20261103.md.)
+
 A living list of the interpretive points raised in this project, mostly by the user in conversation, each with its
 source. There is rarely one objective answer: these are the considerations to hold in balance. **Every
 pre-registration lists the items it must respect and how; every interpretation checks itself against them**

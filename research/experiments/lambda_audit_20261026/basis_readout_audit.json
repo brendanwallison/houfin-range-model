@@ -1,0 +1,295 @@
+{
+  "source_sha256": "d33e4e7656eac551c79780319b3d2fe03c121bd428badc6ef5e520d7a5c2510b",
+  "interpretation": "Exploratory fixed-point habitat replay. No fit or production Z change.",
+  "stages": {
+    "map": {
+      "fields": {
+        "adult_survival": {
+          "amplitude": 1.107131623525154,
+          "within_amplitude": 0.1549984272935216,
+          "level_coefficient_norm": 5.796400191064549,
+          "within_coefficient_norm": 1.2245668940330943,
+          "mixing_parameter": 0.5843942165374756,
+          "level_within_coefficient_cosine": 0.5595155507311226,
+          "century_link_change_mean": 0.11942118294207005,
+          "century_link_change_RMS": 0.143459600047707,
+          "change_RMS_per_coefficient_norm": 0.1171512971212416,
+          "spatial_level_SD": 0.7072026817793403
+        },
+        "fecundity": {
+          "amplitude": 1.2189469789261471,
+          "within_amplitude": 0.1706525770496606,
+          "level_coefficient_norm": 6.478361506807208,
+          "within_coefficient_norm": 1.1967708166223074,
+          "mixing_parameter": 0.673041582107544,
+          "level_within_coefficient_cosine": 0.7120352717352801,
+          "century_link_change_mean": 0.10953395134440425,
+          "century_link_change_RMS": 0.13464885762819623,
+          "change_RMS_per_coefficient_norm": 0.11251014459746012,
+          "spatial_level_SD": 0.8738528655985467
+        },
+        "capacity": {
+          "amplitude": 1.6722807060957896,
+          "within_amplitude": 0.23411929885341057,
+          "level_coefficient_norm": 10.769403788904212,
+          "within_coefficient_norm": 1.7798511123114358,
+          "mixing_parameter": 0.5541293621063232,
+          "level_within_coefficient_cosine": 0.5919307252223328,
+          "century_link_change_mean": 0.1327926735816952,
+          "century_link_change_RMS": 0.16433549653060142,
+          "change_RMS_per_coefficient_norm": 0.09233103566577777,
+          "spatial_level_SD": 1.1300588335287927
+        },
+        "juvenile_ratio": {
+          "amplitude": 1.7826720194880974,
+          "within_amplitude": 0.24957408272833365,
+          "level_coefficient_norm": 9.049367646546369,
+          "within_coefficient_norm": 1.8253891490062668,
+          "mixing_parameter": 0.6250103712081909,
+          "level_within_coefficient_cosine": 0.5509830585524009,
+          "century_link_change_mean": 0.17982493313442763,
+          "century_link_change_RMS": 0.22149248402999103,
+          "change_RMS_per_coefficient_norm": 0.12133987109026614,
+          "spatial_level_SD": 1.008692436818265
+        }
+      },
+      "regions": {
+        "all_land": {
+          "n_cells": 17209,
+          "early_lambda": 0.7369800723488124,
+          "modern_lambda": 0.8246373256657651,
+          "lambda_change": 0.08765725331695257,
+          "gained_suitable_fraction": 0.10523563251786856,
+          "lost_suitable_fraction": 5.8109128944157125e-05
+        },
+        "central_east_25_49N": {
+          "n_cells": 3514,
+          "early_lambda": 0.8602306020942883,
+          "modern_lambda": 1.0351211001048377,
+          "lambda_change": 0.17489049801054965,
+          "gained_suitable_fraction": 0.22936824132043254,
+          "lost_suitable_fraction": 0.0
+        },
+        "east_of_80W_25_49N": {
+          "n_cells": 1735,
+          "early_lambda": 0.7892337414910576,
+          "modern_lambda": 0.8715559106707228,
+          "lambda_change": 0.0823221691796654,
+          "gained_suitable_fraction": 0.06628242074927954,
+          "lost_suitable_fraction": 0.0
+        }
+      },
+      "replay_max_mean_lambda_error": 9.583084215059046e-09
+    },
+    "refined": {
+      "fields": {
+        "adult_survival": {
+          "amplitude": 6.693059242128819,
+          "within_amplitude": 0.9370282938980348,
+          "level_coefficient_norm": 33.688021301594326,
+          "within_coefficient_norm": 10.270129882114226,
+          "mixing_parameter": 0.3053799520363264,
+          "level_within_coefficient_cosine": 0.03163521153829668,
+          "century_link_change_mean": 0.6336502996551562,
+          "century_link_change_RMS": 0.8882798730330737,
+          "change_RMS_per_coefficient_norm": 0.0864915909758885,
+          "spatial_level_SD": 1.7988231748449481
+        },
+        "fecundity": {
+          "amplitude": 0.4157481959546617,
+          "within_amplitude": 0.05820474743365265,
+          "level_coefficient_norm": 1.7772504651907102,
+          "within_coefficient_norm": 0.42813039006731224,
+          "mixing_parameter": 0.7858352541717878,
+          "level_within_coefficient_cosine": 0.6144261517558466,
+          "century_link_change_mean": 0.02849353787734949,
+          "century_link_change_RMS": 0.037408684785882655,
+          "change_RMS_per_coefficient_norm": 0.0873768497956922,
+          "spatial_level_SD": 0.13225343609838625
+        },
+        "capacity": {
+          "amplitude": 8.256880479614635,
+          "within_amplitude": 1.155963267146049,
+          "level_coefficient_norm": 58.26266102072142,
+          "within_coefficient_norm": 11.969160305624197,
+          "mixing_parameter": 0.32494384033126894,
+          "level_within_coefficient_cosine": 0.33518923948979323,
+          "century_link_change_mean": 0.5805704120458445,
+          "century_link_change_RMS": 0.9466834735784724,
+          "change_RMS_per_coefficient_norm": 0.07909355789425217,
+          "spatial_level_SD": 3.8037225520211213
+        },
+        "juvenile_ratio": {
+          "amplitude": 10.414693313264822,
+          "within_amplitude": 1.4580570638570751,
+          "level_coefficient_norm": 85.60779797981964,
+          "within_coefficient_norm": 15.318867886304995,
+          "mixing_parameter": 0.7252045354791625,
+          "level_within_coefficient_cosine": 0.7349870613136076,
+          "century_link_change_mean": 1.1929841714758174,
+          "century_link_change_RMS": 1.5020854223526616,
+          "change_RMS_per_coefficient_norm": 0.09805459734367968,
+          "spatial_level_SD": 5.624485538829662
+        }
+      },
+      "regions": {
+        "all_land": {
+          "n_cells": 17209,
+          "early_lambda": 0.542948915357089,
+          "modern_lambda": 0.9920066490854346,
+          "lambda_change": 0.4490577337283457,
+          "gained_suitable_fraction": 0.2729966877796502,
+          "lost_suitable_fraction": 0.0007554186762740426
+        },
+        "central_east_25_49N": {
+          "n_cells": 3514,
+          "early_lambda": 0.45870392469714405,
+          "modern_lambda": 1.407007925936772,
+          "lambda_change": 0.9483040012396281,
+          "gained_suitable_fraction": 0.5563460443938532,
+          "lost_suitable_fraction": 0.0
+        },
+        "east_of_80W_25_49N": {
+          "n_cells": 1735,
+          "early_lambda": 0.5845686653964294,
+          "modern_lambda": 1.0453423376441127,
+          "lambda_change": 0.46077367224768334,
+          "gained_suitable_fraction": 0.17982708933717578,
+          "lost_suitable_fraction": 0.0
+        }
+      },
+      "replay_max_mean_lambda_error": 2.220446049250313e-16
+    }
+  },
+  "counterfactuals": {
+    "MAP_temporal_coefficients": {
+      "all_land": {
+        "early_lambda": 0.88420768521565,
+        "modern_lambda": 0.9747827929204231,
+        "lambda_change": 0.09057510770477305
+      },
+      "central_east_25_49N": {
+        "early_lambda": 1.182610109769889,
+        "modern_lambda": 1.3765578275286663,
+        "lambda_change": 0.19394771775877728
+      },
+      "east_of_80W_25_49N": {
+        "early_lambda": 0.9568547865133898,
+        "modern_lambda": 1.031799830380391,
+        "lambda_change": 0.07494504386700122
+      }
+    },
+    "refined_direction_MAP_coefficient_norm": {
+      "all_land": {
+        "early_lambda": 0.9073067114206306,
+        "modern_lambda": 0.9744586355896206,
+        "lambda_change": 0.06715192416899035
+      },
+      "central_east_25_49N": {
+        "early_lambda": 1.2245358098066905,
+        "modern_lambda": 1.3752185745893908,
+        "lambda_change": 0.15068276478270004
+      },
+      "east_of_80W_25_49N": {
+        "early_lambda": 0.9713765954595418,
+        "modern_lambda": 1.0342524879998898,
+        "lambda_change": 0.06287589254034791
+      }
+    },
+    "static_adult_survival": {
+      "all_land": {
+        "lambda_change": 0.15687071768651453
+      },
+      "central_east_25_49N": {
+        "lambda_change": 0.33739323514775693
+      },
+      "east_of_80W_25_49N": {
+        "lambda_change": 0.19263736142929058
+      }
+    },
+    "static_fecundity": {
+      "all_land": {
+        "lambda_change": 0.4486507440289499
+      },
+      "central_east_25_49N": {
+        "lambda_change": 0.9476537774366721
+      },
+      "east_of_80W_25_49N": {
+        "lambda_change": 0.46015591680513945
+      }
+    },
+    "static_juvenile_ratio": {
+      "all_land": {
+        "lambda_change": 0.3637770575075045
+      },
+      "central_east_25_49N": {
+        "lambda_change": 0.8240770157643797
+      },
+      "east_of_80W_25_49N": {
+        "lambda_change": 0.3211454590894539
+      }
+    }
+  },
+  "raw_geometry": {
+    "final_v1_r64": {
+      "spatial_trace": 0.44481342203134716,
+      "century_change_energy": 0.1282894327485381,
+      "century_change_RMS_over_spatial_SD": 0.5370398349700994,
+      "continental_mean_fraction_of_change_energy": 0.2145935342853494,
+      "change_effective_rank": 6.686441999298432,
+      "regions": {
+        "all_land": {
+          "spatial_trace": 0.44481342203134716,
+          "century_change_energy": 0.1282894327485381,
+          "century_change_RMS_over_spatial_SD": 0.5370398349700994,
+          "continental_mean_fraction_of_change_energy": 0.2145935342853494,
+          "change_effective_rank": 6.686441999298432
+        },
+        "central_east_25_49N": {
+          "spatial_trace": 0.27161908437072146,
+          "century_change_energy": 0.2247694499949665,
+          "century_change_RMS_over_spatial_SD": 0.9096796951845989,
+          "continental_mean_fraction_of_change_energy": 0.488620739799859,
+          "change_effective_rank": 2.6443103684218645
+        },
+        "east_of_80W_25_49N": {
+          "spatial_trace": 0.2471758385263079,
+          "century_change_energy": 0.2172012959011918,
+          "century_change_RMS_over_spatial_SD": 0.9374070123442825,
+          "continental_mean_fraction_of_change_energy": 0.5246830375525636,
+          "change_effective_rank": 2.5923603941585154
+        }
+      }
+    },
+    "earlier_cbc1902_r64": {
+      "spatial_trace": 0.4699518442417285,
+      "century_change_energy": 0.17029192095187332,
+      "century_change_RMS_over_spatial_SD": 0.601963755694695,
+      "continental_mean_fraction_of_change_energy": 0.1883525932921866,
+      "change_effective_rank": 6.815523135228398,
+      "regions": {
+        "all_land": {
+          "spatial_trace": 0.4699518442417285,
+          "century_change_energy": 0.17029192095187332,
+          "century_change_RMS_over_spatial_SD": 0.601963755694695,
+          "continental_mean_fraction_of_change_energy": 0.1883525932921866,
+          "change_effective_rank": 6.815523135228398
+        },
+        "central_east_25_49N": {
+          "spatial_trace": 0.2856784188502517,
+          "century_change_energy": 0.31481931455045853,
+          "century_change_RMS_over_spatial_SD": 1.0497647070495737,
+          "continental_mean_fraction_of_change_energy": 0.5037683957709472,
+          "change_effective_rank": 2.409016495927071
+        },
+        "east_of_80W_25_49N": {
+          "spatial_trace": 0.24247073474869288,
+          "century_change_energy": 0.23043198044399227,
+          "century_change_RMS_over_spatial_SD": 0.974858790018764,
+          "continental_mean_fraction_of_change_energy": 0.47761087365325755,
+          "change_effective_rank": 3.0536812942531553
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,1074 @@
+[
+  {
+    "type": "ctl",
+    "level": "lo",
+    "left": "step35_est1951_ctl_mid_s41",
+    "right": "step35_est1951_ctl_lo_s41",
+    "era": "1951-1965",
+    "metrics": {
+      "C": {
+        "coverage": 1.0,
+        "cells": 1689,
+        "weighted_pearson": 0.9938150638810881,
+        "spearman": 0.9984918771487392,
+        "mean_abs_change": 0.012249404747730862,
+        "rms_change": 0.036563273247037634,
+        "q50_abs_change": 0.006300058781851678,
+        "categories": {
+          "0.0": {
+            "agreement": 0.9945964393379216,
+            "source_sink_reversal_cells": 10,
+            "source_sink_reversal": 0.00540356066207838,
+            "sink_jaccard": 0.9938475487338903
+          },
+          "0.01": {
+            "agreement": 0.9885672032307605,
+            "source_sink_reversal_cells": 3,
+            "source_sink_reversal": 0.0022183038507479665,
+            "sink_jaccard": 0.994744696035814
+          },
+          "0.05": {
+            "agreement": 0.9840168363574313,
+            "source_sink_reversal_cells": 1,
+            "source_sink_reversal": 0.001421989647915363,
+            "sink_jaccard": 0.9928213909378293
+          }
+        }
+      },
+      "lambda": {
+        "coverage": 1.0,
+        "cells": 1689,
+        "weighted_pearson": 0.9968156492406022,
+        "spearman": 0.9970213190196043,
+        "mean_abs_change": 0.048013046155792355,
+        "rms_change": 0.0802127525179014,
+        "q50_abs_change": 0.015922060797986193,
+        "categories": {
+          "0.0": {
+            "agreement": 0.9686593481599454,
+            "source_sink_reversal_cells": 31,
+            "source_sink_reversal": 0.031340651840054606,
+            "sink_jaccard": 0.9591246290801186
+          },
+          "0.01": {
+            "agreement": 0.9603549286161197,
+            "source_sink_reversal_cells": 23,
+            "source_sink_reversal": 0.021272965132813834,
+            "sink_jaccard": 0.9524871737675663
+          },
+          "0.05": {
+            "agreement": 0.9535862578920425,
+            "source_sink_reversal_cells": 8,
+            "source_sink_reversal": 0.009214492918491553,
+            "sink_jaccard": 0.9541368276702727
+          }
+        }
+      }
+    }
+  },
+  {
+    "type": "ctl",
+    "level": "lo",
+    "left": "step35_est1951_ctl_mid_s41",
+    "right": "step35_est1951_ctl_lo_s41",
+    "era": "1966-1985",
+    "metrics": {
+      "C": {
+        "coverage": 1.0,
+        "cells": 1689,
+        "weighted_pearson": 0.9989746824720108,
+        "spearman": 0.9989607126752285,
+        "mean_abs_change": 0.01357706932216537,
+        "rms_change": 0.021270173192645205,
+        "q50_abs_change": 0.006877969429990277,
+        "categories": {
+          "0.0": {
+            "agreement": 0.9884534440589272,
+            "source_sink_reversal_cells": 12,
+            "source_sink_reversal": 0.01154655594107275,
+            "sink_jaccard": 0.9828038966539602
+          },
+          "0.01": {
+            "agreement": 0.9861213810363461,
+            "source_sink_reversal_cells": 3,
+            "source_sink_reversal": 0.006199874864910983,
+            "sink_jaccard": 0.9875951749508085
+          },
+          "0.05": {
+            "agreement": 0.9831067629827654,
+            "source_sink_reversal_cells": 0,
+            "source_sink_reversal": 0.0,
+            "sink_jaccard": 0.9840917170280838
+          }
+        }
+      },
+      "lambda": {
+        "coverage": 1.0,
+        "cells": 1689,
+        "weighted_pearson": 0.9984469918120454,
+        "spearman": 0.9985442580567649,
+        "mean_abs_change": 0.04564988690156255,
+        "rms_change": 0.07172276303602788,
+        "q50_abs_change": 0.01885651069927685,
+        "categories": {
+          "0.0": {
+            "agreement": 0.9794664694841022,
+            "source_sink_reversal_cells": 18,
+            "source_sink_reversal": 0.020533530515897843,
+            "sink_jaccard": 0.9562530295685895
+          },
+          "0.01": {
+            "agreement": 0.9730959558614414,
+            "source_sink_reversal_cells": 14,
+            "source_sink_reversal": 0.014845571924236392,
+            "sink_jaccard": 0.9520631067961165
+          },
+          "0.05": {
+            "agreement": 0.9716170866276094,
+            "source_sink_reversal_cells": 1,
+            "source_sink_reversal": 0.000966952960582447,
+            "sink_jaccard": 0.9772145417306708
+          }
+        }
+      }
+    }
+  },
+  {
+    "type": "ctl",
+    "level": "lo",
+    "left": "step35_est1951_ctl_mid_s41",
+    "right": "step35_est1951_ctl_lo_s41",
+    "era": "1986-2009",
+    "metrics": {
+      "C": {
+        "coverage": 1.0,
+        "cells": 1689,
+        "weighted_pearson": 0.9986776238228662,
+        "spearman": 0.9984544768018477,
+        "mean_abs_change": 0.006751024838040891,
+        "rms_change": 0.011670236437778128,
+        "q50_abs_change": 0.004843280927488092,
+        "categories": {
+          "0.0": {
+            "agreement": 0.9792389511404357,
+            "source_sink_reversal_cells": 22,
+            "source_sink_reversal": 0.020761048859564302,
+            "sink_jaccard": 0.959048580724784
+          },
+          "0.01": {
+            "agreement": 0.9599567715147034,
+            "source_sink_reversal_cells": 3,
+            "source_sink_reversal": 0.0017632671634150504,
+            "sink_jaccard": 0.9486247425178723
+          },
+          "0.05": {
+            "agreement": 0.9759399351572721,
+            "source_sink_reversal_cells": 0,
+            "source_sink_reversal": 0.0,
+            "sink_jaccard": 0.9703093424529768
+          }
+        }
+      },
+      "lambda": {
+        "coverage": 1.0,
+        "cells": 1689,
+        "weighted_pearson": 0.9986743030011627,
+        "spearman": 0.9990541774297164,
+        "mean_abs_change": 0.06720353927048815,
+        "rms_change": 0.09672078254003887,
+        "q50_abs_change": 0.024176925289227436,
+        "categories": {
+          "0.0": {
+            "agreement": 0.9943120414083385,
+            "source_sink_reversal_cells": 14,
+            "source_sink_reversal": 0.005687958591661452,
+            "sink_jaccard": 0.9751922599851154
+          },
+          "0.01": {
+            "agreement": 0.9881121665434276,
+            "source_sink_reversal_cells": 9,
+            "source_sink_reversal": 0.003754052670496559,
+            "sink_jaccard": 0.9543868394815553
+          },
+          "0.05": {
+            "agreement": 0.9854388260053467,
+            "source_sink_reversal_cells": 1,
+            "source_sink_reversal": 0.00028439792958307266,
+            "sink_jaccard": 0.9552317880794702
+          }
+        }
+      }
+    }
+  },
+  {
+    "type": "ctl",
+    "level": "lo",
+    "left": "step35_est1951_ctl_mid_s41",
+    "right": "step35_est1951_ctl_lo_s41",
+    "era": "2010-2025",
+    "metrics": {
+      "C": {
+        "coverage": 1.0,
+        "cells": 1689,
+        "weighted_pearson": 0.9986849151706906,
+        "spearman": 0.9983564319556015,
+        "mean_abs_change": 0.006277202514500073,
+        "rms_change": 0.009943828355726344,
+        "q50_abs_change": 0.004856697610959859,
+        "categories": {
+          "0.0": {
+            "agreement": 0.978613275695353,
+            "source_sink_reversal_cells": 27,
+            "source_sink_reversal": 0.021386724304647064,
+            "sink_jaccard": 0.9594914889032536
+          },
+          "0.01": {
+            "agreement": 0.9704226153233605,
+            "source_sink_reversal_cells": 1,
+            "source_sink_reversal": 0.0002275183436664581,
+            "sink_jaccard": 0.9774549680418362
+          },
+          "0.05": {
+            "agreement": 0.9551220067117911,
+            "source_sink_reversal_cells": 0,
+            "source_sink_reversal": 0.0,
+            "sink_jaccard": 0.9290677475390852
+          }
+        }
+      },
+      "lambda": {
+        "coverage": 1.0,
+        "cells": 1689,
+        "weighted_pearson": 0.9986955861107968,
+        "spearman": 0.9990784103241196,
+        "mean_abs_change": 0.08549411898511142,
+        "rms_change": 0.12016966229301076,
+        "q50_abs_change": 0.03510073152553217,
+        "categories": {
+          "0.0": {
+            "agreement": 0.9953927535407542,
+            "source_sink_reversal_cells": 15,
+            "source_sink_reversal": 0.0046072464592457766,
+            "sink_jaccard": 0.9680851063829787
+          },
+          "0.01": {
+            "agreement": 0.9907286274955919,
+            "source_sink_reversal_cells": 11,
+            "source_sink_reversal": 0.003981571014163017,
+            "sink_jaccard": 0.9470146302886516
+          },
+          "0.05": {
+            "agreement": 0.9854957055912633,
+            "source_sink_reversal_cells": 2,
+            "source_sink_reversal": 0.0008531937887492179,
+            "sink_jaccard": 0.9408825978351374
+          }
+        }
+      }
+    }
+  },
+  {
+    "type": "ctl",
+    "level": "hi",
+    "left": "step35_est1951_ctl_mid_s41",
+    "right": "step35_est1951_ctl_hi_s41",
+    "era": "1951-1965",
+    "metrics": {
+      "C": {
+        "coverage": 1.0,
+        "cells": 1689,
+        "weighted_pearson": 0.9934037739753662,
+        "spearman": 0.9973207409617157,
+        "mean_abs_change": 0.011931579363064417,
+        "rms_change": 0.03805090773172298,
+        "q50_abs_change": 0.005521796749304919,
+        "categories": {
+          "0.0": {
+            "agreement": 0.9915249416984244,
+            "source_sink_reversal_cells": 9,
+            "source_sink_reversal": 0.008475058301575564,
+            "sink_jaccard": 0.990342860846458
+          },
+          "0.01": {
+            "agreement": 0.9844149934588476,
+            "source_sink_reversal_cells": 4,
+            "source_sink_reversal": 0.005858597349411296,
+            "sink_jaccard": 0.9875990131151798
+          },
+          "0.05": {
+            "agreement": 0.9848700301461806,
+            "source_sink_reversal_cells": 2,
+            "source_sink_reversal": 0.0046072464592457766,
+            "sink_jaccard": 0.9920765929349621
+          }
+        }
+      },
+      "lambda": {
+        "coverage": 1.0,
+        "cells": 1689,
+        "weighted_pearson": 0.9975545508818168,
+        "spearman": 0.9955426392595703,
+        "mean_abs_change": 0.04811627477491892,
+        "rms_change": 0.0690977397401262,
+        "q50_abs_change": 0.020570984724470692,
+        "categories": {
+          "0.0": {
+            "agreement": 0.9761105739150219,
+            "source_sink_reversal_cells": 23,
+            "source_sink_reversal": 0.023889426084978103,
+            "sink_jaccard": 0.9693721286370597
+          },
+          "0.01": {
+            "agreement": 0.9693419031909448,
+            "source_sink_reversal_cells": 15,
+            "source_sink_reversal": 0.014674933166486548,
+            "sink_jaccard": 0.9695438904751446
+          },
+          "0.05": {
+            "agreement": 0.9466469484102156,
+            "source_sink_reversal_cells": 4,
+            "source_sink_reversal": 0.007621864512826346,
+            "sink_jaccard": 0.960288540194839
+          }
+        }
+      }
+    }
+  },
+  {
+    "type": "ctl",
+    "level": "hi",
+    "left": "step35_est1951_ctl_mid_s41",
+    "right": "step35_est1951_ctl_hi_s41",
+    "era": "1966-1985",
+    "metrics": {
+      "C": {
+        "coverage": 1.0,
+        "cells": 1689,
+        "weighted_pearson": 0.9988933735163273,
+        "spearman": 0.9987945915766061,
+        "mean_abs_change": 0.014626901842523913,
+        "rms_change": 0.02203832887923226,
+        "q50_abs_change": 0.007397849750392815,
+        "categories": {
+          "0.0": {
+            "agreement": 0.9949377168534214,
+            "source_sink_reversal_cells": 14,
+            "source_sink_reversal": 0.005062283146578693,
+            "sink_jaccard": 0.99245122985581
+          },
+          "0.01": {
+            "agreement": 0.9844718730447642,
+            "source_sink_reversal_cells": 3,
+            "source_sink_reversal": 0.0007394346169159889,
+            "sink_jaccard": 0.9858361774744028
+          },
+          "0.05": {
+            "agreement": 0.9736078721346909,
+            "source_sink_reversal_cells": 0,
+            "source_sink_reversal": 0.0,
+            "sink_jaccard": 0.9868013110107184
+          }
+        }
+      },
+      "lambda": {
+        "coverage": 1.0,
+        "cells": 1689,
+        "weighted_pearson": 0.9980681415147427,
+        "spearman": 0.9982311282163191,
+        "mean_abs_change": 0.049708438574467065,
+        "rms_change": 0.0728110326148019,
+        "q50_abs_change": 0.022333588176414287,
+        "categories": {
+          "0.0": {
+            "agreement": 0.981400375405267,
+            "source_sink_reversal_cells": 27,
+            "source_sink_reversal": 0.01859962459473295,
+            "sink_jaccard": 0.9607631389488841
+          },
+          "0.01": {
+            "agreement": 0.9740629088220237,
+            "source_sink_reversal_cells": 17,
+            "source_sink_reversal": 0.013366702690404414,
+            "sink_jaccard": 0.9610044669805626
+          },
+          "0.05": {
+            "agreement": 0.955292645469541,
+            "source_sink_reversal_cells": 0,
+            "source_sink_reversal": 0.0,
+            "sink_jaccard": 0.9506910720956294
+          }
+        }
+      }
+    }
+  },
+  {
+    "type": "ctl",
+    "level": "hi",
+    "left": "step35_est1951_ctl_mid_s41",
+    "right": "step35_est1951_ctl_hi_s41",
+    "era": "1986-2009",
+    "metrics": {
+      "C": {
+        "coverage": 1.0,
+        "cells": 1689,
+        "weighted_pearson": 0.9980823727699055,
+        "spearman": 0.9981315890497603,
+        "mean_abs_change": 0.009653009443151953,
+        "rms_change": 0.014009041251371668,
+        "q50_abs_change": 0.007635026469744677,
+        "categories": {
+          "0.0": {
+            "agreement": 0.9653034525908651,
+            "source_sink_reversal_cells": 38,
+            "source_sink_reversal": 0.03469654740913486,
+            "sink_jaccard": 0.9316526610644258
+          },
+          "0.01": {
+            "agreement": 0.9561458392582902,
+            "source_sink_reversal_cells": 2,
+            "source_sink_reversal": 0.0006256754450827598,
+            "sink_jaccard": 0.9550353028613898
+          },
+          "0.05": {
+            "agreement": 0.957795347249872,
+            "source_sink_reversal_cells": 0,
+            "source_sink_reversal": 0.0,
+            "sink_jaccard": 0.9462822936357907
+          }
+        }
+      },
+      "lambda": {
+        "coverage": 1.0,
+        "cells": 1689,
+        "weighted_pearson": 0.9981427382551277,
+        "spearman": 0.9984982653680758,
+        "mean_abs_change": 0.0690265439448446,
+        "rms_change": 0.09324766493242992,
+        "q50_abs_change": 0.03716031092437455,
+        "categories": {
+          "0.0": {
+            "agreement": 0.9866332973095956,
+            "source_sink_reversal_cells": 29,
+            "source_sink_reversal": 0.013366702690404414,
+            "sink_jaccard": 0.941073219658977
+          },
+          "0.01": {
+            "agreement": 0.9827654854672658,
+            "source_sink_reversal_cells": 20,
+            "source_sink_reversal": 0.00944201126215801,
+            "sink_jaccard": 0.9434440781131118
+          },
+          "0.05": {
+            "agreement": 0.9675786360275297,
+            "source_sink_reversal_cells": 4,
+            "source_sink_reversal": 0.002161424264831352,
+            "sink_jaccard": 0.921108179419525
+          }
+        }
+      }
+    }
+  },
+  {
+    "type": "ctl",
+    "level": "hi",
+    "left": "step35_est1951_ctl_mid_s41",
+    "right": "step35_est1951_ctl_hi_s41",
+    "era": "2010-2025",
+    "metrics": {
+      "C": {
+        "coverage": 1.0,
+        "cells": 1689,
+        "weighted_pearson": 0.9972384736517698,
+        "spearman": 0.9974126765284169,
+        "mean_abs_change": 0.008879153312007762,
+        "rms_change": 0.013996347104132343,
+        "q50_abs_change": 0.007171711058234775,
+        "categories": {
+          "0.0": {
+            "agreement": 0.9759399351572721,
+            "source_sink_reversal_cells": 39,
+            "source_sink_reversal": 0.024060064842727946,
+            "sink_jaccard": 0.9540417209908736
+          },
+          "0.01": {
+            "agreement": 0.946874466753882,
+            "source_sink_reversal_cells": 2,
+            "source_sink_reversal": 0.0017063875774984358,
+            "sink_jaccard": 0.9626623376623377
+          },
+          "0.05": {
+            "agreement": 0.9486377339172971,
+            "source_sink_reversal_cells": 0,
+            "source_sink_reversal": 0.0,
+            "sink_jaccard": 0.9357014388489209
+          }
+        }
+      },
+      "lambda": {
+        "coverage": 1.0,
+        "cells": 1689,
+        "weighted_pearson": 0.9975075853039322,
+        "spearman": 0.9981280226052808,
+        "mean_abs_change": 0.11892217390836295,
+        "rms_change": 0.1592250815680527,
+        "q50_abs_change": 0.06090705838583865,
+        "categories": {
+          "0.0": {
+            "agreement": 0.9884534440589272,
+            "source_sink_reversal_cells": 38,
+            "source_sink_reversal": 0.01154655594107275,
+            "sink_jaccard": 0.9191557148546395
+          },
+          "0.01": {
+            "agreement": 0.984813150560264,
+            "source_sink_reversal_cells": 25,
+            "source_sink_reversal": 0.006541152380410671,
+            "sink_jaccard": 0.9239789729073999
+          },
+          "0.05": {
+            "agreement": 0.9807746999601843,
+            "source_sink_reversal_cells": 7,
+            "source_sink_reversal": 0.0022183038507479665,
+            "sink_jaccard": 0.9168425495989869
+          }
+        }
+      }
+    }
+  },
+  {
+    "type": "nat",
+    "level": "lo",
+    "left": "step35_est1951_nat_mid_s41",
+    "right": "step35_est1951_nat_lo_s41",
+    "era": "1951-1965",
+    "metrics": {
+      "C": {
+        "coverage": 1.0,
+        "cells": 1689,
+        "weighted_pearson": 0.9892902980266288,
+        "spearman": 0.9918185066290789,
+        "mean_abs_change": 0.03899253220591449,
+        "rms_change": 0.05858085577901797,
+        "q50_abs_change": 0.033810220963578747,
+        "categories": {
+          "0.0": {
+            "agreement": 0.9790683123826859,
+            "source_sink_reversal_cells": 44,
+            "source_sink_reversal": 0.020931687617314145,
+            "sink_jaccard": 0.9765066394279878
+          },
+          "0.01": {
+            "agreement": 0.9776463227347705,
+            "source_sink_reversal_cells": 31,
+            "source_sink_reversal": 0.014674933166486548,
+            "sink_jaccard": 0.9774324585724418
+          },
+          "0.05": {
+            "agreement": 0.9619475570217849,
+            "source_sink_reversal_cells": 9,
+            "source_sink_reversal": 0.002161424264831352,
+            "sink_jaccard": 0.9713283410915469
+          }
+        }
+      },
+      "lambda": {
+        "coverage": 1.0,
+        "cells": 1689,
+        "weighted_pearson": 0.9883300648535709,
+        "spearman": 0.9835916755798724,
+        "mean_abs_change": 0.10391758587386082,
+        "rms_change": 0.1707117573314108,
+        "q50_abs_change": 0.046185651300801045,
+        "categories": {
+          "0.0": {
+            "agreement": 0.9437460895284683,
+            "source_sink_reversal_cells": 87,
+            "source_sink_reversal": 0.05625391047153177,
+            "sink_jaccard": 0.9207214428857715
+          },
+          "0.01": {
+            "agreement": 0.9358967066719754,
+            "source_sink_reversal_cells": 76,
+            "source_sink_reversal": 0.052044821113702296,
+            "sink_jaccard": 0.9179338643495052
+          },
+          "0.05": {
+            "agreement": 0.9227575223252374,
+            "source_sink_reversal_cells": 29,
+            "source_sink_reversal": 0.020306012172231387,
+            "sink_jaccard": 0.9311585110832288
+          }
+        }
+      }
+    }
+  },
+  {
+    "type": "nat",
+    "level": "lo",
+    "left": "step35_est1951_nat_mid_s41",
+    "right": "step35_est1951_nat_lo_s41",
+    "era": "1966-1985",
+    "metrics": {
+      "C": {
+        "coverage": 1.0,
+        "cells": 1689,
+        "weighted_pearson": 0.9915936997567933,
+        "spearman": 0.9907270675253961,
+        "mean_abs_change": 0.04236688172078835,
+        "rms_change": 0.06302123883153753,
+        "q50_abs_change": 0.0296773575738265,
+        "categories": {
+          "0.0": {
+            "agreement": 0.9637677037711165,
+            "source_sink_reversal_cells": 53,
+            "source_sink_reversal": 0.03623229622888345,
+            "sink_jaccard": 0.9460946094609461
+          },
+          "0.01": {
+            "agreement": 0.9502303623229623,
+            "source_sink_reversal_cells": 34,
+            "source_sink_reversal": 0.024458221944144248,
+            "sink_jaccard": 0.9457091315179108
+          },
+          "0.05": {
+            "agreement": 0.9308344235253967,
+            "source_sink_reversal_cells": 8,
+            "source_sink_reversal": 0.005801717763494682,
+            "sink_jaccard": 0.9331379373511632
+          }
+        }
+      },
+      "lambda": {
+        "coverage": 1.0,
+        "cells": 1689,
+        "weighted_pearson": 0.9887598609361679,
+        "spearman": 0.9850817221364179,
+        "mean_abs_change": 0.13614400768974727,
+        "rms_change": 0.22279961331110357,
+        "q50_abs_change": 0.06272017583886436,
+        "categories": {
+          "0.0": {
+            "agreement": 0.9511404356976281,
+            "source_sink_reversal_cells": 86,
+            "source_sink_reversal": 0.04885956430237188,
+            "sink_jaccard": 0.8862251655629139
+          },
+          "0.01": {
+            "agreement": 0.9456231158637165,
+            "source_sink_reversal_cells": 75,
+            "source_sink_reversal": 0.04163585689096183,
+            "sink_jaccard": 0.8869831139476133
+          },
+          "0.05": {
+            "agreement": 0.9179227575223252,
+            "source_sink_reversal_cells": 29,
+            "source_sink_reversal": 0.012513508901655196,
+            "sink_jaccard": 0.8842671194114318
+          }
+        }
+      }
+    }
+  },
+  {
+    "type": "nat",
+    "level": "lo",
+    "left": "step35_est1951_nat_mid_s41",
+    "right": "step35_est1951_nat_lo_s41",
+    "era": "1986-2009",
+    "metrics": {
+      "C": {
+        "coverage": 1.0,
+        "cells": 1689,
+        "weighted_pearson": 0.97964577344194,
+        "spearman": 0.9796956687175549,
+        "mean_abs_change": 0.025891915207670344,
+        "rms_change": 0.0428298480127071,
+        "q50_abs_change": 0.020537504186408095,
+        "categories": {
+          "0.0": {
+            "agreement": 0.9385131676241397,
+            "source_sink_reversal_cells": 76,
+            "source_sink_reversal": 0.061486832375860306,
+            "sink_jaccard": 0.8881184019871662
+          },
+          "0.01": {
+            "agreement": 0.8954553210852625,
+            "source_sink_reversal_cells": 33,
+            "source_sink_reversal": 0.02184176099197998,
+            "sink_jaccard": 0.8823852405007687
+          },
+          "0.05": {
+            "agreement": 0.8783914453102781,
+            "source_sink_reversal_cells": 1,
+            "source_sink_reversal": 0.0010238325464990614,
+            "sink_jaccard": 0.8438563912101517
+          }
+        }
+      },
+      "lambda": {
+        "coverage": 1.0,
+        "cells": 1689,
+        "weighted_pearson": 0.9895775799603819,
+        "spearman": 0.9868485118337965,
+        "mean_abs_change": 0.2367915413511526,
+        "rms_change": 0.34016343275867433,
+        "q50_abs_change": 0.10430576833884264,
+        "categories": {
+          "0.0": {
+            "agreement": 0.963255787497867,
+            "source_sink_reversal_cells": 94,
+            "source_sink_reversal": 0.036744212502132986,
+            "sink_jaccard": 0.8105016133763567
+          },
+          "0.01": {
+            "agreement": 0.9565439963597065,
+            "source_sink_reversal_cells": 80,
+            "source_sink_reversal": 0.029577384676639555,
+            "sink_jaccard": 0.8122775800711743
+          },
+          "0.05": {
+            "agreement": 0.9417553040213867,
+            "source_sink_reversal_cells": 48,
+            "source_sink_reversal": 0.018656504180649566,
+            "sink_jaccard": 0.7748364995328558
+          }
+        }
+      }
+    }
+  },
+  {
+    "type": "nat",
+    "level": "lo",
+    "left": "step35_est1951_nat_mid_s41",
+    "right": "step35_est1951_nat_lo_s41",
+    "era": "2010-2025",
+    "metrics": {
+      "C": {
+        "coverage": 1.0,
+        "cells": 1689,
+        "weighted_pearson": 0.9774550246313984,
+        "spearman": 0.9802640085431289,
+        "mean_abs_change": 0.02137931952480227,
+        "rms_change": 0.035857294644949654,
+        "q50_abs_change": 0.017760915209187933,
+        "categories": {
+          "0.0": {
+            "agreement": 0.941414026505887,
+            "source_sink_reversal_cells": 75,
+            "source_sink_reversal": 0.058585973494112965,
+            "sink_jaccard": 0.8966071070066252
+          },
+          "0.01": {
+            "agreement": 0.894943404812013,
+            "source_sink_reversal_cells": 18,
+            "source_sink_reversal": 0.012229110972072124,
+            "sink_jaccard": 0.8942233914282582
+          },
+          "0.05": {
+            "agreement": 0.8924975826175986,
+            "source_sink_reversal_cells": 0,
+            "source_sink_reversal": 0.0,
+            "sink_jaccard": 0.8532475490196079
+          }
+        }
+      },
+      "lambda": {
+        "coverage": 1.0,
+        "cells": 1689,
+        "weighted_pearson": 0.9895166965204695,
+        "spearman": 0.9882091900998091,
+        "mean_abs_change": 0.3608379132086821,
+        "rms_change": 0.48951234346458306,
+        "q50_abs_change": 0.16407030347598073,
+        "categories": {
+          "0.0": {
+            "agreement": 0.9700244582219442,
+            "source_sink_reversal_cells": 93,
+            "source_sink_reversal": 0.029975541778055857,
+            "sink_jaccard": 0.7444228903976722
+          },
+          "0.01": {
+            "agreement": 0.9675217564416131,
+            "source_sink_reversal_cells": 82,
+            "source_sink_reversal": 0.02588021159205961,
+            "sink_jaccard": 0.751730959446093
+          },
+          "0.05": {
+            "agreement": 0.9581366247653718,
+            "source_sink_reversal_cells": 51,
+            "source_sink_reversal": 0.015641886127068995,
+            "sink_jaccard": 0.7246531483457844
+          }
+        }
+      }
+    }
+  },
+  {
+    "type": "nat",
+    "level": "hi",
+    "left": "step35_est1951_nat_mid_s41",
+    "right": "step35_est1951_nat_hi_s41",
+    "era": "1951-1965",
+    "metrics": {
+      "C": {
+        "coverage": 1.0,
+        "cells": 1689,
+        "weighted_pearson": 0.9944101795893795,
+        "spearman": 0.9966634741343365,
+        "mean_abs_change": 0.02463796577870039,
+        "rms_change": 0.04317524614794666,
+        "q50_abs_change": 0.01626313588410372,
+        "categories": {
+          "0.0": {
+            "agreement": 0.9923212559012571,
+            "source_sink_reversal_cells": 9,
+            "source_sink_reversal": 0.007678744098742961,
+            "sink_jaccard": 0.9912643975669729
+          },
+          "0.01": {
+            "agreement": 0.9903873499800921,
+            "source_sink_reversal_cells": 5,
+            "source_sink_reversal": 0.0051191627324953075,
+            "sink_jaccard": 0.9905956112852664
+          },
+          "0.05": {
+            "agreement": 0.9878277686138445,
+            "source_sink_reversal_cells": 3,
+            "source_sink_reversal": 0.003754052670496559,
+            "sink_jaccard": 0.9886986301369863
+          }
+        }
+      },
+      "lambda": {
+        "coverage": 1.0,
+        "cells": 1689,
+        "weighted_pearson": 0.998019392406869,
+        "spearman": 0.9956256512434712,
+        "mean_abs_change": 0.053745924675560934,
+        "rms_change": 0.08068282080864532,
+        "q50_abs_change": 0.027988558967919186,
+        "categories": {
+          "0.0": {
+            "agreement": 0.9748023434389398,
+            "source_sink_reversal_cells": 38,
+            "source_sink_reversal": 0.025197656561060235,
+            "sink_jaccard": 0.9640246873477343
+          },
+          "0.01": {
+            "agreement": 0.9680905523007792,
+            "source_sink_reversal_cells": 28,
+            "source_sink_reversal": 0.02024913258631477,
+            "sink_jaccard": 0.9612966440761003
+          },
+          "0.05": {
+            "agreement": 0.9423240998805529,
+            "source_sink_reversal_cells": 5,
+            "source_sink_reversal": 0.0032990159831636427,
+            "sink_jaccard": 0.9583613163196776
+          }
+        }
+      }
+    }
+  },
+  {
+    "type": "nat",
+    "level": "hi",
+    "left": "step35_est1951_nat_mid_s41",
+    "right": "step35_est1951_nat_hi_s41",
+    "era": "1966-1985",
+    "metrics": {
+      "C": {
+        "coverage": 1.0,
+        "cells": 1689,
+        "weighted_pearson": 0.9974191169551744,
+        "spearman": 0.9982581081695637,
+        "mean_abs_change": 0.02369440230566699,
+        "rms_change": 0.037791452979428215,
+        "q50_abs_change": 0.01656375668324578,
+        "categories": {
+          "0.0": {
+            "agreement": 0.9899323132927592,
+            "source_sink_reversal_cells": 16,
+            "source_sink_reversal": 0.01006768670724077,
+            "sink_jaccard": 0.9845859096055037
+          },
+          "0.01": {
+            "agreement": 0.9784995165235197,
+            "source_sink_reversal_cells": 7,
+            "source_sink_reversal": 0.00602923610716114,
+            "sink_jaccard": 0.9763162528614192
+          },
+          "0.05": {
+            "agreement": 0.9748023434389398,
+            "source_sink_reversal_cells": 0,
+            "source_sink_reversal": 0.0,
+            "sink_jaccard": 0.9774075120022593
+          }
+        }
+      },
+      "lambda": {
+        "coverage": 1.0,
+        "cells": 1689,
+        "weighted_pearson": 0.9975262470620626,
+        "spearman": 0.9967011783263582,
+        "mean_abs_change": 0.0734116803543031,
+        "rms_change": 0.10806938151579534,
+        "q50_abs_change": 0.03625973392495818,
+        "categories": {
+          "0.0": {
+            "agreement": 0.9708776520106933,
+            "source_sink_reversal_cells": 36,
+            "source_sink_reversal": 0.029122347989306636,
+            "sink_jaccard": 0.9272003412484005
+          },
+          "0.01": {
+            "agreement": 0.9622888345372845,
+            "source_sink_reversal_cells": 28,
+            "source_sink_reversal": 0.024060064842727946,
+            "sink_jaccard": 0.9235596120935539
+          },
+          "0.05": {
+            "agreement": 0.9445424037313008,
+            "source_sink_reversal_cells": 4,
+            "source_sink_reversal": 0.004550366873329163,
+            "sink_jaccard": 0.9320549599879209
+          }
+        }
+      }
+    }
+  },
+  {
+    "type": "nat",
+    "level": "hi",
+    "left": "step35_est1951_nat_mid_s41",
+    "right": "step35_est1951_nat_hi_s41",
+    "era": "1986-2009",
+    "metrics": {
+      "C": {
+        "coverage": 1.0,
+        "cells": 1689,
+        "weighted_pearson": 0.9951818811971538,
+        "spearman": 0.9961757827760358,
+        "mean_abs_change": 0.012364485197268307,
+        "rms_change": 0.020026982856494697,
+        "q50_abs_change": 0.009614231806712947,
+        "categories": {
+          "0.0": {
+            "agreement": 0.9665548034810306,
+            "source_sink_reversal_cells": 39,
+            "source_sink_reversal": 0.03344519651896934,
+            "sink_jaccard": 0.9344919786096256
+          },
+          "0.01": {
+            "agreement": 0.93817189010864,
+            "source_sink_reversal_cells": 9,
+            "source_sink_reversal": 0.009783288777657698,
+            "sink_jaccard": 0.9296948356807512
+          },
+          "0.05": {
+            "agreement": 0.9372049371480575,
+            "source_sink_reversal_cells": 0,
+            "source_sink_reversal": 0.0,
+            "sink_jaccard": 0.8779924054812613
+          }
+        }
+      },
+      "lambda": {
+        "coverage": 1.0,
+        "cells": 1689,
+        "weighted_pearson": 0.9961801771179059,
+        "spearman": 0.9968061144797795,
+        "mean_abs_change": 0.11127087022043436,
+        "rms_change": 0.15767616895950304,
+        "q50_abs_change": 0.049933154977904515,
+        "categories": {
+          "0.0": {
+            "agreement": 0.9794095898981855,
+            "source_sink_reversal_cells": 43,
+            "source_sink_reversal": 0.02059041010181446,
+            "sink_jaccard": 0.8759424263193969
+          },
+          "0.01": {
+            "agreement": 0.9738353904783573,
+            "source_sink_reversal_cells": 29,
+            "source_sink_reversal": 0.013878618963653945,
+            "sink_jaccard": 0.8839566585110101
+          },
+          "0.05": {
+            "agreement": 0.9712758091121096,
+            "source_sink_reversal_cells": 8,
+            "source_sink_reversal": 0.004265968943746089,
+            "sink_jaccard": 0.9055087987758225
+          }
+        }
+      }
+    }
+  },
+  {
+    "type": "nat",
+    "level": "hi",
+    "left": "step35_est1951_nat_mid_s41",
+    "right": "step35_est1951_nat_hi_s41",
+    "era": "2010-2025",
+    "metrics": {
+      "C": {
+        "coverage": 1.0,
+        "cells": 1689,
+        "weighted_pearson": 0.9941206934963381,
+        "spearman": 0.9938675559997783,
+        "mean_abs_change": 0.010288360753987364,
+        "rms_change": 0.016196426790050136,
+        "q50_abs_change": 0.008264670819962294,
+        "categories": {
+          "0.0": {
+            "agreement": 0.9634264262556168,
+            "source_sink_reversal_cells": 53,
+            "source_sink_reversal": 0.036573573744383144,
+            "sink_jaccard": 0.9316539115646258
+          },
+          "0.01": {
+            "agreement": 0.9391957226551391,
+            "source_sink_reversal_cells": 4,
+            "source_sink_reversal": 0.002616460952164268,
+            "sink_jaccard": 0.9397159025291604
+          },
+          "0.05": {
+            "agreement": 0.9399920368579717,
+            "source_sink_reversal_cells": 0,
+            "source_sink_reversal": 0.0,
+            "sink_jaccard": 0.9193954659949622
+          }
+        }
+      },
+      "lambda": {
+        "coverage": 1.0,
+        "cells": 1689,
+        "weighted_pearson": 0.9954176212082595,
+        "spearman": 0.9966766565300278,
+        "mean_abs_change": 0.1524876265750561,
+        "rms_change": 0.2113125433099339,
+        "q50_abs_change": 0.07241120107029986,
+        "categories": {
+          "0.0": {
+            "agreement": 0.9841305955292645,
+            "source_sink_reversal_cells": 34,
+            "source_sink_reversal": 0.015869404470735454,
+            "sink_jaccard": 0.8389145496535797
+          },
+          "0.01": {
+            "agreement": 0.983334281326432,
+            "source_sink_reversal_cells": 22,
+            "source_sink_reversal": 0.010181445879074,
+            "sink_jaccard": 0.8467884502062463
+          },
+          "0.05": {
+            "agreement": 0.9790114327967693,
+            "source_sink_reversal_cells": 1,
+            "source_sink_reversal": 0.0018201467493316648,
+            "sink_jaccard": 0.8458445040214477
+          }
+        }
+      }
+    }
+  }
+]

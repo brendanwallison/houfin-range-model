@@ -1,0 +1,193 @@
+{
+ "eval": {
+  "summer_rows_total": 87524,
+  "summer_training_rows": 18198,
+  "summer_roles": {
+   "train": 18198,
+   "modern_a": 11889,
+   "modern_b": 11889,
+   "historical_a": 8334,
+   "historical_b": 8334
+  },
+  "panel_known_cells": 1028,
+  "panel_withheld_cells": 219,
+  "summer_rows_at_holdout_cells": 12308,
+  "summer_rows_at_buffer_cells": 13637,
+  "summer_rows_invalid": 0,
+  "winter": {
+   "training_lists": 72238,
+   "evaluation_lists": 13795,
+   "training_circles": 3340,
+   "count_cell_years": 44540,
+   "effort_reference": 48.5,
+   "target_era_training_lists": 14186,
+   "early1902_1939_training_lists": 3182,
+   "benchmark_fit": "only training lists, years>=1950; >=5 years; prevalence>=0.5; nonsealed species only",
+   "existing_auxiliary_files_reused": false
+  },
+  "species_summer": 369,
+  "species_winter": 333,
+  "interp_rows_added": 25048,
+  "interp_points": {
+   "train_rows": 18198,
+   "added_rows": 25048,
+   "total": 43246
+  },
+  "teacher_summer": {
+   "latent_dim": 64,
+   "n_species": 369,
+   "n_landmarks": 16000,
+   "landmarks_shape": [
+    16000,
+    369
+   ],
+   "projmat_shape": [
+    16000,
+    64
+   ],
+   "source_rows": 18198,
+   "n_synthetic_window_rows": 14962,
+   "landmark_synthetic_share": 0.4519375,
+   "recent_frac": 0.0123125,
+   "median_z_norm2_annual": 0.5805174112319946,
+   "median_z_norm2_window_mean": 0.6082895994186401,
+   "uncentered_combined_rmse": 0.07477105408906937,
+   "uncentered_trunc_rmse": 0.06882031261920929,
+   "existing_encoder_checkpoint_used": false
+  },
+  "teacher_winter": {
+   "latent_dim": 64,
+   "n_species": 333,
+   "n_landmarks": 16000,
+   "landmarks_shape": [
+    16000,
+    333
+   ],
+   "projmat_shape": [
+    16000,
+    64
+   ],
+   "source_rows": 44540,
+   "n_synthetic_window_rows": 44361,
+   "landmark_synthetic_share": 0.4985,
+   "recent_frac": 0.025,
+   "median_z_norm2_annual": 0.6516636610031128,
+   "median_z_norm2_window_mean": 0.6891124248504639,
+   "uncentered_combined_rmse": 0.051528580486774445,
+   "uncentered_trunc_rmse": 0.04601038992404938,
+   "existing_encoder_checkpoint_used": false
+  },
+  "aux": {
+   "source_sha256": "f74eb82ffac400b748d4075155fb6d7f15b5a39e05f76bfcb53748f36dd0610b",
+   "task": "backcast40",
+   "winter": "full",
+   "calibration_cell_years": 7572,
+   "operator_block_cells": 3,
+   "cross_season_calibration": {
+    "a": 0.005193202573409168,
+    "b": 0.7772423766372497,
+    "mse": 0.011311788997397959,
+    "weight": 2.6521003889748007
+   },
+   "operator_lambda": 1e-06,
+   "early_lists": 10718,
+   "reused_identical_winter_operator": null,
+   "training_only_lists": 72238,
+   "modern_completeness_reference": "training lists only",
+   "observation_operator": "Existing E086x winter_operator and scalar relative completeness, unchanged.",
+   "leave_one_species_out_completeness_used": false,
+   "scope": "Matched first emulation control; no House Finch data and no evaluation records."
+  },
+  "checks": "twin summer teacher rows = training mask, all >= 1996, none at 54 km holdout/buffer cells; winter count points none at holdout/buffer cells; train/eval circles disjoint; interp rows < 1996 and outside holdout/buffer; no sealed species, no House Finch"
+ },
+ "prod": {
+  "summer_rows_total": 87524,
+  "summer_training_rows": 87524,
+  "summer_rows_invalid": 0,
+  "summer_year_range": [
+   1966,
+   2025
+  ],
+  "winter": {
+   "training_lists": 100181,
+   "evaluation_lists": 0,
+   "training_circles": 4675,
+   "count_cell_years": 58983,
+   "effort_reference": 50.5,
+   "target_era_training_lists": null,
+   "early1902_1939_training_lists": 5135,
+   "benchmark_fit": "only training lists, years>=1950; >=5 years; prevalence>=0.5; nonsealed species only",
+   "existing_auxiliary_files_reused": false
+  },
+  "species_summer": 665,
+  "species_winter": 586,
+  "sealed_in_summer": 296,
+  "sealed_in_winter": 253,
+  "teacher_summer": {
+   "latent_dim": 64,
+   "n_species": 665,
+   "n_landmarks": 16000,
+   "landmarks_shape": [
+    16000,
+    665
+   ],
+   "projmat_shape": [
+    16000,
+    64
+   ],
+   "source_rows": 87524,
+   "n_synthetic_window_rows": 86399,
+   "landmark_synthetic_share": 0.49875,
+   "recent_frac": 0.0204375,
+   "median_z_norm2_annual": 0.539634108543396,
+   "median_z_norm2_window_mean": 0.5881465077400208,
+   "uncentered_combined_rmse": 0.08473850041627884,
+   "uncentered_trunc_rmse": 0.07739060372114182,
+   "existing_encoder_checkpoint_used": false
+  },
+  "teacher_winter": {
+   "latent_dim": 64,
+   "n_species": 586,
+   "n_landmarks": 16000,
+   "landmarks_shape": [
+    16000,
+    586
+   ],
+   "projmat_shape": [
+    16000,
+    64
+   ],
+   "source_rows": 58983,
+   "n_synthetic_window_rows": 58762,
+   "landmark_synthetic_share": 0.5020625,
+   "recent_frac": 0.0224375,
+   "median_z_norm2_annual": 0.6055389046669006,
+   "median_z_norm2_window_mean": 0.6522507667541504,
+   "uncentered_combined_rmse": 0.06133514270186424,
+   "uncentered_trunc_rmse": 0.05552449822425842,
+   "existing_encoder_checkpoint_used": false
+  },
+  "aux": {
+   "source_sha256": "f74eb82ffac400b748d4075155fb6d7f15b5a39e05f76bfcb53748f36dd0610b",
+   "task": "production",
+   "winter": "full",
+   "calibration_cell_years": 34564,
+   "operator_block_cells": 3,
+   "cross_season_calibration": {
+    "a": 0.008025832163015676,
+    "b": 0.8334501638365396,
+    "mse": 0.009369752994463762,
+    "weight": 3.20179198082659
+   },
+   "operator_lambda": 1e-06,
+   "early_lists": 15693,
+   "reused_identical_winter_operator": null,
+   "training_only_lists": 100181,
+   "modern_completeness_reference": "training lists only",
+   "observation_operator": "Existing E086x winter_operator and scalar relative completeness, unchanged.",
+   "leave_one_species_out_completeness_used": false,
+   "scope": "Matched first emulation control; no House Finch data and no evaluation records."
+  },
+  "checks": "every valid summer row and winter list trains; nothing evaluated; sealed included; no House Finch"
+ }
+}

@@ -1,0 +1,216 @@
+[
+  {
+    "step": "step46_uniform05_s41",
+    "parent": "step43_settlement_floor4_s41",
+    "seed": 41,
+    "family": "uniform05",
+    "reference": "step39_kfloor4p0_s41",
+    "queue_priority": "0612",
+    "registered": "OUTSTANDING_WORK_20261103.md",
+    "capacity_floor_internal": 0.011842105263157895,
+    "initial_abundance": "fixed nominal",
+    "local_arrival_settlement": {
+      "fraction": 0.05,
+      "neighborhood": "3x3 cell centers",
+      "max_search_km": 76.36753236814714,
+      "weight_mode": "uniform05"
+    },
+    "historical_range": null
+  },
+  {
+    "step": "step46_capacity05_s41",
+    "parent": "step43_settlement_floor4_s41",
+    "seed": 41,
+    "family": "capacity05",
+    "reference": "step39_kfloor4p0_s41",
+    "queue_priority": "0612",
+    "registered": "OUTSTANDING_WORK_20261103.md",
+    "capacity_floor_internal": 0.011842105263157895,
+    "initial_abundance": "fixed nominal",
+    "local_arrival_settlement": {
+      "fraction": 0.05,
+      "neighborhood": "3x3 cell centers",
+      "max_search_km": 76.36753236814714,
+      "weight_mode": "capacity05"
+    },
+    "historical_range": null
+  },
+  {
+    "step": "step46_uniform05_s42",
+    "parent": "step43_settlement_floor4_s41",
+    "seed": 42,
+    "family": "uniform05",
+    "reference": "step39_kfloor4p0_s42",
+    "queue_priority": "0612",
+    "registered": "OUTSTANDING_WORK_20261103.md",
+    "capacity_floor_internal": 0.011842105263157895,
+    "initial_abundance": "fixed nominal",
+    "local_arrival_settlement": {
+      "fraction": 0.05,
+      "neighborhood": "3x3 cell centers",
+      "max_search_km": 76.36753236814714,
+      "weight_mode": "uniform05"
+    },
+    "historical_range": null
+  },
+  {
+    "step": "step46_capacity05_s42",
+    "parent": "step43_settlement_floor4_s41",
+    "seed": 42,
+    "family": "capacity05",
+    "reference": "step39_kfloor4p0_s42",
+    "queue_priority": "0612",
+    "registered": "OUTSTANDING_WORK_20261103.md",
+    "capacity_floor_internal": 0.011842105263157895,
+    "initial_abundance": "fixed nominal",
+    "local_arrival_settlement": {
+      "fraction": 0.05,
+      "neighborhood": "3x3 cell centers",
+      "max_search_km": 76.36753236814714,
+      "weight_mode": "capacity05"
+    },
+    "historical_range": null
+  },
+  {
+    "step": "step46_uniform05_s43",
+    "parent": "step43_settlement_floor4_s41",
+    "seed": 43,
+    "family": "uniform05",
+    "reference": "step44_shared_s43",
+    "queue_priority": "0612",
+    "registered": "OUTSTANDING_WORK_20261103.md",
+    "capacity_floor_internal": 0.011842105263157895,
+    "initial_abundance": "fixed nominal",
+    "local_arrival_settlement": {
+      "fraction": 0.05,
+      "neighborhood": "3x3 cell centers",
+      "max_search_km": 76.36753236814714,
+      "weight_mode": "uniform05"
+    },
+    "historical_range": null
+  },
+  {
+    "step": "step46_capacity05_s43",
+    "parent": "step43_settlement_floor4_s41",
+    "seed": 43,
+    "family": "capacity05",
+    "reference": "step44_shared_s43",
+    "queue_priority": "0612",
+    "registered": "OUTSTANDING_WORK_20261103.md",
+    "capacity_floor_internal": 0.011842105263157895,
+    "initial_abundance": "fixed nominal",
+    "local_arrival_settlement": {
+      "fraction": 0.05,
+      "neighborhood": "3x3 cell centers",
+      "max_search_km": 76.36753236814714,
+      "weight_mode": "capacity05"
+    },
+    "historical_range": null
+  },
+  {
+    "step": "step47_original_floor4_s41",
+    "parent": "step38_cbc1951_noncbc_free_s41",
+    "seed": 41,
+    "family": "original",
+    "reference": "step38_cbc1951_noncbc_free_s41",
+    "queue_priority": "0613",
+    "registered": "OUTSTANDING_WORK_20261103.md",
+    "capacity_floor_internal": 0.011842105263157895,
+    "initial_abundance": "free",
+    "local_arrival_settlement": null,
+    "historical_range": null
+  },
+  {
+    "step": "step47_historical_floor4_s41",
+    "parent": "step40_rangev2_historical_s41",
+    "seed": 41,
+    "family": "historical",
+    "reference": "step40_rangev2_historical_s41",
+    "queue_priority": "0613",
+    "registered": "OUTSTANDING_WORK_20261103.md",
+    "capacity_floor_internal": 0.011842105263157895,
+    "initial_abundance": "free",
+    "local_arrival_settlement": null,
+    "historical_range": {
+      "enabled": true,
+      "file": "/work/07980/bwa386/ls6/houfin/research/grid54/inputs/historical_range_v2_20261102/historical.npz",
+      "fixed_concentration": 0.43724203275856455,
+      "mode": "historical",
+      "calibration": "Fixed reference NB2; no learned CBC scale/effort/circle effects",
+      "input_sha256": "52ffdc8d5c70f95325602b0d7be61d6d7009162036b927d7e55c83be1a65f7f5"
+    }
+  },
+  {
+    "step": "step47_invasion_floor4_s41",
+    "parent": "step40_rangev2_invasion_s41",
+    "seed": 41,
+    "family": "invasion",
+    "reference": "step40_rangev2_invasion_s41",
+    "queue_priority": "0613",
+    "registered": "OUTSTANDING_WORK_20261103.md",
+    "capacity_floor_internal": 0.011842105263157895,
+    "initial_abundance": "free",
+    "local_arrival_settlement": null,
+    "historical_range": {
+      "enabled": true,
+      "file": "/work/07980/bwa386/ls6/houfin/research/grid54/inputs/historical_range_v2_20261102/invasion.npz",
+      "fixed_concentration": 0.43724203275856455,
+      "mode": "invasion",
+      "calibration": "Fixed reference NB2; no learned CBC scale/effort/circle effects",
+      "input_sha256": "d5c2fd8c706c4c8be3aad4fc1b37a08b8c83f80125054c9b2c5853fe01ee576a"
+    }
+  },
+  {
+    "step": "step47_original_floor4_s42",
+    "parent": "step38_cbc1951_noncbc_free_s42",
+    "seed": 42,
+    "family": "original",
+    "reference": "step38_cbc1951_noncbc_free_s42",
+    "queue_priority": "0613",
+    "registered": "OUTSTANDING_WORK_20261103.md",
+    "capacity_floor_internal": 0.011842105263157895,
+    "initial_abundance": "free",
+    "local_arrival_settlement": null,
+    "historical_range": null
+  },
+  {
+    "step": "step47_historical_floor4_s42",
+    "parent": "step40_rangev2_historical_s42",
+    "seed": 42,
+    "family": "historical",
+    "reference": "step40_rangev2_historical_s42",
+    "queue_priority": "0613",
+    "registered": "OUTSTANDING_WORK_20261103.md",
+    "capacity_floor_internal": 0.011842105263157895,
+    "initial_abundance": "free",
+    "local_arrival_settlement": null,
+    "historical_range": {
+      "enabled": true,
+      "file": "/work/07980/bwa386/ls6/houfin/research/grid54/inputs/historical_range_v2_20261102/historical.npz",
+      "fixed_concentration": 0.43724203275856455,
+      "mode": "historical",
+      "calibration": "Fixed reference NB2; no learned CBC scale/effort/circle effects",
+      "input_sha256": "52ffdc8d5c70f95325602b0d7be61d6d7009162036b927d7e55c83be1a65f7f5"
+    }
+  },
+  {
+    "step": "step47_invasion_floor4_s42",
+    "parent": "step40_rangev2_invasion_s42",
+    "seed": 42,
+    "family": "invasion",
+    "reference": "step40_rangev2_invasion_s42",
+    "queue_priority": "0613",
+    "registered": "OUTSTANDING_WORK_20261103.md",
+    "capacity_floor_internal": 0.011842105263157895,
+    "initial_abundance": "free",
+    "local_arrival_settlement": null,
+    "historical_range": {
+      "enabled": true,
+      "file": "/work/07980/bwa386/ls6/houfin/research/grid54/inputs/historical_range_v2_20261102/invasion.npz",
+      "fixed_concentration": 0.43724203275856455,
+      "mode": "invasion",
+      "calibration": "Fixed reference NB2; no learned CBC scale/effort/circle effects",
+      "input_sha256": "d5c2fd8c706c4c8be3aad4fc1b37a08b8c83f80125054c9b2c5853fe01ee576a"
+    }
+  }
+]

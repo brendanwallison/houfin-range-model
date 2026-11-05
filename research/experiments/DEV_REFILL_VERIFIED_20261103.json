@@ -1,0 +1,13 @@
+{
+  "epoch": 1793744012.1770294,
+  "checked": "2026-11-03T16:13:32.177160-06:00",
+  "pending_scientific_fits": 50,
+  "active_scientific_fits": [
+    "0608_step44_shared_s43",
+    "0609_step45_regional_s010_s41",
+    "0609_step45_cell_iid_s010_s41"
+  ],
+  "completed": "step44_kprivate10_s41",
+  "allocation": "3548968|RUNNING|1:36:11|c301-002",
+  "relay_log": "RELAY_BEGIN 3548968 ANCHOR 0 ORIGINAL {0: 1577324, 1: 1577325, 2: 1577326}\nROLLING_LANE_READY 0 SECONDS_LEFT 5899\nSTART 0609_step45_regional_s010_s41 LANE 0\n"
+}

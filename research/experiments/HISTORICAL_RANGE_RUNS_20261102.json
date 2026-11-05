@@ -1,0 +1,62 @@
+[
+  {
+    "step": "step40_rangev2_historical_s41",
+    "seed": 41,
+    "parent": "step38_cbc1951_noncbc_free_s41",
+    "reference": "step38_cbc1951_noncbc_free_s41",
+    "mode": "historical",
+    "queue_priority": "0611",
+    "cbc_enabled": false,
+    "initial_abundance": "free",
+    "initialization_year": 1951,
+    "removed_old_pseudozero_rows": 68932,
+    "range_input_sha256": "52ffdc8d5c70f95325602b0d7be61d6d7009162036b927d7e55c83be1a65f7f5",
+    "fixed_concentration": 0.43724203275856455,
+    "registered": "HISTORICAL_RANGE_IMPLEMENTATION_20261102.md"
+  },
+  {
+    "step": "step40_rangev2_invasion_s41",
+    "seed": 41,
+    "parent": "step38_cbc1951_noncbc_free_s41",
+    "reference": "step38_cbc1951_noncbc_free_s41",
+    "mode": "invasion",
+    "queue_priority": "0612",
+    "cbc_enabled": false,
+    "initial_abundance": "free",
+    "initialization_year": 1951,
+    "removed_old_pseudozero_rows": 68932,
+    "range_input_sha256": "d5c2fd8c706c4c8be3aad4fc1b37a08b8c83f80125054c9b2c5853fe01ee576a",
+    "fixed_concentration": 0.43724203275856455,
+    "registered": "HISTORICAL_RANGE_IMPLEMENTATION_20261102.md"
+  },
+  {
+    "step": "step40_rangev2_historical_s42",
+    "seed": 42,
+    "parent": "step38_cbc1951_noncbc_free_s41",
+    "reference": "step38_cbc1951_noncbc_free_s41",
+    "mode": "historical",
+    "queue_priority": "0613",
+    "cbc_enabled": false,
+    "initial_abundance": "free",
+    "initialization_year": 1951,
+    "removed_old_pseudozero_rows": 68932,
+    "range_input_sha256": "52ffdc8d5c70f95325602b0d7be61d6d7009162036b927d7e55c83be1a65f7f5",
+    "fixed_concentration": 0.43724203275856455,
+    "registered": "HISTORICAL_RANGE_IMPLEMENTATION_20261102.md"
+  },
+  {
+    "step": "step40_rangev2_invasion_s42",
+    "seed": 42,
+    "parent": "step38_cbc1951_noncbc_free_s41",
+    "reference": "step38_cbc1951_noncbc_free_s41",
+    "mode": "invasion",
+    "queue_priority": "0614",
+    "cbc_enabled": false,
+    "initial_abundance": "free",
+    "initialization_year": 1951,
+    "removed_old_pseudozero_rows": 68932,
+    "range_input_sha256": "d5c2fd8c706c4c8be3aad4fc1b37a08b8c83f80125054c9b2c5853fe01ee576a",
+    "fixed_concentration": 0.43724203275856455,
+    "registered": "HISTORICAL_RANGE_IMPLEMENTATION_20261102.md"
+  }
+]

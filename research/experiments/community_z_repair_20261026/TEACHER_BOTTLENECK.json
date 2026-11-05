@@ -1,0 +1,69 @@
+{
+  "scope": "Matched capacity diagnostic: observed breeding teacher versus learned features.\n\nObserved-community features contain the scored species, so this is an oracle\ndiagnostic, never an independent predictor or ecological validation. Readouts\nuse permitted modern training records only; evaluation halves stay separate.\n",
+  "source_sha256": "051f2ff1de4b2b3c5bddc97599e2d029a9e83081cffe0dd528a6f4659f4f78f3",
+  "readout_lambda": 0.01,
+  "projection": "Mean annual projections on exactly the matched survey rows.",
+  "model_scope": "Summer64 coordinate fidelity; species oracle uses observed summer64, not a new128 candidate.",
+  "panels": {
+    "known": {
+      "model_to_observed_teacher_change": {
+        "cells": 1262,
+        "blocks": 316,
+        "predicted_signal": 0.06588737935128276,
+        "target_signal": 0.060560856296104915,
+        "corr": {
+          "point": 0.3096328284053868,
+          "ci95": [
+            0.28984017262271405,
+            0.3265957655595686
+          ]
+        },
+        "prediction_is_deterministic": true
+      },
+      "observed_teacher_to_species_change_oracle": {
+        "cells": 1262,
+        "blocks": 316,
+        "predicted_signal": 13.81997976046082,
+        "target_signal": 25.44375757366875,
+        "corr": {
+          "point": 0.7602438271221592,
+          "ci95": [
+            0.7512108804866133,
+            0.7687959112368867
+          ]
+        },
+        "prediction_is_deterministic": false
+      }
+    },
+    "spatial": {
+      "model_to_observed_teacher_change": {
+        "cells": 284,
+        "blocks": 53,
+        "predicted_signal": 0.06562954818948585,
+        "target_signal": 0.06534827272950268,
+        "corr": {
+          "point": 0.23671798473947098,
+          "ci95": [
+            0.18569470509873282,
+            0.288425375410287
+          ]
+        },
+        "prediction_is_deterministic": true
+      },
+      "observed_teacher_to_species_change_oracle": {
+        "cells": 284,
+        "blocks": 53,
+        "predicted_signal": 15.339924725843378,
+        "target_signal": 28.561425099511858,
+        "corr": {
+          "point": 0.7575300832113616,
+          "ci95": [
+            0.7369460800866422,
+            0.7761659388863591
+          ]
+        },
+        "prediction_is_deterministic": false
+      }
+    }
+  }
+}

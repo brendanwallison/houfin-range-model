@@ -25,6 +25,8 @@ def main():
     p.add_argument('--out', type=Path, required=True)
     p.add_argument('--k', type=int, default=12, help='Lanczos steps (top eigenpairs reported)')
     p.add_argument('--seed', type=int, default=20261105)
+    p.add_argument('--start', choices=['random', 'gradient'], default='random', help='Lanczos start vector')
+    p.add_argument('--skip_per_site', action='store_true')
     a = p.parse_args()
     root = Path(os.environ['TAKEOVER_CODE_ROOT'])
     sys.path.insert(0, str(root / 'research' / 'exp'))
@@ -84,7 +86,9 @@ def main():
     print(json.dumps(dict(stage='gradient', **out['along_gradient'], sec=round(time.time() - t0))), flush=True)
 
     # Lanczos with full reorthogonalisation on the total Hessian
-    rng = np.random.default_rng(a.seed); q = rng.normal(size=x0.size); q /= np.linalg.norm(q)
+    rng = np.random.default_rng(a.seed)
+    q = g.copy() if a.start == 'gradient' else rng.normal(size=x0.size)   # a random start mostly samples flat directions
+    q /= np.linalg.norm(q)
     Q, alpha, beta = [q], [], []
     for j in range(a.k):
         w = np.asarray(hvp_total(x0, jnp.asarray(Q[-1])))
@@ -108,7 +112,7 @@ def main():
 
     # per-site self-curvature along each site's own gradient block
     per = []
-    for nm, s, e in blocks:
+    for nm, s, e in ([] if a.skip_per_site else blocks):
         v = np.zeros(x0.size); v[s:e] = g[s:e]
         if np.linalg.norm(v) == 0:
             continue

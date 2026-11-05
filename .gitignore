@@ -61,3 +61,26 @@ results/
 /research/r/lib/
 /research/r/install.log
 /research/r/install.err
+
+# Local scratch, completion flags, and raw diagnostic logs. Retain the scripts
+# and compact research reports alongside them.
+/research/_tmp_c.py
+/research/experiments/lambda_audit_20261026/basis_readout_audit.log
+/research/experiments/local_native_crash_20261103/kernel.txt
+/research/experiments/local_native_crash_20261103/*_tail.txt
+/research/experiments/final_shared_round1_20261025/earlier_clean_split_diagnostics/MAP_DIAGNOSTICS_DONE
+
+# Bulky generated diagnostic payloads; companion Markdown reports, analysis
+# scripts, and a path/size/SHA256 manifest are committed. Files remain local.
+/research/experiments/CROSS_MODEL_PROCESS_AUDIT_20261101.json
+/research/experiments/FULL_PATHOLOGY_AUDIT_20261101.json
+/research/experiments/FULL_PATHOLOGY_AUDIT_20261101_AFTERNOON.json
+/research/experiments/FULL_PATHOLOGY_AUDIT_20261101_CONTRIBUTION.json
+/research/experiments/FULL_PATHOLOGY_AUDIT_LIVE_20261101.json
+/research/experiments/FUNCTIONAL_STABILITY_20261101.json
+/research/experiments/MISSPECIFICATION_RESULTS_20261104.json
+/research/experiments/PLAINS_SOURCE_CONNECTIVITY_20261101.json
+/research/experiments/RETROSPECTIVE_LOCAL_20261031.json
+/research/experiments/RETROSPECTIVE_TACC_20261031.json
+# An existing watcher rewrites this file; keep its output local.
+/research/experiments/OVERFLOW_EARLY_LIVE_20261102.md

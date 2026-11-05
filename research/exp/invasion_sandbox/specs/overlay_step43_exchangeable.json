@@ -1,0 +1,484 @@
+{
+  "_paths_comment": "Grid54 paths expand from ${HOUFIN_PROCESSED} (TACC /work/07980/bwa386/ls6/houfin/processed; locally the same string via the ~/houfin/work symlink, grid54 itself a symlink to E:).",
+  "input_dir": "/work/07980/bwa386/ls6/houfin/research/grid54/inputs/established1951",
+  "raw_z_dir": "/work/07980/bwa386/ls6/houfin/processed/field54/stageF/latent_avian_paths_field54prod_ema_s64",
+  "bbs_npz": "${HOUFIN_PROCESSED}/grid54/bbs/bbs_data_obsroute_for_python.npz",
+  "ocean_mask": "${HOUFIN_PROCESSED}/grid54/land_mask/ocean_mask_54km.tif",
+  "_disease_arrival_map_comment": "Per-pixel first-affected-breeding-season for House Finch mycoplasmal conjunctivitis, on the model grid. Built by scripts/build_disease_arrival_map.py from the documented 1994-2006 spread history (there is no published raster). Consumed by model_inputs.py as the onset gate for the K depression -- see src/model/age_fields.py.",
+  "disease_arrival_map": "${HOUFIN_PROCESSED}/grid54/disease/disease_arrival_year_54km.tif",
+  "ebird_dir": "/home/breallis/houfin/scratch/houfin/data/ebird_weekly_2023_grid",
+  "results_dir": "/work/07980/bwa386/ls6/houfin/processed/model_results",
+  "latent_dim": 64,
+  "source_latent_dim": 64,
+  "kernel_contract": {
+    "kernel": "ruzicka",
+    "centered": false,
+    "feature_prior": "isotropic",
+    "_comment": "The encoder supplies an uncentered 64-D Nystr\u00f6m feature map; model ingestion explicitly retains the first latent_dim (24) eigenfeatures to fit VRAM. Conditional on each w_scale, iid coefficients over those retained features imply Cov[H(x),H(x')|w_scale] = w_scale^2 Z_r(x)\u00b7Z_r(x'), the configured rank-r approximation to the original Ru\u017ei\u010dka kernel. Truncation must be config-driven and recorded, never silent."
+  },
+  "dispersal": {
+    "_comment": "Single source of truth shared by Z_disp preparation and the forward model; resolved in exactly one place, build_kernels.dispersal_spec. Do not duplicate these boundaries in code.",
+    "_radial_splits_comment": "juvenile_radial_splits_km takes either an explicit list of km boundaries (start 0.0, end >=1e8) or the string \"derive\" for equal-mass radial bands. The pinned literals are NOT quantiles of the current kernel. See docs/PRIORS.md#radial-splits.",
+    "_kernel_source_comment": "Veit & Lewis 1996 kernels: the adult and juvenile SHAPES DIFFER (0.859 vs 0.468). See docs/PRIORS.md#dispersal-kernels.",
+    "adult_mdd_km": 100.0,
+    "adult_shape": 0.859,
+    "juvenile_mdd_km": 330.0,
+    "juvenile_shape": 0.468,
+    "juvenile_radial_splits_km": [
+      0.0,
+      155.36162529769288,
+      482.7446923028151,
+      1000000000.0
+    ],
+    "path_integration_steps": 20,
+    "path_operator": "land_conditioned_neighborhood",
+    "_path_comment": "Z_disp is intentionally a land-conditioned neighborhood/path summary: at each fractional displacement, water/nodata is excluded and the remaining land contribution is normalized. It is not a literal trajectory hazard through water.",
+    "kernel_discretization": {
+      "method": "cell_integrated",
+      "subsamples": 31
+    },
+    "_kernel_discretization_comment": "Resolved by dispersal_spec.kernel_discretization, NOT part of dispersal_spec's dict (existing path metadata unchanged). cell_integrated = the PDF averaged over the source-uniform x destination-uniform cell displacement (31x31 midpoint rule per axis pair); used for the forward kernels AND Z_disp. Point sampling at 54 km would put 0.237 of adult mass on the self-cell vs 0.123 integrated."
+  },
+  "age_structure_prior": {
+    "_comment": "Resolution-invariant weak local-age-structure regularizer. We average log Beta density over land cell-years, then multiply by effective_sites, instead of treating every grid cell/year as an independent prior observation. This is a distributional belief about a representative local cell, not a prior on the domain-wide mean.",
+    "alpha": 1.01,
+    "beta": 1.01,
+    "effective_sites": 100.0
+  },
+  "population_model": {
+    "_comment": "Mechanistic/data-scale constants persisted into model-input metadata; no hidden grid or invasion constants in ingestion code.",
+    "_scale_comment": "THE GAUGE: population_scale_route_counts_per_relative_unit converts model density to the mean of a BBS route count. A sampler-conditioning choice, not biology -- the likelihood is invariant to it. See docs/PRIORS.md#the-gauge.",
+    "population_scale_route_counts_per_relative_unit": 20.0,
+    "invasion_lat": 40.6106,
+    "invasion_lon": -73.4445,
+    "invasion_window_years": 10,
+    "invasion_sites": 4,
+    "_release_allee_comment": "Years from the release (invasion_timestep) during which the 9 candidate release cells skip the mate-finding Allee factor. The Allee term models continental colonization (thin arrivals into a 27 km cell); released cage birds were aggregated far below grid scale, so mates did not limit them. Without this the fit inflated and concentrated the founder pulse to clear the cell-averaged threshold -- a saddle with corner-shaped modes (probe of run_17). Matches invasion_window_years. 0 restores the old behaviour.",
+    "release_allee_exemption_years": 0,
+    "dispersal_target_capacity_fraction": 0.8,
+    "_dispersal_random_comment": "Per-year Normal(0, 0.001) noise on the dispersal logit. At that scale it moves dispersal by ~0.025%; the run_18 probe found its 124 directions exactly at prior curvature and L-BFGS moved it ~3e-5. false removes the site (the model uses zeros). See docs/PRIORS.md#structural-switches.",
+    "dispersal_random_enabled": false,
+    "_disease_prior_comment": "The mycoplasmal-conjunctivitis effect on capacity, as a STRUCTURED hypothesis: K = K_base * (1 - severity(x) * onset_gate(x,t) * (1 - recovery(t - arrival))). See docs/PRIORS.md#disease-term and src/model/age_fields.py.",
+    "_capacity_level_comment": "Prior on K's continental LEVEL, in expected BBS route counts, anchored on the typical OCCUPIED cell (median 2.618). See docs/PRIORS.md#capacity-level.",
+    "_allee_comment": "Allee half-saturation on the BBS ROUTE-COUNT scale: allee_factor = 1 - 2^(-C/n50), half released at C = n50. See docs/PRIORS.md#allee-effect.",
+    "allee_prior": {
+      "n50_raw_loc": -3.4915,
+      "n50_raw_scale": 0.25,
+      "aggregation_k": 3.0,
+      "form": "absolute"
+    },
+    "_initpop_comment": "The t=0 (1902) native-range seed, as a FRACTION OF LOCAL FITTED CAPACITY rather than an absolute abundance. Read the consequence of core_fraction_of_local_capacity = 1.0 before changing it. See docs/PRIORS.md#initial-population.",
+    "initpop_seed": {
+      "core_fraction_of_local_capacity": 1.0,
+      "margin_fraction_of_core": 0.5
+    },
+    "_invasion_pulse_comment": "The 1940 release, as a fraction of a FIXED, empirically observed, K-independent reference -- deliberately not tied to k_level or local K_base. See docs/PRIORS.md#invasion-pulse.",
+    "_invasion_sites_comment": "invasion_sites = 9: the record documents one known sighting, not that it was the only release, and at 27 km the literal coordinate may not land on a valid cell. See docs/PRIORS.md#invasion-sites.",
+    "_invasion_budget_comment": "With 90 free (site, year) coefficients the SHARED prior must tighten, or the term becomes a high-dimensional escape hatch. See docs/PRIORS.md#invasion-budget.",
+    "invasion_pulse_prior": {
+      "global_q50_route_counts": 0.6852,
+      "median_fraction_of_global_q50": 0.1,
+      "log_budget": 3.0,
+      "form": "single",
+      "n_sites": 1,
+      "n_years": 1,
+      "total_median": 5.447470817120623,
+      "total_log_sd": 2.0
+    },
+    "capacity_level_prior": {
+      "_link_switch_comment": "softplus (default) or exp. At the operating point the softplus argument is ~-2.1, where softplus ~ exp, so low K costs the same under both; exp removes softplus's shrinkage of the upper tail. alpha_k's location is re-solved per link so the level median stays at target_level_median_route_counts. See docs/PRIORS.md#structural-switches.",
+      "link": "softplus",
+      "_link_comment": "K uses a SOFTPLUS link applied in DENSITY space: K = softplus(alpha_k + gamma_k*H_k + trend), no gauge conversion around it. See docs/PRIORS.md#capacity-link.",
+      "_calibration_comment": "target_level_median_route_counts is the belief; alpha_k's prior LOCATION is solved from it at import by age_priors._softplus_loc_for_median. See docs/PRIORS.md#capacity-calibration.",
+      "target_level_median_route_counts": 2.582,
+      "alpha_k_scale": 1.0
+    },
+    "_manifold_comment": "Correlated weights for FOUR demographic manifolds, ordered [survival_adult, reproduction, capacity, survival_juv] -- survival_juv is APPENDED, so w_env[:,0..2] keeps its meaning for positional readers. See docs/PRIORS.md#manifold-prior.",
+    "_amplitude_comment": "GP AMPLITUDE, one per manifold: w_scale_j = softplus(Normal(amplitude_loc_j, amplitude_scale_j)), so Var(beta_j) = w_scale_j^2 and H_j is a GP conditional on it. See docs/PRIORS.md#gp-amplitude.",
+    "manifold_prior": {
+      "_form_comment": "rank2 (two coupled groups via communality + angle, below) or exchangeable (ONE coupling rho for all four fields: beta_j = w_scale_j*(sqrt(rho)*f + sqrt(1-rho)*eps_j); rho = sigmoid(Normal(logit(coupling_target), coupling_logit_scale))). See docs/PRIORS.md#structural-switches.",
+      "form": "exchangeable",
+      "coupling_target": 0.85,
+      "coupling_logit_scale": 0.15,
+      "target_corr_survival_adult_juv": 0.85,
+      "target_corr_repro_capacity": 0.85,
+      "target_corr_cross_group": 0.7,
+      "communality_logit_scale": 0.35,
+      "angle_scale": 0.15,
+      "amplitude_loc": [
+        -0.0134,
+        0.0025,
+        -0.0034,
+        0.4778
+      ],
+      "amplitude_scale": [
+        1.0263,
+        1.0263,
+        1.0227,
+        1.0263
+      ],
+      "fixed_coupling": null,
+      "_sandbox_comment": "SANDBOX C2c copy: fixed_coupling removed (exchangeable, rho ~ logit-normal(.85, .15)) for a partial-refit diagnostic; not a production config."
+    },
+    "_k_range_comment": "REPORTING threshold only -- not an active constraint. K is softplus(alpha_k + gamma_k*H_k + trend) with nothing bounding it below, so a collapse is meant to be VISIBLE in metrics.json:k_range rather than hidden by a clamp. 24x is +/-2 log SD of the observed occupied-cell spread (log sd 1.592, from scripts/diagnostics/bbs_abundance_quantiles.py), i.e. the fold range the data actually show; a realized range well beyond it means K is being used to explain absence that should be explained by lambda < 1.",
+    "k_range": {
+      "max_fold_deviation": 26.0
+    },
+    "_k_trend_comment": "Continental smooth time trend on K's pre-softplus argument, time-centered so alpha_k keeps the level. A SAFETY VALVE AND FAILURE DIAGNOSTIC, not a modeled mechanism. See docs/PRIORS.md#k-trend.",
+    "k_trend": {
+      "n_basis": 3,
+      "budget": 0.05,
+      "enabled": false
+    },
+    "disease_prior": {
+      "severity_space_frequencies": 4,
+      "lag_space_frequencies": 4,
+      "_severity_comment": "DENSITY-DEPENDENT severity: a Hill function of local carrying capacity, because epidemics need hosts. See docs/PRIORS.md#disease-severity.",
+      "_ceiling_comment": "severity_ceiling is now LOAD-BEARING FOR IDENTIFIABILITY, not merely a bound on plausibility. K = K_base*(1 - severity(K_base)*...) must be monotone in K_base, or two different habitat qualities map to the same realized capacity. At 0.5 monotonicity holds for every n tested (min dK/dK_base = 0.100 at n=5); at 0.7 it BREAKS (slope -0.26). It also happens to match the documented ~50-60% decline, which was measured in the dense eastern populations -- exactly where this parameterization applies it. Do not raise it above ~0.6 without re-checking monotonicity.",
+      "severity_ceiling": 0.5,
+      "k_half_median_route_counts": 8.0,
+      "k_half_log_sd": 0.7,
+      "hill_n_median": 1.5,
+      "hill_n_log_sd": 0.4,
+      "_mu_comment": "Logit of the MODIFIER on density-dependent severity, not of the removed fraction itself: severity = severity_ceiling * sigmoid(mu + ...) * hill(K_base). See docs/PRIORS.md#disease-severity-modifier.",
+      "mu_loc": 1.386,
+      "mu_scale": 0.5,
+      "_field_comment": "sev_field_budget is the total regional deviation the severity field may add on the logit scale (distributed as budget/sqrt(n) per coefficient); 0.5 comfortably reaches west ~25-30% vs east ~60%. lag0_scale/lag_field_budget are YEARS of onset-timing slack, continental and regional respectively -- the arrival map is a hand-built smoothed reconstruction, so its timing is coarse both overall and regionally.",
+      "sev_field_budget": 0.5,
+      "lag0_scale": 2.0,
+      "lag_field_budget": 1.5,
+      "_late_comment": "Severity coefficient on decades since the EPIDEMIC'S OWN start (disease_start_year=1993), not since any cell's local arrival. See docs/PRIORS.md#disease-late-era.",
+      "late_arrival_loc": -0.15,
+      "late_arrival_scale": 0.15,
+      "_native_comment": "NATIVE-LINEAGE severity suppression, on the same dimensionless core/margin shape that seeds 1902 abundance. See docs/PRIORS.md#disease-native-resistance.",
+      "native_resistance_raw_loc": 0.0,
+      "native_resistance_raw_scale": 0.7,
+      "_recovery_comment": "Slowly increasing resilience after local arrival: the hit decays toward severity*(1-recovery_fraction) with an e-folding time of recovery_tau years. recovery_logit_loc=-0.5 -> prior median ~38% of the hit eventually recovered, spanning 0 to ~90%.",
+      "recovery_logit_loc": -0.5,
+      "recovery_logit_scale": 1.0,
+      "recovery_tau_median_years": 12.0,
+      "recovery_tau_log_scale": 0.5,
+      "target": "survival",
+      "mortality_ceiling": 0.8
+    },
+    "habitat_centering": "occupied",
+    "juvenile_survival": {
+      "form": "ratio",
+      "ratio_logit_loc": 0.405,
+      "ratio_logit_scale": 0.5
+    },
+    "settlement": {
+      "form": "none"
+    },
+    "dispersal_kernel": {
+      "band_weights": false
+    },
+    "observation": {
+      "form": "breeding",
+      "fledgling_weight_a": 1.0,
+      "fledgling_weight_b": 4.0,
+      "conc_density_power": true,
+      "conc_density_power_scale": 0.5,
+      "observer_effect": {
+        "enabled": true,
+        "sigma_u": 0.97,
+        "sigma_mode": "fixed",
+        "sigma_prior_scale": 1.0,
+        "eta_prior_scale": 1.0
+      }
+    },
+    "fecundity_prior": {
+      "loc": 4.993,
+      "scale": 0.75
+    },
+    "pinned_sites": {
+      "n50_raw": -2.7969046060186082,
+      "log_inv_total": 0.0
+    },
+    "dispersal_departure": {
+      "form": "veit"
+    },
+    "numerics": {
+      "fft_pad": 0.0,
+      "fft_floor_ulps": null
+    },
+    "observation_mask": {
+      "holdout_years": [
+        2021,
+        2022,
+        2023,
+        2024,
+        2025
+      ],
+      "holdout_blocks": {
+        "block_cells": 4,
+        "fraction": 0.1,
+        "seed": 70,
+        "pinned_blocks": "${HOUFIN_PROCESSED}/grid54/holdout_blocks_216km_s64.json"
+      },
+      "_pinned_comment": "holdout_blocks.pinned_blocks (fit code GRID54_LADDER ac521d8): withhold exactly the 31 216-km blocks the 27 km s64 fit withheld (written by research/exp/grid54_pin_holdout.py from that fit's draw); block_cells 4 x 54 km = 216 km, fraction/seed ignored."
+    },
+    "readout": {
+      "split": false,
+      "ref_window": [
+        1996,
+        2025
+      ],
+      "rank": 64,
+      "within_ratio_fixed": null,
+      "within_corr": null,
+      "feature_columns": null,
+      "within_tied": false,
+      "within_ratio_prior": null
+    },
+    "reproduction": {
+      "form": "standard",
+      "yearling_breeding": true,
+      "crowding_power": 2.0
+    },
+    "nest_likelihood": {
+      "enabled": true,
+      "path": "${HOUFIN_PROCESSED}/grid54/nestwatch/nests_hofi_v6.npz",
+      "year_range": [
+        1902,
+        2020
+      ],
+      "max_precision": 1,
+      "broods": {
+        "form": "pinned",
+        "values": [
+          2.5,
+          2.5,
+          2.5
+        ],
+        "log_sd": 0.3
+      },
+      "cycle_days": 32,
+      "covariates": [
+        "building",
+        "nestbox",
+        "other_artificial",
+        "substrate_unknown",
+        "card"
+      ],
+      "mean_scale": 0.1,
+      "surv_scale": 0.5,
+      "dsr_logit_loc": 3.5,
+      "dsr_logit_scale": 1.0,
+      "log_conc_loc": 2.3,
+      "log_conc_scale": 1.0,
+      "floor_sharpness": 10.0
+    },
+    "cbc_likelihood": {
+      "enabled": false,
+      "file": "/work/07980/bwa386/ls6/houfin/research/grid54/inputs/cbc_early_20261102/cbc_early.npz",
+      "circle_sd": 1.0,
+      "minimum_state_year": 1902,
+      "distance_scenario_km": 300,
+      "family": "early_detection",
+      "fixed_migrant_fraction": 0.35,
+      "fixed_young_availability": 1.0,
+      "envelope_enabled": false,
+      "envelope_weight": 0.1
+    },
+    "retention_overflow": {
+      "mode": "veit",
+      "width_fraction": 0.05,
+      "capacity_census": "pre-departure total A+J; inherited K units"
+    },
+    "capacity_floor_internal": 0.011842105263157895
+  },
+  "map": {
+    "_comment": "Continuation begins under tight priors and progressively relaxes them at absolute optimizer steps. The standard/full run uses 300 tight + 300 intermediate + 1200 nominal-prior steps (1800 total). Boundaries are independent of TOTAL_STEPS so extending/resuming a run cannot move backward. lr_decay_steps is likewise fixed across extensions; after step 900 optimization continues at the schedule's minimum learning rate.",
+    "prior_relaxation": [
+      [
+        0,
+        0.1
+      ],
+      [
+        300,
+        0.5
+      ],
+      [
+        600,
+        1.0
+      ]
+    ],
+    "lr_decay_steps": 900,
+    "target_steps": 1800,
+    "init_lr": 0.01,
+    "weight_decay": 0.0,
+    "_log_every_comment": "Steps between '[map] step ...' progress lines on stdout (the SLURM .o log). tqdm also carries the loss, but it writes a single carriage-return-rewritten line to stderr, so a running fit's loss trajectory is otherwise invisible in the log. Override per-run with HOUFIN_MAP_LOG_EVERY; 0 disables. A profile may set its own value.",
+    "log_every_steps": 25,
+    "profiles": {
+      "quick90": {
+        "_comment": "Short development fit: 100 tight, 100 intermediate and 200 nominal-prior steps (400 total, per prior_relaxation below). The learning-rate decay reaches its minimum at step 300 (lr_decay_steps) and stays there for the final 100. This changes optimization only, not the final MAP objective. The name is historical -- it was a 900-step, ~90-minute profile before the schedule was compressed; it is now much shorter.",
+        "prior_relaxation": [
+          [
+            0,
+            0.1
+          ],
+          [
+            100,
+            0.5
+          ],
+          [
+            200,
+            1.0
+          ]
+        ],
+        "lr_decay_steps": 300,
+        "target_steps": 400
+      }
+    }
+  },
+  "runtime": {
+    "_comment": "Production JAX jobs require a GPU and explicitly place model inputs in VRAM. HOUFIN_MODEL_INPUT_RESIDENCY=host is experimental: lax.scan is not a true differentiable host-streaming mechanism. SLURM wrappers record nvidia-smi VRAM/utilization plus host MemAvailable/SwapFree every 30 seconds (the interval is the second positional argument to start_gpu_monitor in the .slurm files, not a config key).",
+    "input_residency": "device"
+  },
+  "path_features": {
+    "input_dir": "${HOUFIN_PROCESSED}/grid54/encoder/cube_s64_grid54",
+    "output_dir": "${HOUFIN_PROCESSED}/grid54/latent_avian_paths_s64_grid54"
+  },
+  "path_diagnostics_dir": "${HOUFIN_PROCESSED}/grid54/latent_avian_path_diagnostics",
+  "community_bridge": {
+    "ruzicka_dir": "/work/07980/bwa386/ls6/houfin/processed/encoder/esk/spacetime",
+    "avonet_csv": "/home/breallis/houfin/scratch/houfin/data/avonet/AVONET_Comparison_WithPhylogeny_Urban.csv"
+  },
+  "run_names": {
+    "_comment": "run_15: more expressive inv pop",
+    "map": "age_map_{precision}_grid54_step43_factor_p2_veit_s41",
+    "svi": "age_vi_{precision}_run_5",
+    "hmc": "age_hmc_{precision}_trial_3",
+    "hmc_svi_source": "age_vi_{precision}_run_2",
+    "resume_svi_out": "age_vi_{precision}_run_15",
+    "resume_svi_from_map": "age_map_{precision}_run_4",
+    "resume_hmc_out": "age_hmc_{precision}_from_map",
+    "resume_hmc_from_map": "age_map_{precision}_run_4",
+    "vis_map": "age_map_{precision}_grid54_step43_factor_p2_veit_s41",
+    "vis_svi": "age_vi_{precision}_run_5",
+    "vis_hmc": "age_hmc_{precision}_trial_3",
+    "vis_community": "age_map_{precision}_run_6"
+  },
+  "_comment": "Round1 clean seeds1/2: one shared space-for-time coefficient field; absolute aggregated Allee unchanged.",
+  "_grid54_comment": "54 km resolution diagnostic (research/experiments/GRID54_INPUTS_2026-10-29.md): a mirror of the shared-readout summer64 fit's resolved config (research/FINAL_SHARED_ROUND1_20261025/s64/resolved_config.json) with 54 km paths and the grid-dependent values re-derived. Inputs built by src/processing/coarsen_model_grid.py --factor 2. Changed vs s64: every grid path; dispersal.kernel_discretization (cell-integrated kernels); population_model.invasion_sites 9->4; invasion_pulse_prior.global_q50_route_counts 0.7083->0.6852 and total_median 1.0->0.2584 (equal total founders: 0.25 x 0.7083/0.6852, the 1/4 being the cell-area ratio); capacity_level_prior.target_level_median_route_counts 3.0->2.582 (3.0 x 54 km/27 km occupied median 2.2537/2.6183); k_range.max_fold_deviation 24->26 (exp(2 x 1.6277)); observation_mask.holdout_blocks.block_cells 8->4 with pinned_blocks = the 27 km selection; pseudo_zero_subsample.n_sites 1814 (= 27 km absence observation count); coastal BBS routes snapped to the nearest coarse land cell. The gauge (20) is unchanged (54 km q95 17.3).",
+  "pseudo_zero_subsample": {
+    "_comment": "Read by src/data/combine/model_inputs.py: keep exactly n_sites pre-invasion pseudo-zero sites (x 38 years) instead of the real-data-density rule, so the 54 km input carries the 27 km s64 input's absence OBSERVATION count (1814 x 38 = 68,932). Decision 2026-10-29 (coordinator).",
+    "n_sites": 1814
+  },
+  "_grid54_step1_comment": "GRID54 ladder step 1: step 0 + RELATIVE Allee (mate-finding by N/K), n50/K pinned at .0197 (V&L-derived ratio, as E071c/55e; n50_raw = softplus^-1(.0197)); aggregation_k 3 kept.",
+  "_grid54_step2_comment": "Step 2 (GRID54_LADDER_2026-10-29.md): step 1 + single habitat field, manifold_prior.fixed_coupling 1.0 (beta_j = w_scale_j * f: every rate, capacity included, reads H = Z.f with its own positive amplitude; no private parts).",
+  "_grid54_step3_comment": "Step 3 (GRID54_LADDER_2026-10-29.md): step 2 + observer x route effect (sigma_u 0.97 fixed, eta ~ N(0,1)) on the obsroute input; fit code b66f51a.",
+  "_grid54_step29_yb_native_comment": "step3_native + reproduction.yearling_breeding (FECUNDITY_CONSTRAINT_SCOPING_2026-10-31.md step 1; E052/E075b retest on the relative-Allee base); fit code 6fbbe81.",
+  "_grid54_step31_nestonly_comment": "Step 31 (GRID54_LADDER_2026-10-29.md): step29_yb_native + nest_likelihood (nests_hofi_v6, broods pinned 2.5); fit code d4435fb.",
+  "_pathology_candidate": {
+    "registration": "PARSIMONIOUS_CANDIDATES_20261031.md",
+    "source_commit": "d4435fb",
+    "seed": 41,
+    "cbc_founder_pin": -0.283,
+    "native_departure": false,
+    "absolute_allee_sensitivity": true
+  },
+  "_later_established_state": {
+    "step": "step38_cbc1951_noncbc_free_s41",
+    "parent": "step35_est1951_ctl_mid_s41",
+    "seed": 41,
+    "initialization_year": 1951,
+    "initial_abundance": "free",
+    "cbc_enabled": false,
+    "cbc_distance_scenario_km": 300,
+    "cbc_circle_sd": 1.0,
+    "nest_annual_conversion_uncertain": false,
+    "native_departure": false,
+    "queue_priority": "0619",
+    "order": 4,
+    "cbc_input_sha256": "b7f73dd275293466f8367dfa4d13d72b30e1cacedba89ee014b0846a4246785a",
+    "cbc_module_sha256": "9ee6d07c6233ef3cadd8dce98fd7b1e0dfcbd3175057d96d1a60a50ffd2fdaa6",
+    "no_historical_backcast_pin": true,
+    "release_allee_exemption_years": 0,
+    "prior_status": "Weak reference for free log abundance; no independent census evidence or historical CBC backcast reused",
+    "seasonal_status": "Observation-only conservative SW mixture with fixed 300/600km sensitivity; estimated migrant fraction and young availability",
+    "age_split": "Inherited 50/50 adult/young; no subcell establishment state inferred",
+    "reference": "step35_est1951_ctl_mid_s41",
+    "registered": "CBC_ESTABLISHED_OVERNIGHT_20261101.md"
+  },
+  "_cbc_established": {
+    "step": "step38_cbc1951_noncbc_free_s41",
+    "parent": "step35_est1951_ctl_mid_s41",
+    "seed": 41,
+    "initialization_year": 1951,
+    "initial_abundance": "free",
+    "cbc_enabled": false,
+    "cbc_distance_scenario_km": 300,
+    "cbc_circle_sd": 1.0,
+    "nest_annual_conversion_uncertain": false,
+    "native_departure": false,
+    "queue_priority": "0619",
+    "order": 4,
+    "cbc_input_sha256": "b7f73dd275293466f8367dfa4d13d72b30e1cacedba89ee014b0846a4246785a",
+    "cbc_module_sha256": "9ee6d07c6233ef3cadd8dce98fd7b1e0dfcbd3175057d96d1a60a50ffd2fdaa6",
+    "no_historical_backcast_pin": true,
+    "release_allee_exemption_years": 0,
+    "prior_status": "Weak reference for free log abundance; no independent census evidence or historical CBC backcast reused",
+    "seasonal_status": "Observation-only conservative SW mixture with fixed 300/600km sensitivity; estimated migrant fraction and young availability",
+    "age_split": "Inherited 50/50 adult/young; no subcell establishment state inferred",
+    "reference": "step35_est1951_ctl_mid_s41",
+    "registered": "CBC_ESTABLISHED_OVERNIGHT_20261101.md"
+  },
+  "_overflow_early": {
+    "step": "step39_veit_fixed_s41",
+    "parent": "step38_cbc1951_noncbc_free_s41",
+    "reference": "step38_cbc1951_noncbc_free_s41",
+    "seed": 41,
+    "mode": "veit",
+    "queue_priority": "0605",
+    "initial_abundance": "fixed nominal multiplier 1 (102.8 bird-equivalent convention)",
+    "initialization_year": 1951,
+    "cbc_enabled": false,
+    "envelope_enabled": false,
+    "capacity_floor_n50_multiple": 0.0,
+    "capacity_floor_internal": 0.0,
+    "n50_route_scale": 0.05921052631578948,
+    "native_departure": false,
+    "native_seed": "Unfloored K_base inherited; additive floor changes final K only",
+    "floor_semantics": "Small positive additive capacity floor after disease; does not force demographic viability",
+    "registered": "OVERFLOW_EARLY_EXECUTION_20261102.md"
+  },
+  "_crowding_curvature_experiment": {
+    "step": "step42_power2_veit_s41",
+    "parent": "step39_veit_fixed_s41",
+    "reference": "step39_veit_fixed_s41",
+    "seed": 41,
+    "movement": "veit",
+    "crowding_power": 2.0,
+    "queue_priority": "0614",
+    "initialization_year": 1951,
+    "initial_abundance": "fixed nominal multiplier 1",
+    "cbc_enabled": false,
+    "historical_supervision": "inherited original pseudozeros",
+    "capacity_floor_internal": 0.0,
+    "native_departure": false,
+    "registered": "CROWDING_CURVATURE_EXECUTION_20261102.md"
+  },
+  "_floor_combination": {
+    "step": "step43_factor_p2_veit_s41",
+    "parent": "step42_power2_veit_s41",
+    "reference": "step39_kfloor4p0_s41",
+    "seed": 41,
+    "family": "factorial",
+    "queue_priority": "0614",
+    "capacity_floor_n50_multiple": 4.0,
+    "capacity_floor_internal": 0.011842105263157895,
+    "reproduction": {
+      "form": "standard",
+      "yearling_breeding": true,
+      "crowding_power": 2.0
+    },
+    "gradual_departure": null,
+    "process_noise": null,
+    "native_departure": null,
+    "local_arrival_settlement": null,
+    "initialization_year": 1951,
+    "registered": "KFLOOR_COMBINATION_EXECUTION_20261102.md"
+  }
+}

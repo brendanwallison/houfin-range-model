@@ -1,0 +1,27 @@
+{
+  "_extends": "map_run80h_temporal.json",
+  "_comment": "Round1 clean seeds1/2: one shared space-for-time coefficient field; absolute aggregated Allee unchanged.",
+  "input_dir": "${HOUFIN_PROCESSED}/model_inputs/numpyro_input_fd_clean_v2_m2_shared_s64",
+  "latent_dim": 64,
+  "source_latent_dim": 64,
+  "kernel_contract": {
+    "kernel": "ruzicka",
+    "centered": false,
+    "feature_prior": "isotropic"
+  },
+  "population_model": {
+    "readout": {
+      "rank": 64,
+      "feature_columns": null,
+      "split": false,
+      "within_tied": false,
+      "within_ratio_fixed": null,
+      "within_corr": null,
+      "within_ratio_prior": null
+    }
+  },
+  "run_names": {
+    "map": "age_map_{precision}_shared_clean_s64",
+    "vis_map": "age_map_{precision}_shared_clean_s64"
+  }
+}

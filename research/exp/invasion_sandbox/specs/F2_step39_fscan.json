@@ -1,0 +1,9 @@
+{"arms": [
+  {"name": "fitted"},
+  {"name": "frozen_modern_release_only", "habitat_alpha": 0, "region": "east_only"},
+  {"name": "frozen_F060", "habitat_alpha": 0, "region": "east_only", "fmax_scale": 0.6},
+  {"name": "frozen_F040", "habitat_alpha": 0, "region": "east_only", "fmax_scale": 0.4},
+  {"name": "frozen_F030", "habitat_alpha": 0, "region": "east_only", "fmax_scale": 0.3},
+  {"name": "frozen_F020", "habitat_alpha": 0, "region": "east_only", "fmax_scale": 0.2},
+  {"name": "canary_frozen_modern_release_only", "habitat_alpha": 0, "region": "east_only"}
+]}

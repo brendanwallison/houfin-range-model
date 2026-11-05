@@ -1,0 +1,9 @@
+{"arms": [
+  {"name": "fitted"},
+  {"name": "frozen_both", "habitat_alpha": 0},
+  {"name": "frozen_Z_only", "habitat_alpha": 0, "habitat_keys": ["Z_gathered"]},
+  {"name": "frozen_Zdisp_only", "habitat_alpha": 0, "habitat_keys": ["Z_disp_gathered"]},
+  {"name": "frozen_both_release_only", "habitat_alpha": 0, "region": "east_only"},
+  {"name": "frozen_Z_only_release_only", "habitat_alpha": 0, "habitat_keys": ["Z_gathered"], "region": "east_only"},
+  {"name": "frozen_Zdisp_only_release_only", "habitat_alpha": 0, "habitat_keys": ["Z_disp_gathered"], "region": "east_only"}
+]}

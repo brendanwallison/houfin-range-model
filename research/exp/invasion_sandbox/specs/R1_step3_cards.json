@@ -1,0 +1,219 @@
+{
+ "note": "R1 first mechanism cards on step3_obsroute (run only after R0 validates the harness). All release-only (east_only) with habitat frozen at its 1966-2025 mean (alpha 0) unless stated; read against R0's frozen_modern_release_only and fitted arms. Pre-registration: SANDBOX_INVASION_SHAPE_2026-11.md R1.",
+ "arms": [
+  {
+   "name": "fitted"
+  },
+  {
+   "name": "A1_abs_n50_0.01",
+   "habitat_alpha": 0,
+   "region": "east_only",
+   "n50_birds_km2": 0.01
+  },
+  {
+   "name": "A1_abs_n50_0.03",
+   "habitat_alpha": 0,
+   "region": "east_only",
+   "n50_birds_km2": 0.03
+  },
+  {
+   "name": "A1_abs_n50_0.1",
+   "habitat_alpha": 0,
+   "region": "east_only",
+   "n50_birds_km2": 0.1
+  },
+  {
+   "name": "A1_abs_n50_0.3",
+   "habitat_alpha": 0,
+   "region": "east_only",
+   "n50_birds_km2": 0.3
+  },
+  {
+   "name": "A2_floor_0.01",
+   "habitat_alpha": 0,
+   "region": "east_only",
+   "floor": 0.01
+  },
+  {
+   "name": "A2_floor_0.05",
+   "habitat_alpha": 0,
+   "region": "east_only",
+   "floor": 0.05
+  },
+  {
+   "name": "B1_east_band_ramp_1940_65",
+   "habitat_alpha": 0,
+   "region": "east_only",
+   "band_ramp": {
+    "region": "east",
+    "logw_start": [
+     -2.0,
+     -4.0
+    ],
+    "year_start": 1940,
+    "year_end": 1965
+   }
+  },
+  {
+   "name": "B1_east_band_ramp_1950_80",
+   "habitat_alpha": 0,
+   "region": "east_only",
+   "band_ramp": {
+    "region": "east",
+    "logw_start": [
+     -2.0,
+     -4.0
+    ],
+    "year_start": 1950,
+    "year_end": 1980
+   }
+  },
+  {
+   "name": "C1_shared_K_rise_frozen_allyears",
+   "habitat_alpha": 0,
+   "alpha_ref": [
+    1902,
+    2025
+   ],
+   "region": "east_only",
+   "rate_edits": [
+    {
+     "field": "K",
+     "region": "all",
+     "form": "logistic",
+     "a": 1.0,
+     "t_mid": 1965,
+     "tau": 8
+    }
+   ]
+  },
+  {
+   "name": "C1_shared_F_rise_frozen_allyears",
+   "habitat_alpha": 0,
+   "alpha_ref": [
+    1902,
+    2025
+   ],
+   "region": "east_only",
+   "rate_edits": [
+    {
+     "field": "Fmax",
+     "region": "all",
+     "form": "logistic",
+     "a": 0.5,
+     "t_mid": 1965,
+     "tau": 8
+    }
+   ]
+  },
+  {
+   "name": "D1_no_disease_fitted",
+   "region": "east_only",
+   "disease_scale": 0.0
+  },
+  {
+   "name": "combo_A1_0.1_B1_a50",
+   "habitat_alpha": 0.5,
+   "region": "east_only",
+   "n50_birds_km2": 0.1,
+   "band_ramp": {
+    "region": "east",
+    "logw_start": [
+     -2.0,
+     -4.0
+    ],
+    "year_start": 1940,
+    "year_end": 1965
+   }
+  },
+  {
+   "name": "A1_abs_n50_0.003_F050",
+   "habitat_alpha": 0,
+   "region": "east_only",
+   "n50_birds_km2": 0.003,
+   "fmax_scale": 0.5
+  },
+  {
+   "name": "A1_abs_n50_0.01_F050",
+   "habitat_alpha": 0,
+   "region": "east_only",
+   "n50_birds_km2": 0.01,
+   "fmax_scale": 0.5
+  },
+  {
+   "name": "A1_abs_n50_0.03_F050",
+   "habitat_alpha": 0,
+   "region": "east_only",
+   "n50_birds_km2": 0.03,
+   "fmax_scale": 0.5
+  },
+  {
+   "name": "A1_abs_n50_0.1_F050",
+   "habitat_alpha": 0,
+   "region": "east_only",
+   "n50_birds_km2": 0.1,
+   "fmax_scale": 0.5
+  },
+  {
+   "name": "A1_rel_n50_x1.43",
+   "habitat_alpha": 0,
+   "region": "east_only",
+   "allee_gamma_scale": 0.7
+  },
+  {
+   "name": "A1_rel_n50_x2.0",
+   "habitat_alpha": 0,
+   "region": "east_only",
+   "allee_gamma_scale": 0.5
+  },
+  {
+   "name": "A1_rel_n50_x2.86",
+   "habitat_alpha": 0,
+   "region": "east_only",
+   "allee_gamma_scale": 0.35
+  },
+  {
+   "name": "A1_rel_n50_x5.0",
+   "habitat_alpha": 0,
+   "region": "east_only",
+   "allee_gamma_scale": 0.2
+  },
+  {
+   "name": "F0.45_frozen_modern",
+   "habitat_alpha": 0,
+   "region": "east_only",
+   "fmax_scale": 0.45
+  },
+  {
+   "name": "F0.4_frozen_modern",
+   "habitat_alpha": 0,
+   "region": "east_only",
+   "fmax_scale": 0.4
+  },
+  {
+   "name": "F0.35_frozen_modern",
+   "habitat_alpha": 0,
+   "region": "east_only",
+   "fmax_scale": 0.35
+  },
+  {
+   "name": "F0.3_frozen_modern",
+   "habitat_alpha": 0,
+   "region": "east_only",
+   "fmax_scale": 0.3
+  },
+  {
+   "name": "a85_release_only",
+   "habitat_alpha": 0.85,
+   "region": "east_only"
+  },
+  {
+   "name": "a95_release_only",
+   "habitat_alpha": 0.95,
+   "region": "east_only"
+  },
+  {
+   "name": "canary_repeat_fitted"
+  }
+ ]
+}

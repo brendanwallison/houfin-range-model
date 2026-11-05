@@ -1,0 +1,131 @@
+{
+ "note": "R3 step39: conspecific attraction in settlement (slows the front, not local growth)",
+ "arms": [
+  {
+   "name": "fitted"
+  },
+  {
+   "name": "frozen_modern_release1940",
+   "region": "east_only",
+   "habitat_alpha": 0,
+   "release_year": 1940
+  },
+  {
+   "name": "attr_a0.1_frozen",
+   "region": "east_only",
+   "habitat_alpha": 0,
+   "release_year": 1940,
+   "forward_args": {
+    "attraction": [
+     0.1,
+     0.1,
+     false
+    ]
+   }
+  },
+  {
+   "name": "attr_a0.25_frozen",
+   "region": "east_only",
+   "habitat_alpha": 0,
+   "release_year": 1940,
+   "forward_args": {
+    "attraction": [
+     0.25,
+     0.1,
+     false
+    ]
+   }
+  },
+  {
+   "name": "attr_a0.5_frozen",
+   "region": "east_only",
+   "habitat_alpha": 0,
+   "release_year": 1940,
+   "forward_args": {
+    "attraction": [
+     0.5,
+     0.1,
+     false
+    ]
+   }
+  },
+  {
+   "name": "attr_a1.0_frozen",
+   "region": "east_only",
+   "habitat_alpha": 0,
+   "release_year": 1940,
+   "forward_args": {
+    "attraction": [
+     1.0,
+     0.1,
+     false
+    ]
+   }
+  },
+  {
+   "name": "attr_a0.25_adults_frozen",
+   "region": "east_only",
+   "habitat_alpha": 0,
+   "release_year": 1940,
+   "forward_args": {
+    "attraction": [
+     0.25,
+     0.1,
+     true
+    ]
+   }
+  },
+  {
+   "name": "attr_a1.0_adults_frozen",
+   "region": "east_only",
+   "habitat_alpha": 0,
+   "release_year": 1940,
+   "forward_args": {
+    "attraction": [
+     1.0,
+     0.1,
+     true
+    ]
+   }
+  },
+  {
+   "name": "attr_a1.0_frozen_Krise",
+   "region": "east_only",
+   "habitat_alpha": 0,
+   "release_year": 1940,
+   "forward_args": {
+    "attraction": [
+     1.0,
+     0.1,
+     false
+    ]
+   },
+   "rate_edits": [
+    {
+     "field": "K",
+     "region": "all",
+     "form": "logistic",
+     "a": 2,
+     "t_mid": 1975,
+     "tau": 8
+    }
+   ]
+  },
+  {
+   "name": "attr_a1.0_a50",
+   "region": "east_only",
+   "habitat_alpha": 0.5,
+   "release_year": 1940,
+   "forward_args": {
+    "attraction": [
+     1.0,
+     0.1,
+     false
+    ]
+   }
+  },
+  {
+   "name": "canary_repeat_fitted"
+  }
+ ]
+}

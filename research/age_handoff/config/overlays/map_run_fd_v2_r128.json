@@ -1,0 +1,22 @@
+{
+  "_extends": "map_run80h_temporal.json",
+  "_comment": "Frozen correlated spatial/temporal readout and biology; equal isotropic coefficient variance across summer/winter. Only encoder representation and declared width/columns differ.",
+  "input_dir": "${HOUFIN_PROCESSED}/model_inputs/numpyro_input_fd_v2",
+  "latent_dim": 128,
+  "source_latent_dim": 128,
+  "kernel_contract": {
+    "kernel": "ruzicka_sum",
+    "centered": false,
+    "feature_prior": "isotropic"
+  },
+  "population_model": {
+    "readout": {
+      "rank": 128,
+      "feature_columns": null
+    }
+  },
+  "run_names": {
+    "map": "age_map_{precision}_fd_v2_r128",
+    "vis_map": "age_map_{precision}_fd_v2_r128"
+  }
+}

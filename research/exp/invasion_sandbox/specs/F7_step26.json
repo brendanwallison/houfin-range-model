@@ -1,0 +1,7 @@
+{"arms": [
+  {"name": "fitted"},
+  {"name": "frozen_modern", "habitat_alpha": 0},
+  {"name": "frozen_modern_release_only", "habitat_alpha": 0, "region": "east_only"},
+  {"name": "fitted_release_only", "region": "east_only"},
+  {"name": "canary_frozen_modern_release_only", "habitat_alpha": 0, "region": "east_only"}
+]}

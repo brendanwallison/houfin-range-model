@@ -1,0 +1,17 @@
+{
+  "_extends": "map_build_vl_r64.json",
+  "_comment": "Diagnostic final-candidate mean FEATURES, shared hashed coordinates; existing contaminated-completeness candidates, not production adoption.",
+  "path_features": {
+    "input_dir": "${HOUFIN_PROCESSED}/encoder/cube_desk_final_mean4_diag",
+    "output_dir": "${HOUFIN_PROCESSED}/latent_avian_paths_fd_v1"
+  },
+  "raw_z_dir": "${HOUFIN_PROCESSED}/latent_avian_paths_fd_v1",
+  "input_dir": "${HOUFIN_PROCESSED}/model_inputs/numpyro_input_fd_v1",
+  "latent_dim": 64,
+  "source_latent_dim": 64,
+  "kernel_contract": {
+    "kernel": "ruzicka",
+    "centered": false,
+    "feature_prior": "isotropic"
+  }
+}

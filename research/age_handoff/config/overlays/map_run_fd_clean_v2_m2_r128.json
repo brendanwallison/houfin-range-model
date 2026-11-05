@@ -1,0 +1,22 @@
+{
+  "_extends": "map_run80h_temporal.json",
+  "_comment": "Diagnostic clean v2 mean of seeds1/2, all128 seasonal coordinates; not a controlled comparison to old mean4.",
+  "input_dir": "${HOUFIN_PROCESSED}/model_inputs/numpyro_input_fd_clean_v2_m2",
+  "latent_dim": 128,
+  "source_latent_dim": 128,
+  "kernel_contract": {
+    "kernel": "ruzicka_sum",
+    "centered": false,
+    "feature_prior": "isotropic"
+  },
+  "population_model": {
+    "readout": {
+      "rank": 128,
+      "feature_columns": null
+    }
+  },
+  "run_names": {
+    "map": "age_map_{precision}_fd_clean_v2_m2_r128",
+    "vis_map": "age_map_{precision}_fd_clean_v2_m2_r128"
+  }
+}

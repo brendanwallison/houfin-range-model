@@ -1,0 +1,176 @@
+{
+ "note": "R3 step3: low F (fixed habitat) + shared capacity rise",
+ "arms": [
+  {
+   "name": "fitted"
+  },
+  {
+   "name": "F0.4_frozen_modern",
+   "region": "east_only",
+   "habitat_alpha": 0,
+   "fmax_scale": 0.4
+  },
+  {
+   "name": "F0.4_Krise_a1_t1975",
+   "region": "east_only",
+   "habitat_alpha": 0,
+   "fmax_scale": 0.4,
+   "rate_edits": [
+    {
+     "field": "K",
+     "region": "all",
+     "form": "logistic",
+     "a": 1,
+     "t_mid": 1975,
+     "tau": 8
+    }
+   ]
+  },
+  {
+   "name": "F0.4_Krise_a1_t1990",
+   "region": "east_only",
+   "habitat_alpha": 0,
+   "fmax_scale": 0.4,
+   "rate_edits": [
+    {
+     "field": "K",
+     "region": "all",
+     "form": "logistic",
+     "a": 1,
+     "t_mid": 1990,
+     "tau": 8
+    }
+   ]
+  },
+  {
+   "name": "F0.4_Krise_a2_t1975",
+   "region": "east_only",
+   "habitat_alpha": 0,
+   "fmax_scale": 0.4,
+   "rate_edits": [
+    {
+     "field": "K",
+     "region": "all",
+     "form": "logistic",
+     "a": 2,
+     "t_mid": 1975,
+     "tau": 8
+    }
+   ]
+  },
+  {
+   "name": "F0.4_Krise_a2_t1990",
+   "region": "east_only",
+   "habitat_alpha": 0,
+   "fmax_scale": 0.4,
+   "rate_edits": [
+    {
+     "field": "K",
+     "region": "all",
+     "form": "logistic",
+     "a": 2,
+     "t_mid": 1990,
+     "tau": 8
+    }
+   ]
+  },
+  {
+   "name": "F0.4_Krise_a4_t1975",
+   "region": "east_only",
+   "habitat_alpha": 0,
+   "fmax_scale": 0.4,
+   "rate_edits": [
+    {
+     "field": "K",
+     "region": "all",
+     "form": "logistic",
+     "a": 4,
+     "t_mid": 1975,
+     "tau": 8
+    }
+   ]
+  },
+  {
+   "name": "F0.4_Krise_a4_t1990",
+   "region": "east_only",
+   "habitat_alpha": 0,
+   "fmax_scale": 0.4,
+   "rate_edits": [
+    {
+     "field": "K",
+     "region": "all",
+     "form": "logistic",
+     "a": 4,
+     "t_mid": 1990,
+     "tau": 8
+    }
+   ]
+  },
+  {
+   "name": "F0.4_Krise_a2_t1975_with_west",
+   "habitat_alpha": 0,
+   "fmax_scale": 0.4,
+   "rate_edits": [
+    {
+     "field": "K",
+     "region": "all",
+     "form": "logistic",
+     "a": 2,
+     "t_mid": 1975,
+     "tau": 8
+    }
+   ]
+  },
+  {
+   "name": "F0.4_Krise_a2_t1975_eastonlyK",
+   "region": "east_only",
+   "habitat_alpha": 0,
+   "fmax_scale": 0.4,
+   "rate_edits": [
+    {
+     "field": "K",
+     "region": "east",
+     "form": "logistic",
+     "a": 2,
+     "t_mid": 1975,
+     "tau": 8
+    }
+   ]
+  },
+  {
+   "name": "F0.4_Frise_to1_t1975",
+   "region": "east_only",
+   "habitat_alpha": 0,
+   "fmax_scale": 0.4,
+   "rate_edits": [
+    {
+     "field": "Fmax",
+     "region": "all",
+     "form": "logistic",
+     "a": 1.5,
+     "t_mid": 1975,
+     "tau": 8
+    }
+   ]
+  },
+  {
+   "name": "F0.37_Krise_a2_t1975",
+   "region": "east_only",
+   "habitat_alpha": 0,
+   "fmax_scale": 0.37,
+   "rate_edits": [
+    {
+     "field": "K",
+     "region": "all",
+     "form": "logistic",
+     "a": 2,
+     "t_mid": 1975,
+     "tau": 8
+    }
+   ]
+  },
+  {
+   "name": "canary_repeat_fitted"
+  }
+ ]
+}

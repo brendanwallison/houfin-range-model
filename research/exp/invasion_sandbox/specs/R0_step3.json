@@ -1,0 +1,19 @@
+{"note": "R0 diagnosis on step3_obsroute refined. First two arms validate the harness against runs/step3_obsroute/out/front_speed.json (fitted -8/-4; frozen release-only -30/-26 at 1%/10%).",
+ "arms": [
+  {"name": "fitted"},
+  {"name": "frozen_modern_release_only", "habitat_alpha": 0, "alpha_ref": [1966, 2025], "region": "east_only"},
+  {"name": "fitted_release_only", "region": "east_only"},
+  {"name": "frozen_modern_with_west", "habitat_alpha": 0, "alpha_ref": [1966, 2025]},
+  {"name": "frozen_1951_65_release_only", "habitat_alpha": 0, "alpha_ref": [1951, 1965], "region": "east_only"},
+  {"name": "frozen_allyears_release_only", "habitat_alpha": 0, "alpha_ref": [1902, 2025], "region": "east_only"},
+  {"name": "a25_release_only", "habitat_alpha": 0.25, "alpha_ref": [1966, 2025], "region": "east_only"},
+  {"name": "a50_release_only", "habitat_alpha": 0.5, "alpha_ref": [1966, 2025], "region": "east_only"},
+  {"name": "a75_release_only", "habitat_alpha": 0.75, "alpha_ref": [1966, 2025], "region": "east_only"},
+  {"name": "frozen_modern_F050", "habitat_alpha": 0, "alpha_ref": [1966, 2025], "region": "east_only", "fmax_scale": 0.5},
+  {"name": "frozen_modern_F025", "habitat_alpha": 0, "alpha_ref": [1966, 2025], "region": "east_only", "fmax_scale": 0.25},
+  {"name": "frozen_modern_n50_x10", "habitat_alpha": 0, "alpha_ref": [1966, 2025], "region": "east_only", "allee_gamma_scale": 0.1},
+  {"name": "frozen_modern_n50_x100", "habitat_alpha": 0, "alpha_ref": [1966, 2025], "region": "east_only", "allee_gamma_scale": 0.01},
+  {"name": "west_only_frozen_modern", "habitat_alpha": 0, "alpha_ref": [1966, 2025], "region": "west_only"},
+  {"name": "west_only_fitted", "region": "west_only"},
+  {"name": "canary_repeat_frozen_modern_release_only", "habitat_alpha": 0, "alpha_ref": [1966, 2025], "region": "east_only"}
+ ]}

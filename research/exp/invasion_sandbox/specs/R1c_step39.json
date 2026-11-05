@@ -1,0 +1,180 @@
+{
+ "note": "R1c on the yearling gradual-Veit control step39_veit_fixed_s41 (B-cur): 1940 release replays, alpha, absolute Allee and East band ramps (directional weights supported in this code).",
+ "arms": [
+  {
+   "name": "fitted"
+  },
+  {
+   "name": "fitted_release_only",
+   "region": "east_only"
+  },
+  {
+   "name": "fitted_release1940",
+   "region": "east_only",
+   "release_year": 1940
+  },
+  {
+   "name": "frozen_modern_release_only",
+   "habitat_alpha": 0,
+   "region": "east_only"
+  },
+  {
+   "name": "frozen_modern_release1940",
+   "habitat_alpha": 0,
+   "region": "east_only",
+   "release_year": 1940
+  },
+  {
+   "name": "frozen_allyears_release1940",
+   "habitat_alpha": 0,
+   "alpha_ref": [
+    1902,
+    2025
+   ],
+   "region": "east_only",
+   "release_year": 1940
+  },
+  {
+   "name": "frozen_modern_with_west",
+   "habitat_alpha": 0
+  },
+  {
+   "name": "a25_release1940",
+   "habitat_alpha": 0.25,
+   "region": "east_only",
+   "release_year": 1940
+  },
+  {
+   "name": "a50_release1940",
+   "habitat_alpha": 0.5,
+   "region": "east_only",
+   "release_year": 1940
+  },
+  {
+   "name": "a75_release1940",
+   "habitat_alpha": 0.75,
+   "region": "east_only",
+   "release_year": 1940
+  },
+  {
+   "name": "a90_release1940",
+   "habitat_alpha": 0.9,
+   "region": "east_only",
+   "release_year": 1940
+  },
+  {
+   "name": "A1_abs_n50_0.01_rel1940",
+   "habitat_alpha": 0,
+   "region": "east_only",
+   "release_year": 1940,
+   "n50_birds_km2": 0.01
+  },
+  {
+   "name": "A1_abs_n50_0.03_rel1940",
+   "habitat_alpha": 0,
+   "region": "east_only",
+   "release_year": 1940,
+   "n50_birds_km2": 0.03
+  },
+  {
+   "name": "A1_abs_n50_0.06_rel1940",
+   "habitat_alpha": 0,
+   "region": "east_only",
+   "release_year": 1940,
+   "n50_birds_km2": 0.06
+  },
+  {
+   "name": "A1_abs_n50_0.1_rel1940",
+   "habitat_alpha": 0,
+   "region": "east_only",
+   "release_year": 1940,
+   "n50_birds_km2": 0.1
+  },
+  {
+   "name": "A1_abs_n50_0.2_rel1940",
+   "habitat_alpha": 0,
+   "region": "east_only",
+   "release_year": 1940,
+   "n50_birds_km2": 0.2
+  },
+  {
+   "name": "B1_ramp_-2.0_1940_1965",
+   "habitat_alpha": 0,
+   "region": "east_only",
+   "release_year": 1940,
+   "band_ramp": {
+    "region": "east",
+    "logw_start": [
+     -2.0,
+     -4.0
+    ],
+    "year_start": 1940,
+    "year_end": 1965
+   }
+  },
+  {
+   "name": "B1_ramp_-2.0_1950_1980",
+   "habitat_alpha": 0,
+   "region": "east_only",
+   "release_year": 1940,
+   "band_ramp": {
+    "region": "east",
+    "logw_start": [
+     -2.0,
+     -4.0
+    ],
+    "year_start": 1950,
+    "year_end": 1980
+   }
+  },
+  {
+   "name": "B1_ramp_-4.0_1940_1970",
+   "habitat_alpha": 0,
+   "region": "east_only",
+   "release_year": 1940,
+   "band_ramp": {
+    "region": "east",
+    "logw_start": [
+     -4.0,
+     -8.0
+    ],
+    "year_start": 1940,
+    "year_end": 1970
+   }
+  },
+  {
+   "name": "B1_ramp_-2_1940_65_a50",
+   "habitat_alpha": 0.5,
+   "region": "east_only",
+   "release_year": 1940,
+   "band_ramp": {
+    "region": "east",
+    "logw_start": [
+     -2.0,
+     -4.0
+    ],
+    "year_start": 1940,
+    "year_end": 1965
+   }
+  },
+  {
+   "name": "combo_A1_0.06_B1",
+   "habitat_alpha": 0,
+   "region": "east_only",
+   "release_year": 1940,
+   "n50_birds_km2": 0.06,
+   "band_ramp": {
+    "region": "east",
+    "logw_start": [
+     -2.0,
+     -4.0
+    ],
+    "year_start": 1940,
+    "year_end": 1965
+   }
+  },
+  {
+   "name": "canary_repeat_fitted"
+  }
+ ]
+}

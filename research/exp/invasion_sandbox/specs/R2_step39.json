@@ -1,0 +1,108 @@
+{
+ "note": "R2 step39 (yearling): same, 1940 release",
+ "arms": [
+  {
+   "name": "fitted"
+  },
+  {
+   "name": "fitted_release_only",
+   "region": "east_only"
+  },
+  {
+   "name": "F0.5_frozen_modern",
+   "region": "east_only",
+   "habitat_alpha": 0,
+   "fmax_scale": 0.5,
+   "release_year": 1940
+  },
+  {
+   "name": "F0.45_frozen_modern",
+   "region": "east_only",
+   "habitat_alpha": 0,
+   "fmax_scale": 0.45,
+   "release_year": 1940
+  },
+  {
+   "name": "F0.42_frozen_modern",
+   "region": "east_only",
+   "habitat_alpha": 0,
+   "fmax_scale": 0.42,
+   "release_year": 1940
+  },
+  {
+   "name": "F0.4_frozen_modern",
+   "region": "east_only",
+   "habitat_alpha": 0,
+   "fmax_scale": 0.4,
+   "release_year": 1940
+  },
+  {
+   "name": "F0.37_frozen_modern",
+   "region": "east_only",
+   "habitat_alpha": 0,
+   "fmax_scale": 0.37,
+   "release_year": 1940
+  },
+  {
+   "name": "F0.35_frozen_modern",
+   "region": "east_only",
+   "habitat_alpha": 0,
+   "fmax_scale": 0.35,
+   "release_year": 1940
+  },
+  {
+   "name": "F0.42_frozen_modern_with_west",
+   "habitat_alpha": 0,
+   "fmax_scale": 0.42,
+   "release_year": 1940
+  },
+  {
+   "name": "F0.42_frozen_modern_west_only",
+   "region": "west_only",
+   "habitat_alpha": 0,
+   "fmax_scale": 0.42
+  },
+  {
+   "name": "F0.4_frozen_modern_with_west",
+   "habitat_alpha": 0,
+   "fmax_scale": 0.4,
+   "release_year": 1940
+  },
+  {
+   "name": "F0.4_frozen_modern_west_only",
+   "region": "west_only",
+   "habitat_alpha": 0,
+   "fmax_scale": 0.4
+  },
+  {
+   "name": "A2_floor_0.0003",
+   "region": "east_only",
+   "habitat_alpha": 0,
+   "floor": 0.0003,
+   "release_year": 1940
+  },
+  {
+   "name": "A2_floor_0.001",
+   "region": "east_only",
+   "habitat_alpha": 0,
+   "floor": 0.001,
+   "release_year": 1940
+  },
+  {
+   "name": "A2_floor_0.003",
+   "region": "east_only",
+   "habitat_alpha": 0,
+   "floor": 0.003,
+   "release_year": 1940
+  },
+  {
+   "name": "F0.4_fitted_habitat",
+   "region": "east_only",
+   "fmax_scale": 0.4,
+   "release_year": 1940
+  },
+  {
+   "name": "canary_repeat_fitted"
+  }
+ ]
+}

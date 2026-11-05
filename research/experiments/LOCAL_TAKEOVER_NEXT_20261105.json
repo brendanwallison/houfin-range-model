@@ -42,14 +42,11 @@
                  "interpretation":  "Expanded partial fit with direct change prior; diagnostic only"
              },
     "next_actions":  [
-                         "Read the completed campaign_01 report and compact evidence in structural-readouts; maintain active objective, not just implementation milestones",
-                         "Collect campaign_02 matched-width sigmoid, compact-midpoint and warm refinements; collector is armed. Revalidate specific process/session identities first",
-                         "Collect dispersed CPU compact-start fit on completion, then run matching readout; standalone CPU start is not in campaign_02 collector cases",
-                         "Compare onset timing, disease recovery and severity, actual-stage mortality, raw data likelihood and prediction before interpreting sharpness. All existing heldouts are development evidence",
-                         "Refine informative arms and add the third dispersed start; use output-level likelihood profiles to distinguish structural shape from prior selection",
-                         "Independent capacity still merits lower-growth profiling despite an increased MAP swing; do not adopt or reject solely on smaller lambda",
-                         "Keep original 24 unrelated modified paths and scientific untracked work preserved; continue dependency-coherent organization. Published branches are available on origin",
-                         "Consider adding shell-runner/runtime-flag hashes to future campaign guards after the running queue finishes; do not mutate active queued sources"
+                         "Revalidate campaign_03 GPU process/session 48959, its collector 71618 and CPU start2 PID379275/session62235/start_ticks16688838; do not restart from stale logs",
+                         "Campaign_02 is complete: compact-midpoint and matched-width sigmoid give similar first-cap results; warm compact-start has East potential medians .615 to1.209 versus original .481 to1.527. Collect full likelihood/prediction/timing details before inference",
+                         "Collect third dispersed GPU start and CPU start2, then refined independent-capacity arms; compare starts with same likelihood and diagnostics",
+                         "Develop output-level likelihood profiles next; direct output penalties remain diagnostics only, not primary structural solutions",
+                         "Keep original local changes preserved and continue coherent Git organization; all reviewed branches and latest preregistration are published"
                      ],
     "runtime":  {
                     "runner":  "research/bin/local_takeover_run.sh in canonical worktree",
@@ -78,7 +75,8 @@
                                "42a0c1c",
                                "d74b386",
                                "3d33f31",
-                               "b92694b"
+                               "b92694b",
+                               "8a9a1af"
                            ],
     "current_processes":  {
                               "cpu_start2":  {
@@ -91,15 +89,8 @@
                                              },
                               "policy":  "Revalidate exact handles/PIDs and start ticks; never restart from stale logs or observation timeout",
                               "campaign02":  {
-                                                 "later_cases":  [
-                                                                     "f0_d1_refine",
-                                                                     "f0_d0_refine"
-                                                                 ],
-                                                 "parent_pid":  377982,
-                                                 "source":  "field-geometry at b92694b; do not edit queued model/runner sources",
-                                                 "tool_session":  58702,
-                                                 "active_case_at_check":  "f0_sigmoid_matched",
-                                                 "child_pid":  378799
+                                                 "state":  "terminal; all four children and readouts completed",
+                                                 "root":  ".research_runtime/takeover/campaign_02"
                                              },
                               "checked_unix":  1793891790,
                               "cpu_monitor":  {
@@ -108,11 +99,18 @@
                                                   "tool_session":  23919
                                               },
                               "collector":  {
-                                                "root":  ".research_runtime/takeover/campaign_02_readouts",
-                                                "pid":  379280,
-                                                "tool_session":  13638,
-                                                "cores":  "8-15 for readout children"
-                                            }
+                                                "root":  ".research_runtime/takeover/campaign_03_readouts",
+                                                "tool_session":  71618,
+                                                "cores":  "8-15"
+                                            },
+                              "campaign03":  {
+                                                 "root":  ".research_runtime/takeover/campaign_03",
+                                                 "parent_pid":  382611,
+                                                 "source":  "field-geometry at 8a9a1af; immutable while queue runs",
+                                                 "case_at_launch":  "f0_d1_start3",
+                                                 "tool_session":  48959,
+                                                 "child_at_launch":  382614
+                                             }
                           },
     "readout_worktree":  "C:/Dev/houfin-range-model/.worktrees/structural-readouts",
     "readout_commit":  "642404c",

@@ -1,0 +1,83 @@
+{
+  "_comment": [
+    "run_53b = run_53a with demography PINNED to Veit & Lewis: Sa .72, Sj .64 (ratio .889), Fmax .75 per breeder (c = 1.5 offspring per pair) -> lambda0 = .72 + .64*.75 = 1.20.",
+    "Veit & Lewis 1996 eqs. 5-8: pairs P = B^2/(r+2B) (r = 2*n50), nest sites H = P/(1+P/delta) with delta = K/2, births 2*Fmax*H; K is site capacity, equilibrium emergent. Parallel reference model: same inputs/priors as our model so adjustments stay comparable."
+  ],
+  "input_dir": "${HOUFIN_PROCESSED}/model_inputs/numpyro_input_vl",
+  "population_model": {
+    "dispersal_random_enabled": false,
+    "manifold_prior": {
+      "form": "exchangeable",
+      "coupling_target": 0.85,
+      "coupling_logit_scale": 0.15,
+      "amplitude_scale": [
+        1.0263,
+        1.0263,
+        1.0227,
+        1.0263
+      ],
+      "fixed_coupling": null
+    },
+    "habitat_centering": "occupied",
+    "capacity_level_prior": {
+      "target_level_median_route_counts": 3.0,
+      "alpha_k_scale": 1.0
+    },
+    "allee_prior": {
+      "n50_raw_loc": -3.4915,
+      "n50_raw_scale": 0.25
+    },
+    "juvenile_survival": {
+      "form": "ratio",
+      "ratio_logit_loc": 0.405,
+      "ratio_logit_scale": 0.5
+    },
+    "settlement": {
+      "form": "none"
+    },
+    "invasion_pulse_prior": {
+      "form": "single",
+      "n_sites": 1,
+      "n_years": 1,
+      "total_median": 1.0,
+      "total_log_sd": 1.0,
+      "global_q50_route_counts": 0.7083
+    },
+    "dispersal_kernel": {
+      "band_weights": false
+    },
+    "disease_prior": {
+      "target": "survival",
+      "mortality_ceiling": 0.8
+    },
+    "observation": {
+      "form": "breeding",
+      "fledgling_weight_a": 1.0,
+      "fledgling_weight_b": 4.0,
+      "conc_density_power": true,
+      "conc_density_power_scale": 0.5
+    },
+    "fecundity_prior": {
+      "loc": 4.993,
+      "scale": 0.75
+    },
+    "pinned_sites": {
+      "alpha_a": 0.9444616088408513,
+      "alpha_j": 2.0794415416798366,
+      "alpha_f": 0.11064653495964596
+    },
+    "dispersal_departure": {
+      "form": "veit"
+    },
+    "reproduction": {
+      "form": "veit"
+    }
+  },
+  "run_names": {
+    "map": "age_map_{precision}_run_53b",
+    "vis_map": "age_map_{precision}_run_53b"
+  },
+  "dispersal": {
+    "adult_shape": 0.859
+  }
+}

@@ -132,6 +132,84 @@ def first_year_flags(runs):
     return out
 
 
+_ROUTE_KEYS = ["CountryNum", "StateNum", "Route"]
+_RUN_KEYS = _ROUTE_KEYS + ["Year"]
+
+
+def observer_route_indices(obs, flagged_runs, mexico_tier=QUALITY_MX_UNPROCESSED):
+    """Per-observation route / observer-route / first-year arrays, aligned with ``obs`` (pure).
+
+    ``obs`` has ``CountryNum, StateNum, Route, Year, quality_tier`` (one row per observation,
+    in output order); ``flagged_runs`` is ``first_year_flags(load_run_metadata())``. Returns
+    ``(route_idx, obsroute_idx, first_year, info)``:
+
+    * ``route_idx`` -- contiguous id of (CountryNum, StateNum, Route). Mexico routes carry
+      their own CountryNum, so they get their own ids automatically.
+    * ``obsroute_idx`` -- contiguous id of observer x route (bbsBayes2's ``obs_route``).
+      Mexico (``quality_tier == mexico_tier``) has no ObsN: ONE id per Mexico route.
+      A standard-tier observation whose route-year has no QC-passing Weather row with an
+      observer (should be ~0, since counts come from the same QC table) gets its OWN
+      SINGLETON id: it then carries a u drawn only from the prior (0 at a mode), i.e. it is
+      treated exactly as the model treated every observation before this effect existed,
+      rather than being pooled with an observer it may not belong to.
+    * ``first_year`` -- 0/1; Mexico and unmatched rows are 0 (unknown -> no adjustment).
+
+    Ids are sorted-key factorizations, so they are deterministic for a given input.
+    If one route-year has several observers in the run table (never expected for RPID 101),
+    the lowest ObsN is kept and the count is reported in ``info``.
+    """
+    obs = obs.reset_index(drop=True)
+    runs = flagged_runs[_RUN_KEYS + ["ObsN", "first_year"]].sort_values(_RUN_KEYS + ["ObsN"])
+    n_dup = int(runs.duplicated(_RUN_KEYS).sum())
+    runs = runs.drop_duplicates(_RUN_KEYS, keep="first")
+
+    is_mx = (obs["quality_tier"].to_numpy() == mexico_tier)
+    joined = obs[_RUN_KEYS].merge(runs, on=_RUN_KEYS, how="left", validate="many_to_one")
+    if len(joined) != len(obs):  # left merge with many_to_one cannot change length; belt+braces
+        raise AssertionError("observer join changed the observation count")
+    has_obs = joined["ObsN"].notna().to_numpy() & ~is_mx
+    unmatched = ~has_obs & ~is_mx
+
+    rk = (obs["CountryNum"].astype(str) + "/" + obs["StateNum"].astype(str) + "/"
+          + obs["Route"].astype(str))
+    route_idx = pd.factorize(rk, sort=True)[0].astype(np.int64)
+
+    obsn = joined["ObsN"].fillna(-1).astype(np.int64).astype(str)
+    key = np.where(is_mx, "mx|" + rk,
+                   np.where(has_obs, "obs|" + rk + "|" + obsn,
+                            "noobs|" + rk + "|" + obs["Year"].astype(str) + "|"
+                            + pd.Series(np.arange(len(obs))).astype(str)))
+    obsroute_idx = pd.factorize(pd.Series(key), sort=True)[0].astype(np.int64)
+
+    first_year = np.where(has_obs, joined["first_year"].fillna(0).to_numpy(), 0).astype(np.int64)
+    info = {"n_obs": int(len(obs)), "n_mexico": int(is_mx.sum()),
+            "n_unmatched_observer": int(unmatched.sum()), "n_duplicate_run_observers": n_dup,
+            "n_routes": int(route_idx.max() + 1) if len(obs) else 0,
+            "n_obsroutes": int(obsroute_idx.max() + 1) if len(obs) else 0}
+    return route_idx, obsroute_idx, first_year, info
+
+
+def mexico_rows_from_reference(ref_npz_path):
+    """Tier-1 (Mexico) rows of an earlier npz, for a rebuild where the Mexico release is absent.
+
+    The npz does not record route ids, only the grid cell, so each Mexico CELL stands in for
+    a route (one route-level and one observer-route id per cell). Used only through
+    ``--mexico-from-npz``; returns a frame with the columns main() appends after mapping.
+    """
+    ref = np.load(ref_npz_path)
+    n_p = int(ref["N_pseudo"])
+    q = ref["obs_quality"][n_p:]
+    sel = q == QUALITY_MX_UNPROCESSED
+    rows, cols = ref["obs_rows"][n_p:][sel], ref["obs_cols"][n_p:][sel]
+    return pd.DataFrame({
+        # Synthetic, clearly non-BBS route keys: CountryNum 484 (Mexico), StateNum -1,
+        # Route = flattened cell id. Unique per cell, disjoint from every real route.
+        "CountryNum": 484, "StateNum": -1, "Route": rows * 100000 + cols,
+        "Year": ref["obs_year"][n_p:][sel], "SpeciesTotal": ref["observed_results"][n_p:][sel],
+        "quality_tier": QUALITY_MX_UNPROCESSED, "row": rows, "col": cols,
+    })
+
+
 def load_usca_observations(aou_filter=HOUSE_FINCH_AOU, return_coverage=False):
     """US/Canada counts screened to protocol runs (RunType!=0 & RPID==101).
 
@@ -426,7 +504,20 @@ def generate_core_margin_initialization(obs_df, ny, nx, transform, land_mask):
     return initpop_counts, p_rows, p_cols, p_years, p_counts
 
 
-def main():
+def _parse_args(argv=None):
+    import argparse
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument("--out-name", default="bbs_data_for_python.npz",
+                    help="output file name inside the BBS release dir. Use a NEW name when the "
+                         "existing file is in use by runs (it is overwritten otherwise).")
+    ap.add_argument("--mexico-from-npz", default=None,
+                    help="if the Mexico release is absent locally, carry the tier-1 rows of this "
+                         "earlier npz instead (each Mexico cell stands in for one route).")
+    return ap.parse_args(argv)
+
+
+def main(argv=None):
+    args = _parse_args(argv)
     land_mask, ocean_mask, transform, crs, nx, ny = load_grid_reference(MASK_PATH)
 
     frames = [load_usca_observations()]
@@ -442,7 +533,24 @@ def main():
         mapped, ny, nx, transform, land_mask)
     p_quality = np.full(len(p_years), QUALITY_STANDARD, dtype=int)  # derived absences
 
-    out_path = os.path.join(BBS_PARENT_DIR, "bbs_data_for_python.npz")
+    if mexico is None and args.mexico_from_npz:
+        # Appended AFTER the seed/pseudo-zero step: that step only reads pre-1970 rows and
+        # Mexico starts in 2008, and the original concat also put Mexico last -- so the
+        # row order and every other array match a build that had the Mexico release.
+        mx = mexico_rows_from_reference(args.mexico_from_npz)
+        mx = mx[(mx["Year"] >= START_YEAR) & (mx["Year"] <= END_YEAR)]
+        print(f"  Mexico: {len(mx)} route-years carried from {args.mexico_from_npz} "
+              "(cell = route proxy).")
+        mapped = pd.concat([mapped, mx], ignore_index=True)
+
+    # Observer submodel inputs (age_priors observer_effect). Pseudo-zeros have no route and no
+    # observer: -1 / -1 / 0, and the model leaves them untouched.
+    route_idx, obsroute_idx, first_year, oinfo = observer_route_indices(
+        mapped, first_year_flags(load_run_metadata()))
+    print(f"  Observer join: {oinfo}")
+    n_ps = len(p_counts)
+
+    out_path = os.path.join(BBS_PARENT_DIR, args.out_name)
     np.savez(
         out_path,
         Nx=nx, Ny=ny,
@@ -452,6 +560,9 @@ def main():
         obs_year=np.concatenate([p_years, mapped["Year"].values]).astype(int),
         observed_results=np.concatenate([p_counts, mapped["SpeciesTotal"].values]).astype(int),
         obs_quality=np.concatenate([p_quality, mapped["quality_tier"].values]).astype(int),
+        obs_route_idx=np.concatenate([np.full(n_ps, -1), route_idx]).astype(int),
+        obs_obsroute_idx=np.concatenate([np.full(n_ps, -1), obsroute_idx]).astype(int),
+        obs_first_year=np.concatenate([np.zeros(n_ps), first_year]).astype(int),
         # DIMENSIONLESS shape (core=1, margin=observed ratio). The model scales it by
         # LOCAL K_base at t=0 x initpop_seed.core_fraction_of_local_capacity, so the
         # seed is always a known fraction of the capacity those specific cells can

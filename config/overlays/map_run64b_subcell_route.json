@@ -1,0 +1,9 @@
+{
+  "_extends": "map_run64a_subcell_smooth.json",
+  "_comment": ["E064b: E064a crossed with a bounded persistent route effect (sd pinned 0.7)."],
+  "population_model": {
+    "observation": {"route_effects": true},
+    "pinned_sites": {"obs_route_sd": 0.7}
+  },
+  "run_names": {"map": "age_map_{precision}_run_64b", "vis_map": "age_map_{precision}_run_64b"}
+}

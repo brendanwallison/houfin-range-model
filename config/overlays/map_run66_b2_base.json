@@ -1,0 +1,20 @@
+{
+  "_extends": "map_run62b_numerics.json",
+  "_comment": [
+    "E066 base B2 = B1 (62b) + the calibrated intercept drift (E057 P0; null and recovery passed)."
+  ],
+  "population_model": {
+    "covariate_drift": {
+      "form": "intercept",
+      "fields": [
+        "adult_survival",
+        "fecundity",
+        "capacity",
+        "juvenile_survival"
+      ],
+      "n_basis": 3,
+      "budget": 0.2,
+      "window_start": 1966
+    }
+  }
+}

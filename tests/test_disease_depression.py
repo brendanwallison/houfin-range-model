@@ -485,3 +485,17 @@ def test_capacity_level_prior_is_declared_in_route_counts():
     else:                                             # exp / LogNormal link
         level = float(cfg["median_route_counts"])
     assert 1.0 < level < 8.0, f"level prior {level:.2f} counts is implausible"
+
+
+def test_mortality_amplitude_gates_on_onset_and_resistance_relaxes_it():
+    from src.model.age_fields import disease_mortality_amplitude, disease_onset_timestep
+    d = _disease()
+    onset = np.asarray(disease_onset_timestep(d))
+    before = np.asarray(disease_mortality_amplitude(d, float(onset.min() - 15.0)))
+    peak = np.asarray(disease_mortality_amplitude(d, float(onset.max() + 2.0)))
+    late = np.asarray(disease_mortality_amplitude(d, float(onset.max() + 8 * float(d["tau_rec"]))))
+    assert before.max() < 1e-3 * d["ceiling"]
+    assert np.all(peak <= d["ceiling"] + 1e-9) and peak.max() > 0.1 * d["ceiling"]
+    no_res = dict(d, rec=0.0)
+    unresisted = np.asarray(disease_mortality_amplitude(no_res, float(onset.max() + 8 * float(d["tau_rec"]))))
+    np.testing.assert_allclose(late, unresisted * (1 - float(d["rec"])), rtol=0.02)  # resisted share

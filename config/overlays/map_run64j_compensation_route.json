@@ -1,0 +1,9 @@
+{
+  "_extends": "map_run64i_compensation_both.json",
+  "_comment": ["E064j: both habitat-specific compensation mechanisms crossed with bounded route effects."],
+  "population_model": {
+    "observation": {"route_effects": true},
+    "pinned_sites": {"obs_route_sd": 0.7}
+  },
+  "run_names": {"map": "age_map_{precision}_run_64j", "vis_map": "age_map_{precision}_run_64j"}
+}

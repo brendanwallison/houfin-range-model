@@ -10,7 +10,8 @@ import rasterio
 from rasterio.warp import transform as project_coords
 
 import jax.numpy as jnp
-from src.model.build_kernels import build_simulation_struct, dispersal_spec
+from src.model.build_kernels import build_simulation_struct, dispersal_spec, kernel_discretization
+from src.model.dispersal_spec import POINT_DISCRETIZATION
 from src.config_utils import load_age_model_config
 from src.data.masks import read_land_mask
 from src.temporal import (assert_contiguous, disease_timestep, invasion_timestep,
@@ -34,6 +35,7 @@ MODEL_LATENT_DIM = int(_cfg.get("latent_dim", 64))
 SOURCE_LATENT_DIM = int(_cfg.get("source_latent_dim", MODEL_LATENT_DIM))
 KERNEL_CONTRACT = dict(_cfg.get("kernel_contract", {}))
 DISPERSAL_SPEC = dispersal_spec(_cfg)
+KERNEL_DISCRETIZATION = kernel_discretization(_cfg)
 POPULATION_SPEC = dict(_cfg["population_model"])
 
 # --- DISEASE-TERM SPATIAL BASIS SETTINGS ---
@@ -238,6 +240,15 @@ def nearest_land_cells(row, col, land_rows, land_cols, n):
     return np.stack([land_rows[nearest], land_cols[nearest]], axis=1).astype(np.int64)
 
 # Main Execution
+def dense_ids(idx):
+    """Re-index non-negative ids to 0..n-1 (sorted order); -1 (pseudo-zero, no route) stays -1."""
+    idx = np.asarray(idx)
+    out = np.full(idx.shape, -1, dtype=np.int64)
+    real = idx >= 0
+    out[real] = np.unique(idx[real], return_inverse=True)[1].reshape(-1)
+    return out
+
+
 def ingest_data():
     print(f"--- Starting Data Ingestion (grid-native, latent_dim={MODEL_LATENT_DIM}, "
           f"kernel={KERNEL_CONTRACT.get('kernel', 'unspecified')}, "
@@ -249,6 +260,10 @@ def ingest_data():
     with open(path_meta_path, encoding="utf-8") as fh:
         path_meta = json.load(fh)
     source_contract = path_meta.get("kernel_contract") or {}
+    from src.community_encoder.cube_contract import validate_cube_contract
+    validate_cube_contract(source_contract)
+    if source_contract["kernel"] == "ruzicka_sum" and MODEL_LATENT_DIM != SOURCE_LATENT_DIM:
+        raise ValueError("build complete seasonal inputs; select per-block prefixes explicitly in the readout")
     expected_contract = {
         "kernel": KERNEL_CONTRACT.get("kernel", "ruzicka"),
         "centered": bool(KERNEL_CONTRACT.get("centered", False)),
@@ -261,8 +276,18 @@ def ingest_data():
     if source_contract.get("temporal_output") != "raw_instantaneous":
         raise ValueError("age model requires instantaneous raw DESK Z; rebuild the cube/path "
                          f"features (got temporal_output={source_contract.get('temporal_output')!r})")
-    if path_meta.get("dispersal") != DISPERSAL_SPEC:
+    # Path features (Z_disp) are built from the JUVENILE kernel stack only
+    # (generate_all_path_features uses make_juvenile_kernel_stack), so the adult kernel's keys are
+    # excluded here: changing the adult kernel (e.g. Veit & Lewis 1996's a_A = 0.859) must not force a
+    # 124-year Z_disp rebuild. Every juvenile/path key is still compared exactly.
+    _ADULT = ("adult_mdd_km", "adult_shape")
+    _strip = lambda d: {k: v for k, v in (d or {}).items() if k not in _ADULT}     # noqa: E731
+    if _strip(path_meta.get("dispersal")) != _strip(DISPERSAL_SPEC):
         raise ValueError("path-feature dispersal specification differs from age_model_config; "
+                         "regenerate Z_disp before ingestion")
+    # Absent record = a build from before the switch existed, i.e. point sampling.
+    if path_meta.get("kernel_discretization", POINT_DISCRETIZATION) != KERNEL_DISCRETIZATION:
+        raise ValueError("path-feature kernel_discretization differs from age_model_config; "
                          "regenerate Z_disp before ingestion")
     if int(path_meta.get("integration_steps", -1)) != DISPERSAL_SPEC["path_integration_steps"]:
         raise ValueError("path-feature integration step count differs from age_model_config")
@@ -336,6 +361,16 @@ def ingest_data():
     # c. Subsample
     n_target = int(len(unique_pseudo_locs) * sampling_density)
     n_target = max(n_target, 50)
+    # Optional explicit site count (config pseudo_zero_subsample.n_sites; absent = the density rule
+    # above, unchanged). A coarser-grid build sets it to hold the pre-invasion ABSENCE OBSERVATION
+    # count of a reference build fixed (research/experiments/GRID54_INPUTS_2026-10-29.md).
+    _pz_sites = (_cfg.get("pseudo_zero_subsample") or {}).get("n_sites")
+    if _pz_sites is not None:
+        if int(_pz_sites) > len(unique_pseudo_locs):
+            raise ValueError(f"pseudo_zero_subsample.n_sites={_pz_sites} exceeds the "
+                             f"{len(unique_pseudo_locs)} available pseudo-zero sites")
+        n_target = int(_pz_sites)
+        sampling_density = n_target / len(unique_pseudo_locs)
     
     print(f"  Subsampling Pseudo-Zeros: Target {n_target} sites (Density {sampling_density:.4f})")
     
@@ -376,6 +411,12 @@ def ingest_data():
     obs_year = obs_year[valid_locs]
     observed_results = observed_results[valid_locs]
     obs_quality = obs_quality[valid_locs]
+    # Observer-route submodel inputs (bbs.py; age_priors observation.observer_effect). Optional:
+    # older npz files lack them and ingest exactly as before. Pseudo-zeros get -1 / -1 / 0.
+    observer_obs = {k: np.concatenate([np.full(len(final_p_years), -1 if k != "obs_first_year" else 0),
+                                       bbs_data[k][real_indices]])[valid_locs]
+                    for k in ("obs_route_idx", "obs_obsroute_idx", "obs_first_year")
+                    if k in bbs_data.files}
     
     print(f"  Final Observations: {len(observed_results)}")
 
@@ -535,6 +576,7 @@ def ingest_data():
         adult_shape=DISPERSAL_SPEC["adult_shape"],
         juvenile_shape=DISPERSAL_SPEC["juvenile_shape"],
         radii_splits=DISPERSAL_SPEC["juvenile_radial_splits_km"],
+        discretization=KERNEL_DISCRETIZATION,
     )
     if [str(x) for x in sim_struct["labels"]] != expected_labels:
         raise ValueError("forward-model juvenile kernel labels differ from Z_disp labels")
@@ -590,6 +632,9 @@ def ingest_data():
             # config/overlays/map_new_z.json warns about.
             "desk_checkpoint": source_contract.get("desk_checkpoint"),
             "esk_basis_dir": source_contract.get("esk_basis_dir"),
+            "feature_blocks": source_contract.get("feature_blocks"),
+            "ensemble_members": source_contract.get("ensemble_members"),
+            "ensemble_method": source_contract.get("ensemble_method"),
         },
         # Disease term: two smooth land-centered spatial bases, the exogenous
         # arrival map (timestep units) and its decade-scaled version, and the
@@ -613,6 +658,7 @@ def ingest_data():
         "juvenile_edge_correction_stack": np.array(sim_struct['juvenile_edge_correction_stack']),
         "juvenile_kernel_labels": expected_labels,
         "dispersal_spec": DISPERSAL_SPEC,
+        "kernel_discretization": KERNEL_DISCRETIZATION,
         "path_feature_meta": path_meta,
         "age_structure_prior": dict(_cfg["age_structure_prior"]),
         "population_model_spec": POPULATION_SPEC,
@@ -621,6 +667,9 @@ def ingest_data():
         "obs_cols": np.array(obs_cols[valid_obs_mask]),
         "observed_results": np.array(observed_results[valid_obs_mask]),
         "obs_quality": np.array(obs_quality[valid_obs_mask]),
+        # Ids re-densified after the year filter, so every observer-route effect has data.
+        **{k: (dense_ids(v[valid_obs_mask]) if k.endswith("_idx") else np.array(v[valid_obs_mask]))
+           for k, v in observer_obs.items()},
         "initpop_latent": initpop_map,
         # THE GAUGE (expected BBS route counts per relative density unit). Renamed
         # from ..._birds_per_relative_unit, which it never was -- a BBS count is a

@@ -9,7 +9,15 @@ import jax
 
 def require_gpu(context: str = "model") -> object:
     """Return the active GPU or fail before an expensive job falls back to CPU."""
-    gpus = jax.devices("gpu")
+    if os.environ.get("HOUFIN_ALLOW_CPU") == "1":
+        # Rehearsal only (research/age_model/exp/make_rehearsal.py): run the pipeline on a laptop.
+        device = jax.devices()[0]
+        print(f"[cpu] {context}: HOUFIN_ALLOW_CPU=1 -- running on {device} (rehearsal, not production)")
+        return device
+    try:
+        gpus = jax.devices("gpu")
+    except RuntimeError:
+        gpus = []
     if not gpus:
         raise RuntimeError(
             f"{context} requires a JAX GPU, but jax.devices('gpu') is empty. "

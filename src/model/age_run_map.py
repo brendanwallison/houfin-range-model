@@ -83,6 +83,10 @@ CKPT_PATH = os.path.join(OUTPUT_DIR, "map_checkpoint.pkl")
 PARAMS_PATH = os.path.join(OUTPUT_DIR, "map_params.pkl")
 
 
+# HOUFIN_MAP_SEED: the AutoDelta init key (default 41, the historical value). Seed replicates of a cold MAP
+# (E078: is a plausible refined basin a lucky start?) change only the starting point, so the fingerprint ignores it.
+MAP_SEED = int(os.environ.get("HOUFIN_MAP_SEED", "41"))
+
 def _validate_schedule():
     starts = [x[0] for x in PRIOR_RELAXATION]
     scales = [x[1] for x in PRIOR_RELAXATION]
@@ -265,7 +269,7 @@ def run_map():
         # step so the traced model matches the continuation, though constrain_fn depends only
         # on parameter supports and not on the scale.
         svi.init(
-            jax.random.PRNGKey(41),
+            jax.random.PRNGKey(MAP_SEED),
             data=data_dict,
             prior_scale=_prior_scale_for_step(start_step),
         )
@@ -273,7 +277,7 @@ def run_map():
     else:
         print("Compiling model (fresh optimizer state)...")
         svi_state = svi.init(
-            jax.random.PRNGKey(41),
+            jax.random.PRNGKey(MAP_SEED),
             data=data_dict,
             prior_scale=_prior_scale_for_step(0),
         )

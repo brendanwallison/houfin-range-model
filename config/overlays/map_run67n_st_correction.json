@@ -1,0 +1,19 @@
+{
+  "_extends": "map_run62b_numerics.json",
+  "_comment": [
+    "67n: NULL: B1 + st_correction fitted to synthetic counts at 62b's MAP (plausible truth, no correction).",
+    "E067: one smooth spatiotemporal habitat correction h(cell,t) = sum_b S_b(cell) w_b t (15 land-centred cosines, n_freq 3; linear in time over 1966-2023, held before, obs-centred), shared by all four fields and carried into path habitat via the path operator (precomputed A.S). Prior N(0, .1) per weight. Restores, on H and with guards, the original March st_basis correction."
+  ],
+  "population_model": {
+    "st_correction": {
+      "enabled": true,
+      "scale": 0.1,
+      "time": "linear",
+      "window_start": 1966
+    }
+  },
+  "run_names": {
+    "map": "age_map_{precision}_run_67n",
+    "vis_map": "age_map_{precision}_run_67n"
+  }
+}

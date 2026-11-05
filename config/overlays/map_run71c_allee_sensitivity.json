@@ -1,0 +1,18 @@
+{
+  "_extends": "map_run70z_holdout_base.json",
+  "_comment": [
+    "E071c: RELATIVE Allee (mate-finding by N/K; allee_prior.form relative) pinned at n50/K = .0197 (V&L-derived ratio, as 55e) on the 70z holdout base. 55e (pre-numerics base, no holdout) removed Allee-dead entirely for +923 nats, with Sj = Sa .44 and F 14.5."
+  ],
+  "population_model": {
+    "allee_prior": {
+      "form": "relative"
+    },
+    "pinned_sites": {
+      "n50_raw": -3.915383580222545
+    }
+  },
+  "run_names": {
+    "map": "age_map_{precision}_run_71c",
+    "vis_map": "age_map_{precision}_run_71c"
+  }
+}

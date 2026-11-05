@@ -1,0 +1,21 @@
+{
+  "_extends": "map_run70z_holdout_base.json",
+  "_comment": [
+    "E075 retest of E066b/c: split readout at rank 32 (r64 cube), stopped only by hard-floor stalls; 70z holdout base, no floor. Run with HOUFIN_Z_FLOAT32=1."
+  ],
+  "input_dir": "${HOUFIN_PROCESSED}/model_inputs/numpyro_input_vl_r64",
+  "population_model": {
+    "readout": {
+      "split": true,
+      "ref_window": [
+        1996,
+        2025
+      ],
+      "rank": 32
+    }
+  },
+  "run_names": {
+    "map": "age_map_{precision}_run_75c",
+    "vis_map": "age_map_{precision}_run_75c"
+  }
+}

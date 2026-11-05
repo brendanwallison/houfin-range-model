@@ -940,7 +940,10 @@ def analyze_source_sink_mortality(data, Sa_grid, Sj_grid, Fmax_grid, Q_grid, out
 
     # 1. Scale the Allee parameter and calculate the low-density founding ceiling
     N_founding_relative = 1.0 / pop_scalar
-    allee_factor_founding = 1.0 - np.exp(-allee_gamma * N_founding_relative)
+    from src.model.age_priors import ALLEE_AGG_K       # same mate-finding form as the fitted model
+    _x = allee_gamma * N_founding_relative
+    allee_factor_founding = (1.0 - np.exp(-_x) if ALLEE_AGG_K is None
+                             else -np.expm1(-ALLEE_AGG_K * np.log1p(_x / ALLEE_AGG_K)))
     
     # 2. Compute Allee-Corrected Local Theoretical R0 across all individual years
     # Grid shapes: (T, Ny, Nx)

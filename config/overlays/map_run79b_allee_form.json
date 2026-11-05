@@ -1,0 +1,15 @@
+{
+  "_extends": "map_run75c_retest.json",
+  "_comment": [
+    "E079b: 75c with aggregated mate finding, k = 3 (intermediate)."
+  ],
+  "population_model": {
+    "allee_prior": {
+      "aggregation_k": 3.0
+    }
+  },
+  "run_names": {
+    "map": "age_map_{precision}_run_79b",
+    "vis_map": "age_map_{precision}_run_79b"
+  }
+}

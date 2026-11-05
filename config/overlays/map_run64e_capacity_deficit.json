@@ -1,0 +1,14 @@
+{
+  "_extends": "map_run64c_capacity_only.json",
+  "_comment": ["E064e: urban capacity benefit can strengthen specifically in below-average-built-environment cells."],
+  "population_model": {
+    "subcell_strata": {
+      "capacity_moderator": {
+        "covariates": {"builtup": -1.0},
+        "positive_only": true,
+        "coefficient_scale": 0.5
+      }
+    }
+  },
+  "run_names": {"map": "age_map_{precision}_run_64e", "vis_map": "age_map_{precision}_run_64e"}
+}

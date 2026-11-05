@@ -1,0 +1,1131 @@
+{
+  "scope": "aggregate reproducibility, trace accounting, likelihood derivatives; no new fit",
+  "replays": {
+    "frozen": {
+      "state": "passed",
+      "objective": 135590.79802834982,
+      "bbs_nll": 110044.7002609954,
+      "objective_error": -0.00197165017016232,
+      "bbs_error": 0.00026099540991708636,
+      "final_state_max_nonfinite": 0,
+      "exact_canary": true,
+      "final_land_density_sha256": [
+        "4a46b74b851de464c6bf1bc56df3b762c2fe9faf33fb2d637380365a863cb672",
+        "4a46b74b851de464c6bf1bc56df3b762c2fe9faf33fb2d637380365a863cb672"
+      ],
+      "canary_max_abs_error": 0.0,
+      "numeric_canary": true,
+      "devices": [
+        "cuda:0"
+      ],
+      "seconds": 16.996964693069458,
+      "front": {
+        "median": -3.0,
+        "never": 0.06777493606138107,
+        "by_cohort": {
+          "1966-1974": 3.0,
+          "1975-1984": -1.0,
+          "1985-1994": -3.0,
+          "1995-2009": -6.0
+        }
+      },
+      "heldout_nll": {
+        "blocks": 32105.45788893378,
+        "future": 21557.483856097988
+      },
+      "checks": {
+        "objective": true,
+        "bbs": true,
+        "finite": true,
+        "canary": true
+      }
+    },
+    "reconstructed": {
+      "state": "passed",
+      "objective": 135590.79802834985,
+      "bbs_nll": 110044.70026099539,
+      "objective_error": -0.0019716501410584897,
+      "bbs_error": 0.00026099539536517113,
+      "final_state_max_nonfinite": 0,
+      "exact_canary": true,
+      "final_land_density_sha256": [
+        "b98bb4d5d517e86ce6ec6d213ac4f25559c6be1fe3ef7b08797f213f7ee8f9c4",
+        "b98bb4d5d517e86ce6ec6d213ac4f25559c6be1fe3ef7b08797f213f7ee8f9c4"
+      ],
+      "canary_max_abs_error": 0.0,
+      "numeric_canary": true,
+      "devices": [
+        "cuda:0"
+      ],
+      "seconds": 25.797688245773315,
+      "front": {
+        "median": -3.0,
+        "never": 0.06777493606138107,
+        "by_cohort": {
+          "1966-1974": 3.0,
+          "1975-1984": -1.0,
+          "1985-1994": -3.0,
+          "1995-2009": -6.0
+        }
+      },
+      "heldout_nll": {
+        "blocks": 32105.45788893378,
+        "future": 21557.48385609793
+      },
+      "checks": {
+        "objective": true,
+        "bbs": true,
+        "finite": true,
+        "canary": true
+      }
+    }
+  },
+  "trace": {
+    "seconds": 14.089258909225464,
+    "objective": 135590.79802834982,
+    "trace_accounting_error": -2.9103830456733704e-11,
+    "sites": [
+      {
+        "name": "w_scale_raw",
+        "type": "sample",
+        "shape": [
+          4
+        ],
+        "is_observed": false,
+        "distribution": "Normal",
+        "log_density": -35.072524664223806
+      },
+      {
+        "name": "w_scale",
+        "type": "deterministic",
+        "shape": [
+          4
+        ],
+        "is_observed": false
+      },
+      {
+        "name": "environment_kernel_variance",
+        "type": "deterministic",
+        "shape": [
+          4
+        ],
+        "is_observed": false
+      },
+      {
+        "name": "manifold_coupling",
+        "type": "deterministic",
+        "shape": [],
+        "is_observed": false
+      },
+      {
+        "name": "manifold_factor",
+        "type": "sample",
+        "shape": [
+          64,
+          1
+        ],
+        "is_observed": false,
+        "distribution": "ExpandedDistribution",
+        "log_density": -85.1210839814718
+      },
+      {
+        "name": "w_env",
+        "type": "deterministic",
+        "shape": [
+          64,
+          4
+        ],
+        "is_observed": false
+      },
+      {
+        "name": "manifold_communality",
+        "type": "deterministic",
+        "shape": [
+          4
+        ],
+        "is_observed": false
+      },
+      {
+        "name": "manifold_loadings",
+        "type": "deterministic",
+        "shape": [
+          4,
+          2
+        ],
+        "is_observed": false
+      },
+      {
+        "name": "L_corr",
+        "type": "deterministic",
+        "shape": [
+          4,
+          4
+        ],
+        "is_observed": false
+      },
+      {
+        "name": "rho",
+        "type": "deterministic",
+        "shape": [],
+        "is_observed": false
+      },
+      {
+        "name": "env_corr_repro_capacity",
+        "type": "deterministic",
+        "shape": [],
+        "is_observed": false
+      },
+      {
+        "name": "env_corr_survival_capacity",
+        "type": "deterministic",
+        "shape": [],
+        "is_observed": false
+      },
+      {
+        "name": "env_corr_survival_adult_juv",
+        "type": "deterministic",
+        "shape": [],
+        "is_observed": false
+      },
+      {
+        "name": "w_k_trend",
+        "type": "deterministic",
+        "shape": [
+          3
+        ],
+        "is_observed": false
+      },
+      {
+        "name": "disease_mu_sev",
+        "type": "sample",
+        "shape": [],
+        "is_observed": false,
+        "distribution": "Normal",
+        "log_density": -1.778803423014051
+      },
+      {
+        "name": "disease_b_late",
+        "type": "sample",
+        "shape": [],
+        "is_observed": false,
+        "distribution": "Normal",
+        "log_density": 0.7733913824219916
+      },
+      {
+        "name": "disease_b_native_raw",
+        "type": "sample",
+        "shape": [],
+        "is_observed": false,
+        "distribution": "Normal",
+        "log_density": -1.3992921449236149
+      },
+      {
+        "name": "disease_b_native",
+        "type": "deterministic",
+        "shape": [],
+        "is_observed": false
+      },
+      {
+        "name": "disease_w_sev",
+        "type": "sample",
+        "shape": [
+          24
+        ],
+        "is_observed": false,
+        "distribution": "ExpandedDistribution",
+        "log_density": -7.533037630441871
+      },
+      {
+        "name": "disease_lag0",
+        "type": "sample",
+        "shape": [],
+        "is_observed": false,
+        "distribution": "Normal",
+        "log_density": -1.6952072818588872
+      },
+      {
+        "name": "disease_w_lag",
+        "type": "sample",
+        "shape": [
+          24
+        ],
+        "is_observed": false,
+        "distribution": "ExpandedDistribution",
+        "log_density": -13.585809695716884
+      },
+      {
+        "name": "disease_log_k_half_counts",
+        "type": "sample",
+        "shape": [],
+        "is_observed": false,
+        "distribution": "Normal",
+        "log_density": -5.8736428777135234
+      },
+      {
+        "name": "disease_k_half",
+        "type": "deterministic",
+        "shape": [],
+        "is_observed": false
+      },
+      {
+        "name": "disease_k_half_route_counts",
+        "type": "deterministic",
+        "shape": [],
+        "is_observed": false
+      },
+      {
+        "name": "disease_hill_n_raw",
+        "type": "sample",
+        "shape": [],
+        "is_observed": false,
+        "distribution": "Normal",
+        "log_density": -3.505701170099859
+      },
+      {
+        "name": "disease_hill_n",
+        "type": "deterministic",
+        "shape": [],
+        "is_observed": false
+      },
+      {
+        "name": "disease_tau_raw",
+        "type": "sample",
+        "shape": [],
+        "is_observed": false,
+        "distribution": "Normal",
+        "log_density": -19.619992584740356
+      },
+      {
+        "name": "disease_tau",
+        "type": "deterministic",
+        "shape": [],
+        "is_observed": false
+      },
+      {
+        "name": "disease_rec_raw",
+        "type": "sample",
+        "shape": [],
+        "is_observed": false,
+        "distribution": "Normal",
+        "log_density": -4.734919267321839
+      },
+      {
+        "name": "disease_rec",
+        "type": "deterministic",
+        "shape": [],
+        "is_observed": false
+      },
+      {
+        "name": "disease_log_tau_rec",
+        "type": "sample",
+        "shape": [],
+        "is_observed": false,
+        "distribution": "Normal",
+        "log_density": -0.4241632072750765
+      },
+      {
+        "name": "disease_tau_rec",
+        "type": "deterministic",
+        "shape": [],
+        "is_observed": false
+      },
+      {
+        "name": "alpha_a",
+        "type": "sample",
+        "shape": [],
+        "is_observed": false,
+        "distribution": "Normal",
+        "log_density": -0.27017803146635166
+      },
+      {
+        "name": "alpha_j",
+        "type": "sample",
+        "shape": [],
+        "is_observed": false,
+        "distribution": "Normal",
+        "log_density": -3.196155814203854
+      },
+      {
+        "name": "alpha_f",
+        "type": "sample",
+        "shape": [],
+        "is_observed": false,
+        "distribution": "Normal",
+        "log_density": -0.6315115730474404
+      },
+      {
+        "name": "alpha_k",
+        "type": "sample",
+        "shape": [],
+        "is_observed": false,
+        "distribution": "Normal",
+        "log_density": -0.986287909237228
+      },
+      {
+        "name": "k_level",
+        "type": "deterministic",
+        "shape": [],
+        "is_observed": false
+      },
+      {
+        "name": "k_level_route_counts",
+        "type": "deterministic",
+        "shape": [],
+        "is_observed": false
+      },
+      {
+        "name": "gamma_a_raw",
+        "type": "deterministic",
+        "shape": [],
+        "is_observed": false
+      },
+      {
+        "name": "gamma_f_raw",
+        "type": "deterministic",
+        "shape": [],
+        "is_observed": false
+      },
+      {
+        "name": "gamma_k_raw",
+        "type": "deterministic",
+        "shape": [],
+        "is_observed": false
+      },
+      {
+        "name": "gamma_j_diff",
+        "type": "deterministic",
+        "shape": [],
+        "is_observed": false
+      },
+      {
+        "name": "gamma_a",
+        "type": "deterministic",
+        "shape": [],
+        "is_observed": false
+      },
+      {
+        "name": "gamma_j",
+        "type": "deterministic",
+        "shape": [],
+        "is_observed": false
+      },
+      {
+        "name": "gamma_f",
+        "type": "deterministic",
+        "shape": [],
+        "is_observed": false
+      },
+      {
+        "name": "gamma_k",
+        "type": "deterministic",
+        "shape": [],
+        "is_observed": false
+      },
+      {
+        "name": "n50_raw",
+        "type": "sample",
+        "shape": [],
+        "is_observed": true,
+        "distribution": "Normal",
+        "log_density": -3.3923462628060985
+      },
+      {
+        "name": "dispersal_logit_intercept",
+        "type": "sample",
+        "shape": [],
+        "is_observed": false,
+        "distribution": "Normal",
+        "log_density": -0.9189385332046727
+      },
+      {
+        "name": "dispersal_logit_slope",
+        "type": "sample",
+        "shape": [],
+        "is_observed": false,
+        "distribution": "Normal",
+        "log_density": -0.9189385332046727
+      },
+      {
+        "name": "log_inv_total",
+        "type": "deterministic",
+        "shape": [],
+        "is_observed": false
+      },
+      {
+        "name": "inv_pop_relative",
+        "type": "deterministic",
+        "shape": [
+          1,
+          10
+        ],
+        "is_observed": false
+      },
+      {
+        "name": "allee_gamma",
+        "type": "deterministic",
+        "shape": [],
+        "is_observed": false
+      },
+      {
+        "name": "habitat_center_offsets",
+        "type": "deterministic",
+        "shape": [
+          4
+        ],
+        "is_observed": false
+      },
+      {
+        "name": "disease_mortality_amp",
+        "type": "deterministic",
+        "shape": [
+          124,
+          4318
+        ],
+        "is_observed": false
+      },
+      {
+        "name": "Sa_flat",
+        "type": "deterministic",
+        "shape": [
+          124,
+          4318
+        ],
+        "is_observed": false
+      },
+      {
+        "name": "Sj_flat",
+        "type": "deterministic",
+        "shape": [
+          124,
+          4318
+        ],
+        "is_observed": false
+      },
+      {
+        "name": "Fmax_flat",
+        "type": "deterministic",
+        "shape": [
+          124,
+          4318
+        ],
+        "is_observed": false
+      },
+      {
+        "name": "K_flat",
+        "type": "deterministic",
+        "shape": [
+          124,
+          4318
+        ],
+        "is_observed": false
+      },
+      {
+        "name": "K_base_flat",
+        "type": "deterministic",
+        "shape": [
+          124,
+          4318
+        ],
+        "is_observed": false
+      },
+      {
+        "name": "initpop_seeded",
+        "type": "deterministic",
+        "shape": [
+          67,
+          112
+        ],
+        "is_observed": false
+      },
+      {
+        "name": "disease_severity_map",
+        "type": "deterministic",
+        "shape": [
+          4318
+        ],
+        "is_observed": false
+      },
+      {
+        "name": "Q_flat",
+        "type": "deterministic",
+        "shape": [
+          124,
+          4318,
+          12
+        ],
+        "is_observed": false
+      },
+      {
+        "name": "local_age_structure_regularizer",
+        "type": "sample",
+        "shape": [
+          0
+        ],
+        "is_observed": true,
+        "distribution": "Unit",
+        "log_density": -0.04109433855870031
+      },
+      {
+        "name": "nest_F_real",
+        "type": "deterministic",
+        "shape": [
+          1089
+        ],
+        "is_observed": false
+      },
+      {
+        "name": "nest_broods",
+        "type": "deterministic",
+        "shape": [
+          3
+        ],
+        "is_observed": false
+      },
+      {
+        "name": "nest_mean_delta",
+        "type": "sample",
+        "shape": [
+          5
+        ],
+        "is_observed": false,
+        "distribution": "Independent",
+        "log_density": 6.007920098451069
+      },
+      {
+        "name": "nest_surv_delta",
+        "type": "sample",
+        "shape": [
+          5
+        ],
+        "is_observed": false,
+        "distribution": "Independent",
+        "log_density": -5.115296900017588
+      },
+      {
+        "name": "nest_dsr_logit",
+        "type": "sample",
+        "shape": [],
+        "is_observed": false,
+        "distribution": "Normal",
+        "log_density": -1.3565252625313136
+      },
+      {
+        "name": "nest_log_conc",
+        "type": "sample",
+        "shape": [],
+        "is_observed": false,
+        "distribution": "Normal",
+        "log_density": -3.3067136579516996
+      },
+      {
+        "name": "nest_mean_fledged",
+        "type": "deterministic",
+        "shape": [
+          1089
+        ],
+        "is_observed": false
+      },
+      {
+        "name": "nest_cycle_success",
+        "type": "deterministic",
+        "shape": [
+          1089
+        ],
+        "is_observed": false
+      },
+      {
+        "name": "nest_loglik_exposure",
+        "type": "deterministic",
+        "shape": [],
+        "is_observed": false
+      },
+      {
+        "name": "nest_loglik_count",
+        "type": "deterministic",
+        "shape": [],
+        "is_observed": false
+      },
+      {
+        "name": "nest_loglik",
+        "type": "sample",
+        "shape": [
+          0
+        ],
+        "is_observed": true,
+        "distribution": "Unit",
+        "log_density": -1965.800447046393
+      },
+      {
+        "name": "simulated_density",
+        "type": "deterministic",
+        "shape": [
+          124,
+          67,
+          112
+        ],
+        "is_observed": false
+      },
+      {
+        "name": "Na_grid",
+        "type": "deterministic",
+        "shape": [
+          124,
+          67,
+          112
+        ],
+        "is_observed": false
+      },
+      {
+        "name": "Nj_grid",
+        "type": "deterministic",
+        "shape": [
+          124,
+          67,
+          112
+        ],
+        "is_observed": false
+      },
+      {
+        "name": "obs_fledgling_weight",
+        "type": "sample",
+        "shape": [],
+        "is_observed": false,
+        "distribution": "Beta",
+        "log_density": 0.9445466644947145
+      },
+      {
+        "name": "expected_obs_before_observer",
+        "type": "deterministic",
+        "shape": [
+          192123
+        ],
+        "is_observed": false
+      },
+      {
+        "name": "observer_first_year_eta",
+        "type": "sample",
+        "shape": [],
+        "is_observed": false,
+        "distribution": "Normal",
+        "log_density": -0.9191935434056774
+      },
+      {
+        "name": "observer_route_eps",
+        "type": "sample",
+        "shape": [
+          19127
+        ],
+        "is_observed": false,
+        "distribution": "ZeroSumNormal",
+        "log_density": -21372.573370351638
+      },
+      {
+        "name": "expected_obs",
+        "type": "deterministic",
+        "shape": [
+          192123
+        ],
+        "is_observed": false
+      },
+      {
+        "name": "concentration",
+        "type": "sample",
+        "shape": [],
+        "is_observed": false,
+        "distribution": "Exponential",
+        "log_density": -0.4404822652201196
+      },
+      {
+        "name": "quality_conc_mult",
+        "type": "sample",
+        "shape": [],
+        "is_observed": false,
+        "distribution": "Beta",
+        "log_density": 0.36951914751107195
+      },
+      {
+        "name": "obs_conc_kappa",
+        "type": "sample",
+        "shape": [],
+        "is_observed": false,
+        "distribution": "HalfNormal",
+        "log_density": -0.9968439111129411
+      },
+      {
+        "name": "obs_concentration",
+        "type": "deterministic",
+        "shape": [
+          192123
+        ],
+        "is_observed": false
+      },
+      {
+        "name": "obs",
+        "type": "sample",
+        "shape": [
+          192123
+        ],
+        "is_observed": true,
+        "distribution": "MaskedDistribution",
+        "log_density": -112057.68490377991
+      }
+    ],
+    "scale_invariance": [
+      {
+        "factor_multiplier": 0.5,
+        "objective": 135652.93258000782,
+        "effective_coefficient_max_error": 5.551115123125783e-17,
+        "obs_log_density": -112057.68490377959,
+        "other_observed_or_factor_log_density": {
+          "n50_raw": -3.3923462628060985,
+          "local_age_structure_regularizer": -0.04109433855870031,
+          "nest_loglik": -1965.8004470463761
+        },
+        "factor_log_density": -65.38932058919224,
+        "amplitude_log_density": -116.93883971483953
+      },
+      {
+        "factor_multiplier": 1.0,
+        "objective": 135590.79802834985,
+        "effective_coefficient_max_error": 5.551115123125783e-17,
+        "obs_log_density": -112057.68490377991,
+        "other_observed_or_factor_log_density": {
+          "n50_raw": -3.3923462628060985,
+          "local_age_structure_regularizer": -0.04109433855870031,
+          "nest_loglik": -1965.8004470463948
+        },
+        "factor_log_density": -85.1210839814718,
+        "amplitude_log_density": -35.07252466422381
+      },
+      {
+        "factor_multiplier": 2.0,
+        "objective": 135650.4730693366,
+        "effective_coefficient_max_error": 5.551115123125783e-17,
+        "obs_log_density": -112057.68490377959,
+        "other_observed_or_factor_log_density": {
+          "n50_raw": -3.3923462628060985,
+          "local_age_structure_regularizer": -0.04109433855870031,
+          "nest_loglik": -1965.8004470463761
+        },
+        "factor_log_density": -164.04813755059,
+        "amplitude_log_density": -15.820512082201597
+      }
+    ],
+    "active_switches": {
+      "_RELEASE_ALLEE_EXEMPT_YEARS": 0,
+      "_MANIFOLD_FORM": "exchangeable",
+      "_K_LINK": "softplus",
+      "_K_FORM": "field",
+      "_DISPERSAL_RANDOM": false,
+      "_HABITAT_CENTERING": "occupied",
+      "_ALLEE_FORM": "absolute",
+      "ALLEE_RELATIVE": false,
+      "ALLEE_AGG_K": 3.0,
+      "_JUV_FORM": "ratio",
+      "JUVENILE_RATIO": true,
+      "SETTLE_BLOCK": 0,
+      "SETTLE_WEIGHT": "capacity",
+      "SETTLE_DISPERSERS": false,
+      "DISEASE_TARGET": "survival",
+      "_DISEASE_CEILING": 0.8,
+      "BAND_WEIGHTS": false,
+      "OBS_BREEDING": true,
+      "ROUTE_OCCUPANCY": false,
+      "YEAR_EFFECTS": false,
+      "HABITAT_SHRINK": false,
+      "SUBCELL": false,
+      "SUBCELL_SURVIVAL_AFFECTS_ALLOCATION": true,
+      "_DEPART_FORM": "veit",
+      "VEIT_DEPARTURE": true,
+      "DRIFT_ON": false,
+      "SPLIT_READOUT": false,
+      "ST_CORRECTION": false,
+      "NEST_LIKELIHOOD": true,
+      "PATH_COMPOUNDING": false,
+      "DIRECTIONAL_CHOICE": false,
+      "ATTRACTION": false,
+      "NATIVE_DEPARTURE": false,
+      "PROCESS_NOISE": false,
+      "PN_TARGET": "abundance",
+      "STATE_ANCHOR": false,
+      "JOURNEY": false,
+      "STATE_WARP": false,
+      "OBS_REGION_EFFECTS": false,
+      "OCCUPANCY": false,
+      "OCC_BIRDS_PER_COUNT": 58.0,
+      "VEIT_REPRO": false,
+      "YEARLING": true,
+      "DEPART_BY_AGE": false,
+      "CROWDING_ARM": false,
+      "CROWDING_KAPPA": 5.0,
+      "_POP_SCALAR": 20.0,
+      "_TARGET_DENSITY": 0.1291,
+      "_ALPHA_K_LOC": -1.981923627139641
+    },
+    "field_order": [
+      "adult_survival",
+      "reproduction",
+      "capacity",
+      "juvenile_survival"
+    ],
+    "factor_norm": 7.253829038014714,
+    "field_amplitudes": [
+      3.20160979844386,
+      4.222149937504323,
+      5.497158328034811,
+      0.09494888832346256
+    ]
+  },
+  "gradient": {
+    "data_nll": 114023.485350827,
+    "objective": 135590.79802835052,
+    "data_terms": [
+      "obs",
+      "nest_loglik"
+    ],
+    "seconds": 47.04281401634216,
+    "sites": [
+      {
+        "site": "alpha_a",
+        "shape": [],
+        "finite": true,
+        "l2": 13.922747163211067,
+        "max_abs": 13.922747163211067
+      },
+      {
+        "site": "alpha_f",
+        "shape": [],
+        "finite": true,
+        "l2": 8.328487759000035,
+        "max_abs": 8.328487759000035
+      },
+      {
+        "site": "alpha_j",
+        "shape": [],
+        "finite": true,
+        "l2": 13.904758559163003,
+        "max_abs": 13.904758559163003
+      },
+      {
+        "site": "alpha_k",
+        "shape": [],
+        "finite": true,
+        "l2": 15.108795083755888,
+        "max_abs": 15.108795083755888
+      },
+      {
+        "site": "concentration",
+        "shape": [],
+        "finite": true,
+        "l2": 4.454068060369096,
+        "max_abs": 4.454068060369096
+      },
+      {
+        "site": "disease_b_late",
+        "shape": [],
+        "finite": true,
+        "l2": 10.470004310474593,
+        "max_abs": 10.470004310474593
+      },
+      {
+        "site": "disease_b_native_raw",
+        "shape": [],
+        "finite": true,
+        "l2": 3.597422170877002,
+        "max_abs": 3.597422170877002
+      },
+      {
+        "site": "disease_hill_n_raw",
+        "shape": [],
+        "finite": true,
+        "l2": 2.7314277534542963,
+        "max_abs": 2.7314277534542963
+      },
+      {
+        "site": "disease_lag0",
+        "shape": [],
+        "finite": true,
+        "l2": 1.2444889774616676,
+        "max_abs": 1.2444889774616676
+      },
+      {
+        "site": "disease_log_k_half_counts",
+        "shape": [],
+        "finite": true,
+        "l2": 0.8709270090947434,
+        "max_abs": 0.8709270090947434
+      },
+      {
+        "site": "disease_log_tau_rec",
+        "shape": [],
+        "finite": true,
+        "l2": 1.178021722149801,
+        "max_abs": 1.178021722149801
+      },
+      {
+        "site": "disease_mu_sev",
+        "shape": [],
+        "finite": true,
+        "l2": 11.332750961852943,
+        "max_abs": 11.332750961852943
+      },
+      {
+        "site": "disease_rec_raw",
+        "shape": [],
+        "finite": true,
+        "l2": 2.6119988789244433,
+        "max_abs": 2.6119988789244433
+      },
+      {
+        "site": "disease_tau_raw",
+        "shape": [],
+        "finite": true,
+        "l2": 13.098678979621843,
+        "max_abs": 13.098678979621843
+      },
+      {
+        "site": "disease_w_lag",
+        "shape": [
+          24
+        ],
+        "finite": true,
+        "l2": 20.373617864762025,
+        "max_abs": 7.738552497532001
+      },
+      {
+        "site": "disease_w_sev",
+        "shape": [
+          24
+        ],
+        "finite": true,
+        "l2": 87.91606602586356,
+        "max_abs": 35.97125552053049
+      },
+      {
+        "site": "dispersal_logit_intercept",
+        "shape": [],
+        "finite": true,
+        "l2": 0.0,
+        "max_abs": 0.0
+      },
+      {
+        "site": "dispersal_logit_slope",
+        "shape": [],
+        "finite": true,
+        "l2": 0.0,
+        "max_abs": 0.0
+      },
+      {
+        "site": "manifold_factor",
+        "shape": [
+          64,
+          1
+        ],
+        "finite": true,
+        "l2": 67.45252947309557,
+        "max_abs": 41.30753848302595
+      },
+      {
+        "site": "nest_dsr_logit",
+        "shape": [],
+        "finite": true,
+        "l2": 1.1974236133457428,
+        "max_abs": 1.1974236133457428
+      },
+      {
+        "site": "nest_log_conc",
+        "shape": [],
+        "finite": true,
+        "l2": 2.2199171005945755,
+        "max_abs": 2.2199171005945755
+      },
+      {
+        "site": "nest_mean_delta",
+        "shape": [
+          5
+        ],
+        "finite": true,
+        "l2": 13.498097631422112,
+        "max_abs": 11.839537548422129
+      },
+      {
+        "site": "nest_surv_delta",
+        "shape": [
+          5
+        ],
+        "finite": true,
+        "l2": 5.830811557621273,
+        "max_abs": 4.971806503459467
+      },
+      {
+        "site": "obs_conc_kappa",
+        "shape": [],
+        "finite": true,
+        "l2": 2.513160171612185,
+        "max_abs": 2.513160171612185
+      },
+      {
+        "site": "obs_fledgling_weight",
+        "shape": [],
+        "finite": true,
+        "l2": 10.950693261917394,
+        "max_abs": 10.950693261917394
+      },
+      {
+        "site": "observer_first_year_eta",
+        "shape": [],
+        "finite": true,
+        "l2": 5.7652373198624005,
+        "max_abs": 5.7652373198624005
+      },
+      {
+        "site": "observer_route_eps",
+        "shape": [
+          19127
+        ],
+        "finite": true,
+        "l2": 87.58243014711769,
+        "max_abs": 5.065438437197085
+      },
+      {
+        "site": "quality_conc_mult",
+        "shape": [],
+        "finite": true,
+        "l2": 0.4897039233017657,
+        "max_abs": 0.4897039233017657
+      },
+      {
+        "site": "w_scale_raw",
+        "shape": [
+          4
+        ],
+        "finite": true,
+        "l2": 8.023550826446774,
+        "max_abs": 5.839372600335885
+      }
+    ],
+    "devices": [
+      "cuda:0"
+    ]
+  },
+  "r104": {
+    "start_neg_logp": 135886.44277422724,
+    "end_neg_logp": 135881.25341215718,
+    "converged": true,
+    "message": "CONVERGENCE: RELATIVE REDUCTION OF F <= FACTR*EPSMCH",
+    "n_eval": 1421,
+    "bbs_nll_end": 110139.08282143394,
+    "n50_raw_end": -2.807931933010046,
+    "never_reached_end": 0.0792838874680307,
+    "source_sha256": "db0426f03d9f1a385df5b34fdbf6675bf693fb806d83c418ec4e8c1728004f10",
+    "occupied_east_1966_median": 0.5445478039376246,
+    "occupied_east_2010_median": 1.3493254567814805,
+    "modern_east_mortality": 0.2590051779260777,
+    "last_evaluation": {
+      "eval": 1421,
+      "neg_logp": 135881.25341215718,
+      "grad_norm": 384.0291009110714,
+      "sec": 4859.7
+    }
+  }
+}

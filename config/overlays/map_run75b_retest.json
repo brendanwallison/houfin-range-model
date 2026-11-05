@@ -1,0 +1,16 @@
+{
+  "_extends": "map_run70z_holdout_base.json",
+  "_comment": [
+    "E075 retest of E052 yearling breeding (House Finch yearlings breed; rejected on float32/float64-disagreeing legacy-pad MAPs) on the 70z holdout base."
+  ],
+  "population_model": {
+    "reproduction": {
+      "form": "standard",
+      "yearling_breeding": true
+    }
+  },
+  "run_names": {
+    "map": "age_map_{precision}_run_75b",
+    "vis_map": "age_map_{precision}_run_75b"
+  }
+}

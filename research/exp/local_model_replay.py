@@ -32,6 +32,10 @@ def main():
     first = sb.run({"name": "baseline"}, keep_density=True)
     second = sb.run({"name": "canary"}, keep_density=True)
     first_density, second_density = first.pop("_density"), second.pop("_density")
+    # The legacy harness reuses `h` for the held-out row mask after calculating
+    # its hash. Compute from the actual density, never trust that field's type.
+    hashes = [hashlib.sha256(np.ascontiguousarray(density[-1]).tobytes()).hexdigest()
+              for density in (first_density, second_density)]
     bbs = -sum(item["loglik"] for item in first["abundance"].values())
     module_sources = {}
     for name, module in list(sys.modules.items()):
@@ -43,7 +47,8 @@ def main():
               "objective_error": objective - args.expected_objective,
               "bbs_error": bbs - args.expected_bbs,
               "final_state_max_nonfinite": first["nonfinite_state"],
-              "exact_canary": first["final_state_sha256"] == second["final_state_sha256"],
+              "exact_canary": hashes[0] == hashes[1],
+              "final_land_density_sha256": hashes,
               "canary_max_abs_error": float(np.max(np.abs(first_density - second_density))),
               "numeric_canary": bool(np.allclose(first_density, second_density, rtol=1e-9, atol=1e-12)),
               "sources": module_sources, "devices": [str(device) for device in jax.devices()],

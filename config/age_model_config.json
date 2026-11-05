@@ -19,8 +19,9 @@
   "dispersal": {
     "_comment": "Single source of truth shared by Z_disp preparation and the forward model; resolved in exactly one place, build_kernels.dispersal_spec. Do not duplicate these boundaries in code.",
     "_radial_splits_comment": "juvenile_radial_splits_km takes either an explicit list of km boundaries (start 0.0, end >=1e8) or the string \"derive\" for equal-mass radial bands. The pinned literals are NOT quantiles of the current kernel. See docs/PRIORS.md#radial-splits.",
+    "_kernel_source_comment": "Veit & Lewis 1996 kernels: the adult and juvenile SHAPES DIFFER (0.859 vs 0.468). See docs/PRIORS.md#dispersal-kernels.",
     "adult_mdd_km": 100.0,
-    "adult_shape": 0.468,
+    "adult_shape": 0.859,
     "juvenile_mdd_km": 330.0,
     "juvenile_shape": 0.468,
     "juvenile_radial_splits_km": [

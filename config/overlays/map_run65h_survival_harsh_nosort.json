@@ -1,0 +1,6 @@
+{
+  "_extends": "map_run64h_survival_harsh.json",
+  "_comment": ["E065h: combined harsh-winter urban survival, without survival-informed sorting."],
+  "population_model": {"subcell_strata": {"survival_affects_allocation": false}},
+  "run_names": {"map": "age_map_{precision}_run_65h", "vis_map": "age_map_{precision}_run_65h"}
+}

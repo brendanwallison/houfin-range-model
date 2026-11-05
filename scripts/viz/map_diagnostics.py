@@ -63,6 +63,10 @@ returns None and says why when the raster is absent, and ``metrics.json`` carrie
 ``barrier_crossing: null``. A missing optional input must never cost a whole
 diagnostics run.
 
+``18_process_noise.png`` (population_model.process_noise only, E070) maps the mean
+yearly abundance nudge eps per era: where and when the deterministic dynamics needed
+help. Source/sink and lambda figures never include eps -- they show the skeleton.
+
 ``10_age_structure.png`` compares theoretical equilibrium age structure
 (local rho implied by the fitted vital rates, assuming the system has
 settled -- no invasion-front/transient history) against REALIZED age
@@ -122,7 +126,12 @@ from numpyro.infer import Predictive
 from src.config_utils import load_age_model_config, load_data_config
 from src.temporal import load_timeline
 from src.model.age_priors import build_model_2d
-from src.model.age_forward import forward_sim_age_structured
+from src.model.age_forward import forward_sim_age_structured, juvenile_band_weights
+from src.model.age_priors import (OCCUPANCY, OCC_BIRDS_PER_COUNT, ALLEE_RELATIVE, CROWDING_KAPPA, SETTLE_BLOCK, SETTLE_DISPERSERS,
+                                  VEIT_DEPARTURE, VEIT_REPRO, YEARLING,
+                                  SETTLE_WEIGHT,
+                                  counts_to_relative,
+                                  SUBCELL)
 from src.model.checkpoints import auto_delta_params_to_latents, load_map_params
 from src.model.data_loading import load_data
 from src.model.runtime_diagnostics import memory_snapshot, require_gpu
@@ -229,7 +238,28 @@ def reconstruct_map(data, params):
               "disease_k_half_route_counts", "disease_hill_n",
               "disease_severity_map", "disease_mu_sev", "disease_b_late",
               "disease_w_lag", "disease_lag0", "disease_tau", "disease_rec",
-              "disease_tau_rec", "Na_grid", "Nj_grid"]
+              "disease_tau_rec", "Na_grid", "Nj_grid",
+              # disease_prior.target = survival only: the epizootic's added-mortality amplitude.
+              "disease_mortality_amp",
+              # population_model.occupancy only (E063).
+              "occupancy_grid",
+              # readout.split: the within-cell deviation block's amplitudes (vs w_scale, the level block).
+              "w_scale_within", "w_scale", "w_env_within", "w_env",
+              # st_correction (E067)
+              "st_correction_gw", "st_correction_w",
+              # process_noise (E070) and the per-observation NB concentration (held-out scoring).
+              "process_noise_u", "process_noise_rms_t", "obs_concentration",
+              # observation.route_occupancy (E072): per-observation structural-zero probability.
+              "obs_zero_gate", "route_occupancy_log_m",
+              # observation.observer_effect: the mean before the observer multiplier (integrated held-out
+              # scores, _observer_holdout_scores) and the year effects applied after it.
+              "expected_obs_before_observer", "obs_year_effect",
+              # subcell_strata habitat-specific tilts (per year and land cell).
+              "subcell_beta_k_t", "subcell_sigma_s_t",
+              # population_model.covariate_drift only (E057 P0).
+              "covariate_drift", "covariate_drift_w",
+              # Present only with habitat_centering="occupied"; Predictive drops absent names.
+              "habitat_center_offsets"]
     predictive = Predictive(build_model_2d, posterior_samples=posterior, return_sites=needed)
     result = predictive(jax.random.PRNGKey(104), data=data, prior_scale=1.0)
     result = jax.block_until_ready(result)
@@ -250,9 +280,15 @@ def reconstruct_map(data, params):
     sim["latents"] = dict(latents)
     for name in ("w_env", "k_level", "gamma_a", "gamma_j", "gamma_f", "gamma_k",
                  "gamma_j_diff", "manifold_loadings", "manifold_communality",
-                 "env_corr_survival_adult_juv"):
+                 "env_corr_survival_adult_juv", "habitat_center_offsets"):
         if name in sim:
             sim["latents"][name] = sim[name]
+    # Pinned sites (population_model.pinned_sites) are conditioned, not fitted, so they
+    # are absent from the MAP params; readers get the pinned value.
+    from src.model.age_priors import PINNED
+    for name, value in PINNED.items():
+        sim["latents"].setdefault(name, np.asarray(value))
+        sim.setdefault(name, np.asarray(value))
     return sim
 
 
@@ -1067,6 +1103,228 @@ def _k_trend_metrics(data, sim):
             "safety_valve_tripped": bool(z > 3.0 or np.abs(mult - 1.0).max() > 0.15)}
 
 
+def _st_correction_metrics(data, sim):
+    """E067 shared habitat correction: land RMS and range of h by year, and |w| against its prior scale."""
+    if "st_correction_gw" not in sim or "st_S" not in data:
+        return None
+    from src.model.age_priors import _ST
+    h = np.asarray(data["st_S"], dtype=np.float64) @ np.asarray(sim["st_correction_gw"], dtype=np.float64).T  # (N, T)
+    years = np.asarray(data["years"])
+    pick = {y: int(np.argmin(np.abs(years - y))) for y in (1902, 1940, 1966, 1980, 1996, 2010, 2023)}
+    return {"max_abs_w_over_scale": float(np.abs(np.asarray(sim["st_correction_w"])).max() / float(_ST.get("scale", 0.1))),
+            "land_rms_h": {y: float(np.sqrt(np.mean(h[:, i] ** 2))) for y, i in pick.items()},
+            "h_p05_p95": {y: [float(np.percentile(h[:, i], 5)), float(np.percentile(h[:, i], 95))] for y, i in pick.items()}}
+
+
+def _process_noise_eps(data, sim):
+    """(time, N_land) eps of population_model.process_noise at this point, or None."""
+    if "process_noise_u" not in sim or "pn_S" not in data:
+        return None
+    from src.model.age_priors import _PN
+    u = np.asarray(sim["process_noise_u"], dtype=np.float64) * np.asarray(data["pn_active"], dtype=np.float64)[:, None]
+    if "pn_P" in data:
+        u = np.asarray(data["pn_P"], dtype=np.float64) @ u
+    return float(_PN.get("sigma", 0.05)) * u @ np.asarray(data["pn_S"], dtype=np.float64).T
+
+
+_PN_ERAS = ((1902, 1939), (1940, 1965), (1966, 1992), (1993, 2018))
+
+
+def plot_process_noise(data, sim, years, rows, cols, shape, out):
+    """E070: where and when the deterministic skeleton needed nudging (mean eps per era), and the gate numbers.
+
+    eps > 0: the skeleton under-predicts abundance there and then. Mean eps per era shows systematic structure;
+    noise that is genuinely random averages out. Returns metrics (None without process noise).
+    """
+    eps = _process_noise_eps(data, sim)
+    if eps is None:
+        return None
+    u = np.asarray(sim["process_noise_u"])[np.asarray(data["pn_active"]) > 0]
+    years = np.asarray(years)
+    eras = [(a, b) for a, b in _PN_ERAS if ((years >= a) & (years <= b)).any()]
+    fig, ax = _map_grid(2, 2, shape, panel_w=5.0, header=0.85, cbar_frac=0.17)
+    era_means = {}
+    lim = max(float(np.percentile(np.abs([eps[(years >= a) & (years <= b)].mean(0) for a, b in eras]), 98)), 1e-6)
+    for axis in ax.flat[len(eras):]:
+        axis.axis("off")
+    for axis, (a, b) in zip(ax.flat, eras):
+        sel = (years >= a) & (years <= b)
+        m = eps[sel].mean(0)
+        era_means[f"{a}-{b}"] = {"land_mean": float(m.mean()), "land_rms": float(np.sqrt(np.mean(m ** 2))),
+                                  "cum_rms": float(np.sqrt(np.mean(eps[sel].sum(0) ** 2)))}
+        image = axis.imshow(_grid(m[None], rows, cols, shape)[0], cmap="RdBu_r", vmin=-lim, vmax=lim)
+        axis.set_title(f"{a}–{b}"); axis.axis("off")
+        fig.colorbar(image, ax=axis, fraction=.046, label="mean ε (log abundance / yr)")
+    fig.suptitle("Process noise: mean yearly nudge to abundance (ε > 0: the dynamics under-predict)")
+    _snap_map_height(fig)
+    fig.savefig(out, dpi=180, bbox_inches="tight"); plt.close(fig)
+    rms_t = np.sqrt(np.mean(eps ** 2, axis=1))
+    return {"rms_u_raw": float(np.sqrt(np.mean(u ** 2))) if u.size else 0.0,   # G4: realised / pinned sigma
+            "max_abs_u_raw": float(np.abs(u).max()) if u.size else 0.0,
+            "max_land_rms_eps": float(rms_t.max()),
+            "eras": era_means}
+
+
+def _observer_holdout_scores(data, sim, y, phi, gate, temporal, spatial, nodes=24):
+    """Held-out scores that integrate the observer x route effect instead of plugging it in.
+
+    The plug-in score (``mean_lpd``) uses the fitted eps; an observer-route with no FITTED observation has
+    eps ~ 0 there (prior mean), i.e. the median observer-route under an NB that ignores the sigma_u spread.
+    ``conditional``: eps integrated over N(0, 1) (Gauss-Hermite) for observer-routes unseen in the fitted
+    set, plug-in for seen ones -- the predictive a forecaster with the fitted observers would use.
+    ``marginal``: eps integrated for EVERY held-out observation -- no observer knowledge, the comparable
+    score for arms fitted without the effect. The effect multiplies the mean before the occupancy gate.
+    """
+    from scipy.special import gammaln, logsumexp
+    from src.model.age_priors import observer_effect_spec, route_occupancy_parts
+    spec = observer_effect_spec()
+    sigma = float(np.asarray(sim["latents"].get("observer_route_sigma", spec["sigma_u"])))
+    idx = np.asarray(data["obs_obsroute_idx"])
+    mu_all = np.asarray(sim["expected_obs"], dtype=np.float64)
+    log_off = np.log(np.maximum(mu_all, 1e-300)) - np.log(np.maximum(
+        np.asarray(sim["expected_obs_before_observer"], dtype=np.float64), 1e-300))
+    if "obs_year_effect" in sim:
+        log_off = log_off - np.asarray(sim["obs_year_effect"])[np.asarray(data["obs_time_indices"])]
+    eta = float(np.asarray(sim["latents"].get("observer_first_year_eta", 0.0)))
+    eps_part = log_off - eta * np.where(idx >= 0, np.asarray(data["obs_first_year"]), 0)   # sigma * eps_g
+    fitted = ~np.asarray(data["obs_holdout"]).astype(bool)
+    seen = np.zeros(int(idx.max()) + 1, bool)
+    seen[idx[fitted & (idx >= 0)]] = True
+    t, w = np.polynomial.hermite.hermgauss(nodes)
+    x, logw = np.sqrt(2.0) * t, np.log(w / np.sqrt(np.pi))
+    m_occ = (float(np.exp(np.asarray(sim["route_occupancy_log_m"]))) if "route_occupancy_log_m" in sim else None)
+
+    def nb(yy, mu, ph, g):
+        mu_nb = mu / np.maximum(1.0 - g, 1e-300) if g is not None else mu
+        lp = (gammaln(yy + ph) - gammaln(ph) - gammaln(yy + 1.0)
+              + ph * np.log(ph / (ph + mu_nb)) + yy * np.log(mu_nb / (ph + mu_nb)))
+        if g is not None:
+            lp = np.where(yy == 0, np.logaddexp(np.log(np.maximum(g, 1e-300)), np.log1p(-g) + lp),
+                          np.log1p(-g) + lp)
+        return lp
+
+    def integrated(m):
+        mu0 = mu_all[m] * np.exp(-eps_part[m])                 # effect removed, first-year kept
+        ph = np.broadcast_to(phi, mu_all.shape)[m]
+        lps = []
+        for xk in x:
+            mu_k = np.maximum(mu0 * np.exp(sigma * xk), 1e-12)
+            g_k = None if m_occ is None else np.asarray(route_occupancy_parts(mu_k, m_occ)[0])
+            lps.append(nb(y[m], mu_k, ph, g_k))
+        return logsumexp(np.stack(lps) + logw[:, None], axis=0)
+
+    real = idx >= 0
+    out = {"sigma_u": sigma, "eta": eta}
+    for name, hm in (("temporal", temporal), ("spatial", spatial)):
+        if not hm.any():
+            out[name] = None
+            continue
+        plug = nb(y[hm], mu_all[hm], np.broadcast_to(phi, mu_all.shape)[hm],
+                  None if gate is None else np.asarray(gate)[hm])
+        marg = np.where(real[hm], integrated(hm), plug)
+        unseen = real[hm] & ~seen[np.maximum(idx[hm], 0)]
+        cond = np.where(unseen, marg, plug)
+        out[name] = {"n": int(hm.sum()), "unseen_obsroute_share": float(unseen.mean()),
+                     "conditional_mean_lpd": float(cond.mean()), "marginal_mean_lpd": float(marg.mean())}
+    return out
+
+
+def _holdout_metrics(data, sim):
+    """E070 model comparison: NB2 log predictive density per observation on the held-out sets vs the fitted set.
+
+    Temporal = observation_mask.holdout_years; spatial = holdout blocks outside those years. Mean log density per
+    observation (higher is better) plus log1p RMSE; compare arms fitted with the SAME mask only.
+    """
+    if "obs_holdout" not in data or "obs_concentration" not in sim:
+        return None
+    from scipy.special import gammaln
+    from src.model.data_loading import _observation_mask_spec, holdout_observation_mask
+    spec = _observation_mask_spec() or {}
+    y = np.asarray(data["observed_results"], dtype=np.float64)
+    mu = np.maximum(np.asarray(sim["expected_obs"], dtype=np.float64), 1e-12)
+    phi = np.asarray(sim["obs_concentration"], dtype=np.float64)
+    gate = np.asarray(sim["obs_zero_gate"], dtype=np.float64) if "obs_zero_gate" in sim else None
+    # route_occupancy: occupied routes count NB with mean mu / (1 - gate); mu itself stays the expected count
+    mu_nb = mu / np.maximum(1.0 - gate, 1e-300) if gate is not None else mu
+    lp = (gammaln(y + phi) - gammaln(phi) - gammaln(y + 1.0)
+          + phi * np.log(phi / (phi + mu_nb)) + y * np.log(mu_nb / (phi + mu_nb)))
+    if gate is not None:
+        lp = np.where(y == 0, np.logaddexp(np.log(np.maximum(gate, 1e-300)), np.log1p(-gate) + lp),
+                      np.log1p(-gate) + lp)
+    meta = {k: np.asarray(data[k]) for k in ("years", "obs_time_indices", "obs_rows", "obs_cols")}
+    temporal = (holdout_observation_mask(meta, {"holdout_years": spec.get("holdout_years")})
+                if spec.get("holdout_years") else np.zeros(y.shape, bool))
+    # The fit's stored mask (temporal | spatial) is authoritative; recomputing the block draw here would need the
+    # grid cell size (pinned blocks) that this minimal meta does not carry.
+    spatial = (np.asarray(data["obs_holdout"]).astype(bool) & ~temporal
+               if spec.get("holdout_blocks") else np.zeros(y.shape, bool))
+    fitted = ~np.asarray(data["obs_holdout"]).astype(bool)
+
+    def score(m):
+        if not m.any():
+            return None
+        return {"n": int(m.sum()), "mean_lpd": float(lp[m].mean()),
+                "log1p_rmse": float(np.sqrt(np.mean((np.log1p(y[m]) - np.log1p(mu[m])) ** 2)))}
+    out = {"temporal": score(temporal), "spatial": score(spatial), "fitted": score(fitted)}
+    if "expected_obs_before_observer" in sim:
+        out["observer_effect"] = _observer_holdout_scores(data, sim, y, phi, gate, temporal, spatial)
+    if "route_occupancy_log_m" in sim:
+        out["route_occupancy_m"] = float(np.exp(np.asarray(sim["route_occupancy_log_m"])))
+        out["mean_zero_gate"] = float(gate.mean())
+    return out
+
+
+def _split_readout_metrics(data, sim):
+    """readout.split diagnostics, or None when the readout is single-amplitude."""
+    if "w_env_within" not in sim or "Z_ref" not in data:
+        return None
+    Z = np.asarray(data["Z_gathered"], dtype=np.float64)
+    dz = Z - np.asarray(data["Z_ref"], dtype=np.float64)[None]
+    bw = np.asarray(sim["w_env_within"], dtype=np.float64)              # (M, 4)
+    land_mean = (dz.mean(axis=1)) @ bw                                  # (time, 4): land-mean deviation term
+    years = np.asarray(data["years"])
+    names = ["adult_survival", "fecundity", "capacity", "juvenile_survival"]
+    out = {"w_scale_level": [float(x) for x in np.asarray(sim["w_scale"])],
+           "w_scale_within": [float(x) for x in np.asarray(sim["w_scale_within"])]}
+    out["within_over_level"] = [w / max(l, 1e-12) for w, l in zip(out["w_scale_within"], out["w_scale_level"])]
+    for i, n in enumerate(names):
+        sel = {y: float(land_mean[np.argmin(np.abs(years - y)), i]) for y in (1940, 1966, 1980, 1996, 2010, 2023)}
+        out[f"land_mean_deviation_{n}"] = sel
+    return out
+
+
+def _covariate_drift_metrics(data, sim):
+    """Per-field link-scale drift (population_model.covariate_drift), or None when off.
+
+    Like the K trend, the prior-scale multiple reads itself: a drift far outside its weak prior is
+    absorbing dynamics (or something else unmodelled), not a finding about proxies. P2 (form covariate)
+    reports per covariate x field: the change over the observed window per sd of the covariate.
+    """
+    if "covariate_drift" not in sim:
+        return None
+    from src.model.age_priors import DRIFT_FIELDS, _DRIFT, _DRIFT_ON_FIELDS
+    d = np.asarray(sim["covariate_drift"])                     # (time, 4) or (time, C, 4)
+    w = np.asarray(sim["covariate_drift_w"])
+    if _DRIFT.get("prior", "normal") == "cauchy":
+        scale = float(_DRIFT.get("cauchy_scale", 0.02))
+    else:
+        scale = float(_DRIFT.get("budget", 0.2)) / np.sqrt(w.shape[-1])
+    years = np.asarray(data["years"])
+    obs = years >= int(_DRIFT.get("window_start", 1966))
+    out = {"fields": list(_DRIFT_ON_FIELDS), "max_prior_scale_multiple": float(np.abs(w).max() / scale)}
+    if d.ndim == 2:
+        for i, f in enumerate(DRIFT_FIELDS):
+            if f in _DRIFT_ON_FIELDS:
+                out[f] = {"start": float(d[obs][0, i]), "end": float(d[obs][-1, i]),
+                          "range": float(np.ptp(d[obs][:, i]))}
+        return out
+    names = _DRIFT.get("covariates", [_DRIFT.get("covariate", "builtup")])
+    for c, name in enumerate(names):
+        out[name] = {f: float(d[obs][-1, c, i] - d[obs][0, c, i])
+                     for i, f in enumerate(DRIFT_FIELDS) if f in _DRIFT_ON_FIELDS}
+    return out
+
+
 def plot_disease_diagnostics(data, sim, years, rows, cols, shape, out, era):
     """Is the disease term describing an epizootic, or absorbing spatial misfit?
 
@@ -1743,12 +2001,50 @@ def simulate_no_invasion_counterfactual(sim, data, drop_disease=True):
         # Absent when dispersal_random_enabled is false (the model then uses zeros).
         jnp.asarray(latents.get("dispersal_random", np.zeros(int(data["time"])))),
         inv_pop_zero,
-        int(data["time"]), data["inv_locations"], data["inv_timestep"],
+        # invasion_pulse_prior.form = single releases at only the first rows of inv_locations
+        int(data["time"]), data["inv_locations"][:inv_pop_zero.shape[0]], data["inv_timestep"],
         float(np.asarray(latents["dispersal_logit_intercept"])),
         float(np.asarray(latents["dispersal_logit_slope"])),
         jnp.asarray(sim["allee_gamma"]),
         target_fraction=data["dispersal_target_fraction"],
-    )
+        allee_relative=ALLEE_RELATIVE,
+        settle_block=SETTLE_BLOCK,
+        settle_weight=SETTLE_WEIGHT,
+        settle_dispersers_only=SETTLE_DISPERSERS,
+        veit_departure=VEIT_DEPARTURE,
+        yearling_breeding=YEARLING and not VEIT_REPRO, veit_reproduction=VEIT_REPRO,
+        settle_tau=float(np.asarray(latents.get("settlement_tau", 0.0))),
+        strata_u=data["strata_u"] if SUBCELL else None,
+        strata_a=data["strata_a"] if SUBCELL else None,
+        subcell_beta_k=(jnp.asarray(sim["subcell_beta_k_t"])
+                        if "subcell_beta_k_t" in sim else
+                        float(np.asarray(latents.get("subcell_beta_k", 0.0)))),
+        subcell_delta_f=float(np.asarray(latents.get("subcell_delta_f", 0.0))),
+        subcell_sigma_s=(jnp.asarray(sim["subcell_sigma_s_t"]) if "subcell_sigma_s_t" in sim else None),
+        # Absent unless dispersal_departure.form = age (then the shared curve applies).
+        dispersal_adult_offset=float(np.asarray(latents.get("dispersal_logit_adult_offset", 0.0))),
+        # Absent unless dispersal_departure.crowding_arm (then None = no crowding arm).
+        crowding_beta=(float(np.asarray(latents["dispersal_crowding_beta"]))
+                       if "dispersal_crowding_beta" in latents else None),
+        crowding_kappa=CROWDING_KAPPA,
+        # population_model.native_departure (E077): the same native-range departure scaling as the fit.
+        departure_scale=(None if "native_departure_r" not in latents else
+                         1.0 - float(np.asarray(latents["native_departure_r"])) * (
+                             np.asarray(data["initpop_latent"])[np.asarray(data["land_rows"]), np.asarray(data["land_cols"])]
+                             / max(float(np.max(np.asarray(data["initpop_latent"])[np.asarray(data["land_rows"]),
+                                                                                   np.asarray(data["land_cols"])])), 1e-12))),
+        # dispersal_kernel.band_weights: the fitted radial-band reweighting
+        juvenile_kernel_weights=(juvenile_band_weights(data["juvenile_fft_kernel_stack"],
+                                                       jnp.asarray(latents["dispersal_band_logw"]))
+                                 if "dispersal_band_logw" in latents else None),
+        # disease_prior.target = survival: the epizootic is mortality, not a K cut, so the
+        # "keep disease" world needs it back (dropping it = no amplitude).
+        **({} if drop_disease or "disease_mortality_amp" not in sim else dict(
+            disease_m_amp=jnp.asarray(sim["disease_mortality_amp"]),
+            disease_k_half=float(counts_to_relative(np.asarray(sim["disease_k_half_route_counts"]))),
+            disease_hill_n=float(np.asarray(sim["disease_hill_n"])))),
+        occupancy_b=(float(data['pop_scalar']) * OCC_BIRDS_PER_COUNT) if OCCUPANCY else None,
+    )[:3]
     return np.asarray(jax.block_until_ready(density))
 
 
@@ -2032,6 +2328,10 @@ def main():
                              "config's MAP run (e.g. an HMC draw written by "
                              "scripts/diagnostics/export_hmc_draw.py)")
     args = parser.parse_args()
+    # --precision float64 must ENABLE x64: without it JAX silently truncates every array to float32, and a float64
+    # refined point re-simulated in float32 (no FFT floor) picks up round-off phantom immigration -- 67c2's refined
+    # diagnostics reported RMSE .88 against .45 recomputed in float64 (E076).
+    jax.config.update("jax_enable_x64", args.precision == "float64")
     if args.window_years is not None and args.window_years < 1:
         raise ValueError("--window-years must be positive")
 
@@ -2100,6 +2400,8 @@ def main():
     disease_metrics = plot_disease_diagnostics(
         data, sim, years, rows, cols, shape, out / "09_disease_diagnostics.png",
         modern_era)
+    process_noise_metrics = plot_process_noise(data, sim, years, rows, cols, shape,
+                                               out / "18_process_noise.png")
     land_mask_arr = np.asarray(data["land_mask"])
     age_structure_metrics = plot_age_structure(
         sim, years, rows, cols, shape, land_mask_arr, out / "10_age_structure.png", modern_era)
@@ -2150,6 +2452,28 @@ def main():
         out / "17b_q_asymmetry_attribution.png", modern_era, names=z_names)
     n50_raw = float(np.asarray(sim["n50_raw"])); n50 = float(np.logaddexp(0.0, n50_raw))
     transition_land = np.isfinite(transition)
+    subcell_metrics = None
+    if "subcell_beta_k_t" in sim:
+        lat = sim["latents"]
+        subcell_metrics = {
+            "beta_k": float(np.asarray(lat.get("subcell_beta_k", 0.0))),
+            "delta_f": float(np.asarray(lat.get("subcell_delta_f", 0.0))),
+            "beta_k_moderator": float(np.asarray(lat.get("subcell_beta_k_mod", 0.0))),
+            "sigma_s": (float(np.asarray(lat["subcell_sigma_s"]))
+                        if "subcell_sigma_s" in lat else None),
+            "sigma_s_moderator": float(np.asarray(lat.get("subcell_sigma_s_mod", 0.0))),
+            "beta_k_effective_p05_p50_p95": [float(x) for x in np.percentile(
+                np.asarray(sim["subcell_beta_k_t"]), [5, 50, 95])],
+            "sigma_s_effective_p05_p50_p95": ([float(x) for x in np.percentile(
+                np.asarray(sim["subcell_sigma_s_t"]), [5, 50, 95])]
+                if "subcell_sigma_s_t" in sim else None),
+            "capacity_target_fraction": (float(np.mean(np.asarray(
+                data["subcell_capacity_moderator"]) > 0))
+                if "subcell_capacity_moderator" in data else None),
+            "survival_target_fraction": (float(np.mean(np.asarray(
+                data["subcell_survival_moderator"]) > 0))
+                if "subcell_survival_moderator" in data else None),
+        }
     metrics = {
         "profile": args.profile, "checkpoint_step": int(checkpoint["step"]),
         "years": [int(years[0]), int(years[-1])],
@@ -2197,6 +2521,18 @@ def main():
         # prior. Reported as the multiplier on K (exp of the trend, since K sits
         # near softplus's exponential regime) at each end of the timeline.
         "k_trend": _k_trend_metrics(data, sim),
+        # covariate_drift (E057): the per-field link-scale drift and its weights against their prior.
+        "covariate_drift": _covariate_drift_metrics(data, sim),
+        # readout.split (E066): amplitudes of the deviation vs level blocks, and the LAND-MEAN deviation term
+        # per field over time -- the continental trend the deviation block carries (competes with P0 / K trend).
+        "split_readout": _split_readout_metrics(data, sim),
+        # st_correction (E067): size and timing of the shared smooth habitat correction h(cell, t).
+        "st_correction": _st_correction_metrics(data, sim),
+        # process_noise (E070): realised noise vs its pinned sigma, and its era structure (figure 18).
+        "process_noise": process_noise_metrics,
+        # observation_mask holdouts (E070): held-out log predictive density, the ranking criterion.
+        "holdout": _holdout_metrics(data, sim),
+        "subcell_strata": subcell_metrics,
         # K's bounded dynamic range. If a large share of land sits at the floor, the
         # covariates are pushing capacity as low as the bound permits -- the same
         # pathology as a saturated disease ceiling, one route over.

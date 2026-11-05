@@ -1,0 +1,15 @@
+{
+  "_extends": "map_run64e_capacity_deficit.json",
+  "_comment": ["E064i: capacity-deficit and harsh-winter survival compensation together, without route effects."],
+  "population_model": {
+    "subcell_strata": {
+      "sigma_s_scale": 0.5,
+      "survival_moderator": {
+        "covariates": {"tmin_q10": -0.70710678, "snow_q50": 0.70710678},
+        "positive_only": true,
+        "coefficient_scale": 0.35
+      }
+    }
+  },
+  "run_names": {"map": "age_map_{precision}_run_64i", "vis_map": "age_map_{precision}_run_64i"}
+}

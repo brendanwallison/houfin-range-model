@@ -1,0 +1,6 @@
+{
+  "_extends": "map_run64a_subcell_smooth.json",
+  "_comment": ["E064c: generic within-cell capacity heterogeneity only; fecundity tilt pinned to zero."],
+  "population_model": {"pinned_sites": {"subcell_delta_f": 0.0}},
+  "run_names": {"map": "age_map_{precision}_run_64c", "vis_map": "age_map_{precision}_run_64c"}
+}

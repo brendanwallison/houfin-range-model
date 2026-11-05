@@ -1,0 +1,25 @@
+{
+  "_extends": "map_run70z_holdout_base.json",
+  "_comment": [
+    "E073 (E070 stage 2) 73h: process noise (sigma .05, detrended) + H from 1902. Holdout base 70z."
+  ],
+  "population_model": {
+    "process_noise": {
+      "enabled": true,
+      "sigma": 0.05,
+      "n_freq": 3,
+      "window_start": 1902,
+      "detrend_degree": 1
+    },
+    "st_correction": {
+      "enabled": true,
+      "scale": 0.1,
+      "time": "linear",
+      "window_start": 1902
+    }
+  },
+  "run_names": {
+    "map": "age_map_{precision}_run_73h",
+    "vis_map": "age_map_{precision}_run_73h"
+  }
+}

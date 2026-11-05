@@ -1,0 +1,19 @@
+{
+  "_extends": "map_run70z_holdout_base.json",
+  "population_model": {
+    "observation": {
+      "route_occupancy": {
+        "enabled": true,
+        "m_loc": 0.3,
+        "m_scale": 1.0
+      }
+    }
+  },
+  "_comment": [
+    "E072 mean-preserving route-occupancy zero inflation (pi = exp(-mu/m), log m ~ N(log .3, 1)) on the 70z base."
+  ],
+  "run_names": {
+    "map": "age_map_{precision}_run_72a",
+    "vis_map": "age_map_{precision}_run_72a"
+  }
+}

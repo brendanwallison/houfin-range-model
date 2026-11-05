@@ -16,6 +16,7 @@ import numpy as np
 import jax.numpy as jnp
 
 from src.model.age_priors import equilibrium_age_quantities
+from src.model.density_regulation import crowding_argument
 from src.temporal import load_timeline
 
 
@@ -27,6 +28,9 @@ def local_growth_lambda(Sa, Sj, F):
     dispersal-free, Allee-free -- the FUNDAMENTAL-niche quantity.
     """
     Sa, Sj, F = np.asarray(Sa), np.asarray(Sj), np.asarray(F)
+    from src.model.age_priors import YEARLING
+    if YEARLING:      # yearlings breed (reproduction.yearling_breeding or form = veit)
+        return Sa + Sj * F
     return (Sa + np.sqrt(np.maximum(Sa ** 2 + 4.0 * F * Sa * Sj, 0.0))) / 2.0
 
 
@@ -135,12 +139,25 @@ def allee_viability(Sa, Sj, Fmax, K, allee_gamma, n_grid=512):
     Sa, Sj, Fmax, K = (np.asarray(x, dtype=float) for x in (Sa, Sj, Fmax, K))
     allee_gamma = np.asarray(allee_gamma, dtype=float)
     Sa, Sj, Fmax, K, allee_gamma = np.broadcast_arrays(Sa, Sj, Fmax, K, allee_gamma)
+    # Relative Allee (allee_prior.form = relative): the factor uses N/K, i.e. an
+    # effective per-cell rate gamma/K on absolute N. Applied here once so every
+    # density below (N = u*K) and the suppression at K follow the model exactly.
+    from src.model.age_priors import ALLEE_RELATIVE
+    if ALLEE_RELATIVE:
+        # Same floor as age_forward.relative_density: no capacity => mates not limiting.
+        from src.model.age_forward import _RELATIVE_K_FLOOR, _RELATIVE_RATIO_CAP
+        allee_gamma = np.where(K > _RELATIVE_K_FLOOR, allee_gamma / np.where(K > 0, K, 1.0),
+                               allee_gamma * _RELATIVE_RATIO_CAP)
 
-    F_repl = (1.0 - Sa) / (Sa * Sj)
+    from src.model.age_priors import ALLEE_AGG_K, VEIT_REPRO, YEARLING
+    # Mate-finding success exactly as the forward model (age_forward.allee_mated_fraction), in numpy.
+    _mated = ((lambda x: -np.expm1(-x)) if ALLEE_AGG_K is None else
+              (lambda x: -np.expm1(-ALLEE_AGG_K * np.log1p(x / ALLEE_AGG_K))))
+    F_repl = (1.0 - Sa) / (Sj if YEARLING else Sa * Sj)
     # Same c as the fitted model, including the 1e-6 guard: it belongs in the
     # forward simulation (it protects Sa -> 1) and must stay bit-identical here.
     # It just no longer decides a class boundary.
-    c = np.maximum((Fmax * Sa * Sj) / (1.0 - Sa + 1e-6) - 1.0, 0.0)
+    c = np.maximum((Fmax * (Sj if YEARLING else Sa * Sj)) / (1.0 - Sa + 1e-6) - 1.0, 0.0)
 
     with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
         # N = u*K, u log-spaced over [1e-5, 10]. The peak lies in (0, ~K]: for
@@ -148,14 +165,21 @@ def allee_viability(Sa, Sj, Fmax, K, allee_gamma, n_grid=512):
         # a fraction of K. Six decades covers both without a per-cell grid.
         u = np.logspace(-5.0, 1.0, int(n_grid)).reshape((-1,) + (1,) * Sa.ndim)
         N = u * K
-        F = Fmax / (1.0 + c * u) * (-np.expm1(-allee_gamma * N))
+        if VEIT_REPRO:
+            # per-breeder births under pairs + nest sites (age_forward veit form)
+            # (allee_gamma is already per-absolute-N here, relative form folded in above)
+            r = 2.0 * np.log(2.0) / np.maximum(allee_gamma, 1e-12)
+            P = N * N / (r + 2.0 * N)
+            F = Fmax * 2.0 * P / (1.0 + 2.0 * P / K) / N
+        else:
+            F = Fmax / (1.0 + c * crowding_argument(u)) * _mated(allee_gamma * N)
         F = np.where(np.isfinite(F), F, -np.inf)
         k_peak = np.argmax(F, axis=0)
         F_peak = np.take_along_axis(F, k_peak[None], axis=0)[0]
         N_peak = np.take_along_axis(N, k_peak[None], axis=0)[0]
-        suppression = np.exp(-allee_gamma * K)
+        suppression = (np.exp(-allee_gamma * K) if ALLEE_AGG_K is None else 1.0 - _mated(allee_gamma * K))
 
-    fundamental_viable = c > 0.0
+    fundamental_viable = (Fmax > F_repl) if VEIT_REPRO else (c > 0.0)
     # A cell with c == 0 fails replacement at ANY density (F <= Fmax <= F_repl),
     # so the scan already excludes it; the explicit conjunction just documents that
     # viability is fundamental suitability AND Allee escape, never Allee alone.
@@ -271,13 +295,20 @@ def demographic_params(latents):
     # map_diagnostics.reconstruct_map); the fallbacks below keep pre-d7db319
     # checkpoints, where the *_raw names were genuinely sampled, plotting correctly.
     gamma_a = _gamma_slope(latents, "gamma_a", "gamma_a_raw")
+    # Centred habitat fields (habitat_centering="occupied"): the model uses
+    # H = z.beta - z_center.beta, which is the same as shifting each intercept by
+    # -gamma * offset and feeding the uncentered z.beta every caller here computes.
+    off = (np.asarray(latents["habitat_center_offsets"], dtype=float)
+           if "habitat_center_offsets" in latents else np.zeros(4))
+    alpha_k = alpha_k - _gamma_slope(latents, "gamma_k", "gamma_k_raw") * off[2]
     return {
         "beta_sj": beta_sj,
         "w_env": w_env,
         "beta_s": beta_s, "beta_r": beta_r, "beta_k": beta_k,
-        "alpha_a": float(latents["alpha_a"]),
-        "alpha_j": float(latents["alpha_j"]),
-        "alpha_f": float(latents["alpha_f"]),
+        "alpha_a": float(latents["alpha_a"]) - gamma_a * off[0],
+        "alpha_j": float(latents["alpha_j"]) - (float(np.asarray(latents["gamma_j"])) if "gamma_j" in latents
+                                                else gamma_a + float(latents["gamma_j_diff"])) * off[3],
+        "alpha_f": float(latents["alpha_f"]) - _gamma_slope(latents, "gamma_f", "gamma_f_raw") * off[1],
         "alpha_k": alpha_k,
         "gamma_a": gamma_a,
         # gamma_j: prefer the DETERMINISTIC `gamma_j` site, which is the quantity itself.
@@ -311,9 +342,13 @@ def rates_from_manifolds(p, H_s, H_sj, H_r, H_k=None):
     error was plausible-looking rather than obvious. A default would let the same
     mistake back in silently.
     """
+    from src.model.age_priors import JUVENILE_RATIO
+    Sa = sigmoid(p["alpha_a"] + p["gamma_a"] * H_s)
+    Sj = sigmoid(p["alpha_j"] + p["gamma_j"] * H_sj)
     out = {
-        "Sa": sigmoid(p["alpha_a"] + p["gamma_a"] * H_s),
-        "Sj": sigmoid(p["alpha_j"] + p["gamma_j"] * H_sj),
+        "Sa": Sa,
+        # juvenile_survival.form = ratio: Sj is a fraction of Sa (see age_fields).
+        "Sj": Sa * Sj if JUVENILE_RATIO else Sj,
         "Fmax": softplus(p["alpha_f"] + p["gamma_f"] * H_r),
     }
     if H_k is not None:

@@ -1,0 +1,42 @@
+{
+  "_comment": [
+    "run_23a = run_21 (single field, occupied centring, absolute Allee, K level 3.0 +/- 1.0) plus:",
+    "(1) a FIRM prior on a WEAK absolute Allee effect: n50 median 0.03 route counts (was 0.127), n50_raw scale 0.25 (was 1.0), 90% within ~0.02-0.045. A front cell at 0.1 counts keeps ~90% of its fecundity (run_21's fitted n50 0.28 left ~22%).",
+    "(2) juvenile survival as a FRACTION of adult survival: Sj = Sa * sigmoid(alpha_j + s_j*H), so Sj < Sa at every habitat value; ratio prior median 0.5 (logit 0, sd 0.5). Journey survival Q is the same product on path habitat.",
+    "Why: every refined variant (run_19..22, the dispersal sweep) demands lambda0 ~ 2.2 at typical habitat, fitted as fecundity ~10 and juvenile survival ~0.93 > adult ~0.42. Constraining Sj alone may push that demand into fecundity -- watch Fmax. The temporal-habitat route (Z's 1950-1990 trend) is left open until the DESK work settles; when revisited it should be a LEARNED temporal weight."
+  ],
+  "input_dir": "${HOUFIN_PROCESSED}/model_inputs/numpyro_input",
+  "population_model": {
+    "dispersal_random_enabled": false,
+    "manifold_prior": {
+      "form": "exchangeable",
+      "coupling_target": 0.85,
+      "coupling_logit_scale": 0.15,
+      "amplitude_scale": [
+        1.0263,
+        1.0263,
+        1.0227,
+        1.0263
+      ],
+      "fixed_coupling": 1.0
+    },
+    "habitat_centering": "occupied",
+    "capacity_level_prior": {
+      "target_level_median_route_counts": 3.0,
+      "alpha_k_scale": 1.0
+    },
+    "allee_prior": {
+      "n50_raw_loc": -3.4915,
+      "n50_raw_scale": 0.25
+    },
+    "juvenile_survival": {
+      "form": "ratio",
+      "ratio_logit_loc": 0.0,
+      "ratio_logit_scale": 0.5
+    }
+  },
+  "run_names": {
+    "map": "age_map_{precision}_run_23a_new_z",
+    "vis_map": "age_map_{precision}_run_23a_new_z"
+  }
+}

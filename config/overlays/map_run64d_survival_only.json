@@ -1,0 +1,9 @@
+{
+  "_extends": "map_run64a_subcell_smooth.json",
+  "_comment": ["E064d: generic within-cell survival heterogeneity only; capacity and fecundity tilts pinned to zero."],
+  "population_model": {
+    "subcell_strata": {"sigma_s_scale": 0.5},
+    "pinned_sites": {"subcell_beta_k": 0.0, "subcell_delta_f": 0.0}
+  },
+  "run_names": {"map": "age_map_{precision}_run_64d", "vis_map": "age_map_{precision}_run_64d"}
+}

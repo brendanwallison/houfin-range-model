@@ -1,0 +1,56 @@
+{
+  "_comment": [
+    "run_31 = run_30 (block-3 settlement + single release + weak-Allee prior + juvenile-ratio prior) + DISEASE AS MORTALITY (disease_prior.target = survival): the epizootic adds mortality to adults and juveniles, m = 0.8 * modifier(x) * gate(t - onset) * (1 - r(t - onset)) * hill(current local density); r = host resistance/tolerance (rec, tau_rec); K disease-free and c from disease-free rates, so endemic mortality lowers the equilibrium below K.",
+    "Why (user + E019, 2026-10-16): the K-cut disease was a permanent capacity step (median 29%, east pinned at the 50% ceiling, no recovery) and could only crash populations as fast as adults die -- pushing Sa down and fecundity up. Real conjunctivitis kills birds; resistance evolved."
+  ],
+  "input_dir": "${HOUFIN_PROCESSED}/model_inputs/numpyro_input",
+  "population_model": {
+    "dispersal_random_enabled": false,
+    "manifold_prior": {
+      "form": "exchangeable",
+      "coupling_target": 0.85,
+      "coupling_logit_scale": 0.15,
+      "amplitude_scale": [
+        1.0263,
+        1.0263,
+        1.0227,
+        1.0263
+      ],
+      "fixed_coupling": 1.0
+    },
+    "habitat_centering": "occupied",
+    "capacity_level_prior": {
+      "target_level_median_route_counts": 3.0,
+      "alpha_k_scale": 1.0
+    },
+    "allee_prior": {
+      "n50_raw_loc": -3.4915,
+      "n50_raw_scale": 0.25
+    },
+    "juvenile_survival": {
+      "form": "ratio",
+      "ratio_logit_loc": 0.0,
+      "ratio_logit_scale": 0.5
+    },
+    "settlement": {
+      "form": "ideal_free",
+      "block": 3
+    },
+    "invasion_pulse_prior": {
+      "form": "single",
+      "n_sites": 1,
+      "n_years": 1,
+      "total_median": 1.0,
+      "total_log_sd": 1.0,
+      "global_q50_route_counts": 0.7083
+    },
+    "disease_prior": {
+      "target": "survival",
+      "mortality_ceiling": 0.8
+    }
+  },
+  "run_names": {
+    "map": "age_map_{precision}_run_31_new_z",
+    "vis_map": "age_map_{precision}_run_31_new_z"
+  }
+}

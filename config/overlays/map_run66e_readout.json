@@ -1,0 +1,10 @@
+{
+  "_extends": "map_run66_b2_base.json",
+  "_comment": [
+    "E066 66e: B2 +drift x readout single-amplitude at rank 24."
+  ],
+  "run_names": {
+    "map": "age_map_{precision}_run_66e",
+    "vis_map": "age_map_{precision}_run_66e"
+  }
+}

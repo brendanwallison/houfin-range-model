@@ -1,0 +1,7 @@
+{
+  "_extends": "map_run59a_route_pinned.json",
+  "_comment": [
+    "E064k post-discovery control: repeat E059a after fixing likelihood-level obs_route_sd pinning; route effects only, SD truly fixed at 0.7."
+  ],
+  "run_names": {"map": "age_map_{precision}_run_64k", "vis_map": "age_map_{precision}_run_64k"}
+}

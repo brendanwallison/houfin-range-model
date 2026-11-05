@@ -28,6 +28,8 @@ since fecundity and capacity are both productivity/resource axes. See
 import jax.numpy as jnp
 import jax.nn as jnn
 from jax import lax, checkpoint
+from src.config_utils import load_age_model_config
+_FLOOR = float(load_age_model_config()['population_model'].get('capacity_floor_internal',0.))
 
 
 def disease_severity(disease, K_base):
@@ -92,6 +94,29 @@ def disease_severity(disease, K_base):
     return disease["ceiling"] * modifier * density_term
 
 
+def disease_mortality_amplitude(disease, t_idx, onset_t=None):
+    """Density-free part of the epizootic's ADDED MORTALITY (disease_prior.target = survival).
+
+    m(cell, t, N) = ceiling * modifier(x) * gate(t - onset) * (1 - r(t - onset)) * hill(N): this
+    returns everything but hill(N), which the forward simulation evaluates on the CURRENT local
+    density (transmission needs hosts now, so mortality eases as a population thins and rises
+    again if it rebounds). r is HOST RESISTANCE/TOLERANCE building with years since local
+    arrival -- the same rec / tau_rec parameters disease_k_fraction calls recovery, here acting
+    on per-capita mortality; one-way and density-blind, which is what separates it from the
+    density easing. Shape (..., N_land) for scalar or broadcastable ``t_idx``.
+    """
+    onset_t = disease_onset_timestep(disease) if onset_t is None else onset_t
+    modifier = jnn.sigmoid(
+        disease["mu_sev"]
+        + disease["b_late"] * disease["onset_decades"]
+        + disease["b_native"] * disease["native_shape"]
+        + jnp.dot(disease["sev_basis"].T, disease["w_sev"]))
+    gate = jnn.sigmoid((t_idx - onset_t) / disease["tau"])
+    age = jnp.maximum(t_idx - onset_t, 0.0)
+    resisted = disease["rec"] * (-jnp.expm1(-age / disease["tau_rec"]))
+    return disease["ceiling"] * modifier * gate * (1.0 - resisted)
+
+
 def disease_onset_timestep(disease):
     """Per-cell front arrival in model-timestep units, with fitted slack.
 
@@ -144,6 +169,18 @@ def project_and_scatter_age_structured(
     alpha_k, gamma_k, # Carrying capacity intercept (inside the link) & slope
     k_link=None,      # callable: K = k_link(argument); default softplus
     capacity=None,    # callable (alpha_k, H, trend, Sa, Sj, Fmax) -> K_base; overrides k_link
+    z_center=None,    # (M,) feature vector the habitat fields are centred at, or None
+    juvenile_ratio=False,  # Sj = Sa * sigmoid(alpha_j + gamma_j*H_sj) (and Q likewise)
+    disease_target="capacity",  # "capacity" (K depression) | "survival" (K disease-free)
+    z_shrink=None,    # habitat_change: eta in (0,1) -- Z_eff = Z_mean + eta*(Z_t - Z_mean); None = raw Z
+    Z_mean=None,      # (N_land, M) per-cell long-run mean of Z
+    Z_disp_mean=None, # (N_land, K, M) same for the path features
+    field_drift=None, # (time, 4) covariate_drift on the LINK scale, [adult surv, fecundity, capacity, juv surv]
+    covariate_drift=None,  # (x (time, N_land, C), G (time, C, 4)): per-cell link-scale drift sum_c x[t,cell,c] G[t,c,field]
+    split_readout=None,    # (Z_ref (N,M), Z_disp_ref (N,K,M), (beta_s_w, beta_r_w, beta_k_w, beta_sj_w)) -- readout.split
+    st_correction=None,    # (S (N,nb), S_disp (N,K,nb), Gw (time,nb)) -- E067 shared habitat correction h = S.Gw[t]
+    journey=None,          # (a_off, g_logratio, cost (K,) or (N_land, K)) -- population_model.journey: Q decoupled from S_j + mortality
+    compounding=None,      # (lam, seg_len (K,) in units of l, Z_disp_seg (time, N_land, K, n_seg, M), reference) -- path_compounding
 ):
     """Project Z → (S_a, S_j, F_max, K, Q) for every year, on the land cells.
 
@@ -165,28 +202,60 @@ def project_and_scatter_age_structured(
     # through the continental trend, so it is computed per year.
     onset_t = disease_onset_timestep(disease)
 
+    # Habitat centring (population_model.habitat_centering): H = (z - z_center).beta, so
+    # each intercept is the rate at z_center. Constant per field, so computed once; the
+    # dispersal block uses the same offset, keeping Q's intercept on the same footing.
+    if z_center is None:
+        off_s = off_r = off_k = off_sj = 0.0
+    else:
+        off_s, off_r = jnp.dot(z_center, beta_s), jnp.dot(z_center, beta_r)
+        off_k, off_sj = jnp.dot(z_center, beta_k), jnp.dot(z_center, beta_sj)
+
+    # readout.split: H = z_ref.beta (level, centred as before) + (z_t - z_ref).beta_w (within-cell deviation,
+    # its own weights/amplitude). The level part is time-invariant, so it is computed once here.
+    if split_readout is not None:
+        if z_shrink is not None:
+            raise NotImplementedError("readout.split and habitat_change.shrink are alternatives, not both")
+        Z_ref, Z_disp_ref, (bs_w, br_w, bk_w, bsj_w) = split_readout
+        lvl_s, lvl_r = jnp.dot(Z_ref, beta_s), jnp.dot(Z_ref, beta_r)
+        lvl_k, lvl_sj = jnp.dot(Z_ref, beta_k), jnp.dot(Z_ref, beta_sj)
+        lvl_sj_disp = jnp.dot(Z_disp_ref, beta_sj)
+        lvl_s_disp = jnp.dot(Z_disp_ref, beta_s)
+
     # Checkpoint: don't store this function's large intermediates for the
     # backward pass; recompute them instead.
     @checkpoint
     def process_year(carry, t_idx):
         # 1. Pull slices from CPU RAM -> GPU VRAM
-        z_t = jnp.take(Z_gathered, t_idx, axis=0)
-        z_disp_t = jnp.take(Z_disp_gathered, t_idx, axis=0)
+        z_t = lax.optimization_barrier(jnp.take(Z_gathered, t_idx, axis=0))
+        z_disp_t = lax.optimization_barrier(jnp.take(Z_disp_gathered, t_idx, axis=0))
+        if z_shrink is not None:
+            # Learned shrinkage of covariate CHANGE toward each cell's long-run mean (the DESK
+            # features over-move in time ~2.2x against observed abundance change).
+            z_t = Z_mean + z_shrink * (z_t - Z_mean)
+            z_disp_t = Z_disp_mean + z_shrink * (z_disp_t - Z_disp_mean)
 
         # 2. Compute the 4 Correlated Habitat Manifolds (H_s, H_sj, H_r, H_k) --
         # purely covariate-driven (Z.beta), no spatiotemporal term mixed in.
-        H_s_local = jnp.dot(z_t, beta_s)
-        H_r_local = jnp.dot(z_t, beta_r)
+        if split_readout is None:
+            H_s_local = jnp.dot(z_t, beta_s) - off_s
+            H_r_local = jnp.dot(z_t, beta_r) - off_r
+        else:
+            dz_t = z_t - Z_ref
+            H_s_local = lvl_s - off_s + jnp.dot(dz_t, bs_w)
+            H_r_local = lvl_r - off_r + jnp.dot(dz_t, br_w)
         # Juvenile survival reads its OWN manifold. It used to reuse H_s_local with only a
         # scalar shift (alpha_j) and scale (gamma_j), so "where juveniles survive" could not
         # differ in PATTERN from "where adults survive" -- zero independent spatial degrees of
         # freedom. The two are still tightly coupled, but now through a PRIOR on their
         # correlation (rank-2 manifold prior, target 0.85) rather than by identity.
-        H_sj_local = jnp.dot(z_t, beta_sj)
+        H_sj_local = (jnp.dot(z_t, beta_sj) - off_sj if split_readout is None
+                      else lvl_sj - off_sj + jnp.dot(dz_t, bsj_w))
         # Capacity reads its OWN manifold. It used to reuse H_r, making K a strictly
         # monotone function of Fmax, so the disease term was the only way their
         # spatial patterns could differ -- see the module docstring.
-        H_k_local = jnp.dot(z_t, beta_k)
+        H_k_local = (jnp.dot(z_t, beta_k) - off_k if split_readout is None
+                     else lvl_k - off_k + jnp.dot(dz_t, bk_w))
 
         # 3. Path-Integrated Survival Suitability
         # z_disp_t is (N_land, K_kernels, M) -> dot with beta_s (M,) gives (N_land, K_kernels)
@@ -199,21 +268,47 @@ def project_and_scatter_age_structured(
         # existed. The exact GP-kernel interpretation remains only approximate on the dispersal
         # block. See kernel_contract note in model_inputs.py and the "dispersal-block prior"
         # future-work item.
-        H_sj_disp = jnp.dot(z_disp_t, beta_sj)
+        H_sj_disp = (jnp.dot(z_disp_t, beta_sj) - off_sj if split_readout is None
+                     else lvl_sj_disp - off_sj + jnp.dot(z_disp_t - Z_disp_ref, bsj_w))
+
+        # population_model.covariate_drift (P0, intercept form): a smooth, spatially uniform shift of
+        # each rate's linear predictor -- the zero-order case of a drifting proxy -> niche relation.
+        if field_drift is None:
+            d_s = d_r = d_k = d_sj = 0.0
+        else:
+            d_s, d_r, d_k, d_sj = (field_drift[t_idx, i] for i in range(4))
+        if st_correction is not None:
+            # E067: one smooth spatiotemporal correction to habitat quality, shared by all four fields, and its path
+            # image for journey survival (the correction is linear, so the path operator is applied to its basis).
+            gw_t = st_correction[2][t_idx]
+            h_loc = jnp.dot(st_correction[0], gw_t)                     # (N_land,)
+            h_path = jnp.dot(st_correction[1], gw_t)                    # (N_land, K)
+            d_s, d_r, d_k, d_sj = d_s + h_loc, d_r + h_loc, d_k + h_loc, d_sj + h_loc
+        else:
+            h_path = 0.0
+        if covariate_drift is not None:
+            # E057 P2: the covariate's effect drifts -- x(cell, t) * a_field * g(t) (proxy -> niche relation).
+            x_t = jnp.take(covariate_drift[0], t_idx, axis=0)          # (N_land, C)
+            dd = x_t @ covariate_drift[1][t_idx]                       # (N_land, 4)
+            d_s, d_r, d_k, d_sj = d_s + dd[:, 0], d_r + dd[:, 1], d_k + dd[:, 2], d_sj + dd[:, 3]
 
         # 4. Map H_s and H_r to Demographic Rates using Intercepts and Slopes
         # Survival listens to H_s
-        S_a_val = jnn.sigmoid(alpha_a + gamma_a * H_s_local)
-        S_j_val = jnn.sigmoid(alpha_j + gamma_j * H_sj_local)
+        S_a_val = jnn.sigmoid(alpha_a + gamma_a * H_s_local + d_s)
+        # juvenile_ratio: juvenile survival is a FRACTION of adult survival, so Sj < Sa at
+        # every habitat value (run_21's fit had Sj 0.93 against Sa 0.42).
+        S_j_val = jnn.sigmoid(alpha_j + gamma_j * H_sj_local + d_sj)
+        if juvenile_ratio:
+            S_j_val = S_a_val * S_j_val
 
         # Reproduction listens to H_r
-        F_max_val = jnn.softplus(alpha_f + gamma_f * H_r_local)
+        F_max_val = jnn.softplus(alpha_f + gamma_f * H_r_local + d_r)
 
         # Continental, spatially uniform capacity drift. Time-centered basis, so
         # k_level still owns the level; this exists so "modern K below 1970s K" has
         # somewhere to go other than the disease term. Its prior is deliberately
         # near-zero -- it is a safety valve, not a mechanism.
-        k_trend_t = jnp.dot(jnp.take(k_trend_basis, t_idx, axis=1), w_k_trend)
+        k_trend_t = jnp.dot(jnp.take(k_trend_basis, t_idx, axis=1), w_k_trend) + d_k
 
         # Baseline K with a SOFTPLUS link, applied in DENSITY space:
         #     K_base = softplus(alpha_k + gamma_k*H_k + trend)
@@ -241,17 +336,74 @@ def project_and_scatter_age_structured(
         # module docstring for why the earlier additive-inside-softplus form
         # annihilated eastern K instead of rescaling it). The severity and onset
         # fields are time-independent, so they are hoisted out of the scan.
-        k_fraction = jnp.where(
-            t_idx >= disease_timestep,
-            disease_k_fraction(disease, t_idx, K_base_val, onset_t=onset_t),
-            0.0,
-        )
-        K_val = K_base_val * (1.0 - k_fraction)
+        # (disease_target = survival: K stays disease-free; the epizootic is added
+        # mortality applied in the forward simulation -- see disease_mortality_amplitude.)
+        if disease_target == "survival":
+            K_val = K_base_val
+        else:
+            k_fraction = jnp.where(
+                t_idx >= disease_timestep,
+                disease_k_fraction(disease, t_idx, K_base_val, onset_t=onset_t),
+                0.0,
+            )
+            K_val = K_base_val * (1.0 - k_fraction)
+
+        # Additive positive link floor after disease; raw baseline/native seed unchanged.
+        K_val = K_val + _FLOOR
 
         # 5. Map path habitat to Journey Survival (Q) using the JUVENILE manifold and rules.
         # This links movement mortality to juvenile local survival mortality -- the same field
         # S_j reads, so Q and S_j can no longer be driven by different spatial patterns.
-        Q_val = jnn.sigmoid(alpha_j + gamma_j * H_sj_disp)
+        # per-cell drifts (P2) are (N_land,); path habitat is (N_land, K_kernels)
+        # the local correction h does not belong on path habitat; its path image h_path does
+        q_sj = (d_sj - (h_loc if st_correction is not None else 0.0))
+        q_s = (d_s - (h_loc if st_correction is not None else 0.0))
+        q_sj = (q_sj[..., None] if jnp.ndim(q_sj) else q_sj) + h_path
+        q_s = (q_s[..., None] if jnp.ndim(q_s) else q_s) + h_path
+        if journey is None:
+            Q_val = jnn.sigmoid(alpha_j + gamma_j * H_sj_disp + q_sj)
+        else:
+            # population_model.journey: journey survival keeps the juvenile path-habitat field but gets its OWN
+            # intercept offset and slope ratio (0, 0 = the coupled form exactly), times a per-kernel journey
+            # mortality exp(-cost_k) that removes dispersers on long bands (not mass-preserving, unlike band_weights).
+            j_off, j_lr, j_cost = journey
+            # cost is per kernel (K,) or per destination and kernel (N_land, K) when the water hazard is on
+            j_surv = jnp.exp(-j_cost)
+            j_surv = j_surv[None, :] if j_surv.ndim == 1 else j_surv
+            Q_val = jnn.sigmoid(alpha_j + j_off + gamma_j * jnp.exp(j_lr) * H_sj_disp + q_sj) * j_surv
+        if juvenile_ratio:
+            # The same juvenile-survival field, evaluated on path habitat.
+            Hs_disp = (jnp.dot(z_disp_t, beta_s) - off_s if split_readout is None
+                       else lvl_s_disp - off_s + jnp.dot(z_disp_t - Z_disp_ref, bs_w))
+            Q_val = jnn.sigmoid(alpha_a + gamma_a * Hs_disp + q_s) * Q_val
+        if compounding is not None:
+            # population_model.path_compounding: compound a crossing factor along path segments, relative to a
+            # reference survival, on top of the annual coupled term. logQc(H) is the CURRENT coupled survival
+            # function (same intercepts, slopes, weights and per-cell terms); lam = 0 -> factor exp(0) = 1 exactly.
+            lam_c, seg_len, Zseg, reference = compounding
+            zs_t = lax.optimization_barrier(jnp.take(Zseg, t_idx, axis=0))            # (N_land, K, n_seg, M)
+            qj_e = q_sj[..., None] if jnp.ndim(q_sj) else q_sj
+            qs_e = q_s[..., None] if jnp.ndim(q_s) else q_s
+
+            def _logqc(Hsj, Hs, qj, qs):
+                out = jnn.log_sigmoid(alpha_j + gamma_j * Hsj + qj)
+                if juvenile_ratio:
+                    out = out + jnn.log_sigmoid(alpha_a + gamma_a * Hs + qs)
+                return out
+            Hsj_seg = jnp.dot(zs_t, beta_sj) - off_sj
+            Hs_seg = (jnp.dot(zs_t, beta_s) - off_s
+                      if juvenile_ratio else 0.0)
+            lq_seg = _logqc(Hsj_seg, Hs_seg, qj_e, qs_e)                               # (N_land, K, n_seg)
+            if reference == "mean":
+                Hs_bar = (jnp.dot(z_disp_t, beta_s) - off_s) if juvenile_ratio else 0.0
+                ref = _logqc(H_sj_disp, Hs_bar, q_sj, q_s)[..., None]
+                dev = jnp.minimum(lq_seg - ref, 0.0)
+            else:   # endpoint: interior segments against the better of the destination-end / origin-end segments
+                ref = jnp.maximum(lq_seg[..., :1], lq_seg[..., -1:])
+                dev = jnp.minimum(lq_seg[..., 1:-1] - ref, 0.0)
+            n_seg = lq_seg.shape[-1]
+            pen = jnp.sum(dev, axis=-1) * (seg_len / n_seg)[None, :]                   # (N_land, K), <= 0
+            Q_val = Q_val * jnp.exp(lam_c * pen)
 
         # K_base_val is returned as well: severity is a function of it, so exact
         # diagnostics (and the severity map) need the UNDEPRESSED capacity. Using

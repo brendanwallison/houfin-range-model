@@ -1,0 +1,65 @@
+{
+  "_comment": [
+    "run_34 = run_32 (block-3 settlement + single release + learned kernel tail) + disease as mortality + BREEDING-SEASON OBSERVATION (observation.form = breeding): a year-t BBS count ~ the year-t breeding population (previous end-of-year total) + phi * year-t fledglings, phi ~ Beta(1,4).",
+    "Why (research/age_model E026): counts were compared to adults + ALL new juveniles; at low density juveniles outnumber adults ~5:1, so modelled counts in colonising cells grew slower than breeders -- a direct push on lambda0."
+  ],
+  "input_dir": "${HOUFIN_PROCESSED}/model_inputs/numpyro_input",
+  "population_model": {
+    "dispersal_random_enabled": false,
+    "manifold_prior": {
+      "form": "exchangeable",
+      "coupling_target": 0.85,
+      "coupling_logit_scale": 0.15,
+      "amplitude_scale": [
+        1.0263,
+        1.0263,
+        1.0227,
+        1.0263
+      ],
+      "fixed_coupling": 1.0
+    },
+    "habitat_centering": "occupied",
+    "capacity_level_prior": {
+      "target_level_median_route_counts": 3.0,
+      "alpha_k_scale": 1.0
+    },
+    "allee_prior": {
+      "n50_raw_loc": -3.4915,
+      "n50_raw_scale": 0.25
+    },
+    "juvenile_survival": {
+      "form": "ratio",
+      "ratio_logit_loc": 0.0,
+      "ratio_logit_scale": 0.5
+    },
+    "settlement": {
+      "form": "ideal_free",
+      "block": 3
+    },
+    "invasion_pulse_prior": {
+      "form": "single",
+      "n_sites": 1,
+      "n_years": 1,
+      "total_median": 1.0,
+      "total_log_sd": 1.0,
+      "global_q50_route_counts": 0.7083
+    },
+    "dispersal_kernel": {
+      "band_weights": true,
+      "band_logw_scale": 1.0
+    },
+    "disease_prior": {
+      "target": "survival",
+      "mortality_ceiling": 0.8
+    },
+    "observation": {
+      "form": "breeding",
+      "fledgling_weight_a": 1.0,
+      "fledgling_weight_b": 4.0
+    }
+  },
+  "run_names": {
+    "map": "age_map_{precision}_run_34_new_z",
+    "vis_map": "age_map_{precision}_run_34_new_z"
+  }
+}

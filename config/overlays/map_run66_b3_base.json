@@ -1,0 +1,14 @@
+{
+  "_extends": "map_run62b_numerics.json",
+  "_comment": [
+    "E066 base B3 = B1 (62b) + persistent route effects with SD truly fixed at 0.7 (post-E064 pin fix)."
+  ],
+  "population_model": {
+    "observation": {
+      "route_effects": true
+    },
+    "pinned_sites": {
+      "obs_route_sd": 0.7
+    }
+  }
+}

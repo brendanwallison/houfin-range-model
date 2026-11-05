@@ -1,0 +1,6 @@
+{
+  "_extends": "map_run64d_survival_only.json",
+  "_comment": ["E065d: generic urban survival heterogeneity, with survival excluded from within-cell ideal-free allocation."],
+  "population_model": {"subcell_strata": {"survival_affects_allocation": false}},
+  "run_names": {"map": "age_map_{precision}_run_65d", "vis_map": "age_map_{precision}_run_65d"}
+}

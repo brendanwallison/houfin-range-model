@@ -1,0 +1,17 @@
+{
+  "_extends": "map_run70z_holdout_base.json",
+  "_comment": [
+    "E077: departure probability x (1 - r w), w = native core/margin map in [0, 1], r ~ Beta(1.5, 1.5): a more sedentary native range (western House Finches are largely resident; the continental kernel is the eastern invasion's). 70z holdout base."
+  ],
+  "population_model": {
+    "native_departure": {
+      "enabled": true,
+      "beta_a": 1.5,
+      "beta_b": 1.5
+    }
+  },
+  "run_names": {
+    "map": "age_map_{precision}_run_77a",
+    "vis_map": "age_map_{precision}_run_77a"
+  }
+}

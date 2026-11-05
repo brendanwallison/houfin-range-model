@@ -1,0 +1,16 @@
+{
+  "_comment": "54 km resolution diagnostic data config (see config/overlays/grid54_age.json and research/experiments/GRID54_INPUTS_2026-10-29.md). Same box/origin as 27 km; 67 x 112 cells with one virtual all-ocean row padded at the south.",
+  "grid": {
+    "target_res_m": 54000,
+    "ref_raster": "${HOUFIN_PROCESSED}/grid54/ref_grid_54km.tif"
+  },
+  "regions": {
+    "great_plains_zones": "${HOUFIN_PROCESSED}/grid54/regions/great_plains_zones_54km.tif"
+  },
+  "coastline": {
+    "fine_factor": 50
+  },
+  "timeline": {
+    "invasion_year": 1951
+  }
+}

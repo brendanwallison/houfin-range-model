@@ -46,6 +46,8 @@ def refine_settings(pcfg: dict) -> dict:
         "tol_du": hc.setting(r, "tol_du", "HOUFIN_REFINE_TOL_DU", float),
         "tol_window": hc.setting(r, "tol_window", "HOUFIN_REFINE_TOL_WINDOW", int),
         "tol_grad": hc.setting(r, "tol_grad", "HOUFIN_REFINE_TOL_GRAD", float),
+        "plateau_grad_max": hc.setting(r, "plateau_grad_max",
+                                       "HOUFIN_REFINE_PLATEAU_GRAD_MAX", float),
         "ckpt_every": hc.setting(r, "ckpt_every", "HOUFIN_REFINE_CKPT_EVERY", int),
         "log_every": hc.setting(r, "log_every", "HOUFIN_REFINE_LOG_EVERY", int),
     }
@@ -58,9 +60,19 @@ def converged(history: list, s: dict):
     if history[-1][2] < s["tol_grad"]:
         return f"|grad| {history[-1][2]:.3g} < tol_grad {s['tol_grad']}"
     w = s["tol_window"]
-    if len(history) > w and history[-w - 1][1] - history[-1][1] < s["tol_du"]:
-        return (f"U fell {history[-w - 1][1] - history[-1][1]:.3g} < tol_du {s['tol_du']} "
-                f"over {w} iterations")
+    if len(history) > w:
+        drop = history[-w - 1][1] - history[-1][1]
+        # A negative "drop" means the latest point is WORSE.  The old one-sided
+        # test accepted every increase as convergence; E064a therefore stopped
+        # with |grad| ~= 99,000 after U rose slightly over its final window.
+        if 0.0 <= drop < s["tol_du"]:
+            recent_grad = float(np.median([h[2] for h in history[-w - 1:]]))
+            if recent_grad > s["plateau_grad_max"]:
+                return (f"optimizer stalled: U fell {drop:.3g} < tol_du {s['tol_du']} "
+                        f"over {w} iterations but recent median |grad| {recent_grad:.3g} "
+                        f"> plateau_grad_max {s['plateau_grad_max']}")
+            return (f"U fell {drop:.3g} < tol_du {s['tol_du']} "
+                    f"over {w} iterations")
     return None
 
 
@@ -96,6 +108,11 @@ def lbfgs_minimize(f, x0, kw, s: dict, state_path: str, run_fingerprint: str, lo
     else:
         x, state, history = jnp.asarray(x0), opt.init(jnp.asarray(x0)), []
 
+    # The optimizer returns an update together with U/grad evaluated at the point
+    # *before* that update. Keep the last evaluated finite point explicitly: stop
+    # decisions and reports must describe the same x that is returned and saved.
+    last_finite_x, last_finite_state = x, state
+
     def save(reason=None, terminal=False):
         save_pickle_atomic({"fingerprint": run_fingerprint, "x": np.asarray(x),
                             "opt_state": jax.device_get(state), "history": history,
@@ -107,11 +124,13 @@ def lbfgs_minimize(f, x0, kw, s: dict, state_path: str, run_fingerprint: str, lo
         value, gnorm = float(value), float(jnp.linalg.norm(grad))
         if not (np.isfinite(value) and np.isfinite(gnorm)):
             reason = f"non-finite U or grad at iteration {len(history)}; kept last finite point"
+            x, state = last_finite_x, last_finite_state
             save(reason, terminal=True)
             return x, history, reason
-        # value/grad belong to x (the point before this update): record, then advance.
+        # value/grad belong to x (the point before this update). Record and decide
+        # whether to stop BEFORE advancing so the checkpoint and report stay aligned.
+        last_finite_x, last_finite_state = x, state
         history.append((len(history), value, gnorm))
-        x, state = x_new, state_new
         n = len(history)
         if n % s["log_every"] == 0 or n == it0 + 1:
             rate = (n - it0) / max(time.time() - t0, 1e-9)
@@ -122,11 +141,28 @@ def lbfgs_minimize(f, x0, kw, s: dict, state_path: str, run_fingerprint: str, lo
         if reason:
             save(reason, terminal=True)
             return x, history, reason
+        x, state = x_new, state_new
         if n % s["ckpt_every"] == 0:
             save()
     reason = f"max_iter {s['max_iter']} reached (not converged; raise HOUFIN_REFINE_MAX_ITER to continue)"
     save(reason, terminal=False)
     return x, history, reason
+
+
+def _compact_run_dir(path, max_len=200):
+    """Refining a refined point prefixes another ``refined_<precision>__`` each time; a long
+    warm-start lineage overflowed the 255-byte filename limit (E032). Keep one prefix, and if
+    the tag chain is still too long, replace its middle with a short hash (ends kept readable)."""
+    import hashlib
+    import re
+    head, base = os.path.split(path.rstrip(os.sep))
+    base = re.sub(r"^(refined_float(?:32|64)__)+", lambda m: m.group(1)[: m.group(1).index("__") + 2], base)
+    if len(base) > max_len:
+        parts = base.split("__")
+        keep_head, keep_tail = parts[:2], parts[-3:]
+        mid = "__".join(parts[2:-3])
+        base = "__".join(keep_head + [hashlib.sha1(mid.encode()).hexdigest()[:10]] + keep_tail)
+    return os.path.join(head, base)
 
 
 def run_refine():
@@ -141,12 +177,27 @@ def run_refine():
         print("[warn] refining in float32: U carries a ~1 nat noise floor, so tol_du below "
               "that cannot be met reliably. Set HOUFIN_MODEL_PRECISION=float64.")
     out_dir = hc.posterior_dir(pcfg, "refine", at_map_precision=True, precision=hc.PRECISION)
+    # HOUFIN_REFINE_TAG: distinct output for warm-started variants refined FROM THE SAME point
+    # (e.g. profiles pinning different values), which would otherwise share one directory.
+    tag = os.environ.get("HOUFIN_REFINE_TAG")
+    if tag:
+        out_dir = f"{out_dir.rstrip(os.sep)}__{tag}"
+    out_dir = _compact_run_dir(out_dir)
     hc.archive_if_fresh(out_dir, env="HOUFIN_REFINE_FRESH", files=(STATE_FILE,))
     os.makedirs(out_dir, exist_ok=True)
     print(f"--- L-BFGS refine of {hc.map_dir()} in {hc.PRECISION} | {s} -> {out_dir} ---")
 
     device = require_gpu("age-model MAP refinement")
     map_latents, map_ckpt = hc.load_map()
+    # HOUFIN_REFINE_INIT='{"site": value, ...}' overrides the warm start for those sites
+    # (constrained values). Needed for a NEW zero-centred, mean-preserving term (e.g.
+    # subcell_beta_k): its gradient at the nested value is exactly 0, so a refine started there
+    # never leaves it (E017 reruns); start it off zero and let the data decide.
+    init_over = json.loads(os.environ.get("HOUFIN_REFINE_INIT") or "{}")
+    for k, v in init_over.items():
+        map_latents[k] = jnp.asarray(v, dtype=jnp.float64 if hc.PRECISION == "float64" else jnp.float32)
+    if init_over:
+        print(f"[init] overriding warm start: {init_over}")
     hc.check_model_drift(map_ckpt["fingerprint_payload"])
     data = load_data(load_age_model_config()["input_dir"], target_device=device,
                      precision=hc.PRECISION, verbose=False)
@@ -163,7 +214,22 @@ def run_refine():
     payload = {"settings": defining, "precision": hc.PRECISION, "map_fingerprint": map_ckpt["fingerprint"],
                "versions": hc.versions(), "sources": hc.source_identities([__file__])}
     run_fp = hc.fingerprint(payload)
-    f = lambda x, kw_: potential(unravel(x), kw_)                  # noqa: E731
+    # HOUFIN_REFINE_FREEZE="site,site,...": hold those sites at their warm-start values (their
+    # coordinates are fed from x0 under stop_gradient, so L-BFGS never moves them). Diagnostic:
+    # which parameter blocks must move for the refinement gain (research/age_model E047).
+    frozen = [n for n in (os.environ.get("HOUFIN_REFINE_FREEZE") or "").split(",") if n]
+    if frozen:
+        missing = [n for n in frozen if n not in names]
+        if missing:
+            raise ValueError(f"HOUFIN_REFINE_FREEZE names unknown sites: {missing}")
+        mask = jnp.concatenate([jnp.full(int(np.size(z0[n])), n in frozen) for n in names])
+        x_ref = jnp.asarray(x0)
+        f = lambda x, kw_: potential(unravel(jnp.where(mask, jax.lax.stop_gradient(x_ref), x)), kw_)  # noqa: E731
+        payload["frozen"] = sorted(frozen)
+        run_fp = hc.fingerprint(payload)
+        print(f"[freeze] holding {len(frozen)} sites ({int(mask.sum())} coordinates) at warm-start values")
+    else:
+        f = lambda x, kw_: potential(unravel(x), kw_)              # noqa: E731
     x, history, reason = lbfgs_minimize(f, x0, kw, s, os.path.join(out_dir, STATE_FILE), run_fp)
     print(f"[stop] {reason}")
 
@@ -184,8 +250,12 @@ def run_refine():
 
     dx = np.asarray(x, np.float64) - np.asarray(x0, np.float64)
     off = np.cumsum([0] + [int(np.size(z0[k])) for k in names])
+    status = ("stalled" if reason.startswith("optimizer stalled:") else
+              "failed" if reason.startswith("non-finite") else
+              "not_converged" if reason.startswith("max_iter") else "converged")
     report = {
         "source_map_dir": hc.map_dir(), "out_dir": out_dir, "reason": reason,
+        "status": status, "valid": status == "converged",
         "iterations": len(history), "U_start": history[0][1] if history else None,
         "U_end": history[-1][1] if history else None,
         "grad_norm_start": history[0][2] if history else None,
@@ -193,8 +263,19 @@ def run_refine():
         "rms_change_by_site": {k: float(np.sqrt(np.mean(dx[off[i]:off[i + 1]] ** 2)))
                                for i, k in enumerate(names)},
     }
+    # VRAM headroom: peak device memory against the device limit (None where the backend does not report it, e.g. CPU).
+    try:
+        ms = jax.devices()[0].memory_stats() or {}
+        report["peak_gpu_bytes"], report["gpu_bytes_limit"] = ms.get("peak_bytes_in_use"), ms.get("bytes_limit")
+        if report["peak_gpu_bytes"] and report["gpu_bytes_limit"]:
+            print(f"[memory] peak {report['peak_gpu_bytes'] / 2**30:.1f} GiB of {report['gpu_bytes_limit'] / 2**30:.1f} GiB "
+                  f"({report['peak_gpu_bytes'] / report['gpu_bytes_limit']:.0%})")
+    except Exception as e:                                   # never let a diagnostic fail a refine
+        print(f"[memory] unavailable: {e}")
     with open(os.path.join(out_dir, "refine_report.json"), "w") as fh:
         json.dump(report, fh, indent=2)
+    if status in {"stalled", "failed"}:
+        raise RuntimeError(f"invalid refinement ({status}): {reason}; outputs retained for diagnosis")
     print(f"[done] U {report['U_start']:.2f} -> {report['U_end']:.2f} in {len(history)} "
           f"iterations; use HOUFIN_HMC_MAP_DIR={out_dir}")
 

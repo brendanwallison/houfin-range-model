@@ -1,0 +1,44 @@
+{
+  "_comment": [
+    "run_25 = run_23a + IDEAL-FREE SETTLEMENT (settlement.form = ideal_free, block 3 cells ~ 81 km): after dispersal each year, each block's population (adults, juvenile stayers, juvenile arrivers separately) is redistributed in proportion to capacity K; mass conserved exactly, no new parameters; the block grid shifts by one cell on alternate years.",
+    "Tests H1/H2 (research/age_model): if arrivals settle where capacity is locally highest, cells fill and clear mate-finding without lambda0 ~ 2 or a strong Allee effect. User idea (C11): multi-step dispersal with 'oracle' settlement."
+  ],
+  "input_dir": "${HOUFIN_PROCESSED}/model_inputs/numpyro_input",
+  "population_model": {
+    "dispersal_random_enabled": false,
+    "manifold_prior": {
+      "form": "exchangeable",
+      "coupling_target": 0.85,
+      "coupling_logit_scale": 0.15,
+      "amplitude_scale": [
+        1.0263,
+        1.0263,
+        1.0227,
+        1.0263
+      ],
+      "fixed_coupling": 1.0
+    },
+    "habitat_centering": "occupied",
+    "capacity_level_prior": {
+      "target_level_median_route_counts": 3.0,
+      "alpha_k_scale": 1.0
+    },
+    "allee_prior": {
+      "n50_raw_loc": -3.4915,
+      "n50_raw_scale": 0.25
+    },
+    "juvenile_survival": {
+      "form": "ratio",
+      "ratio_logit_loc": 0.0,
+      "ratio_logit_scale": 0.5
+    },
+    "settlement": {
+      "form": "ideal_free",
+      "block": 3
+    }
+  },
+  "run_names": {
+    "map": "age_map_{precision}_run_25_new_z",
+    "vis_map": "age_map_{precision}_run_25_new_z"
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "_extends": "map_run58a_subcell.json",
+  "_comment": ["E064a: generic within-cell capacity + fecundity heterogeneity, with differentiable slice allocation."],
+  "population_model": {"numerics": {"smooth_allocation": 0.001}},
+  "run_names": {"map": "age_map_{precision}_run_64a", "vis_map": "age_map_{precision}_run_64a"}
+}

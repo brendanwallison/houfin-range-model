@@ -89,6 +89,68 @@ def convolve_mask_step(mask, kernel_stack_fft):
     conv_fft = mask_fft[None, :, :] * kernel_stack_fft
     return jnp.real(ifft2(conv_fft, axes=(-2, -1)))[:, :Ny, :Nx]
 
+def integrate_water_share(kernel_stack, land_mask, steps=10, support_eps=1e-10):
+    """Water share along each cohort's paths (journey water hazard J2; DISPERSAL_EXPRESSIVENESS_PLAN 3.2 b2).
+
+    Mask only (no Z). The SAME geometry as ``integrate_paths``: for s in linspace(1/steps, 1, steps) each kernel is
+    shrunk by s (``resize_kernel_stack``) and convolved with the land mask -- the land weight integrate_paths divides
+    by. Here it is compared with the IN-GRID weight of the same shrunk kernel:
+
+        W_s(p, k) = 1 - conv(land, K_s)(p) / conv(grid, K_s)(p)
+
+    i.e. the kernel-mass-weighted share of non-land among the in-grid points p - s d of cohort k's straight segments
+    from destination p back toward its origins. Off-grid points (the FFT padding) are excluded rather than counted as
+    water, so a path running off the domain edge is not costed. W = mean over s (uniform, as integrate_paths), clipped
+    to [0, 1] against FFT roundoff. Returns (Ny, Nx, K).
+    """
+    Ny, Nx = land_mask.shape
+    land = (jnp.asarray(land_mask) > 0.5).astype(jnp.float32)
+    grid = jnp.ones((Ny, Nx), jnp.float32)
+    acc = jnp.zeros((kernel_stack.shape[0], Ny, Nx))
+    for s in np.linspace(1.0 / steps, 1.0, steps):
+        fk = fft2(resize_kernel_stack(kernel_stack, s))
+        lw = convolve_mask_step(land, fk)
+        gw = convolve_mask_step(grid, fk)
+        ok = gw > support_eps
+        share = jnp.where(ok, 1.0 - lw / jnp.where(ok, gw, 1.0), 0.0)
+        acc = acc + jnp.clip(share, 0.0, 1.0)
+    return jnp.transpose(acc / steps, (1, 2, 0))
+
+
+def path_segment_operator(kernel_stack, land_mask, steps):
+    """The per-step pieces of integrate_paths, computed once: for each s in linspace(1/steps, 1, steps) the shrunk
+    kernels' FFTs and the land support / weight (identical expressions to integrate_paths)."""
+    ops = []
+    for s in np.linspace(1.0 / steps, 1.0, steps):
+        fk = fft2(resize_kernel_stack(kernel_stack, s))
+        lw = convolve_mask_step(land_mask, fk)
+        ok = lw > 1e-10
+        ops.append((fk, ok, jnp.where(ok, lw, 1.0)))
+    return land_mask, ops
+
+
+def integrate_path_segments(Z_t, operator, n_seg, feature_batch_size=4):
+    """Segmented path features for one year (compounding path survival): integrate_paths' per-step land-normalised
+    features averaged within n_seg consecutive blocks of steps (segment 0 nearest the destination). Z_t (Ny, Nx, M)
+    -> (Ny, Nx, K, n_seg, M). The mean over segments is integrate_paths' Z_disp (up to float round-off)."""
+    land_mask, ops = operator
+    Ny, Nx, M = Z_t.shape
+    per = len(ops) // n_seg
+    Zm = jnp.where(land_mask[:, :, None] > 0.5, jnp.nan_to_num(Z_t, nan=0.0), 0.0)
+    segs = []
+    for g in range(n_seg):
+        acc = None
+        for fk, ok, safe in ops[g * per:(g + 1) * per]:
+            parts = []
+            for i in range(0, M, feature_batch_size):
+                num = convolve_step(Zm[:, :, i:i + feature_batch_size], fk)          # (b, K, Ny, Nx)
+                parts.append(jnp.where(ok[None], num / safe[None], 0.0))
+            x = jnp.concatenate(parts, axis=0)                                         # (M, K, Ny, Nx)
+            acc = x if acc is None else acc + x
+        segs.append(acc / per)
+    return jnp.transpose(jnp.stack(segs, axis=0), (3, 4, 2, 0, 1))                     # (Ny, Nx, K, n_seg, M)
+
+
 def integrate_paths(Z, kernel_stack, land_mask, steps=10, feature_batch_size=4):
     """Compute land-conditioned cohort features by normalized convolution."""
     print(f"Path Integration: Z={Z.shape}, Kernels={kernel_stack.shape}, Steps={steps}")

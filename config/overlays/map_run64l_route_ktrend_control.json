@@ -1,0 +1,7 @@
+{
+  "_extends": "map_run59b_route_ktrend.json",
+  "_comment": [
+    "E064l post-discovery control: repeat E059b after fixing likelihood-level obs_route_sd pinning; route SD truly fixed at 0.7, K-trend prior loosened 10x."
+  ],
+  "run_names": {"map": "age_map_{precision}_run_64l", "vis_map": "age_map_{precision}_run_64l"}
+}

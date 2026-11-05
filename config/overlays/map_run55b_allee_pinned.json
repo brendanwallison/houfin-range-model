@@ -1,0 +1,82 @@
+{
+  "_comment": [
+    "run_55b = 53a (V&L dispersal + V&L reproduction) with Allee n50 PINNED at 0.0592 route counts.",
+    "V&L 1996 p. 263: r = 0.15 birds/km2 at K* ~3.8/km2 (4% unmated at K*/2), chosen from r 0.05/0.15/0.25 by spread rate -> half of breeders mated at N = r/2 = 0.075/km2 = 0.0197 K*; mapped through our capacity level (median 3.0 route counts).",
+    "Why (user, 2026-10-18): Allee effects are unidentifiable from count data -- pin to literature like dispersal, sensitivity around it. Every free refine raised n50 3-9x and used it with low K as an absence switch (Allee-dead 18-27%)."
+  ],
+  "input_dir": "${HOUFIN_PROCESSED}/model_inputs/numpyro_input_vl",
+  "population_model": {
+    "dispersal_random_enabled": false,
+    "manifold_prior": {
+      "form": "exchangeable",
+      "coupling_target": 0.85,
+      "coupling_logit_scale": 0.15,
+      "amplitude_scale": [
+        1.0263,
+        1.0263,
+        1.0227,
+        1.0263
+      ],
+      "fixed_coupling": null
+    },
+    "habitat_centering": "occupied",
+    "capacity_level_prior": {
+      "target_level_median_route_counts": 3.0,
+      "alpha_k_scale": 1.0
+    },
+    "allee_prior": {
+      "n50_raw_loc": -3.4915,
+      "n50_raw_scale": 0.25
+    },
+    "juvenile_survival": {
+      "form": "ratio",
+      "ratio_logit_loc": 0.405,
+      "ratio_logit_scale": 0.5
+    },
+    "settlement": {
+      "form": "none"
+    },
+    "invasion_pulse_prior": {
+      "form": "single",
+      "n_sites": 1,
+      "n_years": 1,
+      "total_median": 1.0,
+      "total_log_sd": 1.0,
+      "global_q50_route_counts": 0.7083
+    },
+    "dispersal_kernel": {
+      "band_weights": false
+    },
+    "disease_prior": {
+      "target": "survival",
+      "mortality_ceiling": 0.8
+    },
+    "observation": {
+      "form": "breeding",
+      "fledgling_weight_a": 1.0,
+      "fledgling_weight_b": 4.0,
+      "conc_density_power": true,
+      "conc_density_power_scale": 0.5
+    },
+    "fecundity_prior": {
+      "loc": 4.993,
+      "scale": 0.75
+    },
+    "pinned_sites": {
+      "n50_raw": -2.7969046060186082
+    },
+    "dispersal_departure": {
+      "form": "veit"
+    },
+    "reproduction": {
+      "form": "veit"
+    }
+  },
+  "run_names": {
+    "map": "age_map_{precision}_run_55b",
+    "vis_map": "age_map_{precision}_run_55b"
+  },
+  "dispersal": {
+    "adult_shape": 0.859
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "_extends": "map_run70z_holdout_base.json",
+  "_comment": [
+    "E074 settlement on the 70z holdout base (no floor): ALL birds, capacity-weighted, 3x3 (the ifd3 form: residents re-equalised yearly). Settlement was dropped at E050 on one unconverged pair (50a/50b, legacy-pad era)."
+  ],
+  "population_model": {
+    "settlement": {
+      "form": "ideal_free",
+      "block": 3,
+      "apply_to": "all",
+      "weight": "capacity"
+    }
+  },
+  "run_names": {
+    "map": "age_map_{precision}_run_74b",
+    "vis_map": "age_map_{precision}_run_74b"
+  }
+}

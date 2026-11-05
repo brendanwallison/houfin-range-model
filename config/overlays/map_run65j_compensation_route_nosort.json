@@ -1,0 +1,6 @@
+{
+  "_extends": "map_run64j_compensation_route.json",
+  "_comment": ["E065j: both compensation mechanisms plus route effects fixed at SD 0.7, without survival-informed sorting."],
+  "population_model": {"subcell_strata": {"survival_affects_allocation": false}},
+  "run_names": {"map": "age_map_{precision}_run_65j", "vis_map": "age_map_{precision}_run_65j"}
+}

@@ -1,4 +1,7 @@
 .venv/
+.research_runtime/
+# Downloaded/generated validation figures and accompanying run artifacts.
+/research/validation_figures/
 .vscode/
 config/secrets.json
 checkpoints/
@@ -48,3 +51,13 @@ results/
 *.npy
 *.pkl
 /probe.json
+
+# Machine-local worktrees and disposable root-level experiment probes. Maintained
+# dispatchers belong under research/bin and remain tracked.
+/.worktrees/
+/.*.sh
+/.pytest_cache/
+# Downloaded R packages and installation output, not the reproducible R scripts.
+/research/r/lib/
+/research/r/install.log
+/research/r/install.err

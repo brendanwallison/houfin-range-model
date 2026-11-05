@@ -245,7 +245,7 @@ def concat_sources(X_bbs, K_bbs, W_bbs, X_eb, K_eb, W_eb):
 
 
 def build_bbs_rows(community_codes, first_year_weight=0.5, temporal_ema_tau=0.0,
-                   verbose=True):
+                   verbose=True, route_cell_map=None):
     """Raw-BBS half of the target: ``(X, keys, weights, meta)`` (reads the BBS release).
 
     Every step delegates to an existing, tested loader -- nothing about assembling a BBS
@@ -259,6 +259,12 @@ def build_bbs_rows(community_codes, first_year_weight=0.5, temporal_ema_tau=0.0,
     ``densify_community`` is the load-bearing one: the COVERAGE table is authoritative, so a
     surveyed cell-year where a species went unrecorded becomes a genuine zero rather than a
     gap. Absences are most of the turnover signal.
+
+    ``route_cell_map`` (default None = off): a callable taking the model-grid route table
+    ``[CountryNum, StateNum, Route, row, col]`` and returning one in the same layout on ANOTHER
+    grid (the native 54 km build maps each 27 km route cell to its parent with the coastal snap,
+    research/exp/field54_obs.py). Everything downstream -- cell-year = mean over the cell's
+    route-years, then log1p -- is unchanged, so a coarse cell-year is the mean over all its routes.
     """
     from src.data.identify.bbs_crosswalk import build_crosswalk
     from src.data.preprocess import bbs, bbs_community
@@ -283,6 +289,11 @@ def build_bbs_rows(community_codes, first_year_weight=0.5, temporal_ema_tau=0.0,
     routes = bbs.load_routes()
     land_mask, _ocean, transform, crs, nx, ny = bbs.load_grid_reference(bbs.MASK_PATH)
     route_cells = bbs_community.route_grid_map(routes, transform, crs, nx, ny, land_mask)
+    if route_cell_map is not None:
+        n_before = len(route_cells)
+        route_cells = route_cell_map(route_cells)
+        if verbose:
+            print(f"[bbs-points] route_cell_map: {n_before:,} -> {len(route_cells):,} mapped routes")
     mean_df, cov_df = bbs_community.build_community_matrix(
         obs_all, coverage, matched, route_cells)
 
@@ -333,6 +344,12 @@ def build_bbs_rows(community_codes, first_year_weight=0.5, temporal_ema_tau=0.0,
         "crosswalk": {k: diag[k] for k in ("n_community", "n_matched", "n_unmatched",
                                            "split_aous")},
     }
+    if route_cell_map is not None:
+        # Recorded only for a remapped build, so existing points_meta files stay byte-identical.
+        meta.update(route_cell_map=getattr(route_cell_map, "__name__", repr(route_cell_map)),
+                    n_routes_mapped=int(len(route_cells)),
+                    n_route_years=int(cov_df["n_routes"].sum()),
+                    n_cell_years_covered=int(len(cov_df)))
     if verbose:
         print(f"[bbs-points] {meta['n_rows']:,} surveyed cell-years over "
               f"{meta['n_cells']:,} cells; years {meta['year_range']} "

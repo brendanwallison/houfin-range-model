@@ -36,8 +36,12 @@ def main():
     ap.add_argument("--cache", required=True)
     ap.add_argument("--out", required=True)
     ap.add_argument("--similarity", default=None, help="E070: species_similarity.csv (species_code, migration)")
-    ap.add_argument("--species-set", choices=["product", "community", "residents", "all"], default="product",
+    ap.add_argument("--species-set", choices=["product", "community", "residents", "all", "sealed"], default="product",
                     help="product: species with an Audubon trend (E064); community: the cache's reference species (E066)")
+    ap.add_argument("--confirmation-reason", default=None,
+                    help="logged reason required for a separate sealed confirmation export")
+    ap.add_argument("--taxonomy-reference", default=None,
+                    help="sealed damage checks only: freeze species/split exclusions from original prepared metadata")
     a = ap.parse_args()
     import pandas as pd
     import rasterio
@@ -48,6 +52,13 @@ def main():
     meta = json.load(open(os.path.join(a.cache, "meta.json")))
     allowed = set(meta["community"]) | set(meta["dev_species"])
     assert "houfin" not in allowed and not allowed & set(meta["sealed_species"])
+    if a.species_set == "sealed":
+        if "sealed" not in os.path.abspath(a.out).split(os.sep):
+            raise ValueError("sealed confirmation must be written inside a separate sealed/ directory")
+        from research.adopt import record_read
+        record_read(a.raw_dir, a.confirmation_reason)
+        allowed = set(meta["sealed_species"])
+        assert "houfin" not in allowed
     tax = pd.read_csv(os.path.join(dcfg["datasets_root"], "avonet", "eBird_taxonomy.csv"),
                       usecols=["SCIENTIFIC_NAME", "COMMON_NAME", "SPECIES_CODE", "CATEGORY"])
     tax = tax[tax["CATEGORY"] == "species"]
@@ -64,7 +75,7 @@ def main():
         sim = pd.read_csv(a.similarity)
         mig = dict(zip(sim["species_code"], sim["migration"]))
         species = sorted(s for s in allowed if mig.get(s) in (1.0, 2.0))
-    if a.species_set == "all":
+    if a.species_set in ("all", "sealed"):
         # E086aa: EVERY non-sealed cache species (community + dev) -- the all-species basis (user, 2026-10-23). Sealed
         # species and the House Finch are outside `allowed` by construction.
         species = sorted(allowed)
@@ -146,7 +157,16 @@ def main():
     # 1983), Spotted Towhee (from Rufous-sided 1995), Eastern Screech-Owl (from "Screech Owl" 1983), Tufted Titmouse
     # (lumped with Black-crested 1983-2002 in Texas).
     split_affected = sorted(set(split_affected) | ({"rensap", "rebsap", "spotow", "easowl1", "tuftit"} & set(species)))
-    species = [s for s in species if s not in set(split_affected)]
+    if a.taxonomy_reference:
+        if a.species_set != "sealed":
+            raise ValueError("taxonomy-reference is restricted to sealed confirmation damage checks")
+        reference = json.load(open(a.taxonomy_reference))
+        if not set(reference["species"]) <= allowed:
+            raise ValueError("taxonomy reference contains non-confirmation species")
+        species = list(reference["species"])
+        split_affected = reference["split_affected_dropped"]
+    else:
+        species = [s for s in species if s not in set(split_affected)]
     ref = sorted(set(species) & set(meta["community"]))
     print(f"[E064] names: {int(names['code'].notna().sum())} of {len(names)} name pairs resolved; split-affected dropped: "
           f"{split_affected}; {len(species)} species remain ({len(ref)} reference)", flush=True)
@@ -175,6 +195,7 @@ def main():
         nocturnal_hrs=cy["nocturnal_hrs"].to_numpy(np.float32))
     dec = (cy["year_end"] // 10 * 10)
     info = {"circle_years": int(len(cy)), "circles": int(len(circles)), "strata": int(len(strata)),
+            "taxonomy_reference": a.taxonomy_reference,
             "species": species, "reference": ref, "split_affected_dropped": split_affected, "years": [int(cy.year_end.min()), int(cy.year_end.max())],
             "by_decade": {int(d): {"n": int(n), "ph_share": float(cy.loc[dec == d, "party_hours"].notna().mean()),
                                    "counters_share": float(cy.loc[dec == d, "field_counters"].notna().mean())}

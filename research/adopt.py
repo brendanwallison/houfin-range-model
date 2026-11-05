@@ -12,16 +12,17 @@ import csv
 import datetime as _dt
 import os
 import sys
+from pathlib import Path
 
 import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from lib import paths  # noqa: E402
 
-LOG = paths.RESEARCH / "sealed_reads.csv"
+LOG = Path(os.environ.get("RESEARCH_SEALED_READ_LOG", paths.RESEARCH / "sealed_reads.csv"))
 
 
-def load_sealed(cache_dir, reason):
+def record_read(cache_dir, reason):
     if not reason or len(reason) < 12:
         raise SystemExit("a sealed read needs a reason naming the experiment and the claim")
     new = not LOG.exists()
@@ -31,6 +32,10 @@ def load_sealed(cache_dir, reason):
             w.writerow(["ts", "cache", "reason"])
         w.writerow([_dt.datetime.now().astimezone().isoformat(timespec="seconds"), cache_dir,
                     reason])
+
+
+def load_sealed(cache_dir, reason):
+    record_read(cache_dir, reason)
     return np.load(os.path.join(cache_dir, "sealed", "X_sealed.npy"), mmap_mode="r")
 
 

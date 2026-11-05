@@ -115,7 +115,7 @@ def main():
                     help="E059b: skip the optional arms (placebo_600, placebo+within_raw, placebo+kindxtime_8); every "
                          "headline number (placebo_300, desk_within, joint gains, strong base, buffer, head-to-head, "
                          "vs_ref, space) is unchanged. For the costly per-species target")
-    ap.add_argument("--target", choices=["esk", "dev"], default="esk",
+    ap.add_argument("--target", choices=["esk", "dev", "sealed"], default="esk",
                     help="E059b: what every readout predicts -- the community's ESK coordinates (default) or the 273 "
                          "OUT-OF-COMMUNITY dev species (log1p counts; truth = log1p of the ABBA half-epoch mean counts). "
                          "With dev, the raw 'desk' arm (z change, which lives in ESK space) is replaced by DESK's "
@@ -132,6 +132,7 @@ def main():
     ap.add_argument("--null-desk", action="store_true", help="E039o: cell-permuted DESK block (null)")
     ap.add_argument("--attr", default=None, help="E039m: attribution_cells.npz of this model (drop-part losses)")
     ap.add_argument("--ref-cache", default=None, help="control model's cache (same keys): paired treatment - control")
+    ap.add_argument("--confirmation-reason", default=None, help="required logged reason for --target sealed")
     a = ap.parse_args()
     if a.summarize:
         return summarize(a.summarize)
@@ -165,14 +166,19 @@ def main():
         ev = np.where(~held & ~split["buffer"][cells[:, 0], cells[:, 1]])[0]
     else:
         ev = np.where(held)[0]
-    Za, Zb = E["z_a"][:, :r].astype("float64"), E["z_b"][:, :r].astype("float64")
-    Ta = (Za[pairs[:, 1]] - Za[pairs[:, 0]])[ev]
-    Tb = (Zb[pairs[:, 1]] - Zb[pairs[:, 0]])[ev]
+    if a.target == "esk":
+        Za, Zb = E["z_a"][:, :r].astype("float64"), E["z_b"][:, :r].astype("float64")
+        Ta = (Za[pairs[:, 1]] - Za[pairs[:, 0]])[ev]
+        Tb = (Zb[pairs[:, 1]] - Zb[pairs[:, 0]])[ev]
     Xdev = None
-    if a.target == "dev":
+    if a.target in ("dev", "sealed"):
         # out-of-community species: truth = log1p of each ABBA half's epoch-mean counts (the suite's species estimand)
         from src.community_encoder.train_DESK.validate_bbs_routes import epoch_mean_observed
-        Xdev = np.asarray(np.load(c("X_dev.npy")), "float64")
+        if a.target == "sealed":
+            from research.adopt import load_sealed
+            Xdev = np.asarray(load_sealed(a.cache, a.confirmation_reason), "float64")
+        else:
+            Xdev = np.asarray(np.load(c("X_dev.npy")), "float64")
         je, jm = pairs[ev, 0], pairs[ev, 1]
         Ta = epoch_mean_observed(Xdev, [half_a[j] for j in jm]) - epoch_mean_observed(Xdev, [half_a[j] for j in je])
         Tb = epoch_mean_observed(Xdev, [half_b[j] for j in jm]) - epoch_mean_observed(Xdev, [half_b[j] for j in je])
@@ -424,7 +430,7 @@ def main():
                         for pn, pv in parts_ev.items():
                             incr[f"{tag}-{pn}#{sd}"] = np.hstack([e for _, e in parts] + [ps[-1][1] - pv]) @ b
         preds.update(incr)
-    m_dp = blr.fit(zk[trn], Z[trn], [(0, r)])
+    m_dp = blr.fit(zk[trn], Z[trn], _dblocks)
     preds["desk_pooled"] = dz @ m_dp["coef"].T
 
     # grading (E039h's estimand and bootstrap draws)
@@ -438,6 +444,9 @@ def main():
         mean_ = lambda X: (W @ X) / Sw[:, None]
         mTa, mTb = mean_(Ta), mean_(Tb)
         comp = {"vt": (W @ (Ta * Tb)) - Sw[:, None] * mTa * mTb}
+        if Xdev is not None:
+            observed_full = (epoch_mean_observed(Xdev, mod_rows) - epoch_mean_observed(Xdev, early_rows))
+            comp["mean_observed"] = mean_(observed_full).astype("float32")
         keyarms = ("desk_within", "desk_ref_within", "desk_pooled", "placebo_300", "strong", "strong+desk_within",
                    "placebo+desk_within", "placebo+desk_ref_within", "cov_chg", "cov_chg+desk_within",
                    "pooled_blr", "pooled_ridge")      # E086j: the LEVEL-fitted covariate rivals of desk_pooled
@@ -449,7 +458,8 @@ def main():
             cvb = (W @ (D * Tb)) - Sw[:, None] * mD * mTb
             comp[f"{nm}__cv"] = (0.5 * (cva + cvb)).astype("float32")
             comp[f"{nm}__vp"] = ((W @ (D * D)) - Sw[:, None] * mD * mD).astype("float32")
-        cols = (json.load(open(c("meta.json"), encoding="utf-8"))["dev_species"] if a.target == "dev"
+            comp[f"{nm}__mean_pred"] = mD.astype("float32")
+        cols = (json.load(open(c("meta.json"), encoding="utf-8"))[f"{a.target}_species"] if a.target in ("dev", "sealed")
                 else [f"esk{i}" for i in range(Ta.shape[1])])
         np.savez_compressed(os.path.join(a.out, f"species_components{a.tag}.npz"), columns=np.array(cols),
                             vt=comp.pop("vt").astype("float32"), **comp)
@@ -590,7 +600,7 @@ def main():
             mP = (LW @ P) / Sw[:, None]
             lcomp[f"{nm}__cv"] = ((LW @ (P * T)) - Sw[:, None] * mP * mT).astype("float32")
             lcomp[f"{nm}__vp"] = ((LW @ (P * P)) - Sw[:, None] * mP * mP).astype("float32")
-        cols = (json.load(open(c("meta.json"), encoding="utf-8"))["dev_species"] if a.target == "dev"
+        cols = (json.load(open(c("meta.json"), encoding="utf-8"))[f"{a.target}_species"] if a.target in ("dev", "sealed")
                 else [f"esk{i}" for i in range(T.shape[1])])
         np.savez_compressed(os.path.join(a.out, f"species_level{a.tag}.npz"), columns=np.array(cols), **lcomp)
     res["space_level"] = {"n_rows": int(len(lev)),

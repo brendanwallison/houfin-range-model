@@ -217,7 +217,10 @@ def main():
     print(f"  Arrival year range: {arrival.min():.1f} - {arrival.max():.1f} "
           f"(median {np.median(arrival):.1f})")
 
-    tif_path = os.path.join(out_dir, "disease_arrival_year_27km.tif")
+    # Named by the grid's own resolution (27 km keeps the historical name), so a coarser grid's map
+    # cannot overwrite or masquerade as the 27 km one.
+    res_km = int(round(abs(transform[0]) / 1000.0))
+    tif_path = os.path.join(out_dir, f"disease_arrival_year_{res_km}km.tif")
     with rasterio.open(tif_path, "w", driver="GTiff", height=Ny, width=Nx, count=1,
                        dtype="float32", crs=crs, transform=transform,
                        nodata=np.float32(-9999.0), compress="deflate") as dst:
@@ -249,7 +252,7 @@ def main():
         axp.set(title=f"House Finch conjunctivitis: modeled arrival year "
                       f"(bandwidth {h:.0f} km)", xticks=[], yticks=[])
         fig.colorbar(im, ax=axp, label="first affected breeding season")
-        png = os.path.join(out_dir, "disease_arrival_year_27km.png")
+        png = os.path.join(out_dir, f"disease_arrival_year_{res_km}km.png")
         fig.savefig(png, dpi=170, bbox_inches="tight")
         print(f"  Wrote {png}")
     except ImportError:

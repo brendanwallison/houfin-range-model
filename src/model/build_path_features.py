@@ -89,8 +89,31 @@ def convolve_mask_step(mask, kernel_stack_fft):
     conv_fft = mask_fft[None, :, :] * kernel_stack_fft
     return jnp.real(ifft2(conv_fft, axes=(-2, -1)))[:, :Ny, :Nx]
 
-def integrate_paths(Z, kernel_stack, land_mask, steps=10, feature_batch_size=4):
-    """Compute land-conditioned cohort features by normalized convolution."""
+def low_land_share(kernel_stack, land_mask, steps, floor):
+    """(K, Ny, Nx) bool: land cell x band pairs whose land SHARE falls below ``floor`` at ANY integration step.
+
+    Share = land weight / the rescaled band's mass (as grid54_fdinterp_verify.min_land_share defines it).
+
+    Below ~1e-4 the normalized convolution divides FFT roundoff by ~0 (GRID54_INPUTS_FDINTERP_2026-10-29.md:
+    181 of 51,816 pairs at 54 km), so the stored value is not a function of Z. Depends on the mask and kernels only.
+    """
+    out = np.zeros((kernel_stack.shape[0],) + tuple(land_mask.shape), bool)
+    for s in np.linspace(1.0 / steps, 1.0, steps):
+        sk = resize_kernel_stack(kernel_stack, s)
+        mass = np.maximum(np.asarray(jnp.sum(sk, axis=(1, 2))), 1e-30)[:, None, None]
+        w = np.asarray(convolve_mask_step(land_mask, fft2(sk))) / mass
+        out |= w < floor
+    return out & (np.asarray(land_mask) > 0.5)[None]
+
+
+def integrate_paths(Z, kernel_stack, land_mask, steps=10, feature_batch_size=4, land_share_floor=None):
+    """Compute land-conditioned cohort features by normalized convolution.
+
+    ``land_share_floor`` (default None = off, the operator every existing input used): at any integration step where
+    a (cell, band)'s land SHARE (land weight / rescaled band mass) is below the floor, that step contributes the
+    cell's OWN Z instead of the
+    roundoff-dominated ratio (FIELD54 plan amendment, 2026-10-29).
+    """
     print(f"Path Integration: Z={Z.shape}, Kernels={kernel_stack.shape}, Steps={steps}")
     
     Time, Ny, Nx, M = Z.shape
@@ -116,6 +139,11 @@ def integrate_paths(Z, kernel_stack, land_mask, steps=10, feature_batch_size=4):
         land_weight = convolve_mask_step(land_mask, scaled_kernels_fft)
         has_land_support = land_weight > 1e-10
         safe_land_weight = jnp.where(has_land_support, land_weight, 1.0)
+        if land_share_floor is None:
+            low = None
+        else:
+            band_mass = jnp.maximum(jnp.sum(scaled_kernels, axis=(1, 2)), 1e-30)[:, None, None]
+            low = (land_weight / band_mass < float(land_share_floor)) & (land_mask > 0.5)[None, :, :]
         
         for t in range(Time):
             for i in range(0, M, feature_batch_size):
@@ -130,6 +158,9 @@ def integrate_paths(Z, kernel_stack, land_mask, steps=10, feature_batch_size=4):
                     num_slice / safe_land_weight[None, :, :, :],
                     0.0,
                 )
+                if low is not None:
+                    own = jnp.transpose(z_slice, (2, 0, 1))[:, None, :, :]     # (batch, 1, Ny, Nx)
+                    avg_feat_slice = jnp.where(low[None, :, :, :], own, avg_feat_slice)
                 
                 Z_disp_acc = Z_disp_acc.at[t, i : i + feature_batch_size].add(avg_feat_slice)
             

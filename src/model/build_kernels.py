@@ -29,9 +29,11 @@ from jax.numpy.fft import fft2, ifft2
 # driver's login-node preflight -- can import it without JAX, whose CPU-backend init
 # aborts on TACC login nodes.
 from src.model.dispersal_spec import (  # noqa: F401
+    POINT_DISCRETIZATION,
     dispersal_spec,
     get_dispersal_quantiles,
     get_gamma_scale,
+    kernel_discretization,
     resolve_radial_splits,
 )
 
@@ -55,6 +57,50 @@ def toroidal_distance_grid(Lx: int, Ly: int, cell_size: float) -> jnp.ndarray:
     y_steps = jnp.tile(y[:, None], (1, Lx))
 
     return jnp.sqrt(x_steps**2 + y_steps**2) * cell_size
+
+
+def _is_point(discretization):
+    return discretization is None or dict(discretization).get("method", "point") == "point"
+
+
+def radial_kernel_grid(Lx, Ly, cell_size, mean_dist, shape, discretization=None):
+    """Normalized 2-D radial generalized-Gaussian ``exp(-(r/scale)^shape)`` on the toroidal grid.
+
+    THE single place a dispersal PDF becomes per-cell weights, for the adult kernel and the juvenile
+    master alike. ``discretization`` comes from ``dispersal_spec.kernel_discretization``:
+
+    * point (``None`` / ``{"method": "point"}``): the PDF at cell-centre offsets. Bit-identical to the
+      historical construction, so every existing build is unchanged.
+    * ``{"method": "cell_integrated", "subsamples": S}``: the PDF averaged over the displacement
+      between a source point uniform in the origin cell and a destination point uniform in the target
+      cell. Per axis that displacement is ``offset + (u - v)`` with u, v ~ U(-1/2, 1/2) cell, whose
+      density is the tent on (-1, 1); an S-point midpoint rule for each of u and v gives the exact
+      discrete tent: sub-offsets k/S, k = -(S-1)..S-1, with weights (S-|k|)/S^2.
+    """
+    scale = get_gamma_scale(mean_dist, shape)
+    if _is_point(discretization):
+        r_dist = toroidal_distance_grid(Lx, Ly, cell_size)
+        kernel = jnp.exp(-(r_dist / scale) ** shape)
+        return kernel / jnp.sum(kernel)
+    d = dict(discretization)
+    if d.get("method") != "cell_integrated":
+        raise ValueError(f"unknown kernel discretization {d!r}")
+    S = int(d["subsamples"])
+    if (Lx % 2 == 0) or (Ly % 2 == 0):
+        raise ValueError("Lx and Ly must be odd")
+    x = jnp.concatenate([jnp.arange(Lx // 2 + 1), -jnp.arange(Lx // 2, 0, -1)]).astype(jnp.float32)
+    y = jnp.concatenate([jnp.arange(Ly // 2 + 1), -jnp.arange(Ly // 2, 0, -1)]).astype(jnp.float32)
+    ks = jnp.arange(-(S - 1), S)
+    sub = ks / S
+    wts = (S - jnp.abs(ks)) / float(S * S)          # sums to 1
+    kernel = jnp.zeros((Ly, Lx), dtype=jnp.float32)
+    for oy, wy in zip(sub.tolist(), wts.tolist()):
+        dy2 = (y + oy)[:, None] ** 2
+        for ox, wx in zip(sub.tolist(), wts.tolist()):
+            r = jnp.sqrt(dy2 + ((x + ox)[None, :]) ** 2) * cell_size
+            kernel = kernel + (wy * wx) * jnp.exp(-(r / scale) ** shape)
+    return kernel / jnp.sum(kernel)
+
 
 def angular_weights_toroidal(Lx: int, Ly: int):
     """Per-cell directional weights (N/S/E/W) for splitting a kernel into wedges.
@@ -179,7 +225,7 @@ def make_radial_directional_kernels(
 
 
 def make_juvenile_kernel_stack(Lx, Ly, cell_size, radii_splits,
-                               mean_dist, shape):
+                               mean_dist, shape, discretization=None):
     """Directional x radial juvenile dispersal kernels: the master PDF split into wedges.
 
     Builds the normalized 2-D radial generalized-Gaussian master ``exp(-(r/scale)^shape)``
@@ -206,10 +252,10 @@ def make_juvenile_kernel_stack(Lx, Ly, cell_size, radii_splits,
             RuntimeWarning, stacklevel=2,
         )
 
-    r_dist = toroidal_distance_grid(Lx, Ly, cell_size)
-    scale = get_gamma_scale(mean_dist, shape)
-    master = jnp.exp(-(r_dist / scale) ** shape)
-    master = master / jnp.sum(master)
+    # ``discretization`` (dispersal_spec.kernel_discretization) changes only how the master PDF is
+    # sampled per cell; the directional/radial partition of unity is applied to it unchanged, so the
+    # wedges still sum to the master exactly.
+    master = radial_kernel_grid(Lx, Ly, cell_size, mean_dist, shape, discretization)
     stack, labels = make_radial_directional_kernels(
         Lx, Ly, cell_size, master, radii_splits)
     # This is a physical probability decomposition. Fail immediately if a future
@@ -227,7 +273,8 @@ def build_simulation_struct(
     juvenile_mdd: float,
     adult_shape: float,
     juvenile_shape: float,
-    radii_splits
+    radii_splits,
+    discretization=None,
 ):
     """
     Builds simulation structure with mass-conservative weighted kernels.
@@ -253,13 +300,9 @@ def build_simulation_struct(
     padded_land = jnp.zeros((Ly, Lx)).at[:Ny, :Nx].set(land)
     fft_land = fft2(padded_land)
     
-    # 1. Grid (in km)
-    r_dist = toroidal_distance_grid(Lx, Ly, cell_size)
-    
-    # 2. Adult (Isotropic)
-    adult_scale = get_gamma_scale(adult_mdd, adult_shape)
-    adult_kernel = jnp.exp(-(r_dist / adult_scale) ** adult_shape)
-    adult_kernel /= jnp.sum(adult_kernel) # Normalize Master
+    # 1+2. Adult (Isotropic), through the same per-cell discretization as the juvenile master
+    # (point = cell-centre sampling, the historical default; see radial_kernel_grid).
+    adult_kernel = radial_kernel_grid(Lx, Ly, cell_size, adult_mdd, adult_shape, discretization)
     adult_fft_kernel = fft2(adult_kernel)
     
     # Adult Edge Correction (Standard)
@@ -269,7 +312,8 @@ def build_simulation_struct(
     # A+B. Master juvenile PDF split into directional x radial wedges, via the shared builder
     # so the Z_disp path features use the IDENTICAL kernel family (same base PDF + splits).
     juv_kernels, labels = make_juvenile_kernel_stack(
-        Lx, Ly, cell_size, radii_splits, mean_dist=juvenile_mdd, shape=juvenile_shape)
+        Lx, Ly, cell_size, radii_splits, mean_dist=juvenile_mdd, shape=juvenile_shape,
+        discretization=discretization)
     
     fft_list = []
     edge_list = []

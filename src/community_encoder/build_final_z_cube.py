@@ -29,6 +29,7 @@ from community_encoder.train_DESK.model_arch import (MultiStreamAutoencoder,
                                                      check_basis_matches,
                                                      hidden_width_from_meta)
 from src.data.masks import read_land_mask
+from src.community_encoder.cube_contract import export_contract, add_basis_identities
 
 def fill_gaps_stage1_spatial(z_cube, valid_mask, land_mask, radius_px=25):
     """Fill land gaps within a local radius using linear interpolation."""
@@ -225,7 +226,13 @@ def build_spacetime_cube(config: Optional[Union[Dict[str, Any], str, os.PathLike
     z_dim = latent_dim
     # E086final (v2, equal summer / winter halves): export [z, the model's private block] when asked; off by default
     _pdim = int(dm["private_dim"]) if "private_dim" in dm.files else 0
-    include_private = bool(cube_cfg.get("include_private", False)) and _pdim > 0
+    include_private = bool(cube_cfg.get("include_private", False))
+    if include_private and _pdim <= 0:
+        raise ValueError("include_private requested but checkpoint has no private coordinates")
+    feature_contract = export_contract(
+        latent_dim, z_dir, _pdim if include_private else 0,
+        config.get("desk", {}).get("aux_metric_heads", []))
+    add_basis_identities(feature_contract)
     if include_private:
         z_dim = latent_dim + _pdim
         print(f"[cube] include_private: exporting [z ({latent_dim}), private ({_pdim})] = {z_dim} dims", flush=True)
@@ -317,8 +324,7 @@ def build_spacetime_cube(config: Optional[Union[Dict[str, Any], str, os.PathLike
     # be the same run." Content hashes, not mtimes, so a re-copied file still compares equal.
     with open(os.path.join(output_dir, "cube_meta.json"), "w", encoding="utf-8") as fh:
         _json.dump({
-            "kernel": kernel, "centered": centered, "latent_dim": latent_dim,
-            "kernel_contract": "Z(x) dot Z(x') ~= uncentered Ruzicka(x,x')",
+            **feature_contract,
             "years": years,
             "gapfilled_cell_years": n_filled,
             "temporal_output": "raw_instantaneous",

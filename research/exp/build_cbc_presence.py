@@ -35,7 +35,8 @@ def winter_operator(a, keys, esk, spl, D, P, yr, rel):
     use = np.where((m >= 0) & (yr >= a.fit_years[0]) & (yr <= a.fit_years[1]) & (P.sum(1) >= 2))[0]
     Z = torch.as_tensor(esk[m[use]], dtype=torch.float64); Pt = torch.as_tensor(P[use], dtype=torch.float64)
     cp = torch.as_tensor(np.nan_to_num(rel[use]) if rel is not None else np.zeros(len(use)), dtype=torch.float64)
-    blk = (D["row"][use] // 6) * 1000 + D["col"][use] // 6
+    bc = int(getattr(a, "block_cells", 6))  # 6 cells = 162 km at 27 km; FIELD54 passes 3 at 54 km
+    blk = (D["row"][use] // bc) * 1000 + D["col"][use] // bc
     ub = np.unique(blk); rng = np.random.default_rng(86)
     val = np.isin(blk, rng.choice(ub, max(1, len(ub) // 5), replace=False))
     L, S = Z.shape[1], Pt.shape[1]

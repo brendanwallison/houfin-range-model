@@ -1,0 +1,37 @@
+{
+  "_comment": "FIELD54 Stage A (research/experiments/FIELD54_NATIVE_PLAN_2026-10-29.md, record FIELD54_COVARIATES_2026-10-29.md): covariates rebuilt natively at 54 km from the RAW sources. Needs env HOUFIN_DATA54 = a separate data root holding symlinks to the raw source dirs (LUH3, hyde35, HBUI, soilgrids_5000m, dem, land_source), ref_grid_54km.tif and land_mask/ocean_mask_54km.tif (copies of processed/grid54). Same box/origin as 27 km; 67 x 112 cells, each exactly 2 x 2 27 km children. Fine factors are RELATIVE to the ref grid, so doubling them keeps the 27 km sub-cell lattice: elevation 15 -> 30 (1.8 km), BUI 27 -> 54 (1 km). LUH-3 per-parent rates are aggregated as parent-area-weighted means (opt-in switch, see src/data/preprocess/luh3.py).",
+  "datasets_root": "${HOUFIN_DATA54}",
+  "grid": {
+    "target_res_m": 54000,
+    "ref_raster": "${HOUFIN_DATA54}/ref_grid_54km.tif"
+  },
+  "coastline": {
+    "fine_factor": 50
+  },
+  "elevation": {
+    "fine_factor": 30
+  },
+  "bui": {
+    "fine_factor": 54
+  },
+  "zenodo": {
+    "datasets": {
+      "luh3": {
+        "_parent_weighted_comment": "Per-unit-of-parent rates (netCDF long_name/units): fertl_X kg/ha of crop X; irrig_X irrigated fraction of crop X; fharv_cXper fraction of crop cXper biomass harvested; flood flooded fraction of c3ann; prtct_Y protected fraction of land use Y; pltns_wdprd fraction of harvested plantation biomass (parent proxy: plantation area, the only available measure); secma/secmb mean age / biomass density of secondary land (secdf+secdn). Parent area = sum of the listed fractions.",
+        "parent_weighted": {
+          "fertl_c3ann": ["c3ann"], "fertl_c4ann": ["c4ann"], "fertl_c3per": ["c3per"],
+          "fertl_c4per": ["c4per"], "fertl_c3nfx": ["c3nfx"],
+          "irrig_c3ann": ["c3ann"], "irrig_c4ann": ["c4ann"], "irrig_c3per": ["c3per"],
+          "irrig_c4per": ["c4per"], "irrig_c3nfx": ["c3nfx"],
+          "fharv_c3per": ["c3per"], "fharv_c4per": ["c4per"],
+          "flood": ["c3ann"],
+          "prtct_primf": ["primf"], "prtct_primn": ["primn"], "prtct_secdf": ["secdf"],
+          "prtct_secdn": ["secdn"], "prtct_pltns": ["pltns"],
+          "pltns_wdprd": ["pltns"],
+          "secma": ["secdf", "secdn"], "secmb": ["secdf", "secdn"]
+        },
+        "parent_weighted_plain_dir": "${HOUFIN_DATA54}/luh3_grid_plainavg_diag"
+      }
+    }
+  }
+}

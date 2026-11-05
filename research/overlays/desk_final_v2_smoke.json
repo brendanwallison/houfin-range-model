@@ -54,6 +54,7 @@
     "pairs": 4096,
     "include_withheld": true,
     "coord_target": {
+     "basis_dir": "${HOUFIN_PROCESSED}/encoder/esk_all369_winter/spacetime",
      "path": "${HOUFIN_PROCESSED}/encoder/cbc_aux_final_v2/winter_coords.npz",
      "weight": 64.0
     }

@@ -21,13 +21,13 @@ if project_root not in sys.path:
 
 # 1. Import Kernels (shared juvenile-kernel builder: same family the forward sim disperses with)
 from src.model.build_kernels import (
-    dispersal_spec, make_juvenile_kernel_stack, toroidal_distance_grid,
+    dispersal_spec, kernel_discretization, make_juvenile_kernel_stack, toroidal_distance_grid,
 )
 from src.data.masks import read_land_mask
 from src.temporal import load_timeline, model_years
 
 # 2. Import Path Integration (Ensure resize_kernel_stack is fixed in here!)
-from src.model.build_path_features import integrate_paths
+from src.model.build_path_features import integrate_paths, low_land_share
 
 # Helper Functions
 
@@ -139,14 +139,15 @@ def main(args):
         raise FileNotFoundError(f"missing cube kernel contract: {cube_meta_path}")
     with open(cube_meta_path, encoding="utf-8") as fh:
         cube_meta = json.load(fh)
-    if cube_meta.get("kernel") != "ruzicka" or bool(cube_meta.get("centered", True)):
-        raise ValueError(f"path integration requires uncentered Ružička Z; got {cube_meta}")
+    from src.community_encoder.cube_contract import validate_cube_contract
+    validate_cube_contract(cube_meta)
     
     # 1. SETUP & FIND FILES
     # Mask at the model grid (matches the Z_latent cube it path-integrates).
     from src.config_utils import load_age_model_config
     age_cfg = load_age_model_config()
     disp_spec = dispersal_spec(age_cfg)
+    disc = kernel_discretization(age_cfg)   # point (default) or cell_integrated; see dispersal_spec.py
     tif_path = age_cfg["ocean_mask"]
     if not os.path.exists(tif_path):
         raise FileNotFoundError(f"mask file not found: {tif_path}")
@@ -201,6 +202,7 @@ def main(args):
         Lx, Ly, cell_size_km, splits,
         mean_dist=disp_spec["juvenile_mdd_km"],
         shape=disp_spec["juvenile_shape"],
+        discretization=disc,
     )
     kernel_mass = float(jnp.sum(kernel_stack))
     r_grid = toroidal_distance_grid(Lx, Ly, cell_size_km)
@@ -244,7 +246,8 @@ def main(args):
         # Note: kernel_stack and land_mask are reused from memory!
         if not bool(jnp.isfinite(Z_year[0][land_mask_np > 0.5]).all()):
             raise ValueError(f"{z_path} contains non-finite values on land")
-        Z_disp = integrate_paths(Z_year, kernel_stack, land_mask, steps=args.steps)
+        Z_disp = integrate_paths(Z_year, kernel_stack, land_mask, steps=args.steps,
+                                 land_share_floor=args.land_share_floor)
         Z_disp.block_until_ready()
         
         # C. Save
@@ -285,8 +288,22 @@ def main(args):
         "dispersal": disp_spec,
         "integration_steps": int(args.steps),
         "kernel_mass": kernel_mass,
+        "kernel_discretization": disc,
         "realized_discrete_mdd_km": realized_mdd,
     }
+    if args.land_share_floor is not None:
+        # Only when the switch is on, so existing path_feature_meta files keep their exact key set.
+        low = low_land_share(kernel_stack, land_mask, int(args.steps), float(args.land_share_floor))
+        path_meta["land_share_floor"] = {
+            "floor": float(args.land_share_floor),
+            "rule": "integration steps whose land SHARE (land weight / rescaled band mass) < floor contribute the "
+                    "cell's own Z (FIELD54 amendment)",
+            "affected_cell_band_pairs": int(low.sum()),
+            "land_cell_band_pairs": int(low.shape[0] * int((land_mask_np > 0.5).sum())),
+            "affected_cells": int(low.any(0).sum()),
+            "affected_pairs_by_band": [int(x) for x in low.reshape(low.shape[0], -1).sum(1)],
+        }
+        print(f"[land-share floor] {path_meta['land_share_floor']}")
     meta_path = os.path.join(args.output_dir, "path_feature_meta.json")
     tmp_meta_path = meta_path + ".tmp"
     with open(tmp_meta_path, "w", encoding="utf-8") as fh:
@@ -308,6 +325,8 @@ if __name__ == "__main__":
     parser.add_argument("--output_dir", type=str, default=_pf["output_dir"])
     parser.add_argument("--steps", type=int, default=None, help="Integration steps (default: config)")
     parser.add_argument("--viz", action="store_true", help="Generate PNG visualizations")
+    parser.add_argument("--land-share-floor", type=float, default=None,
+                        help="default off; e.g. 1e-4: steps below this land weight use the cell's own Z")
     
     args = parser.parse_args()
     if args.steps is None:

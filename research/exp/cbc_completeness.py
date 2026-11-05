@@ -16,6 +16,7 @@ The model uses them LEAVE-ONE-OUT per species (the target species' own detection
 predict itself. Benchmark completeness is robust to real changes in total richness, list length is not.
 """
 import argparse
+import json
 import os
 
 import numpy as np
@@ -31,6 +32,10 @@ def main():
     ap.add_argument("--bench-from", type=int, default=1950)
     ap.add_argument("--bench-share", type=float, default=0.5)
     ap.add_argument("--taxonomy", required=True, help="eBird taxonomy CSV (species common names -> codes)")
+    ap.add_argument("--species-allowlist", default=None,
+                    help="optional CSV species_code whitelist; unmapped raw names are excluded")
+    ap.add_argument("--audit-sealed-cache", default=None,
+                    help="cache meta.json: count recognized sealed/focal contributions to the unchanged benchmark")
     a = ap.parse_args()
     import pandas as pd
     from scipy.spatial import cKDTree
@@ -43,6 +48,15 @@ def main():
             & ~sp["com_name"].str.contains(r" sp\.|/| x ", regex=True, na=False)]
     sp = sp.drop_duplicates(["abbrev", "count_yr", "com_name"])
     sp["year"] = 1900 + sp["count_yr"]
+    before = len(sp)
+    if a.species_allowlist:
+        tax = pd.read_csv(a.taxonomy)
+        tax = tax[tax["CATEGORY"] == "species"]
+        mapping = dict(zip(tax["COMMON_NAME"], tax["SPECIES_CODE"]))
+        codes = sp["com_name"].map(lambda n: mapping.get(n) or mapping.get(n.split(" (")[0].strip()))
+        allowed = set(pd.read_csv(a.species_allowlist)["species_code"])
+        assert "houfin" not in allowed
+        sp = sp[codes.isin(allowed)].copy()
     # rows of the prepared file
     rk = pd.DataFrame({"abbrev": np.array(circles)[P["circle_idx"]], "year": P["year_end"]})
     rk["row"] = np.arange(len(rk))
@@ -63,6 +77,17 @@ def main():
                 bench[c] = bench[have[j]]; borrowed += 1
     sp_bench = sp.merge(pd.DataFrame([(c, n) for c, s in bench.items() for n in s], columns=["abbrev", "com_name"]),
                         on=["abbrev", "com_name"])
+    audit = {}
+    if a.audit_sealed_cache:
+        sealed = set(json.load(open(a.audit_sealed_cache))["sealed_species"])
+        tax = pd.read_csv(a.taxonomy)
+        tax = tax[tax["CATEGORY"] == "species"]
+        cmap_audit = dict(zip(tax["COMMON_NAME"], tax["SPECIES_CODE"]))
+        resolve = lambda n: cmap_audit.get(n) or cmap_audit.get(n.split(" (")[0].strip())
+        for label, selected in [("sealed", sealed), ("focal", {"houfin"})]:
+            counts = sp_bench[sp_bench["com_name"].map(resolve).isin(selected)].groupby(["abbrev", "year"]).size()
+            audit[label + "_benchmark_hits"] = np.array([counts.get((c, y), 0) for c, y in zip(rk["abbrev"], rk["year"])], dtype="int32")
+            audit[label + "_benchmark_n"] = np.array([sum(resolve(n) in selected for n in bench.get(c, ())) for c in rk["abbrev"]], dtype="int32")
     bh = sp_bench.groupby(["abbrev", "year"]).size().rename("bench_hit").reset_index()
     rk = rk.merge(ll, on=["abbrev", "year"], how="left").merge(bh, on=["abbrev", "year"], how="left")
     rk["bench_n"] = [len(bench.get(c, ())) for c in rk["abbrev"]]
@@ -84,7 +109,12 @@ def main():
                 in_bench[ci[c], j] = True
     np.savez_compressed(a.out, list_len=rk["list_len"].fillna(0).to_numpy(np.float32),
                         bench_hit=rk["bench_hit"].fillna(0).to_numpy(np.float32),
-                        bench_n=rk["bench_n"].to_numpy(np.float32), in_bench=in_bench)
+                        bench_n=rk["bench_n"].to_numpy(np.float32), in_bench=in_bench, **audit)
+    with open(a.out + ".provenance.json", "w") as fh:
+        json.dump({"bench_from": a.bench_from, "bench_share": a.bench_share,
+                   "species_allowlist": a.species_allowlist, "records_before": before,
+                   "records_after": len(sp), "prepared": a.prepared,
+                   "audit_sealed_cache": a.audit_sealed_cache}, fh, indent=2)
     era = np.select([P["year_end"] < 1920, P["year_end"] < 1940, P["year_end"] < 1966], [0, 1, 2], 3)
     comp = np.where(rk["bench_n"] > 0, rk["bench_hit"].fillna(0) / rk["bench_n"].clip(lower=1), np.nan)
     print(f"[E065] benchmark sets: {len(bench)} circles ({borrowed} borrowed); modelled species mapped to names: "

@@ -1,0 +1,22 @@
+{
+  "_comment": "FIELD54 Stage A states v2 (climate = union over ALL fine-land sub-points of each 54 km land cell, incl. the supplementary climr run for 27 km-ocean children; FIELD54_COVARIATES_2026-10-29.md). Otherwise identical to field54_states.json: build_states at 54 km from the native 54 km covariate grids under HOUFIN_DATA54 (see config/overlays/field54_data.json). Same streams, order, ema_tau and transforms as config/esk_desk_config.json states.streams -- only grid_dir changes (lists replace on merge, so the full list is restated). Output under HOUFIN_PROCESSED54, never the 27 km hist_dir.",
+  "paths": {
+    "data_dir": "${HOUFIN_DATA54}",
+    "hist_dir": "${HOUFIN_PROCESSED54}/states_v2"
+  },
+  "latent_cube": {
+    "water_mask_path": "${HOUFIN_DATA54}/land_mask/ocean_mask_54km.tif"
+  },
+  "states": {
+    "streams": [
+      {"name": "climate", "type": "per_variable", "grid_dir": "${HOUFIN_DATA54}/climate_grid_monthly_v2", "ema_tau": 2},
+      {"name": "landuse", "type": "per_variable", "grid_dir": "${HOUFIN_DATA54}/luh3_grid", "ema_tau": 2},
+      {"name": "hyde", "type": "per_variable", "grid_dir": "${HOUFIN_DATA54}/hyde35_grid", "ema_tau": 2,
+       "transform": {"type": "log1p"}},
+      {"name": "bui", "type": "per_variable", "grid_dir": "${HOUFIN_DATA54}/bui_grid", "ema_tau": 2,
+       "transform": {"type": "log1p"}, "indicator_variable": "bui_avail"},
+      {"name": "soil", "type": "static", "grid_dir": "${HOUFIN_DATA54}/soilgrids_grid"},
+      {"name": "elevation", "type": "static", "grid_dir": "${HOUFIN_DATA54}/elevation", "suffix": ".tif"}
+    ]
+  }
+}

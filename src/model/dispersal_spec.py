@@ -104,6 +104,39 @@ def resolve_radial_splits(juvenile_mdd_km, juvenile_shape, spec_value, quantiles
     )
 
 
+POINT_DISCRETIZATION = {"method": "point"}
+
+
+def kernel_discretization(config):
+    """How the continuous dispersal PDF becomes per-cell weights -- deliberately NOT in ``dispersal_spec``.
+
+    ``"point"`` (the default, and every build before 2026-10-29) evaluates the radial PDF at cell-centre
+    offsets. That is fine at 27 km but grid-dependent: at a coarser grid the zero-offset cell carries the
+    PDF's peak for a 4x larger area, so self-cell retention roughly doubles relative to the continuous
+    kernel (adult ~0.37 at 27 km -> ~0.7 at 54 km). ``"cell_integrated"`` instead averages the PDF over the
+    offset between a source point uniform in its cell and a destination point uniform in the target cell
+    (the per-axis tent distribution of the difference of two uniforms), by a ``subsamples`` x
+    ``subsamples`` midpoint rule. That is the cell-to-cell transfer a uniform-within-cell population
+    actually experiences, so kernels at different resolutions describe the same continuous movement.
+
+    Lives under ``dispersal.kernel_discretization`` in the config but is resolved HERE, separately, so
+    ``dispersal_spec``'s returned dict (recorded verbatim in every path_feature_meta.json and checked by
+    exact equality at ingest and fit time) is unchanged for every existing build. Builds record this
+    resolution in path_feature_meta / metadata under ``kernel_discretization``; an absent record means
+    ``POINT_DISCRETIZATION``.
+    """
+    d = (config.get("dispersal") or {}).get("kernel_discretization")
+    if d is None or d == "point" or (isinstance(d, dict) and d.get("method", "point") == "point"):
+        return dict(POINT_DISCRETIZATION)
+    if not isinstance(d, dict) or d.get("method") != "cell_integrated":
+        raise ValueError("dispersal.kernel_discretization must be 'point' or "
+                         f"{{'method': 'cell_integrated', 'subsamples': n}}; got {d!r}")
+    n = int(d.get("subsamples", 15))
+    if n < 2:
+        raise ValueError("cell_integrated kernel_discretization needs subsamples >= 2")
+    return {"method": "cell_integrated", "subsamples": n}
+
+
 def dispersal_spec(config):
     """Return the validated, config-owned movement/path-feature specification.
 

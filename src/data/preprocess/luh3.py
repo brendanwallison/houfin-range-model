@@ -64,6 +64,28 @@ def main():
             nc_path, var_map.get(fname), "average", year_lo, year_hi, out_dir,
             name_fn=lambda v, yr: f"{v}_{yr}_grid.tif", exclude=exclude)
 
+    # OPT-IN (default off; absent -> every layer is a plain area average as before):
+    # ``parent_weighted: {var: [parent, ...]}`` aggregates a per-parent-land-use rate as
+    # the parent-area-weighted mean (see netcdf_grid.parent_weighted_reproject).
+    parent_map = ldef.get("parent_weighted") or {}
+    if parent_map:
+        nc_paths = [os.path.join(in_dir, f) for f in ldef.get("files", [])
+                    if os.path.exists(os.path.join(in_dir, f))]
+        plain_dir = ldef.get("parent_weighted_plain_dir")
+        if plain_dir:
+            os.makedirs(plain_dir, exist_ok=True)
+        items = ncg.attach_parents(items, parent_map, ncg.index_variables(nc_paths),
+                                   plain_dir=plain_dir)
+        n_pw = sum(1 for it in items if it.get("parents"))
+        print(f"[luh3] parent-weighted aggregation for {len(parent_map)} variables "
+              f"({n_pw} slices): {parent_map}", flush=True)
+        import json
+        with open(os.path.join(out_dir, "parent_weighting.json"), "w") as fh:
+            json.dump({"rule": "sum(rate*parent)/sum(parent) via two GDAL average "
+                               "reprojections on a common valid mask; plain average "
+                               "where the parent aggregates to 0",
+                       "parent_weighted": parent_map}, fh, indent=2, sort_keys=True)
+
     ncg.reproject_parallel(items, cfg, desc="luh3")
 
 

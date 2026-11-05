@@ -1,0 +1,64 @@
+{
+  "_comment": "Matched completeness-only intervention. Original recipe, same seed, train-species benchmark and refitted operators. Existing holdouts are reused sensitivity targets, not a fresh confirmation set.",
+  "paths": {
+    "desk_output_dir": "${HOUFIN_PROCESSED}/encoder/desk_final_clean_v2_s1"
+  },
+  "latent_cube": {
+    "z_dir": "${HOUFIN_PROCESSED}/encoder/esk_all369_breed/spacetime",
+    "z_ref_path": "${HOUFIN_PROCESSED}/encoder/esk_all369_breed/spacetime/Z.npy",
+    "mask_ref_path": "${HOUFIN_PROCESSED}/encoder/esk_all369_breed/spacetime/valid_mask.npy",
+    "model_path": "${HOUFIN_PROCESSED}/encoder/desk_final_clean_v2_s1/env_model_semisup.pth",
+    "output_dir": "${HOUFIN_PROCESSED}/encoder/cube_desk_final_clean_v2_s1",
+    "include_private": true
+  },
+  "target": {
+    "points_dir": "${HOUFIN_PROCESSED}/encoder/bbs_points_all369"
+  },
+  "trend": {
+    "community_trend_list": "${HOUFIN_PROCESSED}/encoder/cbc_aux_final_clean/community_all_nonsealed.csv"
+  },
+  "desk": {
+    "z_dir": "${HOUFIN_PROCESSED}/encoder/esk_all369_breed/spacetime",
+    "seed": 1,
+    "output_ema": {
+      "half_life_bounds": [
+        1.0,
+        40.0
+      ],
+      "warmup_start": 1902,
+      "init_half_life": 10.0
+    },
+    "aux_ruzicka": {
+      "path": "${HOUFIN_PROCESSED}/encoder/cbc_aux_final_clean/cbc_ruzicka.npz",
+      "label": "cbc_ruzicka_all",
+      "include_withheld": true,
+      "pairs": 4096
+    },
+    "aux_presence": {
+      "path": "${HOUFIN_PROCESSED}/encoder/cbc_aux_final_v2_clean/cbc_presence_early_w.npz",
+      "weight": 0.01,
+      "label": "cbc_presence_early_winter",
+      "include_withheld": true,
+      "completeness_slopes": true,
+      "read_private": 0
+    },
+    "aux_metric_heads": [
+      {
+        "path": "${HOUFIN_PROCESSED}/encoder/cbc_aux_final_clean/cbc_ruzicka.npz",
+        "label": "winter_half",
+        "weight": 5.0,
+        "dim": 64,
+        "private": 64,
+        "private_only": true,
+        "identity": true,
+        "pairs": 4096,
+        "include_withheld": true,
+        "coord_target": {
+          "basis_dir": "${HOUFIN_PROCESSED}/encoder/esk_all369_winter/spacetime",
+          "path": "${HOUFIN_PROCESSED}/encoder/cbc_aux_final_v2_clean/winter_coords.npz",
+          "weight": 64.0
+        }
+      }
+    ]
+  }
+}

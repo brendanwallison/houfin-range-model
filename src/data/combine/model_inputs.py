@@ -10,7 +10,8 @@ import rasterio
 from rasterio.warp import transform as project_coords
 
 import jax.numpy as jnp
-from src.model.build_kernels import build_simulation_struct, dispersal_spec
+from src.model.build_kernels import build_simulation_struct, dispersal_spec, kernel_discretization
+from src.model.dispersal_spec import POINT_DISCRETIZATION
 from src.config_utils import load_age_model_config
 from src.data.masks import read_land_mask
 from src.temporal import (assert_contiguous, disease_timestep, invasion_timestep,
@@ -34,6 +35,7 @@ MODEL_LATENT_DIM = int(_cfg.get("latent_dim", 64))
 SOURCE_LATENT_DIM = int(_cfg.get("source_latent_dim", MODEL_LATENT_DIM))
 KERNEL_CONTRACT = dict(_cfg.get("kernel_contract", {}))
 DISPERSAL_SPEC = dispersal_spec(_cfg)
+KERNEL_DISCRETIZATION = kernel_discretization(_cfg)
 POPULATION_SPEC = dict(_cfg["population_model"])
 
 # --- DISEASE-TERM SPATIAL BASIS SETTINGS ---
@@ -249,6 +251,11 @@ def ingest_data():
     with open(path_meta_path, encoding="utf-8") as fh:
         path_meta = json.load(fh)
     source_contract = path_meta.get("kernel_contract") or {}
+    from src.community_encoder.cube_contract import validate_cube_contract
+    validate_cube_contract(source_contract)
+    if source_contract.get("kernel") == "ruzicka_sum":
+        raise ValueError("multi-block summer/winter cube requires block-aware age-model "
+                         "feature selection and priors; positional truncation is not supported")
     expected_contract = {
         "kernel": KERNEL_CONTRACT.get("kernel", "ruzicka"),
         "centered": bool(KERNEL_CONTRACT.get("centered", False)),
@@ -263,6 +270,10 @@ def ingest_data():
                          f"features (got temporal_output={source_contract.get('temporal_output')!r})")
     if path_meta.get("dispersal") != DISPERSAL_SPEC:
         raise ValueError("path-feature dispersal specification differs from age_model_config; "
+                         "regenerate Z_disp before ingestion")
+    # Absent record = a build from before the switch existed, i.e. point sampling.
+    if path_meta.get("kernel_discretization", POINT_DISCRETIZATION) != KERNEL_DISCRETIZATION:
+        raise ValueError("path-feature kernel_discretization differs from age_model_config; "
                          "regenerate Z_disp before ingestion")
     if int(path_meta.get("integration_steps", -1)) != DISPERSAL_SPEC["path_integration_steps"]:
         raise ValueError("path-feature integration step count differs from age_model_config")
@@ -336,6 +347,16 @@ def ingest_data():
     # c. Subsample
     n_target = int(len(unique_pseudo_locs) * sampling_density)
     n_target = max(n_target, 50)
+    # Optional explicit site count (config pseudo_zero_subsample.n_sites; absent = the density rule
+    # above, unchanged). A coarser-grid build sets it to hold the pre-invasion ABSENCE OBSERVATION
+    # count of a reference build fixed (research/experiments/GRID54_INPUTS_2026-10-29.md).
+    _pz_sites = (_cfg.get("pseudo_zero_subsample") or {}).get("n_sites")
+    if _pz_sites is not None:
+        if int(_pz_sites) > len(unique_pseudo_locs):
+            raise ValueError(f"pseudo_zero_subsample.n_sites={_pz_sites} exceeds the "
+                             f"{len(unique_pseudo_locs)} available pseudo-zero sites")
+        n_target = int(_pz_sites)
+        sampling_density = n_target / len(unique_pseudo_locs)
     
     print(f"  Subsampling Pseudo-Zeros: Target {n_target} sites (Density {sampling_density:.4f})")
     
@@ -535,6 +556,7 @@ def ingest_data():
         adult_shape=DISPERSAL_SPEC["adult_shape"],
         juvenile_shape=DISPERSAL_SPEC["juvenile_shape"],
         radii_splits=DISPERSAL_SPEC["juvenile_radial_splits_km"],
+        discretization=KERNEL_DISCRETIZATION,
     )
     if [str(x) for x in sim_struct["labels"]] != expected_labels:
         raise ValueError("forward-model juvenile kernel labels differ from Z_disp labels")
@@ -590,6 +612,8 @@ def ingest_data():
             # config/overlays/map_new_z.json warns about.
             "desk_checkpoint": source_contract.get("desk_checkpoint"),
             "esk_basis_dir": source_contract.get("esk_basis_dir"),
+            "feature_blocks": source_contract.get("feature_blocks"),
+            "ensemble_members": source_contract.get("ensemble_members"),
         },
         # Disease term: two smooth land-centered spatial bases, the exogenous
         # arrival map (timestep units) and its decade-scaled version, and the
@@ -613,6 +637,7 @@ def ingest_data():
         "juvenile_edge_correction_stack": np.array(sim_struct['juvenile_edge_correction_stack']),
         "juvenile_kernel_labels": expected_labels,
         "dispersal_spec": DISPERSAL_SPEC,
+        "kernel_discretization": KERNEL_DISCRETIZATION,
         "path_feature_meta": path_meta,
         "age_structure_prior": dict(_cfg["age_structure_prior"]),
         "population_model_spec": POPULATION_SPEC,

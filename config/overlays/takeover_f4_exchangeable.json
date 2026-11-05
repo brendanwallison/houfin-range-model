@@ -1,0 +1,7 @@
+{
+  "_extends": "grid54_step43_factor_p2_veit_s41.json",
+  "_comment": "Historical R101 comparator: all-four exchangeable fields, fixed coupling removed.",
+  "population_model": {
+    "manifold_prior": {"form": "exchangeable", "fixed_coupling": null}
+  }
+}

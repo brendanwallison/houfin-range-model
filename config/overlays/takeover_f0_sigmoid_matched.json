@@ -1,0 +1,9 @@
+{
+  "_extends": "grid54_step43_factor_p2_veit_s41.json",
+  "_comment": "Tail control: sigmoid matches compact-three-year gate's 1.5201812802692-year 10-90% width; both use onset as midpoint.",
+  "population_model": {
+    "disease_prior": {
+      "onset_gate": {"form": "sigmoid", "tau_years": 0.3459321582212081}
+    }
+  }
+}

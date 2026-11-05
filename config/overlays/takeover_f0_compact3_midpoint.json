@@ -1,0 +1,9 @@
+{
+  "_extends": "takeover_f0_compact3.json",
+  "_comment": "Date-semantics control: reconstructed onset is the compact gate midpoint, as in the old sigmoid.",
+  "population_model": {
+    "disease_prior": {
+      "onset_gate": {"form": "compact_midpoint", "duration_years": 3.0}
+    }
+  }
+}

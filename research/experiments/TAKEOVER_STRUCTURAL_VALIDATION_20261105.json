@@ -1,0 +1,308 @@
+{
+    "scope":  "Structural mechanics and historical replay only; no new fit",
+    "code_commit":  "148b428",
+    "tests":  {
+                  "new_targeted_with_width_control":  "18 passed; overlaps mechanics batch",
+                  "mechanics_batch":  "71 passed"
+              },
+    "runs":  [
+                 {
+                     "name":  "nested_identity",
+                     "report_sha256":  "9579514610a0757826b19a7186bd2c92cddff6648452c8698265a92a5de7db65",
+                     "result":  {
+                                    "state":  "passed",
+                                    "objective":  135590.79802834985,
+                                    "bbs_nll":  110044.70026099539,
+                                    "objective_error":  -0.0019716501410584897,
+                                    "bbs_error":  0.00026099539536517113,
+                                    "final_state_max_nonfinite":  0,
+                                    "exact_canary":  true,
+                                    "final_land_density_sha256":  [
+                                                                      "b98bb4d5d517e86ce6ec6d213ac4f25559c6be1fe3ef7b08797f213f7ee8f9c4",
+                                                                      "b98bb4d5d517e86ce6ec6d213ac4f25559c6be1fe3ef7b08797f213f7ee8f9c4"
+                                                                  ],
+                                    "canary_max_abs_error":  0.0,
+                                    "numeric_canary":  true,
+                                    "sources":  {
+                                                    "src.config_utils":  {
+                                                                             "path":  "/mnt/c/Dev/houfin-range-model/.worktrees/field-geometry/src/config_utils.py",
+                                                                             "sha256":  "b6691273bda88b679f44fb6dd44d72e6bb44093b4708290d94397abcd88a2911"
+                                                                         },
+                                                    "src.model":  {
+                                                                      "path":  "/mnt/c/Dev/houfin-range-model/.worktrees/field-geometry/src/model/__init__.py",
+                                                                      "sha256":  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+                                                                  },
+                                                    "src.model.disease_onset":  {
+                                                                                    "path":  "/mnt/c/Dev/houfin-range-model/.worktrees/field-geometry/src/model/disease_onset.py",
+                                                                                    "sha256":  "17e0ca50c299d6044488fcc19e42778229dee7b7704547663f6d5c0868dd2575"
+                                                                                },
+                                                    "src.model.age_fields":  {
+                                                                                 "path":  "/mnt/c/Dev/houfin-range-model/.worktrees/field-geometry/src/model/age_fields.py",
+                                                                                 "sha256":  "e0a32cca15a8306bc611fdb589955651013d2cdfdfa0c8e8524c0e92750a3577"
+                                                                             },
+                                                    "src.model.density_regulation":  {
+                                                                                         "path":  "/mnt/c/Dev/houfin-range-model/.worktrees/field-geometry/src/model/density_regulation.py",
+                                                                                         "sha256":  "34876f4ad2bc3b35d2b068b7227c80451d97b929ad499c848e39cd6a5ebc10f3"
+                                                                                     },
+                                                    "src.model.priority_overflow":  {
+                                                                                        "path":  "/mnt/c/Dev/houfin-range-model/.worktrees/field-geometry/src/model/priority_overflow.py",
+                                                                                        "sha256":  "d3da1f9e87585d78a2ae76706c8765885dee68e945c3f952a7e5bcc963d5f42f"
+                                                                                    },
+                                                    "src.model.age_forward":  {
+                                                                                  "path":  "/mnt/c/Dev/houfin-range-model/.worktrees/field-geometry/src/model/age_forward.py",
+                                                                                  "sha256":  "d542eaa3e702f9f27334777f57f9880e920f4ca75c6f81fb5c7e8fd7b71110e6"
+                                                                              },
+                                                    "src.model.habitat_geometry":  {
+                                                                                       "path":  "/mnt/c/Dev/houfin-range-model/.worktrees/field-geometry/src/model/habitat_geometry.py",
+                                                                                       "sha256":  "8986edabe6ef252f3291f3061022b324fca91b1eb0515463081444a7d3d57eb7"
+                                                                                   },
+                                                    "src.model.age_priors":  {
+                                                                                 "path":  "/mnt/c/Dev/houfin-range-model/.worktrees/field-geometry/src/model/age_priors.py",
+                                                                                 "sha256":  "f233c26b58f0c42c033b18013969fd6c63c23b2bb61e9a7d8f4b3f4ce8245186"
+                                                                             },
+                                                    "src.model.data_loading":  {
+                                                                                   "path":  "/mnt/c/Dev/houfin-range-model/.worktrees/field-geometry/src/model/data_loading.py",
+                                                                                   "sha256":  "71ed135f2b93ada3a0bab6962215a22da9567a6988ba853bed1b1803c8118c2b"
+                                                                               },
+                                                    "src.model.checkpoints":  {
+                                                                                  "path":  "/mnt/c/Dev/houfin-range-model/.worktrees/field-geometry/src/model/checkpoints.py",
+                                                                                  "sha256":  "ce5b514039a68364f37c43e92e03b9a14139f87885c1dc1af2b2dcb272db662f"
+                                                                              },
+                                                    "src.model.dispersal_spec":  {
+                                                                                     "path":  "/mnt/c/Dev/houfin-range-model/.worktrees/field-geometry/src/model/dispersal_spec.py",
+                                                                                     "sha256":  "0a317a837775c48d2a694c301441e60937d7b65b9f6c9dc56427beac65dd17e7"
+                                                                                 },
+                                                    "src.community_encoder":  {
+                                                                                  "path":  "/mnt/c/Dev/houfin-range-model/.worktrees/field-geometry/src/community_encoder/__init__.py",
+                                                                                  "sha256":  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+                                                                              },
+                                                    "src.community_encoder.cube_contract":  {
+                                                                                                "path":  "/mnt/c/Dev/houfin-range-model/.worktrees/field-geometry/src/community_encoder/cube_contract.py",
+                                                                                                "sha256":  "88e4bf2b5dc8a16d5cb139aa5f3614aa0f9c983a67fa557cb76452f18b6b9639"
+                                                                                            }
+                                                },
+                                    "devices":  [
+                                                    "cuda:0"
+                                                ],
+                                    "seconds":  16.389620780944824,
+                                    "front":  {
+                                                  "median":  -3.0,
+                                                  "never":  0.06777493606138107,
+                                                  "by_cohort":  {
+                                                                    "1966-1974":  3.0,
+                                                                    "1975-1984":  -1.0,
+                                                                    "1985-1994":  -3.0,
+                                                                    "1995-2009":  -6.0
+                                                                }
+                                              },
+                                    "heldout_nll":  {
+                                                        "blocks":  32105.45788893378,
+                                                        "future":  21557.48385609793
+                                                    },
+                                    "checks":  {
+                                                   "objective":  true,
+                                                   "bbs":  true,
+                                                   "finite":  true,
+                                                   "canary":  true
+                                               }
+                                }
+                 },
+                 {
+                     "name":  "f2_mapped_identity",
+                     "report_sha256":  "59ea74733d3de7d175384becc42e791778726c2519355d40adf8153fcc42c279",
+                     "result":  {
+                                    "state":  "passed",
+                                    "purpose":  "mechanics validation at mapped reference; no optimization",
+                                    "objective":  135675.9191123313,
+                                    "data_log_density":  {
+                                                             "obs":  -112057.68490377991,
+                                                             "nest_loglik":  -1965.800447046393
+                                                         },
+                                    "effective_coefficients_max_error":  0.0,
+                                    "active_sites":  [
+                                                         "w_scale_raw",
+                                                         "manifold_factor",
+                                                         "capacity_factor",
+                                                         "disease_mu_sev",
+                                                         "disease_b_late",
+                                                         "disease_b_native_raw",
+                                                         "disease_w_sev",
+                                                         "disease_lag0",
+                                                         "disease_w_lag",
+                                                         "disease_log_k_half_counts",
+                                                         "disease_hill_n_raw",
+                                                         "disease_tau_raw",
+                                                         "disease_rec_raw",
+                                                         "disease_log_tau_rec",
+                                                         "alpha_a",
+                                                         "alpha_j",
+                                                         "alpha_f",
+                                                         "alpha_k",
+                                                         "dispersal_logit_intercept",
+                                                         "dispersal_logit_slope",
+                                                         "nest_mean_delta",
+                                                         "nest_surv_delta",
+                                                         "nest_dsr_logit",
+                                                         "nest_log_conc",
+                                                         "obs_fledgling_weight",
+                                                         "observer_first_year_eta",
+                                                         "observer_route_eps",
+                                                         "concentration",
+                                                         "quality_conc_mult",
+                                                         "obs_conc_kappa"
+                                                     ],
+                                    "onset_spec":  {
+                                                       "form":  "sigmoid"
+                                                   },
+                                    "manifold_spec":  {
+                                                          "_form_comment":  "rank2 (two coupled groups via communality + angle, below) or exchangeable (ONE coupling rho for all four fields: beta_j = w_scale_j*(sqrt(rho)*f + sqrt(1-rho)*eps_j); rho = sigmoid(Normal(logit(coupling_target), coupling_logit_scale))). See docs/PRIORS.md#structural-switches.",
+                                                          "form":  "capacity_demography",
+                                                          "coupling_target":  0.85,
+                                                          "coupling_logit_scale":  0.15,
+                                                          "target_corr_survival_adult_juv":  0.85,
+                                                          "target_corr_repro_capacity":  0.85,
+                                                          "target_corr_cross_group":  0.7,
+                                                          "communality_logit_scale":  0.35,
+                                                          "angle_scale":  0.15,
+                                                          "amplitude_loc":  [
+                                                                                -0.0134,
+                                                                                0.0025,
+                                                                                -0.0034,
+                                                                                0.4778
+                                                                            ],
+                                                          "amplitude_scale":  [
+                                                                                  1.0263,
+                                                                                  1.0263,
+                                                                                  1.0227,
+                                                                                  1.0263
+                                                                              ],
+                                                          "fixed_coupling":  1.0,
+                                                          "fixed_capacity_correlation":  0.0
+                                                      },
+                                    "checks":  {
+                                                   "finite_objective":  true,
+                                                   "coefficient_mapping":  true,
+                                                   "onset_active_sites":  true,
+                                                   "reference_data_likelihood":  true
+                                               },
+                                    "source_hashes":  {
+                                                          "src/model/age_priors.py":  "f233c26b58f0c42c033b18013969fd6c63c23b2bb61e9a7d8f4b3f4ce8245186",
+                                                          "src/model/age_fields.py":  "e0a32cca15a8306bc611fdb589955651013d2cdfdfa0c8e8524c0e92750a3577",
+                                                          "src/model/disease_onset.py":  "17e0ca50c299d6044488fcc19e42778229dee7b7704547663f6d5c0868dd2575",
+                                                          "src/model/habitat_geometry.py":  "8986edabe6ef252f3291f3061022b324fca91b1eb0515463081444a7d3d57eb7"
+                                                      },
+                                    "seconds":  12.997378826141357,
+                                    "devices":  [
+                                                    "cuda:0"
+                                                ]
+                                }
+                 },
+                 {
+                     "name":  "f2_compact_mechanics",
+                     "report_sha256":  "7059510f407338302624a88f7553aaeea01c6081a2a6c1d9ec8465720171f3b2",
+                     "result":  {
+                                    "state":  "passed",
+                                    "purpose":  "mechanics validation at mapped reference; no optimization",
+                                    "objective":  137315.3436066687,
+                                    "data_log_density":  {
+                                                             "obs":  -113708.46183952568,
+                                                             "nest_loglik":  -1974.0679982227598
+                                                         },
+                                    "saved_params":  null,
+                                    "effective_coefficients_max_error":  0.0,
+                                    "active_sites":  [
+                                                         "w_scale_raw",
+                                                         "manifold_factor",
+                                                         "capacity_factor",
+                                                         "disease_mu_sev",
+                                                         "disease_b_late",
+                                                         "disease_b_native_raw",
+                                                         "disease_w_sev",
+                                                         "disease_lag0",
+                                                         "disease_w_lag",
+                                                         "disease_log_k_half_counts",
+                                                         "disease_hill_n_raw",
+                                                         "disease_rec_raw",
+                                                         "disease_log_tau_rec",
+                                                         "alpha_a",
+                                                         "alpha_j",
+                                                         "alpha_f",
+                                                         "alpha_k",
+                                                         "dispersal_logit_intercept",
+                                                         "dispersal_logit_slope",
+                                                         "nest_mean_delta",
+                                                         "nest_surv_delta",
+                                                         "nest_dsr_logit",
+                                                         "nest_log_conc",
+                                                         "obs_fledgling_weight",
+                                                         "observer_first_year_eta",
+                                                         "observer_route_eps",
+                                                         "concentration",
+                                                         "quality_conc_mult",
+                                                         "obs_conc_kappa"
+                                                     ],
+                                    "onset_spec":  {
+                                                       "form":  "compact_start",
+                                                       "duration_years":  3.0
+                                                   },
+                                    "manifold_spec":  {
+                                                          "_form_comment":  "rank2 (two coupled groups via communality + angle, below) or exchangeable (ONE coupling rho for all four fields: beta_j = w_scale_j*(sqrt(rho)*f + sqrt(1-rho)*eps_j); rho = sigmoid(Normal(logit(coupling_target), coupling_logit_scale))). See docs/PRIORS.md#structural-switches.",
+                                                          "form":  "capacity_demography",
+                                                          "coupling_target":  0.85,
+                                                          "coupling_logit_scale":  0.15,
+                                                          "target_corr_survival_adult_juv":  0.85,
+                                                          "target_corr_repro_capacity":  0.85,
+                                                          "target_corr_cross_group":  0.7,
+                                                          "communality_logit_scale":  0.35,
+                                                          "angle_scale":  0.15,
+                                                          "amplitude_loc":  [
+                                                                                -0.0134,
+                                                                                0.0025,
+                                                                                -0.0034,
+                                                                                0.4778
+                                                                            ],
+                                                          "amplitude_scale":  [
+                                                                                  1.0263,
+                                                                                  1.0263,
+                                                                                  1.0227,
+                                                                                  1.0263
+                                                                              ],
+                                                          "fixed_coupling":  1.0,
+                                                          "fixed_capacity_correlation":  0.0
+                                                      },
+                                    "checks":  {
+                                                   "finite_objective":  true,
+                                                   "onset_active_sites":  true,
+                                                   "coefficient_mapping":  true
+                                               },
+                                    "source_hashes":  {
+                                                          "src/model/age_priors.py":  "f233c26b58f0c42c033b18013969fd6c63c23b2bb61e9a7d8f4b3f4ce8245186",
+                                                          "src/model/age_fields.py":  "e0a32cca15a8306bc611fdb589955651013d2cdfdfa0c8e8524c0e92750a3577",
+                                                          "src/model/disease_onset.py":  "17e0ca50c299d6044488fcc19e42778229dee7b7704547663f6d5c0868dd2575",
+                                                          "src/model/habitat_geometry.py":  "8986edabe6ef252f3291f3061022b324fca91b1eb0515463081444a7d3d57eb7"
+                                                      },
+                                    "seconds":  13.190723419189453,
+                                    "devices":  [
+                                                    "cuda:0"
+                                                ]
+                                }
+                 }
+             ],
+    "historical_R101":  {
+                            "objective":  135539.5215810099,
+                            "data_log_density":  {
+                                                     "obs":  -111752.23911426542,
+                                                     "nest_loglik":  -1886.4071545860234
+                                                 },
+                            "saved_params":  {
+                                                 "path":  "/mnt/e/Datasets/houfin/grid54/sandbox/R101_exchangeable/refit_exchangeable_exch_c2_params.npz",
+                                                 "sha256":  "c516091762a9ce43356198c667eced523cdc7ce9e8d96a451a1d9fa51f021488"
+                                             },
+                            "interpretation":  "Saved-point objective reproduced, not stationarity or full-fit proof",
+                            "checks":  {
+                                           "finite_objective":  true,
+                                           "onset_active_sites":  true,
+                                           "saved_objective":  true
+                                       }
+                        }
+}

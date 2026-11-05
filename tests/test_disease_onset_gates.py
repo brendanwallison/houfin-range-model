@@ -33,6 +33,14 @@ def test_fixed_sigmoid_ignores_fitted_tau():
     np.testing.assert_array_equal(onset_gate(jnp.arange(4.), 99., spec), jnn.sigmoid(jnp.arange(4.) / .35))
 
 
+def test_matched_control_has_same_midpoint_and_ten_ninety_width():
+    compact = {"form": "compact_midpoint", "duration_years": 3.}
+    sigmoid = {"form": "sigmoid", "tau_years": .3459321582212081}
+    ages = jnp.array([-.7600906401346002, 0., .7600906401346002])
+    for spec in (compact, sigmoid):
+        np.testing.assert_allclose(onset_gate(ages, 99., spec), [.1, .5, .9], atol=1e-6)
+
+
 def test_mortality_gate_preserves_chronic_disease_and_recovery(monkeypatch):
     monkeypatch.setattr(af, "DISEASE_ONSET_SPEC", {"form": "compact_start", "duration_years": 3.})
     disease = dict(mu_sev=0., b_late=0., onset_decades=jnp.zeros(2), b_native=0.,

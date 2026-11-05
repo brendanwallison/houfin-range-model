@@ -142,6 +142,61 @@ does not imply zero chronic disease or forced recovery.
 
 ## Remaining gate work
 
+### Additional source and mechanics checks at structural branch
+
+The population-history E029/E066/E073/E075/E080 notes are under the archived
+`lambda_history_review_20261102/notes` directory. The similarly numbered root
+`research/experiments/EXXX.md` files describe different encoder experiments.
+They must not be joined by experiment number alone. Direct source checks of
+`refit_fields.py` confirm R101 fits field/intercept sites while its other sites
+remain fixed; R103b adds per-occupied-cell transformed-rate differences through
+a forward wrapper. These are materially different likelihood questions.
+
+The actual input metadata embeds the native field's cube contract: summer
+coordinates retain the teacher basis, but land cells are overwritten by the
+`field_d_prod_ema` assimilation output. This is not an untouched raw DESK cube
+despite inherited raw-output fields in its metadata. `z_assim.Field.season`
+implements Dbar+u+A*d+regional scores*season loadings; its penalty constrains
+the loading norm as well as Cr. The recorded native research/checkpoint root
+does not exist locally. Prepared Z/path arrays are available and hashed, so
+fixed-input downstream comparisons are possible; component-level attribution
+or exact encoder regeneration remains unavailable from those arrays alone.
+
+The path contract records cell-integrated quadrature with 31 subsamples, 20
+path steps and a land-share threshold .0001. At insufficient band support each
+step contributes the cell's own Z: 181/51,816 cell-band pairs, in 168 cells.
+The frozen `build_path_features.integrate_paths` instead thresholds absolute
+support at 1e-10 and uses zero fallback. Thus it cannot be assumed to regenerate
+these inputs. Keep prepared arrays fixed for the first campaign; recovering the
+exact native generator or rebuilding with a matched control is a separate task.
+The forward and path builders share the kernel family/resolved splits, and the
+directional/radial wedges partition the master kernel rather than renormalizing
+each wedge. The path field is a land-conditioned neighborhood average, not an
+explicit track through ocean. Q must be interpreted accordingly.
+
+Structural branch `research/habitat-field-geometry` now implements explicit
+capacity-versus-shared-demography coefficients and optional finite-duration
+onset. The reference default remains the historical construction. Seventy-one
+mechanics tests passed before adding a matched-width control test. Actual GPU
+replay of the correlation-one limit exactly reproduces the reference objective,
+scores and within-launch canary. With independent capacity mapped to the same
+effective coefficients, count and nest likelihoods are unchanged; its extra
+factor prior adds about 85.12 objective units. This is a nesting check, not a
+model-comparison penalty or scientific result. Compact onset produces a finite
+actual-data objective and structurally omits disease_tau_raw. Its frozen-point
+score change is not a fitted verdict.
+
+Independent CPU replay of R101's saved continuation parameters reproduces
+135539.52158101 to about 2e-10 under its all-four exchangeable overlay. This
+verifies a numerical anchor; it does not establish stationarity, full joint
+fitting or exact identity of the historical mutable sandbox source.
+
+The finite-onset controls distinguish compact-start, compact-midpoint and fixed
+sigmoid with matched 10–90% width. A three-year quintic compact transition has
+10–90% width 1.52018128 years; its matched sigmoid tau is .3459321582 years.
+Three years of total transition must not be mislabeled as three years of
+10–90% sigmoid width. The field/onset preregistration records these distinctions.
+
 The original-artifact index now covers 391 summaries with no parse errors; 224
 have matched saved parameter files and 335 have terminal optimizer trace entries.
 The compact CSV preserves hashes and optimizer diagnostics. It is a crosswalk,

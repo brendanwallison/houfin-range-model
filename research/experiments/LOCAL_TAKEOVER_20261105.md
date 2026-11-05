@@ -38,3 +38,47 @@ state comparison before concluding a scientific or hardware problem.
 Scientific launch gate: complete the execution map and historical intervention
 crosswalk, reproduce anchors, and reconcile the source baseline. No structural
 fit is claimed started by this initial record.
+
+The first GPU replay completed the numerical work but failed JSON serialization:
+the legacy harness overwrites its hash variable `h` with a held-out-row mask,
+returning an array as `final_state_sha256`. The takeover replay now computes its
+own hashes from actual density arrays, plus a numeric canary comparison. This is
+a diagnostic bug, not evidence that the fit or GPU failed. The active R104 harness
+is not edited while that process runs.
+
+## Collected evidence
+
+The frozen GPU replay passed at objective 135590.79802835 and BBS NLL
+110044.700261, with a finite, byte-identical within-launch canary. The reconstructed
+worktree replay gives the same objective and held-out scores to floating-point
+precision. Full trace accounting closes to 3e-11. A GPU data-likelihood gradient
+audit covers all 29 sites / 19,275 scalar entries: all finite, with exactly zero
+data gradients only for the two inactive logistic departure parameters.
+
+Reciprocal factor/amplitude scaling leaves both count and nest likelihoods
+unchanged to about 4e-10 while changing the prior penalty. Source-only coordinate
+cleanup cannot be claimed as new biological identification.
+
+R104 completed at about 04:48 CST. The collector verified PID disappearance and
+read its saved summary, checkpoint and final trace. Objective 135881.253412,
+occupied-East potential lambda .54455 (1966) -> 1.34933 (2010), modern disease toll
+.2590. The relative-change convergence flag accompanies a final gradient norm of
+384; treat stationarity as unproven. It remains a direct-change-prior diagnostic.
+
+Recovered model tests initially yielded 85 passes, one skip and three missing
+ingestion-dependency failures. Those dependencies were recovered from the same
+frozen source; the affected observation/disease rerun yielded 62 passes and one
+skip. Test capture uses RAM-backed temporary files because drvfs's unlinked-file
+handling broke pytest capture; caches and persistent outputs remain off WSL root.
+
+Input audit hashes actual WSL-resolved feature files (137 MB local Z, 1.645 GB
+path Z) and verifies 124 years, 4,318 land cells, 64 features and 12 kernels. The
+used occupied center exactly matches all 33,519 positive cell-years, not only the
+25,600 training-positive cell-years. Training-only studies must account for this
+support difference explicitly; centering can alter prior anchoring even where
+intercepts can preserve the likelihood family.
+
+Publication: foundation commit f726f6a is local. Automatic approval review rejected
+its push to the existing GitHub remote because exact destination authorization
+was not considered established. An asynchronous destination-approval request is
+pending; local work continues and no alternate publication route is attempted.

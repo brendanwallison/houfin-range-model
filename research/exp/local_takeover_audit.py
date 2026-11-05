@@ -72,7 +72,8 @@ def resolved_overlay(path: Path) -> dict:
     """Show executable values without inherited explanatory comments."""
     def clean(value):
         if isinstance(value, dict):
-            return {key: clean(val) for key, val in value.items() if not key.startswith("_")}
+            return {key: clean(val) for key, val in value.items()
+                    if not key.startswith("_") or key == "_extends"}
         if isinstance(value, list):
             return [clean(val) for val in value]
         return value

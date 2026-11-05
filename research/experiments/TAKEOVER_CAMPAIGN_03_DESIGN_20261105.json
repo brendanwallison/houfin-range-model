@@ -1,0 +1,14 @@
+{
+  "purpose": "Third dispersed compact-onset start and refinement of capacity-separated arms",
+  "parents": ["campaign_01", "campaign_02", "cpu_compact_start2"],
+  "interpretation": "Midpoint and matched-width sigmoid controls resemble compact-start at the first cap, implicating onset sharpness rather than finite tails alone. Further starts and likelihood profiles are required. No direct historical-output penalties are enabled.",
+  "cases": [
+    {"name": "f0_d1_start3", "overlay": "takeover_f0_compact3.json", "maxiter": 1500,
+     "seed": 20261107, "jitter": 0.10,
+     "init": "${TAKEOVER_ARTIFACT_ROOT}/campaign_02/f0_d1_refine/best_params.npz"},
+    {"name": "f2_d1_refine", "overlay": "takeover_f2_compact3.json", "maxiter": 1000,
+     "init": "${TAKEOVER_ARTIFACT_ROOT}/campaign_01/f2_d1/best_params.npz"},
+    {"name": "f2_d0_refine", "overlay": "takeover_f2_independent.json", "maxiter": 1000,
+     "init": "${TAKEOVER_ARTIFACT_ROOT}/campaign_01/f2_d0/best_params.npz"}
+  ]
+}

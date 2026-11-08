@@ -1,0 +1,99 @@
+S w_scale_raw  coord Normal Normal lp=-40.79161745314985 val= [2.6749167450426383, 5.394792002665592, 6.153160528020387, -1.3935368515956061] P= {"Normal.loc": [-0.0134, 0.0025, -0.0034, 0.4778], "Normal.scale": [1.0263, 1.0263, 1.0227, 1.0263]} scale= 
+D w_scale [2.7415585827849545, 5.399321891850615, 6.155285019175582, 0.22169924343495517]
+D environment_kernel_variance [7.516143462841848, 29.152676891817308, 37.88753366728734, 0.04915055453963151]
+S capacity_correlation_logit  coord Normal Normal lp=-3.074535123633075 val= [1.3075504191760259] P= {"Normal.loc": [1.7346010553881064], "Normal.scale": [0.15]} scale= 
+D capacity_demography_correlation [0.7871029636792406]
+P env_features 64
+S manifold_factor  coord ExpandedDistribution Normal lp=-65.79154612508862 val= [[64, 1], -1.276198402403294, -0.11277953971550905, 1.3897192784923582] P= {"ExpandedDistribution.base_dist": "<class 'numpyro.distributions.continuous.Normal'>", "Normal.loc": [0.0], "Normal.scale": [1.0]} scale= 
+S capacity_factor  coord ExpandedDistribution Normal lp=-86.98665393532772 val= [[64, 1], -2.4567198184193852, -0.04862786335468495, 1.943279993317868] P= {"ExpandedDistribution.base_dist": "<class 'numpyro.distributions.continuous.Normal'>", "Normal.loc": [0.0], "Normal.scale": [1.0]} scale= 
+D manifold_loadings [1.0, 0.0, 1.0, 0.0, 0.7871029636792406, 0.6168216310793226, 1.0, 0.0]
+D manifold_communality [1.0, 1.0, 1.0, 1.0]
+D w_env [[64, 4], -10.177885655784657, -0.042460861821590964, 9.935751125262469]
+D L_corr [[4, 4], 0.0, 0.0006318358383226316, 1.000000499999875]
+D rho [1.0]
+D env_corr_repro_capacity [0.7871029636792406]
+D env_corr_survival_capacity [0.7871029636792406]
+D env_corr_survival_adult_juv [1.0]
+D w_env_within [[64, 4], -7.855364907808807, -0.04246086182159097, 8.55411825576351]
+D w_scale_within [2.7415585827849545, 5.399321891850615, 6.155285019175582, 0.22169924343495517]
+D w_k_trend [0.0, 0.0, 0.0]
+S disease_mu_sev  coord Normal Normal lp=-12.096892321105942 val= [-1.0502985211649676] P= {"Normal.loc": [1.386], "Normal.scale": [0.5]} scale= 
+S disease_b_late  coord Normal Normal lp=-0.4270048739284288 val= [-0.40146249154184743] P= {"Normal.loc": [-0.15], "Normal.scale": [0.15]} scale= 
+S disease_b_native_raw  coord Normal Normal lp=-0.6327932757957551 val= [-0.2629051022692762] P= {"Normal.loc": [0.0], "Normal.scale": [0.7]} scale= 
+D disease_b_native [-0.5703097475375589]
+S disease_w_sev  coord ExpandedDistribution Normal lp=-2.122452429725285 val= [[24], -0.311150756965964, 0.002774387571048891, 0.3990381996316257] P= {"ExpandedDistribution.base_dist": "<class 'numpyro.distributions.continuous.Normal'>", "Normal.loc": [0.0], "Normal.scale": [0.10206207261596577]} scale= 
+S disease_lag0  coord Normal Normal lp=-2.682945959766388 val= [-2.9269236354941275] P= {"Normal.loc": [0.0], "Normal.scale": [2.0]} scale= 
+S disease_w_lag  coord ExpandedDistribution Normal lp=-8.577102527137953 val= [[24], -0.673446896944141, 0.15007880791261224, 0.4095788104137661] P= {"ExpandedDistribution.base_dist": "<class 'numpyro.distributions.continuous.Normal'>", "Normal.loc": [0.0], "Normal.scale": [0.3061862178478973]} scale= 
+S disease_log_k_half_counts  coord Normal Normal lp=-12.222143893447727 val= [-1.3008961186875645] P= {"Normal.loc": [2.0794415416798357], "Normal.scale": [0.7]} scale= 
+D disease_k_half [0.013614384079703334]
+D disease_k_half_route_counts [0.2722876815940667]
+S disease_hill_n_raw  coord Normal Normal lp=-2.5952897943670403 val= [1.5104895926317714] P= {"Normal.loc": [-0.04879016416943183], "Normal.scale": [0.8]} scale= 
+D disease_hill_n [2.179224193887155]
+D disease_tau [1.0]
+S disease_rec_raw  coord Normal Normal lp=-7.806517093249596 val= [-4.2114898787535235] P= {"Normal.loc": [-0.5], "Normal.scale": [1.0]} scale= 
+D disease_rec [0.014607716845541945]
+S disease_log_tau_rec  coord Normal Normal lp=-0.6648547024329483 val= [2.953448723559514] P= {"Normal.loc": [2.4849066497880004], "Normal.scale": [0.5]} scale= 
+D disease_tau_rec [19.17195863189417]
+S alpha_a  coord Normal Normal lp=-0.4290564712372109 val= [0.18120138128241242] P= {"Normal.loc": [0.5], "Normal.scale": [0.5]} scale= 
+S alpha_j  coord Normal Normal lp=-2.7511357339547673 val= [-0.7186868739355372] P= {"Normal.loc": [0.405], "Normal.scale": [0.5]} scale= 
+S alpha_f  coord Normal Normal lp=-1.099323392196085 val= [4.267344918109442] P= {"Normal.loc": [4.993], "Normal.scale": [0.75]} scale= 
+S alpha_k  coord Normal Normal lp=-0.9978583340915151 val= [-1.584633302850608] P= {"Normal.loc": [-1.981923627139641], "Normal.scale": [1.0]} scale= 
+D k_level [0.18649862125845193]
+D k_level_route_counts [3.7299724251690387]
+D gamma_a_raw [0.541324854612918]
+D gamma_f_raw [0.541324854612918]
+D gamma_k_raw [0.541324854612918]
+D gamma_j_diff [0.0]
+D gamma_a [1.0]
+D gamma_j [1.0]
+D gamma_f [1.0]
+D gamma_k [1.0]
+S n50_raw obs NOTCOORD Normal Normal lp=-0.09308586376840872 val= [-3.756179450393213] P= {"Normal.loc": [-3.4915], "Normal.scale": [0.25]} scale= 
+S dispersal_logit_intercept  NOTCOORD Normal Normal lp=-0.9189385332046727 val= [1.9999999969145703] P= {"Normal.loc": [2.0], "Normal.scale": [1.0]} scale= 
+S dispersal_logit_slope  NOTCOORD Normal Normal lp=-0.9189385332046727 val= [4.00000000617101] P= {"Normal.loc": [4.0], "Normal.scale": [1.0]} scale= 
+D log_inv_total [0.0]
+D inv_pop_relative [0.03426, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+D allee_gamma [600.0000359070215]
+D habitat_center_offsets [0.956621069685787, 1.8840031784085245, 0.8642750292204655, 0.0773582475074588]
+D coupling_coef_cos_s_k [0.5982123637460524]
+S coupling_coef_prior obs NOTCOORD Unit Unit lp=-30.56531745310759 val= [[0], null, null, null] P= {"Unit.log_factor": [-30.56531745310759]} scale= 
+D coupling_map_corr_s_k [0.9387840406470774]
+S coupling_map_prior obs NOTCOORD Unit Unit lp=-0.0 val= [[0], null, null, null] P= {"Unit.log_factor": [-0.0]} scale= 
+D disease_mortality_amp [[124, 4318], 0.0, 0.0, 0.4309377533054559]
+D Sa_flat [[124, 4318], 0.0002738822833038229, 0.37598089126945144, 0.8245825383641955]
+D Sj_flat [[124, 4318], 5.432417948061598e-05, 0.11863981893601547, 0.29064378698870097]
+D Fmax_flat [[124, 4318], 4.8144479851298695e-06, 2.965586047160304, 6.959542307440761]
+D K_flat [[124, 4318], 0.023103904695174864, 0.04712946937213208, 4.6800740707586295]
+D K_base_flat [[124, 4318], 5.92238725263147e-11, 0.024025564736181088, 4.656970166122679]
+D initpop_seeded [[67, 112], 0.0, 0.0, 3.6485774579604167]
+D disease_severity_map [[4318], 3.9354083329739777e-19, 0.08738562405502903, 0.43161072854935945]
+D Q_flat [[124, 4318, 12], 6.111912303420783e-05, 0.11737769041265066, 0.2741987210972977]
+S dd_survival_share  coord Beta Beta lp=0.0 val= [0.00011907605180618049] P= {"Beta.concentration1": [1.0], "Beta.concentration0": [1.0]} scale= 
+D survival_dd_c [[124, 4318], 0.0, 0.0, 0.0018446846093283543]
+S local_age_structure_regularizer obs NOTCOORD Unit Unit lp=0.07593373345564153 val= [[0], null, null, null] P= {"Unit.log_factor": [0.07593373345564153]} scale= 
+S native_departure_r  coord Beta Beta lp=-1.3061684967405012 val= [0.9885555439884036] P= {"Beta.concentration1": [1.5], "Beta.concentration0": [1.5]} scale= 
+D initpop_spun [[67, 112], 0.0, 1.54263339422666e-07, 3.826111846920025]
+D nest_F_real [[1089], 0.05648369858082187, 3.8861656246806695, 5.8344578859262946]
+D nest_broods [2.5, 2.5, 2.5]
+S nest_mean_delta  coord Independent ExpandedDistribution lp=6.547127459729124 val= [[5], null, null, null] P= {"Independent.base_dist": "<class 'numpyro.distributions.distribution.ExpandedDistribution'>", "Independent.reinterpreted_batch_ndims": [1], "ExpandedDistribution.base_dist": "<class 'numpyro.distributions.continuous.Normal'>", "Normal.loc": [0.0], "Normal.scale": [0.1]} scale= 
+S nest_surv_delta  coord Independent ExpandedDistribution lp=-5.419068056429923 val= [[5], null, null, null] P= {"Independent.base_dist": "<class 'numpyro.distributions.distribution.ExpandedDistribution'>", "Independent.reinterpreted_batch_ndims": [1], "ExpandedDistribution.base_dist": "<class 'numpyro.distributions.continuous.Normal'>", "Normal.loc": [0.0], "Normal.scale": [0.5]} scale= 
+S nest_dsr_logit  coord Normal Normal lp=-1.4020412098871304 val= [4.4829574524692894] P= {"Normal.loc": [3.5], "Normal.scale": [1.0]} scale= 
+S nest_log_conc  coord Normal Normal lp=-4.204682744158511 val= [4.863491451498849] P= {"Normal.loc": [2.3], "Normal.scale": [1.0]} scale= 
+D nest_mean_fledged [[1089], 0.04518646278069379, 3.1630399815075174, 4.950630629136856]
+D nest_cycle_success [[1089], 0.2930437075879254, 0.7726801220015841, 0.805003254018038]
+D nest_loglik_exposure [-943.0687579653354]
+D nest_loglik_count [-938.1512534892502]
+S nest_loglik obs NOTCOORD Unit Unit lp=-1881.2200114545856 val= [[0], null, null, null] P= {"Unit.log_factor": [-1881.2200114545856]} scale= 
+D simulated_density [[124, 67, 112], 0.0, 1.6278180164301068e-06, 4.556843888887345]
+D Na_grid [[124, 67, 112], 0.0, 1.6228373215696268e-06, 1.95161996314513]
+D Nj_grid [[124, 67, 112], 0.0, 8.110865067322855e-10, 3.279669106404644]
+S obs_fledgling_weight  coord Beta Beta lp=1.385178560297613 val= [0.00037186444869603553] P= {"Beta.concentration1": [1.0], "Beta.concentration0": [4.0]} scale= 
+D expected_obs_before_observer [[191895], 1e-06, 0.008415597131129517, 85.64729310078484]
+S observer_first_year_eta  coord Normal Normal lp=-0.9189944754604538 val= [-0.010577547521147654] P= {"Normal.loc": [0.0], "Normal.scale": [1.0]} scale= 
+S observer_route_eps  NOTCOORD ZeroSumNormal Independent lp=-17575.618386072594 val= [[19127], 0.0, 0.0, 0.0] P= {"ZeroSumNormal.scale": [1.0], "ZeroSumNormal.base_dist": "<class 'numpyro.distributions.distribution.Independent'>", "Independent.base_dist": "<class 'numpyro.distributions.distribution.ExpandedDistribution'>", "Independent.reinterpreted_batch_ndims": [1], "ExpandedDistribution.base_dist": "<class 'numpyro.distributions.continuous.Normal'>", "Normal.loc": [0], "Normal.scale": [1.0]} scale= 
+D expected_obs [[191895], 1e-06, 0.008395683124264792, 85.64729310078484]
+S concentration  coord Exponential Exponential lp=-0.5318316305888117 val= [0.5318316305888117] P= {"Exponential.rate": [1.0]} scale= 
+S quality_conc_mult  coord Beta Beta lp=0.4046998068335699 val= [0.48617060642811116] P= {"Beta.concentration1": [2.0], "Beta.concentration0": [2.0]} scale= 
+S obs_conc_kappa  coord HalfNormal HalfNormal lp=-0.569573226291688 val= [0.7200448090941654] P= {"HalfNormal.scale": [0.5]} scale= 
+D obs_concentration [[191895], 0.0036782372316195738, 0.017021643486400416, 13.104322976609255]
+S obs obs NOTCOORD MaskedDistribution NegativeBinomial2 lp=-206856.32999725023 val= [[191895], 0.0, 0.0, 490.0] P= {"MaskedDistribution._mask": [191895], "MaskedDistribution.base_dist": "<class 'numpyro.distributions.conjugate.NegativeBinomial2'>", "NegativeBinomial2.concentration": [191895], "NegativeBinomial2.rate": [191895]} scale= {"shape": [191895], "dtype": "float64", "min": 1.0, "median": 1.0, "max": 1.0, "

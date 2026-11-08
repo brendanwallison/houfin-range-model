@@ -1,10 +1,11 @@
 {
   "_paths_comment": "Portable paths: ${HOUFIN_DATA}/${HOUFIN_PROCESSED} expand at load (src/config_utils.py; default <repo>/data and <repo>/data/processed locally, override via env on HPC). NOTE: raw_z_dir and path_features.output_dir are the SAME directory and must be kept in sync by hand -- generate_all_path_features writes the latter, model_inputs reads the former (they consume the encoder cube + BBS produced upstream).",
+  "_model_spec_comment": "Comments in this file describe THIS file's (base) values. The current HMC candidate (LA1) runs this file with an experiment overlay merged on top, which changes many values (54 km grid, rank 64, capacity_demography + coupling priors, clumped Allee with pinned n50, capacity_floor_internal, disease on survival, Veit + native departure, spin-up, single 1951 release). The as-executed model is specified in docs/model_spec/ (MODEL_SPEC.md, NOTATION.md, RESOLVED_CONFIG.json); docs/PRIORS.md gives the candidate's values beside these.",
   "input_dir": "${HOUFIN_PROCESSED}/model_inputs/numpyro_input",
   "raw_z_dir": "${HOUFIN_PROCESSED}/latent_avian_paths",
   "bbs_npz": "${HOUFIN_DATA}/bbs_2026_release/bbs_data_for_python.npz",
   "ocean_mask": "${HOUFIN_DATA}/land_mask/ocean_mask_27km.tif",
-  "_disease_arrival_map_comment": "Per-pixel first-affected-breeding-season for House Finch mycoplasmal conjunctivitis, on the model grid. Built by scripts/build_disease_arrival_map.py from the documented 1994-2006 spread history (there is no published raster). Consumed by model_inputs.py as the onset gate for the K depression -- see src/model/age_fields.py.",
+  "_disease_arrival_map_comment": "Per-pixel first-affected-breeding-season for House Finch mycoplasmal conjunctivitis, on the model grid. Built by scripts/build_disease_arrival_map.py from the documented 1994-2006 spread history (there is no published raster). Consumed by model_inputs.py as the epizootic onset map. Under this file's default (disease_prior.target = capacity) it gates the K depression; under target = survival (the current HMC candidate LA1; docs/model_spec/) it gates the ADDED MORTALITY (the candidate overlay sets onset_gate compact_start, a 3-yr smoothstep; this file's default gate differs) and K has no disease term. See docs/PRIORS.md#disease-term.",
   "disease_arrival_map": "${HOUFIN_PROCESSED}/disease/disease_arrival_year_27km.tif",
   "ebird_dir": "${HOUFIN_DATA}/ebird_weekly_2023_grid",
   "results_dir": "${HOUFIN_PROCESSED}/model_results",
@@ -14,12 +15,12 @@
     "kernel": "ruzicka",
     "centered": false,
     "feature_prior": "isotropic",
-    "_comment": "The encoder supplies an uncentered 64-D Nyström feature map; model ingestion explicitly retains the first latent_dim (24) eigenfeatures to fit VRAM. Conditional on each w_scale, iid coefficients over those retained features imply Cov[H(x),H(x')|w_scale] = w_scale^2 Z_r(x)·Z_r(x'), the configured rank-r approximation to the original Ružička kernel. Truncation must be config-driven and recorded, never silent."
+    "_comment": "The encoder supplies an uncentered 64-D Nyström feature map; model ingestion explicitly retains the first latent_dim (24 in this file) eigenfeatures to fit VRAM. Conditional on each w_scale, iid coefficients over those retained features imply Cov[H(x),H(x')|w_scale] = w_scale^2 Z_r(x)·Z_r(x'), the configured rank-r approximation to the original Ružička kernel. Truncation must be config-driven and recorded, never silent. The current candidate overrides latent_dim = 64 and readout.rank = 64 (no truncation)."
   },
   "dispersal": {
     "_comment": "Single source of truth shared by Z_disp preparation and the forward model; resolved in exactly one place, build_kernels.dispersal_spec. Do not duplicate these boundaries in code.",
     "_radial_splits_comment": "juvenile_radial_splits_km takes either an explicit list of km boundaries (start 0.0, end >=1e8) or the string \"derive\" for equal-mass radial bands. The pinned literals are NOT quantiles of the current kernel. See docs/PRIORS.md#radial-splits.",
-    "_kernel_source_comment": "Veit & Lewis 1996 kernels: the adult and juvenile SHAPES DIFFER (0.859 vs 0.468). See docs/PRIORS.md#dispersal-kernels.",
+    "_kernel_source_comment": "Veit & Lewis 1996 kernels: the adult and juvenile SHAPES DIFFER (0.859 vs 0.468). The current candidate's juvenile kernel is the V&L-faithful 2-D form exp(-(d/b)^a)/d (J200: b 24.937 km, 1-D mean 200 km), recorded only in the input directory's KERNEL_DISCRETISATION.json (metadata dispersal_spec still carries the older labels). See docs/PRIORS.md#dispersal-kernels.",
     "adult_mdd_km": 100.0,
     "adult_shape": 0.859,
     "juvenile_mdd_km": 330.0,
@@ -42,32 +43,32 @@
   },
   "population_model": {
     "_comment": "Mechanistic/data-scale constants persisted into model-input metadata; no hidden grid or invasion constants in ingestion code.",
-    "_scale_comment": "THE GAUGE: population_scale_route_counts_per_relative_unit converts model density to the mean of a BBS route count. A sampler-conditioning choice, not biology -- the likelihood is invariant to it. See docs/PRIORS.md#the-gauge.",
+    "_scale_comment": "THE GAUGE: population_scale_route_counts_per_relative_unit converts model density to the mean of a BBS route count. A sampler-conditioning choice, not biology -- the likelihood is invariant to it, EXCEPT for capacity_floor_internal (set in the current candidate), which is declared in internal units. See docs/PRIORS.md#the-gauge.",
     "population_scale_route_counts_per_relative_unit": 20.0,
     "invasion_lat": 40.6106,
     "invasion_lon": -73.4445,
     "invasion_window_years": 10,
     "invasion_sites": 9,
-    "_release_allee_comment": "Years from the release (invasion_timestep) during which the 9 candidate release cells skip the mate-finding Allee factor. The Allee term models continental colonization (thin arrivals into a 27 km cell); released cage birds were aggregated far below grid scale, so mates did not limit them. Without this the fit inflated and concentrated the founder pulse to clear the cell-averaged threshold -- a saddle with corner-shaped modes (probe of run_17). Matches invasion_window_years. 0 restores the old behaviour.",
+    "_release_allee_comment": "Years from the release (invasion_timestep) during which the 9 candidate release cells skip the mate-finding Allee factor. The Allee term models continental colonization (thin arrivals into a 27 km cell); released cage birds were aggregated far below grid scale, so mates did not limit them. Without this the fit inflated and concentrated the founder pulse to clear the cell-averaged threshold -- a saddle with corner-shaped modes (probe of run_17). Matches invasion_window_years. 0 restores the old behaviour. The current candidate sets 0 (no exemption; one release cell on the 54 km grid). See docs/PRIORS.md#invasion-sites.",
     "release_allee_exemption_years": 10,
     "dispersal_target_capacity_fraction": 0.8,
     "_dispersal_random_comment": "Per-year Normal(0, 0.001) noise on the dispersal logit. At that scale it moves dispersal by ~0.025%; the run_18 probe found its 124 directions exactly at prior curvature and L-BFGS moved it ~3e-5. false removes the site (the model uses zeros). See docs/PRIORS.md#structural-switches.",
     "dispersal_random_enabled": true,
-    "_disease_prior_comment": "The mycoplasmal-conjunctivitis effect on capacity, as a STRUCTURED hypothesis: K = K_base * (1 - severity(x) * onset_gate(x,t) * (1 - recovery(t - arrival))). See docs/PRIORS.md#disease-term and src/model/age_fields.py.",
-    "_capacity_level_comment": "Prior on K's continental LEVEL, in expected BBS route counts, anchored on the typical OCCUPIED cell (median 2.618). See docs/PRIORS.md#capacity-level.",
-    "_allee_comment": "Allee half-saturation on the BBS ROUTE-COUNT scale: allee_factor = 1 - 2^(-C/n50), half released at C = n50 (median-route counts; internal = counts / pop_scalar). Literature comparison (Veit & Lewis 1996, birds/km2) goes through the Partners in Flight absolute bridge (1 mean-route count = .735 [.367] birds/km2), not a K-ratio transfer; capacity_floor_internal is absolute and does not follow n50. See docs/PRIORS.md#allee-effect.",
+    "_disease_prior_comment": "This file's default (disease_prior.target = capacity): the mycoplasmal-conjunctivitis effect on capacity, as a STRUCTURED hypothesis: K = K_base * (1 - severity(x) * onset_gate(x,t) * (1 - recovery(t - arrival))). The current candidate sets target = survival instead: ADDED MORTALITY m = mortality_ceiling (.8) * sigmoid(mu + b_late*dec + b_native*shape + basis*w_sev) * gate * (1 - recovery) * hill(N') on adult, juvenile-stayer and juvenile-arriver survival; K is disease-free. See docs/PRIORS.md#disease-term and src/model/age_fields.py.",
+    "_capacity_level_comment": "Prior on K's continental LEVEL, in expected BBS route counts, anchored on the typical OCCUPIED cell (27 km median 2.618 in this file; the current candidate uses 2.582 on the 54 km grid with alpha_k_scale 1.0, and adds capacity_floor_internal after the link). See docs/PRIORS.md#capacity-level.",
+    "_allee_comment": "Allee half-saturation n50 on the BBS ROUTE-COUNT scale (median-route counts; internal = counts / pop_scalar). This file's default (no aggregation_k): allee_factor = 1 - 2^(-C/n50), half released at C = n50. The current candidate uses aggregation_k = 3, per_capita = true: allee_factor = 1 - (1 + ln2*C/(3*n50))^-4, half released at C = 0.819*n50, with n50 PINNED (pinned_sites.n50_raw = -3.756179, n50 = .0231 counts). Literature comparison (Veit & Lewis 1996, birds/km2) goes through the Partners in Flight absolute bridge (1 mean-route count = .735 [.367] birds/km2), not a K-ratio transfer, and compares half-points; capacity_floor_internal is absolute (internal units) and does not follow n50. See docs/PRIORS.md#allee-effect.",
     "allee_prior": {
       "n50_raw_loc": -2.0,
       "n50_raw_scale": 1.0
     },
-    "_initpop_comment": "The t=0 (1902) native-range seed, as a FRACTION OF LOCAL FITTED CAPACITY rather than an absolute abundance. Read the consequence of core_fraction_of_local_capacity = 1.0 before changing it. See docs/PRIORS.md#initial-population.",
+    "_initpop_comment": "The t=0 (1902) native-range seed, as a FRACTION OF LOCAL FITTED CAPACITY (K before any capacity floor) rather than an absolute abundance. Read the consequence of core_fraction_of_local_capacity = 1.0 before changing it. When population_model.spinup is enabled (current candidate: 40 years at the 1902-06 mean rates, no disease, no release) this seed only starts the spin-up, and the 1902 state is the spun-up total. See docs/PRIORS.md#initial-population.",
     "initpop_seed": {
       "core_fraction_of_local_capacity": 1.0,
       "margin_fraction_of_core": 0.5
     },
-    "_invasion_pulse_comment": "The 1940 release, as a fraction of a FIXED, empirically observed, K-independent reference -- deliberately not tied to k_level or local K_base. See docs/PRIORS.md#invasion-pulse.",
-    "_invasion_sites_comment": "invasion_sites = 9: the record documents one known sighting, not that it was the only release, and at 27 km the literal coordinate may not land on a valid cell. See docs/PRIORS.md#invasion-sites.",
-    "_invasion_budget_comment": "With 90 free (site, year) coefficients the SHARED prior must tighten, or the term becomes a high-dimensional escape hatch. See docs/PRIORS.md#invasion-budget.",
+    "_invasion_pulse_comment": "The 1940 release, as a fraction of a FIXED, empirically observed, K-independent reference -- deliberately not tied to k_level or local K_base. The current candidate releases ONCE, in 1951 (timestep 49), into one cell, with invasion_pulse_prior.form = single and log_inv_total pinned at 0, so founders = global_q50_route_counts / pop_scalar (.6852/20 = .03426 internal). See docs/PRIORS.md#invasion-pulse.",
+    "_invasion_sites_comment": "invasion_sites = 9: the record documents one known sighting, not that it was the only release, and at 27 km the literal coordinate may not land on a valid cell. The current candidate's inputs carry 4 candidate cells and form = single uses only the first. See docs/PRIORS.md#invasion-sites.",
+    "_invasion_budget_comment": "With 90 free (site, year) coefficients the SHARED prior must tighten, or the term becomes a high-dimensional escape hatch. Not active when invasion_pulse_prior.form = single (current candidate). See docs/PRIORS.md#invasion-budget.",
     "invasion_pulse_prior": {
       "global_q50_route_counts": 0.7083,
       "median_fraction_of_global_q50": 0.1,
@@ -76,15 +77,15 @@
     "capacity_level_prior": {
       "_link_switch_comment": "softplus (default) or exp. At the operating point the softplus argument is ~-2.1, where softplus ~ exp, so low K costs the same under both; exp removes softplus's shrinkage of the upper tail. alpha_k's location is re-solved per link so the level median stays at target_level_median_route_counts. See docs/PRIORS.md#structural-switches.",
       "link": "softplus",
-      "_link_comment": "K uses a SOFTPLUS link applied in DENSITY space: K = softplus(alpha_k + gamma_k*H_k + trend), no gauge conversion around it. See docs/PRIORS.md#capacity-link.",
+      "_link_comment": "K uses a SOFTPLUS link applied in DENSITY space: K_base = softplus(alpha_k + H_k [+ k_trend when enabled]), no gauge conversion around it; the slope gamma_k is fixed at 1. Under this file's default (disease_prior.target = capacity) K = K_base * (1 - disease fraction) [+ capacity_floor_internal when set]; under target = survival K = K_base [+ floor]. The current candidate has no trend (k_trend.enabled = false) and a floor of .0231039 internal. See docs/PRIORS.md#capacity-link.",
       "_calibration_comment": "target_level_median_route_counts is the belief; alpha_k's prior LOCATION is solved from it at import by age_priors._softplus_loc_for_median. See docs/PRIORS.md#capacity-calibration.",
       "target_level_median_route_counts": 2.6183,
       "alpha_k_scale": 0.8
     },
-    "_manifold_comment": "Correlated weights for FOUR demographic manifolds, ordered [survival_adult, reproduction, capacity, survival_juv] -- survival_juv is APPENDED, so w_env[:,0..2] keeps its meaning for positional readers. See docs/PRIORS.md#manifold-prior.",
-    "_amplitude_comment": "GP AMPLITUDE, one per manifold: w_scale_j = softplus(Normal(amplitude_loc_j, amplitude_scale_j)), so Var(beta_j) = w_scale_j^2 and H_j is a GP conditional on it. See docs/PRIORS.md#gp-amplitude.",
+    "_manifold_comment": "Correlated weights for FOUR demographic manifolds, ordered [survival_adult, reproduction, capacity, survival_juv] -- survival_juv is APPENDED, so w_env[:,0..2] keeps its meaning for positional readers. This file's form is rank2; the current candidate uses capacity_demography (Sa, F and Sj share ONE direction f; beta_K = w_K*(r_K*f + sqrt(1-r_K^2)*g)). See docs/PRIORS.md#manifold-prior.",
+    "_amplitude_comment": "GP AMPLITUDE, one per manifold: w_scale_j = softplus(Normal(amplitude_loc_j, amplitude_scale_j)), so Var(beta_j) = w_scale_j^2 and H_j is a GP conditional on it. The current candidate uses amplitude_scale [1.0263, 1.0263, 1.0227, 1.0263]. See docs/PRIORS.md#gp-amplitude.",
     "manifold_prior": {
-      "_form_comment": "rank2 (two coupled groups via communality + angle, below) or exchangeable (ONE coupling rho for all four fields: beta_j = w_scale_j*(sqrt(rho)*f + sqrt(1-rho)*eps_j); rho = sigmoid(Normal(logit(coupling_target), coupling_logit_scale))). See docs/PRIORS.md#structural-switches.",
+      "_form_comment": "rank2 (this file: two coupled groups via communality + angle, below), exchangeable (ONE coupling rho for all four fields: beta_j = w_scale_j*(sqrt(rho)*f + sqrt(1-rho)*eps_j); rho = sigmoid(Normal(logit(coupling_target), coupling_logit_scale))), capacity_demography (current candidate: one shared direction for Sa/F/Sj, K mixed at r_K = sigmoid(N(logit .85, .15)); ignores coupling_target, target_corr_*, communality_logit_scale, angle_scale and fixed_coupling) or survival_breeding. See docs/PRIORS.md#structural-switches.",
       "form": "rank2",
       "coupling_target": 0.85,
       "coupling_logit_scale": 0.15,
@@ -106,11 +107,11 @@
         0.5628
       ]
     },
-    "_k_range_comment": "REPORTING threshold only -- not an active constraint. K is softplus(alpha_k + gamma_k*H_k + trend) with nothing bounding it below, so a collapse is meant to be VISIBLE in metrics.json:k_range rather than hidden by a clamp. 24x is +/-2 log SD of the observed occupied-cell spread (log sd 1.592, from scripts/diagnostics/bbs_abundance_quantiles.py), i.e. the fold range the data actually show; a realized range well beyond it means K is being used to explain absence that should be explained by lambda < 1.",
+    "_k_range_comment": "REPORTING threshold only -- not an active constraint. In this file K is softplus(alpha_k + H_k + trend) with nothing bounding it below, so a collapse is meant to be VISIBLE in metrics.json:k_range rather than hidden by a clamp (when capacity_floor_internal is set, as in the current candidate, K >= that floor). 24x is +/-2 log SD of the observed occupied-cell spread (log sd 1.592, from scripts/diagnostics/bbs_abundance_quantiles.py), i.e. the fold range the data actually show; the 54 km value is 26 (exp(2 x 1.6277)). A realized range well beyond it means K is being used to explain absence that should be explained by lambda < 1.",
     "k_range": {
       "max_fold_deviation": 24.0
     },
-    "_k_trend_comment": "Continental smooth time trend on K's pre-softplus argument, time-centered so alpha_k keeps the level. A SAFETY VALVE AND FAILURE DIAGNOSTIC, not a modeled mechanism. See docs/PRIORS.md#k-trend.",
+    "_k_trend_comment": "Continental smooth time trend on K's pre-softplus argument, time-centered so alpha_k keeps the level. A SAFETY VALVE AND FAILURE DIAGNOSTIC, not a modeled mechanism. Disabled in the current candidate (k_trend.enabled = false). See docs/PRIORS.md#k-trend.",
     "k_trend": {
       "n_basis": 3,
       "budget": 0.05
@@ -118,14 +119,14 @@
     "disease_prior": {
       "severity_space_frequencies": 4,
       "lag_space_frequencies": 4,
-      "_severity_comment": "DENSITY-DEPENDENT severity: a Hill function of local carrying capacity, because epidemics need hosts. See docs/PRIORS.md#disease-severity.",
-      "_ceiling_comment": "severity_ceiling is now LOAD-BEARING FOR IDENTIFIABILITY, not merely a bound on plausibility. K = K_base*(1 - severity(K_base)*...) must be monotone in K_base, or two different habitat qualities map to the same realized capacity. At 0.5 monotonicity holds for every n tested (min dK/dK_base = 0.100 at n=5); at 0.7 it BREAKS (slope -0.26). It also happens to match the documented ~50-60% decline, which was measured in the dense eastern populations -- exactly where this parameterization applies it. Do not raise it above ~0.6 without re-checking monotonicity.",
+      "_severity_comment": "DENSITY-DEPENDENT severity: a Hill function of local carrying capacity (this file's target = capacity), because epidemics need hosts. Under target = survival (current candidate) the Hill term acts on CURRENT post-dispersal density N' and multiplies the added-mortality amplitude, with hill_n bounded to (0.5, 2.55). See docs/PRIORS.md#disease-severity.",
+      "_ceiling_comment": "Applies to target = capacity only (this file's default); under target = survival (current candidate) severity_ceiling is unused and mortality_ceiling (.8) bounds the added mortality and sets the hill_n upper bound .85*(4/.8 - 2) = 2.55. For target = capacity, severity_ceiling is LOAD-BEARING FOR IDENTIFIABILITY, not merely a bound on plausibility. K = K_base*(1 - severity(K_base)*...) must be monotone in K_base, or two different habitat qualities map to the same realized capacity. At 0.5 monotonicity holds for every n tested (min dK/dK_base = 0.100 at n=5); at 0.7 it BREAKS (slope -0.26). It also happens to match the documented ~50-60% decline, which was measured in the dense eastern populations -- exactly where this parameterization applies it. Do not raise it above ~0.6 without re-checking monotonicity.",
       "severity_ceiling": 0.5,
       "k_half_median_route_counts": 8.0,
       "k_half_log_sd": 0.7,
       "hill_n_median": 1.5,
       "hill_n_log_sd": 0.4,
-      "_mu_comment": "Logit of the MODIFIER on density-dependent severity, not of the removed fraction itself: severity = severity_ceiling * sigmoid(mu + ...) * hill(K_base). See docs/PRIORS.md#disease-severity-modifier.",
+      "_mu_comment": "Logit of the MODIFIER on density-dependent severity, not of the removed fraction itself: severity = severity_ceiling * sigmoid(mu + ...) * hill(K_base) (target = capacity). Under target = survival (current candidate): m = mortality_ceiling * sigmoid(mu + ...) * gate * (1 - recovery) * hill(N'), prior-median peak .8 * .8 = 64% at saturating density. See docs/PRIORS.md#disease-severity-modifier.",
       "mu_loc": 1.386,
       "mu_scale": 0.5,
       "_field_comment": "sev_field_budget is the total regional deviation the severity field may add on the logit scale (distributed as budget/sqrt(n) per coefficient); 0.5 comfortably reaches west ~25-30% vs east ~60%. lag0_scale/lag_field_budget are YEARS of onset-timing slack, continental and regional respectively -- the arrival map is a hand-built smoothed reconstruction, so its timing is coarse both overall and regionally.",

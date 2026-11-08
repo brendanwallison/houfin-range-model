@@ -27,10 +27,10 @@ def diagnostic_forward():
         ("            Sa_g = Sa_g * (1.0 - m_g)",
          "            diagnostic = jnp.stack([Nloc, m_g, N_a, N_j, N_a_post, juvenile_stayers, juvenile_arriving, adult_arriving], axis=-1)[land_rows, land_cols]\n"
          "            Sa_g = Sa_g * (1.0 - m_g)"),
-        ("(N_total_new, N_a_new, N_j_new, psi, F_nest)",
-         "(N_total_new, N_a_new, N_j_new, psi, F_nest, diagnostic)"),
-        ("extra = (_outs[4],) if nest_cells is not None else ()",
-         "extra = (_outs[4], _outs[5]) if nest_cells is not None else ()"),
+        ("return carry, outs + (F_nest,)",
+         "return carry, outs + (F_nest, diagnostic)"),
+        ("extra = ((_outs[4],) if LIN else ()) + ((_outs[-1],) if nest_cells is not None else ())",
+         "extra = ((_outs[4],) if LIN else ()) + ((_outs[-2], _outs[-1]) if nest_cells is not None else ())"),
     ]
     for old, new in changes:
         if source.count(old) != 1:
@@ -74,7 +74,7 @@ def main():
             raise ValueError("Planted disease-off control did not recover exactly zero mortality")
         control = {"disease_off_mortality_max": float(np.abs(mortality).max()),
                    "disease_off_population_max_error": null_error}
-    total, na, nj, factual, flows = out
+    total, na, nj, factual, flows = (out if len(out) == 5 else tuple(out[:3]) + tuple(out[-2:]))   # lineage adds the introduced density at index 3
     nloc, m, na_start, nj_start, na_post, j_stay, j_arrive, a_arrive = np.moveaxis(flows, -1, 0)
     t, nx = len(sb.years), sb.Nx
     land = lambda v: to_land(v, sb.rows, sb.cols, t, nx)
@@ -93,8 +93,11 @@ def main():
     projection = potential_lambda(sa*(1-m), sj*(1-m), factual, bool(x.get("yearling_breeding")))
     occ = np.isfinite(sb.first_obs)
     summaries = {}
-    for region, mask in sb.region.items():
-        mask = mask & occ
+    # CEC Level I ecoregions are the standard regional summary (user rule 2026-11-07); the legacy longitude bands
+    # (east/plains/west) are kept only for continuity with earlier records. Ecoregions read ALL land cells (the trough
+    # question is about unoccupied early habitat too), legacy bands keep their occupied-cell mask.
+    for region, mask in {**sb.region, **{f"CEC:{k}": v for k, v in getattr(sb, "eco_region", {}).items()}}.items():
+        mask = mask if region.startswith("CEC:") else (mask & occ)
         values = {}
         for year in (1966, 1990, 1993, 2010, 2020):
             ti = int(np.flatnonzero(sb.years == year)[0])

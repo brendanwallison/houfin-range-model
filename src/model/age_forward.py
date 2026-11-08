@@ -120,7 +120,10 @@ def rightpad_convolution(pop, dispersal_kernel_pad):
         tol = FFT_FLOOR_ULPS * jnp.finfo(out.dtype).eps * lax.stop_gradient(jnp.max(jnp.abs(out)))
         if FFT_FLOOR_SMOOTH:
             pos = jnp.maximum(out, 0.0)
-            out = pos * pos * pos / (pos * pos + tol * tol + jnp.finfo(out.dtype).tiny)
+            # denominator floored at 1e-150 (was + tiny): on an all-zero grid (tol = 0; e.g. the lineage sub-pool before the
+            # release) the derivative's denominator den^2 = tiny^2 underflows to 0 -> 0/0 NaN that the FFT spreads everywhere.
+            # Grids with any O(1e-60+) mass have tol^2 >> 1e-150, so this is the old formula there.
+            out = pos * pos * pos / jnp.maximum(pos * pos + tol * tol, 1e-150)
         else:
             out = jnp.where(out > tol, out, 0.0)
     return out
@@ -206,8 +209,13 @@ def juvenile_dispersal_vectorized(
     kernel_weights=None,
     attraction=None,
     origin_weights=None,
+    alt=None,
 ):
     """Disperse juveniles through the directional/radial kernel stack.
+
+    ``alt`` (optional (alt_kernels, alt_edge_stack, share (Ny, Nx))): population_model.kernel_ramp -- each origin sends a
+    fraction ``share`` of its dispersers through the ALTERNATE kernel stack (same bands / labels), the rest through the
+    base stack; journey survival Q is shared. alt=None is the current model exactly.
 
     ``origin_weights`` (optional (K, Ny, Nx)): per-origin multipliers on the dispersers sent into each kernel
     (directional choice; mass-preserving within each band, 1 = current).
@@ -223,6 +231,8 @@ def juvenile_dispersal_vectorized(
         settled = rightpad_convolution(boosted_source, kernel_fft)
         return settled
 
+    if alt is not None and (origin_weights is not None or attraction is not None):
+        raise NotImplementedError("kernel_ramp is not combined with directional_choice / settlement_attraction")
     if origin_weights is not None:
         def single_kernel_prop(kernel_fft, land_fraction_map, v_k):
             boosted_source = juvenile_dispersers * v_k / (land_fraction_map + eps)
@@ -231,6 +241,12 @@ def juvenile_dispersal_vectorized(
             juvenile_fft_kernels, juvenile_edge_correction_stack, origin_weights)
         if attraction is not None:
             raise NotImplementedError("directional_choice is not combined with settlement_attraction")
+    elif attraction is None and alt is not None:
+        alt_kernels, alt_edge, share = alt
+        def split_prop(kernel_fft, land_fraction_map, part):
+            return rightpad_convolution(juvenile_dispersers * part / (land_fraction_map + eps), kernel_fft)
+        potential_settlers = (jax.vmap(lambda k, e: split_prop(k, e, 1.0 - share))(juvenile_fft_kernels, juvenile_edge_correction_stack)
+                              + jax.vmap(lambda k, e: split_prop(k, e, share))(alt_kernels, alt_edge))
     elif attraction is None:
         potential_settlers = jax.vmap(single_kernel_prop)(
             juvenile_fft_kernels,
@@ -279,6 +295,8 @@ def dispersal_step_age_structured(
     departure_scale=None,
     attraction=None,
     origin_weights=None,
+    juvenile_alt=None,
+    return_probs=False,
 ):
     """One dispersal step for both age classes, with density-dependent departure.
 
@@ -354,11 +372,13 @@ def dispersal_step_age_structured(
         kernel_weights=kernel_weights,
         attraction=juv_attr,
         origin_weights=origin_weights,
+        alt=juvenile_alt,
     )
 
-    if return_adult_arrivals:       # settlement.apply_to = dispersers needs arrivals apart
-        return N_a_post, juvenile_stayers, juvenile_arriving, adult_arriving
-    return N_a_post, juvenile_stayers, juvenile_arriving
+    out = (N_a_post, juvenile_stayers, juvenile_arriving) + ((adult_arriving,) if return_adult_arrivals else ())
+    # return_probs (population_model.lineage): the departure probabilities actually used, so a lineage sub-pool can be
+    # moved with the SAME per-cell departure (decided on the total density) -- dispersal is then linear in the sub-pool.
+    return out + (((p_adult, p_total),) if return_probs else ())
 
 def forward_sim_age_structured(
     Sa_flat, Sj_flat, Fmax_flat, K_flat, c_flat, Q_flat,
@@ -403,8 +423,43 @@ def forward_sim_age_structured(
     attraction=None,
     directional_weights=None,
     nest_cells=None,
+    kernel_ramp=None,
+    colonization_clock=None,
+    urban_mating=None,
+    survival_dd_c=None,
+    lineage_delta=None,
+    growth_kernel=None,
 ):
     """Run the age-structured simulation for ``time`` years.
+
+    ``growth_kernel`` (optional (eta_s (time, N_land), A_s (time, N_land, P), eta_r, A_r, k (time, N_land) | None, d_s,
+    d_r, spec); population_model.growth_kernel, research prototype 2026-11-08, see src/model/growth_kernel.py): the
+    density-dependent local update is LEARNED. Adult survival s = sigmoid(eta_s + A_s . phi(u) [+ d_s . psi(u_tot - k)])
+    and births per breeder rho = exp(eta_r + A_r . phi(u) [+ d_r . psi(u_tot - k)]), u the log post-dispersal densities
+    (adults, juveniles), replace Sa / (1 + c_s crowd), Beverton-Holt Fmax, Allee and K in
+    the reproduction step; juvenile survival (Sj stayers, Q dispersers), dispersal and disease are unchanged. Yearling
+    breeding only. Adds two outputs after the three density grids: realised s and rho on the land cells, (time, N_land),
+    pre-disease. None = the original model exactly.
+
+    ``lineage_delta`` (optional scalar; population_model.lineage, 2026-11-07): track the INTRODUCED lineage (birds descended
+    from the release pulse) as a sub-population I of the total N. It shares everything with the total -- departure decided on
+    the total density, the same kernels, Allee, crowding, survival, disease -- except that introduced BREEDERS produce
+    e^lineage_delta times the native per-breeder births. Cell fecundity is the breeder-weighted mean (1 - q + q e^delta), q =
+    the introduced share of breeders, and introduced newborns are q e^delta / (1 - q + q e^delta) of the births. Population
+    structure, not geography: lineages mix wherever they meet. None = the original model exactly. The introduced total is
+    returned after the three density grids (before any nest readout).
+
+    ``survival_dd_c`` (optional, (time, N_land)): adult-survival density brake (population_model.adult_survival_dd);
+    Sa_eff = Sa / (1 + c_s * crowding(N/K)) in the reproduction step. None = the original model exactly.
+
+    ``colonization_clock`` (optional (d0, tau, theta, width); FINAL ROUND 2026-11-06, Badyaev 2009 / plan card A5): a cell's
+    fecundity is multiplied by 1 - d0 exp(-A / tau), A = years the cell has been ESTABLISHED (smooth: A <- e (A + 1),
+    e = sigmoid((mated - theta) / width), mated = the absolute Allee mated fraction at the year's end density). Newly
+    established populations start as partial sinks and improve with local age -- a lag that travels with the front instead
+    of following the calendar. Requires occupancy off (the age grid rides in the psi slot of the scan carry).
+
+    ``kernel_ramp`` (optional (alt_juvenile_fft_kernel_stack, alt_juvenile_edge_correction_stack, share (time, Ny, Nx))):
+    population_model.kernel_ramp, see juvenile_dispersal_vectorized. None is the current model exactly.
 
     Seeds the population from ``initpop_latent`` (split 50/50 adult/juvenile),
     injects the invasion pulse ``inv_pop`` (shape ``(n_sites, n_years)``) at each of
@@ -492,6 +547,27 @@ def forward_sim_age_structured(
     # birds Poisson at occupancy_b birds per density unit; seeded from the initial densities.
     occ = occupancy_b is not None
     init_psi = -jnp.expm1(-occupancy_b * (init_N_a + init_N_j)) if occ else jnp.zeros_like(init_N_a)
+    if colonization_clock is not None and occ:
+        raise NotImplementedError("colonization_clock uses the psi carry; occupancy must be off")
+    LIN = lineage_delta is not None
+    if LIN and (occ or settle_block or strata_u is not None or process_noise is not None or state_warp is not None
+                or state_anchor is not None or attraction is not None or veit_reproduction or colonization_clock is not None):
+        raise NotImplementedError("lineage: not combined with occupancy / settlement / subcell / process noise / warp / "
+                                  "anchor / attraction / veit reproduction / colonization clock")
+    GK = growth_kernel is not None
+    if GK:
+        if (LIN or occ or settle_block or strata_u is not None or veit_reproduction or colonization_clock is not None
+                or urban_mating is not None or survival_dd_c is not None or not yearling_breeding):
+            raise NotImplementedError("growth_kernel: yearling breeding only; not combined with lineage / occupancy / "
+                                      "settlement / subcell / veit reproduction / colonization clock / urban mating / "
+                                      "adult_survival_dd")
+        from src.model import growth_kernel as _gkm
+        # (eta_s, A_s, eta_r, A_r, k | None, d_s, d_r, spec): see growth_kernel.coefficient_fields
+    def _um_rho(t):   # population_model.urban_mating: (u (time, N_land, S), a (S,), b) -> (rho (S, Ny, Nx), a)
+        _u, _a, _b = urban_mating
+        ug = jnp.zeros((_u.shape[-1], Ny, Nx), _u.dtype).at[:, land_rows, land_cols].set(jnp.take(_u, t, axis=0).T)
+        e = jnp.exp(_b * ug)
+        return e / jnp.sum(_a[:, None, None] * e, axis=0, keepdims=True), _a
     
     # Pre-allocate zero grid for scattering to avoid repeated memory allocations
     zero_grid = jnp.zeros((Ny, Nx))
@@ -527,7 +603,9 @@ def forward_sim_age_structured(
 
     # The step function inside lax.scan
     def step(pools, t):
-        N_a, N_j, psi = pools
+        N_a, N_j, psi = pools[:3]
+        if LIN:
+            I_a, I_j = pools[3], pools[4]
         
         # 1. Invasion: one pulse value per site, this year, scattered to every
         # candidate site cell at once (a no-op add of 0 at every site outside the
@@ -537,6 +615,9 @@ def forward_sim_age_structured(
         val = jnp.where(is_invading, inv_pop[:, jnp.minimum(jnp.maximum(0, k), inv_pop.shape[1]-1)], 0.0)
         N_a = N_a.at[inv_rows, inv_cols].add(val * 0.5)
         N_j = N_j.at[inv_rows, inv_cols].add(val * 0.5)
+        if LIN:     # the release pulse IS the introduced lineage
+            I_a = I_a.at[inv_rows, inv_cols].add(val * 0.5)
+            I_j = I_j.at[inv_rows, inv_cols].add(val * 0.5)
         if occ:     # released birds arrive as a Poisson group like any other arrivals
             psi = psi.at[inv_rows, inv_cols].set(
                 1.0 - (1.0 - psi[inv_rows, inv_cols]) * jnp.exp(-occupancy_b * val))
@@ -565,7 +646,28 @@ def forward_sim_age_structured(
             origin_weights=(None if directional_weights is None else
                             jnp.ones((K_kernels, Ny, Nx), directional_weights.dtype).at[:, land_rows, land_cols].set(
                                 directional_weights[t].T)),
+            juvenile_alt=(None if kernel_ramp is None else (kernel_ramp[0], kernel_ramp[1], kernel_ramp[2][t])),
+            return_probs=LIN,
         )
+        if LIN:
+            _probs = _disp[-1]
+            _disp = _disp[:-1]
+            I_a_post, I_js, I_ja = dispersal_step_age_structured(
+                I_a, I_j, K_g,
+                dispersal_logit_intercept + dispersal_random[t],
+                dispersal_logit_slope, target_fraction,
+                adult_edge_correction, juvenile_edge_correction_stack,
+                adult_fft_kernel, juvenile_fft_kernel_stack,
+                Q_grid=Q_g, eps=1e-6, adult_logit_offset=dispersal_adult_offset,
+                crowding_beta=crowding_beta, crowding_kappa=crowding_kappa,
+                kernel_weights=(juvenile_kernel_weights if juvenile_kernel_weights is None
+                                or juvenile_kernel_weights.ndim == 1 else juvenile_kernel_weights[t]),
+                departure_probabilities_override=_probs, departure_scale=None,
+                origin_weights=(None if directional_weights is None else
+                                jnp.ones((K_kernels, Ny, Nx), directional_weights.dtype).at[:, land_rows, land_cols].set(
+                                    directional_weights[t].T)),
+                juvenile_alt=(None if kernel_ramp is None else (kernel_ramp[0], kernel_ramp[1], kernel_ramp[2][t])),
+            )[:3]
         if settle_dispersers_only or occ:
             N_a_post, juvenile_stayers, juvenile_arriving, adult_arriving = _disp
         else:
@@ -625,6 +727,13 @@ def forward_sim_age_structured(
             N_a_post, juvenile_stayers, juvenile_arriving = (
                 N_a_post * inv_psi, juvenile_stayers * inv_psi, juvenile_arriving * inv_psi)
 
+        if colonization_clock is not None:     # local settling-in: young populations are partial sinks
+            Fmax_g = Fmax_g * (1.0 - colonization_clock[0] * jnp.exp(-psi / colonization_clock[1]))
+        if GK:   # learned local rates at this year's post-dispersal densities (before disease touches the arrivals)
+            gk_s_l, gk_rho_l = _gkm.rates_at(_gkm.year_slice(growth_kernel, t), N_a_post[land_rows, land_cols],
+                                             (juvenile_stayers + juvenile_arriving)[land_rows, land_cols])
+            Sa_g = zero_grid.at[land_rows, land_cols].set(gk_s_l)
+            Fmax_g = zero_grid.at[land_rows, land_cols].set(gk_rho_l)
         # 4. Survival & Reproduction. Release cells skip the Allee factor while
         # exempt (see allee_exempt_years in the docstring).
         allee_off = jnp.where((k >= 0) & (k < allee_exempt_years), release_mask, 0.0)
@@ -640,16 +749,40 @@ def forward_sim_age_structured(
             Sa_g = Sa_g * (1.0 - m_g)
             Sj_g = Sj_g * (1.0 - m_g)
             juvenile_arriving = juvenile_arriving * (1.0 - m_g)
+            if LIN:
+                I_ja = I_ja * (1.0 - m_g)
         F_nest = None
-        if strata_u is None:
+        Fmax_rep = Fmax_g
+        if LIN:     # breeder-weighted fecundity (see lineage_delta in the docstring)
+            _Np = N_a_post + juvenile_stayers + juvenile_arriving
+            Sa_e = Sa_g if survival_dd_c is None else Sa_g / (
+                1.0 + zero_grid.at[land_rows, land_cols].set(survival_dd_c[t]) * crowding_argument(_Np / jnp.maximum(K_g, 1e-12)))
+            I_a_new = I_a_post * Sa_e + I_js * Sj_g + I_ja
+            Bn = N_a_post * Sa_e + ((juvenile_stayers * Sj_g + juvenile_arriving) if yearling_breeding else 0.0)
+            Bi = I_a_new if yearling_breeding else I_a_post * Sa_e
+            _okb = Bn > 1e-12     # double-where: an empty cell must not send a 1/1e-30 derivative (NaN gradients)
+            q_b = jnp.where(_okb, jnp.clip(Bi / jnp.where(_okb, Bn, 1.0), 0.0, 1.0), 0.0)
+            _ed = jnp.exp(lineage_delta if jnp.ndim(lineage_delta) == 0 else lineage_delta[t])   # scalar or (time,)
+            _lmult = 1.0 - q_b + q_b * _ed
+            Fmax_rep = Fmax_g * _lmult
+        if GK:
+            # learned update: adults survive at s (disease applied above), juveniles at the unchanged Sj (stayers) / 1
+            # (arrivers, journey survival Q already applied in dispersal); every winter survivor breeds at rho.
+            N_a_new = N_a_post * Sa_g + juvenile_stayers * Sj_g + juvenile_arriving
+            N_j_new = N_a_new * Fmax_g
+            if nest_cells is not None:
+                F_nest = Fmax_g[nest_cells[0], nest_cells[1]]
+        elif strata_u is None:
             _rep = reproduction_age_structured(
                 N_a_post, juvenile_stayers, juvenile_arriving,
-                Sa_g, Sj_g, Fmax_g, K_g, c_g, allee_gamma, allee_off=allee_off,
+                Sa_g, Sj_g, Fmax_rep, K_g, c_g, allee_gamma, allee_off=allee_off,
                 allee_relative=allee_relative, yearling_breeding=yearling_breeding,
                 veit=veit_reproduction,
                 mate_factor=(pairing_fraction(occupancy_b * (N_a_post + juvenile_stayers + juvenile_arriving))
                              if occ else None),
                 return_F=nest_cells is not None,
+                allee_rho=_um_rho(t) if urban_mating is not None else None,
+                c_s=(None if survival_dd_c is None else zero_grid.at[land_rows, land_cols].set(survival_dd_c[t])),
             )
             N_a_new, N_j_new = _rep[0], _rep[1]
             if nest_cells is not None:
@@ -682,6 +815,10 @@ def forward_sim_age_structured(
         # 5. Mask & Final Clip
         N_a_new = jnp.maximum(N_a_new * land_mask, 0.0)
         N_j_new = jnp.maximum(N_j_new * land_mask, 0.0)
+        if LIN:
+            I_j_new = N_j_new * q_b * _ed / _lmult
+            I_a_new = jnp.minimum(jnp.maximum(I_a_new * land_mask, 0.0), N_a_new)
+            I_j_new = jnp.minimum(jnp.maximum(I_j_new * land_mask, 0.0), N_j_new)
         if process_noise is not None:
             eps_t = process_noise[t]
             if process_noise_low_density is not None:
@@ -724,16 +861,23 @@ def forward_sim_age_structured(
             psi, m_tot = occupied_density(N_a_new + N_j_new, psi, occupancy_b)
             psi = psi * (-jnp.expm1(-occupancy_b * m_tot)) * land_mask
         N_total_new = N_a_new + N_j_new
+        if colonization_clock is not None:
+            _mated = allee_mated_fraction(allee_gamma * N_total_new)
+            _e = jax.nn.sigmoid((_mated - colonization_clock[2]) / colonization_clock[3])
+            psi = _e * (psi + 1.0) * land_mask
 
+        carry = (N_a_new, N_j_new, psi) + ((I_a_new, I_j_new) if LIN else ())
+        outs = (N_total_new, N_a_new, N_j_new, psi) + ((I_a_new + I_j_new,) if LIN else ()) + ((gk_s_l, gk_rho_l) if GK else ())
         if nest_cells is not None:
-            return (N_a_new, N_j_new, psi), (N_total_new, N_a_new, N_j_new, psi, F_nest)
-        return (N_a_new, N_j_new, psi), (N_total_new, N_a_new, N_j_new, psi)
+            return carry, outs + (F_nest,)
+        return carry, outs
 
     checkpointed_step = jax.checkpoint(step)
 
-    _outs = lax.scan(checkpointed_step, (init_N_a, init_N_j, init_psi), jnp.arange(time))[1]
+    _init = (init_N_a, init_N_j, init_psi) + ((jnp.zeros_like(init_N_a), jnp.zeros_like(init_N_a)) if LIN else ())
+    _outs = lax.scan(checkpointed_step, _init, jnp.arange(time))[1]
     total_densities, Na_densities, Nj_densities, psi_t = _outs[:4]
-    extra = (_outs[4],) if nest_cells is not None else ()
+    extra = ((_outs[4],) if LIN else ()) + ((_outs[4], _outs[5]) if GK else ()) + ((_outs[-1],) if nest_cells is not None else ())
 
     if occ:
         return (total_densities, Na_densities, Nj_densities, psi_t) + extra
@@ -952,6 +1096,10 @@ def subcell_reproduction(pools, Sa, Sj, Fmax, K, allee_gamma, u, a, beta_k, delt
 
 # allee_prior.aggregation_k (set by age_priors at import; None = the Poisson-encounter form).
 ALLEE_AGG_K = None
+# allee_prior.per_capita (FINAL ROUND 2026-11-06, default False): with clumping (k > 0) use the BIRD-weighted mated
+# fraction E[X m(X)] / E[X] = 1 - (1 + x/k)^-(k+1) (births come from birds, and clumped birds sit where density is high)
+# instead of the LOCATION-averaged E[m(X)] = 1 - (1 + x/k)^-k. Same gamma-clumping assumption, applied per capita.
+ALLEE_PER_CAPITA = False
 
 
 def allee_mated_fraction(x, k=None):
@@ -966,7 +1114,7 @@ def allee_mated_fraction(x, k=None):
     k = ALLEE_AGG_K if k is None else k
     if k is None:
         return 1.0 - jnp.exp(-x)          # bit-identical to the original expression (comparability with earlier runs)
-    return -jnp.expm1(-k * jnp.log1p(x / k))
+    return -jnp.expm1(-(k + (1.0 if ALLEE_PER_CAPITA else 0.0)) * jnp.log1p(x / k))
 
 
 # Below this capacity (density units; ~2e-7 route counts) N/K is not computed.
@@ -999,7 +1147,7 @@ def relative_density(N, K):
 def reproduction_age_structured(
     N_a_post, N_j_stayers, N_j_arrivers,
     S_a, S_j, F_max, K, c, allee_gamma, eps=1e-12, allee_off=None, allee_relative=False,
-    yearling_breeding=False, veit=False, mate_factor=None, return_F=False,
+    yearling_breeding=False, veit=False, mate_factor=None, return_F=False, allee_rho=None, c_s=None,
     ):
     """Advance one year of survival + reproduction to next-year (N_a, N_j).
 
@@ -1026,12 +1174,20 @@ def reproduction_age_structured(
     # allee_relative: mate-finding by N/K (age_priors' allee_prior.form = relative).
     allee_factor = allee_mated_fraction(allee_gamma * (relative_density(N_total_post, K)
                                                       if allee_relative else N_total_post))
+    if allee_rho is not None:
+        # population_model.urban_mating: birds sit in within-cell slices s (area a_s) at relative density rho_s
+        # (sum_s a_s rho_s = 1); mate-finding acts on slice density and births are bird-weighted:
+        # sum_s a_s rho_s m(gamma N rho_s). rho = 1 recovers the cell-mean factor exactly.
+        _rho, _a = allee_rho
+        allee_factor = jnp.sum(_a[:, None, None] * _rho * allee_mated_fraction(allee_gamma * N_total_post[None] * _rho), axis=0)
     if allee_off is not None:
         allee_factor = allee_factor + allee_off * (1.0 - allee_factor)
     F_actual = F_eff * allee_factor
     if mate_factor is not None:      # occupancy: pairing stochasticity at the scale of birds (E063)
         F_actual = F_actual * mate_factor
 
+    if c_s is not None:   # adult_survival_dd: adults' survival braked by the same crowding argument as fecundity
+        S_a = S_a / (1.0 + c_s * crowding_argument(N_total_post / K_safe))
     surviving_adults = N_a_post * S_a
     surviving_stayers = N_j_stayers * S_j      
     surviving_arrivers = N_j_arrivers          

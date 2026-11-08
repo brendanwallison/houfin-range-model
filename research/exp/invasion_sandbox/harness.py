@@ -33,6 +33,9 @@ from src.model.checkpoints import load_map_params, auto_delta_params_to_latents
 
 BIRDS_PER_KM2_PER_UNIT = 20 / (50 * np.pi * .4 * .5)   # 20 route counts per model unit; 25.13 km^2 sampled, detection .5
 REGIONS = {'east': (-95., 180.), 'plains': (-100., -95.), 'west': (-180., -100.)}  # exhaustive, 25-49N (G13)
+CEC_L1 = {7: 'Marine West Coast Forest', 11: 'Mediterranean California', 6: 'NW Forested Mountains', 10: 'N. Am. Deserts',
+          13: 'Temperate Sierras', 12: 'S. Semiarid Highlands', 9: 'Great Plains', 3: 'Taiga', 5: 'Northern Forests',
+          8: 'Eastern Temperate Forests', 14: 'Tropical Dry Forests', 15: 'Tropical Humid Forests', 2: 'Tundra', 4: 'Hudson Plain'}
 
 
 def capture(data, lat):
@@ -45,6 +48,8 @@ def capture(data, lat):
         handlers.seed(handlers.condition(ap.build_model_2d, data=lat), rng_seed=104)(data=data, prior_scale=1.)
     finally:
         ap.forward_sim_age_structured = original
+    if len(got) == 2 and int(got[0].get('time', -1)) != int(got[1].get('time', -2)):   # spinup: a short pre-1902 call, then the main one
+        got = got[1:]
     if len(got) != 1:
         raise ValueError(f'expected one forward call, got {len(got)}')
     return got[0], original
@@ -234,7 +239,18 @@ class Sandbox:
             self.cell_km2 = abs(src.transform.a * src.transform.e) / 1e6
         self.lon, self.latd = lon, latd
         band = (latd >= 25) & (latd < 49)
-        self.region = {k: band & (lon >= lo) & (lon < hi) for k, (lo, hi) in REGIONS.items()}
+        self.region = {k: band & (lon >= lo) & (lon < hi) for k, (lo, hi) in REGIONS.items()}   # legacy longitude bands (G13)
+        # CEC Level I ecoregions (user rule 2026-11-07: regional summaries use ecoregions, never lat/lon boxes); the raster is
+        # on the model lattice beside the reference grid. Legacy bands stay for continuity with earlier records only.
+        self.eco_region = {}
+        _ep = Path(dcfg['grid']['ref_raster']).parent / 'regions' / 'cec_level1_54km.tif'
+        if _ep.exists():
+            with rasterio.open(_ep) as _s:
+                _l1 = np.asarray(_s.read(1))[rows, cols].astype(int)
+            self.eco_code = _l1
+            self.eco_region = {nm: _l1 == c for c, nm in CEC_L1.items() if (_l1 == c).sum() >= 5}
+        else:
+            print(json.dumps(dict(stage='warning', msg=f'no CEC Level I raster at {_ep}: ecoregion summaries skipped')), flush=True)
         self.lookup = lookup = -np.ones((int(rows.max()) + 1, int(cols.max()) + 1), int)
         lookup[rows, cols] = np.arange(len(rows))
         ocell = lookup[np.asarray(data['obs_rows']), np.asarray(data['obs_cols'])]
@@ -285,7 +301,7 @@ class Sandbox:
             if 'habitat_alpha' in arm else data
         x, fwd = capture(d, self.lat)
         if self.base_x is None:
-            self.base_x = x; c_err = check_c_formula(x)
+            self.base_x = x; c_err = 0. if x.get('survival_dd_c') is not None else check_c_formula(x)   # adult_survival_dd re-solves c
             if c_err > (1e-8 if PRECISION == 'float64' else 1e-3):
                 raise ValueError(f'captured c differs from the life-cycle formula by {c_err}')
             inv_loc = np.asarray(x['inv_locations']).reshape(-1, 2)[0]
@@ -331,9 +347,9 @@ class Sandbox:
                 by_cohort={f'{a0}-{b0 - 1}': med(lag[(fo >= a0) & (fo < b0)])
                            for a0, b0 in zip([1966, 1975, 1985, 1995], [1975, 1985, 1995, 2010])})
         abund = {}
-        for rname in ('east', 'plains', 'west'):
+        for rname in (*region, *self.eco_region):
             for a0, b0 in self.eras:
-                s = region[rname][self.o_cell] & (years[self.o_t] >= a0) & (years[self.o_t] <= b0)
+                s = {**region, **self.eco_region}[rname][self.o_cell] & (years[self.o_t] >= a0) & (years[self.o_t] <= b0)
                 mstate = tot[self.o_t[s], self.o_cell[s]]
                 good = np.isfinite(mstate)
                 corr = (float(np.corrcoef(np.log1p(mstate[good] * 20), np.log1p(self.o_y[s][good]))[0, 1])
@@ -341,9 +357,9 @@ class Sandbox:
                 abund[f'{rname}_{a0}_{b0}'] = dict(model_sum=float(np.nansum(mstate)), obs_sum=float(self.o_y[s].sum()),
                                                    corr=corr, nonfinite=int((~good).sum()))
         ob = self.observe(d, out)
-        for rname in ('east', 'plains', 'west'):
+        for rname in (*region, *self.eco_region):
             for a0, b0 in self.eras:
-                s = region[rname][self.o_cell] & (years[self.o_t] >= a0) & (years[self.o_t] <= b0)
+                s = {**region, **self.eco_region}[rname][self.o_cell] & (years[self.o_t] >= a0) & (years[self.o_t] <= b0)
                 abund[f'{rname}_{a0}_{b0}'].update(
                     n_rows=int(s.sum()), expected_sum=float(ob['mu'][s].sum()),
                     obs_over_expected=float(self.o_y[s].sum() / ob['mu'][s].sum()) if ob['mu'][s].sum() > 0 else None,
@@ -369,7 +385,7 @@ class Sandbox:
         def era_mean(m, a0, b0):
             w = (years >= a0) & (years <= b0); return float(lam[w][:, m].mean())
         lam_summary = {r: dict(early=era_mean(m, 1902, 1915), bbs_early=era_mean(m, 1966, 1985),
-                               modern=era_mean(m, 2010, 2025)) for r, m in region.items()}
+                               modern=era_mean(m, 2010, 2025)) for r, m in {**region, **self.eco_region}.items()}
         row = dict(step=os.environ.get('SBX_STEP'), arm=arm, seconds=round(time.time() - t0, 1), final_state_sha256=h,
                    nonfinite_state=int((~np.isfinite(tot)).sum()),
                    east_total_birds=[float(v) for v in (birds[:, region['east']] * self.cell_km2).sum(1)],

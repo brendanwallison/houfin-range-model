@@ -69,6 +69,27 @@ Three config switches, each defaulting to the model that existed before it (so a
 
 Allee half-saturation on the BBS ROUTE-COUNT scale: allee_factor = 1 - 2^(-C/n50), with C the expected route count, so at C = n50 the brake is exactly half released. n50 = softplus(n50_raw) and is ALREADY in route counts -- no conversion. Gauge-invariant: allee_gamma*N reduces to ln2*C/n50, a function of the observable count alone, so population_scale_route_counts_per_relative_unit cannot change what this prior asserts. DESIRED EFFECT: a BBS route that consistently yields one bird is a colonized cell, and that bird is a proxy for a local community rather than a lone individual, so mate-finding should not be limiting there. n50_raw_loc = -2.0 gives median n50 = 0.127 counts, i.e. fecundity retained 42% at 0.1 counts, 75% at 0.25, 94% at 0.5, 99.6% at 1.0, ~100% at 2 and above. The brake therefore bites only on genuinely sparse cells, below roughly a quarter of a bird per route. TWO CONSEQUENCES TO WATCH. (1) This prior sets where a cell becomes mathematically uninhabitable: the Allee fold sits near 1/gamma = n50/ln2 = 0.183 counts, against a fitted capacity level of 2.89 counts -- a 15.8x gap. When that gap is small, modest downward deviations in K flip cells to 'Allee-dead' (fundamentally suitable but holding no population), which can dominate 07_realized_source_sink.png. (2) The Allee term is also what makes a low-density range front expensive to push across unsuitable ground, so a weaker brake buys cheaper barrier crossing; check 17_barrier_crossing.png and the Great Plains pause whenever this moves. Width deliberately unchanged at 1.0: shifting the mean moves the typical brake, whereas narrowing the scale is what would rule out the slow low-n50 tail.
 
+**Pinned n50 and literature units (2026-11-08).** Experiment overlays pin n50 (`pinned_sites.n50_raw`) rather than using the prior above. The current pin is n50_raw -2.1, i.e. .1155 median-route counts, the user's 2026-11-06 "stronger Allee" decision; E055's earlier pin was -2.797, i.e. .059. Internally n50 = route counts / pop_scalar (20) = .00578.
+
+To compare with Veit & Lewis 1996 (birds/km2; n50 = r/2 = .025 / .075 / .125 for r = .05 / .15 / .25, with .15 chosen), use the ABSOLUTE bridge, not the old K-ratio transfer (.0197 x our median K). The bridge calibrates the model's 2010-19 US + Canada total to Partners in Flight, ~40 M birds (20 M low):
+- 1 mean-route count = .735 [.367] birds/km2;
+- 1 internal unit = 41.7 mean-route counts (pop_scalar x Jensen factor e^{sigma^2/2} 2.06).
+
+On that scale:
+
+| Quantity | birds/km2 at PIF 40 M [20 M] | Relation to V&L |
+|---|---|---|
+| Current pin | .177 [.089] | at or above V&L's strongest (.125) |
+| n50 x.5 | .089 [.044] | brackets V&L's chosen .075 (with x.33) |
+| n50 x.33 | .058 [.029] | brackets V&L's chosen .075 (with x.5) |
+| Median occupied K | 2.4 [1.2] | V&L K* 3.8 |
+
+V&L's numbers come from a 1-D spread fit. In 2-D, front curvature and the critical founding radius (Lewis & Kareiva 1993) mean the same history needs a weaker Allee effect. Only the direction of that correction is known, not a factor.
+
+The K floor (`capacity_floor_internal`) is absolute: .0462 internal = 1.42 [.71] birds/km2, roughly 0.6 x the median occupied K. It does NOT follow n50, and `capacity_floor_n50_multiple` is a label only (`age_fields.py` reads the internal value).
+
+Script: `research/exp/invasion_sandbox/abs_calib.py`. Rationale: research/CONSIDERATIONS.md G14, M32, P7.
+
 ## K trend
 
 `population_model._k_trend_comment`

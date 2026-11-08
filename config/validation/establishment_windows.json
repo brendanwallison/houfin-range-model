@@ -1,0 +1,24 @@
+{
+  "_comment": "Documented first-occurrence / first-breeding years of the INTRODUCED eastern House Finch by state (BBS state-file stems). Compiled 2026-11-06 from quoted sources by a research agent; quotes and caveats in research/experiments/SANDBOX_INVASION_SHAPE_2026-11.md (ESTABLISHMENT-LAG LIT). occ 0 = first occurrence unverified (upper bound only). Veit & Lewis 1996 p. 266: 'a lag of 3-10 yr between the first record of occurrence ... in a state and the first recorded instance of breeding'.",
+  "bbs_dir": "${HOUFIN_DATA}/bbs_2026_release",
+  "states": {
+    "Marylan": {"occ": 1958, "breed": 1963, "source": "Garland 1963, Maryland Birdlife 19(3):78"},
+    "NCaroli": {"occ": 1962, "breed": 1975, "source": "Seriff 2018, Birds of the Central Carolinas"},
+    "SCaroli": {"occ": 1966, "breed": 1979, "source": "Hamel & Wagner 1984, Chat 48:5"},
+    "Vermont": {"occ": 1968, "breed": 1976, "source": "Vermont Breeding Bird Atlas 2 (Nichols 1985)"},
+    "W_Virgi": {"occ": 1971, "breed": 1975, "source": "Hall 1983, West Virginia Birds p. 162"},
+    "Ohio":    {"occ": 1964, "breed": 1976, "source": "Peterjohn 1989 via Cecil & Dinsmore 1995 (breeding second-hand)"},
+    "Tenness": {"occ": 1972, "breed": 1980, "source": "Migrant 67 (1996); Laughlin, Migrant 51/52"},
+    "Kentuck": {"occ": 1977, "breed": 1981, "source": "Kentucky Warbler 54:36 (1978); Barron 1981, Ky. Warbler 57:64"},
+    "Alabama": {"occ": 0,    "breed": 1982, "source": "Summerour 1986, Alabama Birdlife 33:16 (first occurrence unverified)"},
+    "Arkansa": {"occ": 1971, "breed": 1985, "source": "James & Neal 1986, Arkansas Birds"},
+    "Indiana": {"occ": 1958, "breed": 1981, "source": "Mumford & Keller 1984 via Cecil & Dinsmore 1995; Proc. Indiana Acad. Sci. 106 (1997)"},
+    "Illinoi": {"occ": 1971, "breed": 1982, "source": "Illinois Breeding Bird Atlas (Kleen et al. 2004) p. 392"},
+    "Michiga": {"occ": 1972, "breed": 1981, "source": "Granlund et al. 1994, Birds of Michigan (snippet)"},
+    "Wiscons": {"occ": 1972, "breed": 1986, "source": "Robbins 1991 via Cecil & Dinsmore 1995"},
+    "Missour": {"occ": 1974, "breed": 1983, "source": "Robbins & Easterla 1992 via Cecil & Dinsmore 1995"},
+    "Minneso": {"occ": 1980, "breed": 1989, "source": "Minnesota Breeding Bird Atlas"},
+    "Iowa":    {"occ": 1982, "breed": 1986, "source": "Dinsmore & Petersen 1986, Iowa Bird Life 56:122"},
+    "Ontario": {"occ": 1972, "breed": 1978, "source": "Bancroft & Parsons 1991, Blue Jay 49:129"}
+  }
+}

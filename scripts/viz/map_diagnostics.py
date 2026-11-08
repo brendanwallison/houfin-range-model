@@ -238,7 +238,7 @@ def reconstruct_map(data, params):
               "disease_k_half_route_counts", "disease_hill_n",
               "disease_severity_map", "disease_mu_sev", "disease_b_late",
               "disease_w_lag", "disease_lag0", "disease_tau", "disease_rec",
-              "disease_tau_rec", "Na_grid", "Nj_grid",
+              "disease_tau_rec", "disease_delay_rec", "Na_grid", "Nj_grid",
               # disease_prior.target = survival only: the epizootic's added-mortality amplitude.
               "disease_mortality_amp",
               # population_model.occupancy only (E063).
@@ -397,13 +397,22 @@ def plot_modern_rate_maps(sim, years, rows, cols, shape, out, era):
     fields = [("Adult survival", sim["Sa_flat"], "viridis", None),
               ("Juvenile survival", sim["Sj_flat"], "viridis", None),
               ("Fecundity ceiling", sim["Fmax_flat"], "magma", "juveniles adult⁻¹ yr⁻¹"),
-              ("Carrying capacity", sim["K_flat"], "magma", "relative units")]
+              ("Carrying capacity (log scale)", sim["K_flat"], "magma", "relative units")]
     fig, ax = _map_grid(2, 2, shape, panel_w=5.0, header=0.85, cbar_frac=0.17)
     for axis, (label, field, cmap, unit) in zip(ax.flat, fields):
         avg, span, _ = era_mean(field, years, era)
         grid = _grid(avg[None], rows, cols, shape)[0]
         lo, hi = np.nanpercentile(grid, [2, 98])
-        image = axis.imshow(grid, cmap=cmap, vmin=lo, vmax=hi)
+        norm = None
+        if label.startswith("Carrying capacity"):
+            # LOG colour scale (user, 2026-11-08): K spans ~2 orders of magnitude and a linear scale is set by coastal
+            # California / NW Mexico, so the interior gradient (where the K-vs-demography question lives) was invisible.
+            from matplotlib.colors import LogNorm
+            pos = grid[np.isfinite(grid) & (grid > 0)]
+            lo, hi = (np.nanpercentile(pos, [2, 98]) if pos.size else (1e-3, 1.))
+            norm = LogNorm(vmin=max(lo, 1e-6), vmax=max(hi, lo * 10))
+        image = (axis.imshow(grid, cmap=cmap, norm=norm) if norm is not None
+                 else axis.imshow(grid, cmap=cmap, vmin=lo, vmax=hi))
         axis.set_title(label); axis.axis("off")
         fig.colorbar(image, ax=axis, fraction=.046, label=unit)
     fig.suptitle(f"House Finch Vital Rates ({span[0]}–{span[1]} mean)")
@@ -411,9 +420,20 @@ def plot_modern_rate_maps(sim, years, rows, cols, shape, out, era):
     fig.savefig(out, dpi=180, bbox_inches="tight"); plt.close(fig)
 
 
-def plot_fit_diagnostics(sim, data, years, out):
+def plot_fit_diagnostics(sim, data, years, out, cfg=None, run_dir=None):
     observed = np.asarray(data["observed_results"])
     predicted = np.asarray(sim["expected_obs"])
+    # The annual-mean panel plots the model's MEAN count (as 04b) when the model has an observer x route effect: the raw
+    # expected_obs is the median-route expectation, and rows on routes with no fitted effect (new routes / observers, e.g.
+    # the post-2020 hold-out) sit at the median route (~half the mean route), so its annual mean falsely "collapsed"
+    # after 2020 (user, 2026-11-08). The calibration panel stays row-level (conditional on the fitted route effects).
+    mean_count, _sigma = (None, None)
+    if cfg is not None:
+        try:
+            from process_diagnostics import model_mean_count
+            mean_count, _sigma = model_mean_count(sim, data, cfg, run_dir)
+        except Exception as e:  # never block the suite
+            print(f"[map-viz] fig 04 model mean count unavailable ({e}); plotting the median-route mean")
     t = np.asarray(data["obs_time_indices"])
     fig, ax = plt.subplots(1, 2, figsize=(11, 4.8))
     lo, lp = np.log1p(observed), np.log1p(predicted)
@@ -459,7 +479,14 @@ def plot_fit_diagnostics(sim, data, years, out):
     obs_mean = np.array([observed[t == i].mean() if np.any(t == i) else np.nan for i in range(len(years))])
     pred_mean = np.array([predicted[t == i].mean() if np.any(t == i) else np.nan for i in range(len(years))])
     ax[1].plot(years, obs_mean, label="Observed", color="#252525", lw=1.8)
-    ax[1].plot(years, pred_mean, label="Fitted mean", color="#d95f0e", lw=1.8)
+    if mean_count is not None:
+        mc = np.where(np.isfinite(observed), mean_count, np.nan)
+        mc_mean = np.array([np.nanmean(mc[t == i]) if np.any((t == i) & np.isfinite(mc)) else np.nan for i in range(len(years))])
+        ax[1].plot(years, mc_mean, label="Fitted mean (model mean count)", color="#d95f0e", lw=1.8)
+        ax[1].plot(years, pred_mean, label="Typical route (route effect 0 if unfitted)", color="#d95f0e", lw=1.0,
+                   ls=":", alpha=.7)
+    else:
+        ax[1].plot(years, pred_mean, label="Fitted mean", color="#d95f0e", lw=1.8)
     ax[1].set(xlabel="Year", ylabel="Mean BBS count", title="Observed versus fitted annual mean")
     ax[1].legend(); ax[1].grid(alpha=.25)
     add_timeline_markers(ax[1])
@@ -828,7 +855,11 @@ def _write_source_sink_fields(npz_path, lam_realized, lam_fundamental, K_modern,
             print(f"[map-viz] ref raster {src.height}x{src.width} != field "
                   f"{lam_realized.shape}; skipped GeoTIFF")
             return
-    with rasterio.open(npz_path.with_suffix(".tif"), "w", driver="GTiff",
+    # Written to a geotiff/ subfolder, NOT beside the PNGs: a .tif in the figure folder crashes Windows Photos when
+    # any image in that folder is opened (user, 2026-11-08).
+    tif_path = npz_path.parent / "geotiff" / npz_path.with_suffix(".tif").name
+    tif_path.parent.mkdir(parents=True, exist_ok=True)
+    with rasterio.open(tif_path, "w", driver="GTiff",
                        height=lam_realized.shape[0], width=lam_realized.shape[1],
                        count=len(bands), dtype="float32", crs=crs, transform=transform,
                        nodata=np.float32(np.nan), compress="deflate") as dst:
@@ -992,7 +1023,7 @@ def plot_realized_source_sink(sim, lam_fundamental, years, rows, cols, shape, ou
     # the GeoTIFF written beside it -- the .tif was previously unlabelled anywhere.
     fig.supxlabel(
         "Fundamental λ (no density-dependence, no Allee) is figure 01a. Panels (b) and (c) "
-        "are bands 1–2 of 07_source_sink_fields.tif; the classification in (a) lives only in "
+        "are bands 1–2 of geotiff/07_source_sink_fields.tif; the classification in (a) lives only in "
         "the .npz (source_mask). See 07_source_sink_fields.md.",
         fontsize=7.5, color="0.35")
     _snap_map_height(fig)
@@ -1363,9 +1394,13 @@ def plot_disease_diagnostics(data, sim, years, rows, cols, shape, out, era):
     _era_i0, _era_i1, _ = era_span(era, years)
     # Reproduce the model's fraction over the whole epizootic window on the host.
     t_abs = np.arange(dis_t0, len(years))[:, None]
-    gate = 1.0 / (1.0 + np.exp(-(t_abs - onset_t[None, :]) / tau))
+    # The model's OWN onset gate and recovery form (compact onset / delayed recovery when configured), not a copy.
+    from src.model.age_fields import DISEASE_ONSET_SPEC, DISEASE_RECOVERY_SPEC
+    from src.model.disease_onset import onset_gate, recovery_fraction
+    delay_rec = float(np.asarray(sim["disease_delay_rec"])) if "disease_delay_rec" in sim else None
+    gate = np.asarray(onset_gate(t_abs - onset_t[None, :], tau, DISEASE_ONSET_SPEC))
     age = np.maximum(t_abs - onset_t[None, :], 0.0)
-    frac = sev[None, :] * gate * (1.0 - rec * (-np.expm1(-age / tau_rec)))
+    frac = sev[None, :] * gate * (1.0 - np.asarray(recovery_fraction(age, rec, tau_rec, DISEASE_RECOVERY_SPEC, delay_rec)))
 
     fig, ax = plt.subplots(1, 3, figsize=(17, 4.8))
 
@@ -1387,7 +1422,7 @@ def plot_disease_diagnostics(data, sim, years, rows, cols, shape, out, era):
     ax[1].plot(bins[:-1], prof, color="#cc4c02", lw=2)
     ax[1].axvline(0, color="black", lw=.8)
     ax[1].axhline(0, color="0.7", lw=.8)
-    ax[1].set(title=f"Onset profile (lag0={lag0:+.1f} yr, tau={tau:.2f} yr)",
+    ax[1].set(title=f"Onset profile (lag0={lag0:+.1f} yr; gate {DISEASE_ONSET_SPEC['form']})",
               xlabel="Years since modeled arrival", ylabel="Mean fraction of K removed")
 
     # Early vs late thirds of the arrival distribution: recovery should show up as
@@ -1400,7 +1435,7 @@ def plot_disease_diagnostics(data, sim, years, rows, cols, shape, out, era):
     for label, mask, color in groups:
         if mask.any():
             ax[2].plot(cal, frac[:, mask].mean(axis=1), color=color, lw=2, label=label)
-    ax[2].set(title=f"Recovery (rec={rec:.0%} of the hit, tau_rec={tau_rec:.0f} yr)",
+    ax[2].set(title=(f"Recovery (rec={rec:.0%} of the hit, delay={delay_rec:.0f} yr, delayed form)" if delay_rec is not None else f"Recovery (rec={rec:.0%} of the hit, tau_rec={tau_rec:.0f} yr)"),
               xlabel="Year", ylabel="Mean fraction of K removed")
     ax[2].legend(fontsize=8)
 
@@ -2374,7 +2409,7 @@ def main():
         lam, years, rows, cols, dcfg["grid"]["ref_raster"], out / "02_niche_trajectory.png")
     plot_modern_rate_maps(sim, years, rows, cols, shape,
                           out / "03_modern_demographic_rates.png", modern_era)
-    fit_metrics = plot_fit_diagnostics(sim, data, years, out / "04_map_fit_diagnostics.png")
+    fit_metrics = plot_fit_diagnostics(sim, data, years, out / "04_map_fit_diagnostics.png", cfg=cfg, run_dir=run_dir)
     z_names = z_feature_names(np.asarray(sim["latents"]["w_env"]).shape[0])
     response_metrics = plot_response_curves(
         sim, out / "05_demographic_response_curves.png", names=z_names)
@@ -2450,6 +2485,11 @@ def main():
     q_asym_metrics = plot_q_asymmetry_attribution(
         sim, data, cfg, dcfg, years, rows, cols, shape,
         out / "17b_q_asymmetry_attribution.png", modern_era, names=z_names)
+    # Process-level diagnostics (19-23, 04b; 2026-11-06): evidence the count likelihood cannot see -- establishment timing
+    # vs documented first breeding, premature establishment, the low-density 'invisible band', early-CBC presences, Runge
+    # contribution, and the fitted mean as a MEAN count. Each figure is optional and never blocks the suite.
+    from process_diagnostics import run_process_diagnostics
+    process_metrics = run_process_diagnostics(sim, data, cfg, dcfg, years, rows, cols, shape, out, run_dir=run_dir)
     n50_raw = float(np.asarray(sim["n50_raw"])); n50 = float(np.logaddexp(0.0, n50_raw))
     transition_land = np.isfinite(transition)
     subcell_metrics = None
@@ -2475,6 +2515,7 @@ def main():
                 if "subcell_survival_moderator" in data else None),
         }
     metrics = {
+        "process_diagnostics": process_metrics,
         "profile": args.profile, "checkpoint_step": int(checkpoint["step"]),
         "years": [int(years[0]), int(years[-1])],
         # The spans every "modern"/"baseline" number below was actually averaged

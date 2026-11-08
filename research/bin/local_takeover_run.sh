@@ -10,7 +10,7 @@ export HOUFIN_DATA=${HOUFIN_DATA:-/home/breallis/houfin/scratch/houfin/data}
 export HOUFIN_PROCESSED=${HOUFIN_PROCESSED:-/work/07980/bwa386/ls6/houfin/processed}
 export AGE_MODEL_CONFIG=${AGE_MODEL_CONFIG:-$ROOT/config/overlays/grid54_step43_factor_p2_veit_s41.json}
 export DATA_CONFIG=${DATA_CONFIG:-$ROOT/config/overlays/grid54_data.json}
-export HOUFIN_Z_FLOAT32=1 HOUFIN_MODEL_PRECISION=${SBX_PRECISION:-float64}
+export HOUFIN_Z_FLOAT32=${HOUFIN_Z_FLOAT32:-1} HOUFIN_MODEL_PRECISION=${SBX_PRECISION:-float64}
 export SBX_PRECISION=${SBX_PRECISION:-float64} PYTHONUNBUFFERED=1
 export SBX_STEP=step43_factor_p2_veit_s41
 export SBX_REFINED=${SBX_REFINED:-$HOUFIN_PROCESSED/model_results/refined_float64__age_map_float32_grid54_step43_factor_p2_veit_s41_quick90}

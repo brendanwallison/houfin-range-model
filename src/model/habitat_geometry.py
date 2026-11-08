@@ -14,7 +14,17 @@ def capacity_demography_loadings(correlation):
     return jnp.stack([demographic, demographic, capacity, demographic])
 
 
-def capacity_demography_coefficients(shared, capacity, amplitudes, correlation):
+def survival_breeding_loadings(correlation):
+    """Unit-variance loadings; Sa/Sj share the survival direction, Fmax/K share the breeding direction,
+    which has correlation r with survival (user question 2026-11-08: if anything departs, K should move with
+    fecundity -- both are breeding-season quantities; K is nest-site capacity in the Veit-Lewis readout)."""
+    r = jnp.asarray(correlation)
+    survival = jnp.stack([jnp.ones_like(r), jnp.zeros_like(r)])
+    breeding = jnp.stack([r, jnp.sqrt(jnp.maximum(1.0 - r * r, 0.0))])
+    return jnp.stack([survival, breeding, breeding, survival])
+
+
+def capacity_demography_coefficients(shared, capacity, amplitudes, correlation, loadings_fn=None):
     """Compose iid feature draws without normalizing or rotating exported Z."""
     factors = jnp.concatenate([shared, capacity], axis=-1)
-    return (factors @ capacity_demography_loadings(correlation).T) * amplitudes
+    return (factors @ (loadings_fn or capacity_demography_loadings)(correlation).T) * amplitudes

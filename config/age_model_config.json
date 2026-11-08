@@ -55,7 +55,7 @@
     "dispersal_random_enabled": true,
     "_disease_prior_comment": "The mycoplasmal-conjunctivitis effect on capacity, as a STRUCTURED hypothesis: K = K_base * (1 - severity(x) * onset_gate(x,t) * (1 - recovery(t - arrival))). See docs/PRIORS.md#disease-term and src/model/age_fields.py.",
     "_capacity_level_comment": "Prior on K's continental LEVEL, in expected BBS route counts, anchored on the typical OCCUPIED cell (median 2.618). See docs/PRIORS.md#capacity-level.",
-    "_allee_comment": "Allee half-saturation on the BBS ROUTE-COUNT scale: allee_factor = 1 - 2^(-C/n50), half released at C = n50. See docs/PRIORS.md#allee-effect.",
+    "_allee_comment": "Allee half-saturation on the BBS ROUTE-COUNT scale: allee_factor = 1 - 2^(-C/n50), half released at C = n50 (median-route counts; internal = counts / pop_scalar). Literature comparison (Veit & Lewis 1996, birds/km2) goes through the Partners in Flight absolute bridge (1 mean-route count = .735 [.367] birds/km2), not a K-ratio transfer; capacity_floor_internal is absolute and does not follow n50. See docs/PRIORS.md#allee-effect.",
     "allee_prior": {
       "n50_raw_loc": -2.0,
       "n50_raw_scale": 1.0

@@ -750,6 +750,67 @@ def load_data(input_dir, target_device=None, precision="float32", verbose=True):
         _cbc_years = np.asarray(meta["years"])[meta["cbc_t"]]
         if (_cbc_years < int(_cbc["minimum_state_year"])).any():
             raise ValueError("pre-initialization CBC likelihood would be invalid")
+    # population_model.kernel_ramp (ROBUST lever A, default off): a time-varying EASTERN juvenile kernel -- origin
+    # cells east of east_col_min send a share s(t) of their dispersing juveniles through an ALTERNATE (longer) kernel
+    # stack loaded from another input built with the same pipeline (same bands, labels, grid).
+    _kr = dict((_lamc().get("population_model", {}) or {}).get("kernel_ramp") or {})
+    if _kr.get("enabled"):
+        with open(os.path.join(_kr["alt_input_dir"], "metadata.pkl"), "rb") as _fh:
+            _alt = pickle.load(_fh)
+        if [str(x) for x in _alt["juvenile_kernel_labels"]] != [str(x) for x in meta["juvenile_kernel_labels"]]:
+            raise ValueError("kernel_ramp alternate input has different juvenile kernel labels")
+        for _k in ("juvenile_fft_kernel_stack", "juvenile_edge_correction_stack"):
+            if np.asarray(_alt[_k]).shape != np.asarray(meta[_k]).shape:
+                raise ValueError(f"kernel_ramp alternate {_k} shape differs")
+            meta["alt_" + _k] = np.asarray(_alt[_k])
+        _col = np.arange(int(meta["Nx"]))[None, :] >= int(_kr["east_col_min"])
+        meta["ramp_mask"] = (np.asarray(meta["land_mask"]).astype(bool) & _col).astype(f_type_cpu)
+        if verbose:
+            print(f"  [kernel_ramp] alternate stack from {_kr['alt_input_dir']}; east mask {int(meta['ramp_mask'].sum())} land cells")
+    # population_model.trend_routing (FINAL ROUND 2026-11-06, default off): each region's yearly-mean Z change (West /
+    # Plains / East by grid column) reaches the VITAL RATES only through a learned share eta; capacity reads it fully.
+    # Here: the region of every land cell and the per-region yearly mean of Z minus its all-years mean (T, R, M).
+    _tr = dict((_lamc().get("population_model", {}) or {}).get("trend_routing") or {})
+    if _tr.get("enabled"):
+        _brk = [int(b) for b in _tr.get("region_col_breaks", [48, 56])]       # cols < 48 West, 48-55 Plains, >= 56 East
+        _reg = np.searchsorted(np.asarray(_brk), np.asarray(meta["land_cols"]), side="right").astype(np.int32)
+        _Z = np.asarray(meta["Z_gathered"], dtype=np.float64)                   # (T, N_land, M)
+        _R = len(_brk) + 1
+        _zbar = np.stack([_Z[:, _reg == r].mean(axis=1) for r in range(_R)], axis=1)   # (T, R, M)
+        meta["trend_region"] = _reg
+        meta["trend_zdev"] = (_zbar - _zbar.mean(axis=0, keepdims=True)).astype(f_type_cpu)
+        if _tr.get("smooth_km"):
+            # SMOOTH routing (2026-11-07; user: the column bands leave a seam at ~100W): each cell's "regional" anomaly is
+            # a Gaussian-weighted mean of Z over cells within ~smooth_km (grid distance x 54 km), minus its all-years mean;
+            # trend_region becomes the cell index (one anomaly per cell), and eta varies smoothly along the grid columns.
+            _rc = np.stack([np.asarray(meta["land_rows"]), np.asarray(meta["land_cols"])], 1).astype(np.float64) * 54.0
+            _d2 = ((_rc[:, None, :] - _rc[None, :, :]) ** 2).sum(-1)
+            _Wk = np.exp(-_d2 / (2.0 * float(_tr["smooth_km"]) ** 2)); _Wk /= _Wk.sum(1, keepdims=True)
+            _zs = np.einsum('ij,tjm->tim', _Wk, _Z)
+            meta["trend_zdev"] = (_zs - _zs.mean(axis=0, keepdims=True)).astype(f_type_cpu)
+            meta["trend_region"] = np.arange(_Z.shape[1], dtype=np.int32)
+            meta["trend_col"] = np.asarray(meta["land_cols"], dtype=f_type_cpu)
+            if str(_tr.get("eta_coord", "column")) == "native_distance":
+                # eta varies with distance (km) to the NATIVE seed range (initpop_latent > 0 west of col 48, as the halo
+                # absences use) instead of grid column: follows the real range edge (user 2026-11-07, "the shape").
+                _ip = np.asarray(meta["initpop_latent"]); _lr, _lc = np.asarray(meta["land_rows"]), np.asarray(meta["land_cols"])
+                _ip = _ip[_lr, _lc] if _ip.ndim == 2 else _ip
+                _nat = (_ip > 0) & (_lc < 48)
+                _dn = np.sqrt(((_rc[:, None, :] - _rc[None, _nat, :]) ** 2).sum(-1)).min(1)
+                meta["trend_col"] = _dn.astype(f_type_cpu)          # reused slot: the eta coordinate (km here)
+                if verbose:
+                    print(f"  [trend_routing] eta coordinate = distance to native seed ({int(_nat.sum())} cells); "
+                          f"q10/50/90 km {np.percentile(_dn, [10, 50, 90]).round(0).tolist()}")
+        if verbose:
+            print(f"  [trend_routing] regions {np.bincount(_reg).tolist()} land cells; breaks {_brk}; smooth_km {_tr.get('smooth_km')}")
+    _um = dict((_lamc().get("population_model", {}) or {}).get("urban_mating") or {})
+    if _um.get("enabled"):
+        with np.load(_um["file"]) as _z:
+            if [int(y) for y in _z["years"]] != [int(y) for y in meta["years"]]:
+                raise ValueError("urban_mating strata years do not match the model inputs")
+            meta["um_u"] = np.asarray(_z["u"], dtype=f_type_cpu); meta["um_a"] = np.asarray(_z["a"], dtype=f_type_cpu)
+        if meta["um_u"].shape[1] != len(meta["land_rows"]):
+            raise ValueError("urban_mating strata land cells do not match the model inputs")
     residency = os.environ.get("HOUFIN_MODEL_INPUT_RESIDENCY", "device").lower()
     if residency not in {"device", "host"}:
         raise ValueError("HOUFIN_MODEL_INPUT_RESIDENCY must be 'device' or 'host'")
@@ -762,7 +823,14 @@ def load_data(input_dir, target_device=None, precision="float32", verbose=True):
     # dot products promote per-year slices to float64. Lets rank-48/64 float64 refines fit (E048).
     z32 = os.environ.get("HOUFIN_Z_FLOAT32") == "1"
 
+    # HOUFIN_COMPLEX128=1 (opt-in; ROBUST diagnostic 2026-11-06): in a float64 run, promote the complex64 FFT kernel
+    # stacks to complex128. Stored complex64, they make every dispersal convolution single-precision, which puts O(0.1)
+    # evaluation noise into the objective (finite differences jump by ~0.16 under 1e-6 steps at short-kernel optima).
+    c128 = os.environ.get("HOUFIN_COMPLEX128") == "1" and precision == "float64"
+
     def _to_device(value, key=None):
+        if c128 and np.issubdtype(value.dtype, np.complexfloating):
+            return jnp.array(np.asarray(value, dtype=np.complex128))
         if np.issubdtype(value.dtype, np.floating):
             if z32 and key in LARGE_INPUT_KEYS:
                 # Cast on host before transfer: transferring a float64 staging

@@ -19,10 +19,11 @@ import numpyro
 import numpyro.distributions as dist
 
 from src.config_utils import load_age_model_config
-from src.model.age_fields import (DISEASE_ONSET_SPEC, disease_mortality_amplitude, disease_severity,
+from src.model.age_fields import (DISEASE_ONSET_SPEC, DISEASE_RECOVERY_SPEC as _DISEASE_RECOVERY_SPEC, disease_mortality_amplitude, disease_severity,
                                   project_and_scatter_age_structured)
 from src.model.age_forward import allee_mated_fraction, forward_sim_age_structured, juvenile_band_weights
-from src.model.habitat_geometry import capacity_demography_coefficients, capacity_demography_loadings
+from src.model.habitat_geometry import capacity_demography_coefficients, capacity_demography_loadings, survival_breeding_loadings
+from src.model import growth_kernel as _gkm
 
 # Prior settings read from config so they can be retuned without editing model
 # code -- these are the knobs most likely to be revisited between runs. See
@@ -36,6 +37,72 @@ _INVASION_PULSE = dict(_POP_SPEC["invasion_pulse_prior"])
 _INITPOP_SEED = dict(_POP_SPEC["initpop_seed"])
 _ALLEE_PRIOR = dict(_POP_SPEC["allee_prior"])
 _RELEASE_ALLEE_EXEMPT_YEARS = int(_POP_SPEC.get("release_allee_exemption_years", 0))
+#   trend_routing             {"enabled": bool, "region_col_breaks": [48, 56], "eta_a", "eta_b"} (FINAL ROUND 2026-11-06,
+#                             default off): each region's yearly-mean Z change reaches the vital rates (Sa, Sj, Fmax, Q)
+#                             only through a learned share eta ~ Beta(eta_a, eta_b); capacity reads it fully. eta = 1 is
+#                             the current model exactly. R55: the regional Z trend carries both the inflation and the
+#                             forecast skill -- this routes it rather than removing it.
+#   colonization_clock        {"enabled", "d0_a", "d0_b", "tau_median_years", "tau_log_scale", "theta", "width"} (default
+#                             off): fecundity x (1 - d0 exp(-A / tau)), A = years established (see age_forward).
+#   urban_mating              {"enabled", "file": subcell_strata npz, "b_scale"} (default off): birds in a cell are spread
+#                             over its HISDAC built-up slices at relative density exp(b u_s) / sum a exp(b u); mate-finding
+#                             acts per slice and births are bird-weighted. b ~ HalfNormal(b_scale); b = 0 is the leader exactly.
+_URBAN = dict(_POP_SPEC.get("urban_mating") or {})
+URBAN_MATING = bool(_URBAN.get("enabled", False))
+_COLON = dict(_POP_SPEC.get("colonization_clock") or {})
+COLON_CLOCK = bool(_COLON.get("enabled", False))
+#   k_discrepancy             {"enabled", "start_year": 1994, "knot_step": 4, "sd": 0.3} (FINAL ROUND 2026-11-06, default off):
+#                             per-region (trend_routing regions) piecewise-linear curve on the CAPACITY link argument, zero
+#                             before start_year, knots every knot_step years, weights ~ N(0, sd): a misspecification outlet
+#                             for eras of change the joint model cannot represent (disease, feeders), routed to K only.
+_KDISC = dict(_POP_SPEC.get("k_discrepancy") or {})
+K_DISC = bool(_KDISC.get("enabled", False))
+
+
+def _trend_eta(data=None):
+    """trend_routing eta: one shared Beta(eta_a, eta_b) (default; the original site), or, with "per_region": true, one
+    per region (west / plains / east by region_col_breaks), priors from eta_a_region / eta_b_region lists (else eta_a / eta_b).
+    Overnight 2026-11-06: the per-row decomposition put ~2/3 of the BBS preference for eta 1 in the WEST."""
+    a0, b0 = float(_TREND_ROUTE.get("eta_a", 1.0)), float(_TREND_ROUTE.get("eta_b", 1.0))
+    if _TREND_ROUTE.get("smooth_km"):   # smooth routing: eta(col) = eta_w + (eta_e - eta_w) * sigmoid((col - mid) / width)
+        _ew = numpyro.sample("trend_route_eta_w", dist.Beta(a0, b0))
+        _ee = numpyro.sample("trend_route_eta_e", dist.Beta(a0, b0))
+        _mid = numpyro.sample("trend_route_mid", dist.Normal(float(_TREND_ROUTE.get("mid_col_loc", 52.0)), float(_TREND_ROUTE.get("mid_col_sd", 6.0))))
+        _wd = numpyro.sample("trend_route_width", dist.LogNormal(float(np.log(_TREND_ROUTE.get("width_col_loc", 4.0))), 0.5))
+        return numpyro.deterministic("trend_route_eta_cell", _ew + (_ee - _ew) * jnn.sigmoid((data["trend_col"] - _mid) / _wd))
+    if bool(_TREND_ROUTE.get("per_rate", False)):   # one eta per vital rate (adult survival s, fecundity r, juvenile sj)
+        return {k: numpyro.sample(f"trend_route_eta_{k}", dist.Beta(a0, b0)) for k in ("s", "r", "sj")}
+    if not bool(_TREND_ROUTE.get("per_region", False)):
+        return numpyro.sample("trend_route_eta", dist.Beta(a0, b0))
+    R = len(_TREND_ROUTE.get("region_col_breaks", [48, 56])) + 1
+    ar = jnp.asarray([float(v) for v in _TREND_ROUTE.get("eta_a_region", [a0] * R)])
+    br = jnp.asarray([float(v) for v in _TREND_ROUTE.get("eta_b_region", [b0] * R)])
+    return numpyro.sample("trend_route_eta", dist.Beta(ar, br).to_event(1))
+
+
+def _kdisc_D(data):
+    yrs = jnp.asarray(data['years']).astype(float)
+    y0 = float(_KDISC.get("start_year", 1994)); step = float(_KDISC.get("knot_step", 4))
+    y1 = float(_KDISC.get("end_year", 2025))
+    knots = jnp.asarray(np.arange(y0 + step, y1 + step, step))                     # static grid; curve is 0 at y0
+    # hat basis: B[t, j] = max(0, 1 - |y - knot_j| / step), with the curve pinned to 0 for y <= y0
+    B = jnp.maximum(0.0, 1.0 - jnp.abs(yrs[:, None] - knots[None, :]) / step) * (yrs[:, None] > y0)
+    R = len(_TREND_ROUTE.get("region_col_breaks", [48, 56])) + 1                     # static: regions of trend_routing
+    if str(_KDISC.get("form", "iid")) == "rw":
+        # SHRINKAGE form (user 2026-11-06: iid N(0,.3) knots are too expressive): random-walk increments with ONE learned
+        # scale tau ~ HalfNormal(tau_scale) shared by all regions -> the curve collapses to 0 unless the data need it
+        tau = numpyro.sample("k_disc_tau", dist.HalfNormal(float(_KDISC.get("tau_scale", 0.05))))
+        z = numpyro.sample("k_disc_z", dist.Normal(0.0, 1.0).expand([R, knots.shape[0]]).to_event(2))
+        w = jnp.cumsum(tau * z, axis=1)                                            # non-centred random walk from 0
+    else:
+        w = numpyro.sample("k_disc_w", dist.Normal(0.0, float(_KDISC.get("sd", 0.3))).expand([R, knots.shape[0]]).to_event(2))
+    D = B @ w.T                                                                      # (time, R)
+    numpyro.deterministic("k_disc_D", D)
+    return D
+
+
+_TREND_ROUTE = dict(_POP_SPEC.get("trend_routing") or {})
+TREND_ROUTING = bool(_TREND_ROUTE.get("enabled", False))
 # Structural switches. Each default reproduces the model before the switch existed, so a
 # config without the key fits the same model it always did.
 #   manifold_prior.form       "rank2" (two coupled groups) | "exchangeable" (one coupling)
@@ -91,6 +158,7 @@ _DISEASE_SPEC = dict(_POP_SPEC.get("disease_prior", {}))
 DISEASE_TARGET = _DISEASE_SPEC.get("target", "capacity")
 if DISEASE_TARGET not in {"capacity", "survival"}:
     raise ValueError(f"disease_prior.target must be capacity or survival, got {DISEASE_TARGET!r}")
+_CEIL_PRIOR = dict(_DISEASE_SPEC.get("ceiling_prior") or {})
 _DISEASE_CEILING = float(_DISEASE_SPEC.get("mortality_ceiling", 0.8) if DISEASE_TARGET == "survival"
                          else _DISEASE_SPEC.get("severity_ceiling", 0.5))
 #   subcell_strata            {"enabled": bool, "beta_k_scale", "delta_f_scale"}: split each cell
@@ -292,6 +360,7 @@ if _NUMERICS:
                         else float(_NUMERICS["smooth_allocation"]))
 import src.model.age_forward as _af_allee                    # allee_prior.aggregation_k (always set: no stale value)
 _af_allee.ALLEE_AGG_K = ALLEE_AGG_K
+_af_allee.ALLEE_PER_CAPITA = bool(_ALLEE_PRIOR.get("per_capita", False))   # FINAL ROUND: bird-weighted mated fraction
 #   occupancy                 {"enabled": bool, "birds_per_route_count": float}: E063 occupancy closure --
 #                             each cell carries psi = P(>= 1 bird) across realisations; departure, disease and
 #                             reproduction act on the occupied-conditional density m = N / psi; arrivals
@@ -356,6 +425,11 @@ _ATTR = dict(_POP_SPEC.get("settlement_attraction", {}))
 ATTRACTION = bool(_ATTR.get("enabled", False))
 _NATDEP = dict(_POP_SPEC.get("native_departure", {}))
 NATIVE_DEPARTURE = bool(_NATDEP.get("enabled", False))
+# population_model.departure_global (2026-11-07, default off; DIAGNOSTIC): ONE scale g ~ Beta(a, b) on the departure
+# probability everywhere (both ages): departure x g x (1 - r w(x)) with native_departure. Anchor: BBL natal dispersal --
+# central / eastern young leave a 54-km cell ~25-60% (raw; more with recovery bias) where Veit departure sends ~all out at K.
+_DEPG = dict(_POP_SPEC.get("departure_global") or {})
+DEPARTURE_GLOBAL = bool(_DEPG.get("enabled", False))
 _PN = dict(_POP_SPEC.get("process_noise", {}))
 PROCESS_NOISE = bool(_PN.get("enabled", False))
 #   process_noise.target      "abundance" (default: N <- N e^eps) | "fecundity" (Fmax <- Fmax e^eps inside the forward
@@ -410,12 +484,38 @@ OCC_BIRDS_PER_COUNT = float(_OCC.get("birds_per_route_count", 58.0))
 _REPRO = dict(_POP_SPEC.get("reproduction", {}))
 VEIT_REPRO = _REPRO.get("form", "standard") == "veit"
 YEARLING = bool(_REPRO.get("yearling_breeding", False)) or VEIT_REPRO
+# population_model.adult_survival_dd (overnight 2026-11-07, default off): the density brake at K is SHARED between adult
+# survival and fecundity. theta ~ Beta(theta_a, theta_b) is the survival share: c_s = theta * c_s1, where c_s1 is the
+# survival brake that alone would give lambda = 1 at K; fecundity's brake c is re-solved for the rest. theta = 0 is the
+# current model exactly. Sa_eff = Sa / (1 + c_s * crowding(N/K)) in the forward step (standard reproduction form only).
+# population_model.spinup (2026-11-07, default off): run the model S years (fixed, not fitted) at its OWN early-1900s rates
+# (every time-varying input held at its mean over the first habitat_years model years; no disease, no release) from the
+# native seed, and start 1902 from that state -- the 1902 native range is then consistent with the fitted life cycle instead
+# of being a seed map at local capacity (user: "lambda starts too low"; the seeded West shrank 22% in 1902-15).
+_SPIN = dict(_POP_SPEC.get("spinup") or {})
+SPINUP = bool(_SPIN.get("enabled", False))
+_DDS = dict(_POP_SPEC.get("adult_survival_dd") or {})
+DD_SURVIVAL = bool(_DDS.get("enabled", False))
+# population_model.growth_kernel (research prototype 2026-11-08, default OFF): the density-dependent local update (adult
+# survival brake, Beverton-Holt fecundity, Allee, K) is replaced by learned s(Z, u), rho(Z, u) with a Z x density
+# interaction (src/model/growth_kernel.py). It overrides adult_survival_dd (no c_s site) and drops the local age-structure
+# regulariser (both describe the mechanistic rates). Dispersal (incl. its K), juvenile / journey survival, disease, the
+# native seed and the observation model are unchanged.
+_GK_SPEC = _gkm.spec_from_config(_POP_SPEC.get("growth_kernel"))
+GROWTH_KERNEL = bool(_GK_SPEC["enabled"])
+# population_model.lineage (2026-11-07, default off): the introduced (released) lineage is tracked as a sub-population that
+# shares density dependence, dispersal, survival and disease with the native birds; its breeders' births are e^delta times the
+# native per-breeder births, delta ~ Normal(loc, sd) -- ONE constant parameter (population structure, not geography; see
+# age_forward.forward_sim_age_structured lineage_delta). Motivation: a pinned early native West breaks the post-1980 East when
+# both must share one habitat -> rate map (SANDBOX_INVASION_SHAPE_2026-11 "LOCALISATION of the presence tension").
+_LIN = dict(_POP_SPEC.get("lineage") or {})
+LINEAGE = bool(_LIN.get("enabled", False))
 DEPART_BY_AGE = _DEPART_FORM == "age"
 CROWDING_ARM = bool(_DEPART.get("crowding_arm", False))
 CROWDING_KAPPA = float(_DEPART.get("crowding_sharpness", 5.0))
 if _HABITAT_CENTERING not in {"none", "occupied"}:
     raise ValueError(f"habitat_centering must be none or occupied, got {_HABITAT_CENTERING!r}")
-if _MANIFOLD_FORM not in {"rank2", "exchangeable", "capacity_demography"}:
+if _MANIFOLD_FORM not in {"rank2", "exchangeable", "capacity_demography", "survival_breeding"}:
     raise ValueError(f"unsupported manifold_prior.form: {_MANIFOLD_FORM!r}")
 if _K_LINK not in {"softplus", "exp"}:
     raise ValueError(f"capacity_level_prior.link must be softplus or exp, got {_K_LINK!r}")
@@ -580,7 +680,7 @@ if YEARLING and (SETTLE_WEIGHT not in ("capacity", "uniform") or SUBCELL or _K_F
         "subcell_strata or crowding capacity (they assume adult-only breeding)")
 
 
-def equilibrium_age_quantities(Sa, Sj, Fmax, K, allee_gamma):
+def equilibrium_age_quantities(Sa, Sj, Fmax, K, allee_gamma, dd_theta=None):
     """Return density brake, fecundity-at-K, growth rate, and juvenile fraction.
 
     Algebra matches :func:`reproduction_age_structured`: surviving adults
@@ -599,15 +699,26 @@ def equilibrium_age_quantities(Sa, Sj, Fmax, K, allee_gamma):
     if YEARLING:
         # yearlings breed: lambda = Sa + Sj*F, replacement F = (1 - Sa)/Sj. (Under veit the
         # brake c is unused by the forward model; reported for the age-structure prior only.)
+        if dd_theta is not None:   # adult_survival_dd, yearling form: survival alone would need Sa_K = 1 - Sj*Fmax
+            _sak_min = jnp.clip(1.0 - Sj * Fmax, 0.05, 1.0)
+            c_s = dd_theta * jnp.maximum(Sa / _sak_min - 1.0, 0.0)
+            Sa = Sa / (1.0 + c_s)
         c = jnp.maximum((Fmax * Sj) / (1.0 - Sa + 1e-6) - 1.0, 0.0)
         F_at_K = Fmax / (1.0 + c) * allee_at_K
         lam = Sa + Sj * F_at_K
         rho = F_at_K / (1.0 + F_at_K)
+        if dd_theta is not None:
+            return c, F_at_K, lam, rho, c_s
         return c, F_at_K, lam, rho
+    if dd_theta is not None:   # adult_survival_dd: survival takes share theta of the brake (see DD_SURVIVAL)
+        c_s = dd_theta * jnp.maximum(Sa * (1.0 + Fmax * Sj) - 1.0, 0.0)
+        Sa = Sa / (1.0 + c_s)                                   # survival AT K; fecundity's brake re-solved below
     c = jnp.maximum((Fmax * Sa * Sj) / (1.0 - Sa + 1e-6) - 1.0, 0.0)
     F_at_K = Fmax / (1.0 + c) * allee_at_K
     lam = (Sa + jnp.sqrt(Sa**2 + 4.0 * F_at_K * Sa * Sj)) / 2.0
     rho = (F_at_K * Sa) / (F_at_K * Sa + lam)
+    if dd_theta is not None:
+        return c, F_at_K, lam, rho, c_s
     return c, F_at_K, lam, rho
 
 
@@ -688,10 +799,13 @@ def _capacity_demography_w_env(M_features, w_scale, prior_scale):
         # Do not leave an unused capacity factor in the optimizer vector.
         capacity = (numpyro.sample("capacity_factor", dist.Normal(0.0, 1.0))
                     if fixed is None or float(fixed) < 1.0 else jnp.zeros_like(shared))
-    loadings = numpyro.deterministic("manifold_loadings", capacity_demography_loadings(r))
+    # survival_breeding (2026-11-08): same sites, but the second direction carries Fmax AND K (breeding season)
+    # while Sa / Sj keep the first (survival). capacity_correlation_logit is then the survival-breeding correlation.
+    _lf = survival_breeding_loadings if _MANIFOLD_FORM == "survival_breeding" else capacity_demography_loadings
+    loadings = numpyro.deterministic("manifold_loadings", _lf(r))
     numpyro.deterministic("manifold_communality", jnp.ones(4))
     weights = numpyro.deterministic(
-        "w_env", capacity_demography_coefficients(shared, capacity, w_scale, r))
+        "w_env", capacity_demography_coefficients(shared, capacity, w_scale, r, loadings_fn=_lf))
     return weights, loadings @ loadings.T
 
 
@@ -814,7 +928,7 @@ def sample_priors(prior_scale=1.0, M_features=None, time=None,
                                 + jnp.sqrt(1.0 - (L_load ** 2).sum(-1))[None, :] * eps_idio),
         )
         corr = L_load @ L_load.T
-    elif _MANIFOLD_FORM == "capacity_demography":
+    elif _MANIFOLD_FORM in ("capacity_demography", "survival_breeding"):
         w_env, corr = _capacity_demography_w_env(M_features, w_scale, prior_scale)
     else:
         w_env, corr = _exchangeable_w_env(M_features, w_scale, prior_scale)
@@ -833,7 +947,20 @@ def sample_priors(prior_scale=1.0, M_features=None, time=None,
     # The new one: adult vs juvenile survival, the pair this rank-2 extension exists to couple.
     numpyro.deterministic("env_corr_survival_adult_juv", corr[0, 3])
 
-    if SPLIT_READOUT:
+    if SPLIT_READOUT and _READOUT.get("within_shared"):
+        # readout.within_shared (agent_levers round 3, 2026-11-07): ONE temporal habitat direction for every field.
+        # Level (z_ref . beta_j) keeps each field's own direction (capacity_demography: K may depart from the
+        # demographic direction in SPACE); the within-cell deviation (z_t - z_ref) of EVERY field reads the shared
+        # direction u (the demographic field's unit direction by default, or K's with within_shared = "capacity"),
+        # at that field's own amplitude w_scale_j. No new sites. At fixed_capacity_correlation 1 (or exchangeable with
+        # fixed_coupling 1) it reproduces the unsplit model exactly.
+        _ref_col = 2 if str(_READOUT.get("within_shared")) == "capacity" else 0
+        u_sh = w_env[:, _ref_col] / jnp.maximum(w_scale[_ref_col], 1e-12)
+        w_env_w = numpyro.deterministic("w_env_within", w_scale[None, :] * u_sh[:, None])
+        numpyro.deterministic("w_scale_within", w_scale)
+        priors['beta_s_w'], priors['beta_r_w'] = w_env_w[:, 0], w_env_w[:, 1]
+        priors['beta_k_w'], priors['beta_sj_w'] = w_env_w[:, 2], w_env_w[:, 3]
+    elif SPLIT_READOUT:
         # Within-cell deviation block: an independent exchangeable draw (same coupling rho) with its
         # OWN amplitudes, same prior as the level block -- the data decide how much the deviation counts.
         if _MANIFOLD_FORM != "exchangeable":
@@ -1019,10 +1146,18 @@ def sample_priors(prior_scale=1.0, M_features=None, time=None,
     # the allowed steepness, which a LogNormal prior would happily ignore.
     # (disease_prior.target = survival: the same monotonicity argument applies to survivors
     # S*N*(1 - m(N)) in N, with the mortality ceiling in place of the severity ceiling.)
-    _n_max = 0.85 * (4.0 / _DISEASE_CEILING - 2.0)
+    if _CEIL_PRIOR:   # disease_prior.ceiling_prior {"median", "logit_scale"} (FINAL ROUND 2026-11-06): learnable ceiling
+        _ceil = numpyro.deterministic("disease_ceiling", jnn.sigmoid(numpyro.sample("disease_ceiling_logit", dist.Normal(
+            math.log(float(_CEIL_PRIOR["median"]) / (1.0 - float(_CEIL_PRIOR["median"]))),
+            float(_CEIL_PRIOR.get("logit_scale", 0.5)) * prior_scale))))
+    else:
+        _ceil = _DISEASE_CEILING
+    priors['disease_ceiling'] = _ceil
+    _n_max = 0.85 * (4.0 / _ceil - 2.0)
     _n_min = 0.5
     _n_med = float(_p["hill_n_median"])
-    _n_raw_loc = math.log((_n_med - _n_min) / (_n_max - _n_med))
+    _n_max_static = 0.85 * (4.0 / (float(_CEIL_PRIOR["median"]) if _CEIL_PRIOR else _DISEASE_CEILING) - 2.0)
+    _n_raw_loc = math.log((_n_med - _n_min) / (_n_max_static - _n_med))   # prior location fixed; bounds follow the ceiling
     priors['disease_hill_n'] = numpyro.deterministic(
         "disease_hill_n",
         _n_min + (_n_max - _n_min) * jnn.sigmoid(numpyro.sample(
@@ -1053,6 +1188,15 @@ def sample_priors(prior_scale=1.0, M_features=None, time=None,
             dist.Normal(float(_p["recovery_logit_loc"]),
                         float(_p["recovery_logit_scale"]) * prior_scale))),
     )
+    # recovery.form "delayed" (default "exponential"): host adaptation after a learned delay (disease_onset.py,
+    # resolve_recovery_spec); tau_rec is then unused (kept so the exponential default is unchanged site-for-site).
+    if _DISEASE_RECOVERY_SPEC["form"] == "delayed":
+        priors['disease_delay_rec'] = numpyro.deterministic(
+            "disease_delay_rec",
+            jnp.exp(numpyro.sample(
+                "disease_log_delay_rec",
+                dist.Normal(jnp.log(_DISEASE_RECOVERY_SPEC["delay_median_years"]),
+                            _DISEASE_RECOVERY_SPEC["delay_log_scale"] * prior_scale))))
     priors['disease_tau_rec'] = numpyro.deterministic(
         "disease_tau_rec",
         # LogNormal keeps the timescale positive and multiplicatively symmetric:
@@ -1295,11 +1439,12 @@ def build_model_2d(data, prior_scale=1.0):
         "lag0": priors['disease_lag0'],
         "w_lag": priors['disease_w_lag'],
         "tau": priors['disease_tau'],
-        "ceiling": _DISEASE_CEILING,
+        "ceiling": priors.get('disease_ceiling', _DISEASE_CEILING),
         "k_half": priors['disease_k_half'],
         "hill_n": priors['disease_hill_n'],
         "rec": priors['disease_rec'],
         "tau_rec": priors['disease_tau_rec'],
+        **({"delay_rec": priors['disease_delay_rec']} if 'disease_delay_rec' in priors else {}),
     }
 
     # The 1940 release(s), as a fraction of a FIXED, EMPIRICALLY OBSERVED, K-
@@ -1505,7 +1650,51 @@ def build_model_2d(data, prior_scale=1.0):
                        if SPLIT_READOUT else None),
         journey=journey_in,
         compounding=compounding_in,
+        k_discrepancy=((data['trend_region'], _kdisc_D(data)) if K_DISC else None),
+        trend_routing=((data['trend_zdev'], data['trend_region'], _trend_eta(data))
+                       if TREND_ROUTING else None),
     )
+    # manifold_prior.coupling_priors (2026-11-08, user: strong prior on survival-K coupling, both "similar environmental
+    # responses and similar final correlation"). The r parameter does not bind -- the realised Sa-K coefficient cosine
+    # stayed ~.5 at r = .95 because the factor norms are free -- so these act on REALISED quantities, Fisher-z normal:
+    #   coef: cosine of the Sa and K coefficient vectors;  map: land-cell correlation of their reference habitat
+    #   predictors (Z_ref centred) . beta.  {"coef": {"mean": .9, "sd": .1}, "map": {...}}; either may be omitted.
+    # Penalties on derived quantities: fine for MAP; under HMC the effective prior is their product with the factor priors.
+    # "pairs" (optional): which field pairs, as [i, j] over [Sa, Fmax, K, Sj] or "all" (the 6 pairs); default [[0, 2]]
+    # (Sa-K). The Sa-K pair keeps its original site names (coupling_*_s_k / coupling_*_prior) so readouts are unchanged.
+    _cp = _MANIFOLD_PRIOR.get("coupling_priors")
+    if _cp:
+        _B = [priors['beta_s'], priors['beta_r'], priors['beta_k'], priors['beta_sj']]
+        _pairs = _cp.get("pairs", [[0, 2]])
+        if _pairs == "all":
+            _pairs = [[i, j] for i in range(4) for j in range(i + 1, 4)]
+        _FN = "srkj"   # Sa, Fmax (r), K, Sj
+
+        def _zpen(c, spec):
+            # "one_sided": penalise only correlations BELOW the target (a floor on coupling; 1 is free). The two-sided
+            # Fisher-z normal penalises c -> 1 without bound, i.e. it would force identical fields apart to ~mean.
+            z = jnp.arctanh(jnp.clip(c, -0.999999, 0.999999))
+            d = (z - math.atanh(float(spec["mean"]))) / float(spec["sd"])
+            if spec.get("one_sided"):
+                d = jnp.minimum(d, 0.0)
+            return -0.5 * d ** 2
+        if "map" in _cp:
+            if 'Z_ref' not in data:
+                raise ValueError("coupling_priors.map needs data['Z_ref'] (readout.split)")
+            _Zc = data['Z_ref'] - jnp.mean(data['Z_ref'], axis=0)
+        for _i, _j in _pairs:
+            _sfx = "s_k" if (_i, _j) == (0, 2) else f"{_FN[_i]}_{_FN[_j]}"
+            _psfx = "" if (_i, _j) == (0, 2) else f"_{_sfx}"
+            _bi, _bj = _B[_i], _B[_j]
+            if "coef" in _cp:
+                _cos = _bi @ _bj / jnp.sqrt((_bi @ _bi) * (_bj @ _bj) + 1e-12)
+                numpyro.deterministic(f"coupling_coef_cos_{_sfx}", _cos)
+                numpyro.factor(f"coupling_coef_prior{_psfx}", _zpen(_cos, _cp["coef"]))
+            if "map" in _cp:
+                _hi, _hj = _Zc @ _bi, _Zc @ _bj
+                _mc = _hi @ _hj / jnp.sqrt((_hi @ _hi) * (_hj @ _hj) + 1e-12)
+                numpyro.deterministic(f"coupling_map_corr_{_sfx}", _mc)
+                numpyro.factor(f"coupling_map_prior{_psfx}", _zpen(_mc, _cp["map"]))
     if BAND_WEIGHTS:
         _nb = data['juvenile_fft_kernel_stack'].shape[0] // 4
         band_logw = numpyro.sample("dispersal_band_logw", dist.Normal(
@@ -1531,11 +1720,29 @@ def build_model_2d(data, prior_scale=1.0):
             disease_mortality_amplitude(disease, _tt), 0.0))
     else:
         disease_m_amp = None
-        
+
+    gk_in = None
+    if GROWTH_KERNEL:
+        # population_model.growth_kernel: learned local rates. Coefficient fields per (year, land cell): eta (low-density
+        # linear predictor), A (density-response coefficients, habitat-modulated) and, with the relative axis, k (the
+        # habitat density scale). The recorded Sa_flat / Fmax_flat become the LOW-DENSITY (N -> 0) learned s0, rho0
+        # (Sj_flat stays the mechanistic juvenile survival the dynamics still use), so Sa + Sj * Fmax is the potential
+        # growth readers already compute.
+        if VEIT_REPRO or SUBCELL or LINEAGE or OCCUPANCY or not YEARLING:
+            raise NotImplementedError("growth_kernel: standard reproduction with yearling_breeding only")
+        _gk_coefs = _gkm.sample_growth_kernel(_GK_SPEC, M, prior_scale)
+        gk_in = _gkm.coefficient_fields(data['Z_gathered'], _gk_coefs, _GK_SPEC, z_center=z_center,
+                                        Z_ref=data.get('Z_ref'))
+        for _nm, _v in zip(("growth_eta_s", "growth_A_s", "growth_eta_r", "growth_A_r", "growth_k"), gk_in[:5]):
+            if _v is not None:
+                numpyro.deterministic(_nm, _v)
+        _gk_s0, _gk_rho0 = _gkm.low_density_rates(gk_in)
+        numpyro.deterministic("growth_lambda0", _gk_s0 + Sj_flat * _gk_rho0)
+
     # Save fields for viz
-    numpyro.deterministic("Sa_flat", Sa_flat)
+    numpyro.deterministic("Sa_flat", _gk_s0 if GROWTH_KERNEL else Sa_flat)
     numpyro.deterministic("Sj_flat", Sj_flat)
-    numpyro.deterministic("Fmax_flat", Fmax_flat)
+    numpyro.deterministic("Fmax_flat", _gk_rho0 if GROWTH_KERNEL else Fmax_flat)
     numpyro.deterministic("K_flat", K_flat)
     numpyro.deterministic("K_base_flat", Kbase_flat)
 
@@ -1587,23 +1794,33 @@ def build_model_2d(data, prior_scale=1.0):
     # The forward census order is survival, then reproduction by surviving
     # adults. Its local linearized matrix is [[Sa, Sj], [F*Sa, 0]].
     # Thus fecundity at lambda=1 is (1-Sa)/(Sa*Sj).
-    c_flat, F_at_K, lambda_K, rho_K = equilibrium_age_quantities(
-        Sa_flat, Sj_flat, Fmax_flat, K_flat, priors["allee_gamma"]
-    )
+    if DD_SURVIVAL and not GROWTH_KERNEL:
+        if VEIT_REPRO or SUBCELL:
+            raise NotImplementedError("adult_survival_dd: standard / yearling reproduction only (not veit / subcell)")
+        _dd_theta = numpyro.sample("dd_survival_share", dist.Beta(float(_DDS.get("theta_a", 1.0)), float(_DDS.get("theta_b", 1.0))))
+        c_flat, F_at_K, lambda_K, rho_K, c_s_flat = equilibrium_age_quantities(
+            Sa_flat, Sj_flat, Fmax_flat, K_flat, priors["allee_gamma"], dd_theta=_dd_theta)
+        numpyro.deterministic("survival_dd_c", c_s_flat)
+    else:
+        c_flat, F_at_K, lambda_K, rho_K = equilibrium_age_quantities(
+            Sa_flat, Sj_flat, Fmax_flat, K_flat, priors["allee_gamma"]
+        )
+        c_s_flat = None
 
     # Weak belief about the distribution of LOCAL age structure. Average over
     # cell-years first, then apply a fixed effective-sample power; never let grid
     # resolution manufacture millions of independent prior observations.
     age_cfg = data.get("age_structure_prior") or {}
-    numpyro.factor(
-        "local_age_structure_regularizer",
-        age_structure_log_prior(
-            rho_K,
-            alpha=age_cfg.get("alpha", 1.01),
-            beta=age_cfg.get("beta", 1.01),
-            effective_sites=age_cfg.get("effective_sites", 100.0),
-        ),
-    )
+    if not GROWTH_KERNEL:   # growth_kernel: rho_K describes the (now unused) mechanistic rates
+        numpyro.factor(
+            "local_age_structure_regularizer",
+            age_structure_log_prior(
+                rho_K,
+                alpha=age_cfg.get("alpha", 1.01),
+                beta=age_cfg.get("beta", 1.01),
+                effective_sites=age_cfg.get("effective_sites", 100.0),
+            ),
+        )
 
     subcell_beta_k_t = priors['subcell_beta_k']
     subcell_sigma_s_t = None
@@ -1630,6 +1847,9 @@ def build_model_2d(data, prior_scale=1.0):
                                                                float(_NATDEP.get("beta_b", 1.5))))
         w_nat = native_shape / jnp.maximum(jnp.max(native_shape), 1e-12)
         departure_scale = 1.0 - r_nat * w_nat
+    if DEPARTURE_GLOBAL:
+        g_dep = numpyro.sample("departure_global_g", dist.Beta(float(_DEPG.get("beta_a", 4.0)), float(_DEPG.get("beta_b", 4.0))))
+        departure_scale = (departure_scale if departure_scale is not None else jnp.ones_like(native_shape)) * g_dep
     attraction_in = None
     if ATTRACTION:
         if "settlement_attraction_a" in PINNED:
@@ -1668,15 +1888,47 @@ def build_model_2d(data, prior_scale=1.0):
     if process_noise is not None and str(_PN.get("conserve", "none")) != "none":
         _pn_groups = (data['pn_groups'], int(data['pn_n_groups']))
 
-    def _run_forward(_pn_arg, _F_arg, _warp_arg=state_warp, _anchor_arg=state_anchor, _nest_arg=False):
+    # population_model.kernel_ramp (ROBUST lever A, default off): eastern-origin juveniles move from the base kernel to
+    # the alternate stack on a logistic in calendar year, s(t) = share_max * sigmoid((year - mid) / width); mid learned
+    # (Normal(mid_year_loc, mid_year_scale)). Evidence: BBL eastern summer->winter displacement 1960s -> 1980s.
+    _KR = dict(_POP_SPEC.get("kernel_ramp") or {})
+    kernel_ramp_in = None
+    colon_clock_in = None
+    urban_mating_in = None
+    if URBAN_MATING:   # population_model.urban_mating (FINAL ROUND 2026-11-06): birds concentrate in built-up slices
+        urban_mating_in = (data['um_u'], data['um_a'],
+                           numpyro.sample("urban_mating_b", dist.HalfNormal(float(_URBAN.get("b_scale", 1.0)) * prior_scale)))
+    if COLON_CLOCK:   # population_model.colonization_clock (FINAL ROUND 2026-11-06; plan card A5)
+        colon_clock_in = (numpyro.sample("colon_clock_d0", dist.Beta(float(_COLON.get("d0_a", 1.0)), float(_COLON.get("d0_b", 1.0)))),
+                          numpyro.sample("colon_clock_tau", dist.LogNormal(jnp.log(float(_COLON.get("tau_median_years", 5.0))),
+                                                                          float(_COLON.get("tau_log_scale", 0.5)))),
+                          float(_COLON.get("theta", 0.5)), float(_COLON.get("width", 0.05)))
+    if _KR.get("enabled"):
+        _mid = numpyro.sample("kernel_ramp_mid", dist.Normal(float(_KR.get("mid_year_loc", 1975.)),
+                                                             float(_KR.get("mid_year_scale", 10.)) * prior_scale))
+        _yrs = jnp.asarray(data['years']).astype(_mid.dtype)
+        _s_t = float(_KR.get("share_max", 1.0)) * jnn.sigmoid((_yrs - _mid) / float(_KR.get("width_years", 5.0)))
+        numpyro.deterministic("kernel_ramp_share", _s_t)
+        kernel_ramp_in = (data['alt_juvenile_fft_kernel_stack'], data['alt_juvenile_edge_correction_stack'],
+                          _s_t[:, None, None] * data['ramp_mask'][None])
+    lineage_delta = (numpyro.sample("lineage_delta", dist.Normal(float(_LIN.get("loc", 0.0)), float(_LIN.get("sd", 0.3))))
+                     if LINEAGE else None)
+    if LINEAGE and _LIN.get("fade_tau"):
+        # lineage.fade_tau (years, FIXED): the introduced-lineage offset fades with lineage age -- founder-bottleneck /
+        # inbreeding recovery: delta(t) = delta0 exp(-max(t - t_release, 0) / tau). Diagnostic form (round 2, 2026-11-07).
+        _tl = jnp.arange(time, dtype=jnp.float64)
+        lineage_delta = lineage_delta * jnp.exp(-jnp.maximum(_tl - jnp.asarray(data['inv_timestep'], jnp.float64), 0.0) / float(_LIN["fade_tau"]))
+
+    def _run_forward(_pn_arg, _F_arg, _warp_arg=state_warp, _anchor_arg=state_anchor, _nest_arg=False, _ov=None):
+      _o = _ov or {}
       return forward_sim_age_structured(
-        Sa_flat, Sj_flat, _F_arg, K_flat, c_flat, Q_flat,
+        _o.get('Sa', Sa_flat), _o.get('Sj', Sj_flat), _o.get('F', _F_arg), _o.get('K', K_flat), _o.get('c', c_flat), _o.get('Q', Q_flat),
         land_rows, land_cols,
         data['land_mask'],
         data['adult_fft_kernel'], data['juvenile_fft_kernel_stack'],
         data['adult_edge_correction'], data['juvenile_edge_correction_stack'],
-        initpop_seeded, priors['dispersal_random'], inv_pop,
-        time, inv_locs, data['inv_timestep'],
+        _o.get('init', initpop_seeded), _o.get('drand', priors['dispersal_random']), inv_pop,
+        _o.get('time', time), inv_locs, _o.get('inv_t', data['inv_timestep']),
         priors['dispersal_logit_intercept'], priors['dispersal_logit_slope'],
         priors['allee_gamma'],
         target_fraction=data["dispersal_target_fraction"],
@@ -1695,9 +1947,9 @@ def build_model_2d(data, prior_scale=1.0):
         subcell_survival_affects_allocation=SUBCELL_SURVIVAL_AFFECTS_ALLOCATION,
         dispersal_adult_offset=priors['dispersal_logit_adult_offset'],
         crowding_beta=priors['dispersal_crowding_beta'], crowding_kappa=CROWDING_KAPPA,
-        disease_m_amp=disease_m_amp, disease_k_half=priors['disease_k_half'],
+        disease_m_amp=_o.get('dis', disease_m_amp), disease_k_half=priors['disease_k_half'],
         disease_hill_n=priors['disease_hill_n'],
-        juvenile_kernel_weights=juv_w,
+        juvenile_kernel_weights=_o.get('juv_w', juv_w),
         occupancy_b=(data['pop_scalar'] * OCC_BIRDS_PER_COUNT) if OCCUPANCY else None,
         process_noise=_pn_arg if PN_TARGET in ("abundance", "low_density") else None,
         departure_scale=departure_scale,
@@ -1708,9 +1960,37 @@ def build_model_2d(data, prior_scale=1.0):
         attraction=attraction_in,
         directional_weights=directional_in,
         nest_cells=((data['nest_rows'], data['nest_cols']) if (NEST_LIKELIHOOD and _nest_arg) else None),
+        kernel_ramp=_o.get('ramp', kernel_ramp_in),
+        colonization_clock=colon_clock_in,
+        urban_mating=urban_mating_in,
+        survival_dd_c=_o.get('cs', c_s_flat),
+        lineage_delta=lineage_delta,
+        **({} if gk_in is None else {'growth_kernel': _o.get('gk', gk_in)}),
       )
+    if SPINUP:
+        if process_noise is not None or STATE_WARP or STATE_ANCHOR or SUBCELL:
+            raise NotImplementedError("spinup: not combined with process noise / state warp / anchor / subcell")
+        _S = int(_SPIN.get("years", 40)); _hy = int(_SPIN.get("habitat_years", 5))
+        _tile = lambda X: None if X is None else jnp.broadcast_to(jnp.asarray(X)[:_hy].mean(0), (_S,) + jnp.asarray(X).shape[1:])
+        _ov = dict(Sa=_tile(Sa_flat), Sj=_tile(Sj_flat), F=_tile(_F_sim), K=_tile(K_flat), c=_tile(c_flat), Q=_tile(Q_flat),
+                   cs=_tile(c_s_flat), drand=jnp.zeros((_S,) + jnp.asarray(priors['dispersal_random']).shape[1:]),
+                   dis=(None if disease_m_amp is None else jnp.zeros((_S,) + disease_m_amp.shape[1:])),
+                   juv_w=(juv_w if (juv_w is None or jnp.asarray(juv_w).ndim == 1) else _tile(juv_w)),
+                   ramp=(None if kernel_ramp_in is None else (kernel_ramp_in[0], kernel_ramp_in[1], _tile(kernel_ramp_in[2]))),
+                   time=_S, inv_t=_S + 1000)
+        if gk_in is not None:   # growth_kernel: the learned coefficient fields at the first habitat years' mean
+            _ov['gk'] = tuple(_tile(X) for X in gk_in[:5]) + gk_in[5:]
+        if float(_SPIN.get("start_scale", 1.0)) != 1.0:   # DIAGNOSTIC (Allee bistability): spin from a scaled seed
+            _ov['init'] = initpop_seeded * float(_SPIN["start_scale"])
+        _spin = _run_forward(None, _F_sim, None, None, _ov=_ov)
+        initpop_seeded = numpyro.deterministic("initpop_spun", _spin[0][-1])     # (Ny, Nx): 1902 starts from the spun-up state
     _sim = _run_forward(process_noise, _F_sim, _nest_arg=True)
     densities, Na_grid, Nj_grid = _sim[:3]
+    if LINEAGE:
+        numpyro.deterministic("lineage_intro_total", _sim[3])     # (time, Ny, Nx) introduced-lineage density
+    if gk_in is not None:   # realised learned rates (pre-disease) on the land cells: BBL reads growth_s_real
+        numpyro.deterministic("growth_s_real", _sim[3])
+        numpyro.deterministic("growth_rho_real", _sim[4])
     _skel_spec = _WARP if STATE_WARP else _ANCHOR
     if (STATE_WARP or STATE_ANCHOR) and _skel_spec.get("skeleton_tau"):
         _skel = _run_forward(None, Fmax_flat, None, None)[0]

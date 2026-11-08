@@ -29,9 +29,10 @@ import jax.numpy as jnp
 import jax.nn as jnn
 from jax import lax, checkpoint
 from src.config_utils import load_age_model_config
-from src.model.disease_onset import onset_gate, resolve_onset_spec
+from src.model.disease_onset import onset_gate, resolve_onset_spec, resolve_recovery_spec, recovery_fraction
 _FLOOR = float(load_age_model_config()['population_model'].get('capacity_floor_internal',0.))
 DISEASE_ONSET_SPEC = resolve_onset_spec(load_age_model_config()['population_model']['disease_prior'])
+DISEASE_RECOVERY_SPEC = resolve_recovery_spec(load_age_model_config()['population_model']['disease_prior'])
 
 
 def disease_severity(disease, K_base):
@@ -115,7 +116,7 @@ def disease_mortality_amplitude(disease, t_idx, onset_t=None):
         + jnp.dot(disease["sev_basis"].T, disease["w_sev"]))
     gate = onset_gate(t_idx - onset_t, disease["tau"], DISEASE_ONSET_SPEC)
     age = jnp.maximum(t_idx - onset_t, 0.0)
-    resisted = disease["rec"] * (-jnp.expm1(-age / disease["tau_rec"]))
+    resisted = recovery_fraction(age, disease["rec"], disease["tau_rec"], DISEASE_RECOVERY_SPEC, disease.get("delay_rec"))
     return disease["ceiling"] * modifier * gate * (1.0 - resisted)
 
 
@@ -150,7 +151,7 @@ def disease_k_fraction(disease, t_idx, K_base, onset_t=None, severity=None):
     severity = disease_severity(disease, K_base) if severity is None else severity
     gate = onset_gate(t_idx - onset_t, disease["tau"], DISEASE_ONSET_SPEC)
     age = jnp.maximum(t_idx - onset_t, 0.0)
-    recovered = disease["rec"] * (-jnp.expm1(-age / disease["tau_rec"]))
+    recovered = recovery_fraction(age, disease["rec"], disease["tau_rec"], DISEASE_RECOVERY_SPEC, disease.get("delay_rec"))
     return severity * gate * (1.0 - recovered)
 
 
@@ -183,6 +184,8 @@ def project_and_scatter_age_structured(
     st_correction=None,    # (S (N,nb), S_disp (N,K,nb), Gw (time,nb)) -- E067 shared habitat correction h = S.Gw[t]
     journey=None,          # (a_off, g_logratio, cost (K,) or (N_land, K)) -- population_model.journey: Q decoupled from S_j + mortality
     compounding=None,      # (lam, seg_len (K,) in units of l, Z_disp_seg (time, N_land, K, n_seg, M), reference) -- path_compounding
+    trend_routing=None,    # (zdev (time, R, M), region (N_land,), eta): vital rates see only eta x each region's yearly-mean Z change
+    k_discrepancy=None,    # (region (N_land,), D (time, R)): era-limited regional CAPACITY discrepancy on the K link argument
 ):
     """Project Z → (S_a, S_j, F_max, K, Q) for every year, on the land cells.
 
@@ -258,6 +261,23 @@ def project_and_scatter_age_structured(
         # spatial patterns could differ -- see the module docstring.
         H_k_local = (jnp.dot(z_t, beta_k) - off_k if split_readout is None
                      else lvl_k - off_k + jnp.dot(dz_t, bk_w))
+        if trend_routing is not None:
+            # population_model.trend_routing: remove (1 - eta) of the cell's REGIONAL yearly-mean Z deviation from the
+            # vital-rate fields (capacity keeps all of it); eta = 1 is the unrouted model exactly.
+            _zr = jnp.take(trend_routing[0], t_idx, axis=0)[trend_routing[1]]          # (N_land, M)
+            # eta: scalar, (R,) per region, or a dict {"s", "r", "sj"} per RATE (each scalar or (R,)) -- overnight 2026-11-07
+            def _cutf(e):
+                e = jnp.asarray(e)
+                return 1.0 - (e[trend_routing[1]] if e.ndim == 1 else e)
+            _e = trend_routing[2]
+            _cs, _cr, _csj = ((_cutf(_e["s"]), _cutf(_e["r"]), _cutf(_e["sj"])) if isinstance(_e, dict)
+                              else (_cutf(_e),) * 3)
+            H_s_local = H_s_local - _cs * jnp.dot(_zr, beta_s)
+            H_r_local = H_r_local - _cr * jnp.dot(_zr, beta_r)
+            H_sj_local = H_sj_local - _csj * jnp.dot(_zr, beta_sj)
+            _route_sj = _csj * jnp.dot(_zr, beta_sj)
+        else:
+            _route_sj = 0.0
 
         # 3. Path-Integrated Survival Suitability
         # z_disp_t is (N_land, K_kernels, M) -> dot with beta_s (M,) gives (N_land, K_kernels)
@@ -272,6 +292,8 @@ def project_and_scatter_age_structured(
         # future-work item.
         H_sj_disp = (jnp.dot(z_disp_t, beta_sj) - off_sj if split_readout is None
                      else lvl_sj_disp - off_sj + jnp.dot(z_disp_t - Z_disp_ref, bsj_w))
+        if trend_routing is not None:
+            H_sj_disp = H_sj_disp - _route_sj[:, None]      # journey survival: the origin region's routed trend
 
         # population_model.covariate_drift (P0, intercept form): a smooth, spatially uniform shift of
         # each rate's linear predictor -- the zero-order case of a drifting proxy -> niche relation.
@@ -310,6 +332,8 @@ def project_and_scatter_age_structured(
         # k_level still owns the level; this exists so "modern K below 1970s K" has
         # somewhere to go other than the disease term. Its prior is deliberately
         # near-zero -- it is a safety valve, not a mechanism.
+        if k_discrepancy is not None:   # population_model.k_discrepancy: capacity-only, region x year, eras of change
+            d_k = d_k + jnp.take(k_discrepancy[1], t_idx, axis=0)[k_discrepancy[0]]
         k_trend_t = jnp.dot(jnp.take(k_trend_basis, t_idx, axis=1), w_k_trend) + d_k
 
         # Baseline K with a SOFTPLUS link, applied in DENSITY space:

@@ -27,6 +27,7 @@ def main():
     p.add_argument('--seed', type=int, default=20261105)
     p.add_argument('--start', choices=['random', 'gradient'], default='random', help='Lanczos start vector')
     p.add_argument('--skip_per_site', action='store_true')
+    p.add_argument('--save_vectors', type=Path, default=None, help='npz path for the top Ritz vectors')
     a = p.parse_args()
     root = Path(os.environ['TAKEOVER_CODE_ROOT'])
     sys.path.insert(0, str(root / 'research' / 'exp'))
@@ -104,11 +105,15 @@ def main():
     ev, U = np.linalg.eigh(T); order = np.argsort(-ev)
     Qm = np.stack(Q[:m], 1)
     eig = []
-    for i in order[:min(6, m)]:
+    for i in list(order[:min(6, m)]) + [order[-1]]:   # top six and the most NEGATIVE / smallest Ritz pair
         v = Qm @ U[:, i]
         eig.append(dict(ritz=float(ev[i]), **split(v)))
         print(json.dumps(dict(stage='eigvec', ritz=float(ev[i]), sec=round(time.time() - t0))), flush=True)
     out['lanczos'] = dict(steps=m, ritz_values=sorted([float(x) for x in ev], reverse=True), top=eig)
+    if a.save_vectors:   # top-k Ritz vectors (optimizer coordinates) + site blocks, for eigenvector-overlap checks
+        V = np.stack([Qm @ U[:, i] for i in order[:min(8, m)]], 1)
+        np.savez_compressed(a.save_vectors, vectors=V, ritz=np.asarray([ev[i] for i in order[:min(8, m)]]),
+                            names=np.asarray([b[0] for b in blocks]), starts=np.asarray([b[1] for b in blocks]), ends=np.asarray([b[2] for b in blocks]))
 
     # per-site self-curvature along each site's own gradient block
     per = []

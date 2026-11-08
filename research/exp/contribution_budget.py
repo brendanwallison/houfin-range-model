@@ -52,24 +52,91 @@ def safe_ratio(n,d):
     return jnp.where(d>1e-20,n/jnp.where(d>1e-20,d,1.),jnp.nan)
 
 
+# Forward arguments whose non-default value changes the dynamics in a way the replay does not implement.
+UNSUPPORTED_ARGUMENTS=['strata_u','occupancy_b','state_warp','state_anchor','attraction','kernel_ramp',
+                       'colonization_clock','urban_mating','lineage_delta','process_noise_low_density',
+                       'process_noise_groups']
+
+
+def fft_floor_active(af,dtype):
+    """Whether rightpad_convolution applies the FFT round-off floor for this dtype (its own condition)."""
+    return af.FFT_FLOOR_ULPS is not None and not (getattr(af,'FFT_FLOOR_FLOAT32_ONLY',False) and dtype!=jnp.float32)
+
+
+class floor_free:
+    """Trace the SAME primitive with population_model.numerics.fft_floor_ulps switched off.
+
+    The floor is a module global read when rightpad_convolution is traced, so toggling it around a call (Python, at
+    trace time) yields the floor-free LINEAR operator for origin attribution; the floored operator still drives the
+    replayed trajectory. Restored on exit even on error.
+    """
+    def __init__(self,af):self.af=af
+    def __enter__(self):
+        self.saved=self.af.FFT_FLOOR_ULPS;self.af.FFT_FLOOR_ULPS=None
+    def __exit__(self,*exc):
+        self.af.FFT_FLOOR_ULPS=self.saved
+
+
+def select_main_forward(captured,spinup=None):
+    """Pick the dynamics call from captured (arguments, result) pairs of forward_sim_age_structured.
+
+    population_model.spinup runs the forward model first for S years at the early habitat (time = S, release pushed
+    past the run) and then the main run, whose initpop_latent is the spin-up's final TOTAL density (age_priors:
+    initpop_spun = spin[0][-1]); the main forward re-splits it 50/50 into adults/juveniles like any seed. Verify that
+    chain exactly instead of trusting call order. Returns (arguments, result, info).
+    """
+    if spinup is None:
+        if len(captured)!=1:raise ValueError('ambiguous forward replay count '+str(len(captured)))
+        return captured[0][0],captured[0][1],{'spinup':False}
+    if len(captured)!=2:raise ValueError('spinup expects 2 forward calls, got '+str(len(captured)))
+    (xs,rs),(x,r)=captured
+    years=int(spinup.get('years',40))
+    if int(xs['time'])!=years or int(x['time'])==years:
+        raise ValueError(f"spinup call order/time mismatch: {int(xs['time'])}, {int(x['time'])} (expected {years} first)")
+    if int(xs['inv_timestep'])<years:raise ValueError('spinup call carries the release')
+    spun=np.asarray(rs[0][-1]);init=np.asarray(x['initpop_latent'])
+    err=float(np.max(np.abs(spun-init)))
+    if err!=0.:raise ValueError(f'main initpop_latent is not the spin-up final state (max abs diff {err})')
+    sa,sj=float(np.asarray(rs[1][-1]).sum()),float(np.asarray(rs[2][-1]).sum())
+    return x,r,{'spinup':True,'years':years,'habitat_years':int(spinup.get('habitat_years',5)),
+                'init_equals_spinup_final_total_max_abs_diff':err,
+                'spinup_final_adult_share':sa/max(sa+sj,1e-300),
+                'model_initial_adult_share':.5,
+                'note':'forward_sim_age_structured seeds adults and juveniles each with initpop_latent*0.5; with spinup the '
+                       'spun-up TOTAL is re-split 50/50 at the first model year (the spin-up age structure is not carried). '
+                       'The audit replays that exact initial state.'}
+
+
 def audit_forward(af,args,states):
-    """Replay supported plain population model from captured forward arguments.
+    """Replay the population model from captured forward arguments; attribute origins with the linear movement operator.
+
+    Supported beyond the plain model: native departure (departure_scale), epizootic survival, density-dependent adult
+    survival (survival_dd_c, passed to the same reproduction primitive), and the smooth/hard FFT round-off floor. With
+    the floor active the realised (floored) movement drives the replay; origin attribution uses the floor-free linear
+    operator of the same primitive, and the floor's destination mass difference is carried as an explicit numerical
+    term (numerical_fft_floor_*) in the BIDE and origin-destination budgets. Spin-up needs no replay term: the captured
+    main call's initpop_latent IS the spun-up state (select_main_forward verifies it).
 
     Unsupported mechanisms raise; never silently drop an active population term.
     """
     x=args
-    for key in ['strata_u','occupancy_b','state_warp','state_anchor',
-                'attraction']:
+    for key in UNSUPPORTED_ARGUMENTS:
         if x.get(key) is not None:raise NotImplementedError(key)
-    if x.get('process_noise_low_density') is not None or x.get('process_noise_groups') is not None:
-        raise NotImplementedError('state-dependent or conserved process multiplier')
     if x.get('settle_block',0):raise NotImplementedError('settlement')
-    if af.FFT_PAD_VALUE!=0 or af.FFT_FLOOR_ULPS is not None:
-        raise NotImplementedError('affine/nonlinear FFT padding or floor')
+    # nest_cells is a readout (realised fecundity at nest cells); it does not change the dynamics.
+    if af.FFT_PAD_VALUE!=0:
+        raise NotImplementedError('affine FFT padding (fft_pad != 0): movement is not linear in the origin pools')
     lr,lc=x['land_rows'],x['land_cols'];land=x['land_mask'];shape=land.shape
     zero=jnp.zeros(shape);ones=jnp.ones(shape)
+    floor_on=fft_floor_active(af,jnp.asarray(x['Sa_flat']).dtype)
     def grid(v):return zero.at[lr,lc].set(v)
     dep=None if x.get('departure_scale') is None else ones.at[lr,lc].set(x['departure_scale'])
+    def dd_grid(t):return None if x.get('survival_dd_c') is None else grid(x['survival_dd_c'][t])
+    def realised_adult_survival(sa,cs,n_post,k):
+        # reproduction_age_structured's adult_survival_dd brake, same crowding function and K floor (eps=1e-12);
+        # checked against the primitive's own N_a_new every step (survival_identity_error).
+        if cs is None:return sa
+        return sa/(1.+cs*af.crowding_argument(n_post/jnp.maximum(k,1e-12)))
     ka=jnp.fft.ifft2(x['adult_fft_kernel'].astype(jnp.complex128)).real[0,0]
     kj=jnp.fft.ifft2(x['juvenile_fft_kernel_stack'].astype(jnp.complex128),axes=(-2,-1)).real[:,0,0]
     release=zero.at[x['inv_locations'][:,0],x['inv_locations'][:,1]].set(1.)
@@ -105,9 +172,14 @@ def audit_forward(af,args,states):
         def move(aa,jj):
             out=af.dispersal_step_age_structured(aa,jj,k,**kw)
             return tuple(v*land for v in out)
+        def move_free(aa,jj):
+            # Same primitive and arguments, FFT floor off: the linear operator used for origin attribution.
+            with floor_free(af):
+                return move(aa,jj)
         # Exact departure probabilities from the same primitive's stayer branch.
         # Adult no-departure is separated from its FFT arrivals by return flag.
-        test=af.dispersal_step_age_structured(ones,ones,k,return_adult_arrivals=True,**kw)
+        with floor_free(af):
+            test=af.dispersal_step_age_structured(ones,ones,k,return_adult_arrivals=True,**kw)
         pa=1.-(test[0]-test[3]);pj=1.-test[1]
         da=(1-pa)+pa*ka/(x['adult_edge_correction']+1e-6)
         ds=1-pj
@@ -126,26 +198,31 @@ def audit_forward(af,args,states):
             da=(1-pa)+pa*ad/(x['adult_edge_correction']+1e-6)
             dj=pj*jnp.sum(factor*jd/(x['juvenile_edge_correction_stack']+1e-6),axis=0)
         diag=(da*land,ds*land,dj*land)
-        return sa,sj,f,k,c,move,diag,kw
+        return sa,sj,f,k,c,move,diag,kw,dd_grid(t),move_free
 
     def step(_,t):
         pulse_k=t-x['inv_timestep'];valid=(pulse_k>=0)&(pulse_k<x['inv_pop'].shape[1])
         val=jnp.where(valid,x['inv_pop'][:,jnp.clip(pulse_k,0,x['inv_pop'].shape[1]-1)],0.)
         pulse=zero.at[x['inv_locations'][:,0],x['inv_locations'][:,1]].add(val)
         a,j=prev_a[t]+pulse*.5,prev_j[t]+pulse*.5
-        sa,sj,f,k,c,move,diag,kw=setup(t,a,j)
+        sa,sj,f,k,c,move,diag,kw,cs,move_free=setup(t,a,j)
         potential=sa+sj*f
         sa_local,sj_local,_=disease(t,sa,sj,a,j,zero)
         localout=af.reproduction_age_structured(a,j,zero,sa_local,sj_local,f,k,c,x['allee_gamma'],
             allee_off=jnp.where((pulse_k>=0)&(pulse_k<x.get('allee_exempt_years',0)),release,0.),
             allee_relative=x.get('allee_relative',False),yearling_breeding=x.get('yearling_breeding',False),
-            veit=x.get('veit_reproduction',False))
-        ap,js,ja=move(a,j)
+            veit=x.get('veit_reproduction',False),c_s=cs)
+        # No-movement adult survival with the DD brake at the no-movement density (as localout).
+        sa_local=realised_adult_survival(sa_local,cs,a+j,k)
+        ap,js,ja=move(a,j)          # realised (floored) movement: drives the replay
         sa,sj,dm=disease(t,sa,sj,ap,js,ja)
         off=jnp.where((pulse_k>=0)&(pulse_k<x.get('allee_exempt_years',0)),release,0.)
         new=af.reproduction_age_structured(ap,js,ja*dm,sa,sj,f,k,c,x['allee_gamma'],
              allee_off=off,allee_relative=x.get('allee_relative',False),
-             yearling_breeding=x.get('yearling_breeding',False),veit=x.get('veit_reproduction',False))
+             yearling_breeding=x.get('yearling_breeding',False),veit=x.get('veit_reproduction',False),c_s=cs)
+        # Realised adult survival (disease x DD brake at the realised post-dispersal density, as the primitive uses).
+        sa=realised_adult_survival(sa,cs,ap+js+ja*dm,k)
+        survival_identity_error=new[0]-(ap*sa+js*sj+ja*dm)
         an0,jn0=(jnp.maximum(v*land,0.) for v in new)
         adult_clip_gain=an0-new[0]*land
         mult=ones if x.get('process_noise') is None else jnp.exp(grid(x['process_noise'][t]))
@@ -153,10 +230,16 @@ def audit_forward(af,args,states):
         process_adjustment=(an+jn)-(an0+jn0)
         unparented_births=jnp.where(an<=0,jn,0.)
         f_actual=jnp.where(an>0,jn/jnp.where(an>0,an,1.),0.)
-        biological=attributed_step(move,a,j,sa,sj,f_actual,diag,dm)
-        b=attributed_step(move,a,j,sa*mult,sj*mult,f_actual,diag,dm*mult)
+        # Origin attribution on the floor-free linear operator (identical to move when the floor is off).
+        attribution_move=move_free if floor_on else move
+        biological=attributed_step(attribution_move,a,j,sa,sj,f_actual,diag,dm)
+        b=attributed_step(attribution_move,a,j,sa*mult,sj*mult,f_actual,diag,dm*mult)
+        # FFT floor: realised minus floor-free post-dispersal mass at each destination (0 with the floor off).
+        floor_destination=(ap+js+ja)-b['movement_destination']
+        floor_breeders=((ap*sa+js*sj+ja*dm)-(b['adult_post']*sa+b['juvenile_stay']*sj+b['juvenile_arrive']*dm))*mult
         # Innovations are a separate discrepancy, never births or negative deaths.
-        b['local_deaths_destination']=biological['local_deaths_destination']
+        # Deaths are the realised ones (realised arrivals x realised survival).
+        b['local_deaths_destination']=ap*(1-sa)+js*(1-sj)+ja*(1-dm)
         b['biological_breeder_contribution']=biological['breeder_contribution']
         b['biological_retained_breeders']=biological['retained_breeders']
         b['biological_successful_breeder_export']=biological['successful_breeder_export']
@@ -168,17 +251,24 @@ def audit_forward(af,args,states):
         # Repeat the movement budget with journey survival disabled. Differences
         # distinguish Q mortality from edge/numerical/off-domain mass losses.
         kw0=dict(kw,Q_grid=jnp.ones_like(kw['Q_grid']))
-        def move0(aa,jj):return tuple(v*land for v in af.dispersal_step_age_structured(aa,jj,k,**kw0))
+        def move0(aa,jj):
+            with floor_free(af):
+                return tuple(v*land for v in af.dispersal_step_age_structured(aa,jj,k,**kw0))
         _,pull=jax.vjp(move0,ones,ones)
         ma0,mj0=pull((ones,ones,ones))
         preq=a*ma0+j*mj0
         journey=preq-b['movement_origin']
         numerical=a+j-preq
         # Births and ordinary mortality use destination accounting; successful
-        # transport and journey/numerical loss use origin accounting.
-        rhs=jn0-b['local_deaths_destination']+b['immigration']-b['successful_emigration']-journey-numerical+pulse+adult_clip_gain+process_adjustment
+        # transport and journey/numerical loss use origin accounting; the FFT
+        # floor is a destination-side numerical adjustment of arrivals.
+        rhs=(jn0-b['local_deaths_destination']+b['immigration']-b['successful_emigration']-journey-numerical
+             +floor_destination+pulse+adult_clip_gain+process_adjustment)
         observed_delta=an+jn-prev_a[t]-prev_j[t]
         beta=safe_ratio(j,a)
+        b.update(numerical_fft_floor_destination=floor_destination,numerical_fft_floor_breeders=floor_breeders,
+            numerical_fft_floor_postbirth=floor_breeders*(1.+f_actual),
+            floor_free_next_breeders=b['next_breeders'],survival_identity_error=survival_identity_error)
         b.update(input_adult=a,input_juvenile=j,pulse=pulse,births=jn0,
             potential_lambda=potential,realized_offspring_per_breeder=f_actual,
             potential_lambda_with_process=potential*mult,process_multiplier=mult,
@@ -213,13 +303,14 @@ def isolation_replay(af,x,states,setup,start,mask,no_movement=False):
     lr,lc=x['land_rows'],x['land_cols'];zero=jnp.zeros_like(x['land_mask'],dtype=float)
     def step(carry,t):
         a,j=carry
-        sa,sj,f,k,c,move,_,_=setup(t,a,j)
+        sa,sj,f,k,c,move,_,_,cs,_=setup(t,a,j)
         ap,js,ja=(a,j,zero) if no_movement else move(a,j)
         sa,sj,dm=disease(t,sa,sj,ap*mask,js*mask,ja*mask)
         # Outside-to-inside inputs are zero because the outside state is zero.
+        # The DD adult-survival brake responds to the intervened density (same primitive, same c_s).
         new=af.reproduction_age_structured(ap*mask,js*mask,ja*mask*dm,sa,sj,f,k,c,x['allee_gamma'],
             allee_relative=x.get('allee_relative',False),yearling_breeding=x.get('yearling_breeding',False),
-            veit=x.get('veit_reproduction',False))
+            veit=x.get('veit_reproduction',False),c_s=cs)
         mult=1. if x.get('process_noise') is None else jnp.exp(zero.at[lr,lc].set(x['process_noise'][t]))
         new=tuple(jnp.maximum(v*mask,0.)*mult for v in new)
         return new,jnp.stack([v[lr,lc] for v in new])

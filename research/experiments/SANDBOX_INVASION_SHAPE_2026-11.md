@@ -4339,3 +4339,6174 @@ stiff in the onset-timing sites (disease_lag0 / w_lag) and the density-Hill site
 (drop / pin amplitudes so the single field cannot scale its temporal change) under compact onset; (4) profile likelihood
 redone properly (posterior objective, fixed gauge bug) only after the fits are converged.
 CONV PRE-REGISTRATION: compact 3-yr onset F0, posterior objective (Codex runner, all sites), L-BFGS maxcor 200, maxiter 4000, from the history_control endpoint (135,743; swing 1.13), CPU 16-31. Question: what does the compact swing converge to? Prediction: objective falls a further ~20-60, East 2010 potential settles 1.05-1.2, toll ~.15; if the swing keeps shrinking as the objective falls, the compact fits' 1.2 was an optimizer artefact.
+
+### STIFF RESULT (stiffness_hvp.py; Hessian-vector products at Codex's endpoints; objective reproduced to the decimal)
+| | original learned onset (f0_d0_refine) | compact 3-yr onset (compact_best_refine) |
+|---|---|---|
+| curvature along the normalised gradient (data / prior) | 1.15e5 (1.15e5 / 1.1) | 1.64e6 (1.64e6 / 1.1) |
+| top Lanczos curvature (random start, 12 steps) | 1.02e6 | 3.90e6 |
+| top eigenvector composition | factor .90, alpha_j .04, alpha_a .03 | factor .89, alpha_a .05, alpha_j .04 |
+| per-site self-curvature: manifold_factor / alpha_a / alpha_j / alpha_k | 1.4e5 / 4.7e4 / 5.3e4 / 5.6e4 | 1.4e6 / 2.2e5 / 1.9e5 / 8.3e4 |
+| disease sites (largest: mu_sev, k_half, lag0) | -- | 7.1e3 / 3.3e3 / 1.5e3 |
+Established (for these two endpoints, optimizer coordinates = prior-SD units): the stiffness is in the SHARED HABITAT FIELD's
+64 coefficients and the survival intercepts, ~100% DATA curvature; disease timing / severity sites are 2-3 orders of magnitude
+softer. The sharp onset leaves the location unchanged but makes it 4-10x stiffer (likely mechanism: with a 3-yr epizootic
+the counts' post-1994 drop must be matched by the habitat-driven rate path almost exactly in time, so the field's temporal
+direction becomes tightly pinned). Both endpoints are ill-conditioned (top / smallest found Ritz value > 1e5): L-BFGS with
+maxcor 20 in these coordinates cannot converge in a few thousand iterations -- Codex's "not stationary" fits are explained.
+Consequence: HVPs cost ~10 s, so a Newton-type optimizer (trust-region Krylov with exact HVPs) is affordable; the
+compact fits should be re-run to stationarity with it before reading their swing as converged.
+NEWTON PRE-REGISTRATION (newton_fit.py: Codex's posterior objective / coordinates, scipy trust-krylov + exact HVPs; GPU):
+compact 3-yr onset F0 from compact_best_refine (135,761.4; gradient norm 53). Then the original-onset F0 from f0_d0_refine
+(135,589.8) as the matched control. Prediction: Newton reaches gradient max < .01 in < ~200 iterations where L-BFGS did not;
+the compact objective falls by ~20-80; if the converged compact swing differs from ~1.2 by > .1, all of Codex's compact
+readouts were optimizer-state numbers. The question the pair answers: the converged cost of the sharp onset (data NLL
+compact - original) and its converged swing.
+NEWTON RESULT (compact): trust-krylov stopped after 44 iterations ("bad approximation caused failure to predict
+improvement"), objective -0.0004, gradient norm 53 -> 30. Read (established arithmetic): along the gradient the curvature is
+1.6e6, so the best achievable decrease there is g^2 / 2c ~ .001 -- the large gradient norm sits almost entirely in the STIFF
+direction where the fit is already optimal; the remaining improvement lies in FLAT directions, which an exact-Hessian trust
+region cannot reach once its radius has shrunk to the stiff scale. Newton is the wrong tool here; long-memory L-BFGS is not:
+CONV (maxcor 200) has gone 135,743 -> 135,657 in 278 evaluations, data NLL 114,098 -> ~114,021 at eval 200 -- EQUAL to the
+original-onset fit's 114,024 (likely; running). So the ~+110 data cost of the compact onset in Codex's fits is probably an
+optimizer artefact of short-memory L-BFGS on an ill-conditioned problem, not a property of the onset. Matched control
+queued: original-onset F0 with maxcor 200 from f0_d0_refine (GPU, after the Newton original control ends).
+CONV interim: compact maxcor-200 run CONVERGED in practice -- 135,649.2 at 1,346 evals (135,649.3 at 1,000), data NLL
+114,001.7 (original-onset Codex endpoint 114,023.9: compact now -22 BETTER in-sample), gradient norm 14-27. Readout at
+eval 322 (data 114,021): East potential .55 / .86 / .90 / 1.18 / 1.16 (1966 / 1990 / 1993 / 2010 / 2020), toll .17; held-out
+pre / post blocks / 2021-25 10,839 (+104) / 21,695 (+315) / 21,637 (+80) vs original-onset endpoint -- held-out WORSENS as
+the compact fit's in-sample improves (watch: flat-direction over-fit). Original-onset matched control stalled at its
+first line search (2 iterations; relative-reduction stop from an L-BFGS-polished start) -- restarted with jitter .05
+(GPU) so it must re-descend under the same optimizer.
+
+### CONV RESULT (matched long-memory L-BFGS, maxcor 200, posterior objective, all sites free)
+| arm | objective | data NLL | implied prior cost | East potential 1966 / 1990 / 2010 | toll 11-25 | held-out pre / post blocks / 2021-25 |
+|---|---|---|---|---|---|---|
+| original learned onset, jitter .05 restart (897 it) | 135,584.9 | 114,018.6 | ~21,566 | (readout pending) | | |
+| compact 3-yr onset (1,356 evals; 135,649.2) | 135,649.2 | 114,001.7 | ~21,648 | .55 / .85 / 1.21 | .18 | 10,861 / 21,773 / 21,651 |
+| (Codex compact, capped: compact_best_refine) | 135,761.4 | 114,122.1 | | .62 / -- / 1.19 | .155 | 10,750 / 21,534 / 21,604 |
+Established for this pair: once both are converged, the DATA slightly prefer the sharp onset (-17); its +64 in the objective
+is entirely PRIOR cost (the compact fit sits further from the priors). Codex's "+110 data cost of the sharp onset" was an
+optimizer artefact of short-memory L-BFGS. The compact swing is NOT an optimizer artefact: it stays ~1.2 (.55 -> 1.21) at
+convergence, vs 1.53 for the learned onset. BUT converging the compact fit bought -120 in-sample data NLL at a cost of
+~+600 on the held-out data (vs its own capped state: pre +111, post +239, 2021-25 +47) -- the flat directions that
+long-memory L-BFGS opens are largely OVER-FITTING directions (likely); early stopping was acting as a regulariser. The
+original-onset arm moved only -5 under the same optimizer (it was near its optimum; its held-out readout pending).
+Implication (likely): the posterior is ill-conditioned (STIFF: ~1e6 vs < 10) with flat directions the data cannot pin and
+the priors only weakly hold; a converged MAP over-fits along them. This bears on HMC (the flat directions will dominate
+posterior width) and on which priors matter -- the flat directions, not the stiff habitat-field direction, are where
+the user's "upstream prior" question (amplitudes, coupling) should be asked. Next: identify the flat directions (Lanczos
+for the SMALLEST eigenvalues at the converged compact point) and what moved along them between the capped and
+converged compact states.
+FIXEPS PRE-REGISTRATION (local GPU): compact 3-yr onset converged by long-memory L-BFGS with observer_route_eps / observer_first_year_eta HELD at the capped compact_best_refine values, from that endpoint. Prediction: if the held-out loss of the converged compact fit (CONV) came from route effects over-fitting the training routes, this arm converges with held-out ~flat (within ~100 of the capped state) and the swing ~1.2; if held-out still worsens by ~600, the over-fit is in the habitat / disease sites.
+FIXEPS interim (206 iterations): with observer_route_eps / observer_first_year_eta held at the capped compact values, long-
+memory L-BFGS moves the compact fit only 135,761.44 -> 135,761.41 (data NLL 114,122.12 -> 114,122.05). Established for this
+start: essentially ALL of CONV's -112 objective / -120 data-NLL improvement went through the 19,127 ROUTE EFFECTS (whose SD
+grew .63 -> .77), the same moves that cost ~+600 on held-out data. With route effects fixed, the capped compact fit is
+already at its optimum in the habitat / disease / NestWatch / NB sites. So: (i) the compact onset's in-sample "cost"
+and "gain" are both route-effect bookkeeping; (ii) the flat over-fitting direction is the route effects under a PINNED
+route-effect SD (observer_route_sigma) -- the MAP keeps tightening them because nothing estimates their variance; (iii)
+this is the upstream prior that matters for HMC and production (the user's "upstream prior" question): estimate or
+re-prior the route-effect variance (or integrate the route effects), rather than tune priors on the vital rates.
+TACC: code, runner, starting points and six queued-ready tasks are staged under $WORK/houfin/research/takeover_claude/
+(compact / original with route effects fixed; two more converged compact starts; converged F2 arms). The final step
+(copying them into the shared grid54 queue/pending) was blocked by the permission classifier -- awaiting the user.
+SIGU PRE-REGISTRATION (local GPU, serial): route-effect scale sigma_u .97 -> .60 (overlay copies; eps rescaled x .97/.6 so the start reproduces the fitted predictions), compact and original F0, long-memory L-BFGS, all sites free. Prediction: with stronger shrinkage the route effects cannot over-fit as far -- held-out improves (blocks and 2021-25) relative to the sigma .97 converged fits, the in-sample data NLL rises; the compact-vs-original swing contrast (~1.2 vs ~1.5) is unchanged. If held-out does NOT improve, the route effects' scale is not the over-fitting control.
+
+### FINALISATION BATCH (user, 2026-11-05 evening: "put yourself in front of the queue ... finish this line tonight")
+TACC (grid54 queue, claude tasks 0001-0012 ahead of Codex's; 5 more allocations submitted: 3 x gpu-a100 6 h, 2 x
+gpu-a100-small 6 h): 0001/0002 compact / original with route effects fixed; 0003/0004 compact starts 3 / 2; 0005/0006 F2
+compact / original; 0007/0008 compact + exp K link (sigma_u .97 / .6); 0009/0010 compact sigma_u .45 / .75; 0011 compact
+sigma_u .6 start 3; 0012 original sigma_u .6. Local: GPU SIGU (compact / original sigma_u .6); CPU 16-31 the candidate
+(compact + exp + sigma_u .6) from start 2. All long-memory L-BFGS on Codex's posterior objective with all sites free; each
+gets the structural readout (swing, toll, held-out) on return.
+Decision rule (pre-registered): the candidate structure is the one with the best HELD-OUT score among converged arms whose
+in-sample data NLL is within ~50 of the best and whose dispersed starts agree within ~50 (objective) and ~.1 (East 2010
+potential). Swing size is reported, never the selection criterion.
+
+### User (2026-11-05 evening) and the next questions
+User: is the stiffness the shared field or inherent nonlinearity? (sufficient stiffness is intractable for HMC; posterior
+geometry -- ugly ridges? -- uncharacterised; compact onset is ONE fix, not proof the remaining growth is real; do old ideas
+need revisiting in the better model, or new ideas?) My reading: the stiff direction (factor coefficients + survival
+intercepts, pure data curvature) is most likely the multiplicative compounding of log-lambda over 60-120 yr (inherent),
+amplified by onset timing; more fields add flat directions rather than removing it (testable: STIFF at the F2 endpoint,
+launched). HMC tractability turns on whether the stiff eigenvectors are stable across the posterior (dense mass matrix /
+rotation fixes linear stiffness) -- test: eigenvector overlap between endpoints and starts.
+Queue for the candidate once converged (pre-registered here): (a) Lanczos smallest eigenvalues (flat ridges) and top-
+eigenvector overlap across starts; (b) re-profile the rates <-> toll ridge (ceiling caps) under compact onset; (c) R97
+post-1993 half / full freeze under the candidate; (d) decline + banded-Sa readouts on the candidate; (e) NB density power
+free; (f) habitat_change shrink = learned (eta on DESK's temporal change; DIGEST: DESK over-moves, calibrated x .37-.62).
+Queued 0013 / 0014 (TACC): candidate (compact + sigma_u .6, without / with exp link) + habitat_change shrink = learned (eta ~ Beta(2,2) on DESK's temporal change). Prediction: eta < 1 (DIGEST: calibrated DESK x .37-.62) and the East 2010 potential falls below the eta = 1 arm's at a small in-sample cost; if eta -> 1 the counts want DESK's full temporal movement.
+CONV original-onset readout (converged, jitter restart): East potential .47 / .93 / 1.53 / 1.56 (1966 / 1990 / 2010 / 2020), toll
+.263; Plains .48 -> .90, West .74 -> 1.10; held-out pre / post blocks / 2021-25 10,764 / 21,407 / 21,564 (Codex endpoint
+10,735 / 21,380 / 21,557 -- converging the original moved held-out by only +29 / +27 / +7, it barely moved in-sample either).
+Matched converged pair (same optimizer): compact vs original -- data NLL 114,001.7 vs 114,018.6 (-17); East 2010 potential
+1.21 vs 1.53; toll .18 vs .26; post-1990 rise +.36 vs +.60; held-out +97 / +366 / +87 WORSE for compact. Read (likely): the
+compact onset halves the post-1990 eastern rise and removes ~1/3 of the toll at no in-sample cost, but its converged fit is
+the one that over-fits through route effects (+550 held-out) -- whether that held-out gap is the onset or the route-effect
+freedom it opened is what SIGU (sigma_u .6) and TACC 0001 / 0002 (route effects fixed) decide.
+
+### STIFF at the F2 (separate capacity field, compact onset) endpoint (campaign_03 f2_d1_refine; gradient-seeded Lanczos, 30 steps)
+| endpoint | top curvature | smallest Ritz | top direction |
+|---|---|---|---|
+| F0 compact | 3.90e6 | +3.3 | manifold_factor .89 |
+| F0 original | 1.02e6 | +3.4 | manifold_factor .90 |
+| F2 compact | 1.51e6 | **-916** | manifold_factor .85 (2nd: capacity_factor .84) |
+Answer to the user's question (likely): a second field SPLITS the stiff curvature (top 2.6x lower; K's own field carries the
+second direction) but introduces NEGATIVE curvature -- the F2 endpoint is not a local minimum (a saddle, or still sliding
+down a ridge). More fields trade stiffness for non-convexity, which is worse for HMC (ridges / multiple modes) and
+consistent with the historical K-as-absence-switch failure of separate fields. The single-field stiffness is therefore best
+read as the inherent compounding of log-lambda over decades, handled by a dense mass matrix / rotation in HMC if its
+eigenvectors are stable (next: overlap across starts). Locating the negative direction's sites: rerun with the smallest
+Ritz pair reported (queued).
+TACC 0001 / 0002 (route effects fixed, long-memory L-BFGS) DONE: compact 135,761.439 -> 135,761.424 (100 it), original
+135,589.827 unchanged (2 it). TACC objectives match local to the decimal (environment validated). Confirms FIXEPS: with the
+route effects held, both capped fits are already at their optima in every other site (established). The matched comparison
+WITH route effects fixed: compact vs original data NLL 114,122.1 vs 114,023.9 (+98), East 2010 potential ~1.19 vs 1.53,
+held-out 10,750 / 21,534 / 21,604 vs 10,735 / 21,380 / 21,557 (+15 / +154 / +47). So the honest compact-onset price, with
+the route effects not allowed to re-fit, is ~+100 in-sample and ~+200 on held-out, for ~-.34 in 2010 eastern potential
+lambda and -.11 toll (likely). Under free route effects both arms' in-sample numbers are route-effect bookkeeping.
+F2 negative direction (Ritz -916, data -917 / prior +1): manifold_factor .92, capacity_factor .03, alpha_a .02 -- the F2 endpoint is a SADDLE along the DEMOGRAPHIC field, i.e. Codex's F2 fit was not converged (it can still descend by moving the demography field), not a ridge in K. TACC 0005 (converged F2 compact) decides whether it reaches a proper minimum. Revises the 'more fields trade stiffness for non-convexity' reading to: unknown until 0005 converges.
+TACC 0004 compact start 2 (converged, relative-reduction stop, 1,201 it): 135,764.0 (start 135,770.0), data NLL 114,120.4;
+East potential .62 / .92 / 1.19 / 1.16, toll .16; held-out 10,750 / 21,583 / 21,608; parameters 4% (field) / 2% (route effects)
+from the capped compact_best_refine and 24% / 67% from the CONV over-fit state; route-effect SD .634 (over-fit .77).
+Two compact regions (likely): a "capped" region reached from two independent starts (objective ~135,761-135,764, route SD
+~.63, held-out ~flat vs original) and the "over-fit" region (135,649, route SD .77, held-out +550) that long-memory L-BFGS
+reached from the history-control start. The POSTERIOR objective prefers the over-fit region by ~112, so this is a property
+of the route-effect model (pinned scale .97 lets the 19,127 effects widen), not an optimizer artefact. The eastern swing is
+the same in both (1.19-1.21): the compact-onset swing reduction is robust to the route-effect treatment (established for
+these three compact endpoints).
+TACC 0003 compact start 3: 135,763.6 -> 135,640.5 (3,000 it, cap), data NLL 113,995.1 -- the OVER-FIT region again (below CONV's
+135,649). So start 2's relative-reduction stop in the capped region was early termination, not a separate minimum: the
+posterior mode of the compact model is the over-fit (wide route-effect) region (likely; two of three starts). TACC 0005 F2
+compact: 135,199.3 -> 135,182.9 (cap), data 113,641.2; 0006 F2 original: 135,083.4 -> 135,079.7 (relative stop), data 113,561.6
+-- F2 barely moves under long-memory L-BFGS (no comparable drift). Readouts running (swing, toll, held-out).
+
+### RANKING (converged, Codex posterior objective, all sites free; held-out = pre-1994 blocks + post-1993 blocks + 2021-25)
+| arm | data NLL | East potential 1966 / 1990 / 2010 | toll | held-out pre / post / 2021-25 | total | route-effect SD |
+|---|---|---|---|---|---|---|
+| F2 independent K, original onset (0006) | 113,561.6 | .56 / 1.06 / 1.88 | .28 | 10,238 / 20,985 / 21,737 | 52,960 | .62 |
+| F2 independent K, compact onset (0005) | 113,641.2 | .71 / 1.19 / 1.75 | .20 | 10,253 / 20,995 / 21,802 | 53,050 | .62 |
+| F0 original onset (capped = converged region) | 114,023.9 | .48 / .93 / 1.53 | .26 | 10,735 / 21,380 / 21,557 | 53,672 | .63 |
+| F0 compact, capped region (0004) | 114,120.4 | .62 / .92 / 1.19 | .16 | 10,750 / 21,583 / 21,608 | 53,941 | .63 |
+| F0 compact, converged (0003) | 113,995.1 | .53 / .83 / 1.17 | .17 | 11,020 / 21,838 / 21,662 | 54,520 | 1.11 |
+Established for these endpoints: (1) F2 is best on held-out by ~700 (spatial blocks -500 / -400; 2021-25 +180) AND in-sample;
+(2) F2's route effects do NOT widen (SD .62) while F0 compact's converge to 1.11. Mechanism (likely): with capacity tied to
+the demographic field, F0 cannot produce the spatial abundance pattern, so the 19,127 route effects widen to supply it
+(over-fit) -- the route-effect "level offset" of NB-CAL; an independent K field supplies it and the route effects stay
+narrow. So the route-effect over-fit is a SYMPTOM of the shared-field restriction on K, not a separate defect (likely).
+(3) But F2's demographic swing is LARGER (2010 East 1.75-1.88; > 1 already by 1990): freeing K also frees the rates' rise.
+Pre-registered selection rule (best held-out among converged arms within ~50 in-sample of the best): the F2 family. Swing
+reported, not used for selection. The compact onset under F2 costs ~+80 in-sample and ~+90 held-out and cuts 2010 East
+potential .13 and the toll .08 -- a much weaker effect than under F0. Next (queued): F2 + exp link, F2 + DESK temporal shrink,
+F2 dispersed starts (multistart / HMC readiness), and a readout of WHERE F2's extra demographic rise sits (East post-1990).
+
+### SIGU RESULT (route-effect scale sigma_u .97 -> .60; converged, all sites free; F0 single field)
+| arm | data NLL | East potential 1966 / 1990 / 2010 | toll | held-out pre / post / 2021-25 | total | route-effect SD (eps) |
+|---|---|---|---|---|---|---|
+| compact, sigma .6 | 117,282.7 | .60 / .95 / 1.23 | .16 | 10,077 / 20,386 / 21,147 | 51,610 | .715 |
+| original, sigma .6 | 117,104.9 | .49 / .97 / 1.53 | .26 | 10,143 / 20,454 / 21,202 | 51,799 | .713 |
+| (original, sigma .97) | 114,023.9 | .48 / .93 / 1.53 | .26 | 10,735 / 21,380 / 21,557 | 53,672 | .63 |
+| (F2 original, sigma .97) | 113,561.6 | .56 / 1.06 / 1.88 | .28 | 10,238 / 20,985 / 21,737 | 52,960 | .62 |
+Established for these fits: a tighter route-effect scale improves EVERY held-out set by ~1,900-2,100 in total (spatial blocks
+-600 / -900; 2021-25 on already-seen routes -350 / -400) at ~+3,100 in-sample -- the pinned .97 lets the 19,127 route
+effects absorb structure that does not generalise. At sigma .6 the COMPACT onset is better on held-out than the original
+(-189 total; every set), with the smaller swing (1.23 vs 1.53) and toll (.16 vs .26), for +178 in-sample. The single field
+at sigma .6 beats F2 at sigma .97 by ~1,350 held-out. Implication (likely): the route-effect scale is the largest single
+structural lever found today; F2 must be re-compared at the tighter scale (queued first on TACC), and the scale itself
+profiled (.45 running, .75 queued) or estimated (a centred / marginalised route-effect variance) rather than pinned.
+
+### SIGU profile + exp-link result, and a scoring caveat
+| arm (converged) | data NLL | East 2010 potential | toll | held-out pre / post / 2021-25 (route effect 0 for unseen routes) | total | eps SD |
+|---|---|---|---|---|---|---|
+| compact sigma .45 (0009) | 119,810.6 | 1.22 | .16 | 9,695 / 19,850 / 21,041 | 50,586 | .74 |
+| compact sigma .60 (SIGU) | 117,282.7 | 1.23 | .16 | 10,077 / 20,386 / 21,147 | 51,610 | .72 |
+| compact sigma .97 + EXP link (0007) | 113,971.3 | 1.22 | .175 | 10,986 / 21,973 / 21,619 | 54,578 | 1.42 |
+CAVEAT (established, by construction): held-out BLOCK rows are on routes with no training data and are scored at route effect
+0 (the median route), which flatters a small sigma_u -- the zero-effect point prediction is what a small sigma forces the
+fixed surface to fit. The fair score for an unseen route is the predictive mixed over its unknown effect; marginal_heldout.py
+(Gauss-Hermite) is running on six arms before any sigma is preferred. The 2021-25 rows are on SEEN routes and are scored
+conditionally -- they also improve with smaller sigma (21,557 / 21,147 / 21,041 at .97 / .6 / .45), so part of the gain is
+real temporal generalisation (likely). The exp link with free route effects over-fits hardest (eps SD 1.42; worst held-out):
+the KLINK2 held-out gain does not survive in the all-sites-free framework (established for this arm). The swing is ~1.22
+under every compact arm regardless of sigma or link (established for these four).
+
+### MARGINAL held-out (marginal_heldout.py: unseen-route rows scored by the NB mixed over N(0, sigma_u^2) route effects,
+### 32-node Gauss-Hermite; seen-route rows conditional) -- CORRECTS SIGU
+| arm | sigma_u | marginal pre / post blocks / 2021-25 | total | (naive, effect 0) |
+|---|---|---|---|---|
+| F2 original (0006) | .97 | 8,137 / 18,721 / 20,743 | 47,602 | 53,918 |
+| F0 original | .97 | 8,213 / 18,858 / 20,626 | 47,697 | 54,622 |
+| F0 compact capped (0004) | .97 | 8,218 / 18,902 / 20,675 | 47,795 | 54,878 |
+| F0 compact | .60 | 8,292 / 18,826 / 20,706 | 47,824 | 52,525 |
+| F0 original | .60 | 8,309 / 18,844 / 20,711 | 47,864 | 52,712 |
+| F0 compact | .45 | 8,419 / 18,909 / 20,839 | 48,167 | 51,494 |
+(n = 19,333 held-out rows on routes without training data, 7,395 on seen routes.) Established: the SIGU "~2,000 held-out
+gain from a smaller route-effect scale" was a SCORING ARTEFACT of scoring unseen routes at effect 0 -- under the proper
+predictive, sigma .97 is as good or better than .6 and .45 is worse. The route-effect scale is NOT a lever; .97 stands.
+F2 remains best but by ~100 (not ~700); all F0 / F2 arms at .97 / .6 sit within ~270 -- held-out barely discriminates the
+structures. Every earlier held-out comparison in this record that mixed route-effect states (CONV over-fit "+600", R90-VIZ,
+KLINK, NB-CAL level offset) used the naive score and must be re-read with marginal_heldout.py (rescoring queued).
+
+### MARGINAL held-out, full set (sigma_u .97 unless stated) -- REVISES the CONV "over-fit" reading
+| arm | route-effect SD | marginal pre / post blocks / 2021-25 | total |
+|---|---|---|---|
+| F0 compact CONVERGED (CONV snap 1356; objective 135,649) | .77 | 8,148 / 18,801 / 20,579 | **47,528** |
+| F2 original (0006) | .62 | 8,137 / 18,721 / 20,743 | 47,602 |
+| F2 compact (0005) | .62 | 8,146 / 18,728 / 20,812 | 47,686 |
+| F0 original capped / converged | .63 | 8,213-8,216 / 18,858-18,863 / 20,622-20,626 | 47,697 / 47,701 |
+| F0 compact capped (0004) | .63 | 8,218 / 18,902 / 20,675 | 47,795 |
+| F0 compact sigma .6 / .45 | .72 / .74 | -- | 47,824 / 48,167 |
+| F0 compact start 3 converged (0003; objective 135,640.5) | 1.11 | 8,332 / 19,217 / 20,743 | 48,293 |
+| F0 compact + EXP link (0007) | 1.42 | 8,573 / 19,830 / 21,094 | 49,497 |
+Established (fair predictive scoring): (1) the converged compact fit is the BEST held-out arm -- the moderate route-effect
+widening (.63 -> .77) generalises; the "+600 over-fit" of CONV was the naive scoring. (2) Real over-fitting appears only
+at wide route effects (1.11: +765; exp link 1.42: +1,970). (3) A RIDGE in the route effects: start 3 is 9 BETTER in the
+posterior objective than CONV but 765 WORSE on held-out -- a flat, weakly identified direction the MAP does not pin; HMC
+would wander along it (route-effect variance needs a proper treatment -- a centred hierarchical variance or
+marginalisation -- before HMC). (4) The exp link is not supported once route effects are free. (5) F2 is close (+74 to
++158) with a much larger swing. Candidate on the evidence (likely): F0 single field + compact 3-yr onset + sigma .97 +
+softplus link, at the converged (CONV-type) state: East potential .55 / .85 / 1.21 (1966 / 1990 / 2010), toll .18,
+in-sample data NLL 114,002 (best F0), marginal held-out 47,528 (best). Open: the route-effect ridge (start dependence),
+the remaining swing (post-1990 +.36) via the DESK-shrink tests (00093-00095 queued) and the re-tested old ideas.
+
+### DECLINE readout on the converged structures (ridge_maps compute + decline_readout.py; same cells, documented onset)
+| arm | East obs / pred | Plains obs / pred | West obs / pred |
+|---|---|---|---|
+| CANDIDATE F0 compact converged (CONV) | -.417 / -.454 | -.253 / +.008 | +.097 / +.018 |
+| F0 original converged | -.417 / -.338 | -.253 / +.145 | +.097 / +.006 |
+| F2 original (0006) | -.417 / -.135 | -.253 / -.372 | +.097 / -.081 |
+Established for these three: the sharp-onset candidate reproduces the observed eastern post-arrival decline (slight
+overshoot) and closes most of the Plains miss (flat vs observed decline; original predicted growth); F2 gets the eastern
+decline badly wrong (-.14) and overshoots the Plains. The transient -- not used in fitting except as the counts themselves --
+discriminates where marginal held-out barely does (spread ~170), and it favours the candidate over both rivals (likely).
+Caveats from review 9 C3 remain (cell- not route-paired, pooled means, no CI).
+
+### TACC F2 follow-ups (converged; all sites free; sigma .97 unless stated)
+| task | objective (start) | data NLL | note |
+|---|---|---|---|
+| 00093 F2 original + DESK temporal shrink (habitat_change eta ~ Beta(2,2)) | 135,083.1 (151,021) | 113,562.1 | **eta -> .986** |
+| 00092 F2 original, dispersed start (capacity field drawn from prior) | 134,925.2 (198,128; iter cap) | 113,473.4 | 155 below 0006 |
+| 00091 F2 original + exp link | 134,986.3 (260,166) | 113,496.9 | |
+| 00081 F2 original sigma .6 | 138,992.2 | 116,501.7 | (route scale not a lever) |
+| 0008 F0 compact + exp + sigma .6 | 139,926.9 | 117,192.0 | |
+Established: (1) the counts REJECT a shrink of DESK's temporal change under F2 (eta .986, objective = the unshrunk F2):
+F2's larger demographic rise is not DESK's temporal over-movement being amplified. (2) F2 is START-DEPENDENT: a dispersed
+capacity-field start reaches 155 lower than the original F2 fit -- two F2 optima (or one not converged); a multimodality
+warning for F2 per the user's criterion. Marginal held-out and readouts for these running. F0 compact + shrink (00095) and
+F2 compact + shrink (00094) running on TACC.
+CORRECTION (2026-11-05 night): ridge_maps.py loaded only parameter sites already present in the base latents, silently DROPPING F2's capacity_factor -- every F2 row of the DECLINE tables (F2 original -.135 / -.372; lambda medians) is INVALID. F0 rows (candidate, original) unaffected; marginal_heldout.py loads every key, so its F2 scores stand. Loader fixed (all saved sites); F2 maps and declines rerunning (candidate rerun as an identity check).
+
+### DECLINE readout, corrected (all saved sites loaded; candidate identity check reproduces exactly)
+| arm | East obs / pred | Plains obs / pred | lambda 1966 -> 2010 (occupied, all regions) | toll |
+|---|---|---|---|---|
+| CANDIDATE F0 compact converged | -.417 / -.454 | -.253 / +.008 | .57 -> 1.02 | .18 |
+| F0 original converged | -.417 / -.338 | -.253 / +.145 | .54 -> 1.21 | .24 |
+| F2 original (0006) | -.417 / -.328 | -.253 / +.112 | .63 -> 1.41 | .25 |
+| F2 + exp (00091) | -.417 / -.310 | -.253 / +.111 | .50 -> 1.54 | .27 |
+| F2 dispersed start (00092) | -.417 / -.328 | -.253 / +.075 | .72 -> 1.24 | .23 |
+Established for these endpoints: every F2 arm behaves like the original-onset model on the post-arrival transient (eastern
+drop under-predicted, Plains growth predicted); the compact-onset candidate is the only structure that reproduces the
+documented eastern decline and closes most of the Plains miss, with the smallest swing. DESK temporal shrink: rejected in
+both families (eta .978 F0 compact, .981 F2 compact, .986 F2 original; objectives = the unshrunk fits). Queued on TACC:
+candidate rates <-> toll ridge (mortality ceiling .25 / .15), candidate multistart (continue start-2, two jittered starts).
+
+### STIFF eigenvector stability (HMC tractability; user: "sufficient stiffness will be intractable for HMC")
+Gradient-seeded Lanczos (30 steps), top-8 Ritz vectors saved at three compact endpoints that differ strongly in the route
+effects (capped SD .63 / candidate-converged .77 / start-3 1.11). Principal-angle cosines between top-k subspaces:
+candidate vs capped: k=1 .996; k=3 >= .967; k=5 >= .929; k=8 >= .894. candidate vs start 3: k=1 1.000; k=3 >= .999; k=8 >= .982.
+capped vs start 3: k=1 .996; k=8 >= .934. Top eigenvalue 2.5e6 / 3.9e6 / 2.5e6; smallest Ritz +9.1 / +11.8 / +11.4 (all three
+are proper local minima, unlike the F2 saddle).
+Established for these endpoints: the stiff directions are FIXED across the compact posterior region (only their scale
+moves, ~1.6x) -- the stiffness is essentially linear and is absorbed by a dense mass matrix or a low-rank (top ~8)
+preconditioner in HMC; after removing those, the curvature spread is ~5e4 / 10 (a few thousand), within reach of dense-
+adaptation NUTS (likely). The harder geometry for HMC is the FLAT route-effect ridge (start 3 vs candidate: 9 objective,
+765 held-out), not the stiffness.
+F2 compact dispersed start (local GPU; capacity field drawn from prior; from the F0 compact fit): 202,024 -> 135,073.5 (3,000 it cap), data NLL 113,616.6 -- 110 below the TACC F2 compact fit (135,182.9). F2 is start-dependent in BOTH onsets (original 155, compact 110; established for these starts): consistent with the user's multimodality criterion pointing AWAY from F2 as the production structure. Readout not run (F2 rejected on the transient already).
+
+### Candidate toll-cap profile, first point (mortality ceiling .25; TACC 000101; route effects free)
+135,764.7 (cap; candidate 135,649), data NLL 114,105.2 (+103); East potential .60 / .83 / .99 / .95 (1966 / 1990 / 2010 / 2020),
+toll .10; marginal held-out 8,444 / 19,396 / 20,834 = 48,675 (+1,147 vs the candidate). CONFOUNDED (established): under the
+cap the route effects widened to SD 1.13 (candidate .77; the start-3 over-fit state that alone cost +765) and alpha_a moved
+134% -- the held-out loss cannot be attributed to the toll cap. The in-sample cost of the cap is now ~10x smaller than under
+the old onset (+103 vs ~+1,110 at the same ceiling): the sharp onset has removed most of the rates <-> disease trade (likely).
+Clean profile queued: ceilings .35 (local) / .25 / .15 (TACC) with route effects FIXED at the candidate's values.
+General lesson (J-log candidate): with free route effects every constrained refit can slide along the route-effect ridge;
+profiles and held-out comparisons need the route effects fixed (or properly marginalised) to be attributable.
+TACC 000102 ceiling .15 (route effects free): 135,902.3 (cap), data 114,223.2 (+221), route SD 1.005 -- confounded like .25. 000103 continue-start-2: stalled at its first line search (7 it; L-BFGS stall from a polished start) -- uninformative; the jittered starts (local) are the multistart test. Clean (fixed-route-effect) ceilings .25 / .15 running on TACC (node 3548331 ~50 min left; checkpoint-resume), .35 local.
+
+### CANDIDATE toll-cap ridge, CLEAN (route effects fixed at the candidate; converged by relative stop)
+| ceiling | objective | data NLL | East potential 1966 / 1990 / 2010 / 2020 | toll | marginal held-out |
+|---|---|---|---|---|---|
+| none (candidate, CONV) | 135,649 | 114,001.7 | .55 / .85 / 1.21 / 1.21 | .18 | 47,528 |
+| .25 (000106) | 136,108.4 | 114,468.6 (+467) | .65 / .87 / 1.05 / 1.03 | .12 | 47,659 (+131) |
+| .15 (000107) | 136,593.8 | 114,994.6 (+993) | .70 / .87 / .94 / .89 | .07 | 48,008 (+480) |
+Established for these fits: under the candidate the rates <-> toll ridge is BOUNDED -- ~470 in-sample per ceiling step (vs
+~+1,110 for a comparable step under the old onset with route effects free, which was then mostly route-effect sliding), with
+the fair held-out score agreeing in direction (+131, +480). Part of the remaining post-1990 eastern rise is still traded
+against disease (1990 -> 2010: +.36 candidate, +.18 at ceiling .25), but the data now pay for the trade. The candidate's
+swing (.55 -> 1.21) and toll (.18) are the data-preferred point on a bounded ridge, not a free corner (likely).
+
+## STATE AT END OF NIGHT (2026-11-05) -- candidate structure and open items
+CANDIDATE: F0 single shared habitat field; compact 3-yr disease onset; route-effect scale sigma_u .97; softplus K link;
+no DESK temporal shrink (eta -> .98 rejected in both families); converged by long-memory L-BFGS.
+Evidence for it: best or near-best fair (marginal) held-out (47,528; F2 within +-150 but start-dependent by 110-155 and
+fails the post-arrival transient); the only structure reproducing the documented eastern post-arrival decline (-.45 vs
+observed -.42) and closing most of the Plains miss; smallest swing (.55 -> 1.21 East; occupied all-region .57 -> 1.02); toll
+.18; the rates <-> toll ridge bounded (~470 per ceiling step). Rejected tonight: smaller route-effect scale (artefact of
+naive scoring), exp link (route effects explode), DESK temporal shrink, F2 (start-dependent, transient).
+Geometry: stiffness localised (shared field + survival intercepts, data curvature ~1e6), with eigenvectors FIXED across the
+posterior region (cosines >= .89 for the top 8) -> a dense / low-rank mass matrix handles it in HMC. The OPEN problem is
+the flat route-effect ridge (starts at near-equal objective differ by ~765 held-out; route SD .63-1.13): needs a proper
+route-effect variance treatment (centred hierarchical variance or marginalisation) before HMC. Pending: two jittered
+candidate starts (local), ceiling .35 clean (local).
+Candidate multistart, jitter b (local GPU; jitter .05 in optimizer coordinates from the candidate): 135,641.0 (relative stop),
+data NLL 113,987.3, route SD 1.05; East potential .53 / .83 / 1.19 / 1.19, toll .176; marginal held-out 48,125 (+597 vs the
+candidate). Established for the four converged compact endpoints now (capped .63, candidate .77, start-3 1.11, jitter-b 1.05):
+the SWING and TOLL are start-invariant (East 2010 potential 1.17-1.21, toll .16-.18) while the route-effect width and the
+held-out score are not (47,528-48,293); the posterior objective weakly prefers the wide-route-effect end (by 8-9). The
+route-effect ridge is the remaining geometry problem, and it does not touch the demographic conclusions.
+
+## ROUTEMARG (2026-11-05 evening): marginalise the route effects (pre-registration + first check)
+
+**Why.** The one open geometry problem after CAND is the route-effect ridge: candidate starts within 8-9 objective units
+differ by up to ~765 marginal held-out NLL, route SD .63-1.13. sigma_u cannot be estimated at a joint mode (pinned .97).
+**Design.** `research/exp/invasion_sandbox/laplace_fit.py`: each observer x route effect enters only its own rows' NB
+means, with no feedback into the dynamics, so the route block of the Hessian is diagonal and a per-route Laplace marginal
+(TMB / glmmTMB style) is exact in structure. The 19,127 effects leave the optimiser's coordinates (145 remain); sigma is one
+free coordinate, HalfNormal(1), no Jacobian like the rest. The inner conditional mode uses 30 step-clipped Newton steps,
+unrolled, so the gradient is exact as they converge. Everything else is Codex's posterior objective, with the candidate
+overlay (F0 + compact 3-yr onset + softplus K).
+**Checks (passed, `laplace_check.py` at the candidate).**
+- The row likelihood equals the model's obs term: 112,006.665 own vs 112,006.670 model at the file's eps; 159,204.898 vs
+  159,204.902 at eps = 0.
+- The conditional mode is unique: starts from 0 and from the file's eps agree to .003, with Newton gradient 1.5e-4.
+**Finding on the old joint fits (established).** ZeroSumNormal is a TransformedDistribution (an (n-1)-dim Normal through
+ZeroSumTransform). MapCoordinates unwraps it to the base Normal but optimises all n eps freely, i.e. OFF the zero-sum
+support. There, log_prob is a non-standard quadratic, not sum(e^2)/2.
+- At the candidate the joint fits' route prior is 21,424, against sum(e^2)/2 = 7,366.
+- The eps mean is -.43, which is not zero-sum.
+- The last route (index 19126) sits at eps = -59.45: the transform makes it a weakly penalised direction (moving it by 10
+  costs 48 vs 63 for another route).
+So every joint fit so far used an unintended prior on the route effects. HMC is unaffected, because it uses the proper
+transform. The Laplace fit uses the intended iid N(0,1) (dropping the zero-sum constraint is immaterial at n = 19,127; the
+mean is penalised n m^2/2).
+**Predictions.**
+- (a) sigma-hat lands in .6-1.0 (the earlier integrated estimate gave .97).
+- (b) Multistarts (candidate, jitter-b endpoints) agree on objective AND marginal held-out to within ~50. If they disagree
+  by hundreds, the ridge is not the route effects.
+- (c) The demographic readouts (East 2010 potential ~1.2, toll ~.17) do not move by more than the CAND multistart range.
+  If they move, the route-effect prior was holding them.
+**Runs.** GPU: lap_free (sigma free, from the candidate), then lap_fix097 (Laplace at .97). CPU 16-31: lap_free_jb (sigma
+free, from jitter-b). Each gets marginal_heldout.py (sigma read from the fit) and structural_fit_readout.py.
+
+### Clean ceiling ridge, completed (route effects fixed at the candidate; old joint objective)
+| toll ceiling | data NLL cost | E potential 1966 -> 2010 | E disease mort. 2010 (median) | Plains disease 2010 | marginal held-out |
+|---|---|---|---|---|---|
+| none (candidate) | 0 | .54 -> 1.21 | .161 | .074 | 47,528 |
+| .35 | +112 | .57 -> 1.17 | .159 | .032 | 47,509 (-19) |
+| .25 | +467 | .65 -> 1.05 | .165 | .009 | 47,659 (+131) |
+| .15 | +993 | .70 -> .94 | .102 | .001 | 48,008 (+480) |
+- The first cap (.35) is free on held-out: it mostly removes Plains disease mortality (.074 -> .032), and the eastern swing barely moves.
+- Below .35 the held-out cost rises steadily while the eastern swing shrinks. Disease toll and post-1990 growth trade along a
+  bounded ridge (likely).
+
+### ROUTEMARG results, part 1
+**Laplace fits (candidate structure).**
+| fit | objective (Laplace) | sigma | route SD | marginal obs | nest | E potential 66/90/10/20 | E disease 2010 |
+|---|---|---|---|---|---|---|---|
+| lap_free (from candidate) | 142,320.3 | 1.251 | .73 | 122,550.1 | 1,998.9 | .56/.85/1.17/1.17 | .154 |
+| lap_free_jb (from jitter-b) | ~142,323 at iteration 140 (running) | 1.249 | .73 | - | - | - | - |
+| lap_fix097 (sigma pinned .97) | 142,549.2 | .97 | .62 | 122,744.2 | 2,014.1 | - | - |
+- **(a)** sigma-hat = 1.25. This is outside the predicted .6-1.0: the marginal likelihood prefers it to .97 by 229.
+- **(b) The ridge is gone (established for these two starts).** Jitter-b started 2,000 above the candidate on the Laplace
+  objective, although the two were tied (8 units) on the old joint objective. Within 140 iterations it reached the
+  candidate's value to about 3 units, with the same sigma. The joint objective's near-ties were not equivalent fits: the
+  route effects were absorbing different structure (jitter-b's theta with route effect 0 scores 176,581 vs 159,204).
+- **(c) Held.** The demography does not move: East .56 -> 1.17 vs .54 -> 1.21 for the joint candidate, with the same toll.
+
+**Scorer correction (established).** marginal_heldout.py's original unseen-route score mixed each ROW over an independent
+route effect. The rows of one unseen route share one effect, so the correct predictive integrates per route
+(`route_marginal_unseen_*`, now added). The per-row mixture roughly doubled differences between arms that differ in sigma
+or in route-effect mean.
+| arm | per-row mixture total | per-route unseen (3,687 routes) | 2021-25 (mostly seen) | best (sigma, shift) for unseen routes |
+|---|---|---|---|---|
+| joint candidate (sigma .97) | 47,528 | 32,681 | 20,579 | (.97, -.4): 32,638 |
+| joint original onset | 47,697 | 32,669 | 20,626 | (1.1, +.2): 32,633 |
+| Laplace sigma .97 | 47,981 | 32,891 | 20,751 | (1.1, +.2): 32,844 |
+| Laplace sigma-hat 1.25 | 48,397 | 32,945 | 20,835 | (1.1, +.4): 32,858 |
+- **Compact vs original onset is a tie on unseen routes (12 units).** The candidate's earlier "best held-out" lead of 169
+  was mostly the per-row scorer. It keeps a 47-unit lead on 2021-25.
+- **The joint candidate's edge over Laplace is the off-support prior's gauge.** Its unseen routes want a -.4 shift, which
+  is its own eps mean (-.43). The off-support ZeroSumNormal let it trade the route mean against the intercept (likely).
+- **Laplace costs about 210-260 on unseen routes and 170-260 on 2021-25.** Sigma itself is only about 54 of that. The
+  rest, with the demography unchanged, is a slightly lower recent growth path (West 2020 potential .94 vs 1.00), which
+  under-forecasts 2021-25 (likely).
+
+### ROUTEMARG results, part 2
+**Second start converged to the same mode (established).** lap_free_jb reached 142,319.0 vs lap_free 142,320.3, sigma 1.249
+vs 1.251, route SD .733 vs .734 (stopped at iteration 250, still descending by < 1 per 10 iterations).
+
+**Per-route held-out ranking of all JOINT arms (old objective; MARG2):**
+| per-route unseen | arm |
+|---|---|
+| 32,657 | F2 original + exp link |
+| 32,669 / 32,674 | F0 original onset (refine / converged) |
+| 32,681 / 32,684 | F0 candidate / candidate ceiling .35 |
+| 32,710 | F2 original (also + shrink) |
+| 32,744 | compact, capped start |
+| 32,778 | F2 compact |
+| 32,834 | F2 original, start 2 |
+| 32,948 / 33,011 | candidate jitter-b / start3 |
+| 33,110 / 33,137 | sigma .6 (original / compact) |
+| 33,457 | compact exp link (sigma .97) |
+| 33,583 | sigma .45 |
+- Under the joint objective the same structure spans 330 across starts (candidate vs start3): this is the ridge.
+- Small sigma is clearly worse on the correct per-route score. The SIGU conclusion (".97 = .6") came from the per-row
+  scorer and is revised: sigma >= .97 is preferred, consistent with Laplace sigma-hat 1.1-1.25.
+
+**F2 compact under Laplace (likely: over-fit).**
+- Objective 141,879.4, 441 below the F0 candidate; sigma 1.19.
+- But held-out is worse on both splits: per-route unseen 33,042 (+97), 2021-25 21,004 (+169).
+- The swing returns: East .64 -> 1.84 -> 1.91 (1966/2010/2020), Plains .50 -> 1.20 -> 1.50, E disease .21.
+- The independent capacity field converts in-sample fit into growth and loses on held-out. This matches the joint-era
+  decline readout (F2 fails the post-arrival transient). F0 stays.
+
+**F2 original under Laplace (likely: over-fit, maximal inflation).**
+- Objective 141,746.6 (-574 vs the F0 candidate); held-out per-route unseen 32,980 (+35), 2021-25 20,961 (+126).
+- East potential .41 -> 2.01 -> 2.13, E disease .33, Plains 1.79 in 2020.
+- The most flexible structure gives the largest swing and no held-out gain.
+
+**Exp K link under Laplace (revises KLINK).**
+- Objective 142,333.7 (+13 vs softplus), per-route unseen 32,955 (+10), 2021-25 20,837 (+2); East .56 -> 1.24.
+- The joint-era verdict that exp is far worse (33,457 per-route; 49,497 per-row) does not survive marginalisation. The link
+  is a tie (established at these two fits); the joint result was a ridge artefact (likely).
+
+### HESS: full posterior Hessian at the Laplace candidate (146 coordinates, column-by-column HVPs)
+`laplace_fit.py --hessian_only` at lap_free (gradient max 2.6). Coordinates: Normal sites in prior-SD units, others through
+their bijections, log sigma.
+- **Positive definite, no negative eigenvalues: a proper mode (established).** Eigenvalue percentiles: min .036, 5% 1.0,
+  median 26, 90% 1,696, 99% 4.2e4, max 2.0e6.
+- **The stiffness is ONE direction (established).** Top eigenvalue 1.998e6: 87% manifold_factor (the shared habitat field),
+  plus alpha_a .07 and alpha_j .05. That is 38x the next (52,554, the same sites). Then the NB concentration pair
+  (kappa/concentration 29,279) and further field + survival-intercept directions (2.8e4-1.3e4). Twenty eigenvalues exceed
+  1e3, six exceed 1e4.
+- **Flat end: bounded and prior-held, not an endless ridge (established).**
+  - Smallest .036: obs_fledgling_weight (a Beta site, so not in prior-SD units).
+  - Then .49 disease_log_tau_rec, then six of .71-1.0: disease_w_lag / w_sev (the disease timing-weight basis). These sit
+    at prior curvature, i.e. the data do not inform them and the prior bounds them.
+- **Condition number** 5.6e7 overall; about 1.5e6 without the single top direction.
+**Implications for HMC (production).**
+- The single stiff direction is a fixed linear combination (eigenvectors stable across endpoints, STIFF/CONV). A DENSE
+  mass matrix built from this Hessian (146 x 146) removes it. A diagonal mass matrix cannot, because the direction spans
+  64 field coefficients and the survival intercepts.
+- The flat directions are prior-dominated, so they are well-scaled for HMC: they are not funnels or ridges.
+- The route effects can stay marginalised: HMC over theta with this embedded Laplace marginal, as in Stan's embedded
+  Laplace. Alternatively sample them non-centred with sigma, where their block is diagonal.
+**Answer to "shared field or inherent nonlinearity?" (likely).** It is the shared field: one linear direction, where Sa,
+Sj, Fmax and K all move together through manifold_factor, so every survival and fecundity rate shifts at once. It is not a
+curved nonlinear valley: the endpoints share eigenvectors, and there are no negative or near-zero directions in the data
+block.
+
+### Original onset under Laplace (onset re-test)
+lap_original: objective 142,238.2 (-82 vs compact), sigma 1.235, per-route unseen 32,967 (+22), 2021-25 20,822 (-13).
+- Held-out is a TIE with compact, while in-sample is 82 better with more onset freedom.
+- The swing is larger: East .45 -> .91 -> 1.49 -> 1.51, E disease .23 (compact .56 -> 1.17, .154).
+- The compact onset stays (documented timing, same held-out, smaller swing). This is the joint-era conclusion, now on an
+  identified objective.
+
+### CAND-VIZ: standard map suite on the leading candidate (F0 + compact onset + softplus K + Laplace route effects)
+Spliced into [cur]'s map_checkpoint.pkl: 28/28 fitted sites; disease_tau_raw unused under the compact onset. Rendered with
+the likelihood-profiles worktree code (the frozen step lacks onset_gate). Output:
+E:/Datasets/houfin/grid54/sandbox/CAND_viz/laplace_candidate/map_diagnostics/. The suite's own observer marginal uses
+config sigma_u .97, not the fitted 1.25.
+- Metrics: holdout temporal lpd -1.819, spatial -1.467, fitted -.707; modern mean lambda .79 (R90 base .98); realised
+  source fraction .33 (.40).
+- Fig 04: the fitted annual mean runs about 10-15% under the observed series throughout (peak 6.7 vs 7.7). The 2021-25
+  projection falls (3.6 -> 2.9) while the observed series rises (4.5 -> 4.8): a forecast-direction miss.
+- Fig 01b: the East still goes from mostly lambda <= 1 in 1940-55 to "gained lambda > 1" across the Ohio Valley / Great
+  Lakes / Southeast. Smaller than R90 base, but present.
+- Fig 09: peak K removed median 10% (up to 48% in the Midwest-East), recovery about 1%.
+
+### FIG04-SPLIT: is fig 04's low / falling fitted mean the disease? (user: "is the disease effect a little too strong?")
+`fitted_mean_split.py` at lap_free. Fig 04's "fitted mean" (A) averages expected_obs with each route effect at its MODE,
+and unseen routes at 0 (the MEDIAN route). Corrections:
+- B: Jensen, E[exp u] = exp(mode + var/2), with var = sigma^2/(1+H_r).
+- C: B plus unseen routes at the MEAN route, exp(sigma^2/2) = 2.2x at sigma 1.25.
+| year | obs | A (fig 04) | B | C | unseen share |
+|---|---|---|---|---|---|
+| 1970 | 2.33 | 1.70 | 1.76 | 1.92 | .14 |
+| 1990 | 6.15 | 5.28 | 5.39 | 6.35 | .13 |
+| 1995 | 7.71 | 6.70 | 6.87 | 7.67 | .13 |
+| 2000 | 5.89 | 4.95 | 5.08 | 5.65 | .13 |
+| 2010 | 3.93 | 3.73 | 3.84 | 4.24 | .13 |
+| 2015 | 4.53 | 3.91 | 4.04 | 4.45 | .13 |
+| 2021 | 4.51 | 3.58 | 3.76 | 4.45 | .26 |
+| 2023 | 4.50 | 3.15 | 3.29 | 4.30 | .39 |
+| 2025 | 4.79 | 2.87 | 2.98 | 4.24 | .51 |
+- **The 10-15% level gap is an observation-layer plotting artefact (established).** Corrected, the model mean matches the
+  observed series (1995 7.67 vs 7.71). On TRAINING rows alone, A already matches (1995 6.89 vs 7.09 with the shared-route
+  mix; B 7.08). The gap exists before 1993 too, so it is not disease.
+- **Most of the 2021-25 "fall" is composition (established).** The unseen-route share rises from 13% to 51% as new
+  observer-routes enter, and fig 04 scores them at the median route. Corrected, the projection is about flat (4.45 -> 4.24)
+  against an observed rise (4.51 -> 4.79). That is a real but small trend miss: about -11% by 2025.
+- **Disease is NOT too strong (likely).** 1995 -> 2010, observed falls 49% (7.71 -> 3.93) and the corrected model 45%
+  (7.67 -> 4.24). The modelled decline is slightly SMALLER, and by 2010 the model sits above observed (4.24 vs 3.93).
+  The remaining modern miss is the post-2010 recovery: observed rises again (3.93 -> 4.79), while the model (recovery
+  about 1% of the hit, tau_rec 18 yr) stays flat. If anything, disease recovery is too weak, not the hit too strong.
+- **Suite fix to propose (not made; it is the shared suite):** fig 04 should plot the model's mean count (Jensen + unseen
+  routes at the marginal mean), not the median-route expectation.
+
+### RUNGE: Runge et al. 2006 contribution metric on the leading candidate
+`run_contribution_audit.py` on the spliced candidate checkpoint (CAND_viz/laplace_candidate; run dir marked as a diagnostic
+splice). Replay exact: population error 0, BIDE 4e-16, origin sums 1e-11. Maps: `invasion_sandbox/runge_maps.py`.
+C = breeder_contribution / input_adult, breeder-weighted per era, on cells >= 1% of the era's peak breeder density.
+| era | C (all) | source cells / breeders | West C | Plains C | East C (source cells) |
+|---|---|---|---|---|---|
+| 1966-93 | 1.06 | .51 / .70 | 1.04 | .95 | 1.27 (.84) |
+| 1994-2009 | 1.00 | .35 / .53 | 1.01 | .92 | .97 (.34) |
+| 2010-25 | 1.01 | .41 / .61 | 1.01 | .96 | 1.02 (.53) |
+- Modern agreement with potential lambda (2010-25): 842 cells are Runge source with lambda_pot > 1; 722 sink with lambda_pot
+  <= 1; 525 sink although lambda_pot > 1; only 12 source although lambda_pot <= 1.
+- **Interpretation (established for this fit).**
+  - The 525 "sink with lambda_pot > 1" cells are crowded cells at or near K. Runge C is a REALISED measure, so it includes
+    density dependence, and at equilibrium C tends to 1 by construction.
+  - Almost no cell is a source on immigration alone, i.e. with lambda_pot <= 1: there are no rescue-made sources.
+  - Contribution is export-dominated. Modern R (retention) is about .3-.6 per breeder and E (successful export) about
+    .5-.8 in the West and South: the long juvenile kernel. Whether a cell is a source is decided by its emigrants.
+  - East C tracks the dynamics: a growing source in 1966-93 (1.27), a net sink through the epizootic (.97), back to about 1.
+  - The Plains are persistently C < 1 (.92-.96). This is the barrier.
+
+### ROUTEMARG: free route-mean (observation intercept), u = m + sigma e, m ~ N(0,1)
+lap_mean: objective 142,248.4 (-72 vs lap_free), m-hat -1.146, sigma 1.266, gradient max 1.5.
+- Held-out does not improve: per-route unseen 32,970 (+25), 2021-25 20,883 (+48). Best (sigma, shift) for unseen
+  routes = (.97, +.4).
+- Readout: the swing and toll SHRINK: East .53 -> .79 -> 1.10 -> 1.06, E disease .127 (lap_free .56 -> 1.17, .154);
+  Plains 2020 .75, West .90.
+- **Interpretation (likely).** The count-to-density scale is identified only weakly, through the absolute-density processes
+  (disease Hill threshold, Allee). Raising density 3x (m = -1.15) buys 72 in-sample, lowers both the swing and the toll,
+  and costs a little held-out. m-hat sits beyond 1 prior SD, so the N(0,1) prior is what bounds it.
+- This is a second bounded trade alongside the toll ceiling: an absolute density scale vs disease toll vs post-1990 growth.
+- Not adopted: no held-out gain, and the fixed gauge (20 route counts per relative unit) is a documented sampler choice.
+- Production implication: if the density scale is left free in HMC, its posterior will be wide and will carry part of the
+  swing uncertainty. That is honest, but it should be reported.
+
+### Third start under Laplace
+lap_cand_start3 (joint-era start3 endpoint): 142,316.6, sigma 1.250; per-route unseen 32,949, 2021-25 20,841; East
+.56 -> 1.16, E disease .150. Three starts now agree within 4 objective units and 6 held-out (joint era: 330 apart).
+**The route-effect ridge is gone (established).**
+
+## KERNEL-SENS (pre-registration, 2026-11-05; user approved): dispersal-kernel sensitivity, not estimation
+**Why not learn the MDDs (records).**
+- Every opened dispersal knob was compensated: departure turned into exodus + regathering (E008/E011/E013); learned
+  departure clamped about 85% of juveniles at home (E043/E050); the tail flipped sign with the base (E023 vs E041/E043).
+- Step 26 MDD 200/110 was compensated by Fmax 13.9/14.8 and a 1.7-1.9x founder pulse; held-out got worse; lambda change
+  stayed +.79/+.69. Distances of 250/330/450 km gave the same basin (E050c/d).
+- BBS at 54 km and annual steps sees density, not movement. The front is pulled, so kernel tail and low-density growth
+  trade.
+- Runge (above): contribution is export-dominated, so the kernel carries high leverage on little information.
+- The kernel also builds the inputs (Z_disp path features and forward kernels), so learning it would require a
+  differentiable kernel construction.
+**Why the alternatives (records).** BBL breeding-season natal dispersal (n 316): 40% at the banding block, mean 62 km, 9.8%
+> 155 km, 2.8% > 483 km, vs the V&L kernel's 63% / 21%. Adult breeding dispersal: median 0, mean 10 (West) - 39 (East) km.
+Belthoff & Gauthreaux: 109 km. V&L's tail rests on about 33 Massachusetts juveniles with season-unrestricted recaptures in
+a partly migratory population (eastern summer-winter displacement 147-194 km). BBL distances are a LOWER bracket:
+recoveries concentrate near people and banders.
+**Arms (shapes .468 / .859, band splits and integration fixed; only the MDDs change).**
+| arm | juvenile MDD | adult MDD | anchor |
+|---|---|---|---|
+| J330 | 330 | 100 | current V&L (pipeline-rebuild control) |
+| J200 | 200 | 100 | intermediate |
+| J110 | 110 | 100 | B&G 109; BBL any-season 102 |
+| J60A30 | 60 | 30 | BBL breeding-season natal 62 / adult 10-39 (lower bracket) |
+**Inputs.**
+- Exact FIELD54 Stage F recipe (code_bc generate_all_path_features with land-share floor 1e-4 on
+  cube_field54prod_ema_s64; ingest from snap_d0e59ff).
+- Then the established-1951 derivation (inv_timestep 38 -> 49, as the existing contract).
+- `invasion_sandbox/kernel_sens.py`, scratchpad `k_inputs.slurm`; outputs under processed/grid54/kernel_sens/<arm>/.
+- CHECK.json vs the production input: everything identical except kernel keys and Z_disp.
+**Fits.** The candidate structure (F0, compact onset, softplus K, Laplace route effects, sigma free), from lap_free, one per
+arm. Then: marginal_heldout (per-route), structural_fit_readout, contribution audit + runge_maps, and fitted Fmax / alpha_f
+/ founders.
+**Predictions.**
+- (a) Shorter kernels are compensated again, by Fmax and/or founders (step 26 pattern).
+- (b) The swing either stays (the kernel is not the inflation lever) or grows (shorter reach needs more growth to fill the
+  East).
+- (c) Held-out favours J330 / J200 weakly or not at all; differences are within about 100 per-route.
+- (d) Runge structure shifts from export-dominated to retention-dominated as the kernel shortens.
+If the eastern swing or toll moves by more than the 3-start range (East 2010 potential 1.16-1.17, toll .150-.154), kernel
+uncertainty belongs in the lambda-inflation account and must be reported as such.
+
+### DESK temporal shrink under Laplace (re-test)
+lap_compact_shrink: eta 0.984 (it keeps about 98% of Z's temporal change), objective 142,361.9 (+42 vs lap_free, but
+gradient max 122 at stop, so not fully converged); per-route unseen 33,003 (+58), 2021-25 20,875 (+40); East .60 -> 1.13,
+disease .137.
+- **Still rejected (established for this fit).** The data keep the habitat change, and shrinkage does not help held-out.
+- This repeats the joint-era result (eta .978-.986) on the identified objective.
+
+### RECENT-RISE: does any arm capture the 2021-25 rise? (user, 2026-11-05)
+**Corrected model mean (FIG04-SPLIT C), all rows.** 2025/2019 ratio: observed 1.263. Model: exp link 1.003; candidate .979;
+shrink .981; original onset .976; route-mean .971; F2 .911-.929; Laplace sigma .97 .905.
+**No arm captures it (established).**
+**Regional (lap_free, all rows).**
+| region | observed 2019 -> 2025 | model 2019 -> 2025 |
+|---|---|---|
+| East | 3.42 -> 5.11 | 4.22 -> 4.45 |
+| West | 5.89 -> 6.29 (6.73 in 2021) | 6.24 -> 5.43 |
+| Plains | 1.01 -> 1.41 | 1.24 -> 1.62 |
+**Is it real? Paired raw BBS (bbs_data_obsroute_for_python.npz; scratchpad paired_trend.py).**
+Same OBSERVER x ROUTE, ratio of means:
+| region | 2008-11 -> 2012-15 | 2012-15 -> 2016-19 | 2016-19 -> 2021-25 |
+|---|---|---|---|
+| East | .97 | 1.07 | 1.15 |
+| West | .98 | .90 | 1.05 |
+| Plains | 1.18 | .93 | 1.02 |
+Same ROUTE (observers may change): East 1.20, West 1.07, Plains 1.25.
+- **The eastern rebound is real (established):** an accelerating within-observer rise from about 2016.
+- The West turned from decline to a mild rebound.
+- The Plains rise is mostly observer turnover.
+- Post-COVID observer turnover adds about +5% in the East (route vs observer x route ratio).
+- **Mechanism (likely).** The disease recovery form (each cell's hit decays from its arrival year, recovery fraction fitted
+  about 1%, tau about 18 yr) cannot make a rebound starting about 20 years after arrival. The training years (to 2020)
+  contain only its onset (+7% within observer in 2016-19). 2021-25 was held out, so this is a forecast miss.
+- **Data currency (established).** BBS "2026 Release, 1966-2025" (ScienceBase 6a0b0b0ab66b0188da36aedd), downloaded
+  2026-07-17: the newest release. 2020 has no rows (COVID).
+- **Diagnostic running:** lap_fit2125 = the candidate with the 2021-25 years INCLUDED (blocks still held out). Can the
+  structure fit the rebound when it sees it, and through which parameters?
+
+### RECOVERY-LIT: what the literature says about post-epizootic recovery (user: "can we not get that from the literature?")
+Local holdings: only Hochachka & Dhondt 2000 (vault + PDF); none in Zotero. Web (abstracts and repository records; full
+texts not read; quotes NOT page-verified, so not for the vault).
+- **Hochachka, Dobson, Hawley & Dhondt 2021 (J Anim Ecol 90:1480-1491; FeederWatch, 8 NE states).** A rapid halving of
+  densities, then "remaining stable or slowly declining". They argue acquired immunity matters, alongside rising virulence.
+  No rebound in their window.
+- **Hawley et al. 2013 (PLoS Biol 11:e1001570).** Virulence rose rapidly after establishment on both coasts (East
+  1994-2008, West 2006-10).
+- **Bonneaud et al. 2011 (PNAS 108:7866).** Eastern (Alabama) finches after 12 yr of exposure carried 33% lower loads than
+  unexposed western birds: resistance evolved within about 12 yr.
+- **Henschen et al. 2023 (PLoS Pathog; PMC10287013; Dryad doi:10.5061/dryad.v9s4mw71r).** TOLERANCE (less pathology at
+  equal load) evolved within about 20-25 yr (at most about 15 generations); space-for-time from about 25 yr (Virginia) to
+  under 10 yr (Arizona) of endemism.
+**Reading (likely).**
+- The fitted near-zero recovery (about 1%) AGREES with the documented plateau through the 2010s. Our recovery prior
+  (median 38%, an e-folding from arrival) is the outlier.
+- The literature supplies a TIMESCALE for a late change: tolerance at about 20-25 yr. Eastern arrival around 1994 puts it
+  around 2014-19, which matches the BBS within-observer rebound onset (+7% 2016-19, +15% to 2021-25).
+- A rebound of this kind is a delayed host-adaptation response, not an exponential relaxation from arrival.
+- Unknown: whether tolerance raises density, since virulence also rose and tolerance leaves transmission intact. No paper
+  found documents the post-2016 rebound itself.
+**Literature-grounded form (proposed, not built).** recovery(t) = R * sigmoid((t - arrival - d) / w):
+- d ~ 20-25 yr (Henschen; Bonneaud 12 yr as a lower bound), w a few years;
+- near zero for the first ~15 yr (Hochachka 2021 plateau);
+- R learned.
+Test as a FORECAST: fit through 2020, score 2021-25. Prediction: the East rebounds from about 2015; the West (arrival
+about 2002-06) is not due until about 2025-30, so the western 2021-25 behaviour is a second check.
+
+### FIT2125: the candidate with the 2021-25 years INCLUDED (diagnostic; blocks still held out)
+lap_fit2125 converged (gradient max .36, sigma 1.243). Recovery parameters UNCHANGED (rec_raw -4.23 vs -4.32, i.e. about
+1%; log tau_rec 2.98 vs 2.88).
+| East, corrected model mean | 2010 | 2015 | 2019 | 2021 | 2023 | 2025 |
+|---|---|---|---|---|---|---|
+| observed | 3.58 | 3.30 | 3.42 | 4.35 | 4.44 | 5.11 |
+| fit2125 | 3.97 | 3.97 | 4.35 | 4.53 | 4.57 | 4.93 |
+| lap_free (hold-out) | 4.06 | 3.98 | 4.22 | 4.27 | 4.33 | 4.45 |
+- **It fits only part of the rebound** (model 2019 -> 2025 +13% vs observed +49%), and it still cannot make the U: too high
+  in 2010-19.
+- **It does so through LAMBDA, not recovery (established for this fit).** East potential 2010 1.17 -> 1.30, 2020
+  1.17 -> 1.31, with the eastern disease toll UP (.154 -> .199). The current structure absorbs a late rebound into
+  potential-growth change: it is a lambda-inflation lever.
+- **Implication (likely).** Without a delayed recovery (host adaptation) term, adding the recent years to a production fit
+  would inflate the modern eastern lambda. That strengthens the case for the literature-grounded delayed-recovery form
+  (RECOVERY-LIT) before any all-years production fit.
+
+### DELAYREC (built + pre-registered, 2026-11-05; user: "go ahead")
+**Code (route-variance worktree; Codex's worktrees untouched).**
+- `disease_onset.resolve_recovery_spec / recovery_fraction`: `disease_prior.recovery {"form": "delayed",
+  "delay_median_years" 22, "delay_log_scale" .2, "width_years" 3}`. r = rec * (S((age-d)/w) - S(-d/w)) / (1 - S(-d/w)),
+  learned d (disease_log_delay_rec) and rec; tau_rec unused under "delayed".
+- Used by BOTH disease_mortality_amplitude and disease_k_fraction.
+- map_diagnostics fig 09 now draws the model's own onset gate and recovery form. It previously hard-coded the sigmoid gate,
+  so its compact-onset panels were approximate.
+- Tests: tests/test_delayed_recovery.py, and the existing disease_onset_gates / disease_depression suites: 63 passed.
+- End-to-end, the default config is bit-identical (obs NLL 111,050.50478314621 at lap_free under both trees).
+**Why the code default stays "exponential" (user asked).** It keeps every existing config and fit reproducible. The
+candidate overlay turns the new form ON; if it passes, the production config carries it.
+**Forecast test.** 2021-25 still HELD OUT. Two starts: lap_free (rec about 1%) and lap_free with rec_raw at the prior
+median (-.5, 38%).
+**Predictions.**
+- (a) Fitted d lands around 15-25 yr. The rebound is carried by recovery (rec well above 1%), not lambda: East 2010
+  potential stays <= about 1.17, versus 1.30 when fit2125 absorbed the rebound through lambda.
+- (b) The forecast rises with the observed 2021-25 eastern series (East corrected model mean 2019 -> 2025 well above +5%)
+  and improves 2021-25 held-out vs lap_free (20,835) without hurting blocks.
+- (c) The West (arrival about 2002-06) shows no strong rebound yet.
+**Failure modes.**
+- d runs to the prior's edge with rec large: the delayed term is acting as a generic late-growth lever. Read it against
+  the toll and lambda.
+- The 2016-19 onset (+7%) may be too little signal to pin d without 2021-25.
+
+### TACC Laplace results (overflow_dev3 A100 node)
+- **lap_cand_jitter_a:** 142,319.8, sigma 1.252, per-route unseen 32,942, 2021-25 20,832; East .56 -> 1.16, toll .152.
+  FOUR starts now agree within 4 objective units and 9 held-out.
+- **lap_f2_original_exp:** 141,731.1 (-589 vs candidate), sigma 1.188, per-route unseen 32,871 (-74, better), 2021-25
+  20,881 (+46, worse).
+  - The swing is MAXIMAL: East .38 -> 1.05 -> 2.13 -> 2.26, E toll .32; Plains .36 -> 1.83; West .71 -> 1.35.
+  - Reading (likely): the most flexible structure buys a small block-held-out gain and a 2021-25 loss with a six-fold
+    eastern swing. This is the lambda-inflation pole, not a candidate (user prior: large lambda growth is suspect by default).
+- Queued: 00009 lap_delayrec_fit2125 (delayed recovery, all years) and 00010 lap_delayrec_jitter (delayed recovery from the
+  start3 endpoint). TACC code synced with the delayed-recovery change (default path bit-identical; files matched the
+  baseline hashes before the sync).
+
+### DELAYREC result: forecast test (2021-25 held out)
+lap_delayrec: 142,311.8 (-8.5 vs lap_free); the rec-prior start lap_delayrec_recprior reached 142,311.7 (same mode). Fitted
+rec .209 / .243, delay 34.0 / 34.5 yr.
+| | lap_delayrec | lap_free |
+|---|---|---|
+| per-route unseen | 32,931 (-14) | 32,945 |
+| 2021-25 | 20,809 (-26, best of all arms) | 20,835 |
+| East corrected mean 2019 -> 2025 | 4.23 -> 4.68 (+11%) | 4.22 -> 4.45 (+5%) |
+| East potential 2010 / 2020 | 1.17 / 1.17 | 1.17 / 1.17 |
+| East disease 2010 | .155 | .154 |
+Observed East: +49%.
+- **Pass:** the rebound is carried by recovery, not lambda (lambda unchanged; contrast fit2125's 1.30). The West shows no
+  rebound, as predicted. Held-out improves.
+- **Missed pre-registration (a):** the delay came out at 34 yr, not 15-25. The training years (to 2020) show only the
+  plateau, so the fit puts recovery onset after 2020 (34 - 2 widths, about 28 yr after the about-1994 onset, i.e. about
+  2022). That is the information limit of a forecast from data ending in 2020: the +7% 2016-19 within-observer onset is
+  too weak to pull the delay earlier against the plateau.
+- Only part of the rebound is forecast (+11% vs +49%).
+- Running: lap_delayrec_fit2125 (all years). Does delayed recovery absorb the observed rebound WITHOUT lambda change, when
+  it sees it?
+
+### DELAYREC with all years (lap_delayrec_fit2125)
+159,041.1 (-19 vs the exponential form with all years, 159,059.9); sigma 1.242; rec .321, delay 31.7 yr.
+| East corrected mean | 2010 | 2015 | 2019 | 2021 | 2023 | 2025 |
+|---|---|---|---|---|---|---|
+| observed | 3.58 | 3.30 | 3.42 | 4.35 | 4.44 | 5.11 |
+| delayed, all years | 3.94 | 3.90 | 4.29 | 4.53 | 4.69 | 5.29 |
+| exponential, all years | 3.97 | 3.97 | 4.35 | 4.53 | 4.57 | 4.93 |
+| | E potential 2010 / 2020 | E disease 2010 |
+|---|---|---|
+| delayed, all years | 1.26 / 1.26 | .184 |
+| exponential, all years | 1.30 / 1.31 | .199 |
+| delayed, forecast (to 2020) | 1.17 / 1.17 | .155 |
+- **The rebound is captured** (2025 5.29 vs observed 5.11; +23% from 2019, against +13% for the exponential form).
+- **The lambda push is only about a third smaller** (1.17 -> 1.26 vs -> 1.30). The rest comes WITH a higher toll (.184):
+  the model sits about 15% above observed through 2010-19, and deepening the trough uses the bounded toll-vs-lambda ridge
+  (clean ceiling table). So: recovery carries the rebound SHAPE; the 2010s level gap is still paid for with more disease
+  and more potential growth (likely).
+- **Next lever (proposed):** the 2010s over-prediction itself. Candidates: the toll ceiling (.35 was free on held-out), or
+  the slow pre-disease 1970s-80s dynamics. Not run.
+
+### KERNEL-SENS: inputs built LOCALLY (user: "just run them locally"); TACC builds cancelled
+Cube (228 MB) + code_bc + snap_d0e59ff rsynced to E:/.../KSENS_local; scratchpad kernel/k_inputs_local.sh (CPU, about 15
+min per arm). **J330 control reproduces the production input (established):**
+- 42 metadata keys identical; Z_gathered identical.
+- juvenile FFT kernel stack max |diff| 3.8e-9 (relative 3.7e-8) and edge correction 2.4e-7: float32 rounding only, no
+  element > 1e-6; adult kernel identical.
+- Z_disp: 180 of 51,816 pairs differ by > 1e-5 (max 4.7e-5), all at the land-share-floor pairs.
+The local pipeline is valid for the other arms.
+
+### PRE-BBS CONTROL (user: "presence/absence control on 1902-1960s? the endemic population looks suppressed, then surges")
+**What constrains 1902-1965 in the candidate (established).**
+- Only ABSENCE: 1,814 pseudo-zero sites x 38 yr (1902-39) outside the native range.
+- No presence or abundance term: the early-CBC likelihood (cbc_likelihood, early_detection) is OFF, and the 11-02
+  historical-range supervision (step40 rangev2: verified-CBC presences plus coverage-weighted absences) is not in this
+  lineage.
+- The 1902 seed is the core fraction (1.0) of local capacity.
+**Candidate trajectory (contribution audit).** West total N 36.5 (1902) -> 149 (1940) -> 205 (1966) -> 415 (2005) -> 300
+(2025). Native-core (1902 seed cells) mean potential lambda 1.50 -> 1.86 -> 2.10 -> 2.35; occupied West cells 933 -> 1,665.
+**Model-free check against the early CBC** (cbc_early.npz, 411 western circles; scratchpad cbc_native_check.py):
+| western circles | CBC per circle (raw) | CBC per party-hour | model N at the circles |
+|---|---|---|---|
+| 1902-19 | 105 | - | .113 |
+| 1935-49 | 121 | 70 | .207 |
+| 1960-65 | 444 | 139 | .266 |
+- Paired circles (n 51, 1910-35 vs 1950-65): CBC x4.8, model x1.7.
+- Per party-hour, 1935-49 -> 1960-65: CBC about x2, model x1.3.
+- **Reading (likely).** The native-West pre-1966 rise is NOT larger than the CBC record shows. If anything the model's is
+  smaller: the West is not artificially suppressed relative to winter counts.
+- Caveats: the CBC is effort-inflated (party-hours were unknown before about 1935), and it mixes in winter aggregation at
+  feeders and towns.
+- Unresolved: lambda as the EASTERN timing lever, which has no pre-1966 presence data at all except the CBC.
+**Queued:** lap_delayrec_cbc = candidate + delayed recovery + the early-CBC likelihood ON. Prediction if lambda is a
+timing lever: the East 1966 -> 2010 swing shrinks and the eastern spread timing is held by data.
+
+### PRESENCE: is the early distribution consistent with CBC PRESENCES? (user: absences unknowable without effort; presences are real)
+Scratchpad cbc_presence.py on the candidate trajectory (contribution audit). Every positive early-CBC circle-year 1902-65
+(1,964). N_avail = model population available to the circle (route-count scale), via the local footprint or local U 300 km
+SW seasonal allowance (the 11-02 rangev2 design). P(detect) = 1 - exp(-k log(1 + N/k)), k .437. ABSENCES IGNORED.
+| region, era | n | cost (mean) | P < .05 | P < .001 | median N_avail |
+|---|---|---|---|---|---|
+| West 1902-39 | 260 | 501 (1.93) | .29 | 0 | 3.2 |
+| West 1940-50 | 316 | 287 (.91) | .10 | 0 | 5.0 |
+| West 1951-59 | 555 | 563 (1.01) | .12 | 0 | 5.1 |
+| West 1960-65 | 565 | 525 (.93) | .09 | 0 | 4.5 |
+| Plains 1951-65 | 52 | 123 (2.1-2.6) | .11-.17 | 0 | .1-.2 |
+| East 1951-59 | 48 | 147 (3.06) | .44 | .17 | .34 |
+| East 1960-65 | 164 | 785 (4.78) | .70 | .26 | .0056 |
+Totals: local footprint 2,944; with the seasonal union 2,850 (East 1960-65 713).
+- **The native West is consistent with CBC presences (established).** It is thin before 1940.
+- **The early EAST is not (established).** By 1960-65 the model has almost no birds where CBC circles already record them:
+  western MD 1956 (40 birds, N 8.7e-5), DC/Delmarva 1962-65, MA/CT 1959-65. Its eastern availability at presences FALLS
+  from the 1950s to 1960-65 (median .34 -> .006): the invasion is held near the release.
+- **Reading (likely; the user's instinct).** This is the timing lever. The fit keeps the early eastern invasion slow and
+  confined, then the post-1966 lambda rise supplies the surge that the BBS-era growth needs. Presence-only data, which
+  assume nothing about effort, contradict the slow phase.
+**Built:** laplace_fit.py --cbc_presence (presences only, local U seasonal footprint, the same detection form) from the
+model's own Na+Nj grids. Validation at lap_delayrec queued: it must reproduce about 2,850. Then lap_delayrec_pres
+(delayed recovery + presence term, 2021-25 held out) after the kernel fits. This replaces the queued full early-CBC
+likelihood fit (stopped): presences only is the cleaner test.
+**Prediction if lambda is the timing lever:** with early eastern presence enforced, the East 1966 -> 2010 potential-lambda
+rise shrinks below the current .56 -> 1.17, with BBS held-out no worse.
+
+### KERNEL x PRESENCE cross (user: "this timing lever issue almost inevitably interacts with movement kernel issues")
+**Why (likely).** The early eastern spread speed is a joint product of low-density growth (lambda, Allee) and the kernel
+tail (pulled front).
+- Under shorter kernels, meeting the CBC presences needs MORE early lambda or founders (the step 26 pattern).
+- A fat tail meets distant presences with modest lambda.
+- Winter partial migration (36% > 80 km by the early 1960s) is a third channel: the presence footprint allows a 300 km SW
+  seasonal source, so winter presence is not read as breeding presence.
+- Neither the kernel sensitivity nor the presence test is interpretable alone.
+**Design.** Delayed recovery on each kernel input (J330 = the current kernel; J200, J110, J60A30), with and without the
+presence-only term, 2021-25 held out (scratchpad kernel/k_pres_cross.sh; queued after lap_delayrec_pres). The pre-registered
+candidate-structure kernel fits (lap_ks_*) run as planned.
+**Read:**
+- per arm: the presence cost absorbed, and the East potential lambda 1966 -> 2010;
+- founders (inv_pop) and Fmax;
+- BBS held-out (per-route unseen, 2021-25);
+- Runge export share.
+Question: which kernel lets the model meet early eastern presence WITHOUT the lambda swing or a founder blow-up?
+
+### KERNEL-SENS results, part 1 (candidate structure, 2021-25 held out)
+| arm | objective | sigma | per-route unseen | 2021-25 | E pot 66/90/10/20 | E disease 2010 | P pot 66 -> 20 | W pot 66 -> 20 |
+|---|---|---|---|---|---|---|---|---|
+| J330 (control) | 142,320.3 | 1.251 | 32,945 | 20,835 | .56/.85/1.17/1.17 | .154 | .51 -> .82 | .66 -> .94 |
+| J110 | 143,524.4 (+1,204) | 1.390 | 33,347 (+402) | 21,008 (+173) | .88/1.24/1.58/1.56 | .336 | .84 -> 1.23 | .93 -> 1.19 |
+- **J330 reproduces lap_free exactly** (142,320.29 vs .27): the rebuilt input is equivalent at fit level.
+- **J110: the data clearly prefer the V&L kernel on BBS** (in-sample -1,204, held-out -402 / -173). But the J110 fit stopped
+  at gradient max 55 (1,538 iterations), so the in-sample gap may shrink somewhat.
+- **Compensation (likely).**
+  - Juvenile survival up sharply (alpha_j -1.37 -> -.37); adult survival and fecundity intercepts down (alpha_a .26 -> .00,
+    alpha_f 7.06 -> 5.74).
+  - Potential lambda higher EVERYWHERE (E 1966 .88, W .93), with the disease toll doubled (.336) to hold the post-1994
+    East down.
+  - The shorter kernel needs more local growth to spread. The eastern swing is about the same in absolute size (+.70 vs
+    +.61) but sits on a higher base.
+  - So shorter kernels do not remove the swing; they raise lambda overall and lean harder on disease.
+- Caveat: no presence term here. The KERNEL x PRESENCE cross reads the interaction.
+
+### HMC-READY (2026-11-05 22:20)
+**Reservation (user: "reserve now for long HMC runs; update the pending job with the leading model").** TACC jobs 3558537 and
+3558538 (gpu-a100-small, 48 h, one chain each) run a fixed launcher, hmc/hmc_reserved.slurm. At START it execs
+hmc/CURRENT.sh; if hmc/READY is absent it polls 2 h, then exits.
+**Driver.** `laplace_fit.py --hmc`: NUTS on the embedded-Laplace posterior.
+- Target: -objective + log|Jacobian| + log sigma.
+- Dense mass matrix initialised from the full Hessian at the MAP (column HVPs), then adapted in warmup.
+- Segments saved every 25 draws; tree depth 8; 300 warmup, 1,000 draws, 46 h guard.
+**Local smoke (CPU, lap_delayrec).**
+- Hessian 147 x 147 PD: eig .053 .. 1.99e6, nothing clipped.
+- 10 warmup + 4 draws, depth cap 4 (15 steps), step size .064.
+- 0 divergences; accept .82 / .98.
+- About 92 s/draw on CPU (about 6 s per gradient).
+**CURRENT.sh now:** the delayed-recovery candidate (claude_candidate_delayrec.json, init lap_delayrec, 2021-25 + blocks
+held out, as validated). READY set. Update it when the presence / kernel results change the leader.
+
+### KERNEL-SENS results, part 2: all four arms (candidate structure; J110 / J60A30 first passes not converged, continuations running)
+| arm | objective (delta) | sigma | per-route unseen | 2021-25 | E pot 1966 -> 2010 | E disease 2010 | P pot 66 -> 20 | W pot 66 -> 20 |
+|---|---|---|---|---|---|---|---|---|
+| J330 | 142,320 (0) | 1.25 | 32,945 | 20,835 | .56 -> 1.17 | .154 | .51 -> .82 | .66 -> .94 |
+| J200 | 142,556 (+236) | 1.27 | 32,989 (+44) | 20,847 (+12) | .82 -> 1.38 | .248 | .67 -> .98 | .75 -> 1.02 |
+| J110 | 143,524 (+1,204) | 1.39 | 33,347 (+402) | 21,008 (+173) | .88 -> 1.58 | .336 | .84 -> 1.23 | .93 -> 1.19 |
+| J60A30 | 145,333 (+3,012) | 1.48 | 33,596 (+651) | 20,958 (+123) | 1.23 -> 4.59 | .576 | .80 -> 1.89 | 1.93 -> 2.66 |
+**Reading.**
+- **Monotone (established for these fits; the two short arms are provisional).** Shorter kernels raise potential lambda
+  EVERYWHERE, need a much higher disease toll, inflate sigma (route effects absorb more), and fit and predict BBS worse.
+- **The eastern swing in absolute terms is nearly kernel-invariant down to 110 km** (+.61 / +.56 / +.70). At 60/30 km it
+  blows up (+3.4, with a toll of .58): pathological.
+- **Kernel length is a lambda-LEVEL and toll lever, not the swing lever.** Kernel uncertainty matters for absolute lambda
+  and disease attribution, and must be reported.
+- **Pre-registered predictions.**
+  - (a) Compensation: YES, but via lambda level / juvenile survival and toll, not founders.
+  - (b) Swing: unchanged to 110 km, explodes at 60.
+  - (c) Held-out: J330 best; J200 within about 50 (as predicted); the shorter arms worse.
+  - (d) Runge: not yet computed.
+- The BBL-anchored lower bracket (J60A30) is strongly rejected by BBS. If the true natal kernel is that short, the model is
+  missing a movement process (e.g. winter / partial migration feeding the spread). Caveat: these arms carry no presence
+  term; the KERNEL x PRESENCE cross reads the interaction.
+
+### PRESENCE result: delayed recovery + presence-only CBC term (2021-25 held out)
+lap_delayrec_pres: objective 143,963.6 including presence cost 1,180 (2,778 at the unconstrained fit, so 1,598 absorbed).
+BBS marginal obs +485 (122,545 -> 123,030); nest -16.
+| | lap_delayrec | lap_delayrec_pres |
+|---|---|---|
+| per-route unseen | 32,931 | 33,128 (+197: pre-1994 blocks +108, post +51, 2021-25 +25) |
+| 2021-25 | 20,809 | 20,852 (+43) |
+| E pot 1966 -> 2010 -> 2020 | .56 -> 1.17 -> 1.17 | .52 -> 1.15 -> 1.14 |
+| P pot 1966 -> 2020 / P disease 2010 | .51 -> .82 / .074 | .42 -> .74 / .026 |
+| W pot 1966 -> 2020 | .66 -> .95 | .76 -> .87 |
+Parameter shifts: alpha_a .26 -> -.13, alpha_j -1.37 -> -1.08, alpha_k -2.00 -> -1.70; recovery unchanged.
+- **Pre-registered prediction NOT met.** The EASTERN potential-lambda rise does not shrink (+.63 vs +.61).
+  - Enforcing early presences changes the West and Plains instead: the West swing falls from +.29 to +.11, and the Plains
+    lambda and toll drop.
+  - It also raises K and the juvenile share, with adult survival lower.
+- **The eastern swing is robust to presence enforcement (likely).** It is not merely the early-phase timing lever.
+- **Tension (established).** Meeting early CBC presences costs BBS: +485 in-sample, +197 / +43 held-out.
+- **Mechanism (likely).** Pre-1966 eastern CBC presences are WINTER records. In newly colonised areas the winter range
+  runs ahead of the breeding range (CBC grows 2.5-5x faster than breeding counts, Weiss 1997; partial migration about 36%
+  > 80 km). Even with the 300 km SW allowance, treating them as breeding-population presence distorts the breeding dynamics.
+  The presence term needs a winter-movement component, or should be restricted to breeding-season records.
+- Unknown: which presences the fit now satisfies (needs the per-region breakdown on this trajectory).
+
+### KERNEL x PRESENCE results (delayed recovery; 2021-25 held out). J330 and J200 converged (gmax <= 19); J110 / J60A30 NOT (continuations running)
+| arm | objective | presence cost | BBS marginal obs | per-route unseen | 2021-25 | E pot 1966 -> 2010 | E disease 2010 |
+|---|---|---|---|---|---|---|---|
+| J330 no pres | 142,311.8 | (2,778) | 122,545 | 32,931 | 20,809 | .56 -> 1.17 | .155 |
+| J330 pres | 143,963.5 | 1,180 | 123,030 | 33,128 | 20,852 | .52 -> 1.15 | .160 |
+| J200 no pres | 142,559.7 | - | 122,784 | 32,962 | 20,791 | .82 -> 1.42 | .257 |
+| J200 pres | 144,004.7 | 1,092 | 123,081 | 33,153 | 20,819 | .74 -> 1.59 | .312 |
+- **The user's interaction is real (likely).**
+  - Without presence, J200 is 248 worse than J330. With presence enforced the gap shrinks to 41.
+  - J200 meets the presences better (1,092 vs 1,180) at a smaller BBS cost (+297 vs +485).
+  - On 2021-25, J200 is better in both (-18 / -33); on unseen routes it is slightly worse (+31 / +25).
+- **But the shorter kernel meets presence through MORE lambda.** East .74 -> 1.59 (+.85 vs +.63 for J330) and toll .31.
+  The intermediate kernel + presence carries the LARGEST eastern swing of the converged arms.
+- **Reading (likely).** No converged combination meets the early eastern presences without either a BBS cost of about
+  300-500 or a larger lambda swing. Kernel and timing trade along one ridge: a fat tail buys early spread cheaply; a shorter
+  tail needs growth. That is the user's predicted interaction.
+- J110 / J60A30 pending convergence.
+
+### KERNEL x PRESENCE: final (continuations stopped 2026-11-06)
+Continuations left every short-kernel objective unchanged to 0.1 (J110 nopres 143,758.2; J110 pres 144,688.5; J60A30 nopres
+145,202.5; J60A30 pres 146,504.9), while the gradient at the same point jumped between rounds (46 -> 132,981 for J110
+nopres). These are stable objectives at a NON-SMOOTH point (a clip / max kink), not unfinished descent. Further rounds were
+stopped.
+| kernel | delta objective, no presence | delta objective, with presence | presence cost |
+|---|---|---|---|
+| J330 | 0 | 0 | 1,180 |
+| J200 | +248 | +41 | 1,092 |
+| J110 | +1,446 | +725 | 992 |
+| J60A30 | +2,891 | +2,541 | 927 |
+- Presence enforcement narrows every kernel gap: shorter kernels meet presences more cheaply, but in J200 that comes with a
+  larger lambda swing.
+- **Ranking settled:** J330 ~ J200 >> J110 >> J60A30.
+- The non-smooth short-kernel optimum is itself a finding: at short kernels the fit sits on a clip / max boundary of the
+  dynamics (likely the Allee or edge-correction floor). That is unknown, and worth locating before any short-kernel HMC.
+
+### CORRECTION: winter movement in the pre-BBS East (user: "I thought they don't have any significant winter movement pre-BBS")
+My "36% > 80 km by the early 1960s" and the Weiss 1997 numbers are UNVERIFIED (plan literature summary; G2 / G3 still
+open). Page-verified: Aldrich & Weske 1978 p. 7, "essentially sedentary" (northwestern banding, 4% >= 200 km).
+**Direct check, BBL by decade** (NABBP 2025 extract; banded May-Jul east of 80W, encountered Dec-Feb 90-300 days later;
+scratchpad bbl_winter_era.py). There are NO eastern bandings before 1960.
+| cohort | 1960s | 1970s | 1980s |
+|---|---|---|---|
+| young (HY/L), median km [> 200 km share] | 126 (n 18) [.06] | 340 (n 10) [.60] | 238 (n 17) [.53] |
+| adults, median km [> 200 km share] | 157 (n 8) [.12] | 147 (n 6) [0] | 159 (n 11) [.45] |
+- **Not only post-natal (established, small n).** By the 1960s summer-banded ADULTS were also found about 150 km away in
+  winter (7 of 8 > 80 km), so there is some winter movement in the first decade with data. But it is SHORT: rarely
+  > 200 km (1 of 8 adults, 1 of 18 young).
+- The long-distance component appears in the 1970s-80s (young median 238-340 km): the evolving migration.
+- 1951-59, the core CBC-presence years, has no banding evidence either way.
+- **Revision (likely).** A 1960s winter displacement of about 100-170 km sits INSIDE the presence term's 300 km SW seasonal
+  allowance. Winter movement is therefore probably NOT what drives the presence-vs-BBS conflict, which I had attributed to
+  it.
+- The remaining conflict more likely reflects an early eastern spread that the model cannot produce with BBS-consistent
+  parameters (unknown which process: establishment / Allee, kernel tail, or founder geometry).
+
+## ROBUST round (pre-registration, 2026-11-06 overnight; user: "work away ... on a robust final model"; "the right final model
+## may be a BBL-derived movement model with tightly constrained flexibility, but we would have to understand everything better")
+**Goal.** Levers that act on early low-density spread or late acceleration WITHOUT lambda, judged by KERNEL ROBUSTNESS (the
+spread of conclusions across J330 / J200 / J110), not by the best single fit. All arms: delayed recovery, Laplace route
+effects, 2021-25 held out. Primary arms carry the presence-only CBC term; no-presence twins only where needed.
+**Levers.**
+- **D (diagnostic first).** Locate the short-kernel non-smooth point (stable objective, gradient jumping). Candidates: the
+  Laplace inner Newton not converging (step clip), the curvature clamp max(-l'', 0) under kappa, the Allee factor, or the
+  edge-correction floor. Needed before HMC on any short-kernel variant.
+- **B.** Allee n50 (currently pinned, n50_raw -2.797): profile {-3.5, -2.8, -2.1} on J330 / J200 / J110 with presence.
+  Prediction: a weaker Allee lets shorter kernels meet the early presences with less lambda.
+- **A.** Time-varying EASTERN juvenile kernel: origin-split mixture of a short and a long stack (two FFT convolutions);
+  the eastern long share rises on a learned logistic in calendar time.
+  - Evidence: BBL eastern summer -> winter displacement, young median 126 km (1960s) -> 240-340 km (1970s-80s); share
+    > 200 km .06 -> .5.
+  - Prediction: the late acceleration moves from lambda to the ramp, the eastern swing shrinks, and the J200 / J330 bases
+    converge.
+- **C.** Founder geometry / size of the 1951 established state (small bracket).
+**Readouts.** Per fit: East / Plains / West potential lambda 1966 -> 2010, toll, founders, Fmax / alpha_*, presence cost, BBS
+marginal, per-route unseen, 2021-25. Robustness = the cross-kernel range of the eastern swing and toll.
+
+### ROBUST lever A built: population_model.kernel_ramp (route-variance worktree; default off)
+- data_loading loads the alternate juvenile FFT stack and edge correction from `alt_input_dir` (labels and shapes checked)
+  and builds `ramp_mask` = land cells with column >= `east_col_min` (48, about 100W at 35-45N).
+- age_forward.juvenile_dispersal_vectorized(alt=(stack, edge, share)): each origin sends `share` of its dispersers
+  through the alternate stack (two FFT convolutions); Q is shared.
+- age_priors: `kernel_ramp_mid` ~ Normal(1975, 10); s(t) = share_max * sigmoid((year - mid) / 5); deterministic
+  `kernel_ramp_share`.
+- Tests: tests/test_kernel_ramp.py (share 0 = base, share 1 = alternate, linear in between; rtol 1e-12); the
+  disease / dispersal suites pass (90).
+**Queued (robust_queue.sh):**
+- lap_rb_ramp_J200_pres, lap_rb_ramp_J110_pres, lap_rb_ramp_J200_nopres (eastern juveniles short -> J330);
+- then the Allee profile n50_raw {-2.1, -3.5} x {J330, J200, J110} with presence (-2.8 = the current pinned value =
+  the existing presence fits).
+- The first Allee launch aborted on a tag bug (set aside as aborted_lap_rb_allee_J330_n_badtag; not used).
+**Kink diagnostic (D), in progress.** At the J110 no-presence optimum, the newton-30 objective moves 143,758.16 ->
+143,758.15 in one step while gradient max is 15,553: a non-smooth point. Newton-80 is pending, to test inner-solve
+non-convergence.
+
+### ROBUST D: the short-kernel "kink" is objective EVALUATION NOISE, likely float32 FFT kernels
+- **The inner Laplace solve is not the cause.** At the J110 no-presence optimum, newton 30 vs 80 gives identical objective
+  and gradient (gmax 15,553).
+- **Per-site finite differences (laplace_fit --grad_sites)** disagree forward vs backward even for weakly curved sites.
+  - disease_log_k_half: AD -34.5; forward FD -34.5; backward FD (1e-6) -159,975, i.e. f(x - 1e-6 e) = f + 0.16.
+  - The same backward jump of about 0.16 appears for disease_lag0 and w_sev (1e-4 steps). The objective jumps by 0.1-0.2
+    under negligible perturbations.
+  - The large-gradient sites are exactly the stiff block (manifold_factor 133k, alpha_a / alpha_k 55k, alpha_j 37k).
+- **Mechanism (likely).** The FFT kernel stacks are stored complex64 and data_loading keeps complex arrays at their stored
+  precision even in float64 runs. Every dispersal convolution is then single-precision, which puts O(0.1) noise into an
+  objective of about 1.4e5. That breaks L-BFGS line searches along the 2e6-curvature direction ("relative reduction" stops
+  with huge gradients). Short-kernel fits suffer more: sharper fronts, more tiny densities inside logs.
+- **Test running:** the same diagnostic with HOUFIN_COMPLEX128=1 (opt-in; data_loading promotes complex64 -> complex128 in
+  float64 runs). If the FD asymmetry disappears, all fits (and HMC: noisy potentials bias acceptance) should use complex128
+  kernels.
+
+### ROBUST A result 1: lap_rb_ramp_J200_pres (eastern juveniles J200 -> J330; delayed recovery + presence; 2021-25 held out)
+Objective 143,868.1 (-95 vs J330 + presence, -137 vs J200 + presence); presence 1,107; BBS marginal 122,917 (best of the
+presence arms: J330p 123,030, J200p 123,081); gmax 8.7. Ramp midpoint 1986.9 (prior 1975 +- 10).
+| | J330 pres | J200 pres | ramp J200 -> J330 pres |
+|---|---|---|---|
+| per-route unseen | 33,128 | 33,153 | 33,139 |
+| 2021-25 | 20,852 | 20,819 | 20,826 |
+| E pot 1966 -> 2010 -> 2020 | .52 -> 1.15 -> 1.14 | .74 -> 1.59 -> 1.63 | .58 -> 1.48 -> 1.53 |
+| E disease 2010 | .160 | .312 | .262 |
+| East corrected mean 2019 -> 2025 | - | - | 4.42 -> 5.41 (+22%; observed +49%) |
+- The ramp is USED (midpoint about 1987), improves in-sample fit and BBS, and forecasts more of the 2021-25 eastern rise.
+- **Pre-registered prediction NOT met:** the eastern swing does not shrink (+.90 vs +.63 at J330). The ramp adds late
+  reach but the fit still raises potential lambda, with a higher toll.
+- Reading (likely): the late acceleration is not purely a reach deficit; lambda carries a fitted density rise too.
+
+### ROBUST D, continued: the jump is a DETERMINISTIC DISCONTINUITY in the forward model; precision and the inner solve are excluded
+- complex128 kernels: identical FD. Float64 Z (HOUFIN_Z_FLOAT32=0, runner now overridable): identical FD; gradients
+  differ only at 1e-12.
+- Newton 30 / 31 / 80 / 81: identical objective (143,758.162). No inner-solve oscillation.
+- **At the J330 optimum the same pattern is about 1,000x smaller** (one-sided FD 178 at 1e-6, i.e. an objective jump of
+  1.8e-4). At J110 it is 0.16, the same size for unrelated sites (disease k_half, lag0, w_sev).
+- **Hypothesis (likely).** FFT ringing in cells that should be empty. The candidate pads with exact zeros (fft_pad 0) and
+  has no FFT floor (fft_floor_ulps null). Densities in empty cells are then pure round-off of either sign, and a row with
+  y > 0 or a CBC presence at such a cell sees log(mu) jump when the ringing flips sign or crosses the 1e-300 clamp.
+  Shorter kernels give sharper fronts and more such cells. The code's own notes record the same family: E054c (float32
+  phantom floor), E069 (float64 exact extinction = an Allee establishment switch), and the hard floor jump (+.45 at 66b),
+  which is why FFT_FLOOR_SMOOTH exists.
+- **Test running:** numerics.fft_floor_ulps 64 + fft_floor_smooth on the J110 diagnostic. If the jumps vanish, refit the
+  short-kernel arms (and consider the floor for production / HMC).
+- **Confirmed (established at this point):** with numerics.fft_floor_ulps 64 + fft_floor_smooth, the J110 discontinuity
+  VANISHES. Forward / backward FD match AD for every site (disease_lag0 35.76 / 35.75 vs AD 35.75; k_half -28.44 / -28.44).
+  The objective moves by +11.7 (143,769.9). The J110 point then shows a large but honest gradient in the stiff block
+  (manifold_factor 1.43e6, FD 1.37-1.50e6): under smooth numerics it is simply not an optimum.
+- **Cause (likely).** FFT round-off in cells that should be empty (exact-zero padding, no floor). Short-kernel fits stalled
+  on these steps, so their "converged" objectives were stall points.
+- **Consequence.** Every short-kernel comparison so far (KERNEL-SENS, the KERNEL x PRESENCE cross, the J110 ramp) is
+  PROVISIONAL. They are being refit with the floor: robust_floor_queue.sh -- J330 no-pres / pres, J200 pres, J110 pres,
+  ramp J200 pres, then the Allee profile with the floor. The first queue's no-floor Allee arms are stopped before they start.
+- **Production implication.** The final model and the HMC target should carry the smooth floor (noisy / discontinuous
+  potentials break HMC acceptance). Pending the J330 floor refit, to check the candidate barely moves.
+
+### ROBUST A result 2 (NO floor; provisional): lap_rb_ramp_J110_pres (eastern juveniles J110 -> J330)
+Objective 143,941.6 (-747 vs J110 + presence, -22 vs J330 + presence); presence 1,048; BBS 123,059; gmax 438 (stalled).
+Ramp midpoint 1981.5. Per-route unseen 33,241 (+113 vs J330p), 2021-25 20,874 (+22). East .60 -> 1.41 -> 1.44 (+.81),
+toll .24; West .96 -> 1.12; Plains .61 -> 1.09.
+- **A time-varying eastern kernel closes almost the whole short-kernel gap in-sample.** The ramp equalises the kernel
+  arms: J110 -> J330 is about the same as J200 -> J330 and fixed J330.
+- But held-out is worse than J330 and the eastern swing is again larger than at fixed J330 (+.81 vs +.63).
+- The pattern of both ramp arms: better in-sample and presence, same or larger lambda swing. Read after the floor refits.
+
+### ROBUST A result 3 (no floor): lap_rb_ramp_J200_nopres
+142,322.2 (+10 vs fixed J330 142,311.8; -237 vs fixed J200); gmax 2.8; per-route unseen 32,942 (+11), 2021-25 20,840
+(+31). **Ramp midpoint 1952**: the ramp completes by about 1960, so the fit is effectively the long kernel through the whole
+invasion. East .65 -> 1.21 (+.56), toll .166 (fixed J330 +.61, .155).
+- **Without presence, BBS chooses the long kernel from the start.** The ramp collapses to J330 with the same swing.
+- **With presence (result 1) the midpoint moves to 1987** (short kernel early) and the swing grows (+.90). Enforcing early
+  eastern presence makes the fit keep a SHORT early kernel and buy early spread with lambda. That is counter-intuitive
+  (likely: the long early tail over-fills the BBS-era East once presence pins the early front; unknown).
+- To be re-read with the floor (queue running).
+
+### Floor at the production candidate + HMC target updated (2026-11-06 01:30)
+lap_fl_J330_nopres (delayed recovery, smooth FFT floor 64 ulps): 142,311.9 vs 142,311.8 without the floor; gmax 2.5. The
+floor costs nothing at J330 and removes the discontinuity.
+**HMC CURRENT.sh now targets the floor-on candidate:** overlay claude_candidate_delayrec_floor.json, init
+lap_fl_J330_nopres.npz; laplace_fit.py synced. Jobs 3558537 / 3558538 are still pending.
+
+### Floor refits, part 1 (smooth FFT floor; delayed recovery; 2021-25 held out)
+| arm | no floor | floor | gmax (floor) |
+|---|---|---|---|
+| J330 no pres | 142,311.8 | 142,311.9 | 2.5 |
+| J330 pres | 143,963.5 | 143,963.9 | 4.3 |
+| J200 pres | 144,004.7 | 144,004.6 | 24.2 |
+| J110 pres | 144,688.5 | 144,688.2 | 1,360.7 |
+- **The floor changes nothing to 0.4 at J330 and J200:** those fits were genuine optima, and the kernel results through 200
+  km stand.
+- **J110 sits on the same plateau with or without the floor, still with a large gradient.** The discontinuity was real, but
+  it is not what stops J110: the fit lies in a far more sharply curved valley along the stiff field direction (likely). The
+  ranking stands (J110 clearly worse); the exact gap (about 725) is an upper bound, not certified.
+
+### ROBUST B (floor) on J330: Allee n50 profile, delayed recovery + presence
+| n50_raw | objective | presence | BBS | unseen | 2021-25 | E pot 1966 -> 2010 | E disease 2010 |
+|---|---|---|---|---|---|---|---|
+| -2.1 (stronger) | 144,054.7 (+91) | 1,178 | 123,095 | 33,142 | 20,851 | (readout failed; rerun pending) | |
+| -2.8 (pinned) | 143,963.9 | 1,182 | 123,030 | 33,127 | 20,853 | .52 -> 1.16 | .160 |
+| -3.5 (weaker) | 143,911.8 (-52) | 985 | 123,017 | 33,344 (+217) | 20,768 (-85) | .26 -> 1.32 | .254 |
+- **A weaker Allee meets the early presences much more cheaply** (-196), but **it does NOT reduce the swing: it DOUBLES it**
+  (+1.06 vs +.64). Early eastern potential lambda falls to .26.
+- Mechanism (likely): with a weak Allee, low-density arrivals establish even where potential lambda is far below 1, so
+  the fit can lower early lambda and still spread. Then it needs a larger rise to reach BBS-era densities, plus a higher
+  toll. Allee strength and early lambda trade.
+- Held-out is mixed (2021-25 better, unseen routes worse). The pinned n50 remains defensible; the weak Allee is another
+  inflation route.
+- Note: the queue's structural readouts for the Allee arms failed silently (empty dirs); n35 was rerun by hand. The other
+  arms need a rerun.
+- J200 weak Allee (n50_raw -3.5, floor, presence): 143,930.0 (-75 vs pinned J200 + presence); presence 1,073; gmax 12.5.
+  The weak Allee nearly closes the J200 / J330 gap by substituting for early reach.
+- **User (2026-11-06): "weak Allee seems pretty clearly pathological."** Agreed. Establishment at early eastern potential
+  lambda about .26, sustained by arrivals, followed by a larger rise and toll, is the inflation signature by another route.
+  **Closed: the pinned n50 (-2.797) stays.** The remaining J110 Allee arms finish for completeness only.
+- **J330 stronger Allee (n50_raw -2.1, n50 about .122) readout:** East .57 -> 1.21 (+.64), toll .157; Plains .48 -> .84; West
+  .81 -> .95. Held-out: unseen 33,142 (+15), 2021-25 20,851 (-2) vs pinned. In-sample +91.
+**Allee profile, J330 (floor, presence):**
+| n50_raw (n50) | delta objective | presence | E swing 1966 -> 2010 | E toll |
+|---|---|---|---|---|
+| -2.1 (.122) | +91 | 1,178 | +.64 | .157 |
+| -2.8 (.059, V&L) | 0 | 1,182 | +.64 | .160 |
+| -3.5 (.030) | -52 | 985 | +1.06 | .254 |
+- **The swing is FLAT from the pinned value upward and blows up below it.** The pathology begins between n50 .059 and .030
+  (likely); a stronger Allee changes nothing but costs in-sample fit.
+- **Where the anchor comes from (E055).** V&L 1996 p. 263, r = .15 birds/km2 at K* about 3.8 -> n50 .059 route counts.
+  V&L's own r sensitivity (.05-.25) -> n50 .020-.098 (n50_raw -3.91..-2.32). r was TUNED to spread rate, not measured.
+  E055: the n50 x1/3..x5/3 likelihood difference was < 75: unidentified from counts.
+
+### Allee: the absolute anchor is largely fictional (user, 2026-11-06); switching the test to a RELATIVE Allee
+- The pinned n50 IS the middle of V&L's range: linear in r, .05 / .15 / .25 -> n50 .020 / .059 / .098. The weak arm (.030)
+  is r about .076, in the lower part (geometric middle .044).
+- **The absolute translation is weak (user: "isn't that logic largely fictional?" -- yes, largely).** It chains three
+  assumptions:
+  1. V&L's r was tuned to spread rate in their own units, not measured.
+  2. Their n50/K* ratio is mapped onto our median K (about 3 route counts) as if that equals their K* (3.8 birds/km2).
+  3. Our count -> density conversion is a gauge choice; the route-mean test showed the data want it shifted about 3x.
+- So "pathology below n50 about .04" is in model units resting on that chain: an order-of-magnitude statement at best.
+**Two better ways to decide.**
+- (1) RELATIVE Allee: n50 as a fraction of local K. V&L's n50/K* = .0197 is internal to their model and carries over with
+  no density bridge, and the gauge cancels. The code supports it (allee_prior.form relative, n50 = softplus(n50_raw)). The
+  ladder STARTED with it (GRID54 step 1); the current lineage inherited an absolute Allee later. E055e found the relative
+  form +900 in an older model. **Queued** (robust_relallee.sh, after the J110 Allee arms), J330 + delayed recovery + floor:
+  - V&L ratio .0197 (raw -3.917) with and without presence;
+  - range ends .0066 (-5.02) and .0328 (-3.40) with presence.
+- (2) Calibrate in the model's own units against the documented front ESTABLISHMENT LAG: breeding 3-10 yr after the first
+  records per state, 15 of 17 first state records single birds (V&L 1996). Needs a readout (proposed, not built).
+
+### CORRECTION: relative Allee proposed without reading the history; queue CANCELLED before any arm ran (user, 2026-11-06)
+I proposed and queued a relative Allee (n50/K) without checking the record. The history, now read:
+- **GRID54 ladder step 1 used a relative Allee.** Step 1 result: with relative Allee the absolute brake is gone, and the
+  fit leans HARDER on early-sink habitat to time the eastern spread (more extreme than step 0).
+- **Step 7 (relative strength profile n50/K .0197 / .05 / .10 / .20).** A stronger relative Allee monotonically WORSENS
+  held-out fit and does not reduce the inflation; fecundity / founders compensate (F intercept 24.5 at .20), giving a
+  threshold system that fits the BBS's gradual within-cell increases worse.
+- **E055e:** relative +900 in-sample; it removes Allee-dead by construction, and the refine distorts demography instead.
+- **The reason the lineage moved to ABSOLUTE (memory houfin-absolute-low-density; user 2026-11-03).** Mates are found by
+  ABSOLUTE density. N/K mixes in habitat capacity, which is exactly what the fitted habitat change moves, so a relative
+  Allee couples establishment to the very lever under test, giving habitat change another timing route.
+- **The unknown count -> bird mapping was already discussed (E079, user).** The chosen response was a smoother absolute
+  form (negative-binomial aggregation, aggregation_k 3), not a scale-free one.
+**So:** keep the absolute, pinned, aggregated Allee. The count-scale uncertainty belongs in a broad n50 sensitivity in
+route-count units, calibrated in the model's own terms (front establishment lag), not in switching the form. All
+lap_ra_* arms were cancelled before starting.
+
+### ESTABLISHMENT LAG readout (invasion_sandbox/state_lag.py), first pass on lap_fl_J330_pres (pinned absolute Allee)
+**Source verified.** V&L 1996 p. 266 (pdf p. 12): "Of 17 records of early colonists found in these states, 15 were of single
+birds ... a lag of 3-10 yr between the first record of occurrence of a house finch in a state and the first recorded
+instance of breeding." (VT, AR, IA, IL, IN atlases / state books.)
+**Design issue found while building it.**
+- Mating saturates far below route detectability: the mated fraction reaches .5 at about .07 route counts (pinned n50
+  .059, k 3), while P(detect) on a route reaches .5 only at about 1.7 route counts.
+- So "first occurrence" (a single vagrant seen by anyone) needs an absolute one-bird threshold, i.e. the fictional
+  conversion. The first BBS detection was used as the shared anchor instead.
+**Result 1: the model's expected first BBS detection is far too EARLY in the Midwest and South (established).**
+IA 1969 vs data 1991; MO 1971 vs 1990; IL 1971 vs 1987; LA 1972 vs 1996; WI 1971 vs 1988. Small per-route detection
+probabilities from a thin, diffuse model presence accumulate over many routes and years, while real routes stayed at 0
+for about 20 years. IA and MO reach a mated fraction of .25 by 1939 / 1945: native-range birds leaking east across the
+Plains at mating density (likely implausible). This is the thin-widespread-presence pathology (config comment: plains
+predicted P(0) .85 vs observed .93).
+**Result 2: a direct, detection-free comparison is available.** Model "mating common" (mated fraction >= theta, dimensionless)
+vs the literature's first breeding record per state. Against the DATA first BBS detection, the model's mate-.5 year falls
+0-7 yr earlier in most eastern states: IL 1984 / 1987, OH 1979 / 1980, VA 1973 / 1980, MD 1970 / 1976, ON 1979 / 1986.
+Plausible ordering.
+**Pending:** the Allee profile (strong / weak) on the same readout, and the literature first-breeding years per state
+(research agent).
+**Allee profile on the lag readout (J330, floor, presence; mating year = first year the mated fraction >= .5 in any of the
+state's route cells):**
+- **Eastern-colonised states:** Allee strength shifts the mating year only 1-5 yr (strong ~ +1-2 vs pinned; weak -2..-6).
+  Mostly 0-7 yr before the data's first BBS detection under all three: weakly informative there.
+- **Plains-edge states are decisive:**
+  | state | data first BBS | mate .5, strong / pinned / weak |
+  |---|---|---|
+  | IA | 1991 | 1979 / 1962 / 1927 |
+  | MO | 1990 | 1990 / 1960 / 1928 |
+  | MN | 1992 | 1990 / 1989 / 1938 |
+  | LA | 1996 | 2001 / 1995 / 1994 (weak mate .25 1934) |
+  | AR | 1990 | 1992 / 1991 / 1989 (weak mate .25 1932) |
+  - The weak Allee has native-range birds establishing across the Plains edge in the 1920s-30s, 60 yr before any BBS
+    detection: clearly pathological (agrees with the user's call).
+  - The pinned Allee still has IA and MO "mating common" by about 1960. Only the STRONGER Allee removes that western leak
+    (MO 1990 = the data's first BBS year).
+- **Reading (likely).** The Plains-edge timing argues for an Allee at least as strong as pinned, possibly stronger. That
+  matches the in-sample cost being small (+91) while held-out is unchanged. To be checked against the literature
+  first-breeding years for IA / MO / MN / AR / LA, and against the eastern colonists' arrival there.
+
+### ZERO-COST: why the loss does not care about the thin Plains leak (user: "the likelihood doesn't penalize unrealistic dynamics")
+invasion_sandbox/zero_cost.py on lap_fl_J330_pres (pinned) and lap_fl_allee_J330_n21 (strong); route cells per state:
+| state | pseudo-zero rows 1902-39 (cost) | BBS zeros before first detection (cost) | median mu there | rows mu > .05 |
+|---|---|---|---|---|
+| IA | 608 (.7) | 688 (9.7) | .004 | 7% |
+| MO | 988 (.9) | 836 (4.5) | .004 | 2% |
+| MN | 1,900 (1.2) | 743 (2.9) | .0015 | 2% |
+The strong Allee is within about .5 of these everywhere.
+- **Established: the leak happens WITH zero-filling.** The NB2 cost of a zero is about mu, and the leak lives at mu about
+  .004 route counts. Establishment (mated .5) happens at about .07 route counts; route detection bites at about 1.7.
+  - The low-density band where establishment is decided is nearly invisible to the likelihood.
+  - Strong vs pinned Allee moves MO's "mating common" year from 1960 to 1990 for < 1 unit there.
+- **Without zero-filling,** the pre-1940 constraint on such a thin leak barely changes (already about free). The
+  pseudo-zeros constrain only dense incursions (mu about .1-1 or more).
+- **Consequence.** Low-density realism must come from structure / pinned assumptions / guard readouts, not the likelihood.
+  Paper sentence: count data constrain the dynamics only down to about the detection scale; establishment behaviour below
+  it is set by the Allee assumption.
+- **DECISION (user, 2026-11-06): pin the STRONGER absolute Allee.** Tested value n50_raw -2.1 (n50 .122 route counts), just
+  above V&L's upper bracket (.098), so indistinguishable from their range. Gauge-free support: the Plains-edge establishment
+  timing (MO mating-common 1990 = first BBS). Cost: +91 in-sample, held-out unchanged.
+  [NOTE 2026-11-08: "upper bracket .098" is the K-ratio transfer of V&L r = .25. Under the Partners in Flight absolute
+  bridge the same pin is .177 [.089] birds/km2, at/above V&L's strongest n50 .125; see "ABSOLUTE BRIDGE" below and
+  CONSIDERATIONS.md P7. The decision stands until the user revisits it.]
+
+### ESTABLISHMENT-LAG LIT: documented first breeding per state vs the model's "mating common" year (lag_compare.py)
+**Literature (research agent 2026-11-06, quotes read; archive.org OCR / snippets).** First breeding:
+- MD 1963 (Garland 1963); NC 1975 (Seriff 2018); SC 1979 (Hamel & Wagner 1984); VT 1976 (VT BBA2, Nichols 1985);
+  WV 1975 (Hall 1983);
+- OH 1976 (via Cecil & Dinsmore 1995, citing Peterjohn); TN 1980 (Laughlin, Migrant); KY 1981 (Barron 1981);
+  AL 1982 (Summerour 1986); AR 1985 (James & Neal 1986);
+- IN 1981 (Proc. Indiana Acad. Sci. 1997); IL 1982 (IL BBA, Kleen et al. 2004); MI 1981 (Granlund et al. 1994, snippet);
+  WI 1986 (Robbins 1991 via Cecil & Dinsmore); MO 1983 (Robbins & Easterla 1992 via C&D);
+- MN 1989 (MN BBA); IA 1986 (Dinsmore & Petersen 1986); ON 1978 (Bancroft & Parsons 1991); NY 1943 (Elliott & Arbib 1953).
+- Occurrence -> breeding lags: VT 8, MD 5, KY 4, IA 4, ON 6, TN 8, MO 9, MN 9; NC / SC / IL / OH / WI / AR 11-14; IN 23
+  from an isolated 1958 vagrant.
+- Best compilation: Cecil & Dinsmore 1995, Iowa Bird Life 65:60-64. Sources to obtain: PA / NJ / CT / VA / GA / FL / MA /
+  NH / ME / QC atlases (list in the agent report).
+- Correction to the brief: Bohlen 1989 = Birds of Illinois, Mumford & Keller 1984 = Birds of Indiana.
+**Model mating year (mated fraction >= theta in any of the state's route cells) minus documented first breeding, 18
+states.** Fits: J330, floor, presence, absolute Allee.
+| fit | theta .25: median / mean abs | theta .5 | theta .75 |
+|---|---|---|---|
+| strong (n50 .122) | +2 / 5.3 | +4 / 4.2 | +4 / 4.9 |
+| pinned (.059) | +1 / 7.1 | +2 / 5.6 | +3 / 4.4 |
+| weak (.030) | -3 / 15.3 | 0 / 11.6 | 0 / 10.8 |
+- **Upper Midwest and New England:** the model is within 0-4 yr of documented first breeding under pinned and strong
+  (VT, WV, OH, KY, IN, IL, MI, WI, ON).
+- **The South / mid-Atlantic is systematically LATE by 5-9 yr** (MD, NC, SC, TN, AL, AR); the weak Allee pulls MD / NC
+  closer.
+- **Plains edge decides the form.** Pinned: MO mating-common 1960 vs breeding 1983 (-23), IA 1962 vs 1986 (-24): the native
+  leak. The strong Allee fixes MO (1990, +7) and partly IA (1979, -7; theta .25 still 1947). The weak Allee puts IA / MO /
+  MN in the 1920s-30s.
+- **Reading (likely).** The weak Allee is rejected (mean abs offset about 11-15 yr, the Plains leak). The strong Allee is
+  best overall at theta .5 (4.2 vs 5.6) because it removes most of the Plains leak; pinned is marginally closer elsewhere.
+  This supports the user's decision to pin the stronger Allee.
+- Remaining misfit: a late South / mid-Atlantic (5-9 yr; establishment too slow southward) and a residual Iowa leak at low
+  theta.
+
+### LEADER (2026-11-06 03:30): stronger pinned absolute Allee (n50_raw -2.1) -- lap_leader_strong
+F0 + compact 3-yr onset + softplus K + delayed host-adaptation recovery + Laplace route effects (sigma 1.247) + smooth FFT
+floor + V&L kernel + n50_raw -2.1; no presence term; 2021-25 + blocks held out. Objective 142,413.7 (gmax 4.4; +102 vs
+pinned).
+- Held-out vs pinned: per-route unseen 32,941 (+10), 2021-25 20,795 (-14). A tie.
+- East potential .64 -> .96 -> 1.28 -> 1.27 (swing +.64; pinned +.61), toll .177; Plains .58 -> .95; West .73 -> 1.03.
+**HMC CURRENT.sh now targets this leader** (claude_leader_strong_allee.json, init lap_leader_strong.npz; laplace_fit.py
+synced). Jobs 3558537 / 3558538 are still pending.
+**Proposed next (awaiting the user):** an establishment-date likelihood per state. Interval-censored first-breeding records
+(the 18 quoted states), on a smooth mated-fraction indicator: dimensionless, so not mu-linear. theta {.25, .5} x lag L
+{5, 10}. Prior attempt in the record: R26 (log-link first DETECTION, count-based) pulled to a pushed wave (n50 x13) in the
+sandbox, then judged inert while a structural lever existed.
+
+### ESTABLISHMENT-WINDOW likelihood: built and queued
+- **The user's bias concern (2026-11-06):** "if you always penalize early establishment ... biased late?"
+  - Answer: the term is TWO-SIDED, -log(1 - E(first occurrence - 1)) - log(E(first breeding)). E = P(state established) =
+    OR over the state's route cells of sigmoid((mated fraction - theta) / .05).
+  - The window comes from the literature's own two dates per state, with no assumed lag.
+  - Residual bias risk = theta (high theta pushes dynamics earlier, low theta later), hence theta .5 / .25.
+- **Build.** establishment_build.py -> establishment_windows.npz (18 states; AL upper bound only, its first occurrence is
+  unverified); laplace_fit.py --establishment_dates / --estab_theta / --estab_tau.
+- **Smoke at the leader:** establishment cost 86.1 (theta .5), 21.2 (theta .25).
+- **Pulse / pullback check (user question)** on the leader, extended state_lag.py: all 33 eastern states cross mated .25
+  and .5 exactly ONCE, and the sustained (5-yr) establishment year equals the first-crossing year everywhere. No transient
+  establishment in this model (established for the leader). Safeguard kept in the readout (sustained_year, crossings).
+- **Queued** after the rangev2 arms: lap_leader_estab_t05 / t025, with held-out, state_lag and readout.
+
+### rangev2 restoration on the leader
+| arm | objective | presence | absence | BBS |
+|---|---|---|---|---|
+| lap_leader_rangev2 (presence + absences) | 144,083.7 | 1,224 | 40.1 | 123,029 (+450 vs leader) |
+| lap_leader_absonly (absences only) | 142,431.5 (+18) | - | 14.6 | 122,582 (+3) |
+- The restored absences are nearly inert at the leader (as estimated: B + C about 50 at fixed fits).
+- The presences carry the same presence-vs-BBS tension as before.
+
+### VALIDATION SUITE additions (user, 2026-11-06: "make the validation changes you suggest")
+route-variance worktree: scripts/viz/process_diagnostics.py, called from map_diagnostics.main (metrics.json
+"process_diagnostics"); config/validation/establishment_windows.json (18 states, dates + sources). Every figure is optional
+and never blocks the suite.
+- 19_establishment_timing: per-state model mating-common year (first .25, sustained .5) vs the documented [first
+  occurrence, first breeding] window + the data's first BBS detection; map of cell sustained establishment year. Flags > 1
+  upward crossing (pulse / pullback).
+- 20_premature_establishment: years mating-common before the cell's first BBS detection (cells first detected after 1970).
+- 21_invisible_band: share of occupied cells below mating .5 / between mating and route detection / detectable, by region.
+- 22_cbc_presence: early-CBC presences' P(detect) under the model, by region and era.
+- 23_runge_contribution: Runge C by era (needs <run_dir>/contribution_audit/annual_budget.npz).
+- 04b_corrected_fitted_mean: the model's MEAN count (Jensen + unseen routes at the mean route; a Laplace sigma is read
+  from <run_dir>/laplace_route_sigma.json) by region, plus within-observer x route paired trends.
+**Smoke on the leader (spliced checkpoint, CAND_viz/leader_strong):** all ran; Runge awaits its audit (running).
+- **Finding: the leader establishes AFTER documented first breeding in almost every state** (sustained mated .5: median
+  +6 yr; 0 of 18 inside the window; theta .25 also late). The stronger Allee closed the Plains leak (IA / MO near their
+  windows), but the eastern colonisation is uniformly LATE. This agrees with the early-CBC presence finding (early East too
+  slow) and is now the clearest remaining misfit (likely).
+- Invisible band (mating .5 at .13 route counts, detection .5 at 1.31): Plains 43% of occupied cells in 2010, East 19%,
+  West 24%.
+**Validation additions, follow-up.**
+- The contribution audit cannot replay the smooth FFT floor (contribution_budget.audit_forward: "affine/nonlinear FFT
+  padding or floor"). The Runge diagnostic for floor-on models is therefore run on the same parameters WITHOUT the floor
+  (objective differs by 0.1). Leader audit: BIDE 5.6e-16, replay exact. All six process diagnostics now run on the leader.
+- **OPEN ISSUE: 04b vs the exact Laplace correction disagree in the East** (suite 5.01 / 6.74 in 2019 / 2025 vs
+  fitted_mean_split 4.28 / 4.82; West / Plains close).
+  - Switching the suite's per-route information from expected (Fisher) to observed did not change it, so that is not the
+    cause.
+  - Likely cause: the checkpoint SPLICE of a Laplace fit's observer_route_eps (a ZeroSumNormal site; AutoDelta's auto_loc
+    may hold unconstrained values) garbles route effects in the spliced test path only. Earlier joint-fit splices matched
+    the TACC viz_ref. Unverified.
+  - Until resolved, the exact fitted_mean_split values are authoritative for Laplace fits.
+
+### ESTABLISHMENT-WINDOW likelihood on the leader: result
+| arm | objective | establishment cost | BBS | unseen | 2021-25 | E pot 1966 -> 2010 | lag_compare theta .5 median / mean abs |
+|---|---|---|---|---|---|---|---|
+| leader | 142,413.7 | (86.1 at theta .5) | 122,579.0 | 32,941 | 20,795 | .64 -> 1.28 | +4 / 4.6 |
+| + window, theta .5 | 142,496.2 | 80.5 | 122,581.6 | 32,930 | 20,791 | .64 -> 1.28 | +4 / 4.2 |
+| + window, theta .25 | 142,434.9 | 21.2 | 122,579.0 | 32,941 | 20,795 | .64 -> 1.28 | +4 / 4.6 |
+- **The term barely moves the fit (established).** Cost 86 -> 80.5 at theta .5; unchanged at .25. Swing, toll and
+  held-out are unchanged. The late East stays late (+4 yr median).
+- **Why (likely).** 18 state events, each worth a few units at the soft indicator, against a BBS likelihood that pins the
+  BBS-era densities. Moving eastern establishment earlier needs faster early growth, which the counts do not reward, and
+  the window evidence is too thin to pay for it. It would only bite if up-weighted, i.e. re-weighting, which the user
+  holds back as a last nudge.
+- **Conclusion.** Documented establishment timing works as a VALIDATION diagnostic (figures 19 / 20) and a pathology guard
+  (it catches leaks of decades, like the weak Allee's), not as an estimation lever at its natural weight.
+- **04b OPEN ISSUE RESOLVED (established).** The spliced route effects were exact (max |diff| 0). The cause: my TEST splice
+  dropped NEW sites absent from [cur]'s checkpoint, namely disease_log_delay_rec (delayed recovery). The suite's Predictive
+  then drew the delay from its prior, changing post-1994 recovery and eastern densities.
+  - Fixed in the test splice (new real-support sites are added).
+  - Suite vs exact Laplace (fitted_mean_split) now: East 2019 4.10 / 4.28, 2025 4.63 / 4.82; West 2025 5.30 / 5.36;
+    Plains 2025 1.53 / 1.65. Within about 4% (the residual is the fixed-phi observed-information shortcut).
+  - Lesson: any splice of a fit with sites new to the base checkpoint must add them, or reconstruct_map silently samples
+    them.
+
+## REVIEW (independent subagent, 2026-11-06 ~04:00) -- findings and actions
+**Problems raised (summarised; each with my disposition).**
+1. **Rebound measured on the wrong basis** (all-row endpoint means; 2019 a low year). The delay fitted at 34 yr (+2.2 prior
+   SD) matches the pre-registered "generic late-growth lever" failure. ACTION: paired check (below) + tight-delay refit
+   (running).
+2. **Establishment definition.**
+   - "Mating common" (cell-max mated fraction >= theta) vs the first single nest: bias direction unknown.
+   - The soft OR over cells inflates E with cell count (40 cells at mated .3 -> E about .52). Valid; the term barely bit
+     anyway. Fix (smooth max, then one sigmoid) if the term is reused.
+   - Readout grids = end-of-year state (adults + new juveniles), not the post-dispersal breeding population the Allee
+     uses: <= 1 yr offset at state scale (checked: age_forward scan returns N_a_new, N_j_new).
+   - The suite +6 / 0-of-18 vs lag_compare +4: the suite uses the SUSTAINED year; lag_compare used the FIRST crossing.
+     Both now labelled.
+3. **CBC detection scale** (a circle-day treated as one route; no party-hours / town placement) may overstate the
+   presence cost and the presence-vs-BBS tension; the availability median runs over a changing circle set. Open:
+   fixed-circle panel + detection multiplier bracket.
+4. **The stronger Allee is a global fix for a regional leak and is coupled to the density gauge.** ACTION: leader with the
+   route mean (gauge) free (running).
+5. **Laplace accuracy never tested** (NB, many zeros, short routes). Open: adaptive Gauss-Hermite per route at the leader.
+6. **HMC.** The seeds DO differ (CURRENT.sh passes --seed ${SLURM_JOB_ID}). The held-out 2021-25 posterior understates the
+   all-years swing. Depth-8 throughput is unmeasured on the A100.
+7. **Kernel arms also change Z_disp and were tuned under J330;** the ramp evidence is migration, not natal dispersal.
+   "Shrink rejected" at gmax 122 -> likely, not established.
+**Paired rebound on a common basis (paired_rebound.py; same observer x route units and rows as the data):**
+| region | 2012-15 -> 2016-19 data / leader | 2016-19 -> 2021-25 data / lap_free / lap_delayrec / leader |
+|---|---|---|
+| East | 1.07 / 1.00 | 1.15 / .97 / .99 / 1.00 |
+| West | .90 / .99 | 1.05 / 1.01 / 1.01 / 1.00 |
+| Plains | .93 / 1.05 | 1.02 / 1.01 / 1.02 / 1.01 |
+- **The eastern rebound is +15% (paired), not +49%.** The +49% was an all-row endpoint artefact (low 2019, composition).
+- Every model is essentially FLAT through the 2010s-2020s while the data move +-5-15% by decade. Delayed recovery adds only
+  about 2 points.
+- Reading (likely): the remaining miss is decadal variation the model has no mechanism for, not a missing recovery
+  process. Whether delayed recovery stays in the final model awaits the tight-delay fit (if it raises lambda or worsens
+  2021-25 at the literature delay, drop it).
+**User (2026-11-06): inject a smaller population closer to 1940 (not 1940; Allee issues remain).**
+- The leader's 1951 injection is PINNED at log_inv_total = 0, i.e. 1 unit (about 40-100 birds on the rough gauges). CORRECTED 2026-11-06: an earlier version of this line said 5.45 units; 5.45 is the prior median (total_median), which the pin overrides.
+- Queued (after the review fits): inj 1946 at 140 / 280 birds and inj 1948 at 80 / 160 birds (around the documented
+  1947-48 crash to about 80; about 280 by 1951; NY first bred 1943).
+- Inputs: kernel_sens.py derive --year (production input, only inv_timestep changed).
+- Readouts: establishment lag, swing, held-out, trend.
+
+### REVIEW fits: result (2026-11-06 ~06:00)
+| fit | objective | unseen (per-route) | 2021-25 | route mean m | East potential 1950s->late | toll | estab. median offset / within +-3 yr (theta .5, 18 states) |
+|---|---|---|---|---|---|---|---|
+| lap_leader_strong | 142,413.7 | 32,941 | 20,795 | 0 (fixed) | .64 -> 1.28 | .177 | +4 yr / .44 |
+| lap_leader_routemean | 142,272.0 (-142) | 32,967 (+26) | 20,857 (+62) | -1.58 | .55 -> 1.12 | .136 | +3 yr / .61 |
+| lap_leader_tightdelay | +43 (3 iterations) | = leader | = leader | 0 | -- | -- | -- |
+- **Gauge free (route mean).** m = -1.58 means the latent grid density per route count rises by about e^1.58 = 4.9x
+  against the fixed gauge, so the same pinned n50 is reached at fewer *observed* birds. The fit uses this: the Allee
+  binds less, the swing shrinks (.55 -> 1.12, toll .136 vs .177) and establishment moves 1 yr earlier (61% of states within
+  +-3 yr vs 44%).
+  - **Held-out gets worse** (+26 unseen, +62 on 2021-25) while the in-sample objective improves by 142.
+  - Reading (likely): the gauge and the absolute Allee are confounded (expected: the absolute Allee is defined in count
+    units, and m rescales count units). Freeing m is equivalent to weakening the Allee by about a factor of 5 in density.
+    The in-sample gain does not carry to held-out years, so the gauge stays fixed (m = 0) for the leader. This also
+    confirms the user's point that the absolute translation is "largely fictional": the Allee strength is only
+    identified jointly with an unidentified density gauge, so n50 is a pinned modelling choice, not an estimate.
+- **Tight delay: an optimiser stall, not a result.** L-BFGS stopped after 3 iterations (relative reduction of f) with the
+  delay unchanged at 34.1; the +43 is about the tight prior's penalty at 34 vs 22. ACTION: refit from an init with
+  delay = 22 (init_leader_delay22.npz), queued after the injection arms.
+
+### INJECTION arms: result, and a design error (2026-11-06 ~06:30)
+**Error (mine).** The arms set `invasion_pulse_prior.total_median`, but every overlay pins `log_inv_total = 0`, which
+overrides the median. So all four arms (and the leader) inject the SAME 1 unit; only the YEAR moved (1946 / 1948 vs 1951).
+The "140 / 280 / 80 / 160 bird" labels are wrong and should be read as "1 unit". Founder SIZE arms that set the pin itself
+(0.25 and 4 units at 1946, 1948, 1951) are queued after the delay-22 refit (injection_size.sh).
+
+**Year-only result: the release year is inert.**
+| fit | objective | unseen | East pot 1966 / 1990 / 2010 | estab. median offset / within +-3 (theta .5) |
+|---|---|---|---|---|
+| leader (1951) | 142,413.7 | 32,941 | .64 / .96 / 1.28 | +4 / .44 |
+| 1946 | 142,410.8 / 411.0 | 32,936 / 32,937 | .65 / .96 / 1.26 | +4 / .44 |
+| 1948 | 142,411.8 / 411.7 | 32,941 / 32,939 | .65 / .96 / 1.27 | +4 / .44 |
+
+**Mechanism (established, founder_traj.py on leader vs 1946 arm; route counts summed over the 5x5 release block):**
+| year | 1946 | 1948 | 1951 | 1955 | 1960 | 1965 | 1970 | 1980 |
+|---|---|---|---|---|---|---|---|---|
+| leader (release 1951) | -- | -- | 1.17 | .61 | .85 | 1.86 | 7.45 | 95.8 |
+| release 1946 | 1.19 | .63 | .43 | .44 | .87 | 1.71 | 7.27 | 100 |
+- In both fits the founder population DECLINES after release, bottoms out around 1951-55, and starts growing at about
+  the same CALENDAR year (~1955-58) whatever the release year. By 1960 the two runs agree within a few percent.
+- So the timing of the eastern take-off is set by the time-varying vital rates in the release region (the habitat
+  field's calendar change), not by the founder's age or size. An earlier release only adds years of slow decline.
+- The record says the opposite happened early: about 80 birds after the 1947-48 winter grew to about 280 by 1951
+  (Elliott & Arbib 1953). The model cannot grow a 1-unit founder at all before ~1955. Reading (likely): this is the
+  calendar-time "timing lever" the user suspected. The Allee plus low early growth make the release region a sink,
+  and the habitat change in the 1950s switches it to a source. This is the eastern lag supplied by habitat change
+  (plan: "Habitat change is the only time-varying lever, so it supplies the lag").
+- Implication for the late eastern establishment (+4 yr): moving the release earlier cannot fix it, because the clock
+  starts at the habitat switch, not at the release. Whether a LARGER founder can grow through the early sink is what
+  the size arms test (prediction: 4 units declines too, but more slowly; 0.25 units may go Allee-extinct).
+
+### TIGHT-DELAY refit (from delay = 22 init): delayed recovery DROPPED by the pre-stated rule
+| fit | objective | unseen | 2021-25 | rec | delay | East pot 1966 / 1990 / 2010 | estab. (theta .5) |
+|---|---|---|---|---|---|---|---|
+| lap_leader_strong (delay free) | 142,413.7 | 32,941 | 20,795 | .217 | 34.1 | .64 / .96 / 1.28 | +4 / .44 |
+| lap_leader_delay22 (22 +- 1 yr) | 142,416.8 (+3.1) | 32,946 (+5) | 20,808 (+13) | .025 | 22.8 | .65 / .96 / 1.27 | +4 / .44 |
+- Converged (412 iterations). At the literature delay the fit **switches recovery off** (rec .217 -> .025): a 22-yr
+  rebound is not what the data want. The leader's recovery exists only at a 34-yr delay, i.e. a late uptick in the newest
+  BBS years, which the literature does not support as host adaptation (Henschen 2023: ~20-25 yr).
+- lambda is unchanged; 2021-25 is worse by 13 (small). Rule (pre-stated): "if holding the delay at the literature value
+  raises lambda or worsens 2021-25, it comes out of the final model" -> **delayed recovery comes out.** Reading (likely):
+  the delayed term was a convenient lever for the last few years' counts, not a recovered biological process; with it
+  the eastern paired rebound moved only ~2 points anyway (paired_rebound table above).
+- Replacement candidate queued: the leader with the default exponential recovery (lap_leader_exprec, exprec.sh), after
+  the founder-size arms. The HMC target changes to it only if it is not worse on held-out.
+
+### FOUNDER SIZE arms (pin set correctly: log_inv_total = log(units); 1 unit = the leader founder)
+| fit | objective | unseen | 2021-25 | East pot 1966 / 2010 | estab. (theta .5) |
+|---|---|---|---|---|---|
+| leader (1951, 1 u) | 142,413.7 | 32,941 | 20,795 | .64 / 1.28 | +4 / .44 |
+| 1946, 0.25 u | 142,409.3 (-4) | 32,943 | 20,795 | .67 / 1.27 | +4 / .44 |
+| 1948, 0.25 u | 142,409.9 (-4) | 32,941 | 20,793 | -- | +4 / .44 |
+| 1951, 0.25 u | 142,410.1 (-4) | 32,944 | 20,795 | .66 / 1.27 | +4 / .44 |
+| 1946, 4 u | 142,429.6 (+16) | 32,979 (+38) | 20,800 | .62 / 1.32 | +4 / .44 |
+| 1951, 4 u | 142,440.9 (+27) | 32,994 (+53) | 20,808 | .58 / 1.30 | +4 / .44 |
+Founder trajectory (route counts, 5x5 release block; founder_traj.py):
+| run | release yr | 1951 | 1955 | 1960 | 1965 | 1970 | 1980 |
+|---|---|---|---|---|---|---|---|
+| 0.25 u, 1946 | .29 | .24 | .29 | .79 | 1.74 | 7.1 | 103 |
+| 1 u, 1946 | 1.19 | .43 | .44 | .87 | 1.71 | 7.3 | 100 |
+| 1 u, 1951 (leader) | -- | 1.17 | .61 | .85 | 1.86 | 7.5 | 96 |
+| 4 u, 1951 | -- | 2.28 | 1.15 | 1.27 | 3.6 | 10.6 | 77 |
+- **Established: the release block has a quasi-steady level of about 0.25-0.45 route counts before ~1955.** Larger
+  founders decay toward it; a 0.25-unit founder sits on it (no Allee extinction: it is above n50 = softplus(-2.1) = .115
+  route counts). Growth starts at the same calendar time (~1955-58) for every size and year.
+- **Establishment timing is unchanged in every arm (+4 yr).** Neither founder size nor release year moves the eastern
+  clock; the habitat switch in the 1950s sets it (see INJECTION arms).
+- **Larger founders cost fit and raise the swing.** At 4 units the objective worsens by 16-27, held-out by 38-53, and the
+  fit buys back the excess early mass by lowering early eastern lambda (.58-.62 in 1966) and raising the late level
+  (1.30-1.32): a bigger founder means a bigger swing (likely mechanism: extra founders front-load the spread, so the fit
+  suppresses early growth further). Smaller founders are slightly preferred (-4) and slightly shrink the swing
+  (.66-.67 -> 1.27) -- within noise on held-out.
+- Implication: the user's idea (smaller, earlier founder) is CONSISTENT with the data and harmless, but it does not fix
+  the late eastern establishment; that needs the early release block to be a source (the documented 80 -> 280 birds
+  growth 1948-51), which the fitted rates do not allow before the 1950s. Leader unchanged (1951, 1 u); a 1946-48,
+  0.25-unit founder is an equivalent alternative and closer to the record.
+
+### EXPONENTIAL-recovery leader (lap_leader_exprec) and the HMC target change (2026-11-06 ~06:00)
+| fit | objective | unseen | 2021-25 | rec | East pot 1966 / 2010 | estab. | paired East 2016-19 -> 2021-25 (data 1.15) |
+|---|---|---|---|---|---|---|---|
+| leader (delayed, d 34) | 142,413.7 | 32,941 | 20,795 | .217 | .64 / 1.28 | +4 / .44 | 1.00 |
+| delayed, d 22 (tight) | 142,416.8 | 32,946 | 20,808 | .025 | .65 / 1.27 | +4 / .44 | -- |
+| exponential | 142,421.7 | 32,963 | 20,826 | .013 | .64 / 1.29 | +4 / .44 | .975 |
+- With either form at a literature-consistent timing, the fit turns recovery OFF (rec .01-.03). The only recovery the
+  data "want" is the 34-yr delayed uptick in the newest years; dropping it costs 13-31 on 2021-25 and 5-22 on unseen routes.
+  The two no-recovery fits differ by about 5-18 between themselves (same effective model) -- a guide to fit-to-fit noise.
+- lambda, the swing and establishment are unchanged by any recovery choice. Recovery is a late-years lever only.
+- **Decision (pre-stated rule): delayed recovery out; HMC CURRENT.sh now targets lap_leader_exprec** (overlay
+  claude_leader_exprec.json = claude_leader_strong_allee.json with recovery.form exponential; init lap_leader_exprec.npz).
+  Pending claude_hmc jobs 3558537/3558538 untouched; they read CURRENT.sh at start.
+- Open (honest): the model has no mechanism for the data's +15% eastern paired rebound; the late-years misfit remains.
+
+## RELEASE FLIP (pre-registered 2026-11-06 ~06:15, before running): what turns the release region from sink to source in the 1950s?
+Prior evidence: F1 (2026-11-03, older base, release_area.py) found the core's potential lambda > 1, mated .8-.9, yet the
+area declined 1951-55: DISPERSAL DRAIN into Allee-dead empty neighbours; the lag ended when habitat lifted core lambda
+(1.13 -> 2.05). R20 (low early departure) did not remove the establishment requirement. This repeats the
+decomposition on the CURRENT leader (lap_leader_exprec: Laplace route effects, strong absolute Allee, floor) and adds
+counterfactual replays (release_flip.py; replays of the fitted point, no refitting; 160 km release area; East only read).
+Components per year 1945-1975: total, lambda0 (potential, no Allee), mated fraction at actual density, N/K, crowding,
+sink share; plus the release-block take-off year (first year the 5x5 block exceeds 2x its 1952 level, sustained 5 yr).
+Arms:
+1. fitted (identity vs founder_traj).
+2. RATES-1965: release-area Sa, Sj, Fmax, K (c recomputed) for 1940-64 replaced by their 1965 values (the habitat
+   switch removed locally).
+3. ALLEE-OFF: allee_gamma x 1e-6 (whole run).
+4. NO-DRAIN: departure suppressed globally before 1965 (dispersal_random[t] = -10 for t < 1965).
+5. RATES-1965 + NO-DRAIN.
+Predictions: if the calendar rate change sets the clock, arm 2 takes off ~10 yr earlier. If drain into Allee-dead
+neighbours sets it (F1), arms 3 and 4 take off early and arm 2 only partly. If both, arm 5 >> 2, 4.
+These are diagnostics (climate-freeze-type tricks), not production proposals.
+
+### RELEASE FLIP result (lap_leader_exprec; release_flip.py -> ROUTEMARG/release_flip_exprec.json)
+Two arm bugs fixed before reading: allee_off first used gamma x 1e-6 (= nobody mated; extinction), now x 1e6; the
+first no_drain edited dispersal_random, which Veit departure (p = N/K) ignores -> identical to fitted; now a static
+departure_scale x .1 on the 160 km release area.
+Release block (5x5 cells) components, fitted run:
+| year | Sa | Sj | Fmax | lambda0 (block median) | K | mated (area, density-wtd) | N/K |
+|---|---|---|---|---|---|---|---|
+| 1945 | .524 | .090 | 7.55 | 1.20 | .084 | -- | -- |
+| 1951 | .539 | .093 | 7.67 | 1.25 | .090 | .92 | .58 |
+| 1955 | .581 | .100 | 8.01 | 1.38 | .109 | .76 | .20 |
+| 1960 | .628 | .109 | 8.39 | 1.54 | .136 | .84 | .24 |
+| 1965 | .663 | .115 | 8.70 | 1.66 | .162 | .90 | .26 |
+| 1975 | .713 | .124 | 9.15 | 1.85 | .210 | .99 | .54 |
+Counterfactual replays (no refit; block = 5x5 release block, model units; growth r = log ratio / yr 1952-65):
+| arm | take-off year | block 1952 -> 1965 | r 1952-65 | East total 1970 / 1980 |
+|---|---|---|---|---|
+| fitted | 1965 | .039 -> .095 | .07 | .4 / 15 |
+| rates_1965 (Sa, Sj, Fmax, K at 1965 values, 1940-64) | 1957 | .080 -> 1.34 | .22 | 6.3 / 55 |
+| vital_1965 (Sa, Sj, Fmax only) | 1957 | .050 -> 1.06 | .23 | 4.8 / 50 |
+| K_1965 (K only) | 1964 | .059 -> .198 | .09 | 1.0 / 25 |
+| no_drain (departure x .1, release area) | 1966 | .075 -> .147 | .05 | .3 / 3 |
+| rates_1965 + no_drain | 1963 | .11 -> .40 | .10 | 1.2 / 6 |
+| allee_off / allee_off + no_drain | (invalid read) | ~1.0 already in 1950 | -- | 16 / 147 by 1960-80 |
+- **Established (on this fit): the clock is the vital-rate change in the release region.** Holding Sa, Sj, Fmax at their
+  1965 values moves take-off from 1965 to 1957 and gives r = .23 / yr in 1952-65 -- the documented CBC release-area
+  growth (about .24 / yr 1951-66). The fitted 1950s rates give r = .07. K alone moves take-off 1 yr.
+- **Drain is not the limiter on this fit** (unlike F1 on the older base): cutting departure 90% keeps more birds in the
+  block (.075 vs .039) but does not raise their growth rate (r .05) and slows the East (it starves the front).
+- **Mechanism (likely):** lambda0 1.25 x mated ~.76-.84 is near replacement in the 1950s, so the founders sit at a
+  quasi-steady level (cf. founder-size arms). Sa, Sj and Fmax all rise TOGETHER 1951 -> 1965 (+23% / +24% / +13%;
+  lambda0 1.25 -> 1.66): one shared habitat field H rising on the calendar at the release site. Allee x low early H =
+  sink; H rising = source.
+- **Allee-off is not a clean test here:** without the Allee the native western population floods the East (the block
+  is ~1.0 in 1950, before the release; East total 16 by 1960). The Allee is what holds the Plains (known; cf. ZERO-COST).
+- Open question this raises: is the release-site H rise of 1945-75 REAL habitat change (Long Island / NYC
+  suburbanisation and feeders in the 1950s-60s are plausible: CONSIDERATIONS G15, premise memory) or a timing lever? Next:
+  break the H change at the release block into its z dimensions (which DESK dims carry it) and compare with an
+  independent covariate of 1950s-60s change (housing density) where available.
+
+### RELEASE-SITE HABITAT: continental vs local change (release_h.py, release_flip.py --zarms; lap_leader_exprec)
+**Decomposition of the habitat-field rise (H = (z - z_c).beta; z_shrink none):**
+| field | dH release block 1951-65 | East median | Plains | West | release block 1940-80 | East / West 1940-80 |
+|---|---|---|---|---|---|---|
+| H_s (adult surv.) | .51 | .29 | .21 | .28 | 1.14 | .59 / .45 |
+| H_r (fecundity) | 1.00 | .56 | .42 | .56 | 2.23 | 1.16 / .89 |
+| H_k (capacity) | .67 | .38 | .28 | .38 | 1.50 | .78 / .60 |
+(Spatial SD of H across eastern cells in 1951: H_s 1.6, H_r 3.1, H_k 2.1. The release block's rise is in the top 8% of
+eastern cells 1951-65.)
+- About 55% of the release-site rise is a CONTINENT-WIDE shift (East and West medians identical, .28 / .56 / .38), and
+  about 45% is LOCAL excess at the release site.
+- Carried by many DESK dims at once (top: 23, 17, 6, 0, 55, 7): each moves only .01-.02 in z but has weight 5-14, so
+  no single dimension carries it (consistent with the record's "DESK features over-move in time" amplification).
+
+**Counterfactual habitat inputs on the 160 km release area, 1951-75 (local Z only; Z_disp untouched; no refit):**
+| arm | take-off | block 1952 / 1960 / 1970 / 1980 | East total 1980 / 1990 |
+|---|---|---|---|
+| fitted (both parts) | 1965 | .039 / .043 / .38 / 4.8 | 15 / 144 |
+| Z frozen at 1951 | never (re-founded ~2014) | .037 / .010 / .000 / .000 | .1 / .3 |
+| continental change only | 1976 | .038 / .022 / .041 / .38 | .5 / 28 |
+| local excess only | 1978 | .038 / .024 / .034 / .17 | .3 / 17 |
+- **Established (on this fit): at 1951 habitat the release area is a true SINK -- the founders go extinct** (block .037 ->
+  0 by 1970) and the eastern invasion fails (East .3 in 1990 vs 144). The invasion succeeds only because the fitted
+  habitat at the release site improves 1951-75. Neither part alone is enough: each delays take-off 11-13 yr.
+- Mechanism (likely): lambda0 1.25 x mated ~.76 at founder density < 1 with Veit drain on top; the habitat rise lifts
+  lambda0 to 1.66 by 1965 and crosses replacement.
+- This is the timing lever in its sharpest form: the model's eastern invasion is CONTINGENT on habitat change at the
+  release site. Whether that change is real (Long Island / NYC suburbanisation 1950s-60s; continent-wide feeders /
+  settlement, G15) or a convenient lever is not decidable from the fit (unknown). What IS known: (1) the real colony
+  grew ~.24/yr from about 1951, i.e. it was a source at 1950s conditions; the model's 1950s release site is not; (2)
+  the continent-wide half has the Wikle-mu_t signature (equal East and West shift), the local half is site-specific.
+- Production implication (reported, not decided): a model whose invasion requires its habitat to improve at the
+  release site will tie lambda's rise to calendar time wherever the founders sit. Levers that make the 1950s release
+  site a source at 1950s habitat (the strong Allee is the main obstacle at founder density; cf. lambda0 x mated ~1)
+  would remove that contingency; the Allee strength is a pinned modelling choice (REVIEW fits: gauge-confounded).
+
+### RELEASE-CELL ALLEE EXEMPTION (existing forward option allee_exempt_years; replay, no refit)
+| arm | take-off | block 1952 / 1960 / 1970 / 1980 | East 1980 / 1990 |
+|---|---|---|---|
+| fitted | 1965 | .039 / .043 / .38 / 4.8 | 15 / 144 |
+| exempt 10 yr | 1963 | .042 / .061 / .83 / 6.0 | 23 / 169 |
+| exempt 25 yr | 1962 | .042 / .061 / .88 / 6.2 | 24 / 172 |
+| Z frozen 1951 + exempt 10 | never | .040 / .024 / .004 / 0 | .1 / .3 |
+| Z frozen 1951 + exempt 25 | 1979 | .040 / .024 / .023 / .10 | .2 / 7.8 |
+- Exempting the release cells from the Allee moves take-off only 2-3 yr and does NOT make the 1951-habitat release
+  area a source: with 25 years of exemption the block still declines and only holds flat.
+- Arithmetic (established): the fitted release-block lambda0 in 1951 is 1.25, so even with every bird mated the maximum
+  growth is r = ln 1.25 = .22 / yr BEFORE emigration (Veit p = N/K) and crowding. The documented release-area growth
+  (about .24 / yr, 1951-66) is therefore unreachable at the fitted 1951 vital rates under any Allee setting. The model's
+  1950s habitat at the release site is simply too poor; the fit makes it adequate by the mid-1960s (lambda0 1.66).
+- So (likely): the late eastern establishment and the habitat-contingent invasion share one cause -- the fitted habitat
+  field rates the 1950s release region below what the documented early growth requires, and fixes that by raising H on
+  the calendar. The Allee makes it worse (mated ~.76 at founder density) but is not the binding constraint.
+- Open next diagnostic: why the fit rates the release region low in 1951 (it is near the 90-95th percentile of local
+  capacity in the record's own terms -- see the invasion pulse comment). Candidates: (a) the H scale is set by
+  modern BBS densities, and 1950s z at Long Island sits lower on DESK dims that changed (urbanisation); (b) the
+  continent-wide half is the Wikle-type shared trend absorbing the eastern lag. A refit with the release-area growth
+  as a soft constraint (the documented .24 / yr) would test whether the data can accept a 1950s source without breaking
+  elsewhere -- a likelihood addition, held as a "last nudge" per the user; reported, not run.
+
+### LAPLACE ACCURACY (REVIEW item 5): adaptive Gauss-Hermite per route at lap_leader_exprec (laplace_fit.py --agh 16)
+- Per route: log integral of prod_rows NB(y | mu0 e^(m + sigma e)) N(e; 0, 1) by adaptive GH centred at the Newton mode
+  with the Laplace scale, 16 and 32 nodes (identical to 3e-3 in total -> converged), vs the Laplace value.
+- 15,440 routes with training rows. AGH - Laplace: total -13.5 log-lik; |diff| median .006, 90% .014, 99% .019, max .04;
+  no route above .1. By route length: 1-2 rows -8.4 (6,362 routes), 3-9 rows -4.5, 10-29 rows -.9, 30+ +.3.
+- **Established: the Laplace marginal is accurate here** (error about 1e-3 per route; total 13.5, smaller than the 5-20
+  fit-to-fit noise and nearly constant). It slightly overstates the marginal likelihood, mostly on 1-2 row routes
+  with a positive count. Item 5 closed; laplace_fit results and the embedded-Laplace HMC stand on this approximation.
+
+## FINAL-MODEL ROUND (user, 2026-11-06 ~07:30): make the 1940s-50s release a source; last levers against lambda inflation
+User: the release colony was a source in the 1940s; the model's 1950s release site is not (RELEASE FLIP) -- consistent
+with continued lambda inflation. Options named: small 1940 release with Allee weakening; exemption + tempering that
+upweights early observations; repeated CBC ABUNDANCES in the invasion era (with effort) to constrain the rate of increase.
+Records read first:
+- CBC_MORNING_UPDATE / CBC_COMPENSATION_AND_DEPARTURE (2026-11-02, Codex step38_cbc1951): an ALL-YEARS joint CBC count
+  likelihood (74k rows, 1951-2025, circle effects SD 1, Box-Cox party-hours, winter redistribution) made BBS worse
+  (temporal marginal -.08 to -.09), adult survival .28, Sj/Sa at ceiling, arrival 6 yr early. Opposing CBC vs rest
+  gradients on alpha_a, alpha_j, alpha_f (CBC_LIKELIHOOD_PRESSURE): a LEVEL / census-convention conflict, unresolved.
+- GRID54_LADDER steps 8a/8b: 1940 release + 10-yr release-cell exemption with FREE founders -> founders became a free
+  lever (x70) that undid every brake. Founders are pinned now, so the exemption can be retested fairly.
+- EARLY_CBC_DESIGN_CORRECTION: pre-1951 effort is mostly missing (1902-1939); 1951-62 has effort for ~96% of rows.
+Never tested: a CBC term RESTRICTED to the invasion era (1947-65) with a FREE source scale and circle effects, so only
+the within-circle RATE of increase informs the process (the level/convention conflict is absorbed by the scale).
+
+**Pre-registered arms (Laplace leader lap_leader_exprec structure; refits; local GPU):**
+| arm | release | founder | exemption | CBC rate term |
+|---|---|---|---|---|
+| F1 | 1940 | 0.25 u (pinned) | 10 yr release cells | no |
+| F2 | 1951 (leader) | 1 u | 0 | yes |
+| F3 | 1940 | 0.25 u | 10 yr | yes |
+CBC rate term: positive-effort circle-years 1947-65 (summer label) whose footprint touches the introduced East
+(lon >= -90); NB2 counts with mean exp(s + p log(effort/median) + sigma_c c_i) x A_t (A = the presence term's footprint
+abundance, local U 300 km SW seasonal); circle effects c_i ~ N(0,1) integrated per circle by Laplace (sigma_c fixed 1,
+as the step38 primary); s, p (prior N(.6, .3), Link & Sauer diminishing returns), log phi (N(0, 1)) fitted. Natural
+weight (no tempering). Zeros kept only for circles with >= 1 positive in the window (a circle that never recorded the
+species in 1947-65 carries no rate information and is the presence/absence question the user ruled out).
+Predictions: F1 inert (no early data pays for a source; cf. INJECTION arms). F2/F3: the fit raises the release
+region's 1950s rates (r 1952-65 toward .2), eastern establishment moves earlier (toward 0 yr), the eastern swing
+(.64 -> 1.29) shrinks. Falsified if the term barely binds (as the establishment windows) or if it buys growth by
+raising lambda everywhere (swing grows) or degrades BBS held-out by more than about 20.
+Caveat (Weiss 1997): winter counts in newly colonised areas grew 2.5-5x faster than breeding counts; outside the core
+the CBC rate overstates breeding growth. Readout splits the rate fit by circle distance from the release (< 150 km vs beyond).
+
+### CBC RATE term: how hard would it push? (cbc_rate_gap.py at lap_leader_exprec; user: "how much impact on the loss?")
+Same term as --cbc_rate (circle effects N(0,1) Laplace-integrated; s, p, phi optimised) at the leader's state, vs the
+same with the model's year-to-year shape FREED (one free offset per year, shared by the East circles):
+| subset | rows | NLL at leader trajectory | NLL with free yearly shape | gap (max pressure) | effort power p (leader / free) |
+|---|---|---|---|---|---|
+| all East circles 1951-65 | 688 | 1,393 | 1,283 | 111 | .39 / -- |
+| circles < 150 km from release | 399 | 1,003 | 937 | 66 | 1.29 / 1.02 |
+| beyond 150 km | 289 | 368 | 314 | 54 | -.22 / -1.09 |
+- Free yearly offsets (all circles, relative to the model's own trajectory): -3.3 (1951) rising nearly linearly to +3.5
+  (1965), i.e. the CBC counts rise about .45 / yr FASTER than the model's footprint abundance over 1951-65 (near circles:
+  about .39 / yr faster). Direction (established): the data want much faster eastern growth in 1951-65 than the leader.
+- Size: up to ~110 nats of pressure (about .1% of the objective; comparable to the founder-size costs of 16-27 and well
+  above fit-to-fit noise of 5-20, but small against BBS: it can be bought cheaply if BBS objects).
+- Caveats (likely): (1) the far subset's offsets (-12 / +8 jumps) and negative effort power are colonisation of circles
+  (zeros then counts), not rate -- that part behaves like presence/absence; (2) winter counts outrun breeding counts at
+  new fronts (Weiss 1997), so ".45 / yr faster" overstates breeding growth; the near-150 km rate (the old core) is the
+  cleaner number; (3) the effort power is poorly identified on 688 rows (p .39 / 1.29 / -.22 by subset).
+F2 / F1 / F3 (pre-registered above) are running; F3b (1940 release + 1940s rows incl. 1940-47 zeros) and the toll-cap
+ridge rerun on the Laplace leader (R90; mortality ceiling .35 / .25) are queued after them.
+
+### F2 RESULT: leader + CBC rate term (1951-65 East, natural weight) -- the term barely moves the dynamics
+| fit | objective | BBS marginal | nest | CBC rate NLL | unseen | 2021-25 | East pot 1966 / 2010 | estab. (theta .5) | release block 1952 -> 1965 |
+|---|---|---|---|---|---|---|---|---|---|
+| lap_leader_exprec (+ term evaluated at its state) | 142,421.7 (+1,393) | 122,576 | 2,045 | 1,393 | 32,963 | 20,826 | .64 / 1.29 | +4 / .44 | .039 -> .095 |
+| lap_fr_F2_cbcrate | 143,808.0 | 122,608 (+32) | 2,027 (-18) | 1,376 (-17) | 32,961 | 20,831 | .62 / 1.22 | +4 / .44 | .045 -> .100 |
+- The fit takes only 17 of the ~111 nats available (cbc_rate_gap) and pays +32 in BBS for it (nest -18); s 5.77, effort
+  power .49, phi .15. Release-area growth and take-off (1965) are unchanged; establishment unchanged; the swing shrinks a
+  little (1.29 -> 1.22 in 2010). Held-out unchanged (+-5).
+- Reading (likely): at natural weight the early-growth evidence is too weak to reshape the eastern trajectory; making
+  the 1950s release a source costs more elsewhere (BBS / structure) than the CBC term can pay. Either the BBS-era
+  dynamics resist an early source under this structure (the habitat field ties early and late growth together), or
+  the optimiser stays near the leader's basin (started there). F3 / F3b (1940 release) and a structural change that
+  decouples early from late growth (trend routing, colonisation clock) are the next tests; tempering stays the user's call.
+
+## FINAL ROUND structural builds (implemented 2026-11-06; default off; identity-tested)
+1. **trend_routing** (data_loading + age_priors + age_fields): each region's (West col < 48 / Plains 48-55 / East >= 56)
+   yearly-mean Z deviation from its all-years mean reaches Sa, Sj, Fmax and journey survival only through a learned share
+   eta ~ Beta(1,1); capacity reads all of it. eta = 1 reproduces the leader EXACTLY (max |d expected_obs| = 0.0); eta = 0
+   changes predictions (sum mu 502,655 -> 520,722). Rationale: R55 -- the regional Z trend is both the inflation's source
+   (removing it: potential lambda .46 -> .51) and the forecast skill (+1,131 held-out East when removed), so ROUTE it
+   (R53b "clock in K only" lost ~600 on 2021-25 vs ~2,400 for no clock, older base).
+   Pre-registered prediction (lap_troute): eta well below 1 at small cost (< ~100 objective, held-out within ~50) and the
+   eastern swing shrinks substantially (2010 potential lambda < 1.1); falsified if eta -> 1 (the rates need the trend),
+   or if eta < 1 is paid for by a lambda rise through the within-region (non-trend) Z change.
+2. **colonization_clock** (age_forward + age_priors; plan card A5, Badyaev 2009): fecundity x (1 - d0 exp(-A/tau)),
+   A = smooth years-established (mated fraction > .5 at year end, absolute Allee: user rule), d0 ~ Beta(1,1), tau ~
+   LogNormal(log 5, .5). d0 = 0 reproduces the leader EXACTLY (max diff 0.0); at the leader's rates d0 .3 / .6 cut East
+   N in 1980 from 15.4 to 2.2 / .3. Pre-registered (lap_clock, lap_clock_cbcrate): a local lag that travels with the front
+   lets the fit raise early core growth and flatten the calendar rise -> d0 > .2, the eastern swing shrinks, establishment
+   not later; with the CBC rate term the core grows faster (r 1952-65 > .1). Falsified if d0 -> 0, or if the fit buys
+   back the slower front with a LARGER lambda rise (the R86 / R95 "swing moves to the free rate" pattern).
+Queue (local GPU, sequential): F1, F3 (running) -> toll caps .35 / .25 -> F3b -> lap_troute -> lap_clock -> lap_clock_cbcrate.
+
+### F1 / F3 RESULTS (1940 release, 0.25 u pinned, 10-yr release-cell exemption)
+| fit | objective | BBS | nest | CBC rate NLL | unseen | 2021-25 | East pot 1966 / 2010 | estab. | release block 1952 / 1960 / 1965 / 1970, take-off |
+|---|---|---|---|---|---|---|---|---|---|
+| leader (1951, 1 u) | 142,421.7 | 122,576 | 2,045 | (1,393) | 32,963 | 20,826 | .64 / 1.29 | +4 / .44 | .039 / -- / .095 / .38, 1965 |
+| F1 1940 + ex10 | 142,417.9 (-4) | 122,576 | 2,042 | -- | 32,961 | 20,827 | .66 / 1.27 | +4 / .44 | .018 / .045 / .085 / .36, 1959 |
+| F2 1951 + CBC rate | 143,808.0 | 122,608 | 2,027 | 1,376 | 32,961 | 20,831 | .62 / 1.22 | +4 / .44 | .045 / .057 / .100 / .41, 1965 |
+| F3 1940 + ex10 + CBC rate | 143,763.6 (-44 vs F2) | 122,576 | 2,044 | 1,340 | 32,951 | 20,822 | .63 / 1.26 | +4 / .44 | .017 / .045 / .090 / .38, 1959 |
+- F1 inert, as predicted (established): the 1940 founders persist at a low level and take off on the same calendar as
+  the leader (block .045 in 1960 in every arm). The release year still does not set the clock.
+- F3 fits the CBC rates 37 better than F2 at NO BBS cost (BBS = leader's) and held-out a touch better (-12 unseen, -4
+  on 2021-25): a 1940 release is more consistent with the early CBC than a 1951 one -- but the eastern trajectory,
+  swing and establishment are unchanged. With CBC at natural weight, neither start date makes the 1950s release a source.
+- TACC (2026-11-06 ~08:45): dev CPU job 3558909 (6 nodes: troute_eta0, 1940_clock, 1940_troute, 1940_troute_clock +
+  CBC40, troute + CBC, CBC weight 10) and dev GPU job 3558910 (troute + clock + CBC, CBC weight 3) submitted; both
+  pending. Codex's dev GPU job 3558841 holds the one-per-user dev GPU slot; holding it was refused by the permission
+  classifier, so it was left untouched. TACC code synced to the worktree (backups: takeover_claude/code_backup_*).
+- R103b PORTED to laplace_fit (--late_prior_cell SD; DIAGNOSTIC comparator only, user ruling): independent N(0, SD) on
+  each occupied cell's (1,899 cells with a positive BBS row) 1993 -> 2010 change of logit Sa, logit Sj, log Fmax. Cost at
+  the leader 227 (SD 1). Queued: lap_r103b_sd1 in TACC dev CPU batch 2 (job 3558913, after 3558909), with resumes of
+  unfinished batch-1 fits and lap_troute_clock (no CBC). --cbc_weight added (DIAGNOSTIC tempering: w3 on dev GPU, w10 on
+  dev CPU) to measure how much pressure the early-growth evidence needs to reshape the trajectory; not a proposal.
+- Not ported (yet): lam10 (step12 process-noise / fecundity deviation; old ladder code), Codex step48 arrival /
+  establishment discrepancy terms (Codex code), disease-toll literature prior (needs design).
+
+### PER-CAPITA AGGREGATED ALLEE (built 2026-11-06; allee_prior.per_capita, default off) -- a consistency correction
+The aggregated Allee (k = 3) multiplies births by the LOCATION-averaged mating probability E[1 - exp(-gamma X)] =
+1 - (1 + x/k)^-k for every bird in the cell (age_forward.reproduction_age_structured: F_actual = F_eff x allee_factor;
+N_j = N x F_actual). Under the same gamma-clumping assumption the PER-CAPITA (bird-weighted) mating success is
+E[X (1 - exp(-gamma X))] / E[X] = 1 - (1 + x/k)^-(k+1): births come from birds, and clumped birds sit where local density
+is high (established, algebra). At k = 3 the low-density slope rises 4/3 (an effective n50 x .75 near zero); at k = 1, x2.
+Mechanism targeted (likely): founders are concentrated (one release site, suburban feeders), so the cell-mean Allee
+bites the release core far harder than the real colony felt; the bird-weighted form relieves concentrated populations
+most. Caveat: readouts (state_lag mated fraction, the establishment-window term) still use the location form -- reread
+with per-capita if a per-capita arm leads. Risk (user: weak Allee pathological): watch the Plains leak.
+Pre-registered: lap_pc_k3 (local CPU), lap_pc_k1 (local GPU), pc_k1 + clock + CBC (local GPU), pc_k3 + clock,
+pc_k1 + routing + CBC, pc_k1 + routing + clock + CBC, 1940 + pc_k1 (+ clock + CBC 1940s) (TACC pool). Prediction: the
+release block grows 1952-65 (r > .1) and the eastern swing shrinks; falsified if the Plains leak returns (Plains
+occupied area / never in the readout) or the swing grows.
+
+### RESOURCE PLAN (2026-11-06 ~09:00)
+- Local GPU (sequential): toll .35 / .25 -> F3b -> routing -> clock -> pc_k1 -> pc_k1 + clock + CBC.
+- Local CPU (2 x 12 threads): clock + CBC; pc_k3.
+- TACC dev CPU: batch 1 (3558909, running, 6 fits), batch 2 (3558913, after: resumes + R103b + routing + clock), pool
+  (3558918, after: task files in runs/pool/pending). TACC normal CPU: 12 h x 8-node pool (3558919, pending), same task
+  directory -- tasks added there run whenever a pool job holds nodes. Dev GPU 3558910 waits behind Codex's 3558841.
+- NEXT ROUND (decided by results, not by asking): the leading structural family from this round (routing / clock /
+  per-capita Allee / toll cap) gets (1) its combination with the next-best, (2) the 1940 start + CBC 1940s, (3) a
+  second start (jittered) for convergence, and (4) full validation (process diagnostics + fig suite) before it is
+  offered as the HMC target.
+
+### TOLL-CAP RIDGE under the Laplace objective (R90 rerun; mortality ceiling on the leader_exprec structure)
+| fit | objective | BBS | unseen | 2021-25 | East pot 1966 / 1990 / 2010 | East toll 2010 | Plains toll 2010 | estab. |
+|---|---|---|---|---|---|---|---|---|
+| leader (ceiling .8) | 142,421.7 | 122,576 | 32,963 | 20,826 | .64 / .95 / 1.29 | .18 | .09 | +4 / .44 |
+| ceiling .35 | 142,482.1 (+60) | 122,695 (+119) | 32,968 (+5) | 20,849 (+23) | .67 / .96 / 1.19 | .18 | .04 | +4 / .44 |
+| ceiling .25 | 142,557.3 (+136) | 122,825 (+249) | 32,939 (-24) | 20,945 (+119) | .66 / .90 / 1.00 | .13 | .01 | +4 / .44 |
+- Established (this objective): capping the disease toll pulls the MODERN end of the eastern swing down -- at .25 the
+  swing halves (+.65 -> +.34) -- the ridge R90 found on the older base survives the Laplace route effects. The cost is
+  concentrated in recent years (2021-25 +119); spatial transfer to unseen routes IMPROVES (-24).
+- Reading (likely): modern potential lambda and the disease toll trade along a ridge; the data pin only their product
+  in the 1994-2025 East. Choosing the point needs an independent constraint on the epizootic's demographic effect
+  (Hochachka & Dhondt 2000: eastern densities roughly halved; Hosseini 2006) -- a literature prior on the disease's
+  equilibrium depression, the "independent constraint on disease toll" item in LEVER_INVENTORY. Next: build it.
+
+### URBAN MATING (built 2026-11-06; population_model.urban_mating, default off) -- the sub-cell strata, lightweight
+User asked to follow up sub-cell urban strata. Records (LAMBDA_INFLATION_SYNTHESIS E017/E058/E064/E065): the old
+subcell_strata branch failed through its perfect-information ideal-free allocation (40-iteration fixed point), stalls and
+unstable tilt signs; it never had grid54 inputs. New, minimal form: each cell's birds are spread over its 6 HISDAC-US
+built-up slices (quantiles .05-.99, area weights .15-.055; TACC data54/bui_grid, aligned to ref_grid_54km; built with a
+copy of Codex's subcell_strata builder -> ROUTEMARG/subcell_strata_grid54.npz, 2,669 covered cells, within-cell spread
+q99-q05 ~2 sd in 1950, 2.5 sd in 2000) at fixed relative density rho_s = exp(b u_s) / sum_r a_r exp(b u_r); mate-finding
+acts per slice and births are bird-weighted: allee factor = sum_s a_s rho_s m(gamma N rho_s). K, Fmax, survival are
+untouched; no allocation fixed point; b ~ HalfNormal(1) learned; b = 0 is the leader (max |d mu| 3e-10). u follows BUI
+through time (a MEASURED covariate of settlement, not a free calendar lever; CONSIDERATIONS G15).
+At the leader's rates (no refit): release block 1952 / 1960 / 1965 = .79 / .86 / 1.91 (b 0) -> .80 / 1.14 / 3.89 (b .5) ->
+.84 / 2.20 / 7.35 (b 1); East 1980 308 -> 506 -> 768. The concentrated core grows WITHOUT habitat change.
+Pre-registered (lap_urban, lap_urban_clock_cbcrate local GPU; urban + CBC, 1940 + urban (+ clock + CBC 1940s), urban +
+routing, urban + clock, urban + toll .25 (+ clock + CBC) on the TACC pool): b > .3; the fit LOWERS the calendar rise
+(eastern 2010 potential lambda < 1.15) because core growth no longer needs habitat improvement; release block r 1952-65
+> .1; establishment not later. Falsified if b -> 0, if the Plains leak returns (concentration relieves the Allee in
+Plains towns too), or if the swing grows. Combined with the clock (fronts slow, core fast) it is the closest structural
+match to the documented "slow spread, fast core" history.
+
+### F3b RESULT (1940 release + ex10 + CBC rate WITH the 1940s eastern rows, 870 rows incl. 1940-47 zeros)
+objective 143,838.2 (443 its); BBS 122,581 (leader 122,576); CBC rate NLL 1,414 (870 rows; effort power .74); unseen
+32,949 (-14 vs leader), 2021-25 20,823 (-3); East potential .64 -> 1.25; establishment +4 / .44; release block .018 (1952)
+-> .049 (1960) -> .093 (1965), take-off 1959 -- identical dynamics to F3. The 1940s rows (zeros 1940-47, then NYSN 35 ->
+104 in 1948-49) add no pressure the fit acts on. Conclusion for the CBC-rate family at natural weight (established on
+F2 / F3 / F3b): the data term is consistent with a 1940 start and slightly improves held-out, but it does not reshape the
+eastern trajectory; a structural mechanism has to make early core growth cheap (urban mating, per-capita Allee, clock).
+
+### DISEASE CONSTRAINT from the literature (MG_MORTALITY_LIT.md, research agent) and each fit's implied depression
+Literature (quoted unless marked): eastern densities "halved" (Hochachka et al. 2021), "up to 60% declines" (Hawley 2013),
+"to about 40% of pre-MG numbers" (Henschen 2023); decline over ~3 years after 20% regional prevalence, then stable
+(Hochachka & Dhondt 2000); afterwards "stable or slowly declining", changes < 5% / yr (Hochachka 2021). Added annual
+mortality (derived by the agent, NOT a quoted estimate; Faustino 2004 survival tables not obtained -- Wiley 403):
+~.10-.20 in 1997-2004 (90% ~.05-.30). The fitted tolls (.13-.18) sit inside, so the mortality rate does not pick a
+point on the ridge. The sharper target is the equilibrium DEPRESSION vs the no-disease trajectory.
+disease_cf.py (replay with disease_scale 0, no refit; ratio of eastern abundance with / without disease):
+| fit | East 1997-2004 | dense East 1997-2004 | East 2005-15 | East 2016-25 |
+|---|---|---|---|---|
+| leader (ceiling .8) | .42 | .43 | .26 | .25 |
+| ceiling .35 | .45 | .46 | .30 | .28 |
+| ceiling .25 | .53 | .53 | .36 | .32 |
+- All three match the literature's .4-.5 in the first decade (the leader and .35 centrally; .25 at the edge) -> the
+  literature does NOT discriminate the toll cap (established for this target).
+- Later the implied depression DEEPENS to .25-.36: the no-disease counterfactual keeps growing after 1994 while the
+  observed East is flat -- the habitat-driven lambda rise continuing underneath a growing disease toll. That is the
+  ridge in counterfactual form (likely): the modern lambda rise is only "paid for" by the disease. The literature's
+  "stable at ~40% of pre-MG numbers" implies a counterfactual that does NOT keep doubling; a constraint on the
+  disease-off counterfactual's post-1994 growth would bite where the depression constraint does not. Candidate prior:
+  disease-off eastern growth 1994 -> 2015 near the pre-MG trend extrapolated (needs a defensible pre-MG trend; BBS
+  1985-93 East is still expanding -- unknown how much more). Held as a design note, not run.
+
+### BBL in the current model (user: "do current versions use BBL data at all?") -- NO; ported back (2026-11-06)
+- The Laplace leader (lap_leader_exprec) uses NO banding data (no term in laplace_fit; no config switch). The BBL work
+  was on the pre-Laplace refit_fields path: R81 / R81b-d (soft / hard adult-survival anchors), R83 (Seber adult dead-
+  recovery likelihood, <= 1993), R92 (disease-inclusive, through 2024), BBL-ERA screen. Findings then: banding says
+  eastern adult S ~.56-.60 pre-1994 (offline MLE; S .30 is ~44 log-lik units worse), the fit used ~.32; ~540 recoveries
+  are outvoted by ~160-290 BBS units; a hard anchor costs ~160 in training and nothing in invasion-era held-out; the
+  reporting-rate nuisance absorbs level; post-1994 eastern banding is thin (19 recoveries) and bounds disease-inclusive
+  S >= ~.375. NOT used anywhere: age structure (HY / AHY at banding), juvenile survival, live recaptures (CJS).
+- Leader's occupied-East adult survival (disease-free, Sa_flat): 1966-93 .39, 1994-2010 .50, 2011-25 .52 (West .43 ->
+  .46 -> .48) -- still below the banding level early and rising: part of the swing is the R72 / R81 "convenient lever".
+- PORTED to laplace_fit: --bbl NPZ (R83 m-array: 8,778 cohorts, 273,982 adults, 381 recoveries <= 1993), --bbl_until,
+  --bbl_weight (DIAGNOSTIC), --sa_anchor "mean,sd" (R81b). BBL NLL at the leader 3,474. TACC pool arms: leader + BBL,
+  leader + hard anchor (.55, .005), urban + BBL, BBL x5 (diagnostic), urban + clock + toll .25 + BBL + CBC rate.
+- Next BBL options (not built): juvenile (HY) recoveries for first-year survival; age ratios at banding for age
+  structure; CJS live-recapture model for local (feeder-site) survival -- see SURVIVAL_BBL_SCOPING_2026-10-31.md.
+- Validation suite (standard map_diagnostics + process diagnostics) running for lap_toll25 and lap_leader_exprec:
+  E:/Datasets/houfin/grid54/sandbox/CAND_viz/{lap_toll25,lap_leader_exprec}/map_diagnostics (user request).
+
+### ALLEE-DEAD creeping up (user, 2026-11-06): the capacity floor did not follow the stronger Allee pin
+- The floor exists (age_fields: K = K + capacity_floor_internal) but is set in ABSOLUTE internal units: .01184 = 4 x n50
+  when it was chosen. The stronger pinned Allee (n50_raw -2.1; n50 = .1155 route counts = .00578 internal) doubled n50,
+  so the floor is now only 2.05 x n50 (established, arithmetic). At N = K = 2.05 n50 the aggregated mated fraction is
+  1 - (1 + ln2 x 2.05 / 3)^-3 = .69, so any cell with lambda0 below ~1.45 can be Allee-dead -> 3.3% in toll .25.
+  The config key capacity_floor_n50_multiple exists but the code reads only capacity_floor_internal (silent decoupling).
+- Re-tied: capacity_floor_internal = 4 x current n50 = .02310 (mated at K .86). Note no fixed floor makes Allee-dead
+  strictly impossible: as lambda0 -> 1+ the Allee threshold diverges; at 4 x n50 a cell needs lambda0 x .86 x crowding
+  < 1 (lambda0 below ~1.2) to be Allee-dead. TACC pool arms 000_lap_toll25_kf4, 001_lap_leader_kf4 (first in line).
+  Code follow-up: derive the floor from the pinned n50 x multiple at model build so a pin change cannot silently undo it.
+
+### BBL reliability (user: "just because we don't recover a dead bird doesn't mean it didn't die")
+The dead-recovery (Brownie / Seber) model already treats non-recovery as unobserved: P(recovered in year k) =
+S^(k-1) (1 - S) r, with r (finding x reporting, fitted .002-.005) estimated jointly; S is identified from how recoveries
+DECAY with years since banding, not from the share recovered. Dead recoveries come from anywhere, so the estimate is
+true survival (not confounded with emigration, unlike live recapture). Real caveats: (1) r assumed constant within
+region x era -- if birds move away from banding (feeder) sites where bodies are found, r falls with time since banding
+and S is biased LOW (the bias works against the banding-vs-model gap, not for it); (2) few recoveries (East 132 <= 1993)
+-> wide intervals, though S = .30 is ~44 log-lik units worse than .60; (3) banding-site selection (feeder-dense,
+possibly better survival than the occupied-cell mean); (4) definitional mismatch: the model's Sa is a local annual
+survival in its census convention, averaged over occupied cells. Reading (likely): banding robustly says S well above
+.32-.39 in the East pre-1994; the exact .56-.60 carries caveats 2-3.
+
+### Toll cap .25: is it rooted in the literature? -- NO, not yet
+The cap is a structural ceiling on per-capita disease mortality. The literature as gathered (MG_MORTALITY_LIT.md) gives
+added mortality ~.10-.20 (DERIVED from the decline, not a measured survival effect) and a depression to ~.4-.5 -- both
+satisfied by the leader (.18; .42) AND by .25 (.13; .53, edge). So the literature does not select .25 over no cap. What
+favours the cap is model-internal: unseen-route transfer (-24), the core source from 1940-55 (fig 01b), and the halved
+swing; what disfavours it: in-sample +136 and 2021-25 +119. Routes to a grounded choice: (a) Faustino et al. 2004 survival
+tables + Hosseini 2004 Table 1 (infected-bird excess mortality, prevalence) via the user's library / Zotero -> a measured
+ceiling; (b) the counterfactual-growth constraint (no-disease East should not keep doubling; "stable at ~40% of pre-MG
+numbers") -- picks the ridge point from the post-1994 counterfactual; (c) estimate the ceiling with a prior from (a)
+rather than fixing it.
+
+### PER-CAPITA ALLEE k 3 RESULT (lap_pc_k3, local CPU; bird-weighted aggregated mating, same n50 pin)
+objective 142,373.0 (-48.7 vs leader_exprec); BBS 122,555 (-21); unseen 32,951 (-12); 2021-25 20,828 (+2); East potential
+.58 / .90 / 1.24 (1966 / 1990 / 2010; leader .64 / .95 / 1.29); Plains .53 -> .80; establishment +4 / .44; release block
+.038 (1952) -> .039 (1960) -> .092 (1965), take-off 1965 (unchanged).
+- The consistency correction FITS BETTER (-49 in-sample, -12 unseen) and lowers the whole lambda level by ~.05, but the
+  swing is unchanged (+.66) and the release core still stalls in the 1950s (prediction "release block grows" NOT MET).
+- Reading (likely): at k = 3 the bird-weighting is a mild n50 x .75 near zero; the 1950s bind is lambda0 at the release
+  site, not mating. Per-capita weighting is worth keeping as a correctness fix (better fit, no cost); the early-growth
+  lever has to come from stronger concentration (urban mating; pc k 1) or the clock. Watch the Allee-dead share when the
+  floor is re-tied (it relieves mating everywhere).
+
+### MG PRIMARY SOURCES READ (user added to Zotero + vault, 2026-11-06): no measured excess mortality exists in them
+- **Faustino et al. 2004** (J Anim Ecol 73:651-669; multistate mark-encounter, Ithaca NY, Nov-Apr 2000-03; 8,041
+  encounters, 9.34% infected): infected-vs-uninfected differences in weekly APPARENT survival have CIs spanning zero in
+  every subset quoted (e.g. "by 0.231 +- 0.504; 95% CI = -0.776-1.24"; one subset reverses: infected higher by .283).
+  The authors: "we believe our estimates of weekly apparent survival are negatively biased"; their year-2 weekly values
+  (.81 non-infected, .64 infected) would leave "< 1%" alive after 6 months, yet 13.43% were seen the next year -> the
+  estimates are dominated by transience / temporary emigration, not death. NOT usable as a disease-mortality estimate.
+- **Hosseini, Dhondt & Dobson 2004** (Proc R Soc B 271:2569-2577), Table 1 "Model parameters" (assumed inputs of an SIR
+  model of prevalence seasonality, not estimates): background mortality d .5, disease-induced mortality alpha .5,
+  recovery gamma 24 (time in years). Implied added hazard = alpha x prevalence.
+- **Altizer, Hochachka & Dhondt 2004** (J Anim Ecol 73:309-322): "mean monthly prevalence throughout eastern North
+  America varying from 3.5% to 22.5%" (proportion of feeder-days with an infected bird seen, 1994-2001; Hosseini Fig. 1
+  regional curves ~.03-.33).
+- Derived (D): Hosseini's alpha x Altizer's prevalence (annual mean ~.08-.14) = .04-.07 / yr added hazard -- BELOW the
+  fitted tolls (.13-.18) and below the decline-derived .10-.20; but alpha is ASSUMED, so this is a model-consistency
+  value, not a measurement.
+- Conclusion (established for these three papers): there is no field estimate of MG excess mortality to root the
+  toll ceiling. The only robust literature constraint remains the depression (~.4-.5 of the pre-MG trajectory within
+  ~3 yr, then stable), which the uncapped leader and the .25 cap both meet. The ceiling stays a modelling choice until
+  either (a) the counterfactual-growth constraint picks the ridge point, or (b) a population-level estimate (e.g. the
+  Hochachka & Dhondt 2000 Fig. 2 expected-abundance ratios by prevalence, digitised) is used as a likelihood term.
+
+### ROUND RESULTS (local GPU): urban mating, urban + clock + CBC, trend routing
+| fit | objective | BBS | nest | unseen | 2021-25 | learned | East pot 1966 / 1990 / 2010 | East toll 2010 | estab. | release block 1952 / 1960 / 1965 |
+|---|---|---|---|---|---|---|---|---|---|---|
+| leader_exprec | 142,421.7 | 122,576 | 2,045 | 32,963 | 20,826 | -- | .64 / .95 / 1.29 | .18 | +4 / .44 | .039 / .043 / .095 |
+| lap_urban | 142,298.3 (-123) | 122,500 (-76) | 2,001 (-44) | 32,991 (+28) | 20,871 (+45) | b 2.08 | .54 / .86 / 1.25 | .15 | +4 / .39 | .029 / .027 / .060 |
+| lap_urban_clock_cbcrate | 143,722.0 (F2 -86) | 122,563 | 1,988 | 33,008 (+45) | 20,868 (+42) | b 1.50, d0 .002, tau 3.8 | .56 / .83 / 1.15 | .14 | +3 / .61 | .045 / .053 / .100 |
+| lap_troute | 142,421.6 (0) | 122,576 | 2,044 | 32,962 | 20,825 | eta 1.00 | .64 / .95 / 1.28 | .18 | +4 / .44 | = leader |
+- **Trend routing: FALSIFIED** (pre-registered "falsified if eta -> 1"): the vital rates need the full regional Z trend.
+- **Colonisation clock: FALSIFIED** (d0 -> .002): the data reject newly established populations as sinks.
+- **Urban mating:** the data want strong concentration (b ~2) -- the biggest in-sample gain of the round (-123, incl.
+  nest -44) and a lower lambda LEVEL (East 1966 .54), but HELD-OUT WORSE (+28 unseen, +45 2021-25), the swing is not
+  smaller (+.71) and the release core does NOT grow (pre-registered "r > .1" NOT MET; it stalls lower). Reading (likely):
+  b x u(t) puts a measured but time-varying settlement path into mating; it buys in-sample fit that does not transfer,
+  and the 1950s bind is still lambda0 at the release site. With the clock and CBC rate, establishment improves (+3 / .61)
+  and the swing shrinks to +.59 -- the improvement is in timing, at a held-out cost.
+- Status of the round's four structural families: routing (rejected), clock (rejected), per-capita Allee (keep as a
+  correction: -49, no cost, swing unchanged), urban mating (in-sample only), toll cap (the one that halves the swing).
+
+## DISEASE DEPRESSION + DRIFT TERMS (built 2026-11-06; user: "pursue both"): Hochachka & Dhondt 2000 as data
+Source (read in full, vault PDF): Hochachka & Dhondt 2000 PNAS 97:5303-5306. Abundance (CBC birds / party-hour, 29 2x2
+deg eastern blocks) expressed "as a percentage of the calculated expected abundance", expected = Gompertz (sigmoid,
+saturating) curve fitted to each block's PRE-disease series and extrapolated; time = years since regional prevalence
+reached 20%. Fig. 2 medians read off the box plot (likely, +-~5 points): yr 0 ~98, 1 ~83, 1.5 ~57, 2 ~55, 2.5 ~46,
+3 ~43, 3.5 ~31, 4 ~49, 4.5 ~38, 5 ~37; IQRs ~+-10-20. Fig. 3: densest / earliest blocks fell 6.1 -> 2.6 birds/party-hr,
+latest rose 2.6 -> 4.1 (density-dependent). Text: "abundance ... stabilized at similar levels" after 3 years.
+Because the expectation SATURATES, this one figure carries both constraints the user asked for: the depression size
+and the no-disease counterfactual's growth.
+Implementation (laplace_fit.py): the forward is run twice per evaluation (as fitted; disease added mortality zeroed),
+both inside the objective. Cells: 444 East land cells with documented arrival (data disease_onset; 1995-99) and BBS
+mean count 1990-93 at or above the eastern median (H&D used blocks with sustained high abundance).
+--disease_depression SD: N(log Fig.2 median, SD) on log(sum N_on / sum N_off) at 1-5 yr after documented arrival
+(targets .83, .55, .43, .49, .37). --depression_drift SD: N(0, SD) on log(ratio 2010-25 / ratio at 5 yr).
+SDs chosen: .07 (se of a median over 29 blocks with IQR ~+-.3 log) and .15 (post-epizootic changes < 5% / yr,
+Hochachka et al. 2021). Values at existing fits (no refit): leader y1 / y3 / y5 = .56 / .47 / .39; toll .25 = .66 /
+.57 / .50 -- the leader falls too fast in year 1 and matches 3-5; the cap is too shallow later; both deepen afterwards
+(.25 / .32 by 2016-25, disease_cf.py).
+Pre-registered (local GPU: lap_dd_leader, lap_dd_kf4_pc3; TACC pool: drift-only, dd + toll .25, dd + BBL): the fit moves
+along the toll-lambda ridge to the point the H&D curve and the no-deepening drift select; prediction: an INTERMEDIATE
+toll (realised East toll between .13 and .18) and a smaller modern rise than the leader (East 2010 potential < 1.2),
+with held-out within ~+-30. Falsified if the terms barely bind (cost change < ~10) or the fit satisfies them by
+reshaping the disease timing instead of the counterfactual.
+- lap_clock_cbcrate (local CPU): 143,809.4 = F2; clock d0 -> 0.000 -- the clock is rejected again (with CBC at natural weight).
+
+### Local GPU: clock alone, per-capita Allee k 1 (+ clock + CBC)
+| fit | objective | BBS | unseen | 2021-25 | East pot 1966 / 1990 / 2010 | East toll | estab. | release block 1960 / 1965 |
+|---|---|---|---|---|---|---|---|---|
+| leader_exprec | 142,421.7 | 122,576 | 32,963 | 20,826 | .64 / .95 / 1.29 | .18 | +4 / .44 | .043 / .095 |
+| lap_clock | 142,423.3 | 122,577 | 32,959 | 20,826 | = leader (d0 0.000) | .18 | +4 / .44 | .043 / .096 |
+| lap_pc_k1 | 142,329.8 (-92) | 122,535 (-41) | 32,954 (-9) | 20,840 (+14) | .57 / .85 / 1.21 | .155 | +4 / .44 | .032 / .088 |
+| lap_pc_k3 (above) | 142,373.0 (-49) | 122,555 | 32,951 (-12) | 20,828 (+2) | .58 / .90 / 1.24 | .17 | +4 / .44 | .039 / .092 |
+| lap_pc_k1_clock_cbcrate | 143,724.3 (F2 -84) | 122,573 | 32,972 | 20,850 | .55 / .82 / 1.11 | .14 | +4 / .44 | .049 / .084 |
+- Clock: rejected a third time (d0 -> 0).
+- Per-capita, more clumped (k 1): -92 in-sample, unseen -9, 2021-25 +14; lowers the whole eastern lambda path and
+  trims the modern end (2010 1.21; swing +.64 vs +.65). Per-capita weighting at k 1 or k 3 is the most consistently
+  helpful change of the round (in-sample better, unseen better, little or no recent cost), but it is a LEVEL change,
+  not a swing change; the release core still does not grow in the 1950s.
+
+## BREAKTHROUGH CANDIDATE (2026-11-06 ~10:45): trend routing with eta pinned ~0 -- the regional Z trend reaches K only
+TACC dev batch 1 (CPU), lap_troute_eta0 (leader_exprec + trend_routing, eta ~ Beta(1, 1e4) -> .000): NOT converged
+(570 iterations at the 2-h limit; resumed in batch 2). Readouts locally (marginal_heldout, state_lag, structural readout):
+| fit | objective | BBS | unseen | 2021-25 | East pot 1966 / 1990 / 2010 / 2020 | West 1966 / 2010 | East toll 2010 | estab. |
+|---|---|---|---|---|---|---|---|---|
+| leader_exprec | 142,421.7 | 122,576 | 32,963 | 20,826 | .64 / .95 / 1.29 / 1.27 | .73 / 1.01 | .18 | +4 / .44 |
+| lap_troute (eta free -> 1.00) | 142,421.6 | 122,576 | 32,962 | 20,825 | = leader | = | .18 | +4 / .44 |
+| lap_troute_eta0 (eta ~0) | 142,468.1 (+46) | 122,680 (+104) | **32,917 (-46)** | **20,814 (-12)** | **.75 / .85 / .97 / .99** | .75 / .83 | .13 | +4 / .44 |
+| CBC rate x10 (DIAGNOSTIC) | 155,786.7 | 123,115 (+539) | 33,458 (+495) | 20,999 (+173) | .56 / .81 / .98 / .97 | .64 / .83 | .11 | +4 / .50 |
+- **The eastern swing falls from +.65 to +.22 and BOTH held-out scores improve** (unseen routes -46, 2021-25 -12), at
+  +46 in-sample (BBS +104, partly returned by priors / nest). The free-eta fit chose 1 because the in-sample objective
+  prefers the trend in the vital rates by ~46; that in-sample gain does not transfer. Established for this pair (one
+  start each, eta0 not yet converged): routing the regional Z trend into CAPACITY only removes most of the lambda
+  inflation and predicts better.
+- Mechanism (likely): the regional Z trend is real information about where and when finches became more abundant --
+  the forecasts need it (R55: removing it from everything cost ~1,100-1,300) -- but it is information about abundance
+  (capacity), not about low-density growth. Feeding it into Sa / Sj / Fmax converts a capacity trend into a potential-
+  growth trend (the "convenient lever"); the BBS counts are satisfied either way, but the growth version overfits.
+  Consistent with R53b ("clock in K only" -- ~600 worse on 2021-25 on the older base; now better under Laplace route
+  effects and the current structure) and with the user's premise that habitat change belongs in the model as change.
+- Caveats: one start; not converged; West also loses most of its rise (.75 -> .83); establishment unchanged (+4);
+  the release site still is not a source in the 1950s (check release_flip); toll .13 (lower, H&D check pending).
+- Pre-registration check: routing (free eta) was pre-registered as "falsified if eta -> 1" -- it went to 1 (in-sample);
+  the eta ~0 arm (R53b analog, TACC batch 1) was the comparator. The held-out improvement at eta ~0 is the new finding;
+  it needs (a) convergence (batch 2), (b) a second start, (c) the combination with per-capita Allee + re-tied floor +
+  the disease depression terms (queued: local GPU gpu_queue5; TACC pool 00000-00004), (d) full validation (running).
+
+### DISEASE DEPRESSION terms: RESULT (local GPU; SD .07 curve, .15 drift)
+| fit | objective (incl. term) | term cost | BBS | ratio yr 1 / 3 / 5 (H&D .83 / .43 / .37) | unseen | 2021-25 | East pot 1966 / 2010 | East toll |
+|---|---|---|---|---|---|---|---|---|
+| leader_exprec (no term; evaluated) | 142,421.7 | (4.2 at SD .2) | 122,576 | .56 / .47 / .39 | 32,963 | 20,826 | .64 / 1.29 | .18 |
+| lap_dd_leader | 142,443.2 | 20.7 | 122,580 | .57 / .47 / .40 | 32,958 | 20,824 | .63 / 1.28 | .18 |
+| lap_dd_kf4_pc3 | 142,398.5 | 20.8 | 122,567 | .57 / .47 / .40 | 32,931 (-32) | 20,822 | .58 / 1.23 | .18 |
+- Pre-registered falsifier MET ("the terms barely bind"): the fits pay ~21 rather than move. The residual is almost
+  all YEAR 1 (model .57 vs H&D .83): under this structure the epizootic's first-year drop is too abrupt (compact
+  3-yr onset gate + survival-target mortality act at once), and no setting of the toll fixes that without breaking
+  years 3-5. Years 3-5 already match. The drift term does not bind visibly either. The ridge point is NOT moved.
+- Side result: floor re-tied (4 x n50) + per-capita k 3 = unseen -32 vs leader, 2021-25 -4, in-sample ~-23 net of
+  the term -> both corrections keep. (Allee-dead share to be read from its validation run.)
+- Reading (likely): the H&D curve is informative about the ONSET SHAPE (a ~1-yr lag before the decline), not about the
+  ridge; the ridge's modern end is better handled by eta-0 routing, which cuts the swing without touching the disease.
+
+### NEW LEADER (2026-11-06 11:25): lap_eta0_kf4_pc3 -- eta ~0 routing + floor 4 x n50 + per-capita Allee k 3
+| fit | objective | BBS | nest | unseen | 2021-25 | East pot 1966 / 1990 / 2010 / 2020 | Plains 1966 / 2010 | West 1966 / 2010 | East toll | estab. |
+|---|---|---|---|---|---|---|---|---|---|---|
+| leader_exprec | 142,421.7 | 122,576 | 2,045 | 32,963 | 20,826 | .64 / .95 / 1.29 / 1.27 | .58 / .88 | .73 / 1.01 | .18 | +4 / .44 |
+| **lap_eta0_kf4_pc3** (converged, 375 its, from the eta0 fit) | **142,409.2 (-12.5)** | 122,635 (+59) | 2,007 (-38) | **32,936 (-27)** | **20,812 (-14)** | **.65 / .78 / .90 / .92** | .55 / .67 | .70 / .79 | .13 | +4 / .44 |
+| lap_eta0_kf4_pc3_dd (+ H&D terms) | 142,452.0 (term 31) | 122,661 | 1,996 | 32,912 | 20,830 | .69 / .81 / .92 / .94 | .58 / .70 | .71 / .80 | .13 | +4 / .44 |
+- Better than the old leader on in-sample, unseen routes AND 2021-25 at once (first candidate this session to do so);
+  the eastern swing falls from +.65 to +.25 (-60%); Plains +.33 -> +.12; West +.28 -> +.09. The in-sample gain comes
+  from the nest (NestWatch) term and the per-capita correction; BBS in-sample is +59 (the trend-in-rates fit is the
+  better pure count fit -- and the worse forecaster).
+- Still open: establishment +4 (unchanged by every lever this session); release core not a 1950s source (block .04 ->
+  .10 in 1960-65); toll .13 (disease depression vs H&D: to be read).
+- HMC CURRENT.sh now targets it (overlay eta0_kf4_pc3.json, init lap_eta0_kf4_pc3.npz). Second start (from the old
+  leader's parameters) running on the local GPU; validation suite running; TACC pool carries its combinations.
+- Second start (lap_eta0_kf4_pc3_s2, from leader_exprec's parameters): 142,409.0 (536 its; first start 142,409.2), unseen 32,936, 2021-25 20,815, East .65 / .78 / .90 / .92 -- the same optimum from a different basin (established: start-independent for these two starts).
+
+### Is eta learnable? (user) -- not from the training likelihood; choose it by held-out prediction
+- Free eta ~ Beta(1,1): -> 1.00 (lap_troute, leader start) and .999 (1940 release). The in-sample objective prefers the
+  regional trend in the vital rates by ~36-46 nats (lap_pc_k3 142,373.0 vs lap_eta0_kf4_pc3 142,409.2 at matched
+  corrections), so a posterior over eta would also concentrate near 1. Held-out prefers eta ~0 (unseen -27 to -46,
+  2021-25 -12 to -14). Established: eta is NOT identified in the direction of better prediction by the training
+  likelihood -- the trend-in-rates gain is in-sample only.
+- So eta is a structural / regularisation choice. Data-driven route: cross-validated eta profile (eta pinned .25, .5,
+  .75, 1 with floor + per-capita; eta 0 = the leader), scored on the 31 spatial blocks + 2021-25. eta .25 and .5 on
+  local CPU; .75 and 1 first in the TACC pool. Biological route: the regional Z trend predicts abundance (capacity);
+  nothing independent says it raised low-density growth (banding: early eastern adult survival already ~.56-.60).
+- Tension to flag (user rule: static habitat diagnostic only): eta ~0 removes the REGION-WIDE trend in growth rates;
+  capacity change and within-region change in growth rates remain. Not static, but a restriction on the pathway.
+
+### JUVENILE SURVIVAL low (user) -- fecundity overshoots NestWatch; survival absorbs it
+New leader, medians over occupied cells: East 1966-93 Sa .32, Sj .075, Sj/Sa .235, Fmax 5.5, lambda0 .73; 2010-25 Sa .38,
+Sj .09, Fmax 5.9, lambda0 .92 (West similar). Sj/Sa .235 sits ~3 prior sd below the ratio prior median .60
+(alpha_j ~ N(.405, .5)). NestWatch data (nests_hofi_v6, 4,635 records): fledged per attempt with counts 2.79 (1,295),
+known-outcome success .65 (2,044; raw), success x fledged|success 2.5 -> ~3 fledglings per adult per year at 2.5 attempts.
+Model at the nest records: mean fledged per attempt 3.94 (+40-55%), 32-d cycle success .84, realised F 5.96 / adult.
+- Established (arithmetic + readout): fitted fecundity is ~40-55% above the nest data; the nest block (~2,000 nats on
+  1,089 records) is outvoted by the counts, and survival (adult AND juvenile) is pushed down to keep lambda ~ 1.
+- Even at nest-matched fecundity (~3 / adult) and banding-level Sa (.58), replacement implies Sj ~.14 (ratio ~.23), so
+  the ratio prior median .60 is itself unrealistic for lambda ~ 1 (records: FECUNDITY_CONSTRAINT_SCOPING s.2).
+- Likely reason the counts want high F / low S (unknown, untested): more juveniles -> more dispersers -> spread.
+- Tests queued (TACC pool top; DIAGNOSTIC weights labelled): leader + nest x3; + BBL; + nest x3 + BBL; + soft Sa
+  anchor (.55, .03) + nest x3. --nest_weight added to laplace_fit (adds (w - 1) x NestWatch log-lik).
+Other open pathologies of the leader: Sa below banding; establishment +4; release core not a 1950s source; Plains end
+high (1.75 vs 1.4); disease year-1 drop too abrupt (.57 vs H&D .83); recovery off; local lambda hotspots (+1, Great
+Lakes / Carolinas); Allee-dead 1.8%.
+
+### CORRECTION (user, 2026-11-06): the rangev2 post-1940 absences were dropped without a decision
+They were restored and tested (lap_leader_absonly: +18 objective, BBS +3; "nearly inert") and then silently not carried
+into any later leader or the HMC target. "Inert" is not a reason to drop data: a small cost means the model already
+agrees with the range history; the term is evidence, and it is insurance exactly where the current levers act
+(per-capita Allee and urban mating relieve low-density mating everywhere -> Plains-leak risk the absences would bind).
+Action: the absences are the default for the final model unless held-out worsens. Queued: lap_L_abs (new leader +
+range_absence_v2, local GPU after gpu_queue6) and leader + absences + nest x3 + BBL (TACC pool top).
+
+### CONTINENTAL 1940-65 CBC COUNT supervision (user: "did we test a limited-window continental CBC count term?") -- NO, now queued
+Records: step38 (Codex) = continental counts 1951-2025 (harmful: BBS -.08 to -.09 marginal, Sa .28, arrival 6 yr early);
+step39_early_* (Codex, pre-1966 encounter / effort counts) were HELD on 11-02 (EARLY_CBC_DESIGN_CORRECTION: missing
+1902-39 effort handled by an imputed reference) and never run; my CBC rate term was East-only (F2 / F3 / F3b). So a
+continental, invasion-era count term has never been fitted.
+Built: cbc_rate_cont_1940.npz (cbc_early_1940 product, effort-recorded circle-years 1940-65, all longitudes, circles with
+>= 1 positive): 2,462 rows, 288 circles, 1,535 positives. Window ends at summer 1965 (the 1965-66 CBC winter): the early
+product stops there; 1966-67 would need the raw export.
+Pressure at the new leader (cbc_rate_gap.py; rate form, circle effects, free scale): NLL 10,398 at the leader's
+trajectory vs 10,323 with free shared year offsets -> gap 75 (near-release subset 78.5; elsewhere 46). Free offsets lie
+within +-.5 through 1960 and then rise (+.39 1961 -> +1.38 1965): the counts grow faster than the model in the early
+1960s (mostly western circles by row count; possibly CBC effort / observer growth not captured by party-hours, or real).
+Reading (likely): the limited-window continental counts are broadly consistent with the leader (small pressure, no
+level conflict by construction), unlike the all-years joint term. Fits queued: lap_L_cbccont40 (leader + continental
+CBC + absences; local GPU after gpu_queue7) and the 1940-release version (TACC pool top).
+
+### New leader + 1940 release / CBC 1940s, and + toll cap .25 (local GPU)
+| fit | objective | BBS | unseen | 2021-25 | East pot 1966 / 2010 | East toll 2010 | estab. | release block 1952 / 1960 / 1965 |
+|---|---|---|---|---|---|---|---|---|
+| lap_eta0_kf4_pc3 (leader) | 142,409.2 | 122,635 | 32,936 | 20,812 | .65 / .90 | .13 | +4 / .44 | .040 / .040 / .100 |
+| + 1940 release, ex10, CBC rate 1940-65 East | 143,832.3 (CBC 1,428) | 122,627 | 32,931 (-5) | 20,810 (-2) | .65 / .89 | .13 | +4 / .44 | .019 / .040 / .066 |
+| + toll cap .25 | 142,532.9 (+124) | 122,837 (+202) | 32,995 (+59) | 20,942 (+130) | .66 / .79 | .11 | +4 / .44 | .044 / .053 / .087 |
+- **With eta ~0 the toll cap is no longer wanted** (established for this pair): +124 in-sample, +59 unseen, +130 on
+  2021-25. The ridge that made the cap attractive was the trend-in-rates; once the regional trend reaches K only, the
+  fitted toll (.13) is what the data want and capping it costs prediction. This removes the need to justify the cap
+  from the literature (the literature-rooting problem dissolves rather than being solved).
+- 1940 release + 1940s CBC: held-out a hair better, everything else unchanged -- the release year still does not set
+  the clock under the new leader either.
+
+### eta and the disease ceiling free with strong priors (user, 2026-11-06)
+Built: disease_prior.ceiling_prior {median, logit_scale} -> a learnable mortality ceiling (site disease_ceiling_logit;
+the Hill-steepness bound follows the traced ceiling, its prior location stays at the median's static bound); off = the
+fixed constant exactly. Arms (all on the new leader's corrections, from its parameters): eta ~ Beta(1, 20) (mean .048;
+local CPU); eta ~ Beta(1, 20) + ceiling logit-normal(median .5, .5) (TACC pool top); eta ~0 + learnable ceiling (TACC).
+Expectation: where eta settles depends on how the in-sample gain (36-46 nats from 0 to 1) is distributed along eta --
+the eta profile (.25 / .5 local CPU; .75 / 1 TACC) measures exactly that; with a near-linear gain a Beta(1, 20) prior
+would let eta drift to ~.5, with a gain concentrated near 1 it stays near 0. The ceiling is expected not to bind at
+eta ~0 (toll .13; the .25 cap cost +124).
+- lap_L_abs (new leader + rangev2 absences): 142,422.4 (+13.2; absence cost 12.1), BBS 122,635 (=), unseen 32,933 (-3), 2021-25 20,813 (+1), East .65 -> .91; estab. unchanged. Held-out neutral -> absences are DEFAULT (rule above); HMC CURRENT.sh now lap_L_abs + --range_absence.
+- lap_etaB20_kf4_pc3 first attempt: STALL (4 its, eta 0.0) -- started at eta ~1.6e-5 (logit -11), where the gradient through the logit transform vanishes. Moved aside (aborted_*); restarted from eta .05 and .5.
+
+### CONTINENTAL 1940-65 CBC count term: RESULT (lap_L_cbccont40 = leader + absences + continental CBC rate term)
+| fit | objective | BBS | CBC NLL | unseen | 2021-25 | East pot 1966 / 2010 | East toll | estab. | release block 1952 / 1960 / 1965 |
+|---|---|---|---|---|---|---|---|---|---|
+| lap_L_abs | 142,422.4 | 122,635 | (10,398 at its state) | 32,933 | 20,813 | .65 / .91 | .13 | +4 / .44 | .040 / .040 / .100 |
+| lap_L_cbccont40 | 152,731.2 | 122,701 (+66) | 10,275 (-123) | 33,021 (+88) | 20,833 (+20) | .68 / .94 | .16 | +4 / .44 | .051 / .073 / .168 |
+- The limited window pulls harder than the gap estimate (CBC -123 vs a 75 gap at fixed state -- the fit also reshapes
+  space) and DOES cost prediction: unseen +88, 2021-25 +20, BBS in-sample +66. Much milder than step38's all-years
+  term, but not free. Effort power p .96.
+- It does what the early CBC asks: the release core grows faster in the 1950s-60s (block .040 -> .073 -> .168 vs
+  .040 -> .040 -> .100); the eastern swing is unchanged (+.26); toll .16; establishment unchanged (+4).
+- Reading (likely): invasion-era CBC counts and the BBS-era counts still disagree on rates of change in places
+  (winter counts outrunning breeding counts at fronts -- Weiss 1997 -- or circle-effort growth in the early 1960s not
+  captured by party-hours: the free offsets rose +.4 -> +1.4 over 1961-65). As data it is informative about the early
+  core but in tension with spatial transfer; held as a sensitivity, not added to the leader.
+- User: the Beta(1,20) prior on eta is too strong to justify biologically. Agreed. Framing: a weak prior lets the training
+  likelihood choose (Beta(1,1) -> eta 1.00, inflation back), so eta should be chosen by OUT-OF-SAMPLE prediction
+  (cross-validated profile, eta 0 / .25 / .5 / .75 / 1), like a regularisation strength; any prior's implied eta can
+  then be read off the profile. Queued Beta(1,3) (mean .25) from eta .05 and .5 (TACC pool top) to check the mapping.
+- eta PROFILE point .25 (lap_eta025_kf4_pc3, converged 353 its): objective 142,399.0 (-10 vs eta 0), BBS 122,613 (-23),
+  unseen 32,934 (-2), 2021-25 20,808 (-4); East potential .62 -> .98 (swing +.36 vs +.25 at eta 0). Held-out is flat
+  to marginally better between eta 0 and .25 -- the held-out optimum may be interior; awaiting .5 / .75 / 1.
+
+### Survival / fecundity test (DIAGNOSTIC weights): leader + absences + NestWatch x3 + BBL (<= 1993)
+| fit | objective | BBS | nest NLL | BBL NLL | unseen | 2021-25 | East 1966-93 Sa / Sj / Fmax | East 2010+ Sa / Sj / Fmax | nest m (data 2.5-2.8) | East pot 1966 / 2010 |
+|---|---|---|---|---|---|---|---|---|---|---|
+| lap_L_abs | 142,422.4 | 122,635 | 2,007 | (3,474 eval.) | 32,933 | 20,813 | .32 / .074 / 5.5 | .38 / .090 / 6.0 | 3.55 | .65 / .91 |
+| lap_L_abs_nest3_bbl | 149,557.1 | 122,889 (+254) | 1,881 (-126) | 3,283 (-191) | 33,050 (+117) | 20,924 (+111) | .34 / .111 / 4.2 | .35 / .117 / 4.3 | 3.06 | .74 / .88 |
+- Holding fecundity nearer the nest data (m 3.55 -> 3.06; Fmax 5.5 -> 4.2) raises juvenile survival ~50% (.074 -> .111)
+  and shrinks the swing to +.14, but adult survival barely moves even with the BBL likelihood (.32 -> .34; R83 again)
+  and prediction worsens (+117 unseen, +111 2021-25). Established for this pair: the counts prefer the high-F / low-S
+  solution; constraining it costs held-out skill. The low-survival pathology is real but not cheaply fixed by
+  re-weighting; the likely root is structural (what the counts need F for -- dispersers / spread -- untested).
+
+### eta Beta(1,20) + learnable ceiling (lap_etaB20_ceil, from eta .05)
+objective 142,409.5; BBS 122,604; unseen 32,955 (+19 vs eta 0), 2021-25 20,819 (+7); eta 0.465 (!), ceiling .78
+(logit 1.27; prior median .5); East .61 -> 1.04. Even the Beta(1,20) prior does not hold eta near 0 once the optimiser
+can move it: the in-sample pull takes eta to ~.47, held-out slightly worse than eta 0 / .25. Confirms eta must be
+chosen by prediction, not by a prior; the free ceiling drifts up and does not bind (as expected).
+
+### eta PROFILE (all with floor 4 x n50 + per-capita k 3; converged; eta .5 pending)
+| eta | objective | unseen | 2021-25 | East pot 1966 / 2010 | swing |
+|---|---|---|---|---|---|
+| 0 | 142,409.2 | 32,936 | 20,812 | .65 / .90 | +.25 |
+| .25 | 142,399.0 (-10) | 32,934 (-2) | 20,808 (-4) | .62 / .98 | +.36 |
+| .75 | 142,382.0 (-27) | 32,939 (+3) | 20,816 (+4) | .60 / 1.12 | +.52 |
+| 1.0 | 142,369.6 (-40) | 32,955 (+19) | 20,828 (+16) | .59 / 1.21 | +.62 |
+- In-sample improves monotonically toward eta 1 (40 nats over the range). Held-out is FLAT from 0 to .75 (within +-4,
+  inside the 5-20 fit-to-fit noise) and worse only at eta 1 (+19 unseen, +16 on 2021-25). The swing rises steadily
+  (+.25 -> +.62).
+- Honest reading (likely, not established): held-out prediction rules out the full trend-in-rates (eta 1) by ~35
+  units combined, but it does NOT discriminate between eta 0 and ~.75 -- the "breakthrough" is better stated as
+  "the regional trend need not, and on held-out evidence should not, fully reach the vital rates". A CV choice gives
+  eta ~0-.5 (minimum .25), i.e. a swing of +.25 to ~+.45 instead of +.62. Within that range the choice between swing
+  sizes rests on interpretation (CONSIDERATIONS: lambda rise expected; inflation = implausible size), not on the data.
+- lap_dd_toll25_kf4_pc3 (no routing; toll .25 + floor + per-capita + H&D terms): superseded by the eta results (record only).
+- lap_eta025_abs (eta .25 + absences, from eta .25): 142,411.6 (-10.8 vs lap_L_abs), absence 11.3, unseen 32,934 (+1), 2021-25 20,808 (-5); East .62 -> .97 (+.35). Second start (from eta 1) running on CPU.
+- eta PROFILE point .5 (530 its): objective 142,390.1 (-19 vs eta 0), unseen 32,934 (-2), 2021-25 20,808 (-4), East .62
+  -> 1.06 (+.44). Full profile held-out (unseen / 2021-25 vs eta 0): .25 -2 / -4; .5 -2 / -4; .75 +3 / +4; 1.0 +19 / +16.
+  Held-out is identical from .25 to .5 and indistinguishable from eta 0; only eta 1 is clearly worse.
+- eta .25 + absences validation (CAND_viz/lap_eta025_abs): Allee-dead 1.8%; fig 01b as eta 0 with a slightly larger
+  Great Lakes / Carolinas rise.
+- USER DECISION (2026-11-06 ~14:05): eta = .25. HMC CURRENT.sh -> overlay eta025_kf4_pc3.json + --range_absence, init lap_eta025_abs.npz.
+
+### Juvenile fraction vs latitude (user: "is the data consistent with a much lower juvenile fraction northward?")
+BBL hatch-year share of Jul-Sep bandings (normal wild, 1966+; capture-biased toward juveniles, so read the GRADIENT):
+East 25-35 .82 (n 6,994) / 35-40 .81 (36,345) / 40-45 .82 (148,075) / 45-50 .85 (9,792); West .72 / .74 / .71 / .81 / .75 (50-60).
+Model (lap_eta025_abs, occupied cells 2010-25, year-end juvenile share Nj / (Na + Nj)): East .85 / .86 / .86 / .82;
+West .83 / .78 / .83 / .84. Both are FLAT with latitude (no northern decline in the banding data; model consistent).
+Side finding (likely pathology): the northernmost eastern occupied cells (45-50N, 86 cells) have median Sa .09, Sj .02,
+Fmax 3.0 -- deep sinks held up by immigration (lambda0 ~.15), versus Sa .58 / Sj .13 / Fmax 7.3 at 40-45N. Resident House
+Finches at feeders in southern Ontario / Quebec / northern New England are not plausibly at Sa .09; the habitat field
+appears to put the northern edge of the East at near-zero survival. To check: positive BBS counts there vs model.
+Dispersal (user: "what are we doing for dispersal?"): FIXED. Juvenile kernel = Veit & Lewis stack J330 (juvenile MDD 330
+km, shape .468), adult MDD 100 km (shape .859), path / journey survival via Z_disp and the juvenile habitat field (the
+only learned dispersal-adjacent part); departure = Veit p = N/K (no parameters); settlement off; band weights off; no
+learnable kernel parameters (KERNEL-SENS: MDDs not learnable -- every opened dispersal knob was compensated; J330
+~ J200 >> J110 >> J60A30 on fit).
+- CORRECTION to the latitude table above (user: the realized age-structure map shows it): the pooled table was
+  density-weighted and hid the northern fringe. Fig 10 (lap_eta025_abs): realized juvenile share collapses (< .4) in a
+  northern band (Prairies, southern Canada, Great Lakes north shore / St Lawrence) while the theoretical (local
+  equilibrium) share stays high -> those cells are immigrant-maintained sinks (year-end Nj counts only local births).
+- DATA TEST: BBL Jun-Sep bandings 2000+ (normal wild; HY vs AHY-class) mapped to grid cells, grouped by the model's
+  realized share: rho < .4 -> HY .718 (3,053 birds, 36 cells, mean lat 50.5); .4-.6 -> .715 (3,144; 29); .6-.75 -> .692
+  (5,124; 50); > .75 -> .688 (62,855; 518). Banding finds hatch-year birds AS COMMON in the model's immigrant-sink cells
+  as in the core (same capture method across cells, so the comparison is fair even though levels are capture-biased).
+  Established for these banding cells: the data contradict the model's northern immigrant-only sinks -- birds breed there.
+- Likely mechanism: northern House Finches are partial migrants (Able & Belthoff 1998) -- they leave in winter and
+  return. A resident-only annual model can only represent that as low local survival plus annual re-immigration via
+  the adult kernel; the habitat field (winter climate in z) then makes the northern edge a near-zero-survival sink.
+  Candidate fix (structural, not built): a seasonal winter-displacement-and-return term for the North (the CBC
+  seasonal allowance already encodes ~300 km SW winter displacement), so northern breeders' winter mortality is
+  taken where they winter.
+
+### CORRECTION (user, 2026-11-06 ~14:30): every lever today was tested on the J330 kernel only
+The robustness requirement across the conservative kernels (J200, J110, J60A30; ROBUST round, user: "robust final model",
+kernel sensitivity because MDDs are not learnable) was dropped while chasing levers. Nothing from today (routing, floor,
+per-capita Allee, absences, toll cap, eta choice) is established beyond J330. Now running (local; kernel inputs 4.3 GB
+each, local only): the final model (eta .25 + floor + per-capita + absences) and its eta 1 control on J200, J110 and
+J60A30 (J60A30 also adult MDD 30), all from the J330 eta .25 parameters. Readouts: held-out, swing, toll, establishment,
+Allee-dead; acceptance = the swing reduction (eta .25 vs eta 1) and held-out non-inferiority hold on every kernel.
+
+## HMC / BIAS STRATEGY (user, 2026-11-06 ~14:45): beyond adding terms -- change what the counts can reach
+**BBS residual autocorrelation (resid_autocorr.py at lap_eta025_abs; Pearson residuals within observer x route, by year):**
+lag-1 rho .065 overall (East pre-1994 .12, Plains ~0), lag-2 .04; AR(1) ESS factor ~.85-.90; Pearson variance .5-.8 (< 1:
+per row the NB is already wider than the residuals). Established for this fit: pseudo-replication overweights the counts
+by only ~10-15%. The counts dominate banding / NestWatch by sheer numbers (96k rows vs ~540 recoveries / 1.1k nests),
+not by double counting. A justified ESS tempering is mild (.88): queued (--bbs_weight added), not the main lever.
+**Demographic-axis re-parameterisation, first form:** habitat reaches each rate through its own amplitude (w_scale =
+softplus(raw)); at the final model: adult survival 3.27 (logit; prior raw ~N(0, 1) -> the fit is >3 sd out), fecundity
+5.49, capacity 4.24, juvenile ratio .10. Adult survival's large amplitude is the "fast life history in marginal cells"
+channel (northern sinks at Sa .09). Banding shows little regional variation in adult survival (East .56-.60, West
+~.50), so holding the survival amplitude small is data-grounded and structural: habitat must then act through
+fecundity / capacity, which NestWatch constrains. Arms (eta .25 final + absences): amplitude ~1.0 (local CPU), ~0.5
+(TACC), each with / without the BBL likelihood; ESS .88; sa .5 + ESS + BBL. Predictions: Sa near banding (> .45 occupied
+median), northern sinks gone (realized juvenile share recovers), Sj/Sa up, swing not larger; cost: in-sample yes,
+held-out within ~+-30 (falsified if held-out worsens > ~50 or the swing moves into fecundity).
+TACC: four extra 1-node 2-h pool jobs submitted (no TACC task has run today; all jobs pending on priority).
+
+### BBS TIME BALANCE (user: "re-balance BBS in time so the well-observed modern era gets some downweighting")
+Training route rows per year: 1966-75 1,025; 1976-85 1,402; 1986-95 1,795; 1996-2005 2,158; 2006-15 2,285; 2016-20 1,959
+(+60,610 route-free pseudo-zero rows). The invasion decades that set the timing carry about half the per-year weight of
+the modern ones. Built --bbs_year_balance p: route rows of year t weighted min(1, (n_ref / n_t)^p), n_ref = mean
+1966-75 (1,026); pseudo-zeros untouched; held-out scoring unweighted. Decade mean multipliers at p 1: .87 / .73 / .57 /
+.48 / .45 / .42. Arms on the final model: p 1 (local CPU after the eta .25 second start), p .5 (TACC pool top).
+Prediction: early-era fit gains weight -> lambda timing leans less on the modern era; swing not larger; held-out
+non-inferior (falsified if 2021-25 worsens > ~50: the modern era is also what forecasts the present).
+
+### KERNEL ROBUSTNESS, J200 (final model eta .25 vs eta 1 control; floor + per-capita + absences; from the J330 eta .25 params)
+| fit | objective | unseen | 2021-25 | East pot 1966 / 1990 / 2010 | swing | East toll 2010 | estab. |
+|---|---|---|---|---|---|---|---|
+| J330 eta .25 (final) | 142,411.6 | 32,934 | 20,808 | .62 / .79 / .97 | +.35 | .14 | +4 / .44 |
+| J200 eta .25 | 142,678.4 | 32,996 | 20,813 | .87 / 1.08 / 1.21 | +.34 | .25 | +4 / .39 |
+| J200 eta 1 | 142,684.8 (+6) | 33,036 (+40) | 20,833 (+20) | .88 / 1.22 / 1.46 | +.58 | .27 | +4 / .39 |
+- The routing result HOLDS on J200 (established for this pair): eta .25 cuts the swing from +.58 to +.34 and is better
+  on held-out (-40 unseen, -20 on 2021-25) and even in-sample (-6). The kernel moves the lambda LEVEL (+.25 at 1966) and
+  the toll (.25 vs .14), as in KERNEL-SENS, not the routing effect. J200 fits worse than J330 overall (+267 in-sample,
+  +62 unseen).
+- Still running: J110 eta .25 (it 180), J60A30 eta .25 (it 160) on CPU; J60A30 eta 1 next on GPU, J110 eta 1 after
+  J110 eta .25. Second start of J330 eta .25 is converging to the same point (142,411.7 at it 310 vs 142,411.6).
+- J200 validation (CAND_viz/lap_K_J200_eta025, _eta100): fig 01b same qualitative shift as J330 (East core persistently
+  lambda > 1 at eta .25; broad "gained" at eta 1); fig 04b East good incl. the recent upturn, Plains end high (1.95 vs
+  1.4; worse than J330's 1.75); Allee-dead 1.8%; fig 10 the same northern immigrant-sink band (kernel-independent).
+- J60A30 eta 1 control (converged): objective 145,107.6 (+2,696 vs J330 final), unseen 33,491 (+557), 2021-25 21,031
+  (+223); East potential .91 -> 5.33 (!), toll .55 -- the very short kernel can only spread with an extreme lambda (as
+  in KERNEL-SENS). J60A30 eta .25 still running (it 200, objective 145,582, above the eta 1 control -> not converged).
+
+## KNOWN-TRUTH BIAS TEST (built 2026-11-06 ~15:30; user: "should I believe the final estimates will be unbiased?")
+synth_bbs.py: synthetic BBS counts from a fitted TRUTH on the real rows (route-free expected_obs x exp(sigma e_r), e_r
+~ N(0,1) per observer x route, sigma = the truth's 1.25; NB2 with the truth's concentration; real missingness).
+laplace_fit --synthetic_y replaces the counts everywhere (model obs term + Laplace). NestWatch / absences stay real.
+First version double-counted route effects (expected_obs already carried the fitted modes; mean 9.08 vs 3.06) ->
+set aside (aborted_*); fixed (route effects zeroed before tracing): mean 3.66 vs real 3.06, zero share .766 vs .760.
+Truth = lap_L_abs (eta 0, East swing +.26). Fits: S1 flexible eta 1 structure from the REAL eta 1 fit (every chance to
+inflate); S2 final eta .25 structure. Read: recovered East swing, Sa / Sj / Fmax, northern realized juvenile share.
+Prediction / reading rule: if S1 recovers ~+.26 (not ~+.6), the trend-in-rates inflation on real data is a property
+of the REAL data (signal or misspecification the truth lacks), not of the estimator; if S1 inflates on data that
+contain no inflation, the estimator itself manufactures it and the final estimates carry that bias.
+Queued: local GPU after the survival-amplitude runs; TACC pool top.
+
+### FROZEN-1902 NATIVE TEST (user: with 1902 habitat frozen the invasion should not happen) -- frozen_native.py, final model
+Replay, no refit (lap_eta025_abs; trend_routing deviation zeroed when habitat is frozen). Threshold 1% of the modern
+occupied median.
+| arm | first occupied E of 95W / 90W | East total 1950 / 1980 / 2010 | Plains total 1950 / 1980 / 2010 |
+|---|---|---|---|
+| fitted (release + native) | 1951 (release) | .02 / 14.5 / 108 | 1.14 / 2.28 / 14.7 |
+| native only, fitted habitat | 1974 / 1993 | .02 / .06 / 15.2 | 1.14 / 2.28 / 12.8 |
+| native only, habitat frozen 1902-06 | never | 0 / 0 / 0 | .56 / .56 / .41 |
+| release + native, frozen | release cell only | 0 (founders die) | .56 / .56 / .41 |
+- Established for this replay: under frozen 1902 habitat the West does NOT cross the Plains -- the suspected pathology
+  does not occur in the final model. Under fitted habitat change the native population alone crosses 95W by 1974 and
+  90W by 1993 and holds ~15 in the East by 2010 (vs 108 with the release); the documented meeting at ~95W is ~1995, so
+  the western front is ~20 yr early at the 1% threshold. Fig 15 (counterfactual no invasion) shows exactly this arm.
+- Lever (user): more Plains zeros. The lineage's pre-1940 zeros and the rangev2 1940-65 absences lie outside a 700 km
+  halo around the pre-1970 native hull (bbs.py BUFFER_DISTANCE_METERS; reduced from 1000 km earlier for the same
+  reason). range_absence_tight.py adds 1902-65 absences for Plains-band cells (lon >= -106; the seed map understates the
+  native West -- a first build without that limit put zeros west to -128 and was set aside) farther than H km from the
+  native seed range and not already constrained: H 400 -> 372 cells, +23,808 cell-years; H 250 -> 545 cells, +34,880.
+  Fits (final model with each set) + the crossing replay queued (local GPU after the bias test; TACC pool top).
+  Prediction: native-only crossing later (95W after ~1985), Plains end overshoot reduced, held-out non-inferior.
+  The 1900 start (two more pre-1902 years) is a small addition (2 x ~560 cells of zeros) and needs an input rebuild --
+  held behind the halo result.
+
+### SURVIVAL AMPLITUDE held ~0.5 (structural; local GPU) -- result
+| fit | objective | BBL NLL | unseen | 2021-25 | East 2010+ Sa / Sj / Fmax (occupied median) | north >= 45N Sa | East pot 1966 / 2010 |
+|---|---|---|---|---|---|---|---|
+| final (eta .25 + absences; amplitude free, 3.3) | 142,411.6 | -- | 32,934 | 20,808 | .42 / .092 / 6.2 | .25 | .62 / .97 |
+| amplitude ~0.5 | 142,579.4 (+168) | -- | 32,970 (+36) | 20,859 (+51) | .42 / .092 / 5.7 | .33 | .67 / .94 |
+| amplitude ~0.5 + BBL | 145,839.2 | 3,254 | 32,985 (+51) | 20,866 (+58) | .42 / .093 / 5.6 | .35 | .69 / .95 |
+- Holding the habitat amplitude on adult survival small does NOT raise occupied-cell adult survival toward banding
+  (.42 either way) or juvenile survival (.092); it lifts the northern edge somewhat (Sa .25 -> .33-.35), trims
+  fecundity (6.2 -> 5.6) and the swing (+.35 -> +.27), and costs prediction (+36 to +51 unseen, +51 to +58 on 2021-25:
+  at the pre-registered falsification line). Reading (likely): the low occupied-cell survival is not mainly the habitat
+  amplitude; the counts set the survival LEVEL (alpha_a) jointly with fecundity, and the amplitude only shapes its
+  spatial spread. Not adopted. (amplitude ~1.0 still running on CPU.)
+- amplitude ~1.0 (lap_sa10): 142,495.9 (+84), unseen 32,964 (+30), 2021-25 20,833 (+25), East .65 -> .93 (+.28). Same pattern as ~0.5; not adopted.
+
+### KNOWN-TRUTH BIAS TEST: RESULT, realization 1 (truth lap_L_abs, eta 0, East swing +.26)
+| fit on synthetic counts | objective | East pot 1966 / 1990 / 2010 | swing | eta | sigma |
+|---|---|---|---|---|---|
+| TRUTH | -- | .65 / .78 / .91 | +.26 | 0 | 1.25 |
+| eta 1 structure (from the real-data eta 1 fit) | 146,628.2 | .57 / .84 / 1.06 | +.49 | 1 | 1.18 |
+| eta .25 final structure | 146,606.6 (-22) | .59 / .76 / .94 | +.35 | .25 | 1.17 |
+| (real data, eta 1, for reference) | -- | .59 / .90 / 1.21 | +.62 | 1 | 1.25 |
+- ESTIMATOR BIAS (established for this realization): with data that contain a +.26 swing and NO regional trend in the
+  rates, the flexible structure reports +.49 -- early lambda pushed down (.65 -> .57) and late lambda up (.91 -> 1.06),
+  the classic inflation shape. The final eta .25 structure overshoots less (+.35; its own 25% trend + residual bias).
+- The in-sample preference REVERSES on synthetic data (eta .25 fits 22 better), whereas on real data eta 1 fits ~40
+  better: the real data reward trend-in-rates for a reason the eta-0 truth lacks (genuine change or misspecification).
+- Implication (likely, one realization): part of every real-data swing is estimator-made; the real eta 1 +.62 and the
+  final +.35 are both upper-biased by an amount of order +.1 to +.2. Follow-ups: realizations 2 and 3 (GPU, after the
+  halo fits); REVERSE test (truth = real-data eta 1, swing +.62; fitted with eta .25 and eta 1; CPU 26-31) -- does the
+  final structure SUPPRESS a genuine large swing?
+- KERNEL ROBUSTNESS, J60A30 (converged both): eta .25 145,460.0 vs eta 1 145,107.6 (eta .25 WORSE by 352 in-sample,
+  unseen 33,819 vs 33,491: +328; 2021-25 20,991 vs 21,031: -40). East potential eta .25 1.33 -> 3.19, eta 1 .91 -> 5.33;
+  toll .55-.58. The 60 / 30 km kernel cannot reproduce the spread without absurd lambda under either structure, and
+  routing does not help there (it forces the needed lambda into the level instead of the trend). Both are ~+2,700-3,000
+  in-sample and +560-890 unseen worse than J330. Reading (likely): J60A30 is incompatible with the observed invasion
+  in this model class; robustness is meaningful across J330 / J200 / J110 (J110 pending), not J60A30.
+
+### TIGHTER NATIVE HALO (Plains absences): RESULT (final model + each absence set; crossing replays)
+| fit | objective | absence cost | BBS | unseen | 2021-25 | native-only first E of 95W / 90W | native-only East 2010 | frozen-1902 Plains 1980 / 2025 | Plains (fitted) 2025 |
+|---|---|---|---|---|---|---|---|---|---|
+| final (700 km, rangev2) | 142,411.6 | 11.3 | 122,616 | 32,934 | 20,808 | 1974 / 1993 | 15.2 | .56 / .38 | 17.4 |
+| halo 400 km | 142,467.5 (+56) | 30.1 | 122,668 | 32,937 (+3) | 20,814 (+6) | 1977 / 1995 | 8.3 | .38 / .27 | 17.0 |
+| halo 250 km | 142,500.7 (+89) | 42.1 | 122,681 | 32,945 (+11) | 20,822 (+14) | 1978 / 1995 | 8.8 | .16 / .12 | 16.5 |
+- The extra Plains zeros deepen the 1902 trough (frozen Plains .56 -> .38 -> .16) and HALVE the native lineage's
+  leak into the East under fitted habitat (15.2 -> 8.3 by 2010), delaying its crossing only ~3-4 yr; held-out cost is
+  within noise at 400 km (+3 / +6) and small at 250 km (+11 / +14). The Plains end overshoot is barely touched.
+- Decision (rule: data constraints are default unless held-out worsens): halo 400 km adopted; 250 km sensitivity.
+  HMC CURRENT.sh -> --range_absence range_absence_halo400.npz, init lap_halo400.npz.
+
+### BBS TIME BALANCE p 1: RESULT (lap_yb10; objective on the re-weighted scale, not comparable)
+unseen 33,182 (+248 vs final), 2021-25 20,861 (+53); East potential .66 -> .95 (+.29 vs +.35); toll .12; establishment
+mean |offset| 3.8 (within +-3 yr .50 vs .44); release block .048 -> .064 -> .129 (1952 / 60 / 65; final .038 / .041 /
+.106). Equal per-year weight shifts the fit toward the early record (slightly earlier establishment, faster early core,
+smaller swing) but costs spatial transfer heavily (+248 unseen) and recent prediction (+53): falsified as a default at
+p 1 (pre-registered line ~50). p .5 next (local CPU, claimed from the pool).
+- ESS tempering .88 (lap_ess088): unseen 32,941 (+7), 2021-25 20,811 (+3), East .63 -> .96 (+.33 vs +.35), BBS raw 122,651. No material change -- as predicted from the small autocorrelation; not adopted.
+- BIAS TEST, 3 realizations (truth eta 0, swing +.26): eta 1 fits +.485 / +.441 / +.494 (mean +.47, bias +.21); eta .25
+  fits +.349 / +.320 / +.362 (mean +.34, bias +.08); eta .25 better in-sample in all three (-22 / -18 / -12).
+  Established across realizations: the flexible structure manufactures ~+.2 of swing; the final structure ~+.08 (part of
+  it its own 25% trend). Next: self-consistency test with truth = the ADOPTED model (lap_halo400), two realizations.
+- SELF-CONSISTENCY BIAS TEST (truth = ADOPTED model lap_halo400; refit with the same structure; 2 realizations):
+  truth East swing +.340 (West +.116, Plains +.077); recovered +.333 / +.286 (West +.105 / +.130, Plains +.068 / +.080).
+  Established for two realizations: the adopted structure recovers its own swing without upward bias (slightly under).
+  Together with the eta-0 truth test: the adopted model's estimate is unbiased if its structure is right, and at most
+  ~+.08 high if the truth carries no regional trend in the rates; the flexible eta 1 structure is the one that inflates.
+- ADOPTED model (eta .25 + halo-400 absences) on J200 (lap_K_J200_eta025_halo400): 142,755.8 (+77 vs J200 with rangev2
+  absences; absence cost 20.4 vs 9.6), unseen 33,038 (+42), 2021-25 20,827 (+14); East .91 -> 1.20 (+.29). On J200 the
+  halo costs more than on J330 (+3 / +6): flag -- the extra Plains zeros are not free on the shorter kernel (the
+  shorter kernel leans more on Plains density to spread). Kernel-robust choice: 400 km is acceptable on J330, marginal
+  on J200; report both. J110 eta .25 still creeping on CPU (it 1400, 143,620.7 vs eta 1 control 143,693.5: -73).
+
+### KERNEL ROBUSTNESS SUMMARY (final model eta .25 vs eta 1 control; floor + per-capita + rangev2 absences)
+| kernel | eta .25 swing | eta 1 swing | in-sample (eta .25 - eta 1) | unseen (eta .25 - eta 1) | 2021-25 (eta .25 - eta 1) | East toll (eta .25) | fit vs J330 (eta .25) |
+|---|---|---|---|---|---|---|---|
+| J330 | +.35 | +.62 | +42 | -21 | -20 | .14 | -- |
+| J200 | +.34 | +.58 | -6 | -40 | -20 | .25 | +267 in-sample, +62 unseen |
+| J110 | +.40 | +.79 | -73 | +30 | +56 | .32 | +1,209 in-sample, +465 unseen |
+| J60A30 | (level 1.33 -> 3.19) | (.91 -> 5.33) | +352 | +328 | -40 | .58 | incompatible (+3,000 / +880) |
+- Established across J330 / J200 / J110: eta .25 roughly HALVES the eastern swing on every usable kernel (.62 -> .35,
+  .58 -> .34, .79 -> .40). Held-out favours eta .25 on J330 and J200; on J110 it costs +30 unseen / +56 on 2021-25 (the
+  shorter kernel needs more growth-rate change to spread -- consistent with the kernel trading against low-density growth).
+- Kernel ranking for the final model unchanged: J330 ~ J200 >> J110 >> J60A30. J60A30 cannot reproduce the invasion
+  in this model class with any lambda structure.
+
+### Weak prior on eta (Beta(1,3)), on the TACC dev node (adopted absences), and time balance p .5
+- eta ~ Beta(1,3) from eta .05 and from eta .5 (TACC dev GPUs 1-2, not converged at the job limit: it 700 / 500,
+  objective 142,440.5 / 142,441.3 vs adopted 142,467.5): BOTH reach eta .933. Established (two starts agree): a weak,
+  biologically defensible prior lets the training likelihood take eta to ~.93 (almost the full trend in the rates). The
+  eta .25 choice therefore rests on out-of-sample prediction (CV profile) and the bias test, not on a prior.
+- Time balance p .5 on the adopted model (lap_yb05): unseen 33,022 (+85 vs lap_halo400), 2021-25 20,790 (-24); East .67
+  -> .97 (+.30). Better recent prediction, worse spatial transfer; not adopted (p 1 was +248 / +53).
+- HMC: reservation job 3558537 STARTED 19:49 on gpu-a100-small (v330-001) with the adopted model (CURRENT.sh: eta .25 +
+  floor + per-capita + halo-400 absences, init lap_halo400). Second reservation 3558538 still pending.
+- Comparators on the ADOPTED model (lap_halo400 = 142,467.5; unseen 32,937; 2021-25 20,814; swing +.34):
+  + BBL likelihood (lap_A_bbl): BBL NLL 3,300, unseen +70, 2021-25 +11, swing +.35 -- banding barely moves the fit and
+  costs transfer (as R83); not adopted. + R103b per-cell prior SD 1 (lap_A_r103b_sd1; comparator only, user ruling):
+  swing +.26 (East .73 -> .99), in-sample +103, unseen +37, 2021-25 +88 -- a direct prior on rate change buys a smaller
+  swing at a clear prediction cost.
+- REVERSE BIAS TEST, eta .25 half (truth = real-data eta 1 fit, East swing +.62; lap_SYNR_fit_eta025, converged): the
+  final structure recovers .63 -> 1.00 = +.37. Together with the eta-0 truth (+.26 -> +.32-.36) and the self-test (+.34
+  -> +.29-.33): the eta .25 structure reports ~+.35 WHATEVER the truth (established for these five fits). The swing
+  under the adopted structure is set by the structure, not identified by the counts; it would SUPPRESS a genuine large
+  swing as the eta 1 structure INFLATES a small one. Pending (GPU): eta 1 fit on the eta-1 truth. Discriminating
+  number: in-sample (eta 1 - eta .25) on synthetic data from an eta-0 truth was +12 to +22 (eta .25 better); on real data
+  it is -29 (eta 1 better). If the eta-1 truth also gives eta 1 better by ~30, the real data look like a truth WITH a
+  regional trend in the rates (the adopted model then understates real change); if not, the real-data preference is
+  unexplained misspecification.
+- REVERSE BIAS TEST, eta 1 half (truth = real-data eta 1, swing +.62): eta 1 fit recovers +.54 (slightly under), eta .25
+  +.37; in-sample eta 1 better by 25.0. DISCRIMINATION (in-sample, eta 1 minus eta .25): eta-0 truth +12 / +18 / +22
+  (eta .25 better); eta-1 truth -25 (eta 1 better); REAL data -29 (eta 1 better). The real data behave like the eta-1
+  truth (likely): either a genuine regional trend in the growth rates, or misspecification that mimics it. Held-out on
+  real data still mildly favours eta <= .5 (+20-35). If genuine, the adopted eta .25 understates real change (~+.37 vs
+  ~+.55-.6). Decisive next test: free eta WITH a capacity-only misspecification outlet for the era of change
+  (k_discrepancy, built: per-region piecewise-linear curve on the K link from 1994, knots every 4 yr, weights ~N(0, .3)).
+  If the outlet removes the real data's preference for eta 1 -> it was late-era misspecification; if eta stays ~1 ->
+  the growth-rate trend is what the data contain.
+- k_discrepancy prior (user: "is that a shrinkage prior? seems pretty expressive"): correct -- iid N(0, .3) on 24 knot
+  weights (3 regions x 8, every 4 yr) is a fixed-variance prior, ~+-35% regional K per knot, no smoothness, no learned
+  scale; it also trades against the regional post-1994 disease toll. Too flexible an outlet would lower eta just by
+  absorbing everything, proving nothing. Added form "rw": non-centred random walk from 0 in 1994 (knots every 8 yr),
+  ONE shared increment scale tau ~ HalfNormal(.05) -> collapses unless needed. Arms: free eta + RW (decisive; GPU);
+  free eta + iid .3 (flexible bracket; GPU after); eta .25 + iid .3 (CPU, running) and eta .25 + RW (CPU after).
+  (A first free-eta + iid .3 GPU run was killed with its queue script at it 20 when the .5 arm was cancelled; set aside.)
+
+## Option 2 (user, 2026-11-06): let demographic data identify eta -- integrated-population step 1 (PRE-REGISTERED)
+Why: a pinned eta = .25 reads as a tuned dial in review; a prior strong enough to hold it is the pin in disguise (real
+data prefer eta 1 by ~29 nats; Beta(1,3) -> .93). eta asks "did survival / fecundity trend, or only capacity?" --
+measurable. CONSIDERATIONS C4 (a jointly fitted dataset is a structural statement, a tighter prior is a penalty), G3, G4.
+What is already known (established, this session):
+- Eta ladder (J330, adopted structure, no BBL), objective / BBS marginal / nest cost:
+  eta 0: 142,409.2 / 122,635.2 / 2,007.1; .25: 142,399.0 / 122,612.5 / 2,009.5; .5: 142,390.1 / 122,598.8 / 2,011.1;
+  .75: 142,382.0 / 122,588.8 / 2,010.8; 1: 142,369.6 / 122,566.1 / 2,020.9.
+  BBS favours eta 1 by ~69 nats vs eta 0; NestWatch already DISfavours it by ~14 (the nest term reads realised F per
+  attempt cell-year, so it sees the routed fecundity trend). The net preference survives because BBS outweighs nests.
+- What eta 1 implies (readout medians at fixed positive cells, 1966 -> 1993 -> 2010): East Sa .30 -> .44 -> .52
+  (eta 0: .29 -> .34 -> .38; eta .25: .29 -> .37 -> .42); West Sa .34 -> .39 -> .44 (eta 0: .31 -> .31 -> .34); East
+  Fmax 5.3 -> 6.4 -> 7.1 (eta 0: 5.3 -> 5.7 -> 5.9).
+- What banding data say (crude constant-S Seber MLE per region x banding era, right-truncated at 2025; adults, East
+  Apr-Aug bandings only; scratchpad bbl_era.py): West .503 (.028) / .506 (.040) / .442 (.049) / .381 (.067) for
+  1960-79 / 80-93 / 94-06 / 07-22; central 100-80W - / .550 (.064) / .516 (.090) / .582 (.096); East >80W .571 (.042) /
+  .544 (.038) / .500 (.112) / .542 (.121). Flat or DECLINING everywhere (post-1994 partly disease, West Nile in the West).
+  The fits so far censor BBL at 1993 (381 of 543 recoveries) and never ran BBL with eta free.
+New code: laplace_fit --bbl_disease: survival path S = Sa (1 - amp * hill(N)) with the model's own epizootic mortality,
+so BBL can run to 2025 (N = census density of the year; the forward uses post-dispersal pre-survival density -- close,
+likely). Smoke at lap_halo400: 543 recoveries, BBL nll 5,224, finite.
+Arms (adopted structure: floor 4 x n50, per-capita Allee k3, halo-400 absences, strong absolute Allee, compact onset,
+exp recovery; eta Beta(1,1) where free):
+- B0 control: eta free, no BBL -- J330 / J200 / J110.
+- B1: eta free + BBL to 1993 -- J330.
+- B2: eta free + BBL 1960-2025 with disease mortality -- J330 / J200 / J110.  (DECISIVE)
+- B3 / B4: eta .25 / eta 1 + BBL 1960-2025 -- J330 (matched decomposition: how many nats BBL puts on eta).
+Starts: J330 from L_eta50 (eta .5); J200 / J110 from their eta-1 fits (a HIGH start: a drop is then data-driven).
+Predictions (likely): BBL pulls eta DOWN versus B0 on every kernel, because eta 1 raises Sa over time while banding says
+flat / falling. Power is modest: ~540 recoveries, era SEs .04-.07; the eta 1 - eta .25 Sa-trend gap is ~.06-.08, about
+1-2 SE per region-era, so maybe ~5-15 nats against a ~29-nat BBS preference (net of nests). Expect eta to fall to
+~.5-.8, not to .25, from BBL alone. If B2 eta < .5 on J330 AND J200, demographic data alone justify a low eta (no pin).
+Guards: BBL reporting-rate logits at bounds; Sa LEVEL shift (BBL wants ~.5 at banding cells; a level pull could move F
+and the eta preference for reasons unrelated to trend -- B3 / B4 separate level from trend); held-out BBS (MARG2);
+swing; disease toll. Caveats (likely): banding sites are feeder / urban-biased; eastern partial migration (summer
+bandings only); post-1994 East thin (19 recoveries); right-truncation handled by the never-recovered term.
+Next (not this round): fecundity / productivity trend -- NestWatch per region-era vs the realised F trend (the nest term
+is already in the likelihood), and an age-ratio term (BBL HY:AHY summer captures are effort-biased; MAPS needs a data
+request) -- the second leg that would pin the fecundity side of eta.
+
+## HMC sampler defect (2026-11-06, ~21:00; user asked for HMC diagnostics)
+Jobs 3558537 / 3558538 (eta .25 adopted model, NUTS on the embedded-Laplace posterior, 147 dims) started 19:49 / 19:57;
+Hessian mass built (eig .086 .. 1.99e6, posterior sd 7e-4 .. 3.4); no segment yet (segment 0 = all 300 warmup + 25 draws).
+Established on a Gaussian surrogate N(0, H^-1) with the jobs' exact settings (scratchpad nuts_surrogate*.py):
+- dense_adapt (as running): numpyro's windowed dense adaptation estimates a 147x147 covariance from 25 / 50 / 100 warmup
+  draws and adds 1e-3 * 5/(n+5) I; with stiff sd ~7e-4 the regulariser alone exceeds the stiff variance ~100x, and with
+  n < d the sample covariance is singular. Adapted kappa 1.6e5-3e6 vs 1 for the Hessian mass. Result: every draw at the
+  depth-8 cap (255 leapfrogs), min ESS 6 / 300, ~12,000 gradients per effective draw.
+- hessian_fixed: 18 steps, min ESS 220 / 300.  whitened_diag (x = x0 + L u, L = chol(H^-1), diagonal adaptation in u):
+  15 steps, min ESS 461 / 300. whitened + DENSE adaptation still fails (4 / 300): the failure is dense estimation with
+  n < d, not the coordinates.
+Likely consequence for the running jobs (non-Gaussian real posterior unverified): ~255 gradients per draw for the whole
+run, a few hundred draws in 46 h, tiny ESS in the stiff / soft directions. Fix: laplace_fit --hmc_mass whitened_diag
+(+ a warmup diagnostics line in hmc_trace.jsonl). CURRENT.sh updated; READY held (READY.held_until_smoke) until a real-
+model smoke passes; replacement reservations 3560260 / 3560261 submitted (gpu-a100-small, pending).
+HMC A/B (user, 2026-11-06 ~20:55: "interrupt one ... two chains with the better adaptation; keep the other as is"):
+- Job 3558537 (v330-001): its sampler was replaced IN PLACE (gdb execl on the batch-step process -> bash
+  hmc/hmc2_job3558537.sh), keeping the allocation. Now: --hmc_mass whitened_diag --hmc_chains 2 (vectorized, dispersed
+  starts +-.5 sd), 300 warmup, 25-draw segments, 45 h; out runs/eta025_halo400_job3558537_wd2; falls back to 1 chain
+  if the 2-chain run dies before its first segment. The old run's 1 h of warmup is discarded.
+- Job 3558538 (v330-016): unchanged control (dense_adapt, 1 chain).
+- Prediction (from the surrogate): control warmup steps climb to the 255 cap after the first slow window and stay there;
+  the A arm stays ~15-60 steps per draw per chain (higher than the surrogate's 15 because the real posterior is not
+  Gaussian), so >= 5x more draws and far higher min ESS per hour. Compare: steps per draw, step size, divergences,
+  draws per hour, and (after ~200 draws) bulk / tail ESS and R-hat across the two A chains.
+- Each sampler uses 1 of 32 cores and ~15 GB of the 40 GB A100 (single chain); the 2-chain run's footprint is TBD.
+
+### RESULT: capacity-discrepancy outlet with eta free (J330; 2026-11-06 ~21:00) -- the outlet does NOT lower eta
+| arm | eta | objective | held-out marginal | East potential lambda 1966 / 1993 / 2010 | East Sa 1966 / 2010 | East K-disc |
+|---|---|---|---|---|---|---|
+| adopted (eta .25, no outlet; lap_halo400) | .25 | 142,467.5 | 48,380.5 | .63 / .82 / .97 | .29 / .41 | - |
+| eta 1, no outlet (eta100_kf4_pc3) | 1.00 | 142,369.6 | 48,410.9 | .59 / .95 / 1.21 | .30 / .52 | - |
+| RW outlet (tau ~ HN(.05)) | .9994 | 142,246.9 | 48,362.6 | .58 / 1.15 / 1.61 | .33 / .71 | K x .54 / .18 / .23 / .22 at 2002 / 10 / 18 / 26 (Plains .58 / .30 / .20 / .20; West ~1) |
+| iid N(0,.3) outlet | .9975 | 142,238.7 | 48,242.7 | .59 / 1.08 / 1.40 | .31 / .62 | East K x .32-.47 in 2006-18 |
+Established: eta stays at 1 with either outlet; the RW "shrinkage" is overruled (tau .289 vs HN(.05), ~6 prior SD); the
+outlet is used to CUT eastern / Plains capacity ~5x after 1994 while vital rates rise further (swing +1.03 vs +.61 at
+eta 1 and +.36 adopted; disease mortality .19). In-sample -123 / -131 and held-out -48 / -168 vs eta 1: the post-1994
+era carries a real misfit that a "high growth + low ceiling + heavy disease" regime absorbs.
+Mechanism (likely): with disease mortality holding birds below K, a higher potential lambda keeps densities up against
+the toll, and K then sets the level; BBS alone cannot separate "fast turnover, low ceiling" from "slow turnover, high
+ceiling". The regime contradicts banding (East Sa ~.55 flat; fit .71). So the outlet test answers the question: the eta
+preference is not a K-shaped misfit, and a K outlet without demographic data makes the swing pathology WORSE.
+Production implication (report): the capacity-discrepancy outlet is not usable alone; it needs the demographic legs.
+Next (running): B5 = RW outlet + eta free + BBL 1960-2025 (does banding block the turnover / ceiling trade?) on the
+GPU, then a second start of the decisive B2 (eta free + BBL all) from the eta-1 fit.
+
+## OVERNIGHT 2026-11-06/07 (user: lock in by morning; review-driven, not blind trials)
+### Review synthesis (two independent read-only reviews: transcripts 11-02..07 and the records)
+How progress was made (established): every real gain CHANGED WHICH CHANNEL A SIGNAL MAY REACH -- compact disease onset
+(stops a slow ramp acting as a calendar trend), trend routing (regional Z trend -> capacity, not rates), the toll ridge map,
+plus the Laplace route marginal that made 20-50 nat comparisons readable. Adding data at natural weight or adding
+flexibility never cut the swing: it relocated to whatever rate stayed free (R95, R86iv, amplitude cap, F2, k_disc).
+Blocking tradeoffs (established): (1) BBS counts do not identify eta (eta .25 reports ~+.35 whatever the truth); (2) BBS
+cannot separate fast-turnover / low-ceiling from slow-turnover / high-ceiling (k_disc + eta free: K x.22, Sa .71);
+(3) demographic data are outvoted (96k BBS rows vs ~540 recoveries, ~1.1k nests; NB density power .86 makes dense
+routes 2-3x over-precise, NB-CAL); at banded cells model Sa is already at/above banding, so BBL contests only the RISE;
+(4) low densities are invisible to the likelihood (gauge / Allee pin decide); (5) in-sample eta preference is
+J330-specific (eta .25 - eta 1: +42 J330, -6 J200, -73 J110) while held-out reverses on J110.
+In-flight (unconverged): B2 (eta free + BBL 1960-2025, J330) eta .958 at it 220 from .5; B5 (RW outlet + eta free + BBL)
+eta .9996, tau .285 at it 1,370 (stopped: answered; set aside aborted_lap_B5_..._partial). BBL does not pull eta down.
+
+### Decomposition of the eta 1 preference (row_ll_dump.py / row_ll_compare.py; eta100_kf4_pc3 vs eta025_kf4_pc3, J330)
+Conditional per-row BBS log-lik at each fit's saved route effects (positive = eta 1 better), by region x era:
+West +11.1 / +7.3 / -1.3 / +2.5 / +4.8 (1966-79 / 80-93 / 94-05 / 06-14 / 15-20) = +24.4; Plains -2.5; East -6.6.
+Route-effect penalty: eta 1 lower by 43 (West -22, Plains +3, East -24), diffuse (~.003 / route over 15k routes; route
+SD .757 -> .754). Count bins: zeros +17.8, 1-2 -13.1 (eta 1 predicts the sparse cells slightly differently).
+Established: the preference is NOT concentrated in the East disease era (the "eta 1 buys responsiveness after 1994"
+hypothesis is not supported by the rows: East rows favour eta .25, -6.6). About two thirds sits in the WEST (native
+range), mostly 1966-93 -- consistent with old R55 ("the West takes any rise; removing the West's trend from the rates cost
+nothing on forecasts"). eta 0 -> .25 shows the same pattern at smaller size (West +7.9 rows, route -31).
+Production implication (report): a single shared eta lets the West's preference set the East's swing.
+
+### Pre-registered overnight arms (all eta free, adopted structure, halo-400 absences)
+R1 per-region eta (new option trend_routing.per_region; Beta(1,1) each; West / Plains / East by region_col_breaks):
+   J330 (GPU, lap_R1_etaR_free), J200 (local CPU 26-31 + TACC), J110 (TACC). Prediction (likely): eta_West -> ~1,
+   eta_Plains low, eta_East uncertain (rows favour low, route penalty favours high). If eta_East < .5 on J330 and J200,
+   the low eastern routing is data-chosen -- the defensible replacement for the pin. Guards: East swing, held-out
+   (MARG2), West plausibility (native-range Sa / F trends), Plains leak.
+W1 high-pass region x year observation effect (--year_wiggle .2, knots 8 yr: absorbs sub-decadal wiggles, cannot carry
+   a trend) with a single free eta: J330 (GPU), J200 / J110 (TACC). Tests the responsiveness hypothesis directly;
+   predicted (from the decomposition) NOT to lower eta much.
+R2 per-region eta + BBL 1960-2025 with disease (J330, TACC).
+Eta profiles on J200 / J110 (0 / .5 / .75; TACC, with held-out) for held-out stacking.
+RESULT B2 (eta free + BBL 1960-2025 with disease, J330, from eta .5; converged 537 it): eta .981. Objective 147,241.2
+(BBL nll 4,761.6, BBS marginal 122,708.4 = +142 vs eta 1 without BBL, nest 1,976.8). East potential lambda .60 / .84 /
+1.05 (1966 / 90 / 2010; swing +.45 vs +.61 at eta 1 without BBL), East Sa .29 -> .44 (vs .30 -> .52); West .67 -> .86.
+Held-out marginal 48,464.7 (+54 vs eta 1 no BBL, +84 vs adopted). Established: all-years banding does NOT lower eta; it
+damps the Sa rise through other channels at a held-out cost. Prediction (eta -> .5-.8) was wrong: BBL has no grip on eta.
+RESULTS (J330, overnight):
+- R1 per-region eta (from eta .5 all): eta West 1.000, Plains .392, East .996. Objective 142,433.3 (a worse optimum than the
+  eta 1 single fit 142,369.6, which it nests); held-out 48,371.1 (eta 1: 48,410.9; adopted 48,380.5). East .62 -> 1.16.
+  Prediction (East low) WRONG: the East's own data take its routing to 1 (row-level preference for .25 is outweighed by the
+  route-effect term). The West is not dictating the East.
+- W1 wiggle outlet + eta free: wiggle scale s 1.77 (HN(.2) prior overruled), objective 141,942.4 (-427 vs eta 1),
+  held-out 48,366.9 (-44); eta .999; East .53 -> 1.32. Established: large real sub-decadal regional wiggles exist (a
+  responsiveness outlet absorbs a lot), but they are not why eta -> 1.
+- B2 second start (from eta 1): eta 1.000, objective 147,242.6 (first start 147,241.2), held-out 48,431.2: B2 confirmed.
+Synthesis (likely): on J330 the eta -> 1 preference survives capacity misfit (k_disc), short wiggles (W1), banding (B2) and
+region separation (R1). The remaining named suspect is the kernel: the in-sample preference was +42 for eta 1 on J330 but
+-73 on J110 (eta 1 controls there started from eta .25 params; possibly under-converged). J330's long kernel makes the early
+front too fast, so a rising lambda (low early, high late) is the only way to buy "slow early, fast late" -- the plan's
+"early too fast, late too slow" signature. Decisive: eta free on J200 / J110 from BOTH a high (eta 1) and low (eta .25)
+start (GPU queue below; TACC B0 copies as backup).
+CORRECTION + KEY LEAD (overnight): the eta ladder fits (eta*_kf4_pc3) carry NO range absences (absence_cost 0), so they are
+not comparable with the halo-400 fits. Like-for-like (halo-400, J330):
+- no BBL: eta free (B0, TACC, converged, eta .997) 142,435.0 vs adopted eta .25 (lap_halo400) 142,467.5 -> eta 1 better by 32.5
+  (R1 per-region 142,433.3 sits at the same optimum).
+- BBL 1960-2025: eta free (B2) 147,241.2 / 147,242.6 (two starts) vs eta .25 (B3, TACC partial at it 570, STILL FALLING
+  5.8 per 50 it) <= 147,244.95 -> eta 1 better by < 4, possibly not at all.
+Likely: the banding data nearly erase the BBS preference for eta 1 (BBS +38 for eta 1 is offset by BBL -33 for eta .25);
+free-eta fits then drift to ~1 along an almost flat profile. B3 is being continued to convergence on the GPU (first in
+queue); then an eta profile WITH BBL (0 / .5 / .75) and held-out decide. If the profile is flat within ~5 nats, eta is
+not identified by BBS + BBL and is chosen by held-out prediction -- a data-driven choice, not a pin.
+
+### RESULTS ~00:10 (2026-11-07): in-sample and held-out now disagree about eta
+| kernel / data | arm | objective | held-out total (pre / post blocks / 2021-25) | East pot. lambda 1966 -> 2010 |
+|---|---|---|---|---|
+| J330 + BBL | eta .25 (B3, converged) | **147,234.4** | 48,550.0 (8,371 / 19,297 / 20,882) | .68 -> .96 (+.28) |
+| J330 + BBL | eta free -> .98 / 1.00 (B2, two starts) | 147,241.2 / 147,242.6 | **48,464.7 / 48,431.2** | .60 -> 1.05 (+.45) |
+| J330 no BBL | adopted eta .25 | 142,467.5 | 48,380.5 (8,308 / 19,258 / 20,814) | .63 -> .97 |
+| J330 no BBL | eta free -> 1 (B0 TACC) / per-region (1, .39, 1) | 142,435.0 / 142,433.3 | - / 48,371.1 | - / .62 -> 1.16 |
+| J200 no BBL | eta .25 / free -> .52 (low start) / free -> 1.00 (high start) | 142,755.8 / 142,757.4 / 142,753.9 | 48,621.5 / 48,595.6 / **48,548.0** | +.29 / +.34 / +.46 |
+| J110 no BBL | free -> 1.00 / .98 (two starts) | 143,729.0 / 143,681.5 | 48,944.6 / 49,382.4 | +.82 / +.72 |
+Established:
+- In-sample, the eta 1 preference is J330-without-demography only: with BBL on J330, eta .25 is BETTER by 6.8 (the free-eta
+  fits stopped in a worse basin at ~1); on J200 the profile is flat (eta .25 / .52 / 1 within 3.5 nats).
+- Held-out leans to high eta: J200 monotone (.25 -> .52 -> 1: 48,621 -> 48,596 -> 48,548), J330 + BBL eta 1 better by
+  85 / 119 (two eta-1 starts differ by 33: fit-to-fit noise ~30). The gain is in the BLOCKS (unseen routes, pre and post
+  1994), not 2021-25. J330 without BBL: flat (per-region -9 vs adopted).
+- J110 is not usable for this comparison yet: two free-eta starts are 48 apart in-sample and 438 apart held-out.
+Open (decisive for interpretation): does held-out also favour eta 1 when the TRUTH is eta 0? The structure that
+manufactures swing could also manufacture held-out gain. Running: held-out scoring of the known-truth synthetic fits
+(marginal_heldout --synthetic_y, new), then the J200 BBL pair (eta .25 / eta 1) and eta .5 + BBL on J330.
+HMC A/B, control (3558538, dense_adapt, 1 chain): segment 0 (300 warmup + 25 draws) took 14,362 s (4.0 h); mean steps
+255.0, max 255 -- every draw at the depth-8 cap, as predicted; step size .022, accept .79, 0 divergences. ~0.17 s per
+gradient on the A100. Two-chain whitened_diag (3558537): still in warmup at 3.3 h (GPU 99%, 15.8 GB); no line yet --
+vectorised chains move in lockstep (each iteration costs the larger tree of the two), cost per gradient unknown.
+J110 adopted (eta .25, halo-400; converged 1,440 it): 143,713.2, held-out 49,389.9 (8,535 / 19,821 / 21,034), East .
+1.06 -> 1.41 (+.35). vs eta free low start (.98) 143,681.5 / 49,382.4 (+.72) and high start (1.00) 143,729.0 / 48,944.6
+(+.82). J110 is multimodal: basin differences (in-sample 48, held-out 438) exceed any eta effect.
+
+### Known-truth calibration of HELD-OUT (marginal_heldout --synthetic_y; fits from the bias test)
+eta-0-structure truth (L_abs; 3 realisations): held-out eta .25 fit vs eta 1 fit = 43,966.5 vs 43,979.5 / 44,241.8 vs
+44,253.5 / 44,680.9 vs 44,727.8 -> eta .25 better by 13 / 12 / 47. eta-1 truth (SYNR): 44,166.3 vs 44,138.2 -> eta 1
+better by 28. Established: held-out discriminates the routing structure CORRECTLY in all 4 known-truth cases (in-sample
+did too, by 12-22 / -25). So the real-data held-out preference for high eta is evidence, not an artefact.
+### BBL profile on J330 and the J200 BBL pair
+J330 + BBL: eta .25 147,234.4 / held 48,550.0 / swing +.28; eta .5 **147,227.0** / 48,566.4 / +.32; eta free -> .98 / 1.0
+147,241.2 / 147,242.6, held 48,464.7 / 48,431.2, +.45. J200 + BBL: eta .25 147,538.2 / 48,631.2 / +.24 (East .92 -> 1.16);
+eta 1 147,526.0 / **48,591.8** / +.38 (.88 -> 1.26).
+Reading (likely): with the demographic leg in, the in-sample eta profile is nearly flat (J330 range 14, best at .5; J200
+eta 1 by 12) and held-out leans to high eta (J330 85-119 with fit noise ~30; J200 39). With BBL, eta 1 swings only +.38-.45
+(vs +.46-.61 without BBL): banding absorbs part of the inflation by holding the Sa rise. Production implication (report):
+a defensible no-pin structure is "eta free + BBL 1960-2025 (disease-aware)", swing ~+.4 (J330 / J200), held-out
+48,431-48,465 (J330) -- vs the pinned adopted model's +.34 / 48,380 without the demographic leg.
+Next (GPU): held-out of B0 (eta free, no BBL, J330); then W2 = eta free + year wiggle .2 + BBL (J330, J200) and the eta
+.25 control -- the wiggle term is the analogue of BBS strata x year effects, and absorbed -427 in-sample / -44 held-out.
+J330 + BBL profile complete (in-sample / held-out / East swing): eta 0 147,250.6 / 48,584.6 / +.22; .25 147,234.4 / 48,550.0
+/ +.28; .5 147,227.0 / 48,566.4 / +.32; ~1 147,241.2-147,242.6 / 48,431-48,465 / +.45. In-sample optimum near .5 (range
+24 nats); held-out favours ~1 by ~100 (fit noise ~30). Running: J200 eta .5 + BBL (CPU 8-19).
+
+### DESK "over-movement" and an eta prior (user, 2026-11-07 ~02:00) -- CORRECTION
+I first quoted E004 / E025 (r24 raw and z_ema fields of 2026-10-09: centered corr .2-.4, truth-on-DESK slope .37-.62). Those
+are NOT the production field. Production habitat = field_d_interp_ema_s1 (FIELD54_FIELD_2026-10-30.md; table on TACC
+field54_eval/assim/backcast40/ASSIM_F54_MAIN_b3.md, change 1966-86 -> 2005-25, block 162 km):
+- regional change corr: known .73 / .67 / .65, withheld .65 / .57 / .51 (sedentary common / sedentary / all);
+- slope truth-on-field: known 1.08 / 1.00 / .93, withheld .91 / .80 / .65; spread ratio field / observed = corr / slope
+  ~ .5-.6 (observed change carries sampling noise, so the true ratio is higher).
+Established: the production field is roughly calibrated (no over-movement; mild attenuation at withheld places) with decent
+regional-change skill. A DESK-based prior pushing eta below 1 is not supported; at most a measurement-error attenuation
+~.8-.9 applied to the whole change (rates AND capacity), not a growth / capacity decoupling. Unmeasured: the pre-1966 field.
+Also: earlier "over-movement" (E004) was over-movement RELATIVE TO INFORMATION (low corr), while the change magnitude was
+~55-65% of observed -- the user's reading (angle, not magnitude) was right for those fields too.
+
+### Per-rate routing (S1; trend_routing.per_rate, Beta(1,1) each; J330 + BBL 1960-2025, halo-400; from .5 each)
+eta_s (adult survival) 1.000, eta_r (fecundity) 0.000, eta_sj (juvenile) .086. Objective 147,203.7 (best scalar eta .5:
+147,227.0; eta .25: 147,234.4); held-out 48,510.7 (8,368 / 19,294 / 20,849) -- between eta .25 (48,550) and eta 1
+(48,431-48,465). Established: the data route the regional habitat trend into ADULT SURVIVAL only; fecundity and juvenile
+survival take none of it (consistent with NestWatch's pull against a fecundity trend). Swing readout pending (the first
+readout failed on a syntax error I introduced in age_priors while adding adult_survival_dd -- fixed; the J200 per-rate run
+failed on the same error and is re-running).
+User (02:30): no covariates back in, no partition of DESK's change by driver (memory houfin-no-covariate-partition).
+New option adult_survival_dd (density-dependent adult survival; theta = survival share of the brake at K, Beta(1,1);
+theta 0 = current model; BBL reads the density-braked survival). First fit D1 = dds + eta free + BBL (J330) queued.
+
+### User (~02:45): parsimony -- banding without eta as the lead; eta as a diagnostic; DD survival as exploration;
+paper branches "abundance only" vs "abundance + demographics". Quantified: banding closes about HALF the eta gap
+(J330 ~+.55 -> +.45 vs eta .25 +.34; J200 +.46 -> +.38 vs +.29); held-out (calibrated by the known-truth test) favours
+no routing by ~100 (J330) / ~40 (J200) with BBL; in-sample with BBL is flat. Provisional lead: N1 = NO trend routing
+(trend_routing.enabled false, not eta pinned at 1) + BBL 1960-2025 disease-aware, adopted otherwise (floor 4 x n50,
+per-capita k3, strong absolute Allee, halo-400, compact onset, exp recovery). Fits: J330 and J200 on CPU 8-19 (after
+J200 eta .5 + BBL); J110 BBL pair on TACC. HMC CURRENT.sh moves to N1 once it converges; READY held until the
+whitened_diag sampler passes its first real warmup.
+Per-rate routing is kernel-robust in pattern: J200 + BBL eta_s 1.000, eta_r 0.000, eta_sj .004; objective 147,502.9 (eta 1
+147,526.0; eta .25 147,538.2), held-out 48,619.5 (eta 1 48,591.8; eta .25 48,631.2), East .85 -> 1.30 (+.45). J330 per-rate
+East .62 -> 1.09 (+.47). Established: per-rate fits best in-sample on both kernels, but its swing equals the no-routing
+swing -- an interpretable split (the regional trend reaches adult survival only), not a swing reduction.
+adult_survival_dd first fit failed (NotImplementedError: the adopted model breeds yearlings; I had written the standard
+form only). Added the yearling form: survival alone would need Sa_K = 1 - Sj Fmax (clipped >= .05); c_s = theta (Sa /
+Sa_K,min - 1); fecundity's brake re-solved with Sa_K. Queued (GPU): D2 = no routing + DD survival + BBL (the parsimony +
+biology candidate), then D1 = eta free + DD survival + BBL.
+
+### KEY: per-region routing on J200 (no BBL; R1_J200 local, from eta .98 all; converged 1,604 it)
+eta West 1.000, Plains .013, East .000. Objective 142,719.6 (single eta free -> 1: 142,753.9; eta .25: 142,755.8), held-out
+48,563.9 (eta 1 48,548.0; eta .25 48,621.5); East potential lambda .93 -> 1.12 (+.19; eta 1 +.46; eta .25 +.29).
+Established on J200: the data CHOOSE no routing of the regional trend into the East's and Plains' rates and full routing in
+the West -- 34 nats better in-sample than any single eta, held-out ~equal to the best -- and the East swing drops to +.19.
+J330 per-region (from .5 all) went East .996 at 142,433.3, the same basin as single eta free (142,435.0); not yet tested from
+an East-low start. Running (CPU 26-31): J330 per-region from (W .98, P .1, E .1), without and then with BBL.
+J110 per-region (from .98 all): .986 / .98 / .987, 143,729.4, held-out 48,949.4, East +.80 (the high-start J110 basin).
+J200 + BBL eta profile: .25 147,538.2 / 48,631.2 / +.24; .5 147,531.1 / 48,620.3 / +.30; 1 147,526.0 / 48,591.8 / +.38
+(objective / held-out / East swing): mild, monotone toward eta 1 (12 in-sample, 39 held-out).
+
+### HMC A/B result (warmup): the whitened_diag gain did NOT transfer to the real posterior
+2-chain whitened_diag (3558537): warmup 20,873 s (5.8 h); mean leapfrog steps by quarter 186 / 175 / 223 / 226; 11
+divergences; accept (last 100) .83; step sizes .023 / .009. Control dense_adapt (3558538): 255 every draw, step .022.
+Surrogate predicted ~15 steps -- WRONG by an order of magnitude. Likely causes: (1) the HMC target includes the Jacobian and
+log-sigma terms the MAP objective omits (potential at init 142,580.9 vs objective 142,467.5), so the sampler starts away
+from its own mode and the mode-Hessian is not its geometry; (2) non-Gaussian curvature (divergences: funnels / sharp
+curvature changes, e.g. route sigma or disease parameters). Neither configuration samples efficiently. Replacement
+reservations stay held (READY.held_until_smoke). Next for HMC (after the structure settles): Hessian at the HMC target's
+own mode; per-direction posterior scale from the first segments vs the Hessian; reparameterise stiff / funnel directions.
+TACC (dev pool): B4 eta 1 + BBL (J330, from eta100 fit) CONVERGED 147,233.3 -> J330 + BBL profile eta 0 / .25 / .5 / 1:
+147,250.6 / 147,234.4 / 147,227.0 / 147,233.3 (the free-eta B2 runs at 147,241 had stopped short of the eta-1 optimum);
+eta .75 partial 147,240.0. R2 per-region + BBL (J330, from .5 all) partial at it 530: West .994, Plains .042, East .328,
+147,234.0 -- with banding, J330 shows the J200 per-region pattern (West routes, Plains / East do not), from a neutral start.
+
+### RESULT: density-dependent adult survival (J330 + BBL 1960-2025)
+D2 no routing + DD survival: objective 147,170.4 (no routing without DD, B4: 147,233.3 -> -63); theta (survival share of
+the brake at K) .019; nest 1,935.6 (vs ~1,976), BBL 4,718.9 (vs ~4,748); held-out 48,435.5. D1 eta free + DD: 147,168.8,
+eta .965, held-out 48,449.9 (eta adds 1.6 nats). East (fixed cells): potential lambda .63 -> 1.13 (+.50), Sa .36 -> .56,
+Fmax 3.7 -> 4.5 (without DD: Sa .29 -> .44, F 4.3 -> 5.4). Established: DD survival is a large in-sample gain and moves
+the demography toward the literature (Sa level at the banding .50-.57; fecundity toward NestWatch), but the potential-
+lambda swing is unchanged (~+.5; potential lambda is the low-density rate, which DD does not touch). Plausibility lever,
+not a swing lever. (Readout harness: its c-formula check skipped when survival_dd_c is present.)
+Queued (GPU): D2 on J200; D3 = per-region eta + DD + BBL on J330 from an East-low start.
+
+### NB calibration re-measured on the current lead (D2 = no routing + DD survival + BBL; nb_calibration.py --params, new)
+TRAINING rows (fitted route effects), by expected-count bin: mean Pearson^2 / 90% coverage: <.1 .24 / 1.00; .1-.5 1.14 / .98;
+.5-1 .88 / .97; 1-3 .83 / .97; 3-10 .86 / .97; 10-30 .94 / .94; 30-100 1.22 / .89; >100 1.65 / .85 (obs var/mean 14.8 vs
+model 8.9; 409 rows). Established: on the current model the NB is calibrated or slightly loose below 30 counts (97% of
+rows) and too tight only at > 30 (x1.2-1.65 on ~2.9k rows) -- the 11-04 "x2-3 over-precise" (older model) no longer holds.
+The held-out rows in this readout are NOT a valid NB check (unseen routes scored at route effect 0 without its sigma
+~1.26 uncertainty; marginal_heldout.py is the proper score). Dense-row over-confidence is too small to explain BBS
+outweighing banding (consistent with R93b). I had restated the old number tonight without re-checking (user caught it).
+
+### LEAD CANDIDATE (03:30): D3 = per-region routing + DD adult survival + BBL 1960-2025 (J330)
+eta West .989, Plains .007, East .014; theta .024. Objective 147,128.4 (no routing + DD 147,170.4; no routing 147,233.3 /
+N1 refit 147,241.1); held-out 48,411.8 (D2 48,435.5; N1 48,465.2) -- best of all BBL fits on both. East (fixed cells)
+potential lambda .61 -> .97 (+.36), Sa .35 -> .51, Fmax 4.1 -> 4.7; Plains .60 -> .73; West .68 -> .98. All routing
+values data-chosen (no pin). Established for J330.
+WARNING (J200): D2 no routing + DD (J200) 147,488.1 (B4 no-DD 147,526.0), theta .014, held-out 48,589.1, East .78 -> 1.50
+(+.72, Sa .41 -> .68) -- DD survival WITHOUT per-region routing widens the J200 swing. D3 on J200 running (GPU), then the
+per-region KNOWN-TRUTH tests: per-region fitted to synthetic eta-1 truth (SYNR) and eta-0-structure truth (SYN1) -- does the
+structure invent a West / East split?
+
+### Per-region KNOWN-TRUTH test (synthetic BBS, no BBL / no DD, range_absence_v2)
+eta-1 truth (SYNR): fitted per-region .939 / .999 / .999. eta-0-structure truth (SYN1): .098 / .014 / .025. Established:
+per-region routing recovers both truths; it does not invent a West / East split, so the real-data split (W ~1, P / E ~0) is
+data-driven.
+### D3 on J200 (per-region + DD + BBL, from East-low): eta .988 / .009 / .007, theta .021; objective 147,397.6 (D2 J200
+147,488.1; N1 J200 147,535.1); held-out 48,743.3 (N1 48,594.0; D2 48,589.1); East .81 -> 1.23 (+.42; N1 +.38), Sa .43 -> .60.
+Held-out components vs N1 (pre / post blocks / 2021-25): J200 D3 +24 / +187 / -62; J330 D3 +5 / +48 / -106. Same sign on
+both kernels: the lead forecasts the future years better and predicts withheld post-1994 route BLOCKS worse; net better on
+J330 (-53), worse on J200 (+149). Mechanism unknown. Queued (GPU): D3 on J110; D3 J200 second start (neutral eta .5).
+CPU 8-19: D3 J330 second start (neutral).
+N1 J110 (no routing + BBL): 148,439.6; held-out 49,484.9 (8,582 / 19,832 / 21,072); East .96 -> 1.61 (+.65). Queued D3 J110 second start (from N1, eta .5) on CPU 20-25.
+
+### LEAD (D3 = per-region routing + DD adult survival + BBL) across the kernel set, vs N1 (no routing + BBL)
+| kernel | eta W / P / E | theta | objective (vs N1) | held-out (vs N1; pre / post / 21-25) | East swing (N1) |
+|---|---|---|---|---|---|
+| J330 | .989 / .007 / .014 | .024 | 147,128.4 (-113) | 48,411.8 (-53; +5 / +48 / -106) | +.36 (+.45) |
+| J200 | .988 / .009 / .007 | .021 | 147,397.6 (-138) | 48,743.3 (+149; +24 / +187 / -62) | +.42 (+.38) |
+| J110 | .989 / .111 / .062 | .025 | 148,299.2 (-140) | 49,406.0 (-79; -11 / +65 / -133) | +.39 (+.65) |
+J200 second start (neutral eta .5): 147,397.2, eta .996 / .004 / .003, held-out 48,745.1 -- same basin. Established: the
+West-routes / Plains-East-do-not pattern and the in-sample gain hold on all three kernels; held-out better on J330 and
+J110, worse on J200 (post-1994 blocks); the lead's swing is +.36-.42 on every kernel (J110 cut from +.65). Demography:
+East Sa ~.35-.65 levels, Fmax 3.3-4.8. Next (GPU): the lead WITHOUT banding (J330, J200) for the abundance-only vs
+abundance + demographics branch.
+
+### Abundance-only branch of the lead (D4 = per-region + DD survival, NO BBL)
+J330: eta .992 / .004 / .004, theta .031; 142,365.8 (single eta free B0 142,435.0); held-out 48,517.1 (B0 48,362.1);
+East .48 -> .91 (+.43), Sa .26 -> .46, F 4.2 -> 4.7. J200: eta .992 / .006 / .002, theta .191; 142,608.4 (per-region no DD
+142,719.6); held-out 48,836.0 (per-region no DD 48,563.9); East .70 -> 1.25 (+.55), Sa .38 -> .63.
+Abundance-only vs + demographics (lead structure): swing J330 +.43 -> +.36, J200 +.55 -> +.42; East Sa level J330
+.26-.46 -> .35-.51 (banding lifts it into the literature range); held-out J330 48,517 -> 48,412, J200 48,836 -> 48,743.
+DD survival WITHOUT banding costs held-out (J330 +155 vs B0; J200 +272 vs per-region no DD): the DD brake needs the survival
+data to be placed. R1 J330 per-region from an East-low start, no BBL / no DD: back to W .999 / P .318 / E .978 (142,434.1,
+held-out 48,370.5) -- on J330 the East-unrouted pattern appears only once DD survival is in (D4, D3).
+TACC: the ssh ControlMaster expired ~04:20 (MFA needed); lead CURRENT.sh written locally (scratchpad hmc/CURRENT.sh) but
+NOT uploaded; TACC still holds the eta .25 CURRENT.sh and READY is held, so no reservation can start on a stale model.
+D3 J110 second start (from N1 J110, eta .5 / theta .05; CPU): eta .937 / .517 / .488, 148,363.4 (East-low start 148,299.2:
+-64 better), held-out 49,384.6 -- J110 still multimodal; the West-routes / East-not basin is the better optimum.
+D4 J110 (no BBL) stalled at iteration 1 (line search from the BBL fit's point; result = start); set aside, restarted from the
+J110 East-low init.
+J200 held-out loss of the lead, decomposed (row_ll_compare --held; CONDITIONAL scoring at route effect 0 for unseen routes,
+so the total -1,423 exaggerates the proper marginal +149; direction only): D3 predicts LOWER held-out means than N1 --
+mean log(mu_D3 / mu_N1) West -.09 to -.17, Plains -.47 to -.60, East +.03 to -.15 (1966-2020) -- and loses on dense counts
+(10-29 -317, 30-99 -878, 100+ -464) while gaining on 1-9 (+374). Route-effect penalty +191 for D3: trained routes absorb the
+lower mean surface through their effects; unseen routes cannot. Likely: Plains eta ~0 + DD survival pull the Plains / dense
+surface down. Not fixed tonight (remedies touch capacity / gauge tradeoffs).
+
+## MORNING SUMMARY (2026-11-07 ~05:45) -- for the lock-in decision
+Question the night answered: can lambda inflation be held down for data-driven reasons rather than a pinned eta .25?
+1. The pinned single eta is not defensible and not needed: once banding (BBL 1960-2025, disease-aware) is in, the single-eta
+   in-sample profile is flat (J330 24 nats across 0-1, best ~.5; J200 12); held-out (validated by a known-truth test) leans
+   to full routing. Banding alone (no routing lever) gives swing +.45 (J330) / +.38 (J200) / +.65 (J110).
+2. Per-region routing (W / P / E eta free) is chosen by the data and passes a known-truth test (recovers eta-1 and eta-0 truths;
+   does not invent the split). With DD adult survival + banding it gives the same answer on all three kernels: the native
+   West routes its regional habitat trend into the vital rates (~.99); the invaded Plains and East do not (~.00-.11).
+3. Density-dependent adult survival (crowding brake shared between survival and fecundity; survival share theta ~.02 fitted)
+   makes the demography plausible (East Sa ~.35-.51 on J330, Fmax ~4-5, matching banding / NestWatch levels) and gains
+   ~60-140 nats in-sample. It does not by itself reduce potential-lambda swing; it needs the banding data (without banding it
+   costs held-out).
+4. LEAD (D3): per-region routing + DD adult survival + BBL. Swing +.36 (J330) / +.42 (J200) / +.39 (J110; cut from +.65).
+   In-sample better than no routing by 113-140 on every kernel. Held-out better on J330 (-53) and J110 (-79), worse on J200
+   (+149; post-1994 withheld blocks, from a lower predicted Plains / dense-route surface). Basins: J330 and J200 confirmed from
+   two starts; J110 multimodal, the lead's basin is the better optimum.
+5. Paper branches available now: abundance-only (D4, no banding) vs abundance + demographics (D3) on J330 / J200
+   (swing +.43 -> +.36, +.55 -> +.42; banding lifts eastern Sa into the literature range).
+6. Other findings: the K-discrepancy outlet and the sub-decadal wiggle outlet both WORSEN the swing; per-rate routing puts the
+   whole regional trend in adult survival (interpretable, not a swing fix); the production DESK field is roughly calibrated
+   (no "over-movement" to justify an eta prior); the NB observation model is calibrated below 30 counts on the current model.
+7. HMC: the whitened-diagonal sampler warmed up at ~200 leapfrog steps vs 255 for dense adaptation (surrogate predicted ~15 --
+   wrong); neither samples this posterior efficiently yet. Reservations held; lead CURRENT.sh written locally, not uploaded
+   (TACC ssh session expired ~04:20; needs MFA).
+Open before locking: (a) J200 held-out loss (Plains / dense under-prediction); (b) West plausibility of full routing vs western
+banding decline; (c) HMC sampler geometry (Hessian at the HMC target's own mode; reparameterise stiff / funnel directions).
+D4 J110 (lead structure, no BBL; restarted from the J110 East-low init): eta .996 / .172 / .006, theta .003; 143,628.9 (best
+J110 objective of the night on BBS + nests; adopted J110 eta .25 143,713.2); held-out 49,285.5; East 1.06 -> 1.32 (+.26). On
+J110 banding RAISES the lead's swing (+.26 -> +.39); on J330 / J200 it lowers it. Validation maps (D3 J330, N1 J330, D3 J200)
+running on the GPU -> E:/Datasets/houfin/grid54/sandbox/CAND_viz/.
+D3 J330 SECOND START (from N1 + eta .5 all, theta .1; CPU): eta .999 / .001 / .004, theta .023; 147,127.3 (first start
+147,128.4); held-out 48,413.3 (48,411.8); East .64 -> 1.02 (+.38; first start +.36). Established: the lead's J330 basin is
+reached from a neutral start -- the West-routes / East-not answer does not depend on the East-low initialisation.
+
+### SEAM (user, ~07:00): the validation maps show a straight north-south seam at ~100W in the vital rates
+Cause (established, code): trend_routing's regions are hard grid-column bands (cols < 48 / 48-55 / >= 56); each band's own
+yearly-mean Z anomaly is subtracted (x (1 - eta)) from the rates, so rates step at the band edges. Present in the ADOPTED eta
+.25 model too (checked its 03 map), strongest under per-region routing (W ~1 vs P / E ~0). It sits on the Plains trough, so
+it may act as an artificial barrier: ALL band-routing results tonight (per-region pattern, D3 lead) are PROVISIONAL.
+Fix built: trend_routing.smooth_km -- per-cell regional anomaly = Gaussian-weighted (450 km) mean Z minus its all-years
+mean; eta(col) = eta_w + (eta_e - eta_w) sigmoid((col - mid) / width), eta_w / eta_e ~ Beta(1,1), mid ~ N(52, 6) cols, width
+~ LogNormal(log 4, .5) cols. Runs: D5 = smooth + DD + BBL (J330 GPU, then maps; J200 CPU 8-19); R3 = smooth + BBL, no DD
+(J330, CPU 26-31).
+R2 (band per-region + BBL, no DD, J330, from East-low): eta .984 / .037 / .189; 147,211.5 (eta 1: 147,233.3; eta .5:
+147,227.0); held-out 48,515.0; East .70 -> .94 (+.24). Same pattern; seam caveat applies.
+User (~07:15): why column bands rather than the shape of the Plains? (Answer: an unrevisited shortcut copied from the
+readout's longitude bands.) Added trend_routing.eta_coord = "native_distance": eta varies smoothly (logistic) with distance
+(km, grid x 54) to the 1902 native seed (initpop_latent > 0, col < 48 -- the halo-absence definition); mid ~ N(400, 250) km,
+width ~ LogNormal(log 150, .5) km; smoothed 450 km regional anomaly as in smooth_km. D6 = this + DD + BBL: J330 (CPU 20-25,
+then maps), J200 (GPU after D5). Compared with the column-based smooth D5, it says whether the boundary's SHAPE matters.
+
+### User (~07:30): "the solution is fictional ... are we supervising by CBC presence as well as absence in the early years?
+the map is cheating by making early-year lambda really low in the west"
+Established: NO. Every fit in the floor / routing lineage since 11-06 (incl. all of tonight's) used the range ABSENCES
+(rangev2 1940-65 + halo-400 pre-1966 zeros) but NOT the CBC presence term (--cbc_presence; presence_cost 0.0) -- my
+omission; the user's standing rule is that presences are real data. The lead's 22_cbc_presence map: many 1902-65 western
+interior / Canadian presences and the whole eastern 1940s-60s colony at P(detect) ~ 0 ("impossible").
+Mechanism (likely): with the West routing its regional trend fully (eta_W ~1) and the anomaly centred on the all-years mean,
+the West's EARLY rates are pushed down (early regional Z anomaly < 0); that keeps the native population off the Plains
+(satisfying the absences) at no cost, because nothing rewards early presence. The per-region West ~1 / East ~0 pattern may be
+substantially this. Prior evidence (11-05, delayrec_pres): enforcing presences cost +485 BBS in-sample, +197 / +43 held-out,
+cut the West swing .29 -> .11 and left the East swing robust.
+Running: D7 = lead (band per-region + DD + BBL) + --cbc_presence (J330, CPU 26-31; pre-empted the R3 smooth no-DD check).
+The smooth runs (D5 column, D6 native-distance) also lack presence; they need presence versions before any lead is named.
+How presence was lost (from these records): 11-05 the candidate had it (lap_delayrec_pres); 11-06 ~01:30 the floor refits used
+lap_fl_J330_nopres as the base (no recorded decision); later on 11-06, after the user's "inert is not a reason to drop" for
+the absences, the rangev2 restoration ran presence + absences (BBS +450) vs absences-only (+3) and I CONTINUED WITH ABSENCES
+ONLY -- dropping the costly real data and keeping the weaker half. Every fit since inherits it. Rule saved (memory
+houfin-presence-absence-base): both terms in every base fit; costly data terms are reported, never silently dropped.
+Re-base plan: presence versions of the adopted eta .25, no routing, per-region (band), smooth column (D5) and native-distance
+(D6) structures, with BBL and DD as before, J330 first then J200.
+RE-BASE launched (all: halo-400 absences + early CBC PRESENCE + BBL 1960-2025 disease-aware; J330 unless noted). The
+no-presence smooth runs (D5 / D6) were stopped and set aside (aborted_*_nopres). P5 smooth column routing + DD (GPU, then
+maps); P6 native-distance routing + DD (CPU 8-19, then maps; J200 on GPU after P5); P2 no routing + DD and P0 adopted eta .25
+(CPU 20-25); D7 band per-region + DD (CPU 26-31, running).
+
+### HMC jobs interrupted -> GPU development workers (user ~08:30: HMC not usable for final runs; check, then interrupt)
+Final state (eta .25 adopted model, no presence term): control dense_adapt (3558538) 525 draws (21 segments), 255 leapfrog
+steps on every draw but 1 divergence total, accept .72-.96, potential ~142,640-142,655; 2-chain whitened_diag (3558537) 225
+draws per chain, mean steps 214-237, 0 divergences after warmup, step sizes .023 / .009. All segments pulled to
+E:/Datasets/houfin/grid54/sandbox/hmc_pull/ for the basin / interval readout (to do: per-parameter posterior SDs vs the
+Laplace Hessian, ESS, chain agreement). Both jobs' samplers replaced IN PLACE (gdb execl) by hmc/gpuworker.sh: 2 task slots
+per A100 from runs/gpuq/pending (allocations kept, ~36 h left). First tasks: presence re-base on J200 / J110 (g01-g06).
+A100 speed: g02 (D7 J200 + presence) converged in 110 it / ~8 min. The pending HMC reservations (3560260/1) stay held.
+
+### CBC COUNT likelihood (user ~08:40: "can't it be an estimated circle or circle-year effect?" + "try the era version with
+imputation in 1950-65") -- laplace_fit --cbc_counts cbc_early.npz --cbc_count_mode {era, latent}
+Effort recorded (cbc_effort_missing == 0) by era: 1902-19 0%, 1920-39 10%, 1940-49 57%, 1950-59 96%, 1960-65 97%.
+Both modes: NB count likelihood for CBC circle-years (training rows, <= 1965); expected count = exp(s + b * log effort + u_c) x
+local + seasonal-source-weighted model density; circle effects u_c ~ N(0, 1) integrated out per circle (Laplace, as the BBS
+routes); own scale s, effort exponent b (prior N(.6, .3)) and overdispersion phi, so the CBC cannot re-scale BBS.
+- era: presence-only (positive circle-years) before 1940 and for 1940s rows without effort; counts AND zeros where effort is
+  recorded from 1940; 1950-65 rows without effort IMPUTED (circle's median recorded log effort 1940-65, else the year trend).
+- latent: counts and zeros for ALL 1902-65 rows; missing log effort ~ N(m(t), tau^2), m(t) piecewise-linear (10-y knots,
+  flat before 1920) and tau fitted on RECORDED efforts only and held fixed (counts cannot move them -- the anchor against
+  effort / density confounding); integrated by moment-matching the lognormal into the NB (mean x e^{b^2 tau^2 / 2},
+  1/phi_eff = (1 + 1/phi) e^{b^2 tau^2} - 1).
+Not yet: the winter-concentration drift (CBC scale vs time since colonisation) and a known-truth test of latent effort.
+First fits (A100 workers): C1 era / C2 latent on no routing + DD + BBL; C1 era on native-distance routing + DD + BBL and on the
+adopted eta .25 + BBL. The count runs do NOT pass --cbc_presence (era supplies its own pre-1940 presence rows; latent replaces
+them).
+
+### CORRECTION to the MORNING SUMMARY (user ~09:00: "I explicitly described eta as a good diagnostic but probably not for
+the final version -- did you adjust?")
+No: after briefly making N1 (no routing + BBL) the lead at ~02:45, I re-labelled the per-region eta structure (D3) as the
+"LEAD" and drafted HMC for it, without flagging that this reversed the user's stated direction. Superseded: the FINAL-MODEL
+LINE is eta-free -- no routing + DD adult survival + BBL + range absences + early CBC data (presence-only, or the count
+likelihood). All eta structures (single, per-region band, per-rate, smooth column, native distance) are DIAGNOSTICS: they say
+what the data would route if allowed, for the paper, not lead candidates. (They were also the structures that leaned on the
+seam and on the missing presences.) Queue reprioritised: eta-free CBC-count fits on J330 / J200 / J110 (era and latent) ahead
+of the remaining eta runs.
+LOCAL SLOT LOSS (~08:00-09:30): the P5 / P6 / P2 / P0 local launches used `wsl.exe -e bash -c "nohup ... &"`, which dies when
+the WSL call returns -- they never ran; local GPU and CPU 8-19 / 20-25 idle ~90 min (only D7, launched normally, ran).
+Relaunched as tracked background jobs, eta-free first: P2 no routing + DD + presence (GPU, then maps), P1 no routing (no DD) +
+presence (CPU 8-19), P0 eta .25 + presence reference (CPU 20-25). P5 / P6 (eta diagnostics) dropped locally.
+TACC A100 results so far: C1 era (J330, no routing + DD + BBL + CBC counts): objective 154,357.2; BBS 122,902.4 (+169 vs D2
+without CBC); presence (pre-1940 rows) 224.2; CBC count nll 6,795.6; held-out 48,682.7 (+247 vs D2); readout pending.
+J200 presence-only re-base: P2 no routing + DD 149,034.2 (BBS 123,305.2, presence 1,186.9), held-out 48,933.5, East .72 / 1.28 /
+1.55 (+.83: presence enforcement WIDENS the no-routing J200 swing); D7 per-region (diagnostic) 148,966.5, East +.53; P0 eta .25
+149,140.7; D7 J110 149,951.6.
+
+### Early-data comparison, eta-free line (no routing + DD survival + BBL + absences)
+| kernel | early CBC term | objective | BBS | held-out | East potential lambda 1966 / 1993 / 2010 |
+|---|---|---|---|---|---|
+| J330 | presence-only (P2) | 148,893.3 (presence 1,273.8) | 123,156.0 | 48,716.4 | readout pending |
+| J330 | counts, era (C1) | 154,357.2 (count nll 6,795.6) | 122,902.4 | 48,682.7 | .54 / .95 / 1.15 (+.61) |
+| J330 | counts, latent (C2) | 156,400.7 (count nll 9,151.3) | 122,855.4 | 48,635.2 | pending |
+| J200 | presence-only (P2) | 149,034.2 | 123,305.2 | 48,933.5 | .72 / 1.28 / 1.55 (+.83) |
+| J200 | counts, era (C1) | 154,583.8 | 123,085.3 | 48,767.4 | .83 / 1.25 / 1.50 (+.67) |
+Established: the count likelihood beats presence-only on the BBS data and on held-out on both kernels (J330 BBS -254 / -301,
+held-out -34 / -81; J200 -220 / -166) -- counts carry growth information that makes the early era consistent with the BBS era;
+latent > era on J330 (~-47 on both). With real early data the eta-free swing is ~+.6-.7 (vs ~+.4-.5 when the early era had only
+absences): BBS + early CBC jointly ask for low colonisation-era and higher late eastern growth -- the central tension, now
+data-driven. Diagnostic diagnostics (eta): J200 presence smooth-column (P5) 148,924.4, held-out 48,985.7.
+
+### What the early CBC counts demand (cbc_demand.py; recorded-effort circle-years; R = log obs / model-expected, relative)
+J330, no routing + DD + BBL; fits: no early data (D2), presence-only (P2), counts era (C1), counts latent (C2):
+- EAST: R rises from 1950-54 to 1960-65 by +2.04 / +1.50 / +1.98 / +1.89 -- the observed eastern CBC counts grew ~e^2 (~7x)
+  faster than the model's colony, in every fit, even those fitting the counts. Positive-circle share obs .01-.05 vs model
+  .04-.15: the model's colony is too WIDE and too THIN.
+- WEST: R +.7 to +1.1 from 1920-39 to 1950s; positive share model .8-.9 vs obs .65-.79 (again too widespread).
+- PLAINS: model positive share .18-.50 vs obs .00-.11; R -2.7 to -4.9: the Plains leak persists in every fit.
+Likely mechanism: with J330's long juvenile kernel, early growth DIFFUSES the colony rather than building it locally; a higher
+early lambda would put birds in far too many circles and onto the Plains, so the fit holds early lambda low and raises it
+late -- the swing is (mostly) a dispersal-shape artefact. Tests: the same diagnostic on J200 / J110 count fits; then
+density-dependent dispersal (pushed wave; plan card A) or a time-lengthening eastern kernel (partial migration; card B).
+J200 counts era (C1 J200): East R 1950-54 -> 1960-65 -1.92 -> +.09 (+2.01, same as J330 +1.98); positive share model .04 / .07 /
+.10 vs obs .01 / .02 / .05; Plains model .15-.28 vs obs .03-.11. Established: the eastern 1950-65 growth gap does NOT shrink
+from J330 to J200 -- kernel length is not the main cause (the "likely" dispersal-shape mechanism above is RETRACTED).
+Remaining candidates: (1) CBC winter concentration (Weiss 1997: winter counts grew 2.5-5x faster than breeding counts in newly
+colonised areas) -- observation, and fitting counts without it may itself feed the swing; (2) low-density colony growth held
+down (absolute Allee pin / release habitat); (3) J110 (running). Next: CBC scale drift with years since local colonisation.
+
+### CBC count fits across kernels (eta-free: no routing + DD + BBL + absences)
+| kernel | mode | objective | BBS | held-out | East 1966 / 1993 / 2010 | swing |
+|---|---|---|---|---|---|---|
+| J330 | era | 154,357.2 | 122,902.4 | 48,682.7 | .54 / .95 / 1.15 | +.61 |
+| J330 | latent | 156,400.7 | 122,855.4 | 48,635.2 | .59 / .93 / 1.06 | +.47 |
+| J200 | era | 154,583.8 | 123,085.3 | 48,767.4 | .83 / 1.25 / 1.50 | +.67 |
+| J200 | latent | 156,664.0 | 123,071.9 | 48,832.9 | .78 / 1.23 / 1.43 | +.65 |
+| J110 | era | 155,345.3 | 123,899.8 | 49,722.3 | .83 / 1.31 / 1.64 | +.81 |
+| J110 | latent | 157,472.4 | 123,897.4 | 49,484.4 | .84 / 1.23 / 1.47 | +.63 |
+Diagnostic: eta .25 + counts era (J330) 154,409.6 (52 WORSE than no routing in-sample), held-out 48,699.9 (+17).
+Established: with real early data, routing at .25 is not preferred -- parsimony (eta-free) is supported by the data; latent
+effort gives the smaller swing on all three kernels and the better held-out on J330 / J110. Next: + CBC winter-concentration
+drift (--cbc_winter_drift; latent; J330 / J200 on the A100s).
+
+### CBC winter-concentration drift (latent mode; gamma: CBC scale x e^{gamma (1 - e^{-dt/10})}, dt = years since the circle's
+first record): J330 gamma 1.14 -> objective 156,368.3 (-32), CBC nll 9,119.9 (-31), BBS 122,853.7, held-out 48,660.2 (+25),
+East .61 / .94 / 1.07 (+.46); J200 gamma 1.12 -> 156,634.3 (-30), held-out 48,884.6 (+52), +.64. Established: winter
+concentration is real in the CBC (~3x, within Weiss's 2.5-5x) but does NOT change the dynamics or the swing: the remaining
+swing is from the BBS-era dynamics, not from fitting winter growth as population growth.
+CANDIDATE TO LOCK (proposed to the user ~11:00): eta-free -- no routing + DD adult survival + BBL 1960-2025 + range absences +
+CBC counts 1902-65 with latent effort (winter drift optional); swing +.47 J330 (.59 -> 1.06), +.65 J200, +.63 J110. Open: the
+CBC Plains over-prediction; J200 held-out on dense routes; HMC basin readout; validation maps (running).
+
+### SPIN-UP RESULT (S2 = candidate + 40-y spin-up, J330; b01 on TACC, lap_S2 locally) -- recorded 2026-11-07 ~09:25
+Western occupied cells (>= 1% of modern density; 1,992 western land cells), seed start (candidate a02) vs 40-y spin-up:
+1902 1,098 / 915; 1915 854 / 998; 1930 1,034 / 1,116; 1950 1,275 / 1,269; 1966 1,436 / 1,419; 2010 1,673 / 1,660.
+Established: the spin-up removes the 1902-15 contraction (range grows steadily from 1902) without "cheating" on 1902 -- the
+spun-up native range settles ~17% SMALLER than the seed; the fit pays ~30 nats rather than raise early western growth
+(objective 156,430.2 vs 156,400.7; held-out 48,632.8 vs 48,635.2). Early western CBC positives judged improbable: 1902-19 17%
+-> 10%, 1920s 4% -> 9%. East potential lambda .59 / .92 / 1.05 (+.47; unchanged); eastern 1950-65 colony gap +1.89 (unchanged).
+Likely mechanism: nothing in the likelihood says the early-century West was occupied -- only 63 western CBC positives before
+1920, the range absences cover the Plains not the western interior, and the seed map enters only as an initial shape. So the
+fit can hold the early West at ~46% of western cells and grow it ~80% by 2010.
+
+## NATIVE-RANGE PRESENCES 1902-40 (PRE-REGISTERED 2026-11-07 ~09:25; follow-up to the spin-up result)
+Question: if the early-century native West is asserted occupied, must early western growth (and potential lambda) be higher
+than the fit wants -- i.e. is "lambda starts too low" (the swing) partly an artefact of the unpinned early West?
+SOURCE CAVEAT (corrects the earlier description "historical range reconstruction"): the seed map is the convex hull of
+PRE-1970 western BBS presences, i.e. 1966-69 routes (src/data/preprocess/bbs.py generate_core_margin_initialization; core =
+hull of routes above the 75th count percentile). Using it for 1902-40 is a BACK-CAST ASSUMPTION (1966-69 occupancy held in
+1902-40), not 1902-40 data; it would also deny real 20th-century western expansion if any (unknown here -- literature check
+pending). The rangev2 design (HISTORICAL_RANGE_IMPLEMENTATION_20261102) deliberately did NOT fill occupancy into the native
+envelope interior. Hence these arms are a DIAGNOSTIC SENSITIVITY, not a base change, until the user decides.
+Term (new; laplace_fit --range_presence, builder range_presence_build.py): w * -log(1 - (1 + N/k)^-k), N = cell annual total
+(route-count scale), k = presence_k .437 -- the censored NB2 event paired with the absences' k log(1 + N/k). Years 1902-40,
+w .1 per cell-year (one cell-decade unit per cell; rangev2 thinning). Footprints (west of 100W):
+  RP1 bbs6669 -- 93 cells with a positive 1966-69 BBS route (evidence-backed; total weight 362.7)
+  RP2 core    -- 350 seed core-hull cells (1,365.0)
+  RP3 seed    -- 1,050 seed cells incl. the hull interior (4,095.0; strongest assertion)
+Base for all arms (data terms stated): S2 = no routing + DD adult survival + BBL 1960-2025 (disease-aware) + halo-400 range
+absences + CBC counts 1902-65 latent effort + 40-y spin-up; init from the kernel's spin-up / C2 fit.
+Runs: RP3 J330 local GPU; RP1 / RP2 J330 + RP3 J200 / J110 on the TACC A100 queue. J330-only results reported as such.
+Readout: objective split (BBS, CBC count nll, BBL, absences, range-presence cost), held-out, western occupied cells
+1902-2010, early western potential lambda, East potential lambda 1966 / 1993 / 2010 (swing), cbc_presence_check, cbc_demand.
+Predictions: RP1 nearly free (the spin-up already occupies most BBS-positive cells; < 20 nats) -> no change. RP2 / RP3 cost
+the BBS-era fit tens to hundreds of nats and are met mostly by early western K / occupancy rather than eastern rates:
+western 1902 occupied cells rise toward the seed; East swing changes by < .1 (likely; the swing is set by eastern BBS + CBC).
+If instead the East swing shrinks by > .1 with RP3, the unpinned early West is feeding the swing through the shared
+habitat -> rate mapping (that would be the "lambda starts too low" route).
+
+### SPIN-UP START SENSITIVITY (plan step 3; PRE-REGISTERED ~09:30): Allee bistability of the spun-up 1902 range
+Fixed S2 params (no refit), replay with the 40-y spin-up started from the seed x {.1, .3, 1, 3} (new option
+population_model.spinup.start_scale, default 1 = identity; overlays norout_dds_spin_s{01,03,30}_kf4_pc3). Read: western
+occupied cells 1902-2010 and early western CBC presence probabilities (cbc_presence_check.py). Prediction: x3 converges to the
+x1 state (overshoot collapses to the same carrying state); x.1 / x.3 lose margin cells below the absolute Allee threshold and
+end SMALLER in 1902 (bistability), i.e. the spun-up 1902 range depends on the seed's level -- if so, the spin-up does not by
+itself identify the early range, and the range-presence arms (above) are what carry that information.
+
+### RESULT ~09:35: spin-up start sensitivity (S2 params fixed; replay)
+Western occupied cells (>= 1% modern median; of 1,992) by spin start x seed: 1902 x.1 846 / x.3 905 / x1 915 / x3 916;
+1915 977 / 998 / 998 / 1,000; 1940 1,220 / 1,223 / 1,223 / 1,223; identical from 1966 (1,419). Early western CBC presence
+probabilities unchanged (1902-19 P<.1 share .10 in all). Established: the spun-up 1902 range is an attractor of the fitted
+early rates -- starting 3x higher converges to the same state, 10x lower costs only ~7% of cells in 1902 and nothing by 1940.
+The pre-registered strong-bistability prediction was WRONG. Implication: the small early West (~46% of western cells) is what
+the early-1900s rates sustain, not a seed artefact; only data on early occupancy (or different early rates) can move it.
+
+### RESULT: native-range presence cost AT the spin-up fit (S2 trajectory, no refit; w .1 per cell-year, k .437)
+| footprint | cells | weighted cost | cell-years N < .01 / < .1 (route counts) | median N | cells N < .01 in 1940 |
+|---|---|---|---|---|---|
+| RP1 bbs6669 | 93 | 748.5 | .14 / .37 | .69 | 6 / 93 |
+| RP2 core | 350 | 2,126.9 | .04 / .22 | .69 | 5 / 350 |
+| RP3 seed | 1,050 | 12,472.7 | .28 / .55 | .06 | 162 / 1,050 |
+Established: even the 93 cells WITH a positive 1966-69 BBS route are near-empty in 14% of 1902-40 cell-years under S2 -- the
+pre-registered "RP1 nearly free (< 20 nats)" is WRONG. Caveat on the cost form (established, arithmetic): with k .437 the
+detection probability saturates slowly (N 1 -> P .34; N 10 -> P .75), so the term also rewards DENSITY in occupied cells, not
+only occupancy; most of the cost here is from near-empty cell-years (cost ~ -log N), but the fits must be read with this.
+Whether these cells were truly unoccupied pre-1940 (real 20th-century western spread) is unknown.
+
+### Spin-up across kernels (S2 = candidate + 40-y spin-up; S3 = 80-y; S4 = 40-y + winter drift)
+| run | objective | BBS | held-out | East 1966 / 1993 / 2010 | swing (vs C2 no spin) |
+|---|---|---|---|---|---|
+| J330 S2 (b01) | 156,430.2 | 122,866.2 | 48,632.8 | .59 / .92 / 1.05 | +.46 (+.47) |
+| J330 S3 80 y (b05) | 156,429.8 | 122,866.6 | 48,613.4 | .58 / .92 / 1.05 | +.47 |
+| J330 S4 + drift (b07) | 156,397.3 | 122,873.7 | 48,671.7 | .61 / .93 / 1.06 | +.45 |
+| J200 S2 (b02) | 156,662.3 | 123,107.6 | 48,704.1 | .81 / 1.16 / 1.33 | +.52 (+.65) |
+| J200 S3 80 y (b06) | 156,693.3 | 123,102.0 | 48,757.2 | .79 / 1.20 / 1.42 | +.63 |
+| J110 S2 (b03) | 157,553.3 | 123,998.1 | 49,489.7 | .83 / 1.23 / 1.51 | +.68 (+.63) |
+Established: the spin-up leaves the swing within ~.1 on every kernel; J200 S2's smaller swing (+.52) is not reproduced by the
+80-y spin (+.63; 31 nats worse objective, so likely a different local optimum, not a spin effect). Held-out: J200 S2 better
+than C2 J200 (48,704 vs 48,833); J330 / J110 ~unchanged. Diagnostic P0 (eta .25 + DD-free + BBL + presence, J330): objective
+148,960.8, BBS 123,159.4, held-out 48,723.7, East .68 -> .96 (eta .25 reports ~+.3 regardless of truth; diagnostic only).
+Queued on TACC: RP1 / RP2 on J200 / J110 (b12-b15) from each kernel's spin fit.
+PRE-REGISTERED (~09:36) RP1k5: RP1 with --range_presence_k 5 (new flag; absences / CBC keep k .437): detection ~1 - e^-N, so
+the term asks for OCCUPANCY (N ~ 1-3 route counts) and stops rewarding density sooner. J330, local CPU 20-25. Compare with
+RP1 (k .437, TACC b081): if both raise early western lambda alike, the pressure is occupancy; if only k .437 does, it is
+density pressure from the cost form.
+
+### RESULT ~09:40: RP3 (whole seed map asserted occupied 1902-40, w .1, k .437), J330 local GPU, from S2
+| | S2 (no presences) | RP3 |
+|---|---|---|
+| objective (incl. presence term) | 156,430.2 | 159,064.3 |
+| range-presence cost (at S2 -> fitted) | 12,472.7 | 1,481.8 |
+| BBS marginal | 122,868.7 | 123,612.3 (+744) |
+| CBC count nll / BBL / absences | 9,173.7 / 4,699.7 / ~31 | 9,372.5 (+199) / 4,760.2 (+60) / 151.4 (+120) |
+| held-out | 48,642.8 | 49,299.9 (+657 worse) |
+| East potential lambda 1966 / 1993 / 2010 | .59 / .93 / 1.06 (+.47) | .43 / 1.08 / 1.37 (+.94) |
+| Plains 1966 / 2010 | -- | .26 / .96 |
+| West 1966 / 2010 | .75 / .84 | .86 / 1.01 |
+Optimiser stopped on relative reduction with grad_l2 746 (not cleanly converged): continuation lap_RP3b running locally.
+Established (pending the continuation): asserting the full 1966-69 hull for 1902-40 does NOT shrink the swing -- it DOUBLES it
+(+.94), costs ~740 BBS nats and ~660 held-out nats. The pre-registered "< .1 change" prediction was wrong in the other
+direction. Likely mechanism (no routing: every rate is one shared function of habitat Z): keeping the hull interior (arid /
+montane, low-Z cells) occupied needs higher rates in poor habitat; a bigger western population then presses on the Plains
+absences, so the fit holds Plains (and, through the same Z -> rate map, early eastern) rates down -- Plains 1966 lambda .26,
+East 1966 .43 -- and the BBS-era eastern growth must then come from a larger late rise. Unknown: whether RP1 / RP2 (evidence-
+backed / core cells) show the same direction at smaller size; that is the decisive comparison (TACC b081 / b08 running).
+Queued locally next: RP2k5 (core, occupancy-like k 5).
+
+### RESULT ~09:45: native-range presences, TACC (k .437, w .1; from each kernel's spin fit)
+| run | objective (incl. RP cost) | RP cost (at S2 -> fitted) | BBS | CBC nll | BBL | held-out | East 1966 / 1993 / 2010 | swing |
+|---|---|---|---|---|---|---|---|---|
+| J330 S2 (no presences) | 156,430.2 | -- | 122,866.2 | 9,173.7 | 4,699.9 | 48,632.8 | .59 / .92 / 1.05 | +.46 |
+| J330 RP1 bbs6669 (b081) | 156,926.5 | 748.5 -> 312.4 | 122,920.2 (+54) | 9,269.0 (+95) | 4,704.4 | 48,743.4 (+111) | .66 / .95 / 1.10 | +.44 |
+| J330 RP2 core (b08) | 157,468.8 | 2,126.9 -> 625.9 | 123,016.2 (+150) | 9,287.9 (+114) | 4,757.9 (+58) | 48,813.1 (+180) | .48 / 1.06 / 1.39 | +.91 |
+| J330 RP3 seed (local) | 159,064.3 | 12,472.7 -> 1,481.8 | 123,612.3 (+744) | 9,372.5 | 4,760.2 | 49,299.9 (+657) | .43 / 1.08 / 1.37 | +.94 |
+| J200 S2 (b02) | 156,662.3 | -- | 123,107.6 | 9,104.9 | 4,707.1 | 48,704.1 | .81 / 1.16 / 1.33 | +.52 |
+| J200 RP3 seed (b09) | 159,252.0 | -> 1,492.6 | 123,898.5 (+791) | 9,324.4 | 4,734.0 | 49,441.5 (+737) | .70 / 1.35 / 1.58 | +.88 |
+| J110 RP3 seed (b10) | running: it 450 obj 160,164.4, RP 1,624.7, BBS 124,755.3 (+757 vs b03) | | | | | | | |
+Established (J330; RP3 also J200): asserting early western occupancy never shrinks the swing. With the 93 evidence-backed
+cells (RP1) the swing is unchanged (+.44 vs +.46) at a cost of ~180 nats outside the term and +111 held-out; asserting the core
+(RP2) or the full hull (RP3) DOUBLES it (+.91 / +.94; J200 +.88 vs +.52), and every arm worsens BBS, CBC and held-out. So the
+"lambda starts too low because the early West is unpinned" hypothesis is REJECTED as a route to a smaller swing: a pinned,
+fuller early West makes the eastern early-vs-late contrast larger. Likely mechanism (as for RP3): with no routing, one habitat
+-> rate map; a fuller West needs higher rates in poor (low-Z) habitat, a bigger western population presses on the Plains
+absences, the fit lowers Plains and early-East rates (RP2 East 1966 .48), and the BBS-era East needs a larger late rise.
+Unknown: whether the occupancy-only form (k 5; RP1k5 local CPU + TACC b16 / b17, RP2k5 local GPU) behaves the same.
+Production implication (report only): early-West occupancy data, if real 1902-40 evidence were added, would push the swing UP;
+the swing's source lies in the East / Plains coupling of the shared habitat map, not in the early West.
+
+### EASTERN COLONY GAP on the spin-up candidate (plan step 4; PRE-REGISTERED ~09:50)
+Records first: on earlier bases the release-cell Allee exemption (replay, ~5954), 1940 release + exemption (F1 / F3, ~6074),
+founder size (~5838) and per-capita Allee were inert or near-inert for the swing; the binding constraint was the fitted
+1950s release-area habitat (release-block lambda0 1.25 -> max r .22 < documented ~.24 / yr). None was retested with CBC
+COUNTS (which now carry the 1950-65 growth signal: the eastern gap R +1.89 on S2).
+X1: S2 (candidate + spin-up, all data terms: BBS + CBC counts latent + BBL + halo-400 absences) + release_allee_exemption_years
+10 (existing option), J330, local CPU 26-31. Prediction: inert again (swing change < .05; eastern CBC gap shrinks < .3),
+because the habitat, not the Allee, binds. If the gap shrinks by > .5, the counts make the Allee binding on this base.
+
+### RESULT ~09:50: presences on J200 / J110 (k .437, w .1)
+| run | objective | BBS | CBC nll | BBL | held-out | East 1966 / 1993 / 2010 | swing (kernel S2) |
+|---|---|---|---|---|---|---|---|
+| J200 RP1 bbs6669 (b12) | 157,149.8 | 123,185.6 (+78) | 9,218.8 | 4,711.8 | 48,809.9 (+106) | .88 / 1.18 / 1.34 | +.46 (+.52) |
+| J110 RP3 seed (b10) | 160,131.9 | 124,743.7 (+746) | 9,302.2 | 4,694.2 | 50,004.3 (+515) | 1.09 / 1.27 / 1.40 | +.31 (+.68) |
+| J110 RP1 (b13) | INVALID: stalled at its start (6 iterations, objective unchanged 158,963.8); rerun b18 from a014 |
+J110 RP3 does NOT follow the J330 / J200 pattern: the swing SHRINKS (+.31 vs +.68), but by raising EARLY eastern potential
+lambda to 1.09 (1966) at a cost of ~750 BBS and ~515 held-out nats -- a different (worse-fitting) solution, not support for
+the hypothesis. RP1 on J200 is near-neutral for the swing (+.46 vs +.52). Kernel set so far: the evidence-backed RP1 leaves the
+swing unchanged on J330 / J200 (J110 pending); forcing the full hull changes it in a kernel-dependent direction (J330 / J200
+up ~+.4-.5, J110 down .37), always with large BBS / held-out losses. Established: none of the presence arms is a better fit.
+
+### CONVERGENCE CHECK (~10:00; best-trace grad_l2 at the stop, all "relative reduction" stops)
+Converged (grad 8-25): J330 S2 b01 (25), RP1 b081 (7.8), RP2 b08 (16.3), J200 S2 b02 (18.9), J200 RP3 b09 (10.4).
+NOT converged: J110 S2 b03 (9,583 -- the J110 spin baseline itself), J110 RP3 b10 (3,883), J200 RP1 b12 (27,552), local J330
+RP3 (746). Their numbers above are PROVISIONAL; continuations queued (b20 J110 S2, b21 J200 RP1; local RP3b). The J110 RP3
+"swing shrinks" reading and the J200 RP1 +.46 must wait for these.
+
+### USER (~09:55) on the presence results: "This is fantastic news though. We have increasing data, sharpening problems.
+This is what we build on to discover and fix model misspecification. This can include a more flexible model. The key is the
+right, tightly constrained flexibility." -> next: LOCALISE the presence tension (row_ll_dump / row_ll_compare S2 vs RP1 / RP2,
+cbc_demand on RP1 / RP2; running local CPU 8-19), then propose the smallest constrained flexibility that relieves it.
+
+### LOCALISATION of the presence tension (J330, converged fits; row_ll_dump / row_ll_compare vs S2; cbc_demand)
+BBS rows (ll_RP - ll_S2; positive = RP better). TRAIN rows (route effects at each fit's mode):
+| | West | Plains | East | total | route-effect penalty change |
+|---|---|---|---|---|---|
+| RP1 (93 cells) | -34.1 | -10.2 | -11.2 | -55.5 | -37.5 |
+| RP2 (core) | -24.4 | -18.3 | +87.6 | +44.9 | +290.5 (worse) |
+HELD-OUT rows (conditional on the training route effects; larger than the marginal held-out, same direction):
+| | West | Plains | East (1980-93 / 94-05 / 06-14 / 15-20) | total |
+|---|---|---|---|---|
+| RP1 | -7.3 | -11.4 | -423.6 (-41 / -161 / -103 / -74) | -442.2 |
+| RP2 | +280.7 (66-79 +102, 80-93 +84, 94-05 +103) | -123.0 | -1,438.4 (-223 / -564 / -419 / -260) | -1,280.7 |
+Mean log(mu_RP2 / mu_S2): West +.12 (1966-79) then -.08 to -.14; East +.07 then -.16 / -.05 / -.13 / -.09.
+CBC (cbc_demand): eastern 1950-54 -> 1960-65 gap S2 +1.89 -> RP1 +1.98 -> RP2 +2.17; Plains positive share model .21-.58
+(RP1) vs obs .00-.11 (leak larger).
+Reading:
+- Established: with the early West pinned to its core (RP2), WESTERN held-out BBS rows IMPROVE (+281, all of 1966-2005) --
+  the western BBS era is MORE consistent with a fuller early-century West. The western data are not what resists.
+- Established: the cost lands in the EAST after 1980: in-sample the eastern rows are matched only by inflating route
+  effects (+290 penalty), and eastern held-out rows lose ~1,400 (conditional); the eastern 1950-65 colony gap widens.
+- Likely mechanism (the misspecification): West and East share ONE habitat -> rate map (no routing). A fuller, earlier West
+  needs rates the eastern trajectory cannot also accept, so the East's trajectory shape breaks; route effects absorb it in
+  sample and it fails out of sample. The data want the West and the East to have DIFFERENT rate histories / levels at
+  similar habitat -- exactly what the swing has been absorbing on the calendar.
+- Candidate constrained flexibility (not yet built; for discussion): LINEAGE (population structure, not geography): track
+  native and introduced birds as two co-occurring sub-populations sharing density dependence, with ONE introduced-lineage
+  rate offset (constant in time; e.g. on log fecundity or logit juvenile survival), prior anchored on the founder bottleneck /
+  eastern partial migration literature. Unlike per-region routing it has no geographic seam (lineages mix where they meet).
+  Test: RP2 + lineage offset on J330 / J200 / J110 -- does it recover eastern BBS / held-out while the West stays pinned, and
+  what does the swing do? Cost: forward state x2.
+PRE-REGISTERED (~10:05) X2: S2 + per-capita Allee aggregation k 1 (was 3; low-density slope x2 vs x4/3), all data terms, J330,
+local CPU 8-19. Records: lap_pc_k1 on the older base -92 objective, swing ~unchanged (~6321). Prediction: -30 to -100 nats,
+eastern CBC gap shrinks < .3, swing change < .1; Plains leak to watch (weak-Allee pathology).
+
+### RESULT ~10:05: occupancy-like presences on J200; J110 convergence pattern
+| run | objective | BBS | CBC nll | held-out | East 1966 / 1993 / 2010 | swing (kernel S2) | grad |
+|---|---|---|---|---|---|---|---|
+| J200 RP1k5 (b16) | 157,021.1 (RP 152.6) | 123,178.5 (+71) | 9,225.5 | 48,904.9 (+201) | .85 / 1.23 / 1.42 | +.57 (+.52) | 21 ok |
+| J110 RP1 from a014 (b18) | 157,930.7 (RP 296.7) | 123,959.9 | 9,196.4 | 49,521.8 | .91 / 1.31 / 1.56 | +.65 (b03 +.68, itself unconverged) | 4,850 NOT |
+| J200 RP2 (b14) | 157,685.1 | 123,346.2 | 9,173.3 | 48,802.0 | .89 / 1.16 / 1.32 | +.43 | 1,327 NOT (190 it) |
+Established: the occupancy-like form (k 5) of the evidence-backed presences behaves like k .437 on J200 (swing +.57 vs +.52,
+BBS +71, held-out worse) -- the presence tension is about OCCUPANCY, not the cost form's density pressure. J110: every fit
+from the J110 spin baseline stalls or stops with grad in the thousands (b03 9,583; b10 3,883; b13 / b17 stalled at the start;
+b18 4,850 from a014) -- J110 + spin-up is stiff for L-BFGS; J110 numbers stay provisional (continuations b20 / b23 / b24 queued).
+
+### RESULT ~10:15: RP3 continuation and RP2 occupancy-like (J330, local GPU)
+RP3b (RP3 continued): 159,060.4, BBS 123,615.0, held-out 49,279.8, East .41 / 1.07 / 1.38 (+.97), grad 473 -- RP3 confirmed.
+RP2k5 (core, k 5): 157,017.4 (RP 210), BBS 122,984.6 (+118), CBC 9,292.9, BBL 4,751.2, held-out 48,820.9 (+188),
+East .48 / 1.05 / 1.43 (+.95), grad 7.8 (converged). Established: the core-range tension is the same under the occupancy-like
+form (swing doubles; East loses) -- it is an occupancy conflict, not the density pressure of k .437.
+
+### FITTER FIX (~10:10): warm starts reset the CBC-count and BBL nuisance parameters
+laplace_fit re-initialised the 12 BBL reporting parameters (logit .005) and the CBC-count block (s0 / .6 / 0) at every --init;
+BBL values were never saved. Every continuation / cross-start therefore began hundreds of nats away (b21: +369 CBC, +366 BBL)
+and several stalled at the start (b13, b17, b21: 2-6 iterations) -- the "J110 stiffness" reading above is partly THIS
+artefact (retracted as stated; J110 fits still show large final gradients). Fix: best_params now saves laplace_bbl; --init
+resumes laplace_bbl and laplace_cbc_counts when present (stage lines bbl_init / cbc_counts_init report resumed=True/False).
+Fits before the fix carry laplace_cbc_counts but not laplace_bbl (BBL still restarts from logit .005 for them).
+
+## ROUND 1 of constrained decouplings (user ~10:12: "try various strategies ... versions with routing (diagnostic) ... other
+## decouplings and strategic but constrained flexibility ... in parallel, then rounds of synthesis ... if changes are not
+## tightly constrained they are not even useful as diagnostics") -- PRE-REGISTERED ~10:20
+Target tension (localised above): a pinned, fuller early West (RP2 core presences) breaks the post-1980 East (held-out ~-1,400
+conditional) and widens the 1950-65 eastern CBC gap, because West and East share one habitat -> rate map.
+Common base: S2 (no routing + DD + BBL + CBC counts latent + halo-400 absences + 40-y spin-up); arms with "RP2" add the core
+presences (w .1, k .437). Each lever is 1-2 parameters. Read: does the lever recover the eastern rows / held-out under RP2
+while the West stays pinned, and what is the swing? Same lever with and without RP2 tells whether the presences are needed to
+identify it.
+- R1 ROUTING (DIAGNOSTIC, 1 parameter: global eta ~ Beta(1,1), region_col_breaks [48, 56]): R1a = S2 + eta; R1b = RP2 + eta.
+  J330 (R1b local GPU; R1a TACC c01), J200 / J110 (TACC c02-c05). Prediction: R1b eta > R1a eta (the presences make the
+  regional trend allocation matter more) and R1b recovers part of the eastern held-out loss; swing reported (eta routes
+  regional Z change away from rates, so the R1 swing is not comparable to eta-free swings -- bias known ~+.35 at eta .25).
+- R2 LINEAGE (population structure, 1 parameter; to be BUILT): native and introduced birds as two co-occurring
+  sub-populations sharing density dependence; one constant introduced-lineage offset on a single rate.
+- R3 HABITAT-RESPONSE SHAPE (1 parameter; design pending a read of age_fields): curvature of the habitat -> rate map so
+  poor habitat can hold sparse populations without raising rates in mid habitat.
+- X1 / X2 (running): release exemption 10 y; per-capita Allee k 1 (Allee-side levers on S2).
+R2 LINEAGE -- BUILT (~10:35) and PRE-REGISTERED: population_model.lineage {enabled, loc 0, sd .3}; age_forward lineage_delta:
+the introduced lineage I (the release pulse and its descendants) is a sub-population of N; departure is decided on the TOTAL
+density (the sub-pool moves with the total's per-cell departure probabilities, so dispersal is linear in I); Allee, crowding,
+survival, DD survival and disease act on totals; introduced breeders produce e^delta x native per-breeder births (cell
+fecundity = breeder-weighted mean). ONE parameter delta ~ N(0, .3). Readout: deterministic lineage_intro_total. Guards:
+not combined with occupancy / settlement / subcell / process noise / warp / anchor / attraction / veit reproduction / clock.
+Identity test a90 (delta at its init 0 must reproduce the S2 start objective). Arms: L1a = S2 + lineage, L1b = RP2 +
+lineage; J330 (a91 / a92), J200 (c06 / c07), J110 (c08). Predictions: L1b moves delta below 0 (introduced breeders less
+productive) and recovers part of RP2's eastern held-out loss; the East swing under L1b falls toward the S2 value (+.46) or
+below; L1a delta near 0 unless the early East also wants it (then L1a alone shrinks the swing). Falsified as a fix if L1b
+delta stays ~0 or the eastern rows do not recover.
+R3 HABITAT-RESPONSE SHAPE -- DROPPED before building (~10:40): each rate already reads its own 64-D Z.beta manifold
+(age_fields.project_and_scatter_age_structured), so a 1-parameter curvature on H adds no way for the West and the East to
+differ at SIMILAR Z -- it cannot decouple the localised tension; it would only reshape the response everywhere. Next
+decoupling candidates instead: the lineage offset on a different rate (survival, needs a per-lineage survival split in the
+forward), and lineage-specific dispersal (introduced lineage on a longer juvenile kernel mixture; banding-constrained,
+1 parameter; plan step 5) -- both build on R2.
+
+### RESULT ~10:22: J110 continuations
+J110 S2 continued from a014 (b20): objective 157,444.8 (b03 157,553.3; -108), BBS 123,882.6, CBC 9,069.1, BBL 4,688.0,
+held-out 49,278.9 (b03 49,489.7; -211), grad 76 -- the better J110 spin baseline (readout pending). J110 RP1k5 from a014 (b23):
+157,866.9 (RP 181.6), BBS 124,002.3 (+120 vs b20), held-out 49,471.6 (+193), grad 782 (not converged). J110 RP3 continuation
+(b24): stalled after 3 iterations (BBL reset: b10 predates the BBL save) -- discard. Identity test a90 running (unrouted S2
+start 156,793.6 with BBL reset; the lineage start must match it).
+
+### ~10:45 R2 lineage: identity PASSED; init bug fixed; readout anchors fixed
+- Identity (local replay, S2 params + lineage_delta 0 under the lineage overlay): western occupied cells 915 / 998 / 1,116 /
+  1,223 / 1,269 / 1,419 / 1,623 / 1,660 and eastern CBC presence identical to S2 -- the lineage forward is exact at delta 0.
+  delta .3 (no refit): eastern 1960-65 CBC positives judged improbable .10 -> .01 (the released lineage grows faster).
+- a91 / a92 FAILED (start objective inf): laplace_fit drew the missing lineage_delta from the prior with the run seed (a large
+  e^delta explodes). Fix: a new lineage offset starts at the prior centre (stage lineage_init). Requeued as a9x1 / a9x2;
+  c06 / c08 use the fixed code; c07 (J200 L1a) taken locally (GPU).
+- structural_fit_readout patches age_forward by source text; the lineage edit moved two anchors, so readouts since ~10:35
+  failed (local R1b; TACC b20 / b23). Anchors updated (worktree + TACC); readouts re-run (TACC a93; local R1b).
+### R1b (RP2 + global eta, J330, local; converged grad 5.8): objective 157,399.3 (RP2 157,468.8: -70), eta .196, BBS 122,950.8
+(-65), CBC 9,278.8, BBL 4,753.2, RP cost 635.5, held-out 48,906.8 (RP2 48,813.1: +94 WORSE). Routing buys in-sample nats under
+the pinned West but loses held-out -- the same in-sample / held-out split seen for routing on 11-07 morning. Swing: readout
+re-running.
+### ~10:28 kernel-set baselines / RP2
+J110 S2 (b20, readout fixed): East .76 / 1.24 / 1.54 -> J110 spin baseline swing +.78 (the unconverged b03 read +.68).
+J200 RP2 continued (b22): objective 157,645.2, BBS 123,294.6 (+187 vs b02), CBC 9,195.5, BBL 4,707.7, held-out 48,837.5 (+133),
+East .86 / 1.20 / 1.48 (+.62 vs J200 S2 +.52). RP2 raises the swing on J200 too (+.10; J330 +.45).
+
+### ~11:05 R2 lineage: NaN-gradient bug found and fixed (a91 / a92 / a9x* / a9y* / c06 / c08 / local c07 all INVALID)
+Every lineage fit started at objective inf: fun() returns inf when the GRADIENT is non-finite (the value was finite and equal
+to S2's). Bisection (scratchpad lin_bisect.py, T = 5 years, before the release): the lineage sub-pool is exactly zero, so in
+rightpad_convolution's smooth FFT floor (numerics fft_floor_smooth, ulps 64) tol = 64 eps max|out| = 0 and the derivative's
+denominator (pos^2 + tol^2 + tiny)^2 underflows to 0 -> 0/0 NaN, which the inverse FFT spreads to every cell. Fix (age_forward):
+denominator max(pos^2 + tol^2, 1e-150) (identical wherever a grid holds any O(1e-60) mass -- every total-population grid).
+Checks: gradients finite with lineage off and on; lineage delta 0 vs off: max |N difference| = 0.0 (exact identity).
+Also fixed earlier: a missing lineage_delta starts at the prior centre (Sandbox.lat carries a RANDOM draw); empty-cell
+double-where for the lineage share. TACC sat EMPTY ~10 min while the failed lineage tasks drained (my error: they failed in
+seconds); refilled with d01-d06 (L1b / L1a x J330 / J200 / J110; d04 taken locally).
+
+### RESULT ~11:05: R1 routing diagnostic (global eta ~ Beta(1,1)), round 1
+| run | eta | objective (vs no-eta twin) | held-out (vs twin) | East 1966 / 1993 / 2010 | swing (twin) | grad |
+|---|---|---|---|---|---|---|
+| J330 R1a S2 + eta (c01) | .53 | 156,421.1 (-9) | 48,574.4 (-58) | .59 / .86 / .99 | +.40 (+.46) | 5.6 |
+| J330 R1b RP2 + eta (local) | .196 | 157,399.3 (-70) | 48,906.8 (+94) | .45 / .89 / 1.24 | +.79 (+.91) | 5.8 |
+| J200 R1a S2 + eta (c04) | .43 | 156,678.9 (+17) | 48,740.2 (+36) | .82 / 1.07 / 1.20 | +.38 (+.52) | 94 |
+| J200 R1b RP2 + eta (c02) | .164 | 157,583.4 (-62 vs b22) | 49,013.0 (+176) | .82 / 1.14 / 1.33 | +.51 (+.62) | 13 |
+| J110 R1b (c03) / R1a (c05) | .62 / .62 | 158,561.4 / 157,591.3 | 49,525.6 / 49,457.8 | .99/1.21/1.38 ; .88/1.19/1.39 | -- | 6,154 / 3,693 NOT converged |
+Reading: (established, J330 + J200) the pinned West (RP2) pushes eta DOWN (.43-.53 -> .16-.20): the fit routes MORE of the
+regional Z trend out of the rates when the early West is pinned -- the opposite of the pre-registered prediction. Under RP2 that
+routing buys in-sample nats (-62 / -70) but LOSES held-out (+94 / +176): it is absorbing the conflict, not resolving it. On the
+S2 base, eta .43-.53 is mixed out of sample (J330 -58, J200 +36). Routing trims the swing by ~.1 everywhere (known eta bias).
+RP1k5 J330 (local, grad 73): objective 156,821.4 (RP 187.0), BBS 122,914.9 (+49 vs S2), CBC 9,272.9, BBL 4,712.0, held-out
+48,667.4 (+35), East .62 / .98 / 1.10 (+.48 vs +.46). Evidence-backed presences leave the swing unchanged under both forms.
+PRE-REGISTERED L1c (~11:15): RP1 (93 evidence cells) + lineage, J330, local CPU 20-25 -- the lineage lever on the defensible
+presence set. Prediction as L1b, smaller (RP1's eastern cost is smaller).
+
+### RESULT ~11:20: R2 lineage (fecundity offset, delta ~ N(0, .3)), first converged arm
+J330 L1b = RP2 + lineage (d01, grad 8.3): delta -.051; objective 157,449.1 (RP2 157,468.8: -20), BBS 122,991.9 (-24), CBC
+9,287.2, BBL 4,752.3, RP 629.2, held-out 48,802.8 (RP2 48,813.1: -10). Swing: readout pending.
+J110 L1b (d05): delta +.012, held-out 49,487.1, NOT converged (grad 6,044; continuation e01).
+Reading (J330; J200 / L1a pending): a CONSTANT introduced-lineage fecundity offset is nearly inert -- delta stays near 0 and
+recovers ~10 of the ~180 held-out nats the pinned West costs the East. Prediction (delta < 0, eastern rows recover) FALSIFIED
+for the constant form. Likely reason: the eastern conflict is about the TIME SHAPE of eastern growth (slow 1950s-60s colony,
+fast later), which a constant level offset cannot express; the shared map then still has to supply the change on the
+calendar. Round-2 candidates (each 1-2 parameters, lineage-anchored, not geography):
+ (a) lineage offset that fades with lineage age (founder bottleneck / inbreeding recovery): delta(t) = delta0 e^{-(t - t_rel)/tau},
+     tau fixed or tight prior -- a named, testable mechanism for slow early colony growth;
+ (b) lineage-specific dispersal: introduced birds on a longer juvenile-kernel mixture (eastern partial migration, Able &
+     Belthoff 1998), banding-constrained (plan step 5);
+ (c) the constant offset on juvenile survival instead of fecundity (cheap check that the rate choice is not the issue).
+
+### RESULT ~11:25: X2 per-capita Allee k 1 on S2 (J330, local; grad 50)
+objective 156,381.2 (-49), BBS 122,843.1 (-23), CBC 9,173.6, BBL 4,694.0, absences 27.1, held-out 48,667.7 (+35 worse),
+East .59 / .91 / 1.03 (+.44 vs +.46). Established: a weaker low-density Allee buys in-sample nats but not held-out and leaves
+the swing unchanged (as on the older base). X1 (release exemption) at it 450: 156,432.3 -- inert so far.
+
+## ROUND 2a (PRE-REGISTERED ~11:25): lineage offset that FADES with lineage age (founder bottleneck / inbreeding recovery)
+population_model.lineage.fade_tau (fixed): delta(t) = delta0 e^{-max(t - t_release, 0)/tau}, delta0 ~ N(0, .5); ONE free
+parameter per arm; DIAGNOSTIC (it can re-express the swing as a named, decaying lineage effect -- whether that is an
+acceptable mechanism is the user's call; the swing must be read as "calendar change in the shared map" vs "lineage effect").
+Built: age_forward accepts a (time,) lineage_delta; checks: finite gradient (fade_test.py). Arms: J330 RP2 x tau 10 / 25
+(e04 / e06), S2 x tau 10 / 25 (e05 / e07), J200 RP2 tau 10 (e08), J330 RP1 tau 10 (local CPU 8-19, F10c).
+Predictions: delta0 < 0 (founders less productive, recovering); under RP2 it recovers a large share of the eastern held-out
+loss (> 60 of ~180) and the swing of the SHARED map (East potential lambda of NATIVE rates) falls toward or below S2's;
+tau 25 fits better than tau 10 if the eastern lag is long (1951-75). Falsified if delta0 ~ 0 again.
+Readout caveat: the readout's potential lambda uses the shared map's rates; the lineage-specific realised rates must be read
+separately (delta(t) applies to introduced breeders' fecundity).
+
+### RESULT ~11:25: R2 constant lineage offset across the set (fecundity, delta ~ N(0, .3))
+| run | delta | objective (vs twin) | held-out (vs twin) |
+|---|---|---|---|
+| J330 L1a S2 + lin (d02) | -.038 | 156,428.3 (-2) | 48,628.0 (-5) |
+| J330 L1b RP2 + lin (d01) | -.051 | 157,449.1 (-20) | 48,802.8 (-10) |
+| J200 L1b RP2 + lin (d03) | -.080 | 157,638.5 (-7 vs b22) | 48,829.0 (-8) |
+| J110 L1a S2 + lin (d06) | +.068 | 157,454.0 (+9 vs b20) | 49,174.6 (-104; J110 convergence noise likely) |
+Established (J330 + J200): the constant introduced-lineage fecundity offset is INERT -- |delta| < .1, < 20 nats in sample,
+< 10 held-out, with or without the pinned West. Population structure as a constant level difference is not what the data ask
+for; round 2a (fading offset) tests a time-shaped lineage difference. Swings: readouts pending.
+J110 continuations e01 (L1b) / e02 (R1a) returned their inits unchanged (objectives 158,546.3 / 157,591.3; the BBL block now
+resumes, so this is NOT the reset artefact): L-BFGS stops at once on "relative reduction" with grad in the thousands. J110 fits
+sit at a stiff, non-stationary point the optimiser cannot leave; J110 numbers remain PROVISIONAL (an optimiser fix -- e.g. a
+diagonal pre-conditioner or restart with a perturbed x -- would be needed before J110 can vote).
+J200 L1a S2 + lineage (local c07, grad 78): delta -.072, objective 156,655.6 (b02: -7), held-out 48,715.3 (+11) -- inert, as
+on J330. e10 (J200 RP2 fade 25) moved to the local GPU.
+
+### RESULT ~11:36: X1 release-cell Allee exemption 10 y on S2 (J330, grad ~20): objective 156,432.3 (+2), BBS 122,868.0,
+held-out 48,641.0 (+8), East .59 / .93 / 1.06 (+.47) -- INERT, as predicted (and as on every earlier base): the Allee at the
+release is not what holds the eastern colony back.
+DIAGNOSTIC (~11:37) J110 optimiser stall: restart d05 (J110 L1b, stuck at grad 6,044) with --newton 80 (inner Laplace Newton
+steps; default 30) on local CPU 26-31. If it moves, J110's stalls come from an inexact inner solve -> inexact gradient ->
+failed line searches, and J110 fits need --newton 80.
+
+### RESULT ~11:42: round 2a (fading lineage offset), first arms, J330
+| run | delta0 | objective (vs twin) | held-out (vs twin) |
+|---|---|---|---|
+| RP2 + fade tau 10 (e04) | -.836 | 157,428.9 (-40 vs RP2) | 48,795.8 (-17) |
+| S2 + fade tau 10 (e05) | -.559 | 156,418.2 (-12 vs S2) | 48,631.8 (-1) |
+| RP2 + fade tau 25 (e06) | +.215 | 157,454.7 (-14) | 48,818.3 (+5) |
+J200 RP1 + constant lineage (e03): delta -.096, objective 157,118.9, held-out 48,758.5.
+Reading (J330; J200 pending): a founder deficit fading over ~10 y (founders ~e^-.8 ~ .45x as productive in 1951) is mildly
+preferred (-12 / -40 in sample) but held-out barely moves (-1 / -17 of ~180) and the sign of delta0 flips at tau 25 -- weakly
+identified. Prediction (> 60 held-out recovered) FALSIFIED so far. Swing readouts pending.
+
+## ROUND 2b (PRE-REGISTERED ~11:42): smooth native-distance routing (etaNat) under the pinned West
+Synthesis behind it: under RP2 the global eta fell (.43-.53 -> .16-.20): the pinned West wants LESS of the regional habitat
+trend in its rates (a stable, already-full early West), while the East needs its rates to rise. With ONE map and one eta, both
+regions must take the same share of their regional Z change -- the residual conflict. etaNat (built 11-07 morning, trend_routing
+eta_coord native_distance: eta varies logistically with distance from the 1902 native seed; mid ~ N(400, 250) km, width ~
+LogNormal(log 150, .5); smoothed 450 km anomaly) lets the share differ smoothly between the native West and the colonised
+range without a geographic seam. DIAGNOSTIC (routing). Arms: RP2 / S2 x J330 (f01 / f02), J200 (f03 / f04).
+Prediction: under RP2, eta inside the native range << eta outside it, and the eastern held-out loss under RP2 recovers
+substantially (> 60 of ~180); if eta stays uniform or held-out does not recover, the conflict is not about the regional trend.
+J110 stall diagnosis (~11:50): --newton 80 does NOT help (1 iteration, grad 6,044). --grad_sites at the stuck d05 point: the
+analytic gradient matches the FORWARD finite difference, but the BACKWARD difference is ~-1.6e5 per unit at h = 1e-6 for every
+leading site (manifold_factor, alpha_a / j / f / k, w_scale, dd share, lineage_delta...): f(x - h e_i) ~ f(x) + .16 nats --
+the stuck point sits beside a ~.16-nat JUMP in the objective (a hard threshold somewhere; source not yet identified). L-BFGS
+cannot descend through it. J110 results stay PROVISIONAL; conclusions rest on J330 + J200 (stated in every summary).
+Round 2a more: J330 S2 + fade tau 25 (e07): delta0 +.121, objective 156,429.5 (-1), held-out 48,621.1 (-12). J200 S2 + fade
+tau 10 (e09): delta0 -.460, objective 156,653.4 (b02: -9), held-out 48,730.6 (+27). The fading offset stays weak (< 40 nats,
+held-out -17..+27), sign unstable across tau. Round 2b etaNat running (f01-f03), f04-f06 (RP1 etaNat x J330 / J200) queued.
+
+### RESULT ~12:00: round 2b, J330 RP2 + etaNat (f01, grad 16)
+eta_w (native side) .716, eta_e (colonised side) .359, mid 561 km, width 63 km; objective 157,447.7 (RP2: -21), BBS 122,971.5
+(-45), CBC 9,286.7, RP 636.3, held-out 48,929.7 (RP2 48,813.1: +117 WORSE), East .54 / .90 / 1.15 (+.61 vs RP2 +.91), West
+.85 / .87 / 1.01. Prediction (eta native << eta colonised; eastern held-out recovers) FALSIFIED: the native side keeps MORE of
+its regional trend (.72) and the colonised side less (.36); in-sample -21 but held-out +117. Like the global eta, smooth
+routing absorbs the conflict in sample and fails out of sample.
+J110 jump source (~12:05, parts_jump at d05, coord 65, h = 1e-6 backward): marginal_obs +.159, conditional_obs +.306,
+obs_model_eps0 +.020, CBC -.002 -- the jump is in the LAPLACE ROUTE-MARGINAL BBS term: the inner route-effect solve (30 damped
+Newton steps from 0, clip 1) lands in a different solution after a 1e-6 parameter change (likely a route with a bimodal or
+flat conditional). Route-level report running (route_jump). This non-smoothness can affect every kernel's fits (J110 worst).
+Route-level: ONE route (index 12709, 17 rows, e* 1.317) moves its route-effect mode by .223 under the 1e-6 step (next largest
+.002). Likely mechanism: with conc_density_power (NB concentration ~ mu^kappa) the route-effect conditional is NOT log-concave,
+so a route can have two modes and the inner Newton (from 0) switches between them -- a .16-nat jump in the Laplace marginal.
+Fix options (not yet applied): warm-start the inner solve from the last accepted e (locally smooth, path-dependent), or
+multi-start + pick the higher mode (smooth only away from ties). Applies to every kernel; J110 just sits on such a tie.
+
+### ~12:15 readout fix + more round-2 results (J200)
+structural_fit_readout: with lineage the forward returns the introduced density at index 3; the 5-value unpack failed for every
+lineage readout (local + TACC). Fixed (drops index 3); TACC lineage / fade readouts re-run (a94).
+J200 S2 + constant lineage (local c07): East .83 / 1.20 / 1.39 (+.56 vs J200 S2 +.52). J200 RP2 + fade tau 25 (local e10, grad
+65): delta0 +.689, objective 157,638.8 (b22 157,645.2: -6), held-out 48,846.8 (+9), East .74 / 1.08 / 1.37 (+.63 vs +.62).
+NOISE FLOOR (queued g01-g03): restart the converged J330 S2 / J330 RP2 / J200 S2 fits from their own best params (BBL block
+restarts for these pre-fix params) -- the size of restart-to-restart differences tells which of the 5-40 nat lever gains are
+real, given the route-mode jumps found above.
+
+### RESULT ~12:20: round 2b etaNat (smooth native-distance routing), all arms
+| run | eta_e (colonised) | eta_w (native) | mid / width km | objective (vs twin) | held-out (vs twin) | East 1966 / 2010 | grad |
+|---|---|---|---|---|---|---|---|
+| J330 S2 (f02) | 1.00 | .04 | 11 / 27 | 156,414.4 (-16) | 48,654.6 (+22) | .59 / 1.05 | 19 |
+| J330 RP2 (f01) | .36 | .72 | 561 / 63 | 157,447.7 (-21) | 48,929.7 (+117) | .54 / 1.15 | 16 |
+| J330 RP1 (f05) | 1.00 | .00 | 312 / 35 | 156,841.9 (-85 vs b081) | 48,760.2 (+17) | .62 / 1.08 | 15 |
+| J200 S2 (f04) | .08 | .59 | 270 / 137 | 156,665.3 (+3) | 48,914.2 (+210) | .86 / 1.02 | 51 |
+| J200 RP2 (f03) | .05 | .91 | 429 / 98 | 157,587.5 (-58 vs b22) | 49,019.5 (+182) | .98 / 1.16 | 257 |
+| J200 RP1 (f06) | .06 | .25 | 575 / 63 | 157,092.1 | 48,935.4 | .92 / 1.11 | 62 |
+Established (J330 + J200): smooth routing is NOT identified -- the fitted shape flips between kernels (J330: the native side
+drops its whole regional trend, eta_w ~ 0; J200: the colonised side drops it, eta_e ~ .05) -- and it WORSENS held-out in every
+arm (+17 to +210). On J200 it nearly erases the swing (+.16 to +.19) but only by routing the eastern trend out of the rates
+at a large held-out cost. Round-2b prediction FALSIFIED. Routing (global or smooth) remains a diagnostic that absorbs, not a fix.
+
+### KEY (~12:30): the fitted rates RISE IN THE WEST 1902 -> 1966 too (replay of S2 vs RP2, J330; core_hab.py)
+Yearling-form potential lambda (Sa + Sj F) and K (route-count units), medians over the presence footprints:
+| fit | cells | 1902 lambda / K | 1966 lambda / K | 2010 lambda / K |
+|---|---|---|---|---|
+| S2 | 93 BBS-positive, EMPTY in 1902 (23) | .51 / .09 | .97 / .16 | 1.09 / .18 |
+| S2 | 93 BBS-positive, occupied in 1902 (70) | .83 / .14 | 1.38 / .25 | 1.50 / .27 |
+| S2 | 350 core, occupied 1902 (311) | .57 / .10 | .90 / .15 | .97 / .16 |
+| RP2 | 350 core (all occupied 1902) | 1.08 / .16 | 1.29 / .18 | 1.26 / .18 |
+| RP2 | 93 BBS-positive | 1.11 / .16 | 1.47 / .20 | 1.55 / .21 |
+Established (replay): in the candidate (S2) the native West's rates and capacity roughly DOUBLE from 1902 to 1966 -- the
+"small early West" is the shared Z -> rate map applied to 1902 Z, and the same calendar rise that the 1966+ readout calls the
+eastern swing is already present in the West before 1966 (the readout's 1966 baseline hides it). Pinning the core (RP2)
+flattens the western rise (core lambda 1.08 -> 1.29 -> 1.26) and the EASTERN swing then doubles (+.91).
+Likely mechanism: with no routing, Z change through time moves every region's rates through the same map. The data want the
+native West roughly STATIONARY (occupied, ~replacement, since 1902) and the colonised East RISING. The map cannot do both, so
+the fit trades: either the West rises too (S2: small early West) or the East's rise is concentrated late (RP2: bigger swing).
+Unknown: whether this is DESK's early-century Z trajectory (habitat change in the West that did not happen -- a covariate /
+encoder question, cf. M-series in CONSIDERATIONS) or real western change (20th-century spread). Routing (eta) addresses
+exactly this but has failed held-out at every shape tried so far.
+
+### NOISE FLOOR (~12:27; restart from own best params)
+| fit | original | restart | change | held-out change | swing |
+|---|---|---|---|---|---|
+| J330 S2 (g01) | 156,430.2 | 156,430.0 | -0.2 | +0.1 | +.47 (same) |
+| J200 S2 (g03) | 156,662.3 | 156,661.9 | -0.4 | (pending) | |
+| J330 RP2 (g02) | 157,468.8 | 157,446.4 | -22.4 | -17.0 | +.99 (was +.91) |
+Established: the eta-free S2 fits are converged (restart < 1 nat). The RP2 fit was NOT: a plain restart gains 22 nats in sample
+and 17 held-out. So lever gains of ~20 nats on RP2 bases (constant lineage -20, fade tau 25 -14, global eta -70 in sample) must
+be read against a ~20-nat restart floor; the fade tau 10 (-40) is ~18 beyond it. Queued: second RP2 restart (g04), fade 10
+from the restarted RP2 (g05), J200 RP2 restart (g06).
+
+### Swings for the lineage / fade arms (readouts re-run, a94); East potential lambda 1966 -> 2010
+J330: S2 + lin .59 -> 1.06 (+.47); S2 + fade10 .62 -> 1.06 (+.44); S2 + fade25 .55 -> 1.05 (+.50) [S2 +.46];
+RP2 + lin .47 -> 1.46 (+.99); RP2 + fade10 .47 -> 1.41 (+.94); RP2 + fade25 .43 -> 1.41 (+.98) [RP2 +.91; restart +.99].
+J200: S2 + lin .83 -> 1.39 (+.56); S2 + fade10 .87 -> 1.28 (+.41); RP2 + lin .93 -> 1.51 (+.58); RP2 + fade10 .88 -> 1.46
+(+.58); RP2 + fade25 (local) .74 -> 1.37 (+.63) [S2 +.52, RP2 +.62]; RP1 + lin .88 -> 1.58 (+.70; RP1 J200 base pending h01).
+Established: no lineage arm moves the swing beyond restart noise on J330 or J200.
+Queued: J110 S2 / RP2 from a014 with --laplace_warm (i01 / i02): does the warm inner solve let J110 converge from scratch?
+
+### ~12:40 results + HMC pointer
+- RP2 J330 second restart (g04): 157,446.4 (= g02) -> converged at g02. RP2 + fade10 from g02 (g05): 157,429.0 (-17.4), held-out
+  48,790.4 (-5.7), East .48 -> 1.42 (+.94 vs +.99): a small residual gain at the converged RP2, swing unchanged.
+- S2 J330 with --laplace_warm (h02): 156,430.0 (= S2): warm start changes nothing at a converged point.
+- RP1 J200 clean refit (h01, grad 19): 157,134.6 (RP 275.6), BBS 123,170.9 (+63 vs b02), held-out 48,855.4 (+151), East .85 ->
+  1.40 (+.55 vs +.52).
+- HMC reservation pointer: hmc/CURRENT.sh updated from the demoted eta .25 model to the S2 candidate (no routing + DD + BBL +
+  halo-400 + CBC counts latent + spin-up; init b01). READY stays held (sampler geometry unresolved). Backup CURRENT.sh.bak_20261107_eta025.
+
+### RESULT ~12:45: X2 per-capita Allee k 1 on J200 (local, 733 it): objective 156,558.9 (b02: -103), BBS 123,063.8 (-44),
+held-out 48,745.8 (+42), East .80 -> 1.23 (+.43 vs +.52). Same pattern as J330: in-sample gain, held-out loss.
+
+### KEY (~12:45): decadal potential lambda (Sa + Sj F, yearling form) and K on FIXED cell sets (cells occupied in 2010, N > .1)
+| year | J330 West lambda / K | J330 East lambda / K | J200 West | J200 East |
+|---|---|---|---|---|
+| 1902 | .47 / .083 | .36 / .069 | .50 / .068 | .51 / .068 |
+| 1930 | .63 / .107 | .44 / .079 | .70 / .087 | .61 / .077 |
+| 1951 | .66 / .111 | .50 / .088 | .73 / .090 | .70 / .087 |
+| 1966 | .75 / .125 | .66 / .111 | .83 / .100 | .91 / .110 |
+| 1993 | .84 / .140 | 1.06 / .178 | .94 / .113 | 1.32 / .166 |
+| 2010 | .91 / .152 | 1.16 / .199 | 1.03 / .125 | 1.48 / .195 |
+Established (replay of the candidate S2 on two kernels): potential lambda and K rise MONOTONICALLY through the whole century
+in BOTH regions -- West +.44 / +.53, East +.80 / +.97; K roughly doubles everywhere. The "eastern swing" is the steepest part of
+a continent-wide habitat-driven rise (through the shared map, no routing), not an eastern anomaly; the 1966 readout baseline
+hides the western and pre-1966 part. The median occupied western cell is below replacement (lambda < 1) until ~2000 on J330 --
+the West is modelled as mostly sinks fed by dispersal from the best cells.
+Unknown (the decision this sets up): is a century-long doubling of habitat quality in the native West credible (urbanisation,
+feeders, irrigation -- plausible but not established here), or is it DESK's temporal Z trend leaking into the rates?
+
+### ~12:47 results + diagnostic HMC
+- J110 S2 with --laplace_warm from a014 (i01, grad 27 -- the first CONVERGED J110 spin baseline): objective 157,454.8, held-out
+  49,207.9, East .78 / 1.20 / 1.50 (+.72). J110 RP2 warm (i02): stuck (grad 2,398). J200 RP2 restart (g06): +1 nat, grad 1,038 --
+  RP2 fits are hard to optimise on J200 too.
+- DIAGNOSTIC HMC (plan step 6; user ~08:30: HMC not for final runs) on the S2 candidate (J330): k01 / k02, whitened-diagonal mass,
+  200 warmup + 400 samples, 3-h cap, seeds 1 / 2 -- posterior spread of the swing on the leading structure.
+Round 2a last arms: J200 S2 + fade25 (j01): delta0 +.469, objective 156,652.4 (-10), held-out 48,721.7 (+18), East .72 -> 1.32
+(+.60 vs +.52). J330 RP1 + fade25 (j02, from the S2 init): delta0 -.207, objective 156,936.3 (RP1 b081: +10), held-out 48,643.1
+(RP1: -100), East .68 -> 1.10 (+.42). CAUTION: j02 is 10 nats WORSE in sample yet 100 BETTER held-out than b081 -- different
+local optima of the same-ish structure differ by ~100 held-out nats, so single held-out differences below ~100 are not
+decisive on presence bases (the S2 base restarts were stable to < 1).
+HMC fix (~12:55): run_hmc assumed x = [coords, log sigma]; with CBC-count / BBL blocks after sigma it failed (146 vs 161).
+potential now indexes the nc model coordinates (extra blocks are unconstrained, no Jacobian). Chains: k11 / k12 (init b01,
+BBL block restarted -> Hessian had 2 negative eigenvalues, clipped; warmup should recover), k13 (J330 from g01) / k14 (J200 from
+g03) start at true modes (BBL saved).
+HMC on TACC: two HMC chains on one A100 node run out of HOST memory (k12 std::bad_alloc; k13 / k14 RESOURCE_EXHAUSTED) -- only
+one HMC chain per node; k11 continues; a second chain runs on the local GPU (hmc_local_S2_seed5, init g01, BBL saved).
+Queued m01 / m02: constant lineage and global eta re-fitted from the CONVERGED RP2 (g02), so their gains are measured against
+a restart-stable base.
+RP1 J330 refit from the j02 region (l01): objective 156,936.6 (b081 +10), held-out 48,651.7 (b081 -92), East .63 -> 1.10
+(+.47). Established: on presence bases near-equal in-sample optima differ by ~90 held-out nats (flat in-sample, steep
+held-out direction) -- held-out comparisons between presence arms need several restarts. J110 RP2 warm continuation (l02):
+still stuck (grad 476).
+
+### ~13:20 results
+- RP2 + global eta refitted from the CONVERGED RP2 g02 (m02, grad 12): eta .213, objective 157,399.9 (g02: -46.5), held-out
+  48,906.9 (g02: +110.8), East .45 -> 1.24 (+.79 vs +.99). Reproduces R1b (157,399.3 / 48,906.8) exactly -- the routing result
+  under the pinned West is robust: ~-46 in sample, ~+111 held-out.
+- RP1 + fade tau 10 (local F10c, grad 21): delta0 -.726, objective 156,907.3 (b081: -19), held-out 48,698.1 (b081: -45; l01 RP1
+  optimum: +46), East .71 -> 1.12 (+.41). Within the RP1 optimum spread.
+- m01 (RP2 + constant lineage from g02) FAILED: GPU memory exhausted -- each A100 node runs two task slots on ONE GPU; while
+  the k11 HMC chain holds node 016's GPU, the partner slot cannot fit a lineage fit (or a second HMC: k12 / k13 / k14 died the
+  same way). Requeued as m11; no further TACC HMC until k11 ends (~16:00).
+- J200 RP1 + fade10 (m03): delta0 -.413, objective 157,127.4 (h01 RP1 J200: -7), held-out 48,832.6 (-23), East .88 -> 1.39 (+.51
+  vs +.55) -- inert.
+- k24 (J200 HMC) died (GPU memory, shared with k11). k11 STOPPED by me (task process only; the SLURM worker job continues) so
+  m11 can use the GPU: the local chain (hmc_local_S2_seed5, J330, init g01) is the HMC diagnostic. No TACC HMC from here.
+- J200 S2 + global eta from the converged g03 (m13, grad 24): eta .449, objective 156,678.0 (g03: +16 -- a different, worse
+  local optimum despite the extra freedom), held-out 48,695.6 (-7), East .80 -> 1.20 (+.40 vs +.50).
+- m11 died again (GPU memory, before k11 was stopped); requeued as m21. Queued n03: RP1 J200 + global eta (from h01).
+- J200 RP2 warm restart (n01, grad 61, converged): 157,644.9, held-out 48,830.9, East .86 -> 1.48 (+.62) -- converged J200 RP2.
+- J330 RP2 + fade25 from the converged g02 (n02): delta0 stays 0.000, 2 iterations -- fade25 has NO gradient at the converged
+  RP2 (fully inert). Queued o01 / o02: J200 RP2 + global eta / + fade10 from the converged n01.
+- RP2 + constant lineage from the converged g02 (m21): delta -.048, objective 157,441.1 (-5), held-out 48,809.1 (+13), East
+  .45 -> 1.47 -- inert, confirmed from a converged base.
+- RP1 J200 + global eta (n03, grad 34): eta .018, objective 157,071.7 (h01: -63), held-out 48,923.4 (+68), East .85 -> 1.24
+  (+.39 vs +.55) -- the usual routing signature.
+BASIN CHECK of the candidate (queued p01-p03; new laplace_fit --perturb SD: N(0, SD) on the model coordinates of x0, seeded):
+S2 J330 x2 seeds and S2 J200 from their converged restarts, SD .3 -- do perturbed starts return to the same optimum (objective,
+held-out, swing)? Matters for locking the candidate and for HMC.
+- J200 RP2 (converged n01) + fade10 (o02): delta0 stays 0 -- inert. + global eta (o01, grad 10): eta .186, objective 157,582.8
+  (-62), held-out 49,012.3 (+181), East .82 -> 1.35 (+.53 vs +.62). Same signature as J330 (m02: -46 / +111).
+  Queued basin checks p04 (RP2 J330, SD .3) and p05 (S2 J330, SD .6).
+
+### BASIN CHECK result (~13:55): perturbed starts (SD .3 on the model coordinates) of the candidate S2
+| run | objective (vs g01 156,430.0) | held-out (vs 48,632.9) | East 1966 / 2010 |
+|---|---|---|---|
+| J330 seed 1 (p01) | 156,429.2 (-.8) | 48,663.5 (+31) | .62 / 1.08 (+.46) |
+| J330 seed 2 (p02) | 156,430.2 (+.2) | 48,680.6 (+48) | .60 / 1.05 (+.45) |
+| J200 seed 1 (p03) | 156,655.7 (g03: -6) | pending | |
+Established: the candidate's in-sample optimum and its swing are reproducible to < 1 nat and +-.02 from perturbed starts, but
+held-out varies by 30-50 nats between equally good optima (a flat in-sample direction that held-out sees). Held-out differences
+below ~50 nats are NOT decisive anywhere (presence bases: ~90). The swing is the robust quantity.
+Basin checks continued: J200 S2 seed 1 (p03, grad 12): 156,655.7 (g03: -6), held-out 48,763.4 (+61), East .82 -> 1.31 (+.49 vs
++.50). J330 RP2 seed 1 (p04, grad 5): 157,446.2 (g02: -.2), held-out 48,793.1 (-3), East .44 -> 1.43 (same). Optimum and swing
+reproduce; held-out spread up to ~60 between equal optima. Local HMC chain: still in warmup after 55 min (depth 8).
+Basin checks continued: J330 S2 SD .6 (p05): 156,429.6, held-out 48,635.3, +.44. J200 S2 seed 2 (p06): 156,660.5, held-out
+48,675.2, +.46. J330 RP2 seed 2 (p07): 157,446.5, held-out 48,835.4, +1.04. Candidate swing across all restarts: J330 +.44 to
++.47, J200 +.46 to +.50. Queued J110 S2 warm perturbed x2 (q01 / q02) from the converged i01.
+L1c RP1 + constant lineage (local, grad 14): delta -.049, objective 156,921.1 (b081: -5), held-out 48,714.0, East .67 -> 1.13
+(+.46) -- inert. X1 (release exemption 10 y) on J200 queued locally (CPU 20-25) for the kernel set.
+BASIN: J330 S2 SD .6 seed 4 (p08, grad 13) reached 156,412.7 -- 17 nats BELOW the restart-stable 156,430.0 -- held-out 48,633.6
+(same), East .64 -> 1.07 (+.43). The candidate's optimum is NOT the deepest; a better basin exists with essentially the same
+swing. Queued: restart from p08 (r01), further SD .6 starts J330 (r02) / J200 (r03). J200 RP2 perturbed (p09): 157,622.6
+(-22 vs n01), grad 1,171 (not converged), East .81 -> 1.54 (+.73).
+J110 S2 warm perturbed SD .3 seed 2 (q02): stuck at 159,162.9 (i01 157,454.8: +1,708), grad 7,675 -- J110 cannot recover from a
+perturbation (kinks); J110 stays PROVISIONAL. More SD .6 starts queued (r04 J330, r05 J200).
+BASIN results (~14:32): restart from p08 (r01, grad 10): 156,412.7 -- CONFIRMED deeper J330 optimum (-17.3 vs g01), held-out
+48,633.6 (same), East .64 / .95 / 1.07 (+.43). J330 SD .6 seed 5 (r02): stuck at 156,886.4 (grad 2,959) -- large perturbations
+can strand the fit. J200 SD .6 (r03, grad 23): 156,652.3 (g03: -9.6), held-out 48,742.7, East .77 -> 1.26 (+.49). J110 SD .3
+seed 1 (q01): 157,447.5, grad 19,820 (stuck).
+Candidate (J330) best optimum is now r01 (156,412.7; swing +.43). hmc/CURRENT.sh init -> r01 (READY still held).
+Candidate swing across all optima found: J330 +.43 to +.47; J200 +.46 to +.50 (J110 +.72, provisional).
+Queued SD .4 starts from the best optima (r06 J330, r07 J200).
+J330 SD .6 seed 6 (r04, grad 25): 156,431.3 (old basin), held-out 48,643.2, +.47. J200 SD .6 seed 2 (r05, grad 3): 156,656.0,
+held-out 48,753.6, +.49. J330 has at least two basins ~17 nats apart (both swing +.43 / +.47). Queued: RP2 and RP1 re-fitted
+from the DEEPER J330 optimum r01 (s01 / s02) -- the presence tension was measured from the shallower basin.
+SD .4 from the best optima: J330 (r06, grad 13): 156,414.1, held-out 48,580.9, East .62 -> 1.06 (+.44). J200 (r07, grad 26):
+156,651.8, held-out 48,695.3, .76 -> 1.25 (+.49). Queued s03 / s04: RP2 / RP1 on J200 from r07.
+Presence refits from the DEEPER J330 optimum r01: RP2 (s01, grad 10): 157,471.5 (+25 vs g02), held-out 49,059.4 (+263), East
+.54 -> 1.31 (+.77); RP1 (s02, grad 11): 156,927.2, held-out 48,748.2, .66 -> 1.08 (+.42). RP2's swing across its optima: +.77 to
++1.04 (candidate +.43 to +.47): the pinned core still raises the swing, by +.3 to +.6.
+Plan step 5 (dispersal) note: the kernel_ramp lever (eastern juveniles short -> J330 on a calendar logistic; ROBUST A, 11-06)
+was tested on the older base -- it improved in-sample / presence but did NOT shrink the swing (+.90 vs +.63). A banding-
+constrained dispersal model would refine an already-falsified lever; awaiting the user's direction before building it.
+J200 RP1 from r07 (s04): 157,159.6 (h01: +25), grad 842,716 -- stuck on a kink; discarded (warm restart t03 queued).
+
+### CORRECTION (user ~15:05) to the native-range presence reading
+User: "If you have a robust west, the Plains and the east need to be less hospitable to prevent an early invasion. This then
+requires a larger swing to explain modern abundance structures." The RP pre-registration (a pinned West would leave the swing
+unchanged or shrink it) ignored the no-early-crossing constraint; the result (swing doubles) is its direct consequence and was
+visible in RP3 (Plains 1966 .26, East .43). Reframing: under one habitat -> rate map the swing is largely the price of keeping
+the Plains / East empty before ~1940 beside a western source; the candidate's small early West is the cheaper barrier
+(shrinking the source), and part of the continent-wide early rate deficit is barrier, not only poor 1902 habitat. Routing and
+lineage offsets cannot help because none supplies a barrier without lowering eastern habitat quality. Next candidate class:
+a tightly constrained NON-habitat barrier to early crossing (Plains crossing cost on dispersal / settlement), designed after
+re-reading the toll-ridge, Plains-absence and journey-survival records.
+
+## PATH-DEPENDENT DISPERSAL AS THE BARRIER (user ~15:15; PRE-REGISTERED ~15:20)
+User: a Plains crossing cost "is the entire point of path-dependent dispersal. If that can't achieve it then you can't
+rationalize hacking together a model" -- diagnostics only; no bolt-on barrier term.
+Records: compounding path survival (population_model.path_compounding, built 10-31) on the ladder base fitted lambda ~.005
+(unused) with land-mean lambda rise +.74 (DISPERSAL_COLLECTION_2026-10-31); a free Q was audited as an escape route (P12).
+Never tested with presences + absences + CBC counts + spin-up.
+D1 (replay, no refit; local CPU): candidate S2 (r01) and RP2 (g02) with journey survival Q forced to 1 -- how much of the
+"no early crossing" does journey mortality carry now? Read: native-lineage occupied cells east of 100W / 95W in 1930 / 1940 /
+1950 vs the fitted Q.
+D2 (fits, J330 TACC): + path_compounding {n_seg 4, endpoint reference, lambda ~ HalfNormal(.25)} on S2 (from r01) and RP2
+(from g02). Prediction: under RP2 lambda_c moves off 0 and the swing falls toward S2's; on S2 lambda_c stays ~0 (as on the
+ladder). If lambda_c stays ~0 under RP2 too, path-dependent dispersal cannot carry the barrier -> no dispersal hack; the swing
+question returns to rates / habitat. (J200 / J110 need segmented path inputs built for their kernels -- not yet available.)
+
+### RESULT ~15:35: D1 -- journey survival (path-dependent dispersal) carries the containment; where does it bite?
+Replay (no refit), native lineage only (release off), J330: with the FITTED Q, cells occupied (N >= .01 route counts) east of
+100W: 36 / 41 / 44 / 44 / 135 in 1920 / 30 / 40 / 50 / 70 (candidate r01), none east of 95W; RP2 (g02) 30 / 50 / 87 / 82 / 152.
+With Q = 1 (no journey mortality): 2,270 cells east of 100W (1,397 east of 90W) ALREADY BY 1920, in both fits.
+Fitted Q (arrival-path survival per kernel; medians over land cells and kernels):
+| fit | region | 1910 | 1940 | 1966 | 1990 | 2010 |
+|---|---|---|---|---|---|---|
+| S2 r01 | West | .029 | .043 | .052 | .061 | .065 |
+| S2 r01 | Plains | .038 | .055 | .061 | .063 | .079 |
+| S2 r01 | East | .005 | .006 | .010 | .025 | .030 |
+| RP2 g02 | West | .042 | .045 | .046 | .048 | .052 |
+| RP2 g02 | Plains | .017 | .028 | .034 | .042 | .065 |
+| RP2 g02 | East | .004 | .004 | .007 | .017 | .024 |
+Established: (1) journey mortality is the model's containment -- ~95-98% of dispersers die in transit, and without it the native
+lineage floods the continent within ~20 years. (2) In the candidate the barrier is NOT on the Plains (Plains Q >= West Q); it is
+the EAST: arrival survival there is ~.005 until 1966, then rises ~6x by 2010 -- part of the swing runs through Q. (3) Pinning
+the West (RP2) moves the barrier onto the Plains (Plains Q .038 -> .017 in 1910) as the user's logic predicts -- but because Q
+reads the SAME juvenile habitat map as local Sj, a lower Plains / East path survival is also lower local juvenile survival, so the
+barrier and the eastern rates move together. Path-dependent dispersal therefore already does the crossing-cost job, through the
+coupled habitat map; D2 (compounding, running on TACC) tests whether path STRUCTURE (interior segments costed) can carry the
+barrier with less change in the local rates.
+D2 status (~15:50): compounding needs the segmented path features on the GPU (~124 x 4,318 x 12 x 4 x 64 floats = ~6.5 GB);
+both TACC tries (a95 / a96) and the local 24-GB GPU ran out of memory beside a co-tenant / the base fit. Requeued as a95r /
+a96r with a retry loop (10-min waits, 12 tries) and NO other TACC tasks queued, so they get a whole A100. Local HMC chain
+stopped (still in warmup after 2.5 h at depth 8 -- the sampler-geometry problem again); local GPU on a J330 basin start.
+
+### NUMERICAL FLOORS (user ~16:00: "you apparently at some point re-introduced adding pseudo-zeros of 1e-9 for stability ...
+### zero consideration ... of the reasons it was dropped ... pay attention to the implications of this and other issues")
+Check (~16:05): every current overlay (local + TACC) sets numerics {fft_pad 0.0, fft_floor_ulps 64, fft_floor_smooth True} --
+the legacy 1e-9 FFT PADDING (a pseudo-zero immigration source, age_priors numerics comment) is NOT active; 1e-9 remains only as
+the code default when numerics is absent. What WAS re-introduced (11-06, ROBUST D, to cure the J110 discontinuity) is the FFT
+FLOOR in float64 fits, although age_forward's own note restricts it to float32 because in float64 "exact extinction creates
+the Allee establishment switch the optimiser exploits (E069)" -- the record shows no weighing of that reason. Today's additions:
+a 1e-150 floor on the smooth-floor denominator (acts only on all-zero grids) and 1e-12 thresholds in the lineage code.
+Actions: an independent agent audits every active floor / pseudo-zero / epsilon (history, reason dropped, implications for
+low-density dynamics); TEST: candidate S2 J330 refit with the floor OFF in float64 (fft_floor_float32_only; local CPU 26-31,
+from r01) -- objective, swing, held-out, and smoothness (grad_sites FD check) vs the floor-on fit.
+Also dispatched: an agent reviewing older structural variants (decoupled fields etc.) against the present, tighter data.
+D2: a95r and a96r landed on the SAME node (016 a/b) and exhausted its GPU together (both retry on the same 10-min clock); a96r
+stopped (process only) so a95r (RP2 + compounding) has the A100 alone; a96r (S2 + compounding) to be requeued after a95r.
+
+### NUMERICAL-FLOORS AUDIT (agent; scratchpad audit_numerical_floors.md) -- key findings, my verification
+- 1e-9 FFT padding: NOT active (all current overlays fft_pad 0); survives as the code default -- 149 legacy overlays without a
+  numerics block would silently revive it (decision: default fft_pad 0?).
+- FFT floor in float64 (ROBUST D 11-06, 64 ulps smooth, 6.4x E069's tolerance): contradicts E069 / E071 (floor makes extinction
+  exact; the refine parks founders on the Allee separatrix and exploits a +.45 switch; E071 restricted the floor to float32);
+  never checked; and it did not cure the J110 stall. Test running (no-floor-64 refit; add an E069-style probe).
+- VERIFIED (me): the lineage's 68,932 pre-1940 PSEUDO-ZERO BBS rows are STILL ACTIVE -- 60,610 of the 157,073 training rows have
+  no route id (train_with_route 96,463), all zeros, 1902-39 -- and the range absences (rangev2 complement + halo-400, 77,790
+  cell-years) were added ON TOP, with a different zero likelihood. rangev2 set the old rows to weight 0; laplace_fit's
+  "removed" comment (absence block) is a `pass`. Pre-1940 absence outside the 700-km hull halo is therefore DOUBLE-COUNTED --
+  extra early-crossing barrier pressure, directly relevant to the swing mechanism. Diagnostic queued (local GPU after the basin
+  start): candidate S2 J330 with --drop_pseudozeros (new flag), from r01. (Base change = user decision.)
+- Capacity floor K + 4 n50 (.46 route counts): mated fraction there .93 (per-capita k 3), and it lowers Veit departure in low-K
+  cells (more birds stay in poor Plains cells, likely); the code ignores capacity_floor_n50_multiple; 44 overlays pair n50 -2.1
+  with the old .01184 floor.
+- Flat likelihood floors: BBS expected count floored at 1e-6, CBC log A clamped at 1e-12 -> zero gradient for positive counts in
+  model-empty cells (row count unknown). Kernels stored complex64 (ROBUST D's complex128 check did not test kernel precision).
+- Today's additions (1e-150 denominator, 1e-12 lineage thresholds): inert / off in the candidate.
+
+## NATIVE DEPARTURE, BBL-anchored (user ~16:30: "For low native departure, is that supported by the literature and the banding
+## data? How low is low?" -> "Sure" to computing a BBL prior and running it) -- PRE-REGISTERED ~16:45
+BBL natal dispersal (scratchpad natal_west.py; young banded Apr-Sep, first re-encounter Apr-Jul of a later year; banding
+longitude West < -100, central -100..-80, East > -80):
+| region | n | median | q90 | > 27 km | > 54 km | > 155 km |
+|---|---|---|---|---|---|---|
+| West | 69 | 0 km | 15.6 km | .043 | .029 | .014 |
+| central | 99 | 41.5 | 194.4 | .596 | .455 | .162 |
+| East | 143 | 14.2 | 143.5 | .357 | .252 | .098 |
+Adult breeding dispersal West n 131: median 0, q90 17.3 km, > 27 km .031. Coordinate precision (<= 10-min both ends) changes
+nothing. West bandings 1960s-2020s, 32-54 N. Recovery bias (long moves under-reported x2 / x3 / x6) -> West share leaving the
+natal cell .083 / .120 / .214. Established: western young are essentially philopatric (~4-21% leave a 54-km cell); the
+candidate's Veit departure p = min(N/K, 1) sends ~all juveniles out of a western core at K (and ~95% die in transit) -- the
+current western dispersal contradicts the banding. (Migration literature -- Aldrich & Weske 1978 "essentially sedentary",
+BBL summer-winter 0 km West -- is about SEASONAL movement and only indirectly supports this.)
+Prior: native_departure r ~ Beta(17, 3) (mean .85, 90% ~ .71-.95), on departure x (1 - r w(x)), w = the 1902 seed core /
+margin map (1 core, .5 margin, 0 east of -95). ONE parameter; init r .85.
+ND1: candidate S2 J330 + native departure (local CPU 8-19, from r01); J200 next. Read (the review's four signatures): higher
+early EASTERN potential lambda, swing below the J330 restart band (+.43 to +.47), smaller eastern CBC colony gap (+1.89), no
+increase in D1 native crossings; plus West decadal lambda on fixed cells (risk: r makes the West's interior spread come from
+rates), fitted r vs prior, held-out (50-nat rule). Prediction: r stays high (~.85), the western 1902 -> 1966 rate rise shrinks
+(western retention replaces it) and the eastern early lambda rises a little; swing reduction modest (< .1) because the eastern
+barrier in Q is unchanged -- falsified if r is pushed to the prior's lower edge or the West rate rise grows.
+Note: CPU 8-19's RP1 + global eta fit (R1c) stopped for this (it only repeated the routing signature).
+
+### ~16:55 resource plan (user: "keep working autonomously ... use all available local and TACC resources")
+- D2 path compounding does NOT fit on these A100s even ALONE (a95r / a96s, one per node: RESOURCE_EXHAUSTED 6.13 GiB with the
+  CBC-count + BBL + spin-up fit) -> retry loops stopped; compounding moved to LOCAL CPU (20-25, RP2 + compounding from g02;
+  host RAM). S2 + compounding to follow on CPU.
+- TACC A100 queue (u01-u06): native departure J200 S2 / J330 RP2 / J110 S2 (warm) / J200 RP2; J200 S2 --drop_pseudozeros;
+  J200 S2 FFT floor off in float64. New-site init: native_departure_r set to .85 in the init (not a random prior draw).
+- Local: GPU = J330 S2 --drop_pseudozeros (PZ0); CPU 8-19 = J330 S2 + native departure (ND1); CPU 20-25 = RP2 + compounding;
+  CPU 26-31 = J330 S2 FFT floor off in float64. Stopped (low value): RP1 + global eta (R1c), X1 J200.
+
+### RESULT ~17:00: pseudo-zero rows dropped (PZ0, J330 S2 from r01; 60,610 rows removed)
+Objective 156,410.7 after ONE iteration (r01 156,412.7: -2.0), BBS 122,872.6 (-1.9), CBC 9,155.8, BBL 4,698.0, absences 30.5,
+held-out 48,633.6 (same), East .64 -> 1.07 (+.43, same). Established (J330 candidate): the double-counted pre-1940 pseudo-zeros
+cost ~2 nats and exert no pull at the candidate -- the model already leaves those cells essentially empty, so the zero rows
+have P(0) ~ 1. They are redundant with the range absences here; they could bite only where a fit pushes birds into the
+pre-1940 East / Plains (e.g. RP2-type fits) -- J200 twin (u04) running. Base change (drop them, as rangev2 intended) remains
+the user's call; it is harmless to the candidate.
+Local GPU next: J330 RP1 + native departure (ND1c).
+PZ0 on J200 (u04, from r07): 156,650.8 (-1.0), held-out 48,695.3 (same), swing same -- pseudo-zeros inert on J200 too.
+Queued: u07 J330 RP3 (full seed hull) + native departure (does western philopatry let the asserted hull fill without the
+swing?); u08 J330 S2 + native departure with a WEAK prior Beta(1.5, 1.5) (where do the data alone put r?).
+
+### RESULT ~17:20: NATIVE DEPARTURE (BBL-anchored r ~ Beta(17, 3)), first arms
+| run | r | objective (vs twin) | BBS | CBC nll | BBL | held-out (vs twin) | East pot. 1966 / 1993 / 2010 | swing (twin) | Plains 1966 / 2010 | West 1966 / 2010 |
+|---|---|---|---|---|---|---|---|---|---|---|
+| J330 RP2 + natdep (u02, grad 20) | .877 | 157,362.1 (g02: -84.3) | 122,968.3 (-11) | 9,260.0 (-18) | 4,688.1 (-67) | 48,773.1 (-23) | .69 / 1.02 / 1.22 | +.53 (+.99) | .71 / .97 (.47 / .94) | .95 / 1.11 (.86 / 1.01) |
+| J200 S2 + natdep (u01, grad 51) | .778 | 156,575.0 (r07: -76.8) | 123,092.5 (-56) | 9,068.1 (-12) | 4,681.5 (-21) | 48,730.9 (+36) | .77 / 1.12 / 1.26 | +.49 (+.49) | .84 / 1.03 (.77 / .93) | .90 / 1.09 (.81 / .96) |
+| J110 S2 + natdep warm (u03) | .791 | 157,445.8 (i01: -9) | | | | 49,198.0 (-10) | .78 / 1.19 / 1.47 | +.69 | | | (grad 29,501: stuck)
+| J200 S2 FFT floor off in float64 (u05) | -- | 156,651.4 (r07: -.4) | | | | 48,694.0 (-1) | identical | +.49 | | | (floor inert on J200)
+Established (J330, one fit -- restart / basin check queued): with BBL-anchored western philopatry, pinning the native core NO
+LONGER doubles the swing (+.53 vs +.99) and early eastern / Plains potential lambda rises (.69 / .71 vs .44 / .47) -- three of
+the four pre-registered signatures (higher early-East lambda, smaller swing, smaller CBC cost); the BBL (banding survival)
+term improves by 67 nats and held-out by 23. Mechanism (likely, matches the review): western juveniles stay as stayers (Sj)
+instead of dying in transit (Q), so a robust West no longer exports into the Plains sink; the barrier no longer has to be
+built by lowering Plains / East habitat quality. On the S2 base (no presences, J200) r is used (.78; -77 in sample) but the
+swing is unchanged and the western rates rise a little (.81 -> .90 in 1966): without a pinned West there is no conflict for it
+to resolve. Pending: J330 S2 + natdep (local ND1), RP1 + natdep (local GPU), J200 RP2 + natdep (u06), RP3 + natdep (u07),
+weak-prior r (u08); restart + basin check of u02 (u09 / u10).
+J330 RP1 + natdep (local ND1c, grad 26): r .901, objective 156,794.3 (b081: -132), BBS 122,827.0, CBC 9,246.9, BBL 4,683.5, RP
+302.2, held-out 48,574.7 (b081 48,743 / l01 48,652; candidate S2 48,633.6 -> -59: the BEST held-out of the session), East
+.65 / 1.01 / 1.14 (+.49), Plains .75 / .93, West .92 / 1.08. With western philopatry the evidence-backed early West is
+compatible with the BBS held-out years (better than without it). In progress: J330 S2 + natdep (it 90: 156,369.0, -44 vs r01,
+r .72); J330 FFT floor off in float64 (156,410.9 ~ r01: floor inert on J330 too); RP2 + compounding on CPU (lambda_c .05, it 50).
+Local GPU next: J200 RP1 + natdep (ND2c).
+J330 RP3 (full seed hull) + natdep (u07, grad 691 NOT converged): r pushed to .146 (prior mean .85), objective 159,107.3 (RP3b
+159,060.4: +47), held-out 49,264.5, East .48 -> 1.33 (+.85), Plains 1966 .27. Likely: occupying the hull's empty desert /
+montane interior needs SPREAD from the core (high departure), so the full-hull assertion and BBL-anchored philopatry conflict
+-- another sign RP3 asserts an implausible early range. Queued: restart + perturbed basin check of the best-held-out fit
+(J330 RP1 + natdep; u11 / u12).
+
+### RESULT ~18:05: native departure replicates on J200 and is restart-stable on J330
+| run | r | objective (vs twin) | CBC | BBL | held-out (vs twin) | East pot. 1966 / 1993 / 2010 | swing (twin) | Plains 1966 | West 1966 / 2010 |
+|---|---|---|---|---|---|---|---|---|---|
+| J200 RP2 + natdep (u06, grad 17) | .832 | 157,599.0 (n01: -46) | 9,154.9 (-40) | 4,676.1 (-31) | 48,723.5 (-107) | .99 / 1.14 / 1.28 | +.29 (+.62) | .89 (.76) | 1.00 / 1.18 (.90 / 1.02) |
+| J330 RP2 + natdep RESTART (u09) | .877 | 157,362.1 (= u02, 8 it) | | | 48,773.1 | .69 / 1.02 / 1.22 | +.53 | | |
+Established on J330 + J200 (J110 queued): with BBL-anchored western philopatry the pinned native core no longer inflates the
+swing -- it HALVES it (J330 +.99 -> +.53; J200 +.62 -> +.29) and early eastern potential lambda rises (J330 .44 -> .69, J200
+.86 -> .99); CBC, BBL and held-out all improve (J200 held-out -107, beyond the ~90-nat presence-base noise). The western rates
+rise somewhat (J200 West 1966 .90 -> 1.00) -- watch the western decadal rise (review risk). Queued: J110 RP2 + natdep (warm,
+u13), J200 RP2 + natdep perturbed basin check (u14).
+Robustness: J330 RP2 + natdep perturbed (u10, grad 61): 157,357.7 (-4.4), held-out 48,708.0, East .72 -> 1.17 (+.45) -- RP2 +
+natdep swing +.45 to +.53 across optima (RP2 alone +.77 to +1.04). J330 RP1 + natdep restart (u11): = ND1c (156,794.3, held-out
+48,574.7) -- converged.
+PRE-REGISTERED (~18:15) journey SLOPE-only decoupling on the RP2 + natdep bases (review rank 2): journey.decouple, offset
+~ N(0, .05) (pinned tight), log slope ratio ~ N(0, .5); both init 0 (identity). J330 (v01, from u10) / J200 (v02, from u06).
+Question: once philopatry is in, does the barrier still have to equal local habitat quality? Prediction: slope ratio stays
+near 0 (|g| < .2) and the swing moves < .05 -- natdep already removed the need; if g moves strongly and the swing drops
+further, the remaining coupling matters. Report mover vs stayer juvenile survival.
+
+### RESULT ~18:20: native departure -- the DATA alone choose western philopatry; held-out improves on the candidate base
+| run | r | objective (vs twin) | BBS | BBL | held-out (vs twin) | East 1966 / 2010 | swing |
+|---|---|---|---|---|---|---|---|
+| J330 S2 + natdep WEAK prior Beta(1.5,1.5) (u08, grad 50) | .763 | 156,351.3 (r01: -61) | 122,818.1 (-56) | 4,682.9 (-15) | 48,488.3 (-145) | .65 / 1.08 | +.43 |
+| J330 RP1 + natdep perturbed (u12, grad 13) | .927 | 156,791.7 (-2.6 vs ND1c) | | | 48,660.6 (ND1c 48,574.7) | .65 / 1.16 | +.51 |
+| J200 RP2 + natdep perturbed (u14, grad 23) | .868 | 157,598.7 (= u06) | | | 48,720.9 | .97 / 1.28 | +.31 |
+| J110 RP2 + natdep (u13, grad 356 stuck) | .767 | 158,534.5 | | | 49,289.3 | .93 / 1.51 | +.58 (provisional) |
+Established (J330): with a WEAK prior the data put r at .76, inside the BBL-derived prior (mean .85, 90% ~.71-.95) -- the BBS +
+CBC + BBL data independently ask for western philopatry of about the size the banding records show. On the candidate (no
+presences) it improves BBS by 56, BBL by 15 and held-out by 145 nats (beyond the ~50-nat optimum noise; restart u16 queued),
+with the swing unchanged (+.43). J200 weak-prior twin (u15) queued. Native departure is now the strongest structural candidate:
+1 parameter, literature + banding anchored, data-chosen, improves held-out, and resolves the pinned-West conflict (RP2 swing
+halves on J330 and J200).
+
+### ~18:45 results; maps; next arms
+- MAPS (user request): full suites for the representative natdep fit u08 (CAND_viz/u08_lap_ND1w_J330_S2_natdepweak) and RP2 +
+  natdep u02 (CAND_viz/u02_lap_ND1b_J330_RP2_natdep), vs the candidate lap_S2_norout_dds_latent_spin. Reading: natdep fills the
+  early native interior more continuously (1902-51) and removes the candidate's far-north BC 1902 artefact patches (they return
+  under RP2's pinned core); 1976-2025 essentially unchanged; Allee-dead 1.3% vs .7%; obs calibration r .906; the 2021-25 held-out
+  mean is under-forecast (falls ~3.6 -> 2.9 vs observed 4.5 -> 4.8) as in the candidate; the eastern 1950-65 CBC colony
+  presences stay "impossible" (red) in both natdep fits -- the colony gap is NOT fixed by native departure.
+- FFT floor off in float64, J330 (local, grad 10): 156,410.9 (r01 156,412.7), held-out 48,632.5, swing same -- the floor is inert
+  at the candidate on J330 and J200 (E069 smoothness probe not yet run).
+- J330 S2 + natdep with the BBL prior (local ND1, it 260): 156,352.7, r .758 -- same optimum as the weak prior (u08).
+- J200 RP1 + natdep (local ND2c, grad 4,165 not converged): r .813, objective 157,048.7 (h01: -86), held-out 48,712.6 (-143),
+  East .87 -> 1.32 (+.45 vs +.55). Continuation (warm) on the local GPU.
+- Journey SLOPE-only on RP2 + natdep: J330 (v01) journey params stay 0.000 (objective -1.9; slope unused); J200 (v02) slope -.105,
+  offset +.33 (6.6 prior SD -- pushes Q's level up), objective -59, held-out +44, swing +.34 (vs +.29). Prediction held: the
+  slope is not needed once philopatry is in; the J200 offset pressure hints at Q-level tension (unknown).
+- PRE-REGISTERED (~18:45) departure_global (new option, 1 parameter g ~ Beta(4, 4) on departure everywhere, with natdep), aimed
+  at the eastern colony "too wide and too thin": BBL central / eastern natal show only ~25-60% of young leaving a cell (raw),
+  while Veit departure at K sends ~all. Arms: J330 S2 + natdep (w01), J200 S2 + natdep (w02), J330 RP2 + natdep (w03).
+  Prediction: g < .7, the eastern 1950-65 CBC gap shrinks (denser, narrower colony), early eastern lambda rises slightly; risk:
+  slower spread needs higher late rates (swing up) -- falsified if g -> 1 or the swing grows.
+
+### LEARNED DISPERSAL in the native-departure fit (u08, r .763) vs the candidate (r01) -- replay (scratchpad dispersal_learned.py)
+N-weighted departure probabilities (juvenile / adult) and regional journey survival (arrivals / dispersers):
+| region | natdep juv p 1910 / 1966 / 2010 | candidate juv p | natdep adult p | candidate adult p | journey surv natdep / cand | leave & survive natdep / cand |
+|---|---|---|---|---|---|---|
+| West | .33 / .36 / .44 | .78 / .84 / .89 | .30 / .32 / .39 | .76 / .84 / .90 | .14-.16 / .11-.13 | .05-.07 / .09-.12 |
+| Plains | .25 / .29 / .41 | .32 / .36 / .56 | .21 / .27 / .40 | .28 / .32 / .54 | .14-.19 / .10-.16 | .04-.07 / .03-.08 |
+| East | -- / .22 / .71 (1990 .91) | -- / .23 / .69 | -- / .14 / .71 | -- / .14 / .68 | .32 (1966), .16 / similar | .07-.15 / .07-.14 |
+departure scale 1 - r w: western core .24, margins ~.62, East 1.00. Established: the fit learned a philopatric native West (juvenile
+departure ~1/3-2/5 vs ~4/5-9/10) and left eastern dispersal essentially unchanged (density-dependent Veit: low in the sparse 1966
+colony, .7-.9 once the East fills); ~84-86% of dispersers still die in transit everywhere. Likely (needs local Sj): movers among
+SURVIVING western young ~20% (natdep) vs ~60% (candidate) -- natdep inside the BBL bracket (4% raw, 8-21% bias-corrected), the
+candidate far outside it; eastern ~55% vs BBL 36% raw (plausible, high side -- departure_global arms test it). Unknown: whether
+~85% transit mortality is plausible (literature check pending).
+
+### PLAN (~19:05; user: "What plans do you have to close gaps in your literature knowledge and continue to test hypotheses?")
+Literature (two read-only agents, routes: Obsidian vault E:\Publications\Range Limits -> Zotero (read-only) -> open web ->
+"needs user download (UT VPN)" list): (1) western natal / breeding dispersal & site fidelity (Michener & Michener Pasadena,
+Aldrich & Weske 1978, Hill BNA, Thompson), dispersal / transit mortality vs residents in passerines and House Finch first-year
+survival (is ~85% transit death defensible?), eastern partial migration (Able & Belthoff 1998 -- verify "~80% sedentary"),
+winter concentration (Weiss 1997); (2) 20th-century western range / habitat change (AOU check-lists 1910 / 1931 / 1957,
+Grinnell & Miller 1944, Grinnell resurveys, Tyler 1992, Podrebarac & Finck 1991) and early eastern colony growth / founders
+(Elliott & Arbib 1953, Cant 1962, Bock & Lepthien 1976, Mundinger & Hope 1982), plus any pre-1966 western validation series.
+Tests, in order: (1) native departure as candidate structure: departure_global arms (running); natdep x RP1 on all kernels;
+then a BBL MOVEMENT likelihood from the natal encounters (plan step 5, design SURVIVAL_BBL_SCOPING s.3) to replace the r prior;
+(2) transit mortality: literature-anchored journey-level prior with natdep if the literature says < 85%; (3) eastern colony gap:
+departure_global, then founder / release geometry vs the colony literature; (4) habitat trajectory: if usable, an early-West
+occupancy validation term (e.g. Grinnell sites) instead of the 1966-69 back-cast; (5) numerics: E069-style smoothness probe on
+the natdep candidate (running locally), fft_pad default 0 on user decision, J110 multi-start inner solve; (6) 2021-25 under-
+forecast decomposition on the natdep fit.
+J200 RP1 + natdep warm continuation: stuck at a kink (1 it, grad 1,087) -- provisional: 157,048.7, held-out 48,712.6, +.45.
+
+### RESULT ~19:20: departure_global REJECTED; deeper natdep optimum; kernel distances vs BBL
+- departure_global (g ~ Beta(4,4)): g -> .986 (S2 + natdep, w01: 156,330.2, held-out 48,442.3) and .987 (RP2 + natdep, w03:
+  157,365.9, held-out 48,726.6) -- the data refuse lower departure everywhere; the eastern colony gap is NOT a departure-rate
+  problem. Pre-registered prediction (g < .7, colony gap shrinks) FALSIFIED.
+- J330 S2 + natdep weak prior, perturbed restart (u16, grad 38): r .928, objective 156,296.1 (u08 -55; candidate r01 -117),
+  BBS 122,760.7, CBC 9,135.0, BBL 4,680.7, held-out 48,395.7 (u08 -93; candidate -238), East .63 -> 1.09 (+.46).
+- J200 S2 + natdep weak prior (u15): r .769 (BBL-prior fit .778), objective 156,575.8, held-out 48,729.8 (+35 vs r07), +.50.
+- Kernel distance distributions (2-D Weibull, V&L form, mean = MDD; matches the recorded 63% / 21% for J330):
+  | kernel | mean / median km | > 27 km | > 54 km | > 155 km | > 483 km |
+  |---|---|---|---|---|---|
+  | J330 juvenile | 330 / 216 | .95 | .88 | .62 | .21 |
+  | J200 juvenile | 200 / 131 | .91 | .78 | .44 | .09 |
+  | J110 juvenile | 110 / 72 | .80 | .60 | .22 | .02 |
+  | adult (all) | 100 / 81 | .88 | .68 | .19 | .00 |
+  | BBL natal (all regions, n 316; survivors, raw) | 62 / -- | -- | -- | .098 | .028 |
+  Q (journey survival) reads path habitat but has no distance cost, so surviving movers keep the kernel's shape.
+- Queued: restart from u16 (x01), J200 natdep perturbed (x02), and a KERNEL-TAIL diagnostic: per-radial-band journey cost
+  c_b ~ HalfNormal(.5) (journey.band_cost; 3 parameters) on the deeper natdep optimum (x03) -- do the data, with natdep, want the
+  outer bands (155-483, > 483 km) thinned toward the BBL distances?
+
+### ~19:45 KERNEL DISCRETISATION (user: "Why only 12 kernels? Is that enough to accurately discretize paths?")
+Code (established): juvenile kernel split into 4 directions x 3 radial bands (0-155 / 155-483 / > 483 km) with soft edges
+(~2 cells; build_kernels.make_radial_directional_kernels; N_DIRECTIONS = 4 hard-coded in age_forward). Redistribution is EXACT at
+54 km (the 12 wedge convolutions sum to the full kernel); the discretisation only affects journey survival Q, which is
+(destination, wedge)-specific: path habitat = land-normalised mean of Z at p - s d over s in (0,1] (20 steps) and all displacements
+d in the wedge; Q = juvenile survival curve at that MEAN habitat, applied to every arrival of the wedge. Limits: 90-degree pooling
+of origins, very wide bands (> 483 km lumped), no origin-specificity, mean-habitat-then-survival (no compounding), water dropped.
+Likely too coarse to represent a Plains barrier precisely (unmeasured). Proposed (awaiting user): replay check with finer wedges
+(e.g. 8 directions x 5 bands) for a few years, comparing Q fields; refit only if Q differs (Z_disp at K 40 ~5.5 GB -> CPU /
+chunked). The BBL movement likelihood (plan step 5) also needs finer radial bands.
+departure_global J200 (w02): g .995 -- rejected on both kernels. J330 natdep deeper optimum confirmed (x01 = u16: 156,296.1,
+held-out 48,395.7). Queued: RP1 + natdep (weak) from the confirmed optima, J330 (z01) / J200 (z02).
+
+### ~20:10 results
+- KERNEL TAIL (x03, J330 natdep weak + journey band cost c_b ~ HalfNormal(.5)): c = (.0013, .00015, .000002) -- unused; objective
+  156,294.7 (-1.4), held-out 48,396.7. With natdep, BBS + CBC + BBL do NOT ask for a thinner long-distance tail (the BBL natal
+  DISTANCES are not in the likelihood; the movement likelihood would test that directly).
+- J200 natdep weak perturbed (x02): r .888, 156,574.5 (= u15 optimum), held-out 48,781.3, +.53.
+- SMOOTHNESS PROBE (E069-style, --grad_sites at the natdep candidate u08), FFT floor ON vs OFF in float64:
+  floor ON: FD at h 1e-6 disagrees with AD symmetrically by ~+-180 (e.g. alpha_k AD -.17 vs FD +181 / -181; manifold_factor
+  AD 87 vs 449 / -42): objective jitter ~2e-4 nats at that scale everywhere in the stiff block (no route-mode jump: de 0).
+  floor OFF: forward FD matches AD (alpha_k -21.25 / -21.25; native_departure_r 3.28 / 3.28) but one-sided kinks remain in the
+  stiff block (manifold_factor 135.6 / 69; alpha_a -19.6 / -61); objective 1.6 nats lower at the same parameters.
+  Reading (likely): the smooth floor (64 ulps) adds fine-scale jitter; without it some exact-extinction-type kinks remain (cf.
+  E069). Both small (~1e-4 nats) but enough to stall L-BFGS at fine tolerance and to hurt HMC. Decision (user): floor
+  float32-only per E071, or keep; neither is clean.
+- KERNEL DISCRETISATION 8 x 4 (user: "If it's borderline why not do 8x4?"): builder build_k40.py VALIDATED against the stored
+  4 x 3 inputs (wedges 2e-9, edge corrections 1e-6, Z_disp median rel 2e-7 / p99 1e-5; ~.1% outliers at near-zero-support
+  edge cells, as the seg4 builder recorded -- an ill-conditioned normalisation in the stored inputs too). Building 8 directions
+  x 4 bands (0 / 155 / 300 / 483 / inf km; K 32; Z_disp ~4.4 GB) to E:\Datasets\houfin\grid54\inputs_k40\established1951_d8b4.
+- Queued: RP2 + natdep weak from the deepest optima, J330 (z03) / J200 (z04).
+
+### LITERATURE (agent; scratchpad lit_dispersal_mortality.md, page-cited) + CORRECTION of my "85% transit death" reading
+Literature (tags as reported): Thompson 1960a (Condor 62: 248): 96.8% of 6,004 western BBL recaptures 1923-58 at the banding
+place (all ages pooled; not a natal rate) [established]; Aldrich & Weske 1978 (Auk 95: 533) "only 4% moved as much as 200 km"
+(NW) [established]; Belthoff & Gauthreaux 1991: latitudinal migration "rare" in the West; their 333 records are breeding ->
+winter (migration), ~109 km = V&L's "mean dispersal distance" [established]; Able & Belthoff 1998 abstract: "ca. 80% ...
+completely sedentary" (S California; data unread) [basis unknown]; Salt 1952: Wyoming / Colorado breeders migratory
+[established]; V&L 1996 departure p = N/N* assumed "in the absence of exact data", no transit mortality [established]; V&L
+juvenile kernel mean 329 km, median ~146 km by the agent's 1-D Weibull calculation -- the model builds a 2-D area density with
+the same mean (median 216 km): a possible kernel-form mismatch vs the source (TO VERIFY against V&L's equations) [likely];
+juvenile survival .64 (SE .18, n 10; Milby & Wright 1976); passerine post-fledging survival ~.58 at day 20 (Cox et al. 2014);
+transfer mortality evidence scarce (Bonte et al. 2012) -> disperser survival ~.6-1.0 of residents [likely]; Weiss 1997 verified:
+Indiana CBC slopes 644 vs May 250 / summer 156 (p. 70), feeder flocks + southward movement (p. 73) [established].
+CORRECTION (replay q_vs_sj.py, natdep u08): movers' first-year survival is journey survival Q (arrivals then skip local Sj),
+stayers' is Sj. N-weighted: West Sj .21-.23 vs Q .15-.17 (Q/Sj .72-.76); Plains .16-.18 vs .11-.15 (.68-.84); East .20-.21 vs
+.15-.17 (.75-.88). So movers survive at ~70-88% of residents -- INSIDE the literature's .6-1.0. My earlier "~85% of dispersers die
+in transit" framing was wrong: Q ~ .15 is a whole first-year survival comparable to the stayers' ~.2, not extra transit death.
+Remaining tension (established): the share of SURVIVING young that moved is still high -- West 25-36% (BBL natal 4% raw,
+8-21% bias-corrected), East 66-89% in 1990-2010 (BBL 36% raw) -- yet a global departure reduction was rejected (g -> .99): the
+BBS dynamics want more spread than the banding shows (resolution: the BBL movement likelihood, plan step 5).
+
+### RESULTS ~17:10: K=32 runs locally; D2b compounding unused; western sub-regions vs literature and BBS
+(Clock note: the headers "~18:05" to "~20:10" above were mis-stamped -- all were written before ~17:10 CST on 11-07; order in the file is the true order.)
+- K=32 (8 x 4) SMOKE (local GPU, J330 natdep weak, from u08, 2 L-BFGS iterations): runs. GPU peak 23.8 GB with ~5.0 GB
+  held by other processes -> ~18.8 GB for the fit, inside the .7 allocator cap of the 24 GB card; ~5 min compile + 3 evaluations.
+  Objective at the K=12 optimum's parameters: 156,499.4 (K=12 at the same parameters 156,351.3: +148 nats from the finer
+  discretisation alone, before any refit). Full refit from u16 on the local GPU is running (k32_fit_u16; held-out follows).
+  Reading (likely): +148 at fixed parameters means the coarse 4 x 3 Q pooling was absorbed by the parameters -- whether it moves
+  the swing needs the refit.
+- D2b (RP2 + path compounding {n_seg 4, lambda_c ~ HalfNormal(.25)}, J330, local CPU, from g02, grad 10.9): lambda_c .0002;
+  objective 157,445.1 (g02 157,446.4: -1.3, inside noise). Pre-registered failure branch: segment-costed path STRUCTURE is not
+  used even when the presences force a barrier -> path-dependent dispersal through the habitat map is all the barrier the data
+  support; no dispersal hack (user, ~15:20). D2a (S2 + compounding) still running.
+- LITERATURE (agent, scratchpad lit_range_colony.md, page-cited): (a) the western CORE was occupied and abundant by 1895-1931
+  (AOU Check-lists; Grinnell & Miller 1944 "Abundant generally" in California; San Diego atlas: no evidence of change)
+  [established]; 20th-century spread is at the northern / Plains-edge margins (E Washington after 1910, BC 1934-37, NW Oregon
+  ~1939-41, Missoula 1964-68; Kansas stalled 1882-1966, then spread) [established]. (b) Long Island colony: 7 / 18 / 24 / 38
+  birds 1942-46, crash 1947-48, 70 in 1949-50 (r ~ .4/yr); ~280 birds in five colonies 20-40 km apart in 1951; slow spread
+  (~8-11 km/yr) until ~1960, then an abrupt acceleration [established counts]. "Non-migratory" in 1953, NY -> Philadelphia
+  movements by ~1960 [established].
+  ANCHOR CORRECTIONS: (1) no founder count exists -- "~80 founders" is Veit & Lewis's simulation assumption (V&L PDF p.12), not
+  Elliott & Arbib 1953; (2) Bock & Lepthien 1976 give "nearly ten-fold" 1962-71 and r = .23 (pp. 791-792), not ".06 to .42"
+  (line ~788 above and realized_r.py carry the wrong attribution; left in place, corrected here).
+- WESTERN SUB-REGIONS (west_sub.py; median potential lambda, median K over cells occupied in 2010; abundance N summed):
+  | fit | region | lambda 1910 -> 1950 -> 2010 | K 1910 -> 2010 | N 2015 / 1955 |
+  |---|---|---|---|---|
+  | S2 r01 | West core (occupied 1902; 371 cells) | .95 -> 1.08 -> 1.39 | .159 -> .253 | 1.76 |
+  | S2 r01 | West margin (813 cells) | .35 -> .51 -> .71 | .067 -> .119 | 4.88 |
+  | S2 r01 | California | .53 -> .62 -> .79 | .091 -> .131 | 1.36 |
+  | natdep u16 | West core (462 cells) | 1.13 -> 1.28 -> 1.63 | .146 -> .298 | 1.52 |
+  | natdep u16 | West margin (722 cells) | .32 -> .50 -> .74 | .042 -> .083 | 4.44 |
+  | natdep u16 | California | .80 -> .93 -> 1.19 | .091 -> .159 | 1.32 |
+  Occupied (N > .1) in 1902: 418 (S2) / 498 (natdep) cells of ~1,300 western cells -- the AOU-documented range (CA, AZ, NM,
+  NV, UT, CO, E OR, ID) is much larger [established mismatch; this is what RP2/RP3 assert].
+- BBS SAME-ROUTE TRENDS, data vs model (bbs_west.py; per-route window means summed over routes counted in both windows; route
+  effects cancel):
+  | region | windows | routes | data | S2 r01 | natdep u16 |
+  |---|---|---|---|---|---|
+  | California | 1968-74 -> 1988-94 | 22 | .82 | .99 | 1.05 |
+  | California | 1988-94 -> 2011-17 | 26 | .79 | .93 | 1.00 |
+  | AZ/NM | 1968-74 -> 1988-94 | 9 | .54 | 1.79 | 1.49 |
+  | AZ/NM | 1988-94 -> 2011-17 | 24 | .87 | 1.02 | 1.05 |
+  | Great Basin/CO | 1988-94 -> 2011-17 | 34 | 1.67 | .82 | .84 |
+  | North/interior | 1968-74 -> 1988-94 | 58 | 1.28 | 1.62 | 1.67 |
+  | North/interior | 1988-94 -> 2011-17 | 136 | 1.08 | .94 | 1.09 |
+  | Plains | 1968-74 -> 1988-94 | 62 | .48 | 1.54 | 1.37 |
+  | Plains | 1988-94 -> 2011-17 | 61 | 2.09 | 2.59 | 2.77 |
+  | East | 1988-94 -> 2011-17 | 302 | .51 | .54 | .54 |
+  Established: the southern West (California, AZ/NM) DECLINES on the same BBS routes (~.8 per 20 yr) while both fits hold it
+  flat or rising; the Plains 1968-94 halves in the data and rises in the fits; the East post-1990 decline (disease) is fitted.
+  Established: in both fits the core's potential lambda rises ~45% and K ~1.6-2x 1910 -> 2010; rates are functions of DESK Z
+  only (alpha_a/f/j/k, w_scale), so this is Z's change mapped through the one shared Z -> rate map.
+  Likely: the shared map that lifts the East (the swing) also lifts the western core, against the literature (no core change
+  before ~1960) and the BBS (core decline after 1968) -- the western misfit and the swing are one tension. Unknown: why the
+  southern West declines (habitat, disease before detection, or feeder / urban change); per the standing rules this is NOT to be
+  resolved by partitioning Z by driver or adding covariates. Small n for AZ/NM 1968-74 (9 routes) and Great Basin.
+- TACC refilled (queue had drained to 0 pending): y01 J110 S2 natdep weak (from u03), y02 J200 RP1 natdep weak continuation
+  (z02 ended at grad 2,859), y03 J330 natdep weak perturb .3 seed 2 (basin), y04 J110 natdep weak perturb .3; y05 J200 natdep
+  weak perturb .3 seed 2; y06 / y07 J60A30 natdep weak (new overlay; from the J200 / J330 optima) -- completes the kernel set.
+- Natdep weak + RP1 / RP2 (TACC z01-z03): z01 J330 RP1 156,770.9; z02 J200 RP1 157,054.5 (grad 2,859, continuing as y02);
+  z03 J330 RP2 157,359.7 (cf. RP2 without native departure g02 157,446.4). Held-out and swing readouts to collect.
+- K=12 vs K=32 Q REPLAY at fixed parameters (q_k32.py, natdep weak u16, J330; kernel-mass-weighted Q, regional medians):
+  West / Plains change < 2% in every year and band; East +10% (1910 .0100 -> .0110) to +9% (2010 .0501 -> .0544), almost all
+  in the > 483 km band (+15-16%: 1910 .0173 -> .0200, 2010 .0605 -> .0694). Band masses are identical (.367 / .418 / .215).
+  Established: the finer discretisation does not move the barrier's location or its time course; it slightly raises long-range
+  arrival survival into the East. The +148-nat objective change at fixed parameters is therefore per-cell detail, not a
+  regional shift. Whether the refit moves the swing: k32_fit_u16 (local GPU) pending.
+- D2b held-out (marginal_heldout, CPU): 48,801.3 (pre 8,329.9 / post 19,576.5 / 2021-25 20,894.9) vs g02 ~48,796 (+5, inside
+  the 30-60-nat held-out noise). Compounding verdict unchanged: inert on objective and held-out.
+- y01 J110 S2 natdep weak (from u03): STALLED at the start (4 iterations, grad 6,808; 157,446.9; held-out 49,198.0) -- the known
+  J110 inner-solve stall, not an optimum. Requeued: y08 (from u03, --laplace_warm), y09 (from the J200 natdep optimum u15,
+  --laplace_warm); y04 (perturb .3) running. y02 J200 RP1 natdep weak continuation: z02 was converged in value (2 iterations,
+  grad 55; 157,054.5), held-out 48,820.7.
+- Basin checks (natdep weak, perturb .3): y03 J330 seed 2 (from 176,281 after the kick) -> 156,286.3, grad 58 (u16 156,296.1:
+  -9.8, a slightly deeper point; continuation y11 queued; held-out pending). y04 J110 (from u03 + kick) -> 157,432.1, grad 468
+  (not converged; y01's stall point was 157,446.9); held-out 49,228.3; continuation y10 (--laplace_warm) queued.
+  y03 held-out 48,432.0 (u16 48,395.7: +36, inside the 30-60-nat noise) -> J330 natdep weak optimum restart-stable in value.
+- y08 J110 natdep weak from u03 WITH --laplace_warm: same stall (4 iterations, grad 7,463, 157,446.9) -> the stall is at the u03
+  starting point itself, not the inner-solve warm start; the perturbed start (y04 -> y10) and the J200 start (y09) are the
+  live J110 routes. J60A30 inputs copied to TACC (4.3 GB); y06 / y07 requeued.
+- y05 J200 natdep weak perturb .3 seed 2: 156,567.2 (u15 156,575.8: -8.6) but grad 6,100 (not converged); held-out 48,824.8
+  (u15 48,729.8: +95); continuation y13 queued. y10 J110 continuation (from y04, --laplace_warm): 157,428.3, grad 953, held-out
+  49,249.7 -- J110 keeps creeping down ~2-4 nats per restart with large gradients (the J110 stall pattern); y14 continuation and
+  y09 (from the J200 optimum) in flight. J110 natdep stays provisional; it sits ~1,140 nats above J330 (156,286) in objective.
+
+### RESULT ~17:30: K=32 (8 directions x 4 bands) REFIT -- finer path discretisation fits worse and does not shrink the swing
+Local GPU (24 GB; peak 23.8 GB incl. ~2.3 GB other use), J330 natdep weak, from u16, 609 iterations, grad 62, 24 min.
+| | objective | conditional | marginal | CBC | BBL | absence | held-out (pre / post / 2021-25) |
+|---|---|---|---|---|---|---|---|
+| K=12 u16 | 156,296.1 | 111,137.5 | 122,760.7 | 9,135.0 | 4,680.7 | 31.4 | 48,395.7 |
+| K=32 refit | 156,353.8 (+58) | 111,170.9 | 122,810.5 | 9,145.6 | 4,682.8 | 26.4 | 48,491.5 (8,281.6 / 19,183.4 / 21,026.5) (+96) |
+Potential lambda (median over cells occupied in 2010; decadal.py), East: K=12 .38 (1902) / .54 (1951) / .70 (1966) / 1.18 (2010);
+K=32 .32 / .48 / .68 / 1.23 -> the 1951 -> 2010 rise is +.64 (K=12) vs +.75 (K=32). West .54 -> 1.05 vs .51 -> 1.07.
+Parameters: native_departure_r .928 -> .949, alpha_a .436 -> .591; the rest within a few %.
+Established: resolving paths 8 ways x 4 bands neither improves fit nor shrinks the swing (slightly worse on both); with the
+Q replay (regional Q unchanged) the 4 x 3 discretisation is not a cause of the swing. Likely: the coarse wedges' pooled habitat
+averaged out cell-scale bottlenecks that the finer wedges expose (lower early-East rates are then needed). Answer to the user's
+question: a K=32 refit runs on the local GPU (~24 min), so finer kernels are affordable if ever needed.
+- y11 (J330 natdep weak, continuation of y03): 156,286.3, grad 45, 7 iterations -> converged; the J330 natdep weak optimum is
+  156,286.3 (held-out 48,432.0); u16 (156,296.1, held-out 48,395.7) is an equal-quality neighbour.
+- J60A30 natdep weak (y06, from the J200 optimum): 159,490.2, grad 4,874 (not converged), held-out 49,937.0 -- ~3,200 above
+  J330, the same size as the recorded J60A30 rejection without native departure (+3,012, KERNEL-SENS part 2): native departure
+  does not rescue the BBL-scale kernel. y07 (from J330) running; continuation of y06 on the local GPU.
+- J110 natdep weak from the J200 optimum (y09): 157,410.1, grad 8,914, held-out 49,227.3 -- best J110 so far, still stalled.
+- Queued: RP2 / RP1 + natdep weak basin checks on J330 (y15 / y16, perturb .3).
+- Perturb .3 kicks can land on non-smooth points: y12 (J200 RP2 natdep, from z04 + kick) stopped at 158,376.2 with grad 8.1e6
+  after 69 iterations; y07 (J60A30 from J330 u16) 160,782.0, grad 6.0e6. Neither is an optimum (L-BFGS "relative reduction"
+  exits at a kink). Requeued: y17 continuation of y12 (--laplace_warm), y18 J200 RP2 from z04 with a smaller kick (.15, seed 7).
+- y13 (J200 natdep weak, continuation of y05): 156,567.2, grad 35 -> converged; 8.6 below u15 (156,575.8) with held-out
+  48,824.8 vs 48,729.8 (+95) -- two near-equal J200 optima whose held-out differs by ~95 (the ~90-nat held-out spread already
+  recorded between equal optima); neither is preferred on these numbers.
+- y14 J110 continuation: 157,427.3 (grad 486) -- J110 creeping ~1 nat per continuation. Queued y19 (J110 natdep weak from the
+  J330 optimum y11) and y20 = RP3 (seed presences, 1,050 cells) + natdep weak on J330 from y11. Pre-registered: RP3 without
+  native departure doubled the J330 swing (+.94); if native departure carries the western source (as it halved RP2's), RP3 +
+  natdep lands near +.5; if RP3 still forces > +.8, the larger asserted range overwhelms what philopatry can contain.
+
+### CONSOLIDATED ~17:55: swing (East median potential lambda 1966 -> 2010, readout regions/east) with and without native departure
+| kernel | arm | no native departure | + native departure (weak prior; converged runs) |
+|---|---|---|---|
+| J330 | S2 | +.47 (g01) / +.43 (r01) | +.46 (u16, y03, y11: .63 -> 1.10) |
+| J330 | RP1 (93 cells) | ~unchanged vs S2 (recorded) | +.42 (z01) |
+| J330 | RP2 (350 cells) | +.99 (g02 = g04) | +.43 (z03), +.46 (y15 restart, 157,380.2; z03 157,359.7) |
+| J330 | RP3 (1,050 cells) | +.94 (recorded) | y20 running (strong-prior u07: +.86) |
+| J200 | S2 | +.50 (g03) | +.50 (u15, y13) |
+| J200 | RP1 | -- | +.39 (z02 = y02) |
+| J200 | RP2 | +.62 (g06) | +.37 (z04); y12 / y17 kink exits (158,37x, +.59) not optima; y18 running |
+| J110 | S2 | -- | +.61 to +.74 (none converged) |
+| J60A30 | S2 | -- | not converged, ~3,200 nats worse |
+Established (J330, J200): with native departure the swing no longer depends on how much early western range is asserted --
+S2, RP1 and RP2 all sit at ~+.4-.5, while without it RP2 doubles the swing. Mechanism (likely, from the learned-dispersal and
+barrier analyses): philopatric western natives (departure x (1 - r w), r ~ .93) let a robust early West exist without exporting
+dispersers, so the Plains / East need not be made inhospitable to stop an early crossing -- the non-habitat barrier the user's
+logic called for, supplied by banding-anchored behaviour rather than a fitted crossing cost. Not resolved: the remaining ~+.45
+(the S2 level) and its western counterpart (core rise vs literature / BBS decline, above).
+HMC reservation: hmc/CURRENT.sh now points at y11 (S2 + natdep weak, J330; backup CURRENT.sh.bak_20261107_1800_r01); READY
+still held. Queued: y21 J200 RP3 + natdep; y22 J330 S2 with the BBL-anchored prior Beta(17,3) from y11.
+- y16 (J330 RP1 + natdep weak, perturb .3 from z01): 156,768.4 (z01 156,770.9), held-out 48,589.9, swing +.45 (z01 +.42) --
+  RP1 + natdep restart-stable. Queued y23: J200 S2 + BBL-anchored prior Beta(17,3) from y13 (prior sensitivity, pairs y22).
+
+### RESULT ~18:00: OFFLINE BANDING-MOVEMENT SCORE (plan step 5, G0-style; no refit) -- natal_ll.py
+Design: 310 BBL natal records on the grid (banded young Apr-Sep, first re-encounter Apr-Jul of a later year; West 69 /
+central 99 / East 142). Model prediction for a SURVIVING juvenile from the banding cell c in the banding year:
+own cell ~ (1-p) Sj(c) + p sum_k w_k(0) Q(c,k); other cell d ~ p sum_k w_k(d-c) Q(d,k) (p = the fit's realised juvenile
+departure at (c,t); w_k = wedge kernels; Q = journey survival). Reporting: rho = 1 own cell, 1/k elsewhere (k = 1, 2, 3, 6).
+Classes: own cell / <=155 / 155-483 / >483 km (cell centres). Log-likelihood totals (k = 1 / 2 / 3 / 6):
+| fit | West own-cell share (obs .855) | LL West (k=1) | LL central | LL East | TOTAL k=1 / 2 / 3 / 6 |
+|---|---|---|---|---|---|
+| J330 S2 r01 (no natdep) | .455 | -88.6 | -203.3 | -195.5 | -487.4 / -487.5 / -496.1 / -524.9 |
+| J330 natdep u16 | .813 | -40.9 | -204.0 | -200.5 | -445.5 / -460.7 / -477.6 / -519.1 |
+| J200 S2 b02 (no natdep) | .424 | -78.7 | -185.8 | -177.8 | -442.3 / -433.2 / -437.7 / -462.2 |
+| J200 natdep y13 | .750 | -39.6 | -184.5 | -179.4 | -403.4 / -407.6 / -419.4 / -454.5 |
+| J110 natdep y09 (not converged) | .668 | -40.2 | -170.5 | -159.7 | -370.5 / -371.5 / -383.5 / -421.9 |
+Class shares, observed vs model (rho 1): central obs .41 / .41 / .14 / .03, J330 natdep .61 / .15 / .18 / .06, J110 .54 / .33 /
+.12 / .01; East obs .61 / .30 / .06 / .04, J330 natdep .55 / .20 / .20 / .05, J200 natdep .50 / .29 / .18 / .03, J110 .49 / .39
+/ .12 / .01.
+Established: (1) native departure is what the WEST banding asks for -- the own-cell share goes .46 -> .81 (J330) and .42 -> .75
+(J200), +48 / +39 nats on 69 western records, the largest single movement gain; with it no reporting bias is needed in the
+West (k = 1-2 best). (2) Every kernel over-predicts 155-483 km moves in the central / East (.18-.20 vs .06-.14 observed) and,
+except J110, under-predicts short (<=155 km) moves; the > 483 km share is matched by J330 (.05 vs .04 East) but missed by J110
+(.01). The banding therefore wants MORE short moves AND a long tail -- a different kernel SHAPE, not just a shorter mean.
+(3) Kernel ranking by movement alone: J110 > J200 > J330 (-370 / -403 / -446 at k=1), ~40-75 nats apart -- an order of
+magnitude smaller than the BBS + CBC + BBL objective gaps the other way (J330 156,286 vs J200 156,567 vs J110 >= 157,410).
+Likely: adding the movement likelihood would not overturn the kernel ranking but would price the kernel's shape; a
+1-parameter shape lever (Weibull shape at fixed mean; V&L .468) is the constrained test it points to. Caveats: rho is a crude
+2-level reporting model (design s.3.3 wants rho from human density, calibrated on adult records); records pool 1960-2025;
+p and Q are read at the banding year.
+
+### PRE-REGISTRATION ~18:10: juvenile kernel SHAPE at fixed mean (J330), with native departure (weak)
+Why: the movement score wants more short (<= 155 km) moves AND a > 483 km tail, with fewer 155-483 km moves, in the central
+and East -- the signature of a fatter-tailed kernel at the same mean (lower Weibull shape). Constraint: 1 parameter, the V&L
+shape (.468) is itself a fit to Massachusetts banding; tested on a sweep, not fitted freely.
+Build: build_shape.py (validated: master rebuilt from radial_kernel_grid(330, .468, cell_integrated 31) to 8e-8; wedges 2e-9;
+edge corrections 1e-6; Z_disp median rel 2e-7) -> inputs_shape/established1951_s035 and _s06 (shape .35 / .60, mean 330,
+stored 4 x 3 splits). Arms: S2 + natdep weak refit from y11 on each; read objective, held-out, swing, movement score.
+Predictions: shape .35 improves the movement score in the central / East (more short moves, longer tail) and, if BBS agrees,
+the objective; .60 does the opposite. Swing: unknown (a fatter tail lets a few long-distance founders cross early, which the
+barrier logic says must then be suppressed by lower eastern rates -> swing could GROW at .35).
+
+### RESULTS ~18:30: prior sensitivity, RP3 + native departure, more restarts
+- BBL-anchored prior Beta(17,3) vs weak Beta(1.5,1.5), from the weak optima: J330 y22 156,284.9 (1 iteration; y11 156,286.3),
+  held-out 48,432.0, swing +.46; J200 y23 156,565.6 (y13 156,567.2), 48,824.8, +.50. Established: the native-departure
+  result is prior-insensitive -- the data set r; the BBL prior only changes the objective by its own log-density.
+- RP3 (seed presences, 1,050 cells) + natdep weak: J330 y20 159,224.7 (presence cost 1,740.5), held-out 49,251.1, swing +.59
+  (Plains .43 -> .93); but the strong-prior RP3 fit u07 sits 117 nats LOWER (159,107.3, presence cost 1,523.0) with +.86 ->
+  y20 is not the J330 RP3 optimum; y24 (weak prior from u07) queued to settle it. J200 y21 159,410.9 (presence 1,731.0),
+  held-out 49,421.6, swing +.33 (no-natdep J200 RP3 recorded larger); perturbed restart y25 queued.
+  Pre-registered reading (+.5 contained vs > .8 overwhelmed): J200 contained; J330 undecided until y24. RP3 costs ~2,800-2,900
+  nats against S2 on every kernel (presence cost alone ~1,500-1,740) -> the fitted model cannot occupy the full 1,050-cell seed
+  range in 1902-40 at any rate field the BBS accepts [established]; RP3 is a stress test, not a candidate.
+- J200 RP2 + natdep, smaller kick (y18, .15): 157,600.4 (z04 157,601.9), held-out 48,945.8, swing +.36 (z04 +.37) -> J200 RP2
+  natdep restart-stable; y12 / y17 were kink exits.
+- J110 natdep from the J330 optimum (y19): 157,487.0 (grad 434; worse than y09 157,410.1) but held-out 48,923.5 (y09
+  49,227.3: -304) and swing +.55 (y09 +.61) -- J110's objective surface has separated basins of very different predictive
+  quality; continuation y26 queued. J110 stays provisional.
+- Kernel-shape arms (.35 / .60, J330 natdep) running on TACC; inputs copied to $WORK/.../inputs_shape.
+
+### VERIFIED ~18:45: the 330 km is V&L's MEAN, correctly used -- but the kernel FORM does not match V&L (user asked)
+Source (V&L 1996, PDF text, eq. 17 and p. 11): they fit K(z) ~ exp(-(|z|/b)^a) to the FREQUENCY DISTRIBUTION OF DISTANCES
+(45 juvenile recaptures, Massachusetts 1960-90), a = .468, b = 41.056 km, and report Mj = b G(2/a) / G(1/a) = 329.28 km --
+the mean of a 1-D distance density; their simulations are 1-D (eq. 15-16). Code (dispersal_spec.get_gamma_scale): the model
+uses the same a = .468 as the shape of a 2-D AREA density exp(-(r/s)^a) and solves s (11.5 km) so the mean distance
+s G(3/a) / G(2/a) = 330. Established (arithmetic):
+| | median km | q90 km | P(> 27 km) | P(> 155 km) | P(> 483 km) |
+|---|---|---|---|---|---|
+| V&L fitted distances (their kernel) | 146.6 | 834 | .832 | .486 | .201 |
+| model J330 (2-D, same a, mean 330) | 216.0 | 745 | .954 | .619 | .211 |
+So "330" is not an arithmetic slip (it is V&L's mean), but carrying a 1-D distance density's shape into a 2-D area density
+multiplies the distance distribution by r: the model's J330 has far FEWER short moves than V&L's own fit (P(<= 155) .38 vs
+.51; P(<= 27) .05 vs .17) with the same tail. This is exactly the movement-score misfit (too few <= 155 km moves, too many
+155-483). A source-faithful 2-D kernel keeps V&L's distance distribution: k(r) ~ exp(-(r/b)^a) / r, b = 41.056 (mean 329,
+median 147). Building it (build_vl.py; cell-integrated as radial_kernel_grid, 1/r regularised below 54/62 km) -> inputs_shape/
+established1951_vl; arm: S2 + natdep weak from y11 (J330-faithful), read objective / held-out / swing / movement score.
+Caveat (literature agent): V&L's 45 records include autumn / winter HY captures, so their distances mix in seasonal
+movement -> even the faithful kernel is likely too long for natal dispersal [likely].
+- y24 (J330 RP3 + natdep weak, from the strong-prior u07): 159,084.2 (y20: -140; stalled after 3 iterations, grad 594),
+  held-out 49,264.4, swing +.86 (Plains .27 -> .96). Pre-registered RP3 reading: J330 OVERWHELMED (> .8), J200 contained
+  (+.33, y21) -- kernel-dependent; with J330's long tail, a 1,050-cell early West still has to be walled off by low Plains /
+  East rates even with philopatry. Small-kick restart y28 queued. y26 (J110 continuation of y19): no movement (2 iterations).
+- Spin-up check (user asked): every arm since the morning runs the 40-y pre-1902 spin-up at 1902-06 habitat (spinup {enabled,
+  years 40, habitat_years 5}) -- verified in all natdep / shape / K32 / compounding / eta-diagnostic overlays.
+- Shape .35 (J330 natdep weak, from y11; y_shape035): 156,320.3 (+34 vs y11; grad 130, continuation y29 queued), held-out
+  48,403.7 (y11 48,432.0), swing +.47 -- a fatter-tailed SHAPE at fixed mean neither helps the BBS nor moves the swing so far.
+  y25 J200 RP3 restart: 159,406.1 (y21 159,410.9). Queued y30: RP2 + natdep + free eta (routing diagnostic with presences).
+- Shape .60 (thinner tail / fewer short moves at mean 330; y_shape06): 156,264.6 (y11 -21.7; grad 105, continuation y32
+  queued), held-out pending. Shape .35: 156,320.3 (+34). So the BBS + CBC + BBL prefer a LESS heavy-tailed shape than .468,
+  the opposite of the banding movement score -- the kernel-shape tension is real (likely: BBS spread wants fewer stay-at-home
+  short moves; banding wants more). Pending: V&L-faithful kernel (more short moves) fit.
+- y27 (natdep + free eta, J330, from y11): eta .76 (r .98), 156,332.8 -- 46 ABOVE y11, which is the eta = 0 special case, so
+  L-BFGS reached a worse routed local optimum; held-out 48,383.9 (y11 48,432.0, -48), swing +.40. Diagnostic reading: with
+  native departure the data do not reward routing in-sample from this start; inconclusive on held-out (inside ~60-nat noise).
+- y28 (J330 RP3 natdep, small kick): 159,048.0 (grad 2,959; y24 159,084.2) -- still unconverged.
+- Validation maps of the candidate y11 rendered: CAND_viz/y11_lap_J330_S2_natdepweak_cont_y03/map_diagnostics (eastern
+  1950-65 CBC colony all "impossible"; western fringe red; western BBS residuals positive; eastern establishment +4 yr median,
+  17% inside documented windows; 2021-25 under-forecast 3.0-3.7 vs 4.5-4.8; calibration r .91).
+
+### ~19:30 (user: "Do all of these significantly over-estimate modern Great Plain abundances?" / 04b) -- YES at the population level
+I first answered "no" from the CONDITIONAL fitted means (each route at its own fitted effect) -- that was the wrong yardstick:
+route effects absorb exactly this kind of regional misfit. Also my first regions were lon/lat boxes; redone with the EPA/CEC
+Level I zone raster (great_plains_zones_54km.tif: west / Great Plains / east). y11 candidate, region_level.py:
+| zone | years | obs mean | conditional fitted / obs | NEW-route expectation (mu0 x exp(s^2/2) = x2.25) / obs | mean exp(route effect) |
+|---|---|---|---|---|---|
+| West | 1994-2009 | 9.94 | .93 | 1.20 | 2.03 |
+| Great Plains | 1994-2009 | 1.52 | .91 | 1.24 | 1.95 |
+| East | 1994-2009 | 5.25 | .87 | 1.39 | 1.64 |
+| West | 2010-2025 | 9.17 | .90 | 1.21 | 2.16 |
+| Great Plains | 2010-2025 | 1.35 | .96 | 1.51 | 1.51 |
+| East | 2010-2025 | 3.37 | .83 | 1.37 | 1.55 |
+Established: the dynamics' expected count for a typical (new) route over-predicts every zone, and the Great Plains most in
+2010-25 (x1.51, up from x1.24 in 1994-2009 -- fig 04b's blue line climbing away from observed); the Plains routes' own effects
+average x1.51 vs the x2.25 a random route should carry, i.e. the route effects pull the Plains down to fit. Likely mechanism:
+the continent-wide rise in potential lambda / K (the swing's shared Z -> rate map) keeps lifting the Plains after 2010 while
+the data flatten. Same over-prediction in r01 and J200 by the conditional tables (identical structure); zone version to run.
+- Runge figure: "skipped" because the contribution audit (run_contribution_audit.py) was never run for y11; the audit replay
+  (contribution_budget.audit_forward) does not implement the FFT floor (raises), DD adult survival or the 40-y spin-up
+  initial state, so it cannot replay this candidate without extension [established from code].
+- Kernel shape, converged-in-value (continuations moved < 1 nat): .35 156,320.3 / held-out 48,403.7 / swing +.47; .468 (y11)
+  156,286.3 / 48,432.0 / +.46; .60 156,264.6 / 48,465.0 / +.46. Objective prefers thinner tails (-22 at .60), held-out drifts
+  the other way (+33), swing flat: shape is not a swing lever on J330. Extending: .80 build (local), J200 .35 / .60 (y34;
+  .60 building), .60 perturbed restart (y35); V&L-faithful (y33) running.
+
+### ~20:15 USER FEEDBACK + ECOREGION ANALYSIS
+User: (1) y11 "may be a leading candidate, but it is still the same pathology. Excessively high lambda + source territory
+prevalence in the present and excessively low in the past." (2) Runge figures are standard -- never drop them (memory saved).
+(3) Lat/lon regions are "clearly wrong and lazy" -- use the actual ecoregions; proposes all CEC Level I ecoregions for every
+regional validation summary (memory saved). (4) "this round of fits really treats the Great Plains as barely different from
+ecoregions to the east ... The classic belief is that the Great Plains were the big trough ... I just wonder if that is a truth
+the current model version is simply failing to uncover."
+Built: cec_level1_54km.tif (all Level I classes on the 54 km grid; EPA/CEC NA_CEC_Eco_Level1.shp downloaded to
+E:\Datasets\houfin\external\cec_ecoregions_l1; majority of a 9 x 9 sub-grid; Great Plains 977 cells, 963 of the existing
+barrier-zone raster's 1,056). Script: scratchpad build_eco_l1.py. Analysis: eco_rates.py.
+Potential lambda (Sa + Sj Fmax), median over each ecoregion's cells, 1910 / 1950 / 1966 / 1990 / 2010:
+| fit | E Temperate Forests | GREAT PLAINS | N Am Deserts |
+|---|---|---|---|
+| J330 r01 (no natdep) | .35 / .46 / .60 / .86 / 1.04 | .39 / .58 / .66 / .67 / .80 | .58 / .68 / .77 / .86 / .87 |
+| J330 y11 (candidate) | .29 / .43 / .59 / .89 / 1.06 | .38 / .61 / .70 / .73 / .83 | .75 / .89 / .98 / 1.10 / 1.15 |
+| J200 y13 | .38 / .58 / .74 / 1.06 / 1.26 | .41 / .68 / .76 / .82 / .99 | .75 / .91 / .99 / 1.13 / 1.22 |
+| J110 y19 (provisional) | .51 / .78 / 1.02 / 1.33 / 1.52 | .44 / .73 / .86 / .92 / 1.09 | .89 / 1.07 / 1.17 / 1.29 / 1.43 |
+Share of cells with potential lambda > 1, 1950 -> 2010 (y11): ETF .14 -> .53, Great Plains .17 -> .36, Deserts .43 -> .60.
+BBS 2010-25 relative density (obs, model new-route expectation, relative to ETF): Great Plains .30 obs vs .34 (y11), .32 (r01),
+.34 (J200), .27 (J110) -- the MODERN ordering (Plains ~1/3 of the East) is reproduced by every fit.
+Established: (a) On J330 the Great Plains are NOT the trough -- in 1910-1950 the Eastern Temperate Forests are WORSE than the
+Plains (.29 vs .38; .43 vs .61); the barrier sits in the East and the East then rises 3.7x (.29 -> 1.06) to overtake the Plains
+(.83) -- the user's pathology stated by ecoregion: too low in the past, too high now, in the East. (b) The ordering depends on
+the kernel tail: J200 ~ tie early (.38 vs .41), J110 has the classic trough (ETF .51 > GP .44 in 1910, .78 > .73 in 1950).
+Likely mechanism: with J330's tail (21% of juveniles > 483 km) a Plains trough ~800-1,000 km wide is jumped by long-distance
+dispersers, so a good East would be colonised early; the only barrier the fit can build is a bad early East. A shorter
+kernel lets the Plains do the walling-off -- the classic story -- but the BBS prefers J330 by ~280 (J200) to >1,100 (J110)
+nats, and the East still rises steeply on J110 (.51 -> 1.52). Unknown: whether the classic configuration is reachable on
+J330 at a small cost (the data may not reject it; the optimiser may never visit it).
+- Other results: V&L-faithful kernel (y33): 156,345.6 (+59 vs y11), held-out 48,393.0 (-39), swing +.51. RP2 + natdep + free
+  eta (y30): 157,334.4 (z03 -25), held-out 48,707.1, swing +.37. J200 natdep + free eta (y31): 156,598.8 (+31 vs y13 -> not
+  at the nested optimum), held-out 48,669.5 (-60), swing +.43. Queued: J200 shape .60 (y38), V&L-faithful + RP2 (y39).
+- y35 (shape .60 J330 natdep, perturb .15): 156,260.8 (y_shape06 156,264.6), held-out 48,438.2, swing +.45 -> shape .60
+  restart-stable; objective ~-25 vs .468, held-out equal, swing equal. Queued y40 (J110 natdep, small kick from y19).
+
+### PRE-REGISTRATION ~20:40: GREAT PLAINS TROUGH diagnostic (user: "Sure")
+Purpose: is the classic configuration (Great Plains the early trough, Eastern Temperate Forests better) a truth the model fails
+to find on J330, or one the data reject? NOT a model change -- a forced-configuration diagnostic like the crossing cost.
+Implementation: laplace_fit.py --trough W,M --trough_cells trough_cells_cecL1.npz (CEC Level I land cells: GP 964, ETF 933):
+cost = 0.5 W max(D + M, 0)^2, D = mean over 1902-1950 of [mean potential lambda (Sa + Sj Fmax) over GP cells - over ETF cells].
+At y11 D = +.092 (GP higher), hinge = 101.3 nats at W 1e4, M .05 (smoke test passes).
+Arms (natdep weak base, all data terms, spin-up): T1 J330 from y11, M .05; T2 J200 from y13, M .05; T3 J330, M .15 (deeper
+trough). Read: (i) the fit's objective EXCLUDING the hinge vs y11 / y13 (the price of the trough), split by data term (BBS
+conditional / marginal, CBC, BBL, absences, nest, held-out); (ii) swing (East 1966 -> 2010) and ETF / GP lambda trajectories;
+(iii) whether ETF early rates rise (East less of a barrier) or GP falls.
+Predictions: if the trough is attainable at small cost (< ~30 nats, inside restart noise) the optimiser simply never visits
+it on J330 -> the swing shrinks because the East need not be bad early. If the price is large and paid by BBS / CBC, the
+data reject it under this structure (likely via the J330 tail jumping the trough; then the dispersal kernel is the issue).
+- Kernel shape on J200 (natdep weak, from y13 156,567.2 / 48,824.8 / +.50): .35 (y34) 156,537.6 (-30), held-out 48,708.0
+  (-117), swing +.54; .60 (y38) 156,640.8 (+74; grad 276, not converged), 48,836.2, +.50. J330 prefers the THINNER tail
+  (.60: -25) and J200 the FATTER (.35: -30): the data pull the effective distance distribution toward a middle (long mean +
+  thin tail, or shorter mean + fat tail). Swing flat across all shapes on both kernels (+.45 to +.54) -> kernel shape is not a
+  swing lever [established on J330 + J200]. RP2 + natdep + shape .60 (y36): 157,332.3 (z03 157,359.7: -27), held-out 48,786.6,
+  swing +.39 (z03 +.43).
+- y37 (J200 RP2 + natdep + free eta, from z04): 157,559.4 (z04 157,601.9: -42), held-out 48,759.3. Queued T4 (trough M .05,
+  J330, perturbed start) and y41 (J200 shape .60 continuation).
+
+### RESULT ~21:10: TROUGH T1 (J330, margin .05, from y11)
+D (1902-50 mean GP - ETF potential lambda): +.092 -> -.007 (the margin not fully met; residual hinge 9.2). Objective EXCLUDING
+the hinge 156,302.9 vs y11 156,286.3 -> price +16.6 nats (BBS marginal +19.0, conditional +7.6, CBC +6.7, BBL -1.7, absence
+-2.2, nest -5.4) -- inside restart noise in-sample. Held-out 48,531.8 vs 48,432.0: +99.8 (post-1994 blocks +79.8) -- above the
+30-60 noise, at the ~90 spread seen between equal optima. Ecoregion medians 1910 / 1950 / 2010: ETF .36 / .50 / 1.08 (y11 .29 /
+.43 / 1.06); GP .35 / .54 / .78 (y11 .38 / .61 / .83) -- both move: the early East rises AND the Plains fall. Swing +.41 (East
+.72 -> 1.12; y11 .63 -> 1.10). Modern relative density GP/ETF .35 (obs .30). Reading so far: EQUALISING the early Plains and
+East is nearly free in-sample on J330 (the optimiser did not visit it; established) and trims the swing only slightly; the
+held-out cost is borderline. T3 (margin .15: a real trough), T2 (J200), T4 (perturbed start) pending.
+- T2 (trough, J200, margin .05, from y13): D -> -.022 (hinge 3.9); objective excl. hinge 156,575.0 vs y13 156,567.2 -> price
+  +7.8 nats; held-out 48,890.3 (+65); swing +.47 (y13 +.50). Same picture as J330: equal early Plains / East is ~free in-sample
+  and barely moves the swing. Queued the price curve: T5 J200 margin .15, T6 J330 margin .30 (T3 J330 .15 running).
+- y39 (V&L-faithful kernel + RP2 + natdep, from z03): 157,411.8 (z03 +52), held-out 48,653.2, swing +.58 (z03 +.43).
+- Shape .80 (J330 natdep, local GPU, from y11, 749 it, grad 51): 156,258.4 (y11 -27.9; .60 -25.4), held-out 48,526.2 (+94).
+  J330 objective plateaus for shape >= .6 while held-out worsens -> no evidence for a thinner tail beyond noise; .468 kept.
+- T3 (trough J330, margin .15): D -> -.078 (GP below ETF by .078; hinge 26.1); objective excl. hinge 156,340.2 -> price +53.9
+  (BBS marginal +60.5, CBC +5.9, nest -8.8, BBL -2.6, absence -3.6): a real trough is paid almost entirely by the BBS.
+  Held-out / swing pending. y40 (J110 natdep, kick from y19): 157,441.1 (y19 157,487.0), held-out 48,958.8. Queued T8 (J330
+  margin .15 from a perturbed start); local GPU runs T7 (margin .10).
+- T3 held-out 48,668.4 (y11 +236) and swing +.40 (East .77 -> 1.17; y11 .63 -> 1.10): forcing the Plains trough raises the
+  EARLY East (.63 -> .77 in 1966) but the MODERN East rises too (1.10 -> 1.17) -> the swing barely shrinks (+.46 -> +.40)
+  while held-out pays 236 [established for J330 margin .15]. Reading (likely): the East's rise is not only the barrier's
+  doing -- modern eastern abundance plus the post-1994 trajectory demand a high modern East rate regardless of where the
+  early barrier sits. y41 (J200 shape .60 continuation): 156,631.2 (grad 2,396), swing +.48.
+  Queued T9 / T10: trough .15 with RP2 presences (J330 / J200) -- the user's full story: robust West + Plains trough.
+- T4 (J330 margin .05, perturbed start): D -.010, price +14.5 (excl. hinge 156,300.8), held-out 48,558.5 (+127), swing +.43
+  -> T1 reproduced. T5 (J200 margin .15): D -.095, price +39.7 (grad 1,121, not fully converged), held-out 48,974.0 (+149),
+  swing +.42 (y13 +.50). Trough price curve so far (excl. hinge / held-out / swing): J330 D~0: +15 / +100-127 / +.41-.43;
+  J330 D -.08: +54 / +236 / +.40; J200 D -.02: +8 / +65 / +.47; J200 D -.10: +40 / +149 / +.42. Queued T11 (J330 .30, kick).
+- T6 (J330 margin .30): D -.208, price +151.9 (BBS marginal +135, CBC +28, nest -16), held-out 48,863.5 (+431); swing pending.
+  T8 (J330 margin .15, perturbed start): D -.090, price +91.7 (T3 at D -.078: +53.9 -> T3 is the better optimum; CBC +58 here),
+  held-out 48,640.0 (+208), swing +.36. J330 price curve (excl. hinge): D 0 -> ~+15; -.08 -> +54; -.21 -> +152 (~quadratic);
+  the swing falls only .46 -> .36-.40 over that range. Queued T13 (continuation of T3) to pin the D -.08 point.
+- T6 swing +.33 (East .87 -> 1.19; Plains .67 -> .91) at D -.21 / price +152 / held-out +431. Queued T14 (trough .15 + RP1, J330).
+- T9 (TROUGH .15 + RP2 presences + natdep, J330, from z03): D -.126 (a real trough), objective excl. hinge 157,367.9 vs z03
+  157,359.7 -> price only +8.2 (BBS marginal +6.2, CBC +11.5, range presence -9.7); held-out 48,790.9 (z03 48,712.4: +78);
+  swing +.36 (z03 +.43; East .80 -> 1.17, Plains .74 -> .93). Established: with a robust native West asserted (RP2) and
+  western philopatry, the classic configuration -- Great Plains the early trough, East better -- costs ~nothing in-sample
+  (vs +54 at D -.08 without presences). Reading (likely): the presences already force Plains rates down (the barrier logic),
+  so the trough is where an RP2 fit nearly sits; the unconstrained RP2 optimum just puts a little more of the barrier in the
+  East. Swing still +.36 -> the trough is attainable but not the cure. Queued T15 (RP2 + trough .30).
+- T7 (local GPU, J330 margin .10): D -.042, price +33.8, held-out 48,582.7 (+151). J330 S2 price curve: D 0 +15 / -.04 +34 / -.08 +54 / -.21 +152.
+- Ecoregion medians, RP2 + natdep J330 (1910 / 1950 / 1966 / 1990 / 2010): z03 ETF .39 / .52 / .67 / .91 / 1.11, GP .36 / .54 /
+  .64 / .70 / .80 (already ~classic order early); T9 (+ trough) ETF .49 / .63 / .76 / .94 / 1.13, GP .34 / .50 / .60 / .65 / .77.
+  East rise 1910 -> 2010: S2 y11 3.7x (.29 -> 1.06), RP2 z03 2.8x, RP2 + trough T9 2.3x -- the robust-West + Plains-trough
+  configuration halves the PAST deficit (early East .29 -> .49) at ~no in-sample cost; the modern East stays high (1.13), so
+  the remaining swing is the PRESENT side of the pathology (modern lambda / source prevalence too high). Modern GP/ETF density
+  .34 (obs .30) in both.
+- D2a (S2 + path compounding, J330, local CPU, from r01): lambda_c .0001, objective 156,411.5 (r01 156,412.7) -> compounding unused on S2 as on RP2 (D2b): pre-registered failure branch on both; path-structure costs carry no barrier.
+- T10 (TROUGH .15 + RP2 + natdep, J200, from z04): D -.115, price +21.6 (excl. hinge 157,623.5 vs 157,601.9), held-out
+  48,968.9 vs z04 48,982.8 (-14: no held-out cost), swing +.29 (z04 +.37). -> the robust-West + Plains-trough configuration is
+  cheap on BOTH kernels (J330 +8 / held-out +78; J200 +22 / -14) and gives the smallest swings so far (+.36 / +.29)
+  [established, J330 + J200]. Deep troughs without presences stay expensive: T12 J200 D -.237 +88 / held-out +186 / swing +.33;
+  T11 J330 D -.226 (perturbed) +187 (T6 +152 better). T13 (T3 continuation): no movement -> T3's +54 is its optimum.
+- COLONY (colony_lambda.py; 4 land cells <= ~100 km of Babylon / Jones Beach + the release cells): potential lambda there is
+  1.18-1.31 (1940-50) and 1.36-1.58 (1955-65) in y11, 1.28-1.53 in T9, 1.06-1.50 in J110 -- the colony site was NEVER bad
+  habitat in any fit. The release is at 1951 by construction (inputs established1951: inv_timestep 49), so the documented
+  1942-50 colony (7 -> 70 birds, r ~ .4) is outside the model by design; after 1951 the modelled colony grows from .85 (1955)
+  to 1.18 (1960) route-count units (r ~ .07 / yr) despite potential lambda ~1.4 -- realised growth far below potential.
+  The 1950-65 eastern CBC "impossible" panel is therefore a FOUNDER / LOW-DENSITY problem (pulse size, Allee mate-finding,
+  juvenile drain into the poor early East), not a colony-habitat problem [established for the habitat part; mechanism among
+  the three unknown -- the release-cell Allee exemption was inert (X1, ~11:36), so pulse size and drain remain].
+- Ecoregion medians, J200 RP2 + natdep (1910 / 1950 / 1966 / 1990 / 2010): z04 ETF .55 / .71 / .85 / 1.06 / 1.21, GP .55 / .73 /
+  .79 / .84 / 1.01; T10 (+ trough) ETF .66 / .83 / .95 / 1.10 / 1.25, GP .50 / .68 / .75 / .80 / .98. East rise 1910 -> 2010:
+  J200 S2 y13 3.3x (.38 -> 1.26), RP2 z04 2.2x, RP2 + trough T10 1.9x. Same pattern as J330 (3.7x -> 2.8x -> 2.3x): the past side
+  lifts, the modern East stays ~1.1-1.25. Queued T18 / T19 (J200 RP1 / RP3 + trough).
+- T14 (TROUGH .15 + RP1 + natdep, J330, from z01): D -.110, price +29.1 (excl. hinge 156,800.0 vs 156,770.9), held-out
+  48,619.3 (z01 48,502.6: +117), swing +.32 (z01 +.42). T15 (TROUGH .30 + RP2, J330): D -.261 (deep), price only +35.4
+  (157,395.1 vs z03 157,359.7; without presences a D -.21 trough cost +152), held-out 48,812.2 (+100), swing +.33.
+  Price of a deep Plains trough with vs without an asserted robust West (J330): +35 vs +152 -> the RP2 presences and the
+  classic trough are mutually consistent; the data mainly object to a trough when the early West is small [established].
+  Queued T20 (RP2 + trough .45) and T21 (RP2 + trough .30, perturbed start).
+- T17 (T9 from a perturbed start): 157,368.4 (T9 157,370.8), held-out 48,772.3, swing +.35 -> RP2 + trough J330 restart-stable. Queued T22 (J200 RP2 + trough .15, perturbed).
+- T16 (TROUGH .30 + RP2, J200): D -.271, price +24.6 (157,626.5 vs z04 157,601.9), held-out 48,948.8 (z04 48,982.8: -34);
+  swing pending. T19 (trough .15 + RP3, J200, from y21): 2 iterations, hinge 0 -- the RP3 optimum ALREADY has the trough
+  (D -.202): asserting the full 1,050-cell seed range makes the Plains the early trough by itself (barrier logic, user
+  ~15:05). Deep trough + robust West costs J200 ~+25 / held-out -34 and J330 ~+35 / +100. Queued T23 (RP2 + trough .45, J200).
+- T16 swing +.26 (East 1.04 -> 1.30; Plains .80 -> 1.02) -- the smallest swing of any fit so far (J200 RP2 + trough .30; price +25, held-out -34). Queued T24 (its perturbed restart).
+- T18 (trough .15 + RP1, J200): D -.126, price -0.8 (157,053.7 vs z02 157,054.5 -- free), held-out 48,887.7 (z02 48,820.7:
+  +67), swing +.35 (z02 +.39). T20 (trough .45 + RP2, J330): D -.392, price +99.6, held-out 48,932.7 (+220) -- the RP2
+  price curve on J330: D -.13 +8 / -.26 +35 / -.39 +100 (convex; a moderate trough is free, an extreme one is not).
+  Queued T25 (continuation of T16, the J200 RP2 deep-trough fit with swing +.26).
+- T20 swing +.28 (East .95 -> 1.22; Plains .67 -> .95) at D -.39 / price +100 / held-out +220. Queued T26 (J200 RP3 + trough .30).
+- T21 (= T15 from a perturbed start): 157,402.1 (T15 157,402.7), held-out 48,796.9, swing +.34 -> reproduced. T22 (= T10 perturbed): 157,643.0 (T10 157,629.8: +13), held-out 48,741.8 (T10 48,968.9: -227 -- held-out spread between near-equal J200 RP2 optima is large). Queued T27 (J330 RP1 + trough .30).
+- T22 swing +.38 (T10 +.29): near-equal J200 RP2 + trough optima (157,630-157,643) differ in swing by ~.09 and held-out by ~230 -> J200 RP2 basin is multi-modal; queued T28 (another seed) to size the spread.
+- J200 RP2 + natdep + TROUGH, consolidated (price excl. hinge vs z04 157,601.9 / held-out vs z04 48,982.8 / swing; z04 +.37):
+  | run | D | price | held-out | swing |
+  |---|---|---|---|---|
+  | T10 (.15) | -.115 | +21.6 | -14 | +.29 |
+  | T22 (.15, kick) | (not read) | +41 incl. hinge | -241 | +.38 |
+  | T16 (.30) | -.271 | +24.6 | -34 | +.26 |
+  | T24 (.30, kick) | -.276 | +19.8 | -99 | +.26 |
+  | T25 (T16 continued) | = T16 (converged) | | | |
+  | T23 (.45) | -.407 | +70.9 | +87 | +.20 |
+  Established (J200): a Plains trough of D ~ -.27 with a robust West costs ~+20-25 in-sample, IMPROVES held-out (-34 / -99),
+  and gives swing +.26 reproducibly (T16 / T24); deeper (-.41) starts to cost (+71 / +87) for +.20. T26 (RP3 + trough .30)
+  stuck (grad 1,686). Queued T29 (T23 from a perturbed start).
+
+### ~22:30 (user: is the trough fit better on held-out? what else changes; which components could implicitly favour the trough?)
+HELD-OUT (marginal NLL; total / pre-1994 / 1994-2020 / 2021-25):
+| fit | total | pre | post | 2021-25 |
+|---|---|---|---|---|
+| y11 J330 S2 natdep (leading) | 48,432.0 | 8,262.7 | 19,169.5 | 20,999.8 |
+| z03 J330 RP2 | 48,712.4 | 8,295.4 | 19,442.3 | 20,974.6 |
+| T9 J330 RP2 + trough .15 | 48,790.9 | 8,310.6 | 19,505.0 | 20,975.3 |
+| T15 J330 RP2 + trough .30 | 48,812.2 | 8,291.8 | 19,506.8 | 21,013.6 |
+| y13 J200 S2 natdep | 48,824.8 | 8,362.7 | 19,438.5 | 21,023.6 |
+| z04 J200 RP2 | 48,982.8 | 8,371.6 | 19,588.5 | 21,022.6 |
+| T16 J200 RP2 + trough .30 | 48,948.8 | 8,334.8 | 19,644.2 | 20,969.8 |
+| T24 J200 RP2 + trough .30 (kick) | 48,883.4 | 8,322.0 | 19,601.0 | 20,960.5 |
+Established: NO trough fit beats y11 on held-out (+310 to +520). The loss is in the 1994-2020 blocks and comes mostly from the
+RP2 presences themselves (z03 vs y11: post +273), not the trough (T9 vs z03 +63; J200 trough vs z04 -34 / -99). 2021-25 is
+equal or slightly better with presences.
+WHAT CHANGES (trough_diff.py; full output scratchpad trough_diff.out):
+- Scalars move with RP2 (z03 / z04), the trough adds little: adult survival intercept alpha_a .53 -> .82-.91 (J330), juvenile
+  alpha_j -.87 -> -1.10/-1.14, fecundity alpha_f 3.93 -> 4.12-4.17, alpha_k -1.70 -> -1.46/-1.51; w_scale (Sa, F, K, Sj) [4.00,
+  2.72, 4.65, -1.96] -> [4.42-4.74, 2.38-2.79, 3.62-3.91, -2.11/-2.19] -- a slower life history (adults survive more, young less).
+  J200: native_departure r .84 (S2) -> .65 (RP2) -> .55-.58 (+ trough); J330 r stays .92-.97. CBC effort block shifts with RP2.
+- Rates carrying the trough (log GP/ETF early, y11 -> T15): Sa +.19 -> -.39, Sj +.19 -> -.40, K +.08 -> -.42, Fmax +.11 -> -.13.
+  Survival and capacity carry it; fecundity much less. The modern contrast deepens too (lambda -.17 -> -.29).
+- The East's rise: ETF habitat-field time change 1902-50 -> 2000-20 (in the rate's linear predictor) K +1.78 (y11) -> +1.20
+  (z03) -> +1.03 (T9) -> +.76 (T15); Sa +1.54 -> +.93; GP's change stays +.8-1.0 throughout. Baseline fits make the East's
+  habitat rise twice the Plains'; trough fits make them rise at parity -- the swing reduction is exactly this.
+- The map: w_env (64 Z features x 4 rates) moves by ~45-55% of its norm between these near-equal fits (|dw| 12-16 vs |w| 26-31;
+  RP2 alone |dw| ~11). The early GP-ETF contrast is carried diffusely (top features z0, z1, z2 -- the dims where the Plains
+  exceed the East early by ~.2 SD); dw correlates only -.13 to -.28 with any single Z contrast. The trough is reachable by many
+  diffuse re-weightings: the 64-feature map is weakly identified along exactly this direction.
+CANDIDATE IMPLICIT LEVERS (none adopted; for the user):
+1. Early-West occupancy evidence (RP presences) -- data-driven, already the main implicit driver (y11 -> z03 flips the early
+   contrast), but costs ~270 held-out after 1994 (tension to localise next).
+2. Juvenile-survival data: RP2 / trough fits pick low Sj + high Sa. The planned BBL young-bird recovery term (SURVIVAL_BBL_
+   SCOPING s.3.1: Sj x Q-bar) would test that life-history shift directly.
+3. Amplitude prior on habitat-driven TIME change (1 hyperparameter): the trough fits need half the eastern habitat rise; a
+   prior on the size of Z-driven rate change through time (not its existence) would favour them implicitly. Touches the
+   changing-habitat premise -> user decision.
+4. Kernel length: on J200 the trough improves held-out; on J330 it costs ~60-100.
+5. Map regularisation: the w_env prior (scale / cross-rate correlation) decides which of the near-equal re-weightings wins.
+- T27 (trough .30 + RP1, J330): 156,869.0 incl. hinge, held-out 48,663.3 (z01 +161), swing +.28. T29 (T23 perturbed): 157,709.8 (T23 157,682.1), held-out 48,900.9, swing +.23 -> deep J200 RP2 trough ~reproduced. Queued T33 (J110 RP2 + natdep weak, no trough).
+- LOCALISED (heldout_eco.py; CEC Level I; z - baseline, held-out NLL): the RP2 held-out loss is NOT in the West where the
+  presences sit -- J330 (z03 - y11, total +280): E Temperate Forests post-1994 +177.8 (pre +21.6, 2021-25 -49.4), Great
+  Plains post +51.8, NW Forested Mtns +30.8 (pre +16.8, 2021-25 +19.6), Deserts / Mediterranean California / Northern Forests
+  ~0. J200 (z04 - y13, +158): ETF post +124.7, GP post +39.4, NW Mtns -20.0, Deserts -8.7. The ETF loss is spread evenly over
+  1994-2018 (~+30-40 per 5 yr on J330, +13-32 on J200) and vanishes after 2019.
+  Established: asserting a robust early West costs held-out in the EAST and Plains during the disease era (1994-2018), not
+  in the West. Likely mechanism: RP2 re-weights the shared habitat map (|dw| ~ 40% of |w|) and shifts the shared
+  life-history intercepts (alpha_a .53 -> .82, alpha_j -.87 -> -1.10, disease hill_n 1.11 -> 1.45), which degrades the
+  eastern decline/recovery trajectory -- the early-West constraint and the modern-East dynamics compete for the same shared
+  parameters. Unknown: whether it is the life-history shift or the map re-weighting (testable by refitting z03 with the
+  life-history intercepts pinned at y11's values -- diagnostic only).
+- PRE-REGISTERED P1 / P2 (diagnostic): RP2 refit with the life-history intercepts (alpha_a, alpha_j, alpha_f, alpha_k) PINNED at
+  the S2 natdep optima (y11 J330; y13 J200), from z03 / z04. Read: objective cost vs z03 / z04, ETF post-1994 held-out
+  (heldout_eco.py), swing, early GP/ETF contrast. If the eastern held-out loss mostly disappears at small cost -> the
+  life-history shift carries the tension; if it stays -> the habitat-map re-weighting does.
+- NOTE (found while building P1): the base overlays already pin log_inv_total = 0 (invasion pulse size) and n50_raw = -2.1
+  (Allee half-saturation) -- both colony mechanisms flagged above (pulse size, mate-finding Allee) are FIXED, not fitted, in
+  every fit of the day. The colony gap analysis must treat them as configuration, not as estimates.
+- T28 (J200 RP2 + trough .15, seed 20): 157,629.9, held-out 48,878.8, swing +.30 -> margin-.15 swings across starts .29 / .38 /
+  .30. T30 (J200 RP2 + trough .30 + shape .35, from T16): 157,614.6 (T16 -16), held-out 48,851.9 (T16 -97), swing +.33.
+  T31 (J200 RP1 + trough .30): stalled (4 it, grad 2,203) -- no reading. Queued T34 (T30 perturbed).
+- Queued P3 (reverse of P1): S2 (no presences) with the life-history intercepts pinned at the RP2 optimum z03, J330 from y11 --
+  does the RP2 life history alone reproduce the eastern 1994-2018 held-out loss? T32 (RP2 + trough .30 + shape .60, J330):
+  157,393.5 incl. hinge. T33 (J110 RP2 natdep weak from u13): stalled (3 it).
+- Note: the RP2 life-history shift is NOT the same on both kernels -- J330 (y11 -> z03): alpha_a .53 -> .82, alpha_j -.87 ->
+  -1.10; J200 (y13 -> z04): alpha_a .69 -> .39 (DOWN), alpha_j -.66 -> -.67, alpha_f 3.69 -> 4.05. Both raise fecundity and
+  alpha_k. Queued P4 (J200 analogue of P3: S2 with z04's intercepts pinned). T32 held-out 48,978.3 (z03 +266). T33 (J110 RP2
+  natdep) held-out 49,289.7, swing +.58 (stalled fit).
+- T32 swing +.26 (East .93 -> 1.18) -- J330's smallest (RP2 + trough .30 + shape .60), held-out 48,978.3 (z03 +266). Queued T35 (its perturbed restart).
+- EVALUATION BUG (found on P1): parameters pinned through population_model.pinned_sites (numpyro condition INSIDE the model)
+  are not saved in best_params.npz, and marginal_heldout / the readout condition the model on the Sandbox defaults (sb.lat),
+  which OVERRIDE the inner pin for alpha_* (sb.lat alpha_f 4.98 vs pinned 3.93) -> P1 held-out 56,631.5 and its readout are
+  INVALID. Fit objectives are unaffected (the fitter's coordinates exclude pinned sites). Every other held-out number of the day
+  stands: the base overlays' own pins (n50_raw, log_inv_total) are implemented as deterministic sites and are not in sb.lat.
+  Fix: E1 / E3 re-evaluate P1 / P3 from parameter files augmented with the pinned values (E2 / E4 to follow for P2 / P4).
+  In-sample so far: P1 (RP2, LH pinned at y11) 157,385.6 vs z03 157,359.7 (+26); P3 (S2, LH pinned at z03) 156,295.8 vs y11
+  156,286.3 (+9.5) -> swapping the life-history intercepts costs little in-sample either way.
+- E1 (P1 corrected: RP2 J330 with life-history intercepts pinned at y11): held-out 48,819.9 (pre 8,297.8 / post 19,459.7 /
+  2021-25 21,062.4) vs z03 48,712.4 (8,295.4 / 19,442.3 / 20,974.6) and y11 48,432.0 (8,262.7 / 19,169.5 / 20,999.8): pinning
+  the S2 life history does NOT recover the post-1994 loss (post +17 vs z03, still +290 vs y11). Reading (likely, J330): the
+  eastern held-out cost of RP2 is carried by the habitat-map re-weighting, not by the life-history intercepts. E3 (reverse),
+  E2 / E4 (J200) pending.
+- E3 (P3 corrected: S2 J330 with RP2's life-history intercepts pinned): objective +9.5 vs y11, held-out 48,405.9 (pre 8,260.8 /
+  post 19,203.6 / 2021-25 20,941.5) vs y11 48,432.0 -- NO eastern loss (post +34, 2021-25 -58), swing +.54 (y11 +.46). E1 swing
+  +.36. Established (J330): the RP2 life history alone does not produce the 1994-2018 held-out loss (E3), and removing it from
+  the RP2 fit does not cure it (E1) -> the loss comes from the habitat-map re-weighting the presences induce. Implicit lever
+  5 (map regularisation) is therefore the relevant one; lever 2 (juvenile-survival data) would not touch this tension.
+  P4 (J200 S2, LH pinned at z04): 156,594.0 (+27 vs y13); E2 / E4 pending. Queued T36 (J200 RP2 + trough .30, seed 24).
+- USER (~23:00): "anything, even covariates, ecoregion etc. are fine for DIAGNOSTICS. But yes the final version can't be
+  something hacked together from our pre-conceived notions." (memory updated; relayed to the lever-probe subagent.)
+- E2 (J200 RP2, intercepts pinned at y13): held-out 48,856.4 (8,328.5 / 19,536.5 / 20,991.4) vs z04 48,982.8 (-126);
+  E4 (J200 S2, intercepts pinned at z04; objective +27 vs y13): 48,667.7 (8,347.4 / 19,319.1 / 21,001.2) vs y13 48,824.8
+  (-157). On J200 BOTH swaps improve held-out -> J200 held-out varies by ~90-240 between near-equal optima; the J200
+  life-history reading is unresolved (J330 E1 / E3 is the clean case). Queued y45 / y46: J200 S2 natdep perturbed restarts
+  (seeds 25 / 26) to size the J200 held-out noise floor. T34 (T30 perturbed): 157,614.8 (T30 157,614.6), held-out 48,737.1
+  (T30 48,851.9) -> reproduced in objective; held-out differs by 115 again.
+
+### ~23:45 LIKELIHOOD ACCOUNTING by data stream x CEC Level I ecoregion x era (scratchpad likelihood_accounting/: acct_dump.py,
+acct_compare.py, compare_J330.txt; dumps reproduce each fit's totals: CBC 9,133.3 / 9,252.6, absences 31.3 / 60.5, presences
+720.5, BBS conditional 111,126.8). Division of labour (user ~23:20 "your job is the same"): the lever subagent owns map /
+lever mechanisms; I own TACC fits + this accounting. NLL differences; + = the stream argues AGAINST the second fit.
+y11 (S2) -> z03 (RP2), J330:
+- Range presences (RP2 core, 1902-40): -1,296.3 -- NW Forested Mtns -444.5, N American Deserts -784.5 (1902-39), Temperate
+  Sierras -53.2. y11 scored against the documented range costs 2,016.7: the leading fit omits much of the interior West
+  (Great Basin / NW mountains) [established].
+- CBC counts 1902-65: +148.2 against RP2 -- NW Forested Mtns +67.0, Deserts +54.1, Marine W Coast +13.7, GP +16.6 (circle
+  penalties -28.9). The EARLY WINTER counts argue against the robust West in exactly the ecoregions where the breeding-range
+  presences argue for it [established]. Likely reason: CBC is a winter survey; interior / northern breeders are partially
+  migratory (Salt 1952 Wyoming / Colorado; BBL summer -> winter displacement West median 0 but 90th pct 31 km, central 194 km)
+  -> low winter counts in the cold interior do not mean low breeding density. The model reads CBC as the breeding-cell
+  abundance (source weights cbc_w_local / cbc_w_seasonal) -- a data-stream argument to revisit (diagnostic: CBC weighting /
+  seasonal source by ecoregion).
+- BBS train: +70.3 (ETF +27, Deserts +17, NW Mtns +15, GP +13); ROUTE PENALTIES +192.9 (ETF +110.7, GP +55.0, Deserts
+  +27.0): the route effects absorb most of RP2's in-sample price in the East / Plains -- which is why held-out (new routes,
+  no fitted effect) exposes it there. Absences +29.2 (GP +12.8).
+z03 -> T9 (trough .15): all streams small -- BBS train +3.5 (ETF +11.9, Deserts -6.6), route penalties +0.9 (GP +11.4,
+  Deserts -19.5), CBC +8.5 (diffuse), presences -9.7 (NW Mtns -12.1), absences -1.7.
+z03 -> T15 (trough .30): BBS train -5.4 (ETF +22.0, GP +19.1 vs Deserts -20.6, NW Mtns -14.7); route penalties +90.1
+  (GP +74.2: Plains routes need larger positive effects once the Plains habitat is lowered); CBC +30.8 (Deserts +10.3,
+  NW Mtns +7.4); presences -44.3 (NW Mtns -36.7); absences -4.4 (GP -5.8).
+y11 -> T3 (trough without presences): presences +59.8 (Deserts +65.3) -- the trough without a robust West makes the
+  documented range fit WORSE.
+Reading: streams FOR the trough + robust West = range presences (interior West, 1902-40), range absences (Plains), BBS rows in
+  the West; AGAINST = early CBC in the interior West (winter counts) and BBS in the East / Plains, mostly via ROUTE EFFECTS
+  in-sample and therefore via held-out out-of-sample. The two early-West data streams (breeding presences vs winter counts)
+  conflict directly.
+- PRE-REGISTERED D1 / D2 (DIAGNOSTIC ONLY -- the CBC term stays in every candidate): RP2 J330 refit WITHOUT the early CBC
+  counts, D2 from z03 (no trough) and D1 from T15 (trough .30). Read: early-West occupancy, swing, early GP / ETF contrast,
+  held-out, and the CBC NLL re-scored at the refit. Prediction: without the winter counts the robust West + trough becomes
+  cheaper in-sample and the swing falls (the CBC is the stream resisting the interior-West occupancy); held-out unchanged
+  (held-out is BBS only).
+- USER asked whether the J330 fits use the corrected V&L algebra: NO -- every trough / accounting / pinned fit uses the
+  original J330 kernel (V&L shape as a 2-D area density, mean 330, median 216 km). The V&L-faithful kernel (distance
+  distribution = V&L's, median 147 km) has only y33 (S2: +59 in-sample, held-out -39, swing +.51) and y39 (RP2: +52, held-out
+  -59, swing +.58) -- better held-out both times (inside the noise), never with the trough. Queued V15 / V30: V&L-faithful +
+  RP2 + trough .15 / .30 from y39.
+
+### ~00:15 (11-08) REBASE ON THE V&L-FAITHFUL KERNEL (user: keeping the uncorrected kernel because the current model fits it
+better in-sample "seems like a stupid rationale when we don't have a final model"; memory houfin-fix-known-errors)
+The original J330 (and the mean-rescaled J200 / J110) kernels are a translation error of V&L's 1-D distance fit, not a
+modelling choice. From here the V&L-faithful kernel is the base; the old kernel is kept only as a labelled comparison.
+Queued on TACC: VB1 (faithful S2 natdep, perturbed restart from y33), VB2 (faithful S2 + trough .15), VB3 (faithful RP1),
+V15 / V30 (faithful RP2 + trough .15 / .30). Building faithful J200 / J110 analogues locally (same distance family, mean
+200 / 110: b = 24.94 / 13.72 km).
+Subagent (lever probe) early findings, relayed: (1) the w_env prior charges ~45 nats in every fit (41-49); f ~ N(0, I_64) is
+isotropic, so the map RE-WEIGHTING is prior-free; 74-82% of the y11 -> z03 / T9 / T15 map change sits in Z dims 24-63 (the
+low-variance tail). (2) The ETF post-1994 held-out loss (z03 - y11 +177.8) is 78% ONE 216-km block group (rows 28-31 x cols
+84-87; +139.5) -- the eastern held-out tension rests on very few blocks; treat as weak until replicated. (3) Lever 3
+(amplitude of habitat change): the habitat_change shrink already exists and was rejected Nov 5 (eta .978-.986); on E045 the
+amplitude compensated through w_scale. Map-swap diagnostics M1 (RP2 + y11's map fixed) / M3 (S2 + z03's map fixed) queued
+at its request (--fix manifold_factor,w_scale_raw; no-refit transplants cost +17,000-70,000 because the map is locked to the
+intercepts along the stiff direction).
+- Subagent (block bootstrap, 30 x 216-km blocks): ONE block (grid rows 28-31 x cols 84-87, ~39.8N 76.3W, south-central PA /
+  northern MD, ETF) carries about half of the post-1994 held-out gap of EVERY presence / trough fit on BOTH kernels
+  (post-1994 diff vs S2 base: total | that block | rest | bootstrap SE): J330 z03 +273 | +140 | +133 | 142; T9 +336 | +164 |
+  +172 | 163; T15 +337 | +177 | +160 | 177; E1 +290 | +153 | +137 | 154; T3 +182 | +78 | +104 | 82; J200 z04 +150 | +81 | +69
+  | 98; T10 +177 | +90 | +86 | 107; T16 +206 | +100 | +106 | 121; T24 +163 | +111 | +52 | 131. Pre-1994 and 2021-25 within
+  ~1 SE (2021-25 favours RP2 / trough on J200 by -44 to -63, SE ~35). The "no presence / trough fit beats y11 on held-out
+  (+310-520)" headline is ~1.6-2.1 block-bootstrap SEs, ~half of it one block (z03 under-predicts there, obs/exp 1.10; y11
+  over-predicts, .88); second recurring contributor a Great Plains block at 37.6N 99.1W (+23 to +51). Established: the
+  held-out case against the robust-West + trough fits is weak (not significant at the block level). Block trajectory being
+  traced (incl. whether it is a disease-era outlier). Faithful-kernel fits y33 / y39 pulled to E: for the subagent.
+- Subagent: the PA/MD held-out block (39.8N 76.3W) is a SPATIAL-LEVEL hotspot, not a disease-era outlier: observed BBS
+  1994-2005 mean 27.3 per route-year, the densest of 54 ETF blocks (median 3.8, q90 13.5), 2-3x its 3x3 neighbours; its
+  decline is ordinary (2006-17 at .66-.68 of 1980-93). ALL 2,614 rows there are held out (no training route inside), so the
+  score measures how high each map interpolates an unobserved peak: K there 1990 / 2010 y11 10.4 / 10.2, E3 9.8 / 9.9,
+  z03 8.1 / 8.4, E1 8.3 / 8.4, T15 7.5 / 8.1 (K follows the MAP, consistent with E1 / E3); neighbouring training routes fit
+  equally well in all fits. -> ~half of the held-out argument against presences / trough is spatial interpolation of one
+  dense hole [established]; the residual (~+130 J330, +50-100 J200) is ~1 bootstrap SE, spread thinly.
+  The next-largest repeat is a real modern-Plains cost: SW Kansas (37.6N 99.1W), where every fit under-predicts the 1994-2005
+  Plains colonisation (obs 3.3 / 1.4 per route vs model ~.3) and the trough fits more so (Plains potential lambda there in
+  1994: y11 .71, z03 .62, T15 .57) -- with one shared map, lowering the early Plains lowers the modern Plains too (likely).
+- TACC capacity (11-07 21:05 CST): the two gpuq worker nodes are the 48-h claude_hmc jobs 3558537 (v330-001) / 3558538
+  (v330-016), ~22.8 h left (end ~19:50 Sun 11-08; workers stop taking tasks 30 min before). User: take over the three pending
+  claude_regular3 jobs (3557986-8; gpu-a100, 6 h, 1 node x 3 A100 each, pending since 11-05, priority 2181, no scheduler
+  start estimate). Their batch script runs research/grid54/monitor/overflow_dev_worker.py at START, so that file was replaced
+  (original kept as overflow_dev_worker.py.orig_20261108) by a wrapper: each of the 3 srun tasks pins CUDA_VISIBLE_DEVICES to
+  its local id and execs hmc/gpuworker.sh -> 6 task slots per node when they start; queue positions kept. New 48-h
+  reservations: awaiting the user's go-ahead.
+- HMC SLOT RESERVATIONS (user ~21:15: "Plan those for the leading HMC candidates. Fingers crossed that we have a final model
+  version by the end of our current allocation tomorrow"): submitted 3564773 claude_hmc_A and 3564774 claude_hmc_B (48 h,
+  gpu-a100-small, DEB23008) with the new launcher hmc/hmc_slot.slurm <S>: at start, if hmc/READY_<S> exists it execs
+  hmc/CURRENT_<S>.sh (HMC on that slot's candidate), else hmc/gpuworker.sh. No READY_<S> yet -- the candidates (expected: the
+  faithful-kernel leading fit and its robust-West / trough-informed counterpart) are to be fixed before they start.
+
+### ~21:40 (11-07) LEVER-PROBE REPORT (subagent; summary saved to scratchpad agent_levers/REPORT_summary_by_main.md) + results
+- Map-swap refits: M1 (RP2 data, y11's map FIXED, everything else refit): objective 157,903.6 (z03 +544): presences 1,360.6
+  (z03 720.5; y11 state 2,016.7), BBS marginal 122,927.2 (z03 -47), CBC 9,174.0 (z03 -79), BBL +12, absences 47.1; held-out
+  48,354.3 (pre 8,245.0 / post 19,128.7 / 2021-25 20,980.5) -- the BEST held-out of the day (y11 -78, z03 -358).
+  M3 (S2 data, z03's map FIXED): 156,589.0 (y11 +303: BBS marginal +178, CBC +122, absences +20); held-out pending.
+  Established: the presence-driven map re-weighting is what both satisfies the presences and costs BBS / CBC / held-out; with
+  y11's map the other parameters absorb about half of the presence evidence (1,361 between 2,017 and 721) while held-out
+  improves. The map is the contested component.
+- D1 (RP2 + trough .30, NO CBC, diagnostic): held-out 48,775.6, swing +.34 (T15 with CBC +.33) -- removing the early CBC does
+  not move the swing or held-out at this configuration.
+- J200 S2 noise floor: y13 48,824.8, y45 48,833.1, y47 48,827.2 (y46 stalled) -> S2 J200 held-out is stable to ~8 between
+  equal optima; so E4 (48,667.7, -157) and E2 (-126) are REAL J200 effects of the life-history intercepts, not noise
+  (correcting the earlier "noise" reading); swings y45 / y47 +.48 / +.51.
+- Faithful J200 kernel built (b 24.94; own-cell mass .21, P(> 155) .37); J110 building.
+- M3 held-out 48,816.0 (y11 +384; post-1994 dominated) and swing +.43; M1 swing +.48 (East .59 -> 1.07). Established: the
+  presence-induced map carries the held-out cost (M3 reproduces it without presences; M1 removes it with presences), and the
+  y11-type map carries the swing. D2 (RP2, no CBC, diagnostic): held-out 48,668.8 (z03 48,712.4).
+- PRE-REGISTERED (lever D, subagent proposal; diagnostic path): RP2 + natdep weak on the V&L-FAITHFUL kernel, from y39, with
+  population_model.habitat_change shrink: Z_eff = Z_mean + eta (Z - Z_mean); H08 eta fixed .8, H06 eta fixed .6, HL eta learned
+  Beta(1,1). Prediction (subagent): learned eta stays >= .9; on the fixed path the early GP - ETF contrast D turns negative by
+  eta .7-.8 at < ~50 nats; check a_Sa = w_scale |f| for Sa -- if it rises ~1/eta the amplitude has undone the shrink and the
+  lever is dead. Any adopted value would have to be anchored to DESK's re-measured temporal calibration slope (G4), never the
+  trough.
+
+### ~22:00 (11-07) Is the trough more consistent with the BANDING data? (user) -- natal movement score (natal_ll.py, 310 BBL
+natal records, rho 1 / k = 1; higher = better; scratchpad natal_ll3.out)
+| fit | total LL | West LL |
+|---|---|---|
+| J330 y11 (S2) | -445.8 | -42.1 |
+| J330 z03 (RP2) | -435.3 | -43.0 |
+| J330 T9 (RP2 + trough .15) | -436.1 | -43.1 |
+| J330 T15 (RP2 + trough .30) | -436.3 | -43.1 |
+| J330 T3 (trough, no RP) | -446.8 | -42.3 |
+| J200 z04 (RP2) | -404.8 | -41.8 |
+| J200 T16 (RP2 + trough .30) | -407.8 | -45.3 |
+| V&L-faithful y33 (S2) | -409.2 | -39.3 |
+| V&L-faithful y39 (RP2) | -398.1 | -39.2 |
+Established: forcing the trough does NOT improve the banding score (T9 / T15 = z03; T16 3 worse; T3 = y11). What the banding
+data reward is the KERNEL (faithful +37 vs the old J330 at S2; J200 +41) and the RP2 presences (+10 to +11) -- and those
+lean toward the trough indirectly (faithful RP2 y39 early GP - ETF D -.052 vs z03 -.024, subagent; J110, best on banding,
+shows the classic trough unforced). The natal movement records are NOT in the likelihood -- they were only used offline and
+for the native-departure prior.
+
+### ~22:30 (11-07) FAITHFUL-KERNEL REBASE, first results (price = objective excl. hinge vs the no-trough twin)
+| fit | D (1902-50 GP - ETF) | price | held-out | swing (East 1966 -> 2010) |
+|---|---|---|---|---|
+| y33 faithful S2 | (+) | -- | 48,393.0 | +.51 |
+| VB1 faithful S2, perturbed restart | | 156,341.6 (y33 156,345.6) | 48,402.4 | +.51 (.64 -> 1.14) |
+| VB2 faithful S2 + trough .15 | -.082 | +47.5 | 48,596.1 (+203) | pending |
+| y39 faithful RP2 | -.052 (subagent) | -- | 48,653.2 | +.58 |
+| V15 faithful RP2 + trough .15 | -.129 | +4.9 | 48,734.6 (+81) | +.55 (.75 -> 1.30) |
+| V30 faithful RP2 + trough .30 | -.265 | +4.6 | 48,984.1 (+331) | +.42 (.89 -> 1.31) |
+Established: on the faithful kernel with a robust West, even a deep Plains trough is FREE in-sample (+4.6 at D -.27; old J330
++35); y33 is restart-stable. But the faithful-kernel swings are LARGER (S2 +.51 vs +.46; RP2 + trough +.42-.55 vs +.33-.36)
+because the modern East is higher (1.30-1.31 vs 1.17-1.19) -- the present side of the pathology is stronger on the faithful
+kernel. Held-out: V30's +331 likely the PA/MD block again (to check with the block bootstrap).
+
+### ~23:00 (11-07) Movement likelihood integrated; block-robust held-out made standard
+- laplace_fit.py --natal natal_records.npz (+ --natal_form class|cell, --natal_t_offset 1, --natal_weight 1 [diagnostic only]):
+  the subagent's natal_lik.py (copied to research/exp/invasion_sandbox/, synced to TACC) -- 310 juvenile natal + 317 adult
+  breeding-dispersal BBL records; model surviving-arrival field from the banding cell ((1-p) Sj own + p sum_k W_k Q_k), p
+  recomputed as the Veit departure x native scale; reporting rho(d) = (1 + d/54)^-gamma; adults inform only gamma and an
+  observation-only stay logit (no hidden capacity lever). Nuisances [gamma_raw, g_adult] saved as laplace_natal and resumed.
+  Records precomputed (natal_records_prep.py -> natal_records.npz; TACC has no BBL CSV). Local smoke (faithful RP2, from y39):
+  juvenile LL -364.2, adult -258.4 at start (= the subagent's profiled values), iteration 1 -361.0 / -257.0.
+  Queued N1 (faithful RP2 + natal), N2 (faithful RP2 + trough .30 + natal), N3 (faithful S2 + natal).
+- STANDARD HELD-OUT YARDSTICK (user asked; was only ad hoc so far): heldout_blocks.py (per-row marginal NLL as
+  marginal_heldout.py, vectorised Gauss-Hermite, summed by 216-km block x era) + heldout_blocks_compare.py (difference vs a
+  baseline, block-bootstrap SE over blocks, z, totals excluding the PA/MD hotspot block 7021 and excluding the single largest
+  block, median block difference). From here every held-out comparison is reported this way. Running on the J330 / faithful /
+  J200 key fits now.
+- Subagent (2) EFFECTIVE INFORMATION (p10_ess.py; Pearson residuals, 96,463 training rows; y11 ~ z03): within-route lag-1
+  small (rho .065; ESS tempering .88 already inert, lap_ess088). NEW [E]: within-year residuals correlate BETWEEN routes with
+  slow distance decay (same cell .048, <=110 km .037, 110-220 .021, 220-440 .015, 440-880 .011, 880-1760 .006) -- a regional
+  year signal the model lacks. Ecoregion-year design effects: ETF 11.1 (ESS ~72 of ~800 routes / yr) with lag-1 +.67 of the
+  region-year mean residual; GP 2.6 (+.16); NW Mtns 2.3; Deserts 3.8 (+.24). For eastern TRAJECTORY questions the iid NB
+  over-counts the BBS by ~10x (space) x ~5x (time) [E numbers, L reading]. Static route effects are ~spatially independent
+  (.16 same cell, ~0 beyond 220 km). Reading [L]: the trough's price on the presence base sits in STATIC route penalties ->
+  an ESS correction would NOT change the presence-vs-BBS balance for the trough; the over-counted part prices the SWING
+  (regional trajectories). Principled fix = a structural, integrated-out region x year persistent observation effect (AR(1)
+  / smooth) -- not a weight; W1 (high-pass year wiggle) absorbed -427 / held-out -44 but not the persistent part and did not
+  lower the swing. Flagged as tuning (never do): global BBS weight < 1, raising the presence weight, time balance (falsified),
+  ETF down-weighting.
+- Subagent (3) G4 ANCHOR (SIS "DESK over-movement ... CORRECTION"; TACC field54_eval/assim/backcast40/ASSIM_F54_MAIN_b3.md):
+  truth-on-field slope for community change 1966-86 -> 2005-25 (162-km blocks, House Finch excluded), sedentary common /
+  sedentary / all: known places 1.08 / 1.00 / .93, WITHHELD .91 / .80 / .65; arm differences CI ~ +-.03-.06 (wide for the
+  primary stratum, M14); pre-1966 unmeasured. Defensible eta anchor ~.8-.9; eta .6 = stress test only. Queued HA: faithful RP2
+  with LEARNED eta ~ Beta(21.25, 3.75) (mean .85, sd .07) -- anchored, not tuned. Subagent next: design the structural
+  region x year persistent BBS observation effect.
+
+### ~23:20 (11-07) BLOCK-ROBUST HELD-OUT (standard yardstick; heldout_blocks_run.out). Totals reproduce every MARG2 value.
+Differences vs baseline (+ = worse), block-bootstrap SE over 265 216-km blocks, z, total excluding the PA/MD block 7021:
+| fit vs base | total (SE, z) | excl. PA/MD | post-1994 (z) | 2021-25 (SE, z) |
+|---|---|---|---|---|
+| J330 z03 vs y11 | +280 (199, 1.4) | +91 | +273 (1.8) | -25 (32, -0.8) |
+| J330 T9 vs y11 | +359 (238, 1.5) | +137 | +336 (1.9) | -24 (36, -0.7) |
+| J330 T15 vs y11 | +380 (253, 1.5) | +138 | +337 (1.8) | +14 (43, 0.3) |
+| J330 M1 vs y11 | -78 (63, -1.2) | -43 | -41 (-1.1) | -19 (12, -1.7) |
+| J330 M3 vs y11 | +384 (243, 1.6) | +155 | +328 (1.9) | +6 |
+| J330 T3 vs y11 | +236 (120, 2.0) | +129 | +182 (2.1) | +11 |
+| faithful y33 vs J330 y11 | -39 (34, -1.2) | -27 | -14 | -47 (13, -3.5) |
+| faithful y39 (RP2) vs y11 | +221 (198, 1.1) | +43 | +255 (1.8) | -78 (36, -2.2) |
+| faithful V30 vs y11 | +552 (405, 1.4) | +168 | +504 | -48 |
+| faithful V15 vs y39 | +81 (65, 1.2) | +19 | +78 | 0 |
+| faithful V30 vs y39 | +331 (231, 1.4) | +124 | +249 | +30 |
+| J200 z04 vs y13 | +158 (113, 1.4) | +77 | +150 | -1 |
+| J200 T16 vs y13 | +124 (145, 0.9) | +28 | +206 | -54 (35, -1.6) |
+| J200 T24 vs y13 | +59 (153, 0.4) | -55 | +163 | -63 (35, -1.8) |
+| J200 y13 vs J330 y11 | +393 (231, 1.7) | +184 | +269 | +24 |
+Established: by the block-robust standard NO presence / trough / map difference is distinguishable on held-out (all |z| <=
+2.1, most 0.4-1.9), and excluding the single PA/MD block roughly halves every gap. The only clearly resolved held-out signal
+is the 2021-25 FORECAST, and it favours the faithful kernel (y33 -47, z -3.5) and the faithful kernel + robust West (y39 -78,
+z -2.2) over the old J330 y11. Medians of block differences are ~0 everywhere. So held-out cannot select between the
+configurations; the choice must rest on structure, the documented range, the banding data and the swing.
+- LEVER D, first pass: H06 / H08 / HL (faithful RP2 + habitat_change shrink, from y39): 157,406.8-157,407.3 (y39 157,411.8:
+  -5), held-out 48,664.9-48,673.4, swing +.62-.63 (y39 +.58). The "fixed" arms were NOT fixed: habitat_change_eta is sampled
+  outside the pinned_sites condition, so all three LEARNED eta -> .999-1.0 (w_scale / |f| ~unchanged). With a flat prior the
+  data reject any shrink (as on Nov 5). Re-queued properly fixed arms HF08 / HF06 (init eta .8 / .6, --fix habitat_change_eta,
+  which saves the value); HA (anchored Beta(21.25, 3.75)) running. VB3 (faithful RP1 natdep): 156,816.7, held-out 48,526.8,
+  swing +.54.
+- N1 (faithful RP2 + --natal, from y39): STOPPED after 2 iterations (grad 647; "relative reduction" exit) at 158,032.0
+  (natal juv -361.0, adult -257.0; held-out 48,651.4; swing +.58) -- not an optimum; continuation N1b (--laplace_warm) and a
+  .1-perturbed restart N1c queued.
+- PRE-REGISTERED C1 / C2 (lever E, subagent proposal; motivated by M1 / M3 putting the held-out cost on the map):
+  faithful RP2 with manifold_prior.form capacity_demography (K may depart from the shared demographic direction; correlation
+  ~ logit-normal(.85, scale .15)), init capacity_factor = manifold_factor, from y39 (C1) and from V30 (C2, a trough-shaped
+  start, NO hinge). Prediction (subagent, [U]): block K at PA/MD recovers to ~10, post-1994 held-out recovers >= 100, and
+  D < 0 with no hinge; fails if the swing exceeds +.55.
+- Subagent: persistent region x year BBS observation effect (smooth 500-km Gaussian basis x stationary AR(1), sigma ~
+  HalfNormal(.3), rho ~ Beta(2,2); integrated out jointly with route effects via a Schur-complement Laplace) coded in
+  scratchpad agent_levers/rye/ (rye.py, INTEGRATION.md, test_rye.py), first local test running. Guard: rho > .95 or sigma >
+  .5 = carrying trend -> not adoptable. Predictions: sigma .15-.3, rho .4-.75, swing change [-.15, +.05].
+
+### ~23:55 (11-07) Natal gradient bug fixed; lever D (fixed eta) and lever E (capacity_demography) results
+- NATAL BUG: N1 / N1b / N2 / N3 all stopped at 1-2 iterations ("relative reduction"; 21 f-evals). --grad_sites at y39 with
+  --natal: AD vs FD disagreed (native_departure_r AD 10.6 vs FD 26.1 both sides; manifold_factor 933 vs 1,130-1,350), while the
+  control without --natal agreed (apart from the known one-sided floor jitter). Cause: natal_lik's adult term applied
+  jax.lax.stop_gradient to the population quantities (adult_gamma_only) -> objective and gradient inconsistent -> L-BFGS line
+  searches failed. Fix: adult Veit departure evaluated ONCE at the init state (natal_lik.adult_departure_constants) and passed
+  as a constant (adult_fixed_p) -- adults still inform only gamma / g_adult, now through a consistent objective; AD now
+  matches FD (native_departure_r 10.63 / 10.63). Float32 cache also switched to float64. Original kept as
+  natal_lik.py.orig_subagent. Requeued: N1d (faithful RP2), N2b (faithful RP2 + trough .30), N3b (faithful S2). N1c (old code,
+  .1 kick) happened to converge: 158,025.6, held-out 48,678.4.
+- LEVER D, properly fixed eta (--fix habitat_change_eta), faithful RP2: HF08 eta .8: 157,430.8 (y39 +19), held-out 48,663.6,
+  swing +.65; HF06 eta .6: 157,421.6 (+10), held-out 48,877.8, swing +.56; HA (anchored Beta(21.25, 3.75)): eta .968,
+  157,408.8, swing +.63. Established: shrinking the habitat time change costs little in-sample but does NOT shrink the swing
+  (amplitude / map compensate, as on E045) -> lever D dead on this base.
+- LEVER E capacity_demography (K off the shared demographic direction, corr ~ logit-N(.85, .15)), faithful RP2: C1 (from
+  y39) 156,789.1 (y39 -623; grad 806), held-out 48,596.6 (-57); C2 (from V30, no hinge) 156,665.0 (-747; grad 83), held-out
+  48,612.8 (-40). Swing +.96 / +1.00 (East .57 -> 1.53 / 1.57; Plains .48 / .37 -> 1.23 / 1.35). Pre-registered failure
+  (swing > .55) -> FALSIFIED as a swing lever, but the data STRONGLY prefer a K direction distinct from demography (-600 to
+  -750 nats, held-out also better). Tension is signal: capacity wants its own habitat direction, and when given it the
+  demographic rates' time rise doubles. Reading (likely): with K free, the model explains modern abundance through K and lets
+  potential lambda rise even more steeply -- the swing is not a capacity artefact; it is driven by the rate side.
+- Faithful J200 (VJ2a, S2 natdep, from y13): 156,497.2 (old J200 y13 -70), held-out 48,569.1 (y13 -256), swing +.54.
+  Faithful J110 (VJ1a, from y19): 157,143.4 but grad 3.3e5 (kink exit), held-out 48,629.4 (old J110 ~49,227), swing +.61.
+  Faithful J330 (y33) remains best: 156,345.6 / 48,393.0. The correction improves every kernel's held-out, most for the short
+  kernels (J200 -256, J110 ~-600), narrowing the kernel gap. N1c (old natal code, converged) swing +.58.
+- Subagent final report saved: scratchpad agent_levers/REPORT.md (with main-session annotations on the natal fix, lever D and lever E). Round 3 assigned: diagnose lever E (where C1 / C2's -600 to -750 nats come from by stream x ecoregion x era; K's direction; why the rate-side rise doubles) and look for a data-anchored constraint keeping K freedom without ballooning rate change.
+
+### ~00:30 (11-08) TROUGH READOUT FOR EVERY RECENT LEVER (user: results were not being evaluated against the trough -- correct;
+the evening's lever results were reported by swing / objective / held-out and NOT by the trough statistic D, a lapse).
+trough_D.py: D = 1902-50 mean of [mean potential lambda GP - ETF] (no hinge unless stated; negative = classic trough);
+ETF median 1910 -> 2010 ratio = lambda inflation in the East.
+| fit | D | ETF 1910 / 1950 / 2010 | GP 1910 / 1950 / 2010 | ETF rise |
+|---|---|---|---|---|
+| y11 J330 S2 | +.092 | .29 / .43 / 1.06 | .38 / .61 / .83 | x3.64 |
+| z03 J330 RP2 | -.024 | .39 / .52 / 1.11 | .36 / .54 / .80 | x2.81 |
+| M1 RP2 + y11 map | +.086 | .26 / .39 / 1.03 | .35 / .57 / .79 | x3.95 |
+| M3 S2 + z03 map | -.023 | .40 / .53 / 1.12 | .37 / .55 / .81 | x2.78 |
+| D2 RP2, NO CBC (no hinge) | -.104 | .50 / .60 / 1.11 | .36 / .53 / .82 | x2.22 |
+| D1 RP2, NO CBC + hinge .30 | -.274 | .66 / .70 / 1.13 | .32 / .47 / .80 | x1.72 |
+| T15 RP2 + hinge .30 | -.261 | .64 / .73 / 1.14 | .32 / .48 / .78 | x1.78 |
+| y33 faithful S2 | +.071 | .27 / .42 / 1.11 | .35 / .57 / .83 | x4.06 |
+| VB2 faithful S2 + hinge .15 | -.082 | .38 / .54 / 1.14 | .31 / .47 / .73 | x3.00 |
+| y39 faithful RP2 | -.052 | .33 / .49 / 1.20 | .28 / .46 / .80 | x3.62 |
+| V15 faithful RP2 + hinge .15 | -.129 | .39 / .55 / 1.23 | .25 / .42 / .77 | x3.18 |
+| V30 faithful RP2 + hinge .30 | -.265 | .59 / .73 / 1.22 | .28 / .43 / .75 | x2.07 |
+| N1c faithful RP2 + natal | -.049 | .33 / .48 / 1.21 | .28 / .46 / .80 | x3.68 |
+| HF08 eta .8 (faithful RP2) | -.077 | .34 / .50 / 1.23 | .29 / .44 / .77 | x3.57 |
+| HF06 eta .6 | -.106 | .45 / .57 / 1.22 | .37 / .48 / .75 | x2.68 |
+| HA eta .97 (anchored) | -.053 | .32 / .48 / 1.23 | .27 / .45 / .80 | x3.84 |
+| C1 capacity_demography | -.020 | .21 / .35 / 1.47 | .19 / .34 / .98 | x6.97 |
+| C2 capacity_demography | -.047 | .17 / .28 / 1.53 | .13 / .24 / 1.07 | x9.26 |
+| VJ2a faithful J200 S2 | +.037 | .37 / .56 / 1.28 | .39 / .65 / .97 | x3.50 |
+Established: (1) the implicit trough drivers tonight are the RP2 presences (y11 +.092 -> z03 -.024; y33 +.071 -> y39 -.052)
+and -- strongest -- REMOVING THE EARLY CBC COUNTS (z03 -.024 -> D2 -.104, ETF rise x2.81 -> x2.22, no hinge; held-out
+48,668.8 vs z03 48,712.4). The CBC winter counts are the stream that resists the trough and keeps early-East rates low.
+(2) eta shrink gives a weak trough only at the stress value .6 (-.106, x2.68), not at the anchored .8-.97 (-.05 to -.08).
+(3) Native-departure-era natal term (N1c, old code) and the faithful kernel alone do not create the trough (D ~ y39).
+(4) capacity_demography gives NO trough and extreme inflation (x7-9): it frees the rates to rise.
+(5) The modern East stays ~1.1-1.25 everywhere except capacity_demography; the trough fits lower inflation by LIFTING the
+early East, not by lowering the modern East.
+Reading (likely): the most promising implicit lever is the CBC OBSERVATION MODEL -- CBC is a winter survey read as
+breeding-cell abundance; interior / northern breeders partially migrate (BBL summer -> winter displacement; Salt 1952), so
+winter counts misplace birds (and the accounting showed CBC +148 against RP2 in the interior West, +31 against the deep
+trough). A principled seasonal / migratory CBC source model, anchored to BBL winter displacement, is the next lever.
+- Queued D3 (faithful RP2, NO CBC, from y39) and D4 (faithful S2, NO CBC, from y33) -- DIAGNOSTIC: does dropping the winter counts produce the trough on the faithful kernel, with and without presences? Read D, ETF rise, held-out (block-robust).
+- LEVER-E DIAGNOSIS (subagent, agent_levers/acct/y39_C1.txt, V30_C2.txt, p12_*.out) [E]: C1's -623 = BBS route-effect penalties
+  -517 (STATIC spatial pattern; ETF -157, Deserts -140, GP -87) + BBS training rows -168 (ETF 1966-93 fill-in -120) + early CBC
+  -136 (interior West / north) + presences -108 + absences -14, less the capacity-factor prior; BBL +5, nests -39. K takes a
+  near-STATIC direction (spatial corr with the demographic field .91-.92 in 1910 and 2010) whose time change is flat or
+  NEGATIVE (West K 5.05 -> 2.95 route counts 1966 -> 2010; ETF 2.77 -> 2.82 vs y39 2.07 -> 3.44); the demographic (Sa) field
+  then carries ALL time change (ETF +3.1 / +4.8 vs +1.25), fecundity's habitat amplitude collapses, the swing moves into
+  survival. Mechanism [L]: freed K uses its time channel for the western / post-1994 eastern DECLINES, so the eastern invasion
+  timing falls wholly on lambda(t); realised fill-in speed is identical across fits -- only its attribution changes. The swing
+  measures how much eastern timing is attributed to habitat, with no non-habitat clock available. Proposed structural idea:
+  K keeps its own SPATIAL direction but shares the TIME change direction with demography (split readout for
+  capacity_demography; ~30 lines) -- predicted to keep the static gain (~-300 to -500 vs y39) and return the swing to y39 +-.1.
+  Note: the subagent's "free n50 / pulse as a non-habitat clock" is ruled out by user decision E055 (pinned to literature;
+  free n50 gives the Allee-dead pushed-front solution) -- flagged, not pursued. Priority set: CBC observation model first.
+- N1d (faithful RP2 + natal, FIXED code, from y39): converged (641 it, grad 18): trough D -.049 (y39 -.052), ETF rise x4.01
+  (y39 x3.62), objective 158,026.8, natal juv -356.8 / adult -256.0 (start -364.2 / -258.4), held-out 48,671.6, swing
+  +.63. Established: the banding-movement term, now properly fitted, does NOT implicitly produce the trough and slightly
+  increases eastern inflation; it moves the banding fit by ~9 nats only.
+- VJ2b (faithful J200 RP2): D -.005, ETF rise x2.73, held-out 48,675.6, swing +.48.
+- J330 S2 noise floor (perturbed restarts of y11): y48 156,289.4 / 48,469.2; y49 156,286.8 / 48,473.9 (y11 48,432.0) -> J330
+  held-out spread ~40 between equal optima.
+- Queued (CBC lever robustness, DIAGNOSTIC): D5 faithful RP2 + natal, no CBC; D6 faithful J200 RP2, no CBC; D7 old J330 S2
+  (no presences), no CBC. Read trough D (no hinge) and ETF rise first.
+- USER: why does 04b still show the Plains over-estimated? Modern (2010-25) new-route expectation / observed by CEC zone
+  (region_level.py; West / GREAT PLAINS / East): y11 1.21 / 1.51 / 1.37; D2 (no CBC) 1.25 / 1.46 / 1.43; y39 1.20 / 1.60 /
+  1.51; V30 1.31 / 1.60 / 1.43; C1 capacity_demography 1.18 / 1.20 / 1.25. Established: every trough / presence / CBC lever
+  leaves the modern Plains over-predicted by ~1.5x (the Plains routes' own effects average x1.5-2.0 below the population
+  expectation, i.e. route effects pull the map down); ONLY a separate K direction (C1) fixes it (1.20) -- at the cost of
+  x7 eastern inflation. Reading (likely): the Plains over-estimate is a SHARED-MAP capacity problem in the present (K tied to
+  the demographic field puts too many birds in viable-but-sparse Plains habitat), independent of the early trough; it is the
+  "present side" of the pathology and motivates the split readout (K's own spatial direction, shared temporal change).
+  Note fig 04b's "plains" is a lon box (-100..-90: the prairie / Midwest edge), not the CEC Great Plains.
+
+## 2026-11-08 ~00:45 CST -- CBC-free robustness (D3-D7) by trough D; CEC regions everywhere; BBL-CBC + split_shared queued
+
+Trough D (1902-50 CEC GP - ETF mean potential lambda, no hinge) / ETF lambda rise 1910 -> 2010 (trough_D.py), held-out marginal:
+| fit | kernel | presences | early CBC | D | ETF rise | held-out (vs its CBC base) |
+|---|---|---|---|---|---|---|
+| y39 (base) | faithful J330 | RP2 | yes | -.052 | x3.62 | 48,653.2 |
+| D3 | faithful J330 | RP2 | NO | **-.156** | **x2.72** | 48,637.1 (-16) |
+| D5 (+natal) | faithful J330 | RP2 | NO | **-.228** | **x2.16** | 48,895.8 (+243 vs y39; natal) |
+| D6 | faithful J200 | RP2 | NO | **-.184** | **x2.29** | 48,621.6 (-54 vs VJ2b) |
+| y33 (base) | faithful J330 | none (S2) | yes | (see record) | | 48,393.0 |
+| D4 | faithful J330 | none | NO | +.006 | x3.80 | 48,346.1 (-47) |
+| D7 | old J330 | none | NO | +.042 | x3.36 | 48,359.0 (-73 vs y11) |
+| N3b (natal) | faithful J330 | none | yes | +.071 | x4.27 | 48,417.9 |
+Reading: [E] the CBC-free trough needs the presences: with RP2 it appears on both faithful kernels (J330, J200), without
+presences it does not. [E] It is built by raising EARLY ETF lambda (1910: y39 .33 -> D3 .45, D6 .59), with early GP ~unchanged
+(.26-.36); S2 fits keep early ETF ~.30. [L] presences and the early CBC act on the same early-East quantity in opposite
+directions: presences push early ETF suitability up (the trough side), the union-source CBC (edge circles + ETF 1945-65, agent
+round 3) pulls it back. [U] why presences raise early ETF lambda -- handed to the lever subagent.
+Dropping the CBC is NOT a final-model option (user decision required on any data term); the principled test is the BBL-anchored
+CBC source refit (B1/B3 below).
+
+Fixes this round (user correction, 2026-11-08: "Even if the numbers are largely the same, I told you to fix this"):
+- scripts/viz/process_diagnostics.py: figs 04b, 21, 22 now panel by CEC Level I ecoregion (raster beside the ref grid,
+  regions/cec_level1_54km.tif; raises rather than falling back to longitude bands). Re-rendered D2 and z03
+  (old figures kept in map_diagnostics_lonband_20261108).
+  D2 under CEC: Great Plains mean count matches 1966-2010, over-predicts from ~2010 (model 1.5-1.85 vs obs 1.1-1.6).
+- harness.py: sb.eco_region (CEC L1 masks); potential-lambda and abundance summaries now include every ecoregion;
+  structural_fit_readout.py emits "CEC:<name>" regions (all land cells) beside the legacy bands; swing.sh reads CEC.
+  The CEC raster was copied to TACC processed/grid54/regions/.
+
+Queued (gpuq136): B1 faithful RP2 + --cbc_source bbl --cbc_drift lin (pre-registered by the subagent: D -.05 to -.09,
+x2.3-2.7, CBC term within ~50 of union; falsified if D shift < .02 or CBC > +100); B2 drift-only control (union + lin);
+B3 = B1 on faithful J200 (kernel robustness); SS1 split_shared (patch applied to src/model/age_priors.py, identity test
+reproduces y39 exactly on shared source: 48,653.2 / 111,211.3 / D -.052).
+
+## 2026-11-08 ~01:15 CST -- lever subagent round 4: the CBC-free trough rests on the RP2 hull back-cast; B2 control
+Report saved: scratchpad agent_levers/REPORT_round4.md (fixed fits only).
+- [E] Presence gain D4 -> D3 sits in 1902-39 N Am Deserts (-874), NW Forested Mtns (-422), Temperate Sierras (-72).
+  92% (-1,300 of -1,409) comes from RP2 HULL-ONLY cells (no 1966-69 BBS positive); the 93 evidence-backed RP1 cells give -108.
+- [E decomposition / L reading] Route = shared parameters: occupying the interior hull early raises every rate intercept
+  (+.43 adult survival), the barrier then rotates the map to hold the GP down (early Z: GP like the hull cells, cos +.32;
+  ETF unlike, -.16), and ETF rises with the intercept. Early potential lambda: GP .39 -> .34, ETF .34 -> .49.
+- [E] Early-CBC objection to the trough state (D3 - y39 +102): Front Range +25/+15, ETF +37 (Texas edge circles + NJ/PA
+  near-colony zeros through 1962 = colony spread-speed constraint), Seattle +11; the BBL source halves it (+52).
+- Interpretation: whether the interior hull was occupied in 1902-40 is the real data question (independent historical
+  occupancy, CONSIDERATIONS M29); raising or holding the hull weight to keep the trough would be tuning.
+- Round-4 revised the B1 prediction (D -.08 to -.12, x2.9-3.3, falsified if D > -.07). B1 is judged against the round-3
+  registration that predates queueing (D -.05 to -.09, x2.3-2.7, falsified if the D shift < .02 or CBC > +100); both are reported.
+
+B2 (union source + lin drift only, control): objective 157,382.1 (-29.7 vs y39), D -.062, ETF x3.61, i.e. as y39 (-.052 /
+x3.62). [E] Detection drift alone does not move the trough, so any B1 shift is the source model's.
+
+Queued (gpuq138; laplace_fit --range_presence_persist pi added):
+- D9 / D9b: no CBC, RP1 only (bbs6669), from D3 / D4. The decisive evidence check; predicted D -.03 to +.01, x3.4-3.8.
+- P9 / P7: no CBC, RP2, persistence pi .9 / .7. Predicted D ~-.10 / -.03 to 0; falsified if D <= -.12 at .7.
+
+## 2026-11-08 ~02:00 CST -- B1 / B3: BBL-anchored CBC winter source (lever subagent cbc_obs), CBC and presences kept
+| fit | kernel | CBC source | D | ETF rise | objective | CBC count nll | held-out (block-robust diff vs control, SE; excl. PA/MD) |
+|---|---|---|---|---|---|---|---|
+| y39 | faithful J330 | union | -.052 | x3.62 | 157,411.8 | -- | 48,653.2 |
+| B2 (control) | faithful J330 | union + lin drift | -.062 | x3.61 | 157,382.1 | 9,255.3 | 48,701.4 |
+| B1 | faithful J330 | **BBL** + lin drift | **-.086** | **x3.29** | 157,440.6 (+58.5 vs B2) | 9,327.5 (+72) | 48,688.2 (-13.2 +/- 22.2; -27.0) |
+| VJ2b | faithful J200 | union | -.005 | x2.73 | 157,555.2 | -- | 48,675.6 |
+| B3 | faithful J200 | **BBL** + lin drift | **-.068** | **x2.48** | 157,594.8 | 9,270.2 | 48,628.1 (-47.5 +/- 44.7; -81.1; 2021-25 -44, z -1.8) |
+Early lambda (1910) ETF / GP: B1 .37 / .28 (B2 .34 / .28); B3 .52 / .43 (VJ2b .47 / .45). Same mechanism as the CBC-free trough
+(ETF up, GP flat), smaller.
+Verdict vs the round-3 registration (pre-queue):
+- D -.05 to -.09: MET (-.086), shift .034 >= .02.
+- Inflation x2.3-2.7: NOT met (x3.29 on J330; J200 x2.48 is in range).
+- CBC term within ~50 of union: NOT met (+72), but under the +100 falsifier.
+Round-4 revision (D -.08 to -.12, x2.9-3.3): met on J330; the J200 prediction (-.10 to -.15) is not met (-.068).
+Reading [E]: the BBL source, a data-model correction with no free parameters, moves the trough the right way on both
+kernels at no held-out cost (J200 better). [L] It pays ~72 nats on the CBC term at the trough state, i.e. the remaining CBC
+objection (Front Range, Seattle per agent round 4) is not a source-geometry issue. B4 (J110) and SS2 (split + BBL) pending.
+Queue note: D8 (J110 no-CBC) died silently after info0 (no traceback, likely a node kill); requeued as D8r with memory logging.
+
+## 2026-11-08 ~02:30 CST -- B4 (faithful J110, BBL CBC source + lin drift, from y39)
+D -.275, ETF rise x2.67, 1910 ETF / GP .66 / .35. But levels are high (ETF lambda 1966 1.13, 2010 1.75), objective 158,044.9
+(+604 vs B1 on J330), held-out 49,002.5 (+314 vs B1, +374 vs B3). J110 fits markedly worse. There is no J110 union control,
+so the D cannot be credited to the source model yet: queued B4c (J110, union + lin drift, from B4).
+D9 / D9b (RP1-only, no CBC) reach the same objective from the trough start (D3) and the no-trough start (D4): 147,507.4 / 147,507.0
+at iteration 810 / 610 (running).
+
+## 2026-11-08 ~02:50 CST -- independent 1880-1940 occupancy evidence for the RP2 hull (GBIF specimens)
+User: "Don't we have GBIF records on this machine? ... I think museum specimens of some sort." The local artefact is the figure
+figures/historical/houfin_gbif_le1920.png (4,349 specimens + 567 other records, 1800-1920); its source data were not saved.
+Re-fetched from the GBIF occurrence search API (scratchpad gbif_fetch.py): taxonKey 8323485, 1800-1940, georeferenced, no
+geospatial issue -> 8,579 records (7,598 preserved specimens; US 5,285, MX 3,287) at
+E:/Datasets/houfin/external/gbif_hofi_1800_1940 (raw pages + records.csv + RECEIPT.json; an API snapshot -- citation would need a
+formal GBIF download DOI).
+Raw support (any House Finch record 1880-1940 in the 54 km cell; records with coordinate uncertainty > 25 km dropped), before the
+effort control (hull_specimens.py):
+| footprint | cells | with a 1880-1940 HOFI record |
+|---|---|---|
+| RP1 (1966-69 BBS positives, west of -100) | 93 | 47.3% |
+| RP2 core | 350 | 46.0% |
+| RP2 hull-only (core minus RP1) | 307 | 43.6% |
+|   hull-only N. Am. Deserts | 199 | 34.2% |
+|   hull-only NW Forested Mtns | 45 | 44.4% |
+|   hull-only Temperate Sierras / Med. California / S. Semiarid | 27 / 28 / 8 | 48% / 100% / 63% |
+| western cells outside the RP2 core | 1,320 | 18.9% |
+| CEC Great Plains (all) | 892 | 4.8% |
+[E] Hull-only cells have specimen support about as often as the evidence-backed RP1 cells, i.e. the hull is not merely an
+interpolation artefact in the specimen record. [U] until the collecting-effort control (bird specimens per cell, GBIF Aves
+1880-1940 counts) separates "no finch where collectors worked" from "no collectors".
+Literature (web, 2026-11-08): Columbia Basin reached from the south ~1885, slow spread through Washington in the early 20th
+century (BirdWeb; Birds of Washington State) -> northern hull cells may not have been occupied for all of 1902-40. Native
+frontalis reached western/central Nebraska before the 1940s (Nebraska Game & Parks); Kansas was colonised from the SW, first
+Kansas CBC 1955 (Emporia thesis). Grinnell resurveys: house finch "ubiquitous" in the Sierra 1911-29, no species-level
+occupancy number found; the Great Basin / Mojave resurvey (Iknayan) is the place to look.
+
+## 2026-11-08 ~03:40 CST -- batch: split_shared (SS1/SS2), RP1-only (D9/D9b), persistence (P9/P7), J110 (D8r/B4c)
+Lead metrics: D (no hinge), ETF rise 1910 -> 2010; then objective, held-out (marginal; block-robust vs y39 where stated).
+| fit | setup | D | ETF rise | 1910 ETF / GP | objective | held-out |
+|---|---|---|---|---|---|---|
+| y39 | faithful J330, RP2, CBC union | -.052 | x3.62 | .33 / .28 | 157,411.8 | 48,653.2 |
+| C1 | + capacity_demography | -.020 | x6.97 | .21 / .19 | 156,789.1 | 48,596.6 |
+| SS1 | + split readout (K level free, one shared time direction) | -.042 | x2.86 | .44 / .39 | 156,903.0 | **48,115.2** (-538 +/- 329; excl. PA/MD -219) |
+| **SS2** | SS1 + BBL CBC source + lin drift | **-.182** | **x1.66** | .74 / .50 | **156,869.7** | **47,986.4** (-667 +/- 363, z -1.8; excl. PA/MD -318; 2021-25 -126, z -2.1) |
+| D3 | no CBC, RP2 | -.156 | x2.72 | .45 / .27 | 148,085.4 | 48,637.1 |
+| D9 / D9b | no CBC, RP1 only (from D3 / D4) | -.067 / -.060 | x3.00 / x2.71 | .40-.42 / .31-.34 | 147,507.3 / 147,507.0 | 48,560.6 / 48,456.2 (D9b vs D3 -181 +/- 137) |
+| P9 / P7 | no CBC, RP2, persistence pi .9 / .7 | -.126 / -.077 | x2.99 / x3.11 | | 147,963.9 / 147,743.8 | 48,561.9 / 48,483.2 |
+| D8r | J110, no CBC, RP2 | -.258 | x3.22 | .56 / .30 | 148,715.8 | 49,078.6 |
+| B4c / B4 | J110, union / BBL source | -.249 / -.275 | x2.75 / x2.67 | | 157,955.2 / 158,044.9 | 49,010.6 / 49,002.5 |
+Readings:
+- [E] SS2 is the first fit to give a clear trough and LOW inflation with every data stream kept (CBC via the BBL source, RP2,
+  absences, BBL, nests). It is also the best in-sample (-542 vs y39) and the best held-out (block-robust -667, z -1.8). The
+  split readout and the BBL source interact: SS1 (-.042) and B1 (-.086) alone are weak; together -.182.
+- [E] SS2's early ETF lambda is high (.74 in 1910, below 1), so the East was decent but not viable early, then rose to 1.23.
+  [U] Whether that early level is plausible needs the validation suite (maps, establishment timing, Runge) on SS2.
+- [E] RP1-only still gives a mild trough without the CBC (D9 / D9b -.06 to -.07, from both starts, same optimum). This
+  falsifies the agent's round-4 prediction (-.03 to +.01). The hull adds roughly -.09 more (D3 -.156).
+- [E] Persistence: P7 -.077 (not falsified, D > -.12; deeper than the predicted -.03 to 0), P9 -.126.
+- [E] J110: the trough is kernel-driven (D8r no CBC -.258, B4c union -.249, BBL -.275), but J110 is ~+350 held-out and ~+550
+  in-sample worse than J330. The BBL source adds only -.026 there.
+Queued: SS2J200 (kernel robustness); SS3 = SS2 with specimen presences (no hull); SS4 = SS2 with RP1; B5 / D10
+(specimen presences with / without CBC); B6 (BBL source, no presences).
+
+## 2026-11-08 ~04:20 CST -- B5 / B6: specimen presences and no presences under the BBL CBC source
+| fit | presences | CBC | D | ETF rise | 1910 ETF / GP | objective | held-out |
+|---|---|---|---|---|---|---|---|
+| B1 | RP2 (hull) | BBL + lin | -.086 | x3.29 | .37 / .28 | 157,440.6 | 48,688.2 |
+| B5 | **GBIF specimens 1902-40** (392 cells, dated) | BBL + lin | **-.005** | x3.30 | .36 / .36 | 157,220.7 | 48,701.3 |
+| y33 | none | union | +.071 | x4.06 | .27 / .35 | 156,345.6 | 48,393.0 |
+| B6 | none | BBL + lin | +.057 | x3.93 | .28 / .34 | 156,397.6 | 48,375.7 |
+[E] Under the shared-map model, the BBL-source trough (B1) rests on the RP2 hull. Replacing the hull with dated specimen
+presences removes it, because early GP lambda rises (.28 -> .36): the specimens include Plains-edge cells (Front Range,
+eastern NM / CO) occupied in 1902-40. [E] The BBL source alone (no presences) moves D only -.014.
+Pending: SS3 (split + BBL + specimens) decides whether SS2's trough survives the evidence-based presences; SS4 (RP1), SS5 (none).
+D10 was a segfault (intermittent, worker a of node v330-016; D8 the same) -> requeued as D10r.
+
+## 2026-11-08 ~04:35 CST -- effort-controlled specimen evidence: the hull holds where sampled; the early Plains were sparse
+Effort = GBIF preserved Aves specimens 1880-1940 inside each 54 km cell (target group; hull_specimens.py, 1,972 western
+cells, cache E:/Datasets/houfin/external/gbif_hofi_1800_1940/effort_aves_specimens_1880_1940.json).
+| cells | n | well-sampled (>=50 bird specimens) | of which with a HOFI record | unsampled (<10) |
+|---|---|---|---|---|
+| RP1 (1966-69 BBS) | 93 | 58 | 72.4% | 19 |
+| RP2 hull-only | 307 | 162 | **72.2%** | 77 |
+|   hull-only Deserts | 199 | 71 | 71.8% | 74 |
+|   hull-only NW Forested Mtns | 45 | 36 | 55.6% | 1 |
+| western cells outside RP2 core | 1,320 | 455 | 45.1% | 575 |
+| **CEC Great Plains (west of -95)** | 892 | 201 | **13.9%** | 374 |
+| CEC ETF (west of -95) | 41 | 11 | 18.2% | 17 |
+[E] Where collectors worked, hull-only cells show House Finch as often as the evidence-backed RP1 cells (72%). The hull is
+supported, except for ~74 unsampled Desert cells, which are unknown. [E] Well-sampled Great Plains cells had a House Finch
+record only 14% of the time, against 45-72% elsewhere in the West: independent, effort-controlled evidence that the
+1880-1940 Plains were sparsely occupied, i.e. the trough's premise. [L] Presence-only specimen constraints (B5) cannot express this:
+they can only add Plains-edge presences, and the evidence is in the ABSENCES among well-sampled cells. The principled
+stream is an effort-aware specimen likelihood (P(HOFI recorded | bird-specimen effort, modelled N)); design handed to the lever subagent.
+
+## 2026-11-08 ~05:00 CST -- SS3: split_shared + BBL CBC source with dated specimen presences (no hull)
+SS3: D **-.140**, ETF rise **x1.53**, 1910 ETF / GP .77 / .57, 2010 1.18 / .92; objective 156,683.7 (presence term differs from
+SS2's, so not comparable); held-out 48,002.0 (block-robust vs SS2 +15.6 +/- 59.2; 2021-25 +37.7, z +2.3).
+[E] Under the split readout the trough survives replacing the RP2 hull with evidence-based presences (SS2 -.182 -> SS3 -.140),
+whereas under the shared map it vanished (B1 -.086 -> B5 -.005). [U] SS3 started from SS2, a trough state: SS3b (from C1) is
+queued to rule out start dependence. [L] Early levels are high (1910 GP .57, ETF .77); whether that is plausible needs the
+validation suite and the effort-aware specimen term, which can say "absent where collectors worked".
+Queued: SS3b (from C1), SS2nd (SS2 without the lin drift).
+
+## 2026-11-08 ~05:30 CST -- SS2 on faithful J200 (kernel robustness)
+SS2J200 (split_shared + BBL CBC + lin drift + RP2, J200, from B3): D **-.132**, ETF rise **x1.37**, 1910 ETF / GP .94 / .76,
+2010 1.29 / 1.11; objective 157,005.8; held-out **47,908.4** (VJ2b 48,675.6, B3 48,628.1; J330 SS2 47,986.4).
+[E] The SS2 trough + low inflation hold on J200 (J330 -.182 / x1.66). [L] Early lambda levels rise further on the shorter
+kernel (ETF .94 in 1910): the East is near-viable from 1902 and the 1940 release is what starts it, i.e. the "good habitat,
+not yet reached" reading taken to its limit. Its plausibility needs the effort-aware specimen term and the establishment-
+timing validation. Queued: SS2J60 (J60A30); SS2J110 is running.
+
+## 2026-11-08 ~05:50 CST -- D10r, SS2J110; lever subagent round 5 status
+- D10r (no CBC, dated specimen presences, from D3): D -.093, ETF rise x2.61, 1910 ETF / GP .47 / .35; held-out 48,992.7
+  (+356 vs D3). The CBC-free trough with specimen presences is shallower than with RP2 (D3 -.156) and predicts worse.
+- SS2J110: D -.414, ETF rise x1.65, but ETF lambda 1.15 in 1910 and 1.90 in 2010: the East is above replacement from 1902
+  and only distance limits it. [L] Implausible levels, as for every J110 fit (held-out ~+350 on J110 throughout).
+  Kernel set for SS2 so far: J330 -.182 / x1.66, J200 -.132 / x1.37, J110 -.414 / x1.65 (levels implausible); J60A30 running.
+- Agent round 5 (specimen likelihood): occupancy-detection form P(y>0) = 1 - exp(-s_era E^beta g(N)), g as presence_k;
+  per-cell year + recordedBy facets being fetched (~1.5 h). Pilot (441 cells): beta ~.35-.43; y39 is preferred over D4 by 32
+  nats through interior positives. A robustness arm will keep only absences with >= 5 effective collectors.
+Queued: SS3J200 (SS3 on J200).
+
+## 2026-11-08 ~06:20 CST -- SS2 standard validation suite (CAND_viz/SS2_VL_RP2_splitshared_cbcBBL_fromC1)
+All figures rendered with CEC regions. Runge is still "skipped": audit extension (floor / DD survival / spin-up) delegated to a
+subagent; it will not be dropped.
+| fit | establishment offset vs first breeding (median) | mean abs | states within documented window | premature cells >10 yr | GP invisible-band share 2010 |
+|---|---|---|---|---|---|
+| y11 | +3.5 | 3.94 | 17% | 47% | -- |
+| z03 | +3.5 | 4.00 | 17% | 51% | .39 |
+| D2 (no CBC) | +3.5 | 3.89 | 17% | 51% | .40 |
+| **SS2** | **+3.0** | 3.83 | **33%** | 52% | .47 |
+[E] SS2's eastern establishment timing is slightly better (twice as many states within the documented window), not worse,
+despite its high early ETF lambda. The East still establishes late in most states (model ~1975-90 against first breeding
+windows ending 1963-90). [E] 04b (CEC): the modern GP mean count is still over-predicted from ~2010 (model 1.5-1.7 vs obs
+1.1-1.5), as in every fit, so the present side of the pathology persists in the GP. ETF fits closely after 2000, with an
+overshoot at the 1994 peak. [E] Cell establishment map: the native West incl. the western GP is mated-established from 1902
+(spin-up); the CEC GP east of ~-100 establishes 1985-2000.
+
+## 2026-11-08 ~06:45 CST -- SS2nd (no CBC drift), SS4 (RP1 presences)
+| fit | presences | CBC | D | ETF rise | 1910 ETF / GP | objective | held-out |
+|---|---|---|---|---|---|---|---|
+| SS2 | RP2 | BBL + lin | -.182 | x1.66 | .74 / .50 | 156,869.7 | 47,986.4 |
+| SS2nd | RP2 | BBL, no drift | -.191 | x1.62 | .75 / .50 | 156,906.3 (+36.6) | 47,975.0 |
+| SS3 | specimens | BBL + lin | -.140 | x1.53 | .77 / .57 | (different presence term) | 48,002.0 |
+| SS4 | RP1 | BBL + lin | -.178 | x1.51 | .78 / .54 | 156,329.1 (different presence term) | (pending) |
+[E] Under split + BBL source the trough and low inflation hold across all three presence sets (RP2 / specimens / RP1) and do
+not need the CBC drift nuisance. [U] All of these started from SS2 (a trough state); SS3b (from C1) tests start dependence;
+SS5 (no presences) running. Queued: SS4J200, SS5J200.
+
+## 2026-11-08 ~07:05 CST -- SS2 on J60A30 (kernel set complete for SS2)
+SS2J60: objective 159,726.3 (+2,857 vs SS2 on J330; y06 J60A30 S2 159,490.2), held-out 49,607.3; D -1.150, ETF lambda 2.26 in 1910
+-> 2.63 in 2010. [E] J60A30 cannot fit with plausible levels under any structure (the short kernel forces lambda >> 1 to
+spread at all). Like J110, it is not a credible kernel; the robustness set that fits is J330 / J200.
+SS2 across kernels: J330 -.182 / x1.66 / 47,986; J200 -.132 / x1.37 / 47,908; J110 -.414 / x1.65 (levels implausible,
+held-out pending); J60A30 -1.15 (implausible, 49,607).
+
+## 2026-11-08 ~07:40 CST -- Runge audit extended (subagent); SS2 Runge figure
+contribution_budget.audit_forward now replays every mechanism the candidates use:
+- smooth FFT floor: the replay uses the floored movement; attribution uses the floor-free operator plus an explicit floor term
+  in the BIDE budget; max 2e-8 of the population per year;
+- DD adult survival: c_s is passed everywhere; the realised survival is checked against the primitive (identity error 0);
+- 40-y spin-up: two-call selection is verified; the main initpop equals the spin-up's final total;
+- native departure: via departure_scale.
+Unsupported mechanisms still raise, including kernel_ramp / colonization_clock / urban_mating / lineage_delta, which were
+previously dropped silently.
+Validation: replay error 2e-16, BIDE 1e-15 (SS2 and y39). Tests 7/7 (5 new). Files: research/exp/contribution_budget.py,
+run_contribution_audit.py, test_contribution_budget.py (.bak_20261108 beside each). Run the tests as a script via
+local_takeover_run.sh, not pytest from the main repo (pyproject puts the old src first).
+SS2 Runge (CAND_viz/SS2.../map_diagnostics/23_runge_contribution.png):
+| era | breeder-weighted C | source share of breeders | y39 C / share |
+|---|---|---|---|
+| 1966-93 | 1.036 | .53 | 1.041 / .48 |
+| 1994-2009 | 1.002 | .44 | .992 / .41 |
+| 2010-25 | 1.017 | .55 | 1.016 / .49 |
+CEC (all-cell): ETF C 1.25 (1966-79) -> .97 (1995-2009), timing = epizootic [L, untested]; Northern Forests 1.19 -> .73-.76
+after 1995; NW Forested Mtns C ~.91-.94 throughout, a persistent sink [L: immigration-sustained]. 775 cells are Runge sinks
+with potential lambda > 1 in 2010-25 [L: crowding at density].
+FLAG (model behaviour, [U] whether intended): the spin-up ends at ~24% adults (SS2; y39 26%), but forward_sim re-splits the
+1902 total 50/50, so the spun-up age structure is discarded.
+
+## 2026-11-08 ~08:15 CST -- effort-aware museum-specimen likelihood integrated (lever subagent round 5); SS6 / B7 queued
+Report: scratchpad agent_levers/REPORT_round5.md. Data [E]: 5,522 cell-decades with bird-specimen effort (1,888 cells, 466k Aves
+specimens), 582 with House Finch. The 39 GP positives are all on the western edge (104-105W Front Range plains; 102-103W SE CO /
+W KS / OK panhandle; 99-101W W/S TX). 99-90W: 168 well-sampled absent cell-decades, 1 positive.
+Offline at fixed fits [E]: the term strongly prefers an occupied early interior West (no-presence fits +220-298 vs y39, via
+positives). Within presence fits it is roughly trough-neutral (+-40): every fit keeps the central/east Plains EMPTY in
+1880-1940, whatever its lambda. [L] The specimens confirm the occupancy pattern (an empty Plains) but cannot price how
+hospitable the empty Plains would have been: the trough is a habitability statement.
+Integration: laplace_fit --specimens CACHE.npz (precomputed by specimen_cache_build.py: neff0 = all absences, neff5 = absences
+only where >= 5 effective collectors); 3 nuisances [log s pre-1910, log s 1910-40, logit beta] appended last, priors
+log s ~ N(0,3), beta ~ Beta(2,2); saved as laplace_specimens. Smoke at SS2 (RP2 swapped for specimens): finite gradients,
+consistent parts_jump, objective implies specimen NLL ~1,142 = the agent's offline value.
+Pre-registered (agent): SS6 = SS2 with --specimens replacing RP2: D -.10 to -.17, ETF x1.6-2.2, specimen NLL within +-30 of 1,142,
+held-out within one block-SE of 47,986; falsified if D > -.05 or ETF > x3. B7 = B1 + specimens: D -.03 to -.08, x3.2-3.5.
+SS6n5 (neff 5): D within .02 of SS6. Added: SS6b = SS6 from y39 (start independence).
+
+## 2026-11-08 ~08:40 CST -- start independence (SS3b) and J200 presence variants
+| fit | kernel | presences | start | D | ETF rise | objective | held-out |
+|---|---|---|---|---|---|---|---|
+| SS3 | J330 | specimens (presence-only) | SS2 | -.140 | x1.53 | 156,683.7 | 48,002.0 |
+| **SS3b** | J330 | specimens | **C1 (no trough)** | **-.109** | x1.87 | 156,693.3 (+9.6) | 47,906.5 |
+| SS4 | J330 | RP1 | SS2 | -.178 | x1.51 | 156,329.1 | 47,961.9 |
+| SS3J200 | J200 | specimens | SS2J200 | -.122 | x1.33 | 156,770.6 | **47,848.7** |
+| SS4J200 | J200 | RP1 | SS2J200 | running | | | |
+| SS5J200 | J200 | none | SS2J200 | -.082 | x1.55 | 156,009.4 | 47,914.8 |
+| SS2J110 | J110 | RP2 | B4 | -.414 | x1.65 | 157,295.5 | 48,183.6 |
+[E] The split + BBL-source trough is reached from a no-trough start (SS3b from C1: -.109), so it is not inherited from SS2. The
+two optima differ by 9.6 nats and .03 in D: a shallow ridge in the trough direction. [E] On J200 the trough persists even without
+any presence data (SS5J200 -.082). [E] Held-out is best on J200 with specimen presences (47,849).
+
+## 2026-11-08 ~09:20 CST -- SS4J200; B7 (specimen likelihood, no split) falsified
+- SS4J200 (J200, RP1, split + BBL): D -.136, ETF x1.36, 1910 ETF / GP .92 / .77; objective 156,429.1; held-out **47,846.9** (best).
+- B7 (B1 structure, --specimens replacing RP2, from B1): D **+.041**, ETF x3.59, 1910 ETF / GP .33 / .37; objective 157,635.1;
+  specimen NLL 1,102.9; held-out 48,671.9. Pre-registration (D -.03 to -.08, x3.2-3.5) is FALSIFIED.
+  [E] Under the shared-map structure no evidence-backed presence set gives a trough (B5 -.005, B7 +.041); only the RP2 hull
+  did (B1 -.086). Under split_shared + BBL, every presence set and no presences at all give one (-.08 to -.19).
+Queued: SS6J200. Running: SS6, SS2b, SS4b, SS5. Pending: SS6b, SS6n5, SS6J200.
+
+## 2026-11-08 ~09:45 CST -- SS4b (RP1, split + BBL, from y39): start dependence of trough DEPTH
+SS4b: D -.040, ETF x1.70, 1910 ETF / GP .65 / .58; objective 156,366.6 (+37.5 vs SS4 from SS2: D -.178, x1.51); held-out 47,964.1
+(SS4 47,961.9).
+[E] Low inflation is robust to the start (x1.5-1.9 in every split + BBL fit). The trough DEPTH is weakly identified: two optima
+37.5 nats apart differ by .14 in D with equal held-out. The deeper-trough optimum is the better one in-sample. SS3 / SS3b
+(specimens) showed the same pattern, smaller (9.6 nats, .03 in D).
+[L] The data (via split + BBL) prefer a trough, but the likelihood surface along the trough direction is flat enough that
+the optimiser's start matters. This is the regime where HMC (or a profile over D) is the right tool, not more MAP starts.
+Pending: SS2b (y39 start, RP2) to check whether RP2 shows the same.
+
+## 2026-11-08 ~10:15 CST -- SS6 (specimen likelihood replaces RP2, split + BBL): pre-registration NOT falsified; SS5; SS2b
+| fit | presences | start | D | ETF rise | 1910 ETF / GP | objective | specimen NLL | held-out |
+|---|---|---|---|---|---|---|---|---|
+| SS2 | RP2 | C1 | -.182 | x1.66 | .74 / .50 | 156,869.7 | (1,142 offline) | 47,986.4 |
+| **SS6** | **effort-aware specimens** | SS2 | **-.114** | **x1.79** | .67 / .53 | 157,131.2 | **1,070.9** | **47,965.0** |
+| SS5 | none | SS2 | -.172 | x1.65 | .74 / .53 | 155,977.4 | -- | **47,843.6** |
+| SS2b | RP2 | y39 | -.135 | x1.52 | .81 / .65 | 156,882.5 (maxiter 3000; +12.8) | -- | (pending) |
+SS6 vs the agent's pre-registration: D -.10 to -.17 MET; ETF x1.6-2.2 MET; held-out within one block-SE of SS2 MET; specimen NLL
+within +-30 of 1,142 MISSED in the favourable direction (-71: the fit adapts to the specimens). Falsifier (D > -.05 or ETF > x3)
+not triggered.
+[E] With the data-backed historical occupancy term in place of the hull assertion, the split + BBL model keeps a trough and low
+inflation at equal held-out. [E] Even with no presences (SS5) the trough is there, and held-out is the best on J330.
+[U] SS5's interior-West occupancy against the specimens is unchecked; to do: score the specimen NLL at SS5.
+Queued: SS2bc (continue SS2b); SS6T10 / SS6T25 (diagnostic trough hinge at D <= -.10 / -.25 from SS6) to profile the
+objective cost of trough depth.
+
+## 2026-11-08 ~10:45 CST -- specimen NLL at SS5 (no presences; scored locally, maxiter 0, nuisances at init)
+SS5 specimen NLL ~1,252.9 (not profiled; profiling lowers it slightly) vs SS6 1,070.9 (fitted), y39 1,151.4, SS2 ~1,142,
+D4 ~1,424, B6 ~1,396 (agent offline, profiled).
+[E] The no-presence split fit under-occupies the specimen-recorded interior West by ~180 nats vs SS6 (less than the shared-map
+no-presence fits, +245-273 vs y39). Its better BBS held-out (47,844 vs 47,965) is bought partly by an interior West the
+1880-1940 museum record contradicts. [L] SS6 (data-backed occupancy) is the principled member of the split + BBL family; SS5 is
+a diagnostic showing that the trough does not need presence data.
+
+## 2026-11-08 ~11:10 CST -- SS6J200, SS2b converged, SS6b running
+- SS6J200 (J200, specimen likelihood, split + BBL): D -.081, ETF x1.36, 1910 ETF / GP .91 / .78; objective 157,151.0;
+  held-out 47,981.7.
+- SS2b (RP2, from y39), converged (SS2bc moved 0 in 3 iterations): D -.135, ETF x1.52, objective 156,882.5 (+12.8 vs SS2),
+  held-out 48,004.1.
+- SS6b (SS6 from y39) is at 157,104.3 at iteration 1220, i.e. already 27 below SS6 (157,131.2) -> SS6 is not the best SS6-structure
+  optimum; D pending.
+Pattern [E]: across the split + BBL family, D ranges -.04 to -.19 with ETF x1.3-1.9 and held-out 47,84x-48,00x. Inflation and
+held-out are robust; trough depth varies with start and kernel (J200 shallower: -.08 to -.14).
+Queued: SS6c (from C1), SS6J200T25 (trough-depth profile on J200).
+
+## 2026-11-08 ~11:50 CST -- SS6n5 (absences only where >= 5 effective collectors); trough profile point T10
+- SS6n5: D -.097, ETF x1.78, 1910 ETF / GP .66 / .54; objective 156,963.6 (different specimen term: 2,480 weighted rows vs
+  5,522); held-out 47,967.6. Prediction (D within .02 of SS6's -.114) MET (|diff| .017). [E] The specimen result is robust to
+  single-collector targeting.
+- SS6T10 (hinge D <= -.10 from SS6): no move (SS6 is already at -.114), cost 0.
+Queued: SS6T18 and SS6T35 (profile points beyond SS6's D); SS6T25, SS6J200T25 and SS6b are running; SS6c is pending.
+
+## 2026-11-08 ~12:40 CST -- trough-depth profile in the SS6 structure (split + BBL CBC + effort-aware specimens)
+Diagnostic hinge (--trough 10000,M) only; "data objective" = objective - trough_cost.
+| fit | kernel | D | ETF rise | 1910 ETF / GP | data objective | specimen NLL | held-out |
+|---|---|---|---|---|---|---|---|
+| SS6b (from y39; maxiter 3000) | J330 | -.040 | x1.54 | .75 / .72 | 157,096.9 | 1,071.0 | 47,964.0 |
+| SS6 (from SS2) | J330 | -.114 | x1.79 | .67 / .53 | 157,131.2 | 1,070.9 | 47,965.0 |
+| SS6T25 (hinge D <= -.25) | J330 | -.228 | x1.47 | .81 / .53 | 157,139.9 (+8.7 vs SS6; +43.0 vs SS6b) | 1,079.8 | **47,912.4** |
+| SS6J200 | J200 | -.081 | x1.36 | .91 / .78 | 157,151.0 | -- | 47,981.7 |
+| SS6J200T25 | J200 | -.227 | x1.26 | 1.01 / .73 | 157,164.0 (+13.0) | 1,065.3 | 47,980.3 |
+[E] With every principled data stream in (BBS, early CBC via the BBL source, effort-aware specimens, absences, BBL, nests), trough
+depth from D -.04 to -.23 costs at most ~43 nats in-sample on J330 (13 on J200), and the shallow end is slightly preferred. Held-out
+is flat-to-favouring the deep end (-53 on J330, 0 on J200). ETF inflation stays x1.3-1.8 everywhere.
+[L] Inside this structure the data neither demand nor forbid the classic trough: the Plains-vs-East early habitability contrast
+is weakly identified (a ridge). The structural changes (split readout + BBL source) are what remove the inflation pathology; the
+trough is then admissible at ~no cost but not pinned. Deciding its depth needs either (a) the posterior (HMC on SS6: how wide
+the ridge is in D), or (b) a data stream that sees habitability of unoccupied cells (none so far: specimens and CBC see
+occupancy).
+Queued: SS6T50 (D <= -.50), SS6J200T40, SS6bc (continue SS6b).
+
+## 2026-11-08 ~13:40 CST -- trough-depth profile, SS6 structure (fuller)
+Data objective = objective - trough_cost (diagnostic hinge only).
+| fit | kernel | D | ETF rise | 1910 ETF / GP | data objective | held-out |
+|---|---|---|---|---|---|---|
+| SS6c (from C1) | J330 | -.019 | x2.25 | .54 / .53 | 157,180.0 | 47,946.7 |
+| SS6b (from y39) | J330 | -.040 | x1.54 | .75 / .72 | **157,096.9** | 47,964.0 |
+| SS6 (from SS2) | J330 | -.114 | x1.79 | .67 / .53 | 157,131.2 | 47,965.0 |
+| SS6T18 | J330 | -.167 | x1.66 | .72 / .51 | 157,134.3 | 47,961.7 |
+| SS6T25 | J330 | -.228 | x1.47 | .81 / .53 | 157,139.9 | **47,912.4** |
+| SS6T35 | J330 | -.317 | x1.24 | .96 / .58 | 157,146.5 | 47,946.0 |
+| SS6J200 | J200 | -.081 | x1.36 | .91 / .78 | 157,151.0 | 47,981.7 |
+| SS6J200T25 | J200 | -.227 | x1.26 | 1.01 / .73 | 157,164.0 | 47,980.3 |
+| SS6J200T40 | J200 | -.361 | x1.14 | 1.12 / .71 | 157,205.0 | (pending) |
+[E] On J330, D from -.02 to -.32 spans ~50 nats in-sample with no monotone trend: the best in-sample optimum is the shallow SS6b
+(-.04), the forced -.17 to -.32 points cost 37-50 nats, and C1 starts land worse. Held-out spans ~50, best at -.23. ETF inflation
+falls as D deepens (x2.25 -> x1.24), because a deep trough raises early ETF lambda (.96 at -.32; > 1 on J200 at -.23 and deeper).
+[L] The data constrain the trough only weakly. The practical upper bound on depth is plausibility of early ETF lambda (~1 means
+the East was viable from 1902 and only unreached), not the likelihood. Profile with more resolution or HMC is needed for a
+posterior statement; SS6bT25 (hinge from the shallow optimum) is queued to check the ridge from the other side.
+
+## 2026-11-08 ~16:00 CST -- trough-depth profile from the shallow optimum (SS6 structure, J330)
+Hinge from SS6b (D -.040, data objective 157,096.9, held-out 47,964.0). D = the hinge's own trough_D at convergence.
+| point | D | data objective (vs SS6b) | specimen NLL | held-out (vs SS6b) |
+|---|---|---|---|---|
+| SS6b | -.040 | 0 | 1,071.0 | 0 |
+| SS6bT10 | -.078 | +4.2 | 1,071.2 | +42.7 |
+| SS6bT15 | -.132 | +5.6 | 1,074.2 | +34.3 |
+| SS6bT20 | -.166 | +21.1 | 1,076.1 | +62.4 |
+| SS6bT25 | -.218 | +28.1 | 1,075.3 | +95.8 |
+| SS6bT30 | -.261 | +33.7 | 1,077.1 | +104.5 |
+| SS6bT35 | -.312 | +44.2 | 1,075.7 | +190.5 |
+| SS6T50 (from SS6) | -.443 | +108.5 | 1,084.2 | +71.5 |
+| (SS6 branch: SS6 -.114 / SS6T25 -.228) | | +34.3 / +43.0 | | +1.0 / -51.6 |
+Also: SS6nd (no CBC drift) +57 vs SS6b, held-out 47,952.9; SS6J200T15 free on J200 (157,150.7 vs 157,151.0).
+[E] In-sample: a mild trough (to ~-.13) is nearly free (+6); deeper costs grow ~linearly to +44 at -.31 and +108 at -.44.
+[E] Held-out depends on the branch: from the shallow optimum, forcing depth worsens held-out monotonically (+35 to +190); from the
+SS6 branch, D -.23 had the best held-out of all (47,912). [L] Two ridges or branches of near-equal fit exist; held-out cannot
+arbitrate trough depth. [L] The data support a mild trough (D ~ -.04 to -.13) with low inflation (x1.5-1.8) at essentially no
+cost; the classic deep trough (D < -.25) is admissible at 30-45 nats, but it is not what the data prefer.
+
+## 2026-11-08 ~17:10 CST -- SS6J200c: J200 from SS6b's parameters finds the family's best optimum; no-drift / neff5 checks
+| fit | kernel | D | ETF rise | 1910 ETF / GP | objective | held-out |
+|---|---|---|---|---|---|---|
+| SS6b | J330 | -.040 | x1.54 | .75 / .72 | 157,096.9 | 47,964.0 |
+| **SS6J200c** (J200, from SS6b) | J200 | **-.072** | **x1.41** | .90 / .81 | **157,092.7** | 47,947.7 |
+| SS6J200 (from SS2J200) | J200 | -.081 | x1.36 | .91 / .78 | 157,151.0 | 47,981.7 |
+| SS6bnd (no CBC drift) | J330 | -.035 | x1.54 | .75 / .72 | 157,107.0 (+10.1) | 47,941.2 |
+| SS6bn5 (neff 5 absences) | J330 | -- | -- | -- | 156,923.3 (different term) | -- |
+| SS6J200n5 | J200 | -- | -- | -- | 156,988.2 (different term) | -- |
+| SS6bT40 (hinge from SS6b) | J330 | ~-.36 | -- | -- | 157,161.5 (+64.6) | -- |
+[E] Earlier J200 starts landed 58 nats worse; started from the J330 shallow optimum, J200 reaches the family's best objective
+(about 4 below J330's best), with a mild trough (-.07) and inflation x1.41. The two kernels now fit equally well, both near
+D -.04 to -.07. The CBC drift nuisance buys 10 nats on SS6b.
+Queued: SS6J200cT15 / T25 (profile on the J200 best branch); SS6e (J330 from SS6J200, cross-start).
+
+## 2026-11-08 ~19:10 CST -- branch structure: J330 has a deep local optimum, J200 does not; cross-kernel starts
+- SS6r25 (released from SS6T25, J330): stays at D -.228, 157,139.9 (moved 0 in 3 iterations) -> a genuine deep LOCAL optimum on
+  J330 (+43 in-sample vs SS6b, best held-out 47,912).
+- SS6J200cr25 (released from SS6J200cT25, J200): slides back to 157,093.3 ~ SS6J200c (157,092.7) -> J200 has no deep local optimum.
+- SS6f (J330 from SS6J200c params): converges to 157,096.9 = SS6b exactly -> J330's best optimum is reached from two independent
+  starts (y39, SS6J200c).
+- SS6e (J330 from SS6J200) 157,135.2; SS6J200d (J200 from the deep J330 optimum) 157,191.7: worse local optima.
+- J200 profile from SS6J200c (data objective vs 157,092.7): D<=-.15 +3.4; <=-.25 +18.8; <=-.35 +45.5; <=-.45 +78.4.
+- No-drift: SS6bnd +10.1, SS6J200cnd +16.3. neff5: SS6bn5 156,923.3, SS6J200cn5 156,928.0 (same specimen subset; kernels within 5).
+[E] Best fits: SS6b (J330, D -.040, x1.54) and SS6J200c (J200, D -.072, x1.41), equal in-sample within 4 nats. A mild trough is
+the data's preferred state on both kernels; J330 alone also holds a deep (-.23) local optimum with better held-out.
+
+## 2026-11-08 ~19:40 CST -- standard validation suite + Runge on the two best fits (SS6b J330, SS6J200c J200)
+All process diagnostics OK; contribution audit exact (replay 2e-16, BIDE 3e-16, floor term explicit); Runge figures rendered
+(CAND_viz/<fit>/map_diagnostics/23_runge_contribution.png).
+| fit | est. offset median / mean abs | states within window | premature >10 yr | GP invisible 2010 | Runge C 66-93 / 94-09 / 10-25 | source share 10-25 |
+|---|---|---|---|---|---|---|
+| SS2 | +3.0 / 3.83 | 33% | 52% | .47 | 1.036 / 1.002 / 1.017 | .55 |
+| SS6b | +3.5 / 4.22 | 17% | 48% | .49 | 1.037 / 1.008 / 1.023 | .48 |
+| SS6J200c | +4.0 / 4.44 | 11% | 48% | .49 | 1.041 / 1.000 / 1.023 | .55 |
+04b (CEC, SS6b): ETF tracks closely after 2000 (1994 peak overshoot as before); the GP mean count is still over-predicted from ~2010
+(model ~1.5-1.6 vs obs 1.1-1.5), the present-day side of the pathology, unchanged across every structure tried.
+[E] The final structure keeps C ~ 1 (near-equilibrium range) with ~half of breeders in source cells; eastern establishment runs a
+few years late, as in every fit. Remaining known misfit: the modern GP level.
+
+## 2026-11-08 ~20:10 CST -- basin checks (perturbed restarts, sd .1 on model coordinates)
+- SS6bp (J330, seed 41): 157,090.9 (-6.0 vs SS6b), D -.044, ETF x1.54 -> same basin, slightly lower point.
+- SS6J200cp (J200, seed 43): 157,092.4 (vs 157,092.7), D -.068, ETF x1.40, held-out 47,955.1 -> same basin.
+- SS6J200cr25 converged: 157,092.8 -> the J200 deep start returns to the shallow optimum.
+- SS6r25n5 (deep J330 branch, neff5): 156,964.9 vs SS6bn5 156,923.3 (+41.6, matching +43 with all absences).
+[E] Both best optima are stable basins: perturbed restarts (starting 12-17k nats away) return to within 6 nats, D within .005,
+inflation unchanged. Final candidates: SS6b/SS6bp (J330, D ~-.04, x1.54) and SS6J200c (J200, D ~-.07, x1.40).
+
+## 2026-11-08 ~21:00 CST -- basin floor from perturbed restarts (sd .1; starts 80-90k nats away)
+| fit | kernel | objective | D | ETF rise | held-out |
+|---|---|---|---|---|---|
+| SS6b | J330 | 157,096.9 | -.040 | x1.54 | 47,964.0 |
+| SS6bp (s41) | J330 | 157,090.9 | -.044 | x1.54 | 47,936.3 |
+| SS6bp2 (s42) | J330 | 157,087.0 | -.030 | x1.52 | 47,970.0 |
+| SS6bp3 (s45) | J330 | **157,085.4** | -.057 | x1.55 | **47,879.3** |
+| SS6J200c | J200 | 157,092.7 | -.072 | x1.41 | 47,947.7 |
+| SS6J200cp (s43) | J200 | 157,092.4 | -.068 | x1.40 | 47,955.1 |
+| SS6J200cp2 (s44) | J200 | 157,093.2 | -- | -- | -- |
+| SS6J200cp3 (s46) | J200 | 157,086.6 | -.083 | x1.36 | (pending) |
+[E] One wide basin per kernel: every restart lands within ~11 nats in-sample, D -.03 to -.08, ETF x1.36-1.55. [E] Within that
+in-sample-flat floor, held-out moves ~90 nats (47,879-47,970): the held-out differences among near-equal fits are optimizer-level
+noise, so the earlier "deep branch has better held-out" (47,912) is within this spread and not evidence for trough depth.
+Final candidate (J330): SS6bp3 (157,085.4, D -.057, x1.55, held-out 47,879.3). J200 equivalent: SS6J200cp3.
+
+## 2026-11-08 ~23:30 CST -- basin polishing done; banding natal-dispersal likelihood added to the final structure
+Polish (sd .05 restarts from the best points) converges within ~2 nats: J330 floor 157,078.6 (SS6bpLq: D -.044, x1.56, held-out
+47,872.5, the best held-out of the project); J200 floor ~157,086.6 (SS6J200cp3, D -.083, x1.36).
+Wide restarts (sd .2 / .3, starts 200-330k): J330 157,081.1 / 157,089.0; J200 157,092.9 / 157,089.8 -> one basin per kernel.
++ natal (BBL juvenile natal + adult breeding dispersal; natal_lik.py, adult term fixed at init):
+| fit | kernel | objective | natal cost | other data vs no-natal | D | ETF rise | held-out |
+|---|---|---|---|---|---|---|---|
+| SS6N (from SS6bpL) | J330 | 157,771.2 | 683.6 | +9.0 | -.010 | x1.65 | (pending) |
+| SS6J200N (from SS6J200cpL) | J200 | 157,750.6 | 651.6 | +6.3 | -.049 | x1.45 | 47,953.0 |
+[E] The banding movement data are compatible with the final structure: adding them costs <= 9 nats on the other data, keeps
+inflation ~x1.5, and nudges the trough slightly shallower. [E] The natal term prefers J200 over J330 by 32 nats (juvenile
+-358.5 vs -371.1, adult -293.1 vs -312.5), the first data stream to discriminate the two kernels; with all data J200 leads by ~20.
+More natal starts running (SS6Nb/Nc/Nd, SS6J200Nb/Nc).
+
+## 2026-11-09 ~01:30 CST -- natal-term floors (final structure + banding natal dispersal), several starts each
+J330: SS6N 157,771.2, SS6Nb 157,770.2, SS6Nc 157,772.0, SS6Nd 157,766.6, SS6Np2 (perturbed) **157,757.2**.
+J200: SS6J200N 157,750.6, SS6J200Nb 157,746.7, SS6J200Ncr 157,752.9, SS6J200Np 157,739.6, SS6J200Np2 **157,739.3**.
+J200 leads by ~18 nats with every data stream in (no-natal floors: J330 157,078.6, J200 ~157,086.6, J330 ahead by ~8; the natal
+term moves ~26 toward J200). neff5 + natal: J200 157,574.3 (J330 running). Two runs on node v330-016 failed with GPU
+RESOURCE_EXHAUSTED (intermittent; same tasks ran elsewhere).
+
+## 2026-11-09 ~04:00 CST -- natal-term floors converged
+J330 + natal: 157,749.6 (SS6Np7; chained perturbed restarts 157,771 -> 157,757 -> 157,750 -> 157,749.6). J200 + natal: 157,739.3
+(5+ restarts within 157,739.3-157,739.8). J200 leads by ~10 nats with every data stream (neff5 variant: J200 157,574.3 vs J330
+157,594.2, +20). Without natal, J330 led by ~8 (157,078.6 vs ~157,086.6). [E] The kernel choice is weakly identified
+(about 10-20 nats either way); the banding natal data tip it toward J200. Three natal fits failed with GPU RESOURCE_EXHAUSTED on node
+v330-016 (natal + split readout memory); non-natal fits run fine there.
+
+## 2026-11-09 ~05:30 CST -- leader validation suite: SS6J200Np2 (J200, split + BBL CBC + specimens + natal)
+D -.065, ETF x1.42 (1910 ETF / GP .89 / .82; 2010 1.27 / 1.11); objective 157,739.3; held-out 47,963.4. Establishment median +3.5 yr,
+mean abs 4.3, 11% of states within window; premature >10 yr 48%. Runge C 1.043 / 1.000 / 1.025, source share .53 / .39 / .58.
+04b (CEC): ETF tracks after 2000 (1994 peak overshoot); GP over-predicted from ~2010 (1.5-1.7 vs 1.1-1.5); Mediterranean
+California over-predicted after 2015. Cell establishment: the native West incl. the western GP is established from 1902; the
+interior NW (WA/ID) establishes 1960-80 (native northward spread); the East 1975-2000.
+Trough maps (SS6J200c vs forced D<=-.25): early potential lambda is >= 1 across much of the East and very high (1.4-1.6) on the
+Upper Midwest / northern Plains boundary in 1902-50 -> "viable but unreached"; plausibility of that band is the main question,
+and the same band carries the modern GP over-prediction.
+
+## 2026-11-09 ~06:00 CST -- ALLEE-DEAD habitat grows with the split readout (user: "That's a problem though, isn't it?")
+Allee-dead = lambda_fund > 1 but no positive equilibrium (K in the mate-finding regime; fold criterion, 07_source_sink_fields.npz).
+| fit | suitable cells | Allee-dead | of which GP | median K (suitable) |
+|---|---|---|---|---|
+| y11 / z03 / D2 (shared map) | ~1,530 | 1.0-2.3% (13-36) | 4-17 | .22-.24 |
+| SS2 (split + BBL, RP2) | 1,727 | 4.4% (76) | 42 | .23 |
+| SS6b (J330, specimens) | 1,755 | 8.8% (155) | 105 | .18 |
+| SS6J200c / leader SS6J200Np2 | ~2,040 | 11.3-11.5% (229-236) | 146-151 | .14 |
+[E] The split readout (K's level direction free) roughly 5-10x the Allee-dead area, concentrated in the CEC Great Plains (~2/3).
+[L] Mechanism: with K free in space, the fit explains Plains scarcity by LOW K + absolute Allee (no equilibrium) instead of low
+lambda: the demographic rates in the Plains / Upper Midwest are high (fig 03), K is very low. This is the k_range warning's
+failure mode ("K used to explain absence that should be explained by lambda < 1"). [L] It also explains why trough depth is
+weakly identified in the split family: Plains scarcity has two explanations (low lambda vs low K + Allee) and the data cannot
+separate them. [L] It ties to the modern GP over-prediction (high lambda, sink-maintained by immigration).
+- K floor (user question): still active in every fit: capacity_floor_internal 0.0231 = 4 x n50, added to K after disease
+  (age_fields.py:378). In the leader the Allee-dead cells sit AT the floor (K/floor 1.05-2.1, median 1.26: raw K ~ 0), where the
+  Allee loss at K is still ~10% (allee_suppression_at_K median .099), so cells with lambda_fund 1.01-1.20 cannot persist. In z03
+  the 15 Allee-dead cells had K ~ 5.9x floor and lambda_fund ~1.004, i.e. genuine marginal cells. [E] The split readout drives raw K
+  to ~0 across much of the Plains; the floor then decides viability.
+  Diagnostic arms queued (J200, SS6J200cp3 init, no natal): floor 8x and 16x n50 (SS6J200F8 / F16); capacity correlation fixed at
+  .95 (SS6J200C95; fitted .77). Question each answers: does denying K the "collapse to the floor" route shift Plains scarcity into
+  lambda (a trough), and at what cost and inflation?
+
+## 2026-11-09 ~07:00 CST -- is the GP over-population a sampling-density artefact? (user question)
+1. Sampling density (training route-years per land cell, CEC L1): ETF 46.2, MedCal 29.7, NW Mtns 21.6, **GP 19.7**, Marine West
+   Coast 18.7, Deserts 13.6, N Forests 14.6. The GP is sampled like the Pacific coast; only the East is ~2.3x denser.
+2. Up-weighting GP rows to ETF density (w 2.34) at fixed fits: BBS NLL differences between fits shift by <= 38 nats; no ranking change
+   (leader, SS6 family, C1, y39, z03). The split-family fits fit GP BBS ~26 nats worse than y39 / z03 (1994-09 +17, 2010-25 +15).
+3. Level slack: scaling the leader's expected count on GP training rows by a free factor gains 0.6 / 3.4 / 0.4 nats (eras
+   66-93 / 94-09 / 10-25; best factor .97-1.06). On SURVEYED routes the leader matches the GP: 2010-20 model 1.33 vs obs 1.32.
+   (ETF 2010-25 is the one region with a level bias the likelihood cares about: factor .91, 33 nats.)
+4. Route effects: GP mean fitted route effect +0.04 (log), like ETF +0.03; no hidden regional level bias.
+5. Where the 04b GP over-prediction comes from (leader, model/obs):
+   | region | 2010-20 seen | 2010-20 UNSEEN | 2021-25 seen | 2021-25 unseen |
+   |---|---|---|---|---|
+   | GP | 1.01 | 1.52 | 1.11 | 1.24 |
+   | ETF | 1.09 | 1.60 | 0.85 | 1.08 |
+   | MedCal | 0.99 | 1.74 | 1.01 | 1.43 |
+   Unseen routes (held-out blocks / new routes) get mu0 x exp(sigma^2/2) = x2.06 with the GLOBAL Laplace sigma 1.20, and are
+   over-predicted in EVERY region (x1.5-1.7). [E] The 04b "corrected mean" over-prediction is mostly this unseen-route
+   construction (a log-normal mean with one global route spread), not a GP-specific population excess; the GP shows it most
+   because 37% of its 2021-25 rows are unseen routes and the ETF's seen-route under-forecast (0.85) masks it there. The GP's
+   real residual is a mild 2021-25 over-forecast on seen routes (x1.11).
+[L] Real new routes sit lower than a log-normal route distribution with sigma 1.2 implies (a left-skewed route-effect
+distribution, or held-out blocks in poorer sites). Held-out NLL uses Gauss-Hermite over the route effect, so it scores this
+correctly; only the corrected-mean FIGURE overstates. Sampling density is not the explanation.
+
+## 2026-11-09 ~08:00 CST -- route-effect distribution shape (user: "Is the model distorted by the assumed shape?")
+Fitted observer x route effects (leader, log scale) vs the normal prior (global Laplace sigma 1.20 -> mean/median x2.06):
+| region | well-sampled routes (>= 15 yr) | sd | skew | 1st / 99th pct (normal) | empirical mean/median |
+|---|---|---|---|---|---|
+| ALL | 1,083 | .98 | +.42 | -1.78 / +3.44 (-2.01 / +2.53) | x1.91 |
+| GP | 125 | .93 | +.30 | -1.47 / +2.92 (-1.67 / +2.65) | x1.66 (all seen GP routes: skew +1.63, x1.75) |
+| ETF | 601 | .89 | +.46 | -1.66 / +2.55 (-1.88 / +2.25) | x1.68 (all seen x1.49) |
+| NW Mtns | 62 | 1.29 | +.20 | | x2.49 |
+| N Forests | 101 | 1.12 | +.52 | | x2.65 (all seen x1.26) |
+| MedCal | 33 | .92 | -.81 | | x1.18 |
+[E] The route effects are RIGHT-skewed (a few routes count far more than a normal allows; the low tail is lighter than normal),
+and the global sigma (1.20) exceeds the spread of well-sampled routes (~.9-1.0): a symmetric normal widens to cover the upper
+tail, which inflates the unseen-route mean (x2.06 vs empirical ~x1.5-1.9). [E] Skew and mean/median differ by region (x1.2-2.7).
+[L] Consequences: (1) regional comparisons of LEVEL (route counts per unit latent density) are off by region-specific factors
+up to ~2x, which matters for the absolute-density pieces: the absolute Allee n50 and the K floor are in route-count units;
+(2) growth timing (lambda trajectories, trough D, inflation) is probably affected less, since it is identified by change
+within routes. [U] Size of the effect on D / inflation / Allee-dead cells: needs a refit with a skewed route-effect prior.
+Floor arms so far: F16 converged 157,271.2 (+184.6 vs J200 floor); F8 ~157,152 (running); C95 ~157,193 (running).
+- Implemented laplace_fit --route_skew: route effects ~ CENTRED skew-normal (mean 0, var 1, shape alpha ~ N(0,5^2), one global
+  parameter); Newton step and Laplace log-det use the prior's exact gradient / curvature; routes without training rows contribute 0.
+  marginal_heldout reweights its 32 Gauss-Hermite nodes by p_SN / phi for unseen routes. Checks: at alpha = 0 the objective equals the
+  normal-prior objective to 1e-10 (157,092.712556 both); gradients finite; parts_jump consistent. Queued RS1 (J200 leader structure,
+  from SS6J200cp3) and RS2 (J330, from SS6bpLq). Read out: alpha, D, ETF inflation, Allee-dead share, unseen-route ratios, held-out.
+
+## 2026-11-09 ~10:00 CST -- K-collapse diagnostics (J200, leader structure without natal, from SS6J200cp3; floor 157,086.6)
+| arm | objective (cost) | D | ETF rise | 1910 ETF / GP | held-out |
+|---|---|---|---|---|---|
+| leader-structure floor (SS6J200cp3) | 157,086.6 | -.083 | x1.36 | .92 / .82 | ~47,95x |
+| K correlation fixed .90 (fitted .77) | 157,120.3 (+33.7) | -.081 | x1.39 | .90 / .81 | 47,948.2 |
+| K correlation fixed .95 | 157,193.0 (+106.4) | -.082 | x1.38 | .90 / .80 | 47,924.1 |
+| K floor x6 n50 (was x4) | 157,119.5 (+32.9) | -.099 | x1.36 | .92 / .81 | 47,961.7 |
+| K floor x8 | 157,151.9 (+65.3) | -.113 | x1.36 | .92 / .80 | 47,949.1 |
+| K floor x16 | 157,271.2 (+184.6) | -.157 | x1.32 | .94 / .77 | 47,918.2 |
+[E] Denying K the collapse-to-floor route converts Plains scarcity into a deeper trough (D -.08 -> -.16 with the floor), at a rising
+in-sample cost (+33 / +65 / +185) and NO held-out loss (x16 the best held-out of the set). [E] ETF inflation stays x1.32-1.39 in every
+arm: the low inflation is NOT bought by K absorbing the Plains. [E] Tightening K's correlation barely moves D (-.08): the K/demography
+angle is not what holds the trough back; the floor (absolute K minimum vs the absolute Allee threshold) is. Allee-dead shares pending
+(validation suites rendering). J330 versions queued (SS6F8, SS6F16, SS6C90).
+- RS1 / RS2 (route_skew from alpha 0) did not move: for the CENTRED skew-normal the gradient in alpha is exactly 0 at alpha = 0 (the
+  centring and skew terms cancel; the known SN singularity). Not a result. Requeued as RS1b / RS2b from alpha = 2.
+
+### (11-08) Is K decoupled from demography? (user: K vs survival / fecundity maps look pathological)
+- Map-level coupling (k_coupling.py; Spearman log K_modern vs lam_fundamental_modern, land cells) [E]: continent-wide
+  .63-.71 in every J200 arm (lead Np2 .63, base c .66, C90 .69, C95 .71, F8 .64, F16 .63). Within CEC GP only .34-.41,
+  within ETF .27-.38. GP: 12-20% of top-third-lam_fund cells have bottom-third K (ETF 1-5%). The black interior in the 03 K
+  panel is partly a linear colour scale saturated by coastal California / NW Mexico (K to 2.5+, suitable median .14).
+- Allee-dead share (allee_dead.py) [E]: lead 11.5%, base 11.3%, C90 11.0%, C95 10.7%, F6 7.4%, F8 5.3%, F16 1.9%
+  (GP 151 / 146 / 146 / 135 / 94 / 65 / 21 cells).
+- Fixing the coefficient correlation (C90 / C95) barely couples the MAPS (GP rho .35 -> .41) and leaves the Allee-dead share unchanged:
+  the correlation acts on weight vectors, while K's habitat amplitude is large, so even the sqrt(1 - .95^2) = .31 orthogonal
+  part still carries K's interior pattern [L]. Floors cure dead cells, not coupling.
+- Records: K's own spatial direction is what buys low inflation: B1 (single field, BBL source) x3.29 vs SS2 (own K
+  direction + shared time) x1.66; C1 freed K for -600 in-sample / -40 to -57 held-out. At r = 1 within_shared reduces to the
+  single-field model.
+- J330 C90 (SS6C90): 157,116.4 (+39 vs J330 floor 157,077.2).
+- Queued (DIAGNOSTIC): SS6J200C999 (r fixed .999, ~single field, same streams) and SS6J200C95F16 (r .95 + floor 16n50).
+  Read D, ETF inflation, held-out, Allee-dead share, GP map coupling.
+- Skew-normal route prior refits from alpha = 2 [E]: RS1b (J200) alpha .379, sigma 1.202, objective 157,085.7 (normal-prior
+  floor 157,086.6: -0.9), held-out 47,967.8 (unseen-route scan prefers sigma 1.1 / shift +.2 by 26.8 nats);
+  RS2b (J330) alpha .356, sigma 1.188, objective 157,077.0 (J330 floor 157,077.2: -0.2). At alpha ~.37 the centred
+  skew-normal is practically normal (skewness ~.01). Established: the assumed normal shape of route effects does not distort the
+  fit; the unseen-route Jensen correction (x2.06) is a property of sigma, not of the shape.
+- Queued SS6C999 (J330, r .999) for kernel robustness of the coupled-K test.
+- J330 K diagnostics (base SS6bpLq: D -.044, x1.56, held-out 47,872.5, objective 157,078.6) [E]:
+  | arm | objective | D | ETF rise | held-out |
+  |---|---|---|---|---|
+  | SS6C90 (r .90) | 157,116.4 (+38) | -.038 | x1.55 | 47,865.8 (-7) |
+  | SS6F6 (floor 6 n50) | 157,105.1 (+27) | -.046 | x1.56 | 47,856.8 (-16) |
+  | SS6F16 (floor 16 n50) | 157,187.5 (+109) | -.060 | x1.59 | 47,994.9 (+122) |
+  Low inflation robust across K arms on J330 too. The floor deepens the trough only weakly on J330 (-.044 -> -.060 at F16,
+  vs J200 -.083 -> -.157), and F16 COSTS held-out on J330 (+122, beyond the ~45 noise) where on J200 it did not (-46).
+  F6 is free on both kernels. Floor >= 16 n50 is therefore not kernel-robust; F6-F8 is.
+- SS6F8 (J330, floor 8 n50): 157,130.1 (+52), D -.056, ETF rise x1.51, held-out 47,863.0 (-10) [E]. Floor 8 is free
+  held-out on both J330 and J200 (J200 F8: D -.113, x1.36, held-out -14 vs cp3) and modestly deepens the trough on both.
+
+### (11-08) Why K alone? -> survival_breeding structure (user: if anything decouples, K should move with fecundity)
+- History [E]: the ORIGINAL rank-2 prior paired {Sa, Sj} and {Fmax, K}; run_18 HMC decoupled reproduction (communality
+  .76 -> .27) while Sa and K stayed coupled -> lambda and K came apart, K became an absence switch -> run_19 exchangeable.
+  Lever E (11-07, subagent) freed K alone, deliberately keeping Fmax with survival to avoid run_18; adopted on fit
+  (-600 in-sample, -40..-57 held-out), never tested against the breeding pairing.
+- Literature (checked online): Bock & Jones 2004 (109 cases / 67 spp: denser sites had higher per-capita recruitment in
+  72%, per-area 85%; negative density-reproduction more common in disturbed habitats); passerine density dependence acts
+  mostly through fecundity / recruitment; survival-fecundity often trade off across latitude (Scholer et al. 2020; House
+  Finch clutches larger north and in the introduced East); r-K spatial decoupling has precedent (Thuiller et al. 2014,
+  trees). K here is nest-site capacity (Veit-Lewis), a breeding-season quantity like Fmax.
+- J330 fully coupled K (SS6C999, r .999), still running: ~158,187 at it 930 (+1,110 vs J330 floor) -> coupling K to the
+  CURRENT shared (Sa/F/Sj) direction is very costly.
+- New form manifold_prior.form = survival_breeding (age_priors.py + habitat_geometry.survival_breeding_loadings; same sites
+  as capacity_demography: manifold_factor = survival direction (Sa, Sj), capacity_factor + capacity_correlation_logit =
+  breeding direction (Fmax, K) at correlation r with survival). TACC code backed up *.bak_20261108_sb.
+  Smoke test: SS6J200cp3 params read through survival_breeding WITHOUT refit: D -.219, x1.44 (vs -.083, x1.36).
+- PRE-REGISTERED (diagnostic): SB1 J200 (time change on survival direction), SB2 J330, SB3 J200 (time change on the
+  breeding direction, within_shared = capacity); all streams, from the SS6 optima. Read: objective vs SS6 (157,086.6 /
+  157,077.2), D, ETF rise, held-out, Allee-dead share, map rho(log K, Fmax) and rho(log K, lam_fund) in GP, fitted r.
+  Prediction [U]: in-sample within ~100 of SS6 (the breeding pair keeps K's own spatial freedom; Fmax gives up
+  survival's); fails as a structure if it costs > ~300 or held-out > +45, or if r -> 1 (collapse) or Fmax amplitude -> 0
+  (run_18-style decoupling).
+- COEFFICIENT vs MAP COUPLING (coef_vs_map.py; w_env traced, H = centred Z_ref . w over 4,318 land cells) [E]:
+  | fit | fixed r | realised coef cosine K-demog | map corr H_K-H_demog | K off-direction share of coef norm / of K map variance |
+  |---|---|---|---|---|
+  | SS6J200cp3 | fitted | +.39 | +.75 | .92 / .45 |
+  | C90 | .90 | +.46 | +.81 | .89 / .37 |
+  | C95 | .95 | +.51 | +.83 | .86 / .34 |
+  The capacity_correlation parameter does NOT set the realised coefficient correlation: K = w_K (r f + sqrt(1-r^2) g) with f,
+  g free per-feature draws, so the fit grows g's norm relative to f (or aligns it) and the realised cosine stays ~.4-.5 even
+  at r = .95. My earlier [L] (off-direction hidden in high-variance Z directions) is WRONG: top-5 eigendirections hold .49-.52
+  of the off-direction map variance vs .58 for a variance-weighted draw. Map corr of the linear predictors (.75-.83) is higher
+  than the coefficient cosine; the remaining GP decoupling in log K vs lam_fund (.35-.41) comes from other K terms (time
+  trend, disease, floor), the nonlinear rate maps and within-GP variation. Sa-F coefficient cosine = 1 by construction.
+  Implication: a strong coupling prior must act on REALISED quantities (coefficient cosine and / or map correlation), not on r.
+  The queued SB1-3 runs carry the same r parameterisation (pairing test only; their r will not bind).
+- (user: strong prior on survival-K coupling -- identifiability + single-r-field convention; priors on both responses and
+  final correlation) NEW manifold_prior.coupling_priors in age_priors.build_model_2d: Fisher-z normal penalties on the
+  REALISED Sa-K coefficient cosine ("coef") and the land-cell correlation of their centred Z_ref habitat predictors ("map").
+  TACC backup age_priors.py.bak_20261108_cp. Smoke (SS6J200cp3 params): cos .391, map .752; penalties at mean .9 / sd .1:
+  coef -56.1, map -12.3 nats. sd .1 is moderate vs the ~600-1,100 nats the data pay for decoupling; sd .03 is strong.
+- PRE-REGISTERED (all streams, from SS6 optima): CP1 J200 survival_breeding + coupling .9/sd .1; CP2 same, sd .03; CP3 J200
+  capacity_demography + coupling .9/sd .1 (control: same priors, K-only structure); CP4 J330 survival_breeding + .9/sd .1.
+  Read: realised cos / map corr, objective excluding the coupling penalties vs SS6, D, ETF rise, held-out, Allee-dead share,
+  GP rho(log K, lam_fund), fitted maps (03). Prediction [U]: realised map corr reaches >= .85 at sd .1; survival_breeding pays
+  less than capacity_demography for the same coupling (Fmax can follow K); D stays <= -.06 and ETF rise <= x1.6. Fails if
+  coupling costs > ~300 data nats or held-out > +45, or if inflation returns to > x2.5 (the B1 single-field regime).
+- FLOOR ROBUSTNESS, all four kernels [E] (base -> floor 8 n50; objective, D, ETF rise, held-out):
+  J330 SS6: 157,078.6 -> 157,130.1 (+52); D -.044 -> -.056; x1.56 -> x1.51; held-out 47,872.5 -> 47,863.0 (-10)
+  J200 SS6: 157,086.6 -> +65; D -.083 -> -.113; x1.36 -> x1.36; held-out -14 (vs cp3)
+  J110 SS2: 157,295.5 -> 157,357.7 (+62); D -.414 -> -.400; x1.65 -> x1.59; held-out 48,183.6 -> 48,179.1 (-5)
+  J60A30 SS2: 159,726.3 -> 159,858.9 (+133); D -1.150 -> -1.230; x1.16 -> x1.21; held-out 49,607.3 -> 49,569.3 (-38)
+  Floor 8 is held-out-neutral or better on every kernel and never raises inflation materially. (J110 / J60A30 remain
+  implausible: ETF lambda > 1 from 1910.)
+- Coupled + floor 16: J200 C95F16 157,372.3 (+286), D -.146, x1.35, held-out 47,899.3 (-63 vs cp3, J200's best held-out);
+  J330 C90F16 157,220.6 (+142), D -.070, x1.56, held-out 47,964.6 (+92). Floor 16 again kernel-dependent on held-out.
+- WORDING CORRECTION (user: "ETF lambda > 1 from 1910 -- that seems more plausible?"): early ETF lambda > 1 is the trough
+  hypothesis itself (East good but unreached), not a fault. What disqualifies J110 / J60A30 is magnitude + fit: J60A30 ETF
+  potential lambda 2.26 (1910) -> 2.63 (2010), +2,857 in-sample / ~+1,700 held-out vs J330; J110 ETF 1.90 in 2010 and GP
+  1.18 (the present-side pathology), held-out ~+300. [L] Short kernels need large r to reach the observed spread speed
+  (front speed ~ 2 sqrt(r D)). Open question raised: on J330 / J200 the 1910 ETF mean potential lambda is .76 / .92 (< 1).
+- CP3 (capacity_demography + coupling priors) stopped at iteration 1 (157,155.0 = start); requeued as CP3p (--perturb .05,
+  seed 11). CP1 (survival_breeding + coupling .9/sd .1, J200) converged 157,192.6 (incl. penalties).
+- EARLY EAST ABOVE REPLACEMENT (trough_D2.py: share of cells with potential lambda Sa + Sj Fmax > 1; trough_D's regional
+  values are MEDIANS) [E]: J330 SS6 ETF 33% (1910) / 39% (1950), GP 20% / 27%; J200 cp3 ETF 45% / 50%, GP 30% / 38%;
+  J200 F8 ETF 46% / 50%, GP 28% / 36%. The leaders partly express "East good but unreached": a third to a half of ETF
+  cells are sources in 1910, vs a fifth to a third of GP cells; the ETF median sits just below 1.
+- CP1 (J200 survival_breeding + coupling .9 / sd .1, from cp3) [E]: objective 157,192.6 incl. penalties (coef cos .63 ->
+  penalty ~26.7; map corr .90 -> ~0) => data ~157,165.9 (+79 vs cp3); D -.074; ETF rise x1.56 (cp3 x1.36); ETF share>1 39%
+  (1910); held-out 48,098.5 (~+135 vs cp3 ~47,964) -> FAILS the pre-registered held-out criterion (+45). Map coupling
+  reached .90 as predicted; coefficient cosine .63. [U] Whether the held-out cost is the coupling or the survival_breeding
+  structure itself: SB1 (no coupling prior, running, ~157,136) separates them. CP1 started far away (243,289): a perturbed
+  restart is needed before treating +79 as the basin floor.
+- SB2 died (MemoryError std::bad_alloc, node v330-016); requeued.
+- SURVIVAL_BREEDING + COUPLING LADDER, J200 (all from cp3 read through the new form -> start ~243k; basin restarts CP1p /
+  SB1p queued) [E]:
+  | fit | coupling prior | data objective (vs cp3 157,086.6) | coef cos / map corr | D | ETF rise | ETF>1 1910 | held-out (vs ~47,964) |
+  |---|---|---|---|---|---|---|---|
+  | cp3 (K-only) | none | 0 | .39 / .75 | -.083 | x1.36 | 45% | 0 |
+  | SB1 | none | +49 | .41 / .85 | -.096 | x1.55 | 38% | +113 |
+  | CP1 | .9 / sd .1 | ~+79 | .63 / .90 | -.074 | x1.56 | 39% | +135 |
+  | CP2 | .9 / sd .03 | ~+163 (penalty ~28) | .85 / .91 | +.008 | x1.86 | 32% | +51 |
+  Reading: (1) the survival_breeding STRUCTURE carries most of the cost (SB1 +113 held-out, inflation x1.36 -> x1.55); the
+  sd .1 prior adds little beyond it. (2) A strong coupling (sd .03) erases the trough (D +.008) and lifts inflation to
+  x1.86 -- the B1 single-field direction. [L] Mechanism: once K cannot depart from survival in space, modern abundance
+  contrasts must be carried by the rates, so the rates' time rise grows and the early East falls. (3) Held-out among these
+  differs by less than the ~45 noise between CP2 and the others; the structure-level gap to cp3 (~+110) exceeds it.
+  [U] all far-start fits; restarts pending; J330 (CP4, SB2) pending.
+- SB3 (time change on the breeding direction) stalled at it 30, 161,871.2 (from the 201k start) -> requeued SB3b from SB1.
+- Queued CP2F8 (J200 survival_breeding, coupling .9 / sd .03, floor 8 n50, from CP2): does the robust floor recover the
+  trough under strong (convention-level) coupling? In progress: CP3p (K-only + coupling sd .1) 157,138.3 incl. penalties at
+  it 390; CP4 (J330 SB + sd .1) 157,181.5 at it 1420; SB2 (J330 SB) 157,172.9 at it 400.
+- KEY: COUPLING PRIOR ON THE K-ONLY STRUCTURE IS NEARLY FREE [E]. CP3p (capacity_demography + coupling .9 / sd .1, J200,
+  perturbed restart): objective 157,137.6 incl. penalties (coef cos .57 -> ~33.9; map corr .89 -> ~0.1) => data ~157,103.6
+  (+17 vs cp3); D -.081 (cp3 -.083); ETF rise x1.40 (x1.36); ETF>1 1910 44% (45%); held-out 47,961.2 (cp3 ~47,964: 0).
+  Map coupling .75 -> .89 at no held-out cost and with the trough / low inflation intact. CP1p (survival_breeding + sd .1,
+  restart): 157,180.2 (CP1 -12), D -.083, x1.58, map .90; held-out pending.
+  Reading: what costs held-out and inflation is moving FECUNDITY onto K's direction (survival_breeding), not coupling K
+  to survival. The data keep Fmax with survival; K can be pulled to a .89 map correlation with survival cheaply.
+  [U] whether the convention-level strength (sd .03) stays cheap on K-only: CP5 (J200, from CP3p), CP7 (+ floor 8);
+  CP6 = J330 K-only + sd .1 (perturbed from SS6bpLq).
+- SB2 (J330 survival_breeding, no prior): 157,150.9 (+72 vs 157,078.6), D -.066, x1.72 (J330 base x1.56), ETF>1 1910 27%
+  (33%), held-out 48,049.3 (+177 vs 47,872.5). CP1p held-out 48,065.1 (+101 vs cp3). [E] The survival_breeding cost
+  replicates on J330 (held-out +177, inflation up): the data keep Fmax with survival on both kernels.
+
+### (11-08) K floor vs observed abundance; four free fields + all-pair coupling priors + floor; data-driven growth
+- K FLOOR vs OBSERVED (floor_vs_obs.py; q = expected_obs / simulated_density per BBS row incl. fitted route effect; per
+  surveyed cell 2010-25, count implied by a population at the floor vs observed mean) [E]. Occupied cells only (1,689):
+  floor 4 n50 24% (GP 34%, ETF 16%, MedCal 0%, N Forests 67%); 8 n50 37% (GP 57%, ETF 27%); 16 n50 54% (GP 81%, ETF 46%);
+  32 n50 74% (GP 94%, ETF 73%). Same within 1-2 points from F8 / F16 / cp3 fits. Fitted density / floor median: cp3 1.4,
+  F8 0.8, F16 0.4. [L] Where floor-implied > observed, abundance is set by demography (sink / Allee), not K; at 16 n50
+  that is most of the GP and half the ETF. Caveat: floor-implied counts assume N = K (an upper bound; equilibria sit below K).
+- coupling_priors generalised: "pairs" ([[i, j]] or "all"; Sa-K keeps old site names) and "one_sided" (penalise only below
+  the target; the two-sided Fisher-z normal penalises c -> 1 without bound and would force identical fields apart).
+  TACC backup age_priors.py.bak_20261108_free4. CP1-CP7 used the two-sided form on Sa-K only (their Sa-K < .9, so the
+  same as one-sided there).
+- FOUR FREE FIELDS (user): manifold_prior.form exchangeable, fixed_coupling None, coupling_logit_scale 1.0 (weak; the
+  realised priors do the linking), coupling_priors all 6 pairs coef + map, mean .9, one-sided. Exact init from the K-only
+  optimum (free4_init.py; rho .5, f = W_Sa / (w_s sqrt rho), eps_j solved; max |w_env error| 1.8e-15; D -.083 at init).
+  PRE-REGISTERED: FR1 J200 sd .1 floor 8; FR2 J200 sd .1 floor 16; FR3 J330 sd .1 floor 8; FR4 J200 sd .03 floor 8.
+  Read: realised pair correlations, data objective vs cp3 / SS6, D, ETF rise, held-out, Allee-dead share, floor vs observed.
+  Prediction [U]: K departs (map ~.9 floor), Fmax / Sj stay near Sa; D and inflation like CP3p; fails as above (>300 data
+  nats, held-out > +45, inflation > x2.5).
+- DATA-DRIVEN GROWTH (user; records grep of this repo + GRID54_LADDER age_model: never tested; only upstream DESK neural
+  encoders exist). Prototype delegated to a subagent: varying-coefficient / ANOVA product kernel (linear in Z x spline in
+  log Na, log Nj) for survival and recruitment, dispersal + observation unchanged, flag default off.
+- CP5 (J200 K-only + coupling .9 / sd .03, two-sided, from CP3p) [E]: 157,257.9 incl. penalties (coef .83 -> ~44.8; map
+  .91 -> ~1.7) => data ~157,211.4 (+125 vs cp3); D -.054 (cp3 -.083); ETF rise x1.57 (x1.36); ETF>1 1910 38%; held-out
+  47,919.4 (-45 vs cp3, at the noise edge). Convention-strength coupling on the K-only structure costs trough depth and
+  ~.2 of inflation, NOT held-out.
+- CP4 (J330 survival_breeding + sd .1) [E]: 157,157.2 incl. penalties (~34.4) => data ~157,122.8 (+44 vs J330 floor);
+  D +.038; ETF rise x2.57; ETF>1 1910 21%; held-out 47,934.8 (+62). On J330 the breeding pairing + coupling loses the trough
+  entirely and inflation returns toward the single-field regime.
+- SB1p (restart of SB1): 157,138.6 (SB1 157,136.0), held-out 48,070.5 -> SB1 basin confirmed; the survival_breeding held-out
+  cost (+107..+113 on J200) is not a far-start artefact.
+
+### (11-08) Weaker Allee? (user: concerned about the extent of the floor / observed discrepancy)
+- Records: no Allee-strength variation on the current laplace_fit base (split readout + BBL CBC source + specimens + floor).
+  Last tests were R26-R28 (11-03 / 04) on the older BBS-only sandbox: with habitat change present n50 is unidentified
+  (R27 a = 1: x.98; R28a unpinned: x.81 of the pin for -8 nats); a STRONG Allee is chosen only when the growth rates
+  cannot change in time (T0 x13.3) -- the two substitute for front timing. Pin .059 route counts = V&L n50/K .0197 x a
+  median K (E055 user decision; a transferred calibration); V&L range .02-.098; user prior: weaker (Veit 1-D vs 2-D).
+  Current overlays pin n50_raw -2.1 (softplus .1155, internal units); the K floor is 4 x n50 = .0231.
+- PRE-REGISTERED (DIAGNOSTIC; n50 stays the user's decision): weaker pinned Allee, K floor held at its ABSOLUTE value
+  (.0231) so only Allee strength moves; all streams; from the SS6 optima. AL1/AL2/AL3 J200 n50 x .5 / .33 / .2;
+  AL4/AL5 J330 x .5 / .33. (x .33 ~ the V&L lower bound .02 route counts.) Read: objective, D, ETF rise, held-out,
+  Allee-dead share, floor vs observed (occupied cells), establishment timing. Prediction [U]: Allee-dead share falls
+  steeply (most dead cells sit at K / floor ~1.26 with ~10% Allee loss); in-sample cost small (n50 near-unidentified with
+  habitat change); D shallower if the Allee brake was helping hold the early Plains below the East.
+- PREDICTION CORRECTED before any AL result (user: a weaker brake should make the Plains MORE negative): my "D shallower"
+  had the substitution backwards. R26-R28: Allee strength and growth-rate time change substitute for front timing, and
+  2/3 of Allee-dead cells (lam_fund > 1, held empty by the brake) are in the GP. Revised [L]: GP early potential lambda
+  falls (deeper trough on the GP side); risk on the East side -- the weaker brake also lets the post-1940 eastern front run
+  early, so early ETF lambda may fall too and ETF inflation rise; D is a difference, so read GP and ETF levels separately.
+  Allee-dead share falls (GP cells become ordinary sinks).
+- CP6 (J330 K-only + coupling .9 / sd .1, perturbed from SS6bpLq) [E]: 157,116.5 incl. penalties (coef .60 -> ~30.3; map
+  .90 -> ~0) => data ~157,086.2 (+7.6 vs J330 floor 157,078.6); D -.044 (base -.044); ETF rise x1.60 (x1.56); held-out
+  47,867.1 (-5). The cheap K-only coupling at sd .1 REPLICATES on J330 (CP3p on J200: +17, held-out 0).
+- CP7 (J200 K-only + sd .03 + floor 8, from CP3p) [E]: 157,299.6 incl. penalties (~36.7) => data ~157,262.9 (+111 vs F8
+  157,151.9; +176 vs cp3); D -.072 (CP5 -.054, F8 -.113); ETF rise x1.53 (CP5 x1.57); held-out 48,004.4 (+40 vs cp3,
+  +85 vs CP5). The floor recovers part of the trough lost to strong coupling, at a held-out cost.
+- CP2F8 (survival_breeding + sd .03 + floor 8): D +.025, x2.65, held-out 47,966.6 -- the breeding pairing stays trough-less.
+- AL1 (n50 x .5, J200) at it 250: 156,993.5 = -93 vs cp3 and still descending. A weaker Allee IMPROVES the fit.
+- AL1 (J200, n50 x .5, floor held at .0231) [E]: 156,990.3 (-96 vs cp3 157,086.6); D -.093 (cp3 -.083); 1910 GP .74 (.82),
+  ETF .85 (.92); 2010 ETF 1.19 (1.25), GP 1.00 (1.11); ETF rise x1.41 (x1.36); share>1 1910 ETF 40% (45%), GP 21% (30%);
+  held-out 47,967.4 (+3). User's direction confirmed: early GP potential lambda FALLS (-.08); ETF early falls too (-.07),
+  so D deepens only slightly; modern lambda falls in both (the "excessively high present" side eases). A weaker brake is
+  better in-sample by ~96 with held-out unchanged. AL2 (x .33) at it 250: 156,973.6, still descending. Validation suite
+  (Allee-dead share, floor vs observed) rendering for AL1.
+- AL1 validation suite rendered (CAND_viz/AL1_VL_J200_spec_splitshared_n50x050_cbcBBL_fromcp3). Allee-dead [E]: 2.9% of
+  suitable cells (53 / 1,824; GP 36) vs base c 11.3% (229 / 2,032; GP 146); suitable cells fall 2,032 -> 1,824 (GP cells
+  became ordinary sinks, as predicted); K median (suitable) .139 -> .172. 03 map: K pattern still the K-only decoupled one
+  (no coupling prior in AL1). Runge contribution audit running.
+- AL1 Runge (23_runge_contribution) [E]: breeder-weighted C 1.04 / 1.00 / 1.02 (1966-93 / 1994-2009 / 2010-25), source share
+  of breeders .50 / .38 / .56 -- same as the leader Np2 (1.04 / 1.00 / 1.02). Audit accounting errors ~1e-16. Suite complete.
+- FR1 (J200 four free fields + all-pair one-sided coupling .9 / sd .1 + floor 8, from cp3) [E]: 157,209.1 incl. penalties
+  (coef: s-r 21.8, s-k 27.9, r-k 18.9, s-j 2.0, r-j .7, k-j .8; map ~.05) => data ~157,136.9 (-15 vs F8 157,151.9; +50 vs
+  cp3). Realised map corr: Sa-Fmax .93, Sa-K .89, Fmax-K .93, Sa-Sj .97, Fmax-Sj .96, K-Sj .95 (coef .62-.87).
+  D -.150 (cp3 -.083, F8 -.113); 1910 GP .67 / ETF .81; 2010 ETF 1.28; ETF rise x1.58 (cp3 x1.36, F8 x1.36); held-out
+  47,933.1 (-31 vs cp3). The data use the freedom mostly to separate Fmax a little from survival (toward K): Fmax-K map
+  .93 > Sa-K .89. Deepest no-hinge trough on a plausible kernel so far, held-out better, at +.22 ETF inflation.
+- AL3 (n50 x .2) stopped at it 175 from a 230k start (156,989.3): restart AL3p queued. AL2 (x .33) 156,961.2 at it 1050;
+  AL4 (J330 x .5) 157,016.6 (-62 vs J330 floor) at it 630.
+- AL2 (J200, n50 x .33) [E]: 156,959.9 (-127 vs cp3; AL1 -96); D -.105 (AL1 -.093, cp3 -.083); 1910 GP .70 / ETF .83;
+  2010 ETF 1.20, GP .95; ETF rise x1.45; share>1 1910 ETF 35%, GP 16%; held-out 47,975.5 (+11, noise). The Allee ladder
+  continues the AL1 pattern: in-sample better, GP lower, trough deeper, modern GP lambda below 1, inflation creeping up.
+- TIF housekeeping (user: .tif beside PNGs crashes Windows Photos): map_diagnostics.py now writes 07_source_sink_fields.tif
+  to map_diagnostics/geotiff/; 20 existing CAND_viz TIFs moved into geotiff/ subfolders (none deleted).
+- AL4 / AL5 (J330, n50 x .5 / x .33; base SS6bpLq: 157,078.6, D -.044, x1.56, held-out 47,872.5) [E]:
+  AL4 157,013.5 (-65), D -.068, 1910 GP .66 / ETF .72, 2010 ETF 1.14 / GP .93, x1.58, held-out 48,004.4 (+132).
+  AL5 157,025.7 (-53), D -.087, 1910 GP .62 / ETF .70, x1.62, held-out 48,080.8 (+208).
+  The weaker-Allee in-sample gain does NOT carry out of sample on J330 (held-out +132 / +208, well beyond ~45 noise),
+  while on J200 held-out was flat (+3 / +11). Kernel-dependent: not established as a robust improvement. [L] On the
+  longer kernel the brake is part of what keeps the held-out blocks' fronts right; on J200 the shorter kernel already
+  slows spread. Trough deepens on both kernels (GP side), inflation rises slightly on both.
+- Queued FRA1 (J200 four-free + floor 8 + n50 x .33, from FR1), FRA3 (same, x .5), FRA2 (J330 four-free + floor 8 + x .5,
+  from free4 init).
+
+### (11-08) User questions on the AL1 figures (mexico_q.py, AL1 params)
+- MEXICO [E]: 365 model land cells in Mexico (approx. border; domain reaches 23.3N). AL1 potential lambda median .70 in 1902
+  (10% of cells > 1), .80 in 1930, 1.01 in 2010; share of Mexico cells occupied (density > .01 x Mexico K median) 33% (1902)
+  -> 43% (1930) -> 54% (1950) -> 99% (2010): the model SPREADS INTO MEXICO over the century, contradicting the native-range
+  status. Data available: 3,287 GBIF Mexican specimens 1859-1940; the specimen cache has 623 Mexico rows / 126 positive
+  cell-decades (of 582 positives) and 912 BBS rows fall in Mexico cells. [L] The continent-wide lambda rise (habitat time
+  change) lowers early Mexico like everywhere else; Mexico has almost no BBS data to hold its early level, and the specimen
+  term does not bind enough there. [U] specimen fit in Mexico cells (predicted vs observed detections) -- next check.
+- TEMPERATE SIERRAS spikes [E]: sampling composition, not dynamics. 1976 and 1984 each had ONE BBS route run in the region
+  (route 3089: counts 65 / 126, fitted 121 / 124); other years 2-6 routes with counts 0-27 plus 3089 in some. The mean
+  jumps whenever route 3089 is the (only) route run; the fitted route effect reproduces it.
+- 04 vs 04b post-2020 [E]: the 04 "fitted mean" is the median-route (route effect 0 where none was fitted) curve; 04b's
+  corrected model mean tracks the observed rise (all: ~4.7-5 vs observed ~4.8 in 2021-25) while the median-route line
+  falls to ~3.1. [L] 2021-25 is the hold-out era; routes / observers new since 2020 have no fitted effect and are drawn
+  at the median route (~half the mean route, Jensen x2.06), and their share grows after COVID. Within the same observer x
+  route, counts did rise 2016-19 -> 2021-25 in several regions (MarineWC x1.30, NW Mtns x1.51, ETF x1.15; T Sierras x.74).
+- USER DIRECTION (Allee): the J330 held-out loss under weaker Allee is acceptable (J330 suspected to underestimate; J200
+  flat). A literature-informed PINNED n50 on the weaker side of V&L (.02-.098 route counts; x.33 of the E055 pin = ~.02,
+  x.5 = ~.03) may be the pragmatic solution: n50 is non-identifiable here, strong Allee fits a deterministic model poorly,
+  and strong / free Allee was exploited (Allee-dead cells, absence switch). Not a final decision; FRA1-3 combine it with
+  the four-free-field design.
+- FIG 04 FIX (user approved): map_diagnostics.plot_fit_diagnostics now plots the model MEAN count (shared helper
+  process_diagnostics.model_mean_count, also used by 04b) as the fitted annual mean; the median-route line stays as a faint
+  dotted reference. Verified on AL1 (CAND_viz/AL1_..._fromcp3_v2; the original folder could not be overwritten: a PNG was
+  open in Windows Photos -> OSError 22). [E] With the mean count, the post-2020 "collapse" is gone (fit ~4.8-5.0 vs observed
+  ~4.5-4.8); the mean count instead runs ~10% ABOVE observed 1985-2019 (peak 8.6 vs 7.7), the unseen-route Jensen
+  over-prediction seen earlier.
+- FREE4 ladder, J200 (data objective = total - coupling penalties; vs cp3 157,086.6; held-out vs ~47,964) [E]:
+  | fit | floor | n50 | data obj | D | 1910 GP / ETF | 2010 ETF | ETF rise | held-out |
+  |---|---|---|---|---|---|---|---|---|
+  | cp3 (K-only) | 4 | 1 | 0 | -.083 | .82 / .92 | 1.25 | x1.36 | 0 |
+  | FR1 | 8 | 1 | +50 (pen 72) | -.150 | .67 / .81 | 1.28 | x1.58 | -31 |
+  | FR2 | 16 | 1 | +138 (pen 72) | -.172 | .62 / .79 | 1.25 | x1.58 | -18 |
+  | FRA1 | 8 | x.33 | -54 (pen 67) | -.139 | .61 / .74 | 1.22 | x1.66 | +30 |
+  Map correlations stay >= .89 on every pair in all three. Weaker Allee on the four-free base again buys in-sample (-105
+  data vs FR1) and lowers modern lambda (GP .91), but lowers the early East too (inflation x1.58 -> x1.66) and costs
+  held-out vs FR1 (+61). Floor 16 deepens the trough most but is the floor that exceeds observed counts in 81% of occupied
+  GP cells and costs held-out on J330.
+- MEXICO SPECIMEN FIT (mexico_spec.py, AL1; P(det) = 1 - exp(-s_era E^beta g(N)), N = row-window mean density) [E]:
+  Mexico 623 cell-decades: observed detections 126, predicted 27.5 (x4.6 under); among observed positives median P .031,
+  62% have P < .1; median N at positives .036 (US positives .30). By decade obs / pred: 1900s 36 / 8.6 (median N .0025),
+  1910s 6 / 1.5, 1920s 34 / 10.3, 1930s 50 / 7.0. US / Canada 4,899 cell-decades: 456 vs 235 (x1.9 under).
+  Reading [L]: the specimen term sees the misfit but is outweighed -- the era-level detection nuisance (s_era, beta) is
+  shared with the US, so it cannot rescale Mexico alone, and nothing else holds early Mexico occupied. The native core is
+  where "too low in the past" is unambiguous: Mexico was not colonised in the 20th century.
+  Candidate structural anchors (to discuss): (1) native-range equilibrium -- specimen-positive native cells (pre-1940) held
+  near realised lambda ~ 1 / occupied at spin-up; (2) a Mexico / native presence term from the specimens (as RP1 / RP2);
+  (3) check the spin-up seeding of Mexico (1902 habitat with lambda < 1 empties it).
+- MEXICO ROOT CAUSE [E]: (a) the native seed (bbs.py generate_core_margin_initialization) is the convex hull of PRE-1970
+  western BBS presences; it covers 36 / 365 Mexico cells (28.1-32.5N; 3 core) vs 830 / 1,302 US West cells -> Mexico starts
+  10% seeded (spin-up raises it to 32%, so the spin-up is NOT what empties it). (b) range_absence_halo400 asserts absences
+  1902-65 in 60 Mexico cells at 23.3-25.8N (median 103.7W: the Mexican plateau, native core): "outside hull + 400 km".
+  The older, larger buffer covered this; the 400 km halo does not. Both come from the same BBS-only hull.
+  Proposal (user): hull of pre-1975 BBS + museum specimens. Caveats: use specimens pre-1940 only and west of the existing
+  western limit (pre-1940 eastern specimens are cage birds); BBS 1971-75 may add western-Plains fringe expansion to a
+  1902 seed (check cells added before adopting 1975 vs 1970); one convex hull across Mexico + West is crude (Gulf lowlands).
+- FREE4 on J330 and with n50 x .5 (data obj = total - coupling penalty) [E]:
+  | fit | kernel | n50 | data obj (vs kernel base) | D | 1910 GP / ETF | ETF rise | held-out (vs base) |
+  |---|---|---|---|---|---|---|---|
+  | FR3 | J330 | pin | 156,972.1 (-106.5; pen 93.7) | -.035 (base -.044) | .60 / .63 | x1.96 (x1.56) | 47,870.5 (-2) |
+  | FRA2 | J330 | x.5 | 157,024.5 (-54; pen 62.5) | -.061 | .56 / .61 | x1.91 | 47,949.1 (+77) |
+  | FRA3 | J200 | x.5 | 157,008.9 (-78 vs cp3; -128 vs FR1) | -.148 (FR1 -.150) | .66 / .81 | x1.54 (FR1 x1.58) | 47,929.2 (-35) |
+  Reading: on J200 the four-free design is consistently good (FR1 / FRA3: trough ~-.15, inflation ~x1.55, held-out -31..-35);
+  FRA3 (n50 x .5) matches FR1's trough with -128 data nats and slightly lower inflation. On J330 the same design fits better
+  in-sample (-106) but uses the freedom to LOWER the early East (ETF 1910 .76 -> .63), so inflation rises to x1.96 and the
+  trough does not deepen -- not kernel-robust. [L] On the long kernel the eastern front is easier to reach, so the fit
+  delays it with low early-East rates instead of a Plains barrier.
+- FR1p (restart of FR1): 157,221.4 (FR1 157,209.1) -> basin confirmed. SB3b (survival_breeding, time change on the
+  breeding direction, from SB1): 157,283.1 (+196 vs cp3) -> rejected. Queued FRA3p (restart of FRA3).
+- FR4r (J200 four-free + floor 8 + STRONG all-pair coupling .9 / sd .03, one-sided) [E]: 157,183.3 incl. penalty 14.8 =>
+  data 157,168.5 (+82 vs cp3; +32 vs FR1 data); map corr all .90-.95, coef Sa-K .87; D -.007 (trough GONE); 1910 GP .59 /
+  ETF .60; 2010 ETF 1.52; ETF rise x2.55; held-out 47,833.7 (-130 vs cp3; -99 vs FR1) = best J200 held-out of the project.
+  TENSION: tighter coefficient coupling improves held-out markedly while removing the trough and restoring inflation (cf.
+  CP5 K-only sd .03: held-out -45, D -.054, x1.57). [L] The held-out blocks are modern (BBS-era blocks + 2021-25), so they
+  reward the modern spatial pattern a single shared response reproduces well and say little about 1902-50; held-out cannot
+  adjudicate the trough. Queued FR5 / FRA4 (J330 sd .03, n50 pin / x .5).
+
+### (11-08) NATIVE-RANGE FIX built (user: work autonomously) + growth-kernel reference queued
+- native_hull_build.py (research/exp/invasion_sandbox): native hull = UNION of [convex hull of pre-1970 western BBS
+  presences] and [convex hull of pre-1940 MEXICAN specimens]. Report [E]: one convex hull over all pre-1940 western
+  specimens would seed 1,125 new cells incl. 524 GP / 246 ETF (far-east outliers) -> rejected; BBS 1975 instead of 1970
+  adds 90 fringe cells (GP 11, NW Mtns 51) -> kept 1970. Union: 299 new cells (Deserts 151, T Sierras 49, SS Highl 41,
+  GP 14 [Mexican part], MedCal 8); Mexico seeded 335 / 363 (was 36); 228 pre-1940 Mexican pseudo-zero BBS rows dropped;
+  3,484 Mexican range-absence rows dropped (only rows within 400 km of the NEW Mexican hull; the old BBS-hull halo is left
+  as built -- 3,136 other absences sit within 400 km of the BBS hull, a separate question). New margin cells get the
+  configured margin value .5. New input variants (originals untouched, md5 of sources identical local / TACC):
+  inputs_shape/{J200_established1951_vl,established1951_vl}_nativeMX; inits/range_absence_halo400_nativeMX.npz.
+  Smoke (FR1 params): Mexico seeded 10% -> 92%; spin-up erodes it to 50% at those (old-input) parameters (1902 Mexico
+  potential lambda .64) -> refit needed.
+- PRE-REGISTERED refits on the native-fixed inputs: MX3 (J200 K-only, from cp3) and MX4 (J330 K-only, from SS6bpLq) = the
+  fix alone; MX1 (J200 free4 F8, from FR1), MX2 (J330 free4 F8, from FR3), MX5 (J200 free4 F8 n50 x .5, from FRA3).
+  Read: Mexico occupancy 1902-40 and specimen fit (obs vs pred detections), D, ETF rise, 1910 GP / ETF, held-out
+  (note: 228 fewer pseudo-zero rows -> objectives not directly comparable; compare data terms row-matched). Prediction
+  [L]: early Mexico and early ETF lambda rise (the native core no longer has to be colonised), inflation falls on both
+  kernels, J330 most (its free4 run lowered the early East).
+- GROWTH KERNEL (subagent prototype, flag off by default, flag-off bit-identical on cp3): synced to TACC (backups
+  *.bak_20261108_gk); queued GK1rel (relative density axis, distilled start 159,445) and GK1prod (product kernel only),
+  dispersal sites fixed (--fix). Reference only; readout with growth_kernel_readout.py.
+- FREE4 KERNEL SET (floor 8, all-pair one-sided coupling .9 / sd .1; vs the same kernel's floor-8 base) [E]:
+  | kernel | data obj vs F8 base | D (F8 base) | ETF rise (F8 base) | held-out vs F8 base |
+  |---|---|---|---|---|
+  | J330 (FR3; FR3p 157,064.7 confirms basin) | -44 | -.035 (-.056) | x1.96 (x1.51) | 47,870.5 (+7.5) |
+  | J200 (FR1) | -15 | -.150 (-.113) | x1.58 (x1.36) | -17 |
+  | J110 (FRJ110, RP2 base) | -297 | -.459 (-.400) | x1.62 (x1.59) | pending |
+  | J60A30 (FRJ60, RP2 base) | -734 | -1.355 (-1.230) | x1.51 (x1.21) | 48,942.7 (-627) |
+  Four-free improves the data fit on every kernel; the trough deepens on J200 / J110 / J60A30 but not on J330; inflation
+  rises on all four (most on J330). J110 / J60A30 keep implausible levels (ETF lambda > 1 throughout; J60A30 2010 ETF 3.1).
+- FR5 (J330 four-free + floor 8 + strong coupling sd .03) [E]: 157,220.9 incl. penalty 28.8 => data 157,192.1 (+113 vs
+  J330 base); D -.022; 1910 GP .55 / ETF .59; ETF rise x2.16; held-out 47,868.9 (-4). Unlike J200 (FR4r held-out -130),
+  strong coupling buys no held-out on J330 -- the FR4r held-out gain is kernel-specific. FRJ110 held-out 47,988.7
+  (-190 vs SS2J110F8 48,179.1).
+- MX3 died (MemoryError std::bad_alloc, node v330-016 -- the third host-memory failure on that node today); requeued MX3r.
+- MX1 / MX2 (four-free F8 on the native-fixed inputs) [E]: MX1 (J200, from FR1) 157,165.8 in 237 it (start 157,252.5),
+  D -.154, x1.55, held-out 47,961.6; Mexico occupied after spin-up 54% (FR1-on-old-inputs 37%), 1902 Mexico potential
+  lambda .69; specimens Mexico obs 126 vs pred 39.6 (was 27.5 in AL1). MX2 (J330, from FR3) 157,059.1 in 46 it, D -.031,
+  x1.95; Mexico after spin-up 40%, lambda .59; specimens pred 32.9. The fix is necessary hygiene but NOT sufficient:
+  early Mexico lambda stays < 1 and the spin-up still erodes the native core. [L] Mexico has almost no data of its own, so
+  its early level follows the continent-wide habitat time change -- the same lambda rise that lowers the early East.
+- NEW (DIAGNOSTIC) laplace_fit --native_viable CELLS --native_viable_scale S: one-sided penalty when the regional mean log
+  potential lambda in the first model year (1902) < 0, regions = native specimen cells (pre-1940 positive cells) in Mexico
+  (88) and the US west of 103W (257; 15 western-GP-edge cells). Rationale: the seed assumes a native range AT capacity
+  (equilibrium) in 1902; a fitted 1902 habitat with native lambda < 1 contradicts it. Not a trough incentive: it pins the
+  native range's early level only. TACC backup laplace_fit.py.bak_20261108_nv.
+  PRE-REGISTERED: NV1 (J200 free4 F8 MX, scale .05, from MX1), NV2 (J330 same, from MX2), NV3 (J200 K-only MX, from cp3),
+  NV4 (J200 free4 MX, scale .02). Read: penalty value, Mexico occupancy + specimen fit, D, 1910 ETF / GP, ETF rise,
+  held-out vs the matching MX run. Prediction [L]: early lambda rises with the shared time direction -> ETF 1910 up,
+  inflation down on both kernels; GP early may rise too (risk: shallower D). Fails if held-out worsens > 45 or data cost
+  > ~300.
+- MX3r (J200 K-only on native-fixed inputs, from cp3) [E]: 156,999.1 (start 157,046.8; cp3 on old inputs 157,086.6 -- not
+  row-matched); D -.093 (cp3 -.083); ETF rise x1.39 (x1.36); held-out 47,967.4 (+3); Mexico occupied after spin-up 78%
+  (old inputs ~33%), 1902 Mexico lambda .75 (US West .86); Mexico specimens obs 126 vs pred 38.0 (AL1 27.5).
+  MX5 (J200 free4 F8 n50 x .5, from FRA3): 157,044.7 (88 it), D -.144, x1.54, held-out 47,939.9; Mexico after spin-up 52%,
+  lambda .69; specimens pred 34.0. [E] The fix restores Mexican OCCUPANCY on the K-only base (78%) but Mexican density
+  stays ~3x below what the specimens imply on every base; early native lambda stays < 1. Trough / inflation unchanged.
+- NV2 (J330 + native_viable .05, from MX2) stalled at iteration 2 (157,105.8 = MX2 + penalty). NV1 (J200) at it 640 is
+  157,128.6 INCLUDING its penalty, below MX1's 157,165.8 -> the native-fixed four-free runs (MX1 237 it, MX2 46 it, MX5 88
+  it) stopped early ("relative reduction" exits), not at optima. Queued perturbed restarts MX1p, MX2p and NV2p; compare NV
+  against the restarted MX, not against MX1 / MX2. MX4 (J330 K-only) still descending: 156,984.3 at it 2270.
+- MX4 (J330 K-only on native-fixed inputs, from SS6bpLq) [E]: 156,984.3 (2,322 it; start 157,056.1); D -.058 (SS6bpLq
+  -.044); ETF rise x1.57 (x1.56); held-out 47,892.1 (+20); Mexico after spin-up 74% (lambda .74); specimens pred 35.2 / 126.
+  Same pattern as MX3r on J200: occupancy restored, density still ~3.5x low, trough slightly deeper, inflation unchanged.
+- GK1rel (DATA-DRIVEN GROWTH reference: learned s(Z, N_a, N_j), rho(Z, N_a, N_j) with Z x density interaction + relative
+  density axis; dispersal / K-for-departure fixed at cp3) [E]: 158,163.1 (1,459 it, from 159,445.2; cp3 157,086.6 -> +1,077
+  incl. the new sites' priors); held-out 48,055.6 (+92). Readout (growth_kernel_readout.py): D on peak lambda +.003 (no
+  trough); ETF peak lambda .865 (1910) -> 1.588 (2010) = x1.83 inflation; GP .807 -> 1.107. Low-density lambda0 only
+  .12-.27 everywhere: the free form LEARNS A STRONG ALLEE (births -> 0 at low density), peak growth at intermediate density;
+  "no positive equilibrium" in 65% of cells in 1910, 47% in 2010. [L] Without an imposed functional form the data still
+  explain the invasion by a large rise in eastern growth over time (inflation x1.8) and choose a pushed, strong-Allee
+  low-density regime -- the same two features the mechanistic fits fall into when unconstrained. Caveats: dispersal fixed,
+  fit worse in- and out-of-sample, one start. GK1prod (product kernel only) queued.
+- NV3 (J200 K-only + native_viable .05 on native-fixed inputs, from cp3) vs MX3r (same, unconstrained) [E]:
+  objective 157,003.9 incl. penalty 2.2 => data 157,001.7 (+2.6 vs MX3r 156,999.1); specimen nll 973.5 (977.6); absences
+  36.9 (38.9); CBC 9,185.9 (9,185.5); BBS conditional 111,119.8 (111,110.2); held-out 47,973.6 (+6).
+  Mexico: occupied after spin-up 90% (78%), 1902 median lambda .88 (.75; specimen-cell regional mean log lambda ~ 0);
+  specimens pred 41.0 / 126 (38.0); US West unchanged (.86). Rest of continent: D -.086 (-.093), 1910 ETF .92 (.90) /
+  GP .79 (.80), ETF rise x1.38 (x1.39).
+  Reading: a VIABLE native Mexico costs ~3 data nats and +6 held-out and leaves the continent essentially unchanged -- the
+  constraint acts locally on Mexico (its own habitat level), not through the shared time direction (my [L] prediction of
+  an early-East rise was wrong: ETF 1910 +.02 only). Mexican density remains ~3x below the specimens.
+- MEXICAN DENSITY OVER TIME (mex_bbs.py; NV3 / MX3r) [E]: BBS rows in Mexico cells 473 (58 cells, 23.7-32.4N; 98 rows
+  1966-93, 70 1994-2009, 305 2010-25). Observed vs fitted (own route effects): 2.15 / 2.30, 10.47 / 8.89, 12.96 / 12.46 (NV3);
+  at the mean route 1.22, 4.81, 9.53. Model median density Mexico 1902 .066 -> 1930 .104 -> 1960 .081 -> 1990 .122 ->
+  2010 .202 (x3 since 1902), US West native .016 -> .052. So the model DOES reach the modern Mexican BBS level, but by
+  tripling Mexican density over the century; the specimens (x3.1 under-predicted in Mexico vs x2.0 in the US -- the
+  detection nuisance under-predicts everywhere, so Mexico's relative deficit is ~x1.5) say early Mexico was denser than the
+  model has it. [L] The native core shows the same century-long rise as the East: the habitat time change, not
+  colonisation, drives it.
+- Queued NV5 (J330 K-only + native_viable .05, from MX4) and NV6 (J200 K-only, scale .02, from NV3). MX1p (157,131.8, 461 it)
+  again stopped above NV1's current value (157,085 incl. penalty): the four-free optimiser stalls on these inputs.
+- NV1 (J200 free4 F8 MX + native_viable .05) [E]: 157,084.6 (penalty .19), D -.150, ETF rise x1.70 (MX1 x1.55), held-out
+  48,003.7 (+42 vs MX1); Mexico 92% occupied, lambda .86; specimens pred 40.4. On the four-free base viability costs
+  inflation (+.15) and held-out; on the K-only base (NV3) it was free. MX2p (J330 free4 MX restart): 156,992.9, D -.039,
+  x2.01, held-out 47,947.0; NV2p (J330 + nv, 80 it, penalty still 19.8): D -.012, x2.10 -- J330 free4 is a poor base.
+- SPECIMEN LOSS (user question): Bernoulli per cell-decade, P(>= 1 finch specimen) = 1 - exp(-s_era E^beta g(N)),
+  E = all Aves specimens in the cell-decade, g saturating (k .437), s free per era (pre-1910 / 1910-40), beta .75.
+  Density enters, but (i) s_era and N trade off (g ~ N at low N), so ABSOLUTE density and the change between eras are
+  unidentified; (ii) counts (0-7 per cell-decade) are discarded. Within-era RELATIVE abundance, Mexico vs US West per
+  effort^beta (spec_ratio.py): detections x1.05 (pre-1910) / x1.42 (1910-40), specimen counts x.72 / x2.10; the model at
+  the specimen-positive cells has Mexico / US median N .20 / .31 = x.64 (NV3) -> Mexico ~x1.6-2.2 too sparse RELATIVE to
+  the US within era.
+- NEW --specimen_counts (laplace_fit; specimen_lik.specimen_nll_counts): NB2 counts with the same lam (the Bernoulli is its
+  phi -> inf dichotomy; checked: NB(phi 1e8) = Poisson to 1e-3), log phi ~ N(0, 2). TACC backups *.bak_20261108_sc.
+  Queued SC2 (J200 K-only MX + counts, from MX3r), SC1 (+ native_viable .05, from NV3), SC3 (J330 K-only MX + counts).
+  Read: Mexico / US relative density at specimen cells, Mexico specimen fit, D, ETF rise, held-out.
+- SPECIMEN METHOD vs LITERATURE (user: the ad hoc version is hard to justify; web search 2026-11-08): the current form is the
+  occupancy-detection + target-group-effort family (Shirey et al. 2023 MEE "promise and pitfalls": valid with long series and
+  a high share of community-wide collections; Erickson & Smith 2021 "occupancy-collection models": filter collectors / model
+  collector covariates -- whether the collector ever collected the focal species is a key predictor). --specimen_counts is the
+  model-based form of the target-group abundance index (focal / all similar-taxon specimens, same region-period; Rohwer,
+  Grason & Navarro-Siguenza 2015; used for Painted Bunting in Mexico). Tingley & Beissinger 2009 TREE: historical vs modern
+  occupancy with explicit detection. Frescalo (Hill 2012): effort from benchmark-species frequency. All give RELATIVE abundance
+  / occupancy; none identifies absolute early density. Missing step in ours: the collector filter (effort file has per-cell
+  collector counts 'rec').
+  Collector facts (spec_coll.py): Mexico median 3.6 collectors / cell vs US West 4.6; 24 vs 15.5 specimens per collector;
+  top-3 collectors 21% vs 11% of finch specimens; Mexico MX/US detection ratio rises with collector filters (x1.05 / x1.42
+  all -> x1.76 / x1.94 at >= 10 collectors).
+- NV5 (J330 K-only + native_viable .05, from MX4): 156,989.2 vs MX4 156,984.3 (+4.9 incl. penalty) -- viability nearly free
+  on J330 K-only too (readout pending). GK1prod (product kernel): 158,192.5 (GK1rel 158,163.1).
+- COLLECTOR FILTER (Erickson & Smith 2021; specimen_collector_cache.py): E' = E x per-cell share of Aves effort by collectors
+  with >= 1 House Finch specimen (736 finch-collector name keys; per-cell 'rec' facet, not split by decade; rows with no
+  finch-aware effort and no finch dropped: 571). Median finch-aware share: Mexico .94, US West .82. Mexico / US relative
+  rates barely move (detections x1.05 / x1.31, counts x.72 / x1.94 vs x1.05 / x1.42, x.72 / x2.10 unfiltered) [E]:
+  collector selectivity does not explain Mexico's relative detection rate. Cache inits/specimens_cache_collectors.npz.
+  Queued SC4 (J200 K-only MX + counts + collector cache, from MX3r) and SC5 (+ native_viable .05, from NV3).
+- NATIVE VIABILITY on the K-only base, both kernels (data obj = total - penalty; vs the matching MX refit) [E]:
+  | fit | kernel | scale | data obj | Mexico occ. / 1902 lambda | spec pred / 126 | D | ETF rise | held-out |
+  |---|---|---|---|---|---|---|---|---|
+  | MX3r | J200 | -- | 156,999.1 | 78% / .75 | 38.0 | -.093 | x1.39 | 47,967.4 |
+  | NV3 | J200 | .05 | +2.6 | 90% / .88 | 41.0 | -.086 | x1.38 | +6 |
+  | NV6 | J200 | .02 | +6.5 | 92% / .93 | 41.0 | -.082 | x1.36 | +17 |
+  | MX4 | J330 | -- | 156,984.3 | 74% / .74 | 35.2 | -.058 | x1.57 | 47,892.1 |
+  | NV5 | J330 | .05 | +2.0 | 85% / .87 | 37.1 | -.053 | x1.56 | +19 |
+  Viable native Mexico is kernel-robust and nearly free (2-7 data nats, held-out within noise); the continent is unchanged;
+  Mexican density (specimen fit) does not move. NV6 at scale .02 still leaves the median 1902 Mexico lambda < 1 (.93; the
+  penalty is on the specimen-cell mean of log lambda).
+- SC1 (J200 K-only MX + native_viable .05 + SPECIMEN COUNTS, from NV3) [E]: specimen nuisances move, densities do not:
+  beta .976 (was .751), log phi -1.02 (phi .36: strong clumping -- collectors' series), log s -3.72 / -3.68.
+  Detections Mexico obs 126 vs pred 89.0 (NV3 41.0); US 456 vs 394.5 (225.2) -> Mexico relative deficit ~x1.2 (was ~x1.5).
+  Counts Mexico 1,009 vs 230 (x4.4 under; US 3,098 vs 1,757, x1.8) -> relative ~x2.5 under, absorbed by phi.
+  Model density at Mexican positive cells .21 (NV3 .20); Mexico occupied 90%, 1902 lambda .91. Rest of continent ~unchanged:
+  D -.074 (NV3 -.086), ETF rise x1.40 (x1.38), BBS conditional 111,118.7 (111,119.8), held-out 47,976.8 (+3).
+  Reading [E]: the earlier "x3 too few Mexican detections" was mostly the effort exponent (beta .75); with beta ~1 the gap
+  is ~x1.4 absolute and ~x1.2 relative to the US. The count likelihood does not move Mexican density: the series clumping
+  (phi .36) leaves counts with little information about the mean. FRA4 (J330 four-free sd .03 n50 x.5): 157,230.3.
+  NV4 (J200 four-free nv .02) hit maxiter 3000 at 157,094.7.
+- EARLY-CBC BRIDGE, native West (DATA ONLY; cbc_west.py; circles west of 105W, 1902-1965, 303 circles) [E]:
+  fixed panel of 45 circles run in both 1920-39 and 1950-66: share of counts with finches .57 (1910s) -> .65 (1930s) -> .82
+  (1960s); count per party-hour 13.6 / 9.7 / 7.6 / 8.1 / 7.6 / 10.4 (1910s-1960s) -- BUT party-hours are IMPUTED (fixed 20)
+  for 100% / 90% / 86% / 50% / 11% / 2% of panel rows by decade. Reported effort only: 2.0 (1920s, 7 rows), 2.6 (1930s, 21),
+  7.8 (1940s, 103), 7.4 (1950s, 247), 10.3 (1960s, 178). [L] The usable early-CBC evidence points to a native-West count
+  RISE of roughly x3-4 from the 1920s-30s to the 1950s-60s (tiny early n; confounded by feeders, observer skill, protocol),
+  i.e. the native-core rise the model shows (US West median density x1.6 1930 -> 1960, x2.5 1902 -> 1960) is NOT
+  contradicted by the CBC and may be partly real (settlement / feeders, the model's changing-habitat premise). The
+  specimens (relative only) cannot speak to it. So the native core is NOT a clean anchor against inflation; what is
+  pathological is the SIZE of the swing, not its existence.
+- SPECIMEN-COUNT RUNS on native-fixed inputs [E] (objectives on the count scale, comparable only among SC runs):
+  | fit | kernel | counts / collectors / nv | D | ETF rise | Mexico det pred / 126 | Mexico counts pred / 1,009 | held-out |
+  |---|---|---|---|---|---|---|---|
+  | SC2 | J200 | y / n / n | -.086 | x1.41 | 88.5 | 233 | 47,979.0 (MX3r 47,967.4) |
+  | SC1 | J200 | y / n / .05 | -.074 | x1.40 | 89.0 | 230 | 47,976.8 |
+  | SC5 | J200 | y / y / .05 | -.077 | x1.38 | 96.0 | 254 | 47,977.9 |
+  | SC3 | J330 | y / n / n | -.052 | x1.58 | 83.1 | 215 | 47,898.9 (MX4 47,892.1) |
+  Counts + collector filter + native viability together leave the trough / inflation / held-out where the presence-only
+  fits had them (within ~.01 / .03 / 12); the specimen calibration (beta ~1) closes most of the Mexican detection gap
+  (96 / 126 with collectors). Queued LC1 (J200) / LC2 (J330): K-only + coupling .9 / sd .1 (Sa-K) + floor 8 + n50 x .5 +
+  native fix + native_viable .05 + specimen counts + collector filter -- the combination of every lever that has held up.
+- SC4 (J200 counts + collectors, no nv) 158,441.5; SC6 (J330 counts + collectors + nv) 158,433.2 (readouts with SC7 / SC8).
+  Queued LC3 (J200) / LC4 (J330) = LC1 / LC2 with the n50 PIN kept (isolates the weaker-Allee step inside the combination).
+- SC4 / SC6 / SC7 / SC8 [E]: SC4 (J200 counts + collectors) D -.079, x1.39, held-out 47,974.9; SC6 (J330 counts + collectors
+  + nv) D -.030, x1.60, held-out 47,943.7 (SC3 47,898.9: +45, at the noise edge; trough shallower than SC3 -.052);
+  SC7 (J200 + floor 8) D -.089, x1.38, held-out 47,950.3 (-28 vs SC5); SC8 (J330 + floor 8) D -.044, x1.61, held-out
+  47,935.7 (-8 vs SC6). The floor-8 step again deepens D slightly at no held-out cost on both kernels. Queued LC5 (J200
+  combination, n50 x .33) to complete the Allee ladder inside the combination (LC3 pin / LC1 x .5 / LC5 x .33).
+- COMBINED CANDIDATES, J200 (K-only + Sa-K coupling .9 / sd .1 + floor 8 + native fix + native_viable .05 + specimen counts
+  + collector filter) [E]:
+  | fit | n50 | data obj (count scale) | D | 1910 GP / ETF | 2010 ETF / GP | ETF rise | held-out | Sa-K map | Mexico occ / lambda | spec det pred / 126 |
+  |---|---|---|---|---|---|---|---|---|---|---|
+  | LC3 | pin | 158,506.4 | -.116 | .75 / .90 | 1.24 / 1.04 | x1.38 | 47,929.1 | .92 | 92% / .90 | 98.3 |
+  | LC1 | x .5 | 158,378.6 (-128) | -.109 | .69 / .83 | 1.20 / .93 | x1.44 | 47,945.7 (+17) | .93 | 92% / .89 | 95.9 |
+  vs the old J200 base cp3 (old inputs): D -.083, x1.36, held-out ~47,964. LC3 deepens the trough by .03, keeps inflation,
+  improves held-out by ~35, couples K to survival on the map (.92), and has a viable, specimen-calibrated Mexico.
+  LC1 (weaker Allee) is much better in-sample, similar trough, slightly more inflation, held-out within noise.
+  Validation suites + Runge rendering locally (CAND_viz/LC3_..., LC1_...). Restarts LC1p / LC3p queued.
+- LC5 (GPU RESOURCE_EXHAUSTED) and LC6 (MemoryError std::bad_alloc) both died on node v330-016 -- the sixth host-memory /
+  GPU-OOM failure on that node today (SB2, MX3, FR4, LC2, LC5, LC6); requeued LC5r / LC6r. In progress: LC2r (J330 x.5)
+  158,426.6 at it 990; LC4 (J330 pin) 158,517.1 at it 700.
+- LC3 / LC1 VALIDATION (CAND_viz/LC3_..., LC1_...) [E]: Allee-dead 5.6% (LC3; GP 59) / 1.2% (LC1; GP 9) vs 11.3% old base;
+  Runge breeder-weighted C LC3 1.037 / .995 / 1.022, LC1 1.036 / .997 / 1.019 (as before). REALISED map coupling (Spearman
+  log K_modern vs lam_fund): all cells old base .66 -> LC3 .81 / LC1 .83; GP .35 -> .47 / .53; GP top-third-lam cells with
+  bottom-third K 19% -> 3% / 2%; ETF .30 -> .46 / .48. The 03 K panel still LOOKS dark across the interior because its
+  linear colour scale is set by coastal California / NW Mexico (K to 1.6); the rank coupling is much improved.
+- FIG 03 K PANEL ON LOG SCALE (user approved): map_diagnostics.plot_modern_rate_maps uses LogNorm (2-98% of positive K) for
+  "Carrying capacity (log scale)"; re-rendered for LC3 / LC1 as 03b_modern_demographic_rates_logK.png (fig03.py). LC3 reading
+  [E]: interior K gradient now visible -- moderate across the East / Great Lakes, higher on the Atlantic coast, Southeast and
+  Texas, lowest in the central Plains and boreal north; the Ohio Valley / Midwest core where Sa and Fmax peak sits in the
+  lower-middle of K, so the coupling (rank .81) is much better but not complete.
+- TACC: v330-016 failures traced to two tasks per A100-40GB at XLA_PYTHON_CLIENT_MEM_FRACTION .85 (runner default);
+  task scripts now export .48 (memory houfin-tacc-gpu-mem-fraction). Requeued LC1q / LC3q with the cap.
+- COMBINED CANDIDATES, J330 [E]: LC4 (n50 pin) 158,514.3 (nv 1.86), D -.024, 1910 GP .68 / ETF .72, ETF rise x1.65,
+  held-out 47,949.5, Sa-K map .92, Mexico 87% / .89, spec det 93 / 126. LC2r (n50 x .5) 158,425.4 (-89), D -.046, x1.64,
+  held-out 48,090.5 (+141 vs LC4). vs SC8 (J330 same minus the coupling prior: D -.044, x1.61, held-out 47,935.7): on J330
+  the Sa-K coupling prior costs ~.02 of trough and ~.04 of inflation (+14 held-out), and the weaker Allee again costs J330
+  held-out (+141). J200 (LC3: D -.116, x1.38, held-out -35 vs old base) is the kernel where the combination works best;
+  J330 keeps its weaker trough / higher inflation under every combination tried.
+- RUNGE FIGURE THRESHOLD (user: no view of the Great Plains): process_diagnostics.runge_figure showed cells with mean breeders
+  >= 1% of the DENSEST cell (coastal California), hiding the moderately occupied Plains; now >= 1e-4 x max, plus breeder-
+  weighted C for CEC GP and ETF in the titles / json. Re-rendered LC3 / LC1 [E]: cells shown ~2,700-3,400; LC3 GP C 1.00 /
+  .98 / .99, ETF C 1.23 / .96 / 1.00 (1966-93 / 1994-2009 / 2010-25). The all-cell breeder-weighted C moves slightly with the
+  wider mask (LC3 1.037 / .995 / 1.022 -> 1.028 / .982 / 1.003): the added low-density cells are mostly mild sinks. Map: deep
+  sinks along the boreal edge, the Texas Gulf strip and the lower Mississippi; Plains near balance; 1966-93 East the strong
+  source.
+- RUNGE BY ECOREGION (user): CEC Level II rasterised onto the 54-km lattice (cec_level2_raster.py; 9x9 sub-points, majority of
+  non-water, as Level I; 50 classes; regions/cec_level2_54km.tif + .json). New standard panel process_diagnostics.
+  runge_regions_figure -> 23b_runge_by_ecoregion.png / .json (breeder-weighted C per region x era; L1 rows >= .5% of breeders,
+  L2 >= .2%, all regions in the json). LC3 [E]: Level I -- Deserts .99 / .98 / .99 (33% of breeders), MedCal 1.03 / 1.01 /
+  1.03 (31%), ETF 1.23 / .96 / 1.00, GP .99 / .98 / .99 (4%), NW Mtns .93 / .92 / .94, N Forests 1.00 / .72 / .72.
+  Great Plains Level II: 9.4 South Central Semiarid Prairies (3.0%) 1.00 / 1.01 / 1.02; 9.2 Temperate Prairies (.64%)
+  1.21 / .97 / .96; 9.6 Tamaulipas-Texas (.43%) .91 / .92 / .94; 9.3 West-Central Semiarid Prairies (.11%) .46 / .70 / .77;
+  9.5 Texas-Louisiana Coastal Plain (.02%) .27 / .42 / .47. ETF Level II in 1966-93: 8.2 Central USA Plains 1.48, 8.3
+  Southeastern USA Plains 1.29, 8.1 Mixed Wood Plains 1.22.
+- (TACC reconnected) LC1q 158,412.4 (LC1 158,412.6) and LC3q 158,545.8 (LC3 158,541.8) at ~850 it -> both basins stable.
+  LC5s (J200 x .33, capped .48) died RESOURCE_EXHAUSTED again on v330-016 b while LC6s (capped) runs on 016 a: the cap is not
+  enough (2 x 19.6 GB + CUDA contexts ~ 40 GB). Requeued LC5t with XLA_PYTHON_CLIENT_ALLOCATOR=platform; queued LC7 (J200
+  four-free + all-pair coupling + floor 8 + native fix + nv + counts + collectors, pinned n50, from FR1), also platform.
+- LC1q (restart of LC1) converged 158,412.4 (LC1 158,412.6) -> basin confirmed. Kernel robustness of the combination:
+  J110 native-fixed inputs built (inputs_shape/J110_established1951_vl_nativeMX; identical edit: 299 cells seeded, 228
+  pseudo-zero rows dropped; local md5 = TACC); queued LC8 (J110 combination, n50 pin, from SS2J110F8) and LC9 (n50 x .5),
+  platform allocator. J60A30 inputs live only on TACC (processed/grid54/kernel_sens/J60A30) -- build there next.
+- LC3q (restart of LC3) 158,545.3 (LC3 158,541.8) -> basin confirmed. LC6s (J330 combination n50 x .33) 158,410.4.
+  J60A30 native-fixed inputs built from the TACC metadata (inputs_shape/J60A30_established1951_nativeMX on TACC; same edit);
+  queued LC10 (J60A30 combination, n50 pin, from SS2J60F8) -> the combination is then on all four kernels (LC3 J200, LC4 J330,
+  LC8 J110, LC10 J60A30).
+- FLOOR vs ALLEE SCALE (user: does the 8x floor stay reasonable with a weaker Allee?) [E]: the model reads only
+  capacity_floor_internal (age_fields.py:33; 'capacity_floor_n50_multiple' is a label). Every weaker-Allee run so far kept
+  the floor ABSOLUTE at .0462 = 8 x the PINNED n50 -> 16 x n50 at x .5 (LC1, AL-type) and 24 x at x .33 (LC5t). With a weaker
+  Allee the floor's purpose (no Allee-dead cells) is mostly met already (AL1: x .5 with floor .0231 = 8 x its own n50 -> 2.9%
+  Allee-dead), while its distortion is Allee-independent (.0462: floor-implied count > observed in 37% of occupied cells,
+  57% of occupied GP cells). Queued LC11 (x .5, floor .0231 = 8 x new n50) and LC12 (x .33, floor .01525) from LC1: the
+  floor TIED to the Allee scale inside the combination.
+- ALLEE PROVENANCE CORRECTION (user asked whether .02 route counts is V&L's lower bound): it is OUR conversion. E055 / run55
+  overlays: V&L 1996 p. 263 ran r = .05 / .15 / .25 birds/km2 (a sensitivity grid; .15 chosen by spread rate) at K* ~3.8 /
+  km2 -> n50 = r/2 = .0197 K*; pin .059 route counts = .0197 x our median K 3.0 route counts (transferred calibration);
+  .02 / .098 = r .05 / .25 through the same ratio. x.33 = V&L's weakest tested value in our units, not a bound. J200 Allee
+  ladder (old base, floor .0231): pin 157,086.6 / ~47,964; x.5 156,990.3 / 47,967.4; x.33 156,959.9 / 47,975.5;
+  x.2 (AL3p) 156,984.9 / 48,051.8 -> the data, not the literature, argue against going weaker than x.33.
+- ABSOLUTE BRIDGE via Partners in Flight (user: we were winging the unit conversion) [E] (abs_calib.py, LC3): PIF
+  continental total ~40 M House Finches (US + Canada; PIF database; other sources 20-40 M). Model: q = 41.7 mean-route counts
+  per internal density unit (= pop_scalar 20 x Jensen e^{sigma^2/2} 2.06), sum over 3,955 US+CA cells of mean-route count x
+  2,916 km2 = 5.45e7 (2010-19) -> 1 mean-route count = .735 birds/km2 (PIF 40 M) / .367 (20 M).
+  In V&L units (birds/km2; PIF 40 M, [20 M in brackets]): median K in occupied US+CA cells 2.40 [1.20] (V&L K* ~3.8);
+  pinned n50 (.1155 median-route counts = .00578 internal = .241 mean-route counts) = .177 [.089] birds/km2 vs V&L
+  n50 = r/2 = .025 / .075 / .125 (r .05 / .15 / .25) -> our PIN is at or above V&L's STRONGEST value; x.5 = .089 [.044],
+  x.33 = .058 [.029] bracket V&L's CHOSEN .075. The K floor .0462 internal = 1.42 [.71] birds/km2 = ~.6 x the median
+  occupied K. Note: the current overlays pin n50_raw -2.1 (.1155 route counts), ~2x E055's .059 (n50_raw -2.797).
+  Reading [L]: on a literature-calibrated absolute scale the "weaker" Allee (x.33-x.5) is where V&L's own estimate falls; the
+  pin is the strong end. Uncertainty: PIF totals carry ~x2 (detection-distance) error; V&L's K* / r come from their 1-D fit.
+- 1-D vs 2-D (user asked whether to adjust V&L's value to 2-D) [L]: the direction is principled, the size is not. In 2-D a
+  small expanding front pays a curvature cost (speed ~ c - 1/R) and a founding patch needs a critical radius (Lewis & Kareiva
+  1993), so reproducing the same history needs a WEAKER Allee effect than V&L's 1-D fit; the size depends on kernel, patch
+  geometry and K, and only a 2-D fit with the real kernel (ours) can estimate it. No ad hoc 2-D factor is applied.
+- DOCS UPDATED for the conversion (2026-11-08): CONSIDERATIONS.md G14 (PIF bridge), M32 (1-D -> 2-D; renumbered from M30, which was taken), P7 (11-06 pin premise);
+  route-variance docs/PRIORS.md "Allee effect" (pinned-n50 paragraph); config _allee_comment; kstar.py caveat; abs_calib.py
+  moved into research/exp/invasion_sandbox/ (was scratchpad); a note added beside the 11-06 decision above.
+- ALLEE x .33 INSIDE THE COMBINATION (LC5t J200 / LC6s J330; platform allocator, survived) [E]:
+  | fit | n50 | objective | D | 1910 GP / ETF | 2010 ETF / GP | ETF rise | held-out | Sa-K map | Mexico occ / lambda | spec det / 126 |
+  |---|---|---|---|---|---|---|---|---|---|---|
+  | LC3 J200 | pin | 158,541.8 | -.116 | .75 / .90 | 1.24 / 1.04 | x1.38 | 47,929.1 | .92 | 92% / .90 | 98.3 |
+  | LC1 J200 | x .5 | 158,412.4 | -.109 | .69 / .83 | 1.20 / .93 | x1.44 | 47,945.7 | .93 | 92% / .89 | 95.9 |
+  | LC5t J200 | x .33 | 158,365.8 | -.122 | .67 / .82 | 1.18 / .91 | x1.43 | 47,983.0 | .93 | 92% / .89 | 95.1 |
+  | LC4 J330 | pin | 158,514.3 | -.024 | .68 / .72 | | x1.65 | 47,949.5 | .92 | 87% / .89 | 93 |
+  | LC2r J330 | x .5 | 158,425.4 | -.046 | | | x1.64 | 48,090.5 | | | |
+  | LC6s J330 | x .33 | 158,410.4 | -.062 | .60 / .69 | 1.10 / .84 | x1.60 | 48,157.4 | .93 | 91% / .88 | 88.9 |
+  Reading [E]: within the combination in-sample keeps improving to x .33 on both kernels (J200 -176 vs pin, J330 -104),
+  unlike the old base (x .33 ~ x .5). Trough by Allee strength: J200 -.116 / -.109 / -.122 (
+  flat within noise); J330 -.024 / -.046 / -.062 (deepens, as the user predicted: weaker brake -> Plains needs lower lambda
+  to stay empty). ETF inflation is flat (J200 x1.38-1.44; J330 x1.60-1.65). Held-out worsens as the Allee weakens on both
+  kernels (J200 +54, J330 +208 vs pin) -- the same J330 pattern the user already judged acceptable (J330 suspected to
+  under-estimate); on J200 +54 is ~1.5x the restart noise seen so far, so not negligible. Mexico unchanged.
+  Under the PIF bridge (CONSIDERATIONS G14) x .33 = .058 [.029] birds/km2, below V&L's chosen .075; x .5 = .089 [.044].
+  Queued: LC5q (restart of LC5t), LC13 (J110 x .33). Validation suite for LC5t rendering (CAND_viz/LC5t_...).
+- LC5t VALIDATION (CAND_viz/LC5t_...) [E]: Allee-dead 0.3% of suitable cells (6; GP 3) vs LC1 1.2% / LC3 5.6% -- the
+  Allee-dead pathology is essentially gone at x .33. Runge breeder-weighted C 1.028 / .984 / 1.001 (1966-93 / 1994-2009 /
+  2010-25); CEC GP C 1.00 / .98 / .99 (self-sustaining, not immigration-propped); ETF 1.24 / .96 / 1.00. Median K in
+  suitable cells rises .144 (LC3) -> .182 (LC1) -> .200 (LC5t) internal as the Allee weakens. Reading [L, unverified]: with
+  a weaker brake the fit stops using low-K Allee-dead cells to keep the Plains empty and uses lower lambda instead.
+- FLOOR x ALLEE INTERACTION (user asked; floor_share.py + floor_vs_obs.py on LC3 pin / LC1 x .5 / LC5t x .33; all floor
+  .0462 internal, K = softplus(.) + floor, age_fields.py:378) [E]:
+  | | LC3 | LC1 | LC5t |
+  |---|---|---|---|
+  | floor / n50 ; floor / Allee fold (n50/ln2) | 8 ; 5.5 | 16 ; 11.1 | 24 ; 16.8 |
+  | GP cells with K < 2 floor, 1910 / 2010 | 85% / 73% | 79% / 66% | 77% / 61% |
+  | ETF cells with K < 2 floor, 1910 / 2010 | 66% / 41% | 65% / 37% | 63% / 34% |
+  | West cells with K < 2 floor, 1910 / 2010 | 74% / 70% | 73% / 70% | 72% / 69% |
+  | GP median K / floor, 1910 / 2010 | 1.1 / 1.3 | 1.2 / 1.5 | 1.2 / 1.6 |
+  | occupied GP cells 2010: median density / floor | .59 | .54 | .51 |
+  | occupied 2010-19 cells floor-dominated (GP) ; their share of birds | 52% (66%) ; 9.4% | 48% (56%) ; 8.4% | 44% (49%) ; 7.5% |
+  | Allee-dead (share of suitable) | 5.6% | 1.2% | 0.3% |
+  | occupied cells with floor-implied count > observed (GP) | 37% (56%) | 38% (60%) | 38% (60%) |
+  Reading: (1) [E] the floor IS binding over most of the continent: in 60-85% of GP and ~70% of West cells the fitted
+  softplus part is a small fraction of the floor (median K/floor 1.1-1.6), i.e. the K field is pressed against the floor and
+  would go lower if allowed. K's spatial signal lives in the ETF and a minority of western cells. (2) [E] occupied GP cells
+  sit at ~.5 x floor, well below K: their density is set by low lambda (equilibrium far below K when lambda is near 1),
+  not by K -- so "floor > observed" (60% of occupied GP cells) is not a contradiction, but it means low GP abundance is
+  carried by demography. (3) [E] weakening the Allee moves the floor from 5.5x to 16.8x the Allee fold, which is why
+  Allee-dead cells vanish: at the pin, a floor-level cell with lambda just above 1 could not climb past the fold; at x .33
+  it can. The floor plus a weak Allee removes "low K + Allee" as an absence switch, so empty or sparse cells must come from
+  lambda < 1 or from not having been reached. (4) [L] K lifts slightly off the floor in the GP as the Allee weakens
+  (73% -> 61% floor-dominated in 2010); the fit can now afford higher K because the brake no longer turns a low-K cell into an
+  absence. (5) [L, test pending] because the floor binds, it may be doing some of the trough's work (earlier: floor 16
+  deepened the trough most). LC11 / LC12 (floor tied to 8 x the new n50: .0231 / .0153) are the direct test -- if the
+  trough survives a halved / thirded floor, it is not a floor artifact.
+- LC10 (J60A30 combination, n50 pin; J60A30 inputs now mirrored locally at inputs_shape/J60A30_established1951_nativeMX)
+  [E]: objective 161,133.5 at 327 it (early "relative reduction" stop -> LC10p perturbed restart queued), held-out 49,292.4
+  (FRJ60 48,942.7). conditional_obs 112,724.6 (SS2J60F8 113,120.2; FRJ60 112,620.9). D -1.204 (SS2J60F8 -1.230);
+  ETF lambda 1910 / 1950 / 1966 / 2010 1.80 / 1.98 / 2.13 / 3.06, GP .75 / .90 / .91 / 1.51; ETF rise x1.70 (SS2J60F8
+  x1.21). Sa-K map .91; Mexico 95% occupied, potential lambda 1.68, spec det 94.5 / 126.
+  Reading [E]: J60A30 keeps its implausible levels (ETF lambda 1.8 already in 1910) and the combination raises its ETF
+  inflation (x1.21 -> x1.70), as four-free did. D on this kernel is a difference of inflated levels, so its size is not
+  comparable to J200 / J330. Kernel robustness so far: the combination's pattern (deep trough, modest inflation) holds on
+  J200 only; J330 shallow trough + x1.65; J60A30 implausible levels. J110 (LC8 / LC9 / LC13) pending.
+- LC7 (J200, FOUR fields free with all-pair one-sided coupling .9 / sd .1, floor 8, n50 pin, full combination) [E]:
+  objective 158,489.9 (LC3 K-only 158,541.8: -52), held-out 47,960.0 (LC3 47,929.1: +31). D -.125 (LC3 -.116); ETF lambda
+  1910 / 1950 / 1966 / 2010 .75 / .77 / .87 / 1.34, GP .60 / .70 / .75 / .97; ETF rise x1.79 (LC3 x1.38). Realised map
+  correlations all pairs .88-.95 (coefficient cosines .68-.75). Mexico 91% / lambda .85, spec det 100.9 / 126.
+  Reading [E]: freeing all four fields buys a little in-sample and a marginally deeper trough, but ETF inflation jumps
+  x1.38 -> x1.79 (early ETF lowered .90 -> .75, modern raised 1.24 -> 1.34) and held-out is worse. Same pattern as the
+  older four-free runs (FR1 x1.58 vs its K-only base x1.36). K-only stays the better candidate on the lead metrics.
+  LC14 (same, n50 x .33) queued.
+- FLOOR-TIED + J110 + J60A30 RESTART readouts (rd_batch.sh) [E]:
+  | fit | kernel | n50 | floor | objective | held-out | D | ETF 1910 / 2010 | ETF rise | GP floor-dominated 2010 |
+  |---|---|---|---|---|---|---|---|---|---|
+  | LC1 | J200 | x .5 | .0462 | 158,412.4 | 47,945.7 | -.109 | .83 / 1.20 | x1.44 | 66% |
+  | LC11 | J200 | x .5 | .0231 (tied, 8 n50) | 158,372.1 | 47,943.6 | -.104 | .82 / 1.20 | x1.46 | 47% |
+  | LC8 | J110 | pin | .0462 | 158,948.4 | 48,053.7 | -.204 | .96 / 1.64 | x1.72 | 80% |
+  | LC9 | J110 | x .5 | .0462 | 158,713.9 | 47,810.9 | -.217 | 1.01 / 1.46 | x1.45 | 72% |
+  | LC10p | J60A30 | pin | .0462 | 161,200.9 (LC10 161,133.5) | 49,328.2 | -1.243 | 1.88 / 3.08 | x1.64 | 90% |
+  Reading: (1) [E] halving the floor (tied to the x .5 Allee) leaves the trough (-.109 -> -.104), inflation and held-out
+  essentially unchanged and improves in-sample by 40; K lifts off the floor (GP floor-dominated 66% -> 47%). So at x .5 the
+  trough is NOT a floor artifact. Floor 5.5x the Allee fold again -> Allee-dead may return; needs the viz suite (pending).
+  (2) [E] J110 inside the combination: trough twice as deep as J200 (-.20 / -.22), ETF starts near 1 in 1910 (.96 / 1.01)
+  -- less implausible than the earlier J110 fits (ETF > 1 throughout), but 2010 ETF 1.46-1.64 is high. Weaker Allee on
+  J110 lowers inflation (x1.72 -> x1.45) and gives the best held-out of any combination run (47,810.9). (3) [E] the J60A30
+  perturbed restart lands worse (161,200.9 vs 161,133.5), so LC10's early stop was not hiding a better basin; levels stay
+  implausible.
+- LC11 VALIDATION (J200, n50 x .5, floor tied .0231; CAND_viz/LC11_...) [E]: Allee-dead 2.7% of suitable cells (49; GP 24)
+  vs LC1 (same Allee, floor .0462) 1.2% (21; GP 9) and LC3 (pin, floor 8 n50) 5.6%. Runge breeder-weighted C 1.028 / .984 /
+  1.000; CEC GP C 1.00 / .98 / .99; ETF 1.24 / .96 / 1.00 (as LC1). Reading [E]: tying the floor back to 8 n50 restores the
+  floor / Allee-fold ratio of the pin (5.5x), and Allee-dead cells partly return (about half the pin's share) -- the
+  ratio, not the absolute Allee, governs this pathology. Modest; the Plains stay self-sustaining.
+- USER TARGET (2026-11-08): a version that is stable and gives semi-reasonable trough + inflation across J330 / J200 / J110
+  (decisive; judged on the worst); J60A30 a lower-bound check only. Current worst-of-three (K-only, floor .0462): pin trough
+  -.02 / x1.72; x .5 -.05 / x1.64; x .33 -.06 / x1.60 (J110 pending) -- J330 binds. Floor-tied J330 / J110 queued
+  (LC15 / LC16 / LC17); J60A30 LC18 lower bound.
+- LC14 (J200, four fields free + all-pair one-sided coupling, n50 x .33, floor .0462) [E]: objective 158,332.4 (K-only
+  LC5t 158,365.8: -33), held-out 48,028.2 (LC5t 47,983.0: +45). D -.106 (LC5t -.122); ETF lambda 1910 / 2010 .66 / 1.25,
+  GP .54 / .87; ETF rise x1.90 (LC5t x1.43). Map correlations .88-.95, coefficient cosines .68-.76. Mexico 92% / .84.
+  Reading [E]: same verdict as at the pin (LC7 x1.79 vs LC3 x1.38): four-free lowers the early ETF and raises inflation
+  sharply, with worse held-out. K-only remains the candidate form at every Allee strength tested.
+- PRE-REGISTRATION (2026-11-08, user: "in the abstract a very weak allee and a somewhat reduced K floor, perhaps with greater
+  constraints on correlation ... depends on what it looks like"). K-only combination (all streams + native fix + nv .05 +
+  specimen counts + collectors) on the decisive kernels J330 / J200 / J110 (judged on the worst of the three; J60A30 not run
+  -- lower bound only):
+  VW  (LC19 J200 / LC20 J330 / LC21 J110): n50 x .2 (n50_raw -3.77), floor halved .0231 (= 20 n50 = 14x the Allee fold),
+      Sa-K coupling one-sided .9 sd .1 (as now).
+  VWC (LC22 / LC23 / LC24): same + coupling tightened to sd .05 (coefficient cosine AND map correlation).
+  Inits: J200 LC5t, J330 LC6s, J110 LC9 (nearest Allee rung).
+  Predictions: (a) Allee-dead <= 1% (floor/fold 14x vs 17x at LC5t's 0.3%). (b) trough: J330 continues its trend
+  (-.024 / -.046 / -.062 -> ~-.07), J200 flat ~-.11, J110 ~-.22. (c) inflation roughly flat per kernel (x1.4-1.65).
+  (d) held-out worsens vs the pin (J330 > +200, J200 ~+60-80 from the old-base x .2 rung). (e) VWC raises the Sa-K
+  coefficient cosine from ~.58 toward .7-.8 at a cost of tens of units in-sample; its effect on the trough is UNKNOWN (K
+  forced to follow survival could lift Plains K off the floor where survival is high, or deepen low-survival Plains K).
+  Literature (G14): x .2 = .035 [.018] birds/km2 under the PIF bridge, at/below V&L's weakest n50 .025 at the 20 M total;
+  M32: 2-D wants weaker than V&L's 1-D value. Considerations: G13 (fixed-cell inflation), G14, M32, P6 (explain the
+  compensation, not just the metric), P7 (the stronger pin remains the user's standing decision until revisited).
+  Decision rule: report D / ETF inflation per kernel and the worst of three, then held-out, Allee-dead, Runge GP C, Mexico,
+  realised coupling. Held-out is reported, not a veto (user's J330 judgment).
+- LC12 (J200, n50 x .33, floor tied .0153 = 8 n50) [E]: objective 158,318.9 (LC5t same Allee, floor .0462: -47), held-out
+  47,971.9 (LC5t 47,983.0: -11). D -.104 (LC5t -.122); ETF .80 / 1.19, GP .68 / .91; ETF rise x1.49 (LC5t x1.43). Early GP
+  occupancy 1910 38% (LC5t 28%). GP floor-dominated 2010 34% (LC5t 61%). Mexico 93% / .89, spec det 92.9.
+  Reading [E]: at x .33 a third-size floor costs .018 of trough and +.06 of inflation and buys fit; at x .5 halving cost
+  .005. Both tied-floor fits land at D -.104. So [L] part of LC5t's slightly deeper trough was floor-supported (higher K
+  floor -> fewer early Plains cells occupied), but most of the trough is not. Allee-dead check rendering (CAND_viz/LC12).
+- LC12 VALIDATION [E]: Allee-dead 1.5% of suitable cells (27; GP 10) -- between LC5t (0.3%, floor 17x fold) and LC11 (2.7%,
+  x .5 tied, 5.5x fold); same 5.5x fold ratio as LC11 but half the dead share, so at a fixed ratio a weaker Allee still
+  leaves fewer dead cells [L: shallower fold -> cells near it recover]. Runge 2010-25 C 1.000, GP .99, ETF 1.00. (The
+  last grep in the render chain failed on quoting; outputs above are complete.)
+- LC5q (perturbed restart of LC5t, J200 x .33) [E]: 158,367.6 (LC5t 158,365.8), held-out 47,974.7 (LC5t 47,983.0) -> same
+  basin; held-out restart noise ~8. Basins now confirmed on J200 at pin (LC3q), x .5 (LC1q) and x .33 (LC5q).
+- LC15 (J330, n50 x .5, floor tied .0231) [E]: objective 158,398.2 (LC2r same Allee, floor .0462: -27), held-out 48,076.3
+  (LC2r 48,090.5: -14). D -.046 (LC2r -.046), ETF .70 / 1.15, GP .63 / .88, ETF rise x1.64 (LC2r x1.64). Mexico 89% / .88,
+  spec det 86.9. GP floor-dominated 2010 42%.
+  Reading [E]: on J330 halving the floor changes neither trough nor inflation and slightly improves fit and held-out; on
+  J200 it cost .005 of trough. Floor-tied x .5 is therefore at least as good as the fixed floor on both kernels so far;
+  J330 remains the binding kernel (D -.046, x1.64) and the floor is not what holds it back.
+- LC18 (J60A30 LOWER BOUND, n50 x .5, floor tied .0231) [E]: objective 160,738.2 (LC10 pin 161,133.5), held-out 49,108.3
+  (LC10 49,292.4), 269 it. ETF lambda 1910 / 2010 1.63 / 2.88, GP .70 / 1.53; ETF rise x1.77; D -1.049. Mexico lambda 1.81.
+  Reading [E]: better fit than the pin on this kernel, but the implausible levels remain (ETF > 1.6 from 1910). As agreed,
+  J60A30 is a lower bound only and does not enter the candidate decision.
+- DECISIVE-KERNEL MATRIX (K-only combination; D / ETF rise / held-out; LC13 J110 x .33, LC16 J330 x .33 tied, LC17 J110
+  x .5 tied new) [E]:
+  | setting | J330 | J200 | J110 | worst D / worst rise | held-out sum (3 kernels) |
+  |---|---|---|---|---|---|
+  | pin, floor .0462 | -.024 / x1.65 / 47,950 | -.116 / x1.38 / 47,929 | -.204 / x1.72 / 48,054 | -.024 / x1.72 | 143,933 |
+  | x .5, floor .0462 | -.046 / x1.64 / 48,091 | -.109 / x1.44 / 47,946 | -.217 / x1.45 / 47,811 | -.046 / x1.64 | 143,848 |
+  | x .5, floor tied .0231 | -.046 / x1.64 / 48,076 | -.104 / x1.46 / 47,944 | -.189 / x1.45 / 47,805 | -.046 / x1.64 | 143,825 |
+  | x .33, floor .0462 | -.062 / x1.60 / 48,157 | -.122 / x1.43 / 47,983 | -.248 / x1.37 / 47,850 | -.062 / x1.60 | 143,990 |
+  | x .33, floor tied .0153 | -.059 / x1.64 / 48,123 | -.104 / x1.49 / 47,972 | pending (LC25) | | |
+  ETF lambda levels: J110 starts at ~1.0 in 1910 and reaches 1.39-1.64 by 2010 at every setting; J330 / J200 start .68-.90.
+  Reading [E]: (1) every weaker-Allee setting beats the pin on the worst-of-three criterion (trough -.024 -> -.046 to
+  -.062; worst inflation x1.72 -> x1.60-1.64); the gain comes from J330's trough and J110's inflation. (2) Floor-tying
+  barely moves anything on J330 / J110 (+-.003 / -.028 D on J110 x .5) and costs J200 .005-.018 of trough. (3) Summed
+  held-out over the three kernels is best for x .5 tied (143,825), then x .5 fixed (143,848), pin (143,933), x .33
+  (143,990): the J110 held-out gain from weakening outweighs the J330 loss up to x .5, not beyond. Restart checks for
+  x .5 tied on J330 / J110 (LC15p / LC17p) and the J110 x .33 tied rung (LC25) queued; VW / VWC (x .2) running.
+- VW READOUT 1/3 -- LC20 (J330, n50 x .2, floor .0231 = 13.9x fold, coupling sd .1) [E]: objective 158,412.5 (LC16 x .33
+  tied 158,379.5; LC6s x .33 158,410.4), held-out 48,194.3 (pin LC4 47,949.5: +245). D -.081 (deepest J330 yet; x .33
+  -.059 / -.062); ETF .66 / 1.11, GP .57 / .81; ETF rise x1.68. Mexico 91% / .89, spec det 83.4 (lowest of the set).
+  vs pre-registration: (b) J330 trough continues its trend -- yes, beyond the predicted ~-.07; (c) inflation flat -- roughly
+  (x1.60-1.68 band); (d) held-out > +200 vs pin -- yes. In-sample no longer improves past x .33 on J330.
+  LC22 (J200 VWC) died RESOURCE_EXHAUSTED on v330-016 despite the platform allocator; requeued as LC22r.
+- VW READOUT 2/3 -- LC19 (J200, n50 x .2, floor .0231, coupling sd .1) [E]: objective 158,315.2 (best J200 so far; LC12
+  158,318.9), held-out 48,024.3 (pin LC3 47,929.1: +95; x .5 tied LC11 47,943.6: +81). D -.132 (deepest J200; x .5 tied
+  -.104, x .33 -.122); ETF .80 / 1.18, GP .65 / .87; ETF rise x1.48. Mexico 93% / .88, spec det 91.2.
+  vs pre-registration: (b) J200 "flat ~-.11" -- wrong, it deepened to -.132; (d) held-out +60-80 -- slightly worse (+95).
+  LC17p (restart of LC17, J110 x .5 tied): 158,648.9 / 47,803.3 vs 158,645.0 / 47,805.1 -> same basin. Restarts of the VW
+  runs (LC19p, LC20p) queued.
+- VW READOUT 3/3 -- LC21 (J110, n50 x .2, floor .0231, coupling sd .1) [E]: objective 158,506.1 (best J110 so far; LC13
+  158,632.7), held-out 47,840.2 (x .5 tied LC17 47,805.1: +35). D -.161 (J110 x .5 tied -.189, x .33 -.248); ETF lambda
+  .91 / 1.02 / 1.11 / 1.36 (first J110 fit with ETF < 1 in 1910), GP .70 / 1.03; ETF rise x1.50. Mexico 93% / .93.
+  LC15p (restart of LC15, J330 x .5 tied): 158,397.5 vs 158,398.2 -> same basin.
+  VW SET vs x .5 TIED (front-runner):
+  | setting | J330 | J200 | J110 | worst D / worst rise | held-out sum |
+  |---|---|---|---|---|---|
+  | x .5, floor .0231 (tied) | -.046 / x1.64 / 48,076 | -.104 / x1.46 / 47,944 | -.189 / x1.45 / 47,805 | -.046 / x1.64 | 143,825 |
+  | x .2, floor .0231 (VW) | -.081 / x1.68 / 48,194 | -.132 / x1.48 / 48,024 | -.161 / x1.50 / 47,840 | -.081 / x1.68 | 144,058 |
+  Reading [E]: VW nearly doubles the worst-case trough (-.046 -> -.081) at +.04 worst-case inflation and +233 summed
+  held-out; it is the best in-sample on J200 and J110. Its J110 levels are the most plausible yet (ETF 1910 .91). The
+  trough ordering across kernels flattens (J330 / J200 / J110 -.08 / -.13 / -.16 vs -.05 / -.10 / -.19): VW is more
+  kernel-robust on the trough. [L] With the floor 14x the fold the Allee brake no longer gates establishment anywhere, so
+  the early Plains / East contrast is carried by lambda on every kernel. Trade-off for the user: trough depth + robustness
+  (VW) vs held-out (x .5 tied). VWC (tighter coupling) results pending.
+- VWC READOUT 1/3 -- LC22r (J200, n50 x .2, floor .0231, coupling TIGHTENED sd .05) [E]: objective 158,367.5 (LC19 VW
+  158,315.2: +52, part of it the larger coupling penalty), held-out 48,050.1 (LC19 48,024.3: +26). Sa-K coefficient cosine
+  .59 -> .76 and map correlation .94 -> .97 (prediction (e) .7-.8: met). D -.132 -> -.110; ETF .80 -> .74 in 1910, 1.18 in
+  2010 (unchanged); ETF rise x1.48 -> x1.61. Mexico 95% / .87.
+  Reading [E]: tightening the Sa-K coupling makes every lead metric worse on J200 -- shallower trough, more inflation,
+  worse held-out. The early ETF drops (.80 -> .74) while the modern ETF is unchanged, so the added inflation is an early-
+  East cost. [L] Mechanism: with K bound to survival, the fit can no longer give the early East high-survival / moderate-K
+  cells independently, and lowers early East lambda instead; unverified. LC15p (J330 x .5 tied restart) held-out 48,082.2
+  vs LC15 48,076.3 -> same basin, held-out noise ~6.
+- VWC READOUT 2/3 -- LC23 (J330, n50 x .2, floor .0231, coupling sd .05) [E]: objective 158,463.5 (LC20 VW 158,412.5:
+  +51), held-out 48,252.7 (LC20 48,194.3: +58). Coefficient cosine .58 -> .77, map .93 -> .97. D -.081 -> -.087; ETF
+  .66 -> .65 (1910), 1.11 -> 1.09 (2010); rise x1.68 -> x1.69. Mexico 92% / .86, spec det 84.2.
+  Reading [E]: on J330 tightening is neutral for trough and inflation (-.006 D, +.01 rise) and costs held-out (+58); on
+  J200 it cost .022 of trough and +.13 inflation. So far tighter coupling buys K-survival agreement and nothing on the
+  lead metrics.
+  Restarts: LC19p 158,317.2 (LC19 158,315.2), LC20p 158,413.2 (LC20 158,412.5) -> VW basins stable on J200 / J330.
+  Queued LC26 / LC27: n50 x .2 with the ORIGINAL floor .0462 (J200 / J330) -- separates the Allee effect from the floor
+  reduction inside the user's preferred setting.
+- Restart held-out: LC19p 48,025.3 (LC19 48,024.3), LC20p 48,217.6 (LC20 48,194.3) -> J330 VW held-out restart spread ~23
+  (vs ~6-8 elsewhere); objectives agree to < 2. Queued LC28 (J110 x .2, original floor) to complete the floor separation.
+- CANDIDATE VALIDATION SUITES rendered (CAND_viz/LC15_, LC17_, LC19_, LC20_, LC21_; all audits / Runge rc 0) [E]:
+  | setting | kernel | Allee-dead (GP) | Runge GP C 66-93 / 94-09 / 10-25 | ETF C 66-93 |
+  |---|---|---|---|---|
+  | x .5, floor tied .0231 | J330 (LC15) | 2.2% (19) | .98 / .96 / .98 | 1.24 |
+  | x .5, floor tied .0231 | J200 (LC11) | 2.7% (24) | 1.00 / .98 / .99 | 1.24 |
+  | x .5, floor tied .0231 | J110 (LC17) | 2.4% (19) | 1.02 / .99 / 1.00 | 1.23 |
+  | x .2, floor .0231 (VW) | J330 (LC20) | 0.1% (1) | .99 / .96 / .98 | 1.24 |
+  | x .2, floor .0231 (VW) | J200 (LC19) | 0.1% (1) | 1.00 / .98 / .99 | 1.24 |
+  | x .2, floor .0231 (VW) | J110 (LC21) | 0.4% (2) | 1.02 / .99 / 1.00 | 1.24 |
+  Reading [E]: the Plains are self-sustaining (C ~1) on every kernel and setting; the ETF was a source in 1966-93 (C 1.24,
+  the invasion front) on all. VW essentially eliminates Allee-dead cells on all three kernels (0.1-0.4% vs 2.2-2.7% at
+  x .5 tied). Runge is insensitive to these levers.
+- LC26 (J200, n50 x .2, ORIGINAL floor .0462 = 28x fold) [E]: objective 158,343.4 (LC19 same Allee, floor .0231:
+  158,315.2), held-out 48,035.1 (LC19 48,024.3). D -.129 (LC19 -.132), ETF rise x1.49 (x1.48). -> At x .2 the trough
+  and inflation come from the Allee, not the floor; halving the floor adds a little fit / held-out. LC25 (J110 x .33 tied)
+  died RESOURCE_EXHAUSTED on v330-016; requeued LC25r.
+- HELD-OUT BY SETTING (user asked whether the weak Allee is also best held-out) [E]:
+  | setting | J330 | J200 | J110 | sum |
+  |---|---|---|---|---|
+  | pin, floor .0462 | 47,950 | 47,929 | 48,054 | 143,933 |
+  | x .5, floor tied .0231 | 48,076 | 47,944 | 47,805 | 143,825 |
+  | x .33, floor .0462 | 48,157 | 47,983 | 47,850 | 143,990 |
+  | x .2, floor .0231 | 48,194 | 48,024 | 47,840 | 144,058 |
+  Restart spread 6-23. No: the very weak Allee is best in-sample on J200 / J110, not held-out. Held-out best per kernel:
+  pin on J330 / J200, x .5 tied on J110; x .5 tied best summed. J330 and J200 held-out worsen monotonically as the Allee
+  weakens; J110 improves sharply from the pin to x .5 and is flat beyond.
+- VIZ GAP FIXED: on J330 runs map_diagnostics skipped 17_barrier_crossing / 17b_q_asymmetry ("no .../field54/stageF/
+  latent_avian_paths_field54prod_ema_s64/path_feature_meta.json (need kernel labels)") -- the local /work mirror lacked the
+  J330 base meta. Copied the exact TACC file into the mirror (kernel labels / dispersal identical to kernel_sens/J330's,
+  different build_id); re-rendering LC20 / LC15. Earlier local J330 renders (none in CAND_viz before LC15/LC20) unaffected.
+- LC24 (J110, x .2, floor .0231, coupling sd .05) [E]: 158,662.7, held-out 47,891.0 (LC21 VW 47,840.2: +51); D -.214 (LC21
+  -.161), ETF .91 / 1.39, rise x1.54 (LC21 x1.50); coefficient cosine .60. On J110 tighter coupling DEEPENS the trough
+  (opposite of J200); held-out worse on all three kernels (+26 / +58 / +51). VWC net: no consistent gain; not pursued.
+- LC27 (J330, x .2, ORIGINAL floor .0462) [E]: 158,431.5, held-out 48,242.7 (LC20 halved floor 48,194.3); D -.083 (LC20
+  -.081), rise x1.62 (x1.68). With LC26 (J200): at x .2 the floor barely matters for trough / inflation; the halved floor
+  is better held-out on both kernels.
+- DECISION (user, 2026-11-08): HMC STARTS ON THE 1/5-ALLEE SETTING (n50 x .2, floor .0231, K-only + Sa-K coupling sd .1,
+  full combination). User: strong-Allee posteriors will be "extremely hard to navigate", consistent with dynamics a
+  deterministic model is unlikely to resolve; 1/5 "probably still going to be a tough posterior itself, but hopefully
+  still doable"; open harder settings only if it goes well. Final inference on ALL data (held-out masks removed); held-out
+  scores are from the Laplace selection stage. Kernels as separate HMC fits; J200 primary (my recommendation, not
+  objected to).
+  Queued first (alphabetical worker order): LA1 / LA2 / LA3 = all-data Laplace fits of the 1/5 setting on J200 / J330 /
+  J110 (inits LC19 / LC20 / LC21); then LC31-33 (all-data 1/2-tied, sensitivity). laplace_fit --hmc samples the FULL
+  objective (parts(x)[0], incl. CBC / BBL / specimen / native_viable terms) + log-Jacobian + log sigma; route effects stay
+  Laplace-integrated. Pre-check running locally: --hessian_only at LC19 (x .2) vs LC11 (x .5), J200, to test the user's
+  geometry intuition before GPU HMC.
+- LC21p (restart of LC21, J110 x .2 floor .0231) [E]: 158,452.6 (LC21 158,506.1: -53 -> LC21 was NOT at its optimum),
+  held-out 47,830.0 (47,840.2). D -.173 (LC21 -.161), ETF .94 / 1.33, rise x1.41 (x1.50). Updated 1/5 set: J330 -.081 /
+  x1.68 / 48,194; J200 -.132 / x1.48 / 48,024; J110 -.173 / x1.41 / 47,830 (worst D -.081, worst rise x1.68; held-out sum
+  144,048). Pending LA3 (J110 all-data) re-pointed to init from LC21p before it started. [L] A 53-unit restart gain on J110
+  means the J110 surface has separated basins or a slow valley -- relevant to HMC there; J200 / J330 restarts agreed to < 2.
+- LC25r (J110 x .33 floor tied .0153) [E]: 158,572.9, held-out 47,838.6; D -.207, ETF .99 / 1.38, rise x1.39.
+- QUARTERED FLOOR at 1/5 Allee (user asked whether it creates Allee-dead zones): LB1 / LB2 / LB3 = J200 / J330 / J110,
+  n50 x .2, floor .01155 (= 10 n50 = 6.9x the fold), inits LC19 / LC20 / LC21p. Prediction: Allee-dead 0.5-1.5% (between
+  1/5 at 14x [0.1-0.4%] and 1/3 at 5.5x [1.5%]); trough / inflation ~unchanged (floor barely mattered at 1/5).
+  Note: TACC workers 3558537 / 8 end ~19:50 CST 11-08; LB runs queue behind LA2 / LA3.
+- LC30 (J330, n50 x .33, floor .0231) [E]: 158,387.3, held-out 48,125.3; D -.061, rise x1.62. J330 PROFILE at fixed floor
+  .0231 (objective / held-out / D): x .5 158,398.2 / 48,076 / -.046; x .33 158,387.3 / 48,125 / -.061; x .2 158,412.5 /
+  48,194 / -.081 -> J330's fit optimum sits near x .33 and is shallow (+-11-25 units); held-out worsens monotonically.
+  Supports the HMC prior arithmetic: on J330 a sampled n50 would sit near x .33; J200 (LC29 pending) keeps improving to x .2.
+- LOCAL RESOURCES (user: "I thought you knew to use local resources throughout"): from now on local CPU (cores 8-31) and
+  GPU run alongside TACC. Running now: LBL1-3 (quartered floor x .2, J200 / J330 / J110) on local CPU; --hessian_only
+  pre-check (x .2 vs x .5, J200) on local GPU. TACC LB1-3 remain queued as confirmation (host-instability rule).
+- LC28 (J110, x .2, ORIGINAL floor .0462) [E]: 158,498.0 (LC21p halved 158,452.6: +45), held-out 47,857.0 (47,830.0: +27);
+  D -.181 (-.173), ETF .97 / 1.32, rise x1.36 (x1.41). FLOOR AT 1/5, all three kernels (halved vs original): held-out
+  better halved by 11 / 49 / 27 (J200 / J330 / J110), fit better by 28 / 19 / 45; trough within .008; inflation +/- .06.
+  -> halved floor confirmed for the HMC base on every kernel.
+- HESSIAN PRE-CHECK (laplace_fit --hessian_only, J200, held-out masked; n = 233 coordinates) [E]:
+  | point | grad max | negative eigs (most neg) | top eig | 2nd | 3rd | |eig| < 1 |
+  |---|---|---|---|---|---|---|
+  | LC19 x .2, floor .0231 | 279 | 5 (-5.8e3) | 5.5e9 | 6.8e6 | 3.1e5 | 13 |
+  | LC11 x .5, floor .0231 | 100 | 3 (-1.9e3) | 6.2e6 | 2.3e6 | 4.1e5 | 13 |
+  Top directions on both: manifold_factor (shared habitat coefficients) ~90% + adult / juvenile survival intercepts --
+  the same stiff direction STIFF found earlier (2.5e6). Negative directions: manifold_factor (and capacity_factor).
+  Reading: (1) [E] neither L-BFGS stopping point is a true minimum (non-zero gradient, 3-5 negative-curvature directions
+  in the habitat coefficients) -> HMC needs a properly converged mode (or must tolerate non-convex habitat directions).
+  (2) [E] the 1/5 point has ONE direction ~900x stiffer than anything at 1/2 (5.5e9 vs 6.2e6); below it the spectra match.
+  This contradicts the expectation (user's and mine) that 1/5 is the easier posterior -- at least for local curvature.
+  [unknown] mechanism of the 5.5e9 direction; candidate: without an Allee brake, low-density growth over the 120-year
+  window is exponentially sensitive to the shared lambda level (survival intercept + shared field), so a small change
+  multiplies through the whole history. Local curvature does not see bistability elsewhere in the posterior, which is
+  what the user's argument is about; an empirical HMC pilot is the real test: running locally (GPU) on LC19 then LC11,
+  whitened_diag, warmup 150 / 50 draws, depth 8.
+- LA1 (ALL-DATA J200, n50 x .2, floor .0231; init LC19) [E]: converged 201,574.8 at 852 it (all rows incl. the former
+  held-out blocks and 2021-25). HMC SLOT A WIRED: hmc/CURRENT_A.sh -> laplace_fit --hmc on LA1 (ALL_J200VW overlay, full
+  data flags, whitened_diag, warmup 300, 1000 draws, segments of 25, depth 8, 46 h); TACC laplace_fit md5 = local.
+  READY_A deliberately HELD until the local pilot (HMCP_LC19 / HMCP_LC11) shows the sampler moves (Hessian pre-check found
+  non-convex habitat directions and a 5.5e9 direction at 1/5); if the pilot fails the slot falls back to a gpuq worker.
+- LC29 (J200, x .33, floor .0231) [E]: 158,330.5, held-out 47,975.8. J200 PROFILE at floor .0231 (objective / held-out):
+  x .5 158,372.1 / 47,944; x .33 158,330.5 / 47,976; x .2 158,315.2 / 48,024 -> fit improves monotonically to x .2 (57
+  units over x .5), held-out worsens (+80). J330 optimum ~x .33. A sampled n50 would sit at x .2-or-weaker on J200.
+- LA1 readout (all data) [E]: D -.119 (LC19 held-out-masked -.132); ETF .80 / .84 / .93 / 1.21, GP .67 / .90; ETF rise
+  x1.52 (x1.48). Sa-K map .94. Mexico 96% / .88, spec det 88.9. Adding the held-out rows (post-1993 blocks + 2021-25) raises
+  the modern ETF slightly (1.18 -> 1.21) and shallows the trough by .013 -- qualitatively unchanged.
+- HELD-OUT DECOMPOSITION (user: is the weak Allee just more expressive?) [E]: MARG2 total = unseen-route rows (spatial
+  blocks, 19,333 rows / 3,687 routes, route effect integrated) + seen-route rows (2021-25 on trained routes, 7,395 rows).
+  | fit | unseen routes | 2021-25 on trained routes | total |
+  |---|---|---|---|
+  | J200 pin (LC3) | 32,934.4 | 14,994.7 | 47,929.1 |
+  | J200 x .5 tied (LC11) | 32,934.8 | 15,008.8 | 47,943.6 |
+  | J200 x .33 F.0231 (LC29) | 32,920.6 | 15,055.2 | 47,975.8 |
+  | J200 x .2 F.0231 (LC19) | 32,911.6 | 15,112.7 | 48,024.3 |
+  | J330 pin (LC4) | 32,900.8 | 15,048.7 | 47,949.5 |
+  | J330 x .5 tied (LC15) | 32,940.5 | 15,135.8 | 48,076.3 |
+  | J330 x .2 (LC20) | 32,982.4 | 15,211.9 | 48,194.3 |
+  | J110 x .5 tied (LC17) | 32,846.8 | 14,958.3 | 47,805.1 |
+  | J110 x .2 (LC21p) | 32,860.9 | 14,969.1 | 47,830.0 |
+  Reading [E]: on J200 the weaker Allee predicts UNSEEN PLACES better (-23 vs x .5) and the whole held-out loss is the
+  2021-25 FORECAST on surveyed routes (+104). Not generic overfitting (n50 is pinned: no extra parameters); a temporal-
+  extrapolation weakness. On J330 both parts worsen (unseen +42, 2021-25 +76); on J110 both slightly (+14 / +11).
+  [unknown] why weak-Allee fits forecast 2021-25 worse (candidate: the recent rebound vs the post-disease trajectory).

@@ -22,6 +22,9 @@ recovered_local=[]
 if local_helper.exists():
     recovered_local=json.loads(subprocess.check_output(['/work/07980/bwa386/ls6/houfin/venv/bin/python',str(local_helper),'recover'],text=True,timeout=60))
 pending=[p for prefix in range(39,49) for p in (R/'queue/pending').glob(f'*_step{prefix}_*.sh')]
+cap_resumer=R/'monitor/resume_capped_blocks.py'
+if cap_resumer.exists():
+    subprocess.run(['/work/07980/bwa386/ls6/houfin/venv/bin/python',str(cap_resumer)],check=True,stdout=subprocess.DEVNULL)
 recovered=[]
 for owner in [p for prefix in range(39,49) for p in (R/'queue/running').glob(f'*_step{prefix}_*.owner')]:
     if owner.read_text().strip() not in live:

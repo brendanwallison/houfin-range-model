@@ -69,6 +69,38 @@
         "median_offset": -3.0,
         "never_fraction": 0.06777493606138107,
         "share_earlier_5": 0.32225063938618925
+      },
+      "coast_to_coast_bridges": {
+        "potential_growth": {
+          "1.0": {
+            "4": false,
+            "8": true
+          },
+          "1.05": {
+            "4": false,
+            "8": true
+          }
+        },
+        "contribution": {
+          "1.0": {
+            "4": false,
+            "8": false
+          },
+          "1.05": {
+            "4": false,
+            "8": false
+          }
+        },
+        "local_replacement": {
+          "1.0": {
+            "4": false,
+            "8": false
+          },
+          "1.05": {
+            "4": false,
+            "8": false
+          }
+        }
       }
     },
     {
@@ -138,6 +170,139 @@
         "median_offset": -3.0,
         "never_fraction": 0.043478260869565216,
         "share_earlier_5": 0.37851662404092073
+      },
+      "coast_to_coast_bridges": {
+        "potential_growth": {
+          "1.0": {
+            "4": false,
+            "8": false
+          },
+          "1.05": {
+            "4": false,
+            "8": false
+          }
+        },
+        "contribution": {
+          "1.0": {
+            "4": false,
+            "8": false
+          },
+          "1.05": {
+            "4": false,
+            "8": false
+          }
+        },
+        "local_replacement": {
+          "1.0": {
+            "4": false,
+            "8": false
+          },
+          "1.05": {
+            "4": false,
+            "8": false
+          }
+        }
+      }
+    },
+    {
+      "step": "step48_ctl_frozen_s41",
+      "growth_change": {
+        "east": -1.1102230246251565e-16,
+        "plains": -1.1102230246251565e-16,
+        "west": -2.220446049250313e-16
+      },
+      "adult_survival_median": 0.2855062420235446,
+      "juvenile_adult_ratio_median": 0.9483771227851518,
+      "juvenile_ratio_ceiling_population_share": 0.4915184031992766,
+      "Fmax_median": 5.886346066441339,
+      "realized_reproduction_at_nests": 3.9953315541627843,
+      "regions": {
+        "east": {
+          "cells": 1308,
+          "C_mean": 0.6619427744761412,
+          "C_sink_share": 0.7492354740061162,
+          "local_replacement_mean": 0.5037919092566407,
+          "local_sink_share": 0.9663608562691132,
+          "immigrant_share_mean": 0.6640290556435037,
+          "K_Allee_nonviability_share": 0.0022935779816513763,
+          "potential_sink_share": 0.6620795107033639,
+          "heldout_LPD": -2.125856650653746,
+          "training_LPD": -1.1116807386454877,
+          "annual_abundance_log_adjustment_RMS": 0.0,
+          "establishment_log_adjustment_RMS": 0.0
+        },
+        "plains": {
+          "cells": 380,
+          "C_mean": 0.6018026045621345,
+          "C_sink_share": 0.8894736842105263,
+          "local_replacement_mean": 0.4599894381687135,
+          "local_sink_share": 0.9710526315789474,
+          "immigrant_share_mean": 0.7035377403037298,
+          "K_Allee_nonviability_share": 0.005263157894736842,
+          "potential_sink_share": 0.8210526315789474,
+          "heldout_LPD": -0.9094655582927683,
+          "training_LPD": -0.6397429751856154,
+          "annual_abundance_log_adjustment_RMS": 0.0,
+          "establishment_log_adjustment_RMS": 0.0
+        },
+        "west": {
+          "cells": 1566,
+          "C_mean": 0.7241110389815977,
+          "C_sink_share": 0.7375478927203065,
+          "local_replacement_mean": 0.5442842687584347,
+          "local_sink_share": 0.9176245210727969,
+          "immigrant_share_mean": 0.7632744501645593,
+          "K_Allee_nonviability_share": 0.01532567049808429,
+          "potential_sink_share": 0.5696040868454662,
+          "heldout_LPD": -2.6575426496775436,
+          "training_LPD": -1.672619270336731,
+          "annual_abundance_log_adjustment_RMS": 0.0,
+          "establishment_log_adjustment_RMS": 0.0
+        }
+      },
+      "full_fixed_threshold_front": {
+        "cells": 782,
+        "median_offset": -3.0,
+        "never_fraction": 0.03580562659846547,
+        "share_earlier_5": 0.38235294117647056
+      },
+      "skeleton_fixed_threshold_front": {
+        "cells": 782,
+        "median_offset": -3.0,
+        "never_fraction": 0.03580562659846547,
+        "share_earlier_5": 0.38235294117647056
+      },
+      "coast_to_coast_bridges": {
+        "potential_growth": {
+          "1.0": {
+            "4": false,
+            "8": false
+          },
+          "1.05": {
+            "4": false,
+            "8": false
+          }
+        },
+        "contribution": {
+          "1.0": {
+            "4": false,
+            "8": false
+          },
+          "1.05": {
+            "4": false,
+            "8": false
+          }
+        },
+        "local_replacement": {
+          "1.0": {
+            "4": false,
+            "8": false
+          },
+          "1.05": {
+            "4": false,
+            "8": false
+          }
+        }
       }
     },
     {
@@ -207,6 +372,38 @@
         "median_offset": -11.0,
         "never_fraction": 0.017902813299232736,
         "share_earlier_5": 0.9616368286445013
+      },
+      "coast_to_coast_bridges": {
+        "potential_growth": {
+          "1.0": {
+            "4": false,
+            "8": false
+          },
+          "1.05": {
+            "4": false,
+            "8": false
+          }
+        },
+        "contribution": {
+          "1.0": {
+            "4": false,
+            "8": false
+          },
+          "1.05": {
+            "4": false,
+            "8": false
+          }
+        },
+        "local_replacement": {
+          "1.0": {
+            "4": false,
+            "8": false
+          },
+          "1.05": {
+            "4": false,
+            "8": false
+          }
+        }
       }
     },
     {
@@ -276,6 +473,341 @@
         "median_offset": -19.0,
         "never_fraction": 0.043478260869565216,
         "share_earlier_5": 0.9475703324808185
+      },
+      "coast_to_coast_bridges": {
+        "potential_growth": {
+          "1.0": {
+            "4": false,
+            "8": false
+          },
+          "1.05": {
+            "4": false,
+            "8": false
+          }
+        },
+        "contribution": {
+          "1.0": {
+            "4": false,
+            "8": false
+          },
+          "1.05": {
+            "4": false,
+            "8": false
+          }
+        },
+        "local_replacement": {
+          "1.0": {
+            "4": false,
+            "8": false
+          },
+          "1.05": {
+            "4": false,
+            "8": false
+          }
+        }
+      }
+    },
+    {
+      "step": "step48_ab_ar15_frozen_s41",
+      "growth_change": {
+        "east": 0.0,
+        "plains": 0.0,
+        "west": -2.220446049250313e-16
+      },
+      "adult_survival_median": 0.5159038066863334,
+      "juvenile_adult_ratio_median": 0.9685763315409806,
+      "juvenile_ratio_ceiling_population_share": 0.5432750715816965,
+      "Fmax_median": 3.877380379581144,
+      "realized_reproduction_at_nests": 2.39715818527116,
+      "regions": {
+        "east": {
+          "cells": 1308,
+          "C_mean": 0.6978470777004823,
+          "C_sink_share": 0.7599388379204893,
+          "local_replacement_mean": 0.4785774503925712,
+          "local_sink_share": 0.9327217125382263,
+          "immigrant_share_mean": 0.6632330503142719,
+          "K_Allee_nonviability_share": 0.0015290519877675841,
+          "potential_sink_share": 0.6934250764525994,
+          "heldout_LPD": -2.2439520376162787,
+          "training_LPD": -1.1026279567033528,
+          "annual_abundance_log_adjustment_RMS": 0.11979114464823112,
+          "establishment_log_adjustment_RMS": 0.0
+        },
+        "plains": {
+          "cells": 380,
+          "C_mean": 0.6916988271870396,
+          "C_sink_share": 0.8736842105263158,
+          "local_replacement_mean": 0.4402640657426923,
+          "local_sink_share": 0.9447368421052632,
+          "immigrant_share_mean": 0.7288051669926588,
+          "K_Allee_nonviability_share": 0.005263157894736842,
+          "potential_sink_share": 0.8657894736842106,
+          "heldout_LPD": -0.9309002563924405,
+          "training_LPD": -0.6362243677582925,
+          "annual_abundance_log_adjustment_RMS": 0.17499254297056957,
+          "establishment_log_adjustment_RMS": 0.0
+        },
+        "west": {
+          "cells": 1566,
+          "C_mean": 0.9302201606173638,
+          "C_sink_share": 0.5376756066411239,
+          "local_replacement_mean": 0.8231610389923589,
+          "local_sink_share": 0.6187739463601533,
+          "immigrant_share_mean": 0.5865882298892057,
+          "K_Allee_nonviability_share": 0.024265644955300127,
+          "potential_sink_share": 0.37037037037037035,
+          "heldout_LPD": -2.873594669664144,
+          "training_LPD": -1.6651218106265362,
+          "annual_abundance_log_adjustment_RMS": 0.40558322865090685,
+          "establishment_log_adjustment_RMS": 0.0
+        }
+      },
+      "full_fixed_threshold_front": {
+        "cells": 782,
+        "median_offset": -4.0,
+        "never_fraction": 0.020460358056265986,
+        "share_earlier_5": 0.40664961636828645
+      },
+      "skeleton_fixed_threshold_front": {
+        "cells": 782,
+        "median_offset": -19.0,
+        "never_fraction": 0.06265984654731457,
+        "share_earlier_5": 0.9168797953964194
+      },
+      "coast_to_coast_bridges": {
+        "potential_growth": {
+          "1.0": {
+            "4": false,
+            "8": false
+          },
+          "1.05": {
+            "4": false,
+            "8": false
+          }
+        },
+        "contribution": {
+          "1.0": {
+            "4": false,
+            "8": false
+          },
+          "1.05": {
+            "4": false,
+            "8": false
+          }
+        },
+        "local_replacement": {
+          "1.0": {
+            "4": false,
+            "8": false
+          },
+          "1.05": {
+            "4": false,
+            "8": false
+          }
+        }
+      }
+    },
+    {
+      "step": "step48_ab_ar15_full_s41",
+      "growth_change": {
+        "east": 1.3988095945599677,
+        "plains": 0.9818920588658481,
+        "west": 1.441495732315487
+      },
+      "adult_survival_median": 0.4712910095090454,
+      "juvenile_adult_ratio_median": 0.9710895159956114,
+      "juvenile_ratio_ceiling_population_share": 0.6251648786867532,
+      "Fmax_median": 7.215579810035245,
+      "realized_reproduction_at_nests": 3.1170230956532885,
+      "regions": {
+        "east": {
+          "cells": 1308,
+          "C_mean": 0.712404707074374,
+          "C_sink_share": 0.6643730886850153,
+          "local_replacement_mean": 0.6859399672113151,
+          "local_sink_share": 0.7270642201834863,
+          "immigrant_share_mean": 0.5539380205060463,
+          "K_Allee_nonviability_share": 0.0015290519877675841,
+          "potential_sink_share": 0.45871559633027525,
+          "heldout_LPD": -2.139678506617691,
+          "training_LPD": -1.1013544466866396,
+          "annual_abundance_log_adjustment_RMS": 0.11175011319745802,
+          "establishment_log_adjustment_RMS": 0.0
+        },
+        "plains": {
+          "cells": 380,
+          "C_mean": 0.7335570338239955,
+          "C_sink_share": 0.7368421052631579,
+          "local_replacement_mean": 0.703679505778006,
+          "local_sink_share": 0.781578947368421,
+          "immigrant_share_mean": 0.5862241784439418,
+          "K_Allee_nonviability_share": 0.010526315789473684,
+          "potential_sink_share": 0.5421052631578948,
+          "heldout_LPD": -0.9236291775779837,
+          "training_LPD": -0.6367494316709008,
+          "annual_abundance_log_adjustment_RMS": 0.1442009845381335,
+          "establishment_log_adjustment_RMS": 0.0
+        },
+        "west": {
+          "cells": 1566,
+          "C_mean": 0.8153383235448436,
+          "C_sink_share": 0.6890166028097062,
+          "local_replacement_mean": 0.7475325497985555,
+          "local_sink_share": 0.7701149425287356,
+          "immigrant_share_mean": 0.5450828414058765,
+          "K_Allee_nonviability_share": 0.0031928480204342275,
+          "potential_sink_share": 0.342911877394636,
+          "heldout_LPD": -2.688734631555435,
+          "training_LPD": -1.6587004406244497,
+          "annual_abundance_log_adjustment_RMS": 0.25088931762140887,
+          "establishment_log_adjustment_RMS": 0.0
+        }
+      },
+      "full_fixed_threshold_front": {
+        "cells": 782,
+        "median_offset": -3.0,
+        "never_fraction": 0.03964194373401535,
+        "share_earlier_5": 0.35038363171355497
+      },
+      "skeleton_fixed_threshold_front": {
+        "cells": 782,
+        "median_offset": -12.0,
+        "never_fraction": 0.058823529411764705,
+        "share_earlier_5": 0.8849104859335039
+      },
+      "coast_to_coast_bridges": {
+        "potential_growth": {
+          "1.0": {
+            "4": true,
+            "8": true
+          },
+          "1.05": {
+            "4": true,
+            "8": true
+          }
+        },
+        "contribution": {
+          "1.0": {
+            "4": false,
+            "8": false
+          },
+          "1.05": {
+            "4": false,
+            "8": false
+          }
+        },
+        "local_replacement": {
+          "1.0": {
+            "4": false,
+            "8": false
+          },
+          "1.05": {
+            "4": false,
+            "8": false
+          }
+        }
+      }
+    },
+    {
+      "step": "step48_est_static05_full_s41",
+      "growth_change": {
+        "east": 0.9817912744954727,
+        "plains": 0.6003611003555355,
+        "west": 0.6785564123021064
+      },
+      "adult_survival_median": 0.6473652032761229,
+      "juvenile_adult_ratio_median": 0.33345950258550566,
+      "juvenile_ratio_ceiling_population_share": 0.0,
+      "Fmax_median": 8.635402171046346,
+      "realized_reproduction_at_nests": 3.7837158784944966,
+      "regions": {
+        "east": {
+          "cells": 1308,
+          "C_mean": 0.6872159707768736,
+          "C_sink_share": 0.7599388379204893,
+          "local_replacement_mean": 0.617095453795096,
+          "local_sink_share": 0.9877675840978594,
+          "immigrant_share_mean": 0.5569620231544153,
+          "K_Allee_nonviability_share": 0.017584097859327217,
+          "potential_sink_share": 0.44801223241590216,
+          "heldout_LPD": -2.147440251675244,
+          "training_LPD": -1.1059409322761342,
+          "annual_abundance_log_adjustment_RMS": 0.0,
+          "establishment_log_adjustment_RMS": 0.10875991456853941
+        },
+        "plains": {
+          "cells": 380,
+          "C_mean": 0.664704325292769,
+          "C_sink_share": 0.8184210526315789,
+          "local_replacement_mean": 0.6185473084727235,
+          "local_sink_share": 0.968421052631579,
+          "immigrant_share_mean": 0.6172815210927481,
+          "K_Allee_nonviability_share": 0.04473684210526316,
+          "potential_sink_share": 0.6052631578947368,
+          "heldout_LPD": -0.9080243753808367,
+          "training_LPD": -0.6381356430612944,
+          "annual_abundance_log_adjustment_RMS": 0.0,
+          "establishment_log_adjustment_RMS": 0.07274727173746054
+        },
+        "west": {
+          "cells": 1566,
+          "C_mean": 0.7494029744769857,
+          "C_sink_share": 0.7401021711366539,
+          "local_replacement_mean": 0.6135372822475605,
+          "local_sink_share": 0.9291187739463601,
+          "immigrant_share_mean": 0.7134984275426686,
+          "K_Allee_nonviability_share": 0.022988505747126436,
+          "potential_sink_share": 0.48084291187739464,
+          "heldout_LPD": -2.629393614928877,
+          "training_LPD": -1.6682501160152192,
+          "annual_abundance_log_adjustment_RMS": 0.0,
+          "establishment_log_adjustment_RMS": 0.028004693204975707
+        }
+      },
+      "full_fixed_threshold_front": {
+        "cells": 782,
+        "median_offset": -2.0,
+        "never_fraction": 0.0907928388746803,
+        "share_earlier_5": 0.26342710997442453
+      },
+      "skeleton_fixed_threshold_front": {
+        "cells": 782,
+        "median_offset": -3.0,
+        "never_fraction": 0.08439897698209718,
+        "share_earlier_5": 0.3797953964194373
+      },
+      "coast_to_coast_bridges": {
+        "potential_growth": {
+          "1.0": {
+            "4": false,
+            "8": true
+          },
+          "1.05": {
+            "4": false,
+            "8": false
+          }
+        },
+        "contribution": {
+          "1.0": {
+            "4": false,
+            "8": false
+          },
+          "1.05": {
+            "4": false,
+            "8": false
+          }
+        },
+        "local_replacement": {
+          "1.0": {
+            "4": false,
+            "8": false
+          },
+          "1.05": {
+            "4": false,
+            "8": false
+          }
+        }
       }
     },
     {
@@ -345,6 +877,139 @@
         "median_offset": -1.0,
         "never_fraction": 0.09846547314578005,
         "share_earlier_5": 0.22762148337595908
+      },
+      "coast_to_coast_bridges": {
+        "potential_growth": {
+          "1.0": {
+            "4": false,
+            "8": false
+          },
+          "1.05": {
+            "4": false,
+            "8": false
+          }
+        },
+        "contribution": {
+          "1.0": {
+            "4": false,
+            "8": false
+          },
+          "1.05": {
+            "4": false,
+            "8": false
+          }
+        },
+        "local_replacement": {
+          "1.0": {
+            "4": false,
+            "8": false
+          },
+          "1.05": {
+            "4": false,
+            "8": false
+          }
+        }
+      }
+    },
+    {
+      "step": "step48_est_static10_frozen_s41",
+      "growth_change": {
+        "east": 2.220446049250313e-16,
+        "plains": -2.220446049250313e-16,
+        "west": -1.1102230246251565e-16
+      },
+      "adult_survival_median": 0.23356678765113023,
+      "juvenile_adult_ratio_median": 0.9451601753328308,
+      "juvenile_ratio_ceiling_population_share": 0.48492314466049435,
+      "Fmax_median": 5.889812935251074,
+      "realized_reproduction_at_nests": 4.935904017504765,
+      "regions": {
+        "east": {
+          "cells": 1308,
+          "C_mean": 0.6990517771064856,
+          "C_sink_share": 0.8157492354740061,
+          "local_replacement_mean": 0.6844004355071756,
+          "local_sink_share": 0.8394495412844036,
+          "immigrant_share_mean": 0.39587952918046415,
+          "K_Allee_nonviability_share": 0.0045871559633027525,
+          "potential_sink_share": 0.42813455657492355,
+          "heldout_LPD": -2.2355645649535343,
+          "training_LPD": -1.1002841362350282,
+          "annual_abundance_log_adjustment_RMS": 0.0,
+          "establishment_log_adjustment_RMS": 0.3498867361384933
+        },
+        "plains": {
+          "cells": 380,
+          "C_mean": 0.6176560139783326,
+          "C_sink_share": 0.9736842105263158,
+          "local_replacement_mean": 0.5846158805522523,
+          "local_sink_share": 0.9657894736842105,
+          "immigrant_share_mean": 0.4880681681555566,
+          "K_Allee_nonviability_share": 0.002631578947368421,
+          "potential_sink_share": 0.5921052631578947,
+          "heldout_LPD": -0.9020187514136361,
+          "training_LPD": -0.6335750011621155,
+          "annual_abundance_log_adjustment_RMS": 0.0,
+          "establishment_log_adjustment_RMS": 0.1808131029808353
+        },
+        "west": {
+          "cells": 1566,
+          "C_mean": 0.6930985498858724,
+          "C_sink_share": 0.7681992337164751,
+          "local_replacement_mean": 0.5992401755822669,
+          "local_sink_share": 0.855683269476373,
+          "immigrant_share_mean": 0.6953892053962442,
+          "K_Allee_nonviability_share": 0.008939974457215836,
+          "potential_sink_share": 0.6583652618135377,
+          "heldout_LPD": -2.6547818614785443,
+          "training_LPD": -1.668389912672566,
+          "annual_abundance_log_adjustment_RMS": 0.0,
+          "establishment_log_adjustment_RMS": 0.08855253500187818
+        }
+      },
+      "full_fixed_threshold_front": {
+        "cells": 782,
+        "median_offset": -2.0,
+        "never_fraction": 0.07672634271099744,
+        "share_earlier_5": 0.20460358056265984
+      },
+      "skeleton_fixed_threshold_front": {
+        "cells": 782,
+        "median_offset": -4.0,
+        "never_fraction": 0.052429667519181586,
+        "share_earlier_5": 0.4079283887468031
+      },
+      "coast_to_coast_bridges": {
+        "potential_growth": {
+          "1.0": {
+            "4": false,
+            "8": false
+          },
+          "1.05": {
+            "4": false,
+            "8": false
+          }
+        },
+        "contribution": {
+          "1.0": {
+            "4": false,
+            "8": false
+          },
+          "1.05": {
+            "4": false,
+            "8": false
+          }
+        },
+        "local_replacement": {
+          "1.0": {
+            "4": false,
+            "8": false
+          },
+          "1.05": {
+            "4": false,
+            "8": false
+          }
+        }
       }
     },
     {
@@ -414,6 +1079,38 @@
         "median_offset": 1.0,
         "never_fraction": 0.12276214833759591,
         "share_earlier_5": 0.12148337595907928
+      },
+      "coast_to_coast_bridges": {
+        "potential_growth": {
+          "1.0": {
+            "4": false,
+            "8": false
+          },
+          "1.05": {
+            "4": false,
+            "8": false
+          }
+        },
+        "contribution": {
+          "1.0": {
+            "4": false,
+            "8": false
+          },
+          "1.05": {
+            "4": false,
+            "8": false
+          }
+        },
+        "local_replacement": {
+          "1.0": {
+            "4": false,
+            "8": false
+          },
+          "1.05": {
+            "4": false,
+            "8": false
+          }
+        }
       }
     },
     {
@@ -483,6 +1180,38 @@
         "median_offset": -12.0,
         "never_fraction": 0.0,
         "share_earlier_5": 0.9373401534526854
+      },
+      "coast_to_coast_bridges": {
+        "potential_growth": {
+          "1.0": {
+            "4": true,
+            "8": true
+          },
+          "1.05": {
+            "4": true,
+            "8": true
+          }
+        },
+        "contribution": {
+          "1.0": {
+            "4": false,
+            "8": false
+          },
+          "1.05": {
+            "4": false,
+            "8": false
+          }
+        },
+        "local_replacement": {
+          "1.0": {
+            "4": false,
+            "8": false
+          },
+          "1.05": {
+            "4": false,
+            "8": false
+          }
+        }
       }
     },
     {
@@ -552,6 +1281,947 @@
         "median_offset": -21.0,
         "never_fraction": 0.0,
         "share_earlier_5": 1.0
+      },
+      "coast_to_coast_bridges": {
+        "potential_growth": {
+          "1.0": {
+            "4": true,
+            "8": true
+          },
+          "1.05": {
+            "4": true,
+            "8": true
+          }
+        },
+        "contribution": {
+          "1.0": {
+            "4": false,
+            "8": false
+          },
+          "1.05": {
+            "4": false,
+            "8": false
+          }
+        },
+        "local_replacement": {
+          "1.0": {
+            "4": false,
+            "8": false
+          },
+          "1.05": {
+            "4": false,
+            "8": false
+          }
+        }
+      }
+    },
+    {
+      "step": "step48_ctl_full_s42",
+      "growth_change": {
+        "east": 1.4564697377261437,
+        "plains": 0.8858126888576614,
+        "west": 0.9244510797893897
+      },
+      "adult_survival_median": 0.4276980829723704,
+      "juvenile_adult_ratio_median": 0.9807217685931093,
+      "juvenile_ratio_ceiling_population_share": 0.6955743190447474,
+      "Fmax_median": 6.225109219795562,
+      "realized_reproduction_at_nests": 2.961486144633646,
+      "regions": {
+        "east": {
+          "cells": 1308,
+          "C_mean": 0.6657494308064106,
+          "C_sink_share": 0.7668195718654435,
+          "local_replacement_mean": 0.6312529793668865,
+          "local_sink_share": 0.8761467889908257,
+          "immigrant_share_mean": 0.4950750573277131,
+          "K_Allee_nonviability_share": 0.0,
+          "potential_sink_share": 0.4418960244648318,
+          "heldout_LPD": -2.1124114432797527,
+          "training_LPD": -1.1091756315887604,
+          "annual_abundance_log_adjustment_RMS": 0.0,
+          "establishment_log_adjustment_RMS": 0.0
+        },
+        "plains": {
+          "cells": 380,
+          "C_mean": 0.6498635793309584,
+          "C_sink_share": 0.8736842105263158,
+          "local_replacement_mean": 0.6207891769891193,
+          "local_sink_share": 0.9,
+          "immigrant_share_mean": 0.5149129107689084,
+          "K_Allee_nonviability_share": 0.0,
+          "potential_sink_share": 0.55,
+          "heldout_LPD": -0.9120773122073288,
+          "training_LPD": -0.6405333670041118,
+          "annual_abundance_log_adjustment_RMS": 0.0,
+          "establishment_log_adjustment_RMS": 0.0
+        },
+        "west": {
+          "cells": 1566,
+          "C_mean": 0.7222774124106598,
+          "C_sink_share": 0.7522349936143039,
+          "local_replacement_mean": 0.6399294269703842,
+          "local_sink_share": 0.8499361430395913,
+          "immigrant_share_mean": 0.6558215723304295,
+          "K_Allee_nonviability_share": 0.005108556832694764,
+          "potential_sink_share": 0.466794380587484,
+          "heldout_LPD": -2.6323191925214964,
+          "training_LPD": -1.6695404261519136,
+          "annual_abundance_log_adjustment_RMS": 0.0,
+          "establishment_log_adjustment_RMS": 0.0
+        }
+      },
+      "full_fixed_threshold_front": {
+        "cells": 782,
+        "median_offset": -3.0,
+        "never_fraction": 0.054987212276214836,
+        "share_earlier_5": 0.3414322250639386
+      },
+      "skeleton_fixed_threshold_front": {
+        "cells": 782,
+        "median_offset": -3.0,
+        "never_fraction": 0.054987212276214836,
+        "share_earlier_5": 0.3414322250639386
+      },
+      "coast_to_coast_bridges": {
+        "potential_growth": {
+          "1.0": {
+            "4": false,
+            "8": true
+          },
+          "1.05": {
+            "4": false,
+            "8": true
+          }
+        },
+        "contribution": {
+          "1.0": {
+            "4": false,
+            "8": false
+          },
+          "1.05": {
+            "4": false,
+            "8": false
+          }
+        },
+        "local_replacement": {
+          "1.0": {
+            "4": false,
+            "8": false
+          },
+          "1.05": {
+            "4": false,
+            "8": false
+          }
+        }
+      }
+    },
+    {
+      "step": "step48_ctl_weak_s42",
+      "growth_change": {
+        "east": 0.3121065213362405,
+        "plains": 0.22038860209530314,
+        "west": 0.24216693796985533
+      },
+      "adult_survival_median": 0.3572045522461143,
+      "juvenile_adult_ratio_median": 0.9545521527079754,
+      "juvenile_ratio_ceiling_population_share": 0.519412878301007,
+      "Fmax_median": 5.513463433685118,
+      "realized_reproduction_at_nests": 3.262789189311021,
+      "regions": {
+        "east": {
+          "cells": 1308,
+          "C_mean": 0.6492442838737154,
+          "C_sink_share": 0.764525993883792,
+          "local_replacement_mean": 0.5052989975760636,
+          "local_sink_share": 0.9678899082568807,
+          "immigrant_share_mean": 0.6547164866958777,
+          "K_Allee_nonviability_share": 0.0007645259938837921,
+          "potential_sink_share": 0.6246177370030581,
+          "heldout_LPD": -2.1222297474167684,
+          "training_LPD": -1.1106957913889572,
+          "annual_abundance_log_adjustment_RMS": 0.0,
+          "establishment_log_adjustment_RMS": 0.0
+        },
+        "plains": {
+          "cells": 380,
+          "C_mean": 0.618010274248282,
+          "C_sink_share": 0.8631578947368421,
+          "local_replacement_mean": 0.49201042042503285,
+          "local_sink_share": 0.968421052631579,
+          "immigrant_share_mean": 0.6823847655675312,
+          "K_Allee_nonviability_share": 0.005263157894736842,
+          "potential_sink_share": 0.7684210526315789,
+          "heldout_LPD": -0.9093956360779557,
+          "training_LPD": -0.6401195716573973,
+          "annual_abundance_log_adjustment_RMS": 0.0,
+          "establishment_log_adjustment_RMS": 0.0
+        },
+        "west": {
+          "cells": 1566,
+          "C_mean": 0.7174401772040384,
+          "C_sink_share": 0.7484035759897829,
+          "local_replacement_mean": 0.5616015615960186,
+          "local_sink_share": 0.9074074074074074,
+          "immigrant_share_mean": 0.7360500616867127,
+          "K_Allee_nonviability_share": 0.008939974457215836,
+          "potential_sink_share": 0.5421455938697318,
+          "heldout_LPD": -2.6170897964753923,
+          "training_LPD": -1.6712601297190814,
+          "annual_abundance_log_adjustment_RMS": 0.0,
+          "establishment_log_adjustment_RMS": 0.0
+        }
+      },
+      "full_fixed_threshold_front": {
+        "cells": 782,
+        "median_offset": -3.0,
+        "never_fraction": 0.043478260869565216,
+        "share_earlier_5": 0.37084398976982097
+      },
+      "skeleton_fixed_threshold_front": {
+        "cells": 782,
+        "median_offset": -3.0,
+        "never_fraction": 0.043478260869565216,
+        "share_earlier_5": 0.37084398976982097
+      },
+      "coast_to_coast_bridges": {
+        "potential_growth": {
+          "1.0": {
+            "4": false,
+            "8": false
+          },
+          "1.05": {
+            "4": false,
+            "8": false
+          }
+        },
+        "contribution": {
+          "1.0": {
+            "4": false,
+            "8": false
+          },
+          "1.05": {
+            "4": false,
+            "8": false
+          }
+        },
+        "local_replacement": {
+          "1.0": {
+            "4": false,
+            "8": false
+          },
+          "1.05": {
+            "4": false,
+            "8": false
+          }
+        }
+      }
+    },
+    {
+      "step": "step48_ab_ar05_weak_s42",
+      "growth_change": {
+        "east": 0.2559116331564064,
+        "plains": 0.23530345645238465,
+        "west": 0.258524800958743
+      },
+      "adult_survival_median": 0.5866600748257708,
+      "juvenile_adult_ratio_median": 0.3597754216759926,
+      "juvenile_ratio_ceiling_population_share": 0.0,
+      "Fmax_median": 6.352414014526567,
+      "realized_reproduction_at_nests": 3.58139714526132,
+      "regions": {
+        "east": {
+          "cells": 1308,
+          "C_mean": 0.6696685227910357,
+          "C_sink_share": 0.709480122324159,
+          "local_replacement_mean": 0.5623925166911882,
+          "local_sink_share": 0.9617737003058104,
+          "immigrant_share_mean": 0.6387112689259994,
+          "K_Allee_nonviability_share": 0.008409785932721712,
+          "potential_sink_share": 0.581039755351682,
+          "heldout_LPD": -2.143173294682625,
+          "training_LPD": -1.1067309792846345,
+          "annual_abundance_log_adjustment_RMS": 0.03794061524703447,
+          "establishment_log_adjustment_RMS": 0.0
+        },
+        "plains": {
+          "cells": 380,
+          "C_mean": 0.651708052298512,
+          "C_sink_share": 0.8605263157894737,
+          "local_replacement_mean": 0.5664832061017356,
+          "local_sink_share": 0.9526315789473684,
+          "immigrant_share_mean": 0.6355556406998488,
+          "K_Allee_nonviability_share": 0.005263157894736842,
+          "potential_sink_share": 0.7921052631578948,
+          "heldout_LPD": -0.9156347384979804,
+          "training_LPD": -0.6408471850507695,
+          "annual_abundance_log_adjustment_RMS": 0.04163048510184656,
+          "establishment_log_adjustment_RMS": 0.0
+        },
+        "west": {
+          "cells": 1566,
+          "C_mean": 0.7809666109348854,
+          "C_sink_share": 0.6864623243933589,
+          "local_replacement_mean": 0.6209954285418383,
+          "local_sink_share": 0.9208173690932312,
+          "immigrant_share_mean": 0.633462566682345,
+          "K_Allee_nonviability_share": 0.009578544061302681,
+          "potential_sink_share": 0.5114942528735632,
+          "heldout_LPD": -2.737808426511861,
+          "training_LPD": -1.663396232095906,
+          "annual_abundance_log_adjustment_RMS": 0.08422944340900942,
+          "establishment_log_adjustment_RMS": 0.0
+        }
+      },
+      "full_fixed_threshold_front": {
+        "cells": 782,
+        "median_offset": -4.0,
+        "never_fraction": 0.04603580562659847,
+        "share_earlier_5": 0.39258312020460356
+      },
+      "skeleton_fixed_threshold_front": {
+        "cells": 782,
+        "median_offset": -9.0,
+        "never_fraction": 0.03964194373401535,
+        "share_earlier_5": 0.8797953964194374
+      },
+      "coast_to_coast_bridges": {
+        "potential_growth": {
+          "1.0": {
+            "4": false,
+            "8": false
+          },
+          "1.05": {
+            "4": false,
+            "8": false
+          }
+        },
+        "contribution": {
+          "1.0": {
+            "4": false,
+            "8": false
+          },
+          "1.05": {
+            "4": false,
+            "8": false
+          }
+        },
+        "local_replacement": {
+          "1.0": {
+            "4": false,
+            "8": false
+          },
+          "1.05": {
+            "4": false,
+            "8": false
+          }
+        }
+      }
+    },
+    {
+      "step": "step48_ab_ar15_weak_s42",
+      "growth_change": {
+        "east": 0.42162810707996745,
+        "plains": 0.2691106244470554,
+        "west": 0.36112469730144303
+      },
+      "adult_survival_median": 0.46821710249478554,
+      "juvenile_adult_ratio_median": 0.9164016420984399,
+      "juvenile_ratio_ceiling_population_share": 0.4130070692048959,
+      "Fmax_median": 4.81656124334837,
+      "realized_reproduction_at_nests": 2.8289828910588355,
+      "regions": {
+        "east": {
+          "cells": 1308,
+          "C_mean": 0.7024209993623587,
+          "C_sink_share": 0.6873088685015291,
+          "local_replacement_mean": 0.6244420006450134,
+          "local_sink_share": 0.7415902140672783,
+          "immigrant_share_mean": 0.5553931243988061,
+          "K_Allee_nonviability_share": 0.0,
+          "potential_sink_share": 0.5474006116207951,
+          "heldout_LPD": -2.1311189398119628,
+          "training_LPD": -1.1022007887842633,
+          "annual_abundance_log_adjustment_RMS": 0.10421310053104102,
+          "establishment_log_adjustment_RMS": 0.0
+        },
+        "plains": {
+          "cells": 380,
+          "C_mean": 0.6357324689040315,
+          "C_sink_share": 0.8605263157894737,
+          "local_replacement_mean": 0.5046615305222834,
+          "local_sink_share": 0.8710526315789474,
+          "immigrant_share_mean": 0.6346170208184757,
+          "K_Allee_nonviability_share": 0.0,
+          "potential_sink_share": 0.7894736842105263,
+          "heldout_LPD": -0.9332193252929544,
+          "training_LPD": -0.6368324327254331,
+          "annual_abundance_log_adjustment_RMS": 0.1459745992075373,
+          "establishment_log_adjustment_RMS": 0.0
+        },
+        "west": {
+          "cells": 1566,
+          "C_mean": 0.8030590588277543,
+          "C_sink_share": 0.6877394636015326,
+          "local_replacement_mean": 0.6609901992222728,
+          "local_sink_share": 0.7937420178799489,
+          "immigrant_share_mean": 0.594104090946984,
+          "K_Allee_nonviability_share": 0.0031928480204342275,
+          "potential_sink_share": 0.4821200510855683,
+          "heldout_LPD": -2.7317625175964,
+          "training_LPD": -1.6602223273282413,
+          "annual_abundance_log_adjustment_RMS": 0.2525391536918729,
+          "establishment_log_adjustment_RMS": 0.0
+        }
+      },
+      "full_fixed_threshold_front": {
+        "cells": 782,
+        "median_offset": -4.0,
+        "never_fraction": 0.028132992327365727,
+        "share_earlier_5": 0.39258312020460356
+      },
+      "skeleton_fixed_threshold_front": {
+        "cells": 782,
+        "median_offset": -21.0,
+        "never_fraction": 0.01918158567774936,
+        "share_earlier_5": 0.9744245524296675
+      },
+      "coast_to_coast_bridges": {
+        "potential_growth": {
+          "1.0": {
+            "4": false,
+            "8": false
+          },
+          "1.05": {
+            "4": false,
+            "8": false
+          }
+        },
+        "contribution": {
+          "1.0": {
+            "4": false,
+            "8": false
+          },
+          "1.05": {
+            "4": false,
+            "8": false
+          }
+        },
+        "local_replacement": {
+          "1.0": {
+            "4": false,
+            "8": false
+          },
+          "1.05": {
+            "4": false,
+            "8": false
+          }
+        }
+      }
+    },
+    {
+      "step": "step48_est_static05_full_s42",
+      "growth_change": {
+        "east": 0.9931121904707221,
+        "plains": 0.6242547620936973,
+        "west": 0.6939583967769739
+      },
+      "adult_survival_median": 0.6517346149415472,
+      "juvenile_adult_ratio_median": 0.3331929588879802,
+      "juvenile_ratio_ceiling_population_share": 0.0,
+      "Fmax_median": 8.73188155626914,
+      "realized_reproduction_at_nests": 3.7786883696454474,
+      "regions": {
+        "east": {
+          "cells": 1308,
+          "C_mean": 0.6884631140691226,
+          "C_sink_share": 0.7522935779816514,
+          "local_replacement_mean": 0.6167480142891606,
+          "local_sink_share": 0.9908256880733946,
+          "immigrant_share_mean": 0.5591191695502932,
+          "K_Allee_nonviability_share": 0.017584097859327217,
+          "potential_sink_share": 0.44571865443425074,
+          "heldout_LPD": -2.1509002004447777,
+          "training_LPD": -1.105851165261047,
+          "annual_abundance_log_adjustment_RMS": 0.0,
+          "establishment_log_adjustment_RMS": 0.10622170982214728
+        },
+        "plains": {
+          "cells": 380,
+          "C_mean": 0.6669809920171318,
+          "C_sink_share": 0.8157894736842105,
+          "local_replacement_mean": 0.6195440484640792,
+          "local_sink_share": 0.968421052631579,
+          "immigrant_share_mean": 0.6185079306970305,
+          "K_Allee_nonviability_share": 0.039473684210526314,
+          "potential_sink_share": 0.6026315789473684,
+          "heldout_LPD": -0.9068656515122236,
+          "training_LPD": -0.6386039810157084,
+          "annual_abundance_log_adjustment_RMS": 0.0,
+          "establishment_log_adjustment_RMS": 0.06740719244545798
+        },
+        "west": {
+          "cells": 1566,
+          "C_mean": 0.7523344101759766,
+          "C_sink_share": 0.7413793103448276,
+          "local_replacement_mean": 0.6145335659851724,
+          "local_sink_share": 0.9303959131545338,
+          "immigrant_share_mean": 0.7102933102810971,
+          "K_Allee_nonviability_share": 0.022988505747126436,
+          "potential_sink_share": 0.47701149425287354,
+          "heldout_LPD": -2.6316465120786043,
+          "training_LPD": -1.6683489469950066,
+          "annual_abundance_log_adjustment_RMS": 0.0,
+          "establishment_log_adjustment_RMS": 0.026123964664367297
+        }
+      },
+      "full_fixed_threshold_front": {
+        "cells": 782,
+        "median_offset": -2.0,
+        "never_fraction": 0.0907928388746803,
+        "share_earlier_5": 0.2672634271099744
+      },
+      "skeleton_fixed_threshold_front": {
+        "cells": 782,
+        "median_offset": -4.0,
+        "never_fraction": 0.08056265984654731,
+        "share_earlier_5": 0.43478260869565216
+      },
+      "coast_to_coast_bridges": {
+        "potential_growth": {
+          "1.0": {
+            "4": false,
+            "8": true
+          },
+          "1.05": {
+            "4": false,
+            "8": false
+          }
+        },
+        "contribution": {
+          "1.0": {
+            "4": false,
+            "8": false
+          },
+          "1.05": {
+            "4": false,
+            "8": false
+          }
+        },
+        "local_replacement": {
+          "1.0": {
+            "4": false,
+            "8": false
+          },
+          "1.05": {
+            "4": false,
+            "8": false
+          }
+        }
+      }
+    },
+    {
+      "step": "step48_est_static10_full_s42",
+      "growth_change": {
+        "east": 0.6200084675317722,
+        "plains": 0.4586362390691824,
+        "west": 0.5065889111979759
+      },
+      "adult_survival_median": 0.7092154734694383,
+      "juvenile_adult_ratio_median": 0.2460601218038645,
+      "juvenile_ratio_ceiling_population_share": 0.0,
+      "Fmax_median": 7.588034425275312,
+      "realized_reproduction_at_nests": 3.835886825204744,
+      "regions": {
+        "east": {
+          "cells": 1308,
+          "C_mean": 0.6940743456643937,
+          "C_sink_share": 0.8142201834862385,
+          "local_replacement_mean": 0.6549073524998364,
+          "local_sink_share": 0.9678899082568807,
+          "immigrant_share_mean": 0.4658049529108594,
+          "K_Allee_nonviability_share": 0.006880733944954129,
+          "potential_sink_share": 0.42966360856269115,
+          "heldout_LPD": -2.2039743127228704,
+          "training_LPD": -1.1009879425690232,
+          "annual_abundance_log_adjustment_RMS": 0.0,
+          "establishment_log_adjustment_RMS": 0.2932358827885485
+        },
+        "plains": {
+          "cells": 380,
+          "C_mean": 0.697250392901679,
+          "C_sink_share": 0.8921052631578947,
+          "local_replacement_mean": 0.6676875557240478,
+          "local_sink_share": 0.9605263157894737,
+          "immigrant_share_mean": 0.5303066423843583,
+          "K_Allee_nonviability_share": 0.03684210526315789,
+          "potential_sink_share": 0.5631578947368421,
+          "heldout_LPD": -0.9122207658070507,
+          "training_LPD": -0.6356239521857607,
+          "annual_abundance_log_adjustment_RMS": 0.0,
+          "establishment_log_adjustment_RMS": 0.16490592636943366
+        },
+        "west": {
+          "cells": 1566,
+          "C_mean": 0.7599200911964735,
+          "C_sink_share": 0.7381864623243933,
+          "local_replacement_mean": 0.645728718008965,
+          "local_sink_share": 0.9252873563218391,
+          "immigrant_share_mean": 0.6800427485384988,
+          "K_Allee_nonviability_share": 0.02234993614303959,
+          "potential_sink_share": 0.49936143039591313,
+          "heldout_LPD": -2.625752455443304,
+          "training_LPD": -1.6672267188735208,
+          "annual_abundance_log_adjustment_RMS": 0.0,
+          "establishment_log_adjustment_RMS": 0.08582814827572462
+        }
+      },
+      "full_fixed_threshold_front": {
+        "cells": 782,
+        "median_offset": -2.0,
+        "never_fraction": 0.09974424552429667,
+        "share_earlier_5": 0.21227621483375958
+      },
+      "skeleton_fixed_threshold_front": {
+        "cells": 782,
+        "median_offset": -5.0,
+        "never_fraction": 0.06905370843989769,
+        "share_earlier_5": 0.5498721227621484
+      },
+      "coast_to_coast_bridges": {
+        "potential_growth": {
+          "1.0": {
+            "4": false,
+            "8": true
+          },
+          "1.05": {
+            "4": false,
+            "8": false
+          }
+        },
+        "contribution": {
+          "1.0": {
+            "4": false,
+            "8": false
+          },
+          "1.05": {
+            "4": false,
+            "8": false
+          }
+        },
+        "local_replacement": {
+          "1.0": {
+            "4": false,
+            "8": false
+          },
+          "1.05": {
+            "4": false,
+            "8": false
+          }
+        }
+      }
+    },
+    {
+      "step": "step48_arrival10_full_s42",
+      "growth_change": {
+        "east": 0.5853485797010824,
+        "plains": 0.4329999132517188,
+        "west": 0.34919787063669383
+      },
+      "adult_survival_median": 0.6201696685454244,
+      "juvenile_adult_ratio_median": 0.2500327031447963,
+      "juvenile_ratio_ceiling_population_share": 0.0,
+      "Fmax_median": 6.400936288364726,
+      "realized_reproduction_at_nests": 4.324509454354911,
+      "regions": {
+        "east": {
+          "cells": 1308,
+          "C_mean": 0.7151569218074179,
+          "C_sink_share": 0.7828746177370031,
+          "local_replacement_mean": 0.7012460912677044,
+          "local_sink_share": 0.8799694189602446,
+          "immigrant_share_mean": 0.33242107365486123,
+          "K_Allee_nonviability_share": 0.0,
+          "potential_sink_share": 0.363914373088685,
+          "heldout_LPD": -2.1656435553959175,
+          "training_LPD": -1.0982211517560023,
+          "annual_abundance_log_adjustment_RMS": 0.0,
+          "establishment_log_adjustment_RMS": 0.0
+        },
+        "plains": {
+          "cells": 380,
+          "C_mean": 0.7405699731919064,
+          "C_sink_share": 0.9105263157894737,
+          "local_replacement_mean": 0.7287339178584425,
+          "local_sink_share": 0.9289473684210526,
+          "immigrant_share_mean": 0.30714361617147123,
+          "K_Allee_nonviability_share": 0.002631578947368421,
+          "potential_sink_share": 0.4368421052631579,
+          "heldout_LPD": -0.936019199432979,
+          "training_LPD": -0.6280275150910488,
+          "annual_abundance_log_adjustment_RMS": 0.0,
+          "establishment_log_adjustment_RMS": 0.0
+        },
+        "west": {
+          "cells": 1566,
+          "C_mean": 0.745777890538135,
+          "C_sink_share": 0.7503192848020435,
+          "local_replacement_mean": 0.7007557490378116,
+          "local_sink_share": 0.8639846743295019,
+          "immigrant_share_mean": 0.5057130289914478,
+          "K_Allee_nonviability_share": 0.0,
+          "potential_sink_share": 0.5408684546615581,
+          "heldout_LPD": -2.690420858449113,
+          "training_LPD": -1.6619744554526137,
+          "annual_abundance_log_adjustment_RMS": 0.0,
+          "establishment_log_adjustment_RMS": 0.0
+        }
+      },
+      "full_fixed_threshold_front": {
+        "cells": 782,
+        "median_offset": -1.0,
+        "never_fraction": 0.09462915601023018,
+        "share_earlier_5": 0.16112531969309463
+      },
+      "skeleton_fixed_threshold_front": {
+        "cells": 782,
+        "median_offset": 1.0,
+        "never_fraction": 0.12020460358056266,
+        "share_earlier_5": 0.13810741687979539
+      },
+      "coast_to_coast_bridges": {
+        "potential_growth": {
+          "1.0": {
+            "4": false,
+            "8": false
+          },
+          "1.05": {
+            "4": false,
+            "8": false
+          }
+        },
+        "contribution": {
+          "1.0": {
+            "4": false,
+            "8": false
+          },
+          "1.05": {
+            "4": false,
+            "8": false
+          }
+        },
+        "local_replacement": {
+          "1.0": {
+            "4": false,
+            "8": false
+          },
+          "1.05": {
+            "4": false,
+            "8": false
+          }
+        }
+      }
+    },
+    {
+      "step": "step48_hurdle_ctl_s42",
+      "growth_change": {
+        "east": 0.974203426550772,
+        "plains": 0.7185255356420303,
+        "west": 0.4869170479335059
+      },
+      "adult_survival_median": 0.5226643155321142,
+      "juvenile_adult_ratio_median": 0.44160784512474116,
+      "juvenile_ratio_ceiling_population_share": 0.0,
+      "Fmax_median": 5.459992069945413,
+      "realized_reproduction_at_nests": 3.0301153194174595,
+      "regions": {
+        "east": {
+          "cells": 1308,
+          "C_mean": 0.9378851864529876,
+          "C_sink_share": 0.4923547400611621,
+          "local_replacement_mean": 0.7759254048091483,
+          "local_sink_share": 0.9984709480122325,
+          "immigrant_share_mean": 0.5805610884467434,
+          "K_Allee_nonviability_share": 0.0030581039755351682,
+          "potential_sink_share": 0.22018348623853212,
+          "heldout_LPD": -2.4979907781366233,
+          "training_LPD": -1.209827176794811,
+          "annual_abundance_log_adjustment_RMS": 0.0,
+          "establishment_log_adjustment_RMS": 0.0
+        },
+        "plains": {
+          "cells": 380,
+          "C_mean": 0.9481337604618514,
+          "C_sink_share": 0.6631578947368421,
+          "local_replacement_mean": 0.7435717392611638,
+          "local_sink_share": 1.0,
+          "immigrant_share_mean": 0.7062002012111253,
+          "K_Allee_nonviability_share": 0.005263157894736842,
+          "potential_sink_share": 0.22631578947368422,
+          "heldout_LPD": -1.064654393036557,
+          "training_LPD": -0.6774677154735006,
+          "annual_abundance_log_adjustment_RMS": 0.0,
+          "establishment_log_adjustment_RMS": 0.0
+        },
+        "west": {
+          "cells": 1566,
+          "C_mean": 0.9533981798843217,
+          "C_sink_share": 0.553639846743295,
+          "local_replacement_mean": 0.75707759377711,
+          "local_sink_share": 0.9821200510855683,
+          "immigrant_share_mean": 0.8063531568844471,
+          "K_Allee_nonviability_share": 0.005747126436781609,
+          "potential_sink_share": 0.29565772669220947,
+          "heldout_LPD": -5.242097709269897,
+          "training_LPD": -1.9198419737338919,
+          "annual_abundance_log_adjustment_RMS": 0.0,
+          "establishment_log_adjustment_RMS": 0.0
+        }
+      },
+      "full_fixed_threshold_front": {
+        "cells": 782,
+        "median_offset": -12.0,
+        "never_fraction": 0.0,
+        "share_earlier_5": 0.9386189258312021
+      },
+      "skeleton_fixed_threshold_front": {
+        "cells": 782,
+        "median_offset": -12.0,
+        "never_fraction": 0.0,
+        "share_earlier_5": 0.9386189258312021
+      },
+      "coast_to_coast_bridges": {
+        "potential_growth": {
+          "1.0": {
+            "4": true,
+            "8": true
+          },
+          "1.05": {
+            "4": true,
+            "8": true
+          }
+        },
+        "contribution": {
+          "1.0": {
+            "4": false,
+            "8": false
+          },
+          "1.05": {
+            "4": false,
+            "8": false
+          }
+        },
+        "local_replacement": {
+          "1.0": {
+            "4": false,
+            "8": false
+          },
+          "1.05": {
+            "4": false,
+            "8": false
+          }
+        }
+      }
+    },
+    {
+      "step": "step48_hurdle_ab_s42",
+      "growth_change": {
+        "east": 0.21162776230517322,
+        "plains": 0.18235794966429042,
+        "west": 0.11686573848653214
+      },
+      "adult_survival_median": 0.4076027707548596,
+      "juvenile_adult_ratio_median": 0.5531987341485115,
+      "juvenile_ratio_ceiling_population_share": 0.0,
+      "Fmax_median": 4.052716561925653,
+      "realized_reproduction_at_nests": 3.1925575156640167,
+      "regions": {
+        "east": {
+          "cells": 1308,
+          "C_mean": 0.9368562277018385,
+          "C_sink_share": 0.5795107033639144,
+          "local_replacement_mean": 0.7855100522784605,
+          "local_sink_share": 0.9441896024464832,
+          "immigrant_share_mean": 0.519783447385173,
+          "K_Allee_nonviability_share": 0.0015290519877675841,
+          "potential_sink_share": 0.39755351681957185,
+          "heldout_LPD": -2.5857538369350097,
+          "training_LPD": -1.1980292160839752,
+          "annual_abundance_log_adjustment_RMS": 0.0752149525544479,
+          "establishment_log_adjustment_RMS": 0.0
+        },
+        "plains": {
+          "cells": 380,
+          "C_mean": 0.9416702968443351,
+          "C_sink_share": 0.7052631578947368,
+          "local_replacement_mean": 0.7413618031726148,
+          "local_sink_share": 0.9921052631578947,
+          "immigrant_share_mean": 0.6412721315542134,
+          "K_Allee_nonviability_share": 0.010526315789473684,
+          "potential_sink_share": 0.5631578947368421,
+          "heldout_LPD": -1.0714083936214511,
+          "training_LPD": -0.6704710478618167,
+          "annual_abundance_log_adjustment_RMS": 0.10720877782373528,
+          "establishment_log_adjustment_RMS": 0.0
+        },
+        "west": {
+          "cells": 1566,
+          "C_mean": 0.9866761944272174,
+          "C_sink_share": 0.5300127713920817,
+          "local_replacement_mean": 0.7925011656204886,
+          "local_sink_share": 0.9329501915708812,
+          "immigrant_share_mean": 0.7119265901130883,
+          "K_Allee_nonviability_share": 0.007662835249042145,
+          "potential_sink_share": 0.3052362707535121,
+          "heldout_LPD": -5.844447959436438,
+          "training_LPD": -1.9083122715233016,
+          "annual_abundance_log_adjustment_RMS": 0.12609583844717953,
+          "establishment_log_adjustment_RMS": 0.0
+        }
+      },
+      "full_fixed_threshold_front": {
+        "cells": 782,
+        "median_offset": -18.0,
+        "never_fraction": 0.0,
+        "share_earlier_5": 0.9846547314578005
+      },
+      "skeleton_fixed_threshold_front": {
+        "cells": 782,
+        "median_offset": -19.0,
+        "never_fraction": 0.0,
+        "share_earlier_5": 0.9718670076726342
+      },
+      "coast_to_coast_bridges": {
+        "potential_growth": {
+          "1.0": {
+            "4": true,
+            "8": true
+          },
+          "1.05": {
+            "4": true,
+            "8": true
+          }
+        },
+        "contribution": {
+          "1.0": {
+            "4": false,
+            "8": false
+          },
+          "1.05": {
+            "4": false,
+            "8": false
+          }
+        },
+        "local_replacement": {
+          "1.0": {
+            "4": false,
+            "8": false
+          },
+          "1.05": {
+            "4": false,
+            "8": false
+          }
+        }
       }
     }
   ],

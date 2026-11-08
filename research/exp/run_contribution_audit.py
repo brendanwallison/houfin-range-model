@@ -14,7 +14,7 @@ from src.config_utils import load_age_model_config,load_data_config
 from src.model import age_priors as ap,age_forward as af
 from src.model.data_loading import load_data
 from src.model.checkpoints import load_map_params,auto_delta_params_to_latents
-from contribution_budget import audit_forward,isolation_replay
+from contribution_budget import audit_forward,isolation_replay,select_main_forward,fft_floor_active
 
 
 def clean(v):
@@ -30,11 +30,14 @@ def main():
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('--run',type=Path,required=True);p.add_argument('--out',type=Path,required=True)
     p.add_argument('--isolation-start',type=int,default=2010)
+    p.add_argument('--accept-unrefined',default=None,metavar='REASON',
+                   help='run without refine_report.json (e.g. a Laplace-marginal fit spliced into a checkpoint); the reason is recorded')
     a=p.parse_args();a.out.mkdir(parents=True,exist_ok=True)
     implementation_paths=[Path(__file__),Path(__file__).with_name('contribution_budget.py')]
     implementation_start=[hashlib.sha256(p.read_bytes()).hexdigest() for p in implementation_paths]
     if (a.out/'READY.json').exists():raise FileExistsError('completed audit retained')
-    if not json.load(open(a.run/'refine_report.json')).get('valid'):raise ValueError('unaccepted fit')
+    if a.accept_unrefined is None:
+        if not json.load(open(a.run/'refine_report.json')).get('valid'):raise ValueError('unaccepted fit')
     cfg=load_age_model_config();dcfg=load_data_config()
     if not ap.YEARLING:raise NotImplementedError('breeding metric requires annual maturation')
     data=load_data(cfg['input_dir'],target_device=jax.devices('cpu')[0],precision='float64',verbose=False)
@@ -43,21 +46,41 @@ def main():
     def record(*aa,**kw):
         bound=inspect.signature(original).bind(*aa,**kw);bound.apply_defaults()
         result=original(*aa,**kw)
-        captured.append((bound.arguments,result))
+        captured.append((dict(bound.arguments),result))
         return result
     ap.forward_sim_age_structured=record
     try:
         handlers.seed(handlers.condition(ap.build_model_2d,data=lat),rng_seed=104)(data=data,prior_scale=1.)
     finally:ap.forward_sim_age_structured=original
-    if len(captured)!=1:raise ValueError('ambiguous forward replay count '+str(len(captured)))
-    x,states=captured[0];states=jax.tree.map(lambda v:jax.block_until_ready(v),states)
-    print('FROZEN TRAJECTORY REPLAYED',flush=True)
+    spin_spec=dict(cfg['population_model'].get('spinup') or {})
+    x,states,spin_info=select_main_forward(captured,spin_spec if (getattr(ap,'SPINUP',False) and spin_spec.get('enabled')) else None)
+    if int(x['time'])!=len(np.asarray(data['years'])):raise ValueError('main forward call does not span the model years')
+    states=jax.tree.map(lambda v:jax.block_until_ready(v),states)
+    print('FROZEN TRAJECTORY REPLAYED',spin_info,flush=True)
     arrays,setup=audit_forward(af,x,states)
     lr,lc=np.asarray(x['land_rows']),np.asarray(x['land_cols']);years=np.asarray(data['years'])
     scale=max(float(np.max(np.asarray(states[0]))),1.)
-    checks={n:float(np.max(np.abs(arrays[n]))) for n in ['BIDE_error','replay_adult_error','replay_juvenile_error']}
-    checks['breeder_origin_destination_sum_error']=float(np.max(np.abs((arrays['breeder_contribution']+arrays['numerical_adult_clip_gain']).sum(1)-arrays['next_adult'].sum(1))))
-    checks['postbirth_origin_destination_sum_error']=float(np.max(np.abs((arrays['total_descendants_origin']+arrays['numerical_unparented_births']+arrays['numerical_adult_clip_gain']).sum(1)-(arrays['next_adult']+arrays['next_juvenile']).sum(1))))
+    checks={n:float(np.max(np.abs(arrays[n]))) for n in ['BIDE_error','replay_adult_error','replay_juvenile_error','survival_identity_error']}
+    # Origin sums (floor-free linear operator) + explicit numerical terms (clip, FFT floor) = realised destination totals.
+    checks['breeder_origin_destination_sum_error']=float(np.max(np.abs((arrays['breeder_contribution']+arrays['numerical_adult_clip_gain']+arrays['numerical_fft_floor_breeders']).sum(1)-arrays['next_adult'].sum(1))))
+    checks['postbirth_origin_destination_sum_error']=float(np.max(np.abs((arrays['total_descendants_origin']+arrays['numerical_unparented_births']+arrays['numerical_adult_clip_gain']+arrays['numerical_fft_floor_postbirth']).sum(1)-(arrays['next_adult']+arrays['next_juvenile']).sum(1))))
+    # Relative replay errors (task contract: <= 1e-8 of the year's largest cell state).
+    na_l,nj_l=np.asarray(states[1])[:,lr,lc],np.asarray(states[2])[:,lr,lc]
+    rel={'replay_adult_error_relative':float(np.max(np.abs(arrays['replay_adult_error']))/max(float(np.max(na_l)),1e-300)),
+         'replay_juvenile_error_relative':float(np.max(np.abs(arrays['replay_juvenile_error']))/max(float(np.max(nj_l)),1e-300)),
+         'BIDE_error_relative':float(np.max(np.abs(arrays['BIDE_error'])))/max(float(np.max(na_l+nj_l)),1e-300)}
+    fd=arrays['numerical_fft_floor_destination'];post=arrays['input_adult']+arrays['input_juvenile']
+    floor_info={'active':bool(fft_floor_active(af,jnp.asarray(x['Sa_flat']).dtype)),'fft_floor_ulps':af.FFT_FLOOR_ULPS,
+        'fft_floor_smooth':bool(getattr(af,'FFT_FLOOR_SMOOTH',False)),'fft_pad':af.FFT_PAD_VALUE,
+        'treatment':'replay uses the floored movement; origin attribution uses the floor-free linear operator of the same '
+                    'primitive; realised minus floor-free arrivals enter BIDE as numerical_fft_floor_destination and the '
+                    'breeder/post-birth origin sums as numerical_fft_floor_breeders/_postbirth',
+        'gross_abs_destination_total':float(np.abs(fd).sum()),'net_destination_total':float(fd.sum()),
+        'max_abs_cell_year':float(np.abs(fd).max()),
+        'max_annual_gross_abs_over_population':float(np.max(np.abs(fd).sum(1)/np.maximum(post.sum(1),1e-300))),
+        'gross_abs_breeders_total':float(np.abs(arrays['numerical_fft_floor_breeders']).sum()),
+        'max_annual_gross_abs_breeders_over_next_adults':float(np.max(np.abs(arrays['numerical_fft_floor_breeders']).sum(1)/np.maximum(arrays['next_adult'].sum(1),1e-300)))}
+    print('RELATIVE',rel,'FLOOR',floor_info,flush=True)
     dtypes={n:str(np.asarray(x[n]).dtype) for n in ['Sa_flat','Sj_flat','initpop_latent','adult_fft_kernel']}
     print('ACCOUNTING',checks,'DTYPES',dtypes,'scale',scale,flush=True)
     kernel_eps=np.finfo(np.asarray(x['adult_fft_kernel']).real.dtype).eps
@@ -69,6 +92,9 @@ def main():
     if any(checks[key]>value for key,value in tolerances.items()):raise ValueError('trajectory/accounting mismatch '+str(checks))
     if max(checks['replay_adult_error'],checks['replay_juvenile_error'])>1e-10*scale:
         raise ValueError('frozen trajectory parity failed')
+    if max(rel['replay_adult_error_relative'],rel['replay_juvenile_error_relative'])>1e-8:
+        raise ValueError('relative replay parity failed '+str(rel))
+    checks.update(rel)
     for n in ['successful_breeder_export','immigrant_breeders','immigration','successful_emigration','journey_mortality_origin']:
         checks[n+'_minimum']=float(np.min(arrays[n]))
         if checks[n+'_minimum'] < -tol:raise ValueError('negative flow '+n)
@@ -82,6 +108,18 @@ def main():
     regions={'all':np.ones(len(lr),bool),'west':lon<-100,
         'plains':(lon>=-100)&(lon<-95),'broad_plains':(lon>=-105)&(lon<-95)&(latitudes>=25)&(latitudes<49),
         'east':(lon>=-80)&(latitudes>=25)&(latitudes<49)}
+    # CEC Level I ecoregions (project rule: regional summaries use ecoregions; the longitude bands above are legacy,
+    # kept for continuity with earlier audits and the isolation replays).
+    cec_names={7:'Marine West Coast Forest',11:'Mediterranean California',6:'NW Forested Mountains',10:'N. Am. Deserts',
+        13:'Temperate Sierras',12:'S. Semiarid Highlands',9:'Great Plains',3:'Taiga',5:'Northern Forests',
+        8:'Eastern Temperate Forests',14:'Tropical Dry Forests',15:'Tropical Humid Forests',2:'Tundra',4:'Hudson Plain'}
+    cec_path=Path(dcfg['grid']['ref_raster']).parent/'regions'/'cec_level1_54km.tif'
+    if cec_path.exists():
+        with rasterio.open(cec_path) as src:
+            l1=np.asarray(src.read(1))[lr,lc].astype(int)
+        for code,name in cec_names.items():
+            if (l1==code).sum()>=5:regions['cec:'+name]=l1==code
+    else:print('WARNING no CEC Level I raster at',cec_path,'- ecoregion summaries skipped',flush=True)
     eras={'early':(1902,1915),'release':(1940,1955),'bbs_early':(1966,1979),
         'middle':(1980,1994),'recent':(1995,2009),'modern':(2010,2025)}
     fields_path=Path(cfg['path_diagnostics_dir'])/'07_source_sink_fields.npz' if cfg.get('path_diagnostics_dir') else None
@@ -97,6 +135,13 @@ def main():
         with np.load(fields_path) as z:
             cached={n:np.asarray(z[n])[lr,lc] for n in ['allee_dead_mask','lam_fundamental_modern','K_modern']}
     summary={'run':str(a.run),'step':step,'checks':checks,'tolerance':tol,'check_tolerances':tolerances,'dtypes':dtypes,
+        'accepted_unrefined':a.accept_unrefined,'spinup':spin_info,'fft_floor':floor_info,
+        'mechanisms':{'adult_survival_dd':x.get('survival_dd_c') is not None,
+                      'native_departure_scale':None if x.get('departure_scale') is None else
+                          [float(np.min(np.asarray(x['departure_scale']))),float(np.max(np.asarray(x['departure_scale'])))],
+                      'disease_survival':x.get('disease_m_amp') is not None,'veit_departure':bool(x.get('veit_departure')),
+                      'yearling_breeding':bool(x.get('yearling_breeding')),'nest_readout_only':x.get('nest_cells') is not None},
+        'config':__import__('os').environ.get('AGE_MODEL_CONFIG'),
         'numerical_adjustments':{'adult_clip_gain_total':float(arrays['numerical_adult_clip_gain'].sum()),
             'unparented_births_total':float(arrays['numerical_unparented_births'].sum())},
         'census':'C_breeding: previous summer breeders + their actual young, surviving to next summer breeders; rows labeled by destination year',
@@ -127,6 +172,7 @@ def main():
                'ordinary_deaths':float(np.where(sel,arrays['local_deaths_destination'],0.).sum()),
                'journey_deaths':float(np.where(sel,arrays['journey_mortality_origin'],0.).sum()),
                'numerical_edge_loss':float(np.where(sel,arrays['numerical_edge_loss_origin'],0.).sum()),
+               'numerical_fft_floor_destination':float(np.where(sel,arrays['numerical_fft_floor_destination'],0.).sum()),
                'gross_immigration':float(np.where(sel,arrays['immigration'],0.).sum()),
                'gross_successful_emigration':float(np.where(sel,arrays['successful_emigration'],0.).sum())}
             if x.get('process_noise') is not None:

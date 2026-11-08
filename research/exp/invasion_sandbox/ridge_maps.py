@@ -19,7 +19,7 @@ def compute(a):
     from harness import Sandbox, capture, to_land, potential_lambda
     sb = Sandbox(os.environ['SBX_REFINED'])
     p = np.load(a.params)
-    sb.lat = {**{k: np.asarray(v, float) for k, v in sb.lat.items()}, **{k: np.asarray(p[k], float) for k in p.files if k in sb.lat}}
+    sb.lat = {**{k: np.asarray(v, float) for k, v in sb.lat.items()}, **{k: np.asarray(p[k], float) for k in p.files}}   # ALL saved sites (F2's capacity_factor is not in the base latents)
     sb.base_abund = sb.base_x = sb.base_med = None
     x, _ = capture(sb.data, sb.lat)
     T = len(sb.years); yrs = np.asarray(sb.years)

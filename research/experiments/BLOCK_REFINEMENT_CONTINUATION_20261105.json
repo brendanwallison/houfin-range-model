@@ -1,0 +1,11 @@
+{
+  "epoch": 1793909994.6645198,
+  "step": "step48_ab_blocks15_weak_s41",
+  "action": "Resume nonterminal optimizer checkpoint; no fresh MAP",
+  "old_max_iter": 16000,
+  "new_max_iter": 32000,
+  "reason": "Objective still falling about .4 over 20 iterations at the old cap; not accepted as converged.",
+  "checkpoint_preserved": true,
+  "old_runner_sha256": "55e9686ab30b027256ce0dfdcd31d88dfe1fa4fd08e7a553fc9233822ed57aa9",
+  "new_runner_sha256": "26e1d840297c1a897487f31d4438421e324da6cd79fa39b89d70f32170d3099a"
+}

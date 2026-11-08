@@ -18,8 +18,13 @@ from harness import Sandbox, ap
 
 def main():
     p = argparse.ArgumentParser(description=__doc__); p.add_argument('--out', type=Path, required=True)
+    p.add_argument('--params', type=Path, default=None, help='score this fit (best_params.npz; route effects at their saved mode)')
     a = p.parse_args()
     sb = Sandbox(os.environ['SBX_REFINED'])
+    if a.params is not None:
+        sb.lat = dict(sb.lat)
+        with np.load(a.params) as z:
+            sb.lat.update({k: np.asarray(z[k]) for k in z.files if not k.startswith('laplace_')})
     tr = handlers.trace(handlers.seed(handlers.condition(ap.build_model_2d, data=sb.lat), rng_seed=104)).get_trace(
         data=sb.data, prior_scale=1.)
     m = np.asarray(sb.obs_ok)

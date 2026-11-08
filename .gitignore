@@ -84,3 +84,9 @@ results/
 /research/experiments/RETROSPECTIVE_TACC_20261031.json
 # An existing watcher rewrites this file; keep its output local.
 /research/experiments/OVERFLOW_EARLY_LIVE_20261102.md
+
+# Manual backup copies made before in-place edits (2026-11-08); the edited file is tracked.
+*.bak_*
+*.orig_*
+# Written by a TACC-side monitor; keep its output local (as OVERFLOW_EARLY_LIVE above).
+/research/experiments/MISSPEC_LIVE_LATEST.json

@@ -1,0 +1,28 @@
+{
+  "epoch": 1793976231.3060927,
+  "disabled_at_user_request": true,
+  "automatic_control_disabled": true,
+  "cancelled": [
+    {
+      "job": "3558841",
+      "name": "overflow_dev3",
+      "previous_state": "PENDING"
+    }
+  ],
+  "claude_jobs_preserved": [
+    "3558913|claude_devcpu2|development|PENDING",
+    "3558909|claude_devcpu|development|RUNNING",
+    "3557988|claude_regular3|gpu-a100|PENDING",
+    "3557987|claude_regular3|gpu-a100|PENDING",
+    "3557986|claude_regular3|gpu-a100|PENDING",
+    "3558910|claude_devgpu|gpu-a100-dev|PENDING",
+    "3557990|claude_small1|gpu-a100-small|PENDING",
+    "3557989|claude_small1|gpu-a100-small|PENDING",
+    "3558538|claude_hmc|gpu-a100-small|PENDING",
+    "3558537|claude_hmc|gpu-a100-small|PENDING"
+  ],
+  "scientific_queue_preserved": true,
+  "checkpoints_preserved": true,
+  "shared_dispatcher_scripts_preserved": true,
+  "note": "Claude may reuse shared Slurm scripts/queue; only Codex controllers and Codex-owned reservations were stopped."
+}

@@ -4,6 +4,9 @@ E055 pinned n50 = V&L's n50/K* (.0197; V&L's r sensitivity .0066-.033) x 51a's m
 calibration transferred from another run. Here: n50_model = ln 2 / allee_gamma (the forward's own gamma, so no unit
 bridge) and K* = median capacity K (real Z) over 2010-2025 in cells with a BBS detection, by region. Prints n50 / K*
 for the pin and for fitted multipliers (n50 x m -> ratio x m).
+CAVEAT (2026-11-08): the n50/K* ratio compares SHAPE only (V&L's K*/n50), and the K-ratio transfer is not a literature
+bound. For absolute comparison with V&L (birds/km2) use abs_calib.py, the Partners in Flight bridge: the current pin -2.1 =
+.177 [.089] birds/km2, at/above V&L's strongest .125. See research/CONSIDERATIONS.md G14 / M32.
 Usage (inside sbx_env.sh): python kstar.py --out FILE.json
 """
 import argparse, json, os

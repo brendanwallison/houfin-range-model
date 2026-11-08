@@ -759,7 +759,9 @@ def main():
             else:
                 snll = spc['SL'].specimen_nll(_Ns, spc, xsp[:2], _bt)
                 scost = snll
-            scost = scost + .5 * jnp.sum((xsp[:2] / 3.) ** 2) - (jnp.log(_bt) + jnp.log1p(-_bt))   # log s ~ N(0,3); beta ~ Beta(2,2) + logit Jacobian
+            scost = scost + .5 * jnp.sum((xsp[:2] / 3.) ** 2) - (jnp.log(_bt) + jnp.log1p(-_bt))   # log s ~ N(0,3); beta ~ Beta(2,2) (MAP: no Jacobian)
+            if a.hmc:   # HMC samples the logit; run_hmc adds Jacobians for the model coordinates only, so add this block's
+                scost = scost - (jnp.log(_bt) + jnp.log1p(-_bt))   # logit Jacobian beta(1-beta) here (verifier 2026-11-08: target was Uniform(0,1) on beta)
         nvcost = 0. if nviab is None else native_viable_cost(trace)
         obj = -(lp - obs_model) + a.bbs_weight * nll_r - prior_sig + 0.5 * m ** 2 + pcost + acost + rpcost + ecost + ccost + wcost + tcost + ncost + scost + nvcost
         return obj, dict(trough_cost=jnp.asarray(tcost, float), trough_D=jnp.asarray(tD, float), specimen_nll=jnp.asarray(snll, float),

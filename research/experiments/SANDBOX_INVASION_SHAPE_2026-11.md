@@ -10510,3 +10510,155 @@ angle is not what holds the trough back; the floor (absolute K minimum vs the ab
   2021-25 FORECAST on surveyed routes (+104). Not generic overfitting (n50 is pinned: no extra parameters); a temporal-
   extrapolation weakness. On J330 both parts worsen (unseen +42, 2021-25 +76); on J110 both slightly (+14 / +11).
   [unknown] why weak-Allee fits forecast 2021-25 worse (candidate: the recent rebound vs the post-disease trajectory).
+- SOURCE CONTROL (user: "Commit and push as appropriate"): model code behind the HMC candidate committed on
+  research/route-variance 0f73b31 (new remote branch origin/research/route-variance); sandbox drivers + records on
+  research/local-takeover-foundation dee075d (pushed). *.bak_* / *.orig_* ignored; MISSPEC_LIVE_LATEST.json untracked
+  (live monitor output, kept on disk). HMC slot A's laplace_fit.py md5 matched the committed file at wiring time.
+- STATUS ~16:30 CST 11-08 [E]: all-data 1/5 fits LA1 J200 201,574.8 / LA2 J330 201,637.5 / LA3 J110 201,719.4 (init
+  LC21p). All-data 1/2-tied: LC31 (J200) died RESOURCE_EXHAUSTED -> LC31r queued; LC32 (J330) 201,635.7 at it 680 (vs LA2
+  201,637.5); LC33 (J110) 201,935.0 at it 1340 (vs LA3 201,719.4). Quartered floor x .2: LB1 J200 158,307.6 / held-out
+  48,014.0 (halved LC19 158,315.2 / 48,024.3); LB2 J330 158,406.1 / 48,202.0 (LC20 158,412.5 / 48,194.3); LB3 J110 158,425
+  at it 1020 (LC21p 158,452.6). Local CPU LBL1 (J200) done; LBL2 / LBL3 running. HMC pilot (local GPU) past the mass
+  step (Hessian 595 s; 5 negative directions clipped), in warmup. LA1p (restart of the HMC init) queued.
+- DOCUMENTATION (user: rewrite docs to match the top candidates; earlier A/B/C methods drafts not found anywhere --
+  repo, branches, vault, WSL, TACC, Claude/Codex transcripts -- so start from scratch; priority: reconcile variables across
+  equations, no reuse / drift). Plan: (1) EXTRACTOR agent (launched) derives the spec from what EXECUTES for LA1 (resolved
+  config, coverage of one objective evaluation, trace sites, input sha256s, DESK provenance) into
+  .worktrees/route-variance/docs/model_spec/ (RESOLVED_CONFIG.json, EXECUTED_CODE.md, MODEL_SPEC.md, NOTATION.md,
+  DESK_PROVENANCE.md, DOC_DISCREPANCIES.md, SENSITIVITY_SET.md); read-only elsewhere, CPU cores 8-15. (2) WRITER updates
+  living docs from that spec only. (3) Independent VERIFIER checks every claim against code / config / records.
+  LA1 best_params + TACC overlay copied locally to ROUTEMARG/LA1_.../.
+- QUARTERED FLOOR RESULTS (n50 x .2, floor .01155 vs halved .0231; objective / held-out) [E]: J200 LB1 158,307.6 / 48,014.0
+  vs 158,315.2 / 48,024.3; J330 LB2 158,406.1 / 48,202.0 vs 158,412.5 / 48,194.3; J110 LB3 158,424.9 / 47,810.0 vs
+  158,452.6 / 47,830.0. Quarter is equal-or-better in fit on all three and in held-out on J200 / J110 (J330 +8, noise).
+  Allee-dead check rendering on local CPU (cores 16-31; local LBL2/LBL3 duplicates stopped since TACC LB2/LB3 finished).
+  Queued LA4 = all-data J200 at the quartered floor (init LB1) as an alternative HMC start.
+- LOCAL vs TACC, same setting (J200 x .2 quarter floor, same init LC19) [E]: local CPU LBL1 stopped at it 50 with
+  158,313.9, held-out 48,090.7; TACC LB1 158,307.6 at it 264, held-out 48,014.0. A 6-unit objective gap came with a 77-unit
+  held-out gap. Caution [L]: held-out is sensitive to where the optimiser stops along flat directions (the Hessian shows 13
+  |eig| < 1 directions), so held-out differences below ~25 between separately converged fits are noise, and an early-
+  stopped fit's held-out is not comparable. (Local LBL2 / LBL3 were stopped deliberately; their held-out files are from
+  partial checkpoints -- ignore.)
+- LA1p (restart of the HMC init LA1, all-data J200 x .2 floor .0231): 201,573.2 vs LA1 201,574.8 -> stable basin [E].
+  LC33 (all-data J110 x .5 tied) 201,933.0 vs LA3 (x .2) 201,719.4: on all data J110 prefers x .2 by 214 [E]
+  (same parameter count -- n50 pinned in both -- so this is a likelihood comparison). J200 (LC31r) / J330 (LC32) pending.
+  Queued LA5 / LA6 (all-data quarter floor J330 / J110) and LA2p (restart of LA2). Quarter-floor Allee-dead renders need
+  the GPU (map_diagnostics refuses CPU; a 15% GPU share OOMed beside the HMC pilot) -> chained to run after the pilot.
+- LC32 (all-data J330 x .5 tied) 201,630.5 vs LA2 (x .2, floor .0231) 201,637.5: on all data J330 is a near-tie (x .5
+  better by 7) [E]. All-data so far: J330 tie, J110 x .2 by 214; J200 (LC31r) running.
+- LA4 (all-data J200 x .2, QUARTER floor, init LB1): 201,601.4 at only 141 it vs LA1 (halved) 201,574.8 -> +27, likely an
+  early "relative reduction" stop; LA4p restart queued before judging the quarter floor on all data. TACC workers
+  3558537 / 8 have ~3.7 h left at 16:09 CST.
+- ALL-DATA x .2 vs x .5 (same parameter count; objective = log posterior incl. all rows) [E]:
+  | kernel | x .2 floor .0231 (best restart) | x .5 floor .0231 | difference |
+  |---|---|---|---|
+  | J200 | 201,573.2 (LA1p) | 201,596.8 (LC31r) | x .2 better by 24 |
+  | J330 | 201,637.5 (LA2; LA2p 201,641.0) | 201,630.5 (LC32) | x .5 better by 7 (tie) |
+  | J110 | 201,710.5 (LA3p) | 201,933.0 (LC33) | x .2 better by 222 |
+  Fitting all data (incl. the 2021-25 rows x .2 forecast worse when held out) does not favour x .5 on any kernel.
+  Queued LA7 / LA8: all-data J200 at x .33 and at the PIN, both with floor .0231, to complete the all-data Allee profile.
+- MODEL SPEC EXTRACTED (agent; .worktrees/route-variance/docs/model_spec/, uncommitted): local evaluation reproduces LA1's
+  TACC objective to 2e-9 (201,574.842), so the spec describes the executed path. Files: RESOLVED_CONFIG.json,
+  EXECUTED_CODE.md (+ coverage json, trace_sites_LA1.txt), MODEL_SPEC.md, NOTATION.md (27 drift items), DESK_PROVENANCE.md,
+  DOC_DISCREPANCIES.md (87 rows), SENSITIVITY_SET.md. Model-relevant findings (beyond doc drift):
+  (a) [E] _vl inputs (all current fits) were built by a scratchpad build_vl.py calling the worktree integrate_paths WITHOUT
+      the FIELD54 land-share floor (1e-4), although their parent Z_disp is floored: 172 cell-band pairs / 164 coastal cells
+      differ by up to .31. Verified error -> FIX: build_vl.py committed-to-be in research/exp/invasion_sandbox/ with
+      --land_share_floor (uses the main checkout's integrate_paths); rebuilding *_vlF (+ _nativeMX) for J330 / J200 / J110
+      on local CPU now; candidate to be refit on _vlF before HMC.
+  (b) [E] _vl metadata still describes the old kernel, so require_inputs_match_config passes while the kernel differs
+      (only KERNEL_DISCRETISATION.json is truthful).
+  (c) [E] The executed Allee is the clumped form 1 - (1 + gamma N / k)^-k (ALLEE_AGG_K), half-released at ~.82 n50, not
+      1 - 2^(-C/n50) as the docs / config comment / my PIF numbers assume -> PIF-bridge n50 figures overstate the half-point
+      by ~1/.82 (doc correction, not a model change).
+  (d) [E] Pre-1940 pseudo-zero BBS rows (68,704 in all-data LA1) still count (laplace_fit.py:715 'pass'); known since
+      11-07 (PZ0: inert, ~1-2 nats); dropping them as rangev2 intended is the user's pending call.
+  (e) [E] LA1 sits on boundaries: native departure .989, DD survival share 1.2e-4, fledgling weight 3.7e-4; init gradient
+      max 908 (manifold_factor). Relevant to HMC geometry.
+  (f) [U] FIELD54 v2 (coastal climate fix, 219 cells) exists on TACC; LA1 uses v1 states. User decision.
+- LA5 (all-data J330 x .2 QUARTER floor) 201,626.0 vs LA2 (halved) 201,637.5 -> quarter better by 11.5 on J330 [E].
+- LA4p (restart of LA4, all-data J200 x .2 QUARTER floor): 201,571.9 vs halved LA1p 201,573.2 -> tie (LA4's +27 was an early
+  stop) [E]. All-data quarter vs halved: J200 -1.3 (tie), J330 -11.5 (LA5; restart LA5p running), J110 LA6 running.
+  Queued LP1 = LA1p + --drop_pseudozeros (all-data candidate without the 1902-39 pseudo-zero rows) for the user's pending
+  decision.
+- _vlF INPUTS BUILT (build_vl.py --land_share_floor 1e-4, main-checkout integrate_paths; 12-13 min each, local CPU) [E]:
+  inputs_shape/{established1951, J200_established1951, J110_established1951}_vlF(+_nativeMX). Parent-validation max |dZ|
+  ~5e-5 (J330 / J200), 8.7e-3 (J110, one cell). vs the old _vl: Z_disp differs ONLY at the floored pairs -- J200 172 pairs
+  / 164 cells (max .31), J330 176 / 168 (.30), J110 170 / 161 (.21); metadata identical except native_hull_variant.
+  Pushing to TACC (md5-checked); refits LF1 / LF2 / LF3 (all-data x .2 halved floor on _vlF; inits LA1p / LA2 / LA3p)
+  built, to be queued once the upload verifies. HMC slot A stays un-READY until LF1 replaces LA1 as the init.
+- USER AWAY (~17:15 CST 11-08): "Follow your best judgment. Make sure to keep using all resources." Running: local CPU
+  LFL1-3 (held-out-masked x .2 halved-floor refits on _vlF, J200 / J330 / J110, cores 8-31); local GPU HMC pilot (then the
+  chained quarter-floor renders); WRITER agent (living docs + METHODS_DRAFT.md + DOCSTRING_PATCHES.md from docs/model_spec;
+  no code edits, no commits); TACC: LA3q / LA5p / LA6 / LA7 / LA8 / LP1, _vlF upload in progress, LF1-3 queued after it.
+  Pending user decisions kept as-is (pseudo-zero rows stay; FIELD54 v1 stays) until the user rules.
+- _vlF upload md5-verified on TACC (all three; Z_gathered / contract symlinks resolve). Queued L0F1 / L0F2 / L0F3 (= LF1-3 renamed so the alphabetical worker takes them first). [E]
+- LA7 (all-data J200 x .33, floor .0231): 201,558.5 [E]. ALL-DATA J200 Allee profile at floor .0231: x .5 201,596.8 (LC31r),
+  x .33 201,558.5 (LA7), x .2 201,573.2 (LA1p); pin pending (LA8). With all rows the optimum moves to ~x .33 (held-out-masked
+  profile kept improving to x .2); x .33 beats x .2 by 15 on J200 all-data -- same parameter count. Relevant to the HMC
+  setting: the user chose x .2 for navigability, not fit; x .33 is the likelihood-preferred neighbour on J200 (J330's
+  held-out-masked optimum was also ~x .33).
+- _vlF IMPACT (local CPU LFL1-3: held-out-masked x .2 halved floor refit on _vlF from the _vl optima) [E]: at the SAME
+  parameters the objective on _vlF vs _vl differs by -0.00013 (J200: 158,315.20616 vs 158,315.20630), -0.00027 (J330),
+  -0.00004 (J110) nats; refits stop after 1-7 iterations at the same optima; held-out identical (48,024.3 / 48,194.3 /
+  47,830.0). The missing land-share floor was a real input error but is INERT for these fits (the ~170 coastal cell-band
+  pairs barely enter juvenile journey survival Q_k). Every result reported on _vl stands. _vlF remains the corrected base:
+  HMC slot A will point at the _vlF all-data refit (L0F1) once it lands (expected ~= LA1p, 201,573.2).
+- L0F1 (all-data J200 x .2 halved floor on _vlF, from LA1p): 201,573.1 at 13 it [E] -- same basin as LA1p (201,573.2).
+  HMC SLOT A REPOINTED: hmc/CURRENT_A.sh -> init L0F1, overlay ALL_J200VWfl (input_dir J200_established1951_vlF_nativeMX),
+  OUT hmc/runs/A_VW_J200_ALL_vlF_job*; inputs verified on TACC; READY_A still held for the local pilot (warmup still
+  running after ~2.5 h -> slow; no trace yet).
+  LA5p (restart, all-data J330 x .2 quarter floor): 201,622.5 (LA5 201,626.0) -> on all data J330 quarter beats halved
+  (201,637.5) by 15; J200 tie (LA4p 201,571.9 vs 201,573.2); J110 LA6 running.
+- L0F2 (J330 _vlF all-data x .2) 201,637.5 at 35 it; L0F3 (J110) 201,710.5 at 11 it -> same optima as on _vl [E]. Queued L0Q1 (J200 quarter floor, _vlF, all data), L0T2 / L0T3 (J330 / J110 x .33 halved floor, _vlF, all data) -- corrected-input versions of the next candidates.
+- ALL-DATA KERNEL MATRIX (all rows; readouts of LA*/LC3* fits; D / ETF rise) [E]:
+  | setting | J330 | J200 | J110 | worst D / worst rise |
+  |---|---|---|---|---|
+  | x .5, floor .0231 | -.064 / x1.75 (LC32) | -.081 / x1.61 (LC31r) | -.204 / x1.54 (LC33) | -.064 / x1.75 |
+  | x .33, floor .0231 | pending (L0T2) | -.106 / x1.56 (LA7) | pending (L0T3) | |
+  | x .2, floor .0231 | -.139 / x1.67 (LA2) | -.119 / x1.52 (LA1p/L0F1) | -.172 / x1.55 (LA3p) | -.119 / x1.67 |
+  | x .2, floor .01155 | -.138 / x1.66 (LA5) | -.121 / x1.53 (LA4p) | LA6 running | |
+  Reading [E]: with all rows, J330's trough at x .2 deepens from -.081 (held-out-masked) to -.139, so J200 becomes the
+  worst-case trough kernel. x .2 beats x .5 on worst-case trough (-.119 vs -.064) and worst-case inflation (x1.67 vs
+  x1.75), and on all-data likelihood on J200 / J110 (J330 tie). J200 likelihood optimum ~x .33 (LA7 201,558.5; LFA7 on
+  _vlF 201,558.5). [L] The held-out blocks contain Plains / East routes whose inclusion sharpens the early contrast on J330.
+- WRITER AGENT done (docs edited, uncommitted): PRIORS.md rewritten for the candidate (incl. clumped Allee half-point .819
+  n50, _vlF, pending decisions), TEMPORAL.md, DATA_SOURCES.md, 21 config _comment values (119 non-comment values verified
+  unchanged), CONSIDERATIONS G14 / P7 model facts; new docs/model_spec/METHODS_DRAFT.md (13 sections, 31 equations,
+  reconciled notation), DOCSTRING_PATCHES.md (A1-A25 + X1, for the lead to apply), DOC_CHANGES.md. DOC_DISCREPANCIES has 79
+  rows (not 87). Flag checked: no --cbc_presence in LA1 is correct (--cbc_counts replaced it 11-07; memory updated).
+  Caveat from the writer: config comment edits change the whole-config fingerprint used by MAP-checkpoint resume /
+  hmc_common.check_model_drift (not by laplace_fit). Next: an independent VERIFIER pass.
+- LP1 (all-data candidate WITHOUT the 1902-39 pseudo-zero rows, from LA1p) [E]: 201,567.9 at 12 it (LA1p 201,573.2; the
+  5.3 difference is the dropped rows' own contribution). D -.120 (-.119), ETF .81 / 1.22, rise x1.51 (x1.52), Mexico 96% /
+  .88. Inert on every lead metric, as on 11-07 (PZ0). The user's decision can be made on cleanliness alone; an HMC run
+  either way describes the same posterior to within ~5 nats of redundant absence information.
+- LA3q (2nd restart, all-data J110 x .2): 201,716.5 (LA3p 201,710.5 stays best). Queued L0Q2 (J330 quarter floor, _vlF, all data, from LA5p). [E]
+- LA6 (all-data J110 x .2 QUARTER floor): 201,675.5 vs halved LA3p 201,710.5 -> quarter better by 35 [E]. ALL-DATA quarter
+  vs halved (x .2): J200 -1.3 (tie), J330 -15 (LA5p), J110 -35 -> the quarter floor is equal-or-better on every kernel;
+  Allee-dead check for the quarter floor still waits on the GPU (after the pilot). Queued L0Q3b (_vlF refit from LA6).
+- L0Q3b (J110 quarter floor, _vlF, all data, from LA6): 201,675.5 (= LA6). Queued L0X2 (J330 x .33 quarter floor, _vlF, all data, from LC30). [E]
+- VERIFIER (independent agent; docs/model_spec/VERIFICATION.md): 248 claims -- 192 confirmed, 15 wrong, 40 ambiguous, 1
+  unsupported. Equations (1)-(13), (15)-(31), every prior value and the config (only 22 comment keys changed) confirmed.
+  Main doc errors: crowding/Allee census (eq. 14), GP-kernel statement, residual symbol collisions, row counts, stale run
+  status, PIF bridge provenance (measured on LC3). Sent back to the writer for correction.
+  Code-level findings: (1) [E] HMC target had Uniform(0,1) on the specimen effort exponent beta_E -- run_hmc adds Jacobians
+  for model coordinates only and the specimen block's single beta(1-beta) factor is the MAP Beta(2,2) density -> FIXED
+  (laplace_fit.py: extra logit Jacobian when --hmc; MAP unchanged); synced to TACC code (md5 b1f18a41..., backup
+  .bak_20261108_hmcjac). BBL / CBC nuisance priors are defined on their unconstrained scales (no Jacobian needed).
+  (2) [E] census convention: crowding / Allee census = A' + J^s + (1-m) J^m (arrivers disease-reduced before the sum,
+  adults / stayers not; differs only after 1993) -- possibly unintended; USER DECISION, not changed before HMC.
+  (3) pseudo-zero no-op (known; LP1 inert). (4) abs_calib.py mixes N_{t-1} / N_t (~1% bias; tooling only).
+- L0X1 (all-data J200 x.33 QUARTER floor, _vlF): 201,545.3 -- best J200 all-data fit so far (x.33 halved 201,558.5; x.2 quarter 201,571.9; x.2 halved 201,573.1). [E]
+- WRITER second pass done: all 15 WRONG ledger rows fixed (census N'' = A' + J^s + (1-m) J^m for crowding / Allee, with an
+  open-convention note = pending decision 3; GP-kernel statement; native seed fractions; notation collisions removed;
+  invasion-budget comment; row counts), AMBIGUOUS rows resolved where evidence existed; run status, Allee profile and
+  quarter-floor results added; beta_E documented as Beta(2,2) (MAP no Jacobian, HMC adds it). MODEL_SPEC.md beta_E row
+  annotated (dated) by me. Still open: MODEL_SPEC / NOTATION keep source symbols (METHODS section 13 maps them); unknowns
+  (BBL first interval, specimen collector rule, adult kernel 1-D -> 2-D, held-out script, trough D definition text);
+  overlay comments, Python docstrings (DOCSTRING_PATCHES.md), data_config timeline comment, CONSIDERATIONS G6.
+- (Recovered entries -- appended to a stray root-level copy of this log by mistake between ~16:50 and 17:45 CST; merged here verbatim:)
+  - LA3p (restart of LA3, all-data J110 x .2): 201,710.5 vs LA3 201,719.4 -> J110 keeps finding lower basins (cf. LC21p -53); LA3q queued from LA3p. [E]
+  - L0Q1 (J200 quarter floor, _vlF, all data): 201,571.9 at 37 it (= LA4p). Queued L0Q3 (J110 quarter floor, _vlF, all data, from LB3). [E]
+  - L0Q2 (J330 quarter floor, _vlF, all data): 201,622.5 (= LA5p). Queued L0X1 = J200 x .33 + QUARTER floor (.01155 = 6 n50), _vlF, all data, from LA7 -- the likelihood-preferred Allee with the better floor. [E]
+  - LA8 (all-data J200 PIN, floor .0231, from LC3): 201,736.4 [E]. ALL-DATA J200 Allee profile at floor .0231: pin 201,736.4 / x.5 201,596.8 / x.33 201,558.5 / x.2 201,573.2 -> optimum between x.33 and x.2; the pin is ~178 worse. Queued L0X3 (J110 x.33 quarter floor, _vlF, all data). TACC workers end ~19:50 CST.
